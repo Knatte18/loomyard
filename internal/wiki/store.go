@@ -257,6 +257,13 @@ func (s *Store) GetTask(idOrSlug interface{}) (Task, bool) {
 				return t, true
 			}
 		}
+	case float64:
+		id := int(v)
+		for _, t := range s.tasks {
+			if t.ID == id {
+				return t, true
+			}
+		}
 	case string:
 		for _, t := range s.tasks {
 			if t.Slug == v {
@@ -274,6 +281,14 @@ func (s *Store) RemoveTask(idOrSlug interface{}) error {
 	case int:
 		for _, t := range s.tasks {
 			if t.ID == v {
+				slugToRemove = t.Slug
+				break
+			}
+		}
+	case float64:
+		id := int(v)
+		for _, t := range s.tasks {
+			if t.ID == id {
 				slugToRemove = t.Slug
 				break
 			}
@@ -315,6 +330,8 @@ func (s *Store) SetPhase(idOrSlug interface{}, phase *string) error {
 		switch v := idOrSlug.(type) {
 		case int:
 			match = s.tasks[i].ID == v
+		case float64:
+			match = s.tasks[i].ID == int(v)
 		case string:
 			match = s.tasks[i].Slug == v
 		}
