@@ -36,7 +36,9 @@ implementing  '2026-06-04T17:28:02Z'
 ```yaml
 batches:
   - name: Bootstrap
-    state: pending
+    state: running
+    implementer_session: e19effad-f918-4d31-8b7e-b27691e4585e
+    start_sha: d7076cabf1a0b4d66d8cf4f10a20c2faf4836dd1
   - name: Layer
     state: pending
   - name: Git and Lock
