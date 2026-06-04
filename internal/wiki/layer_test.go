@@ -116,7 +116,7 @@ func TestComputeLayers(t *testing.T) {
 				Title: "Task " + string(rune('A'+i)),
 			}
 			if i > 0 {
-				tasks[i].DependsOn = []string{"task-" + string(rune('a' + i - 1))}
+				tasks[i].DependsOn = []string{"task-" + string(rune('a'+i-1))}
 			}
 		}
 		_, err := wiki.ComputeLayers(tasks)
