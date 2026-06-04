@@ -1,16 +1,18 @@
-package wiki
+package wiki_test
 
 import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/Knatte18/mhgo/internal/wiki"
 )
 
 func TestUpsertTask(t *testing.T) {
 	t.Setenv("WIKI_SKIP_GIT", "1")
 
 	wikiPath := t.TempDir()
-	w := New(wikiPath)
+	w := wiki.New(wikiPath)
 
 	// (a) Creates task, tasks.json written, Home.md written
 	task, err := w.UpsertTask(map[string]interface{}{
@@ -61,7 +63,7 @@ func TestRemoveTask(t *testing.T) {
 	t.Setenv("WIKI_SKIP_GIT", "1")
 
 	wikiPath := t.TempDir()
-	w := New(wikiPath)
+	w := wiki.New(wikiPath)
 
 	// (c) Error for missing slug
 	err := w.RemoveTask("nonexistent")
@@ -74,7 +76,7 @@ func TestRerender(t *testing.T) {
 	t.Setenv("WIKI_SKIP_GIT", "1")
 
 	wikiPath := t.TempDir()
-	w := New(wikiPath)
+	w := wiki.New(wikiPath)
 
 	// (d) Writes all output files without error on empty store
 	err := w.Rerender()
