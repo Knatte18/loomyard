@@ -17,8 +17,7 @@ Implements the git operations layer (`path_guard`, `atomicWrite`, `pull`, `commi
 
 ### Card 11: internal/wiki/git.go
 
-- **Context:**
-  - `internal/wiki/task.go`
+- **Context:** none
 - **Edits:** none
 - **Creates:**
   - `internal/wiki/git.go`
