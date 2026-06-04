@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-Layer
+phase: approved-Git and Lock
 slug: wiki-go-port
 branch: wiki-go-port
 plan: _mill/plan
@@ -33,6 +33,7 @@ approved-Bootstrap  '2026-06-04T18:00:48Z'
 blocked  '2026-06-04T18:09:22Z'
 implementing  '2026-06-04T18:13:13Z'
 approved-Layer  '2026-06-04T18:21:47Z'
+approved-Git and Lock  '2026-06-04T18:31:38Z'
 ```
 
 ## Batches
@@ -51,9 +52,10 @@ batches:
     commit_sha: 606533414843159739cd9d300b55f1c64c42aa3a
     blocked_reason: ''
   - name: Git and Lock
-    state: running
+    state: approved
     implementer_session: 51403fbb-07e7-4649-ad52-ba39249b75d3
     start_sha: 809d0dcc2bb855d648378ebf56d10c737cd69169
+    commit_sha: 487a1853995109c8f493471f26626e758a3511ef
   - name: Render
     state: pending
   - name: Store
