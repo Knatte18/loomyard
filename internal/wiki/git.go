@@ -22,8 +22,8 @@ func (e WikiPathError) Error() string {
 	return string(e)
 }
 
-// pathGuard validates a relative path for wiki operations
-func pathGuard(relPath string) error {
+// PathGuard validates a relative path for wiki operations
+func PathGuard(relPath string) error {
 	if relPath == "" {
 		return WikiPathError("empty path")
 	}
@@ -41,9 +41,9 @@ func pathGuard(relPath string) error {
 	return nil
 }
 
-// atomicWrite writes content to a file atomically using a temp file
-func atomicWrite(wikiPath, relPath, content string) error {
-	if err := pathGuard(relPath); err != nil {
+// AtomicWrite writes content to a file atomically using a temp file
+func AtomicWrite(wikiPath, relPath, content string) error {
+	if err := PathGuard(relPath); err != nil {
 		return err
 	}
 
@@ -75,8 +75,8 @@ func atomicWrite(wikiPath, relPath, content string) error {
 	return nil
 }
 
-// runGit runs a git command and returns stdout, stderr, and exit code
-func runGit(args []string, cwd string) (stdout, stderr string, exitCode int, err error) {
+// RunGit runs a git command and returns stdout, stderr, and exit code
+func RunGit(args []string, cwd string) (stdout, stderr string, exitCode int, err error) {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = cwd
 
@@ -94,9 +94,9 @@ func runGit(args []string, cwd string) (stdout, stderr string, exitCode int, err
 	return outBuf.String(), errBuf.String(), exitCode, nil
 }
 
-// pull runs git pull --ff-only and returns whether the repo was updated
-func pull(wikiPath string) (updated bool, err error) {
-	stdout, stderr, exitCode, err := runGit([]string{"pull", "--ff-only"}, wikiPath)
+// Pull runs git pull --ff-only and returns whether the repo was updated
+func Pull(wikiPath string) (updated bool, err error) {
+	stdout, stderr, exitCode, err := RunGit([]string{"pull", "--ff-only"}, wikiPath)
 	if err != nil {
 		return false, fmt.Errorf("pull: %w", err)
 	}
@@ -107,11 +107,11 @@ func pull(wikiPath string) (updated bool, err error) {
 	return updated, nil
 }
 
-// commitPush stages, commits, and pushes changes with rebase retry logic
-func commitPush(wikiPath string, relPaths []string, message string) error {
+// CommitPush stages, commits, and pushes changes with rebase retry logic
+func CommitPush(wikiPath string, relPaths []string, message string) error {
 	// Stage files
 	args := append([]string{"add", "--"}, relPaths...)
-	_, _, exitCode, err := runGit(args, wikiPath)
+	_, _, exitCode, err := RunGit(args, wikiPath)
 	if err != nil {
 		return fmt.Errorf("add: %w", err)
 	}
@@ -120,7 +120,7 @@ func commitPush(wikiPath string, relPaths []string, message string) error {
 	}
 
 	// Check for staged changes
-	_, _, exitCode, err = runGit([]string{"diff", "--cached", "--quiet"}, wikiPath)
+	_, _, exitCode, err = RunGit([]string{"diff", "--cached", "--quiet"}, wikiPath)
 	if err != nil {
 		return fmt.Errorf("diff: %w", err)
 	}
@@ -133,7 +133,7 @@ func commitPush(wikiPath string, relPaths []string, message string) error {
 	}
 
 	// Commit
-	_, _, exitCode, err = runGit([]string{"commit", "-m", message}, wikiPath)
+	_, _, exitCode, err = RunGit([]string{"commit", "-m", message}, wikiPath)
 	if err != nil {
 		return fmt.Errorf("commit: %w", err)
 	}
@@ -148,7 +148,7 @@ func commitPush(wikiPath string, relPaths []string, message string) error {
 
 	// Push with rebase retry
 	for attempt := 0; attempt < 2; attempt++ {
-		_, stderr, exitCode, err := runGit([]string{"push"}, wikiPath)
+		_, stderr, exitCode, err := RunGit([]string{"push"}, wikiPath)
 		if err != nil {
 			return fmt.Errorf("push: %w", err)
 		}
@@ -159,13 +159,13 @@ func commitPush(wikiPath string, relPaths []string, message string) error {
 		// Check for non-fast-forward error
 		if strings.Contains(stderr, "non-fast-forward") || strings.Contains(stderr, "rejected") {
 			// Try rebase
-			_, _, exitCode, err := runGit([]string{"pull", "--rebase"}, wikiPath)
+			_, _, exitCode, err := RunGit([]string{"pull", "--rebase"}, wikiPath)
 			if err != nil {
 				return fmt.Errorf("rebase: %w", err)
 			}
 			if exitCode != 0 {
 				// Abort rebase on failure
-				runGit([]string{"rebase", "--abort"}, wikiPath)
+				RunGit([]string{"rebase", "--abort"}, wikiPath)
 				return WikiPushError("rebase failed")
 			}
 			// Continue to next push attempt
