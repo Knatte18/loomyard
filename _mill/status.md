@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-Bootstrap
 slug: wiki-go-port
 branch: wiki-go-port
 plan: _mill/plan
@@ -29,6 +29,7 @@ plan-fix-r4  '2026-06-04T16:46:01Z'
 plan-fix-r5  '2026-06-04T17:09:12Z'
 planned  '2026-06-04T17:09:34Z'
 implementing  '2026-06-04T17:28:02Z'
+approved-Bootstrap  '2026-06-04T18:00:48Z'
 ```
 
 ## Batches
@@ -36,9 +37,10 @@ implementing  '2026-06-04T17:28:02Z'
 ```yaml
 batches:
   - name: Bootstrap
-    state: running
+    state: approved
     implementer_session: 691b6968-ba2e-4804-9ad0-37d6dcf9f922
     start_sha: 9cdac8d23f3dba5f68a391ff6337f1b86463326a
+    commit_sha: 97dc60b935c5d0b7153378aa3363bc2414f7bbf5
   - name: Layer
     state: pending
   - name: Git and Lock
