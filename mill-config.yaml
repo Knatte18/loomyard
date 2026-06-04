@@ -133,7 +133,7 @@ roles:
       rounds: 0
       reviewer: null
     holistic:
-      rounds: 5
+      rounds: 6
       reviewer: sonnetmax
       # large_prompt:            # optional: override reviewer for large prompts
       #   threshold_ktok: 100    # switch when estimated tok count >= this (char/4000)
