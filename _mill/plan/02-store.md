@@ -19,6 +19,7 @@ Implements the in-memory task store over `tasks.json`: load/save, full CRUD, and
 
 - **Context:**
   - `internal/wiki/task.go`
+  - `internal/wiki/git.go`
 - **Edits:** none
 - **Creates:**
   - `internal/wiki/store.go`
@@ -48,9 +49,9 @@ Implements the in-memory task store over `tasks.json`: load/save, full CRUD, and
 - **Creates:**
   - `internal/wiki/store_test.go`
 - **Deletes:** none
-- **Requirements:** Package `wiki_test`. Each test creates a `NewStore("")` (in-memory only; no file I/O). Test `UpsertTask`: (a) new task gets sequential ID starting at 0; (b) defaults applied (DependsOn=[], Isolated=false, Deferred=false); (c) update preserves unmentioned fields; (d) `group` key returns validation error (propagated from `applyPatch`). Test `validateWrite` paths: (e) dangling dependency rejected; (f) dependency on isolated task rejected; (g) dependency on deferred task rejected; (h) cycle A→B, B→A detected and rejected with "cycle detected" in error message; (i) chain A depends on B, B depends on C — no cycle, all upserts succeed. Test `RemoveTask`: (j) returns error for missing slug. Test `SetPhase`: (k) nil phase clears status; (l) no-op (nil return) for missing slug. Test `MergeTasks`: (m) remove + upsert + set_phase all execute atomically — after the call, removed slugs are gone, upserted task exists, phase is set; (n) validation error on upsert rolls back — nothing is mutated. Test `ListTasksBrief`: (o) returns Layer and HasProposal computed correctly. Use `t.Fatal` on unexpected errors; use `t.Errorf` for assertion failures. No third-party assertion libraries.
+- **Requirements:** Package `wiki_test`. Each test creates a `NewStore("")` (in-memory only; no file I/O). Test `UpsertTask`: (a) new task gets sequential ID starting at 0; (b) defaults applied (DependsOn=[], Isolated=false, Deferred=false); (c) update preserves unmentioned fields; (d) `group` key returns validation error (propagated from `applyPatch`). Test `validateWrite` paths: (e) dangling dependency rejected; (f) dependency on isolated task rejected; (g) dependency on deferred task rejected; (h) cycle A→B, B→A detected and rejected with "cycle detected" in error message; (i) chain A depends on B, B depends on C — no cycle, all upserts succeed. Test `RemoveTask`: (j) returns error for missing slug. Test `SetPhase`: (k) nil phase clears status; (l) no-op (nil return) for missing slug. Test `MergeTasks`: (m) remove + upsert + set_phase all execute atomically — after the call, removed slugs are gone, upserted task exists, phase is set; (n) validation error on upsert rolls back — nothing is mutated. Test `ListTasksBrief`: (o) returns Layer and HasProposal computed correctly. Test `SetDeps`: (p) valid update succeeds; (q) setting deps that create a cycle returns error and leaves store unchanged. Test `UpsertTasksBatch`: (r) valid batch of two tasks both upserted; (s) batch with one invalid task (dangling dep) returns error and neither task is mutated. Use `t.Fatal` on unexpected errors; use `t.Errorf` for assertion failures. No third-party assertion libraries.
 - **Commit:** `test(wiki): Store CRUD and validation tests`
 
 ## Batch Tests
 
-`go test ./internal/wiki/` compiles the full `internal/wiki` package (task.go + store.go + layer.go) and runs `task_test.go` and `store_test.go`. All tests are in-memory — no filesystem or git access. `store.go` calls `computeLayers` from `layer.go`, so this batch depends on both batch 1 (task.go) and batch 3 (layer.go) — reflected in `depends-on: [1, 3]` in the DAG.
+`go test ./internal/wiki/` compiles the full `internal/wiki` package (task.go + store.go + layer.go) and runs `task_test.go` and `store_test.go`. All tests are in-memory — no filesystem or git access. `store.go` calls `computeLayers` from `layer.go`, so this batch depends on both batch 1 (task.go) and batch 3 (layer.go) — reflected in `depends-on: [1, 3, 5]` in the DAG.

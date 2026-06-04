@@ -44,7 +44,7 @@ Creates the Go module, declares the only external dependency (`github.com/gofrs/
 - **Creates:**
   - `internal/wiki/task_test.go`
 - **Deletes:** none
-- **Requirements:** Package `wiki_test`. Test `newTask`: (a) creates task with correct defaults when only slug provided; (b) ID is set to the provided nextID; (c) missing slug returns error; (d) `group` key present returns error. Test `applyPatch`: (a) overlays title onto existing task, other fields unchanged; (b) `DependsOn` is updated when provided; (c) `group` key returns error; (d) existing Status is preserved when not in patch; (e) Status can be cleared by patching with `"status": nil`. All tests use `go test` assertions via the standard `testing` package (no third-party test framework).
+- **Requirements:** Package `wiki_test`. Test `newTask`: (a) creates task with correct defaults when only slug provided (DependsOn=[], Isolated=false, Deferred=false, Status=nil); (b) ID is set to the provided nextID; (c) missing slug returns error; (d) `group` key present returns error; (e) explicit DependsOn provided in fields → stored correctly in the returned task. Test `applyPatch`: (a) overlays title onto existing task, other fields unchanged; (b) `DependsOn` is updated when provided; (c) `group` key returns error; (d) existing Status is preserved when not in patch; (e) Status can be cleared by patching with `"status": nil`. All tests use `go test` assertions via the standard `testing` package (no third-party test framework).
 - **Commit:** `test(wiki): task struct and patch helper tests`
 
 ## Batch Tests
