@@ -1,0 +1,66 @@
+package wiki_test
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/Knatte18/mhgo/internal/wiki"
+)
+
+func TestAcquireWriteLock(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	t.Run("acquires lock and creates lock file", func(t *testing.T) {
+		lockPath := filepath.Join(tmpDir, "test.lock")
+
+		lock, err := wiki.AcquireWriteLock(lockPath)
+		if err != nil {
+			t.Fatalf("AcquireWriteLock failed: %v", err)
+		}
+		defer lock.Release()
+
+		// Check that lock file was created
+		_, err = os.Stat(lockPath)
+		if err != nil {
+			t.Fatalf("lock file not created: %v", err)
+		}
+	})
+
+	t.Run("release succeeds after acquire", func(t *testing.T) {
+		lockPath := filepath.Join(tmpDir, "test2.lock")
+
+		lock, err := wiki.AcquireWriteLock(lockPath)
+		if err != nil {
+			t.Fatalf("AcquireWriteLock failed: %v", err)
+		}
+
+		if err := lock.Release(); err != nil {
+			t.Fatalf("Release failed: %v", err)
+		}
+	})
+
+	t.Run("acquire after release succeeds", func(t *testing.T) {
+		lockPath := filepath.Join(tmpDir, "test3.lock")
+
+		// First acquire and release
+		lock1, err := wiki.AcquireWriteLock(lockPath)
+		if err != nil {
+			t.Fatalf("first AcquireWriteLock failed: %v", err)
+		}
+		if err := lock1.Release(); err != nil {
+			t.Fatalf("first Release failed: %v", err)
+		}
+
+		// Second acquire should succeed
+		lock2, err := wiki.AcquireWriteLock(lockPath)
+		if err != nil {
+			t.Fatalf("second AcquireWriteLock failed: %v", err)
+		}
+		defer lock2.Release()
+	})
+}
+
+// NOTE: gofrs/flock's OS-level implementation (flock on Unix, LockFileEx on Windows)
+// guarantees that locks are automatically released on process death. No subprocess
+// test is required to verify this property.
