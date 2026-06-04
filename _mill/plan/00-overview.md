@@ -3,7 +3,7 @@
 ```yaml
 task: Port the wiki module to Go
 slug: wiki-go-port
-approved: false
+approved: true
 started: 20260604-121026
 parent: main
 root: ""
