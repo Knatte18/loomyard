@@ -42,7 +42,9 @@ batches:
     start_sha: 9cdac8d23f3dba5f68a391ff6337f1b86463326a
     commit_sha: 97dc60b935c5d0b7153378aa3363bc2414f7bbf5
   - name: Layer
-    state: pending
+    state: running
+    implementer_session: 2a207fb5-9971-47ff-9649-80bb1dacc0e2
+    start_sha: 6aaedbaaba746f52b93d222e069483b28ebc6a58
   - name: Git and Lock
     state: pending
   - name: Render
