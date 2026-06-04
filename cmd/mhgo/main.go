@@ -74,7 +74,7 @@ func main() {
 			outputError(err.Error())
 			os.Exit(1)
 		}
-		outputSuccess()
+		outputSuccessWithCount(len(payload.Tasks))
 
 	case "set-phase":
 		if jsonPayload == "" {
@@ -232,6 +232,15 @@ func outputError(message string) {
 func outputSuccess() {
 	output := map[string]interface{}{
 		"ok": true,
+	}
+	data, _ := json.Marshal(output)
+	fmt.Println(string(data))
+}
+
+func outputSuccessWithCount(count int) {
+	output := map[string]interface{}{
+		"ok":    true,
+		"count": count,
 	}
 	data, _ := json.Marshal(output)
 	fmt.Println(string(data))
