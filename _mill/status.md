@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-Render
+phase: approved-Store
 slug: wiki-go-port
 branch: wiki-go-port
 plan: _mill/plan
@@ -35,6 +35,7 @@ implementing  '2026-06-04T18:13:13Z'
 approved-Layer  '2026-06-04T18:21:47Z'
 approved-Git and Lock  '2026-06-04T18:31:38Z'
 approved-Render  '2026-06-04T18:39:44Z'
+approved-Store  '2026-06-04T18:49:10Z'
 ```
 
 ## Batches
@@ -63,9 +64,10 @@ batches:
     start_sha: a541afc2545f5aeb3748b27a4c90200c6c82ce56
     commit_sha: aecb832099a9a05807d630856954575b51a8e180
   - name: Store
-    state: running
+    state: approved
     implementer_session: 59cd5be4-d922-45dd-b837-c16eda85354b
     start_sha: f85525466d365ec4489fb490801bca933699d470
+    commit_sha: 1c877dc26634e8fa778c39584b1c12f2e6ecdf14
   - name: Wiki and CLI
     state: pending
 ```
