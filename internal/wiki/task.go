@@ -17,7 +17,7 @@ type Task struct {
 	Status    *string   `json:"status,omitempty"`
 }
 
-func newTask(fields map[string]interface{}, nextID int) (Task, error) {
+func NewTask(fields map[string]interface{}, nextID int) (Task, error) {
 	if fields["group"] != nil {
 		return Task{}, fmt.Errorf("group key is not allowed; use depends_on, isolated, deferred instead")
 	}
@@ -82,7 +82,7 @@ func newTask(fields map[string]interface{}, nextID int) (Task, error) {
 	return task, nil
 }
 
-func applyPatch(existing Task, fields map[string]interface{}) (Task, error) {
+func ApplyPatch(existing Task, fields map[string]interface{}) (Task, error) {
 	if fields["group"] != nil {
 		return Task{}, fmt.Errorf("group key is not allowed; use depends_on, isolated, deferred instead")
 	}
