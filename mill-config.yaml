@@ -1,0 +1,216 @@
+# mill-config.yaml — shared configuration for mill.
+#
+# This file is the plugin template for `mill-config.yaml` at the hub repo root.
+#
+# Overlay precedence (first source wins):
+#   plugin template -> mill-config.yaml at hub repo root -> .millhouse/config.local.yaml
+#
+# Local (non-secret) overrides go in .millhouse/config.local.yaml (gitignored).
+# Secrets belong in .env at the repo root, not here.
+#
+# Environment-variable overrides (when set, takes precedence over config file values):
+#   MILL_DISCUSSION_REVIEWER        -> roles.discussion-review.holistic.reviewer
+#   MILL_PLAN_REVIEWER              -> roles.plan-review.holistic.reviewer
+#   MILL_PLAN_BATCH_REVIEWER        -> roles.plan-review.batch.reviewer
+#   MILL_CODE_REVIEWER              -> roles.code-review.holistic.reviewer
+#   MILL_CODE_BATCH_REVIEWER        -> roles.code-review.batch.reviewer
+#   MILL_IMPLEMENTER                -> roles.implementer.model
+#
+# Unknown keys emit a stderr warning at load time; load proceeds.
+#
+# Review roles live under `roles:`. Reviewer names reference agents.yaml.
+# Skip semantics: rounds: 0 OR reviewer: null -> skip the scope.
+#
+# Path tokens (substituted by mill scripts at run time, always UPPERCASE):
+#   <HUB_PATH>        -- primary clone root
+#   <CONTAINER_PATH>  -- parent of HUB_PATH (holds hub/, wiki/, worktrees/)
+#   <WIKI_PATH>       -- wiki clone root
+#   <REPO>            -- short repo name from origin URL
+#   <SLUG>            -- task slug (valid only in mill-spawn-created entries)
+#
+# Env-var interpolation (substituted by mill scripts at run time):
+#   ${VAR}          -- replaced with the value of env var VAR; unset raises ConfigError
+#   ${VAR:-default} -- replaced with VAR if set; otherwise the literal "default"
+# Variable names must be uppercase (POSIX convention); lowercase forms pass through
+# as literal text. Interpolation applies to string values everywhere in this file,
+# including inside lists and nested maps.
+#
+# Junctions and hardlinks are IDE/terminal convenience — scripts always
+# resolve paths via _paths.py, never via the link paths themselves.
+
+# ---------------------------------------------------------------------------
+# Junctions
+# ---------------------------------------------------------------------------
+# Each entry: `<junction-path>: <target-template>`.
+# Scope inferred from token presence:
+#   * Target contains <SLUG>   -> per-worktree; created by mill-spawn.
+#   * Target has no <SLUG>     -> hub-scope; created by mill-setup.
+
+# ---------------------------------------------------------------------------
+# Repo identity
+# ---------------------------------------------------------------------------
+# short_name -- 2-4 character prefix used in VS Code window titles.
+#   Hub form:      "<short_name>"
+#   Worktree form: "<short_name>: <slug>"
+#   Default when absent or empty: <repo>[:2].upper() (e.g. "millhouse" -> "MI").
+
+repo:
+  short_name: "MHGO"    # e.g. "MH" for millhouse
+
+junctions:
+  .wiki: <WIKI_PATH>
+  .portals: <CONTAINER_PATH>/portals/
+  # .active is created explicitly by mill-spawn/mill-claim (points to <hub>/_mill/);
+  # not declared here so it is not auto-created in non-task worktrees.
+
+# ---------------------------------------------------------------------------
+# mill-spawn
+# ---------------------------------------------------------------------------
+# branch_prefix -- prepended directly to the slug (no separator added).
+#   Include any separator in the prefix itself, e.g. "hanf/" -> "hanf/<slug>".
+#   Empty string -> branch == slug.
+
+spawn:
+  branch_prefix: ""
+
+# ---------------------------------------------------------------------------
+# Git integration
+# ---------------------------------------------------------------------------
+# Uncomment if your remote enforces PRs to the base branch (branch protection).
+# git:
+#   require_pr_to_base: true   # create a PR instead of pushing directly; dispatch lives in mill-finalize
+#   base_branch: main          # branch to target; defaults to main if absent
+
+# ---------------------------------------------------------------------------
+# File-path templates (relative to active worktree root)
+# ---------------------------------------------------------------------------
+
+paths:
+  discussion_file: _mill/discussion.md
+  plan_dir:        _mill/plan/
+  reviews_dir:     _mill/reviews/
+  status_md:       _mill/status.md
+
+# ---------------------------------------------------------------------------
+# LLM-provider timeouts (seconds)
+# ---------------------------------------------------------------------------
+
+llm:
+  bulk_timeout: 600
+  holistic_timeout: 1800
+  tool_use_timeout: 900
+  implementer_timeout: 3600
+  claude:
+    psmux:
+      via_psmux: false  # Route claude calls through psmux for subscription billing (requires psmux on PATH; mill-go reaps sessions automatically after each implement-review-fix loop)
+      reuse_idle_timeout_s: 10  # Seconds to wait for an existing psmux session to return to its idle prompt before reuse fails
+
+# ---------------------------------------------------------------------------
+# mill-go pipeline
+# ---------------------------------------------------------------------------
+
+pipeline:
+  auto_merge: false
+  auto_report: true
+  autonomous_mode: false  # Set true by mill-autofix; read by mill-go and mill-plan for autonomous stuck-handling
+
+# ---------------------------------------------------------------------------
+# Reviewer roles
+# ---------------------------------------------------------------------------
+# Reviewer names reference agents.yaml entries.
+
+roles:
+  discussion-review:
+    holistic:
+      rounds: 5
+      reviewer: sonnetmax_tool
+      # large_prompt:            # optional: override reviewer for large prompts
+      #   threshold_ktok: 100    # switch when estimated tok count >= this (char/4000)
+      #   reviewer: null         # override reviewer from agents.yaml; null = disabled
+
+  plan-review:
+    batch:
+      rounds: 0
+      reviewer: null
+    holistic:
+      rounds: 5
+      reviewer: sonnetmax
+      # large_prompt:            # optional: override reviewer for large prompts
+      #   threshold_ktok: 100    # switch when estimated tok count >= this (char/4000)
+      #   reviewer: null         # override reviewer from agents.yaml; null = disabled
+
+  code-review:
+    batch:
+      rounds: 0
+      reviewer: null
+    holistic:
+      rounds: 5
+      reviewer: sonnethigh
+      fallback_reviewer: null     # reviewer name from agents.yaml to swap in on consecutive rate-limit ERRORs; null = no fallback
+      fallback_on:                 # list of substrings (lowercased match) in reviews[].error that trigger fallback
+        - "rate-limit"
+      # large_prompt:            # optional: override reviewer for large prompts
+      #   threshold_ktok: 100    # switch when estimated tok count >= this (char/4000)
+      #   reviewer: null         # override reviewer from agents.yaml; null = disabled
+    diff_scope_threshold: 0.25
+
+  implementer:
+    self_fix_rounds: 2
+    model: haiku
+
+  fixer:
+    model: haiku
+
+# ---------------------------------------------------------------------------
+# Notifications
+# ---------------------------------------------------------------------------
+
+notify:
+  backend: stdout
+
+# ---------------------------------------------------------------------------
+# mill-groom: backlog cleanup thresholds
+# ---------------------------------------------------------------------------
+
+groom:
+  brevity-threshold-lines: 5
+  brevity-threshold-chars: 500
+
+# ---------------------------------------------------------------------------
+# mill-merge-in
+# ---------------------------------------------------------------------------
+# verify_fix_rounds: how many self-fix attempts the verify-fix sub-agent makes
+# before reporting stuck. The CLI defaults to 3 if this key is absent, so
+# existing hubs do not need to add this key -- only new hubs set up from this
+# template will have it pre-populated.
+
+merge:
+  # model: LLM alias for the merge-in sub-agent (haiku is sufficient for conflict resolution)
+  model: haiku
+  verify_fix_rounds: 3
+
+# ---------------------------------------------------------------------------
+# verify command shape (canonical, enforced by _plan_validate.verify-not-isolated)
+# ---------------------------------------------------------------------------
+# Every non-null verify: in a per-batch plan file's frontmatter MUST start
+# with the literal token "PYTHONPATH=" followed by a single space and the
+# command. Example:
+#     verify: PYTHONPATH= uv run --project plugins/mill python plugins/mill/unit_tests/run-all.py
+# The empty value on the same line scopes the PYTHONPATH reset to that one
+# command, so the test subprocess does not inherit the mill plugin-cache
+# scripts dir (set by every mill skill's PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/scripts"
+# invocation pattern). Without this reset, tests load V2-cache modules
+# instead of the worktree code they are meant to validate.
+# This is schema documentation only -- no key change here; the planner
+# bakes the prefix into each per-batch verify: command per mill-plan SKILL.
+
+# ---------------------------------------------------------------------------
+# mill-merge-in: verify allowlist
+# ---------------------------------------------------------------------------
+# verify.skip_known_broken is a list of path substrings. If any entry appears
+# as a substring of a plan batch's verify: command, mill-merge-in skips that
+# command and logs: [verify] skipped <path> (allowlisted as known-broken).
+# Values are per-machine and belong in .millhouse/config.local.yaml, not here
+# in the shared wiki config -- this block is for schema documentation only.
+# verify:
+#   skip_known_broken: []  # e.g. ["tests/foo/test_flaky.py"]
