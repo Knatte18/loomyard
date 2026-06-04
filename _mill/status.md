@@ -37,8 +37,8 @@ implementing  '2026-06-04T17:28:02Z'
 batches:
   - name: Bootstrap
     state: running
-    implementer_session: e19effad-f918-4d31-8b7e-b27691e4585e
-    start_sha: d7076cabf1a0b4d66d8cf4f10a20c2faf4836dd1
+    implementer_session: 691b6968-ba2e-4804-9ad0-37d6dcf9f922
+    start_sha: 9cdac8d23f3dba5f68a391ff6337f1b86463326a
   - name: Layer
     state: pending
   - name: Git and Lock
