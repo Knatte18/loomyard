@@ -5,7 +5,7 @@ task: Port the wiki module to Go
 batch: Store
 number: 2
 cards: 3
-verify: go test ./internal/wiki/
+verify: PYTHONPATH= go test ./internal/wiki/
 depends-on: [1, 3]
 ```
 

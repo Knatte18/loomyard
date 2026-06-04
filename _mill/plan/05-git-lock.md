@@ -5,7 +5,7 @@ task: Port the wiki module to Go
 batch: Git and Lock
 number: 5
 cards: 4
-verify: go test ./internal/wiki/
+verify: PYTHONPATH= go test ./internal/wiki/
 depends-on: [1]
 ```
 

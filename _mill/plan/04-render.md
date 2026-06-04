@@ -5,7 +5,7 @@ task: Port the wiki module to Go
 batch: Render
 number: 4
 cards: 2
-verify: go test ./internal/wiki/
+verify: PYTHONPATH= go test ./internal/wiki/
 depends-on: [3]
 ```
 

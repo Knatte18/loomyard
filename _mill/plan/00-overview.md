@@ -18,37 +18,37 @@ batches:
     name: Bootstrap
     file: 01-bootstrap.md
     depends-on: []
-    verify: go test ./internal/wiki/
+    verify: PYTHONPATH= go test ./internal/wiki/
 
   - number: 2
     name: Store
     file: 02-store.md
     depends-on: [1, 3]
-    verify: go test ./internal/wiki/
+    verify: PYTHONPATH= go test ./internal/wiki/
 
   - number: 3
     name: Layer
     file: 03-layer.md
     depends-on: [1]
-    verify: go test ./internal/wiki/
+    verify: PYTHONPATH= go test ./internal/wiki/
 
   - number: 4
     name: Render
     file: 04-render.md
     depends-on: [3]
-    verify: go test ./internal/wiki/
+    verify: PYTHONPATH= go test ./internal/wiki/
 
   - number: 5
     name: Git and Lock
     file: 05-git-lock.md
     depends-on: [1]
-    verify: go test ./internal/wiki/
+    verify: PYTHONPATH= go test ./internal/wiki/
 
   - number: 6
     name: Wiki and CLI
     file: 06-wiki-cli.md
     depends-on: [2, 4, 5]
-    verify: go test ./...
+    verify: PYTHONPATH= go test ./...
 ```
 
 ## Shared Decisions

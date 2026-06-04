@@ -5,7 +5,7 @@ task: Port the wiki module to Go
 batch: Bootstrap
 number: 1
 cards: 3
-verify: go test ./internal/wiki/
+verify: PYTHONPATH= go test ./internal/wiki/
 depends-on: []
 ```
 

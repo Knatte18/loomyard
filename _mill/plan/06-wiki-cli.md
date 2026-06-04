@@ -5,7 +5,7 @@ task: Port the wiki module to Go
 batch: Wiki and CLI
 number: 6
 cards: 3
-verify: go test ./...
+verify: PYTHONPATH= go test ./...
 depends-on: [2, 4, 5]
 ```
 
