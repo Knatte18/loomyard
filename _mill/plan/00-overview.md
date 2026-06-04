@@ -23,7 +23,7 @@ batches:
   - number: 2
     name: Store
     file: 02-store.md
-    depends-on: [1, 3]
+    depends-on: [1, 3, 5]
     verify: PYTHONPATH= go test ./internal/wiki/
 
   - number: 3
@@ -91,7 +91,7 @@ batches:
 
 ### Decision: atomic_write implementation
 
-- **Decision:** `atomicWrite(dest string, content []byte)` writes to a temp file in the same directory as `dest`, then `os.Rename`s to `dest`. Uses `os.CreateTemp` with the same parent dir to ensure rename is atomic (same filesystem).
+- **Decision:** `atomicWrite(wikiPath, relPath, content string) error` resolves `dest = filepath.Join(wikiPath, relPath)`, writes to a temp file in the same directory, then `os.Rename`s to `dest`. Uses `os.CreateTemp` with the same parent dir to ensure rename is atomic (same filesystem).
 - **Rationale:** Prevents torn reads; same approach as Python `_sync.py`.
 - **Applies to:** batches 2, 5.
 

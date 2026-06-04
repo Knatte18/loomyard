@@ -40,8 +40,7 @@ Implements the git operations layer (`path_guard`, `atomicWrite`, `pull`, `commi
 
 ### Card 13: internal/wiki/lock.go
 
-- **Context:**
-  - `internal/wiki/task.go`
+- **Context:** none
 - **Edits:** none
 - **Creates:**
   - `internal/wiki/lock.go`
