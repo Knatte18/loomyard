@@ -5,11 +5,11 @@ import (
 	"sort"
 )
 
-// computeLayers assigns each task a bucket string based on topological depth.
+// ComputeLayers assigns each task a bucket string based on topological depth.
 // Special buckets: "__done__" (Status=="done"), "__deferred__" (Deferred), "Z" (Isolated).
 // Regular buckets: "A"–"Y" based on depth (depth 0 = A, depth 1 = B, ..., depth 24 = Y).
 // Returns error if any non-special task has depth >= 25.
-func computeLayers(tasks []Task) (map[string]string, error) {
+func ComputeLayers(tasks []Task) (map[string]string, error) {
 	layerMap := make(map[string]string)
 
 	// Fast path: assign special buckets.
@@ -141,10 +141,10 @@ type TaskWithLayer struct {
 	Layer string
 }
 
-// renderOrder returns tasks sorted by bucket order then by ID.
+// RenderOrder returns tasks sorted by bucket order then by ID.
 // Bucket order: A–Y (alphabetical), then Z, then __deferred__, then __done__.
-func renderOrder(tasks []Task) ([]TaskWithLayer, error) {
-	layerMap, err := computeLayers(tasks)
+func RenderOrder(tasks []Task) ([]TaskWithLayer, error) {
+	layerMap, err := ComputeLayers(tasks)
 	if err != nil {
 		return nil, err
 	}
@@ -182,10 +182,10 @@ func renderOrder(tasks []Task) ([]TaskWithLayer, error) {
 	return result, nil
 }
 
-// extendedTitle returns the task title, optionally annotated with layer.
+// ExtendedTitle returns the task title, optionally annotated with layer.
 // For letter buckets (A–Y) and Z, returns title + " [" + layer + "]".
 // For __done__ and __deferred__, returns plain title.
-func extendedTitle(t Task, layer string) string {
+func ExtendedTitle(t Task, layer string) string {
 	if layer == "__done__" || layer == "__deferred__" {
 		return t.Title
 	}
