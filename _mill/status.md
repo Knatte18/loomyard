@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: wiki-go-port
 branch: wiki-go-port
 plan: _mill/plan
@@ -28,4 +28,23 @@ plan-review-r4  '2026-06-04T16:46:01Z'
 plan-fix-r4  '2026-06-04T16:46:01Z'
 plan-fix-r5  '2026-06-04T17:09:12Z'
 planned  '2026-06-04T17:09:34Z'
+implementing  '2026-06-04T17:28:02Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: Bootstrap
+    state: pending
+  - name: Layer
+    state: pending
+  - name: Git and Lock
+    state: pending
+  - name: Render
+    state: pending
+  - name: Store
+    state: pending
+  - name: Wiki and CLI
+    state: pending
 ```
