@@ -7,16 +7,16 @@ import (
 )
 
 type BriefTask struct {
-	ID        int    `json:"id"`
-	Slug      string `json:"slug"`
-	Title     string `json:"title"`
-	DependsOn []string `json:"depends_on"`
-	Isolated  bool   `json:"isolated"`
-	Deferred  bool   `json:"deferred"`
-	Brief     string `json:"brief"`
-	Status    *string `json:"status,omitempty"`
-	Layer     string `json:"layer"`
-	HasProposal bool `json:"has_proposal"`
+	ID          int      `json:"id"`
+	Slug        string   `json:"slug"`
+	Title       string   `json:"title"`
+	DependsOn   []string `json:"depends_on"`
+	Isolated    bool     `json:"isolated"`
+	Deferred    bool     `json:"deferred"`
+	Brief       string   `json:"brief"`
+	Status      *string  `json:"status,omitempty"`
+	Layer       string   `json:"layer"`
+	HasProposal bool     `json:"has_proposal"`
 }
 
 type Store struct {
@@ -365,15 +365,15 @@ func (s *Store) ListTasksBrief() []BriefTask {
 	result := make([]BriefTask, 0, len(s.tasks))
 	for _, t := range s.tasks {
 		brief := BriefTask{
-			ID:        t.ID,
-			Slug:      t.Slug,
-			Title:     t.Title,
-			DependsOn: t.DependsOn,
-			Isolated:  t.Isolated,
-			Deferred:  t.Deferred,
-			Brief:     t.Brief,
-			Status:    t.Status,
-			Layer:     layerMap[t.Slug],
+			ID:          t.ID,
+			Slug:        t.Slug,
+			Title:       t.Title,
+			DependsOn:   t.DependsOn,
+			Isolated:    t.Isolated,
+			Deferred:    t.Deferred,
+			Brief:       t.Brief,
+			Status:      t.Status,
+			Layer:       layerMap[t.Slug],
 			HasProposal: t.Body != "",
 		}
 		result = append(result, brief)
@@ -419,14 +419,19 @@ func (s *Store) UpsertTasksBatch(tasks []map[string]interface{}) error {
 			}
 			snapshot[foundIdx] = incoming
 		} else {
-			// Generate next ID based on current snapshot
-			nextID := 0
-			for _, t := range snapshot {
-				if t.ID > nextID {
-					nextID = t.ID
+			// Generate next ID based on current snapshot, mirroring store.nextID()
+			var nextID int
+			if len(snapshot) == 0 {
+				nextID = 0
+			} else {
+				maxID := snapshot[0].ID
+				for _, t := range snapshot {
+					if t.ID > maxID {
+						maxID = t.ID
+					}
 				}
+				nextID = maxID + 1
 			}
-			nextID++
 
 			incoming, err = NewTask(fields, nextID)
 			if err != nil {
