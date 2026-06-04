@@ -33,9 +33,15 @@ func PathGuard(relPath string) error {
 		return WikiPathError("absolute path not allowed")
 	}
 
-	// Normalize path and split by filesystem separator for cross-platform consistency
-	cleaned := filepath.Clean(relPath)
-	parts := strings.Split(cleaned, string(filepath.Separator))
+	// Check for Windows-style absolute paths on non-Windows systems
+	if len(relPath) > 1 && relPath[1] == ':' {
+		return WikiPathError("absolute path not allowed")
+	}
+
+	// Split by both separators to preserve ".." for validation (before cleaning would remove it)
+	parts := strings.FieldsFunc(relPath, func(r rune) bool {
+		return r == '\\' || r == '/'
+	})
 	for _, c := range parts {
 		if c == ".." {
 			return WikiPathError("parent directory reference not allowed")
