@@ -112,9 +112,11 @@ type Task struct {
 
 These fields are injected into the JSON output but are not part of the stored `Task` struct. `list-full` returns raw `Task` structs without enrichment.
 
-### `remove` not-found behavior
+### Not-found behavior per subcommand
 
-`remove` at the CLI surface mirrors the Python server: if the slug does not exist, returns `{"ok": false, "error": "task not found: <slug>"}` with exit code 1. It does not silently succeed.
+- `remove`: returns `{"ok": false, "error": "task not found: <slug>"}`, exit code 1. Does not silently succeed.
+- `get`: returns `{"ok": true, "task": null}`, exit code 0. Mirrors Python server behavior.
+- `set-phase`: silent no-op — returns `{"ok": true}`, exit code 0, when slug not found. Mirrors Python server behavior.
 
 ### `merge` JSON payload shape
 
@@ -148,6 +150,7 @@ github.com/Knatte18/mhgo/
 
 - Layer letters A–Y (max depth 24). Depth ≥ 25 is an error.
 - Buckets in order: letter buckets (A, B, … sorted) + Z + `__deferred__` + `__done__`.
+- Bucket section headers (emitted before each group's task entries): `# Layer <letter>` for letter buckets, `# Someday` for deferred, `# Done` for done.
 - Home.md heading format: `## **#NNN:** Title [Layer]` (no layer suffix for done/deferred).
 - Slug line: `[slug](proposal-slug.md)` if task has body, else `[slug]`. Append `[status]` for active/done/pr-pending/ready-to-merge/abandoned.
 - Sidebar: one bullet per task, grouped by bucket, empty line between groups.
