@@ -19,8 +19,10 @@ func TestMain(m *testing.M) {
 		binaryPath += ".exe"
 	}
 
+	// Get the repo root by finding where go.mod is
+	repoRoot := "../.."
 	cmd := exec.Command("go", "build", "-o", binaryPath, "./cmd/mhgo")
-	cmd.Dir = "."
+	cmd.Dir = repoRoot
 	if err := cmd.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "failed to build binary: %v\n", err)
 		os.Exit(1)
@@ -36,7 +38,6 @@ func runMhgo(t *testing.T, wikiPath string, args ...string) (exitCode int, stdou
 
 	allArgs := append([]string{"-wiki-path", wikiPath, "wiki"}, args...)
 	cmd := exec.Command(binaryPath, allArgs...)
-	cmd.Dir = "."
 	cmd.Env = append(os.Environ(), "WIKI_SKIP_GIT=1")
 
 	output, err := cmd.CombinedOutput()
