@@ -63,7 +63,9 @@ batches:
     start_sha: a541afc2545f5aeb3748b27a4c90200c6c82ce56
     commit_sha: aecb832099a9a05807d630856954575b51a8e180
   - name: Store
-    state: pending
+    state: running
+    implementer_session: 59cd5be4-d922-45dd-b837-c16eda85354b
+    start_sha: f85525466d365ec4489fb490801bca933699d470
   - name: Wiki and CLI
     state: pending
 ```
