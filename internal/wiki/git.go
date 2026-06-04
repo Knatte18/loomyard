@@ -33,10 +33,10 @@ func PathGuard(relPath string) error {
 		return WikiPathError("absolute path not allowed")
 	}
 
-	// Normalize path separators to forward slash for consistent splitting
-	normalized := strings.ReplaceAll(relPath, "\\", "/")
-	components := strings.Split(normalized, "/")
-	for _, c := range components {
+	// Normalize path and split by filesystem separator for cross-platform consistency
+	cleaned := filepath.Clean(relPath)
+	parts := strings.Split(cleaned, string(filepath.Separator))
+	for _, c := range parts {
 		if c == ".." {
 			return WikiPathError("parent directory reference not allowed")
 		}

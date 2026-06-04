@@ -522,13 +522,18 @@ func (s *Store) MergeTasks(removeSlugs []string, upsert map[string]interface{}, 
 	if foundIdx >= 0 {
 		incoming, err = ApplyPatch(projected[foundIdx], upsert)
 	} else {
-		nextID := 0
-		for _, t := range projected {
-			if t.ID > nextID {
-				nextID = t.ID
+		var nextID int
+		if len(projected) == 0 {
+			nextID = 0
+		} else {
+			maxID := projected[0].ID
+			for _, t := range projected {
+				if t.ID > maxID {
+					maxID = t.ID
+				}
 			}
+			nextID = maxID + 1
 		}
-		nextID++
 		incoming, err = NewTask(upsert, nextID)
 	}
 
