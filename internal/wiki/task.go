@@ -6,15 +6,15 @@ import (
 )
 
 type Task struct {
-	ID        int       `json:"id"`
-	Slug      string    `json:"slug"`
-	Title     string    `json:"title"`
-	DependsOn []string  `json:"depends_on"`
-	Isolated  bool      `json:"isolated"`
-	Deferred  bool      `json:"deferred"`
-	Brief     string    `json:"brief"`
-	Body      string    `json:"body"`
-	Status    *string   `json:"status,omitempty"`
+	ID        int      `json:"id"`
+	Slug      string   `json:"slug"`
+	Title     string   `json:"title"`
+	DependsOn []string `json:"depends_on"`
+	Isolated  bool     `json:"isolated"`
+	Deferred  bool     `json:"deferred"`
+	Brief     string   `json:"brief"`
+	Body      string   `json:"body"`
+	Status    *string  `json:"status,omitempty"`
 }
 
 func NewTask(fields map[string]interface{}, nextID int) (Task, error) {
@@ -22,6 +22,18 @@ func NewTask(fields map[string]interface{}, nextID int) (Task, error) {
 		return Task{}, fmt.Errorf("group key is not allowed; use depends_on, isolated, deferred instead")
 	}
 
+	// Validate slug upfront
+	slugVal, hasSlug := fields["slug"]
+	if !hasSlug {
+		return Task{}, fmt.Errorf("slug key is missing")
+	}
+
+	slugStr, ok := slugVal.(string)
+	if !ok || slugStr == "" {
+		return Task{}, fmt.Errorf("slug must be a non-empty string")
+	}
+
+	// Create default task with all fields initialized
 	task := Task{
 		ID:        nextID,
 		DependsOn: []string{},
@@ -32,52 +44,20 @@ func NewTask(fields map[string]interface{}, nextID int) (Task, error) {
 		Status:    nil,
 	}
 
-	// Extract slug from fields
-	slugVal, hasSlug := fields["slug"]
-	if !hasSlug {
-		return Task{}, fmt.Errorf("slug key is missing")
-	}
-
-	slugStr, ok := slugVal.(string)
-	if !ok || slugStr == "" {
-		return Task{}, fmt.Errorf("slug must be a non-empty string")
-	}
-	task.Slug = slugStr
-
-	// JSON round-trip to merge remaining fields
+	// Marshal fields to JSON and unmarshal directly into task
 	fieldsJSON, err := json.Marshal(fields)
 	if err != nil {
 		return Task{}, fmt.Errorf("marshal fields: %w", err)
 	}
 
-	var merged Task
-	err = json.Unmarshal(fieldsJSON, &merged)
+	err = json.Unmarshal(fieldsJSON, &task)
 	if err != nil {
 		return Task{}, fmt.Errorf("unmarshal fields: %w", err)
 	}
 
-	// Overlay the merged values onto defaults, preserving ID and Slug
-	if merged.Title != "" {
-		task.Title = merged.Title
-	}
-	if merged.DependsOn != nil {
-		task.DependsOn = merged.DependsOn
-	}
-	if merged.Isolated {
-		task.Isolated = merged.Isolated
-	}
-	if merged.Deferred {
-		task.Deferred = merged.Deferred
-	}
-	if merged.Brief != "" {
-		task.Brief = merged.Brief
-	}
-	if merged.Body != "" {
-		task.Body = merged.Body
-	}
-	if merged.Status != nil {
-		task.Status = merged.Status
-	}
+	// Force ID and slug to their intended values
+	task.ID = nextID
+	task.Slug = slugStr
 
 	return task, nil
 }
