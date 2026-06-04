@@ -51,7 +51,9 @@ batches:
     commit_sha: 606533414843159739cd9d300b55f1c64c42aa3a
     blocked_reason: ''
   - name: Git and Lock
-    state: pending
+    state: running
+    implementer_session: 51403fbb-07e7-4649-ad52-ba39249b75d3
+    start_sha: 809d0dcc2bb855d648378ebf56d10c737cd69169
   - name: Render
     state: pending
   - name: Store
