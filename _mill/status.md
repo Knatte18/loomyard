@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r3
+phase: plan-fix-r4
 slug: wiki-go-port
 branch: wiki-go-port
 plan: _mill/plan
@@ -24,4 +24,6 @@ plan-review-r2  '2026-06-04T12:30:23Z'
 plan-fix-r2  '2026-06-04T12:30:23Z'
 plan-review-r3  '2026-06-04T16:40:14Z'
 plan-fix-r3  '2026-06-04T16:40:14Z'
+plan-review-r4  '2026-06-04T16:46:01Z'
+plan-fix-r4  '2026-06-04T16:46:01Z'
 ```
