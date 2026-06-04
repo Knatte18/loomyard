@@ -7,11 +7,11 @@ import (
 
 const maxLayer = 24 // A-Y is 0-24
 
-// computeLayers assigns each task a layer bucket.
+// ComputeLayers assigns each task a layer bucket.
 // Returns a map from task slug to layer string.
 // Special buckets: "__done__" for done tasks, "__deferred__" for deferred tasks,
 // "Z" for isolated tasks, and "A"-"Y" for normal tasks based on topological depth.
-func computeLayers(tasks []Task) (map[string]string, error) {
+func ComputeLayers(tasks []Task) (map[string]string, error) {
 	// Build a map from slug to task for quick lookup
 	taskBySlug := make(map[string]*Task)
 	for i := range tasks {
@@ -117,11 +117,11 @@ type TaskWithLayer struct {
 	Layer string
 }
 
-// renderOrder returns tasks sorted by bucket order.
+// RenderOrder returns tasks sorted by bucket order.
 // Bucket order: letter buckets A-Y (alphabetical), then Z, then __deferred__, then __done__.
 // Within each bucket, tasks are sorted by ID.
-func renderOrder(tasks []Task) ([]TaskWithLayer, error) {
-	layers, err := computeLayers(tasks)
+func RenderOrder(tasks []Task) ([]TaskWithLayer, error) {
+	layers, err := ComputeLayers(tasks)
 	if err != nil {
 		return nil, err
 	}
@@ -171,10 +171,10 @@ func renderOrder(tasks []Task) ([]TaskWithLayer, error) {
 	return tasksWithLayers, nil
 }
 
-// extendedTitle returns the task title annotated with layer if applicable.
+// ExtendedTitle returns the task title annotated with layer if applicable.
 // For letter buckets (A-Y) and Z, appends " [layer]" to the title.
 // For __done__ and __deferred__ buckets, returns the plain title.
-func extendedTitle(t Task, layer string) string {
+func ExtendedTitle(t Task, layer string) string {
 	if (len(layer) == 1 && layer >= "A" && layer <= "Y") || layer == "Z" {
 		return t.Title + " [" + layer + "]"
 	}
