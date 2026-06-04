@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-approved
+phase: done
 slug: wiki-go-port
 branch: wiki-go-port
 plan: _mill/plan
@@ -42,6 +42,7 @@ holistic-fixing  '2026-06-04T19:09:47Z'
 holistic-reviewing  '2026-06-04T19:13:28Z'
 holistic-fixing  '2026-06-04T19:23:16Z'
 holistic-approved  '2026-06-04T19:31:18Z'
+done  '2026-06-04T19:32:10Z'
 ```
 
 ## Batches
