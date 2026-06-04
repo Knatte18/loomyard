@@ -69,5 +69,7 @@ batches:
     start_sha: f85525466d365ec4489fb490801bca933699d470
     commit_sha: 1c877dc26634e8fa778c39584b1c12f2e6ecdf14
   - name: Wiki and CLI
-    state: pending
+    state: running
+    implementer_session: 043c5daf-b7e6-41fb-b31f-bc13d3523e9b
+    start_sha: 0c5e518b641192e8b026311f3b2f269599408a69
 ```
