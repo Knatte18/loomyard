@@ -27,17 +27,21 @@ func PathGuard(relPath string) error {
 	if relPath == "" {
 		return WikiPathError("empty path")
 	}
-	if filepath.IsAbs(relPath) {
+
+	// Check for absolute paths (both Windows and Unix styles)
+	if filepath.IsAbs(relPath) || (len(relPath) > 0 && relPath[0] == '/') {
 		return WikiPathError("absolute path not allowed")
 	}
 
-	cleaned := filepath.Clean(relPath)
-	components := strings.Split(cleaned, string(filepath.Separator))
+	// Normalize path separators to forward slash for consistent splitting
+	normalized := strings.ReplaceAll(relPath, "\\", "/")
+	components := strings.Split(normalized, "/")
 	for _, c := range components {
 		if c == ".." {
 			return WikiPathError("parent directory reference not allowed")
 		}
 	}
+
 	return nil
 }
 

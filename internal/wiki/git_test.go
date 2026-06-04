@@ -124,6 +124,24 @@ func TestPull(t *testing.T) {
 		t.Fatalf("config user.name failed: %v", err)
 	}
 
+	// Create an initial commit to have something to pull
+	testFile := filepath.Join(clonePath, "README.md")
+	if err := os.WriteFile(testFile, []byte("initial"), 0o644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+	cmd = exec.Command("git", "-C", clonePath, "add", "README.md")
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("git add failed: %v", err)
+	}
+	cmd = exec.Command("git", "-C", clonePath, "commit", "-m", "initial commit")
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("git commit failed: %v", err)
+	}
+	cmd = exec.Command("git", "-C", clonePath, "push", "-u", "origin", "master")
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("git push failed: %v", err)
+	}
+
 	// Pull when nothing to pull should return updated=false
 	updated, err := wiki.Pull(clonePath)
 	if err != nil {
