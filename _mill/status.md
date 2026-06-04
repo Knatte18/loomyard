@@ -57,7 +57,9 @@ batches:
     start_sha: 809d0dcc2bb855d648378ebf56d10c737cd69169
     commit_sha: 487a1853995109c8f493471f26626e758a3511ef
   - name: Render
-    state: pending
+    state: running
+    implementer_session: dc82da9f-983f-4e58-8c8f-00b985253b81
+    start_sha: a541afc2545f5aeb3748b27a4c90200c6c82ce56
   - name: Store
     state: pending
   - name: Wiki and CLI
