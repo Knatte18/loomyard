@@ -70,7 +70,7 @@ MHGO is an experimental repo for a Go reimplementation of Millhouse, and this is
 ### CLI surface
 
 - **Decision:** `mhgo wiki <subcommand>` with full parity to the Python daemon ops (minus daemon-only ops). Mutation subcommands take a JSON string argument. Read subcommands output JSON to stdout. Errors output `{"ok": false, "error": "..."}` to stdout with exit code 1.
-- **Subcommands:** `upsert`, `set-phase`, `remove`, `get`, `list`, `list-full`, `merge`, `set-deps`, `rerender`
+- **Subcommands:** `upsert`, `upsert-batch`, `set-phase`, `remove`, `get`, `list`, `list-full`, `merge`, `set-deps`, `rerender`
 - **Rationale:** JSON input matches the daemon's payload shape exactly, trivial to script. JSON output is consistent and machine-readable. Uniform error format makes error handling in callers straightforward.
 - **Rejected:** Per-field flags (verbose, hard to keep in sync with schema); plain-text output (hard to parse).
 
@@ -105,6 +105,28 @@ type Task struct {
     Status    *string  `json:"status,omitempty"`
 }
 ```
+
+`list` (brief) output enriches each row with two computed fields not stored in `tasks.json`:
+- `layer` (string): computed by `compute_layers` — letter A–Y, `"Z"`, `"__deferred__"`, or `"__done__"`.
+- `has_proposal` (bool): `true` if `body` is non-empty.
+
+These fields are injected into the JSON output but are not part of the stored `Task` struct. `list-full` returns raw `Task` structs without enrichment.
+
+### `remove` not-found behavior
+
+`remove` at the CLI surface mirrors the Python server: if the slug does not exist, returns `{"ok": false, "error": "task not found: <slug>"}` with exit code 1. It does not silently succeed.
+
+### `merge` JSON payload shape
+
+The `merge` subcommand accepts a JSON object:
+```json
+{
+  "remove_slugs": ["slug-a"],
+  "upsert": { "slug": "...", ... },
+  "set_phase": ["id_or_slug", "phase"] 
+}
+```
+`set_phase` is a two-element JSON array `[id_or_slug, phase_value]` where `phase_value` may be `null` to clear the status. Omit `set_phase` entirely (or set to `null`) to skip the phase update.
 
 ### Package layout
 
@@ -174,7 +196,7 @@ github.com/Knatte18/mhgo/
 - Isolated task cannot have dependents.
 - Deferred task cannot have non-deferred dependents.
 - `merge_tasks`: validate-before-mutate; remove + upsert + set_phase atomic.
-- `remove_task`: no-op if slug not found.
+- `remove_task`: returns error if slug not found (CLI exits 1 with `{"ok":false,"error":"task not found: <slug>"}`).
 - `set_phase`: nil clears status field.
 - TDD candidates: cycle detection DFS, `_validate_write` edge cases.
 
@@ -217,7 +239,7 @@ github.com/Knatte18/mhgo/
 - **Q:** tasks.json migration from TinyDB format? **A:** No migration needed — mhgo starts fresh, no prior data.
 - **Q:** CLI input format for mutations? **A:** JSON string argument.
 - **Q:** Testing without git? **A:** `WIKI_SKIP_GIT=1` env var pattern.
-- **Q:** Full CLI parity or reduced v1? **A:** Full parity.
+- **Q:** Full CLI parity or reduced v1? **A:** Full parity — includes `upsert-batch`.
 - **Q:** Mill-skill integration in scope? **A:** No — mhgo is standalone, no millhouse dependency.
 - **Q:** CLI output format? **A:** JSON to stdout for reads; `{"ok":...}` for writes/errors.
 - **Q:** Test coverage scope? **A:** All relevant logic — unit tests for pure logic, integration for git ops.
