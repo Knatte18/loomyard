@@ -1,9 +1,9 @@
 {
     "workbench.colorCustomizations": {
-        "titleBar.activeBackground": "#2d7d46",
+        "titleBar.activeBackground": "#7d2d6b",
         "titleBar.activeForeground": "#ffffff",
-        "titleBar.inactiveBackground": "#2d7d46",
+        "titleBar.inactiveBackground": "#7d2d6b",
         "titleBar.inactiveForeground": "#ffffffaa"
     },
-    "window.title": "MHGO"
+    "window.title": "MHGO: wiki-go-port"
 }
