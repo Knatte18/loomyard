@@ -6,6 +6,8 @@ import (
 	"os"
 )
 
+// BriefTask is the enriched read-only view returned by the list subcommand.
+// Layer and HasProposal are computed at read time and are not stored in tasks.json.
 type BriefTask struct {
 	ID          int      `json:"id"`
 	Slug        string   `json:"slug"`
@@ -19,11 +21,13 @@ type BriefTask struct {
 	HasProposal bool     `json:"has_proposal"`
 }
 
+// Store holds the in-memory task list for one tasks.json file.
 type Store struct {
 	tasks    []Task
 	filePath string
 }
 
+// NewStore creates an empty, unloaded Store. Call Load to populate from disk.
 func NewStore(filePath string) *Store {
 	return &Store{
 		tasks:    []Task{},
@@ -108,6 +112,9 @@ func (s *Store) nextID() int {
 	return maxID + 1
 }
 
+// validateWrite checks incoming against snapshot for dangling deps, isolated/deferred
+// constraints, and cycles. snapshot is the projected state after any pending removals —
+// not necessarily equal to s.tasks.
 func (s *Store) validateWrite(snapshot []Task, incoming Task) error {
 	// Build index of snapshot tasks
 	snapshotIndex := make(map[string]*Task)
@@ -205,6 +212,7 @@ func (s *Store) validateWrite(snapshot []Task, incoming Task) error {
 	return nil
 }
 
+// UpsertTask creates or updates the task identified by fields["slug"].
 func (s *Store) UpsertTask(fields map[string]interface{}) (Task, error) {
 	index := s.slugIndex()
 	slugVal, hasSlug := fields["slug"]
@@ -249,6 +257,7 @@ func (s *Store) UpsertTask(fields map[string]interface{}) (Task, error) {
 	return incoming, nil
 }
 
+// GetTask looks up a task by integer ID or slug string. Returns (Task, true) if found.
 func (s *Store) GetTask(idOrSlug interface{}) (Task, bool) {
 	switch v := idOrSlug.(type) {
 	case int:
@@ -274,6 +283,7 @@ func (s *Store) GetTask(idOrSlug interface{}) (Task, bool) {
 	return Task{}, false
 }
 
+// RemoveTask deletes the task by ID or slug. Returns an error if not found.
 func (s *Store) RemoveTask(idOrSlug interface{}) error {
 	var slugToRemove string
 
@@ -324,6 +334,7 @@ func (s *Store) RemoveTask(idOrSlug interface{}) error {
 	return fmt.Errorf("task not found: %v", idOrSlug)
 }
 
+// SetPhase sets or clears the status field for the given task. Silent no-op if slug not found.
 func (s *Store) SetPhase(idOrSlug interface{}, phase *string) error {
 	for i := range s.tasks {
 		match := false
@@ -345,6 +356,7 @@ func (s *Store) SetPhase(idOrSlug interface{}, phase *string) error {
 	return nil
 }
 
+// SetDeps replaces the depends_on list for slug, running full validation. Returns error if slug not found.
 func (s *Store) SetDeps(slug string, dependsOn []string) error {
 	var task *Task
 	for i := range s.tasks {
@@ -369,6 +381,7 @@ func (s *Store) SetDeps(slug string, dependsOn []string) error {
 	return nil
 }
 
+// ListTasksBrief returns all tasks enriched with computed Layer and HasProposal fields.
 func (s *Store) ListTasksBrief() []BriefTask {
 	layerMap, err := ComputeLayers(s.tasks)
 	if err != nil {
@@ -398,12 +411,14 @@ func (s *Store) ListTasksBrief() []BriefTask {
 	return result
 }
 
+// ListTasksFull returns a copy of the raw task list with no enrichment.
 func (s *Store) ListTasksFull() []Task {
 	result := make([]Task, len(s.tasks))
 	copy(result, s.tasks)
 	return result
 }
 
+// UpsertTasksBatch applies multiple upserts atomically — validates all first, then applies all or none.
 func (s *Store) UpsertTasksBatch(tasks []map[string]interface{}) error {
 	// Project the full post-operation snapshot
 	snapshot := s.tasks
@@ -485,6 +500,8 @@ func (s *Store) UpsertTasksBatch(tasks []map[string]interface{}) error {
 	return nil
 }
 
+// MergeTasks removes slugs, upserts one task, and optionally sets a phase — all atomically.
+// setPhase is [id_or_slug, phase_string_or_nil], or nil to skip the phase update.
 func (s *Store) MergeTasks(removeSlugs []string, upsert map[string]interface{}, setPhase *[2]interface{}) (Task, error) {
 	// Project snapshot: snapshot minus removeSlugs
 	projected := make([]Task, 0, len(s.tasks))

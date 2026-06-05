@@ -6,16 +6,22 @@ import (
 	"path/filepath"
 )
 
+// Wiki is the high-level facade over a wiki directory.
+// Every mutating method acquires an exclusive file lock, pulls remote changes,
+// mutates the store, renders output files, and commits + pushes.
 type Wiki struct {
 	wikiPath string
 }
 
+// New returns a Wiki operating on wikiPath.
 func New(wikiPath string) *Wiki {
 	return &Wiki{
 		wikiPath: wikiPath,
 	}
 }
 
+// writeOp runs the full write-lock sequence: lock → pull → load → mutate → render → write files → commit/push.
+// All mutating Wiki methods delegate to writeOp.
 func (w *Wiki) writeOp(mutate func(*Store) (interface{}, error), slugForMsg string) (interface{}, error) {
 	// (1) Acquire write lock
 	lockPath := filepath.Join(w.wikiPath, "tasks.json.lock")

@@ -5,6 +5,9 @@ import (
 	"strings"
 )
 
+// Render produces the wiki output files from the task list.
+// Returns a map of relative filename → content: always "Home.md" and "_Sidebar.md",
+// plus "proposal-<slug>.md" for every task with a non-empty body.
 func Render(tasks []Task) (map[string]string, error) {
 	result := make(map[string]string)
 

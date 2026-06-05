@@ -5,6 +5,7 @@ import (
 	"fmt"
 )
 
+// Task is the canonical record stored in tasks.json.
 type Task struct {
 	ID        int      `json:"id"`
 	Slug      string   `json:"slug"`
@@ -14,9 +15,11 @@ type Task struct {
 	Deferred  bool     `json:"deferred"`
 	Brief     string   `json:"brief"`
 	Body      string   `json:"body"`
-	Status    *string  `json:"status,omitempty"`
+	Status    *string  `json:"status,omitempty"` // pointer: nil → field omitted in JSON; non-nil → status value present
 }
 
+// NewTask builds a Task from a raw field map, assigning nextID.
+// Uses JSON round-trip so field types are validated exactly as they would be on disk.
 func NewTask(fields map[string]interface{}, nextID int) (Task, error) {
 	if fields["group"] != nil {
 		return Task{}, fmt.Errorf("group key is not allowed; use depends_on, isolated, deferred instead")
@@ -62,6 +65,8 @@ func NewTask(fields map[string]interface{}, nextID int) (Task, error) {
 	return task, nil
 }
 
+// ApplyPatch overlays fields onto existing and returns the updated Task.
+// Uses JSON round-trip: existing → map → overlay fields → Task, preserving fields not in the patch.
 func ApplyPatch(existing Task, fields map[string]interface{}) (Task, error) {
 	if fields["group"] != nil {
 		return Task{}, fmt.Errorf("group key is not allowed; use depends_on, isolated, deferred instead")
