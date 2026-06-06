@@ -1,9 +1,0 @@
-{
-    "workbench.colorCustomizations": {
-        "titleBar.activeBackground": "#7d2d6b",
-        "titleBar.activeForeground": "#ffffff",
-        "titleBar.inactiveBackground": "#7d2d6b",
-        "titleBar.inactiveForeground": "#ffffffaa"
-    },
-    "window.title": "MHGO"
-}
