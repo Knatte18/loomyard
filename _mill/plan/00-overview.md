@@ -3,7 +3,7 @@
 ```yaml
 task: "board-modul (rename fra wiki) + _mhgo-konfigurasjon"
 slug: "config-layer"
-approved: false
+approved: true
 started: "20260608-115311"
 parent: "main"
 root: ""

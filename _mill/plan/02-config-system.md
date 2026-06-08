@@ -63,9 +63,12 @@ API.
   here; run "mhgo init"`. Otherwise start from `DefaultConfig()`, then for each
   layer file in order `<baseDir>/_mhgo/<module>.yaml` then
   `<baseDir>/.mhgo/<module>.yaml`: if the file is absent, skip (no error); if
-  present, `yaml.Unmarshal` it into a struct with `omitempty`-style optional
-  fields (use `*string` fields or a `map`-then-overlay so an absent key does not
-  clobber a lower layer — deep-merge per key) and overlay only the keys present.
+  present, `yaml.Unmarshal` it into a `map[string]string` and overlay every key
+  present in that layer's map onto the merged result (the map-then-overlay
+  approach — an absent key is simply not in the map, so it never clobbers a lower
+  layer, and there is no `*string` pointer noise on the `Config` type). The
+  accepted keys are `path`, `home`, `sidebar`, `proposal_prefix` (matching the
+  `Config` yaml tags); ignore unknown keys.
   After merging all layers, run the `$env:` expander over `Path`, `Home`,
   `Sidebar`, and `ProposalPrefix`. Then resolve `Path`: if
   `filepath.IsAbs(Path)` use as-is, else `filepath.Join(baseDir, Path)`.
