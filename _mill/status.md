@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-rename-wiki-to-board
 slug: config-layer
 branch: config-layer
 plan: _mill/plan
@@ -23,6 +23,7 @@ plan-fix-r1  '2026-06-08T12:07:39Z'
 plan-fix-r2  '2026-06-08T12:11:49Z'
 planned  '2026-06-08T12:12:13Z'
 implementing  '2026-06-08T12:20:02Z'
+approved-rename-wiki-to-board  '2026-06-08T12:36:34Z'
 ```
 
 ## Batches
@@ -30,9 +31,10 @@ implementing  '2026-06-08T12:20:02Z'
 ```yaml
 batches:
   - name: rename-wiki-to-board
-    state: running
+    state: approved
     implementer_session: d1c65914-49db-485d-a74c-416d2d491673
     start_sha: 97a74c4e805adfe52c20bb1e851e7ef806c4fa58
+    commit_sha: 00ee5bfe12a402b190365e57410ff780d7344bc6
   - name: config-system
     state: pending
   - name: config-driven-render-facade
