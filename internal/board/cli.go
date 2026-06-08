@@ -1,8 +1,8 @@
-// cli.go — the wiki module's command router.
+// cli.go — the board module's command router.
 //
-// RunCLI parses [--wiki-path] <subcommand> [json-payload], resolves the wiki
-// path (flag → MHGO_WIKI_PATH → ../gowiki), dispatches to one Wiki method, and
-// writes the JSON result to the given writer. Owns the wiki CLI surface so main
+// RunCLI parses [--wiki-path] <subcommand> [json-payload], resolves the board
+// path (flag → MHGO_WIKI_PATH → ../gowiki), dispatches to one Board method, and
+// writes the JSON result to the given writer. Owns the board CLI surface so main
 // stays a thin module dispatcher.
 
 package board
@@ -20,14 +20,14 @@ import (
 // by the non-Go millhouse that is still in active use).
 const defaultWikiPath = "../gowiki"
 
-// RunCLI parses and executes a "wiki" subcommand, writing JSON results to out.
+// RunCLI parses and executes a "board" subcommand, writing JSON results to out.
 // It returns the process exit code (0 on success, 1 on error).
 //
 // Usage:
 //
-//	wiki [--wiki-path <path>] <subcommand> [json-payload]
+//	board [--wiki-path <path>] <subcommand> [json-payload]
 //
-// Wiki path resolution (first match wins):
+// Board path resolution (first match wins):
 //  1. --wiki-path flag
 //  2. MHGO_WIKI_PATH environment variable
 //  3. "../gowiki"
@@ -63,7 +63,7 @@ func RunCLI(out io.Writer, args []string) int {
 	// Expected: ["<subcommand>", "<json-payload>"]
 	rest := fs.Args()
 	if len(rest) < 1 {
-		fmt.Fprintln(os.Stderr, "usage: mhgo wiki [--wiki-path <path>] <subcommand> [json-payload]")
+		fmt.Fprintln(os.Stderr, "usage: mhgo board [--wiki-path <path>] <subcommand> [json-payload]")
 		return 1
 	}
 

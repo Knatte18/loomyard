@@ -14,34 +14,34 @@ import (
 	"strings"
 )
 
-// WikiPushError represents a fatal git push error
-type WikiPushError string
+// BoardPushError represents a fatal git push error
+type BoardPushError string
 
-func (e WikiPushError) Error() string {
+func (e BoardPushError) Error() string {
 	return string(e)
 }
 
-// WikiPathError represents an invalid wiki path
-type WikiPathError string
+// BoardPathError represents an invalid board path
+type BoardPathError string
 
-func (e WikiPathError) Error() string {
+func (e BoardPathError) Error() string {
 	return string(e)
 }
 
-// PathGuard validates a relative path for wiki operations
+// PathGuard validates a relative path for board operations
 func PathGuard(relPath string) error {
 	if relPath == "" {
-		return WikiPathError("empty path")
+		return BoardPathError("empty path")
 	}
 
 	// Check for absolute paths (both Windows and Unix styles)
 	if filepath.IsAbs(relPath) || (len(relPath) > 0 && relPath[0] == '/') {
-		return WikiPathError("absolute path not allowed")
+		return BoardPathError("absolute path not allowed")
 	}
 
 	// Check for Windows-style absolute paths on non-Windows systems
 	if len(relPath) > 1 && relPath[1] == ':' {
-		return WikiPathError("absolute path not allowed")
+		return BoardPathError("absolute path not allowed")
 	}
 
 	// Split by both separators to preserve ".." for validation (before cleaning would remove it)
@@ -50,7 +50,7 @@ func PathGuard(relPath string) error {
 	})
 	for _, c := range parts {
 		if c == ".." {
-			return WikiPathError("parent directory reference not allowed")
+			return BoardPathError("parent directory reference not allowed")
 		}
 	}
 
@@ -121,7 +121,7 @@ func Pull(wikiPath string) (updated bool, err error) {
 		return false, fmt.Errorf("pull: %w", err)
 	}
 	if exitCode != 0 {
-		return false, WikiPushError(fmt.Sprintf("pull failed: %s", stderr))
+		return false, BoardPushError(fmt.Sprintf("pull failed: %s", stderr))
 	}
 	updated = !strings.Contains(stdout, "Already up to date.")
 	return updated, nil
@@ -136,7 +136,7 @@ func CommitPush(wikiPath string, relPaths []string, message string) error {
 		return fmt.Errorf("add: %w", err)
 	}
 	if exitCode != 0 {
-		return WikiPushError("add failed")
+		return BoardPushError("add failed")
 	}
 
 	// Check for staged changes
@@ -149,7 +149,7 @@ func CommitPush(wikiPath string, relPaths []string, message string) error {
 		return nil
 	}
 	if exitCode != 1 {
-		return WikiPushError("diff check failed")
+		return BoardPushError("diff check failed")
 	}
 
 	// Commit
@@ -158,7 +158,7 @@ func CommitPush(wikiPath string, relPaths []string, message string) error {
 		return fmt.Errorf("commit: %w", err)
 	}
 	if exitCode != 0 {
-		return WikiPushError("commit failed")
+		return BoardPushError("commit failed")
 	}
 
 	// Skip push if env var set
@@ -186,15 +186,15 @@ func CommitPush(wikiPath string, relPaths []string, message string) error {
 			if exitCode != 0 {
 				// Abort rebase on failure
 				RunGit([]string{"rebase", "--abort"}, wikiPath)
-				return WikiPushError("rebase failed")
+				return BoardPushError("rebase failed")
 			}
 			// Continue to next push attempt
 			continue
 		}
 
 		// Other push error
-		return WikiPushError(fmt.Sprintf("push failed: %s", stderr))
+		return BoardPushError(fmt.Sprintf("push failed: %s", stderr))
 	}
 
-	return WikiPushError("push still failing after rebase retry")
+	return BoardPushError("push still failing after rebase retry")
 }

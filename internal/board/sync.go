@@ -74,7 +74,7 @@ func commitDirty(wikiPath string) (bool, error) {
 		return false, fmt.Errorf("status: %w", err)
 	}
 	if code != 0 {
-		return false, WikiPushError("status failed")
+		return false, BoardPushError("status failed")
 	}
 	if strings.TrimSpace(out) == "" {
 		return false, nil // clean working tree
@@ -83,13 +83,13 @@ func commitDirty(wikiPath string) (bool, error) {
 	if _, _, code, err := RunGit([]string{"add", "-A"}, wikiPath); err != nil {
 		return false, fmt.Errorf("add: %w", err)
 	} else if code != 0 {
-		return false, WikiPushError("add failed")
+		return false, BoardPushError("add failed")
 	}
 
 	if _, _, code, err := RunGit([]string{"commit", "-m", "wiki sync"}, wikiPath); err != nil {
 		return false, fmt.Errorf("commit: %w", err)
 	} else if code != 0 {
-		return false, WikiPushError("commit failed")
+		return false, BoardPushError("commit failed")
 	}
 	return true, nil
 }
@@ -123,13 +123,13 @@ func pushUnpushed(wikiPath string) error {
 			strings.Contains(stderr, "fetch first") {
 			if _, _, c, err := RunGit([]string{"pull", "--rebase"}, wikiPath); err != nil || c != 0 {
 				RunGit([]string{"rebase", "--abort"}, wikiPath)
-				return WikiPushError("rebase failed")
+				return BoardPushError("rebase failed")
 			}
 			continue
 		}
-		return WikiPushError(fmt.Sprintf("push failed: %s", stderr))
+		return BoardPushError(fmt.Sprintf("push failed: %s", stderr))
 	}
-	return WikiPushError("push still failing after rebase retry")
+	return BoardPushError("push still failing after rebase retry")
 }
 
 // ensureLockfilesIgnored adds the lock-file patterns to the wiki's .gitignore
