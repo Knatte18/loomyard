@@ -18,7 +18,7 @@ func TestAcquireWriteLock(t *testing.T) {
 	t.Run("acquires lock and creates lock file", func(t *testing.T) {
 		lockPath := filepath.Join(tmpDir, "test.lock")
 
-		lock, err := wiki.AcquireWriteLock(lockPath)
+		lock, err := board.AcquireWriteLock(lockPath)
 		if err != nil {
 			t.Fatalf("AcquireWriteLock failed: %v", err)
 		}
@@ -34,7 +34,7 @@ func TestAcquireWriteLock(t *testing.T) {
 	t.Run("release succeeds after acquire", func(t *testing.T) {
 		lockPath := filepath.Join(tmpDir, "test2.lock")
 
-		lock, err := wiki.AcquireWriteLock(lockPath)
+		lock, err := board.AcquireWriteLock(lockPath)
 		if err != nil {
 			t.Fatalf("AcquireWriteLock failed: %v", err)
 		}
@@ -48,7 +48,7 @@ func TestAcquireWriteLock(t *testing.T) {
 		lockPath := filepath.Join(tmpDir, "test3.lock")
 
 		// First acquire and release
-		lock1, err := wiki.AcquireWriteLock(lockPath)
+		lock1, err := board.AcquireWriteLock(lockPath)
 		if err != nil {
 			t.Fatalf("first AcquireWriteLock failed: %v", err)
 		}
@@ -57,7 +57,7 @@ func TestAcquireWriteLock(t *testing.T) {
 		}
 
 		// Second acquire should succeed
-		lock2, err := wiki.AcquireWriteLock(lockPath)
+		lock2, err := board.AcquireWriteLock(lockPath)
 		if err != nil {
 			t.Fatalf("second AcquireWriteLock failed: %v", err)
 		}

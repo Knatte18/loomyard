@@ -62,11 +62,11 @@ func TestIntegrationCommitPush(t *testing.T) {
 	filename := fmt.Sprintf("test-%d.txt", time.Now().Unix())
 	content := fmt.Sprintf("integration test run at %s", time.Now().Format(time.RFC3339))
 
-	if err := wiki.AtomicWrite(repoPath, filename, content); err != nil {
+	if err := board.AtomicWrite(repoPath, filename, content); err != nil {
 		t.Fatalf("AtomicWrite: %v", err)
 	}
 
-	if err := wiki.CommitPush(repoPath, []string{filename}, "test: integration CommitPush"); err != nil {
+	if err := board.CommitPush(repoPath, []string{filename}, "test: integration CommitPush"); err != nil {
 		t.Fatalf("CommitPush: %v", err)
 	}
 
@@ -90,7 +90,7 @@ func TestIntegrationCommitPush(t *testing.T) {
 func TestIntegrationPull(t *testing.T) {
 	repoPath := setupIntegrationRepo(t)
 
-	updated, err := wiki.Pull(repoPath)
+	updated, err := board.Pull(repoPath)
 	if err != nil {
 		t.Fatalf("Pull: %v", err)
 	}

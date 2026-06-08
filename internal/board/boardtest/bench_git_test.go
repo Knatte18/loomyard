@@ -3,7 +3,7 @@
 // In the async model a write only touches the filesystem; the git cost lives in
 // the background sync. These benchmarks measure Sync directly: dirty the working
 // tree, then time commit + push to the dummy wiki at testRepoURL (and the
-// commit-only path with WIKI_SKIP_PUSH=1). Hits the network and pushes throwaway
+// commit-only path with BOARD_SKIP_PUSH=1). Hits the network and pushes throwaway
 // commits, hence the integration build tag.
 
 //go:build integration
@@ -45,7 +45,7 @@ func cloneBenchWiki(b *testing.B) string {
 // measurement is the git round-trip only.
 func benchmarkSync(b *testing.B) {
 	repo := cloneBenchWiki(b)
-	w := wiki.New(repo)
+	w := board.New(repo)
 	tasksPath := filepath.Join(repo, "tasks.json")
 
 	b.ReportAllocs()
@@ -69,9 +69,9 @@ func BenchmarkSyncGit(b *testing.B) {
 	benchmarkSync(b)
 }
 
-// BenchmarkSyncGitNoPush measures the commit-only leg of a sync (WIKI_SKIP_PUSH=1).
+// BenchmarkSyncGitNoPush measures the commit-only leg of a sync (BOARD_SKIP_PUSH=1).
 // The gap to BenchmarkSyncGit is the network push cost.
 func BenchmarkSyncGitNoPush(b *testing.B) {
-	b.Setenv("WIKI_SKIP_PUSH", "1")
+	b.Setenv("BOARD_SKIP_PUSH", "1")
 	benchmarkSync(b)
 }

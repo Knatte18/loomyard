@@ -1,4 +1,4 @@
-// cli_test.go — tests for the wiki CLI (cli.go).
+// cli_test.go — tests for the board CLI (cli.go).
 //
 // Drives RunCLI in-process and asserts the JSON + exit-code contract for each
 // subcommand (upsert, list, get, set-phase, remove, rerender).
@@ -15,19 +15,19 @@ import (
 	"github.com/Knatte18/mhgo/internal/board"
 )
 
-// runCLI invokes wiki.RunCLI in-process against wikiPath and returns the exit
-// code plus the JSON written to out. WIKI_SKIP_GIT must be set by the caller.
+// runCLI invokes board.RunCLI in-process against wikiPath and returns the exit
+// code plus the JSON written to out. BOARD_SKIP_GIT must be set by the caller.
 func runCLI(t *testing.T, wikiPath string, args ...string) (exitCode int, stdout string) {
 	t.Helper()
 
 	var buf bytes.Buffer
 	allArgs := append([]string{"--wiki-path", wikiPath}, args...)
-	code := wiki.RunCLI(&buf, allArgs)
+	code := board.RunCLI(&buf, allArgs)
 	return code, buf.String()
 }
 
 func TestCLIUpsertTask(t *testing.T) {
-	t.Setenv("WIKI_SKIP_GIT", "1")
+	t.Setenv("BOARD_SKIP_GIT", "1")
 	wikiPath := t.TempDir()
 
 	// (a) upsert creates a task and returns {"ok":true,"task":{...}}
@@ -53,7 +53,7 @@ func TestCLIUpsertTask(t *testing.T) {
 }
 
 func TestCLIListTasks(t *testing.T) {
-	t.Setenv("WIKI_SKIP_GIT", "1")
+	t.Setenv("BOARD_SKIP_GIT", "1")
 	wikiPath := t.TempDir()
 
 	// First upsert a task
@@ -100,7 +100,7 @@ func TestCLIListTasks(t *testing.T) {
 }
 
 func TestCLIGetTask(t *testing.T) {
-	t.Setenv("WIKI_SKIP_GIT", "1")
+	t.Setenv("BOARD_SKIP_GIT", "1")
 	wikiPath := t.TempDir()
 
 	// First upsert a task
@@ -130,7 +130,7 @@ func TestCLIGetTask(t *testing.T) {
 }
 
 func TestCLIGetNonexistentTask(t *testing.T) {
-	t.Setenv("WIKI_SKIP_GIT", "1")
+	t.Setenv("BOARD_SKIP_GIT", "1")
 	wikiPath := t.TempDir()
 
 	// (d) get with nonexistent slug returns null task
@@ -155,7 +155,7 @@ func TestCLIGetNonexistentTask(t *testing.T) {
 }
 
 func TestCLIRemoveNonexistentTask(t *testing.T) {
-	t.Setenv("WIKI_SKIP_GIT", "1")
+	t.Setenv("BOARD_SKIP_GIT", "1")
 	wikiPath := t.TempDir()
 
 	// (e) remove nonexistent task returns error with exit 1
@@ -180,7 +180,7 @@ func TestCLIRemoveNonexistentTask(t *testing.T) {
 }
 
 func TestCLISetPhase(t *testing.T) {
-	t.Setenv("WIKI_SKIP_GIT", "1")
+	t.Setenv("BOARD_SKIP_GIT", "1")
 	wikiPath := t.TempDir()
 
 	// First upsert a task
@@ -205,7 +205,7 @@ func TestCLISetPhase(t *testing.T) {
 }
 
 func TestCLIRerender(t *testing.T) {
-	t.Setenv("WIKI_SKIP_GIT", "1")
+	t.Setenv("BOARD_SKIP_GIT", "1")
 	wikiPath := t.TempDir()
 
 	// (g) rerender returns exit 0 and creates Home.md

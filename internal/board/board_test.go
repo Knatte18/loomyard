@@ -1,6 +1,6 @@
-// wiki_test.go — unit tests for the Wiki facade (wiki.go).
+// board_test.go — unit tests for the Board facade (board.go).
 //
-// Upsert / remove / rerender against a temp wiki with git skipped.
+// Upsert / remove / rerender against a temp board with git skipped.
 
 package board_test
 
@@ -13,10 +13,10 @@ import (
 )
 
 func TestUpsertTask(t *testing.T) {
-	t.Setenv("WIKI_SKIP_GIT", "1")
+	t.Setenv("BOARD_SKIP_GIT", "1")
 
 	wikiPath := t.TempDir()
-	w := wiki.New(wikiPath)
+	w := board.New(wikiPath)
 
 	// (a) Creates task, tasks.json written, Home.md written
 	task, err := w.UpsertTask(map[string]any{
@@ -64,10 +64,10 @@ func TestUpsertTask(t *testing.T) {
 }
 
 func TestRemoveTask(t *testing.T) {
-	t.Setenv("WIKI_SKIP_GIT", "1")
+	t.Setenv("BOARD_SKIP_GIT", "1")
 
 	wikiPath := t.TempDir()
-	w := wiki.New(wikiPath)
+	w := board.New(wikiPath)
 
 	// (c) Error for missing slug
 	err := w.RemoveTask("nonexistent")
@@ -77,10 +77,10 @@ func TestRemoveTask(t *testing.T) {
 }
 
 func TestRerender(t *testing.T) {
-	t.Setenv("WIKI_SKIP_GIT", "1")
+	t.Setenv("BOARD_SKIP_GIT", "1")
 
 	wikiPath := t.TempDir()
-	w := wiki.New(wikiPath)
+	w := board.New(wikiPath)
 
 	// (d) Writes all output files without error on empty store
 	err := w.Rerender()
