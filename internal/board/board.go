@@ -30,7 +30,7 @@ func New(wikiPath string) *Board {
 
 // writeOp runs the locked, file-only write sequence: lock → load → mutate →
 // render → write files → save. The remote backup is not done here; on success it
-// launches a detached `mhgo wiki sync` (unless WIKI_SKIP_GIT=1) and returns
+// launches a detached `mhgo wiki sync` (unless BOARD_SKIP_GIT=1) and returns
 // without waiting. The second argument is ignored — the commit message is fixed
 // in the pusher (batched "wiki sync" commits), not per-write.
 func (b *Board) writeOp(mutate func(*Store) (any, error), _ string) (any, error) {
@@ -68,7 +68,7 @@ func (b *Board) writeOp(mutate func(*Store) (any, error), _ string) (any, error)
 	// (6) Hand the remote backup to a detached sync process and return. The data
 	// is already durable on disk; a failed spawn just defers backup to the next
 	// write, since git push is cumulative.
-	if os.Getenv("WIKI_SKIP_GIT") != "1" {
+	if os.Getenv("BOARD_SKIP_GIT") != "1" {
 		_ = spawnSync(b.boardPath)
 	}
 

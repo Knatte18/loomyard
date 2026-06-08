@@ -1,11 +1,11 @@
-// sync.go — the background pusher that backs up the wiki to the remote.
+// sync.go — the background pusher that backs up the board to the remote.
 //
 // Writes only touch the filesystem; Sync is what gets those changes to GitHub.
 // It commits any pending working-tree changes and pushes all unpushed commits,
 // looping until nothing is left so a burst of writes coalesces into as few
 // pushes as possible. A single Sync runs at a time (the push lock); concurrent
 // sync processes block, then exit quickly once there is nothing to do. The write
-// path launches `mhgo wiki sync` detached (see spawn_*.go) so it never waits.
+// path launches `mhgo board sync` detached (see spawn_*.go) so it never waits.
 package board
 
 import (
@@ -23,14 +23,14 @@ const (
 )
 
 // Sync commits any pending changes and pushes them to the remote, looping until
-// the working tree is clean and nothing is unpushed. WIKI_SKIP_GIT disables it
-// entirely (used by tests); WIKI_SKIP_PUSH commits locally but skips the push.
+// the working tree is clean and nothing is unpushed. BOARD_SKIP_GIT disables it
+// entirely (used by tests); BOARD_SKIP_PUSH commits locally but skips the push.
 func Sync(wikiPath string) error {
-	if os.Getenv("WIKI_SKIP_GIT") == "1" {
+	if os.Getenv("BOARD_SKIP_GIT") == "1" {
 		return nil
 	}
 
-	// The lock files live in the wiki dir; keep git from ever committing them.
+	// The lock files live in the board dir; keep git from ever committing them.
 	if err := ensureLockfilesIgnored(wikiPath); err != nil {
 		return err
 	}
@@ -86,7 +86,7 @@ func commitDirty(wikiPath string) (bool, error) {
 		return false, BoardPushError("add failed")
 	}
 
-	if _, _, code, err := RunGit([]string{"commit", "-m", "wiki sync"}, wikiPath); err != nil {
+	if _, _, code, err := RunGit([]string{"commit", "-m", "board sync"}, wikiPath); err != nil {
 		return false, fmt.Errorf("commit: %w", err)
 	} else if code != 0 {
 		return false, BoardPushError("commit failed")
@@ -95,9 +95,9 @@ func commitDirty(wikiPath string) (bool, error) {
 }
 
 // pushUnpushed pushes local commits to the remote, rebasing once on a
-// non-fast-forward. No-op if there is nothing unpushed or WIKI_SKIP_PUSH is set.
+// non-fast-forward. No-op if there is nothing unpushed or BOARD_SKIP_PUSH is set.
 func pushUnpushed(wikiPath string) error {
-	if os.Getenv("WIKI_SKIP_PUSH") == "1" {
+	if os.Getenv("BOARD_SKIP_PUSH") == "1" {
 		return nil
 	}
 
@@ -132,7 +132,7 @@ func pushUnpushed(wikiPath string) error {
 	return BoardPushError("push still failing after rebase retry")
 }
 
-// ensureLockfilesIgnored adds the lock-file patterns to the wiki's .gitignore
+// ensureLockfilesIgnored adds the lock-file patterns to the board's .gitignore
 // (idempotently) so the flock files that live alongside tasks.json are never
 // staged or committed. A committed .gitignore is shared with every clone via the
 // remote, so the lock files are ignored on every machine from clone time — the
