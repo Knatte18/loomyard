@@ -105,7 +105,11 @@ before anything else is built on top of it.
   invocation. No walk-up, no `git rev-parse`, no discovery. If `<cwd>/_mhgo/`
   does not exist, the command **errors** with a clear "not initialized here;
   run `mhgo init`" message. The two layers are `<cwd>/_mhgo/board.yaml`
-  (tracked) and `<cwd>/.mhgo/board.yaml` (gitignored).
+  (tracked) and `<cwd>/.mhgo/board.yaml` (gitignored). This applies **uniformly
+  to read and write subcommands** — `RunCLI` resolves config once at the top, so
+  `list`/`get` require `<cwd>/_mhgo/` and pay the config-load cost and error
+  identically when it is absent (the board dir itself is separate and may still
+  be missing — see the read short-circuit under Gotchas).
 - Rationale: "CWD need not equal the git repo root" means mhgo must not assume a
   git root — the cwd is the unit of activation. Using mhgo in a directory where
   it was never initialized is a usage error, not something to paper over.
@@ -296,6 +300,8 @@ go 1.26), today only depending on `github.com/gofrs/flock`. Layout:
     point at files that no longer exist under a custom prefix.
   - `store.go` — in-memory store over `tasks.json` (CRUD + validation + atomic
     save under swap lock). `tasks.json` and `*.swaplock`/`*.lock` names stay.
+    Read methods must short-circuit on a missing board dir **before** taking the
+    swap lock (see Gotchas — the lock file lives inside the board dir).
   - `sync.go` — background pusher; constants `writeLockFile`, `pushLockFile`;
     reads `WIKI_SKIP_GIT`/`WIKI_SKIP_PUSH` (→ `BOARD_SKIP_*`); commit message
     `"wiki sync"` (→ `"board sync"`); `ensureLockfilesIgnored` writes the
@@ -329,11 +335,17 @@ Gotchas:
   prefix would orphan old files and/or miss cleanup.
 - `LoadConfig` must take `baseDir` explicitly (testability) — never call
   `os.Getwd()` inside the resolver.
-- Empty/missing board dir on a **read** path is already fine (`store.Load`
-  treats a missing `tasks.json` as an empty list). Writes need `MkdirAll`, and
-  it must run **before** `AcquireWriteLock` — the lock file lives inside the
-  board dir, so a late mkdir (the current `AtomicWrite` behaviour) fails on the
-  first write to a missing dir.
+- A missing board dir is **not** transparently handled on reads: `store.Load`
+  takes a read lock via `flock` on `<boardPath>/tasks.json.swaplock` *before*
+  `os.ReadFile` (`store.go:62`), and `flock`'s `O_CREATE` does not create parent
+  dirs — so a read against a missing board dir fails at lock acquisition, before
+  the `os.IsNotExist` empty-list fallback. **Decision:** read methods
+  (`GetTask`/`ListTasksBrief`/`ListTasksFull`) short-circuit when the board dir
+  is absent — return an empty result (`list` → `[]`, `get` → not found)
+  **without taking the swap lock**; reads never `MkdirAll` (no filesystem side
+  effects on read). Writes `MkdirAll` up front, before `AcquireWriteLock` — the
+  lock file lives inside the board dir, so a late mkdir (the current
+  `AtomicWrite` behaviour) fails on the first write to a missing dir.
 
 ## Constraints
 
@@ -445,3 +457,10 @@ and the black-box cross-cutting suite in `boardtest/`.
 - **Q:** (review r3 NOTE) Which `.gitignore` does `init` write? **A:**
   `<cwd>/.gitignore` regardless of git-root status; the `mhgo-managed` marker
   does not collide with millpy's `mill-managed` block.
+- **Q:** (review r4 GAP) Read against a missing board dir? **A:** Read methods
+  short-circuit and return empty (`list` → `[]`, `get` → not found) **without**
+  taking the swap lock; reads never `MkdirAll`. (The earlier "reads are already
+  fine" claim was wrong — `store.Load` locks inside the board dir first.)
+- **Q:** (review r4 NOTE) Do read subcommands also need `_mhgo/`? **A:** Yes —
+  `RunCLI` resolves config once for all subcommands, so `list`/`get` require
+  `<cwd>/_mhgo/` and pay config-load identically to writes.
