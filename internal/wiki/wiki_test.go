@@ -15,7 +15,7 @@ func TestUpsertTask(t *testing.T) {
 	w := wiki.New(wikiPath)
 
 	// (a) Creates task, tasks.json written, Home.md written
-	task, err := w.UpsertTask(map[string]interface{}{
+	task, err := w.UpsertTask(map[string]any{
 		"slug":  "test-task",
 		"title": "Test Task",
 	})
@@ -40,7 +40,7 @@ func TestUpsertTask(t *testing.T) {
 	}
 
 	// (b) Update preserves other fields
-	task2, err := w.UpsertTask(map[string]interface{}{
+	task2, err := w.UpsertTask(map[string]any{
 		"slug":  "test-task",
 		"title": "Updated Title",
 		"brief": "Brief description",

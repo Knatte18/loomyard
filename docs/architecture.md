@@ -7,7 +7,7 @@ Modul: `github.com/Knatte18/mhgo`
 ```
 github.com/Knatte18/mhgo/
 ├── cmd/mhgo/
-│   └── main.go          CLI-entrypoint: parser subcommands, kaller wiki.go
+│   └── main.go          CLI-entrypoint: ruter <module>-argumentet til riktig modul
 └── internal/wiki/
     ├── task.go          Task-typen + NewTask / ApplyPatch
     ├── store.go         Store: in-memory CRUD over tasks.json
@@ -15,6 +15,7 @@ github.com/Knatte18/mhgo/
     ├── render.go        Render: tasks → Home.md, _Sidebar.md, proposal-*.md
     ├── git.go           PathGuard, AtomicWrite, Pull, CommitPush
     ├── lock.go          AcquireWriteLock (gofrs/flock)
+    ├── cli.go           RunCLI: parser wiki-subcommands, kaller wiki.go, skriver JSON
     └── wiki.go          Wiki-fasade: writeOp sekvenserer alt
 ```
 
@@ -41,7 +42,7 @@ main.go
 ### task.go
 Definerer `Task`-structen (det som lagres i `tasks.json`) og to hjelpefunksjoner:
 
-- **`NewTask(fields, nextID)`** — bygger en ny Task fra et `map[string]interface{}`. Bruker JSON-roundtrip: felter marshales til JSON og unmarshales inn i Task, slik at feilaktige typer (f.eks. `depends_on` som ikke er `[]string`) gir valideringsfeil.
+- **`NewTask(fields, nextID)`** — bygger en ny Task fra et `map[string]any`. Bruker JSON-roundtrip: felter marshales til JSON og unmarshales inn i Task, slik at feilaktige typer (f.eks. `depends_on` som ikke er `[]string`) gir valideringsfeil.
 - **`ApplyPatch(existing, fields)`** — oppdaterer en eksisterende Task. Bruker samme JSON-roundtrip, men starter med å serialisere `existing` til et map, legger nye felter oppå, og unmarshaler til Task. Felter som ikke er i `fields` beholdes uendret.
 
 `Status *string` er en peker fordi `nil` betyr "ikke satt" og utelates i JSON (`omitempty`). En tom streng ville blitt med i JSON.
@@ -130,7 +131,10 @@ Fasaden som brukes av `main.go`. Ingen forretningslogikk her — kun orkestrerin
 ---
 
 ### cmd/mhgo/main.go
-Tynn CLI-adapter. Parser `mhgo wiki <subcommand> [json-payload]`, deserialiserer JSON-argumentet, kaller én metode på `wiki.Wiki`, og skriver resultatet til stdout som JSON.
+Tynn modul-ruter. Tar første argument (`<module>`) og delegerer resten til den modulens egen CLI-handler — `mhgo wiki ...` kaller `wiki.RunCLI`. Hver modul eier sine egne flagg, subcommands og output. Etter hvert som flere moduler legges til utvides kun `switch`-en her.
+
+### internal/wiki/cli.go
+Wiki-modulens CLI-handler. `RunCLI(out, args)` parser `[--wiki-path <path>] <subcommand> [json-payload]`, løser wiki-stien (flagg → `MHGO_WIKI_PATH` → `../gowiki`), deserialiserer JSON-argumentet, kaller én metode på `wiki.Wiki`, og skriver resultatet til `out` som JSON. Returnerer exit-koden (0/1) til `main`.
 
 Alle svar er JSON: `{"ok": true, "task": {...}}` ved suksess, `{"ok": false, "error": "..."}` ved feil (exit code 1).
 
@@ -141,9 +145,9 @@ Alle svar er JSON: `{"ok": true, "task": {...}}` ved suksess, `{"ok": false, "er
 Kommando: `mhgo wiki upsert '{"slug": "my-task", "title": "Do something"}'`
 
 ```
-main.go
+main.go → wiki.RunCLI (cli.go)
   │  parse args → subcommand="upsert", jsonPayload='{"slug":...}'
-  │  json.Unmarshal → fields map[string]interface{}
+  │  json.Unmarshal → fields map[string]any
   │  w.UpsertTask(fields)
   │
 wiki.go / UpsertTask
@@ -177,8 +181,8 @@ store.go / UpsertTask(fields)
   │  append(s.tasks, incoming)
   └→ returnerer Task
 
-main.go
-  outputSuccessWithTask(task)
+cli.go
+  outputSuccessWithTask(out, task)
   → stdout: {"ok":true,"task":{"id":0,"slug":"my-task","title":"Do something",...}}
 ```
 

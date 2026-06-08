@@ -8,7 +8,7 @@ import (
 
 func TestNewTask(t *testing.T) {
 	t.Run("creates task with correct defaults when only slug provided", func(t *testing.T) {
-		fields := map[string]interface{}{
+		fields := map[string]any{
 			"slug": "my-task",
 		}
 		task, err := wiki.NewTask(fields, 1)
@@ -33,7 +33,7 @@ func TestNewTask(t *testing.T) {
 	})
 
 	t.Run("ID is set to the provided nextID", func(t *testing.T) {
-		fields := map[string]interface{}{
+		fields := map[string]any{
 			"slug": "test-task",
 		}
 		task, err := wiki.NewTask(fields, 42)
@@ -46,7 +46,7 @@ func TestNewTask(t *testing.T) {
 	})
 
 	t.Run("missing slug returns error", func(t *testing.T) {
-		fields := map[string]interface{}{}
+		fields := map[string]any{}
 		_, err := wiki.NewTask(fields, 1)
 		if err == nil {
 			t.Fatalf("expected error for missing slug, got nil")
@@ -54,7 +54,7 @@ func TestNewTask(t *testing.T) {
 	})
 
 	t.Run("group key present returns error", func(t *testing.T) {
-		fields := map[string]interface{}{
+		fields := map[string]any{
 			"slug":  "test-task",
 			"group": "some-group",
 		}
@@ -69,7 +69,7 @@ func TestNewTask(t *testing.T) {
 	})
 
 	t.Run("explicit DependsOn provided in fields is stored correctly", func(t *testing.T) {
-		fields := map[string]interface{}{
+		fields := map[string]any{
 			"slug":       "test-task",
 			"depends_on": []string{"task-a", "task-b"},
 		}
@@ -95,7 +95,7 @@ func TestApplyPatch(t *testing.T) {
 			Brief:    "Original brief",
 			DependsOn: []string{"a"},
 		}
-		patch := map[string]interface{}{
+		patch := map[string]any{
 			"title": "New Title",
 		}
 		result, err := wiki.ApplyPatch(existing, patch)
@@ -119,7 +119,7 @@ func TestApplyPatch(t *testing.T) {
 			Slug:      "test",
 			DependsOn: []string{"a"},
 		}
-		patch := map[string]interface{}{
+		patch := map[string]any{
 			"depends_on": []string{"x", "y", "z"},
 		}
 		result, err := wiki.ApplyPatch(existing, patch)
@@ -139,7 +139,7 @@ func TestApplyPatch(t *testing.T) {
 			ID:   1,
 			Slug: "test",
 		}
-		patch := map[string]interface{}{
+		patch := map[string]any{
 			"group": "some-group",
 		}
 		_, err := wiki.ApplyPatch(existing, patch)
@@ -159,7 +159,7 @@ func TestApplyPatch(t *testing.T) {
 			Slug:   "test",
 			Status: &statusVal,
 		}
-		patch := map[string]interface{}{
+		patch := map[string]any{
 			"title": "Updated",
 		}
 		result, err := wiki.ApplyPatch(existing, patch)
@@ -181,7 +181,7 @@ func TestApplyPatch(t *testing.T) {
 			Slug:   "test",
 			Status: &statusVal,
 		}
-		patch := map[string]interface{}{
+		patch := map[string]any{
 			"status": nil,
 		}
 		result, err := wiki.ApplyPatch(existing, patch)

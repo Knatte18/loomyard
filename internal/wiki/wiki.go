@@ -22,7 +22,7 @@ func New(wikiPath string) *Wiki {
 
 // writeOp runs the full write-lock sequence: lock → pull → load → mutate → render → write files → commit/push.
 // All mutating Wiki methods delegate to writeOp.
-func (w *Wiki) writeOp(mutate func(*Store) (interface{}, error), slugForMsg string) (interface{}, error) {
+func (w *Wiki) writeOp(mutate func(*Store) (any, error), slugForMsg string) (any, error) {
 	// (1) Acquire write lock
 	lockPath := filepath.Join(w.wikiPath, "tasks.json.lock")
 	lock, err := AcquireWriteLock(lockPath)
@@ -102,7 +102,7 @@ func (w *Wiki) writeOp(mutate func(*Store) (interface{}, error), slugForMsg stri
 	return result, nil
 }
 
-func (w *Wiki) UpsertTask(fields map[string]interface{}) (Task, error) {
+func (w *Wiki) UpsertTask(fields map[string]any) (Task, error) {
 	// Extract slug for message
 	slugVal, hasSlug := fields["slug"]
 	if !hasSlug {
@@ -113,7 +113,7 @@ func (w *Wiki) UpsertTask(fields map[string]interface{}) (Task, error) {
 		slugStr = fmt.Sprintf("%v", slugVal)
 	}
 
-	result, err := w.writeOp(func(s *Store) (interface{}, error) {
+	result, err := w.writeOp(func(s *Store) (any, error) {
 		return s.UpsertTask(fields)
 	}, slugStr)
 
@@ -123,23 +123,23 @@ func (w *Wiki) UpsertTask(fields map[string]interface{}) (Task, error) {
 	return result.(Task), nil
 }
 
-func (w *Wiki) SetPhase(idOrSlug interface{}, phase *string) error {
+func (w *Wiki) SetPhase(idOrSlug any, phase *string) error {
 	slugForMsg := fmt.Sprintf("%v", idOrSlug)
-	_, err := w.writeOp(func(s *Store) (interface{}, error) {
+	_, err := w.writeOp(func(s *Store) (any, error) {
 		return nil, s.SetPhase(idOrSlug, phase)
 	}, slugForMsg)
 	return err
 }
 
-func (w *Wiki) RemoveTask(idOrSlug interface{}) error {
+func (w *Wiki) RemoveTask(idOrSlug any) error {
 	slugForMsg := fmt.Sprintf("%v", idOrSlug)
-	_, err := w.writeOp(func(s *Store) (interface{}, error) {
+	_, err := w.writeOp(func(s *Store) (any, error) {
 		return nil, s.RemoveTask(idOrSlug)
 	}, slugForMsg)
 	return err
 }
 
-func (w *Wiki) MergeTasks(removeSlugs []string, upsert map[string]interface{}, setPhase *[2]interface{}) (Task, error) {
+func (w *Wiki) MergeTasks(removeSlugs []string, upsert map[string]any, setPhase *[2]any) (Task, error) {
 	// Extract slug for message
 	slugVal, hasSlug := upsert["slug"]
 	if !hasSlug {
@@ -150,7 +150,7 @@ func (w *Wiki) MergeTasks(removeSlugs []string, upsert map[string]interface{}, s
 		slugStr = fmt.Sprintf("%v", slugVal)
 	}
 
-	result, err := w.writeOp(func(s *Store) (interface{}, error) {
+	result, err := w.writeOp(func(s *Store) (any, error) {
 		return s.MergeTasks(removeSlugs, upsert, setPhase)
 	}, slugStr)
 
@@ -161,27 +161,27 @@ func (w *Wiki) MergeTasks(removeSlugs []string, upsert map[string]interface{}, s
 }
 
 func (w *Wiki) SetDeps(slug string, dependsOn []string) error {
-	_, err := w.writeOp(func(s *Store) (interface{}, error) {
+	_, err := w.writeOp(func(s *Store) (any, error) {
 		return nil, s.SetDeps(slug, dependsOn)
 	}, slug)
 	return err
 }
 
-func (w *Wiki) UpsertTasksBatch(tasks []map[string]interface{}) error {
-	_, err := w.writeOp(func(s *Store) (interface{}, error) {
+func (w *Wiki) UpsertTasksBatch(tasks []map[string]any) error {
+	_, err := w.writeOp(func(s *Store) (any, error) {
 		return nil, s.UpsertTasksBatch(tasks)
 	}, "batch")
 	return err
 }
 
 func (w *Wiki) Rerender() error {
-	_, err := w.writeOp(func(s *Store) (interface{}, error) {
+	_, err := w.writeOp(func(s *Store) (any, error) {
 		return nil, nil
 	}, "rerender")
 	return err
 }
 
-func (w *Wiki) GetTask(idOrSlug interface{}) (Task, bool, error) {
+func (w *Wiki) GetTask(idOrSlug any) (Task, bool, error) {
 	store := NewStore(filepath.Join(w.wikiPath, "tasks.json"))
 	if err := store.Load(); err != nil {
 		return Task{}, false, fmt.Errorf("load store: %w", err)

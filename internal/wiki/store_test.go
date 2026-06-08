@@ -10,7 +10,7 @@ func TestUpsertTaskNewTaskSequentialID(t *testing.T) {
 	s := wiki.NewStore("")
 
 	// (a) new task gets sequential ID starting at 0
-	task1, err := s.UpsertTask(map[string]interface{}{
+	task1, err := s.UpsertTask(map[string]any{
 		"slug":  "task1",
 		"title": "Task 1",
 	})
@@ -21,7 +21,7 @@ func TestUpsertTaskNewTaskSequentialID(t *testing.T) {
 		t.Errorf("expected ID 0, got %d", task1.ID)
 	}
 
-	task2, err := s.UpsertTask(map[string]interface{}{
+	task2, err := s.UpsertTask(map[string]any{
 		"slug":  "task2",
 		"title": "Task 2",
 	})
@@ -37,7 +37,7 @@ func TestUpsertTaskDefaults(t *testing.T) {
 	s := wiki.NewStore("")
 
 	// (b) defaults applied (DependsOn=[], Isolated=false, Deferred=false)
-	task, err := s.UpsertTask(map[string]interface{}{
+	task, err := s.UpsertTask(map[string]any{
 		"slug": "task1",
 	})
 	if err != nil {
@@ -58,7 +58,7 @@ func TestUpsertTaskPreservesFields(t *testing.T) {
 	s := wiki.NewStore("")
 
 	// Create a task
-	_, err := s.UpsertTask(map[string]interface{}{
+	_, err := s.UpsertTask(map[string]any{
 		"slug":  "task1",
 		"title": "Original",
 		"brief": "Original brief",
@@ -69,7 +69,7 @@ func TestUpsertTaskPreservesFields(t *testing.T) {
 	}
 
 	// (c) update preserves unmentioned fields
-	task, err := s.UpsertTask(map[string]interface{}{
+	task, err := s.UpsertTask(map[string]any{
 		"slug":  "task1",
 		"title": "Updated",
 	})
@@ -91,7 +91,7 @@ func TestUpsertTaskGroupKeyError(t *testing.T) {
 	s := wiki.NewStore("")
 
 	// (d) `group` key returns validation error
-	_, err := s.UpsertTask(map[string]interface{}{
+	_, err := s.UpsertTask(map[string]any{
 		"slug":  "task1",
 		"group": "something",
 	})
@@ -107,7 +107,7 @@ func TestValidateDanglingDependency(t *testing.T) {
 	s := wiki.NewStore("")
 
 	// (e) dangling dependency rejected
-	_, err := s.UpsertTask(map[string]interface{}{
+	_, err := s.UpsertTask(map[string]any{
 		"slug":       "task1",
 		"depends_on": []string{"nonexistent"},
 	})
@@ -123,7 +123,7 @@ func TestValidateDependencyOnIsolated(t *testing.T) {
 	s := wiki.NewStore("")
 
 	// Create an isolated task
-	_, err := s.UpsertTask(map[string]interface{}{
+	_, err := s.UpsertTask(map[string]any{
 		"slug":     "isolated",
 		"isolated": true,
 	})
@@ -132,7 +132,7 @@ func TestValidateDependencyOnIsolated(t *testing.T) {
 	}
 
 	// (f) dependency on isolated task rejected
-	_, err = s.UpsertTask(map[string]interface{}{
+	_, err = s.UpsertTask(map[string]any{
 		"slug":       "task1",
 		"depends_on": []string{"isolated"},
 	})
@@ -148,7 +148,7 @@ func TestValidateDependencyOnDeferred(t *testing.T) {
 	s := wiki.NewStore("")
 
 	// Create a deferred task
-	_, err := s.UpsertTask(map[string]interface{}{
+	_, err := s.UpsertTask(map[string]any{
 		"slug":     "deferred",
 		"deferred": true,
 	})
@@ -157,7 +157,7 @@ func TestValidateDependencyOnDeferred(t *testing.T) {
 	}
 
 	// (g) dependency on deferred task rejected
-	_, err = s.UpsertTask(map[string]interface{}{
+	_, err = s.UpsertTask(map[string]any{
 		"slug":       "task1",
 		"depends_on": []string{"deferred"},
 	})
@@ -173,7 +173,7 @@ func TestValidateCycleDetection(t *testing.T) {
 	s := wiki.NewStore("")
 
 	// Create task A
-	_, err := s.UpsertTask(map[string]interface{}{
+	_, err := s.UpsertTask(map[string]any{
 		"slug":  "a",
 		"title": "A",
 	})
@@ -182,7 +182,7 @@ func TestValidateCycleDetection(t *testing.T) {
 	}
 
 	// Create task B depending on A
-	_, err = s.UpsertTask(map[string]interface{}{
+	_, err = s.UpsertTask(map[string]any{
 		"slug":       "b",
 		"title":      "B",
 		"depends_on": []string{"a"},
@@ -192,7 +192,7 @@ func TestValidateCycleDetection(t *testing.T) {
 	}
 
 	// (h) cycle A→B, B→A detected and rejected with "cycle detected" in error message
-	_, err = s.UpsertTask(map[string]interface{}{
+	_, err = s.UpsertTask(map[string]any{
 		"slug":       "a",
 		"depends_on": []string{"b"},
 	})
@@ -209,14 +209,14 @@ func TestValidateNoCycleLongChain(t *testing.T) {
 	s := wiki.NewStore("")
 
 	// (i) chain A depends on B, B depends on C — no cycle, all upserts succeed
-	_, err := s.UpsertTask(map[string]interface{}{
+	_, err := s.UpsertTask(map[string]any{
 		"slug": "c",
 	})
 	if err != nil {
 		t.Fatalf("unexpected error creating C: %v", err)
 	}
 
-	_, err = s.UpsertTask(map[string]interface{}{
+	_, err = s.UpsertTask(map[string]any{
 		"slug":       "b",
 		"depends_on": []string{"c"},
 	})
@@ -224,7 +224,7 @@ func TestValidateNoCycleLongChain(t *testing.T) {
 		t.Fatalf("unexpected error creating B: %v", err)
 	}
 
-	_, err = s.UpsertTask(map[string]interface{}{
+	_, err = s.UpsertTask(map[string]any{
 		"slug":       "a",
 		"depends_on": []string{"b"},
 	})
@@ -254,7 +254,7 @@ func TestRemoveTaskMissing(t *testing.T) {
 func TestSetPhaseNil(t *testing.T) {
 	s := wiki.NewStore("")
 
-	task, err := s.UpsertTask(map[string]interface{}{
+	task, err := s.UpsertTask(map[string]any{
 		"slug": "task1",
 	})
 	if err != nil {
@@ -264,7 +264,7 @@ func TestSetPhaseNil(t *testing.T) {
 	status := "in progress"
 	task.Status = &status
 	// Manually update since SetPhase might not have been called before
-	s.UpsertTask(map[string]interface{}{
+	s.UpsertTask(map[string]any{
 		"slug":   "task1",
 		"status": status,
 	})
@@ -295,7 +295,7 @@ func TestMergeTasksAtomic(t *testing.T) {
 	s := wiki.NewStore("")
 
 	// Create initial tasks
-	_, err := s.UpsertTask(map[string]interface{}{
+	_, err := s.UpsertTask(map[string]any{
 		"slug":  "a",
 		"title": "A",
 	})
@@ -303,7 +303,7 @@ func TestMergeTasksAtomic(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	_, err = s.UpsertTask(map[string]interface{}{
+	_, err = s.UpsertTask(map[string]any{
 		"slug":  "b",
 		"title": "B",
 	})
@@ -315,11 +315,11 @@ func TestMergeTasksAtomic(t *testing.T) {
 	phase := "done"
 	result, err := s.MergeTasks(
 		[]string{"a"},
-		map[string]interface{}{
+		map[string]any{
 			"slug":  "c",
 			"title": "C",
 		},
-		&[2]interface{}{"c", phase},
+		&[2]any{"c", phase},
 	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -353,7 +353,7 @@ func TestMergeTasksValidationRollback(t *testing.T) {
 	s := wiki.NewStore("")
 
 	// Create tasks
-	_, err := s.UpsertTask(map[string]interface{}{
+	_, err := s.UpsertTask(map[string]any{
 		"slug":     "a",
 		"isolated": true,
 	})
@@ -361,7 +361,7 @@ func TestMergeTasksValidationRollback(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	_, err = s.UpsertTask(map[string]interface{}{
+	_, err = s.UpsertTask(map[string]any{
 		"slug":  "b",
 		"title": "B",
 	})
@@ -373,7 +373,7 @@ func TestMergeTasksValidationRollback(t *testing.T) {
 	before := len(s.Tasks())
 	_, err = s.MergeTasks(
 		[]string{"b"},
-		map[string]interface{}{
+		map[string]any{
 			"slug":       "c",
 			"depends_on": []string{"nonexistent"},
 		},
@@ -400,7 +400,7 @@ func TestListTasksBriefLayerAndProposal(t *testing.T) {
 	s := wiki.NewStore("")
 
 	// Create tasks
-	_, err := s.UpsertTask(map[string]interface{}{
+	_, err := s.UpsertTask(map[string]any{
 		"slug": "task1",
 		"body": "Some body content",
 	})
@@ -408,7 +408,7 @@ func TestListTasksBriefLayerAndProposal(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	_, err = s.UpsertTask(map[string]interface{}{
+	_, err = s.UpsertTask(map[string]any{
 		"slug": "task2",
 	})
 	if err != nil {
@@ -441,14 +441,14 @@ func TestSetDepsValid(t *testing.T) {
 	s := wiki.NewStore("")
 
 	// Create tasks
-	_, err := s.UpsertTask(map[string]interface{}{
+	_, err := s.UpsertTask(map[string]any{
 		"slug": "a",
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	_, err = s.UpsertTask(map[string]interface{}{
+	_, err = s.UpsertTask(map[string]any{
 		"slug": "b",
 	})
 	if err != nil {
@@ -471,14 +471,14 @@ func TestSetDepsCycleRollback(t *testing.T) {
 	s := wiki.NewStore("")
 
 	// Create A and B with A depending on B
-	_, err := s.UpsertTask(map[string]interface{}{
+	_, err := s.UpsertTask(map[string]any{
 		"slug": "a",
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	_, err = s.UpsertTask(map[string]interface{}{
+	_, err = s.UpsertTask(map[string]any{
 		"slug":       "b",
 		"depends_on": []string{"a"},
 	})
@@ -510,7 +510,7 @@ func TestUpsertTasksBatchValid(t *testing.T) {
 	s := wiki.NewStore("")
 
 	// (q) valid batch of two tasks both upserted
-	err := s.UpsertTasksBatch([]map[string]interface{}{
+	err := s.UpsertTasksBatch([]map[string]any{
 		{
 			"slug":  "task1",
 			"title": "Task 1",
@@ -538,7 +538,7 @@ func TestUpsertTasksBatchInvalid(t *testing.T) {
 	s := wiki.NewStore("")
 
 	// Create initial state
-	_, err := s.UpsertTask(map[string]interface{}{
+	_, err := s.UpsertTask(map[string]any{
 		"slug": "existing",
 	})
 	if err != nil {
@@ -547,7 +547,7 @@ func TestUpsertTasksBatchInvalid(t *testing.T) {
 
 	// (r) batch with one invalid task returns error and neither task is mutated
 	beforeCount := len(s.Tasks())
-	err = s.UpsertTasksBatch([]map[string]interface{}{
+	err = s.UpsertTasksBatch([]map[string]any{
 		{
 			"slug":       "task1",
 			"depends_on": []string{"nonexistent"},
