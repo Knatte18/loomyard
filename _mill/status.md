@@ -30,7 +30,9 @@ implementing  '2026-06-08T12:20:02Z'
 ```yaml
 batches:
   - name: rename-wiki-to-board
-    state: pending
+    state: running
+    implementer_session: d1c65914-49db-485d-a74c-416d2d491673
+    start_sha: 97a74c4e805adfe52c20bb1e851e7ef806c4fa58
   - name: config-system
     state: pending
   - name: config-driven-render-facade
