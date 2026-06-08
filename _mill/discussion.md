@@ -193,7 +193,10 @@ before anything else is built on top of it.
 - Decision: `init` maintains an `# === mhgo-managed === ... # === end
   mhgo-managed ===` marker block in `<cwd>/.gitignore` (create the file if
   absent), containing `.mhgo/`. Idempotent: only rewrites when the block's
-  contents differ.
+  contents differ. It always targets `<cwd>/.gitignore` regardless of whether
+  cwd is a git repo root (consistent with the cwd-authoritative model); the
+  marker text `mhgo-managed` deliberately does not collide with millpy's
+  separate `mill-managed` block.
 - Rationale: mirrors mill-setup Phase 4.5b — a managed block is idempotent,
   cleanly removable, and extensible by future `init` features; a bare append is
   not.
@@ -201,14 +204,23 @@ before anything else is built on top of it.
 
 ### board-dir-autocreate
 
-- Decision: when the configured board directory does not exist at write time,
-  create it with `MkdirAll`. File writes always succeed and are durable on local
-  disk. The detached `board sync` push **silently no-ops** if the board dir is
-  not a git repo (sync runs detached; its errors are already not surfaced).
+- Decision: when the configured board directory does not exist, `writeOp`
+  creates it with `MkdirAll(boardPath)` as its **first** step — **before**
+  `AcquireWriteLock`. This ordering is load-bearing: the write lock (`flock`)
+  opens a file *inside* the board dir (`<boardPath>/tasks.json.lock`), so relying
+  on `AtomicWrite`'s late `MkdirAll` (`git.go:69`) would fail at lock
+  acquisition on the first write to a missing dir. With the up-front mkdir, file
+  writes always succeed and are durable on local disk. The detached `board sync`
+  push **silently no-ops** if the board dir is missing or not a git repo:
+  `Sync`→`commitDirty` also takes the write lock inside the board dir, but sync
+  runs detached and its errors are not surfaced, so a not-yet-created board dir
+  simply defers backup to the next write.
 - Rationale: convenient first run; backup is a best-effort background concern
-  that already tolerates failure.
-- Rejected: erroring until the board dir exists (needless friction for the
-  common first-write case).
+  that already tolerates failure; the mkdir must precede the lock because the
+  lock file itself lives in the board dir.
+- Rejected: erroring until the board dir exists (needless friction); relying on
+  `AtomicWrite`'s mkdir (too late — the write lock opens a path inside the board
+  dir first).
 
 ### spawn-sync-path
 
@@ -267,8 +279,9 @@ go 1.26), today only depending on `github.com/gofrs/flock`. Layout:
     JSON output helpers. The internal `--board-path` flag (spawn-sync-path) is
     parsed here for the detached `sync` child only.
   - `wiki.go` (→ `board.go`) — the `Wiki` (→ `Board`) facade and `writeOp`
-    (lock → load → mutate → save `tasks.json` → `RenderToDisk` → spawn detached
-    sync unless `*_SKIP_GIT`). The struct currently holds only `wikiPath`; it
+    (**mkdir boardPath** → lock → load → mutate → save `tasks.json` →
+    `RenderToDisk` → spawn detached sync unless `*_SKIP_GIT`). The up-front
+    mkdir is new (see board-dir-autocreate) and must precede the lock. The struct currently holds only `wikiPath`; it
     must also carry the resolved output names (home/sidebar/proposal_prefix) to
     pass into rendering. `New(...)` signature changes accordingly.
   - `render.go` — `Render(tasks)` returns `map[relPath]content` with **hardcoded**
@@ -317,7 +330,10 @@ Gotchas:
 - `LoadConfig` must take `baseDir` explicitly (testability) — never call
   `os.Getwd()` inside the resolver.
 - Empty/missing board dir on a **read** path is already fine (`store.Load`
-  treats a missing `tasks.json` as an empty list); only writes need `MkdirAll`.
+  treats a missing `tasks.json` as an empty list). Writes need `MkdirAll`, and
+  it must run **before** `AcquireWriteLock` — the lock file lives inside the
+  board dir, so a late mkdir (the current `AtomicWrite` behaviour) fails on the
+  first write to a missing dir.
 
 ## Constraints
 
@@ -420,3 +436,12 @@ and the black-box cross-cutting suite in `boardtest/`.
 - **Q:** (review r2 NOTE) Where does the proposal prefix apply? **A:** Four
   sites — `renderProposals` filenames, the `removeOrphanProposals` glob, and the
   in-content links in `renderHome` (line 97) and `renderSidebar` (line 146).
+- **Q:** (review r3 GAP) Where does board-dir `MkdirAll` go? **A:** Up front in
+  `writeOp`, **before** `AcquireWriteLock` — the write lock opens a file inside
+  the board dir, so `AtomicWrite`'s late mkdir is too late for the first write.
+- **Q:** (review r3 NOTE) Sync child + missing board dir? **A:** `Sync` also
+  locks inside the board dir, but runs detached with unsurfaced errors, so a
+  missing board dir just defers backup to the next write.
+- **Q:** (review r3 NOTE) Which `.gitignore` does `init` write? **A:**
+  `<cwd>/.gitignore` regardless of git-root status; the `mhgo-managed` marker
+  does not collide with millpy's `mill-managed` block.
