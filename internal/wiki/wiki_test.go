@@ -1,3 +1,7 @@
+// wiki_test.go — unit tests for the Wiki facade (wiki.go).
+//
+// Upsert / remove / rerender against a temp wiki with git skipped.
+
 package wiki_test
 
 import (

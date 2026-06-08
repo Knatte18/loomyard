@@ -1,3 +1,9 @@
+// git.go — the filesystem + git plumbing under the store.
+//
+// PathGuard rejects unsafe relative paths; AtomicWrite writes via temp-file +
+// rename; Pull and CommitPush wrap git with fast-forward pull and push-with-
+// rebase-retry. The low-level disk and remote layer.
+
 package wiki
 
 import (
@@ -79,6 +85,9 @@ func AtomicWrite(wikiPath, relPath, content string) error {
 		return fmt.Errorf("close: %w", err)
 	}
 
+	// The rename is the atomic swap. Concurrent readers are excluded from this
+	// instant by the swap lock (see store.Save / store.Load), so on Windows the
+	// rename never loses a sharing-violation race against an open reader.
 	if err := os.Rename(tmpPath, fullPath); err != nil {
 		return fmt.Errorf("rename: %w", err)
 	}

@@ -1,3 +1,8 @@
+// cli_test.go — tests for the wiki CLI (cli.go).
+//
+// Drives RunCLI in-process and asserts the JSON + exit-code contract for each
+// subcommand (upsert, list, get, set-phase, remove, rerender).
+
 package wiki_test
 
 import (

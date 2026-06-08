@@ -1,6 +1,13 @@
+// integration_test.go — git-backed integration tests (integration-gated).
+//
+// Exercises the real git plumbing (AtomicWrite + CommitPush + Pull) against the
+// dummy remote at testRepoURL: clones it, writes and pushes a commit, then
+// re-clones to confirm the commit landed. Hits the network, so it is behind the
+// integration build tag. testRepoURL is shared with bench_git_test.go.
+
 //go:build integration
 
-package wiki_test
+package wikitest
 
 import (
 	"fmt"

@@ -1,3 +1,8 @@
+// main_test.go — tests for the module dispatcher (main.go).
+//
+// Drives run() directly: argument routing, unknown-module handling, and that a
+// dispatched module's exit code and output propagate unchanged.
+
 package main
 
 import (

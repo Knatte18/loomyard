@@ -1,10 +1,24 @@
+// store.go — the in-memory task store over tasks.json.
+//
+// Load/Save plus all CRUD and validation: dangling-dependency, isolated/deferred
+// rules, and cycle detection, with batch and merge applied atomically. Save and
+// Load take the fine-grained swap lock so a concurrent read never sees a
+// half-written file.
+
 package wiki
 
 import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 )
+
+// swapLockSuffix names the fine-grained lock that fences readers of a file
+// against the instant a writer swaps it in via rename. It is deliberately
+// separate from the coarse tasks.json.lock held across a whole write (which
+// includes git network I/O) so reads wait microseconds, not seconds.
+const swapLockSuffix = ".swaplock"
 
 // BriefTask is the enriched read-only view returned by the list subcommand.
 // Layer and HasProposal are computed at read time and are not stored in tasks.json.
@@ -41,15 +55,23 @@ func (s *Store) Load() error {
 		return nil
 	}
 
+	// Hold a shared swap lock only for the read itself: it overlaps with other
+	// readers but is fenced against a writer's rename, so we never open
+	// tasks.json mid-swap (which on Windows would fail with a sharing violation
+	// and otherwise silently look like an empty wiki).
+	lock, err := AcquireReadLock(s.filePath + swapLockSuffix)
+	if err != nil {
+		return fmt.Errorf("acquire read lock: %w", err)
+	}
 	content, err := os.ReadFile(s.filePath)
+	lock.Release()
 	if err != nil {
 		if os.IsNotExist(err) {
 			s.tasks = []Task{}
 			return nil
 		}
-		// Silent fallback on any other error
-		s.tasks = []Task{}
-		return nil
+		// A real read error must surface, not masquerade as an empty wiki.
+		return fmt.Errorf("read %s: %w", s.filePath, err)
 	}
 
 	var tasks []Task
@@ -77,8 +99,16 @@ func (s *Store) Save(wikiPath, relPath string) error {
 		return fmt.Errorf("marshal tasks: %w", err)
 	}
 
-	err = AtomicWrite(wikiPath, relPath, string(content))
+	// Hold the exclusive swap lock across the write so no reader has tasks.json
+	// open during the rename. The body is just a temp-write + rename, so readers
+	// are fenced out for microseconds, not for the surrounding git round-trip.
+	lock, err := AcquireWriteLock(filepath.Join(wikiPath, relPath) + swapLockSuffix)
 	if err != nil {
+		return fmt.Errorf("acquire swap lock: %w", err)
+	}
+	defer lock.Release()
+
+	if err := AtomicWrite(wikiPath, relPath, string(content)); err != nil {
 		return fmt.Errorf("atomic write: %w", err)
 	}
 

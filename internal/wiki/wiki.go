@@ -1,3 +1,9 @@
+// wiki.go — the Wiki facade, the only entry point the CLI uses.
+//
+// writeOp sequences the full locked write: lock → pull → load → mutate →
+// render → write files → save → commit/push. Every mutating method delegates to
+// it; read methods (Get/List) bypass it and load straight from disk.
+
 package wiki
 
 import (
