@@ -162,7 +162,7 @@ func CommitPush(wikiPath string, relPaths []string, message string) error {
 	}
 
 	// Skip push if env var set
-	if os.Getenv("WIKI_SKIP_PUSH") == "1" {
+	if os.Getenv("BOARD_SKIP_PUSH") == "1" {
 		return nil
 	}
 
