@@ -98,6 +98,7 @@ func AtomicWrite(wikiPath, relPath, content string) error {
 func RunGit(args []string, cwd string) (stdout, stderr string, exitCode int, err error) {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = cwd
+	hideProcWindow(cmd) // no console window flash on Windows
 
 	var outBuf, errBuf strings.Builder
 	cmd.Stdout = &outBuf

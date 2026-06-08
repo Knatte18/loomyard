@@ -13,10 +13,12 @@ github.com/Knatte18/mhgo/
     ├── store.go         Store: in-memory CRUD over tasks.json
     ├── layer.go         ComputeLayers, RenderOrder, ExtendedTitle
     ├── render.go        Render: tasks → Home.md, _Sidebar.md, proposal-*.md
-    ├── git.go           PathGuard, AtomicWrite, Pull, CommitPush
+    ├── git.go           PathGuard, AtomicWrite, RunGit, Pull, CommitPush
     ├── lock.go          AcquireWriteLock / AcquireReadLock (gofrs/flock)
+    ├── sync.go          Sync: the background commit + push pusher
+    ├── spawn_*.go       launch the detached, windowless sync process
     ├── cli.go           RunCLI: parses wiki subcommands, calls wiki.go, writes JSON
-    ├── wiki.go          Wiki facade: writeOp sequences everything
+    ├── wiki.go          Wiki facade: writeOp (file-only) then spawns sync
     └── wikitest/        Cross-cutting tests: benchmarks, concurrency, integration
 ```
 
@@ -139,36 +141,58 @@ a shared lock, and coordinates across processes (one short-lived process per com
   once; it blocks only while a writer holds the exclusive lock.
 - **`Release()`** — releases the lock (also released automatically if the process dies).
 
-Two independent locks are used:
+Three independent locks are used:
 
-- **`tasks.json.lock`** — the coarse write lock, held across the *whole* `writeOp`
-  (including git pull/push). Serialises writers against each other.
-- **`tasks.json.swaplock`** — the fine lock, held only around the file swap itself
-  in `store.Save` / `store.Load`. Readers take it shared, the rename takes it
+- **`tasks.json.lock`** — the write lock, held during a writer's file mutation and
+  during the sync's commit. Writes are file-only, so it no longer spans git — held
+  for milliseconds, not a network round-trip. Serialises file-state changes.
+- **`tasks.json.swaplock`** — the fine lock, held only around the file swap in
+  `store.Save` / `store.Load`. Readers take it shared, the rename takes it
   exclusive. So on Windows the rename never loses a sharing-violation race against
-  an open reader, and a reader never sees a half-written file. Held for
-  microseconds — not across git.
+  an open reader, and a reader never sees a half-written file.
+- **`tasks.json.push.lock`** — held by `Sync` for its whole loop, guaranteeing a
+  single active pusher. Concurrent sync processes block here, then exit once there
+  is nothing left to push (this is the coalescing).
+
+---
+
+### sync.go
+The background pusher — what backs the wiki up to GitHub. `Sync(wikiPath)` is run
+by the detached `mhgo wiki sync` process, and can also be invoked by hand to force
+a backup. See [design-async-git-sync.md](design-async-git-sync.md).
+
+- Takes `push.lock` so only one pusher runs at a time.
+- Loops: under the write lock, `git add -A` + commit any pending changes; then,
+  lock-free, push with a `pull --rebase` retry on non-fast-forward. Repeats until
+  the working tree is clean and nothing is unpushed, so a burst of writes
+  coalesces into ~1 push.
+- `WIKI_SKIP_GIT=1` disables it; `WIKI_SKIP_PUSH=1` commits locally but skips push.
+- Ensures the wiki's committed `.gitignore` excludes the lock files (`*.lock`,
+  `*.swaplock`) so the flock files alongside `tasks.json` are never committed.
+
+`spawn_windows.go` / `spawn_other.go` launch it detached and windowless (Windows
+`CREATE_NO_WINDOW`, so no console flashes), so a write never waits on git.
 
 ---
 
 ### wiki.go
 The facade used by `main.go`. No business logic here — only orchestration.
 
-- **`writeOp(mutate, slugForMsg)`** — run by every write operation:
+- **`writeOp(mutate, _)`** — run by every write operation; **file-only**:
   1. Acquire the write lock
-  2. `Pull` (unless `WIKI_SKIP_GIT=1`)
-  3. `store.Load()`
-  4. Call `mutate(store)` — the change itself
-  5. `Render(tasks)`
-  6. `AtomicWrite` all output files
-  7. Delete orphan `proposal-*.md` (tasks that lost their body)
-  8. `store.Save()`
-  9. `CommitPush` (unless `WIKI_SKIP_GIT=1`)
-  10. Release the lock (deferred)
+  2. `store.Load()`
+  3. Call `mutate(store)` — the change itself
+  4. `Render(tasks)`
+  5. `AtomicWrite` all output files
+  6. Delete orphan `proposal-*.md` (tasks that lost their body)
+  7. `store.Save()`
+  8. Launch a detached `mhgo wiki sync` (unless `WIKI_SKIP_GIT=1`) and return —
+     no waiting on git
+  9. Release the lock (deferred)
 
 - Read operations (`GetTask`, `ListTasksBrief`, `ListTasksFull`) bypass `writeOp`
   — they read straight from disk, taking only the shared swap lock around the read
-  itself, so they are never blocked by an in-flight git operation.
+  itself, so they are never blocked by a write or a sync.
 
 ---
 
@@ -201,20 +225,23 @@ main.go → wiki.RunCLI (cli.go)
   │  w.UpsertTask(fields)
   │
 wiki.go / UpsertTask
-  │  extracts slug for the commit message
-  │  calls writeOp(mutate, slug)
+  │  calls writeOp(mutate, _)
   │
-wiki.go / writeOp
+wiki.go / writeOp                           (file-only — no git, returns in ms)
   1. AcquireWriteLock("tasks.json.lock")   ← blocks if another process holds it
-  2. Pull(wikiPath)                         ← git pull --ff-only
-  3. store.Load()                           ← read tasks.json from disk
-  4. store.UpsertTask(fields)               ← mutation (see below)
-  5. Render(store.Tasks())                  ← produce Home.md, _Sidebar.md, proposal-*.md
-  6. AtomicWrite(each output filename)      ← temp+rename per file
-  7. delete orphan proposal-*.md            ← files no longer in the render output
-  8. store.Save()                           ← write tasks.json atomically
-  9. CommitPush(paths, "wiki: my-task")     ← git add → commit → push (with rebase retry)
- 10. lock.Release()                         ← deferred, released regardless
+  2. store.Load()                           ← read tasks.json from disk
+  3. store.UpsertTask(fields)               ← mutation (see below)
+  4. Render(store.Tasks())                  ← produce Home.md, _Sidebar.md, proposal-*.md
+  5. AtomicWrite(each output filename)      ← temp+rename per file
+  6. delete orphan proposal-*.md            ← files no longer in the render output
+  7. store.Save()                           ← write tasks.json atomically
+  8. spawnSync(wikiPath)                     ← detached `mhgo wiki sync`, NOT waited on
+  9. lock.Release()                         ← deferred, released regardless
+
+  (later, in the background)
+sync.go / Sync(wikiPath)                     ← own process; push.lock; commit + push
+  loop: git add -A → commit "wiki sync" → push (pull --rebase on reject)
+        until clean & nothing unpushed (coalesces a burst into ~1 push)
 
 store.go / UpsertTask(fields)
   │  slugIndex() → map[slug]*Task
@@ -242,6 +269,6 @@ cli.go
 
 | Variable          | Effect                                              |
 |-------------------|-----------------------------------------------------|
-| `WIKI_SKIP_GIT=1` | Skips pull, commit, and push. Render + write only.  |
-| `WIKI_SKIP_PUSH=1`| Pull and commit run; push is skipped.               |
+| `WIKI_SKIP_GIT=1` | Writes do not spawn the background sync, and `Sync` is a no-op. File I/O only (used by tests). |
+| `WIKI_SKIP_PUSH=1`| `Sync` commits locally but skips the network push.  |
 | `MHGO_WIKI_PATH`  | Sets the wiki directory (alternative to `--wiki-path`) |

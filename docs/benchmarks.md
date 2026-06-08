@@ -3,27 +3,33 @@
 Tracks how fast the wiki commands run, and how that changes across revisions.
 The benchmark suite lives in [`internal/wiki/wikitest`](../internal/wiki/wikitest).
 
+Since the async-sync change (see [design-async-git-sync.md](design-async-git-sync.md))
+a write only touches the filesystem and returns; the git round-trip happens in a
+detached background `Sync`. So the suites split into the **hot path** (writes +
+reads, no git) and the **background sync** (git).
+
 ## How to run
 
 ```sh
-# No-git suite (default): pure wiki logic + file I/O, git skipped.
+# Hot path (default): writes + reads, git skipped (WIKI_SKIP_GIT=1).
 go test -run '^$' -bench . -benchmem ./internal/wiki/wikitest
 
-# Git-backed write suite: real pull/commit/push against the dummy wiki.
+# Background sync suite: real commit/push against the dummy wiki.
 # Network + push access to github.com/Knatte18/mhgo-wiki-test required.
-go test -tags integration -run '^$' -bench UpsertGit -benchmem -benchtime=10x ./internal/wiki/wikitest
+go test -tags integration -run '^$' -bench SyncGit -benchmem -benchtime=10x ./internal/wiki/wikitest
 ```
 
-The no-git benchmarks set `WIKI_SKIP_GIT=1`; the git ones clone the dummy wiki
-fresh per run. Wiki size (number of tasks already in `tasks.json`) is swept over
-10 / 100 / 1000 to show how cost scales — every write re-renders all tasks.
+Wiki size (number of tasks already in `tasks.json`) is swept over 10 / 100 / 1000
+to show how cost scales — every write re-renders all tasks.
 
-## Why two suites
+## What the suites mean
 
-A real write command's time is dominated by **git**, not by wiki logic. The
-no-git suite is the stable signal for catching logic/allocation regressions; the
-git suite shows the real-world latency a user feels. Reads (`get`, `list`) never
-touch git, so they have no git variant.
+- **Hot path** — what a `mhgo wiki` command actually waits for: file I/O for a
+  write, JSON load for a read. This is the stable signal for catching
+  logic/allocation regressions.
+- **Background sync** — the git commit + push the detached pusher does. It never
+  blocks a command, so its seconds-scale cost is latency the user does not feel.
+- Reads (`get`, `list`) never touch git.
 
 ## Results
 
@@ -31,40 +37,71 @@ Numbers are wall-clock per op on Windows; they are **noisy** (Windows file I/O +
 Defender + GC), so treat them as order-of-magnitude, not precise. Record a new
 block per revision rather than editing the old one, so the trend stays visible.
 
-### 2026-06-08 — baseline (Go port + swap-lock concurrency fix)
+### 2026-06-08 — async git sync
 
-- Commit: `69b02ef` + uncommitted swap-lock/bench work (this commit)
 - Machine: Intel Core Ultra 7 155U, `windows/amd64`, Go default GC
 - Endpoint security active (≈30 ms process-creation tax — see below)
 
-No-git (`go test -bench . -benchmem`, default benchtime):
+Hot path, in-process (`go test -bench . -benchmem`, default benchtime):
 
 | Benchmark            | n=10    | n=100   | n=1000   |
 |----------------------|---------|---------|----------|
-| Upsert (CLI)         | 10.7 ms | 10.2 ms | 21.0 ms  |
-| UpsertFacade         | 15.5 ms | 15.8 ms | 37.7 ms  |
-| Get                  | 0.40 ms | 0.76 ms | 4.47 ms  |
-| List                 | 0.63 ms | 1.18 ms | 7.99 ms  |
-| GetDuringUpsert*     | —       | 0.85 ms | —        |
+| Upsert (CLI)         | 10.4 ms | 18.2 ms | 30.6 ms  |
+| UpsertFacade         | 10.8 ms | 11.8 ms | 27.8 ms  |
+| Get                  | 0.77 ms | 1.52 ms | 4.59 ms  |
+| List                 | 0.45 ms | 1.20 ms | 7.91 ms  |
+| GetDuringUpsert*     | —       | 0.78 ms | —        |
 
 \* `GetDuringUpsert` reads (seed n=100) while a writer upserts continuously in the
-background. At 0.85 ms vs 0.76 ms uncontended, reads stay fast under write load —
-the swap lock fences readers out only for the microseconds of the rename.
+background. At 0.78 ms vs 1.52 ms single-threaded `Get`, reads stay fast under
+write load — the swap lock fences readers out only for the rename's microseconds.
 
-Git-backed write (`-tags integration -bench UpsertGit -benchtime=10x`):
+Write latency end-to-end (warm binary, git-bash wall-clock, includes process
+startup):
 
-| Benchmark           | ns/op    | Notes                                       |
-|---------------------|----------|---------------------------------------------|
-| UpsertGitNoPush     | ~1.35 s  | pull (network) + local commit, no push      |
-| UpsertGit (push)    | ~4.42 s  | full pull + commit + push to the remote     |
+| Path                                    | wall-clock |
+|-----------------------------------------|------------|
+| file-only write, no sync (WIKI_SKIP_GIT)| ~205 ms    |
+| file-only write + detached sync spawn   | ~235 ms    |
+
+The spawn adds only ~30 ms; a *cold* (just-built) binary's first spawn costs ~1 s
+while endpoint security scans the image, then warms up. The ~200 ms floor is
+process startup (git-bash launch + `CreateProcess`), not wiki work — the
+in-process write is the ~10–18 ms `Upsert` row above.
+
+Background sync (`-tags integration -bench SyncGit -benchtime=10x`):
+
+| Benchmark         | ns/op   | Notes                              |
+|-------------------|---------|------------------------------------|
+| SyncGitNoPush     | ~0.7 s  | commit only (WIKI_SKIP_PUSH=1)     |
+| SyncGit           | ~4.5 s  | commit + push to the remote        |
 
 **Takeaways:**
-- Git is essentially the entire write latency. Full push is ~550× the no-git
-  path (≈4.42 s vs ≈8 ms at n=100); even without push, pull + commit is ≈1.35 s.
-  The push leg alone is ≈3 s. The cost is the network round-trips plus several
-  git subprocess spawns, each paying the process-creation tax.
-- Reads scale with wiki size (JSON unmarshal of all tasks); writes scale with
-  size too (re-render of all tasks) but are dwarfed by git when git is on.
+- A write returns in ~0.2 s (startup-bound), versus the ~4.4 s it took when the
+  push was synchronous (see the pre-async baseline below). Git is no longer on
+  the hot path.
+- The git cost did not go away — it moved to the background sync (~4.5 s with
+  push). The user just never waits for it; a burst of writes coalesces into ~1
+  push.
+- Reads and writes still scale with wiki size (JSON unmarshal / re-render of all
+  tasks), but at single-digit milliseconds that is dwarfed by process startup.
+
+### 2026-06-08 — pre-async baseline (synchronous writes)
+
+Kept for history. At this revision every write did `pull → commit → push`
+synchronously, so the command waited the full git round-trip. Benchmarks measured
+`UpsertGit` (the whole write incl. push) rather than `SyncGit`.
+
+| Benchmark            | n=10    | n=100   | n=1000   |
+|----------------------|---------|---------|----------|
+| Upsert (no-git)      | 10.7 ms | 10.2 ms | 21.0 ms  |
+| Get                  | 0.40 ms | 0.76 ms | 4.47 ms  |
+| List                 | 0.63 ms | 1.18 ms | 7.99 ms  |
+
+| Git-backed write  | ns/op   | Notes                                |
+|-------------------|---------|--------------------------------------|
+| UpsertGitNoPush   | ~1.35 s | pull + local commit, no push         |
+| UpsertGit (push)  | ~4.42 s | full pull + commit + push (synchronous, blocked the command) |
 
 ## Process startup context
 
@@ -80,13 +117,12 @@ Every `mhgo` invocation is a fresh process. Measured startup on this machine
 
 A comparable Go binary starts in ~2–5 ms on a clean machine, so ~30 ms here is
 the OS + endpoint-security (`CreateProcess` interception/scan) floor, paid by
-native exes too — not a Go cost. This ~30 ms floor exceeds most no-git wiki
-operations, so per-command responsiveness is bounded by process startup, not by
-anything in this code.
+native exes too — not a Go cost. With git off the hot path, this startup floor is
+now the dominant cost of a write command.
 
 ## Push access
 
-`BenchmarkUpsertGit` (and `TestIntegrationCommitPush`) push to
-`github.com/Knatte18/mhgo-wiki-test`, so the machine's git credential needs
-write access to that repo (it is granted via collaborator access). Without it,
-push returns HTTP 403 and only the no-push / no-git suites can run.
+`BenchmarkSyncGit` (and `TestIntegrationCommitPush`) push to
+`github.com/Knatte18/mhgo-wiki-test`, so the machine's git credential needs write
+access to that repo (granted via collaborator access). Without it, push returns
+HTTP 403 and only the no-push / hot-path suites can run.

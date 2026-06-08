@@ -1,6 +1,6 @@
 # Design: asynchronous git sync
 
-**Status:** Proposal — not yet implemented (2026-06-08).
+**Status:** Accepted — implementing (2026-06-08).
 
 ## Problem
 
@@ -108,9 +108,8 @@ this ever matters, a "pusher-alive" flag can suppress redundant spawns — defer
   writes keep happening while online.
 - **Residual gap:** the only change that can stay un-pushed is the *last* write
   before the machine goes offline/idle forever. It is safe on local disk, just not
-  yet on GitHub. A periodic safety-net sync (a scheduled `mhgo wiki sync` every
-  few minutes) would close this gap; **deferred** for now — option 1 alone is
-  self-healing and we accept the narrow edge.
+  yet on GitHub; the next write while online heals it. We accept this narrow edge
+  — there is no periodic safety-net sync.
 - **Pusher crash:** leaves dirty git state; the next write spawns a fresh pusher
   that picks it up. Locks are OS file locks (gofrs/flock), released automatically
   if the process dies.
@@ -135,11 +134,14 @@ Writes become pure file operations, so unit/concurrency tests keep using
 `WIKI_SKIP_GIT=1` to mean "do not spawn the pusher" — they already run git-free
 and fast. The pusher is exercised by the integration suite against the dummy wiki.
 
-## Open questions
+## Decisions
 
-1. **Pusher entrypoint:** a hidden `mhgo wiki sync` subcommand (reuses the binary
-   via `os.Executable()`, detached with no inherited stdio) vs. an in-binary
-   detached goroutine that re-execs. Recommend the subcommand — simplest and
-   independently runnable for the safety-net later.
-2. **Granularity:** batched pusher commits (default) vs. per-write local commits.
-3. **Safety-net:** add the periodic sync now or defer (currently deferred).
+1. **Pusher entrypoint:** an `mhgo wiki sync` subcommand that runs the loop to
+   completion (reuses the binary via `os.Executable()`). It is an ordinary
+   foreground command — also runnable by hand to force a sync. The *write path*
+   launches it **detached** (Windows `DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP`,
+   no inherited stdio, no `Wait`) so the write returns immediately.
+2. **Granularity:** batched pusher commits (one `wiki sync` commit per drained
+   burst). Per-write local commits are not used.
+3. **No periodic safety-net** — option 1 is self-healing; we accept the narrow
+   last-write-then-offline edge.
