@@ -213,7 +213,7 @@ func (s *Store) validateWrite(snapshot []Task, incoming Task) error {
 }
 
 // UpsertTask creates or updates the task identified by fields["slug"].
-func (s *Store) UpsertTask(fields map[string]interface{}) (Task, error) {
+func (s *Store) UpsertTask(fields map[string]any) (Task, error) {
 	index := s.slugIndex()
 	slugVal, hasSlug := fields["slug"]
 	if !hasSlug {
@@ -258,7 +258,7 @@ func (s *Store) UpsertTask(fields map[string]interface{}) (Task, error) {
 }
 
 // GetTask looks up a task by integer ID or slug string. Returns (Task, true) if found.
-func (s *Store) GetTask(idOrSlug interface{}) (Task, bool) {
+func (s *Store) GetTask(idOrSlug any) (Task, bool) {
 	switch v := idOrSlug.(type) {
 	case int:
 		for _, t := range s.tasks {
@@ -284,7 +284,7 @@ func (s *Store) GetTask(idOrSlug interface{}) (Task, bool) {
 }
 
 // RemoveTask deletes the task by ID or slug. Returns an error if not found.
-func (s *Store) RemoveTask(idOrSlug interface{}) error {
+func (s *Store) RemoveTask(idOrSlug any) error {
 	var slugToRemove string
 
 	switch v := idOrSlug.(type) {
@@ -335,7 +335,7 @@ func (s *Store) RemoveTask(idOrSlug interface{}) error {
 }
 
 // SetPhase sets or clears the status field for the given task. Silent no-op if slug not found.
-func (s *Store) SetPhase(idOrSlug interface{}, phase *string) error {
+func (s *Store) SetPhase(idOrSlug any, phase *string) error {
 	for i := range s.tasks {
 		match := false
 		switch v := idOrSlug.(type) {
@@ -419,7 +419,7 @@ func (s *Store) ListTasksFull() []Task {
 }
 
 // UpsertTasksBatch applies multiple upserts atomically — validates all first, then applies all or none.
-func (s *Store) UpsertTasksBatch(tasks []map[string]interface{}) error {
+func (s *Store) UpsertTasksBatch(tasks []map[string]any) error {
 	// Project the full post-operation snapshot
 	snapshot := s.tasks
 	for _, fields := range tasks {
@@ -502,7 +502,7 @@ func (s *Store) UpsertTasksBatch(tasks []map[string]interface{}) error {
 
 // MergeTasks removes slugs, upserts one task, and optionally sets a phase — all atomically.
 // setPhase is [id_or_slug, phase_string_or_nil], or nil to skip the phase update.
-func (s *Store) MergeTasks(removeSlugs []string, upsert map[string]interface{}, setPhase *[2]interface{}) (Task, error) {
+func (s *Store) MergeTasks(removeSlugs []string, upsert map[string]any, setPhase *[2]any) (Task, error) {
 	// Project snapshot: snapshot minus removeSlugs
 	projected := make([]Task, 0, len(s.tasks))
 	for _, t := range s.tasks {
