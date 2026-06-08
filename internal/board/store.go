@@ -5,7 +5,7 @@
 // Load take the fine-grained swap lock so a concurrent read never sees a
 // half-written file.
 
-package wiki
+package board
 
 import (
 	"encoding/json"

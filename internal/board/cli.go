@@ -5,7 +5,7 @@
 // writes the JSON result to the given writer. Owns the wiki CLI surface so main
 // stays a thin module dispatcher.
 
-package wiki
+package board
 
 import (
 	"encoding/json"

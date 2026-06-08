@@ -100,10 +100,13 @@ llm:
   holistic_timeout: 1800
   tool_use_timeout: 900
   implementer_timeout: 3600
+  max_implementer_prompt_chars: 0
   claude:
+    dispatch: agent  # LLM dispatch mode: subprocess | psmux | agent (agent is Claude-only; the default)
     psmux:
-      via_psmux: false  # Route claude calls through psmux for subscription billing (requires psmux on PATH; mill-go reaps sessions automatically after each implement-review-fix loop)
+      shell_path: pwsh  # Shell binary passed to new_session. Use the full path if pwsh on PATH is a broken stub (e.g. C:/Code/tools/powershell7/pwsh.exe on Windows machines with App Execution Alias disabled).
       reuse_idle_timeout_s: 10  # Seconds to wait for an existing psmux session to return to its idle prompt before reuse fails
+      response_poll_timeout_s:  # Max seconds to wait for psmux Claude TUI to return to idle per mode. Note: review-layer timeout overrides this when invoked via _llm_claude._build_psmux_argv (the --response-poll-timeout flag); this key applies only to direct millpy-claude-sub.py invocations without that flag.
 
 # ---------------------------------------------------------------------------
 # mill-go pipeline
@@ -123,7 +126,7 @@ roles:
   discussion-review:
     holistic:
       rounds: 5
-      reviewer: sonnetmax_tool
+      reviewer: sonnetmax
       # large_prompt:            # optional: override reviewer for large prompts
       #   threshold_ktok: 100    # switch when estimated tok count >= this (char/4000)
       #   reviewer: null         # override reviewer from agents.yaml; null = disabled

@@ -4,7 +4,7 @@
 // waiting, and run every git subprocess without flashing a console window. Both
 // use CREATE_NO_WINDOW — mhgo and git are console apps, and when launched from a
 // process without a visible console each would otherwise pop up its own window.
-package wiki
+package board
 
 import (
 	"os"

@@ -2,7 +2,7 @@
 //
 // PathGuard rejection, AtomicWrite, and Pull / CommitPush behavior.
 
-package wiki_test
+package board_test
 
 import (
 	"os"
@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/mhgo/internal/wiki"
+	"github.com/Knatte18/mhgo/internal/board"
 )
 
 func TestPathGuard(t *testing.T) {

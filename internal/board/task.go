@@ -4,7 +4,7 @@
 // from a raw field map via JSON round-trip so field types are validated exactly
 // as they would be on disk.
 
-package wiki
+package board
 
 import (
 	"encoding/json"

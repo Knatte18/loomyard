@@ -5,7 +5,7 @@
 // caller writes the files. The three outputs are built by renderHome,
 // renderSidebar, and renderProposals respectively.
 
-package wiki
+package board
 
 import (
 	"fmt"

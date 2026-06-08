@@ -2,14 +2,14 @@
 //
 // Acquire/release and exclusive-lock contention between holders.
 
-package wiki_test
+package board_test
 
 import (
 	"os"
 	"path/filepath"
 	"testing"
 
-	"github.com/Knatte18/mhgo/internal/wiki"
+	"github.com/Knatte18/mhgo/internal/board"
 )
 
 func TestAcquireWriteLock(t *testing.T) {

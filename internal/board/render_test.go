@@ -3,7 +3,7 @@
 // Home.md / _Sidebar.md / proposal output across task shapes: dependencies,
 // status, isolated, deferred, orphans, and title formatting.
 
-package wiki_test
+package board_test
 
 import (
 	"fmt"
@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/mhgo/internal/wiki"
+	"github.com/Knatte18/mhgo/internal/board"
 )
 
 func TestRenderToDiskWritesAndCleansOrphans(t *testing.T) {

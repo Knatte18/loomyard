@@ -2,12 +2,12 @@
 //
 // ComputeLayers depth assignment, RenderOrder, and ExtendedTitle.
 
-package wiki_test
+package board_test
 
 import (
 	"testing"
 
-	"github.com/Knatte18/mhgo/internal/wiki"
+	"github.com/Knatte18/mhgo/internal/board"
 )
 
 func TestComputeLayers(t *testing.T) {

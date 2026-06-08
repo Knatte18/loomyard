@@ -3,7 +3,7 @@
 // Drives RunCLI in-process and asserts the JSON + exit-code contract for each
 // subcommand (upsert, list, get, set-phase, remove, rerender).
 
-package wiki_test
+package board_test
 
 import (
 	"bytes"
@@ -12,7 +12,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Knatte18/mhgo/internal/wiki"
+	"github.com/Knatte18/mhgo/internal/board"
 )
 
 // runCLI invokes wiki.RunCLI in-process against wikiPath and returns the exit

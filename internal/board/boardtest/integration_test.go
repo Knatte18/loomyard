@@ -7,7 +7,7 @@
 
 //go:build integration
 
-package wikitest
+package boardtest
 
 import (
 	"fmt"
@@ -18,7 +18,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/mhgo/internal/wiki"
+	"github.com/Knatte18/mhgo/internal/board"
 )
 
 const testRepoURL = "https://github.com/Knatte18/mhgo-wiki-test.git"

@@ -3,12 +3,12 @@
 // CRUD, sequential ID assignment, and every validation rule: dangling deps,
 // isolated/deferred constraints, cycle detection, and batch/merge atomicity.
 
-package wiki_test
+package board_test
 
 import (
 	"testing"
 
-	"github.com/Knatte18/mhgo/internal/wiki"
+	"github.com/Knatte18/mhgo/internal/board"
 )
 
 func TestUpsertTaskNewTaskSequentialID(t *testing.T) {

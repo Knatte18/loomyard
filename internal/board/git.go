@@ -4,7 +4,7 @@
 // rename; Pull and CommitPush wrap git with fast-forward pull and push-with-
 // rebase-retry. The low-level disk and remote layer.
 
-package wiki
+package board
 
 import (
 	"fmt"

@@ -7,7 +7,7 @@
 
 //go:build !windows
 
-package wiki
+package board
 
 import (
 	"os"

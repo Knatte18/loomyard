@@ -5,7 +5,7 @@
 // (WIKI_SKIP_GIT=1) so they measure wiki logic + file I/O only. Also defines
 // seedWiki, the task-seeding helper shared across this package.
 
-package wikitest
+package boardtest
 
 import (
 	"encoding/json"
@@ -16,7 +16,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/Knatte18/mhgo/internal/wiki"
+	"github.com/Knatte18/mhgo/internal/board"
 )
 
 // benchSizes is the set of wiki sizes (number of tasks already in tasks.json)

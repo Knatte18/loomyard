@@ -4,7 +4,7 @@
 // commit + push, a burst coalescing into one commit, WIKI_SKIP_PUSH committing
 // without pushing, and the clean-tree no-op.
 
-package wiki_test
+package board_test
 
 import (
 	"os"
@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/mhgo/internal/wiki"
+	"github.com/Knatte18/mhgo/internal/board"
 )
 
 // newSyncRepo creates a bare "remote" and a working clone with an upstream, seeds

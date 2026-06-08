@@ -5,7 +5,7 @@
 // change up to the remote. It never waits on git. Every mutating method
 // delegates to it; read methods (Get/List) bypass it and load straight from disk.
 
-package wiki
+package board
 
 import (
 	"fmt"

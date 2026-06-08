@@ -8,7 +8,7 @@
 
 //go:build integration
 
-package wikitest
+package boardtest
 
 import (
 	"fmt"
@@ -17,7 +17,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Knatte18/mhgo/internal/wiki"
+	"github.com/Knatte18/mhgo/internal/board"
 )
 
 // cloneBenchWiki clones the dummy wiki into a temp dir and configures a commit

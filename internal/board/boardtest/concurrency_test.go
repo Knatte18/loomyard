@@ -5,14 +5,14 @@
 // serialize through the write lock without losing updates. Also benchmarks read
 // latency while a writer hammers the wiki in the background. All no-git.
 
-package wikitest
+package boardtest
 
 import (
 	"strconv"
 	"sync"
 	"testing"
 
-	"github.com/Knatte18/mhgo/internal/wiki"
+	"github.com/Knatte18/mhgo/internal/board"
 )
 
 // TestConcurrentReadsDuringUpserts runs many readers concurrently with a single

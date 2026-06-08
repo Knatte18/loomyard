@@ -2,12 +2,12 @@
 //
 // NewTask defaults and type validation; ApplyPatch field overlay.
 
-package wiki_test
+package board_test
 
 import (
 	"testing"
 
-	"github.com/Knatte18/mhgo/internal/wiki"
+	"github.com/Knatte18/mhgo/internal/board"
 )
 
 func TestNewTask(t *testing.T) {

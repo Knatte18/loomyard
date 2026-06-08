@@ -2,14 +2,14 @@
 //
 // Upsert / remove / rerender against a temp wiki with git skipped.
 
-package wiki_test
+package board_test
 
 import (
 	"os"
 	"path/filepath"
 	"testing"
 
-	"github.com/Knatte18/mhgo/internal/wiki"
+	"github.com/Knatte18/mhgo/internal/board"
 )
 
 func TestUpsertTask(t *testing.T) {
