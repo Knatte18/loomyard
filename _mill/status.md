@@ -36,7 +36,9 @@ batches:
     start_sha: 97a74c4e805adfe52c20bb1e851e7ef806c4fa58
     commit_sha: 00ee5bfe12a402b190365e57410ff780d7344bc6
   - name: config-system
-    state: pending
+    state: running
+    implementer_session: 9ca4dff8-a0b7-4187-a030-b7b61942b241
+    start_sha: 703a189ce01981e3067ae92dfbf6c0fa1d19e81e
   - name: config-driven-render-facade
     state: pending
   - name: mhgo-init-command
