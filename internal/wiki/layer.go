@@ -1,3 +1,9 @@
+// layer.go — derived task fields.
+//
+// ComputeLayers assigns each task a dependency depth (its render bucket),
+// RenderOrder orders tasks for output, and ExtendedTitle formats a task's
+// display title. All computed at read time; never stored.
+
 package wiki
 
 import (

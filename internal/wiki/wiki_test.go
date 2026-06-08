@@ -1,3 +1,7 @@
+// wiki_test.go — unit tests for the Wiki facade (wiki.go).
+//
+// Upsert / remove / rerender against a temp wiki with git skipped.
+
 package wiki_test
 
 import (
@@ -15,7 +19,7 @@ func TestUpsertTask(t *testing.T) {
 	w := wiki.New(wikiPath)
 
 	// (a) Creates task, tasks.json written, Home.md written
-	task, err := w.UpsertTask(map[string]interface{}{
+	task, err := w.UpsertTask(map[string]any{
 		"slug":  "test-task",
 		"title": "Test Task",
 	})
@@ -40,7 +44,7 @@ func TestUpsertTask(t *testing.T) {
 	}
 
 	// (b) Update preserves other fields
-	task2, err := w.UpsertTask(map[string]interface{}{
+	task2, err := w.UpsertTask(map[string]any{
 		"slug":  "test-task",
 		"title": "Updated Title",
 		"brief": "Brief description",

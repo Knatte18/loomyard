@@ -1,3 +1,9 @@
+// task.go — the Task record stored in tasks.json.
+//
+// Defines the Task struct plus NewTask and ApplyPatch, which build/patch a Task
+// from a raw field map via JSON round-trip so field types are validated exactly
+// as they would be on disk.
+
 package wiki
 
 import (
@@ -20,7 +26,7 @@ type Task struct {
 
 // NewTask builds a Task from a raw field map, assigning nextID.
 // Uses JSON round-trip so field types are validated exactly as they would be on disk.
-func NewTask(fields map[string]interface{}, nextID int) (Task, error) {
+func NewTask(fields map[string]any, nextID int) (Task, error) {
 	if fields["group"] != nil {
 		return Task{}, fmt.Errorf("group key is not allowed; use depends_on, isolated, deferred instead")
 	}
@@ -67,7 +73,7 @@ func NewTask(fields map[string]interface{}, nextID int) (Task, error) {
 
 // ApplyPatch overlays fields onto existing and returns the updated Task.
 // Uses JSON round-trip: existing → map → overlay fields → Task, preserving fields not in the patch.
-func ApplyPatch(existing Task, fields map[string]interface{}) (Task, error) {
+func ApplyPatch(existing Task, fields map[string]any) (Task, error) {
 	if fields["group"] != nil {
 		return Task{}, fmt.Errorf("group key is not allowed; use depends_on, isolated, deferred instead")
 	}
@@ -78,7 +84,7 @@ func ApplyPatch(existing Task, fields map[string]interface{}) (Task, error) {
 		return Task{}, fmt.Errorf("marshal existing: %w", err)
 	}
 
-	var existingMap map[string]interface{}
+	var existingMap map[string]any
 	err = json.Unmarshal(existingJSON, &existingMap)
 	if err != nil {
 		return Task{}, fmt.Errorf("unmarshal existing: %w", err)
