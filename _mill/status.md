@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: config-layer
 branch: config-layer
-plan: null
+plan: _mill/plan
 parent: main
 task: board-modul (rename fra wiki) + _mhgo-konfigurasjon
 task_description: |
@@ -17,4 +17,5 @@ task_description: |
 discussing  '2026-06-08T10:12:45Z'
 discussion-fix-r5  '2026-06-08T11:29:10Z'
 discussed  '2026-06-08T11:29:34Z'
+planning  '2026-06-08T12:02:29Z'
 ```
