@@ -141,7 +141,9 @@ edits the moved files in place (cards 2–4).
   `board.go` (`New`, `writeOp`, `UpsertTask`, `SetPhase`, `RemoveTask`,
   `MergeTasks`, `SetDeps`, `UpsertTasksBatch`, `Rerender`, `Sync`, `GetTask`,
   `ListTasksBrief`, `ListTasksFull`); rename the struct field `wikiPath` →
-  `boardPath` (in `board.go`, and any references in `cli.go`). Rename the
+  `boardPath` — this field is defined and used only in `board.go`; `cli.go`'s
+  local variable also named `wikiPath` is a different thing and stays unchanged
+  (see the "Keep …" note below). Rename the
   exported error types `WikiPushError` → `BoardPushError` and `WikiPathError` →
   `BoardPathError` in `git.go` (definitions) and every use site (`git.go`,
   `sync.go`). Update doc comments that name `Wiki`/`wiki` as the type/module to

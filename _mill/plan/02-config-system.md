@@ -28,7 +28,6 @@ API.
 
 - **Context:**
   - `internal/board/task.go`
-  - `go.sum`
 - **Edits:**
   - `go.mod`
   - `go.sum`
@@ -40,9 +39,22 @@ API.
   / `go.sum`; the network proxy `GOPROXY=direct` is reachable and `check.v1` —
   yaml.v3's only test dep — is already present in `go.sum`). Create
   `internal/board/config.go` in `package board` implementing the `config-api`
-  and `env-token-expansion` Shared Decisions: define `type Config struct { Path,
-  Home, Sidebar, ProposalPrefix string }` and `type Outputs struct { Home,
-  Sidebar, ProposalPrefix string }`; `func (c Config) Outputs() Outputs`;
+  and `env-token-expansion` Shared Decisions. Define `Config` with EXPLICIT yaml
+  struct tags so the on-disk keys match the discussion schema (yaml.v3
+  lowercases field names verbatim, so `ProposalPrefix` would otherwise marshal
+  as `proposalprefix`, not `proposal_prefix`):
+
+  ```go
+  type Config struct {
+      Path           string `yaml:"path"`
+      Home           string `yaml:"home"`
+      Sidebar        string `yaml:"sidebar"`
+      ProposalPrefix string `yaml:"proposal_prefix"`
+  }
+  ```
+
+  and `type Outputs struct { Home, Sidebar, ProposalPrefix string }`;
+  `func (c Config) Outputs() Outputs`;
   `func DefaultConfig() Config` returning `{Path: "../_board", Home: "Home.md",
   Sidebar: "_Sidebar.md", ProposalPrefix: "proposal-"}`; `func DefaultOutputs()
   Outputs` returning `DefaultConfig().Outputs()`; and `func LoadConfig(baseDir,
