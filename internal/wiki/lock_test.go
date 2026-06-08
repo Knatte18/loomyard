@@ -1,3 +1,7 @@
+// lock_test.go — unit tests for file locking (lock.go).
+//
+// Acquire/release and exclusive-lock contention between holders.
+
 package wiki_test
 
 import (

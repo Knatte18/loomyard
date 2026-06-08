@@ -1,3 +1,9 @@
+// render.go — turns the task list into the wiki's output files.
+//
+// Render is a pure function: tasks in, a map of filename → content out
+// (Home.md, _Sidebar.md, and proposal-*.md for tasks with a body). No I/O — the
+// caller writes the files.
+
 package wiki
 
 import (

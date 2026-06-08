@@ -1,3 +1,8 @@
+// store_test.go — unit tests for the Store (store.go).
+//
+// CRUD, sequential ID assignment, and every validation rule: dangling deps,
+// isolated/deferred constraints, cycle detection, and batch/merge atomicity.
+
 package wiki_test
 
 import (

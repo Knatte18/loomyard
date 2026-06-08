@@ -1,3 +1,8 @@
+// render_test.go — unit tests for rendering (render.go).
+//
+// Home.md / _Sidebar.md / proposal output across task shapes: dependencies,
+// status, isolated, deferred, orphans, and title formatting.
+
 package wiki_test
 
 import (

@@ -1,3 +1,7 @@
+// layer_test.go — unit tests for derived fields (layer.go).
+//
+// ComputeLayers depth assignment, RenderOrder, and ExtendedTitle.
+
 package wiki_test
 
 import (

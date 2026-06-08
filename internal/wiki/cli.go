@@ -1,3 +1,10 @@
+// cli.go — the wiki module's command router.
+//
+// RunCLI parses [--wiki-path] <subcommand> [json-payload], resolves the wiki
+// path (flag → MHGO_WIKI_PATH → ../gowiki), dispatches to one Wiki method, and
+// writes the JSON result to the given writer. Owns the wiki CLI surface so main
+// stays a thin module dispatcher.
+
 package wiki
 
 import (

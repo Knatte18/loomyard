@@ -1,3 +1,9 @@
+// task.go — the Task record stored in tasks.json.
+//
+// Defines the Task struct plus NewTask and ApplyPatch, which build/patch a Task
+// from a raw field map via JSON round-trip so field types are validated exactly
+// as they would be on disk.
+
 package wiki
 
 import (

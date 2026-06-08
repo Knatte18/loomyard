@@ -1,3 +1,7 @@
+// git_test.go — unit tests for the fs/git plumbing (git.go).
+//
+// PathGuard rejection, AtomicWrite, and Pull / CommitPush behavior.
+
 package wiki_test
 
 import (
