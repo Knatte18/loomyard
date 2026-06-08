@@ -1,9 +1,9 @@
 // bench_test.go — no-git benchmarks for the core wiki commands.
 //
-// Benchmarks upsert / get / list (via the CLI entrypoint) and the Wiki facade
-// across wiki sizes of 10/100/1000 tasks, with git skipped (WIKI_SKIP_GIT=1) so
-// they measure wiki logic + file I/O only. Also defines seedWiki, the task-
-// seeding helper shared across this package.
+// Benchmarks the pure Render plus upsert / get / list (via the CLI entrypoint)
+// and the Wiki facade across wiki sizes of 10/100/1000 tasks, with git skipped
+// (WIKI_SKIP_GIT=1) so they measure wiki logic + file I/O only. Also defines
+// seedWiki, the task-seeding helper shared across this package.
 
 package wikitest
 
@@ -51,6 +51,39 @@ func seedWiki(tb testing.TB, n int) string {
 		tb.Fatalf("write seed: %v", err)
 	}
 	return dir
+}
+
+// BenchmarkRender measures the pure Render function (tasks → markdown content),
+// no I/O. A quarter of the tasks have a body so proposal-*.md generation is
+// exercised. Render runs once inside every write (writeOp).
+func BenchmarkRender(b *testing.B) {
+	for _, n := range benchSizes {
+		b.Run(fmt.Sprintf("n=%d", n), func(b *testing.B) {
+			tasks := make([]wiki.Task, n)
+			for i := range tasks {
+				body := ""
+				if i%4 == 0 {
+					body = "proposal body for task " + strconv.Itoa(i)
+				}
+				tasks[i] = wiki.Task{
+					ID:        i,
+					Slug:      "task-" + strconv.Itoa(i),
+					Title:     "Task " + strconv.Itoa(i),
+					DependsOn: []string{},
+					Brief:     "brief for task " + strconv.Itoa(i),
+					Body:      body,
+				}
+			}
+
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				if _, err := wiki.Render(tasks); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
 }
 
 // BenchmarkUpsert measures a full "upsert" command through the CLI entrypoint:

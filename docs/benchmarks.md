@@ -46,11 +46,15 @@ Hot path, in-process (`go test -bench . -benchmem`, default benchtime):
 
 | Benchmark            | n=10    | n=100   | n=1000   |
 |----------------------|---------|---------|----------|
+| Render (pure)        | 0.03 ms | 0.28 ms | 3.5 ms   |
 | Upsert (CLI)         | 10.4 ms | 18.2 ms | 30.6 ms  |
 | UpsertFacade         | 10.8 ms | 11.8 ms | 27.8 ms  |
 | Get                  | 0.77 ms | 1.52 ms | 4.59 ms  |
 | List                 | 0.45 ms | 1.20 ms | 7.91 ms  |
 | GetDuringUpsert*     | —       | 0.78 ms | —        |
+
+`Render` (tasks → markdown, no I/O) runs once inside every write; at a fraction of
+a millisecond for realistic wiki sizes it is a small part of an `Upsert`.
 
 \* `GetDuringUpsert` reads (seed n=100) while a writer upserts continuously in the
 background. At 0.78 ms vs 1.52 ms single-threaded `Get`, reads stay fast under
