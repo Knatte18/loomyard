@@ -3,10 +3,10 @@
 Tracks how fast the wiki commands run, and how that changes across revisions.
 The benchmark suite lives in [`internal/wiki/wikitest`](../internal/wiki/wikitest).
 
-Since the async-sync change (see [design-async-git-sync.md](design-async-git-sync.md))
-a write only touches the filesystem and returns; the git round-trip happens in a
-detached background `Sync`. So the suites split into the **hot path** (writes +
-reads, no git) and the **background sync** (git).
+Since the async-sync change (see [wiki.md](wiki.md#background-sync)) a write only
+touches the filesystem and returns; the git round-trip happens in a detached
+background `Sync`. So the suites split into the **hot path** (writes + reads, no
+git) and the **background sync** (git).
 
 ## How to run
 
