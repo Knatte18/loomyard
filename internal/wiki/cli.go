@@ -44,6 +44,7 @@ const defaultWikiPath = "../gowiki"
 //	merge         '{"remove_slugs":["old"],"upsert":{...},"set_phase":["new-slug","done"]}'
 //	set-deps      '{"slug":"my-task","depends_on":["other"]}'
 //	rerender      (no payload — rebuild Home.md and _Sidebar.md from current tasks.json)
+//	sync          (no payload — commit + push pending changes to the remote)
 //
 // All output is JSON on out.
 // Success: {"ok":true, ...}
@@ -232,6 +233,14 @@ func RunCLI(out io.Writer, args []string) int {
 		// Rebuild Home.md and _Sidebar.md from the current tasks.json. No payload.
 		// Useful if render files have been corrupted or manually edited.
 		if err := w.Rerender(); err != nil {
+			return outputError(out, err.Error())
+		}
+		return outputSuccess(out)
+
+	case "sync":
+		// Commit and push pending changes to the remote. No payload. Normally
+		// launched detached by a write; can also be run by hand to force a backup.
+		if err := w.Sync(); err != nil {
 			return outputError(out, err.Error())
 		}
 		return outputSuccess(out)
