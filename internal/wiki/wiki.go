@@ -53,36 +53,19 @@ func (w *Wiki) writeOp(mutate func(*Store) (any, error), _ string) (any, error) 
 		return nil, err
 	}
 
-	// (4) Render
-	renderMap, err := Render(store.Tasks())
-	if err != nil {
-		return nil, fmt.Errorf("render: %w", err)
-	}
-
-	// (5) Write render outputs
-	for relPath, content := range renderMap {
-		if err := AtomicWrite(w.wikiPath, relPath, content); err != nil {
-			return nil, fmt.Errorf("write %s: %w", relPath, err)
-		}
-	}
-
-	// (6) Delete orphan proposal-*.md files
-	existingProposals, err := filepath.Glob(filepath.Join(w.wikiPath, "proposal-*.md"))
-	if err == nil {
-		for _, existingPath := range existingProposals {
-			relPath := filepath.Base(existingPath)
-			if _, exists := renderMap[relPath]; !exists {
-				os.Remove(existingPath)
-			}
-		}
-	}
-
-	// (7) Save store
+	// (4) Save the store first — tasks.json is the source of truth, persisted
+	// before the derived .md view (so a crash never leaves .md ahead of the data).
 	if err := store.Save(w.wikiPath, "tasks.json"); err != nil {
 		return nil, fmt.Errorf("save store: %w", err)
 	}
 
-	// (8) Hand the remote backup to a detached sync process and return. The data
+	// (5) Render the readable .md files (render.go owns all markdown output and
+	// orphan cleanup; wiki.go only deals with tasks.json).
+	if err := RenderToDisk(w.wikiPath, store.Tasks()); err != nil {
+		return nil, fmt.Errorf("render: %w", err)
+	}
+
+	// (6) Hand the remote backup to a detached sync process and return. The data
 	// is already durable on disk; a failed spawn just defers backup to the next
 	// write, since git push is cumulative.
 	if os.Getenv("WIKI_SKIP_GIT") != "1" {
