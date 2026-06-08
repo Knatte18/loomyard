@@ -214,7 +214,12 @@ before anything else is built on top of it.
 
 - Decision: `spawnSync` passes the **resolved absolute board path** to the
   detached `mhgo board sync` child via an internal `--board-path` flag (the term
-  "wiki-path" is retired). The child does **not** re-resolve config.
+  "wiki-path" is retired). The child does **not** re-resolve config: when
+  `--board-path` is present, `RunCLI` skips `LoadConfig` **and** the
+  `<cwd>/_mhgo/` existence check entirely (the path is injected, not resolved),
+  so the detached child never spuriously errors from an inherited cwd that lacks
+  `_mhgo/`. Output names are not passed to the child — `sync` touches only git
+  and `tasks.json`, never rendering.
 - Rationale: the public CLI is flag-free, but the detached background process
   must get an unambiguous path that is immune to any cwd/env differences in the
   child.
@@ -270,7 +275,12 @@ go 1.26), today only depending on `github.com/gofrs/flock`. Layout:
     `"Home.md"`, `"_Sidebar.md"`, and `proposal-<slug>.md`; `RenderToDisk`
     writes them; `removeOrphanProposals` globs `proposal-*.md`. **Changes:**
     thread the configured home/sidebar filenames and proposal prefix through
-    `Render`/`RenderToDisk`, and use the configured prefix in the orphan glob.
+    `Render`/`RenderToDisk`. The proposal prefix appears at **four** sites, all
+    of which must use the configured value: filename generation in
+    `renderProposals`, the orphan glob in `removeOrphanProposals`, and the
+    in-content proposal links hardcoded as `proposal-%s.md` in `renderHome`
+    (line 97) and `renderSidebar` (line 146) — miss the last two and the links
+    point at files that no longer exist under a custom prefix.
   - `store.go` — in-memory store over `tasks.json` (CRUD + validation + atomic
     save under swap lock). `tasks.json` and `*.swaplock`/`*.lock` names stay.
   - `sync.go` — background pusher; constants `writeLockFile`, `pushLockFile`;
@@ -344,6 +354,13 @@ and the black-box cross-cutting suite in `boardtest/`.
 - **`cli_test.go`** — drop `--wiki-path`/`MHGO_WIKI_PATH` cases; drive the CLI
   with a temp cwd containing `_mhgo/board.yaml` (or via the facade constructor);
   cover the `board` subcommands and the new `init` path.
+- **`boardtest` CLI benchmarks** — `bench_test.go` drives `RunCLI` via
+  `--wiki-path <tempdir>` against dirs with no `_mhgo/`; with the flag gone and
+  the CLI requiring `<cwd>/_mhgo/`, these benches must be **re-architected** (run
+  in a temp cwd seeded with `_mhgo/board.yaml`, or moved to the facade
+  constructor), not merely renamed. CLI-path benchmark numbers now include the
+  added `os.Getwd()` + config-load cost — note this when comparing against
+  historical figures.
 - **Rename churn** — every test referencing `Home.md`/`_Sidebar.md`/`proposal-`,
   `--wiki-path`, `MHGO_WIKI_PATH`, `WIKI_SKIP_GIT`/`WIKI_SKIP_PUSH`, the `Wiki`
   type, or `package wikitest` must be updated; `wikitest` → `boardtest`.
@@ -391,4 +408,15 @@ and the black-box cross-cutting suite in `boardtest/`.
   reimplementing all of Millhouse; modules are submodules (`mhgo board ...`);
   `board` is today's only module. This justifies module-keyed config and a
   top-level `init`.
-```
+- **Q:** (review r2 GAP) Detached `sync` child vs the cwd-required `_mhgo/`
+  check? **A:** `--board-path` fully bypasses `LoadConfig` and the `_mhgo/`
+  existence check; the path is injected, not resolved, so the child never
+  spuriously errors from a cwd without `_mhgo/`. Output names are not passed —
+  `sync` never renders.
+- **Q:** (review r2 NOTE) `boardtest` CLI benchmarks under the new cwd model?
+  **A:** They drive `RunCLI` via `--wiki-path`; with the flag gone they must be
+  re-architected (temp cwd with `_mhgo/board.yaml`, or the facade constructor),
+  and CLI-bench numbers now include config-load overhead.
+- **Q:** (review r2 NOTE) Where does the proposal prefix apply? **A:** Four
+  sites — `renderProposals` filenames, the `removeOrphanProposals` glob, and the
+  in-content links in `renderHome` (line 97) and `renderSidebar` (line 146).
