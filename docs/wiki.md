@@ -80,16 +80,22 @@ Topological sorting of tasks into "buckets".
   tasks, none for done/deferred.
 
 ### render.go
-Produces the contents of the wiki's markdown files.
+Owns **all** of the wiki's readable `.md` output — building it, writing it, and
+cleaning it up. wiki.go never touches a markdown file.
 
-- **`Render(tasks)`** — returns `map[relPath]content`:
+- **`Render(tasks)`** — the pure core: tasks in, `map[relPath]content` out (no
+  I/O). Built by three helpers — `renderHome`, `renderSidebar`,
+  `renderProposals`:
   - `"Home.md"` — sectioned per bucket with `# Layer X` / `# Someday` / `# Done`
     headings. Each task: `## **#NNN:** Title [Layer]`, a slug line, an optional
     `Depends on:`, and an optional brief.
   - `"_Sidebar.md"` — one line per task, grouped per bucket.
-  - `"proposal-<slug>.md"` — one file per task with a non-empty `Body`.
-
-`Render` is pure: tasks in, filename→content out. The caller writes the files.
+  - `"proposal-<slug>.md"` — one file per task with a non-empty `Body` (content is
+    the body verbatim).
+- **`RenderToDisk(wikiPath, tasks)`** — renders and persists: `AtomicWrite`s every
+  file, then removes any `proposal-*.md` the render no longer produces (a task
+  lost its body or was removed). This is the single call the write path makes for
+  rendering.
 
 ### git.go
 The filesystem + git plumbing.
@@ -123,12 +129,10 @@ The facade. No business logic — only orchestration.
   1. Acquire the write lock
   2. `store.Load()`
   3. `mutate(store)` — the change itself
-  4. `Render(tasks)`
-  5. `AtomicWrite` all output files
-  6. Delete orphan `proposal-*.md` (tasks that lost their body)
-  7. `store.Save()`
-  8. Launch a detached `mhgo wiki sync` (unless `WIKI_SKIP_GIT=1`) and return
-  9. Release the lock (deferred)
+  4. `store.Save()` — `tasks.json`, the source of truth, persisted first
+  5. `RenderToDisk(...)` — render.go writes the derived `.md` files and removes orphans
+  6. Launch a detached `mhgo wiki sync` (unless `WIKI_SKIP_GIT=1`) and return
+  7. Release the lock (deferred)
 - Read ops (`GetTask`, `ListTasksBrief`, `ListTasksFull`) bypass `writeOp` — they
   read straight from disk under only the shared swap lock, so they are never
   blocked by a write or a sync.
@@ -215,12 +219,10 @@ wiki.go / writeOp                           (file-only — no git, returns in ms
   1. AcquireWriteLock("tasks.json.lock")   ← blocks if another process holds it
   2. store.Load()                           ← read tasks.json from disk
   3. store.UpsertTask(fields)               ← mutation (see below)
-  4. Render(store.Tasks())                  ← produce Home.md, _Sidebar.md, proposal-*.md
-  5. AtomicWrite(each output filename)      ← temp+rename per file
-  6. delete orphan proposal-*.md            ← files no longer in the render output
-  7. store.Save()                           ← write tasks.json atomically
-  8. spawnSync(wikiPath)                     ← detached `mhgo wiki sync`, NOT waited on
-  9. lock.Release()                         ← deferred
+  4. store.Save()                           ← write tasks.json atomically (source of truth)
+  5. RenderToDisk(wikiPath, tasks)          ← render.go: write .md files + drop orphans
+  6. spawnSync(wikiPath)                     ← detached `mhgo wiki sync`, NOT waited on
+  7. lock.Release()                         ← deferred
 
   (later, in the background)
 sync.go / Sync(wikiPath)                     ← own process; push.lock; commit + push

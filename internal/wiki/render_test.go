@@ -7,11 +7,46 @@ package wiki_test
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/mhgo/internal/wiki"
 )
+
+func TestRenderToDiskWritesAndCleansOrphans(t *testing.T) {
+	dir := t.TempDir()
+
+	// A stale proposal from a previous render that should be cleaned up.
+	ghost := filepath.Join(dir, "proposal-ghost.md")
+	if err := os.WriteFile(ghost, []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	tasks := []wiki.Task{
+		{ID: 0, Slug: "a", Title: "A", Body: "proposal A"},
+		{ID: 1, Slug: "b", Title: "B"}, // no body → no proposal file
+	}
+	if err := wiki.RenderToDisk(dir, tasks); err != nil {
+		t.Fatalf("RenderToDisk: %v", err)
+	}
+
+	for _, f := range []string{"Home.md", "_Sidebar.md"} {
+		if _, err := os.Stat(filepath.Join(dir, f)); err != nil {
+			t.Errorf("%s not written: %v", f, err)
+		}
+	}
+	if b, err := os.ReadFile(filepath.Join(dir, "proposal-a.md")); err != nil || string(b) != "proposal A" {
+		t.Errorf("proposal-a.md: got %q, err %v", b, err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "proposal-b.md")); !os.IsNotExist(err) {
+		t.Errorf("proposal-b.md should not exist (task has no body)")
+	}
+	if _, err := os.Stat(ghost); !os.IsNotExist(err) {
+		t.Errorf("orphan proposal-ghost.md should have been removed")
+	}
+}
 
 func TestRenderEmptyTaskList(t *testing.T) {
 	// (a) empty task list → Home.md is exactly "# Tasks\n", Sidebar is "", no proposal files

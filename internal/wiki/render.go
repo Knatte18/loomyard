@@ -9,8 +9,43 @@ package wiki
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 )
+
+// RenderToDisk renders the tasks and persists the wiki's readable representation:
+// it writes every rendered file atomically and removes any proposal-*.md the
+// render no longer produces. render.go owns all .md output; wiki.go owns only
+// tasks.json. This is the single call the write path makes for rendering.
+func RenderToDisk(wikiPath string, tasks []Task) error {
+	files, err := Render(tasks)
+	if err != nil {
+		return err
+	}
+	for relPath, content := range files {
+		if err := AtomicWrite(wikiPath, relPath, content); err != nil {
+			return fmt.Errorf("write %s: %w", relPath, err)
+		}
+	}
+	removeOrphanProposals(wikiPath, files)
+	return nil
+}
+
+// removeOrphanProposals deletes proposal-*.md files the current render no longer
+// produces (a task lost its body or was removed). Best-effort: a stale file left
+// behind is harmless and cleaned up on the next render, so it never fails a write.
+func removeOrphanProposals(wikiPath string, rendered map[string]string) {
+	existing, err := filepath.Glob(filepath.Join(wikiPath, "proposal-*.md"))
+	if err != nil {
+		return
+	}
+	for _, path := range existing {
+		if _, kept := rendered[filepath.Base(path)]; !kept {
+			os.Remove(path)
+		}
+	}
+}
 
 // Render produces the wiki output files from the task list.
 // Returns a map of relative filename → content: always "Home.md" and "_Sidebar.md",
