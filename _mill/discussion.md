@@ -182,9 +182,12 @@ before anything else is built on top of it.
   `main.go`, beside `case "board"`). For this task it does exactly:
   (1) create `<cwd>/_mhgo/` if missing; (2) write the commented
   `_mhgo/board.yaml` if missing; (3) maintain a `.gitignore` managed block (see
-  gitignore-block) containing `.mhgo/`; (4) print a JSON action summary
-  (created vs skipped per item); fully idempotent / re-run safe. It does **not**
-  create or clone the board directory.
+  gitignore-block) containing `.mhgo/`; (4) print a single-line JSON action
+  summary naming the status of each item, e.g.
+  `{"ok":true,"mhgo_dir":"created"|"exists","board_yaml":"created"|"exists",
+  "gitignore":"updated"|"unchanged"}`; fully idempotent / re-run safe. It does
+  **not** create or clone the board directory. (Exact key spellings are a plan
+  detail, but the test and plan must agree on this shape.)
 - Rationale: `init` will eventually grow into a mill-setup-equivalent, but most
   of mill-setup is millpy plumbing irrelevant to a Go binary or needs LLM
   judgment. Keep the mechanical, in-domain minimum now; defer the rest to the
@@ -200,7 +203,9 @@ before anything else is built on top of it.
   contents differ. It always targets `<cwd>/.gitignore` regardless of whether
   cwd is a git repo root (consistent with the cwd-authoritative model); the
   marker text `mhgo-managed` deliberately does not collide with millpy's
-  separate `mill-managed` block.
+  separate `mill-managed` block. The "contents differ" check compares the
+  block's **interior lines trimmed**, so re-runs never churn on trailing-newline
+  or surrounding-whitespace differences.
 - Rationale: mirrors mill-setup Phase 4.5b — a managed block is idempotent,
   cleanly removable, and extensible by future `init` features; a bare append is
   not.
@@ -464,3 +469,8 @@ and the black-box cross-cutting suite in `boardtest/`.
 - **Q:** (review r4 NOTE) Do read subcommands also need `_mhgo/`? **A:** Yes —
   `RunCLI` resolves config once for all subcommands, so `list`/`get` require
   `<cwd>/_mhgo/` and pay config-load identically to writes.
+- **Q:** (review r5 NOTE) `init` JSON summary shape? **A:** Single-line JSON with
+  a per-item status, e.g. `{"ok":true,"mhgo_dir":...,"board_yaml":...,
+  "gitignore":...}`; test and plan must agree on the shape.
+- **Q:** (review r5 NOTE) `.gitignore` idempotency comparison? **A:** Compare the
+  managed block's interior lines trimmed, so re-runs don't churn on whitespace.
