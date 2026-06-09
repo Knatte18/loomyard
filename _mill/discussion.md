@@ -107,20 +107,28 @@ references, add `.env` loading) approved in the discussion.
   without `t.Setenv` cleanup. No new dependency — a dozen lines of Go.
 - **Rejected:** Using `os.Setenv` — leaks across parallel `Load` calls in tests. Using
   a third-party dotenv library — unnecessary dep for a trivial parser.
+- **Scope note:** `.env` is read by `config.Load`, which is called by `board.LoadConfig`.
+  The detached sync child (cli.go:63-65, `--board-path` path) bypasses `LoadConfig`
+  entirely, so `.env` is intentionally never loaded for sync. The sync child only needs
+  the board path, which is injected directly.
 
 ### init.go template — static literals with illustrative env var names
 
 - **Decision:** `generateCommentedBoardYAML` is rewritten as static literal strings (not
-  derived from `DefaultConfig()`). The env var names shown — `MHGO_BOARD_PATH`,
-  `MHGO_HOME`, `MHGO_SIDEBAR`, `MHGO_PROPOSAL_PREFIX` — are illustrative suggestions
-  only; they are not canonical API. Operators use any env var name they choose. The
-  template's purpose is to document the `? fallback` syntax with concrete examples.
-- **Rationale:** The old dynamic approach (formatting from `DefaultConfig()` field values)
-  cannot show `? fallback` syntax without either inventing env var names or leaving the
-  fallback slot empty. Static literals are simpler and directly show the intended usage.
-  Making the names "illustrative" keeps them from becoming an undocumented convention.
-- **Rejected:** Treating `MHGO_*` as canonical namespace — premature standardisation with
-  no consumer yet. Keeping the template derived from defaults — can't show the syntax.
+  derived from `DefaultConfig()`). Its signature changes from
+  `generateCommentedBoardYAML(defaults Config) string` to `generateCommentedBoardYAML() string`
+  (no parameter). The caller in `RunInit` (init.go:68) is updated from
+  `content := generateCommentedBoardYAML(defaults)` to `content := generateCommentedBoardYAML()`.
+  The env var names shown — `MHGO_BOARD_PATH`, `MHGO_HOME`, `MHGO_SIDEBAR`,
+  `MHGO_PROPOSAL_PREFIX` — are illustrative suggestions only; they are not canonical API.
+  Operators use any env var name they choose. The template's purpose is to document the
+  `? fallback` syntax with concrete examples.
+- **Rationale:** The old dynamic approach cannot show `? fallback` syntax without either
+  inventing env var names or leaving the fallback slot empty. Dropping the `defaults`
+  param removes a now-dead argument; static literals are simpler. Making the names
+  "illustrative" keeps them from becoming an undocumented convention.
+- **Rejected:** Treating `MHGO_*` as canonical namespace — premature standardisation.
+  Keeping the template derived from defaults — can't show the syntax.
 
 ### `board.LoadConfig` stays exported
 
@@ -233,15 +241,27 @@ var envOptRe = regexp.MustCompile(`\$env:([A-Za-z_][A-Za-z0-9_]*)\s*\?\s*(.*)$`)
 var envReqRe = regexp.MustCompile(`\$env:([A-Za-z_][A-Za-z0-9_]*)`)
 ```
 
-Expansion order:
-1. Apply `envOptRe` to the value. If it matches: resolve the named env var (OS first,
-   then dotenv map). If set, substitute its value for the `$env:NAME ? fallback` portion
-   (leaving any prefix text intact). If unset, substitute `strings.TrimSpace(fallback)`
-   for the same portion. The fallback is used as a literal — any `$env:` inside it is
-   NOT expanded.
-2. Apply `envReqRe.ReplaceAllStringFunc` to the result of step 1, expanding only the
-   `$env:NAME` tokens that remain (i.e. those that were in the original value outside
-   the optional match). An unset required token → hard error.
+Expansion — three-phase positional algorithm (avoids re-scanning the fallback literal):
+
+1. **Find optional match.** Apply `envOptRe` to the value. If it matches, record the
+   match start index: everything before `match.start` is the *prefix span*; everything
+   from `match.start` onward is the *optional span* (consumed entirely in step 3).
+2. **Expand required tokens in prefix only.** Apply `envReqRe.ReplaceAllStringFunc` to
+   the *prefix span* (the substring `value[:match.start]`, or the whole value if no
+   optional match). An unset required token → hard error.
+3. **Resolve optional span.** If step 1 found a match: look up the env var (OS first,
+   then dotenv map). If set, append its value to the expanded prefix. If unset, append
+   `strings.TrimSpace(fallback)`. The fallback string is appended as-is — it is never
+   scanned for `$env:` tokens. If step 1 found no match: nothing to append (all tokens
+   were required and handled in step 2).
+
+This three-phase structure guarantees that `$env:` text inside a fallback literal is
+never passed to `envReqRe`, regardless of what the fallback string contains.
+
+Config values are single-line YAML scalars (the YAML library folds/joins multi-line
+scalars before returning them as strings). The `(.*)$` in `envOptRe` is therefore
+safe — `$` anchors at end-of-text in Go's non-multiline regex mode, and `.` never
+crosses newlines without `(?s)`, so no mid-newline anchor issue arises.
 
 ### `.env` parser pseudocode
 
@@ -382,3 +402,6 @@ Tests move to `internal/lock/lock_test.go`.
 - **Q:** Are the `MHGO_*` env var names in the init.go template canonical API? **A:** No — they are illustrative suggestions in a comment; operators use any name. The template is static literals.
 - **Q:** Is the fallback in `$env:NAME ? fallback` expanded for nested `$env:` tokens? **A:** No — the fallback is a literal; `$env:` tokens inside it are not expanded.
 - **Q:** How is fallback whitespace handled? **A:** `\s*\?\s*` strips whitespace around `?`; the captured fallback is additionally `strings.TrimSpace`'d.
+- **Q:** Does step-2 required expansion re-scan the substituted fallback? **A:** No — a three-phase positional algorithm runs required expansion only on the prefix span (before the optional match); the fallback is appended as-is in phase 3.
+- **Q:** Does `generateCommentedBoardYAML` keep its `defaults Config` parameter? **A:** No — parameter is dropped; signature becomes `generateCommentedBoardYAML() string`; caller at init.go:68 updated accordingly.
+- **Q:** Does `.env` apply to the detached sync child? **A:** No — the sync child bypasses `LoadConfig`; `.env` is intentionally not loaded there.
