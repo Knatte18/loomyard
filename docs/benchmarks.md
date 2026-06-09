@@ -1,9 +1,9 @@
-# Benchmarks: wiki command performance
+# Benchmarks: board command performance
 
-Tracks how fast the wiki commands run, and how that changes across revisions.
-The benchmark suite lives in [`internal/wiki/wikitest`](../internal/wiki/wikitest).
+Tracks how fast the board commands run, and how that changes across revisions.
+The benchmark suite lives in [`internal/board/boardtest`](../internal/board/boardtest).
 
-Since the async-sync change (see [wiki.md](wiki.md#background-sync)) a write only
+Since the async-sync change (see [board.md](board.md#background-sync)) a write only
 touches the filesystem and returns; the git round-trip happens in a detached
 background `Sync`. So the suites split into the **hot path** (writes + reads, no
 git) and the **background sync** (git).
@@ -11,25 +11,27 @@ git) and the **background sync** (git).
 ## How to run
 
 ```sh
-# Hot path (default): writes + reads, git skipped (WIKI_SKIP_GIT=1).
-go test -run '^$' -bench . -benchmem ./internal/wiki/wikitest
+# Hot path (default): writes + reads, git skipped (BOARD_SKIP_GIT=1).
+go test -run '^$' -bench . -benchmem ./internal/board/boardtest
 
-# Background sync suite: real commit/push against the dummy wiki.
+# Background sync suite: real commit/push against the dummy board.
 # Network + push access to github.com/Knatte18/mhgo-wiki-test required.
-go test -tags integration -run '^$' -bench SyncGit -benchmem -benchtime=10x ./internal/wiki/wikitest
+go test -tags integration -run '^$' -bench SyncGit -benchmem -benchtime=10x ./internal/board/boardtest
 ```
 
-Wiki size (number of tasks already in `tasks.json`) is swept over 10 / 100 / 1000
+Board size (number of tasks already in `tasks.json`) is swept over 10 / 100 / 1000
 to show how cost scales — every write re-renders all tasks.
 
 ## What the suites mean
 
-- **Hot path** — what a `mhgo wiki` command actually waits for: file I/O for a
-  write, JSON load for a read. This is the stable signal for catching
+- **Hot path** — what a `mhgo board` command actually waits for: file I/O for a
+  write, JSON load for a read, plus configuration loading (os.Getwd() + config
+  resolution from YAML layers). This is the stable signal for catching
   logic/allocation regressions.
 - **Background sync** — the git commit + push the detached pusher does. It never
   blocks a command, so its seconds-scale cost is latency the user does not feel.
-- Reads (`get`, `list`) never touch git.
+- Reads (`get`, `list`) never touch git but include the configuration-load cost
+  from the cwd model.
 
 ## Results
 
@@ -54,18 +56,26 @@ Hot path, in-process (`go test -bench . -benchmem`, default benchtime):
 | GetDuringUpsert*     | —       | 0.78 ms | —        |
 
 `Render` (tasks → markdown, no I/O) runs once inside every write; at a fraction of
-a millisecond for realistic wiki sizes it is a small part of an `Upsert`.
+a millisecond for realistic board sizes it is a small part of an `Upsert`.
+
+**Note:** The CLI-driven benchmarks (`Upsert`/`Get`/`List`) were re-architected
+when the module moved to the cwd-authoritative configuration model. Previously
+they used `--wiki-path` to inject a board directory; with the new `LoadConfig`
+resolver, the CLI-path benchmarks now run in a temp cwd seeded with
+`_mhgo/board.yaml` and include the `os.Getwd()` + configuration-load cost
+(deep merge from YAML layers + environment expansion). The historical numbers
+below show the pre-config baseline for comparison.
 
 \* `GetDuringUpsert` reads (seed n=100) while a writer upserts continuously in the
 background. At 0.78 ms vs 1.52 ms single-threaded `Get`, reads stay fast under
 write load — the swap lock fences readers out only for the rename's microseconds.
 
 Write latency end-to-end (warm binary, git-bash wall-clock, includes process
-startup):
+startup and configuration load):
 
 | Path                                    | wall-clock |
 |-----------------------------------------|------------|
-| file-only write, no sync (WIKI_SKIP_GIT)| ~205 ms    |
+| file-only write, no sync (BOARD_SKIP_GIT)| ~205 ms    |
 | file-only write + detached sync spawn   | ~235 ms    |
 
 The spawn adds only ~30 ms; a *cold* (just-built) binary's first spawn costs ~1 s
@@ -87,14 +97,17 @@ Background sync (`-tags integration -bench SyncGit -benchtime=10x`):
 - The git cost did not go away — it moved to the background sync (~4.5 s with
   push). The user just never waits for it; a burst of writes coalesces into ~1
   push.
-- Reads and writes still scale with wiki size (JSON unmarshal / re-render of all
+- Reads and writes still scale with board size (JSON unmarshal / re-render of all
   tasks), but at single-digit milliseconds that is dwarfed by process startup.
+- Configuration loading (os.Getwd() + YAML merge + env expansion) is now part of
+  every CLI invocation but remains sub-millisecond; the startup floor dominates.
 
-### 2026-06-08 — pre-async baseline (synchronous writes)
+### Pre-config baseline — synchronous writes (historic reference)
 
-Kept for history. At this revision every write did `pull → commit → push`
+Kept for history. At this earlier revision every write did `pull → commit → push`
 synchronously, so the command waited the full git round-trip. Benchmarks measured
-`UpsertGit` (the whole write incl. push) rather than `SyncGit`.
+`UpsertGit` (the whole write incl. push) rather than `SyncGit`. This is also
+before the cwd-authoritative configuration model, so no config-load cost.
 
 | Benchmark            | n=10    | n=100   | n=1000   |
 |----------------------|---------|---------|----------|
@@ -129,4 +142,5 @@ now the dominant cost of a write command.
 `BenchmarkSyncGit` (and `TestIntegrationCommitPush`) push to
 `github.com/Knatte18/mhgo-wiki-test`, so the machine's git credential needs write
 access to that repo (granted via collaborator access). Without it, push returns
-HTTP 403 and only the no-push / hot-path suites can run.
+HTTP 403 and only the no-push / hot-path suites can run. The repo URL is unchanged
+from earlier revisions and continues to serve as the integration test backend.
