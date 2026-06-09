@@ -180,7 +180,7 @@ func BenchmarkUpsertFacade(b *testing.B) {
 		b.Run(fmt.Sprintf("n=%d", n), func(b *testing.B) {
 			dir := seedWiki(b, n)
 			cfg := board.DefaultConfig()
-			cfg.Path = dir
+			cfg.Path = filepath.Join(dir, "board")
 			w := board.New(cfg)
 			fields := map[string]any{"slug": "task-0", "title": "Updated"}
 
