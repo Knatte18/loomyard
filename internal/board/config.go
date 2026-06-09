@@ -8,8 +8,8 @@ package board
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/Knatte18/mhgo/internal/config"
 )
@@ -61,13 +61,6 @@ func DefaultOutputs() Outputs {
 // Otherwise, loads configuration using internal/config.Load with defaults from
 // DefaultConfig(), and returns the result as a typed Config struct.
 func LoadConfig(baseDir, module string) (Config, error) {
-	// Check if _mhgo/ directory exists
-	mhgoDir := filepath.Join(baseDir, "_mhgo")
-	_, err := os.Stat(mhgoDir)
-	if os.IsNotExist(err) {
-		return Config{}, fmt.Errorf("not initialized here; run \"mhgo init\"")
-	}
-
 	// Build defaults map
 	defaults := map[string]string{
 		"path":              DefaultConfig().Path,
@@ -77,8 +70,13 @@ func LoadConfig(baseDir, module string) (Config, error) {
 	}
 
 	// Load configuration using internal/config
+	// config.Load checks _mhgo/ existence and returns appropriate error
 	raw, err := config.Load(baseDir, module, defaults)
 	if err != nil {
+		// Wrap the generic error with a board-specific message
+		if strings.Contains(err.Error(), "not initialized") {
+			return Config{}, fmt.Errorf("not initialized here; run \"mhgo init\"")
+		}
 		return Config{}, err
 	}
 
