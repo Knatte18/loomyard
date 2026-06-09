@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-config-system
+phase: approved-config-driven-render-facade
 slug: config-layer
 branch: config-layer
 plan: _mill/plan
@@ -25,6 +25,7 @@ planned  '2026-06-08T12:12:13Z'
 implementing  '2026-06-08T12:20:02Z'
 approved-rename-wiki-to-board  '2026-06-08T12:36:34Z'
 approved-config-system  '2026-06-09T06:01:44Z'
+approved-config-driven-render-facade  '2026-06-09T06:16:56Z'
 ```
 
 ## Batches
@@ -42,9 +43,10 @@ batches:
     start_sha: 703a189ce01981e3067ae92dfbf6c0fa1d19e81e
     commit_sha: 7fcfe999c7da6035bc1bfae68261681d51b5f9c2
   - name: config-driven-render-facade
-    state: running
+    state: approved
     implementer_session: f0074a2f-9972-44da-b736-6b6e352e8117
     start_sha: 2c8a3346f5978de419ee42f56a134c23840e6f91
+    commit_sha: edd69d78d8bf58ba3a19efba798ef0c3df67897f
   - name: mhgo-init-command
     state: pending
   - name: cwd-activation-and-board-path
