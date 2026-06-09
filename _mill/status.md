@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-fix-r1
+phase: discussed
 slug: boardtest-concurrency-speed
 branch: boardtest-concurrency-speed
 plan: null
@@ -16,4 +16,5 @@ task_description: |
 ```text
 discussing  '2026-06-09T10:10:41Z'
 discussion-fix-r1  '2026-06-09T10:28:28Z'
+discussed  '2026-06-09T10:28:44Z'
 ```
