@@ -14,8 +14,8 @@ import (
 	"testing"
 )
 
-// These tests cover main's own responsibility — module routing — not the wiki
-// behaviour itself (that lives in internal/wiki). They drive run() directly so
+// These tests cover main's own responsibility — module routing — not the board
+// behaviour itself (that lives in internal/board). They drive run() directly so
 // no binary build or os.Exit is involved.
 
 func TestRunNoArgs(t *testing.T) {
