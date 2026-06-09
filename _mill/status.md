@@ -63,5 +63,7 @@ batches:
     commit_sha: bdb6f6bd2d683edfd64dd0b3b62c2d40da4a6865
     blocked_reason: uncommitted working tree after implementer report
   - name: docs-and-roadmap
-    state: pending
+    state: running
+    implementer_session: 52af6321-18b4-4261-8bf5-bcd9fc77eb5f
+    start_sha: 18a63cea15306cf72d4cf43a86a66a3bbdde7c3e
 ```
