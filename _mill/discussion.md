@@ -79,8 +79,13 @@ iteration count.
   runs, not by the number of writes — over a ~1s window the 8 readers still
   execute on the order of hundreds of thousands of `GetTask` + `ListTasksBrief`
   iterations, preserving read-under-write coverage. Cutting writes 300→50
-  shrinks the FS-op stream ~6× (expected ~1–1.5s isolated) while keeping a wide
-  race window.
+  shrinks the FS-op stream ~6× while keeping a wide race window. The
+  "hundreds of thousands of iterations" and "~1–1.5s isolated" figures are
+  **projections** extrapolated from the 8.2s/300-write baseline, not
+  measurements at writes=50 — they are estimates, not guarantees, and are
+  subject to the same XDR/contention variance noted above. Testing step 1
+  confirms the actual isolated time empirically and tunes `writes` within
+  [40, 75] to land it.
 - Rejected: Keeping 300 (the 8.2s/minutes-under-load cost is the whole problem);
   dropping to ~25 (sub-second, but trims the overlap window more than needed for
   a "reasonable" target).
@@ -156,6 +161,19 @@ iteration count.
   must still be running while readers loop). 50 writes (~1s) satisfies this with
   wide margin.
 - No behavior change to production board code; this is a test-only change.
+- **Accepted limitation — overlap is not structurally enforced.** The test's
+  read-under-write coverage depends on the writer still running while readers
+  loop, but nothing fails fast if the writer finishes before readers do
+  meaningful work (e.g. on a fast/quiet machine writes=50 could complete in
+  under the reader spin-up, and the test would still pass green with near-zero
+  overlap). This is verified operationally by Testing steps 1–3 (confirm the
+  isolated wall-clock is non-trivial, run repeatedly, and run once under
+  `-race`), not by an in-test assertion. Adding a structural guard (e.g.
+  asserting the writer goroutine is still live at the first reader read) is
+  **deliberately out of scope** — it conflicts with the minimal-change
+  decision (see Decisions § keep-seed-100 / no-production-seam). At writes=50
+  (~1s isolated) the writer window is wide relative to reader spin-up, so the
+  near-zero-overlap case is not a realistic risk on the target machine.
 
 ## Testing
 
