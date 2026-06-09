@@ -30,8 +30,8 @@ implementing  '2026-06-09T18:23:54Z'
 batches:
   - name: internal/lock — lift lock primitives
     state: running
-    implementer_session: d53650d2-a661-4320-bfbf-9ed333795c48
-    start_sha: bc657d49869fdb9888a5e9802ae126ed2984594f
+    implementer_session: 40613790-1c94-4b85-bfce-3c3c6d8b4932
+    start_sha: 2fb2c278542441edf339393782530efcb43f0936
   - name: internal/git — extract RunGit
     state: pending
   - name: internal/config — generic config loader
