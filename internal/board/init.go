@@ -153,7 +153,6 @@ func updateGitignoreBlock(gitignorePath string) (bool, error) {
 		if trimmed == startMarker {
 			inBlock = true
 			blockExists = true
-			beforeBlock = append(beforeBlock, line)
 		} else if trimmed == endMarker {
 			inBlock = false
 			afterBlock = append(afterBlock, line)
