@@ -8,7 +8,7 @@ import (
 
 // TestRunGit_Success tests basic git command execution
 func TestRunGit_Success(t *testing.T) {
-	stdout, stderr, exitCode, err := git.RunGit([]string{"--version"}, ".")
+	stdout, _, exitCode, err := git.RunGit([]string{"--version"}, ".")
 	if err != nil {
 		t.Fatalf("RunGit failed with error: %v", err)
 	}
