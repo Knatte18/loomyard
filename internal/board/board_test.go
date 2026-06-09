@@ -15,9 +15,9 @@ import (
 func TestUpsertTask(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
 
-	wikiPath := t.TempDir()
+	boardPath := t.TempDir()
 	cfg := board.DefaultConfig()
-	cfg.Path = wikiPath
+	cfg.Path = boardPath
 	w := board.New(cfg)
 
 	// (a) Creates task, tasks.json written, Home.md written
@@ -68,9 +68,9 @@ func TestUpsertTask(t *testing.T) {
 func TestRemoveTask(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
 
-	wikiPath := t.TempDir()
+	boardPath := t.TempDir()
 	cfg := board.DefaultConfig()
-	cfg.Path = wikiPath
+	cfg.Path = boardPath
 	w := board.New(cfg)
 
 	// (c) Error for missing slug
@@ -83,9 +83,9 @@ func TestRemoveTask(t *testing.T) {
 func TestRerender(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
 
-	wikiPath := t.TempDir()
+	boardPath := t.TempDir()
 	cfg := board.DefaultConfig()
-	cfg.Path = wikiPath
+	cfg.Path = boardPath
 	w := board.New(cfg)
 
 	// (d) Writes all output files without error on empty store
@@ -95,8 +95,8 @@ func TestRerender(t *testing.T) {
 	}
 
 	// Check that Home.md and _Sidebar.md exist
-	homePath := filepath.Join(wikiPath, "Home.md")
-	sidebarPath := filepath.Join(wikiPath, "_Sidebar.md")
+	homePath := filepath.Join(boardPath, "Home.md")
+	sidebarPath := filepath.Join(boardPath, "_Sidebar.md")
 
 	if _, err := os.Stat(homePath); err != nil {
 		t.Fatalf("Home.md not created: %v", err)

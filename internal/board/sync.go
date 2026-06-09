@@ -25,30 +25,30 @@ const (
 // Sync commits any pending changes and pushes them to the remote, looping until
 // the working tree is clean and nothing is unpushed. BOARD_SKIP_GIT disables it
 // entirely (used by tests); BOARD_SKIP_PUSH commits locally but skips the push.
-func Sync(wikiPath string) error {
+func Sync(boardPath string) error {
 	if os.Getenv("BOARD_SKIP_GIT") == "1" {
 		return nil
 	}
 
 	// The lock files live in the board dir; keep git from ever committing them.
-	if err := ensureLockfilesIgnored(wikiPath); err != nil {
+	if err := ensureLockfilesIgnored(boardPath); err != nil {
 		return err
 	}
 
 	// Only one pusher does network work at a time. A second sync process blocks
 	// here, then finds nothing to do and returns — that is the coalescing.
-	pushLock, err := AcquireWriteLock(filepath.Join(wikiPath, pushLockFile))
+	pushLock, err := AcquireWriteLock(filepath.Join(boardPath, pushLockFile))
 	if err != nil {
 		return fmt.Errorf("acquire push lock: %w", err)
 	}
 	defer pushLock.Release()
 
 	for {
-		committed, err := commitDirty(wikiPath)
+		committed, err := commitDirty(boardPath)
 		if err != nil {
 			return err
 		}
-		if err := pushUnpushed(wikiPath); err != nil {
+		if err := pushUnpushed(boardPath); err != nil {
 			return err
 		}
 		// Nothing new arrived this round → done. If a write landed while we were
@@ -62,14 +62,14 @@ func Sync(wikiPath string) error {
 // commitDirty stages and commits the working tree if it has changes, under the
 // write lock so it snapshots a state no writer is mid-mutation on. Returns
 // whether a commit was made.
-func commitDirty(wikiPath string) (bool, error) {
-	lock, err := AcquireWriteLock(filepath.Join(wikiPath, writeLockFile))
+func commitDirty(boardPath string) (bool, error) {
+	lock, err := AcquireWriteLock(filepath.Join(boardPath, writeLockFile))
 	if err != nil {
 		return false, fmt.Errorf("acquire write lock: %w", err)
 	}
 	defer lock.Release()
 
-	out, _, code, err := RunGit([]string{"status", "--porcelain"}, wikiPath)
+	out, _, code, err := RunGit([]string{"status", "--porcelain"}, boardPath)
 	if err != nil {
 		return false, fmt.Errorf("status: %w", err)
 	}
@@ -80,13 +80,13 @@ func commitDirty(wikiPath string) (bool, error) {
 		return false, nil // clean working tree
 	}
 
-	if _, _, code, err := RunGit([]string{"add", "-A"}, wikiPath); err != nil {
+	if _, _, code, err := RunGit([]string{"add", "-A"}, boardPath); err != nil {
 		return false, fmt.Errorf("add: %w", err)
 	} else if code != 0 {
 		return false, BoardPushError("add failed")
 	}
 
-	if _, _, code, err := RunGit([]string{"commit", "-m", "board sync"}, wikiPath); err != nil {
+	if _, _, code, err := RunGit([]string{"commit", "-m", "board sync"}, boardPath); err != nil {
 		return false, fmt.Errorf("commit: %w", err)
 	} else if code != 0 {
 		return false, BoardPushError("commit failed")
@@ -96,12 +96,12 @@ func commitDirty(wikiPath string) (bool, error) {
 
 // pushUnpushed pushes local commits to the remote, rebasing once on a
 // non-fast-forward. No-op if there is nothing unpushed or BOARD_SKIP_PUSH is set.
-func pushUnpushed(wikiPath string) error {
+func pushUnpushed(boardPath string) error {
 	if os.Getenv("BOARD_SKIP_PUSH") == "1" {
 		return nil
 	}
 
-	unpushed, err := hasUnpushed(wikiPath)
+	unpushed, err := hasUnpushed(boardPath)
 	if err != nil {
 		return err
 	}
@@ -110,7 +110,7 @@ func pushUnpushed(wikiPath string) error {
 	}
 
 	for attempt := 0; attempt < 2; attempt++ {
-		_, stderr, code, err := RunGit([]string{"push"}, wikiPath)
+		_, stderr, code, err := RunGit([]string{"push"}, boardPath)
 		if err != nil {
 			return fmt.Errorf("push: %w", err)
 		}
@@ -121,8 +121,8 @@ func pushUnpushed(wikiPath string) error {
 		if strings.Contains(stderr, "non-fast-forward") ||
 			strings.Contains(stderr, "rejected") ||
 			strings.Contains(stderr, "fetch first") {
-			if _, _, c, err := RunGit([]string{"pull", "--rebase"}, wikiPath); err != nil || c != 0 {
-				RunGit([]string{"rebase", "--abort"}, wikiPath)
+			if _, _, c, err := RunGit([]string{"pull", "--rebase"}, boardPath); err != nil || c != 0 {
+				RunGit([]string{"rebase", "--abort"}, boardPath)
 				return BoardPushError("rebase failed")
 			}
 			continue
@@ -137,8 +137,8 @@ func pushUnpushed(wikiPath string) error {
 // staged or committed. A committed .gitignore is shared with every clone via the
 // remote, so the lock files are ignored on every machine from clone time — the
 // first sync commits the .gitignore once.
-func ensureLockfilesIgnored(wikiPath string) error {
-	gitignorePath := filepath.Join(wikiPath, ".gitignore")
+func ensureLockfilesIgnored(boardPath string) error {
+	gitignorePath := filepath.Join(boardPath, ".gitignore")
 	existing, err := os.ReadFile(gitignorePath)
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("read .gitignore: %w", err)
@@ -169,8 +169,8 @@ func ensureLockfilesIgnored(wikiPath string) error {
 
 // hasUnpushed reports whether HEAD is ahead of its upstream. If no upstream is
 // configured it returns true, so the first push (which sets it) still happens.
-func hasUnpushed(wikiPath string) (bool, error) {
-	out, _, code, err := RunGit([]string{"rev-list", "--count", "@{u}..HEAD"}, wikiPath)
+func hasUnpushed(boardPath string) (bool, error) {
+	out, _, code, err := RunGit([]string{"rev-list", "--count", "@{u}..HEAD"}, boardPath)
 	if err != nil {
 		return false, fmt.Errorf("rev-list: %w", err)
 	}

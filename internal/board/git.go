@@ -58,12 +58,12 @@ func PathGuard(relPath string) error {
 }
 
 // AtomicWrite writes content to a file atomically using a temp file
-func AtomicWrite(wikiPath, relPath, content string) error {
+func AtomicWrite(boardPath, relPath, content string) error {
 	if err := PathGuard(relPath); err != nil {
 		return err
 	}
 
-	fullPath := filepath.Join(wikiPath, relPath)
+	fullPath := filepath.Join(boardPath, relPath)
 	dir := filepath.Dir(fullPath)
 
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -115,8 +115,8 @@ func RunGit(args []string, cwd string) (stdout, stderr string, exitCode int, err
 }
 
 // Pull runs git pull --ff-only and returns whether the repo was updated
-func Pull(wikiPath string) (updated bool, err error) {
-	stdout, stderr, exitCode, err := RunGit([]string{"pull", "--ff-only"}, wikiPath)
+func Pull(boardPath string) (updated bool, err error) {
+	stdout, stderr, exitCode, err := RunGit([]string{"pull", "--ff-only"}, boardPath)
 	if err != nil {
 		return false, fmt.Errorf("pull: %w", err)
 	}
@@ -128,10 +128,10 @@ func Pull(wikiPath string) (updated bool, err error) {
 }
 
 // CommitPush stages, commits, and pushes changes with rebase retry logic
-func CommitPush(wikiPath string, relPaths []string, message string) error {
+func CommitPush(boardPath string, relPaths []string, message string) error {
 	// Stage files
 	args := append([]string{"add", "--"}, relPaths...)
-	_, _, exitCode, err := RunGit(args, wikiPath)
+	_, _, exitCode, err := RunGit(args, boardPath)
 	if err != nil {
 		return fmt.Errorf("add: %w", err)
 	}
@@ -140,7 +140,7 @@ func CommitPush(wikiPath string, relPaths []string, message string) error {
 	}
 
 	// Check for staged changes
-	_, _, exitCode, err = RunGit([]string{"diff", "--cached", "--quiet"}, wikiPath)
+	_, _, exitCode, err = RunGit([]string{"diff", "--cached", "--quiet"}, boardPath)
 	if err != nil {
 		return fmt.Errorf("diff: %w", err)
 	}
@@ -153,7 +153,7 @@ func CommitPush(wikiPath string, relPaths []string, message string) error {
 	}
 
 	// Commit
-	_, _, exitCode, err = RunGit([]string{"commit", "-m", message}, wikiPath)
+	_, _, exitCode, err = RunGit([]string{"commit", "-m", message}, boardPath)
 	if err != nil {
 		return fmt.Errorf("commit: %w", err)
 	}
@@ -168,7 +168,7 @@ func CommitPush(wikiPath string, relPaths []string, message string) error {
 
 	// Push with rebase retry
 	for attempt := 0; attempt < 2; attempt++ {
-		_, stderr, exitCode, err := RunGit([]string{"push"}, wikiPath)
+		_, stderr, exitCode, err := RunGit([]string{"push"}, boardPath)
 		if err != nil {
 			return fmt.Errorf("push: %w", err)
 		}
@@ -179,13 +179,13 @@ func CommitPush(wikiPath string, relPaths []string, message string) error {
 		// Check for non-fast-forward error
 		if strings.Contains(stderr, "non-fast-forward") || strings.Contains(stderr, "rejected") {
 			// Try rebase
-			_, _, exitCode, err := RunGit([]string{"pull", "--rebase"}, wikiPath)
+			_, _, exitCode, err := RunGit([]string{"pull", "--rebase"}, boardPath)
 			if err != nil {
 				return fmt.Errorf("rebase: %w", err)
 			}
 			if exitCode != 0 {
 				// Abort rebase on failure
-				RunGit([]string{"rebase", "--abort"}, wikiPath)
+				RunGit([]string{"rebase", "--abort"}, boardPath)
 				return BoardPushError("rebase failed")
 			}
 			// Continue to next push attempt

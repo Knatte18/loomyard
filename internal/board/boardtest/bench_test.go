@@ -1,8 +1,8 @@
-// bench_test.go — no-git benchmarks for the core wiki commands.
+// bench_test.go — no-git benchmarks for the core board commands.
 //
 // Benchmarks the pure Render plus upsert / get / list (via the CLI entrypoint)
-// and the Wiki facade across wiki sizes of 10/100/1000 tasks, with git skipped
-// (BOARD_SKIP_GIT=1) so they measure wiki logic + file I/O only. Also defines
+// and the Board facade across board sizes of 10/100/1000 tasks, with git skipped
+// (BOARD_SKIP_GIT=1) so they measure board logic + file I/O only. Also defines
 // seedWiki, the task-seeding helper shared across this package.
 
 package boardtest
@@ -19,8 +19,8 @@ import (
 	"github.com/Knatte18/mhgo/internal/board"
 )
 
-// benchSizes is the set of wiki sizes (number of tasks already in tasks.json)
-// each benchmark is run against. Every write re-renders the whole wiki, so cost
+// benchSizes is the set of board sizes (number of tasks already in tasks.json)
+// each benchmark is run against. Every write re-renders the whole board, so cost
 // is expected to grow with size — these sizes make that scaling visible.
 var benchSizes = []int{10, 100, 1000}
 
@@ -171,7 +171,7 @@ func BenchmarkList(b *testing.B) {
 	}
 }
 
-// BenchmarkUpsertFacade measures Wiki.UpsertTask directly, bypassing the CLI's
+// BenchmarkUpsertFacade measures Board.UpsertTask directly, bypassing the CLI's
 // flag parsing and JSON (un)marshalling. The gap to BenchmarkUpsert is the
 // per-command CLI overhead.
 func BenchmarkUpsertFacade(b *testing.B) {
