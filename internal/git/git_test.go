@@ -3,7 +3,7 @@ package git_test
 import (
 	"testing"
 
-	"mhgo/internal/git"
+	"github.com/Knatte18/mhgo/internal/git"
 )
 
 // TestRunGit_Success tests basic git command execution
