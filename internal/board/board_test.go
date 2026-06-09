@@ -1,22 +1,24 @@
-// wiki_test.go — unit tests for the Wiki facade (wiki.go).
+// board_test.go — unit tests for the Board facade (board.go).
 //
-// Upsert / remove / rerender against a temp wiki with git skipped.
+// Upsert / remove / rerender against a temp board with git skipped.
 
-package wiki_test
+package board_test
 
 import (
 	"os"
 	"path/filepath"
 	"testing"
 
-	"github.com/Knatte18/mhgo/internal/wiki"
+	"github.com/Knatte18/mhgo/internal/board"
 )
 
 func TestUpsertTask(t *testing.T) {
-	t.Setenv("WIKI_SKIP_GIT", "1")
+	t.Setenv("BOARD_SKIP_GIT", "1")
 
-	wikiPath := t.TempDir()
-	w := wiki.New(wikiPath)
+	boardPath := t.TempDir()
+	cfg := board.DefaultConfig()
+	cfg.Path = boardPath
+	w := board.New(cfg)
 
 	// (a) Creates task, tasks.json written, Home.md written
 	task, err := w.UpsertTask(map[string]any{
@@ -32,13 +34,13 @@ func TestUpsertTask(t *testing.T) {
 	}
 
 	// Check tasks.json exists
-	tasksPath := filepath.Join(wikiPath, "tasks.json")
+	tasksPath := filepath.Join(boardPath, "tasks.json")
 	if _, err := os.Stat(tasksPath); err != nil {
 		t.Fatalf("tasks.json not created: %v", err)
 	}
 
 	// Check Home.md exists
-	homePath := filepath.Join(wikiPath, "Home.md")
+	homePath := filepath.Join(boardPath, "Home.md")
 	if _, err := os.Stat(homePath); err != nil {
 		t.Fatalf("Home.md not created: %v", err)
 	}
@@ -64,10 +66,12 @@ func TestUpsertTask(t *testing.T) {
 }
 
 func TestRemoveTask(t *testing.T) {
-	t.Setenv("WIKI_SKIP_GIT", "1")
+	t.Setenv("BOARD_SKIP_GIT", "1")
 
-	wikiPath := t.TempDir()
-	w := wiki.New(wikiPath)
+	boardPath := t.TempDir()
+	cfg := board.DefaultConfig()
+	cfg.Path = boardPath
+	w := board.New(cfg)
 
 	// (c) Error for missing slug
 	err := w.RemoveTask("nonexistent")
@@ -77,10 +81,12 @@ func TestRemoveTask(t *testing.T) {
 }
 
 func TestRerender(t *testing.T) {
-	t.Setenv("WIKI_SKIP_GIT", "1")
+	t.Setenv("BOARD_SKIP_GIT", "1")
 
-	wikiPath := t.TempDir()
-	w := wiki.New(wikiPath)
+	boardPath := t.TempDir()
+	cfg := board.DefaultConfig()
+	cfg.Path = boardPath
+	w := board.New(cfg)
 
 	// (d) Writes all output files without error on empty store
 	err := w.Rerender()
@@ -89,8 +95,8 @@ func TestRerender(t *testing.T) {
 	}
 
 	// Check that Home.md and _Sidebar.md exist
-	homePath := filepath.Join(wikiPath, "Home.md")
-	sidebarPath := filepath.Join(wikiPath, "_Sidebar.md")
+	homePath := filepath.Join(boardPath, "Home.md")
+	sidebarPath := filepath.Join(boardPath, "_Sidebar.md")
 
 	if _, err := os.Stat(homePath); err != nil {
 		t.Fatalf("Home.md not created: %v", err)

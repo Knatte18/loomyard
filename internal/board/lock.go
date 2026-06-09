@@ -4,7 +4,7 @@
 // real OS file lock it coordinates across processes — the way mhgo is used, one
 // short-lived process per command.
 
-package wiki
+package board
 
 import (
 	"fmt"

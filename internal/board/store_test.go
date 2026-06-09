@@ -3,16 +3,16 @@
 // CRUD, sequential ID assignment, and every validation rule: dangling deps,
 // isolated/deferred constraints, cycle detection, and batch/merge atomicity.
 
-package wiki_test
+package board_test
 
 import (
 	"testing"
 
-	"github.com/Knatte18/mhgo/internal/wiki"
+	"github.com/Knatte18/mhgo/internal/board"
 )
 
 func TestUpsertTaskNewTaskSequentialID(t *testing.T) {
-	s := wiki.NewStore("")
+	s := board.NewStore("")
 
 	// (a) new task gets sequential ID starting at 0
 	task1, err := s.UpsertTask(map[string]any{
@@ -39,7 +39,7 @@ func TestUpsertTaskNewTaskSequentialID(t *testing.T) {
 }
 
 func TestUpsertTaskDefaults(t *testing.T) {
-	s := wiki.NewStore("")
+	s := board.NewStore("")
 
 	// (b) defaults applied (DependsOn=[], Isolated=false, Deferred=false)
 	task, err := s.UpsertTask(map[string]any{
@@ -60,7 +60,7 @@ func TestUpsertTaskDefaults(t *testing.T) {
 }
 
 func TestUpsertTaskPreservesFields(t *testing.T) {
-	s := wiki.NewStore("")
+	s := board.NewStore("")
 
 	// Create a task
 	_, err := s.UpsertTask(map[string]any{
@@ -93,7 +93,7 @@ func TestUpsertTaskPreservesFields(t *testing.T) {
 }
 
 func TestUpsertTaskGroupKeyError(t *testing.T) {
-	s := wiki.NewStore("")
+	s := board.NewStore("")
 
 	// (d) `group` key returns validation error
 	_, err := s.UpsertTask(map[string]any{
@@ -109,7 +109,7 @@ func TestUpsertTaskGroupKeyError(t *testing.T) {
 }
 
 func TestValidateDanglingDependency(t *testing.T) {
-	s := wiki.NewStore("")
+	s := board.NewStore("")
 
 	// (e) dangling dependency rejected
 	_, err := s.UpsertTask(map[string]any{
@@ -125,7 +125,7 @@ func TestValidateDanglingDependency(t *testing.T) {
 }
 
 func TestValidateDependencyOnIsolated(t *testing.T) {
-	s := wiki.NewStore("")
+	s := board.NewStore("")
 
 	// Create an isolated task
 	_, err := s.UpsertTask(map[string]any{
@@ -150,7 +150,7 @@ func TestValidateDependencyOnIsolated(t *testing.T) {
 }
 
 func TestValidateDependencyOnDeferred(t *testing.T) {
-	s := wiki.NewStore("")
+	s := board.NewStore("")
 
 	// Create a deferred task
 	_, err := s.UpsertTask(map[string]any{
@@ -175,7 +175,7 @@ func TestValidateDependencyOnDeferred(t *testing.T) {
 }
 
 func TestValidateCycleDetection(t *testing.T) {
-	s := wiki.NewStore("")
+	s := board.NewStore("")
 
 	// Create task A
 	_, err := s.UpsertTask(map[string]any{
@@ -211,7 +211,7 @@ func TestValidateCycleDetection(t *testing.T) {
 }
 
 func TestValidateNoCycleLongChain(t *testing.T) {
-	s := wiki.NewStore("")
+	s := board.NewStore("")
 
 	// (i) chain A depends on B, B depends on C — no cycle, all upserts succeed
 	_, err := s.UpsertTask(map[string]any{
@@ -244,7 +244,7 @@ func TestValidateNoCycleLongChain(t *testing.T) {
 }
 
 func TestRemoveTaskMissing(t *testing.T) {
-	s := wiki.NewStore("")
+	s := board.NewStore("")
 
 	// (j) RemoveTask returns error for missing slug
 	err := s.RemoveTask("nonexistent")
@@ -257,7 +257,7 @@ func TestRemoveTaskMissing(t *testing.T) {
 }
 
 func TestSetPhaseNil(t *testing.T) {
-	s := wiki.NewStore("")
+	s := board.NewStore("")
 
 	task, err := s.UpsertTask(map[string]any{
 		"slug": "task1",
@@ -287,7 +287,7 @@ func TestSetPhaseNil(t *testing.T) {
 }
 
 func TestSetPhaseMissing(t *testing.T) {
-	s := wiki.NewStore("")
+	s := board.NewStore("")
 
 	// (k) no-op (nil return) for missing slug
 	err := s.SetPhase("nonexistent", nil)
@@ -297,7 +297,7 @@ func TestSetPhaseMissing(t *testing.T) {
 }
 
 func TestMergeTasksAtomic(t *testing.T) {
-	s := wiki.NewStore("")
+	s := board.NewStore("")
 
 	// Create initial tasks
 	_, err := s.UpsertTask(map[string]any{
@@ -355,7 +355,7 @@ func TestMergeTasksAtomic(t *testing.T) {
 }
 
 func TestMergeTasksValidationRollback(t *testing.T) {
-	s := wiki.NewStore("")
+	s := board.NewStore("")
 
 	// Create tasks
 	_, err := s.UpsertTask(map[string]any{
@@ -402,7 +402,7 @@ func TestMergeTasksValidationRollback(t *testing.T) {
 }
 
 func TestListTasksBriefLayerAndProposal(t *testing.T) {
-	s := wiki.NewStore("")
+	s := board.NewStore("")
 
 	// Create tasks
 	_, err := s.UpsertTask(map[string]any{
@@ -443,7 +443,7 @@ func TestListTasksBriefLayerAndProposal(t *testing.T) {
 }
 
 func TestSetDepsValid(t *testing.T) {
-	s := wiki.NewStore("")
+	s := board.NewStore("")
 
 	// Create tasks
 	_, err := s.UpsertTask(map[string]any{
@@ -473,7 +473,7 @@ func TestSetDepsValid(t *testing.T) {
 }
 
 func TestSetDepsCycleRollback(t *testing.T) {
-	s := wiki.NewStore("")
+	s := board.NewStore("")
 
 	// Create A and B with A depending on B
 	_, err := s.UpsertTask(map[string]any{
@@ -512,7 +512,7 @@ func TestSetDepsCycleRollback(t *testing.T) {
 }
 
 func TestUpsertTasksBatchValid(t *testing.T) {
-	s := wiki.NewStore("")
+	s := board.NewStore("")
 
 	// (q) valid batch of two tasks both upserted
 	err := s.UpsertTasksBatch([]map[string]any{
@@ -540,7 +540,7 @@ func TestUpsertTasksBatchValid(t *testing.T) {
 }
 
 func TestUpsertTasksBatchInvalid(t *testing.T) {
-	s := wiki.NewStore("")
+	s := board.NewStore("")
 
 	// Create initial state
 	_, err := s.UpsertTask(map[string]any{

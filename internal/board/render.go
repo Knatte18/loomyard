@@ -5,7 +5,7 @@
 // caller writes the files. The three outputs are built by renderHome,
 // renderSidebar, and renderProposals respectively.
 
-package wiki
+package board
 
 import (
 	"fmt"
@@ -14,29 +14,31 @@ import (
 	"strings"
 )
 
-// RenderToDisk renders the tasks and persists the wiki's readable representation:
-// it writes every rendered file atomically and removes any proposal-*.md the
-// render no longer produces. render.go owns all .md output; wiki.go owns only
-// tasks.json. This is the single call the write path makes for rendering.
-func RenderToDisk(wikiPath string, tasks []Task) error {
-	files, err := Render(tasks)
+// RenderToDisk renders the tasks and persists the board's readable representation:
+// it writes every rendered file atomically and removes any proposal files (using
+// the configured prefix) the render no longer produces. render.go owns all .md output;
+// board.go owns only tasks.json. This is the single call the write path makes for rendering.
+func RenderToDisk(boardPath string, tasks []Task, out Outputs) error {
+	files, err := Render(tasks, out)
 	if err != nil {
 		return err
 	}
 	for relPath, content := range files {
-		if err := AtomicWrite(wikiPath, relPath, content); err != nil {
+		if err := AtomicWrite(boardPath, relPath, content); err != nil {
 			return fmt.Errorf("write %s: %w", relPath, err)
 		}
 	}
-	removeOrphanProposals(wikiPath, files)
+	removeOrphanProposals(boardPath, files, out.ProposalPrefix)
 	return nil
 }
 
-// removeOrphanProposals deletes proposal-*.md files the current render no longer
-// produces (a task lost its body or was removed). Best-effort: a stale file left
-// behind is harmless and cleaned up on the next render, so it never fails a write.
-func removeOrphanProposals(wikiPath string, rendered map[string]string) {
-	existing, err := filepath.Glob(filepath.Join(wikiPath, "proposal-*.md"))
+// removeOrphanProposals deletes proposal files (using the configured prefix)
+// the current render no longer produces (a task lost its body or was removed).
+// Best-effort: a stale file left behind is harmless and cleaned up on the next
+// render, so it never fails a write.
+func removeOrphanProposals(boardPath string, rendered map[string]string, proposalPrefix string) {
+	pattern := filepath.Join(boardPath, proposalPrefix+"*.md")
+	existing, err := filepath.Glob(pattern)
 	if err != nil {
 		return
 	}
@@ -47,34 +49,36 @@ func removeOrphanProposals(wikiPath string, rendered map[string]string) {
 	}
 }
 
-// Render produces the wiki output files from the task list.
-// Returns a map of relative filename → content: always "Home.md" and "_Sidebar.md",
-// plus "proposal-<slug>.md" for every task with a non-empty body.
-func Render(tasks []Task) (map[string]string, error) {
+// Render produces the board output files from the task list.
+// Returns a map of relative filename → content: the configured home and sidebar
+// filenames, plus proposal files (using the configured prefix and slug) for every
+// task with a non-empty body.
+func Render(tasks []Task, out Outputs) (map[string]string, error) {
 	ordered, err := RenderOrder(tasks)
 	if err != nil {
 		return nil, err
 	}
 
-	// Slug → task, for resolving dependency IDs in Home.md.
+	// Slug → task, for resolving dependency IDs in home file.
 	taskMap := make(map[string]Task, len(tasks))
 	for _, t := range tasks {
 		taskMap[t.Slug] = t
 	}
 
 	result := map[string]string{
-		"Home.md":     renderHome(ordered, taskMap),
-		"_Sidebar.md": renderSidebar(ordered),
+		out.Home:    renderHome(ordered, taskMap, out.ProposalPrefix),
+		out.Sidebar: renderSidebar(ordered, out.ProposalPrefix),
 	}
-	for name, content := range renderProposals(tasks) {
+	for name, content := range renderProposals(tasks, out.ProposalPrefix) {
 		result[name] = content
 	}
 	return result, nil
 }
 
-// renderHome builds Home.md: a "# Tasks" page sectioned per bucket, with a block
-// per task (heading, slug line, optional dependencies, optional brief).
-func renderHome(ordered []TaskWithLayer, taskMap map[string]Task) string {
+// renderHome builds the home file: a "# Tasks" page sectioned per bucket, with a block
+// per task (heading, slug line, optional dependencies, optional brief). The proposal
+// prefix is used in task links to proposals.
+func renderHome(ordered []TaskWithLayer, taskMap map[string]Task, proposalPrefix string) string {
 	lines := []string{"# Tasks", ""}
 
 	currentBucket := ""
@@ -94,7 +98,7 @@ func renderHome(ordered []TaskWithLayer, taskMap map[string]Task) string {
 		// Slug line: a proposal link if the task has a body, else a bare slug.
 		slugLine := fmt.Sprintf("[%s]", twl.Slug)
 		if twl.Body != "" {
-			slugLine = fmt.Sprintf("[%s](proposal-%s.md)", twl.Slug, twl.Slug)
+			slugLine = fmt.Sprintf("[%s](%s%s.md)", twl.Slug, proposalPrefix, twl.Slug)
 		}
 		if twl.Status != nil {
 			switch *twl.Status {
@@ -126,9 +130,10 @@ func renderHome(ordered []TaskWithLayer, taskMap map[string]Task) string {
 	return strings.Join(lines, "\n")
 }
 
-// renderSidebar builds _Sidebar.md: one line per task, grouped per bucket with a
-// blank line between groups. No trailing newline.
-func renderSidebar(ordered []TaskWithLayer) string {
+// renderSidebar builds the sidebar file: one line per task, grouped per bucket with a
+// blank line between groups. The proposal prefix is used in task links to proposals.
+// No trailing newline.
+func renderSidebar(ordered []TaskWithLayer, proposalPrefix string) string {
 	var lines []string
 
 	currentBucket := ""
@@ -143,7 +148,7 @@ func renderSidebar(ordered []TaskWithLayer) string {
 		extTitle := ExtendedTitle(twl.Task, twl.Layer)
 		line := "- " + extTitle
 		if twl.Body != "" {
-			line = fmt.Sprintf("- [%s](proposal-%s.md)", extTitle, twl.Slug)
+			line = fmt.Sprintf("- [%s](%s%s.md)", extTitle, proposalPrefix, twl.Slug)
 		}
 		lines = append(lines, line)
 	}
@@ -151,13 +156,13 @@ func renderSidebar(ordered []TaskWithLayer) string {
 	return strings.Join(lines, "\n")
 }
 
-// renderProposals returns one "proposal-<slug>.md" entry per task with a
-// non-empty body; the file content is the body verbatim.
-func renderProposals(tasks []Task) map[string]string {
+// renderProposals returns one proposal file entry per task with a non-empty body,
+// using the configured proposal prefix. The file content is the body verbatim.
+func renderProposals(tasks []Task, proposalPrefix string) map[string]string {
 	proposals := make(map[string]string)
 	for _, t := range tasks {
 		if t.Body != "" {
-			proposals[fmt.Sprintf("proposal-%s.md", t.Slug)] = t.Body
+			proposals[fmt.Sprintf("%s%s.md", proposalPrefix, t.Slug)] = t.Body
 		}
 	}
 	return proposals

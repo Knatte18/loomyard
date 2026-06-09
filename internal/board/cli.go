@@ -1,11 +1,16 @@
-// cli.go — the wiki module's command router.
+// cli.go — the board module's command router.
 //
-// RunCLI parses [--wiki-path] <subcommand> [json-payload], resolves the wiki
-// path (flag → MHGO_WIKI_PATH → ../gowiki), dispatches to one Wiki method, and
-// writes the JSON result to the given writer. Owns the wiki CLI surface so main
-// stays a thin module dispatcher.
+// RunCLI parses <subcommand> [json-payload], resolves the board configuration
+// from the current working directory (cwd-authoritative model), dispatches to
+// one Board method, and writes the JSON result to the given writer. Owns the
+// board CLI surface so main stays a thin module dispatcher.
+//
+// When --board-path is set (internal flag for detached sync child), it bypasses
+// configuration resolution and uses the provided path directly. Otherwise,
+// RunCLI resolves config via os.Getwd() and LoadConfig, erroring when <cwd>/_mhgo/
+// is absent.
 
-package wiki
+package board
 
 import (
 	"encoding/json"
@@ -15,22 +20,17 @@ import (
 	"os"
 )
 
-// defaultWikiPath is used when neither --wiki-path nor MHGO_WIKI_PATH is set.
-// It deliberately points outside the current repo (".wiki" is a junction owned
-// by the non-Go millhouse that is still in active use).
-const defaultWikiPath = "../gowiki"
-
-// RunCLI parses and executes a "wiki" subcommand, writing JSON results to out.
+// RunCLI parses and executes a "board" subcommand, writing JSON results to out.
 // It returns the process exit code (0 on success, 1 on error).
 //
 // Usage:
 //
-//	wiki [--wiki-path <path>] <subcommand> [json-payload]
+//	board <subcommand> [json-payload]
 //
-// Wiki path resolution (first match wins):
-//  1. --wiki-path flag
-//  2. MHGO_WIKI_PATH environment variable
-//  3. "../gowiki"
+// Configuration resolution (cwd-authoritative):
+// The current working directory must contain _mhgo/ directory. Configuration
+// is loaded from <cwd>/_mhgo/board.yaml and <cwd>/.mhgo/board.yaml (optional),
+// merged with defaults. The board path is resolved relative to the cwd.
 //
 // Subcommands and their JSON payloads:
 //
@@ -50,20 +50,36 @@ const defaultWikiPath = "../gowiki"
 // Success: {"ok":true, ...}
 // Error:   {"ok":false,"error":"..."} with exit code 1.
 func RunCLI(out io.Writer, args []string) int {
-	fs := flag.NewFlagSet("wiki", flag.ContinueOnError)
+	fs := flag.NewFlagSet("board", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
-	wikiPathFlag := fs.String("wiki-path", "", "Path to wiki directory")
+	boardPathFlag := fs.String("board-path", "", "internal: injected absolute board dir for the detached sync child")
 	if err := fs.Parse(args); err != nil {
 		return 1
 	}
 
-	wikiPath := resolveWikiPath(*wikiPathFlag)
+	var cfg Config
+
+	// If --board-path is set, use it directly (internal use for detached sync child)
+	if *boardPathFlag != "" {
+		cfg = DefaultConfig()
+		cfg.Path = *boardPathFlag
+	} else {
+		// Load configuration from cwd
+		cwd, err := os.Getwd()
+		if err != nil {
+			return outputError(out, err.Error())
+		}
+		cfg, err = LoadConfig(cwd, "board")
+		if err != nil {
+			return outputError(out, err.Error())
+		}
+	}
 
 	// fs.Args() returns the arguments remaining after flags are parsed.
 	// Expected: ["<subcommand>", "<json-payload>"]
 	rest := fs.Args()
 	if len(rest) < 1 {
-		fmt.Fprintln(os.Stderr, "usage: mhgo wiki [--wiki-path <path>] <subcommand> [json-payload]")
+		fmt.Fprintln(os.Stderr, "usage: mhgo board <subcommand> [json-payload]")
 		return 1
 	}
 
@@ -73,7 +89,7 @@ func RunCLI(out io.Writer, args []string) int {
 		jsonPayload = rest[1]
 	}
 
-	w := New(wikiPath)
+	b := New(cfg)
 
 	switch subcommand {
 	case "upsert":
@@ -85,7 +101,7 @@ func RunCLI(out io.Writer, args []string) int {
 		if err := json.Unmarshal([]byte(jsonPayload), &fields); err != nil {
 			return outputError(out, fmt.Sprintf("invalid json: %v", err))
 		}
-		task, err := w.UpsertTask(fields)
+		task, err := b.UpsertTask(fields)
 		if err != nil {
 			return outputError(out, err.Error())
 		}
@@ -102,7 +118,7 @@ func RunCLI(out io.Writer, args []string) int {
 		if err := json.Unmarshal([]byte(jsonPayload), &payload); err != nil {
 			return outputError(out, fmt.Sprintf("invalid json: %v", err))
 		}
-		if err := w.UpsertTasksBatch(payload.Tasks); err != nil {
+		if err := b.UpsertTasksBatch(payload.Tasks); err != nil {
 			return outputError(out, err.Error())
 		}
 		return outputSuccessWithCount(out, len(payload.Tasks))
@@ -121,7 +137,7 @@ func RunCLI(out io.Writer, args []string) int {
 		if err := json.Unmarshal([]byte(jsonPayload), &payload); err != nil {
 			return outputError(out, fmt.Sprintf("invalid json: %v", err))
 		}
-		if err := w.SetPhase(payload.IDOrSlug, payload.Phase); err != nil {
+		if err := b.SetPhase(payload.IDOrSlug, payload.Phase); err != nil {
 			return outputError(out, err.Error())
 		}
 		return outputSuccess(out)
@@ -138,7 +154,7 @@ func RunCLI(out io.Writer, args []string) int {
 		if err := json.Unmarshal([]byte(jsonPayload), &payload); err != nil {
 			return outputError(out, fmt.Sprintf("invalid json: %v", err))
 		}
-		if err := w.RemoveTask(payload.IDOrSlug); err != nil {
+		if err := b.RemoveTask(payload.IDOrSlug); err != nil {
 			return outputError(out, err.Error())
 		}
 		return outputSuccess(out)
@@ -155,7 +171,7 @@ func RunCLI(out io.Writer, args []string) int {
 		if err := json.Unmarshal([]byte(jsonPayload), &payload); err != nil {
 			return outputError(out, fmt.Sprintf("invalid json: %v", err))
 		}
-		task, found, err := w.GetTask(payload.IDOrSlug)
+		task, found, err := b.GetTask(payload.IDOrSlug)
 		if err != nil {
 			return outputError(out, err.Error())
 		}
@@ -166,7 +182,7 @@ func RunCLI(out io.Writer, args []string) int {
 
 	case "list":
 		// List all tasks with computed fields (layer, has_proposal). No payload.
-		tasks, err := w.ListTasksBrief()
+		tasks, err := b.ListTasksBrief()
 		if err != nil {
 			return outputError(out, err.Error())
 		}
@@ -174,7 +190,7 @@ func RunCLI(out io.Writer, args []string) int {
 
 	case "list-full":
 		// List all tasks as stored in tasks.json, without enriched fields. No payload.
-		tasks, err := w.ListTasksFull()
+		tasks, err := b.ListTasksFull()
 		if err != nil {
 			return outputError(out, err.Error())
 		}
@@ -205,7 +221,7 @@ func RunCLI(out io.Writer, args []string) int {
 			setPhasePtr = &[2]any{payload.SetPhase[0], payload.SetPhase[1]}
 		}
 
-		task, err := w.MergeTasks(payload.RemoveSlugs, payload.Upsert, setPhasePtr)
+		task, err := b.MergeTasks(payload.RemoveSlugs, payload.Upsert, setPhasePtr)
 		if err != nil {
 			return outputError(out, err.Error())
 		}
@@ -224,7 +240,7 @@ func RunCLI(out io.Writer, args []string) int {
 		if err := json.Unmarshal([]byte(jsonPayload), &payload); err != nil {
 			return outputError(out, fmt.Sprintf("invalid json: %v", err))
 		}
-		if err := w.SetDeps(payload.Slug, payload.DependsOn); err != nil {
+		if err := b.SetDeps(payload.Slug, payload.DependsOn); err != nil {
 			return outputError(out, err.Error())
 		}
 		return outputSuccess(out)
@@ -232,7 +248,7 @@ func RunCLI(out io.Writer, args []string) int {
 	case "rerender":
 		// Rebuild Home.md and _Sidebar.md from the current tasks.json. No payload.
 		// Useful if render files have been corrupted or manually edited.
-		if err := w.Rerender(); err != nil {
+		if err := b.Rerender(); err != nil {
 			return outputError(out, err.Error())
 		}
 		return outputSuccess(out)
@@ -240,7 +256,7 @@ func RunCLI(out io.Writer, args []string) int {
 	case "sync":
 		// Commit and push pending changes to the remote. No payload. Normally
 		// launched detached by a write; can also be run by hand to force a backup.
-		if err := w.Sync(); err != nil {
+		if err := b.Sync(); err != nil {
 			return outputError(out, err.Error())
 		}
 		return outputSuccess(out)
@@ -249,17 +265,6 @@ func RunCLI(out io.Writer, args []string) int {
 		fmt.Fprintf(os.Stderr, "unknown subcommand: %s\n", subcommand)
 		return 1
 	}
-}
-
-// resolveWikiPath applies the flag > env > default precedence for the wiki directory.
-func resolveWikiPath(flagVal string) string {
-	if flagVal != "" {
-		return flagVal
-	}
-	if env := os.Getenv("MHGO_WIKI_PATH"); env != "" {
-		return env
-	}
-	return defaultWikiPath
 }
 
 // writeJSON marshals v and writes it as a single line to out.

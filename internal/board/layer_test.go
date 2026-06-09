@@ -2,31 +2,31 @@
 //
 // ComputeLayers depth assignment, RenderOrder, and ExtendedTitle.
 
-package wiki_test
+package board_test
 
 import (
 	"testing"
 
-	"github.com/Knatte18/mhgo/internal/wiki"
+	"github.com/Knatte18/mhgo/internal/board"
 )
 
 func TestComputeLayers(t *testing.T) {
 	tests := []struct {
 		name      string
-		tasks     []wiki.Task
+		tasks     []board.Task
 		want      map[string]string
 		wantError bool
 	}{
 		{
 			name: "single task no deps",
-			tasks: []wiki.Task{
+			tasks: []board.Task{
 				{ID: 1, Slug: "a", Title: "Task A", DependsOn: []string{}},
 			},
 			want: map[string]string{"a": "A"},
 		},
 		{
 			name: "A depends on B",
-			tasks: []wiki.Task{
+			tasks: []board.Task{
 				{ID: 1, Slug: "a", Title: "Task A", DependsOn: []string{"b"}},
 				{ID: 2, Slug: "b", Title: "Task B", DependsOn: []string{}},
 			},
@@ -34,7 +34,7 @@ func TestComputeLayers(t *testing.T) {
 		},
 		{
 			name: "done task excluded from depth",
-			tasks: []wiki.Task{
+			tasks: []board.Task{
 				{ID: 1, Slug: "a", Title: "Task A", DependsOn: []string{"b"}},
 				{ID: 2, Slug: "b", Title: "Task B", DependsOn: []string{}, Status: stringPtr("done")},
 			},
@@ -42,21 +42,21 @@ func TestComputeLayers(t *testing.T) {
 		},
 		{
 			name: "deferred task",
-			tasks: []wiki.Task{
+			tasks: []board.Task{
 				{ID: 1, Slug: "a", Title: "Task A", Deferred: true},
 			},
 			want: map[string]string{"a": "__deferred__"},
 		},
 		{
 			name: "isolated task",
-			tasks: []wiki.Task{
+			tasks: []board.Task{
 				{ID: 1, Slug: "a", Title: "Task A", Isolated: true},
 			},
 			want: map[string]string{"a": "Z"},
 		},
 		{
 			name: "chain of 3",
-			tasks: []wiki.Task{
+			tasks: []board.Task{
 				{ID: 1, Slug: "a", Title: "Task A", DependsOn: []string{"b"}},
 				{ID: 2, Slug: "b", Title: "Task B", DependsOn: []string{"c"}},
 				{ID: 3, Slug: "c", Title: "Task C", DependsOn: []string{}},
@@ -65,8 +65,8 @@ func TestComputeLayers(t *testing.T) {
 		},
 		{
 			name: "depth exceeds A..Y cap",
-			tasks: func() []wiki.Task {
-				var tasks []wiki.Task
+			tasks: func() []board.Task {
+				var tasks []board.Task
 				for i := 0; i < 26; i++ {
 					slug := ""
 					switch i {
@@ -128,7 +128,7 @@ func TestComputeLayers(t *testing.T) {
 					if i > 0 {
 						deps = []string{tasks[i-1].Slug}
 					}
-					tasks = append(tasks, wiki.Task{
+					tasks = append(tasks, board.Task{
 						ID:        i + 1,
 						Slug:      slug,
 						Title:     "Task " + slug,
@@ -143,7 +143,7 @@ func TestComputeLayers(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := wiki.ComputeLayers(tt.tasks)
+			got, err := board.ComputeLayers(tt.tasks)
 			if (err != nil) != tt.wantError {
 				t.Fatalf("ComputeLayers() error = %v, wantError %v", err, tt.wantError)
 			}
@@ -167,19 +167,19 @@ func TestComputeLayers(t *testing.T) {
 func TestRenderOrder(t *testing.T) {
 	tests := []struct {
 		name  string
-		tasks []wiki.Task
-		check func(t *testing.T, result []wiki.TaskWithLayer)
+		tasks []board.Task
+		check func(t *testing.T, result []board.TaskWithLayer)
 	}{
 		{
 			name: "buckets in correct order",
-			tasks: []wiki.Task{
+			tasks: []board.Task{
 				{ID: 1, Slug: "done1", Title: "Done Task", Status: stringPtr("done")},
 				{ID: 2, Slug: "deferred1", Title: "Deferred Task", Deferred: true},
 				{ID: 3, Slug: "z1", Title: "Isolated Task", Isolated: true},
 				{ID: 4, Slug: "a1", Title: "Layer A Task", DependsOn: []string{}},
 				{ID: 5, Slug: "b1", Title: "Layer B Task", DependsOn: []string{"a1"}},
 			},
-			check: func(t *testing.T, result []wiki.TaskWithLayer) {
+			check: func(t *testing.T, result []board.TaskWithLayer) {
 				if len(result) != 5 {
 					t.Fatalf("RenderOrder() got %d tasks, want 5", len(result))
 				}
@@ -198,12 +198,12 @@ func TestRenderOrder(t *testing.T) {
 		},
 		{
 			name: "tasks within bucket sorted by ID",
-			tasks: []wiki.Task{
+			tasks: []board.Task{
 				{ID: 3, Slug: "c", Title: "Task C", DependsOn: []string{}},
 				{ID: 1, Slug: "a", Title: "Task A", DependsOn: []string{}},
 				{ID: 2, Slug: "b", Title: "Task B", DependsOn: []string{}},
 			},
-			check: func(t *testing.T, result []wiki.TaskWithLayer) {
+			check: func(t *testing.T, result []board.TaskWithLayer) {
 				if len(result) != 3 {
 					t.Fatalf("RenderOrder() got %d tasks, want 3", len(result))
 				}
@@ -219,7 +219,7 @@ func TestRenderOrder(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := wiki.RenderOrder(tt.tasks)
+			result, err := board.RenderOrder(tt.tasks)
 			if err != nil {
 				t.Fatalf("RenderOrder() error = %v", err)
 			}
@@ -231,31 +231,31 @@ func TestRenderOrder(t *testing.T) {
 func TestExtendedTitle(t *testing.T) {
 	tests := []struct {
 		name  string
-		task  wiki.Task
+		task  board.Task
 		layer string
 		want  string
 	}{
 		{
 			name:  "letter bucket",
-			task:  wiki.Task{Title: "My Task"},
+			task:  board.Task{Title: "My Task"},
 			layer: "A",
 			want:  "My Task [A]",
 		},
 		{
 			name:  "Z bucket",
-			task:  wiki.Task{Title: "Isolated"},
+			task:  board.Task{Title: "Isolated"},
 			layer: "Z",
 			want:  "Isolated [Z]",
 		},
 		{
 			name:  "done bucket",
-			task:  wiki.Task{Title: "Completed"},
+			task:  board.Task{Title: "Completed"},
 			layer: "__done__",
 			want:  "Completed",
 		},
 		{
 			name:  "deferred bucket",
-			task:  wiki.Task{Title: "Postponed"},
+			task:  board.Task{Title: "Postponed"},
 			layer: "__deferred__",
 			want:  "Postponed",
 		},
@@ -263,7 +263,7 @@ func TestExtendedTitle(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := wiki.ExtendedTitle(tt.task, tt.layer)
+			got := board.ExtendedTitle(tt.task, tt.layer)
 			if got != tt.want {
 				t.Errorf("ExtendedTitle() got %q, want %q", got, tt.want)
 			}

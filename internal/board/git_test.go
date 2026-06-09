@@ -2,7 +2,7 @@
 //
 // PathGuard rejection, AtomicWrite, and Pull / CommitPush behavior.
 
-package wiki_test
+package board_test
 
 import (
 	"os"
@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/mhgo/internal/wiki"
+	"github.com/Knatte18/mhgo/internal/board"
 )
 
 func TestPathGuard(t *testing.T) {
@@ -32,7 +32,7 @@ func TestPathGuard(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := wiki.PathGuard(tt.path)
+			err := board.PathGuard(tt.path)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("PathGuard(%q) error = %v, wantErr %v", tt.path, err, tt.wantErr)
 			}
@@ -46,7 +46,7 @@ func TestAtomicWrite(t *testing.T) {
 	t.Run("creates file with correct content", func(t *testing.T) {
 		relPath := "file.txt"
 		content := "test content"
-		if err := wiki.AtomicWrite(tmpDir, relPath, content); err != nil {
+		if err := board.AtomicWrite(tmpDir, relPath, content); err != nil {
 			t.Fatalf("AtomicWrite failed: %v", err)
 		}
 
@@ -63,7 +63,7 @@ func TestAtomicWrite(t *testing.T) {
 	t.Run("creates parent directories", func(t *testing.T) {
 		relPath := "deep/nested/path/file.txt"
 		content := "nested content"
-		if err := wiki.AtomicWrite(tmpDir, relPath, content); err != nil {
+		if err := board.AtomicWrite(tmpDir, relPath, content); err != nil {
 			t.Fatalf("AtomicWrite failed: %v", err)
 		}
 
@@ -79,7 +79,7 @@ func TestAtomicWrite(t *testing.T) {
 
 	t.Run("no temp file left on disk", func(t *testing.T) {
 		relPath := "atomic.txt"
-		if err := wiki.AtomicWrite(tmpDir, relPath, "content"); err != nil {
+		if err := board.AtomicWrite(tmpDir, relPath, "content"); err != nil {
 			t.Fatalf("AtomicWrite failed: %v", err)
 		}
 
@@ -147,7 +147,7 @@ func TestPull(t *testing.T) {
 	}
 
 	// Pull when nothing to pull should return updated=false
-	updated, err := wiki.Pull(clonePath)
+	updated, err := board.Pull(clonePath)
 	if err != nil {
 		t.Fatalf("Pull failed: %v", err)
 	}
@@ -162,7 +162,7 @@ func TestCommitPush(t *testing.T) {
 		t.Skip("git not found on PATH")
 	}
 
-	t.Run("commits and logs with WIKI_SKIP_PUSH", func(t *testing.T) {
+	t.Run("commits and logs with BOARD_SKIP_PUSH", func(t *testing.T) {
 		tmpDir := t.TempDir()
 		repoPath := filepath.Join(tmpDir, "repo")
 
@@ -189,10 +189,10 @@ func TestCommitPush(t *testing.T) {
 		}
 
 		// Set env to skip push
-		t.Setenv("WIKI_SKIP_PUSH", "1")
+		t.Setenv("BOARD_SKIP_PUSH", "1")
 
 		// Commit via commitPush
-		err := wiki.CommitPush(repoPath, []string{"test.txt"}, "test commit")
+		err := board.CommitPush(repoPath, []string{"test.txt"}, "test commit")
 		if err != nil {
 			t.Fatalf("CommitPush failed: %v", err)
 		}
@@ -233,9 +233,9 @@ func TestCommitPush(t *testing.T) {
 			t.Fatalf("WriteFile failed: %v", err)
 		}
 
-		t.Setenv("WIKI_SKIP_PUSH", "1")
+		t.Setenv("BOARD_SKIP_PUSH", "1")
 
-		err := wiki.CommitPush(repoPath, []string{"test.txt"}, "first commit")
+		err := board.CommitPush(repoPath, []string{"test.txt"}, "first commit")
 		if err != nil {
 			t.Fatalf("CommitPush failed: %v", err)
 		}
@@ -249,7 +249,7 @@ func TestCommitPush(t *testing.T) {
 		firstCount := strings.TrimSpace(string(output))
 
 		// Call commitPush again with no changes - should be idempotent
-		err = wiki.CommitPush(repoPath, []string{"test.txt"}, "second commit")
+		err = board.CommitPush(repoPath, []string{"test.txt"}, "second commit")
 		if err != nil {
 			t.Fatalf("CommitPush second call failed: %v", err)
 		}
@@ -308,8 +308,8 @@ func TestCommitPush(t *testing.T) {
 			t.Fatalf("WriteFile failed: %v", err)
 		}
 
-		t.Setenv("WIKI_SKIP_PUSH", "")
-		err := wiki.CommitPush(cloneBPath, []string{"fileB.txt"}, "commit from B")
+		t.Setenv("BOARD_SKIP_PUSH", "")
+		err := board.CommitPush(cloneBPath, []string{"fileB.txt"}, "commit from B")
 		if err != nil {
 			t.Fatalf("CommitPush on B failed: %v", err)
 		}
@@ -321,7 +321,7 @@ func TestCommitPush(t *testing.T) {
 		}
 
 		// This should succeed via rebase retry
-		err = wiki.CommitPush(cloneAPath, []string{"fileA.txt"}, "commit from A")
+		err = board.CommitPush(cloneAPath, []string{"fileA.txt"}, "commit from A")
 		if err != nil {
 			t.Fatalf("CommitPush on A failed (should have succeeded via rebase): %v", err)
 		}

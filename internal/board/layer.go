@@ -4,7 +4,7 @@
 // RenderOrder orders tasks for output, and ExtendedTitle formats a task's
 // display title. All computed at read time; never stored.
 
-package wiki
+package board
 
 import (
 	"fmt"
