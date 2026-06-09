@@ -610,7 +610,7 @@ func TestRenderLayerBuckets(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := board.Render([]board.Task{tt.task})
+			result, err := board.Render([]board.Task{tt.task}, board.DefaultOutputs())
 			if err != nil {
 				t.Fatalf("Render failed: %v", err)
 			}
