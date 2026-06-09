@@ -10,6 +10,7 @@
 //
 // Modules:
 //
+//	init    scaffold _mhgo/board.yaml and .gitignore in the current directory
 //	board   task-tracker board — see internal/board.RunCLI for subcommands
 //
 // All output is JSON on stdout. Exit code 1 on error.
@@ -39,6 +40,8 @@ func run(args []string, out io.Writer) int {
 	module, moduleArgs := args[0], args[1:]
 
 	switch module {
+	case "init":
+		return board.RunInit(out, moduleArgs)
 	case "board":
 		return board.RunCLI(out, moduleArgs)
 	default:
