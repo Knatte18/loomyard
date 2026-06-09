@@ -19,12 +19,14 @@ import (
 // a detached sync process so the write returns immediately.
 type Board struct {
 	boardPath string
+	out       Outputs
 }
 
-// New returns a Board operating on boardPath.
-func New(wikiPath string) *Board {
+// New returns a Board operating with the given config.
+func New(cfg Config) *Board {
 	return &Board{
-		boardPath: wikiPath,
+		boardPath: cfg.Path,
+		out:       cfg.Outputs(),
 	}
 }
 
@@ -61,7 +63,7 @@ func (b *Board) writeOp(mutate func(*Store) (any, error), _ string) (any, error)
 
 	// (5) Render the readable .md files (render.go owns all markdown output and
 	// orphan cleanup; board.go only deals with tasks.json).
-	if err := RenderToDisk(b.boardPath, store.Tasks()); err != nil {
+	if err := RenderToDisk(b.boardPath, store.Tasks(), b.out); err != nil {
 		return nil, fmt.Errorf("render: %w", err)
 	}
 
