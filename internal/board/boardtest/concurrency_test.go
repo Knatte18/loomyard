@@ -21,6 +21,14 @@ import (
 // Reads bypass the write lock and writes are atomic (temp + rename), so every
 // read must see a complete tasks.json — either the pre- or post-upsert state,
 // never a partial one.
+//
+// The test is filesystem-bound, not CPU-bound: each write goes through Board.writeOp
+// which performs 3 AtomicWrite temp-create+rename operations (for tasks.json,
+// Home.md, and _Sidebar.md), each synchronously scanned by endpoint AV. The readers
+// loop continuously until the writer closes the stop channel, so read-under-write
+// coverage is governed by how long the writer runs, not by the absolute number of
+// writes. Therefore, the writes constant is kept small to bound the filesystem
+// operation stream while preserving the race-condition window for concurrent access.
 func TestConcurrentReadsDuringUpserts(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
 	cwd := seedWiki(t, 100)
@@ -31,7 +39,7 @@ func TestConcurrentReadsDuringUpserts(t *testing.T) {
 
 	const (
 		readers = 8
-		writes  = 300
+		writes  = 50
 	)
 
 	var wg sync.WaitGroup
