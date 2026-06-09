@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-reduce-writes
+phase: holistic-reviewing
 slug: boardtest-concurrency-speed
 branch: boardtest-concurrency-speed
 plan: _mill/plan
@@ -23,6 +23,7 @@ planned  '2026-06-09T10:32:27Z'
 plan-fix-r2  '2026-06-09T10:41:51Z'
 implementing  '2026-06-09T11:26:50Z'
 approved-reduce-writes  '2026-06-09T11:29:41Z'
+holistic-reviewing  '2026-06-09T11:30:02Z'
 ```
 
 ## Batches
