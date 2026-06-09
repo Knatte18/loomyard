@@ -16,26 +16,10 @@ import (
 	"github.com/Knatte18/mhgo/internal/board"
 )
 
-// runInit invokes board.RunInit in-process from a temp cwd and returns the exit
-// code plus the JSON written to out.
-func runInit(t *testing.T, cwd string) (exitCode int, stdout string) {
+// runInit invokes board.RunInit in-process and returns the exit code plus the
+// JSON written to out. Caller must have called t.Chdir to set up the cwd.
+func runInit(t *testing.T) (exitCode int, stdout string) {
 	t.Helper()
-
-	// Save original cwd
-	origCwd, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("failed to get original cwd: %v", err)
-	}
-	defer func() {
-		if err := os.Chdir(origCwd); err != nil {
-			t.Errorf("failed to restore cwd: %v", err)
-		}
-	}()
-
-	// Change to test cwd
-	if err := os.Chdir(cwd); err != nil {
-		t.Fatalf("failed to chdir to temp dir: %v", err)
-	}
 
 	var buf bytes.Buffer
 	code := board.RunInit(&buf, []string{})
@@ -45,8 +29,9 @@ func runInit(t *testing.T, cwd string) (exitCode int, stdout string) {
 // TestInitCreatesStructure tests that first run creates _mhgo/board.yaml.
 func TestInitCreatesStructure(t *testing.T) {
 	cwd := t.TempDir()
+	t.Chdir(cwd)
 
-	exitCode, stdout := runInit(t, cwd)
+	exitCode, stdout := runInit(t)
 
 	if exitCode != 0 {
 		t.Fatalf("expected exit 0, got %d; stdout: %s", exitCode, stdout)
@@ -86,8 +71,9 @@ func TestInitCreatesStructure(t *testing.T) {
 // TestInitGitignoreBlock tests that .gitignore managed block is created.
 func TestInitGitignoreBlock(t *testing.T) {
 	cwd := t.TempDir()
+	t.Chdir(cwd)
 
-	exitCode, stdout := runInit(t, cwd)
+	exitCode, stdout := runInit(t)
 
 	if exitCode != 0 {
 		t.Fatalf("expected exit 0, got %d; stdout: %s", exitCode, stdout)
@@ -121,9 +107,10 @@ func TestInitGitignoreBlock(t *testing.T) {
 // TestInitIdempotent tests that a second run doesn't clobber board.yaml or duplicate the gitignore block.
 func TestInitIdempotent(t *testing.T) {
 	cwd := t.TempDir()
+	t.Chdir(cwd)
 
 	// First run
-	exitCode1, stdout1 := runInit(t, cwd)
+	exitCode1, stdout1 := runInit(t)
 	if exitCode1 != 0 {
 		t.Fatalf("first run: expected exit 0, got %d; stdout: %s", exitCode1, stdout1)
 	}
@@ -148,7 +135,7 @@ func TestInitIdempotent(t *testing.T) {
 	}
 
 	// Second run
-	exitCode2, stdout2 := runInit(t, cwd)
+	exitCode2, stdout2 := runInit(t)
 	if exitCode2 != 0 {
 		t.Fatalf("second run: expected exit 0, got %d; stdout: %s", exitCode2, stdout2)
 	}
@@ -195,8 +182,9 @@ func TestInitIdempotent(t *testing.T) {
 // TestInitJSONShape tests that the JSON output has the correct shape on first run.
 func TestInitJSONShape(t *testing.T) {
 	cwd := t.TempDir()
+	t.Chdir(cwd)
 
-	exitCode, stdout := runInit(t, cwd)
+	exitCode, stdout := runInit(t)
 
 	if exitCode != 0 {
 		t.Fatalf("expected exit 0, got %d; stdout: %s", exitCode, stdout)
