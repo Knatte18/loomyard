@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: boardtest-concurrency-speed
 branch: boardtest-concurrency-speed
-plan: null
+plan: _mill/plan
 parent: main
 task: Cut boardtest concurrency test run time
 task_description: |
@@ -17,4 +17,5 @@ task_description: |
 discussing  '2026-06-09T10:10:41Z'
 discussion-fix-r1  '2026-06-09T10:28:28Z'
 discussed  '2026-06-09T10:28:44Z'
+planning  '2026-06-09T10:31:00Z'
 ```
