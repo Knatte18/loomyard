@@ -16,6 +16,9 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// envTokenRe matches $env:NAME tokens where NAME is [A-Za-z_][A-Za-z0-9_]*
+var envTokenRe = regexp.MustCompile(`\$env:([A-Za-z_][A-Za-z0-9_]*)`)
+
 // Config represents the configuration for a board module.
 type Config struct {
 	Path           string `yaml:"path"`
@@ -158,12 +161,9 @@ func LoadConfig(baseDir, module string) (Config, error) {
 // NAME must match [A-Za-z_][A-Za-z0-9_]*. Returns an error if a referenced
 // variable is not set.
 func expandEnv(s string) (string, error) {
-	// Regex pattern: $env: followed by a valid env var name
-	re := regexp.MustCompile(`\$env:([A-Za-z_][A-Za-z0-9_]*)`)
-
 	var firstUnsetVar string
 
-	result := re.ReplaceAllStringFunc(s, func(match string) string {
+	result := envTokenRe.ReplaceAllStringFunc(s, func(match string) string {
 		// Extract the variable name
 		parts := strings.SplitN(match, ":", 2)
 		varName := parts[1]
