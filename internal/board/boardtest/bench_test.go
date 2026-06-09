@@ -28,7 +28,8 @@ var benchSizes = []int{10, 100, 1000}
 // fresh temp dir, seeded with _mhgo/board.yaml for config, and returns the cwd path.
 // Callers must set BOARD_SKIP_GIT=1 so the benchmark measures board logic + file I/O,
 // not git push latency. It takes a testing.TB so both benchmarks and concurrency tests
-// can use it.
+// can use it. For direct facade tests (not CLI), construct Board from the config's Path
+// which is resolved from board.yaml.
 func seedWiki(tb testing.TB, n int) string {
 	tb.Helper()
 
@@ -68,6 +69,7 @@ func seedWiki(tb testing.TB, n int) string {
 	if err := os.WriteFile(filepath.Join(boardDir, "tasks.json"), data, 0o644); err != nil {
 		tb.Fatalf("write seed: %v", err)
 	}
+	// Return the cwd (parent) for CLI benchmarks, which will call b.Chdir
 	return dir
 }
 
