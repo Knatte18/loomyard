@@ -37,8 +37,8 @@ value, not blindly hard-code 50 — see Card 1 Requirements and `## Batch Tests`
   - In function `TestConcurrentReadsDuringUpserts`, change the `const writes` value from `300` to `50`. Leave `const readers = 8` unchanged. Leave `seedWiki(t, 100)` and the `len(tasks) != 100` and `task.Slug != "task-50"` assertions unchanged.
   - Update the doc comment block on `TestConcurrentReadsDuringUpserts` (and/or an inline comment on the `const ( readers ...; writes ... )` block) to explain: the test is filesystem-bound, not CPU-bound — each write goes through `Board.writeOp` and performs 3 `AtomicWrite` temp-create+rename ops (`tasks.json`, `Home.md`, `_Sidebar.md`), each scanned by endpoint AV; the readers loop continuously until the writer stops, so read-under-write coverage is governed by how long the writer runs, not by the number of writes; therefore `writes` is kept small to bound the FS-op stream while preserving the race window.
   - Do NOT add a `testing.Short()` branch, do NOT change `seedWiki`, and do NOT modify any production file. Keep `t.Setenv("BOARD_SKIP_GIT", "1")` in place.
-  - Empirically tune the final `writes` value: run the verification (see `## Batch Tests`) and confirm the isolated wall-clock is ~1–1.5s. If it lands materially outside that band, adjust `writes` within the closed range [40, 75] — never above 75 — and re-run. Record the chosen value in the comment if it differs from 50.
-- **Commit:** `test(board): cut TestConcurrentReadsDuringUpserts writes 300->50`
+  - Empirically tune the final `writes` value: run the verification (see `## Batch Tests`) and confirm the isolated wall-clock is ~1–1.5s. If it lands materially outside that band, adjust `writes` within the closed range [40, 75] — never above 75 — and re-run. If tuning yields a value other than 50, update **both** the test comment **and** the commit subject (replace `300->50` with `300-><final>`) so they cannot silently diverge from the value actually committed.
+- **Commit:** `test(board): cut TestConcurrentReadsDuringUpserts writes 300->50` (replace `50` with the final tuned value if it differs)
 
 ## Batch Tests
 

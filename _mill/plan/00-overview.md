@@ -36,7 +36,7 @@ batches:
 ### Decision: go-native-verify
 
 - **Decision:** This is a Go project; `verify:` uses the native `go test` runner with no `PYTHONPATH=` prefix.
-- **Rationale:** The `PYTHONPATH=` prefix rule applies only to Python/mill projects. `go test ./internal/board/boardtest/` runs exactly the two `Test*` functions in the package (benchmarks need `-bench`; integration tests need `-tags integration`), so the scope is already the affected tests.
+- **Rationale:** The `PYTHONPATH=` prefix rule applies only to Python/mill projects. `go test ./internal/board/boardtest/` runs both `Test*` functions in the package — the changed `TestConcurrentReadsDuringUpserts` plus its sibling `TestConcurrentUpsertsDoNotLoseWrites` (benchmarks need `-bench`; integration tests need `-tags integration`, so neither runs). Running the sibling is intended, not scope creep: validation step 4 requires confirming it still passes, and it costs ~0.11s.
 - **Applies to:** all batches
 
 ## All Files Touched
