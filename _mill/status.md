@@ -41,7 +41,9 @@ batches:
     start_sha: f0c0b9e3228c42bd727713a9ea1fd294c5c90e87
     commit_sha: 844be1b5aaab0c2654f00b931dcc54aea6435932
   - name: internal/config — generic config loader
-    state: pending
+    state: running
+    implementer_session: 86a2683f-da76-409e-a34e-7d26dbdb16e9
+    start_sha: 542850b976a1d782300793311b48d96ac0d1c174
   - name: board migration — adopt all three packages
     state: pending
 ```
