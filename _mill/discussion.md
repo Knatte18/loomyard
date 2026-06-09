@@ -220,11 +220,13 @@ internal/
 - `internal/board/lock.go` — 52 lines; pure lift.
 - `internal/board/spawn_windows.go` — owns `hideProcWindow` and `spawnSync`; only
   `hideProcWindow` is removed.
-- `internal/board/board.go` — calls `AcquireWriteLock` (line 46); becomes `lock.AcquireWriteLock`.
-- `internal/board/store.go` — calls `AcquireReadLock` (line 63) and `AcquireWriteLock`
-  (line 105); both become `lock.*` calls.
-- `internal/board/sync.go` — calls `RunGit` (lines 73, 83, 89, 113, 124, 125, 174) and
-  `AcquireWriteLock` (lines 40, 67); both become qualified calls.
+- `internal/board/board.go` — calls `AcquireWriteLock` (~line 46); becomes `lock.AcquireWriteLock`.
+- `internal/board/store.go` — calls `AcquireReadLock` and `AcquireWriteLock`; both become `lock.*` calls.
+- `internal/board/sync.go` — calls `RunGit` and `AcquireWriteLock`; both become qualified calls.
+
+**Note:** Line numbers in this document are approximate and may drift as code evolves.
+The plan writer should `grep` for call sites (e.g. `grep -n AcquireWriteLock`) rather
+than relying on the cited line numbers.
 
 ### Env expansion regex (current → extended)
 
@@ -296,8 +298,9 @@ a `.mhgo/<module>.yaml` present in the test dir is NOT loaded.
 ### `init.go` template comment update
 
 `generateCommentedBoardYAML` currently shows bare default values with trailing key
-descriptions. After the change it shows `? fallback` examples while preserving
-per-key descriptions. Complete template strings:
+descriptions. After the change it provides updated per-key descriptions alongside
+the `? fallback` examples (descriptions are reworded, not preserved verbatim).
+Complete replacement template strings:
 
 ```
 # path: $env:MHGO_BOARD_PATH ? ../_board   # board dir (tasks.json + rendered output); relative to cwd or absolute
@@ -309,13 +312,18 @@ per-key descriptions. Complete template strings:
 The gitignore block (`.mhgo/`) is unchanged — the dir is still gitignored for future
 `local-state.json`.
 
-### `spawn_windows.go` build constraint
+### `spawn_windows.go` build constraint and constants
 
 `spawn_windows.go` uses the `_windows.go` filename suffix as its build constraint
 (no explicit `//go:build windows` line). `spawn_other.go` uses an explicit
 `//go:build !windows` tag. This asymmetry is intentional and valid Go — the filename
 suffix is the constraint mechanism for the Windows file. No change needed here; the
 implementation must not add a redundant `//go:build windows` tag that would conflict.
+
+The constants `createNoWindow` (0x08000000) and `createNewProcessGroup` (0x00000200)
+defined in `spawn_windows.go` **remain there** after `hideProcWindow` moves out —
+`spawnSync` still uses both. `internal/git`'s platform file (`git_windows.go`)
+declares its own `createNoWindow` constant independently; no sharing across packages.
 
 ### Boardtest benchmarks
 
