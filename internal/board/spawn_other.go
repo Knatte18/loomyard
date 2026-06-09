@@ -30,6 +30,3 @@ func spawnSync(boardPath string) error {
 	// Leave stdin/stdout/stderr nil so no handles are inherited from the parent.
 	return cmd.Start() // intentionally not Wait()ed
 }
-
-// hideProcWindow is a no-op off Windows.
-func hideProcWindow(cmd *exec.Cmd) {}
