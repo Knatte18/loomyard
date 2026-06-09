@@ -25,13 +25,31 @@ import (
 var benchSizes = []int{10, 100, 1000}
 
 // seedWiki writes a tasks.json with n independent (dependency-free) tasks into a
-// fresh temp dir and returns its path. Callers must set BOARD_SKIP_GIT=1 so the
-// benchmark measures wiki logic + file I/O, not git push latency. It takes a
-// testing.TB so both benchmarks and concurrency tests can use it.
+// fresh temp dir, seeded with _mhgo/board.yaml for config, and returns the cwd path.
+// Callers must set BOARD_SKIP_GIT=1 so the benchmark measures board logic + file I/O,
+// not git push latency. It takes a testing.TB so both benchmarks and concurrency tests
+// can use it.
 func seedWiki(tb testing.TB, n int) string {
 	tb.Helper()
 
 	dir := tb.TempDir()
+
+	// Create _mhgo directory with board.yaml config
+	mhgoDir := filepath.Join(dir, "_mhgo")
+	if err := os.MkdirAll(mhgoDir, 0o755); err != nil {
+		tb.Fatalf("mkdir _mhgo: %v", err)
+	}
+	configPath := filepath.Join(mhgoDir, "board.yaml")
+	if err := os.WriteFile(configPath, []byte("path: board\n"), 0o644); err != nil {
+		tb.Fatalf("write board.yaml: %v", err)
+	}
+
+	// Create board directory and tasks.json
+	boardDir := filepath.Join(dir, "board")
+	if err := os.MkdirAll(boardDir, 0o755); err != nil {
+		tb.Fatalf("mkdir board: %v", err)
+	}
+
 	tasks := make([]board.Task, n)
 	for i := range tasks {
 		tasks[i] = board.Task{
@@ -47,7 +65,7 @@ func seedWiki(tb testing.TB, n int) string {
 	if err != nil {
 		tb.Fatalf("marshal seed: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "tasks.json"), data, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(boardDir, "tasks.json"), data, 0o644); err != nil {
 		tb.Fatalf("write seed: %v", err)
 	}
 	return dir
@@ -89,12 +107,14 @@ func BenchmarkRender(b *testing.B) {
 // BenchmarkUpsert measures a full "upsert" command through the CLI entrypoint:
 // JSON parse → dispatch → lock → load → mutate → render all tasks → write files.
 // It updates an existing task so the per-op work is stable across iterations.
+// CLI-bench numbers now include the added os.Getwd() + LoadConfig cost from cwd-based config.
 func BenchmarkUpsert(b *testing.B) {
 	b.Setenv("BOARD_SKIP_GIT", "1")
 	for _, n := range benchSizes {
 		b.Run(fmt.Sprintf("n=%d", n), func(b *testing.B) {
 			dir := seedWiki(b, n)
-			args := []string{"--wiki-path", dir, "upsert", `{"slug":"task-0","title":"Updated"}`}
+			b.Chdir(dir)
+			args := []string{"upsert", `{"slug":"task-0","title":"Updated"}`}
 
 			b.ReportAllocs()
 			b.ResetTimer()
@@ -114,7 +134,8 @@ func BenchmarkGet(b *testing.B) {
 	for _, n := range benchSizes {
 		b.Run(fmt.Sprintf("n=%d", n), func(b *testing.B) {
 			dir := seedWiki(b, n)
-			args := []string{"--wiki-path", dir, "get", `{"id_or_slug":"task-0"}`}
+			b.Chdir(dir)
+			args := []string{"get", `{"id_or_slug":"task-0"}`}
 
 			b.ReportAllocs()
 			b.ResetTimer()
@@ -134,7 +155,8 @@ func BenchmarkList(b *testing.B) {
 	for _, n := range benchSizes {
 		b.Run(fmt.Sprintf("n=%d", n), func(b *testing.B) {
 			dir := seedWiki(b, n)
-			args := []string{"--wiki-path", dir, "list"}
+			b.Chdir(dir)
+			args := []string{"list"}
 
 			b.ReportAllocs()
 			b.ResetTimer()
