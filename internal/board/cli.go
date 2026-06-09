@@ -1,9 +1,14 @@
 // cli.go — the board module's command router.
 //
-// RunCLI parses [--wiki-path] <subcommand> [json-payload], resolves the board
-// path (flag → MHGO_WIKI_PATH → ../gowiki), dispatches to one Board method, and
-// writes the JSON result to the given writer. Owns the board CLI surface so main
-// stays a thin module dispatcher.
+// RunCLI parses <subcommand> [json-payload], resolves the board configuration
+// from the current working directory (cwd-authoritative model), dispatches to
+// one Board method, and writes the JSON result to the given writer. Owns the
+// board CLI surface so main stays a thin module dispatcher.
+//
+// When --board-path is set (internal flag for detached sync child), it bypasses
+// configuration resolution and uses the provided path directly. Otherwise,
+// RunCLI resolves config via os.Getwd() and LoadConfig, erroring when <cwd>/_mhgo/
+// is absent.
 
 package board
 
@@ -15,22 +20,17 @@ import (
 	"os"
 )
 
-// defaultWikiPath is used when neither --wiki-path nor MHGO_WIKI_PATH is set.
-// It deliberately points outside the current repo (".wiki" is a junction owned
-// by the non-Go millhouse that is still in active use).
-const defaultWikiPath = "../gowiki"
-
 // RunCLI parses and executes a "board" subcommand, writing JSON results to out.
 // It returns the process exit code (0 on success, 1 on error).
 //
 // Usage:
 //
-//	board [--wiki-path <path>] <subcommand> [json-payload]
+//	board <subcommand> [json-payload]
 //
-// Board path resolution (first match wins):
-//  1. --wiki-path flag
-//  2. MHGO_WIKI_PATH environment variable
-//  3. "../gowiki"
+// Configuration resolution (cwd-authoritative):
+// The current working directory must contain _mhgo/ directory. Configuration
+// is loaded from <cwd>/_mhgo/board.yaml and <cwd>/.mhgo/board.yaml (optional),
+// merged with defaults. The board path is resolved relative to the cwd.
 //
 // Subcommands and their JSON payloads:
 //
@@ -50,20 +50,37 @@ const defaultWikiPath = "../gowiki"
 // Success: {"ok":true, ...}
 // Error:   {"ok":false,"error":"..."} with exit code 1.
 func RunCLI(out io.Writer, args []string) int {
-	fs := flag.NewFlagSet("wiki", flag.ContinueOnError)
+	fs := flag.NewFlagSet("board", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
-	wikiPathFlag := fs.String("wiki-path", "", "Path to wiki directory")
+	boardPathFlag := fs.String("board-path", "", "internal: injected absolute board dir for the detached sync child")
 	if err := fs.Parse(args); err != nil {
 		return 1
 	}
 
-	wikiPath := resolveWikiPath(*wikiPathFlag)
+	var cfg Config
+	var err error
+
+	// If --board-path is set, use it directly (internal use for detached sync child)
+	if *boardPathFlag != "" {
+		cfg = DefaultConfig()
+		cfg.Path = *boardPathFlag
+	} else {
+		// Load configuration from cwd
+		cwd, err := os.Getwd()
+		if err != nil {
+			return outputError(out, err.Error())
+		}
+		cfg, err = LoadConfig(cwd, "board")
+		if err != nil {
+			return outputError(out, err.Error())
+		}
+	}
 
 	// fs.Args() returns the arguments remaining after flags are parsed.
 	// Expected: ["<subcommand>", "<json-payload>"]
 	rest := fs.Args()
 	if len(rest) < 1 {
-		fmt.Fprintln(os.Stderr, "usage: mhgo board [--wiki-path <path>] <subcommand> [json-payload]")
+		fmt.Fprintln(os.Stderr, "usage: mhgo board <subcommand> [json-payload]")
 		return 1
 	}
 
@@ -73,9 +90,6 @@ func RunCLI(out io.Writer, args []string) int {
 		jsonPayload = rest[1]
 	}
 
-	// Build config from default values plus resolved board path
-	cfg := DefaultConfig()
-	cfg.Path = wikiPath
 	b := New(cfg)
 
 	switch subcommand {
@@ -252,17 +266,6 @@ func RunCLI(out io.Writer, args []string) int {
 		fmt.Fprintf(os.Stderr, "unknown subcommand: %s\n", subcommand)
 		return 1
 	}
-}
-
-// resolveWikiPath applies the flag > env > default precedence for the wiki directory.
-func resolveWikiPath(flagVal string) string {
-	if flagVal != "" {
-		return flagVal
-	}
-	if env := os.Getenv("MHGO_WIKI_PATH"); env != "" {
-		return env
-	}
-	return defaultWikiPath
 }
 
 // writeJSON marshals v and writes it as a single line to out.
