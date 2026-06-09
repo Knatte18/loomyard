@@ -8,6 +8,8 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -37,11 +39,21 @@ func TestRunUnknownModule(t *testing.T) {
 }
 
 func TestRunDispatchesToBoard(t *testing.T) {
-	t.Setenv("WIKI_SKIP_GIT", "1")
-	wikiPath := t.TempDir()
+	t.Setenv("BOARD_SKIP_GIT", "1")
+	// Create temp cwd with _mhgo/board.yaml
+	cwd := t.TempDir()
+	mhgoDir := filepath.Join(cwd, "_mhgo")
+	if err := os.MkdirAll(mhgoDir, 0o755); err != nil {
+		t.Fatalf("failed to create _mhgo: %v", err)
+	}
+	configPath := filepath.Join(mhgoDir, "board.yaml")
+	if err := os.WriteFile(configPath, []byte("path: board\n"), 0o644); err != nil {
+		t.Fatalf("failed to write board.yaml: %v", err)
+	}
+	t.Chdir(cwd)
 
 	var out bytes.Buffer
-	code := run([]string{"board", "--wiki-path", wikiPath, "rerender"}, &out)
+	code := run([]string{"board", "rerender"}, &out)
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d; output: %s", code, out.String())
 	}
@@ -57,12 +69,22 @@ func TestRunDispatchesToBoard(t *testing.T) {
 }
 
 func TestRunBoardErrorPropagatesExitCode(t *testing.T) {
-	t.Setenv("WIKI_SKIP_GIT", "1")
-	wikiPath := t.TempDir()
+	t.Setenv("BOARD_SKIP_GIT", "1")
+	// Create temp cwd with _mhgo/board.yaml
+	cwd := t.TempDir()
+	mhgoDir := filepath.Join(cwd, "_mhgo")
+	if err := os.MkdirAll(mhgoDir, 0o755); err != nil {
+		t.Fatalf("failed to create _mhgo: %v", err)
+	}
+	configPath := filepath.Join(mhgoDir, "board.yaml")
+	if err := os.WriteFile(configPath, []byte("path: board\n"), 0o644); err != nil {
+		t.Fatalf("failed to write board.yaml: %v", err)
+	}
+	t.Chdir(cwd)
 
 	// remove of a nonexistent task fails — exit code must bubble up through run.
 	var out bytes.Buffer
-	code := run([]string{"board", "--wiki-path", wikiPath, "remove", `{"id_or_slug":"nope"}`}, &out)
+	code := run([]string{"board", "remove", `{"id_or_slug":"nope"}`}, &out)
 	if code != 1 {
 		t.Fatalf("expected exit 1 from failing board command, got %d; output: %s", code, out.String())
 	}
