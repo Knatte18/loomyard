@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-reduce-writes
 slug: boardtest-concurrency-speed
 branch: boardtest-concurrency-speed
 plan: _mill/plan
@@ -22,6 +22,7 @@ plan-review-r1  '2026-06-09T10:32:13Z'
 planned  '2026-06-09T10:32:27Z'
 plan-fix-r2  '2026-06-09T10:41:51Z'
 implementing  '2026-06-09T11:26:50Z'
+approved-reduce-writes  '2026-06-09T11:29:41Z'
 ```
 
 ## Batches
@@ -29,7 +30,8 @@ implementing  '2026-06-09T11:26:50Z'
 ```yaml
 batches:
   - name: reduce-writes
-    state: running
+    state: approved
     implementer_session: db191d1a-c68e-4691-a4ce-6fcb3879f9c0
     start_sha: b1c2b13e6dc42ca980d75c42b468c4d920a029e3
+    commit_sha: a3dad21ce7b4a9b464323adff5c739dc175a32a6
 ```
