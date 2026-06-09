@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-fixing
 slug: extract-shared-infra
 branch: extract-shared-infra
 plan: _mill/plan
@@ -31,6 +31,7 @@ holistic-fixing  '2026-06-09T18:47:25Z'
 holistic-reviewing  '2026-06-09T18:50:22Z'
 holistic-fixing  '2026-06-09T18:52:19Z'
 holistic-reviewing  '2026-06-09T18:54:38Z'
+holistic-fixing  '2026-06-09T18:57:21Z'
 ```
 
 ## Batches
