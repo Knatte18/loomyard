@@ -54,7 +54,9 @@ batches:
     start_sha: 6489af9d8cd116867e19eb1678783a1356640868
     commit_sha: 7e4b99b65b911fdd735f0dcfd5c0c3ca8d148fa1
   - name: cwd-activation-and-board-path
-    state: pending
+    state: running
+    implementer_session: 9f1d5c12-85b0-407c-815e-030e4acadc7f
+    start_sha: ecc86ecf9784cd27a7740bc68086f060485ec4be
   - name: docs-and-roadmap
     state: pending
 ```
