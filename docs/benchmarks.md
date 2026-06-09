@@ -87,7 +87,7 @@ Background sync (`-tags integration -bench SyncGit -benchtime=10x`):
 
 | Benchmark         | ns/op   | Notes                              |
 |-------------------|---------|------------------------------------|
-| SyncGitNoPush     | ~0.7 s  | commit only (WIKI_SKIP_PUSH=1)     |
+| SyncGitNoPush     | ~0.7 s  | commit only (BOARD_SKIP_PUSH=1)    |
 | SyncGit           | ~4.5 s  | commit + push to the remote        |
 
 **Takeaways:**
