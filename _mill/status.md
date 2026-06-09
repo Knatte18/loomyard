@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-rename-wiki-to-board
+phase: approved-config-system
 slug: config-layer
 branch: config-layer
 plan: _mill/plan
@@ -24,6 +24,7 @@ plan-fix-r2  '2026-06-08T12:11:49Z'
 planned  '2026-06-08T12:12:13Z'
 implementing  '2026-06-08T12:20:02Z'
 approved-rename-wiki-to-board  '2026-06-08T12:36:34Z'
+approved-config-system  '2026-06-09T06:01:44Z'
 ```
 
 ## Batches
@@ -36,9 +37,10 @@ batches:
     start_sha: 97a74c4e805adfe52c20bb1e851e7ef806c4fa58
     commit_sha: 00ee5bfe12a402b190365e57410ff780d7344bc6
   - name: config-system
-    state: running
+    state: approved
     implementer_session: 9ca4dff8-a0b7-4187-a030-b7b61942b241
     start_sha: 703a189ce01981e3067ae92dfbf6c0fa1d19e81e
+    commit_sha: 7fcfe999c7da6035bc1bfae68261681d51b5f9c2
   - name: config-driven-render-facade
     state: pending
   - name: mhgo-init-command
