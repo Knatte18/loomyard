@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-mhgo-init-command
+phase: blocked
 slug: config-layer
 branch: config-layer
 plan: _mill/plan
@@ -27,6 +27,7 @@ approved-rename-wiki-to-board  '2026-06-08T12:36:34Z'
 approved-config-system  '2026-06-09T06:01:44Z'
 approved-config-driven-render-facade  '2026-06-09T06:16:56Z'
 approved-mhgo-init-command  '2026-06-09T06:37:02Z'
+blocked  '2026-06-09T06:51:54Z'
 ```
 
 ## Batches
@@ -54,9 +55,10 @@ batches:
     start_sha: 6489af9d8cd116867e19eb1678783a1356640868
     commit_sha: 7e4b99b65b911fdd735f0dcfd5c0c3ca8d148fa1
   - name: cwd-activation-and-board-path
-    state: running
+    state: blocked
     implementer_session: 9f1d5c12-85b0-407c-815e-030e4acadc7f
     start_sha: ecc86ecf9784cd27a7740bc68086f060485ec4be
+    blocked_reason: uncommitted working tree after implementer report
   - name: docs-and-roadmap
     state: pending
 ```
