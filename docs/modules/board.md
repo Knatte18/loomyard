@@ -3,7 +3,7 @@
 The board module (`internal/board`) is the task tracker: it stores tasks in a
 `tasks.json` file, renders human-readable board pages from them, and backs the
 whole thing up to a GitHub repo. It is driven by `mhgo board <subcommand>` (see
-[overview.md](overview.md) for the dispatcher).
+[overview.md](../overview.md) for the dispatcher).
 
 A write only touches the filesystem and returns; the git backup runs in a
 detached background process (see [Background sync](#background-sync)).
@@ -221,6 +221,13 @@ offline forever; it is safe on local disk, and there is deliberately no periodic
 safety-net sync.
 
 ## Configuration
+
+> **Target redesign (not yet implemented).** The model below is what the board
+> code does *today*: a three-layer merge including a gitignored `.mhgo/board.yaml`
+> override. A planned milestone extracts this into the shared `internal/config`
+> package and **drops the `.mhgo/` config layer** in favour of `$env:NAME ? default`
+> references plus a `.env` file. See [shared-libs.md](../shared-libs.md#internalconfig)
+> and [roadmap.md](../roadmap.md). This section is updated when that milestone lands.
 
 The board module's configuration is defined in a layered YAML system, read fresh
 on every invocation from the current working directory. The system supports
