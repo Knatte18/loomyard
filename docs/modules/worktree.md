@@ -23,19 +23,31 @@ makes each step one deterministic command.
 
 ## Layout: the container
 
+Everything lives flat inside a **container directory** — the hub, the board, and
+all worktrees are direct children of the container, not nested under a subdirectory.
+System directories use an underscore prefix to distinguish them from worktrees.
+
 ```
-<container>/                 e.g. C:\Code\mhgo
-├── wts/
-│   ├── mhgo/                 the hub (primary checkout)
-│   ├── feature-a/           worktree on branch feature-a
-│   └── feature-b/           worktree on branch feature-b
-└── ...
+ModelsHub/               ← the container
+├── Models/              ← the hub (primary checkout, main branch)
+├── _board/              ← the board directory (underscore = system, not a worktree)
+├── worktree1/           ← worktree on branch worktree1
+├── worktree2/           ← worktree on branch worktree2
+└── fix_some_bug/        ← worktree on branch fix_some_bug
 ```
 
-The container is the parent that holds the hub and all worktrees. Its path is
-config (`worktree.yaml`), default `<reporoot>/../<name>` — resolved via
-`internal/config`, so it honours `$env:NAME ? default` and the cwd-authoritative
-rule (cwd need not equal the git-repo root).
+Naming conventions:
+- **Container:** `<RepoName>Hub` by convention — makes it obvious this is the
+  container, not a checkout.
+- **Hub:** same name as the repo — `Models`, `mhgo`, etc.
+- **Board:** `_board` (underscore prefix = system directory, not a worktree). This
+  matches the config default `path: ../_board` — relative to the hub cwd, `../`
+  steps up to the container and `_board` lands alongside the hub.
+- **Worktrees:** named after their branch slug, directly in the container.
+
+The container path is configured in `worktree.yaml` (resolved via
+[`internal/config`](../shared-libs/config.md), so it honours `$env:NAME ? default`
+and the cwd-authoritative rule — cwd need not equal the git-repo root).
 
 ## Subcommands (proposed)
 
