@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: extract-shared-infra
 branch: extract-shared-infra
-plan: null
+plan: _mill/plan
 parent: main
 task: Extract shared infrastructure (config, git, lock)
 task_description: |
@@ -17,4 +17,5 @@ task_description: |
 discussing  '2026-06-09T12:01:38Z'
 discussion-fix-r4  '2026-06-09T12:37:34Z'
 discussed  '2026-06-09T12:38:20Z'
+planning  '2026-06-09T12:52:13Z'
 ```
