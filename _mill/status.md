@@ -29,7 +29,9 @@ implementing  '2026-06-09T18:23:54Z'
 ```yaml
 batches:
   - name: internal/lock — lift lock primitives
-    state: pending
+    state: running
+    implementer_session: d53650d2-a661-4320-bfbf-9ed333795c48
+    start_sha: bc657d49869fdb9888a5e9802ae126ed2984594f
   - name: internal/git — extract RunGit
     state: pending
   - name: internal/config — generic config loader
