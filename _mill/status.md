@@ -42,7 +42,9 @@ batches:
     start_sha: 703a189ce01981e3067ae92dfbf6c0fa1d19e81e
     commit_sha: 7fcfe999c7da6035bc1bfae68261681d51b5f9c2
   - name: config-driven-render-facade
-    state: pending
+    state: running
+    implementer_session: f0074a2f-9972-44da-b736-6b6e352e8117
+    start_sha: 2c8a3346f5978de419ee42f56a134c23840e6f91
   - name: mhgo-init-command
     state: pending
   - name: cwd-activation-and-board-path
