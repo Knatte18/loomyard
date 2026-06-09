@@ -11,8 +11,8 @@ repo's worktrees can be laid out, observed, and (later) recovered. It is the Go 
 of millpy's `_psmux.py`.
 
 Driven by `mhgo mux <subcommand>`; reads the worktree registry from
-[`internal/state`](../shared-libs.md#internalstate) and config from
-[`internal/config`](../shared-libs.md#internalconfig).
+[`internal/state`](../shared-libs/state.md) and config from
+[`internal/config`](../shared-libs/config.md).
 
 ## Why start tiny
 

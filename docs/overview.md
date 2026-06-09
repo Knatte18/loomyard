@@ -20,7 +20,7 @@ Module path: `github.com/Knatte18/mhgo`
    orchestrates for now.
 2. **Self-contained modules, deep internal tests.** All of a module's domain logic
    and its test suite live in its own package. What modules share is a thin layer of
-   infrastructure plumbing — see [shared-libs.md](shared-libs.md).
+   infrastructure plumbing — see [shared-libs/README.md](shared-libs/README.md).
 3. **One-shot, daemonless, file-coordinated.** A command does its work, writes JSON,
    exits. Processes cooperate through files + locks, not a server. (The future mux
    daemon is the one deliberate exception, for crash recovery psmux can't self-detect.)
@@ -88,7 +88,7 @@ scaffolds the shared `_mhgo/` config dir for every module. See
 
 The user-facing modules sit on a thin layer of shared infrastructure
 (`internal/config`, `internal/git`, `internal/lock`, `internal/state`) — defined in
-[shared-libs.md](shared-libs.md).
+[shared-libs/README.md](shared-libs/README.md).
 
 ## Tests
 
@@ -101,7 +101,7 @@ git-backed integration — live in the black-box `internal/board/boardtest` pack
 - [modules/board.md](modules/board.md) — the board module in depth.
 - [modules/worktree.md](modules/worktree.md) — worktree lifecycle (sketch).
 - [modules/mux.md](modules/mux.md) — psmux session layout (sketch).
-- [modules/benchmarks.md](modules/benchmarks.md) — board performance, tracked across revisions.
-- [shared-libs.md](shared-libs.md) — the shared `internal/{config,git,lock,state}` plumbing.
+- [benchmarks.md](benchmarks.md) — board performance, tracked across revisions.
+- [shared-libs/](shared-libs/README.md) — the shared `internal/{config,git,lock,state}` plumbing.
 - [roadmap.md](roadmap.md) — numbered milestones and long-term direction.
 - [vendor/psmux_scripting.md](vendor/psmux_scripting.md) — upstream psmux command reference (not our design).

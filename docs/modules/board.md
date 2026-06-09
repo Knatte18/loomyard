@@ -226,7 +226,7 @@ safety-net sync.
 > code does *today*: a three-layer merge including a gitignored `.mhgo/board.yaml`
 > override. A planned milestone extracts this into the shared `internal/config`
 > package and **drops the `.mhgo/` config layer** in favour of `$env:NAME ? default`
-> references plus a `.env` file. See [shared-libs.md](../shared-libs.md#internalconfig)
+> references plus a `.env` file. See [shared-libs/config.md](../shared-libs/config.md)
 > and [roadmap.md](../roadmap.md). This section is updated when that milestone lands.
 
 The board module's configuration is defined in a layered YAML system, read fresh
