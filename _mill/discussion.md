@@ -79,12 +79,20 @@ references, add `.env` loading) approved in the discussion.
   `$env:NAME` is treated as a literal character — e.g., `http://host?q=1` is fine.
   The optional regex `envOptRe` is checked first; if it does not match, all `$env:NAME`
   tokens fall through to required expansion (error if unset).
+  Fallback whitespace: `\s*\?\s*` consumes whitespace around `?`; the captured fallback
+  string is additionally `strings.TrimSpace`'d. Trailing whitespace in config values is
+  already stripped by the YAML parser before expansion.
+  `$env:` tokens inside a fallback string are NOT expanded — the fallback is used as a
+  literal. Required-token expansion applies only to `$env:NAME` tokens in the original
+  value that were outside the optional match.
 - **Rationale:** Enables the pattern `home: $env:MHGO_HOME ? Home.md` in a tracked YAML
   without requiring a gitignored override file. The `?` token is the last thing in the
   value so the fallback can be parsed with a simple end-of-string regex group. Treating
-  non-matching `?` as literal prevents false positives on URL query strings.
+  non-matching `?` as literal prevents false positives on URL query strings. Literal-only
+  fallbacks prevent recursive expansion surprises.
 - **Rejected:** Bash-style `${NAME:-default}` — `{}` conflicts with YAML map literals.
   Treating any value containing `?` as an error — too restrictive for URL-valued config.
+  Expanding `$env:` tokens inside fallbacks — complicates parsing and is not needed.
 
 ### `.env` file loading
 
@@ -99,6 +107,20 @@ references, add `.env` loading) approved in the discussion.
   without `t.Setenv` cleanup. No new dependency — a dozen lines of Go.
 - **Rejected:** Using `os.Setenv` — leaks across parallel `Load` calls in tests. Using
   a third-party dotenv library — unnecessary dep for a trivial parser.
+
+### init.go template — static literals with illustrative env var names
+
+- **Decision:** `generateCommentedBoardYAML` is rewritten as static literal strings (not
+  derived from `DefaultConfig()`). The env var names shown — `MHGO_BOARD_PATH`,
+  `MHGO_HOME`, `MHGO_SIDEBAR`, `MHGO_PROPOSAL_PREFIX` — are illustrative suggestions
+  only; they are not canonical API. Operators use any env var name they choose. The
+  template's purpose is to document the `? fallback` syntax with concrete examples.
+- **Rationale:** The old dynamic approach (formatting from `DefaultConfig()` field values)
+  cannot show `? fallback` syntax without either inventing env var names or leaving the
+  fallback slot empty. Static literals are simpler and directly show the intended usage.
+  Making the names "illustrative" keeps them from becoming an undocumented convention.
+- **Rejected:** Treating `MHGO_*` as canonical namespace — premature standardisation with
+  no consumer yet. Keeping the template derived from defaults — can't show the syntax.
 
 ### `board.LoadConfig` stays exported
 
@@ -211,8 +233,15 @@ var envOptRe = regexp.MustCompile(`\$env:([A-Za-z_][A-Za-z0-9_]*)\s*\?\s*(.*)$`)
 var envReqRe = regexp.MustCompile(`\$env:([A-Za-z_][A-Za-z0-9_]*)`)
 ```
 
-Expansion order: (1) check if value contains the optional pattern; if so, resolve name
-and use fallback if unset; (2) expand remaining required tokens with `envReqRe.ReplaceAllStringFunc`.
+Expansion order:
+1. Apply `envOptRe` to the value. If it matches: resolve the named env var (OS first,
+   then dotenv map). If set, substitute its value for the `$env:NAME ? fallback` portion
+   (leaving any prefix text intact). If unset, substitute `strings.TrimSpace(fallback)`
+   for the same portion. The fallback is used as a literal — any `$env:` inside it is
+   NOT expanded.
+2. Apply `envReqRe.ReplaceAllStringFunc` to the result of step 1, expanding only the
+   `$env:NAME` tokens that remain (i.e. those that were in the original value outside
+   the optional match). An unset required token → hard error.
 
 ### `.env` parser pseudocode
 
@@ -259,6 +288,14 @@ per-key descriptions. Complete template strings:
 
 The gitignore block (`.mhgo/`) is unchanged — the dir is still gitignored for future
 `local-state.json`.
+
+### `spawn_windows.go` build constraint
+
+`spawn_windows.go` uses the `_windows.go` filename suffix as its build constraint
+(no explicit `//go:build windows` line). `spawn_other.go` uses an explicit
+`//go:build !windows` tag. This asymmetry is intentional and valid Go — the filename
+suffix is the constraint mechanism for the Windows file. No change needed here; the
+implementation must not add a redundant `//go:build windows` tag that would conflict.
 
 ### Boardtest benchmarks
 
@@ -321,6 +358,8 @@ Keep only board-specific tests; move generic loader tests to `internal/config`:
 - `TestAbsolutePathPassthrough` — keep
 - `TestMalformedYAMLError` — keep (exercises board.LoadConfig error path)
 - `TestOutputsFromConfig` / `TestDefaultOutputs` — keep (board.Config / board.Outputs types)
+- `TestLoadConfig_FallbackPathResolution` — NEW: `path: $env:NONEXISTENT_X ? ../_board`
+  with NONEXISTENT_X unset → fallback `../_board` resolved against baseDir correctly
 
 ### `board/git_test.go` — unchanged
 
@@ -340,3 +379,6 @@ Tests move to `internal/lock/lock_test.go`.
 - **Q:** Does `board.go` also need a lock-call migration? **A:** Yes — `board.go:46` calls `AcquireWriteLock` directly and must be updated to `lock.AcquireWriteLock`.
 - **Q:** What happens to a literal `?` in a config value (e.g. URL query string)? **A:** Treated as a literal character; `envOptRe` only fires when `$env:NAME ?` is the last env-token in the value.
 - **Q:** Does `.env` loading mutate process env via `os.Setenv`? **A:** No — values are loaded into a local `dotenv map[string]string`; expansion checks OS env first, then the map. No global side effects.
+- **Q:** Are the `MHGO_*` env var names in the init.go template canonical API? **A:** No — they are illustrative suggestions in a comment; operators use any name. The template is static literals.
+- **Q:** Is the fallback in `$env:NAME ? fallback` expanded for nested `$env:` tokens? **A:** No — the fallback is a literal; `$env:` tokens inside it are not expanded.
+- **Q:** How is fallback whitespace handled? **A:** `\s*\?\s*` strips whitespace around `?`; the captured fallback is additionally `strings.TrimSpace`'d.
