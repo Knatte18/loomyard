@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planning
+phase: plan-review-r1
 slug: boardtest-concurrency-speed
 branch: boardtest-concurrency-speed
 plan: _mill/plan
@@ -18,4 +18,5 @@ discussing  '2026-06-09T10:10:41Z'
 discussion-fix-r1  '2026-06-09T10:28:28Z'
 discussed  '2026-06-09T10:28:44Z'
 planning  '2026-06-09T10:31:00Z'
+plan-review-r1  '2026-06-09T10:32:13Z'
 ```

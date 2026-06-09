@@ -3,7 +3,7 @@
 ```yaml
 task: "Cut boardtest concurrency test run time"
 slug: "boardtest-concurrency-speed"
-approved: false
+approved: true
 started: "20260609-103009"
 parent: "main"
 root: ""
