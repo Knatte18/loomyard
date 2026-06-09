@@ -73,7 +73,9 @@ func TestSyncCommitsAndPushes(t *testing.T) {
 	before := remoteCommits()
 
 	dirty(t, work, `[{"id":0,"slug":"a","title":"A"}]`)
-	if err := board.New(work).Sync(); err != nil {
+	cfg := board.DefaultConfig()
+	cfg.Path = work
+	if err := board.New(cfg).Sync(); err != nil {
 		t.Fatalf("Sync: %v", err)
 	}
 
@@ -94,7 +96,9 @@ func TestSyncCoalescesBurstIntoOneCommit(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		dirty(t, work, `[{"id":0,"slug":"a","title":"v`+strconv.Itoa(i)+`"}]`)
 	}
-	if err := board.New(work).Sync(); err != nil {
+	cfg := board.DefaultConfig()
+	cfg.Path = work
+	if err := board.New(cfg).Sync(); err != nil {
 		t.Fatalf("Sync: %v", err)
 	}
 
@@ -109,7 +113,9 @@ func TestSyncSkipPushCommitsLocallyOnly(t *testing.T) {
 	remoteBefore, localBefore := remoteCommits(), localCommits()
 
 	dirty(t, work, `[{"id":0,"slug":"a","title":"A"}]`)
-	if err := board.New(work).Sync(); err != nil {
+	cfg := board.DefaultConfig()
+	cfg.Path = work
+	if err := board.New(cfg).Sync(); err != nil {
 		t.Fatalf("Sync: %v", err)
 	}
 
@@ -123,7 +129,9 @@ func TestSyncSkipPushCommitsLocallyOnly(t *testing.T) {
 
 func TestSyncCleanTreeIsNoOp(t *testing.T) {
 	work, remoteCommits, _ := newSyncRepo(t)
-	w := board.New(work)
+	cfg := board.DefaultConfig()
+	cfg.Path = work
+	w := board.New(cfg)
 
 	// The first sync commits the .gitignore; after that a clean tree is a no-op.
 	if err := w.Sync(); err != nil {
@@ -143,7 +151,9 @@ func TestSyncIgnoresLockfiles(t *testing.T) {
 	work, _, _ := newSyncRepo(t)
 
 	dirty(t, work, `[{"id":0,"slug":"a","title":"A"}]`)
-	if err := board.New(work).Sync(); err != nil {
+	cfg := board.DefaultConfig()
+	cfg.Path = work
+	if err := board.New(cfg).Sync(); err != nil {
 		t.Fatalf("Sync: %v", err)
 	}
 

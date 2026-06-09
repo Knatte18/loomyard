@@ -16,7 +16,9 @@ func TestUpsertTask(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
 
 	wikiPath := t.TempDir()
-	w := board.New(wikiPath)
+	cfg := board.DefaultConfig()
+	cfg.Path = wikiPath
+	w := board.New(cfg)
 
 	// (a) Creates task, tasks.json written, Home.md written
 	task, err := w.UpsertTask(map[string]any{
@@ -67,7 +69,9 @@ func TestRemoveTask(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
 
 	wikiPath := t.TempDir()
-	w := board.New(wikiPath)
+	cfg := board.DefaultConfig()
+	cfg.Path = wikiPath
+	w := board.New(cfg)
 
 	// (c) Error for missing slug
 	err := w.RemoveTask("nonexistent")
@@ -80,7 +84,9 @@ func TestRerender(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
 
 	wikiPath := t.TempDir()
-	w := board.New(wikiPath)
+	cfg := board.DefaultConfig()
+	cfg.Path = wikiPath
+	w := board.New(cfg)
 
 	// (d) Writes all output files without error on empty store
 	err := w.Rerender()

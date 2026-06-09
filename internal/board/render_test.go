@@ -28,7 +28,7 @@ func TestRenderToDiskWritesAndCleansOrphans(t *testing.T) {
 		{ID: 0, Slug: "a", Title: "A", Body: "proposal A"},
 		{ID: 1, Slug: "b", Title: "B"}, // no body → no proposal file
 	}
-	if err := board.RenderToDisk(dir, tasks); err != nil {
+	if err := board.RenderToDisk(dir, tasks, board.DefaultOutputs()); err != nil {
 		t.Fatalf("RenderToDisk: %v", err)
 	}
 
@@ -50,7 +50,7 @@ func TestRenderToDiskWritesAndCleansOrphans(t *testing.T) {
 
 func TestRenderEmptyTaskList(t *testing.T) {
 	// (a) empty task list → Home.md is exactly "# Tasks\n", Sidebar is "", no proposal files
-	result, err := board.Render([]board.Task{})
+	result, err := board.Render([]board.Task{}, board.DefaultOutputs())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -80,7 +80,7 @@ func TestRenderSingleTaskNoBody(t *testing.T) {
 		Slug:  "test-task",
 		Title: "Test Task",
 	}
-	result, err := board.Render([]board.Task{task})
+	result, err := board.Render([]board.Task{task}, board.DefaultOutputs())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -108,7 +108,7 @@ func TestRenderSingleTaskWithBody(t *testing.T) {
 		Title: "Test Task",
 		Body:  "This is the body content",
 	}
-	result, err := board.Render([]board.Task{task})
+	result, err := board.Render([]board.Task{task}, board.DefaultOutputs())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -136,7 +136,7 @@ func TestRenderTaskStatus(t *testing.T) {
 		Title:  "Test Task",
 		Status: &activeStatus,
 	}
-	result, err := board.Render([]board.Task{task})
+	result, err := board.Render([]board.Task{task}, board.DefaultOutputs())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -162,7 +162,7 @@ func TestRenderDependencies(t *testing.T) {
 		DependsOn: []string{"task-b"},
 	}
 
-	result, err := board.Render([]board.Task{taskB, taskA})
+	result, err := board.Render([]board.Task{taskB, taskA}, board.DefaultOutputs())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -194,7 +194,7 @@ func TestRenderDoneTask(t *testing.T) {
 		Status: &doneStatus,
 	}
 
-	result, err := board.Render([]board.Task{task})
+	result, err := board.Render([]board.Task{task}, board.DefaultOutputs())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -225,7 +225,7 @@ func TestRenderIsolatedTask(t *testing.T) {
 		Isolated: true,
 	}
 
-	result, err := board.Render([]board.Task{taskA, taskZ})
+	result, err := board.Render([]board.Task{taskA, taskZ}, board.DefaultOutputs())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -251,7 +251,7 @@ func TestRenderDeferredTask(t *testing.T) {
 		Deferred: true,
 	}
 
-	result, err := board.Render([]board.Task{task})
+	result, err := board.Render([]board.Task{task}, board.DefaultOutputs())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -276,7 +276,7 @@ func TestRenderTaskIDFormatting(t *testing.T) {
 		{ID: 2, Slug: "task-b", Title: "Task B"},
 	}
 
-	result, err := board.Render(tasks)
+	result, err := board.Render(tasks, board.DefaultOutputs())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -337,7 +337,7 @@ func TestRenderBrief(t *testing.T) {
 		Brief: "This is the brief text",
 	}
 
-	result, err := board.Render([]board.Task{task})
+	result, err := board.Render([]board.Task{task}, board.DefaultOutputs())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -358,7 +358,7 @@ func TestRenderMissingDependency(t *testing.T) {
 		DependsOn: []string{"missing-task"},
 	}
 
-	result, err := board.Render([]board.Task{task})
+	result, err := board.Render([]board.Task{task}, board.DefaultOutputs())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -379,7 +379,7 @@ func TestRenderOrphanDetection(t *testing.T) {
 		Body:  "Original body",
 	}
 
-	result1, err := board.Render([]board.Task{taskWithBody})
+	result1, err := board.Render([]board.Task{taskWithBody}, board.DefaultOutputs())
 	if err != nil {
 		t.Fatalf("First render failed: %v", err)
 	}
@@ -396,7 +396,7 @@ func TestRenderOrphanDetection(t *testing.T) {
 		Body:  "",
 	}
 
-	result2, err := board.Render([]board.Task{taskWithoutBody})
+	result2, err := board.Render([]board.Task{taskWithoutBody}, board.DefaultOutputs())
 	if err != nil {
 		t.Fatalf("Second render failed: %v", err)
 	}
@@ -404,6 +404,112 @@ func TestRenderOrphanDetection(t *testing.T) {
 	if _, ok := result2["proposal-orphan-task.md"]; ok {
 		t.Errorf("Second render should not have proposal file for task without body")
 	}
+}
+
+func TestRenderConfigurableHomeFilename(t *testing.T) {
+	// Test that Render uses configured Home filename instead of "Home.md"
+	task := board.Task{
+		ID:    1,
+		Slug:  "test-task",
+		Title: "Test Task",
+	}
+	out := board.Outputs{
+		Home:           "README.md",
+		Sidebar:        "_Sidebar.md",
+		ProposalPrefix: "proposal-",
+	}
+	result, err := board.Render([]board.Task{task}, out)
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if _, ok := result["README.md"]; !ok {
+		t.Errorf("Result should have README.md key, got keys: %v", getKeys(result))
+	}
+	if _, ok := result["Home.md"]; ok {
+		t.Errorf("Result should not have Home.md key when configured differently")
+	}
+}
+
+func TestRenderConfigurableProposalPrefix(t *testing.T) {
+	// Test that Render uses configured proposal prefix
+	task := board.Task{
+		ID:    1,
+		Slug:  "test-task",
+		Title: "Test Task",
+		Body:  "Proposal body",
+	}
+	out := board.Outputs{
+		Home:           "Home.md",
+		Sidebar:        "_Sidebar.md",
+		ProposalPrefix: "prop-",
+	}
+	result, err := board.Render([]board.Task{task}, out)
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	// Check proposal file uses custom prefix
+	if _, ok := result["prop-test-task.md"]; !ok {
+		t.Errorf("Result should have prop-test-task.md key, got keys: %v", getKeys(result))
+	}
+	if _, ok := result["proposal-test-task.md"]; ok {
+		t.Errorf("Result should not have proposal-test-task.md with custom prefix")
+	}
+
+	// Check links in Home.md use custom prefix
+	home := result["Home.md"]
+	if !strings.Contains(home, "[test-task](prop-test-task.md)") {
+		t.Errorf("Home.md should use custom prefix in links\nGot: %s", home)
+	}
+
+	// Check links in Sidebar use custom prefix
+	sidebar := result["_Sidebar.md"]
+	if !strings.Contains(sidebar, "[Test Task [A]](prop-test-task.md)") {
+		t.Errorf("Sidebar should use custom prefix in links\nGot: %s", sidebar)
+	}
+}
+
+func TestRenderToDiskWithCustomProposalPrefix(t *testing.T) {
+	// Test that RenderToDisk removes stale files with custom prefix
+	dir := t.TempDir()
+
+	// Create a stale proposal with custom prefix
+	ghost := filepath.Join(dir, "prop-ghost.md")
+	if err := os.WriteFile(ghost, []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	tasks := []board.Task{
+		{ID: 0, Slug: "a", Title: "A", Body: "proposal A"},
+		{ID: 1, Slug: "b", Title: "B"}, // no body → no proposal file
+	}
+	out := board.Outputs{
+		Home:           "Home.md",
+		Sidebar:        "_Sidebar.md",
+		ProposalPrefix: "prop-",
+	}
+	if err := board.RenderToDisk(dir, tasks, out); err != nil {
+		t.Fatalf("RenderToDisk: %v", err)
+	}
+
+	// Check that the new proposal file was created with custom prefix
+	if b, err := os.ReadFile(filepath.Join(dir, "prop-a.md")); err != nil || string(b) != "proposal A" {
+		t.Errorf("prop-a.md: got %q, err %v", b, err)
+	}
+
+	// Check that the orphan with custom prefix was removed
+	if _, err := os.Stat(ghost); !os.IsNotExist(err) {
+		t.Errorf("orphan prop-ghost.md should have been removed")
+	}
+}
+
+func getKeys(m map[string]string) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
 }
 
 func TestRenderStatusVariants(t *testing.T) {
@@ -419,7 +525,7 @@ func TestRenderStatusVariants(t *testing.T) {
 				Status: &s,
 			}
 
-			result, err := board.Render([]board.Task{task})
+			result, err := board.Render([]board.Task{task}, board.DefaultOutputs())
 			if err != nil {
 				t.Fatalf("Render failed: %v", err)
 			}
@@ -436,7 +542,7 @@ func TestRenderStatusVariants(t *testing.T) {
 					Title:  "Test Task",
 					Status: &doneStatus,
 				}
-				result, _ := board.Render([]board.Task{taskDone})
+				result, _ := board.Render([]board.Task{taskDone}, board.DefaultOutputs())
 				home := result["Home.md"]
 				// Done task should show [done] status
 				if !strings.Contains(home, "[test-task] [done]") {
@@ -457,7 +563,7 @@ func TestRenderExtendedTitle(t *testing.T) {
 		Title: "Test Task",
 	}
 
-	result, err := board.Render([]board.Task{task})
+	result, err := board.Render([]board.Task{task}, board.DefaultOutputs())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
