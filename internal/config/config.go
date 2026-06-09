@@ -38,6 +38,8 @@ func Load(baseDir, module string, defaults map[string]string) (map[string]string
 	_, err := os.Stat(mhgoDir)
 	if os.IsNotExist(err) {
 		return nil, fmt.Errorf("not initialized: _mhgo/ directory not found in %s", baseDir)
+	} else if err != nil {
+		return nil, fmt.Errorf("stat _mhgo: %w", err)
 	}
 
 	// Load .env file
