@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-docs-and-roadmap
+phase: holistic-reviewing
 slug: config-layer
 branch: config-layer
 plan: _mill/plan
@@ -31,6 +31,7 @@ blocked  '2026-06-09T06:51:54Z'
 approved-cwd-activation-and-board-path  '2026-06-09T07:04:29Z'
 implementing  '2026-06-09T07:04:29Z'
 approved-docs-and-roadmap  '2026-06-09T07:12:21Z'
+holistic-reviewing  '2026-06-09T07:13:11Z'
 ```
 
 ## Batches
