@@ -13,11 +13,12 @@ import (
 func RunGit(args []string, cwd string) (stdout, stderr string, exitCode int, err error) {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = cwd
-	hideProcWindow(cmd) // no console window flash on Windows
 
 	var outBuf, errBuf bytes.Buffer
 	cmd.Stdout = &outBuf
 	cmd.Stderr = &errBuf
+
+	hideProcWindow(cmd) // no console window flash on Windows
 
 	err = cmd.Run()
 
@@ -26,6 +27,9 @@ func RunGit(args []string, cwd string) (stdout, stderr string, exitCode int, err
 	if exitErr, ok := err.(*exec.ExitError); ok {
 		exitCode = exitErr.ExitCode()
 		err = nil // Non-zero exit is not an error condition
+	} else if err != nil {
+		// Non-ExitError failures return empty buffers and -1 exit code
+		return "", "", -1, err
 	}
 
 	return outBuf.String(), errBuf.String(), exitCode, err
