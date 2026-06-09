@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-fixing
+phase: holistic-reviewing
 slug: config-layer
 branch: config-layer
 plan: _mill/plan
@@ -33,6 +33,7 @@ implementing  '2026-06-09T07:04:29Z'
 approved-docs-and-roadmap  '2026-06-09T07:12:21Z'
 holistic-reviewing  '2026-06-09T07:13:11Z'
 holistic-fixing  '2026-06-09T07:18:18Z'
+holistic-reviewing  '2026-06-09T07:35:22Z'
 ```
 
 ## Batches
