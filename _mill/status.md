@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-internal/lock — lift lock primitives
 slug: extract-shared-infra
 branch: extract-shared-infra
 plan: _mill/plan
@@ -22,6 +22,7 @@ plan-fix-r2  '2026-06-09T18:07:41Z'
 plan-fix-r3  '2026-06-09T18:16:39Z'
 plan-review-r4  '2026-06-09T18:21:31Z'
 implementing  '2026-06-09T18:23:54Z'
+approved-internal/lock — lift lock primitives  '2026-06-09T18:32:14Z'
 ```
 
 ## Batches
@@ -29,9 +30,10 @@ implementing  '2026-06-09T18:23:54Z'
 ```yaml
 batches:
   - name: internal/lock — lift lock primitives
-    state: running
+    state: approved
     implementer_session: 40613790-1c94-4b85-bfce-3c3c6d8b4932
     start_sha: 2fb2c278542441edf339393782530efcb43f0936
+    commit_sha: db061781d8078364ecd19cab1790aef9a693b4ad
   - name: internal/git — extract RunGit
     state: pending
   - name: internal/config — generic config loader
