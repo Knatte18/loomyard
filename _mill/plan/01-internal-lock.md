@@ -23,7 +23,7 @@ This batch creates the `internal/lock` package by lifting `FileLock`, `AcquireWr
 - **Creates:**
   - `internal/lock/lock.go`
 - **Deletes:** none
-- **Requirements:** Create `internal/lock/lock.go` with `package lock`. Exact verbatim lift of `FileLock` type, `AcquireWriteLock(path string) (FileLock, error)`, `AcquireReadLock(path string) (FileLock, error)`, and `Release(lock FileLock) error` from `internal/board/lock.go`. Keep all doc comments unchanged. Import `github.com/gofrs/flock` (same dep already in go.mod). No behavioural changes — this is a pure package move.
+- **Requirements:** Create `internal/lock/lock.go` with `package lock`. Exact verbatim lift of `FileLock` type, `AcquireWriteLock(path string) (*FileLock, error)`, `AcquireReadLock(path string) (*FileLock, error)`, and the pointer-receiver method `func (l *FileLock) Release() error` from `internal/board/lock.go`. Note: `Release` is a method on `*FileLock`, not a free function. Keep all doc comments unchanged. Import `github.com/gofrs/flock` (same dep already in go.mod). No behavioural changes — this is a pure package move.
 - **Commit:** `feat(lock): add internal/lock package`
 
 ### Card 2: Create internal/lock/lock_test.go
@@ -34,7 +34,7 @@ This batch creates the `internal/lock` package by lifting `FileLock`, `AcquireWr
 - **Creates:**
   - `internal/lock/lock_test.go`
 - **Deletes:** none
-- **Requirements:** Create `internal/lock/lock_test.go` with `package lock_test`. Port `TestAcquireWriteLock` (and any other tests present) verbatim from `internal/board/lock_test.go`, changing only: (1) the package declaration from `package board_test` to `package lock_test`; (2) the import from `github.com/Knatte18/mhgo/internal/board` to `github.com/Knatte18/mhgo/internal/lock`; (3) all unqualified call-site references updated to use the `lock.` prefix (e.g. `board.AcquireWriteLock` → `lock.AcquireWriteLock`, `board.Release` → `lock.Release`). Do not rewrite test logic.
+- **Requirements:** Create `internal/lock/lock_test.go` with `package lock_test`. Port `TestAcquireWriteLock` (and any other tests present) verbatim from `internal/board/lock_test.go`, changing only: (1) the package declaration from `package board_test` to `package lock_test`; (2) the import from `github.com/Knatte18/mhgo/internal/board` to `github.com/Knatte18/mhgo/internal/lock`; (3) `board.AcquireWriteLock` → `lock.AcquireWriteLock`, `board.AcquireReadLock` → `lock.AcquireReadLock`. Note: `Release` is a method on `*FileLock` — existing `.Release()` method call sites need no transformation beyond updating the import path. Do not rewrite test logic.
 - **Commit:** `test(lock): port lock tests to internal/lock`
 
 ## Batch Tests

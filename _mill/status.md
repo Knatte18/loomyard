@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planning
+phase: plan-fix-r2
 slug: extract-shared-infra
 branch: extract-shared-infra
 plan: _mill/plan
@@ -18,4 +18,5 @@ discussing  '2026-06-09T12:01:38Z'
 discussion-fix-r4  '2026-06-09T12:37:34Z'
 discussed  '2026-06-09T12:38:20Z'
 planning  '2026-06-09T12:52:13Z'
+plan-fix-r2  '2026-06-09T18:07:41Z'
 ```

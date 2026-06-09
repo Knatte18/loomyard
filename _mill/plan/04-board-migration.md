@@ -25,7 +25,7 @@ The external batch-4 interface produced for other modules is unchanged: `board.L
   - `internal/board/board.go`
 - **Creates:** none
 - **Deletes:** none
-- **Requirements:** Add `"github.com/Knatte18/mhgo/internal/lock"` to the import block of `internal/board/board.go`. Grep for `AcquireWriteLock` in this file and replace each unqualified call with `lock.AcquireWriteLock(...)`. Replace any `FileLock` type references with `lock.FileLock`. Replace any `Release(...)` calls with `lock.Release(...)`. No other changes.
+- **Requirements:** Add `flock "github.com/Knatte18/mhgo/internal/lock"` to the import block of `internal/board/board.go` (use the alias `flock` to avoid shadowing the local `lock` variable used in `writeOp`). Grep for `AcquireWriteLock` in this file and replace each unqualified call with `flock.AcquireWriteLock(...)`. Replace any `FileLock` type references with `flock.FileLock`. Note: `Release` is a method on `*flock.FileLock` — existing `defer lock.Release()` call sites require no transformation. No other changes.
 - **Commit:** `refactor(board): use internal/lock in board.go`
 
 ### Card 10: Update internal/board/store.go — lock imports
@@ -36,7 +36,7 @@ The external batch-4 interface produced for other modules is unchanged: `board.L
   - `internal/board/store.go`
 - **Creates:** none
 - **Deletes:** none
-- **Requirements:** Add `"github.com/Knatte18/mhgo/internal/lock"` to the import block of `internal/board/store.go`. Grep for `AcquireReadLock`, `AcquireWriteLock`, `FileLock`, and `Release` in this file. Replace each unqualified occurrence with its `lock.`-qualified form: `lock.AcquireReadLock(...)`, `lock.AcquireWriteLock(...)`, `lock.FileLock`, `lock.Release(...)`. No other changes.
+- **Requirements:** Add `flock "github.com/Knatte18/mhgo/internal/lock"` to the import block of `internal/board/store.go` (alias `flock` to avoid shadowing any local `lock` variable). Grep for `AcquireReadLock`, `AcquireWriteLock`, and `FileLock` in this file. Replace each unqualified occurrence: `AcquireReadLock(...)` → `flock.AcquireReadLock(...)`, `AcquireWriteLock(...)` → `flock.AcquireWriteLock(...)`, `FileLock` → `flock.FileLock`. Note: `Release` is a method on `*flock.FileLock` — existing `.Release()` method call sites need no transformation. No other changes.
 - **Commit:** `refactor(board): use internal/lock in store.go`
 
 ### Card 11: Update internal/board/sync.go — git and lock imports
@@ -48,7 +48,7 @@ The external batch-4 interface produced for other modules is unchanged: `board.L
   - `internal/board/sync.go`
 - **Creates:** none
 - **Deletes:** none
-- **Requirements:** Add `"github.com/Knatte18/mhgo/internal/git"` and `"github.com/Knatte18/mhgo/internal/lock"` to the import block of `internal/board/sync.go`. Grep for `RunGit`, `AcquireWriteLock`, `FileLock`, and `Release` in this file. Replace each: `RunGit(...)` → `git.RunGit(...)`, `AcquireWriteLock(...)` → `lock.AcquireWriteLock(...)`, `FileLock` → `lock.FileLock`, `Release(...)` → `lock.Release(...)`. No other changes.
+- **Requirements:** Add `"github.com/Knatte18/mhgo/internal/git"` and `flock "github.com/Knatte18/mhgo/internal/lock"` to the import block of `internal/board/sync.go` (alias `flock` to avoid shadowing local `lock` variables). Grep for `RunGit`, `AcquireWriteLock`, and `FileLock` in this file. Replace each: `RunGit(...)` → `git.RunGit(...)`, `AcquireWriteLock(...)` → `flock.AcquireWriteLock(...)`, `FileLock` → `flock.FileLock`. Note: `Release` is a method on `*flock.FileLock` — existing `.Release()` method call sites need no transformation. No other changes.
 - **Commit:** `refactor(board): use internal/git and internal/lock in sync.go`
 
 ### Card 12: Update internal/board/git.go — remove RunGit, adopt git.RunGit
@@ -120,7 +120,7 @@ The external batch-4 interface produced for other modules is unchanged: `board.L
   **`internal/board/config_test.go`:**
   - Delete the following test functions: `TestDeepMergeMultipleLayers`, and any `TestEnvExpansion*` functions (`TestEnvExpansionWholeValue`, `TestEnvExpansionEmbedded`, `TestEnvExpansionUnsetError`, or similar names). These are now covered by `internal/config/config_test.go`.
   - Keep all remaining tests: `TestDefaultsReturned`, `TestErrorNotInitialized`, `TestRelativePathResolution`, `TestAbsolutePathPassthrough`, `TestMalformedYAMLError`, `TestOutputsFromConfig`, `TestDefaultOutputs`.
-  - Add new test `TestLoadConfig_FallbackPathResolution`: create `<tmpDir>/_mhgo/board.yaml` with content `path: $env:NONEXISTENT_MHGO_TEST_VAR_XYZ ? ../_board`. Ensure `NONEXISTENT_MHGO_TEST_VAR_XYZ` is unset (use `t.Setenv` with `os.Unsetenv` or just choose a name that cannot be set in CI). Call `board.LoadConfig(tmpDir, "board")`. Assert no error and that the returned `Config.Path` equals `filepath.Join(tmpDir, "../_board")` (which filepath.Join will clean to a sibling directory named `_board`).
+  - Add new test `TestLoadConfig_FallbackPathResolution`: create `<tmpDir>/_mhgo/board.yaml` with content `path: $env:NONEXISTENT_MHGO_TEST_VAR_XYZ ? ../_board`. Use an env var name that cannot realistically be set in CI (`NONEXISTENT_MHGO_TEST_VAR_XYZ` is sufficient; do not use `os.Unsetenv` — that mutates global state). Call `board.LoadConfig(tmpDir, "board")`. Assert no error and that the returned `Config.Path` equals `filepath.Join(tmpDir, "../_board")` (which filepath.Join will clean to a sibling directory named `_board`).
 
   **`internal/board/init.go`:**
   - Change the signature of `generateCommentedBoardYAML` from `generateCommentedBoardYAML(defaults Config) string` to `generateCommentedBoardYAML() string` (drop the parameter).
