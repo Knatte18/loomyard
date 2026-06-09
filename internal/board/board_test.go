@@ -34,13 +34,13 @@ func TestUpsertTask(t *testing.T) {
 	}
 
 	// Check tasks.json exists
-	tasksPath := filepath.Join(wikiPath, "tasks.json")
+	tasksPath := filepath.Join(boardPath, "tasks.json")
 	if _, err := os.Stat(tasksPath); err != nil {
 		t.Fatalf("tasks.json not created: %v", err)
 	}
 
 	// Check Home.md exists
-	homePath := filepath.Join(wikiPath, "Home.md")
+	homePath := filepath.Join(boardPath, "Home.md")
 	if _, err := os.Stat(homePath); err != nil {
 		t.Fatalf("Home.md not created: %v", err)
 	}
