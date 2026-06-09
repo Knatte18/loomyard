@@ -3,7 +3,7 @@
 ```yaml
 task: "Extract shared infrastructure (config, git, lock)"
 slug: "extract-shared-infra"
-approved: false
+approved: true
 started: "20260609T130000Z"
 parent: "main"
 root: ""
