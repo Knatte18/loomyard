@@ -13,7 +13,7 @@ depends-on: [1, 2, 3]
 
 This batch wires board to the three new packages and deletes the board-internal code that has been lifted out. Cards apply in order: lock import-site updates (9–11), RunGit removal and git.RunGit adoption (12), hideProcWindow removal from spawn files (13–14), deletion of board/lock.go and board/lock_test.go (15), and config rewrite (16). By the time card 15 deletes `lock.go`, all call sites have already been updated to `lock.*` prefix, so the board package compiles throughout.
 
-The external batch-4 interface produced for other modules is unchanged: `board.LoadConfig`, `board.RunCLI`, `board.RunInit`, `board.Config`, and all other exported board symbols remain identical in signature and behaviour.
+The external batch-4 interface produced for other modules is unchanged in signature: `board.LoadConfig`, `board.RunCLI`, `board.RunInit`, `board.Config`, and all other exported board symbols retain their existing signatures. Note: dropping the `.mhgo/<module>.yaml` override layer is a deliberate behaviour change (callers who relied on it must migrate to `$env:NAME ? fallback` refs); behaviour is otherwise preserved for callers using only `_mhgo/<module>.yaml`.
 
 ## Cards
 
@@ -119,7 +119,7 @@ The external batch-4 interface produced for other modules is unchanged: `board.L
 
   **`internal/board/config_test.go`:**
   - Delete the following test functions: `TestDeepMergeMultipleLayers`, and any `TestEnvExpansion*` functions (`TestEnvExpansionWholeValue`, `TestEnvExpansionEmbedded`, `TestEnvExpansionUnsetError`, or similar names). These are now covered by `internal/config/config_test.go`.
-  - Keep all remaining tests: `TestDefaultsReturned`, `TestErrorNotInitialized`, `TestRelativePathResolution`, `TestAbsolutePathPassthrough`, `TestMalformedYAMLError`, `TestOutputsFromConfig`, `TestDefaultOutputs`.
+  - Keep all remaining tests: `TestDefaultsReturned`, `TestErrorNotInitialized`, `TestRelativePathResolution`, `TestAbsolutePathPassthrough`, `TestMalformedYAMLError`, `TestOutputsFromConfig`, `TestDefaultOutputs`. Update `TestMalformedYAMLError`: change the substring assertion from `stringContains(errMsg, "parsing YAML") || stringContains(errMsg, "error")` to `stringContains(errMsg, "yaml:")` — `internal/config.Load` returns raw yaml.v3 parse errors (which start with `"yaml:"`) rather than the old board-specific `"error parsing YAML..."` wrapper.
   - Add new test `TestLoadConfig_FallbackPathResolution`: create `<tmpDir>/_mhgo/board.yaml` with content `path: $env:NONEXISTENT_MHGO_TEST_VAR_XYZ ? ../_board`. Use an env var name that cannot realistically be set in CI (`NONEXISTENT_MHGO_TEST_VAR_XYZ` is sufficient; do not use `os.Unsetenv` — that mutates global state). Call `board.LoadConfig(tmpDir, "board")`. Assert no error and that the returned `Config.Path` equals `filepath.Join(tmpDir, "../_board")` (which filepath.Join will clean to a sibling directory named `_board`).
 
   **`internal/board/init.go`:**
