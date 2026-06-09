@@ -75,21 +75,30 @@ references, add `.env` loading) approved in the discussion.
   2. `$env:NAME ? fallback` — optional; unset → use `fallback` (literal, runs to end of
      value). Text may appear before the token (e.g., `prefix/$env:NAME ? default`). Only
      one `?`-form token per value, and it must be last.
+  A `?` character that is NOT immediately preceded (with optional whitespace) by
+  `$env:NAME` is treated as a literal character — e.g., `http://host?q=1` is fine.
+  The optional regex `envOptRe` is checked first; if it does not match, all `$env:NAME`
+  tokens fall through to required expansion (error if unset).
 - **Rationale:** Enables the pattern `home: $env:MHGO_HOME ? Home.md` in a tracked YAML
   without requiring a gitignored override file. The `?` token is the last thing in the
-  value so the fallback can be parsed with a simple end-of-string regex group.
+  value so the fallback can be parsed with a simple end-of-string regex group. Treating
+  non-matching `?` as literal prevents false positives on URL query strings.
 - **Rejected:** Bash-style `${NAME:-default}` — `{}` conflicts with YAML map literals.
+  Treating any value containing `?` as an error — too restrictive for URL-valued config.
 
 ### `.env` file loading
 
-- **Decision:** Before env expansion, `Load` reads `<baseDir>/.env` if present. Format:
-  `KEY=value` per line; lines starting with `#` (after trimming) are comments; blank
-  lines ignored; lines without `=` are silently skipped; no quoted-value support.
-  OS env takes precedence (`.env` only fills vars not already set in process env).
+- **Decision:** Before env expansion, `Load` reads `<baseDir>/.env` if present into a
+  local `dotenv map[string]string` (NOT via `os.Setenv` — no process-env mutation).
+  Format: `KEY=value` per line; lines starting with `#` (after trimming) are comments;
+  blank lines ignored; lines without `=` are silently skipped; no quoted-value support.
+  OS env takes precedence: expansion checks `os.LookupEnv` first, then the dotenv map.
+  This scoping is per-`Load` call — no global side effects, no test leakage.
 - **Rationale:** Replaces the pattern of setting machine-local env vars at the shell
-  profile level. No new dependency — a dozen lines of Go. Quoted values are unnecessary
-  because env var names don't contain spaces; YAGNI.
-- **Rejected:** Using a third-party dotenv library — unnecessary dep for a trivial parser.
+  profile level. Not mutating process env keeps `Load` safe to call from parallel tests
+  without `t.Setenv` cleanup. No new dependency — a dozen lines of Go.
+- **Rejected:** Using `os.Setenv` — leaks across parallel `Load` calls in tests. Using
+  a third-party dotenv library — unnecessary dep for a trivial parser.
 
 ### `board.LoadConfig` stays exported
 
@@ -154,7 +163,7 @@ internal/
 │   ├── lock.go            FileLock, AcquireWriteLock, AcquireReadLock
 │   └── lock_test.go
 └── board/
-    ├── board.go           (unchanged)
+    ├── board.go           AcquireWriteLock(:46) → lock.AcquireWriteLock
     ├── cli.go             (unchanged)
     ├── config.go          LoadConfig wraps config.Load; drops .mhgo/ logic
     ├── config_test.go     trimmed: LoadConfig wrapper, path resolution, Outputs
@@ -181,6 +190,7 @@ internal/
 - `internal/board/lock.go` — 52 lines; pure lift.
 - `internal/board/spawn_windows.go` — owns `hideProcWindow` and `spawnSync`; only
   `hideProcWindow` is removed.
+- `internal/board/board.go` — calls `AcquireWriteLock` (line 46); becomes `lock.AcquireWriteLock`.
 - `internal/board/store.go` — calls `AcquireReadLock` (line 63) and `AcquireWriteLock`
   (line 105); both become `lock.*` calls.
 - `internal/board/sync.go` — calls `RunGit` (lines 73, 83, 89, 113, 124, 125, 174) and
@@ -207,6 +217,7 @@ and use fallback if unset; (2) expand remaining required tokens with `envReqRe.R
 ### `.env` parser pseudocode
 
 ```
+dotenv := map[string]string{}
 for each line in .env:
     trim leading/trailing whitespace
     if empty or starts with '#': skip
@@ -214,8 +225,16 @@ for each line in .env:
     if idx < 0: skip           // no '=' — silently ignored
     key = line[:idx]
     val = line[idx+1:]
-    if key not in os.Environ(): setenv(key, val)
+    dotenv[key] = val          // only used if OS env does not have key
+
+// Expansion lookup order:
+func lookupEnv(name string, dotenv map[string]string) (string, bool):
+    if val, ok := os.LookupEnv(name); ok: return val, true
+    if val, ok := dotenv[name]; ok: return val, true
+    return "", false
 ```
+
+No `os.Setenv` calls — dotenv stays local to the `Load` invocation.
 
 ### Existing test `TestDeepMergeMultipleLayers`
 
@@ -227,14 +246,15 @@ a `.mhgo/<module>.yaml` present in the test dir is NOT loaded.
 
 ### `init.go` template comment update
 
-`generateCommentedBoardYAML` currently shows bare default values. After the change it
-should show `? fallback` examples so operators understand the syntax immediately:
+`generateCommentedBoardYAML` currently shows bare default values with trailing key
+descriptions. After the change it shows `? fallback` examples while preserving
+per-key descriptions. Complete template strings:
 
 ```
-# path: $env:MHGO_BOARD_PATH ? ../_board   # board dir; relative to cwd or absolute
-# home: $env:MHGO_HOME ? Home.md
-# sidebar: $env:MHGO_SIDEBAR ? _Sidebar.md
-# proposal_prefix: $env:MHGO_PROPOSAL_PREFIX ? proposal-
+# path: $env:MHGO_BOARD_PATH ? ../_board   # board dir (tasks.json + rendered output); relative to cwd or absolute
+# home: $env:MHGO_HOME ? Home.md           # home page file name; relative to board dir
+# sidebar: $env:MHGO_SIDEBAR ? _Sidebar.md   # sidebar file name; relative to board dir
+# proposal_prefix: $env:MHGO_PROPOSAL_PREFIX ? proposal-   # prefix for proposal files
 ```
 
 The gitignore block (`.mhgo/`) is unchanged — the dir is still gitignored for future
@@ -276,6 +296,7 @@ TDD candidates — write tests before implementation:
 - `TestLoad_DotEnv_MalformedLine` — line without `=` silently skipped
 - `TestLoad_DotEnv_Comment` — `# comment` line skipped
 - `TestLoad_DotEnv_Absent` — no `.env` file → no error
+- `TestLoad_LiteralQuestionMark` — value `http://host?q=1` contains `?` not preceded by `$env:NAME`; treated as literal, no fallback parsing triggered
 
 ### `internal/git/git_test.go` (package `git_test`)
 
@@ -316,3 +337,6 @@ Tests move to `internal/lock/lock_test.go`.
 - **Q:** Should `.env` support quoted values (e.g., `KEY="val with spaces"`)? **A:** No — env var names don't contain spaces; YAGNI.
 - **Q:** What happens when a `.env` line has no `=`? **A:** Silently skip.
 - **Q:** Where do tests live after extraction? **A:** Tests follow the implementation — new packages get their own test files; board's lock tests are deleted, config tests trimmed.
+- **Q:** Does `board.go` also need a lock-call migration? **A:** Yes — `board.go:46` calls `AcquireWriteLock` directly and must be updated to `lock.AcquireWriteLock`.
+- **Q:** What happens to a literal `?` in a config value (e.g. URL query string)? **A:** Treated as a literal character; `envOptRe` only fires when `$env:NAME ?` is the last env-token in the value.
+- **Q:** Does `.env` loading mutate process env via `os.Setenv`? **A:** No — values are loaded into a local `dotenv map[string]string`; expansion checks OS env first, then the map. No global side effects.
