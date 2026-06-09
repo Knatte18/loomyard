@@ -73,7 +73,10 @@ func RunCLI(out io.Writer, args []string) int {
 		jsonPayload = rest[1]
 	}
 
-	w := New(wikiPath)
+	// Build config from default values plus resolved board path
+	cfg := DefaultConfig()
+	cfg.Path = wikiPath
+	b := New(cfg)
 
 	switch subcommand {
 	case "upsert":
@@ -85,7 +88,7 @@ func RunCLI(out io.Writer, args []string) int {
 		if err := json.Unmarshal([]byte(jsonPayload), &fields); err != nil {
 			return outputError(out, fmt.Sprintf("invalid json: %v", err))
 		}
-		task, err := w.UpsertTask(fields)
+		task, err := b.UpsertTask(fields)
 		if err != nil {
 			return outputError(out, err.Error())
 		}
@@ -102,7 +105,7 @@ func RunCLI(out io.Writer, args []string) int {
 		if err := json.Unmarshal([]byte(jsonPayload), &payload); err != nil {
 			return outputError(out, fmt.Sprintf("invalid json: %v", err))
 		}
-		if err := w.UpsertTasksBatch(payload.Tasks); err != nil {
+		if err := b.UpsertTasksBatch(payload.Tasks); err != nil {
 			return outputError(out, err.Error())
 		}
 		return outputSuccessWithCount(out, len(payload.Tasks))
@@ -121,7 +124,7 @@ func RunCLI(out io.Writer, args []string) int {
 		if err := json.Unmarshal([]byte(jsonPayload), &payload); err != nil {
 			return outputError(out, fmt.Sprintf("invalid json: %v", err))
 		}
-		if err := w.SetPhase(payload.IDOrSlug, payload.Phase); err != nil {
+		if err := b.SetPhase(payload.IDOrSlug, payload.Phase); err != nil {
 			return outputError(out, err.Error())
 		}
 		return outputSuccess(out)
@@ -138,7 +141,7 @@ func RunCLI(out io.Writer, args []string) int {
 		if err := json.Unmarshal([]byte(jsonPayload), &payload); err != nil {
 			return outputError(out, fmt.Sprintf("invalid json: %v", err))
 		}
-		if err := w.RemoveTask(payload.IDOrSlug); err != nil {
+		if err := b.RemoveTask(payload.IDOrSlug); err != nil {
 			return outputError(out, err.Error())
 		}
 		return outputSuccess(out)
@@ -155,7 +158,7 @@ func RunCLI(out io.Writer, args []string) int {
 		if err := json.Unmarshal([]byte(jsonPayload), &payload); err != nil {
 			return outputError(out, fmt.Sprintf("invalid json: %v", err))
 		}
-		task, found, err := w.GetTask(payload.IDOrSlug)
+		task, found, err := b.GetTask(payload.IDOrSlug)
 		if err != nil {
 			return outputError(out, err.Error())
 		}
@@ -166,7 +169,7 @@ func RunCLI(out io.Writer, args []string) int {
 
 	case "list":
 		// List all tasks with computed fields (layer, has_proposal). No payload.
-		tasks, err := w.ListTasksBrief()
+		tasks, err := b.ListTasksBrief()
 		if err != nil {
 			return outputError(out, err.Error())
 		}
@@ -174,7 +177,7 @@ func RunCLI(out io.Writer, args []string) int {
 
 	case "list-full":
 		// List all tasks as stored in tasks.json, without enriched fields. No payload.
-		tasks, err := w.ListTasksFull()
+		tasks, err := b.ListTasksFull()
 		if err != nil {
 			return outputError(out, err.Error())
 		}
@@ -205,7 +208,7 @@ func RunCLI(out io.Writer, args []string) int {
 			setPhasePtr = &[2]any{payload.SetPhase[0], payload.SetPhase[1]}
 		}
 
-		task, err := w.MergeTasks(payload.RemoveSlugs, payload.Upsert, setPhasePtr)
+		task, err := b.MergeTasks(payload.RemoveSlugs, payload.Upsert, setPhasePtr)
 		if err != nil {
 			return outputError(out, err.Error())
 		}
@@ -224,7 +227,7 @@ func RunCLI(out io.Writer, args []string) int {
 		if err := json.Unmarshal([]byte(jsonPayload), &payload); err != nil {
 			return outputError(out, fmt.Sprintf("invalid json: %v", err))
 		}
-		if err := w.SetDeps(payload.Slug, payload.DependsOn); err != nil {
+		if err := b.SetDeps(payload.Slug, payload.DependsOn); err != nil {
 			return outputError(out, err.Error())
 		}
 		return outputSuccess(out)
@@ -232,7 +235,7 @@ func RunCLI(out io.Writer, args []string) int {
 	case "rerender":
 		// Rebuild Home.md and _Sidebar.md from the current tasks.json. No payload.
 		// Useful if render files have been corrupted or manually edited.
-		if err := w.Rerender(); err != nil {
+		if err := b.Rerender(); err != nil {
 			return outputError(out, err.Error())
 		}
 		return outputSuccess(out)
@@ -240,7 +243,7 @@ func RunCLI(out io.Writer, args []string) int {
 	case "sync":
 		// Commit and push pending changes to the remote. No payload. Normally
 		// launched detached by a write; can also be run by hand to force a backup.
-		if err := w.Sync(); err != nil {
+		if err := b.Sync(); err != nil {
 			return outputError(out, err.Error())
 		}
 		return outputSuccess(out)
