@@ -58,7 +58,6 @@ func RunCLI(out io.Writer, args []string) int {
 	}
 
 	var cfg Config
-	var err error
 
 	// If --board-path is set, use it directly (internal use for detached sync child)
 	if *boardPathFlag != "" {
