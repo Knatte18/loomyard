@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r2
+phase: implementing
 slug: boardtest-concurrency-speed
 branch: boardtest-concurrency-speed
 plan: _mill/plan
@@ -21,4 +21,13 @@ planning  '2026-06-09T10:31:00Z'
 plan-review-r1  '2026-06-09T10:32:13Z'
 planned  '2026-06-09T10:32:27Z'
 plan-fix-r2  '2026-06-09T10:41:51Z'
+implementing  '2026-06-09T11:26:50Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: reduce-writes
+    state: pending
 ```
