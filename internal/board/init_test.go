@@ -135,11 +135,10 @@ func TestInitIdempotent(t *testing.T) {
 		t.Fatalf("failed to read board.yaml after first run: %v", err)
 	}
 
-	stat1, err := os.Stat(boardYamlPath)
+	_, err = os.Stat(boardYamlPath)
 	if err != nil {
 		t.Fatalf("failed to stat board.yaml: %v", err)
 	}
-	mtime1 := stat1.ModTime()
 
 	// Capture .gitignore content
 	gitignorePath := filepath.Join(cwd, ".gitignore")

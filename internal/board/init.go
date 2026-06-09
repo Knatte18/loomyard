@@ -124,15 +124,16 @@ func updateGitignoreBlock(gitignorePath string) (bool, error) {
 	const endMarker = "# === end mhgo-managed ==="
 	const blockContent = ".mhgo/"
 
-	// Read existing .gitignore if it exists
-	var existingContent string
-	info, err := os.Stat(gitignorePath)
-	if err != nil && !os.IsNotExist(err) {
-		return false, fmt.Errorf("failed to stat .gitignore: %w", err)
+	// Check if .gitignore exists
+	_, statErr := os.Stat(gitignorePath)
+	fileIsNew := os.IsNotExist(statErr)
+	if statErr != nil && !fileIsNew {
+		return false, fmt.Errorf("failed to stat .gitignore: %w", statErr)
 	}
 
-	if !os.IsNotExist(err) {
-		// File exists, read it
+	// Read existing .gitignore if it exists
+	var existingContent string
+	if !fileIsNew {
 		content, err := os.ReadFile(gitignorePath)
 		if err != nil {
 			return false, fmt.Errorf("failed to read .gitignore: %w", err)
@@ -140,87 +141,78 @@ func updateGitignoreBlock(gitignorePath string) (bool, error) {
 		existingContent = string(content)
 	}
 
-	// Extract current block if it exists
-	var newContent string
+	// Parse the file: find the block if it exists and capture its interior content
 	var blockExists bool
 	var oldBlockContent string
-
-	lines := strings.Split(existingContent, "\n")
-	var result []string
+	var beforeBlock, afterBlock []string
 	var inBlock bool
 
+	lines := strings.Split(existingContent, "\n")
 	for _, line := range lines {
-		if strings.TrimSpace(line) == startMarker {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == startMarker {
 			inBlock = true
 			blockExists = true
-			result = append(result, line) // Keep the start marker
-		} else if strings.TrimSpace(line) == endMarker {
+			beforeBlock = append(beforeBlock, line)
+		} else if trimmed == endMarker {
 			inBlock = false
-			result = append(result, line) // Keep the end marker
+			afterBlock = append(afterBlock, line)
 		} else if inBlock {
-			// Capture the old block content (trimmed lines)
-			if strings.TrimSpace(line) != "" {
-				oldBlockContent += strings.TrimSpace(line) + "\n"
+			// Capture old block content (non-empty trimmed lines)
+			if trimmed != "" {
+				oldBlockContent += trimmed + "\n"
 			}
+		} else if blockExists {
+			// After block has ended, collect lines after
+			afterBlock = append(afterBlock, line)
 		} else {
-			result = append(result, line)
+			// Before block starts, collect lines before
+			beforeBlock = append(beforeBlock, line)
 		}
 	}
 
-	// Compare old block content (trimmed) with new block content (trimmed)
-	newBlockContent := strings.TrimSpace(blockContent)
-	oldBlockContentTrimmed := strings.TrimSpace(oldBlockContent)
+	// Trim old block content for comparison
+	oldBlockTrimmed := strings.TrimSpace(oldBlockContent)
+	newBlockTrimmed := strings.TrimSpace(blockContent)
+	contentChanged := oldBlockTrimmed != newBlockTrimmed
 
-	// Reconstruct with new block content
-	if blockExists {
-		// Replace the old block with the new one
-		newResult := []string{}
-		inBlock := false
-		for i, line := range result {
-			if strings.TrimSpace(line) == startMarker {
-				inBlock = true
-				newResult = append(newResult, line)
-				// Add the new block content after the start marker
-				newResult = append(newResult, blockContent)
-			} else if strings.TrimSpace(line) == endMarker {
-				inBlock = false
-				newResult = append(newResult, line)
-			} else if !inBlock {
-				// Only add non-block lines
-				if !(i > 0 && strings.TrimSpace(result[i-1]) == startMarker) {
-					newResult = append(newResult, line)
-				}
-			}
-		}
-		newContent = strings.Join(newResult, "\n")
-	} else {
-		// Block doesn't exist, append it
-		newResult := result
-		newResult = append(newResult, "")
-		newResult = append(newResult, startMarker)
-		newResult = append(newResult, blockContent)
-		newResult = append(newResult, endMarker)
-		newContent = strings.Join(newResult, "\n")
+	// Only write if file is new, block doesn't exist, or content changed
+	if !fileIsNew && blockExists && !contentChanged {
+		return false, nil
 	}
 
+	// Build the new file content
+	var result []string
+
+	// Add before-block content
+	result = append(result, beforeBlock...)
+
+	// Add the managed block
+	if len(beforeBlock) > 0 && strings.TrimSpace(beforeBlock[len(beforeBlock)-1]) != "" {
+		result = append(result, "") // blank line before block if there's content
+	}
+	result = append(result, startMarker)
+	result = append(result, blockContent)
+	result = append(result, endMarker)
+
+	// Add after-block content (skip the first empty line from parsing artifact)
+	for i, line := range afterBlock {
+		if i == 0 && strings.TrimSpace(line) == "" {
+			continue // Skip first empty line from end marker parsing
+		}
+		result = append(result, line)
+	}
+
+	newContent := strings.Join(result, "\n")
 	// Ensure final newline
 	newContent = strings.TrimRight(newContent, "\n") + "\n"
 
-	// Check if content changed (compare trimmed interior)
-	changed := oldBlockContentTrimmed != newBlockContent
-
-	// If file didn't exist, it's also "changed"
-	fileIsNew := os.IsNotExist(err)
-
-	if fileIsNew || changed {
-		// Write the updated content
-		if err := os.WriteFile(gitignorePath, []byte(newContent), 0o644); err != nil {
-			return false, fmt.Errorf("failed to write .gitignore: %w", err)
-		}
-		return true
+	// Write the file
+	if err := os.WriteFile(gitignorePath, []byte(newContent), 0o644); err != nil {
+		return false, fmt.Errorf("failed to write .gitignore: %w", err)
 	}
 
-	return false, nil
+	return true, nil
 }
 
 // outputInitError writes {"ok":false,"error":"..."} and is a helper for RunInit.
