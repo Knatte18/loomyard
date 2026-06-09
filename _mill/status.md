@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-internal/config — generic config loader
+phase: approved-board migration — adopt all three packages
 slug: extract-shared-infra
 branch: extract-shared-infra
 plan: _mill/plan
@@ -25,6 +25,7 @@ implementing  '2026-06-09T18:23:54Z'
 approved-internal/lock — lift lock primitives  '2026-06-09T18:32:14Z'
 approved-internal/git — extract RunGit  '2026-06-09T18:35:37Z'
 approved-internal/config — generic config loader  '2026-06-09T18:38:36Z'
+approved-board migration — adopt all three packages  '2026-06-09T18:44:46Z'
 ```
 
 ## Batches
@@ -47,7 +48,8 @@ batches:
     start_sha: 542850b976a1d782300793311b48d96ac0d1c174
     commit_sha: 00460dd9d52a379737d90fcb561e4a792b641fb1
   - name: board migration — adopt all three packages
-    state: running
+    state: approved
     implementer_session: b10cdaef-aa13-4a29-93b5-03afc40ab344
     start_sha: f7f57a289ccc44adf4bf8027bb464bd0597d8a7d
+    commit_sha: 98ea5080917084b69754fbb394fa0c876c8367d2
 ```
