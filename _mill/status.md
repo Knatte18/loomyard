@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-fixing
 slug: extract-shared-infra
 branch: extract-shared-infra
 plan: _mill/plan
@@ -27,6 +27,7 @@ approved-internal/git — extract RunGit  '2026-06-09T18:35:37Z'
 approved-internal/config — generic config loader  '2026-06-09T18:38:36Z'
 approved-board migration — adopt all three packages  '2026-06-09T18:44:46Z'
 holistic-reviewing  '2026-06-09T18:45:07Z'
+holistic-fixing  '2026-06-09T18:47:25Z'
 ```
 
 ## Batches
