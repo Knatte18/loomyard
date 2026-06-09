@@ -9,6 +9,7 @@ package board
 import (
 	"os"
 	"os/exec"
+	"path/filepath"
 	"syscall"
 )
 
@@ -21,12 +22,16 @@ const (
 // its own process group (so the parent's Ctrl-C does not reach it) and survives
 // the parent's exit. CREATE_NO_WINDOW keeps it — and the git children it spawns —
 // off-screen.
-func spawnSync(wikiPath string) error {
+func spawnSync(boardPath string) error {
 	exe, err := os.Executable()
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command(exe, "board", "--wiki-path", wikiPath, "sync")
+	abs, err := filepath.Abs(boardPath)
+	if err != nil {
+		return err
+	}
+	cmd := exec.Command(exe, "board", "--board-path", abs, "sync")
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		HideWindow:    true,
 		CreationFlags: createNoWindow | createNewProcessGroup,
