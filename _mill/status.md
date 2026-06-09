@@ -47,5 +47,7 @@ batches:
     start_sha: 542850b976a1d782300793311b48d96ac0d1c174
     commit_sha: 00460dd9d52a379737d90fcb561e4a792b641fb1
   - name: board migration — adopt all three packages
-    state: pending
+    state: running
+    implementer_session: b10cdaef-aa13-4a29-93b5-03afc40ab344
+    start_sha: f7f57a289ccc44adf4bf8027bb464bd0597d8a7d
 ```
