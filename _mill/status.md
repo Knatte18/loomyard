@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-fix-r4
+phase: discussed
 slug: extract-shared-infra
 branch: extract-shared-infra
 plan: null
@@ -16,4 +16,5 @@ task_description: |
 ```text
 discussing  '2026-06-09T12:01:38Z'
 discussion-fix-r4  '2026-06-09T12:37:34Z'
+discussed  '2026-06-09T12:38:20Z'
 ```
