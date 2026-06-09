@@ -29,5 +29,7 @@ implementing  '2026-06-09T11:26:50Z'
 ```yaml
 batches:
   - name: reduce-writes
-    state: pending
+    state: running
+    implementer_session: db191d1a-c68e-4691-a4ce-6fcb3879f9c0
+    start_sha: b1c2b13e6dc42ca980d75c42b468c4d920a029e3
 ```
