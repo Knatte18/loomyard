@@ -8,6 +8,7 @@
 package boardtest
 
 import (
+	"path/filepath"
 	"strconv"
 	"sync"
 	"testing"
@@ -22,9 +23,10 @@ import (
 // never a partial one.
 func TestConcurrentReadsDuringUpserts(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
-	dir := seedWiki(t, 100)
+	cwd := seedWiki(t, 100)
 	cfg := board.DefaultConfig()
-	cfg.Path = dir
+	// seedWiki creates _mhgo/board.yaml with path: board, so the board dir is <cwd>/board
+	cfg.Path = filepath.Join(cwd, "board")
 	w := board.New(cfg)
 
 	const (
@@ -97,9 +99,10 @@ func TestConcurrentReadsDuringUpserts(t *testing.T) {
 // tasks or duplicate ids.
 func TestConcurrentUpsertsDoNotLoseWrites(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
-	dir := seedWiki(t, 0)
+	cwd := seedWiki(t, 0)
 	cfg := board.DefaultConfig()
-	cfg.Path = dir
+	// seedWiki creates _mhgo/board.yaml with path: board, so the board dir is <cwd>/board
+	cfg.Path = filepath.Join(cwd, "board")
 	w := board.New(cfg)
 
 	const writers = 16
@@ -137,9 +140,10 @@ func TestConcurrentUpsertsDoNotLoseWrites(t *testing.T) {
 // uncontended BenchmarkGet — that gap is the price reads pay for a busy writer.
 func BenchmarkGetDuringUpsert(b *testing.B) {
 	b.Setenv("BOARD_SKIP_GIT", "1")
-	dir := seedWiki(b, 100)
+	cwd := seedWiki(b, 100)
 	cfg := board.DefaultConfig()
-	cfg.Path = dir
+	// seedWiki creates _mhgo/board.yaml with path: board, so the board dir is <cwd>/board
+	cfg.Path = filepath.Join(cwd, "board")
 	w := board.New(cfg)
 
 	stop := make(chan struct{})
