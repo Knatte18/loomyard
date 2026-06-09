@@ -36,6 +36,12 @@ func New(cfg Config) *Board {
 // without waiting. The second argument is ignored — the commit message is fixed
 // in the pusher (batched "wiki sync" commits), not per-write.
 func (b *Board) writeOp(mutate func(*Store) (any, error), _ string) (any, error) {
+	// (0) Ensure board directory exists before acquiring lock
+	// (the lock file lives inside the board dir)
+	if err := os.MkdirAll(b.boardPath, 0o755); err != nil {
+		return nil, fmt.Errorf("mkdir board: %w", err)
+	}
+
 	// (1) Acquire write lock
 	lock, err := AcquireWriteLock(filepath.Join(b.boardPath, writeLockFile))
 	if err != nil {
@@ -164,6 +170,11 @@ func (b *Board) Sync() error {
 }
 
 func (b *Board) GetTask(idOrSlug any) (Task, bool, error) {
+	// Short-circuit if board dir does not exist
+	if _, err := os.Stat(b.boardPath); os.IsNotExist(err) {
+		return Task{}, false, nil
+	}
+
 	store := NewStore(filepath.Join(b.boardPath, "tasks.json"))
 	if err := store.Load(); err != nil {
 		return Task{}, false, fmt.Errorf("load store: %w", err)
@@ -174,6 +185,11 @@ func (b *Board) GetTask(idOrSlug any) (Task, bool, error) {
 }
 
 func (b *Board) ListTasksBrief() ([]BriefTask, error) {
+	// Short-circuit if board dir does not exist
+	if _, err := os.Stat(b.boardPath); os.IsNotExist(err) {
+		return nil, nil
+	}
+
 	store := NewStore(filepath.Join(b.boardPath, "tasks.json"))
 	if err := store.Load(); err != nil {
 		return nil, fmt.Errorf("load store: %w", err)
@@ -183,6 +199,11 @@ func (b *Board) ListTasksBrief() ([]BriefTask, error) {
 }
 
 func (b *Board) ListTasksFull() ([]Task, error) {
+	// Short-circuit if board dir does not exist
+	if _, err := os.Stat(b.boardPath); os.IsNotExist(err) {
+		return nil, nil
+	}
+
 	store := NewStore(filepath.Join(b.boardPath, "tasks.json"))
 	if err := store.Load(); err != nil {
 		return nil, fmt.Errorf("load store: %w", err)
