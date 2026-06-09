@@ -21,16 +21,12 @@ func RunGit(args []string, cwd string) (stdout, stderr string, exitCode int, err
 
 	err = cmd.Run()
 
-	// Extract exit code from ProcessState
-	if cmd.ProcessState != nil {
-		exitCode = cmd.ProcessState.ExitCode()
-	} else {
-		exitCode = -1
+	// Extract exit code from error, defaulting to 0 on success
+	exitCode = 0
+	if exitErr, ok := err.(*exec.ExitError); ok {
+		exitCode = exitErr.ExitCode()
+		err = nil // Non-zero exit is not an error condition
 	}
 
-	// Only return err for execution failures, not for non-zero exit codes
-	if err != nil && cmd.ProcessState == nil {
-		return "", "", -1, err
-	}
-	return outBuf.String(), errBuf.String(), exitCode, nil
+	return outBuf.String(), errBuf.String(), exitCode, err
 }
