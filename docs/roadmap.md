@@ -38,7 +38,7 @@ observable changes until the new module that needs the extracted lib arrives.
 
 3. **`internal/state`.** New package: typed read/write of the gitignored,
    machine-local `.mhgo/local-state.json` registry
-   ([`internal/state`](shared-libs.md#internalstate)). Built test-first — nothing
+   ([`internal/state`](shared-libs/state.md)). Built test-first — nothing
    in board needs it, so it has no existing suite to lean on.
 
 4. **worktree module.** Create / track / tear down git worktrees

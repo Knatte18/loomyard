@@ -7,7 +7,7 @@ The worktree module owns the **lifecycle of git worktrees**: creating them under
 the container, tracking them in machine-local state, and tearing them down cleanly —
 including the Windows junction/lock hazard that has bitten us before. It is the
 first consumer of all four shared libs
-([config, git, lock, state](../shared-libs.md)) and the foundation the
+([config](../shared-libs/config.md), [git](../shared-libs/git.md), [lock](../shared-libs/lock.md), [state](../shared-libs/state.md)) and the foundation the
 [mux](mux.md) module lays its columns out from.
 
 Driven by `mhgo worktree <subcommand>`; one-shot, JSON in / JSON out, like every
@@ -48,7 +48,7 @@ rule (cwd need not equal the git-repo root).
 ## State
 
 The worktree registry lives in `.mhgo/local-state.json` via
-[`internal/state`](../shared-libs.md#internalstate):
+[`internal/state`](../shared-libs/state.md):
 
 ```
 slug → { path, branch, container }
@@ -72,7 +72,7 @@ The module owns this sequence so it is never relearned:
 
 1. **Remove the junctions inside the worktree first**, so nothing inside holds the
    directory open.
-2. **`git worktree remove`** (via [`internal/git`](../shared-libs.md#internalgit)’s
+2. **`git worktree remove`** (via [`internal/git`](../shared-libs/git.md)’s
    `RunGit`).
 3. **On lock/permission failure, fall back:** force-remove the directory, then
    `git worktree prune` to clear the stale registration, and `git branch -D` if the
