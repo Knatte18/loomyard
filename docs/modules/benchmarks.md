@@ -1,7 +1,7 @@
 # Benchmarks: board command performance
 
 Tracks how fast the board commands run, and how that changes across revisions.
-The benchmark suite lives in [`internal/board/boardtest`](../internal/board/boardtest).
+The benchmark suite lives in [`internal/board/boardtest`](../../internal/board/boardtest).
 
 Since the async-sync change (see [board.md](board.md#background-sync)) a write only
 touches the filesystem and returns; the git round-trip happens in a detached
