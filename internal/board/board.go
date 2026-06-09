@@ -1,11 +1,11 @@
-// wiki.go — the Wiki facade, the only entry point the CLI uses.
+// board.go — the Board facade, the only entry point the CLI uses.
 //
 // writeOp sequences a write: lock → load → mutate → render → write files →
 // save, then launches a detached background sync (see sync.go) to back the
 // change up to the remote. It never waits on git. Every mutating method
 // delegates to it; read methods (Get/List) bypass it and load straight from disk.
 
-package wiki
+package board
 
 import (
 	"fmt"
@@ -13,36 +13,44 @@ import (
 	"path/filepath"
 )
 
-// Wiki is the high-level facade over a wiki directory.
+// Board is the high-level facade over a board directory.
 // Every mutating method acquires an exclusive file lock, mutates the store, and
 // renders output files; the slow remote backup (commit + push) is handed off to
 // a detached sync process so the write returns immediately.
-type Wiki struct {
-	wikiPath string
+type Board struct {
+	boardPath string
+	out       Outputs
 }
 
-// New returns a Wiki operating on wikiPath.
-func New(wikiPath string) *Wiki {
-	return &Wiki{
-		wikiPath: wikiPath,
+// New returns a Board operating with the given config.
+func New(cfg Config) *Board {
+	return &Board{
+		boardPath: cfg.Path,
+		out:       cfg.Outputs(),
 	}
 }
 
 // writeOp runs the locked, file-only write sequence: lock → load → mutate →
 // render → write files → save. The remote backup is not done here; on success it
-// launches a detached `mhgo wiki sync` (unless WIKI_SKIP_GIT=1) and returns
+// launches a detached `mhgo board sync` (unless BOARD_SKIP_GIT=1) and returns
 // without waiting. The second argument is ignored — the commit message is fixed
-// in the pusher (batched "wiki sync" commits), not per-write.
-func (w *Wiki) writeOp(mutate func(*Store) (any, error), _ string) (any, error) {
+// in the pusher (batched "board sync" commits), not per-write.
+func (b *Board) writeOp(mutate func(*Store) (any, error), _ string) (any, error) {
+	// (0) Ensure board directory exists before acquiring lock
+	// (the lock file lives inside the board dir)
+	if err := os.MkdirAll(b.boardPath, 0o755); err != nil {
+		return nil, fmt.Errorf("mkdir board: %w", err)
+	}
+
 	// (1) Acquire write lock
-	lock, err := AcquireWriteLock(filepath.Join(w.wikiPath, writeLockFile))
+	lock, err := AcquireWriteLock(filepath.Join(b.boardPath, writeLockFile))
 	if err != nil {
 		return nil, fmt.Errorf("acquire lock: %w", err)
 	}
 	defer lock.Release()
 
 	// (2) Load store
-	store := NewStore(filepath.Join(w.wikiPath, "tasks.json"))
+	store := NewStore(filepath.Join(b.boardPath, "tasks.json"))
 	if err := store.Load(); err != nil {
 		return nil, fmt.Errorf("load store: %w", err)
 	}
@@ -55,27 +63,27 @@ func (w *Wiki) writeOp(mutate func(*Store) (any, error), _ string) (any, error) 
 
 	// (4) Save the store first — tasks.json is the source of truth, persisted
 	// before the derived .md view (so a crash never leaves .md ahead of the data).
-	if err := store.Save(w.wikiPath, "tasks.json"); err != nil {
+	if err := store.Save(b.boardPath, "tasks.json"); err != nil {
 		return nil, fmt.Errorf("save store: %w", err)
 	}
 
 	// (5) Render the readable .md files (render.go owns all markdown output and
-	// orphan cleanup; wiki.go only deals with tasks.json).
-	if err := RenderToDisk(w.wikiPath, store.Tasks()); err != nil {
+	// orphan cleanup; board.go only deals with tasks.json).
+	if err := RenderToDisk(b.boardPath, store.Tasks(), b.out); err != nil {
 		return nil, fmt.Errorf("render: %w", err)
 	}
 
 	// (6) Hand the remote backup to a detached sync process and return. The data
 	// is already durable on disk; a failed spawn just defers backup to the next
 	// write, since git push is cumulative.
-	if os.Getenv("WIKI_SKIP_GIT") != "1" {
-		_ = spawnSync(w.wikiPath)
+	if os.Getenv("BOARD_SKIP_GIT") != "1" {
+		_ = spawnSync(b.boardPath)
 	}
 
 	return result, nil
 }
 
-func (w *Wiki) UpsertTask(fields map[string]any) (Task, error) {
+func (b *Board) UpsertTask(fields map[string]any) (Task, error) {
 	// Extract slug for message
 	slugVal, hasSlug := fields["slug"]
 	if !hasSlug {
@@ -86,7 +94,7 @@ func (w *Wiki) UpsertTask(fields map[string]any) (Task, error) {
 		slugStr = fmt.Sprintf("%v", slugVal)
 	}
 
-	result, err := w.writeOp(func(s *Store) (any, error) {
+	result, err := b.writeOp(func(s *Store) (any, error) {
 		return s.UpsertTask(fields)
 	}, slugStr)
 
@@ -96,23 +104,23 @@ func (w *Wiki) UpsertTask(fields map[string]any) (Task, error) {
 	return result.(Task), nil
 }
 
-func (w *Wiki) SetPhase(idOrSlug any, phase *string) error {
+func (b *Board) SetPhase(idOrSlug any, phase *string) error {
 	slugForMsg := fmt.Sprintf("%v", idOrSlug)
-	_, err := w.writeOp(func(s *Store) (any, error) {
+	_, err := b.writeOp(func(s *Store) (any, error) {
 		return nil, s.SetPhase(idOrSlug, phase)
 	}, slugForMsg)
 	return err
 }
 
-func (w *Wiki) RemoveTask(idOrSlug any) error {
+func (b *Board) RemoveTask(idOrSlug any) error {
 	slugForMsg := fmt.Sprintf("%v", idOrSlug)
-	_, err := w.writeOp(func(s *Store) (any, error) {
+	_, err := b.writeOp(func(s *Store) (any, error) {
 		return nil, s.RemoveTask(idOrSlug)
 	}, slugForMsg)
 	return err
 }
 
-func (w *Wiki) MergeTasks(removeSlugs []string, upsert map[string]any, setPhase *[2]any) (Task, error) {
+func (b *Board) MergeTasks(removeSlugs []string, upsert map[string]any, setPhase *[2]any) (Task, error) {
 	// Extract slug for message
 	slugVal, hasSlug := upsert["slug"]
 	if !hasSlug {
@@ -123,7 +131,7 @@ func (w *Wiki) MergeTasks(removeSlugs []string, upsert map[string]any, setPhase 
 		slugStr = fmt.Sprintf("%v", slugVal)
 	}
 
-	result, err := w.writeOp(func(s *Store) (any, error) {
+	result, err := b.writeOp(func(s *Store) (any, error) {
 		return s.MergeTasks(removeSlugs, upsert, setPhase)
 	}, slugStr)
 
@@ -133,36 +141,41 @@ func (w *Wiki) MergeTasks(removeSlugs []string, upsert map[string]any, setPhase 
 	return result.(Task), nil
 }
 
-func (w *Wiki) SetDeps(slug string, dependsOn []string) error {
-	_, err := w.writeOp(func(s *Store) (any, error) {
+func (b *Board) SetDeps(slug string, dependsOn []string) error {
+	_, err := b.writeOp(func(s *Store) (any, error) {
 		return nil, s.SetDeps(slug, dependsOn)
 	}, slug)
 	return err
 }
 
-func (w *Wiki) UpsertTasksBatch(tasks []map[string]any) error {
-	_, err := w.writeOp(func(s *Store) (any, error) {
+func (b *Board) UpsertTasksBatch(tasks []map[string]any) error {
+	_, err := b.writeOp(func(s *Store) (any, error) {
 		return nil, s.UpsertTasksBatch(tasks)
 	}, "batch")
 	return err
 }
 
-func (w *Wiki) Rerender() error {
-	_, err := w.writeOp(func(s *Store) (any, error) {
+func (b *Board) Rerender() error {
+	_, err := b.writeOp(func(s *Store) (any, error) {
 		return nil, nil
 	}, "rerender")
 	return err
 }
 
 // Sync backs up pending local changes to the remote (commit + push), looping
-// until nothing is left. It is what the detached `mhgo wiki sync` process runs;
+// until nothing is left. It is what the detached `mhgo board sync` process runs;
 // it can also be called directly to force a synchronous backup.
-func (w *Wiki) Sync() error {
-	return Sync(w.wikiPath)
+func (b *Board) Sync() error {
+	return Sync(b.boardPath)
 }
 
-func (w *Wiki) GetTask(idOrSlug any) (Task, bool, error) {
-	store := NewStore(filepath.Join(w.wikiPath, "tasks.json"))
+func (b *Board) GetTask(idOrSlug any) (Task, bool, error) {
+	// Short-circuit if board dir does not exist
+	if _, err := os.Stat(b.boardPath); os.IsNotExist(err) {
+		return Task{}, false, nil
+	}
+
+	store := NewStore(filepath.Join(b.boardPath, "tasks.json"))
 	if err := store.Load(); err != nil {
 		return Task{}, false, fmt.Errorf("load store: %w", err)
 	}
@@ -171,8 +184,13 @@ func (w *Wiki) GetTask(idOrSlug any) (Task, bool, error) {
 	return task, found, nil
 }
 
-func (w *Wiki) ListTasksBrief() ([]BriefTask, error) {
-	store := NewStore(filepath.Join(w.wikiPath, "tasks.json"))
+func (b *Board) ListTasksBrief() ([]BriefTask, error) {
+	// Short-circuit if board dir does not exist
+	if _, err := os.Stat(b.boardPath); os.IsNotExist(err) {
+		return nil, nil
+	}
+
+	store := NewStore(filepath.Join(b.boardPath, "tasks.json"))
 	if err := store.Load(); err != nil {
 		return nil, fmt.Errorf("load store: %w", err)
 	}
@@ -180,8 +198,13 @@ func (w *Wiki) ListTasksBrief() ([]BriefTask, error) {
 	return store.ListTasksBrief(), nil
 }
 
-func (w *Wiki) ListTasksFull() ([]Task, error) {
-	store := NewStore(filepath.Join(w.wikiPath, "tasks.json"))
+func (b *Board) ListTasksFull() ([]Task, error) {
+	// Short-circuit if board dir does not exist
+	if _, err := os.Stat(b.boardPath); os.IsNotExist(err) {
+		return nil, nil
+	}
+
+	store := NewStore(filepath.Join(b.boardPath, "tasks.json"))
 	if err := store.Load(); err != nil {
 		return nil, fmt.Errorf("load store: %w", err)
 	}

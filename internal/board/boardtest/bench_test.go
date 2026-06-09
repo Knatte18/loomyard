@@ -1,11 +1,11 @@
-// bench_test.go — no-git benchmarks for the core wiki commands.
+// bench_test.go — no-git benchmarks for the core board commands.
 //
 // Benchmarks the pure Render plus upsert / get / list (via the CLI entrypoint)
-// and the Wiki facade across wiki sizes of 10/100/1000 tasks, with git skipped
-// (WIKI_SKIP_GIT=1) so they measure wiki logic + file I/O only. Also defines
+// and the Board facade across board sizes of 10/100/1000 tasks, with git skipped
+// (BOARD_SKIP_GIT=1) so they measure board logic + file I/O only. Also defines
 // seedWiki, the task-seeding helper shared across this package.
 
-package wikitest
+package boardtest
 
 import (
 	"encoding/json"
@@ -16,25 +16,44 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/Knatte18/mhgo/internal/wiki"
+	"github.com/Knatte18/mhgo/internal/board"
 )
 
-// benchSizes is the set of wiki sizes (number of tasks already in tasks.json)
-// each benchmark is run against. Every write re-renders the whole wiki, so cost
+// benchSizes is the set of board sizes (number of tasks already in tasks.json)
+// each benchmark is run against. Every write re-renders the whole board, so cost
 // is expected to grow with size — these sizes make that scaling visible.
 var benchSizes = []int{10, 100, 1000}
 
 // seedWiki writes a tasks.json with n independent (dependency-free) tasks into a
-// fresh temp dir and returns its path. Callers must set WIKI_SKIP_GIT=1 so the
-// benchmark measures wiki logic + file I/O, not git push latency. It takes a
-// testing.TB so both benchmarks and concurrency tests can use it.
+// fresh temp dir, seeded with _mhgo/board.yaml for config, and returns the cwd path.
+// Callers must set BOARD_SKIP_GIT=1 so the benchmark measures board logic + file I/O,
+// not git push latency. It takes a testing.TB so both benchmarks and concurrency tests
+// can use it. For direct facade tests (not CLI), construct Board from the config's Path
+// which is resolved from board.yaml.
 func seedWiki(tb testing.TB, n int) string {
 	tb.Helper()
 
 	dir := tb.TempDir()
-	tasks := make([]wiki.Task, n)
+
+	// Create _mhgo directory with board.yaml config
+	mhgoDir := filepath.Join(dir, "_mhgo")
+	if err := os.MkdirAll(mhgoDir, 0o755); err != nil {
+		tb.Fatalf("mkdir _mhgo: %v", err)
+	}
+	configPath := filepath.Join(mhgoDir, "board.yaml")
+	if err := os.WriteFile(configPath, []byte("path: board\n"), 0o644); err != nil {
+		tb.Fatalf("write board.yaml: %v", err)
+	}
+
+	// Create board directory and tasks.json
+	boardDir := filepath.Join(dir, "board")
+	if err := os.MkdirAll(boardDir, 0o755); err != nil {
+		tb.Fatalf("mkdir board: %v", err)
+	}
+
+	tasks := make([]board.Task, n)
 	for i := range tasks {
-		tasks[i] = wiki.Task{
+		tasks[i] = board.Task{
 			ID:        i,
 			Slug:      "task-" + strconv.Itoa(i),
 			Title:     "Task " + strconv.Itoa(i),
@@ -47,9 +66,10 @@ func seedWiki(tb testing.TB, n int) string {
 	if err != nil {
 		tb.Fatalf("marshal seed: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "tasks.json"), data, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(boardDir, "tasks.json"), data, 0o644); err != nil {
 		tb.Fatalf("write seed: %v", err)
 	}
+	// Return the cwd (parent) for CLI benchmarks, which will call b.Chdir
 	return dir
 }
 
@@ -59,13 +79,13 @@ func seedWiki(tb testing.TB, n int) string {
 func BenchmarkRender(b *testing.B) {
 	for _, n := range benchSizes {
 		b.Run(fmt.Sprintf("n=%d", n), func(b *testing.B) {
-			tasks := make([]wiki.Task, n)
+			tasks := make([]board.Task, n)
 			for i := range tasks {
 				body := ""
 				if i%4 == 0 {
 					body = "proposal body for task " + strconv.Itoa(i)
 				}
-				tasks[i] = wiki.Task{
+				tasks[i] = board.Task{
 					ID:        i,
 					Slug:      "task-" + strconv.Itoa(i),
 					Title:     "Task " + strconv.Itoa(i),
@@ -78,7 +98,7 @@ func BenchmarkRender(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				if _, err := wiki.Render(tasks); err != nil {
+				if _, err := board.Render(tasks, board.DefaultOutputs()); err != nil {
 					b.Fatal(err)
 				}
 			}
@@ -89,17 +109,19 @@ func BenchmarkRender(b *testing.B) {
 // BenchmarkUpsert measures a full "upsert" command through the CLI entrypoint:
 // JSON parse → dispatch → lock → load → mutate → render all tasks → write files.
 // It updates an existing task so the per-op work is stable across iterations.
+// CLI-bench numbers now include the added os.Getwd() + LoadConfig cost from cwd-based config.
 func BenchmarkUpsert(b *testing.B) {
-	b.Setenv("WIKI_SKIP_GIT", "1")
+	b.Setenv("BOARD_SKIP_GIT", "1")
 	for _, n := range benchSizes {
 		b.Run(fmt.Sprintf("n=%d", n), func(b *testing.B) {
 			dir := seedWiki(b, n)
-			args := []string{"--wiki-path", dir, "upsert", `{"slug":"task-0","title":"Updated"}`}
+			b.Chdir(dir)
+			args := []string{"upsert", `{"slug":"task-0","title":"Updated"}`}
 
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				if code := wiki.RunCLI(io.Discard, args); code != 0 {
+				if code := board.RunCLI(io.Discard, args); code != 0 {
 					b.Fatalf("RunCLI upsert exit %d", code)
 				}
 			}
@@ -110,16 +132,17 @@ func BenchmarkUpsert(b *testing.B) {
 // BenchmarkGet measures a "get" command: the read path (load tasks.json, look up
 // one task by slug). No render, no write.
 func BenchmarkGet(b *testing.B) {
-	b.Setenv("WIKI_SKIP_GIT", "1")
+	b.Setenv("BOARD_SKIP_GIT", "1")
 	for _, n := range benchSizes {
 		b.Run(fmt.Sprintf("n=%d", n), func(b *testing.B) {
 			dir := seedWiki(b, n)
-			args := []string{"--wiki-path", dir, "get", `{"id_or_slug":"task-0"}`}
+			b.Chdir(dir)
+			args := []string{"get", `{"id_or_slug":"task-0"}`}
 
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				if code := wiki.RunCLI(io.Discard, args); code != 0 {
+				if code := board.RunCLI(io.Discard, args); code != 0 {
 					b.Fatalf("RunCLI get exit %d", code)
 				}
 			}
@@ -130,16 +153,17 @@ func BenchmarkGet(b *testing.B) {
 // BenchmarkList measures a "list" command: load all tasks, compute layers and
 // has_proposal, and serialise the brief view.
 func BenchmarkList(b *testing.B) {
-	b.Setenv("WIKI_SKIP_GIT", "1")
+	b.Setenv("BOARD_SKIP_GIT", "1")
 	for _, n := range benchSizes {
 		b.Run(fmt.Sprintf("n=%d", n), func(b *testing.B) {
 			dir := seedWiki(b, n)
-			args := []string{"--wiki-path", dir, "list"}
+			b.Chdir(dir)
+			args := []string{"list"}
 
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				if code := wiki.RunCLI(io.Discard, args); code != 0 {
+				if code := board.RunCLI(io.Discard, args); code != 0 {
 					b.Fatalf("RunCLI list exit %d", code)
 				}
 			}
@@ -147,15 +171,17 @@ func BenchmarkList(b *testing.B) {
 	}
 }
 
-// BenchmarkUpsertFacade measures Wiki.UpsertTask directly, bypassing the CLI's
+// BenchmarkUpsertFacade measures Board.UpsertTask directly, bypassing the CLI's
 // flag parsing and JSON (un)marshalling. The gap to BenchmarkUpsert is the
 // per-command CLI overhead.
 func BenchmarkUpsertFacade(b *testing.B) {
-	b.Setenv("WIKI_SKIP_GIT", "1")
+	b.Setenv("BOARD_SKIP_GIT", "1")
 	for _, n := range benchSizes {
 		b.Run(fmt.Sprintf("n=%d", n), func(b *testing.B) {
 			dir := seedWiki(b, n)
-			w := wiki.New(dir)
+			cfg := board.DefaultConfig()
+			cfg.Path = filepath.Join(dir, "board")
+			w := board.New(cfg)
 			fields := map[string]any{"slug": "task-0", "title": "Updated"}
 
 			b.ReportAllocs()

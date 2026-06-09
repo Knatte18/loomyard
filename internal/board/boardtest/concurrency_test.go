@@ -5,25 +5,29 @@
 // serialize through the write lock without losing updates. Also benchmarks read
 // latency while a writer hammers the wiki in the background. All no-git.
 
-package wikitest
+package boardtest
 
 import (
+	"path/filepath"
 	"strconv"
 	"sync"
 	"testing"
 
-	"github.com/Knatte18/mhgo/internal/wiki"
+	"github.com/Knatte18/mhgo/internal/board"
 )
 
 // TestConcurrentReadsDuringUpserts runs many readers concurrently with a single
-// writer and asserts reads never fail and always observe a consistent wiki.
+// writer and asserts reads never fail and always observe a consistent board.
 // Reads bypass the write lock and writes are atomic (temp + rename), so every
 // read must see a complete tasks.json — either the pre- or post-upsert state,
 // never a partial one.
 func TestConcurrentReadsDuringUpserts(t *testing.T) {
-	t.Setenv("WIKI_SKIP_GIT", "1")
-	dir := seedWiki(t, 100)
-	w := wiki.New(dir)
+	t.Setenv("BOARD_SKIP_GIT", "1")
+	cwd := seedWiki(t, 100)
+	cfg := board.DefaultConfig()
+	// seedWiki creates _mhgo/board.yaml with path: board, so the board dir is <cwd>/board
+	cfg.Path = filepath.Join(cwd, "board")
+	w := board.New(cfg)
 
 	const (
 		readers = 8
@@ -89,14 +93,17 @@ func TestConcurrentReadsDuringUpserts(t *testing.T) {
 }
 
 // TestConcurrentUpsertsDoNotLoseWrites launches many writers at once, each adding
-// a distinct task to an initially empty wiki. The write lock must serialize the
+// a distinct task to an initially empty board. The write lock must serialize the
 // load → mutate → save cycle so no update is lost and ids stay unique; if the
 // lock failed to serialize same-process writers, we would see fewer than `writers`
 // tasks or duplicate ids.
 func TestConcurrentUpsertsDoNotLoseWrites(t *testing.T) {
-	t.Setenv("WIKI_SKIP_GIT", "1")
-	dir := seedWiki(t, 0)
-	w := wiki.New(dir)
+	t.Setenv("BOARD_SKIP_GIT", "1")
+	cwd := seedWiki(t, 0)
+	cfg := board.DefaultConfig()
+	// seedWiki creates _mhgo/board.yaml with path: board, so the board dir is <cwd>/board
+	cfg.Path = filepath.Join(cwd, "board")
+	w := board.New(cfg)
 
 	const writers = 16
 	var wg sync.WaitGroup
@@ -132,9 +139,12 @@ func TestConcurrentUpsertsDoNotLoseWrites(t *testing.T) {
 // upserts in the background. Reads take no lock, so this should stay close to the
 // uncontended BenchmarkGet — that gap is the price reads pay for a busy writer.
 func BenchmarkGetDuringUpsert(b *testing.B) {
-	b.Setenv("WIKI_SKIP_GIT", "1")
-	dir := seedWiki(b, 100)
-	w := wiki.New(dir)
+	b.Setenv("BOARD_SKIP_GIT", "1")
+	cwd := seedWiki(b, 100)
+	cfg := board.DefaultConfig()
+	// seedWiki creates _mhgo/board.yaml with path: board, so the board dir is <cwd>/board
+	cfg.Path = filepath.Join(cwd, "board")
+	w := board.New(cfg)
 
 	stop := make(chan struct{})
 	var writerDone sync.WaitGroup

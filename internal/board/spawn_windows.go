@@ -4,11 +4,12 @@
 // waiting, and run every git subprocess without flashing a console window. Both
 // use CREATE_NO_WINDOW — mhgo and git are console apps, and when launched from a
 // process without a visible console each would otherwise pop up its own window.
-package wiki
+package board
 
 import (
 	"os"
 	"os/exec"
+	"path/filepath"
 	"syscall"
 )
 
@@ -17,16 +18,20 @@ const (
 	createNoWindow        = 0x08000000
 )
 
-// spawnSync launches `mhgo wiki sync` as a detached, windowless process. It has
+// spawnSync launches `mhgo board sync` as a detached, windowless process. It has
 // its own process group (so the parent's Ctrl-C does not reach it) and survives
 // the parent's exit. CREATE_NO_WINDOW keeps it — and the git children it spawns —
 // off-screen.
-func spawnSync(wikiPath string) error {
+func spawnSync(boardPath string) error {
 	exe, err := os.Executable()
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command(exe, "wiki", "--wiki-path", wikiPath, "sync")
+	abs, err := filepath.Abs(boardPath)
+	if err != nil {
+		return err
+	}
+	cmd := exec.Command(exe, "board", "--board-path", abs, "sync")
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		HideWindow:    true,
 		CreationFlags: createNoWindow | createNewProcessGroup,

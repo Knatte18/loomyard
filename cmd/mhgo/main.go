@@ -10,7 +10,8 @@
 //
 // Modules:
 //
-//	wiki   task-tracker wiki — see internal/wiki.RunCLI for subcommands
+//	init    scaffold _mhgo/board.yaml and .gitignore in the current directory
+//	board   task-tracker board — see internal/board.RunCLI for subcommands
 //
 // All output is JSON on stdout. Exit code 1 on error.
 package main
@@ -20,7 +21,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/Knatte18/mhgo/internal/wiki"
+	"github.com/Knatte18/mhgo/internal/board"
 )
 
 func main() {
@@ -39,8 +40,10 @@ func run(args []string, out io.Writer) int {
 	module, moduleArgs := args[0], args[1:]
 
 	switch module {
-	case "wiki":
-		return wiki.RunCLI(out, moduleArgs)
+	case "init":
+		return board.RunInit(out, moduleArgs)
+	case "board":
+		return board.RunCLI(out, moduleArgs)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown module: %s\n", module)
 		return 1

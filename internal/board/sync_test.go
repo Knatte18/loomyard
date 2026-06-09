@@ -1,10 +1,10 @@
 // sync_test.go — unit tests for the background pusher (sync.go).
 //
 // Exercises Sync against a LOCAL bare repo (no network, no dummy remote): a
-// commit + push, a burst coalescing into one commit, WIKI_SKIP_PUSH committing
+// commit + push, a burst coalescing into one commit, BOARD_SKIP_PUSH committing
 // without pushing, and the clean-tree no-op.
 
-package wiki_test
+package board_test
 
 import (
 	"os"
@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/mhgo/internal/wiki"
+	"github.com/Knatte18/mhgo/internal/board"
 )
 
 // newSyncRepo creates a bare "remote" and a working clone with an upstream, seeds
@@ -22,7 +22,7 @@ import (
 // commits on the remote and locally.
 func newSyncRepo(t *testing.T) (work string, remoteCommits, localCommits func() int) {
 	t.Helper()
-	t.Setenv("WIKI_SKIP_GIT", "") // Sync must not be disabled for these tests
+	t.Setenv("BOARD_SKIP_GIT", "") // Sync must not be disabled for these tests
 
 	dir := t.TempDir()
 	bare := filepath.Join(dir, "remote.git")
@@ -73,7 +73,9 @@ func TestSyncCommitsAndPushes(t *testing.T) {
 	before := remoteCommits()
 
 	dirty(t, work, `[{"id":0,"slug":"a","title":"A"}]`)
-	if err := wiki.New(work).Sync(); err != nil {
+	cfg := board.DefaultConfig()
+	cfg.Path = work
+	if err := board.New(cfg).Sync(); err != nil {
 		t.Fatalf("Sync: %v", err)
 	}
 
@@ -94,7 +96,9 @@ func TestSyncCoalescesBurstIntoOneCommit(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		dirty(t, work, `[{"id":0,"slug":"a","title":"v`+strconv.Itoa(i)+`"}]`)
 	}
-	if err := wiki.New(work).Sync(); err != nil {
+	cfg := board.DefaultConfig()
+	cfg.Path = work
+	if err := board.New(cfg).Sync(); err != nil {
 		t.Fatalf("Sync: %v", err)
 	}
 
@@ -104,12 +108,14 @@ func TestSyncCoalescesBurstIntoOneCommit(t *testing.T) {
 }
 
 func TestSyncSkipPushCommitsLocallyOnly(t *testing.T) {
-	t.Setenv("WIKI_SKIP_PUSH", "1")
+	t.Setenv("BOARD_SKIP_PUSH", "1")
 	work, remoteCommits, localCommits := newSyncRepo(t)
 	remoteBefore, localBefore := remoteCommits(), localCommits()
 
 	dirty(t, work, `[{"id":0,"slug":"a","title":"A"}]`)
-	if err := wiki.New(work).Sync(); err != nil {
+	cfg := board.DefaultConfig()
+	cfg.Path = work
+	if err := board.New(cfg).Sync(); err != nil {
 		t.Fatalf("Sync: %v", err)
 	}
 
@@ -123,7 +129,9 @@ func TestSyncSkipPushCommitsLocallyOnly(t *testing.T) {
 
 func TestSyncCleanTreeIsNoOp(t *testing.T) {
 	work, remoteCommits, _ := newSyncRepo(t)
-	w := wiki.New(work)
+	cfg := board.DefaultConfig()
+	cfg.Path = work
+	w := board.New(cfg)
 
 	// The first sync commits the .gitignore; after that a clean tree is a no-op.
 	if err := w.Sync(); err != nil {
@@ -143,7 +151,9 @@ func TestSyncIgnoresLockfiles(t *testing.T) {
 	work, _, _ := newSyncRepo(t)
 
 	dirty(t, work, `[{"id":0,"slug":"a","title":"A"}]`)
-	if err := wiki.New(work).Sync(); err != nil {
+	cfg := board.DefaultConfig()
+	cfg.Path = work
+	if err := board.New(cfg).Sync(); err != nil {
 		t.Fatalf("Sync: %v", err)
 	}
 

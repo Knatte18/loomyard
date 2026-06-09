@@ -2,12 +2,12 @@
 //
 // NewTask defaults and type validation; ApplyPatch field overlay.
 
-package wiki_test
+package board_test
 
 import (
 	"testing"
 
-	"github.com/Knatte18/mhgo/internal/wiki"
+	"github.com/Knatte18/mhgo/internal/board"
 )
 
 func TestNewTask(t *testing.T) {
@@ -15,7 +15,7 @@ func TestNewTask(t *testing.T) {
 		fields := map[string]any{
 			"slug": "my-task",
 		}
-		task, err := wiki.NewTask(fields, 1)
+		task, err := board.NewTask(fields, 1)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -40,7 +40,7 @@ func TestNewTask(t *testing.T) {
 		fields := map[string]any{
 			"slug": "test-task",
 		}
-		task, err := wiki.NewTask(fields, 42)
+		task, err := board.NewTask(fields, 42)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -51,7 +51,7 @@ func TestNewTask(t *testing.T) {
 
 	t.Run("missing slug returns error", func(t *testing.T) {
 		fields := map[string]any{}
-		_, err := wiki.NewTask(fields, 1)
+		_, err := board.NewTask(fields, 1)
 		if err == nil {
 			t.Fatalf("expected error for missing slug, got nil")
 		}
@@ -62,7 +62,7 @@ func TestNewTask(t *testing.T) {
 			"slug":  "test-task",
 			"group": "some-group",
 		}
-		_, err := wiki.NewTask(fields, 1)
+		_, err := board.NewTask(fields, 1)
 		if err == nil {
 			t.Fatalf("expected error for group key, got nil")
 		}
@@ -77,7 +77,7 @@ func TestNewTask(t *testing.T) {
 			"slug":       "test-task",
 			"depends_on": []string{"task-a", "task-b"},
 		}
-		task, err := wiki.NewTask(fields, 1)
+		task, err := board.NewTask(fields, 1)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -92,7 +92,7 @@ func TestNewTask(t *testing.T) {
 
 func TestApplyPatch(t *testing.T) {
 	t.Run("overlays title onto existing task, other fields unchanged", func(t *testing.T) {
-		existing := wiki.Task{
+		existing := board.Task{
 			ID:       1,
 			Slug:     "test",
 			Title:    "Old Title",
@@ -102,7 +102,7 @@ func TestApplyPatch(t *testing.T) {
 		patch := map[string]any{
 			"title": "New Title",
 		}
-		result, err := wiki.ApplyPatch(existing, patch)
+		result, err := board.ApplyPatch(existing, patch)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -118,7 +118,7 @@ func TestApplyPatch(t *testing.T) {
 	})
 
 	t.Run("DependsOn is updated when provided", func(t *testing.T) {
-		existing := wiki.Task{
+		existing := board.Task{
 			ID:        1,
 			Slug:      "test",
 			DependsOn: []string{"a"},
@@ -126,7 +126,7 @@ func TestApplyPatch(t *testing.T) {
 		patch := map[string]any{
 			"depends_on": []string{"x", "y", "z"},
 		}
-		result, err := wiki.ApplyPatch(existing, patch)
+		result, err := board.ApplyPatch(existing, patch)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -139,14 +139,14 @@ func TestApplyPatch(t *testing.T) {
 	})
 
 	t.Run("group key returns error", func(t *testing.T) {
-		existing := wiki.Task{
+		existing := board.Task{
 			ID:   1,
 			Slug: "test",
 		}
 		patch := map[string]any{
 			"group": "some-group",
 		}
-		_, err := wiki.ApplyPatch(existing, patch)
+		_, err := board.ApplyPatch(existing, patch)
 		if err == nil {
 			t.Fatalf("expected error for group key, got nil")
 		}
@@ -158,7 +158,7 @@ func TestApplyPatch(t *testing.T) {
 
 	t.Run("existing Status is preserved when not in patch", func(t *testing.T) {
 		statusVal := "in-progress"
-		existing := wiki.Task{
+		existing := board.Task{
 			ID:     1,
 			Slug:   "test",
 			Status: &statusVal,
@@ -166,7 +166,7 @@ func TestApplyPatch(t *testing.T) {
 		patch := map[string]any{
 			"title": "Updated",
 		}
-		result, err := wiki.ApplyPatch(existing, patch)
+		result, err := board.ApplyPatch(existing, patch)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -180,7 +180,7 @@ func TestApplyPatch(t *testing.T) {
 
 	t.Run("Status can be cleared by patching with status: nil", func(t *testing.T) {
 		statusVal := "in-progress"
-		existing := wiki.Task{
+		existing := board.Task{
 			ID:     1,
 			Slug:   "test",
 			Status: &statusVal,
@@ -188,7 +188,7 @@ func TestApplyPatch(t *testing.T) {
 		patch := map[string]any{
 			"status": nil,
 		}
-		result, err := wiki.ApplyPatch(existing, patch)
+		result, err := board.ApplyPatch(existing, patch)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
