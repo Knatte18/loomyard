@@ -48,7 +48,9 @@ batches:
     start_sha: 2c8a3346f5978de419ee42f56a134c23840e6f91
     commit_sha: edd69d78d8bf58ba3a19efba798ef0c3df67897f
   - name: mhgo-init-command
-    state: pending
+    state: running
+    implementer_session: 3d7341f5-490e-48c2-a13d-6e09ee08d169
+    start_sha: 6489af9d8cd116867e19eb1678783a1356640868
   - name: cwd-activation-and-board-path
     state: pending
   - name: docs-and-roadmap
