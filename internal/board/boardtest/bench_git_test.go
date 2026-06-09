@@ -45,7 +45,9 @@ func cloneBenchWiki(b *testing.B) string {
 // measurement is the git round-trip only.
 func benchmarkSync(b *testing.B) {
 	repo := cloneBenchWiki(b)
-	w := board.New(repo)
+	cfg := board.DefaultConfig()
+	cfg.Path = repo
+	w := board.New(cfg)
 	tasksPath := filepath.Join(repo, "tasks.json")
 
 	b.ReportAllocs()

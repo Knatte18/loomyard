@@ -23,7 +23,9 @@ import (
 func TestConcurrentReadsDuringUpserts(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
 	dir := seedWiki(t, 100)
-	w := board.New(dir)
+	cfg := board.DefaultConfig()
+	cfg.Path = dir
+	w := board.New(cfg)
 
 	const (
 		readers = 8
@@ -96,7 +98,9 @@ func TestConcurrentReadsDuringUpserts(t *testing.T) {
 func TestConcurrentUpsertsDoNotLoseWrites(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
 	dir := seedWiki(t, 0)
-	w := board.New(dir)
+	cfg := board.DefaultConfig()
+	cfg.Path = dir
+	w := board.New(cfg)
 
 	const writers = 16
 	var wg sync.WaitGroup
@@ -134,7 +138,9 @@ func TestConcurrentUpsertsDoNotLoseWrites(t *testing.T) {
 func BenchmarkGetDuringUpsert(b *testing.B) {
 	b.Setenv("BOARD_SKIP_GIT", "1")
 	dir := seedWiki(b, 100)
-	w := board.New(dir)
+	cfg := board.DefaultConfig()
+	cfg.Path = dir
+	w := board.New(cfg)
 
 	stop := make(chan struct{})
 	var writerDone sync.WaitGroup
