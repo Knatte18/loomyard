@@ -28,12 +28,12 @@ implementing  '2026-06-09T18:23:54Z'
 
 ```yaml
 batches:
-  - name: internal/lock 🡒 lift lock primitives
+  - name: internal/lock — lift lock primitives
     state: pending
-  - name: internal/git 🡒 extract RunGit
+  - name: internal/git — extract RunGit
     state: pending
-  - name: internal/config 🡒 generic config loader
+  - name: internal/config — generic config loader
     state: pending
-  - name: board migration 🡒 adopt all three packages
+  - name: board migration — adopt all three packages
     state: pending
 ```
