@@ -157,9 +157,8 @@ func TestLoad_EnvRequired_Unset(t *testing.T) {
 		t.Fatalf("failed to create _mhgo: %v", err)
 	}
 
-	// Ensure variable is unset
-	t.Setenv("TEST_EXTRACT_MISSING_VAR_XYZ123", "")
-	os.Unsetenv("TEST_EXTRACT_MISSING_VAR_XYZ123")
+	// Ensure variable is unset by not setting it at all
+	// (t.Setenv with empty string leaves the var set; we need it completely absent)
 
 	// Write board.yaml with unset env variable
 	yamlFile := filepath.Join(mhgoDir, "board.yaml")
@@ -217,9 +216,8 @@ func TestLoad_EnvOptional_Unset(t *testing.T) {
 		t.Fatalf("failed to create _mhgo: %v", err)
 	}
 
-	// Ensure variable is unset
-	t.Setenv("TEST_EXTRACT_OPT_ABSENT", "")
-	os.Unsetenv("TEST_EXTRACT_OPT_ABSENT")
+	// Ensure variable is unset by not setting it at all
+	// (t.Setenv with empty string leaves the var set; we need it completely absent)
 
 	// Write board.yaml with optional env variable
 	yamlFile := filepath.Join(mhgoDir, "board.yaml")
@@ -247,9 +245,8 @@ func TestLoad_EnvOptional_WithPrefix(t *testing.T) {
 		t.Fatalf("failed to create _mhgo: %v", err)
 	}
 
-	// Ensure variable is unset
-	t.Setenv("TEST_EXTRACT_PREFIX_VAR", "")
-	os.Unsetenv("TEST_EXTRACT_PREFIX_VAR")
+	// Ensure variable is unset by not setting it at all
+	// (t.Setenv with empty string leaves the var set; we need it completely absent)
 
 	// Write board.yaml with optional env variable with prefix
 	yamlFile := filepath.Join(mhgoDir, "board.yaml")
@@ -283,9 +280,8 @@ func TestLoad_DotEnv_FillsUnset(t *testing.T) {
 		t.Fatalf("failed to write .env: %v", err)
 	}
 
-	// Ensure OS env is unset
-	t.Setenv("TEST_EXTRACT_DOTENV_KEY", "")
-	os.Unsetenv("TEST_EXTRACT_DOTENV_KEY")
+	// Ensure OS env is unset by not setting it at all
+	// (t.Setenv with empty string leaves the var set; we need it completely absent)
 
 	// Write board.yaml with env variable
 	yamlFile := filepath.Join(mhgoDir, "board.yaml")
