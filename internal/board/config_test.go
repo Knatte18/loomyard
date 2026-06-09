@@ -193,7 +193,6 @@ func TestEnvExpansionUnsetError(t *testing.T) {
 	}
 
 	// Ensure the variable is NOT set
-	t.Setenv("NONEXISTENT_VAR", "")
 	os.Unsetenv("NONEXISTENT_VAR")
 
 	// Write _mhgo/board.yaml with unset env variable
