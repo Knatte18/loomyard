@@ -315,7 +315,7 @@ func TestRenderSidebarBlanks(t *testing.T) {
 		Status: &doneStatus,
 	}
 
-	result, err := board.Render([]board.Task{taskA, taskDone})
+	result, err := board.Render([]board.Task{taskA, taskDone}, board.DefaultOutputs())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
