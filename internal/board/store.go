@@ -12,6 +12,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	flock "github.com/Knatte18/mhgo/internal/lock"
 )
 
 // swapLockSuffix names the fine-grained lock that fences readers of a file
@@ -59,7 +61,7 @@ func (s *Store) Load() error {
 	// readers but is fenced against a writer's rename, so we never open
 	// tasks.json mid-swap (which on Windows would fail with a sharing violation
 	// and otherwise silently look like an empty wiki).
-	lock, err := AcquireReadLock(s.filePath + swapLockSuffix)
+	lock, err := flock.AcquireReadLock(s.filePath + swapLockSuffix)
 	if err != nil {
 		return fmt.Errorf("acquire read lock: %w", err)
 	}
@@ -102,7 +104,7 @@ func (s *Store) Save(boardPath, relPath string) error {
 	// Hold the exclusive swap lock across the write so no reader has tasks.json
 	// open during the rename. The body is just a temp-write + rename, so readers
 	// are fenced out for microseconds, not for the surrounding git round-trip.
-	lock, err := AcquireWriteLock(filepath.Join(boardPath, relPath) + swapLockSuffix)
+	lock, err := flock.AcquireWriteLock(filepath.Join(boardPath, relPath) + swapLockSuffix)
 	if err != nil {
 		return fmt.Errorf("acquire swap lock: %w", err)
 	}
