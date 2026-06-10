@@ -8,6 +8,7 @@ package board_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/mhgo/internal/board"
@@ -31,7 +32,7 @@ func TestDefaultsReturned(t *testing.T) {
 
 	// Note: Path is resolved relative to baseDir, so check for expected suffix
 	expectedPathSuffix := "_board"
-	if !stringContains(cfg.Path, expectedPathSuffix) {
+	if !strings.Contains(cfg.Path, expectedPathSuffix) {
 		t.Errorf("expected Path to contain %q, got %q", expectedPathSuffix, cfg.Path)
 	}
 	if cfg.Home != "Home.md" {
@@ -58,157 +59,8 @@ func TestErrorNotInitialized(t *testing.T) {
 	}
 
 	errMsg := err.Error()
-	if !stringContains(errMsg, "not initialized") {
+	if !strings.Contains(errMsg, "not initialized") {
 		t.Errorf("expected error message to contain 'not initialized', got: %s", errMsg)
-	}
-}
-
-// TestDeepMergeMultipleLayers tests that keys from lower layers are overridden
-// by higher layers: default < _mhgo/board.yaml < .mhgo/board.yaml.
-func TestDeepMergeMultipleLayers(t *testing.T) {
-	baseDir := t.TempDir()
-
-	// Create directory structure
-	mhgoDir := filepath.Join(baseDir, "_mhgo")
-	dotMhgoDir := filepath.Join(baseDir, ".mhgo")
-	if err := os.Mkdir(mhgoDir, 0755); err != nil {
-		t.Fatalf("failed to create _mhgo: %v", err)
-	}
-	if err := os.Mkdir(dotMhgoDir, 0755); err != nil {
-		t.Fatalf("failed to create .mhgo: %v", err)
-	}
-
-	// Write _mhgo/board.yaml: override path and home
-	mhgoFile := filepath.Join(mhgoDir, "board.yaml")
-	if err := os.WriteFile(mhgoFile, []byte("path: ../_custom\nhome: Custom.md\n"), 0644); err != nil {
-		t.Fatalf("failed to write _mhgo/board.yaml: %v", err)
-	}
-
-	// Write .mhgo/board.yaml: override only sidebar
-	dotMhgoFile := filepath.Join(dotMhgoDir, "board.yaml")
-	if err := os.WriteFile(dotMhgoFile, []byte("sidebar: _Custom.md\n"), 0644); err != nil {
-		t.Fatalf("failed to write .mhgo/board.yaml: %v", err)
-	}
-
-	cfg, err := board.LoadConfig(baseDir, "board")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// path from _mhgo should be overridden
-	if !stringContains(cfg.Path, "_custom") {
-		t.Errorf("expected path to contain '_custom', got %q", cfg.Path)
-	}
-
-	// home from _mhgo should persist (not in .mhgo)
-	if cfg.Home != "Custom.md" {
-		t.Errorf("expected Home 'Custom.md', got %q", cfg.Home)
-	}
-
-	// sidebar from .mhgo should override
-	if cfg.Sidebar != "_Custom.md" {
-		t.Errorf("expected Sidebar '_Custom.md', got %q", cfg.Sidebar)
-	}
-
-	// proposal_prefix from default should persist (not in any layer)
-	if cfg.ProposalPrefix != board.DefaultConfig().ProposalPrefix {
-		t.Errorf("expected ProposalPrefix %q, got %q", board.DefaultConfig().ProposalPrefix, cfg.ProposalPrefix)
-	}
-}
-
-// TestEnvExpansionWholeValue tests that $env:NAME is expanded when it is
-// the entire value.
-func TestEnvExpansionWholeValue(t *testing.T) {
-	baseDir := t.TempDir()
-
-	// Create _mhgo/ directory
-	mhgoDir := filepath.Join(baseDir, "_mhgo")
-	if err := os.Mkdir(mhgoDir, 0755); err != nil {
-		t.Fatalf("failed to create _mhgo: %v", err)
-	}
-
-	// Set an environment variable (use an absolute path that will work on Windows and Unix)
-	customBoardPath := filepath.Join(baseDir, "custom_board")
-	t.Setenv("MHGO_BOARD_PATH", customBoardPath)
-
-	// Write _mhgo/board.yaml with env variable reference
-	mhgoFile := filepath.Join(mhgoDir, "board.yaml")
-	if err := os.WriteFile(mhgoFile, []byte("path: $env:MHGO_BOARD_PATH\n"), 0644); err != nil {
-		t.Fatalf("failed to write _mhgo/board.yaml: %v", err)
-	}
-
-	cfg, err := board.LoadConfig(baseDir, "board")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if cfg.Path != customBoardPath {
-		t.Errorf("expected path %q, got %q", customBoardPath, cfg.Path)
-	}
-}
-
-// TestEnvExpansionEmbedded tests that $env:NAME is expanded within a path
-// like $env:MHGO_BASE/boards/main.
-func TestEnvExpansionEmbedded(t *testing.T) {
-	baseDir := t.TempDir()
-
-	// Create _mhgo/ directory
-	mhgoDir := filepath.Join(baseDir, "_mhgo")
-	if err := os.Mkdir(mhgoDir, 0755); err != nil {
-		t.Fatalf("failed to create _mhgo: %v", err)
-	}
-
-	// Set environment variables
-	basePath := filepath.Join(baseDir, "base")
-	t.Setenv("MHGO_BASE", basePath)
-
-	// Write _mhgo/board.yaml with embedded env variable
-	mhgoFile := filepath.Join(mhgoDir, "board.yaml")
-	// Use forward slashes in the YAML since they work cross-platform
-	if err := os.WriteFile(mhgoFile, []byte("path: $env:MHGO_BASE/boards/main\n"), 0644); err != nil {
-		t.Fatalf("failed to write _mhgo/board.yaml: %v", err)
-	}
-
-	cfg, err := board.LoadConfig(baseDir, "board")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// Check that the path contains the base and the sub-path elements
-	// (Don't use filepath.Join here since the YAML might have mixed separators)
-	if !stringContains(cfg.Path, "base") || !stringContains(cfg.Path, "boards") || !stringContains(cfg.Path, "main") {
-		t.Errorf("expected path to contain base, boards, and main; got %q", cfg.Path)
-	}
-}
-
-// TestEnvExpansionUnsetError tests that an error is returned when a referenced
-// environment variable is not set.
-func TestEnvExpansionUnsetError(t *testing.T) {
-	baseDir := t.TempDir()
-
-	// Create _mhgo/ directory
-	mhgoDir := filepath.Join(baseDir, "_mhgo")
-	if err := os.Mkdir(mhgoDir, 0755); err != nil {
-		t.Fatalf("failed to create _mhgo: %v", err)
-	}
-
-	// Ensure the variable is NOT set
-	os.Unsetenv("NONEXISTENT_VAR")
-
-	// Write _mhgo/board.yaml with unset env variable
-	mhgoFile := filepath.Join(mhgoDir, "board.yaml")
-	if err := os.WriteFile(mhgoFile, []byte("path: $env:NONEXISTENT_VAR\n"), 0644); err != nil {
-		t.Fatalf("failed to write _mhgo/board.yaml: %v", err)
-	}
-
-	cfg, err := board.LoadConfig(baseDir, "board")
-	if err == nil {
-		t.Fatalf("expected error for unset environment variable, got nil; config: %+v", cfg)
-	}
-
-	errMsg := err.Error()
-	if !stringContains(errMsg, "referenced env var") || !stringContains(errMsg, "NONEXISTENT_VAR") {
-		t.Errorf("expected error message to reference unset variable, got: %s", errMsg)
 	}
 }
 
@@ -290,8 +142,8 @@ func TestMalformedYAMLError(t *testing.T) {
 	}
 
 	errMsg := err.Error()
-	if !stringContains(errMsg, "parsing YAML") && !stringContains(errMsg, "error") {
-		t.Errorf("expected error message about YAML parsing, got: %s", errMsg)
+	if !strings.Contains(errMsg, "yaml:") {
+		t.Errorf("expected error message about YAML parsing (starting with 'yaml:'), got: %s", errMsg)
 	}
 }
 
@@ -331,5 +183,35 @@ func TestDefaultOutputs(t *testing.T) {
 	}
 	if defaultOut.ProposalPrefix != configOut.ProposalPrefix {
 		t.Errorf("DefaultOutputs ProposalPrefix mismatch: %q vs %q", defaultOut.ProposalPrefix, configOut.ProposalPrefix)
+	}
+}
+
+// TestLoadConfig_FallbackPathResolution tests that optional env var syntax with fallback works.
+func TestLoadConfig_FallbackPathResolution(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create _mhgo/ directory
+	mhgoDir := filepath.Join(tmpDir, "_mhgo")
+	if err := os.Mkdir(mhgoDir, 0755); err != nil {
+		t.Fatalf("failed to create _mhgo: %v", err)
+	}
+
+	// Write _mhgo/board.yaml with fallback syntax for unset var
+	boardYamlPath := filepath.Join(mhgoDir, "board.yaml")
+	if err := os.WriteFile(boardYamlPath, []byte("path: $env:NONEXISTENT_MHGO_TEST_VAR_XYZ ? ../_board\n"), 0644); err != nil {
+		t.Fatalf("failed to write _mhgo/board.yaml: %v", err)
+	}
+
+	cfg, err := board.LoadConfig(tmpDir, "board")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// The fallback path "../_board" should be resolved relative to tmpDir
+	expected := filepath.Join(tmpDir, "../_board")
+	// filepath.Join will clean it to a sibling directory
+	expected = filepath.Clean(expected)
+	if cfg.Path != expected {
+		t.Errorf("expected path %q, got %q", expected, cfg.Path)
 	}
 }

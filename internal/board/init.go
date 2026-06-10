@@ -64,8 +64,7 @@ func RunInit(out io.Writer, args []string) int {
 
 	if os.IsNotExist(err) {
 		// File doesn't exist, write the commented template
-		defaults := DefaultConfig()
-		content := generateCommentedBoardYAML(defaults)
+		content := generateCommentedBoardYAML()
 		if err := os.WriteFile(boardYamlPath, []byte(content), 0o644); err != nil {
 			outputInitError(out, fmt.Sprintf("failed to write board.yaml: %v", err))
 			return 1
@@ -103,15 +102,14 @@ func RunInit(out io.Writer, args []string) int {
 	return 0
 }
 
-// generateCommentedBoardYAML returns a fully-commented YAML template
-// based on the default config values.
-func generateCommentedBoardYAML(defaults Config) string {
+// generateCommentedBoardYAML returns a fully-commented YAML template.
+func generateCommentedBoardYAML() string {
 	var sb strings.Builder
 
-	sb.WriteString("# path: " + defaults.Path + "   # board dir (tasks.json + rendered output); relative to cwd; may contain $env:NAME\n")
-	sb.WriteString("# home: " + defaults.Home + "   # home page file name; relative to board dir\n")
-	sb.WriteString("# sidebar: " + defaults.Sidebar + "   # sidebar file name; relative to board dir\n")
-	sb.WriteString("# proposal_prefix: " + defaults.ProposalPrefix + "   # prefix for proposal files; relative to board dir\n")
+	sb.WriteString("# path: $env:MHGO_BOARD_PATH ? ../_board   # board dir (tasks.json + rendered output); relative to cwd or absolute\n")
+	sb.WriteString("# home: $env:MHGO_HOME ? Home.md           # home page file name; relative to board dir\n")
+	sb.WriteString("# sidebar: $env:MHGO_SIDEBAR ? _Sidebar.md   # sidebar file name; relative to board dir\n")
+	sb.WriteString("# proposal_prefix: $env:MHGO_PROPOSAL_PREFIX ? proposal-   # prefix for proposal files\n")
 
 	return sb.String()
 }

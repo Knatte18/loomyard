@@ -39,11 +39,3 @@ func spawnSync(boardPath string) error {
 	// Leave stdin/stdout/stderr nil so no handles are inherited from the parent.
 	return cmd.Start() // intentionally not Wait()ed
 }
-
-// hideProcWindow makes a child process (git) run without a console window.
-func hideProcWindow(cmd *exec.Cmd) {
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		HideWindow:    true,
-		CreationFlags: createNoWindow,
-	}
-}

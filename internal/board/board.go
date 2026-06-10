@@ -11,6 +11,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	flock "github.com/Knatte18/mhgo/internal/lock"
 )
 
 // Board is the high-level facade over a board directory.
@@ -43,7 +45,7 @@ func (b *Board) writeOp(mutate func(*Store) (any, error), _ string) (any, error)
 	}
 
 	// (1) Acquire write lock
-	lock, err := AcquireWriteLock(filepath.Join(b.boardPath, writeLockFile))
+	lock, err := flock.AcquireWriteLock(filepath.Join(b.boardPath, writeLockFile))
 	if err != nil {
 		return nil, fmt.Errorf("acquire lock: %w", err)
 	}

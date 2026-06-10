@@ -13,6 +13,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/Knatte18/mhgo/internal/git"
+	flock "github.com/Knatte18/mhgo/internal/lock"
 )
 
 const (
@@ -37,7 +40,7 @@ func Sync(boardPath string) error {
 
 	// Only one pusher does network work at a time. A second sync process blocks
 	// here, then finds nothing to do and returns — that is the coalescing.
-	pushLock, err := AcquireWriteLock(filepath.Join(boardPath, pushLockFile))
+	pushLock, err := flock.AcquireWriteLock(filepath.Join(boardPath, pushLockFile))
 	if err != nil {
 		return fmt.Errorf("acquire push lock: %w", err)
 	}
@@ -63,13 +66,13 @@ func Sync(boardPath string) error {
 // write lock so it snapshots a state no writer is mid-mutation on. Returns
 // whether a commit was made.
 func commitDirty(boardPath string) (bool, error) {
-	lock, err := AcquireWriteLock(filepath.Join(boardPath, writeLockFile))
+	lock, err := flock.AcquireWriteLock(filepath.Join(boardPath, writeLockFile))
 	if err != nil {
 		return false, fmt.Errorf("acquire write lock: %w", err)
 	}
 	defer lock.Release()
 
-	out, _, code, err := RunGit([]string{"status", "--porcelain"}, boardPath)
+	out, _, code, err := git.RunGit([]string{"status", "--porcelain"}, boardPath)
 	if err != nil {
 		return false, fmt.Errorf("status: %w", err)
 	}
@@ -80,13 +83,13 @@ func commitDirty(boardPath string) (bool, error) {
 		return false, nil // clean working tree
 	}
 
-	if _, _, code, err := RunGit([]string{"add", "-A"}, boardPath); err != nil {
+	if _, _, code, err := git.RunGit([]string{"add", "-A"}, boardPath); err != nil {
 		return false, fmt.Errorf("add: %w", err)
 	} else if code != 0 {
 		return false, BoardPushError("add failed")
 	}
 
-	if _, _, code, err := RunGit([]string{"commit", "-m", "board sync"}, boardPath); err != nil {
+	if _, _, code, err := git.RunGit([]string{"commit", "-m", "board sync"}, boardPath); err != nil {
 		return false, fmt.Errorf("commit: %w", err)
 	} else if code != 0 {
 		return false, BoardPushError("commit failed")
@@ -110,7 +113,7 @@ func pushUnpushed(boardPath string) error {
 	}
 
 	for attempt := 0; attempt < 2; attempt++ {
-		_, stderr, code, err := RunGit([]string{"push"}, boardPath)
+		_, stderr, code, err := git.RunGit([]string{"push"}, boardPath)
 		if err != nil {
 			return fmt.Errorf("push: %w", err)
 		}
@@ -121,8 +124,8 @@ func pushUnpushed(boardPath string) error {
 		if strings.Contains(stderr, "non-fast-forward") ||
 			strings.Contains(stderr, "rejected") ||
 			strings.Contains(stderr, "fetch first") {
-			if _, _, c, err := RunGit([]string{"pull", "--rebase"}, boardPath); err != nil || c != 0 {
-				RunGit([]string{"rebase", "--abort"}, boardPath)
+			if _, _, c, err := git.RunGit([]string{"pull", "--rebase"}, boardPath); err != nil || c != 0 {
+				git.RunGit([]string{"rebase", "--abort"}, boardPath)
 				return BoardPushError("rebase failed")
 			}
 			continue
@@ -170,7 +173,7 @@ func ensureLockfilesIgnored(boardPath string) error {
 // hasUnpushed reports whether HEAD is ahead of its upstream. If no upstream is
 // configured it returns true, so the first push (which sets it) still happens.
 func hasUnpushed(boardPath string) (bool, error) {
-	out, _, code, err := RunGit([]string{"rev-list", "--count", "@{u}..HEAD"}, boardPath)
+	out, _, code, err := git.RunGit([]string{"rev-list", "--count", "@{u}..HEAD"}, boardPath)
 	if err != nil {
 		return false, fmt.Errorf("rev-list: %w", err)
 	}
