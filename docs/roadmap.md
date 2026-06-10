@@ -23,18 +23,8 @@ observable changes until the new module that needs the extracted lib arrives.
    [modules/board.md](modules/board.md).
 
 2. **Extract shared infrastructure: `internal/config`, `internal/git`,
-   `internal/lock`.** All three are "lift from board, board switches to it"
-   operations in the same pass — one PR, board's test suite as the guardrail for
-   all of it. The config extraction also carries a redesign:
-   - `internal/config`: generalise from `board.yaml`-only to any `<module>.yaml`;
-     **drop the `.mhgo/` config-override layer** in favour of `$env:NAME ? default`
-     references inside the tracked `_mhgo/<module>.yaml`; add `.env` loading
-     (gitignored, repo-local) as a source for those env refs.
-   - `internal/git`: windowless `RunGit` primitive — the one safe way to invoke
-     git on Windows. Pure lift, no behaviour change.
-   - `internal/lock`: `flock` wrappers (exclusive + shared). Pure lift, no
-     behaviour change.
-   - board switches to all three; behaviour-preserving for unchanged configs.
+   `internal/lock`.** ✅ **Done.** See
+   [shared-libs/](shared-libs/README.md).
 
 3. **`internal/state`.** New package: typed read/write of the gitignored,
    machine-local `.mhgo/local-state.json` registry
