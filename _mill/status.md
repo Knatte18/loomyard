@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: mhgo-extract-primitives
 branch: mhgo-extract-primitives
 plan: _mill/plan
@@ -23,4 +23,15 @@ planned  '2026-06-11T09:10:13Z'
 plan-review-r2  '2026-06-11T09:18:02Z'
 plan-fix-r2  '2026-06-11T09:18:02Z'
 planned  '2026-06-11T09:39:16Z'
+implementing  '2026-06-11T09:39:59Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: shared-primitives
+    state: pending
+  - name: board-adoption-and-docs
+    state: pending
 ```
