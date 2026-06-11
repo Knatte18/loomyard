@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-board-adoption-and-docs
+phase: holistic-reviewing
 slug: mhgo-extract-primitives
 branch: mhgo-extract-primitives
 plan: _mill/plan
@@ -26,6 +26,7 @@ planned  '2026-06-11T09:39:16Z'
 implementing  '2026-06-11T09:39:59Z'
 approved-shared-primitives  '2026-06-11T09:43:06Z'
 approved-board-adoption-and-docs  '2026-06-11T09:46:12Z'
+holistic-reviewing  '2026-06-11T09:46:33Z'
 ```
 
 ## Batches
