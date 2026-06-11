@@ -22,8 +22,9 @@ one place that knows the `_mhgo/` layout and the config grammar.
 ```
 
 `_mhgo/` presence is what makes a directory "initialised". If it is absent,
-`config` errors with `not initialized here; run "mhgo init"`. Resolution is
-**cwd-authoritative** — the cwd does **not** need to equal the git-repo root (a
+`config` errors with `not initialized: _mhgo/ directory not found in <dir>` (the
+raw error from `FindBaseDir`; the board rewraps it into `not initialized here; run "mhgo init"`).
+Resolution is **cwd-authoritative** — the cwd does **not** need to equal the git-repo root (a
 first-class constraint; it caused constant trouble in millpy precisely because it
 was designed in and then forgotten).
 
@@ -81,3 +82,29 @@ tokens against.
 A typed, fully-resolved config struct for the requested module — defaults merged,
 env expanded, relative `path` resolved against cwd (absolute paths used as-is).
 Callers never see raw YAML or unexpanded tokens.
+
+## Exported helpers
+
+### `FindBaseDir(cwd) (string, error)`
+
+Checks whether the given directory is an initialized mhgo base directory.
+
+**Behavior:** Performs a strict check that `<cwd>/_mhgo` exists; it never walks up
+to parent directories. This is the cwd-authoritative model — the provided `cwd` must
+itself be initialized.
+
+**Returns:** On success, the `cwd` itself (unchanged). On failure, an empty string and
+an error.
+
+**Error messages:**
+- If `<cwd>/_mhgo` does not exist: `not initialized: _mhgo/ directory not found in <dir>`
+  (the raw error returned by `FindBaseDir`).
+- If stat fails for another reason: `stat _mhgo: <underlying error>`.
+
+**Note on error rewrapping:** `internal/board/config.go` `LoadConfig` matches the
+substring `"not initialized"` in the error text to rewrap it into the board-level
+message `not initialized here; run "mhgo init"`. Do not conflate the two:
+- Raw `FindBaseDir` error: `not initialized: _mhgo/ directory not found in <dir>`
+- Board-level rewrapped: `not initialized here; run "mhgo init"`
+
+**Delegation:** `Load` calls `FindBaseDir` for its existence check.

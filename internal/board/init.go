@@ -7,12 +7,13 @@
 package board
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/Knatte18/mhgo/internal/output"
 )
 
 // RunInit scaffolds the config layer in the current working directory.
@@ -90,16 +91,11 @@ func RunInit(out io.Writer, args []string) int {
 	}
 
 	// Step 4: Output success JSON
-	result := map[string]any{
-		"ok":         true,
+	return output.Ok(out, map[string]any{
 		"mhgo_dir":   status["mhgo_dir"],
 		"board_yaml": status["board_yaml"],
 		"gitignore":  status["gitignore"],
-	}
-
-	data, _ := json.Marshal(result)
-	fmt.Fprintln(out, string(data))
-	return 0
+	})
 }
 
 // generateCommentedBoardYAML returns a fully-commented YAML template.
@@ -214,6 +210,5 @@ func updateGitignoreBlock(gitignorePath string) (bool, error) {
 
 // outputInitError writes {"ok":false,"error":"..."} and is a helper for RunInit.
 func outputInitError(out io.Writer, message string) {
-	data, _ := json.Marshal(map[string]any{"ok": false, "error": message})
-	fmt.Fprintln(out, string(data))
+	output.Err(out, message)
 }

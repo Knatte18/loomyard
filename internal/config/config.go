@@ -24,6 +24,21 @@ var envOptRe = regexp.MustCompile(`\$env:([A-Za-z_][A-Za-z0-9_]*)\s*\?\s*(.*)$`)
 // envReqRe matches $env:NAME tokens where NAME is [A-Za-z_][A-Za-z0-9_]*
 var envReqRe = regexp.MustCompile(`\$env:([A-Za-z_][A-Za-z0-9_]*)`)
 
+// FindBaseDir checks if <cwd>/_mhgo exists and returns cwd, or an error if not found.
+//
+// It performs a strict check without walking up to parent directories.
+// Returns the cwd on success, empty string and an error on failure.
+func FindBaseDir(cwd string) (string, error) {
+	mhgoDir := filepath.Join(cwd, "_mhgo")
+	_, err := os.Stat(mhgoDir)
+	if os.IsNotExist(err) {
+		return "", fmt.Errorf("not initialized: _mhgo/ directory not found in %s", cwd)
+	} else if err != nil {
+		return "", fmt.Errorf("stat _mhgo: %w", err)
+	}
+	return cwd, nil
+}
+
 // Load loads configuration for a module from defaults and layered configuration files.
 //
 // Merges defaults with <baseDir>/_mhgo/<module>.yaml (if present) and expands
@@ -34,12 +49,9 @@ var envReqRe = regexp.MustCompile(`\$env:([A-Za-z_][A-Za-z0-9_]*)`)
 // OS environment takes precedence over .env values.
 func Load(baseDir, module string, defaults map[string]string) (map[string]string, error) {
 	// Check if _mhgo/ directory exists
-	mhgoDir := filepath.Join(baseDir, "_mhgo")
-	_, err := os.Stat(mhgoDir)
-	if os.IsNotExist(err) {
-		return nil, fmt.Errorf("not initialized: _mhgo/ directory not found in %s", baseDir)
-	} else if err != nil {
-		return nil, fmt.Errorf("stat _mhgo: %w", err)
+	_, err := FindBaseDir(baseDir)
+	if err != nil {
+		return nil, err
 	}
 
 	// Load .env file

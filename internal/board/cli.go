@@ -18,6 +18,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+
+	"github.com/Knatte18/mhgo/internal/output"
 )
 
 // RunCLI parses and executes a "board" subcommand, writing JSON results to out.
@@ -267,51 +269,38 @@ func RunCLI(out io.Writer, args []string) int {
 	}
 }
 
-// writeJSON marshals v and writes it as a single line to out.
-func writeJSON(out io.Writer, v any) {
-	data, _ := json.Marshal(v)
-	fmt.Fprintln(out, string(data))
-}
-
 // outputError writes {"ok":false,"error":"..."} and returns exit code 1.
 func outputError(out io.Writer, message string) int {
-	writeJSON(out, map[string]any{"ok": false, "error": message})
-	return 1
+	return output.Err(out, message)
 }
 
 // outputSuccess writes {"ok":true} and returns exit code 0.
 func outputSuccess(out io.Writer) int {
-	writeJSON(out, map[string]any{"ok": true})
-	return 0
+	return output.Ok(out, map[string]any{})
 }
 
 // outputSuccessWithCount writes {"ok":true,"count":N} and returns exit code 0.
 func outputSuccessWithCount(out io.Writer, count int) int {
-	writeJSON(out, map[string]any{"ok": true, "count": count})
-	return 0
+	return output.Ok(out, map[string]any{"count": count})
 }
 
 // outputSuccessWithTask writes {"ok":true,"task":{...}} and returns exit code 0.
 func outputSuccessWithTask(out io.Writer, task Task) int {
-	writeJSON(out, map[string]any{"ok": true, "task": task})
-	return 0
+	return output.Ok(out, map[string]any{"task": task})
 }
 
 // outputGetTask writes {"ok":true,"task":{...}} or {"ok":true,"task":null} and returns exit code 0.
 // task is a pointer: nil produces task:null in JSON (task not found, but not an error).
 func outputGetTask(out io.Writer, task *Task) int {
-	writeJSON(out, map[string]any{"ok": true, "task": task})
-	return 0
+	return output.Ok(out, map[string]any{"task": task})
 }
 
 // outputListBrief writes {"ok":true,"tasks":[...]} with BriefTask objects and returns exit code 0.
 func outputListBrief(out io.Writer, tasks []BriefTask) int {
-	writeJSON(out, map[string]any{"ok": true, "tasks": tasks})
-	return 0
+	return output.Ok(out, map[string]any{"tasks": tasks})
 }
 
 // outputListFull writes {"ok":true,"tasks":[...]} with full Task objects and returns exit code 0.
 func outputListFull(out io.Writer, tasks []Task) int {
-	writeJSON(out, map[string]any{"ok": true, "tasks": tasks})
-	return 0
+	return output.Ok(out, map[string]any{"tasks": tasks})
 }
