@@ -31,7 +31,9 @@ implementing  '2026-06-11T09:39:59Z'
 ```yaml
 batches:
   - name: shared-primitives
-    state: pending
+    state: running
+    implementer_session: 04ec0422-1d68-4ac7-96e4-beaf6aef0144
+    start_sha: 5ce5c406eb61d1dc6df326f5ce83d42f10a3ccba
   - name: board-adoption-and-docs
     state: pending
 ```
