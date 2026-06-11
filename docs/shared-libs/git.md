@@ -20,3 +20,24 @@ The actual command *sequences* stay in the modules that own them:
 - worktree composes its own `worktree add|list|remove` calls on top of `RunGit`.
 
 `internal/git` knows nothing about worktrees, boards, or remotes — it just executes.
+
+## Exported helpers
+
+### `FindRoot(cwd) (string, error)`
+
+Resolves the root directory of a git repository.
+
+**Behavior:** A thin named helper over `RunGit` that invokes `git rev-parse
+--show-toplevel` from the given `cwd`. The output is trimmed and returned.
+
+**Returns:** On success, the repository root as an absolute path. On failure, an
+empty string and an error.
+
+**Errors:**
+- If the git process fails to start: the underlying process error.
+- If git exits with non-zero code (e.g., `cwd` is not in a git repository):
+  an error wrapping the captured stderr.
+
+**Design note:** `FindRoot` is a single named invocation, not a command sequence.
+Board and other modules compose their own multi-step git sequences on top of
+`RunGit` and thin helpers like this one.
