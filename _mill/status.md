@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: mhgo-extract-primitives
 branch: mhgo-extract-primitives
-plan: null
+plan: _mill/plan
 parent: main
 task: Extract shared primitives (paths, output)
 task_description: |
@@ -17,4 +17,5 @@ task_description: |
 discussing  '2026-06-11T08:48:34Z'
 discussion-fix-r1  '2026-06-11T09:03:15Z'
 discussed  '2026-06-11T09:03:29Z'
+planning  '2026-06-11T09:07:21Z'
 ```
