@@ -3,7 +3,7 @@
 ```yaml
 task: Extract shared primitives (paths, output)
 slug: mhgo-extract-primitives
-approved: false
+approved: true
 started: 20260611-090558
 parent: main
 root: ""

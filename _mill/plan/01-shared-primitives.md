@@ -87,7 +87,9 @@ no-walk, preserved error text, output envelope shape all apply here).
 - **Requirements:** Create package `output` at `internal/output/output.go` with two
   functions. `func Ok(w io.Writer, fields map[string]any) int` sets
   `fields["ok"] = true`, then `data, _ := json.Marshal(fields)` and writes it as a
-  single line to `w` via `fmt.Fprintln(w, string(data))`, returning `0`.
+  single line to `w` via `fmt.Fprintln(w, string(data))`, returning `0`. `Ok`'s
+  godoc comment MUST document that it mutates the supplied `fields` map in place
+  (it injects `"ok"`); callers therefore pass freshly-built map literals.
   `func Err(w io.Writer, msg string) int` marshals
   `map[string]any{"ok": false, "error": msg}`, writes one line to `w` the same way,
   and returns `1`. Marshal errors are deliberately ignored (carry-over from board's
