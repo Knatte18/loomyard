@@ -164,36 +164,37 @@ claude 2.1.158/159). This session re-verified on claude **2.1.173**.
   (`split-window` + launch); it must not rely on claude populating panes via its teammate
   integration. (Confirms the "Column owns its subtree, mux renders layout" decision.)
 
-### Session persistence & `--resume` — the load-bearing constraint
+### Session persistence & `--resume` — RESOLVED: real typing persists, `send-keys` does not
 `mhgo mux resume` (rebuild all panes after machine shutdown/crash and `claude --resume <sid>`
-each) depends on the per-pane claude session being on disk. **It is not, for interactive panes.**
+each) depends on the per-pane claude session being on disk. **It is — for real human-typed
+interactive panes.** This was initially mis-diagnosed; the corrected finding:
 - claude stores transcripts at `~/.claude/projects/<cwd-encoded>/<session-id>.jsonl`
   (path encoding replaces `:`, `\`, AND `.` with `-`).
-- **Interactive `claude` TUI under psmux does NOT persist the conversation** — across every
-  config tried (teammate-wrapper; raw `claude.exe` with teammate-env cleared and no
-  `--teammate-mode`; clean dot-free cwd; 3 turns + 35 s idle; clean `/exit`) the `.jsonl`
-  contained **only an `ai-title` stub** (~100 B), never the user/assistant turns. The turns
-  demonstrably ran (visible in `capture-pane`) but were never written.
+- **A real keyboard-typed interactive `claude` in a psmux pane persists the FULL transcript.**
+  Verified: operator launched `claude --session-id <id>` in an attached psmux pane, typed
+  "Husk kodeordet appelsin001" by hand, stopped it → the `.jsonl` was **18.6 KB / 17 records**
+  with real `user`/`assistant`/`last-prompt` entries (not just `ai-title`). → `claude --resume
+  <id>` works after the process dies. **The operator's design holds:** mux stores each pane's
+  `--session-id` in local-state and relaunches with `--resume <id>` per pane after a crash.
+- **`send-keys`-driven sessions did NOT persist** — every probe earlier in this session
+  (all input injected via `send-keys`; haiku; various dirs; attached & detached; 3 turns + idle;
+  `/exit` via send-keys) wrote **only an `ai-title` stub** (~100 B). So `send-keys` programmatic
+  injection does not trigger the transcript write that real typing does (mechanism unconfirmed;
+  the dominant variable isolated is real-input vs `send-keys`).
   - **False-positive warning:** content-searching the `.jsonl` for a codeword matches the
-    `aiTitle` string (which echoes the prompt), NOT a persisted turn. Check file **size**
-    (a real transcript is KB+), not just a substring hit. An earlier "it persisted" reading
-    here was this exact false positive.
-- **Headless `claude -p` DOES persist + resume** (21 KB transcript; `--resume` recalled the
-  codeword) — even while another claude session runs. → **concurrency is not the blocker**;
-  the gap is specific to **interactive-TUI-under-psmux-ConPTY**. (A real-terminal interactive
-  claude — e.g. the outer Claude Code session — persists normally; it is the psmux pty that
-  changes interactive behavior.)
-- **`--session-id <uuid>` assignment works** (claude accepts it, uses it for the ai-title and
-  prints `Resume this session with: claude --resume <id>` on exit) → mux can know each pane's id
-  from t0 and store it in local-state. But for interactive panes that id is **not resumable**
-  because the transcript is absent.
-- **Design implication (open decision):** `mhgo mux resume` cannot lean on native
-  `claude --resume` for interactive panes. Either (a) mux re-injects context from its **own**
-  local-state log (the `capture-pane` history it records) as the relaunch prompt, or (b) find a
-  way to make interactive-under-psmux persist (unverified; may be inherent to ConPTY). The
-  one residual confound not yet eliminated: interactive+interactive (a second *interactive*
-  claude while the outer Claude Code interactive session runs) — testable by running the probe
-  with no Claude Code open.
+    `aiTitle` string (which echoes the prompt), NOT a persisted turn. Check file **size / record
+    count** (a real transcript is KB+ with `user`/`assistant` records), not a substring hit. The
+    earlier "it persisted" readings here were this exact false positive.
+- **Headless `claude -p` also persists + resumes** (21 KB; `--resume` recalled the codeword),
+  even while another claude session runs → **concurrency was never the blocker.**
+- **Design implications:**
+  1. `mhgo mux resume` with native `claude --resume <id>` per pane is sound for human-driven
+     panes. Store the mux-assigned `--session-id` at launch (`sync`/create) → known from t0.
+  2. **Caveat for orchestrated/dispatched turns:** if mux (or an orchestrator) seeds a pane's
+     prompt or dispatches a v2 agent turn via `send-keys`, those turns may NOT persist and so
+     would be lost on resume. Needs separate confirmation before relying on it; prefer launching
+     claude with the task as a positional/`[prompt]` arg (which is part of the real session) over
+     `send-keys`-injecting it.
 
 ### Driving send-keys from git-bash mangles slash-args
 `send-keys -l "/exit"` (or any leading-`/` arg: `/model`, `/resume`, absolute POSIX paths) run
@@ -206,10 +207,12 @@ mhgo is unaffected; the probe harness was.
 ## Open / TODO
 
 - [x] Real interactive `claude` in a pane: renders, send-keys drives it, capture reads it. ✓
-- [x] `claude --resume <id>`: interactive-under-psmux does NOT persist transcript → not
-  resumable; headless `-p` persists + resumes. Design must not rely on native resume for panes.
+- [x] `claude --resume <id>`: a real human-typed interactive pane PERSISTS the full transcript
+  (18.6 KB verified) → native `--resume` works after crash. `send-keys`-driven input did NOT
+  persist (ai-title stub only). Design with native resume holds for human-driven panes.
 - [x] Teammate-mode does NOT auto-spawn panes (in-process Agent) → mux owns panes.
-- [ ] Confirm the interactive+interactive residual: run the pane probe with no Claude Code open.
+- [ ] Confirm whether `send-keys`-seeded / dispatched turns persist (v2 dispatch path) — they
+  did not in probes; relaunch-with-`[prompt]`-arg is the safer seeding path.
 - [ ] Hooks: do `pane-died`, `alert-silence`, `monitor-silence` fire via `run-shell -b`?
 - [ ] `respawn-pane` behavior (with/without `-k`).
 - [ ] control-mode `-CC` live `%output` smoke test from Go.
