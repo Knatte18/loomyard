@@ -195,6 +195,11 @@ interactive panes.** This was initially mis-diagnosed; the corrected finding:
 - **Design implications:**
   1. `mhgo mux resume` with native `claude --resume <id>` per pane is sound for human-driven
      panes. Store the mux-assigned `--session-id` at launch (`sync`/create) → known from t0.
+     **Crash-safe:** real interactive claude writes the transcript **incrementally while
+     running** (verified on a live 2.1 MB / 997-record real-terminal session with `user`/
+     `assistant` records up to seconds-old), not only on graceful exit — so a power-loss/crash
+     leaves the conversation-so-far on disk and `--resume` recovers it. This matches the
+     operator's lived experience (reboot → `/resume` works).
   2. **Caveat for orchestrated/dispatched turns:** if mux (or an orchestrator) seeds a pane's
      prompt or dispatches a v2 agent turn via `send-keys`, those turns may NOT persist and so
      would be lost on resume. Needs separate confirmation before relying on it; prefer launching
