@@ -37,5 +37,7 @@ batches:
     start_sha: 5ce5c406eb61d1dc6df326f5ce83d42f10a3ccba
     commit_sha: c776d139f55a0ab5142b7e23acac55c0a25b6edb
   - name: board-adoption-and-docs
-    state: pending
+    state: running
+    implementer_session: 60399236-0a0f-4ecc-a3eb-a440c02f432e
+    start_sha: 6b65eb50df9e33beed94295c7ffbcd234d26331e
 ```
