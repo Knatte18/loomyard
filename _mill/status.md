@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-shared-primitives
+phase: approved-board-adoption-and-docs
 slug: mhgo-extract-primitives
 branch: mhgo-extract-primitives
 plan: _mill/plan
@@ -25,6 +25,7 @@ plan-fix-r2  '2026-06-11T09:18:02Z'
 planned  '2026-06-11T09:39:16Z'
 implementing  '2026-06-11T09:39:59Z'
 approved-shared-primitives  '2026-06-11T09:43:06Z'
+approved-board-adoption-and-docs  '2026-06-11T09:46:12Z'
 ```
 
 ## Batches
@@ -37,7 +38,8 @@ batches:
     start_sha: 5ce5c406eb61d1dc6df326f5ce83d42f10a3ccba
     commit_sha: c776d139f55a0ab5142b7e23acac55c0a25b6edb
   - name: board-adoption-and-docs
-    state: running
+    state: approved
     implementer_session: 60399236-0a0f-4ecc-a3eb-a440c02f432e
     start_sha: 6b65eb50df9e33beed94295c7ffbcd234d26331e
+    commit_sha: 25a6811abf79d6086c8416d1d35d1e91e7e839bb
 ```
