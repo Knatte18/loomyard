@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-fix-r1
+phase: discussed
 slug: mhgo-extract-primitives
 branch: mhgo-extract-primitives
 plan: null
@@ -16,4 +16,5 @@ task_description: |
 ```text
 discussing  '2026-06-11T08:48:34Z'
 discussion-fix-r1  '2026-06-11T09:03:15Z'
+discussed  '2026-06-11T09:03:29Z'
 ```
