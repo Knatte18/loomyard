@@ -176,11 +176,16 @@ interactive panes.** This was initially mis-diagnosed; the corrected finding:
   with real `user`/`assistant`/`last-prompt` entries (not just `ai-title`). → `claude --resume
   <id>` works after the process dies. **The operator's design holds:** mux stores each pane's
   `--session-id` in local-state and relaunches with `--resume <id>` per pane after a crash.
-- **`send-keys`-driven sessions did NOT persist** — every probe earlier in this session
-  (all input injected via `send-keys`; haiku; various dirs; attached & detached; 3 turns + idle;
-  `/exit` via send-keys) wrote **only an `ai-title` stub** (~100 B). So `send-keys` programmatic
-  injection does not trigger the transcript write that real typing does (mechanism unconfirmed;
-  the dominant variable isolated is real-input vs `send-keys`).
+- **`send-keys`-driven sessions did NOT persist** — every probe (input injected via `send-keys`)
+  wrote **only an `ai-title` stub** (~100 B), never `user`/`assistant` records. Controls ruled
+  out, one at a time, all still failing under send-keys: model (haiku *and* default), cwd
+  (collision, dot-dir, clean), **attach** (detached *and* a real maximized WT client, 210×56),
+  concurrency, teammate-mode (wrapper *and* raw `claude.exe` env-cleared), exit method, and
+  **flush-timing** (checked while running at +60 s and +150 s — still 1 line). The *only*
+  surviving correlate is real-keyboard-input vs `send-keys`. **Caveat on the explanation:**
+  `send-keys` writes the same bytes to the pty as real typing, so claude cannot distinguish them
+  at the input level — the mechanism is therefore unexplained, not "send-keys is special". What
+  is solid is the *correlation* and the design consequence below; the root cause is unproven.
   - **False-positive warning:** content-searching the `.jsonl` for a codeword matches the
     `aiTitle` string (which echoes the prompt), NOT a persisted turn. Check file **size / record
     count** (a real transcript is KB+ with `user`/`assistant` records), not a substring hit. The
