@@ -433,6 +433,44 @@ func TestLoad_LiteralQuestionMark(t *testing.T) {
 	}
 }
 
+// TestFindBaseDir_Present tests that FindBaseDir returns the cwd when _mhgo/ exists.
+func TestFindBaseDir_Present(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create _mhgo/ directory
+	mhgoDir := filepath.Join(tmpDir, "_mhgo")
+	if err := os.Mkdir(mhgoDir, 0755); err != nil {
+		t.Fatalf("failed to create _mhgo: %v", err)
+	}
+
+	result, err := config.FindBaseDir(tmpDir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if result != tmpDir {
+		t.Errorf("expected %q, got %q", tmpDir, result)
+	}
+}
+
+// TestFindBaseDir_Absent tests that FindBaseDir returns an error when _mhgo/ does not exist.
+func TestFindBaseDir_Absent(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	result, err := config.FindBaseDir(tmpDir)
+	if err == nil {
+		t.Fatalf("expected error, got nil; result: %v", result)
+	}
+
+	if result != "" {
+		t.Errorf("expected empty string, got %q", result)
+	}
+
+	if !stringContains(err.Error(), "not initialized") {
+		t.Errorf("expected error containing 'not initialized', got: %v", err)
+	}
+}
+
 // stringContains is a helper to check if a substring exists in a string.
 func stringContains(s, substr string) bool {
 	return strings.Contains(s, substr)
