@@ -86,8 +86,12 @@ than being deleted, to minimise churn and keep `RunCLI` readable.
 - **Requirements:** Update `docs/shared-libs/config.md` to document
   `FindBaseDir(cwd) (string, error)` — that it resolves the base dir by a strict
   `<cwd>/_mhgo` existence check (cwd-authoritative, no upward walk), returns the
-  `not initialized` error when absent, and that `Load` delegates its existence
-  check to it. Update `docs/shared-libs/git.md` to document
+  raw error `not initialized: _mhgo/ directory not found in <dir>` when absent, and
+  that `Load` delegates its existence check to it. The doc must distinguish this
+  raw `FindBaseDir` message from the board-level message
+  `not initialized here; run "mhgo init"` that `internal/board/config.go` rewraps
+  it into (via the `strings.Contains(err.Error(), "not initialized")` match) — do
+  not conflate the two literals. Update `docs/shared-libs/git.md` to document
   `FindRoot(cwd) (string, error)` as a thin named helper over `RunGit` running
   `rev-parse --show-toplevel`, returning the trimmed repo root, or an error (with
   empty path) when cwd is not in a git repo. Keep the existing documented rules

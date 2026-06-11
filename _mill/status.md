@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: plan-fix-r2
 slug: mhgo-extract-primitives
 branch: mhgo-extract-primitives
 plan: _mill/plan
@@ -20,4 +20,6 @@ discussed  '2026-06-11T09:03:29Z'
 planning  '2026-06-11T09:07:21Z'
 plan-fix-r1  '2026-06-11T09:10:00Z'
 planned  '2026-06-11T09:10:13Z'
+plan-review-r2  '2026-06-11T09:18:02Z'
+plan-fix-r2  '2026-06-11T09:18:02Z'
 ```
