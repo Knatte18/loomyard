@@ -110,6 +110,8 @@ that needs the extracted lib arrives.
   (exit code 0) return `strings.TrimSpace(stdout)`. On a non-zero exit (e.g. 128,
   not a git repo) return an error that includes the captured stderr. Propagate the
   underlying `err` from `RunGit` when it is non-nil (process failed to start).
+  Whenever a non-nil error is returned the path string is `""` (no partial path on
+  failure) — this matches the "empty path" assertion in the Testing section.
 - Rationale: matches the brief and the `internal/git` design (docs/shared-libs/
   git.md) — the package centralises only the windowless `RunGit` primitive plus
   thin, opinion-free helpers; `FindRoot` adds no command *sequence*, just a single
@@ -131,7 +133,10 @@ that needs the extracted lib arrives.
     `map[string]any{"ok": false, "error": msg}`, writes one line to `w`, returns
     `1`.
   - JSON marshal errors are ignored (`data, _ := json.Marshal(...)`), matching the
-    existing `writeJSON` behaviour.
+    existing `writeJSON` behaviour. Ignoring the marshal error is an accepted,
+    behaviour-preserving carry-over (board only ever passes JSON-safe maps); a map
+    with an unmarshalable value would emit an empty line and still return its exit
+    code, exactly as today — so no new contract is implied.
 - Rationale: this is the exact shape board already emits via `writeJSON` +
   `map[string]any` literals; using a single map keeps Go's alphabetical key
   ordering identical to today. Returning the exit code lets call sites stay
