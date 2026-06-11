@@ -22,8 +22,9 @@ one place that knows the `_mhgo/` layout and the config grammar.
 ```
 
 `_mhgo/` presence is what makes a directory "initialised". If it is absent,
-`config` errors with `not initialized here; run "mhgo init"`. Resolution is
-**cwd-authoritative** — the cwd does **not** need to equal the git-repo root (a
+`config` errors with `not initialized: _mhgo/ directory not found in <dir>` (the
+raw error from `FindBaseDir`; the board rewraps it into `not initialized here; run "mhgo init"`).
+Resolution is **cwd-authoritative** — the cwd does **not** need to equal the git-repo root (a
 first-class constraint; it caused constant trouble in millpy precisely because it
 was designed in and then forgotten).
 
