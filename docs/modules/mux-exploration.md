@@ -138,13 +138,78 @@ needs a TTY; the orchestrator never attaches — it sees via `capture-pane`.**
   `capture-pane` only sees the primary buffer; Ctrl+C hits ALL console processes (prefer app
   quit-keys); allow 4–6s for TUI-exit screen settle.
 
+### Real interactive `claude` in a pane (verified 2026-06-11)
+Cross-reference: [`../psmux-tui-behavior.md`](../psmux-tui-behavior.md) (prior millhouse findings,
+claude 2.1.158/159). This session re-verified on claude **2.1.173**.
+- **Renders + drivable.** A real interactive `claude` TUI launched via `send-keys` in a pane
+  renders fully in `capture-pane`; `send-keys -l "<text>"` + `send-keys Enter` submits a prompt;
+  the response is read back via `capture-pane`. Round-trip confirmed repeatedly.
+- **Primary == alternate here.** `capture-pane -p` and `capture-pane -a -p` returned identical
+  55-line output → mux can use plain `capture-pane -p`. (millhouse's `-a` insistence was
+  version-specific.)
+- **Marker grammar** (for a parser): `❯ ` = input line (echo of sent text, or empty = idle);
+  `● ` = an assistant response; `✻ Verb for Ns` = completion marker; `✽`/`·` = spinner.
+  `❯` is present in ALL states → never an idle signal. Idle vs processing keys on status-bar
+  ASCII tokens: **`shortcuts`** (idle) / **`interrupt`** (processing).
+- **Status-bar spaces are ASCII on 2.1.173** (`20 3f 20 66 6f 72 20 73 68 6f 72 74 63 75 74 73`
+  = `? for shortcuts`). millhouse's non-ASCII-space bug (2.1.158) did NOT reproduce. Still match
+  the single token (`shortcuts`/`interrupt`) to stay version-agnostic.
+- **Multi-line prompts cannot be typed into a running pane** (paste-buffer drops content;
+  bracketed paste submits on each `\n` — see psmux-tui-behavior.md). → mux gives each claude its
+  task **at launch** (positional `[prompt]` arg / `Get-Content -Raw` script), not by typing into
+  a live TUI. Reuse = single-line only, and must send **Esc** first to clear leaked auto-suggest.
+- **Teammate-mode does NOT auto-spawn panes here.** With `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`
+  + `--teammate-mode tmux` + interactive + attached, asking haiku to delegate produced an
+  **in-process** `Agent(...)` (no new pane; pane count stayed 1). → **mux owns pane creation**
+  (`split-window` + launch); it must not rely on claude populating panes via its teammate
+  integration. (Confirms the "Column owns its subtree, mux renders layout" decision.)
+
+### Session persistence & `--resume` — the load-bearing constraint
+`mhgo mux resume` (rebuild all panes after machine shutdown/crash and `claude --resume <sid>`
+each) depends on the per-pane claude session being on disk. **It is not, for interactive panes.**
+- claude stores transcripts at `~/.claude/projects/<cwd-encoded>/<session-id>.jsonl`
+  (path encoding replaces `:`, `\`, AND `.` with `-`).
+- **Interactive `claude` TUI under psmux does NOT persist the conversation** — across every
+  config tried (teammate-wrapper; raw `claude.exe` with teammate-env cleared and no
+  `--teammate-mode`; clean dot-free cwd; 3 turns + 35 s idle; clean `/exit`) the `.jsonl`
+  contained **only an `ai-title` stub** (~100 B), never the user/assistant turns. The turns
+  demonstrably ran (visible in `capture-pane`) but were never written.
+  - **False-positive warning:** content-searching the `.jsonl` for a codeword matches the
+    `aiTitle` string (which echoes the prompt), NOT a persisted turn. Check file **size**
+    (a real transcript is KB+), not just a substring hit. An earlier "it persisted" reading
+    here was this exact false positive.
+- **Headless `claude -p` DOES persist + resume** (21 KB transcript; `--resume` recalled the
+  codeword) — even while another claude session runs. → **concurrency is not the blocker**;
+  the gap is specific to **interactive-TUI-under-psmux-ConPTY**. (A real-terminal interactive
+  claude — e.g. the outer Claude Code session — persists normally; it is the psmux pty that
+  changes interactive behavior.)
+- **`--session-id <uuid>` assignment works** (claude accepts it, uses it for the ai-title and
+  prints `Resume this session with: claude --resume <id>` on exit) → mux can know each pane's id
+  from t0 and store it in local-state. But for interactive panes that id is **not resumable**
+  because the transcript is absent.
+- **Design implication (open decision):** `mhgo mux resume` cannot lean on native
+  `claude --resume` for interactive panes. Either (a) mux re-injects context from its **own**
+  local-state log (the `capture-pane` history it records) as the relaunch prompt, or (b) find a
+  way to make interactive-under-psmux persist (unverified; may be inherent to ConPTY). The
+  one residual confound not yet eliminated: interactive+interactive (a second *interactive*
+  claude while the outer Claude Code interactive session runs) — testable by running the probe
+  with no Claude Code open.
+
+### Driving send-keys from git-bash mangles slash-args
+`send-keys -l "/exit"` (or any leading-`/` arg: `/model`, `/resume`, absolute POSIX paths) run
+**from the Bash tool (git-bash/MSYS)** is path-converted to e.g. `C:/Program Files/Git/exit` and
+never reaches claude. Drive `send-keys` from **pwsh** (or Go `exec`, which has no MSYS layer).
+mhgo is unaffected; the probe harness was.
+
 ---
 
 ## Open / TODO
 
-- [ ] Real interactive `claude` in a pane: render? send-keys reaches the TUI? capture reads it?
-- [ ] `claude --resume <id>` in a respawned pane (does the session restore?)
-- [ ] Teammate-mode: does the env injection + wrapper actually spawn teammate panes here?
+- [x] Real interactive `claude` in a pane: renders, send-keys drives it, capture reads it. ✓
+- [x] `claude --resume <id>`: interactive-under-psmux does NOT persist transcript → not
+  resumable; headless `-p` persists + resumes. Design must not rely on native resume for panes.
+- [x] Teammate-mode does NOT auto-spawn panes (in-process Agent) → mux owns panes.
+- [ ] Confirm the interactive+interactive residual: run the pane probe with no Claude Code open.
 - [ ] Hooks: do `pane-died`, `alert-silence`, `monitor-silence` fire via `run-shell -b`?
 - [ ] `respawn-pane` behavior (with/without `-k`).
 - [ ] control-mode `-CC` live `%output` smoke test from Go.
