@@ -29,7 +29,7 @@ func NewPsmuxCmd(cfg Config) PsmuxCmd {
 // run builds an exec.Command with -L <socket> prepended and runs it,
 // discarding stdout and stderr. Returns cmd.Run() error.
 func (p PsmuxCmd) run(args ...string) error {
-	fullArgs := append([]string{"-L", socketArg(p.cfg)}, args...)
+	fullArgs := append([]string{"-L", socketArg()}, args...)
 	cmd := exec.Command(p.cfg.PsmuxPath, fullArgs...)
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
@@ -39,7 +39,7 @@ func (p PsmuxCmd) run(args ...string) error {
 // output builds an exec.Command with -L <socket> prepended and runs it,
 // capturing stdout. Returns (stdout string, error).
 func (p PsmuxCmd) output(args ...string) (string, error) {
-	fullArgs := append([]string{"-L", socketArg(p.cfg)}, args...)
+	fullArgs := append([]string{"-L", socketArg()}, args...)
 	cmd := exec.Command(p.cfg.PsmuxPath, fullArgs...)
 	out, err := cmd.Output()
 	return string(out), err
@@ -119,7 +119,7 @@ func (p PsmuxCmd) listPanes(session string) ([]LivePane, error) {
 
 // socketArg is a helper that calls os.Getwd() and returns socketName(cwd).
 // Used by run and output to inject the per-repo -L <socket> argument.
-func socketArg(cfg Config) string {
+func socketArg() string {
 	cwd, _ := os.Getwd()
 	return socketName(cwd)
 }
