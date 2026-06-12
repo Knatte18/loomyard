@@ -1,9 +1,9 @@
 // cmd.go — low-level psmux command helpers.
 //
-// Config holds psmux and shell paths plus dimensions. PsmuxCmd wraps low-level
-// psmux operations: run (discarding output), output (capturing stdout), hasSession
-// (checking existence), and listPanes (parsing pane format). LivePane represents
-// a single pane state. expandTpl is a template helper for launch/resume commands.
+// PsmuxCmd wraps low-level psmux operations: run (discarding output), output
+// (capturing stdout), hasSession (checking existence), and listPanes (parsing pane
+// format). LivePane represents a single pane state. expandTpl is a template helper
+// for launch/resume commands. (Config is defined in cli.go.)
 
 package muxpoc
 
@@ -15,17 +15,6 @@ import (
 	"strconv"
 	"strings"
 )
-
-// Config holds paths and dimensions for muxpoc operations.
-type Config struct {
-	PsmuxPath  string
-	PwshPath   string
-	ClaudePath string
-	LaunchTpl  string
-	ResumeTpl  string
-	Width      int
-	Height     int
-}
 
 // PsmuxCmd wraps low-level psmux operations.
 type PsmuxCmd struct {
