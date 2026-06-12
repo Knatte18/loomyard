@@ -56,8 +56,8 @@ func cmdDaemon(out io.Writer, cfg Config) int {
 			// Poll for session health
 			state, warn, err := LoadState(cwd)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "error loading state: %v\n", err)
-				return output.Err(out, fmt.Sprintf("load state: %v", err))
+				fmt.Fprintf(os.Stderr, "error loading state: %v (will retry)\n", err)
+				continue
 			}
 			if warn != "" {
 				fmt.Fprintf(os.Stderr, "%s\n", warn)
