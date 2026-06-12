@@ -47,11 +47,15 @@ Environment (verified 2026-06-11):
    (~14 KB, real `user`/`assistant` records), and after `kill-server` the resumed pane recalled the
    codeword. **The one requirement:** strip the inherited Claude-Code parent-session env before
    launching claude in a pane — `CLAUDE_CODE_CHILD_SESSION=1` (prime culprit), plus `CLAUDECODE`,
-   `CLAUDE_CODE_SESSION_ID`, `CLAUDE_CODE_ENTRYPOINT`, `CLAUDE_CODE_SSE_PORT`. When inherited (i.e.
-   mhgo invoked from inside a Claude Code session), claude treats the pane as a nested child and
-   **suppresses transcript writing** → empty resume. A standalone-CLI mhgo has a clean env already;
-   mux should strip them defensively regardless. mux's `capture-pane` journal is then an **optional**
-   belt-and-suspenders / higher-availability log, not the primary resume mechanism.
+   `CLAUDE_CODE_SESSION_ID`, `CLAUDE_CODE_ENTRYPOINT`, `CLAUDE_CODE_SSE_PORT`. When inherited, claude
+   treats the pane as a nested child and **suppresses transcript writing** → empty resume. **This is
+   the common path, not an edge case:** the primary use is *claude itself running `mhgo` to spawn
+   reviewers/implementers*, so mhgo is normally launched from inside a Claude Code session and
+   inherits these vars. mhgo (Go) is the chokepoint → spawn the psmux server with a sanitized
+   `exec.Cmd.Env`; agent panes spawned later inherit the server's clean env even when the spawning
+   `mhgo` call came from a poisoned claude (provided the server was started clean). Per-launch clear
+   in the pane is the verified fallback. mux's `capture-pane` journal is then **optional**
+   belt-and-suspenders, not the primary resume mechanism.
 
 Open sub-decisions: window naming; whether the orchestrator is always isolated or only on
 overflow; reflow on worktree add/remove (re-render); stable column ordering across syncs;

@@ -24,11 +24,16 @@ Driven by `mhgo mux <subcommand>`; reads the worktree registry from
   0-byte WindowsApps execution-alias stub that renders nothing under ConPTY; the explicit
   `C:\Code\tools\powershell7\pwsh.exe` works. Same discipline for `claude`.
 - No Node/npm needed (claude is a native binary; mhgo is Go, psmux is Rust).
-- **Strip the inherited Claude-Code parent-session env before launching claude in a pane**
-  (`CLAUDE_CODE_CHILD_SESSION`, `CLAUDECODE`, `CLAUDE_CODE_SESSION_ID`, `CLAUDE_CODE_ENTRYPOINT`,
-  `CLAUDE_CODE_SSE_PORT`). If inherited (mhgo run from inside a Claude Code session), claude treats
-  the pane as a nested child and silently stops persisting its transcript — breaking resume. See
-  [Resume](#resume-after-crash-native---resume-with-env-hygiene).
+- **mhgo MUST sanitize the psmux child env — this is mandatory, not defensive.** The *primary*
+  use case is **claude itself running `mhgo` to spawn reviewers/implementers**, so mhgo is normally
+  launched from inside a Claude Code session and its env carries `CLAUDE_CODE_CHILD_SESSION=1`
+  (+ `CLAUDECODE`, `CLAUDE_CODE_SESSION_ID`, `CLAUDE_CODE_ENTRYPOINT`, `CLAUDE_CODE_SSE_PORT`). If
+  these bleed into psmux, the pane's claude treats itself as a nested child and **silently stops
+  persisting its transcript** — breaking resume. Since mhgo (Go) is the chokepoint, it builds the
+  **psmux server's `exec.Cmd.Env` without those vars** → server + all panes + all claude inherit a
+  clean env. Crucially, agent panes spawned later inherit the *server's* env, so they stay clean
+  even when the spawning `mhgo` call was itself launched by a poisoned claude — as long as the
+  server was started clean. See [Resume](#resume-after-crash-native---resume-with-env-hygiene).
 
 ## Design model (the load-bearing decisions)
 
@@ -142,16 +147,20 @@ mhgo mux resume:
             claude --resume <stored session-id>   # full TUI, native resume
 ```
 
-**The one requirement — strip the inherited parent-session env before launching claude:**
-when mhgo is invoked from *inside* a Claude Code session, the environment carries
+**The one requirement — mhgo must sanitize the psmux child env (mandatory):**
 `CLAUDE_CODE_CHILD_SESSION=1` (prime culprit), plus `CLAUDECODE`, `CLAUDE_CODE_SESSION_ID`,
-`CLAUDE_CODE_ENTRYPOINT`, `CLAUDE_CODE_SSE_PORT`. psmux passes these into the pane, and claude
-then treats the pane as a **nested child session and suppresses transcript writing** — leaving
-only a ~100-byte `ai-title` stub, so `--resume` finds nothing. This single inherited-env effect
-caused every "doesn't persist" result during exploration; it is **not** send-keys, the visible
-window, or the model. A standalone-CLI mhgo already has a clean env, but mux must strip these
-defensively (Go: build the child `exec.Cmd.Env` without them) so each pane is a fresh top-level
-session.
+`CLAUDE_CODE_ENTRYPOINT`, `CLAUDE_CODE_SSE_PORT`, must not reach the pane. If they do, claude
+treats the pane as a **nested child session and suppresses transcript writing** — leaving only a
+~100-byte `ai-title` stub, so `--resume` finds nothing. This single inherited-env effect caused
+every "doesn't persist" result during exploration; it is **not** send-keys, the visible window, or
+the model. **This is the common path, not an edge case:** the primary way mux is used is *claude
+itself running `mhgo` to spawn reviewers/implementers*, so mhgo is normally launched from inside a
+Claude Code session and inherits these vars. Because mhgo (Go) spawns psmux, it is the natural
+chokepoint: build the **psmux server's `exec.Cmd.Env` without** these vars (verified-fallback: clear
+them in the pane right before the `claude` launch). Agent panes spawned later inherit the server's
+(clean) env, so they stay clean even when the spawning `mhgo` call came from a poisoned claude —
+provided the server was started clean. (Untested nuance: psmux env-passthrough on attach — verify
+at implementation; the per-launch clear is the proven fallback.)
 
 `claude -p` headless also persists, but a non-interactive feel is **out of scope** — the panes
 must feel like real interactive sessions, and with env hygiene they are, *and* resumable.
