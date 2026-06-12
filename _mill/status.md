@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: mhgo-mux-design
 branch: mhgo-mux-design
 plan: _mill/plan
@@ -20,4 +20,17 @@ discussed  '2026-06-12T11:23:30Z'
 planning  '2026-06-12T11:33:00Z'
 plan-review-r1  '2026-06-12T11:37:18Z'
 planned  '2026-06-12T11:37:39Z'
+implementing  '2026-06-12T12:02:35Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: Foundation - state layer and psmux helpers
+    state: pending
+  - name: CLI, subcommands, and main.go wire-up
+    state: pending
+  - name: Daemon and live smoke test
+    state: pending
 ```
