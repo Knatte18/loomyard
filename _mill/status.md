@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-review-r1
+phase: planned
 slug: mhgo-mux-design
 branch: mhgo-mux-design
 plan: _mill/plan
@@ -19,4 +19,5 @@ discussion-fix-r2  '2026-06-12T11:23:11Z'
 discussed  '2026-06-12T11:23:30Z'
 planning  '2026-06-12T11:33:00Z'
 plan-review-r1  '2026-06-12T11:37:18Z'
+planned  '2026-06-12T11:37:39Z'
 ```
