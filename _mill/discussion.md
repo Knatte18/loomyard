@@ -41,7 +41,9 @@ de-risks milestone 5 before the real module is designed against unverified assum
 - Subcommands: `up`, `review`, `attach`, `status`, `down`, `daemon`.
 - Mandatory **env sanitisation** when spawning the psmux server (strip `CLAUDECODE` and every
   `CLAUDE_CODE_*` from the child `exec.Cmd.Env`).
-- A mux-assigned `--session-id` per pane, persisted in `<cwd>/_mhgo/muxpoc-state.json`.
+- A mux-assigned `--session-id` per pane, persisted in `<cwd>/.mhgo/muxpoc-state.json`
+  (the **gitignored** `.mhgo/` layer — session/pane ids are machine-local; `_mhgo/` is the
+  committed config layer and must not hold them).
 - **Crash recovery**: rebuild the layout and relaunch `claude --resume <session-id>` per pane.
 - A **reviewer pane stacked vertically below** the main pane (`review`).
 - Unit tests for the cross-platform logic; a gated/manual live smoke test.
@@ -108,11 +110,39 @@ de-risks milestone 5 before the real module is designed against unverified assum
   rejected for the operator's screen).
 
 ### The daemon is a foreground poller (for the PoC)
-- Decision: `mhgo muxpoc daemon` runs in the foreground, polls the psmux server on an interval,
-  and on death rebuilds + resumes, logging each recovery; it blocks until interrupted.
+- Decision: `mhgo muxpoc daemon` runs in the foreground, polls the psmux server every
+  `--interval` (default **2 s**), and on death rebuilds + resumes, logging each recovery; it
+  blocks until interrupted. Liveness is checked with `has-session <name>` (not `list-sessions`,
+  which can auto-start an empty server on a dead socket and give a false "up").
+- **Crash-loop guard:** cap recoveries at **N within a rolling window T** (e.g. 3 recoveries / 60 s);
+  on exceedance, stop recovering and log a clear "crash-loop, giving up" line rather than respawn
+  a permanently-failing pane forever.
 - Rationale: enough to prove crash-survival and let a human watch it. `cmd.Wait()` on the server
-  is not available because psmux spawns the server detached, so polling `has-session` is used.
+  is not available because psmux spawns the server detached, so polling is used.
 - Rejected (deferred to real `mux`): detached background daemon, mutual watchdog, named-pipe IPC.
+
+### Subcommand contracts
+- `up` — fresh start if no state; **cold-recover** (rebuild + `--resume`) if state exists but the
+  session is gone; no-op if already up. Emits the assigned `--session-id` and `stripped_env`.
+- `review` — `split-window -v` below the column; launch a fresh claude (`--session-id`); append a
+  stacked pane to state. Requires a running session.
+- `attach` — pop **one maximized** Windows Terminal attached to the session (the single visible
+  pop; best-effort per design decision 6). Requires a running session.
+- `status` — JSON only; no side effects. Fields:
+  `{have_state, server_up, session, socket, stripped_env, state_panes, live_panes}` where
+  `live_panes` is `[{id, dead, width, height}]` from `list-panes`.
+- `down` — **intentional teardown:** `kill-server` **and delete** `muxpoc-state.json`. (A crash
+  does NOT run `down`, so state survives a crash → `up` cold-recovers. Deleting state on `down`
+  is what distinguishes "I'm done" from "it crashed".)
+- `daemon` — as above.
+
+### State durability and concurrency
+- Decision: every write to `muxpoc-state.json` is **atomic** (temp file + rename) and guarded by
+  `internal/lock` (the daemon and an interactive `up`/`review` can both write).
+- Missing state → "no session" (fresh start on `up`). **Corrupt/unparseable** state → treat as no
+  session and log it, rather than crash; the operator can `down` to clear and start over.
+- Rationale: the foreground daemon recovers (writes state) concurrently with interactive commands;
+  without atomic+locked writes a crash mid-write could corrupt the only resume record.
 
 ### Supporting decisions (verified, baked in)
 - Launch with **explicit binary paths** (`C:\Code\tools\powershell7\pwsh.exe`, the explicit
@@ -182,6 +212,10 @@ auto-start an empty server on a dead socket).
   resumes; with a real claude, the resumed session recalls a codeword set before the crash.
 - Keep the launch command configurable so tests/demos use a cheap placeholder
   (`Write-Host ready`) instead of a token-spending claude.
+- State durability: a unit test that a **corrupt/unparseable** `muxpoc-state.json` is treated as
+  "no session" (not a crash); and that concurrent writes go through atomic-write + `internal/lock`.
+- `status` shape: assert the JSON envelope carries
+  `{have_state, server_up, session, socket, stripped_env, state_panes, live_panes}`.
 
 ## Q&A log
 
@@ -200,3 +234,9 @@ auto-start an empty server on a dead socket).
 - **Q:** Journal + re-injection or native resume? **A:** Native `claude --resume`; the journal
   is optional and not needed for the PoC.
 - **Q:** Worktrees in the PoC? **A:** No — in-place, single column only.
+- **Q:** Where does state live, given it holds machine-local ids? **A:** `<cwd>/.mhgo/` (the
+  gitignored layer), not the committed `_mhgo/` config layer. *(review r1 gap)*
+- **Q:** What do `down` and `attach` do? **A:** `down` = `kill-server` + delete state (intentional
+  teardown; a crash leaves state so `up` recovers); `attach` = pop one maximized WT. *(review r1 gap)*
+- **Q:** How are concurrent state writes handled? **A:** Atomic write (temp+rename) + `internal/lock`;
+  corrupt/missing state → treat as no session + log. *(review r1 gap)*
