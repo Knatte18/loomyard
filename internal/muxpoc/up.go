@@ -103,17 +103,24 @@ func coldStart(out io.Writer, cfg Config, cwd string, mux PsmuxCmd) int {
 
 	// Wait for session to come up
 	time.Sleep(500 * time.Millisecond)
+	hasSession := false
 	for i := 0; i < 3; i++ {
 		up, err := mux.hasSession(sessionName)
 		if err != nil {
 			return output.Err(out, fmt.Sprintf("check session: %v", err))
 		}
 		if up {
+			hasSession = true
 			break
 		}
 		if i < 2 {
 			time.Sleep(200 * time.Millisecond)
 		}
+	}
+
+	// Verify session started before proceeding
+	if !hasSession {
+		return output.Err(out, "psmux session did not start in time")
 	}
 
 	// Build launch command from template
@@ -181,17 +188,24 @@ func coldRecover(out io.Writer, cfg Config, cwd string, state *MuxpocState, mux 
 
 	// Wait for session to come up
 	time.Sleep(500 * time.Millisecond)
+	hasSession := false
 	for i := 0; i < 3; i++ {
 		up, err := mux.hasSession(state.Session)
 		if err != nil {
 			return output.Err(out, fmt.Sprintf("check session: %v", err))
 		}
 		if up {
+			hasSession = true
 			break
 		}
 		if i < 2 {
 			time.Sleep(200 * time.Millisecond)
 		}
+	}
+
+	// Verify session started before proceeding
+	if !hasSession {
+		return output.Err(out, "psmux session did not start in time")
 	}
 
 	// Restart each pane
