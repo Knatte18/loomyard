@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-Daemon and live smoke test
+phase: holistic-reviewing
 slug: mhgo-mux-design
 branch: mhgo-mux-design
 plan: _mill/plan
@@ -24,6 +24,7 @@ implementing  '2026-06-12T12:02:35Z'
 approved-Foundation - state layer and psmux helpers  '2026-06-12T12:07:50Z'
 approved-CLI, subcommands, and main.go wire-up  '2026-06-12T12:12:00Z'
 approved-Daemon and live smoke test  '2026-06-12T12:15:50Z'
+holistic-reviewing  '2026-06-12T12:16:26Z'
 ```
 
 ## Batches
