@@ -84,6 +84,20 @@ func TestSmokeFullLifecycle(t *testing.T) {
 		t.Fatalf("up stripped_env not an array")
 	}
 
+	// When Claude-Code env vars are present, verify they were stripped
+	hasClaudeCodeEnv := os.Getenv("CLAUDECODE") != "" ||
+		(len(os.Environ()) > 0 && func() bool {
+			for _, e := range os.Environ() {
+				if len(e) > 11 && e[:11] == "CLAUDE_CODE" {
+					return true
+				}
+			}
+			return false
+		}())
+	if hasClaudeCodeEnv && len(strippedEnv) == 0 {
+		t.Fatalf("CLAUDECODE or CLAUDE_CODE_* found in test env but stripped_env is empty")
+	}
+
 	// ========== STATUS ==========
 	buf = &bytes.Buffer{}
 	exitCode = cmdStatus(buf, cfg)
