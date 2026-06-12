@@ -126,7 +126,7 @@ roles:
   discussion-review:
     holistic:
       rounds: 5
-      reviewer: sonnetmax
+      reviewer: opushigh
       # large_prompt:            # optional: override reviewer for large prompts
       #   threshold_ktok: 100    # switch when estimated tok count >= this (char/4000)
       #   reviewer: null         # override reviewer from agents.yaml; null = disabled
@@ -137,7 +137,7 @@ roles:
       reviewer: null
     holistic:
       rounds: 6
-      reviewer: sonnetmax
+      reviewer: opushigh
       # large_prompt:            # optional: override reviewer for large prompts
       #   threshold_ktok: 100    # switch when estimated tok count >= this (char/4000)
       #   reviewer: null         # override reviewer from agents.yaml; null = disabled
