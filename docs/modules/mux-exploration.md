@@ -40,9 +40,19 @@ Environment (verified 2026-06-11):
    session is fine and reliable (`mhgo mux attach`). Precise multi-window docking and WT
    multi-tab launching are brittle → best-effort, not core. mux is host-agnostic; psmux
    auto-resizes to the attached client.
+7. **Crash recovery via native `claude --resume` (VERIFIED).** mux assigns each pane a
+   `--session-id <uuid>` at launch and records it (+ the worktree + layout) in local-state.
+   After machine shutdown/crash, `mhgo mux resume` rebuilds the layout and runs
+   `claude --resume <session-id>` per pane. Verified end-to-end in a psmux pane (resumed
+   conversation + recalled context). Real interactive claude persists the transcript
+   incrementally (crash-safe); there is no psmux-specific resume limitation. Seed a pane's
+   initial task via the launch `[prompt]` arg (part of the persisted session), not by
+   `send-keys`-injecting it into a running TUI (which can hit a flush-race; see findings).
 
 Open sub-decisions: window naming; whether the orchestrator is always isolated or only on
-overflow; reflow on worktree add/remove (re-render); stable column ordering across syncs.
+overflow; reflow on worktree add/remove (re-render); stable column ordering across syncs;
+what mux's local-state log captures beyond `{layout, worktree, session-id}` (an optional
+`capture-pane` journal as belt-and-suspenders is possible but not required for resume).
 
 ---
 
@@ -170,12 +180,15 @@ each) depends on the per-pane claude session being on disk. **It is — for real
 interactive panes.** This was initially mis-diagnosed; the corrected finding:
 - claude stores transcripts at `~/.claude/projects/<cwd-encoded>/<session-id>.jsonl`
   (path encoding replaces `:`, `\`, AND `.` with `-`).
-- **A real keyboard-typed interactive `claude` in a psmux pane persists the FULL transcript.**
-  Verified: operator launched `claude --session-id <id>` in an attached psmux pane, typed
-  "Husk kodeordet appelsin001" by hand, stopped it → the `.jsonl` was **18.6 KB / 17 records**
-  with real `user`/`assistant`/`last-prompt` entries (not just `ai-title`). → `claude --resume
-  <id>` works after the process dies. **The operator's design holds:** mux stores each pane's
-  `--session-id` in local-state and relaunches with `--resume <id>` per pane after a crash.
+- **A real keyboard-typed interactive `claude` in a psmux pane persists the FULL transcript,
+  and `--resume` restores it — VERIFIED end-to-end.** Operator launched `claude --session-id
+  <id>` in an attached psmux pane, typed "Husk kodeordet appelsin001" by hand, stopped it → the
+  `.jsonl` was **18.6 KB / 17 records** with real `user`/`assistant`/`last-prompt` entries. Then
+  `claude --resume <id>` in a fresh psmux pane (same cwd) **reopened the prior conversation and
+  recalled the codeword** ("Kodeordet du ga meg var appelsin001."). **The operator's design
+  holds with native resume:** mux stores each pane's mux-assigned `--session-id` in local-state
+  at launch and relaunches with `--resume <id>` per pane after a crash. **There is no
+  fundamental psmux limitation on resume.**
 - **`send-keys`-driven sessions did NOT persist** — every probe (input injected via `send-keys`)
   wrote **only an `ai-title` stub** (~100 B), never `user`/`assistant` records. Controls ruled
   out, one at a time, all still failing under send-keys: model (haiku *and* default), cwd
@@ -186,6 +199,15 @@ interactive panes.** This was initially mis-diagnosed; the corrected finding:
   `send-keys` writes the same bytes to the pty as real typing, so claude cannot distinguish them
   at the input level — the mechanism is therefore unexplained, not "send-keys is special". What
   is solid is the *correlation* and the design consequence below; the root cause is unproven.
+  - **Web research (cited):** the `ai-title`-only `.jsonl` is an independently **documented
+    Claude Code regression** — GitHub **#60984** (Windows, plain interactive mode, 2.1.144/145;
+    2.1.143 last good) — caused by a **flush/shutdown race**: the `ai-title` is written by an
+    early async step and survives, while buffered `user`/`assistant` records are lost if the
+    process is killed before flushing (SDK **#625**, **#21751**). Ink processes pty-injected
+    keystrokes identically to typing (so send-keys is not detectable). Most likely the probes'
+    fast programmatic teardown hit the flush race; a human's slower graceful use does not. The
+    transcript is officially append-only/incremental (https://code.claude.com/docs/en/claude-directory),
+    which matches the verified live incremental writes below. → **not a psmux issue.**
   - **False-positive warning:** content-searching the `.jsonl` for a codeword matches the
     `aiTitle` string (which echoes the prompt), NOT a persisted turn. Check file **size / record
     count** (a real transcript is KB+ with `user`/`assistant` records), not a substring hit. The
