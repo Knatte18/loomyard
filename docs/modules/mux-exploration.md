@@ -40,19 +40,25 @@ Environment (verified 2026-06-11):
    session is fine and reliable (`mhgo mux attach`). Precise multi-window docking and WT
    multi-tab launching are brittle → best-effort, not core. mux is host-agnostic; psmux
    auto-resizes to the attached client.
-7. **Crash recovery via native `claude --resume` (VERIFIED).** mux assigns each pane a
-   `--session-id <uuid>` at launch and records it (+ the worktree + layout) in local-state.
-   After machine shutdown/crash, `mhgo mux resume` rebuilds the layout and runs
-   `claude --resume <session-id>` per pane. Verified end-to-end in a psmux pane (resumed
-   conversation + recalled context). Real interactive claude persists the transcript
-   incrementally (crash-safe); there is no psmux-specific resume limitation. Seed a pane's
-   initial task via the launch `[prompt]` arg (part of the persisted session), not by
-   `send-keys`-injecting it into a running TUI (which can hit a flush-race; see findings).
+7. **Crash recovery = mux's OWN journal + re-injection, NOT native `claude --resume`.**
+   Exhaustively established (see findings): a **programmatically-driven** (send-keys / launch
+   `[prompt]` arg) interactive claude in a psmux pane does **not** persist its transcript —
+   only an `ai-title` stub is ever written, so there is nothing for `claude --resume` to
+   restore. (Only genuine human keystrokes through an attached client persist.) Since mux
+   panes are driven programmatically/autonomously, native resume is **off the table.**
+   Therefore: mux continuously polls `capture-pane` (~500 ms; ~23 ms latency) and writes each
+   pane's conversation to its **own** durable local-state journal on disk, keyed by the
+   mux-assigned `--session-id` (recorded with the worktree + layout). `mhgo mux resume`
+   rebuilds the layout, relaunches a **real interactive** claude per pane (still a full TUI —
+   NOT `claude -p`), and **re-injects the journal as opening context.** Goal achieved (the
+   agent continues where it left off); cost is fidelity (journal = rendered conversation text,
+   not exact tool-call/internal state). Rejected alternative: OS-level keystroke injection into
+   the focused window (would mimic "real" typing and might enable native persistence) — couples
+   mux to the host OS window and breaks the host-agnostic principle (decision 6).
 
 Open sub-decisions: window naming; whether the orchestrator is always isolated or only on
 overflow; reflow on worktree add/remove (re-render); stable column ordering across syncs;
-what mux's local-state log captures beyond `{layout, worktree, session-id}` (an optional
-`capture-pane` journal as belt-and-suspenders is possible but not required for resume).
+exact journal format + cadence + how much scrollback to re-inject on resume (full vs summary).
 
 ---
 
@@ -174,10 +180,11 @@ claude 2.1.158/159). This session re-verified on claude **2.1.173**.
   (`split-window` + launch); it must not rely on claude populating panes via its teammate
   integration. (Confirms the "Column owns its subtree, mux renders layout" decision.)
 
-### Session persistence & `--resume` — RESOLVED: real typing persists, `send-keys` does not
-`mhgo mux resume` (rebuild all panes after machine shutdown/crash and `claude --resume <sid>`
-each) depends on the per-pane claude session being on disk. **It is — for real human-typed
-interactive panes.** This was initially mis-diagnosed; the corrected finding:
+### Session persistence & `--resume` — RESOLVED: human typing persists, programmatic driving does NOT
+**Final determination (after a long, flip-flopping investigation):** native `claude --resume`
+is **viable only for human-typed sessions**, NOT for the programmatically-driven panes mux
+actually uses. So `mhgo mux resume` must rebuild from mux's **own journal** (re-injection), not
+native resume — see Landed decision 7. The evidence trail:
 - claude stores transcripts at `~/.claude/projects/<cwd-encoded>/<session-id>.jsonl`
   (path encoding replaces `:`, `\`, AND `.` with `-`).
 - **A real keyboard-typed interactive `claude` in a psmux pane persists the FULL transcript,
@@ -185,17 +192,22 @@ interactive panes.** This was initially mis-diagnosed; the corrected finding:
   <id>` in an attached psmux pane, typed "Husk kodeordet appelsin001" by hand, stopped it → the
   `.jsonl` was **18.6 KB / 17 records** with real `user`/`assistant`/`last-prompt` entries. Then
   `claude --resume <id>` in a fresh psmux pane (same cwd) **reopened the prior conversation and
-  recalled the codeword** ("Kodeordet du ga meg var appelsin001."). **The operator's design
-  holds with native resume:** mux stores each pane's mux-assigned `--session-id` in local-state
-  at launch and relaunches with `--resume <id>` per pane after a crash. **There is no
-  fundamental psmux limitation on resume.**
-- **`send-keys`-driven sessions did NOT persist** — every probe (input injected via `send-keys`)
-  wrote **only an `ai-title` stub** (~100 B), never `user`/`assistant` records. Controls ruled
-  out, one at a time, all still failing under send-keys: model (haiku *and* default), cwd
-  (collision, dot-dir, clean), **attach** (detached *and* a real maximized WT client, 210×56),
-  concurrency, teammate-mode (wrapper *and* raw `claude.exe` env-cleared), exit method, and
-  **flush-timing** (checked while running at +60 s and +150 s — still 1 line). The *only*
-  surviving correlate is real-keyboard-input vs `send-keys`. **Caveat on the explanation:**
+  recalled the codeword** ("Kodeordet du ga meg var appelsin001."). So native resume DOES work
+  **when the transcript exists** — i.e. for a human-typed session. There is no psmux limitation
+  on the *resume* step itself; the gap is purely whether the transcript got written.
+- **Programmatically-driven sessions do NOT persist — this is the case that matters for mux.**
+  Every probe where input was injected (`send-keys` burst, `send-keys` char-by-char, or the task
+  passed as the launch `[prompt]` arg) wrote **only an `ai-title` stub** (~100 B), never
+  `user`/`assistant` records — so `--resume` finds nothing. Controls ruled out, one at a time,
+  all still failing: model (haiku *and* default), cwd (collision, dot-dir, clean), **attach**
+  (detached *and* a real maximized WT client, 210×56), concurrency, teammate-mode (wrapper *and*
+  raw `claude.exe` env-cleared), exit method, **flush-timing** (+60 s / +150 s while running),
+  input cadence (burst vs char-by-char), launch shape (positional `[prompt]` vs send-keys), and
+  — decisively — **an autonomous tool-using agent** (`--dangerously-skip-permissions`, task as
+  positional arg): it created `proof.txt` (tools ran) yet the transcript stayed **116 B /
+  ai-title only.** The *only* surviving correlate is **human keystrokes through an attached
+  client vs server-side injection**; the latter (which is what any programmatic driver does)
+  never persists. **Caveat on the explanation:**
   `send-keys` writes the same bytes to the pty as real typing, so claude cannot distinguish them
   at the input level — the mechanism is therefore unexplained, not "send-keys is special". What
   is solid is the *correlation* and the design consequence below; the root cause is unproven.
@@ -204,29 +216,30 @@ interactive panes.** This was initially mis-diagnosed; the corrected finding:
     2.1.143 last good) — caused by a **flush/shutdown race**: the `ai-title` is written by an
     early async step and survives, while buffered `user`/`assistant` records are lost if the
     process is killed before flushing (SDK **#625**, **#21751**). Ink processes pty-injected
-    keystrokes identically to typing (so send-keys is not detectable). Most likely the probes'
-    fast programmatic teardown hit the flush race; a human's slower graceful use does not. The
-    transcript is officially append-only/incremental (https://code.claude.com/docs/en/claude-directory),
-    which matches the verified live incremental writes below. → **not a psmux issue.**
+    keystrokes identically to typing (so send-keys is "not supposed to" be detectable). The
+    transcript is officially append-only/incremental (https://code.claude.com/docs/en/claude-directory).
+    NOTE: the flush-race / teardown-timing explanation was later **falsified** here — the probes
+    failed even while running (+150 s), even as an autonomous tool-using agent, and even char-by-
+    char. The robust empirical statement is the correlate (human-keystrokes-through-client vs
+    server-side injection); the mechanism remains unexplained, but the design no longer depends on
+    resolving it.
   - **False-positive warning:** content-searching the `.jsonl` for a codeword matches the
     `aiTitle` string (which echoes the prompt), NOT a persisted turn. Check file **size / record
     count** (a real transcript is KB+ with `user`/`assistant` records), not a substring hit. The
     earlier "it persisted" readings here were this exact false positive.
 - **Headless `claude -p` also persists + resumes** (21 KB; `--resume` recalled the codeword),
   even while another claude session runs → **concurrency was never the blocker.**
-- **Design implications:**
-  1. `mhgo mux resume` with native `claude --resume <id>` per pane is sound for human-driven
-     panes. Store the mux-assigned `--session-id` at launch (`sync`/create) → known from t0.
-     **Crash-safe:** real interactive claude writes the transcript **incrementally while
-     running** (verified on a live 2.1 MB / 997-record real-terminal session with `user`/
-     `assistant` records up to seconds-old), not only on graceful exit — so a power-loss/crash
-     leaves the conversation-so-far on disk and `--resume` recovers it. This matches the
-     operator's lived experience (reboot → `/resume` works).
-  2. **Caveat for orchestrated/dispatched turns:** if mux (or an orchestrator) seeds a pane's
-     prompt or dispatches a v2 agent turn via `send-keys`, those turns may NOT persist and so
-     would be lost on resume. Needs separate confirmation before relying on it; prefer launching
-     claude with the task as a positional/`[prompt]` arg (which is part of the real session) over
-     `send-keys`-injecting it.
+- **Reference point:** a real-terminal interactive claude writes its transcript **incrementally
+  while running** (verified on a live 2.1 MB / 997-record session with seconds-old `user`/
+  `assistant` records) — that is why a human's reboot → `/resume` works. The psmux-pane programmatic
+  case does NOT reach this state (init records never written), so this reference does not transfer
+  to mux's use.
+- **Design implication (Landed decision 7):** `mhgo mux resume` **cannot** use native
+  `claude --resume` for the programmatically-driven panes mux runs. mux keeps its **own** durable
+  per-pane journal (poll `capture-pane`, append to local-state, keyed by the mux-assigned
+  `--session-id` stored from t0) and on resume rebuilds the layout, relaunches a real interactive
+  claude per pane (full TUI, not `-p`), and **re-injects the journal as opening context.** Fidelity
+  cost: rendered conversation text, not exact tool-call/internal state.
 
 ### Driving send-keys from git-bash mangles slash-args
 `send-keys -l "/exit"` (or any leading-`/` arg: `/model`, `/resume`, absolute POSIX paths) run
@@ -239,12 +252,11 @@ mhgo is unaffected; the probe harness was.
 ## Open / TODO
 
 - [x] Real interactive `claude` in a pane: renders, send-keys drives it, capture reads it. ✓
-- [x] `claude --resume <id>`: a real human-typed interactive pane PERSISTS the full transcript
-  (18.6 KB verified) → native `--resume` works after crash. `send-keys`-driven input did NOT
-  persist (ai-title stub only). Design with native resume holds for human-driven panes.
+- [x] `claude --resume <id>`: works ONLY for human-typed sessions (transcript persists, verified
+  18.6 KB + recall). Programmatically-driven panes (send-keys / `[prompt]` arg / autonomous
+  tool-agent) do NOT persist (ai-title stub only) → native resume off the table for mux. Resume =
+  mux's own journal + re-injection (decision 7).
 - [x] Teammate-mode does NOT auto-spawn panes (in-process Agent) → mux owns panes.
-- [ ] Confirm whether `send-keys`-seeded / dispatched turns persist (v2 dispatch path) — they
-  did not in probes; relaunch-with-`[prompt]`-arg is the safer seeding path.
 - [ ] Hooks: do `pane-died`, `alert-silence`, `monitor-silence` fire via `run-shell -b`?
 - [ ] `respawn-pane` behavior (with/without `-k`).
 - [ ] control-mode `-CC` live `%output` smoke test from Go.
