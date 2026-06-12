@@ -3,7 +3,7 @@
 ```yaml
 task: Design mhgo mux module
 slug: mhgo-mux-design
-approved: false
+approved: true
 started: 20260612-112852
 parent: main
 root: ""
