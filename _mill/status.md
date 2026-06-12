@@ -40,5 +40,7 @@ batches:
     start_sha: c4f2fb41ed7bdda340d9c3cb0c0f7e9aa8b7135c
     commit_sha: 01a91461ac9e21953abbaf0a538dd581f34bf59f
   - name: Daemon and live smoke test
-    state: pending
+    state: running
+    implementer_session: 9492d633-9cd3-4ce1-93e8-6feaa61163a0
+    start_sha: a175a56f86ea86d8d97aa6709180f82147a1e57a
 ```
