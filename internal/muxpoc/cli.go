@@ -11,8 +11,6 @@ import (
 	"io"
 	"os"
 	"time"
-
-	"github.com/Knatte18/mhgo/internal/output"
 )
 
 // Config holds paths and dimensions for muxpoc operations.
