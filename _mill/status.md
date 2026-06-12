@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-fix-r2
+phase: discussed
 slug: mhgo-mux-design
 branch: mhgo-mux-design
 plan: null
@@ -16,4 +16,5 @@ task_description: |
 ```text
 discussing  '2026-06-11T11:43:25Z'
 discussion-fix-r2  '2026-06-12T11:23:11Z'
+discussed  '2026-06-12T11:23:30Z'
 ```
