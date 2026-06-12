@@ -32,6 +32,7 @@ Batch-local decisions:
   - `internal/muxpoc/cmd.go`
 - **Creates:**
   - `internal/muxpoc/cli.go`
+  - `internal/muxpoc/daemon.go`
 - **Deletes:** none
 - **Requirements:**
   **Edit `cmd.go`:** Remove the stub `Config` struct added in Card 4. Keep all other symbols unchanged.
