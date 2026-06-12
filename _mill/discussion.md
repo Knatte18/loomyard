@@ -116,7 +116,9 @@ de-risks milestone 5 before the real module is designed against unverified assum
   which can auto-start an empty server on a dead socket and give a false "up").
 - **Crash-loop guard:** cap recoveries at **N within a rolling window T** (e.g. 3 recoveries / 60 s);
   on exceedance, stop recovering and log a clear "crash-loop, giving up" line rather than respawn
-  a permanently-failing pane forever.
+  a permanently-failing pane forever. The counter is **daemon-process-local** (resets if the
+  daemon itself is restarted — acceptable for the PoC); after give-up the daemon stops touching
+  the session, so a subsequent `mhgo muxpoc status` simply shows `server_up:false`.
 - Rationale: enough to prove crash-survival and let a human watch it. `cmd.Wait()` on the server
   is not available because psmux spawns the server detached, so polling is used.
 - Rejected (deferred to real `mux`): detached background daemon, mutual watchdog, named-pipe IPC.
@@ -153,6 +155,11 @@ de-risks milestone 5 before the real module is designed against unverified assum
 - Use plain `capture-pane -p`; idle vs busy detection keys on status-bar tokens `shortcuts` /
   `interrupt`. Give claude its task as the positional `[prompt]` arg, never typed into a live
   TUI (`paste-buffer` drops content; bracketed paste submits on each newline).
+- **Config source = CLI flags, not `_mhgo/`.** The binary paths and launch/resume templates come
+  from flags (`--psmux`, `--pwsh`, `--claude`, `--launch`, `--resume`, `--width`, `--height`,
+  `--interval`) with built-in defaults. muxpoc does **not** read `internal/config` / `_mhgo/*.yaml`
+  — it stays self-contained (and state lives in `.mhgo/`, not the committed `_mhgo/` layer). This
+  is the configurable launch source tests use for a cheap placeholder.
 - An isolated per-repo socket (`psmux -L muxpoc-<dir>`) so the PoC never touches the operator's
   real psmux server.
 
@@ -178,7 +185,9 @@ Codebase conventions to follow (mirror `internal/board`):
 - Windowless/detached spawning via build-tagged `spawn_windows.go` / `spawn_other.go`
   (`HideWindow` + `CREATE_NO_WINDOW` [+ `CREATE_NEW_PROCESS_GROUP`] on Windows, no-ops
   elsewhere) — needed so psmux/claude/git children don't flash console windows, and so the
-  one **visible** `attach` pop is the deliberate exception.
+  one **visible** `attach` pop is the deliberate exception. muxpoc gets its **own** copy of these
+  files (mirroring board's *pattern*) — board's `spawnSync`/helpers are unexported and
+  board-specific (hardcode `mhgo board sync`), so they cannot be imported.
 - Shared libs available: `internal/config`, `internal/git`, `internal/lock`, `internal/output`.
 - No external deps for a UUID — generate a v4 from `crypto/rand`.
 
