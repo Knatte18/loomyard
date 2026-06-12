@@ -1,0 +1,214 @@
+//go:build smoke
+
+package muxpoc
+
+import (
+	"bytes"
+	"encoding/json"
+	"os"
+	"os/exec"
+	"runtime"
+	"testing"
+	"time"
+)
+
+// TestSmokeFullLifecycle verifies the complete muxpoc end-to-end lifecycle:
+// up (fresh), status, review, kill-server (crash), up again (cold recover), down.
+// Uses a cheap placeholder command instead of real claude.
+func TestSmokeFullLifecycle(t *testing.T) {
+	// Skip if not on Windows (psmux is Windows-only)
+	if runtime.GOOS != "windows" {
+		t.Skip("smoke test requires Windows psmux")
+	}
+
+	// Build config with cheap placeholder commands
+	cfg := Config{
+		PsmuxPath:  `C:\Code\tools\bin\psmux.exe`,
+		PwshPath:   `C:\Code\tools\powershell7\pwsh.exe`,
+		ClaudePath: "",
+		LaunchTpl:  "Write-Host ready; Read-Host",
+		ResumeTpl:  "Write-Host resumed; Read-Host",
+		Width:      220,
+		Height:     50,
+		Interval:   2 * time.Second,
+	}
+
+	// Skip if psmux not found
+	if _, err := os.Stat(cfg.PsmuxPath); err != nil {
+		t.Skipf("psmux not found at %s", cfg.PsmuxPath)
+	}
+
+	// Get current working directory
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+
+	// Ensure clean state: try to delete any existing state before we start
+	_ = DeleteState(cwd)
+
+	// Cleanup: ensure down is called even if test fails
+	t.Cleanup(func() {
+		buf := &bytes.Buffer{}
+		cmdDown(buf, cfg)
+	})
+
+	// ========== UP (fresh) ==========
+	buf := &bytes.Buffer{}
+	exitCode := cmdUp(buf, cfg)
+	if exitCode != 0 {
+		t.Fatalf("cmdUp failed with exit code %d, output: %s", exitCode, buf.String())
+	}
+
+	var upResult map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &upResult); err != nil {
+		t.Fatalf("parse up result: %v", err)
+	}
+
+	if !upResult["ok"].(bool) {
+		t.Fatalf("up returned ok=false: %v", upResult)
+	}
+
+	sessionID, ok := upResult["session_id"].(string)
+	if !ok || sessionID == "" {
+		t.Fatalf("up missing or empty session_id")
+	}
+
+	socket, ok := upResult["socket"].(string)
+	if !ok || socket == "" {
+		t.Fatalf("up missing or empty socket")
+	}
+
+	strippedEnv, ok := upResult["stripped_env"].([]any)
+	if !ok {
+		t.Fatalf("up stripped_env not an array")
+	}
+
+	// ========== STATUS ==========
+	buf = &bytes.Buffer{}
+	exitCode = cmdStatus(buf, cfg)
+	if exitCode != 0 {
+		t.Fatalf("cmdStatus failed with exit code %d, output: %s", exitCode, buf.String())
+	}
+
+	var statusResult map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &statusResult); err != nil {
+		t.Fatalf("parse status result: %v", err)
+	}
+
+	if !statusResult["ok"].(bool) {
+		t.Fatalf("status returned ok=false: %v", statusResult)
+	}
+
+	// Verify all seven required fields
+	requiredFields := []string{"have_state", "server_up", "session", "socket", "stripped_env", "state_panes", "live_panes"}
+	for _, field := range requiredFields {
+		if _, ok := statusResult[field]; !ok {
+			t.Fatalf("status missing required field: %s", field)
+		}
+	}
+
+	if !statusResult["server_up"].(bool) {
+		t.Fatalf("status reports server_up=false")
+	}
+
+	// ========== REVIEW ==========
+	buf = &bytes.Buffer{}
+	exitCode = cmdReview(buf, cfg)
+	if exitCode != 0 {
+		t.Fatalf("cmdReview failed with exit code %d, output: %s", exitCode, buf.String())
+	}
+
+	var reviewResult map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &reviewResult); err != nil {
+		t.Fatalf("parse review result: %v", err)
+	}
+
+	if !reviewResult["ok"].(bool) {
+		t.Fatalf("review returned ok=false: %v", reviewResult)
+	}
+
+	if _, ok := reviewResult["session_id"].(string); !ok {
+		t.Fatalf("review missing session_id")
+	}
+
+	// Status again to verify live_panes has 2 entries
+	buf = &bytes.Buffer{}
+	exitCode = cmdStatus(buf, cfg)
+	if exitCode != 0 {
+		t.Fatalf("cmdStatus (after review) failed with exit code %d", exitCode)
+	}
+
+	if err := json.Unmarshal(buf.Bytes(), &statusResult); err != nil {
+		t.Fatalf("parse status result (after review): %v", err)
+	}
+
+	livePanes, ok := statusResult["live_panes"].([]any)
+	if !ok {
+		t.Fatalf("status live_panes not an array")
+	}
+	if len(livePanes) < 2 {
+		t.Fatalf("status live_panes has %d entries, expected >= 2", len(livePanes))
+	}
+
+	// ========== KILL-SERVER (simulate crash) ==========
+	killCmd := exec.Command(cfg.PsmuxPath, "-L", socket, "kill-server")
+	if err := killCmd.Run(); err != nil {
+		t.Logf("kill-server failed (may be OK if server already dead): %v", err)
+	}
+
+	// Verify state file still exists after crash
+	_, _, err = LoadState(cwd)
+	if err != nil {
+		t.Fatalf("state should exist after crash: %v", err)
+	}
+
+	// ========== UP AGAIN (cold recover) ==========
+	buf = &bytes.Buffer{}
+	exitCode = cmdUp(buf, cfg)
+	if exitCode != 0 {
+		t.Fatalf("cmdUp (recovery) failed with exit code %d, output: %s", exitCode, buf.String())
+	}
+
+	var recoverResult map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &recoverResult); err != nil {
+		t.Fatalf("parse recovery result: %v", err)
+	}
+
+	if !recoverResult["ok"].(bool) {
+		t.Fatalf("recovery returned ok=false: %v", recoverResult)
+	}
+
+	message, ok := recoverResult["message"].(string)
+	if !ok || message != "cold-recovered" {
+		t.Fatalf("recovery message is %q, expected 'cold-recovered'", message)
+	}
+
+	recoveredPanes, ok := recoverResult["recovered_panes"].(float64)
+	if !ok || recoveredPanes < 1 {
+		t.Fatalf("recovery recovered_panes is %v, expected >= 1", recoveredPanes)
+	}
+
+	// ========== DOWN ==========
+	buf = &bytes.Buffer{}
+	exitCode = cmdDown(buf, cfg)
+	if exitCode != 0 {
+		t.Fatalf("cmdDown failed with exit code %d, output: %s", exitCode, buf.String())
+	}
+
+	// Status again to verify have_state is false
+	buf = &bytes.Buffer{}
+	exitCode = cmdStatus(buf, cfg)
+	if exitCode != 0 {
+		t.Fatalf("cmdStatus (after down) failed with exit code %d", exitCode)
+	}
+
+	if err := json.Unmarshal(buf.Bytes(), &statusResult); err != nil {
+		t.Fatalf("parse status result (after down): %v", err)
+	}
+
+	haveState, ok := statusResult["have_state"].(bool)
+	if !ok || haveState {
+		t.Fatalf("status have_state is %v, expected false", haveState)
+	}
+}
