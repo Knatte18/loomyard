@@ -12,6 +12,7 @@
 //
 //	init    scaffold _mhgo/board.yaml and .gitignore in the current directory
 //	board   task-tracker board — see internal/board.RunCLI for subcommands
+//	muxpoc  single-column psmux daemon/resume proof-of-concept — see internal/muxpoc.RunCLI
 //
 // All output is JSON on stdout. Exit code 1 on error.
 package main
@@ -22,6 +23,7 @@ import (
 	"os"
 
 	"github.com/Knatte18/mhgo/internal/board"
+	"github.com/Knatte18/mhgo/internal/muxpoc"
 )
 
 func main() {
@@ -44,6 +46,8 @@ func run(args []string, out io.Writer) int {
 		return board.RunInit(out, moduleArgs)
 	case "board":
 		return board.RunCLI(out, moduleArgs)
+	case "muxpoc":
+		return muxpoc.RunCLI(out, moduleArgs)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown module: %s\n", module)
 		return 1
