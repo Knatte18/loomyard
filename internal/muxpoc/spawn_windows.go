@@ -10,7 +10,6 @@ package muxpoc
 
 import (
 	"fmt"
-	"os"
 	"os/exec"
 	"syscall"
 )

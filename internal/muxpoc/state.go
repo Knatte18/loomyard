@@ -49,6 +49,12 @@ func LoadState(cwd string) (*MuxpocState, string, error) {
 	statePath := filepath.Join(cwd, stateRelPath)
 	lockPath := filepath.Join(cwd, lockRelPath)
 
+	// Ensure parent directory exists so lock file can be created
+	lockDir := filepath.Dir(lockPath)
+	if err := os.MkdirAll(lockDir, 0o755); err != nil {
+		return nil, "", fmt.Errorf("mkdir: %w", err)
+	}
+
 	lock, err := flock.AcquireReadLock(lockPath)
 	if err != nil {
 		return nil, "", fmt.Errorf("acquire read lock: %w", err)

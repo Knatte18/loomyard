@@ -8,7 +8,6 @@
 package muxpoc
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"os"
