@@ -28,7 +28,9 @@ implementing  '2026-06-12T12:02:35Z'
 ```yaml
 batches:
   - name: Foundation - state layer and psmux helpers
-    state: pending
+    state: running
+    implementer_session: a27535f7-3812-45d8-9688-c314d4ef56e8
+    start_sha: d132618129e313933944730b9fcc52dd67cab75d
   - name: CLI, subcommands, and main.go wire-up
     state: pending
   - name: Daemon and live smoke test
