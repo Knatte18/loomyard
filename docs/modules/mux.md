@@ -205,6 +205,16 @@ hooks is insufficient. The capture-pane poller is the real mechanism; it simulta
 the resume journal, idle detection, and death detection. `pane-died` is at most a nudge to
 wake the poller.
 
+**Push alternative — control-mode `-CC`:** a single `psmux -CC attach` control client *does*
+work on Windows and pushes live `%output %<pane> <data>` for all panes (verified — this is the
+real-time channel `pipe-pane` fails to provide), plus `%begin/%end`-framed command responses.
+Trade-off: `%output` is the **raw VT100 byte stream** (needs ANSI-stripping), whereas
+`capture-pane` returns already-rendered text. So: use `capture-pane` polling for the journal +
+idle detection (simpler), and reserve `-CC` for true streaming (the Slack relay) or to replace
+N pollers with one control client. **Recovery uses `respawn-pane`** — it reuses the same pane
+id and revives a dead pane in place (layout untouched); it respawns the default shell, into
+which mux then launches claude + re-injects journal context.
+
 **Mutual watchdog.** Both watch each other:
 
 ```

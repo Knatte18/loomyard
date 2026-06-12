@@ -272,6 +272,25 @@ What actually works on this build:
   detect death too; `pane-died` is at best a low-latency nudge to wake the poller / trigger a
   cleanup-or-relaunch. Don't build core behavior on hooks.
 
+### respawn-pane & control-mode `-CC` (tested 2026-06-12)
+- **`respawn-pane` reuses the SAME pane id and revives a dead pane in place** (verified: a dead
+  `%3` went `dead=1 → dead=0`, id unchanged). This is exactly what daemon recovery wants — the
+  layout/column stays intact, no re-render needed. In the test the respawn launched the **default
+  shell** (not the custom command string I passed — the `[shell-command]` arg form needs care
+  through the quoting layers), so the working pattern is: `respawn-pane` → then launch claude into
+  the revived pane. `-k` kill-and-respawn on a live pane also works (id reused).
+- **Control-mode `-CC` works on Windows psmux — including live `%output` push.** `psmux -CC attach`
+  speaks the tmux control protocol: `%begin/%end` framing around command responses (`list-windows`
+  → `0: pwsh* (1 panes) [100x30]`), commands accepted on stdin. Crucially, **`%output %<pane>
+  <data>` notifications fire in real time** as a pane produces output (verified: a marker echoed in
+  the pane appeared as `%output %1 …MARKER…` in the control stream). → **this is the working push
+  channel that `pipe-pane` is not.** Cost: the `%output` payload is the **raw VT100 byte stream**
+  (escape sequences, `\134` = `\`, `\015\012` = CRLF) — a consumer must ANSI-strip it, vs
+  `capture-pane` which returns already-rendered text. **Design fit:** `capture-pane` (rendered) is
+  simpler for the resume journal + idle detection; `-CC %output` (raw, real-time, no scroll-off) is
+  the better basis for true streaming (e.g. the Slack relay) and for a single control client that
+  watches all panes at once instead of N pollers.
+
 ---
 
 ## Open / TODO
@@ -285,5 +304,9 @@ What actually works on this build:
 - [x] Hooks: `pane-died` fires via `run-shell -b` (needs `remain-on-exit on`; no format-var
   expansion → bare trigger; fires detached). `monitor-silence`/`alert-silence` NON-functional
   (silently accepted, never fires). → hooks are a convenience nudge; poller is the foundation.
-- [ ] `respawn-pane` behavior (with/without `-k`).
-- [ ] control-mode `-CC` live `%output` smoke test from Go.
+- [x] `respawn-pane` reuses the same pane id and revives a dead pane in place (layout stays
+  intact); respawns the default shell → then launch claude into it. `-k` works on live panes.
+- [x] control-mode `-CC` works on Windows incl. live `%output` push (raw VT100; needs ANSI
+  strip) — the working push channel `pipe-pane` is not; good for streaming/Slack.
+
+All brief questions are now answered; remaining items are implementation-time, not exploration.
