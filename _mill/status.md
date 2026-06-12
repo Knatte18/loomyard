@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-fixing
+phase: holistic-reviewing
 slug: mhgo-mux-design
 branch: mhgo-mux-design
 plan: _mill/plan
@@ -26,6 +26,7 @@ approved-CLI, subcommands, and main.go wire-up  '2026-06-12T12:12:00Z'
 approved-Daemon and live smoke test  '2026-06-12T12:15:50Z'
 holistic-reviewing  '2026-06-12T12:16:26Z'
 holistic-fixing  '2026-06-12T12:20:29Z'
+holistic-reviewing  '2026-06-12T12:23:19Z'
 ```
 
 ## Batches
