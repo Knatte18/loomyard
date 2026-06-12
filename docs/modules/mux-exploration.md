@@ -40,21 +40,18 @@ Environment (verified 2026-06-11):
    session is fine and reliable (`mhgo mux attach`). Precise multi-window docking and WT
    multi-tab launching are brittle → best-effort, not core. mux is host-agnostic; psmux
    auto-resizes to the attached client.
-7. **Crash recovery = mux's OWN journal + re-injection, NOT native `claude --resume`.**
-   Exhaustively established (see findings): a **programmatically-driven** (send-keys / launch
-   `[prompt]` arg) interactive claude in a psmux pane does **not** persist its transcript —
-   only an `ai-title` stub is ever written, so there is nothing for `claude --resume` to
-   restore. (Only genuine human keystrokes through an attached client persist.) Since mux
-   panes are driven programmatically/autonomously, native resume is **off the table.**
-   Therefore: mux continuously polls `capture-pane` (~500 ms; ~23 ms latency) and writes each
-   pane's conversation to its **own** durable local-state journal on disk, keyed by the
-   mux-assigned `--session-id` (recorded with the worktree + layout). `mhgo mux resume`
-   rebuilds the layout, relaunches a **real interactive** claude per pane (still a full TUI —
-   NOT `claude -p`), and **re-injects the journal as opening context.** Goal achieved (the
-   agent continues where it left off); cost is fidelity (journal = rendered conversation text,
-   not exact tool-call/internal state). Rejected alternative: OS-level keystroke injection into
-   the focused window (would mimic "real" typing and might enable native persistence) — couples
-   mux to the host OS window and breaks the host-agnostic principle (decision 6).
+7. **Crash recovery via native `claude --resume` — works, given env hygiene.** mux assigns each
+   pane `--session-id <uuid>` at launch, records it (+ worktree + layout) in local-state, and after
+   a crash `mhgo mux resume` rebuilds the layout and runs `claude --resume <session-id>` per pane.
+   **Verified end-to-end twice** (this session + an independent thread): full transcript persisted
+   (~14 KB, real `user`/`assistant` records), and after `kill-server` the resumed pane recalled the
+   codeword. **The one requirement:** strip the inherited Claude-Code parent-session env before
+   launching claude in a pane — `CLAUDE_CODE_CHILD_SESSION=1` (prime culprit), plus `CLAUDECODE`,
+   `CLAUDE_CODE_SESSION_ID`, `CLAUDE_CODE_ENTRYPOINT`, `CLAUDE_CODE_SSE_PORT`. When inherited (i.e.
+   mhgo invoked from inside a Claude Code session), claude treats the pane as a nested child and
+   **suppresses transcript writing** → empty resume. A standalone-CLI mhgo has a clean env already;
+   mux should strip them defensively regardless. mux's `capture-pane` journal is then an **optional**
+   belt-and-suspenders / higher-availability log, not the primary resume mechanism.
 
 Open sub-decisions: window naming; whether the orchestrator is always isolated or only on
 overflow; reflow on worktree add/remove (re-render); stable column ordering across syncs;
@@ -180,11 +177,19 @@ claude 2.1.158/159). This session re-verified on claude **2.1.173**.
   (`split-window` + launch); it must not rely on claude populating panes via its teammate
   integration. (Confirms the "Column owns its subtree, mux renders layout" decision.)
 
-### Session persistence & `--resume` — RESOLVED: human typing persists, programmatic driving does NOT
-**Final determination (after a long, flip-flopping investigation):** native `claude --resume`
-is **viable only for human-typed sessions**, NOT for the programmatically-driven panes mux
-actually uses. So `mhgo mux resume` must rebuild from mux's **own journal** (re-injection), not
-native resume — see Landed decision 7. The evidence trail:
+### Session persistence & `--resume` — RESOLVED: native resume works; root cause was inherited env
+**Final determination (after a long, flip-flopping investigation, confirmed twice):** native
+`claude --resume` **works for programmatically-driven psmux panes.** The persistence failures were
+an artifact of the test harness: probes ran from **inside a Claude Code session**, whose
+environment exports `CLAUDE_CODE_CHILD_SESSION=1` (+ `CLAUDECODE`, `CLAUDE_CODE_SESSION_ID`,
+`CLAUDE_CODE_ENTRYPOINT`, `CLAUDE_CODE_SSE_PORT`); psmux passed these into the panes, and claude
+treated each pane as a **nested child session and suppressed transcript writing** → only an
+`ai-title` stub. **Strip those vars before launching claude in the pane and persistence + native
+resume work perfectly** — verified independently twice (14.3 KB transcript with real
+`user`/`assistant` records; `claude --resume <id>` after `kill-server` recalled the codeword). Not
+send-keys, not the visible window, not the model — inherited parent-session env. See Landed
+decision 7. The evidence trail (note: bullets below marked "did NOT persist" were all run with the
+poisoning env present — they are the symptom, not a limitation):
 - claude stores transcripts at `~/.claude/projects/<cwd-encoded>/<session-id>.jsonl`
   (path encoding replaces `:`, `\`, AND `.` with `-`).
 - **A real keyboard-typed interactive `claude` in a psmux pane persists the FULL transcript,
@@ -296,10 +301,12 @@ What actually works on this build:
 ## Open / TODO
 
 - [x] Real interactive `claude` in a pane: renders, send-keys drives it, capture reads it. ✓
-- [x] `claude --resume <id>`: works ONLY for human-typed sessions (transcript persists, verified
-  18.6 KB + recall). Programmatically-driven panes (send-keys / `[prompt]` arg / autonomous
-  tool-agent) do NOT persist (ai-title stub only) → native resume off the table for mux. Resume =
-  mux's own journal + re-injection (decision 7).
+- [x] `claude --resume <id>`: **works for programmatically-driven panes** once the inherited
+  `CLAUDE_CODE_CHILD_SESSION=1` (+ `CLAUDECODE`/`CLAUDE_CODE_*`) env is stripped before launch.
+  Verified twice (14 KB transcript, recall after `kill-server`). The earlier "doesn't persist"
+  results were all caused by that inherited env (probes ran inside a Claude Code session) — NOT by
+  send-keys/visible-window/model. → native resume IS the mechanism (decision 7); env hygiene is the
+  one requirement; mux's journal is optional.
 - [x] Teammate-mode does NOT auto-spawn panes (in-process Agent) → mux owns panes.
 - [x] Hooks: `pane-died` fires via `run-shell -b` (needs `remain-on-exit on`; no format-var
   expansion → bare trigger; fires detached). `monitor-silence`/`alert-silence` NON-functional

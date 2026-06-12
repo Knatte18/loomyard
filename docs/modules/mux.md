@@ -24,6 +24,11 @@ Driven by `mhgo mux <subcommand>`; reads the worktree registry from
   0-byte WindowsApps execution-alias stub that renders nothing under ConPTY; the explicit
   `C:\Code\tools\powershell7\pwsh.exe` works. Same discipline for `claude`.
 - No Node/npm needed (claude is a native binary; mhgo is Go, psmux is Rust).
+- **Strip the inherited Claude-Code parent-session env before launching claude in a pane**
+  (`CLAUDE_CODE_CHILD_SESSION`, `CLAUDECODE`, `CLAUDE_CODE_SESSION_ID`, `CLAUDE_CODE_ENTRYPOINT`,
+  `CLAUDE_CODE_SSE_PORT`). If inherited (mhgo run from inside a Claude Code session), claude treats
+  the pane as a nested child and silently stops persisting its transcript — breaking resume. See
+  [Resume](#resume-after-crash-native---resume-with-env-hygiene).
 
 ## Design model (the load-bearing decisions)
 
@@ -48,8 +53,10 @@ Driven by `mhgo mux <subcommand>`; reads the worktree registry from
    session is reliable (`mhgo mux attach`); precise multi-window docking and WT multi-tab
    launches are brittle → best-effort, not core. mux is host-agnostic; psmux auto-resizes to
    whatever client attaches.
-7. **Crash recovery = mux's own journal + re-injection, NOT native `claude --resume`.** This
-   is the biggest empirical correction (see [Resume](#resume-after-crash-the-corrected-model)).
+7. **Crash recovery via native `claude --resume`, given env hygiene.** mux assigns each pane a
+   `--session-id` at launch and `mhgo mux resume` relaunches `claude --resume <id>` per pane. The
+   one requirement: **strip the inherited Claude-Code parent-session env before launching claude**
+   (see [Resume](#resume-after-crash-native---resume-with-env-hygiene)).
 
 ## v1 — one window per repo, one column per worktree (milestone 5)
 
@@ -65,10 +72,14 @@ equal columns; no layout math needed yet.
                  (one psmux window per repo)
 ```
 
-Each column launches claude with a **mux-assigned session id**:
-`claude --session-id <uuid> "<initial task>"` — the id is recorded in `local-state.json`
-from t0 (groundwork for resume, decision 7), and the task is passed as the **positional
-`[prompt]` arg**, never typed into a running TUI (see [Constraints](#what-actually-works)).
+Each column launches claude with a **mux-assigned session id**, after **stripping the inherited
+Claude-Code parent-session env** (`CLAUDE_CODE_CHILD_SESSION`, `CLAUDECODE`,
+`CLAUDE_CODE_SESSION_ID`, `CLAUDE_CODE_ENTRYPOINT`, `CLAUDE_CODE_SSE_PORT` — see
+[Resume](#resume-after-crash-native---resume-with-env-hygiene)): `claude --session-id <uuid>
+"<initial task>"`. The id is recorded in `local-state.json` from t0 (so resume works, decision 7),
+and the task is passed as the **positional `[prompt]` arg**, never typed into a running TUI (see
+[Constraints](#what-actually-works)). The env strip is mandatory or the pane's claude won't persist
+its transcript.
 
 ### v1 subcommands
 
@@ -117,40 +128,37 @@ These are the tested facts any implementation must respect. Full evidence in
   pop-up helper must pop **maximized** or be the sole client. `detach-client` by name is
   unsupported.
 
-## Resume after crash — the corrected model
+## Resume after crash — native `--resume` with env hygiene
 
-The earlier sketch (and roadmap milestone 7) assumed `mhgo mux resume` would relaunch each
-pane with `claude --resume <session-id>`. **Hands-on testing shows that does not work for
-mux's panes.** Determination:
-
-- A **programmatically-driven** interactive claude in a psmux pane **does not persist its
-  transcript** — only a ~100-byte `ai-title` stub is written, so `claude --resume` finds
-  nothing. Verified across every variant (send-keys burst, char-by-char, positional `[prompt]`
-  arg, default/explicit shell, attached/detached, +150 s idle, and an autonomous tool-using
-  agent that created a file yet still wrote only the stub).
-- Only a **human typing through an attached client** persists the full transcript (then
-  native `--resume` works perfectly). `claude -p` headless also persists — but a headless,
-  non-interactive feel is **explicitly out of scope** (the panes must feel like real
-  interactive sessions). The discriminator is server-side injection vs. client-originated
-  keystrokes; any programmatic driver is the former. (Symptom matches documented regression
-  GitHub #60984 / flush-race #625; mechanism unproven, but the design no longer depends on it.)
-
-**Therefore mux owns its own recovery data:**
+`mhgo mux resume` rebuilds the layout from `local-state.json` and relaunches `claude --resume
+<session-id>` per pane. **This works for programmatically-driven panes** — verified end-to-end
+twice (independent thread + in-session): a full transcript persisted (~14 KB, real
+`user`/`assistant` records) and after a `kill-server` crash the resumed pane recalled its codeword.
 
 ```
 mhgo mux resume:
   read local-state.json → rebuild windows + columns (layout string)
-  per pane: relaunch a REAL interactive claude (full TUI, not -p) with the stored --session-id
-            and re-inject opening context from mux's own journal
-              ("Here is what you were doing before the crash: …")  +  the worktree's actual
-              git state (diff / changed files) so the agent re-orients from ground truth
+  per pane: <strip Claude-Code parent-session env>  (see below)
+            claude --resume <stored session-id>   # full TUI, native resume
 ```
 
-mux's journal is built by the `capture-pane` poller (the same poller used for idle detection
-and pane-death detection — see daemon). Fidelity cost: the journal is rendered conversation
-text, not exact tool-call/internal state. This is arguably *better* for an autonomous agent
-than stale in-memory state: it re-orients from the repo's real state plus a recap. v1 lays the
-groundwork (assign + store `--session-id`); the poller and `resume` ship with the daemon.
+**The one requirement — strip the inherited parent-session env before launching claude:**
+when mhgo is invoked from *inside* a Claude Code session, the environment carries
+`CLAUDE_CODE_CHILD_SESSION=1` (prime culprit), plus `CLAUDECODE`, `CLAUDE_CODE_SESSION_ID`,
+`CLAUDE_CODE_ENTRYPOINT`, `CLAUDE_CODE_SSE_PORT`. psmux passes these into the pane, and claude
+then treats the pane as a **nested child session and suppresses transcript writing** — leaving
+only a ~100-byte `ai-title` stub, so `--resume` finds nothing. This single inherited-env effect
+caused every "doesn't persist" result during exploration; it is **not** send-keys, the visible
+window, or the model. A standalone-CLI mhgo already has a clean env, but mux must strip these
+defensively (Go: build the child `exec.Cmd.Env` without them) so each pane is a fresh top-level
+session.
+
+`claude -p` headless also persists, but a non-interactive feel is **out of scope** — the panes
+must feel like real interactive sessions, and with env hygiene they are, *and* resumable.
+
+> The `capture-pane` journal (see daemon) is now an **optional** higher-availability log /
+> belt-and-suspenders — useful for streaming and as a recap supplement, but no longer required
+> for resume. v1 lays the groundwork: assign + store `--session-id` and strip the env at launch.
 
 ---
 
@@ -213,14 +221,14 @@ Trade-off: `%output` is the **raw VT100 byte stream** (needs ANSI-stripping), wh
 idle detection (simpler), and reserve `-CC` for true streaming (the Slack relay) or to replace
 N pollers with one control client. **Recovery uses `respawn-pane`** — it reuses the same pane
 id and revives a dead pane in place (layout untouched); it respawns the default shell, into
-which mux then launches claude + re-injects journal context.
+which mux then launches `claude --resume <session-id>` (with the parent-session env stripped).
 
 **Mutual watchdog.** Both watch each other:
 
 ```
 psmux crashes → daemon detects via cmd.Wait() → relaunches psmux
-  → reads local-state.json → rebuilds layout → re-injects journal per pane (see Resume;
-    NOT native claude --resume)
+  → reads local-state.json → rebuilds layout → claude --resume <id> per pane
+    (parent-session env stripped — see Resume)
 daemon crashes → next pane-died hook → run-shell -b → `mhgo mux ensure-daemon`
   → checks named pipe / PID → relaunches daemon
 ```
@@ -233,14 +241,10 @@ process that forwards the (pane-less) event and exits.
 ```
 pane-died (or poller sees pane_dead) → scan list-panes for the dead %id
   → look up its worktree + session-id in local-state.json
-  → respawn-pane -t %P -- relaunch interactive claude + re-inject journal context
+  → respawn-pane -t %P  (revive shell, same id) → launch claude --resume <id> (env stripped)
   → Slack: "ℹ️ Recovered <worktree>"
 crash-loop guard: N respawns within T minutes → stop, urgent Slack alert
 ```
-
-> Note: roadmap milestone 7 still reads "respawns Claude with `--resume <session-id>`" — that
-> phrasing predates this exploration and should be read as "relaunch + re-inject from journal";
-> native `--resume` is not viable for programmatically-driven panes.
 
 ### Slack relay (milestone 8)
 
@@ -265,9 +269,9 @@ so the user can walk away and watch via Slack.
 ### Session files and portability (milestone 11)
 
 Claude stores transcripts at `%USERPROFILE%\.claude\projects\<project>\<session-id>.jsonl`
-(the project segment encodes the cwd with `:`, `\`, and `.` all replaced by `-`). Sessions are
-**not** portable across machines — and, per [Resume](#resume-after-crash-the-corrected-model),
-programmatically-driven panes don't even populate them locally. `mhgo session push/pull` (e.g.
-robocopy to a synced drive) only helps for human-typed sessions; for mux's autonomous panes the
-**journal** is the portable record. `CLAUDE_CONFIG_DIR` redirects *all* config (incl.
+(the project segment encodes the cwd with `:`, `\`, and `.` all replaced by `-`). With env
+hygiene (see [Resume](#resume-after-crash-native---resume-with-env-hygiene)) mux's panes populate
+these normally. Sessions are **not** portable across machines, though — `claude --resume` only
+works where the JSONL exists. `mhgo session push/pull` (e.g. robocopy to a synced drive) would
+copy them for cross-machine resume. `CLAUDE_CONFIG_DIR` redirects *all* config (incl.
 credentials), so it is unsuitable for selective session sync.
