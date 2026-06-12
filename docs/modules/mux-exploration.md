@@ -247,6 +247,31 @@ native resume — see Landed decision 7. The evidence trail:
 never reaches claude. Drive `send-keys` from **pwsh** (or Go `exec`, which has no MSYS layer).
 mhgo is unaffected; the probe harness was.
 
+### Hooks & event-driven monitoring (tested 2026-06-12)
+psmux documents tmux-style hooks (`set-hook -g <event> "<cmd>"`, `show-hooks`, `run-shell -b`).
+What actually works on this build:
+- **`pane-died` fires reliably**, and runs a background command via `run-shell -b` (verified: a
+  `pwsh -File logger.ps1` hook wrote to disk). **Requires `set-option -g remain-on-exit on`** —
+  otherwise a pane whose process exits just vanishes (and if it's the last pane, the session and
+  server exit) and the hook does not fire. **Fires with NO client attached** → usable by a
+  daemonless mux.
+- **Format variables do NOT expand in hook commands.** `#{pane_id}` / `#{hook_pane}` came through
+  literally/empty (`info=paneid_#`). So a `pane-died` hook is a **bare trigger** — it cannot tell
+  mux *which* pane died. The handler must then scan `list-panes -F "#{pane_id} #{pane_dead}"` to
+  find the dead pane(s). (Format vars DO expand in normal `display-message`/`capture-pane -F`,
+  just not inside hook-invoked `run-shell`.)
+- **Silence/activity monitoring is NON-functional here.** `set-window-option` is an *unknown
+  command*; `set-option -w monitor-silence|monitor-activity|monitor-bell <n>` is **silently
+  accepted but never stored** (`show-window-options` keeps showing only `monitor-activity off`),
+  and the `alert-silence` hook never fired across an 8 s idle. → **no built-in "agent went idle"
+  signal.** mux must detect idle itself via the capture-pane poller (the `shortcuts` status-bar
+  marker = idle, `interrupt` = busy).
+- **Implication for mux:** hooks are a *minor convenience*, not a monitoring foundation. mux needs
+  the `capture-pane` poller anyway (for the resume journal — decision 7 — and for idle detection,
+  since `pipe-pane` and silence-hooks don't work). That poller already sees `pane_dead`, so it can
+  detect death too; `pane-died` is at best a low-latency nudge to wake the poller / trigger a
+  cleanup-or-relaunch. Don't build core behavior on hooks.
+
 ---
 
 ## Open / TODO
@@ -257,6 +282,8 @@ mhgo is unaffected; the probe harness was.
   tool-agent) do NOT persist (ai-title stub only) → native resume off the table for mux. Resume =
   mux's own journal + re-injection (decision 7).
 - [x] Teammate-mode does NOT auto-spawn panes (in-process Agent) → mux owns panes.
-- [ ] Hooks: do `pane-died`, `alert-silence`, `monitor-silence` fire via `run-shell -b`?
+- [x] Hooks: `pane-died` fires via `run-shell -b` (needs `remain-on-exit on`; no format-var
+  expansion → bare trigger; fires detached). `monitor-silence`/`alert-silence` NON-functional
+  (silently accepted, never fires). → hooks are a convenience nudge; poller is the foundation.
 - [ ] `respawn-pane` behavior (with/without `-k`).
 - [ ] control-mode `-CC` live `%output` smoke test from Go.
