@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-approved
+phase: done
 slug: mhgo-mux-design
 branch: mhgo-mux-design
 plan: _mill/plan
@@ -29,6 +29,7 @@ holistic-fixing  '2026-06-12T12:20:29Z'
 holistic-reviewing  '2026-06-12T12:23:19Z'
 holistic-fixing  '2026-06-12T12:25:55Z'
 holistic-approved  '2026-06-12T12:27:19Z'
+done  '2026-06-12T12:27:42Z'
 ```
 
 ## Batches
