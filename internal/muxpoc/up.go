@@ -42,6 +42,9 @@ func cmdUp(out io.Writer, cfg Config) int {
 		}
 		if up {
 			// Session is running — report already up
+			if len(state.Panes) == 0 {
+				return output.Err(out, "state has no panes")
+			}
 			return output.Ok(out, map[string]any{
 				"session_id":    state.Panes[0].SessionID,
 				"socket":        state.Socket,
