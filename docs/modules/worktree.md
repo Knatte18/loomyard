@@ -43,11 +43,13 @@ Naming conventions:
 - **Board:** `_board` (underscore prefix = system directory, not a worktree). This
   matches the config default `path: ../_board` — relative to the hub cwd, `../`
   steps up to the container and `_board` lands alongside the hub.
-- **Worktrees:** named after their branch slug, directly in the container.
+- **Worktrees:** named after their branch name with `/` replaced by `-`
+  (e.g. branch `hanf/my-task` → directory `hanf-my-task`), directly in the container.
 
-The container path is configured in `worktree.yaml` (resolved via
-[`internal/config`](../shared-libs/config.md), so it honours `$env:NAME ? default`
-and the cwd-authoritative rule — cwd need not equal the git-repo root).
+The container is always the parent of the hub (`..` relative to the hub root) — this
+is a fixed layout invariant, not a config key. `worktree.yaml` (loaded via
+[`internal/config`](../shared-libs/config.md)) holds only the spawn-time settings
+(currently just `branch_prefix`).
 
 ## Subcommands (proposed)
 
@@ -102,6 +104,5 @@ worktree module's responsibility.
   (Leaning: mhgo manages the worktree; junction *creation* is out of scope, but
   junction *removal* on teardown is in scope, since it blocks `git worktree
   remove`.)
-- Branch naming policy: always `<slug>`, or configurable.
 - Whether `remove` refuses a worktree with uncommitted changes by default
   (`--force` to override).
