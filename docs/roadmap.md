@@ -44,8 +44,10 @@ observable changes until the new module that needs the extracted lib arrives.
    appears below its parent). Built only once Agent Dispatch stops being enough.
 
 7. **mux daemon.** Standalone watchdog process: detects a psmux crash via
-   `cmd.Wait()`, respawns Claude with `--resume <session-id>`, mutual watchdog so
-   both must die to go dark. See [modules/mux.md](modules/mux.md#deferred).
+   `cmd.Wait()`, recovers each pane by relaunching interactive Claude and re-injecting
+   context from mux's own capture journal (native `--resume` does **not** work for
+   programmatically-driven panes — see [modules/mux.md](modules/mux.md#resume-after-crash-the-corrected-model)),
+   mutual watchdog so both must die to go dark. See [modules/mux.md](modules/mux.md#deferred).
 
 8. **Slack relay.** Bidirectional, one channel per worktree, riding on the daemon.
 
