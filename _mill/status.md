@@ -34,7 +34,9 @@ batches:
     start_sha: 8a183c528164797d54fea0c9b52c5d9a7ec3e5c8
     commit_sha: 2f147f11fe5a5461ee152785337661d7b3e941ea
   - name: links-teardown-helper
-    state: pending
+    state: running
+    implementer_session: 53c97009-a097-48c8-8b09-2157238e5336
+    start_sha: ba7ba7990c0e1776efeba2e567802a884d88dfbd
   - name: subcommands
     state: pending
   - name: cli-router
