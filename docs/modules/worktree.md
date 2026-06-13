@@ -55,9 +55,9 @@ is a fixed layout invariant, not a config key. `worktree.yaml` (loaded via
 
 | Command | Does |
 |---|---|
-| `mhgo worktree add <slug>` | Create a worktree under the container on a new branch; register it in state. |
-| `mhgo worktree list` | List tracked worktrees from state, reconciled against `git worktree list`. |
-| `mhgo worktree remove <slug>` | The junction-aware teardown (below); deregister from state. |
+| `mhgo worktree add <slug>` | Create a worktree under the container on a new branch. |
+| `mhgo worktree list` | List all git worktrees (via `git worktree list --porcelain`). |
+| `mhgo worktree remove [--force] <slug>` | The junction-aware teardown (below); `--force` skips dirty check. |
 
 ## State
 
@@ -97,12 +97,13 @@ The module owns this sequence so it is never relearned:
 handed. The *ordering*, the junction removal, and the lock-failure fallback are the
 worktree module's responsibility.
 
-## Open questions
+## Resolved decisions
 
-- Whether `add` also creates the mill-style junctions (`.active`/`.portals`), or
-  whether that stays a mill concern and mhgo only manages the git worktree itself.
-  (Leaning: mhgo manages the worktree; junction *creation* is out of scope, but
-  junction *removal* on teardown is in scope, since it blocks `git worktree
-  remove`.)
-- Whether `remove` refuses a worktree with uncommitted changes by default
-  (`--force` to override).
+1. **Junction management scope:** mhgo manages the git worktree only. Junction
+   *creation* is out of scope (a mill concern), but junction *removal* on teardown
+   IS in scope because it unblocks `git worktree remove` on Windows.
+
+2. **`remove` dirty-check behaviour:** `remove` refuses a worktree with uncommitted
+   changes (tracked changes OR untracked files) by default and requires `--force`
+   to override. This mirrors the safety of `git worktree remove` and prevents
+   accidental data loss.
