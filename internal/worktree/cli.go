@@ -114,7 +114,6 @@ func RunCLI(out io.Writer, args []string) int {
 		})
 
 	default:
-		fmt.Fprintf(os.Stderr, "unknown subcommand: %s\n", subcommand)
-		return 1
+		return output.Err(out, fmt.Sprintf("unknown subcommand: %s", subcommand))
 	}
 }
