@@ -28,7 +28,9 @@ implementing  '2026-06-13T13:47:22Z'
 ```yaml
 batches:
   - name: config-and-facade
-    state: pending
+    state: running
+    implementer_session: efe7c5b3-1952-4b15-ac69-6624855842fa
+    start_sha: 8a183c528164797d54fea0c9b52c5d9a7ec3e5c8
   - name: links-teardown-helper
     state: pending
   - name: subcommands
