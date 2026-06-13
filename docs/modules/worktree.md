@@ -1,7 +1,7 @@
 # Module: worktree (sketch)
 
 > **Status:** sketch — nothing here is implemented. This is the design to build
-> toward (roadmap milestone 5). It is the Go port of millpy's `_worktree.py`.
+> toward (roadmap milestone 4). It is the Go port of millpy's `_worktree.py`.
 
 The worktree module owns the **lifecycle of git worktrees**: creating them under
 the container, tracking them in machine-local state, and tearing them down cleanly —

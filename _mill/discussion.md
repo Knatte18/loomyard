@@ -304,8 +304,10 @@ func addRemote(t *testing.T, repoDir string) string {
 - `branch_prefix` non-empty → branch and dir names correct
 
 **list_test.go**
-- Empty repo (only main worktree) → one entry, `main: true`
-- After `git worktree add` → two entries
+- Empty repo (only main worktree) → one entry, `main: true`. Assert that the first
+  entry is always the main checkout (pins git's documented first-block ordering contract).
+- After `git worktree add` → two entries; added worktree has `main: false`
+- Branch short name: assert `"branch": "master"` not `"refs/heads/master"`
 - JSON output shape matches spec
 
 **remove_test.go**
