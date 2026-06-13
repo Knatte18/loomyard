@@ -3,6 +3,7 @@ package worktree
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 )
 
 // removeLinks scans the immediate children of dir and removes any symlinks or
@@ -17,7 +18,7 @@ func removeLinks(dir string) (int, error) {
 
 	count := 0
 	for _, entry := range entries {
-		fullPath := dir + "/" + entry.Name()
+		fullPath := filepath.Join(dir, entry.Name())
 		info, err := os.Lstat(fullPath)
 		if err != nil {
 			return count, fmt.Errorf("lstat %s: %w", fullPath, err)
