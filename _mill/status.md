@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r1
+phase: planned
 slug: mhgo-worktree-module
 branch: mhgo-worktree-module
 plan: _mill/plan
@@ -19,4 +19,5 @@ discussion-fix-r3  '2026-06-13T13:11:42Z'
 discussed  '2026-06-13T13:11:53Z'
 planning  '2026-06-13T13:35:35Z'
 plan-fix-r1  '2026-06-13T13:39:10Z'
+planned  '2026-06-13T13:39:31Z'
 ```
