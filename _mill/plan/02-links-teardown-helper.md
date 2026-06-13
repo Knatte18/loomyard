@@ -33,9 +33,11 @@ it directly).
 - **Requirements:** In `package worktree`, add
   `func removeLinks(dir string) (int, error)`. It reads the immediate children of
   `dir` (non-recursive) via `os.ReadDir`, and for each entry calls `os.Lstat` on the
-  full child path; if `info.Mode()&os.ModeSymlink != 0` (true for both POSIX symlinks
-  and Windows NTFS junctions, which Go reports as symlinks) it calls `os.Remove` on
-  that path and increments a counter. Return the count of removed links and the first
+  full child path; if `info.Mode()&os.ModeSymlink != 0` it calls `os.Remove` on
+  that path and increments a counter. The `&os.ModeSymlink` bitmask test matches both
+  POSIX symlinks and Windows NTFS junctions — note that some Go versions report a
+  junction as `ModeSymlink|ModeIrregular`, so test the bit with `&`, never compare the
+  mode for equality. Return the count of removed links and the first
   error encountered (wrap with context, e.g. `fmt.Errorf("remove link %s: %w", ...)`).
   Regular files and real subdirectories are left untouched. If `dir` does not exist,
   return `(0, err)` from the `os.ReadDir` failure. Do not import `internal/git` — this

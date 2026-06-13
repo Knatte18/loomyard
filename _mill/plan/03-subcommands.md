@@ -44,7 +44,9 @@ the three result/entry structs.
   `filepath.Dir(hub)`, where Add/Remove place sibling worktrees.)
   `addRemote(t *testing.T, hub string) string` creates `bare := t.TempDir()`, runs
   `git init --bare` (cwd=bare), then `git remote add origin <bare>` (cwd=hub), and
-  returns `bare`. Mark every helper with `t.Helper()`.
+  returns `bare`. Mark every helper with `t.Helper()`. Note: `addRemote` deliberately
+  does NOT push the base branch — `Add`'s own `git push -u origin <branch>` populates
+  the empty bare repo with the new branch, so no seed push is needed.
 - **Commit:** `test(worktree): add shared git test helpers`
 
 ### Card 7: Add subcommand

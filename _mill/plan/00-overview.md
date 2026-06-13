@@ -3,7 +3,7 @@
 ```yaml
 task: Build mhgo worktree module
 slug: mhgo-worktree-module
-approved: false
+approved: true
 started: 20260613-133159
 parent: main
 root: ""

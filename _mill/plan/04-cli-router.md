@@ -39,8 +39,11 @@ External interface batch 5 consumes: `worktree.RunCLI(out io.Writer, args []stri
   `func RunCLI(out io.Writer, args []string) int`. Resolve `cwd, err := os.Getwd()`
   (on error → `output.Err(out, err.Error())`). Load config:
   `cfg, err := LoadConfig(cwd, "worktree")` (on error → `output.Err`). Build
-  `w := New(cfg)`. Require `len(args) >= 1` for the subcommand (else print a usage line
-  to `os.Stderr` and return 1, mirroring `internal/board/cli.go`). Switch on
+  `w := New(cfg)`. This config-before-subcommand-check ordering is intentional and
+  matches `internal/board/cli.go` (which also loads config before checking subcommand
+  presence); Card 16's routing test relies on the config-error envelope. Then require
+  `len(args) >= 1` for the subcommand (else print a usage line to `os.Stderr` and
+  return 1, mirroring `internal/board/cli.go`). Switch on
   `args[0]`:
   - `"add"`: require `args[1]` as slug (else `output.Err(out, "usage: worktree add <slug>")`);
     call `w.Add(cwd, args[1])`; on error `output.Err`; on success
