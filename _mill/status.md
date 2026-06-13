@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: mhgo-worktree-module
 branch: mhgo-worktree-module
 plan: _mill/plan
@@ -30,6 +30,7 @@ holistic-reviewing  '2026-06-13T14:00:20Z'
 holistic-fixing  '2026-06-13T14:04:24Z'
 holistic-approved  '2026-06-13T14:08:08Z'
 done  '2026-06-13T14:08:27Z'
+pr-pending  '2026-06-13T14:12:06Z'
 ```
 
 ## Batches
