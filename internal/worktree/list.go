@@ -52,8 +52,9 @@ func (w *Worktree) List(sourceDir string) ([]WorktreeEntry, error) {
 func parseWorktreePorcelain(out string) ([]WorktreeEntry, error) {
 	blocks := strings.Split(out, "\n\n")
 	var entries []WorktreeEntry
+	firstBlock := true
 
-	for blockIdx, block := range blocks {
+	for _, block := range blocks {
 		// Skip empty blocks (trailing blank lines produce an empty final block)
 		if strings.TrimSpace(block) == "" {
 			continue
@@ -61,8 +62,9 @@ func parseWorktreePorcelain(out string) ([]WorktreeEntry, error) {
 
 		lines := strings.Split(block, "\n")
 		entry := WorktreeEntry{
-			Main: blockIdx == 0, // FIRST non-empty block is main
+			Main: firstBlock, // FIRST non-empty block is main
 		}
+		firstBlock = false
 
 		for _, line := range lines {
 			line = strings.TrimSpace(line)
