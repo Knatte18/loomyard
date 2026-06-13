@@ -67,12 +67,15 @@ This is milestone 4 in the roadmap: the first module to consume `internal/git` a
 ### `add` fails if the source worktree is dirty
 
 - Decision: `mhgo worktree add <slug>` checks whether the worktree it is run from has
-  uncommitted changes (staged or unstaged). If so, it exits with an error before
-  touching git. No `--force` bypass.
-- Rationale: spawning from a dirty working tree is a workflow hazard — changes are
-  easy to lose track of across multiple worktrees. Hard failure enforces clean state.
+  uncommitted staged or unstaged changes to tracked files. Untracked files are ignored
+  — they stay in the source worktree and do not affect the new branch. Use
+  `git status --porcelain --untracked-files=no`. If output is non-empty, exit with
+  an error before touching git. No `--force` bypass.
+- Rationale: spawning from a dirty working tree is a workflow hazard — tracked changes
+  are easy to lose track of across worktrees. Untracked files are irrelevant since
+  `add` only creates a new checkout; untracked files remain untouched.
   The source can be any worktree (not necessarily hub/main).
-- Rejected: always allow (too permissive); check only staged changes (incomplete).
+- Rejected: always allow (too permissive); count untracked as dirty (too strict).
 
 ### `add` pushes the new branch to remote
 
@@ -102,11 +105,13 @@ This is milestone 4 in the roadmap: the first module to consume `internal/git` a
 
 ### `remove` checks for uncommitted changes; `--force` bypasses
 
-- Decision: default behaviour refuses to remove a worktree with uncommitted or
-  unstaged changes, returning an error. `--force` overrides this check and proceeds.
-  Mirrors `git worktree remove` semantics.
-- Rationale: safe default; uncommitted changes are almost always a mistake to discard.
-- Rejected: always refuse (too rigid); always allow (too permissive).
+- Decision: default behaviour refuses to remove a worktree that has uncommitted changes
+  to tracked files OR untracked files (since `os.RemoveAll` will delete them both).
+  Use plain `git status --porcelain` (includes untracked). `--force` overrides this
+  check and proceeds regardless.
+- Rationale: safe default; both tracked changes and untracked files would be permanently
+  lost by the remove. Hard failure unless explicitly forced. Mirrors `git worktree remove`.
+- Rejected: always refuse (too rigid); ignore untracked (data loss risk).
 
 ### Junction/symlink cleanup: scan worktree root, remove all, cross-platform
 
@@ -126,18 +131,29 @@ This is milestone 4 in the roadmap: the first module to consume `internal/git` a
 - Decision: if `git worktree remove` fails after link cleanup (e.g. a terminal is
   still holding the directory on Windows), fall back to: force-delete the directory
   with `os.RemoveAll`, then `git worktree prune` to clear the stale git registration.
+  If the fallback succeeds, return `{"ok":true,...}` with the same JSON shape as the
+  normal path (including `links_removed`). If `os.RemoveAll` itself fails (directory
+  still locked), return `{"ok":false,"error":"..."}` with a message describing the
+  fallback failure — the worktree directory and git registration are left intact.
 - Rationale: mirrors the manual recovery sequence that has been needed repeatedly.
   Makes teardown fully automated even under Windows lock conditions.
-- Rejected: error and leave cleanup to user (too error-prone).
+- Rejected: error on first failure without fallback (requires manual recovery).
 
 ### `list` is a thin wrapper over `git worktree list`
 
 - Decision: `mhgo worktree list` runs `git worktree list --porcelain`, parses the
   output, and returns it as JSON. No state registry (deferred). Reports the current
   git state only.
+- Porcelain field mapping: each blank-line-delimited block → one JSON object.
+  `worktree <path>` → `"path"`, `HEAD <sha>` → `"head"`, `branch <ref>` → `"branch"`
+  (or `"(detached)"` when the `detached` line appears instead). First block in the
+  output = the main worktree → `"main": true`; all subsequent blocks → `"main": false`.
 - Rationale: `internal/state` is deferred to the mux milestone. A thin wrapper gives
   useful output immediately with minimal complexity.
 - Rejected: block list on absence of state (too restrictive); silently hide drift (inconsistent).
+- Follow-up: `docs/modules/worktree.md` describes a state-reconciled `list` and
+  `docs/roadmap.md` milestone 4 mentions the state lib; these need a wording update
+  in a follow-up task once state lands.
 
 ### No state registry in this milestone
 
@@ -194,16 +210,22 @@ package-level doc comment's Modules list to include `worktree` alongside `board`
 
 ```
 add:    {"ok":true,"slug":"...","branch":"...","path":"...","pushed":true}
-list:   {"ok":true,"worktrees":[{"path":"...","branch":"...","head":"...","main":true}]}
+list:   {"ok":true,"worktrees":[{"path":"...","branch":"...","head":"...","main":true}, ...]}
+        branch is "(detached)" when HEAD is detached. First entry has main:true.
 remove: {"ok":true,"slug":"...","path":"...","links_removed":2}
+        links_removed is the count of symlinks/junctions removed before git worktree remove.
+        Same shape whether normal or fallback (os.RemoveAll) path succeeded.
 ```
 
 Error shape: `{"ok":false,"error":"..."}` with exit code 1.
 
 ### Dirty-check implementation
 
-`RunGit([]string{"status", "--porcelain"}, sourceWorktreePath)` — non-empty stdout
-means dirty. Empty stdout = clean. Do not pass `-C`; use RunGit's `cwd` argument.
+`add`: `RunGit([]string{"status", "--porcelain", "--untracked-files=no"}, sourceWorktreePath)` —
+non-empty stdout means tracked changes exist; fail. Untracked files ignored.
+
+`remove`: `RunGit([]string{"status", "--porcelain"}, worktreePath)` — non-empty stdout
+(tracked changes or untracked files) means dirty; fail unless `--force`.
 
 ### Detecting symlinks vs junctions on Windows
 
@@ -214,8 +236,9 @@ junctions (Windows, where Go reports them as symlinks via `ModeSymlink`). Iterat
 
 ### Worktree existence checks in `add`
 
-- Branch exists: `RunGit([]string{"rev-parse", "--verify", branch}, hubPath)` — `exitCode == 0`
-  means the branch exists (`err` is nil for non-zero git exits; inspect `exitCode`).
+- Branch exists: `RunGit([]string{"rev-parse", "--verify", branch}, sourceWorktreePath)` —
+  `exitCode == 0` means the branch exists. All worktrees in the same repo share refs,
+  so running from `sourceWorktreePath` (cwd) is correct; no need to locate the hub.
 - Directory exists: `os.Stat(<container>/<dir>)` — error with `os.IsNotExist`.
 
 ### Path resolution in `add`
