@@ -46,7 +46,9 @@ batches:
     start_sha: 35f186fddf0304d41661853baf31566c642430b1
     commit_sha: 49c50719950591168a4532395011d14853cdc838
   - name: cli-router
-    state: pending
+    state: running
+    implementer_session: 0a120878-e8d6-4e10-95b4-c03ca3d25c42
+    start_sha: e764efa547a39b392d63f0b8888ec037ae3cb755
   - name: integration-and-docs
     state: pending
 ```
