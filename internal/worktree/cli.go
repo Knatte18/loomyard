@@ -109,9 +109,9 @@ func RunCLI(out io.Writer, args []string) int {
 			return output.Err(out, err.Error())
 		}
 		return output.Ok(out, map[string]any{
-			"slug":           r.Slug,
-			"path":           r.Path,
-			"links_removed":  r.LinksRemoved,
+			"slug":          r.Slug,
+			"path":          r.Path,
+			"links_removed": r.LinksRemoved,
 		})
 
 	default:

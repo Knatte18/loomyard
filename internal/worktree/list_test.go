@@ -1,74 +1,80 @@
 package worktree_test
 
 import (
+	"fmt"
 	"path/filepath"
 	"testing"
 
 	"github.com/Knatte18/mhgo/internal/worktree"
 )
 
-// TestListSingleWorktree tests that List returns exactly one entry for a fresh repo.
-func TestListSingleWorktree(t *testing.T) {
-	hub := newTestRepo(t)
-
-	w := worktree.New(worktree.Config{})
-	entries, err := w.List(hub)
-
-	if err != nil {
-		t.Fatalf("List failed: %v", err)
+// TestList covers the porcelain parser: a fresh repo yields exactly the main
+// worktree, and additional worktrees appear after it with Main=false.
+func TestList(t *testing.T) {
+	tests := []struct {
+		name string
+		// extraWorktrees is the number of additional worktrees created
+		// alongside the main checkout before listing.
+		extraWorktrees int
+		verify         func(t *testing.T, hub string, entries []worktree.WorktreeEntry)
+	}{
+		{
+			name:           "SingleWorktree",
+			extraWorktrees: 0,
+			verify: func(t *testing.T, hub string, entries []worktree.WorktreeEntry) {
+				if len(entries) != 1 {
+					t.Fatalf("List() len = %d; want 1", len(entries))
+				}
+				e := entries[0]
+				if !e.Main {
+					t.Errorf("entries[0].Main = false; want true")
+				}
+				if e.Branch != "main" {
+					t.Errorf("entries[0].Branch = %q; want %q", e.Branch, "main")
+				}
+				if e.Head == "" {
+					t.Error(`entries[0].Head = ""; want non-empty`)
+				}
+			},
+		},
+		{
+			name:           "TwoWorktrees",
+			extraWorktrees: 1,
+			verify: func(t *testing.T, hub string, entries []worktree.WorktreeEntry) {
+				if len(entries) != 2 {
+					t.Fatalf("List() len = %d; want 2", len(entries))
+				}
+				if !entries[0].Main {
+					t.Errorf("entries[0].Main = false; want true")
+				}
+				// git may emit forward slashes on all platforms; normalize
+				// before comparing the main entry against the hub path.
+				gotPath := filepath.FromSlash(entries[0].Path)
+				if gotPath != hub {
+					t.Errorf("entries[0].Path = %q; want %q", gotPath, hub)
+				}
+				if entries[1].Main {
+					t.Errorf("entries[1].Main = true; want false")
+				}
+			},
+		},
 	}
 
-	if len(entries) != 1 {
-		t.Fatalf("expected 1 entry, got %d", len(entries))
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			hub := newTestRepo(t)
+			for i := 0; i < tt.extraWorktrees; i++ {
+				wtPath := filepath.Join(filepath.Dir(hub), fmt.Sprintf("wt%d", i+1))
+				mustRun(t, hub, "git", "worktree", "add", wtPath)
+			}
 
-	entry := entries[0]
-	if !entry.Main {
-		t.Errorf("expected Main=true, got %v", entry.Main)
-	}
+			w := worktree.New(worktree.Config{})
+			entries, err := w.List(hub)
+			if err != nil {
+				t.Fatalf("List() error = %v; want nil", err)
+			}
 
-	if entry.Branch != "main" {
-		t.Errorf("expected Branch %q, got %q", "main", entry.Branch)
-	}
-
-	if entry.Head == "" {
-		t.Errorf("expected non-empty Head")
-	}
-}
-
-// TestListTwoWorktrees tests that List returns two entries in correct order.
-func TestListTwoWorktrees(t *testing.T) {
-	hub := newTestRepo(t)
-
-	// Create a second worktree
-	wt2Path := filepath.Join(filepath.Dir(hub), "wt2")
-	mustRun(t, hub, "git", "worktree", "add", wt2Path)
-
-	w := worktree.New(worktree.Config{})
-	entries, err := w.List(hub)
-
-	if err != nil {
-		t.Fatalf("List failed: %v", err)
-	}
-
-	if len(entries) != 2 {
-		t.Fatalf("expected 2 entries, got %d", len(entries))
-	}
-
-	// First entry should be main
-	if !entries[0].Main {
-		t.Errorf("expected entries[0].Main=true, got %v", entries[0].Main)
-	}
-
-	// Verify the first entry is the main checkout (its path matches the hub).
-	// Note: git may return paths with forward slashes on all platforms, so normalize for comparison.
-	normalizedEntryPath := filepath.FromSlash(entries[0].Path)
-	if normalizedEntryPath != hub {
-		t.Errorf("expected entries[0].Path=%q, got %q", hub, entries[0].Path)
-	}
-
-	// Second entry should not be main
-	if entries[1].Main {
-		t.Errorf("expected entries[1].Main=false, got %v", entries[1].Main)
+			tt.verify(t, hub, entries)
+		})
 	}
 }

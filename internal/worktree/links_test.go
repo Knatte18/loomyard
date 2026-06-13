@@ -6,121 +6,112 @@ import (
 	"testing"
 )
 
-// TestRemoveLinksIgnoresRegularFilesAndDirs tests that removeLinks leaves
-// regular files and real subdirectories untouched.
-func TestRemoveLinksIgnoresRegularFilesAndDirs(t *testing.T) {
-	tempDir := t.TempDir()
-
-	// Create a regular file
-	regularFile := filepath.Join(tempDir, "regular.txt")
-	if err := os.WriteFile(regularFile, []byte("content"), 0644); err != nil {
-		t.Fatalf("failed to create regular file: %v", err)
-	}
-
-	// Create a real subdirectory
-	realDir := filepath.Join(tempDir, "subdir")
-	if err := os.Mkdir(realDir, 0755); err != nil {
-		t.Fatalf("failed to create subdirectory: %v", err)
-	}
-
-	// Call removeLinks
-	count, err := removeLinks(tempDir)
-
-	// Should return 0 count and no error
-	if err != nil {
-		t.Fatalf("removeLinks failed: %v", err)
-	}
-	if count != 0 {
-		t.Fatalf("expected count 0, got %d", count)
-	}
-
-	// Verify the regular file and directory still exist
-	if _, err := os.Stat(regularFile); err != nil {
-		t.Fatalf("regular file was removed: %v", err)
-	}
-	if _, err := os.Stat(realDir); err != nil {
-		t.Fatalf("real directory was removed: %v", err)
+// writeFile creates a file with the given content, failing the test on error.
+func writeFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("write %s: %v", path, err)
 	}
 }
 
-// TestRemoveLinksRemovesSymlinks tests that removeLinks removes symlinks
-// and returns the correct count.
-func TestRemoveLinksRemovesSymlinks(t *testing.T) {
-	tempDir := t.TempDir()
-
-	// Create symlink targets
-	target1 := filepath.Join(tempDir, "target1.txt")
-	if err := os.WriteFile(target1, []byte("target1"), 0644); err != nil {
-		t.Fatalf("failed to create target1: %v", err)
+// TestRemoveLinks covers the junction/symlink scanner: regular files and real
+// directories are left untouched, symlinks are removed and counted, and a
+// missing directory surfaces the os.ReadDir error.
+func TestRemoveLinks(t *testing.T) {
+	tests := []struct {
+		name string
+		// setup populates a scratch dir and returns the path to scan. It may
+		// call t.Skip when the platform cannot create symlinks.
+		setup func(t *testing.T) string
+		// verify runs scenario-specific post-conditions after removeLinks; nil
+		// when the count/err assertions are sufficient.
+		verify    func(t *testing.T, dir string)
+		wantCount int
+		wantErr   bool
+	}{
+		{
+			name: "IgnoresRegularFilesAndDirs",
+			setup: func(t *testing.T) string {
+				dir := t.TempDir()
+				writeFile(t, filepath.Join(dir, "regular.txt"), "content")
+				if err := os.Mkdir(filepath.Join(dir, "subdir"), 0755); err != nil {
+					t.Fatalf("create subdir: %v", err)
+				}
+				return dir
+			},
+			wantCount: 0,
+			verify: func(t *testing.T, dir string) {
+				// Neither the regular file nor the real directory may be touched.
+				if _, err := os.Stat(filepath.Join(dir, "regular.txt")); err != nil {
+					t.Errorf("regular.txt was removed: %v", err)
+				}
+				if _, err := os.Stat(filepath.Join(dir, "subdir")); err != nil {
+					t.Errorf("subdir was removed: %v", err)
+				}
+			},
+		},
+		{
+			name: "RemovesSymlinks",
+			setup: func(t *testing.T) string {
+				dir := t.TempDir()
+				writeFile(t, filepath.Join(dir, "target1.txt"), "target1")
+				writeFile(t, filepath.Join(dir, "target2.txt"), "target2")
+				writeFile(t, filepath.Join(dir, "regular.txt"), "regular")
+				if err := os.Symlink(filepath.Join(dir, "target1.txt"), filepath.Join(dir, "link1")); err != nil {
+					t.Skipf("symlinks not permitted on this platform: %v", err)
+				}
+				if err := os.Symlink(filepath.Join(dir, "target2.txt"), filepath.Join(dir, "link2")); err != nil {
+					t.Skipf("symlinks not permitted on this platform: %v", err)
+				}
+				return dir
+			},
+			wantCount: 2,
+			verify: func(t *testing.T, dir string) {
+				// The links must be gone but their targets and the control file
+				// must survive — removeLinks only deletes the link entries.
+				if _, err := os.Lstat(filepath.Join(dir, "link1")); err == nil {
+					t.Error("link1 still exists")
+				}
+				if _, err := os.Lstat(filepath.Join(dir, "link2")); err == nil {
+					t.Error("link2 still exists")
+				}
+				for _, survivor := range []string{"target1.txt", "target2.txt", "regular.txt"} {
+					if _, err := os.Stat(filepath.Join(dir, survivor)); err != nil {
+						t.Errorf("%s was removed: %v", survivor, err)
+					}
+				}
+			},
+		},
+		{
+			name: "NonexistentDir",
+			setup: func(t *testing.T) string {
+				return filepath.Join(t.TempDir(), "does-not-exist")
+			},
+			wantErr: true,
+		},
 	}
 
-	target2 := filepath.Join(tempDir, "target2.txt")
-	if err := os.WriteFile(target2, []byte("target2"), 0644); err != nil {
-		t.Fatalf("failed to create target2: %v", err)
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := tt.setup(t)
 
-	// Create symlinks to these targets
-	link1 := filepath.Join(tempDir, "link1")
-	if err := os.Symlink(target1, link1); err != nil {
-		t.Skipf("symlinks not permitted on this platform: %v", err)
-	}
+			count, err := removeLinks(dir)
 
-	link2 := filepath.Join(tempDir, "link2")
-	if err := os.Symlink(target2, link2); err != nil {
-		t.Skipf("symlinks not permitted on this platform: %v", err)
-	}
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("removeLinks() error = nil; want error")
+				}
+			} else if err != nil {
+				t.Fatalf("removeLinks() error = %v; want nil", err)
+			}
 
-	// Create a regular file for control
-	regularFile := filepath.Join(tempDir, "regular.txt")
-	if err := os.WriteFile(regularFile, []byte("regular"), 0644); err != nil {
-		t.Fatalf("failed to create regular file: %v", err)
-	}
+			if count != tt.wantCount {
+				t.Errorf("removeLinks() count = %d; want %d", count, tt.wantCount)
+			}
 
-	// Call removeLinks
-	count, err := removeLinks(tempDir)
-
-	// Should return 2 count and no error
-	if err != nil {
-		t.Fatalf("removeLinks failed: %v", err)
-	}
-	if count != 2 {
-		t.Fatalf("expected count 2, got %d", count)
-	}
-
-	// Verify the links are gone
-	if _, err := os.Lstat(link1); err == nil {
-		t.Fatalf("link1 still exists")
-	}
-	if _, err := os.Lstat(link2); err == nil {
-		t.Fatalf("link2 still exists")
-	}
-
-	// Verify the targets still exist
-	if _, err := os.Stat(target1); err != nil {
-		t.Fatalf("target1 was removed: %v", err)
-	}
-	if _, err := os.Stat(target2); err != nil {
-		t.Fatalf("target2 was removed: %v", err)
-	}
-
-	// Verify the regular file still exists
-	if _, err := os.Stat(regularFile); err != nil {
-		t.Fatalf("regular file was removed: %v", err)
-	}
-}
-
-// TestRemoveLinksNonexistentDir tests that removeLinks handles a nonexistent
-// directory gracefully.
-func TestRemoveLinksNonexistentDir(t *testing.T) {
-	nonexistentDir := "/nonexistent/dir/that/does/not/exist"
-
-	count, err := removeLinks(nonexistentDir)
-
-	// Should return 0 count and an error
-	if err == nil {
-		t.Fatalf("expected error for nonexistent directory, got nil")
-	}
-	if count != 0 {
-		t.Fatalf("expected count 0, got %d", count)
+			if tt.verify != nil {
+				tt.verify(t, dir)
+			}
+		})
 	}
 }

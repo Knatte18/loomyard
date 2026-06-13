@@ -9,170 +9,113 @@ import (
 	"github.com/Knatte18/mhgo/internal/worktree"
 )
 
-// TestAddHappyPath tests the happy path: repo with remote, Add succeeds.
-func TestAddHappyPath(t *testing.T) {
-	hub := newTestRepo(t)
-	addRemote(t, hub)
+// TestAdd covers the worktree creation flow: the happy path, branch-prefix
+// application, and each precondition failure (dirty source, existing branch,
+// existing target dir, missing remote).
+func TestAdd(t *testing.T) {
+	const slug = "my-task"
 
-	w := worktree.New(worktree.Config{})
-	result, err := w.Add(hub, "my-task")
-
-	if err != nil {
-		t.Fatalf("Add failed: %v", err)
+	tests := []struct {
+		name         string
+		branchPrefix string
+		// setup performs scenario-specific prep on top of the fresh repo
+		// returned by newTestRepo (e.g. adding a remote or dirtying the tree).
+		setup           func(t *testing.T, hub string)
+		wantBranch      string
+		wantErrContains string
+		// wantNoTargetDir asserts the sibling worktree dir was NOT created,
+		// proving the precondition tripped before `git worktree add`.
+		wantNoTargetDir bool
+	}{
+		{
+			name:       "HappyPath",
+			setup:      func(t *testing.T, hub string) { addRemote(t, hub) },
+			wantBranch: "my-task",
+		},
+		{
+			name:         "BranchPrefix",
+			branchPrefix: "hanf/",
+			setup:        func(t *testing.T, hub string) { addRemote(t, hub) },
+			wantBranch:   "hanf/my-task",
+		},
+		{
+			name: "DirtySource",
+			setup: func(t *testing.T, hub string) {
+				addRemote(t, hub)
+				// Modify a tracked file without committing so the clean check fails.
+				if err := os.WriteFile(filepath.Join(hub, "README"), []byte("modified"), 0644); err != nil {
+					t.Fatalf("modify README: %v", err)
+				}
+			},
+			wantErrContains: "source worktree has uncommitted changes",
+			wantNoTargetDir: true,
+		},
+		{
+			name: "BranchExists",
+			setup: func(t *testing.T, hub string) {
+				addRemote(t, hub)
+				mustRun(t, hub, "git", "branch", slug)
+			},
+			wantErrContains: `branch "my-task" already exists`,
+		},
+		{
+			name: "TargetDirExists",
+			setup: func(t *testing.T, hub string) {
+				addRemote(t, hub)
+				if err := os.Mkdir(filepath.Join(filepath.Dir(hub), slug), 0755); err != nil {
+					t.Fatalf("create target dir: %v", err)
+				}
+			},
+			wantErrContains: "already exists",
+		},
+		{
+			name:            "NoRemote",
+			setup:           func(t *testing.T, hub string) {}, // intentionally no remote
+			wantErrContains: "no remote configured",
+			wantNoTargetDir: true,
+		},
 	}
 
-	if result.Branch != "my-task" {
-		t.Errorf("expected Branch %q, got %q", "my-task", result.Branch)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			hub := newTestRepo(t)
+			tt.setup(t, hub)
+
+			w := worktree.New(worktree.Config{BranchPrefix: tt.branchPrefix})
+			result, err := w.Add(hub, slug)
+
+			target := filepath.Join(filepath.Dir(hub), slug)
+
+			if tt.wantErrContains != "" {
+				if err == nil {
+					t.Fatalf("Add(%q) error = nil; want error containing %q", slug, tt.wantErrContains)
+				}
+				if !strings.Contains(err.Error(), tt.wantErrContains) {
+					t.Errorf("Add(%q) error = %q; want substring %q", slug, err.Error(), tt.wantErrContains)
+				}
+				if tt.wantNoTargetDir {
+					if _, statErr := os.Stat(target); !os.IsNotExist(statErr) {
+						t.Errorf("Add(%q) created %q; want no directory", slug, target)
+					}
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("Add(%q) error = %v; want nil", slug, err)
+			}
+			if result.Branch != tt.wantBranch {
+				t.Errorf("Add(%q).Branch = %q; want %q", slug, result.Branch, tt.wantBranch)
+			}
+			if result.Path != target {
+				t.Errorf("Add(%q).Path = %q; want %q", slug, result.Path, target)
+			}
+			if !result.Pushed {
+				t.Errorf("Add(%q).Pushed = false; want true", slug)
+			}
+			if _, statErr := os.Stat(result.Path); statErr != nil {
+				t.Errorf("Add(%q) worktree dir missing: %v", slug, statErr)
+			}
+		})
 	}
-
-	expectedPath := filepath.Join(filepath.Dir(hub), "my-task")
-	if result.Path != expectedPath {
-		t.Errorf("expected Path %q, got %q", expectedPath, result.Path)
-	}
-
-	if _, err := os.Stat(result.Path); err != nil {
-		t.Errorf("worktree directory does not exist: %v", err)
-	}
-
-	if !result.Pushed {
-		t.Errorf("expected Pushed=true, got %v", result.Pushed)
-	}
-}
-
-// TestAddBranchPrefix tests that BranchPrefix is prepended to the slug.
-func TestAddBranchPrefix(t *testing.T) {
-	hub := newTestRepo(t)
-	addRemote(t, hub)
-
-	w := worktree.New(worktree.Config{BranchPrefix: "hanf/"})
-	result, err := w.Add(hub, "my-task")
-
-	if err != nil {
-		t.Fatalf("Add failed: %v", err)
-	}
-
-	if result.Branch != "hanf/my-task" {
-		t.Errorf("expected Branch %q, got %q", "hanf/my-task", result.Branch)
-	}
-
-	// But the slug is still just "my-task" (not prefixed in the path)
-	expectedPath := filepath.Join(filepath.Dir(hub), "my-task")
-	if result.Path != expectedPath {
-		t.Errorf("expected Path %q, got %q", expectedPath, result.Path)
-	}
-
-	if _, err := os.Stat(result.Path); err != nil {
-		t.Errorf("worktree directory does not exist: %v", err)
-	}
-}
-
-// TestAddDirtySource tests that Add fails if the source has uncommitted changes.
-func TestAddDirtySource(t *testing.T) {
-	hub := newTestRepo(t)
-	addRemote(t, hub)
-
-	// Modify the tracked README file without committing
-	readmeFile := filepath.Join(hub, "README")
-	if err := os.WriteFile(readmeFile, []byte("modified"), 0644); err != nil {
-		t.Fatalf("failed to modify README: %v", err)
-	}
-
-	w := worktree.New(worktree.Config{})
-	result, err := w.Add(hub, "my-task")
-
-	if err == nil {
-		t.Fatalf("expected error for dirty source, got nil")
-	}
-
-	// Verify no sibling worktree was created
-	targetPath := filepath.Join(filepath.Dir(hub), "my-task")
-	if _, err := os.Stat(targetPath); !os.IsNotExist(err) {
-		t.Errorf("worktree directory should not exist, but does")
-	}
-
-	// Verify the error message mentions uncommitted changes
-	errMsg := err.Error()
-	if errMsg != "source worktree has uncommitted changes" {
-		t.Errorf("expected error message about uncommitted changes, got: %s", errMsg)
-	}
-
-	_ = result // silence unused warning
-}
-
-// TestAddBranchExists tests that Add fails if the branch already exists.
-func TestAddBranchExists(t *testing.T) {
-	hub := newTestRepo(t)
-	addRemote(t, hub)
-
-	// Create the branch first
-	mustRun(t, hub, "git", "branch", "my-task")
-
-	w := worktree.New(worktree.Config{})
-	result, err := w.Add(hub, "my-task")
-
-	if err == nil {
-		t.Fatalf("expected error for existing branch, got nil")
-	}
-
-	// Verify the error message mentions the branch
-	errMsg := err.Error()
-	if errMsg != `branch "my-task" already exists` {
-		t.Errorf("expected error about existing branch, got: %s", errMsg)
-	}
-
-	_ = result // silence unused warning
-}
-
-// TestAddTargetDirExists tests that Add fails if the target directory already exists.
-func TestAddTargetDirExists(t *testing.T) {
-	hub := newTestRepo(t)
-	addRemote(t, hub)
-
-	// Create the target directory first
-	targetPath := filepath.Join(filepath.Dir(hub), "my-task")
-	if err := os.Mkdir(targetPath, 0755); err != nil {
-		t.Fatalf("failed to create target directory: %v", err)
-	}
-
-	w := worktree.New(worktree.Config{})
-	result, err := w.Add(hub, "my-task")
-
-	if err == nil {
-		t.Fatalf("expected error for existing target directory, got nil")
-	}
-
-	// Verify the error message mentions the target directory
-	errMsg := err.Error()
-	if !strings.Contains(errMsg, "already exists") {
-		t.Errorf("expected error about existing target directory, got: %s", errMsg)
-	}
-
-	_ = result // silence unused warning
-}
-
-// TestAddNoRemote tests that Add fails if no remote is configured.
-func TestAddNoRemote(t *testing.T) {
-	hub := newTestRepo(t)
-	// Intentionally don't call addRemote
-
-	w := worktree.New(worktree.Config{})
-	result, err := w.Add(hub, "my-task")
-
-	if err == nil {
-		t.Fatalf("expected error for no remote, got nil")
-	}
-
-	// Verify the error message mentions remote
-	errMsg := err.Error()
-	if errMsg != "no remote configured" {
-		t.Errorf("expected error about no remote, got: %s", errMsg)
-	}
-
-	// Verify no sibling worktree was created (precheck, so no dir should exist)
-	targetPath := filepath.Join(filepath.Dir(hub), "my-task")
-	if _, err := os.Stat(targetPath); !os.IsNotExist(err) {
-		t.Errorf("worktree directory should not exist, but does")
-	}
-
-	_ = result // silence unused warning
 }

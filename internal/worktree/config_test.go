@@ -1,7 +1,3 @@
-// config_test.go — unit tests for the Config system (config.go).
-//
-// Covers: defaults, error on uninitialized, and branch_prefix parsing from YAML.
-
 package worktree_test
 
 import (
@@ -13,67 +9,62 @@ import (
 	"github.com/Knatte18/mhgo/internal/worktree"
 )
 
-// TestDefaultsReturned tests that defaults are returned when _mhgo/ exists
-// but worktree.yaml is absent.
-func TestDefaultsReturned(t *testing.T) {
-	baseDir := t.TempDir()
-
-	// Create _mhgo/ directory (empty, no worktree.yaml)
-	mhgoDir := filepath.Join(baseDir, "_mhgo")
-	if err := os.Mkdir(mhgoDir, 0755); err != nil {
-		t.Fatalf("failed to create _mhgo directory: %v", err)
+// TestLoadConfig covers worktree config resolution: defaults when worktree.yaml
+// is absent, branch_prefix parsed from YAML, and the not-initialized error.
+func TestLoadConfig(t *testing.T) {
+	tests := []struct {
+		name string
+		// initMhgo controls whether the _mhgo/ marker dir is created;
+		// LoadConfig rejects a base dir without it.
+		initMhgo bool
+		// yaml, when non-empty, is written to _mhgo/worktree.yaml.
+		yaml            string
+		wantPrefix      string
+		wantErrContains string
+	}{
+		{name: "DefaultsWhenYAMLAbsent", initMhgo: true, wantPrefix: ""},
+		{name: "BranchPrefixFromYAML", initMhgo: true, yaml: "branch_prefix: hanf/\n", wantPrefix: "hanf/"},
+		{name: "ErrorWhenNotInitialized", initMhgo: false, wantErrContains: `run "mhgo init"`},
 	}
 
-	cfg, err := worktree.LoadConfig(baseDir, "worktree")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			baseDir := t.TempDir()
 
-	if cfg.BranchPrefix != "" {
-		t.Errorf("expected empty BranchPrefix, got %q", cfg.BranchPrefix)
-	}
-}
+			// Create the _mhgo/ marker (and optional config) only for the
+			// initialized scenarios; the error case leaves it absent so
+			// LoadConfig takes the not-initialized branch.
+			if tt.initMhgo {
+				mhgoDir := filepath.Join(baseDir, "_mhgo")
+				if err := os.Mkdir(mhgoDir, 0755); err != nil {
+					t.Fatalf("create _mhgo: %v", err)
+				}
+				if tt.yaml != "" {
+					yamlPath := filepath.Join(mhgoDir, "worktree.yaml")
+					if err := os.WriteFile(yamlPath, []byte(tt.yaml), 0644); err != nil {
+						t.Fatalf("write worktree.yaml: %v", err)
+					}
+				}
+			}
 
-// TestBranchPrefixFromYAML tests that branch_prefix is parsed from worktree.yaml.
-func TestBranchPrefixFromYAML(t *testing.T) {
-	baseDir := t.TempDir()
+			cfg, err := worktree.LoadConfig(baseDir, "worktree")
 
-	// Create _mhgo/ directory
-	mhgoDir := filepath.Join(baseDir, "_mhgo")
-	if err := os.Mkdir(mhgoDir, 0755); err != nil {
-		t.Fatalf("failed to create _mhgo: %v", err)
-	}
+			if tt.wantErrContains != "" {
+				if err == nil {
+					t.Fatalf("LoadConfig() error = nil; want error containing %q", tt.wantErrContains)
+				}
+				if !strings.Contains(err.Error(), tt.wantErrContains) {
+					t.Errorf("LoadConfig() error = %q; want substring %q", err.Error(), tt.wantErrContains)
+				}
+				return
+			}
 
-	// Write _mhgo/worktree.yaml with branch_prefix
-	mhgoFile := filepath.Join(mhgoDir, "worktree.yaml")
-	if err := os.WriteFile(mhgoFile, []byte("branch_prefix: hanf/\n"), 0644); err != nil {
-		t.Fatalf("failed to write _mhgo/worktree.yaml: %v", err)
-	}
-
-	cfg, err := worktree.LoadConfig(baseDir, "worktree")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if cfg.BranchPrefix != "hanf/" {
-		t.Errorf("expected BranchPrefix %q, got %q", "hanf/", cfg.BranchPrefix)
-	}
-}
-
-// TestErrorNotInitialized tests that an error containing "not initialized"
-// is returned when _mhgo/ directory does not exist.
-func TestErrorNotInitialized(t *testing.T) {
-	baseDir := t.TempDir()
-
-	// Do not create _mhgo/ directory
-
-	cfg, err := worktree.LoadConfig(baseDir, "worktree")
-	if err == nil {
-		t.Fatalf("expected error, got nil; config: %+v", cfg)
-	}
-
-	errMsg := err.Error()
-	if !strings.Contains(errMsg, "run \"mhgo init\"") {
-		t.Errorf("expected error message to contain 'run \"mhgo init\"', got: %s", errMsg)
+			if err != nil {
+				t.Fatalf("LoadConfig() error = %v; want nil", err)
+			}
+			if cfg.BranchPrefix != tt.wantPrefix {
+				t.Errorf("LoadConfig().BranchPrefix = %q; want %q", cfg.BranchPrefix, tt.wantPrefix)
+			}
+		})
 	}
 }
