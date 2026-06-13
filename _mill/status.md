@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-cli-router
+phase: approved-integration-and-docs
 slug: mhgo-worktree-module
 branch: mhgo-worktree-module
 plan: _mill/plan
@@ -25,6 +25,7 @@ approved-config-and-facade  '2026-06-13T13:49:29Z'
 approved-links-teardown-helper  '2026-06-13T13:51:04Z'
 approved-subcommands  '2026-06-13T13:54:30Z'
 approved-cli-router  '2026-06-13T13:57:01Z'
+approved-integration-and-docs  '2026-06-13T13:59:56Z'
 ```
 
 ## Batches
@@ -52,7 +53,8 @@ batches:
     start_sha: e764efa547a39b392d63f0b8888ec037ae3cb755
     commit_sha: 3a1ae9ae0890cf083a3f05ea709a219775d9dc4c
   - name: integration-and-docs
-    state: running
+    state: approved
     implementer_session: 4773e24d-45f1-4c1c-83f9-8c3f81b0e680
     start_sha: 8a910d6ac7ec6d9d1d6666ace55f22b993312d15
+    commit_sha: c02be60b46cad705e3c7ed77799ea48398754d0f
 ```
