@@ -145,9 +145,11 @@ This is milestone 4 in the roadmap: the first module to consume `internal/git` a
   output, and returns it as JSON. No state registry (deferred). Reports the current
   git state only.
 - Porcelain field mapping: each blank-line-delimited block → one JSON object.
-  `worktree <path>` → `"path"`, `HEAD <sha>` → `"head"`, `branch <ref>` → `"branch"`
-  (or `"(detached)"` when the `detached` line appears instead). First block in the
-  output = the main worktree → `"main": true`; all subsequent blocks → `"main": false`.
+  `worktree <path>` → `"path"`, `HEAD <sha>` → `"head"`,
+  `branch refs/heads/<name>` → `"branch": "<name>"` (strip `refs/heads/` prefix;
+  return short name only), `detached` line → `"branch": "(detached)"`.
+  First block in the output = the main worktree → `"main": true`; all others → `"main": false`.
+  `bare` line: out of scope — mhgo only operates on non-bare repos; treat as error if encountered.
 - Rationale: `internal/state` is deferred to the mux milestone. A thin wrapper gives
   useful output immediately with minimal complexity.
 - Rejected: block list on absence of state (too restrictive); silently hide drift (inconsistent).
@@ -194,7 +196,11 @@ This is milestone 4 in the roadmap: the first module to consume `internal/git` a
 - `worktree.go` — `Worktree` struct + `New(cfg Config) *Worktree` facade
 - `config.go` — `Config`, `LoadConfig(baseDir, module string) (Config, error)` called as
   `LoadConfig(cwd, "worktree")`, `DefaultConfig()`
-- `cli.go` — `RunCLI(out io.Writer, args []string) int` (same signature as board)
+- `cli.go` — `RunCLI(out io.Writer, args []string) int` (same signature as board).
+  Each subcommand uses `flag.NewFlagSet` following the board pattern. For `remove`:
+  define `--force` as a flag, then `fs.Args()[0]` is the slug. Callers must pass
+  flags before the slug: `remove --force <slug>`. This matches Go's `flag` package
+  behaviour (stops parsing flags at first non-flag argument).
 - `add.go`, `list.go`, `remove.go` — one file per subcommand
 - `links.go` — symlink/junction scanner + remover
 - `*_test.go` — per-file unit tests
@@ -210,8 +216,9 @@ package-level doc comment's Modules list to include `worktree` alongside `board`
 
 ```
 add:    {"ok":true,"slug":"...","branch":"...","path":"...","pushed":true}
-list:   {"ok":true,"worktrees":[{"path":"...","branch":"...","head":"...","main":true}, ...]}
-        branch is "(detached)" when HEAD is detached. First entry has main:true.
+list:   {"ok":true,"worktrees":[{"path":"...","branch":"main","head":"<sha>","main":true}, ...]}
+        branch is the short name (refs/heads/ stripped). "(detached)" when HEAD is detached.
+        First entry is main:true. CLI flag --force accepted before slug: remove --force <slug>.
 remove: {"ok":true,"slug":"...","path":"...","links_removed":2}
         links_removed is the count of symlinks/junctions removed before git worktree remove.
         Same shape whether normal or fallback (os.RemoveAll) path succeeded.
@@ -223,6 +230,8 @@ Error shape: `{"ok":false,"error":"..."}` with exit code 1.
 
 `add`: `RunGit([]string{"status", "--porcelain", "--untracked-files=no"}, sourceWorktreePath)` —
 non-empty stdout means tracked changes exist; fail. Untracked files ignored.
+If `RunGit` itself returns a non-zero `exitCode` (e.g. cwd is not a git worktree),
+return `{"ok":false,"error":"cwd is not a valid git worktree"}` before creating anything.
 
 `remove`: `RunGit([]string{"status", "--porcelain"}, worktreePath)` — non-empty stdout
 (tracked changes or untracked files) means dirty; fail unless `--force`.
