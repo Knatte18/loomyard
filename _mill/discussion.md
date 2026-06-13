@@ -163,8 +163,11 @@ This is milestone 4 in the roadmap: the first module to consume `internal/git` a
 
 - `internal/config.Load(baseDir, "worktree", defaults)` — loads `_mhgo/worktree.yaml`,
   handles env-var expansion and missing-file defaults. Already used by board.
-- `internal/git.RunGit(dir string, args ...string) (string, error)` — runs any git
-  command, returns stdout. Used for `git worktree add/remove/prune/list/status`.
+- `internal/git.RunGit(args []string, cwd string) (stdout, stderr string, exitCode int, err error)` —
+  runs any git command in `cwd`. Returns stdout, stderr, and exit code separately.
+  `err` is non-nil only for process-launch failures, not for non-zero git exits —
+  callers must inspect `exitCode` to distinguish git errors. Used for all git
+  operations in the worktree module.
 - `internal/output.Ok` / `internal/output.Err` — JSON output helpers. Follow
   `{"ok":true,...}` / `{"ok":false,"error":"..."}` shape.
 - `internal/board/init.go:RunInit` — extend to scaffold `worktree.yaml`.
@@ -173,7 +176,8 @@ This is milestone 4 in the roadmap: the first module to consume `internal/git` a
 
 `internal/worktree/` mirrors the board package layout:
 - `worktree.go` — `Worktree` struct + `New(cfg Config) *Worktree` facade
-- `config.go` — `Config`, `LoadConfig(baseDir string) (Config, error)`, `DefaultConfig()`
+- `config.go` — `Config`, `LoadConfig(baseDir, module string) (Config, error)` called as
+  `LoadConfig(cwd, "worktree")`, `DefaultConfig()`
 - `cli.go` — `RunCLI(out io.Writer, args []string) int` (same signature as board)
 - `add.go`, `list.go`, `remove.go` — one file per subcommand
 - `links.go` — symlink/junction scanner + remover
@@ -182,7 +186,9 @@ This is milestone 4 in the roadmap: the first module to consume `internal/git` a
 ### `cmd/mhgo/main.go` dispatch
 
 Add `case "worktree": return worktree.RunCLI(out, moduleArgs)` alongside the existing
-`case "board"`. Import `github.com/Knatte18/mhgo/internal/worktree`.
+`case "board"`. Import `github.com/Knatte18/mhgo/internal/worktree`. Also update the
+package-level doc comment's Modules list to include `worktree` alongside `board` and
+`muxpoc`.
 
 ### JSON output shapes
 
@@ -196,8 +202,8 @@ Error shape: `{"ok":false,"error":"..."}` with exit code 1.
 
 ### Dirty-check implementation
 
-`git -C <worktree_path> status --porcelain` returns non-empty output when there are
-staged or unstaged changes. Empty output = clean. Use `RunGit`.
+`RunGit([]string{"status", "--porcelain"}, sourceWorktreePath)` — non-empty stdout
+means dirty. Empty stdout = clean. Do not pass `-C`; use RunGit's `cwd` argument.
 
 ### Detecting symlinks vs junctions on Windows
 
@@ -208,7 +214,8 @@ junctions (Windows, where Go reports them as symlinks via `ModeSymlink`). Iterat
 
 ### Worktree existence checks in `add`
 
-- Branch exists: `git -C <hub> rev-parse --verify <branch>` exits 0 if branch exists.
+- Branch exists: `RunGit([]string{"rev-parse", "--verify", branch}, hubPath)` — `exitCode == 0`
+  means the branch exists (`err` is nil for non-zero git exits; inspect `exitCode`).
 - Directory exists: `os.Stat(<container>/<dir>)` — error with `os.IsNotExist`.
 
 ### Path resolution in `add`
@@ -251,7 +258,9 @@ func addRemote(t *testing.T, repoDir string) string {
 **config_test.go**
 - Default config when `_mhgo/worktree.yaml` absent
 - `branch_prefix` read from YAML
-- Missing `_mhgo/` dir → error containing "run \"mhgo init\""
+- Missing `_mhgo/` dir → error containing `run "mhgo init"`. Note: `internal/config.Load`
+  emits `not initialized: _mhgo/ directory not found`; worktree's `LoadConfig` must
+  re-wrap it as `not initialized here; run "mhgo init"`, mirroring `internal/board/config.go`.
 
 **add_test.go**
 - Happy path: clean repo, no remote conflict → worktree created at correct path, branch correct
