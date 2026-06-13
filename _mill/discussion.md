@@ -55,14 +55,14 @@ This is milestone 4 in the roadmap: the first module to consume `internal/git` a
   naming rule and teardown sequence are code invariants, not config.
 - Rejected: `container` key (fixed invariant), `cleanup_links` list (scan instead).
 
-### Worktree directory name = branch name with `/` → `-`
+### Worktree directory name = slug only
 
-- Decision: branch = `<branch_prefix><slug>`. Directory = branch name with every `/`
-  replaced by `-`. Example: prefix `hanf/`, slug `my-task` → branch `hanf/my-task`,
-  dir `hanf-my-task`.
-- Rationale: directory must be a valid filesystem name; branch namespace separator `/`
-  maps naturally to `-`. Aligns dir name with branch name, making origin unambiguous.
-- Rejected: always `<slug>` (would diverge from branch name when prefix is non-empty).
+- Decision: branch = `<branch_prefix><slug>`, directory = `<slug>` only (no prefix).
+  Example: prefix `hanf/`, slug `my-task` → branch `hanf/my-task`, dir `my-task`.
+- Rationale: this is how millhouse itself works — worktree dirs are named after the
+  slug, branches carry the prefix. Keeping dirs prefix-free avoids `/`→`-` mangling
+  and makes the dir name stable regardless of who owns the branch.
+- Rejected: dir = branch_name_with_slash_replaced (unnecessary mangling; diverges from millhouse convention).
 
 ### `add` fails if the source worktree is dirty
 
@@ -215,10 +215,10 @@ package-level doc comment's Modules list to include `worktree` alongside `board`
 ### JSON output shapes
 
 ```
-add:    {"ok":true,"slug":"...","branch":"...","path":"...","pushed":true}
+add:    {"ok":true,"slug":"...","branch":"<branch_prefix><slug>","path":"<container>/<slug>","pushed":true}
 list:   {"ok":true,"worktrees":[{"path":"...","branch":"main","head":"<sha>","main":true}, ...]}
-        branch is the short name (refs/heads/ stripped). "(detached)" when HEAD is detached.
-        First entry is main:true. CLI flag --force accepted before slug: remove --force <slug>.
+        branch is short name (refs/heads/ stripped). "(detached)" when HEAD is detached.
+        First entry is main:true. --force goes before slug: remove --force <slug>.
 remove: {"ok":true,"slug":"...","path":"...","links_removed":2}
         links_removed is the count of symlinks/junctions removed before git worktree remove.
         Same shape whether normal or fallback (os.RemoveAll) path succeeded.
@@ -253,7 +253,8 @@ junctions (Windows, where Go reports them as symlinks via `ModeSymlink`). Iterat
 ### Path resolution in `add`
 
 `add` is cwd-authoritative: `os.Getwd()` gives the source worktree path. Container =
-`filepath.Dir(sourceWorktreePath)` (one level up). Target path = `filepath.Join(container, dirName)`.
+`filepath.Dir(sourceWorktreePath)` (one level up). Target path = `filepath.Join(container, slug)`
+(dir is slug only — no branch prefix).
 
 ## Testing
 
@@ -331,5 +332,5 @@ func addRemote(t *testing.T, repoDir string) string {
 - **Q:** Should junction removal be platform-specific? **A:** No — `os.Remove()` and `os.Lstat().Mode()&ModeSymlink` work cross-platform; no build tags needed.
 - **Q:** Should `worktree.yaml` have a `container` field? **A:** No — container is always `..` from hub. Fixed invariant, not configurable.
 - **Q:** Does this milestone use `internal/state`? **A:** No — deferred until mux design is settled.
-- **Q:** Should worktree dir name be slug or branch name? **A:** Branch name with `/` → `-`. Dir and branch stay in sync.
+- **Q:** Should worktree dir name be slug or branch name? **A:** Slug only. Branch = `<prefix><slug>`, dir = `<slug>`. Matches millhouse convention.
 - **Q:** What does `list` return without state? **A:** `git worktree list --porcelain` parsed as JSON.
