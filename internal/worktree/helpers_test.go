@@ -16,9 +16,7 @@ func mustRun(t *testing.T, dir string, args ...string) {
 	cmd := exec.Command(args[0], args[1:]...)
 	cmd.Dir = dir
 
-	if err := cmd.Run(); err != nil {
-		// Include combined output if the command provides any
-		output, _ := cmd.CombinedOutput()
+	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("command failed: %v; output: %s", err, output)
 	}
 }
