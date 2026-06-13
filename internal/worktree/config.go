@@ -1,7 +1,9 @@
-// config.go — configuration system for worktree module.
+// config.go — configuration for the worktree module.
 //
-// Defines the Config type with a single field BranchPrefix, plus functions for
-// loading configuration from YAML files. Mirrors the structure of internal/board/config.go.
+// Defines the Config type with a single field BranchPrefix, plus DefaultConfig
+// and LoadConfig. LoadConfig delegates entirely to internal/config for resolution;
+// the worktree module never reads config files or knows their layout itself.
+// Mirrors the structure of internal/board/config.go.
 
 package worktree
 
@@ -24,13 +26,11 @@ func DefaultConfig() Config {
 	}
 }
 
-// LoadConfig loads configuration for a module from configuration files.
+// LoadConfig resolves the worktree config for baseDir via internal/config.Load,
+// returning a typed Config built from DefaultConfig()'s defaults.
 //
-// If <baseDir>/_mhgo/ does not exist, returns an error containing
-// "not initialized here; run \"mhgo init\"".
-//
-// Otherwise, loads configuration using internal/config.Load with defaults from
-// DefaultConfig(), and returns the result as a typed Config struct.
+// If internal/config reports that baseDir is not an initialized mhgo base, the
+// error is rewrapped to "not initialized here; run \"mhgo init\"".
 func LoadConfig(baseDir, module string) (Config, error) {
 	// Build defaults map
 	defaults := map[string]string{

@@ -24,9 +24,10 @@ import (
 //	worktree <subcommand> [args]
 //
 // Configuration resolution (cwd-authoritative):
-// The current working directory must be within a git repository with _mhgo/ directory.
-// Configuration is loaded from <cwd>/_mhgo/worktree.yaml and <cwd>/.mhgo/worktree.yaml (optional),
-// merged with defaults.
+// RunCLI delegates to LoadConfig, which resolves the worktree config from the
+// current working directory via internal/config. The worktree module never reads
+// config files itself — file layout and overrides are entirely internal/config's
+// concern.
 //
 // Subcommands:
 //
