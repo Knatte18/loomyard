@@ -52,5 +52,7 @@ batches:
     start_sha: e764efa547a39b392d63f0b8888ec037ae3cb755
     commit_sha: 3a1ae9ae0890cf083a3f05ea709a219775d9dc4c
   - name: integration-and-docs
-    state: pending
+    state: running
+    implementer_session: 4773e24d-45f1-4c1c-83f9-8c3f81b0e680
+    start_sha: 8a910d6ac7ec6d9d1d6666ace55f22b993312d15
 ```
