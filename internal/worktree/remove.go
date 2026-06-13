@@ -68,7 +68,7 @@ func (w *Worktree) Remove(sourceDir, slug string, force bool) (RemoveResult, err
 	}
 	args = append(args, target)
 
-	_, stderr, exitCode, err := git.RunGit(args, sourceDir)
+	_, _, exitCode, err := git.RunGit(args, sourceDir)
 	if err != nil {
 		return RemoveResult{}, fmt.Errorf("failed to run git worktree remove: %v", err)
 	}
