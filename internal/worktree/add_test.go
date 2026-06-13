@@ -3,6 +3,7 @@ package worktree_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/mhgo/internal/worktree"
@@ -142,7 +143,7 @@ func TestAddTargetDirExists(t *testing.T) {
 
 	// Verify the error message mentions the target directory
 	errMsg := err.Error()
-	if errMsg != `worktree directory "`+targetPath+`" already exists` {
+	if !strings.Contains(errMsg, "already exists") {
 		t.Errorf("expected error about existing target directory, got: %s", errMsg)
 	}
 

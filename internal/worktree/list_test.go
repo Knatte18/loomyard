@@ -60,8 +60,10 @@ func TestListTwoWorktrees(t *testing.T) {
 		t.Errorf("expected entries[0].Main=true, got %v", entries[0].Main)
 	}
 
-	// Verify the first entry is the main checkout (its path matches the hub)
-	if entries[0].Path != hub {
+	// Verify the first entry is the main checkout (its path matches the hub).
+	// Note: git may return paths with forward slashes on all platforms, so normalize for comparison.
+	normalizedEntryPath := filepath.FromSlash(entries[0].Path)
+	if normalizedEntryPath != hub {
 		t.Errorf("expected entries[0].Path=%q, got %q", hub, entries[0].Path)
 	}
 
