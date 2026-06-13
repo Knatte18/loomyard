@@ -41,3 +41,12 @@ empty string and an error.
 **Design note:** `FindRoot` is a single named invocation, not a command sequence.
 Board and other modules compose their own multi-step git sequences on top of
 `RunGit` and thin helpers like this one.
+
+**This is the canonical cwd → root resolver.** Any module that derives a path
+*relative to the worktree root* — most importantly worktree's container
+(`filepath.Dir(root)`) — MUST obtain the root from `FindRoot(cwd)`, not assume the
+process cwd is the root. `git rev-parse --show-toplevel` returns the root of the
+worktree the cwd is *inside*, however deeply nested, so `FindRoot` is correct whether
+you invoke from the worktree root or from `worktree/internal/foo/`. Using
+`filepath.Dir(cwd)` instead is the cwd ≠ git-root bug (overview principle 4): it only
+works when cwd happens to be the worktree root and silently misplaces files otherwise.

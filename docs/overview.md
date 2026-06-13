@@ -27,7 +27,12 @@ Module path: `github.com/Knatte18/mhgo`
 4. **cwd-authoritative; cwd ≠ git-repo-path.** Config and state resolve from the
    current working directory, which need *not* equal the git-repo root. Designed in
    from the start — this was repeatedly forgotten in millpy and caused constant
-   trouble.
+   trouble. **Operational rule:** a module that derives a *sibling* or *parent* path
+   (e.g. worktree's container) MUST first resolve the worktree/repo root via
+   [`internal/git.FindRoot`](shared-libs/git.md) (`git rev-parse --show-toplevel`) and
+   compute from there — **never** `filepath.Dir(cwd)`, which silently assumes cwd is
+   the root and breaks the moment you invoke from a nested subdirectory. Config follows
+   the same rule: `_mhgo/` lives at the repo root, not at a possibly-nested cwd.
 5. **Full control, incremental milestones.** Land one milestone at a time;
    refactors are behaviour-preserving with the existing test suite as guardrail.
 

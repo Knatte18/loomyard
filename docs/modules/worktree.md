@@ -41,16 +41,39 @@ Naming conventions:
   container, not a checkout.
 - **Hub:** same name as the repo — `Models`, `mhgo`, etc.
 - **Board:** `_board` (underscore prefix = system directory, not a worktree). This
-  matches the config default `path: ../_board` — relative to the hub cwd, `../`
-  steps up to the container and `_board` lands alongside the hub.
+  matches the config default `path: ../_board` — resolved relative to the **worktree
+  root** (not the raw cwd), `../` steps up to the container and `_board` lands
+  alongside the hub.
 - **Worktrees:** directory = slug only (e.g. slug `my-task` → directory `my-task`);
   branch = `<branch_prefix><slug>` (e.g. branch `wt-my-task` with default `branch_prefix: wt-`).
   Worktrees live directly in the container.
 
-The container is always the parent of the hub (`..` relative to the hub root) — this
-is a fixed layout invariant, not a config key. `worktree.yaml` (loaded via
+The container is always the parent of the worktree root (`..` relative to the root) —
+this is a fixed layout invariant, not a config key. `worktree.yaml` (loaded via
 [`internal/config`](../shared-libs/config.md)) holds only the spawn-time settings
 (currently just `branch_prefix`).
+
+### Resolving the container — cwd ≠ git-root
+
+**The container must be derived from the git-resolved worktree root, never from the
+raw cwd.** `add` and `remove` are invoked from *some* directory inside *some*
+worktree, which may be a nested subdirectory (`mhgo` invoked from
+`mhgo/internal/board/`, say). The correct sequence is:
+
+1. `root, _ := git.FindRoot(cwd)` — `git rev-parse --show-toplevel`, giving the root of
+   whichever worktree the cwd is inside, however deeply nested.
+2. `container := filepath.Dir(root)` — the parent, where the hub and all worktrees are
+   siblings. Since every worktree shares the same container, this is correct no matter
+   which worktree you invoke from.
+3. `target := filepath.Join(container, slug)` — the new/target worktree directory.
+
+Using `filepath.Dir(cwd)` instead is the cwd ≠ git-root bug
+([overview principle 4](../overview.md), [`internal/git.FindRoot`](../shared-libs/git.md)):
+it only lands in the right place when cwd happens to be the worktree root, and silently
+misplaces the worktree otherwise. `list` is exempt — it shells out to
+`git worktree list --porcelain`, and git resolves the repo from a nested cwd itself, so
+it needs no path arithmetic. Config loading follows the same rule: resolve `_mhgo/` at
+the worktree root, not at the cwd.
 
 ## Subcommands (proposed)
 
