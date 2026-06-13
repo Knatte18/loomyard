@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-integration-and-docs
+phase: holistic-reviewing
 slug: mhgo-worktree-module
 branch: mhgo-worktree-module
 plan: _mill/plan
@@ -26,6 +26,7 @@ approved-links-teardown-helper  '2026-06-13T13:51:04Z'
 approved-subcommands  '2026-06-13T13:54:30Z'
 approved-cli-router  '2026-06-13T13:57:01Z'
 approved-integration-and-docs  '2026-06-13T13:59:56Z'
+holistic-reviewing  '2026-06-13T14:00:20Z'
 ```
 
 ## Batches
