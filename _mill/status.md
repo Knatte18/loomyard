@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: mhgo-worktree-module
 branch: mhgo-worktree-module
 plan: _mill/plan
@@ -20,4 +20,21 @@ discussed  '2026-06-13T13:11:53Z'
 planning  '2026-06-13T13:35:35Z'
 plan-fix-r1  '2026-06-13T13:39:10Z'
 planned  '2026-06-13T13:39:31Z'
+implementing  '2026-06-13T13:47:22Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: config-and-facade
+    state: pending
+  - name: links-teardown-helper
+    state: pending
+  - name: subcommands
+    state: pending
+  - name: cli-router
+    state: pending
+  - name: integration-and-docs
+    state: pending
 ```
