@@ -66,6 +66,26 @@ func TestInitCreatesStructure(t *testing.T) {
 			t.Errorf("expected all non-blank lines to start with #, found: %s", line)
 		}
 	}
+
+	// Verify worktree.yaml exists
+	worktreeYamlPath := filepath.Join(mhgoDir, "worktree.yaml")
+	worktreeContent, err := os.ReadFile(worktreeYamlPath)
+	if err != nil {
+		t.Fatalf("worktree.yaml not created: %v", err)
+	}
+
+	// Verify worktree.yaml is fully commented (no uncommented lines except blank/comment-only)
+	lines = strings.Split(string(worktreeContent), "\n")
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			// Blank line is OK
+			continue
+		}
+		if !strings.HasPrefix(trimmed, "#") {
+			t.Errorf("expected all non-blank lines to start with #, found: %s", line)
+		}
+	}
 }
 
 // TestInitGitignoreBlock tests that .gitignore managed block is created.
@@ -170,6 +190,10 @@ func TestInitIdempotent(t *testing.T) {
 		t.Errorf("expected board_yaml='exists', got %v", result["board_yaml"])
 	}
 
+	if worktreeYaml, ok := result["worktree_yaml"].(string); !ok || worktreeYaml != "exists" {
+		t.Errorf("expected worktree_yaml='exists', got %v", result["worktree_yaml"])
+	}
+
 	if gitignoreStatus, ok := result["gitignore"].(string); !ok || gitignoreStatus != "unchanged" {
 		t.Errorf("expected gitignore='unchanged', got %v", result["gitignore"])
 	}
@@ -210,13 +234,18 @@ func TestInitJSONShape(t *testing.T) {
 		t.Errorf("expected board_yaml='created', got %v", result["board_yaml"])
 	}
 
+	// Verify worktree_yaml is "created"
+	if worktreeYaml, ok := result["worktree_yaml"].(string); !ok || worktreeYaml != "created" {
+		t.Errorf("expected worktree_yaml='created', got %v", result["worktree_yaml"])
+	}
+
 	// Verify gitignore is "updated"
 	if gitignore, ok := result["gitignore"].(string); !ok || gitignore != "updated" {
 		t.Errorf("expected gitignore='updated', got %v", result["gitignore"])
 	}
 
 	// Verify no unexpected keys
-	expectedKeys := map[string]bool{"ok": true, "mhgo_dir": true, "board_yaml": true, "gitignore": true}
+	expectedKeys := map[string]bool{"ok": true, "mhgo_dir": true, "board_yaml": true, "worktree_yaml": true, "gitignore": true}
 	for key := range result {
 		if !expectedKeys[key] {
 			t.Errorf("unexpected key in JSON output: %s", key)
