@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: mhgo-worktree-module
 branch: mhgo-worktree-module
-plan: null
+plan: _mill/plan
 parent: main
 task: Build mhgo worktree module
 task_description: |
@@ -17,4 +17,5 @@ task_description: |
 discussing  '2026-06-13T12:19:48Z'
 discussion-fix-r3  '2026-06-13T13:11:42Z'
 discussed  '2026-06-13T13:11:53Z'
+planning  '2026-06-13T13:35:35Z'
 ```
