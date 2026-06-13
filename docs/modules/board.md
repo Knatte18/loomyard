@@ -248,9 +248,7 @@ message "not initialized here; run \"mhgo init\"".
 
 ```yaml
 path: ../_board       # board directory (tasks.json + rendered output)
-                      # relative to the worktree root (cwd-authoritative intent, see
-                      # shared-libs/config.md), NOT the raw cwd; may contain $env:... ;
-                      # resolved via filepath.Join
+                      # relative to cwd; may contain $env:... ; resolved via filepath.Join
 home: Home.md         # home file name; set to README.md to render on a repo landing page
 sidebar: _Sidebar.md  # sidebar file name
 proposal_prefix: proposal-  # prefix for proposal-<slug>.md files

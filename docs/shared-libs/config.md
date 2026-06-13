@@ -11,7 +11,7 @@ one place that knows the `_mhgo/` layout and the config grammar.
 ## Layout
 
 ```
-<repo-root>/            ← where `mhgo init` was run; the worktree root, NOT necessarily cwd
+<cwd>/                  ← where `mhgo init` was run
 ├── _mhgo/              git-TRACKED config — the only config source
 │   ├── board.yaml
 │   ├── worktree.yaml
@@ -21,26 +21,12 @@ one place that knows the `_mhgo/` layout and the config grammar.
     └── local-state.json
 ```
 
-`_mhgo/` presence is what makes a directory "initialised". It is git-TRACKED and
-lives at the **repo root** — so it is present at the root of every worktree, not just
-the hub. If it is absent, `config` errors with
-`not initialized: _mhgo/ directory not found in <dir>` (the raw error from
-`FindBaseDir`; the board rewraps it into `not initialized here; run "mhgo init"`).
-
-**What "cwd-authoritative" means here (and what it does NOT mean).** Resolution is
-anchored at the repo/worktree root that holds `_mhgo/` — discovered *from* the cwd.
-The cwd does **not** need to equal that root: you may invoke from a nested
-subdirectory (`worktree/internal/foo/`). This is a first-class constraint — it caused
-constant trouble in millpy precisely because it was designed in and then forgotten.
-The operative word is *anchored at the root*, not *literally the cwd*.
-
-> **Known gap (milestone 2).** The current `FindBaseDir` does a **strict** check of
-> `<cwd>/_mhgo` and never walks up (see its section below). So today, resolution only
-> succeeds when cwd *is* the root. Until `FindBaseDir` is taught to resolve the root
-> (e.g. via [`internal/git.FindRoot`](git.md) / `git rev-parse --show-toplevel`, then
-> check `<root>/_mhgo`), a caller that wants cwd ≠ git-root must resolve the root
-> itself and pass it in. A module must never paper over this by deriving paths from
-> `filepath.Dir(cwd)` — see overview principle 4.
+`_mhgo/` presence is what makes a directory "initialised". If it is absent,
+`config` errors with `not initialized: _mhgo/ directory not found in <dir>` (the
+raw error from `FindBaseDir`; the board rewraps it into `not initialized here; run "mhgo init"`).
+Resolution is **cwd-authoritative** — the cwd does **not** need to equal the git-repo root (a
+first-class constraint; it caused constant trouble in millpy precisely because it
+was designed in and then forgotten).
 
 ## Resolution model
 
@@ -94,9 +80,8 @@ tokens against.
 ## What it returns
 
 A typed, fully-resolved config struct for the requested module — defaults merged,
-env expanded, relative `path` resolved against the base dir passed in (the repo root
-under the cwd-authoritative intent; absolute paths used as-is). Callers never see raw
-YAML or unexpanded tokens.
+env expanded, relative `path` resolved against cwd (absolute paths used as-is).
+Callers never see raw YAML or unexpanded tokens.
 
 ## Exported helpers
 
@@ -105,17 +90,11 @@ YAML or unexpanded tokens.
 Checks whether the given directory is an initialized mhgo base directory.
 
 **Behavior:** Performs a strict check that `<cwd>/_mhgo` exists; it never walks up
-to parent directories. The provided directory must itself be initialized.
+to parent directories. This is the cwd-authoritative model — the provided `cwd` must
+itself be initialized.
 
-> **Caveat — this strict check is the cwd ≠ git-root gap.** "cwd-authoritative" is
-> the *intent* (resolve anchored at the repo root, tolerating a nested cwd); this
-> strict no-walk-up implementation does **not** yet deliver that intent. Callers that
-> must support a nested cwd should resolve the worktree root with
-> [`internal/git.FindRoot`](git.md) and pass that root to `Load`/`FindBaseDir`, rather
-> than the raw cwd. Slated to be folded into `FindBaseDir` itself in milestone 2.
-
-**Returns:** On success, the directory itself (unchanged). On failure, an empty string
-and an error.
+**Returns:** On success, the `cwd` itself (unchanged). On failure, an empty string and
+an error.
 
 **Error messages:**
 - If `<cwd>/_mhgo` does not exist: `not initialized: _mhgo/ directory not found in <dir>`
