@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-subcommands
+phase: approved-cli-router
 slug: mhgo-worktree-module
 branch: mhgo-worktree-module
 plan: _mill/plan
@@ -24,6 +24,7 @@ implementing  '2026-06-13T13:47:22Z'
 approved-config-and-facade  '2026-06-13T13:49:29Z'
 approved-links-teardown-helper  '2026-06-13T13:51:04Z'
 approved-subcommands  '2026-06-13T13:54:30Z'
+approved-cli-router  '2026-06-13T13:57:01Z'
 ```
 
 ## Batches
@@ -46,9 +47,10 @@ batches:
     start_sha: 35f186fddf0304d41661853baf31566c642430b1
     commit_sha: 49c50719950591168a4532395011d14853cdc838
   - name: cli-router
-    state: running
+    state: approved
     implementer_session: 0a120878-e8d6-4e10-95b4-c03ca3d25c42
     start_sha: e764efa547a39b392d63f0b8888ec037ae3cb755
+    commit_sha: 3a1ae9ae0890cf083a3f05ea709a219775d9dc4c
   - name: integration-and-docs
     state: pending
 ```
