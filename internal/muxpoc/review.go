@@ -51,9 +51,19 @@ func cmdReview(out io.Writer, cfg Config) int {
 		}
 	}
 
-	// Split window for the new review pane
-	if err := mux.run("split-window", "-t", state.Session, "-v", "-p", "30", cfg.PwshPath); err != nil {
+	// Split window for the new review pane. -P -F prints the new pane's id so
+	// state records what runs where (display-message on a detached session
+	// reports the wrong pane, so capture it straight from split-window).
+	paneOut, err := mux.output("split-window", "-t", state.Session, "-v", "-p", "30", "-P", "-F", "#{pane_id}", cfg.PwshPath)
+	if err != nil {
 		return output.Err(out, fmt.Sprintf("split window: %v", err))
+	}
+	paneID := strings.TrimSpace(paneOut)
+
+	// Re-tile so the new (bottom, active) pane dominates and the ancestors above
+	// collapse to compact strips — they are blocked waiting on the active child.
+	if err := mux.applyColumnLayout(state.Session); err != nil {
+		return output.Err(out, fmt.Sprintf("apply layout: %v", err))
 	}
 
 	// Build launch command from template
@@ -67,7 +77,7 @@ func cmdReview(out io.Writer, cfg Config) int {
 
 	// Append new pane to state and save
 	state.Panes = append(state.Panes, Pane{
-		ID:        "",
+		ID:        paneID,
 		SessionID: sid,
 		Kind:      "review",
 	})

@@ -38,14 +38,18 @@ func TestSmokeFullLifecycle(t *testing.T) {
 		t.Skipf("psmux not found at %s", cfg.PsmuxPath)
 	}
 
-	// Get current working directory
-	cwd, err := os.Getwd()
+	// Run in an isolated temp dir so the test never writes .mhgo/ into the
+	// package directory. The cmd* functions derive state path and socket from
+	// os.Getwd(), so chdir into the temp dir for the duration of the test.
+	origWd, err := os.Getwd()
 	if err != nil {
 		t.Fatalf("getwd: %v", err)
 	}
-
-	// Ensure clean state: try to delete any existing state before we start
-	_ = DeleteState(cwd)
+	cwd := t.TempDir()
+	if err := os.Chdir(cwd); err != nil {
+		t.Fatalf("chdir to temp dir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(origWd) })
 
 	// Cleanup: ensure down is called even if test fails
 	t.Cleanup(func() {

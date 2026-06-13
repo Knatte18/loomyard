@@ -63,6 +63,64 @@ Driven by `mhgo mux <subcommand>`; reads the worktree registry from
    one requirement: **strip the inherited Claude-Code parent-session env before launching claude**
    (see [Resume](#resume-after-crash-native---resume-with-env-hygiene)).
 
+## Target model: `mux spawn` replaces Agent dispatch (proven feasible — muxpoc)
+
+The end state mux is built toward: **CC stops dispatching sub-agents through the in-process
+Agent tool and instead calls `mhgo mux spawn`, which launches a real interactive `claude`
+session in a pane below the orchestrator.** The spawned session must otherwise behave *exactly
+as if it had been spawned via the Agent tool* — same contract:
+
+- **Task in.** The orchestrator hands it a brief/prompt as the positional `[prompt]` arg at
+  launch — the same envelope an Agent-tool dispatch carries (brief_path, subagent_type, model,
+  round).
+- **Result out.** The worker writes its structured result to a **file** (JSON / `<brief>.out.md`)
+  that the orchestrator reads. **This file hand-off is what makes the worker "return" to the
+  parent the way the Agent tool's return value does.** Screen-scraping via `capture-pane` is a
+  fallback for liveness/idle detection, **not** the result channel — coordination must not depend
+  on TUI rendering.
+- **Lifecycle.** The parent blocks on the child as before; while it runs the child is the active,
+  bottom, dominant pane (below).
+
+Why this over Agent dispatch: the work becomes **visible** (watched in a pane), **interactive**
+(the human can intervene), and **crash-survivable** (each worker is a real `--session-id` session,
+recoverable via `--resume`). Agent dispatch stays fine and remains the default until this lands;
+`mux spawn` is a **drop-in replacement that preserves the dispatch semantics**, swapping an
+invisible ephemeral in-process subagent for a live, persistent one.
+
+### Column layout: the active bottom pane dominates (proven)
+
+The proven muxpoc model for stacked panes is **not** even distribution. Nesting goes orchestrator
+→ child → grandchild (≤3 deep, not parallel), and **only the deepest/bottom pane is active** —
+every ancestor is blocked waiting on its child. So the bottom (active) pane gets the **majority of
+the height (~55–60%)** and ancestors collapse to equal, compact strips. Rendered via a hand-built
+`window_layout` string (decision 3) — preset layouts like `even-vertical` cannot express "bottom
+dominant". Verified live: 2 panes → 56% bottom; 3 panes → 60% bottom with 9+9-row ancestors;
+preserved across crash+recover; focus set on the active bottom pane.
+
+### What is real today, and the glue that remains
+
+Every hard primitive is proven end-to-end in muxpoc (see [`mux-exploration.md`](mux-exploration.md)):
+clean-env psmux boot, interactive claude launch, **claude spawning its own child pane by running
+`mhgo` from its own Bash tool**, dominant-bottom layout, and `claude --resume` restoring each
+pane's *distinct* context after a `kill-server`. A realistic first cut — **one `mhgo` command per
+worktree** (open VS Code per worktree as today; run one terminal command that boots the
+orchestrator and everything it needs) — needs only **glue**, not new primitives:
+
+1. **Orchestrator bootstrap + permissions.** Launch the orchestrator claude with a real
+   bootstrap prompt/skill (not an empty session) and **pre-granted permissions**
+   (`--dangerously-skip-permissions` or a scoped allowlist) so it can run `mhgo mux spawn`
+   autonomously without hanging on a permission prompt.
+2. **File/JSON result channel** (above) — the one architectural decision that determines robust
+   vs. fragile.
+3. **Orchestration logic** — already exists in millhouse (mill-go etc.); the work is running it
+   as a *live pane-driving session* rather than an in-process Agent-tool loop.
+
+> **Robustness gap to close:** cold-recover currently relaunches `claude --resume <id>`
+> unconditionally. If a pane crashed *before it had any conversation* (no transcript yet),
+> `--resume` errors with "No conversation found with session ID". Recover must detect this and
+> fall back to a fresh `--session-id` launch. (An empty, never-used session has nothing to
+> resume — observed directly; it is expected, not a mux bug.)
+
 ## v1 — one window per repo, one column per worktree (milestone 5)
 
 Every repo gets one psmux window. Each active worktree (from the registry) owns one
@@ -178,9 +236,10 @@ the milestone is reached.
 
 ### v2 — subprocess panes (milestone 6)
 
-When Agent Dispatch is no longer enough, an orchestrator may spawn a subprocess (e.g. a
-reviewer) whose pane appears **below** its parent in the same column; deeper spawns stack
-further down.
+This is the [target model](#target-model-mux-spawn-replaces-agent-dispatch-proven-feasible--muxpoc)
+realized: `mhgo mux spawn` replaces Agent dispatch, spawning a subprocess (e.g. a reviewer) whose
+pane appears **below** its parent in the same column; deeper spawns stack further down (≤3 deep).
+The bottom/active pane dominates the column height; ancestors collapse to compact strips.
 
 ```
 ┌─────────────────┬─────────────────┐

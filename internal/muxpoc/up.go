@@ -132,13 +132,19 @@ func coldStart(out io.Writer, cfg Config, cwd string, mux PsmuxCmd) int {
 		return output.Err(out, fmt.Sprintf("send launch: %v", err))
 	}
 
+	// Capture the main pane's id so state records what runs where.
+	mainPaneID, err := mux.activePaneID(sessionName)
+	if err != nil {
+		return output.Err(out, fmt.Sprintf("get pane id: %v", err))
+	}
+
 	// Save state
 	state := &MuxpocState{
 		Session:     sessionName,
 		Socket:      sock,
 		StrippedEnv: stripped,
 		Panes: []Pane{{
-			ID:        "",
+			ID:        mainPaneID,
 			SessionID: sid,
 			Kind:      "main",
 		}},
@@ -209,13 +215,26 @@ func coldRecover(out io.Writer, cfg Config, cwd string, state *MuxpocState, mux 
 	}
 
 	// Restart each pane
-	for _, pane := range state.Panes {
-		// If pane is a review pane, split the window first
+	for i := range state.Panes {
+		pane := state.Panes[i]
+		// Record the pane id — psmux assigns fresh ids across a server restart.
+		// Review panes split a new pane (capture its id from split-window -P -F);
+		// the main pane already exists from new-session (query the active pane).
+		var paneID string
 		if pane.Kind == "review" {
-			if err := mux.run("split-window", "-t", state.Session, "-v", "-p", "30", cfg.PwshPath); err != nil {
+			paneOut, err := mux.output("split-window", "-t", state.Session, "-v", "-p", "30", "-P", "-F", "#{pane_id}", cfg.PwshPath)
+			if err != nil {
 				return output.Err(out, fmt.Sprintf("split window: %v", err))
 			}
+			paneID = strings.TrimSpace(paneOut)
+		} else {
+			id, err := mux.activePaneID(state.Session)
+			if err != nil {
+				return output.Err(out, fmt.Sprintf("get pane id: %v", err))
+			}
+			paneID = id
 		}
+		state.Panes[i].ID = paneID
 
 		// Build resume command from template
 		resumeCmd := expandTpl(cfg.ResumeTpl, pane.SessionID, "")
@@ -225,6 +244,16 @@ func coldRecover(out io.Writer, cfg Config, cwd string, state *MuxpocState, mux 
 		if err := mux.run("send-keys", "-t", state.Session, resumeCmd, "Enter"); err != nil {
 			return output.Err(out, fmt.Sprintf("send resume: %v", err))
 		}
+	}
+
+	// Re-tile so the bottom (active) pane dominates, matching the live layout.
+	if err := mux.applyColumnLayout(state.Session); err != nil {
+		return output.Err(out, fmt.Sprintf("apply layout: %v", err))
+	}
+
+	// Persist refreshed pane ids (psmux reassigns them across a server restart).
+	if err := SaveState(cwd, state); err != nil {
+		return output.Err(out, fmt.Sprintf("save state: %v", err))
 	}
 
 	return output.Ok(out, map[string]any{
