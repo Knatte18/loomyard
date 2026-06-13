@@ -29,12 +29,16 @@ observable changes until the new module that needs the extracted lib arrives.
 3. **`internal/state`.** New package: typed read/write of the gitignored,
    machine-local `.mhgo/local-state.json` registry
    ([`internal/state`](shared-libs/state.md)). Built test-first — nothing
-   in board needs it, so it has no existing suite to lean on.
+   in board needs it, so it has no existing suite to lean on. **Deferred to land
+   with mux (milestone 5):** the worktree module shipped without it, and mux + worktree
+   share the same state document, so it is built when mux needs it.
 
-4. **worktree module.** Create / track / tear down git worktrees
-   ([modules/worktree.md](modules/worktree.md)). First consumer of all three shared
-   libs + the new state lib. Owns the **junction-aware teardown** sequence (the
-   Windows locked-worktree hazard).
+4. **worktree module.** ✅ **Done.** Create / track / tear down git worktrees
+   ([modules/worktree.md](modules/worktree.md)). Consumes `internal/config` +
+   `internal/git`; owns the **junction-aware teardown** sequence (the Windows
+   locked-worktree hazard). The state-backed registry originally planned here is
+   deferred with `internal/state` (milestone 3 → lands with mux), so the shipped
+   `list` is a thin `git worktree list` wrapper.
 
 5. **mux v1 — column per worktree.** One psmux window per repo, one column per
    worktree, laid out from the worktree registry
