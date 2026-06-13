@@ -43,8 +43,9 @@ Naming conventions:
 - **Board:** `_board` (underscore prefix = system directory, not a worktree). This
   matches the config default `path: ../_board` — relative to the hub cwd, `../`
   steps up to the container and `_board` lands alongside the hub.
-- **Worktrees:** named after their branch name with `/` replaced by `-`
-  (e.g. branch `hanf/my-task` → directory `hanf-my-task`), directly in the container.
+- **Worktrees:** directory = slug only (e.g. slug `my-task` → directory `my-task`);
+  branch = `<branch_prefix><slug>` (e.g. branch `wt-my-task` with default `branch_prefix: wt-`).
+  Worktrees live directly in the container.
 
 The container is always the parent of the hub (`..` relative to the hub root) — this
 is a fixed layout invariant, not a config key. `worktree.yaml` (loaded via
