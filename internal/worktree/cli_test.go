@@ -14,9 +14,6 @@ import (
 func TestRunCLI_List(t *testing.T) {
 	// Create a test repository
 	hub := newTestRepo(t)
-	defer func() {
-		t.Chdir(filepath.Dir(hub))
-	}()
 
 	// Change to the hub directory
 	t.Chdir(hub)
@@ -67,9 +64,6 @@ func TestRunCLI_List(t *testing.T) {
 func TestRunCLI_UnknownSubcommand(t *testing.T) {
 	// Create a test repository
 	hub := newTestRepo(t)
-	defer func() {
-		t.Chdir(filepath.Dir(hub))
-	}()
 
 	// Change to the hub directory
 	t.Chdir(hub)
@@ -111,9 +105,6 @@ func TestRunCLI_UnknownSubcommand(t *testing.T) {
 func TestRunCLI_RemoveWithForceFlag(t *testing.T) {
 	// Create a test repository
 	hub := newTestRepo(t)
-	defer func() {
-		t.Chdir(filepath.Dir(hub))
-	}()
 
 	// Change to the hub directory
 	t.Chdir(hub)
