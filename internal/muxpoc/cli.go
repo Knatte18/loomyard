@@ -39,7 +39,7 @@ type Config struct {
 //	attach    pop the session into a maximized terminal
 //	status    show session and pane status
 //	down      stop the session and delete state
-//	daemon    [not yet implemented in this batch]
+//	daemon    foreground poller; recovers a crashed session (crash-loop-guarded)
 func RunCLI(out io.Writer, args []string) int {
 	fs := flag.NewFlagSet("muxpoc", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
