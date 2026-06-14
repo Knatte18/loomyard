@@ -47,6 +47,12 @@ func RunCLI(out io.Writer, args []string) int {
 	}
 
 	// Resolve Layout
+	// Note: paths.Resolve checks for git-repo membership (via a git rev-parse query)
+	// and fails with ErrNotAGitRepo if the cwd is not within a git repository.
+	// This failure precedes the LoadConfig call intentionally: geometry errors
+	// (not a git repo) are fatal and take priority over initialization errors
+	// (missing _mhgo/ config). This ensures consistent error reporting for callers
+	// outside a git repository.
 	l, err := paths.Resolve(cwd)
 	if err != nil {
 		return output.Err(out, err.Error())
