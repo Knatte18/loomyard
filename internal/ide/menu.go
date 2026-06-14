@@ -32,12 +32,7 @@ import (
 // Returns an error on failure (HARD error if HealthCheck fails), or nil on success.
 func Menu(l *paths.Layout, in io.Reader, out io.Writer) error {
 	// Load board config and create board facade
-	cfg, err := board.LoadConfig(l.Cwd, "board")
-	if err != nil {
-		// Board config load failed; but we check HealthCheck below, so this is OK
-		// Actually per spec, we should check HealthCheck and hard-error if it fails
-		// Let's proceed to load and check health
-	}
+	cfg, _ := board.LoadConfig(l.Cwd, "board")
 
 	b := board.New(cfg)
 
