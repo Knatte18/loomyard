@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-board-paths-healthcheck
+phase: approved-ide-module
 slug: mhgo-portals-launchers
 branch: mhgo-portals-launchers
 plan: _mill/plan
@@ -29,6 +29,7 @@ implementing  '2026-06-14T10:52:30Z'
 approved-worktree-portals-launchers  '2026-06-14T10:52:30Z'
 approved-muxpoc-paths-migration  '2026-06-14T10:56:58Z'
 approved-board-paths-healthcheck  '2026-06-14T11:01:35Z'
+approved-ide-module  '2026-06-14T11:08:10Z'
 ```
 
 ## Batches
@@ -62,9 +63,10 @@ batches:
     start_sha: 0fd200bed9e61aaac04d62efb3f1c1eb3bb7aac6
     commit_sha: 1e792a2842a16c852cc6aa2420ce0b98a3172a56
   - name: ide-module
-    state: running
+    state: approved
     implementer_session: 838dc82b-e264-4d0d-9c38-caea55987ac9
     start_sha: 2ba4685bff3afb98d6b3bcff6ed4f4cdc5e950d7
+    commit_sha: 10ee99b885b8457f797dcc150e107c92c2735469
   - name: enforcement-and-docs
     state: pending
 ```
