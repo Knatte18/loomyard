@@ -15,7 +15,7 @@ See [roadmap.md](../roadmap.md) milestones 2–3 for the extraction order.
 
 ## Libraries
 
-- [config.md](config.md) — `internal/config`: layered YAML config, env expansion, `.env` loading
+- [config.md](config.md) — `internal/config`: two-layer YAML config (defaults + `_mhgo/<module>.yaml`), env expansion, `.env` loading
 - [git.md](git.md) — `internal/git`: windowless `RunGit` primitive
 - [lock.md](lock.md) — `internal/lock`: cross-process file locking
-- [state.md](state.md) — `internal/state`: machine-local runtime state registry
+- [state.md](state.md) — `internal/state` **(planned)**: machine-local runtime state registry

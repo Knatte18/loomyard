@@ -43,15 +43,19 @@ observable changes until the new module that needs the extracted lib arrives.
 5. **mux v1 — column per worktree.** One psmux window per repo, one column per
    worktree, laid out from the worktree registry
    ([modules/mux.md](modules/mux.md)). No subprocess panes, no daemon, no Slack.
+   **Note:** A working proof-of-concept of the daemon and pane-recovery model
+   already ships as `internal/muxpoc` (see [modules/muxpoc.md](modules/muxpoc.md)).
 
 6. **mux v2 — subprocess panes.** Parent/child pane tree (a spawned reviewer
    appears below its parent). Built only once Agent Dispatch stops being enough.
+   **Proven in muxpoc:** see [modules/muxpoc.md](modules/muxpoc.md).
 
 7. **mux daemon.** Standalone watchdog process: detects a psmux crash via
    `cmd.Wait()`, recovers each pane by relaunching interactive Claude and re-injecting
    context from mux's own capture journal (native `--resume` does **not** work for
    programmatically-driven panes — see [modules/mux.md](modules/mux.md#resume-after-crash-the-corrected-model)),
    mutual watchdog so both must die to go dark. See [modules/mux.md](modules/mux.md#deferred).
+   **Proven in muxpoc:** see [modules/muxpoc.md](modules/muxpoc.md).
 
 8. **Slack relay.** Bidirectional, one channel per worktree, riding on the daemon.
 

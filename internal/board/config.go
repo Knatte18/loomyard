@@ -1,8 +1,8 @@
-// config.go — layered configuration system for board modules.
+// config.go — configuration for the board module.
 //
-// Defines the Config and Outputs types, plus functions for loading configuration
-// from YAML files organized in layers. The system supports environment variable
-// expansion and path resolution.
+// Defines the Config and Outputs types, plus DefaultConfig and LoadConfig.
+// LoadConfig delegates entirely to internal/config for resolution; the board
+// module never reads config files or knows their layout itself.
 
 package board
 
