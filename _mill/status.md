@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-enforcement-and-docs
+phase: holistic-reviewing
 slug: mhgo-portals-launchers
 branch: mhgo-portals-launchers
 plan: _mill/plan
@@ -31,6 +31,7 @@ approved-muxpoc-paths-migration  '2026-06-14T10:56:58Z'
 approved-board-paths-healthcheck  '2026-06-14T11:01:35Z'
 approved-ide-module  '2026-06-14T11:08:10Z'
 approved-enforcement-and-docs  '2026-06-14T11:14:02Z'
+holistic-reviewing  '2026-06-14T11:15:02Z'
 ```
 
 ## Batches
