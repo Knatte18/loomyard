@@ -39,5 +39,7 @@ batches:
     start_sha: 58143d29fc0adb09bf086a3d17fe3326690c1f08
     commit_sha: b0e80ca0e9e2608cc775ea47bef2e97fbc80a037
   - name: tree-sweep
-    state: pending
+    state: running
+    implementer_session: 81f54337-9ea7-4629-85c0-43392f889072
+    start_sha: 72a76cc58fa5236d4af4636a1101634a449431aa
 ```
