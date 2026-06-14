@@ -35,7 +35,9 @@ batches:
     start_sha: fe7a9f22e60bf9b893e2ebddfc20ab8d96b69b68
     commit_sha: 3eaf060d6ae8a3acb19a9e7cd7ed072cfc482cbd
   - name: gitignore-lib
-    state: pending
+    state: running
+    implementer_session: 33c8c278-ca18-4da0-a590-285ea25fdfc0
+    start_sha: 5285c798514be6e6facd0abb25827dabcff724af
   - name: worktree-portals-launchers
     state: pending
   - name: muxpoc-paths-migration
