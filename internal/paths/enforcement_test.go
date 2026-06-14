@@ -54,26 +54,25 @@ func TestEnforcement(t *testing.T) {
 				}
 				pkgDir := filepath.Dir(relPath)
 
-				// Check allowlist: internal/paths, cmd/mhgo
-				isAllowed := pkgDir == "internal/paths" ||
-					(strings.HasPrefix(pkgDir, "cmd/mhgo") && (pkgDir == "cmd/mhgo" || d.Name() == "main.go"))
+				// Normalize path separators to forward slashes for comparison.
+				pkgDir = filepath.ToSlash(pkgDir)
 
-				// Also allow cmd/mhgo/main.go specifically.
-				if pkgDir == "cmd" && d.Name() == "main.go" {
+				// Check allowlist: internal/paths, cmd/mhgo/main.go
+				isAllowed := pkgDir == "internal/paths" ||
+					(pkgDir == "cmd/mhgo" && d.Name() == "main.go")
+
+				// Skip files in the allowlist (they are allowed to contain banned tokens).
+				if isAllowed {
 					return nil
 				}
-				if strings.HasPrefix(pkgDir, "cmd/mhgo") {
-					isAllowed = true
-				}
 
-				if !isAllowed {
-					data, err := os.ReadFile(path)
-					if err != nil {
-						return err
-					}
-					if isBanned(data) {
-						failures = append(failures, relPath)
-					}
+				// Check the file for banned tokens.
+				data, err := os.ReadFile(path)
+				if err != nil {
+					return err
+				}
+				if isBanned(data) {
+					failures = append(failures, relPath)
 				}
 			}
 
