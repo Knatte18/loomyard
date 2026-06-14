@@ -296,7 +296,7 @@ Command: `mhgo board upsert '{"slug": "my-task", "title": "Do something"}'`
 
 ```
 main.go → board.RunCLI (cli.go)
-  │  LoadConfig(cwd, "board") — resolve from _mhgo/ layers
+  │  LoadConfig(cwd, "board") — resolve from `_mhgo/board.yaml` + defaults
   │  parse args → subcommand="upsert", jsonPayload='{"slug":...}'
   │  json.Unmarshal → fields map[string]any
   │  b.UpsertTask(fields)
