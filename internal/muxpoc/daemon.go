@@ -27,7 +27,7 @@ const (
 // psmux session. Returns 0 only on clean signal shutdown; returns output.Err
 // on unrecoverable state errors.
 func cmdDaemon(out io.Writer, cfg Config) int {
-	cwd, _ := os.Getwd()
+	cwd := cfg.WorktreeRoot
 	mux := NewPsmuxCmd(cfg)
 
 	// Crash-loop guard: maintain a ring of recovery timestamps
