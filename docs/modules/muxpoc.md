@@ -142,7 +142,8 @@ All configuration is via command-line flags (no `internal/config`, no YAML):
 - `-interval`: poll interval for daemon and status checks (default: 2s)
 
 Templates are expanded via `expandTpl(tpl, sid, task)` which replaces `%SID%` with
-session ID, `%TASK%` with task (if any), and `%CLAUDE%` with the resolved claude path.
+session ID and `%TASK%` with task (if any). Additionally, `%CLAUDE%` is replaced with
+the resolved claude path at the call sites in `up.go` and `review.go`.
 
 ### Low-level psmux operations
 
