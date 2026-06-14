@@ -56,7 +56,9 @@ batches:
     start_sha: 172cc51bc5d524ee4a32628ea685f94ed8f26d7c
     commit_sha: 4d3a0759aee080dc490f3a0825e4e127b3ab850f
   - name: board-paths-healthcheck
-    state: pending
+    state: running
+    implementer_session: a674d7dd-0edc-442a-8a18-eecbdfae497f
+    start_sha: 0fd200bed9e61aaac04d62efb3f1c1eb3bb7aac6
   - name: ide-module
     state: pending
   - name: enforcement-and-docs
