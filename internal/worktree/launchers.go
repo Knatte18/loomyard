@@ -86,13 +86,10 @@ func writeLaunchers(l *paths.Layout, slug string) error {
 //
 // Uses os.RemoveAll to delete the entire l.LauncherDir(slug) directory.
 // Leaves l.LaunchersDir()/ide-menu.cmd in place.
-// Returns nil if the directory does not exist.
+// Returns nil if the directory does not exist (os.RemoveAll returns nil for non-existent paths).
 func removeLaunchers(l *paths.Layout, slug string) error {
 	launcherDir := l.LauncherDir(slug)
 	if err := os.RemoveAll(launcherDir); err != nil {
-		if os.IsNotExist(err) {
-			return nil // Idempotent: already absent
-		}
 		return fmt.Errorf("remove launcher dir %s: %w", launcherDir, err)
 	}
 	return nil
