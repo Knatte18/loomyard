@@ -38,8 +38,8 @@ type RemoveResult struct {
 func (w *Worktree) Remove(l *paths.Layout, slug string, force bool) (RemoveResult, error) {
 	// (1) Early teardown: remove portal and launchers BEFORE exists check
 	// These are best-effort (errors masked)
-	RemovePortal(l, slug)
-	RemoveLaunchers(l, slug)
+	removePortal(l, slug)
+	removeLaunchers(l, slug)
 
 	// (2) Locate the target and check if it exists
 	target := l.WorktreePath(slug)

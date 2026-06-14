@@ -121,10 +121,10 @@ func TestWriteLaunchers(t *testing.T) {
 			}
 			tt.verifyMenu(t, string(menuCmdContent))
 
-			// Call WriteLaunchers again with a different slug to verify ide-menu.cmd is not clobbered
+			// Call writeLaunchers again with a different slug to verify ide-menu.cmd is not clobbered
 			originalMenuContent := string(menuCmdContent)
-			if err := worktree.WriteLaunchers(l, "another-slug"); err != nil {
-				t.Fatalf("WriteLaunchers again: %v", err)
+			if err := writeLaunchers(l, "another-slug"); err != nil {
+				t.Fatalf("writeLaunchers again: %v", err)
 			}
 
 			menuCmdContent2, err := os.ReadFile(menuCmdPath)
