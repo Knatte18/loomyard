@@ -80,7 +80,9 @@ func Resolve(cwd string) (*Layout, error) {
 	mainWorktree := ""
 	for _, entry := range entries {
 		if entry.Main {
-			mainWorktree = entry.Path
+			// Normalize mainWorktree path (git may emit forward slashes)
+			mainWorktree = filepath.FromSlash(entry.Path)
+			mainWorktree = filepath.Clean(mainWorktree)
 			break
 		}
 	}
