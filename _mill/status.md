@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-tree-sweep
+phase: holistic-reviewing
 slug: docs-stale-sweep
 branch: docs-stale-sweep
 plan: _mill/plan
@@ -23,6 +23,7 @@ implementing  '2026-06-14T06:12:00Z'
 approved-board-config-fixes  '2026-06-14T06:15:28Z'
 approved-muxpoc-doc  '2026-06-14T06:17:54Z'
 approved-tree-sweep  '2026-06-14T06:21:04Z'
+holistic-reviewing  '2026-06-14T06:21:43Z'
 ```
 
 ## Batches
