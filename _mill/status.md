@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-paths-foundation
 slug: mhgo-portals-launchers
 branch: mhgo-portals-launchers
 plan: _mill/plan
@@ -22,6 +22,7 @@ planning  '2026-06-14T10:13:56Z'
 plan-fix-r1  '2026-06-14T10:19:08Z'
 planned  '2026-06-14T10:19:27Z'
 implementing  '2026-06-14T10:32:49Z'
+approved-paths-foundation  '2026-06-14T10:36:33Z'
 ```
 
 ## Batches
@@ -29,9 +30,10 @@ implementing  '2026-06-14T10:32:49Z'
 ```yaml
 batches:
   - name: paths-foundation
-    state: running
+    state: approved
     implementer_session: 3196606c-1ff1-4dd2-bb63-0c79a343d428
     start_sha: fe7a9f22e60bf9b893e2ebddfc20ab8d96b69b68
+    commit_sha: 3eaf060d6ae8a3acb19a9e7cd7ed072cfc482cbd
   - name: gitignore-lib
     state: pending
   - name: worktree-portals-launchers
