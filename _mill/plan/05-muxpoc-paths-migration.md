@@ -27,6 +27,7 @@ independent of the worktree/board/ide batches (disjoint files).
 - **Context:**
   - `internal/paths/paths.go`
   - `internal/output/output.go`
+  - `internal/muxpoc/cli_test.go`
 - **Edits:**
   - `internal/muxpoc/cli.go`
 - **Creates:** none
@@ -37,7 +38,11 @@ independent of the worktree/board/ide batches (disjoint files).
   emit a JSON error via `output.Err(out, ...)` and return 1. Set
   `cfg.WorktreeRoot = l.WorktreeRoot` before dispatching to the subcommands.
   (`muxpoc` requires a git repo now — it is always meant to run inside a
-  worktree.)
+  worktree.) Keep the existing no-subcommand and unknown-subcommand usage paths
+  writing to STDERR and returning 1 (NOT via `output.Err` to stdout), so the
+  existing `cli_test.go` dispatch-error assertions (`out.Len() == 0`) still hold;
+  those tests run inside the package's own git worktree, so `paths.Resolve`
+  succeeds and never writes a JSON error to stdout ahead of them.
 - **Commit:** `refactor(muxpoc): resolve worktree root via paths in RunCLI`
 
 ### Card 16: Subcommands anchor state/socket on the worktree root
@@ -96,12 +101,18 @@ independent of the worktree/board/ide batches (disjoint files).
   the migrated `cmd*` functions — which now call `paths.Resolve` via
   `cfg.WorktreeRoot` set in `RunCLI` — succeed; where the test constructs `Config`
   directly and calls `cmdUp`/`cmdStatus`/etc., set `cfg.WorktreeRoot` to the temp
-  dir (its now-git worktree root). Update the `LoadState(cwd)` assertion to use
-  that same worktree root. In `state_test.go`, add a test documenting the fix:
-  `socketName` of a worktree root differs from `socketName` of a subdirectory of
-  it (`filepath.Join(root, "sub")`), proving why callers must pass the worktree
-  root rather than the raw cwd; keep the existing `socketName`/state tests
-  passing.
+  dir (its now-git worktree root). Use the IDENTICAL raw temp-dir string for both
+  `cfg.WorktreeRoot` and the `LoadState(...)` assertion — do NOT pass either side
+  through `paths.Resolve` (the smoke path constructs `Config` directly and never
+  calls `RunCLI`/`Resolve`), so the two stay byte-consistent and the Windows
+  `%TEMP%` short/symlink-vs-`--show-toplevel` normalization mismatch can never
+  split them. In `state_test.go`, add a test documenting the fix: `socketName` of a
+  worktree root differs from `socketName` of a subdirectory of it
+  (`filepath.Join(root, "sub")`), proving why callers must pass the worktree root
+  rather than the raw cwd; add a comment noting that socket identity is the
+  worktree-root basename, so two sibling worktrees with colliding leaf names would
+  share a socket (inherent to the basename scheme — documented, not fixed here).
+  Keep the existing `socketName`/state tests passing.
 - **Commit:** `test(muxpoc): git-init smoke temp dir and pin socket stability`
 
 ## Batch Tests

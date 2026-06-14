@@ -3,7 +3,7 @@
 ```yaml
 task: 'Extend worktree module: portals and launchers'
 slug: 'mhgo-portals-launchers'
-approved: false
+approved: true
 started: '20260614-100835'
 parent: 'main'
 root: ""
