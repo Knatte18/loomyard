@@ -35,12 +35,10 @@ func writeVSCodeConfig(worktreeDir, relpath, slug, color string) error {
 		// File doesn't exist; write it
 		settings := map[string]any{
 			"workbench.colorCustomizations": map[string]any{
-				"titleBar": map[string]any{
-					"activeBackground":   color,
-					"activeForeground":   "#ffffff",
-					"inactiveBackground": color,
-					"inactiveForeground": "#ffffffaa",
-				},
+				"titleBar.activeBackground":   color,
+				"titleBar.activeForeground":   "#ffffff",
+				"titleBar.inactiveBackground": color,
+				"titleBar.inactiveForeground": "#ffffffaa",
 			},
 			"window.title":                          slug,
 			"workbench.startupEditor":               "none",

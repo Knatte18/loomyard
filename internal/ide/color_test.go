@@ -58,9 +58,7 @@ func TestPickColorFirstUnusedNonGreen(t *testing.T) {
 	settingsFile := filepath.Join(child1Settings, "settings.json")
 	settings := map[string]any{
 		"workbench.colorCustomizations": map[string]any{
-			"titleBar": map[string]any{
-				"activeBackground": "#7d2d6b", // purple
-			},
+			"titleBar.activeBackground": "#7d2d6b", // purple
 		},
 	}
 	data, _ := json.Marshal(settings)
@@ -108,9 +106,7 @@ func TestPickColorWrapAroundAllUsed(t *testing.T) {
 
 		settings := map[string]any{
 			"workbench.colorCustomizations": map[string]any{
-				"titleBar": map[string]any{
-					"activeBackground": color,
-				},
+				"titleBar.activeBackground": color,
 			},
 		}
 		data, _ := json.Marshal(settings)

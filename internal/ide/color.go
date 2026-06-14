@@ -96,12 +96,10 @@ func pickColor(l *paths.Layout) string {
 			continue
 		}
 
-		// Extract titleBar.activeBackground color
+		// Extract titleBar.activeBackground color using flat dot-notation key
 		if colorCustomizations, ok := settings["workbench.colorCustomizations"].(map[string]any); ok {
-			if titleBar, ok := colorCustomizations["titleBar"].(map[string]any); ok {
-				if activeBackground, ok := titleBar["activeBackground"].(string); ok {
-					used[strings.ToLower(activeBackground)] = true
-				}
+			if activeBackground, ok := colorCustomizations["titleBar.activeBackground"].(string); ok {
+				used[strings.ToLower(activeBackground)] = true
 			}
 		}
 	}
