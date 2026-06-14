@@ -1,4 +1,4 @@
-package worktree_test
+package worktree
 
 import (
 	"os"
@@ -6,12 +6,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/mhgo/internal/paths"
-	"github.com/Knatte18/mhgo/internal/worktree"
 )
 
 // TestCreatePortal covers the createPortal and removePortal helpers.
 // It creates a paths.Layout from a test repo, creates the target _mhgo/ dir,
-// calls createPortal (via reflection or exported wrapper), and asserts the junction resolves to the target.
+// calls createPortal and asserts the junction resolves to the target.
 // Then it calls removePortal and asserts the link is gone while the target survives.
 // A second removePortal call is idempotent (no error).
 func TestCreatePortal(t *testing.T) {
@@ -35,8 +34,8 @@ func TestCreatePortal(t *testing.T) {
 		t.Fatalf("mkdir target: %v", err)
 	}
 
-	// Test CreatePortal
-	if err := worktree.CreatePortal(l, "test-slug"); err != nil {
+	// Test createPortal
+	if err := createPortal(l, "test-slug"); err != nil {
 		t.Skipf("portal creation not supported on this platform: %v", err)
 	}
 
@@ -64,10 +63,10 @@ func TestCreatePortal(t *testing.T) {
 		}
 	}
 
-	// Test RemovePortal
-	// First RemovePortal call
-	if err := worktree.RemovePortal(l, "test-slug"); err != nil {
-		t.Fatalf("RemovePortal: %v", err)
+	// Test removePortal
+	// First removePortal call
+	if err := removePortal(l, "test-slug"); err != nil {
+		t.Fatalf("removePortal: %v", err)
 	}
 
 	// Verify the link is gone
@@ -85,8 +84,8 @@ func TestCreatePortal(t *testing.T) {
 		t.Errorf("target _mhgo dir was removed: %v", err)
 	}
 
-	// Second RemovePortal call should be idempotent
-	if err := worktree.RemovePortal(l, "test-slug"); err != nil {
-		t.Fatalf("second RemovePortal: %v", err)
+	// Second removePortal call should be idempotent
+	if err := removePortal(l, "test-slug"); err != nil {
+		t.Fatalf("second removePortal: %v", err)
 	}
 }

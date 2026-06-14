@@ -1,4 +1,4 @@
-package worktree_test
+package worktree
 
 import (
 	"os"

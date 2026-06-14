@@ -1,4 +1,4 @@
-package worktree_test
+package worktree
 
 import (
 	"os"
@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/mhgo/internal/paths"
-	"github.com/Knatte18/mhgo/internal/worktree"
 )
 
 // TestWriteLaunchers covers launcher file creation on Windows.
@@ -102,8 +101,8 @@ func TestWriteLaunchers(t *testing.T) {
 			}
 
 			// Write launchers
-			if err := worktree.WriteLaunchers(l, tt.slug); err != nil {
-				t.Fatalf("WriteLaunchers: %v", err)
+			if err := writeLaunchers(l, tt.slug); err != nil {
+				t.Fatalf("writeLaunchers: %v", err)
 			}
 
 			// Verify ide.cmd was created with correct content
@@ -152,11 +151,11 @@ func TestRemoveLaunchers(t *testing.T) {
 	}
 
 	// Write launchers for two slugs
-	if err := worktree.WriteLaunchers(l, "slug1"); err != nil {
-		t.Fatalf("WriteLaunchers slug1: %v", err)
+	if err := writeLaunchers(l, "slug1"); err != nil {
+		t.Fatalf("writeLaunchers slug1: %v", err)
 	}
-	if err := worktree.WriteLaunchers(l, "slug2"); err != nil {
-		t.Fatalf("WriteLaunchers slug2: %v", err)
+	if err := writeLaunchers(l, "slug2"); err != nil {
+		t.Fatalf("writeLaunchers slug2: %v", err)
 	}
 
 	// Verify both launcher dirs exist
@@ -170,8 +169,8 @@ func TestRemoveLaunchers(t *testing.T) {
 	}
 
 	// Remove slug1 launchers
-	if err := worktree.RemoveLaunchers(l, "slug1"); err != nil {
-		t.Fatalf("RemoveLaunchers slug1: %v", err)
+	if err := removeLaunchers(l, "slug1"); err != nil {
+		t.Fatalf("removeLaunchers slug1: %v", err)
 	}
 
 	// Verify slug1 dir is gone but slug2 remains
@@ -191,9 +190,9 @@ func TestRemoveLaunchers(t *testing.T) {
 		t.Fatalf("ide-menu.cmd was removed: %v", err)
 	}
 
-	// Second RemoveLaunchers call should be idempotent
-	if err := worktree.RemoveLaunchers(l, "slug1"); err != nil {
-		t.Fatalf("second RemoveLaunchers slug1: %v", err)
+	// Second removeLaunchers call should be idempotent
+	if err := removeLaunchers(l, "slug1"); err != nil {
+		t.Fatalf("second removeLaunchers slug1: %v", err)
 	}
 }
 

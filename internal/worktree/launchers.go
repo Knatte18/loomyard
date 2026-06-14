@@ -10,7 +10,7 @@ import (
 	"github.com/Knatte18/mhgo/internal/paths"
 )
 
-// WriteLaunchers writes per-worktree launchers for the given slug.
+// writeLaunchers writes per-worktree launchers for the given slug.
 //
 // On Windows: creates l.LauncherDir(slug) and writes ide.cmd with content:
 //
@@ -24,7 +24,7 @@ import (
 //	@cd /d "%~dp0..\<hubname>\<relpath-backslash>" && mhgo ide menu
 //
 // On non-Windows: returns nil (no-op).
-func WriteLaunchers(l *paths.Layout, slug string) error {
+func writeLaunchers(l *paths.Layout, slug string) error {
 	if runtime.GOOS != "windows" {
 		return nil // No-op on non-Windows
 	}
@@ -82,12 +82,12 @@ func WriteLaunchers(l *paths.Layout, slug string) error {
 	return nil
 }
 
-// RemoveLaunchers removes the launcher directory for the given slug (idempotent).
+// removeLaunchers removes the launcher directory for the given slug (idempotent).
 //
 // Uses os.RemoveAll to delete the entire l.LauncherDir(slug) directory.
 // Leaves l.LaunchersDir()/ide-menu.cmd in place.
 // Returns nil if the directory does not exist.
-func RemoveLaunchers(l *paths.Layout, slug string) error {
+func removeLaunchers(l *paths.Layout, slug string) error {
 	launcherDir := l.LauncherDir(slug)
 	if err := os.RemoveAll(launcherDir); err != nil {
 		if os.IsNotExist(err) {

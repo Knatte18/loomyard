@@ -98,7 +98,7 @@ func (w *Worktree) Add(l *paths.Layout, slug string) (AddResult, error) {
 	}
 
 	// (7) Create portal junction
-	if err := CreatePortal(l, slug); err != nil {
+	if err := createPortal(l, slug); err != nil {
 		// Rollback on portal creation failure
 		rollbackAddError := w.rollbackAdd(l, slug, branch, target)
 		if rollbackAddError == nil {
@@ -109,7 +109,7 @@ func (w *Worktree) Add(l *paths.Layout, slug string) (AddResult, error) {
 	}
 
 	// (8) Write launchers
-	if err := WriteLaunchers(l, slug); err != nil {
+	if err := writeLaunchers(l, slug); err != nil {
 		// Rollback on launcher write failure
 		w.rollbackAdd(l, slug, branch, target) // Best-effort rollback (errors masked)
 		return AddResult{}, err                // Return original error
@@ -143,14 +143,14 @@ func (w *Worktree) rollbackAdd(l *paths.Layout, slug, branch, target string) err
 	var firstErr error
 
 	// Remove portal
-	if err := RemovePortal(l, slug); err != nil {
+	if err := removePortal(l, slug); err != nil {
 		if firstErr == nil {
 			firstErr = err
 		}
 	}
 
 	// Remove launchers
-	if err := RemoveLaunchers(l, slug); err != nil {
+	if err := removeLaunchers(l, slug); err != nil {
 		if firstErr == nil {
 			firstErr = err
 		}
