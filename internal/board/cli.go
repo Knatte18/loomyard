@@ -5,10 +5,14 @@
 // one Board method, and writes the JSON result to the given writer. Owns the
 // board CLI surface so main stays a thin module dispatcher.
 //
+// Configuration resolution (cwd-authoritative):
+// RunCLI delegates to LoadConfig, which resolves the board config from the
+// current working directory via internal/config. The board module never reads
+// config files itself — file layout and overrides are entirely internal/config's
+// concern.
+//
 // When --board-path is set (internal flag for detached sync child), it bypasses
-// configuration resolution and uses the provided path directly. Otherwise,
-// RunCLI resolves config via os.Getwd() and LoadConfig, erroring when <cwd>/_mhgo/
-// is absent.
+// configuration resolution and uses the provided path directly.
 
 package board
 
@@ -30,9 +34,9 @@ import (
 //	board <subcommand> [json-payload]
 //
 // Configuration resolution (cwd-authoritative):
-// The current working directory must contain _mhgo/ directory. Configuration
-// is loaded from <cwd>/_mhgo/board.yaml and <cwd>/.mhgo/board.yaml (optional),
-// merged with defaults. The board path is resolved relative to the cwd.
+// RunCLI resolves the board configuration cwd-authoritatively via internal/config;
+// the module never reads config files or knows their on-disk layout itself.
+// The board path is resolved relative to the cwd.
 //
 // Subcommands and their JSON payloads:
 //
