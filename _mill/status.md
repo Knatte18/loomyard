@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussed
 slug: docs-stale-sweep
 branch: docs-stale-sweep
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-06-14T05:17:11Z'
+discussed  '2026-06-14T05:57:11Z'
 ```
