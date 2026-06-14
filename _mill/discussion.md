@@ -51,19 +51,28 @@ flow. A Go-powered picker also replaces mill's slow Python `millpy-vscode` choos
   `remove.go:40-42`, so it still runs when the worktree dir is already gone — the
   early "not found" return must not skip portal/launcher cleanup. The
   container-root `ide-menu.cmd` is left in place.
-- **cwd ≠ worktree-root fix (repo-wide, permanent):** stop assuming the invocation
-  cwd is the worktree root anywhere in the repo. Resolve the worktree root via
-  `git.FindRoot(cwd)`. Full audit result (see Decisions → cwd-not-worktree-root):
+- **Canonical path resolver `internal/paths` + permanent cwd-≠-worktree-root
+  elimination (repo-wide):** introduce a single geometry-only package that owns all
+  path math, migrate every offending site onto it, and add an enforcement test so
+  the bug class can never return (see Decisions → paths-canonical-resolver and
+  paths-enforcement). Full audit of sites to migrate
+  (see Decisions → cwd-not-worktree-root):
   - `internal/worktree/add.go` + `remove.go` — `container := filepath.Dir(sourceDir)`
-    assumes cwd == git root. **Fix.**
+    assumes cwd == git root. **Migrate to `paths`.**
+  - `internal/worktree/list.go` — the `git worktree list --porcelain` parse moves
+    **down into `internal/paths`**; `worktree.List` becomes a thin wrapper.
   - `internal/muxpoc` — `LoadState(cwd)`/`SaveState(cwd)` anchor state at
     `cwd/.mhgo/`, and `socketName(filepath.Base(cwd))` derives the psmux session
     from the cwd basename, so running from a subfolder silently splits
-    session/state. **Fix** (anchor both on `git.FindRoot(cwd)`), even though
-    muxpoc is a POC — the operator wants this class of bug gone everywhere.
+    session/state. **Migrate** (anchor both on the worktree root via `paths`),
+    even though muxpoc is a POC — the operator wants this class of bug gone
+    everywhere.
   - `internal/board` cwd usage (`cli.go` config resolution, `init.go` scaffolding
     `_mhgo/` at cwd) is **correct by design** — the cwd-authoritative model, not a
-    bug; left unchanged.
+    bug; left unchanged (it may consume `paths` for the worktree root if convenient,
+    but its cwd-based config resolution stays).
+- **Enforcement test + CONSTRAINTS.md + docs** so all future sessions use `paths`
+  (see Decisions → paths-enforcement).
 - **New `board` health-check** — a fast `board` API (e.g. `Board.HealthCheck()
   error`) that verifies the board dir exists and `tasks.json` is readable. The
   board module is the sole authority on board validity; `ide` calls it and never
@@ -123,37 +132,87 @@ flow. A Go-powered picker also replaces mill's slow Python `millpy-vscode` choos
 - Rejected: hardcoding `_mill` (wrong tool); a config flag for the dir name
   (YAGNI — the name is fixed to `_mhgo`).
 
+### paths-canonical-resolver
+
+- Decision: add `internal/paths` — a **geometry-only** package that is the single
+  owner of all worktree/container path math. One constructor resolves a `Layout`
+  once per invocation (all git calls + normalization + validation done once):
+  - Fields: `Cwd`, `WorktreeRoot` (`rev-parse --show-toplevel`, normalized),
+    `Container` (`parent(WorktreeRoot)`), `RelPath` (`rel(WorktreeRoot, Cwd)`),
+    `MainWorktree` (the `Main=true` entry).
+  - Methods: `MhgoDir()`, `WorktreePath(slug)`, `PortalsDir()`,
+    `PortalTarget(slug)` (= `<Container>/<slug>/<RelPath>/_mhgo`),
+    `LaunchersDir()`, `LauncherDir(slug)`, `HubName()` (= `filepath.Base(MainWorktree)`).
+  - Typed errors: `ErrNotInitialized` (no `_mhgo/` at cwd), `ErrNotAGitRepo`, etc.
+- Dependency direction is strictly one-way (Go enforces it — an import cycle is a
+  compile error): `paths` imports only `internal/git` + stdlib and **never** a
+  domain module; `worktree`/`ide`/`muxpoc`/`board` import `paths`. To make that
+  true, the `git worktree list --porcelain` execution+parse moves down from
+  `worktree/list.go` into `paths` (pure geometry); `worktree.List` becomes a thin
+  wrapper over it. `paths` owns *geometry* ("where is X"); domain modules keep
+  *mutations* (`git worktree add/remove`, junction teardown, rollback).
+- Normalization (forward/backslash, symlink-resolved `--show-toplevel` output vs
+  backslash `os.Getwd`) is centralized in `paths` (`filepath.Clean`/`FromSlash`),
+  so the review path-form NOTE becomes structurally impossible elsewhere.
+- Rationale: the cwd-≠-worktree-root bug recurs because no package owns path math;
+  every module re-derives geometry ad hoc. A single resolver makes correctness
+  structural, not a matter of discipline. Mirrors mill's `_paths.py`.
+- Rejected: scattered `git.FindRoot` fixes (leaves the next new file free to
+  reintroduce the bug); putting geometry in `internal/git` (muddies "run git" with
+  "compute paths").
+
+### paths-enforcement
+
+- Decision: guarantee future sessions use `paths` with a **two-layer** mechanism.
+  1. **Hard guarantee — `internal/paths/enforcement_test.go`:** a Go test that
+     walks the source tree and **fails the build** if `os.Getwd`,
+     `git rev-parse --show-toplevel`, or cwd-based `filepath.Dir` appear outside
+     `internal/paths` (allowlist: `internal/paths`, `cmd/mhgo/main.go`). This is
+     harness-independent — it catches every author, including future Claude
+     sessions with no memory, at `go test`/CI time.
+  2. **Agent awareness — `CONSTRAINTS.md` at the repo root:** read by every
+     mill-start/mill-plan/mill-autofix/review session via
+     `_constraints.read_if_exists()` (verified: reads `<git-toplevel>/CONSTRAINTS.md`).
+     States the rule and points at the enforcement test.
+  3. **Rationale — `docs/overview.md` "Path invariants" section** for humans.
+- Ordering: the enforcement test lands **only after** every site is migrated (it is
+  red until then). No shrinking-allowlist phase — it goes in green and stays green.
+- Rationale: a doc alone repeats the current failure mode (gets forgotten); the
+  test is the wall, CONSTRAINTS.md keeps agents from hitting it blind, docs explain
+  why. The operator explicitly cannot keep reminding every session.
+- Rejected: CONSTRAINTS.md alone (forgettable); relying on `CLAUDE.md`/memory
+  (the proven-insufficient status quo).
+
 ### cwd-not-worktree-root
 
 - Decision: fix the cwd-≠-worktree-root assumption permanently and **repo-wide**,
-  including the throwaway `muxpoc` POC. Resolve the worktree root with
-  `internal/git.FindRoot(cwd)` and use it as the anchor wherever code currently
-  treats cwd as the worktree root.
-  - **worktree:** in `add.go`/`remove.go`, compute
-    `gitroot = git.FindRoot(cwd)`, `container = filepath.Dir(gitroot)`,
-    `relpath = rel(gitroot, cwd)`. **Config resolution stays cwd-based** — the call
-    site (`cli.go`) keeps passing `cwd` to `LoadConfig`, and `FindBaseDir` still
-    strictly requires `_mhgo/` at cwd (no parent walk). Only `container`/`relpath`
-    move to git-root derivation; the cwd-authoritative config invariant is
-    untouched. (Reconciles review GAP: the fix is at the call-site/derivation
-    level, not a change to config resolution.)
+  including the throwaway `muxpoc` POC, by **migrating every site onto
+  `internal/paths`** (not scattered `FindRoot` calls). Use the `Layout` as the
+  anchor wherever code currently treats cwd as the worktree root.
+  - **worktree:** in `add.go`/`remove.go`, get a `paths.Layout` and use
+    `l.Container`, `l.WorktreePath(slug)`, `l.RelPath`, `l.PortalTarget(slug)`,
+    etc. **Config resolution stays cwd-based** — the call site (`cli.go`) keeps
+    passing `cwd` to `LoadConfig`, and `FindBaseDir` still strictly requires
+    `_mhgo/` at cwd (no parent walk). Only the geometry moves to `paths`; the
+    cwd-authoritative config invariant is untouched. (Reconciles review GAP: the
+    fix is at the call-site/derivation level, not a change to config resolution.)
   - **muxpoc:** anchor both the session identity and the state directory on the
-    worktree root, not the cwd. `socketName` derives from
-    `filepath.Base(git.FindRoot(cwd))` (stable per worktree, shared across
+    worktree root, not the cwd, via `paths`. `socketName` derives from
+    `l.HubName()`/the worktree-root basename (stable per worktree, shared across
     subfolders); `LoadState`/`SaveState` and their callers (`up`, `down`,
-    `status`, `attach`, `review`, `daemon`, `cmd.socketArg`) resolve the worktree
-    root first and anchor `.mhgo/` on it. Update `state_test.go`'s `socketName`
-    expectations.
+    `status`, `attach`, `review`, `daemon`, `cmd.socketArg`) resolve the `Layout`
+    first and anchor `.mhgo/` on the worktree root. Update `state_test.go`'s
+    `socketName` expectations.
   - **board:** unchanged — `cli.go` config-from-cwd and `init.go` scaffolding
     `_mhgo/` at cwd are the intended cwd-authoritative behavior, not bugs.
-- Path-form note (review NOTE): `git.FindRoot` returns `rev-parse --show-toplevel`
-  output (forward slashes, possibly symlink-resolved on Windows) while
-  `os.Getwd()` returns backslashes. Normalize the git-root via `filepath.Clean`
-  (and `filepath.FromSlash`) before computing `relpath` or building junction /
-  launcher (`mklink`, `%~dp0`) paths, so the forms match.
+- Path-form normalization is handled inside `paths` (see paths-canonical-resolver):
+  `rev-parse --show-toplevel` output (forward slashes, possibly symlink-resolved on
+  Windows) vs `os.Getwd()` backslashes are reconciled once via
+  `filepath.Clean`/`FromSlash`, so callers never deal with mixed forms.
 - Rationale: the operator has repeatedly hit "cwd assumed to be repo root" bugs
   and wants the entire class eliminated. `docs/overview.md` principle 4 mandates
-  cwd-authoritative, cwd ≠ repo. `internal/git.FindRoot` already exists — reuse it.
+  cwd-authoritative, cwd ≠ repo. `internal/git.FindRoot` already exists and is the
+  primitive `paths` builds on.
 - Rejected: patching only `worktree` (leaves the same bug live in muxpoc);
   documenting muxpoc as a known limitation without fixing (operator explicitly
   wants it fixed everywhere); changing config resolution to walk up to the git
@@ -361,8 +420,14 @@ Key existing code to reuse / extend:
   there is no create-junction yet — Windows needs `cmd /c mklink /J`, POSIX
   `os.Symlink`, mirroring mill's `_junction.create`).
 - **`internal/git/git.go`** — `RunGit(args, cwd) (stdout, stderr, exit, err)` and
-  `FindRoot(cwd)` (`rev-parse --show-toplevel`). Use `FindRoot` for the
-  cwd-≠-gitroot fix.
+  `FindRoot(cwd)` (`rev-parse --show-toplevel`). `internal/paths` builds on these;
+  domain modules no longer call them directly for geometry.
+- **`internal/paths/` (new)** — the canonical resolver. Depends only on
+  `internal/git` + stdlib. Hosts the `Layout` struct + `Resolve(cwd)` + geometry
+  methods, the relocated `git worktree list --porcelain` execution/parse (moved
+  from `worktree/list.go`, incl. the existing `WorktreeEntry`/`parseWorktreePorcelain`
+  logic and its tests), and centralized normalization. Mirrors mill's
+  `plugins/mill/scripts/_paths.py`. Carries `enforcement_test.go`.
 - **`internal/board/`** — facade `board.go` exposes read methods (`GetTask`,
   `ListTasksBrief`, `ListTasksFull`) that load straight from disk and
   short-circuit to `(nil,nil)` when the board dir is absent (`board.go:176-178,
@@ -420,8 +485,17 @@ Gotchas:
   only if needed.
 - Windows is the primary platform; keep POSIX building (build-tag split).
 - No module other than `board` may read `tasks.json`.
+- **All path/worktree geometry goes through `internal/paths`.** Raw `os.Getwd`,
+  `git rev-parse --show-toplevel`, and cwd-based `filepath.Dir` are banned outside
+  `internal/paths` (and `cmd/mhgo/main.go`) — enforced by
+  `internal/paths/enforcement_test.go`, restated in repo-root `CONSTRAINTS.md`, and
+  explained in `docs/overview.md` "Path invariants". This task creates these.
 - `_portals/` and `_launchers/` are machine-local, outside any git tree; never
   commit them and never place `_mhgo/` in the container.
+- Out of scope now (do not design for, but don't preclude): multiple mhgo
+  instances initialized in several subfolders of one worktree simultaneously
+  (they would collide on `_portals/`). `paths` resolves one `Layout` per
+  invocation, which leaves room for this later.
 
 ## Testing
 
@@ -432,12 +506,22 @@ Per-file unit tests, table-driven where natural (Go + project `testing` skill).
   change); merging a *set* (two modules' entries coexist); content outside the
   block preserved; block delimiters correct. Then port `board/init.go`'s existing
   gitignore tests to the new lib and assert `init` still produces the same result.
+- **`internal/paths`** (TDD candidate — pure geometry): `Resolve` from the
+  worktree root and from a **subdirectory** yields correct `Container`/`RelPath`
+  (empty vs non-empty); `WorktreePath`/`PortalTarget`/`LauncherDir`/`HubName`
+  produce the expected paths; path-form normalization (forward-slash
+  `--show-toplevel` vs backslash cwd) reconciled; typed errors
+  (`ErrNotInitialized`, `ErrNotAGitRepo`); the relocated porcelain parser keeps its
+  ported tests (first block `Main=true`, bare rejected, etc.).
+- **`internal/paths/enforcement_test.go`**: passes on the migrated tree; fails when
+  a fixture file outside `internal/paths` references `os.Getwd` /
+  `rev-parse --show-toplevel` / cwd-based `filepath.Dir` (assert the guard actually
+  trips, e.g. via a table of synthetic snippets or a temp file).
 - **`internal/worktree` cwd-≠-worktree-root fix**: `add`/`remove` invoked from a
-  **subdirectory** of the worktree still resolve `container = parent(gitroot)`,
-  the correct target, and `relpath` (non-empty when run from a subdir); existing
-  `add_test.go`/`remove_test.go` updated for the reordered push and for
-  portal/launcher side effects. Cover the path-form normalization (forward-slash
-  `FindRoot` output vs backslash cwd).
+  **subdirectory** of the worktree still resolve the correct container/target via
+  `paths`; `list` still returns the same entries through the relocated parser;
+  existing `add_test.go`/`remove_test.go` updated for the reordered push and for
+  portal/launcher side effects.
 - **`internal/muxpoc` cwd-≠-worktree-root fix**: `socketName` is stable when
   invoked from a worktree subdirectory (derives from the worktree root, not the
   cwd basename); state read/written from a subdir resolves to the same
@@ -513,3 +597,16 @@ Per-file unit tests, table-driven where natural (Go + project `testing` skill).
 - **Q:** Audit found muxpoc also assumes cwd == worktree root (socket/state) —
   fix it though it's a POC? **A:** Fix ALL cwd-≠-worktree-root issues, muxpoc
   included.
+- **Q:** Can we stop this cwd bug recurring across sessions for good? **A:** Yes —
+  build `internal/paths` as the single geometry owner and migrate every site onto
+  it (fold into this task).
+- **Q:** Won't a paths module become circularly entangled with worktree etc.?
+  **A:** No — `paths` is geometry-only, imports just `internal/git` + stdlib, never
+  a domain module; everything depends downward on it. Go makes an import cycle a
+  compile error, so the DAG is self-enforcing. The `git worktree list` parse moves
+  down into `paths`.
+- **Q:** How do we ensure all future sessions actually use it — a CONSTRAINTS.md?
+  **A:** Two layers: a Go `enforcement_test.go` (the hard wall, fails the build on
+  raw primitives outside `paths`) plus repo-root `CONSTRAINTS.md` (auto-injected
+  into mill sessions) plus a docs "Path invariants" section. The test is the
+  guarantee; the doc alone would just be forgotten again.
