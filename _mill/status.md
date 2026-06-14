@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-board-config-fixes
 slug: docs-stale-sweep
 branch: docs-stale-sweep
 plan: _mill/plan
@@ -20,6 +20,7 @@ planning  '2026-06-14T06:05:34Z'
 plan-fix-r1  '2026-06-14T06:09:39Z'
 planned  '2026-06-14T06:09:59Z'
 implementing  '2026-06-14T06:12:00Z'
+approved-board-config-fixes  '2026-06-14T06:15:28Z'
 ```
 
 ## Batches
@@ -27,9 +28,10 @@ implementing  '2026-06-14T06:12:00Z'
 ```yaml
 batches:
   - name: board-config-fixes
-    state: running
+    state: approved
     implementer_session: b46cc90a-54f3-4a74-842e-02f0f3ae4b3a
     start_sha: b790afd8b6b1fc3b80ead311928491e47d43f499
+    commit_sha: da6bd9a9fd0c32a94c4dde6cfe126a1007534c0f
   - name: muxpoc-doc
     state: pending
   - name: tree-sweep
