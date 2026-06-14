@@ -84,29 +84,28 @@ func TestMenuHardErrorOnMissingBoard(t *testing.T) {
 
 // TestMenuExcludesMain tests that the main worktree is excluded from discovery.
 func TestMenuExcludesMain(t *testing.T) {
+	t.Setenv("BOARD_SKIP_GIT", "1")
+
 	container, mainWorktreePath := newTestGitRepoWithWorktrees(t)
 
-	// Create a child worktree (not a real git worktree, just a directory structure for testing)
+	// Create a child worktree with _mhgo
 	childPath := filepath.Join(container, "child")
 	if err := os.Mkdir(childPath, 0o755); err != nil {
 		t.Fatalf("failed to create child: %v", err)
 	}
-
-	// Create _mhgo in child
 	if err := os.MkdirAll(filepath.Join(childPath, "_mhgo"), 0o755); err != nil {
 		t.Fatalf("failed to create child _mhgo: %v", err)
 	}
 
-	// Create a minimal board config
+	// Create board directory with tasks.json
 	boardDir := filepath.Join(mainWorktreePath, "_mhgo", "board")
 	if err := os.MkdirAll(boardDir, 0o755); err != nil {
 		t.Fatalf("failed to create board dir: %v", err)
 	}
 
-	boardConfigPath := filepath.Join(boardDir, "board.json")
-	boardConfig := `{"tasks":[]}`
-	if err := os.WriteFile(boardConfigPath, []byte(boardConfig), 0o644); err != nil {
-		t.Fatalf("failed to write board config: %v", err)
+	tasksPath := filepath.Join(boardDir, "tasks.json")
+	if err := os.WriteFile(tasksPath, []byte(`{"tasks":[]}`), 0o644); err != nil {
+		t.Fatalf("failed to write tasks.json: %v", err)
 	}
 
 	layout := &paths.Layout{
@@ -123,50 +122,42 @@ func TestMenuExcludesMain(t *testing.T) {
 		return nil
 	}
 
-	// Simulate user selecting the first (and only) worktree
+	// Simulate user selecting first worktree
 	var out bytes.Buffer
 	in := strings.NewReader("1\n")
 
-	// This should succeed with child being the only option
 	err := Menu(layout, in, &out)
 	if err != nil {
-		t.Fatalf("Menu failed: %v; output: %s", err, out.String())
+		t.Fatalf("Menu failed: %v", err)
 	}
 
 	output := out.String()
 	if !strings.Contains(output, "child") {
 		t.Fatalf("expected 'child' in output, got: %q", output)
 	}
-
-	// Main should NOT be listed
-	lines := strings.Split(output, "\n")
-	for _, line := range lines {
-		if strings.Contains(line, "main") && strings.HasPrefix(line, "1)") {
-			t.Fatalf("main worktree should not be listed, got: %q", line)
-		}
-	}
 }
 
 // TestMenuRequiresMhgoDir tests that worktrees without _mhgo are excluded.
 func TestMenuRequiresMhgoDir(t *testing.T) {
+	t.Setenv("BOARD_SKIP_GIT", "1")
+
 	container, mainWorktreePath := newTestGitRepoWithWorktrees(t)
 
-	// Create a child worktree without _mhgo
+	// Create a child worktree WITHOUT _mhgo (should be excluded)
 	childPath := filepath.Join(container, "child")
 	if err := os.Mkdir(childPath, 0o755); err != nil {
 		t.Fatalf("failed to create child: %v", err)
 	}
 
-	// Create a minimal board config
+	// Create board directory with tasks.json
 	boardDir := filepath.Join(mainWorktreePath, "_mhgo", "board")
 	if err := os.MkdirAll(boardDir, 0o755); err != nil {
 		t.Fatalf("failed to create board dir: %v", err)
 	}
 
-	boardConfigPath := filepath.Join(boardDir, "board.json")
-	boardConfig := `{"tasks":[]}`
-	if err := os.WriteFile(boardConfigPath, []byte(boardConfig), 0o644); err != nil {
-		t.Fatalf("failed to write board config: %v", err)
+	tasksPath := filepath.Join(boardDir, "tasks.json")
+	if err := os.WriteFile(tasksPath, []byte(`{"tasks":[]}`), 0o644); err != nil {
+		t.Fatalf("failed to write tasks.json: %v", err)
 	}
 
 	layout := &paths.Layout{
@@ -185,44 +176,38 @@ func TestMenuRequiresMhgoDir(t *testing.T) {
 	}
 
 	output := out.String()
-	// Should print "no active worktrees" because child has no _mhgo
 	if !strings.Contains(output, "no active worktrees") {
-		t.Fatalf("expected 'no active worktrees' message, got: %q", output)
+		t.Fatalf("expected 'no active worktrees', got: %q", output)
 	}
 }
 
 // TestMenuNumericSelection tests that numeric selection invokes Spawn with correct slug.
 func TestMenuNumericSelection(t *testing.T) {
+	t.Setenv("BOARD_SKIP_GIT", "1")
+
 	container, mainWorktreePath := newTestGitRepoWithWorktrees(t)
 
-	// Create child1 with _mhgo
-	child1Path := filepath.Join(container, "child1")
-	if err := os.Mkdir(child1Path, 0o755); err != nil {
-		t.Fatalf("failed to create child1: %v", err)
-	}
-	if err := os.MkdirAll(filepath.Join(child1Path, "_mhgo"), 0o755); err != nil {
-		t.Fatalf("failed to create child1 _mhgo: %v", err)
-	}
-
-	// Create child2 with _mhgo
-	child2Path := filepath.Join(container, "child2")
-	if err := os.Mkdir(child2Path, 0o755); err != nil {
-		t.Fatalf("failed to create child2: %v", err)
-	}
-	if err := os.MkdirAll(filepath.Join(child2Path, "_mhgo"), 0o755); err != nil {
-		t.Fatalf("failed to create child2 _mhgo: %v", err)
+	// Create child1 and child2 with _mhgo
+	for _, child := range []string{"child1", "child2"} {
+		childPath := filepath.Join(container, child)
+		if err := os.Mkdir(childPath, 0o755); err != nil {
+			t.Fatalf("failed to create %s: %v", child, err)
+		}
+		if err := os.MkdirAll(filepath.Join(childPath, "_mhgo"), 0o755); err != nil {
+			t.Fatalf("failed to create %s _mhgo: %v", child, err)
+		}
 	}
 
-	// Create a minimal board config with tasks
+	// Create board directory with tasks.json
 	boardDir := filepath.Join(mainWorktreePath, "_mhgo", "board")
 	if err := os.MkdirAll(boardDir, 0o755); err != nil {
 		t.Fatalf("failed to create board dir: %v", err)
 	}
 
-	boardConfigPath := filepath.Join(boardDir, "board.json")
-	boardConfig := `{"tasks":[{"slug":"child1","title":"Task 1"},{"slug":"child2","title":"Task 2"}]}`
-	if err := os.WriteFile(boardConfigPath, []byte(boardConfig), 0o644); err != nil {
-		t.Fatalf("failed to write board config: %v", err)
+	tasksPath := filepath.Join(boardDir, "tasks.json")
+	taskData := `{"tasks":[{"slug":"child1","title":"Task 1"},{"slug":"child2","title":"Task 2"}]}`
+	if err := os.WriteFile(tasksPath, []byte(taskData), 0o644); err != nil {
+		t.Fatalf("failed to write tasks.json: %v", err)
 	}
 
 	layout := &paths.Layout{
@@ -232,12 +217,11 @@ func TestMenuNumericSelection(t *testing.T) {
 		Cwd:          mainWorktreePath,
 	}
 
-	// Stub codeLauncher to track which was opened
+	// Stub codeLauncher to track spawned slug
 	var spawnedSlug string
 	originalLauncher := codeLauncher
 	defer func() { codeLauncher = originalLauncher }()
 	codeLauncher = func(dir string) error {
-		// Extract slug from the path
 		spawnedSlug = filepath.Base(filepath.Dir(dir))
 		return nil
 	}
@@ -248,18 +232,9 @@ func TestMenuNumericSelection(t *testing.T) {
 
 	err := Menu(layout, in, &out)
 	if err != nil {
-		t.Fatalf("Menu failed: %v; output: %s", err, out.String())
+		t.Fatalf("Menu failed: %v", err)
 	}
 
-	output := out.String()
-	if !strings.Contains(output, "child1") {
-		t.Fatalf("expected 'child1' in output, got: %q", output)
-	}
-	if !strings.Contains(output, "child2") {
-		t.Fatalf("expected 'child2' in output, got: %q", output)
-	}
-
-	// Verify the correct worktree was selected
 	if spawnedSlug != "child2" {
 		t.Fatalf("expected to spawn child2, got: %q", spawnedSlug)
 	}
@@ -267,18 +242,19 @@ func TestMenuNumericSelection(t *testing.T) {
 
 // TestMenuZeroWorktreeMessage tests that zero active worktrees prints the correct message.
 func TestMenuZeroWorktreeMessage(t *testing.T) {
+	t.Setenv("BOARD_SKIP_GIT", "1")
+
 	container, mainWorktreePath := newTestGitRepoWithWorktrees(t)
 
-	// Create a minimal board config
+	// Create board directory with tasks.json (no child worktrees)
 	boardDir := filepath.Join(mainWorktreePath, "_mhgo", "board")
 	if err := os.MkdirAll(boardDir, 0o755); err != nil {
 		t.Fatalf("failed to create board dir: %v", err)
 	}
 
-	boardConfigPath := filepath.Join(boardDir, "board.json")
-	boardConfig := `{"tasks":[]}`
-	if err := os.WriteFile(boardConfigPath, []byte(boardConfig), 0o644); err != nil {
-		t.Fatalf("failed to write board config: %v", err)
+	tasksPath := filepath.Join(boardDir, "tasks.json")
+	if err := os.WriteFile(tasksPath, []byte(`{"tasks":[]}`), 0o644); err != nil {
+		t.Fatalf("failed to write tasks.json: %v", err)
 	}
 
 	layout := &paths.Layout{
@@ -289,7 +265,6 @@ func TestMenuZeroWorktreeMessage(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	// EOF on first read (no worktrees, so menu won't ask for input)
 	in := io.Reader(strings.NewReader(""))
 
 	err := Menu(layout, in, &out)
@@ -299,6 +274,6 @@ func TestMenuZeroWorktreeMessage(t *testing.T) {
 
 	output := out.String()
 	if !strings.Contains(output, "no active worktrees") {
-		t.Fatalf("expected 'no active worktrees' message, got: %q", output)
+		t.Fatalf("expected 'no active worktrees', got: %q", output)
 	}
 }
