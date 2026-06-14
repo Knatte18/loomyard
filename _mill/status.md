@@ -33,7 +33,9 @@ batches:
     start_sha: b790afd8b6b1fc3b80ead311928491e47d43f499
     commit_sha: da6bd9a9fd0c32a94c4dde6cfe126a1007534c0f
   - name: muxpoc-doc
-    state: pending
+    state: running
+    implementer_session: 2c37456a-0bf0-448c-bce7-54be6c05da30
+    start_sha: 58143d29fc0adb09bf086a3d17fe3326690c1f08
   - name: tree-sweep
     state: pending
 ```
