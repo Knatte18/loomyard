@@ -50,7 +50,9 @@ batches:
     commit_sha: b881e2d
     blocked_reason: ''
   - name: muxpoc-paths-migration
-    state: pending
+    state: running
+    implementer_session: 38786631-2306-4796-9981-bdbb5c7d87d4
+    start_sha: 172cc51bc5d524ee4a32628ea685f94ed8f26d7c
   - name: board-paths-healthcheck
     state: pending
   - name: ide-module
