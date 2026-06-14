@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r1
+phase: planned
 slug: mhgo-portals-launchers
 branch: mhgo-portals-launchers
 plan: _mill/plan
@@ -20,4 +20,5 @@ discussed  '2026-06-14T09:32:21Z'
 discussion-fix-r3  '2026-06-14T09:54:18Z'
 planning  '2026-06-14T10:13:56Z'
 plan-fix-r1  '2026-06-14T10:19:08Z'
+planned  '2026-06-14T10:19:27Z'
 ```
