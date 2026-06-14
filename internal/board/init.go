@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/mhgo/internal/output"
+	"github.com/Knatte18/mhgo/internal/paths"
 )
 
 // RunInit scaffolds the config layer in the current working directory.
@@ -22,7 +23,7 @@ import (
 // and process exit code (0 on success, 1 on error).
 func RunInit(out io.Writer, args []string) int {
 	// Resolve current working directory
-	cwd, err := os.Getwd()
+	cwd, err := paths.Getwd()
 	if err != nil {
 		outputInitError(out, fmt.Sprintf("failed to get working directory: %v", err))
 		return 1
