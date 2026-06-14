@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussion-fix-r2
 slug: mhgo-portals-launchers
 branch: mhgo-portals-launchers
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-06-14T08:32:39Z'
+discussion-fix-r2  '2026-06-14T09:32:10Z'
 ```

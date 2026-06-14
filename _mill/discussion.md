@@ -46,8 +46,11 @@ flow. A Go-powered picker also replaces mill's slow Python `millpy-vscode` choos
     portal, launcher dir, `git worktree remove --force`, `git branch -D`) so no
     stale/partial worktree is ever left behind.
 - **`worktree remove`** additionally tears down `<container>/_portals/<slug>` and
-  `<container>/_launchers/<slug>/` (best-effort; runs even if the worktree dir is
-  already gone). The container-root `ide-menu.cmd` is left in place.
+  `<container>/_launchers/<slug>/` (best-effort). This teardown is sequenced
+  **before** (or independently of) the existing target-exists check in
+  `remove.go:40-42`, so it still runs when the worktree dir is already gone — the
+  early "not found" return must not skip portal/launcher cleanup. The
+  container-root `ide-menu.cmd` is left in place.
 - **cwd ≠ worktree-root fix (repo-wide, permanent):** stop assuming the invocation
   cwd is the worktree root anywhere in the repo. Resolve the worktree root via
   `git.FindRoot(cwd)`. Full audit result (see Decisions → cwd-not-worktree-root):
@@ -164,6 +167,11 @@ flow. A Go-powered picker also replaces mill's slow Python `millpy-vscode` choos
   portal junction, remove `_launchers/<slug>/`, `git worktree remove --force
   <target>`, `git branch -D <branch>`, and `git worktree prune`. Leave zero
   residue.
+- Rollback self-failure: rollback is **best-effort and continues through all
+  steps** even if one fails (e.g. `git worktree remove --force` errors → still
+  attempt `os.RemoveAll`, `branch -D`, `worktree prune`, portal/launcher cleanup).
+  The **original add error is what surfaces** to the caller; rollback-step errors
+  are logged/annotated but never mask the root cause.
 - Rationale: the operator cannot tolerate stale worktrees ("et ork å rydde opp i").
   Putting `push` last means rollback never has to delete a remote branch — every
   rolled-back artifact is local.
@@ -269,8 +277,9 @@ flow. A Go-powered picker also replaces mill's slow Python `millpy-vscode` choos
   facade: `board.LoadConfig(cwd, "board")` → `board.New(cfg)` → `b.ListTasksBrief()`
   / `b.GetTask(slug)`. `ide` never stats the board dir itself.
 - Board-validity is the board module's job, via a **new fast** `board` API
-  (e.g. `Board.HealthCheck() error`) that confirms the board dir exists and
-  `tasks.json` is readable/parseable. Reconciles review GAP: the facade read
+  (e.g. `Board.HealthCheck() error`) whose contract is pinned to: **stat the board
+  dir + open and read `tasks.json` (no JSON unmarshal)**. Cheap and stat-level; it
+  does not validate task contents. Reconciles review GAP: the facade read
   methods short-circuit to `(nil, nil)` when the board dir is missing
   (`board.go:176-178, 191-193`), so an absent board would otherwise yield *blank
   titles, not an error*. The menu calls `HealthCheck()` first and treats a
@@ -434,8 +443,10 @@ Per-file unit tests, table-driven where natural (Go + project `testing` skill).
   cwd basename); state read/written from a subdir resolves to the same
   worktree-anchored `.mhgo/`. Update `state_test.go` expectations.
 - **`internal/board` HealthCheck**: returns nil for a present, readable board;
-  non-nil when the board dir is absent or `tasks.json` is unreadable/corrupt; is
-  fast (stat-level, no full parse beyond readability).
+  non-nil when the board dir is absent or `tasks.json` cannot be opened/read. Per
+  the pinned contract it stats the dir and opens/reads `tasks.json` but does **not**
+  JSON-unmarshal — so a syntactically corrupt-but-readable file passes health-check
+  (parse errors are handled by the readers' existing fallback).
 - **`internal/worktree` portals**: junction created pointing at
   `<worktree>/<relpath>/_mhgo`; removed on `remove`; create refuses to clobber a
   non-junction; POSIX symlink path. (Windows-gated assertions where needed.)
