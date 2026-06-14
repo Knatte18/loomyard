@@ -4,8 +4,9 @@
 runs one command, writes JSON to stdout, and exits — there is no daemon and no
 shared memory. State lives on disk per module and is coordinated with file locks,
 so concurrent `mhgo` processes on a machine cooperate through the filesystem. The
-first module, **board** (a task tracker), is implemented; **worktree** and **mux**
-are designed and coming next (see [roadmap.md](roadmap.md)).
+first module, **board** (a task tracker), is implemented; **worktree** is
+implemented; **muxpoc**, a proof-of-concept orchestrator, is shipped; and the
+planned clean `internal/mux` remains design (see [roadmap.md](roadmap.md)).
 
 In the long term, mhgo is intended to **replace mill/millhouse (Python)** entirely.
 We get there by building these modules as self-contained toolkits first;
@@ -36,17 +37,18 @@ Module path: `github.com/Knatte18/mhgo`
 ```
 github.com/Knatte18/mhgo/
 ├── cmd/mhgo/
-│   └── main.go          entrypoint: routes the <module> argument to a module
-└── internal/board/      the board module (see modules/board.md)
-    ├── task.go store.go layer.go render.go    domain + storage
-    ├── git.go lock.go sync.go spawn_*.go      git, locking, background sync
-    ├── cli.go board.go                         CLI router + facade
-    ├── config.go init.go                       configuration + scaffolding
-    └── boardtest/                              benchmarks, concurrency, integration
+│   └── main.go                   entrypoint: routes the <module> argument to a module
+├── internal/board/               the board module (see modules/board.md)
+├── internal/worktree/            the worktree module (see modules/worktree.md)
+├── internal/muxpoc/              the muxpoc POC module (see modules/muxpoc.md)
+├── internal/config/              shared config resolution
+├── internal/git/                 shared git operations
+├── internal/lock/                shared file locking
+└── internal/output/              shared JSON output
 ```
 
-`cmd/mhgo` is `package main`; everything else is `package board` in `internal/board`.
-`main` is the only thing that imports a module.
+`cmd/mhgo` is `package main`; everything else is in `internal/`. `main` is the
+only thing that imports a module.
 
 ## Module dispatch
 
@@ -57,11 +59,14 @@ output. Adding a module is one more `case`; nothing else in `main` changes.
 
 ```go
 switch module {
-case "board":
-    return board.RunCLI(out, moduleArgs)
 case "init":
     return board.RunInit(out, moduleArgs)
-// case "<next-module>": ...
+case "board":
+    return board.RunCLI(out, moduleArgs)
+case "muxpoc":
+    return muxpoc.RunCLI(out, moduleArgs)
+case "worktree":
+    return worktree.RunCLI(out, moduleArgs)
 }
 ```
 
@@ -77,9 +82,11 @@ User-facing modules each get one `mhgo <module>` namespace:
 
 - **board** — the task-tracker board (`internal/board`). ✅ Implemented. See
   [modules/board.md](modules/board.md).
-- **worktree** — git-worktree lifecycle (create / track / tear down). Sketch:
+- **worktree** — git-worktree lifecycle (create / track / tear down). ✅ Implemented. See
   [modules/worktree.md](modules/worktree.md).
-- **mux** — psmux session layout (column per worktree; daemon later). Sketch:
+- **muxpoc** — shipped proof-of-concept psmux orchestrator proving the risky parts of the
+  planned mux module. See [modules/muxpoc.md](modules/muxpoc.md).
+- **mux** — psmux session layout (column per worktree; daemon later). Design:
   [modules/mux.md](modules/mux.md).
 
 **init** is not a module but a cross-cutting setup command (`mhgo init`) that
@@ -87,7 +94,7 @@ scaffolds the shared `_mhgo/` config dir for every module. See
 [modules/board.md#init](modules/board.md#init).
 
 The user-facing modules sit on a thin layer of shared infrastructure
-(`internal/config`, `internal/git`, `internal/lock`, `internal/state`) — defined in
+(`internal/config`, `internal/git`, `internal/lock`, `internal/state` **(planned)**) — defined in
 [shared-libs/README.md](shared-libs/README.md).
 
 ## Tests
@@ -99,8 +106,9 @@ git-backed integration — live in the black-box `internal/board/boardtest` pack
 ## Other docs
 
 - [modules/board.md](modules/board.md) — the board module in depth.
-- [modules/worktree.md](modules/worktree.md) — worktree lifecycle (sketch).
-- [modules/mux.md](modules/mux.md) — psmux session layout (sketch).
+- [modules/worktree.md](modules/worktree.md) — worktree lifecycle (implemented).
+- [modules/muxpoc.md](modules/muxpoc.md) — muxpoc POC proof-of-concept orchestrator.
+- [modules/mux.md](modules/mux.md) — psmux session layout (design).
 - [benchmarks.md](benchmarks.md) — board performance, tracked across revisions.
 - [shared-libs/](shared-libs/README.md) — the shared `internal/{config,git,lock,state}` plumbing.
 - [roadmap.md](roadmap.md) — numbered milestones and long-term direction.
