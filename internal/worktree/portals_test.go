@@ -46,14 +46,17 @@ func TestCreatePortal(t *testing.T) {
 		t.Fatalf("portal link does not exist: %v", err)
 	}
 
-	// Verify the link resolves to the target by checking that a known file
-	// in the target is accessible through the portal link.
+	// Verify the link resolves to the target by accessing through the portal link.
+	// The portal link points directly to <Container>/<slug>/<RelPath>/_mhgo,
+	// so stat'ing the portal link itself should work and show a directory.
 	// os.Readlink is unreliable for NTFS junctions (may include \??\ prefix),
 	// so we use os.Stat to verify the junction resolves correctly.
-	knownFile := filepath.Join(portalLink, "_mhgo")
-	_, err = os.Stat(knownFile)
+	info, err := os.Stat(portalLink)
 	if err != nil {
-		t.Errorf("portal link does not resolve to target: %v", err)
+		t.Errorf("portal link does not resolve: %v", err)
+	}
+	if !info.IsDir() {
+		t.Errorf("portal link does not resolve to a directory")
 	}
 
 	// Test removePortal
