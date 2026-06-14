@@ -3,6 +3,7 @@ package paths_test
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/mhgo/internal/paths"
@@ -58,10 +59,37 @@ func TestList(t *testing.T) {
 				}
 			},
 		},
+		{
+			name:           "BareRepoRejection",
+			extraWorktrees: 0,
+			verify: func(t *testing.T, hub string, entries []paths.WorktreeEntry) {
+				// This test is not meant to be called; it's handled in the
+				// outer loop with a special case.
+			},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Special handling for BareRepoRejection test case
+			if tt.name == "BareRepoRejection" {
+				container := t.TempDir()
+				bareRepo := filepath.Join(container, "bare.git")
+				mustRun(t, container, "git", "init", "--bare", bareRepo)
+
+				entries, err := paths.List(bareRepo)
+				if err == nil {
+					t.Fatalf("List() error = nil; want error containing 'bare'")
+				}
+				if !strings.Contains(err.Error(), "bare") {
+					t.Errorf("List() error = %q; want error containing 'bare'", err.Error())
+				}
+				if entries != nil {
+					t.Errorf("List() entries = %v; want nil", entries)
+				}
+				return
+			}
+
 			hub := newTestRepo(t)
 			for i := 0; i < tt.extraWorktrees; i++ {
 				wtPath := filepath.Join(filepath.Dir(hub), fmt.Sprintf("wt%d", i+1))
