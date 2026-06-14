@@ -48,16 +48,29 @@ flow. A Go-powered picker also replaces mill's slow Python `millpy-vscode` choos
 - **`worktree remove`** additionally tears down `<container>/_portals/<slug>` and
   `<container>/_launchers/<slug>/` (best-effort; runs even if the worktree dir is
   already gone). The container-root `ide-menu.cmd` is left in place.
-- **cwd ≠ git-root fix (repo-wide, permanent):** stop assuming the invocation cwd
-  is the worktree root. Resolve the git root via `git.FindRoot` and derive
-  `container = parent(gitroot)`. Confirmed offenders: `internal/worktree/add.go`
-  and `remove.go` (`container := filepath.Dir(sourceDir)`). A verification sweep
-  of the whole repo is part of the plan (see Decisions → cwd-not-gitroot).
+- **cwd ≠ worktree-root fix (repo-wide, permanent):** stop assuming the invocation
+  cwd is the worktree root anywhere in the repo. Resolve the worktree root via
+  `git.FindRoot(cwd)`. Full audit result (see Decisions → cwd-not-worktree-root):
+  - `internal/worktree/add.go` + `remove.go` — `container := filepath.Dir(sourceDir)`
+    assumes cwd == git root. **Fix.**
+  - `internal/muxpoc` — `LoadState(cwd)`/`SaveState(cwd)` anchor state at
+    `cwd/.mhgo/`, and `socketName(filepath.Base(cwd))` derives the psmux session
+    from the cwd basename, so running from a subfolder silently splits
+    session/state. **Fix** (anchor both on `git.FindRoot(cwd)`), even though
+    muxpoc is a POC — the operator wants this class of bug gone everywhere.
+  - `internal/board` cwd usage (`cli.go` config resolution, `init.go` scaffolding
+    `_mhgo/` at cwd) is **correct by design** — the cwd-authoritative model, not a
+    bug; left unchanged.
+- **New `board` health-check** — a fast `board` API (e.g. `Board.HealthCheck()
+  error`) that verifies the board dir exists and `tasks.json` is readable. The
+  board module is the sole authority on board validity; `ide` calls it and never
+  stats the board dir itself.
 - **New module `mhgo ide`** (`internal/ide`):
   - `mhgo ide spawn <slug>` — generate the worktree's `.vscode/` config (only if
     missing), assign a title-bar color, and launch VS Code on the worktree.
   - `mhgo ide menu` — interactive picker over all active worktrees (slug + title),
-    opening the chosen one via the same spawn path.
+    opening the chosen one via the same spawn path; hard-errors via the board
+    health-check if the board is absent/unreadable.
 - **New shared lib `internal/gitignore`** — a single managed `.gitignore` block
   ("portal into `.gitignore`") that multiple modules contribute entries to.
   Refactor `board/init.go`'s block logic into it; `init` registers `.mhgo/`,
@@ -107,22 +120,41 @@ flow. A Go-powered picker also replaces mill's slow Python `millpy-vscode` choos
 - Rejected: hardcoding `_mill` (wrong tool); a config flag for the dir name
   (YAGNI — the name is fixed to `_mhgo`).
 
-### cwd-not-gitroot
+### cwd-not-worktree-root
 
-- Decision: fix the cwd-≠-git-root assumption permanently and repo-wide. Resolve
-  the git root with `internal/git.FindRoot(cwd)` and compute
-  `container = filepath.Dir(gitroot)` and `relpath = rel(gitroot, cwd)`. The plan
-  must include a sweep verifying no other site treats cwd as the worktree root.
-- Rationale: the operator has repeatedly hit "cwd assumed to be repo root" bugs.
-  `docs/overview.md` principle 4 already mandates cwd-authoritative, cwd ≠ repo.
-- Findings from exploration:
-  - **Real offenders:** `internal/worktree/add.go:63` and `remove.go:36`
-    (`container := filepath.Dir(sourceDir)` where `sourceDir == cwd`).
-  - **Not bugs (cwd-authoritative by design, leave alone):** `internal/board`
-    config resolution from cwd; `internal/muxpoc` `os.Getwd()` uses for
-    socket/session/state naming (per-cwd sessions are intentional).
-  - `internal/git.FindRoot` already exists (`rev-parse --show-toplevel`) — reuse it.
-- Rejected: patching only `worktree` and leaving the principle unenforced.
+- Decision: fix the cwd-≠-worktree-root assumption permanently and **repo-wide**,
+  including the throwaway `muxpoc` POC. Resolve the worktree root with
+  `internal/git.FindRoot(cwd)` and use it as the anchor wherever code currently
+  treats cwd as the worktree root.
+  - **worktree:** in `add.go`/`remove.go`, compute
+    `gitroot = git.FindRoot(cwd)`, `container = filepath.Dir(gitroot)`,
+    `relpath = rel(gitroot, cwd)`. **Config resolution stays cwd-based** — the call
+    site (`cli.go`) keeps passing `cwd` to `LoadConfig`, and `FindBaseDir` still
+    strictly requires `_mhgo/` at cwd (no parent walk). Only `container`/`relpath`
+    move to git-root derivation; the cwd-authoritative config invariant is
+    untouched. (Reconciles review GAP: the fix is at the call-site/derivation
+    level, not a change to config resolution.)
+  - **muxpoc:** anchor both the session identity and the state directory on the
+    worktree root, not the cwd. `socketName` derives from
+    `filepath.Base(git.FindRoot(cwd))` (stable per worktree, shared across
+    subfolders); `LoadState`/`SaveState` and their callers (`up`, `down`,
+    `status`, `attach`, `review`, `daemon`, `cmd.socketArg`) resolve the worktree
+    root first and anchor `.mhgo/` on it. Update `state_test.go`'s `socketName`
+    expectations.
+  - **board:** unchanged — `cli.go` config-from-cwd and `init.go` scaffolding
+    `_mhgo/` at cwd are the intended cwd-authoritative behavior, not bugs.
+- Path-form note (review NOTE): `git.FindRoot` returns `rev-parse --show-toplevel`
+  output (forward slashes, possibly symlink-resolved on Windows) while
+  `os.Getwd()` returns backslashes. Normalize the git-root via `filepath.Clean`
+  (and `filepath.FromSlash`) before computing `relpath` or building junction /
+  launcher (`mklink`, `%~dp0`) paths, so the forms match.
+- Rationale: the operator has repeatedly hit "cwd assumed to be repo root" bugs
+  and wants the entire class eliminated. `docs/overview.md` principle 4 mandates
+  cwd-authoritative, cwd ≠ repo. `internal/git.FindRoot` already exists — reuse it.
+- Rejected: patching only `worktree` (leaves the same bug live in muxpoc);
+  documenting muxpoc as a known limitation without fixing (operator explicitly
+  wants it fixed everywhere); changing config resolution to walk up to the git
+  root (would break the cwd-authoritative `_mhgo/`-at-cwd invariant).
 
 ### transactional-add-rollback
 
@@ -167,6 +199,11 @@ flow. A Go-powered picker also replaces mill's slow Python `millpy-vscode` choos
   on **renaming** the worktree/hub dir, which the operator accepts.
 - Notes: `relpath` is captured at `add` time (`rel(gitroot, cwd)`); usually empty
   (init at repo root) → `%~dp0..\..\<slug>`. Assumes the `mhgo` binary is on PATH.
+  `<hubname>` (for `ide-menu.cmd`) = `filepath.Base` of the `Main` worktree entry
+  returned by `git worktree list --porcelain` (the parser already marks the first
+  block `Main=true` with its `.Path` — `internal/worktree/list.go:65,76`). All
+  baked path segments use normalized (backslash, `filepath.Clean`) forms — see
+  cwd-not-worktree-root path-form note.
 - Rejected: absolute baked paths (break on move); teaching `mhgo ide` to resolve
   config from the container with no `_mhgo/` (violates cwd-authoritative principle).
 
@@ -214,6 +251,8 @@ flow. A Go-powered picker also replaces mill's slow Python `millpy-vscode` choos
   - Discovers active worktrees via `git worktree list --porcelain` (exclude the
     main worktree), keeping those that are mhgo-instantiated (have `_mhgo/` at
     `relpath`); slug = worktree directory name.
+  - Calls `Board.HealthCheck()` first; a non-nil result is a **hard error**
+    (board must be present).
   - Looks up each slug's title **only via the board module** (see
     board-is-sole-tasks-reader).
   - Prints a numbered picker (`1) <slug> — <title>`), reads a number from stdin,
@@ -225,16 +264,25 @@ flow. A Go-powered picker also replaces mill's slow Python `millpy-vscode` choos
 
 ### board-is-sole-tasks-reader
 
-- Decision: only the `board` module ever reads `tasks.json`. `internal/ide`
-  imports `internal/board` and reads titles through the existing public facade:
-  `board.LoadConfig(cwd, "board")` → `board.New(cfg)` → `b.ListTasksBrief()` /
-  `b.GetTask(slug)`. No new board method is needed (the facade already exposes
-  reads). If the board is absent/unreadable, that is a hard error for the menu.
-- Rationale: the operator's invariant — all `tasks.json` access goes through board.
-  The board facade is already designed for exactly this (read methods bypass the
-  write lock and load straight from disk).
-- Rejected: `ide` reading `tasks.json` directly; shelling out to `mhgo board`
-  (spawns a process and re-parses JSON for no benefit over an in-process import).
+- Decision: only the `board` module ever reads or validates `tasks.json`/the board
+  dir. `internal/ide` imports `internal/board` and reads titles through the public
+  facade: `board.LoadConfig(cwd, "board")` → `board.New(cfg)` → `b.ListTasksBrief()`
+  / `b.GetTask(slug)`. `ide` never stats the board dir itself.
+- Board-validity is the board module's job, via a **new fast** `board` API
+  (e.g. `Board.HealthCheck() error`) that confirms the board dir exists and
+  `tasks.json` is readable/parseable. Reconciles review GAP: the facade read
+  methods short-circuit to `(nil, nil)` when the board dir is missing
+  (`board.go:176-178, 191-193`), so an absent board would otherwise yield *blank
+  titles, not an error*. The menu calls `HealthCheck()` first and treats a
+  non-nil result as a **hard error**.
+- Adding `HealthCheck` is the one sanctioned new board method (operator-approved);
+  all other reads use the existing facade — no other new method.
+- Rationale: the operator's invariant — all `tasks.json` access *and* board-validity
+  checks go through board. The board facade already exposes lock-free reads from
+  disk; a stat-only health check is cheap.
+- Rejected: `ide` stat-ing the board dir itself (violates the invariant); relying
+  on `(nil, nil)` to mean "absent" (silently produces blank titles, contradicting
+  "board must be present"); shelling out to `mhgo board` (extra process + reparse).
 
 ### gitignore-shared-lib
 
@@ -307,10 +355,17 @@ Key existing code to reuse / extend:
   `FindRoot(cwd)` (`rev-parse --show-toplevel`). Use `FindRoot` for the
   cwd-≠-gitroot fix.
 - **`internal/board/`** — facade `board.go` exposes read methods (`GetTask`,
-  `ListTasksBrief`, `ListTasksFull`) that load straight from disk; `config.go`
+  `ListTasksBrief`, `ListTasksFull`) that load straight from disk and
+  short-circuit to `(nil,nil)` when the board dir is absent (`board.go:176-178,
+  191-193`) — hence the need for the new `HealthCheck`. `config.go`
   `LoadConfig(cwd, "board")` resolves the board dir. `init.go`
   `updateGitignoreBlock` is the logic to extract into `internal/gitignore`;
   `init.go` also already scaffolds `_mhgo/` + `board.yaml` + `worktree.yaml`.
+- **`internal/muxpoc/`** — cwd-≠-worktree-root sites to fix: `state.go`
+  (`LoadState`/`SaveState` anchor `.mhgo/` on cwd; `socketName` from
+  `filepath.Base(cwd)`), and callers `up.go`, `down.go`, `status.go`, `attach.go`,
+  `review.go`, `daemon.go`, `cmd.go` (`socketArg`). `state_test.go` covers
+  `socketName` and must be updated.
 - **`internal/config/config.go`** — `FindBaseDir(cwd)` checks `<cwd>/_mhgo`
   (source of the "not initialized" error to reuse/match); `Load(baseDir, module,
   defaults)` is the two-layer loader.
@@ -368,10 +423,19 @@ Per-file unit tests, table-driven where natural (Go + project `testing` skill).
   change); merging a *set* (two modules' entries coexist); content outside the
   block preserved; block delimiters correct. Then port `board/init.go`'s existing
   gitignore tests to the new lib and assert `init` still produces the same result.
-- **`internal/worktree` cwd-≠-gitroot fix**: `add`/`remove` invoked from a
-  **subdirectory** of the worktree still resolve `container = parent(gitroot)` and
-  the correct target; existing `add_test.go`/`remove_test.go` updated for the
-  reordered push and for portal/launcher side effects.
+- **`internal/worktree` cwd-≠-worktree-root fix**: `add`/`remove` invoked from a
+  **subdirectory** of the worktree still resolve `container = parent(gitroot)`,
+  the correct target, and `relpath` (non-empty when run from a subdir); existing
+  `add_test.go`/`remove_test.go` updated for the reordered push and for
+  portal/launcher side effects. Cover the path-form normalization (forward-slash
+  `FindRoot` output vs backslash cwd).
+- **`internal/muxpoc` cwd-≠-worktree-root fix**: `socketName` is stable when
+  invoked from a worktree subdirectory (derives from the worktree root, not the
+  cwd basename); state read/written from a subdir resolves to the same
+  worktree-anchored `.mhgo/`. Update `state_test.go` expectations.
+- **`internal/board` HealthCheck**: returns nil for a present, readable board;
+  non-nil when the board dir is absent or `tasks.json` is unreadable/corrupt; is
+  fast (stat-level, no full parse beyond readability).
 - **`internal/worktree` portals**: junction created pointing at
   `<worktree>/<relpath>/_mhgo`; removed on `remove`; create refuses to clobber a
   non-junction; POSIX symlink path. (Windows-gated assertions where needed.)
@@ -387,10 +451,11 @@ Per-file unit tests, table-driven where natural (Go + project `testing` skill).
   green reserved and first-unused-non-green chosen given sibling colors; `.vscode/`
   registered in `.gitignore` via `internal/gitignore`.
 - **`internal/ide` menu**: active-worktree discovery (exclude main, require
-  `_mhgo/`); titles resolved via the board facade; hard error when the board is
-  absent; numbered-picker selection maps to the right worktree; zero-worktree
-  message. Launching `code` is the side effect to stub/seam behind the
-  `_windows`/`_other` split so tests don't actually open VS Code.
+  `_mhgo/`); titles resolved via the board facade; **hard error when
+  `Board.HealthCheck()` fails** (board absent/unreadable); numbered-picker
+  selection maps to the right worktree; zero-worktree message. Launching `code` is
+  the side effect to stub/seam behind the `_windows`/`_other` split so tests don't
+  actually open VS Code.
 - Keep `BOARD_SKIP_GIT`-style seams in mind so tests never hit the network; the
   `code`/`mklink` calls must be injectable/stubbable.
 
@@ -423,3 +488,17 @@ Per-file unit tests, table-driven where natural (Go + project `testing` skill).
   tolerate moving the container, accept breakage on rename.
 - **Q:** Fix cwd-≠-gitroot? **A:** Yes, permanently and repo-wide; sweep for any
   other site that assumes cwd == git root and fix it too.
+- **Q:** (review r1 GAP) "board absent → hard error" contradicts the facade, which
+  returns `(nil,nil)`. **A:** `ide` must not stat the board dir; add a fast
+  `Board.HealthCheck()` to the board module (board owns validity), and the menu
+  hard-errors on a non-nil result.
+- **Q:** (review r1 GAP) cwd fix must cover the config/call site. **A:** Config
+  resolution stays cwd-based (`_mhgo/` required at cwd); only `container`/`relpath`
+  derive from `git.FindRoot(cwd)`. The call site keeps passing cwd for config.
+- **Q:** (review r1 NOTE) `FindRoot` path-form mismatch? **A:** Normalize via
+  `filepath.Clean`/`FromSlash` before computing `relpath` / building paths.
+- **Q:** (review r1 NOTE) where does `<hubname>` come from? **A:** `filepath.Base`
+  of the `Main` worktree entry from `git worktree list --porcelain`.
+- **Q:** Audit found muxpoc also assumes cwd == worktree root (socket/state) —
+  fix it though it's a POC? **A:** Fix ALL cwd-≠-worktree-root issues, muxpoc
+  included.
