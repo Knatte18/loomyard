@@ -4,20 +4,55 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
 
-// TestRunCLISpawnDispatch tests that spawn subcommand dispatches correctly.
-func TestRunCLISpawnDispatch(t *testing.T) {
-	// Use the current repo's directory which is already a git repo
-	// This test will just verify that RunCLI returns an error when paths can't resolve
-	// the layout (since we're not in a git repo for this test worktree)
+// mustRun is a test helper that runs a command in a directory.
+func mustRun(t *testing.T, dir string, args ...string) {
+	t.Helper()
+
+	cmd := exec.Command(args[0], args[1:]...)
+	cmd.Dir = dir
+
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("command failed: %v; output: %s", err, output)
+	}
+}
+
+// newTestGitRepo creates a git repository in a temp directory.
+func newTestGitRepo(t *testing.T) string {
+	t.Helper()
+
 	tmpDir := t.TempDir()
+
+	// Initialize git repo
+	mustRun(t, tmpDir, "git", "init", "-b", "main")
+	mustRun(t, tmpDir, "git", "config", "user.email", "test@test.com")
+	mustRun(t, tmpDir, "git", "config", "user.name", "Test")
+
+	// Create a file and commit
+	testFile := filepath.Join(tmpDir, "README")
+	if err := os.WriteFile(testFile, []byte("test"), 0o644); err != nil {
+		t.Fatalf("failed to write test file: %v", err)
+	}
+
+	mustRun(t, tmpDir, "git", "add", ".")
+	mustRun(t, tmpDir, "git", "commit", "-m", "initial")
+
+	return tmpDir
+}
+
+// TestRunCLISpawnDispatch tests that spawn subcommand dispatches correctly with stubbed launcher.
+func TestRunCLISpawnDispatch(t *testing.T) {
+	// Create a real git repo to test dispatch
+	gitRepo := newTestGitRepo(t)
 
 	oldCwd, _ := os.Getwd()
 	defer os.Chdir(oldCwd)
-	os.Chdir(tmpDir)
+	os.Chdir(gitRepo)
 
 	// Stub codeLauncher
 	originalLauncher := codeLauncher
@@ -27,84 +62,85 @@ func TestRunCLISpawnDispatch(t *testing.T) {
 	var out bytes.Buffer
 	code := RunCLI(&out, []string{"spawn", "child"})
 
-	// Should fail with layout resolution error since tmpDir is not a git repo
-	if code != 1 {
-		t.Fatalf("expected exit 1 for non-git directory, got %d; output: %s", code, out.String())
-	}
-
-	// Verify error is returned as JSON
-	var result map[string]any
-	if err := json.Unmarshal(out.Bytes(), &result); err != nil {
-		t.Fatalf("failed to parse output: %v; output: %s", err, out.String())
-	}
-
-	if ok, _ := result["ok"].(bool); ok {
-		t.Fatalf("expected ok=false, got %v", result)
+	// spawn should succeed (or fail for a different reason, not layout resolution)
+	// We're testing that the dispatch path is reached, not the entire spawn flow
+	if code != 0 && !strings.Contains(out.String(), "spawn failed") {
+		t.Fatalf("unexpected error during dispatch; output: %s", out.String())
 	}
 }
 
-// TestRunCLIUnknownSubcommand tests unknown subcommand error (within a non-git dir).
+// TestRunCLIUnknownSubcommand tests unknown subcommand error handling.
 func TestRunCLIUnknownSubcommand(t *testing.T) {
-	tmpDir := t.TempDir()
+	gitRepo := newTestGitRepo(t)
 
 	oldCwd, _ := os.Getwd()
 	defer os.Chdir(oldCwd)
-	os.Chdir(tmpDir)
+	os.Chdir(gitRepo)
 
 	var out bytes.Buffer
 	code := RunCLI(&out, []string{"unknown"})
 
-	// Should fail because tmpDir is not a git repo (will fail layout resolution)
+	// Should fail with unknown subcommand error
 	if code != 1 {
-		t.Fatalf("expected exit 1, got %d; output: %s", code, out.String())
+		t.Fatalf("expected exit 1 for unknown subcommand, got %d; output: %s", code, out.String())
 	}
 
 	output := out.String()
-	if !strings.Contains(output, "failed to resolve layout") {
-		t.Fatalf("expected layout error, got: %q", output)
+	if !strings.Contains(output, "unknown subcommand") {
+		t.Fatalf("expected 'unknown subcommand' error, got: %q", output)
 	}
 }
 
 // TestRunCLIMissingSlug tests missing slug error for spawn.
 func TestRunCLIMissingSlug(t *testing.T) {
-	tmpDir := t.TempDir()
+	gitRepo := newTestGitRepo(t)
 
 	oldCwd, _ := os.Getwd()
 	defer os.Chdir(oldCwd)
-	os.Chdir(tmpDir)
+	os.Chdir(gitRepo)
 
 	var out bytes.Buffer
 	code := RunCLI(&out, []string{"spawn"})
 
-	// Should fail because tmpDir is not a git repo
+	// Should fail with missing slug error
 	if code != 1 {
-		t.Fatalf("expected exit 1, got %d; output: %s", code, out.String())
+		t.Fatalf("expected exit 1 for missing slug, got %d; output: %s", code, out.String())
 	}
 
 	output := out.String()
-	if !strings.Contains(output, "failed to resolve layout") {
-		t.Fatalf("expected layout error, got: %q", output)
+	if !strings.Contains(output, "spawn") {
+		t.Fatalf("expected spawn error, got: %q", output)
 	}
 }
 
 // TestRunCLINoArgs tests no-args usage error.
 func TestRunCLINoArgs(t *testing.T) {
-	tmpDir := t.TempDir()
+	gitRepo := newTestGitRepo(t)
 
 	oldCwd, _ := os.Getwd()
 	defer os.Chdir(oldCwd)
-	os.Chdir(tmpDir)
+	os.Chdir(gitRepo)
 
 	var out bytes.Buffer
 	code := RunCLI(&out, []string{})
 
-	// Should fail because tmpDir is not a git repo
+	// Should fail with usage error
 	if code != 1 {
-		t.Fatalf("expected exit 1, got %d; output: %s", code, out.String())
+		t.Fatalf("expected exit 1 for no args, got %d; output: %s", code, out.String())
 	}
 
 	output := out.String()
-	if !strings.Contains(output, "failed to resolve layout") {
-		t.Fatalf("expected layout error, got: %q", output)
+	if !strings.Contains(output, "usage") {
+		t.Fatalf("expected usage error, got: %q", output)
+	}
+
+	// Verify output is JSON
+	var result map[string]any
+	if err := json.Unmarshal(out.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse JSON output: %v; output: %s", err, out.String())
+	}
+
+	if ok, _ := result["ok"].(bool); ok {
+		t.Fatalf("expected ok=false, got %v", result)
 	}
 }
