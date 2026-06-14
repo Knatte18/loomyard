@@ -15,12 +15,16 @@ package ide
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/Knatte18/mhgo/internal/paths"
 )
+
+// ErrIDEUnsupported is returned when ide launch is attempted on an unsupported platform.
+var ErrIDEUnsupported = errors.New("ide launch unsupported on this platform")
 
 // Color palette (order matters; green is reserved for main).
 var palette = []string{
