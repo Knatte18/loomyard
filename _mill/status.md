@@ -29,7 +29,9 @@ implementing  '2026-06-14T10:32:49Z'
 ```yaml
 batches:
   - name: paths-foundation
-    state: pending
+    state: running
+    implementer_session: 3196606c-1ff1-4dd2-bb63-0c79a343d428
+    start_sha: fe7a9f22e60bf9b893e2ebddfc20ab8d96b69b68
   - name: gitignore-lib
     state: pending
   - name: worktree-portals-launchers
