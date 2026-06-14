@@ -33,12 +33,15 @@ observable changes until the new module that needs the extracted lib arrives.
    with mux (milestone 5):** the worktree module shipped without it, and mux + worktree
    share the same state document, so it is built when mux needs it.
 
-4. **worktree module.** ✅ **Done.** Create / track / tear down git worktrees
-   ([modules/worktree.md](modules/worktree.md)). Consumes `internal/config` +
-   `internal/git`; owns the **junction-aware teardown** sequence (the Windows
-   locked-worktree hazard). The state-backed registry originally planned here is
-   deferred with `internal/state` (milestone 3 → lands with mux), so the shipped
-   `list` is a thin `git worktree list` wrapper.
+4. **worktree module + portals, launchers, and ide module.** ✅ **Done.** Create / track / tear down
+   git worktrees ([modules/worktree.md](modules/worktree.md)); manage container junctions and spawnable
+   launchers; VS Code launcher with interactive menu ([modules/ide.md](modules/ide.md)); centralized path geometry
+   in `internal/paths`. Consumes `internal/config` + `internal/git`; owns the **junction-aware teardown**
+   sequence (the Windows locked-worktree hazard). The state-backed registry originally planned here is
+   deferred with `internal/state` (milestone 3 → lands with mux), so the shipped `list` is a thin
+   `git worktree list` wrapper. Introduces `internal/paths` as the sole geometry owner, banning
+   raw `os.Getwd` and `git rev-parse --show-toplevel` outside `internal/paths` and `cmd/mhgo/main.go`
+   via `internal/paths/enforcement_test.go`.
 
 5. **mux v1 — column per worktree.** One psmux window per repo, one column per
    worktree, laid out from the worktree registry
