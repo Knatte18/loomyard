@@ -76,7 +76,28 @@ func RunInit(out io.Writer, args []string) int {
 		status["board_yaml"] = "exists"
 	}
 
-	// Step 3: Maintain managed block in .gitignore
+	// Step 3: Write commented worktree.yaml (if absent)
+	worktreeYamlPath := filepath.Join(mhgoDir, "worktree.yaml")
+	_, err = os.Stat(worktreeYamlPath)
+	if err != nil && !os.IsNotExist(err) {
+		outputInitError(out, fmt.Sprintf("failed to stat worktree.yaml: %v", err))
+		return 1
+	}
+
+	if os.IsNotExist(err) {
+		// File doesn't exist, write the commented template
+		content := generateCommentedWorktreeYAML()
+		if err := os.WriteFile(worktreeYamlPath, []byte(content), 0o644); err != nil {
+			outputInitError(out, fmt.Sprintf("failed to write worktree.yaml: %v", err))
+			return 1
+		}
+		status["worktree_yaml"] = "created"
+	} else {
+		// File already exists
+		status["worktree_yaml"] = "exists"
+	}
+
+	// Step 4: Maintain managed block in .gitignore
 	gitignorePath := filepath.Join(cwd, ".gitignore")
 	updated, err := updateGitignoreBlock(gitignorePath)
 	if err != nil {
@@ -90,11 +111,12 @@ func RunInit(out io.Writer, args []string) int {
 		status["gitignore"] = "unchanged"
 	}
 
-	// Step 4: Output success JSON
+	// Step 5: Output success JSON
 	return output.Ok(out, map[string]any{
-		"mhgo_dir":   status["mhgo_dir"],
-		"board_yaml": status["board_yaml"],
-		"gitignore":  status["gitignore"],
+		"mhgo_dir":      status["mhgo_dir"],
+		"board_yaml":    status["board_yaml"],
+		"worktree_yaml": status["worktree_yaml"],
+		"gitignore":     status["gitignore"],
 	})
 }
 
@@ -106,6 +128,15 @@ func generateCommentedBoardYAML() string {
 	sb.WriteString("# home: $env:MHGO_HOME ? Home.md           # home page file name; relative to board dir\n")
 	sb.WriteString("# sidebar: $env:MHGO_SIDEBAR ? _Sidebar.md   # sidebar file name; relative to board dir\n")
 	sb.WriteString("# proposal_prefix: $env:MHGO_PROPOSAL_PREFIX ? proposal-   # prefix for proposal files\n")
+
+	return sb.String()
+}
+
+// generateCommentedWorktreeYAML returns a fully-commented YAML template for worktree configuration.
+func generateCommentedWorktreeYAML() string {
+	var sb strings.Builder
+
+	sb.WriteString("# branch_prefix: $env:MHGO_BRANCH_PREFIX ?    # prefix prepended to the slug to form the branch name (e.g. \"hanf/\"); empty = branch == slug\n")
 
 	return sb.String()
 }

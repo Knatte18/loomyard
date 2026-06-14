@@ -1,14 +1,17 @@
-# Module: worktree (sketch)
+# Module: worktree
 
-> **Status:** sketch — nothing here is implemented. This is the design to build
-> toward (roadmap milestone 5). It is the Go port of millpy's `_worktree.py`.
+> **Status:** implemented (roadmap milestone 4). The Go port of millpy's
+> `_worktree.py`. `add`, `list`, and `remove` ship with per-file unit tests.
 
 The worktree module owns the **lifecycle of git worktrees**: creating them under
-the container, tracking them in machine-local state, and tearing them down cleanly —
-including the Windows junction/lock hazard that has bitten us before. It is the
-first consumer of all four shared libs
-([config](../shared-libs/config.md), [git](../shared-libs/git.md), [lock](../shared-libs/lock.md), [state](../shared-libs/state.md)) and the foundation the
-[mux](mux.md) module lays its columns out from.
+the container, listing them, and tearing them down cleanly — including the Windows
+junction/lock hazard that has bitten us before. It consumes
+[config](../shared-libs/config.md) and [git](../shared-libs/git.md); the
+machine-local **state registry** ([state](../shared-libs/state.md)) and its
+[lock](../shared-libs/lock.md) are **deferred** until the [mux](mux.md) module
+lands (mux and worktree share the same state document), so the shipped module holds
+no registry yet — see [State](#state) below. It is the foundation the mux module
+lays its columns out from.
 
 Driven by `mhgo worktree <subcommand>`; one-shot, JSON in / JSON out, like every
 mhgo module.
@@ -43,33 +46,42 @@ Naming conventions:
 - **Board:** `_board` (underscore prefix = system directory, not a worktree). This
   matches the config default `path: ../_board` — relative to the hub cwd, `../`
   steps up to the container and `_board` lands alongside the hub.
-- **Worktrees:** named after their branch slug, directly in the container.
+- **Worktrees:** directory = slug only (e.g. slug `my-task` → directory `my-task`);
+  branch = `<branch_prefix><slug>` (e.g. branch `wt-my-task` with default `branch_prefix: wt-`).
+  Worktrees live directly in the container.
 
-The container path is configured in `worktree.yaml` (resolved via
-[`internal/config`](../shared-libs/config.md), so it honours `$env:NAME ? default`
-and the cwd-authoritative rule — cwd need not equal the git-repo root).
+The container is always the parent of the hub (`..` relative to the hub root) — this
+is a fixed layout invariant, not a config key. `worktree.yaml` (loaded via
+[`internal/config`](../shared-libs/config.md)) holds only the spawn-time settings
+(currently just `branch_prefix`).
 
-## Subcommands (proposed)
+## Subcommands
 
 | Command | Does |
 |---|---|
-| `mhgo worktree add <slug>` | Create a worktree under the container on a new branch; register it in state. |
-| `mhgo worktree list` | List tracked worktrees from state, reconciled against `git worktree list`. |
-| `mhgo worktree remove <slug>` | The junction-aware teardown (below); deregister from state. |
+| `mhgo worktree add <slug>` | Create a worktree under the container on a new branch `<branch_prefix><slug>`, then push it with `-u origin`. |
+| `mhgo worktree list` | List all git worktrees (via `git worktree list --porcelain`), as JSON. |
+| `mhgo worktree remove [--force] <slug>` | The junction-aware teardown (below); `--force` skips the dirty check. |
 
 ## State
 
-The worktree registry lives in `.mhgo/local-state.json` via
-[`internal/state`](../shared-libs/state.md):
+**Deferred — not in the shipped module.** The planned worktree registry lives in
+`.mhgo/local-state.json` via [`internal/state`](../shared-libs/state.md):
 
 ```
 slug → { path, branch, container }
 ```
 
-Machine-local because worktree paths are machine-specific. `list` reconciles this
-registry against actual `git worktree list` output and reports drift (a registered
-worktree whose directory is gone, or an on-disk worktree not in the registry) — it
-does not silently "fix" it.
+It is machine-local because worktree paths are machine-specific. The intent is for
+`list` to reconcile this registry against actual `git worktree list` output and
+report drift (a registered worktree whose directory is gone, or an on-disk worktree
+not in the registry) without silently "fixing" it.
+
+Until `internal/state` lands (alongside mux — the two share this document), the
+shipped `list` is a **thin wrapper over `git worktree list --porcelain`**: it parses
+git's output to JSON (one entry per worktree, the first marked `main: true`, branch
+names shortened from `refs/heads/…`) and holds no registry of its own. `add` and
+`remove` likewise read and write no state.
 
 ## Junction-aware teardown — the hazard
 
@@ -82,26 +94,31 @@ work and had to unwind it by hand.
 
 The module owns this sequence so it is never relearned:
 
-1. **Remove the junctions inside the worktree first**, so nothing inside holds the
-   directory open.
+1. **Remove the junctions/symlinks inside the worktree first** (top-level scan,
+   `os.ModeSymlink` entries), so nothing inside holds the directory open. The count
+   is returned as `links_removed`.
 2. **`git worktree remove`** (via [`internal/git`](../shared-libs/git.md)’s
-   `RunGit`).
-3. **On lock/permission failure, fall back:** force-remove the directory, then
-   `git worktree prune` to clear the stale registration, and `git branch -D` if the
-   branch is being removed too.
-4. **Deregister** the slug from state only after the directory is actually gone.
+   `RunGit`); `--force` is passed through when the caller forced.
+3. **On failure, fall back:** force-remove the directory with `os.RemoveAll`, then
+   `git worktree prune` to clear the stale registration. If `os.RemoveAll` itself
+   fails, return an error and leave the worktree + registration intact.
+
+`remove` **never deletes the branch** — a branch is tied to its task (slug) and may
+be checked out on another machine; branch lifecycle belongs to a future task module
+(see [Resolved decisions](#resolved-decisions)). No state is deregistered either,
+since the registry is deferred (see [State](#state)).
 
 `internal/git` stays dumb throughout — it just runs whatever git command it is
 handed. The *ordering*, the junction removal, and the lock-failure fallback are the
 worktree module's responsibility.
 
-## Open questions
+## Resolved decisions
 
-- Whether `add` also creates the mill-style junctions (`.active`/`.portals`), or
-  whether that stays a mill concern and mhgo only manages the git worktree itself.
-  (Leaning: mhgo manages the worktree; junction *creation* is out of scope, but
-  junction *removal* on teardown is in scope, since it blocks `git worktree
-  remove`.)
-- Branch naming policy: always `<slug>`, or configurable.
-- Whether `remove` refuses a worktree with uncommitted changes by default
-  (`--force` to override).
+1. **Junction management scope:** mhgo manages the git worktree only. Junction
+   *creation* is out of scope (a mill concern), but junction *removal* on teardown
+   IS in scope because it unblocks `git worktree remove` on Windows.
+
+2. **`remove` dirty-check behaviour:** `remove` refuses a worktree with uncommitted
+   changes (tracked changes OR untracked files) by default and requires `--force`
+   to override. This mirrors the safety of `git worktree remove` and prevents
+   accidental data loss.

@@ -10,9 +10,10 @@
 //
 // Modules:
 //
-//	init    scaffold _mhgo/board.yaml and .gitignore in the current directory
-//	board   task-tracker board — see internal/board.RunCLI for subcommands
-//	muxpoc  proof-of-concept psmux mux — see internal/muxpoc.RunCLI for subcommands
+//	init      scaffold _mhgo/board.yaml and .gitignore in the current directory
+//	board     task-tracker board — see internal/board.RunCLI for subcommands
+//	muxpoc    proof-of-concept psmux mux — see internal/muxpoc.RunCLI for subcommands
+//	worktree  git-worktree lifecycle — see internal/worktree.RunCLI for subcommands
 //
 // All output is JSON on stdout. Exit code 1 on error.
 package main
@@ -24,6 +25,7 @@ import (
 
 	"github.com/Knatte18/mhgo/internal/board"
 	"github.com/Knatte18/mhgo/internal/muxpoc"
+	"github.com/Knatte18/mhgo/internal/worktree"
 )
 
 func main() {
@@ -48,6 +50,8 @@ func run(args []string, out io.Writer) int {
 		return board.RunCLI(out, moduleArgs)
 	case "muxpoc":
 		return muxpoc.RunCLI(out, moduleArgs)
+	case "worktree":
+		return worktree.RunCLI(out, moduleArgs)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown module: %s\n", module)
 		return 1
