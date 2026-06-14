@@ -189,8 +189,12 @@ Two layers only — **no `.mhgo/` config layer**.
   `PathGuard`; change to "milestone 3". Optionally strengthen the note with the concrete
   evidence that `internal/muxpoc` already reaches into `internal/board.AtomicWrite` (a
   cross-module reach that wants a real home).
-- **B5** `docs/shared-libs/README.md` line ~21: lists `state.md`/`internal/state` as a
-  library; qualify it as planned (consistent with overview.md's "(planned)").
+- **B5** `docs/shared-libs/README.md`: (a) line ~18 — "`internal/config`: layered YAML
+  config…" carries the same two-layer-vs-multi-layer staleness as B6/B7; change "layered
+  YAML config" → "two-layer YAML config (defaults + `_mhgo/<module>.yaml`)". (b) line ~21
+  — lists `state.md`/`internal/state` as a library; qualify it as planned (consistent with
+  overview.md's "(planned)"). Note: the line-18 fix is also required so the Testing
+  staleness grep (which searches `layered YAML`) returns clean.
 - **B6** `docs/benchmarks.md` lines ~33, 66, 102: "deep merge from YAML layers" / "YAML
   layers" → "defaults + the module's `_mhgo/board.yaml`" (two-layer, not multi-layer).
   Leave the "Pre-config baseline (historic reference)" section untouched (labelled historic).
