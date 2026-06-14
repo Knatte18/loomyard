@@ -165,11 +165,17 @@ flow. A Go-powered picker also replaces mill's slow Python `millpy-vscode` choos
 
 - Decision: guarantee future sessions use `paths` with a **two-layer** mechanism.
   1. **Hard guarantee — `internal/paths/enforcement_test.go`:** a Go test that
-     walks the source tree and **fails the build** if `os.Getwd`,
-     `git rev-parse --show-toplevel`, or cwd-based `filepath.Dir` appear outside
-     `internal/paths` (allowlist: `internal/paths`, `cmd/mhgo/main.go`). This is
-     harness-independent — it catches every author, including future Claude
-     sessions with no memory, at `go test`/CI time.
+     walks the source tree and **fails the build** if `os.Getwd` or
+     `git rev-parse --show-toplevel` appear outside `internal/paths` (allowlist:
+     `internal/paths`, `cmd/mhgo/main.go`). It bans **only these two primitives**
+     — they are the sole sources of a cwd or worktree root, so once they are
+     centralized in `paths`, no other package can obtain a cwd/root to misuse;
+     `filepath.Dir` is deliberately **not** scanned (it is used legitimately ~30×
+     on known path variables, e.g. `state.go:53` `filepath.Dir(lockPath)`,
+     `init.go` `filepath.Dir(gitignorePath)`, so banning it needs a fuzzy
+     heuristic that would cause false positives). This is harness-independent — it
+     catches every author, including future Claude sessions with no memory, at
+     `go test`/CI time.
   2. **Agent awareness — `CONSTRAINTS.md` at the repo root:** read by every
      mill-start/mill-plan/mill-autofix/review session via
      `_constraints.read_if_exists()` (verified: reads `<git-toplevel>/CONSTRAINTS.md`).
@@ -201,8 +207,12 @@ flow. A Go-powered picker also replaces mill's slow Python `millpy-vscode` choos
     `l.HubName()`/the worktree-root basename (stable per worktree, shared across
     subfolders); `LoadState`/`SaveState` and their callers (`up`, `down`,
     `status`, `attach`, `review`, `daemon`, `cmd.socketArg`) resolve the `Layout`
-    first and anchor `.mhgo/` on the worktree root. Update `state_test.go`'s
-    `socketName` expectations.
+    first and anchor `.mhgo/` on the worktree root. Specific anchor points:
+    `SaveState`'s `board.AtomicWrite(cwd, stateRelPath, …)` base arg (`state.go:108`)
+    and `socketArg`'s `cwd, _ := os.Getwd()` (`cmd.go:289-294`) both retarget to the
+    `Layout` worktree root; `socketArg`'s currently-swallowed `os.Getwd` error is
+    surfaced once `paths.Resolve` replaces it. Update `state_test.go`'s `socketName`
+    expectations.
   - **board:** unchanged — `cli.go` config-from-cwd and `init.go` scaffolding
     `_mhgo/` at cwd are the intended cwd-authoritative behavior, not bugs.
 - Path-form normalization is handled inside `paths` (see paths-canonical-resolver):
@@ -485,11 +495,11 @@ Gotchas:
   only if needed.
 - Windows is the primary platform; keep POSIX building (build-tag split).
 - No module other than `board` may read `tasks.json`.
-- **All path/worktree geometry goes through `internal/paths`.** Raw `os.Getwd`,
-  `git rev-parse --show-toplevel`, and cwd-based `filepath.Dir` are banned outside
-  `internal/paths` (and `cmd/mhgo/main.go`) — enforced by
-  `internal/paths/enforcement_test.go`, restated in repo-root `CONSTRAINTS.md`, and
-  explained in `docs/overview.md` "Path invariants". This task creates these.
+- **All path/worktree geometry goes through `internal/paths`.** Raw `os.Getwd` and
+  `git rev-parse --show-toplevel` are banned outside `internal/paths` (and
+  `cmd/mhgo/main.go`) — enforced by `internal/paths/enforcement_test.go`, restated
+  in repo-root `CONSTRAINTS.md`, and explained in `docs/overview.md`
+  "Path invariants". This task creates these.
 - `_portals/` and `_launchers/` are machine-local, outside any git tree; never
   commit them and never place `_mhgo/` in the container.
 - Out of scope now (do not design for, but don't preclude): multiple mhgo
