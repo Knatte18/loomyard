@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-ide-module
+phase: approved-enforcement-and-docs
 slug: mhgo-portals-launchers
 branch: mhgo-portals-launchers
 plan: _mill/plan
@@ -30,6 +30,7 @@ approved-worktree-portals-launchers  '2026-06-14T10:52:30Z'
 approved-muxpoc-paths-migration  '2026-06-14T10:56:58Z'
 approved-board-paths-healthcheck  '2026-06-14T11:01:35Z'
 approved-ide-module  '2026-06-14T11:08:10Z'
+approved-enforcement-and-docs  '2026-06-14T11:14:02Z'
 ```
 
 ## Batches
@@ -68,7 +69,8 @@ batches:
     start_sha: 2ba4685bff3afb98d6b3bcff6ed4f4cdc5e950d7
     commit_sha: 10ee99b885b8457f797dcc150e107c92c2735469
   - name: enforcement-and-docs
-    state: running
+    state: approved
     implementer_session: f059f711-15c1-4d99-bce4-fed2f82126c0
     start_sha: 9f8622c0ccbe3e04dd732ecaf730eaa75a2e4fc4
+    commit_sha: e1705336a5633f9f4de51bf0423922669e2a524f
 ```
