@@ -204,6 +204,7 @@ _Cross-cutting decisions every batch inherits._
 - `internal/muxpoc/status.go`
 - `internal/muxpoc/up.go`
 - `internal/paths/enforcement_test.go`
+- `internal/paths/helpers_test.go`
 - `internal/paths/paths.go`
 - `internal/paths/paths_test.go`
 - `internal/paths/worktreelist.go`

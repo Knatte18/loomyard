@@ -34,6 +34,7 @@ lands in batch 7, not here.
   - `internal/git/git.go`
 - **Edits:** none
 - **Creates:**
+  - `internal/paths/helpers_test.go`
   - `internal/paths/worktreelist.go`
   - `internal/paths/worktreelist_test.go`
 - **Deletes:** none
