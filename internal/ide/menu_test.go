@@ -59,6 +59,8 @@ func newTestGitRepoWithWorktrees(t *testing.T) (string, string) {
 
 // TestMenuHardErrorOnMissingBoard tests that Menu hard-errors when board HealthCheck fails.
 func TestMenuHardErrorOnMissingBoard(t *testing.T) {
+	t.Setenv("BOARD_SKIP_GIT", "1")
+
 	container, mainWorktreePath := newTestGitRepoWithWorktrees(t)
 
 	layout := &paths.Layout{
@@ -68,7 +70,7 @@ func TestMenuHardErrorOnMissingBoard(t *testing.T) {
 		Cwd:          mainWorktreePath,
 	}
 
-	// Call Menu without a board directory
+	// Call Menu without a board directory (no _board exists at <container>/_board)
 	var out bytes.Buffer
 	in := strings.NewReader("")
 
@@ -88,16 +90,20 @@ func TestMenuExcludesMain(t *testing.T) {
 
 	container, mainWorktreePath := newTestGitRepoWithWorktrees(t)
 
-	// Create a child worktree with _mhgo
+	// Create a real git worktree using `git worktree add`
 	childPath := filepath.Join(container, "child")
-	if err := os.Mkdir(childPath, 0o755); err != nil {
-		t.Fatalf("failed to create child: %v", err)
-	}
+	mustRunMenu(t, mainWorktreePath, "git", "worktree", "add", "-b", "child-branch", childPath)
+	defer func() {
+		mustRunMenu(t, mainWorktreePath, "git", "worktree", "remove", "--force", childPath)
+		mustRunMenu(t, mainWorktreePath, "git", "branch", "-D", "child-branch")
+	}()
+
+	// Create _mhgo in child
 	if err := os.MkdirAll(filepath.Join(childPath, "_mhgo"), 0o755); err != nil {
 		t.Fatalf("failed to create child _mhgo: %v", err)
 	}
 
-	// Create board directory with tasks.json at <container>/_board (resolved from ../._board in cwd)
+	// Create board directory with tasks.json
 	boardDir := filepath.Join(container, "_board")
 	if err := os.MkdirAll(boardDir, 0o755); err != nil {
 		t.Fatalf("failed to create board dir: %v", err)
@@ -118,11 +124,9 @@ func TestMenuExcludesMain(t *testing.T) {
 	// Stub codeLauncher
 	originalLauncher := codeLauncher
 	defer func() { codeLauncher = originalLauncher }()
-	codeLauncher = func(dir string) error {
-		return nil
-	}
+	codeLauncher = func(dir string) error { return nil }
 
-	// Simulate user selecting first worktree
+	// Simulate user selecting first worktree (child, not main)
 	var out bytes.Buffer
 	in := strings.NewReader("1\n")
 
@@ -143,13 +147,16 @@ func TestMenuRequiresMhgoDir(t *testing.T) {
 
 	container, mainWorktreePath := newTestGitRepoWithWorktrees(t)
 
-	// Create a child worktree WITHOUT _mhgo (should be excluded)
+	// Create a real git worktree WITHOUT _mhgo (should be excluded)
 	childPath := filepath.Join(container, "child")
-	if err := os.Mkdir(childPath, 0o755); err != nil {
-		t.Fatalf("failed to create child: %v", err)
-	}
+	mustRunMenu(t, mainWorktreePath, "git", "worktree", "add", "-b", "child-branch", childPath)
+	defer func() {
+		mustRunMenu(t, mainWorktreePath, "git", "worktree", "remove", "--force", childPath)
+		mustRunMenu(t, mainWorktreePath, "git", "branch", "-D", "child-branch")
+	}()
+	// Note: child is created but has no _mhgo
 
-	// Create board directory with tasks.json at <container>/_board
+	// Create board directory with tasks.json
 	boardDir := filepath.Join(container, "_board")
 	if err := os.MkdirAll(boardDir, 0o755); err != nil {
 		t.Fatalf("failed to create board dir: %v", err)
@@ -187,16 +194,22 @@ func TestMenuNumericSelection(t *testing.T) {
 
 	container, mainWorktreePath := newTestGitRepoWithWorktrees(t)
 
-	// Create child1 and child2 with _mhgo
+	// Create real git worktrees child1 and child2 with _mhgo
 	for _, child := range []string{"child1", "child2"} {
 		childPath := filepath.Join(container, child)
-		if err := os.Mkdir(childPath, 0o755); err != nil {
-			t.Fatalf("failed to create %s: %v", child, err)
-		}
+		mustRunMenu(t, mainWorktreePath, "git", "worktree", "add", "-b", child+"-branch", childPath)
 		if err := os.MkdirAll(filepath.Join(childPath, "_mhgo"), 0o755); err != nil {
 			t.Fatalf("failed to create %s _mhgo: %v", child, err)
 		}
 	}
+
+	defer func() {
+		for _, child := range []string{"child1", "child2"} {
+			childPath := filepath.Join(container, child)
+			mustRunMenu(t, mainWorktreePath, "git", "worktree", "remove", "--force", childPath)
+			mustRunMenu(t, mainWorktreePath, "git", "branch", "-D", child+"-branch")
+		}
+	}()
 
 	// Create board directory with tasks.json at <container>/_board
 	boardDir := filepath.Join(container, "_board")
@@ -247,7 +260,7 @@ func TestMenuZeroWorktreeMessage(t *testing.T) {
 	container, mainWorktreePath := newTestGitRepoWithWorktrees(t)
 
 	// Create board directory with tasks.json (no child worktrees)
-	boardDir := filepath.Join(mainWorktreePath, "_mhgo", "board")
+	boardDir := filepath.Join(container, "_board")
 	if err := os.MkdirAll(boardDir, 0o755); err != nil {
 		t.Fatalf("failed to create board dir: %v", err)
 	}
