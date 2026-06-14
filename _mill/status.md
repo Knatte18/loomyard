@@ -62,7 +62,9 @@ batches:
     start_sha: 0fd200bed9e61aaac04d62efb3f1c1eb3bb7aac6
     commit_sha: 1e792a2842a16c852cc6aa2420ce0b98a3172a56
   - name: ide-module
-    state: pending
+    state: running
+    implementer_session: 838dc82b-e264-4d0d-9c38-caea55987ac9
+    start_sha: 2ba4685bff3afb98d6b3bcff6ed4f4cdc5e950d7
   - name: enforcement-and-docs
     state: pending
 ```
