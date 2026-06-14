@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: blocked
+phase: approved-worktree-portals-launchers
 slug: mhgo-portals-launchers
 branch: mhgo-portals-launchers
 plan: _mill/plan
@@ -25,6 +25,8 @@ implementing  '2026-06-14T10:32:49Z'
 approved-paths-foundation  '2026-06-14T10:36:33Z'
 approved-gitignore-lib  '2026-06-14T10:38:45Z'
 blocked  '2026-06-14T10:50:25Z'
+implementing  '2026-06-14T10:52:30Z'
+approved-worktree-portals-launchers  '2026-06-14T10:52:30Z'
 ```
 
 ## Batches
@@ -42,10 +44,11 @@ batches:
     start_sha: 5285c798514be6e6facd0abb25827dabcff724af
     commit_sha: e1ebae783e8bfa0b036dc17287fa5beff292c287
   - name: worktree-portals-launchers
-    state: blocked
+    state: approved
     implementer_session: 5dce2a99-464f-45a7-abef-3fd8cb6b1579
     start_sha: 030d359936a3523a98ac5774ac57727e97f98bce
-    blocked_reason: uncommitted working tree after implementer report
+    commit_sha: b881e2d
+    blocked_reason: ''
   - name: muxpoc-paths-migration
     state: pending
   - name: board-paths-healthcheck
