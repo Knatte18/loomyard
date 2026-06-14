@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Knatte18/mhgo/internal/gitignore"
 	"github.com/Knatte18/mhgo/internal/output"
 	"github.com/Knatte18/mhgo/internal/paths"
 )
@@ -99,14 +100,13 @@ func RunInit(out io.Writer, args []string) int {
 	}
 
 	// Step 4: Maintain managed block in .gitignore
-	gitignorePath := filepath.Join(cwd, ".gitignore")
-	updated, err := updateGitignoreBlock(gitignorePath)
+	changed, err := gitignore.Ensure(cwd, ".mhgo/")
 	if err != nil {
 		outputInitError(out, fmt.Sprintf("failed to update .gitignore: %v", err))
 		return 1
 	}
 
-	if updated {
+	if changed {
 		status["gitignore"] = "updated"
 	} else {
 		status["gitignore"] = "unchanged"
@@ -140,104 +140,6 @@ func generateCommentedWorktreeYAML() string {
 	sb.WriteString("# branch_prefix: $env:MHGO_BRANCH_PREFIX ?    # prefix prepended to the slug to form the branch name (e.g. \"hanf/\"); empty = branch == slug\n")
 
 	return sb.String()
-}
-
-// updateGitignoreBlock maintains a managed block in .gitignore delimited by
-// # === mhgo-managed === and # === end mhgo-managed ===.
-// Returns true if the file was created or the block's interior changed, false if unchanged.
-func updateGitignoreBlock(gitignorePath string) (bool, error) {
-	const startMarker = "# === mhgo-managed ==="
-	const endMarker = "# === end mhgo-managed ==="
-	const blockContent = ".mhgo/"
-
-	// Check if .gitignore exists
-	_, statErr := os.Stat(gitignorePath)
-	fileIsNew := os.IsNotExist(statErr)
-	if statErr != nil && !fileIsNew {
-		return false, fmt.Errorf("failed to stat .gitignore: %w", statErr)
-	}
-
-	// Read existing .gitignore if it exists
-	var existingContent string
-	if !fileIsNew {
-		content, err := os.ReadFile(gitignorePath)
-		if err != nil {
-			return false, fmt.Errorf("failed to read .gitignore: %w", err)
-		}
-		existingContent = string(content)
-	}
-
-	// Parse the file: find the block if it exists and capture its interior content
-	var blockExists bool
-	var oldBlockContent string
-	var beforeBlock, afterBlock []string
-	var inBlock bool
-
-	lines := strings.Split(existingContent, "\n")
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == startMarker {
-			inBlock = true
-			blockExists = true
-		} else if trimmed == endMarker {
-			inBlock = false
-			afterBlock = append(afterBlock, line)
-		} else if inBlock {
-			// Capture old block content (non-empty trimmed lines)
-			if trimmed != "" {
-				oldBlockContent += trimmed + "\n"
-			}
-		} else if blockExists {
-			// After block has ended, collect lines after
-			afterBlock = append(afterBlock, line)
-		} else {
-			// Before block starts, collect lines before
-			beforeBlock = append(beforeBlock, line)
-		}
-	}
-
-	// Trim old block content for comparison
-	oldBlockTrimmed := strings.TrimSpace(oldBlockContent)
-	newBlockTrimmed := strings.TrimSpace(blockContent)
-	contentChanged := oldBlockTrimmed != newBlockTrimmed
-
-	// Only write if file is new, block doesn't exist, or content changed
-	if !fileIsNew && blockExists && !contentChanged {
-		return false, nil
-	}
-
-	// Build the new file content
-	var result []string
-
-	// Add before-block content
-	result = append(result, beforeBlock...)
-
-	// Add the managed block
-	if len(beforeBlock) > 0 && strings.TrimSpace(beforeBlock[len(beforeBlock)-1]) != "" {
-		result = append(result, "") // blank line before block if there's content
-	}
-	result = append(result, startMarker)
-	result = append(result, blockContent)
-	result = append(result, endMarker)
-
-	// Add after-block content (skip the first empty line from parsing artifact)
-	for i, line := range afterBlock {
-		if i == 0 && strings.TrimSpace(line) == "" {
-			continue // Skip first empty line from end marker parsing
-		}
-		result = append(result, line)
-	}
-
-	newContent := strings.Join(result, "\n")
-	// Ensure final newline
-	newContent = strings.TrimRight(newContent, "\n") + "\n"
-
-	// Write the file
-	if err := os.WriteFile(gitignorePath, []byte(newContent), 0o644); err != nil {
-		return false, fmt.Errorf("failed to write .gitignore: %w", err)
-	}
-
-	return true, nil
 }
 
 // outputInitError writes {"ok":false,"error":"..."} and is a helper for RunInit.
