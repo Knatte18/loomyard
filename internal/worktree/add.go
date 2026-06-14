@@ -100,11 +100,7 @@ func (w *Worktree) Add(l *paths.Layout, slug string) (AddResult, error) {
 	// (7) Create portal junction
 	if err := createPortal(l, slug); err != nil {
 		// Rollback on portal creation failure
-		rollbackAddError := w.rollbackAdd(l, slug, branch, target)
-		if rollbackAddError == nil {
-			return AddResult{}, err // Return original error
-		}
-		// If rollback failed, still return the original error (masking rollback failure per spec)
+		w.rollbackAdd(l, slug, branch, target)
 		return AddResult{}, err
 	}
 
