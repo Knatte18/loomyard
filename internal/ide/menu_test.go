@@ -97,8 +97,8 @@ func TestMenuExcludesMain(t *testing.T) {
 		t.Fatalf("failed to create child _mhgo: %v", err)
 	}
 
-	// Create board directory with tasks.json
-	boardDir := filepath.Join(mainWorktreePath, "_mhgo", "board")
+	// Create board directory with tasks.json at <container>/_board (resolved from ../._board in cwd)
+	boardDir := filepath.Join(container, "_board")
 	if err := os.MkdirAll(boardDir, 0o755); err != nil {
 		t.Fatalf("failed to create board dir: %v", err)
 	}
@@ -149,8 +149,8 @@ func TestMenuRequiresMhgoDir(t *testing.T) {
 		t.Fatalf("failed to create child: %v", err)
 	}
 
-	// Create board directory with tasks.json
-	boardDir := filepath.Join(mainWorktreePath, "_mhgo", "board")
+	// Create board directory with tasks.json at <container>/_board
+	boardDir := filepath.Join(container, "_board")
 	if err := os.MkdirAll(boardDir, 0o755); err != nil {
 		t.Fatalf("failed to create board dir: %v", err)
 	}
@@ -198,8 +198,8 @@ func TestMenuNumericSelection(t *testing.T) {
 		}
 	}
 
-	// Create board directory with tasks.json
-	boardDir := filepath.Join(mainWorktreePath, "_mhgo", "board")
+	// Create board directory with tasks.json at <container>/_board
+	boardDir := filepath.Join(container, "_board")
 	if err := os.MkdirAll(boardDir, 0o755); err != nil {
 		t.Fatalf("failed to create board dir: %v", err)
 	}
