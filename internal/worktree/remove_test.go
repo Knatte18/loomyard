@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/Knatte18/mhgo/internal/paths"
 	"github.com/Knatte18/mhgo/internal/worktree"
 )
 
@@ -96,8 +97,14 @@ func TestRemove(t *testing.T) {
 			}
 			tt.setup(t, hub, slug)
 
+			// Resolve Layout from the hub
+			l, err := paths.Resolve(hub)
+			if err != nil {
+				t.Fatalf("paths.Resolve(%q): %v", hub, err)
+			}
+
 			w := worktree.New(worktree.Config{})
-			result, err := w.Remove(hub, slug, tt.force)
+			result, err := w.Remove(l, slug, tt.force)
 
 			if tt.wantErr {
 				if err == nil {
@@ -116,7 +123,7 @@ func TestRemove(t *testing.T) {
 				}
 			}
 
-			target := filepath.Join(filepath.Dir(hub), slug)
+			target := l.WorktreePath(slug)
 			switch tt.dirAfter {
 			case "removed":
 				if _, statErr := os.Stat(target); !os.IsNotExist(statErr) {
