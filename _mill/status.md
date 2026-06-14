@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: mhgo-portals-launchers
 branch: mhgo-portals-launchers
 plan: _mill/plan
@@ -21,4 +21,25 @@ discussion-fix-r3  '2026-06-14T09:54:18Z'
 planning  '2026-06-14T10:13:56Z'
 plan-fix-r1  '2026-06-14T10:19:08Z'
 planned  '2026-06-14T10:19:27Z'
+implementing  '2026-06-14T10:32:49Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: paths-foundation
+    state: pending
+  - name: gitignore-lib
+    state: pending
+  - name: worktree-portals-launchers
+    state: pending
+  - name: muxpoc-paths-migration
+    state: pending
+  - name: board-paths-healthcheck
+    state: pending
+  - name: ide-module
+    state: pending
+  - name: enforcement-and-docs
+    state: pending
 ```
