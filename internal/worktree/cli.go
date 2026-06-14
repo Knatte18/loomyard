@@ -14,6 +14,7 @@ import (
 	"os"
 
 	"github.com/Knatte18/mhgo/internal/output"
+	"github.com/Knatte18/mhgo/internal/paths"
 )
 
 // RunCLI parses and executes a "worktree" subcommand, writing JSON results to out.
@@ -40,7 +41,13 @@ import (
 // Error:   {"ok":false,"error":"..."} with exit code 1.
 func RunCLI(out io.Writer, args []string) int {
 	// Resolve cwd
-	cwd, err := os.Getwd()
+	cwd, err := paths.Getwd()
+	if err != nil {
+		return output.Err(out, err.Error())
+	}
+
+	// Resolve Layout
+	l, err := paths.Resolve(cwd)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -69,7 +76,7 @@ func RunCLI(out io.Writer, args []string) int {
 			return output.Err(out, "usage: worktree add <slug>")
 		}
 		slug := args[1]
-		r, err := w.Add(cwd, slug)
+		r, err := w.Add(l, slug)
 		if err != nil {
 			return output.Err(out, err.Error())
 		}
@@ -104,7 +111,7 @@ func RunCLI(out io.Writer, args []string) int {
 			return output.Err(out, "usage: worktree remove [--force] <slug>")
 		}
 
-		r, err := w.Remove(cwd, slug, *force)
+		r, err := w.Remove(l, slug, *force)
 		if err != nil {
 			return output.Err(out, err.Error())
 		}
