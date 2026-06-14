@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planning
+phase: plan-fix-r1
 slug: docs-stale-sweep
 branch: docs-stale-sweep
 plan: _mill/plan
@@ -17,4 +17,5 @@ task_description: |
 discussing  '2026-06-14T05:17:11Z'
 discussed  '2026-06-14T05:57:11Z'
 planning  '2026-06-14T06:05:34Z'
+plan-fix-r1  '2026-06-14T06:09:39Z'
 ```

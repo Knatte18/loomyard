@@ -149,5 +149,10 @@ command. Correctness is validated by plan/code review and, at handoff, by (1) a 
 link-resolution pass over `docs/` — especially the new inbound links to `modules/muxpoc.md`
 from overview.md/roadmap.md/mux.md — and (2) the staleness grep guard
 (`grep -rn "\.mhgo/board\.yaml\|three-layer\|Target redesign\|not yet implemented\|layered YAML" docs/ internal/`)
-returning only legitimate runtime-state-dir references and the explicit "now-removed config
-layer" mentions.
+returning only **expected-legitimate** hits, namely: runtime-state-dir references
+(`internal/board/init.go`, `internal/muxpoc/state.go`); the explicit "now-removed config
+layer" mentions in `docs/shared-libs/state.md` and `docs/shared-libs/config.md`; and the
+`.mhgo/board.yaml` strings inside `internal/config/config_test.go`'s `TestLoad_DotMhgoIgnored`
+(the guardrail test proving `.mhgo/` is ignored — it must NOT be edited, per Shared Decision
+`docs-and-doc-comments-only`; its grep hits are expected noise, not stale docs). Any hit
+outside this set is a genuine miss to fix.

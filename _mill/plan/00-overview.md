@@ -3,7 +3,7 @@
 ```yaml
 task: Fix stale .mhgo/ config-layer docs + cross-cutting stale-docs sweep
 slug: docs-stale-sweep
-approved: false
+approved: true
 started: "20260614-060158"
 parent: main
 root: ""
