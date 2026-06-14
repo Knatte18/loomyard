@@ -116,7 +116,7 @@ func (w *Worktree) Add(l *paths.Layout, slug string) (AddResult, error) {
 	if err != nil {
 		// Rollback on push failure
 		w.rollbackAdd(l, slug, branch, target) // Best-effort rollback (errors masked)
-		return AddResult{}, fmt.Errorf("cwd is not a valid git worktree")
+		return AddResult{}, fmt.Errorf("push: %w", err)
 	}
 	if exitCode != 0 {
 		// Rollback on push failure
