@@ -32,5 +32,7 @@ the fields mean.
 board's generic safe-file-write helpers (`AtomicWrite` = temp + rename;
 `PathGuard` = reject empty/absolute/`..` paths) are filesystem safety, not git.
 They will likely fall out as a tiny `internal/fsx`, or ride inside `internal/state`
-(which needs atomic writes anyway). Exact home is decided when milestone 2/3 lands —
-flagged here so it is not forgotten.
+(which needs atomic writes anyway). Exact home is decided when milestone 3 lands —
+flagged here so it is not forgotten. (Milestone 2 shipped without extracting these
+helpers. `internal/muxpoc` already reaches into `internal/board.AtomicWrite`,
+reinforcing that this helper needs a real home when milestone 3 ships.)

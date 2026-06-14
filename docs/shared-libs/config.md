@@ -3,11 +3,6 @@
 Resolves a module's configuration from the current working directory. This is the
 one place that knows the `_mhgo/` layout and the config grammar.
 
-> **Status:** target design. board currently has its own loader with a three-layer
-> model (including a gitignored `.mhgo/<module>.yaml` override). Milestone 2 lifts
-> it here and redesigns it to the model below — the `.mhgo/` config layer is
-> **removed**.
-
 ## Layout
 
 ```
@@ -47,7 +42,7 @@ After the layers are merged, every string value is scanned for `$env:NAME` token
 
 - **`$env:NAME`** (no `?`) — **required**. Unset ⇒ hard error
   (`referenced env var NAME is not set`). May appear mid-value for composition:
-  `path: $env:HOME/board`. *(This is board's existing behaviour, preserved.)*
+  `path: $env:HOME/board`.
 - **`$env:NAME ? fallback`** — **optional**. `NAME` set ⇒ its value; `NAME` unset ⇒
   `fallback`. The fallback runs to the end of the value, so a `?`-form token must be
   the last thing in the value (you cannot follow it with more text).
@@ -64,7 +59,7 @@ a trailing `# comment` (whitespace + `#`) is stripped *before* env expansion run
 The fallback is the YAML scalar after comment-strip and trim. (A literal `#`
 *inside* a value still needs quoting — normal YAML rules.)
 
-Not supported in v1: a fallback that itself contains `$env:` (chaining). The
+Not supported: a fallback that itself contains `$env:` (chaining). The
 fallback is a literal.
 
 ## `.env` loading

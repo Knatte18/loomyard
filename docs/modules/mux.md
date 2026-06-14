@@ -6,6 +6,10 @@
 > [`../psmux-tui-behavior.md`](../psmux-tui-behavior.md). **v1 is deliberately tiny**
 > (roadmap milestone 5); subprocess panes (6), the daemon (7), and Slack (8) are in
 > [Deferred](#deferred).
+>
+> **Note:** A working proof-of-concept of the daemon and pane-recovery model already
+> exists in `internal/muxpoc` — see [modules/muxpoc.md](muxpoc.md) for the shipped
+> implementation that validates the hard parts of v2 and v7.
 
 The mux module manages [psmux](../vendor/psmux_scripting.md) — a Windows tmux-compatible
 multiplexer (3.3.4) — so the Claude Code sessions running across a repo's worktrees can be

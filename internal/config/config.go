@@ -39,7 +39,7 @@ func FindBaseDir(cwd string) (string, error) {
 	return cwd, nil
 }
 
-// Load loads configuration for a module from defaults and layered configuration files.
+// Load loads configuration for a module from defaults and the module's `_mhgo/<module>.yaml` file.
 //
 // Merges defaults with <baseDir>/_mhgo/<module>.yaml (if present) and expands
 // environment variables using $env:NAME and $env:NAME ? fallback syntax.

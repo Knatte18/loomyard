@@ -150,8 +150,8 @@ result to `out` as JSON. Returns the exit code (0/1).
 
 Configuration resolution (cwd-authoritative): the cwd must contain `_mhgo/`
 directory. If absent, `LoadConfig` errors with "not initialized here; run
-\"mhgo init\"". Otherwise configuration is loaded from layered YAML files and
-merged with defaults (see [Configuration](#configuration)).
+\"mhgo init\"". Otherwise configuration is loaded from `_mhgo/board.yaml` merged
+with built-in defaults (see [Configuration](#configuration)).
 
 When `--board-path` is present (internal flag for the detached sync child), it
 bypasses config resolution entirely and uses the provided absolute path. The
@@ -222,27 +222,20 @@ safety-net sync.
 
 ## Configuration
 
-> **Target redesign (not yet implemented).** The model below is what the board
-> code does *today*: a three-layer merge including a gitignored `.mhgo/board.yaml`
-> override. A planned milestone extracts this into the shared `internal/config`
-> package and **drops the `.mhgo/` config layer** in favour of `$env:NAME ? default`
-> references plus a `.env` file. See [shared-libs/config.md](../shared-libs/config.md)
-> and [roadmap.md](../roadmap.md). This section is updated when that milestone lands.
-
-The board module's configuration is defined in a layered YAML system, read fresh
-on every invocation from the current working directory. The system supports
-environment variable expansion and path resolution.
+The board module resolves configuration from the current working directory,
+delegating to `internal/config`. The cwd-authoritative model loads built-in
+defaults overlaid with `_mhgo/board.yaml`; there is **no** `.mhgo/` config layer.
+Machine-local variation is expressed via `$env:` references inside the tracked YAML.
 
 ### Layered model
 
-Configuration is assembled from three sources, merged per key:
+Configuration is assembled from two sources, merged per key:
 1. **Built-in defaults** — fallback for any unspecified key
 2. **`<cwd>/_mhgo/board.yaml`** (optional, git-tracked) — team/repo-wide settings
-3. **`<cwd>/.mhgo/board.yaml`** (optional, gitignored) — machine-local overrides
 
-A key absent from a higher layer falls through to the layer below, then to the
-built-in default. If `_mhgo/` does not exist, `LoadConfig` errors with the
-message "not initialized here; run \"mhgo init\"".
+A key absent from a higher layer falls through to the built-in default. If `_mhgo/`
+does not exist, `LoadConfig` errors with the message "not initialized here; run
+\"mhgo init\"".
 
 ### Keys and defaults
 
@@ -254,22 +247,8 @@ sidebar: _Sidebar.md  # sidebar file name
 proposal_prefix: proposal-  # prefix for proposal-<slug>.md files
 ```
 
-### Environment variable expansion
-
-After all layers are merged, `$env:NAME` tokens (where `NAME` matches
-`[A-Za-z_][A-Za-z0-9_]*`) anywhere within a string value are replaced with the
-value of `os.Getenv("NAME")`. A referenced-but-unset environment variable is a
-**hard error** — the command fails with a message like "referenced env var
-`NAME` is not set". This is intentional: silent fallback to an empty string
-would lead to silent failures downstream.
-
-The token may appear mid-value (e.g. `path: $env:MHGO_BOARD_PATH/sub`).
-
-### Path resolution
-
-After environment expansion, a relative `path` (one not starting with `/` or a
-Windows absolute path like `C:\...`) is resolved against `cwd` via
-`filepath.Join(cwd, path)`. An absolute path is used as-is.
+Environment variable expansion and path resolution are described in
+[shared-libs/config.md](../shared-libs/config.md).
 
 ## init
 
@@ -317,7 +296,7 @@ Command: `mhgo board upsert '{"slug": "my-task", "title": "Do something"}'`
 
 ```
 main.go → board.RunCLI (cli.go)
-  │  LoadConfig(cwd, "board") — resolve from _mhgo/ layers
+  │  LoadConfig(cwd, "board") — resolve from `_mhgo/board.yaml` + defaults
   │  parse args → subcommand="upsert", jsonPayload='{"slug":...}'
   │  json.Unmarshal → fields map[string]any
   │  b.UpsertTask(fields)
