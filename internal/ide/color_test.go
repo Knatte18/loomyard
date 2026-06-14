@@ -40,16 +40,17 @@ func TestPickColorFirstUnusedNonGreen(t *testing.T) {
 	tmpDir := t.TempDir()
 	mainPath := filepath.Join(tmpDir, "main")
 	child1Path := filepath.Join(tmpDir, "child1")
-	child2Path := filepath.Join(tmpDir, "child2")
 
 	// Create directories
-	for _, p := range []string{mainPath, child1Path, child2Path} {
+	for _, p := range []string{mainPath, child1Path} {
 		if err := os.MkdirAll(p, 0o755); err != nil {
 			t.Fatalf("failed to create dir: %v", err)
 		}
 	}
 
 	// Write a settings.json in child1 with purple color
+	// The settings path must be <container>/<dir>/<relpath>/.vscode/settings.json
+	// So for relpath=".", it's <container>/child1/.vscode/settings.json
 	child1Settings := filepath.Join(child1Path, ".vscode")
 	if err := os.MkdirAll(child1Settings, 0o755); err != nil {
 		t.Fatalf("failed to create .vscode: %v", err)
@@ -70,12 +71,11 @@ func TestPickColorFirstUnusedNonGreen(t *testing.T) {
 	layout := &paths.Layout{
 		Container:    tmpDir,
 		MainWorktree: mainPath,
-		RelPath:      ".vscode",
+		RelPath:      ".",
 	}
 
 	color := pickColor(layout)
-	// Should return the first non-green (purple) if not used,
-	// or blue if purple is used
+	// Should NOT return purple since it's in use, should return next non-green
 	if color == "#7d2d6b" {
 		t.Fatalf("pickColor returned purple which is in use; got %s", color)
 	}
@@ -84,7 +84,7 @@ func TestPickColorFirstUnusedNonGreen(t *testing.T) {
 	}
 	// We expect blue (#2d4f7d) since purple is taken
 	if color != "#2d4f7d" {
-		t.Logf("got %s, expected blue #2d4f7d (first unused non-green)", color)
+		t.Fatalf("expected blue #2d4f7d (first unused non-green), got %s", color)
 	}
 }
 
