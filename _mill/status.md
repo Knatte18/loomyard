@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: docs-stale-sweep
 branch: docs-stale-sweep
 plan: _mill/plan
@@ -19,4 +19,17 @@ discussed  '2026-06-14T05:57:11Z'
 planning  '2026-06-14T06:05:34Z'
 plan-fix-r1  '2026-06-14T06:09:39Z'
 planned  '2026-06-14T06:09:59Z'
+implementing  '2026-06-14T06:12:00Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: board-config-fixes
+    state: pending
+  - name: muxpoc-doc
+    state: pending
+  - name: tree-sweep
+    state: pending
 ```
