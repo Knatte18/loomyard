@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-fixing
 slug: mhgo-portals-launchers
 branch: mhgo-portals-launchers
 plan: _mill/plan
@@ -32,6 +32,7 @@ approved-board-paths-healthcheck  '2026-06-14T11:01:35Z'
 approved-ide-module  '2026-06-14T11:08:10Z'
 approved-enforcement-and-docs  '2026-06-14T11:14:02Z'
 holistic-reviewing  '2026-06-14T11:15:02Z'
+holistic-fixing  '2026-06-14T11:18:50Z'
 ```
 
 ## Batches
