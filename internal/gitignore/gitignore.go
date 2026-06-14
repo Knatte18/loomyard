@@ -46,6 +46,9 @@ func Ensure(repoRoot string, entries ...string) (changed bool, err error) {
 		existingContent = string(content)
 	}
 
+	// Normalize line endings: convert CRLF to LF for consistent parsing
+	existingContent = strings.ReplaceAll(existingContent, "\r\n", "\n")
+
 	// Parse the file: capture before-block, block interior, and after-block
 	var blockExists bool
 	var oldEntries map[string]bool
