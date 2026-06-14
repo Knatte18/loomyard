@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-muxpoc-doc
+phase: approved-tree-sweep
 slug: docs-stale-sweep
 branch: docs-stale-sweep
 plan: _mill/plan
@@ -22,6 +22,7 @@ planned  '2026-06-14T06:09:59Z'
 implementing  '2026-06-14T06:12:00Z'
 approved-board-config-fixes  '2026-06-14T06:15:28Z'
 approved-muxpoc-doc  '2026-06-14T06:17:54Z'
+approved-tree-sweep  '2026-06-14T06:21:04Z'
 ```
 
 ## Batches
@@ -39,7 +40,8 @@ batches:
     start_sha: 58143d29fc0adb09bf086a3d17fe3326690c1f08
     commit_sha: b0e80ca0e9e2608cc775ea47bef2e97fbc80a037
   - name: tree-sweep
-    state: running
+    state: approved
     implementer_session: 81f54337-9ea7-4629-85c0-43392f889072
     start_sha: 72a76cc58fa5236d4af4636a1101634a449431aa
+    commit_sha: 58bf0f9a21a53970748c0b7d6b3f36f89fd434a3
 ```
