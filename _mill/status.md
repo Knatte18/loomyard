@@ -27,7 +27,9 @@ implementing  '2026-06-14T06:12:00Z'
 ```yaml
 batches:
   - name: board-config-fixes
-    state: pending
+    state: running
+    implementer_session: b46cc90a-54f3-4a74-842e-02f0f3ae4b3a
+    start_sha: b790afd8b6b1fc3b80ead311928491e47d43f499
   - name: muxpoc-doc
     state: pending
   - name: tree-sweep
