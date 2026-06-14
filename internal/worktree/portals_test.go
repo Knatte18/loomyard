@@ -46,21 +46,14 @@ func TestCreatePortal(t *testing.T) {
 		t.Fatalf("portal link does not exist: %v", err)
 	}
 
-	// Verify the link resolves to the target
-	resolved, err := os.Readlink(portalLink)
+	// Verify the link resolves to the target by checking that a known file
+	// in the target is accessible through the portal link.
+	// os.Readlink is unreliable for NTFS junctions (may include \??\ prefix),
+	// so we use os.Stat to verify the junction resolves correctly.
+	knownFile := filepath.Join(portalLink, "_mhgo")
+	_, err = os.Stat(knownFile)
 	if err != nil {
-		t.Fatalf("readlink portal: %v", err)
-	}
-
-	expectedTarget := l.PortalTarget("test-slug")
-	if resolved != expectedTarget {
-		// On some platforms, paths might be normalized differently
-		resolvedAbs, _ := filepath.Abs(resolved)
-		expectedAbs, _ := filepath.Abs(expectedTarget)
-		if filepath.Clean(resolvedAbs) != filepath.Clean(expectedAbs) &&
-			filepath.Clean(resolved) != filepath.Clean(expectedTarget) {
-			t.Errorf("readlink = %q; want %q", resolved, expectedTarget)
-		}
+		t.Errorf("portal link does not resolve to target: %v", err)
 	}
 
 	// Test removePortal
