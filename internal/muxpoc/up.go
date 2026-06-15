@@ -19,10 +19,7 @@ import (
 // cmdUp is the entry point for the 'mhgo muxpoc up' subcommand.
 // Returns exit code (0 on success, 1 on error).
 func cmdUp(out io.Writer, cfg Config) int {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return output.Err(out, fmt.Sprintf("getwd: %v", err))
-	}
+	cwd := cfg.WorktreeRoot
 
 	state, warn, err := LoadState(cwd)
 	if err != nil {

@@ -11,18 +11,22 @@ import (
 	"io"
 	"os"
 	"time"
+
+	"github.com/Knatte18/mhgo/internal/output"
+	"github.com/Knatte18/mhgo/internal/paths"
 )
 
 // Config holds paths and dimensions for muxpoc operations.
 type Config struct {
-	PsmuxPath  string
-	PwshPath   string
-	ClaudePath string
-	LaunchTpl  string
-	ResumeTpl  string
-	Width      int
-	Height     int
-	Interval   time.Duration
+	PsmuxPath    string
+	PwshPath     string
+	ClaudePath   string
+	LaunchTpl    string
+	ResumeTpl    string
+	Width        int
+	Height       int
+	Interval     time.Duration
+	WorktreeRoot string
 }
 
 // RunCLI parses command-line flags and dispatches to the appropriate subcommand.
@@ -57,15 +61,27 @@ func RunCLI(out io.Writer, args []string) int {
 		return 1
 	}
 
+	// Resolve the worktree root via paths
+	cwd, err := paths.Getwd()
+	if err != nil {
+		return output.Err(out, fmt.Sprintf("failed to get current working directory: %v", err))
+	}
+
+	layout, err := paths.Resolve(cwd)
+	if err != nil {
+		return output.Err(out, fmt.Sprintf("not a git repository: %v", err))
+	}
+
 	cfg := Config{
-		PsmuxPath:  *psmuxPath,
-		PwshPath:   *pwshPath,
-		ClaudePath: *claudePath,
-		LaunchTpl:  *launchTpl,
-		ResumeTpl:  *resumeTpl,
-		Width:      *width,
-		Height:     *height,
-		Interval:   *interval,
+		PsmuxPath:    *psmuxPath,
+		PwshPath:     *pwshPath,
+		ClaudePath:   *claudePath,
+		LaunchTpl:    *launchTpl,
+		ResumeTpl:    *resumeTpl,
+		Width:        *width,
+		Height:       *height,
+		Interval:     *interval,
+		WorktreeRoot: layout.WorktreeRoot,
 	}
 
 	rest := fs.Args()

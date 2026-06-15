@@ -171,6 +171,22 @@ func (b *Board) Sync() error {
 	return Sync(b.boardPath)
 }
 
+// HealthCheck verifies the board directory and tasks.json file exist and are readable.
+// Returns nil if the board is healthy, or an error if the board dir is absent,
+// tasks.json is absent/unreadable, or any other I/O error occurs.
+// Syntactically corrupt but readable files pass the health check.
+func (b *Board) HealthCheck() error {
+	// Check if board directory exists
+	if _, err := os.Stat(b.boardPath); err != nil {
+		return err
+	}
+
+	// Check if tasks.json exists and is readable
+	tasksPath := filepath.Join(b.boardPath, "tasks.json")
+	_, err := os.ReadFile(tasksPath)
+	return err
+}
+
 func (b *Board) GetTask(idOrSlug any) (Task, bool, error) {
 	// Short-circuit if board dir does not exist
 	if _, err := os.Stat(b.boardPath); os.IsNotExist(err) {
