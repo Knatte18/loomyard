@@ -1,3 +1,6 @@
+// paths_test.go covers Layout resolution, the geometry accessors, and the
+// ErrNotAGitRepo path for directories outside a git repo.
+
 package paths_test
 
 import (

@@ -1,3 +1,5 @@
+// state_test.go covers muxpoc session-state persistence and lookup.
+
 package muxpoc
 
 import (

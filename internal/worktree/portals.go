@@ -1,3 +1,6 @@
+// portals.go creates and removes the per-worktree portal junction
+// (<container>/_portals/<slug> -> the worktree's _mhgo/), with idempotent removal.
+
 package worktree
 
 import (

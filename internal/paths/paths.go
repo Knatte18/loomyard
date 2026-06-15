@@ -1,3 +1,7 @@
+// Package paths is the single owner of mhgo worktree and container geometry.
+// It resolves the active Layout from a working directory and exposes typed
+// accessors for every derived path, so no other package recomputes geometry
+// from raw os.Getwd or git --show-toplevel calls.
 package paths
 
 import (

@@ -1,3 +1,7 @@
+// enforcement_test.go is a repo-wide guard: it walks every package and fails
+// the build if any file outside internal/paths reaches for raw cwd or top-level
+// git geometry, keeping internal/paths the sole geometry owner.
+
 package paths
 
 import (

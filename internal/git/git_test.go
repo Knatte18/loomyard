@@ -1,3 +1,5 @@
+// git_test.go covers the git command helpers exposed by this package.
+
 package git_test
 
 import (

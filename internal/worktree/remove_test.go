@@ -1,3 +1,6 @@
+// remove_test.go covers normal teardown and the case where the worktree dir is
+// gone but the portal/launcher are still cleaned up before the not-found return.
+
 package worktree_test
 
 import (

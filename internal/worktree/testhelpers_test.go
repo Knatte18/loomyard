@@ -1,3 +1,6 @@
+// testhelpers_test.go provides shared helpers for the worktree package's
+// internal (white-box) tests.
+
 package worktree
 
 import (

@@ -1,3 +1,6 @@
+// add_test.go covers Add's happy-path side effects (portal, launchers, pushed
+// branch) and the zero-residue rollback on a post-creation failure.
+
 package worktree_test
 
 import (

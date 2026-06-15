@@ -1,3 +1,6 @@
+// portals_test.go covers portal junction create/remove, including idempotent
+// removal that leaves the junction target intact.
+
 package worktree
 
 import (

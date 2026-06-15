@@ -1,3 +1,7 @@
+// menu_test.go covers worktree discovery (excludes main, requires _mhgo/),
+// board-facade titles, numeric selection, the zero-worktree path, and the
+// missing-board hard error.
+
 package ide
 
 import (

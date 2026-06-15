@@ -1,3 +1,6 @@
+// worktreelist_test.go covers the porcelain worktree-list parser, including
+// the bare-repo rejection and Main-on-first-entry behavior.
+
 package paths_test
 
 import (

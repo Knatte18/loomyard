@@ -1,3 +1,6 @@
+// cli_test.go covers the ide CLI router: spawn dispatch with a stubbed launcher,
+// the unknown-subcommand and missing-slug error envelopes, and usage on no args.
+
 package ide
 
 import (

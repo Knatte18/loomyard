@@ -1,3 +1,6 @@
+// launchers_test.go covers launcher content generation and teardown
+// (Windows-gated; skipped where symlink/junction creation is unavailable).
+
 package worktree
 
 import (

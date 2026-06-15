@@ -1,3 +1,5 @@
+// spawn_test.go covers the end-to-end spawn flow with a stubbed code launcher.
+
 package ide
 
 import (

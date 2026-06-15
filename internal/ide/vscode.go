@@ -1,3 +1,6 @@
+// vscode.go generates a worktree's .vscode/ settings.json and tasks.json (only
+// when absent) and registers .vscode/ in the mhgo-managed .gitignore block.
+
 package ide
 
 import (

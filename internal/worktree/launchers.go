@@ -1,3 +1,6 @@
+// launchers.go writes and tears down the per-worktree launcher scripts and the
+// container-root ide-menu.cmd. Launchers are Windows-only; elsewhere it is a no-op.
+
 package worktree
 
 import (

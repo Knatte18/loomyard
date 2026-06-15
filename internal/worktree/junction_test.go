@@ -1,3 +1,6 @@
+// junction_test.go covers the platform junction/symlink create helper, including
+// its refuse-to-clobber behavior when the link already exists.
+
 package worktree
 
 import (

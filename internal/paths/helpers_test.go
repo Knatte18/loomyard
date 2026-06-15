@@ -1,3 +1,6 @@
+// helpers_test.go provides shared test scaffolding (temporary git repos and
+// worktrees) for the paths package tests.
+
 package paths_test
 
 import (
