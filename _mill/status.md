@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-fixing
+phase: holistic-approved
 slug: paths-subpath-mirroring
 branch: paths-subpath-mirroring
 plan: _mill/plan
@@ -26,6 +26,7 @@ approved-worktree-consumers  '2026-06-15T11:08:17Z'
 approved-docs  '2026-06-15T11:10:28Z'
 holistic-reviewing  '2026-06-15T11:10:52Z'
 holistic-fixing  '2026-06-15T11:13:54Z'
+holistic-approved  '2026-06-15T11:18:33Z'
 ```
 
 ## Batches
