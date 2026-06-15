@@ -174,6 +174,28 @@ Claude Code conversations that keep running with no terminal attached. Verified 
 it ships with dispatch, lifecycle, crash-survival, resume, and output-capture already built — exactly
 the surface mux's daemon/Slack milestones (7–8) were going to build by hand.
 
+### `claude --bg` IS interactive when attached — but attach carries a latency cost (verified live)
+
+The decisive interactivity test, **driven by a human at the keyboard** (not `send-keys`): a `claude
+--bg` background session attached via `claude attach <id>` **is fully interactive** — typed a
+Norwegian question, got a correct contextual reply. So §D is not read-only; you can drive an attached
+background session normally.
+
+**But a three-way, operator-judged latency comparison exposed a real cost:**
+
+| Path | Per-keystroke hops | Felt latency |
+|---|---|---|
+| **§A** — claude launched **directly** in a psmux pane | WT → psmux → pane → claude | **clearly lowest (snappy)** |
+| §D plain — `claude attach <id>` in a bare terminal | WT → **cc-daemon** → bg session | noticeable lag |
+| §D + psmux — `claude attach <id>` inside a psmux pane | WT → psmux → pane → **cc-daemon** → bg | most lag |
+
+The dominant cost is the **`claude attach` → cc-daemon named-pipe round-trip per keystroke**; psmux
+adds a small increment on top. §A has **no daemon in the path** and is materially snappier. **Design
+implication:** §D suits *fire-and-forget + occasional check* (its design point), but **for panes a
+human actively types in, §A's direct launch is the better experience.** This tilts the own-vs-display
+fork toward **§A for interactive panes**, with §D's supervisor primitives (`state`, `logs`,
+needs-input) reserved for monitoring/headless work.
+
 ---
 
 ## How pane switching actually composes (the design takeaways)
@@ -251,12 +273,18 @@ what mux must build. Instead of mux owning raw process spawn + lifecycle + recov
 
 **Why this matters:** it could shrink mux from "build a multi-agent supervisor + daemon + recovery +
 Slack" (milestones 6–8) down to **"a visible tiling/focus layer over Claude Code's own supervisor."**
-Much less to own. **Open risks before committing** (a dedicated spike, not resolved here): N concurrent
-`claude attach` clients to one daemon + psmux's smallest-client-wins; whether `--bg` silently creates
-worktrees; detach/re-attach and crash behavior of an attached pane; the AI-generated `name` needing
-override; and `waitingFor` reliability for the permission-prompt case. This is the **most consequential
-open question of the whole exploration** — it is a fork between "mux owns the agents" (§A/B) and "mux
-displays Claude Code's agents" (§D).
+Much less to own.
+
+**Partly resolved by the live test:** §D **works and is interactive** (proven above) — but
+`claude attach` carries a **perceptible per-keystroke latency** (the cc-daemon round-trip) that §A's
+direct-launch avoids. So the fork is no longer all-or-nothing; the empirical recommendation is a
+**split**: use **§A (direct launch)** for the panes a human types in (snappy), and borrow §D's
+supervisor primitives (`state`/`logs`/needs-input, crash-survival) for **headless/fire-and-forget**
+agents and monitoring — *not* as the live-typing path. **Still-open risks** (a dedicated spike): N
+concurrent `claude attach` clients to one daemon + psmux smallest-client-wins; whether `--bg` silently
+creates worktrees; detach/re-attach + crash behavior; AI-generated `name` override; `waitingFor`
+reliability for the permission-prompt case. The own-vs-display fork — "mux owns the agents" (§A/B) vs.
+"mux displays Claude Code's agents" (§D) — is now a **deliberate split**, not a single choice.
 
 ### Trigger model
 
@@ -324,9 +352,13 @@ guardrail so nested work can't slip back in-process (§B, spike pending); (4) us
 the in-process mechanism mux **replaces** — relevant only to the guardrail. Platform gotcha:
 **hook commands run under git-bash — POSIX paths only.**
 
-**But the biggest finding is the fork in §D:** Claude Code now ships its *own* background-agent
-supervisor (`claude --bg`, `claude attach/logs/stop <id>`, `state`/needs-input in `claude agents
---json`) that already does most of what mux milestones 6–8 planned. The open strategic decision is
-whether mux **owns** the agents (spawn raw interactive processes — §A/B) or **displays** Claude Code's
-agents (tile `claude attach` over the supervisor — §D). §D could shrink mux to a thin visible-tiling
-layer; it needs a dedicated spike (see Open) before it is chosen — ideally before mux v1 is built.
+**The biggest finding is §D and its live-tested resolution:** Claude Code now ships its *own*
+background-agent supervisor (`claude --bg`, `claude attach/logs/stop <id>`, `state`/needs-input in
+`claude agents --json`) that already does most of what mux milestones 6–8 planned. The own-vs-display
+fork is **not** all-or-nothing: a live human-typed test proved a `claude --bg` session **is fully
+interactive when attached**, but `claude attach` carries a **perceptible per-keystroke latency** (the
+cc-daemon round-trip) that direct launch (§A) avoids. **Recommended split:** §A (claude launched
+directly in the pane) for the panes a human types in — snappy, plus its own hooks for events; and §D's
+supervisor primitives (`state`/`logs`/needs-input, crash-survival) for **headless/fire-and-forget**
+agents and monitoring. Settle the remaining §D risks (see Open) before mux v1 — but the interactive
+path is now decided in §A's favour.
