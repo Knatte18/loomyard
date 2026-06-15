@@ -28,12 +28,12 @@ func TestPruneEmptyAncestors(t *testing.T) {
 				// start = tempDir/_portals/a/b/c/slug
 				// stop = tempDir/_portals
 				// Expected: a/b/c/slug removed; _portals remains
-				stop := filepath.Join(tempDir, "_portals")
-				start := filepath.Join(stop, "a", "b", "c", "slug")
+				stop = filepath.Join(tempDir, "_portals")
+				start = filepath.Join(stop, "a", "b", "c", "slug")
 				if err := os.MkdirAll(start, 0o755); err != nil {
 					t.Fatalf("mkdir: %v", err)
 				}
-				return start, stop
+				return
 			},
 			verify: func(t *testing.T, tempDir string, start, stop string) {
 				// Check that start and its ancestors are gone up to stop
@@ -66,8 +66,8 @@ func TestPruneEmptyAncestors(t *testing.T) {
 				// start = tempDir/_portals/a/b/c/slug
 				// stop = tempDir/_portals
 				// Expected: c/slug removed, but a/b survives because it has a file
-				stop := filepath.Join(tempDir, "_portals")
-				start := filepath.Join(stop, "a", "b", "c", "slug")
+				stop = filepath.Join(tempDir, "_portals")
+				start = filepath.Join(stop, "a", "b", "c", "slug")
 				if err := os.MkdirAll(start, 0o755); err != nil {
 					t.Fatalf("mkdir: %v", err)
 				}
@@ -78,7 +78,7 @@ func TestPruneEmptyAncestors(t *testing.T) {
 					t.Fatalf("write file: %v", err)
 				}
 
-				return start, stop
+				return
 			},
 			verify: func(t *testing.T, tempDir string, start, stop string) {
 				// Check that start/c/slug are gone
@@ -113,11 +113,12 @@ func TestPruneEmptyAncestors(t *testing.T) {
 			name: "StartEqualStopIsNoop",
 			setup: func(t *testing.T, tempDir string) (start, stop string) {
 				// Create a tree and then try to prune from the root itself
-				stop := filepath.Join(tempDir, "_portals")
+				stop = filepath.Join(tempDir, "_portals")
 				if err := os.MkdirAll(stop, 0o755); err != nil {
 					t.Fatalf("mkdir: %v", err)
 				}
-				return stop, stop
+				start = stop
+				return
 			},
 			verify: func(t *testing.T, tempDir string, start, stop string) {
 				// Check that stop still exists (was not removed)
@@ -130,8 +131,8 @@ func TestPruneEmptyAncestors(t *testing.T) {
 			name: "IdempotentOnAlreadyPruned",
 			setup: func(t *testing.T, tempDir string) (start, stop string) {
 				// Create a tree, prune it, then prune again
-				stop := filepath.Join(tempDir, "_portals")
-				start := filepath.Join(stop, "a", "b", "c")
+				stop = filepath.Join(tempDir, "_portals")
+				start = filepath.Join(stop, "a", "b", "c")
 				if err := os.MkdirAll(start, 0o755); err != nil {
 					t.Fatalf("mkdir: %v", err)
 				}
@@ -139,7 +140,7 @@ func TestPruneEmptyAncestors(t *testing.T) {
 				// First prune
 				pruneEmptyAncestors(start, stop)
 
-				return start, stop
+				return
 			},
 			verify: func(t *testing.T, tempDir string, start, stop string) {
 				// Run prune again on the already-pruned tree
