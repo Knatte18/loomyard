@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-docs
+phase: holistic-reviewing
 slug: paths-subpath-mirroring
 branch: paths-subpath-mirroring
 plan: _mill/plan
@@ -24,6 +24,7 @@ implementing  '2026-06-15T10:58:44Z'
 approved-paths-geometry  '2026-06-15T11:02:13Z'
 approved-worktree-consumers  '2026-06-15T11:08:17Z'
 approved-docs  '2026-06-15T11:10:28Z'
+holistic-reviewing  '2026-06-15T11:10:52Z'
 ```
 
 ## Batches
