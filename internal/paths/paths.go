@@ -143,16 +143,33 @@ func (l *Layout) PortalTarget(slug string) string {
 
 // LaunchersDir returns the path to the _launchers directory in the container.
 //
+// This is the un-mirrored root used as a prune boundary and base for MkdirAll.
+//
 // Returns filepath.Join(Container, "_launchers").
 func (l *Layout) LaunchersDir() string {
 	return filepath.Join(l.Container, "_launchers")
 }
 
-// LauncherDir returns the path to the launcher directory for the given slug.
+// LauncherDir returns the path to the mirrored launcher directory for the given slug.
 //
-// Returns filepath.Join(LaunchersDir(), slug).
+// The launcher directory is mirrored into the repo subpath structure. At RelPath == ".",
+// this collapses to <Container>/_launchers/<slug>. For subpaths, it includes the
+// RelPath segments: <Container>/_launchers/<RelPath>/<slug>.
+//
+// Returns filepath.Join(Container, "_launchers", RelPath, slug).
 func (l *Layout) LauncherDir(slug string) string {
-	return filepath.Join(l.LaunchersDir(), slug)
+	return filepath.Join(l.Container, "_launchers", l.RelPath, slug)
+}
+
+// MenuLauncherPath returns the path to the per-subpath menu launcher script.
+//
+// The menu launcher is mirrored into the repo subpath structure. At RelPath == ".",
+// this collapses to <Container>/_launchers/ide-menu.cmd. For subpaths, it includes
+// the RelPath segments: <Container>/_launchers/<RelPath>/ide-menu.cmd.
+//
+// Returns filepath.Join(Container, "_launchers", RelPath, "ide-menu.cmd").
+func (l *Layout) MenuLauncherPath() string {
+	return filepath.Join(l.Container, "_launchers", l.RelPath, "ide-menu.cmd")
 }
 
 // HubName returns the base name of the main worktree.
