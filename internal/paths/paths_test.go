@@ -182,3 +182,261 @@ func TestResolve_NotAGitRepo(t *testing.T) {
 		t.Errorf("Resolve() error = %v; want wrapped ErrNotAGitRepo", err)
 	}
 }
+
+// TestMirroredMethods tests the subpath-mirrored geometry methods.
+func TestMirroredMethods(t *testing.T) {
+	hub := newTestRepo(t)
+	defer func() {
+		_ = os.RemoveAll(filepath.Dir(hub))
+	}()
+
+	t.Run("PortalLink", func(t *testing.T) {
+		t.Run("at root", func(t *testing.T) {
+			layout, err := paths.Resolve(hub)
+			if err != nil {
+				t.Fatalf("Resolve() error = %v; want nil", err)
+			}
+
+			slug := "test-slug"
+			got := layout.PortalLink(slug)
+			want := filepath.Join(layout.Container, "_portals", slug)
+			if got != want {
+				t.Errorf("PortalLink(%q) = %q; want %q", slug, got, want)
+			}
+		})
+
+		t.Run("at subpath", func(t *testing.T) {
+			subDir := filepath.Join(hub, "services", "api")
+			if err := os.MkdirAll(subDir, 0755); err != nil {
+				t.Fatalf("failed to create subdir: %v", err)
+			}
+
+			layout, err := paths.Resolve(subDir)
+			if err != nil {
+				t.Fatalf("Resolve() error = %v; want nil", err)
+			}
+
+			slug := "test-slug"
+			got := layout.PortalLink(slug)
+			want := filepath.Join(layout.Container, "_portals", "services", "api", slug)
+			if got != want {
+				t.Errorf("PortalLink(%q) = %q; want %q", slug, got, want)
+			}
+		})
+
+		t.Run("no collision between different subpaths", func(t *testing.T) {
+			subDir1 := filepath.Join(hub, "services", "api")
+			subDir2 := filepath.Join(hub, "services", "web")
+			if err := os.MkdirAll(subDir1, 0755); err != nil {
+				t.Fatalf("failed to create subdir1: %v", err)
+			}
+			if err := os.MkdirAll(subDir2, 0755); err != nil {
+				t.Fatalf("failed to create subdir2: %v", err)
+			}
+
+			layout1, err := paths.Resolve(subDir1)
+			if err != nil {
+				t.Fatalf("Resolve(subDir1) error = %v; want nil", err)
+			}
+
+			layout2, err := paths.Resolve(subDir2)
+			if err != nil {
+				t.Fatalf("Resolve(subDir2) error = %v; want nil", err)
+			}
+
+			slug := "test-slug"
+			link1 := layout1.PortalLink(slug)
+			link2 := layout2.PortalLink(slug)
+
+			if link1 == link2 {
+				t.Errorf("PortalLink produced collision: %q == %q", link1, link2)
+			}
+		})
+	})
+
+	t.Run("LauncherDir", func(t *testing.T) {
+		t.Run("at root (backward compat)", func(t *testing.T) {
+			layout, err := paths.Resolve(hub)
+			if err != nil {
+				t.Fatalf("Resolve() error = %v; want nil", err)
+			}
+
+			slug := "test-slug"
+			got := layout.LauncherDir(slug)
+			// At root, should still equal Join(LaunchersDir(), slug)
+			want := filepath.Join(layout.LaunchersDir(), slug)
+			if got != want {
+				t.Errorf("LauncherDir(%q) = %q; want %q", slug, got, want)
+			}
+		})
+
+		t.Run("at subpath", func(t *testing.T) {
+			subDir := filepath.Join(hub, "services", "api")
+			if err := os.MkdirAll(subDir, 0755); err != nil {
+				t.Fatalf("failed to create subdir: %v", err)
+			}
+
+			layout, err := paths.Resolve(subDir)
+			if err != nil {
+				t.Fatalf("Resolve() error = %v; want nil", err)
+			}
+
+			slug := "test-slug"
+			got := layout.LauncherDir(slug)
+			want := filepath.Join(layout.Container, "_launchers", "services", "api", slug)
+			if got != want {
+				t.Errorf("LauncherDir(%q) = %q; want %q", slug, got, want)
+			}
+		})
+
+		t.Run("no collision between different subpaths", func(t *testing.T) {
+			subDir1 := filepath.Join(hub, "services", "api")
+			subDir2 := filepath.Join(hub, "services", "web")
+			if err := os.MkdirAll(subDir1, 0755); err != nil {
+				t.Fatalf("failed to create subdir1: %v", err)
+			}
+			if err := os.MkdirAll(subDir2, 0755); err != nil {
+				t.Fatalf("failed to create subdir2: %v", err)
+			}
+
+			layout1, err := paths.Resolve(subDir1)
+			if err != nil {
+				t.Fatalf("Resolve(subDir1) error = %v; want nil", err)
+			}
+
+			layout2, err := paths.Resolve(subDir2)
+			if err != nil {
+				t.Fatalf("Resolve(subDir2) error = %v; want nil", err)
+			}
+
+			slug := "test-slug"
+			dir1 := layout1.LauncherDir(slug)
+			dir2 := layout2.LauncherDir(slug)
+
+			if dir1 == dir2 {
+				t.Errorf("LauncherDir produced collision: %q == %q", dir1, dir2)
+			}
+		})
+	})
+
+	t.Run("MenuLauncherPath", func(t *testing.T) {
+		t.Run("at root", func(t *testing.T) {
+			layout, err := paths.Resolve(hub)
+			if err != nil {
+				t.Fatalf("Resolve() error = %v; want nil", err)
+			}
+
+			got := layout.MenuLauncherPath()
+			want := filepath.Join(layout.Container, "_launchers", "ide-menu.cmd")
+			if got != want {
+				t.Errorf("MenuLauncherPath() = %q; want %q", got, want)
+			}
+		})
+
+		t.Run("at subpath", func(t *testing.T) {
+			subDir := filepath.Join(hub, "services", "api")
+			if err := os.MkdirAll(subDir, 0755); err != nil {
+				t.Fatalf("failed to create subdir: %v", err)
+			}
+
+			layout, err := paths.Resolve(subDir)
+			if err != nil {
+				t.Fatalf("Resolve() error = %v; want nil", err)
+			}
+
+			got := layout.MenuLauncherPath()
+			want := filepath.Join(layout.Container, "_launchers", "services", "api", "ide-menu.cmd")
+			if got != want {
+				t.Errorf("MenuLauncherPath() = %q; want %q", got, want)
+			}
+		})
+	})
+
+	t.Run("LauncherSpawnRel", func(t *testing.T) {
+		t.Run("at root", func(t *testing.T) {
+			layout, err := paths.Resolve(hub)
+			if err != nil {
+				t.Fatalf("Resolve() error = %v; want nil", err)
+			}
+
+			slug := "test-slug"
+			got := layout.LauncherSpawnRel(slug)
+
+			// Recompute expected via filepath.Rel
+			launcherDir := layout.LauncherDir(slug)
+			targetPath := filepath.Join(layout.WorktreePath(slug), layout.RelPath)
+			want, _ := filepath.Rel(launcherDir, targetPath)
+
+			if got != want {
+				t.Errorf("LauncherSpawnRel(%q) = %q; want %q", slug, got, want)
+			}
+		})
+
+		t.Run("at subpath", func(t *testing.T) {
+			subDir := filepath.Join(hub, "services", "api")
+			if err := os.MkdirAll(subDir, 0755); err != nil {
+				t.Fatalf("failed to create subdir: %v", err)
+			}
+
+			layout, err := paths.Resolve(subDir)
+			if err != nil {
+				t.Fatalf("Resolve() error = %v; want nil", err)
+			}
+
+			slug := "test-slug"
+			got := layout.LauncherSpawnRel(slug)
+
+			// Recompute expected via filepath.Rel
+			launcherDir := layout.LauncherDir(slug)
+			targetPath := filepath.Join(layout.WorktreePath(slug), layout.RelPath)
+			want, _ := filepath.Rel(launcherDir, targetPath)
+
+			if got != want {
+				t.Errorf("LauncherSpawnRel(%q) = %q; want %q", slug, got, want)
+			}
+		})
+	})
+
+	t.Run("MenuLauncherRel", func(t *testing.T) {
+		t.Run("at root", func(t *testing.T) {
+			layout, err := paths.Resolve(hub)
+			if err != nil {
+				t.Fatalf("Resolve() error = %v; want nil", err)
+			}
+
+			got := layout.MenuLauncherRel()
+
+			// Recompute expected via filepath.Rel
+			menuDir := filepath.Dir(layout.MenuLauncherPath())
+			targetPath := filepath.Join(layout.MainWorktree, layout.RelPath)
+			want, _ := filepath.Rel(menuDir, targetPath)
+
+			if got != want {
+				t.Errorf("MenuLauncherRel() = %q; want %q", got, want)
+			}
+		})
+
+		t.Run("at subpath", func(t *testing.T) {
+			subDir := filepath.Join(hub, "services", "api")
+			if err := os.MkdirAll(subDir, 0755); err != nil {
+				t.Fatalf("failed to create subdir: %v", err)
+			}
+
+			layout, err := paths.Resolve(subDir)
+			if err != nil {
+				t.Fatalf("Resolve() error = %v; want nil", err)
+			}
+
+			got := layout.MenuLauncherRel()
+
+			// Recompute expected via filepath.Rel
+			menuDir := filepath.Dir(layout.MenuLauncherPath())
+			targetPath := filepath.Join(layout.MainWorktree, layout.RelPath)
+			want, _ := filepath.Rel(menuDir, targetPath)
+
+			if got != want {
+				t.Errorf("MenuLauncherRel() = %q; want %q", got, want)
+			}
+		})
+	})
+}

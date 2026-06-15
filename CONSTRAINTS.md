@@ -16,4 +16,4 @@ All worktree and container geometry must be resolved through `internal/paths`, n
 If you need a cwd or worktree root:
 - Call `paths.Getwd()` to get the current working directory.
 - Call `paths.Resolve(cwd)` to obtain a `Layout` with all geometry fields (root, container, relative path, etc.).
-- Use the `Layout` methods to derive paths: `MhgoDir()`, `WorktreePath(slug)`, `PortalsDir()`, `PortalTarget(slug)`, `LaunchersDir()`, `LauncherDir(slug)`, `HubName()`.
+- Use the `Layout` methods to derive paths: `MhgoDir()`, `WorktreePath(slug)`, `PortalsDir()`, `PortalTarget(slug)`, `LaunchersDir()`, `LauncherDir(slug)`, `PortalLink(slug)`, `MenuLauncherPath()`, `LauncherSpawnRel(slug)`, `MenuLauncherRel()`, `HubName()`.

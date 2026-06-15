@@ -26,11 +26,11 @@ var ErrNotAGitRepo = errors.New("not a git repository")
 //   - RelPath: the relative path from WorktreeRoot to Cwd
 //   - MainWorktree: the path to the main (first) worktree from List()
 type Layout struct {
-	Cwd           string
-	WorktreeRoot  string
-	Container     string
-	RelPath       string
-	MainWorktree  string
+	Cwd          string
+	WorktreeRoot string
+	Container    string
+	RelPath      string
+	MainWorktree string
 }
 
 // Getwd returns the current working directory.
@@ -121,6 +121,17 @@ func (l *Layout) PortalsDir() string {
 	return filepath.Join(l.Container, "_portals")
 }
 
+// PortalLink returns the path to the mirrored portal junction link for the given slug.
+//
+// The portal link is mirrored into the repo subpath structure. At RelPath == ".",
+// this collapses to <Container>/_portals/<slug>. For subpaths, it includes the
+// RelPath segments: <Container>/_portals/<RelPath>/<slug>.
+//
+// Returns filepath.Join(Container, "_portals", RelPath, slug).
+func (l *Layout) PortalLink(slug string) string {
+	return filepath.Join(l.Container, "_portals", l.RelPath, slug)
+}
+
 // PortalTarget returns the path to the _mhgo directory within a portal for the given slug.
 //
 // The path is: <Container>/<slug>/<RelPath>/_mhgo
@@ -132,16 +143,60 @@ func (l *Layout) PortalTarget(slug string) string {
 
 // LaunchersDir returns the path to the _launchers directory in the container.
 //
+// This is the un-mirrored root used as a prune boundary and base for MkdirAll.
+//
 // Returns filepath.Join(Container, "_launchers").
 func (l *Layout) LaunchersDir() string {
 	return filepath.Join(l.Container, "_launchers")
 }
 
-// LauncherDir returns the path to the launcher directory for the given slug.
+// LauncherDir returns the path to the mirrored launcher directory for the given slug.
 //
-// Returns filepath.Join(LaunchersDir(), slug).
+// The launcher directory is mirrored into the repo subpath structure. At RelPath == ".",
+// this collapses to <Container>/_launchers/<slug>. For subpaths, it includes the
+// RelPath segments: <Container>/_launchers/<RelPath>/<slug>.
+//
+// Returns filepath.Join(Container, "_launchers", RelPath, slug).
 func (l *Layout) LauncherDir(slug string) string {
-	return filepath.Join(l.LaunchersDir(), slug)
+	return filepath.Join(l.Container, "_launchers", l.RelPath, slug)
+}
+
+// MenuLauncherPath returns the path to the per-subpath menu launcher script.
+//
+// The menu launcher is mirrored into the repo subpath structure. At RelPath == ".",
+// this collapses to <Container>/_launchers/ide-menu.cmd. For subpaths, it includes
+// the RelPath segments: <Container>/_launchers/<RelPath>/ide-menu.cmd.
+//
+// Returns filepath.Join(Container, "_launchers", RelPath, "ide-menu.cmd").
+func (l *Layout) MenuLauncherPath() string {
+	return filepath.Join(l.Container, "_launchers", l.RelPath, "ide-menu.cmd")
+}
+
+// LauncherSpawnRel returns the relative path from a launcher directory to the
+// target worktree's subpath for spawning.
+//
+// This climbs from <Container>/_launchers/<RelPath>/<slug> to
+// <Container>/<slug>/<RelPath>, yielding paths like (..\)^(2+N)<slug>\<sub>
+// on Windows (N = RelPath segment count). At RelPath == ".", it collapses to
+// ..\..\<slug>.
+//
+// Returns filepath.Rel(LauncherDir(slug), filepath.Join(WorktreePath(slug), RelPath)).
+func (l *Layout) LauncherSpawnRel(slug string) string {
+	rel, _ := filepath.Rel(l.LauncherDir(slug), filepath.Join(l.WorktreePath(slug), l.RelPath))
+	return rel
+}
+
+// MenuLauncherRel returns the relative path from the menu launcher directory to
+// the main worktree's subpath for menu spawning.
+//
+// This climbs from <Container>/_launchers/<RelPath> to
+// <Container>/<MainWorktree>/<RelPath>, yielding paths like (..\)^(1+N)<hub>\<sub>
+// (N = RelPath segment count). At RelPath == ".", it collapses to ..\<hub>.
+//
+// Returns filepath.Rel(filepath.Dir(MenuLauncherPath()), filepath.Join(MainWorktree, RelPath)).
+func (l *Layout) MenuLauncherRel() string {
+	rel, _ := filepath.Rel(filepath.Dir(l.MenuLauncherPath()), filepath.Join(l.MainWorktree, l.RelPath))
+	return rel
 }
 
 // HubName returns the base name of the main worktree.
