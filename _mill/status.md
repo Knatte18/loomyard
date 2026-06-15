@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r1
+phase: planned
 slug: paths-subpath-mirroring
 branch: paths-subpath-mirroring
 plan: _mill/plan
@@ -19,4 +19,5 @@ discussion-fix-r2  '2026-06-15T10:34:24Z'
 discussed  '2026-06-15T10:34:42Z'
 planning  '2026-06-15T10:40:41Z'
 plan-fix-r1  '2026-06-15T10:44:11Z'
+planned  '2026-06-15T10:44:24Z'
 ```
