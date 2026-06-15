@@ -60,7 +60,11 @@ last piece blocking subpath-rooted mhgo from working end-to-end (spawn → porta
     - `MenuLauncherRel()` — relative cd target from the menu launcher's dir to
       `<MainWorktree>/<RelPath>`, for `ide-menu.cmd`.
   - Keep `PortalsDir()` / `LaunchersDir()` as the **un-mirrored container roots**
-    (used as prune stop-boundaries and as `MkdirAll` bases).
+    (used as prune stop-boundaries and as `MkdirAll` bases). Note the resulting
+    role split that the docs must make explicit: `LauncherDir(slug)` is now the
+    **mirrored leaf** (`LaunchersDir()/<RelPath>/<slug>`), while `LaunchersDir()`
+    stays the **flat root** used only as a boundary/base — same naming, two
+    distinct roles.
   - `PortalTarget(slug)` is unchanged (already embeds `RelPath` correctly).
 - Update consumer call sites in `internal/worktree`:
   - `portals.go`: `createPortal` / `removePortal` use `PortalLink(slug)`.
@@ -188,6 +192,14 @@ last piece blocking subpath-rooted mhgo from working end-to-end (spawn → porta
   matching today. Same approach for the menu: `filepath.Rel` from the menu dir to
   `Join(MainWorktree, RelPath)` gives `(..\)^(1+N)<hub>\<sub>`, collapsing to
   `..\<hub>` at subpath `.`.
+- **Cross-worktree subpath uniformity (assumption made explicit):**
+  `MenuLauncherRel()` cd-targets `Join(MainWorktree, RelPath)` using the *resolving
+  worktree's* `RelPath` (`Rel(WorktreeRoot, Cwd)`, possibly a non-main worktree).
+  This is valid because **all worktrees of a repo share the same subpath
+  structure** — mhgo lives at the same relative location in every worktree
+  (`_mhgo/` travels with the tree). So the spawning worktree's `RelPath` correctly
+  indexes the main worktree's hub subpath. The same uniformity underpins
+  `PortalTarget` and the `ide.Menu()` `<path>/<RelPath>/_mhgo` filter.
 - Rejected: Compute the climb count in `launchers.go` from `len(strings.Split(
   RelPath, ...))` — violates the Path Invariant by hand-rolling geometry outside
   `paths`.
@@ -211,9 +223,14 @@ last piece blocking subpath-rooted mhgo from working end-to-end (spawn → porta
 ### docs-in-sync
 
 - Decision: Update `CONSTRAINTS.md` (the "For New Code" method list, line 19) and
-  `docs/shared-libs/paths.md` (the method table) in this same task to reflect the
-  new `PortalLink`, `MenuLauncherPath`, `LauncherSpawnRel`, `MenuLauncherRel`
-  methods and the changed `LauncherDir` semantics. Extend `CONSTRAINTS.md`
+  `docs/shared-libs/paths.md` (the method table, line 76) in this same task to
+  reflect the new `PortalLink`, `MenuLauncherPath`, `LauncherSpawnRel`,
+  `MenuLauncherRel` methods and the changed `LauncherDir` semantics. The paths.md
+  table currently reads `LauncherDir = Join(LaunchersDir(), slug)`; it must be
+  rewritten to show the **mirrored-leaf vs un-mirrored-root** split (see
+  *nested-mirroring* Scope note) so the new `LauncherDir` /
+  `PortalLink` (mirrored) vs `LaunchersDir` / `PortalsDir` (flat boundary)
+  semantics are unambiguous. Extend `CONSTRAINTS.md`
   naturally where the new methods warrant it.
 - Rationale: CONSTRAINTS.md is the authoritative statement of the Path Invariant
   and enumerates the sanctioned methods; leaving it stale would mislead future
