@@ -34,7 +34,9 @@ batches:
     start_sha: eca75de61a723cfacf2dda1c17a2a03f9cd4c338
     commit_sha: 564b16f22fef4b340db3d104f2308cb957738850
   - name: worktree-consumers
-    state: pending
+    state: running
+    implementer_session: 7e10e178-d7c5-49f7-be1f-0e9b40192dba
+    start_sha: 111a0d8052faf0533c67c7aaca662a31e839f4c2
   - name: docs
     state: pending
 ```
