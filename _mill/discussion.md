@@ -45,7 +45,10 @@ last piece blocking subpath-rooted mhgo from working end-to-end (spawn → porta
   mirrors `RelPath`:
   - Add `PortalLink(slug)` = `<Container>/_portals/<RelPath>/<slug>` — the portal
     junction link (replaces the hand-built `filepath.Join(PortalsDir(), slug)` in
-    `portals.go`).
+    `portals.go`). No extra `MkdirAll` is needed for the mirrored
+    `_portals/<RelPath>/` chain: `createJunction` already `MkdirAll`s
+    `filepath.Dir(link)` (`junction_windows.go` line 31 / `junction_other.go`
+    line 25), so only the link path changes on the portals side.
   - Change `LauncherDir(slug)` to `<Container>/_launchers/<RelPath>/<slug>`.
   - Add `MenuLauncherPath()` = `<Container>/_launchers/<RelPath>/ide-menu.cmd`
     (replaces the hand-built `filepath.Join(LaunchersDir(), "ide-menu.cmd")` in
@@ -126,13 +129,28 @@ last piece blocking subpath-rooted mhgo from working end-to-end (spawn → porta
   **best-effort prune** now-empty mirrored ancestor dirs upward, stopping at (and
   never removing) `PortalsDir()` / `LaunchersDir()`. Prune failures are masked
   (consistent with existing best-effort teardown).
-- Rationale: Avoids accumulating empty `<subpath>` dirs after the last slug under
-  a subpath is removed. No "discovery" needed — the exact path is recomputed from
-  the `Layout`. The launcher subpath dir holds the never-removed
-  `ide-menu.cmd`, so it stays non-empty and won't be pruned while a menu exists —
-  consistent with the existing "leave ide-menu.cmd in place" rule.
-- Rejected: Leave empty dirs — simpler but accumulates cruft over many
-  spawn/remove cycles.
+- **Portals vs launchers asymmetry (important):** The two sides behave
+  differently because only launchers carry a never-removed `ide-menu.cmd`.
+  - **Portals** have no menu, so pruning is fully effective: after the last slug
+    under a subpath is removed, the empty `_portals/<RelPath>/...` chain is pruned
+    up to (not including) `PortalsDir()`.
+  - **Launchers** keep `ide-menu.cmd` in the leaf `_launchers/<RelPath>/` dir, and
+    `removeLaunchers` (per the existing "leave ide-menu.cmd in place" rule) never
+    deletes it. So that dir is never empty, and launcher-side pruning in practice
+    only ever removes `LauncherDir(slug)` itself — the `<RelPath>` chain is
+    **intentionally retained** by the menu and is NOT reclaimed. This is by
+    design, not a missed prune: the menu's existence is exactly what keeps the
+    subpath universe addressable. The prune-ancestors loop still runs on the
+    launcher side for uniformity, but stops immediately at the menu-bearing dir.
+- Rationale: Avoids accumulating empty `<subpath>` dirs on the portals side. No
+  "discovery" needed — the exact path is recomputed from the `Layout`. Retaining
+  the launcher `<RelPath>` chain is consistent with never clobbering/removing the
+  per-subpath menu.
+- Rejected: (a) Leave empty dirs everywhere — simpler but accumulates portal
+  cruft over many spawn/remove cycles. (b) Remove the per-subpath `ide-menu.cmd`
+  when the last slug under a subpath is removed (to enable full launcher-side
+  prune) — adds "is this the last slug under this subpath?" detection and breaks
+  the never-remove-menu invariant; not worth it for empty-dir tidiness.
 
 ### multi-instance-structural
 
@@ -147,11 +165,21 @@ last piece blocking subpath-rooted mhgo from working end-to-end (spawn → porta
 
 ### relative-climb-via-paths
 
-- Decision: The `.cmd` relative-climb (currently hard-coded `..\..\` for `ide.cmd`
-  and `..\` for `ide-menu.cmd`) is computed **inside `internal/paths`** via
-  `filepath.Rel`, exposed as `LauncherSpawnRel(slug)` and `MenuLauncherRel()`.
+- Decision: The `.cmd` relative cd-target is computed **inside `internal/paths`**
+  via `filepath.Rel`, exposed as `LauncherSpawnRel(slug)` and `MenuLauncherRel()`.
   `launchers.go` only converts separators to backslash and appends the CRLF
   command tail — it performs no path arithmetic.
+- **Current behavior being replaced (corrected):** The existing `ide.cmd` is NOT
+  a bare `..\..\` climb — `launchers.go` (lines 42-49) **already appends the
+  RelPath tail today**, producing `..\..\<slug>\<relpath>` from a *flat*
+  `_launchers/<slug>/` dir (asserted by the `NonEmptyRelPath` case in
+  `launchers_test.go` line 68: `..\..\task-b\subdir\nested`). The existing
+  `ide-menu.cmd` is likewise `..\<hub>\<relpath>` from the flat
+  `_launchers/` root. What changes is twofold: the launcher dir **moves deeper**
+  by N subpath segments (so the climb grows from 2 to `2+N` for spawn, 1 to `1+N`
+  for menu), AND the climb is now derived in `paths` instead of hand-built.
+  `LauncherSpawnRel` must therefore reproduce **both** the deeper climb and the
+  existing `<slug>\<sub>` tail.
 - Rationale: CONSTRAINTS.md's Path Invariant mandates that **all** worktree/
   container geometry flow through `internal/paths`; the climb depth is geometry
   (it depends on subpath segment count). `filepath.Rel(LauncherDir(slug),
@@ -277,16 +305,26 @@ TDD candidates (pure geometry, no I/O — write tests first):
     `*Rel` climb count (`2+N` for spawn, `1+N` for menu);
   - multi-subpath no-collision: two different `RelPath`s yield distinct
     `PortalLink`/`LauncherDir` for the same slug.
-- Guard test: assert no `internal/paths` source file contains `_codeguide`
-  (predicate + tree-scan style, like `enforcement_test.go`).
+- Guard test: assert no `internal/paths` **non-test** source file contains the
+  literal `_codeguide`. Scan scope must be `internal/paths/*.go` excluding
+  `*_test.go` (the existing `enforcement_test.go` walker explicitly skips
+  `_test.go` at line 48, so a `_codeguide` mention inside a test file — e.g. a
+  future fixture — must not trip the guard; only production sources are scanned).
+  Predicate + scan style mirrors `enforcement_test.go`.
 
 Windows-gated (existing pattern — `t.Skip` off Windows):
 
-- `internal/worktree/launchers_test.go`: extend the table with a subpath case
-  asserting the `ide.cmd` content uses the deeper climb (`..\..\..\<slug>\<sub>`
-  at one subpath segment) and that `ide-menu.cmd` is written at the mirrored
-  per-subpath location with the correct climb; keep the never-clobber assertion
-  (now per-subpath).
+- `internal/worktree/launchers_test.go`: **rewrite** the existing
+  `NonEmptyRelPath` assertion — it currently expects `..\..\task-b\subdir\nested`
+  from a *flat* `_launchers/<slug>/` dir, but the launcher dir now moves to
+  `_launchers/subdir/nested/<slug>/`, so the correct content becomes the deeper
+  climb `..\..\..\..\task-b\subdir\nested` (2 base + 2 subpath segments). This is
+  a changed expectation, not merely an added row. Then extend the table with at
+  least one more subpath case asserting the `ide.cmd` deeper climb and that
+  `ide-menu.cmd` is written at the mirrored per-subpath location
+  (`_launchers/<RelPath>/ide-menu.cmd`) with its `1+N` climb; keep the
+  never-clobber assertion (now per-subpath). The `EmptyRelPath`/`DotRelPath`
+  cases must still collapse to today's `..\..\<slug>`.
 - `internal/worktree/portals_test.go`: assert `createPortal` links at
   `_portals/<subpath>/<slug>` pointing to `PortalTarget`, and that two subpaths
   don't collide.
@@ -323,3 +361,12 @@ Whole-suite: `go test ./...` must stay green, including `enforcement_test.go`.
 - **Q:** Must `CONSTRAINTS.md` / paths docs be updated? **A:** Yes — follow the
   documented constraint, and extend `CONSTRAINTS.md` naturally when the method
   surface grows.
+- **Q:** (review r1 gap) Launcher-side prune is inert because `ide-menu.cmd`
+  keeps the `<RelPath>` dir non-empty — clarify or remove menu on last slug?
+  **A:** Clarify only — launcher pruning removes just `LauncherDir(slug)`; the
+  `<RelPath>` chain is intentionally retained by the menu (portals prune fully).
+- **Q:** (review r1 gap) The `relative-climb-via-paths` decision misstated the
+  current `ide.cmd` format and the testing section understated the test change —
+  apply the correction? **A:** Yes — current `ide.cmd` already appends the
+  RelPath tail; `LauncherSpawnRel` must reproduce climb + tail; the existing
+  `NonEmptyRelPath` assertion must be rewritten to the deeper climb.
