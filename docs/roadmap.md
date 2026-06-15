@@ -58,7 +58,10 @@ observable changes until the new module that needs the extracted lib arrives.
    context from mux's own capture journal (native `--resume` does **not** work for
    programmatically-driven panes — see [modules/mux.md](modules/mux.md#resume-after-crash-the-corrected-model)),
    mutual watchdog so both must die to go dark. See [modules/mux.md](modules/mux.md#deferred).
-   **Proven in muxpoc:** see [modules/muxpoc.md](modules/muxpoc.md).
+   **Proven in muxpoc:** see [modules/muxpoc.md](modules/muxpoc.md). **Event-driven pane
+   switching / idle detection via Claude Code's own hooks + `claude agents --json` is
+   explored in [modules/mux-hooks-exploration.md](modules/mux-hooks-exploration.md)** — a
+   lower-cost alternative to the capture-pane poller for the focus decision.
 
 8. **Slack relay.** Bidirectional, one channel per worktree, riding on the daemon.
 
