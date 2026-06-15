@@ -106,3 +106,73 @@ func TestRerender(t *testing.T) {
 		t.Fatalf("_Sidebar.md not created: %v", err)
 	}
 }
+
+func TestHealthCheckPasses(t *testing.T) {
+	t.Setenv("BOARD_SKIP_GIT", "1")
+
+	boardPath := t.TempDir()
+	cfg := board.DefaultConfig()
+	cfg.Path = boardPath
+	w := board.New(cfg)
+
+	// Create a task to initialize the board directory and tasks.json
+	_, err := w.UpsertTask(map[string]any{
+		"slug":  "test-task",
+		"title": "Test Task",
+	})
+	if err != nil {
+		t.Fatalf("UpsertTask failed: %v", err)
+	}
+
+	// HealthCheck should pass for a healthy board
+	err = w.HealthCheck()
+	if err != nil {
+		t.Fatalf("HealthCheck failed for healthy board: %v", err)
+	}
+}
+
+func TestHealthCheckFailsNoBoardDir(t *testing.T) {
+	boardPath := filepath.Join(t.TempDir(), "nonexistent")
+	cfg := board.DefaultConfig()
+	cfg.Path = boardPath
+	w := board.New(cfg)
+
+	// HealthCheck should fail when board directory does not exist
+	err := w.HealthCheck()
+	if err == nil {
+		t.Fatalf("HealthCheck should fail when board directory is absent")
+	}
+}
+
+func TestHealthCheckFailsNoTasksFile(t *testing.T) {
+	boardPath := t.TempDir()
+	cfg := board.DefaultConfig()
+	cfg.Path = boardPath
+	w := board.New(cfg)
+
+	// HealthCheck should fail when tasks.json does not exist
+	err := w.HealthCheck()
+	if err == nil {
+		t.Fatalf("HealthCheck should fail when tasks.json is absent")
+	}
+}
+
+func TestHealthCheckPassesCorruptFile(t *testing.T) {
+	boardPath := t.TempDir()
+	cfg := board.DefaultConfig()
+	cfg.Path = boardPath
+	w := board.New(cfg)
+
+	// Create a corrupt but readable tasks.json
+	tasksPath := filepath.Join(boardPath, "tasks.json")
+	err := os.WriteFile(tasksPath, []byte("{invalid json"), 0o644)
+	if err != nil {
+		t.Fatalf("Failed to write corrupt tasks.json: %v", err)
+	}
+
+	// HealthCheck should pass even if JSON is corrupt, as long as it's readable
+	err = w.HealthCheck()
+	if err != nil {
+		t.Fatalf("HealthCheck failed for corrupt but readable tasks.json: %v", err)
+	}
+}

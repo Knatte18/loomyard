@@ -14,6 +14,7 @@ import (
 	"os"
 
 	"github.com/Knatte18/mhgo/internal/output"
+	"github.com/Knatte18/mhgo/internal/paths"
 )
 
 // RunCLI parses and executes a "worktree" subcommand, writing JSON results to out.
@@ -40,7 +41,19 @@ import (
 // Error:   {"ok":false,"error":"..."} with exit code 1.
 func RunCLI(out io.Writer, args []string) int {
 	// Resolve cwd
-	cwd, err := os.Getwd()
+	cwd, err := paths.Getwd()
+	if err != nil {
+		return output.Err(out, err.Error())
+	}
+
+	// Resolve Layout
+	// Note: paths.Resolve checks for git-repo membership (via a git rev-parse query)
+	// and fails with ErrNotAGitRepo if the cwd is not within a git repository.
+	// This failure precedes the LoadConfig call intentionally: geometry errors
+	// (not a git repo) are fatal and take priority over initialization errors
+	// (missing _mhgo/ config). This ensures consistent error reporting for callers
+	// outside a git repository.
+	l, err := paths.Resolve(cwd)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -69,7 +82,7 @@ func RunCLI(out io.Writer, args []string) int {
 			return output.Err(out, "usage: worktree add <slug>")
 		}
 		slug := args[1]
-		r, err := w.Add(cwd, slug)
+		r, err := w.Add(l, slug)
 		if err != nil {
 			return output.Err(out, err.Error())
 		}
@@ -104,7 +117,7 @@ func RunCLI(out io.Writer, args []string) int {
 			return output.Err(out, "usage: worktree remove [--force] <slug>")
 		}
 
-		r, err := w.Remove(cwd, slug, *force)
+		r, err := w.Remove(l, slug, *force)
 		if err != nil {
 			return output.Err(out, err.Error())
 		}

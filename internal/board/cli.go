@@ -24,6 +24,7 @@ import (
 	"os"
 
 	"github.com/Knatte18/mhgo/internal/output"
+	"github.com/Knatte18/mhgo/internal/paths"
 )
 
 // RunCLI parses and executes a "board" subcommand, writing JSON results to out.
@@ -71,7 +72,7 @@ func RunCLI(out io.Writer, args []string) int {
 		cfg.Path = *boardPathFlag
 	} else {
 		// Load configuration from cwd
-		cwd, err := os.Getwd()
+		cwd, err := paths.Getwd()
 		if err != nil {
 			return outputError(out, err.Error())
 		}

@@ -1,3 +1,6 @@
+// remove_test.go covers normal teardown and the case where the worktree dir is
+// gone but the portal/launcher are still cleaned up before the not-found return.
+
 package worktree_test
 
 import (
@@ -5,6 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/Knatte18/mhgo/internal/paths"
 	"github.com/Knatte18/mhgo/internal/worktree"
 )
 
@@ -85,6 +89,49 @@ func TestRemove(t *testing.T) {
 			wantLinksRemoved: 1,
 			dirAfter:         "removed",
 		},
+		{
+			name: "TeardownBeforeMissingDir",
+			slug: "missing-dir",
+			setup: func(t *testing.T, hub, slug string) {
+				// Pre-create a portal by simulating what a created worktree would have.
+				// Since we can't directly call createPortal (private), we create
+				// the directory structure that Remove expects to clean up.
+				l, err := paths.Resolve(hub)
+				if err != nil {
+					t.Fatalf("paths.Resolve(%q): %v", hub, err)
+				}
+
+				// Create the portal link target (_mhgo directory)
+				targetParent := filepath.Join(l.Container, slug, l.RelPath)
+				if err := os.MkdirAll(targetParent, 0755); err != nil {
+					t.Fatalf("mkdir target parent: %v", err)
+				}
+				targetDir := filepath.Join(targetParent, "_mhgo")
+				if err := os.Mkdir(targetDir, 0755); err != nil {
+					t.Fatalf("mkdir target _mhgo: %v", err)
+				}
+
+				// Create the portal junction itself.
+				// We'll create a simple directory as a placeholder for the portal.
+				portalsDir := l.PortalsDir()
+				if err := os.MkdirAll(portalsDir, 0755); err != nil {
+					t.Fatalf("mkdir portals dir: %v", err)
+				}
+				portalLink := filepath.Join(portalsDir, slug)
+				// Note: we can't create a real junction without the private createJunction function,
+				// so we create a marker file that Remove will attempt to clean.
+				if err := os.WriteFile(portalLink, []byte("portal"), 0644); err != nil {
+					t.Fatalf("create portal marker: %v", err)
+				}
+
+				// Now delete the worktree directory itself (not the _mhgo target, just the worktree root)
+				worktreeDir := filepath.Join(l.Container, slug)
+				if err := os.RemoveAll(worktreeDir); err != nil {
+					t.Fatalf("remove worktree dir: %v", err)
+				}
+			},
+			wantErr: true, // will fail because dir doesn't exist, but portal cleanup should still run
+		},
 	}
 
 	for _, tt := range tests {
@@ -96,8 +143,14 @@ func TestRemove(t *testing.T) {
 			}
 			tt.setup(t, hub, slug)
 
+			// Resolve Layout from the hub
+			l, err := paths.Resolve(hub)
+			if err != nil {
+				t.Fatalf("paths.Resolve(%q): %v", hub, err)
+			}
+
 			w := worktree.New(worktree.Config{})
-			result, err := w.Remove(hub, slug, tt.force)
+			result, err := w.Remove(l, slug, tt.force)
 
 			if tt.wantErr {
 				if err == nil {
@@ -116,7 +169,7 @@ func TestRemove(t *testing.T) {
 				}
 			}
 
-			target := filepath.Join(filepath.Dir(hub), slug)
+			target := l.WorktreePath(slug)
 			switch tt.dirAfter {
 			case "removed":
 				if _, statErr := os.Stat(target); !os.IsNotExist(statErr) {
@@ -125,6 +178,14 @@ func TestRemove(t *testing.T) {
 			case "exists":
 				if _, statErr := os.Stat(target); statErr != nil {
 					t.Errorf("Remove(%q): %q missing; want still present: %v", slug, target, statErr)
+				}
+			}
+
+			// For TeardownBeforeMissingDir test, verify the portal was cleaned up
+			if tt.name == "TeardownBeforeMissingDir" {
+				portalLink := filepath.Join(l.PortalsDir(), slug)
+				if _, statErr := os.Stat(portalLink); !os.IsNotExist(statErr) {
+					t.Errorf("Remove(%q): portal %q still exists; want removed", slug, portalLink)
 				}
 			}
 		})

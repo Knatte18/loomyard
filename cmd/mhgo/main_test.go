@@ -109,3 +109,19 @@ func TestRunDispatchesToWorktree(t *testing.T) {
 		t.Fatalf("expected error JSON on out, got %q", out.String())
 	}
 }
+
+func TestRunDispatchesToIDE(t *testing.T) {
+	// Create temp cwd with no _mhgo/ directory.
+	// This will cause ide.RunCLI to return an error (failed to resolve layout).
+	cwd := t.TempDir()
+	t.Chdir(cwd)
+
+	var out bytes.Buffer
+	code := run([]string{"ide", "spawn", "test"}, &out)
+	if code != 1 {
+		t.Fatalf("expected exit 1 for ide in uninitialized repo, got %d; output: %s", code, out.String())
+	}
+	if !strings.Contains(out.String(), `"ok":false`) {
+		t.Fatalf("expected error JSON on out, got %q", out.String())
+	}
+}

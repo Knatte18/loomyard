@@ -9,7 +9,6 @@ package muxpoc
 import (
 	"fmt"
 	"io"
-	"os"
 
 	"github.com/Knatte18/mhgo/internal/output"
 )
@@ -17,7 +16,7 @@ import (
 // cmdDown stops the session and deletes state.
 // Returns exit code (0 on success, 1 on error).
 func cmdDown(out io.Writer, cfg Config) int {
-	cwd, _ := os.Getwd()
+	cwd := cfg.WorktreeRoot
 
 	state, _, err := LoadState(cwd)
 	if err != nil {

@@ -83,6 +83,64 @@ git's output to JSON (one entry per worktree, the first marked `main: true`, bra
 names shortened from `refs/heads/…`) and holds no registry of its own. `add` and
 `remove` likewise read and write no state.
 
+## Container layout (extended)
+
+The **container is not a git repository** and must never contain an `_mhgo/` directory.
+Two additional system directories are machine-local scaffolding:
+
+```
+ModelsHub/               ← the container
+├── Models/              ← the hub (primary checkout, main branch)
+├── _board/              ← the board directory
+├── _portals/            ← junctions into each worktree's _mhgo/ (machine-local)
+├── _launchers/          ← per-worktree VS Code launchers (machine-local)
+├── worktree1/           ← worktree on branch worktree1
+├── worktree2/           ← worktree on branch worktree2
+└── fix_some_bug/        ← worktree on branch fix_some_bug
+```
+
+## Portals
+
+**Portals** are machine-local junctions inside `_portals/` that allow the hub's VS Code
+instance (or any file browser) to browse each worktree's live task state without
+navigating away.
+
+- **Creation:** `worktree add` creates `<container>/_portals/<slug>` → `<container>/<slug>/<relpath>/_mhgo`
+  (a Windows junction; POSIX symlink).
+- **Target:** the junction always points to the worktree's `_mhgo/` directory at the captured `relpath`.
+  `_mhgo/` is committed in the repo, so a fresh worktree checkout contains it at the same `relpath`.
+- **Removal:** `worktree remove` tears down the portal before (or independently of) the existing
+  target-exists check, so portal cleanup runs even if the worktree directory is already gone.
+- **Machine-local:** portals are **not committed** and are specific to this machine (each dev machine's
+  junction setup is independent).
+
+## Launchers
+
+**Launchers** are machine-local `.cmd` scripts (Windows-only) that open VS Code on a
+worktree with a single click, cding into an initialized worktree directory so `mhgo`
+can resolve cwd-authoritative config.
+
+Two launchers exist:
+
+1. **Per-worktree:** `<container>/_launchers/<slug>/ide.cmd` created by `worktree add`;
+   runs `cd /d "%~dp0..\..\<slug>\<relpath>" && mhgo ide spawn <slug>`.
+   Omit `<relpath>` when RelPath is empty (init at repo root).
+   Removed by `worktree remove`.
+
+2. **Container-root menu:** `<container>/_launchers/ide-menu.cmd` created once by `worktree add`
+   if missing; never removed. Runs `cd /d "%~dp0..\<hubname>\<relpath>" && mhgo ide menu`.
+   `<hubname>` is the main worktree's directory name (stable).
+
+**Why cwd-into-worktree:** The container has no `_mhgo/` and `mhgo` is cwd-authoritative,
+so a bare `mhgo ide spawn <slug>` run from the container would fail with "mhgo not
+initialized in this folder". Cding into an initialized worktree directory (which contains
+`_mhgo/`) allows `mhgo` to resolve config correctly.
+
+**Paths are `%~dp0`-relative** (relative to the `.cmd`'s own location) so the container
+can be moved; they break only on renaming the worktree/hub dir, which the operator accepts.
+
+**Machine-local:** launchers are **not committed** and are specific to this machine.
+
 ## Junction-aware teardown — the hazard
 
 **This is the reason teardown is domain logic, not a `git worktree remove`

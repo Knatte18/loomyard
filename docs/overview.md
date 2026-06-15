@@ -32,6 +32,27 @@ Module path: `github.com/Knatte18/mhgo`
 5. **Full control, incremental milestones.** Land one milestone at a time;
    refactors are behaviour-preserving with the existing test suite as guardrail.
 
+## Path Invariants
+
+**All worktree and container geometry resolves through `internal/paths`.**
+
+The `internal/paths` package is the sole owner of cwd and worktree-root geometry math. It
+exposes two entry points:
+
+- `Getwd()` — the only permitted call to `os.Getwd` outside `cmd/mhgo/main.go`.
+- `Resolve(cwd)` → `Layout` — one-stop geometry: cwd, repo root (from `git rev-parse
+  --show-toplevel`), container, relative path, and main worktree.
+
+The `Layout` type provides geometry methods: `MhgoDir()`, `WorktreePath(slug)`,
+`PortalsDir()`, `PortalTarget(slug)`, `LaunchersDir()`, `LauncherDir(slug)`, `HubName()`.
+
+**Raw `os.Getwd` and `git rev-parse --show-toplevel` are banned** outside `internal/paths`
+and `cmd/mhgo/main.go`. The ban is enforced at `go test` / CI time by
+`internal/paths/enforcement_test.go`, which walks the entire source tree and fails the build
+if either literal token is found in any non-test `.go` file outside the allowlist.
+
+See [CONSTRAINTS.md](../CONSTRAINTS.md) for details.
+
 ## Structure
 
 ```
@@ -40,7 +61,9 @@ github.com/Knatte18/mhgo/
 │   └── main.go                   entrypoint: routes the <module> argument to a module
 ├── internal/board/               the board module (see modules/board.md)
 ├── internal/worktree/            the worktree module (see modules/worktree.md)
+├── internal/ide/                 the ide module (see modules/ide.md)
 ├── internal/muxpoc/              the muxpoc POC module (see modules/muxpoc.md)
+├── internal/paths/               geometry resolver (the sole owner of cwd/root math)
 ├── internal/config/              shared config resolution
 ├── internal/git/                 shared git operations
 ├── internal/lock/                shared file locking
@@ -63,6 +86,8 @@ case "init":
     return board.RunInit(out, moduleArgs)
 case "board":
     return board.RunCLI(out, moduleArgs)
+case "ide":
+    return ide.RunCLI(out, moduleArgs)
 case "muxpoc":
     return muxpoc.RunCLI(out, moduleArgs)
 case "worktree":
@@ -84,6 +109,8 @@ User-facing modules each get one `mhgo <module>` namespace:
   [modules/board.md](modules/board.md).
 - **worktree** — git-worktree lifecycle (create / track / tear down). ✅ Implemented. See
   [modules/worktree.md](modules/worktree.md).
+- **ide** — one-shot VS Code launcher with interactive menu. ✅ Implemented. See
+  [modules/ide.md](modules/ide.md).
 - **muxpoc** — shipped proof-of-concept psmux orchestrator proving the risky parts of the
   planned mux module. See [modules/muxpoc.md](modules/muxpoc.md).
 - **mux** — psmux session layout (column per worktree; daemon later). Design:
@@ -107,6 +134,7 @@ git-backed integration — live in the black-box `internal/board/boardtest` pack
 
 - [modules/board.md](modules/board.md) — the board module in depth.
 - [modules/worktree.md](modules/worktree.md) — worktree lifecycle (implemented).
+- [modules/ide.md](modules/ide.md) — VS Code launcher (implemented).
 - [modules/muxpoc.md](modules/muxpoc.md) — muxpoc POC proof-of-concept orchestrator.
 - [modules/mux.md](modules/mux.md) — psmux session layout (design).
 - [benchmarks.md](benchmarks.md) — board performance, tracked across revisions.

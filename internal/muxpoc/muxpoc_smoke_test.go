@@ -31,6 +31,7 @@ func TestSmokeFullLifecycle(t *testing.T) {
 		Width:      220,
 		Height:     50,
 		Interval:   2 * time.Second,
+		WorktreeRoot: "", // Will set after chdir
 	}
 
 	// Skip if psmux not found
@@ -40,7 +41,7 @@ func TestSmokeFullLifecycle(t *testing.T) {
 
 	// Run in an isolated temp dir so the test never writes .mhgo/ into the
 	// package directory. The cmd* functions derive state path and socket from
-	// os.Getwd(), so chdir into the temp dir for the duration of the test.
+	// cfg.WorktreeRoot, so chdir into the temp dir for the duration of the test.
 	origWd, err := os.Getwd()
 	if err != nil {
 		t.Fatalf("getwd: %v", err)
@@ -50,6 +51,36 @@ func TestSmokeFullLifecycle(t *testing.T) {
 		t.Fatalf("chdir to temp dir: %v", err)
 	}
 	t.Cleanup(func() { _ = os.Chdir(origWd) })
+
+	// Initialize temp dir as a git repo so paths.Resolve succeeds
+	initCmd := exec.Command("git", "init", "-b", "main")
+	initCmd.Dir = cwd
+	if err := initCmd.Run(); err != nil {
+		t.Fatalf("git init: %v", err)
+	}
+
+	// Set git user
+	configUserCmd := exec.Command("git", "config", "user.email", "test@example.com")
+	configUserCmd.Dir = cwd
+	if err := configUserCmd.Run(); err != nil {
+		t.Fatalf("git config user.email: %v", err)
+	}
+
+	configNameCmd := exec.Command("git", "config", "user.name", "Test User")
+	configNameCmd.Dir = cwd
+	if err := configNameCmd.Run(); err != nil {
+		t.Fatalf("git config user.name: %v", err)
+	}
+
+	// Create initial commit so we have a valid repo
+	commitCmd := exec.Command("git", "commit", "--allow-empty", "-m", "initial commit")
+	commitCmd.Dir = cwd
+	if err := commitCmd.Run(); err != nil {
+		t.Fatalf("git commit: %v", err)
+	}
+
+	// Set cfg.WorktreeRoot to the temp dir (same raw string for consistency)
+	cfg.WorktreeRoot = cwd
 
 	// Cleanup: ensure down is called even if test fails
 	t.Cleanup(func() {
@@ -176,7 +207,7 @@ func TestSmokeFullLifecycle(t *testing.T) {
 	}
 
 	// Verify state file still exists after crash
-	_, _, err = LoadState(cwd)
+	_, _, err = LoadState(cfg.WorktreeRoot)
 	if err != nil {
 		t.Fatalf("state should exist after crash: %v", err)
 	}

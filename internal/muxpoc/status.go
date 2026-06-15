@@ -8,7 +8,6 @@ package muxpoc
 import (
 	"fmt"
 	"io"
-	"os"
 
 	"github.com/Knatte18/mhgo/internal/output"
 )
@@ -16,7 +15,7 @@ import (
 // cmdStatus reports session and pane status.
 // Returns exit code (0 on success, 1 on error).
 func cmdStatus(out io.Writer, cfg Config) int {
-	cwd, _ := os.Getwd()
+	cwd := cfg.WorktreeRoot
 
 	haveState := false
 	var state *MuxpocState

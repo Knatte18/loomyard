@@ -7,7 +7,6 @@ package muxpoc
 import (
 	"fmt"
 	"io"
-	"os"
 	"os/exec"
 	"strings"
 
@@ -17,7 +16,7 @@ import (
 // cmdReview adds a reviewer pane to the active session.
 // Returns exit code (0 on success, 1 on error).
 func cmdReview(out io.Writer, cfg Config) int {
-	cwd, _ := os.Getwd()
+	cwd := cfg.WorktreeRoot
 
 	state, _, err := LoadState(cwd)
 	if err != nil {
