@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-paths-geometry
+phase: approved-worktree-consumers
 slug: paths-subpath-mirroring
 branch: paths-subpath-mirroring
 plan: _mill/plan
@@ -22,6 +22,7 @@ plan-fix-r1  '2026-06-15T10:44:11Z'
 planned  '2026-06-15T10:44:24Z'
 implementing  '2026-06-15T10:58:44Z'
 approved-paths-geometry  '2026-06-15T11:02:13Z'
+approved-worktree-consumers  '2026-06-15T11:08:17Z'
 ```
 
 ## Batches
@@ -34,9 +35,10 @@ batches:
     start_sha: eca75de61a723cfacf2dda1c17a2a03f9cd4c338
     commit_sha: 564b16f22fef4b340db3d104f2308cb957738850
   - name: worktree-consumers
-    state: running
+    state: approved
     implementer_session: 7e10e178-d7c5-49f7-be1f-0e9b40192dba
     start_sha: 111a0d8052faf0533c67c7aaca662a31e839f4c2
+    commit_sha: 50a2edc5261be93728bfaa8811041662bdbd582a
   - name: docs
     state: pending
 ```
