@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-worktree-consumers
+phase: approved-docs
 slug: paths-subpath-mirroring
 branch: paths-subpath-mirroring
 plan: _mill/plan
@@ -23,6 +23,7 @@ planned  '2026-06-15T10:44:24Z'
 implementing  '2026-06-15T10:58:44Z'
 approved-paths-geometry  '2026-06-15T11:02:13Z'
 approved-worktree-consumers  '2026-06-15T11:08:17Z'
+approved-docs  '2026-06-15T11:10:28Z'
 ```
 
 ## Batches
@@ -40,7 +41,8 @@ batches:
     start_sha: 111a0d8052faf0533c67c7aaca662a31e839f4c2
     commit_sha: 50a2edc5261be93728bfaa8811041662bdbd582a
   - name: docs
-    state: running
+    state: approved
     implementer_session: 79f07215-2382-4299-bb6c-4d4bd268dc37
     start_sha: b85c60362e9ba06f96387a9aed434bf6e7c5d791
+    commit_sha: bd0e8f45db1138b2bec307605cdc085175f5d85d
 ```
