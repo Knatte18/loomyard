@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: paths-subpath-mirroring
 branch: paths-subpath-mirroring
-plan: null
+plan: _mill/plan
 parent: main
 task: 'internal/paths: subpath init + mirrored system dirs'
 task_description: |
@@ -17,4 +17,5 @@ task_description: |
 discussing  '2026-06-15T09:19:15Z'
 discussion-fix-r2  '2026-06-15T10:34:24Z'
 discussed  '2026-06-15T10:34:42Z'
+planning  '2026-06-15T10:40:41Z'
 ```
