@@ -137,7 +137,7 @@ git-backed integration — live in the black-box `internal/board/boardtest` pack
 - [modules/ide.md](modules/ide.md) — VS Code launcher (implemented).
 - [modules/muxpoc.md](modules/muxpoc.md) — muxpoc POC proof-of-concept orchestrator.
 - [modules/mux.md](modules/mux.md) — psmux session layout (design).
-- [benchmarks.md](benchmarks.md) — board performance, tracked across revisions.
+- [benchmarks/](benchmarks/board-performance.md) — board performance, tracked across revisions.
 - [shared-libs/](shared-libs/README.md) — the shared `internal/{config,git,lock,state}` plumbing.
 - [roadmap.md](roadmap.md) — numbered milestones and long-term direction.
 - [vendor/psmux_scripting.md](vendor/psmux_scripting.md) — upstream psmux command reference (not our design).

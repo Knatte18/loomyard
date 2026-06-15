@@ -67,14 +67,25 @@ type Layout struct {
   directory at the current location.
 - **`WorktreePath(slug string) string`** — `filepath.Join(Container, slug)`. Path to
   a sibling worktree.
-- **`PortalsDir() string`** — `filepath.Join(Container, "_portals")`. Path to the
-  portals system directory.
+- **`PortalsDir() string`** (un-mirrored root) — `filepath.Join(Container, "_portals")`. The portals
+  system container directory (prune boundary, not mirrored by subpath).
+- **`PortalLink(slug string) string`** (mirrored leaf) — `filepath.Join(Container, "_portals", RelPath, slug)`. The portal junction link,
+  mirrored into the repo subpath structure. At `RelPath == "."`, collapses to the
+  flat `<Container>/_portals/<slug>`.
 - **`PortalTarget(slug string) string`** — `filepath.Join(Container, slug, RelPath,
   "_mhgo")`. The junction target for a given worktree's portal.
-- **`LaunchersDir() string`** — `filepath.Join(Container, "_launchers")`. Path to
-  the launchers system directory.
-- **`LauncherDir(slug string) string`** — `filepath.Join(LaunchersDir(), slug)`.
-  Path to a specific worktree's launcher directory.
+- **`LaunchersDir() string`** (un-mirrored root) — `filepath.Join(Container, "_launchers")`. The launchers
+  system container directory (prune boundary, not mirrored by subpath).
+- **`LauncherDir(slug string) string`** (mirrored leaf) — `filepath.Join(Container, "_launchers", RelPath, slug)`.
+  Path to a specific worktree's launcher directory, mirrored into the repo subpath
+  structure. At `RelPath == "."`, collapses to the flat `<Container>/_launchers/<slug>`.
+- **`MenuLauncherPath() string`** (mirrored leaf) — `filepath.Join(Container, "_launchers", RelPath, "ide-menu.cmd")`. The per-subpath
+  menu launcher script, mirrored into the repo subpath structure. At `RelPath == "."`,
+  collapses to `<Container>/_launchers/ide-menu.cmd`.
+- **`LauncherSpawnRel(slug string) string`** — `filepath.Rel(LauncherDir(slug), filepath.Join(WorktreePath(slug), RelPath))`.
+  The relative path from a launcher directory to the target worktree's subpath for spawning.
+- **`MenuLauncherRel() string`** — `filepath.Rel(filepath.Dir(MenuLauncherPath()), filepath.Join(MainWorktree, RelPath))`.
+  The relative path from the menu launcher directory to the main worktree's subpath for menu spawning.
 - **`HubName() string`** — `filepath.Base(MainWorktree)`. The main worktree's
   directory name (stable, used in paths like `ide-menu.cmd`).
 
@@ -99,6 +110,11 @@ exist at cwd) remains enforced by `internal/config.FindBaseDir`. Board and other
 modules keep passing `cwd` to their `LoadConfig` (obtained via `paths.Getwd`). This
 lets `board init` (pre-init, no `_mhgo/`) and other early-stage commands call into
 `paths` without a spurious "not initialized" failure.
+
+**Mirrored system dirs never enumerate the worktree.** `paths` only derives mhgo's
+own system directories (`_mhgo`, `_portals`, `_launchers`) from `RelPath` and never
+enumerates or mirrors user content. A nested or git-ignored `_codeguide` sibling
+(or any other sibling repo) is never mirrored as a subpath-specific copy.
 
 ## The enforcement wall
 

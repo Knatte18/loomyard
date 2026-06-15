@@ -15,16 +15,17 @@ import (
 
 // writeLaunchers writes per-worktree launchers for the given slug.
 //
-// On Windows: creates l.LauncherDir(slug) and writes ide.cmd with content:
+// On Windows: creates l.LauncherDir(slug) and writes ide.cmd with content built
+// from l.LauncherSpawnRel(slug), which climbs from _launchers/<RelPath>/<slug> to
+// the target worktree's subpath:
 //
-//	@cd /d "%~dp0..\..\<slug>\<relpath-backslash>" && mhgo ide spawn <slug>
+//	@cd /d "%~dp0<climb-backslash>" && mhgo ide spawn <slug>
 //
-// (omit the trailing \<relpath> segment when RelPath is empty or ".")
+// Also ensures l.MenuLauncherPath() exists: create it only if absent (never clobber)
+// with static content built from l.MenuLauncherRel(), which climbs from
+// _launchers/<RelPath> to the main worktree's subpath:
 //
-// Also ensures l.LaunchersDir()/ide-menu.cmd exists: create it only if absent
-// (never clobber) with static content:
-//
-//	@cd /d "%~dp0..\<hubname>\<relpath-backslash>" && mhgo ide menu
+//	@cd /d "%~dp0<climb-backslash>" && mhgo ide menu
 //
 // On non-Windows: returns nil (no-op).
 func writeLaunchers(l *paths.Layout, slug string) error {
@@ -32,21 +33,15 @@ func writeLaunchers(l *paths.Layout, slug string) error {
 		return nil // No-op on non-Windows
 	}
 
-	// Create the launcher directory
+	// Create the mirrored launcher directory
 	launcherDir := l.LauncherDir(slug)
 	if err := os.MkdirAll(launcherDir, 0o755); err != nil {
 		return fmt.Errorf("mkdir launcher dir %s: %w", launcherDir, err)
 	}
 
-	// Build the ide.cmd content
-	var relPathPart string
-	if l.RelPath != "" && l.RelPath != "." {
-		// Convert forward slashes to backslashes
-		relPathBackslash := strings.ReplaceAll(l.RelPath, "/", "\\")
-		relPathPart = "\\" + relPathBackslash
-	}
-
-	ideCmdContent := fmt.Sprintf("@cd /d \"%%~dp0..\\..\\%s%s\" && mhgo ide spawn %s\r\n", slug, relPathPart, slug)
+	// Build the ide.cmd content from LauncherSpawnRel
+	spawnRelBackslash := strings.ReplaceAll(l.LauncherSpawnRel(slug), "/", "\\")
+	ideCmdContent := fmt.Sprintf("@cd /d \"%%~dp0%s\" && mhgo ide spawn %s\r\n", spawnRelBackslash, slug)
 
 	// Write ide.cmd
 	ideCmdPath := filepath.Join(launcherDir, "ide.cmd")
@@ -54,8 +49,8 @@ func writeLaunchers(l *paths.Layout, slug string) error {
 		return fmt.Errorf("write ide.cmd: %w", err)
 	}
 
-	// Ensure ide-menu.cmd exists in the launchers root (never clobber)
-	menuCmdPath := filepath.Join(l.LaunchersDir(), "ide-menu.cmd")
+	// Ensure per-subpath menu launcher exists (never clobber)
+	menuCmdPath := l.MenuLauncherPath()
 	if _, err := os.Stat(menuCmdPath); err == nil {
 		// File exists, don't clobber it
 		return nil
@@ -63,20 +58,14 @@ func writeLaunchers(l *paths.Layout, slug string) error {
 		return fmt.Errorf("stat ide-menu.cmd: %w", err)
 	}
 
-	// Create parent directory if needed
-	if err := os.MkdirAll(l.LaunchersDir(), 0o755); err != nil {
-		return fmt.Errorf("mkdir launchers dir: %w", err)
+	// File does not exist; create parent directory
+	if err := os.MkdirAll(filepath.Dir(menuCmdPath), 0o755); err != nil {
+		return fmt.Errorf("mkdir menu launcher dir: %w", err)
 	}
 
-	// File does not exist, create it
-	var relPathPartMenu string
-	if l.RelPath != "" && l.RelPath != "." {
-		relPathBackslash := strings.ReplaceAll(l.RelPath, "/", "\\")
-		relPathPartMenu = "\\" + relPathBackslash
-	}
-
-	hubName := l.HubName()
-	menuCmdContent := fmt.Sprintf("@cd /d \"%%~dp0..\\%s%s\" && mhgo ide menu\r\n", hubName, relPathPartMenu)
+	// Build menu content from MenuLauncherRel
+	menuRelBackslash := strings.ReplaceAll(l.MenuLauncherRel(), "/", "\\")
+	menuCmdContent := fmt.Sprintf("@cd /d \"%%~dp0%s\" && mhgo ide menu\r\n", menuRelBackslash)
 
 	if err := os.WriteFile(menuCmdPath, []byte(menuCmdContent), 0o644); err != nil {
 		return fmt.Errorf("write ide-menu.cmd: %w", err)
@@ -87,13 +76,18 @@ func writeLaunchers(l *paths.Layout, slug string) error {
 
 // removeLaunchers removes the launcher directory for the given slug (idempotent).
 //
-// Uses os.RemoveAll to delete the entire l.LauncherDir(slug) directory.
-// Leaves l.LaunchersDir()/ide-menu.cmd in place.
+// Uses os.RemoveAll to delete the entire l.LauncherDir(slug) directory, then
+// prunes empty mirrored ancestors up to but not including l.LaunchersDir().
+// Leaves l.MenuLauncherPath() (the per-subpath menu) in place; since it resides
+// in the leaf _launchers/<RelPath>/ dir, the prune stops there in practice,
+// removing only LauncherDir(slug) itself (intended asymmetry).
 // Returns nil if the directory does not exist (os.RemoveAll returns nil for non-existent paths).
 func removeLaunchers(l *paths.Layout, slug string) error {
 	launcherDir := l.LauncherDir(slug)
 	if err := os.RemoveAll(launcherDir); err != nil {
 		return fmt.Errorf("remove launcher dir %s: %w", launcherDir, err)
 	}
+	// Prune empty ancestors up to but not including LaunchersDir
+	pruneEmptyAncestors(filepath.Dir(launcherDir), l.LaunchersDir())
 	return nil
 }

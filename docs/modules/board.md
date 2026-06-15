@@ -182,7 +182,7 @@ its commit. No path holds a lock across the network.
 
 Writes are file-only and fast; backing the board up to GitHub is handed to a
 detached `mhgo board sync` process, so a write never waits on git. (A write is
-~10 ms of work; a push ~4 s — see [benchmarks.md](benchmarks.md).)
+~10 ms of work; a push ~4 s — see [benchmarks/board-performance.md](../benchmarks/board-performance.md).)
 
 **Why async.** Every `mhgo` process on a machine shares the same `tasks.json`, so
 they see each other's changes immediately through the file — git is only for
@@ -338,4 +338,4 @@ cli.go
 `lock_test.go`, `sync_test.go`, `cli_test.go` are the per-file unit tests (the
 `sync_test.go` suite runs against a local bare repo — no network). The
 cross-cutting benchmark, concurrency, and integration suites live in
-`internal/board/boardtest`; see [benchmarks.md](benchmarks.md).
+`internal/board/boardtest`; see [benchmarks/board-performance.md](../benchmarks/board-performance.md).
