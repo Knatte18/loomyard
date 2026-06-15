@@ -28,7 +28,9 @@ implementing  '2026-06-15T10:58:44Z'
 ```yaml
 batches:
   - name: paths-geometry
-    state: pending
+    state: running
+    implementer_session: fa8145c8-6543-4ae5-850f-49e25f79301b
+    start_sha: eca75de61a723cfacf2dda1c17a2a03f9cd4c338
   - name: worktree-consumers
     state: pending
   - name: docs
