@@ -3,7 +3,7 @@
 ```yaml
 task: 'internal/paths: subpath init + mirrored system dirs'
 slug: paths-subpath-mirroring
-approved: false
+approved: true
 started: 20260615-103745
 parent: main
 root: ""

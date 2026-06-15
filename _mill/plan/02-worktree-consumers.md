@@ -22,6 +22,13 @@ and `MenuLauncherRel`. Batch-local decision: the prune helper is a void,
 best-effort function (errors swallowed) consistent with the existing
 best-effort teardown in `remove.go`/`rollbackAdd`.
 
+Note: the existing `internal/worktree/add_test.go` and `remove_test.go` call
+`LauncherDir(slug)` / `PortalsDir()`+slug and resolve only from the hub root
+(`RelPath == "."`), where the mirror collapses to the flat layout (byte-identical
+paths). They are therefore **unaffected by this batch and must stay green
+unedited** — an implementer should not modify them and should not treat their
+passing-unchanged as a problem.
+
 ## Cards
 
 ### Card 6: Add `pruneEmptyAncestors` best-effort helper
@@ -36,13 +43,15 @@ best-effort teardown in `remove.go`/`rollbackAdd`.
 - **Deletes:** none
 - **Requirements:** Create `prune.go` (package `worktree`) with
   `func pruneEmptyAncestors(start, stop string)` — a void, best-effort helper that
-  walks upward from `start`, removing each directory with `os.Remove` (which only
-  succeeds on an empty dir) and continuing to its parent, stopping when: `cur`
-  equals `stop`, `cur` equals `filepath.Dir(cur)` (filesystem root), `cur` is not
-  strictly under `stop` (guard via `filepath.Rel(stop, cur)` returning `.` or a
-  value starting with `..`), or `os.Remove` returns any error (non-empty / already
-  gone → stop). It never removes `stop` itself. No return value; all errors
-  swallowed. Create `prune_test.go` (package `worktree`) building a temp dir tree
+  walks upward from `start`. Each loop iteration first evaluates a **boundary
+  guard at the top, before any `os.Remove`**, so `stop` is never a removal
+  candidate: compute `rel, err := filepath.Rel(stop, cur)` and `return` if
+  `err != nil`, `rel == "."` (this is the single `cur == stop` / filesystem-root
+  condition — do not also write a separate string-equality check), or `rel`
+  starts with `..` (`cur` not strictly under `stop`). Only after passing the guard
+  does it `os.Remove(cur)` (which succeeds only on an empty dir); on success set
+  `cur = filepath.Dir(cur)` and continue, on any error (non-empty / already gone)
+  `return`. No return value; all errors swallowed. Create `prune_test.go` (package `worktree`) building a temp dir tree
   (use `t.TempDir()`) that asserts: empty mirrored ancestors are removed up to but
   not including the stop dir; a non-empty intermediate dir halts the walk (dirs
   above it survive); calling with `start == stop` is a no-op; the helper is
@@ -87,8 +96,11 @@ best-effort teardown in `remove.go`/`rollbackAdd`.
     `fmt.Sprintf("@cd /d \"%%~dp0%s\" && mhgo ide spawn %s\r\n", spawnRelBackslash, slug)`
     where `spawnRelBackslash = strings.ReplaceAll(l.LauncherSpawnRel(slug), "/", "\\")`.
   - Menu: `menuCmdPath := l.MenuLauncherPath()`; keep the never-clobber `os.Stat`
-    check; `MkdirAll(filepath.Dir(menuCmdPath), 0o755)` (the per-subpath launchers
-    dir) before writing; build menu content from `l.MenuLauncherRel()`:
+    early-return (if the menu already exists, return without rewriting). Only in
+    the menu-**absent** branch (after that early return) call
+    `MkdirAll(filepath.Dir(menuCmdPath), 0o755)` (the per-subpath launchers dir),
+    so MkdirAll does not run on every `writeLaunchers` call; then write. Build menu
+    content from `l.MenuLauncherRel()`:
     `fmt.Sprintf("@cd /d \"%%~dp0%s\" && mhgo ide menu\r\n", menuRelBackslash)` where
     `menuRelBackslash = strings.ReplaceAll(l.MenuLauncherRel(), "/", "\\")`. Remove
     the now-dead `hubName`/`relPathPartMenu` hand-building.
