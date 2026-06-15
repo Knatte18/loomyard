@@ -121,6 +121,17 @@ func (l *Layout) PortalsDir() string {
 	return filepath.Join(l.Container, "_portals")
 }
 
+// PortalLink returns the path to the mirrored portal junction link for the given slug.
+//
+// The portal link is mirrored into the repo subpath structure. At RelPath == ".",
+// this collapses to <Container>/_portals/<slug>. For subpaths, it includes the
+// RelPath segments: <Container>/_portals/<RelPath>/<slug>.
+//
+// Returns filepath.Join(Container, "_portals", RelPath, slug).
+func (l *Layout) PortalLink(slug string) string {
+	return filepath.Join(l.Container, "_portals", l.RelPath, slug)
+}
+
 // PortalTarget returns the path to the _mhgo directory within a portal for the given slug.
 //
 // The path is: <Container>/<slug>/<RelPath>/_mhgo
