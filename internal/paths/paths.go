@@ -26,11 +26,11 @@ var ErrNotAGitRepo = errors.New("not a git repository")
 //   - RelPath: the relative path from WorktreeRoot to Cwd
 //   - MainWorktree: the path to the main (first) worktree from List()
 type Layout struct {
-	Cwd           string
-	WorktreeRoot  string
-	Container     string
-	RelPath       string
-	MainWorktree  string
+	Cwd          string
+	WorktreeRoot string
+	Container    string
+	RelPath      string
+	MainWorktree string
 }
 
 // Getwd returns the current working directory.
@@ -178,7 +178,7 @@ func (l *Layout) MenuLauncherPath() string {
 // This climbs from <Container>/_launchers/<RelPath>/<slug> to
 // <Container>/<slug>/<RelPath>, yielding paths like (..\)^(2+N)<slug>\<sub>
 // on Windows (N = RelPath segment count). At RelPath == ".", it collapses to
-// ..\<slug>.
+// ..\..\<slug>.
 //
 // Returns filepath.Rel(LauncherDir(slug), filepath.Join(WorktreePath(slug), RelPath)).
 func (l *Layout) LauncherSpawnRel(slug string) string {
