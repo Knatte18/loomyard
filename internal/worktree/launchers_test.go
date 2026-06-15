@@ -1,5 +1,5 @@
-// launchers_test.go covers launcher content generation and teardown
-// (Windows-gated; skipped where symlink/junction creation is unavailable).
+// launchers_test.go covers launcher content generation, per-subpath menus, and
+// teardown (Windows-gated; skipped where symlink/junction creation is unavailable).
 
 package worktree
 
@@ -65,7 +65,10 @@ func TestWriteLaunchers(t *testing.T) {
 			slug:    "task-b",
 			relPath: "subdir/nested",
 			verifyIde: func(t *testing.T, content string) {
-				expected := "@cd /d \"%~dp0..\\..\\task-b\\subdir\\nested\" && mhgo ide spawn task-b\r\n"
+				// Launcher dir is now at _launchers/<RelPath>/<slug>, so the climb is deeper:
+				// From _launchers/subdir/nested/task-b to <Container>/task-b/subdir/nested
+				// = ..\..\..\..\task-b\subdir\nested (2 base + 2 relpath segments)
+				expected := "@cd /d \"%~dp0..\\..\\..\\..\\task-b\\subdir\\nested\" && mhgo ide spawn task-b\r\n"
 				if content != expected {
 					t.Errorf("ide.cmd content = %q; want %q", content, expected)
 				}
@@ -90,7 +93,7 @@ func TestWriteLaunchers(t *testing.T) {
 			var cwd string
 			if tt.relPath != "" && tt.relPath != "." {
 				testDir := filepath.Join(hub, tt.relPath)
-				if err := os.MkdirAll(testDir, 0755); err != nil {
+				if err := os.MkdirAll(testDir, 0o755); err != nil {
 					t.Fatalf("mkdir test relpath: %v", err)
 				}
 				cwd = testDir
@@ -109,6 +112,7 @@ func TestWriteLaunchers(t *testing.T) {
 			}
 
 			// Verify ide.cmd was created with correct content
+			// Read via l.LauncherDir(slug) for mirrored location
 			ideCmdPath := filepath.Join(l.LauncherDir(tt.slug), "ide.cmd")
 			ideCmdContent, err := os.ReadFile(ideCmdPath)
 			if err != nil {
@@ -116,15 +120,15 @@ func TestWriteLaunchers(t *testing.T) {
 			}
 			tt.verifyIde(t, string(ideCmdContent))
 
-			// Verify ide-menu.cmd was created
-			menuCmdPath := filepath.Join(l.LaunchersDir(), "ide-menu.cmd")
+			// Verify per-subpath menu was created at l.MenuLauncherPath()
+			menuCmdPath := l.MenuLauncherPath()
 			menuCmdContent, err := os.ReadFile(menuCmdPath)
 			if err != nil {
 				t.Fatalf("read ide-menu.cmd: %v", err)
 			}
 			tt.verifyMenu(t, string(menuCmdContent))
 
-			// Call writeLaunchers again with a different slug to verify ide-menu.cmd is not clobbered
+			// Call writeLaunchers again with a different slug to verify menu is not clobbered per-subpath
 			originalMenuContent := string(menuCmdContent)
 			if err := writeLaunchers(l, "another-slug"); err != nil {
 				t.Fatalf("writeLaunchers again: %v", err)
@@ -141,7 +145,7 @@ func TestWriteLaunchers(t *testing.T) {
 	}
 }
 
-// TestRemoveLaunchers covers launcher directory removal.
+// TestRemoveLaunchers covers launcher directory removal and per-subpath menu survival.
 func TestRemoveLaunchers(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Skip("launcher tests only run on Windows")
@@ -161,7 +165,7 @@ func TestRemoveLaunchers(t *testing.T) {
 		t.Fatalf("writeLaunchers slug2: %v", err)
 	}
 
-	// Verify both launcher dirs exist
+	// Verify both launcher dirs exist (via l.LauncherDir)
 	slug1Dir := l.LauncherDir("slug1")
 	slug2Dir := l.LauncherDir("slug2")
 	if _, err := os.Stat(slug1Dir); err != nil {
@@ -187,10 +191,10 @@ func TestRemoveLaunchers(t *testing.T) {
 		t.Fatalf("slug2 launcher dir was removed: %v", err)
 	}
 
-	// Verify ide-menu.cmd is still there
-	menuCmdPath := filepath.Join(l.LaunchersDir(), "ide-menu.cmd")
+	// Verify per-subpath ide-menu.cmd is still there (via l.MenuLauncherPath())
+	menuCmdPath := l.MenuLauncherPath()
 	if _, err := os.Stat(menuCmdPath); err != nil {
-		t.Fatalf("ide-menu.cmd was removed: %v", err)
+		t.Fatalf("per-subpath menu was removed: %v", err)
 	}
 
 	// Second removeLaunchers call should be idempotent
