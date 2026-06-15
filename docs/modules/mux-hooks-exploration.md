@@ -42,6 +42,12 @@ channels share usable join keys, and every hook payload is richer than documente
 So pane switching can be **event-driven** (hooks, ≈0 cost) off each process's own `session_id`, with
 `claude agents --json` as an occasional reconciler — not a sub-second poller.
 
+**Bigger than either channel** (surfaced mid-exploration — §Channel 3, §D): Claude Code now ships its
+*own* background-agent **supervisor** (`claude --bg` / `claude attach·logs·stop <id>` / `state` in
+`claude agents --json`) that already does dispatch, lifecycle, crash-survival, resume, and structured
+needs-input detection. That opens a strategic fork — mux **owning** agents vs. merely **displaying**
+them — which is the single most consequential decision this exploration surfaces.
+
 ---
 
 ## Channel 1 — `claude agents --json` (the "agents JSON")
@@ -132,6 +138,44 @@ events above are proven to exist/fire on 2.1.177. **Do not enshrine the rest wit
 
 ---
 
+## Channel 3 — Claude Code's native background-agent supervisor (agent view)
+
+Surfaced mid-exploration and **changes the strategic picture**: `claude agents` is not just a list — it
+is the front door to a **built-in multi-agent supervisor** (`agent view`). A per-machine **supervisor
+daemon** (Windows named pipe `\\.\pipe\cc-daemon-<hash>-control`) hosts **background sessions** — full
+Claude Code conversations that keep running with no terminal attached. Verified live:
+
+- **Dispatch:** `claude --bg "<prompt>"` returns immediately, printing `backgrounded · <id>` plus its
+  management commands. No TTY needed. (`--exec` runs a shell job instead; `--agent` picks a subagent.)
+- **Hidden management verbs** (real, but absent from `claude --help`'s command list), addressed **by
+  id**:
+  | Command | Does | Verified |
+  |---|---|---|
+  | `claude agents --json [--all]` | List sessions; background entries carry rich state | ✅ |
+  | `claude logs <id>` | Print a session's recent terminal output (raw VT100 → ANSI-strip) | ✅ |
+  | `claude attach <id>` | Attach the live session into **this terminal** | ✅ (incl. into a psmux pane) |
+  | `claude stop <id>` | Stop the session (process exits, transcript kept) | ✅ |
+  | `claude rm <id>` | Remove from the list (may clean a Claude-created worktree) | ✅ |
+- **Rich `--json` for background sessions:** `id`, full `sessionId`, `cwd`, `kind:"background"`,
+  `startedAt`, `name` (an **AI-generated** title — can be wrong/odd), and **`state` ∈
+  {`working`,`blocked`,`done`,`failed`,`stopped`}**. `status`/`pid` appear only while alive;
+  **`waitingFor`** (e.g. `"permission prompt"`, `"input needed"`) appears **only when
+  `status=="waiting"`**. Observed transitions: `working→done` (finished) and `working→blocked` (asked a
+  question / awaiting input). **Caveat:** a model-asked question gave `state:"blocked"`,
+  `status:"idle"`, **empty `waitingFor`** — so the reliable needs-input signal is **`state==blocked`**,
+  not `waitingFor`.
+- **`claude logs <id>` is daemon-routed:** it failed with `connect ENOENT \\.\pipe\cc-daemon-…-control`
+  for a session whose daemon was gone — so it only works for live supervisor sessions, and is the
+  natural replacement for `capture-pane` scraping when one *is* live.
+- **`claude attach <id>` renders a background session inside a psmux pane** — verified: the live
+  session's input box + title rendered in the pane. Detaching (kill the client) leaves it running.
+
+**This is the structured `needs-input`/idle signal that the `Notification` hook would not give**, and
+it ships with dispatch, lifecycle, crash-survival, resume, and output-capture already built — exactly
+the surface mux's daemon/Slack milestones (7–8) were going to build by hand.
+
+---
+
 ## How pane switching actually composes (the design takeaways)
 
 The model first, because it dictates which hooks matter: **mux never uses Claude Code's in-process
@@ -191,6 +235,29 @@ Run it **on a hook event** (not on a timer): each spawned process appears as its
 dead sessions, untracked processes, and read `cwd`. (`id`↔`agent_id` matters only for the in-process
 case the guardrail blocks.) 800 ms is fine at event cadence.
 
+### D. Strategic alternative: mux as a *viewer* on top of the native supervisor (Channel 3)
+
+The supervisor (§Channel 3) overlaps so heavily with mux's daemon/monitoring goals that it reframes
+what mux must build. Instead of mux owning raw process spawn + lifecycle + recovery, mux could:
+
+1. **Dispatch** work via `claude --bg` (or the agent-view) → the supervisor owns lifecycle,
+   crash-survival, resume, and **needs-input detection (`state==blocked`)** for free.
+2. **Tile** by running `claude attach <id>` in each psmux pane — proven to render — for the
+   simultaneous, visible layout that is mux's actual differentiator.
+3. **Drive focus** off `claude agents --json` `state` (working/blocked/done) — *and still* layer the
+   per-session hooks (§A) on top, because a background session is a full CC session with its own
+   hooks, so the event-driven `Stop`/`SessionStart` callbacks (keyed by `session_id`) remain available
+   for low-latency edges. `claude logs <id>` replaces `capture-pane` scraping where a session is live.
+
+**Why this matters:** it could shrink mux from "build a multi-agent supervisor + daemon + recovery +
+Slack" (milestones 6–8) down to **"a visible tiling/focus layer over Claude Code's own supervisor."**
+Much less to own. **Open risks before committing** (a dedicated spike, not resolved here): N concurrent
+`claude attach` clients to one daemon + psmux's smallest-client-wins; whether `--bg` silently creates
+worktrees; detach/re-attach and crash behavior of an attached pane; the AI-generated `name` needing
+override; and `waitingFor` reliability for the permission-prompt case. This is the **most consequential
+open question of the whole exploration** — it is a fork between "mux owns the agents" (§A/B) and "mux
+displays Claude Code's agents" (§D).
+
 ### Trigger model
 
 ```
@@ -235,6 +302,10 @@ cost (no idle CPU), and fidelity (payload says *what* the pane is waiting on via
 - [ ] **Guardrail spike** (§B): does a `PreToolUse` matcher on `Agent` reliably **deny** the
   in-process Agent tool and inject a reason that steers the model to `mhgo mux spawn` instead? The
   deny-and-steer path is not yet probed.
+- [ ] **Supervisor-viewer spike** (§D — the consequential one): tile **N** `claude attach <id>` panes
+  over one supervisor and test psmux smallest-client-wins, detach/re-attach + crash behavior, whether
+  `claude --bg` creates worktrees, `name` override, and `waitingFor` for the permission-prompt case.
+  Decides whether mux owns vs. displays the agents — settle before mux v1.
 
 ---
 
@@ -252,3 +323,10 @@ guardrail so nested work can't slip back in-process (§B, spike pending); (4) us
 --json` as an event-time reconciler keyed by `sessionId`. The `agent_id`/`SubagentStop` machinery is
 the in-process mechanism mux **replaces** — relevant only to the guardrail. Platform gotcha:
 **hook commands run under git-bash — POSIX paths only.**
+
+**But the biggest finding is the fork in §D:** Claude Code now ships its *own* background-agent
+supervisor (`claude --bg`, `claude attach/logs/stop <id>`, `state`/needs-input in `claude agents
+--json`) that already does most of what mux milestones 6–8 planned. The open strategic decision is
+whether mux **owns** the agents (spawn raw interactive processes — §A/B) or **displays** Claude Code's
+agents (tile `claude attach` over the supervisor — §D). §D could shrink mux to a thin visible-tiling
+layer; it needs a dedicated spike (see Open) before it is chosen — ideally before mux v1 is built.
