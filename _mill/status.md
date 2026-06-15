@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: paths-subpath-mirroring
 branch: paths-subpath-mirroring
 plan: _mill/plan
@@ -28,6 +28,7 @@ holistic-reviewing  '2026-06-15T11:10:52Z'
 holistic-fixing  '2026-06-15T11:13:54Z'
 holistic-approved  '2026-06-15T11:18:33Z'
 done  '2026-06-15T11:18:46Z'
+pr-pending  '2026-06-15T11:21:06Z'
 ```
 
 ## Batches
