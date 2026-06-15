@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussed
 slug: mhgo-mux-hooks-exploration
 branch: mhgo-mux-hooks-exploration
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-06-15T11:49:10Z'
+discussed  '2026-06-15T12:30:57Z'
 ```

@@ -2,7 +2,9 @@
 
 > **Status:** design, nothing implemented yet. Unlike the earlier sketch, every claim
 > here is **grounded in hands-on testing** — see the evidence log
-> [`mux-exploration.md`](mux-exploration.md) and the TUI-behavior reference
+> [`mux-exploration.md`](mux-exploration.md), the CC-hooks / `claude agents --json`
+> evidence log [`mux-hooks-exploration.md`](mux-hooks-exploration.md) (event-driven
+> pane switching), and the TUI-behavior reference
 > [`../psmux-tui-behavior.md`](../psmux-tui-behavior.md). **v1 is deliberately tiny**
 > (roadmap milestone 5); subprocess panes (6), the daemon (7), and Slack (8) are in
 > [Deferred](#deferred).
