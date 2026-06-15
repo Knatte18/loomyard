@@ -172,6 +172,33 @@ func (l *Layout) MenuLauncherPath() string {
 	return filepath.Join(l.Container, "_launchers", l.RelPath, "ide-menu.cmd")
 }
 
+// LauncherSpawnRel returns the relative path from a launcher directory to the
+// target worktree's subpath for spawning.
+//
+// This climbs from <Container>/_launchers/<RelPath>/<slug> to
+// <Container>/<slug>/<RelPath>, yielding paths like (..\)^(2+N)<slug>\<sub>
+// on Windows (N = RelPath segment count). At RelPath == ".", it collapses to
+// ..\<slug>.
+//
+// Returns filepath.Rel(LauncherDir(slug), filepath.Join(WorktreePath(slug), RelPath)).
+func (l *Layout) LauncherSpawnRel(slug string) string {
+	rel, _ := filepath.Rel(l.LauncherDir(slug), filepath.Join(l.WorktreePath(slug), l.RelPath))
+	return rel
+}
+
+// MenuLauncherRel returns the relative path from the menu launcher directory to
+// the main worktree's subpath for menu spawning.
+//
+// This climbs from <Container>/_launchers/<RelPath> to
+// <Container>/<MainWorktree>/<RelPath>, yielding paths like (..\)^(1+N)<hub>\<sub>
+// (N = RelPath segment count). At RelPath == ".", it collapses to ..\<hub>.
+//
+// Returns filepath.Rel(filepath.Dir(MenuLauncherPath()), filepath.Join(MainWorktree, RelPath)).
+func (l *Layout) MenuLauncherRel() string {
+	rel, _ := filepath.Rel(filepath.Dir(l.MenuLauncherPath()), filepath.Join(l.MainWorktree, l.RelPath))
+	return rel
+}
+
 // HubName returns the base name of the main worktree.
 //
 // Returns filepath.Base(MainWorktree).
