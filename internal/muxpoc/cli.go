@@ -12,8 +12,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/Knatte18/mhgo/internal/output"
-	"github.com/Knatte18/mhgo/internal/paths"
+	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/paths"
 )
 
 // Config holds paths and dimensions for muxpoc operations.
@@ -34,7 +34,7 @@ type Config struct {
 //
 // Usage:
 //
-//	mhgo muxpoc <subcommand> [args...]
+//	lyx muxpoc <subcommand> [args...]
 //
 // Subcommands:
 //
@@ -86,7 +86,7 @@ func RunCLI(out io.Writer, args []string) int {
 
 	rest := fs.Args()
 	if len(rest) < 1 {
-		fmt.Fprintln(os.Stderr, "usage: mhgo muxpoc <subcommand> [args...]")
+		fmt.Fprintln(os.Stderr, "usage: lyx muxpoc <subcommand> [args...]")
 		return 1
 	}
 

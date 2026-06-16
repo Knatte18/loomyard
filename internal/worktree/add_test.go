@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/mhgo/internal/git"
-	"github.com/Knatte18/mhgo/internal/paths"
-	"github.com/Knatte18/mhgo/internal/worktree"
+	"github.com/Knatte18/loomyard/internal/git"
+	"github.com/Knatte18/loomyard/internal/paths"
+	"github.com/Knatte18/loomyard/internal/worktree"
 )
 
 // TestAdd covers the worktree creation flow: the happy path, branch-prefix

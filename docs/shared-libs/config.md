@@ -1,24 +1,24 @@
 # `internal/config`
 
 Resolves a module's configuration from the current working directory. This is the
-one place that knows the `_mhgo/` layout and the config grammar.
+one place that knows the `_lyx/` layout and the config grammar.
 
 ## Layout
 
 ```
-<cwd>/                  ← where `mhgo init` was run
-├── _mhgo/              git-TRACKED config — the only config source
+<cwd>/                  ← where `lyx init` was run
+├── _lyx/               git-TRACKED config — the only config source
 │   ├── board.yaml
 │   ├── worktree.yaml
 │   └── mux.yaml
 ├── .env                git-IGNORED — local env values (KEY=value)
-└── .mhgo/              git-IGNORED — machine-local RUNTIME state (see state.md)
+└── .lyx/               git-IGNORED — machine-local RUNTIME state (see state.md)
     └── local-state.json
 ```
 
-`_mhgo/` presence is what makes a directory "initialised". If it is absent,
-`config` errors with `not initialized: _mhgo/ directory not found in <dir>` (the
-raw error from `FindBaseDir`; the board rewraps it into `not initialized here; run "mhgo init"`).
+`_lyx/` presence is what makes a directory "initialised". If it is absent,
+`config` errors with `not initialized: _lyx/ directory not found in <dir>` (the
+raw error from `FindBaseDir`; the board rewraps it into `not initialized here; run "lyx init"`).
 Resolution is **cwd-authoritative** — the cwd does **not** need to equal the git-repo root (a
 first-class constraint; it caused constant trouble in millpy precisely because it
 was designed in and then forgotten).
@@ -28,9 +28,9 @@ was designed in and then forgotten).
 Two layers, merged per key:
 
 1. **Built-in defaults** — in code, per module.
-2. **`_mhgo/<module>.yaml`** (git-tracked) — overlaid on the defaults.
+2. **`_lyx/<module>.yaml`** (git-tracked) — overlaid on the defaults.
 
-There is **no** `.mhgo/` config layer. Machine-local variation does not get its own
+There is **no** `.lyx/` config layer. Machine-local variation does not get its own
 file; it is expressed *inside* the tracked YAML via env references, so the full
 shape of a module's config is always visible in one tracked file and only *values*
 vary per machine.
@@ -48,10 +48,10 @@ After the layers are merged, every string value is scanned for `$env:NAME` token
   the last thing in the value (you cannot follow it with more text).
 
 ```yaml
-# _mhgo/board.yaml
-home:  $env:MHGO_HOME ? Home.md          # README.md on some machines, default Home.md
-path:  $env:MHGO_BOARD ? ../_board       # default sibling dir
-model: $env:MHGO_CODE_REVIEWER ? sonnetmax  # default to the fast model
+# _lyx/board.yaml
+home:  $env:LYX_HOME ? Home.md          # README.md on some machines, default Home.md
+path:  $env:LYX_BOARD ? ../_board       # default sibling dir
+model: $env:LYX_CODE_REVIEWER ? sonnetmax  # default to the fast model
 ```
 
 **Comments work after the default.** Config is parsed with a real YAML library, so
@@ -82,9 +82,9 @@ Callers never see raw YAML or unexpanded tokens.
 
 ### `FindBaseDir(cwd) (string, error)`
 
-Checks whether the given directory is an initialized mhgo base directory.
+Checks whether the given directory is an initialized Loomyard base directory.
 
-**Behavior:** Performs a strict check that `<cwd>/_mhgo` exists; it never walks up
+**Behavior:** Performs a strict check that `<cwd>/_lyx` exists; it never walks up
 to parent directories. This is the cwd-authoritative model — the provided `cwd` must
 itself be initialized.
 
@@ -92,14 +92,14 @@ itself be initialized.
 an error.
 
 **Error messages:**
-- If `<cwd>/_mhgo` does not exist: `not initialized: _mhgo/ directory not found in <dir>`
+- If `<cwd>/_lyx` does not exist: `not initialized: _lyx/ directory not found in <dir>`
   (the raw error returned by `FindBaseDir`).
-- If stat fails for another reason: `stat _mhgo: <underlying error>`.
+- If stat fails for another reason: `stat _lyx: <underlying error>`.
 
 **Note on error rewrapping:** `internal/board/config.go` `LoadConfig` matches the
 substring `"not initialized"` in the error text to rewrap it into the board-level
-message `not initialized here; run "mhgo init"`. Do not conflate the two:
-- Raw `FindBaseDir` error: `not initialized: _mhgo/ directory not found in <dir>`
-- Board-level rewrapped: `not initialized here; run "mhgo init"`
+message `not initialized here; run "lyx init"`. Do not conflate the two:
+- Raw `FindBaseDir` error: `not initialized: _lyx/ directory not found in <dir>`
+- Board-level rewrapped: `not initialized here; run "lyx init"`
 
 **Delegation:** `Load` calls `FindBaseDir` for its existence check.

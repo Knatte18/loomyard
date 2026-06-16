@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/Knatte18/mhgo/internal/output"
+	"github.com/Knatte18/loomyard/internal/output"
 )
 
 // TestOk_EmitsValidJSON tests that Ok emits a valid JSON line that parses correctly

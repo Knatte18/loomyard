@@ -11,7 +11,7 @@ Muxpoc is a **proof-of-concept psmux session orchestrator** for driving `claude`
 across panes. It launches a Windows Terminal window (or interactive psmux on non-Windows)
 with a vertically-stacked column layout where the bottom pane is active and dominates the
 display. One psmux server per repo (socket + session name both derived from `cwd`). Driven
-by `mhgo muxpoc <subcommand>`; flag-driven configuration (no YAML, no `internal/config`).
+by `lyx muxpoc <subcommand>`; flag-driven configuration (no YAML, no `internal/config`).
 
 ## What problem this solves
 
@@ -24,7 +24,7 @@ feasible before the clean `mux` module lands.
 
 ### Dispatch and entry point
 
-`cmd/mhgo/main.go` labels muxpoc "proof-of-concept psmux mux" and routes `mhgo muxpoc`
+`cmd/lyx/main.go` labels muxpoc "proof-of-concept psmux mux" and routes `lyx muxpoc`
 to `internal/muxpoc.RunCLI`. All muxpoc I/O goes through JSON (via `internal/output`);
 no YAML config, no `internal/config` — all configuration is flag-driven.
 
@@ -35,7 +35,7 @@ stably and consistently:
 
 - **`socketName(cwd)`** (`state.go`): takes `filepath.Base(cwd)`, replaces every
   non-alphanumeric, non-dash, non-underscore character with a dash, lowercases, and
-  prefixes with `muxpoc-`. Example: `C:\Code\mhgo\wts\docs-stale-sweep` →
+  prefixes with `muxpoc-`. Example: `C:\Code\loomyard\wts\docs-stale-sweep` →
   `muxpoc-docs-stale-sweep`.
 - Socket and session name are **always the same** — stable per repo, so one server per
   cwd.
@@ -44,16 +44,16 @@ stably and consistently:
 
 | Command | Does |
 |---|---|
-| `mhgo muxpoc up` | Cold-start a new psmux session with a primary `claude` pane, or cold-recover an existing one whose server crashed (if state exists and session is dead). |
-| `mhgo muxpoc review` | Add a reviewer pane to the active session via `split-window` and launch a new `claude` instance with a fresh session ID. |
-| `mhgo muxpoc attach` | Pop the session into a maximized Windows Terminal window (Windows) or interactive psmux (non-Windows). |
-| `mhgo muxpoc status` | Report comprehensive status: whether state exists, whether the server is running, live pane information from the server, and saved pane metadata. |
-| `mhgo muxpoc down` | Stop the psmux server and delete the state file — intentional shutdown, distinct from a crash. |
-| `mhgo muxpoc daemon` | Foreground polling loop that monitors the psmux session and recovers it if it crashes (crash-loop guarded: max 3 recoveries within 60s). |
+| `lyx muxpoc up` | Cold-start a new psmux session with a primary `claude` pane, or cold-recover an existing one whose server crashed (if state exists and session is dead). |
+| `lyx muxpoc review` | Add a reviewer pane to the active session via `split-window` and launch a new `claude` instance with a fresh session ID. |
+| `lyx muxpoc attach` | Pop the session into a maximized Windows Terminal window (Windows) or interactive psmux (non-Windows). |
+| `lyx muxpoc status` | Report comprehensive status: whether state exists, whether the server is running, live pane information from the server, and saved pane metadata. |
+| `lyx muxpoc down` | Stop the psmux server and delete the state file — intentional shutdown, distinct from a crash. |
+| `lyx muxpoc daemon` | Foreground polling loop that monitors the psmux session and recovers it if it crashes (crash-loop guarded: max 3 recoveries within 60s). |
 
 ### State model
 
-Muxpoc persists runtime state to `.mhgo/muxpoc-state.json` (the **gitignored runtime-state
+Muxpoc persists runtime state to `.lyx/muxpoc-state.json` (the **gitignored runtime-state
 dir**, not the removed config layer — see [`../shared-libs/state.md`](../shared-libs/state.md)):
 
 ```go
@@ -71,7 +71,7 @@ type Pane struct {
 }
 ```
 
-- **Reads** acquire a shared lock on `.mhgo/muxpoc-state.lock`.
+- **Reads** acquire a shared lock on `.lyx/muxpoc-state.lock`.
 - **Writes** acquire an exclusive lock and perform atomic writes (temp + rename) via
   `board.AtomicWrite`.
 - **Corrupt state** (unparseable JSON) logs a warning and is treated as no session
@@ -86,7 +86,7 @@ State survives a server crash. On `up` when state exists but the session is dead
 calls `coldRecover`:
 
 1. **Re-launch the psmux server** — same socket and session name, targeting the same
-   `.mhgo/muxpoc-state.json`.
+   `.lyx/muxpoc-state.json`.
 2. **Restart each pane** — for each pane in saved state, launch `claude --resume <session-id>`.
    psmux reassigns fresh pane IDs across a restart, so recovery captures the new IDs
    from the server.
@@ -215,7 +215,7 @@ Muxpoc uses `//go:build` tags for platform-specific behavior:
 Muxpoc is a **shipped proof-of-concept** that proves subprocess panes and daemon
 crash-recovery are feasible. The planned `internal/mux` (roadmap milestone 5,
 [`mux.md`](mux.md)) is the clean forward design. **They coexist**. Muxpoc is
-dispatched in `cmd/mhgo/main.go` and fully functional; mux is still unbuilt. Do
+dispatched in `cmd/lyx/main.go` and fully functional; mux is still unbuilt. Do
 not conflate the two or mark mux milestones Done based on muxpoc shipping —
 muxpoc proved the risky parts, but mux will have a different design (e.g.,
 config-driven, not flag-driven; integrated with `internal/state`; multi-window

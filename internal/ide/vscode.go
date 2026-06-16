@@ -1,5 +1,5 @@
 // vscode.go generates a worktree's .vscode/ settings.json and tasks.json (only
-// when absent) and registers .vscode/ in the mhgo-managed .gitignore block.
+// when absent) and registers .vscode/ in the lyx-managed .gitignore block.
 
 package ide
 
@@ -8,7 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/Knatte18/mhgo/internal/gitignore"
+	"github.com/Knatte18/loomyard/internal/gitignore"
 )
 
 // writeVSCodeConfig generates VS Code configuration files in a worktree,
@@ -43,8 +43,8 @@ func writeVSCodeConfig(worktreeDir, relpath, slug, color string) error {
 				"titleBar.inactiveBackground": color,
 				"titleBar.inactiveForeground": "#ffffffaa",
 			},
-			"window.title":                          slug,
-			"workbench.startupEditor":               "none",
+			"window.title":                                 slug,
+			"workbench.startupEditor":                      "none",
 			"workbench.secondarySideBar.defaultVisibility": "hidden",
 		}
 		data, err := json.MarshalIndent(settings, "", "  ")
@@ -69,9 +69,9 @@ func writeVSCodeConfig(worktreeDir, relpath, slug, color string) error {
 			"version": "2.0.0",
 			"tasks": []map[string]any{
 				{
-					"label":       "Start Claude",
-					"type":        "shell",
-					"command":     "claude",
+					"label":   "Start Claude",
+					"type":    "shell",
+					"command": "claude",
 					"runOptions": map[string]any{
 						"runOn": "folderOpen",
 					},

@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Knatte18/mhgo/internal/lock"
+	"github.com/Knatte18/loomyard/internal/lock"
 )
 
 func TestAcquireWriteLock(t *testing.T) {

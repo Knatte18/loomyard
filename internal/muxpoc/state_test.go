@@ -109,11 +109,11 @@ func TestSocketName(t *testing.T) {
 		pattern  string // characters that should be allowed: a-z0-9_-
 	}{
 		{
-			cwd:      "C:\\Code\\mhgo\\wts\\mhgo-mux-design",
+			cwd:      "C:\\Code\\loomyard\\wts\\loomyard-mux-design",
 			contains: "muxpoc-",
 		},
 		{
-			cwd:      "/home/user/repos/mhgo-mux-design",
+			cwd:      "/home/user/repos/loomyard-mux-design",
 			contains: "muxpoc-",
 		},
 	}
@@ -160,10 +160,10 @@ func TestLoadStateMissing(t *testing.T) {
 func TestLoadStateCorrupt(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Create .mhgo directory
-	mhgoDir := filepath.Join(tmpDir, ".mhgo")
-	if err := os.MkdirAll(mhgoDir, 0o755); err != nil {
-		t.Fatalf("failed to create .mhgo: %v", err)
+	// Create .lyx directory
+	lyxDir := filepath.Join(tmpDir, ".lyx")
+	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
+		t.Fatalf("failed to create .lyx: %v", err)
 	}
 
 	// Write corrupt JSON

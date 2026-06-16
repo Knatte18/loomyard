@@ -1,7 +1,7 @@
 # psmux + claude TUI behavior -- empirical findings
 
 > Provenance: copied from `millhouse/doc/psmux-tui-behavior.md` (sessions
-> `replace-claude-p-with-psmux`, `smoke-test-psmux`). 100% relevant to the mhgo mux
+> `replace-claude-p-with-psmux`, `smoke-test-psmux`). 100% relevant to the Loomyard mux
 > design — it is the prior empirical record of driving a real `claude` TUI inside a
 > psmux pane on this machine. The mux design and [`mux-exploration.md`](modules/mux-exploration.md)
 > draw on it directly. Bug-table line numbers refer to millhouse's Python implementation.

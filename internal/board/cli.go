@@ -23,8 +23,8 @@ import (
 	"io"
 	"os"
 
-	"github.com/Knatte18/mhgo/internal/output"
-	"github.com/Knatte18/mhgo/internal/paths"
+	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/paths"
 )
 
 // RunCLI parses and executes a "board" subcommand, writing JSON results to out.
@@ -86,7 +86,7 @@ func RunCLI(out io.Writer, args []string) int {
 	// Expected: ["<subcommand>", "<json-payload>"]
 	rest := fs.Args()
 	if len(rest) < 1 {
-		fmt.Fprintln(os.Stderr, "usage: mhgo board <subcommand> [json-payload]")
+		fmt.Fprintln(os.Stderr, "usage: lyx board <subcommand> [json-payload]")
 		return 1
 	}
 

@@ -16,7 +16,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/Knatte18/mhgo/internal/board"
+	"github.com/Knatte18/loomyard/internal/board"
 )
 
 // benchSizes is the set of board sizes (number of tasks already in tasks.json)
@@ -25,7 +25,7 @@ import (
 var benchSizes = []int{10, 100, 1000}
 
 // seedWiki writes a tasks.json with n independent (dependency-free) tasks into a
-// fresh temp dir, seeded with _mhgo/board.yaml for config, and returns the cwd path.
+// fresh temp dir, seeded with _lyx/board.yaml for config, and returns the cwd path.
 // Callers must set BOARD_SKIP_GIT=1 so the benchmark measures board logic + file I/O,
 // not git push latency. It takes a testing.TB so both benchmarks and concurrency tests
 // can use it. For direct facade tests (not CLI), construct Board from the config's Path
@@ -35,12 +35,12 @@ func seedWiki(tb testing.TB, n int) string {
 
 	dir := tb.TempDir()
 
-	// Create _mhgo directory with board.yaml config
-	mhgoDir := filepath.Join(dir, "_mhgo")
-	if err := os.MkdirAll(mhgoDir, 0o755); err != nil {
-		tb.Fatalf("mkdir _mhgo: %v", err)
+	// Create _lyx directory with board.yaml config
+	lyxDir := filepath.Join(dir, "_lyx")
+	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
+		tb.Fatalf("mkdir _lyx: %v", err)
 	}
-	configPath := filepath.Join(mhgoDir, "board.yaml")
+	configPath := filepath.Join(lyxDir, "board.yaml")
 	if err := os.WriteFile(configPath, []byte("path: board\n"), 0o644); err != nil {
 		tb.Fatalf("write board.yaml: %v", err)
 	}

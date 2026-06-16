@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Knatte18/mhgo/internal/worktree"
+	"github.com/Knatte18/loomyard/internal/worktree"
 )
 
 // setupCLIRepo creates a fresh repo, changes into it, and writes a
@@ -18,11 +18,11 @@ func setupCLIRepo(t *testing.T) string {
 	hub := newTestRepo(t)
 	t.Chdir(hub)
 
-	mhgoDir := filepath.Join(hub, "_mhgo")
-	if err := os.MkdirAll(mhgoDir, 0755); err != nil {
-		t.Fatalf("create _mhgo: %v", err)
+	lyxDir := filepath.Join(hub, "_lyx")
+	if err := os.MkdirAll(lyxDir, 0755); err != nil {
+		t.Fatalf("create _lyx: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(mhgoDir, "worktree.yaml"), []byte("branch_prefix: wt-\n"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(lyxDir, "worktree.yaml"), []byte("branch_prefix: wt-\n"), 0644); err != nil {
 		t.Fatalf("write worktree.yaml: %v", err)
 	}
 	return hub

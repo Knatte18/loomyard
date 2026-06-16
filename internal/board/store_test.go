@@ -8,7 +8,7 @@ package board_test
 import (
 	"testing"
 
-	"github.com/Knatte18/mhgo/internal/board"
+	"github.com/Knatte18/loomyard/internal/board"
 )
 
 func TestUpsertTaskNewTaskSequentialID(t *testing.T) {

@@ -1,11 +1,11 @@
 # `internal/state`
 
 Typed read/write of the machine-local runtime registry at
-`<cwd>/.mhgo/local-state.json`. **New** — nothing in board needs it; it exists for
+`<cwd>/.lyx/local-state.json`. **New** — nothing in board needs it; it exists for
 worktree and mux. Built as milestone 3, test-first.
 
-The `.mhgo/` directory here is the **gitignored runtime-state dir** — a different
-role from the (now removed) `.mhgo/` config layer. It holds machine-local data
+The `.lyx/` directory here is the **gitignored runtime-state dir** — a different
+role from the (now removed) `.lyx/` config layer. It holds machine-local data
 only — never config, never anything portable across machines.
 
 ## What it stores
@@ -23,7 +23,7 @@ this file is gitignored.
 ## How it writes
 
 Atomic writes (temp + rename) under the locking primitive from
-[`internal/lock`](lock.md), so two `mhgo` processes never corrupt the registry.
+[`internal/lock`](lock.md), so two Loomyard processes never corrupt the registry.
 `state` owns the schema and the read/write/merge operations; the modules own *what*
 the fields mean.
 

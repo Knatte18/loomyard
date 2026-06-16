@@ -12,7 +12,7 @@ import (
 	"os"
 	"path/filepath"
 
-	flock "github.com/Knatte18/mhgo/internal/lock"
+	flock "github.com/Knatte18/loomyard/internal/lock"
 )
 
 // Board is the high-level facade over a board directory.
@@ -34,7 +34,7 @@ func New(cfg Config) *Board {
 
 // writeOp runs the locked, file-only write sequence: lock → load → mutate →
 // render → write files → save. The remote backup is not done here; on success it
-// launches a detached `mhgo board sync` (unless BOARD_SKIP_GIT=1) and returns
+// launches a detached `lyx board sync` (unless BOARD_SKIP_GIT=1) and returns
 // without waiting. The second argument is ignored — the commit message is fixed
 // in the pusher (batched "board sync" commits), not per-write.
 func (b *Board) writeOp(mutate func(*Store) (any, error), _ string) (any, error) {
@@ -165,7 +165,7 @@ func (b *Board) Rerender() error {
 }
 
 // Sync backs up pending local changes to the remote (commit + push), looping
-// until nothing is left. It is what the detached `mhgo board sync` process runs;
+// until nothing is left. It is what the detached `lyx board sync` process runs;
 // it can also be called directly to force a synchronous backup.
 func (b *Board) Sync() error {
 	return Sync(b.boardPath)

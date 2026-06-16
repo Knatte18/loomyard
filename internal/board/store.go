@@ -13,7 +13,7 @@ import (
 	"os"
 	"path/filepath"
 
-	flock "github.com/Knatte18/mhgo/internal/lock"
+	flock "github.com/Knatte18/loomyard/internal/lock"
 )
 
 // swapLockSuffix names the fine-grained lock that fences readers of a file

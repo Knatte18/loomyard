@@ -17,7 +17,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Knatte18/mhgo/internal/board"
+	"github.com/Knatte18/loomyard/internal/board"
 )
 
 // cloneBenchWiki clones the dummy wiki into a temp dir and configures a commit
@@ -35,8 +35,8 @@ func cloneBenchWiki(b *testing.B) string {
 	}
 
 	run("git", "clone", testRepoURL, repoPath)
-	run("git", "-C", repoPath, "config", "user.email", "bench@mhgo.dev")
-	run("git", "-C", repoPath, "config", "user.name", "MHGo Bench")
+	run("git", "-C", repoPath, "config", "user.email", "bench@loomyard.dev")
+	run("git", "-C", repoPath, "config", "user.name", "Loomyard Bench")
 	return repoPath
 }
 

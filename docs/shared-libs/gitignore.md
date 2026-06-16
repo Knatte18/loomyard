@@ -3,26 +3,26 @@
 A **shared `.gitignore` block manager** that multiple modules contribute ignore entries to.
 
 Many modules create machine-local directories that should not be committed (e.g.,
-`.vscode/` from `ide`, `.mhgo/` from `board`). Instead of each module managing its
+`.vscode/` from `ide`, `.lyx/` from `board`). Instead of each module managing its
 own `.gitignore` block or clobbering others' entries, `internal/gitignore` maintains
-a single mhgo-managed block (`# === mhgo-managed === … # === end mhgo-managed ===`)
+a single lyx-managed block (`# === lyx-managed === … # === end lyx-managed ===`)
 as a **set** that merges entries idempotently.
 
 ## Exported API
 
 ### `Ensure(repoRoot string, entries ...string) (changed bool, err error)`
 
-Ensures the mhgo-managed block in `.gitignore` contains all given entries, adding
+Ensures the lyx-managed block in `.gitignore` contains all given entries, adding
 any that are missing.
 
 **Behavior:**
 
 1. Reads `.gitignore` at the repo root (or creates it if absent).
-2. Locates or creates the mhgo-managed block delimited by:
+2. Locates or creates the lyx-managed block delimited by:
    ```
-   # === mhgo-managed ===
+   # === lyx-managed ===
    <entries>
-   # === end mhgo-managed ===
+   # === end lyx-managed ===
    ```
 3. Merges the given entries into the block (idempotent — entries are never duplicated).
 4. Writes the file back atomically (temp + rename) if anything changed.
@@ -39,7 +39,7 @@ Modules register their ignore entries when they first create their directories:
 
 ```go
 // board/init.go
-changed, err := gitignore.Ensure(repoRoot, ".mhgo/")
+changed, err := gitignore.Ensure(repoRoot, ".lyx/")
 
 // ide/spawn.go (when first creating .vscode/)
 changed, err := gitignore.Ensure(repoRoot, ".vscode/")
@@ -50,7 +50,7 @@ shared block, so all active modules' directories coexist without clobbering.
 
 ## Machine-local directories
 
-Directories managed by modules (e.g., `.vscode/`, `.mhgo/`) are **not committed**.
+Directories managed by modules (e.g., `.vscode/`, `.lyx/`) are **not committed**.
 Because `.gitignore` itself is committed at the repo's cwd / `relpath`, every
 worktree checkout inherits the ignores — so a new worktree's `.gitignore` already
 lists `.vscode/` even before `ide` runs there.

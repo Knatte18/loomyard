@@ -5,7 +5,7 @@ package git_test
 import (
 	"testing"
 
-	"github.com/Knatte18/mhgo/internal/git"
+	"github.com/Knatte18/loomyard/internal/git"
 )
 
 // TestRunGit_Success tests basic git command execution
@@ -64,4 +64,3 @@ func TestRunGit_Cwd(t *testing.T) {
 		t.Fatal("expected non-empty stdout from git rev-parse")
 	}
 }
-

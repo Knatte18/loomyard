@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Knatte18/mhgo/internal/worktree"
+	"github.com/Knatte18/loomyard/internal/worktree"
 )
 
 // TestList covers the porcelain parser: a fresh repo yields exactly the main

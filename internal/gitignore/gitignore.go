@@ -1,9 +1,9 @@
-// Package gitignore manages a single mhgo-managed block in .gitignore
+// Package gitignore manages a single lyx-managed block in .gitignore
 // that is shared across multiple modules.
 //
 // The Ensure function maintains entries as a set: multiple modules can
 // contribute entries without clobbering each other. The block is delimited
-// by # === mhgo-managed === and # === end mhgo-managed ===.
+// by # === lyx-managed === and # === end lyx-managed ===.
 package gitignore
 
 import (
@@ -15,11 +15,11 @@ import (
 )
 
 const (
-	startMarker = "# === mhgo-managed ==="
-	endMarker   = "# === end mhgo-managed ==="
+	startMarker = "# === lyx-managed ==="
+	endMarker   = "# === end lyx-managed ==="
 )
 
-// Ensure maintains the mhgo-managed block in <repoRoot>/.gitignore, ensuring
+// Ensure maintains the lyx-managed block in <repoRoot>/.gitignore, ensuring
 // that all provided entries exist within it. The block is treated as a set:
 // entries are deduplicated and sorted deterministically. Content outside the
 // block is preserved verbatim.

@@ -1,7 +1,7 @@
-// Package worktree manages the lifecycle of git worktrees in the mhgo container
+// Package worktree manages the lifecycle of git worktrees in the Loomyard container
 // layout: adding new worktrees, listing existing ones, and removing them with
 // junction/symlink cleanup. It exposes the Worktree facade (the entry point for
-// all operations) together with RunCLI, the subcommand router, so the mhgo
+// all operations) together with RunCLI, the subcommand router, so the lyx
 // binary stays a thin module dispatcher.
 //
 // Configuration is resolved cwd-authoritatively via internal/config; the package
