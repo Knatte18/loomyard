@@ -99,6 +99,8 @@ batches:
 - `CONSTRAINTS.md`
 - `cmd/lyx/main.go`
 - `cmd/lyx/main_test.go`
+- `cmd/mhgo/main.go`
+- `cmd/mhgo/main_test.go`
 - `docs/benchmarks/board-performance.md`
 - `docs/benchmarks/test-suite-timing.md`
 - `docs/modules/board.md`
