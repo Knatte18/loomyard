@@ -14,17 +14,17 @@ import (
 func TestLoadConfig(t *testing.T) {
 	tests := []struct {
 		name string
-		// initMhgo controls whether the _lyx/ marker dir is created;
+		// initLyx controls whether the _lyx/ marker dir is created;
 		// LoadConfig rejects a base dir without it.
-		initMhgo bool
+		initLyx bool
 		// yaml, when non-empty, is written to _lyx/worktree.yaml.
 		yaml            string
 		wantPrefix      string
 		wantErrContains string
 	}{
-		{name: "DefaultsWhenYAMLAbsent", initMhgo: true, wantPrefix: ""},
-		{name: "BranchPrefixFromYAML", initMhgo: true, yaml: "branch_prefix: hanf/\n", wantPrefix: "hanf/"},
-		{name: "ErrorWhenNotInitialized", initMhgo: false, wantErrContains: `run "lyx init"`},
+		{name: "DefaultsWhenYAMLAbsent", initLyx: true, wantPrefix: ""},
+		{name: "BranchPrefixFromYAML", initLyx: true, yaml: "branch_prefix: hanf/\n", wantPrefix: "hanf/"},
+		{name: "ErrorWhenNotInitialized", initLyx: false, wantErrContains: `run "lyx init"`},
 	}
 
 	for _, tt := range tests {
@@ -34,7 +34,7 @@ func TestLoadConfig(t *testing.T) {
 			// Create the _lyx/ marker (and optional config) only for the
 			// initialized scenarios; the error case leaves it absent so
 			// LoadConfig takes the not-initialized branch.
-			if tt.initMhgo {
+			if tt.initLyx {
 				lyxDir := filepath.Join(baseDir, "_lyx")
 				if err := os.Mkdir(lyxDir, 0755); err != nil {
 					t.Fatalf("create _lyx: %v", err)
