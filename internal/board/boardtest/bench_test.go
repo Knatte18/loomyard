@@ -35,12 +35,12 @@ func seedWiki(tb testing.TB, n int) string {
 
 	dir := tb.TempDir()
 
-	// Create _mhgo directory with board.yaml config
-	mhgoDir := filepath.Join(dir, "_mhgo")
-	if err := os.MkdirAll(mhgoDir, 0o755); err != nil {
-		tb.Fatalf("mkdir _mhgo: %v", err)
+	// Create _lyx directory with board.yaml config
+	lyxDir := filepath.Join(dir, "_lyx")
+	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
+		tb.Fatalf("mkdir _lyx: %v", err)
 	}
-	configPath := filepath.Join(mhgoDir, "board.yaml")
+	configPath := filepath.Join(lyxDir, "board.yaml")
 	if err := os.WriteFile(configPath, []byte("path: board\n"), 0o644); err != nil {
 		tb.Fatalf("write board.yaml: %v", err)
 	}
