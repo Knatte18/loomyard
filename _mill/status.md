@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-fix-r2
+phase: discussed
 slug: rename-to-loomyard
 branch: rename-to-loomyard
 plan: null
@@ -16,4 +16,5 @@ task_description: |
 ```text
 discussing  '2026-06-16T11:09:11Z'
 discussion-fix-r2  '2026-06-16T11:33:59Z'
+discussed  '2026-06-16T11:34:28Z'
 ```
