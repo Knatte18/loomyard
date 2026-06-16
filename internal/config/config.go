@@ -24,31 +24,31 @@ var envOptRe = regexp.MustCompile(`\$env:([A-Za-z_][A-Za-z0-9_]*)\s*\?\s*(.*)$`)
 // envReqRe matches $env:NAME tokens where NAME is [A-Za-z_][A-Za-z0-9_]*
 var envReqRe = regexp.MustCompile(`\$env:([A-Za-z_][A-Za-z0-9_]*)`)
 
-// FindBaseDir checks if <cwd>/_mhgo exists and returns cwd, or an error if not found.
+// FindBaseDir checks if <cwd>/_lyx exists and returns cwd, or an error if not found.
 //
 // It performs a strict check without walking up to parent directories.
 // Returns the cwd on success, empty string and an error on failure.
 func FindBaseDir(cwd string) (string, error) {
-	mhgoDir := filepath.Join(cwd, "_mhgo")
-	_, err := os.Stat(mhgoDir)
+	lyxDir := filepath.Join(cwd, "_lyx")
+	_, err := os.Stat(lyxDir)
 	if os.IsNotExist(err) {
-		return "", fmt.Errorf("not initialized: _mhgo/ directory not found in %s", cwd)
+		return "", fmt.Errorf("not initialized: _lyx/ directory not found in %s", cwd)
 	} else if err != nil {
-		return "", fmt.Errorf("stat _mhgo: %w", err)
+		return "", fmt.Errorf("stat _lyx: %w", err)
 	}
 	return cwd, nil
 }
 
-// Load loads configuration for a module from defaults and the module's `_mhgo/<module>.yaml` file.
+// Load loads configuration for a module from defaults and the module's `_lyx/<module>.yaml` file.
 //
-// Merges defaults with <baseDir>/_mhgo/<module>.yaml (if present) and expands
+// Merges defaults with <baseDir>/_lyx/<module>.yaml (if present) and expands
 // environment variables using $env:NAME and $env:NAME ? fallback syntax.
 //
-// If <baseDir>/_mhgo/ does not exist, returns an error.
+// If <baseDir>/_lyx/ does not exist, returns an error.
 // If <baseDir>/.env is present, it is loaded and used for env var lookups.
 // OS environment takes precedence over .env values.
 func Load(baseDir, module string, defaults map[string]string) (map[string]string, error) {
-	// Check if _mhgo/ directory exists
+	// Check if _lyx/ directory exists
 	_, err := FindBaseDir(baseDir)
 	if err != nil {
 		return nil, err
@@ -67,7 +67,7 @@ func Load(baseDir, module string, defaults map[string]string) (map[string]string
 	}
 
 	// Load and merge YAML layer
-	yamlMap, err := loadYAMLLayer(filepath.Join(baseDir, "_mhgo", module+".yaml"))
+	yamlMap, err := loadYAMLLayer(filepath.Join(baseDir, "_lyx", module+".yaml"))
 	if err != nil {
 		return nil, err
 	}
