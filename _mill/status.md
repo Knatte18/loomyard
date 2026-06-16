@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-approved
 slug: rename-to-loomyard
 branch: rename-to-loomyard
 plan: _mill/plan
@@ -30,6 +30,7 @@ holistic-fixing  '2026-06-16T12:41:19Z'
 holistic-reviewing  '2026-06-16T12:44:47Z'
 holistic-fixing  '2026-06-16T12:47:16Z'
 holistic-reviewing  '2026-06-16T12:50:24Z'
+holistic-approved  '2026-06-16T12:52:29Z'
 ```
 
 ## Batches
