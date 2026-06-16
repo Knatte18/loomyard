@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/Knatte18/mhgo/internal/output"
+	"github.com/Knatte18/loomyard/internal/output"
 )
 
 // cmdDown stops the session and deletes state.

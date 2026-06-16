@@ -1,4 +1,4 @@
-module github.com/Knatte18/mhgo
+module github.com/Knatte18/loomyard
 
 go 1.26
 

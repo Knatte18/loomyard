@@ -18,7 +18,7 @@ multiplexer (3.3.4) — so the Claude Code sessions running across a repo's work
 laid out, observed, and recovered. It is the Go reimplementation of millpy's `_psmux.py`
 (which "doesn't work" and is not used as a reference).
 
-Driven by `mhgo mux <subcommand>`; reads the worktree registry from
+Driven by `lyx mux <subcommand>`; reads the worktree registry from
 [`internal/state`](../shared-libs/state.md) and config from
 [`internal/config`](../shared-libs/config.md). mux shells out to `psmux.exe` via Go `exec`
 (no MSYS layer, so no slash-arg mangling — a hazard the probe harness hit from git-bash).
@@ -29,16 +29,16 @@ Driven by `mhgo mux <subcommand>`; reads the worktree registry from
 - **Launch with explicit binary paths, never PATH aliases.** Bare `pwsh` resolved to a
   0-byte WindowsApps execution-alias stub that renders nothing under ConPTY; the explicit
   `C:\Code\tools\powershell7\pwsh.exe` works. Same discipline for `claude`.
-- No Node/npm needed (claude is a native binary; mhgo is Go, psmux is Rust).
-- **mhgo MUST sanitize the psmux child env — this is mandatory, not defensive.** The *primary*
-  use case is **claude itself running `mhgo` to spawn reviewers/implementers**, so mhgo is normally
+- No Node/npm needed (claude is a native binary; Loomyard is Go, psmux is Rust).
+- **Loomyard MUST sanitize the psmux child env — this is mandatory, not defensive.** The *primary*
+  use case is **claude itself running `lyx` to spawn reviewers/implementers**, so Loomyard is normally
   launched from inside a Claude Code session and its env carries `CLAUDE_CODE_CHILD_SESSION=1`
   (+ `CLAUDECODE`, `CLAUDE_CODE_SESSION_ID`, `CLAUDE_CODE_ENTRYPOINT`, `CLAUDE_CODE_SSE_PORT`). If
   these bleed into psmux, the pane's claude treats itself as a nested child and **silently stops
-  persisting its transcript** — breaking resume. Since mhgo (Go) is the chokepoint, it builds the
+  persisting its transcript** — breaking resume. Since Loomyard (Go) is the chokepoint, it builds the
   **psmux server's `exec.Cmd.Env` without those vars** → server + all panes + all claude inherit a
   clean env. Crucially, agent panes spawned later inherit the *server's* env, so they stay clean
-  even when the spawning `mhgo` call was itself launched by a poisoned claude — as long as the
+  even when the spawning `lyx` call was itself launched by a poisoned claude — as long as the
   server was started clean. See [Resume](#resume-after-crash-native---resume-with-env-hygiene).
 
 ## Design model (the load-bearing decisions)
@@ -60,19 +60,19 @@ Driven by `mhgo mux <subcommand>`; reads the worktree registry from
    Windows-Terminal tabs, not multiple psmux clients. `Ctrl+b N` / `select-window` flips the
    single viewport. This is the only "tab" mechanism mux can drive without client-mirroring,
    smallest-client-wins shrinkage, or WT-quoting fragility.
-6. **mhgo never owns OS window management.** Popping ONE maximized terminal attached to a
-   session is reliable (`mhgo mux attach`); precise multi-window docking and WT multi-tab
+6. **Loomyard never owns OS window management.** Popping ONE maximized terminal attached to a
+   session is reliable (`lyx mux attach`); precise multi-window docking and WT multi-tab
    launches are brittle → best-effort, not core. mux is host-agnostic; psmux auto-resizes to
    whatever client attaches.
 7. **Crash recovery via native `claude --resume`, given env hygiene.** mux assigns each pane a
-   `--session-id` at launch and `mhgo mux resume` relaunches `claude --resume <id>` per pane. The
+   `--session-id` at launch and `lyx mux resume` relaunches `claude --resume <id>` per pane. The
    one requirement: **strip the inherited Claude-Code parent-session env before launching claude**
    (see [Resume](#resume-after-crash-native---resume-with-env-hygiene)).
 
 ## Target model: `mux spawn` replaces Agent dispatch (proven feasible — muxpoc)
 
 The end state mux is built toward: **CC stops dispatching sub-agents through the in-process
-Agent tool and instead calls `mhgo mux spawn`, which launches a real interactive `claude`
+Agent tool and instead calls `lyx mux spawn`, which launches a real interactive `claude`
 session in a pane below the orchestrator.** The spawned session must otherwise behave *exactly
 as if it had been spawned via the Agent tool* — same contract:
 
@@ -107,14 +107,14 @@ preserved across crash+recover; focus set on the active bottom pane.
 
 Every hard primitive is proven end-to-end in muxpoc (see [`mux-exploration.md`](mux-exploration.md)):
 clean-env psmux boot, interactive claude launch, **claude spawning its own child pane by running
-`mhgo` from its own Bash tool**, dominant-bottom layout, and `claude --resume` restoring each
-pane's *distinct* context after a `kill-server`. A realistic first cut — **one `mhgo` command per
+`lyx` from its own Bash tool**, dominant-bottom layout, and `claude --resume` restoring each
+pane's *distinct* context after a `kill-server`. A realistic first cut — **one `lyx` command per
 worktree** (open VS Code per worktree as today; run one terminal command that boots the
 orchestrator and everything it needs) — needs only **glue**, not new primitives:
 
 1. **Orchestrator bootstrap + permissions.** Launch the orchestrator claude with a real
    bootstrap prompt/skill (not an empty session) and **pre-granted permissions**
-   (`--dangerously-skip-permissions` or a scoped allowlist) so it can run `mhgo mux spawn`
+   (`--dangerously-skip-permissions` or a scoped allowlist) so it can run `lyx mux spawn`
    autonomously without hanging on a permission prompt.
 2. **File/JSON result channel** (above) — the one architectural decision that determines robust
    vs. fragile.
@@ -154,8 +154,8 @@ its transcript.
 
 | Command | Does |
 |---|---|
-| `mhgo mux sync` | Reconcile the psmux window against the worktree registry: a column per worktree in registry order; add columns for new worktrees, flag columns whose worktree is gone. Re-renders the layout. |
-| `mhgo mux attach` | Pop / attach one maximized terminal to the repo's psmux window. The popped terminal has a real TTY so claude renders there; the orchestrator itself never needs to attach — it observes via `capture-pane`. |
+| `lyx mux sync` | Reconcile the psmux window against the worktree registry: a column per worktree in registry order; add columns for new worktrees, flag columns whose worktree is gone. Re-renders the layout. |
+| `lyx mux attach` | Pop / attach one maximized terminal to the repo's psmux window. The popped terminal has a real TTY so claude renders there; the orchestrator itself never needs to attach — it observes via `capture-pane`. |
 
 ### Naming
 
@@ -199,30 +199,30 @@ These are the tested facts any implementation must respect. Full evidence in
 
 ## Resume after crash — native `--resume` with env hygiene
 
-`mhgo mux resume` rebuilds the layout from `local-state.json` and relaunches `claude --resume
+`lyx mux resume` rebuilds the layout from `local-state.json` and relaunches `claude --resume
 <session-id>` per pane. **This works for programmatically-driven panes** — verified end-to-end
 twice (independent thread + in-session): a full transcript persisted (~14 KB, real
 `user`/`assistant` records) and after a `kill-server` crash the resumed pane recalled its codeword.
 
 ```
-mhgo mux resume:
+lyx mux resume:
   read local-state.json → rebuild windows + columns (layout string)
   per pane: <strip Claude-Code parent-session env>  (see below)
             claude --resume <stored session-id>   # full TUI, native resume
 ```
 
-**The one requirement — mhgo must sanitize the psmux child env (mandatory):**
+**The one requirement — lyx must sanitize the psmux child env (mandatory):**
 `CLAUDE_CODE_CHILD_SESSION=1` (prime culprit), plus `CLAUDECODE`, `CLAUDE_CODE_SESSION_ID`,
 `CLAUDE_CODE_ENTRYPOINT`, `CLAUDE_CODE_SSE_PORT`, must not reach the pane. If they do, claude
 treats the pane as a **nested child session and suppresses transcript writing** — leaving only a
 ~100-byte `ai-title` stub, so `--resume` finds nothing. This single inherited-env effect caused
 every "doesn't persist" result during exploration; it is **not** send-keys, the visible window, or
 the model. **This is the common path, not an edge case:** the primary way mux is used is *claude
-itself running `mhgo` to spawn reviewers/implementers*, so mhgo is normally launched from inside a
-Claude Code session and inherits these vars. Because mhgo (Go) spawns psmux, it is the natural
+itself running `lyx` to spawn reviewers/implementers*, so lyx is normally launched from inside a
+Claude Code session and inherits these vars. Because lyx (Go) spawns psmux, it is the natural
 chokepoint: build the **psmux server's `exec.Cmd.Env` without** these vars (verified-fallback: clear
 them in the pane right before the `claude` launch). Agent panes spawned later inherit the server's
-(clean) env, so they stay clean even when the spawning `mhgo` call came from a poisoned claude —
+(clean) env, so they stay clean even when the spawning `lyx` call came from a poisoned claude —
 provided the server was started clean. (Untested nuance: psmux env-passthrough on attach — verify
 at implementation; the per-launch clear is the proven fallback.)
 
@@ -243,7 +243,7 @@ the milestone is reached.
 ### v2 — subprocess panes (milestone 6)
 
 This is the [target model](#target-model-mux-spawn-replaces-agent-dispatch-proven-feasible--muxpoc)
-realized: `mhgo mux spawn` replaces Agent dispatch, spawning a subprocess (e.g. a reviewer) whose
+realized: `lyx mux spawn` replaces Agent dispatch, spawning a subprocess (e.g. a reviewer) whose
 pane appears **below** its parent in the same column; deeper spawns stack further down (≤3 deep).
 The bottom/active pane dominates the column height; ancestors collapse to compact strips.
 
@@ -264,8 +264,8 @@ read/type grip when a column gets crowded.
 ### mux daemon (milestone 7)
 
 A process running **outside** psmux is required to detect that psmux itself died (nothing
-inside psmux can). `mhgo mux start` launches it as a standalone Windows process (not in a
-pane), running until `mhgo mux stop`.
+inside psmux can). `lyx mux start` launches it as a standalone Windows process (not in a
+pane), running until `lyx mux stop`.
 
 Internal goroutines (corrected for what actually works):
 
@@ -275,7 +275,7 @@ mux daemon
   ├── capture poller — per pane: capture-pane diff ~500ms → append to journal;
   │                    derive state from markers (shortcuts=idle, interrupt=busy);
   │                    detect death via pane_dead. THIS is the monitoring foundation.
-  ├── pane-died hook — optional low-latency nudge: run-shell -b → mhgo mux event;
+  ├── pane-died hook — optional low-latency nudge: run-shell -b → lyx mux event;
   │                    bare trigger (no pane id), so the handler scans list-panes.
   ├── Slack inbound  — Socket Mode listener; routes Slack messages → send-keys
   └── Slack outbound — journal/state events → filter → post to Slack
@@ -303,11 +303,11 @@ which mux then launches `claude --resume <session-id>` (with the parent-session 
 psmux crashes → daemon detects via cmd.Wait() → relaunches psmux
   → reads local-state.json → rebuilds layout → claude --resume <id> per pane
     (parent-session env stripped — see Resume)
-daemon crashes → next pane-died hook → run-shell -b → `mhgo mux ensure-daemon`
+daemon crashes → next pane-died hook → run-shell -b → `lyx mux ensure-daemon`
   → checks named pipe / PID → relaunches daemon
 ```
 
-IPC is a Windows named pipe (`\\.\pipe\mhgo`), not HTTP: `mhgo mux event` is a short-lived
+IPC is a Windows named pipe (`\\.\pipe\lyx`), not HTTP: `lyx mux event` is a short-lived
 process that forwards the (pane-less) event and exits.
 
 **Respawn on death.**
@@ -325,8 +325,8 @@ crash-loop guard: N respawns within T minutes → stop, urgent Slack alert
 One channel per worktree; the daemon bridges both directions.
 
 ```
-Outbound: poller state-change (needs-input / done / recovered) → filter → POST #mhgo-<worktree>
-Inbound:  user types in #mhgo-<worktree> → Socket Mode → daemon → send-keys to pane
+Outbound: poller state-change (needs-input / done / recovered) → filter → POST #lyx-<worktree>
+Inbound:  user types in #lyx-<worktree> → Socket Mode → daemon → send-keys to pane
 ```
 
 Outbound filter stays conservative — needs-human-input 🔴, recovery-failed 🔴, crash-loop 🔴,
@@ -346,6 +346,6 @@ Claude stores transcripts at `%USERPROFILE%\.claude\projects\<project>\<session-
 (the project segment encodes the cwd with `:`, `\`, and `.` all replaced by `-`). With env
 hygiene (see [Resume](#resume-after-crash-native---resume-with-env-hygiene)) mux's panes populate
 these normally. Sessions are **not** portable across machines, though — `claude --resume` only
-works where the JSONL exists. `mhgo session push/pull` (e.g. robocopy to a synced drive) would
+works where the JSONL exists. `lyx session push/pull` (e.g. robocopy to a synced drive) would
 copy them for cross-machine resume. `CLAUDE_CONFIG_DIR` redirects *all* config (incl.
 credentials), so it is unsuitable for selective session sync.

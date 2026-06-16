@@ -15,7 +15,7 @@ git) and the **background sync** (git).
 go test -run '^$' -bench . -benchmem ./internal/board/boardtest
 
 # Background sync suite: real commit/push against the dummy board.
-# Network + push access to github.com/Knatte18/mhgo-wiki-test required.
+# Network + push access to github.com/Knatte18/loomyard-test required.
 go test -tags integration -run '^$' -bench SyncGit -benchmem -benchtime=10x ./internal/board/boardtest
 ```
 
@@ -24,9 +24,9 @@ to show how cost scales — every write re-renders all tasks.
 
 ## What the suites mean
 
-- **Hot path** — what a `mhgo board` command actually waits for: file I/O for a
+- **Hot path** — what a `lyx board` command actually waits for: file I/O for a
   write, JSON load for a read, plus configuration loading (os.Getwd() + config
-  resolution from defaults + the module's `_mhgo/<module>.yaml`). This is the stable signal for catching
+  resolution from defaults + the module's `_lyx/<module>.yaml`). This is the stable signal for catching
   logic/allocation regressions.
 - **Background sync** — the git commit + push the detached pusher does. It never
   blocks a command, so its seconds-scale cost is latency the user does not feel.
@@ -62,8 +62,8 @@ a millisecond for realistic board sizes it is a small part of an `Upsert`.
 when the module moved to the cwd-authoritative configuration model. Previously
 they used `--wiki-path` to inject a board directory; with the new `LoadConfig`
 resolver, the CLI-path benchmarks now run in a temp cwd seeded with
-`_mhgo/board.yaml` and include the `os.Getwd()` + configuration-load cost
-(defaults + the module's `_mhgo/board.yaml` + environment expansion). The historical numbers
+`_lyx/board.yaml` and include the `os.Getwd()` + configuration-load cost
+(defaults + the module's `_lyx/board.yaml` + environment expansion). The historical numbers
 below show the pre-config baseline for comparison.
 
 \* `GetDuringUpsert` reads (seed n=100) while a writer upserts continuously in the
@@ -122,8 +122,8 @@ before the cwd-authoritative configuration model, so no config-load cost.
 
 ## Process startup context
 
-Every `mhgo` invocation is a fresh process. Measured startup on this machine
-(50× a no-op `mhgo`, by launcher):
+Every `lyx` invocation is a fresh process. Measured startup on this machine
+(50× a no-op `lyx`, by launcher):
 
 | Launcher            | ms / process |
 |---------------------|--------------|
@@ -140,7 +140,7 @@ now the dominant cost of a write command.
 ## Push access
 
 `BenchmarkSyncGit` (and `TestIntegrationCommitPush`) push to
-`github.com/Knatte18/mhgo-wiki-test`, so the machine's git credential needs write
+`github.com/Knatte18/loomyard-test`, so the machine's git credential needs write
 access to that repo (granted via collaborator access). Without it, push returns
 HTTP 403 and only the no-push / hot-path suites can run. The repo URL is unchanged
 from earlier revisions and continues to serve as the integration test backend.

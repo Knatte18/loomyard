@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/mhgo/internal/paths"
+	"github.com/Knatte18/loomyard/internal/paths"
 )
 
 // TestList covers the porcelain parser: a fresh repo yields exactly the main

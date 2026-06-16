@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/Knatte18/mhgo/internal/output"
+	"github.com/Knatte18/loomyard/internal/output"
 )
 
 // cmdStatus reports session and pane status.
@@ -61,12 +61,12 @@ func cmdStatus(out io.Writer, cfg Config) int {
 	}
 
 	return output.Ok(out, map[string]any{
-		"have_state":    haveState,
-		"server_up":     serverUp,
-		"session":       session,
-		"socket":        socket,
-		"stripped_env":  strippedEnv,
-		"state_panes":   statePanes,
-		"live_panes":    livePanes,
+		"have_state":   haveState,
+		"server_up":    serverUp,
+		"session":      session,
+		"socket":       socket,
+		"stripped_env": strippedEnv,
+		"state_panes":  statePanes,
+		"live_panes":   livePanes,
 	})
 }

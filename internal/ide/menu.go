@@ -13,14 +13,14 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Knatte18/mhgo/internal/board"
-	"github.com/Knatte18/mhgo/internal/paths"
+	"github.com/Knatte18/loomyard/internal/board"
+	"github.com/Knatte18/loomyard/internal/paths"
 )
 
 // Menu presents an interactive picker of active worktrees, allowing the user to open one via Spawn.
 //
 // It discovers active worktrees from paths.List(l.Cwd), excluding the main worktree (Main==true)
-// and only including those whose <path>/<l.RelPath>/_mhgo directory exists.
+// and only including those whose <path>/<l.RelPath>/_lyx directory exists.
 //
 // Titles are resolved ONLY through the board facade (b.GetTask(slug) → Task.Title).
 // If the board is absent or unhealthy, it returns a HARD error after b.HealthCheck() fails.
@@ -51,7 +51,7 @@ func Menu(l *paths.Layout, in io.Reader, out io.Writer) error {
 		return fmt.Errorf("list worktrees: %w", err)
 	}
 
-	// Filter: exclude main, and only keep those with _mhgo at <path>/<l.RelPath>/_mhgo
+	// Filter: exclude main, and only keep those with _lyx at <path>/<l.RelPath>/_lyx
 	var activeWorktrees []string
 	var slugs []string
 
@@ -64,11 +64,11 @@ func Menu(l *paths.Layout, in io.Reader, out io.Writer) error {
 		// Extract slug from worktree path (basename)
 		slug := filepath.Base(entry.Path)
 
-		// Check if _mhgo exists at <path>/<l.RelPath>/_mhgo
-		mhgoPath := filepath.Join(entry.Path, l.RelPath, "_mhgo")
-		stat, err := os.Stat(mhgoPath)
+		// Check if _lyx exists at <path>/<l.RelPath>/_lyx
+		lyxPath := filepath.Join(entry.Path, l.RelPath, "_lyx")
+		stat, err := os.Stat(lyxPath)
 		if err != nil || !stat.IsDir() {
-			// _mhgo doesn't exist or is not a directory; skip
+			// _lyx doesn't exist or is not a directory; skip
 			continue
 		}
 

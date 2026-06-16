@@ -4,7 +4,7 @@
 package worktree
 
 import (
-	"github.com/Knatte18/mhgo/internal/paths"
+	"github.com/Knatte18/loomyard/internal/paths"
 )
 
 // WorktreeEntry is a type alias for paths.WorktreeEntry.

@@ -2,14 +2,14 @@
 
 Empirical evidence for how the **mux** module ([`mux.md`](mux.md)) can drive psmux pane
 **switching/focus** off Claude Code's *own* signals — its **hook system** and the
-**`claude agents --json`** registry — rather than (or alongside) the `mhgo mux spawn`
+**`claude agents --json`** registry — rather than (or alongside) the `lyx mux spawn`
 replace-dispatch model. Companion to [`mux-exploration.md`](mux-exploration.md) (which proved
 the psmux primitives); this file proves the **CC-side** primitives.
 
 All claims below are hands-on, verified on this box unless marked **UNVERIFIED**. Probe
 scaffolding lived in `.scratch/hook-probe/` (gitignored): a `logger.ps1` that dumps each hook's
 raw stdin payload to a uniquely-named file, a `settings.json` wiring nine hook events to it, and
-an isolated psmux server (`psmux -L mhgohookprobe`) running a **real interactive** `claude` — never
+an isolated psmux server (`psmux -L lyxhookprobe`) running a **real interactive** `claude` — never
 `claude -p` (headless is out of scope; panes must be interactive sessions).
 
 Environment (verified 2026-06-15):
@@ -89,7 +89,7 @@ fire — see Open.)
 - **Commands run under git-bash (`/usr/bin/bash`) on Windows — NOT cmd/pwsh.** First probe failed
   with `/usr/bin/bash: line 1: C:Codetoolspowershell7pwsh.exe: command not found` — bash ate the
   Windows backslashes. **Fix: POSIX/forward-slash paths or a PATH-resolved binary.** This is benign
-  for the real design — a hook command of `mhgo mux …` resolves fine under bash — but any path with
+  for the real design — a hook command of `lyx mux …` resolves fine under bash — but any path with
   backslashes in a hook command is silently destroyed. (Mirrors the send-keys slash-arg hazard in
   [`mux-exploration.md`](mux-exploration.md), different surface.)
 - **Synchronous**, JSON delivered on **stdin**, one process per fire. No hooks-trust prompt blocked
@@ -202,9 +202,9 @@ needs-input) reserved for monitoring/headless work.
 
 The model first, because it dictates which hooks matter: **mux never uses Claude Code's in-process
 Agent tool.** Every agent — the orchestrator and every descendant — is a **separate OS `claude`
-process** that `mhgo mux spawn` launches in its own psmux pane, with its **task injected as the launch
+process** that `lyx mux spawn` launches in its own psmux pane, with its **task injected as the launch
 `[prompt]` arg** and a **mux-assigned `--session-id`**. A parent spawns a child by running
-`mhgo mux spawn` through its **Bash tool**, not the Agent tool. So the operative signals are each
+`lyx mux spawn` through its **Bash tool**, not the Agent tool. So the operative signals are each
 process's **own session-scoped hooks**, keyed by the session id mux already assigned — *not* the
 orchestrator's subagent hooks.
 
@@ -213,9 +213,9 @@ orchestrator's subagent hooks.
 Ship each spawned `claude` a `--settings` whose hooks call back, keyed by its **own `session_id`**:
 
 ```
-SessionStart      → mhgo mux on-start  --session-id <own>   # confirm/repair pane↔session map
-UserPromptSubmit   → mhgo mux on-active --session-id <own>   # pane became active
-Stop               → mhgo mux on-idle   --session-id <own>   # IMMEDIATE idle/needs-input edge; last_assistant_message says what it's waiting on
+SessionStart      → lyx mux on-start  --session-id <own>   # confirm/repair pane↔session map
+UserPromptSubmit   → lyx mux on-active --session-id <own>   # pane became active
+Stop               → lyx mux on-idle   --session-id <own>   # IMMEDIATE idle/needs-input edge; last_assistant_message says what it's waiting on
 Notification       → (optional) delayed needs-input nudge — NOT on the critical path; see Open
 ```
 
@@ -226,7 +226,7 @@ carried that id. This gives **event-driven, per-pane** active/idle edges — rep
 capture-pane idle poller *and* the spotty agents-JSON `status` for the focus decision. Switch logic:
 on a child `Stop` (idle/done), `select-pane`/`select-window` to the next active pane (e.g. back to
 the parent). It scales to the v2 stack (orchestrator → child → grandchild, ≤3 deep): every level is
-its own `mhgo mux spawn` process, so **no Agent tool appears anywhere in the tree.**
+its own `lyx mux spawn` process, so **no Agent tool appears anywhere in the tree.**
 
 **`Stop` is the operative idle/needs-input edge — not `Notification`.** `Stop` fires the instant a
 turn ends and carries `last_assistant_message` (so mux sees *whether* the pane is asking a question)
@@ -240,7 +240,7 @@ cannot occur for autonomous mux children (they run with bypass). So mux keys foc
 The one threat to the "everything lives in a pane" invariant: a spawned `claude` could still invoke
 its **in-process Agent tool**, running nested work invisibly (no pane, no session id of its own).
 Hold the invariant with a `PreToolUse` matcher on `Agent` in each child's settings that **denies**
-the tool with a reason steering the model to run `mhgo mux spawn` instead. (`PreToolUse` can deny +
+the tool with a reason steering the model to run `lyx mux spawn` instead. (`PreToolUse` can deny +
 inject context per the reference; the deny-and-steer path itself is **not yet probed** — worth a
 quick spike.)
 
@@ -289,7 +289,7 @@ reliability for the permission-prompt case. The own-vs-display fork — "mux own
 ### Trigger model
 
 ```
-CC hook fires (≈0 cost)  →  mhgo mux <verb> --session-id|--agent-id <x>
+CC hook fires (≈0 cost)  →  lyx mux <verb> --session-id|--agent-id <x>
                           →  (optional) one `claude agents --json` reconcile
                           →  psmux select-pane / select-window / render-layout
 ```
@@ -328,7 +328,7 @@ cost (no idle CPU), and fidelity (payload says *what* the pane is waiting on via
   `id`) while running, or only background-*dispatched* ones? The in-process ones here used an
   `outputFile` under the parent; their live registry visibility was not directly captured.
 - [ ] **Guardrail spike** (§B): does a `PreToolUse` matcher on `Agent` reliably **deny** the
-  in-process Agent tool and inject a reason that steers the model to `mhgo mux spawn` instead? The
+  in-process Agent tool and inject a reason that steers the model to `lyx mux spawn` instead? The
   deny-and-steer path is not yet probed.
 - [ ] **Supervisor-viewer spike** (§D — the consequential one): tile **N** `claude attach <id>` panes
   over one supervisor and test psmux smallest-client-wins, detach/re-attach + crash behavior, whether
@@ -339,13 +339,13 @@ cost (no idle CPU), and fidelity (payload says *what* the pane is waiting on via
 
 ## Bottom line
 
-mux's model is **one separate `claude` process per pane, spawned by `mhgo mux spawn` (via Bash) with
+mux's model is **one separate `claude` process per pane, spawned by `lyx mux spawn` (via Bash) with
 the task injected at launch — never the in-process Agent tool.** Given that, CC hooks are a
 **viable, low-cost, event-driven foundation for pane switching**, a real upgrade over the
 capture-pane poller for the *focus* decision, because **each spawned process's hooks carry its own
 `session_id`** — the exact key mux assigned it. The probe proved this directly (the probe session
 *was* such a spawned, injected process). mux should: (1) ship each spawned `claude` callback hooks
-in `--settings` keyed by its own session id (§A), keying focus on `Stop`; (2) keep `mhgo mux spawn`
+in `--settings` keyed by its own session id (§A), keying focus on `Stop`; (2) keep `lyx mux spawn`
 owning pane creation at every level of the ≤3-deep stack; (3) add a `PreToolUse(Agent)` **deny**
 guardrail so nested work can't slip back in-process (§B, spike pending); (4) use `claude agents
 --json` as an event-time reconciler keyed by `sessionId`. The `agent_id`/`SubagentStop` machinery is

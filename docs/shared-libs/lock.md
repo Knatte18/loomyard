@@ -1,7 +1,7 @@
 # `internal/lock`
 
 Cross-process file locking, wrapping `github.com/gofrs/flock`. Coordinates the
-short-lived `mhgo` processes on a machine through the filesystem.
+short-lived Loomyard processes on a machine through the filesystem.
 
 - **`AcquireWriteLock(lockPath)`** — exclusive; blocks until free.
 - **`AcquireReadLock(lockPath)`** — shared; many readers at once, blocked only by an

@@ -17,13 +17,13 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/Knatte18/mhgo/internal/board"
-	flock "github.com/Knatte18/mhgo/internal/lock"
+	"github.com/Knatte18/loomyard/internal/board"
+	flock "github.com/Knatte18/loomyard/internal/lock"
 )
 
 const (
-	stateRelPath = ".mhgo/muxpoc-state.json"
-	lockRelPath  = ".mhgo/muxpoc-state.lock"
+	stateRelPath = ".lyx/muxpoc-state.json"
+	lockRelPath  = ".lyx/muxpoc-state.lock"
 )
 
 // Pane represents a single psmux pane in the session.
@@ -41,7 +41,7 @@ type MuxpocState struct {
 	Panes       []Pane   `json:"panes"`        // panes in the session
 }
 
-// LoadState reads the muxpoc state from cwd/.mhgo/muxpoc-state.json under a
+// LoadState reads the muxpoc state from cwd/.lyx/muxpoc-state.json under a
 // shared read lock. Returns (nil, "", nil) if the file is absent. Returns
 // (nil, "<warn msg>", nil) if the file is corrupt/unparseable (no error returned
 // — treat as no session). Returns (*state, "", nil) on success.
@@ -77,8 +77,8 @@ func LoadState(cwd string) (*MuxpocState, string, error) {
 	return &state, "", nil
 }
 
-// SaveState creates .mhgo/ if absent, acquires an exclusive write lock on
-// .mhgo/muxpoc-state.lock, and writes the state atomically (temp file + rename).
+// SaveState creates .lyx/ if absent, acquires an exclusive write lock on
+// .lyx/muxpoc-state.lock, and writes the state atomically (temp file + rename).
 // Releases the lock via defer.
 func SaveState(cwd string, s *MuxpocState) error {
 	if s == nil {
@@ -88,10 +88,10 @@ func SaveState(cwd string, s *MuxpocState) error {
 	statePath := filepath.Join(cwd, stateRelPath)
 	lockPath := filepath.Join(cwd, lockRelPath)
 
-	// Create .mhgo/ directory if absent
-	mhgoDir := filepath.Dir(statePath)
-	if err := os.MkdirAll(mhgoDir, 0o755); err != nil {
-		return fmt.Errorf("mkdir .mhgo: %w", err)
+	// Create .lyx/ directory if absent
+	lyxDir := filepath.Dir(statePath)
+	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
+		return fmt.Errorf("mkdir .lyx: %w", err)
 	}
 
 	lock, err := flock.AcquireWriteLock(lockPath)
@@ -112,7 +112,7 @@ func SaveState(cwd string, s *MuxpocState) error {
 	return nil
 }
 
-// DeleteState removes .mhgo/muxpoc-state.json. Returns nil if the file is absent.
+// DeleteState removes .lyx/muxpoc-state.json. Returns nil if the file is absent.
 func DeleteState(cwd string) error {
 	statePath := filepath.Join(cwd, stateRelPath)
 	if err := os.Remove(statePath); err != nil {
@@ -173,7 +173,7 @@ func strippedEnvKeys(environ []string) []string {
 
 // socketName derives a stable socket name: take filepath.Base(cwd), replace every
 // character that is not [a-zA-Z0-9_-] with -, lowercase, and prefix with muxpoc-.
-// Example: C:\Code\mhgo\wts\mhgo-mux-design → muxpoc-mhgo-mux-design.
+// Example: C:\Code\loomyard\wts\loomyard-mux-design → muxpoc-loomyard-mux-design.
 func socketName(cwd string) string {
 	baseName := filepath.Base(cwd)
 	// Replace non-alphanumeric, non-dash, non-underscore characters with dash

@@ -14,7 +14,7 @@ import (
 )
 
 // TestEnforcement walks the repo source tree and verifies that no source file
-// outside internal/paths and cmd/mhgo contains the raw cwd/root primitives
+// outside internal/paths and cmd/lyx contains the raw cwd/root primitives
 // os.Getwd or git rev-parse --show-toplevel.
 func TestEnforcement(t *testing.T) {
 	t.Run("tree-scan", func(t *testing.T) {
@@ -61,9 +61,9 @@ func TestEnforcement(t *testing.T) {
 				// Normalize path separators to forward slashes for comparison.
 				pkgDir = filepath.ToSlash(pkgDir)
 
-				// Check allowlist: internal/paths, cmd/mhgo/main.go
+				// Check allowlist: internal/paths, cmd/lyx/main.go
 				isAllowed := pkgDir == "internal/paths" ||
-					(pkgDir == "cmd/mhgo" && d.Name() == "main.go")
+					(pkgDir == "cmd/lyx" && d.Name() == "main.go")
 
 				// Skip files in the allowlist (they are allowed to contain banned tokens).
 				if isAllowed {

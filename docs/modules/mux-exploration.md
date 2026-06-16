@@ -7,14 +7,14 @@ panes, what the harness already owns vs. what mux must own, and what a minimal v
 This file is the running, committed log of that exploration; the final `mux.md`
 rewrite draws from it.
 
-All probes use an isolated psmux server (`psmux -L mhgoprobe …`) so the operator's real
+All probes use an isolated psmux server (`psmux -L lyxprobe …`) so the operator's real
 psmux is never touched. Scratch scripts live in `.scratch/mux-probe/` (gitignored).
 
 Environment (verified 2026-06-11):
 - psmux **3.3.4** (`C:\Code\tools\bin\psmux.exe`)
 - pwsh **7.6.2** (`C:\Code\tools\powershell7\pwsh.exe`; a WindowsApps alias stub also exists)
 - claude **2.1.173**, native install first on PATH (`C:\Users\hanf\.local\bin\claude.exe`)
-- node **not required** (claude runs from the native Bun binary; mhgo is Go, psmux is Rust)
+- node **not required** (claude runs from the native Bun binary; Loomyard is Go, psmux is Rust)
 - psmux's default shell on this box = PowerShell 7
 
 ---
@@ -36,24 +36,24 @@ Environment (verified 2026-06-11):
 5. **Overflow / orchestrator-switch via psmux *windows* inside ONE attached client** — not
    WT tabs, not multiple psmux clients. `Ctrl+b` switches. This is the only "tab" mechanism
    mux can drive without client-mirroring, smallest-wins, or WT-quoting fragility.
-6. **mhgo never owns OS window management.** Popping ONE maximized window attached to a
-   session is fine and reliable (`mhgo mux attach`). Precise multi-window docking and WT
+6. **Loomyard never owns OS window management.** Popping ONE maximized window attached to a
+   session is fine and reliable (`lyx mux attach`). Precise multi-window docking and WT
    multi-tab launching are brittle → best-effort, not core. mux is host-agnostic; psmux
    auto-resizes to the attached client.
 7. **Crash recovery via native `claude --resume` — works, given env hygiene.** mux assigns each
    pane `--session-id <uuid>` at launch, records it (+ worktree + layout) in local-state, and after
-   a crash `mhgo mux resume` rebuilds the layout and runs `claude --resume <session-id>` per pane.
+   a crash `lyx mux resume` rebuilds the layout and runs `claude --resume <session-id>` per pane.
    **Verified end-to-end twice** (this session + an independent thread): full transcript persisted
    (~14 KB, real `user`/`assistant` records), and after `kill-server` the resumed pane recalled the
    codeword. **The one requirement:** strip the inherited Claude-Code parent-session env before
    launching claude in a pane — `CLAUDE_CODE_CHILD_SESSION=1` (prime culprit), plus `CLAUDECODE`,
    `CLAUDE_CODE_SESSION_ID`, `CLAUDE_CODE_ENTRYPOINT`, `CLAUDE_CODE_SSE_PORT`. When inherited, claude
    treats the pane as a nested child and **suppresses transcript writing** → empty resume. **This is
-   the common path, not an edge case:** the primary use is *claude itself running `mhgo` to spawn
-   reviewers/implementers*, so mhgo is normally launched from inside a Claude Code session and
-   inherits these vars. mhgo (Go) is the chokepoint → spawn the psmux server with a sanitized
+   the common path, not an edge case:** the primary use is *claude itself running `lyx` to spawn
+   reviewers/implementers*, so Loomyard is normally launched from inside a Claude Code session and
+   inherits these vars. Loomyard (Go) is the chokepoint → spawn the psmux server with a sanitized
    `exec.Cmd.Env`; agent panes spawned later inherit the server's clean env even when the spawning
-   `mhgo` call came from a poisoned claude (provided the server was started clean). Per-launch clear
+   `lyx` call came from a poisoned claude (provided the server was started clean). Per-launch clear
    in the pane is the verified fallback. mux's `capture-pane` journal is then **optional**
    belt-and-suspenders, not the primary resume mechanism.
 
@@ -243,7 +243,7 @@ poisoning env present — they are the symptom, not a limitation):
   `assistant` records) — that is why a human's reboot → `/resume` works. The psmux-pane programmatic
   case does NOT reach this state (init records never written), so this reference does not transfer
   to mux's use.
-- **Design implication (Landed decision 7):** `mhgo mux resume` **cannot** use native
+- **Design implication (Landed decision 7):** `lyx mux resume` **cannot** use native
   `claude --resume` for the programmatically-driven panes mux runs. mux keeps its **own** durable
   per-pane journal (poll `capture-pane`, append to local-state, keyed by the mux-assigned
   `--session-id` stored from t0) and on resume rebuilds the layout, relaunches a real interactive
@@ -254,7 +254,7 @@ poisoning env present — they are the symptom, not a limitation):
 `send-keys -l "/exit"` (or any leading-`/` arg: `/model`, `/resume`, absolute POSIX paths) run
 **from the Bash tool (git-bash/MSYS)** is path-converted to e.g. `C:/Program Files/Git/exit` and
 never reaches claude. Drive `send-keys` from **pwsh** (or Go `exec`, which has no MSYS layer).
-mhgo is unaffected; the probe harness was.
+Loomyard is unaffected; the probe harness was.
 
 ### Hooks & event-driven monitoring (tested 2026-06-12)
 psmux documents tmux-style hooks (`set-hook -g <event> "<cmd>"`, `show-hooks`, `run-shell -b`).

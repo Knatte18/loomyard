@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Knatte18/mhgo/internal/git"
+	"github.com/Knatte18/loomyard/internal/git"
 )
 
 // WorktreeEntry represents a single git worktree in the output of `git worktree list`.

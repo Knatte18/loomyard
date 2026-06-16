@@ -1,18 +1,18 @@
-# Overview: mhgo
+# Overview: Loomyard
 
-`mhgo` is a Go toolkit of one-shot CLI modules. Each invocation starts a process,
+Loomyard is a Go toolkit of one-shot CLI modules. Each invocation starts a process,
 runs one command, writes JSON to stdout, and exits — there is no daemon and no
 shared memory. State lives on disk per module and is coordinated with file locks,
-so concurrent `mhgo` processes on a machine cooperate through the filesystem. The
+so concurrent `lyx` processes on a machine cooperate through the filesystem. The
 first module, **board** (a task tracker), is implemented; **worktree** is
 implemented; **muxpoc**, a proof-of-concept orchestrator, is shipped; and the
 planned clean `internal/mux` remains design (see [roadmap.md](roadmap.md)).
 
-In the long term, mhgo is intended to **replace mill/millhouse (Python)** entirely.
+In the long term, Loomyard is intended to **replace mill/millhouse (Python)** entirely.
 We get there by building these modules as self-contained toolkits first;
 orchestration comes last. See [Principles](#principles).
 
-Module path: `github.com/Knatte18/mhgo`
+Module path: `github.com/Knatte18/loomyard`
 
 ## Principles
 
@@ -39,15 +39,15 @@ Module path: `github.com/Knatte18/mhgo`
 The `internal/paths` package is the sole owner of cwd and worktree-root geometry math. It
 exposes two entry points:
 
-- `Getwd()` — the only permitted call to `os.Getwd` outside `cmd/mhgo/main.go`.
+- `Getwd()` — the only permitted call to `os.Getwd` outside `cmd/lyx/main.go`.
 - `Resolve(cwd)` → `Layout` — one-stop geometry: cwd, repo root (from `git rev-parse
   --show-toplevel`), container, relative path, and main worktree.
 
-The `Layout` type provides geometry methods: `MhgoDir()`, `WorktreePath(slug)`,
+The `Layout` type provides geometry methods: `LyxDir()`, `WorktreePath(slug)`,
 `PortalsDir()`, `PortalTarget(slug)`, `LaunchersDir()`, `LauncherDir(slug)`, `HubName()`.
 
 **Raw `os.Getwd` and `git rev-parse --show-toplevel` are banned** outside `internal/paths`
-and `cmd/mhgo/main.go`. The ban is enforced at `go test` / CI time by
+and `cmd/lyx/main.go`. The ban is enforced at `go test` / CI time by
 `internal/paths/enforcement_test.go`, which walks the entire source tree and fails the build
 if either literal token is found in any non-test `.go` file outside the allowlist.
 
@@ -56,8 +56,8 @@ See [CONSTRAINTS.md](../CONSTRAINTS.md) for details.
 ## Structure
 
 ```
-github.com/Knatte18/mhgo/
-├── cmd/mhgo/
+github.com/Knatte18/loomyard/
+├── cmd/lyx/
 │   └── main.go                   entrypoint: routes the <module> argument to a module
 ├── internal/board/               the board module (see modules/board.md)
 ├── internal/worktree/            the worktree module (see modules/worktree.md)
@@ -70,13 +70,13 @@ github.com/Knatte18/mhgo/
 └── internal/output/              shared JSON output
 ```
 
-`cmd/mhgo` is `package main`; everything else is in `internal/`. `main` is the
+`cmd/lyx` is `package main`; everything else is in `internal/`. `main` is the
 only thing that imports a module.
 
 ## Module dispatch
 
-`cmd/mhgo/main.go` is a thin router. `run(args, out)` reads the first argument
-(`<module>`) and hands the rest to that module's CLI handler — `mhgo board ...`
+`cmd/lyx/main.go` is a thin router. `run(args, out)` reads the first argument
+(`<module>`) and hands the rest to that module's CLI handler — `lyx board ...`
 calls `board.RunCLI`. Each module owns its own flags, subcommands, and JSON
 output. Adding a module is one more `case`; nothing else in `main` changes.
 
@@ -103,7 +103,7 @@ All commands print JSON: `{"ok":true, ...}` on success,
 
 ## Modules
 
-User-facing modules each get one `mhgo <module>` namespace:
+User-facing modules each get one `lyx <module>` namespace:
 
 - **board** — the task-tracker board (`internal/board`). ✅ Implemented. See
   [modules/board.md](modules/board.md).
@@ -116,8 +116,8 @@ User-facing modules each get one `mhgo <module>` namespace:
 - **mux** — psmux session layout (column per worktree; daemon later). Design:
   [modules/mux.md](modules/mux.md).
 
-**init** is not a module but a cross-cutting setup command (`mhgo init`) that
-scaffolds the shared `_mhgo/` config dir for every module. See
+**init** is not a module but a cross-cutting setup command (`lyx init`) that
+scaffolds the shared `_lyx/` config dir for every module. See
 [modules/board.md#init](modules/board.md#init).
 
 The user-facing modules sit on a thin layer of shared infrastructure

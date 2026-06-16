@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Knatte18/mhgo/internal/paths"
+	"github.com/Knatte18/loomyard/internal/paths"
 )
 
 // TestPickColorNeverReturnsGreen tests that green is never returned for a child worktree.
@@ -27,9 +27,9 @@ func TestPickColorNeverReturnsGreen(t *testing.T) {
 	}
 
 	layout := &paths.Layout{
-		Container:   tmpDir,
+		Container:    tmpDir,
 		MainWorktree: mainPath,
-		RelPath:     ".",
+		RelPath:      ".",
 	}
 
 	color := pickColor(layout)

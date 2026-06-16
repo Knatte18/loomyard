@@ -23,14 +23,14 @@ func TestSmokeFullLifecycle(t *testing.T) {
 
 	// Build config with cheap placeholder commands
 	cfg := Config{
-		PsmuxPath:  `C:\Code\tools\bin\psmux.exe`,
-		PwshPath:   `C:\Code\tools\powershell7\pwsh.exe`,
-		ClaudePath: "",
-		LaunchTpl:  "Write-Host ready; Read-Host",
-		ResumeTpl:  "Write-Host resumed; Read-Host",
-		Width:      220,
-		Height:     50,
-		Interval:   2 * time.Second,
+		PsmuxPath:    `C:\Code\tools\bin\psmux.exe`,
+		PwshPath:     `C:\Code\tools\powershell7\pwsh.exe`,
+		ClaudePath:   "",
+		LaunchTpl:    "Write-Host ready; Read-Host",
+		ResumeTpl:    "Write-Host resumed; Read-Host",
+		Width:        220,
+		Height:       50,
+		Interval:     2 * time.Second,
 		WorktreeRoot: "", // Will set after chdir
 	}
 
@@ -39,7 +39,7 @@ func TestSmokeFullLifecycle(t *testing.T) {
 		t.Skipf("psmux not found at %s", cfg.PsmuxPath)
 	}
 
-	// Run in an isolated temp dir so the test never writes .mhgo/ into the
+	// Run in an isolated temp dir so the test never writes .lyx/ into the
 	// package directory. The cmd* functions derive state path and socket from
 	// cfg.WorktreeRoot, so chdir into the temp dir for the duration of the test.
 	origWd, err := os.Getwd()

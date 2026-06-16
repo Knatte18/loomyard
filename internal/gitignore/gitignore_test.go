@@ -11,14 +11,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/mhgo/internal/gitignore"
+	"github.com/Knatte18/loomyard/internal/gitignore"
 )
 
 // TestEnsureNewFileCreation tests that a new .gitignore is created with delimiters and entries.
 func TestEnsureNewFileCreation(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	changed, err := gitignore.Ensure(tmpDir, ".mhgo/")
+	changed, err := gitignore.Ensure(tmpDir, ".lyx/")
 	if err != nil {
 		t.Fatalf("Ensure failed: %v", err)
 	}
@@ -37,18 +37,18 @@ func TestEnsureNewFileCreation(t *testing.T) {
 	contentStr := string(content)
 
 	// Check for start marker
-	if !strings.Contains(contentStr, "# === mhgo-managed ===") {
+	if !strings.Contains(contentStr, "# === lyx-managed ===") {
 		t.Errorf("expected start marker in .gitignore, got: %s", contentStr)
 	}
 
 	// Check for end marker
-	if !strings.Contains(contentStr, "# === end mhgo-managed ===") {
+	if !strings.Contains(contentStr, "# === end lyx-managed ===") {
 		t.Errorf("expected end marker in .gitignore, got: %s", contentStr)
 	}
 
-	// Check for .mhgo/ entry
-	if !strings.Contains(contentStr, ".mhgo/") {
-		t.Errorf("expected .mhgo/ entry in .gitignore, got: %s", contentStr)
+	// Check for .lyx/ entry
+	if !strings.Contains(contentStr, ".lyx/") {
+		t.Errorf("expected .lyx/ entry in .gitignore, got: %s", contentStr)
 	}
 
 	// Verify final newline
@@ -61,8 +61,8 @@ func TestEnsureNewFileCreation(t *testing.T) {
 func TestEnsureAddEntryToExistingBlock(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// First call: create with .mhgo/
-	changed1, err := gitignore.Ensure(tmpDir, ".mhgo/")
+	// First call: create with .lyx/
+	changed1, err := gitignore.Ensure(tmpDir, ".lyx/")
 	if err != nil {
 		t.Fatalf("first Ensure failed: %v", err)
 	}
@@ -89,18 +89,18 @@ func TestEnsureAddEntryToExistingBlock(t *testing.T) {
 	contentStr := string(content)
 
 	// Check that both entries are present
-	if !strings.Contains(contentStr, ".mhgo/") {
-		t.Errorf("expected .mhgo/ in .gitignore")
+	if !strings.Contains(contentStr, ".lyx/") {
+		t.Errorf("expected .lyx/ in .gitignore")
 	}
 	if !strings.Contains(contentStr, ".vscode/") {
 		t.Errorf("expected .vscode/ in .gitignore")
 	}
 
-	// Verify they're in sorted order by checking .mhgo/ comes before .vscode/
-	mhgoIdx := strings.Index(contentStr, ".mhgo/")
+	// Verify they're in sorted order by checking .lyx/ comes before .vscode/
+	lyxIdx := strings.Index(contentStr, ".lyx/")
 	vscodeIdx := strings.Index(contentStr, ".vscode/")
-	if mhgoIdx > vscodeIdx {
-		t.Errorf("entries not in sorted order: .mhgo/ at %d, .vscode/ at %d", mhgoIdx, vscodeIdx)
+	if lyxIdx > vscodeIdx {
+		t.Errorf("entries not in sorted order: .lyx/ at %d, .vscode/ at %d", lyxIdx, vscodeIdx)
 	}
 }
 
@@ -108,8 +108,8 @@ func TestEnsureAddEntryToExistingBlock(t *testing.T) {
 func TestEnsureIdempotency(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// First call: create with .mhgo/
-	changed1, err := gitignore.Ensure(tmpDir, ".mhgo/")
+	// First call: create with .lyx/
+	changed1, err := gitignore.Ensure(tmpDir, ".lyx/")
 	if err != nil {
 		t.Fatalf("first Ensure failed: %v", err)
 	}
@@ -125,7 +125,7 @@ func TestEnsureIdempotency(t *testing.T) {
 	}
 
 	// Second call: re-add the same entry
-	changed2, err := gitignore.Ensure(tmpDir, ".mhgo/")
+	changed2, err := gitignore.Ensure(tmpDir, ".lyx/")
 	if err != nil {
 		t.Fatalf("second Ensure failed: %v", err)
 	}
@@ -148,8 +148,8 @@ func TestEnsureIdempotency(t *testing.T) {
 func TestEnsureTwoModuleSetMerge(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Module 1: board init contributes .mhgo/
-	changed1, err := gitignore.Ensure(tmpDir, ".mhgo/")
+	// Module 1: board init contributes .lyx/
+	changed1, err := gitignore.Ensure(tmpDir, ".lyx/")
 	if err != nil {
 		t.Fatalf("first Ensure failed: %v", err)
 	}
@@ -176,20 +176,20 @@ func TestEnsureTwoModuleSetMerge(t *testing.T) {
 	contentStr := string(content)
 
 	// Count the start markers (should be exactly 1)
-	startCount := strings.Count(contentStr, "# === mhgo-managed ===")
+	startCount := strings.Count(contentStr, "# === lyx-managed ===")
 	if startCount != 1 {
 		t.Errorf("expected exactly 1 start marker, found %d", startCount)
 	}
 
 	// Count the end markers (should be exactly 1)
-	endCount := strings.Count(contentStr, "# === end mhgo-managed ===")
+	endCount := strings.Count(contentStr, "# === end lyx-managed ===")
 	if endCount != 1 {
 		t.Errorf("expected exactly 1 end marker, found %d", endCount)
 	}
 
 	// Verify both entries are present
-	if !strings.Contains(contentStr, ".mhgo/") {
-		t.Errorf("expected .mhgo/ in .gitignore")
+	if !strings.Contains(contentStr, ".lyx/") {
+		t.Errorf("expected .lyx/ in .gitignore")
 	}
 	if !strings.Contains(contentStr, ".vscode/") {
 		t.Errorf("expected .vscode/ in .gitignore")
@@ -209,7 +209,7 @@ func TestEnsurePreservesOutsideBlock(t *testing.T) {
 	}
 
 	// Call Ensure
-	changed, err := gitignore.Ensure(tmpDir, ".mhgo/")
+	changed, err := gitignore.Ensure(tmpDir, ".lyx/")
 	if err != nil {
 		t.Fatalf("Ensure failed: %v", err)
 	}
@@ -232,11 +232,11 @@ func TestEnsurePreservesOutsideBlock(t *testing.T) {
 	}
 
 	// Verify the managed block is present
-	if !strings.Contains(contentStr, "# === mhgo-managed ===") {
+	if !strings.Contains(contentStr, "# === lyx-managed ===") {
 		t.Errorf("expected start marker")
 	}
-	if !strings.Contains(contentStr, ".mhgo/") {
-		t.Errorf("expected .mhgo/ entry")
+	if !strings.Contains(contentStr, ".lyx/") {
+		t.Errorf("expected .lyx/ entry")
 	}
 }
 
@@ -244,7 +244,7 @@ func TestEnsurePreservesOutsideBlock(t *testing.T) {
 func TestEnsureDelimiterExactness(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	changed, err := gitignore.Ensure(tmpDir, ".mhgo/")
+	changed, err := gitignore.Ensure(tmpDir, ".lyx/")
 	if err != nil {
 		t.Fatalf("Ensure failed: %v", err)
 	}
@@ -261,18 +261,18 @@ func TestEnsureDelimiterExactness(t *testing.T) {
 	contentStr := string(content)
 
 	// Check exact delimiters
-	if !strings.Contains(contentStr, "# === mhgo-managed ===") {
-		t.Errorf("expected exact start marker: '# === mhgo-managed ==='")
+	if !strings.Contains(contentStr, "# === lyx-managed ===") {
+		t.Errorf("expected exact start marker: '# === lyx-managed ==='")
 	}
-	if !strings.Contains(contentStr, "# === end mhgo-managed ===") {
-		t.Errorf("expected exact end marker: '# === end mhgo-managed ==='")
+	if !strings.Contains(contentStr, "# === end lyx-managed ===") {
+		t.Errorf("expected exact end marker: '# === end lyx-managed ==='")
 	}
 
 	// Verify no typos or variations
-	if strings.Contains(contentStr, "# === mhgo-managed") && !strings.Contains(contentStr, "# === mhgo-managed ===") {
+	if strings.Contains(contentStr, "# === lyx-managed") && !strings.Contains(contentStr, "# === lyx-managed ===") {
 		t.Errorf("found incorrect variant of start marker")
 	}
-	if strings.Contains(contentStr, "# === end mhgo-managed") && !strings.Contains(contentStr, "# === end mhgo-managed ===") {
+	if strings.Contains(contentStr, "# === end lyx-managed") && !strings.Contains(contentStr, "# === end lyx-managed ===") {
 		t.Errorf("found incorrect variant of end marker")
 	}
 }
@@ -281,7 +281,7 @@ func TestEnsureDelimiterExactness(t *testing.T) {
 func TestEnsureMultipleEntriesAtOnce(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	changed, err := gitignore.Ensure(tmpDir, ".mhgo/", ".vscode/", ".idea/")
+	changed, err := gitignore.Ensure(tmpDir, ".lyx/", ".vscode/", ".idea/")
 	if err != nil {
 		t.Fatalf("Ensure failed: %v", err)
 	}
@@ -298,8 +298,8 @@ func TestEnsureMultipleEntriesAtOnce(t *testing.T) {
 	contentStr := string(content)
 
 	// Verify all entries are present
-	if !strings.Contains(contentStr, ".mhgo/") {
-		t.Errorf("expected .mhgo/")
+	if !strings.Contains(contentStr, ".lyx/") {
+		t.Errorf("expected .lyx/")
 	}
 	if !strings.Contains(contentStr, ".vscode/") {
 		t.Errorf("expected .vscode/")
@@ -310,11 +310,11 @@ func TestEnsureMultipleEntriesAtOnce(t *testing.T) {
 
 	// Verify they're in sorted order
 	idxIdea := strings.Index(contentStr, ".idea/")
-	idxMhgo := strings.Index(contentStr, ".mhgo/")
+	idxLyx := strings.Index(contentStr, ".lyx/")
 	idxVscode := strings.Index(contentStr, ".vscode/")
 
-	if idxIdea > idxMhgo || idxMhgo > idxVscode {
-		t.Errorf("entries not in sorted order: .idea/ at %d, .mhgo/ at %d, .vscode/ at %d", idxIdea, idxMhgo, idxVscode)
+	if idxIdea > idxLyx || idxLyx > idxVscode {
+		t.Errorf("entries not in sorted order: .idea/ at %d, .lyx/ at %d, .vscode/ at %d", idxIdea, idxLyx, idxVscode)
 	}
 }
 
@@ -331,7 +331,7 @@ func TestEnsureBlankLineBeforeBlock(t *testing.T) {
 	}
 
 	// Call Ensure
-	changed, err := gitignore.Ensure(tmpDir, ".mhgo/")
+	changed, err := gitignore.Ensure(tmpDir, ".lyx/")
 	if err != nil {
 		t.Fatalf("Ensure failed: %v", err)
 	}
@@ -349,7 +349,7 @@ func TestEnsureBlankLineBeforeBlock(t *testing.T) {
 	// Check that there's a blank line before the start marker
 	lines := strings.Split(contentStr, "\n")
 	for i, line := range lines {
-		if strings.TrimSpace(line) == "# === mhgo-managed ===" {
+		if strings.TrimSpace(line) == "# === lyx-managed ===" {
 			if i == 0 {
 				t.Errorf("start marker should not be at line 0 when preceding content exists")
 			}

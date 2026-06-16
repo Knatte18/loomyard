@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/mhgo/internal/board"
+	"github.com/Knatte18/loomyard/internal/board"
 )
 
 // newSyncRepo creates a bare "remote" and a working clone with an upstream, seeds
@@ -36,7 +36,7 @@ func newSyncRepo(t *testing.T) (work string, remoteCommits, localCommits func() 
 	}
 	run("git", "init", "--bare", bare)
 	run("git", "clone", bare, work)
-	run("git", "-C", work, "config", "user.email", "t@mhgo.dev")
+	run("git", "-C", work, "config", "user.email", "t@loomyard.dev")
 	run("git", "-C", work, "config", "user.name", "t")
 
 	if err := os.WriteFile(filepath.Join(work, "tasks.json"), []byte("[]\n"), 0o644); err != nil {

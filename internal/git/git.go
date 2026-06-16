@@ -34,4 +34,3 @@ func RunGit(args []string, cwd string) (stdout, stderr string, exitCode int, err
 
 	return outBuf.String(), errBuf.String(), exitCode, err
 }
-

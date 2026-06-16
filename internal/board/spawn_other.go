@@ -1,6 +1,6 @@
 // spawn_other.go — process launching on non-Windows.
 //
-// spawnSync starts `mhgo board sync` in its own session (Setsid) so it survives
+// spawnSync starts `lyx board sync` in its own session (Setsid) so it survives
 // the parent's exit, with no inherited stdio. There are no console-window issues
 // on non-Windows platforms. The Windows variants live in spawn_windows.go.
 

@@ -7,7 +7,7 @@ package board_test
 import (
 	"testing"
 
-	"github.com/Knatte18/mhgo/internal/board"
+	"github.com/Knatte18/loomyard/internal/board"
 )
 
 func TestNewTask(t *testing.T) {
@@ -93,10 +93,10 @@ func TestNewTask(t *testing.T) {
 func TestApplyPatch(t *testing.T) {
 	t.Run("overlays title onto existing task, other fields unchanged", func(t *testing.T) {
 		existing := board.Task{
-			ID:       1,
-			Slug:     "test",
-			Title:    "Old Title",
-			Brief:    "Original brief",
+			ID:        1,
+			Slug:      "test",
+			Title:     "Old Title",
+			Brief:     "Original brief",
 			DependsOn: []string{"a"},
 		}
 		patch := map[string]any{

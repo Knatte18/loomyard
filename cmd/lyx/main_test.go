@@ -40,13 +40,13 @@ func TestRunUnknownModule(t *testing.T) {
 
 func TestRunDispatchesToBoard(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
-	// Create temp cwd with _mhgo/board.yaml
+	// Create temp cwd with _lyx/board.yaml
 	cwd := t.TempDir()
-	mhgoDir := filepath.Join(cwd, "_mhgo")
-	if err := os.MkdirAll(mhgoDir, 0o755); err != nil {
-		t.Fatalf("failed to create _mhgo: %v", err)
+	lyxDir := filepath.Join(cwd, "_lyx")
+	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
+		t.Fatalf("failed to create _lyx: %v", err)
 	}
-	configPath := filepath.Join(mhgoDir, "board.yaml")
+	configPath := filepath.Join(lyxDir, "board.yaml")
 	if err := os.WriteFile(configPath, []byte("path: board\n"), 0o644); err != nil {
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
@@ -70,13 +70,13 @@ func TestRunDispatchesToBoard(t *testing.T) {
 
 func TestRunBoardErrorPropagatesExitCode(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
-	// Create temp cwd with _mhgo/board.yaml
+	// Create temp cwd with _lyx/board.yaml
 	cwd := t.TempDir()
-	mhgoDir := filepath.Join(cwd, "_mhgo")
-	if err := os.MkdirAll(mhgoDir, 0o755); err != nil {
-		t.Fatalf("failed to create _mhgo: %v", err)
+	lyxDir := filepath.Join(cwd, "_lyx")
+	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
+		t.Fatalf("failed to create _lyx: %v", err)
 	}
-	configPath := filepath.Join(mhgoDir, "board.yaml")
+	configPath := filepath.Join(lyxDir, "board.yaml")
 	if err := os.WriteFile(configPath, []byte("path: board\n"), 0o644); err != nil {
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
@@ -94,7 +94,7 @@ func TestRunBoardErrorPropagatesExitCode(t *testing.T) {
 }
 
 func TestRunDispatchesToWorktree(t *testing.T) {
-	// Create temp cwd with no _mhgo/ directory.
+	// Create temp cwd with no _lyx/ directory.
 	// This will cause LoadConfig to fail, which worktree.RunCLI will return
 	// as an error envelope.
 	cwd := t.TempDir()
@@ -111,7 +111,7 @@ func TestRunDispatchesToWorktree(t *testing.T) {
 }
 
 func TestRunDispatchesToIDE(t *testing.T) {
-	// Create temp cwd with no _mhgo/ directory.
+	// Create temp cwd with no _lyx/ directory.
 	// This will cause ide.RunCLI to return an error (failed to resolve layout).
 	cwd := t.TempDir()
 	t.Chdir(cwd)

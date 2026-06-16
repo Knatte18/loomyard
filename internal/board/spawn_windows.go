@@ -2,7 +2,7 @@
 //
 // Two needs: launch the background pusher detached so a write can return without
 // waiting, and run every git subprocess without flashing a console window. Both
-// use CREATE_NO_WINDOW — mhgo and git are console apps, and when launched from a
+// use CREATE_NO_WINDOW — lyx and git are console apps, and when launched from a
 // process without a visible console each would otherwise pop up its own window.
 package board
 
@@ -18,7 +18,7 @@ const (
 	createNoWindow        = 0x08000000
 )
 
-// spawnSync launches `mhgo board sync` as a detached, windowless process. It has
+// spawnSync launches `lyx board sync` as a detached, windowless process. It has
 // its own process group (so the parent's Ctrl-C does not reach it) and survives
 // the parent's exit. CREATE_NO_WINDOW keeps it — and the git children it spawns —
 // off-screen.

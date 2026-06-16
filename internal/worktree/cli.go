@@ -13,8 +13,8 @@ import (
 	"io"
 	"os"
 
-	"github.com/Knatte18/mhgo/internal/output"
-	"github.com/Knatte18/mhgo/internal/paths"
+	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/paths"
 )
 
 // RunCLI parses and executes a "worktree" subcommand, writing JSON results to out.
@@ -51,7 +51,7 @@ func RunCLI(out io.Writer, args []string) int {
 	// and fails with ErrNotAGitRepo if the cwd is not within a git repository.
 	// This failure precedes the LoadConfig call intentionally: geometry errors
 	// (not a git repo) are fatal and take priority over initialization errors
-	// (missing _mhgo/ config). This ensures consistent error reporting for callers
+	// (missing _lyx/ config). This ensures consistent error reporting for callers
 	// outside a git repository.
 	l, err := paths.Resolve(cwd)
 	if err != nil {
@@ -69,7 +69,7 @@ func RunCLI(out io.Writer, args []string) int {
 
 	// Require subcommand
 	if len(args) < 1 {
-		fmt.Fprintln(os.Stderr, "usage: mhgo worktree <subcommand> [args]")
+		fmt.Fprintln(os.Stderr, "usage: lyx worktree <subcommand> [args]")
 		return 1
 	}
 

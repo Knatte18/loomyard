@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Knatte18/mhgo/internal/paths"
+	"github.com/Knatte18/loomyard/internal/paths"
 )
 
 // TestResolve_FromWorktreeRoot verifies that Resolve from the worktree root
@@ -99,10 +99,10 @@ func TestResolve_GeometryMethods(t *testing.T) {
 		t.Fatalf("Resolve() error = %v; want nil", err)
 	}
 
-	// Test MhgoDir
-	expectedMhgoDir := filepath.Join(hub, "_mhgo")
-	if got := layout.MhgoDir(); got != expectedMhgoDir {
-		t.Errorf("MhgoDir() = %q; want %q", got, expectedMhgoDir)
+	// Test LyxDir
+	expectedLyxDir := filepath.Join(hub, "_lyx")
+	if got := layout.LyxDir(); got != expectedLyxDir {
+		t.Errorf("LyxDir() = %q; want %q", got, expectedLyxDir)
 	}
 
 	// Test WorktreePath
@@ -119,7 +119,7 @@ func TestResolve_GeometryMethods(t *testing.T) {
 	}
 
 	// Test PortalTarget
-	expectedPortalTarget := filepath.Join(layout.Container, slug, ".", "_mhgo")
+	expectedPortalTarget := filepath.Join(layout.Container, slug, ".", "_lyx")
 	if got := layout.PortalTarget(slug); got != expectedPortalTarget {
 		t.Errorf("PortalTarget(%q) = %q; want %q", slug, got, expectedPortalTarget)
 	}

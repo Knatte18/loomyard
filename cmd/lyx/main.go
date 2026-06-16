@@ -1,4 +1,4 @@
-// Command mhgo is the CLI for the mhgo task tracker.
+// Command lyx is the CLI for the Loomyard task tracker.
 //
 // main.go is a thin module dispatcher: it routes the first argument to the
 // matching module and delegates all further parsing and execution to that
@@ -6,11 +6,11 @@
 //
 // Usage:
 //
-//	mhgo <module> [module-args...]
+//	lyx <module> [module-args...]
 //
 // Modules:
 //
-//	init      scaffold _mhgo/board.yaml and .gitignore in the current directory
+//	init      scaffold _lyx/board.yaml and .gitignore in the current directory
 //	board     task-tracker board — see internal/board.RunCLI for subcommands
 //	ide       VS Code launcher — see internal/ide.RunCLI for subcommands
 //	muxpoc    proof-of-concept psmux mux — see internal/muxpoc.RunCLI for subcommands
@@ -24,10 +24,10 @@ import (
 	"io"
 	"os"
 
-	"github.com/Knatte18/mhgo/internal/board"
-	"github.com/Knatte18/mhgo/internal/ide"
-	"github.com/Knatte18/mhgo/internal/muxpoc"
-	"github.com/Knatte18/mhgo/internal/worktree"
+	"github.com/Knatte18/loomyard/internal/board"
+	"github.com/Knatte18/loomyard/internal/ide"
+	"github.com/Knatte18/loomyard/internal/muxpoc"
+	"github.com/Knatte18/loomyard/internal/worktree"
 )
 
 func main() {
@@ -39,7 +39,7 @@ func main() {
 // unknown-module messages go to stderr; module output goes to out.
 func run(args []string, out io.Writer) int {
 	if len(args) < 1 {
-		fmt.Fprintln(os.Stderr, "usage: mhgo <module> [args...]")
+		fmt.Fprintln(os.Stderr, "usage: lyx <module> [args...]")
 		return 1
 	}
 

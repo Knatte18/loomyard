@@ -13,10 +13,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Knatte18/mhgo/internal/output"
+	"github.com/Knatte18/loomyard/internal/output"
 )
 
-// cmdUp is the entry point for the 'mhgo muxpoc up' subcommand.
+// cmdUp is the entry point for the 'lyx muxpoc up' subcommand.
 // Returns exit code (0 on success, 1 on error).
 func cmdUp(out io.Writer, cfg Config) int {
 	cwd := cfg.WorktreeRoot
@@ -43,10 +43,10 @@ func cmdUp(out io.Writer, cfg Config) int {
 				return output.Err(out, "state has no panes")
 			}
 			return output.Ok(out, map[string]any{
-				"session_id":    state.Panes[0].SessionID,
-				"socket":        state.Socket,
-				"stripped_env":  state.StrippedEnv,
-				"message":       "already up",
+				"session_id":   state.Panes[0].SessionID,
+				"socket":       state.Socket,
+				"stripped_env": state.StrippedEnv,
+				"message":      "already up",
 			})
 		}
 		// Session is down but state exists — recover
@@ -254,10 +254,10 @@ func coldRecover(out io.Writer, cfg Config, cwd string, state *MuxpocState, mux 
 	}
 
 	return output.Ok(out, map[string]any{
-		"session":          state.Session,
-		"socket":           state.Socket,
-		"stripped_env":     state.StrippedEnv,
-		"recovered_panes":  len(state.Panes),
-		"message":          "cold-recovered",
+		"session":         state.Session,
+		"socket":          state.Socket,
+		"stripped_env":    state.StrippedEnv,
+		"recovered_panes": len(state.Panes),
+		"message":         "cold-recovered",
 	})
 }
