@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-state-package
+phase: approved-docs
 slug: extract-internal-fsx
 branch: extract-internal-fsx
 plan: _mill/plan
@@ -25,6 +25,7 @@ approved-fsx-package  '2026-06-16T19:06:04Z'
 approved-board-migration  '2026-06-16T19:09:12Z'
 approved-muxpoc-swap  '2026-06-16T19:10:35Z'
 approved-state-package  '2026-06-16T19:12:45Z'
+approved-docs  '2026-06-16T19:14:54Z'
 ```
 
 ## Batches
@@ -52,7 +53,8 @@ batches:
     start_sha: 4e10955ef3f06f3bfad8bdd769aaa2d80d8742ca
     commit_sha: 96d2db2f6a6a62f963748312e3d2a38da4570305
   - name: docs
-    state: running
+    state: approved
     implementer_session: 8bf39829-61f7-40c0-963e-1cfb36367fa6
     start_sha: 8bc525ed805263a7b159b45e5738c7de3190cd71
+    commit_sha: 069eda2b5825f409e18fc016ddd962416f6175e6
 ```
