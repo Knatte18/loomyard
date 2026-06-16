@@ -1,15 +1,11 @@
-// git.go — the filesystem + git plumbing under the store.
-//
-// PathGuard rejects unsafe relative paths; AtomicWrite writes via temp-file +
-// rename; Pull and CommitPush wrap git with fast-forward pull and push-with-
-// rebase-retry. The low-level disk and remote layer.
+// git.go implements git plumbing for the board: fast-forward pull and push-with-rebase-retry.
+// Pull and CommitPush wrap the git command-line interface with resilience logic.
 
 package board
 
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/git"
@@ -20,79 +16,6 @@ type BoardPushError string
 
 func (e BoardPushError) Error() string {
 	return string(e)
-}
-
-// BoardPathError represents an invalid board path
-type BoardPathError string
-
-func (e BoardPathError) Error() string {
-	return string(e)
-}
-
-// PathGuard validates a relative path for board operations
-func PathGuard(relPath string) error {
-	if relPath == "" {
-		return BoardPathError("empty path")
-	}
-
-	// Check for absolute paths (both Windows and Unix styles)
-	if filepath.IsAbs(relPath) || (len(relPath) > 0 && relPath[0] == '/') {
-		return BoardPathError("absolute path not allowed")
-	}
-
-	// Check for Windows-style absolute paths on non-Windows systems
-	if len(relPath) > 1 && relPath[1] == ':' {
-		return BoardPathError("absolute path not allowed")
-	}
-
-	// Split by both separators to preserve ".." for validation (before cleaning would remove it)
-	parts := strings.FieldsFunc(relPath, func(r rune) bool {
-		return r == '\\' || r == '/'
-	})
-	for _, c := range parts {
-		if c == ".." {
-			return BoardPathError("parent directory reference not allowed")
-		}
-	}
-
-	return nil
-}
-
-// AtomicWrite writes content to a file atomically using a temp file
-func AtomicWrite(boardPath, relPath, content string) error {
-	if err := PathGuard(relPath); err != nil {
-		return err
-	}
-
-	fullPath := filepath.Join(boardPath, relPath)
-	dir := filepath.Dir(fullPath)
-
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("mkdir: %w", err)
-	}
-
-	tmpFile, err := os.CreateTemp(dir, ".tmp-")
-	if err != nil {
-		return fmt.Errorf("create temp: %w", err)
-	}
-	tmpPath := tmpFile.Name()
-	defer os.Remove(tmpPath) // cleanup on error
-
-	if _, err := tmpFile.WriteString(content); err != nil {
-		tmpFile.Close()
-		return fmt.Errorf("write: %w", err)
-	}
-	if err := tmpFile.Close(); err != nil {
-		return fmt.Errorf("close: %w", err)
-	}
-
-	// The rename is the atomic swap. Concurrent readers are excluded from this
-	// instant by the swap lock (see store.Save / store.Load), so on Windows the
-	// rename never loses a sharing-violation race against an open reader.
-	if err := os.Rename(tmpPath, fullPath); err != nil {
-		return fmt.Errorf("rename: %w", err)
-	}
-	return nil
 }
 
 // Pull runs git pull --ff-only and returns whether the repo was updated
