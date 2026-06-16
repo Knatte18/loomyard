@@ -25,6 +25,7 @@ and `render_test.go` are the regression guardrail. Depends on batch 1 (the fsx s
   - `internal/fsx/fsx.go`
 - **Edits:**
   - `internal/board/git.go`
+  - `internal/board/boardtest/integration_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Requirements:** In `internal/board/git.go` delete `PathGuard` (lines 33-59), `AtomicWrite`
@@ -32,7 +33,9 @@ and `render_test.go` are the regression guardrail. Depends on batch 1 (the fsx s
   `CommitPush`, and `type BoardPushError`. Remove the now-unused `"path/filepath"` import — the
   remaining functions use only `fmt`, `os`, `strings`, and `github.com/Knatte18/loomyard/internal/git`.
   Do NOT add an `internal/fsx` import here: git.go references no fsx symbol after the deletion. Update
-  the file's top doc comment so it no longer claims to own `PathGuard`/`AtomicWrite`.
+  the file's top doc comment so it no longer claims to own `PathGuard`/`AtomicWrite`. In
+  `internal/board/boardtest/integration_test.go`, replace all calls to `board.AtomicWrite` with
+  `fsx.AtomicWrite` and add the import `"github.com/Knatte18/loomyard/internal/fsx"`.
 - **Commit:** `refactor(board): drop AtomicWrite/PathGuard from git.go`
 
 ### Card 4: Point render.go at fsx.AtomicWrite

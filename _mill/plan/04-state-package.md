@@ -61,7 +61,7 @@ Independent of batches 2/3 (disjoint files); depends on batch 1.
   the directory contains only the data file and `<path>.lock`, no `.tmp-` entry; (5) overwrite — a
   second `WriteJSON` with a different value, then `ReadJSON` returns the new value; (6) lock-file
   location — assert the lock path is exactly `path + ".lock"` beside the data file. Use stdlib
-  `testing`/`os`/`path/filepath` only.
+  `testing`/`os`/`path/filepath` and `encoding/json` only.
 - **Commit:** `test(state): cover round-trip, missing, corrupt, overwrite`
 
 ## Batch Tests
