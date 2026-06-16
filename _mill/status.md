@@ -46,7 +46,9 @@ batches:
     start_sha: 99419f8c89ff8f27f9c76d034a7efc22c77f04d2
     commit_sha: 8b98ce40fde7398f4304c9443a0e0ff164018d33
   - name: state-package
-    state: pending
+    state: running
+    implementer_session: a87c3c2b-163e-42e3-a51c-d0d4c1c9b3e3
+    start_sha: 4e10955ef3f06f3bfad8bdd769aaa2d80d8742ca
   - name: docs
     state: pending
 ```
