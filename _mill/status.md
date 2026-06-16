@@ -28,7 +28,9 @@ implementing  '2026-06-16T19:03:09Z'
 ```yaml
 batches:
   - name: fsx-package
-    state: pending
+    state: running
+    implementer_session: c927fe61-6a96-42d1-a284-5d7818014e6b
+    start_sha: 2b6e67a8b6c5258945d85e2e4ddc969cf0df1c19
   - name: board-migration
     state: pending
   - name: muxpoc-swap
