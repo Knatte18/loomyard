@@ -17,7 +17,8 @@ See [roadmap.md](../roadmap.md) milestones 2–3 for the extraction order.
 
 - [paths.md](paths.md) — `internal/paths`: canonical geometry resolver, sole owner of cwd/root math
 - [config.md](config.md) — `internal/config`: two-layer YAML config (defaults + `_lyx/<module>.yaml`), env expansion, `.env` loading
+- [fsx.md](fsx.md) — `internal/fsx`: atomic file writes + relative-path guard, extracted from board
 - [git.md](git.md) — `internal/git`: windowless `RunGit` primitive
 - [gitignore.md](gitignore.md) — `internal/gitignore`: shared `.gitignore` block manager for multiple modules
 - [lock.md](lock.md) — `internal/lock`: cross-process file locking
-- [state.md](state.md) — `internal/state` **(planned)**: machine-local runtime state registry
+- [state.md](state.md) — `internal/state`: generic locked typed JSON I/O built on fsx + lock
