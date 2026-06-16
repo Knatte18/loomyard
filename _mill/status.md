@@ -34,7 +34,9 @@ batches:
     start_sha: 2b6e67a8b6c5258945d85e2e4ddc969cf0df1c19
     commit_sha: 714db7d4524a26cad89f310fb958b509e79c859b
   - name: board-migration
-    state: pending
+    state: running
+    implementer_session: 2c940706-7310-433a-9394-ae69caa01f26
+    start_sha: ec5a4d60c3bbf8fd25092071c39a7304453e6531
   - name: muxpoc-swap
     state: pending
   - name: state-package
