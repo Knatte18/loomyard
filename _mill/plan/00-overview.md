@@ -3,7 +3,7 @@
 ```yaml
 task: "Rename mhgo to Loomyard (lyx)"
 slug: rename-to-loomyard
-approved: false
+approved: true
 started: "20260616-114829"
 parent: main
 root: ""

@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planning
+phase: plan-fix-r1
 slug: rename-to-loomyard
 branch: rename-to-loomyard
 plan: _mill/plan
@@ -18,4 +18,5 @@ discussing  '2026-06-16T11:09:11Z'
 discussion-fix-r2  '2026-06-16T11:33:59Z'
 discussed  '2026-06-16T11:34:28Z'
 planning  '2026-06-16T11:50:51Z'
+plan-fix-r1  '2026-06-16T11:54:53Z'
 ```
