@@ -1,4 +1,4 @@
-// Package paths is the single owner of mhgo worktree and container geometry.
+// Package paths is the single owner of Loomyard worktree and container geometry.
 // It resolves the active Layout from a working directory and exposes typed
 // accessors for every derived path, so no other package recomputes geometry
 // from raw os.Getwd or git --show-toplevel calls.
@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Knatte18/mhgo/internal/git"
+	"github.com/Knatte18/loomyard/internal/git"
 )
 
 // ErrNotAGitRepo is returned when a directory is not within a git repository.
@@ -35,7 +35,7 @@ type Layout struct {
 
 // Getwd returns the current working directory.
 //
-// It wraps os.Getwd and is the ONLY permitted os.Getwd call outside cmd/mhgo/main.go.
+// It wraps os.Getwd and is the ONLY permitted os.Getwd call outside cmd/lyx/main.go.
 // Returns an error if the current directory cannot be determined.
 func Getwd() (string, error) {
 	return os.Getwd()
@@ -53,7 +53,7 @@ func Getwd() (string, error) {
 //  6. Set RelPath = filepath.Rel(WorktreeRoot, Cwd)
 //  7. Call List(cwd) and set MainWorktree to the Main==true entry's Path
 //
-// Resolve does NOT check for _mhgo/ (that authority stays in internal/config).
+// Resolve does NOT check for _lyx/ (that authority stays in internal/config).
 //
 // Returns the Layout on success, or ErrNotAGitRepo (wrapped with context) on failure.
 func Resolve(cwd string) (*Layout, error) {
@@ -100,11 +100,11 @@ func Resolve(cwd string) (*Layout, error) {
 	}, nil
 }
 
-// MhgoDir returns the path to the _mhgo directory in the current working directory.
+// LyxDir returns the path to the _lyx directory in the current working directory.
 //
-// Returns filepath.Join(Cwd, "_mhgo").
-func (l *Layout) MhgoDir() string {
-	return filepath.Join(l.Cwd, "_mhgo")
+// Returns filepath.Join(Cwd, "_lyx").
+func (l *Layout) LyxDir() string {
+	return filepath.Join(l.Cwd, "_lyx")
 }
 
 // WorktreePath returns the path to a sibling worktree with the given slug.
@@ -132,13 +132,13 @@ func (l *Layout) PortalLink(slug string) string {
 	return filepath.Join(l.Container, "_portals", l.RelPath, slug)
 }
 
-// PortalTarget returns the path to the _mhgo directory within a portal for the given slug.
+// PortalTarget returns the path to the _lyx directory within a portal for the given slug.
 //
-// The path is: <Container>/<slug>/<RelPath>/_mhgo
+// The path is: <Container>/<slug>/<RelPath>/_lyx
 //
-// Returns filepath.Join(Container, slug, RelPath, "_mhgo").
+// Returns filepath.Join(Container, slug, RelPath, "_lyx").
 func (l *Layout) PortalTarget(slug string) string {
-	return filepath.Join(l.Container, slug, l.RelPath, "_mhgo")
+	return filepath.Join(l.Container, slug, l.RelPath, "_lyx")
 }
 
 // LaunchersDir returns the path to the _launchers directory in the container.
