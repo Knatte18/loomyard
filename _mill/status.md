@@ -40,7 +40,9 @@ batches:
     start_sha: ec5a4d60c3bbf8fd25092071c39a7304453e6531
     commit_sha: 6c387cad8c4f7174120df863ccc64a334d922d7f
   - name: muxpoc-swap
-    state: pending
+    state: running
+    implementer_session: ca5b8819-5009-4a15-b47e-6ae9e081bee6
+    start_sha: 99419f8c89ff8f27f9c76d034a7efc22c77f04d2
   - name: state-package
     state: pending
   - name: docs
