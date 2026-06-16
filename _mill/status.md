@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-code-rename
 slug: rename-to-loomyard
 branch: rename-to-loomyard
 plan: _mill/plan
@@ -21,6 +21,7 @@ planning  '2026-06-16T11:50:51Z'
 plan-fix-r1  '2026-06-16T11:54:53Z'
 planned  '2026-06-16T11:55:08Z'
 implementing  '2026-06-16T12:01:55Z'
+approved-code-rename  '2026-06-16T12:15:56Z'
 ```
 
 ## Batches
@@ -28,9 +29,10 @@ implementing  '2026-06-16T12:01:55Z'
 ```yaml
 batches:
   - name: code-rename
-    state: running
+    state: approved
     implementer_session: 668ff800-6da5-4b8d-8582-1e9449a9cb4f
     start_sha: 989eb8a40bd688c981e43571c31d1e0cbfcbed03
+    commit_sha: 1d18326686ff6199c67e03bb5b02487271cb21a7
   - name: docs-and-config
     state: pending
 ```
