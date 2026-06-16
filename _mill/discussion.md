@@ -42,7 +42,9 @@ after, with every reference moved to the new brand.
 - **Managed-state directory:** `_mhgo/` → `_lyx/` everywhere (the dir holding
   `board.yaml`, `worktree.yaml`, `<module>.yaml`). Source sites: `paths.go`
   `MhgoDir()`, `config.go` `FindBaseDir`/`Load`, `board/init.go`, `ide/menu.go`,
-  plus all tests.
+  `cmd/mhgo/main_test.go`, and `internal/worktree` (which carries many `_mhgo`
+  literals in comments and tests — `portals.go`, `add.go`, `config.go`, `cli.go`,
+  and the `*_test.go` files there), plus all other tests.
 - **Local-state directory:** `.mhgo/` → `.lyx/` (gitignored runtime state:
   `muxpoc-state.json`, `muxpoc-state.lock` in `muxpoc/state.go`; the
   `gitignore.Ensure(cwd, ".mhgo/")` call in `board/init.go`; all tests).
@@ -213,9 +215,14 @@ after, with every reference moved to the new brand.
   `enforcement_test`; the update is still required so the allowlist names the real
   path, and to stay safe if the CLI's `main.go` ever introduces such a primitive.)
   `CONSTRAINTS.md` documents this same invariant and names `cmd/mhgo/main.go`.
-- **Paired test input/expected — `internal/muxpoc/state_test.go`:** cwd inputs like
-  `C:\Code\mhgo\wts\mhgo-mux-design` feed a basename-derivation; if the example slug
-  is renamed, the expected derived output in the same case must move with it.
+- **Example fixtures — `internal/muxpoc/state_test.go` and `state.go:176`:** the
+  state_test.go cwd inputs (e.g. `C:\Code\mhgo\wts\mhgo-mux-design`) feed
+  `TestSocketName`, which only asserts a `"muxpoc-"` prefix and char-class validity
+  — there is **no** hardcoded `muxpoc-mhgo-mux-design` expected literal, so the test
+  stays green regardless; renaming those input cwds is for brand consistency only,
+  not to keep a paired assertion green. The single full example string lives in the
+  `state.go:176` doc comment (`C:\Code\mhgo\wts\mhgo-mux-design →
+  muxpoc-mhgo-mux-design`); rename both sides of that comment together.
 - **Import-path count:** 80 `github.com/Knatte18/mhgo` import lines across the 10
   internal packages + `cmd`. A module-path replace of `github.com/Knatte18/mhgo` →
   `github.com/Knatte18/loomyard` covers `go.mod` line 1 and every import. The
