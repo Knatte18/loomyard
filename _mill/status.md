@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: extract-internal-fsx
 branch: extract-internal-fsx
 plan: _mill/plan
@@ -20,4 +20,21 @@ discussion-fix-r2  '2026-06-16T18:14:59Z'
 planning  '2026-06-16T18:19:53Z'
 plan-fix-r2  '2026-06-16T18:36:04Z'
 planned  '2026-06-16T18:36:20Z'
+implementing  '2026-06-16T19:03:09Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: fsx-package
+    state: pending
+  - name: board-migration
+    state: pending
+  - name: muxpoc-swap
+    state: pending
+  - name: state-package
+    state: pending
+  - name: docs
+    state: pending
 ```
