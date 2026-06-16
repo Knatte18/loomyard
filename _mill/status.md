@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-fixing
 slug: extract-internal-fsx
 branch: extract-internal-fsx
 plan: _mill/plan
@@ -27,6 +27,7 @@ approved-muxpoc-swap  '2026-06-16T19:10:35Z'
 approved-state-package  '2026-06-16T19:12:45Z'
 approved-docs  '2026-06-16T19:14:54Z'
 holistic-reviewing  '2026-06-16T19:15:24Z'
+holistic-fixing  '2026-06-16T19:17:25Z'
 ```
 
 ## Batches
