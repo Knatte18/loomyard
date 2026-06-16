@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: rename-to-loomyard
 branch: rename-to-loomyard
 plan: _mill/plan
@@ -20,4 +20,15 @@ discussed  '2026-06-16T11:34:28Z'
 planning  '2026-06-16T11:50:51Z'
 plan-fix-r1  '2026-06-16T11:54:53Z'
 planned  '2026-06-16T11:55:08Z'
+implementing  '2026-06-16T12:01:55Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: code-rename
+    state: pending
+  - name: docs-and-config
+    state: pending
 ```
