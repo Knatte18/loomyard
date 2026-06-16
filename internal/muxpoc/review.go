@@ -23,7 +23,7 @@ func cmdReview(out io.Writer, cfg Config) int {
 		return output.Err(out, fmt.Sprintf("load state: %v", err))
 	}
 	if state == nil {
-		return output.Err(out, "no active session: run 'mhgo muxpoc up' first")
+		return output.Err(out, "no active session: run 'lyx muxpoc up' first")
 	}
 
 	mux := NewPsmuxCmd(cfg)
@@ -32,7 +32,7 @@ func cmdReview(out io.Writer, cfg Config) int {
 		return output.Err(out, fmt.Sprintf("check session: %v", err))
 	}
 	if !up {
-		return output.Err(out, "session not running: run 'mhgo muxpoc up' first")
+		return output.Err(out, "session not running: run 'lyx muxpoc up' first")
 	}
 
 	sid, err := newSessionID()

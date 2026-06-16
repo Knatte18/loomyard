@@ -5,7 +5,7 @@
 // looping until nothing is left so a burst of writes coalesces into as few
 // pushes as possible. A single Sync runs at a time (the push lock); concurrent
 // sync processes block, then exit quickly once there is nothing to do. The write
-// path launches `mhgo board sync` detached (see spawn_*.go) so it never waits.
+// path launches `lyx board sync` detached (see spawn_*.go) so it never waits.
 package board
 
 import (

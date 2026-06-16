@@ -109,11 +109,11 @@ func TestSocketName(t *testing.T) {
 		pattern  string // characters that should be allowed: a-z0-9_-
 	}{
 		{
-			cwd:      "C:\\Code\\mhgo\\wts\\mhgo-mux-design",
+			cwd:      "C:\\Code\\loomyard\\wts\\loomyard-mux-design",
 			contains: "muxpoc-",
 		},
 		{
-			cwd:      "/home/user/repos/mhgo-mux-design",
+			cwd:      "/home/user/repos/loomyard-mux-design",
 			contains: "muxpoc-",
 		},
 	}

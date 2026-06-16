@@ -34,7 +34,7 @@ type Config struct {
 //
 // Usage:
 //
-//	mhgo muxpoc <subcommand> [args...]
+//	lyx muxpoc <subcommand> [args...]
 //
 // Subcommands:
 //

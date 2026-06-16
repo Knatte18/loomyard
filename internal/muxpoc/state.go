@@ -91,7 +91,7 @@ func SaveState(cwd string, s *MuxpocState) error {
 	// Create .lyx/ directory if absent
 	lyxDir := filepath.Dir(statePath)
 	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
-		return fmt.Errorf("mkdir .mhgo: %w", err)
+		return fmt.Errorf("mkdir .lyx: %w", err)
 	}
 
 	lock, err := flock.AcquireWriteLock(lockPath)
@@ -173,7 +173,7 @@ func strippedEnvKeys(environ []string) []string {
 
 // socketName derives a stable socket name: take filepath.Base(cwd), replace every
 // character that is not [a-zA-Z0-9_-] with -, lowercase, and prefix with muxpoc-.
-// Example: C:\Code\mhgo\wts\mhgo-mux-design → muxpoc-mhgo-mux-design.
+// Example: C:\Code\loomyard\wts\loomyard-mux-design → muxpoc-loomyard-mux-design.
 func socketName(cwd string) string {
 	baseName := filepath.Base(cwd)
 	// Replace non-alphanumeric, non-dash, non-underscore characters with dash

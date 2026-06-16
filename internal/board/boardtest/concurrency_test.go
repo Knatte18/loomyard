@@ -33,7 +33,7 @@ func TestConcurrentReadsDuringUpserts(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
 	cwd := seedWiki(t, 100)
 	cfg := board.DefaultConfig()
-	// seedWiki creates _mhgo/board.yaml with path: board, so the board dir is <cwd>/board
+	// seedWiki creates _lyx/board.yaml with path: board, so the board dir is <cwd>/board
 	cfg.Path = filepath.Join(cwd, "board")
 	w := board.New(cfg)
 
@@ -109,7 +109,7 @@ func TestConcurrentUpsertsDoNotLoseWrites(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
 	cwd := seedWiki(t, 0)
 	cfg := board.DefaultConfig()
-	// seedWiki creates _mhgo/board.yaml with path: board, so the board dir is <cwd>/board
+	// seedWiki creates _lyx/board.yaml with path: board, so the board dir is <cwd>/board
 	cfg.Path = filepath.Join(cwd, "board")
 	w := board.New(cfg)
 
@@ -150,7 +150,7 @@ func BenchmarkGetDuringUpsert(b *testing.B) {
 	b.Setenv("BOARD_SKIP_GIT", "1")
 	cwd := seedWiki(b, 100)
 	cfg := board.DefaultConfig()
-	// seedWiki creates _mhgo/board.yaml with path: board, so the board dir is <cwd>/board
+	// seedWiki creates _lyx/board.yaml with path: board, so the board dir is <cwd>/board
 	cfg.Path = filepath.Join(cwd, "board")
 	w := board.New(cfg)
 

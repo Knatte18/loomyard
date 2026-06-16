@@ -38,7 +38,7 @@ func setupIntegrationRepo(t *testing.T) string {
 	}
 
 	run("git", "clone", testRepoURL, repoPath)
-	run("git", "-C", repoPath, "config", "user.email", "test@mhgo.dev")
+	run("git", "-C", repoPath, "config", "user.email", "test@loomyard.dev")
 	run("git", "-C", repoPath, "config", "user.name", "MHGo Integration Test")
 
 	// If repo is empty (no commits), push an initial commit to establish the branch.

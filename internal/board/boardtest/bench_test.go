@@ -25,7 +25,7 @@ import (
 var benchSizes = []int{10, 100, 1000}
 
 // seedWiki writes a tasks.json with n independent (dependency-free) tasks into a
-// fresh temp dir, seeded with _mhgo/board.yaml for config, and returns the cwd path.
+// fresh temp dir, seeded with _lyx/board.yaml for config, and returns the cwd path.
 // Callers must set BOARD_SKIP_GIT=1 so the benchmark measures board logic + file I/O,
 // not git push latency. It takes a testing.TB so both benchmarks and concurrency tests
 // can use it. For direct facade tests (not CLI), construct Board from the config's Path

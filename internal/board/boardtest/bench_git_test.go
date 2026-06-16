@@ -35,7 +35,7 @@ func cloneBenchWiki(b *testing.B) string {
 	}
 
 	run("git", "clone", testRepoURL, repoPath)
-	run("git", "-C", repoPath, "config", "user.email", "bench@mhgo.dev")
+	run("git", "-C", repoPath, "config", "user.email", "bench@loomyard.dev")
 	run("git", "-C", repoPath, "config", "user.name", "MHGo Bench")
 	return repoPath
 }

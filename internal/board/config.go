@@ -56,7 +56,7 @@ func DefaultOutputs() Outputs {
 // LoadConfig loads configuration for a module from configuration files.
 //
 // If <baseDir>/_lyx/ does not exist, returns an error containing
-// "not initialized here; run \"mhgo init\"".
+// "not initialized here; run \"lyx init\"".
 //
 // Otherwise, loads configuration using internal/config.Load with defaults from
 // DefaultConfig(), and returns the result as a typed Config struct.
@@ -75,7 +75,7 @@ func LoadConfig(baseDir, module string) (Config, error) {
 	if err != nil {
 		// Wrap the generic error with a board-specific message
 		if strings.Contains(err.Error(), "not initialized") {
-			return Config{}, fmt.Errorf("not initialized here; run \"mhgo init\"")
+			return Config{}, fmt.Errorf("not initialized here; run \"lyx init\"")
 		}
 		return Config{}, err
 	}

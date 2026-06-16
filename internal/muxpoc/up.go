@@ -16,7 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/output"
 )
 
-// cmdUp is the entry point for the 'mhgo muxpoc up' subcommand.
+// cmdUp is the entry point for the 'lyx muxpoc up' subcommand.
 // Returns exit code (0 on success, 1 on error).
 func cmdUp(out io.Writer, cfg Config) int {
 	cwd := cfg.WorktreeRoot

@@ -1,4 +1,4 @@
-// Package boardtest holds mhgo's cross-cutting ("on-the-side") test suites for
+// Package boardtest holds Loomyard's cross-cutting ("on-the-side") test suites for
 // the board module: benchmarks, concurrency stress tests, and git-backed
 // integration tests. These are deliberately kept out of internal/board, where
 // each *_test.go sits 1:1 next to the source file it unit-tests.
