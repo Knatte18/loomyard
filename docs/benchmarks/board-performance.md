@@ -122,8 +122,8 @@ before the cwd-authoritative configuration model, so no config-load cost.
 
 ## Process startup context
 
-Every `mhgo` invocation is a fresh process. Measured startup on this machine
-(50× a no-op `mhgo`, by launcher):
+Every `lyx` invocation is a fresh process. Measured startup on this machine
+(50× a no-op `lyx`, by launcher):
 
 | Launcher            | ms / process |
 |---------------------|--------------|
