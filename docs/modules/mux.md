@@ -18,7 +18,7 @@ multiplexer (3.3.4) — so the Claude Code sessions running across a repo's work
 laid out, observed, and recovered. It is the Go reimplementation of millpy's `_psmux.py`
 (which "doesn't work" and is not used as a reference).
 
-Driven by `mhgo mux <subcommand>`; reads the worktree registry from
+Driven by `lyx mux <subcommand>`; reads the worktree registry from
 [`internal/state`](../shared-libs/state.md) and config from
 [`internal/config`](../shared-libs/config.md). mux shells out to `psmux.exe` via Go `exec`
 (no MSYS layer, so no slash-arg mangling — a hazard the probe harness hit from git-bash).
@@ -29,16 +29,16 @@ Driven by `mhgo mux <subcommand>`; reads the worktree registry from
 - **Launch with explicit binary paths, never PATH aliases.** Bare `pwsh` resolved to a
   0-byte WindowsApps execution-alias stub that renders nothing under ConPTY; the explicit
   `C:\Code\tools\powershell7\pwsh.exe` works. Same discipline for `claude`.
-- No Node/npm needed (claude is a native binary; mhgo is Go, psmux is Rust).
-- **mhgo MUST sanitize the psmux child env — this is mandatory, not defensive.** The *primary*
-  use case is **claude itself running `mhgo` to spawn reviewers/implementers**, so mhgo is normally
+- No Node/npm needed (claude is a native binary; Loomyard is Go, psmux is Rust).
+- **Loomyard MUST sanitize the psmux child env — this is mandatory, not defensive.** The *primary*
+  use case is **claude itself running `lyx` to spawn reviewers/implementers**, so Loomyard is normally
   launched from inside a Claude Code session and its env carries `CLAUDE_CODE_CHILD_SESSION=1`
   (+ `CLAUDECODE`, `CLAUDE_CODE_SESSION_ID`, `CLAUDE_CODE_ENTRYPOINT`, `CLAUDE_CODE_SSE_PORT`). If
   these bleed into psmux, the pane's claude treats itself as a nested child and **silently stops
-  persisting its transcript** — breaking resume. Since mhgo (Go) is the chokepoint, it builds the
+  persisting its transcript** — breaking resume. Since Loomyard (Go) is the chokepoint, it builds the
   **psmux server's `exec.Cmd.Env` without those vars** → server + all panes + all claude inherit a
   clean env. Crucially, agent panes spawned later inherit the *server's* env, so they stay clean
-  even when the spawning `mhgo` call was itself launched by a poisoned claude — as long as the
+  even when the spawning `lyx` call was itself launched by a poisoned claude — as long as the
   server was started clean. See [Resume](#resume-after-crash-native---resume-with-env-hygiene).
 
 ## Design model (the load-bearing decisions)
@@ -60,8 +60,8 @@ Driven by `mhgo mux <subcommand>`; reads the worktree registry from
    Windows-Terminal tabs, not multiple psmux clients. `Ctrl+b N` / `select-window` flips the
    single viewport. This is the only "tab" mechanism mux can drive without client-mirroring,
    smallest-client-wins shrinkage, or WT-quoting fragility.
-6. **mhgo never owns OS window management.** Popping ONE maximized terminal attached to a
-   session is reliable (`mhgo mux attach`); precise multi-window docking and WT multi-tab
+6. **Loomyard never owns OS window management.** Popping ONE maximized terminal attached to a
+   session is reliable (`lyx mux attach`); precise multi-window docking and WT multi-tab
    launches are brittle → best-effort, not core. mux is host-agnostic; psmux auto-resizes to
    whatever client attaches.
 7. **Crash recovery via native `claude --resume`, given env hygiene.** mux assigns each pane a
@@ -72,7 +72,7 @@ Driven by `mhgo mux <subcommand>`; reads the worktree registry from
 ## Target model: `mux spawn` replaces Agent dispatch (proven feasible — muxpoc)
 
 The end state mux is built toward: **CC stops dispatching sub-agents through the in-process
-Agent tool and instead calls `mhgo mux spawn`, which launches a real interactive `claude`
+Agent tool and instead calls `lyx mux spawn`, which launches a real interactive `claude`
 session in a pane below the orchestrator.** The spawned session must otherwise behave *exactly
 as if it had been spawned via the Agent tool* — same contract:
 

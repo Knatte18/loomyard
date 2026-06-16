@@ -30,13 +30,13 @@ Within one worktree: an **orchestrator** Claude Code session that spawns sub-age
 implementer, …) as **real interactive `claude` processes in stacked psmux panes**, replacing the
 invisible in-process Agent tool. Nesting is orchestrator → child → grandchild (**≤3 deep**); only the
 deepest pane is active (ancestors block waiting on it), so the **bottom/active pane dominates** the
-column height. Driven by `mhgo mux <subcommand>`; one psmux session per worktree.
+column height. Driven by `lyx mux <subcommand>`; one psmux session per worktree.
 
 This is muxpoc's proven model, productionised and made **event-driven** with the hook findings.
 
 ## Load-bearing decisions (each grounded in a verified finding)
 
-1. **Direct-launch, never attach.** `mhgo mux spawn` launches a **fresh `claude` process directly in
+1. **Direct-launch, never attach.** `lyx mux spawn` launches a **fresh `claude` process directly in
    the pane** — *not* `claude --bg` + `claude attach`. The live latency test showed `claude attach` →
    `cc-daemon` adds perceptible per-keystroke lag; direct launch in a pane is materially snappier. The
    supervisor (`claude --bg`) is **explicitly not** the interactive path here — it is reserved for a
@@ -48,26 +48,26 @@ This is muxpoc's proven model, productionised and made **event-driven** with the
 4. **Env hygiene is mandatory.** Strip `CLAUDE_CODE_*` / `CLAUDECODE` when spawning the psmux server
    → every pane's claude is a clean top-level session → transcripts persist → `--resume` works.
 5. **Event-driven via per-child hooks (replaces the capture-pane idle poller).** Each spawned claude
-   is launched with a `--settings` whose hooks call back `mhgo mux …`, keyed by **its own
+   is launched with a `--settings` whose hooks call back `lyx mux …`, keyed by **its own
    `session_id`** (present in every payload — verified). Focus follows `Stop`:
    ```jsonc
    // injected into every spawned child's --settings (commands run under git-bash → POSIX paths / PATH binary)
    {
      "hooks": {
-       "SessionStart":     [{ "hooks": [{ "type": "command", "command": "mhgo mux on-start  --session-id $SID" }] }],
-       "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "mhgo mux on-active --session-id $SID" }] }],
-       "Stop":             [{ "hooks": [{ "type": "command", "command": "mhgo mux on-idle   --session-id $SID" }] }],
-       "PreToolUse":       [{ "matcher": "Agent", "hooks": [{ "type": "command", "command": "mhgo mux deny-agent" }] }]
+       "SessionStart":     [{ "hooks": [{ "type": "command", "command": "lyx mux on-start  --session-id $SID" }] }],
+       "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "lyx mux on-active --session-id $SID" }] }],
+       "Stop":             [{ "hooks": [{ "type": "command", "command": "lyx mux on-idle   --session-id $SID" }] }],
+       "PreToolUse":       [{ "matcher": "Agent", "hooks": [{ "type": "command", "command": "lyx mux deny-agent" }] }]
      }
    }
    ```
    - `Stop` is the **immediate** idle/needs-input edge (carries `last_assistant_message` +
      `background_tasks`) → on it, mux `select-pane`s focus back to the parent / next active pane.
    - `SessionStart` confirms/repairs the pane↔session map (carries the child's own `session_id`).
-   - **`mhgo` is invoked PATH-resolved** so the git-bash hook executor finds it (a literal Windows
+   - **`lyx` is invoked PATH-resolved** so the git-bash hook executor finds it (a literal Windows
      path with backslashes is destroyed by bash — verified failure).
 6. **Deny-guardrail keeps work visible.** The `PreToolUse` matcher on `Agent` **denies** the in-process
-   Agent tool and injects a reason steering the model to run `mhgo mux spawn` instead — so nested
+   Agent tool and injects a reason steering the model to run `lyx mux spawn` instead — so nested
    delegation can't slip back to an invisible in-process subagent. (Deny path is a pending spike.)
 7. **Layout: bottom-active-dominant vertical stack**, hand-rendered `window_layout` string (preset
    layouts can't express "bottom dominant"); checksum reproducible in Go. Proven in muxpoc.
@@ -79,10 +79,10 @@ This is muxpoc's proven model, productionised and made **event-driven** with the
 
 ## The spawn lifecycle and the result contract (the one hard design choice)
 
-`mhgo mux spawn` must behave **exactly like an Agent-tool dispatch** so the orchestrator can swap to it
+`lyx mux spawn` must behave **exactly like an Agent-tool dispatch** so the orchestrator can swap to it
 transparently:
 
-- **Task in:** the orchestrator (via its **Bash tool**, not the Agent tool) runs `mhgo mux spawn` with
+- **Task in:** the orchestrator (via its **Bash tool**, not the Agent tool) runs `lyx mux spawn` with
   the brief/prompt; mux launches the child in a new bottom pane (decisions 1–5).
 - **Result out — the load-bearing part:** the child writes its **structured result to a file**
   (JSON / `<brief>.out.md`); the orchestrator reads that file. *This file hand-off is what makes the
@@ -98,14 +98,14 @@ robust `mux spawn` from a fragile one.
 
 | Command | Does |
 |---|---|
-| `mhgo mux up` | Boot the orchestrator claude in this worktree's psmux session: env-stripped server, assigned `--session-id`, hooks installed, layout seeded. Idempotent / cold-recovers a crashed session. |
-| `mhgo mux spawn` | (Called by the orchestrator) launch a child agent in a stacked bottom pane; inject task; wire the result file. |
-| `mhgo mux attach` | Pop one **maximized** terminal attached to the session (real TTY → claude renders; the orchestrator itself never needs to attach — it observes via the result files / hooks). |
-| `mhgo mux on-start \| on-active \| on-idle` | Hook callbacks (per-child, keyed by `--session-id`): update state + drive focus. |
-| `mhgo mux deny-agent` | The `PreToolUse(Agent)` guardrail: emit the deny + steer-to-spawn decision. |
-| `mhgo mux resume` | Rebuild layout from local-state and `claude --resume <id>` each pane (env-stripped). |
-| `mhgo mux status` | Join local-state with `claude agents --json` → panes, sessions, orphans. |
-| `mhgo mux down` | Stop the session; mark intentional shutdown (so `up` won't recover). |
+| `lyx mux up` | Boot the orchestrator claude in this worktree's psmux session: env-stripped server, assigned `--session-id`, hooks installed, layout seeded. Idempotent / cold-recovers a crashed session. |
+| `lyx mux spawn` | (Called by the orchestrator) launch a child agent in a stacked bottom pane; inject task; wire the result file. |
+| `lyx mux attach` | Pop one **maximized** terminal attached to the session (real TTY → claude renders; the orchestrator itself never needs to attach — it observes via the result files / hooks). |
+| `lyx mux on-start \| on-active \| on-idle` | Hook callbacks (per-child, keyed by `--session-id`): update state + drive focus. |
+| `lyx mux deny-agent` | The `PreToolUse(Agent)` guardrail: emit the deny + steer-to-spawn decision. |
+| `lyx mux resume` | Rebuild layout from local-state and `claude --resume <id>` each pane (env-stripped). |
+| `lyx mux status` | Join local-state with `claude agents --json` → panes, sessions, orphans. |
+| `lyx mux down` | Stop the session; mark intentional shutdown (so `up` won't recover). |
 
 ## v1 scope (smallest useful) and spikes-first
 
@@ -116,8 +116,8 @@ value. Stacking to ≤3 deep, `resume`, `status`, and the deny-guardrail come ri
 **Do these spikes before committing the design:**
 1. **Result contract** — child-writes-file ↔ parent-reads, with a real reviewer brief.
 2. **Deny-guardrail** — confirm `PreToolUse(Agent)` deny + steer actually redirects the model to
-   `mhgo mux spawn`.
-3. **Orchestrator bootstrap + pre-granted permissions** — so it can run `mhgo mux spawn` autonomously
+   `lyx mux spawn`.
+3. **Orchestrator bootstrap + pre-granted permissions** — so it can run `lyx mux spawn` autonomously
    without hanging on a permission prompt (`--dangerously-skip-permissions` or a scoped allowlist).
 
 ## Out of scope for `mux`

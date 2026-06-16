@@ -21,7 +21,7 @@ makes correctness structural, not a matter of discipline.
 Returns the current working directory.
 
 **Behavior:** A thin wrapper over `os.Getwd`; the only permitted `os.Getwd` call
-outside `internal/paths` (and `cmd/mhgo/main.go`).
+outside `internal/paths` (and `cmd/lyx/main.go`).
 
 **Returns:** On success, the cleaned absolute path of the cwd. On failure, an error
 (e.g., the cwd no longer exists).
@@ -63,7 +63,7 @@ type Layout struct {
 
 ### Layout methods
 
-- **`MhgoDir() string`** — `filepath.Join(Cwd, "_mhgo")`. The mhgo config/state
+- **`LyxDir() string`** — `filepath.Join(Cwd, "_lyx")`. The Loomyard config/state
   directory at the current location.
 - **`WorktreePath(slug string) string`** — `filepath.Join(Container, slug)`. Path to
   a sibling worktree.
@@ -73,7 +73,7 @@ type Layout struct {
   mirrored into the repo subpath structure. At `RelPath == "."`, collapses to the
   flat `<Container>/_portals/<slug>`.
 - **`PortalTarget(slug string) string`** — `filepath.Join(Container, slug, RelPath,
-  "_mhgo")`. The junction target for a given worktree's portal.
+  "_lyx")`. The junction target for a given worktree's portal.
 - **`LaunchersDir() string`** (un-mirrored root) — `filepath.Join(Container, "_launchers")`. The launchers
   system container directory (prune boundary, not mirrored by subpath).
 - **`LauncherDir(slug string) string`** (mirrored leaf) — `filepath.Join(Container, "_launchers", RelPath, slug)`.
@@ -105,21 +105,21 @@ vs backslashes from `os.Getwd()` are reconciled once in `paths` via
 `filepath.FromSlash` + `filepath.Clean`, so callers never deal with mixed forms.
 
 **Config resolution stays cwd-authoritative.** `paths.Resolve` is geometry-only and
-does NOT check for `_mhgo/`. The cwd-authoritative config invariant (`_mhgo/` must
+does NOT check for `_lyx/`. The cwd-authoritative config invariant (`_lyx/` must
 exist at cwd) remains enforced by `internal/config.FindBaseDir`. Board and other
 modules keep passing `cwd` to their `LoadConfig` (obtained via `paths.Getwd`). This
-lets `board init` (pre-init, no `_mhgo/`) and other early-stage commands call into
+lets `board init` (pre-init, no `_lyx/`) and other early-stage commands call into
 `paths` without a spurious "not initialized" failure.
 
-**Mirrored system dirs never enumerate the worktree.** `paths` only derives mhgo's
-own system directories (`_mhgo`, `_portals`, `_launchers`) from `RelPath` and never
+**Mirrored system dirs never enumerate the worktree.** `paths` only derives Loomyard's
+own system directories (`_lyx`, `_portals`, `_launchers`) from `RelPath` and never
 enumerates or mirrors user content. A nested or git-ignored `_codeguide` sibling
 (or any other sibling repo) is never mirrored as a subpath-specific copy.
 
 ## The enforcement wall
 
 **Raw `os.Getwd` and `git rev-parse --show-toplevel` are banned** outside
-`internal/paths` and `cmd/mhgo/main.go`. This ban is enforced at `go test` / CI
+`internal/paths` and `cmd/lyx/main.go`. This ban is enforced at `go test` / CI
 time by `internal/paths/enforcement_test.go`, which walks the entire source tree
 and fails the build if either literal token is found in any non-test `.go` file
 outside the allowlist.

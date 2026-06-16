@@ -1,7 +1,7 @@
 # Module: ide
 
 > **Status:** implemented (roadmap milestone 4). One-shot VS Code launcher with
-> interactive worktree picker. Driven by `mhgo ide <subcommand>`.
+> interactive worktree picker. Driven by `lyx ide <subcommand>`.
 
 The ide module (`internal/ide`) launches VS Code on git worktrees with automatic
 configuration (color-coded title bars, Claude auto-start tasks, syntax cleanup).
@@ -20,8 +20,8 @@ of clutter. A fast Go picker replaces mill's slow Python `millpy-vscode` chooser
 
 | Command | Does |
 |---|---|
-| `mhgo ide spawn <slug>` | Open VS Code on worktree `<slug>`: generate `.vscode/` config (only if absent), assign a title-bar color, and launch VS Code. |
-| `mhgo ide menu` | Interactive numbered picker over active worktrees (slug + title from board); opens the chosen one via `spawn`. Hard-errors if the board is absent. |
+| `lyx ide spawn <slug>` | Open VS Code on worktree `<slug>`: generate `.vscode/` config (only if absent), assign a title-bar color, and launch VS Code. |
+| `lyx ide menu` | Interactive numbered picker over active worktrees (slug + title from board); opens the chosen one via `spawn`. Hard-errors if the board is absent. |
 
 ## Color assignment
 
@@ -42,7 +42,7 @@ colors are in use.
 
 ## Configuration generation
 
-`mhgo ide spawn <slug>` generates two files inside `.vscode/` — **only if they do
+`lyx ide spawn <slug>` generates two files inside `.vscode/` — **only if they do
 not already exist** (never clobbers operator edits):
 
 ### tasks.json

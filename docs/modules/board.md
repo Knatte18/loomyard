@@ -2,7 +2,7 @@
 
 The board module (`internal/board`) is the task tracker: it stores tasks in a
 `tasks.json` file, renders human-readable board pages from them, and backs the
-whole thing up to a GitHub repo. It is driven by `mhgo board <subcommand>` (see
+whole thing up to a GitHub repo. It is driven by `lyx board <subcommand>` (see
 [overview.md](../overview.md) for the dispatcher).
 
 A write only touches the filesystem and returns; the git backup runs in a
@@ -115,7 +115,7 @@ The filesystem + git plumbing.
 
 ### lock.go
 A wrapper around `github.com/gofrs/flock`. `FileLock` backs both an exclusive and
-a shared lock and coordinates **across processes** — the way mhgo is used, one
+a shared lock and coordinates **across processes** — the way Loomyard is used, one
 short-lived process per command.
 
 - **`AcquireWriteLock(lockPath)`** — exclusive; blocks until free.
@@ -135,7 +135,7 @@ The facade. No business logic — only orchestration.
   4. `mutate(store)` — the change itself
   5. `store.Save()` — `tasks.json`, the source of truth, persisted first
   6. `RenderToDisk(...)` — render.go writes the derived `.md` files and removes orphans
-  7. Launch a detached `mhgo board sync` (unless `BOARD_SKIP_GIT=1`) and return
+  7. Launch a detached `lyx board sync` (unless `BOARD_SKIP_GIT=1`) and return
   8. Release the lock (deferred)
 - Read ops (`GetTask`, `ListTasksBrief`, `ListTasksFull`) short-circuit when the
   board directory is absent — they return empty results (`list` → `[]`, `get` →

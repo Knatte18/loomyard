@@ -13,8 +13,8 @@ lands (mux and worktree share the same state document), so the shipped module ho
 no registry yet — see [State](#state) below. It is the foundation the mux module
 lays its columns out from.
 
-Driven by `mhgo worktree <subcommand>`; one-shot, JSON in / JSON out, like every
-mhgo module.
+Driven by `lyx worktree <subcommand>`; one-shot, JSON in / JSON out, like every
+Loomyard module.
 
 ## What problem this solves
 
@@ -42,7 +42,7 @@ ModelsHub/               ← the container
 Naming conventions:
 - **Container:** `<RepoName>Hub` by convention — makes it obvious this is the
   container, not a checkout.
-- **Hub:** same name as the repo — `Models`, `mhgo`, etc.
+- **Hub:** same name as the repo — `Models`, `loomyard`, etc.
 - **Board:** `_board` (underscore prefix = system directory, not a worktree). This
   matches the config default `path: ../_board` — relative to the hub cwd, `../`
   steps up to the container and `_board` lands alongside the hub.
@@ -59,14 +59,14 @@ is a fixed layout invariant, not a config key. `worktree.yaml` (loaded via
 
 | Command | Does |
 |---|---|
-| `mhgo worktree add <slug>` | Create a worktree under the container on a new branch `<branch_prefix><slug>`, then push it with `-u origin`. |
-| `mhgo worktree list` | List all git worktrees (via `git worktree list --porcelain`), as JSON. |
-| `mhgo worktree remove [--force] <slug>` | The junction-aware teardown (below); `--force` skips the dirty check. |
+| `lyx worktree add <slug>` | Create a worktree under the container on a new branch `<branch_prefix><slug>`, then push it with `-u origin`. |
+| `lyx worktree list` | List all git worktrees (via `git worktree list --porcelain`), as JSON. |
+| `lyx worktree remove [--force] <slug>` | The junction-aware teardown (below); `--force` skips the dirty check. |
 
 ## State
 
 **Deferred — not in the shipped module.** The planned worktree registry lives in
-`.mhgo/local-state.json` via [`internal/state`](../shared-libs/state.md):
+`.lyx/local-state.json` via [`internal/state`](../shared-libs/state.md):
 
 ```
 slug → { path, branch, container }
@@ -85,14 +85,14 @@ names shortened from `refs/heads/…`) and holds no registry of its own. `add` a
 
 ## Container layout (extended)
 
-The **container is not a git repository** and must never contain an `_mhgo/` directory.
+The **container is not a git repository** and must never contain an `_lyx/` directory.
 Two additional system directories are machine-local scaffolding:
 
 ```
 ModelsHub/               ← the container
 ├── Models/              ← the hub (primary checkout, main branch)
 ├── _board/              ← the board directory
-├── _portals/            ← junctions into each worktree's _mhgo/ (machine-local)
+├── _portals/            ← junctions into each worktree's _lyx/ (machine-local)
 ├── _launchers/          ← per-worktree VS Code launchers (machine-local)
 ├── worktree1/           ← worktree on branch worktree1
 ├── worktree2/           ← worktree on branch worktree2
@@ -105,10 +105,10 @@ ModelsHub/               ← the container
 instance (or any file browser) to browse each worktree's live task state without
 navigating away.
 
-- **Creation:** `worktree add` creates `<container>/_portals/<slug>` → `<container>/<slug>/<relpath>/_mhgo`
+- **Creation:** `worktree add` creates `<container>/_portals/<slug>` → `<container>/<slug>/<relpath>/_lyx`
   (a Windows junction; POSIX symlink).
-- **Target:** the junction always points to the worktree's `_mhgo/` directory at the captured `relpath`.
-  `_mhgo/` is committed in the repo, so a fresh worktree checkout contains it at the same `relpath`.
+- **Target:** the junction always points to the worktree's `_lyx/` directory at the captured `relpath`.
+  `_lyx/` is committed in the repo, so a fresh worktree checkout contains it at the same `relpath`.
 - **Removal:** `worktree remove` tears down the portal before (or independently of) the existing
   target-exists check, so portal cleanup runs even if the worktree directory is already gone.
 - **Machine-local:** portals are **not committed** and are specific to this machine (each dev machine's
@@ -117,24 +117,24 @@ navigating away.
 ## Launchers
 
 **Launchers** are machine-local `.cmd` scripts (Windows-only) that open VS Code on a
-worktree with a single click, cding into an initialized worktree directory so `mhgo`
+worktree with a single click, cding into an initialized worktree directory so `lyx`
 can resolve cwd-authoritative config.
 
 Two launchers exist:
 
 1. **Per-worktree:** `<container>/_launchers/<slug>/ide.cmd` created by `worktree add`;
-   runs `cd /d "%~dp0..\..\<slug>\<relpath>" && mhgo ide spawn <slug>`.
+   runs `cd /d "%~dp0..\..\<slug>\<relpath>" && lyx ide spawn <slug>`.
    Omit `<relpath>` when RelPath is empty (init at repo root).
    Removed by `worktree remove`.
 
 2. **Container-root menu:** `<container>/_launchers/ide-menu.cmd` created once by `worktree add`
-   if missing; never removed. Runs `cd /d "%~dp0..\<hubname>\<relpath>" && mhgo ide menu`.
+   if missing; never removed. Runs `cd /d "%~dp0..\<hubname>\<relpath>" && lyx ide menu`.
    `<hubname>` is the main worktree's directory name (stable).
 
-**Why cwd-into-worktree:** The container has no `_mhgo/` and `mhgo` is cwd-authoritative,
-so a bare `mhgo ide spawn <slug>` run from the container would fail with "mhgo not
+**Why cwd-into-worktree:** The container has no `_lyx/` and `lyx` is cwd-authoritative,
+so a bare `lyx ide spawn <slug>` run from the container would fail with "lyx not
 initialized in this folder". Cding into an initialized worktree directory (which contains
-`_mhgo/`) allows `mhgo` to resolve config correctly.
+`_lyx/`) allows `lyx` to resolve config correctly.
 
 **Paths are `%~dp0`-relative** (relative to the `.cmd`'s own location) so the container
 can be moved; they break only on renaming the worktree/hub dir, which the operator accepts.
@@ -172,7 +172,7 @@ worktree module's responsibility.
 
 ## Resolved decisions
 
-1. **Junction management scope:** mhgo manages the git worktree only. Junction
+1. **Junction management scope:** Loomyard manages the git worktree only. Junction
    *creation* is out of scope (a mill concern), but junction *removal* on teardown
    IS in scope because it unblocks `git worktree remove` on Windows.
 

@@ -55,7 +55,7 @@ cannot be hidden by parallelism.
 | `muxpoc`                          |  2.6 s |
 | `git`                             |  1.8 s |
 | `output`                          |  1.5 s |
-| `cmd/mhgo`                        |  1.3 s |
+| `cmd/lyx`                         |  1.3 s |
 | `config`                          |  1.1 s |
 | `lock`                            |  0.9 s |
 | `gitignore`                       |  0.5 s |
@@ -82,7 +82,7 @@ cannot be hidden by parallelism.
 | `TestMenuNumericSelection`                     | ide         |  3.30 s |
 | `TestConcurrentReadsDuringUpserts`             | boardtest   |  3.18 s |
 | `TestList`                                      | worktree    |  3.14 s |
-| `TestMenuRequiresMhgoDir`                      | ide         |  2.94 s |
+| `TestMenuRequiresLyxDir`                       | ide         |  2.94 s |
 | `TestSyncSkipPushCommitsLocallyOnly`           | board       |  2.73 s |
 | `TestCreatePortalMultipleSubpaths`             | worktree    |  2.53 s |
 | `TestCreatePortalRootRelPath`                  | worktree    |  2.39 s |

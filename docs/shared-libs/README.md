@@ -1,6 +1,6 @@
 # Shared internal libraries
 
-`mhgo`'s user-facing modules (`board`, `worktree`, `mux`) are self-contained: all
+Loomyard's user-facing modules (`board`, `worktree`, `mux`) are self-contained: all
 of a module's *domain* logic and its deep test suite live in that module's package
 and nowhere else. What they share is a thin layer of **infrastructure plumbing** —
 mechanical helpers with no opinion about tasks, worktrees, or panes.
@@ -16,7 +16,7 @@ See [roadmap.md](../roadmap.md) milestones 2–3 for the extraction order.
 ## Libraries
 
 - [paths.md](paths.md) — `internal/paths`: canonical geometry resolver, sole owner of cwd/root math
-- [config.md](config.md) — `internal/config`: two-layer YAML config (defaults + `_mhgo/<module>.yaml`), env expansion, `.env` loading
+- [config.md](config.md) — `internal/config`: two-layer YAML config (defaults + `_lyx/<module>.yaml`), env expansion, `.env` loading
 - [git.md](git.md) — `internal/git`: windowless `RunGit` primitive
 - [gitignore.md](gitignore.md) — `internal/gitignore`: shared `.gitignore` block manager for multiple modules
 - [lock.md](lock.md) — `internal/lock`: cross-process file locking
