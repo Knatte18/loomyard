@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/board"
+	"github.com/Knatte18/loomyard/internal/fsx"
 )
 
 const testRepoURL = "https://github.com/Knatte18/loomyard-test.git"
@@ -62,7 +63,7 @@ func TestIntegrationCommitPush(t *testing.T) {
 	filename := fmt.Sprintf("test-%d.txt", time.Now().Unix())
 	content := fmt.Sprintf("integration test run at %s", time.Now().Format(time.RFC3339))
 
-	if err := board.AtomicWrite(repoPath, filename, content); err != nil {
+	if err := fsx.AtomicWrite(repoPath, filename, content); err != nil {
 		t.Fatalf("AtomicWrite: %v", err)
 	}
 
