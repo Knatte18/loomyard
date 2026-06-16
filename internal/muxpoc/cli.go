@@ -86,7 +86,7 @@ func RunCLI(out io.Writer, args []string) int {
 
 	rest := fs.Args()
 	if len(rest) < 1 {
-		fmt.Fprintln(os.Stderr, "usage: mhgo muxpoc <subcommand> [args...]")
+		fmt.Fprintln(os.Stderr, "usage: lyx muxpoc <subcommand> [args...]")
 		return 1
 	}
 

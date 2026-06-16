@@ -32,15 +32,15 @@ func TestWriteLaunchers(t *testing.T) {
 			slug:    "test-slug",
 			relPath: "",
 			verifyIde: func(t *testing.T, content string) {
-				expected := "@cd /d \"%~dp0..\\..\\test-slug\" && mhgo ide spawn test-slug\r\n"
+				expected := "@cd /d \"%~dp0..\\..\\test-slug\" && lyx ide spawn test-slug\r\n"
 				if content != expected {
 					t.Errorf("ide.cmd content = %q; want %q", content, expected)
 				}
 			},
 			verifyMenu: func(t *testing.T, content string) {
 				// Menu content should have the hub name but no relpath segment
-				if !contains(content, "mhgo ide menu") {
-					t.Errorf("ide-menu.cmd does not contain 'mhgo ide menu': %q", content)
+				if !contains(content, "lyx ide menu") {
+					t.Errorf("ide-menu.cmd does not contain 'lyx ide menu': %q", content)
 				}
 			},
 		},
@@ -49,14 +49,14 @@ func TestWriteLaunchers(t *testing.T) {
 			slug:    "task-a",
 			relPath: ".",
 			verifyIde: func(t *testing.T, content string) {
-				expected := "@cd /d \"%~dp0..\\..\\task-a\" && mhgo ide spawn task-a\r\n"
+				expected := "@cd /d \"%~dp0..\\..\\task-a\" && lyx ide spawn task-a\r\n"
 				if content != expected {
 					t.Errorf("ide.cmd content = %q; want %q", content, expected)
 				}
 			},
 			verifyMenu: func(t *testing.T, content string) {
-				if !contains(content, "mhgo ide menu") {
-					t.Errorf("ide-menu.cmd does not contain 'mhgo ide menu': %q", content)
+				if !contains(content, "lyx ide menu") {
+					t.Errorf("ide-menu.cmd does not contain 'lyx ide menu': %q", content)
 				}
 			},
 		},
@@ -68,7 +68,7 @@ func TestWriteLaunchers(t *testing.T) {
 				// Launcher dir is now at _launchers/<RelPath>/<slug>, so the climb is deeper:
 				// From _launchers/subdir/nested/task-b to <Container>/task-b/subdir/nested
 				// = ..\..\..\..\task-b\subdir\nested (2 base + 2 relpath segments)
-				expected := "@cd /d \"%~dp0..\\..\\..\\..\\task-b\\subdir\\nested\" && mhgo ide spawn task-b\r\n"
+				expected := "@cd /d \"%~dp0..\\..\\..\\..\\task-b\\subdir\\nested\" && lyx ide spawn task-b\r\n"
 				if content != expected {
 					t.Errorf("ide.cmd content = %q; want %q", content, expected)
 				}
@@ -77,8 +77,8 @@ func TestWriteLaunchers(t *testing.T) {
 				if !contains(content, "subdir\\nested") {
 					t.Errorf("ide-menu.cmd does not contain relpath segment: %q", content)
 				}
-				if !contains(content, "mhgo ide menu") {
-					t.Errorf("ide-menu.cmd does not contain 'mhgo ide menu': %q", content)
+				if !contains(content, "lyx ide menu") {
+					t.Errorf("ide-menu.cmd does not contain 'lyx ide menu': %q", content)
 				}
 			},
 		},

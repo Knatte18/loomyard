@@ -1,4 +1,4 @@
-// menu_test.go covers worktree discovery (excludes main, requires _mhgo/),
+// menu_test.go covers worktree discovery (excludes main, requires _lyx/),
 // board-facade titles, numeric selection, the zero-worktree path, and the
 // missing-board hard error.
 
@@ -53,9 +53,9 @@ func newTestGitRepoWithWorktrees(t *testing.T) (string, string) {
 	mustRunMenu(t, mainWorktreePath, "git", "add", ".")
 	mustRunMenu(t, mainWorktreePath, "git", "commit", "-m", "initial")
 
-	// Create main's _mhgo directory
-	if err := os.MkdirAll(filepath.Join(mainWorktreePath, "_mhgo"), 0o755); err != nil {
-		t.Fatalf("failed to create main _mhgo: %v", err)
+	// Create main's _lyx directory
+	if err := os.MkdirAll(filepath.Join(mainWorktreePath, "_lyx"), 0o755); err != nil {
+		t.Fatalf("failed to create main _lyx: %v", err)
 	}
 
 	return container, mainWorktreePath
@@ -102,9 +102,9 @@ func TestMenuExcludesMain(t *testing.T) {
 		mustRunMenu(t, mainWorktreePath, "git", "branch", "-D", "child-branch")
 	}()
 
-	// Create _mhgo in child
-	if err := os.MkdirAll(filepath.Join(childPath, "_mhgo"), 0o755); err != nil {
-		t.Fatalf("failed to create child _mhgo: %v", err)
+	// Create _lyx in child
+	if err := os.MkdirAll(filepath.Join(childPath, "_lyx"), 0o755); err != nil {
+		t.Fatalf("failed to create child _lyx: %v", err)
 	}
 
 	// Create board directory with tasks.json
@@ -145,20 +145,20 @@ func TestMenuExcludesMain(t *testing.T) {
 	}
 }
 
-// TestMenuRequiresMhgoDir tests that worktrees without _mhgo are excluded.
-func TestMenuRequiresMhgoDir(t *testing.T) {
+// TestMenuRequiresLyxDir tests that worktrees without _lyx are excluded.
+func TestMenuRequiresLyxDir(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
 
 	container, mainWorktreePath := newTestGitRepoWithWorktrees(t)
 
-	// Create a real git worktree WITHOUT _mhgo (should be excluded)
+	// Create a real git worktree WITHOUT _lyx (should be excluded)
 	childPath := filepath.Join(container, "child")
 	mustRunMenu(t, mainWorktreePath, "git", "worktree", "add", "-b", "child-branch", childPath)
 	defer func() {
 		mustRunMenu(t, mainWorktreePath, "git", "worktree", "remove", "--force", childPath)
 		mustRunMenu(t, mainWorktreePath, "git", "branch", "-D", "child-branch")
 	}()
-	// Note: child is created but has no _mhgo
+	// Note: child is created but has no _lyx
 
 	// Create board directory with tasks.json
 	boardDir := filepath.Join(container, "_board")
@@ -198,12 +198,12 @@ func TestMenuNumericSelection(t *testing.T) {
 
 	container, mainWorktreePath := newTestGitRepoWithWorktrees(t)
 
-	// Create real git worktrees child1 and child2 with _mhgo
+	// Create real git worktrees child1 and child2 with _lyx
 	for _, child := range []string{"child1", "child2"} {
 		childPath := filepath.Join(container, child)
 		mustRunMenu(t, mainWorktreePath, "git", "worktree", "add", "-b", child+"-branch", childPath)
-		if err := os.MkdirAll(filepath.Join(childPath, "_mhgo"), 0o755); err != nil {
-			t.Fatalf("failed to create %s _mhgo: %v", child, err)
+		if err := os.MkdirAll(filepath.Join(childPath, "_lyx"), 0o755); err != nil {
+			t.Fatalf("failed to create %s _lyx: %v", child, err)
 		}
 	}
 

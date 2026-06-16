@@ -38,7 +38,7 @@ func LoadConfig(baseDir, module string) (Config, error) {
 	}
 
 	// Load configuration using internal/config
-	// config.Load checks _mhgo/ existence and returns appropriate error
+	// config.Load checks _lyx/ existence and returns appropriate error
 	raw, err := config.Load(baseDir, module, defaults)
 	if err != nil {
 		// Wrap the generic error with a worktree-specific message

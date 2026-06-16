@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/mhgo/internal/board"
+	"github.com/Knatte18/loomyard/internal/board"
 )
 
 func TestPathGuard(t *testing.T) {

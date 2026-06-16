@@ -13,7 +13,7 @@ import (
 
 // TestCreatePortal covers the createPortal and removePortal helpers.
 // It creates a paths.Layout from a test repo subdirectory (non-trivial RelPath),
-// creates the target _mhgo/ dir, calls createPortal and asserts the junction
+// creates the target _lyx/ dir, calls createPortal and asserts the junction
 // resolves to the target at the mirrored location l.PortalLink(slug).
 // Then it calls removePortal and asserts the link is gone, empty ancestors are
 // pruned, the target survives, and a second removePortal call is idempotent.
@@ -33,13 +33,13 @@ func TestCreatePortal(t *testing.T) {
 		t.Fatalf("paths.Resolve(%q): %v", subdir, err)
 	}
 
-	// Create the target _mhgo directory
+	// Create the target _lyx directory
 	targetParent := filepath.Join(l.Container, "test-slug", l.RelPath)
 	if err := os.MkdirAll(targetParent, 0o755); err != nil {
 		t.Fatalf("mkdir target parent: %v", err)
 	}
 
-	targetDir := filepath.Join(targetParent, "_mhgo")
+	targetDir := filepath.Join(targetParent, "_lyx")
 	if err := os.Mkdir(targetDir, 0o755); err != nil {
 		t.Fatalf("mkdir target: %v", err)
 	}
@@ -96,9 +96,9 @@ func TestCreatePortal(t *testing.T) {
 	}
 
 	// Verify the target dir still exists (not recursively removed)
-	targetDir = filepath.Join(l.Container, "test-slug", l.RelPath, "_mhgo")
+	targetDir = filepath.Join(l.Container, "test-slug", l.RelPath, "_lyx")
 	if _, err := os.Stat(targetDir); err != nil {
-		t.Errorf("target _mhgo dir was removed: %v", err)
+		t.Errorf("target _lyx dir was removed: %v", err)
 	}
 
 	// Second removePortal call should be idempotent
@@ -140,7 +140,7 @@ func TestCreatePortalMultipleSubpaths(t *testing.T) {
 		if err := os.MkdirAll(targetParent, 0o755); err != nil {
 			t.Fatalf("mkdir target parent: %v", err)
 		}
-		targetDir := filepath.Join(targetParent, "_mhgo")
+		targetDir := filepath.Join(targetParent, "_lyx")
 		if err := os.Mkdir(targetDir, 0o755); err != nil {
 			t.Fatalf("mkdir target: %v", err)
 		}
@@ -185,13 +185,13 @@ func TestCreatePortalRootRelPath(t *testing.T) {
 		t.Fatalf("expected RelPath == \".\", got %q", l.RelPath)
 	}
 
-	// Create the target _mhgo directory
+	// Create the target _lyx directory
 	targetParent := filepath.Join(l.Container, "test-slug", l.RelPath)
 	if err := os.MkdirAll(targetParent, 0o755); err != nil {
 		t.Fatalf("mkdir target parent: %v", err)
 	}
 
-	targetDir := filepath.Join(targetParent, "_mhgo")
+	targetDir := filepath.Join(targetParent, "_lyx")
 	if err := os.Mkdir(targetDir, 0o755); err != nil {
 		t.Fatalf("mkdir target: %v", err)
 	}

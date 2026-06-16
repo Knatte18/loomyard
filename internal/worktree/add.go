@@ -35,7 +35,7 @@ type AddResult struct {
 //  4. Target path: sibling directory named slug; must not exist.
 //  5. Remote check: must have at least one remote configured.
 //  6. Create: git worktree add -b <branch> <target>
-//  7. Create portal junction to _mhgo/ in the new worktree
+//  7. Create portal junction to _lyx/ in the new worktree
 //  8. Write per-worktree launchers
 //  9. Push: git push -u origin <branch> (LAST step, so rollback can skip push)
 //

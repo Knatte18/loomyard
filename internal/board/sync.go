@@ -14,8 +14,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Knatte18/mhgo/internal/git"
-	flock "github.com/Knatte18/mhgo/internal/lock"
+	"github.com/Knatte18/loomyard/internal/git"
+	flock "github.com/Knatte18/loomyard/internal/lock"
 )
 
 const (

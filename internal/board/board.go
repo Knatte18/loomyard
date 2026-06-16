@@ -12,7 +12,7 @@ import (
 	"os"
 	"path/filepath"
 
-	flock "github.com/Knatte18/mhgo/internal/lock"
+	flock "github.com/Knatte18/loomyard/internal/lock"
 )
 
 // Board is the high-level facade over a board directory.

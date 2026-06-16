@@ -23,8 +23,8 @@ import (
 	"io"
 	"os"
 
-	"github.com/Knatte18/mhgo/internal/output"
-	"github.com/Knatte18/mhgo/internal/paths"
+	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/paths"
 )
 
 // RunCLI parses and executes a "board" subcommand, writing JSON results to out.

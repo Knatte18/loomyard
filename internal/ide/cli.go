@@ -1,12 +1,12 @@
 // Package ide implements the ide module for opening worktrees in VS Code.
 //
 // The ide module provides two commands:
-// - ide spawn <slug> generates a worktree's .vscode/ config (only when absent),
-//   assigns a title-bar color, registers .vscode/ in the managed .gitignore,
-//   and launches VS Code.
-// - ide menu is an interactive picker over active worktrees (slug + title via
-//   the board facade, hard-erroring through board.HealthCheck when the board is
-//   absent).
+//   - ide spawn <slug> generates a worktree's .vscode/ config (only when absent),
+//     assigns a title-bar color, registers .vscode/ in the managed .gitignore,
+//     and launches VS Code.
+//   - ide menu is an interactive picker over active worktrees (slug + title via
+//     the board facade, hard-erroring through board.HealthCheck when the board is
+//     absent).
 //
 // VS Code launch and the menu are Windows-only (POSIX no-ops/errors with a clear message);
 // config generation and color picking are cross-platform. Mill values (palette, settings
@@ -45,7 +45,7 @@ func RunCLI(out io.Writer, args []string) int {
 
 	// Parse subcommand
 	if len(args) < 1 {
-		return output.Err(out, "usage: mhgo ide <spawn|menu> [args...]")
+		return output.Err(out, "usage: lyx ide <spawn|menu> [args...]")
 	}
 
 	subcommand := args[0]
@@ -54,7 +54,7 @@ func RunCLI(out io.Writer, args []string) int {
 	switch subcommand {
 	case "spawn":
 		if len(subArgs) < 1 {
-			return output.Err(out, "usage: mhgo ide spawn <slug>")
+			return output.Err(out, "usage: lyx ide spawn <slug>")
 		}
 		slug := subArgs[0]
 		if err := Spawn(l, slug); err != nil {

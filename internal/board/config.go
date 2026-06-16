@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Knatte18/mhgo/internal/config"
+	"github.com/Knatte18/loomyard/internal/config"
 )
 
 // Config represents the configuration for a board module.
@@ -55,7 +55,7 @@ func DefaultOutputs() Outputs {
 
 // LoadConfig loads configuration for a module from configuration files.
 //
-// If <baseDir>/_mhgo/ does not exist, returns an error containing
+// If <baseDir>/_lyx/ does not exist, returns an error containing
 // "not initialized here; run \"mhgo init\"".
 //
 // Otherwise, loads configuration using internal/config.Load with defaults from
@@ -63,14 +63,14 @@ func DefaultOutputs() Outputs {
 func LoadConfig(baseDir, module string) (Config, error) {
 	// Build defaults map
 	defaults := map[string]string{
-		"path":              DefaultConfig().Path,
-		"home":              DefaultConfig().Home,
-		"sidebar":           DefaultConfig().Sidebar,
-		"proposal_prefix":   DefaultConfig().ProposalPrefix,
+		"path":            DefaultConfig().Path,
+		"home":            DefaultConfig().Home,
+		"sidebar":         DefaultConfig().Sidebar,
+		"proposal_prefix": DefaultConfig().ProposalPrefix,
 	}
 
 	// Load configuration using internal/config
-	// config.Load checks _mhgo/ existence and returns appropriate error
+	// config.Load checks _lyx/ existence and returns appropriate error
 	raw, err := config.Load(baseDir, module, defaults)
 	if err != nil {
 		// Wrap the generic error with a board-specific message

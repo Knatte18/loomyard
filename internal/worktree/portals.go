@@ -1,5 +1,5 @@
 // portals.go creates and removes the per-worktree portal junction
-// (<container>/_portals/<slug> -> the worktree's _mhgo/), with idempotent removal.
+// (<container>/_portals/<slug> -> the worktree's _lyx/), with idempotent removal.
 
 package worktree
 
@@ -11,7 +11,7 @@ import (
 	"github.com/Knatte18/mhgo/internal/paths"
 )
 
-// createPortal creates a portal junction from <container>/_portals/<RelPath>/<slug> to <container>/<slug>/<relpath>/_mhgo.
+// createPortal creates a portal junction from <container>/_portals/<RelPath>/<slug> to <container>/<slug>/<relpath>/_lyx.
 //
 // Delegates to createJunction with the computed link and target paths.
 // createJunction already MkdirAll's filepath.Dir(link), creating the mirrored _portals/<RelPath>/ chain.

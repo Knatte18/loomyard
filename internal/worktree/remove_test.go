@@ -101,14 +101,14 @@ func TestRemove(t *testing.T) {
 					t.Fatalf("paths.Resolve(%q): %v", hub, err)
 				}
 
-				// Create the portal link target (_mhgo directory)
+				// Create the portal link target (_lyx directory)
 				targetParent := filepath.Join(l.Container, slug, l.RelPath)
 				if err := os.MkdirAll(targetParent, 0755); err != nil {
 					t.Fatalf("mkdir target parent: %v", err)
 				}
-				targetDir := filepath.Join(targetParent, "_mhgo")
+				targetDir := filepath.Join(targetParent, "_lyx")
 				if err := os.Mkdir(targetDir, 0755); err != nil {
-					t.Fatalf("mkdir target _mhgo: %v", err)
+					t.Fatalf("mkdir target _lyx: %v", err)
 				}
 
 				// Create the portal junction itself.
@@ -124,7 +124,7 @@ func TestRemove(t *testing.T) {
 					t.Fatalf("create portal marker: %v", err)
 				}
 
-				// Now delete the worktree directory itself (not the _mhgo target, just the worktree root)
+				// Now delete the worktree directory itself (not the _lyx target, just the worktree root)
 				worktreeDir := filepath.Join(l.Container, slug)
 				if err := os.RemoveAll(worktreeDir); err != nil {
 					t.Fatalf("remove worktree dir: %v", err)

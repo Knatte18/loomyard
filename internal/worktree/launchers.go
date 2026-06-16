@@ -19,13 +19,13 @@ import (
 // from l.LauncherSpawnRel(slug), which climbs from _launchers/<RelPath>/<slug> to
 // the target worktree's subpath:
 //
-//	@cd /d "%~dp0<climb-backslash>" && mhgo ide spawn <slug>
+//	@cd /d "%~dp0<climb-backslash>" && lyx ide spawn <slug>
 //
 // Also ensures l.MenuLauncherPath() exists: create it only if absent (never clobber)
 // with static content built from l.MenuLauncherRel(), which climbs from
 // _launchers/<RelPath> to the main worktree's subpath:
 //
-//	@cd /d "%~dp0<climb-backslash>" && mhgo ide menu
+//	@cd /d "%~dp0<climb-backslash>" && lyx ide menu
 //
 // On non-Windows: returns nil (no-op).
 func writeLaunchers(l *paths.Layout, slug string) error {
@@ -41,7 +41,7 @@ func writeLaunchers(l *paths.Layout, slug string) error {
 
 	// Build the ide.cmd content from LauncherSpawnRel
 	spawnRelBackslash := strings.ReplaceAll(l.LauncherSpawnRel(slug), "/", "\\")
-	ideCmdContent := fmt.Sprintf("@cd /d \"%%~dp0%s\" && mhgo ide spawn %s\r\n", spawnRelBackslash, slug)
+	ideCmdContent := fmt.Sprintf("@cd /d \"%%~dp0%s\" && lyx ide spawn %s\r\n", spawnRelBackslash, slug)
 
 	// Write ide.cmd
 	ideCmdPath := filepath.Join(launcherDir, "ide.cmd")
@@ -65,7 +65,7 @@ func writeLaunchers(l *paths.Layout, slug string) error {
 
 	// Build menu content from MenuLauncherRel
 	menuRelBackslash := strings.ReplaceAll(l.MenuLauncherRel(), "/", "\\")
-	menuCmdContent := fmt.Sprintf("@cd /d \"%%~dp0%s\" && mhgo ide menu\r\n", menuRelBackslash)
+	menuCmdContent := fmt.Sprintf("@cd /d \"%%~dp0%s\" && lyx ide menu\r\n", menuRelBackslash)
 
 	if err := os.WriteFile(menuCmdPath, []byte(menuCmdContent), 0o644); err != nil {
 		return fmt.Errorf("write ide-menu.cmd: %w", err)

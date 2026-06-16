@@ -161,8 +161,8 @@ func TestLoadStateCorrupt(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create .mhgo directory
-	mhgoDir := filepath.Join(tmpDir, ".mhgo")
-	if err := os.MkdirAll(mhgoDir, 0o755); err != nil {
+	lyxDir := filepath.Join(tmpDir, ".mhgo")
+	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
 		t.Fatalf("failed to create .mhgo: %v", err)
 	}
 

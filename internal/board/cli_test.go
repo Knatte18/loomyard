@@ -13,22 +13,22 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/mhgo/internal/board"
+	"github.com/Knatte18/loomyard/internal/board"
 )
 
-// seedCwd creates a temp directory with _mhgo/board.yaml seeded (path: board),
+// seedCwd creates a temp directory with _lyx/board.yaml seeded (path: board),
 // changes to that directory, and returns the cwd path. The caller must restore
 // the original cwd after the test (or use t.Chdir).
 func seedCwd(t *testing.T) string {
 	t.Helper()
 
 	cwd := t.TempDir()
-	mhgoDir := filepath.Join(cwd, "_mhgo")
-	if err := os.MkdirAll(mhgoDir, 0o755); err != nil {
-		t.Fatalf("failed to create _mhgo: %v", err)
+	lyxDir := filepath.Join(cwd, "_lyx")
+	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
+		t.Fatalf("failed to create _lyx: %v", err)
 	}
 
-	configPath := filepath.Join(mhgoDir, "board.yaml")
+	configPath := filepath.Join(lyxDir, "board.yaml")
 	if err := os.WriteFile(configPath, []byte("path: board\n"), 0o644); err != nil {
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
@@ -255,11 +255,11 @@ func TestCLIRerender(t *testing.T) {
 
 func TestCLINotInitialized(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
-	// Do NOT call seedCwd: cwd has no _mhgo/
+	// Do NOT call seedCwd: cwd has no _lyx/
 	cwd := t.TempDir()
 	t.Chdir(cwd)
 
-	// (h) Running a command from cwd without _mhgo/ returns exit 1 with error
+	// (h) Running a command from cwd without _lyx/ returns exit 1 with error
 	exitCode, stdout := runCLI(t, "list")
 
 	if exitCode != 1 {

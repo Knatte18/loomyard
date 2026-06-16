@@ -12,7 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Knatte18/mhgo/internal/git"
+	"github.com/Knatte18/loomyard/internal/git"
 )
 
 // BoardPushError represents a fatal git push error

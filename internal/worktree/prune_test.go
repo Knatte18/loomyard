@@ -17,9 +17,9 @@ import (
 //   - The helper is idempotent on an already-pruned tree
 func TestPruneEmptyAncestors(t *testing.T) {
 	tests := []struct {
-		name     string
-		setup    func(t *testing.T, tempDir string) (start, stop string)
-		verify   func(t *testing.T, tempDir string, start, stop string)
+		name   string
+		setup  func(t *testing.T, tempDir string) (start, stop string)
+		verify func(t *testing.T, tempDir string, start, stop string)
 	}{
 		{
 			name: "PruneEmptyAncestorsUpToStop",

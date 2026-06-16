@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/mhgo/internal/board"
+	"github.com/Knatte18/loomyard/internal/board"
 )
 
 func TestRenderToDiskWritesAndCleansOrphans(t *testing.T) {
@@ -589,13 +589,13 @@ func TestRenderLayerBuckets(t *testing.T) {
 			expected: "# Layer A",
 		},
 		{
-			name: "Isolated bucket Z",
-			task: board.Task{ID: 1, Slug: "z", Title: "Isolated", Isolated: true},
+			name:     "Isolated bucket Z",
+			task:     board.Task{ID: 1, Slug: "z", Title: "Isolated", Isolated: true},
 			expected: "# Layer Z",
 		},
 		{
-			name: "Deferred bucket",
-			task: board.Task{ID: 1, Slug: "d", Title: "Deferred", Deferred: true},
+			name:     "Deferred bucket",
+			task:     board.Task{ID: 1, Slug: "d", Title: "Deferred", Deferred: true},
 			expected: "# Someday",
 		},
 		{

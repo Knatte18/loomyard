@@ -1,6 +1,6 @@
 // init_test.go — tests for the init scaffold (init.go).
 //
-// Covers: creating _mhgo/board.yaml and .gitignore managed block,
+// Covers: creating _lyx/board.yaml and .gitignore managed block,
 // idempotency (re-run doesn't clobber or duplicate), and JSON output shape.
 
 package board_test
@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/mhgo/internal/board"
+	"github.com/Knatte18/loomyard/internal/board"
 )
 
 // runInit invokes board.RunInit in-process and returns the exit code plus the
@@ -26,7 +26,7 @@ func runInit(t *testing.T) (exitCode int, stdout string) {
 	return code, buf.String()
 }
 
-// TestInitCreatesStructure tests that first run creates _mhgo/board.yaml.
+// TestInitCreatesStructure tests that first run creates _lyx/board.yaml.
 func TestInitCreatesStructure(t *testing.T) {
 	cwd := t.TempDir()
 	t.Chdir(cwd)
@@ -37,18 +37,18 @@ func TestInitCreatesStructure(t *testing.T) {
 		t.Fatalf("expected exit 0, got %d; stdout: %s", exitCode, stdout)
 	}
 
-	// Verify _mhgo/ exists
-	mhgoDir := filepath.Join(cwd, "_mhgo")
-	info, err := os.Stat(mhgoDir)
+	// Verify _lyx/ exists
+	lyxDir := filepath.Join(cwd, "_lyx")
+	info, err := os.Stat(lyxDir)
 	if err != nil {
-		t.Fatalf("_mhgo directory not created: %v", err)
+		t.Fatalf("_lyx directory not created: %v", err)
 	}
 	if !info.IsDir() {
-		t.Fatalf("_mhgo is not a directory")
+		t.Fatalf("_lyx is not a directory")
 	}
 
 	// Verify board.yaml exists
-	boardYamlPath := filepath.Join(mhgoDir, "board.yaml")
+	boardYamlPath := filepath.Join(lyxDir, "board.yaml")
 	content, err := os.ReadFile(boardYamlPath)
 	if err != nil {
 		t.Fatalf("board.yaml not created: %v", err)
@@ -68,7 +68,7 @@ func TestInitCreatesStructure(t *testing.T) {
 	}
 
 	// Verify worktree.yaml exists
-	worktreeYamlPath := filepath.Join(mhgoDir, "worktree.yaml")
+	worktreeYamlPath := filepath.Join(lyxDir, "worktree.yaml")
 	worktreeContent, err := os.ReadFile(worktreeYamlPath)
 	if err != nil {
 		t.Fatalf("worktree.yaml not created: %v", err)
@@ -109,18 +109,18 @@ func TestInitGitignoreBlock(t *testing.T) {
 	contentStr := string(content)
 
 	// Check for start marker
-	if !strings.Contains(contentStr, "# === mhgo-managed ===") {
+	if !strings.Contains(contentStr, "# === lyx-managed ===") {
 		t.Errorf("expected start marker in .gitignore, got: %s", contentStr)
 	}
 
 	// Check for end marker
-	if !strings.Contains(contentStr, "# === end mhgo-managed ===") {
+	if !strings.Contains(contentStr, "# === end lyx-managed ===") {
 		t.Errorf("expected end marker in .gitignore, got: %s", contentStr)
 	}
 
-	// Check for .mhgo/ entry
-	if !strings.Contains(contentStr, ".mhgo/") {
-		t.Errorf("expected .mhgo/ entry in .gitignore, got: %s", contentStr)
+	// Check for .lyx/ entry
+	if !strings.Contains(contentStr, ".lyx/") {
+		t.Errorf("expected .lyx/ entry in .gitignore, got: %s", contentStr)
 	}
 }
 
@@ -136,7 +136,7 @@ func TestInitIdempotent(t *testing.T) {
 	}
 
 	// Capture board.yaml content and mtime
-	boardYamlPath := filepath.Join(cwd, "_mhgo", "board.yaml")
+	boardYamlPath := filepath.Join(cwd, "_lyx", "board.yaml")
 	content1, err := os.ReadFile(boardYamlPath)
 	if err != nil {
 		t.Fatalf("failed to read board.yaml after first run: %v", err)
@@ -198,7 +198,7 @@ func TestInitIdempotent(t *testing.T) {
 		t.Errorf("expected gitignore='unchanged', got %v", result["gitignore"])
 	}
 
-	if mhgoDir, ok := result["mhgo_dir"].(string); !ok || mhgoDir != "exists" {
+	if lyxDir, ok := result["mhgo_dir"].(string); !ok || lyxDir != "exists" {
 		t.Errorf("expected mhgo_dir='exists', got %v", result["mhgo_dir"])
 	}
 }
@@ -225,7 +225,7 @@ func TestInitJSONShape(t *testing.T) {
 	}
 
 	// Verify mhgo_dir is "created"
-	if mhgoDir, ok := result["mhgo_dir"].(string); !ok || mhgoDir != "created" {
+	if lyxDir, ok := result["mhgo_dir"].(string); !ok || lyxDir != "created" {
 		t.Errorf("expected mhgo_dir='created', got %v", result["mhgo_dir"])
 	}
 

@@ -19,7 +19,7 @@ var codeLauncher = launchCode
 //  1. Compute worktreeDir := l.WorktreePath(slug)
 //  2. Compute color := pickColor(l)
 //  3. Call writeVSCodeConfig(worktreeDir, l.RelPath, slug, color)
-//  4. Open the worktree at its relpath (dir holding _mhgo/ and .vscode/) via codeLauncher
+//  4. Open the worktree at its relpath (dir holding _lyx/ and .vscode/) via codeLauncher
 //
 // Returns an error if any step fails.
 func Spawn(l *paths.Layout, slug string) error {
@@ -34,7 +34,7 @@ func Spawn(l *paths.Layout, slug string) error {
 		return err
 	}
 
-	// Launch VS Code at the rel path (the dir holding _mhgo/ and .vscode/)
+	// Launch VS Code at the rel path (the dir holding _lyx/ and .vscode/)
 	openDir := filepath.Join(worktreeDir, l.RelPath)
 	if err := codeLauncher(openDir); err != nil {
 		return err
