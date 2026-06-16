@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/mhgo/internal/paths"
+	"github.com/Knatte18/loomyard/internal/paths"
 )
 
 // TestWriteLaunchers covers launcher file creation on Windows.

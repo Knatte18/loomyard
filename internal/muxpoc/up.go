@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Knatte18/mhgo/internal/output"
+	"github.com/Knatte18/loomyard/internal/output"
 )
 
 // cmdUp is the entry point for the 'mhgo muxpoc up' subcommand.

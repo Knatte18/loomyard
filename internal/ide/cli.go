@@ -18,8 +18,8 @@ import (
 	"io"
 	"os"
 
-	"github.com/Knatte18/mhgo/internal/output"
-	"github.com/Knatte18/mhgo/internal/paths"
+	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/paths"
 )
 
 // RunCLI is the main entry point for the ide module CLI.

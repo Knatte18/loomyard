@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Knatte18/mhgo/internal/paths"
-	"github.com/Knatte18/mhgo/internal/worktree"
+	"github.com/Knatte18/loomyard/internal/paths"
+	"github.com/Knatte18/loomyard/internal/worktree"
 )
 
 // TestRemove covers worktree teardown: clean removal, the dirty-tree gate with

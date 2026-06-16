@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Knatte18/mhgo/internal/paths"
+	"github.com/Knatte18/loomyard/internal/paths"
 )
 
 // TestCreatePortal covers the createPortal and removePortal helpers.

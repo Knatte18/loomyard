@@ -12,8 +12,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/Knatte18/mhgo/internal/output"
-	"github.com/Knatte18/mhgo/internal/paths"
+	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/paths"
 )
 
 // Config holds paths and dimensions for muxpoc operations.

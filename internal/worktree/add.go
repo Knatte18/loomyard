@@ -9,8 +9,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/Knatte18/mhgo/internal/git"
-	"github.com/Knatte18/mhgo/internal/paths"
+	"github.com/Knatte18/loomyard/internal/git"
+	"github.com/Knatte18/loomyard/internal/paths"
 )
 
 // AddResult contains the result of successfully adding a new worktree.

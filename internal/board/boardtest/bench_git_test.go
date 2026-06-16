@@ -17,7 +17,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Knatte18/mhgo/internal/board"
+	"github.com/Knatte18/loomyard/internal/board"
 )
 
 // cloneBenchWiki clones the dummy wiki into a temp dir and configures a commit

@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Knatte18/mhgo/internal/worktree"
+	"github.com/Knatte18/loomyard/internal/worktree"
 )
 
 // setupCLIRepo creates a fresh repo, changes into it, and writes a

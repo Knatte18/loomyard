@@ -160,10 +160,10 @@ func TestLoadStateMissing(t *testing.T) {
 func TestLoadStateCorrupt(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Create .mhgo directory
-	lyxDir := filepath.Join(tmpDir, ".mhgo")
+	// Create .lyx directory
+	lyxDir := filepath.Join(tmpDir, ".lyx")
 	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
-		t.Fatalf("failed to create .mhgo: %v", err)
+		t.Fatalf("failed to create .lyx: %v", err)
 	}
 
 	// Write corrupt JSON

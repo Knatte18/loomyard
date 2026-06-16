@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Knatte18/mhgo/internal/config"
+	"github.com/Knatte18/loomyard/internal/config"
 )
 
 // Config represents the configuration for a worktree module.
@@ -29,8 +29,8 @@ func DefaultConfig() Config {
 // LoadConfig resolves the worktree config for baseDir via internal/config.Load,
 // returning a typed Config built from DefaultConfig()'s defaults.
 //
-// If internal/config reports that baseDir is not an initialized mhgo base, the
-// error is rewrapped to "not initialized here; run \"mhgo init\"".
+// If internal/config reports that baseDir is not an initialized Loomyard base, the
+// error is rewrapped to "not initialized here; run \"lyx init\"".
 func LoadConfig(baseDir, module string) (Config, error) {
 	// Build defaults map
 	defaults := map[string]string{
@@ -43,7 +43,7 @@ func LoadConfig(baseDir, module string) (Config, error) {
 	if err != nil {
 		// Wrap the generic error with a worktree-specific message
 		if strings.Contains(err.Error(), "not initialized") {
-			return Config{}, fmt.Errorf("not initialized here; run \"mhgo init\"")
+			return Config{}, fmt.Errorf("not initialized here; run \"lyx init\"")
 		}
 		return Config{}, err
 	}

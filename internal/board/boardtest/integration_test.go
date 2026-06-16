@@ -18,10 +18,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/mhgo/internal/board"
+	"github.com/Knatte18/loomyard/internal/board"
 )
 
-const testRepoURL = "https://github.com/Knatte18/mhgo-wiki-test.git"
+const testRepoURL = "https://github.com/Knatte18/loomyard-test.git"
 
 func setupIntegrationRepo(t *testing.T) string {
 	t.Helper()

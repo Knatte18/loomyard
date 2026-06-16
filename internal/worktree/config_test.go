@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/mhgo/internal/worktree"
+	"github.com/Knatte18/loomyard/internal/worktree"
 )
 
 // TestLoadConfig covers worktree config resolution: defaults when worktree.yaml

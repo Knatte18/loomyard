@@ -13,7 +13,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/Knatte18/mhgo/internal/board"
+	"github.com/Knatte18/loomyard/internal/board"
 )
 
 // TestConcurrentReadsDuringUpserts runs many readers concurrently with a single

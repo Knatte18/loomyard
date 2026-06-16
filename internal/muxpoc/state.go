@@ -17,8 +17,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/Knatte18/mhgo/internal/board"
-	flock "github.com/Knatte18/mhgo/internal/lock"
+	"github.com/Knatte18/loomyard/internal/board"
+	flock "github.com/Knatte18/loomyard/internal/lock"
 )
 
 const (

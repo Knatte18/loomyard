@@ -16,7 +16,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/Knatte18/mhgo/internal/board"
+	"github.com/Knatte18/loomyard/internal/board"
 )
 
 // benchSizes is the set of board sizes (number of tasks already in tasks.json)

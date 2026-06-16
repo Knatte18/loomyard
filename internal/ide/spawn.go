@@ -6,7 +6,7 @@ package ide
 import (
 	"path/filepath"
 
-	"github.com/Knatte18/mhgo/internal/paths"
+	"github.com/Knatte18/loomyard/internal/paths"
 )
 
 // codeLauncher is a package-level injectable seam that can be overridden in tests.

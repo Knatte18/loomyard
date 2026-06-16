@@ -8,7 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/Knatte18/mhgo/internal/gitignore"
+	"github.com/Knatte18/loomyard/internal/gitignore"
 )
 
 // writeVSCodeConfig generates VS Code configuration files in a worktree,

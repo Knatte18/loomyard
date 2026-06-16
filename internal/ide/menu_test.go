@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/mhgo/internal/paths"
+	"github.com/Knatte18/loomyard/internal/paths"
 )
 
 // mustRunMenu is a test helper that runs a command in a directory.

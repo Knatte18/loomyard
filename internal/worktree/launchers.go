@@ -10,7 +10,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/Knatte18/mhgo/internal/paths"
+	"github.com/Knatte18/loomyard/internal/paths"
 )
 
 // writeLaunchers writes per-worktree launchers for the given slug.
