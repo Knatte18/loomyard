@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planning
+phase: plan-fix-r2
 slug: extract-internal-fsx
 branch: extract-internal-fsx
 plan: _mill/plan
@@ -18,4 +18,5 @@ discussing  '2026-06-16T13:13:32Z'
 discussed  '2026-06-16T18:00:33Z'
 discussion-fix-r2  '2026-06-16T18:14:59Z'
 planning  '2026-06-16T18:19:53Z'
+plan-fix-r2  '2026-06-16T18:36:04Z'
 ```

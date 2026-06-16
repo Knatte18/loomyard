@@ -47,7 +47,6 @@ Independent of batches 2/3 (disjoint files); depends on batch 1.
 
 - **Context:**
   - `internal/state/state.go`
-  - `internal/muxpoc/state_test.go`
 - **Edits:** none
 - **Creates:**
   - `internal/state/state_test.go`

@@ -3,7 +3,7 @@
 ```yaml
 task: "Extract internal/fsx and build internal/state"
 slug: "extract-internal-fsx"
-approved: false
+approved: true
 started: "20260616-181720"
 parent: "main"
 root: ""
