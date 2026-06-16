@@ -33,7 +33,12 @@ after, with every reference moved to the new brand.
   `git`, `gitignore`, `ide`, `lock`, `muxpoc`, `output`, `paths`, `worktree`).
 - **CLI binary + directory:** `cmd/mhgo/` → `cmd/lyx/` (git-mv the directory;
   rename `main.go` package doc and usage strings `usage: mhgo <module>` →
-  `usage: lyx <module>`, `Command mhgo` → `Command lyx`).
+  `usage: lyx <module>`, `Command mhgo` → `Command lyx`). The git-mv moves
+  `cmd/mhgo/main_test.go` but NOT its content: that file hardcodes `_mhgo` /
+  `mhgoDir` / `_mhgo/board.yaml` literals (lines ~43–50, ~73–80) which must be
+  renamed to `_lyx` — otherwise `TestRunDispatchesToBoard` /
+  `TestRunBoardErrorPropagatesExitCode` create the wrong dir (config now looks
+  for `_lyx/`) and fail.
 - **Managed-state directory:** `_mhgo/` → `_lyx/` everywhere (the dir holding
   `board.yaml`, `worktree.yaml`, `<module>.yaml`). Source sites: `paths.go`
   `MhgoDir()`, `config.go` `FindBaseDir`/`Load`, `board/init.go`, `ide/menu.go`,
@@ -44,6 +49,12 @@ after, with every reference moved to the new brand.
 - **gitignore block markers:** `# === mhgo-managed ===` / `# === end mhgo-managed ===`
   → `lyx-managed` (in `internal/gitignore/gitignore.go` constants + package doc,
   and the assertions in `gitignore_test.go` / `board/init_test.go`).
+- **Root tracked `.gitignore`:** the hand-written binary-ignore patterns `/mhgo`
+  and `mhgo.exe` (lines 4–5) → `/lyx` and `lyx.exe`, and the local-state entry
+  `.mhgo/` (line 8) → `.lyx/`. These go stale once the binary becomes `lyx`/`lyx.exe`
+  and the local-state dir becomes `.lyx/`. **Do NOT touch** the
+  `# === mill-managed ===` block lower in the same file — that is the millhouse
+  harness block, out of scope (see Out).
 - **Exported Go identifier:** `Layout.MhgoDir()` → `Layout.LyxDir()` (1 definition
   in `paths.go` + all call sites). Local/unexported identifiers (`mhgoDir`,
   `mhgoPath`, `mhgoFile`, `mhgoIdx`, `mhgo_dir`, `dotMhgoDir`, and test names like
@@ -82,10 +93,13 @@ after, with every reference moved to the new brand.
   `.mhgo/` directories. There are no existing mhgo-managed repos outside this one
   (confirmed by the operator), so a clean break is safe.
 - **The millhouse task-harness files** under `_mill/`, `.millhouse/`, the `.wiki`
-  junction, `portals`/`launchers` scaffolding, and `.vscode/settings.json` are NOT
+  junction, the worktree's `.portals` junction, and `.vscode/settings.json` are NOT
   part of the rename. `.vscode/settings.json` is gitignored (only its
   `mill-config.yaml` `short_name` source is tracked, and that one key IS in scope).
-  Do not edit anything in the parent worktree.
+  Do not edit anything in the parent worktree. **Note:** this is the *millhouse*
+  `.portals` junction — distinct from mhgo's **own** `internal/worktree`
+  portals/launchers feature, which IS part of the codebase being renamed (see the
+  `PortalTarget` clarification under Technical context).
 - **The actual GitHub repo rename** (mhgo→loomyard) and the `mhgo-wiki-test`→
   `loomyard-test` rename are operator actions done outside this task; this task only
   updates the strings that point at them.
@@ -170,8 +184,11 @@ after, with every reference moved to the new brand.
 - **Geometry owner — `internal/paths/paths.go`:** single source of worktree/
   container geometry. `Layout.MhgoDir()` returns `filepath.Join(Cwd, "_mhgo")` —
   rename to `LyxDir()` returning `"_lyx"`. `PortalTarget` also joins the literal
-  `"_mhgo"` (line ~141). Package doc references `cmd/mhgo/main.go` as the os.Getwd
-  allowlist exception.
+  `"_mhgo"` (line ~141) — this is the managed-state-dir name and IS in scope
+  (`"_mhgo"`→`"_lyx"`); it is distinct from the portal *directory* names
+  `_portals`/`_launchers` (`PortalsDir`/`LaunchersDir`), which contain no `mhgo`
+  and are therefore unaffected. Package doc references `cmd/mhgo/main.go` as the
+  os.Getwd allowlist exception.
 - **Config — `internal/config/config.go`:** `FindBaseDir` and `Load` hardcode the
   literal `"_mhgo"` (lines ~32, ~70) and error text `_mhgo/ directory not found`.
 - **Board init — `internal/board/init.go`:** `mhgoDir := filepath.Join(cwd, "_mhgo")`
@@ -189,10 +206,13 @@ after, with every reference moved to the new brand.
 - **Path-invariant enforcement — `internal/paths/enforcement_test.go`:** scans the
   whole tree and fails the build if raw `os.Getwd` or `git rev-parse
   --show-toplevel` appear outside `internal/paths` and the allowlisted
-  `cmd/mhgo/main.go`. The allowlist literal `cmd/mhgo` (lines ~17, ~64, ~66) MUST
-  become `cmd/lyx` in the same change that git-mv's the directory — otherwise the
-  build breaks. `CONSTRAINTS.md` documents this same invariant and names
-  `cmd/mhgo/main.go`.
+  `cmd/mhgo/main.go`. The allowlist literal `cmd/mhgo` (lines ~17, ~64, ~66) must
+  become `cmd/lyx` in the same change that git-mv's the directory — for correctness
+  and consistency. (Note: today `cmd/mhgo/main.go` contains no raw `os.Getwd` /
+  `--show-toplevel`, so a stale allowlist entry would not by itself fail
+  `enforcement_test`; the update is still required so the allowlist names the real
+  path, and to stay safe if the CLI's `main.go` ever introduces such a primitive.)
+  `CONSTRAINTS.md` documents this same invariant and names `cmd/mhgo/main.go`.
 - **Paired test input/expected — `internal/muxpoc/state_test.go`:** cwd inputs like
   `C:\Code\mhgo\wts\mhgo-mux-design` feed a basename-derivation; if the example slug
   is renamed, the expected derived output in the same case must move with it.
@@ -261,3 +281,9 @@ after, with every reference moved to the new brand.
   the remote URL).
 - **Q:** Prose voice? **A:** Product = "Loomyard" in prose; command = `lyx` in code
   font; module path = `github.com/Knatte18/loomyard`.
+- **Q:** (review r1 gap) `cmd/mhgo/main_test.go` hardcodes `_mhgo`/`mhgoDir` — in
+  scope? **A:** Yes — explicitly a rename site; git-mv moves the file but not its
+  content, and the literals must become `_lyx` or the board-dispatch tests fail.
+- **Q:** (review r1 gap) Root tracked `.gitignore` binary patterns `/mhgo`,
+  `mhgo.exe`, `.mhgo/` — in scope? **A:** Yes → `/lyx`, `lyx.exe`, `.lyx/`. The
+  `# === mill-managed ===` block in the same file stays untouched (harness).
