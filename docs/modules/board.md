@@ -148,14 +148,14 @@ directory (os.Getwd() + LoadConfig), then parses `<subcommand> [json-payload]`,
 deserialises the JSON argument, calls one method on `board.Board`, and writes the
 result to `out` as JSON. Returns the exit code (0/1).
 
-Configuration resolution (cwd-authoritative): the cwd must contain `_mhgo/`
+Configuration resolution (cwd-authoritative): the cwd must contain `_lyx/`
 directory. If absent, `LoadConfig` errors with "not initialized here; run
-\"mhgo init\"". Otherwise configuration is loaded from `_mhgo/board.yaml` merged
+\"lyx init\"". Otherwise configuration is loaded from `_lyx/board.yaml` merged
 with built-in defaults (see [Configuration](#configuration)).
 
 When `--board-path` is present (internal flag for the detached sync child), it
 bypasses config resolution entirely and uses the provided absolute path. The
-child never checks for `_mhgo/` or re-resolves configuration.
+child never checks for `_lyx/` or re-resolves configuration.
 
 Subcommands: `upsert`, `upsert-batch`, `set-phase`, `remove`, `get`, `list`,
 `list-full`, `merge`, `set-deps`, `rerender`, `sync`.
@@ -181,10 +181,10 @@ its commit. No path holds a lock across the network.
 ## Background sync
 
 Writes are file-only and fast; backing the board up to GitHub is handed to a
-detached `mhgo board sync` process, so a write never waits on git. (A write is
+detached `lyx board sync` process, so a write never waits on git. (A write is
 ~10 ms of work; a push ~4 s — see [benchmarks/board-performance.md](../benchmarks/board-performance.md).)
 
-**Why async.** Every `mhgo` process on a machine shares the same `tasks.json`, so
+**Why async.** Every `lyx` process on a machine shares the same `tasks.json`, so
 they see each other's changes immediately through the file — git is only for
 replicating to GitHub. That makes remote backup a background concern the write
 path can drop.
@@ -224,18 +224,18 @@ safety-net sync.
 
 The board module resolves configuration from the current working directory,
 delegating to `internal/config`. The cwd-authoritative model loads built-in
-defaults overlaid with `_mhgo/board.yaml`; there is **no** `.mhgo/` config layer.
+defaults overlaid with `_lyx/board.yaml`; there is **no** `.lyx/` config layer.
 Machine-local variation is expressed via `$env:` references inside the tracked YAML.
 
 ### Layered model
 
 Configuration is assembled from two sources, merged per key:
 1. **Built-in defaults** — fallback for any unspecified key
-2. **`<cwd>/_mhgo/board.yaml`** (optional, git-tracked) — team/repo-wide settings
+2. **`<cwd>/_lyx/board.yaml`** (optional, git-tracked) — team/repo-wide settings
 
-A key absent from a higher layer falls through to the built-in default. If `_mhgo/`
+A key absent from a higher layer falls through to the built-in default. If `_lyx/`
 does not exist, `LoadConfig` errors with the message "not initialized here; run
-\"mhgo init\"".
+\"lyx init\"".
 
 ### Keys and defaults
 
@@ -252,51 +252,51 @@ Environment variable expansion and path resolution are described in
 
 ## init
 
-`mhgo init` is a top-level command (at the `main.go` module dispatcher, beside
-`mhgo board ...`) that scaffolds the configuration layer. It is fully idempotent
+`lyx init` is a top-level command (at the `main.go` module dispatcher, beside
+`lyx board ...`) that scaffolds the configuration layer. It is fully idempotent
 and re-run safe.
 
 ### What it does
 
-1. Create `<cwd>/_mhgo/` if missing
-2. Write a fully-commented `_mhgo/board.yaml` (if absent) — every key shown with
+1. Create `<cwd>/_lyx/` if missing
+2. Write a fully-commented `_lyx/board.yaml` (if absent) — every key shown with
    its default value, commented out, with explanatory comments. Active values are
    not written, so code defaults always apply until the user uncomments and edits
    a key.
-3. Maintain a `.gitignore` managed block (see below), containing `.mhgo/`
+3. Maintain a `.gitignore` managed block (see below), containing `.lyx/`
 4. Print a single-line JSON action summary
 
 ### Example
 
 ```sh
-$ mhgo init
-{"ok":true,"mhgo_dir":"created","board_yaml":"created","gitignore":"updated"}
+$ lyx init
+{"ok":true,"lyx_dir":"created","board_yaml":"created","gitignore":"updated"}
 ```
 
 Subsequent runs are idempotent:
 
 ```sh
-$ mhgo init
-{"ok":true,"mhgo_dir":"exists","board_yaml":"exists","gitignore":"unchanged"}
+$ lyx init
+{"ok":true,"lyx_dir":"exists","board_yaml":"exists","gitignore":"unchanged"}
 ```
 
 ### The managed block
 
-`init` maintains an `# === mhgo-managed ===` ... `# === end mhgo-managed ===`
+`init` maintains an `# === lyx-managed ===` ... `# === end lyx-managed ===`
 marker block in `<cwd>/.gitignore` (creating the file if absent). The block
-contains `.mhgo/`. Idempotent: only rewrites when the block's interior content
+contains `.lyx/`. Idempotent: only rewrites when the block's interior content
 differs (trailing newline and surrounding whitespace don't trigger rewrites).
 
-The `mhgo-managed` marker deliberately does not collide with millpy's separate
+The `lyx-managed` marker deliberately does not collide with millpy's separate
 `mill-managed` block.
 
 ## Data flow: upsert
 
-Command: `mhgo board upsert '{"slug": "my-task", "title": "Do something"}'`
+Command: `lyx board upsert '{"slug": "my-task", "title": "Do something"}'`
 
 ```
 main.go → board.RunCLI (cli.go)
-  │  LoadConfig(cwd, "board") — resolve from `_mhgo/board.yaml` + defaults
+  │  LoadConfig(cwd, "board") — resolve from `_lyx/board.yaml` + defaults
   │  parse args → subcommand="upsert", jsonPayload='{"slug":...}'
   │  json.Unmarshal → fields map[string]any
   │  b.UpsertTask(fields)
@@ -308,7 +308,7 @@ board.go / writeOp                          (file-only — no git, returns in ms
   4. store.UpsertTask(fields)               ← mutation (see below)
   5. store.Save()                           ← write tasks.json atomically (source of truth)
   6. RenderToDisk(boardPath, tasks, out)    ← render.go: write .md files + drop orphans
-  7. spawnSync(boardPath)                    ← detached `mhgo board sync`, NOT waited on
+  7. spawnSync(boardPath)                    ← detached `lyx board sync`, NOT waited on
   8. lock.Release()                         ← deferred
 
   (later, in the background)

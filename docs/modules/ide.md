@@ -91,11 +91,11 @@ The `.vscode/` directory is added to the managed `.gitignore` block via
 
 ## Interactive menu
 
-`mhgo ide menu` is the one **interactive exception** to the JSON-in/JSON-out convention:
+`lyx ide menu` is the one **interactive exception** to the JSON-in/JSON-out convention:
 
 1. **Discovers active worktrees** via `git worktree list --porcelain`, excluding the
-   main worktree, and keeps only those with `_mhgo/` at the captured `relpath`
-   (mhgo-instantiated worktrees).
+   main worktree, and keeps only those with `_lyx/` at the captured `relpath`
+   (lyx-instantiated worktrees).
 2. **Hard-errors on absent board:** calls `Board.HealthCheck()` first; a non-nil
    result is a hard failure. The board module is the sole authority on board
    validity; `ide` never stats the board dir itself.
@@ -121,7 +121,7 @@ deferred.
   modules (including `ide`) respect this invariant.
 - **Geometry:** `ide` resolves worktree geometry via [`internal/paths`](../shared-libs/paths.md);
   raw `os.Getwd` and `git rev-parse --show-toplevel` are banned outside `internal/paths`
-  and `cmd/mhgo/main.go`.
+  and `cmd/lyx/main.go`.
 
 ## Platforms
 
@@ -136,9 +136,9 @@ deferred.
 Uses the established `_windows.go` / `_other.go` build-tag split (mirroring
 `git_windows.go` / `git_other.go`, `spawn_windows.go` / `spawn_other.go`).
 
-## Parked: mhgo shell
+## Parked: lyx shell
 
-A future follow-up (deferred from this task) is `mhgo shell`: a fast way to start a
+A future follow-up (deferred from this task) is `lyx shell`: a fast way to start a
 pwsh+Claude terminal inside an already-running VS Code window. Investigation found no
 clean external CLI to inject a terminal into a live VS Code instance on demand; the
 supported mechanisms are the `runOn: folderOpen` task (used here) or an in-window

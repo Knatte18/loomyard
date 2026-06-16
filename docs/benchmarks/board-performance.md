@@ -140,7 +140,7 @@ now the dominant cost of a write command.
 ## Push access
 
 `BenchmarkSyncGit` (and `TestIntegrationCommitPush`) push to
-`github.com/Knatte18/mhgo-wiki-test`, so the machine's git credential needs write
+`github.com/Knatte18/loomyard-test`, so the machine's git credential needs write
 access to that repo (granted via collaborator access). Without it, push returns
 HTTP 403 and only the no-push / hot-path suites can run. The repo URL is unchanged
 from earlier revisions and continues to serve as the integration test backend.
