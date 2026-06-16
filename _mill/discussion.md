@@ -106,8 +106,10 @@ yet), so this task locks the state API early so mux can simply call it.
   - `internal/board/render.go:27` (writes rendered filenames derived from task data) →
     `fsx.AtomicWrite(boardPath, relPath, content)`. Keeps the guard, which has real value
     on dynamic relPaths.
-  - `git.go` deletes the moved `PathGuard`, `AtomicWrite`, and `BoardPathError`; keeps
-    `Pull`, `CommitPush`, `BoardPushError`, and adds the `internal/fsx` import where used.
+  - `git.go` deletes the moved `PathGuard`, `AtomicWrite`, and `BoardPathError` (keeping
+    `Pull`, `CommitPush`, `BoardPushError`) and drops its now-unused `path/filepath` import —
+    its remaining funcs use only `fmt`/`os`/`strings`/`internal/git`. git.go calls no fsx
+    symbol, so the `internal/fsx` import is added to `render.go` and `store.go`, not `git.go`.
 - Rationale: matches "import fsx instead of owning these functions"; gives board the
   general writer where the path is trusted and the guarded writer where it isn't; leaves
   no dead re-exports.

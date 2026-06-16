@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: discussion-fix-r2
 slug: extract-internal-fsx
 branch: extract-internal-fsx
 plan: null
@@ -16,4 +16,5 @@ task_description: |
 ```text
 discussing  '2026-06-16T13:13:32Z'
 discussed  '2026-06-16T18:00:33Z'
+discussion-fix-r2  '2026-06-16T18:14:59Z'
 ```
