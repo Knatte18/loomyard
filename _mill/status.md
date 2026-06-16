@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: rename-to-loomyard
 branch: rename-to-loomyard
-plan: null
+plan: _mill/plan
 parent: main
 task: Rename mhgo to Loomyard (lyx)
 task_description: |
@@ -17,4 +17,5 @@ task_description: |
 discussing  '2026-06-16T11:09:11Z'
 discussion-fix-r2  '2026-06-16T11:33:59Z'
 discussed  '2026-06-16T11:34:28Z'
+planning  '2026-06-16T11:50:51Z'
 ```
