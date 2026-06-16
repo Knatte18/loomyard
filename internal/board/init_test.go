@@ -198,8 +198,8 @@ func TestInitIdempotent(t *testing.T) {
 		t.Errorf("expected gitignore='unchanged', got %v", result["gitignore"])
 	}
 
-	if lyxDir, ok := result["mhgo_dir"].(string); !ok || lyxDir != "exists" {
-		t.Errorf("expected mhgo_dir='exists', got %v", result["mhgo_dir"])
+	if lyxDir, ok := result["lyx_dir"].(string); !ok || lyxDir != "exists" {
+		t.Errorf("expected lyx_dir='exists', got %v", result["lyx_dir"])
 	}
 }
 
@@ -224,9 +224,9 @@ func TestInitJSONShape(t *testing.T) {
 		t.Errorf("expected ok=true, got %v", result["ok"])
 	}
 
-	// Verify mhgo_dir is "created"
-	if lyxDir, ok := result["mhgo_dir"].(string); !ok || lyxDir != "created" {
-		t.Errorf("expected mhgo_dir='created', got %v", result["mhgo_dir"])
+	// Verify lyx_dir is "created"
+	if lyxDir, ok := result["lyx_dir"].(string); !ok || lyxDir != "created" {
+		t.Errorf("expected lyx_dir='created', got %v", result["lyx_dir"])
 	}
 
 	// Verify board_yaml is "created"
@@ -245,7 +245,7 @@ func TestInitJSONShape(t *testing.T) {
 	}
 
 	// Verify no unexpected keys
-	expectedKeys := map[string]bool{"ok": true, "mhgo_dir": true, "board_yaml": true, "worktree_yaml": true, "gitignore": true}
+	expectedKeys := map[string]bool{"ok": true, "lyx_dir": true, "board_yaml": true, "worktree_yaml": true, "gitignore": true}
 	for key := range result {
 		if !expectedKeys[key] {
 			t.Errorf("unexpected key in JSON output: %s", key)
