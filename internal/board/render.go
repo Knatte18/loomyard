@@ -12,6 +12,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/Knatte18/loomyard/internal/fsx"
 )
 
 // RenderToDisk renders the tasks and persists the board's readable representation:
@@ -24,7 +26,7 @@ func RenderToDisk(boardPath string, tasks []Task, out Outputs) error {
 		return err
 	}
 	for relPath, content := range files {
-		if err := AtomicWrite(boardPath, relPath, content); err != nil {
+		if err := fsx.AtomicWrite(boardPath, relPath, content); err != nil {
 			return fmt.Errorf("write %s: %w", relPath, err)
 		}
 	}
