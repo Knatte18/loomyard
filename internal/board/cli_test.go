@@ -16,7 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/board"
 )
 
-// seedCwd creates a temp directory with _lyx/board.yaml seeded (path: board),
+// seedCwd creates a temp directory with _lyx/config/board.yaml seeded (path: board),
 // changes to that directory, and returns the cwd path. The caller must restore
 // the original cwd after the test (or use t.Chdir).
 func seedCwd(t *testing.T) string {
@@ -28,7 +28,12 @@ func seedCwd(t *testing.T) string {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
 
-	configPath := filepath.Join(lyxDir, "board.yaml")
+	configDir := filepath.Join(lyxDir, "config")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatalf("failed to create _lyx/config: %v", err)
+	}
+
+	configPath := filepath.Join(configDir, "board.yaml")
 	if err := os.WriteFile(configPath, []byte("path: board\n"), 0o644); err != nil {
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
