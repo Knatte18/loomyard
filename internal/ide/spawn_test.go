@@ -27,9 +27,9 @@ func TestSpawnGeneratesConfig(t *testing.T) {
 	}
 
 	layout := &paths.Layout{
-		Container:    container,
-		MainWorktree: mainWorktreePath,
-		RelPath:      ".",
+		Hub:     container,
+		Prime:   mainWorktreePath,
+		RelPath: ".",
 	}
 
 	// Stub codeLauncher to record its argument without launching real VS Code
@@ -82,9 +82,9 @@ func TestSpawnDoesNotClobber(t *testing.T) {
 	}
 
 	layout := &paths.Layout{
-		Container:    container,
-		MainWorktree: mainWorktreePath,
-		RelPath:      ".",
+		Hub:     container,
+		Prime:   mainWorktreePath,
+		RelPath: ".",
 	}
 
 	// Stub codeLauncher
@@ -178,9 +178,9 @@ func TestSpawnColorSelection(t *testing.T) {
 	}
 
 	layout := &paths.Layout{
-		Container:    container,
-		MainWorktree: mainWorktreePath,
-		RelPath:      ".",
+		Hub:     container,
+		Prime:   mainWorktreePath,
+		RelPath: ".",
 	}
 
 	// Stub codeLauncher
