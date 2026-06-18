@@ -224,7 +224,7 @@ safety-net sync.
 
 The board module resolves configuration from the current working directory,
 delegating to `internal/config`. The cwd-authoritative model loads built-in
-defaults overlaid with `_lyx/board.yaml`; there is **no** `.lyx/` config layer.
+defaults overlaid with `_lyx/config/board.yaml`; there is **no** `.lyx/` config layer.
 Machine-local variation is expressed via `$env:` references inside the tracked YAML.
 
 ### Layered model
