@@ -175,8 +175,8 @@ func (l *Layout) MenuLauncherPath() string {
 // LauncherSpawnRel returns the relative path from a launcher directory to the
 // target worktree's subpath for spawning.
 //
-// This climbs from <Container>/_launchers/<RelPath>/<slug> to
-// <Container>/<slug>/<RelPath>, yielding paths like (..\)^(2+N)<slug>\<sub>
+// This climbs from <Hub>/_launchers/<RelPath>/<slug> to
+// <Hub>/<slug>/<RelPath>, yielding paths like (..\)^(2+N)<slug>\<sub>
 // on Windows (N = RelPath segment count). At RelPath == ".", it collapses to
 // ..\..\<slug>.
 //
