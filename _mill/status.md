@@ -28,7 +28,9 @@ implementing  '2026-06-18T18:44:02Z'
 ```yaml
 batches:
   - name: terminology-rename
-    state: pending
+    state: running
+    implementer_session: 080e8c1e-61aa-4948-95f9-2f7d07aae7b7
+    start_sha: b884d62fe1533ca396936ffb7a24f6c87d77fcbd
   - name: config-path-migration
     state: pending
   - name: docs-and-roadmap
