@@ -6,7 +6,7 @@ batch: docs-and-roadmap
 number: 3
 cards: 6
 verify: null
-depends-on: []
+depends-on: [1, 2]
 ```
 
 ## Batch Scope

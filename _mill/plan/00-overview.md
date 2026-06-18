@@ -3,7 +3,7 @@
 ```yaml
 task: "Weft repo — companion-repo overlay for lyx"
 slug: weft-repo
-approved: false
+approved: true
 started: 20260618-183018
 parent: main
 root: ""
@@ -27,7 +27,7 @@ batches:
   - number: 3
     name: docs-and-roadmap
     file: 03-docs-and-roadmap.md
-    depends-on: []
+    depends-on: [1, 2]
     verify: null
 ```
 

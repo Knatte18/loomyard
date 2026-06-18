@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planning
+phase: planned
 slug: weft-repo
 branch: weft-repo
 plan: _mill/plan
@@ -18,4 +18,6 @@ discussing  '2026-06-18T17:48:40Z'
 discussion-fix-r2  '2026-06-18T18:27:46Z'
 discussed  '2026-06-18T18:27:57Z'
 planning  '2026-06-18T18:32:52Z'
+plan-fix-r2  '2026-06-18T18:41:48Z'
+planned  '2026-06-18T18:41:48Z'
 ```

@@ -33,7 +33,7 @@ Migrate the config file path from `_lyx/<module>.yaml` to `_lyx/config/<module>.
   - `internal/board/init.go`
 - **Creates:** none
 - **Deletes:** none
-- **Requirements:** In `internal/board/init.go`, `RunInit` currently: (a) creates `_lyx/`; (b) writes `_lyx/board.yaml` (line ~61); (c) writes `_lyx/worktree.yaml` (line ~82). Change: (1) after the existing `_lyx/` mkdir step, add `os.MkdirAll(filepath.Join(baseDir, "_lyx", "config"), 0755)` (or the equivalent error-checked mkdir); (2) retarget the first `os.WriteFile` from `_lyx/board.yaml` → `_lyx/config/board.yaml`; (3) retarget the second `os.WriteFile` from `_lyx/worktree.yaml` → `_lyx/config/worktree.yaml`; (4) update the file or package comment if it mentions `_lyx/board.yaml`. No other logic changes.
+- **Requirements:** In `internal/board/init.go`, `RunInit` currently: (a) creates `_lyx/`; (b) writes `_lyx/board.yaml` (line ~61); (c) writes `_lyx/worktree.yaml` (line ~82). Change: (1) after the existing `_lyx/` mkdir step, add `os.MkdirAll(filepath.Join(lyxDir, "config"), 0755)` (where `lyxDir` is `init.go`'s existing variable for the `_lyx/` path — equivalently `filepath.Join(cwd, "_lyx", "config")`; use whichever local variable is in scope, with error handling matching the surrounding code); (2) retarget the first `os.WriteFile` from `_lyx/board.yaml` → `_lyx/config/board.yaml`; (3) retarget the second `os.WriteFile` from `_lyx/worktree.yaml` → `_lyx/config/worktree.yaml`; (4) update the file or package comment if it mentions `_lyx/board.yaml`. No other logic changes.
 - **Commit:** `board: init scaffolds _lyx/config/ and writes configs there`
 
 ### Card 8: Update config_test.go fixtures and add regression test
