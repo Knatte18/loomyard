@@ -79,7 +79,7 @@ Migrate the config file path from `_lyx/<module>.yaml` to `_lyx/config/<module>.
   - `internal/board/boardtest/concurrency_test.go`
 - **Creates:** none
 - **Deletes:** none
-- **Requirements:** In `internal/board/boardtest/bench_test.go`: find the fixture setup that seeds `_lyx/board.yaml` and change it to `_lyx/config/board.yaml`; add `_lyx/config/` mkdir before the file write. In `internal/board/boardtest/concurrency_test.go`: the `seedWiki` function (or equivalent) seeds `_lyx/board.yaml` at 3 sites — change all 3 to `_lyx/config/board.yaml` and add `_lyx/config/` mkdir. No logic changes.
+- **Requirements:** In `internal/board/boardtest/bench_test.go`: find the `seedWiki` function fixture that constructs the `_lyx/board.yaml` path and change the path to `_lyx/config/board.yaml`; add `_lyx/config/` mkdir before the file write — this single change covers all callers. In `internal/board/boardtest/concurrency_test.go`: `seedWiki` is defined in `bench_test.go` and called 3 times from this file; there are no independent board.yaml path strings in this file — updating `bench_test.go` covers all 3 call sites automatically. No logic changes.
 - **Commit:** `board: update boardtest fixtures for _lyx/config/ path`
 
 ### Card 12: Update worktree/config_test.go, cmd/lyx/main_test.go, and cmd/lyx/main.go comment
