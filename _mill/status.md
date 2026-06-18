@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-fixing
 slug: weft-repo
 branch: weft-repo
 plan: _mill/plan
@@ -29,6 +29,7 @@ holistic-fixing  '2026-06-18T19:12:09Z'
 holistic-reviewing  '2026-06-18T19:16:53Z'
 holistic-fixing  '2026-06-18T19:19:33Z'
 holistic-reviewing  '2026-06-18T19:23:13Z'
+holistic-fixing  '2026-06-18T19:26:33Z'
 ```
 
 ## Batches
