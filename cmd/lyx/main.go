@@ -10,7 +10,7 @@
 //
 // Modules:
 //
-//	init      scaffold _lyx/board.yaml and .gitignore in the current directory
+//	init      scaffold _lyx/config/board.yaml and .gitignore in the current directory
 //	board     task-tracker board — see internal/board.RunCLI for subcommands
 //	ide       VS Code launcher — see internal/ide.RunCLI for subcommands
 //	muxpoc    proof-of-concept psmux mux — see internal/muxpoc.RunCLI for subcommands

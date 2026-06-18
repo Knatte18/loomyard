@@ -17,7 +17,7 @@ func TestLoadConfig(t *testing.T) {
 		// initLyx controls whether the _lyx/ marker dir is created;
 		// LoadConfig rejects a base dir without it.
 		initLyx bool
-		// yaml, when non-empty, is written to _lyx/worktree.yaml.
+		// yaml, when non-empty, is written to _lyx/config/worktree.yaml.
 		yaml            string
 		wantPrefix      string
 		wantErrContains string
@@ -40,7 +40,11 @@ func TestLoadConfig(t *testing.T) {
 					t.Fatalf("create _lyx: %v", err)
 				}
 				if tt.yaml != "" {
-					yamlPath := filepath.Join(lyxDir, "worktree.yaml")
+					configDir := filepath.Join(lyxDir, "config")
+					if err := os.Mkdir(configDir, 0755); err != nil {
+						t.Fatalf("create _lyx/config: %v", err)
+					}
+					yamlPath := filepath.Join(configDir, "worktree.yaml")
 					if err := os.WriteFile(yamlPath, []byte(tt.yaml), 0644); err != nil {
 						t.Fatalf("write worktree.yaml: %v", err)
 					}

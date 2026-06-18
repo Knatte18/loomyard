@@ -66,7 +66,7 @@ func TestWriteLaunchers(t *testing.T) {
 			relPath: "subdir/nested",
 			verifyIde: func(t *testing.T, content string) {
 				// Launcher dir is now at _launchers/<RelPath>/<slug>, so the climb is deeper:
-				// From _launchers/subdir/nested/task-b to <Container>/task-b/subdir/nested
+				// From _launchers/subdir/nested/task-b to <Hub>/task-b/subdir/nested
 				// = ..\..\..\..\task-b\subdir\nested (2 base + 2 relpath segments)
 				expected := "@cd /d \"%~dp0..\\..\\..\\..\\task-b\\subdir\\nested\" && lyx ide spawn task-b\r\n"
 				if content != expected {

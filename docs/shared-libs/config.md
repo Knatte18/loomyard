@@ -7,10 +7,14 @@ one place that knows the `_lyx/` layout and the config grammar.
 
 ```
 <cwd>/                  ← where `lyx init` was run
-├── _lyx/               git-TRACKED config — the only config source
-│   ├── board.yaml
-│   ├── worktree.yaml
-│   └── mux.yaml
+├── _lyx/               git-TRACKED config container
+│   ├── config/         git-TRACKED config files — the only config source
+│   │   ├── board.yaml
+│   │   ├── worktree.yaml
+│   │   └── mux.yaml
+│   ├── discussion.md    lyx task discussion (artifact)
+│   ├── plan.md         lyx task plan (artifact)
+│   └── reviews/        lyx code reviews (artifact directory)
 ├── .env                git-IGNORED — local env values (KEY=value)
 └── .lyx/               git-IGNORED — machine-local RUNTIME state (see state.md)
     └── local-state.json
@@ -28,7 +32,7 @@ was designed in and then forgotten).
 Two layers, merged per key:
 
 1. **Built-in defaults** — in code, per module.
-2. **`_lyx/<module>.yaml`** (git-tracked) — overlaid on the defaults.
+2. **`_lyx/config/<module>.yaml`** (git-tracked) — overlaid on the defaults.
 
 There is **no** `.lyx/` config layer. Machine-local variation does not get its own
 file; it is expressed *inside* the tracked YAML via env references, so the full
@@ -48,7 +52,7 @@ After the layers are merged, every string value is scanned for `$env:NAME` token
   the last thing in the value (you cannot follow it with more text).
 
 ```yaml
-# _lyx/board.yaml
+# _lyx/config/board.yaml
 home:  $env:LYX_HOME ? Home.md          # README.md on some machines, default Home.md
 path:  $env:LYX_BOARD ? ../_board       # default sibling dir
 model: $env:LYX_CODE_REVIEWER ? sonnetmax  # default to the fast model

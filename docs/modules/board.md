@@ -150,7 +150,7 @@ result to `out` as JSON. Returns the exit code (0/1).
 
 Configuration resolution (cwd-authoritative): the cwd must contain `_lyx/`
 directory. If absent, `LoadConfig` errors with "not initialized here; run
-\"lyx init\"". Otherwise configuration is loaded from `_lyx/board.yaml` merged
+\"lyx init\"". Otherwise configuration is loaded from `_lyx/config/board.yaml` merged
 with built-in defaults (see [Configuration](#configuration)).
 
 When `--board-path` is present (internal flag for the detached sync child), it
@@ -224,14 +224,14 @@ safety-net sync.
 
 The board module resolves configuration from the current working directory,
 delegating to `internal/config`. The cwd-authoritative model loads built-in
-defaults overlaid with `_lyx/board.yaml`; there is **no** `.lyx/` config layer.
+defaults overlaid with `_lyx/config/board.yaml`; there is **no** `.lyx/` config layer.
 Machine-local variation is expressed via `$env:` references inside the tracked YAML.
 
 ### Layered model
 
 Configuration is assembled from two sources, merged per key:
 1. **Built-in defaults** — fallback for any unspecified key
-2. **`<cwd>/_lyx/board.yaml`** (optional, git-tracked) — team/repo-wide settings
+2. **`<cwd>/_lyx/config/board.yaml`** (optional, git-tracked) — team/repo-wide settings
 
 A key absent from a higher layer falls through to the built-in default. If `_lyx/`
 does not exist, `LoadConfig` errors with the message "not initialized here; run
@@ -259,12 +259,13 @@ and re-run safe.
 ### What it does
 
 1. Create `<cwd>/_lyx/` if missing
-2. Write a fully-commented `_lyx/board.yaml` (if absent) — every key shown with
+2. Create `<cwd>/_lyx/config/` if missing
+3. Write a fully-commented `_lyx/config/board.yaml` (if absent) — every key shown with
    its default value, commented out, with explanatory comments. Active values are
    not written, so code defaults always apply until the user uncomments and edits
    a key.
-3. Maintain a `.gitignore` managed block (see below), containing `.lyx/`
-4. Print a single-line JSON action summary
+4. Maintain a `.gitignore` managed block (see below), containing `.lyx/`
+5. Print a single-line JSON action summary
 
 ### Example
 
@@ -296,7 +297,7 @@ Command: `lyx board upsert '{"slug": "my-task", "title": "Do something"}'`
 
 ```
 main.go → board.RunCLI (cli.go)
-  │  LoadConfig(cwd, "board") — resolve from `_lyx/board.yaml` + defaults
+  │  LoadConfig(cwd, "board") — resolve from `_lyx/config/board.yaml` + defaults
   │  parse args → subcommand="upsert", jsonPayload='{"slug":...}'
   │  json.Unmarshal → fields map[string]any
   │  b.UpsertTask(fields)

@@ -40,13 +40,17 @@ func TestRunUnknownModule(t *testing.T) {
 
 func TestRunDispatchesToBoard(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
-	// Create temp cwd with _lyx/board.yaml
+	// Create temp cwd with _lyx/config/board.yaml
 	cwd := t.TempDir()
 	lyxDir := filepath.Join(cwd, "_lyx")
 	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
-	configPath := filepath.Join(lyxDir, "board.yaml")
+	configDir := filepath.Join(lyxDir, "config")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatalf("failed to create _lyx/config: %v", err)
+	}
+	configPath := filepath.Join(configDir, "board.yaml")
 	if err := os.WriteFile(configPath, []byte("path: board\n"), 0o644); err != nil {
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
@@ -70,13 +74,17 @@ func TestRunDispatchesToBoard(t *testing.T) {
 
 func TestRunBoardErrorPropagatesExitCode(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
-	// Create temp cwd with _lyx/board.yaml
+	// Create temp cwd with _lyx/config/board.yaml
 	cwd := t.TempDir()
 	lyxDir := filepath.Join(cwd, "_lyx")
 	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
-	configPath := filepath.Join(lyxDir, "board.yaml")
+	configDir := filepath.Join(lyxDir, "config")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatalf("failed to create _lyx/config: %v", err)
+	}
+	configPath := filepath.Join(configDir, "board.yaml")
 	if err := os.WriteFile(configPath, []byte("path: board\n"), 0o644); err != nil {
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
