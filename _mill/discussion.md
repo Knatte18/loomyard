@@ -46,6 +46,7 @@ This task does two things: establishes the weft model as the canonical architect
 - **Rationale:** File writes stay open (skills write through junctions, unaware of weft); git on the weft is lyx-owned and geometry-scoped. Generalizes the existing board model (`_board/` is already a separate repo whose commits lyx performs via `RunGit(args, cwd)`).
 - **Weft suffix:** Fixed `-weft`. For prime: `<prime-name>-weft/`; for worktrees: `<slug>-weft/`. Not configurable — deterministic geometry needs no config lookup.
 - **No registry for weft paths:** The weft path of any worktree is always `<hub>/<dir-name>-weft`. Computed on demand; no `local-state.json` needed.
+- **Canonical doc location:** The weft architecture write-up lands as a new `## Weft overlay model` section in `docs/overview.md`. This is the single authoritative description (topology diagram, git-ownership boundary table, junction model, weft suffix convention). All other docs (`roadmap.md`, `worktree.md`, `board.md`) get a one-paragraph pointer to that section plus local terminology fixes — they do not duplicate the full description.
 - **This task documents the model.** The Go implementation (paths geometry, paired spawn, `lyx weft` command) is task 006.
 
 ### Config path: `_lyx/config/`
@@ -58,7 +59,7 @@ This task does two things: establishes the weft model as the canonical architect
 
 - **Decision:** The `_portals/` mechanism (junctions from `<hub>/_portals/<slug>` into each worktree's `_lyx/`) is deprecated. The weft model replaces its use case: the weft worktrees are direct siblings and browsable without portals.
 - **Rationale:** Portals were created to let the prime's VS Code browse each worktree's `_lyx/` without navigating away. In the weft model, `<slug>-weft/_lyx/` is a plain sibling directory — no indirection needed.
-- **Removal:** Task 006 removes portal creation/teardown from `worktree add`/`remove` and the `createPortal`/`removePortal` functions once weft junctions replace them.
+- **Task 005 scope:** Portal geometry methods (`PortalsDir()`, `PortalLink()`, `PortalTarget()`) remain in `internal/paths/paths.go` and `docs/shared-libs/paths.md` for this task. They are documented as deprecated in this task's docs changes but not removed. Removal of the methods and of portal creation/teardown from `worktree add`/`remove` is task 006's concern.
 
 ## Technical context
 
@@ -68,15 +69,19 @@ This task does two things: establishes the weft model as the canonical architect
 |---|---|
 | `internal/paths/paths.go` | `Layout.Container → Hub`, `Layout.MainWorktree → Prime`, `HubName() → PrimeName()`, internal body of all methods |
 | `internal/paths/paths_test.go` | All `.Container`, `.MainWorktree`, `HubName()` references (∼15 sites) |
-| `internal/ide/color.go` | `l.Container` (line 49, 70), `l.MainWorktree` (line 55) |
+| `internal/ide/color.go` | `l.Container` (lines 49, 70), `l.MainWorktree` (line 55) |
 | `internal/ide/color_test.go` | Field/method name references |
+| `internal/ide/spawn_test.go` | `Container:` and `MainWorktree:` struct-literal fields (8 sites) |
+| `internal/ide/menu_test.go` | `Container:` and `MainWorktree:` struct-literal fields (10 sites) |
 | `internal/worktree/portals_test.go` | `l.Container` (lines 37, 99, 139, 189) |
 | `internal/worktree/remove_test.go` | `l.Container` (lines 105, 128) |
-| `docs/overview.md` | "hub" used for container and main worktree — replace throughout |
+| `internal/worktree/launchers_test.go` | One comment referencing `Container` |
+| `docs/shared-libs/paths.md` | Canonical Layout type doc — all field names and `HubName()` (~14 references) |
+| `docs/overview.md` | "hub" used for container and main worktree — replace throughout; gains `## Weft overlay model` section (see GAP 3 fix below) |
 | `docs/roadmap.md` | terminology + weft milestones |
 | `docs/modules/worktree.md` | "hub" in container layout diagrams, container definition |
 | `docs/modules/board.md` | references to hub naming |
-| `CONSTRAINTS.md` | Layout method list (currently lists `HubName()`) |
+| `CONSTRAINTS.md` | Single token swap: `HubName()` → `PrimeName()` in the Layout method list. Field names `Container` and `MainWorktree` do not appear in CONSTRAINTS.md — no field-reference changes needed there. |
 
 `internal/paths/codeguide_guard_test.go` scans for the literal `_codeguide` substring in production files — unaffected by the rename.
 
@@ -85,9 +90,20 @@ This task does two things: establishes the weft model as the canonical architect
 | File | What changes |
 |---|---|
 | `internal/config/config.go` | `loadYAMLLayer(filepath.Join(baseDir, "_lyx", module+".yaml"))` → `.../_lyx/config/<module>.yaml` |
-| `internal/board/init.go` | Create `_lyx/config/` dir; write `board.yaml` and `worktree.yaml` there |
-| `internal/config/config_test.go` | All `_lyx/board.yaml` fixture paths → `_lyx/config/board.yaml`; add test that `_lyx/config/` dir is created |
+| `internal/board/init.go` | Create `_lyx/config/` dir; write `board.yaml` and `worktree.yaml` there; update file/package comment |
 | `internal/board/init_test.go` | Assert `_lyx/config/board.yaml` output, not `_lyx/board.yaml` |
+| `internal/config/config_test.go` | All `_lyx/board.yaml` fixture paths → `_lyx/config/board.yaml`; add test that `_lyx/config/` dir is created |
+| `internal/board/config_test.go` | All `_lyx/board.yaml` fixture writes (≥4 sites) → `_lyx/config/board.yaml` |
+| `internal/board/cli_test.go` | `seedCwd` helper seeds `_lyx/board.yaml` → update to `_lyx/config/board.yaml` |
+| `internal/board/boardtest/bench_test.go` | Fixture seeds `_lyx/board.yaml` → update path |
+| `internal/board/boardtest/concurrency_test.go` | `seedWiki` seeds `_lyx/board.yaml` (3 sites) → update path |
+| `internal/worktree/config_test.go` | Fixtures write `_lyx/worktree.yaml` → `_lyx/config/worktree.yaml` |
+| `cmd/lyx/main_test.go` | Creates `_lyx/board.yaml` (lines 43, 73) → `_lyx/config/board.yaml` |
+| `cmd/lyx/main.go` | Package-level comment (line 13) references `_lyx/board.yaml` |
+| `docs/shared-libs/config.md` | References to `_lyx/board.yaml` path (lines 31, 51) |
+| `docs/shared-libs/README.md` | Reference to `_lyx/<module>.yaml` pattern (line 19) |
+| `docs/modules/board.md` | Config path references (lines 153, 227, 234, 262, 299) |
+| `docs/benchmarks/board-performance.md` | `_lyx/board.yaml` references (lines 65, 66) |
 
 **`FindBaseDir`** in `internal/config/config.go` checks for `_lyx/` existence — unchanged; the `_lyx/` directory is still the init marker.
 
