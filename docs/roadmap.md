@@ -46,13 +46,13 @@ observable changes until the new module that needs the extracted lib arrives.
    via `internal/paths/enforcement_test.go`. (**Portals deprecated:** superseded by weft overlay model (task 006).
    Removal planned for task 006.)
 
-5. **Weft engine.** Path geometry for weft worktrees, paired host+weft spawn and teardown, `lyx weft` command.
+5. **Task 006 — Weft engine.** Path geometry for weft worktrees, paired host+weft spawn and teardown, `lyx weft` command.
    Implements the canonical weft overlay model (host stays pristine, all lyx artifacts in companion weft repo).
    Replaces portals with direct sibling access to weft directories.
 
-6. **Hub-creator / `lyx-clone` skill.** Bootstrap and clone new host repos as neighbors in an existing hub.
+6. **Task 007 — Hub-creator / `lyx-clone` skill.** Bootstrap and clone new host repos as neighbors in an existing hub.
 
-7. **`_codeguide` junction and configuration TUI.** Activate `_codeguide` junctions, implement `lyx config` menu interface,
+7. **Task 008 — `_codeguide` junction and configuration TUI.** Activate `_codeguide` junctions, implement `lyx config` menu interface,
    define `_lyx/config/` YAML schema for codeguide.
 
 8. **mux v1 — column per worktree.** One psmux window per repo, one column per

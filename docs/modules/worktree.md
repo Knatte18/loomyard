@@ -71,7 +71,7 @@ For the canonical architecture of how the Hub, Prime, and weft worktrees are org
 `.lyx/local-state.json` via [`internal/state`](../shared-libs/state.md):
 
 ```
-slug → { path, branch, container }
+slug → { path, branch, hub }
 ```
 
 It is machine-local because worktree paths are machine-specific. The intent is for
