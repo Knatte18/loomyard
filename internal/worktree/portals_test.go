@@ -202,7 +202,7 @@ func TestCreatePortalRootRelPath(t *testing.T) {
 	}
 
 	// Verify the portal link is at the flat location (no subpath segments)
-	// This should collapse to <Container>/_portals/<slug>
+	// This should collapse to <Hub>/_portals/<slug>
 	portalLink := l.PortalLink("test-slug")
 	expectedLink := filepath.Join(l.PortalsDir(), "test-slug")
 	if portalLink != expectedLink {

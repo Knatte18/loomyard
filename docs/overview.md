@@ -61,14 +61,10 @@ lyx organizes overlay artifacts (configuration, task state, codeguide docs, and 
 
 ```
 <hub>/                              (top-level container, NOT a git repo)
-  ├── <prime>/                      (host worktree, main branch)
-  │   └── <host-repo>/ (git repo)
-  ├── <prime>-weft/                 (weft Prime worktree)
-  │   └── <weft-repo>/ (git repo)
-  ├── <slug>/                       (additional host worktree)
-  │   └── <host-repo>/ (git repo)
-  └── <slug>-weft/                  (weft worktree for <slug>)
-      └── <weft-repo>/ (git repo)
+  ├── <prime>/                      (host worktree, main branch; git repo root)
+  ├── <prime>-weft/                 (weft Prime worktree; git repo root)
+  ├── <slug>/                       (additional host worktree; git repo root)
+  └── <slug>-weft/                  (weft worktree for <slug>; git repo root)
 ```
 
 ### Git ownership
