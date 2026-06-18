@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-fixing
 slug: weft-repo
 branch: weft-repo
 plan: _mill/plan
@@ -25,6 +25,7 @@ approved-terminology-rename  '2026-06-18T18:51:19Z'
 approved-config-path-migration  '2026-06-18T18:59:57Z'
 approved-docs-and-roadmap  '2026-06-18T19:07:56Z'
 holistic-reviewing  '2026-06-18T19:08:36Z'
+holistic-fixing  '2026-06-18T19:12:09Z'
 ```
 
 ## Batches
