@@ -1,6 +1,6 @@
-// git_test.go — unit tests for the fs/git plumbing (git.go).
+// git_test.go — unit tests for the git plumbing (git.go).
 //
-// PathGuard rejection, AtomicWrite, and Pull / CommitPush behavior.
+// Pull / CommitPush behavior.
 
 package board_test
 
@@ -13,88 +13,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/board"
 )
-
-func TestPathGuard(t *testing.T) {
-	tests := []struct {
-		name    string
-		path    string
-		wantErr bool
-	}{
-		{"empty string", "", true},
-		{"absolute path on unix", "/absolute/path", true},
-		{"absolute path on windows", "C:\\absolute\\path", true},
-		{"path with .. component", "foo/../bar", true},
-		{"path with .. at start", "../foo", true},
-		{"valid relative path", "valid/path.txt", false},
-		{"valid relative single file", "file.txt", false},
-		{"valid nested path", "a/b/c/d.txt", false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := board.PathGuard(tt.path)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("PathGuard(%q) error = %v, wantErr %v", tt.path, err, tt.wantErr)
-			}
-		})
-	}
-}
-
-func TestAtomicWrite(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	t.Run("creates file with correct content", func(t *testing.T) {
-		relPath := "file.txt"
-		content := "test content"
-		if err := board.AtomicWrite(tmpDir, relPath, content); err != nil {
-			t.Fatalf("AtomicWrite failed: %v", err)
-		}
-
-		fullPath := filepath.Join(tmpDir, relPath)
-		got, err := os.ReadFile(fullPath)
-		if err != nil {
-			t.Fatalf("ReadFile failed: %v", err)
-		}
-		if string(got) != content {
-			t.Errorf("content = %q, want %q", string(got), content)
-		}
-	})
-
-	t.Run("creates parent directories", func(t *testing.T) {
-		relPath := "deep/nested/path/file.txt"
-		content := "nested content"
-		if err := board.AtomicWrite(tmpDir, relPath, content); err != nil {
-			t.Fatalf("AtomicWrite failed: %v", err)
-		}
-
-		fullPath := filepath.Join(tmpDir, relPath)
-		got, err := os.ReadFile(fullPath)
-		if err != nil {
-			t.Fatalf("ReadFile failed: %v", err)
-		}
-		if string(got) != content {
-			t.Errorf("content = %q, want %q", string(got), content)
-		}
-	})
-
-	t.Run("no temp file left on disk", func(t *testing.T) {
-		relPath := "atomic.txt"
-		if err := board.AtomicWrite(tmpDir, relPath, "content"); err != nil {
-			t.Fatalf("AtomicWrite failed: %v", err)
-		}
-
-		entries, err := os.ReadDir(tmpDir)
-		if err != nil {
-			t.Fatalf("ReadDir failed: %v", err)
-		}
-
-		for _, entry := range entries {
-			if strings.HasPrefix(entry.Name(), ".tmp-") {
-				t.Errorf("found temp file: %s", entry.Name())
-			}
-		}
-	})
-}
 
 func TestPull(t *testing.T) {
 	// Check if git is available

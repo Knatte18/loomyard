@@ -26,12 +26,14 @@ observable changes until the new module that needs the extracted lib arrives.
    `internal/lock`.** ✅ **Done.** See
    [shared-libs/](shared-libs/README.md).
 
-3. **`internal/state`.** New package: typed read/write of the gitignored,
-   machine-local `.lyx/local-state.json` registry
-   ([`internal/state`](shared-libs/state.md)). Built test-first — nothing
-   in board needs it, so it has no existing suite to lean on. **Deferred to land
-   with mux (milestone 5):** the worktree module shipped without it, and mux + worktree
-   share the same state document, so it is built when mux needs it.
+3. **`internal/state`.** Generic locked typed JSON I/O primitive
+   ([`internal/state`](shared-libs/state.md)): `WriteJSON[T]` / `ReadJSON[T]` with
+   exclusive/shared locking on `path + ".lock"` via `internal/lock` and atomic writes
+   via [`internal/fsx`](shared-libs/fsx.md). No fixed schema — callers own the fields
+   and file paths. Built test-first — nothing in board needs it, so it has no existing
+   suite to lean on. Prerequisite: `internal/fsx` extraction (this task).
+   **Deferred to land with mux (milestone 5):** the worktree module shipped without it,
+   and mux will own its own state document, so it is built when mux needs it.
 
 4. **worktree module + portals, launchers, and ide module.** ✅ **Done.** Create / track / tear down
    git worktrees ([modules/worktree.md](modules/worktree.md)); manage container junctions and spawnable

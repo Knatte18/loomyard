@@ -17,7 +17,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/board"
+	"github.com/Knatte18/loomyard/internal/fsx"
 	flock "github.com/Knatte18/loomyard/internal/lock"
 )
 
@@ -105,7 +105,7 @@ func SaveState(cwd string, s *MuxpocState) error {
 		return fmt.Errorf("marshal state: %w", err)
 	}
 
-	if err := board.AtomicWrite(cwd, stateRelPath, string(content)); err != nil {
+	if err := fsx.AtomicWrite(cwd, stateRelPath, string(content)); err != nil {
 		return fmt.Errorf("atomic write: %w", err)
 	}
 

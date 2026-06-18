@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/Knatte18/loomyard/internal/fsx"
 	flock "github.com/Knatte18/loomyard/internal/lock"
 )
 
@@ -110,7 +111,7 @@ func (s *Store) Save(boardPath, relPath string) error {
 	}
 	defer lock.Release()
 
-	if err := AtomicWrite(boardPath, relPath, string(content)); err != nil {
+	if err := fsx.AtomicWriteBytes(filepath.Join(boardPath, relPath), content); err != nil {
 		return fmt.Errorf("atomic write: %w", err)
 	}
 
