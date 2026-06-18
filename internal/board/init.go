@@ -1,8 +1,8 @@
 // init.go — scaffolds the config layer for Loomyard.
 //
-// RunInit creates the _lyx/ directory, writes a fully-commented board.yaml
-// template, and maintains a managed block in .gitignore. It is idempotent and
-// never clobbers an existing board.yaml.
+// RunInit creates the _lyx/ and _lyx/config/ directories, writes fully-commented
+// board.yaml and worktree.yaml templates to _lyx/config/, and maintains a managed
+// block in .gitignore. It is idempotent and never clobbers existing files.
 
 package board
 
@@ -19,9 +19,9 @@ import (
 )
 
 // RunInit scaffolds the config layer in the current working directory.
-// It creates _lyx/, writes a commented board.yaml (if absent), and maintains
-// a managed block in .gitignore containing .lyx/. Returns a JSON summary
-// and process exit code (0 on success, 1 on error).
+// It creates _lyx/ and _lyx/config/, writes commented board.yaml and worktree.yaml
+// (if absent), and maintains a managed block in .gitignore containing .lyx/.
+// Returns a JSON summary and process exit code (0 on success, 1 on error).
 func RunInit(out io.Writer, args []string) int {
 	// Resolve current working directory
 	cwd, err := paths.Getwd()
@@ -57,8 +57,15 @@ func RunInit(out io.Writer, args []string) int {
 		return 1
 	}
 
+	// Create _lyx/config/ subdirectory to hold configuration files.
+	configDir := filepath.Join(lyxDir, "config")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		outputInitError(out, fmt.Sprintf("failed to create _lyx/config directory: %v", err))
+		return 1
+	}
+
 	// Step 2: Write commented board.yaml (if absent)
-	boardYamlPath := filepath.Join(lyxDir, "board.yaml")
+	boardYamlPath := filepath.Join(configDir, "board.yaml")
 	_, err = os.Stat(boardYamlPath)
 	if err != nil && !os.IsNotExist(err) {
 		outputInitError(out, fmt.Sprintf("failed to stat board.yaml: %v", err))
@@ -79,7 +86,7 @@ func RunInit(out io.Writer, args []string) int {
 	}
 
 	// Step 3: Write commented worktree.yaml (if absent)
-	worktreeYamlPath := filepath.Join(lyxDir, "worktree.yaml")
+	worktreeYamlPath := filepath.Join(configDir, "worktree.yaml")
 	_, err = os.Stat(worktreeYamlPath)
 	if err != nil && !os.IsNotExist(err) {
 		outputInitError(out, fmt.Sprintf("failed to stat worktree.yaml: %v", err))
