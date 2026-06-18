@@ -40,15 +40,15 @@ func TestResolve_FromWorktreeRoot(t *testing.T) {
 		t.Errorf("layout.Cwd = %q; layout.WorktreeRoot = %q; want equal", layout.Cwd, layout.WorktreeRoot)
 	}
 
-	// Container should be the parent of WorktreeRoot
+	// Hub should be the parent of WorktreeRoot
 	expectedContainer := filepath.Dir(hub)
-	if layout.Container != expectedContainer {
-		t.Errorf("layout.Container = %q; want %q", layout.Container, expectedContainer)
+	if layout.Hub != expectedContainer {
+		t.Errorf("layout.Hub = %q; want %q", layout.Hub, expectedContainer)
 	}
 
-	// MainWorktree should be set to the hub path
-	if layout.MainWorktree != hub {
-		t.Errorf("layout.MainWorktree = %q; want %q", layout.MainWorktree, hub)
+	// Prime should be set to the hub path
+	if layout.Prime != hub {
+		t.Errorf("layout.Prime = %q; want %q", layout.Prime, hub)
 	}
 }
 
@@ -107,25 +107,25 @@ func TestResolve_GeometryMethods(t *testing.T) {
 
 	// Test WorktreePath
 	slug := "test-wt"
-	expectedWtPath := filepath.Join(layout.Container, slug)
+	expectedWtPath := filepath.Join(layout.Hub, slug)
 	if got := layout.WorktreePath(slug); got != expectedWtPath {
 		t.Errorf("WorktreePath(%q) = %q; want %q", slug, got, expectedWtPath)
 	}
 
 	// Test PortalsDir
-	expectedPortalsDir := filepath.Join(layout.Container, "_portals")
+	expectedPortalsDir := filepath.Join(layout.Hub, "_portals")
 	if got := layout.PortalsDir(); got != expectedPortalsDir {
 		t.Errorf("PortalsDir() = %q; want %q", got, expectedPortalsDir)
 	}
 
 	// Test PortalTarget
-	expectedPortalTarget := filepath.Join(layout.Container, slug, ".", "_lyx")
+	expectedPortalTarget := filepath.Join(layout.Hub, slug, ".", "_lyx")
 	if got := layout.PortalTarget(slug); got != expectedPortalTarget {
 		t.Errorf("PortalTarget(%q) = %q; want %q", slug, got, expectedPortalTarget)
 	}
 
 	// Test LaunchersDir
-	expectedLaunchersDir := filepath.Join(layout.Container, "_launchers")
+	expectedLaunchersDir := filepath.Join(layout.Hub, "_launchers")
 	if got := layout.LaunchersDir(); got != expectedLaunchersDir {
 		t.Errorf("LaunchersDir() = %q; want %q", got, expectedLaunchersDir)
 	}
@@ -136,10 +136,10 @@ func TestResolve_GeometryMethods(t *testing.T) {
 		t.Errorf("LauncherDir(%q) = %q; want %q", slug, got, expectedLauncherDir)
 	}
 
-	// Test HubName
+	// Test PrimeName
 	expectedHubName := filepath.Base(hub)
-	if got := layout.HubName(); got != expectedHubName {
-		t.Errorf("HubName() = %q; want %q", got, expectedHubName)
+	if got := layout.PrimeName(); got != expectedHubName {
+		t.Errorf("PrimeName() = %q; want %q", got, expectedHubName)
 	}
 }
 
@@ -199,7 +199,7 @@ func TestMirroredMethods(t *testing.T) {
 
 			slug := "test-slug"
 			got := layout.PortalLink(slug)
-			want := filepath.Join(layout.Container, "_portals", slug)
+			want := filepath.Join(layout.Hub, "_portals", slug)
 			if got != want {
 				t.Errorf("PortalLink(%q) = %q; want %q", slug, got, want)
 			}
@@ -218,7 +218,7 @@ func TestMirroredMethods(t *testing.T) {
 
 			slug := "test-slug"
 			got := layout.PortalLink(slug)
-			want := filepath.Join(layout.Container, "_portals", "services", "api", slug)
+			want := filepath.Join(layout.Hub, "_portals", "services", "api", slug)
 			if got != want {
 				t.Errorf("PortalLink(%q) = %q; want %q", slug, got, want)
 			}
@@ -283,7 +283,7 @@ func TestMirroredMethods(t *testing.T) {
 
 			slug := "test-slug"
 			got := layout.LauncherDir(slug)
-			want := filepath.Join(layout.Container, "_launchers", "services", "api", slug)
+			want := filepath.Join(layout.Hub, "_launchers", "services", "api", slug)
 			if got != want {
 				t.Errorf("LauncherDir(%q) = %q; want %q", slug, got, want)
 			}
@@ -327,7 +327,7 @@ func TestMirroredMethods(t *testing.T) {
 			}
 
 			got := layout.MenuLauncherPath()
-			want := filepath.Join(layout.Container, "_launchers", "ide-menu.cmd")
+			want := filepath.Join(layout.Hub, "_launchers", "ide-menu.cmd")
 			if got != want {
 				t.Errorf("MenuLauncherPath() = %q; want %q", got, want)
 			}
@@ -345,7 +345,7 @@ func TestMirroredMethods(t *testing.T) {
 			}
 
 			got := layout.MenuLauncherPath()
-			want := filepath.Join(layout.Container, "_launchers", "services", "api", "ide-menu.cmd")
+			want := filepath.Join(layout.Hub, "_launchers", "services", "api", "ide-menu.cmd")
 			if got != want {
 				t.Errorf("MenuLauncherPath() = %q; want %q", got, want)
 			}
@@ -408,7 +408,7 @@ func TestMirroredMethods(t *testing.T) {
 
 			// Recompute expected via filepath.Rel
 			menuDir := filepath.Dir(layout.MenuLauncherPath())
-			targetPath := filepath.Join(layout.MainWorktree, layout.RelPath)
+			targetPath := filepath.Join(layout.Prime, layout.RelPath)
 			want, _ := filepath.Rel(menuDir, targetPath)
 
 			if got != want {
@@ -431,7 +431,7 @@ func TestMirroredMethods(t *testing.T) {
 
 			// Recompute expected via filepath.Rel
 			menuDir := filepath.Dir(layout.MenuLauncherPath())
-			targetPath := filepath.Join(layout.MainWorktree, layout.RelPath)
+			targetPath := filepath.Join(layout.Prime, layout.RelPath)
 			want, _ := filepath.Rel(menuDir, targetPath)
 
 			if got != want {
