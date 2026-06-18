@@ -40,5 +40,7 @@ batches:
     start_sha: 42e1f4737bd7f2dee0157e7e5b83c9e4e6b3b01e
     commit_sha: ee0adff568839d9faa4e540c8d57e1188ec9e06e
   - name: docs-and-roadmap
-    state: pending
+    state: running
+    implementer_session: 69e077ee-244c-4643-afc1-b8fcfcc8dbf2
+    start_sha: d852c83f7eb539dc06580f0d31aebe6883d6f20a
 ```
