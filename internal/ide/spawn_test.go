@@ -136,9 +136,9 @@ func TestSpawnCallsCodeLauncher(t *testing.T) {
 	}
 
 	layout := &paths.Layout{
-		Container:    container,
-		MainWorktree: mainWorktreePath,
-		RelPath:      relpath,
+		Hub:     container,
+		Prime:   mainWorktreePath,
+		RelPath: relpath,
 	}
 
 	// Stub codeLauncher to record its argument
