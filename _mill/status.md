@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: weft-repo
 branch: weft-repo
-plan: null
+plan: _mill/plan
 parent: main
 task: Weft repo — companion-repo overlay for lyx
 task_description: |
@@ -17,4 +17,5 @@ task_description: |
 discussing  '2026-06-18T17:48:40Z'
 discussion-fix-r2  '2026-06-18T18:27:46Z'
 discussed  '2026-06-18T18:27:57Z'
+planning  '2026-06-18T18:32:52Z'
 ```
