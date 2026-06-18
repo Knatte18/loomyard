@@ -35,7 +35,7 @@ observable changes until the new module that needs the extracted lib arrives.
    **Deferred to land with mux (milestone 5):** the worktree module shipped without it,
    and mux will own its own state document, so it is built when mux needs it.
 
-4. **worktree module + portals, launchers, and ide module.** ✅ **Done.** Create / track / tear down
+4. **worktree module + portals (deprecated), launchers, and ide module.** ✅ **Done.** Create / track / tear down
    git worktrees ([modules/worktree.md](modules/worktree.md)); manage container junctions and spawnable
    launchers; VS Code launcher with interactive menu ([modules/ide.md](modules/ide.md)); centralized path geometry
    in `internal/paths`. Consumes `internal/config` + `internal/git`; owns the **junction-aware teardown**
@@ -43,51 +43,61 @@ observable changes until the new module that needs the extracted lib arrives.
    deferred with `internal/state` (milestone 3 → lands with mux), so the shipped `list` is a thin
    `git worktree list` wrapper. Introduces `internal/paths` as the sole geometry owner, banning
    raw `os.Getwd` and `git rev-parse --show-toplevel` outside `internal/paths` and `cmd/lyx/main.go`
-   via `internal/paths/enforcement_test.go`.
+   via `internal/paths/enforcement_test.go`. (**Portals deprecated:** superseded by weft overlay model (task 006).
+   Removal planned for task 006.)
 
-5. **mux v1 — column per worktree.** One psmux window per repo, one column per
+5. **Task 006 — Weft engine.** Path geometry for weft worktrees, paired host+weft spawn and teardown, `lyx weft` command.
+   Implements the canonical weft overlay model (host stays pristine, all lyx artifacts in companion weft repo).
+   Replaces portals with direct sibling access to weft directories.
+
+6. **Task 007 — Hub-creator / `lyx-clone` skill.** Bootstrap and clone new host repos as neighbors in an existing hub.
+
+7. **Task 008 — `_codeguide` junction and configuration TUI.** Activate `_codeguide` junctions, implement `lyx config` menu interface,
+   define `_lyx/config/` YAML schema for codeguide.
+
+8. **mux v1 — column per worktree.** One psmux window per repo, one column per
    worktree, laid out from the worktree registry
    ([modules/mux.md](modules/mux.md)). No subprocess panes, no daemon, no Slack.
    **Note:** A working proof-of-concept of the daemon and pane-recovery model
    already ships as `internal/muxpoc` (see [modules/muxpoc.md](modules/muxpoc.md)).
 
-6. **mux v2 — subprocess panes.** Parent/child pane tree (a spawned reviewer
+9. **mux v2 — subprocess panes.** Parent/child pane tree (a spawned reviewer
    appears below its parent). Built only once Agent Dispatch stops being enough.
    **Proven in muxpoc:** see [modules/muxpoc.md](modules/muxpoc.md).
 
-7. **mux daemon.** Standalone watchdog process: detects a psmux crash via
-   `cmd.Wait()`, recovers each pane by relaunching interactive Claude and re-injecting
-   context from mux's own capture journal (native `--resume` does **not** work for
-   programmatically-driven panes — see [modules/mux.md](modules/mux.md#resume-after-crash-the-corrected-model)),
-   mutual watchdog so both must die to go dark. See [modules/mux.md](modules/mux.md#deferred).
-   **Proven in muxpoc:** see [modules/muxpoc.md](modules/muxpoc.md). **Event-driven pane
-   switching / idle detection via Claude Code's own hooks + `claude agents --json` is
-   explored in [modules/mux-hooks-exploration.md](modules/mux-hooks-exploration.md)** — a
-   lower-cost alternative to the capture-pane poller for the focus decision.
+10. **mux daemon.** Standalone watchdog process: detects a psmux crash via
+    `cmd.Wait()`, recovers each pane by relaunching interactive Claude and re-injecting
+    context from mux's own capture journal (native `--resume` does **not** work for
+    programmatically-driven panes — see [modules/mux.md](modules/mux.md#resume-after-crash-the-corrected-model)),
+    mutual watchdog so both must die to go dark. See [modules/mux.md](modules/mux.md#deferred).
+    **Proven in muxpoc:** see [modules/muxpoc.md](modules/muxpoc.md). **Event-driven pane
+    switching / idle detection via Claude Code's own hooks + `claude agents --json` is
+    explored in [modules/mux-hooks-exploration.md](modules/mux-hooks-exploration.md)** — a
+    lower-cost alternative to the capture-pane poller for the focus decision.
 
-8. **Slack relay.** Bidirectional, one channel per worktree, riding on the daemon.
+11. **Slack relay.** Bidirectional, one channel per worktree, riding on the daemon.
 
-9. **`init` grows: create / clone the board repo.** Today `init` only scaffolds
+12. **`init` grows: create / clone the board repo.** Today `init` only scaffolds
     `_lyx/`; the board dir is auto-created on first write and made a git repo by
     hand. This milestone makes `init` create a board repo from scratch or clone one
     from a remote (analogous to mill-setup phases 1–3).
 
-10. **doctor.** A diagnostics command (`Loomyard doctor`): checks `_lyx/` is present,
+13. **doctor.** A diagnostics command (`Loomyard doctor`): checks `_lyx/` is present,
     `*.yaml` parse and use known keys, the board repo is reachable, no stale lock
     files, the state file is readable — and prints remediation. Pure
     troubleshooting, no domain logic.
 
-11. **session sync.** `Loomyard session push/pull` — copy Claude `.jsonl` transcripts
+14. **session sync.** `Loomyard session push/pull` — copy Claude `.jsonl` transcripts
     across machines so `claude --resume` works elsewhere (sessions are not portable
     today). See [modules/mux.md](modules/mux.md#session-files-and-portability).
 
-12. **Claude Code plugin packaging.** Ship `lyx` as an installable Claude Code
+15. **Claude Code plugin packaging.** Ship `lyx` as an installable Claude Code
     plugin, exactly as mill/millpy were, once the binary and module architecture are
     proven.
 
-13. **orchestrator — the endgame.** Port mill's spawn → merge → cleanup lifecycle
+16. **orchestrator — the endgame.** Port mill's spawn → merge → cleanup lifecycle
     into Go, tying board + worktree + mux together. This is what lets `lyx` finally
-    replace mill/millhouse. The toolkit modules (1–8) are deliberately designed so
+    replace mill/millhouse. The toolkit modules (1–7) are deliberately designed so
     this is *possible* — clean state files, no hidden interactive assumptions — but
     it is the last thing built.
 

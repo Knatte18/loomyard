@@ -26,7 +26,7 @@ to show how cost scales — every write re-renders all tasks.
 
 - **Hot path** — what a `lyx board` command actually waits for: file I/O for a
   write, JSON load for a read, plus configuration loading (os.Getwd() + config
-  resolution from defaults + the module's `_lyx/<module>.yaml`). This is the stable signal for catching
+  resolution from defaults + the module's `_lyx/config/<module>.yaml`). This is the stable signal for catching
   logic/allocation regressions.
 - **Background sync** — the git commit + push the detached pusher does. It never
   blocks a command, so its seconds-scale cost is latency the user does not feel.
@@ -62,8 +62,8 @@ a millisecond for realistic board sizes it is a small part of an `Upsert`.
 when the module moved to the cwd-authoritative configuration model. Previously
 they used `--wiki-path` to inject a board directory; with the new `LoadConfig`
 resolver, the CLI-path benchmarks now run in a temp cwd seeded with
-`_lyx/board.yaml` and include the `os.Getwd()` + configuration-load cost
-(defaults + the module's `_lyx/board.yaml` + environment expansion). The historical numbers
+`_lyx/config/board.yaml` and include the `os.Getwd()` + configuration-load cost
+(defaults + the module's `_lyx/config/board.yaml` + environment expansion). The historical numbers
 below show the pre-config baseline for comparison.
 
 \* `GetDuringUpsert` reads (seed n=100) while a writer upserts continuously in the

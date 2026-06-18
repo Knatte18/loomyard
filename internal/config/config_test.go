@@ -55,14 +55,18 @@ func TestLoad_Defaults(t *testing.T) {
 func TestLoad_YAMLOverride(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Create _lyx/ directory
+	// Create _lyx/ and _lyx/config/ directories
 	lyxDir := filepath.Join(tmpDir, "_lyx")
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
+	configDir := filepath.Join(lyxDir, "config")
+	if err := os.Mkdir(configDir, 0755); err != nil {
+		t.Fatalf("failed to create _lyx/config: %v", err)
+	}
 
 	// Write board.yaml
-	yamlFile := filepath.Join(lyxDir, "board.yaml")
+	yamlFile := filepath.Join(configDir, "board.yaml")
 	if err := os.WriteFile(yamlFile, []byte("path: custom_path\n"), 0644); err != nil {
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
@@ -85,15 +89,19 @@ func TestLoad_YAMLOverride(t *testing.T) {
 func TestLoad_DotLyxIgnored(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Create _lyx/ directory with board.yaml
+	// Create _lyx/ and _lyx/config/ directories with board.yaml
 	lyxDir := filepath.Join(tmpDir, "_lyx")
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
+	configDir := filepath.Join(lyxDir, "config")
+	if err := os.Mkdir(configDir, 0755); err != nil {
+		t.Fatalf("failed to create _lyx/config: %v", err)
+	}
 
-	yamlFile := filepath.Join(lyxDir, "board.yaml")
+	yamlFile := filepath.Join(configDir, "board.yaml")
 	if err := os.WriteFile(yamlFile, []byte("path: correct\n"), 0644); err != nil {
-		t.Fatalf("failed to write _lyx/board.yaml: %v", err)
+		t.Fatalf("failed to write _lyx/config/board.yaml: %v", err)
 	}
 
 	// Create .lyx/ directory with board.yaml (should be ignored)
@@ -121,17 +129,21 @@ func TestLoad_DotLyxIgnored(t *testing.T) {
 func TestLoad_EnvRequired_Set(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Create _lyx/ directory
+	// Create _lyx/ and _lyx/config/ directories
 	lyxDir := filepath.Join(tmpDir, "_lyx")
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
+	}
+	configDir := filepath.Join(lyxDir, "config")
+	if err := os.Mkdir(configDir, 0755); err != nil {
+		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
 
 	// Set environment variable
 	t.Setenv("TEST_EXTRACT_REQ_VAR", "expanded")
 
 	// Write board.yaml with env variable
-	yamlFile := filepath.Join(lyxDir, "board.yaml")
+	yamlFile := filepath.Join(configDir, "board.yaml")
 	if err := os.WriteFile(yamlFile, []byte("path: $env:TEST_EXTRACT_REQ_VAR\n"), 0644); err != nil {
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
@@ -151,17 +163,21 @@ func TestLoad_EnvRequired_Set(t *testing.T) {
 func TestLoad_EnvRequired_Unset(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Create _lyx/ directory
+	// Create _lyx/ and _lyx/config/ directories
 	lyxDir := filepath.Join(tmpDir, "_lyx")
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
+	}
+	configDir := filepath.Join(lyxDir, "config")
+	if err := os.Mkdir(configDir, 0755); err != nil {
+		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
 
 	// Ensure variable is unset by not setting it at all
 	// (t.Setenv with empty string leaves the var set; we need it completely absent)
 
 	// Write board.yaml with unset env variable
-	yamlFile := filepath.Join(lyxDir, "board.yaml")
+	yamlFile := filepath.Join(configDir, "board.yaml")
 	if err := os.WriteFile(yamlFile, []byte("path: $env:TEST_EXTRACT_MISSING_VAR_XYZ123\n"), 0644); err != nil {
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
@@ -181,17 +197,21 @@ func TestLoad_EnvRequired_Unset(t *testing.T) {
 func TestLoad_EnvOptional_Set(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Create _lyx/ directory
+	// Create _lyx/ and _lyx/config/ directories
 	lyxDir := filepath.Join(tmpDir, "_lyx")
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
+	}
+	configDir := filepath.Join(lyxDir, "config")
+	if err := os.Mkdir(configDir, 0755); err != nil {
+		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
 
 	// Set environment variable
 	t.Setenv("TEST_EXTRACT_OPT_VAR", "set_value")
 
 	// Write board.yaml with optional env variable
-	yamlFile := filepath.Join(lyxDir, "board.yaml")
+	yamlFile := filepath.Join(configDir, "board.yaml")
 	if err := os.WriteFile(yamlFile, []byte("path: $env:TEST_EXTRACT_OPT_VAR ? fallback\n"), 0644); err != nil {
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
@@ -210,17 +230,21 @@ func TestLoad_EnvOptional_Set(t *testing.T) {
 func TestLoad_EnvOptional_Unset(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Create _lyx/ directory
+	// Create _lyx/ and _lyx/config/ directories
 	lyxDir := filepath.Join(tmpDir, "_lyx")
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
+	}
+	configDir := filepath.Join(lyxDir, "config")
+	if err := os.Mkdir(configDir, 0755); err != nil {
+		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
 
 	// Ensure variable is unset by not setting it at all
 	// (t.Setenv with empty string leaves the var set; we need it completely absent)
 
 	// Write board.yaml with optional env variable
-	yamlFile := filepath.Join(lyxDir, "board.yaml")
+	yamlFile := filepath.Join(configDir, "board.yaml")
 	if err := os.WriteFile(yamlFile, []byte("path: $env:TEST_EXTRACT_OPT_ABSENT ? my_fallback\n"), 0644); err != nil {
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
@@ -239,17 +263,21 @@ func TestLoad_EnvOptional_Unset(t *testing.T) {
 func TestLoad_EnvOptional_WithPrefix(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Create _lyx/ directory
+	// Create _lyx/ and _lyx/config/ directories
 	lyxDir := filepath.Join(tmpDir, "_lyx")
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
+	}
+	configDir := filepath.Join(lyxDir, "config")
+	if err := os.Mkdir(configDir, 0755); err != nil {
+		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
 
 	// Ensure variable is unset by not setting it at all
 	// (t.Setenv with empty string leaves the var set; we need it completely absent)
 
 	// Write board.yaml with optional env variable with prefix
-	yamlFile := filepath.Join(lyxDir, "board.yaml")
+	yamlFile := filepath.Join(configDir, "board.yaml")
 	if err := os.WriteFile(yamlFile, []byte("path: prefix/$env:TEST_EXTRACT_PREFIX_VAR ? default_name\n"), 0644); err != nil {
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
@@ -268,10 +296,14 @@ func TestLoad_EnvOptional_WithPrefix(t *testing.T) {
 func TestLoad_DotEnv_FillsUnset(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Create _lyx/ directory
+	// Create _lyx/ and _lyx/config/ directories
 	lyxDir := filepath.Join(tmpDir, "_lyx")
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
+	}
+	configDir := filepath.Join(lyxDir, "config")
+	if err := os.Mkdir(configDir, 0755); err != nil {
+		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
 
 	// Create .env file
@@ -284,7 +316,7 @@ func TestLoad_DotEnv_FillsUnset(t *testing.T) {
 	// (t.Setenv with empty string leaves the var set; we need it completely absent)
 
 	// Write board.yaml with env variable
-	yamlFile := filepath.Join(lyxDir, "board.yaml")
+	yamlFile := filepath.Join(configDir, "board.yaml")
 	if err := os.WriteFile(yamlFile, []byte("path: $env:TEST_EXTRACT_DOTENV_KEY\n"), 0644); err != nil {
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
@@ -303,10 +335,14 @@ func TestLoad_DotEnv_FillsUnset(t *testing.T) {
 func TestLoad_DotEnv_OSEnvWins(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Create _lyx/ directory
+	// Create _lyx/ and _lyx/config/ directories
 	lyxDir := filepath.Join(tmpDir, "_lyx")
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
+	}
+	configDir := filepath.Join(lyxDir, "config")
+	if err := os.Mkdir(configDir, 0755); err != nil {
+		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
 
 	// Create .env file
@@ -319,7 +355,7 @@ func TestLoad_DotEnv_OSEnvWins(t *testing.T) {
 	t.Setenv("TEST_EXTRACT_OS_WINS", "os_val")
 
 	// Write board.yaml with env variable
-	yamlFile := filepath.Join(lyxDir, "board.yaml")
+	yamlFile := filepath.Join(configDir, "board.yaml")
 	if err := os.WriteFile(yamlFile, []byte("path: $env:TEST_EXTRACT_OS_WINS\n"), 0644); err != nil {
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
@@ -338,10 +374,14 @@ func TestLoad_DotEnv_OSEnvWins(t *testing.T) {
 func TestLoad_DotEnv_MalformedLine(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Create _lyx/ directory
+	// Create _lyx/ and _lyx/config/ directories
 	lyxDir := filepath.Join(tmpDir, "_lyx")
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
+	}
+	configDir := filepath.Join(lyxDir, "config")
+	if err := os.Mkdir(configDir, 0755); err != nil {
+		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
 
 	// Create .env file with good and malformed lines
@@ -365,10 +405,14 @@ func TestLoad_DotEnv_MalformedLine(t *testing.T) {
 func TestLoad_DotEnv_Comment(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Create _lyx/ directory
+	// Create _lyx/ and _lyx/config/ directories
 	lyxDir := filepath.Join(tmpDir, "_lyx")
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
+	}
+	configDir := filepath.Join(lyxDir, "config")
+	if err := os.Mkdir(configDir, 0755); err != nil {
+		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
 
 	// Create .env file with comment
@@ -411,14 +455,18 @@ func TestLoad_DotEnv_Absent(t *testing.T) {
 func TestLoad_LiteralQuestionMark(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Create _lyx/ directory
+	// Create _lyx/ and _lyx/config/ directories
 	lyxDir := filepath.Join(tmpDir, "_lyx")
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
+	configDir := filepath.Join(lyxDir, "config")
+	if err := os.Mkdir(configDir, 0755); err != nil {
+		t.Fatalf("failed to create _lyx/config: %v", err)
+	}
 
 	// Write board.yaml with literal question mark
-	yamlFile := filepath.Join(lyxDir, "board.yaml")
+	yamlFile := filepath.Join(configDir, "board.yaml")
 	if err := os.WriteFile(yamlFile, []byte("url: \"http://host?q=1\"\n"), 0644); err != nil {
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
@@ -468,6 +516,47 @@ func TestFindBaseDir_Absent(t *testing.T) {
 
 	if !stringContains(err.Error(), "not initialized") {
 		t.Errorf("expected error containing 'not initialized', got: %v", err)
+	}
+}
+
+// TestLoad_OldFlatPathNotPickedUp ensures that the old flat path (_lyx/board.yaml)
+// is NOT picked up after migration to _lyx/config/. This is a regression guard to
+// verify the hard-cut migration does not accidentally fall back to the old path.
+func TestLoad_OldFlatPathNotPickedUp(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create _lyx/ directory
+	lyxDir := filepath.Join(tmpDir, "_lyx")
+	if err := os.Mkdir(lyxDir, 0755); err != nil {
+		t.Fatalf("failed to create _lyx: %v", err)
+	}
+
+	// Write board.yaml in the OLD flat location (_lyx/board.yaml)
+	oldPath := filepath.Join(lyxDir, "board.yaml")
+	oldContent := "path: old_flat_path\nhome: OldHome.md\n"
+	if err := os.WriteFile(oldPath, []byte(oldContent), 0644); err != nil {
+		t.Fatalf("failed to write _lyx/board.yaml: %v", err)
+	}
+
+	// Do NOT create _lyx/config/ or _lyx/config/board.yaml
+	// Load should return defaults, not the old flat-path values
+	defaults := map[string]string{
+		"path": "default_path",
+		"home": "Home.md",
+	}
+
+	result, err := config.Load(tmpDir, "board", defaults)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Assert that the values came from defaults, not from the old flat path.
+	// If the old path was picked up, path would be "old_flat_path" and home would be "OldHome.md".
+	if result["path"] != "default_path" {
+		t.Errorf("expected path %q (from defaults), got %q; old flat path may have been picked up", "default_path", result["path"])
+	}
+	if result["home"] != "Home.md" {
+		t.Errorf("expected home %q (from defaults), got %q; old flat path may have been picked up", "Home.md", result["home"])
 	}
 }
 

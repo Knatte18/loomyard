@@ -68,10 +68,10 @@ func TestMenuHardErrorOnMissingBoard(t *testing.T) {
 	container, mainWorktreePath := newTestGitRepoWithWorktrees(t)
 
 	layout := &paths.Layout{
-		Container:    container,
-		MainWorktree: mainWorktreePath,
-		RelPath:      ".",
-		Cwd:          mainWorktreePath,
+		Hub:     container,
+		Prime:   mainWorktreePath,
+		RelPath: ".",
+		Cwd:     mainWorktreePath,
 	}
 
 	// Call Menu without a board directory (no _board exists at <container>/_board)
@@ -119,10 +119,10 @@ func TestMenuExcludesMain(t *testing.T) {
 	}
 
 	layout := &paths.Layout{
-		Container:    container,
-		MainWorktree: mainWorktreePath,
-		RelPath:      ".",
-		Cwd:          mainWorktreePath,
+		Hub:     container,
+		Prime:   mainWorktreePath,
+		RelPath: ".",
+		Cwd:     mainWorktreePath,
 	}
 
 	// Stub codeLauncher
@@ -172,10 +172,10 @@ func TestMenuRequiresLyxDir(t *testing.T) {
 	}
 
 	layout := &paths.Layout{
-		Container:    container,
-		MainWorktree: mainWorktreePath,
-		RelPath:      ".",
-		Cwd:          mainWorktreePath,
+		Hub:     container,
+		Prime:   mainWorktreePath,
+		RelPath: ".",
+		Cwd:     mainWorktreePath,
 	}
 
 	var out bytes.Buffer
@@ -228,10 +228,10 @@ func TestMenuNumericSelection(t *testing.T) {
 	}
 
 	layout := &paths.Layout{
-		Container:    container,
-		MainWorktree: mainWorktreePath,
-		RelPath:      ".",
-		Cwd:          mainWorktreePath,
+		Hub:     container,
+		Prime:   mainWorktreePath,
+		RelPath: ".",
+		Cwd:     mainWorktreePath,
 	}
 
 	// Stub codeLauncher to verify it gets called
@@ -276,10 +276,10 @@ func TestMenuZeroWorktreeMessage(t *testing.T) {
 	}
 
 	layout := &paths.Layout{
-		Container:    container,
-		MainWorktree: mainWorktreePath,
-		RelPath:      ".",
-		Cwd:          mainWorktreePath,
+		Hub:     container,
+		Prime:   mainWorktreePath,
+		RelPath: ".",
+		Cwd:     mainWorktreePath,
 	}
 
 	var out bytes.Buffer

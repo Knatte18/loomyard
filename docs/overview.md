@@ -51,17 +51,17 @@ skill-vs-script ambiguity (which forced the `mill` → `millpy` rename). Interna
 
 ## Path Invariants
 
-**All worktree and container geometry resolves through `internal/paths`.**
+**All worktree and Hub geometry resolves through `internal/paths`.**
 
 The `internal/paths` package is the sole owner of cwd and worktree-root geometry math. It
 exposes two entry points:
 
 - `Getwd()` — the only permitted call to `os.Getwd` outside `cmd/lyx/main.go`.
 - `Resolve(cwd)` → `Layout` — one-stop geometry: cwd, repo root (from `git rev-parse
-  --show-toplevel`), container, relative path, and main worktree.
+  --show-toplevel`), Hub, relative path, and Prime worktree.
 
 The `Layout` type provides geometry methods: `LyxDir()`, `WorktreePath(slug)`,
-`PortalsDir()`, `PortalTarget(slug)`, `LaunchersDir()`, `LauncherDir(slug)`, `HubName()`.
+`PortalsDir()`, `PortalTarget(slug)`, `LaunchersDir()`, `LauncherDir(slug)`, `PrimeName()`.
 
 **Raw `os.Getwd` and `git rev-parse --show-toplevel` are banned** outside `internal/paths`
 and `cmd/lyx/main.go`. The ban is enforced at `go test` / CI time by
@@ -70,7 +70,54 @@ if either literal token is found in any non-test `.go` file outside the allowlis
 
 See [CONSTRAINTS.md](../CONSTRAINTS.md) for details.
 
-## Structure
+## Weft overlay model
+
+lyx organizes overlay artifacts (configuration, task state, codeguide docs, and the board) into a **weft repo** — a companion git repository that stays separate from the host repo, keeping the host pristine.
+
+### Topology
+
+```
+<hub>/                              (top-level container, NOT a git repo)
+  ├── <prime>/                      (host worktree, main branch; git repo root)
+  ├── <prime>-weft/                 (weft Prime worktree; git repo root)
+  ├── <slug>/                       (additional host worktree; git repo root)
+  └── <slug>-weft/                  (weft worktree for <slug>; git repo root)
+```
+
+### Git ownership
+
+The **host repo** is the project's source of truth, maintained by developers. All lyx-specific artifacts live in the **weft repo**, a separate git repository that lyx controls. This separation keeps host commits focused on project code and delegates lyx infrastructure to the weft.
+
+### Artifacts location
+
+| Artifact | Location | Repo | Purpose |
+|----------|----------|------|---------|
+| `_lyx/config/` | Weft worktree | Weft | Configuration files for all modules |
+| `_codeguide/` | Weft worktree | Weft | Codeguide documentation (task 008) |
+| `_board/` | Weft worktree | Board | Task board (separate board repo) |
+| Host source | Host worktree | Host | Project source code |
+
+### Junction model
+
+Each host worktree has a sibling weft worktree. Host worktrees use **junctions** (Windows) or symlinks to route writes into the sibling weft worktree:
+- `<host>/_lyx` → `<hub>/<slug>-weft/_lyx` (config junction)
+- `<host>/_codeguide` → `<hub>/<slug>-weft/_codeguide` (codeguide junction, task 008)
+
+Junctions are listed in `.git/info/exclude` per worktree and are never committed to `.gitignore`. From the CLI's perspective, reads and writes happen transparently — code that writes to `_lyx/config/board.yaml` writes through the junction into the weft repo without awareness of the indirection.
+
+### Weft suffix convention
+
+The weft worktree for any host worktree is deterministic:
+- Host: `<hub>/<slug>/` → Weft: `<hub>/<slug>-weft/`
+- Host: `<prime>/` → Weft: `<prime>-weft/` (prime is the name of the main worktree)
+
+The `-weft` suffix is fixed and non-configurable. Weft paths are computed on demand from geometry and do not require a registry.
+
+### Status
+
+- **Go implementation** (paths geometry, paired spawn, `lyx weft` command): task 006
+- **`_codeguide` junction activation** (`lyx config` TUI, `_lyx/config/` schema): task 008
+- **This task** documents the canonical architecture; Go code lands in downstream tasks.
 
 ```
 github.com/Knatte18/loomyard/

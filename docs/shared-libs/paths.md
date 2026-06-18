@@ -53,11 +53,11 @@ Builds a complete geometry `Layout` from a cwd once, resolving all path math upf
 
 ```go
 type Layout struct {
-    Cwd           string  // current working directory (filepath.Clean'd)
-    WorktreeRoot  string  // git repository root (normalized via filepath.FromSlash + filepath.Clean)
-    Container     string  // parent of WorktreeRoot
-    RelPath       string  // relative path from WorktreeRoot to Cwd
-    MainWorktree  string  // path to the main (first) worktree from List()
+    Cwd          string  // current working directory (filepath.Clean'd)
+    WorktreeRoot string  // git repository root (normalized via filepath.FromSlash + filepath.Clean)
+    Hub          string  // top-level container directory that is NOT a git repo; parent of WorktreeRoot
+    RelPath      string  // relative path from WorktreeRoot to Cwd
+    Prime        string  // path to the main/first worktree checkout (on main branch)
 }
 ```
 
@@ -65,28 +65,28 @@ type Layout struct {
 
 - **`LyxDir() string`** — `filepath.Join(Cwd, "_lyx")`. The Loomyard config/state
   directory at the current location.
-- **`WorktreePath(slug string) string`** — `filepath.Join(Container, slug)`. Path to
+- **`WorktreePath(slug string) string`** — `filepath.Join(Hub, slug)`. Path to
   a sibling worktree.
-- **`PortalsDir() string`** (un-mirrored root) — `filepath.Join(Container, "_portals")`. The portals
-  system container directory (prune boundary, not mirrored by subpath).
-- **`PortalLink(slug string) string`** (mirrored leaf) — `filepath.Join(Container, "_portals", RelPath, slug)`. The portal junction link,
+- **`PortalsDir() string`** (un-mirrored root) — `filepath.Join(Hub, "_portals")`. The portals
+  system container directory (prune boundary, not mirrored by subpath). **Deprecated — portals are superseded by the weft overlay model. Removal planned for task 006.**
+- **`PortalLink(slug string) string`** (mirrored leaf) — `filepath.Join(Hub, "_portals", RelPath, slug)`. The portal junction link,
   mirrored into the repo subpath structure. At `RelPath == "."`, collapses to the
-  flat `<Container>/_portals/<slug>`.
-- **`PortalTarget(slug string) string`** — `filepath.Join(Container, slug, RelPath,
-  "_lyx")`. The junction target for a given worktree's portal.
-- **`LaunchersDir() string`** (un-mirrored root) — `filepath.Join(Container, "_launchers")`. The launchers
+  flat `<Hub>/_portals/<slug>`. **Deprecated — portals are superseded by the weft overlay model. Removal planned for task 006.**
+- **`PortalTarget(slug string) string`** — `filepath.Join(Hub, slug, RelPath,
+  "_lyx")`. The junction target for a given worktree's portal. **Deprecated — portals are superseded by the weft overlay model. Removal planned for task 006.**
+- **`LaunchersDir() string`** (un-mirrored root) — `filepath.Join(Hub, "_launchers")`. The launchers
   system container directory (prune boundary, not mirrored by subpath).
-- **`LauncherDir(slug string) string`** (mirrored leaf) — `filepath.Join(Container, "_launchers", RelPath, slug)`.
+- **`LauncherDir(slug string) string`** (mirrored leaf) — `filepath.Join(Hub, "_launchers", RelPath, slug)`.
   Path to a specific worktree's launcher directory, mirrored into the repo subpath
-  structure. At `RelPath == "."`, collapses to the flat `<Container>/_launchers/<slug>`.
-- **`MenuLauncherPath() string`** (mirrored leaf) — `filepath.Join(Container, "_launchers", RelPath, "ide-menu.cmd")`. The per-subpath
+  structure. At `RelPath == "."`, collapses to the flat `<Hub>/_launchers/<slug>`.
+- **`MenuLauncherPath() string`** (mirrored leaf) — `filepath.Join(Hub, "_launchers", RelPath, "ide-menu.cmd")`. The per-subpath
   menu launcher script, mirrored into the repo subpath structure. At `RelPath == "."`,
-  collapses to `<Container>/_launchers/ide-menu.cmd`.
+  collapses to `<Hub>/_launchers/ide-menu.cmd`.
 - **`LauncherSpawnRel(slug string) string`** — `filepath.Rel(LauncherDir(slug), filepath.Join(WorktreePath(slug), RelPath))`.
   The relative path from a launcher directory to the target worktree's subpath for spawning.
-- **`MenuLauncherRel() string`** — `filepath.Rel(filepath.Dir(MenuLauncherPath()), filepath.Join(MainWorktree, RelPath))`.
-  The relative path from the menu launcher directory to the main worktree's subpath for menu spawning.
-- **`HubName() string`** — `filepath.Base(MainWorktree)`. The main worktree's
+- **`MenuLauncherRel() string`** — `filepath.Rel(filepath.Dir(MenuLauncherPath()), filepath.Join(Prime, RelPath))`.
+  The relative path from the menu launcher directory to the Prime worktree's subpath for menu spawning.
+- **`PrimeName() string`** — `filepath.Base(Prime)`. The Prime worktree's
   directory name (stable, used in paths like `ide-menu.cmd`).
 
 ## Design principles

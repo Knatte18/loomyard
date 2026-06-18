@@ -39,9 +39,9 @@ func FindBaseDir(cwd string) (string, error) {
 	return cwd, nil
 }
 
-// Load loads configuration for a module from defaults and the module's `_lyx/<module>.yaml` file.
+// Load loads configuration for a module from defaults and the module's `_lyx/config/<module>.yaml` file.
 //
-// Merges defaults with <baseDir>/_lyx/<module>.yaml (if present) and expands
+// Merges defaults with <baseDir>/_lyx/config/<module>.yaml (if present) and expands
 // environment variables using $env:NAME and $env:NAME ? fallback syntax.
 //
 // If <baseDir>/_lyx/ does not exist, returns an error.
@@ -67,7 +67,7 @@ func Load(baseDir, module string, defaults map[string]string) (map[string]string
 	}
 
 	// Load and merge YAML layer
-	yamlMap, err := loadYAMLLayer(filepath.Join(baseDir, "_lyx", module+".yaml"))
+	yamlMap, err := loadYAMLLayer(filepath.Join(baseDir, "_lyx", "config", module+".yaml"))
 	if err != nil {
 		return nil, err
 	}

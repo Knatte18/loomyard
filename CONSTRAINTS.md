@@ -2,7 +2,7 @@
 
 ## Path Invariant
 
-All worktree and container geometry must be resolved through `internal/paths`, not raw primitives. This invariant is enforced at build time.
+All worktree and hub geometry must be resolved through `internal/paths`, not raw primitives. This invariant is enforced at build time.
 
 ### Rule
 
@@ -15,5 +15,5 @@ All worktree and container geometry must be resolved through `internal/paths`, n
 
 If you need a cwd or worktree root:
 - Call `paths.Getwd()` to get the current working directory.
-- Call `paths.Resolve(cwd)` to obtain a `Layout` with all geometry fields (root, container, relative path, etc.).
-- Use the `Layout` methods to derive paths: `LyxDir()`, `WorktreePath(slug)`, `PortalsDir()`, `PortalTarget(slug)`, `LaunchersDir()`, `LauncherDir(slug)`, `PortalLink(slug)`, `MenuLauncherPath()`, `LauncherSpawnRel(slug)`, `MenuLauncherRel()`, `HubName()`.
+- Call `paths.Resolve(cwd)` to obtain a `Layout` with all geometry fields (root, hub, relative path, etc.).
+- Use the `Layout` methods to derive paths: `LyxDir()`, `WorktreePath(slug)`, `PortalsDir()`, `PortalTarget(slug)`, `LaunchersDir()`, `LauncherDir(slug)`, `PortalLink(slug)`, `MenuLauncherPath()`, `LauncherSpawnRel(slug)`, `MenuLauncherRel()`, `PrimeName()`.

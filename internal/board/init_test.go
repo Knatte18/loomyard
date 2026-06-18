@@ -1,6 +1,6 @@
 // init_test.go — tests for the init scaffold (init.go).
 //
-// Covers: creating _lyx/board.yaml and .gitignore managed block,
+// Covers: creating _lyx/config/board.yaml and .gitignore managed block,
 // idempotency (re-run doesn't clobber or duplicate), and JSON output shape.
 
 package board_test
@@ -26,7 +26,7 @@ func runInit(t *testing.T) (exitCode int, stdout string) {
 	return code, buf.String()
 }
 
-// TestInitCreatesStructure tests that first run creates _lyx/board.yaml.
+// TestInitCreatesStructure tests that first run creates _lyx/ and _lyx/config/ with YAML files.
 func TestInitCreatesStructure(t *testing.T) {
 	cwd := t.TempDir()
 	t.Chdir(cwd)
@@ -47,8 +47,18 @@ func TestInitCreatesStructure(t *testing.T) {
 		t.Fatalf("_lyx is not a directory")
 	}
 
-	// Verify board.yaml exists
-	boardYamlPath := filepath.Join(lyxDir, "board.yaml")
+	// Verify _lyx/config/ directory exists
+	configDir := filepath.Join(lyxDir, "config")
+	info, err = os.Stat(configDir)
+	if err != nil {
+		t.Fatalf("_lyx/config directory not created: %v", err)
+	}
+	if !info.IsDir() {
+		t.Fatalf("_lyx/config is not a directory")
+	}
+
+	// Verify board.yaml exists in _lyx/config/
+	boardYamlPath := filepath.Join(configDir, "board.yaml")
 	content, err := os.ReadFile(boardYamlPath)
 	if err != nil {
 		t.Fatalf("board.yaml not created: %v", err)
@@ -67,8 +77,8 @@ func TestInitCreatesStructure(t *testing.T) {
 		}
 	}
 
-	// Verify worktree.yaml exists
-	worktreeYamlPath := filepath.Join(lyxDir, "worktree.yaml")
+	// Verify worktree.yaml exists in _lyx/config/
+	worktreeYamlPath := filepath.Join(configDir, "worktree.yaml")
 	worktreeContent, err := os.ReadFile(worktreeYamlPath)
 	if err != nil {
 		t.Fatalf("worktree.yaml not created: %v", err)
@@ -136,7 +146,7 @@ func TestInitIdempotent(t *testing.T) {
 	}
 
 	// Capture board.yaml content and mtime
-	boardYamlPath := filepath.Join(cwd, "_lyx", "board.yaml")
+	boardYamlPath := filepath.Join(cwd, "_lyx", "config", "board.yaml")
 	content1, err := os.ReadFile(boardYamlPath)
 	if err != nil {
 		t.Fatalf("failed to read board.yaml after first run: %v", err)

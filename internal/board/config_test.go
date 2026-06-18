@@ -68,16 +68,20 @@ func TestErrorNotInitialized(t *testing.T) {
 func TestRelativePathResolution(t *testing.T) {
 	baseDir := t.TempDir()
 
-	// Create _lyx/ directory
+	// Create _lyx/ and _lyx/config/ directories
 	lyxDir := filepath.Join(baseDir, "_lyx")
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
+	configDir := filepath.Join(lyxDir, "config")
+	if err := os.Mkdir(configDir, 0755); err != nil {
+		t.Fatalf("failed to create _lyx/config: %v", err)
+	}
 
-	// Write _lyx/board.yaml with relative path
-	lyxFile := filepath.Join(lyxDir, "board.yaml")
+	// Write _lyx/config/board.yaml with relative path
+	lyxFile := filepath.Join(configDir, "board.yaml")
 	if err := os.WriteFile(lyxFile, []byte("path: _custom_board\n"), 0644); err != nil {
-		t.Fatalf("failed to write _lyx/board.yaml: %v", err)
+		t.Fatalf("failed to write _lyx/config/board.yaml: %v", err)
 	}
 
 	cfg, err := board.LoadConfig(baseDir, "board")
@@ -95,19 +99,23 @@ func TestRelativePathResolution(t *testing.T) {
 func TestAbsolutePathPassthrough(t *testing.T) {
 	baseDir := t.TempDir()
 
-	// Create _lyx/ directory
+	// Create _lyx/ and _lyx/config/ directories
 	lyxDir := filepath.Join(baseDir, "_lyx")
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
+	}
+	configDir := filepath.Join(lyxDir, "config")
+	if err := os.Mkdir(configDir, 0755); err != nil {
+		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
 
 	// Create an absolute path by using TempDir
 	absBoard := t.TempDir()
 
-	// Write _lyx/board.yaml with absolute path
-	lyxFile := filepath.Join(lyxDir, "board.yaml")
+	// Write _lyx/config/board.yaml with absolute path
+	lyxFile := filepath.Join(configDir, "board.yaml")
 	if err := os.WriteFile(lyxFile, []byte("path: "+absBoard+"\n"), 0644); err != nil {
-		t.Fatalf("failed to write _lyx/board.yaml: %v", err)
+		t.Fatalf("failed to write _lyx/config/board.yaml: %v", err)
 	}
 
 	cfg, err := board.LoadConfig(baseDir, "board")
@@ -124,16 +132,20 @@ func TestAbsolutePathPassthrough(t *testing.T) {
 func TestMalformedYAMLError(t *testing.T) {
 	baseDir := t.TempDir()
 
-	// Create _lyx/ directory
+	// Create _lyx/ and _lyx/config/ directories
 	lyxDir := filepath.Join(baseDir, "_lyx")
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
+	configDir := filepath.Join(lyxDir, "config")
+	if err := os.Mkdir(configDir, 0755); err != nil {
+		t.Fatalf("failed to create _lyx/config: %v", err)
+	}
 
 	// Write malformed YAML
-	lyxFile := filepath.Join(lyxDir, "board.yaml")
+	lyxFile := filepath.Join(configDir, "board.yaml")
 	if err := os.WriteFile(lyxFile, []byte("path: value\n  invalid indentation: [ unclosed"), 0644); err != nil {
-		t.Fatalf("failed to write _lyx/board.yaml: %v", err)
+		t.Fatalf("failed to write _lyx/config/board.yaml: %v", err)
 	}
 
 	cfg, err := board.LoadConfig(baseDir, "board")
@@ -190,16 +202,20 @@ func TestDefaultOutputs(t *testing.T) {
 func TestLoadConfig_FallbackPathResolution(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Create _lyx/ directory
+	// Create _lyx/ and _lyx/config/ directories
 	lyxDir := filepath.Join(tmpDir, "_lyx")
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
+	configDir := filepath.Join(lyxDir, "config")
+	if err := os.Mkdir(configDir, 0755); err != nil {
+		t.Fatalf("failed to create _lyx/config: %v", err)
+	}
 
-	// Write _lyx/board.yaml with fallback syntax for unset var
-	boardYamlPath := filepath.Join(lyxDir, "board.yaml")
+	// Write _lyx/config/board.yaml with fallback syntax for unset var
+	boardYamlPath := filepath.Join(configDir, "board.yaml")
 	if err := os.WriteFile(boardYamlPath, []byte("path: $env:NONEXISTENT_LYX_TEST_VAR_XYZ ? ../_board\n"), 0644); err != nil {
-		t.Fatalf("failed to write _lyx/board.yaml: %v", err)
+		t.Fatalf("failed to write _lyx/config/board.yaml: %v", err)
 	}
 
 	cfg, err := board.LoadConfig(tmpDir, "board")
