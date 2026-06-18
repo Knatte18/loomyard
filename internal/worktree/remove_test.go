@@ -102,7 +102,7 @@ func TestRemove(t *testing.T) {
 				}
 
 				// Create the portal link target (_lyx directory)
-				targetParent := filepath.Join(l.Container, slug, l.RelPath)
+				targetParent := filepath.Join(l.Hub, slug, l.RelPath)
 				if err := os.MkdirAll(targetParent, 0755); err != nil {
 					t.Fatalf("mkdir target parent: %v", err)
 				}
@@ -125,7 +125,7 @@ func TestRemove(t *testing.T) {
 				}
 
 				// Now delete the worktree directory itself (not the _lyx target, just the worktree root)
-				worktreeDir := filepath.Join(l.Container, slug)
+				worktreeDir := filepath.Join(l.Hub, slug)
 				if err := os.RemoveAll(worktreeDir); err != nil {
 					t.Fatalf("remove worktree dir: %v", err)
 				}

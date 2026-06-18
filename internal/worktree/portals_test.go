@@ -34,7 +34,7 @@ func TestCreatePortal(t *testing.T) {
 	}
 
 	// Create the target _lyx directory
-	targetParent := filepath.Join(l.Container, "test-slug", l.RelPath)
+	targetParent := filepath.Join(l.Hub, "test-slug", l.RelPath)
 	if err := os.MkdirAll(targetParent, 0o755); err != nil {
 		t.Fatalf("mkdir target parent: %v", err)
 	}
@@ -96,7 +96,7 @@ func TestCreatePortal(t *testing.T) {
 	}
 
 	// Verify the target dir still exists (not recursively removed)
-	targetDir = filepath.Join(l.Container, "test-slug", l.RelPath, "_lyx")
+	targetDir = filepath.Join(l.Hub, "test-slug", l.RelPath, "_lyx")
 	if _, err := os.Stat(targetDir); err != nil {
 		t.Errorf("target _lyx dir was removed: %v", err)
 	}
@@ -136,7 +136,7 @@ func TestCreatePortalMultipleSubpaths(t *testing.T) {
 
 	// Create target dirs for both
 	for _, l := range []*paths.Layout{l1, l2} {
-		targetParent := filepath.Join(l.Container, "test-slug", l.RelPath)
+		targetParent := filepath.Join(l.Hub, "test-slug", l.RelPath)
 		if err := os.MkdirAll(targetParent, 0o755); err != nil {
 			t.Fatalf("mkdir target parent: %v", err)
 		}
@@ -186,7 +186,7 @@ func TestCreatePortalRootRelPath(t *testing.T) {
 	}
 
 	// Create the target _lyx directory
-	targetParent := filepath.Join(l.Container, "test-slug", l.RelPath)
+	targetParent := filepath.Join(l.Hub, "test-slug", l.RelPath)
 	if err := os.MkdirAll(targetParent, 0o755); err != nil {
 		t.Fatalf("mkdir target parent: %v", err)
 	}
