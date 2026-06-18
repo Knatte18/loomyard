@@ -24,15 +24,15 @@ Creating them by hand, remembering which exist, and — the hard part — removi
 cleanly is fragile. Stale worktrees and locked directories accumulate. This module
 makes each step one deterministic command.
 
-## Layout: the container
+## Layout: the Hub
 
-Everything lives flat inside a **container directory** — the hub, the board, and
-all worktrees are direct children of the container, not nested under a subdirectory.
+Everything lives flat inside a **Hub directory** — the Prime worktree, the board, and
+all worktrees are direct children of the Hub, not nested under a subdirectory.
 System directories use an underscore prefix to distinguish them from worktrees.
 
 ```
-ModelsHub/               ← the container
-├── Models/              ← the hub (primary checkout, main branch)
+ModelsHub/               ← the Hub (top-level container, NOT a git repo)
+├── Models/              ← the Prime (primary checkout, main branch)
 ├── _board/              ← the board directory (underscore = system, not a worktree)
 ├── worktree1/           ← worktree on branch worktree1
 ├── worktree2/           ← worktree on branch worktree2
@@ -40,20 +40,22 @@ ModelsHub/               ← the container
 ```
 
 Naming conventions:
-- **Container:** `<RepoName>Hub` by convention — makes it obvious this is the
-  container, not a checkout.
-- **Hub:** same name as the repo — `Models`, `loomyard`, etc.
+- **Hub:** `<RepoName>Hub` by convention — makes it obvious this is the
+  container, not a checkout. The Hub is NOT a git repository.
+- **Prime:** same name as the repo — `Models`, `loomyard`, etc. The Prime is the main/primary worktree on the main branch.
 - **Board:** `_board` (underscore prefix = system directory, not a worktree). This
-  matches the config default `path: ../_board` — relative to the hub cwd, `../`
-  steps up to the container and `_board` lands alongside the hub.
+  matches the config default `path: ../_board` — relative to the Prime cwd, `../`
+  steps up to the Hub and `_board` lands alongside the Prime.
 - **Worktrees:** directory = slug only (e.g. slug `my-task` → directory `my-task`);
   branch = `<branch_prefix><slug>` (e.g. branch `wt-my-task` with default `branch_prefix: wt-`).
-  Worktrees live directly in the container.
+  Worktrees live directly in the Hub.
 
-The container is always the parent of the hub (`..` relative to the hub root) — this
+The Hub is always the parent of the Prime (`..` relative to the Prime root) — this
 is a fixed layout invariant, not a config key. `worktree.yaml` (loaded via
 [`internal/config`](../shared-libs/config.md)) holds only the spawn-time settings
 (currently just `branch_prefix`).
+
+For the canonical architecture of how the Hub, Prime, and weft worktrees are organized, see [`docs/overview.md#weft-overlay-model`](../overview.md#weft-overlay-model).
 
 ## Subcommands
 
@@ -83,27 +85,27 @@ git's output to JSON (one entry per worktree, the first marked `main: true`, bra
 names shortened from `refs/heads/…`) and holds no registry of its own. `add` and
 `remove` likewise read and write no state.
 
-## Container layout (extended)
+## Hub layout (extended)
 
-The **container is not a git repository** and must never contain an `_lyx/` directory.
+The **Hub is not a git repository** and must never contain an `_lyx/` directory.
 Two additional system directories are machine-local scaffolding:
 
 ```
-ModelsHub/               ← the container
-├── Models/              ← the hub (primary checkout, main branch)
+ModelsHub/               ← the Hub (NOT a git repo)
+├── Models/              ← the Prime (primary checkout, main branch)
 ├── _board/              ← the board directory
-├── _portals/            ← junctions into each worktree's _lyx/ (machine-local)
+├── _portals/            ← junctions into each worktree's _lyx/ (machine-local, deprecated)
 ├── _launchers/          ← per-worktree VS Code launchers (machine-local)
 ├── worktree1/           ← worktree on branch worktree1
 ├── worktree2/           ← worktree on branch worktree2
 └── fix_some_bug/        ← worktree on branch fix_some_bug
 ```
 
-## Portals
+## Portals (Deprecated)
 
-**Portals** are machine-local junctions inside `_portals/` that allow the hub's VS Code
+**Portals** are machine-local junctions inside `_portals/` that allow the Prime's VS Code
 instance (or any file browser) to browse each worktree's live task state without
-navigating away.
+navigating away. **Deprecated: portals are superseded by the weft overlay model (see [`docs/overview.md#weft-overlay-model`](../overview.md#weft-overlay-model)). Removal planned for task 006.**
 
 - **Creation:** `worktree add` creates `<container>/_portals/<slug>` → `<container>/<slug>/<relpath>/_lyx`
   (a Windows junction; POSIX symlink).
@@ -127,12 +129,12 @@ Two launchers exist:
    Omit `<relpath>` when RelPath is empty (init at repo root).
    Removed by `worktree remove`.
 
-2. **Container-root menu:** `<container>/_launchers/ide-menu.cmd` created once by `worktree add`
-   if missing; never removed. Runs `cd /d "%~dp0..\<hubname>\<relpath>" && lyx ide menu`.
-   `<hubname>` is the main worktree's directory name (stable).
+2. **Hub-root menu:** `<Hub>/_launchers/ide-menu.cmd` created once by `worktree add`
+   if missing; never removed. Runs `cd /d "%~dp0..\<prime_name>\<relpath>" && lyx ide menu`.
+   `<prime_name>` is the Prime worktree's directory name (stable).
 
-**Why cwd-into-worktree:** The container has no `_lyx/` and `lyx` is cwd-authoritative,
-so a bare `lyx ide spawn <slug>` run from the container would fail with "lyx not
+**Why cwd-into-worktree:** The Hub has no `_lyx/` and `lyx` is cwd-authoritative,
+so a bare `lyx ide spawn <slug>` run from the Hub would fail with "lyx not
 initialized in this folder". Cding into an initialized worktree directory (which contains
 `_lyx/`) allows `lyx` to resolve config correctly.
 
