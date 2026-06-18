@@ -52,7 +52,7 @@ After the layers are merged, every string value is scanned for `$env:NAME` token
   the last thing in the value (you cannot follow it with more text).
 
 ```yaml
-# _lyx/board.yaml
+# _lyx/config/board.yaml
 home:  $env:LYX_HOME ? Home.md          # README.md on some machines, default Home.md
 path:  $env:LYX_BOARD ? ../_board       # default sibling dir
 model: $env:LYX_CODE_REVIEWER ? sonnetmax  # default to the fast model
