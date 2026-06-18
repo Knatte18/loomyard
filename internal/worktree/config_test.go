@@ -40,7 +40,11 @@ func TestLoadConfig(t *testing.T) {
 					t.Fatalf("create _lyx: %v", err)
 				}
 				if tt.yaml != "" {
-					yamlPath := filepath.Join(lyxDir, "worktree.yaml")
+					configDir := filepath.Join(lyxDir, "config")
+					if err := os.Mkdir(configDir, 0755); err != nil {
+						t.Fatalf("create _lyx/config: %v", err)
+					}
+					yamlPath := filepath.Join(configDir, "worktree.yaml")
 					if err := os.WriteFile(yamlPath, []byte(tt.yaml), 0644); err != nil {
 						t.Fatalf("write worktree.yaml: %v", err)
 					}
