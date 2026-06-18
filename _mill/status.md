@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-terminology-rename
+phase: approved-config-path-migration
 slug: weft-repo
 branch: weft-repo
 plan: _mill/plan
@@ -22,6 +22,7 @@ plan-fix-r2  '2026-06-18T18:41:48Z'
 planned  '2026-06-18T18:41:48Z'
 implementing  '2026-06-18T18:44:02Z'
 approved-terminology-rename  '2026-06-18T18:51:19Z'
+approved-config-path-migration  '2026-06-18T18:59:57Z'
 ```
 
 ## Batches
@@ -34,9 +35,10 @@ batches:
     start_sha: b884d62fe1533ca396936ffb7a24f6c87d77fcbd
     commit_sha: fc5bcc7f3dda8ef179cb680e6bc2feed647139d8
   - name: config-path-migration
-    state: running
+    state: approved
     implementer_session: a81ccdc1-f5f1-4427-9029-8511e17c0125
     start_sha: 42e1f4737bd7f2dee0157e7e5b83c9e4e6b3b01e
+    commit_sha: ee0adff568839d9faa4e540c8d57e1188ec9e06e
   - name: docs-and-roadmap
     state: pending
 ```
