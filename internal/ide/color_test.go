@@ -27,9 +27,9 @@ func TestPickColorNeverReturnsGreen(t *testing.T) {
 	}
 
 	layout := &paths.Layout{
-		Container:    tmpDir,
-		MainWorktree: mainPath,
-		RelPath:      ".",
+		Hub:     tmpDir,
+		Prime:   mainPath,
+		RelPath: ".",
 	}
 
 	color := pickColor(layout)
@@ -70,9 +70,9 @@ func TestPickColorFirstUnusedNonGreen(t *testing.T) {
 	}
 
 	layout := &paths.Layout{
-		Container:    tmpDir,
-		MainWorktree: mainPath,
-		RelPath:      ".",
+		Hub:     tmpDir,
+		Prime:   mainPath,
+		RelPath: ".",
 	}
 
 	color := pickColor(layout)

@@ -36,23 +36,23 @@ var mainColor = "#2d7d46"
 // scanning sibling .vscode/settings.json files for existing color assignments.
 //
 // Algorithm:
-//   - Scan <l.Container>/<dir>/<l.RelPath>/.vscode/settings.json for each sibling worktree
+//   - Scan <l.Hub>/<dir>/<l.RelPath>/.vscode/settings.json for each sibling worktree
 //   - Collect workbench.colorCustomizations.titleBar.activeBackground (lowercased)
 //   - Skip the main worktree and any dir with unreadable settings
 //   - Return the first palette color that is not mainColor and not in use
 //   - If all non-green colors are used, return the first non-green (palette[1])
-//   - If container/dirs missing, return first non-green
+//   - If hub/dirs missing, return first non-green
 func pickColor(l *paths.Layout) string {
 	used := make(map[string]bool)
 
-	// Try to read the container directory
-	entries, err := os.ReadDir(l.Container)
+	// Try to read the hub directory
+	entries, err := os.ReadDir(l.Hub)
 	if err != nil {
-		// Container doesn't exist or unreadable; return first non-green
+		// Hub doesn't exist or unreadable; return first non-green
 		return palette[1]
 	}
 
-	mainWorktreeBase := filepath.Base(l.MainWorktree)
+	primeBase := filepath.Base(l.Prime)
 
 	// Scan each sibling worktree for existing color assignments
 	for _, entry := range entries {
@@ -61,13 +61,13 @@ func pickColor(l *paths.Layout) string {
 		}
 
 		// Skip the main worktree
-		if entry.Name() == mainWorktreeBase {
+		if entry.Name() == primeBase {
 			continue
 		}
 
 		// Build path to .vscode/settings.json
 		settingsPath := filepath.Join(
-			l.Container,
+			l.Hub,
 			entry.Name(),
 			l.RelPath,
 			".vscode",
