@@ -1,6 +1,6 @@
 // init_test.go — tests for the init scaffold (init.go).
 //
-// Covers: creating _lyx/board.yaml and .gitignore managed block,
+// Covers: creating _lyx/config/board.yaml and .gitignore managed block,
 // idempotency (re-run doesn't clobber or duplicate), and JSON output shape.
 
 package board_test
