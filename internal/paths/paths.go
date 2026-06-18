@@ -22,15 +22,15 @@ var ErrNotAGitRepo = errors.New("not a git repository")
 // Fields:
 //   - Cwd: the current working directory (normalized via filepath.Clean)
 //   - WorktreeRoot: the root of the git repository (from git rev-parse --show-toplevel)
-//   - Container: the parent directory of WorktreeRoot
+//   - Hub: the parent directory of WorktreeRoot (the container directory, not a git repo)
 //   - RelPath: the relative path from WorktreeRoot to Cwd
-//   - MainWorktree: the path to the main (first) worktree from List()
+//   - Prime: the path to the main (first) worktree from List()
 type Layout struct {
 	Cwd          string
 	WorktreeRoot string
-	Container    string
+	Hub          string
 	RelPath      string
-	MainWorktree string
+	Prime        string
 }
 
 // Getwd returns the current working directory.
@@ -49,9 +49,9 @@ func Getwd() (string, error) {
 //  2. On error or non-zero exit, return ErrNotAGitRepo (with context)
 //  3. Normalize the output via filepath.FromSlash + filepath.Clean → WorktreeRoot
 //  4. Set Cwd = filepath.Clean(cwd)
-//  5. Set Container = filepath.Dir(WorktreeRoot)
+//  5. Set Hub = filepath.Dir(WorktreeRoot)
 //  6. Set RelPath = filepath.Rel(WorktreeRoot, Cwd)
-//  7. Call List(cwd) and set MainWorktree to the Main==true entry's Path
+//  7. Call List(cwd) and set Prime to the Main==true entry's Path
 //
 // Resolve does NOT check for _lyx/ (that authority stays in internal/config).
 //
@@ -72,21 +72,21 @@ func Resolve(cwd string) (*Layout, error) {
 
 	// Step 4-6: Set layout fields
 	cleanCwd := filepath.Clean(cwd)
-	container := filepath.Dir(workTreeRoot)
+	hub := filepath.Dir(workTreeRoot)
 	relPath, _ := filepath.Rel(workTreeRoot, cleanCwd)
 
-	// Step 7: Get MainWorktree from List
+	// Step 7: Get Prime from List
 	entries, err := List(cwd)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get main worktree: %w", err)
 	}
 
-	mainWorktree := ""
+	prime := ""
 	for _, entry := range entries {
 		if entry.Main {
-			// Normalize mainWorktree path (git may emit forward slashes)
-			mainWorktree = filepath.FromSlash(entry.Path)
-			mainWorktree = filepath.Clean(mainWorktree)
+			// Normalize prime path (git may emit forward slashes)
+			prime = filepath.FromSlash(entry.Path)
+			prime = filepath.Clean(prime)
 			break
 		}
 	}
@@ -94,9 +94,9 @@ func Resolve(cwd string) (*Layout, error) {
 	return &Layout{
 		Cwd:          cleanCwd,
 		WorktreeRoot: workTreeRoot,
-		Container:    container,
+		Hub:          hub,
 		RelPath:      relPath,
-		MainWorktree: mainWorktree,
+		Prime:        prime,
 	}, nil
 }
 
@@ -109,67 +109,67 @@ func (l *Layout) LyxDir() string {
 
 // WorktreePath returns the path to a sibling worktree with the given slug.
 //
-// Returns filepath.Join(Container, slug).
+// Returns filepath.Join(Hub, slug).
 func (l *Layout) WorktreePath(slug string) string {
-	return filepath.Join(l.Container, slug)
+	return filepath.Join(l.Hub, slug)
 }
 
-// PortalsDir returns the path to the _portals directory in the container.
+// PortalsDir returns the path to the _portals directory in the hub.
 //
-// Returns filepath.Join(Container, "_portals").
+// Returns filepath.Join(Hub, "_portals").
 func (l *Layout) PortalsDir() string {
-	return filepath.Join(l.Container, "_portals")
+	return filepath.Join(l.Hub, "_portals")
 }
 
 // PortalLink returns the path to the mirrored portal junction link for the given slug.
 //
 // The portal link is mirrored into the repo subpath structure. At RelPath == ".",
-// this collapses to <Container>/_portals/<slug>. For subpaths, it includes the
-// RelPath segments: <Container>/_portals/<RelPath>/<slug>.
+// this collapses to <Hub>/_portals/<slug>. For subpaths, it includes the
+// RelPath segments: <Hub>/_portals/<RelPath>/<slug>.
 //
-// Returns filepath.Join(Container, "_portals", RelPath, slug).
+// Returns filepath.Join(Hub, "_portals", RelPath, slug).
 func (l *Layout) PortalLink(slug string) string {
-	return filepath.Join(l.Container, "_portals", l.RelPath, slug)
+	return filepath.Join(l.Hub, "_portals", l.RelPath, slug)
 }
 
 // PortalTarget returns the path to the _lyx directory within a portal for the given slug.
 //
-// The path is: <Container>/<slug>/<RelPath>/_lyx
+// The path is: <Hub>/<slug>/<RelPath>/_lyx
 //
-// Returns filepath.Join(Container, slug, RelPath, "_lyx").
+// Returns filepath.Join(Hub, slug, RelPath, "_lyx").
 func (l *Layout) PortalTarget(slug string) string {
-	return filepath.Join(l.Container, slug, l.RelPath, "_lyx")
+	return filepath.Join(l.Hub, slug, l.RelPath, "_lyx")
 }
 
-// LaunchersDir returns the path to the _launchers directory in the container.
+// LaunchersDir returns the path to the _launchers directory in the hub.
 //
 // This is the un-mirrored root used as a prune boundary and base for MkdirAll.
 //
-// Returns filepath.Join(Container, "_launchers").
+// Returns filepath.Join(Hub, "_launchers").
 func (l *Layout) LaunchersDir() string {
-	return filepath.Join(l.Container, "_launchers")
+	return filepath.Join(l.Hub, "_launchers")
 }
 
 // LauncherDir returns the path to the mirrored launcher directory for the given slug.
 //
 // The launcher directory is mirrored into the repo subpath structure. At RelPath == ".",
-// this collapses to <Container>/_launchers/<slug>. For subpaths, it includes the
-// RelPath segments: <Container>/_launchers/<RelPath>/<slug>.
+// this collapses to <Hub>/_launchers/<slug>. For subpaths, it includes the
+// RelPath segments: <Hub>/_launchers/<RelPath>/<slug>.
 //
-// Returns filepath.Join(Container, "_launchers", RelPath, slug).
+// Returns filepath.Join(Hub, "_launchers", RelPath, slug).
 func (l *Layout) LauncherDir(slug string) string {
-	return filepath.Join(l.Container, "_launchers", l.RelPath, slug)
+	return filepath.Join(l.Hub, "_launchers", l.RelPath, slug)
 }
 
 // MenuLauncherPath returns the path to the per-subpath menu launcher script.
 //
 // The menu launcher is mirrored into the repo subpath structure. At RelPath == ".",
-// this collapses to <Container>/_launchers/ide-menu.cmd. For subpaths, it includes
-// the RelPath segments: <Container>/_launchers/<RelPath>/ide-menu.cmd.
+// this collapses to <Hub>/_launchers/ide-menu.cmd. For subpaths, it includes
+// the RelPath segments: <Hub>/_launchers/<RelPath>/ide-menu.cmd.
 //
-// Returns filepath.Join(Container, "_launchers", RelPath, "ide-menu.cmd").
+// Returns filepath.Join(Hub, "_launchers", RelPath, "ide-menu.cmd").
 func (l *Layout) MenuLauncherPath() string {
-	return filepath.Join(l.Container, "_launchers", l.RelPath, "ide-menu.cmd")
+	return filepath.Join(l.Hub, "_launchers", l.RelPath, "ide-menu.cmd")
 }
 
 // LauncherSpawnRel returns the relative path from a launcher directory to the
@@ -189,19 +189,19 @@ func (l *Layout) LauncherSpawnRel(slug string) string {
 // MenuLauncherRel returns the relative path from the menu launcher directory to
 // the main worktree's subpath for menu spawning.
 //
-// This climbs from <Container>/_launchers/<RelPath> to
-// <Container>/<MainWorktree>/<RelPath>, yielding paths like (..\)^(1+N)<hub>\<sub>
-// (N = RelPath segment count). At RelPath == ".", it collapses to ..\<hub>.
+// This climbs from <Hub>/_launchers/<RelPath> to
+// <Hub>/<Prime>/<RelPath>, yielding paths like (..\)^(1+N)<prime>\<sub>
+// (N = RelPath segment count). At RelPath == ".", it collapses to ..\<prime>.
 //
-// Returns filepath.Rel(filepath.Dir(MenuLauncherPath()), filepath.Join(MainWorktree, RelPath)).
+// Returns filepath.Rel(filepath.Dir(MenuLauncherPath()), filepath.Join(Prime, RelPath)).
 func (l *Layout) MenuLauncherRel() string {
-	rel, _ := filepath.Rel(filepath.Dir(l.MenuLauncherPath()), filepath.Join(l.MainWorktree, l.RelPath))
+	rel, _ := filepath.Rel(filepath.Dir(l.MenuLauncherPath()), filepath.Join(l.Prime, l.RelPath))
 	return rel
 }
 
-// HubName returns the base name of the main worktree.
+// PrimeName returns the base name of the main worktree.
 //
-// Returns filepath.Base(MainWorktree).
-func (l *Layout) HubName() string {
-	return filepath.Base(l.MainWorktree)
+// Returns filepath.Base(Prime).
+func (l *Layout) PrimeName() string {
+	return filepath.Base(l.Prime)
 }
