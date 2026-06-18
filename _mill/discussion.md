@@ -47,6 +47,7 @@ This task does two things: establishes the weft model as the canonical architect
 - **Weft suffix:** Fixed `-weft`. For prime: `<prime-name>-weft/`; for worktrees: `<slug>-weft/`. Not configurable — deterministic geometry needs no config lookup.
 - **No registry for weft paths:** The weft path of any worktree is always `<hub>/<dir-name>-weft`. Computed on demand; no `local-state.json` needed.
 - **Canonical doc location:** The weft architecture write-up lands as a new `## Weft overlay model` section in `docs/overview.md`. This is the single authoritative description (topology diagram, git-ownership boundary table, junction model, weft suffix convention). All other docs (`roadmap.md`, `worktree.md`, `board.md`) get a one-paragraph pointer to that section plus local terminology fixes — they do not duplicate the full description.
+- **`.git/info/exclude` mechanism:** The weft model uses `.git/info/exclude` (per host worktree, never a committed `.gitignore`) to hide junctions from git. Wiring this is task 006's concern. Task 005 leaves the existing `lyx init` `.gitignore` managed block untouched — that block contains `.lyx/` (not `_lyx/`), so there is no conflict with the config-path migration in this task.
 - **This task documents the model.** The Go implementation (paths geometry, paired spawn, `lyx weft` command) is task 006.
 
 ### Config path: `_lyx/config/`
@@ -81,7 +82,7 @@ This task does two things: establishes the weft model as the canonical architect
 | `docs/roadmap.md` | terminology + weft milestones |
 | `docs/modules/worktree.md` | "hub" in container layout diagrams, container definition |
 | `docs/modules/board.md` | references to hub naming |
-| `CONSTRAINTS.md` | Single token swap: `HubName()` → `PrimeName()` in the Layout method list. Field names `Container` and `MainWorktree` do not appear in CONSTRAINTS.md — no field-reference changes needed there. |
+| `CONSTRAINTS.md` | Single identifier swap: `HubName()` → `PrimeName()` in the Layout method list. Field names `Container` and `MainWorktree` do not appear as identifiers. Prose uses of "container" (lines 5, 18: "worktree and container geometry", "root, container, relative path") are replaced by "hub" — same concept, new canonical term. |
 
 `internal/paths/codeguide_guard_test.go` scans for the literal `_codeguide` substring in production files — unaffected by the rename.
 
@@ -90,7 +91,7 @@ This task does two things: establishes the weft model as the canonical architect
 | File | What changes |
 |---|---|
 | `internal/config/config.go` | `loadYAMLLayer(filepath.Join(baseDir, "_lyx", module+".yaml"))` → `.../_lyx/config/<module>.yaml` |
-| `internal/board/init.go` | Create `_lyx/config/` dir; write `board.yaml` and `worktree.yaml` there; update file/package comment |
+| `internal/board/init.go` | Add `_lyx/config/` mkdir step (currently no such mkdir exists); retarget both `os.WriteFile` calls from `_lyx/board.yaml` (line 61) and `_lyx/worktree.yaml` (line 82) to `_lyx/config/board.yaml` and `_lyx/config/worktree.yaml`; update file/package comment |
 | `internal/board/init_test.go` | Assert `_lyx/config/board.yaml` output, not `_lyx/board.yaml` |
 | `internal/config/config_test.go` | All `_lyx/board.yaml` fixture paths → `_lyx/config/board.yaml`; add test that `_lyx/config/` dir is created |
 | `internal/board/config_test.go` | All `_lyx/board.yaml` fixture writes (≥4 sites) → `_lyx/config/board.yaml` |
