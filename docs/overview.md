@@ -14,6 +14,15 @@ orchestration comes last. See [Principles](#principles).
 
 Module path: `github.com/Knatte18/loomyard`
 
+## Naming: `lyx` (binary) vs `loom` (skills)
+
+`lyx` is the binary/CLI — **L**oom**Y**ard e**X**ecutable — one binary with a namespaced
+subcommand tree (`lyx board`, `lyx weft`, `lyx config`, …). It is the analog of millhouse's
+`millpy` backend. The skill / orchestration plugin (the analog of `mill`) is **`loom`**; skills
+are `/loom-*`. **Never name skills `lyx-*`** — that recreates the millhouse `mill-spawn`
+skill-vs-script ambiguity (which forced the `mill` → `millpy` rename). Internal Go packages
+(`internal/board`, `internal/weft`, …) keep their own names and are not user-facing.
+
 ## Principles
 
 1. **Toolkit-first.** Build small, composable primitives (board, worktree, mux)
@@ -31,6 +40,14 @@ Module path: `github.com/Knatte18/loomyard`
    trouble.
 5. **Full control, incremental milestones.** Land one milestone at a time;
    refactors are behaviour-preserving with the existing test suite as guardrail.
+6. **Correctness by tool-design, not by recall.** A `lyx` command should make the *correct* path
+   the path of least resistance and make drift *detectable* (`status` / a future `doctor`), rather
+   than relying on an agent or operator remembering a rule. No on-disk operation is truly
+   un-bypassable when a shell is available, so the achievable bar is "right path is easiest +
+   mistakes are detectable," **not** "wrong path impossible." Hard blocks (hooks, permission rules)
+   are brittle and out of scope. Example: `lyx weft` owns the overlay's git so raw `git -C` is
+   never *needed* (it would be strictly more work), and `lyx weft status` flags drift — but it is a
+   friction asymmetry, not a wall.
 
 ## Path Invariants
 
