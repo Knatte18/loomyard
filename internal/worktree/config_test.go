@@ -17,7 +17,7 @@ func TestLoadConfig(t *testing.T) {
 		// initLyx controls whether the _lyx/ marker dir is created;
 		// LoadConfig rejects a base dir without it.
 		initLyx bool
-		// yaml, when non-empty, is written to _lyx/worktree.yaml.
+		// yaml, when non-empty, is written to _lyx/config/worktree.yaml.
 		yaml            string
 		wantPrefix      string
 		wantErrContains string
