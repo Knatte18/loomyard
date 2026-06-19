@@ -1,6 +1,6 @@
 # `internal/paths`
 
-The **canonical geometry resolver** — the single owner of all worktree and container
+The **canonical geometry resolver** — the single owner of all worktree and Hub
 path math. Centralizes cwd/worktree-root handling so the `cwd ≠ git-repo-path` bug
 class never recurs.
 
@@ -11,7 +11,7 @@ class never recurs.
 ## The problem
 
 The cwd-≠-worktree-root bug recurs because path math is scattered: each module
-re-derives container, worktree-root, and relative-path ad hoc. A single resolver
+re-derives Hub, worktree-root, and relative-path ad hoc. A single resolver
 makes correctness structural, not a matter of discipline.
 
 ## Exported API
@@ -38,7 +38,7 @@ Builds a complete geometry `Layout` from a cwd once, resolving all path math upf
 1. Runs `git rev-parse --show-toplevel` from `cwd` to find the repo root.
 2. Normalizes the root via `filepath.FromSlash` + `filepath.Clean` (reconciles forward
    slashes from git vs backslashes from `os.Getwd()`).
-3. Computes container = `parent(root)`, relative-path = `rel(root, cwd)`.
+3. Computes Hub = `parent(root)`, relative-path = `rel(root, cwd)`.
 4. Calls `worktreeList(cwd)` to fetch the `Main=true` entry and stores its `.Path`.
 5. Returns a `Layout` struct with all fields set.
 
@@ -55,9 +55,9 @@ Builds a complete geometry `Layout` from a cwd once, resolving all path math upf
 type Layout struct {
     Cwd          string  // current working directory (filepath.Clean'd)
     WorktreeRoot string  // git repository root (normalized via filepath.FromSlash + filepath.Clean)
-    Hub          string  // top-level container directory that is NOT a git repo; parent of WorktreeRoot
+    Hub          string  // top-level Hub directory (non-git); parent of WorktreeRoot
     RelPath      string  // relative path from WorktreeRoot to Cwd
-    Prime        string  // path to the main/first worktree checkout (on main branch)
+    Prime        string  // path to the Prime worktree checkout (main branch)
 }
 ```
 
@@ -68,12 +68,14 @@ type Layout struct {
 - **`WorktreePath(slug string) string`** — `filepath.Join(Hub, slug)`. Path to
   a sibling worktree.
 - **`PortalsDir() string`** (un-mirrored root) — `filepath.Join(Hub, "_portals")`. The portals
-  system container directory (prune boundary, not mirrored by subpath). **Deprecated — portals are superseded by the weft overlay model. Removal planned for task 006.**
+  system container directory (prune boundary, not mirrored by subpath). Portals expose each
+  worktree's `_lyx/` at a Hub-level, subdir-mirrored location so any worktree can see sibling
+  task-state in the same subdir; present and working, kept on hold (see the weft proposal).
 - **`PortalLink(slug string) string`** (mirrored leaf) — `filepath.Join(Hub, "_portals", RelPath, slug)`. The portal junction link,
   mirrored into the repo subpath structure. At `RelPath == "."`, collapses to the
-  flat `<Hub>/_portals/<slug>`. **Deprecated — portals are superseded by the weft overlay model. Removal planned for task 006.**
+  flat `<Hub>/_portals/<slug>`.
 - **`PortalTarget(slug string) string`** — `filepath.Join(Hub, slug, RelPath,
-  "_lyx")`. The junction target for a given worktree's portal. **Deprecated — portals are superseded by the weft overlay model. Removal planned for task 006.**
+  "_lyx")`. The junction target for a given worktree's portal.
 - **`LaunchersDir() string`** (un-mirrored root) — `filepath.Join(Hub, "_launchers")`. The launchers
   system container directory (prune boundary, not mirrored by subpath).
 - **`LauncherDir(slug string) string`** (mirrored leaf) — `filepath.Join(Hub, "_launchers", RelPath, slug)`.

@@ -2,24 +2,24 @@
 
 > **Status:** design, nothing implemented yet. Unlike the earlier sketch, every claim
 > here is **grounded in hands-on testing** — see the evidence log
-> [`mux-exploration.md`](mux-exploration.md), the CC-hooks / `claude agents --json`
-> evidence log [`mux-hooks-exploration.md`](mux-hooks-exploration.md) (event-driven
+> [`mux-exploration.md`](../research/mux-exploration.md), the CC-hooks / `claude agents --json`
+> evidence log [`mux-hooks-exploration.md`](../research/mux-hooks-exploration.md) (event-driven
 > pane switching), and the TUI-behavior reference
 > [`../psmux-tui-behavior.md`](../psmux-tui-behavior.md). **v1 is deliberately tiny**
 > (roadmap milestone 5); subprocess panes (6), the daemon (7), and Slack (8) are in
 > [Deferred](#deferred).
 >
 > **Note:** A working proof-of-concept of the daemon and pane-recovery model already
-> exists in `internal/muxpoc` — see [modules/muxpoc.md](muxpoc.md) for the shipped
+> exists in `internal/muxpoc` — see [overview.md#modules](../overview.md#modules) for the shipped
 > implementation that validates the hard parts of v2 and v7.
 
-The mux module manages [psmux](../vendor/psmux_scripting.md) — a Windows tmux-compatible
+The mux module manages [psmux](../reference/psmux_scripting.md) — a Windows tmux-compatible
 multiplexer (3.3.4) — so the Claude Code sessions running across a repo's worktrees can be
 laid out, observed, and recovered. It is the Go reimplementation of millpy's `_psmux.py`
 (which "doesn't work" and is not used as a reference).
 
-Driven by `lyx mux <subcommand>`; reads the worktree registry from
-[`internal/state`](../shared-libs/state.md) and config from
+Driven by `lyx mux <subcommand>`; derives worktree layout from `git worktree list`
+(the worktree module is stateless) and config from
 [`internal/config`](../shared-libs/config.md). mux shells out to `psmux.exe` via Go `exec`
 (no MSYS layer, so no slash-arg mangling — a hazard the probe harness hit from git-bash).
 
@@ -105,7 +105,7 @@ preserved across crash+recover; focus set on the active bottom pane.
 
 ### What is real today, and the glue that remains
 
-Every hard primitive is proven end-to-end in muxpoc (see [`mux-exploration.md`](mux-exploration.md)):
+Every hard primitive is proven end-to-end in muxpoc (see [`mux-exploration.md`](../research/mux-exploration.md)):
 clean-env psmux boot, interactive claude launch, **claude spawning its own child pane by running
 `lyx` from its own Bash tool**, dominant-bottom layout, and `claude --resume` restoring each
 pane's *distinct* context after a `kill-server`. A realistic first cut — **one `lyx` command per
@@ -129,7 +129,7 @@ orchestrator and everything it needs) — needs only **glue**, not new primitive
 
 ## v1 — one window per repo, one column per worktree (milestone 5)
 
-Every repo gets one psmux window. Each active worktree (from the registry) owns one
+Every repo gets one psmux window. Each active worktree (from `git worktree list`) owns one
 full-height column. No parent/child panes, no daemon, no hooks. `even-horizontal` gives
 equal columns; no layout math needed yet.
 
@@ -154,7 +154,7 @@ its transcript.
 
 | Command | Does |
 |---|---|
-| `lyx mux sync` | Reconcile the psmux window against the worktree registry: a column per worktree in registry order; add columns for new worktrees, flag columns whose worktree is gone. Re-renders the layout. |
+| `lyx mux sync` | Reconcile the psmux window against `git worktree list`: a column per worktree in list order; add columns for new worktrees, flag columns whose worktree is gone. Re-renders the layout. |
 | `lyx mux attach` | Pop / attach one maximized terminal to the repo's psmux window. The popped terminal has a real TTY so claude renders there; the orchestrator itself never needs to attach — it observes via `capture-pane`. |
 
 ### Naming
@@ -166,7 +166,7 @@ split is only worth it once the daemon arrives.
 ## What actually works (empirical guardrails)
 
 These are the tested facts any implementation must respect. Full evidence in
-[`mux-exploration.md`](mux-exploration.md).
+[`mux-exploration.md`](../research/mux-exploration.md).
 
 - **Scripting contract: `send-keys` + `capture-pane` is reliable** by pane name or `%id`.
   Use plain `capture-pane -p` (primary == alternate buffer on this build). Captured text is

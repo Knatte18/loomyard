@@ -6,18 +6,15 @@ one place that knows the `_lyx/` layout and the config grammar.
 ## Layout
 
 ```
-<cwd>/                  ← where `lyx init` was run
-├── _lyx/               git-TRACKED config container
+<cwd>/                  ← where `lyx init` was run (the Hub — top-level non-git directory)
+├── _lyx/               git-TRACKED config Hub
 │   ├── config/         git-TRACKED config files — the only config source
 │   │   ├── board.yaml
-│   │   ├── worktree.yaml
-│   │   └── mux.yaml
+│   │   └── worktree.yaml
 │   ├── discussion.md    lyx task discussion (artifact)
 │   ├── plan.md         lyx task plan (artifact)
 │   └── reviews/        lyx code reviews (artifact directory)
 ├── .env                git-IGNORED — local env values (KEY=value)
-└── .lyx/               git-IGNORED — machine-local RUNTIME state (see state.md)
-    └── local-state.json
 ```
 
 `_lyx/` presence is what makes a directory "initialised". If it is absent,
