@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: blocked
 slug: weft-engine
 branch: weft-engine
 plan: _mill/plan
@@ -23,6 +23,7 @@ plan-fix-r1  '2026-06-19T15:44:05Z'
 plan-fix-r2  '2026-06-19T15:47:48Z'
 planned  '2026-06-19T15:48:13Z'
 implementing  '2026-06-19T15:52:22Z'
+blocked  '2026-06-19T15:59:03Z'
 ```
 
 ## Batches
@@ -30,9 +31,10 @@ implementing  '2026-06-19T15:52:22Z'
 ```yaml
 batches:
   - name: paths-weft-geometry
-    state: running
+    state: blocked
     implementer_session: fb6400eb-eed5-4abc-99d8-eea615b99cad
     start_sha: 8d78559eab923c24b08ea9a1e3b5f2cab1864db4
+    blocked_reason: uncommitted working tree after implementer report
   - name: ide-watcher-exclude
     state: pending
   - name: weft-module
