@@ -1,6 +1,6 @@
 # mux — hands-on psmux exploration log
 
-Empirical evidence for redesigning [`mux.md`](mux.md). The brief: design the mux
+Empirical evidence for redesigning [`mux.md`](../modules/mux.md). The brief: design the mux
 module, but **first** find out what psmux/tmux actually supports in practice with
 Claude Code on Windows — what works reliably, how Claude attaches/resumes inside
 panes, what the harness already owns vs. what mux must own, and what a minimal v1 is.

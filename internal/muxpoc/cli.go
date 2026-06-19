@@ -1,7 +1,14 @@
-// cli.go — muxpoc CLI entry point and configuration.
+// Package muxpoc is a shipped proof-of-concept psmux orchestrator that proves
+// the risky parts — daemon and pane recovery — of the planned mux module.
+// It is distinct from and not a replacement for internal/mux, which is unbuilt.
 //
-// RunCLI parses command-line flags and dispatches to subcommands. Config holds
-// all paths and dimensions. Subcommands: up, review, attach, status, down, daemon.
+// Subcommands:
+//   - up       Cold-start or cold-recover the muxpoc session
+//   - review   Add a reviewer pane to the active session
+//   - attach   Pop the session into a maximized terminal
+//   - status   Show session and pane status
+//   - down     Stop the session and delete state
+//   - daemon   Foreground poller that recovers a crashed session (crash-loop-guarded)
 
 package muxpoc
 

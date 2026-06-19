@@ -3,7 +3,7 @@
 Tracks how fast the board commands run, and how that changes across revisions.
 The benchmark suite lives in [`internal/board/boardtest`](../../internal/board/boardtest).
 
-Since the async-sync change (see [board.md](../modules/board.md#background-sync)) a write only
+Since the async-sync change (see [overview.md#modules](../overview.md#modules)) a write only
 touches the filesystem and returns; the git round-trip happens in a detached
 background `Sync`. So the suites split into the **hot path** (writes + reads, no
 git) and the **background sync** (git).

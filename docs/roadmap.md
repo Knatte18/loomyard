@@ -19,60 +19,55 @@ Each milestone is independently shippable. Refactor milestones (2–4) are
 **behaviour-preserving**: board's existing test suite is the guardrail, so nothing
 observable changes until the new module that needs the extracted lib arrives.
 
-1. **board** — the task tracker. ✅ **Done.** See
-   [modules/board.md](modules/board.md).
+1. **board** — the task tracker. ✅ **Done.** See the board module in
+   [overview.md#modules](overview.md#modules).
 
 2. **Extract shared infrastructure: `internal/config`, `internal/git`,
    `internal/lock`.** ✅ **Done.** See
    [shared-libs/](shared-libs/README.md).
 
-3. **`internal/state`.** Generic locked typed JSON I/O primitive
-   ([`internal/state`](shared-libs/state.md)): `WriteJSON[T]` / `ReadJSON[T]` with
+3. **`internal/state`.** Generic locked typed JSON I/O primitive: `WriteJSON[T]` / `ReadJSON[T]` with
    exclusive/shared locking on `path + ".lock"` via `internal/lock` and atomic writes
-   via [`internal/fsx`](shared-libs/fsx.md). No fixed schema — callers own the fields
-   and file paths. Built test-first — nothing in board needs it, so it has no existing
-   suite to lean on. Prerequisite: `internal/fsx` extraction (this task).
-   **Deferred to land with mux (milestone 5):** the worktree module shipped without it,
-   and mux will own its own state document, so it is built when mux needs it.
+   via atomic filesystem operations. No fixed schema — callers own the fields
+   and file paths. Built test-first. ✅ **Done.** A generic locked-JSON helper, shipped as part
+   of the shared infrastructure with no consumer yet.
 
-4. **worktree module + portals (deprecated), launchers, and ide module.** ✅ **Done.** Create / track / tear down
-   git worktrees ([modules/worktree.md](modules/worktree.md)); manage container junctions and spawnable
-   launchers; VS Code launcher with interactive menu ([modules/ide.md](modules/ide.md)); centralized path geometry
+4. **worktree module + portals, launchers, and ide module.** ✅ **Done.** Create / track / tear down
+   git worktrees; manage container junctions and spawnable
+   launchers; VS Code launcher with interactive menu; centralized path geometry
    in `internal/paths`. Consumes `internal/config` + `internal/git`; owns the **junction-aware teardown**
-   sequence (the Windows locked-worktree hazard). The state-backed registry originally planned here is
-   deferred with `internal/state` (milestone 3 → lands with mux), so the shipped `list` is a thin
-   `git worktree list` wrapper. Introduces `internal/paths` as the sole geometry owner, banning
+   sequence (the Windows locked-worktree hazard). The module is **stateless by design** — `lyx worktree list` is a thin
+   `git worktree list` wrapper; there is no worktree registry. Introduces `internal/paths` as the sole geometry owner, banning
    raw `os.Getwd` and `git rev-parse --show-toplevel` outside `internal/paths` and `cmd/lyx/main.go`
-   via `internal/paths/enforcement_test.go`. (**Portals deprecated:** superseded by weft overlay model (task 006).
-   Removal planned for task 006.)
+   via `internal/paths/enforcement_test.go`. (Portals are present and working — a subdir-mirrored
+   Hub view of each worktree's `_lyx/`; kept available, not slated for removal.)
 
 5. **Task 006 — Weft engine.** Path geometry for weft worktrees, paired host+weft spawn and teardown, `lyx weft` command.
    Implements the canonical weft overlay model (host stays pristine, all lyx artifacts in companion weft repo).
-   Replaces portals with direct sibling access to weft directories.
+   Weft directories are reached by direct sibling access; portals remain available as the cross-worktree status view.
 
 6. **Task 007 — Hub-creator / `lyx-clone` skill.** Bootstrap and clone new host repos as neighbors in an existing hub.
 
 7. **Task 008 — `_codeguide` junction and configuration TUI.** Activate `_codeguide` junctions, implement `lyx config` menu interface,
    define `_lyx/config/` YAML schema for codeguide.
 
-8. **mux v1 — column per worktree.** One psmux window per repo, one column per
-   worktree, laid out from the worktree registry
-   ([modules/mux.md](modules/mux.md)). No subprocess panes, no daemon, no Slack.
+8. **mux v1 — session layout.** One psmux instance per worktree with stacked agent panes
+   ([modules/mux.md](modules/mux.md)). Event-driven pane switching via Claude Code hooks. No daemon, no Slack.
    **Note:** A working proof-of-concept of the daemon and pane-recovery model
-   already ships as `internal/muxpoc` (see [modules/muxpoc.md](modules/muxpoc.md)).
+   already ships as `internal/muxpoc`.
 
 9. **mux v2 — subprocess panes.** Parent/child pane tree (a spawned reviewer
    appears below its parent). Built only once Agent Dispatch stops being enough.
-   **Proven in muxpoc:** see [modules/muxpoc.md](modules/muxpoc.md).
+   **Proven in muxpoc:** see [overview.md#modules](overview.md#modules).
 
 10. **mux daemon.** Standalone watchdog process: detects a psmux crash via
     `cmd.Wait()`, recovers each pane by relaunching interactive Claude and re-injecting
     context from mux's own capture journal (native `--resume` does **not** work for
     programmatically-driven panes — see [modules/mux.md](modules/mux.md#resume-after-crash-the-corrected-model)),
     mutual watchdog so both must die to go dark. See [modules/mux.md](modules/mux.md#deferred).
-    **Proven in muxpoc:** see [modules/muxpoc.md](modules/muxpoc.md). **Event-driven pane
+    **Proven in muxpoc:** see [overview.md#modules](overview.md#modules). **Event-driven pane
     switching / idle detection via Claude Code's own hooks + `claude agents --json` is
-    explored in [modules/mux-hooks-exploration.md](modules/mux-hooks-exploration.md)** — a
+    explored in [research/mux-hooks-exploration.md](research/mux-hooks-exploration.md)** — a
     lower-cost alternative to the capture-pane poller for the focus decision.
 
 11. **Slack relay.** Bidirectional, one channel per worktree, riding on the daemon.
@@ -107,8 +102,7 @@ These stay in the Python/millpy domain and are **not** planned for `lyx`:
 
 - millpy plumbing that a Go binary does not need: junctions/hardlinks/portals as a
   *config* concern, `PYTHONPATH`, venv setup, `MILL_PYTHON`. (Note: the worktree
-  module *does* manage junctions as a teardown concern — see
-  [modules/worktree.md](modules/worktree.md) — but Loomyard never depends on them for
+  module *does* manage junctions as a teardown concern, but Loomyard never depends on them for
   its own layout.)
 - The millpy wiki daemon and its socket/RPC infrastructure (Loomyard's board is
   one-shot and daemonless by design).

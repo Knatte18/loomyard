@@ -1,8 +1,8 @@
 # Proposal: how to build `mux` (single-worktree agent stack)
 
-> **Status:** proposal, separate from the older [`mux.md`](mux.md) design. It folds in the
+> **Status:** proposal, separate from the older [`mux.md`](../modules/mux.md) design. It folds in the
 > hands-on findings from [`mux-hooks-exploration.md`](mux-hooks-exploration.md) and the proven
-> primitives in [`muxpoc.md`](muxpoc.md), and it adopts a **module split** (below). Nothing here
+> primitives in [`muxpoc.md`](../overview.md#modules), and it adopts a **module split** (below). Nothing here
 > is built yet. When accepted, `mux.md` should be re-scoped to match (its "column per worktree"
 > content moves to `mplex`).
 
@@ -143,8 +143,8 @@ columns. Overflow/orchestrator-switch via psmux **windows** inside one attached 
 
 ## Relationship to existing docs
 
-- [`muxpoc.md`](muxpoc.md) — already proves spawn, dominant-bottom layout, and crash recovery; `mux`
+- [`muxpoc.md`](../overview.md#modules) — already proves spawn, dominant-bottom layout, and crash recovery; `mux`
   productionises it.
 - [`mux-hooks-exploration.md`](mux-hooks-exploration.md) — the evidence for decisions 1, 4–6, 8–9 and
   the §A-vs-§D split.
-- [`mux.md`](mux.md) — the older design; on acceptance, re-scope it (its column-per-worktree part → `mplex`).
+- [`mux.md`](../modules/mux.md) — the older design; on acceptance, re-scope it (its column-per-worktree part → `mplex`).

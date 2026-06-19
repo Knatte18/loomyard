@@ -1,16 +1,15 @@
-// Package ide implements the ide module for opening worktrees in VS Code.
+// Package ide provides a one-shot VS Code launcher with spawn and interactive menu.
 //
-// The ide module provides two commands:
-//   - ide spawn <slug> generates a worktree's .vscode/ config (only when absent),
-//     assigns a title-bar color, registers .vscode/ in the managed .gitignore,
-//     and launches VS Code.
-//   - ide menu is an interactive picker over active worktrees (slug + title via
-//     the board facade, hard-erroring through board.HealthCheck when the board is
-//     absent).
+// The spawn command generates a worktree's .vscode/ config (only when absent),
+// assigns a title-bar color to the window, registers .vscode/ in the managed
+// .gitignore, and launches VS Code.
 //
-// VS Code launch and the menu are Windows-only (POSIX no-ops/errors with a clear message);
-// config generation and color picking are cross-platform. Mill values (palette, settings
-// keys, cmd /c code) are baked — no external Python is read.
+// The menu command presents an interactive picker over active worktrees, resolving
+// titles from the board facade.
+//
+// VS Code launch and the menu are Windows-only (POSIX no-ops/errors with a clear
+// message); config generation and color picking are cross-platform. Mill values
+// (palette, settings keys, cmd /c code) are baked — no external Python is read.
 package ide
 
 import (

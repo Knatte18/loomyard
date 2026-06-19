@@ -124,7 +124,7 @@ psmux zoom-pane
 
 ## Pane Titles
 
-Programs running inside a pane can set the title via OSC escape sequences. PowerShell 7 does this automatically with the current working directory. See [pane-titles.md](pane-titles.md) for full details on how pane titles work, how to control them, and how different shells behave.
+Programs running inside a pane can set the title via OSC escape sequences. PowerShell 7 does this automatically with the current working directory. (Companion documentation `pane-titles.md` not available in this repository.)
 
 ```powershell
 # Set a title on the active pane
