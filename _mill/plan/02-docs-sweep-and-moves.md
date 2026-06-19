@@ -114,7 +114,7 @@ Batch-local decisions: (1) use `git mv` for relocations to preserve history (Req
 - **Requirements:**
   - L60 struct comment `// path to the main/first worktree checkout` → use **Prime** vocabulary (e.g. `// path to the Prime worktree checkout (main branch)`).
   - L58 `// top-level container directory …` and the prose/algorithm at ≈L3/L14/L41 using lowercase "container" → **Hub** (keep meaning; the Hub is the top-level non-git directory).
-  - Keep all three portal methods documented but tag them **deprecated-but-present (removed in task 006)**, consistent with overview.md and CONSTRAINTS.md. Do not remove them — portal code still exists.
+  - Keep all three portal methods documented but tag them **deprecated-but-present (removed in task 006)**, consistent with overview.md and CONSTRAINTS.md. Do not remove them — portal code still exists. **(review r2 NIT)** paths.md (≈L70-76) may already carry these deprecation tags and already document `PortalLink`; if so this is an ensure/verify step — do not force a no-op rewrite. Focus the real edits here on the Prime/Hub vocabulary (L60, L58, L3/L14/L41).
 - **Commit:** `docs(shared-libs): Prime/Hub vocab and portal deprecation in paths.md`
 
 ### Card 10: Sweep mux.md — Hub/Prime, drop worktree-registry coupling, fix links

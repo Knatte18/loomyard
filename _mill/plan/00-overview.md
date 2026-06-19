@@ -3,7 +3,7 @@
 ```yaml
 task: "Reconcile stale design docs (stateless + weft model)"
 slug: reconcile-stale-docs
-approved: false
+approved: true
 started: "20260619-105219"
 parent: main
 root: ""

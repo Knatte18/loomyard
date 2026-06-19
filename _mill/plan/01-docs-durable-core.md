@@ -61,6 +61,7 @@ Batch-local decision: when rebuilding overview's module map, use an explicit sta
 - **Requirements:**
   - In the `Layout`-methods enumeration (the bullet listing `LyxDir()`, `WorktreePath(slug)`, `PortalsDir()`, `PortalLink(slug)`, …): tag `PortalsDir`, `PortalLink`, `PortalTarget` as **deprecated-but-present (removed in task 006)**, matching `docs/overview.md` and `docs/shared-libs/paths.md`. Do not remove them.
   - Add a one-line pointer to the documentation-lifecycle convention: a sentence directing readers to `docs/overview.md#documentation-lifecycle` for the delete-mechanical-module-docs-on-landing rule. Do not duplicate the convention text here — CONSTRAINTS.md owns the build-enforced path invariant; the lifecycle convention lives in overview.md.
+  - **(review r2 NIT)** CONSTRAINTS.md L19 may already list `PortalLink`; if so, this card only needs to add the deprecation tags + the convention pointer. Do not force a no-op rewrite of already-correct content.
 - **Commit:** `docs(constraints): tag portal methods deprecated, point to doc-lifecycle convention`
 
 ## Batch Tests
