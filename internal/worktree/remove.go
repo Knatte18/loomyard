@@ -19,26 +19,33 @@ type RemoveResult struct {
 	LinksRemoved int    `json:"links_removed"`
 }
 
-// Remove removes a git worktree and its associated directory, portal, and launchers.
+// Remove removes a paired host and weft git worktree with all associated artifacts.
 //
-// The Layout l provides geometry information; all git operations use l.WorktreeRoot as cwd.
-// The slug is the name of the sibling worktree to remove.
-// If force is false, the worktree must be clean. If force is true, uncommitted changes
-// are allowed and the worktree is forcefully removed.
+// The Layout l provides geometry information; all git operations use the appropriate cwd
+// (l.WorktreeRoot for host, l.WeftRepoRoot for weft). The slug is the name of the sibling
+// worktree to remove. If force is false, both host and weft worktrees must be clean.
+// If force is true, uncommitted changes are allowed in both and they are forcefully removed.
 //
 // Steps:
 //  1. (EARLY) removePortal(l, slug) and removeLaunchers(l, slug) — best-effort cleanup
 //     that runs BEFORE the exists check, so portal/launcher cleanup happens even when
 //     the worktree dir is already gone.
-//  2. Check if target exists: error if not found (unless cleanup is desired anyway)
-//  3. Dirty gate (if !force): check for uncommitted changes; reject if any found
-//  4. Link cleanup: call removeLinks to clean up symlinks/junctions before removal
-//  5. Git remove: run `git worktree remove [--force] <target>`
-//  6. Fallback: if git remove fails, use os.RemoveAll and optionally git worktree prune
-//  7. Leave <container>/_launchers/ide-menu.cmd in place
+//  2. Locate the target and check if it exists: error if not found.
+//  3. Host dirty gate (if !force): check host worktree for uncommitted changes; reject if any found.
+//  4. Weft dirty gate (if !force): check weft worktree for uncommitted changes; reject if any found.
+//  5. Explicitly remove host _lyx junction via removeHostJunction (removeLinks only scans
+//     immediate children and misses nested _lyx at RelPath != "."; this catches subpath junctions).
+//  6. Link cleanup: call removeLinks as root-level safety net for remaining links.
+//  7. Git remove: run `git worktree remove [--force] <target>` on host.
+//  8. Fallback: if git remove fails, use os.RemoveAll and optionally git worktree prune.
+//  9. Remove weft worktree and branch via removeWeftWorktree.
+// 10. Leave <container>/_launchers/ide-menu.cmd in place.
 //
 // Returns RemoveResult on success or an error if the target doesn't exist or other failures occur.
 func (w *Worktree) Remove(l *paths.Layout, slug string, force bool) (RemoveResult, error) {
+	// Compute weft branch name (mirrored)
+	branch := w.cfg.BranchPrefix + slug
+
 	// (1) Early teardown: remove portal and launchers BEFORE exists check
 	// These are best-effort (errors masked)
 	removePortal(l, slug)
@@ -50,7 +57,7 @@ func (w *Worktree) Remove(l *paths.Layout, slug string, force bool) (RemoveResul
 		return RemoveResult{}, fmt.Errorf("worktree %q not found", target)
 	}
 
-	// (3) Dirty gate (only when !force)
+	// (3) Host dirty gate (only when !force)
 	if !force {
 		stdout, _, exitCode, err := git.RunGit([]string{"status", "--porcelain"}, target)
 		if err != nil {
@@ -64,13 +71,31 @@ func (w *Worktree) Remove(l *paths.Layout, slug string, force bool) (RemoveResul
 		}
 	}
 
-	// (4) Link cleanup
+	// (4) Weft dirty gate (only when !force)
+	if !force {
+		weftTarget := l.WeftWorktreePath(slug)
+		stdout, _, exitCode, err := git.RunGit([]string{"status", "--porcelain"}, weftTarget)
+		if err != nil {
+			// Weft worktree might not exist or be invalid; only reject if we can confirm it's dirty
+			// If it doesn't exist, the weft remove later will handle cleanup.
+			if exitCode == 0 && strings.TrimSpace(stdout) != "" {
+				return RemoveResult{}, fmt.Errorf("weft worktree has uncommitted changes; run \"lyx weft sync\" or use --force")
+			}
+		} else if exitCode == 0 && strings.TrimSpace(stdout) != "" {
+			return RemoveResult{}, fmt.Errorf("weft worktree has uncommitted changes; run \"lyx weft sync\" or use --force")
+		}
+	}
+
+	// (5) Explicitly remove host _lyx junction (catches nested junctions that removeLinks misses)
+	removeHostJunction(l, slug)
+
+	// (6) Link cleanup (root-level safety net)
 	linksRemoved, err := removeLinks(target)
 	if err != nil {
 		return RemoveResult{}, err
 	}
 
-	// (5) Git remove
+	// (7) Git remove
 	args := []string{"worktree", "remove"}
 	if force {
 		args = append(args, "--force")
@@ -82,22 +107,18 @@ func (w *Worktree) Remove(l *paths.Layout, slug string, force bool) (RemoveResul
 		return RemoveResult{}, fmt.Errorf("failed to run git worktree remove: %v", err)
 	}
 
-	if exitCode == 0 {
-		// Success via git
-		return RemoveResult{
-			Slug:         slug,
-			Path:         target,
-			LinksRemoved: linksRemoved,
-		}, nil
+	if exitCode != 0 {
+		// (8) Fallback: use os.RemoveAll
+		if err := os.RemoveAll(target); err != nil {
+			return RemoveResult{}, fmt.Errorf("fallback removal failed: %w", err)
+		}
+
+		// Best-effort prune
+		git.RunGit([]string{"worktree", "prune"}, l.WorktreeRoot)
 	}
 
-	// (6) Fallback: use os.RemoveAll
-	if err := os.RemoveAll(target); err != nil {
-		return RemoveResult{}, fmt.Errorf("fallback removal failed: %w", err)
-	}
-
-	// Best-effort prune
-	git.RunGit([]string{"worktree", "prune"}, l.WorktreeRoot)
+	// (9) Remove weft worktree and branch
+	removeWeftWorktree(l, slug, branch, force)
 
 	return RemoveResult{
 		Slug:         slug,
