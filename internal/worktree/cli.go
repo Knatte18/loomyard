@@ -6,7 +6,7 @@
 // Worktree state is read entirely from git worktree list --porcelain (see list.go).
 //
 // Windows teardown hazard: Worktree removal must be junction-aware and ordered.
-// Junctions and portals (deprecated-but-present in the codebase) must be removed
+// Junctions and portals (deprecated-but-present; removal planned for task 006) must be removed
 // before calling git worktree remove, or Windows holds the directory lock and
 // removal fails. See remove.go and junction_windows.go for details.
 

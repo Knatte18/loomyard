@@ -129,7 +129,7 @@ orchestrator and everything it needs) — needs only **glue**, not new primitive
 
 ## v1 — one window per repo, one column per worktree (milestone 5)
 
-Every repo gets one psmux window. Each active worktree (from the registry) owns one
+Every repo gets one psmux window. Each active worktree (from `git worktree list`) owns one
 full-height column. No parent/child panes, no daemon, no hooks. `even-horizontal` gives
 equal columns; no layout math needed yet.
 
@@ -154,7 +154,7 @@ its transcript.
 
 | Command | Does |
 |---|---|
-| `lyx mux sync` | Reconcile the psmux window against the worktree registry: a column per worktree in registry order; add columns for new worktrees, flag columns whose worktree is gone. Re-renders the layout. |
+| `lyx mux sync` | Reconcile the psmux window against `git worktree list`: a column per worktree in list order; add columns for new worktrees, flag columns whose worktree is gone. Re-renders the layout. |
 | `lyx mux attach` | Pop / attach one maximized terminal to the repo's psmux window. The popped terminal has a real TTY so claude renders there; the orchestrator itself never needs to attach — it observes via `capture-pane`. |
 
 ### Naming
