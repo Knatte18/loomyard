@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r2
+phase: planned
 slug: weft-engine
 branch: weft-engine
 plan: _mill/plan
@@ -21,4 +21,5 @@ planning  '2026-06-19T15:39:15Z'
 plan-review-r1  '2026-06-19T15:44:05Z'
 plan-fix-r1  '2026-06-19T15:44:05Z'
 plan-fix-r2  '2026-06-19T15:47:48Z'
+planned  '2026-06-19T15:48:13Z'
 ```
