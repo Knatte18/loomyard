@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r2
+phase: planned
 slug: reconcile-stale-docs
 branch: reconcile-stale-docs
 plan: _mill/plan
@@ -21,4 +21,5 @@ planning  '2026-06-19T10:56:17Z'
 plan-review-r1  '2026-06-19T10:58:39Z'
 plan-fix-r1  '2026-06-19T10:59:19Z'
 plan-fix-r2  '2026-06-19T11:01:52Z'
+planned  '2026-06-19T11:02:04Z'
 ```
