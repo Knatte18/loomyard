@@ -174,10 +174,12 @@ func seedGitExclude(l *paths.Layout, slug string) error {
 
 	contentStr := string(content)
 
-	// Check if `_lyx` is already present
-	if strings.Contains(contentStr, "_lyx") {
-		// Already present, idempotent
-		return nil
+	// Check if `_lyx` is already present as a line-exact match
+	for _, line := range strings.Split(contentStr, "\n") {
+		if strings.TrimSpace(line) == "_lyx" {
+			// Already present, idempotent
+			return nil
+		}
 	}
 
 	// Append `_lyx\n`
