@@ -1,6 +1,6 @@
 # mux — CC hooks & `claude agents --json` exploration log
 
-Empirical evidence for how the **mux** module ([`mux.md`](mux.md)) can drive psmux pane
+Empirical evidence for how the **mux** module ([`mux.md`](../modules/mux.md)) can drive psmux pane
 **switching/focus** off Claude Code's *own* signals — its **hook system** and the
 **`claude agents --json`** registry — rather than (or alongside) the `lyx mux spawn`
 replace-dispatch model. Companion to [`mux-exploration.md`](mux-exploration.md) (which proved
@@ -303,7 +303,7 @@ cost (no idle CPU), and fidelity (payload says *what* the pane is waiting on via
 ## Bonus findings (useful elsewhere in mux)
 
 - **`transcript_path` is handed to every hook** → mux can tail the real JSONL for its resume
-  journal without `capture-pane` scraping (relates to [`mux.md`](mux.md) resume design).
+  journal without `capture-pane` scraping (relates to [`mux.md`](../modules/mux.md) resume design).
 - **`agent_transcript_path`** points at each subagent's own JSONL
   (`…\<session>\subagents\agent-<agent_id>.jsonl`).
 - **Async-subagent result delivery** is a synthetic `<task-notification>` `UserPromptSubmit` — a
