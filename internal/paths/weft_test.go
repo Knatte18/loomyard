@@ -151,6 +151,41 @@ func TestWeftGeometryMethods(t *testing.T) {
 	}
 }
 
+// TestHostLyxLinkHereDivergesFromLyxDir verifies the documented intent that
+// HostLyxLinkHere() is anchored on WorktreeRoot+RelPath while LyxDir() is
+// anchored on Cwd, so the two diverge whenever Cwd != WorktreeRoot+RelPath and
+// coincide when they are equal.
+func TestHostLyxLinkHereDivergesFromLyxDir(t *testing.T) {
+	// Equal case: Cwd == WorktreeRoot and RelPath == "." -> both resolve to the
+	// same _lyx directory.
+	atRoot := &paths.Layout{
+		Cwd:          filepath.Join("/h", "feat"),
+		WorktreeRoot: filepath.Join("/h", "feat"),
+		Hub:          "/h",
+		RelPath:      ".",
+		Prime:        "/h/main",
+	}
+	if atRoot.HostLyxLinkHere() != atRoot.LyxDir() {
+		t.Errorf("HostLyxLinkHere() = %q; want it to equal LyxDir() = %q when Cwd == WorktreeRoot",
+			atRoot.HostLyxLinkHere(), atRoot.LyxDir())
+	}
+
+	// Divergent case: Cwd points at the worktree root but RelPath is a real
+	// subdir, so LyxDir() (Cwd-anchored) and HostLyxLinkHere() (WorktreeRoot+
+	// RelPath-anchored) must differ.
+	atSub := &paths.Layout{
+		Cwd:          filepath.Join("/h", "feat"),
+		WorktreeRoot: filepath.Join("/h", "feat"),
+		Hub:          "/h",
+		RelPath:      "sub",
+		Prime:        "/h/main",
+	}
+	if atSub.HostLyxLinkHere() == atSub.LyxDir() {
+		t.Errorf("HostLyxLinkHere() = %q; want it to differ from LyxDir() = %q when Cwd != WorktreeRoot+RelPath",
+			atSub.HostLyxLinkHere(), atSub.LyxDir())
+	}
+}
+
 // TestWeftGeometryAtMainWorktree verifies that WeftRepoRoot and WeftWorktree are equal
 // when resolving at the main worktree.
 func TestWeftGeometryAtMainWorktree(t *testing.T) {
