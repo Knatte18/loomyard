@@ -241,9 +241,7 @@ func TestRemoveSubpathJunction(t *testing.T) {
 	}
 
 	// Change to subpath to resolve Layout with RelPath set
-	oldCwd, _ := os.Getwd()
-	defer os.Chdir(oldCwd)
-	os.Chdir(subpathDir)
+	t.Chdir(subpathDir)
 
 	l, err := paths.Resolve(subpathDir)
 	if err != nil {
