@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -86,22 +87,30 @@ func TestSyncIntegration_EventuallyPushed(t *testing.T) {
 		t.Fatalf("Commit should succeed")
 	}
 
+	// Capture the commit SHA from HEAD
+	cmd := exec.Command("git", "-C", weftRepo, "rev-parse", "HEAD")
+	shaOutput, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git rev-parse HEAD: %v", err)
+	}
+	commitSHA := strings.TrimSpace(string(shaOutput))
+
 	// Spawn a detached push and poll the bare remote to confirm the commit arrives
 	if err := spawnPush(weftRepo); err != nil {
 		t.Fatalf("spawnPush: %v", err)
 	}
 
-	// Poll the bare remote to confirm the commit eventually arrives
+	// Poll the bare remote to confirm the specific commit eventually arrives
 	deadline := time.Now().Add(5 * time.Second)
 	for {
-		cmd := exec.Command("git", "-C", bare, "-c", "safe.bareRepository=all", "rev-list", "main")
-		output, err := cmd.CombinedOutput()
-		if err == nil && len(output) > 0 {
-			// Commit has reached the bare remote
+		cmd := exec.Command("git", "-C", bare, "-c", "safe.bareRepository=all", "cat-file", "-e", commitSHA)
+		err := cmd.Run()
+		if err == nil {
+			// The specific commit has reached the bare remote
 			return
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("commit did not reach bare remote after 5 seconds; output: %s, err: %v", output, err)
+			t.Fatalf("commit %s did not reach bare remote after 5 seconds", commitSHA)
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
