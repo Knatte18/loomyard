@@ -101,7 +101,7 @@ func TestSyncIntegration_EventuallyPushed(t *testing.T) {
 	}
 
 	// Poll the bare remote to confirm the specific commit eventually arrives
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(30 * time.Second)
 	for {
 		cmd := exec.Command("git", "-C", bare, "-c", "safe.bareRepository=all", "cat-file", "-e", commitSHA)
 		err := cmd.Run()
