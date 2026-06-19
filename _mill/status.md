@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-worktree-paired-spawn
+phase: holistic-reviewing
 slug: weft-engine
 branch: weft-engine
 plan: _mill/plan
@@ -28,6 +28,7 @@ approved-paths-weft-geometry  '2026-06-19T16:00:32Z'
 approved-ide-watcher-exclude  '2026-06-19T16:03:17Z'
 approved-weft-module  '2026-06-19T16:17:19Z'
 approved-worktree-paired-spawn  '2026-06-19T16:42:47Z'
+holistic-reviewing  '2026-06-19T16:43:15Z'
 ```
 
 ## Batches
