@@ -56,10 +56,11 @@ divergent from reality right now.
   (overview.md, roadmap.md, README.md, mux.md, etc.) **and inside the moved research
   docs themselves** (review r3): after moving `docs/modules/mux-*.md` →
   `docs/research/`, their own relative links shift —
-  re-point `mux.md` (which *stays* in `docs/modules/`) to `../modules/mux.md`, retarget
-  their dead `muxpoc.md` links (e.g. mux-proposal.md L5/L146) to overview.md's muxpoc
-  entry (mirroring the benchmarks-link fix), and re-verify `../psmux-tui-behavior.md`
-  (still resolves correctly from `docs/research/`).
+  re-point `mux.md` (which *stays* in `docs/modules/`) to `../modules/mux.md`, and
+  re-verify `../psmux-tui-behavior.md` (still resolves correctly from `docs/research/`).
+  Separately, their `muxpoc.md` links (e.g. mux-proposal.md L5/L146) break because
+  `muxpoc.md` is **deleted** (not a move artifact) → retarget to overview.md's muxpoc
+  entry, mirroring the benchmarks-link fix.
 - **Improve Go header/package doc-comments** (comments only, no logic) for the four
   modules whose detail docs are being deleted — `internal/board`, `internal/worktree`,
   `internal/ide`, `internal/muxpoc` — so the durable "what is this module for + key
@@ -210,7 +211,10 @@ divergent from reality right now.
   **drop/relink** target — remove the worktree-registry coupling and fix/drop the link.
   References phrasing mux's *own* session/pane layout state (e.g. its `local-state.json`
   session document) **stay**. The plan writer judges each `registry` token by this rule:
-  worktree-registry coupling → drop; mux's own-state → keep.
+  worktree-registry coupling → drop; mux's own-state → keep. **Don't over-trim
+  (review r4):** the live `../shared-libs/config.md` link that sits alongside the dead
+  `state.md` link on L21-23 is **kept** (config.md survives the cull) — only the
+  `state.md` link and the worktree-registry phrasing are removed.
 - **Stale-term check exemption:** the stale-term grep (below) for "registry" /
   `local-state.json` applies to all kept docs **except** mux.md's references to mux's
   *own* state document. mux.md must still be free of *worktree*-registry framing and
