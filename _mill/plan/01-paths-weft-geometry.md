@@ -11,7 +11,7 @@ depends-on: []
 
 ## Batch Scope
 
-This batch lands the host↔weft path math in `internal/paths` — the foundation both the weft module (batch 2) and the paired-spawn changes (batch 3) build on. It adds seven `Layout` methods (five weft-side targets + two host-side junction-link helpers) and updates the geometry method lists in `CONSTRAINTS.md` and `docs/overview.md` so the path-invariant documentation stays accurate. **External interface consumed downstream:** `WeftRepoRoot()`, `WeftWorktreePath(slug)`, `WeftWorktree()`, `WeftLyxDir()`, `WeftCodeguideDir()`, `HostLyxLink(slug)`, `HostLyxLinkHere()`. Pure geometry, no git, no I/O — fully unit-testable. Batch-local decision: the new methods mirror the existing `WorktreePath`/`PortalTarget` RelPath-mirroring convention exactly.
+This batch lands the host↔weft path math in `internal/paths` — the foundation both the weft module (batch 2) and the paired-spawn changes (batch 3) build on. It adds eight `Layout` methods (six weft-side targets + two host-side junction-link helpers) and updates the geometry method lists in `CONSTRAINTS.md` and `docs/overview.md` so the path-invariant documentation stays accurate. **External interface consumed downstream:** `WeftRepoRoot()`, `WeftWorktreePath(slug)`, `WeftWorktree()`, `WeftLyxDir()`, `WeftLyxDirFor(slug)`, `WeftCodeguideDir()`, `HostLyxLink(slug)`, `HostLyxLinkHere()`. Pure geometry, no git, no I/O — fully unit-testable. Batch-local decision: the new methods mirror the existing `WorktreePath`/`PortalTarget` RelPath-mirroring convention exactly.
 
 ## Cards
 
@@ -23,7 +23,7 @@ This batch lands the host↔weft path math in `internal/paths` — the foundatio
   - `internal/paths/paths.go`
 - **Creates:** none
 - **Deletes:** none
-- **Requirements:** Add seven methods on `*Layout`, each a pure `filepath.Join` expression, placed near the existing `WorktreePath`/`PortalTarget` methods with godoc comments matching the file's style:
+- **Requirements:** Add eight methods on `*Layout`, each a pure `filepath.Join` expression, placed near the existing `WorktreePath`/`PortalTarget` methods with godoc comments matching the file's style:
   Add a godoc note to the file header or the new methods clarifying that the host link and the weft target for the same `slug` (`HostLyxLink(slug)` ↔ `WeftLyxDirFor(slug)`) are the two ends of the seeded junction.
   - `WeftRepoRoot() string` → `filepath.Join(l.Hub, l.PrimeName()+"-weft")` — the weft Prime worktree (the `git -C` target for weft `worktree add/remove`).
   - `WeftWorktreePath(slug string) string` → `filepath.Join(l.Hub, slug+"-weft")` — parallel to `WorktreePath(slug)`.

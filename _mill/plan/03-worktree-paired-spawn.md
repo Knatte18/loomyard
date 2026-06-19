@@ -32,7 +32,7 @@ This batch makes `lyx worktree add`/`remove` create and tear down the host↔wef
   - `func weftRepoExists(l *paths.Layout) bool` — `os.Stat(l.WeftRepoRoot())` is a dir AND `git.RunGit(["rev-parse","--is-inside-work-tree"], l.WeftRepoRoot())` exits 0.
   - `func weftBranchExists(l *paths.Layout, branch string) bool` — `git.RunGit(["rev-parse","--verify","refs/heads/"+branch], l.WeftRepoRoot())` exits 0 (mirrors the host branch-exists check in `add.go`).
   - `func createWeftWorktree(l *paths.Layout, slug, branch string) error` — `git.RunGit(["worktree","add","-b",branch, l.WeftWorktreePath(slug)], l.WeftRepoRoot())`; error on non-zero exit with the stderr.
-  - `func seedLyxJunction(l *paths.Layout, slug string) error` — let `link := l.HostLyxLink(slug)`, `target := l.WeftLyxDirFor(slug)`. If `os.Lstat(link)` succeeds: if it is a symlink/junction whose resolved target equals `target` → return nil (idempotent); otherwise return an error `"host repo already contains a real _lyx at <link>; it predates weft — migrate via the hub-creator"`. If absent → `createJunction(link, target)` (the existing helper; it MkdirAll's the link parent).
+  - `func seedLyxJunction(l *paths.Layout, slug string) error` — let `link := l.HostLyxLink(slug)`, `target := l.WeftLyxDirFor(slug)`. If `os.Lstat(link)` succeeds: treat it as the correct junction (idempotent → return nil) ONLY when its mode bit `info.Mode()&os.ModeSymlink != 0` AND `filepath.EvalSymlinks(link) == filepath.EvalSymlinks(target)` (use `EvalSymlinks`, NOT `os.Readlink` — junctions resolve correctly only via EvalSymlinks on Windows, matching card 9's status check); otherwise return an error `"host repo already contains a real _lyx at <link>; it predates weft — migrate via the hub-creator"`. If `os.Lstat` reports not-exist → `createJunction(link, target)` (the existing helper; it MkdirAll's the link parent).
   - `func seedGitExclude(l *paths.Layout, slug string) error` — resolve the host worktree's exclude path via `git.RunGit(["rev-parse","--git-path","info/exclude"], l.WorktreePath(slug))`; if the returned path is relative, `filepath.Join(l.WorktreePath(slug), path)`; read the file, and if a line equal to `_lyx` is not already present, append `_lyx\n` (idempotent). Create parent dirs if needed.
   - `func pushWeftBranch(l *paths.Layout, slug, branch string) error` — return nil if `os.Getenv("WEFT_SKIP_GIT")=="1"` or `os.Getenv("WEFT_SKIP_PUSH")=="1"`; else `git.RunGit(["push","-u","origin",branch], l.WeftWorktreePath(slug))`; error on non-zero exit.
   - `func removeHostJunction(l *paths.Layout, slug string) error` — `os.Remove(l.HostLyxLink(slug))`; nil if already absent (`os.IsNotExist`).
@@ -43,6 +43,8 @@ This batch makes `lyx worktree add`/`remove` create and tear down the host↔wef
 
 - **Context:**
   - `internal/worktree/weft.go`
+  - `internal/worktree/worktree.go`
+  - `internal/worktree/config.go`
   - `internal/worktree/portals.go`
   - `internal/worktree/launchers.go`
   - `internal/paths/paths.go`
@@ -63,6 +65,8 @@ This batch makes `lyx worktree add`/`remove` create and tear down the host↔wef
 
 - **Context:**
   - `internal/worktree/weft.go`
+  - `internal/worktree/worktree.go`
+  - `internal/worktree/config.go`
   - `internal/worktree/links.go`
   - `internal/worktree/portals.go`
   - `internal/paths/paths.go`
