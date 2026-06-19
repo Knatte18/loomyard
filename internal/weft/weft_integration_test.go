@@ -4,8 +4,10 @@ package weft
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestPushIntegration_CommitLandsOnBare(t *testing.T) {
@@ -68,7 +70,7 @@ func TestPullIntegration_FastForward(t *testing.T) {
 
 func TestSyncIntegration_EventuallyPushed(t *testing.T) {
 	weftRepo := newTestWeftRepo(t)
-	_ = addWeftRemote(t, weftRepo)
+	bare := addWeftRemote(t, weftRepo)
 
 	// Commit a change
 	lyxFile := filepath.Join(weftRepo, "_lyx", "config.yaml")
@@ -84,11 +86,23 @@ func TestSyncIntegration_EventuallyPushed(t *testing.T) {
 		t.Fatalf("Commit should succeed")
 	}
 
-	// Spawn push (detached) — should not error
-	if err := spawnPush(weftRepo); err != nil {
-		t.Fatalf("spawnPush: %v", err)
+	// Push and poll the bare remote to confirm the commit arrives
+	if err := Push(weftRepo); err != nil {
+		t.Fatalf("Push: %v", err)
 	}
 
-	// Note: We don't poll because the push is detached and may take time
-	// or may fail silently. The test just verifies that spawn doesn't crash.
+	// Poll the bare remote to confirm the commit eventually arrives
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		cmd := exec.Command("git", "-C", bare, "-c", "safe.bareRepository=all", "rev-list", "main")
+		output, err := cmd.CombinedOutput()
+		if err == nil && len(output) > 0 {
+			// Commit has reached the bare remote
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("commit did not reach bare remote after 5 seconds; output: %s, err: %v", output, err)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 }
