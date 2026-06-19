@@ -161,6 +161,8 @@ case "muxpoc":
     return muxpoc.RunCLI(out, moduleArgs)
 case "worktree":
     return worktree.RunCLI(out, moduleArgs)
+case "weft":
+    return weft.RunCLI(out, moduleArgs)
 }
 ```
 
