@@ -53,7 +53,13 @@ divergent from reality right now.
   `docs/vendor/psmux_scripting.md` → `docs/reference/psmux_scripting.md`, and make it
   prominently linked as the upstream/vendored psmux command reference.
 - **Fix every internal link** broken by the deletions/moves across all kept docs
-  (overview.md, roadmap.md, README.md, mux.md, etc.).
+  (overview.md, roadmap.md, README.md, mux.md, etc.) **and inside the moved research
+  docs themselves** (review r3): after moving `docs/modules/mux-*.md` →
+  `docs/research/`, their own relative links shift —
+  re-point `mux.md` (which *stays* in `docs/modules/`) to `../modules/mux.md`, retarget
+  their dead `muxpoc.md` links (e.g. mux-proposal.md L5/L146) to overview.md's muxpoc
+  entry (mirroring the benchmarks-link fix), and re-verify `../psmux-tui-behavior.md`
+  (still resolves correctly from `docs/research/`).
 - **Improve Go header/package doc-comments** (comments only, no logic) for the four
   modules whose detail docs are being deleted — `internal/board`, `internal/worktree`,
   `internal/ide`, `internal/muxpoc` — so the durable "what is this module for + key
@@ -316,8 +322,8 @@ This is a docs + comments task — "testing" means verification, not new test co
   rest of the suite, run `go build ./...`, `go vet ./...`, `go test ./...` after the
   doc-comment edits to confirm nothing broke (comment-only changes must not affect them).
 - **Broken-link check:** after deletions/moves, grep all `docs/**/*.md` (including
-  `docs/benchmarks/board-performance.md`) plus `CONSTRAINTS.md` and `README` files for
-  links pointing at deleted files
+  `docs/benchmarks/board-performance.md` and the moved `docs/research/*.md`) plus
+  `CONSTRAINTS.md` and `README` files for links pointing at deleted files
   (`modules/board.md`, `modules/worktree.md`, `modules/ide.md`, `modules/muxpoc.md`,
   `shared-libs/{git,lock,fsx,gitignore,state}.md`) and at moved files (the three
   `mux-*` logs, `vendor/psmux_scripting.md`). Expect zero stale targets.
@@ -375,3 +381,7 @@ This is a docs + comments task — "testing" means verification, not new test co
 - **Q:** (review r2) Apply the three mechanical fixes (benchmarks L6 dead `board.md`
   link → overview.md; correct the L64 instruction to "add `PortalLink`"; state the
   mux.md L21-22 drop/relink boundary)? **A:** Yes — all three applied.
+- **Q:** (review r3) Add the moved research docs' own outbound links to the link-fix
+  scope (re-point `mux.md` → `../modules/mux.md`; retarget their dead `muxpoc.md` links
+  to overview.md)? **A:** Yes — applied; the broken-link grep now also scans
+  `docs/research/*.md`.
