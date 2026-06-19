@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: weft-engine
 branch: weft-engine
 plan: _mill/plan
@@ -22,4 +22,19 @@ plan-review-r1  '2026-06-19T15:44:05Z'
 plan-fix-r1  '2026-06-19T15:44:05Z'
 plan-fix-r2  '2026-06-19T15:47:48Z'
 planned  '2026-06-19T15:48:13Z'
+implementing  '2026-06-19T15:52:22Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: paths-weft-geometry
+    state: pending
+  - name: ide-watcher-exclude
+    state: pending
+  - name: weft-module
+    state: pending
+  - name: worktree-paired-spawn
+    state: pending
 ```
