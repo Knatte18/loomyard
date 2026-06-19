@@ -106,6 +106,11 @@ this task lands. The weft overlay model is already the documented target archite
   background pusher. `lyx weft sync` commits the pathspec locally, then spawns a detached
   worker that pushes and returns immediately. Port board's `sync.go` (push-lock + commit-
   dirty + push-unpushed loop) and `spawn_windows.go` / `spawn_other.go` into `internal/weft`.
+- **The detached worker gets the weft worktree path explicitly**, mirroring board's
+  `spawnSync --board-path <abs>`: `sync` spawns `lyx weft push --weft-path <abs weft worktree>`
+  (or equivalent), so the detached child does **not** depend on inherited cwd to re-resolve
+  geometry. `lyx weft push` invoked directly (no flag) still resolves from cwd. This keeps the
+  spawn cwd-independent and well-defined, exactly as board does.
 - **Lock files live OUTSIDE the committed pathspec.** The push/write lock files go at the
   weft worktree root in a dedicated dir — `Join(WeftWorktree(), ".weft", "*.lock")` — which is
   outside every `pathspec` dir (`_lyx`). Because staging is always geometry-scoped
@@ -214,6 +219,13 @@ this task lands. The weft overlay model is already the documented target archite
   user's rule: "if something is broken, fix it — don't overlook it."
 - Rejected: move-aside to `_lyx.bak` (surprising, orphan dirs); skip-if-exists (silently
   produces a non-weft worktree, hides drift).
+- **Caveat — `lyx worktree add` loads its own config through the cwd `_lyx`.**
+  `worktree.RunCLI` resolves `branch_prefix` via `LoadConfig(cwd, …)`, and `config.FindBaseDir`
+  requires `<cwd>/_lyx` to exist. On a pristine host that `_lyx` *is* the junction the
+  hub-creator seeded into the Prime host worktree. So `lyx worktree add` presumes a resolvable
+  host `_lyx` junction at the operator's cwd (the source worktree) to even load its config —
+  which is the hub-creator's responsibility and consistent with the hard-require contract
+  (the weft repo + the Prime's host junction both exist before any `worktree add`).
 
 ### paired-rollback
 
@@ -256,6 +268,12 @@ this task lands. The weft overlay model is already the documented target archite
   `lyx weft status` can still load `pathspec` and report the broken junction (rather than
   failing to even start). Justified deviation from cwd-authority: weft is the one module that
   natively owns weft geometry; the config file physically lives in the weft worktree.
+- **Scope of the "status still runs" guarantee:** it covers a **broken junction with an
+  intact weft worktree** (the common drift case) — config + git verbs target the weft worktree
+  directly, so they work. It is **not** claimed for a *missing* weft worktree: if the
+  `<slug>-weft` worktree itself is gone, `config.Load`'s `FindBaseDir` (which needs
+  `<weftworktree>/<RelPath>/_lyx`) fails and `status` errors with a clear "weft worktree
+  missing" message — a different, louder failure than junction drift, and the correct outcome.
 - Rationale: the config loader returns a flat `map[string]string` (scalars only), so a
   space-separated string is the natural shape; `pathspec` is the one knob that genuinely
   varies and cleanly carries the 008 hand-off.
