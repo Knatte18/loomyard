@@ -38,7 +38,9 @@ batches:
     commit_sha: 10aea81b118d5eb22a0a130cf36d631867976db3
     blocked_reason: ''
   - name: ide-watcher-exclude
-    state: pending
+    state: running
+    implementer_session: 14afe14b-fced-42b4-aa3c-6fdd62eb256e
+    start_sha: e4e9110680c2efd7a50f252fdf8dc64eef69d0ab
   - name: weft-module
     state: pending
   - name: worktree-paired-spawn
