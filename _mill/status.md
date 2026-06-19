@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-docs-durable-core
+phase: approved-code-headers
 slug: reconcile-stale-docs
 branch: reconcile-stale-docs
 plan: _mill/plan
@@ -24,6 +24,7 @@ plan-fix-r2  '2026-06-19T11:01:52Z'
 planned  '2026-06-19T11:02:04Z'
 implementing  '2026-06-19T11:06:11Z'
 approved-docs-durable-core  '2026-06-19T11:09:43Z'
+approved-code-headers  '2026-06-19T11:14:08Z'
 ```
 
 ## Batches
@@ -36,9 +37,10 @@ batches:
     start_sha: 674ae993e300f1854bf38eb4b6391c5b45da0914
     commit_sha: eee6264533217b69a249d02c31587ae0811497b2
   - name: code-headers
-    state: running
+    state: approved
     implementer_session: d9129140-6954-44d2-83d4-7933ed3f4b4e
     start_sha: 03403594efc4d1dca42ded8c8e248a45a64a9439
+    commit_sha: 66c46b86e1f37f001d5e89ae192cdddddd67041c
   - name: docs-sweep-and-moves
     state: pending
 ```
