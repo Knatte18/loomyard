@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-weft-module
+phase: approved-worktree-paired-spawn
 slug: weft-engine
 branch: weft-engine
 plan: _mill/plan
@@ -27,6 +27,7 @@ blocked  '2026-06-19T15:59:03Z'
 approved-paths-weft-geometry  '2026-06-19T16:00:32Z'
 approved-ide-watcher-exclude  '2026-06-19T16:03:17Z'
 approved-weft-module  '2026-06-19T16:17:19Z'
+approved-worktree-paired-spawn  '2026-06-19T16:42:47Z'
 ```
 
 ## Batches
@@ -50,7 +51,8 @@ batches:
     start_sha: dfa80b9a06128d71ff1c3ded2b86b2c00cf0a394
     commit_sha: 6661ba9a906047abac52535084469a224defa29a
   - name: worktree-paired-spawn
-    state: running
+    state: approved
     implementer_session: 8bb489af-7940-473e-b9c7-a89c80c208f3
     start_sha: 2bbf7f6b9954faf1a1ec32256d1d1e1160b884d7
+    commit_sha: 5d2e84d3b9d9f95a669224db914be398c660e671
 ```
