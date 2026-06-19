@@ -7,10 +7,8 @@ package worktree
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/git"
 	"github.com/Knatte18/loomyard/internal/paths"
 )
 
