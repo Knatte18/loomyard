@@ -16,4 +16,8 @@ All worktree and hub geometry must be resolved through `internal/paths`, not raw
 If you need a cwd or worktree root:
 - Call `paths.Getwd()` to get the current working directory.
 - Call `paths.Resolve(cwd)` to obtain a `Layout` with all geometry fields (root, hub, relative path, etc.).
-- Use the `Layout` methods to derive paths: `LyxDir()`, `WorktreePath(slug)`, `PortalsDir()`, `PortalTarget(slug)`, `LaunchersDir()`, `LauncherDir(slug)`, `PortalLink(slug)`, `MenuLauncherPath()`, `LauncherSpawnRel(slug)`, `MenuLauncherRel()`, `PrimeName()`.
+- Use the `Layout` methods to derive paths: `LyxDir()`, `WorktreePath(slug)`, `PortalsDir()` **(deprecated, removed in task 006)**, `PortalLink(slug)` **(deprecated, removed in task 006)**, `PortalTarget(slug)` **(deprecated, removed in task 006)**, `LaunchersDir()`, `LauncherDir(slug)`, `MenuLauncherPath()`, `LauncherSpawnRel(slug)`, `MenuLauncherRel()`, `PrimeName()`.
+
+## Documentation Lifecycle
+
+For the convention governing which docs are kept and which are deleted (mechanical per-module docs vs. durable design docs), see [docs/overview.md#documentation-lifecycle](docs/overview.md#documentation-lifecycle).
