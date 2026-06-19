@@ -341,10 +341,15 @@ func TestWeftRollbackOnPostHostCreateFailure(t *testing.T) {
 		t.Fatalf("paths.Resolve: %v", err)
 	}
 
-	// Pre-create the weft worktree dir to trigger createWeftWorktree failure
-	weftTarget := l.WeftWorktreePath(slug)
-	if err := os.Mkdir(weftTarget, 0755); err != nil {
-		t.Fatalf("mkdir weft target: %v", err)
+	// Pre-create a real file at HostLyxLink(slug) to trigger seedLyxJunction failure
+	// after both host and weft worktrees are created, exercising the full rollback path.
+	hostLyxLink := l.HostLyxLink(slug)
+	hostLyxDir := filepath.Dir(hostLyxLink)
+	if err := os.MkdirAll(hostLyxDir, 0755); err != nil {
+		t.Fatalf("mkdir host _lyx dir: %v", err)
+	}
+	if err := os.WriteFile(hostLyxLink, []byte("fake"), 0644); err != nil {
+		t.Fatalf("write fake file at HostLyxLink: %v", err)
 	}
 
 	w := New(Config{})
@@ -352,10 +357,10 @@ func TestWeftRollbackOnPostHostCreateFailure(t *testing.T) {
 
 	// Verify error
 	if err == nil {
-		t.Fatalf("Add(%q) should fail due to pre-existing weft worktree", slug)
+		t.Fatalf("Add(%q) should fail due to pre-existing real file at HostLyxLink", slug)
 	}
 
-	// Verify ZERO residue: no host worktree, no host branch, no weft branch
+	// Verify ZERO residue: no host worktree, no host branch, no weft branch, no weft worktree
 	hostTarget := l.WorktreePath(slug)
 	if _, statErr := os.Stat(hostTarget); !os.IsNotExist(statErr) {
 		t.Errorf("rollback failed: host worktree still exists at %s", hostTarget)
@@ -367,10 +372,10 @@ func TestWeftRollbackOnPostHostCreateFailure(t *testing.T) {
 		t.Errorf("rollback failed: host branch containing %q still exists", slug)
 	}
 
-	// Verify host _lyx junction is gone
-	hostLink := l.HostLyxLink(slug)
-	if _, statErr := os.Lstat(hostLink); !os.IsNotExist(statErr) {
-		t.Errorf("rollback failed: host junction still exists at %s", hostLink)
+	// Verify weft worktree is gone
+	weftTarget := l.WeftWorktreePath(slug)
+	if _, statErr := os.Stat(weftTarget); !os.IsNotExist(statErr) {
+		t.Errorf("rollback failed: weft worktree still exists at %s", weftTarget)
 	}
 
 	// Verify weft branch is gone
