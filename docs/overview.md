@@ -61,7 +61,7 @@ exposes two entry points:
   --show-toplevel`), Hub, relative path, and Prime worktree.
 
 The `Layout` type provides geometry methods: `LyxDir()`, `WorktreePath(slug)`,
-`PortalsDir()`, `PortalTarget(slug)`, `LaunchersDir()`, `LauncherDir(slug)`, `PrimeName()`.
+`PortalsDir()`, `PortalLink(slug)`, `PortalTarget(slug)`, `LaunchersDir()`, `LauncherDir(slug)`, `PrimeName()`.
 
 **Raw `os.Getwd` and `git rev-parse --show-toplevel` are banned** outside `internal/paths`
 and `cmd/lyx/main.go`. The ban is enforced at `go test` / CI time by
@@ -123,10 +123,10 @@ The `-weft` suffix is fixed and non-configurable. Weft paths are computed on dem
 github.com/Knatte18/loomyard/
 ├── cmd/lyx/
 │   └── main.go                   entrypoint: routes the <module> argument to a module
-├── internal/board/               the board module (see modules/board.md)
-├── internal/worktree/            the worktree module (see modules/worktree.md)
-├── internal/ide/                 the ide module (see modules/ide.md)
-├── internal/muxpoc/              the muxpoc POC module (see modules/muxpoc.md)
+├── internal/board/               the board module
+├── internal/worktree/            the worktree module
+├── internal/ide/                 the ide module
+├── internal/muxpoc/              the muxpoc POC module
 ├── internal/paths/               geometry resolver (the sole owner of cwd/root math)
 ├── internal/config/              shared config resolution
 ├── internal/git/                 shared git operations
@@ -169,23 +169,19 @@ All commands print JSON: `{"ok":true, ...}` on success,
 
 User-facing modules each get one `lyx <module>` namespace:
 
-- **board** — the task-tracker board (`internal/board`). ✅ Implemented. See
-  [modules/board.md](modules/board.md).
-- **worktree** — git-worktree lifecycle (create / track / tear down). ✅ Implemented. See
-  [modules/worktree.md](modules/worktree.md).
-- **ide** — one-shot VS Code launcher with interactive menu. ✅ Implemented. See
-  [modules/ide.md](modules/ide.md).
+- **board** — the task-tracker board (`internal/board`). ✅ Implemented.
+- **worktree** — git-worktree lifecycle (create / track / tear down). ✅ Implemented.
+- **ide** — one-shot VS Code launcher with interactive menu. ✅ Implemented.
 - **muxpoc** — shipped proof-of-concept psmux orchestrator proving the risky parts of the
-  planned mux module. See [modules/muxpoc.md](modules/muxpoc.md).
-- **mux** — psmux session layout (column per worktree; daemon later). Design:
+  planned mux module. ✅ Implemented.
+- **mux** — psmux session layout (column per worktree; daemon later). 🚧 Design — not built. See
   [modules/mux.md](modules/mux.md).
 
 **init** is not a module but a cross-cutting setup command (`lyx init`) that
-scaffolds the shared `_lyx/` config dir for every module. See
-[modules/board.md#init](modules/board.md#init).
+scaffolds the shared `_lyx/` config dir for every module.
 
 The user-facing modules sit on a thin layer of shared infrastructure
-(`internal/config`, `internal/git`, `internal/lock`, `internal/state` **(planned)**) — defined in
+(`internal/config`, `internal/git`, `internal/lock`, `internal/output`, `internal/paths`, `internal/state`) — defined in
 [shared-libs/README.md](shared-libs/README.md).
 
 ## Tests
@@ -196,12 +192,9 @@ git-backed integration — live in the black-box `internal/board/boardtest` pack
 
 ## Other docs
 
-- [modules/board.md](modules/board.md) — the board module in depth.
-- [modules/worktree.md](modules/worktree.md) — worktree lifecycle (implemented).
-- [modules/ide.md](modules/ide.md) — VS Code launcher (implemented).
-- [modules/muxpoc.md](modules/muxpoc.md) — muxpoc POC proof-of-concept orchestrator.
 - [modules/mux.md](modules/mux.md) — psmux session layout (design).
 - [benchmarks/](benchmarks/board-performance.md) — board performance, tracked across revisions.
-- [shared-libs/](shared-libs/README.md) — the shared `internal/{config,git,lock,state}` plumbing.
+- [shared-libs/](shared-libs/README.md) — the shared infrastructure plumbing.
+- [research/](research/) — design exploration (mux research logs).
+- [reference/psmux_scripting.md](reference/psmux_scripting.md) — upstream psmux command reference (vendored).
 - [roadmap.md](roadmap.md) — numbered milestones and long-term direction.
-- [vendor/psmux_scripting.md](vendor/psmux_scripting.md) — upstream psmux command reference (not our design).
