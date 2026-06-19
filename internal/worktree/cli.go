@@ -1,9 +1,14 @@
-// cli.go — the worktree module's command router.
+// Package worktree provides creation, tracking, and teardown of git worktrees.
+// The module is cwd-authoritative: all operations resolve paths relative to the
+// current working directory.
 //
-// RunCLI parses <subcommand> [args], resolves the worktree configuration
-// from the current working directory (cwd-authoritative model), dispatches to
-// one Worktree method, and writes the JSON result to the given writer. Owns the
-// worktree CLI surface so main stays a thin module dispatcher.
+// Worktrees are stateless — there is no worktree registry or local-state.json.
+// Worktree state is read entirely from git worktree list --porcelain (see list.go).
+//
+// Windows teardown hazard: Worktree removal must be junction-aware and ordered.
+// Junctions and portals (deprecated-but-present in the codebase) must be removed
+// before calling git worktree remove, or Windows holds the directory lock and
+// removal fails. See remove.go and junction_windows.go for details.
 
 package worktree
 
