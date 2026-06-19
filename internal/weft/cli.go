@@ -110,7 +110,7 @@ func RunCLI(out io.Writer, args []string) int {
 		return output.Ok(out, map[string]any{"committed": committed})
 
 	case "push":
-		committed, err := Commit(weftWorktree, pathspec)
+		_, err := Commit(weftWorktree, pathspec)
 		if err != nil {
 			return output.Err(out, err.Error())
 		}
@@ -126,7 +126,7 @@ func RunCLI(out io.Writer, args []string) int {
 		return output.Ok(out, map[string]any{})
 
 	case "sync":
-		committed, err := Commit(weftWorktree, pathspec)
+		_, err := Commit(weftWorktree, pathspec)
 		if err != nil {
 			return output.Err(out, err.Error())
 		}
