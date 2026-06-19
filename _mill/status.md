@@ -30,7 +30,9 @@ implementing  '2026-06-19T11:06:11Z'
 ```yaml
 batches:
   - name: docs-durable-core
-    state: pending
+    state: running
+    implementer_session: cb4758c9-a2f2-4349-8141-1a82d19dbf52
+    start_sha: 674ae993e300f1854bf38eb4b6391c5b45da0914
   - name: code-headers
     state: pending
   - name: docs-sweep-and-moves
