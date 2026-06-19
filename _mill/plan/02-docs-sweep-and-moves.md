@@ -97,7 +97,7 @@ Batch-local decisions: (1) use `git mv` for relocations to preserve history (Req
 - **Creates:** none
 - **Deletes:** none
 - **Requirements:**
-  - Remove the `.lyx/local-state.json` reference (≈L19-20) from the layout diagram — no code reads it; the worktree module is stateless.
+  - Remove the `.lyx/local-state.json` reference (≈L19-20) from the layout diagram — no code reads it; the worktree module is stateless. **(review r1 NIT)** L19 also carries a bare textual `(see state.md)` cross-reference to the deleted `shared-libs/state.md`; ensure it is removed too (removing the whole `.lyx/` L19-20 block covers it — confirm no bare `state.md` reference survives).
   - The `mux.yaml` reference (≈L14) is for an unlanded module — either drop it or clearly flag it as a future/unlanded config file, not a current artifact.
   - Replace "config container" / lowercase "container" vocabulary (≈L10) with **Hub** terminology to match overview.md and paths.md.
 - **Commit:** `docs(shared-libs): drop local-state.json/mux.yaml refs, Container→Hub in config.md`
