@@ -128,8 +128,6 @@ func TestWeftGeometryMethods(t *testing.T) {
 
 			// Verify junction pairing: HostLyxLink(slug) and WeftLyxDirFor(slug) are
 			// siblings differing only by the -weft suffix on the worktree dir
-			hostLink := layout.HostLyxLink(tt.slug)
-			weftTarget := layout.WeftLyxDirFor(tt.slug)
 			hostWtName := filepath.Base(layout.WorktreePath(tt.slug))
 			weftWtName := filepath.Base(layout.WeftWorktreePath(tt.slug))
 
@@ -141,14 +139,13 @@ func TestWeftGeometryMethods(t *testing.T) {
 				t.Errorf("WeftWorktreePath(%q) base = %q; want %q", tt.slug, weftWtName, tt.slug+"-weft")
 			}
 
-			// Verify HostLyxLinkHere and LyxDir differ (WorktreeRoot+RelPath vs Cwd+RelPath)
-			if layout.RelPath != "." {
-				lyxDir := layout.LyxDir()
-				hostLyxLinkHere := layout.HostLyxLinkHere()
-				// They should both be _lyx but with different bases
-				if lyxDir == hostLyxLinkHere {
-					t.Errorf("LyxDir() = HostLyxLinkHere() = %q; want them to differ", lyxDir)
-				}
+			// Verify HostLyxLinkHere is based on WorktreeRoot, not Cwd (documented intent).
+			// When Cwd != WorktreeRoot, they differ; when Cwd == WorktreeRoot (RelPath == "."),
+			// they are equal by construction.
+			hostLyxLinkHereVal := layout.HostLyxLinkHere()
+			expectedHostLyxLinkHere := filepath.Join(layout.WorktreeRoot, layout.RelPath, "_lyx")
+			if hostLyxLinkHereVal != expectedHostLyxLinkHere {
+				t.Errorf("HostLyxLinkHere() = %q; want %q", hostLyxLinkHereVal, expectedHostLyxLinkHere)
 			}
 		})
 	}
