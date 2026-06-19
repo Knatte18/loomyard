@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-fixing
 slug: weft-engine
 branch: weft-engine
 plan: _mill/plan
@@ -29,6 +29,7 @@ approved-ide-watcher-exclude  '2026-06-19T16:03:17Z'
 approved-weft-module  '2026-06-19T16:17:19Z'
 approved-worktree-paired-spawn  '2026-06-19T16:42:47Z'
 holistic-reviewing  '2026-06-19T16:43:15Z'
+holistic-fixing  '2026-06-19T16:47:29Z'
 ```
 
 ## Batches
