@@ -61,7 +61,7 @@ exposes two entry points:
   --show-toplevel`), Hub, relative path, and Prime worktree.
 
 The `Layout` type provides geometry methods: `LyxDir()`, `WorktreePath(slug)`,
-`PortalsDir()`, `PortalLink(slug)`, `PortalTarget(slug)`, `LaunchersDir()`, `LauncherDir(slug)`, `PrimeName()`.
+`PortalsDir()` **(deprecated, removed in task 006)**, `PortalLink(slug)` **(deprecated, removed in task 006)**, `PortalTarget(slug)` **(deprecated, removed in task 006)**, `LaunchersDir()`, `LauncherDir(slug)`, `PrimeName()`.
 
 **Raw `os.Getwd` and `git rev-parse --show-toplevel` are banned** outside `internal/paths`
 and `cmd/lyx/main.go`. The ban is enforced at `go test` / CI time by
@@ -69,6 +69,10 @@ and `cmd/lyx/main.go`. The ban is enforced at `go test` / CI time by
 if either literal token is found in any non-test `.go` file outside the allowlist.
 
 See [CONSTRAINTS.md](../CONSTRAINTS.md) for details.
+
+## Documentation lifecycle
+
+Mechanical per-module design docs (`docs/modules/<module>.md`) are deleted when their module lands; the implementation and tests become the source of truth. The durable documentation is this `overview.md` (principles, naming, the module and shared-lib map, the weft contract, and this lifecycle convention) and the not-yet-landed portion of `roadmap.md`. A module's purpose and key design rationale live in its Go package header comment, next to the code it documents.
 
 ## Weft overlay model
 
@@ -117,7 +121,7 @@ The `-weft` suffix is fixed and non-configurable. Weft paths are computed on dem
 
 - **Go implementation** (paths geometry, paired spawn, `lyx weft` command): task 006
 - **`_codeguide` junction activation** (`lyx config` TUI, `_lyx/config/` schema): task 008
-- **This task** documents the canonical architecture; Go code lands in downstream tasks.
+- **Weft has no Go code yet** — portals are still the live mechanism. The weft overlay model is the decided target architecture, but all implementation lands in downstream tasks (task 006 onwards). This section documents the design; code realization comes later.
 
 ```
 github.com/Knatte18/loomyard/
