@@ -36,7 +36,9 @@ batches:
     start_sha: 674ae993e300f1854bf38eb4b6391c5b45da0914
     commit_sha: eee6264533217b69a249d02c31587ae0811497b2
   - name: code-headers
-    state: pending
+    state: running
+    implementer_session: d9129140-6954-44d2-83d4-7933ed3f4b4e
+    start_sha: 03403594efc4d1dca42ded8c8e248a45a64a9439
   - name: docs-sweep-and-moves
     state: pending
 ```
