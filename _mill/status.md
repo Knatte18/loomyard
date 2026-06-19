@@ -50,5 +50,7 @@ batches:
     start_sha: dfa80b9a06128d71ff1c3ded2b86b2c00cf0a394
     commit_sha: 6661ba9a906047abac52535084469a224defa29a
   - name: worktree-paired-spawn
-    state: pending
+    state: running
+    implementer_session: 8bb489af-7940-473e-b9c7-a89c80c208f3
+    start_sha: 2bbf7f6b9954faf1a1ec32256d1d1e1160b884d7
 ```
