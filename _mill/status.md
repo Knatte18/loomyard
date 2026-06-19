@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-paths-weft-geometry
+phase: approved-ide-watcher-exclude
 slug: weft-engine
 branch: weft-engine
 plan: _mill/plan
@@ -25,6 +25,7 @@ planned  '2026-06-19T15:48:13Z'
 implementing  '2026-06-19T15:52:22Z'
 blocked  '2026-06-19T15:59:03Z'
 approved-paths-weft-geometry  '2026-06-19T16:00:32Z'
+approved-ide-watcher-exclude  '2026-06-19T16:03:17Z'
 ```
 
 ## Batches
@@ -38,9 +39,10 @@ batches:
     commit_sha: 10aea81b118d5eb22a0a130cf36d631867976db3
     blocked_reason: ''
   - name: ide-watcher-exclude
-    state: running
+    state: approved
     implementer_session: 14afe14b-fced-42b4-aa3c-6fdd62eb256e
     start_sha: e4e9110680c2efd7a50f252fdf8dc64eef69d0ab
+    commit_sha: e21c385bc33e082ee4063ccfa46ae9d35faff6bc
   - name: weft-module
     state: pending
   - name: worktree-paired-spawn
