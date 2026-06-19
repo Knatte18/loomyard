@@ -133,3 +133,21 @@ func TestRunDispatchesToIDE(t *testing.T) {
 		t.Fatalf("expected error JSON on out, got %q", out.String())
 	}
 }
+
+func TestRunDispatchesToWeft(t *testing.T) {
+	t.Setenv("WEFT_SKIP_GIT", "1")
+	// Create temp cwd with no _lyx/ directory.
+	// This will cause config/layout resolution to fail, which weft.RunCLI
+	// will return as an error envelope.
+	cwd := t.TempDir()
+	t.Chdir(cwd)
+
+	var out bytes.Buffer
+	code := run([]string{"weft", "status"}, &out)
+	if code != 1 {
+		t.Fatalf("expected exit 1 for weft in uninitialized repo, got %d; output: %s", code, out.String())
+	}
+	if !strings.Contains(out.String(), `"ok":false`) {
+		t.Fatalf("expected error JSON on out, got %q", out.String())
+	}
+}
