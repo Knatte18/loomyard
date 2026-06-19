@@ -84,6 +84,13 @@ this task lands. The weft overlay model is already the documented target archite
   `WeftRepoRoot()` = `<hub>/<prime>-weft` is not a git repo). No host-only degrade, no
   auto-init. The check runs **early** (with the other prechecks, before any worktree is
   created), so no partial state is left behind.
+- **Symmetric weft-side prechecks.** Alongside the existing host prechecks (add.go steps
+  3–4: host branch-exists, host target-exists), spawn adds **early** weft-side checks before
+  creating anything: `WeftWorktreePath(slug)` (the `<slug>-weft` dir) must not already exist,
+  and the weft branch (`branch`, mirrored) must not already exist in the weft repo. This
+  keeps the host's "no partial state" guarantee on the weft side too — a stale `<slug>-weft`
+  dir or leftover weft branch is rejected up front rather than failing mid-create and relying
+  on rollback to unwind.
 - Rationale: weft is the decided target architecture; a degrade path would silently produce
   non-weft worktrees and hide the missing-hub-creator setup. Hard-require makes the missing
   precondition loud and detectable (principle 6).
@@ -105,8 +112,11 @@ this task lands. The weft overlay model is already the documented target archite
   (`git add -- <RelPath>/_lyx`), the lock files are *never* seen by a weft commit, so no
   `.gitignore` juggling is needed and the locks never appear in the host's junction-routed
   `_lyx` view. (Board puts locks inside its tracked dir and ignores `*.lock` via a committed
-  `.gitignore`; weft avoids that entirely by placing locks outside the pathspec.) A `.weft/`
-  `.gitignore` entry is added defensively in case `pathspec` is ever widened.
+  `.gitignore`; weft avoids that entirely by placing locks outside the pathspec.) **No
+  defensive `.gitignore` is added** — a `.weft/.gitignore` would itself sit outside the
+  geometry-scoped `git add` and never be committed, so it could not guard a widened pathspec
+  anyway. Locks-outside-pathspec is the whole safeguard; if `pathspec` is ever widened to
+  include `.weft`, that future change owns adding a committed ignore at the pathspec root.
 - Rationale: matches the existing board prototype of the git-ownership contract; bursts of
   weft writes (multiple skill lifecycle points) coalesce into few pushes; the caller never
   blocks on the network.
@@ -148,7 +158,10 @@ this task lands. The weft overlay model is already the documented target archite
 
 - Decision: paired spawn pushes the weft branch `-u origin <branch>` **synchronously at
   creation**, mirroring the existing host step-9 `git push -u origin <branch>`. So the weft
-  branch's upstream is set before the detached pusher ever runs.
+  branch's upstream is set before the detached pusher ever runs. This spawn-time weft push
+  (in `internal/worktree`) **honors `WEFT_SKIP_PUSH`**: when set, it skips both the push and
+  the upstream-set, leaving the weft branch local so §2 add/rollback tests run offline (see
+  weft-test-guards).
 - Rationale: symmetric with the host push already in `Add`; avoids the detached pusher
   having to special-case a no-upstream first push.
 - Rejected: leaving the first push to `lyx weft sync` (pushes more complexity into the
@@ -272,7 +285,10 @@ this task lands. The weft overlay model is already the documented target archite
 
 - Decision: add `WEFT_SKIP_GIT` / `WEFT_SKIP_PUSH` env guards, mirroring board's
   `BOARD_SKIP_GIT` / `BOARD_SKIP_PUSH`. `WEFT_SKIP_GIT=1` disables the weft git/sync path
-  entirely; `WEFT_SKIP_PUSH=1` commits locally but skips push and the detached spawn.
+  entirely; `WEFT_SKIP_PUSH=1` commits locally but skips push and the detached spawn. **Both
+  guards are honored across module boundaries**: the spawn-time weft `push -u` in
+  `internal/worktree` checks `WEFT_SKIP_PUSH` too (not just `internal/weft`), so §2
+  add/rollback tests run without a remote.
 - Rationale: lets unit tests exercise the file/junction/commit logic offline; integration
   tests wire a local bare remote for real push/pull. Consistent with the board precedent.
 - Rejected: no guards / real bare remotes everywhere (slower; can't isolate the file layer).
@@ -358,8 +374,8 @@ never staged. `board.go writeOp` shows the spawn-detached-on-write pattern; `spa
 path and the `WEFT_SKIP_*` env vars. **Lock files** live at `Join(WeftWorktree(), ".weft")`
 — a weft-root dir *outside* every pathspec entry (`_lyx`) — so a geometry-scoped
 `git add -- <RelPath>/_lyx` never stages them (no host-visible `.lock` clutter, no committed
-`.lock`); a defensive `.weft/` `.gitignore` entry guards against a future widened pathspec
-(see detached-coalesced-push).
+`.lock`). No `.gitignore` is added — locks-outside-pathspec is the full safeguard (see
+detached-coalesced-push).
 
 **Config (`internal/config/config.go`).** `Load(baseDir, module, defaults) ->
 map[string]string` reads `<baseDir>/_lyx/config/<module>.yaml` (already the config-subfolder
@@ -426,6 +442,8 @@ test package where it already exists (board's `boardtest` precedent). Use the ex
   creates both worktrees on the mirrored branch; the `_lyx` junction exists host→weft;
   `.git/info/exclude` contains `_lyx` (idempotent on re-seed); portal + launchers still
   created; **hard-require** — add errors (no partial state) when `<prime>-weft` is absent;
+  **weft-side prechecks** — add errors up front (nothing created) when `<slug>-weft` already
+  exists or the mirrored weft branch already exists;
   **host-pristine** — add errors when the new host worktree already has a real `_lyx` (and is
   a no-op when `_lyx` is already the correct junction); rollback removes both worktrees + both
   branches + the host junction on a forced post-create failure (incl. a simulated weft-`push`
@@ -488,3 +506,12 @@ test package where it already exists (board's `boardtest` precedent). Use the ex
   down the weft worktree + weft branch + host junction (paired-rollback).
 - **Q (review r1, NOTE 2):** Where do the weft lock files live? **A:** At `<weft>/.weft/`,
   outside the committed `_lyx` pathspec, so a geometry-scoped `git add` never stages them.
+- **Q (review r2, GAP):** Does the spawn-time weft `push -u` (in `internal/worktree`) honor
+  `WEFT_SKIP_PUSH`? **A:** Yes — wire `WEFT_SKIP_PUSH` across the module boundary so §2
+  add/rollback tests run offline (skip push + upstream-set, leave the weft branch local).
+- **Q (review r2, NOTE 1):** Add early weft-side collision prechecks? **A:** Yes — check
+  `<slug>-weft` dir and the mirrored weft branch don't already exist, alongside the host
+  prechecks, before anything is created (symmetric "no partial state").
+- **Q (review r2, NOTE 2):** Keep the defensive `.weft/.gitignore`? **A:** Drop it — it would
+  sit outside the geometry-scoped `git add` and never be committed; locks-outside-pathspec is
+  the full safeguard.
