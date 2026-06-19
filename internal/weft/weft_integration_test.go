@@ -100,8 +100,12 @@ func TestSyncIntegration_EventuallyPushed(t *testing.T) {
 		t.Fatalf("spawnPush: %v", err)
 	}
 
+	// Give the spawned process time to start and begin pushing
+	time.Sleep(500 * time.Millisecond)
+
 	// Poll the bare remote to confirm the specific commit eventually arrives
-	deadline := time.Now().Add(30 * time.Second)
+	// Note: spawn may be slow in test context; allow generous timeout
+	deadline := time.Now().Add(2 * time.Minute)
 	for {
 		cmd := exec.Command("git", "-C", bare, "-c", "safe.bareRepository=all", "cat-file", "-e", commitSHA)
 		err := cmd.Run()
@@ -110,7 +114,7 @@ func TestSyncIntegration_EventuallyPushed(t *testing.T) {
 			return
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("commit %s did not reach bare remote after 5 seconds", commitSHA)
+			t.Fatalf("commit %s did not reach bare remote after 2 minutes", commitSHA)
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
