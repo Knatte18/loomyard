@@ -42,5 +42,7 @@ batches:
     start_sha: 03403594efc4d1dca42ded8c8e248a45a64a9439
     commit_sha: 66c46b86e1f37f001d5e89ae192cdddddd67041c
   - name: docs-sweep-and-moves
-    state: pending
+    state: running
+    implementer_session: 7f8f01df-aadf-49c1-ae6a-94e34e27c3ad
+    start_sha: bea69a91d42c163806ca43e76e8b9f8f70f46a25
 ```
