@@ -72,7 +72,9 @@ divergent from reality right now.
   draft legitimately lives in `docs/modules/` until the mux module lands, at which
   point the convention says delete it.
 - **Untouched files:** `docs/benchmarks/*.md` (landed-board performance data, not
-  plan-drafts), `docs/psmux-tui-behavior.md` (observed-behavior log).
+  plan-drafts) — **except** the single dangling `board.md` link in
+  `board-performance.md` L6, retargeted to overview.md (review r2); content/data
+  otherwise untouched. `docs/psmux-tui-behavior.md` (observed-behavior log) untouched.
 - **Task item (c) is dropped as moot:** `.scratch/proposal-weft-repo.md` does not
   exist anywhere — not in the working tree, not in git history (`git log --all`), not
   in `.scratch/`. It was ephemeral and already consumed into the weft docs.
@@ -197,6 +199,12 @@ divergent from reality right now.
 - Rejected: Purging all registry/`local-state.json` references from mux.md (loses
   legitimate unbuilt design); leaving all registry content as-is (retains the stale
   worktree-registry coupling that misled the original thread).
+- **Concrete line-level boundary (review r2):** in mux.md, **L21-22** (the
+  `worktree registry from internal/state` framing + the dead `state.md` link) is the
+  **drop/relink** target — remove the worktree-registry coupling and fix/drop the link.
+  References phrasing mux's *own* session/pane layout state (e.g. its `local-state.json`
+  session document) **stay**. The plan writer judges each `registry` token by this rule:
+  worktree-registry coupling → drop; mux's own-state → keep.
 - **Stale-term check exemption:** the stale-term grep (below) for "registry" /
   `local-state.json` applies to all kept docs **except** mux.md's references to mux's
   *own* state document. mux.md must still be free of *worktree*-registry framing and
@@ -253,10 +261,19 @@ Known stale spots in the **kept** docs that must be swept (from the exploration 
   current but the module map must gain explicit status markers. **Also (review r1):**
   (i) **L188 and L205 still mark `internal/state` as "(planned)"** though it landed in
   `ba81abf` → update to landed (mirror the roadmap milestone-3 reword); (ii) **L64's
-  `Layout` method enumeration omits `PortalLink`/`PortalTarget`** while paths.md keeps
-  all three portal methods documented as deprecated-but-present → align overview's list
-  with paths.md's deprecated-portal framing (list them, tagged deprecated) so the two
+  `Layout` method enumeration lists `PortalTarget(slug)` but omits `PortalLink`** (review
+  r2 correction — it does *not* omit `PortalTarget`) → **add `PortalLink`** and tag the
+  portal methods deprecated, matching paths.md's deprecated-but-present framing, so the
   kept docs describe the portal surface consistently.
+- `CONSTRAINTS.md`: L19 enumerates the `Layout` methods including all three portal
+  methods (`PortalsDir`, `PortalLink`, `PortalTarget`). **(review r2)** Tag these three
+  as deprecated-but-present, matching paths.md and overview.md, so all three kept docs
+  agree on the portal lifecycle. (This is in addition to the one-line doc-lifecycle
+  convention pointer added to CONSTRAINTS.md.)
+- `docs/benchmarks/board-performance.md`: **(review r2)** L6 links
+  `[board.md](../modules/board.md#background-sync)`, which the deletion breaks → retarget
+  that one link to `overview.md` (the board entry in the module map). This is the *only*
+  edit to benchmarks; its content/data is otherwise untouched.
 - `docs/roadmap.md`: milestone 3 (state/fsx — now landed), milestone 4 (registry
   "deferred with internal/state", thin `list` wording), milestone 8 ("laid out from the
   worktree registry") → drop registry/lands-with-mux language; links to
@@ -298,8 +315,9 @@ This is a docs + comments task — "testing" means verification, not new test co
 - **No new tests; no test edits.** Per `internal/paths/enforcement_test.go` and the
   rest of the suite, run `go build ./...`, `go vet ./...`, `go test ./...` after the
   doc-comment edits to confirm nothing broke (comment-only changes must not affect them).
-- **Broken-link check:** after deletions/moves, grep all kept `docs/**/*.md` (and
-  `CONSTRAINTS.md`, `README` files) for links pointing at deleted files
+- **Broken-link check:** after deletions/moves, grep all `docs/**/*.md` (including
+  `docs/benchmarks/board-performance.md`) plus `CONSTRAINTS.md` and `README` files for
+  links pointing at deleted files
   (`modules/board.md`, `modules/worktree.md`, `modules/ide.md`, `modules/muxpoc.md`,
   `shared-libs/{git,lock,fsx,gitignore,state}.md`) and at moved files (the three
   `mux-*` logs, `vendor/psmux_scripting.md`). Expect zero stale targets.
@@ -351,3 +369,9 @@ This is a docs + comments task — "testing" means verification, not new test co
 - **Q:** (review r1) Add the three extra kept-doc stale spots to the sweep scope
   (README.md L18-24 link list, overview.md "(planned)" markers, overview.md L64 portal
   method omission)? **A:** Yes — all three added to the explicit sweep list.
+- **Q:** (review r2) Should CONSTRAINTS.md L19's portal-method list be tagged
+  deprecated to match paths.md/overview.md? **A:** Yes — tag all three portal methods
+  deprecated there too for cross-doc consistency.
+- **Q:** (review r2) Apply the three mechanical fixes (benchmarks L6 dead `board.md`
+  link → overview.md; correct the L64 instruction to "add `PortalLink`"; state the
+  mux.md L21-22 drop/relink boundary)? **A:** Yes — all three applied.
