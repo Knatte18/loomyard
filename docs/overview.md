@@ -81,7 +81,7 @@ lyx organizes overlay artifacts (configuration, task state, codeguide docs, and 
 ### Topology
 
 ```
-<hub>/                              (top-level container, NOT a git repo)
+<hub>/                              (top-level Hub, NOT a git repo)
   ├── <prime>/                      (host worktree, main branch; git repo root)
   ├── <prime>-weft/                 (weft Prime worktree; git repo root)
   ├── <slug>/                       (additional host worktree; git repo root)
