@@ -1,7 +1,9 @@
 // add_test.go covers Add's happy-path side effects (portal, launchers, pushed
-// branch) and the zero-residue rollback on a post-creation failure.
+// branch) and the zero-residue rollback on a post-creation failure. The paired
+// Add creates both host and weft worktrees on the mirrored branch and requires
+// a weft Prime repo; tests build this via newWeftRepo and set WEFT_SKIP_PUSH=1.
 
-package worktree_test
+package worktree
 
 import (
 	"os"
@@ -11,12 +13,11 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/git"
 	"github.com/Knatte18/loomyard/internal/paths"
-	"github.com/Knatte18/loomyard/internal/worktree"
 )
 
-// TestAdd covers the worktree creation flow: the happy path, branch-prefix
+// TestAdd covers the paired worktree creation flow: the happy path, branch-prefix
 // application, and each precondition failure (dirty source, existing branch,
-// existing target dir, missing remote).
+// existing target dir, missing remote, missing weft repo).
 func TestAdd(t *testing.T) {
 	const slug = "my-task"
 
@@ -33,20 +34,30 @@ func TestAdd(t *testing.T) {
 		wantNoTargetDir bool
 	}{
 		{
-			name:       "HappyPath",
-			setup:      func(t *testing.T, hub string) { addRemote(t, hub) },
+			name: "HappyPath",
+			setup: func(t *testing.T, hub string) {
+				addRemote(t, hub)
+				newWeftRepo(t, hub)
+				t.Setenv("WEFT_SKIP_PUSH", "1")
+			},
 			wantBranch: "my-task",
 		},
 		{
 			name:         "BranchPrefix",
 			branchPrefix: "hanf/",
-			setup:        func(t *testing.T, hub string) { addRemote(t, hub) },
-			wantBranch:   "hanf/my-task",
+			setup: func(t *testing.T, hub string) {
+				addRemote(t, hub)
+				newWeftRepo(t, hub)
+				t.Setenv("WEFT_SKIP_PUSH", "1")
+			},
+			wantBranch: "hanf/my-task",
 		},
 		{
 			name: "DirtySource",
 			setup: func(t *testing.T, hub string) {
 				addRemote(t, hub)
+				newWeftRepo(t, hub)
+				t.Setenv("WEFT_SKIP_PUSH", "1")
 				// Modify a tracked file without committing so the clean check fails.
 				if err := os.WriteFile(filepath.Join(hub, "README"), []byte("modified"), 0644); err != nil {
 					t.Fatalf("modify README: %v", err)
@@ -59,6 +70,8 @@ func TestAdd(t *testing.T) {
 			name: "BranchExists",
 			setup: func(t *testing.T, hub string) {
 				addRemote(t, hub)
+				newWeftRepo(t, hub)
+				t.Setenv("WEFT_SKIP_PUSH", "1")
 				mustRun(t, hub, "git", "branch", slug)
 			},
 			wantErrContains: `branch "my-task" already exists`,
@@ -67,6 +80,8 @@ func TestAdd(t *testing.T) {
 			name: "TargetDirExists",
 			setup: func(t *testing.T, hub string) {
 				addRemote(t, hub)
+				newWeftRepo(t, hub)
+				t.Setenv("WEFT_SKIP_PUSH", "1")
 				if err := os.Mkdir(filepath.Join(filepath.Dir(hub), slug), 0755); err != nil {
 					t.Fatalf("create target dir: %v", err)
 				}
@@ -74,9 +89,23 @@ func TestAdd(t *testing.T) {
 			wantErrContains: "already exists",
 		},
 		{
-			name:            "NoRemote",
-			setup:           func(t *testing.T, hub string) {}, // intentionally no remote
+			name: "NoRemote",
+			setup: func(t *testing.T, hub string) {
+				newWeftRepo(t, hub)
+				t.Setenv("WEFT_SKIP_PUSH", "1")
+				// intentionally no remote
+			},
 			wantErrContains: "no remote configured",
+			wantNoTargetDir: true,
+		},
+		{
+			name: "NoWeftRepo",
+			setup: func(t *testing.T, hub string) {
+				addRemote(t, hub)
+				t.Setenv("WEFT_SKIP_PUSH", "1")
+				// intentionally no weft repo
+			},
+			wantErrContains: "no weft repo",
 			wantNoTargetDir: true,
 		},
 	}
@@ -92,7 +121,7 @@ func TestAdd(t *testing.T) {
 				t.Fatalf("paths.Resolve(%q): %v", hub, err)
 			}
 
-			w := worktree.New(worktree.Config{BranchPrefix: tt.branchPrefix})
+			w := New(Config{BranchPrefix: tt.branchPrefix})
 			result, err := w.Add(l, slug)
 
 			target := l.WorktreePath(slug)
@@ -134,11 +163,13 @@ func TestAdd(t *testing.T) {
 // TestAddRollback covers the transactional rollback on post-creation failure.
 // It pre-creates a regular file at the portal location to trigger createPortal's
 // "already exists" error, then asserts ZERO residue: no worktree dir, no local branch,
-// no _launchers/<slug>/, and the bare remote receives no new branch.
+// no _launchers/<slug>/, and no weft worktree/branch left behind.
 func TestAddRollback(t *testing.T) {
 	const slug = "rollback-test"
+	t.Setenv("WEFT_SKIP_PUSH", "1")
 	hub := newTestRepo(t)
 	addRemote(t, hub)
+	newWeftRepo(t, hub)
 
 	// Resolve Layout
 	l, err := paths.Resolve(hub)
@@ -155,7 +186,7 @@ func TestAddRollback(t *testing.T) {
 		t.Fatalf("create blocker file: %v", err)
 	}
 
-	w := worktree.New(worktree.Config{})
+	w := New(Config{})
 	result, err := w.Add(l, slug)
 
 	if err == nil {
@@ -167,37 +198,45 @@ func TestAddRollback(t *testing.T) {
 
 	// Assert ZERO residue
 
-	// 1. No worktree dir
+	// 1. No host worktree dir
 	target := l.WorktreePath(slug)
-	// Note: the worktree dir may have been created but should be removed by rollback
 	if _, statErr := os.Stat(target); !os.IsNotExist(statErr) {
-		// On Windows, the junction creation failure may happen before or after git worktree add
-		// We expect it to be cleaned up by rollback. If the dir exists, the rollback failed.
 		if statErr == nil {
-			t.Errorf("Add(%q) rollback failed: worktree dir still exists at %q", slug, target)
+			t.Errorf("Add(%q) rollback failed: host worktree dir still exists at %q", slug, target)
 		}
 	}
 
-	// 2. No local branch
+	// 2. No host local branch
 	_, _, exitCode, _ := git.RunGit([]string{"rev-parse", "--verify", "refs/heads/" + slug}, l.WorktreeRoot)
 	if exitCode == 0 {
-		t.Errorf("Add(%q) rollback failed: local branch %q still exists", slug, slug)
+		t.Errorf("Add(%q) rollback failed: host branch %q still exists", slug, slug)
 	}
 
-	// 3. No _launchers/<slug>/
+	// 3. No weft worktree dir
+	weftTarget := l.WeftWorktreePath(slug)
+	if _, statErr := os.Stat(weftTarget); !os.IsNotExist(statErr) {
+		if statErr == nil {
+			t.Errorf("Add(%q) rollback failed: weft worktree dir still exists at %q", slug, weftTarget)
+		}
+	}
+
+	// 4. No weft branch
+	_, _, exitCode, _ = git.RunGit([]string{"rev-parse", "--verify", "refs/heads/" + slug}, l.WeftRepoRoot())
+	if exitCode == 0 {
+		t.Errorf("Add(%q) rollback failed: weft branch %q still exists", slug, slug)
+	}
+
+	// 5. No _launchers/<slug>/
 	launcherDir := l.LauncherDir(slug)
 	if _, statErr := os.Stat(launcherDir); !os.IsNotExist(statErr) {
 		t.Errorf("Add(%q) rollback failed: launcher dir still exists at %q", slug, launcherDir)
 	}
 
-	// 4. No new branch on bare remote
+	// 6. No new branch on bare remote
 	// Check that the remote doesn't have the branch
-	_, _, exitCode, _ = git.RunGit([]string{"ls-remote", "--heads", "origin", slug}, l.WorktreeRoot)
-	// ls-remote returns 0 even if branch doesn't exist (it just returns empty output)
-	// Instead, check if we can see the branch in ls-remote output
 	stdout, _, _, _ := git.RunGit([]string{"ls-remote", "origin"}, l.WorktreeRoot)
 	if strings.Contains(stdout, slug) {
-		t.Errorf("Add(%q) rollback failed: branch pushed to remote", slug)
+		t.Errorf("Add(%q) rollback failed: host branch pushed to remote", slug)
 	}
 
 	if result.Slug != "" {
