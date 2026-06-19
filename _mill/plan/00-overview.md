@@ -3,7 +3,7 @@
 ```yaml
 task: 'weft engine: paths geometry, paired worktrees, lyx weft'
 slug: weft-engine
-approved: false
+approved: true
 started: '20260619-153153'
 parent: main
 root: ""
