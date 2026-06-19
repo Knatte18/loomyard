@@ -34,15 +34,22 @@ this task lands. The weft overlay model is already the documented target archite
 **In:**
 
 - **§1 `internal/paths`** — add `Layout` methods for weft geometry: `WeftRepoRoot()`,
-  `WeftWorktree()`, `WeftWorktreePath(slug)`, `WeftLyxDir()`, `WeftCodeguideDir()`. Pure
-  geometry math from the existing `Hub` / `WorktreeRoot` / `Prime` / `RelPath` fields,
-  using the `-weft` sibling-suffix convention. Plus white-box tests. Update the geometry
-  method list in `CONSTRAINTS.md` and `docs/overview.md`.
+  `WeftWorktree()`, `WeftWorktreePath(slug)`, `WeftLyxDir()`, `WeftCodeguideDir()`, plus the
+  **host-side junction-link** methods `HostLyxLink(slug)` and `HostLyxLinkHere()` (see
+  host-junction-link-geometry). Pure geometry math from the existing `Hub` / `WorktreeRoot`
+  / `Prime` / `RelPath` fields, using the `-weft` sibling-suffix convention. **All** path
+  math — both junction ends (host link AND weft target) — lives here, so geometry is changed
+  in exactly one place. Plus white-box tests. Update the geometry method list in
+  `CONSTRAINTS.md` and `docs/overview.md`.
 - **§2 `internal/worktree`** — make `lyx worktree add` create a **pair**: the existing
   host worktree *plus* a weft worktree `<slug>-weft` on the mirrored branch, seed the
-  `_lyx` junction (host → weft) + the host worktree's `.git/info/exclude` entry. Teardown
-  (`lyx worktree remove`) removes **both** worktrees and **both** branches. Existing portal
-  + launcher creation is kept (additive). Hard-requires a pre-existing weft repo.
+  `_lyx` junction (link = `HostLyxLink(slug)` → target = `WeftLyxDir`) + the host worktree's
+  `.git/info/exclude` entry. **Pre-existing host `_lyx` is an error** unless it is already
+  the correct junction (see host-pristine-enforced). Teardown (`lyx worktree remove`)
+  explicitly removes the host `_lyx` junction at its mirrored RelPath, then removes **both**
+  worktrees and **both** branches. Existing portal + launcher creation is kept (additive).
+  Hard-requires a pre-existing weft repo. Rollback on any post-create failure tears down the
+  weft worktree + weft branch + host junction too (see paired-rollback).
 - **§3 `internal/weft` + `lyx weft`** — new module + new `main.go` dispatch case.
   Subcommands `status | commit | push | pull | sync`, all geometry-derived, committing the
   configured pathspec (`_lyx`) via `git -C <hub>/<slug>-weft`. Detached, coalesced push
@@ -92,11 +99,20 @@ this task lands. The weft overlay model is already the documented target archite
   background pusher. `lyx weft sync` commits the pathspec locally, then spawns a detached
   worker that pushes and returns immediately. Port board's `sync.go` (push-lock + commit-
   dirty + push-unpushed loop) and `spawn_windows.go` / `spawn_other.go` into `internal/weft`.
+- **Lock files live OUTSIDE the committed pathspec.** The push/write lock files go at the
+  weft worktree root in a dedicated dir — `Join(WeftWorktree(), ".weft", "*.lock")` — which is
+  outside every `pathspec` dir (`_lyx`). Because staging is always geometry-scoped
+  (`git add -- <RelPath>/_lyx`), the lock files are *never* seen by a weft commit, so no
+  `.gitignore` juggling is needed and the locks never appear in the host's junction-routed
+  `_lyx` view. (Board puts locks inside its tracked dir and ignores `*.lock` via a committed
+  `.gitignore`; weft avoids that entirely by placing locks outside the pathspec.) A `.weft/`
+  `.gitignore` entry is added defensively in case `pathspec` is ever widened.
 - Rationale: matches the existing board prototype of the git-ownership contract; bursts of
   weft writes (multiple skill lifecycle points) coalesce into few pushes; the caller never
   blocks on the network.
 - Rejected: synchronous inline push (simpler, but the user chose to mirror board's proven
-  model rather than introduce a second push style).
+  model rather than introduce a second push style); lock files inside `_lyx` (host-visible
+  clutter + risk of committing a `.lock`).
 
 ### lyx-weft-surface
 
@@ -155,6 +171,50 @@ this task lands. The weft overlay model is already the documented target archite
 - Rationale: §8 keeps portals "on hold, not deprecated".
 - Rejected: replacing portals with weft junctions (contradicts §8).
 
+### host-junction-link-geometry
+
+- Decision: the host side of the `_lyx` junction (the link, not the target) gets its own
+  geometry methods in `internal/paths`: `HostLyxLink(slug) = Join(WorktreePath(slug),
+  RelPath, "_lyx")` (the link in a named slug's host worktree — used by spawn) and
+  `HostLyxLinkHere() = Join(WorktreeRoot, RelPath, "_lyx")` (the link in the current host
+  worktree — used by `lyx weft` and teardown). `createJunction` is called with link =
+  `HostLyxLink(slug)`, target = `WeftLyxDir()`.
+- Rationale: a junction has two ends; only the weft target (`WeftLyxDir`) was specified.
+  Both ends must come from `paths` so geometry changes in exactly one place (the
+  sole-geometry-owner invariant; the user's explicit "all paths in one place"). The existing
+  `LyxDir() = Join(Cwd, "_lyx")` is cwd-based and wrong here — spawn targets the new
+  worktree's root (not the operator's cwd), and teardown needs the RelPath-mirrored link.
+- Rejected: reusing `LyxDir()` (cwd-based, wrong for spawn/subpath); computing the link
+  ad-hoc in the worktree module (violates the path invariant).
+
+### host-pristine-enforced
+
+- Decision: paired spawn checks the host junction-link site before seeding. If `_lyx`
+  already exists there and is **not** already the correct junction (link present, pointing at
+  `WeftLyxDir()`), `Add` **errors** with a clear message ("host repo already contains a real
+  `_lyx`; it predates weft — migrate via the hub-creator"). If it is already the correct
+  junction, seeding is a no-op (idempotent). `createJunction` itself still refuses to
+  clobber; this check produces the actionable error before that low-level failure.
+- Rationale: the weft model's premise is a pristine host (no committed `_lyx`). A committed
+  `_lyx` means misconfiguration; erroring (not move-aside, not silent skip) keeps the
+  hard-require invariant and surfaces the problem loudly (principle 6). Consistent with the
+  user's rule: "if something is broken, fix it — don't overlook it."
+- Rejected: move-aside to `_lyx.bak` (surprising, orphan dirs); skip-if-exists (silently
+  produces a non-weft worktree, hides drift).
+
+### paired-rollback
+
+- Decision: `rollbackAdd` is extended so any post-create failure tears down, best-effort and
+  in lock-safe order: (1) `os.Remove` the host `_lyx` junction (`HostLyxLink(slug)`), (2)
+  `git -C <WeftRepoRoot> worktree remove --force <WeftWorktreePath(slug)>`, (3) `git -C
+  <WeftRepoRoot> branch -D <branch>`, (4) the existing host portal/launcher/worktree/branch
+  teardown, (5) prune both repos. A failure of the synchronous weft `worktree add`, junction
+  seed, or the weft `push -u` triggers the full rollback; the original error is returned and
+  rollback-step errors are not masked (mirrors the existing `rollbackAdd` contract).
+- Rationale: the "no partial state" goal must cover the weft side too; otherwise a failed
+  weft push leaves an orphan weft worktree/branch + dangling junction.
+- Rejected: leaving weft artifacts on failure (partial state the design explicitly forbids).
+
 ### exclude-ownership-split
 
 - Decision: split the two excludes by module ownership:
@@ -176,6 +236,13 @@ this task lands. The weft overlay model is already the documented target archite
 - Decision: `_lyx/config/weft.yaml` holds a single scalar knob `pathspec` (default `"_lyx"`,
   a space-separated list of overlay dirs the weft stages/commits). Task 008 flips codeguide
   on by setting it to `"_lyx _codeguide"` — no code change.
+- **Config baseDir is the weft worktree, junction-independent.** `lyx weft` loads config with
+  `baseDir = Join(WeftWorktree(), RelPath)` (so `config.Load` reads
+  `<weftworktree>/<RelPath>/_lyx/config/weft.yaml` — the real file), **not** through the host
+  `<cwd>/_lyx` junction. This means a broken host junction never breaks config load, so
+  `lyx weft status` can still load `pathspec` and report the broken junction (rather than
+  failing to even start). Justified deviation from cwd-authority: weft is the one module that
+  natively owns weft geometry; the config file physically lives in the weft worktree.
 - Rationale: the config loader returns a flat `map[string]string` (scalars only), so a
   space-separated string is the natural shape; `pathspec` is the one knob that genuinely
   varies and cleanly carries the 008 hand-off.
@@ -187,8 +254,15 @@ this task lands. The weft overlay model is already the documented target archite
 - Decision: `lyx weft status` reports, as JSON: the weft worktree path, its checked-out
   branch, working-tree dirtiness of the pathspec (`git status --porcelain -- <pathspec>`),
   ahead/behind vs upstream (`rev-list --count @{u}..HEAD` and reverse), and **junction
-  integrity** — whether the host `_lyx` is a junction whose target is the weft worktree's
-  `_lyx`. This is the principle-6 "drift detectable" surface.
+  integrity** — whether the host `_lyx` (`HostLyxLinkHere()`) is a junction whose target is
+  the weft worktree's `_lyx` (`WeftLyxDir()`). A missing or mis-targeted junction is reported
+  **prominently as drift** (e.g. `{"junction_ok": false, "reason": "..."}`), never silently
+  tolerated — "if something is broken, surface it, don't overlook it." Because config and the
+  git verbs target the weft worktree directly, `status` still runs and reports even when the
+  junction is broken. This is the principle-6 "drift detectable" surface.
+- Note: the weft git verbs (`commit`/`push`/`pull`/`sync`) operate via `git -C <weft>` and do
+  **not** depend on the junction — a broken junction only affects the host's *view* of `_lyx`,
+  which `status` flags for repair (a `lyx doctor`/repair verb is future work, not this task).
 - Rationale: a future `lyx doctor` builds on this; status is how an operator/skill confirms
   the overlay is wired and synced.
 - Rejected: status reporting only dirty/clean (misses junction drift, the failure mode
@@ -207,10 +281,14 @@ this task lands. The weft overlay model is already the documented target archite
 
 - Decision: `lyx worktree remove` (without `--force`) requires **both** the host **and** the
   weft worktree to be clean; reject otherwise, directing the operator to run `lyx weft sync`
-  first. `--force` removes both regardless. Order: remove host junctions (existing
-  `removeLinks` already strips the host-root `_lyx` junction) → `git worktree remove` host →
-  `git -C <WeftRepoRoot> worktree remove [--force]` weft → `git branch -D <branch>` in both
-  → prune both. Junctions come off before any worktree removal (Windows lock hazard).
+  first. `--force` removes both regardless. Order: **explicitly `os.Remove` the host `_lyx`
+  junction at `HostLyxLinkHere()`** (its RelPath-mirrored location) → keep `removeLinks(root)`
+  as a root-level safety net for any other links → `git worktree remove` host → `git -C
+  <WeftRepoRoot> worktree remove [--force]` weft → `git branch -D <branch>` in both → prune
+  both. The explicit `os.Remove` is required because `removeLinks` only scans the worktree
+  root's *immediate children*, so at `RelPath != "."` the host `_lyx` (nested under RelPath)
+  would otherwise be left behind — the exact Windows junction-lock hazard the order avoids.
+  Junctions come off before any worktree removal.
 - Rationale: symmetric with the existing host clean-or-`--force` contract; prevents silent
   loss of uncommitted weft task-state. `lyx weft sync` is the documented lifecycle escape.
 - Rejected: always force-removing the weft (risks losing uncommitted `_lyx` state);
@@ -234,6 +312,13 @@ patterns the new weft methods parallel. New methods:
 - `WeftLyxDir() = Join(WeftWorktree(), RelPath, "_lyx")` — junction target / pathspec base,
   RelPath-mirrored like `PortalTarget` (collapses to `<weft>/_lyx` at RelPath ".").
 - `WeftCodeguideDir() = Join(WeftWorktree(), RelPath, "_codeguide")` — geometry only.
+- `HostLyxLink(slug) = Join(WorktreePath(slug), RelPath, "_lyx")` — the host-side junction
+  **link** in a named slug's host worktree (used by spawn/rollback).
+- `HostLyxLinkHere() = Join(WorktreeRoot, RelPath, "_lyx")` — the host-side junction link in
+  the *current* host worktree (used by `lyx weft status` and teardown). Note: this is
+  WorktreeRoot+RelPath-based, **not** the existing cwd-based `LyxDir() = Join(Cwd, "_lyx")`.
+- Weft config baseDir for `lyx weft` = `Join(WeftWorktree(), RelPath)` (junction-independent;
+  `config.Load` then reads `<that>/_lyx/config/weft.yaml`).
 
 **Path invariant (`CONSTRAINTS.md`, `enforcement_test.go`).** Raw `os.Getwd` and
 `git rev-parse --show-toplevel` are banned outside `internal/paths` and `cmd/lyx/main.go`,
@@ -249,11 +334,16 @@ goes through this with an explicit `cwd` — never a process `cd`.
 **Worktree module (`internal/worktree/`).** `Add(l, slug)` (add.go) runs prechecks
 (clean / branch-exists / target-exists / remote), `git worktree add -b <branch> <target>`,
 `createPortal`, `writeLaunchers`, then `git push -u origin <branch>` last, with
-`rollbackAdd` undoing everything on any post-create failure. `Remove(l, slug, force)`
-(remove.go) does early portal/launcher teardown, dirty-gate, `removeLinks(target)` (strips
-symlinks/junctions in the worktree root — this already removes the host `_lyx` junction),
-then `git worktree remove`. `createJunction(link, target)` (junction_windows.go via
-`mklink /J`; junction_other.go for non-Windows) refuses to clobber an existing link.
+`rollbackAdd` undoing everything on any post-create failure (extend it to weft worktree +
+weft branch + host junction — see paired-rollback). `Remove(l, slug, force)`
+(remove.go) does early portal/launcher teardown, dirty-gate, `removeLinks(target)`, then
+`git worktree remove`. **Caution:** `removeLinks(target)` (links.go) only scans the worktree
+root's *immediate children*, so it does **not** remove a host `_lyx` junction nested at a
+subpath (`RelPath != "."`); teardown must `os.Remove(HostLyxLinkHere())` explicitly (see
+teardown-dirty-gate-both). `createJunction(link, target)` (junction_windows.go via
+`mklink /J`; junction_other.go for non-Windows) refuses to clobber an existing link — so
+spawn must first detect a pre-existing host `_lyx` and error (see host-pristine-enforced)
+rather than letting `createJunction` fail opaquely.
 `Config.BranchPrefix` (config.go) is the host/weft branch prefix (default ""). The module
 is **stateless** (worktree.go) — pairing is by-name from `git worktree list`, no registry.
 
@@ -265,14 +355,20 @@ is **stateless** (worktree.go) — pairing is by-name from `git worktree list`, 
 never staged. `board.go writeOp` shows the spawn-detached-on-write pattern; `spawn_windows.go`
 / `spawn_other.go` are the detached-process launchers. `internal/lock` provides
 `AcquireWriteLock(path)`. Mirror these in `internal/weft`, parameterized by the weft worktree
-path and the `WEFT_SKIP_*` env vars. **Lock files** live under the weft worktree (e.g.
-`<weft>/_lyx/*.lock`), gitignored via a weft analog of `ensureLockfilesIgnored`.
+path and the `WEFT_SKIP_*` env vars. **Lock files** live at `Join(WeftWorktree(), ".weft")`
+— a weft-root dir *outside* every pathspec entry (`_lyx`) — so a geometry-scoped
+`git add -- <RelPath>/_lyx` never stages them (no host-visible `.lock` clutter, no committed
+`.lock`); a defensive `.weft/` `.gitignore` entry guards against a future widened pathspec
+(see detached-coalesced-push).
 
 **Config (`internal/config/config.go`).** `Load(baseDir, module, defaults) ->
 map[string]string` reads `<baseDir>/_lyx/config/<module>.yaml` (already the config-subfolder
-path) merged over `defaults`, scalar values only. weft's `LoadConfig` mirrors
-`worktree/config.go`: defaults `{"pathspec": "_lyx"}`. Pathspec is split on whitespace into
-dirs; each dir is joined with `RelPath` for the geometry-scoped pathspec (never `git add .`).
+path) merged over `defaults`, scalar values only; `FindBaseDir` requires `<baseDir>/_lyx` to
+exist. weft's `LoadConfig` mirrors `worktree/config.go`: defaults `{"pathspec": "_lyx"}`, but
+calls `Load` with `baseDir = Join(WeftWorktree(), RelPath)` (the weft worktree, **not** cwd) —
+junction-independent, so config loads even when the host junction is broken (see
+weft-config-pathspec-only). Pathspec is split on whitespace into dirs; each dir is joined with
+`RelPath` for the geometry-scoped pathspec (never `git add .`).
 
 **ide module (`internal/ide/vscode.go`).** `writeVSCodeConfig(worktreeDir, relpath, slug,
 color)` writes `.vscode/settings.json` (only if absent) and registers `.vscode/` in the
@@ -304,8 +400,11 @@ From `CONSTRAINTS.md`:
 From the project principles (`docs/overview.md`):
 - One-shot, daemonless, file-coordinated; processes cooperate via files + locks. → weft's
   detached pusher uses file locks exactly like board; no daemon.
-- cwd-authoritative, cwd ≠ git-repo-path. → `lyx weft` resolves from cwd; the pathspec is
-  RelPath-scoped so a sync from a subpath commits that subpath's `_lyx`.
+- cwd-authoritative, cwd ≠ git-repo-path. → `lyx weft` resolves the Layout (slug, Hub, weft
+  worktree) from cwd; the pathspec is RelPath-scoped so a sync from a subpath commits that
+  subpath's `_lyx`. The one deliberate deviation is the weft *config read*, which goes to the
+  weft worktree directly (not the host junction) so a broken junction can't break `status`
+  (see weft-config-pathspec-only).
 - Correctness by tool-design: make the right path easiest and drift detectable. → `lyx weft`
   owns weft git so raw `git -C` is never needed; `lyx weft status` surfaces drift.
 
@@ -315,29 +414,38 @@ White-box (`package x`) unit tests next to source; cross-cutting/integration in 
 test package where it already exists (board's `boardtest` precedent). Use the existing
 `newTestRepo` / `addRemote` temp-dir fixture pattern.
 
-- **`internal/paths` (§1)** — TDD candidate. Table-driven tests for each new method at
-  RelPath "." and at a subpath, asserting the `-weft` sibling path and RelPath mirroring.
-  Pure functions, no git needed. Confirm `enforcement_test.go` still passes (no banned
-  tokens introduced).
+- **`internal/paths` (§1)** — TDD candidate. Table-driven tests for each new method
+  (`WeftRepoRoot`, `WeftWorktree`, `WeftWorktreePath`, `WeftLyxDir`, `WeftCodeguideDir`,
+  `HostLyxLink`, `HostLyxLinkHere`) at RelPath "." and at a subpath, asserting the `-weft`
+  sibling path and RelPath mirroring — and that `HostLyxLink`/`HostLyxLinkHere` are
+  WorktreeRoot-based, distinct from cwd-based `LyxDir()`. Pure functions, no git needed.
+  Confirm `enforcement_test.go` still passes (no banned tokens introduced).
 - **`internal/worktree` paired spawn (§2)** — extend `testhelpers_test.go`: a new fixture
   that, in the temp Hub, also creates the weft Prime worktree `<hub>/<prime>-weft` (an init'd
   git repo with a committed `_lyx/` tree and a bare weft remote). Scenarios: paired add
   creates both worktrees on the mirrored branch; the `_lyx` junction exists host→weft;
   `.git/info/exclude` contains `_lyx` (idempotent on re-seed); portal + launchers still
   created; **hard-require** — add errors (no partial state) when `<prime>-weft` is absent;
-  rollback removes both worktrees + both branches + junction on a forced post-create failure.
-  Teardown: remove strips the host junction first, removes both worktrees + branches; the
-  dirty-gate rejects when either side is dirty and `--force` overrides. **The existing
-  `add_test.go` cases must be updated to build a weft repo** (they currently assume host-only
-  add and will otherwise hit the hard-require error). Use `WEFT_SKIP_PUSH` to avoid network.
+  **host-pristine** — add errors when the new host worktree already has a real `_lyx` (and is
+  a no-op when `_lyx` is already the correct junction); rollback removes both worktrees + both
+  branches + the host junction on a forced post-create failure (incl. a simulated weft-`push`
+  failure). Teardown at a **subpath** (`RelPath != "."`): assert the explicit
+  `os.Remove(HostLyxLinkHere())` strips the nested junction that `removeLinks(root)` would
+  miss; remove takes down both worktrees + branches; the dirty-gate rejects when *either* side
+  is dirty and `--force` overrides. **The existing `add_test.go` cases must be updated to build
+  a weft repo** (they currently assume host-only add and will otherwise hit the hard-require
+  error). Use `WEFT_SKIP_PUSH` to avoid network.
 - **`internal/weft` (§3)** — TDD candidate. Offline (`WEFT_SKIP_PUSH`) tests for `commit`
   (stages only the pathspec; idempotent no-op when clean), `status` (dirty/clean,
-  ahead/behind, junction integrity true/false when junction is broken), config `pathspec`
-  resolution + RelPath scoping, and the `git add .` guard (a stray file outside the pathspec
-  is never staged). Integration tests with a local bare remote: `push` rebase-retry on a
-  non-fast-forward, `pull --ff-only`, and `sync` → detached worker → commit lands on the
-  remote (assert by polling the bare repo, as board's git tests do). Lock-file gitignore:
-  the weft lock files are never staged.
+  ahead/behind, and **junction integrity** — `junction_ok:false` reported when the host
+  junction is missing/mis-targeted, while `status` *still* completes because config is read
+  from the weft worktree), config `pathspec` resolution from `Join(WeftWorktree(), RelPath)`
+  + RelPath scoping, **config loads with a broken host junction** (the deviation's whole
+  point), and the `git add .` guard (a stray file outside the pathspec is never staged).
+  Integration tests with a local bare remote: `push` rebase-retry on a non-fast-forward,
+  `pull --ff-only`, and `sync` → detached worker → commit lands on the remote (assert by
+  polling the bare repo, as board's git tests do). Lock-file placement: the `.weft/*.lock`
+  files live outside the pathspec and are never staged by a geometry-scoped `git add`.
 - **`cmd/lyx` dispatch** — `run(["weft", ...])` routes to `weft.RunCLI`; unknown weft
   subcommand returns the JSON error + exit 1 (mirror `main_test.go`).
 
@@ -362,3 +470,21 @@ test package where it already exists (board's `boardtest` precedent). Use the ex
   skip-if-absent semantics? **A:** In the ide module (anything that is VS Code's settings
   belongs to ide); `worktree add` never writes `.vscode/`. Timing is correct because `lyx ide`
   writes settings before launching VS Code.
+- **Q (review r1, GAP 1):** Host junction-link path has no geometry method? **A:** Add
+  `HostLyxLink(slug)` + `HostLyxLinkHere()` to `internal/paths` — all geometry in one place,
+  so geometry only ever changes in `paths`.
+- **Q (review r1, GAP 2):** How does teardown remove the host `_lyx` junction at a subpath
+  (`removeLinks` only scans root children)? **A:** Explicit `os.Remove(HostLyxLinkHere())` at
+  the RelPath-mirrored location, before `git worktree remove`; keep `removeLinks(root)` as a
+  safety net.
+- **Q (review r1, GAP 3):** What if the new host worktree already has a real `_lyx`? **A:**
+  Error (enforce pristine host) — no-op only if it's already the correct junction; no
+  move-aside, no silent skip.
+- **Q (review r1, GAP 4):** Where does `lyx weft` load config, and how does `status` behave on
+  a broken junction? **A:** Read config from the weft worktree directly (junction-independent),
+  and `status` must *surface* a broken junction prominently — "if something is broken, fix it,
+  don't overlook it."
+- **Q (review r1, NOTE 1):** Weft-push failure rollback? **A:** Extend `rollbackAdd` to tear
+  down the weft worktree + weft branch + host junction (paired-rollback).
+- **Q (review r1, NOTE 2):** Where do the weft lock files live? **A:** At `<weft>/.weft/`,
+  outside the committed `_lyx` pathspec, so a geometry-scoped `git add` never stages them.
