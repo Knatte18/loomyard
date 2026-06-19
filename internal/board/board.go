@@ -1,9 +1,11 @@
-// board.go — the Board facade, the only entry point the CLI uses.
+// Package board provides a one-shot, daemonless file-locked task tracker.
+// Board is the only entry point the CLI uses.
 //
-// writeOp sequences a write: lock → load → mutate → render → write files →
-// save, then launches a detached background sync (see sync.go) to back the
-// change up to the remote. It never waits on git. Every mutating method
-// delegates to it; read methods (Get/List) bypass it and load straight from disk.
+// Board sequences all mutating operations with a file lock: lock → load →
+// mutate → render → write files → save. After each write, a detached background
+// sync process (see sync.go) is launched to commit and push changes to the
+// remote. The write returns immediately without waiting for the sync. Read
+// methods (Get/List) bypass the lock and load directly from disk.
 
 package board
 
