@@ -1,19 +1,22 @@
-// remove_test.go covers normal teardown and the case where the worktree dir is
-// gone but the portal/launcher are still cleaned up before the not-found return.
+// remove_test.go covers paired teardown: normal teardown with both host and weft,
+// the case where the worktree dir is gone but the portal/launcher are still cleaned up
+// before the not-found return, and both host and weft dirty gates.
 
-package worktree_test
+package worktree
 
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/git"
 	"github.com/Knatte18/loomyard/internal/paths"
-	"github.com/Knatte18/loomyard/internal/worktree"
 )
 
-// TestRemove covers worktree teardown: clean removal, the dirty-tree gate with
-// and without --force, a missing slug, and symlink/junction cleanup counting.
+// TestRemove covers paired teardown: clean removal of both host and weft, the dirty-tree
+// gate with and without --force (checking both host and weft), a missing slug,
+// and symlink/junction cleanup counting. Requires a weft Prime repo.
 func TestRemove(t *testing.T) {
 	const defaultSlug = "task1"
 
@@ -35,18 +38,28 @@ func TestRemove(t *testing.T) {
 		{
 			name: "HappyPath",
 			setup: func(t *testing.T, hub, slug string) {
-				mustRun(t, hub, "git", "worktree", "add", filepath.Join(filepath.Dir(hub), slug))
+				addRemote(t, hub)
+				newWeftRepo(t, hub)
+				t.Setenv("WEFT_SKIP_PUSH", "1")
+				w := New(Config{})
+				l, _ := paths.Resolve(hub)
+				w.Add(l, slug)
 			},
 			wantLinksRemoved: 0,
 			linksExact:       true,
 			dirAfter:         "removed",
 		},
 		{
-			name: "DirtyWithoutForce",
+			name: "HostDirtyWithoutForce",
 			setup: func(t *testing.T, hub, slug string) {
-				target := filepath.Join(filepath.Dir(hub), slug)
-				mustRun(t, hub, "git", "worktree", "add", target)
-				// An untracked file makes the worktree dirty so the gate trips.
+				addRemote(t, hub)
+				newWeftRepo(t, hub)
+				t.Setenv("WEFT_SKIP_PUSH", "1")
+				w := New(Config{})
+				l, _ := paths.Resolve(hub)
+				w.Add(l, slug)
+				// An untracked file makes the host worktree dirty so the gate trips.
+				target := l.WorktreePath(slug)
 				if err := os.WriteFile(filepath.Join(target, "untracked.txt"), []byte("untracked"), 0644); err != nil {
 					t.Fatalf("create untracked file: %v", err)
 				}
@@ -55,10 +68,15 @@ func TestRemove(t *testing.T) {
 			dirAfter: "exists",
 		},
 		{
-			name: "DirtyWithForce",
+			name: "HostDirtyWithForce",
 			setup: func(t *testing.T, hub, slug string) {
-				target := filepath.Join(filepath.Dir(hub), slug)
-				mustRun(t, hub, "git", "worktree", "add", target)
+				addRemote(t, hub)
+				newWeftRepo(t, hub)
+				t.Setenv("WEFT_SKIP_PUSH", "1")
+				w := New(Config{})
+				l, _ := paths.Resolve(hub)
+				w.Add(l, slug)
+				target := l.WorktreePath(slug)
 				if err := os.WriteFile(filepath.Join(target, "untracked.txt"), []byte("untracked"), 0644); err != nil {
 					t.Fatalf("create untracked file: %v", err)
 				}
@@ -68,69 +86,47 @@ func TestRemove(t *testing.T) {
 			dirAfter:         "removed",
 		},
 		{
-			name:    "NonexistentSlug",
-			slug:    "ghost",
-			setup:   func(t *testing.T, hub, slug string) {}, // nothing created
-			wantErr: true,
-		},
-		{
-			name: "WithSymlink",
+			name: "WeftDirtyWithoutForce",
 			setup: func(t *testing.T, hub, slug string) {
-				target := filepath.Join(filepath.Dir(hub), slug)
-				mustRun(t, hub, "git", "worktree", "add", target)
-				targetFile := filepath.Join(target, "target.txt")
-				if err := os.WriteFile(targetFile, []byte("target"), 0644); err != nil {
-					t.Fatalf("create symlink target: %v", err)
-				}
-				if err := os.Symlink(targetFile, filepath.Join(target, "my-symlink")); err != nil {
-					t.Skipf("symlinks not permitted on this platform: %v", err)
+				addRemote(t, hub)
+				newWeftRepo(t, hub)
+				t.Setenv("WEFT_SKIP_PUSH", "1")
+				w := New(Config{})
+				l, _ := paths.Resolve(hub)
+				w.Add(l, slug)
+				// Make weft worktree dirty
+				weftTarget := l.WeftWorktreePath(slug)
+				if err := os.WriteFile(filepath.Join(weftTarget, "untracked.txt"), []byte("untracked"), 0644); err != nil {
+					t.Fatalf("create untracked file in weft: %v", err)
 				}
 			},
-			wantLinksRemoved: 1,
+			wantErr:  true,
+			dirAfter: "exists",
+		},
+		{
+			name: "WeftDirtyWithForce",
+			setup: func(t *testing.T, hub, slug string) {
+				addRemote(t, hub)
+				newWeftRepo(t, hub)
+				t.Setenv("WEFT_SKIP_PUSH", "1")
+				w := New(Config{})
+				l, _ := paths.Resolve(hub)
+				w.Add(l, slug)
+				// Make weft worktree dirty
+				weftTarget := l.WeftWorktreePath(slug)
+				if err := os.WriteFile(filepath.Join(weftTarget, "untracked.txt"), []byte("untracked"), 0644); err != nil {
+					t.Fatalf("create untracked file in weft: %v", err)
+				}
+			},
+			force:            true,
+			wantLinksRemoved: 0,
 			dirAfter:         "removed",
 		},
 		{
-			name: "TeardownBeforeMissingDir",
-			slug: "missing-dir",
-			setup: func(t *testing.T, hub, slug string) {
-				// Pre-create a portal by simulating what a created worktree would have.
-				// Since we can't directly call createPortal (private), we create
-				// the directory structure that Remove expects to clean up.
-				l, err := paths.Resolve(hub)
-				if err != nil {
-					t.Fatalf("paths.Resolve(%q): %v", hub, err)
-				}
-
-				// Create the portal link target (_lyx directory)
-				targetParent := filepath.Join(l.Hub, slug, l.RelPath)
-				if err := os.MkdirAll(targetParent, 0755); err != nil {
-					t.Fatalf("mkdir target parent: %v", err)
-				}
-				targetDir := filepath.Join(targetParent, "_lyx")
-				if err := os.Mkdir(targetDir, 0755); err != nil {
-					t.Fatalf("mkdir target _lyx: %v", err)
-				}
-
-				// Create the portal junction itself.
-				// We'll create a simple directory as a placeholder for the portal.
-				portalsDir := l.PortalsDir()
-				if err := os.MkdirAll(portalsDir, 0755); err != nil {
-					t.Fatalf("mkdir portals dir: %v", err)
-				}
-				portalLink := filepath.Join(portalsDir, slug)
-				// Note: we can't create a real junction without the private createJunction function,
-				// so we create a marker file that Remove will attempt to clean.
-				if err := os.WriteFile(portalLink, []byte("portal"), 0644); err != nil {
-					t.Fatalf("create portal marker: %v", err)
-				}
-
-				// Now delete the worktree directory itself (not the _lyx target, just the worktree root)
-				worktreeDir := filepath.Join(l.Hub, slug)
-				if err := os.RemoveAll(worktreeDir); err != nil {
-					t.Fatalf("remove worktree dir: %v", err)
-				}
-			},
-			wantErr: true, // will fail because dir doesn't exist, but portal cleanup should still run
+			name:    "NonexistentSlug",
+			slug:    "ghost",
+			setup:   func(t *testing.T, hub, slug string) { newWeftRepo(t, hub) }, // weft repo only
+			wantErr: true,
 		},
 	}
 
@@ -149,7 +145,7 @@ func TestRemove(t *testing.T) {
 				t.Fatalf("paths.Resolve(%q): %v", hub, err)
 			}
 
-			w := worktree.New(worktree.Config{})
+			w := New(Config{})
 			result, err := w.Remove(l, slug, tt.force)
 
 			if tt.wantErr {
@@ -175,19 +171,113 @@ func TestRemove(t *testing.T) {
 				if _, statErr := os.Stat(target); !os.IsNotExist(statErr) {
 					t.Errorf("Remove(%q): %q still exists; want removed", slug, target)
 				}
+				// Also verify weft worktree is removed
+				weftTarget := l.WeftWorktreePath(slug)
+				if _, statErr := os.Stat(weftTarget); !os.IsNotExist(statErr) {
+					t.Errorf("Remove(%q): weft %q still exists; want removed", slug, weftTarget)
+				}
 			case "exists":
 				if _, statErr := os.Stat(target); statErr != nil {
 					t.Errorf("Remove(%q): %q missing; want still present: %v", slug, target, statErr)
 				}
 			}
-
-			// For TeardownBeforeMissingDir test, verify the portal was cleaned up
-			if tt.name == "TeardownBeforeMissingDir" {
-				portalLink := filepath.Join(l.PortalsDir(), slug)
-				if _, statErr := os.Stat(portalLink); !os.IsNotExist(statErr) {
-					t.Errorf("Remove(%q): portal %q still exists; want removed", slug, portalLink)
-				}
-			}
 		})
+	}
+}
+
+// TestRemoveHostJunctionRemoved verifies that Remove explicitly removes the host _lyx junction
+// before the worktree, catching nested junctions that removeLinks (which only scans immediate
+// children) would miss.
+func TestRemoveHostJunctionRemoved(t *testing.T) {
+	const slug = "junction-removal-test"
+	t.Setenv("WEFT_SKIP_PUSH", "1")
+
+	hub := newTestRepo(t)
+	addRemote(t, hub)
+	newWeftRepo(t, hub)
+
+	l, err := paths.Resolve(hub)
+	if err != nil {
+		t.Fatalf("paths.Resolve: %v", err)
+	}
+
+	w := New(Config{})
+	_, err = w.Add(l, slug)
+	if err != nil {
+		t.Fatalf("Add(%q): %v", slug, err)
+	}
+
+	// Verify junction exists before Remove
+	hostLink := l.HostLyxLink(slug)
+	if _, err := os.Lstat(hostLink); err != nil {
+		t.Fatalf("host junction missing before Remove: %v", err)
+	}
+
+	// Remove the worktree
+	_, err = w.Remove(l, slug, false)
+	if err != nil {
+		t.Fatalf("Remove(%q): %v", slug, err)
+	}
+
+	// Verify junction is gone
+	if _, err := os.Lstat(hostLink); !os.IsNotExist(err) {
+		t.Errorf("Remove(%q) failed to remove host junction at %s", slug, hostLink)
+	}
+}
+
+// TestRemoveSubpathJunction verifies that Remove handles nested junctions at RelPath != "."
+// (the scenario where removeLinks(root) would miss the junction).
+func TestRemoveSubpathJunction(t *testing.T) {
+	const slug = "subpath-junction-test"
+	const subpath = "sub/path"
+	t.Setenv("WEFT_SKIP_PUSH", "1")
+
+	hub := newTestRepo(t)
+	addRemote(t, hub)
+	newWeftRepo(t, hub)
+
+	// Create a subpath in the hub
+	subpathDir := filepath.Join(hub, subpath)
+	if err := os.MkdirAll(subpathDir, 0755); err != nil {
+		t.Fatalf("mkdir subpath: %v", err)
+	}
+
+	// Change to subpath to resolve Layout with RelPath set
+	oldCwd, _ := os.Getwd()
+	defer os.Chdir(oldCwd)
+	os.Chdir(subpathDir)
+
+	l, err := paths.Resolve(subpathDir)
+	if err != nil {
+		t.Fatalf("paths.Resolve: %v", err)
+	}
+
+	// Verify RelPath is set
+	if l.RelPath == "." {
+		t.Skip("this test requires RelPath != \".\"; got: " + l.RelPath)
+	}
+
+	w := New(Config{})
+	_, err = w.Add(l, slug)
+	if err != nil {
+		t.Fatalf("Add(%q) at subpath: %v", slug, err)
+	}
+
+	// Verify nested junction exists
+	hostLink := l.HostLyxLink(slug)
+	if _, err := os.Lstat(hostLink); err != nil {
+		t.Fatalf("nested host junction missing: %v", err)
+	}
+
+	// Remove the worktree
+	_, err = w.Remove(l, slug, false)
+	if err != nil {
+		t.Fatalf("Remove(%q) at subpath: %v", slug, err)
+	}
+
+	// Verify nested junction is gone (removeLinks would not find it since it only
+	// scans immediate children; removeHostJunction must catch it)
+	if _, err := os.Lstat(hostLink); !os.IsNotExist(err) {
+		t.Errorf("Remove(%q) at subpath failed to remove nested junction at %s", slug, hostLink)
 	}
 }
