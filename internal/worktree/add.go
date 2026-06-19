@@ -21,30 +21,37 @@ type AddResult struct {
 	Pushed bool   `json:"pushed"`
 }
 
-// Add creates a new git worktree with the given slug in a sibling directory,
-// along with associated portal junctions and launchers.
+// Add creates a new paired host and weft git worktree with the given slug.
 //
-// The Layout l provides geometry information; all git operations use l.WorktreeRoot as cwd.
-// The slug becomes the final path component; the branch name is formed by prepending
-// the configured BranchPrefix.
+// The Layout l provides geometry information; all git operations use the appropriate cwd
+// (l.WorktreeRoot for host, l.WeftRepoRoot for weft). The slug becomes the final path
+// component; the branch name is formed by prepending the configured BranchPrefix and
+// is used for both host and weft worktrees (mirrored).
 //
 // Steps:
 //  1. Clean check: l.WorktreeRoot must have no uncommitted changes.
 //  2. Branch name: branch := w.cfg.BranchPrefix + slug
-//  3. Branch-exists check: branch must not already exist.
+//  3. Branch-exists check: branch must not already exist in host.
 //  4. Target path: sibling directory named slug; must not exist.
 //  5. Remote check: must have at least one remote configured.
-//  6. Create: git worktree add -b <branch> <target>
-//  7. Create portal junction to _lyx/ in the new worktree
-//  8. Write per-worktree launchers
-//  9. Push: git push -u origin <branch> (LAST step, so rollback can skip push)
+//  6. Weft prechecks: weft repo must exist; weft worktree and branch must not exist yet.
+//  7. Create: git worktree add -b <branch> <target> in host repo.
+//  8. Create weft worktree with mirrored branch.
+//  9. Seed host _lyx junction pointing to weft _lyx (also enforces pristine host).
+// 10. Seed host git exclude to skip _lyx.
+// 11. Create portal junction to _lyx/ in the new host worktree.
+// 12. Write per-worktree launchers.
+// 13. Push host branch: git push -u origin <branch> (LAST step).
+// 14. Push weft branch: git push -u origin <branch> to weft remote.
 //
-// On ANY error at or after step 6, performs a best-effort full rollback:
+// On ANY error at or after step 7, performs a best-effort full paired rollback:
+// - removeHostJunction(l, slug) — remove host _lyx junction first (Windows junction-lock hazard)
+// - removeWeftWorktree(l, slug, branch, true) — tear down weft side (worktree + branch + prune)
 // - removePortal(l, slug)
 // - removeLaunchers(l, slug)
-// - git worktree remove --force <target>
-// - git branch -D <branch>
-// - git worktree prune
+// - git worktree remove --force <host-target>
+// - git branch -D <branch> in host
+// - git worktree prune in host
 //
 // The ORIGINAL error is returned; rollback-step failures are not masked.
 //
@@ -92,7 +99,21 @@ func (w *Worktree) Add(l *paths.Layout, slug string) (AddResult, error) {
 		return AddResult{}, fmt.Errorf("no remote configured")
 	}
 
-	// (6) Create worktree
+	// (6) Weft prechecks: must run BEFORE any creation (no partial state)
+	if !weftRepoExists(l) {
+		return AddResult{}, fmt.Errorf("no weft repo at %s; run the hub-creator first", l.WeftRepoRoot())
+	}
+
+	weftTarget := l.WeftWorktreePath(slug)
+	if _, err := os.Stat(weftTarget); !os.IsNotExist(err) {
+		return AddResult{}, fmt.Errorf("weft worktree directory already exists: %s", weftTarget)
+	}
+
+	if weftBranchExists(l, branch) {
+		return AddResult{}, fmt.Errorf("weft branch %q already exists", branch)
+	}
+
+	// (7) Create host worktree
 	_, stderr, exitCode, err = git.RunGit([]string{"worktree", "add", "-b", branch, target}, l.WorktreeRoot)
 	if err != nil {
 		return AddResult{}, fmt.Errorf("cwd is not a valid git worktree")
@@ -101,31 +122,51 @@ func (w *Worktree) Add(l *paths.Layout, slug string) (AddResult, error) {
 		return AddResult{}, fmt.Errorf("worktree add failed: %s", stderr)
 	}
 
-	// (7) Create portal junction
-	if err := createPortal(l, slug); err != nil {
-		// Rollback on portal creation failure
+	// (8) Create weft worktree
+	if err := createWeftWorktree(l, slug, branch); err != nil {
 		w.rollbackAdd(l, slug, branch, target)
 		return AddResult{}, err
 	}
 
-	// (8) Write launchers
-	if err := writeLaunchers(l, slug); err != nil {
-		// Rollback on launcher write failure
-		w.rollbackAdd(l, slug, branch, target) // Best-effort rollback (errors masked)
-		return AddResult{}, err                // Return original error
+	// (9) Seed host _lyx junction (also enforces pristine host via error on real _lyx)
+	if err := seedLyxJunction(l, slug); err != nil {
+		w.rollbackAdd(l, slug, branch, target)
+		return AddResult{}, err
 	}
 
-	// (9) Push (LAST step)
+	// (10) Seed host git exclude
+	if err := seedGitExclude(l, slug); err != nil {
+		w.rollbackAdd(l, slug, branch, target)
+		return AddResult{}, err
+	}
+
+	// (11) Create portal junction
+	if err := createPortal(l, slug); err != nil {
+		w.rollbackAdd(l, slug, branch, target)
+		return AddResult{}, err
+	}
+
+	// (12) Write launchers
+	if err := writeLaunchers(l, slug); err != nil {
+		w.rollbackAdd(l, slug, branch, target)
+		return AddResult{}, err
+	}
+
+	// (13) Push host branch (LAST step for host)
 	_, stderr, exitCode, err = git.RunGit([]string{"push", "-u", "origin", branch}, l.WorktreeRoot)
 	if err != nil {
-		// Rollback on push failure
-		w.rollbackAdd(l, slug, branch, target) // Best-effort rollback (errors masked)
+		w.rollbackAdd(l, slug, branch, target)
 		return AddResult{}, fmt.Errorf("push: %w", err)
 	}
 	if exitCode != 0 {
-		// Rollback on push failure
-		w.rollbackAdd(l, slug, branch, target) // Best-effort rollback (errors masked)
+		w.rollbackAdd(l, slug, branch, target)
 		return AddResult{}, fmt.Errorf("push failed: %s", stderr)
+	}
+
+	// (14) Push weft branch
+	if err := pushWeftBranch(l, slug, branch); err != nil {
+		w.rollbackAdd(l, slug, branch, target)
+		return AddResult{}, err
 	}
 
 	return AddResult{
@@ -136,27 +177,51 @@ func (w *Worktree) Add(l *paths.Layout, slug string) (AddResult, error) {
 	}, nil
 }
 
-// rollbackAdd performs best-effort cleanup on Add failure.
-// It continues through all steps even if one fails, returning nil if all steps succeed,
-// or the first error encountered otherwise. All errors are best-effort (logged/ignored).
+// rollbackAdd performs best-effort paired cleanup on Add failure.
+//
+// Steps (best-effort, errors collected but not masked):
+//  1. removeHostJunction — remove host _lyx junction FIRST (Windows junction-lock hazard)
+//  2. removeWeftWorktree — tear down weft side (worktree + branch + prune)
+//  3. removePortal — remove host portal junction
+//  4. removeLaunchers — remove host launchers
+//  5. git worktree remove --force <host-target>
+//  6. git branch -D <branch> (host)
+//  7. git worktree prune (host)
+//
+// Junction removal must precede any worktree removal. All errors are collected;
+// the original error passed to the caller is preserved.
 func (w *Worktree) rollbackAdd(l *paths.Layout, slug, branch, target string) error {
 	var firstErr error
 
-	// Remove portal
+	// (1) Remove host junction FIRST (must precede worktree removal on Windows)
+	if err := removeHostJunction(l, slug); err != nil {
+		if firstErr == nil {
+			firstErr = err
+		}
+	}
+
+	// (2) Remove weft worktree and branch
+	if err := removeWeftWorktree(l, slug, branch, true); err != nil {
+		if firstErr == nil {
+			firstErr = err
+		}
+	}
+
+	// (3) Remove host portal
 	if err := removePortal(l, slug); err != nil {
 		if firstErr == nil {
 			firstErr = err
 		}
 	}
 
-	// Remove launchers
+	// (4) Remove host launchers
 	if err := removeLaunchers(l, slug); err != nil {
 		if firstErr == nil {
 			firstErr = err
 		}
 	}
 
-	// Remove worktree
+	// (5) Remove host worktree
 	_, _, _, err := git.RunGit([]string{"worktree", "remove", "--force", target}, l.WorktreeRoot)
 	if err != nil {
 		if firstErr == nil {
@@ -164,7 +229,7 @@ func (w *Worktree) rollbackAdd(l *paths.Layout, slug, branch, target string) err
 		}
 	}
 
-	// Delete branch
+	// (6) Delete host branch
 	_, _, _, err = git.RunGit([]string{"branch", "-D", branch}, l.WorktreeRoot)
 	if err != nil {
 		if firstErr == nil {
@@ -172,7 +237,7 @@ func (w *Worktree) rollbackAdd(l *paths.Layout, slug, branch, target string) err
 		}
 	}
 
-	// Prune worktrees
+	// (7) Prune host worktrees
 	_, _, _, err = git.RunGit([]string{"worktree", "prune"}, l.WorktreeRoot)
 	if err != nil {
 		if firstErr == nil {
