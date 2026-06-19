@@ -260,26 +260,38 @@ func removeWeftWorktree(l *paths.Layout, slug, branch string, force bool) error 
 		args = append(args, "--force")
 	}
 	args = append(args, weftPath)
-	_, _, _, err := git.RunGit(args, weftRoot)
-	if err != nil {
+	_, _, exitCode, err := git.RunGit(args, weftRoot)
+	if err != nil || exitCode != 0 {
 		if firstErr == nil {
-			firstErr = err
+			if err != nil {
+				firstErr = err
+			} else {
+				firstErr = fmt.Errorf("git worktree remove failed with exit code %d", exitCode)
+			}
 		}
 	}
 
 	// Delete branch
-	_, _, _, err = git.RunGit([]string{"branch", "-D", branch}, weftRoot)
-	if err != nil {
+	_, _, exitCode, err = git.RunGit([]string{"branch", "-D", branch}, weftRoot)
+	if err != nil || exitCode != 0 {
 		if firstErr == nil {
-			firstErr = err
+			if err != nil {
+				firstErr = err
+			} else {
+				firstErr = fmt.Errorf("git branch -D failed with exit code %d", exitCode)
+			}
 		}
 	}
 
 	// Prune worktrees
-	_, _, _, err = git.RunGit([]string{"worktree", "prune"}, weftRoot)
-	if err != nil {
+	_, _, exitCode, err = git.RunGit([]string{"worktree", "prune"}, weftRoot)
+	if err != nil || exitCode != 0 {
 		if firstErr == nil {
-			firstErr = err
+			if err != nil {
+				firstErr = err
+			} else {
+				firstErr = fmt.Errorf("git worktree prune failed with exit code %d", exitCode)
+			}
 		}
 	}
 

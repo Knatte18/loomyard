@@ -222,26 +222,38 @@ func (w *Worktree) rollbackAdd(l *paths.Layout, slug, branch, target string) err
 	}
 
 	// (5) Remove host worktree
-	_, _, _, err := git.RunGit([]string{"worktree", "remove", "--force", target}, l.WorktreeRoot)
-	if err != nil {
+	_, _, exitCode, err := git.RunGit([]string{"worktree", "remove", "--force", target}, l.WorktreeRoot)
+	if err != nil || exitCode != 0 {
 		if firstErr == nil {
-			firstErr = err
+			if err != nil {
+				firstErr = err
+			} else {
+				firstErr = fmt.Errorf("git worktree remove failed with exit code %d", exitCode)
+			}
 		}
 	}
 
 	// (6) Delete host branch
-	_, _, _, err = git.RunGit([]string{"branch", "-D", branch}, l.WorktreeRoot)
-	if err != nil {
+	_, _, exitCode, err = git.RunGit([]string{"branch", "-D", branch}, l.WorktreeRoot)
+	if err != nil || exitCode != 0 {
 		if firstErr == nil {
-			firstErr = err
+			if err != nil {
+				firstErr = err
+			} else {
+				firstErr = fmt.Errorf("git branch -D failed with exit code %d", exitCode)
+			}
 		}
 	}
 
 	// (7) Prune host worktrees
-	_, _, _, err = git.RunGit([]string{"worktree", "prune"}, l.WorktreeRoot)
-	if err != nil {
+	_, _, exitCode, err = git.RunGit([]string{"worktree", "prune"}, l.WorktreeRoot)
+	if err != nil || exitCode != 0 {
 		if firstErr == nil {
-			firstErr = err
+			if err != nil {
+				firstErr = err
+			} else {
+				firstErr = fmt.Errorf("git worktree prune failed with exit code %d", exitCode)
+			}
 		}
 	}
 
