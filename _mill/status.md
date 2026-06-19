@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-fixing
+phase: holistic-reviewing
 slug: reconcile-stale-docs
 branch: reconcile-stale-docs
 plan: _mill/plan
@@ -28,6 +28,7 @@ approved-code-headers  '2026-06-19T11:14:08Z'
 approved-docs-sweep-and-moves  '2026-06-19T11:20:38Z'
 holistic-reviewing  '2026-06-19T11:21:02Z'
 holistic-fixing  '2026-06-19T11:24:26Z'
+holistic-reviewing  '2026-06-19T11:27:49Z'
 ```
 
 ## Batches
