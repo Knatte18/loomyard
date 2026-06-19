@@ -179,6 +179,29 @@ divergent from reality right now.
   deleting them (they're unlanded design/research, which the convention preserves);
   moving `mux.md` to research (it's a module design, not research).
 
+### mux-registry-semantics
+
+- Decision: In the kept `docs/modules/mux.md` (unbuilt module's design draft),
+  **drop the *worktree*-registry coupling** — remove framing that worktree and mux
+  "share the same state document" and that mux is "laid out from the worktree
+  registry." The worktree module is now stateless, so mux must derive worktree layout
+  from `git worktree list` (the same stateless path `lyx worktree list` uses), not from
+  a registry that doesn't exist. **Keep** mux's *own* planned state document
+  (session/pane layout state) as legitimate unbuilt design. Fix the dead link to the
+  deleted `shared-libs/state.md`.
+- Rationale: Two different "registry" notions were tangled in mux.md. The
+  worktree-registry is the stale #003 artifact (no code, worktree is stateless). mux's
+  own future state document is design for an unbuilt module, which the doc-lifecycle
+  convention explicitly preserves. Conflating them would either wrongly purge live
+  design or wrongly retain dead coupling.
+- Rejected: Purging all registry/`local-state.json` references from mux.md (loses
+  legitimate unbuilt design); leaving all registry content as-is (retains the stale
+  worktree-registry coupling that misled the original thread).
+- **Stale-term check exemption:** the stale-term grep (below) for "registry" /
+  `local-state.json` applies to all kept docs **except** mux.md's references to mux's
+  *own* state document. mux.md must still be free of *worktree*-registry framing and
+  the dead `state.md` link.
+
 ### drop-proposal-item-c
 
 - Decision: Drop task item (c) (fix `.scratch/proposal-weft-repo.md`); record as
@@ -220,18 +243,31 @@ Known stale spots in the **kept** docs that must be swept (from the exploration 
   `.lyx/local-state.json` (L19-20, no code reads it) → remove/flag as unlanded; "config
   container" wording (L10).
 - `docs/shared-libs/README.md`: opening line lists modules as "board, worktree, mux"
-  though only muxpoc is shipped → reflect the landed set + status.
+  though only muxpoc is shipped → reflect the landed set + status. **Also (review r1):**
+  the **Libraries link list at L18-24 links all seven lib docs, including the five being
+  deleted** (`fsx`, `git`, `gitignore`, `lock`, `state`) → rewrite to the kept set
+  (`config`, `paths`), not just the opening sentence.
 - `docs/overview.md`: Modules + "Other docs" sections link to the four module docs and
   five shared-libs docs being deleted, and to the three research docs being moved →
   rewrite those link blocks; the "Path Invariants" section and the weft section are
-  current but the module map must gain explicit status markers.
+  current but the module map must gain explicit status markers. **Also (review r1):**
+  (i) **L188 and L205 still mark `internal/state` as "(planned)"** though it landed in
+  `ba81abf` → update to landed (mirror the roadmap milestone-3 reword); (ii) **L64's
+  `Layout` method enumeration omits `PortalLink`/`PortalTarget`** while paths.md keeps
+  all three portal methods documented as deprecated-but-present → align overview's list
+  with paths.md's deprecated-portal framing (list them, tagged deprecated) so the two
+  kept docs describe the portal surface consistently.
 - `docs/roadmap.md`: milestone 3 (state/fsx — now landed), milestone 4 (registry
   "deferred with internal/state", thin `list` wording), milestone 8 ("laid out from the
   worktree registry") → drop registry/lands-with-mux language; links to
   `modules/{board,worktree,ide,muxpoc}.md` and `modules/mux-hooks-exploration.md` →
   fix to deleted/moved targets.
-- `docs/modules/mux.md`: terminology sweep (Container→Hub, Prime, drop registry); fix
-  links to moved research docs and to the relocated psmux reference.
+- `docs/modules/mux.md`: terminology sweep (Container→Hub, Prime); fix links to moved
+  research docs, to the relocated psmux reference, and the **dead link to the deleted
+  `shared-libs/state.md`** (point at `internal/state` in code, or drop the link). On
+  "registry" — see the **mux-registry-semantics** decision below: drop only the
+  *worktree*-registry coupling (worktree is stateless), keep mux's *own* planned state
+  document as legitimate unbuilt design.
 
 Files to create: `docs/research/` (3 moved files), `docs/reference/` (1 moved file).
 Prefer `git mv` to preserve history.
@@ -268,10 +304,13 @@ This is a docs + comments task — "testing" means verification, not new test co
   `shared-libs/{git,lock,fsx,gitignore,state}.md`) and at moved files (the three
   `mux-*` logs, `vendor/psmux_scripting.md`). Expect zero stale targets.
 - **Stale-term check:** grep the kept docs for `local-state.json`, `lands-with-mux` /
-  "lands with mux", "main/first worktree", and the worktree-"registry" framing —
+  "lands with mux", "main/first worktree", and the *worktree*-"registry" framing —
   expect zero in kept files (portals references are allowed only where tagged
   deprecated-but-present). Confirm capitalized old name "Container" (as the name for
-  Hub) does not appear.
+  Hub) does not appear. **Exception (per mux-registry-semantics):** `docs/modules/mux.md`
+  may retain references to mux's *own* planned state document; it must still be free of
+  *worktree*-registry framing and must not link the deleted `state.md`. Also confirm no
+  kept doc still marks `internal/state` as "(planned)".
 - **Manual read-through** of overview.md to confirm: every landed module is listed with
   a done marker; weft is marked not-built; the psmux reference and research folder are
   linked; the Documentation lifecycle section states the convention.
@@ -304,3 +343,11 @@ This is a docs + comments task — "testing" means verification, not new test co
 - **Q:** The vendor psmux file? **A:** It's a pure upstream usage reference; give such
   reference files their own folder (`docs/reference/`) and make it prominent.
 - **Q:** Benchmarks / psmux-tui-behavior? **A:** Their own thing — leave untouched.
+- **Q:** (review r1) mux.md mixes the stale worktree-registry with mux's own future
+  state — how to treat its registry references? **A:** Drop the worktree-registry
+  coupling (worktree is stateless; mux lays out from `git worktree list`), keep mux's
+  own planned state document, fix the dead `state.md` link; exempt mux's own-state refs
+  from the stale-term check.
+- **Q:** (review r1) Add the three extra kept-doc stale spots to the sweep scope
+  (README.md L18-24 link list, overview.md "(planned)" markers, overview.md L64 portal
+  method omission)? **A:** Yes — all three added to the explicit sweep list.
