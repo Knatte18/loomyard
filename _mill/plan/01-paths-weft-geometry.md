@@ -21,6 +21,7 @@ This batch lands the host↔weft path math in `internal/paths` — the foundatio
   - `internal/paths/worktreelist.go`
 - **Edits:**
   - `internal/paths/paths.go`
+  - `internal/paths/codeguide_guard_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Requirements:** Add eight methods on `*Layout`, each a pure `filepath.Join` expression, placed near the existing `WorktreePath`/`PortalTarget` methods with godoc comments matching the file's style:
@@ -33,6 +34,7 @@ This batch lands the host↔weft path math in `internal/paths` — the foundatio
   - `WeftCodeguideDir() string` → `filepath.Join(l.WeftWorktree(), l.RelPath, "_codeguide")` — geometry only (no junction this task).
   - `HostLyxLink(slug string) string` → `filepath.Join(l.WorktreePath(slug), l.RelPath, "_lyx")` — host-side junction link in a named slug's host worktree.
   - `HostLyxLinkHere() string` → `filepath.Join(l.WorktreeRoot, l.RelPath, "_lyx")` — host-side junction link in the current host worktree. Document that this is WorktreeRoot+RelPath-based and intentionally distinct from the cwd-based `LyxDir()`.
+  Update `codeguide_guard_test.go` to allow `WeftCodeguideDir()` geometry reference. The guard was written to prevent discovery/enumeration logic, but `WeftCodeguideDir()` is pure geometry computation identical in pattern to `LyxDir()` and requires the literal string to compute the path. Update the test to skip the guard for geometry methods (add an allowlist for methods like `WeftCodeguideDir`, or document that the guard applies only to non-method code).
 - **Commit:** `feat(paths): add weft + host-link geometry methods to Layout`
 
 ### Card 2: Unit tests for weft geometry methods
