@@ -76,11 +76,8 @@ func (w *Worktree) Remove(l *paths.Layout, slug string, force bool) (RemoveResul
 		weftTarget := l.WeftWorktreePath(slug)
 		stdout, _, exitCode, err := git.RunGit([]string{"status", "--porcelain"}, weftTarget)
 		if err != nil {
-			// Weft worktree might not exist or be invalid; only reject if we can confirm it's dirty
+			// Weft worktree might not exist or be invalid; skip the check.
 			// If it doesn't exist, the weft remove later will handle cleanup.
-			if exitCode == 0 && strings.TrimSpace(stdout) != "" {
-				return RemoveResult{}, fmt.Errorf("weft worktree has uncommitted changes; run \"lyx weft sync\" or use --force")
-			}
 		} else if exitCode == 0 && strings.TrimSpace(stdout) != "" {
 			return RemoveResult{}, fmt.Errorf("weft worktree has uncommitted changes; run \"lyx weft sync\" or use --force")
 		}
