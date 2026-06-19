@@ -61,7 +61,7 @@ exposes two entry points:
   --show-toplevel`), Hub, relative path, and Prime worktree.
 
 The `Layout` type provides geometry methods: `LyxDir()`, `WorktreePath(slug)`,
-`PortalsDir()`, `PortalLink(slug)`, `PortalTarget(slug)`, `LaunchersDir()`, `LauncherDir(slug)`, `PrimeName()`, `WeftRepoRoot()`, `WeftWorktreePath()`, `WeftWorktree()`, `WeftLyxDir()`, `WeftLyxDirFor()`, `WeftCodeguideDir()`, `HostLyxLink()`, `HostLyxLinkHere()`.
+`PortalsDir()`, `PortalLink(slug)`, `PortalTarget(slug)`, `LaunchersDir()`, `LauncherDir(slug)`, `PrimeName()`, `WeftRepoRoot()`, `WeftWorktreePath(slug)`, `WeftWorktree()`, `WeftLyxDir()`, `WeftLyxDirFor(slug)`, `WeftCodeguideDir()`, `HostLyxLink(slug)`, `HostLyxLinkHere()`.
 
 **Raw `os.Getwd` and `git rev-parse --show-toplevel` are banned** outside `internal/paths`
 and `cmd/lyx/main.go`. The ban is enforced at `go test` / CI time by
