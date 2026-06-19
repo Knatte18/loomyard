@@ -361,9 +361,7 @@ func TestWeftRollbackOnPostHostCreateFailure(t *testing.T) {
 		t.Errorf("rollback failed: host worktree still exists at %s", hostTarget)
 	}
 
-	hostBranch := "prefix-" + slug // Assuming no prefix in config
-	_, _, exitCode, _ := git.RunGit([]string{"rev-parse", "--verify", "refs/heads/" + hostBranch}, l.WorktreeRoot)
-	// This might not exist since we're not using a prefix, but check the actual branch
+	// Verify host branch is gone
 	stdout, _, _, _ := git.RunGit([]string{"branch"}, l.WorktreeRoot)
 	if strings.Contains(stdout, slug) {
 		t.Errorf("rollback failed: host branch containing %q still exists", slug)
@@ -376,7 +374,7 @@ func TestWeftRollbackOnPostHostCreateFailure(t *testing.T) {
 	}
 
 	// Verify weft branch is gone
-	_, _, exitCode, _ = git.RunGit([]string{"rev-parse", "--verify", "refs/heads/" + slug}, l.WeftRepoRoot())
+	_, _, exitCode, _ := git.RunGit([]string{"rev-parse", "--verify", "refs/heads/" + slug}, l.WeftRepoRoot())
 	if exitCode == 0 {
 		t.Errorf("rollback failed: weft branch still exists")
 	}
