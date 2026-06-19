@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-fix-r4
+phase: discussed
 slug: reconcile-stale-docs
 branch: reconcile-stale-docs
 plan: null
@@ -16,4 +16,5 @@ task_description: |
 ```text
 discussing  '2026-06-19T10:09:22Z'
 discussion-fix-r4  '2026-06-19T10:45:50Z'
+discussed  '2026-06-19T10:46:12Z'
 ```
