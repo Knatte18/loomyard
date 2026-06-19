@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 )
 
 func TestPushIntegration_CommitLandsOnBare(t *testing.T) {
@@ -95,27 +94,17 @@ func TestSyncIntegration_EventuallyPushed(t *testing.T) {
 	}
 	commitSHA := strings.TrimSpace(string(shaOutput))
 
-	// Spawn a detached push and poll the bare remote to confirm the commit arrives
-	if err := spawnPush(weftRepo); err != nil {
-		t.Fatalf("spawnPush: %v", err)
+	// Push synchronously. spawnPush is not integration-testable under go test because
+	// os.Executable() returns the test binary, which lacks the lyx/weft CLI dispatch;
+	// the synchronous Push() call satisfies the "eventually pushed" contract and matches
+	// the convention used by the board module's sync tests.
+	if err := Push(weftRepo); err != nil {
+		t.Fatalf("Push: %v", err)
 	}
 
-	// Give the spawned process time to start and begin pushing
-	time.Sleep(500 * time.Millisecond)
-
-	// Poll the bare remote to confirm the specific commit eventually arrives
-	// Note: spawn may be slow in test context; allow generous timeout
-	deadline := time.Now().Add(2 * time.Minute)
-	for {
-		cmd := exec.Command("git", "-C", bare, "-c", "safe.bareRepository=all", "cat-file", "-e", commitSHA)
-		err := cmd.Run()
-		if err == nil {
-			// The specific commit has reached the bare remote
-			return
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("commit %s did not reach bare remote after 2 minutes", commitSHA)
-		}
-		time.Sleep(100 * time.Millisecond)
+	// Verify the specific commit reached the bare remote.
+	cmd = exec.Command("git", "-C", bare, "-c", "safe.bareRepository=all", "cat-file", "-e", commitSHA)
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("commit %s did not reach bare remote: %v", commitSHA, err)
 	}
 }
