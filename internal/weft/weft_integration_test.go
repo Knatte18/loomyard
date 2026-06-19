@@ -86,9 +86,9 @@ func TestSyncIntegration_EventuallyPushed(t *testing.T) {
 		t.Fatalf("Commit should succeed")
 	}
 
-	// Push and poll the bare remote to confirm the commit arrives
-	if err := Push(weftRepo); err != nil {
-		t.Fatalf("Push: %v", err)
+	// Spawn a detached push and poll the bare remote to confirm the commit arrives
+	if err := spawnPush(weftRepo); err != nil {
+		t.Fatalf("spawnPush: %v", err)
 	}
 
 	// Poll the bare remote to confirm the commit eventually arrives
