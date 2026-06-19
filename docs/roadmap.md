@@ -32,19 +32,19 @@ observable changes until the new module that needs the extracted lib arrives.
    and file paths. Built test-first. ✅ **Done.** A generic locked-JSON helper, shipped as part
    of the shared infrastructure with no consumer yet.
 
-4. **worktree module + portals (deprecated), launchers, and ide module.** ✅ **Done.** Create / track / tear down
+4. **worktree module + portals, launchers, and ide module.** ✅ **Done.** Create / track / tear down
    git worktrees; manage container junctions and spawnable
    launchers; VS Code launcher with interactive menu; centralized path geometry
    in `internal/paths`. Consumes `internal/config` + `internal/git`; owns the **junction-aware teardown**
    sequence (the Windows locked-worktree hazard). The module is **stateless by design** — `lyx worktree list` is a thin
    `git worktree list` wrapper; there is no worktree registry. Introduces `internal/paths` as the sole geometry owner, banning
    raw `os.Getwd` and `git rev-parse --show-toplevel` outside `internal/paths` and `cmd/lyx/main.go`
-   via `internal/paths/enforcement_test.go`. (**Portals deprecated:** superseded by weft overlay model (task 006).
-   Removal planned for task 006.)
+   via `internal/paths/enforcement_test.go`. (Portals are present and working — a subdir-mirrored
+   Hub view of each worktree's `_lyx/`; kept available, not slated for removal.)
 
 5. **Task 006 — Weft engine.** Path geometry for weft worktrees, paired host+weft spawn and teardown, `lyx weft` command.
    Implements the canonical weft overlay model (host stays pristine, all lyx artifacts in companion weft repo).
-   Replaces portals with direct sibling access to weft directories.
+   Weft directories are reached by direct sibling access; portals remain available as the cross-worktree status view.
 
 6. **Task 007 — Hub-creator / `lyx-clone` skill.** Bootstrap and clone new host repos as neighbors in an existing hub.
 

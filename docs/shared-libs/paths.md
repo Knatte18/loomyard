@@ -68,12 +68,14 @@ type Layout struct {
 - **`WorktreePath(slug string) string`** — `filepath.Join(Hub, slug)`. Path to
   a sibling worktree.
 - **`PortalsDir() string`** (un-mirrored root) — `filepath.Join(Hub, "_portals")`. The portals
-  system container directory (prune boundary, not mirrored by subpath). **Deprecated but present — portals are superseded by the weft overlay model (task 006).**
+  system container directory (prune boundary, not mirrored by subpath). Portals expose each
+  worktree's `_lyx/` at a Hub-level, subdir-mirrored location so any worktree can see sibling
+  task-state in the same subdir; present and working, kept on hold (see the weft proposal).
 - **`PortalLink(slug string) string`** (mirrored leaf) — `filepath.Join(Hub, "_portals", RelPath, slug)`. The portal junction link,
   mirrored into the repo subpath structure. At `RelPath == "."`, collapses to the
-  flat `<Hub>/_portals/<slug>`. **Deprecated but present — portals are superseded by the weft overlay model (task 006).**
+  flat `<Hub>/_portals/<slug>`.
 - **`PortalTarget(slug string) string`** — `filepath.Join(Hub, slug, RelPath,
-  "_lyx")`. The junction target for a given worktree's portal. **Deprecated but present — portals are superseded by the weft overlay model (task 006).**
+  "_lyx")`. The junction target for a given worktree's portal.
 - **`LaunchersDir() string`** (un-mirrored root) — `filepath.Join(Hub, "_launchers")`. The launchers
   system container directory (prune boundary, not mirrored by subpath).
 - **`LauncherDir(slug string) string`** (mirrored leaf) — `filepath.Join(Hub, "_launchers", RelPath, slug)`.
