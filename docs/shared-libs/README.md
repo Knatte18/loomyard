@@ -1,9 +1,9 @@
 # Shared internal libraries
 
-Loomyard's user-facing modules (`board`, `worktree`, `mux`) are self-contained: all
+Loomyard's user-facing modules (`board`, `worktree`, `ide`, `muxpoc`) are self-contained: all
 of a module's *domain* logic and its deep test suite live in that module's package
 and nowhere else. What they share is a thin layer of **infrastructure plumbing** —
-mechanical helpers with no opinion about tasks, worktrees, or panes.
+mechanical helpers with no opinion about tasks, worktrees, or panes. (The planned `mux` module is design; see [overview.md](../overview.md).)
 
 **The line we hold:** a shared lib does one mechanical thing — run a git command,
 take a lock, resolve a config, read a state file. It carries *no* domain logic. The
@@ -17,8 +17,13 @@ See [roadmap.md](../roadmap.md) milestones 2–3 for the extraction order.
 
 - [paths.md](paths.md) — `internal/paths`: canonical geometry resolver, sole owner of cwd/root math
 - [config.md](config.md) — `internal/config`: two-layer YAML config (defaults + `_lyx/config/<module>.yaml`), env expansion, `.env` loading
-- [fsx.md](fsx.md) — `internal/fsx`: atomic file writes + relative-path guard, extracted from board
-- [git.md](git.md) — `internal/git`: windowless `RunGit` primitive
-- [gitignore.md](gitignore.md) — `internal/gitignore`: shared `.gitignore` block manager for multiple modules
-- [lock.md](lock.md) — `internal/lock`: cross-process file locking
-- [state.md](state.md) — `internal/state`: generic locked typed JSON I/O built on fsx + lock
+
+## Implementation-only libraries
+
+The following libraries ship in code and tests; their mechanics are documented there per the [doc-lifecycle convention](../overview.md#documentation-lifecycle):
+
+- `internal/fsx` — atomic file writes + relative-path guard
+- `internal/git` — windowless `RunGit` primitive
+- `internal/gitignore` — shared `.gitignore` block manager for multiple modules
+- `internal/lock` — cross-process file locking
+- `internal/state` — generic locked typed JSON I/O
