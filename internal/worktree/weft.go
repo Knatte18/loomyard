@@ -74,8 +74,8 @@ func createWeftWorktree(l *paths.Layout, slug, branch string) error {
 // seedLyxJunction creates or verifies the host _lyx junction pointing to the weft _lyx directory.
 //
 // If the junction already exists:
-//   - Validates that it is a symlink/junction (mode bit check)
 //   - Validates that it resolves to the correct target via filepath.EvalSymlinks
+//   - On Unix, additionally checks the mode bit for symlink.
 //   - Returns nil (idempotent)
 //
 // If os.Lstat fails with not-exist:
@@ -89,7 +89,19 @@ func seedLyxJunction(l *paths.Layout, slug string) error {
 
 	info, err := os.Lstat(link)
 	if err == nil {
-		// Link exists. Validate it is a junction and resolves correctly.
+		// Link exists. On Windows, junctions may not show ModeSymlink,
+		// so validate via EvalSymlinks instead.
+		linkResolved, errResolve := filepath.EvalSymlinks(link)
+		targetResolved, errTarget := filepath.EvalSymlinks(target)
+
+		// Both paths must resolve successfully, and must resolve to the same location
+		if errResolve == nil && errTarget == nil && linkResolved == targetResolved {
+			// Idempotent: junction exists and resolves correctly
+			return nil
+		}
+
+		// If EvalSymlinks failed or paths don't match, check mode bit (Unix symlinks)
+		// to give a better error message
 		if info.Mode()&os.ModeSymlink == 0 {
 			return fmt.Errorf(
 				"host repo already contains a real _lyx at %s; it predates weft — migrate via the hub-creator",
@@ -97,25 +109,11 @@ func seedLyxJunction(l *paths.Layout, slug string) error {
 			)
 		}
 
-		// Validate target via EvalSymlinks (required for Windows junction resolution)
-		linkResolved, errResolve := filepath.EvalSymlinks(link)
-		targetResolved, errTarget := filepath.EvalSymlinks(target)
-		if errResolve != nil || errTarget != nil {
-			return fmt.Errorf(
-				"host repo already contains a real _lyx at %s; it predates weft — migrate via the hub-creator",
-				link,
-			)
-		}
-
-		if linkResolved != targetResolved {
-			return fmt.Errorf(
-				"host repo already contains a real _lyx at %s; it predates weft — migrate via the hub-creator",
-				link,
-			)
-		}
-
-		// Idempotent: junction exists and is correct
-		return nil
+		// EvalSymlinks failed or resolved to wrong target; this is also a real _lyx issue
+		return fmt.Errorf(
+			"host repo already contains a real _lyx at %s; it predates weft — migrate via the hub-creator",
+			link,
+		)
 	}
 
 	if !os.IsNotExist(err) {
