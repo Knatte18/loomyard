@@ -30,7 +30,9 @@ implementing  '2026-06-19T15:52:22Z'
 ```yaml
 batches:
   - name: paths-weft-geometry
-    state: pending
+    state: running
+    implementer_session: fb6400eb-eed5-4abc-99d8-eea615b99cad
+    start_sha: 8d78559eab923c24b08ea9a1e3b5f2cab1864db4
   - name: ide-watcher-exclude
     state: pending
   - name: weft-module
