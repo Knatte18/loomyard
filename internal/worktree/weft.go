@@ -94,8 +94,13 @@ func seedLyxJunction(l *paths.Layout, slug string) error {
 		linkResolved, errResolve := filepath.EvalSymlinks(link)
 		targetResolved, errTarget := filepath.EvalSymlinks(target)
 
+		// If target doesn't exist (e.g., weft _lyx dir not yet created), report this distinctly
+		if errTarget != nil {
+			return fmt.Errorf("weft _lyx directory does not exist at %s; cannot validate junction target", target)
+		}
+
 		// Both paths must resolve successfully, and must resolve to the same location
-		if errResolve == nil && errTarget == nil && linkResolved == targetResolved {
+		if errResolve == nil && linkResolved == targetResolved {
 			// Idempotent: junction exists and resolves correctly
 			return nil
 		}
