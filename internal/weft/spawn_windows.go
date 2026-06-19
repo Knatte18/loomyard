@@ -4,6 +4,8 @@
 // It has its own process group (so parent Ctrl-C does not reach it) and survives
 // parent exit. CREATE_NO_WINDOW keeps it — and its git children — off-screen.
 
+//go:build windows
+
 package weft
 
 import (
