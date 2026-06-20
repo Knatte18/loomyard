@@ -85,6 +85,10 @@ coverage of real git/junction behaviour.
   `[remote "origin"] url` line in the copied repo's `.git/config` as a text
   edit** (no git spawn). We explicitly do NOT use `git remote set-url`, which
   would reintroduce a per-test spawn and undercut the zero-spawn goal.
+  **Invariant the text-edit relies on:** the template's `.git/config` is built by
+  `lyxtest` with exactly one `origin` remote and a single `url = …` line in
+  known/stable formatting, so the rewrite targets one unambiguous line. (If the
+  template ever grows multiple remotes, the rewrite logic must be revisited.)
 - Decision (upstream tracking): The **template build** runs the one-time
   `git push -u origin main` (today `addWeftRemote` does this per test,
   `internal/weft/sync_test.go:71`). After this, the template repo carries
@@ -218,6 +222,11 @@ coverage of real git/junction behaviour.
     invoked compiles fine in either build (Go permits unused package-level funcs),
     so tagging a pure-helper file is a no-op — but since they all move to
     `lyxtest`, we don't carry them in the classification at all.
+  - **Drain confirmation:** the plan must verify that paths `helpers_test.go`
+    (and worktree `testhelpers_test.go`/`helpers_test.go`) are **fully drained**
+    into `lyxtest` — no residual `func Test...` body left behind in an untagged
+    file. A leftover spawning test in an untagged file would silently break the
+    offline-default-loop guarantee.
   - Where a single file mixes spawning and non-spawning cases, split it so the
     untagged half stays in the default loop.
 - Because the white-box tests access unexported symbols
@@ -352,6 +361,13 @@ the guardrails that prove we didn't lose coverage.
   After refactoring, diff both snapshots — every distinct behavioural case (incl.
   the new table-driven `t.Run` leaves) must still be present. No silent coverage
   loss.
+  - **Diff mechanism:** save each baseline to a plain text file under a scratch
+    dir (e.g. `.scratch/baseline-list.txt`, `.scratch/baseline-runs.txt`),
+    **not committed** (gitignored / removed before handoff), and compare with a
+    scripted `diff` (or `git --no-index diff`) of pre vs post. The comparison must
+    be reproducible, not eyeballed — the post set must be a superset of the pre set
+    modulo intentionally-folded duplicate cases (which are recorded explicitly in
+    the PR description).
 - **`internal/lyxtest` (TDD candidate):** the copy helper and template builders
   are themselves testable — assert that a copied repo is a valid, independent git
   repo (HEAD resolves, origin rewritten, mutating one copy doesn't affect
