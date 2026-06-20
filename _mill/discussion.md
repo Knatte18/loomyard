@@ -193,15 +193,21 @@ coverage of real git/junction behaviour.
   - **Tagged `integration`** (spawn git/junction): worktree `add_test.go`,
     `remove_test.go`, `weft_test.go`, `cli_test.go`, `list_test.go`,
     `launchers_test.go` (uses `newTestRepo`), `portals_test.go` (uses
-    `newTestRepo` + `createPortal`, which creates junctions); weft `sync_test.go`,
-    `status_test.go`, `cli_test.go`,
+    `newTestRepo` + `createPortal`, which creates junctions), `junction_test.go`
+    (`TestCreateJunction` → `createJunction`, which spawns `cmd /c mklink /J` on
+    Windows, `junction_windows.go:40`); weft `sync_test.go`, `status_test.go`,
+    `cli_test.go`,
     **`weft_integration_test.go`**; paths **`paths_test.go`** (every case calls
     `newTestRepo` and/or `paths.Resolve`, which spawns `git rev-parse
     --show-toplevel`, `internal/paths/paths.go:61`) and `worktreelist_test.go`.
   - **Untagged** (pure unit, no subprocess): worktree `config_test.go`,
-    `junction_test.go` (non-spawning `createJunction` logic), `links_test.go`,
-    `prune_test.go`; weft `config_test.go`; paths `weft_test.go` (literal
-    `Layout` geometry), `codeguide_guard_test.go`, `enforcement_test.go`.
+    `links_test.go`, `prune_test.go`; weft `config_test.go`; paths `weft_test.go`
+    (literal `Layout` geometry), `codeguide_guard_test.go`, `enforcement_test.go`.
+  - **Note on `junction_test.go`:** tagged `integration` because on the primary
+    platform (Windows) `createJunction` spawns `cmd /c mklink /J`; keeping it
+    untagged would violate the "default loop is fully offline/subprocess-free"
+    constraint. (Its non-Windows path is the non-spawning `os.Symlink`, but
+    classification follows the Windows behaviour.)
   - **Fixture-builder helpers are not classified here — they migrate to
     `internal/lyxtest`** (`mustRun`, `newTestRepo`/`newTestWeftRepo`, the
     remote/template builders), so the per-package `testhelpers_test.go` /
@@ -236,8 +242,15 @@ coverage of real git/junction behaviour.
 
 ### conservative pruning
 
-- Decision: Consolidate, don't cut behaviour. Concretely: remove the dead
-  `addWeftRemote` (worktree `testhelpers_test.go`); fold the `TestAdd` precondition
+- Decision: Consolidate, don't cut behaviour. Concretely: remove **only** the
+  dead `addWeftRemote` in **worktree** `testhelpers_test.go:166` (no push,
+  verified uncalled). **Do NOT touch the same-named weft helper** `addWeftRemote`
+  in `internal/weft/sync_test.go:59` — it is a *different* function (does a real
+  `git push -u origin main`) and is actively used by `weft_integration_test.go`
+  and `sync_test.go`; it is kept and migrated into `internal/lyxtest` (the
+  template builder that establishes upstream tracking, see fixture decision). The
+  two share a name but have opposite fates — do not delete the wrong one. Then
+  fold the `TestAdd` precondition
   subtests (DirtySource / BranchExists / TargetDirExists / NoRemote / NoWeftRepo)
   and the `TestRemove` dirty-gate variants into table-driven cases built on a
   single shared base fixture + per-case delta; similarly table-drive the weft
@@ -365,7 +378,11 @@ the guardrails that prove we didn't lose coverage.
   rejection + worktree-list parsing.
 - **Success bar:** default `go test ./...` < ~5s; full `-tags integration` suite
   < ~45s (from ~360s). Capture before/after wall-clock for worktree/weft/paths in
-  the PR description.
+  the PR description. **The < ~5s figure is a target to confirm against a measured
+  post-gating untagged baseline, not a precondition** — there is no current
+  untagged-loop measurement, so the first step is to measure the gated default
+  loop and adjust expectations if the pure-unit residue (incl. symlink/junction
+  permission probes) lands higher.
 
 ## Q&A log
 
