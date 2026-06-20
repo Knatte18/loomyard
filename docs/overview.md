@@ -61,7 +61,7 @@ exposes two entry points:
   --show-toplevel`), Hub, relative path, and Prime worktree.
 
 The `Layout` type provides geometry methods: `LyxDir()`, `WorktreePath(slug)`,
-`PortalsDir()`, `PortalLink(slug)`, `PortalTarget(slug)`, `LaunchersDir()`, `LauncherDir(slug)`, `PrimeName()`.
+`PortalsDir()`, `PortalLink(slug)`, `PortalTarget(slug)`, `LaunchersDir()`, `LauncherDir(slug)`, `MenuLauncherPath()`, `LauncherSpawnRel(slug)`, `MenuLauncherRel()`, `PrimeName()`, `WeftRepoRoot()`, `WeftWorktreePath(slug)`, `WeftWorktree()`, `WeftLyxDir()`, `WeftLyxDirFor(slug)`, `WeftCodeguideDir()`, `HostLyxLink(slug)`, `HostLyxLinkHere()`.
 
 **Raw `os.Getwd` and `git rev-parse --show-toplevel` are banned** outside `internal/paths`
 and `cmd/lyx/main.go`. The ban is enforced at `go test` / CI time by
@@ -119,9 +119,9 @@ The `-weft` suffix is fixed and non-configurable. Weft paths are computed on dem
 
 ### Status
 
-- **Go implementation** (paths geometry, paired spawn, `lyx weft` command): task 006
+- **Go implementation** (paths geometry, paired spawn, `lyx weft` command): ✅ task 006 complete. The weft engine (paths geometry, paired `lyx worktree add` spawn, and `lyx weft status|commit|push|pull|sync`) now exists in Go. Paired `lyx worktree add` hard-requires a weft repo built by the downstream hub-creator.
+- **Portals**: on hold pending `_codeguide` junction activation. Portals (symlink-based overlay sharing) remain unimplemented; the weft junction model is the live mechanism.
 - **`_codeguide` junction activation** (`lyx config` TUI, `_lyx/config/` schema): task 008
-- **Weft has no Go code yet** — portals are still the live mechanism. The weft overlay model is the decided target architecture, but all implementation lands in downstream tasks (task 006 onwards). This section documents the design; code realization comes later.
 
 ```
 github.com/Knatte18/loomyard/
@@ -129,6 +129,7 @@ github.com/Knatte18/loomyard/
 │   └── main.go                   entrypoint: routes the <module> argument to a module
 ├── internal/board/               the board module
 ├── internal/worktree/            the worktree module
+├── internal/weft/                the weft module
 ├── internal/ide/                 the ide module
 ├── internal/muxpoc/              the muxpoc POC module
 ├── internal/paths/               geometry resolver (the sole owner of cwd/root math)
@@ -160,6 +161,8 @@ case "muxpoc":
     return muxpoc.RunCLI(out, moduleArgs)
 case "worktree":
     return worktree.RunCLI(out, moduleArgs)
+case "weft":
+    return weft.RunCLI(out, moduleArgs)
 }
 ```
 
@@ -175,6 +178,7 @@ User-facing modules each get one `lyx <module>` namespace:
 
 - **board** — the task-tracker board (`internal/board`). ✅ Implemented.
 - **worktree** — git-worktree lifecycle (create / track / tear down). ✅ Implemented.
+- **weft** — owns all git into the paired weft repo (`lyx weft status|commit|push|pull|sync`). ✅ Implemented.
 - **ide** — one-shot VS Code launcher with interactive menu. ✅ Implemented.
 - **muxpoc** — shipped proof-of-concept psmux orchestrator proving the risky parts of the
   planned mux module. ✅ Implemented.
