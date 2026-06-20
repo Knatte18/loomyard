@@ -80,9 +80,11 @@ coverage of real git/junction behaviour.
   prime, weft bare) **once per test binary**, cached in `internal/lyxtest`
   (`sync.Once`-guarded). Each test gets an isolated working copy via a cheap
   filesystem copy into `t.TempDir()` — **zero git spawns at the per-test level**.
-  For tests needing a remote, the copy includes/points at a copied bare and the
-  `origin` URL is rewritten (one `git remote set-url`, or copy the bare and
-  rewrite) so pushes/pulls are isolated.
+  For tests needing a remote, the bare remote is **copied per test** into the
+  test's tempdir and `origin` is repointed at the copy by **rewriting the
+  `[remote "origin"] url` line in the copied repo's `.git/config` as a text
+  edit** (no git spawn). We explicitly do NOT use `git remote set-url`, which
+  would reintroduce a per-test spawn and undercut the zero-spawn goal.
 - Rationale: ~half the runtime is identical repeated `init`/`config`/`commit`
   setup. Paying it once and copying directory trees (milliseconds, no subprocess)
   removes that half entirely while keeping each test fully isolated and
@@ -97,14 +99,35 @@ coverage of real git/junction behaviour.
 
 ### parallelism via layered env→param
 
-- Decision: Make the **in-process** weft sync functions (`Commit`, `Push`, `Pull`
-  in `internal/weft/sync.go`, and the weft path in `internal/worktree/weft.go`)
-  take explicit options (`skipGit`/`skipPush`) instead of reading `os.Getenv`
-  directly. Tests pass the option explicitly — **no `t.Setenv`**, so `t.Parallel()`
-  becomes legal. The **CLI `push`/sync subcommand and the detached spawn**
-  (`spawn_windows.go`/`spawn_other.go`) **keep reading the env vars** and pass
-  them through as the option, because the detached child is a separate process and
-  a function parameter cannot cross an `exec` boundary.
+- Decision: Move the env read **out** of the in-process functions and into an
+  explicit option, then push the env→option mapping to the call sites at the edge.
+  Concretely:
+  - **Functions that lose their `os.Getenv` and gain an explicit option**
+    (`skipGit`/`skipPush`, e.g. a small `opts` struct or two bools threaded as
+    parameters):
+    - `Commit`, `Push`, `Pull` in `internal/weft/sync.go` (reads at ~lines 34,
+      83, 120).
+    - `pushWeftBranch` in `internal/worktree/weft.go:208` — the Add-path env
+      reader. **Note: this is NOT a `Commit`/`Push`/`Pull` function**; it is the
+      weft-branch push step invoked during `Add`. Its new signature takes the
+      `skipPush`/`skipGit` option explicitly.
+  - **Call sites that gain a NEW env→option read** (they have none today — this is
+    new code, not a "keep"):
+    - `internal/weft/cli.go` — the CLI dispatcher calls `Commit`/`Push`/`Pull`
+      (current call sites ~lines 66, 106, 113, 117, 123, 129) with no env read at
+      all today. Each gains an `os.Getenv("WEFT_SKIP_GIT")`/`WEFT_SKIP_PUSH`
+      read that it maps to the option. This is where the process-boundary env
+      contract is honoured for the real CLI path (including the detached child,
+      which runs `lyx weft … push` and therefore goes through cli.go).
+    - `Add` in `internal/worktree/add.go` — maps env→option when it calls
+      `pushWeftBranch`, so the paired-Add tests can pass `skipPush` explicitly
+      without `t.Setenv`.
+  - Tests call the in-process functions / `Add` with the option passed directly —
+    **no `t.Setenv`** — so `t.Parallel()` becomes legal.
+  - The detached-spawn early-return check in `spawn_windows.go` (~line 28) /
+    `spawn_other.go` (~line 23) **keeps reading the env vars** (it decides at spawn
+    time whether to fork the child at all); a function parameter cannot cross the
+    `exec` boundary, so env stays the channel there.
 - Rationale: `WEFT_SKIP_GIT`/`WEFT_SKIP_PUSH` are load-bearing across the
   process boundary (the detached `lyx weft … push` child reads them to decide
   whether to skip). They cannot simply be deleted. The layered approach gives a
@@ -208,11 +231,17 @@ Key files and facts mill-plan needs:
   per call (`TestMirroredMethods` triggers ~13). `weft_test.go` and the guard
   tests (`codeguide_guard_test.go`, `enforcement_test.go`) do **no** git/IO — they
   stay untagged. `worktreelist_test.go`'s `BareRepoRejection` needs a bare repo.
-- **Production env reads to refactor (in-process):** `internal/weft/sync.go`
-  (lines ~34, ~83, ~120), `internal/worktree/weft.go` (~208). **Keep env at the
-  boundary:** `internal/weft/spawn_windows.go` (~28), `spawn_other.go` (~23), and
-  the CLI subcommands. Board's `BOARD_SKIP_*` is the analogous pattern — do not
-  touch board.
+- **Production env reads to move out into an option:** `internal/weft/sync.go`
+  (`Commit`/`Push`/`Pull`, lines ~34, ~83, ~120) and `internal/worktree/weft.go`
+  (`pushWeftBranch`, ~208 — the Add-path push step, not a sync function).
+- **Call sites that gain a NEW env→option read** (none today): `internal/weft/cli.go`
+  (~lines 66, 106, 113, 117, 123, 129, where it currently calls Commit/Push/Pull
+  with no env read) and `internal/worktree/add.go` (`Add`, where it calls
+  `pushWeftBranch`). This is new code — the discussion does **not** treat the CLI
+  as merely "keeping" an existing read.
+- **Keep env unchanged at the spawn boundary:** `internal/weft/spawn_windows.go`
+  (~28), `spawn_other.go` (~23) — the spawn-time early-return check. Board's
+  `BOARD_SKIP_*` is the analogous in-function pattern — do not touch board.
 - **Junctions (do NOT change):** `internal/worktree/junction_windows.go`
   (`cmd /c mklink /J`), `junction_other.go` (`os.Symlink`), callers `portals.go`
   and `weft.go`. Detection in `links.go` and `weft/status.go` (`checkJunction`).
@@ -237,10 +266,17 @@ Key files and facts mill-plan needs:
 This task *is* test work; the "testing approach" is the migration strategy plus
 the guardrails that prove we didn't lose coverage.
 
-- **Equivalence guardrail:** before refactoring, record the full list of test
-  names and the pass result per package. After refactoring, every distinct
-  behavioural assertion must still be present (table-driven cases count
-  individually via `t.Run`). No silent coverage loss.
+- **Equivalence guardrail:** before refactoring, capture the baseline two ways
+  and diff pre/post:
+  1. Top-level functions: `go test -tags integration -list '.*'
+     ./internal/worktree/... ./internal/weft/... ./internal/paths/...` (snapshot
+     the printed test-name list).
+  2. Subtest (`t.Run`) leaves, which `-list` does NOT show: capture
+     `go test -tags integration -v -run '.*' ./internal/{worktree,weft,paths}/...`
+     and grep the `=== RUN`/`--- PASS` lines for the full subtest path set.
+  After refactoring, diff both snapshots — every distinct behavioural case (incl.
+  the new table-driven `t.Run` leaves) must still be present. No silent coverage
+  loss.
 - **`internal/lyxtest` (TDD candidate):** the copy helper and template builders
   are themselves testable — assert that a copied repo is a valid, independent git
   repo (HEAD resolves, origin rewritten, mutating one copy doesn't affect
@@ -278,8 +314,10 @@ the guardrails that prove we didn't lose coverage.
 - **Q:** Fixture-sharing model? **A:** Template built once + isolated filesystem
   copy per test (not one shared long-lived repo, not git-reset-between).
 - **Q:** Parallelism vs the env seams? **A:** Layered — in-process
-  `Commit`/`Push`/`Pull` take an explicit option; CLI + detached spawn keep env
-  at the process boundary (a param can't cross `exec`).
+  `Commit`/`Push`/`Pull` (and Add-path `pushWeftBranch`) take an explicit option;
+  the env→option read moves to the edge: `cli.go` and `Add` gain a NEW read
+  (they have none today), and the detached-spawn early-return keeps reading env
+  (a param can't cross `exec`).
 - **Q:** Gate behind `//go:build integration`? **A:** Yes — default loop becomes
   pure-unit/instant; git suite runs with `-tags integration`.
 - **Q:** Pruning appetite? **A:** Conservative — consolidate overlapping fixtures
