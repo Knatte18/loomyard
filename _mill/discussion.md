@@ -129,12 +129,16 @@ coverage of real git/junction behaviour.
       list).
   - **Call sites that gain a NEW env→option read** (they have none today — this is
     new code, not a "keep"):
-    - `internal/weft/cli.go` — the CLI dispatcher calls `Commit`/`Push`/`Pull`
-      (current call sites ~lines 66, 106, 113, 117, 123, 129) with no env read at
-      all today. Each gains an `os.Getenv("WEFT_SKIP_GIT")`/`WEFT_SKIP_PUSH`
-      read that it maps to the option. This is where the process-boundary env
-      contract is honoured for the real CLI path (including the detached child,
-      which runs `lyx weft … push` and therefore goes through cli.go).
+    - `internal/weft/cli.go` — the **cwd-resolved** `Commit`/`Push`/`Pull` call
+      sites (~lines 106, 113, 117, 123, 129) gain an
+      `os.Getenv("WEFT_SKIP_GIT")`/`WEFT_SKIP_PUSH` read mapped to the option.
+      This is where the process-boundary env contract is honoured for the real
+      CLI path (including the detached child, which runs `lyx weft … push` and
+      therefore re-enters cli.go on the cwd-resolved path).
+      **Exclude line 66** — that is the detached `--weft-path push` *child branch*,
+      whose skip semantics are already governed by the spawn-time env check in
+      `spawn_*.go`. Do NOT add a second env read at line 66 (double-handling); it
+      is the spawn layer's responsibility.
     - `internal/worktree/cli.go` — the **sole production caller of `Add`**,
       `w.Add(l, slug)` at `cli.go:90`, reads the env vars and maps them to the new
       `Add` option. Without this, the real `lyx worktree add` path would lose the
@@ -188,7 +192,8 @@ coverage of real git/junction behaviour.
 - Explicit classification (the criterion is "spawns a git/`cmd` subprocess"):
   - **Tagged `integration`** (spawn git/junction): worktree `add_test.go`,
     `remove_test.go`, `weft_test.go`, `cli_test.go`, `list_test.go`,
-    `launchers_test.go` (uses `newTestRepo`); weft `sync_test.go`,
+    `launchers_test.go` (uses `newTestRepo`), `portals_test.go` (uses
+    `newTestRepo` + `createPortal`, which creates junctions); weft `sync_test.go`,
     `status_test.go`, `cli_test.go`,
     **`weft_integration_test.go`**; paths **`paths_test.go`** (every case calls
     `newTestRepo` and/or `paths.Resolve`, which spawns `git rev-parse
@@ -291,9 +296,10 @@ Key files and facts mill-plan needs:
   (`add.go:59`) threads the option to `pushWeftBranch`; tests call `Add` with the
   option directly.
 - **Call sites that gain a NEW env→option read** (none today): `internal/weft/cli.go`
-  (~lines 66, 106, 113, 117, 123, 129, where it currently calls Commit/Push/Pull
-  with no env read) and `internal/worktree/cli.go` (the `w.Add(l, slug)` call at
-  `cli.go:90`, the sole production caller of `Add`). This is new code — the
+  cwd-resolved Commit/Push/Pull calls (~lines 106, 113, 117, 123, 129 —
+  **excluding line 66**, the detached `--weft-path push` child branch governed by
+  the spawn-time check) and `internal/worktree/cli.go` (the `w.Add(l, slug)` call
+  at `cli.go:90`, the sole production caller of `Add`). This is new code — the
   discussion does **not** treat the CLI as merely "keeping" an existing read.
 - **Keep env unchanged at the spawn boundary:** `internal/weft/spawn_windows.go`
   (~28), `spawn_other.go` (~23) — the spawn-time early-return check. Board's
