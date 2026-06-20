@@ -120,6 +120,13 @@ coverage of real git/junction behaviour.
       reader. **Note: this is NOT a `Commit`/`Push`/`Pull` function**; it is the
       weft-branch push step invoked during `Add`. Its new signature takes the
       `skipPush`/`skipGit` option explicitly.
+    - `Add` (`func (w *Worktree) Add(l *paths.Layout, slug string)`, `add.go:59`)
+      **gains the explicit option parameter** (e.g. `Add(l, slug, opts)`) and
+      threads it down to `pushWeftBranch`. **`Add` does NOT read env itself** —
+      that is the contradiction this fixes: if `Add` read env internally, parallel
+      tests would still need `t.Setenv`. Instead, paired-Add tests pass the option
+      directly to `Add` (no `t.Setenv`), and the env read lives at the edge (next
+      list).
   - **Call sites that gain a NEW env→option read** (they have none today — this is
     new code, not a "keep"):
     - `internal/weft/cli.go` — the CLI dispatcher calls `Commit`/`Push`/`Pull`
@@ -128,9 +135,11 @@ coverage of real git/junction behaviour.
       read that it maps to the option. This is where the process-boundary env
       contract is honoured for the real CLI path (including the detached child,
       which runs `lyx weft … push` and therefore goes through cli.go).
-    - `Add` in `internal/worktree/add.go` — maps env→option when it calls
-      `pushWeftBranch`, so the paired-Add tests can pass `skipPush` explicitly
-      without `t.Setenv`.
+    - `internal/worktree/cli.go` — the **sole production caller of `Add`**,
+      `w.Add(l, slug)` at `cli.go:90`, reads the env vars and maps them to the new
+      `Add` option. Without this, the real `lyx worktree add` path would lose the
+      `WEFT_SKIP_PUSH`/`WEFT_SKIP_GIT` contract. (Tests call `Add` with the option
+      directly and bypass this edge.)
   - Tests call the in-process functions / `Add` with the option passed directly —
     **no `t.Setenv`** — so `t.Parallel()` becomes legal.
   - The detached-spawn early-return check in `spawn_windows.go` (~line 28) /
@@ -179,16 +188,25 @@ coverage of real git/junction behaviour.
 - Explicit classification (the criterion is "spawns a git/`cmd` subprocess"):
   - **Tagged `integration`** (spawn git/junction): worktree `add_test.go`,
     `remove_test.go`, `weft_test.go`, `cli_test.go`, `list_test.go`,
-    `launchers_test.go` (uses `newTestRepo`), `testhelpers_test.go`/`helpers_test.go`
-    (fixture builders); weft `sync_test.go`, `status_test.go`, `cli_test.go`,
+    `launchers_test.go` (uses `newTestRepo`); weft `sync_test.go`,
+    `status_test.go`, `cli_test.go`,
     **`weft_integration_test.go`**; paths **`paths_test.go`** (every case calls
     `newTestRepo` and/or `paths.Resolve`, which spawns `git rev-parse
     --show-toplevel`, `internal/paths/paths.go:61`) and `worktreelist_test.go`.
   - **Untagged** (pure unit, no subprocess): worktree `config_test.go`,
     `junction_test.go` (non-spawning `createJunction` logic), `links_test.go`,
     `prune_test.go`; weft `config_test.go`; paths `weft_test.go` (literal
-    `Layout` geometry), `codeguide_guard_test.go`, `enforcement_test.go`,
-    `helpers_test.go` (no git itself, but only referenced by tagged files).
+    `Layout` geometry), `codeguide_guard_test.go`, `enforcement_test.go`.
+  - **Fixture-builder helpers are not classified here — they migrate to
+    `internal/lyxtest`** (`mustRun`, `newTestRepo`/`newTestWeftRepo`, the
+    remote/template builders), so the per-package `testhelpers_test.go` /
+    `helpers_test.go` files (worktree *and* paths) and the helper funcs in weft
+    `sync_test.go` largely disappear. The earlier inconsistency (tag worktree
+    helpers but not paths helpers) is therefore moot. The real criterion: a build
+    tag gates whether a file's **tests execute**; a helper *definition* that isn't
+    invoked compiles fine in either build (Go permits unused package-level funcs),
+    so tagging a pure-helper file is a no-op — but since they all move to
+    `lyxtest`, we don't carry them in the classification at all.
   - Where a single file mixes spawning and non-spawning cases, split it so the
     untagged half stays in the default loop.
 - Because the white-box tests access unexported symbols
@@ -269,11 +287,14 @@ Key files and facts mill-plan needs:
 - **Production env reads to move out into an option:** `internal/weft/sync.go`
   (`Commit`/`Push`/`Pull`, lines ~34, ~83, ~120) and `internal/worktree/weft.go`
   (`pushWeftBranch`, ~208 — the Add-path push step, not a sync function).
+- **Functions that gain an explicit option param (no env read inside):** `Add`
+  (`add.go:59`) threads the option to `pushWeftBranch`; tests call `Add` with the
+  option directly.
 - **Call sites that gain a NEW env→option read** (none today): `internal/weft/cli.go`
   (~lines 66, 106, 113, 117, 123, 129, where it currently calls Commit/Push/Pull
-  with no env read) and `internal/worktree/add.go` (`Add`, where it calls
-  `pushWeftBranch`). This is new code — the discussion does **not** treat the CLI
-  as merely "keeping" an existing read.
+  with no env read) and `internal/worktree/cli.go` (the `w.Add(l, slug)` call at
+  `cli.go:90`, the sole production caller of `Add`). This is new code — the
+  discussion does **not** treat the CLI as merely "keeping" an existing read.
 - **Keep env unchanged at the spawn boundary:** `internal/weft/spawn_windows.go`
   (~28), `spawn_other.go` (~23) — the spawn-time early-return check. Board's
   `BOARD_SKIP_*` is the analogous in-function pattern — do not touch board.
