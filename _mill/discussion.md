@@ -85,6 +85,15 @@ coverage of real git/junction behaviour.
   `[remote "origin"] url` line in the copied repo's `.git/config` as a text
   edit** (no git spawn). We explicitly do NOT use `git remote set-url`, which
   would reintroduce a per-test spawn and undercut the zero-spawn goal.
+- Decision (upstream tracking): The **template build** runs the one-time
+  `git push -u origin main` (today `addWeftRemote` does this per test,
+  `internal/weft/sync_test.go:71`). After this, the template repo carries
+  `branch.main.remote`/`branch.main.merge` config and `refs/remotes/origin/main`.
+  Because the per-test copy is a full filesystem copy of `.git/` and only the
+  `origin` *url* line is rewritten, the upstream tracking is preserved intact in
+  every copy — so `Pull --ff-only` (needs `@{u}`) and the `hasUnpushed`
+  (`rev-list --count @{u}..HEAD`) semantics in `Push`/`Pull` behave exactly as
+  with today's per-test `push -u`, at zero per-test spawn cost.
 - Rationale: ~half the runtime is identical repeated `init`/`config`/`commit`
   setup. Paying it once and copying directory trees (milliseconds, no subprocess)
   removes that half entirely while keeping each test fully isolated and
@@ -128,6 +137,12 @@ coverage of real git/junction behaviour.
     `spawn_other.go` (~line 23) **keeps reading the env vars** (it decides at spawn
     time whether to fork the child at all); a function parameter cannot cross the
     `exec` boundary, so env stays the channel there.
+  - **Not a conflict — the two reads are complementary.** For the `sync` path
+    (`cli.go` calls `Commit` then `spawnPush`): the spawn-time env check decides
+    *whether to fork* the detached child, and the forked child's own `Push` reads
+    the env via `cli.go`'s new env→option mapping when it runs `lyx weft … push`.
+    The plan writer should treat them as two layers of the same contract, not
+    duplicated/contradictory logic.
 - Rationale: `WEFT_SKIP_GIT`/`WEFT_SKIP_PUSH` are load-bearing across the
   process boundary (the detached `lyx weft … push` child reads them to decide
   whether to skip). They cannot simply be deleted. The layered approach gives a
@@ -160,7 +175,23 @@ coverage of real git/junction behaviour.
   `boardtest/integration_test.go`). Pure-unit tests (config parsing, geometry/
   `Layout` computation, `createJunction` logic that doesn't spawn, link bitmask
   logic, prune logic, static guard tests) stay **untagged** and run in the
-  default `go test ./...`. Because the white-box tests access unexported symbols
+  default `go test ./...`.
+- Explicit classification (the criterion is "spawns a git/`cmd` subprocess"):
+  - **Tagged `integration`** (spawn git/junction): worktree `add_test.go`,
+    `remove_test.go`, `weft_test.go`, `cli_test.go`, `list_test.go`,
+    `launchers_test.go` (uses `newTestRepo`), `testhelpers_test.go`/`helpers_test.go`
+    (fixture builders); weft `sync_test.go`, `status_test.go`, `cli_test.go`,
+    **`weft_integration_test.go`**; paths **`paths_test.go`** (every case calls
+    `newTestRepo` and/or `paths.Resolve`, which spawns `git rev-parse
+    --show-toplevel`, `internal/paths/paths.go:61`) and `worktreelist_test.go`.
+  - **Untagged** (pure unit, no subprocess): worktree `config_test.go`,
+    `junction_test.go` (non-spawning `createJunction` logic), `links_test.go`,
+    `prune_test.go`; weft `config_test.go`; paths `weft_test.go` (literal
+    `Layout` geometry), `codeguide_guard_test.go`, `enforcement_test.go`,
+    `helpers_test.go` (no git itself, but only referenced by tagged files).
+  - Where a single file mixes spawning and non-spawning cases, split it so the
+    untagged half stays in the default loop.
+- Because the white-box tests access unexported symbols
   (`rollbackAdd`, `seedLyxJunction`, `scopedPathspec`, `createJunction`), the
   tagged tests stay **in their own package, split by file** — we do NOT move them
   to a black-box sibling package the way `boardtest` does.
@@ -225,7 +256,11 @@ Key files and facts mill-plan needs:
   2-repo (host + `<base>-weft` sibling) fixture inline (~10 spawns) and uses
   `t.Chdir` — re-express via a "hub+weft pair" lyxtest fixture. The only
   `cmd /c mklink /J` in *test* code is `TestStatus_JunctionOk_Windows` (skippable
-  via `SKIP_MKLINK_TEST=1`).
+  via `SKIP_MKLINK_TEST=1`). **`weft_integration_test.go` exists** (4 tests:
+  `TestPushIntegration_*`, `TestPullIntegration_FastForward`,
+  `TestSyncIntegration_EventuallyPushed`); it spawns real git against a bare
+  remote via `addWeftRemote` and is currently **NOT** behind a build tag — it must
+  be moved under `//go:build integration` (see build-tag decision).
 - **paths fixtures** (`internal/paths/`): external `paths_test` uses `newTestRepo`
   (5 spawns); `paths.Resolve(cwd)` itself spawns `git rev-parse --show-toplevel`
   per call (`TestMirroredMethods` triggers ~13). `weft_test.go` and the guard
