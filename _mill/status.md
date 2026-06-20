@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: weft-engine
 branch: weft-engine
 plan: _mill/plan
@@ -38,6 +38,7 @@ holistic-reviewing  '2026-06-19T18:12:00Z'
 holistic-fixing  '2026-06-19T18:16:05Z'
 holistic-approved  '2026-06-19T18:18:51Z'
 done  '2026-06-19T18:19:57Z'
+pr-pending  '2026-06-20T15:48:53Z'
 ```
 
 ## Batches
