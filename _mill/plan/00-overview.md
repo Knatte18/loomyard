@@ -3,7 +3,7 @@
 ```yaml
 task: "Optimise and slim the test suite"
 slug: "optimize-test-suite"
-approved: false
+approved: true
 started: "20260620-182234"
 parent: "main"
 root: ""
@@ -62,7 +62,7 @@ batches:
 
 ### Decision: template-once + per-test filesystem copy
 
-- **Decision:** Each template (host hub, bare, weft prime, weft bare) is built **once per test binary** via `sync.Once` inside `lyxtest`. Each `Copy*` helper does a recursive filesystem copy of the cached template into `tb.TempDir()` (no git spawns) and, for fixtures with a remote, repoints `origin` by **rewriting the single `url = …` line under `[remote "origin"]` in the copied repo's `.git/config` as a text edit** — never `git remote set-url` (that re-introduces a spawn). The template build runs the one-time `git push -u origin main` so upstream tracking survives the copy intact.
+- **Decision:** Each template (host hub, bare, weft prime, weft bare) is built **once per test binary** via `sync.Once` inside `lyxtest`. Each `Copy*` helper does a recursive filesystem copy of the cached template into `tb.TempDir()` (no git spawns) and, for fixtures with a remote, repoints `origin` by **rewriting the single `url = …` line under `[remote "origin"]` in the copied repo's `.git/config` as a text edit** — never `git remote set-url` (that re-introduces a spawn). Only the **weft-only** template runs the one-time `git push -u origin main` (upstream tracking is required for weft `Pull`/`hasUnpushed`); the host-hub and weft-prime bares are left empty, matching the existing `addRemote` semantics where `Add` populates the bare itself.
 - **Rationale:** ~half the suite runtime is identical repeated `init`/`config`/`commit` setup; paying it once and copying directory trees removes that half. Invariant: each template `.git/config` has exactly one `origin` remote / one `url` line in stable formatting.
 - **Applies to:** lyxtest-foundation; consumed by all package batches.
 
@@ -115,3 +115,11 @@ batches:
 - `internal/worktree/remove_test.go`
 - `internal/worktree/weft.go`
 - `internal/worktree/weft_test.go`
+
+## Deleted
+
+_Not part of the Creates/Edits union above — drained into `internal/lyxtest` and removed (batches 3, 4). Listed here for traceability._
+
+- `internal/paths/helpers_test.go`
+- `internal/worktree/helpers_test.go`
+- `internal/worktree/testhelpers_test.go`
