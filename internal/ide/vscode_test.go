@@ -48,6 +48,17 @@ func TestWriteVSCodeConfigCreatesFilesWhenAbsent(t *testing.T) {
 		t.Fatalf("missing window.title in settings.json")
 	}
 
+	// Verify files.watcherExclude contains **/_lyx/**
+	watcherExclude, ok := settings["files.watcherExclude"].(map[string]any)
+	if !ok {
+		t.Fatalf("files.watcherExclude not found or not a map in settings.json")
+	}
+	if excludeLyx, ok := watcherExclude["**/_lyx/**"]; !ok {
+		t.Fatalf("**/_lyx/** key missing from files.watcherExclude")
+	} else if excludeLyx != true {
+		t.Fatalf("**/_lyx/** value is not true, got %v", excludeLyx)
+	}
+
 	// Check tasks.json exists and is valid
 	tasksPath := filepath.Join(worktreeDir, relpath, ".vscode", "tasks.json")
 	if _, err := os.Stat(tasksPath); err != nil {

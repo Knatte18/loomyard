@@ -43,6 +43,9 @@ func writeVSCodeConfig(worktreeDir, relpath, slug, color string) error {
 				"titleBar.inactiveBackground": color,
 				"titleBar.inactiveForeground": "#ffffffaa",
 			},
+			"files.watcherExclude": map[string]any{
+				"**/_lyx/**": true,
+			},
 			"window.title":                                 slug,
 			"workbench.startupEditor":                      "none",
 			"workbench.secondarySideBar.defaultVisibility": "hidden",

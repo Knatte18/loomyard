@@ -15,6 +15,7 @@
 //	ide       VS Code launcher — see internal/ide.RunCLI for subcommands
 //	muxpoc    proof-of-concept psmux mux — see internal/muxpoc.RunCLI for subcommands
 //	worktree  git-worktree lifecycle — see internal/worktree.RunCLI for subcommands
+//	weft      weft git operations — see internal/weft.RunCLI for subcommands
 //
 // All output is JSON on stdout. Exit code 1 on error.
 package main
@@ -27,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/board"
 	"github.com/Knatte18/loomyard/internal/ide"
 	"github.com/Knatte18/loomyard/internal/muxpoc"
+	"github.com/Knatte18/loomyard/internal/weft"
 	"github.com/Knatte18/loomyard/internal/worktree"
 )
 
@@ -56,6 +58,8 @@ func run(args []string, out io.Writer) int {
 		return muxpoc.RunCLI(out, moduleArgs)
 	case "worktree":
 		return worktree.RunCLI(out, moduleArgs)
+	case "weft":
+		return weft.RunCLI(out, moduleArgs)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown module: %s\n", module)
 		return 1

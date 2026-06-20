@@ -205,3 +205,82 @@ func (l *Layout) MenuLauncherRel() string {
 func (l *Layout) PrimeName() string {
 	return filepath.Base(l.Prime)
 }
+
+// Weft geometry methods
+//
+// The host link and the weft target for the same slug form the two ends of a seeded
+// junction: HostLyxLink(slug) ↔ WeftLyxDirFor(slug) are junctions that connect
+// the host and weft worktrees for that slug. Similarly, HostLyxLinkHere() ↔ WeftLyxDir()
+// are the junctions for the current worktree.
+
+// WeftRepoRoot returns the path to the weft Prime worktree (the git -C target for weft worktree add/remove).
+//
+// Returns filepath.Join(Hub, PrimeName()+"-weft").
+func (l *Layout) WeftRepoRoot() string {
+	return filepath.Join(l.Hub, l.PrimeName()+"-weft")
+}
+
+// WeftWorktreePath returns the path to a sibling weft worktree with the given slug.
+//
+// Returns filepath.Join(Hub, slug+"-weft"), parallel to WorktreePath(slug).
+func (l *Layout) WeftWorktreePath(slug string) string {
+	return filepath.Join(l.Hub, slug+"-weft")
+}
+
+// WeftWorktree returns the path to the weft worktree paired with the current host worktree.
+//
+// Returns filepath.Join(Hub, filepath.Base(WorktreeRoot)+"-weft"), the weft analog
+// of WorktreeRoot. At the main worktree, this equals WeftRepoRoot().
+func (l *Layout) WeftWorktree() string {
+	return filepath.Join(l.Hub, filepath.Base(l.WorktreeRoot)+"-weft")
+}
+
+// WeftLyxDir returns the path to the _lyx directory in the current worktree's weft sibling.
+//
+// The path is: <hub>/<current-worktree>-weft/<RelPath>/_lyx. This is the junction target
+// for lyx weft and the pathspec base for weft operations, with RelPath-mirroring like
+// PortalTarget (collapses to <weft>/_lyx at RelPath ".").
+//
+// Returns filepath.Join(WeftWorktree(), RelPath, "_lyx").
+func (l *Layout) WeftLyxDir() string {
+	return filepath.Join(l.WeftWorktree(), l.RelPath, "_lyx")
+}
+
+// WeftLyxDirFor returns the path to the _lyx directory within a named slug's weft worktree.
+//
+// The path is: <hub>/<slug>-weft/<RelPath>/_lyx. This is the junction target paired
+// by spawn seeds for <slug>, and pairs with HostLyxLink(slug) as the junction endpoints.
+// Parallel to HostLyxLink(slug).
+//
+// Returns filepath.Join(WeftWorktreePath(slug), RelPath, "_lyx").
+func (l *Layout) WeftLyxDirFor(slug string) string {
+	return filepath.Join(l.WeftWorktreePath(slug), l.RelPath, "_lyx")
+}
+
+// WeftCodeguideDir returns the path to the _codeguide directory in the current worktree's weft sibling.
+//
+// Returns filepath.Join(WeftWorktree(), RelPath, "_codeguide").
+func (l *Layout) WeftCodeguideDir() string {
+	return filepath.Join(l.WeftWorktree(), l.RelPath, "_codeguide")
+}
+
+// HostLyxLink returns the path to the _lyx junction link in a named slug's host worktree.
+//
+// The path is: <hub>/<slug>/<RelPath>/_lyx. This is the host-side junction endpoint that
+// points into the paired weft worktree via WeftLyxDirFor(slug).
+//
+// Returns filepath.Join(WorktreePath(slug), RelPath, "_lyx").
+func (l *Layout) HostLyxLink(slug string) string {
+	return filepath.Join(l.WorktreePath(slug), l.RelPath, "_lyx")
+}
+
+// HostLyxLinkHere returns the path to the _lyx junction link in the current host worktree.
+//
+// The path is: <hub>/<current-worktree>/<RelPath>/_lyx, derived from WorktreeRoot+RelPath,
+// not from Cwd. This is intentionally distinct from LyxDir() (which is Cwd-based) and serves
+// as the host-side junction endpoint paired with WeftLyxDir().
+//
+// Returns filepath.Join(WorktreeRoot, RelPath, "_lyx").
+func (l *Layout) HostLyxLinkHere() string {
+	return filepath.Join(l.WorktreeRoot, l.RelPath, "_lyx")
+}
