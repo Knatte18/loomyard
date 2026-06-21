@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-docs-and-cross-verification
+phase: holistic-reviewing
 slug: optimize-test-suite
 branch: optimize-test-suite
 plan: _mill/plan
@@ -26,6 +26,7 @@ approved-weft-envparam-and-tests  '2026-06-21T13:27:31Z'
 approved-worktree-envparam-and-tests  '2026-06-21T14:10:58Z'
 approved-paths-tests  '2026-06-21T14:17:20Z'
 approved-docs-and-cross-verification  '2026-06-21T14:27:16Z'
+holistic-reviewing  '2026-06-21T14:27:45Z'
 ```
 
 ## Batches
