@@ -23,16 +23,18 @@ func TestCopyHostHub(t *testing.T) {
 		t.Fatalf("git rev-parse HEAD in hub: %v; output: %s", err, output)
 	}
 
-	// Verify origin URL points at the copied bare, not the template
+	// Verify origin URL points at the copied bare, not the template.
+	// Normalize to forward slashes: git returns forward-slash paths on Windows
+	// while filepath.Join uses backslashes; both are equivalent local paths.
 	cmd = exec.Command("git", "remote", "get-url", "origin")
 	cmd.Dir = fixture.Hub
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git remote get-url: %v", err)
 	}
-	gotURL := strings.TrimSpace(string(output))
-	if gotURL != fixture.Bare {
-		t.Errorf("origin URL = %q; want %q", gotURL, fixture.Bare)
+	gotURL := filepath.ToSlash(strings.TrimSpace(string(output)))
+	if gotURL != filepath.ToSlash(fixture.Bare) {
+		t.Errorf("origin URL = %q; want %q", gotURL, filepath.ToSlash(fixture.Bare))
 	}
 }
 
@@ -88,16 +90,18 @@ func TestCopyPaired(t *testing.T) {
 		t.Fatalf("git rev-parse HEAD in weft-prime: %v; output: %s", err, output)
 	}
 
-	// Verify origin URLs point at the copied bares
+	// Verify origin URLs point at the copied bares.
+	// Normalize to forward slashes: git returns forward-slash paths on Windows
+	// while filepath.Join uses backslashes; both are equivalent local paths.
 	cmd = exec.Command("git", "remote", "get-url", "origin")
 	cmd.Dir = fixture.Hub
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git remote get-url hub: %v", err)
 	}
-	gotURL := strings.TrimSpace(string(output))
-	if gotURL != fixture.Bare {
-		t.Errorf("hub origin URL = %q; want %q", gotURL, fixture.Bare)
+	gotURL := filepath.ToSlash(strings.TrimSpace(string(output)))
+	if gotURL != filepath.ToSlash(fixture.Bare) {
+		t.Errorf("hub origin URL = %q; want %q", gotURL, filepath.ToSlash(fixture.Bare))
 	}
 
 	cmd = exec.Command("git", "remote", "get-url", "origin")
@@ -106,9 +110,9 @@ func TestCopyPaired(t *testing.T) {
 	if err != nil {
 		t.Fatalf("git remote get-url weft-prime: %v", err)
 	}
-	gotURL = strings.TrimSpace(string(output))
-	if gotURL != fixture.WeftBare {
-		t.Errorf("weft-prime origin URL = %q; want %q", gotURL, fixture.WeftBare)
+	gotURL = filepath.ToSlash(strings.TrimSpace(string(output)))
+	if gotURL != filepath.ToSlash(fixture.WeftBare) {
+		t.Errorf("weft-prime origin URL = %q; want %q", gotURL, filepath.ToSlash(fixture.WeftBare))
 	}
 
 	// Verify Layout is valid
@@ -133,16 +137,18 @@ func TestCopyWeft(t *testing.T) {
 		t.Fatalf("git rev-parse HEAD: %v; output: %s", err, output)
 	}
 
-	// Verify origin URL points at the copied bare
+	// Verify origin URL points at the copied bare.
+	// Normalize to forward slashes: git returns forward-slash paths on Windows
+	// while filepath.Join uses backslashes; both are equivalent local paths.
 	cmd = exec.Command("git", "remote", "get-url", "origin")
 	cmd.Dir = fixture.WeftPath
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git remote get-url: %v", err)
 	}
-	gotURL := strings.TrimSpace(string(output))
-	if gotURL != fixture.Bare {
-		t.Errorf("origin URL = %q; want %q", gotURL, fixture.Bare)
+	gotURL := filepath.ToSlash(strings.TrimSpace(string(output)))
+	if gotURL != filepath.ToSlash(fixture.Bare) {
+		t.Errorf("origin URL = %q; want %q", gotURL, filepath.ToSlash(fixture.Bare))
 	}
 
 	// Verify upstream tracking is established
@@ -208,18 +214,31 @@ func TestMustRun(t *testing.T) {
 }
 
 // TestMustRun_Failure verifies that MustRun calls tb.Fatalf on a non-zero exit.
-// The command is run inside a subtest so Fatalf terminates only the subtest
-// goroutine; t.Run returns false when the subtest failed, which we assert.
+// It uses the subprocess pattern: when GO_TEST_SUBPROCESS=MUSTRUN_FAILURE the test
+// binary runs MustRun directly (which calls t.Fatalf and exits non-zero). The parent
+// process asserts the subprocess exited non-zero, confirming Fatalf was reached.
 func TestMustRun_Failure(t *testing.T) {
 	t.Parallel()
 
+	// Subprocess mode: called by the parent test; run the failing command and exit.
+	// MustRun calls t.Fatalf which causes runtime.Goexit and a non-zero exit code.
+	if os.Getenv("GO_TEST_SUBPROCESS") == "MUSTRUN_FAILURE" {
+		dir := os.Getenv("GO_TEST_SUBPROCESS_DIR")
+		MustRun(t, dir, "git", "rev-parse", "no-such-ref-xyz")
+		return
+	}
+
+	// Build a fixture so the subprocess has a valid git repo to run against.
 	fixture := CopyHostHub(t)
 
-	// git rev-parse on a deliberately invalid ref is guaranteed to exit non-zero.
-	passed := t.Run("exit-non-zero-must-fatal", func(t *testing.T) {
-		MustRun(t, fixture.Hub, "git", "rev-parse", "no-such-ref-xyz")
-	})
-	if passed {
-		t.Errorf("MustRun did not fail the subtest on non-zero exit; expected subtest to fail")
+	// Re-invoke this test as a subprocess; the -tags flag must match the current build.
+	cmd := exec.Command(os.Args[0], "-test.run=^TestMustRun_Failure$", "-test.v")
+	cmd.Env = append(os.Environ(),
+		"GO_TEST_SUBPROCESS=MUSTRUN_FAILURE",
+		"GO_TEST_SUBPROCESS_DIR="+fixture.Hub,
+	)
+	err := cmd.Run()
+	if err == nil {
+		t.Errorf("subprocess passed; expected MustRun to call Fatalf and exit non-zero")
 	}
 }

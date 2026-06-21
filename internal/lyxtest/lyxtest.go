@@ -364,7 +364,10 @@ func rewriteOriginURLInConfig(repoPath string, newURL string) error {
 		if inOriginSection && strings.HasPrefix(trimmed, "url = ") {
 			// Preserve the leading whitespace from the original line.
 			leading := line[:len(line)-len(strings.TrimLeft(line, " \t"))]
-			lines[i] = leading + "url = " + newURL
+			// Git config encodes backslashes as \\; use forward slashes instead,
+			// which git accepts on Windows for local paths.
+			forwardSlashURL := filepath.ToSlash(newURL)
+			lines[i] = leading + "url = " + forwardSlashURL
 			matchCount++
 		}
 	}
