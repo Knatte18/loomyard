@@ -13,8 +13,10 @@ import (
 )
 
 func TestRunCLI_UnknownSubcommand(t *testing.T) {
-	tmpDir := t.TempDir()
-	t.Chdir(tmpDir)
+	// Use a real weft fixture so paths.Resolve succeeds and the CLI reaches the
+	// dispatch table; a bare temp dir causes ErrNotAGitRepo before dispatch.
+	fixture := lyxtest.CopyWeft(t)
+	t.Chdir(fixture.WeftPath)
 
 	var out bytes.Buffer
 	exitCode := RunCLI(&out, []string{"unknown"})

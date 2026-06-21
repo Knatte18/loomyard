@@ -122,21 +122,13 @@ func TestSyncIntegration_EventuallyPushed(t *testing.T) {
 // push command which reads the current directory. The test sets WEFT_SKIP_PUSH
 // and verifies the push command succeeds (with the push skipped due to the env var).
 func TestRunCLI_EnvMapToOption(t *testing.T) {
-	// Serial: uses t.Setenv which affects environment
+	// Serial: uses t.Setenv and t.Chdir which affect process-wide state
 	fixture := lyxtest.CopyPaired(t)
 	hubPath := fixture.Hub
 
-	// Change to host directory so paths.Resolve works
-	oldCwd, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("Getwd: %v", err)
-	}
-	if err := os.Chdir(hubPath); err != nil {
-		t.Fatalf("Chdir: %v", err)
-	}
-	t.Cleanup(func() {
-		os.Chdir(oldCwd)
-	})
+	// Change to the hub directory so paths.Resolve can locate the repo from cwd;
+	// t.Chdir restores the original cwd automatically after the test.
+	t.Chdir(hubPath)
 
 	// Modify a file in the weft config that would be committed
 	weftConfigFile := filepath.Join(fixture.WeftPrime, "_lyx", "placeholder")

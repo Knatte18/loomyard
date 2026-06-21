@@ -207,18 +207,19 @@ func TestMustRun(t *testing.T) {
 	MustRun(t, fixture.Hub, "git", "rev-parse", "HEAD")
 }
 
-// TestMustRun_Failure verifies that MustRun fails the test on command failure.
+// TestMustRun_Failure verifies that MustRun calls tb.Fatalf on a non-zero exit.
+// The command is run inside a subtest so Fatalf terminates only the subtest
+// goroutine; t.Run returns false when the subtest failed, which we assert.
 func TestMustRun_Failure(t *testing.T) {
 	t.Parallel()
 
 	fixture := CopyHostHub(t)
 
-	// Create a sub-test to capture the fatality
-	t.Run("command-failure", func(t *testing.T) {
-		// We can't directly test t.Fatalf, but we can verify the behavior indirectly
-		// by ensuring that a command that should fail would be caught.
-		// This is more of a sanity check that MustRun is set up correctly.
-		// For now, we just verify that the helper respects tb.Helper().
-		MustRun(t, fixture.Hub, "git", "rev-parse", "HEAD")
+	// git rev-parse on a deliberately invalid ref is guaranteed to exit non-zero.
+	passed := t.Run("exit-non-zero-must-fatal", func(t *testing.T) {
+		MustRun(t, fixture.Hub, "git", "rev-parse", "no-such-ref-xyz")
 	})
+	if passed {
+		t.Errorf("MustRun did not fail the subtest on non-zero exit; expected subtest to fail")
+	}
 }

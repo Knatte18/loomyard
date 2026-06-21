@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
@@ -329,14 +330,54 @@ type WeftFixture struct {
 	Bare     string
 }
 
-// Helper: rewrite origin URL in a copied repository.
-// Uses git remote set-url to update the origin URL safely.
-func rewriteOriginURL(repoPath string, newURL string) error {
-	cmd := exec.Command("git", "remote", "set-url", "origin", newURL)
-	cmd.Dir = repoPath
+// rewriteOriginURLInConfig rewrites the single `url = …` line under [remote "origin"]
+// in the copied repository's .git/config as a pure text edit — no subprocess.
+// The plan's shared decision ("template-once + per-test filesystem copy") explicitly
+// forbids git remote set-url because it re-introduces a spawn and breaks the
+// zero-per-test-git-spawn guarantee. The invariant is that each template .git/config
+// has exactly one origin remote / one url line in stable formatting; this function
+// asserts that invariant (returns an error if the count is not exactly one).
+func rewriteOriginURLInConfig(repoPath string, newURL string) error {
+	configPath := filepath.Join(repoPath, ".git", "config")
 
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("git remote set-url: %v; output: %s", err, output)
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return fmt.Errorf("read .git/config: %w", err)
+	}
+
+	lines := strings.Split(string(data), "\n")
+
+	// Track whether we are inside the [remote "origin"] section so we only
+	// replace the url line belonging to origin, not any other remote.
+	inOriginSection := false
+	matchCount := 0
+
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+
+		// Detect section headers; entering a new section ends the origin block.
+		if strings.HasPrefix(trimmed, "[") {
+			inOriginSection = trimmed == `[remote "origin"]`
+			continue
+		}
+
+		if inOriginSection && strings.HasPrefix(trimmed, "url = ") {
+			// Preserve the leading whitespace from the original line.
+			leading := line[:len(line)-len(strings.TrimLeft(line, " \t"))]
+			lines[i] = leading + "url = " + newURL
+			matchCount++
+		}
+	}
+
+	// Exactly one url line must exist under [remote "origin"]; the template
+	// invariant guarantees this. More or fewer would indicate a corrupt config.
+	if matchCount != 1 {
+		return fmt.Errorf("rewriteOriginURLInConfig: expected exactly 1 url line under [remote \"origin\"], found %d in %s", matchCount, configPath)
+	}
+
+	updated := strings.Join(lines, "\n")
+	if err := os.WriteFile(configPath, []byte(updated), 0o644); err != nil {
+		return fmt.Errorf("write .git/config: %w", err)
 	}
 
 	return nil
@@ -405,21 +446,24 @@ func CopyHostHub(tb testing.TB) HostFixture {
 		tb.Fatalf("buildHostHub: %v", err)
 	}
 
+	// Use a single temp dir so both repos share one cleanup entry (matches CopyPaired).
+	tempContainer := tb.TempDir()
+
 	// Copy template hub into temp dir
-	copiedHub := filepath.Join(tb.TempDir(), "hub")
+	copiedHub := filepath.Join(tempContainer, "hub")
 	if err := copyDirRecursive(templateHub, copiedHub); err != nil {
 		tb.Fatalf("copyDirRecursive hub: %v", err)
 	}
 
-	// Copy template bare into temp dir
-	copiedBare := filepath.Join(tb.TempDir(), "bare")
+	// Copy template bare into the same temp dir
+	copiedBare := filepath.Join(tempContainer, "bare")
 	if err := copyDirRecursive(templateBare, copiedBare); err != nil {
 		tb.Fatalf("copyDirRecursive bare: %v", err)
 	}
 
 	// Rewrite origin URL in copied hub's config
-	if err := rewriteOriginURL(copiedHub, copiedBare); err != nil {
-		tb.Fatalf("rewriteOriginURL: %v", err)
+	if err := rewriteOriginURLInConfig(copiedHub, copiedBare); err != nil {
+		tb.Fatalf("rewriteOriginURLInConfig: %v", err)
 	}
 
 	return HostFixture{
@@ -473,12 +517,12 @@ func CopyPaired(tb testing.TB) PairedFixture {
 	}
 
 	// Rewrite origin URLs
-	if err := rewriteOriginURL(copiedHub, copiedBare); err != nil {
-		tb.Fatalf("rewriteOriginURL hub: %v", err)
+	if err := rewriteOriginURLInConfig(copiedHub, copiedBare); err != nil {
+		tb.Fatalf("rewriteOriginURLInConfig hub: %v", err)
 	}
 
-	if err := rewriteOriginURL(copiedWeftPrime, copiedWeftBare); err != nil {
-		tb.Fatalf("rewriteOriginURL weftPrime: %v", err)
+	if err := rewriteOriginURLInConfig(copiedWeftPrime, copiedWeftBare); err != nil {
+		tb.Fatalf("rewriteOriginURLInConfig weftPrime: %v", err)
 	}
 
 	// Get layout from copied hub
@@ -508,21 +552,24 @@ func CopyWeft(tb testing.TB) WeftFixture {
 		tb.Fatalf("buildWeftOnly: %v", err)
 	}
 
+	// Use a single temp dir so both repos share one cleanup entry (matches CopyPaired).
+	tempContainer := tb.TempDir()
+
 	// Copy template weft into temp dir
-	copiedWeft := filepath.Join(tb.TempDir(), "weft")
+	copiedWeft := filepath.Join(tempContainer, "weft")
 	if err := copyDirRecursive(templateWeftPath, copiedWeft); err != nil {
 		tb.Fatalf("copyDirRecursive weft: %v", err)
 	}
 
-	// Copy template bare into temp dir
-	copiedBare := filepath.Join(tb.TempDir(), "bare")
+	// Copy template bare into the same temp dir
+	copiedBare := filepath.Join(tempContainer, "bare")
 	if err := copyDirRecursive(templateBare, copiedBare); err != nil {
 		tb.Fatalf("copyDirRecursive bare: %v", err)
 	}
 
 	// Rewrite origin URL in copied weft's config
-	if err := rewriteOriginURL(copiedWeft, copiedBare); err != nil {
-		tb.Fatalf("rewriteOriginURL: %v", err)
+	if err := rewriteOriginURLInConfig(copiedWeft, copiedBare); err != nil {
+		tb.Fatalf("rewriteOriginURLInConfig: %v", err)
 	}
 
 	return WeftFixture{
