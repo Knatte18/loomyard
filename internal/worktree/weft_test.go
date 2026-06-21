@@ -18,7 +18,6 @@ import (
 // the weft target directory exist.
 func TestWeftSpawnCreatesJunction(t *testing.T) {
 	const slug = "weft-junction-test"
-	t.Setenv("WEFT_SKIP_PUSH", "1")
 
 	hub := newTestRepo(t)
 	addRemote(t, hub)
@@ -30,7 +29,7 @@ func TestWeftSpawnCreatesJunction(t *testing.T) {
 	}
 
 	w := New(Config{})
-	_, err = w.Add(l, slug)
+	_, err = w.Add(l, slug, AddOptions{SkipPush: true})
 	if err != nil {
 		t.Fatalf("Add(%q): %v", slug, err)
 	}
@@ -52,11 +51,10 @@ func TestWeftSpawnCreatesJunction(t *testing.T) {
 	}
 }
 
-// TestWeftSpawnSedsExclude verifies that Add seeds the _lyx entry in the host worktree's
+// TestWeftSpawnSeedsExclude verifies that Add seeds the _lyx entry in the host worktree's
 // .git/info/exclude file, and that re-seeding is idempotent.
 func TestWeftSpawnSeedsExclude(t *testing.T) {
 	const slug = "weft-exclude-test"
-	t.Setenv("WEFT_SKIP_PUSH", "1")
 
 	hub := newTestRepo(t)
 	addRemote(t, hub)
@@ -68,7 +66,7 @@ func TestWeftSpawnSeedsExclude(t *testing.T) {
 	}
 
 	w := New(Config{})
-	_, err = w.Add(l, slug)
+	_, err = w.Add(l, slug, AddOptions{SkipPush: true})
 	if err != nil {
 		t.Fatalf("Add(%q): %v", slug, err)
 	}
@@ -117,7 +115,6 @@ func TestWeftSpawnSeedsExclude(t *testing.T) {
 func TestWeftSpawnPairedWorktrees(t *testing.T) {
 	const slug = "paired-test"
 	const branchPrefix = "prefix/"
-	t.Setenv("WEFT_SKIP_PUSH", "1")
 
 	hub := newTestRepo(t)
 	addRemote(t, hub)
@@ -129,7 +126,7 @@ func TestWeftSpawnPairedWorktrees(t *testing.T) {
 	}
 
 	w := New(Config{BranchPrefix: branchPrefix})
-	result, err := w.Add(l, slug)
+	result, err := w.Add(l, slug, AddOptions{SkipPush: true})
 	if err != nil {
 		t.Fatalf("Add(%q): %v", slug, err)
 	}
@@ -170,7 +167,6 @@ func TestWeftSpawnPairedWorktrees(t *testing.T) {
 // the weft repo is absent, with no partial state created.
 func TestWeftPrechecksHardRequireWeftRepo(t *testing.T) {
 	const slug = "hard-require-test"
-	t.Setenv("WEFT_SKIP_PUSH", "1")
 
 	hub := newTestRepo(t)
 	addRemote(t, hub)
@@ -182,7 +178,7 @@ func TestWeftPrechecksHardRequireWeftRepo(t *testing.T) {
 	}
 
 	w := New(Config{})
-	result, err := w.Add(l, slug)
+	result, err := w.Add(l, slug, AddOptions{SkipPush: true})
 
 	// Verify error
 	if err == nil {
@@ -207,7 +203,6 @@ func TestWeftPrechecksHardRequireWeftRepo(t *testing.T) {
 // weft worktree dir already exists.
 func TestWeftPrechecksRejectExistingWeftWorktree(t *testing.T) {
 	const slug = "weft-exists-test"
-	t.Setenv("WEFT_SKIP_PUSH", "1")
 
 	hub := newTestRepo(t)
 	addRemote(t, hub)
@@ -225,7 +220,7 @@ func TestWeftPrechecksRejectExistingWeftWorktree(t *testing.T) {
 	}
 
 	w := New(Config{})
-	result, err := w.Add(l, slug)
+	result, err := w.Add(l, slug, AddOptions{SkipPush: true})
 
 	// Verify error
 	if err == nil {
@@ -247,7 +242,6 @@ func TestWeftPrechecksRejectExistingWeftWorktree(t *testing.T) {
 // weft branch already exists.
 func TestWeftPrechecksRejectExistingWeftBranch(t *testing.T) {
 	const slug = "weft-branch-exists-test"
-	t.Setenv("WEFT_SKIP_PUSH", "1")
 
 	hub := newTestRepo(t)
 	addRemote(t, hub)
@@ -262,7 +256,7 @@ func TestWeftPrechecksRejectExistingWeftBranch(t *testing.T) {
 	}
 
 	w := New(Config{})
-	result, err := w.Add(l, slug)
+	result, err := w.Add(l, slug, AddOptions{SkipPush: true})
 
 	// Verify error
 	if err == nil {
@@ -287,7 +281,6 @@ func TestWeftPrechecksRejectExistingWeftBranch(t *testing.T) {
 // carries a committed real _lyx (not a junction), which indicates a pre-weft state.
 func TestWeftHostPristineEnforced(t *testing.T) {
 	const slug = "host-pristine-test"
-	t.Setenv("WEFT_SKIP_PUSH", "1")
 
 	hub := newTestRepo(t)
 	addRemote(t, hub)
@@ -310,7 +303,7 @@ func TestWeftHostPristineEnforced(t *testing.T) {
 	mustRun(t, hub, "git", "commit", "-m", "add real _lyx")
 
 	w := New(Config{})
-	result, err := w.Add(l, slug)
+	result, err := w.Add(l, slug, AddOptions{SkipPush: true})
 
 	// Verify error about pristine host (Add should fail because host has a real _lyx)
 	if err == nil {
@@ -333,7 +326,6 @@ func TestWeftHostPristineEnforced(t *testing.T) {
 func TestWeftRollbackOnPostHostCreateFailure(t *testing.T) {
 	const slug = "rollback-post-host-test"
 	const branch = "lyx/" + slug // matches the default BranchPrefix
-	t.Setenv("WEFT_SKIP_PUSH", "1")
 
 	hub := newTestRepo(t)
 	addRemote(t, hub)

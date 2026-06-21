@@ -38,10 +38,9 @@ func TestRemove(t *testing.T) {
 			setup: func(t *testing.T, hub, slug string) {
 				addRemote(t, hub)
 				newWeftRepo(t, hub)
-				t.Setenv("WEFT_SKIP_PUSH", "1")
 				w := New(Config{})
 				l, _ := paths.Resolve(hub)
-				w.Add(l, slug)
+				w.Add(l, slug, AddOptions{SkipPush: true})
 			},
 			wantLinksRemoved: 0,
 			linksExact:       true,
@@ -52,10 +51,9 @@ func TestRemove(t *testing.T) {
 			setup: func(t *testing.T, hub, slug string) {
 				addRemote(t, hub)
 				newWeftRepo(t, hub)
-				t.Setenv("WEFT_SKIP_PUSH", "1")
 				w := New(Config{})
 				l, _ := paths.Resolve(hub)
-				w.Add(l, slug)
+				w.Add(l, slug, AddOptions{SkipPush: true})
 				// An untracked file makes the host worktree dirty so the gate trips.
 				target := l.WorktreePath(slug)
 				if err := os.WriteFile(filepath.Join(target, "untracked.txt"), []byte("untracked"), 0644); err != nil {
@@ -70,10 +68,9 @@ func TestRemove(t *testing.T) {
 			setup: func(t *testing.T, hub, slug string) {
 				addRemote(t, hub)
 				newWeftRepo(t, hub)
-				t.Setenv("WEFT_SKIP_PUSH", "1")
 				w := New(Config{})
 				l, _ := paths.Resolve(hub)
-				w.Add(l, slug)
+				w.Add(l, slug, AddOptions{SkipPush: true})
 				target := l.WorktreePath(slug)
 				if err := os.WriteFile(filepath.Join(target, "untracked.txt"), []byte("untracked"), 0644); err != nil {
 					t.Fatalf("create untracked file: %v", err)
@@ -88,10 +85,9 @@ func TestRemove(t *testing.T) {
 			setup: func(t *testing.T, hub, slug string) {
 				addRemote(t, hub)
 				newWeftRepo(t, hub)
-				t.Setenv("WEFT_SKIP_PUSH", "1")
 				w := New(Config{})
 				l, _ := paths.Resolve(hub)
-				w.Add(l, slug)
+				w.Add(l, slug, AddOptions{SkipPush: true})
 				// Make weft worktree dirty
 				weftTarget := l.WeftWorktreePath(slug)
 				if err := os.WriteFile(filepath.Join(weftTarget, "untracked.txt"), []byte("untracked"), 0644); err != nil {
@@ -106,10 +102,9 @@ func TestRemove(t *testing.T) {
 			setup: func(t *testing.T, hub, slug string) {
 				addRemote(t, hub)
 				newWeftRepo(t, hub)
-				t.Setenv("WEFT_SKIP_PUSH", "1")
 				w := New(Config{})
 				l, _ := paths.Resolve(hub)
-				w.Add(l, slug)
+				w.Add(l, slug, AddOptions{SkipPush: true})
 				// Make weft worktree dirty
 				weftTarget := l.WeftWorktreePath(slug)
 				if err := os.WriteFile(filepath.Join(weftTarget, "untracked.txt"), []byte("untracked"), 0644); err != nil {
@@ -188,7 +183,6 @@ func TestRemove(t *testing.T) {
 // children) would miss.
 func TestRemoveHostJunctionRemoved(t *testing.T) {
 	const slug = "junction-removal-test"
-	t.Setenv("WEFT_SKIP_PUSH", "1")
 
 	hub := newTestRepo(t)
 	addRemote(t, hub)
@@ -200,7 +194,7 @@ func TestRemoveHostJunctionRemoved(t *testing.T) {
 	}
 
 	w := New(Config{})
-	_, err = w.Add(l, slug)
+	_, err = w.Add(l, slug, AddOptions{SkipPush: true})
 	if err != nil {
 		t.Fatalf("Add(%q): %v", slug, err)
 	}
@@ -254,7 +248,7 @@ func TestRemoveSubpathJunction(t *testing.T) {
 	}
 
 	w := New(Config{})
-	_, err = w.Add(l, slug)
+	_, err = w.Add(l, slug, AddOptions{SkipPush: true})
 	if err != nil {
 		t.Fatalf("Add(%q) at subpath: %v", slug, err)
 	}

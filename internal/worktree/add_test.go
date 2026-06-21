@@ -1,7 +1,7 @@
 // add_test.go covers Add's happy-path side effects (portal, launchers, pushed
 // branch) and the zero-residue rollback on a post-creation failure. The paired
 // Add creates both host and weft worktrees on the mirrored branch and requires
-// a weft Prime repo; tests build this via newWeftRepo and set WEFT_SKIP_PUSH=1.
+// a weft Prime repo; tests build this via newWeftRepo and pass AddOptions{SkipPush:true}.
 
 package worktree
 
@@ -26,7 +26,10 @@ func TestAdd(t *testing.T) {
 		branchPrefix string
 		// setup performs scenario-specific prep on top of the fresh repo
 		// returned by newTestRepo (e.g. adding a remote or dirtying the tree).
-		setup           func(t *testing.T, hub string)
+		setup func(t *testing.T, hub string)
+		// opts to pass to Add; defaults to AddOptions{SkipPush:true} for tests
+		// that do not need a push.
+		opts            AddOptions
 		wantBranch      string
 		wantErrContains string
 		// wantNoTargetDir asserts the sibling worktree dir was NOT created,
@@ -38,8 +41,8 @@ func TestAdd(t *testing.T) {
 			setup: func(t *testing.T, hub string) {
 				addRemote(t, hub)
 				newWeftRepo(t, hub)
-				t.Setenv("WEFT_SKIP_PUSH", "1")
 			},
+			opts:       AddOptions{SkipPush: true},
 			wantBranch: "my-task",
 		},
 		{
@@ -48,8 +51,8 @@ func TestAdd(t *testing.T) {
 			setup: func(t *testing.T, hub string) {
 				addRemote(t, hub)
 				newWeftRepo(t, hub)
-				t.Setenv("WEFT_SKIP_PUSH", "1")
 			},
+			opts:       AddOptions{SkipPush: true},
 			wantBranch: "hanf/my-task",
 		},
 		{
@@ -57,12 +60,12 @@ func TestAdd(t *testing.T) {
 			setup: func(t *testing.T, hub string) {
 				addRemote(t, hub)
 				newWeftRepo(t, hub)
-				t.Setenv("WEFT_SKIP_PUSH", "1")
 				// Modify a tracked file without committing so the clean check fails.
 				if err := os.WriteFile(filepath.Join(hub, "README"), []byte("modified"), 0644); err != nil {
 					t.Fatalf("modify README: %v", err)
 				}
 			},
+			opts:            AddOptions{SkipPush: true},
 			wantErrContains: "source worktree has uncommitted changes",
 			wantNoTargetDir: true,
 		},
@@ -71,9 +74,9 @@ func TestAdd(t *testing.T) {
 			setup: func(t *testing.T, hub string) {
 				addRemote(t, hub)
 				newWeftRepo(t, hub)
-				t.Setenv("WEFT_SKIP_PUSH", "1")
 				mustRun(t, hub, "git", "branch", slug)
 			},
+			opts:            AddOptions{SkipPush: true},
 			wantErrContains: `branch "my-task" already exists`,
 		},
 		{
@@ -81,20 +84,20 @@ func TestAdd(t *testing.T) {
 			setup: func(t *testing.T, hub string) {
 				addRemote(t, hub)
 				newWeftRepo(t, hub)
-				t.Setenv("WEFT_SKIP_PUSH", "1")
 				if err := os.Mkdir(filepath.Join(filepath.Dir(hub), slug), 0755); err != nil {
 					t.Fatalf("create target dir: %v", err)
 				}
 			},
+			opts:            AddOptions{SkipPush: true},
 			wantErrContains: "already exists",
 		},
 		{
 			name: "NoRemote",
 			setup: func(t *testing.T, hub string) {
 				newWeftRepo(t, hub)
-				t.Setenv("WEFT_SKIP_PUSH", "1")
 				// intentionally no remote
 			},
+			opts:            AddOptions{SkipPush: true},
 			wantErrContains: "no remote configured",
 			wantNoTargetDir: true,
 		},
@@ -102,9 +105,9 @@ func TestAdd(t *testing.T) {
 			name: "NoWeftRepo",
 			setup: func(t *testing.T, hub string) {
 				addRemote(t, hub)
-				t.Setenv("WEFT_SKIP_PUSH", "1")
 				// intentionally no weft repo
 			},
+			opts:            AddOptions{SkipPush: true},
 			wantErrContains: "no weft repo",
 			wantNoTargetDir: true,
 		},
@@ -122,7 +125,7 @@ func TestAdd(t *testing.T) {
 			}
 
 			w := New(Config{BranchPrefix: tt.branchPrefix})
-			result, err := w.Add(l, slug)
+			result, err := w.Add(l, slug, tt.opts)
 
 			target := l.WorktreePath(slug)
 
@@ -166,7 +169,6 @@ func TestAdd(t *testing.T) {
 // no _launchers/<slug>/, and no weft worktree/branch left behind.
 func TestAddRollback(t *testing.T) {
 	const slug = "rollback-test"
-	t.Setenv("WEFT_SKIP_PUSH", "1")
 	hub := newTestRepo(t)
 	addRemote(t, hub)
 	newWeftRepo(t, hub)
@@ -187,7 +189,7 @@ func TestAddRollback(t *testing.T) {
 	}
 
 	w := New(Config{})
-	result, err := w.Add(l, slug)
+	result, err := w.Add(l, slug, AddOptions{SkipPush: true})
 
 	if err == nil {
 		t.Fatalf("Add(%q) should have failed; got nil error", slug)
