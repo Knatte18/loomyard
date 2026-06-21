@@ -43,7 +43,8 @@ var (
 // populated with a README and initial commit. The bare remote is left empty
 // (not pushed to), matching the worktree "AddOptions{SkipPush:true}" semantics.
 // This is called once per test binary via sync.Once; subsequent calls return the cached path.
-func buildHostHub() (hub, bare string, err error) {
+// Failures panic immediately because test-fixture construction errors are unrecoverable.
+func buildHostHub() (hub, bare string) {
 	hostHubOnce.Do(func() {
 		tmpDir, err := os.MkdirTemp("", "lyxtest-hosthub-*")
 		if err != nil {
@@ -115,7 +116,7 @@ func buildHostHub() (hub, bare string, err error) {
 		hostHubBarePath = bare
 	})
 
-	return hostHubPath, hostHubBarePath, nil
+	return hostHubPath, hostHubBarePath
 }
 
 // weftPrimeTemplate caches the weft-prime template.
@@ -126,10 +127,15 @@ var (
 )
 
 // buildWeftPrime constructs the weft-prime template: a sibling weft worktree
-// at <base>-weft with _lyx/config/placeholder, plus a bare remote left empty.
-func buildWeftPrime(hubPath string) (weftPrime, weftBare string, err error) {
+// at <hub>-weft with _lyx/config/placeholder, plus a bare remote left empty.
+// The hub base-name is derived from the cached hostHubPath so the naming is
+// consistent regardless of call order. Failures panic immediately because
+// test-fixture construction errors are unrecoverable.
+func buildWeftPrime() (weftPrime, weftBare string) {
 	weftPrimeOnce.Do(func() {
-		base := filepath.Base(hubPath)
+		// Derive the base name from the already-cached host hub path so the naming
+		// is stable across repeated calls (sync.Once skips the body on reuse).
+		base := filepath.Base(hostHubPath)
 		tmpDir, err := os.MkdirTemp("", "lyxtest-weftprime-*")
 		if err != nil {
 			panic(err)
@@ -206,7 +212,7 @@ func buildWeftPrime(hubPath string) (weftPrime, weftBare string, err error) {
 		weftPrimeBarePath = weftBare
 	})
 
-	return weftPrimePath, weftPrimeBarePath, nil
+	return weftPrimePath, weftPrimeBarePath
 }
 
 // weftOnlyTemplate caches the weft-only template (with upstream tracking).
@@ -219,7 +225,8 @@ var (
 // buildWeftOnly constructs the weft-only template: a weft worktree with
 // _lyx/config.yaml and upstream tracking (push -u origin main).
 // This is the only template that needs upstream tracking.
-func buildWeftOnly() (weftPath, bare string, err error) {
+// Failures panic immediately because test-fixture construction errors are unrecoverable.
+func buildWeftOnly() (weftPath, bare string) {
 	weftOnlyOnce.Do(func() {
 		tmpDir, err := os.MkdirTemp("", "lyxtest-weftonly-*")
 		if err != nil {
@@ -301,7 +308,7 @@ func buildWeftOnly() (weftPath, bare string, err error) {
 		weftOnlyBare = bare
 	})
 
-	return weftOnlyPath, weftOnlyBare, nil
+	return weftOnlyPath, weftOnlyBare
 }
 
 // Fixture structs for public API.
@@ -386,22 +393,24 @@ func rewriteOriginURLInConfig(repoPath string, newURL string) error {
 	return nil
 }
 
-// Helper: recursively copy a directory tree.
-// The source tree is copied entirely into the destination directory,
-// which must not exist beforehand.
+// copyDirRecursive recursively copies a directory tree from src to dest.
+// dest must not exist beforehand. Symlinks are refused: templates must never
+// contain symlinks because they would dangle after copying to an isolated path.
 func copyDirRecursive(src string, dest string) error {
-	// Ensure destination parent exists
+	// Ensure destination parent exists.
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 		return err
 	}
 
-	// Create destination
+	// Create destination root.
 	if err := os.Mkdir(dest, 0o755); err != nil {
 		return err
 	}
 
-	// Walk the source tree
-	return filepath.Walk(src, func(path string, d os.FileInfo, err error) error {
+	// WalkDir does not follow symlinks on entry; we detect them explicitly so
+	// that a symlink in a template causes an immediate, clear error rather than
+	// silently producing a dangling link in the copy.
+	return filepath.WalkDir(src, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -413,11 +422,20 @@ func copyDirRecursive(src string, dest string) error {
 
 		destPath := filepath.Join(dest, rel)
 
-		if d.IsDir() {
-			return os.MkdirAll(destPath, d.Mode())
+		// Refuse symlinks: template trees must be plain files/dirs only.
+		if d.Type()&os.ModeSymlink != 0 {
+			return fmt.Errorf("copyDirRecursive: symlink not allowed in template: %s", path)
 		}
 
-		// Copy file
+		if d.IsDir() {
+			info, err := d.Info()
+			if err != nil {
+				return err
+			}
+			return os.MkdirAll(destPath, info.Mode())
+		}
+
+		// Copy regular file.
 		srcFile, err := os.Open(path)
 		if err != nil {
 			return err
@@ -434,7 +452,11 @@ func copyDirRecursive(src string, dest string) error {
 			return err
 		}
 
-		return os.Chmod(destPath, d.Mode())
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		return os.Chmod(destPath, info.Mode())
 	})
 }
 
@@ -444,10 +466,7 @@ func copyDirRecursive(src string, dest string) error {
 func CopyHostHub(tb testing.TB) HostFixture {
 	tb.Helper()
 
-	templateHub, templateBare, err := buildHostHub()
-	if err != nil {
-		tb.Fatalf("buildHostHub: %v", err)
-	}
+	templateHub, templateBare := buildHostHub()
 
 	// Use a single temp dir so both repos share one cleanup entry (matches CopyPaired).
 	tempContainer := tb.TempDir()
@@ -481,15 +500,8 @@ func CopyHostHub(tb testing.TB) HostFixture {
 func CopyPaired(tb testing.TB) PairedFixture {
 	tb.Helper()
 
-	templateHub, templateBare, err := buildHostHub()
-	if err != nil {
-		tb.Fatalf("buildHostHub: %v", err)
-	}
-
-	templateWeftPrime, templateWeftBare, err := buildWeftPrime(templateHub)
-	if err != nil {
-		tb.Fatalf("buildWeftPrime: %v", err)
-	}
+	templateHub, templateBare := buildHostHub()
+	templateWeftPrime, templateWeftBare := buildWeftPrime()
 
 	// Create a temp container
 	tempContainer := tb.TempDir()
@@ -550,10 +562,7 @@ func CopyPaired(tb testing.TB) PairedFixture {
 func CopyWeft(tb testing.TB) WeftFixture {
 	tb.Helper()
 
-	templateWeftPath, templateBare, err := buildWeftOnly()
-	if err != nil {
-		tb.Fatalf("buildWeftOnly: %v", err)
-	}
+	templateWeftPath, templateBare := buildWeftOnly()
 
 	// Use a single temp dir so both repos share one cleanup entry (matches CopyPaired).
 	tempContainer := tb.TempDir()

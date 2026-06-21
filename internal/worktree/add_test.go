@@ -143,8 +143,12 @@ func TestAdd(t *testing.T) {
 			if result.Path != target {
 				t.Errorf("Add(%q).Path = %q; want %q", slug, result.Path, target)
 			}
-			if !result.Pushed {
-				t.Errorf("Add(%q).Pushed = false; want true", slug)
+			// SkipPush:true is set in all happy-path cases, so Pushed must be false.
+			// This assertion is load-bearing: it verifies that Pushed reflects the
+			// actual push semantics rather than always returning true.
+			wantPushed := !tt.opts.SkipPush && !tt.opts.SkipGit
+			if result.Pushed != wantPushed {
+				t.Errorf("Add(%q).Pushed = %v; want %v", slug, result.Pushed, wantPushed)
 			}
 			if _, statErr := os.Stat(result.Path); statErr != nil {
 				t.Errorf("Add(%q) worktree dir missing: %v", slug, statErr)

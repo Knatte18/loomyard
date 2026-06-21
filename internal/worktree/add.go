@@ -189,7 +189,9 @@ func (w *Worktree) Add(l *paths.Layout, slug string, opts AddOptions) (AddResult
 		Slug:   slug,
 		Branch: branch,
 		Path:   target,
-		Pushed: true,
+		// Pushed reflects whether the weft branch was actually pushed to the remote.
+		// It is false when either SkipPush or SkipGit suppresses the push.
+		Pushed: !opts.SkipPush && !opts.SkipGit,
 	}, nil
 }
 
