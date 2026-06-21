@@ -46,7 +46,9 @@ batches:
     start_sha: 5480672723e03e524d389e47611242d65ab50bd3
     commit_sha: 97ab1d5279e97d4211e1c8896163cffd44d97b7f
   - name: paths-tests
-    state: pending
+    state: running
+    implementer_session: 6417c0a0-4fdd-4c9b-a67c-76e515c1b0ba
+    start_sha: dcbceda028870c752ffd02298a3768b15224543d
   - name: docs-and-cross-verification
     state: pending
 ```
