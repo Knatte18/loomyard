@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-lyxtest-foundation
+phase: approved-weft-envparam-and-tests
 slug: optimize-test-suite
 branch: optimize-test-suite
 plan: _mill/plan
@@ -22,6 +22,7 @@ plan-fix-r1  '2026-06-20T18:31:50Z'
 planned  '2026-06-20T18:32:10Z'
 implementing  '2026-06-21T12:42:46Z'
 approved-lyxtest-foundation  '2026-06-21T12:53:32Z'
+approved-weft-envparam-and-tests  '2026-06-21T13:27:31Z'
 ```
 
 ## Batches
@@ -34,9 +35,10 @@ batches:
     start_sha: d4822284a41adfeb6a03516d11aec1d43bc8fe5b
     commit_sha: ecf60a2e0ddef14e037f566ea0699924624e9fc8
   - name: weft-envparam-and-tests
-    state: running
+    state: approved
     implementer_session: e42df79a-fdf2-4e74-8c3e-31426297af46
     start_sha: d936b8c87b631f00b7816afe80b0bc32f5e01814
+    commit_sha: 5d7e5f221bc91c26e5e8b4ee65ec1b9f566062a8
   - name: worktree-envparam-and-tests
     state: pending
   - name: paths-tests
