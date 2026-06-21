@@ -90,6 +90,33 @@ func TestCommit(t *testing.T) {
 	}
 }
 
+func TestCommit_ScopedPathspec(t *testing.T) {
+	t.Parallel()
+
+	// Pure-function assertion: at ".", ["_lyx"] → ["_lyx"].
+	pathspec := scopedPathspec(".", []string{"_lyx"})
+	if len(pathspec) != 1 || pathspec[0] != "_lyx" {
+		t.Errorf("scopedPathspec(\".\", [\"_lyx\"]) = %v; want [_lyx]", pathspec)
+	}
+
+	// Behavioural: committing via the scoped pathspec stages the _lyx change.
+	fixture := lyxtest.CopyWeft(t)
+	weftRepo := fixture.WeftPath
+
+	lyxFile := filepath.Join(weftRepo, "_lyx", "config.yaml")
+	if err := os.WriteFile(lyxFile, []byte("modified"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	committed, err := Commit(weftRepo, scopedPathspec(".", []string{"_lyx"}), SyncOptions{})
+	if err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+	if !committed {
+		t.Errorf("Commit() with scopedPathspec = false; want true")
+	}
+}
+
 func TestPush(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

@@ -6,6 +6,7 @@ package weft
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -15,9 +16,9 @@ import (
 func TestStatus(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name      string
-		modify    bool
-		wantDirty bool
+		name       string
+		modify     bool
+		wantDirty  bool
 		wantBranch string
 	}{
 		{"BranchReporting_Clean", false, false, "main"},
@@ -149,5 +150,53 @@ func TestStatus_Junction(t *testing.T) {
 				t.Errorf("junction_reason = %q; want %q", reason, tt.wantReason)
 			}
 		})
+	}
+}
+
+// TestStatus_JunctionOk_Windows is kept separate from the TestStatus_Junction
+// table because Windows junctions created via `mklink /J` may not report
+// ModeSymlink on all Go versions; when unrecognised it skips rather than fails,
+// which the generic table assertion cannot express.
+func TestStatus_JunctionOk_Windows(t *testing.T) {
+	if os.Getenv("SKIP_MKLINK_TEST") == "1" {
+		t.Skip("mklink test skipped")
+	}
+	t.Parallel()
+
+	fixture := lyxtest.CopyWeft(t)
+	weftRepo := fixture.WeftPath
+	weftLyxDir := filepath.Join(weftRepo, "_lyx")
+
+	tmpDir := t.TempDir()
+	hostLink := filepath.Join(tmpDir, "_lyx")
+
+	cmd := exec.Command("cmd", "/c", "mklink", "/J", hostLink, weftLyxDir)
+	if err := cmd.Run(); err != nil {
+		t.Skipf("mklink /J failed (likely not on Windows or no privilege): %v", err)
+	}
+
+	status, err := Status(weftRepo, hostLink, weftLyxDir, []string{"_lyx"})
+	if err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+
+	junctionOk, ok := status["junction_ok"].(bool)
+	if !ok {
+		t.Errorf("status[junction_ok] should be a bool; got %v", status["junction_ok"])
+	}
+	if !junctionOk {
+		reason, _ := status["junction_reason"].(string)
+		if reason == "host _lyx is not a junction" {
+			t.Skipf("Windows junction not recognized by os.Lstat (ModeSymlink not set)")
+		}
+		t.Errorf("junction_ok = false for valid junction; want true. Reason: %s", status["junction_reason"])
+	}
+
+	reason, ok := status["junction_reason"].(string)
+	if !ok {
+		t.Errorf("status[junction_reason] should be a string; got %v", status["junction_reason"])
+	}
+	if reason != "" && junctionOk {
+		t.Errorf("junction_reason = %q on valid junction; want empty", reason)
 	}
 }
