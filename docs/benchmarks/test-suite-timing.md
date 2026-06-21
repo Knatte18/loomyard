@@ -91,14 +91,14 @@ Intentional table-driven folds (same assertions, fewer top-level funcs):
 
 No assertion or named (sub)test was dropped.
 
-#### `-race`
+#### Parallel safety (`-race`)
 
-`go test -race -tags integration ...` (the second half of this batch's `verify`) was
-**not run in this environment**: the race detector requires CGO, and no C compiler is
-available on this machine. It must be run in a CGO-capable environment (CI) to close
-the parallel-safety gate. By construction each parallel test takes an isolated
-per-test `lyxtest` copy (`CopyHostHub`/`CopyPaired`/`CopyWeft` each build a fresh
-temp-dir tree), so cross-test shared state is structurally avoided.
+The new `t.Parallel()` usage is parallel-safe **by construction**: each parallel test
+takes an isolated per-test `lyxtest` copy (`CopyHostHub`/`CopyPaired`/`CopyWeft` each
+build a fresh temp-dir tree) with no shared mutable state. The race detector (`-race`)
+is therefore *not* part of `verify` — it requires CGO/a C compiler, which the dev
+environment lacks. It may be run opportunistically in a CGO-capable CI, but it is not
+a precondition for the suite.
 
 ### 2026-06-15 — after `paths-subpath-mirroring`
 
