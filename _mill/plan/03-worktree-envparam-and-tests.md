@@ -25,9 +25,12 @@ Thread an explicit `AddOptions` through `Add` → `pushWeftBranch` (env→option
   - `internal/worktree/add.go`
   - `internal/worktree/weft.go`
   - `internal/worktree/cli.go`
+  - `internal/worktree/add_test.go`
+  - `internal/worktree/remove_test.go`
+  - `internal/worktree/weft_test.go`
 - **Creates:** none
 - **Deletes:** none
-- **Requirements:** Add `type AddOptions struct { SkipGit, SkipPush bool }`. Change `func (w *Worktree) Add(l *paths.Layout, slug string)` → `Add(l *paths.Layout, slug string, opts AddOptions)` (`add.go:59`); thread `opts` into the `pushWeftBranch(l, slug, branch)` call at `add.go:167`. Change `pushWeftBranch(l *paths.Layout, slug, branch string)` → `pushWeftBranch(l *paths.Layout, slug, branch string, opts AddOptions)` (`weft.go:207`); remove its `os.Getenv` read (line ~208) and branch on `opts.SkipGit || opts.SkipPush` instead, preserving identical semantics (no-op return nil when either is set). Do NOT alter the unconditional host `git push -u origin branch` at `add.go:156` — it is a real local push to the bare remote and was never env-gated. At the sole production caller `w.Add(l, slug)` in `cli.go:90`, read `os.Getenv("WEFT_SKIP_GIT")`/`WEFT_SKIP_PUSH` into an `AddOptions` and pass it; add the `os` import. Update doc comments to describe the option rather than the env vars.
+- **Requirements:** Add `type AddOptions struct { SkipGit, SkipPush bool }`. Change `func (w *Worktree) Add(l *paths.Layout, slug string)` → `Add(l *paths.Layout, slug string, opts AddOptions)` (`add.go:59`); thread `opts` into the `pushWeftBranch(l, slug, branch)` call at `add.go:167`. Change `pushWeftBranch(l *paths.Layout, slug, branch string)` → `pushWeftBranch(l *paths.Layout, slug, branch string, opts AddOptions)` (`weft.go:207`); remove its `os.Getenv` read (line ~208) and branch on `opts.SkipGit || opts.SkipPush` instead, preserving identical semantics (no-op return nil when either is set). Do NOT alter the unconditional host `git push -u origin branch` at `add.go:156` — it is a real local push to the bare remote and was never env-gated. At the sole production caller `w.Add(l, slug)` in `cli.go:90`, read `os.Getenv("WEFT_SKIP_GIT")`/`WEFT_SKIP_PUSH` into an `AddOptions` and pass it; add the `os` import. Update doc comments to describe the option rather than the env vars. Update the existing test call-sites in add_test.go/remove_test.go/weft_test.go to pass `AddOptions{SkipPush:true}` directly (remove `t.Setenv` for those calls); the full lyxtest migration of these files happens in card 10.
 - **Commit:** `refactor(worktree): thread AddOptions through Add and pushWeftBranch`
 
 ### Card 10: migrate + tag + parallelise add_test.go and remove_test.go
