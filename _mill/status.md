@@ -52,5 +52,7 @@ batches:
     start_sha: dcbceda028870c752ffd02298a3768b15224543d
     commit_sha: 76b8beea529f9468c25545d3c3b6f197e8051160
   - name: docs-and-cross-verification
-    state: pending
+    state: running
+    implementer_session: 40e0eb56-aa2b-41b0-b837-86a461a642d4
+    start_sha: 95ab57b70e7941bffe58986b9916ab37c38759eb
 ```
