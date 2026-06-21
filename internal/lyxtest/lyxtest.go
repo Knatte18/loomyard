@@ -4,11 +4,17 @@
 package lyxtest
 
 import (
+	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"sync"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/paths"
 )
 
 // MustRun runs a command with the given arguments in the specified directory.
@@ -298,4 +304,272 @@ func buildWeftOnly() (weftPath, bare string, err error) {
 	})
 
 	return weftOnlyPath, weftOnlyBare, nil
+}
+
+// Fixture structs for public API.
+
+// HostFixture represents an isolated copy of the host-hub template.
+type HostFixture struct {
+	Hub  string
+	Bare string
+}
+
+// PairedFixture represents an isolated copy of the full paired-Add fixture
+// (host hub + bare + weft-prime sibling + weft bare).
+type PairedFixture struct {
+	Container string
+	Hub       string
+	Bare      string
+	WeftPrime string
+	WeftBare  string
+	Layout    *paths.Layout
+}
+
+// WeftFixture represents an isolated copy of the weft-only template
+// (with upstream tracking established).
+type WeftFixture struct {
+	WeftPath string
+	Bare     string
+}
+
+// Helper: rewrite origin URL in a copied .git/config file.
+// Reads the config, replaces the single url = ... line under [remote "origin"],
+// and writes it back. Panics on mismatch (not exactly one url line).
+func rewriteOriginURL(repoPath string, newURL string) error {
+	configPath := filepath.Join(repoPath, ".git", "config")
+
+	// Read the config file
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return fmt.Errorf("read config: %w", err)
+	}
+
+	content := string(data)
+
+	// Find and replace the url line under [remote "origin"]
+	// Pattern: [remote "origin"] ... url = <oldpath>
+	// We'll do a simple text replacement: find the [remote "origin"] section,
+	// then replace the url line.
+	originIdx := strings.Index(content, `[remote "origin"]`)
+	if originIdx == -1 {
+		return fmt.Errorf("no [remote \"origin\"] section in config")
+	}
+
+	// Find the next section marker or end of file
+	nextSectionIdx := strings.Index(content[originIdx+len(`[remote "origin"]`):], "[")
+	var endIdx int
+	if nextSectionIdx == -1 {
+		endIdx = len(content)
+	} else {
+		endIdx = originIdx + len(`[remote "origin"]`) + nextSectionIdx
+	}
+
+	// Extract the origin section
+	originSection := content[originIdx:endIdx]
+
+	// Find and replace the url line
+	urlPattern := regexp.MustCompile(`\s*url\s*=\s*.*`)
+	matches := urlPattern.FindAllStringIndex(originSection, -1)
+	if len(matches) != 1 {
+		return fmt.Errorf("expected exactly 1 url line in [remote \"origin\"], found %d", len(matches))
+	}
+
+	// Build the replacement
+	newURLLine := fmt.Sprintf("\turl = %s", newURL)
+	newOriginSection := originSection[:matches[0][0]] + newURLLine + originSection[matches[0][1]:]
+
+	// Replace in the full content
+	newContent := content[:originIdx] + newOriginSection + content[endIdx:]
+
+	// Write back
+	return os.WriteFile(configPath, []byte(newContent), 0o644)
+}
+
+// Helper: recursively copy a directory tree.
+// The source tree is copied entirely into the destination directory,
+// which must not exist beforehand.
+func copyDirRecursive(src string, dest string) error {
+	// Ensure destination parent exists
+	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+		return err
+	}
+
+	// Create destination
+	if err := os.Mkdir(dest, 0o755); err != nil {
+		return err
+	}
+
+	// Walk the source tree
+	return filepath.Walk(src, func(path string, d os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		rel, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+
+		destPath := filepath.Join(dest, rel)
+
+		if d.IsDir() {
+			return os.MkdirAll(destPath, d.Mode())
+		}
+
+		// Copy file
+		srcFile, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		defer srcFile.Close()
+
+		destFile, err := os.Create(destPath)
+		if err != nil {
+			return err
+		}
+		defer destFile.Close()
+
+		if _, err := io.Copy(destFile, srcFile); err != nil {
+			return err
+		}
+
+		return os.Chmod(destPath, d.Mode())
+	})
+}
+
+// CopyHostHub returns an isolated copy of the host-hub template.
+// The copy is placed in tb.TempDir(); its origin URL is rewritten to point
+// to the copied bare repository.
+func CopyHostHub(tb testing.TB) HostFixture {
+	tb.Helper()
+
+	templateHub, templateBare, err := buildHostHub()
+	if err != nil {
+		tb.Fatalf("buildHostHub: %v", err)
+	}
+
+	// Copy template hub into temp dir
+	copiedHub := filepath.Join(tb.TempDir(), "hub")
+	if err := copyDirRecursive(templateHub, copiedHub); err != nil {
+		tb.Fatalf("copyDirRecursive hub: %v", err)
+	}
+
+	// Copy template bare into temp dir
+	copiedBare := filepath.Join(tb.TempDir(), "bare")
+	if err := copyDirRecursive(templateBare, copiedBare); err != nil {
+		tb.Fatalf("copyDirRecursive bare: %v", err)
+	}
+
+	// Rewrite origin URL in copied hub's config
+	if err := rewriteOriginURL(copiedHub, copiedBare); err != nil {
+		tb.Fatalf("rewriteOriginURL: %v", err)
+	}
+
+	return HostFixture{
+		Hub:  copiedHub,
+		Bare: copiedBare,
+	}
+}
+
+// CopyPaired returns an isolated copy of the full paired-Add fixture.
+// The copy includes hub + bare + weft-prime + weft-bare.
+// All origin URLs are rewritten to point to the copied bares.
+func CopyPaired(tb testing.TB) PairedFixture {
+	tb.Helper()
+
+	templateHub, templateBare, err := buildHostHub()
+	if err != nil {
+		tb.Fatalf("buildHostHub: %v", err)
+	}
+
+	templateWeftPrime, templateWeftBare, err := buildWeftPrime(templateHub)
+	if err != nil {
+		tb.Fatalf("buildWeftPrime: %v", err)
+	}
+
+	// Create a temp container
+	tempContainer := tb.TempDir()
+
+	// Copy hub
+	copiedHub := filepath.Join(tempContainer, "hub")
+	if err := copyDirRecursive(templateHub, copiedHub); err != nil {
+		tb.Fatalf("copyDirRecursive hub: %v", err)
+	}
+
+	// Copy bare
+	copiedBare := filepath.Join(tempContainer, "bare")
+	if err := copyDirRecursive(templateBare, copiedBare); err != nil {
+		tb.Fatalf("copyDirRecursive bare: %v", err)
+	}
+
+	// Copy weft-prime (must preserve the -weft suffix)
+	base := filepath.Base(templateHub)
+	copiedWeftPrime := filepath.Join(tempContainer, base+"-weft")
+	if err := copyDirRecursive(templateWeftPrime, copiedWeftPrime); err != nil {
+		tb.Fatalf("copyDirRecursive weftPrime: %v", err)
+	}
+
+	// Copy weft-bare
+	copiedWeftBare := filepath.Join(tempContainer, base+"-weft-bare")
+	if err := copyDirRecursive(templateWeftBare, copiedWeftBare); err != nil {
+		tb.Fatalf("copyDirRecursive weftBare: %v", err)
+	}
+
+	// Rewrite origin URLs
+	if err := rewriteOriginURL(copiedHub, copiedBare); err != nil {
+		tb.Fatalf("rewriteOriginURL hub: %v", err)
+	}
+
+	if err := rewriteOriginURL(copiedWeftPrime, copiedWeftBare); err != nil {
+		tb.Fatalf("rewriteOriginURL weftPrime: %v", err)
+	}
+
+	// Get layout from copied hub
+	layout, err := paths.Resolve(copiedHub)
+	if err != nil {
+		tb.Fatalf("paths.Resolve: %v", err)
+	}
+
+	return PairedFixture{
+		Container: tempContainer,
+		Hub:       copiedHub,
+		Bare:      copiedBare,
+		WeftPrime: copiedWeftPrime,
+		WeftBare:  copiedWeftBare,
+		Layout:    layout,
+	}
+}
+
+// CopyWeft returns an isolated copy of the weft-only template.
+// The copy is placed in tb.TempDir(); its origin URL is rewritten and
+// upstream tracking is already established (from the template).
+func CopyWeft(tb testing.TB) WeftFixture {
+	tb.Helper()
+
+	templateWeftPath, templateBare, err := buildWeftOnly()
+	if err != nil {
+		tb.Fatalf("buildWeftOnly: %v", err)
+	}
+
+	// Copy template weft into temp dir
+	copiedWeft := filepath.Join(tb.TempDir(), "weft")
+	if err := copyDirRecursive(templateWeftPath, copiedWeft); err != nil {
+		tb.Fatalf("copyDirRecursive weft: %v", err)
+	}
+
+	// Copy template bare into temp dir
+	copiedBare := filepath.Join(tb.TempDir(), "bare")
+	if err := copyDirRecursive(templateBare, copiedBare); err != nil {
+		tb.Fatalf("copyDirRecursive bare: %v", err)
+	}
+
+	// Rewrite origin URL in copied weft's config
+	if err := rewriteOriginURL(copiedWeft, copiedBare); err != nil {
+		tb.Fatalf("rewriteOriginURL: %v", err)
+	}
+
+	return WeftFixture{
+		WeftPath: copiedWeft,
+		Bare:     copiedBare,
+	}
 }
