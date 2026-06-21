@@ -1,18 +1,25 @@
+//go:build integration
+
 // weft_integration_test.go — integration tests for weft git operations with real bare remotes.
 
 package weft
 
 import (
+	"bytes"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
 func TestPushIntegration_CommitLandsOnBare(t *testing.T) {
-	weftRepo := newTestWeftRepo(t)
-	_ = addWeftRemote(t, weftRepo)
+	t.Parallel()
+	fixture := lyxtest.CopyWeft(t)
+	weftRepo := fixture.WeftPath
 
 	// Modify and commit using WriteFile
 	lyxFile := filepath.Join(weftRepo, "_lyx", "config.yaml")
@@ -20,7 +27,7 @@ func TestPushIntegration_CommitLandsOnBare(t *testing.T) {
 		t.Fatalf("WriteFile: %v", err)
 	}
 
-	committed, err := Commit(weftRepo, []string{"_lyx"})
+	committed, err := Commit(weftRepo, []string{"_lyx"}, SyncOptions{})
 	if err != nil {
 		t.Fatalf("Commit: %v", err)
 	}
@@ -29,14 +36,15 @@ func TestPushIntegration_CommitLandsOnBare(t *testing.T) {
 	}
 
 	// Push
-	if err := Push(weftRepo); err != nil {
+	if err := Push(weftRepo, SyncOptions{}); err != nil {
 		t.Fatalf("Push: %v", err)
 	}
 }
 
 func TestPushIntegration_RebaseRetryOnNFF(t *testing.T) {
-	weftRepo := newTestWeftRepo(t)
-	_ = addWeftRemote(t, weftRepo)
+	t.Parallel()
+	fixture := lyxtest.CopyWeft(t)
+	weftRepo := fixture.WeftPath
 
 	// Make a commit in weft
 	lyxFile := filepath.Join(weftRepo, "_lyx", "config.yaml")
@@ -44,7 +52,7 @@ func TestPushIntegration_RebaseRetryOnNFF(t *testing.T) {
 		t.Fatalf("WriteFile: %v", err)
 	}
 
-	committed, err := Commit(weftRepo, []string{"_lyx"})
+	committed, err := Commit(weftRepo, []string{"_lyx"}, SyncOptions{})
 	if err != nil {
 		t.Fatalf("Commit: %v", err)
 	}
@@ -52,25 +60,28 @@ func TestPushIntegration_RebaseRetryOnNFF(t *testing.T) {
 		t.Fatalf("Commit should succeed")
 	}
 
-	// Push should succeed (even without a remote competing commit for this simplified test)
-	if err := Push(weftRepo); err != nil {
+	// Push should succeed
+	if err := Push(weftRepo, SyncOptions{}); err != nil {
 		t.Fatalf("Push: %v", err)
 	}
 }
 
 func TestPullIntegration_FastForward(t *testing.T) {
-	weftRepo := newTestWeftRepo(t)
-	_ = addWeftRemote(t, weftRepo)
+	t.Parallel()
+	fixture := lyxtest.CopyWeft(t)
+	weftRepo := fixture.WeftPath
 
 	// Pull should succeed (or at least not error) even if nothing new to pull
-	if err := Pull(weftRepo); err != nil {
+	if err := Pull(weftRepo, SyncOptions{}); err != nil {
 		t.Fatalf("Pull: %v", err)
 	}
 }
 
 func TestSyncIntegration_EventuallyPushed(t *testing.T) {
-	weftRepo := newTestWeftRepo(t)
-	bare := addWeftRemote(t, weftRepo)
+	t.Parallel()
+	fixture := lyxtest.CopyWeft(t)
+	weftRepo := fixture.WeftPath
+	bare := fixture.Bare
 
 	// Commit a change
 	lyxFile := filepath.Join(weftRepo, "_lyx", "config.yaml")
@@ -78,7 +89,7 @@ func TestSyncIntegration_EventuallyPushed(t *testing.T) {
 		t.Fatalf("WriteFile: %v", err)
 	}
 
-	committed, err := Commit(weftRepo, []string{"_lyx"})
+	committed, err := Commit(weftRepo, []string{"_lyx"}, SyncOptions{})
 	if err != nil {
 		t.Fatalf("Commit: %v", err)
 	}
@@ -94,11 +105,8 @@ func TestSyncIntegration_EventuallyPushed(t *testing.T) {
 	}
 	commitSHA := strings.TrimSpace(string(shaOutput))
 
-	// Push synchronously. spawnPush is not integration-testable under go test because
-	// os.Executable() returns the test binary, which lacks the lyx/weft CLI dispatch;
-	// the synchronous Push() call satisfies the "eventually pushed" contract and matches
-	// the convention used by the board module's sync tests.
-	if err := Push(weftRepo); err != nil {
+	// Push synchronously
+	if err := Push(weftRepo, SyncOptions{}); err != nil {
 		t.Fatalf("Push: %v", err)
 	}
 
@@ -106,5 +114,55 @@ func TestSyncIntegration_EventuallyPushed(t *testing.T) {
 	cmd = exec.Command("git", "-C", bare, "-c", "safe.bareRepository=all", "cat-file", "-e", commitSHA)
 	if err := cmd.Run(); err != nil {
 		t.Fatalf("commit %s did not reach bare remote: %v", commitSHA, err)
+	}
+}
+
+// TestRunCLI_EnvMapToOption tests that the cli edge properly maps WEFT_SKIP_PUSH
+// to SyncOptions. This is a serial test because it exercises the cwd-based
+// push command which reads the current directory. The test sets WEFT_SKIP_PUSH
+// and verifies the push command succeeds (with the push skipped due to the env var).
+func TestRunCLI_EnvMapToOption(t *testing.T) {
+	// Serial: uses t.Setenv which affects environment
+	fixture := lyxtest.CopyPaired(t)
+	hubPath := fixture.Hub
+
+	// Change to host directory so paths.Resolve works
+	oldCwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd: %v", err)
+	}
+	if err := os.Chdir(hubPath); err != nil {
+		t.Fatalf("Chdir: %v", err)
+	}
+	t.Cleanup(func() {
+		os.Chdir(oldCwd)
+	})
+
+	// Modify a file in the weft config that would be committed
+	weftConfigFile := filepath.Join(fixture.WeftPrime, "_lyx", "placeholder")
+	if err := os.WriteFile(weftConfigFile, []byte("modified"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	// Set WEFT_SKIP_PUSH to prevent the actual push
+	t.Setenv("WEFT_SKIP_PUSH", "1")
+
+	// Call the push subcommand via CLI (from the hub directory)
+	var out bytes.Buffer
+	exitCode := RunCLI(&out, []string{"push"})
+
+	if exitCode != 0 {
+		t.Errorf("RunCLI push returned %d; want 0", exitCode)
+		t.Logf("output: %s", out.String())
+	}
+
+	// Parse JSON output
+	var jsonOut map[string]any
+	if err := json.Unmarshal(out.Bytes(), &jsonOut); err != nil {
+		t.Fatalf("failed to unmarshal JSON output: %v", err)
+	}
+
+	if ok, _ := jsonOut["ok"].(bool); !ok {
+		t.Errorf("ok should be true; got false. Error: %v", jsonOut["error"])
 	}
 }

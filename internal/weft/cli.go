@@ -18,6 +18,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/paths"
 )
 
+// envSyncOptions reads WEFT_SKIP_* environment variables and returns a SyncOptions.
+func envSyncOptions() SyncOptions {
+	return SyncOptions{
+		SkipGit:  os.Getenv("WEFT_SKIP_GIT") == "1",
+		SkipPush: os.Getenv("WEFT_SKIP_PUSH") == "1",
+	}
+}
+
 // RunCLI parses and executes a "weft" subcommand, writing JSON results to out.
 // It returns the process exit code (0 on success, 1 on error).
 //
@@ -63,7 +71,9 @@ func RunCLI(out io.Writer, args []string) int {
 			return output.Err(out, "subcommand requires a worktree context")
 		}
 
-		if err := Push(*weftPathFlag); err != nil {
+		// Pass zero-value SyncOptions; the detached child pushes unconditionally
+		// since spawnPush has already decided via its env check that pushing should proceed.
+		if err := Push(*weftPathFlag, SyncOptions{}); err != nil {
 			return output.Err(out, err.Error())
 		}
 		return output.Ok(out, map[string]any{})
@@ -103,30 +113,31 @@ func RunCLI(out io.Writer, args []string) int {
 		return output.Ok(out, statusMap)
 
 	case "commit":
-		committed, err := Commit(weftWorktree, pathspec)
+		committed, err := Commit(weftWorktree, pathspec, envSyncOptions())
 		if err != nil {
 			return output.Err(out, err.Error())
 		}
 		return output.Ok(out, map[string]any{"committed": committed})
 
 	case "push":
-		_, err := Commit(weftWorktree, pathspec)
+		opts := envSyncOptions()
+		_, err := Commit(weftWorktree, pathspec, opts)
 		if err != nil {
 			return output.Err(out, err.Error())
 		}
-		if err := Push(weftWorktree); err != nil {
+		if err := Push(weftWorktree, opts); err != nil {
 			return output.Err(out, err.Error())
 		}
 		return output.Ok(out, map[string]any{})
 
 	case "pull":
-		if err := Pull(weftWorktree); err != nil {
+		if err := Pull(weftWorktree, envSyncOptions()); err != nil {
 			return output.Err(out, err.Error())
 		}
 		return output.Ok(out, map[string]any{})
 
 	case "sync":
-		_, err := Commit(weftWorktree, pathspec)
+		_, err := Commit(weftWorktree, pathspec, envSyncOptions())
 		if err != nil {
 			return output.Err(out, err.Error())
 		}
