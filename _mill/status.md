@@ -28,7 +28,9 @@ implementing  '2026-06-21T12:42:46Z'
 ```yaml
 batches:
   - name: lyxtest-foundation
-    state: pending
+    state: running
+    implementer_session: 66560b4a-0b1d-4c46-9c84-e55a39a822a9
+    start_sha: d4822284a41adfeb6a03516d11aec1d43bc8fe5b
   - name: weft-envparam-and-tests
     state: pending
   - name: worktree-envparam-and-tests
