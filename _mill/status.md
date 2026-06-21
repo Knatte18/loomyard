@@ -40,7 +40,9 @@ batches:
     start_sha: d936b8c87b631f00b7816afe80b0bc32f5e01814
     commit_sha: 5d7e5f221bc91c26e5e8b4ee65ec1b9f566062a8
   - name: worktree-envparam-and-tests
-    state: pending
+    state: running
+    implementer_session: ba8830cd-c6ba-45e3-8bd4-c0951f986ec8
+    start_sha: 5480672723e03e524d389e47611242d65ab50bd3
   - name: paths-tests
     state: pending
   - name: docs-and-cross-verification
