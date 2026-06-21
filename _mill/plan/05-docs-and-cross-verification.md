@@ -5,7 +5,7 @@ task: "Optimise and slim the test suite"
 batch: "docs-and-cross-verification"
 number: 5
 cards: 1
-verify: go test ./... && go test -race -tags integration -count=1 ./internal/lyxtest/... ./internal/weft/... ./internal/worktree/... ./internal/paths/...
+verify: go test ./... && go test -tags integration -count=1 ./internal/lyxtest/... ./internal/weft/... ./internal/worktree/... ./internal/paths/...
 depends-on: [2, 3, 4]
 ```
 
@@ -32,4 +32,6 @@ Capstone: with all three packages migrated, gated, and parallelised, document ho
 
 ## Batch Tests
 
-`verify` is intentionally cross-cutting and justified for this capstone: `go test ./...` confirms the **entire** repo's default loop is offline and green (the headline guarantee — no integration-tagged test runs, no git subprocess in the default loop), and `go test -race -tags integration -count=1 ./internal/lyxtest/... ./internal/weft/... ./internal/worktree/... ./internal/paths/...` confirms the four migrated packages' integration suites pass under the race detector with fresh (uncached) runs — the final parallel-safety gate across all the new `t.Parallel()` usage. This batch's deliverable (the timings block) is produced by running exactly these suites, so the verify command and the card's measurement step are the same work.
+`verify` is intentionally cross-cutting and justified for this capstone: `go test ./...` confirms the **entire** repo's default loop is offline and green (the headline guarantee — no integration-tagged test runs, no git subprocess in the default loop), and `go test -tags integration -count=1 ./internal/lyxtest/... ./internal/weft/... ./internal/worktree/... ./internal/paths/...` confirms the four migrated packages' integration suites pass with fresh (uncached) runs. This batch's deliverable (the timings block) is produced by running exactly these suites, so the verify command and the card's measurement step are the same work.
+
+The race detector (`-race`) is intentionally **out of** `verify`: it requires CGO/a C compiler, which is not available in the development environment, and the new `t.Parallel()` usage is parallel-safe by construction — each parallel test takes an isolated per-test `lyxtest` copy (`CopyHostHub`/`CopyPaired`/`CopyWeft` each build a fresh temp-dir tree) with no shared mutable state. `-race` may still be run opportunistically in a CGO-capable CI, but it is not a precondition for this batch.
