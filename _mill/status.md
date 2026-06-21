@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-paths-tests
+phase: approved-docs-and-cross-verification
 slug: optimize-test-suite
 branch: optimize-test-suite
 plan: _mill/plan
@@ -25,6 +25,7 @@ approved-lyxtest-foundation  '2026-06-21T12:53:32Z'
 approved-weft-envparam-and-tests  '2026-06-21T13:27:31Z'
 approved-worktree-envparam-and-tests  '2026-06-21T14:10:58Z'
 approved-paths-tests  '2026-06-21T14:17:20Z'
+approved-docs-and-cross-verification  '2026-06-21T14:27:16Z'
 ```
 
 ## Batches
@@ -52,7 +53,8 @@ batches:
     start_sha: dcbceda028870c752ffd02298a3768b15224543d
     commit_sha: 76b8beea529f9468c25545d3c3b6f197e8051160
   - name: docs-and-cross-verification
-    state: running
+    state: approved
     implementer_session: 40e0eb56-aa2b-41b0-b837-86a461a642d4
     start_sha: 95ab57b70e7941bffe58986b9916ab37c38759eb
+    commit_sha: c05e26056dfeba93cc274103350d251f92d5e0cb
 ```
