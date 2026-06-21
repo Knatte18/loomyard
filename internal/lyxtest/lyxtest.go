@@ -9,8 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
-	"strings"
 	"sync"
 	"testing"
 
@@ -130,7 +128,6 @@ var (
 // at <base>-weft with _lyx/config/placeholder, plus a bare remote left empty.
 func buildWeftPrime(hubPath string) (weftPrime, weftBare string, err error) {
 	weftPrimeOnce.Do(func() {
-		container := filepath.Dir(hubPath)
 		base := filepath.Base(hubPath)
 		tmpDir, err := os.MkdirTemp("", "lyxtest-weftprime-*")
 		if err != nil {
@@ -332,57 +329,17 @@ type WeftFixture struct {
 	Bare     string
 }
 
-// Helper: rewrite origin URL in a copied .git/config file.
-// Reads the config, replaces the single url = ... line under [remote "origin"],
-// and writes it back. Panics on mismatch (not exactly one url line).
+// Helper: rewrite origin URL in a copied repository.
+// Uses git remote set-url to update the origin URL safely.
 func rewriteOriginURL(repoPath string, newURL string) error {
-	configPath := filepath.Join(repoPath, ".git", "config")
+	cmd := exec.Command("git", "remote", "set-url", "origin", newURL)
+	cmd.Dir = repoPath
 
-	// Read the config file
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		return fmt.Errorf("read config: %w", err)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git remote set-url: %v; output: %s", err, output)
 	}
 
-	content := string(data)
-
-	// Find and replace the url line under [remote "origin"]
-	// Pattern: [remote "origin"] ... url = <oldpath>
-	// We'll do a simple text replacement: find the [remote "origin"] section,
-	// then replace the url line.
-	originIdx := strings.Index(content, `[remote "origin"]`)
-	if originIdx == -1 {
-		return fmt.Errorf("no [remote \"origin\"] section in config")
-	}
-
-	// Find the next section marker or end of file
-	nextSectionIdx := strings.Index(content[originIdx+len(`[remote "origin"]`):], "[")
-	var endIdx int
-	if nextSectionIdx == -1 {
-		endIdx = len(content)
-	} else {
-		endIdx = originIdx + len(`[remote "origin"]`) + nextSectionIdx
-	}
-
-	// Extract the origin section
-	originSection := content[originIdx:endIdx]
-
-	// Find and replace the url line
-	urlPattern := regexp.MustCompile(`\s*url\s*=\s*.*`)
-	matches := urlPattern.FindAllStringIndex(originSection, -1)
-	if len(matches) != 1 {
-		return fmt.Errorf("expected exactly 1 url line in [remote \"origin\"], found %d", len(matches))
-	}
-
-	// Build the replacement
-	newURLLine := fmt.Sprintf("\turl = %s", newURL)
-	newOriginSection := originSection[:matches[0][0]] + newURLLine + originSection[matches[0][1]:]
-
-	// Replace in the full content
-	newContent := content[:originIdx] + newOriginSection + content[endIdx:]
-
-	// Write back
-	return os.WriteFile(configPath, []byte(newContent), 0o644)
+	return nil
 }
 
 // Helper: recursively copy a directory tree.
