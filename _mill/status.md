@@ -34,7 +34,9 @@ batches:
     start_sha: d4822284a41adfeb6a03516d11aec1d43bc8fe5b
     commit_sha: ecf60a2e0ddef14e037f566ea0699924624e9fc8
   - name: weft-envparam-and-tests
-    state: pending
+    state: running
+    implementer_session: e42df79a-fdf2-4e74-8c3e-31426297af46
+    start_sha: d936b8c87b631f00b7816afe80b0bc32f5e01814
   - name: worktree-envparam-and-tests
     state: pending
   - name: paths-tests
