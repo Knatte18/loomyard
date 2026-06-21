@@ -1,3 +1,5 @@
+//go:build integration
+
 // paths_test.go covers Layout resolution, the geometry accessors, and the
 // ErrNotAGitRepo path for directories outside a git repo.
 
@@ -9,17 +11,17 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/lyxtest"
 	"github.com/Knatte18/loomyard/internal/paths"
 )
 
 // TestResolve_FromWorktreeRoot verifies that Resolve from the worktree root
 // yields empty RelPath (or ".") and correct other fields.
 func TestResolve_FromWorktreeRoot(t *testing.T) {
-	hub := newTestRepo(t)
-	defer func() {
-		// Clean up the test repo
-		_ = os.RemoveAll(filepath.Dir(hub))
-	}()
+	t.Parallel()
+
+	fix := lyxtest.CopyHostHub(t)
+	hub := fix.Hub
 
 	layout, err := paths.Resolve(hub)
 	if err != nil {
@@ -55,10 +57,10 @@ func TestResolve_FromWorktreeRoot(t *testing.T) {
 // TestResolve_FromSubdirectory verifies that Resolve from a subdirectory
 // yields the correct relative RelPath.
 func TestResolve_FromSubdirectory(t *testing.T) {
-	hub := newTestRepo(t)
-	defer func() {
-		_ = os.RemoveAll(filepath.Dir(hub))
-	}()
+	t.Parallel()
+
+	fix := lyxtest.CopyHostHub(t)
+	hub := fix.Hub
 
 	// Create a subdirectory structure
 	subDir := filepath.Join(hub, "subdir", "nested")
@@ -89,10 +91,10 @@ func TestResolve_FromSubdirectory(t *testing.T) {
 
 // TestResolve_GeometryMethods verifies that geometry methods produce expected paths.
 func TestResolve_GeometryMethods(t *testing.T) {
-	hub := newTestRepo(t)
-	defer func() {
-		_ = os.RemoveAll(filepath.Dir(hub))
-	}()
+	t.Parallel()
+
+	fix := lyxtest.CopyHostHub(t)
+	hub := fix.Hub
 
 	layout, err := paths.Resolve(hub)
 	if err != nil {
@@ -146,10 +148,10 @@ func TestResolve_GeometryMethods(t *testing.T) {
 // TestResolve_ForwardSlashNormalization verifies that forward-slash output
 // from --show-toplevel is reconciled with backslash cwd on Windows.
 func TestResolve_ForwardSlashNormalization(t *testing.T) {
-	hub := newTestRepo(t)
-	defer func() {
-		_ = os.RemoveAll(filepath.Dir(hub))
-	}()
+	t.Parallel()
+
+	fix := lyxtest.CopyHostHub(t)
+	hub := fix.Hub
 
 	// Call Resolve normally; both cwd and --show-toplevel output get normalized
 	layout, err := paths.Resolve(hub)
@@ -170,6 +172,8 @@ func TestResolve_ForwardSlashNormalization(t *testing.T) {
 // TestResolve_NotAGitRepo verifies that Resolve in a non-git temp directory
 // returns ErrNotAGitRepo.
 func TestResolve_NotAGitRepo(t *testing.T) {
+	t.Parallel()
+
 	nonGitDir := t.TempDir()
 
 	layout, err := paths.Resolve(nonGitDir)
@@ -185,13 +189,17 @@ func TestResolve_NotAGitRepo(t *testing.T) {
 
 // TestMirroredMethods tests the subpath-mirrored geometry methods.
 func TestMirroredMethods(t *testing.T) {
-	hub := newTestRepo(t)
-	defer func() {
-		_ = os.RemoveAll(filepath.Dir(hub))
-	}()
+	t.Parallel()
+
+	fix := lyxtest.CopyHostHub(t)
+	hub := fix.Hub
 
 	t.Run("PortalLink", func(t *testing.T) {
+		t.Parallel()
+
 		t.Run("at root", func(t *testing.T) {
+			t.Parallel()
+
 			layout, err := paths.Resolve(hub)
 			if err != nil {
 				t.Fatalf("Resolve() error = %v; want nil", err)
@@ -206,6 +214,8 @@ func TestMirroredMethods(t *testing.T) {
 		})
 
 		t.Run("at subpath", func(t *testing.T) {
+			t.Parallel()
+
 			subDir := filepath.Join(hub, "services", "api")
 			if err := os.MkdirAll(subDir, 0755); err != nil {
 				t.Fatalf("failed to create subdir: %v", err)
@@ -225,6 +235,8 @@ func TestMirroredMethods(t *testing.T) {
 		})
 
 		t.Run("no collision between different subpaths", func(t *testing.T) {
+			t.Parallel()
+
 			subDir1 := filepath.Join(hub, "services", "api")
 			subDir2 := filepath.Join(hub, "services", "web")
 			if err := os.MkdirAll(subDir1, 0755); err != nil {
@@ -255,7 +267,11 @@ func TestMirroredMethods(t *testing.T) {
 	})
 
 	t.Run("LauncherDir", func(t *testing.T) {
+		t.Parallel()
+
 		t.Run("at root (backward compat)", func(t *testing.T) {
+			t.Parallel()
+
 			layout, err := paths.Resolve(hub)
 			if err != nil {
 				t.Fatalf("Resolve() error = %v; want nil", err)
@@ -271,6 +287,8 @@ func TestMirroredMethods(t *testing.T) {
 		})
 
 		t.Run("at subpath", func(t *testing.T) {
+			t.Parallel()
+
 			subDir := filepath.Join(hub, "services", "api")
 			if err := os.MkdirAll(subDir, 0755); err != nil {
 				t.Fatalf("failed to create subdir: %v", err)
@@ -290,6 +308,8 @@ func TestMirroredMethods(t *testing.T) {
 		})
 
 		t.Run("no collision between different subpaths", func(t *testing.T) {
+			t.Parallel()
+
 			subDir1 := filepath.Join(hub, "services", "api")
 			subDir2 := filepath.Join(hub, "services", "web")
 			if err := os.MkdirAll(subDir1, 0755); err != nil {
@@ -320,7 +340,11 @@ func TestMirroredMethods(t *testing.T) {
 	})
 
 	t.Run("MenuLauncherPath", func(t *testing.T) {
+		t.Parallel()
+
 		t.Run("at root", func(t *testing.T) {
+			t.Parallel()
+
 			layout, err := paths.Resolve(hub)
 			if err != nil {
 				t.Fatalf("Resolve() error = %v; want nil", err)
@@ -334,6 +358,8 @@ func TestMirroredMethods(t *testing.T) {
 		})
 
 		t.Run("at subpath", func(t *testing.T) {
+			t.Parallel()
+
 			subDir := filepath.Join(hub, "services", "api")
 			if err := os.MkdirAll(subDir, 0755); err != nil {
 				t.Fatalf("failed to create subdir: %v", err)
@@ -353,7 +379,11 @@ func TestMirroredMethods(t *testing.T) {
 	})
 
 	t.Run("LauncherSpawnRel", func(t *testing.T) {
+		t.Parallel()
+
 		t.Run("at root", func(t *testing.T) {
+			t.Parallel()
+
 			layout, err := paths.Resolve(hub)
 			if err != nil {
 				t.Fatalf("Resolve() error = %v; want nil", err)
@@ -373,6 +403,8 @@ func TestMirroredMethods(t *testing.T) {
 		})
 
 		t.Run("at subpath", func(t *testing.T) {
+			t.Parallel()
+
 			subDir := filepath.Join(hub, "services", "api")
 			if err := os.MkdirAll(subDir, 0755); err != nil {
 				t.Fatalf("failed to create subdir: %v", err)
@@ -398,7 +430,11 @@ func TestMirroredMethods(t *testing.T) {
 	})
 
 	t.Run("MenuLauncherRel", func(t *testing.T) {
+		t.Parallel()
+
 		t.Run("at root", func(t *testing.T) {
+			t.Parallel()
+
 			layout, err := paths.Resolve(hub)
 			if err != nil {
 				t.Fatalf("Resolve() error = %v; want nil", err)
@@ -417,6 +453,8 @@ func TestMirroredMethods(t *testing.T) {
 		})
 
 		t.Run("at subpath", func(t *testing.T) {
+			t.Parallel()
+
 			subDir := filepath.Join(hub, "services", "api")
 			if err := os.MkdirAll(subDir, 0755); err != nil {
 				t.Fatalf("failed to create subdir: %v", err)
