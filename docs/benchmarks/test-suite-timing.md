@@ -159,8 +159,11 @@ documented drop. Uniquely-covered assertions are preserved.
 - TestRemoveTask — owned by `store_test.go:TestRemoveTaskMissing` (business logic owner)
 - TestRenderTaskStatus — strict subset of TestRenderStatusVariants (all status variants covered)
 
-**worktree (3 dropped):**
-- TestWeftPrechecksHardRequireWeftRepo → TestWeftPrechecks/HardRequireWeftRepo (or migrated into add_test.go:TestAdd/NoWeftRepo per layer rules)
+**worktree (4 folded):**
+- TestWeftPrechecksHardRequireWeftRepo → TestWeftPrechecks/TestWeftPrechecksHardRequireWeftRepo
+- TestWeftPrechecksRejectExistingWeftWorktree → TestWeftPrechecks/TestWeftPrechecksRejectExistingWeftWorktree
+- TestWeftPrechecksRejectExistingWeftBranch → TestWeftPrechecks/TestWeftPrechecksRejectExistingWeftBranch
+- TestWeftHostPristineEnforced → TestWeftPrechecks/TestWeftHostPristineEnforced
 
 **weft (6 folded):**
 - TestLoadConfig_DefaultWhenNoYAML → TestLoadConfig/DefaultWhenNoYAML
