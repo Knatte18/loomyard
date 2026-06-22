@@ -3,7 +3,7 @@
 ```yaml
 task: "Extract internal/fslink cross-OS link primitive"
 slug: "extract-fslink"
-approved: false
+approved: true
 started: "20260622-110905"
 parent: "main"
 root: ""

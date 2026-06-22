@@ -29,6 +29,7 @@ uses `golang.org/x/sys/windows` reparse-point syscalls; on non-Windows it uses
 - **Context:**
   - `internal/worktree/links.go`
   - `internal/worktree/junction_other.go`
+  - `internal/worktree/junction_windows.go`
 - **Edits:** none
 - **Creates:**
   - `internal/fslink/fslink.go`

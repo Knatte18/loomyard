@@ -53,15 +53,16 @@ is verified by running them with `-tags integration`.
 - **Deletes:** none
 - **Requirements:** Rewrite `seedLyxJunction` to use `fslink`, preserving every
   caller-visible message and the idempotent semantics:
-  When `os.Lstat(link)` succeeds (link exists): if `fslink.IsLink(link)` returns false,
-  return the existing error `"host repo already contains a real _lyx at %s; it predates
-  weft — migrate via the hub-creator"`. If it is a link, detect a missing target
-  distinctly — when the target cannot be resolved (`os.Stat(target)` is `os.IsNotExist`,
-  or `fslink.PointsTo(link)` errors because the target is gone) return `"weft _lyx
-  directory does not exist at %s; cannot validate junction target"`. Otherwise compare
-  `fslink.PointsTo(link)` with `filepath.EvalSymlinks(target)`: equal → return nil
-  (idempotent); not equal → return the same `"host repo already contains a real _lyx …"`
-  error.
+  When `os.Lstat(link)` succeeds (link exists), preserve the original check ORDER:
+  (1) resolve the expected target first — if `filepath.EvalSymlinks(target)` errors
+  (target missing), return `"weft _lyx directory does not exist at %s; cannot validate
+  junction target"`. (2) Otherwise, if the link is a link (`fslink.IsLink(link)` true)
+  AND `fslink.PointsTo(link)` equals the resolved target, return nil (idempotent).
+  (3) Otherwise — covering both the not-a-link case and the points-elsewhere case —
+  return `"host repo already contains a real _lyx at %s; it predates weft — migrate via
+  the hub-creator"`. This ordering keeps the edge-case message (real dir + absent
+  target) byte-identical to the original per the `preserve-behaviour-and-messages`
+  decision.
   When `os.Lstat(link)` returns `os.IsNotExist`: call `fslink.Create(link, target)` and
   return its result.
   Other `os.Lstat` error: wrap as `"lstat %s: %w"` (unchanged).
