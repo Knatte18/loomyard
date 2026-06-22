@@ -121,7 +121,7 @@ documented drop. Uniquely-covered assertions are preserved.
 **Folded names** (original top-level func name now a `t.Run` subtest):
 
 **board (23 dropped via folding):**
-- TestAbsolutePathPassthrough → TestLoadConfig/AbsolutePathPassthrough
+- TestAbsolutePathPassthrough → TestLoadConfig/TestAbsolutePathPassthrough
 - TestCLIGetNonexistentTask → TestCLIErrorAndEdgeCases/TestCLIGetNonexistentTask
 - TestCLIGetTask → TestCLIContract/TestCLIGetTask
 - TestCLIListTasks → TestCLIContract/TestCLIListTasks
@@ -149,6 +149,7 @@ documented drop. Uniquely-covered assertions are preserved.
 - TestRenderOrphanDetection → TestRenderSingleTask/TestRenderOrphanDetection
 - TestRenderSidebarBlanks → TestRenderSidebarExtendedTitle/TestRenderSidebarBlanks
 - TestRenderSingleTask → TestRenderSingleTask (table-driven within same function)
+- TestRenderSpecialBucketTask → TestRenderProposalAndShapesHomepage/TestRenderSpecialBucketTask
 - TestRenderStatusVariants → TestRenderStatusVariants (table-driven within same function)
 - TestRenderTaskIDFormatting → TestRenderProposalAndShapesHomepage/TestRenderTaskIDFormatting
 - TestRenderToDisk → TestRenderToDisk (table-driven within same function)
@@ -168,36 +169,36 @@ documented drop. Uniquely-covered assertions are preserved.
 - TestWeftHostPristineEnforced → TestWeftPrechecks/TestWeftHostPristineEnforced
 
 **weft (7 folded):**
-- TestLoadConfig_DefaultWhenNoYAML → TestLoadConfig/DefaultWhenNoYAML
-- TestLoadConfig_OverrideFromYAML → TestLoadConfig/OverrideFromYAML
-- TestLoadConfig_MissingLyx → TestLoadConfig/MissingLyx
+- TestLoadConfig_DefaultWhenNoYAML → TestLoadConfig/TestLoadConfig_DefaultWhenNoYAML
+- TestLoadConfig_OverrideFromYAML → TestLoadConfig/TestLoadConfig_OverrideFromYAML
+- TestLoadConfig_MissingLyx → TestLoadConfig/TestLoadConfig_MissingLyx
 - TestPullIntegration_FastForward → dropped — strict subset of `sync_test.go:TestPull_FastForward`
-- TestPushIntegration_CommitLandsOnBare → TestPushIntegration/CommitLandsOnBare
-- TestPushIntegration_RebaseRetryOnNFF → TestPushIntegration/RebaseRetryOnNFF (note: this test did not actually set up non-FF scenario; folded for clarity)
+- TestPushIntegration_CommitLandsOnBare → TestPushIntegration/TestPushIntegration_CommitLandsOnBare
+- TestPushIntegration_RebaseRetryOnNFF → TestPushIntegration/TestPushIntegration_RebaseRetryOnNFF (note: this test did not actually set up non-FF scenario; folded for clarity)
 - TestSyncIntegration_EventuallyPushed → TestPushIntegration/TestSyncIntegration_EventuallyPushed
 
 **ide (9 dropped):**
 - TestMenuZeroWorktreeMessage — dropped; covered by TestMenuRequiresLyxDir (identical assertion: "no active worktrees")
-- TestPickColorFirstUnusedNonGreen → TestPickColor/FirstUnusedNonGreen
-- TestPickColorIgnoresUnreadable → TestPickColor/IgnoresUnreadable
-- TestPickColorNeverReturnsGreen → TestPickColor/NeverReturnsGreen
-- TestPickColorWrapAroundAllUsed → TestPickColor/WrapAroundAllUsed
-- TestRunCLIMissingSlug → TestRunCLIErrors/MissingSlug
-- TestRunCLINoArgs → TestRunCLIErrors/NoArgs
-- TestSpawnCallsCodeLauncher → TestSpawn/CallsCodeLauncher
+- TestPickColorFirstUnusedNonGreen → TestPickColor/TestPickColorFirstUnusedNonGreen
+- TestPickColorIgnoresUnreadable → TestPickColor/TestPickColorIgnoresUnreadable
+- TestPickColorNeverReturnsGreen → TestPickColor/TestPickColorNeverReturnsGreen
+- TestPickColorWrapAroundAllUsed → TestPickColor/TestPickColorWrapAroundAllUsed
+- TestRunCLIMissingSlug → TestRunCLIErrors/TestRunCLIMissingSlug
+- TestRunCLINoArgs → TestRunCLIErrors/TestRunCLINoArgs
+- TestSpawnCallsCodeLauncher → TestSpawn/TestSpawnCallsCodeLauncher
 - TestSpawnColorSelection → dropped; covered by TestSpawnGeneratesConfig + vscode_test.go:TestWriteVSCodeConfigCreatesFilesWhenAbsent (color key existence asserted; color choice is color_test's responsibility)
-- TestSpawnDoesNotClobber → TestSpawn/DoesNotClobber
-- TestSpawnGeneratesConfig → TestSpawn/GeneratesConfig
+- TestSpawnDoesNotClobber → TestSpawn/TestSpawnDoesNotClobber
+- TestSpawnGeneratesConfig → TestSpawn/TestSpawnGeneratesConfig
 
 **muxpoc (8 folded):**
-- TestLayoutChecksumIsFourHexDigits → TestLayoutChecksum/IsFourHexDigits
-- TestLayoutChecksumMatchesPsmux → TestLayoutChecksum/MatchesPsmux
-- TestRunCLINoSubcommandFails → TestRunCLIErrors/NoSubcommandFails
-- TestRunCLIUnknownFlagFails → TestRunCLIErrors/UnknownFlagFails
-- TestRunCLIUnknownSubcommandFails → TestRunCLIErrors/UnknownSubcommandFails
-- TestSanitizeEnv → TestEnvFiltering/SanitizeEnv
-- TestSocketNameStability → TestSocketName/Stability
-- TestStrippedEnvKeys → TestEnvFiltering/StrippedEnvKeys
+- TestLayoutChecksumIsFourHexDigits → TestLayoutChecksum/TestLayoutChecksumIsFourHexDigits
+- TestLayoutChecksumMatchesPsmux → TestLayoutChecksum/TestLayoutChecksumMatchesPsmux
+- TestRunCLINoSubcommandFails → TestRunCLIErrors/TestRunCLINoSubcommandFails
+- TestRunCLIUnknownFlagFails → TestRunCLIErrors/TestRunCLIUnknownFlagFails
+- TestRunCLIUnknownSubcommandFails → TestRunCLIErrors/TestRunCLIUnknownSubcommandFails
+- TestSanitizeEnv → TestEnvFiltering/TestSanitizeEnv
+- TestSocketNameStability → TestSocketName/TestSocketNameStability
+- TestStrippedEnvKeys → TestEnvFiltering/TestStrippedEnvKeys
 
 (The SocketName inline stability check, which had no top-level func name, is folded into TestSocketName/Stability and recorded here for name-map clarity.)
 
