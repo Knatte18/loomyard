@@ -28,7 +28,9 @@ implementing  '2026-06-22T11:19:30Z'
 ```yaml
 batches:
   - name: fslink-package
-    state: pending
+    state: running
+    implementer_session: 4466162c-2f24-493d-b093-650d5e789055
+    start_sha: 23c06b34c44492ec34847e3a36eb5de1ed5f637e
   - name: migrate-callsites
     state: pending
 ```
