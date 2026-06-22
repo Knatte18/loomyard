@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-board-fixtures
+phase: approved-ide-fixtures
 slug: optimize-remaining-test-suites
 branch: optimize-remaining-test-suites
 plan: _mill/plan
@@ -23,6 +23,7 @@ planned  '2026-06-22T06:35:03Z'
 implementing  '2026-06-22T06:36:35Z'
 approved-gate-offline  '2026-06-22T06:47:07Z'
 approved-board-fixtures  '2026-06-22T06:56:57Z'
+approved-ide-fixtures  '2026-06-22T07:00:14Z'
 ```
 
 ## Batches
@@ -40,9 +41,10 @@ batches:
     start_sha: eab98181453e53bf892448ad733a9b30473bf440
     commit_sha: 7ac9822013ae92a07c2ab32275b660c7e4122fb9
   - name: ide-fixtures
-    state: running
+    state: approved
     implementer_session: ce6ab8bc-8b73-4984-be56-89085378c9ed
     start_sha: 8b842394085d8429333287129beb4b01be34402a
+    commit_sha: 4102ea14bf5fdc2884502a6b06e77c4e6ec40c19
   - name: board-prune
     state: pending
   - name: docs
