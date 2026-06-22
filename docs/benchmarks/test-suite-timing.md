@@ -167,6 +167,63 @@ cannot be hidden by parallelism.
 - **`ide` (~19 s)** is mostly menu/CLI tests that spawn the binary and drive a TUI.
 - The remaining eight packages together cost < 14 s — they are not worth optimizing.
 
+### 2026-06-22 — after `optimize-remaining-test-suites`
+
+The git-spawning tests in `internal/board` (`git_test.go`, `sync_test.go`) and
+`internal/ide` (`cli_test.go`, `menu_test.go`) were gated behind the `integration`
+build tag and relocated into `internal/board/boardtest`. The `render_test.go` and
+`store_test.go` top-level functions were folded into table-driven tests. Seven
+git/sync tests moved from `internal/board` (Tier 1) into `internal/board/boardtest`
+(Tier 2). This completes the two-tier split across the whole repo.
+
+#### Before / after wall-clock (uncached, `-count=1`)
+
+| Package                    | Tier 1 before | Tier 1 after | Tier 2 after |
+|----------------------------|---------------|--------------|--------------|
+| `internal/board`           | ~24 s         | **0.7 s**    | ~3.9 s       |
+| `internal/board/boardtest` | ~3.9 s        | **1.5 s**    | ~38.8 s      |
+| `internal/ide`             | ~12 s         | **0.6 s**    | ~12.3 s      |
+| `internal/git`             | —             | no tests¹    | ~1.5 s       |
+
+¹ `internal/git` has no untagged test files — all its tests require `-tags integration`.
+
+- **Full offline loop** (`go test ./... -count=1`): **~3.5 s**, down from **~27.6 s**
+  (itself down from ~82 s after the prior task). The floor is now the build/link
+  overhead across packages; no single package dominates.
+- **Tier 1 is now offline repo-wide**: `go test ./...` spawns zero git subprocesses.
+  The board git/sync tests and the `internal/git` tests are absent from the default
+  `-list` and only appear under `-tags integration`.
+- **Tier 2 full wall-clock**: ~40.5 s, bounded by `internal/board/boardtest` (~38.8 s).
+
+#### Equivalence guardrail
+
+The post-change test-name set is a **superset** of the pre-change set, verified by
+diffing `-list` + `=== RUN` baselines. The seven git/sync tests relocated from
+`internal/board` (Tier 1) into `internal/board/boardtest` (Tier 2) are present in
+the union of both packages under `-tags integration`:
+
+- `TestCommitPush` (3 subtests), `TestIntegrationCommitPush`, `TestIntegrationPull`,
+  `TestPull`, `TestSyncCommitsAndPushes`, `TestSyncCoalescesBurstIntoOneCommit`,
+  `TestSyncSkipPushCommitsLocallyOnly`, `TestSyncCleanTreeIsNoOp`,
+  `TestSyncIgnoresLockfiles` — all present in `board/boardtest` under integration.
+
+Table-driven folds in `internal/board` (`render_test.go`, `store_test.go`): assertions
+are preserved; no named (sub)test was dropped. The superset check is computed against
+the **union across `internal/board` (untagged) + `internal/board/boardtest`
+(integration)**.
+
+#### Parallel safety
+
+The moved board tests (`git_test.go`, `sync_test.go`) use `t.Setenv` (`BOARD_SKIP_GIT`,
+`BOARD_SKIP_PUSH`) and remain serial — Go forbids `t.Parallel()` after `t.Setenv`.
+The `internal/ide` tests `cli_test.go` and `menu_test.go` use `os.Chdir` (a
+process-global seam) and likewise remain serial. The `lyxtest` per-test fixture copies
+(`CopyBoardRepo`, `CopyHostHub`, `CopyWeft`, `CopyPaired`) are isolated per-test
+filesystem trees with no shared mutable state, so any test that does not use
+`t.Setenv`/`os.Chdir` may safely call `t.Parallel()`. The `-race` detector is not a
+precondition (no CGO in this environment); it may be run opportunistically in a
+CGO-capable CI.
+
 ### Reducing wall-clock
 
 If the suite feels slow locally, the highest-leverage levers, in order:
