@@ -32,8 +32,12 @@ this task is purely the physical extraction.
   `internal/vscode`, exported as `WriteConfig`.
 - Move `pickColor` + `palette` + `mainColor` (from `internal/ide/color.go`) →
   `internal/vscode`. `pickColor` exported as `PickColor`; `palette` and
-  `mainColor` stay **unexported** (only used internally and by white-box tests
-  that move with them).
+  `mainColor` stay **unexported**. (`palette` is referenced by both `PickColor`
+  and `color_test.go`; `mainColor` is consumed **only** by `color_test.go`
+  (`:36`, `:83`) — `PickColor` skips green by starting its index loop at
+  `palette[1]` and never references `mainColor` — so `mainColor` survives the
+  move purely as test-visible state and must live in a non-`_test.go` file the
+  white-box tests can reach, e.g. `color.go`.)
 - Move `launchCode` (from `launch_windows.go` / `launch_other.go`, with their
   `//go:build` tags) → `internal/vscode`, exported as `Launch`.
 - Move `ErrIDEUnsupported` → `internal/vscode`, **renamed** to `ErrUnsupported`
@@ -190,9 +194,9 @@ links. (`.vscode/` directory creation uses plain `os.MkdirAll`, unchanged.)
 
 Other:
 
-- Preserve the `//go:build integration` tag on the migrated/unchanged
-  `cli_test.go` and the `//go:build windows` / `//go:build !windows` tags on the
-  launch files.
+- Preserve the `//go:build integration` tag on the unchanged `cli_test.go`
+  **and** `menu_test.go` (both carry it — `cli_test.go:1`, `menu_test.go:1`),
+  and the `//go:build windows` / `//go:build !windows` tags on the launch files.
 - Go module path prefix is `github.com/Knatte18/loomyard`.
 
 ## Testing
@@ -231,8 +235,20 @@ moved symbols by name):
 - `go test ./internal/ide/... ./internal/vscode/...`
 - `go test ./internal/paths/...` (path-invariant enforcement scan stays green)
 - `go vet ./internal/ide/... ./internal/vscode/...`
-- Optionally `go test -tags integration ./internal/ide/...` to cover
-  `cli_test.go`.
+- `go test -tags integration ./internal/ide/...` — covers **both** the
+  integration-tagged `cli_test.go` (CLI dispatch) and `menu_test.go` (picker).
+
+**Integration tests are an OPTIONAL gate step (deliberate operator decision).**
+The two files that *stay* in `ide` and exercise the rewired call sites
+(`cli.go`/`menu.go` → `Spawn` → `vscode.*`) are both `//go:build integration`,
+so the mandatory plain `go test ./internal/ide/...` does **not** run them — it
+runs only `spawn_test.go` (which already covers the full `Spawn` flow end-to-end
+with the stubbed `codeLauncher`, asserting on the written `settings.json` /
+`tasks.json` and color, i.e. the same `vscode.*` call path). The operator chose
+to keep `-tags integration` optional rather than mandatory: the rewire changes
+only call *targets*, not dispatch/picker logic, and `spawn_test.go` already
+exercises the new `vscode.*` path under the mandatory gate. mill-plan/mill-go
+should run the integration variant when convenient but must not block on it.
 
 ## Q&A log
 
@@ -247,8 +263,17 @@ moved symbols by name):
 - **Q:** What about `ErrIDEUnsupported`? **A:** Rename to `vscode.ErrUnsupported`
   (message: "vscode launch unsupported on this platform"); contained — no
   external consumer branches on it.
-- **Q:** Are `palette` / `mainColor` exported? **A:** No — only used internally
-  and by white-box tests that move with the package; keep unexported.
+- **Q:** Are `palette` / `mainColor` exported? **A:** No — keep unexported.
+  `palette` is used by `PickColor` + `color_test.go`; `mainColor` is consumed
+  **only** by `color_test.go` (`PickColor` skips green by index), so it moves as
+  test-visible state in a non-`_test.go` file (e.g. `color.go`).
+- **Q:** (review r1 GAP) The mandatory `go test ./internal/ide/...` skips the
+  integration-tagged `menu_test.go` + `cli_test.go`, leaving the picker/dispatch
+  files unrun by the rewire's mandatory gate — make the integration gate
+  mandatory? **A:** No — keep `-tags integration` **optional** (operator
+  decision). `spawn_test.go` already exercises the rewired `vscode.*` path under
+  the mandatory gate; the rewire changes call targets only. Documented the
+  tradeoff explicitly in Testing.
 - **Q:** Anything outside `ide` affected? **A:** No — only `cmd/lyx/main.go`
   imports `ide` (via `RunCLI`, untouched); no moved symbol is referenced
   elsewhere.
