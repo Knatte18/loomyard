@@ -1,10 +1,12 @@
+//go:build integration
+
 // sync_test.go — unit tests for the background pusher (sync.go).
 //
 // Exercises Sync against a LOCAL bare repo (no network, no dummy remote): a
 // commit + push, a burst coalescing into one commit, BOARD_SKIP_PUSH committing
 // without pushing, and the clean-tree no-op.
 
-package board_test
+package boardtest
 
 import (
 	"os"
