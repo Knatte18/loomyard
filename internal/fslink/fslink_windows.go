@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"unsafe"
 
@@ -13,8 +14,14 @@ import (
 )
 
 // UTF16Ptr converts a string to a null-terminated UTF-16 pointer for Windows syscalls.
+// It panics if s contains a NUL byte, matching the contract of the call sites that
+// pass filesystem paths (which never legitimately contain NUL).
 func UTF16Ptr(s string) *uint16 {
-	return syscall.StringToUTF16Ptr(s)
+	p, err := windows.UTF16PtrFromString(s)
+	if err != nil {
+		panic(err)
+	}
+	return p
 }
 
 // Create establishes a junction (mount-point reparse point) that links to target.
@@ -76,7 +83,11 @@ func Create(link, target string) error {
 	//            SubstituteNameOffset (2) + SubstituteNameLength (2) +
 	//            PrintNameOffset (2) + PrintNameLength (2) +
 	//            MountPointReparseBuffer (substitute + print names)
-	headerSize := 8 + 12
+	// Header before PathBuffer is 16 bytes: the 8-byte generic header
+	// (ReparseTag + ReparseDataLength + Reserved) plus the four USHORT
+	// MountPointReparseBuffer fields (SubstituteNameOffset/Length,
+	// PrintNameOffset/Length). PathBuffer then holds both null-terminated names.
+	headerSize := 16
 	bufSize := headerSize + substNameLen + 2 + printNameLen + 2
 	buf := make([]byte, bufSize)
 
@@ -114,6 +125,74 @@ func Create(link, target string) error {
 	return nil
 }
 
+// readReparseData opens path with reparse-point semantics and returns the raw
+// reparse data buffer, truncated to the number of bytes Windows actually wrote.
+// The output buffer is sized to the maximum reparse data buffer — the tag alone
+// is not enough; Windows rejects an undersized buffer with "data area too small".
+func readReparseData(path string) ([]byte, error) {
+	handle, err := windows.CreateFile(
+		UTF16Ptr(path),
+		windows.GENERIC_READ,
+		windows.FILE_SHARE_READ,
+		nil,
+		windows.OPEN_EXISTING,
+		windows.FILE_FLAG_OPEN_REPARSE_POINT|windows.FILE_FLAG_BACKUP_SEMANTICS,
+		0,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("CreateFile(%s): %w", path, err)
+	}
+	defer windows.CloseHandle(handle)
+
+	const maxReparseSize = 16 * 1024 // MAXIMUM_REPARSE_DATA_BUFFER_SIZE
+	buf := make([]byte, maxReparseSize)
+	var bytesReturned uint32
+	err = windows.DeviceIoControl(
+		handle,
+		windows.FSCTL_GET_REPARSE_POINT,
+		nil, 0,
+		&buf[0], uint32(len(buf)),
+		&bytesReturned, nil,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("FSCTL_GET_REPARSE_POINT: %w", err)
+	}
+	return buf[:bytesReturned], nil
+}
+
+// reparseSubstituteName extracts the substitute name (with the \??\ prefix
+// stripped) from a junction or symlink reparse data buffer. The PathBuffer is
+// preceded by a 16-byte header for mount points and a 20-byte header for
+// symlinks (the latter has an extra 4-byte Flags field); the name offset and
+// length fields live at the same offsets (8 and 10) for both.
+func reparseSubstituteName(data []byte) (string, error) {
+	if len(data) < 16 {
+		return "", fmt.Errorf("reparse buffer too small (%d bytes)", len(data))
+	}
+	tag := *(*uint32)(unsafe.Pointer(&data[0]))
+	var pathBufOffset int
+	switch tag {
+	case windows.IO_REPARSE_TAG_MOUNT_POINT:
+		pathBufOffset = 16
+	case windows.IO_REPARSE_TAG_SYMLINK:
+		pathBufOffset = 20
+	default:
+		return "", fmt.Errorf("unsupported reparse tag %#x", tag)
+	}
+
+	substNameOffset := int(*(*uint16)(unsafe.Pointer(&data[8])))
+	substNameLen := int(*(*uint16)(unsafe.Pointer(&data[10])))
+	start := pathBufOffset + substNameOffset
+	end := start + substNameLen
+	if end > len(data) {
+		return "", fmt.Errorf("reparse buffer truncated: need %d bytes, have %d", end, len(data))
+	}
+
+	u16 := unsafe.Slice((*uint16)(unsafe.Pointer(&data[start])), substNameLen/2)
+	name := syscall.UTF16ToString(u16)
+	return strings.TrimPrefix(name, `\??\`), nil
+}
+
 // IsLink reports whether path is a link (junction or symlink). It returns
 // (false, nil) if path does not exist, (false, err) on stat errors, and
 // (true/false, nil) when the path exists and can be checked. A link is true
@@ -134,44 +213,23 @@ func IsLink(path string) (bool, error) {
 		return false, nil
 	}
 
-	// Open the path with reparse-point semantics to read the tag.
-	handle, err := windows.CreateFile(
-		UTF16Ptr(path),
-		windows.GENERIC_READ,
-		windows.FILE_SHARE_READ,
-		nil,
-		windows.OPEN_EXISTING,
-		windows.FILE_FLAG_OPEN_REPARSE_POINT|windows.FILE_FLAG_BACKUP_SEMANTICS,
-		0,
-	)
+	data, err := readReparseData(path)
 	if err != nil {
-		return false, fmt.Errorf("CreateFile(%s): %w", path, err)
-	}
-	defer windows.CloseHandle(handle)
-
-	// Read the reparse point data to get the tag
-	buf := make([]byte, 4)
-	var bytesReturned uint32
-	err = windows.DeviceIoControl(
-		handle,
-		windows.FSCTL_GET_REPARSE_POINT,
-		nil, 0,
-		&buf[0], uint32(len(buf)),
-		&bytesReturned, nil,
-	)
-	if err != nil {
-		return false, fmt.Errorf("FSCTL_GET_REPARSE_POINT: %w", err)
+		return false, err
 	}
 
-	// The reparse tag is in the first 4 bytes of the reparse point data
-	tag := *(*uint32)(unsafe.Pointer(&buf[0]))
+	// The reparse tag is in the first 4 bytes of the reparse point data.
+	tag := *(*uint32)(unsafe.Pointer(&data[0]))
 
 	return (tag == windows.IO_REPARSE_TAG_MOUNT_POINT || tag == windows.IO_REPARSE_TAG_SYMLINK), nil
 }
 
-// PointsTo returns the resolved absolute target of a link via filepath.EvalSymlinks.
-// The result has no \??\ prefix. Returns an error if link is not a link or if the
-// target does not exist.
+// PointsTo returns the resolved absolute target of a link. The target is read
+// directly from the reparse data (Go's filepath.EvalSymlinks does not resolve
+// junctions on current Windows builds, where they report as ModeIrregular), then
+// canonicalized via filepath.EvalSymlinks so the result matches how callers
+// resolve the other end of a comparison. The result has no \??\ prefix. Returns
+// an error if link is not a link or if the target does not exist.
 func PointsTo(link string) (string, error) {
 	// Verify it's actually a link
 	isLink, err := IsLink(link)
@@ -182,9 +240,18 @@ func PointsTo(link string) (string, error) {
 		return "", fmt.Errorf("PointsTo: %s is not a link", link)
 	}
 
-	target, err := filepath.EvalSymlinks(link)
+	data, err := readReparseData(link)
 	if err != nil {
-		return "", fmt.Errorf("filepath.EvalSymlinks(%s): %w", link, err)
+		return "", err
+	}
+	rawTarget, err := reparseSubstituteName(data)
+	if err != nil {
+		return "", fmt.Errorf("PointsTo(%s): %w", link, err)
+	}
+
+	target, err := filepath.EvalSymlinks(rawTarget)
+	if err != nil {
+		return "", fmt.Errorf("filepath.EvalSymlinks(%s): %w", rawTarget, err)
 	}
 	return target, nil
 }
