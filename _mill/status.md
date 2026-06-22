@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-fixing
+phase: holistic-reviewing
 slug: prune-board-tests
 branch: prune-board-tests
 plan: _mill/plan
@@ -29,6 +29,7 @@ approved-muxpoc  '2026-06-22T18:26:44Z'
 approved-doc  '2026-06-22T18:29:39Z'
 holistic-reviewing  '2026-06-22T18:30:11Z'
 holistic-fixing  '2026-06-22T18:33:41Z'
+holistic-reviewing  '2026-06-22T18:37:55Z'
 ```
 
 ## Batches
