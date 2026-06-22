@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-board-prune
+phase: approved-docs
 slug: optimize-remaining-test-suites
 branch: optimize-remaining-test-suites
 plan: _mill/plan
@@ -25,6 +25,7 @@ approved-gate-offline  '2026-06-22T06:47:07Z'
 approved-board-fixtures  '2026-06-22T06:56:57Z'
 approved-ide-fixtures  '2026-06-22T07:00:14Z'
 approved-board-prune  '2026-06-22T07:06:50Z'
+approved-docs  '2026-06-22T07:13:29Z'
 ```
 
 ## Batches
@@ -52,7 +53,8 @@ batches:
     start_sha: 19f42cd59d84ef52cedddbf57cd89d25c08ce829
     commit_sha: c80d99da9ca48e429da0961e49165587f9cb56ea
   - name: docs
-    state: running
+    state: approved
     implementer_session: 8ebf5e78-5560-44d5-8a16-4b5a6e1deebf
     start_sha: 33cb528199129eab1344fa92db9ebb2b89bd5b6a
+    commit_sha: a7e870d16e53e54bc1734498f8d204e5c24c4229
 ```
