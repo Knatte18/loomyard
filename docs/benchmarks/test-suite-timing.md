@@ -216,8 +216,10 @@ the **union across `internal/board` (untagged) + `internal/board/boardtest`
 
 The moved board tests (`git_test.go`, `sync_test.go`) use `t.Setenv` (`BOARD_SKIP_GIT`,
 `BOARD_SKIP_PUSH`) and remain serial — Go forbids `t.Parallel()` after `t.Setenv`.
-The `internal/ide` tests `cli_test.go` and `menu_test.go` use `os.Chdir` (a
-process-global seam) and likewise remain serial. The `lyxtest` per-test fixture copies
+The `internal/ide` test `cli_test.go` uses `os.Chdir` (a process-global seam) and
+remains serial; `menu_test.go` uses `t.Setenv("BOARD_SKIP_GIT", "1")` in every
+test function and likewise remains serial — Go forbids `t.Parallel()` after
+`t.Setenv`. The `lyxtest` per-test fixture copies
 (`CopyHostHub`, `CopyWeft`, `CopyPaired`; `CopyBoardRepo` was evaluated and not needed — all sync tests use `CopyWeft` directly) are isolated per-test
 filesystem trees with no shared mutable state, so any test that does not use
 `t.Setenv`/`os.Chdir` may safely call `t.Parallel()`. The `-race` detector is not a
