@@ -130,32 +130,30 @@ documented drop. Uniquely-covered assertions are preserved.
 - TestCLIRerender → TestCLIContract/TestCLIRerender
 - TestCLISetPhase → TestCLIContract/TestCLISetPhase
 - TestCLIUpsertTask → TestCLIContract/TestCLIUpsertTask
-- TestDefaultOutputs → TestOutputs/DefaultOutputs
-- TestDefaultsReturned → TestLoadConfig/DefaultsReturned
-- TestErrorNotInitialized → TestLoadConfig/ErrorNotInitialized
-- TestInitCreatesStructure → TestInitFirstRun/CreatesStructure
-- TestInitGitignoreBlock → TestInitFirstRun/GitignoreBlock
-- TestInitJSONShape → TestInitFirstRun/JSONShape
-- TestLoadConfig_FallbackPathResolution → TestLoadConfig/FallbackPathResolution
-- TestMalformedYAMLError → TestLoadConfig/MalformedYAMLError
-- TestOutputsFromConfig → TestOutputs/OutputsFromConfig
-- TestRelativePathResolution → TestLoadConfig/RelativePathResolution
-- TestRenderBrief → TestRenderProposalAndShapesHomepage/Brief
-- TestRenderDependencies → TestRenderProposalAndShapesHomepage/Dependencies
-- TestRenderExtendedTitle → TestRenderSidebarExtendedTitle/ExtendedTitle
-- TestRenderIsolatedTask → TestRenderProposalAndShapesHomepage/IsolatedTask
-- TestRenderLayerBuckets → TestRenderProposalAndShapesHomepage/LayerBuckets
-- TestRenderMissingDependency → TestRenderProposalAndShapesHomepage/MissingDependency
-- TestRenderOrphanDetection → TestRenderSingleTask/OrphanDetection
-- TestRenderSidebarBlanks → TestRenderSidebarExtendedTitle/SidebarBlanks
+- TestDefaultOutputs → TestOutputs/TestDefaultOutputs
+- TestDefaultsReturned → TestLoadConfig/TestDefaultsReturned
+- TestErrorNotInitialized → TestLoadConfig/TestErrorNotInitialized
+- TestInitCreatesStructure → TestInitFirstRun/TestInitCreatesStructure
+- TestInitGitignoreBlock → TestInitFirstRun/TestInitGitignoreBlock
+- TestInitJSONShape → TestInitFirstRun/TestInitJSONShape
+- TestLoadConfig_FallbackPathResolution → TestLoadConfig/TestLoadConfig_FallbackPathResolution
+- TestMalformedYAMLError → TestLoadConfig/TestMalformedYAMLError
+- TestOutputsFromConfig → TestOutputs/TestOutputsFromConfig
+- TestRelativePathResolution → TestLoadConfig/TestRelativePathResolution
+- TestRenderBrief → TestRenderProposalAndShapesHomepage/TestRenderBrief
+- TestRenderDependencies → TestRenderProposalAndShapesHomepage/TestRenderDependencies
+- TestRenderExtendedTitle → TestRenderSidebarExtendedTitle/TestRenderExtendedTitle
+- TestRenderIsolatedTask → TestRenderProposalAndShapesHomepage/TestRenderIsolatedTask
+- TestRenderLayerBuckets → TestRenderProposalAndShapesHomepage/TestRenderLayerBuckets
+- TestRenderMissingDependency → TestRenderProposalAndShapesHomepage/TestRenderMissingDependency
+- TestRenderOrphanDetection → TestRenderSingleTask/TestRenderOrphanDetection
+- TestRenderSidebarBlanks → TestRenderSidebarExtendedTitle/TestRenderSidebarBlanks
 - TestRenderSingleTask → TestRenderSingleTask (table-driven within same function)
 - TestRenderStatusVariants → TestRenderStatusVariants (table-driven within same function)
-- TestRenderTaskIDFormatting → TestRenderProposalAndShapesHomepage/TaskIDFormatting
+- TestRenderTaskIDFormatting → TestRenderProposalAndShapesHomepage/TestRenderTaskIDFormatting
 - TestRenderToDisk → TestRenderToDisk (table-driven within same function)
 - TestRerender — facade persistence wiring (Home.md and _Sidebar.md written)
 - TestUpsertTask — facade unique assertions (tasks.json and Home.md written)
-
-(New subtest added: TestRenderDeferredTask is a new row in TestRenderProposalAndShapesHomepage covering the deferred-task bucket path, not folded from a prior baseline name.)
 
 **board (2 dropped with documented justification):**
 - TestRemoveTask — owned by `store_test.go:TestRemoveTaskMissing` (business logic owner)
@@ -167,13 +165,14 @@ documented drop. Uniquely-covered assertions are preserved.
 - TestWeftPrechecksRejectExistingWeftBranch → TestWeftPrechecks/TestWeftPrechecksRejectExistingWeftBranch
 - TestWeftHostPristineEnforced → TestWeftPrechecks/TestWeftHostPristineEnforced
 
-**weft (6 folded):**
+**weft (7 folded):**
 - TestLoadConfig_DefaultWhenNoYAML → TestLoadConfig/DefaultWhenNoYAML
 - TestLoadConfig_OverrideFromYAML → TestLoadConfig/OverrideFromYAML
 - TestLoadConfig_MissingLyx → TestLoadConfig/MissingLyx
 - TestPullIntegration_FastForward → dropped — strict subset of `sync_test.go:TestPull_FastForward`
 - TestPushIntegration_CommitLandsOnBare → TestPushIntegration/CommitLandsOnBare
 - TestPushIntegration_RebaseRetryOnNFF → TestPushIntegration/RebaseRetryOnNFF (note: this test did not actually set up non-FF scenario; folded for clarity)
+- TestSyncIntegration_EventuallyPushed → TestPushIntegration/TestSyncIntegration_EventuallyPushed
 
 **ide (9 dropped):**
 - TestMenuZeroWorktreeMessage — dropped; covered by TestMenuRequiresLyxDir (identical assertion: "no active worktrees")
