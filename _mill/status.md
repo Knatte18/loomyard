@@ -46,7 +46,9 @@ batches:
     start_sha: 4b9b48402d914ba2aa4e86f6ca71d2283045023b
     commit_sha: b5da6b0174d20f69c5492030b2dbec4b7e921daf
   - name: ide
-    state: pending
+    state: running
+    implementer_session: db399861-5461-4294-8d4a-764e89c0aea6
+    start_sha: 4e27e7a2514f5454962a24f2c2eaa99360ddaa2c
   - name: muxpoc
     state: pending
   - name: doc
