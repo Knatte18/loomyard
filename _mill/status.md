@@ -34,7 +34,9 @@ batches:
     start_sha: 629d2913b9485f8237b4bdf984536cef84521816
     commit_sha: 2083e3f755285e84ff5da86e84b6a4ec0ba3e82f
   - name: board-adopt-state
-    state: pending
+    state: running
+    implementer_session: f2b86da7-2703-4dda-99e0-09b233faf171
+    start_sha: cb2df4dea08c21552a4039366e8247a3d4782727
   - name: muxpoc-adopt-state
     state: pending
 ```
