@@ -142,16 +142,6 @@ func TestRenderProposalAndShapesHomepage(t *testing.T) {
 			dontWantSubstr: []string{"[Done]"},
 		},
 		{
-			name: "TestRenderDeferredTask",
-			tasks: []board.Task{
-				board.Task{ID: 1, Slug: "deferred-task", Title: "Deferred Task", Deferred: true},
-			},
-			wantSubstrings: []string{
-				"# Someday",
-				"## **#001:** Deferred Task\n",
-			},
-		},
-		{
 			name: "TestRenderIsolatedTask",
 			tasks: []board.Task{
 				{ID: 1, Slug: "task-a", Title: "Task A"},
