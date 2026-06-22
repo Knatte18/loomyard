@@ -287,9 +287,20 @@ Discovered during discussion:
 ## Testing
 
 Project conventions: table-driven tests, `t.Parallel()` where safe, `t.Skip` when a
-platform genuinely cannot create the link. Existing junction tests were tagged
-`//go:build integration` *because they spawned `mklink`*; the direct syscall spawns
-no process, so the new tests can run under plain `go test`.
+platform genuinely cannot create the link.
+
+**Build-tag policy (resolves the round-1 review gaps).** The new `internal/fslink`
+package tests are **untagged** — they exercise the link primitive with pure
+filesystem syscalls (no process spawn, no git), so they run under plain `go test`.
+The surviving worktree/weft link tests
+(`worktree/portals_test.go`, `worktree/remove_test.go`, `worktree/weft_test.go`,
+`weft/status_test.go`) **keep their `//go:build integration` tag** — they are
+integration-tagged primarily because they stand up real git repositories via
+`internal/lyxtest` fixtures (`CopyHostHub`, `CopyPaired`, `CopyWeft`), a dependency
+this task does not remove. The `mklink` double-spawn was only one reason `junction_test.go`
+was tagged; for the fixture-based files, the git dependency is the binding reason, so
+removing the tag would break them. Do **not** strip the `integration` tag from the
+four surviving files.
 
 - **`internal/fslink` (new, TDD candidate — the core deliverable):**
   - `Create`: creates a link that resolves to the target; refuses to clobber an
@@ -297,6 +308,10 @@ no process, so the new tests can run under plain `go test`.
     cases from `worktree/junction_test.go` (`CreatesJunction`, `RefusesToClobber`,
     `CreatesParentDir`) as **untagged** platform-split tests. On platforms that
     cannot create the link, `t.Skip` (mirror the existing probe-then-skip pattern).
+    The `CreatesJunction` case must assert the link resolves correctly via
+    `fslink.PointsTo` / `filepath.EvalSymlinks` — **not** `os.Readlink` (which the
+    original test used and which carries the `\??\` prefix on junctions; see the
+    `pointsto-returns-resolved-target` decision).
   - `IsLink`: true for a created junction/symlink; false for a regular file and a
     real directory; error/false for a missing path. On Windows specifically, verify a
     junction created by `Create` is recognized (the case that previously forced the
@@ -308,18 +323,25 @@ no process, so the new tests can run under plain `go test`.
     call on an absent link returns nil).
   - `RemoveLinksIn`: port `links_test.go` (`IgnoresRegularFilesAndDirs`,
     `RemovesSymlinks`, `NonexistentDir`) — ignores regular files/real dirs, removes
-    and counts links, surfaces the `ReadDir` error for a missing dir.
+    and counts links, surfaces the `ReadDir` error for a missing dir. (`links_test.go`
+    is currently untagged; the ported `fslink` tests stay untagged.)
 - **`internal/worktree`:**
   - `portals_test.go`, `remove_test.go`, `weft_test.go` continue to exercise
     `createPortal`/`removePortal`/`seedLyxJunction`/`removeHostJunction`/remove
     orchestration through the wrappers — they should pass unchanged, proving the
-    migration preserved behaviour. Delete `junction_test.go` and `links_test.go`
-    (their coverage moved to `fslink`).
+    migration preserved behaviour, and **keep** their `integration` tag (git
+    fixtures). Delete `junction_test.go` and `links_test.go` (their coverage moved to
+    `fslink`).
 - **`internal/weft`:**
-  - Update `TestStatus_JunctionOk_Windows` in `status_test.go` to **expect success**
-    for a real Windows junction (remove the "junction not recognized by os.Lstat"
-    skip branch) now that detection goes through `fslink.IsLink`. Keep the
-    `mklink`-failed `t.Skip` (non-Windows / no privilege) guard. The
+  - `status_test.go` keeps its `//go:build integration` tag (it uses
+    `lyxtest.CopyWeft` git fixtures). Update `TestStatus_JunctionOk_Windows` to build
+    the test junction via **`fslink.Create`** instead of spawning `cmd /c mklink /J`
+    — the suite must not depend on the very double-spawn this task removes, nor test a
+    creation path no longer used in production. With detection now through
+    `fslink.IsLink`, the test must **expect success** for a real Windows junction:
+    remove the "junction not recognized by os.Lstat (ModeSymlink not set)" skip
+    branch. Keep a `t.Skip` only for the genuine can't-create-link case (non-Windows /
+    no privilege), mirroring the probe-then-skip pattern used elsewhere. The
     `TestStatus_Junction` table (`Missing`/`PlainDir`/`ValidSymlink`) should pass
     unchanged, asserting the preserved reason strings.
 - **Full suite:** `go test ./...` (and the `integration`-tagged subset if CI runs
@@ -353,3 +375,15 @@ no process, so the new tests can run under plain `go test`.
   `EvalSymlinks` (full resolution, strips `\??\`, resolves intermediate symlinks).
 - **Q:** Target absolutization in `Create`? **A:** Windows absolutizes (syscall
   requires it); non-Windows stores verbatim (matches today's `os.Symlink`).
+- **Q:** (round-1 review) Do the surviving worktree/weft link tests drop their
+  `integration` tag now that link create/detect no longer spawns a process? **A:**
+  No — they keep it. They are integration-tagged primarily for their `lyxtest` git
+  fixtures (`CopyHostHub`/`CopyPaired`/`CopyWeft`), not the `mklink` spawn; only the
+  new `fslink` package tests are untagged.
+- **Q:** (round-1 review) Should `TestStatus_JunctionOk_Windows` keep spawning
+  `mklink` to build its test junction? **A:** No — build it via `fslink.Create` so
+  the suite exercises the new primitive, not the removed double-spawn; and expect
+  success (drop the "not recognized by os.Lstat" skip).
+- **Q:** (round-1 review) Should the ported `fslink` `CreatesJunction` test keep
+  verifying via `os.Readlink`? **A:** No — assert via `fslink.PointsTo` /
+  `EvalSymlinks`; `os.Readlink` carries the `\??\` prefix the design rejects.
