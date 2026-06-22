@@ -5,6 +5,7 @@
 package weft
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
