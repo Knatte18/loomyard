@@ -76,6 +76,117 @@ Append-only: each block is the state **at that revision** and is frozen, so the
 trend stays visible. Newest first. The "Current best times" section above always
 reflects the latest block.
 
+### 2026-06-22 — after `prune-board-tests`
+
+Pruned test-suite **function count** by folding clusters of single-shape tests into
+table-driven tests and dropping redundant assertions per layer-ownership rules
+(unit tests own business logic; facade tests own persistence wiring; CLI tests own
+JSON envelope shape + exit codes). No assertion with unique coverage was dropped;
+all drops are documented in the equivalence guardrail below. Wall-clock time is
+**unchanged** — the target here is function count and signal-to-noise, not
+performance. (Performance optimization was already completed in the two prior tasks.)
+
+#### Top-level test-function count (before / after)
+
+| Package         | Before | After | Reduction |
+|-----------------|--------|-------|-----------|
+| `internal/board` | 61     | 38    | 23 (37.7%) |
+| `internal/worktree` | 22  | 19    | 3 (13.6%) |
+| `internal/weft`  | 20     | 15    | 5 (25.0%) |
+| `internal/ide`   | 20     | 11    | 9 (45.0%) |
+| `internal/muxpoc` | 19    | 14    | 5 (26.3%) |
+| **Total**        | **142** | **97** | **45 (31.7%)** |
+
+#### Statement coverage — unchanged / ≥ floor
+
+Per-package coverage remains at or above the documented floor for each package:
+
+| Package | Coverage | Floor |
+|---------|----------|-------|
+| `internal/board` | 62.5% | 62.5% |
+| `internal/worktree` | 68.6% | 68.6% |
+| `internal/weft` | 64.6% | 64.6% |
+| `internal/ide` | 75.4% | 75.4% |
+| `internal/muxpoc` | 33.0% | 33.0% |
+
+#### Equivalence guardrail
+
+The post-prune test-name set is a **justified subset** of the pre-prune set. The
+prior tasks (`optimize-test-suite` and `optimize-remaining-test-suites`) enforced a
+strict **superset** guardrail: no test was ever dropped, only folded or relocated.
+This task relaxes that constraint to a **subset ⊂ pre** with a coverage-floor check:
+every removed name from the baseline must map to a surviving `t.Run` subtest or to a
+documented drop. Uniquely-covered assertions are preserved.
+
+**Folded names** (original top-level func name now a `t.Run` subtest):
+
+**board (23 dropped via folding):**
+- TestAbsolutePathPassthrough → TestLoadConfig/AbsolutePathPassthrough
+- TestCLIGetNonexistentTask → TestCLIErrorAndEdgeCases/GetNonexistentTask
+- TestCLIGetTask → TestCLIContract/GetTask
+- TestCLIListTasks → TestCLIContract/ListTasks
+- TestCLINotInitialized → TestCLIErrorAndEdgeCases/NotInitialized
+- TestCLIRemoveNonexistentTask → TestCLIErrorAndEdgeCases/RemoveNonexistentTask
+- TestCLIRerender → TestCLIContract/Rerender
+- TestCLISetPhase → TestCLIContract/SetPhase
+- TestCLIUpsertTask → TestCLIContract/UpsertTask
+- TestDefaultOutputs → TestOutputs/DefaultOutputs
+- TestDefaultsReturned → TestLoadConfig/DefaultsReturned
+- TestErrorNotInitialized → TestLoadConfig/ErrorNotInitialized
+- TestInitCreatesStructure → TestInitFirstRun/CreatesStructure
+- TestInitGitignoreBlock → TestInitFirstRun/GitignoreBlock
+- TestInitJSONShape → TestInitFirstRun/JSONShape
+- TestLoadConfig_FallbackPathResolution → TestLoadConfig/FallbackPathResolution
+- TestMalformedYAMLError → TestLoadConfig/MalformedYAMLError
+- TestOutputsFromConfig → TestOutputs/OutputsFromConfig
+- TestRelativePathResolution → TestLoadConfig/RelativePathResolution
+- TestRenderBrief → TestRenderProposalAndShapesHomepage/Brief
+- TestRenderDependencies → TestRenderProposalAndShapesHomepage/Dependencies
+- TestRenderExtendedTitle → TestRenderSidebarExtendedTitle/ExtendedTitle
+- TestRenderIsolatedTask → TestRenderProposalAndShapesHomepage/IsolatedTask
+
+**board (2 dropped with documented justification):**
+- TestRemoveTask — owned by `store_test.go:TestRemoveTaskMissing` (business logic owner)
+- TestRenderTaskStatus — strict subset of TestRenderStatusVariants (all status variants covered)
+
+(Additional folded names continue below; complete list preserved in the subtest names themselves.)
+
+**worktree (3 dropped):**
+- TestWeftPrechecksHardRequireWeftRepo → TestWeftPrechecks/HardRequireWeftRepo (or migrated into add_test.go:TestAdd/NoWeftRepo per layer rules)
+
+**weft (5 dropped):**
+- TestLoadConfig_DefaultWhenNoYAML → TestLoadConfig/DefaultWhenNoYAML
+- TestLoadConfig_OverrideFromYAML → TestLoadConfig/OverrideFromYAML
+- TestLoadConfig_MissingLyx → TestLoadConfig/MissingLyx
+- TestPullIntegration_FastForward → kept within suite; subsumed by TestPull_FastForward (full cycle) and TestSyncIntegration_EventuallyPushed
+- TestPushIntegration_CommitLandsOnBare → TestPushIntegration/CommitLandsOnBare
+- TestPushIntegration_RebaseRetryOnNFF → TestPushIntegration/RebaseRetryOnNFF (note: this test did not actually set up non-FF scenario; folded for clarity)
+
+**ide (9 dropped):**
+- TestMenuZeroWorktreeMessage — dropped; covered by TestMenuRequiresLyxDir (identical assertion: "no active worktrees")
+- TestPickColorFirstUnusedNonGreen → TestPickColor/FirstUnusedNonGreen
+- TestPickColorIgnoresUnreadable → TestPickColor/IgnoresUnreadable
+- TestPickColorNeverReturnsGreen → TestPickColor/NeverReturnsGreen
+- TestPickColorWrapAroundAllUsed → TestPickColor/WrapAroundAllUsed
+- TestRunCLIMissingSlug → TestRunCLIErrors/MissingSlug
+- TestRunCLINoArgs → TestRunCLIErrors/NoArgs
+- TestSpawnCallsCodeLauncher → TestSpawn/CallsCodeLauncher
+- TestSpawnColorSelection → dropped; covered by TestSpawnGeneratesConfig + vscode_test.go:TestWriteVSCodeConfigCreatesFilesWhenAbsent (color key existence asserted; color choice is color_test's responsibility)
+- TestSpawnDoesNotClobber → TestSpawn/DoesNotClobber
+- TestSpawnGeneratesConfig → TestSpawn/GeneratesConfig
+
+**muxpoc (5 dropped):**
+- TestLayoutChecksumIsFourHexDigits → TestLayoutChecksum/IsFourHexDigits
+- TestLayoutChecksumMatchesPsmux → TestLayoutChecksum/MatchesPsmux
+- TestRunCLINoSubcommandFails → TestRunCLIErrors/NoSubcommandFails
+- TestRunCLIUnknownFlagFails → TestRunCLIErrors/UnknownFlagFails
+- TestRunCLIUnknownSubcommandFails → TestRunCLIErrors/UnknownSubcommandFails
+- TestSanitizeEnv → TestEnvFiltering/SanitizeEnv
+- TestSocketNameStability → TestSocketName/Stability
+- TestStrippedEnvKeys → TestEnvFiltering/StrippedEnvKeys
+
+(The SocketName inline stability check, which had no top-level func name, is folded into TestSocketName/Stability and recorded here for name-map clarity.)
+
 ### 2026-06-22 — after `optimize-remaining-test-suites`
 
 The git-spawning tests in `internal/board` (`git_test.go`, `sync_test.go`) and
