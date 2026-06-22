@@ -7,18 +7,19 @@ import (
 	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/paths"
+	"github.com/Knatte18/loomyard/internal/vscode"
 )
 
 // codeLauncher is a package-level injectable seam that can be overridden in tests.
-// It defaults to launchCode but can be stubbed to record its argument for testing.
-var codeLauncher = launchCode
+// It defaults to vscode.Launch but can be stubbed to record its argument for testing.
+var codeLauncher = vscode.Launch
 
 // Spawn generates a worktree's .vscode/ config (if absent) and launches VS Code.
 //
 // It performs the following steps:
 //  1. Compute worktreeDir := l.WorktreePath(slug)
-//  2. Compute color := pickColor(l)
-//  3. Call writeVSCodeConfig(worktreeDir, l.RelPath, slug, color)
+//  2. Compute color := vscode.PickColor(l)
+//  3. Call vscode.WriteConfig(worktreeDir, l.RelPath, slug, color)
 //  4. Open the worktree at its relpath (dir holding _lyx/ and .vscode/) via codeLauncher
 //
 // Returns an error if any step fails.
@@ -27,10 +28,10 @@ func Spawn(l *paths.Layout, slug string) error {
 	worktreeDir := l.WorktreePath(slug)
 
 	// Compute color for this worktree
-	color := pickColor(l)
+	color := vscode.PickColor(l)
 
 	// Generate VS Code config (settings.json, tasks.json, register in .gitignore)
-	if err := writeVSCodeConfig(worktreeDir, l.RelPath, slug, color); err != nil {
+	if err := vscode.WriteConfig(worktreeDir, l.RelPath, slug, color); err != nil {
 		return err
 	}
 
