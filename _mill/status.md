@@ -40,5 +40,7 @@ batches:
     start_sha: cb2df4dea08c21552a4039366e8247a3d4782727
     commit_sha: 4788bacc2d0571515d9eb3ae505ee1a661830d03
   - name: muxpoc-adopt-state
-    state: pending
+    state: running
+    implementer_session: a8c56be3-b712-47c2-a945-66d00e2affa5
+    start_sha: 87051a6fe91ed24058017486cbe4248ab69428bb
 ```
