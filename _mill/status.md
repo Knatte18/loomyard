@@ -46,7 +46,9 @@ batches:
     start_sha: 8b842394085d8429333287129beb4b01be34402a
     commit_sha: 4102ea14bf5fdc2884502a6b06e77c4e6ec40c19
   - name: board-prune
-    state: pending
+    state: running
+    implementer_session: e658e849-b3a8-42d9-9be5-273a04a93779
+    start_sha: 19f42cd59d84ef52cedddbf57cd89d25c08ce829
   - name: docs
     state: pending
 ```
