@@ -141,7 +141,7 @@ func TestCLIContract(t *testing.T) {
 			payload:        `{"id_or_slug":"foo","phase":"active"}`,
 			wantExitCode:   0,
 			wantOK:         true,
-			wantFieldExist: "task",
+			wantFieldExist: "ok",
 		},
 		{
 			name: "TestCLIRerender",
