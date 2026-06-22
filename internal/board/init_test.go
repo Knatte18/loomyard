@@ -26,8 +26,12 @@ func runInit(t *testing.T) (exitCode int, stdout string) {
 	return code, buf.String()
 }
 
-// TestInitCreatesStructure tests that first run creates _lyx/ and _lyx/config/ with YAML files.
-func TestInitCreatesStructure(t *testing.T) {
+// TestInitFirstRun tests the first-run init behavior: creates _lyx/config/
+// with board.yaml + worktree.yaml (fully commented), .gitignore managed block,
+// and returns the correct JSON envelope. Each check is a subtest with the original name.
+//
+// Folds: TestInitCreatesStructure, TestInitGitignoreBlock, TestInitJSONShape
+func TestInitFirstRun(t *testing.T) {
 	cwd := t.TempDir()
 	t.Chdir(cwd)
 
@@ -37,101 +41,130 @@ func TestInitCreatesStructure(t *testing.T) {
 		t.Fatalf("expected exit 0, got %d; stdout: %s", exitCode, stdout)
 	}
 
-	// Verify _lyx/ exists
-	lyxDir := filepath.Join(cwd, "_lyx")
-	info, err := os.Stat(lyxDir)
-	if err != nil {
-		t.Fatalf("_lyx directory not created: %v", err)
-	}
-	if !info.IsDir() {
-		t.Fatalf("_lyx is not a directory")
-	}
-
-	// Verify _lyx/config/ directory exists
-	configDir := filepath.Join(lyxDir, "config")
-	info, err = os.Stat(configDir)
-	if err != nil {
-		t.Fatalf("_lyx/config directory not created: %v", err)
-	}
-	if !info.IsDir() {
-		t.Fatalf("_lyx/config is not a directory")
-	}
-
-	// Verify board.yaml exists in _lyx/config/
-	boardYamlPath := filepath.Join(configDir, "board.yaml")
-	content, err := os.ReadFile(boardYamlPath)
-	if err != nil {
-		t.Fatalf("board.yaml not created: %v", err)
-	}
-
-	// Verify board.yaml is fully commented (no uncommented lines except blank/comment-only)
-	lines := strings.Split(string(content), "\n")
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" {
-			// Blank line is OK
-			continue
+	t.Run("TestInitCreatesStructure", func(t *testing.T) {
+		// Verify _lyx/ exists
+		lyxDir := filepath.Join(cwd, "_lyx")
+		info, err := os.Stat(lyxDir)
+		if err != nil {
+			t.Fatalf("_lyx directory not created: %v", err)
 		}
-		if !strings.HasPrefix(trimmed, "#") {
-			t.Errorf("expected all non-blank lines to start with #, found: %s", line)
+		if !info.IsDir() {
+			t.Fatalf("_lyx is not a directory")
 		}
-	}
 
-	// Verify worktree.yaml exists in _lyx/config/
-	worktreeYamlPath := filepath.Join(configDir, "worktree.yaml")
-	worktreeContent, err := os.ReadFile(worktreeYamlPath)
-	if err != nil {
-		t.Fatalf("worktree.yaml not created: %v", err)
-	}
-
-	// Verify worktree.yaml is fully commented (no uncommented lines except blank/comment-only)
-	lines = strings.Split(string(worktreeContent), "\n")
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" {
-			// Blank line is OK
-			continue
+		// Verify _lyx/config/ directory exists
+		configDir := filepath.Join(lyxDir, "config")
+		info, err = os.Stat(configDir)
+		if err != nil {
+			t.Fatalf("_lyx/config directory not created: %v", err)
 		}
-		if !strings.HasPrefix(trimmed, "#") {
-			t.Errorf("expected all non-blank lines to start with #, found: %s", line)
+		if !info.IsDir() {
+			t.Fatalf("_lyx/config is not a directory")
 		}
-	}
-}
 
-// TestInitGitignoreBlock tests that .gitignore managed block is created.
-func TestInitGitignoreBlock(t *testing.T) {
-	cwd := t.TempDir()
-	t.Chdir(cwd)
+		// Verify board.yaml exists in _lyx/config/ and is fully commented
+		boardYamlPath := filepath.Join(configDir, "board.yaml")
+		content, err := os.ReadFile(boardYamlPath)
+		if err != nil {
+			t.Fatalf("board.yaml not created: %v", err)
+		}
 
-	exitCode, stdout := runInit(t)
+		lines := strings.Split(string(content), "\n")
+		for _, line := range lines {
+			trimmed := strings.TrimSpace(line)
+			if trimmed == "" {
+				continue
+			}
+			if !strings.HasPrefix(trimmed, "#") {
+				t.Errorf("expected all non-blank lines to start with #, found: %s", line)
+			}
+		}
 
-	if exitCode != 0 {
-		t.Fatalf("expected exit 0, got %d; stdout: %s", exitCode, stdout)
-	}
+		// Verify worktree.yaml exists in _lyx/config/ and is fully commented
+		worktreeYamlPath := filepath.Join(configDir, "worktree.yaml")
+		worktreeContent, err := os.ReadFile(worktreeYamlPath)
+		if err != nil {
+			t.Fatalf("worktree.yaml not created: %v", err)
+		}
 
-	// Verify .gitignore exists
-	gitignorePath := filepath.Join(cwd, ".gitignore")
-	content, err := os.ReadFile(gitignorePath)
-	if err != nil {
-		t.Fatalf(".gitignore not created: %v", err)
-	}
+		lines = strings.Split(string(worktreeContent), "\n")
+		for _, line := range lines {
+			trimmed := strings.TrimSpace(line)
+			if trimmed == "" {
+				continue
+			}
+			if !strings.HasPrefix(trimmed, "#") {
+				t.Errorf("expected all non-blank lines to start with #, found: %s", line)
+			}
+		}
+	})
 
-	contentStr := string(content)
+	t.Run("TestInitGitignoreBlock", func(t *testing.T) {
+		// Verify .gitignore exists with managed block
+		gitignorePath := filepath.Join(cwd, ".gitignore")
+		content, err := os.ReadFile(gitignorePath)
+		if err != nil {
+			t.Fatalf(".gitignore not created: %v", err)
+		}
 
-	// Check for start marker
-	if !strings.Contains(contentStr, "# === lyx-managed ===") {
-		t.Errorf("expected start marker in .gitignore, got: %s", contentStr)
-	}
+		contentStr := string(content)
 
-	// Check for end marker
-	if !strings.Contains(contentStr, "# === end lyx-managed ===") {
-		t.Errorf("expected end marker in .gitignore, got: %s", contentStr)
-	}
+		// Check for start marker
+		if !strings.Contains(contentStr, "# === lyx-managed ===") {
+			t.Errorf("expected start marker in .gitignore, got: %s", contentStr)
+		}
 
-	// Check for .lyx/ entry
-	if !strings.Contains(contentStr, ".lyx/") {
-		t.Errorf("expected .lyx/ entry in .gitignore, got: %s", contentStr)
-	}
+		// Check for end marker
+		if !strings.Contains(contentStr, "# === end lyx-managed ===") {
+			t.Errorf("expected end marker in .gitignore, got: %s", contentStr)
+		}
+
+		// Check for .lyx/ entry
+		if !strings.Contains(contentStr, ".lyx/") {
+			t.Errorf("expected .lyx/ entry in .gitignore, got: %s", contentStr)
+		}
+	})
+
+	t.Run("TestInitJSONShape", func(t *testing.T) {
+		// Verify JSON output has the correct shape
+		var result map[string]any
+		if err := json.Unmarshal([]byte(stdout), &result); err != nil {
+			t.Fatalf("failed to parse output JSON: %v; stdout: %s", err, stdout)
+		}
+
+		// Verify ok=true
+		if ok, exists := result["ok"].(bool); !exists || !ok {
+			t.Errorf("expected ok=true, got %v", result["ok"])
+		}
+
+		// Verify lyx_dir is "created"
+		if lyxDir, ok := result["lyx_dir"].(string); !ok || lyxDir != "created" {
+			t.Errorf("expected lyx_dir='created', got %v", result["lyx_dir"])
+		}
+
+		// Verify board_yaml is "created"
+		if boardYaml, ok := result["board_yaml"].(string); !ok || boardYaml != "created" {
+			t.Errorf("expected board_yaml='created', got %v", result["board_yaml"])
+		}
+
+		// Verify worktree_yaml is "created"
+		if worktreeYaml, ok := result["worktree_yaml"].(string); !ok || worktreeYaml != "created" {
+			t.Errorf("expected worktree_yaml='created', got %v", result["worktree_yaml"])
+		}
+
+		// Verify gitignore is "updated"
+		if gitignore, ok := result["gitignore"].(string); !ok || gitignore != "updated" {
+			t.Errorf("expected gitignore='updated', got %v", result["gitignore"])
+		}
+
+		// Verify no unexpected keys
+		expectedKeys := map[string]bool{"ok": true, "lyx_dir": true, "board_yaml": true, "worktree_yaml": true, "gitignore": true}
+		for key := range result {
+			if !expectedKeys[key] {
+				t.Errorf("unexpected key in JSON output: %s", key)
+			}
+		}
+	})
 }
 
 // TestInitIdempotent tests that a second run doesn't clobber board.yaml or duplicate the gitignore block.
