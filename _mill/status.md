@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: extract-internal-vscode
 branch: extract-internal-vscode
 plan: _mill/plan
@@ -25,6 +25,7 @@ holistic-reviewing  '2026-06-22T18:06:56Z'
 holistic-fixing  '2026-06-22T18:08:26Z'
 holistic-approved  '2026-06-22T18:10:22Z'
 done  '2026-06-22T18:10:41Z'
+pr-pending  '2026-06-22T18:18:26Z'
 ```
 
 ## Batches
