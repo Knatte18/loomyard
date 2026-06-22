@@ -5,33 +5,37 @@ import (
 	"testing"
 )
 
-func TestLayoutChecksumMatchesPsmux(t *testing.T) {
-	// Both values are the exact checksums psmux produced/accepted for these
-	// layout bodies during live testing — they pin the algorithm to the real
-	// implementation, not just to itself.
+func TestLayoutChecksum(t *testing.T) {
 	tests := []struct {
+		name string
 		body string
 		want string
 	}{
-		{"220x50,0,0[220x15,0,0,1,220x15,0,16,4,220x18,0,32,3]", "acd7"},
-		{"220x50,0,0[220x10,0,0,1,220x10,0,11,4,220x28,0,22,3]", "6954"},
+		// TestLayoutChecksumMatchesPsmux: pinned values from live psmux testing
+		{"TestLayoutChecksumMatchesPsmux_case1", "220x50,0,0[220x15,0,0,1,220x15,0,16,4,220x18,0,32,3]", "acd7"},
+		{"TestLayoutChecksumMatchesPsmux_case2", "220x50,0,0[220x10,0,0,1,220x10,0,11,4,220x28,0,22,3]", "6954"},
+		// TestLayoutChecksumIsFourHexDigits: arbitrary input, verify format
+		{"arbitrary", "anything", ""},
 	}
 	for _, tt := range tests {
-		if got := layoutChecksum(tt.body); got != tt.want {
-			t.Errorf("layoutChecksum(%q) = %q, want %q", tt.body, got, tt.want)
-		}
-	}
-}
+		t.Run(tt.name, func(t *testing.T) {
+			got := layoutChecksum(tt.body)
 
-func TestLayoutChecksumIsFourHexDigits(t *testing.T) {
-	got := layoutChecksum("anything")
-	if len(got) != 4 {
-		t.Fatalf("checksum %q is not 4 chars", got)
-	}
-	for _, c := range got {
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
-			t.Fatalf("checksum %q has non-hex char %c", got, c)
-		}
+			// Verify 4-hex-digit shape for all cases
+			if len(got) != 4 {
+				t.Errorf("checksum %q is not 4 chars", got)
+			}
+			for _, c := range got {
+				if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+					t.Errorf("checksum %q has non-hex char %c", got, c)
+				}
+			}
+
+			// Pinned value assertion for named cases only
+			if tt.want != "" && got != tt.want {
+				t.Errorf("layoutChecksum(%q) = %q, want %q", tt.body, got, tt.want)
+			}
+		})
 	}
 }
 
