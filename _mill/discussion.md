@@ -40,13 +40,18 @@ risky production-code refactor out of scope** (see Decisions: board-git-seam).
     entirely git-spawning) — **moved into `internal/board/boardtest`** (see Decisions).
   - `internal/git`: `git_test.go` (`package git_test`, 3 funcs testing `git.RunGit`
     directly) — gated **in place** (it has no other test file).
-  - `internal/ide`: `cli_test.go` + `menu_test.go` (`package ide`, spawn the binary /
-    drive the TUI via `exec.Command`) — gated **in place** (internal package).
-- **Reuse `internal/lyxtest`** shared fixtures for board's git fixtures (template-built-once
-  + per-test filesystem copy, no per-test git spawn), extending `lyxtest` only if no
-  existing fixture fits (see Decisions: board-fixtures).
+  - `internal/ide`: `cli_test.go` + `menu_test.go` (`package ide`) — gated **in place**
+    (internal package). These call the SUT (`RunCLI`/`Menu`) **in-process** and spawn
+    **git** only for fixtures (`git init`/`config`/`commit`/`worktree add` via the local
+    `mustRun`/`mustRunMenu` helpers) — *not* the binary, *not* a TUI. Because they spawn
+    git per-test, they get the same lyxtest treatment as board (see below).
+- **Reuse `internal/lyxtest`** shared fixtures for **board's and ide's** git fixtures
+  (template-built-once + per-test filesystem copy, no per-test git spawn), extending
+  `lyxtest` only if no existing fixture fits — **migrate where it's worth it** (fixture
+  shape fits, real win), don't force-fit (see Decisions: board-fixtures, ide-scope).
 - **Parallelise** (`t.Parallel()`) the migrated/gated tests **where the env seam does not
-  block it** (best-effort; see Decisions: board-git-seam for why board unit tests stay serial).
+  block it** (best-effort; see Decisions: board-git-seam / ide-scope for which tests stay
+  serial — board unit tests and ide `menu_test` both use `t.Setenv`).
 - **Prune `internal/board`'s oversized unit suite conservatively** (78 non-`boardtest`
   funcs; `render_test.go`=20 + `store_test.go`=19 overlap) — fold pure overlap into
   table-driven cases, drop nothing behaviourally distinct, enforce the equivalence guardrail.
@@ -65,7 +70,9 @@ risky production-code refactor out of scope** (see Decisions: board-git-seam).
   change. The proposal's claim that muxpoc smoke runs untagged is **stale** — verified
   during exploration.
 - **No tag unification of muxpoc's `smoke` tag** into `integration` — leave `smoke` as-is.
-- **No unit-ification of the `ide` menu/CLI tests** (no mocking the spawn) — gate them.
+- **No rewrite of ide's SUT invocation.** ide tests already call `RunCLI`/`Menu` in-process;
+  we only gate them and migrate their **git fixtures** to lyxtest (where worth it). We do
+  not mock or restructure how the SUT itself is exercised.
 - **No new automated "offline guard" test.** The parent did not add one; the offline
   guarantee rests on the build tag + lyxtest's no-per-test-spawn design. Out of scope.
 - **No aggressive pruning / no numeric target.** Conservative fold only.
@@ -155,11 +162,34 @@ risky production-code refactor out of scope** (see Decisions: board-git-seam).
   commits on `main`, whereas `newSyncRepo`'s assertions are branch-agnostic (`HEAD`/`@{u}`).
   If the migrated board tests assert against `main` (or stay `HEAD`-relative), `CopyWeft`
   fits directly; if any assertion hard-codes a different branch, prefer a small dedicated
-  board fixture. The plan writer must resolve this `HEAD`-vs-`main` detail when choosing
-  reuse vs. a new fixture — it is the single blocking unknown for this decision.
+  board fixture. **Concretely, `git_test.go::TestPull` hard-codes `push -u origin master`
+  (`:62`)** — a `master`-vs-`main` mismatch with `CopyWeft`'s `main`, so that test in
+  particular needs the push target reconciled (rename to `main`, or use a fixture whose
+  default branch matches its assertions). The plan writer must resolve this
+  `master/HEAD`-vs-`main` detail when choosing reuse vs. a new fixture — it is the single
+  blocking unknown for this decision.
 - Rejected: Add a `CopyBoardRepo` fixture up front regardless — premature if existing
   fixtures fit. Keep the fixture local to `boardtest` — re-implements what lyxtest already
   provides and violates the reuse mandate.
+
+### ide-scope
+
+- Decision: ide gets the **same playbook as board** — gate `cli_test.go` + `menu_test.go`
+  behind `integration` **and** migrate their git fixtures (`newTestGitRepo`,
+  `newTestGitRepoWithWorktrees`) onto lyxtest **where it's worth it**, parallelising
+  `cli_test.go`; `menu_test.go` stays serial (`t.Setenv("BOARD_SKIP_GIT","1")`).
+- Rationale: User's directive — "lyxtest was introduced to be the common fixture point;
+  use it where it's worth it." ide spawns git per-test for fixtures (not the binary), so it
+  is lyxtest-migratable exactly like board; gate-only would leave per-test git spawns in
+  Tier 2 untouched. "Where it's worth it" = migrate when the fixture shape fits (plain repo
+  ≈ `CopyHostHub`; worktree layout ≈ `CopyPaired`) and the win is real; don't force-fit a
+  fixture that doesn't match.
+- Note: This **supersedes** the operator's initial "gate ide only" pick, which was made on
+  the mistaken premise that ide spawned the binary / drove a TUI (corrected in
+  discussion-review round 2).
+- Rejected: Gate-only (no lyxtest migration) — achieves the offline win but ignores the
+  reuse mandate and leaves ide's Tier 2 slow. Unit-ify / mock the SUT — unnecessary; the
+  SUT already runs in-process, only the git fixtures spawn.
 
 ### tag-string
 
@@ -193,17 +223,25 @@ risky production-code refactor out of scope** (see Decisions: board-git-seam).
   gets a fresh **filesystem copy** (`copyDirRecursive`); origin URL is rewritten as **pure
   text** in `.git/config` (`rewriteOriginURLInConfig`) — never `git remote set-url`, to
   preserve the zero-per-test-spawn guarantee. Reuse this pattern for board.
-- **`internal/board/boardtest`** (`doc.go`, `integration_test.go`, `bench_git_test.go`,
-  `bench_test.go`, `concurrency_test.go`) — `package boardtest`, `integration`/`smoke` gated;
-  the documented home for board's git-backed integration + bench + concurrency tests. The
-  moved files land here.
+- **`internal/board/boardtest`** (`package boardtest`) — **mixes untagged and gated files**
+  (verified): `integration_test.go` + `bench_git_test.go` carry `//go:build integration`;
+  `bench_test.go`, `concurrency_test.go`, `doc.go` are **untagged** and run in the default
+  loop (they're no-git: `BOARD_SKIP_GIT=1`). There is **no `smoke` tag** here (that tag is
+  muxpoc's). The moved `git_test.go`/`sync_test.go` get `//go:build integration`, so they
+  compile **only** under `-tags integration` and **do not affect Tier 1** — they land
+  alongside the untagged no-git files without changing the offline loop.
 - **Board git seam — two distinct env vars (verified):** `BOARD_SKIP_GIT` (gates the
   detached `lyx board sync` spawn; `board.go:83`, `sync.go:32`) and `BOARD_SKIP_PUSH`
   (commits locally but skips the push). Both stay as-is in production. In the tests being
   moved:
-  - `git_test.go` toggles **`BOARD_SKIP_PUSH`** via `t.Setenv` (`:110`, `:154`, `:229`) —
-    it never touches `BOARD_SKIP_GIT`. It spawns real `git` (`git init`/`config`/`commit`)
-    locally, no network — hence it must still be gated out of the offline loop.
+  - `git_test.go` toggles **`BOARD_SKIP_PUSH`** via `t.Setenv` (never `BOARD_SKIP_GIT`),
+    but only **partially**: two `TestCommitPush` subtests set `BOARD_SKIP_PUSH=1` (`:110`,
+    `:154`), while `TestPull` does a **real** `git push -u origin master` (`:62`) and the
+    rebase-retry subtest sets `BOARD_SKIP_PUSH=""` (`:229`) and pushes. So these are
+    **local** (bare repo in `t.TempDir()`, **no network**) but **not** uniformly
+    push-skipping — several need a **working upstream**. This reinforces the `CopyWeft`
+    fixture fit (it establishes upstream tracking), with the branch-name caveat below.
+    All still spawn real `git`, so they must be gated out of the offline loop.
   - `sync_test.go` uses **`BOARD_SKIP_GIT=""`** (`:25`, ensures sync is *not* disabled) and
     **`BOARD_SKIP_PUSH="1"`** (`:111`) via `t.Setenv`.
   - Because every one of these uses `t.Setenv`, the moved tests **stay serial** (`t.Parallel`
@@ -219,9 +257,16 @@ risky production-code refactor out of scope** (see Decisions: board-git-seam).
   - `internal/git/git_test.go` — `package git_test`, 3 funcs testing `git.RunGit` directly;
     fundamentally needs real git. → gate in place. **Consequence:** `internal/git` then has
     zero default-loop tests (package still compiles). Accepted.
-  - `internal/ide/cli_test.go` (4 funcs) + `menu_test.go` (5 funcs) — `package ide`, spawn
-    via `exec.Command(args[0], …)`. → gate in place; keep `color_test.go`, `spawn_test.go`,
-    `vscode_test.go` offline.
+  - `internal/ide/cli_test.go` (4 funcs) + `menu_test.go` (5 funcs) — `package ide`. SUT
+    (`RunCLI`/`Menu`) runs **in-process**; `exec.Command(args[0], …)` is the local
+    `mustRun`/`mustRunMenu` helper that spawns **git** for fixtures: `newTestGitRepo`
+    (plain `git init -b main` + config + commit) and `newTestGitRepoWithWorktrees` (main
+    worktree + child worktrees via `git worktree add`). → gate in place; migrate these
+    fixtures onto lyxtest where the shape fits (`newTestGitRepo` ≈ `CopyHostHub`;
+    `newTestGitRepoWithWorktrees` ≈ `CopyPaired`/`CopyHostHub` — confirm at plan time).
+    `menu_test.go` uses `t.Setenv("BOARD_SKIP_GIT","1")` (5 sites) → those tests stay
+    **serial**; `cli_test.go` has no `t.Setenv` → parallelisable once on lyxtest copies.
+    Keep `color_test.go`, `spawn_test.go`, `vscode_test.go` offline (pure units).
 - **Board unit suite to prune (78 funcs, `internal/board/*_test.go`):** `render_test.go` 20,
   `store_test.go` 19, `config_test.go` 8, `cli_test.go` 8, `board_test.go` 7,
   `sync_test.go` 5 (moving out), `init_test.go` 4, `layer_test.go` 3, `task_test.go` 2,
@@ -271,6 +316,12 @@ between tiers, plus measuring the result.
   needed). The behavioural assertions (commit counts, push/no-push, coalescing,
   lockfile-ignore, clean-tree no-op, pull) must be **byte-for-byte preserved** — only the
   repo-construction changes. Guard with the `-list` + `=== RUN` diff.
+- **lyxtest reuse for ide fixtures:** Migrate `newTestGitRepo` (plain repo) and
+  `newTestGitRepoWithWorktrees` (main + child worktrees) onto lyxtest copies where the
+  shape fits (`CopyHostHub` / `CopyPaired`); behavioural assertions in `cli_test.go` /
+  `menu_test.go` preserved byte-for-byte. Parallelise `cli_test.go` on isolated copies;
+  `menu_test.go` stays serial (`t.Setenv`). If a fixture genuinely doesn't fit, leave that
+  test spawning git in Tier 2 rather than force-fitting ("where it's worth it").
 - **Board pruning (the TDD-sensitive part):** Before touching `render_test.go` /
   `store_test.go`, capture `go test -list '.*' ./internal/board` + a `=== RUN` baseline.
   Fold only pure-overlap cases into table-driven subtests; after, diff to prove the
@@ -319,3 +370,19 @@ between tiers, plus measuring the result.
 - **NOTE:** Fixture reuse left to implementation-time; `HEAD`-vs-`main` default-branch
   mismatch. **Resolved:** flagged the `push -u origin HEAD` (newSyncRepo) vs `init -b main`
   + `push -u origin main` (CopyWeft) detail as the single blocking decider for reuse-vs-new.
+
+### Discussion-review round 2 (GAPS_FOUND) — resolutions
+
+- **Q:** ide tests were mischaracterised as binary/TUI spawners; they actually run the SUT
+  in-process and spawn git for fixtures. Gate-only or full lyxtest treatment? **A:** Use
+  lyxtest as the common fixture point — migrate ide's git fixtures where it's worth it,
+  parallelise `cli_test` (menu stays serial). Recorded as the `ide-scope` decision;
+  supersedes the earlier "gate ide only" pick (made on the false binary-spawn premise).
+- **NOTE:** boardtest mischaracterised as wholly `integration`/`smoke` gated. **Resolved:**
+  corrected — boardtest mixes untagged no-git files (`bench_test`, `concurrency_test`,
+  `doc`) that run in Tier 1 with `integration`-gated files; no `smoke` tag here. Moved
+  files compile only under `-tags integration`, leaving Tier 1 unaffected.
+- **NOTE:** `BOARD_SKIP_PUSH` usage in `git_test.go` is partial. **Resolved:** corrected —
+  only two `TestCommitPush` subtests skip push; `TestPull` does a real `push -u origin
+  master` and the rebase-retry subtest pushes. All still local (no network) but several
+  need a working upstream, reinforcing `CopyWeft` fit and the `master`-vs-`main` caveat.
