@@ -155,6 +155,8 @@ documented drop. Uniquely-covered assertions are preserved.
 - TestRerender — facade persistence wiring (Home.md and _Sidebar.md written)
 - TestUpsertTask — facade unique assertions (tasks.json and Home.md written)
 
+(New subtest added: TestRenderDeferredTask is a new row in TestRenderProposalAndShapesHomepage covering the deferred-task bucket path; included to preserve 62.5% coverage floor per Card 1 note.)
+
 **board (2 dropped with documented justification):**
 - TestRemoveTask — owned by `store_test.go:TestRemoveTaskMissing` (business logic owner)
 - TestRenderTaskStatus — strict subset of TestRenderStatusVariants (all status variants covered)
