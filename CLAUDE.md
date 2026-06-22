@@ -1,5 +1,13 @@
 # CLAUDE.md — Loomyard (lyx)
 
+## Persistent notes, not file-memory
+
+This project is worked in short-lived mill **worktrees** that get torn down once a task
+merges. The file-based `memory/` store is per-worktree, so anything written there
+vanishes with the worktree — don't bother saving project facts as memory. Put durable
+notes where they get versioned and merged into `main` instead: this `CLAUDE.md`,
+`_codeguide/`, or code comments.
+
 ## Mill wiki
 
 Never write to the mill wiki directly. Absolutely all interaction with the mill
