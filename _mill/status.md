@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planning
+phase: plan-fix-r1
 slug: extract-internal-vscode
 branch: extract-internal-vscode
 plan: _mill/plan
@@ -17,4 +17,5 @@ task_description: |
 discussing  '2026-06-22T17:37:51Z'
 discussed  '2026-06-22T17:51:50Z'
 planning  '2026-06-22T17:56:37Z'
+plan-fix-r1  '2026-06-22T17:58:59Z'
 ```

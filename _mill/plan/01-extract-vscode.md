@@ -58,7 +58,10 @@ Batch-local decisions: none beyond the `## Shared Decisions` in the overview.
     `gitignore.Ensure(dir, ".vscode/")` call (import
     `github.com/Knatte18/loomyard/internal/gitignore`). Carry the
     package doc comment `// Package vscode ...` on this file describing the
-    VS-Code-specific responsibilities (config generation, color picking, launch).
+    VS-Code-specific responsibilities (config generation, color picking, launch),
+    including the note that the mill values (palette, settings keys, `cmd /c
+    code`) are baked in — no external Python is read (relocated from the old
+    `ide` package doc per Card 3).
   - `internal/vscode/color.go`: port `pickColor` from `internal/ide/color.go`
     verbatim, exported as `func PickColor(l *paths.Layout) string` (import
     `github.com/Knatte18/loomyard/internal/paths`). Keep `palette` and
@@ -133,11 +136,18 @@ Batch-local decisions: none beyond the `## Shared Decisions` in the overview.
     `var codeLauncher = launchCode` to `var codeLauncher = vscode.Launch`. Do
     not change the `Spawn` flow shape, the `openDir` computation, or the
     `codeLauncher(openDir)` call. The `codeLauncher` seam stays in this file.
+    Also refresh the `Spawn` doc comment's numbered step list so it names the
+    `vscode.*` calls (`vscode.PickColor`, `vscode.WriteConfig`) instead of the
+    now-deleted unexported `pickColor` / `writeVSCodeConfig`.
   - `internal/ide/cli.go`: rewrite the `// Package ide ...` doc comment so it
     describes the generic spawn/menu/dispatch responsibility with VS Code
     specifics delegated to `internal/vscode` (config generation, color palette,
     launch command now live in `internal/vscode`). Do not change `RunCLI` or any
-    dispatch logic — only the doc comment.
+    dispatch logic — only the doc comment. Remove the existing doc's trailing
+    "Mill values (palette, settings keys, cmd /c code) are baked — no external
+    Python is read." sentence from `ide`'s package doc (those details now live
+    in `internal/vscode`); fold that fact into the `// Package vscode ...` doc
+    comment on `internal/vscode/config.go` (Card 1) instead.
   - Delete the six listed `internal/ide` files (the moved production files and
     the two migrated test files). After deletion, `internal/ide` retains only
     `cli.go`, `spawn.go`, `menu.go`, and the unchanged tests `cli_test.go`,

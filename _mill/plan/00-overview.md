@@ -3,7 +3,7 @@
 ```yaml
 task: "Extract internal/vscode; keep ide IDE-generic"
 slug: "extract-internal-vscode"
-approved: false
+approved: true
 started: "20260622-175518"
 parent: "main"
 root: ""
