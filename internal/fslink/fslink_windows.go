@@ -13,10 +13,10 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// UTF16Ptr converts a string to a null-terminated UTF-16 pointer for Windows syscalls.
+// utf16Ptr converts a string to a null-terminated UTF-16 pointer for Windows syscalls.
 // It panics if s contains a NUL byte, matching the contract of the call sites that
 // pass filesystem paths (which never legitimately contain NUL).
-func UTF16Ptr(s string) *uint16 {
+func utf16Ptr(s string) *uint16 {
 	p, err := windows.UTF16PtrFromString(s)
 	if err != nil {
 		panic(err)
@@ -47,7 +47,7 @@ func Create(link, target string) error {
 
 	// Open the directory with reparse-point semantics
 	handle, err := windows.CreateFile(
-		UTF16Ptr(link),
+		utf16Ptr(link),
 		windows.GENERIC_WRITE,
 		0,
 		nil,
@@ -131,7 +131,7 @@ func Create(link, target string) error {
 // is not enough; Windows rejects an undersized buffer with "data area too small".
 func readReparseData(path string) ([]byte, error) {
 	handle, err := windows.CreateFile(
-		UTF16Ptr(path),
+		utf16Ptr(path),
 		windows.GENERIC_READ,
 		windows.FILE_SHARE_READ,
 		nil,

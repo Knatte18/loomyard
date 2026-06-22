@@ -255,6 +255,26 @@ func TestPointsTo(t *testing.T) {
 			},
 			wantErr: true,
 		},
+		{
+			name: "ErrorsOnDanglingLink",
+			setup: func(t *testing.T) (link string, wantTarget string) {
+				tmpdir := t.TempDir()
+				target := filepath.Join(tmpdir, "target")
+				link = filepath.Join(tmpdir, "link")
+				if err := os.Mkdir(target, 0o755); err != nil {
+					t.Fatalf("create target: %v", err)
+				}
+				if err := Create(link, target); err != nil {
+					t.Skipf("link creation not permitted: %v", err)
+				}
+				// Delete the target directory to create a dangling link
+				if err := os.Remove(target); err != nil {
+					t.Fatalf("remove target: %v", err)
+				}
+				return link, ""
+			},
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -290,6 +310,7 @@ func TestRemove(t *testing.T) {
 		name    string
 		setup   func(t *testing.T) string
 		wantErr bool
+		verify  func(t *testing.T, link string)
 	}{
 		{
 			name: "RemovesLink",
@@ -306,6 +327,17 @@ func TestRemove(t *testing.T) {
 				return link
 			},
 			wantErr: false,
+			verify: func(t *testing.T, link string) {
+				targetDir := filepath.Join(filepath.Dir(link), "target")
+				// Verify link is gone
+				if _, err := os.Lstat(link); err == nil {
+					t.Error("Remove() did not delete the link")
+				}
+				// Verify target survives
+				if _, err := os.Stat(targetDir); err != nil {
+					t.Errorf("Remove() deleted target: %v", err)
+				}
+			},
 		},
 		{
 			name: "IdempotentOnMissing",
@@ -313,6 +345,13 @@ func TestRemove(t *testing.T) {
 				return filepath.Join(t.TempDir(), "does-not-exist")
 			},
 			wantErr: false,
+			verify: func(t *testing.T, link string) {
+				// Second call should also succeed
+				err := Remove(link)
+				if err != nil {
+					t.Fatalf("Remove() second call error = %v; want nil", err)
+				}
+			},
 		},
 	}
 
@@ -323,32 +362,13 @@ func TestRemove(t *testing.T) {
 
 			link := tt.setup(t)
 
-			// For the first case, verify target survives
-			if tt.name == "RemovesLink" {
-				targetDir := filepath.Join(filepath.Dir(link), "target")
-				err := Remove(link)
-				if err != nil {
-					t.Fatalf("Remove() error = %v; want nil", err)
-				}
-				// Verify link is gone
-				if _, err := os.Lstat(link); err == nil {
-					t.Error("Remove() did not delete the link")
-				}
-				// Verify target survives
-				if _, err := os.Stat(targetDir); err != nil {
-					t.Errorf("Remove() deleted target: %v", err)
-				}
-			} else {
-				// For idempotent case, just verify no error
-				err := Remove(link)
-				if err != nil {
-					t.Fatalf("Remove() error = %v; want nil", err)
-				}
-				// Second call should also succeed
-				err = Remove(link)
-				if err != nil {
-					t.Fatalf("Remove() second call error = %v; want nil", err)
-				}
+			err := Remove(link)
+			if err != nil {
+				t.Fatalf("Remove() error = %v; want nil", err)
+			}
+
+			if tt.verify != nil {
+				tt.verify(t, link)
 			}
 		})
 	}

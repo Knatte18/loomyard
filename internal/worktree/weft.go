@@ -98,7 +98,10 @@ func seedLyxJunction(l *paths.Layout, slug string) error {
 
 		// Check if link is a link and resolves to the correct target
 		isLink, errIsLink := fslink.IsLink(link)
-		if errIsLink == nil && isLink {
+		if errIsLink != nil {
+			return fmt.Errorf("islink %s: %w", link, errIsLink)
+		}
+		if isLink {
 			linkResolved, errResolve := fslink.PointsTo(link)
 			if errResolve == nil && linkResolved == targetResolved {
 				// Idempotent: junction exists and resolves correctly
