@@ -108,70 +108,77 @@ func TestUpsertTaskGroupKeyError(t *testing.T) {
 	}
 }
 
-func TestValidateDanglingDependency(t *testing.T) {
-	s := board.NewStore("")
+// TestValidateDependencyErrors verifies that UpsertTask rejects all invalid dependency
+// configurations with precise error messages: dangling deps, depending on isolated tasks,
+// and depending on deferred tasks.
+//
+// Folds: TestValidateDanglingDependency, TestValidateDependencyOnIsolated, TestValidateDependencyOnDeferred
+func TestValidateDependencyErrors(t *testing.T) {
+	t.Run("TestValidateDanglingDependency", func(t *testing.T) {
+		s := board.NewStore("")
 
-	// (e) dangling dependency rejected
-	_, err := s.UpsertTask(map[string]any{
-		"slug":       "task1",
-		"depends_on": []string{"nonexistent"},
+		// (e) dangling dependency rejected
+		_, err := s.UpsertTask(map[string]any{
+			"slug":       "task1",
+			"depends_on": []string{"nonexistent"},
+		})
+		if err == nil {
+			t.Fatalf("expected error for dangling dependency")
+		}
+		if err.Error() != "dangling dependency: \"nonexistent\" does not exist" {
+			t.Errorf("unexpected error: %v", err)
+		}
 	})
-	if err == nil {
-		t.Fatalf("expected error for dangling dependency")
-	}
-	if err.Error() != "dangling dependency: \"nonexistent\" does not exist" {
-		t.Errorf("unexpected error: %v", err)
-	}
-}
 
-func TestValidateDependencyOnIsolated(t *testing.T) {
-	s := board.NewStore("")
+	t.Run("TestValidateDependencyOnIsolated", func(t *testing.T) {
+		s := board.NewStore("")
 
-	// Create an isolated task
-	_, err := s.UpsertTask(map[string]any{
-		"slug":     "isolated",
-		"isolated": true,
+		// Create an isolated task
+		_, err := s.UpsertTask(map[string]any{
+			"slug":     "isolated",
+			"isolated": true,
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		// (f) dependency on isolated task rejected
+		_, err = s.UpsertTask(map[string]any{
+			"slug":       "task1",
+			"depends_on": []string{"isolated"},
+		})
+		if err == nil {
+			t.Fatalf("expected error for dependency on isolated task")
+		}
+		if err.Error() != "cannot depend on isolated task \"isolated\"" {
+			t.Errorf("unexpected error: %v", err)
+		}
 	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
 
-	// (f) dependency on isolated task rejected
-	_, err = s.UpsertTask(map[string]any{
-		"slug":       "task1",
-		"depends_on": []string{"isolated"},
+	t.Run("TestValidateDependencyOnDeferred", func(t *testing.T) {
+		s := board.NewStore("")
+
+		// Create a deferred task
+		_, err := s.UpsertTask(map[string]any{
+			"slug":     "deferred",
+			"deferred": true,
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		// (g) dependency on deferred task rejected
+		_, err = s.UpsertTask(map[string]any{
+			"slug":       "task1",
+			"depends_on": []string{"deferred"},
+		})
+		if err == nil {
+			t.Fatalf("expected error for dependency on deferred task")
+		}
+		if err.Error() != "cannot depend on deferred task \"deferred\"" {
+			t.Errorf("unexpected error: %v", err)
+		}
 	})
-	if err == nil {
-		t.Fatalf("expected error for dependency on isolated task")
-	}
-	if err.Error() != "cannot depend on isolated task \"isolated\"" {
-		t.Errorf("unexpected error: %v", err)
-	}
-}
-
-func TestValidateDependencyOnDeferred(t *testing.T) {
-	s := board.NewStore("")
-
-	// Create a deferred task
-	_, err := s.UpsertTask(map[string]any{
-		"slug":     "deferred",
-		"deferred": true,
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// (g) dependency on deferred task rejected
-	_, err = s.UpsertTask(map[string]any{
-		"slug":       "task1",
-		"depends_on": []string{"deferred"},
-	})
-	if err == nil {
-		t.Fatalf("expected error for dependency on deferred task")
-	}
-	if err.Error() != "cannot depend on deferred task \"deferred\"" {
-		t.Errorf("unexpected error: %v", err)
-	}
 }
 
 func TestValidateCycleDetection(t *testing.T) {
@@ -256,149 +263,161 @@ func TestRemoveTaskMissing(t *testing.T) {
 	}
 }
 
-func TestSetPhaseNil(t *testing.T) {
-	s := board.NewStore("")
+// TestSetPhase verifies SetPhase behaviour: clearing status via nil and the
+// silent no-op for a missing slug.
+//
+// Folds: TestSetPhaseNil, TestSetPhaseMissing
+func TestSetPhase(t *testing.T) {
+	t.Run("TestSetPhaseNil", func(t *testing.T) {
+		s := board.NewStore("")
 
-	task, err := s.UpsertTask(map[string]any{
-		"slug": "task1",
+		task, err := s.UpsertTask(map[string]any{
+			"slug": "task1",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		status := "in progress"
+		task.Status = &status
+		// Manually update since SetPhase might not have been called before
+		s.UpsertTask(map[string]any{
+			"slug":   "task1",
+			"status": status,
+		})
+
+		// (k) nil phase clears status
+		err = s.SetPhase("task1", nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		retrieved, _ := s.GetTask("task1")
+		if retrieved.Status != nil {
+			t.Errorf("expected nil status, got %v", retrieved.Status)
+		}
 	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
 
-	status := "in progress"
-	task.Status = &status
-	// Manually update since SetPhase might not have been called before
-	s.UpsertTask(map[string]any{
-		"slug":   "task1",
-		"status": status,
+	t.Run("TestSetPhaseMissing", func(t *testing.T) {
+		s := board.NewStore("")
+
+		// (k) no-op (nil return) for missing slug
+		err := s.SetPhase("nonexistent", nil)
+		if err != nil {
+			t.Fatalf("expected nil error for missing task, got %v", err)
+		}
 	})
-
-	// (k) nil phase clears status
-	err = s.SetPhase("task1", nil)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	retrieved, _ := s.GetTask("task1")
-	if retrieved.Status != nil {
-		t.Errorf("expected nil status, got %v", retrieved.Status)
-	}
 }
 
-func TestSetPhaseMissing(t *testing.T) {
-	s := board.NewStore("")
+// TestMergeTasks verifies both the happy path (atomic remove+upsert+set_phase) and
+// the rollback path (validation error leaves store unchanged).
+//
+// Folds: TestMergeTasksAtomic, TestMergeTasksValidationRollback
+func TestMergeTasks(t *testing.T) {
+	t.Run("TestMergeTasksAtomic", func(t *testing.T) {
+		s := board.NewStore("")
 
-	// (k) no-op (nil return) for missing slug
-	err := s.SetPhase("nonexistent", nil)
-	if err != nil {
-		t.Fatalf("expected nil error for missing task, got %v", err)
-	}
-}
+		// Create initial tasks
+		_, err := s.UpsertTask(map[string]any{
+			"slug":  "a",
+			"title": "A",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
 
-func TestMergeTasksAtomic(t *testing.T) {
-	s := board.NewStore("")
+		_, err = s.UpsertTask(map[string]any{
+			"slug":  "b",
+			"title": "B",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
 
-	// Create initial tasks
-	_, err := s.UpsertTask(map[string]any{
-		"slug":  "a",
-		"title": "A",
+		// (l) remove + upsert + set_phase all execute atomically
+		phase := "done"
+		result, err := s.MergeTasks(
+			[]string{"a"},
+			map[string]any{
+				"slug":  "c",
+				"title": "C",
+			},
+			&[2]any{"c", phase},
+		)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		// Verify removed
+		_, found := s.GetTask("a")
+		if found {
+			t.Errorf("expected task a to be removed")
+		}
+
+		// Verify upserted
+		if result.Slug != "c" {
+			t.Errorf("expected upserted task to be c, got %s", result.Slug)
+		}
+
+		// Verify phase set
+		retrieved, _ := s.GetTask("c")
+		if retrieved.Status == nil || *retrieved.Status != "done" {
+			t.Errorf("expected status done, got %v", retrieved.Status)
+		}
+
+		// Verify b still exists
+		_, found = s.GetTask("b")
+		if !found {
+			t.Errorf("expected task b to still exist")
+		}
 	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
 
-	_, err = s.UpsertTask(map[string]any{
-		"slug":  "b",
-		"title": "B",
+	t.Run("TestMergeTasksValidationRollback", func(t *testing.T) {
+		s := board.NewStore("")
+
+		// Create tasks
+		_, err := s.UpsertTask(map[string]any{
+			"slug":     "a",
+			"isolated": true,
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		_, err = s.UpsertTask(map[string]any{
+			"slug":  "b",
+			"title": "B",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		// (m) validation error on upsert rolls back — nothing is mutated
+		before := len(s.Tasks())
+		_, err = s.MergeTasks(
+			[]string{"b"},
+			map[string]any{
+				"slug":       "c",
+				"depends_on": []string{"nonexistent"},
+			},
+			nil,
+		)
+		if err == nil {
+			t.Fatalf("expected validation error")
+		}
+
+		// Verify nothing changed
+		after := len(s.Tasks())
+		if before != after {
+			t.Errorf("expected store to be unchanged, but length changed from %d to %d", before, after)
+		}
+
+		// Verify b still exists
+		_, found := s.GetTask("b")
+		if !found {
+			t.Errorf("expected task b to still exist after rollback")
+		}
 	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// (l) remove + upsert + set_phase all execute atomically
-	phase := "done"
-	result, err := s.MergeTasks(
-		[]string{"a"},
-		map[string]any{
-			"slug":  "c",
-			"title": "C",
-		},
-		&[2]any{"c", phase},
-	)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// Verify removed
-	_, found := s.GetTask("a")
-	if found {
-		t.Errorf("expected task a to be removed")
-	}
-
-	// Verify upserted
-	if result.Slug != "c" {
-		t.Errorf("expected upserted task to be c, got %s", result.Slug)
-	}
-
-	// Verify phase set
-	retrieved, _ := s.GetTask("c")
-	if retrieved.Status == nil || *retrieved.Status != "done" {
-		t.Errorf("expected status done, got %v", retrieved.Status)
-	}
-
-	// Verify b still exists
-	_, found = s.GetTask("b")
-	if !found {
-		t.Errorf("expected task b to still exist")
-	}
-}
-
-func TestMergeTasksValidationRollback(t *testing.T) {
-	s := board.NewStore("")
-
-	// Create tasks
-	_, err := s.UpsertTask(map[string]any{
-		"slug":     "a",
-		"isolated": true,
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	_, err = s.UpsertTask(map[string]any{
-		"slug":  "b",
-		"title": "B",
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// (m) validation error on upsert rolls back — nothing is mutated
-	before := len(s.Tasks())
-	_, err = s.MergeTasks(
-		[]string{"b"},
-		map[string]any{
-			"slug":       "c",
-			"depends_on": []string{"nonexistent"},
-		},
-		nil,
-	)
-	if err == nil {
-		t.Fatalf("expected validation error")
-	}
-
-	// Verify nothing changed
-	after := len(s.Tasks())
-	if before != after {
-		t.Errorf("expected store to be unchanged, but length changed from %d to %d", before, after)
-	}
-
-	// Verify b still exists
-	_, found := s.GetTask("b")
-	if !found {
-		t.Errorf("expected task b to still exist after rollback")
-	}
 }
 
 func TestListTasksBriefLayerAndProposal(t *testing.T) {
@@ -442,135 +461,147 @@ func TestListTasksBriefLayerAndProposal(t *testing.T) {
 	}
 }
 
-func TestSetDepsValid(t *testing.T) {
-	s := board.NewStore("")
+// TestSetDeps verifies both the valid update path and the cycle-detection rollback
+// for SetDeps.
+//
+// Folds: TestSetDepsValid, TestSetDepsCycleRollback
+func TestSetDeps(t *testing.T) {
+	t.Run("TestSetDepsValid", func(t *testing.T) {
+		s := board.NewStore("")
 
-	// Create tasks
-	_, err := s.UpsertTask(map[string]any{
-		"slug": "a",
+		// Create tasks
+		_, err := s.UpsertTask(map[string]any{
+			"slug": "a",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		_, err = s.UpsertTask(map[string]any{
+			"slug": "b",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		// (o) SetDeps: valid update succeeds
+		err = s.SetDeps("b", []string{"a"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		retrieved, _ := s.GetTask("b")
+		if len(retrieved.DependsOn) != 1 || retrieved.DependsOn[0] != "a" {
+			t.Errorf("expected DependsOn [a], got %v", retrieved.DependsOn)
+		}
 	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
 
-	_, err = s.UpsertTask(map[string]any{
-		"slug": "b",
+	t.Run("TestSetDepsCycleRollback", func(t *testing.T) {
+		s := board.NewStore("")
+
+		// Create A and B with A depending on B
+		_, err := s.UpsertTask(map[string]any{
+			"slug": "a",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		_, err = s.UpsertTask(map[string]any{
+			"slug":       "b",
+			"depends_on": []string{"a"},
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		// (p) setting deps that create a cycle returns error and leaves store unchanged
+		originalB, _ := s.GetTask("b")
+		err = s.SetDeps("a", []string{"b"})
+		if err == nil {
+			t.Fatalf("expected error for cycle detection")
+		}
+
+		// Verify a is unchanged
+		retrievedA, _ := s.GetTask("a")
+		if len(retrievedA.DependsOn) != 0 {
+			t.Errorf("expected a to have no deps, got %v", retrievedA.DependsOn)
+		}
+
+		// Verify b is unchanged
+		retrievedB, _ := s.GetTask("b")
+		if !sliceEqualStrings(retrievedB.DependsOn, originalB.DependsOn) {
+			t.Errorf("expected b deps to be unchanged, got %v", retrievedB.DependsOn)
+		}
 	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// (o) SetDeps: valid update succeeds
-	err = s.SetDeps("b", []string{"a"})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	retrieved, _ := s.GetTask("b")
-	if len(retrieved.DependsOn) != 1 || retrieved.DependsOn[0] != "a" {
-		t.Errorf("expected DependsOn [a], got %v", retrieved.DependsOn)
-	}
 }
 
-func TestSetDepsCycleRollback(t *testing.T) {
-	s := board.NewStore("")
+// TestUpsertTasksBatch verifies that a valid batch upserts all tasks and that an
+// invalid batch returns an error without mutating the store.
+//
+// Folds: TestUpsertTasksBatchValid, TestUpsertTasksBatchInvalid
+func TestUpsertTasksBatch(t *testing.T) {
+	t.Run("TestUpsertTasksBatchValid", func(t *testing.T) {
+		s := board.NewStore("")
 
-	// Create A and B with A depending on B
-	_, err := s.UpsertTask(map[string]any{
-		"slug": "a",
+		// (q) valid batch of two tasks both upserted
+		err := s.UpsertTasksBatch([]map[string]any{
+			{
+				"slug":  "task1",
+				"title": "Task 1",
+			},
+			{
+				"slug":  "task2",
+				"title": "Task 2",
+			},
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		tasks := s.Tasks()
+		if len(tasks) != 2 {
+			t.Errorf("expected 2 tasks, got %d", len(tasks))
+		}
+
+		if tasks[0].Slug != "task1" || tasks[1].Slug != "task2" {
+			t.Errorf("expected slugs task1 and task2, got %s and %s", tasks[0].Slug, tasks[1].Slug)
+		}
 	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
 
-	_, err = s.UpsertTask(map[string]any{
-		"slug":       "b",
-		"depends_on": []string{"a"},
+	t.Run("TestUpsertTasksBatchInvalid", func(t *testing.T) {
+		s := board.NewStore("")
+
+		// Create initial state
+		_, err := s.UpsertTask(map[string]any{
+			"slug": "existing",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		// (r) batch with one invalid task returns error and neither task is mutated
+		beforeCount := len(s.Tasks())
+		err = s.UpsertTasksBatch([]map[string]any{
+			{
+				"slug":       "task1",
+				"depends_on": []string{"nonexistent"},
+			},
+			{
+				"slug":  "task2",
+				"title": "Task 2",
+			},
+		})
+		if err == nil {
+			t.Fatalf("expected error for invalid batch")
+		}
+
+		// Verify nothing was mutated
+		afterCount := len(s.Tasks())
+		if beforeCount != afterCount {
+			t.Errorf("expected store unchanged, but count changed from %d to %d", beforeCount, afterCount)
+		}
 	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// (p) setting deps that create a cycle returns error and leaves store unchanged
-	originalB, _ := s.GetTask("b")
-	err = s.SetDeps("a", []string{"b"})
-	if err == nil {
-		t.Fatalf("expected error for cycle detection")
-	}
-
-	// Verify a is unchanged
-	retrievedA, _ := s.GetTask("a")
-	if len(retrievedA.DependsOn) != 0 {
-		t.Errorf("expected a to have no deps, got %v", retrievedA.DependsOn)
-	}
-
-	// Verify b is unchanged
-	retrievedB, _ := s.GetTask("b")
-	if !sliceEqualStrings(retrievedB.DependsOn, originalB.DependsOn) {
-		t.Errorf("expected b deps to be unchanged, got %v", retrievedB.DependsOn)
-	}
-}
-
-func TestUpsertTasksBatchValid(t *testing.T) {
-	s := board.NewStore("")
-
-	// (q) valid batch of two tasks both upserted
-	err := s.UpsertTasksBatch([]map[string]any{
-		{
-			"slug":  "task1",
-			"title": "Task 1",
-		},
-		{
-			"slug":  "task2",
-			"title": "Task 2",
-		},
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	tasks := s.Tasks()
-	if len(tasks) != 2 {
-		t.Errorf("expected 2 tasks, got %d", len(tasks))
-	}
-
-	if tasks[0].Slug != "task1" || tasks[1].Slug != "task2" {
-		t.Errorf("expected slugs task1 and task2, got %s and %s", tasks[0].Slug, tasks[1].Slug)
-	}
-}
-
-func TestUpsertTasksBatchInvalid(t *testing.T) {
-	s := board.NewStore("")
-
-	// Create initial state
-	_, err := s.UpsertTask(map[string]any{
-		"slug": "existing",
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// (r) batch with one invalid task returns error and neither task is mutated
-	beforeCount := len(s.Tasks())
-	err = s.UpsertTasksBatch([]map[string]any{
-		{
-			"slug":       "task1",
-			"depends_on": []string{"nonexistent"},
-		},
-		{
-			"slug":  "task2",
-			"title": "Task 2",
-		},
-	})
-	if err == nil {
-		t.Fatalf("expected error for invalid batch")
-	}
-
-	// Verify nothing was mutated
-	afterCount := len(s.Tasks())
-	if beforeCount != afterCount {
-		t.Errorf("expected store unchanged, but count changed from %d to %d", beforeCount, afterCount)
-	}
 }
 
 func sliceEqualStrings(a, b []string) bool {
