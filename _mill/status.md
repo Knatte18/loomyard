@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-migrate-callsites
+phase: holistic-reviewing
 slug: extract-fslink
 branch: extract-fslink
 plan: _mill/plan
@@ -23,6 +23,7 @@ planned  '2026-06-22T11:15:34Z'
 implementing  '2026-06-22T11:19:30Z'
 approved-fslink-package  '2026-06-22T11:27:21Z'
 approved-migrate-callsites  '2026-06-22T11:53:14Z'
+holistic-reviewing  '2026-06-22T11:53:49Z'
 ```
 
 ## Batches
