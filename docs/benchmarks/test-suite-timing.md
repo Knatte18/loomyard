@@ -218,7 +218,7 @@ The moved board tests (`git_test.go`, `sync_test.go`) use `t.Setenv` (`BOARD_SKI
 `BOARD_SKIP_PUSH`) and remain serial — Go forbids `t.Parallel()` after `t.Setenv`.
 The `internal/ide` tests `cli_test.go` and `menu_test.go` use `os.Chdir` (a
 process-global seam) and likewise remain serial. The `lyxtest` per-test fixture copies
-(`CopyBoardRepo`, `CopyHostHub`, `CopyWeft`, `CopyPaired`) are isolated per-test
+(`CopyHostHub`, `CopyWeft`, `CopyPaired`; `CopyBoardRepo` was evaluated and not needed — all sync tests use `CopyWeft` directly) are isolated per-test
 filesystem trees with no shared mutable state, so any test that does not use
 `t.Setenv`/`os.Chdir` may safely call `t.Parallel()`. The `-race` detector is not a
 precondition (no CGO in this environment); it may be run opportunistically in a
@@ -234,9 +234,9 @@ If the suite feels slow locally, the highest-leverage levers, in order:
    vs ~82 s for everything.
 3. **Stay in the offline tier.** As of `optimize-test-suite`, `internal/worktree`,
    `internal/weft`, and `internal/paths` no longer spawn `git` in the default
-   `go test ./...` loop — their git suites are behind `-tags integration`. The
-   default-loop floor is now `internal/board` (~24 s) and `internal/ide` (~12 s),
-   not `worktree`; applying the same shared-fixture + build-tag split to `board`
-   (it spawns real commit/push cycles) is the next highest-leverage move. Only
-   reach for `-tags integration` when you are changing worktree/weft/paths git
-   behaviour — and budget ~31 s for that tier.
+   `go test ./...` loop — their git suites are behind `-tags integration`. As of
+   `optimize-remaining-test-suites` both `internal/board` (~0.7 s Tier 1) and
+   `internal/ide` (~0.6 s Tier 1) have also had the shared-fixture + build-tag
+   split applied; the default-loop floor is now build/link overhead across
+   packages. Only reach for `-tags integration` when you are changing
+   worktree/weft/paths/board/ide git behaviour — and budget ~31 s for that tier.
