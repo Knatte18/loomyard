@@ -10,20 +10,17 @@ package muxpoc
 
 import (
 	"crypto/rand"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/fsx"
-	flock "github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/state"
 )
 
 const (
 	stateRelPath = ".lyx/muxpoc-state.json"
-	lockRelPath  = ".lyx/muxpoc-state.lock"
 )
 
 // Pane represents a single psmux pane in the session.
@@ -42,43 +39,24 @@ type MuxpocState struct {
 }
 
 // LoadState reads the muxpoc state from cwd/.lyx/muxpoc-state.json under a
-// shared read lock. Returns (nil, "", nil) if the file is absent. Returns
-// (nil, "<warn msg>", nil) if the file is corrupt/unparseable (no error returned
-// — treat as no session). Returns (*state, "", nil) on success.
-func LoadState(cwd string) (*MuxpocState, string, error) {
+// shared read lock. Returns (nil, nil) if the file is absent. Returns (nil, error)
+// if the file is corrupt/unparseable or on other read errors. Returns (*state, nil) on success.
+func LoadState(cwd string) (*MuxpocState, error) {
 	statePath := filepath.Join(cwd, stateRelPath)
-	lockPath := filepath.Join(cwd, lockRelPath)
+	lockPath := statePath + ".lock"
 
-	// Ensure parent directory exists so lock file can be created
-	lockDir := filepath.Dir(lockPath)
-	if err := os.MkdirAll(lockDir, 0o755); err != nil {
-		return nil, "", fmt.Errorf("mkdir: %w", err)
-	}
-
-	lock, err := flock.AcquireReadLock(lockPath)
+	v, found, err := state.ReadJSON[MuxpocState](statePath, lockPath)
 	if err != nil {
-		return nil, "", fmt.Errorf("acquire read lock: %w", err)
+		return nil, err
 	}
-	defer lock.Release()
-
-	content, err := os.ReadFile(statePath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, "", nil
-		}
-		return nil, "", fmt.Errorf("read state: %w", err)
+	if !found {
+		return nil, nil
 	}
-
-	var state MuxpocState
-	if err := json.Unmarshal(content, &state); err != nil {
-		return nil, fmt.Sprintf("state file corrupt: %v", err), nil
-	}
-
-	return &state, "", nil
+	return &v, nil
 }
 
 // SaveState creates .lyx/ if absent, acquires an exclusive write lock on
-// .lyx/muxpoc-state.lock, and writes the state atomically (temp file + rename).
+// .lyx/muxpoc-state.json.lock, and writes the state atomically (temp file + rename).
 // Releases the lock via defer.
 func SaveState(cwd string, s *MuxpocState) error {
 	if s == nil {
@@ -86,30 +64,9 @@ func SaveState(cwd string, s *MuxpocState) error {
 	}
 
 	statePath := filepath.Join(cwd, stateRelPath)
-	lockPath := filepath.Join(cwd, lockRelPath)
+	lockPath := statePath + ".lock"
 
-	// Create .lyx/ directory if absent
-	lyxDir := filepath.Dir(statePath)
-	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
-		return fmt.Errorf("mkdir .lyx: %w", err)
-	}
-
-	lock, err := flock.AcquireWriteLock(lockPath)
-	if err != nil {
-		return fmt.Errorf("acquire write lock: %w", err)
-	}
-	defer lock.Release()
-
-	content, err := json.MarshalIndent(s, "", "  ")
-	if err != nil {
-		return fmt.Errorf("marshal state: %w", err)
-	}
-
-	if err := fsx.AtomicWrite(cwd, stateRelPath, string(content)); err != nil {
-		return fmt.Errorf("atomic write: %w", err)
-	}
-
-	return nil
+	return state.WriteJSON(statePath, lockPath, s)
 }
 
 // DeleteState removes .lyx/muxpoc-state.json. Returns nil if the file is absent.
