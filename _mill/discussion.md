@@ -123,8 +123,11 @@ is the worst offender and sets the pattern; the four lighter packages
 
 - Decision: Append a `2026-06-22 — after prune-board-tests` block to
   `docs/benchmarks/test-suite-timing.md` recording before/after **top-level func counts**
-  per package, the per-package coverage % (shown unchanged), and the folded/dropped name
-  list under an "Equivalence guardrail" subsection consistent with the existing pattern.
+  per package, the per-package coverage % (shown unchanged), and a **name-map** (each
+  old top-level func name → its surviving `t.Run` subtest, or → its drop justification)
+  under an "Equivalence guardrail" subsection consistent with the existing pattern.
+  Where a fold absorbs an inline check that had no top-level func name, the name-map
+  notes which subtest now carries it.
   Update the headline count narrative; do not claim a wall-clock change (none expected).
 - Rationale: The existing history blocks are wall-clock-framed; this prune's metric is
   func count. Framing it explicitly as a count prune keeps the trend log honest.
@@ -137,6 +140,10 @@ All five packages use Go's standard `testing`. Folds are mechanical: gather N fu
 call the same function with different inputs into a `tests := []struct{…}{…}` slice +
 `for _, tt := range tests { t.Run(tt.name, …) }`. The per-package maps below were
 produced by reading every test file; they are the concrete work-list.
+
+**All `→ ~N` func counts below are expected outcomes, not quotas.** Per
+`coverage-guardrail` and the aggressiveness decision, a batch stops where dropping
+would lose a uniquely-covered assertion; a count above the estimate is not a failure.
 
 **Cross-cutting gotchas (apply to every package):**
 
@@ -307,12 +314,17 @@ No integration tag; smoke test is `//go:build smoke` (out of scope). White-box
   (two pinned-value rows + one "arbitrary" row asserting the 4-hex-digit shape as a
   per-row post-assertion).
 - **Fold B — `TestSocketName`** (state_test.go): fold `TestSocketName`,
-  `TestSocketNameStability`, and the inline stability re-check into one func with
-  subtests `prefix_and_charset` / `stable_same_input` / `differs_root_vs_subdir`.
+  `TestSocketNameStability`, and the inline stability re-check into one func. Per
+  `preserve-names-as-subtests`, name the subtests after the originals:
+  `TestSocketName` (the existing charset/prefix table) and `TestSocketNameStability`
+  (the root-vs-subdir + same-input stability assertions). The inline re-check had no
+  top-level name, so it folds into the `TestSocketNameStability` subtest; record this
+  in the name-map column of the doc's guardrail block so the auditable diff resolves.
 - **Fold C — `TestEnvFiltering`** (state_test.go): fold `TestSanitizeEnv` +
   `TestStrippedEnvKeys` (complementary halves of one behavior over the *same* input
-  slice) into one func with two subtests sharing one `environ` fixture (removes the
-  duplicated literal, not coverage).
+  slice) into one func sharing one `environ` fixture. Per `preserve-names-as-subtests`,
+  the two subtests keep the original names `TestSanitizeEnv` and `TestStrippedEnvKeys`
+  (removes the duplicated literal, not coverage).
 - **Fold D — `TestRunCLIErrors`** (cli_test.go): fold `TestRunCLINoSubcommandFails`,
   `TestRunCLIUnknownSubcommandFails`, `TestRunCLIUnknownFlagFails` into one table; give
   the flag-error row the `out.Len()==0` assertion the others have (R2).

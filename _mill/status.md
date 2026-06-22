@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussion-fix-r1
 slug: prune-board-tests
 branch: prune-board-tests
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-06-22T17:18:59Z'
+discussion-fix-r1  '2026-06-22T17:37:36Z'
 ```
