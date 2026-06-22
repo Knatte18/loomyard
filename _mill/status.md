@@ -28,7 +28,9 @@ implementing  '2026-06-22T18:02:14Z'
 ```yaml
 batches:
   - name: board
-    state: pending
+    state: running
+    implementer_session: e61c3e1a-8cda-405e-9de5-2d0e8debbedd
+    start_sha: 02407a2a74643201b0da603cff34abf49770c287
   - name: worktree
     state: pending
   - name: weft
