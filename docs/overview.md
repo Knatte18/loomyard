@@ -14,14 +14,24 @@ orchestration comes last. See [Principles](#principles).
 
 Module path: `github.com/Knatte18/loomyard`
 
-## Naming: `lyx` (binary) vs `loom` (skills)
+## Naming: `lyx` (binary) · `loom` (orchestrator module) · `ly` (skills)
 
-`lyx` is the binary/CLI — **L**oom**Y**ard e**X**ecutable — one binary with a namespaced
-subcommand tree (`lyx board`, `lyx weft`, `lyx config`, …). It is the analog of millhouse's
-`millpy` backend. The skill / orchestration plugin (the analog of `mill`) is **`loom`**; skills
-are `/loom-*`. **Never name skills `lyx-*`** — that recreates the millhouse `mill-spawn`
-skill-vs-script ambiguity (which forced the `mill` → `millpy` rename). Internal Go packages
-(`internal/board`, `internal/weft`, …) keep their own names and are not user-facing.
+Three distinct names for three layers, deliberately non-overlapping to avoid the millhouse
+`mill`/`millpy` collision (where one name meant two different things):
+
+- **`lyx`** — the binary/CLI, **L**oom**Y**ard e**X**ecutable — one binary with a namespaced
+  subcommand tree (`lyx board`, `lyx weft`, `lyx loom`, …). The analog of millhouse's `millpy`
+  backend.
+- **`loom`** — the orchestrator *module* (`lyx loom run`, `lyx loom status`): the domain that
+  drives the phased run, a module like `board` or `weft`. See [modules/loom.md](modules/loom.md).
+- **`ly`** — the skill / orchestration plugin (the analog of `mill`); skills are `/ly-*`.
+
+**Never name skills `lyx-*` or `loom-*`** — skills are `ly-*`, distinct from both the binary
+(`lyx`) and every module (`loom`, `review`, …), so no name is shared between a skill and a
+script/module (the ambiguity that forced the millhouse `mill` → `millpy` rename). Internal Go
+packages (`internal/board`, `internal/weft`, …) keep their own names and are not user-facing.
+
+Convenience alias: **`lyx run` → `lyx loom run`** (the everyday autonomous call).
 
 ## Principles
 
@@ -184,6 +194,11 @@ User-facing modules each get one `lyx <module>` namespace:
   planned mux module. ✅ Implemented.
 - **mux** — psmux session layout (column per worktree; daemon later). 🚧 Design — not built. See
   [modules/mux.md](modules/mux.md).
+- **loom** — phased orchestrator: drives Setup → Discussion → Plan → Builder → Finalize, each
+  gated by a review (`lyx loom run`, alias `lyx run`). 🚧 Design — not built. See
+  [modules/loom.md](modules/loom.md).
+- **review** — generic profile-driven reviewer (handler+fixer, optional cluster) used by `loom`
+  and standalone (`lyx review`). 🚧 Design — not built. See [modules/loom.md](modules/loom.md).
 
 **init** is not a module but a cross-cutting setup command (`lyx init`) that
 scaffolds the shared `_lyx/` config dir for every module.
@@ -200,6 +215,7 @@ git-backed integration — live in the black-box `internal/board/boardtest` pack
 
 ## Other docs
 
+- [modules/loom.md](modules/loom.md) — the phased orchestrator (`lyx loom` + `lyx review`); design.
 - [modules/mux.md](modules/mux.md) — psmux session layout (design).
 - [benchmarks/](benchmarks/board-performance.md) — board performance, tracked across revisions.
 - [shared-libs/](shared-libs/README.md) — the shared infrastructure plumbing.
