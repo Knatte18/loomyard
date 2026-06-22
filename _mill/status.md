@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: adopt-internal-state
 branch: adopt-internal-state
 plan: _mill/plan
@@ -27,6 +27,7 @@ approved-muxpoc-adopt-state  '2026-06-22T18:19:16Z'
 holistic-reviewing  '2026-06-22T18:19:39Z'
 holistic-approved  '2026-06-22T18:21:10Z'
 done  '2026-06-22T18:21:27Z'
+pr-pending  '2026-06-22T18:35:25Z'
 ```
 
 ## Batches
