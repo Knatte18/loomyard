@@ -134,20 +134,37 @@ func IsLink(path string) (bool, error) {
 		return false, nil
 	}
 
-	// Get the reparse tag via FindFirstFile's Reserved0 field or via FSCTL_GET_REPARSE_POINT
-	// Using FindFirstFile is simpler
-	pathPtr := UTF16Ptr(path)
-	findData := windows.Win32FileAttributeData{}
-
-	// Use FindFirstFile to read the reparse tag
-	handle, err := windows.FindFirstFile(pathPtr, &findData)
+	// Open the path with reparse-point semantics to read the tag.
+	handle, err := windows.CreateFile(
+		UTF16Ptr(path),
+		windows.GENERIC_READ,
+		windows.FILE_SHARE_READ,
+		nil,
+		windows.OPEN_EXISTING,
+		windows.FILE_FLAG_OPEN_REPARSE_POINT|windows.FILE_FLAG_BACKUP_SEMANTICS,
+		0,
+	)
 	if err != nil {
-		return false, fmt.Errorf("FindFirstFile(%s): %w", path, err)
+		return false, fmt.Errorf("CreateFile(%s): %w", path, err)
 	}
-	windows.FindClose(handle)
+	defer windows.CloseHandle(handle)
 
-	// The reparse tag is in Reserved0 for reparse points
-	tag := findData.Reserved0
+	// Read the reparse point data to get the tag
+	buf := make([]byte, 4)
+	var bytesReturned uint32
+	err = windows.DeviceIoControl(
+		handle,
+		windows.FSCTL_GET_REPARSE_POINT,
+		nil, 0,
+		&buf[0], uint32(len(buf)),
+		&bytesReturned, nil,
+	)
+	if err != nil {
+		return false, fmt.Errorf("FSCTL_GET_REPARSE_POINT: %w", err)
+	}
+
+	// The reparse tag is in the first 4 bytes of the reparse point data
+	tag := *(*uint32)(unsafe.Pointer(&buf[0]))
 
 	return (tag == windows.IO_REPARSE_TAG_MOUNT_POINT || tag == windows.IO_REPARSE_TAG_SYMLINK), nil
 }
@@ -156,6 +173,15 @@ func IsLink(path string) (bool, error) {
 // The result has no \??\ prefix. Returns an error if link is not a link or if the
 // target does not exist.
 func PointsTo(link string) (string, error) {
+	// Verify it's actually a link
+	isLink, err := IsLink(link)
+	if err != nil {
+		return "", err
+	}
+	if !isLink {
+		return "", fmt.Errorf("PointsTo: %s is not a link", link)
+	}
+
 	target, err := filepath.EvalSymlinks(link)
 	if err != nil {
 		return "", fmt.Errorf("filepath.EvalSymlinks(%s): %w", link, err)

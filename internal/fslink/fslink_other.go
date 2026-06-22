@@ -41,6 +41,15 @@ func IsLink(path string) (bool, error) {
 // PointsTo returns the resolved absolute target of a symlink via filepath.EvalSymlinks.
 // Returns an error if link is not a symlink or if the target does not exist.
 func PointsTo(link string) (string, error) {
+	// Verify it's actually a symlink
+	isLink, err := IsLink(link)
+	if err != nil {
+		return "", err
+	}
+	if !isLink {
+		return "", fmt.Errorf("PointsTo: %s is not a link", link)
+	}
+
 	absTarget, err := filepath.EvalSymlinks(link)
 	if err != nil {
 		return "", fmt.Errorf("filepath.EvalSymlinks(%s): %w", link, err)
