@@ -279,9 +279,12 @@ risky production-code refactor out of scope** (see Decisions: board-git-seam).
     (`RunCLI`/`Menu`) runs **in-process**; `exec.Command(args[0], …)` is the local
     `mustRun`/`mustRunMenu` helper that spawns **git** for fixtures: `newTestGitRepo`
     (plain `git init -b main` + config + commit) and `newTestGitRepoWithWorktrees` (main
-    worktree + child worktrees via `git worktree add`). → gate in place; migrate these
-    fixtures onto lyxtest where the shape fits (`newTestGitRepo` ≈ `CopyHostHub`;
-    `newTestGitRepoWithWorktrees` ≈ `CopyPaired`/`CopyHostHub` — confirm at plan time).
+    worktree + child worktrees via in-body `git worktree add`). → gate in place; migrate
+    only where a fixture fits: `newTestGitRepo` (plain repo) ≈ `CopyHostHub`. **No existing
+    fixture fits `newTestGitRepoWithWorktrees`** — `CopyPaired` yields independent sibling
+    repos, not `git worktree`-linked children, so at most the **base repo** maps and the
+    in-body `git worktree add/remove` spawns remain in Tier 2; migrating menu may not be
+    worth it (plan-time call, per the ide-scope decision).
     Both files stay **serial**: `menu_test.go` uses `t.Setenv("BOARD_SKIP_GIT","1")` (5
     sites), and `cli_test.go`'s four funcs each `os.Chdir(gitRepo)` with `defer
     os.Chdir(oldCwd)` (`:56-58,79-81,101-103,123-125`) — process-global cwd, illegal under
