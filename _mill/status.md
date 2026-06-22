@@ -34,7 +34,9 @@ batches:
     start_sha: 02407a2a74643201b0da603cff34abf49770c287
     commit_sha: 7636e2869f0770cf3195c6476778ab37db146e03
   - name: worktree
-    state: pending
+    state: running
+    implementer_session: 38def2ca-1590-453f-8709-8bdae77814bd
+    start_sha: 50b12bb979da039e0bfac0c9dbc46d2d02d0b1eb
   - name: weft
     state: pending
   - name: ide
