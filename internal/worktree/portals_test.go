@@ -1,3 +1,5 @@
+//go:build integration
+
 // portals_test.go covers portal junction create/remove, including mirrored link
 // placement and idempotent removal that prunes empty ancestors.
 
@@ -8,6 +10,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/lyxtest"
 	"github.com/Knatte18/loomyard/internal/paths"
 )
 
@@ -18,22 +21,23 @@ import (
 // Then it calls removePortal and asserts the link is gone, empty ancestors are
 // pruned, the target survives, and a second removePortal call is idempotent.
 func TestCreatePortal(t *testing.T) {
-	// Create a test hub repo
-	hub := newTestRepo(t)
+	t.Parallel()
 
-	// Create a subdirectory to get a non-trivial RelPath
-	subdir := filepath.Join(hub, "subdir", "nested")
+	f := lyxtest.CopyHostHub(t)
+
+	// Create a subdirectory to get a non-trivial RelPath.
+	subdir := filepath.Join(f.Hub, "subdir", "nested")
 	if err := os.MkdirAll(subdir, 0o755); err != nil {
 		t.Fatalf("mkdir subdir: %v", err)
 	}
 
-	// Build a Layout from the subdirectory (RelPath will be "subdir/nested")
+	// Build a Layout from the subdirectory (RelPath will be "subdir/nested").
 	l, err := paths.Resolve(subdir)
 	if err != nil {
 		t.Fatalf("paths.Resolve(%q): %v", subdir, err)
 	}
 
-	// Create the target _lyx directory
+	// Create the target _lyx directory.
 	targetParent := filepath.Join(l.Hub, "test-slug", l.RelPath)
 	if err := os.MkdirAll(targetParent, 0o755); err != nil {
 		t.Fatalf("mkdir target parent: %v", err)
@@ -44,12 +48,12 @@ func TestCreatePortal(t *testing.T) {
 		t.Fatalf("mkdir target: %v", err)
 	}
 
-	// Test createPortal
+	// Test createPortal.
 	if err := createPortal(l, "test-slug"); err != nil {
 		t.Skipf("portal creation not supported on this platform: %v", err)
 	}
 
-	// Verify the portal link exists at the mirrored location l.PortalLink(slug)
+	// Verify the portal link exists at the mirrored location l.PortalLink(slug).
 	portalLink := l.PortalLink("test-slug")
 	_, err = os.Lstat(portalLink)
 	if err != nil {
@@ -67,13 +71,12 @@ func TestCreatePortal(t *testing.T) {
 		t.Errorf("portal link does not resolve to a directory")
 	}
 
-	// Test removePortal
-	// First removePortal call
+	// Test removePortal — first call.
 	if err := removePortal(l, "test-slug"); err != nil {
 		t.Fatalf("removePortal: %v", err)
 	}
 
-	// Verify the link is gone
+	// Verify the link is gone.
 	_, err = os.Lstat(portalLink)
 	if err == nil {
 		t.Error("portal link still exists after removal")
@@ -81,8 +84,8 @@ func TestCreatePortal(t *testing.T) {
 		t.Fatalf("lstat portal: %v", err)
 	}
 
-	// Verify empty mirrored ancestors are pruned up to PortalsDir
-	// The parent dir of the link should be gone
+	// Verify empty mirrored ancestors are pruned up to PortalsDir.
+	// The parent dir of the link should be gone.
 	linkParent := filepath.Dir(portalLink)
 	if _, err := os.Stat(linkParent); err == nil {
 		t.Error("mirrored ancestor dir still exists after removal")
@@ -90,18 +93,18 @@ func TestCreatePortal(t *testing.T) {
 		t.Fatalf("stat link parent: %v", err)
 	}
 
-	// Verify PortalsDir itself still exists
+	// Verify PortalsDir itself still exists.
 	if _, err := os.Stat(l.PortalsDir()); err != nil {
 		t.Errorf("PortalsDir was removed: %v", err)
 	}
 
-	// Verify the target dir still exists (not recursively removed)
+	// Verify the target dir still exists (not recursively removed).
 	targetDir = filepath.Join(l.Hub, "test-slug", l.RelPath, "_lyx")
 	if _, err := os.Stat(targetDir); err != nil {
 		t.Errorf("target _lyx dir was removed: %v", err)
 	}
 
-	// Second removePortal call should be idempotent
+	// Second removePortal call should be idempotent.
 	if err := removePortal(l, "test-slug"); err != nil {
 		t.Fatalf("second removePortal: %v", err)
 	}
@@ -110,12 +113,13 @@ func TestCreatePortal(t *testing.T) {
 // TestCreatePortalMultipleSubpaths asserts that distinct subpaths do not collide
 // for the same slug (each gets its own mirrored directory).
 func TestCreatePortalMultipleSubpaths(t *testing.T) {
-	// Create a test hub repo
-	hub := newTestRepo(t)
+	t.Parallel()
 
-	// Create two distinct subdirectories
-	subdir1 := filepath.Join(hub, "subdir1")
-	subdir2 := filepath.Join(hub, "subdir2")
+	f := lyxtest.CopyHostHub(t)
+
+	// Create two distinct subdirectories.
+	subdir1 := filepath.Join(f.Hub, "subdir1")
+	subdir2 := filepath.Join(f.Hub, "subdir2")
 	if err := os.MkdirAll(subdir1, 0o755); err != nil {
 		t.Fatalf("mkdir subdir1: %v", err)
 	}
@@ -123,7 +127,7 @@ func TestCreatePortalMultipleSubpaths(t *testing.T) {
 		t.Fatalf("mkdir subdir2: %v", err)
 	}
 
-	// Resolve layouts from both subdirectories
+	// Resolve layouts from both subdirectories.
 	l1, err := paths.Resolve(subdir1)
 	if err != nil {
 		t.Fatalf("paths.Resolve(%q): %v", subdir1, err)
@@ -134,7 +138,7 @@ func TestCreatePortalMultipleSubpaths(t *testing.T) {
 		t.Fatalf("paths.Resolve(%q): %v", subdir2, err)
 	}
 
-	// Create target dirs for both
+	// Create target dirs for both.
 	for _, l := range []*paths.Layout{l1, l2} {
 		targetParent := filepath.Join(l.Hub, "test-slug", l.RelPath)
 		if err := os.MkdirAll(targetParent, 0o755); err != nil {
@@ -146,7 +150,7 @@ func TestCreatePortalMultipleSubpaths(t *testing.T) {
 		}
 	}
 
-	// Create portals for the same slug from both subpaths
+	// Create portals for the same slug from both subpaths.
 	if err := createPortal(l1, "test-slug"); err != nil {
 		t.Skipf("portal creation not supported on this platform: %v", err)
 	}
@@ -154,7 +158,7 @@ func TestCreatePortalMultipleSubpaths(t *testing.T) {
 		t.Skipf("portal creation not supported on this platform: %v", err)
 	}
 
-	// Verify both portals exist at distinct locations
+	// Verify both portals exist at distinct locations.
 	link1 := l1.PortalLink("test-slug")
 	link2 := l2.PortalLink("test-slug")
 
@@ -172,20 +176,21 @@ func TestCreatePortalMultipleSubpaths(t *testing.T) {
 // TestCreatePortalRootRelPath asserts that the root-level (RelPath == ".")
 // behavior is backward-compatible with the flat layout.
 func TestCreatePortalRootRelPath(t *testing.T) {
-	// Create a test hub repo
-	hub := newTestRepo(t)
+	t.Parallel()
 
-	// Build a Layout from the hub root (RelPath will be ".")
-	l, err := paths.Resolve(hub)
+	f := lyxtest.CopyHostHub(t)
+
+	// Build a Layout from the hub root (RelPath will be ".").
+	l, err := paths.Resolve(f.Hub)
 	if err != nil {
-		t.Fatalf("paths.Resolve(%q): %v", hub, err)
+		t.Fatalf("paths.Resolve(%q): %v", f.Hub, err)
 	}
 
 	if l.RelPath != "." {
 		t.Fatalf("expected RelPath == \".\", got %q", l.RelPath)
 	}
 
-	// Create the target _lyx directory
+	// Create the target _lyx directory.
 	targetParent := filepath.Join(l.Hub, "test-slug", l.RelPath)
 	if err := os.MkdirAll(targetParent, 0o755); err != nil {
 		t.Fatalf("mkdir target parent: %v", err)
@@ -196,13 +201,13 @@ func TestCreatePortalRootRelPath(t *testing.T) {
 		t.Fatalf("mkdir target: %v", err)
 	}
 
-	// Create portal
+	// Create portal.
 	if err := createPortal(l, "test-slug"); err != nil {
 		t.Skipf("portal creation not supported on this platform: %v", err)
 	}
 
-	// Verify the portal link is at the flat location (no subpath segments)
-	// This should collapse to <Hub>/_portals/<slug>
+	// Verify the portal link is at the flat location (no subpath segments).
+	// This should collapse to <Hub>/_portals/<slug>.
 	portalLink := l.PortalLink("test-slug")
 	expectedLink := filepath.Join(l.PortalsDir(), "test-slug")
 	if portalLink != expectedLink {

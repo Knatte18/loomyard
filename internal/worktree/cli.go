@@ -22,6 +22,17 @@ import (
 	"github.com/Knatte18/loomyard/internal/paths"
 )
 
+// addOptionsFromEnv constructs an AddOptions from the WEFT_SKIP_GIT and
+// WEFT_SKIP_PUSH environment variables. This mapping lives at the CLI edge so
+// that in-process callers (tests, library users) can pass options directly
+// without touching the environment.
+func addOptionsFromEnv() AddOptions {
+	return AddOptions{
+		SkipGit:  os.Getenv("WEFT_SKIP_GIT") == "1",
+		SkipPush: os.Getenv("WEFT_SKIP_PUSH") == "1",
+	}
+}
+
 // RunCLI parses and executes a "worktree" subcommand, writing JSON results to out.
 // It returns the process exit code (0 on success, 1 on error).
 //
@@ -87,7 +98,7 @@ func RunCLI(out io.Writer, args []string) int {
 			return output.Err(out, "usage: worktree add <slug>")
 		}
 		slug := args[1]
-		r, err := w.Add(l, slug)
+		r, err := w.Add(l, slug, addOptionsFromEnv())
 		if err != nil {
 			return output.Err(out, err.Error())
 		}

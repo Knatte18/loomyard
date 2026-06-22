@@ -1,5 +1,8 @@
+//go:build integration
+
 // junction_test.go covers the platform junction/symlink create helper, including
 // its refuse-to-clobber behavior when the link already exists.
+// Spawns mklink on Windows so it must be tagged integration.
 
 package worktree
 
@@ -12,6 +15,8 @@ import (
 // TestCreateJunction covers the createJunction helper: creates a junction/symlink,
 // refuses to clobber an existing path, and the created link resolves to the target.
 func TestCreateJunction(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		// setup prepares the test directory and returns (link, target, tempdir).
@@ -30,33 +35,33 @@ func TestCreateJunction(t *testing.T) {
 				if err := os.Mkdir(target, 0755); err != nil {
 					t.Fatalf("create target: %v", err)
 				}
-				// Try to create a test junction/symlink to verify the platform supports it
+				// Try to create a test junction/symlink to verify the platform supports it.
 				testLink := filepath.Join(tmpdir, "test-link")
 				if err := createJunction(testLink, target); err != nil {
 					t.Skipf("junction/symlink creation not permitted on this platform: %v", err)
 				}
-				// Clean up the test link
+				// Clean up the test link.
 				os.Remove(testLink)
 				return link, target
 			},
 			verify: func(t *testing.T, link, target string) {
-				// The link should exist
+				// The link should exist.
 				_, err := os.Lstat(link)
 				if err != nil {
 					t.Errorf("lstat junction: %v", err)
 					return
 				}
-				// Readlink should resolve to the target
+				// Readlink should resolve to the target.
 				resolved, err := os.Readlink(link)
 				if err != nil {
 					t.Errorf("readlink: %v", err)
 					return
 				}
-				// Normalize paths for comparison
+				// Normalize paths for comparison.
 				resolvedAbs, _ := filepath.Abs(resolved)
 				targetAbs, _ := filepath.Abs(target)
 				if filepath.Clean(resolvedAbs) != filepath.Clean(targetAbs) && filepath.Clean(resolved) != filepath.Clean(target) {
-					// Allow relative paths to work (e.g., on POSIX)
+					// Allow relative paths to work (e.g., on POSIX).
 					if resolved != target {
 						t.Errorf("readlink = %q; want %q", resolved, target)
 					}
@@ -69,7 +74,7 @@ func TestCreateJunction(t *testing.T) {
 				tmpdir := t.TempDir()
 				link = filepath.Join(tmpdir, "existing")
 				target = filepath.Join(tmpdir, "mytarget")
-				// Pre-create a regular file at the link path
+				// Pre-create a regular file at the link path.
 				if err := os.WriteFile(link, []byte("existing"), 0644); err != nil {
 					t.Fatalf("create existing file: %v", err)
 				}
@@ -92,7 +97,7 @@ func TestCreateJunction(t *testing.T) {
 				return link, target
 			},
 			verify: func(t *testing.T, link, target string) {
-				// The link should exist
+				// The link should exist.
 				if _, err := os.Lstat(link); err != nil {
 					t.Errorf("lstat junction: %v", err)
 				}
@@ -101,7 +106,10 @@ func TestCreateJunction(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			link, target := tt.setup(t)
 
 			err := createJunction(link, target)

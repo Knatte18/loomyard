@@ -1,3 +1,5 @@
+//go:build integration
+
 // worktreelist_test.go covers the porcelain worktree-list parser, including
 // the bare-repo rejection and Main-on-first-entry behavior.
 
@@ -9,12 +11,15 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/lyxtest"
 	"github.com/Knatte18/loomyard/internal/paths"
 )
 
 // TestList covers the porcelain parser: a fresh repo yields exactly the main
 // worktree, and additional worktrees appear after it with Main=false.
 func TestList(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		// extraWorktrees is the number of additional worktrees created
@@ -74,11 +79,12 @@ func TestList(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			// Special handling for BareRepoRejection test case
 			if tt.name == "BareRepoRejection" {
-				container := t.TempDir()
-				bareRepo := filepath.Join(container, "bare.git")
-				mustRun(t, container, "git", "init", "--bare", bareRepo)
+				bareRepo := filepath.Join(t.TempDir(), "bare.git")
+				lyxtest.MustRun(t, t.TempDir(), "git", "init", "--bare", bareRepo)
 
 				entries, err := paths.List(bareRepo)
 				if err == nil {
@@ -93,10 +99,12 @@ func TestList(t *testing.T) {
 				return
 			}
 
-			hub := newTestRepo(t)
+			fix := lyxtest.CopyHostHub(t)
+			hub := fix.Hub
+
 			for i := 0; i < tt.extraWorktrees; i++ {
 				wtPath := filepath.Join(filepath.Dir(hub), fmt.Sprintf("wt%d", i+1))
-				mustRun(t, hub, "git", "worktree", "add", wtPath)
+				lyxtest.MustRun(t, hub, "git", "worktree", "add", wtPath)
 			}
 
 			entries, err := paths.List(hub)

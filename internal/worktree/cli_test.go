@@ -1,3 +1,9 @@
+//go:build integration
+
+// cli_test.go covers the RunCLI subcommand router using a CWD-based fixture.
+// These tests keep t.Chdir and stay serial (no t.Parallel) because RunCLI
+// reads os.Getwd() at the call edge.
+
 package worktree_test
 
 import (
@@ -7,25 +13,27 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/lyxtest"
 	"github.com/Knatte18/loomyard/internal/worktree"
 )
 
-// setupCLIRepo creates a fresh repo, changes into it, and writes a
-// worktree.yaml config so RunCLI can resolve configuration from the cwd.
-// It returns the hub path.
+// setupCLIRepo creates a hub via lyxtest.CopyHostHub, changes into it, and
+// writes a _lyx/worktree.yaml config so RunCLI can resolve configuration from
+// the cwd. Returns the hub path.
+// Stays serial (no t.Parallel) because t.Chdir is required for RunCLI.
 func setupCLIRepo(t *testing.T) string {
 	t.Helper()
-	hub := newTestRepo(t)
-	t.Chdir(hub)
+	f := lyxtest.CopyHostHub(t)
+	t.Chdir(f.Hub)
 
-	lyxDir := filepath.Join(hub, "_lyx")
+	lyxDir := filepath.Join(f.Hub, "_lyx")
 	if err := os.MkdirAll(lyxDir, 0755); err != nil {
 		t.Fatalf("create _lyx: %v", err)
 	}
 	if err := os.WriteFile(filepath.Join(lyxDir, "worktree.yaml"), []byte("branch_prefix: wt-\n"), 0644); err != nil {
 		t.Fatalf("write worktree.yaml: %v", err)
 	}
-	return hub
+	return f.Hub
 }
 
 // decodeResult parses RunCLI's JSON output into a generic map.
@@ -78,13 +86,13 @@ func TestRunCLI(t *testing.T) {
 
 	t.Run("RemoveWithForceFlag", func(t *testing.T) {
 		hub := setupCLIRepo(t)
-		addRemote(t, hub)
+		// CopyHostHub already provides origin; no need for addRemote.
 
 		// Create a second worktree the remove subcommand will tear down.
 		slug := "test-wt"
 		branch := "wt-" + slug
 		target := filepath.Join(filepath.Dir(hub), slug)
-		mustRun(t, hub, "git", "worktree", "add", "-b", branch, target)
+		lyxtest.MustRun(t, hub, "git", "worktree", "add", "-b", branch, target)
 
 		var buf bytes.Buffer
 		if got := worktree.RunCLI(&buf, []string{"remove", "--force", slug}); got != 0 {

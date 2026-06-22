@@ -198,14 +198,14 @@ func seedGitExclude(l *paths.Layout, slug string) error {
 
 // pushWeftBranch pushes the weft branch to the origin remote.
 //
-// Respects WEFT_SKIP_GIT and WEFT_SKIP_PUSH environment variables:
-// - If WEFT_SKIP_GIT=1, returns nil (entire weft git path disabled)
-// - If WEFT_SKIP_PUSH=1, returns nil (skip push only, local commit still happens)
+// When opts.SkipGit or opts.SkipPush is true the push is skipped and nil is
+// returned, preserving the same semantics that the environment variables
+// WEFT_SKIP_GIT/WEFT_SKIP_PUSH provided before the env→option migration.
 //
 // Otherwise, runs git push -u origin <branch> from the weft worktree.
 // Returns an error if the command fails or exits with non-zero code.
-func pushWeftBranch(l *paths.Layout, slug, branch string) error {
-	if os.Getenv("WEFT_SKIP_GIT") == "1" || os.Getenv("WEFT_SKIP_PUSH") == "1" {
+func pushWeftBranch(l *paths.Layout, slug, branch string, opts AddOptions) error {
+	if opts.SkipGit || opts.SkipPush {
 		return nil
 	}
 
