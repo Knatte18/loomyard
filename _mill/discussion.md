@@ -108,15 +108,31 @@ risky production-code refactor out of scope** (see Decisions: board-git-seam).
   existing, already-`integration`-gated package documented as board's home for "git-backed
   integration tests"). After the move, `internal/board` itself needs no build tag and is
   fully offline.
-- Rationale: Both files are already `package board_test` (external), so the move is clean
-  (no exported-symbol friction). Consolidates all board git-integration tests in one gated
-  package rather than splitting them across `internal/board` + `boardtest`. Matches
-  `boardtest/doc.go`'s stated purpose.
-- Note: `boardtest` already sets `BOARD_SKIP_GIT=1` in its bench/concurrency tests; the
-  moved sync/git tests need git **enabled**, so watch for env contention (the moved tests
-  deliberately run with `BOARD_SKIP_GIT` unset/empty — they spawn real git directly, not
-  via the detached sync). Keep per-test env handling correct; this is another reason those
-  tests may stay serial.
+- **The move is a package-clause rewrite, not just a relocation.** Both files are currently
+  `package board_test`; in `boardtest` they become **`package boardtest`** + a
+  `//go:build integration` line (tag line first, one blank line, then `package boardtest`,
+  per Go's build-constraint placement). Verified safe: both files are already black-box
+  (they import `internal/board` and use only its exported API — `board.CommitPush`,
+  `board.Pull`; no unexported `board.*` references), so changing the package name compiles.
+- **No name collisions (verified against the current `boardtest`):**
+  - Top-level test funcs: `boardtest` already has `TestIntegrationCommitPush`,
+    `TestIntegrationPull`, `TestConcurrentReadsDuringUpserts`,
+    `TestConcurrentUpsertsDoNotLoseWrites` (+ benchmarks). The moved funcs are `TestPull`,
+    `TestCommitPush`, and the five `TestSync*` — **none clash**.
+  - Package-level helpers: the moved files add `newSyncRepo` and `dirty` (from
+    `sync_test.go`); `git_test.go` has no package-level helpers (its `run`/setup are
+    closures). `boardtest`'s existing helpers are `cloneBenchWiki`, `benchmarkSync`,
+    `seedWiki`, `setupIntegrationRepo` — **none clash**.
+- **Not redundant with the existing `TestIntegration*` tests.** `boardtest`'s
+  `TestIntegrationPull`/`TestIntegrationCommitPush` push to a **real network remote**
+  (`testRepoURL`) and verify via a fresh clone. The moved `TestPull`/`TestCommitPush`/
+  `TestSync*` are **local/offline** (`git init` + bare clone in `t.TempDir()`,
+  `BOARD_SKIP_PUSH=1`) — they exercise the local commit/coalesce/pull plumbing without
+  network. Distinct coverage; keep both.
+- Note (env): the moved tests toggle env via `t.Setenv` (see env-seam in Technical
+  context), so they cannot call `t.Parallel()` and stay **serial** — independent of any
+  contention with `boardtest`'s `BOARD_SKIP_GIT=1` bench/concurrency tests (`t.Setenv` is
+  per-test scoped and restored, so there is no actual cross-test contention).
 - Rejected: Gate in place inside `internal/board` — less churn but leaves board's git
   integration tests in two locations.
 
@@ -131,6 +147,16 @@ risky production-code refactor out of scope** (see Decisions: board-git-seam).
   bare+clone+configured-user matches `CopyHostHub`. lyxtest's "template-once + per-test
   filesystem copy" design (no per-test git spawn, pure-text origin-URL rewrite) is exactly
   what board's git tests need to stop spawning `git init`/`clone` per test.
+- **Concrete fit risk to settle (the decider for reuse-vs-new-fixture):** default-branch
+  naming. `newSyncRepo` does `git push -u origin HEAD` and deliberately counts via `@{u}`
+  because "the bare repo's HEAD symref [may point] at a different default branch"
+  (`sync_test.go:47-60`). `CopyWeft`'s template does `git init -b main` + `push -u origin
+  main` (`lyxtest.go:239,301`). So a `CopyWeft`-based board fixture lands the working
+  commits on `main`, whereas `newSyncRepo`'s assertions are branch-agnostic (`HEAD`/`@{u}`).
+  If the migrated board tests assert against `main` (or stay `HEAD`-relative), `CopyWeft`
+  fits directly; if any assertion hard-codes a different branch, prefer a small dedicated
+  board fixture. The plan writer must resolve this `HEAD`-vs-`main` detail when choosing
+  reuse vs. a new fixture — it is the single blocking unknown for this decision.
 - Rejected: Add a `CopyBoardRepo` fixture up front regardless — premature if existing
   fixtures fit. Keep the fixture local to `boardtest` — re-implements what lyxtest already
   provides and violates the reuse mandate.
@@ -171,8 +197,18 @@ risky production-code refactor out of scope** (see Decisions: board-git-seam).
   `bench_test.go`, `concurrency_test.go`) — `package boardtest`, `integration`/`smoke` gated;
   the documented home for board's git-backed integration + bench + concurrency tests. The
   moved files land here.
-- **Board git seam**: `internal/board/board.go:83` (`if os.Getenv("BOARD_SKIP_GIT") != "1"`)
-  and `internal/board/sync.go:32` — both stay as-is. Test files toggle via `t.Setenv`.
+- **Board git seam — two distinct env vars (verified):** `BOARD_SKIP_GIT` (gates the
+  detached `lyx board sync` spawn; `board.go:83`, `sync.go:32`) and `BOARD_SKIP_PUSH`
+  (commits locally but skips the push). Both stay as-is in production. In the tests being
+  moved:
+  - `git_test.go` toggles **`BOARD_SKIP_PUSH`** via `t.Setenv` (`:110`, `:154`, `:229`) —
+    it never touches `BOARD_SKIP_GIT`. It spawns real `git` (`git init`/`config`/`commit`)
+    locally, no network — hence it must still be gated out of the offline loop.
+  - `sync_test.go` uses **`BOARD_SKIP_GIT=""`** (`:25`, ensures sync is *not* disabled) and
+    **`BOARD_SKIP_PUSH="1"`** (`:111`) via `t.Setenv`.
+  - Because every one of these uses `t.Setenv`, the moved tests **stay serial** (`t.Parallel`
+    is illegal after `t.Setenv`). `t.Setenv` is per-test scoped and restored, so there is
+    no actual env contention with `boardtest`'s `BOARD_SKIP_GIT=1` bench/concurrency tests.
 - **Files to gate/move (verified counts):**
   - `internal/board/git_test.go` — `package board_test`, 2 funcs (`TestPull`,
     `TestCommitPush`), entirely git-spawning. → move to `boardtest`, gated.
@@ -197,10 +233,18 @@ risky production-code refactor out of scope** (see Decisions: board-git-seam).
 ## Constraints
 
 - **Equivalence guardrail (non-negotiable, from the parent):** the post-change test-name
-  set must be a **superset** of the pre-change set per package, verified by diffing `-list`
-  + `=== RUN` baselines. Intentional table-driven folds are allowed only when assertions
-  are preserved; no named (sub)test or assertion may be silently dropped. Record the
-  superset note in the timing doc, exactly as the 2026-06-21 block does.
+  set must be a **superset** of the pre-change set, verified by diffing `-list` + `=== RUN`
+  baselines. Intentional table-driven folds are allowed only when assertions are preserved;
+  no named (sub)test or assertion may be silently dropped. Record the superset note in the
+  timing doc, exactly as the 2026-06-21 block does.
+  - **Baseline is computed per-final-package, and the board↔boardtest move crosses a package
+    boundary.** Moving `git_test.go`/`sync_test.go` out of `internal/board` and into
+    `internal/board/boardtest` shrinks board's `-list` set and grows boardtest's. So the
+    superset check must be done against the **union across both final packages** (default-loop
+    `board` + integration-tagged `boardtest`), not per-package in isolation — otherwise the
+    move reads as a spurious "loss" in board and "gain" in boardtest. Capture the pre-move
+    baseline for both packages (board untagged, boardtest under `-tags integration`) before
+    touching either, and prove the post-move union is a superset.
 - **Tier 1 must remain offline:** after this task, `go test ./...` must spawn **zero** git
   subprocesses repo-wide (the whole point). Verify by running the default loop and
   confirming the moved/gated tests do not execute.
@@ -257,3 +301,21 @@ between tiers, plus measuring the result.
   so the move is clean.
 - **Q:** Source board fixtures from lyxtest or local? **A:** Reuse existing lyxtest fixtures
   (`CopyHostHub`/`CopyWeft`) where they fit; extend lyxtest only if none fits.
+
+### Discussion-review round 1 (GAPS_FOUND) — resolutions
+
+- **GAP:** The board→boardtest move is a package-clause rewrite, not just a relocation.
+  **Resolved:** documented — moved files become `package boardtest` + `//go:build integration`;
+  verified both are black-box (exported API only), so the rename compiles.
+- **GAP:** Name-collision risk against existing `boardtest` tests. **Resolved:** verified
+  against code — **no** collision. boardtest's tests are `TestIntegrationPull`/
+  `TestIntegrationCommitPush` (real-network), distinct from the moved local/offline
+  `TestPull`/`TestCommitPush`/`TestSync*`; helpers `newSyncRepo`/`dirty` don't clash with
+  `cloneBenchWiki`/`seedWiki`/`setupIntegrationRepo`. Equivalence baseline now specified as
+  the union across both final packages (cross-boundary move).
+- **NOTE:** git tests use `BOARD_SKIP_PUSH`, not `BOARD_SKIP_GIT`. **Resolved:** corrected
+  the env-seam section — `git_test.go`→`BOARD_SKIP_PUSH`; `sync_test.go`→`BOARD_SKIP_GIT=""`
+  + `BOARD_SKIP_PUSH`; all via `t.Setenv` ⇒ serial, no real contention.
+- **NOTE:** Fixture reuse left to implementation-time; `HEAD`-vs-`main` default-branch
+  mismatch. **Resolved:** flagged the `push -u origin HEAD` (newSyncRepo) vs `init -b main`
+  + `push -u origin main` (CopyWeft) detail as the single blocking decider for reuse-vs-new.
