@@ -166,9 +166,9 @@ func TestStatus_JunctionOk_Windows(t *testing.T) {
 	tmpDir := t.TempDir()
 	hostLink := filepath.Join(tmpDir, "_lyx")
 
-	// Create the junction via fslink.Create
-	if err := fslink.Create(hostLink, weftLyxDir); err != nil {
-		t.Skipf("fslink.Create failed (likely not on Windows or no privilege): %v", err)
+	// Create the junction via fslink.CreateDirLink
+	if err := fslink.CreateDirLink(hostLink, weftLyxDir); err != nil {
+		t.Skipf("fslink.CreateDirLink failed (likely not on Windows or no privilege): %v", err)
 	}
 
 	status, err := Status(weftRepo, hostLink, weftLyxDir, []string{"_lyx"})

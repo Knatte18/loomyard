@@ -24,12 +24,14 @@ func utf16Ptr(s string) *uint16 {
 	return p
 }
 
-// Create establishes a junction (mount-point reparse point) that links to target.
-// It calls prepareLink to refuse clobbering and create parent directories, then
-// creates an empty directory, opens it with reparse-point semantics, and issues
-// a DeviceIoControl call to set the mount-point reparse data. The target is
-// absolutized before being embedded in the reparse data.
-func Create(link, target string) error {
+// CreateDirLink establishes a directory link — a junction (mount-point reparse
+// point) — from link to target. It calls prepareLink to refuse clobbering and
+// create parent directories, then creates an empty directory, opens it with
+// reparse-point semantics, and issues a DeviceIoControl call to set the
+// mount-point reparse data. The target is absolutized before being embedded in
+// the reparse data. Junctions require a directory target; file links are not
+// supported on this path.
+func CreateDirLink(link, target string) error {
 	if err := prepareLink(link); err != nil {
 		return err
 	}

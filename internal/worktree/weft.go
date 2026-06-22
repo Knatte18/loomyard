@@ -80,7 +80,7 @@ func createWeftWorktree(l *paths.Layout, slug, branch string) error {
 //   - Returns nil (idempotent)
 //
 // If os.Lstat fails with not-exist:
-//   - Creates the junction via fslink.Create
+//   - Creates the junction via fslink.CreateDirLink
 //
 // Otherwise:
 //   - Returns an error indicating the host repo contains a real _lyx that predates weft
@@ -121,7 +121,7 @@ func seedLyxJunction(l *paths.Layout, slug string) error {
 	}
 
 	// Junction does not exist; create it
-	if err := fslink.Create(link, target); err != nil {
+	if err := fslink.CreateDirLink(link, target); err != nil {
 		return err
 	}
 

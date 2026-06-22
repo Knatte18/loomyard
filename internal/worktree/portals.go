@@ -13,12 +13,12 @@ import (
 
 // createPortal creates a portal junction from <container>/_portals/<RelPath>/<slug> to <container>/<slug>/<relpath>/_lyx.
 //
-// Delegates to fslink.Create with the computed link and target paths.
-// fslink.Create already MkdirAll's filepath.Dir(link), creating the mirrored _portals/<RelPath>/ chain.
+// Delegates to fslink.CreateDirLink with the computed link and target paths.
+// fslink.CreateDirLink already MkdirAll's filepath.Dir(link), creating the mirrored _portals/<RelPath>/ chain.
 func createPortal(l *paths.Layout, slug string) error {
 	link := l.PortalLink(slug)
 	target := l.PortalTarget(slug)
-	return fslink.Create(link, target)
+	return fslink.CreateDirLink(link, target)
 }
 
 // removePortal removes the portal junction at <container>/_portals/<RelPath>/<slug>.

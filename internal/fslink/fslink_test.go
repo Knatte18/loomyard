@@ -25,7 +25,7 @@ func TestCreate(t *testing.T) {
 		// setup prepares the test directory and returns (link, target).
 		// It may call t.Skip when the platform cannot create links.
 		setup func(t *testing.T) (link, target string)
-		// verify runs post-condition checks after Create.
+		// verify runs post-condition checks after CreateDirLink.
 		verify  func(t *testing.T, link, target string)
 		wantErr bool
 	}{
@@ -40,7 +40,7 @@ func TestCreate(t *testing.T) {
 				}
 				// Try to create a test link to verify the platform supports it.
 				testLink := filepath.Join(tmpdir, "test-link")
-				if err := Create(testLink, target); err != nil {
+				if err := CreateDirLink(testLink, target); err != nil {
 					t.Skipf("link creation not permitted on this platform: %v", err)
 				}
 				// Clean up the test link.
@@ -95,7 +95,7 @@ func TestCreate(t *testing.T) {
 				}
 				// Verify platform support
 				testLink := filepath.Join(tmpdir, "test-link")
-				if err := Create(testLink, target); err != nil {
+				if err := CreateDirLink(testLink, target); err != nil {
 					t.Skipf("link creation not permitted on this platform: %v", err)
 				}
 				Remove(testLink)
@@ -117,14 +117,14 @@ func TestCreate(t *testing.T) {
 
 			link, target := tt.setup(t)
 
-			err := Create(link, target)
+			err := CreateDirLink(link, target)
 
 			if tt.wantErr {
 				if err == nil {
-					t.Fatalf("Create() error = nil; want error")
+					t.Fatalf("CreateDirLink() error = nil; want error")
 				}
 			} else if err != nil {
-				t.Fatalf("Create() error = %v; want nil", err)
+				t.Fatalf("CreateDirLink() error = %v; want nil", err)
 			}
 
 			if !tt.wantErr && tt.verify != nil {
@@ -154,7 +154,7 @@ func TestIsLink(t *testing.T) {
 				if err := os.Mkdir(target, 0o755); err != nil {
 					t.Fatalf("create target: %v", err)
 				}
-				if err := Create(link, target); err != nil {
+				if err := CreateDirLink(link, target); err != nil {
 					t.Skipf("link creation not permitted: %v", err)
 				}
 				return link
@@ -236,7 +236,7 @@ func TestPointsTo(t *testing.T) {
 				if err := os.Mkdir(target, 0o755); err != nil {
 					t.Fatalf("create target: %v", err)
 				}
-				if err := Create(link, target); err != nil {
+				if err := CreateDirLink(link, target); err != nil {
 					t.Skipf("link creation not permitted: %v", err)
 				}
 				// Want the absolute target
@@ -264,7 +264,7 @@ func TestPointsTo(t *testing.T) {
 				if err := os.Mkdir(target, 0o755); err != nil {
 					t.Fatalf("create target: %v", err)
 				}
-				if err := Create(link, target); err != nil {
+				if err := CreateDirLink(link, target); err != nil {
 					t.Skipf("link creation not permitted: %v", err)
 				}
 				// Delete the target directory to create a dangling link
@@ -321,7 +321,7 @@ func TestRemove(t *testing.T) {
 				if err := os.Mkdir(target, 0o755); err != nil {
 					t.Fatalf("create target: %v", err)
 				}
-				if err := Create(link, target); err != nil {
+				if err := CreateDirLink(link, target); err != nil {
 					t.Skipf("link creation not permitted: %v", err)
 				}
 				return link
@@ -425,11 +425,11 @@ func TestRemoveLinksIn(t *testing.T) {
 				link1 := filepath.Join(dir, "link1")
 				link2 := filepath.Join(dir, "link2")
 				// Verify platform support
-				if err := Create(link1, target1); err != nil {
+				if err := CreateDirLink(link1, target1); err != nil {
 					t.Skipf("link creation not permitted: %v", err)
 				}
 				// Now create the second link
-				if err := Create(link2, target2); err != nil {
+				if err := CreateDirLink(link2, target2); err != nil {
 					t.Skipf("link creation not permitted: %v", err)
 				}
 				return dir

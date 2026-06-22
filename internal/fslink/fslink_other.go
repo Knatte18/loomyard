@@ -8,10 +8,13 @@ import (
 	"path/filepath"
 )
 
-// Create establishes a symlink from link to target. It calls prepareLink to refuse
-// clobbering and create parent directories, then creates the symlink with os.Symlink,
-// storing the target verbatim (not absolutized).
-func Create(link, target string) error {
+// CreateDirLink establishes a directory link — a symlink — from link to target. It
+// calls prepareLink to refuse clobbering and create parent directories, then creates
+// the symlink with os.Symlink, storing the target verbatim (not absolutized). On this
+// platform symlinks target both files and directories, but the cross-platform contract
+// is directory-only (Windows junctions cannot target files); a future CreateFileLink is
+// reserved for file links.
+func CreateDirLink(link, target string) error {
 	if err := prepareLink(link); err != nil {
 		return err
 	}
