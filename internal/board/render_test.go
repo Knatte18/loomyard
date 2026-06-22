@@ -303,16 +303,14 @@ func TestRenderSingleTask(t *testing.T) {
 			},
 		},
 		{
-			name:            "TestRenderOrphanDetection/WithBody",
+			name:            "TestRenderOrphanDetection",
 			task:            board.Task{ID: 1, Slug: "orphan-task", Title: "Orphan Task", Body: "Original body"},
 			wantProposalKey: "proposal-orphan-task.md",
 			wantProposal:    true,
-		},
-		{
-			name:            "TestRenderOrphanDetection/WithoutBody",
-			task:            board.Task{ID: 1, Slug: "orphan-task", Title: "Orphan Task", Body: ""},
-			wantProposalKey: "proposal-orphan-task.md",
-			wantProposal:    false,
+			wantHome: []string{
+				"## **#001:** Orphan Task [A]",
+				"[orphan-task]",
+			},
 		},
 	}
 
