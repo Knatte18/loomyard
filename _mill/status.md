@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r1
+phase: planned
 slug: extract-fslink
 branch: extract-fslink
 plan: _mill/plan
@@ -19,4 +19,5 @@ discussion-fix-r2  '2026-06-22T10:56:03Z'
 discussed  '2026-06-22T10:56:35Z'
 planning  '2026-06-22T11:11:36Z'
 plan-fix-r1  '2026-06-22T11:15:14Z'
+planned  '2026-06-22T11:15:34Z'
 ```
