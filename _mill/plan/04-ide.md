@@ -90,9 +90,10 @@ Depends on batch 1. Coverage floor: **75.4%** (`-tags integration`).
 - **Deletes:** none
 - **Requirements:** `TestMenuZeroWorktreeMessage` and `TestMenuRequiresLyxDir` end on the
   identical assertion ("no active worktrees" + `Menu` returns nil); `RequiresLyxDir` also
-  covers the `_lyx`-filter path, so it is the keeper. Either **drop**
-  `TestMenuZeroWorktreeMessage` or fold both into a `TestMenuDiscovery` table with a
-  `setupChildren`/`wantOutput` column (preserving both names). Keep
+  covers the `_lyx`-filter path, so it is the keeper. **Drop**
+  `TestMenuZeroWorktreeMessage` — its empty-children case adds no unique coverage over
+  `TestMenuRequiresLyxDir`. (Deterministic choice: drop, not fold, so the name-map diff is
+  unambiguous.) Keep
   `TestMenuHardErrorOnMissingBoard`, `TestMenuExcludesMain`, `TestMenuNumericSelection`
   unchanged (distinct behaviors, heavy unique git setup). All menu tests use
   `t.Setenv("BOARD_SKIP_GIT","1")` → serial; preserve `mustRunMenu` /

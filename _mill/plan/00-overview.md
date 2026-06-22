@@ -3,7 +3,7 @@
 ```yaml
 task: Prune and consolidate the test suite (board first)
 slug: prune-board-tests
-approved: false
+approved: true
 started: 20260622-174317
 parent: main
 root: ""

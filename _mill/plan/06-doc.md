@@ -36,8 +36,10 @@ unchanged + folded/dropped name-map).
   `### 2026-06-22 — after prune-board-tests` (place it above the existing
   `### 2026-06-22 — after optimize-remaining-test-suites` block, since History is
   append-only newest-first). Include: (1) a before/after **top-level func count** table
-  per package — derive "before" from the line counts of the `_mill/plan/baseline/<pkg>.txt`
-  files (board 61, worktree 22, weft 20, ide 20, muxpoc 19) and "after" by running
+  per package — the `_mill/plan/baseline/<pkg>.txt` files are the single source of truth
+  for "before" (their line counts, which as captured are board 61, worktree 22, weft 20,
+  ide 20, muxpoc 19 — re-read the files rather than trusting these literals), and "after"
+  by running
   `go test [-tags integration] ./internal/<pkg>/ -list '.*' | grep -c '^Test'` for each
   package (use `-tags integration` for worktree/weft/ide, default build for board/muxpoc);
   (2) the per-package statement coverage shown **unchanged / ≥ floor** (board 62.5%,
@@ -53,7 +55,7 @@ unchanged + folded/dropped name-map).
   weft `TestPullIntegration_FastForward` (⊂ `sync_test.go:TestPull_FastForward`), ide
   `TestSpawnColorSelection` (covered by `TestSpawnGeneratesConfig` +
   `vscode_test.go:TestWriteVSCodeConfigCreatesFilesWhenAbsent`), and ide
-  `TestMenuZeroWorktreeMessage` if it was dropped rather than folded. Update the
+  `TestMenuZeroWorktreeMessage` (dropped — covered by `TestMenuRequiresLyxDir`). Update the
   "Current best times" / headline narrative to note the count prune (wall-clock
   **unchanged** — do not claim a timing change). State explicitly that this prune relaxed
   the prior strict-superset guardrail to a justified subset/superset under a
