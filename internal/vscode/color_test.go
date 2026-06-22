@@ -119,7 +119,7 @@ func TestPickColor(t *testing.T) {
 				RelPath: tt.RelPath,
 			}
 
-			color := pickColor(layout)
+			color := PickColor(layout)
 
 			// Check wantNot constraint
 			if tt.wantNot != "" && color == tt.wantNot {
@@ -132,5 +132,4 @@ func TestPickColor(t *testing.T) {
 			}
 		})
 	}
-}
 }
