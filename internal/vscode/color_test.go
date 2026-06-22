@@ -1,7 +1,7 @@
 // color_test.go covers the palette picker, including scanning sibling worktrees'
 // VS Code settings for colors already in use.
 
-package ide
+package vscode
 
 import (
 	"encoding/json"
@@ -32,9 +32,9 @@ func TestPickColorNeverReturnsGreen(t *testing.T) {
 		RelPath: ".",
 	}
 
-	color := pickColor(layout)
+	color := PickColor(layout)
 	if color == mainColor {
-		t.Fatalf("pickColor returned green (#2d7d46) for a child worktree; got %s", color)
+		t.Fatalf("PickColor returned green (#2d7d46) for a child worktree; got %s", color)
 	}
 }
 
@@ -75,13 +75,13 @@ func TestPickColorFirstUnusedNonGreen(t *testing.T) {
 		RelPath: ".",
 	}
 
-	color := pickColor(layout)
+	color := PickColor(layout)
 	// Should NOT return purple since it's in use, should return next non-green
 	if color == "#7d2d6b" {
-		t.Fatalf("pickColor returned purple which is in use; got %s", color)
+		t.Fatalf("PickColor returned purple which is in use; got %s", color)
 	}
 	if color == mainColor {
-		t.Fatalf("pickColor returned green; got %s", color)
+		t.Fatalf("PickColor returned green; got %s", color)
 	}
 	// We expect blue (#2d4f7d) since purple is taken
 	if color != "#2d4f7d" {
@@ -125,7 +125,7 @@ func TestPickColorWrapAroundAllUsed(t *testing.T) {
 		RelPath: ".vscode",
 	}
 
-	color := pickColor(layout)
+	color := PickColor(layout)
 	// Should wrap around to first non-green (palette[1])
 	if color != palette[1] {
 		t.Fatalf("expected wrap-around to first non-green %s, got %s", palette[1], color)
@@ -157,7 +157,7 @@ func TestPickColorIgnoresUnreadable(t *testing.T) {
 		RelPath: ".vscode",
 	}
 
-	color := pickColor(layout)
+	color := PickColor(layout)
 	// Should return first non-green (purple) since nothing is in use
 	if color != palette[1] {
 		t.Fatalf("expected first non-green %s, got %s", palette[1], color)

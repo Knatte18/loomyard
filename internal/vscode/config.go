@@ -1,7 +1,9 @@
-// vscode.go generates a worktree's .vscode/ settings.json and tasks.json (only
-// when absent) and registers .vscode/ in the lyx-managed .gitignore block.
+// Package vscode generates VS Code configuration and manages VS Code-specific
+// launch behavior for worktrees. It is responsible for config generation (settings.json
+// and tasks.json), color-palette selection, and launching VS Code. The mill values
+// (palette, settings keys, cmd /c code) are baked in — no external Python is read.
 
-package ide
+package vscode
 
 import (
 	"encoding/json"
@@ -11,7 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitignore"
 )
 
-// writeVSCodeConfig generates VS Code configuration files in a worktree,
+// WriteConfig generates VS Code configuration files in a worktree,
 // only if they don't already exist (never clobbering operator edits).
 //
 // It writes two files into <worktreeDir>/<relpath>/.vscode/:
@@ -21,7 +23,7 @@ import (
 // After writing, it registers .vscode/ in the managed .gitignore via gitignore.Ensure().
 //
 // Returns an error if I/O fails (but not if files already exist).
-func writeVSCodeConfig(worktreeDir, relpath, slug, color string) error {
+func WriteConfig(worktreeDir, relpath, slug, color string) error {
 	dir := filepath.Join(worktreeDir, relpath)
 	vscodePath := filepath.Join(dir, ".vscode")
 

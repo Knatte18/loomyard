@@ -1,7 +1,7 @@
-// vscode_test.go covers config generation and its non-clobbering behavior when
+// config_test.go covers config generation and its non-clobbering behavior when
 // .vscode files already exist.
 
-package ide
+package vscode
 
 import (
 	"encoding/json"
@@ -19,9 +19,9 @@ func TestWriteVSCodeConfigCreatesFilesWhenAbsent(t *testing.T) {
 	slug := "test-slug"
 	color := "#2d7d46"
 
-	err := writeVSCodeConfig(worktreeDir, relpath, slug, color)
+	err := WriteConfig(worktreeDir, relpath, slug, color)
 	if err != nil {
-		t.Fatalf("writeVSCodeConfig failed: %v", err)
+		t.Fatalf("WriteConfig failed: %v", err)
 	}
 
 	// Check settings.json exists and is valid
@@ -135,10 +135,10 @@ func TestWriteVSCodeConfigDoesNotClobber(t *testing.T) {
 		t.Fatalf("failed to write original tasks.json: %v", err)
 	}
 
-	// Call writeVSCodeConfig
-	err := writeVSCodeConfig(worktreeDir, relpath, slug, color)
+	// Call WriteConfig
+	err := WriteConfig(worktreeDir, relpath, slug, color)
 	if err != nil {
-		t.Fatalf("writeVSCodeConfig failed: %v", err)
+		t.Fatalf("WriteConfig failed: %v", err)
 	}
 
 	// Verify settings.json was not modified
@@ -180,9 +180,9 @@ func TestWriteVSCodeConfigRegistersInGitignore(t *testing.T) {
 	slug := "test-slug"
 	color := "#2d7d46"
 
-	err := writeVSCodeConfig(worktreeDir, relpath, slug, color)
+	err := WriteConfig(worktreeDir, relpath, slug, color)
 	if err != nil {
-		t.Fatalf("writeVSCodeConfig failed: %v", err)
+		t.Fatalf("WriteConfig failed: %v", err)
 	}
 
 	// Check .gitignore exists and contains .vscode/

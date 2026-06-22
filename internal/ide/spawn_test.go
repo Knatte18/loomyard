@@ -162,7 +162,7 @@ func TestSpawnCallsCodeLauncher(t *testing.T) {
 	}
 }
 
-// TestSpawnColorSelection tests that Spawn picks a color via pickColor.
+// TestSpawnColorSelection tests that Spawn picks a color via vscode.PickColor.
 func TestSpawnColorSelection(t *testing.T) {
 	tmpDir := t.TempDir()
 	container := tmpDir

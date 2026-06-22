@@ -2,7 +2,7 @@
 // worktree the first unused non-green color, scanning sibling worktrees' VS Code
 // settings so two open worktrees never share a color. Green is reserved for main.
 
-package ide
+package vscode
 
 import (
 	"encoding/json"
@@ -14,8 +14,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/paths"
 )
 
-// ErrIDEUnsupported is returned when ide launch is attempted on an unsupported platform.
-var ErrIDEUnsupported = errors.New("ide launch unsupported on this platform")
+// ErrUnsupported is returned when vscode launch is attempted on an unsupported platform.
+var ErrUnsupported = errors.New("vscode launch unsupported on this platform")
 
 // Color palette (order matters; green is reserved for main).
 var palette = []string{
@@ -32,7 +32,7 @@ var palette = []string{
 // mainColor is the reserved color for the main worktree.
 var mainColor = "#2d7d46"
 
-// pickColor selects an unused non-green color for a child worktree,
+// PickColor selects an unused non-green color for a child worktree,
 // scanning sibling .vscode/settings.json files for existing color assignments.
 //
 // Algorithm:
@@ -42,7 +42,7 @@ var mainColor = "#2d7d46"
 //   - Return the first palette color that is not mainColor and not in use
 //   - If all non-green colors are used, return the first non-green (palette[1])
 //   - If hub/dirs missing, return first non-green
-func pickColor(l *paths.Layout) string {
+func PickColor(l *paths.Layout) string {
 	used := make(map[string]bool)
 
 	// Try to read the hub directory
