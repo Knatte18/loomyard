@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-weft
+phase: approved-ide
 slug: prune-board-tests
 branch: prune-board-tests
 plan: _mill/plan
@@ -24,6 +24,7 @@ implementing  '2026-06-22T18:02:14Z'
 approved-board  '2026-06-22T18:08:33Z'
 approved-worktree  '2026-06-22T18:16:33Z'
 approved-weft  '2026-06-22T18:20:15Z'
+approved-ide  '2026-06-22T18:24:01Z'
 ```
 
 ## Batches
@@ -46,9 +47,10 @@ batches:
     start_sha: 4b9b48402d914ba2aa4e86f6ca71d2283045023b
     commit_sha: b5da6b0174d20f69c5492030b2dbec4b7e921daf
   - name: ide
-    state: running
+    state: approved
     implementer_session: db399861-5461-4294-8d4a-764e89c0aea6
     start_sha: 4e27e7a2514f5454962a24f2c2eaa99360ddaa2c
+    commit_sha: 7d3bbe6d59b3df8be313d8df7e6c214af00a5b4e
   - name: muxpoc
     state: pending
   - name: doc
