@@ -8,7 +8,6 @@ package ide
 import (
 	"bytes"
 	"encoding/json"
-	"os"
 	"strings"
 	"testing"
 
@@ -20,9 +19,7 @@ func TestRunCLISpawnDispatch(t *testing.T) {
 	// Create a real git repo to test dispatch
 	gitRepo := lyxtest.CopyHostHub(t).Hub
 
-	oldCwd, _ := os.Getwd()
-	defer os.Chdir(oldCwd)
-	os.Chdir(gitRepo)
+	t.Chdir(gitRepo)
 
 	// Stub codeLauncher
 	originalLauncher := codeLauncher
@@ -69,9 +66,7 @@ func TestRunCLIErrors(t *testing.T) {
 			// Each test runs in its own temporary repo
 			gitRepo := lyxtest.CopyHostHub(t).Hub
 
-			oldCwd, _ := os.Getwd()
-			defer os.Chdir(oldCwd)
-			os.Chdir(gitRepo)
+			t.Chdir(gitRepo)
 
 			var out bytes.Buffer
 			code := RunCLI(&out, tt.args)
