@@ -126,6 +126,20 @@ this cleanup to also remove the error-swallowing both sites currently do.
   silent empty board or a corrupt-but-ignored session file hides real data loss.
   Failing loudly forces the corrupt file to be dealt with (deleted via `down` /
   `DeleteState`, or investigated) rather than masked.
+- Board-side read-consumer fallout (mirrors the muxpoc list in
+  *muxpoc-loadstate-signature*): board's read ops `GetTask`,
+  `ListTasksBrief`, `ListTasksFull` (`board.go:192-233`) all call `store.Load()`
+  with no coarse lock, and they are consumed by `internal/ide/menu.go:88`
+  (`b.GetTask`) and the board CLI `internal/board/cli.go:181/192/200`. After this
+  change a corrupt `tasks.json` propagates an error to those consumers where they
+  previously saw a silently-empty board. Intended — the menu / CLI surface the
+  error instead of presenting a phantom-empty wiki.
+- **`board.HealthCheck` is unaffected** (`board.go:180`): it reads `tasks.json`
+  via raw `os.ReadFile`, not `store.Load`, and deliberately passes
+  syntactically-corrupt-but-readable files (its doc comment says so). Its guard
+  test `TestHealthCheckPassesCorruptFile` (`board_test.go:160`) stays unchanged —
+  do **not** "fix" it to error on corruption; HealthCheck is a separate,
+  intentionally-lenient readability probe.
 - Rejected:
   - *Preserve swallow/warn behavior by wrapping ReadJSON* — directly contradicts
     the operator constraint, and `ReadJSON`'s single-error model cannot cleanly
@@ -266,7 +280,10 @@ changes (corruption) and rely on them where it doesn't (persistence, concurrency
   swap-lock/coarse-lock split survived the refactor (a regression here = the
   deadlock). Add/adjust a test asserting `Load` now returns an **error** on a
   corrupt `tasks.json` (previously it silently produced an empty board). Verify
-  the DependsOn nil→`[]` normalization is still covered.
+  the DependsOn nil→`[]` normalization is still covered. **Leave
+  `TestHealthCheckPassesCorruptFile` (`board_test.go:160`) untouched** —
+  `HealthCheck` reads via raw `os.ReadFile`, not `store.Load`, so corruption-as-
+  error does not reach it.
 - `internal/muxpoc/state_test.go`:
   - `TestLoadStateCorrupt` — **rewrite**: now expects `err != nil` and
     `state == nil` (was: `warn != ""`, `err == nil`).
