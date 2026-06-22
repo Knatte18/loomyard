@@ -412,17 +412,24 @@ func TestRemoveLinksIn(t *testing.T) {
 			name: "RemovesSymlinks",
 			setup: func(t *testing.T) string {
 				dir := t.TempDir()
-				writeFile(t, filepath.Join(dir, "target1.txt"), "target1")
-				writeFile(t, filepath.Join(dir, "target2.txt"), "target2")
+				// Create directory targets (required for Windows junctions)
+				target1 := filepath.Join(dir, "target1")
+				target2 := filepath.Join(dir, "target2")
+				if err := os.Mkdir(target1, 0o755); err != nil {
+					t.Fatalf("create target1: %v", err)
+				}
+				if err := os.Mkdir(target2, 0o755); err != nil {
+					t.Fatalf("create target2: %v", err)
+				}
 				writeFile(t, filepath.Join(dir, "regular.txt"), "regular")
 				link1 := filepath.Join(dir, "link1")
 				link2 := filepath.Join(dir, "link2")
 				// Verify platform support
-				if err := Create(link1, filepath.Join(dir, "target1.txt")); err != nil {
+				if err := Create(link1, target1); err != nil {
 					t.Skipf("link creation not permitted: %v", err)
 				}
 				// Now create the second link
-				if err := Create(link2, filepath.Join(dir, "target2.txt")); err != nil {
+				if err := Create(link2, target2); err != nil {
 					t.Skipf("link creation not permitted: %v", err)
 				}
 				return dir
@@ -437,7 +444,7 @@ func TestRemoveLinksIn(t *testing.T) {
 				if _, err := os.Lstat(filepath.Join(dir, "link2")); err == nil {
 					t.Error("link2 still exists")
 				}
-				for _, survivor := range []string{"target1.txt", "target2.txt", "regular.txt"} {
+				for _, survivor := range []string{"target1", "target2", "regular.txt"} {
 					if _, err := os.Stat(filepath.Join(dir, survivor)); err != nil {
 						t.Errorf("%s was removed: %v", survivor, err)
 					}
