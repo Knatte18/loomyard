@@ -19,13 +19,14 @@ type sample struct {
 func TestRoundTrip(t *testing.T) {
 	tmpDir := t.TempDir()
 	path := filepath.Join(tmpDir, "state.json")
+	lockPath := path + ".lock"
 
 	orig := sample{Name: "test", N: 42}
-	if err := state.WriteJSON(path, orig); err != nil {
+	if err := state.WriteJSON(path, lockPath, orig); err != nil {
 		t.Fatalf("WriteJSON() error: %v", err)
 	}
 
-	got, found, err := state.ReadJSON[sample](path)
+	got, found, err := state.ReadJSON[sample](path, lockPath)
 	if err != nil {
 		t.Fatalf("ReadJSON() error: %v", err)
 	}
@@ -42,8 +43,9 @@ func TestRoundTrip(t *testing.T) {
 func TestMissingFile(t *testing.T) {
 	tmpDir := t.TempDir()
 	path := filepath.Join(tmpDir, "subdir", "missing.json")
+	lockPath := path + ".lock"
 
-	got, found, err := state.ReadJSON[sample](path)
+	got, found, err := state.ReadJSON[sample](path, lockPath)
 	if err != nil {
 		t.Fatalf("ReadJSON() on missing file error: %v", err)
 	}
@@ -60,7 +62,6 @@ func TestMissingFile(t *testing.T) {
 		t.Errorf("parent directory does not exist: %v", err)
 	}
 
-	lockPath := path + ".lock"
 	if _, err := os.Stat(lockPath); err != nil {
 		t.Errorf("lock file does not exist at %s: %v", lockPath, err)
 	}
@@ -70,13 +71,14 @@ func TestMissingFile(t *testing.T) {
 func TestCorruptFile(t *testing.T) {
 	tmpDir := t.TempDir()
 	path := filepath.Join(tmpDir, "corrupt.json")
+	lockPath := path + ".lock"
 
 	// Write corrupt JSON.
 	if err := os.WriteFile(path, []byte("{not json"), 0o644); err != nil {
 		t.Fatalf("setup: WriteFile() error: %v", err)
 	}
 
-	_, _, err := state.ReadJSON[sample](path)
+	_, _, err := state.ReadJSON[sample](path, lockPath)
 	if err == nil {
 		t.Fatal("ReadJSON() on corrupt file error = nil; want non-nil")
 	}
@@ -87,9 +89,10 @@ func TestCorruptFile(t *testing.T) {
 func TestNoTempLeak(t *testing.T) {
 	tmpDir := t.TempDir()
 	path := filepath.Join(tmpDir, "state.json")
+	lockPath := path + ".lock"
 
 	v := sample{Name: "test", N: 42}
-	if err := state.WriteJSON(path, v); err != nil {
+	if err := state.WriteJSON(path, lockPath, v); err != nil {
 		t.Fatalf("WriteJSON() error: %v", err)
 	}
 
@@ -126,18 +129,19 @@ func TestNoTempLeak(t *testing.T) {
 func TestOverwrite(t *testing.T) {
 	tmpDir := t.TempDir()
 	path := filepath.Join(tmpDir, "state.json")
+	lockPath := path + ".lock"
 
 	v1 := sample{Name: "first", N: 1}
-	if err := state.WriteJSON(path, v1); err != nil {
+	if err := state.WriteJSON(path, lockPath, v1); err != nil {
 		t.Fatalf("first WriteJSON() error: %v", err)
 	}
 
 	v2 := sample{Name: "second", N: 2}
-	if err := state.WriteJSON(path, v2); err != nil {
+	if err := state.WriteJSON(path, lockPath, v2); err != nil {
 		t.Fatalf("second WriteJSON() error: %v", err)
 	}
 
-	got, found, err := state.ReadJSON[sample](path)
+	got, found, err := state.ReadJSON[sample](path, lockPath)
 	if err != nil {
 		t.Fatalf("ReadJSON() error: %v", err)
 	}
@@ -153,21 +157,21 @@ func TestOverwrite(t *testing.T) {
 func TestLockFileLocation(t *testing.T) {
 	tmpDir := t.TempDir()
 	path := filepath.Join(tmpDir, "data.json")
-	expectedLockPath := path + ".lock"
+	lockPath := path + ".lock"
 
 	// Write and read to ensure lock files are created.
 	v := sample{Name: "test", N: 42}
-	if err := state.WriteJSON(path, v); err != nil {
+	if err := state.WriteJSON(path, lockPath, v); err != nil {
 		t.Fatalf("WriteJSON() error: %v", err)
 	}
 
-	if _, _, err := state.ReadJSON[sample](path); err != nil {
+	if _, _, err := state.ReadJSON[sample](path, lockPath); err != nil {
 		t.Fatalf("ReadJSON() error: %v", err)
 	}
 
 	// Verify lock file exists at the expected path.
-	if _, err := os.Stat(expectedLockPath); err != nil {
-		t.Errorf("lock file not found at %s: %v", expectedLockPath, err)
+	if _, err := os.Stat(lockPath); err != nil {
+		t.Errorf("lock file not found at %s: %v", lockPath, err)
 	}
 
 	// Verify the data file and lock are the only files in tmpDir.
@@ -196,9 +200,10 @@ func TestLockFileLocation(t *testing.T) {
 func TestJSONFormatting(t *testing.T) {
 	tmpDir := t.TempDir()
 	path := filepath.Join(tmpDir, "state.json")
+	lockPath := path + ".lock"
 
 	v := sample{Name: "test", N: 42}
-	if err := state.WriteJSON(path, v); err != nil {
+	if err := state.WriteJSON(path, lockPath, v); err != nil {
 		t.Fatalf("WriteJSON() error: %v", err)
 	}
 
