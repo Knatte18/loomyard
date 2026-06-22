@@ -171,7 +171,7 @@ documented drop. Uniquely-covered assertions are preserved.
 - TestLoadConfig_DefaultWhenNoYAML → TestLoadConfig/DefaultWhenNoYAML
 - TestLoadConfig_OverrideFromYAML → TestLoadConfig/OverrideFromYAML
 - TestLoadConfig_MissingLyx → TestLoadConfig/MissingLyx
-- TestPullIntegration_FastForward → kept within suite; subsumed by TestPull_FastForward (full cycle) and TestSyncIntegration_EventuallyPushed
+- TestPullIntegration_FastForward → dropped — strict subset of `sync_test.go:TestPull_FastForward`
 - TestPushIntegration_CommitLandsOnBare → TestPushIntegration/CommitLandsOnBare
 - TestPushIntegration_RebaseRetryOnNFF → TestPushIntegration/RebaseRetryOnNFF (note: this test did not actually set up non-FF scenario; folded for clarity)
 
