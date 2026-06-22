@@ -8,7 +8,6 @@ package ide
 
 import (
 	"bytes"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
