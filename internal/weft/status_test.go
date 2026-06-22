@@ -5,11 +5,10 @@
 package weft
 
 import (
-	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
@@ -154,13 +153,9 @@ func TestStatus_Junction(t *testing.T) {
 }
 
 // TestStatus_JunctionOk_Windows is kept separate from the TestStatus_Junction
-// table because Windows junctions created via `mklink /J` may not report
-// ModeSymlink on all Go versions; when unrecognised it skips rather than fails,
-// which the generic table assertion cannot express.
+// table to test junction creation via fslink, which must succeed with detection
+// via fslink.IsLink.
 func TestStatus_JunctionOk_Windows(t *testing.T) {
-	if os.Getenv("SKIP_MKLINK_TEST") == "1" {
-		t.Skip("mklink test skipped")
-	}
 	t.Parallel()
 
 	fixture := lyxtest.CopyWeft(t)
@@ -170,9 +165,9 @@ func TestStatus_JunctionOk_Windows(t *testing.T) {
 	tmpDir := t.TempDir()
 	hostLink := filepath.Join(tmpDir, "_lyx")
 
-	cmd := exec.Command("cmd", "/c", "mklink", "/J", hostLink, weftLyxDir)
-	if err := cmd.Run(); err != nil {
-		t.Skipf("mklink /J failed (likely not on Windows or no privilege): %v", err)
+	// Create the junction via fslink.Create
+	if err := fslink.Create(hostLink, weftLyxDir); err != nil {
+		t.Skipf("fslink.Create failed (likely not on Windows or no privilege): %v", err)
 	}
 
 	status, err := Status(weftRepo, hostLink, weftLyxDir, []string{"_lyx"})
@@ -185,10 +180,6 @@ func TestStatus_JunctionOk_Windows(t *testing.T) {
 		t.Errorf("status[junction_ok] should be a bool; got %v", status["junction_ok"])
 	}
 	if !junctionOk {
-		reason, _ := status["junction_reason"].(string)
-		if reason == "host _lyx is not a junction" {
-			t.Skipf("Windows junction not recognized by os.Lstat (ModeSymlink not set)")
-		}
 		t.Errorf("junction_ok = false for valid junction; want true. Reason: %s", status["junction_reason"])
 	}
 
