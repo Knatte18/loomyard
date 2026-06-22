@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: extract-fslink
 branch: extract-fslink
 plan: _mill/plan
@@ -20,4 +20,15 @@ discussed  '2026-06-22T10:56:35Z'
 planning  '2026-06-22T11:11:36Z'
 plan-fix-r1  '2026-06-22T11:15:14Z'
 planned  '2026-06-22T11:15:34Z'
+implementing  '2026-06-22T11:19:30Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: fslink-package
+    state: pending
+  - name: migrate-callsites
+    state: pending
 ```
