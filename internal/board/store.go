@@ -8,13 +8,9 @@
 package board
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 
-	"github.com/Knatte18/loomyard/internal/fsx"
-	flock "github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/state"
 )
 
 // swapLockSuffix names the fine-grained lock that fences readers of a file
@@ -58,29 +54,15 @@ func (s *Store) Load() error {
 		return nil
 	}
 
-	// Hold a shared swap lock only for the read itself: it overlaps with other
-	// readers but is fenced against a writer's rename, so we never open
-	// tasks.json mid-swap (which on Windows would fail with a sharing violation
-	// and otherwise silently look like an empty wiki).
-	lock, err := flock.AcquireReadLock(s.filePath + swapLockSuffix)
+	// Read via state.ReadJSON, which acquires the swap lock and unmarshals.
+	// It surfaces corruption as an error instead of silently producing an empty list.
+	tasks, found, err := state.ReadJSON[[]Task](s.filePath, s.filePath+swapLockSuffix)
 	if err != nil {
-		return fmt.Errorf("acquire read lock: %w", err)
-	}
-	content, err := os.ReadFile(s.filePath)
-	lock.Release()
-	if err != nil {
-		if os.IsNotExist(err) {
-			s.tasks = []Task{}
-			return nil
-		}
-		// A real read error must surface, not masquerade as an empty wiki.
-		return fmt.Errorf("read %s: %w", s.filePath, err)
+		return fmt.Errorf("load store: %w", err)
 	}
 
-	var tasks []Task
-	err = json.Unmarshal(content, &tasks)
-	if err != nil {
-		// Silent fallback on parse error
+	// If the file does not exist, initialize to empty and return success.
+	if !found {
 		s.tasks = []Task{}
 		return nil
 	}
@@ -96,26 +78,8 @@ func (s *Store) Load() error {
 	return nil
 }
 
-func (s *Store) Save(boardPath, relPath string) error {
-	content, err := json.MarshalIndent(s.tasks, "", "  ")
-	if err != nil {
-		return fmt.Errorf("marshal tasks: %w", err)
-	}
-
-	// Hold the exclusive swap lock across the write so no reader has tasks.json
-	// open during the rename. The body is just a temp-write + rename, so readers
-	// are fenced out for microseconds, not for the surrounding git round-trip.
-	lock, err := flock.AcquireWriteLock(filepath.Join(boardPath, relPath) + swapLockSuffix)
-	if err != nil {
-		return fmt.Errorf("acquire swap lock: %w", err)
-	}
-	defer lock.Release()
-
-	if err := fsx.AtomicWriteBytes(filepath.Join(boardPath, relPath), content); err != nil {
-		return fmt.Errorf("atomic write: %w", err)
-	}
-
-	return nil
+func (s *Store) Save() error {
+	return state.WriteJSON(s.filePath, s.filePath+swapLockSuffix, s.tasks)
 }
 
 func (s *Store) Tasks() []Task {
