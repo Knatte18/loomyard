@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-board
+phase: approved-worktree
 slug: prune-board-tests
 branch: prune-board-tests
 plan: _mill/plan
@@ -22,6 +22,7 @@ plan-fix-r1  '2026-06-22T17:50:04Z'
 planned  '2026-06-22T17:50:17Z'
 implementing  '2026-06-22T18:02:14Z'
 approved-board  '2026-06-22T18:08:33Z'
+approved-worktree  '2026-06-22T18:16:33Z'
 ```
 
 ## Batches
@@ -34,9 +35,10 @@ batches:
     start_sha: 02407a2a74643201b0da603cff34abf49770c287
     commit_sha: 7636e2869f0770cf3195c6476778ab37db146e03
   - name: worktree
-    state: running
+    state: approved
     implementer_session: 38def2ca-1590-453f-8709-8bdae77814bd
     start_sha: 50b12bb979da039e0bfac0c9dbc46d2d02d0b1eb
+    commit_sha: d071d87e9a244e7e1d06dc3ec239d92dd84e27f2
   - name: weft
     state: pending
   - name: ide
