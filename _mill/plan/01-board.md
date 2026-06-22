@@ -47,7 +47,8 @@ of scope and untouched. Coverage floor: **62.5%** (default build).
   `TestRenderToDisk` (disk I/O + orphan-file cleanup), `TestRenderCustomOutputs` (custom
   Home filename + proposal prefix), and `TestRenderEmptyTaskList` as distinct funcs.
   Preserve the `getKeys` helper. No assertion may be lost except the proven-subset drop
-  in (b).
+  in (b). Note: `TestRenderDeferredTask` is a new row in the shape table (not folded from
+  baseline) covering the deferred-task bucket path; included to preserve coverage floor.
 - **Commit:** `test(board): fold render_test into table-driven tests`
 
 ### Card 2: Fold cli_test.go to a JSON-contract table + error table
