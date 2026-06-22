@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: adopt-internal-state
 branch: adopt-internal-state
 plan: _mill/plan
@@ -20,4 +20,17 @@ discussed  '2026-06-22T17:59:41Z'
 planning  '2026-06-22T18:04:51Z'
 plan-fix-r1  '2026-06-22T18:08:08Z'
 planned  '2026-06-22T18:08:22Z'
+implementing  '2026-06-22T18:11:01Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: state-explicit-lock-path
+    state: pending
+  - name: board-adopt-state
+    state: pending
+  - name: muxpoc-adopt-state
+    state: pending
 ```
