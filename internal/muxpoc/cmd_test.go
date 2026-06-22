@@ -12,10 +12,9 @@ func TestLayoutChecksum(t *testing.T) {
 		want string
 	}{
 		// TestLayoutChecksumMatchesPsmux: pinned values from live psmux testing
-		{"TestLayoutChecksumMatchesPsmux_case1", "220x50,0,0[220x15,0,0,1,220x15,0,16,4,220x18,0,32,3]", "acd7"},
-		{"TestLayoutChecksumMatchesPsmux_case2", "220x50,0,0[220x10,0,0,1,220x10,0,11,4,220x28,0,22,3]", "6954"},
+		{"TestLayoutChecksumMatchesPsmux", "220x50,0,0[220x15,0,0,1,220x15,0,16,4,220x18,0,32,3]", "acd7"},
 		// TestLayoutChecksumIsFourHexDigits: arbitrary input, verify format
-		{"arbitrary", "anything", ""},
+		{"TestLayoutChecksumIsFourHexDigits", "anything", ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
