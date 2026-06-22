@@ -9,51 +9,16 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
-
-// mustRun is a test helper that runs a command in a directory.
-func mustRun(t *testing.T, dir string, args ...string) {
-	t.Helper()
-
-	cmd := exec.Command(args[0], args[1:]...)
-	cmd.Dir = dir
-
-	if output, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("command failed: %v; output: %s", err, output)
-	}
-}
-
-// newTestGitRepo creates a git repository in a temp directory.
-func newTestGitRepo(t *testing.T) string {
-	t.Helper()
-
-	tmpDir := t.TempDir()
-
-	// Initialize git repo
-	mustRun(t, tmpDir, "git", "init", "-b", "main")
-	mustRun(t, tmpDir, "git", "config", "user.email", "test@test.com")
-	mustRun(t, tmpDir, "git", "config", "user.name", "Test")
-
-	// Create a file and commit
-	testFile := filepath.Join(tmpDir, "README")
-	if err := os.WriteFile(testFile, []byte("test"), 0o644); err != nil {
-		t.Fatalf("failed to write test file: %v", err)
-	}
-
-	mustRun(t, tmpDir, "git", "add", ".")
-	mustRun(t, tmpDir, "git", "commit", "-m", "initial")
-
-	return tmpDir
-}
 
 // TestRunCLISpawnDispatch tests that spawn subcommand dispatches correctly with stubbed launcher.
 func TestRunCLISpawnDispatch(t *testing.T) {
 	// Create a real git repo to test dispatch
-	gitRepo := newTestGitRepo(t)
+	gitRepo := lyxtest.CopyHostHub(t).Hub
 
 	oldCwd, _ := os.Getwd()
 	defer os.Chdir(oldCwd)
@@ -76,7 +41,7 @@ func TestRunCLISpawnDispatch(t *testing.T) {
 
 // TestRunCLIUnknownSubcommand tests unknown subcommand error handling.
 func TestRunCLIUnknownSubcommand(t *testing.T) {
-	gitRepo := newTestGitRepo(t)
+	gitRepo := lyxtest.CopyHostHub(t).Hub
 
 	oldCwd, _ := os.Getwd()
 	defer os.Chdir(oldCwd)
@@ -98,7 +63,7 @@ func TestRunCLIUnknownSubcommand(t *testing.T) {
 
 // TestRunCLIMissingSlug tests missing slug error for spawn.
 func TestRunCLIMissingSlug(t *testing.T) {
-	gitRepo := newTestGitRepo(t)
+	gitRepo := lyxtest.CopyHostHub(t).Hub
 
 	oldCwd, _ := os.Getwd()
 	defer os.Chdir(oldCwd)
@@ -120,7 +85,7 @@ func TestRunCLIMissingSlug(t *testing.T) {
 
 // TestRunCLINoArgs tests no-args usage error.
 func TestRunCLINoArgs(t *testing.T) {
-	gitRepo := newTestGitRepo(t)
+	gitRepo := lyxtest.CopyHostHub(t).Hub
 
 	oldCwd, _ := os.Getwd()
 	defer os.Chdir(oldCwd)
