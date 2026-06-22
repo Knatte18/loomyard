@@ -90,12 +90,12 @@ performance. (Performance optimization was already completed in the two prior ta
 
 | Package         | Before | After | Reduction |
 |-----------------|--------|-------|-----------|
-| `internal/board` | 61     | 38    | 23 (37.7%) |
+| `internal/board` | 61     | 37    | 24 (39.3%) |
 | `internal/worktree` | 22  | 19    | 3 (13.6%) |
 | `internal/weft`  | 20     | 15    | 5 (25.0%) |
 | `internal/ide`   | 20     | 11    | 9 (45.0%) |
 | `internal/muxpoc` | 19    | 14    | 5 (26.3%) |
-| **Total**        | **142** | **97** | **45 (31.7%)** |
+| **Total**        | **142** | **96** | **46 (32.4%)** |
 
 #### Statement coverage — unchanged / ≥ floor
 
@@ -120,7 +120,9 @@ documented drop. Uniquely-covered assertions are preserved.
 
 **Folded names** (original top-level func name now a `t.Run` subtest):
 
-**board (23 dropped via folding):**
+**board (19 folded into other top-level funcs + 5 rewritten as table-driven + 2 dropped):**
+
+Folded into subtests of other top-level functions (net reduction of 19):
 - TestAbsolutePathPassthrough → TestLoadConfig/TestAbsolutePathPassthrough
 - TestCLIGetNonexistentTask → TestCLIErrorAndEdgeCases/TestCLIGetNonexistentTask
 - TestCLIGetTask → TestCLIContract/TestCLIGetTask
@@ -148,19 +150,21 @@ documented drop. Uniquely-covered assertions are preserved.
 - TestRenderMissingDependency → TestRenderProposalAndShapesHomepage/TestRenderMissingDependency
 - TestRenderOrphanDetection → TestRenderSingleTask/TestRenderOrphanDetection
 - TestRenderSidebarBlanks → TestRenderSidebarExtendedTitle/TestRenderSidebarBlanks
-- TestRenderSingleTask → TestRenderSingleTask (table-driven within same function)
 - TestRenderSpecialBucketTask → TestRenderProposalAndShapesHomepage/TestRenderSpecialBucketTask
-- TestRenderStatusVariants → TestRenderStatusVariants (table-driven within same function)
 - TestRenderTaskIDFormatting → TestRenderProposalAndShapesHomepage/TestRenderTaskIDFormatting
-- TestRenderToDisk → TestRenderToDisk (table-driven within same function)
+
+Rewritten as table-driven within the original function name (still top-level, no net reduction):
+- TestRenderSingleTask — table-driven within same function
+- TestRenderStatusVariants — table-driven within same function
+- TestRenderToDisk — table-driven within same function
 - TestRerender — facade persistence wiring (Home.md and _Sidebar.md written)
 - TestUpsertTask — facade unique assertions (tasks.json and Home.md written)
-
-(New subtest added: TestRenderDeferredTask is a new row in TestRenderProposalAndShapesHomepage covering the deferred-task bucket path; included to preserve 62.5% coverage floor per Card 1 note.)
 
 **board (2 dropped with documented justification):**
 - TestRemoveTask — owned by `store_test.go:TestRemoveTaskMissing` (business logic owner)
 - TestRenderTaskStatus — strict subset of TestRenderStatusVariants (all status variants covered)
+
+(New subtest added: TestRenderDeferredTask is a new row in TestRenderProposalAndShapesHomepage covering the deferred-task bucket path; included to preserve 62.5% coverage floor per Card 1 note.)
 
 **worktree (4 folded):**
 - TestWeftPrechecksHardRequireWeftRepo → TestWeftPrechecks/TestWeftPrechecksHardRequireWeftRepo
@@ -185,6 +189,7 @@ documented drop. Uniquely-covered assertions are preserved.
 - TestPickColorWrapAroundAllUsed → TestPickColor/TestPickColorWrapAroundAllUsed
 - TestRunCLIMissingSlug → TestRunCLIErrors/TestRunCLIMissingSlug
 - TestRunCLINoArgs → TestRunCLIErrors/TestRunCLINoArgs
+- TestRunCLIUnknownSubcommand → TestRunCLIErrors/TestRunCLIUnknownSubcommand
 - TestSpawnCallsCodeLauncher → TestSpawn/TestSpawnCallsCodeLauncher
 - TestSpawnColorSelection → dropped; covered by TestSpawnGeneratesConfig + vscode_test.go:TestWriteVSCodeConfigCreatesFilesWhenAbsent (color key existence asserted; color choice is color_test's responsibility)
 - TestSpawnDoesNotClobber → TestSpawn/TestSpawnDoesNotClobber
