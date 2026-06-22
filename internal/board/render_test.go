@@ -196,8 +196,8 @@ func TestRenderProposalAndShapesHomepage(t *testing.T) {
 		{
 			name: "TestRenderLayerBuckets",
 			tasks: []board.Task{
-				{ID: 1, Slug: "task-a", Title: "Task A"},
-				{ID: 2, Slug: "task-b", Title: "Task B"},
+				{ID: 1, Slug: "independent-task", Title: "Independent Task"},
+				{ID: 2, Slug: "dependent-task", Title: "Dependent Task", DependsOn: []string{"independent-task"}},
 			},
 			wantSubstrings: []string{
 				"# Layer A",
