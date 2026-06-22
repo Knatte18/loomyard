@@ -3,7 +3,7 @@
 ```yaml
 task: "Optimise and slim the rest of the test suite"
 slug: optimize-remaining-test-suites
-approved: false
+approved: true
 started: "20260622-062759"
 parent: main
 root: ""

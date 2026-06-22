@@ -38,7 +38,11 @@ batch 2 (different package; does not edit lyxtest).
 - **Requirements:** In the four `TestRunCLI*` funcs, replace `newTestGitRepo(t)` with a
   lyxtest fixture directory that makes `RunCLI` spawn-dispatch reachable from the chdir'd
   cwd: try `lyxtest.CopyHostHub(t).Hub` first; if spawn-dispatch needs the fuller lyx layout,
-  use `lyxtest.CopyPaired(t).Hub`. Preserve the `oldCwd, _ := os.Getwd()` +
+  use `lyxtest.CopyPaired(t).Hub`. Note `RunCLI` calls `paths.Resolve(cwd)` then dispatches
+  `spawn`; `CopyHostHub.Hub` is a plain git hub with **no `_lyx` dir**, so if `paths.Resolve`
+  needs the lyx layout, `CopyPaired.Hub` (which carries a full `Layout`) is the next choice —
+  and if neither reaches spawn-dispatch, the gated-but-unmigrated fallback below applies.
+  Preserve the `oldCwd, _ := os.Getwd()` +
   `defer os.Chdir(oldCwd)` + `os.Chdir(fixture)` pattern (tests stay serial — do NOT add
   `t.Parallel()`) and all four assertions (`TestRunCLISpawnDispatch`,
   `TestRunCLIUnknownSubcommand`, `TestRunCLIMissingSlug`, `TestRunCLINoArgs`). Delete the

@@ -45,13 +45,17 @@ Depends on batch 1 (the files now live in `internal/board/boardtest` as `package
   (`TestSyncCommitsAndPushes`, `TestSyncCoalescesBurstIntoOneCommit`,
   `TestSyncSkipPushCommitsLocallyOnly`, `TestSyncCleanTreeIsNoOp`, `TestSyncIgnoresLockfiles`).
   Keep `t.Setenv("BOARD_SKIP_GIT","")` and the per-test `t.Setenv("BOARD_SKIP_PUSH",…)`; do
-  NOT add `t.Parallel()`. **Fallback (only if `CopyWeft`'s weft `_lyx` working-tree contents
-  break a `board.Sync` assertion, e.g. the clean-tree no-op):** add an exported
-  `CopyBoardRepo(t)` to `internal/lyxtest/lyxtest.go` mirroring `CopyWeft`'s bare+clone+upstream
-  but seeded with a `tasks.json` only, with a matching fixture test in
-  `internal/lyxtest/lyxtest_test.go` (follow the existing `lyxtest_test.go` `//go:build integration`
-  + per-fixture-test pattern), and use it instead. Default to `CopyWeft` reuse and touch
-  neither lyxtest file if it fits.
+  NOT add `t.Parallel()`. **Fallback (likely needed — evaluate first):** `CopyWeft` seeds
+  `_lyx/config.yaml` but **not** `tasks.json`, while these tests write and commit `tasks.json`,
+  and `TestSyncCleanTreeIsNoOp` assumes the working tree is clean after the initial
+  board-managed `.gitignore` commit. If `CopyWeft`'s pre-seeded weft contents cause any
+  `board.Sync` assertion to diverge (most likely the clean-tree no-op or the commit counts),
+  add an exported `CopyBoardRepo(t)` to `internal/lyxtest/lyxtest.go` mirroring `CopyWeft`'s
+  bare+clone+upstream but seeded with a `tasks.json` only (no `_lyx`), with a matching fixture
+  test in `internal/lyxtest/lyxtest_test.go` (follow the existing `lyxtest_test.go`
+  `//go:build integration` + per-fixture-test pattern), and use it instead. Prefer `CopyWeft`
+  reuse if it passes cleanly; otherwise take the `CopyBoardRepo` path rather than forcing
+  `CopyWeft`.
 - **Commit:** `test(board): migrate sync_test fixtures onto lyxtest`
 
 ### Card 7: Migrate `git_test` fixtures onto lyxtest
