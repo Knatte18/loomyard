@@ -13,6 +13,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/paths"
 )
 
+// AddOptions controls optional behaviour for Add. Tests pass these directly
+// instead of relying on environment variables, which makes t.Parallel() safe.
+type AddOptions struct {
+	// SkipGit disables all weft-side git operations (push suppressed entirely).
+	SkipGit bool
+	// SkipPush disables only the weft-branch push while keeping all local git
+	// operations intact.
+	SkipPush bool
+}
+
 // AddResult contains the result of successfully adding a new worktree.
 type AddResult struct {
 	Slug   string `json:"slug"`
@@ -28,6 +38,11 @@ type AddResult struct {
 // component; the branch name is formed by prepending the configured BranchPrefix and
 // is used for both host and weft worktrees (mirrored).
 //
+// opts controls optional behaviour such as suppressing the weft-branch push. Tests
+// pass AddOptions directly so they do not rely on environment variables and can
+// safely use t.Parallel(). Production callers populate AddOptions from environment
+// variables at the CLI edge (see cli.go).
+//
 // Steps:
 //  1. Clean check: l.WorktreeRoot must have no uncommitted changes.
 //  2. Branch name: branch := w.cfg.BranchPrefix + slug
@@ -38,11 +53,12 @@ type AddResult struct {
 //  7. Create: git worktree add -b <branch> <target> in host repo.
 //  8. Create weft worktree with mirrored branch.
 //  9. Seed host _lyx junction pointing to weft _lyx (also enforces pristine host).
+//
 // 10. Seed host git exclude to skip _lyx.
 // 11. Create portal junction to _lyx/ in the new host worktree.
 // 12. Write per-worktree launchers.
 // 13. Push host branch: git push -u origin <branch> (LAST step).
-// 14. Push weft branch: git push -u origin <branch> to weft remote.
+// 14. Push weft branch: git push -u origin <branch> to weft remote (respects opts).
 //
 // On ANY error at or after step 7, performs a best-effort full paired rollback:
 // - removeHostJunction(l, slug) — remove host _lyx junction first (Windows junction-lock hazard)
@@ -56,7 +72,7 @@ type AddResult struct {
 // The ORIGINAL error is returned; rollback-step failures are not masked.
 //
 // Returns AddResult on success or an error if any step fails.
-func (w *Worktree) Add(l *paths.Layout, slug string) (AddResult, error) {
+func (w *Worktree) Add(l *paths.Layout, slug string, opts AddOptions) (AddResult, error) {
 	// (1) Clean check
 	stdout, stderr, exitCode, err := git.RunGit([]string{"status", "--porcelain", "--untracked-files=no"}, l.WorktreeRoot)
 	if err != nil {
@@ -164,7 +180,7 @@ func (w *Worktree) Add(l *paths.Layout, slug string) (AddResult, error) {
 	}
 
 	// (14) Push weft branch
-	if err := pushWeftBranch(l, slug, branch); err != nil {
+	if err := pushWeftBranch(l, slug, branch, opts); err != nil {
 		w.rollbackAdd(l, slug, branch, target)
 		return AddResult{}, err
 	}
@@ -173,7 +189,9 @@ func (w *Worktree) Add(l *paths.Layout, slug string) (AddResult, error) {
 		Slug:   slug,
 		Branch: branch,
 		Path:   target,
-		Pushed: true,
+		// Pushed reflects whether the weft branch was actually pushed to the remote.
+		// It is false when either SkipPush or SkipGit suppresses the push.
+		Pushed: !opts.SkipPush && !opts.SkipGit,
 	}, nil
 }
 

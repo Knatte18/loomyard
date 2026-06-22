@@ -2,9 +2,8 @@
 //
 // Commit stages pathspec-scoped changes and commits them. Push loops with
 // rebase-retry on non-fast-forward until everything is pushed. Pull fast-forwards
-// from upstream. Both commit and push respect WEFT_SKIP_GIT and (for push only)
-// WEFT_SKIP_PUSH environment variables. All operations coordinate via file locks
-// in the weft worktree.
+// from upstream. All operations coordinate via file locks in the weft worktree.
+// Skipping behavior is controlled via SyncOptions, not environment variables.
 
 package weft
 
@@ -18,6 +17,12 @@ import (
 	flock "github.com/Knatte18/loomyard/internal/lock"
 )
 
+// SyncOptions controls git sync behavior for Commit, Push, and Pull.
+type SyncOptions struct {
+	SkipGit  bool // Skip all git operations if true.
+	SkipPush bool // Skip push operations if true; affects Push only.
+}
+
 // ensureLockDir creates the lock directory inside the weft worktree and returns its path.
 func ensureLockDir(weftPath string) (string, error) {
 	lockDir := filepath.Join(weftPath, lockDirName)
@@ -28,10 +33,10 @@ func ensureLockDir(weftPath string) (string, error) {
 }
 
 // Commit stages and commits pathspec-scoped changes in the weft worktree.
-// Returns (false, nil) if WEFT_SKIP_GIT is set or if there is nothing staged.
+// Returns (false, nil) if opts.SkipGit is true or if there is nothing staged.
 // Returns (true, nil) if a commit was made.
-func Commit(weftPath string, pathspec []string) (committed bool, err error) {
-	if os.Getenv("WEFT_SKIP_GIT") == "1" {
+func Commit(weftPath string, pathspec []string, opts SyncOptions) (committed bool, err error) {
+	if opts.SkipGit {
 		return false, nil
 	}
 
@@ -77,10 +82,10 @@ func Commit(weftPath string, pathspec []string) (committed bool, err error) {
 }
 
 // Push loops pushing unpushed commits to the remote, with rebase-retry on non-fast-forward.
-// Returns nil immediately if WEFT_SKIP_GIT or WEFT_SKIP_PUSH is set.
+// Returns nil immediately if opts.SkipGit or opts.SkipPush is true.
 // No-op if there is nothing unpushed.
-func Push(weftPath string) error {
-	if os.Getenv("WEFT_SKIP_GIT") == "1" || os.Getenv("WEFT_SKIP_PUSH") == "1" {
+func Push(weftPath string, opts SyncOptions) error {
+	if opts.SkipGit || opts.SkipPush {
 		return nil
 	}
 
@@ -115,9 +120,9 @@ func Push(weftPath string) error {
 }
 
 // Pull fast-forwards from the remote.
-// Returns nil immediately if WEFT_SKIP_GIT is set.
-func Pull(weftPath string) error {
-	if os.Getenv("WEFT_SKIP_GIT") == "1" {
+// Returns nil immediately if opts.SkipGit is true.
+func Pull(weftPath string, opts SyncOptions) error {
+	if opts.SkipGit {
 		return nil
 	}
 

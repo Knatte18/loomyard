@@ -1,3 +1,5 @@
+//go:build integration
+
 // status_test.go — tests for weft status reporting.
 
 package weft
@@ -7,185 +9,172 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
-func TestStatus_BranchReporting(t *testing.T) {
-	weftRepo := newTestWeftRepo(t)
-
-	status, err := Status(weftRepo, "", "", []string{"_lyx"})
-	if err != nil {
-		t.Fatalf("Status: %v", err)
+func TestStatus(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name       string
+		modify     bool
+		wantDirty  bool
+		wantBranch string
+	}{
+		{"BranchReporting_Clean", false, false, "main"},
+		{"DirtyFlag_Clean", false, false, "main"},
+		{"DirtyFlag_Modified", true, true, "main"},
 	}
 
-	branch, ok := status["branch"].(string)
-	if !ok || branch == "" {
-		t.Errorf("status[branch] should be a non-empty string; got %v", status["branch"])
-	}
-	if branch != "main" {
-		t.Errorf("branch = %q; want %q", branch, "main")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			fixture := lyxtest.CopyWeft(t)
+			weftRepo := fixture.WeftPath
+
+			if tt.modify {
+				lyxFile := filepath.Join(weftRepo, "_lyx", "config.yaml")
+				if err := os.WriteFile(lyxFile, []byte("modified"), 0o644); err != nil {
+					t.Fatalf("WriteFile: %v", err)
+				}
+			}
+
+			status, err := Status(weftRepo, "", "", []string{"_lyx"})
+			if err != nil {
+				t.Fatalf("Status: %v", err)
+			}
+
+			branch, ok := status["branch"].(string)
+			if !ok || branch == "" {
+				t.Errorf("status[branch] should be a non-empty string; got %v", status["branch"])
+			}
+			if branch != tt.wantBranch {
+				t.Errorf("branch = %q; want %q", branch, tt.wantBranch)
+			}
+
+			dirty, ok := status["dirty"].(bool)
+			if !ok {
+				t.Errorf("status[dirty] should be a bool; got %v", status["dirty"])
+			}
+			if dirty != tt.wantDirty {
+				t.Errorf("dirty = %v; want %v", dirty, tt.wantDirty)
+			}
+		})
 	}
 }
 
-func TestStatus_DirtyFlag(t *testing.T) {
-	weftRepo := newTestWeftRepo(t)
-
-	// Check dirty on clean tree
-	status, err := Status(weftRepo, "", "", []string{"_lyx"})
-	if err != nil {
-		t.Fatalf("Status: %v", err)
+func TestStatus_Junction(t *testing.T) {
+	tests := []struct {
+		name           string
+		setup          func(*testing.T, string, string) string // returns hostLink
+		wantJunctionOk bool
+		wantReason     string
+		parallel       bool
+		skip           string
+	}{
+		{
+			name: "Missing",
+			setup: func(t *testing.T, weftRepo, weftLyxDir string) string {
+				tmpDir := t.TempDir()
+				return filepath.Join(tmpDir, "_lyx")
+			},
+			wantJunctionOk: false,
+			wantReason:     "host _lyx junction missing",
+			parallel:       true,
+		},
+		{
+			name: "PlainDir",
+			setup: func(t *testing.T, weftRepo, weftLyxDir string) string {
+				tmpDir := t.TempDir()
+				hostLink := filepath.Join(tmpDir, "_lyx")
+				if err := os.MkdirAll(hostLink, 0o755); err != nil {
+					t.Fatalf("MkdirAll: %v", err)
+				}
+				return hostLink
+			},
+			wantJunctionOk: false,
+			wantReason:     "host _lyx is not a junction",
+			parallel:       true,
+		},
+		{
+			name: "ValidSymlink",
+			setup: func(t *testing.T, weftRepo, weftLyxDir string) string {
+				tmpDir := t.TempDir()
+				hostLink := filepath.Join(tmpDir, "_lyx")
+				err := os.Symlink(weftLyxDir, hostLink)
+				if err != nil {
+					t.Skipf("os.Symlink failed: %v", err)
+				}
+				return hostLink
+			},
+			wantJunctionOk: true,
+			wantReason:     "",
+			parallel:       true,
+			skip:           "SKIP_SYMLINK_TEST",
+		},
 	}
 
-	dirty, ok := status["dirty"].(bool)
-	if !ok {
-		t.Errorf("status[dirty] should be a bool; got %v", status["dirty"])
-	}
-	if dirty {
-		t.Errorf("dirty = true on clean tree; want false")
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.skip != "" && os.Getenv(tt.skip) == "1" {
+				t.Skip(tt.skip + " is set")
+			}
+			if tt.parallel {
+				t.Parallel()
+			}
 
-	// Modify a file in pathspec
-	lyxFile := filepath.Join(weftRepo, "_lyx", "config.yaml")
-	if err := os.WriteFile(lyxFile, []byte("modified"), 0o644); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
+			fixture := lyxtest.CopyWeft(t)
+			weftRepo := fixture.WeftPath
+			weftLyxDir := filepath.Join(weftRepo, "_lyx")
 
-	// Check dirty on dirty tree
-	status, err = Status(weftRepo, "", "", []string{"_lyx"})
-	if err != nil {
-		t.Fatalf("Status: %v", err)
-	}
+			hostLink := tt.setup(t, weftRepo, weftLyxDir)
 
-	dirty, ok = status["dirty"].(bool)
-	if !ok {
-		t.Errorf("status[dirty] should be a bool; got %v", status["dirty"])
-	}
-	if !dirty {
-		t.Errorf("dirty = false on modified tree; want true")
+			status, err := Status(weftRepo, hostLink, weftLyxDir, []string{"_lyx"})
+			if err != nil {
+				t.Fatalf("Status: %v", err)
+			}
+
+			junctionOk, ok := status["junction_ok"].(bool)
+			if !ok {
+				t.Errorf("status[junction_ok] should be a bool; got %v", status["junction_ok"])
+			}
+			if junctionOk != tt.wantJunctionOk {
+				t.Errorf("junction_ok = %v; want %v", junctionOk, tt.wantJunctionOk)
+			}
+
+			reason, ok := status["junction_reason"].(string)
+			if !ok {
+				t.Errorf("status[junction_reason] should be a string; got %v", status["junction_reason"])
+			}
+			if reason != tt.wantReason {
+				t.Errorf("junction_reason = %q; want %q", reason, tt.wantReason)
+			}
+		})
 	}
 }
 
-func TestStatus_JunctionMissing(t *testing.T) {
-	weftRepo := newTestWeftRepo(t)
-	tmpDir := t.TempDir()
-	hostLink := filepath.Join(tmpDir, "_lyx")
-
-	status, err := Status(weftRepo, hostLink, "", []string{"_lyx"})
-	if err != nil {
-		t.Fatalf("Status: %v", err)
-	}
-
-	junctionOk, ok := status["junction_ok"].(bool)
-	if !ok {
-		t.Errorf("status[junction_ok] should be a bool; got %v", status["junction_ok"])
-	}
-	if junctionOk {
-		t.Errorf("junction_ok = true when hostLink missing; want false")
-	}
-
-	reason, ok := status["junction_reason"].(string)
-	if !ok {
-		t.Errorf("status[junction_reason] should be a string; got %v", status["junction_reason"])
-	}
-	if reason != "host _lyx junction missing" {
-		t.Errorf("junction_reason = %q; want %q", reason, "host _lyx junction missing")
-	}
-}
-
-func TestStatus_JunctionPlainDir(t *testing.T) {
-	weftRepo := newTestWeftRepo(t)
-	tmpDir := t.TempDir()
-	hostLink := filepath.Join(tmpDir, "_lyx")
-
-	// Create a plain directory (not a junction)
-	if err := os.MkdirAll(hostLink, 0o755); err != nil {
-		t.Fatalf("MkdirAll: %v", err)
-	}
-
-	status, err := Status(weftRepo, hostLink, "", []string{"_lyx"})
-	if err != nil {
-		t.Fatalf("Status: %v", err)
-	}
-
-	junctionOk, ok := status["junction_ok"].(bool)
-	if !ok {
-		t.Errorf("status[junction_ok] should be a bool; got %v", status["junction_ok"])
-	}
-	if junctionOk {
-		t.Errorf("junction_ok = true for plain dir; want false")
-	}
-
-	reason, ok := status["junction_reason"].(string)
-	if !ok {
-		t.Errorf("status[junction_reason] should be a string; got %v", status["junction_reason"])
-	}
-	if reason != "host _lyx is not a junction" {
-		t.Errorf("junction_reason = %q; want %q", reason, "host _lyx is not a junction")
-	}
-}
-
-func TestStatus_JunctionOk_Symlink(t *testing.T) {
-	if os.Getenv("SKIP_SYMLINK_TEST") == "1" {
-		t.Skip("symlink test skipped")
-	}
-
-	weftRepo := newTestWeftRepo(t)
-	weftLyxDir := filepath.Join(weftRepo, "_lyx")
-
-	tmpDir := t.TempDir()
-	hostLink := filepath.Join(tmpDir, "_lyx")
-
-	// Create a symlink (or junction on Windows)
-	// Try symlink first; if that fails, skip the test
-	err := os.Symlink(weftLyxDir, hostLink)
-	if err != nil {
-		t.Skipf("os.Symlink failed (likely Windows without privilege): %v", err)
-	}
-
-	status, err := Status(weftRepo, hostLink, weftLyxDir, []string{"_lyx"})
-	if err != nil {
-		t.Fatalf("Status: %v", err)
-	}
-
-	junctionOk, ok := status["junction_ok"].(bool)
-	if !ok {
-		t.Errorf("status[junction_ok] should be a bool; got %v", status["junction_ok"])
-	}
-	if !junctionOk {
-		t.Errorf("junction_ok = false for valid symlink; want true. Reason: %s", status["junction_reason"])
-	}
-
-	reason, ok := status["junction_reason"].(string)
-	if !ok {
-		t.Errorf("status[junction_reason] should be a string; got %v", status["junction_reason"])
-	}
-	if reason != "" {
-		t.Errorf("junction_reason = %q on valid junction; want empty", reason)
-	}
-}
-
+// TestStatus_JunctionOk_Windows is kept separate from the TestStatus_Junction
+// table because Windows junctions created via `mklink /J` may not report
+// ModeSymlink on all Go versions; when unrecognised it skips rather than fails,
+// which the generic table assertion cannot express.
 func TestStatus_JunctionOk_Windows(t *testing.T) {
-	// This test only runs on Windows and requires privilege
 	if os.Getenv("SKIP_MKLINK_TEST") == "1" {
 		t.Skip("mklink test skipped")
 	}
+	t.Parallel()
 
-	weftRepo := newTestWeftRepo(t)
+	fixture := lyxtest.CopyWeft(t)
+	weftRepo := fixture.WeftPath
 	weftLyxDir := filepath.Join(weftRepo, "_lyx")
 
 	tmpDir := t.TempDir()
 	hostLink := filepath.Join(tmpDir, "_lyx")
 
-	// Try creating a Windows junction via cmd /c mklink /J
-	// Note: Windows junctions may not have ModeSymlink set in all Go versions
-	// This test is best-effort and may skip on systems without privilege
 	cmd := exec.Command("cmd", "/c", "mklink", "/J", hostLink, weftLyxDir)
 	if err := cmd.Run(); err != nil {
 		t.Skipf("mklink /J failed (likely not on Windows or no privilege): %v", err)
 	}
 
-	// Note: On some Windows systems, junctions may not report ModeSymlink
-	// but EvalSymlinks should still work. This test is skipped if the junction
-	// cannot be recognized.
 	status, err := Status(weftRepo, hostLink, weftLyxDir, []string{"_lyx"})
 	if err != nil {
 		t.Fatalf("Status: %v", err)
@@ -195,8 +184,6 @@ func TestStatus_JunctionOk_Windows(t *testing.T) {
 	if !ok {
 		t.Errorf("status[junction_ok] should be a bool; got %v", status["junction_ok"])
 	}
-
-	// On Windows, the ModeSymlink bit may not be set, so we skip if not recognized
 	if !junctionOk {
 		reason, _ := status["junction_reason"].(string)
 		if reason == "host _lyx is not a junction" {

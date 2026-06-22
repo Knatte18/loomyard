@@ -34,6 +34,72 @@ editing the old one, so the trend stays visible.
 
 ## Results
 
+### 2026-06-21 — after `optimize-test-suite`
+
+The git-spawning tests in `internal/worktree`, `internal/weft`, and `internal/paths`
+were migrated onto shared `lyxtest` fixtures, gated behind a build tag, and
+parallelised. This splits the suite into **two tiers**:
+
+```sh
+# Tier 1 — default / offline loop. No build tag.
+# Runs only the pure-unit + static-guard tests; spawns zero git subprocesses.
+go test ./...
+
+# Tier 2 — gated integration loop. Opt-in via the build tag.
+# Runs the full git-spawning suite (real worktrees, commits, pushes, junctions).
+go test -tags integration ./...
+```
+
+The headline guarantee is that **Tier 1 is offline**: `go test ./...` no longer
+spawns `git` from the three migrated packages, so the default developer loop and CI
+unit stage are fast and hermetic. The git round-trips moved into Tier 2, which you
+run on demand (and in CI's integration stage).
+
+#### Before / after wall-clock (uncached, `-count=1`)
+
+| Package              | Tier 1 (untagged) before | Tier 1 (untagged) after | Tier 2 (integration) after |
+|----------------------|--------------------------|-------------------------|----------------------------|
+| `internal/worktree`  | 53.6 s                   | **1.06 s**              | 30.6 s                     |
+| `internal/paths`     | 19.8 s                   | **0.17 s**              | 4.05 s                     |
+| `internal/weft`      | not separately listed¹   | **0.22 s**              | 21.5 s                     |
+
+¹ The 2026-06-15 block did not record `internal/weft` as its own row, so there is no
+cited "before" untagged number; its pre-migration suite was untagged and git-spawning.
+
+- **Full offline loop** (`go test ./... -count=1`): **~27.6 s**, down from **~82 s**.
+  `internal/worktree` fell from the ~54 s floor to ~1.5 s in the default loop, so the
+  floor is now `internal/board` (~24 s) and `internal/ide` (~12 s) — both unmigrated
+  and out of scope for this task.
+- Tier 1 for the three migrated packages totals **~1.5 s** — comfortably under the
+  `< ~5 s` default-loop target. Tier 2 for the three packages runs the packages in
+  parallel, so its wall-clock is bounded by the slowest (`worktree`, ~31 s), under the
+  `< ~45 s` integration target. Per the discussion the `< ~5 s` figure is a target
+  confirmed against the measured untagged baseline, not a hard precondition.
+
+#### Equivalence guardrail
+
+The post-migration test-name set is a **superset** of the pre-migration set for all
+three packages (verified by diffing `-list` + `=== RUN` baselines): `worktree`
+24 top-level / 58 subtests, `paths` 12 / 44, `weft` preserved with no net loss.
+Intentional table-driven folds (same assertions, fewer top-level funcs):
+
+- `weft`: `Commit_*` → `TestCommit`, `Push_*` → `TestPush`, `Status_*`/`Status_Junction*`
+  → `TestStatus` + `TestStatus_Junction` (the `mklink`/`SKIP_MKLINK_TEST` junction case
+  and the `scopedPathspec` assertion are kept as standalone funcs).
+- `worktree`: `TestAdd` precondition subtests and `TestRemove` dirty-gate variants are
+  table-driven over one shared `CopyPaired` base.
+
+No assertion or named (sub)test was dropped.
+
+#### Parallel safety (`-race`)
+
+The new `t.Parallel()` usage is parallel-safe **by construction**: each parallel test
+takes an isolated per-test `lyxtest` copy (`CopyHostHub`/`CopyPaired`/`CopyWeft` each
+build a fresh temp-dir tree) with no shared mutable state. The race detector (`-race`)
+is therefore *not* part of `verify` — it requires CGO/a C compiler, which the dev
+environment lacks. It may be run opportunistically in a CGO-capable CI, but it is not
+a precondition for the suite.
+
 ### 2026-06-15 — after `paths-subpath-mirroring`
 
 Full suite, uncached (`go test ./... -count=1`): **~82 s wall-clock**.
@@ -109,7 +175,11 @@ If the suite feels slow locally, the highest-leverage levers, in order:
    packages re-run, so a no-op `go test ./...` returns in ~1 s.
 2. **Scope to the package you're editing** — `go test ./internal/paths` is ~20 s
    vs ~82 s for everything.
-3. **The floor is `internal/worktree` (~54 s).** Shaving the full-suite wall-clock
-   below ~54 s requires speeding up that suite specifically (fewer real-git
-   round-trips, or shared fixtures), not adding parallelism — the other packages
-   already overlap with it.
+3. **Stay in the offline tier.** As of `optimize-test-suite`, `internal/worktree`,
+   `internal/weft`, and `internal/paths` no longer spawn `git` in the default
+   `go test ./...` loop — their git suites are behind `-tags integration`. The
+   default-loop floor is now `internal/board` (~24 s) and `internal/ide` (~12 s),
+   not `worktree`; applying the same shared-fixture + build-tag split to `board`
+   (it spawns real commit/push cycles) is the next highest-leverage move. Only
+   reach for `-tags integration` when you are changing worktree/weft/paths git
+   behaviour — and budget ~31 s for that tier.

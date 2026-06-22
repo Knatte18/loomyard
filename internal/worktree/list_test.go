@@ -1,3 +1,7 @@
+//go:build integration
+
+// list_test.go covers the git worktree list porcelain parser.
+
 package worktree_test
 
 import (
@@ -5,12 +9,15 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/lyxtest"
 	"github.com/Knatte18/loomyard/internal/worktree"
 )
 
 // TestList covers the porcelain parser: a fresh repo yields exactly the main
 // worktree, and additional worktrees appear after it with Main=false.
 func TestList(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		// extraWorktrees is the number of additional worktrees created
@@ -61,20 +68,23 @@ func TestList(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			hub := newTestRepo(t)
+			t.Parallel()
+
+			f := lyxtest.CopyHostHub(t)
 			for i := 0; i < tt.extraWorktrees; i++ {
-				wtPath := filepath.Join(filepath.Dir(hub), fmt.Sprintf("wt%d", i+1))
-				mustRun(t, hub, "git", "worktree", "add", wtPath)
+				wtPath := filepath.Join(filepath.Dir(f.Hub), fmt.Sprintf("wt%d", i+1))
+				lyxtest.MustRun(t, f.Hub, "git", "worktree", "add", wtPath)
 			}
 
 			w := worktree.New(worktree.Config{})
-			entries, err := w.List(hub)
+			entries, err := w.List(f.Hub)
 			if err != nil {
 				t.Fatalf("List() error = %v; want nil", err)
 			}
 
-			tt.verify(t, hub, entries)
+			tt.verify(t, f.Hub, entries)
 		})
 	}
 }
