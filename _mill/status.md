@@ -52,7 +52,9 @@ batches:
     start_sha: 4e27e7a2514f5454962a24f2c2eaa99360ddaa2c
     commit_sha: 7d3bbe6d59b3df8be313d8df7e6c214af00a5b4e
   - name: muxpoc
-    state: pending
+    state: running
+    implementer_session: 6cb05201-e7b0-4f33-8e1a-ef962694c05e
+    start_sha: 848d0fefd751351bf5ccfe8a2c1a77ac5440afe2
   - name: doc
     state: pending
 ```
