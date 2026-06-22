@@ -144,13 +144,10 @@ func TestSocketName(t *testing.T) {
 func TestLoadStateMissing(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	state, warn, err := LoadState(tmpDir)
+	state, err := LoadState(tmpDir)
 
 	if state != nil {
 		t.Errorf("expected nil state, got %v", state)
-	}
-	if warn != "" {
-		t.Errorf("expected no warning, got %q", warn)
 	}
 	if err != nil {
 		t.Errorf("expected nil error, got %v", err)
@@ -172,16 +169,13 @@ func TestLoadStateCorrupt(t *testing.T) {
 		t.Fatalf("failed to write corrupt state: %v", err)
 	}
 
-	state, warn, err := LoadState(tmpDir)
+	state, err := LoadState(tmpDir)
 
 	if state != nil {
 		t.Errorf("expected nil state, got %v", state)
 	}
-	if warn == "" {
-		t.Error("expected non-empty warning")
-	}
-	if err != nil {
-		t.Errorf("expected nil error, got %v", err)
+	if err == nil {
+		t.Error("expected non-nil error")
 	}
 }
 
@@ -206,13 +200,16 @@ func TestSaveLoadRoundtrip(t *testing.T) {
 		t.Fatalf("SaveState failed: %v", err)
 	}
 
+	// Verify lock file location: .lyx/muxpoc-state.json.lock
+	lockPath := filepath.Join(tmpDir, ".lyx", "muxpoc-state.json.lock")
+	if _, err := os.Stat(lockPath); err != nil {
+		t.Errorf("lock file not found at expected location %q: %v", lockPath, err)
+	}
+
 	// Load
-	loaded, warn, err := LoadState(tmpDir)
+	loaded, err := LoadState(tmpDir)
 	if err != nil {
 		t.Fatalf("LoadState failed: %v", err)
-	}
-	if warn != "" {
-		t.Errorf("LoadState returned warning: %q", warn)
 	}
 	if loaded == nil {
 		t.Fatalf("LoadState returned nil state")
