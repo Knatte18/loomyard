@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-fslink-package
 slug: extract-fslink
 branch: extract-fslink
 plan: _mill/plan
@@ -21,6 +21,7 @@ planning  '2026-06-22T11:11:36Z'
 plan-fix-r1  '2026-06-22T11:15:14Z'
 planned  '2026-06-22T11:15:34Z'
 implementing  '2026-06-22T11:19:30Z'
+approved-fslink-package  '2026-06-22T11:27:21Z'
 ```
 
 ## Batches
@@ -28,9 +29,10 @@ implementing  '2026-06-22T11:19:30Z'
 ```yaml
 batches:
   - name: fslink-package
-    state: running
+    state: approved
     implementer_session: 4466162c-2f24-493d-b093-650d5e789055
     start_sha: 23c06b34c44492ec34847e3a36eb5de1ed5f637e
+    commit_sha: 342c6aa6c87a5bc9cd989aab516da6772bc15816
   - name: migrate-callsites
     state: pending
 ```
