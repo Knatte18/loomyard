@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/git"
 )
 
@@ -91,7 +92,7 @@ func Status(weftWorktree, hostLink, weftLyxDir string, pathspec []string) (map[s
 // Returns (ok, reason) where ok is true only if the junction is correctly set up.
 func checkJunction(hostLink, weftLyxDir string) (bool, string) {
 	// Check if hostLink exists
-	info, err := os.Lstat(hostLink)
+	_, err := os.Lstat(hostLink)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return false, "host _lyx junction missing"
@@ -99,13 +100,14 @@ func checkJunction(hostLink, weftLyxDir string) (bool, string) {
 		return false, fmt.Sprintf("lstat error: %v", err)
 	}
 
-	// Check if it's a junction/symlink (mode bit test)
-	if info.Mode()&os.ModeSymlink == 0 {
+	// Check if it's a junction/symlink using fslink.IsLink
+	isLink, err := fslink.IsLink(hostLink)
+	if err != nil || !isLink {
 		return false, "host _lyx is not a junction"
 	}
 
 	// Resolve both ends and compare
-	hostResolved, err := filepath.EvalSymlinks(hostLink)
+	hostResolved, err := fslink.PointsTo(hostLink)
 	if err != nil {
 		return false, fmt.Sprintf("EvalSymlinks(hostLink) error: %v", err)
 	}

@@ -1,5 +1,13 @@
 # CLAUDE.md — Loomyard (lyx)
 
+## Persistent notes, not file-memory
+
+This project is worked in short-lived mill **worktrees** that get torn down once a task
+merges. The file-based `memory/` store is per-worktree, so anything written there
+vanishes with the worktree — don't bother saving project facts as memory. Put durable
+notes where they get versioned and merged into `main` instead: this `CLAUDE.md`,
+`_codeguide/`, or code comments.
+
 ## Mill wiki
 
 Never write to the mill wiki directly. Absolutely all interaction with the mill
@@ -35,3 +43,13 @@ programmatically-driven session *interactive*.
   swappable. **Non-Claude support is not a current priority.**
 - Cluster-reviews (N parallel reviewers) scale via psmux **windows** (spawned clusters
   land in their own windows, not a pane explosion) — long-term mux work, not now.
+
+## Filesystem links (fslink)
+
+All cross-OS links go through `internal/fslink`. On Windows it uses **directory
+junctions** (mount-point reparse points), which need no special privileges; on other
+platforms it uses symlinks. The cross-platform contract is **directory-only**:
+`fslink.CreateDirLink` is the entry point, and a `CreateFileLink` is reserved for the
+future. Do not rely on Windows **file** symlinks — they require admin / Developer Mode
+and are not available on every dev machine, so junctions (directory links) are the only
+link type guaranteed to work everywhere.

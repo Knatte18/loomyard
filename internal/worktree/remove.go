@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/git"
 	"github.com/Knatte18/loomyard/internal/paths"
 )
@@ -33,12 +34,13 @@ type RemoveResult struct {
 //  2. Locate the target and check if it exists: error if not found.
 //  3. Host dirty gate (if !force): check host worktree for uncommitted changes; reject if any found.
 //  4. Weft dirty gate (if !force): check weft worktree for uncommitted changes; reject if any found.
-//  5. Explicitly remove host _lyx junction via removeHostJunction (removeLinks only scans
+//  5. Explicitly remove host _lyx junction via removeHostJunction (fslink.RemoveLinksIn only scans
 //     immediate children and misses nested _lyx at RelPath != "."; this catches subpath junctions).
-//  6. Link cleanup: call removeLinks as root-level safety net for remaining links.
+//  6. Link cleanup: call fslink.RemoveLinksIn as root-level safety net for remaining links.
 //  7. Git remove: run `git worktree remove [--force] <target>` on host.
 //  8. Fallback: if git remove fails, use os.RemoveAll and optionally git worktree prune.
 //  9. Remove weft worktree and branch via removeWeftWorktree.
+//
 // 10. Leave <container>/_launchers/ide-menu.cmd in place.
 //
 // Returns RemoveResult on success or an error if the target doesn't exist or other failures occur.
@@ -83,11 +85,11 @@ func (w *Worktree) Remove(l *paths.Layout, slug string, force bool) (RemoveResul
 		}
 	}
 
-	// (5) Explicitly remove host _lyx junction (catches nested junctions that removeLinks misses)
+	// (5) Explicitly remove host _lyx junction (catches nested junctions that fslink.RemoveLinksIn misses)
 	removeHostJunction(l, slug)
 
 	// (6) Link cleanup (root-level safety net)
-	linksRemoved, err := removeLinks(target)
+	linksRemoved, err := fslink.RemoveLinksIn(target)
 	if err != nil {
 		return RemoveResult{}, err
 	}
