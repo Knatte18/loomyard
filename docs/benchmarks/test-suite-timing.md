@@ -122,14 +122,14 @@ documented drop. Uniquely-covered assertions are preserved.
 
 **board (23 dropped via folding):**
 - TestAbsolutePathPassthrough → TestLoadConfig/AbsolutePathPassthrough
-- TestCLIGetNonexistentTask → TestCLIErrorAndEdgeCases/GetNonexistentTask
-- TestCLIGetTask → TestCLIContract/GetTask
-- TestCLIListTasks → TestCLIContract/ListTasks
-- TestCLINotInitialized → TestCLIErrorAndEdgeCases/NotInitialized
-- TestCLIRemoveNonexistentTask → TestCLIErrorAndEdgeCases/RemoveNonexistentTask
-- TestCLIRerender → TestCLIContract/Rerender
-- TestCLISetPhase → TestCLIContract/SetPhase
-- TestCLIUpsertTask → TestCLIContract/UpsertTask
+- TestCLIGetNonexistentTask → TestCLIErrorAndEdgeCases/TestCLIGetNonexistentTask
+- TestCLIGetTask → TestCLIContract/TestCLIGetTask
+- TestCLIListTasks → TestCLIContract/TestCLIListTasks
+- TestCLINotInitialized → TestCLIErrorAndEdgeCases/TestCLINotInitialized
+- TestCLIRemoveNonexistentTask → TestCLIErrorAndEdgeCases/TestCLIRemoveNonexistentTask
+- TestCLIRerender → TestCLIContract/TestCLIRerender
+- TestCLISetPhase → TestCLIContract/TestCLISetPhase
+- TestCLIUpsertTask → TestCLIContract/TestCLIUpsertTask
 - TestDefaultOutputs → TestOutputs/DefaultOutputs
 - TestDefaultsReturned → TestLoadConfig/DefaultsReturned
 - TestErrorNotInitialized → TestLoadConfig/ErrorNotInitialized
