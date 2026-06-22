@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-approved
+phase: done
 slug: extract-internal-vscode
 branch: extract-internal-vscode
 plan: _mill/plan
@@ -24,6 +24,7 @@ approved-extract-vscode  '2026-06-22T18:06:26Z'
 holistic-reviewing  '2026-06-22T18:06:56Z'
 holistic-fixing  '2026-06-22T18:08:26Z'
 holistic-approved  '2026-06-22T18:10:22Z'
+done  '2026-06-22T18:10:41Z'
 ```
 
 ## Batches
