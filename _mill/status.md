@@ -28,7 +28,9 @@ implementing  '2026-06-22T06:36:35Z'
 ```yaml
 batches:
   - name: gate-offline
-    state: pending
+    state: running
+    implementer_session: 54bcf947-57a0-41ac-9994-9cd994d4ae96
+    start_sha: 5f2566648c5f1f8c6582f8c52e1c6f616d9d56dd
   - name: board-fixtures
     state: pending
   - name: ide-fixtures
