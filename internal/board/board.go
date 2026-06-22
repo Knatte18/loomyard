@@ -67,7 +67,7 @@ func (b *Board) writeOp(mutate func(*Store) (any, error), _ string) (any, error)
 
 	// (4) Save the store first — tasks.json is the source of truth, persisted
 	// before the derived .md view (so a crash never leaves .md ahead of the data).
-	if err := store.Save(b.boardPath, "tasks.json"); err != nil {
+	if err := store.Save(); err != nil {
 		return nil, fmt.Errorf("save store: %w", err)
 	}
 

@@ -20,7 +20,7 @@ func cmdStatus(out io.Writer, cfg Config) int {
 	haveState := false
 	var state *MuxpocState
 
-	state, _, err := LoadState(cwd)
+	state, err := LoadState(cwd)
 	if err != nil {
 		return output.Err(out, fmt.Sprintf("load state: %v", err))
 	}

@@ -54,13 +54,10 @@ func cmdDaemon(out io.Writer, cfg Config) int {
 
 		case <-ticker.C:
 			// Poll for session health
-			state, warn, err := LoadState(cwd)
+			state, err := LoadState(cwd)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "error loading state: %v (will retry)\n", err)
 				continue
-			}
-			if warn != "" {
-				fmt.Fprintf(os.Stderr, "%s\n", warn)
 			}
 
 			// If no state, nothing to watch

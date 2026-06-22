@@ -18,7 +18,7 @@ import (
 func cmdReview(out io.Writer, cfg Config) int {
 	cwd := cfg.WorktreeRoot
 
-	state, _, err := LoadState(cwd)
+	state, err := LoadState(cwd)
 	if err != nil {
 		return output.Err(out, fmt.Sprintf("load state: %v", err))
 	}

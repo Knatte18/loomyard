@@ -6,6 +6,8 @@
 package board_test
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/board"
@@ -602,6 +604,84 @@ func TestUpsertTasksBatch(t *testing.T) {
 			t.Errorf("expected store unchanged, but count changed from %d to %d", beforeCount, afterCount)
 		}
 	})
+}
+
+// TestLoadNilDependsOnNormalization verifies that Load normalizes a nil DependsOn
+// to an empty slice and that a missing file yields an empty store with no error.
+//
+// Folds: TestLoadNormalizesNilDependsOn, TestLoadMissingFileReturnsEmpty
+func TestLoadNilDependsOnNormalization(t *testing.T) {
+	t.Run("TestLoadNormalizesNilDependsOn", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		taskPath := filepath.Join(tmpDir, "tasks.json")
+
+		// Write tasks.json with a task that has nil DependsOn
+		err := os.WriteFile(taskPath, []byte(`[{"id":0,"slug":"task1","title":"Task 1"}]`), 0o644)
+		if err != nil {
+			t.Fatalf("failed to write test file: %v", err)
+		}
+
+		store := board.NewStore(taskPath)
+		err = store.Load()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		tasks := store.Tasks()
+		if len(tasks) != 1 {
+			t.Fatalf("expected 1 task, got %d", len(tasks))
+		}
+
+		// Verify DependsOn is normalized to an empty slice, not nil
+		if tasks[0].DependsOn == nil {
+			t.Errorf("expected empty slice for DependsOn, got nil")
+		}
+		if len(tasks[0].DependsOn) != 0 {
+			t.Errorf("expected empty DependsOn, got %v", tasks[0].DependsOn)
+		}
+	})
+
+	t.Run("TestLoadMissingFileReturnsEmpty", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		taskPath := filepath.Join(tmpDir, "tasks.json")
+
+		// Do not create the file; test that Load handles missing file gracefully
+		store := board.NewStore(taskPath)
+		err := store.Load()
+		if err != nil {
+			t.Fatalf("expected no error for missing file, got %v", err)
+		}
+
+		tasks := store.Tasks()
+		if len(tasks) != 0 {
+			t.Errorf("expected empty task list for missing file, got %d tasks", len(tasks))
+		}
+	})
+}
+
+// TestLoadCorruptTasksJSON verifies that Load surfaces a corrupt tasks.json
+// as an error instead of silently producing an empty task list.
+func TestLoadCorruptTasksJSON(t *testing.T) {
+	tmpDir := t.TempDir()
+	taskPath := filepath.Join(tmpDir, "tasks.json")
+
+	// Write syntactically corrupt JSON
+	err := os.WriteFile(taskPath, []byte(`{this is not valid json`), 0o644)
+	if err != nil {
+		t.Fatalf("failed to write corrupt test file: %v", err)
+	}
+
+	store := board.NewStore(taskPath)
+	err = store.Load()
+	if err == nil {
+		t.Fatalf("expected error for corrupt tasks.json, got nil")
+	}
+
+	// Verify the error message indicates a load error
+	errMsg := err.Error()
+	if !stringContains(errMsg, "load store") {
+		t.Errorf("expected 'load store' in error, got: %v", err)
+	}
 }
 
 func sliceEqualStrings(a, b []string) bool {
