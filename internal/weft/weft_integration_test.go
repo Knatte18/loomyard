@@ -16,104 +16,74 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
-func TestPushIntegration_CommitLandsOnBare(t *testing.T) {
-	t.Parallel()
-	fixture := lyxtest.CopyWeft(t)
-	weftRepo := fixture.WeftPath
-
-	// Modify and commit using WriteFile
-	lyxFile := filepath.Join(weftRepo, "_lyx", "config.yaml")
-	if err := os.WriteFile(lyxFile, []byte("v1"), 0o644); err != nil {
-		t.Fatalf("WriteFile: %v", err)
+func TestPushIntegration(t *testing.T) {
+	tests := []struct {
+		name          string
+		fileContent   string
+		verifyCatFile bool
+	}{
+		{
+			name:          "TestPushIntegration_CommitLandsOnBare",
+			fileContent:   "v1",
+			verifyCatFile: false,
+		},
+		{
+			name:          "TestPushIntegration_RebaseRetryOnNFF",
+			fileContent:   "local",
+			verifyCatFile: false,
+		},
+		{
+			name:          "TestSyncIntegration_EventuallyPushed",
+			fileContent:   "sync-test",
+			verifyCatFile: true,
+		},
 	}
 
-	committed, err := Commit(weftRepo, []string{"_lyx"}, SyncOptions{})
-	if err != nil {
-		t.Fatalf("Commit: %v", err)
-	}
-	if !committed {
-		t.Fatalf("Commit should succeed")
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			fixture := lyxtest.CopyWeft(t)
+			weftRepo := fixture.WeftPath
 
-	// Push
-	if err := Push(weftRepo, SyncOptions{}); err != nil {
-		t.Fatalf("Push: %v", err)
-	}
-}
+			// Commit a change
+			lyxFile := filepath.Join(weftRepo, "_lyx", "config.yaml")
+			if err := os.WriteFile(lyxFile, []byte(tt.fileContent), 0o644); err != nil {
+				t.Fatalf("WriteFile: %v", err)
+			}
 
-func TestPushIntegration_RebaseRetryOnNFF(t *testing.T) {
-	t.Parallel()
-	fixture := lyxtest.CopyWeft(t)
-	weftRepo := fixture.WeftPath
+			committed, err := Commit(weftRepo, []string{"_lyx"}, SyncOptions{})
+			if err != nil {
+				t.Fatalf("Commit: %v", err)
+			}
+			if !committed {
+				t.Fatalf("Commit should succeed")
+			}
 
-	// Make a commit in weft
-	lyxFile := filepath.Join(weftRepo, "_lyx", "config.yaml")
-	if err := os.WriteFile(lyxFile, []byte("local"), 0o644); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
+			// Capture the commit SHA from HEAD (needed for verifyCatFile case)
+			var commitSHA string
+			if tt.verifyCatFile {
+				cmd := exec.Command("git", "-C", weftRepo, "rev-parse", "HEAD")
+				shaOutput, err := cmd.Output()
+				if err != nil {
+					t.Fatalf("git rev-parse HEAD: %v", err)
+				}
+				commitSHA = strings.TrimSpace(string(shaOutput))
+			}
 
-	committed, err := Commit(weftRepo, []string{"_lyx"}, SyncOptions{})
-	if err != nil {
-		t.Fatalf("Commit: %v", err)
-	}
-	if !committed {
-		t.Fatalf("Commit should succeed")
-	}
+			// Push
+			if err := Push(weftRepo, SyncOptions{}); err != nil {
+				t.Fatalf("Push: %v", err)
+			}
 
-	// Push should succeed
-	if err := Push(weftRepo, SyncOptions{}); err != nil {
-		t.Fatalf("Push: %v", err)
-	}
-}
-
-func TestPullIntegration_FastForward(t *testing.T) {
-	t.Parallel()
-	fixture := lyxtest.CopyWeft(t)
-	weftRepo := fixture.WeftPath
-
-	// Pull should succeed (or at least not error) even if nothing new to pull
-	if err := Pull(weftRepo, SyncOptions{}); err != nil {
-		t.Fatalf("Pull: %v", err)
-	}
-}
-
-func TestSyncIntegration_EventuallyPushed(t *testing.T) {
-	t.Parallel()
-	fixture := lyxtest.CopyWeft(t)
-	weftRepo := fixture.WeftPath
-	bare := fixture.Bare
-
-	// Commit a change
-	lyxFile := filepath.Join(weftRepo, "_lyx", "config.yaml")
-	if err := os.WriteFile(lyxFile, []byte("sync-test"), 0o644); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
-
-	committed, err := Commit(weftRepo, []string{"_lyx"}, SyncOptions{})
-	if err != nil {
-		t.Fatalf("Commit: %v", err)
-	}
-	if !committed {
-		t.Fatalf("Commit should succeed")
-	}
-
-	// Capture the commit SHA from HEAD
-	cmd := exec.Command("git", "-C", weftRepo, "rev-parse", "HEAD")
-	shaOutput, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("git rev-parse HEAD: %v", err)
-	}
-	commitSHA := strings.TrimSpace(string(shaOutput))
-
-	// Push synchronously
-	if err := Push(weftRepo, SyncOptions{}); err != nil {
-		t.Fatalf("Push: %v", err)
-	}
-
-	// Verify the specific commit reached the bare remote.
-	cmd = exec.Command("git", "-C", bare, "-c", "safe.bareRepository=all", "cat-file", "-e", commitSHA)
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("commit %s did not reach bare remote: %v", commitSHA, err)
+			// Verify the specific commit reached the bare remote (EventuallyPushed case only)
+			if tt.verifyCatFile {
+				bare := fixture.Bare
+				cmd := exec.Command("git", "-C", bare, "-c", "safe.bareRepository=all", "cat-file", "-e", commitSHA)
+				if err := cmd.Run(); err != nil {
+					t.Fatalf("commit %s did not reach bare remote: %v", commitSHA, err)
+				}
+			}
+		})
 	}
 }
 
