@@ -167,12 +167,13 @@ resume-from-disk. `lyx run` is a pure function of {status file + artifact files}
 hidden process state. Because the status lives in the weft repo (git-synced), resume
 works across machines too. It is per-task and cwd-authoritative ([Principle 4](../overview.md#principles)).
 
-**Human boundaries.** `lyx run` drives every phase it *can* drive headlessly. When it
-reaches an inherently interactive boundary — Discussion input, or a `stuck` escalation —
-it stops cleanly, writes the next action to the status file, and exits. The human does
-the interactive part (which advances the status), and the next `lyx run` resumes
-headlessly. So `lyx run` is autonomous for everything it can advance and yields only at
-the human gates.
+**Human boundaries.** `lyx run` drives every phase it *can* drive **unattended** — the
+agents are interactive psmux sessions, but no human sits in them ([Agent execution](#agent-execution)).
+When it reaches an inherently interactive boundary — Discussion input, or a `stuck`
+escalation — it stops cleanly, writes the next action to the status file, and exits. The
+human does the interactive part (which advances the status), and the next `lyx run`
+resumes unattended. So `lyx run` is autonomous for everything it can advance and yields
+only at the human gates.
 
 ### State & contracts
 
@@ -195,15 +196,55 @@ the human gates.
 | Setup | uses existing modules | `worktree`, `weft`, `board` |
 | `/ly-*` skills | thin wrappers | over `lyx loom run` |
 
-The only new Go is the two modules (plus perhaps one small internal agent-spawn primitive
-both share). Everything else is prompt files, profiles, and the existing lyx modules.
+The new Go is the two modules plus the shared `internal/agent` spawn primitive — and its
+engine + `internal/proc` / `mux` dependencies (see [Agent execution](#agent-execution)).
+Everything else is prompt files, profiles, and the existing lyx modules.
 
 ## Entry point
 
 Today: launch `claude` in a terminal, then `/mill-start` — an interactive LLM session
-drives everything. Loom inverts this: you launch a **Go process** (`lyx run`) that drives
-and spawns `claude` headlessly per agent. A double-click wrapper script is convenience on
-top — it just calls `lyx run`. The Discussion phase is interactive; the rest run headless.
+drives everything. Loom inverts this: you launch a **Go process** (`lyx run`) that drives,
+spawning each agent as an **interactive psmux session** ([Agent execution](#agent-execution))
+and steering it unattended. A double-click wrapper script is convenience on top — it just
+calls `lyx run`. Every agent runs interactively (subscription constraint); the only
+difference is *who* is in the session — a human in Discussion, `lyx run` everywhere else.
+
+## Agent execution
+
+Every agent — producers, the review handler, cluster reviewers, the progress-judge — runs
+as an **interactive session inside psmux**, never headless `claude -p`. This is an
+**economic constraint, not a technical one**: Anthropic is removing subscription coverage
+for headless `claude -p` (announced for 2026-06-15, postponed but expected), so headless
+would force API billing; interactive sessions keep the subscription, and psmux is what
+makes a programmatically-driven session interactive.
+
+The orchestrator drives an agent by launching an interactive session in a psmux pane,
+injecting the prompt, and detecting completion via Claude Code hooks. **I/O still rides
+the file contract** — the agent writes its output files and Go reads them — so the
+file-contract design above is unchanged; only the *spawn + completion-detection* mechanism
+differs from a headless model.
+
+This adds a dependency: **`internal/agent` depends on the `mux` module** (it drives
+interactive sessions), not on a headless `exec`. mux is therefore on loom's critical path.
+
+```
+internal/proc    spawn any process (windowless / detached)        [OS]
+internal/mux     interactive psmux session management             [builds on proc]
+internal/agent   run ONE LLM agent as an interactive session,     [builds on mux + engine]
+                 via an engine (provider adapter)
+review / loom    use internal/agent per spawn
+```
+
+**Engines (provider-agnostic).** `internal/agent` runs an agent through an **engine** — a
+per-LLM adapter that knows how to launch and drive its provider as a psmux session (a
+Claude engine now; Gemini etc. later). The verdict/output contract is provider-invariant,
+which is exactly what makes engines swappable: you can replace a review handler with a
+different model without touching the review machinery. **Non-Claude support is not a
+current priority.**
+
+**Cluster scaling (long-term).** A single review's handler sits in one pane; N cluster
+reviewers would explode the pane count, so they scale via psmux **windows** instead —
+spawned clusters land in their own windows. This needs a smarter mux and is deferred.
 
 ## Principle alignment
 
