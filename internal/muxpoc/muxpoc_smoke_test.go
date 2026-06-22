@@ -207,7 +207,7 @@ func TestSmokeFullLifecycle(t *testing.T) {
 	}
 
 	// Verify state file still exists after crash
-	_, _, err = LoadState(cfg.WorktreeRoot)
+	_, err = LoadState(cfg.WorktreeRoot)
 	if err != nil {
 		t.Fatalf("state should exist after crash: %v", err)
 	}

@@ -21,12 +21,9 @@ import (
 func cmdUp(out io.Writer, cfg Config) int {
 	cwd := cfg.WorktreeRoot
 
-	state, warn, err := LoadState(cwd)
+	state, err := LoadState(cwd)
 	if err != nil {
 		return output.Err(out, fmt.Sprintf("load state: %v", err))
-	}
-	if warn != "" {
-		fmt.Fprintln(os.Stderr, warn)
 	}
 
 	mux := NewPsmuxCmd(cfg)
