@@ -28,7 +28,9 @@ implementing  '2026-06-22T18:11:01Z'
 ```yaml
 batches:
   - name: state-explicit-lock-path
-    state: pending
+    state: running
+    implementer_session: c6d4db61-83e8-4768-aed3-744be94f3c9b
+    start_sha: 629d2913b9485f8237b4bdf984536cef84521816
   - name: board-adopt-state
     state: pending
   - name: muxpoc-adopt-state
