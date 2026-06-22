@@ -39,78 +39,63 @@ func TestRunCLISpawnDispatch(t *testing.T) {
 	}
 }
 
-// TestRunCLIUnknownSubcommand tests unknown subcommand error handling.
-func TestRunCLIUnknownSubcommand(t *testing.T) {
-	gitRepo := lyxtest.CopyHostHub(t).Hub
-
-	oldCwd, _ := os.Getwd()
-	defer os.Chdir(oldCwd)
-	os.Chdir(gitRepo)
-
-	var out bytes.Buffer
-	code := RunCLI(&out, []string{"unknown"})
-
-	// Should fail with unknown subcommand error
-	if code != 1 {
-		t.Fatalf("expected exit 1 for unknown subcommand, got %d; output: %s", code, out.String())
+// TestRunCLIErrors covers error-envelope paths: unknown subcommand, missing slug, and no args.
+// All tests use os.Chdir, so they run serially.
+func TestRunCLIErrors(t *testing.T) {
+	tests := []struct {
+		name          string
+		args          []string
+		wantSubstring string
+	}{
+		{
+			name:          "TestRunCLIUnknownSubcommand",
+			args:          []string{"unknown"},
+			wantSubstring: "unknown subcommand",
+		},
+		{
+			name:          "TestRunCLIMissingSlug",
+			args:          []string{"spawn"},
+			wantSubstring: "spawn",
+		},
+		{
+			name:          "TestRunCLINoArgs",
+			args:          []string{},
+			wantSubstring: "usage",
+		},
 	}
 
-	output := out.String()
-	if !strings.Contains(output, "unknown subcommand") {
-		t.Fatalf("expected 'unknown subcommand' error, got: %q", output)
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Each test runs in its own temporary repo
+			gitRepo := lyxtest.CopyHostHub(t).Hub
 
-// TestRunCLIMissingSlug tests missing slug error for spawn.
-func TestRunCLIMissingSlug(t *testing.T) {
-	gitRepo := lyxtest.CopyHostHub(t).Hub
+			oldCwd, _ := os.Getwd()
+			defer os.Chdir(oldCwd)
+			os.Chdir(gitRepo)
 
-	oldCwd, _ := os.Getwd()
-	defer os.Chdir(oldCwd)
-	os.Chdir(gitRepo)
+			var out bytes.Buffer
+			code := RunCLI(&out, tt.args)
 
-	var out bytes.Buffer
-	code := RunCLI(&out, []string{"spawn"})
+			// All error cases return exit 1
+			if code != 1 {
+				t.Errorf("RunCLI() = %d; want 1; output: %s", code, out.String())
+			}
 
-	// Should fail with missing slug error
-	if code != 1 {
-		t.Fatalf("expected exit 1 for missing slug, got %d; output: %s", code, out.String())
-	}
+			// Check for expected substring in output
+			if !strings.Contains(out.String(), tt.wantSubstring) {
+				t.Errorf("RunCLI() output missing %q; got: %q", tt.wantSubstring, out.String())
+			}
 
-	output := out.String()
-	if !strings.Contains(output, "spawn") {
-		t.Fatalf("expected spawn error, got: %q", output)
-	}
-}
-
-// TestRunCLINoArgs tests no-args usage error.
-func TestRunCLINoArgs(t *testing.T) {
-	gitRepo := lyxtest.CopyHostHub(t).Hub
-
-	oldCwd, _ := os.Getwd()
-	defer os.Chdir(oldCwd)
-	os.Chdir(gitRepo)
-
-	var out bytes.Buffer
-	code := RunCLI(&out, []string{})
-
-	// Should fail with usage error
-	if code != 1 {
-		t.Fatalf("expected exit 1 for no args, got %d; output: %s", code, out.String())
-	}
-
-	output := out.String()
-	if !strings.Contains(output, "usage") {
-		t.Fatalf("expected usage error, got: %q", output)
-	}
-
-	// Verify output is JSON
-	var result map[string]any
-	if err := json.Unmarshal(out.Bytes(), &result); err != nil {
-		t.Fatalf("failed to parse JSON output: %v; output: %s", err, out.String())
-	}
-
-	if ok, _ := result["ok"].(bool); ok {
-		t.Fatalf("expected ok=false, got %v", result)
+			// For TestRunCLINoArgs, also verify JSON ok=false assertion
+			if tt.name == "TestRunCLINoArgs" {
+				var result map[string]any
+				if err := json.Unmarshal(out.Bytes(), &result); err != nil {
+					t.Errorf("failed to parse JSON output: %v; output: %s", err, out.String())
+				}
+				if ok, _ := result["ok"].(bool); ok {
+					t.Errorf("expected ok=false, got %v", result)
+				}
+			}
+		})
 	}
 }
