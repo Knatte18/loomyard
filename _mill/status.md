@@ -34,7 +34,9 @@ batches:
     start_sha: 5f2566648c5f1f8c6582f8c52e1c6f616d9d56dd
     commit_sha: 63c0d78ec09dda84493e6040d470afd49f1067c8
   - name: board-fixtures
-    state: pending
+    state: running
+    implementer_session: bb1a63a8-1152-452a-adbd-559be89cfc6d
+    start_sha: eab98181453e53bf892448ad733a9b30473bf440
   - name: ide-fixtures
     state: pending
   - name: board-prune
