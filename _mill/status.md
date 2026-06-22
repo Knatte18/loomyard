@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r1
+phase: planned
 slug: prune-board-tests
 branch: prune-board-tests
 plan: _mill/plan
@@ -19,4 +19,5 @@ discussion-fix-r1  '2026-06-22T17:37:36Z'
 discussed  '2026-06-22T17:37:55Z'
 planning  '2026-06-22T17:47:18Z'
 plan-fix-r1  '2026-06-22T17:50:04Z'
+planned  '2026-06-22T17:50:17Z'
 ```
