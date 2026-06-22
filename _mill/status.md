@@ -40,7 +40,9 @@ batches:
     start_sha: 50b12bb979da039e0bfac0c9dbc46d2d02d0b1eb
     commit_sha: d071d87e9a244e7e1d06dc3ec239d92dd84e27f2
   - name: weft
-    state: pending
+    state: running
+    implementer_session: da58073c-f27e-4fad-a6c7-567708a1b78d
+    start_sha: 4b9b48402d914ba2aa4e86f6ca71d2283045023b
   - name: ide
     state: pending
   - name: muxpoc
