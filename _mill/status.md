@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-extract-vscode
 slug: extract-internal-vscode
 branch: extract-internal-vscode
 plan: _mill/plan
@@ -20,6 +20,7 @@ planning  '2026-06-22T17:56:37Z'
 plan-fix-r1  '2026-06-22T17:58:59Z'
 planned  '2026-06-22T17:59:21Z'
 implementing  '2026-06-22T18:01:59Z'
+approved-extract-vscode  '2026-06-22T18:06:26Z'
 ```
 
 ## Batches
@@ -27,7 +28,8 @@ implementing  '2026-06-22T18:01:59Z'
 ```yaml
 batches:
   - name: extract-vscode
-    state: running
+    state: approved
     implementer_session: 88326b88-4d8d-4d87-a832-020f17b1ded0
     start_sha: f34a02caf2f8de6b18ac1cedba20514780d4bb01
+    commit_sha: d713f0066b06e033dd7894acd57d108418262fb1
 ```
