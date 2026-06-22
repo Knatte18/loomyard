@@ -78,7 +78,11 @@ files.
     behaviour, update it to expect the error.
   - Keep coverage that `Load` normalizes a nil `DependsOn` to an empty slice and that a
     missing file yields an empty store with no error.
-  - Update any test call of `Store.Save` to the new no-argument signature `Save()`.
+  - Note: `store_test.go` currently uses `NewStore("")` exclusively and has no
+    disk-backed `Load` test and no `Store.Save` call — so the corrupt-`tasks.json` test
+    above is the first disk-backed Load test, a new addition rather than an edit of an
+    existing one. If any `Store.Save` call is later present, update it to the new
+    no-argument signature `Save()`.
   - Do NOT modify `internal/board/board_test.go` — in particular leave
     `TestHealthCheckPassesCorruptFile` unchanged; `HealthCheck` bypasses `Load` and still
     tolerates corrupt-but-readable files. Do NOT modify the `boardtest` concurrency tests;

@@ -3,7 +3,7 @@
 ```yaml
 task: "Adopt internal/state in board and muxpoc"
 slug: "adopt-internal-state"
-approved: false
+approved: true
 started: "20260622-180236"
 parent: "main"
 root: ""

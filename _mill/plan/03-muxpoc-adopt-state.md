@@ -100,6 +100,10 @@ Independent of the board batch (disjoint files); both depend on batch 1.
   - `TestSaveLoadRoundtrip`: update to `loaded, err := LoadState(tmpDir)`; remove the
     warning assertion; keep the field-equality checks.
   - Update any other `LoadState` call in the test file to the two-value form.
+  - Add an assertion pinning the migrated lock-file location: after `SaveState(tmpDir, ...)`,
+    assert that `.lyx/muxpoc-state.json.lock` exists under `tmpDir` (the lock moved from
+    `.lyx/muxpoc-state.lock`). This guards the silent lock-filename migration described in
+    Card 4. Extend `TestSaveLoadRoundtrip` or add a small dedicated test.
 - **Commit:** `test(muxpoc): assert LoadState errors on corrupt state`
 
 ## Batch Tests
