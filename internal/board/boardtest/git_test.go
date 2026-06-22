@@ -1,8 +1,10 @@
+//go:build integration
+
 // git_test.go — unit tests for the git plumbing (git.go).
 //
 // Pull / CommitPush behavior.
 
-package board_test
+package boardtest
 
 import (
 	"os"
