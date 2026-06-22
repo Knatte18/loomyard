@@ -27,5 +27,7 @@ implementing  '2026-06-22T18:01:59Z'
 ```yaml
 batches:
   - name: extract-vscode
-    state: pending
+    state: running
+    implementer_session: 88326b88-4d8d-4d87-a832-020f17b1ded0
+    start_sha: f34a02caf2f8de6b18ac1cedba20514780d4bb01
 ```
