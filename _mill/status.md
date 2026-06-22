@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-approved
 slug: adopt-internal-state
 branch: adopt-internal-state
 plan: _mill/plan
@@ -25,6 +25,7 @@ approved-state-explicit-lock-path  '2026-06-22T18:13:54Z'
 approved-board-adopt-state  '2026-06-22T18:16:30Z'
 approved-muxpoc-adopt-state  '2026-06-22T18:19:16Z'
 holistic-reviewing  '2026-06-22T18:19:39Z'
+holistic-approved  '2026-06-22T18:21:10Z'
 ```
 
 ## Batches
