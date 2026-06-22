@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-ide
+phase: approved-muxpoc
 slug: prune-board-tests
 branch: prune-board-tests
 plan: _mill/plan
@@ -25,6 +25,7 @@ approved-board  '2026-06-22T18:08:33Z'
 approved-worktree  '2026-06-22T18:16:33Z'
 approved-weft  '2026-06-22T18:20:15Z'
 approved-ide  '2026-06-22T18:24:01Z'
+approved-muxpoc  '2026-06-22T18:26:44Z'
 ```
 
 ## Batches
@@ -52,9 +53,10 @@ batches:
     start_sha: 4e27e7a2514f5454962a24f2c2eaa99360ddaa2c
     commit_sha: 7d3bbe6d59b3df8be313d8df7e6c214af00a5b4e
   - name: muxpoc
-    state: running
+    state: approved
     implementer_session: 6cb05201-e7b0-4f33-8e1a-ef962694c05e
     start_sha: 848d0fefd751351bf5ccfe8a2c1a77ac5440afe2
+    commit_sha: 831a16cb10666761acce1b66f2f100a92edf68f0
   - name: doc
     state: pending
 ```
