@@ -144,17 +144,25 @@ documented drop. Uniquely-covered assertions are preserved.
 - TestRenderDependencies → TestRenderProposalAndShapesHomepage/Dependencies
 - TestRenderExtendedTitle → TestRenderSidebarExtendedTitle/ExtendedTitle
 - TestRenderIsolatedTask → TestRenderProposalAndShapesHomepage/IsolatedTask
+- TestRenderLayerBuckets → TestRenderProposalAndShapesHomepage/LayerBuckets
+- TestRenderMissingDependency → TestRenderProposalAndShapesHomepage/MissingDependency
+- TestRenderOrphanDetection → TestRenderSingleTask/OrphanDetection
+- TestRenderSidebarBlanks → TestRenderSidebarExtendedTitle/SidebarBlanks
+- TestRenderSingleTask → TestRenderSingleTask (table-driven within same function)
+- TestRenderStatusVariants → TestRenderStatusVariants (table-driven within same function)
+- TestRenderTaskIDFormatting → TestRenderProposalAndShapesHomepage/TaskIDFormatting
+- TestRenderToDisk → TestRenderToDisk (table-driven within same function)
+- TestRerender — facade persistence wiring (Home.md and _Sidebar.md written)
+- TestUpsertTask — facade unique assertions (tasks.json and Home.md written)
 
 **board (2 dropped with documented justification):**
 - TestRemoveTask — owned by `store_test.go:TestRemoveTaskMissing` (business logic owner)
 - TestRenderTaskStatus — strict subset of TestRenderStatusVariants (all status variants covered)
 
-(Additional folded names continue below; complete list preserved in the subtest names themselves.)
-
 **worktree (3 dropped):**
 - TestWeftPrechecksHardRequireWeftRepo → TestWeftPrechecks/HardRequireWeftRepo (or migrated into add_test.go:TestAdd/NoWeftRepo per layer rules)
 
-**weft (5 dropped):**
+**weft (6 folded):**
 - TestLoadConfig_DefaultWhenNoYAML → TestLoadConfig/DefaultWhenNoYAML
 - TestLoadConfig_OverrideFromYAML → TestLoadConfig/OverrideFromYAML
 - TestLoadConfig_MissingLyx → TestLoadConfig/MissingLyx
@@ -175,7 +183,7 @@ documented drop. Uniquely-covered assertions are preserved.
 - TestSpawnDoesNotClobber → TestSpawn/DoesNotClobber
 - TestSpawnGeneratesConfig → TestSpawn/GeneratesConfig
 
-**muxpoc (5 dropped):**
+**muxpoc (8 folded):**
 - TestLayoutChecksumIsFourHexDigits → TestLayoutChecksum/IsFourHexDigits
 - TestLayoutChecksumMatchesPsmux → TestLayoutChecksum/MatchesPsmux
 - TestRunCLINoSubcommandFails → TestRunCLIErrors/NoSubcommandFails
