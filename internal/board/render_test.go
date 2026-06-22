@@ -273,7 +273,7 @@ func TestRenderStatusVariants(t *testing.T) {
 // TestRenderSingleTask tests single-task rendering with and without body,
 // verifying proposal file creation and Home.md content.
 //
-// Folds: TestRenderSingleTaskNoBody, TestRenderSingleTaskWithBody
+// Folds: TestRenderSingleTaskNoBody, TestRenderSingleTaskWithBody, TestRenderOrphanDetection
 func TestRenderSingleTask(t *testing.T) {
 	tests := []struct {
 		name            string
@@ -301,6 +301,18 @@ func TestRenderSingleTask(t *testing.T) {
 			wantHome: []string{
 				"[test-task](proposal-test-task.md)",
 			},
+		},
+		{
+			name:            "TestRenderOrphanDetection/WithBody",
+			task:            board.Task{ID: 1, Slug: "orphan-task", Title: "Orphan Task", Body: "Original body"},
+			wantProposalKey: "proposal-orphan-task.md",
+			wantProposal:    true,
+		},
+		{
+			name:            "TestRenderOrphanDetection/WithoutBody",
+			task:            board.Task{ID: 1, Slug: "orphan-task", Title: "Orphan Task", Body: ""},
+			wantProposalKey: "proposal-orphan-task.md",
+			wantProposal:    false,
 		},
 	}
 
@@ -334,58 +346,6 @@ func TestRenderSingleTask(t *testing.T) {
 			} else {
 				if _, ok := result[tt.wantProposalKey]; ok {
 					t.Errorf("Unexpected proposal file: %s", tt.wantProposalKey)
-				}
-			}
-		})
-	}
-}
-
-// TestRenderOrphanDetection tests that rendering a task without a body removes its
-// proposal file from the result map.
-//
-// Folds: TestRenderOrphanDetection into proposal-key table
-func TestRenderOrphanDetection(t *testing.T) {
-	tests := []struct {
-		name     string
-		hasBody  bool
-		wantFile bool
-	}{
-		{
-			name:     "WithBody",
-			hasBody:  true,
-			wantFile: true,
-		},
-		{
-			name:     "WithoutBody",
-			hasBody:  false,
-			wantFile: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			task := board.Task{
-				ID:    1,
-				Slug:  "orphan-task",
-				Title: "Orphan Task",
-				Body:  "",
-			}
-			if tt.hasBody {
-				task.Body = "Original body"
-			}
-
-			result, err := board.Render([]board.Task{task}, board.DefaultOutputs())
-			if err != nil {
-				t.Fatalf("Render failed: %v", err)
-			}
-
-			if tt.wantFile {
-				if _, ok := result["proposal-orphan-task.md"]; !ok {
-					t.Errorf("Expected proposal file to exist")
-				}
-			} else {
-				if _, ok := result["proposal-orphan-task.md"]; ok {
-					t.Errorf("Proposal file should not exist")
 				}
 			}
 		})
