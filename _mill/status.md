@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussed
 slug: extract-internal-vscode
 branch: extract-internal-vscode
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-06-22T17:37:51Z'
+discussed  '2026-06-22T17:51:50Z'
 ```
