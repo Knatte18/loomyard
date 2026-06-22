@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/git"
 	"github.com/Knatte18/loomyard/internal/paths"
 )
@@ -74,12 +75,12 @@ func createWeftWorktree(l *paths.Layout, slug, branch string) error {
 // seedLyxJunction creates or verifies the host _lyx junction pointing to the weft _lyx directory.
 //
 // If the junction already exists:
-//   - Validates that it resolves to the correct target via filepath.EvalSymlinks
-//   - On Unix, additionally checks the mode bit for symlink.
+//   - Validates that it resolves to the correct target via fslink.PointsTo
+//   - Checks using fslink.IsLink to determine if it's a link
 //   - Returns nil (idempotent)
 //
 // If os.Lstat fails with not-exist:
-//   - Creates the junction via createJunction
+//   - Creates the junction via fslink.Create
 //
 // Otherwise:
 //   - Returns an error indicating the host repo contains a real _lyx that predates weft
@@ -87,34 +88,25 @@ func seedLyxJunction(l *paths.Layout, slug string) error {
 	link := l.HostLyxLink(slug)
 	target := l.WeftLyxDirFor(slug)
 
-	info, err := os.Lstat(link)
+	_, err := os.Lstat(link)
 	if err == nil {
-		// Link exists. On Windows, junctions may not show ModeSymlink,
-		// so validate via EvalSymlinks instead.
-		linkResolved, errResolve := filepath.EvalSymlinks(link)
+		// Link exists. Resolve the target first; if target doesn't exist, report distinctly.
 		targetResolved, errTarget := filepath.EvalSymlinks(target)
-
-		// If target doesn't exist (e.g., weft _lyx dir not yet created), report this distinctly
 		if errTarget != nil {
 			return fmt.Errorf("weft _lyx directory does not exist at %s; cannot validate junction target", target)
 		}
 
-		// Both paths must resolve successfully, and must resolve to the same location
-		if errResolve == nil && linkResolved == targetResolved {
-			// Idempotent: junction exists and resolves correctly
-			return nil
+		// Check if link is a link and resolves to the correct target
+		isLink, errIsLink := fslink.IsLink(link)
+		if errIsLink == nil && isLink {
+			linkResolved, errResolve := fslink.PointsTo(link)
+			if errResolve == nil && linkResolved == targetResolved {
+				// Idempotent: junction exists and resolves correctly
+				return nil
+			}
 		}
 
-		// If EvalSymlinks failed or paths don't match, check mode bit (Unix symlinks)
-		// to give a better error message
-		if info.Mode()&os.ModeSymlink == 0 {
-			return fmt.Errorf(
-				"host repo already contains a real _lyx at %s; it predates weft — migrate via the hub-creator",
-				link,
-			)
-		}
-
-		// EvalSymlinks failed or resolved to wrong target; this is also a real _lyx issue
+		// Not a link or points elsewhere; this is a real _lyx issue
 		return fmt.Errorf(
 			"host repo already contains a real _lyx at %s; it predates weft — migrate via the hub-creator",
 			link,
@@ -126,7 +118,7 @@ func seedLyxJunction(l *paths.Layout, slug string) error {
 	}
 
 	// Junction does not exist; create it
-	if err := createJunction(link, target); err != nil {
+	if err := fslink.Create(link, target); err != nil {
 		return err
 	}
 
@@ -226,16 +218,12 @@ func pushWeftBranch(l *paths.Layout, slug, branch string, opts AddOptions) error
 
 // removeHostJunction removes the host _lyx junction at the given link path.
 //
-// Uses os.Remove to delete the junction/symlink only.
+// Uses fslink.Remove to delete the junction/symlink only (idempotent).
 // Returns nil if the junction does not exist (idempotent).
 // Returns an error if removal fails for reasons other than not-exist.
 func removeHostJunction(l *paths.Layout, slug string) error {
 	link := l.HostLyxLink(slug)
-	if err := os.Remove(link); err != nil {
-		if os.IsNotExist(err) {
-			// Idempotent: already absent
-			return nil
-		}
+	if err := fslink.Remove(link); err != nil {
 		return fmt.Errorf("remove host junction %s: %w", link, err)
 	}
 	return nil
