@@ -15,36 +15,66 @@ import (
 	"github.com/Knatte18/loomyard/internal/board"
 )
 
-func TestRenderToDiskWritesAndCleansOrphans(t *testing.T) {
-	dir := t.TempDir()
-
-	// A stale proposal from a previous render that should be cleaned up.
-	ghost := filepath.Join(dir, "proposal-ghost.md")
-	if err := os.WriteFile(ghost, []byte("old"), 0o644); err != nil {
-		t.Fatal(err)
+// TestRenderToDisk verifies that RenderToDisk writes expected files and removes
+// orphaned proposal files. Subtests cover the default prefix and a custom prefix.
+//
+// Folds: TestRenderToDiskWritesAndCleansOrphans, TestRenderToDiskWithCustomProposalPrefix
+func TestRenderToDisk(t *testing.T) {
+	tests := []struct {
+		name         string
+		out          board.Outputs
+		ghostFile    string // stale proposal filename to pre-create
+		wantProposal string // expected proposal file after render
+	}{
+		{
+			name:         "TestRenderToDiskWritesAndCleansOrphans",
+			out:          board.DefaultOutputs(),
+			ghostFile:    "proposal-ghost.md",
+			wantProposal: "proposal-a.md",
+		},
+		{
+			name:         "TestRenderToDiskWithCustomProposalPrefix",
+			out:          board.Outputs{Home: "Home.md", Sidebar: "_Sidebar.md", ProposalPrefix: "prop-"},
+			ghostFile:    "prop-ghost.md",
+			wantProposal: "prop-a.md",
+		},
 	}
 
 	tasks := []board.Task{
 		{ID: 0, Slug: "a", Title: "A", Body: "proposal A"},
 		{ID: 1, Slug: "b", Title: "B"}, // no body → no proposal file
 	}
-	if err := board.RenderToDisk(dir, tasks, board.DefaultOutputs()); err != nil {
-		t.Fatalf("RenderToDisk: %v", err)
-	}
 
-	for _, f := range []string{"Home.md", "_Sidebar.md"} {
-		if _, err := os.Stat(filepath.Join(dir, f)); err != nil {
-			t.Errorf("%s not written: %v", f, err)
-		}
-	}
-	if b, err := os.ReadFile(filepath.Join(dir, "proposal-a.md")); err != nil || string(b) != "proposal A" {
-		t.Errorf("proposal-a.md: got %q, err %v", b, err)
-	}
-	if _, err := os.Stat(filepath.Join(dir, "proposal-b.md")); !os.IsNotExist(err) {
-		t.Errorf("proposal-b.md should not exist (task has no body)")
-	}
-	if _, err := os.Stat(ghost); !os.IsNotExist(err) {
-		t.Errorf("orphan proposal-ghost.md should have been removed")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+
+			// A stale proposal from a previous render that should be cleaned up.
+			ghost := filepath.Join(dir, tt.ghostFile)
+			if err := os.WriteFile(ghost, []byte("old"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+
+			if err := board.RenderToDisk(dir, tasks, tt.out); err != nil {
+				t.Fatalf("RenderToDisk: %v", err)
+			}
+
+			for _, f := range []string{"Home.md", "_Sidebar.md"} {
+				if _, err := os.Stat(filepath.Join(dir, f)); err != nil {
+					t.Errorf("%s not written: %v", f, err)
+				}
+			}
+			if b, err := os.ReadFile(filepath.Join(dir, tt.wantProposal)); err != nil || string(b) != "proposal A" {
+				t.Errorf("%s: got %q, err %v", tt.wantProposal, b, err)
+			}
+			noBodyProposal := filepath.Join(dir, tt.out.ProposalPrefix+"b.md")
+			if _, err := os.Stat(noBodyProposal); !os.IsNotExist(err) {
+				t.Errorf("%sb.md should not exist (task has no body)", tt.out.ProposalPrefix)
+			}
+			if _, err := os.Stat(ghost); !os.IsNotExist(err) {
+				t.Errorf("orphan %s should have been removed", tt.ghostFile)
+			}
+		})
 	}
 }
 
@@ -73,58 +103,60 @@ func TestRenderEmptyTaskList(t *testing.T) {
 	}
 }
 
-func TestRenderSingleTaskNoBody(t *testing.T) {
-	// (b) single task no body → Home.md has correct heading and slug line, no proposal file
-	task := board.Task{
-		ID:    1,
-		Slug:  "test-task",
-		Title: "Test Task",
-	}
-	result, err := board.Render([]board.Task{task}, board.DefaultOutputs())
-	if err != nil {
-		t.Fatalf("Render failed: %v", err)
-	}
+// TestRenderSingleTask verifies rendering of a single task with and without a body.
+//
+// Folds: TestRenderSingleTaskNoBody, TestRenderSingleTaskWithBody
+func TestRenderSingleTask(t *testing.T) {
+	t.Run("TestRenderSingleTaskNoBody", func(t *testing.T) {
+		// (b) single task no body → Home.md has correct heading and slug line, no proposal file
+		task := board.Task{
+			ID:    1,
+			Slug:  "test-task",
+			Title: "Test Task",
+		}
+		result, err := board.Render([]board.Task{task}, board.DefaultOutputs())
+		if err != nil {
+			t.Fatalf("Render failed: %v", err)
+		}
 
-	// Check Home.md has heading and slug line
-	home := result["Home.md"]
-	if !strings.Contains(home, "## **#001:** Test Task [A]") {
-		t.Errorf("Home.md missing expected heading\nGot: %s", home)
-	}
-	if !strings.Contains(home, "[test-task]") {
-		t.Errorf("Home.md missing expected slug line\nGot: %s", home)
-	}
+		home := result["Home.md"]
+		if !strings.Contains(home, "## **#001:** Test Task [A]") {
+			t.Errorf("Home.md missing expected heading\nGot: %s", home)
+		}
+		if !strings.Contains(home, "[test-task]") {
+			t.Errorf("Home.md missing expected slug line\nGot: %s", home)
+		}
 
-	// Check no proposal file
-	if _, ok := result["proposal-test-task.md"]; ok {
-		t.Errorf("Unexpected proposal file for task without body")
-	}
-}
+		if _, ok := result["proposal-test-task.md"]; ok {
+			t.Errorf("Unexpected proposal file for task without body")
+		}
+	})
 
-func TestRenderSingleTaskWithBody(t *testing.T) {
-	// (c) single task with body → proposal-<slug>.md key present with body content
-	task := board.Task{
-		ID:    1,
-		Slug:  "test-task",
-		Title: "Test Task",
-		Body:  "This is the body content",
-	}
-	result, err := board.Render([]board.Task{task}, board.DefaultOutputs())
-	if err != nil {
-		t.Fatalf("Render failed: %v", err)
-	}
+	t.Run("TestRenderSingleTaskWithBody", func(t *testing.T) {
+		// (c) single task with body → proposal-<slug>.md key present with body content
+		task := board.Task{
+			ID:    1,
+			Slug:  "test-task",
+			Title: "Test Task",
+			Body:  "This is the body content",
+		}
+		result, err := board.Render([]board.Task{task}, board.DefaultOutputs())
+		if err != nil {
+			t.Fatalf("Render failed: %v", err)
+		}
 
-	proposalKey := "proposal-test-task.md"
-	if proposalContent, ok := result[proposalKey]; !ok {
-		t.Errorf("Missing proposal file: %s", proposalKey)
-	} else if proposalContent != "This is the body content" {
-		t.Errorf("Proposal content mismatch\nExpected: %q\nGot: %q", "This is the body content", proposalContent)
-	}
+		proposalKey := "proposal-test-task.md"
+		if proposalContent, ok := result[proposalKey]; !ok {
+			t.Errorf("Missing proposal file: %s", proposalKey)
+		} else if proposalContent != "This is the body content" {
+			t.Errorf("Proposal content mismatch\nExpected: %q\nGot: %q", "This is the body content", proposalContent)
+		}
 
-	// Check Home.md has link to proposal
-	home := result["Home.md"]
-	if !strings.Contains(home, "[test-task](proposal-test-task.md)") {
-		t.Errorf("Home.md missing expected proposal link\nGot: %s", home)
-	}
+		home := result["Home.md"]
+		if !strings.Contains(home, "[test-task](proposal-test-task.md)") {
+			t.Errorf("Home.md missing expected proposal link\nGot: %s", home)
+		}
+	})
 }
 
 func TestRenderTaskStatus(t *testing.T) {
@@ -184,30 +216,51 @@ func TestRenderDependencies(t *testing.T) {
 	}
 }
 
-func TestRenderDoneTask(t *testing.T) {
-	// (f) done task → appears under # Done, heading has no layer suffix
-	doneStatus := "done"
-	task := board.Task{
-		ID:     1,
-		Slug:   "done-task",
-		Title:  "Done Task",
-		Status: &doneStatus,
+// TestRenderSpecialBucketTask verifies rendering of done and deferred tasks, both of
+// which appear in special buckets without a layer suffix in the heading.
+//
+// Folds: TestRenderDoneTask, TestRenderDeferredTask
+func TestRenderSpecialBucketTask(t *testing.T) {
+	tests := []struct {
+		name              string
+		task              board.Task
+		wantHeader        string
+		wantHeadingSuffix string // suffix that must NOT appear (no layer letter)
+	}{
+		{
+			name: "TestRenderDoneTask",
+			task: func() board.Task {
+				s := "done"
+				return board.Task{ID: 1, Slug: "done-task", Title: "Done Task", Status: &s}
+			}(),
+			wantHeader:        "# Done",
+			wantHeadingSuffix: "## **#001:** Done Task\n",
+		},
+		{
+			name:              "TestRenderDeferredTask",
+			task:              board.Task{ID: 1, Slug: "deferred-task", Title: "Deferred Task", Deferred: true},
+			wantHeader:        "# Someday",
+			wantHeadingSuffix: "## **#001:** Deferred Task\n",
+		},
 	}
 
-	result, err := board.Render([]board.Task{task}, board.DefaultOutputs())
-	if err != nil {
-		t.Fatalf("Render failed: %v", err)
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := board.Render([]board.Task{tt.task}, board.DefaultOutputs())
+			if err != nil {
+				t.Fatalf("Render failed: %v", err)
+			}
 
-	home := result["Home.md"]
+			home := result["Home.md"]
 
-	if !strings.Contains(home, "# Done") {
-		t.Errorf("Home.md missing # Done header\nGot: %s", home)
-	}
-
-	// Heading should not have layer suffix
-	if !strings.Contains(home, "## **#001:** Done Task\n") {
-		t.Errorf("Done task heading should not have layer suffix\nGot: %s", home)
+			if !strings.Contains(home, tt.wantHeader) {
+				t.Errorf("Home.md missing %q header\nGot: %s", tt.wantHeader, home)
+			}
+			// Heading should not have layer suffix
+			if !strings.Contains(home, tt.wantHeadingSuffix) {
+				t.Errorf("Task heading should not have layer suffix; want %q\nGot: %s", tt.wantHeadingSuffix, home)
+			}
+		})
 	}
 }
 
@@ -239,32 +292,6 @@ func TestRenderIsolatedTask(t *testing.T) {
 		t.Errorf("Missing layer headers\nGot: %s", home)
 	} else if layerAIdx > layerZIdx {
 		t.Errorf("Layer A should come before Layer Z")
-	}
-}
-
-func TestRenderDeferredTask(t *testing.T) {
-	// (h) deferred task → appears under # Someday
-	task := board.Task{
-		ID:       1,
-		Slug:     "deferred-task",
-		Title:    "Deferred Task",
-		Deferred: true,
-	}
-
-	result, err := board.Render([]board.Task{task}, board.DefaultOutputs())
-	if err != nil {
-		t.Fatalf("Render failed: %v", err)
-	}
-
-	home := result["Home.md"]
-
-	if !strings.Contains(home, "# Someday") {
-		t.Errorf("Home.md missing # Someday header\nGot: %s", home)
-	}
-
-	// Heading should not have layer suffix
-	if !strings.Contains(home, "## **#001:** Deferred Task\n") {
-		t.Errorf("Deferred task heading should not have layer suffix\nGot: %s", home)
 	}
 }
 
@@ -406,102 +433,74 @@ func TestRenderOrphanDetection(t *testing.T) {
 	}
 }
 
-func TestRenderConfigurableHomeFilename(t *testing.T) {
-	// Test that Render uses configured Home filename instead of "Home.md"
-	task := board.Task{
-		ID:    1,
-		Slug:  "test-task",
-		Title: "Test Task",
-	}
-	out := board.Outputs{
-		Home:           "README.md",
-		Sidebar:        "_Sidebar.md",
-		ProposalPrefix: "proposal-",
-	}
-	result, err := board.Render([]board.Task{task}, out)
-	if err != nil {
-		t.Fatalf("Render failed: %v", err)
-	}
+// TestRenderCustomOutputs verifies that Render respects configurable Outputs fields,
+// covering both a custom Home filename and a custom proposal prefix.
+//
+// Folds: TestRenderConfigurableHomeFilename, TestRenderConfigurableProposalPrefix
+func TestRenderCustomOutputs(t *testing.T) {
+	t.Run("TestRenderConfigurableHomeFilename", func(t *testing.T) {
+		// Test that Render uses configured Home filename instead of "Home.md"
+		task := board.Task{
+			ID:    1,
+			Slug:  "test-task",
+			Title: "Test Task",
+		}
+		out := board.Outputs{
+			Home:           "README.md",
+			Sidebar:        "_Sidebar.md",
+			ProposalPrefix: "proposal-",
+		}
+		result, err := board.Render([]board.Task{task}, out)
+		if err != nil {
+			t.Fatalf("Render failed: %v", err)
+		}
 
-	if _, ok := result["README.md"]; !ok {
-		t.Errorf("Result should have README.md key, got keys: %v", getKeys(result))
-	}
-	if _, ok := result["Home.md"]; ok {
-		t.Errorf("Result should not have Home.md key when configured differently")
-	}
-}
+		if _, ok := result["README.md"]; !ok {
+			t.Errorf("Result should have README.md key, got keys: %v", getKeys(result))
+		}
+		if _, ok := result["Home.md"]; ok {
+			t.Errorf("Result should not have Home.md key when configured differently")
+		}
+	})
 
-func TestRenderConfigurableProposalPrefix(t *testing.T) {
-	// Test that Render uses configured proposal prefix
-	task := board.Task{
-		ID:    1,
-		Slug:  "test-task",
-		Title: "Test Task",
-		Body:  "Proposal body",
-	}
-	out := board.Outputs{
-		Home:           "Home.md",
-		Sidebar:        "_Sidebar.md",
-		ProposalPrefix: "prop-",
-	}
-	result, err := board.Render([]board.Task{task}, out)
-	if err != nil {
-		t.Fatalf("Render failed: %v", err)
-	}
+	t.Run("TestRenderConfigurableProposalPrefix", func(t *testing.T) {
+		// Test that Render uses configured proposal prefix
+		task := board.Task{
+			ID:    1,
+			Slug:  "test-task",
+			Title: "Test Task",
+			Body:  "Proposal body",
+		}
+		out := board.Outputs{
+			Home:           "Home.md",
+			Sidebar:        "_Sidebar.md",
+			ProposalPrefix: "prop-",
+		}
+		result, err := board.Render([]board.Task{task}, out)
+		if err != nil {
+			t.Fatalf("Render failed: %v", err)
+		}
 
-	// Check proposal file uses custom prefix
-	if _, ok := result["prop-test-task.md"]; !ok {
-		t.Errorf("Result should have prop-test-task.md key, got keys: %v", getKeys(result))
-	}
-	if _, ok := result["proposal-test-task.md"]; ok {
-		t.Errorf("Result should not have proposal-test-task.md with custom prefix")
-	}
+		// Check proposal file uses custom prefix
+		if _, ok := result["prop-test-task.md"]; !ok {
+			t.Errorf("Result should have prop-test-task.md key, got keys: %v", getKeys(result))
+		}
+		if _, ok := result["proposal-test-task.md"]; ok {
+			t.Errorf("Result should not have proposal-test-task.md with custom prefix")
+		}
 
-	// Check links in Home.md use custom prefix
-	home := result["Home.md"]
-	if !strings.Contains(home, "[test-task](prop-test-task.md)") {
-		t.Errorf("Home.md should use custom prefix in links\nGot: %s", home)
-	}
+		// Check links in Home.md use custom prefix
+		home := result["Home.md"]
+		if !strings.Contains(home, "[test-task](prop-test-task.md)") {
+			t.Errorf("Home.md should use custom prefix in links\nGot: %s", home)
+		}
 
-	// Check links in Sidebar use custom prefix
-	sidebar := result["_Sidebar.md"]
-	if !strings.Contains(sidebar, "[Test Task [A]](prop-test-task.md)") {
-		t.Errorf("Sidebar should use custom prefix in links\nGot: %s", sidebar)
-	}
-}
-
-func TestRenderToDiskWithCustomProposalPrefix(t *testing.T) {
-	// Test that RenderToDisk removes stale files with custom prefix
-	dir := t.TempDir()
-
-	// Create a stale proposal with custom prefix
-	ghost := filepath.Join(dir, "prop-ghost.md")
-	if err := os.WriteFile(ghost, []byte("old"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	tasks := []board.Task{
-		{ID: 0, Slug: "a", Title: "A", Body: "proposal A"},
-		{ID: 1, Slug: "b", Title: "B"}, // no body → no proposal file
-	}
-	out := board.Outputs{
-		Home:           "Home.md",
-		Sidebar:        "_Sidebar.md",
-		ProposalPrefix: "prop-",
-	}
-	if err := board.RenderToDisk(dir, tasks, out); err != nil {
-		t.Fatalf("RenderToDisk: %v", err)
-	}
-
-	// Check that the new proposal file was created with custom prefix
-	if b, err := os.ReadFile(filepath.Join(dir, "prop-a.md")); err != nil || string(b) != "proposal A" {
-		t.Errorf("prop-a.md: got %q, err %v", b, err)
-	}
-
-	// Check that the orphan with custom prefix was removed
-	if _, err := os.Stat(ghost); !os.IsNotExist(err) {
-		t.Errorf("orphan prop-ghost.md should have been removed")
-	}
+		// Check links in Sidebar use custom prefix
+		sidebar := result["_Sidebar.md"]
+		if !strings.Contains(sidebar, "[Test Task [A]](prop-test-task.md)") {
+			t.Errorf("Sidebar should use custom prefix in links\nGot: %s", sidebar)
+		}
+	})
 }
 
 func getKeys(m map[string]string) []string {

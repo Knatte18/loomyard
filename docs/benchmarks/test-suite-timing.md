@@ -1,80 +1,164 @@
 # Test-suite timing
 
-Per-suite and per-test wall-clock for the whole repo, so a slow suite is visible
-on its own rather than hidden in one combined number. This complements
-[board-performance.md](board-performance.md), which benchmarks the board command
-hot path specifically; this file times the **`go test` suites** themselves.
+Recorded per-package and per-test wall-clock for the whole repo, so a slow suite
+is visible on its own rather than hidden in one combined number. This file holds
+the **numbers**; for how to run the suite, the two tiers, and the timing harness
+that produces these tables, see [running-tests.md](running-tests.md). For the
+board command hot path specifically, see [board-performance.md](board-performance.md).
 
-## How to run
+To reproduce the current numbers: `go run ./cmd/testtiming` (fast) or
+`go run ./cmd/testtiming -full` (integration).
 
-```sh
-# Per-package (suite) timing — the headline numbers below.
-go test ./... -count=1
+## Reading the tables
 
-# Per-test timing, structured (parse Elapsed from the JSON stream).
-go test ./... -count=1 -json
+There are two tiers, and they are **different test sets, not the same tests run
+twice** (full explanation in [running-tests.md](running-tests.md#the-two-tiers)):
 
-# One package, verbose, with per-test seconds:
-go test ./internal/worktree -count=1 -v
-```
+- **Tier 1** — the default offline loop (`go test ./...`): fast, no git.
+- **Tier 2** — the opt-in integration loop (`go test -tags integration ./...`):
+  Tier 1 plus the real-git tests; slow by design.
 
-`-count=1` disables the test cache so every run is honest; without it, unchanged
-packages report `(cached)` in ~0 s and the numbers lie.
+**Compare _down_ a column** (is this package fast in the loop I run?), **never
+_across_** — Tier 2 is the superset, so its larger numbers are expected, not a
+regression.
 
-## Context
+Numbers are wall-clock on Windows and **noisy** (Windows file I/O + Defender +
+process-creation tax — see [board-performance.md](board-performance.md#process-startup-context));
+treat them as order-of-magnitude.
 
-Numbers are wall-clock on Windows and are **noisy** (Windows file I/O + Defender +
-process-creation tax — see [board-performance.md](board-performance.md#process-startup-context)).
-Treat them as order-of-magnitude. Record a new dated block per revision rather than
-editing the old one, so the trend stays visible.
+## Current best times
+
+As of **2026-06-22** (after `optimize-remaining-test-suites`).
 
 - Machine: Intel Core Ultra 7 155U, `windows/amd64`, 14 logical CPUs
 - Go 1.26.4, default GC, `GOMAXPROCS` = NumCPU (14)
-- Endpoint security active (≈30 ms process-creation tax per spawned process)
 
-## Results
+### Headline
+
+| Loop | Command | Wall-clock |
+|------|---------|-----------|
+| **Tier 1** — offline, default | `go test ./... -count=1` | **~3.5 s** |
+| **Tier 2** — integration, opt-in | `go test -tags integration ./... -count=1` | **~42 s** |
+
+Tier 1 is offline repo-wide: zero git subprocesses. Tier 2's wall-clock is bounded
+by its single slowest package (`internal/board/boardtest`, ~42 s), since `go test`
+runs packages in parallel.
+
+### Per package (uncached, `-count=1`)
+
+Each column is a separate run. The **Tier 2 cost** column says where that package's
+integration time actually goes.
+
+| Package | Tier 1 (offline) | Tier 2 (integration) | Where the Tier 2 cost is |
+|---------|------------------|----------------------|--------------------------|
+| `internal/board/boardtest` | 2.0 s          | **41.8 s** | real git commit/push, incl. one real GitHub push |
+| `internal/worktree`        | 0.7 s          | **30.6 s** | real `git worktree` add/remove, junctions        |
+| `internal/weft`            | 0.8 s          | **19.7 s** | real git sync/status round-trips                 |
+| `internal/ide`             | 0.6 s          | 13.9 s     | spawns the binary, drives the TUI                |
+| `internal/lyxtest`         | no test files¹ | 5.8 s      | builds the shared git fixture templates          |
+| `internal/paths`           | 0.6 s          | 4.9 s      | mirrored-path filesystem geometry                |
+| `internal/git`             | no test files¹ | 1.4 s      | gated git-wrapper tests                          |
+| `internal/board`           | 0.9 s          | 1.2 s      | heavy tests relocated to `boardtest`             |
+| `cmd/lyx`                  | 1.0 s          | 1.3 s      | —                                                |
+| `internal/muxpoc`          | 1.6 s          | 1.5 s      | —                                                |
+| `config`, `fsx`, `gitignore`, `lock`, `output`, `state` | < 1.2 s each | < 1.2 s each | pure unit, no git |
+
+¹ No untagged test files — every test in the package needs `-tags integration`, so
+the package is absent from the default `-list` and contributes nothing to Tier 1.
+
+**Why `boardtest` is ~42 s in Tier 2:** that column is the relocated real-git
+suite. It is supposed to be heavy and only runs when you opt in. In Tier 1 the same
+package is 2.0 s because its git tests are gated out.
+
+## History (trend log)
+
+Append-only: each block is the state **at that revision** and is frozen, so the
+trend stays visible. Newest first. The "Current best times" section above always
+reflects the latest block.
+
+### 2026-06-22 — after `optimize-remaining-test-suites`
+
+The git-spawning tests in `internal/board` (`git_test.go`, `sync_test.go`) and
+`internal/ide` (`cli_test.go`, `menu_test.go`) were gated behind the `integration`
+build tag and relocated into `internal/board/boardtest`. The `render_test.go` and
+`store_test.go` top-level functions were folded into table-driven tests. Seven
+git/sync tests moved from `internal/board` (Tier 1) into `internal/board/boardtest`
+(Tier 2). This completes the two-tier split across the whole repo.
+
+#### Before / after wall-clock (uncached, `-count=1`)
+
+| Package                    | Tier 1 before | Tier 1 after | Tier 2 after |
+|----------------------------|---------------|--------------|--------------|
+| `internal/board`           | ~24 s         | **0.7 s**    | ~1.2 s       |
+| `internal/board/boardtest` | ~3.9 s        | **2.0 s**    | ~41.8 s      |
+| `internal/ide`             | ~12 s         | **0.6 s**    | ~13.9 s      |
+| `internal/git`             | —             | no tests¹    | ~1.4 s       |
+
+¹ `internal/git` has no untagged test files — all its tests require `-tags integration`.
+
+- **Full offline loop** (`go test ./... -count=1`): **~3.5 s**, down from **~27.6 s**
+  (itself down from ~82 s after the prior task). The floor is now the build/link
+  overhead across packages; no single package dominates.
+- **Tier 1 is now offline repo-wide**: `go test ./...` spawns zero git subprocesses.
+  The board git/sync tests and the `internal/git` tests are absent from the default
+  `-list` and only appear under `-tags integration`.
+- **Tier 2 full wall-clock**: ~42 s, bounded by `internal/board/boardtest`.
+
+#### Equivalence guardrail
+
+The post-change test-name set is a **superset** of the pre-change set, verified by
+diffing `-list` + `=== RUN` baselines. The seven git/sync tests relocated from
+`internal/board` (Tier 1) into `internal/board/boardtest` (Tier 2) are present in
+the union of both packages under `-tags integration`:
+
+- `TestCommitPush` (3 subtests), `TestIntegrationCommitPush`, `TestIntegrationPull`,
+  `TestPull`, `TestSyncCommitsAndPushes`, `TestSyncCoalescesBurstIntoOneCommit`,
+  `TestSyncSkipPushCommitsLocallyOnly`, `TestSyncCleanTreeIsNoOp`,
+  `TestSyncIgnoresLockfiles` — all present in `board/boardtest` under integration.
+
+Table-driven folds in `internal/board` (`render_test.go`, `store_test.go`): assertions
+are preserved; no named (sub)test was dropped. The superset check is computed against
+the **union across `internal/board` (untagged) + `internal/board/boardtest`
+(integration)**.
+
+#### Parallel safety
+
+The moved board tests (`git_test.go`, `sync_test.go`) use `t.Setenv` (`BOARD_SKIP_GIT`,
+`BOARD_SKIP_PUSH`) and remain serial — Go forbids `t.Parallel()` after `t.Setenv`.
+The `internal/ide` test `cli_test.go` uses `os.Chdir` (a process-global seam) and
+remains serial; `menu_test.go` uses `t.Setenv("BOARD_SKIP_GIT", "1")` in every
+test function and likewise remains serial. The `lyxtest` per-test fixture copies
+(`CopyHostHub`, `CopyWeft`, `CopyPaired`; `CopyBoardRepo` was evaluated and not
+needed — all sync tests use `CopyWeft` directly) are isolated per-test filesystem
+trees with no shared mutable state, so any test that does not use `t.Setenv` /
+`os.Chdir` may safely call `t.Parallel()`. The `-race` detector is not a
+precondition (no CGO in this environment); it may be run opportunistically in a
+CGO-capable CI.
 
 ### 2026-06-21 — after `optimize-test-suite`
 
 The git-spawning tests in `internal/worktree`, `internal/weft`, and `internal/paths`
 were migrated onto shared `lyxtest` fixtures, gated behind a build tag, and
-parallelised. This splits the suite into **two tiers**:
-
-```sh
-# Tier 1 — default / offline loop. No build tag.
-# Runs only the pure-unit + static-guard tests; spawns zero git subprocesses.
-go test ./...
-
-# Tier 2 — gated integration loop. Opt-in via the build tag.
-# Runs the full git-spawning suite (real worktrees, commits, pushes, junctions).
-go test -tags integration ./...
-```
-
-The headline guarantee is that **Tier 1 is offline**: `go test ./...` no longer
-spawns `git` from the three migrated packages, so the default developer loop and CI
-unit stage are fast and hermetic. The git round-trips moved into Tier 2, which you
-run on demand (and in CI's integration stage).
+parallelised. This introduced the two-tier split (later completed for board/ide on
+2026-06-22).
 
 #### Before / after wall-clock (uncached, `-count=1`)
 
-| Package              | Tier 1 (untagged) before | Tier 1 (untagged) after | Tier 2 (integration) after |
-|----------------------|--------------------------|-------------------------|----------------------------|
-| `internal/worktree`  | 53.6 s                   | **1.06 s**              | 30.6 s                     |
-| `internal/paths`     | 19.8 s                   | **0.17 s**              | 4.05 s                     |
-| `internal/weft`      | not separately listed¹   | **0.22 s**              | 21.5 s                     |
+| Package              | Tier 1 before          | Tier 1 after | Tier 2 after |
+|----------------------|------------------------|--------------|--------------|
+| `internal/worktree`  | 53.6 s                 | **1.06 s**   | 30.6 s       |
+| `internal/paths`     | 19.8 s                 | **0.17 s**   | 4.05 s       |
+| `internal/weft`      | not separately listed¹ | **0.22 s**   | 21.5 s       |
 
 ¹ The 2026-06-15 block did not record `internal/weft` as its own row, so there is no
 cited "before" untagged number; its pre-migration suite was untagged and git-spawning.
 
 - **Full offline loop** (`go test ./... -count=1`): **~27.6 s**, down from **~82 s**.
-  `internal/worktree` fell from the ~54 s floor to ~1.5 s in the default loop, so the
-  floor is now `internal/board` (~24 s) and `internal/ide` (~12 s) — both unmigrated
-  and out of scope for this task.
-- Tier 1 for the three migrated packages totals **~1.5 s** — comfortably under the
-  `< ~5 s` default-loop target. Tier 2 for the three packages runs the packages in
-  parallel, so its wall-clock is bounded by the slowest (`worktree`, ~31 s), under the
-  `< ~45 s` integration target. Per the discussion the `< ~5 s` figure is a target
-  confirmed against the measured untagged baseline, not a hard precondition.
+  `internal/worktree` fell from the ~54 s floor to ~1.5 s in the default loop, so at
+  this revision the floor was `internal/board` (~24 s) and `internal/ide` (~12 s) —
+  both unmigrated and out of scope for that task (addressed on 2026-06-22).
+- Tier 1 for the three migrated packages totalled **~1.5 s**. Tier 2 for the three
+  packages ran in parallel, bounded by the slowest (`worktree`, ~31 s).
 
 #### Equivalence guardrail
 
@@ -91,23 +175,15 @@ Intentional table-driven folds (same assertions, fewer top-level funcs):
 
 No assertion or named (sub)test was dropped.
 
-#### Parallel safety (`-race`)
-
-The new `t.Parallel()` usage is parallel-safe **by construction**: each parallel test
-takes an isolated per-test `lyxtest` copy (`CopyHostHub`/`CopyPaired`/`CopyWeft` each
-build a fresh temp-dir tree) with no shared mutable state. The race detector (`-race`)
-is therefore *not* part of `verify` — it requires CGO/a C compiler, which the dev
-environment lacks. It may be run opportunistically in a CGO-capable CI, but it is not
-a precondition for the suite.
-
 ### 2026-06-15 — after `paths-subpath-mirroring`
 
-Full suite, uncached (`go test ./... -count=1`): **~82 s wall-clock**.
+Full suite, uncached (`go test ./... -count=1`): **~82 s wall-clock**. This predates
+the two-tier split — every git-spawning test still ran in the default loop.
 
 `go test` runs packages in parallel (up to `GOMAXPROCS`), so wall-clock (~82 s) is
 well under the sum of per-package times (~148 s) — roughly a 1.8× overlap. The
-single longest package therefore sets the floor: `internal/worktree` at ~54 s
-cannot be hidden by parallelism.
+single longest package therefore set the floor: `internal/worktree` at ~54 s
+could not be hidden by parallelism.
 
 #### Per package (test suite)
 
@@ -130,56 +206,25 @@ cannot be hidden by parallelism.
 
 #### Slowest individual tests (top-level)
 
-| Test                                          | Suite       | Time    |
-|-----------------------------------------------|-------------|---------|
-| `TestAdd`                                      | worktree    | 13.76 s |
-| `TestCommitPush`                               | board       | 12.75 s |
-| `TestRemove`                                   | worktree    | 10.01 s |
-| `TestMirroredMethods`                          | paths       |  7.47 s |
-| `TestRunCLI`                                    | worktree    |  7.20 s |
-| `TestSyncIgnoresLockfiles`                     | board       |  6.66 s |
-| `TestWriteLaunchers`                           | worktree    |  5.61 s |
-| `TestSyncCleanTreeIsNoOp`                      | board       |  5.27 s |
-| `TestSyncCommitsAndPushes`                     | board       |  4.50 s |
-| `TestPull`                                      | board       |  4.46 s |
-| `TestList`                                      | paths       |  4.41 s |
-| `TestAddRollback`                              | worktree    |  4.33 s |
-| `TestSyncCoalescesBurstIntoOneCommit`          | board       |  3.67 s |
-| `TestMenuNumericSelection`                     | ide         |  3.30 s |
-| `TestConcurrentReadsDuringUpserts`             | boardtest   |  3.18 s |
-| `TestList`                                      | worktree    |  3.14 s |
-| `TestMenuRequiresLyxDir`                       | ide         |  2.94 s |
-| `TestSyncSkipPushCommitsLocallyOnly`           | board       |  2.73 s |
-| `TestCreatePortalMultipleSubpaths`             | worktree    |  2.53 s |
-| `TestCreatePortalRootRelPath`                  | worktree    |  2.39 s |
+| Test                                  | Suite     | Time    |
+|---------------------------------------|-----------|---------|
+| `TestAdd`                             | worktree  | 13.76 s |
+| `TestCommitPush`                      | board     | 12.75 s |
+| `TestRemove`                          | worktree  | 10.01 s |
+| `TestMirroredMethods`                 | paths     |  7.47 s |
+| `TestRunCLI`                          | worktree  |  7.20 s |
+| `TestSyncIgnoresLockfiles`            | board     |  6.66 s |
+| `TestWriteLaunchers`                  | worktree  |  5.61 s |
+| `TestSyncCleanTreeIsNoOp`             | board     |  5.27 s |
+| `TestSyncCommitsAndPushes`            | board     |  4.50 s |
+| `TestPull`                            | board     |  4.46 s |
+| `TestList`                            | paths     |  4.41 s |
+| `TestAddRollback`                     | worktree  |  4.33 s |
+| `TestSyncCoalescesBurstIntoOneCommit` | board     |  3.67 s |
+| `TestMenuNumericSelection`            | ide       |  3.30 s |
+| `TestConcurrentReadsDuringUpserts`    | boardtest |  3.18 s |
 
-### Where the time goes
-
-- **`worktree` and `board` dominate (~64 % of the sum).** Both spawn real `git`
-  subprocesses and touch the filesystem heavily — `TestAdd`/`TestRemove` create and
-  tear down worktrees, `board` sync tests run real commit/push cycles. The ~30 ms
-  process-creation tax per `git` invocation compounds across the many git calls each
-  test makes.
-- **`paths` is now ~20 s.** `TestMirroredMethods` (7.5 s) and `TestList` (4.4 s)
-  were added/extended by the `paths-subpath-mirroring` work; they exercise the new
-  subpath-mirrored geometry across multiple subpath levels, each doing filesystem
-  setup.
-- **`ide` (~19 s)** is mostly menu/CLI tests that spawn the binary and drive a TUI.
-- The remaining eight packages together cost < 14 s — they are not worth optimizing.
-
-### Reducing wall-clock
-
-If the suite feels slow locally, the highest-leverage levers, in order:
-
-1. **Rely on the test cache** — drop `-count=1` for iterative runs; only changed
-   packages re-run, so a no-op `go test ./...` returns in ~1 s.
-2. **Scope to the package you're editing** — `go test ./internal/paths` is ~20 s
-   vs ~82 s for everything.
-3. **Stay in the offline tier.** As of `optimize-test-suite`, `internal/worktree`,
-   `internal/weft`, and `internal/paths` no longer spawn `git` in the default
-   `go test ./...` loop — their git suites are behind `-tags integration`. The
-   default-loop floor is now `internal/board` (~24 s) and `internal/ide` (~12 s),
-   not `worktree`; applying the same shared-fixture + build-tag split to `board`
-   (it spawns real commit/push cycles) is the next highest-leverage move. Only
-   reach for `-tags integration` when you are changing worktree/weft/paths git
-   behaviour — and budget ~31 s for that tier.
+At this revision `worktree` and `board` dominated (~64 % of the sum): both spawn real
+`git` and touch the filesystem heavily, and the ~30 ms process-creation tax per `git`
+invocation compounds across the many calls each test makes. The two-tier migrations
+(2026-06-21 and 2026-06-22) moved this cost into Tier 2.
