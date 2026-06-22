@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-board-adopt-state
+phase: approved-muxpoc-adopt-state
 slug: adopt-internal-state
 branch: adopt-internal-state
 plan: _mill/plan
@@ -23,6 +23,7 @@ planned  '2026-06-22T18:08:22Z'
 implementing  '2026-06-22T18:11:01Z'
 approved-state-explicit-lock-path  '2026-06-22T18:13:54Z'
 approved-board-adopt-state  '2026-06-22T18:16:30Z'
+approved-muxpoc-adopt-state  '2026-06-22T18:19:16Z'
 ```
 
 ## Batches
@@ -40,7 +41,8 @@ batches:
     start_sha: cb2df4dea08c21552a4039366e8247a3d4782727
     commit_sha: 4788bacc2d0571515d9eb3ae505ee1a661830d03
   - name: muxpoc-adopt-state
-    state: running
+    state: approved
     implementer_session: a8c56be3-b712-47c2-a945-66d00e2affa5
     start_sha: 87051a6fe91ed24058017486cbe4248ab69428bb
+    commit_sha: 2a5e1a4e2ce054a6cb3e74b82e8f9e5c045e968c
 ```
