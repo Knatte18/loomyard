@@ -1,10 +1,12 @@
+//go:build integration
+
 // sync_test.go — unit tests for the background pusher (sync.go).
 //
 // Exercises Sync against a LOCAL bare repo (no network, no dummy remote): a
 // commit + push, a burst coalescing into one commit, BOARD_SKIP_PUSH committing
 // without pushing, and the clean-tree no-op.
 
-package board_test
+package boardtest
 
 import (
 	"os"
@@ -15,36 +17,19 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/board"
+	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
-// newSyncRepo creates a bare "remote" and a working clone with an upstream, seeds
-// an initial commit, and returns the working-copy path plus helpers to count
-// commits on the remote and locally.
+// newSyncRepo returns an isolated working-tree and helpers that count commits on
+// the remote (@{u}) and locally (HEAD). It uses lyxtest.CopyWeft so that fixture
+// construction runs zero per-test git spawns; the fixture already has upstream
+// tracking established via the template-once build.
 func newSyncRepo(t *testing.T) (work string, remoteCommits, localCommits func() int) {
 	t.Helper()
 	t.Setenv("BOARD_SKIP_GIT", "") // Sync must not be disabled for these tests
 
-	dir := t.TempDir()
-	bare := filepath.Join(dir, "remote.git")
-	work = filepath.Join(dir, "work")
-
-	run := func(args ...string) {
-		t.Helper()
-		if out, err := exec.Command(args[0], args[1:]...).CombinedOutput(); err != nil {
-			t.Fatalf("%v failed: %s", args, out)
-		}
-	}
-	run("git", "init", "--bare", bare)
-	run("git", "clone", bare, work)
-	run("git", "-C", work, "config", "user.email", "t@loomyard.dev")
-	run("git", "-C", work, "config", "user.name", "t")
-
-	if err := os.WriteFile(filepath.Join(work, "tasks.json"), []byte("[]\n"), 0o644); err != nil {
-		t.Fatalf("seed write: %v", err)
-	}
-	run("git", "-C", work, "add", "-A")
-	run("git", "-C", work, "commit", "-m", "init")
-	run("git", "-C", work, "push", "-u", "origin", "HEAD")
+	fixture := lyxtest.CopyWeft(t)
+	work = fixture.WeftPath
 
 	// Count from the work clone: HEAD is local commits, @{u} (the upstream
 	// remote-tracking ref, advanced on push) is what landed on the remote. This
