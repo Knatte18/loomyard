@@ -107,7 +107,7 @@ func TestRenderEmptyTaskList(t *testing.T) {
 // and brief/title formatting. Each case asserts matching expected Home.md substrings.
 //
 // Folds: TestRenderDependencies, TestRenderSpecialBucketTask, TestRenderIsolatedTask,
-// TestRenderTaskIDFormatting, TestRenderBrief, TestRenderMissingDependency
+// TestRenderTaskIDFormatting, TestRenderBrief, TestRenderMissingDependency, TestRenderLayerBuckets
 func TestRenderProposalAndShapesHomepage(t *testing.T) {
 	tests := []struct {
 		name           string
@@ -191,6 +191,17 @@ func TestRenderProposalAndShapesHomepage(t *testing.T) {
 			},
 			wantSubstrings: []string{
 				"#???: missing-task (missing)",
+			},
+		},
+		{
+			name: "TestRenderLayerBuckets",
+			tasks: []board.Task{
+				{ID: 1, Slug: "task-a", Title: "Task A"},
+				{ID: 2, Slug: "task-b", Title: "Task B"},
+			},
+			wantSubstrings: []string{
+				"# Layer A",
+				"# Layer B",
 			},
 		},
 	}
