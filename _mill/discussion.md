@@ -49,9 +49,11 @@ risky production-code refactor out of scope** (see Decisions: board-git-seam).
   (template-built-once + per-test filesystem copy, no per-test git spawn), extending
   `lyxtest` only if no existing fixture fits — **migrate where it's worth it** (fixture
   shape fits, real win), don't force-fit (see Decisions: board-fixtures, ide-scope).
-- **Parallelise** (`t.Parallel()`) the migrated/gated tests **where the env seam does not
-  block it** (best-effort; see Decisions: board-git-seam / ide-scope for which tests stay
-  serial — board unit tests and ide `menu_test` both use `t.Setenv`).
+- **Parallelise** (`t.Parallel()`) the migrated/gated tests **where no process-global seam
+  blocks it** (best-effort; see Decisions: board-git-seam / ide-scope for which tests stay
+  serial — board unit tests and ide `menu_test` use `t.Setenv`; ide `cli_test` uses
+  `os.Chdir`; the board sync/git tests use `t.Setenv`). In practice most migrated tests stay
+  serial; the headline offline win comes from gating, not parallelism.
 - **Prune `internal/board`'s oversized unit suite conservatively** (78 non-`boardtest`
   funcs; `render_test.go`=20 + `store_test.go`=19 overlap) — fold pure overlap into
   table-driven cases, drop nothing behaviourally distinct, enforce the equivalence guardrail.
@@ -150,10 +152,14 @@ risky production-code refactor out of scope** (see Decisions: board-git-seam).
   git needs where the shape fits. Add a dedicated exported board fixture to `lyxtest` **only
   if** no existing fixture fits. Default to reuse; decide concretely during implementation.
 - Rationale: The proposal's step 2 mandates reuse, and board's `newSyncRepo` helper
-  (bare + clone + upstream) closely matches `CopyWeft`'s shape; `TestPull`/`TestCommitPush`'s
-  bare+clone+configured-user matches `CopyHostHub`. lyxtest's "template-once + per-test
-  filesystem copy" design (no per-test git spawn, pure-text origin-URL rewrite) is exactly
-  what board's git tests need to stop spawning `git init`/`clone` per test.
+  (bare + clone + upstream) closely matches `CopyWeft`'s shape. **`CopyWeft` is the better
+  fit for `TestPull`**: `CopyHostHub`'s bare is **empty/never-pushed** (`buildHostHub`
+  commits in the hub but does not push to the bare, `lyxtest.go:47-133`), whereas `TestPull`
+  needs an upstream that **already has a commit to pull** — so `CopyHostHub` does not fit
+  `TestPull` without an extra push, while `CopyWeft` (which does `push -u origin main`,
+  establishing history + upstream) does. lyxtest's "template-once + per-test filesystem
+  copy" design (no per-test git spawn, pure-text origin-URL rewrite) is exactly what
+  board's git tests need to stop spawning `git init`/`clone` per test.
 - **Concrete fit risk to settle (the decider for reuse-vs-new-fixture):** default-branch
   naming. `newSyncRepo` does `git push -u origin HEAD` and deliberately counts via `@{u}`
   because "the bare repo's HEAD symref [may point] at a different default branch"
@@ -176,14 +182,26 @@ risky production-code refactor out of scope** (see Decisions: board-git-seam).
 
 - Decision: ide gets the **same playbook as board** — gate `cli_test.go` + `menu_test.go`
   behind `integration` **and** migrate their git fixtures (`newTestGitRepo`,
-  `newTestGitRepoWithWorktrees`) onto lyxtest **where it's worth it**, parallelising
-  `cli_test.go`; `menu_test.go` stays serial (`t.Setenv("BOARD_SKIP_GIT","1")`).
+  `newTestGitRepoWithWorktrees`) onto lyxtest **where it's worth it**. **Both stay serial**
+  (not parallelisable — see blockers below); the lyxtest value here is removing per-test
+  **fixture-build** git spawns from Tier 2, not parallelism.
+- **Serial blockers (verified):** `cli_test.go`'s four funcs each call `os.Chdir(gitRepo)`
+  + `defer os.Chdir(oldCwd)` (process-global cwd, illegal under `t.Parallel`); `RunCLI`
+  takes no dir argument, so parallelising would require a prod-code change (out of scope —
+  keep serial). `menu_test.go` uses `t.Setenv("BOARD_SKIP_GIT","1")` (illegal under
+  `t.Parallel`). So neither ide file is parallelised.
+- **"Where it's worth it" judgement for menu:** `menu_test.go` also does `git worktree
+  add`/`remove`/`branch -D` **in the test bodies** (`:99-102`), so migrating only the base
+  repo to lyxtest leaves those in-body spawns in Tier 2 — the migration win for menu is
+  partial. `CopyPaired` yields independent sibling repos, **not** `git worktree`-linked
+  children, so it covers only the base. The plan writer may reasonably migrate just
+  `cli_test.go`'s base (`newTestGitRepo`) and leave `menu_test.go` gated-but-unmigrated if
+  the base-only saving isn't worth it. Decide at plan time.
 - Rationale: User's directive — "lyxtest was introduced to be the common fixture point;
   use it where it's worth it." ide spawns git per-test for fixtures (not the binary), so it
-  is lyxtest-migratable exactly like board; gate-only would leave per-test git spawns in
-  Tier 2 untouched. "Where it's worth it" = migrate when the fixture shape fits (plain repo
-  ≈ `CopyHostHub`; worktree layout ≈ `CopyPaired`) and the win is real; don't force-fit a
-  fixture that doesn't match.
+  is lyxtest-migratable like board; gate-only would leave per-test fixture spawns in Tier 2.
+  "Where it's worth it" = migrate when the fixture shape fits and the saving is real; don't
+  force-fit a fixture that doesn't match (esp. menu's worktree-linked layout).
 - Note: This **supersedes** the operator's initial "gate ide only" pick, which was made on
   the mistaken premise that ide spawned the binary / drove a TUI (corrected in
   discussion-review round 2).
@@ -264,9 +282,13 @@ risky production-code refactor out of scope** (see Decisions: board-git-seam).
     worktree + child worktrees via `git worktree add`). → gate in place; migrate these
     fixtures onto lyxtest where the shape fits (`newTestGitRepo` ≈ `CopyHostHub`;
     `newTestGitRepoWithWorktrees` ≈ `CopyPaired`/`CopyHostHub` — confirm at plan time).
-    `menu_test.go` uses `t.Setenv("BOARD_SKIP_GIT","1")` (5 sites) → those tests stay
-    **serial**; `cli_test.go` has no `t.Setenv` → parallelisable once on lyxtest copies.
-    Keep `color_test.go`, `spawn_test.go`, `vscode_test.go` offline (pure units).
+    Both files stay **serial**: `menu_test.go` uses `t.Setenv("BOARD_SKIP_GIT","1")` (5
+    sites), and `cli_test.go`'s four funcs each `os.Chdir(gitRepo)` with `defer
+    os.Chdir(oldCwd)` (`:56-58,79-81,101-103,123-125`) — process-global cwd, illegal under
+    `t.Parallel` (and `RunCLI` has no dir param to thread instead). `menu_test.go` also runs
+    `git worktree add/remove/branch -D` **in the test bodies** (`:99-102`), so a lyxtest
+    base-repo migration leaves those in-body spawns in Tier 2. Keep `color_test.go`,
+    `spawn_test.go`, `vscode_test.go` offline (pure units).
 - **Board unit suite to prune (78 funcs, `internal/board/*_test.go`):** `render_test.go` 20,
   `store_test.go` 19, `config_test.go` 8, `cli_test.go` 8, `board_test.go` 7,
   `sync_test.go` 5 (moving out), `init_test.go` 4, `layer_test.go` 3, `task_test.go` 2,
@@ -316,12 +338,13 @@ between tiers, plus measuring the result.
   needed). The behavioural assertions (commit counts, push/no-push, coalescing,
   lockfile-ignore, clean-tree no-op, pull) must be **byte-for-byte preserved** — only the
   repo-construction changes. Guard with the `-list` + `=== RUN` diff.
-- **lyxtest reuse for ide fixtures:** Migrate `newTestGitRepo` (plain repo) and
-  `newTestGitRepoWithWorktrees` (main + child worktrees) onto lyxtest copies where the
-  shape fits (`CopyHostHub` / `CopyPaired`); behavioural assertions in `cli_test.go` /
-  `menu_test.go` preserved byte-for-byte. Parallelise `cli_test.go` on isolated copies;
-  `menu_test.go` stays serial (`t.Setenv`). If a fixture genuinely doesn't fit, leave that
-  test spawning git in Tier 2 rather than force-fitting ("where it's worth it").
+- **lyxtest reuse for ide fixtures:** Migrate `newTestGitRepo` (plain repo) onto a lyxtest
+  copy where the shape fits; behavioural assertions in `cli_test.go` / `menu_test.go`
+  preserved byte-for-byte. **Both files stay serial** (`cli_test.go`: `os.Chdir`;
+  `menu_test.go`: `t.Setenv`) — the migration removes per-test fixture-build spawns, not
+  parallelism. `menu_test.go`'s in-body `git worktree add/remove` spawns remain in Tier 2;
+  `CopyPaired` covers only the base, so migrating menu may not be worth it — if a fixture
+  doesn't fit, leave that test spawning git in Tier 2 rather than force-fitting.
 - **Board pruning (the TDD-sensitive part):** Before touching `render_test.go` /
   `store_test.go`, capture `go test -list '.*' ./internal/board` + a `=== RUN` baseline.
   Fold only pure-overlap cases into table-driven subtests; after, diff to prove the
@@ -375,9 +398,10 @@ between tiers, plus measuring the result.
 
 - **Q:** ide tests were mischaracterised as binary/TUI spawners; they actually run the SUT
   in-process and spawn git for fixtures. Gate-only or full lyxtest treatment? **A:** Use
-  lyxtest as the common fixture point — migrate ide's git fixtures where it's worth it,
-  parallelise `cli_test` (menu stays serial). Recorded as the `ide-scope` decision;
-  supersedes the earlier "gate ide only" pick (made on the false binary-spawn premise).
+  lyxtest as the common fixture point — migrate ide's git fixtures where it's worth it.
+  Recorded as the `ide-scope` decision; supersedes the earlier "gate ide only" pick (made
+  on the false binary-spawn premise). (Parallelism for ide was retracted in round 3 — both
+  ide files stay serial; see below.)
 - **NOTE:** boardtest mischaracterised as wholly `integration`/`smoke` gated. **Resolved:**
   corrected — boardtest mixes untagged no-git files (`bench_test`, `concurrency_test`,
   `doc`) that run in Tier 1 with `integration`-gated files; no `smoke` tag here. Moved
@@ -386,3 +410,18 @@ between tiers, plus measuring the result.
   only two `TestCommitPush` subtests skip push; `TestPull` does a real `push -u origin
   master` and the rebase-retry subtest pushes. All still local (no network) but several
   need a working upstream, reinforcing `CopyWeft` fit and the `master`-vs-`main` caveat.
+
+### Discussion-review round 3 (GAPS_FOUND) — resolutions
+
+- **GAP:** `cli_test.go` was claimed parallelisable, but all four funcs use `os.Chdir`
+  (process-global cwd), illegal under `t.Parallel`. **Resolved:** retracted the ide
+  parallelism claim — both ide files stay serial (`cli_test`: `os.Chdir`, no dir param on
+  `RunCLI`; `menu_test`: `t.Setenv`). lyxtest's value for ide is removing fixture-build
+  spawns, not parallelism.
+- **NOTE:** `menu_test.go` does `git worktree add/remove` in the test bodies, not just
+  fixture build; `CopyPaired` yields sibling repos, not worktree-linked children.
+  **Resolved:** noted that migrating menu's base leaves in-body worktree spawns in Tier 2;
+  `CopyPaired` covers only the base, so migrating menu may not be worth it (plan-time call).
+- **NOTE:** `CopyHostHub`'s bare is empty/never-pushed, so `TestPull` (needs history to
+  pull) can't reuse it directly. **Resolved:** corrected `board-fixtures` — `CopyWeft` (with
+  `push -u origin main`) is the fit for `TestPull`, not `CopyHostHub`.
