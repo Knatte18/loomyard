@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-approved
+phase: done
 slug: extract-fslink
 branch: extract-fslink
 plan: _mill/plan
@@ -28,6 +28,7 @@ holistic-fixing  '2026-06-22T11:56:05Z'
 holistic-reviewing  '2026-06-22T12:02:12Z'
 holistic-fixing  '2026-06-22T12:04:54Z'
 holistic-approved  '2026-06-22T12:10:01Z'
+done  '2026-06-22T12:10:24Z'
 ```
 
 ## Batches
