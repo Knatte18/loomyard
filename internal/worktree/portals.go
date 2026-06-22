@@ -5,39 +5,34 @@ package worktree
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 
+	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/paths"
 )
 
 // createPortal creates a portal junction from <container>/_portals/<RelPath>/<slug> to <container>/<slug>/<relpath>/_lyx.
 //
-// Delegates to createJunction with the computed link and target paths.
-// createJunction already MkdirAll's filepath.Dir(link), creating the mirrored _portals/<RelPath>/ chain.
+// Delegates to fslink.Create with the computed link and target paths.
+// fslink.Create already MkdirAll's filepath.Dir(link), creating the mirrored _portals/<RelPath>/ chain.
 func createPortal(l *paths.Layout, slug string) error {
 	link := l.PortalLink(slug)
 	target := l.PortalTarget(slug)
-	return createJunction(link, target)
+	return fslink.Create(link, target)
 }
 
 // removePortal removes the portal junction at <container>/_portals/<RelPath>/<slug>.
 //
-// Uses os.Remove to delete only the link itself, never recursing into the target.
+// Uses fslink.Remove to delete only the link itself, never recursing into the target.
 // After successful/idempotent removal, prunes empty mirrored ancestors up to but not
 // including <container>/_portals/. Returns nil if the link does not exist (idempotent).
 // Returns an error if removal fails.
 func removePortal(l *paths.Layout, slug string) error {
 	link := l.PortalLink(slug)
-	if err := os.Remove(link); err != nil {
-		if os.IsNotExist(err) {
-			// Idempotent: already absent, but still prune ancestors
-			pruneEmptyAncestors(filepath.Dir(link), l.PortalsDir())
-			return nil
-		}
+	if err := fslink.Remove(link); err != nil {
 		return fmt.Errorf("remove portal %s: %w", link, err)
 	}
-	// Successful removal; prune empty ancestors
+	// Successful/idempotent removal; prune empty ancestors
 	pruneEmptyAncestors(filepath.Dir(link), l.PortalsDir())
 	return nil
 }
