@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-fixing
 slug: optimize-remaining-test-suites
 branch: optimize-remaining-test-suites
 plan: _mill/plan
@@ -29,6 +29,7 @@ approved-docs  '2026-06-22T07:13:29Z'
 holistic-reviewing  '2026-06-22T07:14:00Z'
 holistic-fixing  '2026-06-22T07:16:14Z'
 holistic-reviewing  '2026-06-22T07:19:09Z'
+holistic-fixing  '2026-06-22T07:21:14Z'
 ```
 
 ## Batches
