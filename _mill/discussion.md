@@ -52,6 +52,8 @@ so it earns its own task.
   - `Remove(link string) error` — idempotent (nil if the link is absent); removes
     only the link entry, never recursing into the target.
   - `IsLink(path string) (bool, error)` — true if `path` is a junction or symlink.
+    Missing-path contract: returns `(false, nil)` when `path` does not exist
+    (`os.IsNotExist`); returns `(false, err)` for any other stat/syscall failure.
   - `PointsTo(link string) (string, error)` — returns the fully-resolved absolute
     target of `link` (via `EvalSymlinks`); errors if `link` is not a link or the
     target cannot be resolved.
@@ -85,8 +87,9 @@ so it earns its own task.
 - Move `internal/worktree/junction_test.go` and `internal/worktree/links_test.go`
   coverage into `internal/fslink` package tests (see Testing). Update
   `weft/status_test.go`'s Windows junction test to expect success.
-- Promote `golang.org/x/sys` from indirect to a direct `require` in `go.mod`
-  (already present at `v0.45.0`).
+- After the `golang.org/x/sys/windows` import lands, run `go mod tidy` to reclassify
+  `golang.org/x/sys v0.45.0` from indirect to a direct `require` (do **not** hand-edit
+  the require blocks — let `tidy` produce the deterministic diff).
 
 **Out:**
 
@@ -238,8 +241,8 @@ so it earns its own task.
     formats. Reimplement using `fslink.IsLink` (→ "missing"/"not a junction") and
     `fslink.PointsTo` (→ compare to resolved `weftLyxDir`, → "points elsewhere").
 - **Dependency:** `golang.org/x/sys v0.45.0` already in `go.mod` (indirect). Use
-  `golang.org/x/sys/windows`; move the require to the direct block (or just let
-  `go mod tidy` reclassify it).
+  `golang.org/x/sys/windows`; run `go mod tidy` after the import lands to reclassify
+  it as a direct require (do not hand-edit the require blocks).
 - **Reparse-point implementation notes (Windows):**
   - Open the link dir with `windows.CreateFile(name, GENERIC_WRITE, …, OPEN_EXISTING,
     FILE_FLAG_OPEN_REPARSE_POINT|FILE_FLAG_BACKUP_SEMANTICS, 0)` after creating it
@@ -313,9 +316,10 @@ four surviving files.
     original test used and which carries the `\??\` prefix on junctions; see the
     `pointsto-returns-resolved-target` decision).
   - `IsLink`: true for a created junction/symlink; false for a regular file and a
-    real directory; error/false for a missing path. On Windows specifically, verify a
-    junction created by `Create` is recognized (the case that previously forced the
-    `weft/status_test.go` skip).
+    real directory; `(false, nil)` for a missing path (and `(false, err)` for a
+    non-IsNotExist stat failure, per the API contract). On Windows specifically,
+    verify a junction created by `Create` is recognized (the case that previously
+    forced the `weft/status_test.go` skip).
   - `PointsTo`: returns the resolved target for a valid link; verify the result has
     no `\??\` prefix on Windows; errors for a non-link and for a link whose target is
     absent.
