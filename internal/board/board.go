@@ -40,7 +40,7 @@ func New(cfg Config) *Board {
 
 // writeOp runs the locked, file-only write sequence: lock → load → mutate →
 // render → write files → save. The remote backup is not done here; on success it
-// launches a detached `lyx board sync` (unless BOARD_SKIP_GIT=1) and returns
+// launches a detached `lyx board sync` (unless `b.skipGit` is set) and returns
 // without waiting. The second argument is ignored — the commit message is fixed
 // in the pusher (batched "board sync" commits), not per-write.
 func (b *Board) writeOp(mutate func(*Store) (any, error), _ string) (any, error) {
