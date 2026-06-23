@@ -165,6 +165,8 @@ case "init":
     return board.RunInit(out, moduleArgs)
 case "board":
     return board.RunCLI(out, moduleArgs)
+case "config":
+    return configcli.RunCLI(out, moduleArgs)
 case "ide":
     return ide.RunCLI(out, moduleArgs)
 case "muxpoc":
