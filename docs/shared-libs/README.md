@@ -26,4 +26,5 @@ The following libraries ship in code and tests; their mechanics are documented t
 - `internal/git` — windowless `RunGit` primitive
 - `internal/gitignore` — shared `.gitignore` block manager for multiple modules
 - `internal/lock` — cross-process file locking
+- `internal/proc` — cross-OS child-process window-hide (`HideWindow`) and detached-spawn (`Detach`) primitives
 - `internal/state` — generic locked typed JSON I/O
