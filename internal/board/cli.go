@@ -82,6 +82,9 @@ func RunCLI(out io.Writer, args []string) int {
 		}
 	}
 
+	// Fold BOARD_SKIP_* env into cfg at the single production entry point.
+	cfg = applySkipEnv(cfg)
+
 	// fs.Args() returns the arguments remaining after flags are parsed.
 	// Expected: ["<subcommand>", "<json-payload>"]
 	rest := fs.Args()
@@ -308,4 +311,16 @@ func outputListBrief(out io.Writer, tasks []BriefTask) int {
 // outputListFull writes {"ok":true,"tasks":[...]} with full Task objects and returns exit code 0.
 func outputListFull(out io.Writer, tasks []Task) int {
 	return output.Ok(out, map[string]any{"tasks": tasks})
+}
+
+// applySkipEnv folds BOARD_SKIP_GIT and BOARD_SKIP_PUSH environment variables into cfg.
+// This is the single production env read; all other consumption sites use the config fields.
+func applySkipEnv(cfg Config) Config {
+	if os.Getenv("BOARD_SKIP_GIT") == "1" {
+		cfg.SkipGit = true
+	}
+	if os.Getenv("BOARD_SKIP_PUSH") == "1" {
+		cfg.SkipPush = true
+	}
+	return cfg
 }
