@@ -40,7 +40,9 @@ batches:
     start_sha: 1791294153070c490bfa2ddd220a9401c6f2bfdc
     commit_sha: 350e7f45803ef72a82333b6e3a799642def1d183
   - name: lean-fixture-worktree
-    state: pending
+    state: running
+    implementer_session: aa7b37c1-7218-4398-b475-0106128caef1
+    start_sha: 5667632cfe8faac15afee5cb397d9b4f25b9855c
   - name: board-skip-seam-parallelize
     state: pending
   - name: record-timing
