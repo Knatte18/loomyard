@@ -213,7 +213,7 @@ options (overview Shared Decisions explains why).
 `go build ./...` leg catches the production signature changes (`Sync`, `CommitPush`,
 `RunCLI`, `New`) compiling across `cmd/lyx` and any caller; the `go test -tags integration
 ./internal/board/...` leg runs both the Tier-1 `internal/board` tests (incl. the new
-`cli_test.go` case and the migrated `board_test.go` facade tests) and the Tier-2
+white-box `skipenv_internal_test.go` and the migrated `board_test.go` facade tests) and the Tier-2
 `internal/board/boardtest` tests (`git_test.go`, `sync_test.go`, `concurrency_test.go`) now
 running in parallel. The `board_test.go` migration (card 9) is the key regression guard — its
 write-path tests would spawn real syncs without `cfg.SkipGit`. Scope is the `board` module

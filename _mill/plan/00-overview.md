@@ -3,7 +3,7 @@
 ```yaml
 task: "Speed up and stabilize the integration test tier"
 slug: optimize-integration-tier
-approved: false
+approved: true
 started: 20260623-111128
 parent: main
 root: ""

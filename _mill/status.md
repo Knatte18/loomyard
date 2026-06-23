@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r3
+phase: plan-fix-r4
 slug: optimize-integration-tier
 branch: optimize-integration-tier
 plan: _mill/plan
@@ -24,4 +24,5 @@ plan-review-r2  '2026-06-23T11:27:30Z'
 plan-fix-r2  '2026-06-23T11:28:29Z'
 plan-review-r3  '2026-06-23T11:32:47Z'
 plan-fix-r3  '2026-06-23T11:34:08Z'
+plan-fix-r4  '2026-06-23T11:38:22Z'
 ```
