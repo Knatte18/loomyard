@@ -60,10 +60,13 @@ never reached when the weft push is suppressed).
 - **Creates:** none
 - **Deletes:** none
 - **Requirements:** Replace `lyxtest.CopyPaired(t)` with `lyxtest.CopyPairedLocal(t)` at the
-  ten `SkipPush:true` call sites: `weft_test.go` lines 26, 58, 113, 212, 254; `remove_test.go`
-  lines 138, 192, 225; `add_test.go` lines 121, 180. These tests all call
-  `Add(..., AddOptions{SkipPush: true})` (host push only) and none read `f.WeftBare`, so the
-  lean fixture is a drop-in. Do not change any assertions or the `Add` options. Leave
+  ten call sites: `weft_test.go` lines 26, 58, 113, 212, 254; `remove_test.go`
+  lines 138, 192, 225; `add_test.go` lines 121, 180. Nine of these call
+  `Add(..., AddOptions{SkipPush: true})` (host push only). The tenth, `weft_test.go:254`
+  (`TestWeftRollbackOnPostHostCreateFailure`), does **not** call `Add` — it invokes
+  `rollbackAdd` directly — but it never pushes the weft branch either, so the lean fixture is
+  equally safe there. None of the ten read `f.WeftBare`, so the swap is a drop-in. Do not
+  change any assertions or the `Add` options. Leave
   `cli_test.go`/`launchers_test.go`/`portals_test.go`/`list_test.go` (which use
   `CopyHostHub`, not `CopyPaired`) untouched.
 - **Commit:** `test(worktree): use CopyPairedLocal for SkipPush tests`

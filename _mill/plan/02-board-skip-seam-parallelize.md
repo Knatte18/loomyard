@@ -133,33 +133,48 @@ options (overview Shared Decisions explains why).
 - **Deletes:** none
 - **Requirements:** In `sync_test.go`, replace every `t.Setenv("BOARD_SKIP_GIT", …)` /
   `t.Setenv("BOARD_SKIP_PUSH", …)` with the corresponding `cfg` field set before
-  `board.New(cfg)` — e.g. the `BOARD_SKIP_PUSH=1` case sets `cfg.SkipPush = true`; the
-  `t.Setenv("BOARD_SKIP_GIT", "")` ambient-neutralizer is simply deleted (tests no longer
-  read env). Add `t.Parallel()` to each top-level test that no longer sets env. Add a focused
+  `board.New(cfg)` — e.g. the `BOARD_SKIP_PUSH=1` case sets `cfg.SkipPush = true`. The
+  `newSyncRepo` helper's `t.Setenv("BOARD_SKIP_GIT", "")` ambient-neutralizer (line 29) must
+  be **deleted explicitly** — it is the seam that otherwise blocks `t.Parallel()`, and tests
+  no longer read env. Add `t.Parallel()` to each top-level test that no longer sets env. Add a focused
   assertion (a subtest or a small new test) that the seam works: with `cfg.SkipPush = true`,
   `board.New(cfg).Sync()` commits locally but leaves an unpushed commit (assert `@{u}` is
   behind `HEAD`); with `cfg.SkipGit = true`, `Sync()` is a no-op (no commit created). Use
   `lyxtest.CopyWeft` fixtures as the existing tests do.
 - **Commit:** `test(board): parallelize sync_test.go and cover the skip seam`
 
-### Card 9: Convert concurrency_test.go to cfg.SkipGit
+### Card 9: Migrate all facade write-path tests off BOARD_SKIP_GIT env
 
 - **Context:**
   - `internal/board/board.go`
   - `internal/board/config.go`
 - **Edits:**
   - `internal/board/boardtest/concurrency_test.go`
+  - `internal/board/board_test.go`
+  - `internal/board/boardtest/bench_test.go`
 - **Creates:** none
 - **Deletes:** none
-- **Requirements:** In `concurrency_test.go`, replace `t.Setenv("BOARD_SKIP_GIT", "1")` in
-  `TestConcurrentReadsDuringUpserts` and `TestConcurrentUpsertsDoNotLoseWrites` with
-  `cfg.SkipGit = true` on the `board.Config` used to build the `Board` (so `writeOp` does not
-  spawn a detached sync). Add `t.Parallel()` to both tests. Note: this file has no
-  `//go:build integration` tag (it is a Tier-1 test); the conversion is for consistency and
-  parallel-safety and does not affect Tier 2 wall-clock. Leave the benchmark helper in this
-  file (if any) consistent with its existing `b.Setenv` usage unless it also builds a Board
-  from cfg.
-- **Commit:** `test(board): convert concurrency_test.go to cfg.SkipGit`
+- **Requirements:** Every test/benchmark that builds the Board via the `board.New(cfg)`
+  **facade** and writes (UpsertTask/Rerender → `writeOp`) currently suppresses the detached
+  sync with `BOARD_SKIP_GIT=1` env. After card 3, `writeOp` keys off `b.skipGit`, so these
+  must set `cfg.SkipGit = true` instead — otherwise `spawnSync` fires against a non-repo temp
+  dir. Convert:
+  - `boardtest/concurrency_test.go` — `TestConcurrentReadsDuringUpserts` and
+    `TestConcurrentUpsertsDoNotLoseWrites`: replace `t.Setenv("BOARD_SKIP_GIT", "1")` with
+    `cfg.SkipGit = true` on the `Config` used to build the Board; add `t.Parallel()`. (Tier-1
+    file — no integration tag; conversion is for correctness + parallel-safety, not Tier 2
+    wall-clock.)
+  - `internal/board/board_test.go` — `TestUpsertTask` (line 19), `TestRerender` (line 53),
+    `TestHealthCheckPasses` (line 80): replace `t.Setenv("BOARD_SKIP_GIT", "1")` with
+    `cfg.SkipGit = true` set after `cfg := board.DefaultConfig(); cfg.Path = boardPath`. These
+    are facade write-path tests and DO regress without this. The other `TestHealthCheck*`
+    tests (no `t.Setenv`) are unchanged. Keep the `os` import (still used by `os.Stat`).
+  - `boardtest/bench_test.go` — `BenchmarkUpsertFacade` (line 182): replace
+    `b.Setenv("BOARD_SKIP_GIT", "1")` with `cfg.SkipGit = true` on the `Config` it passes to
+    `board.New`. Leave the store-level benchmarks (`BenchmarkUpsert`/`Get`/`List`) untouched —
+    they do not build a Board, so their `b.Setenv` is vestigial and harmless. `seedWiki` is
+    unchanged (it writes `tasks.json` directly, never through the facade).
+- **Commit:** `test(board): migrate facade write-path tests to cfg.SkipGit`
 
 ### Card 10: Unit-test the env→cfg resolution helper
 
@@ -185,6 +200,8 @@ options (overview Shared Decisions explains why).
 `go build ./...` leg catches the production signature changes (`Sync`, `CommitPush`,
 `RunCLI`, `New`) compiling across `cmd/lyx` and any caller; the `go test -tags integration
 ./internal/board/...` leg runs both the Tier-1 `internal/board` tests (incl. the new
-`cli_test.go` case and `concurrency_test.go`) and the Tier-2 `internal/board/boardtest`
-tests (`git_test.go`, `sync_test.go`) now running in parallel. Scope is the `board` module
+`cli_test.go` case and the migrated `board_test.go` facade tests) and the Tier-2
+`internal/board/boardtest` tests (`git_test.go`, `sync_test.go`, `concurrency_test.go`) now
+running in parallel. The `board_test.go` migration (card 9) is the key regression guard — its
+write-path tests would spawn real syncs without `cfg.SkipGit`. Scope is the `board` module
 subtree only — this batch touches nothing outside `internal/board`.

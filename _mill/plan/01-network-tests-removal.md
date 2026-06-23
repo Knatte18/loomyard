@@ -5,7 +5,7 @@ task: "Speed up and stabilize the integration test tier"
 batch: network-tests-removal
 number: 1
 cards: 2
-verify: go test -tags integration ./internal/board/boardtest -count=1
+verify: go build ./... && go test -tags integration ./internal/board/boardtest -count=1
 depends-on: []
 ```
 
@@ -43,25 +43,41 @@ batches: none — this batch only removes.
   `BenchmarkSyncGitNoPush`.
 - **Commit:** `test(board): delete real-GitHub integration tests and network benchmarks`
 
-### Card 2: Drop the "real GitHub remote" claim from running-tests.md
+### Card 2: Update stale references to the deleted network tests
 
 - **Context:** none
 - **Edits:**
   - `docs/benchmarks/running-tests.md`
+  - `internal/board/boardtest/doc.go`
+  - `docs/benchmarks/board-performance.md`
+  - `cmd/testtiming/main.go`
 - **Creates:** none
 - **Deletes:** none
-- **Requirements:** In `docs/benchmarks/running-tests.md`, update the Tier 2 description
-  so it no longer claims the integration tier pushes to a real GitHub remote. Specifically,
-  in the "The two tiers" section, change the Tier 2 bullet that reads "the gated tests that
-  spawn real `git` (worktrees, commits, pushes, junctions) and, in one case, push to a real
-  GitHub remote" to drop the "and, in one case, push to a real GitHub remote" clause — Tier
-  2 is now all-local git. Leave the rest of the file (commands, harness, two-tier rationale)
-  intact. Do not edit `test-suite-timing.md` here (batch 4 rewrites its numbers).
-- **Commit:** `docs(benchmarks): Tier 2 is now all-local git (no real remote)`
+- **Requirements:** Remove every reference to the now-deleted network tests/benchmarks so no
+  doc or comment dangles:
+  - `docs/benchmarks/running-tests.md` — in the "The two tiers" section, change the Tier 2
+    bullet "the gated tests that spawn real `git` (worktrees, commits, pushes, junctions)
+    and, in one case, push to a real GitHub remote" to drop the "and, in one case, push to a
+    real GitHub remote" clause; Tier 2 is now all-local git.
+  - `internal/board/boardtest/doc.go` — the package comment (line ~9) says "the
+    git/integration suites are gated behind the `integration` build tag (see
+    integration_test.go and bench_git_test.go)"; update it to reference the surviving gated
+    files (`git_test.go`, `sync_test.go`) and drop the deleted ones.
+  - `docs/benchmarks/board-performance.md` — the "## Push access" section describes
+    `BenchmarkSyncGit` / `TestIntegrationCommitPush` pushing to `github.com/Knatte18/loomyard-test`.
+    Remove that section (or replace with a one-line note that the integration tier no longer
+    touches a real remote), since both symbols are deleted.
+  - `cmd/testtiming/main.go` — line ~93 prints "(real git + network; this can take ~a
+    minute)"; change it to drop "+ network" (the full tier is real local git only). Leave the
+    `-full` flag help text intact.
+  Do not edit `test-suite-timing.md` here (batch 4 rewrites its numbers).
+- **Commit:** `docs(benchmarks): drop references to deleted network tests`
 
 ## Batch Tests
 
-`verify: go test -tags integration ./internal/board/boardtest -count=1` proves the package
-still compiles and passes after the deletions (a dangling `testRepoURL` reference would
-fail the build). Card 2 is a doc edit with no runnable surface; it is covered by review,
-not the verify command.
+`verify: go build ./... && go test -tags integration ./internal/board/boardtest -count=1` —
+the `go build ./...` leg compiles `cmd/testtiming` (card 2 edits its `main.go` string) and
+catches any dangling symbol; the `go test` leg proves `boardtest` still compiles and passes
+after the deletions (a dangling `testRepoURL` reference would fail the build). The other card-2
+edits (running-tests.md, doc.go comment, board-performance.md) have no runnable surface and are
+covered by review.

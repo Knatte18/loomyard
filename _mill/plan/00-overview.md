@@ -50,10 +50,14 @@ batches:
 - **Rationale:** The only production path that relies on the env override is the detached
   `lyx board sync` child (it inherits the parent's env, re-enters `RunCLI`, and must honor
   `BOARD_SKIP_PUSH`). Resolving env→cfg once at that single entry point preserves the
-  operational override while making every internal site deterministic. Because no test
-  invokes `RunCLI` for these paths, tests never read env at all — which structurally
-  eliminates the ambient-`BOARD_SKIP_*` leakage the discussion flagged (a parallel test
-  can no longer be silently no-op'd by an inherited env var).
+  operational override while making every internal site deterministic. Tests that exercise
+  the **facade** (`board.New(cfg)`, used by `board_test.go`, `concurrency_test.go`, and the
+  facade benchmark) must set `cfg.SkipGit`/`cfg.SkipPush` explicitly — they bypass `RunCLI`,
+  so env is never consulted on their path (batch 2 card 9 migrates them). Tests that exercise
+  `RunCLI` directly (`cli_test.go`) still get env folded in via `applySkipEnv`. Either way no
+  test reads `BOARD_SKIP_*` at a *consumption* site (`writeOp`/`Sync`/`CommitPush`), which
+  structurally eliminates the ambient-`BOARD_SKIP_*` leakage the discussion flagged (a
+  parallel test can no longer be silently no-op'd by an inherited env var).
 - **Applies to:** all batches (defines the seam batch 2 implements and batch-2 tests rely on).
 
 ### Decision: Plain bool flags/params, not functional options
@@ -93,10 +97,15 @@ batches:
 
 ## All Files Touched
 
+- `cmd/testtiming/main.go`
+- `docs/benchmarks/board-performance.md`
 - `docs/benchmarks/running-tests.md`
 - `docs/benchmarks/test-suite-timing.md`
 - `internal/board/board.go`
+- `internal/board/board_test.go`
+- `internal/board/boardtest/bench_test.go`
 - `internal/board/boardtest/concurrency_test.go`
+- `internal/board/boardtest/doc.go`
 - `internal/board/boardtest/git_test.go`
 - `internal/board/boardtest/sync_test.go`
 - `internal/board/cli.go`
