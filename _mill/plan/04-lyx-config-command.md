@@ -141,7 +141,8 @@ git, mirroring how `internal/ide` tests call `Menu` directly.
 - **Creates:**
   - `internal/configcli/configcli_test.go`
   - `internal/configcli/configcli_integration_test.go`
-- **Deletes:** none
+- **Deletes:**
+  - `internal/configcli/integration_test.go`
 - **Requirements:** In `internal/configcli/configcli_test.go`: (a) unit-test `dispatch`/`editOne`
   with a fake `config.EditorFunc` (writes known valid YAML) and a fake `syncFunc`
   (`func(io.Writer) int` that records it was called and returns 0) over a temp `baseDir` with
