@@ -14,6 +14,33 @@ import (
 	"github.com/Knatte18/loomyard/internal/paths"
 )
 
+// setupPortalTarget resolves a layout from the given directory and creates
+// the target _lyx directory structure for the given slug and layout.
+// Returns the resolved layout and the created _lyx target directory path.
+// If portal creation is unsupported on this platform, skips the test.
+func setupPortalTarget(t *testing.T, dir string, slug string) (*paths.Layout, string) {
+	t.Helper()
+
+	// Resolve layout from directory.
+	l, err := paths.Resolve(dir)
+	if err != nil {
+		t.Fatalf("paths.Resolve(%q): %v", dir, err)
+	}
+
+	// Create target _lyx directory structure.
+	targetParent := filepath.Join(l.Hub, slug, l.RelPath)
+	if err := os.MkdirAll(targetParent, 0o755); err != nil {
+		t.Fatalf("mkdir target parent: %v", err)
+	}
+
+	targetDir := filepath.Join(targetParent, "_lyx")
+	if err := os.Mkdir(targetDir, 0o755); err != nil {
+		t.Fatalf("mkdir target: %v", err)
+	}
+
+	return l, targetDir
+}
+
 // TestCreatePortal covers the createPortal and removePortal helpers.
 // It creates a paths.Layout from a test repo subdirectory (non-trivial RelPath),
 // creates the target _lyx/ dir, calls createPortal and asserts the junction
@@ -31,22 +58,8 @@ func TestCreatePortal(t *testing.T) {
 		t.Fatalf("mkdir subdir: %v", err)
 	}
 
-	// Build a Layout from the subdirectory (RelPath will be "subdir/nested").
-	l, err := paths.Resolve(subdir)
-	if err != nil {
-		t.Fatalf("paths.Resolve(%q): %v", subdir, err)
-	}
-
-	// Create the target _lyx directory.
-	targetParent := filepath.Join(l.Hub, "test-slug", l.RelPath)
-	if err := os.MkdirAll(targetParent, 0o755); err != nil {
-		t.Fatalf("mkdir target parent: %v", err)
-	}
-
-	targetDir := filepath.Join(targetParent, "_lyx")
-	if err := os.Mkdir(targetDir, 0o755); err != nil {
-		t.Fatalf("mkdir target: %v", err)
-	}
+	// Setup portal target via helper.
+	l, targetDir := setupPortalTarget(t, subdir, "test-slug")
 
 	// Test createPortal.
 	if err := createPortal(l, "test-slug"); err != nil {
@@ -55,7 +68,7 @@ func TestCreatePortal(t *testing.T) {
 
 	// Verify the portal link exists at the mirrored location l.PortalLink(slug).
 	portalLink := l.PortalLink("test-slug")
-	_, err = os.Lstat(portalLink)
+	_, err := os.Lstat(portalLink)
 	if err != nil {
 		t.Fatalf("portal link does not exist at %s: %v", portalLink, err)
 	}
@@ -127,28 +140,9 @@ func TestCreatePortalMultipleSubpaths(t *testing.T) {
 		t.Fatalf("mkdir subdir2: %v", err)
 	}
 
-	// Resolve layouts from both subdirectories.
-	l1, err := paths.Resolve(subdir1)
-	if err != nil {
-		t.Fatalf("paths.Resolve(%q): %v", subdir1, err)
-	}
-
-	l2, err := paths.Resolve(subdir2)
-	if err != nil {
-		t.Fatalf("paths.Resolve(%q): %v", subdir2, err)
-	}
-
-	// Create target dirs for both.
-	for _, l := range []*paths.Layout{l1, l2} {
-		targetParent := filepath.Join(l.Hub, "test-slug", l.RelPath)
-		if err := os.MkdirAll(targetParent, 0o755); err != nil {
-			t.Fatalf("mkdir target parent: %v", err)
-		}
-		targetDir := filepath.Join(targetParent, "_lyx")
-		if err := os.Mkdir(targetDir, 0o755); err != nil {
-			t.Fatalf("mkdir target: %v", err)
-		}
-	}
+	// Setup portal targets via helper for both subdirectories.
+	l1, _ := setupPortalTarget(t, subdir1, "test-slug")
+	l2, _ := setupPortalTarget(t, subdir2, "test-slug")
 
 	// Create portals for the same slug from both subpaths.
 	if err := createPortal(l1, "test-slug"); err != nil {
@@ -180,25 +174,11 @@ func TestCreatePortalRootRelPath(t *testing.T) {
 
 	f := lyxtest.CopyHostHub(t)
 
-	// Build a Layout from the hub root (RelPath will be ".").
-	l, err := paths.Resolve(f.Hub)
-	if err != nil {
-		t.Fatalf("paths.Resolve(%q): %v", f.Hub, err)
-	}
+	// Setup portal target from hub root via helper (RelPath will be ".").
+	l, _ := setupPortalTarget(t, f.Hub, "test-slug")
 
 	if l.RelPath != "." {
 		t.Fatalf("expected RelPath == \".\", got %q", l.RelPath)
-	}
-
-	// Create the target _lyx directory.
-	targetParent := filepath.Join(l.Hub, "test-slug", l.RelPath)
-	if err := os.MkdirAll(targetParent, 0o755); err != nil {
-		t.Fatalf("mkdir target parent: %v", err)
-	}
-
-	targetDir := filepath.Join(targetParent, "_lyx")
-	if err := os.Mkdir(targetDir, 0o755); err != nil {
-		t.Fatalf("mkdir target: %v", err)
 	}
 
 	// Create portal.

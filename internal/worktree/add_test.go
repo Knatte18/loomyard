@@ -38,6 +38,8 @@ func TestAdd(t *testing.T) {
 		// wantNoTargetDir asserts the sibling worktree dir was NOT created,
 		// proving the precondition tripped before `git worktree add`.
 		wantNoTargetDir bool
+		// wantResultZero asserts result.Slug is empty when error occurs.
+		wantResultZero bool
 	}{
 		{
 			name:       "HappyPath",
@@ -63,6 +65,7 @@ func TestAdd(t *testing.T) {
 			opts:            AddOptions{SkipPush: true},
 			wantErrContains: "source worktree has uncommitted changes",
 			wantNoTargetDir: true,
+			wantResultZero:  true,
 		},
 		{
 			name: "BranchExists",
@@ -71,6 +74,7 @@ func TestAdd(t *testing.T) {
 			},
 			opts:            AddOptions{SkipPush: true},
 			wantErrContains: `branch "my-task" already exists`,
+			wantResultZero:  true,
 		},
 		{
 			name: "TargetDirExists",
@@ -81,6 +85,7 @@ func TestAdd(t *testing.T) {
 			},
 			opts:            AddOptions{SkipPush: true},
 			wantErrContains: "already exists",
+			wantResultZero:  true,
 		},
 		{
 			name: "NoRemote",
@@ -91,6 +96,7 @@ func TestAdd(t *testing.T) {
 			opts:            AddOptions{SkipPush: true},
 			wantErrContains: "no remote configured",
 			wantNoTargetDir: true,
+			wantResultZero:  true,
 		},
 		{
 			name: "NoWeftRepo",
@@ -103,7 +109,8 @@ func TestAdd(t *testing.T) {
 			opts:            AddOptions{SkipPush: true},
 			wantErrContains: "no weft repo",
 			wantNoTargetDir: true,
-		},
+			wantResultZero:  true,
+		}, // Migrated from TestWeftPrechecksHardRequireWeftRepo: result.Slug == ""
 	}
 
 	for _, tt := range tests {
@@ -129,6 +136,11 @@ func TestAdd(t *testing.T) {
 				if tt.wantNoTargetDir {
 					if _, statErr := os.Stat(target); !os.IsNotExist(statErr) {
 						t.Errorf("Add(%q) created %q; want no directory", slug, target)
+					}
+				}
+				if tt.wantResultZero {
+					if result.Slug != "" {
+						t.Errorf("Add(%q) result.Slug = %q; want empty on error", slug, result.Slug)
 					}
 				}
 				return

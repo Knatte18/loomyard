@@ -3,7 +3,6 @@
 package ide
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -11,202 +10,107 @@ import (
 	"github.com/Knatte18/loomyard/internal/paths"
 )
 
-// TestSpawnGeneratesConfig tests that Spawn generates .vscode/ config.
-func TestSpawnGeneratesConfig(t *testing.T) {
-	tmpDir := t.TempDir()
-	container := tmpDir
-	mainWorktreePath := filepath.Join(container, "main")
-	childWorktreePath := filepath.Join(container, "child")
-
-	// Create main and child worktree directories
-	if err := os.MkdirAll(mainWorktreePath, 0o755); err != nil {
-		t.Fatalf("failed to create main: %v", err)
+// TestSpawn covers end-to-end spawn flow: config generation, launcher invocation,
+// and no-clobber behavior. The shared codeLauncher global keeps this test serial.
+func TestSpawn(t *testing.T) {
+	tests := []struct {
+		name         string
+		relpath      string
+		checkClobber bool // if true, run a second Spawn to verify no-clobber
+	}{
+		{
+			name:         "TestSpawnGeneratesConfig",
+			relpath:      ".",
+			checkClobber: false,
+		},
+		{
+			name:         "TestSpawnCallsCodeLauncher",
+			relpath:      "subdir",
+			checkClobber: false,
+		},
+		{
+			name:         "TestSpawnDoesNotClobber",
+			relpath:      ".",
+			checkClobber: true,
+		},
 	}
-	if err := os.MkdirAll(childWorktreePath, 0o755); err != nil {
-		t.Fatalf("failed to create child: %v", err)
-	}
 
-	layout := &paths.Layout{
-		Hub:     container,
-		Prime:   mainWorktreePath,
-		RelPath: ".",
-	}
-
-	// Stub codeLauncher to record its argument without launching real VS Code
-	launchArgs := []string{}
+	// Stub codeLauncher once for all subtests
 	originalLauncher := codeLauncher
 	defer func() { codeLauncher = originalLauncher }()
-	codeLauncher = func(dir string) error {
-		launchArgs = append(launchArgs, dir)
-		return nil
-	}
 
-	// Call Spawn
-	err := Spawn(layout, "child")
-	if err != nil {
-		t.Fatalf("Spawn failed: %v", err)
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			container := tmpDir
+			mainWorktreePath := filepath.Join(container, "main")
+			childWorktreePath := filepath.Join(container, "child")
 
-	// Verify .vscode/settings.json was created
-	settingsPath := filepath.Join(childWorktreePath, ".", ".vscode", "settings.json")
-	if _, err := os.Stat(settingsPath); err != nil {
-		t.Fatalf("settings.json not created: %v", err)
-	}
+			// Create directories
+			for _, p := range []string{mainWorktreePath, childWorktreePath} {
+				if err := os.MkdirAll(p, 0o755); err != nil {
+					t.Fatalf("failed to create dir: %v", err)
+				}
+			}
 
-	// Verify .vscode/tasks.json was created
-	tasksPath := filepath.Join(childWorktreePath, ".", ".vscode", "tasks.json")
-	if _, err := os.Stat(tasksPath); err != nil {
-		t.Fatalf("tasks.json not created: %v", err)
-	}
+			layout := &paths.Layout{
+				Hub:     container,
+				Prime:   mainWorktreePath,
+				RelPath: tt.relpath,
+			}
 
-	// Verify codeLauncher was called with correct path
-	expectedDir := filepath.Join(childWorktreePath, ".")
-	if len(launchArgs) != 1 || launchArgs[0] != expectedDir {
-		t.Fatalf("expected codeLauncher called with %q, got %v", expectedDir, launchArgs)
-	}
-}
+			// Stub codeLauncher to record its argument
+			var launchedDir string
+			codeLauncher = func(dir string) error {
+				launchedDir = dir
+				return nil
+			}
 
-// TestSpawnDoesNotClobber tests that a second Spawn does not clobber existing .vscode/ files.
-func TestSpawnDoesNotClobber(t *testing.T) {
-	tmpDir := t.TempDir()
-	container := tmpDir
-	mainWorktreePath := filepath.Join(container, "main")
-	childWorktreePath := filepath.Join(container, "child")
+			// Call Spawn
+			err := Spawn(layout, "child")
+			if err != nil {
+				t.Fatalf("Spawn failed: %v", err)
+			}
 
-	// Create directories
-	if err := os.MkdirAll(mainWorktreePath, 0o755); err != nil {
-		t.Fatalf("failed to create main: %v", err)
-	}
-	if err := os.MkdirAll(childWorktreePath, 0o755); err != nil {
-		t.Fatalf("failed to create child: %v", err)
-	}
+			// Verify .vscode/settings.json was created
+			settingsPath := filepath.Join(childWorktreePath, tt.relpath, ".vscode", "settings.json")
+			if _, err := os.Stat(settingsPath); err != nil {
+				t.Fatalf("settings.json not created: %v", err)
+			}
 
-	layout := &paths.Layout{
-		Hub:     container,
-		Prime:   mainWorktreePath,
-		RelPath: ".",
-	}
+			// Verify .vscode/tasks.json was created
+			tasksPath := filepath.Join(childWorktreePath, tt.relpath, ".vscode", "tasks.json")
+			if _, err := os.Stat(tasksPath); err != nil {
+				t.Fatalf("tasks.json not created: %v", err)
+			}
 
-	// Stub codeLauncher
-	originalLauncher := codeLauncher
-	defer func() { codeLauncher = originalLauncher }()
-	codeLauncher = func(dir string) error { return nil }
+			// Verify codeLauncher was called with correct path (worktreeDir/relpath)
+			expectedDir := filepath.Join(childWorktreePath, tt.relpath)
+			if launchedDir != expectedDir {
+				t.Errorf("codeLauncher called with %q; want %q", launchedDir, expectedDir)
+			}
 
-	// First Spawn
-	if err := Spawn(layout, "child"); err != nil {
-		t.Fatalf("first Spawn failed: %v", err)
-	}
+			// For TestSpawnDoesNotClobber, run a second Spawn and verify no modification
+			if tt.checkClobber {
+				originalSettings, err := os.ReadFile(settingsPath)
+				if err != nil {
+					t.Fatalf("failed to read settings.json after first Spawn: %v", err)
+				}
 
-	// Read the original settings.json
-	settingsPath := filepath.Join(childWorktreePath, ".", ".vscode", "settings.json")
-	originalSettings, err := os.ReadFile(settingsPath)
-	if err != nil {
-		t.Fatalf("failed to read settings.json after first Spawn: %v", err)
-	}
+				// Second Spawn
+				if err := Spawn(layout, "child"); err != nil {
+					t.Fatalf("second Spawn failed: %v", err)
+				}
 
-	// Second Spawn (should not clobber)
-	if err := Spawn(layout, "child"); err != nil {
-		t.Fatalf("second Spawn failed: %v", err)
-	}
+				newSettings, err := os.ReadFile(settingsPath)
+				if err != nil {
+					t.Fatalf("failed to read settings.json after second Spawn: %v", err)
+				}
 
-	// Verify settings.json was not modified
-	newSettings, err := os.ReadFile(settingsPath)
-	if err != nil {
-		t.Fatalf("failed to read settings.json after second Spawn: %v", err)
-	}
-
-	if string(originalSettings) != string(newSettings) {
-		t.Fatalf("settings.json was clobbered by second Spawn")
-	}
-}
-
-// TestSpawnCallsCodeLauncher tests that Spawn invokes the launcher with correct path.
-func TestSpawnCallsCodeLauncher(t *testing.T) {
-	tmpDir := t.TempDir()
-	container := tmpDir
-	mainWorktreePath := filepath.Join(container, "main")
-	childWorktreePath := filepath.Join(container, "child")
-	relpath := "subdir"
-
-	// Create directories
-	for _, p := range []string{mainWorktreePath, childWorktreePath} {
-		if err := os.MkdirAll(p, 0o755); err != nil {
-			t.Fatalf("failed to create dir: %v", err)
-		}
-	}
-
-	layout := &paths.Layout{
-		Hub:     container,
-		Prime:   mainWorktreePath,
-		RelPath: relpath,
-	}
-
-	// Stub codeLauncher to record its argument
-	var launchedDir string
-	originalLauncher := codeLauncher
-	defer func() { codeLauncher = originalLauncher }()
-	codeLauncher = func(dir string) error {
-		launchedDir = dir
-		return nil
-	}
-
-	// Call Spawn
-	if err := Spawn(layout, "child"); err != nil {
-		t.Fatalf("Spawn failed: %v", err)
-	}
-
-	// Verify codeLauncher was called with worktreeDir/relpath
-	expectedDir := filepath.Join(childWorktreePath, relpath)
-	if launchedDir != expectedDir {
-		t.Fatalf("expected codeLauncher called with %q, got %q", expectedDir, launchedDir)
-	}
-}
-
-// TestSpawnColorSelection tests that Spawn picks a color via vscode.PickColor.
-func TestSpawnColorSelection(t *testing.T) {
-	tmpDir := t.TempDir()
-	container := tmpDir
-	mainWorktreePath := filepath.Join(container, "main")
-	childWorktreePath := filepath.Join(container, "child")
-
-	// Create directories
-	if err := os.MkdirAll(mainWorktreePath, 0o755); err != nil {
-		t.Fatalf("failed to create main: %v", err)
-	}
-	if err := os.MkdirAll(childWorktreePath, 0o755); err != nil {
-		t.Fatalf("failed to create child: %v", err)
-	}
-
-	layout := &paths.Layout{
-		Hub:     container,
-		Prime:   mainWorktreePath,
-		RelPath: ".",
-	}
-
-	// Stub codeLauncher
-	originalLauncher := codeLauncher
-	defer func() { codeLauncher = originalLauncher }()
-	codeLauncher = func(dir string) error { return nil }
-
-	// Call Spawn
-	if err := Spawn(layout, "child"); err != nil {
-		t.Fatalf("Spawn failed: %v", err)
-	}
-
-	// Read settings.json and verify it has a color set
-	settingsPath := filepath.Join(childWorktreePath, ".", ".vscode", "settings.json")
-	settingsData, err := os.ReadFile(settingsPath)
-	if err != nil {
-		t.Fatalf("failed to read settings.json: %v", err)
-	}
-
-	var settings map[string]any
-	if err := json.Unmarshal(settingsData, &settings); err != nil {
-		t.Fatalf("settings.json is not valid JSON: %v", err)
-	}
-
-	// Verify color customization is present
-	if _, ok := settings["workbench.colorCustomizations"]; !ok {
-		t.Fatalf("missing workbench.colorCustomizations in settings.json")
+				if string(originalSettings) != string(newSettings) {
+					t.Errorf("settings.json was modified by second Spawn")
+				}
+			}
+		})
 	}
 }

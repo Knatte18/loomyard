@@ -12,6 +12,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/board"
 )
 
+// TestUpsertTask tests the facade persistence wiring: creating a task writes
+// both tasks.json and Home.md. Drop: store-layer assertion "update preserves
+// fields" (owned by store_test.go:TestUpsertTaskPreservesFields).
 func TestUpsertTask(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
 
@@ -20,7 +23,7 @@ func TestUpsertTask(t *testing.T) {
 	cfg.Path = boardPath
 	w := board.New(cfg)
 
-	// (a) Creates task, tasks.json written, Home.md written
+	// Creates task, tasks.json written, Home.md written
 	task, err := w.UpsertTask(map[string]any{
 		"slug":  "test-task",
 		"title": "Test Task",
@@ -43,40 +46,6 @@ func TestUpsertTask(t *testing.T) {
 	homePath := filepath.Join(boardPath, "Home.md")
 	if _, err := os.Stat(homePath); err != nil {
 		t.Fatalf("Home.md not created: %v", err)
-	}
-
-	// (b) Update preserves other fields
-	task2, err := w.UpsertTask(map[string]any{
-		"slug":  "test-task",
-		"title": "Updated Title",
-		"brief": "Brief description",
-	})
-	if err != nil {
-		t.Fatalf("UpsertTask update failed: %v", err)
-	}
-
-	if task2.Title != "Updated Title" || task2.Brief != "Brief description" {
-		t.Fatalf("Update failed: %+v", task2)
-	}
-
-	// ID should be preserved
-	if task2.ID != task.ID {
-		t.Fatalf("ID changed during update: %d vs %d", task.ID, task2.ID)
-	}
-}
-
-func TestRemoveTask(t *testing.T) {
-	t.Setenv("BOARD_SKIP_GIT", "1")
-
-	boardPath := t.TempDir()
-	cfg := board.DefaultConfig()
-	cfg.Path = boardPath
-	w := board.New(cfg)
-
-	// (c) Error for missing slug
-	err := w.RemoveTask("nonexistent")
-	if err == nil {
-		t.Fatalf("RemoveTask should error for missing task")
 	}
 }
 

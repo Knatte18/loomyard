@@ -102,193 +102,141 @@ func TestWeftSpawnSeedsExclude(t *testing.T) {
 	}
 }
 
-// TestWeftSpawnPairedWorktrees verifies that Add creates both host and weft worktrees
-// on the mirrored branch.
+// TestWeftSpawnPairedWorktrees verifies that Add creates weft worktrees
+// on the mirrored branch, and that the weft-side assertions are correct.
+// Covered by TestAdd are: host worktree creation, branch naming, and AddResult.
 func TestWeftSpawnPairedWorktrees(t *testing.T) {
 	t.Parallel()
 
 	const slug = "paired-test"
-	const branchPrefix = "prefix/"
 
 	f := lyxtest.CopyPaired(t)
 
-	w := New(Config{BranchPrefix: branchPrefix})
-	result, err := w.Add(f.Layout, slug, AddOptions{SkipPush: true})
+	w := New(Config{})
+	_, err := w.Add(f.Layout, slug, AddOptions{SkipPush: true})
 	if err != nil {
 		t.Fatalf("Add(%q): %v", slug, err)
 	}
 
-	expectedBranch := branchPrefix + slug
-
-	// Verify host worktree exists.
-	hostTarget := f.Layout.WorktreePath(slug)
-	if _, err := os.Stat(hostTarget); os.IsNotExist(err) {
-		t.Errorf("host worktree not created at %s", hostTarget)
-	}
-
-	// Verify weft worktree exists.
+	// Verify weft worktree exists at the expected location.
 	weftTarget := f.Layout.WeftWorktreePath(slug)
 	if _, err := os.Stat(weftTarget); os.IsNotExist(err) {
 		t.Errorf("weft worktree not created at %s", weftTarget)
 	}
 
-	// Verify host branch exists.
-	_, _, exitCode, _ := git.RunGit([]string{"rev-parse", "--verify", "refs/heads/" + expectedBranch}, f.Layout.WorktreeRoot)
+	// Verify weft branch exists via WeftRepoRoot().
+	weftRepoRoot := f.Layout.WeftRepoRoot()
+	_, _, exitCode, _ := git.RunGit([]string{"rev-parse", "--verify", "refs/heads/" + slug}, weftRepoRoot)
 	if exitCode != 0 {
-		t.Errorf("host branch %q not created", expectedBranch)
-	}
-
-	// Verify weft branch exists.
-	_, _, exitCode, _ = git.RunGit([]string{"rev-parse", "--verify", "refs/heads/" + expectedBranch}, f.Layout.WeftRepoRoot())
-	if exitCode != 0 {
-		t.Errorf("weft branch %q not created", expectedBranch)
-	}
-
-	// Verify AddResult is correct.
-	if result.Branch != expectedBranch {
-		t.Errorf("AddResult.Branch = %q; want %q", result.Branch, expectedBranch)
+		t.Errorf("weft branch %q not created", slug)
 	}
 }
 
-// TestWeftPrechecksHardRequireWeftRepo verifies that Add errors immediately when
-// the weft repo is absent, with no partial state created.
-func TestWeftPrechecksHardRequireWeftRepo(t *testing.T) {
-	t.Parallel()
-
-	const slug = "hard-require-test"
-
-	f := lyxtest.CopyPaired(t)
-
-	// Rename the weft prime dir so WeftRepoRoot() does not resolve.
-	if err := os.Rename(f.WeftPrime, f.WeftPrime+"-disabled"); err != nil {
-		t.Fatalf("rename weft prime: %v", err)
+// TestWeftPrechecks verifies that Add enforces preconditions on weft state:
+// weft repo must exist, weft worktree must not exist, weft branch must not exist,
+// and the host must be pristine (no real _lyx, only junctions allowed).
+// All cases are combined in one table with shared shape: setup → w.Add(..., SkipPush:true) →
+// assert error substring + zero residue (no host worktree).
+func TestWeftPrechecks(t *testing.T) {
+	tests := []struct {
+		name            string
+		setup           func(t *testing.T, f lyxtest.PairedFixture)
+		wantErrContains string
+		wantNoTargetDir bool
+		wantResultZero  bool
+	}{
+		{
+			name: "TestWeftPrechecksHardRequireWeftRepo",
+			setup: func(t *testing.T, f lyxtest.PairedFixture) {
+				// Rename the weft prime dir so WeftRepoRoot() does not resolve.
+				if err := os.Rename(f.WeftPrime, f.WeftPrime+"-disabled"); err != nil {
+					t.Fatalf("rename weft prime: %v", err)
+				}
+			},
+			wantErrContains: "no weft repo",
+			wantNoTargetDir: true,
+			wantResultZero:  true,
+		},
+		{
+			name: "TestWeftPrechecksRejectExistingWeftWorktree",
+			setup: func(t *testing.T, f lyxtest.PairedFixture) {
+				// Pre-create the weft worktree dir.
+				slug := "weft-prechecks-test"
+				weftTarget := f.Layout.WeftWorktreePath(slug)
+				if err := os.Mkdir(weftTarget, 0755); err != nil {
+					t.Fatalf("mkdir weft target: %v", err)
+				}
+			},
+			wantErrContains: "weft worktree directory already exists",
+			wantNoTargetDir: true,
+			wantResultZero:  true,
+		},
+		{
+			name: "TestWeftPrechecksRejectExistingWeftBranch",
+			setup: func(t *testing.T, f lyxtest.PairedFixture) {
+				// Pre-create the weft branch.
+				slug := "weft-prechecks-test"
+				lyxtest.MustRun(t, f.WeftPrime, "git", "branch", slug)
+			},
+			wantErrContains: "weft branch",
+			wantNoTargetDir: true,
+			wantResultZero:  true,
+		},
+		{
+			name: "TestWeftHostPristineEnforced",
+			setup: func(t *testing.T, f lyxtest.PairedFixture) {
+				// Pre-create a real _lyx dir in the host worktree (committed to repo).
+				realLyx := filepath.Join(f.Hub, "_lyx")
+				if err := os.Mkdir(realLyx, 0755); err != nil {
+					t.Fatalf("mkdir _lyx: %v", err)
+				}
+				if err := os.WriteFile(filepath.Join(realLyx, "file"), []byte("content"), 0644); err != nil {
+					t.Fatalf("write file: %v", err)
+				}
+				lyxtest.MustRun(t, f.Hub, "git", "add", "_lyx")
+				lyxtest.MustRun(t, f.Hub, "git", "commit", "-m", "add real _lyx")
+			},
+			wantErrContains: "predates weft",
+			wantNoTargetDir: true,
+			wantResultZero:  true,
+		},
 	}
 
-	w := New(Config{})
-	result, err := w.Add(f.Layout, slug, AddOptions{SkipPush: true})
+	const slug = "weft-prechecks-test"
 
-	// Verify error.
-	if err == nil {
-		t.Fatalf("Add(%q) should error when weft repo absent; got nil", slug)
-	}
-	if !strings.Contains(err.Error(), "no weft repo") {
-		t.Errorf("Add(%q) error should mention 'no weft repo'; got %q", slug, err.Error())
-	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	// Verify zero residue: no host worktree created.
-	hostTarget := f.Layout.WorktreePath(slug)
-	if _, statErr := os.Stat(hostTarget); !os.IsNotExist(statErr) {
-		t.Errorf("Add(%q) created host worktree despite weft repo absent", slug)
-	}
+			f := lyxtest.CopyPaired(t)
+			tt.setup(t, f)
 
-	if result.Slug != "" {
-		t.Errorf("Add(%q) result should be zero on error", slug)
-	}
-}
+			w := New(Config{})
+			result, err := w.Add(f.Layout, slug, AddOptions{SkipPush: true})
 
-// TestWeftPrechecksRejectExistingWeftWorktree verifies that Add errors when the
-// weft worktree dir already exists.
-func TestWeftPrechecksRejectExistingWeftWorktree(t *testing.T) {
-	t.Parallel()
+			// Verify error.
+			if err == nil {
+				t.Fatalf("Add(%q) should error; got nil", slug)
+			}
+			if !strings.Contains(err.Error(), tt.wantErrContains) {
+				t.Errorf("Add(%q) error = %q; want substring %q", slug, err.Error(), tt.wantErrContains)
+			}
 
-	const slug = "weft-exists-test"
+			// Verify zero residue: no host worktree created.
+			if tt.wantNoTargetDir {
+				hostTarget := f.Layout.WorktreePath(slug)
+				if _, statErr := os.Stat(hostTarget); !os.IsNotExist(statErr) {
+					t.Errorf("Add(%q) created host worktree despite error", slug)
+				}
+			}
 
-	f := lyxtest.CopyPaired(t)
-
-	// Pre-create the weft worktree dir.
-	weftTarget := f.Layout.WeftWorktreePath(slug)
-	if err := os.Mkdir(weftTarget, 0755); err != nil {
-		t.Fatalf("mkdir weft target: %v", err)
-	}
-
-	w := New(Config{})
-	result, err := w.Add(f.Layout, slug, AddOptions{SkipPush: true})
-
-	// Verify error.
-	if err == nil {
-		t.Fatalf("Add(%q) should error when weft worktree dir exists; got nil", slug)
-	}
-
-	// Verify zero residue: no host worktree created.
-	hostTarget := f.Layout.WorktreePath(slug)
-	if _, statErr := os.Stat(hostTarget); !os.IsNotExist(statErr) {
-		t.Errorf("Add(%q) created host worktree despite weft dir existing", slug)
-	}
-
-	if result.Slug != "" {
-		t.Errorf("Add(%q) result should be zero on error", slug)
-	}
-}
-
-// TestWeftPrechecksRejectExistingWeftBranch verifies that Add errors when the
-// weft branch already exists.
-func TestWeftPrechecksRejectExistingWeftBranch(t *testing.T) {
-	t.Parallel()
-
-	const slug = "weft-branch-exists-test"
-
-	f := lyxtest.CopyPaired(t)
-
-	// Pre-create the weft branch.
-	lyxtest.MustRun(t, f.WeftPrime, "git", "branch", slug)
-
-	l := f.Layout
-
-	w := New(Config{})
-	result, err := w.Add(l, slug, AddOptions{SkipPush: true})
-
-	// Verify error.
-	if err == nil {
-		t.Fatalf("Add(%q) should error when weft branch exists; got nil", slug)
-	}
-	if !strings.Contains(err.Error(), "weft branch") {
-		t.Errorf("Add(%q) error should mention 'weft branch'; got %q", slug, err.Error())
-	}
-
-	// Verify zero residue: no host worktree created.
-	hostTarget := l.WorktreePath(slug)
-	if _, statErr := os.Stat(hostTarget); !os.IsNotExist(statErr) {
-		t.Errorf("Add(%q) created host worktree despite weft branch existing", slug)
-	}
-
-	if result.Slug != "" {
-		t.Errorf("Add(%q) result should be zero on error", slug)
-	}
-}
-
-// TestWeftHostPristineEnforced verifies that Add errors when the host branch
-// carries a committed real _lyx (not a junction), which indicates a pre-weft state.
-func TestWeftHostPristineEnforced(t *testing.T) {
-	t.Parallel()
-
-	const slug = "host-pristine-test"
-
-	f := lyxtest.CopyPaired(t)
-
-	// Pre-create a real _lyx dir in the host worktree (committed to repo).
-	realLyx := filepath.Join(f.Hub, "_lyx")
-	if err := os.Mkdir(realLyx, 0755); err != nil {
-		t.Fatalf("mkdir _lyx: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(realLyx, "file"), []byte("content"), 0644); err != nil {
-		t.Fatalf("write file: %v", err)
-	}
-	lyxtest.MustRun(t, f.Hub, "git", "add", "_lyx")
-	lyxtest.MustRun(t, f.Hub, "git", "commit", "-m", "add real _lyx")
-
-	w := New(Config{})
-	result, err := w.Add(f.Layout, slug, AddOptions{SkipPush: true})
-
-	// Verify error about pristine host (Add should fail because host has a real _lyx).
-	if err == nil {
-		t.Fatalf("Add(%q) should error when host has real _lyx; got nil", slug)
-	}
-	if !strings.Contains(err.Error(), "predates weft") {
-		t.Errorf("Add(%q) error should mention 'predates weft'; got %q", slug, err.Error())
-	}
-
-	if result.Slug != "" {
-		t.Errorf("Add(%q) result should be zero on error", slug)
+			if tt.wantResultZero {
+				if result.Slug != "" {
+					t.Errorf("Add(%q) result should be zero on error; got non-empty result", slug)
+				}
+			}
+		})
 	}
 }
 
