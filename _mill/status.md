@@ -38,7 +38,9 @@ batches:
     start_sha: 2d0fa60531e675f55e046bc47b0b54c591075929
     commit_sha: af6212d53a97a45a976ab325071d025120fe1675
   - name: paths-host-junctions
-    state: pending
+    state: running
+    implementer_session: af9468c8-de65-46b7-bcef-c81ff997b0ca
+    start_sha: 5e991153378580d3f20ea00b7764f7dc502372a0
   - name: config-edit-machinery
     state: pending
   - name: lyx-config-command
