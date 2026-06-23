@@ -79,9 +79,13 @@ func TestApplySkipEnv(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.skipGitEnv != "" {
 				t.Setenv("BOARD_SKIP_GIT", tt.skipGitEnv)
+			} else {
+				t.Setenv("BOARD_SKIP_GIT", "")
 			}
 			if tt.skipPushEnv != "" {
 				t.Setenv("BOARD_SKIP_PUSH", tt.skipPushEnv)
+			} else {
+				t.Setenv("BOARD_SKIP_PUSH", "")
 			}
 
 			cfg := Config{
