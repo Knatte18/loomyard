@@ -46,11 +46,14 @@ skip, which erodes its value.
   `BOARD_SKIP_GIT` / `BOARD_SKIP_PUSH` env seams (which force the tests serial, because
   `t.Setenv` forbids `t.Parallel()`) with explicit flags threaded through the `board`
   API, env retained as fallback. Then the local tests run in parallel.
-- **C. Trim wasted fixture I/O in worktree/weft tests.** Tests that pass
-  `AddOptions{SkipPush:true}` never push, so the two bare repos copied per test by
-  `lyxtest.CopyPaired` / `CopyWeft` are dead weight. Add a lean fixture variant that
-  skips the bare copy for non-pushing tests, cutting the Windows file-copy cost that is
-  the worktree package's real floor.
+- **C. Trim wasted fixture I/O in worktree tests.** `Add` always pushes the **host**
+  branch (add.go:172, unconditional); `SkipPush`/`SkipGit` gate only the **weft** push
+  (add.go:182-183 → `pushWeftBranch`). So for `AddOptions{SkipPush:true}` tests the
+  host bare is a live push target and must stay, but the **weft-bare** is never reached
+  and can be dropped. Add a lean `CopyPaired` variant that copies hub + bare +
+  weft-prime but **omits the weft-bare** (cutting one of four copied repos), for the
+  SkipPush worktree/weft tests. This is a smaller win than first estimated (~25% of the
+  per-test copy, not half) but still removes real Windows file-copy + Defender cost.
 - **D. Record a fresh timing block** in `docs/benchmarks/test-suite-timing.md`
   (median of several warm runs).
 
@@ -104,11 +107,16 @@ skip, which erodes its value.
   For the package-level functions that have no `Config` — `board.Sync(boardPath)`
   (sync.go), `board.CommitPush(boardPath, …)` (git.go) — add a functional-options seam
   (e.g. `board.WithSkipPush()`, `board.WithSkipGit()`). At each consumption site
-  (board.go:83, sync.go:32, sync.go:103, git.go:69) the rule becomes: **skip if the
-  explicit flag is set OR the env var is `"1"`** — env is a fallback, not removed. Then
-  every boardtest local test (`git_test.go`, `sync_test.go`, `concurrency_test.go`)
-  drops its `t.Setenv(...)` calls, passes the flag explicitly via config/options, and
-  adds `t.Parallel()`.
+  (board.go:83, sync.go:32, sync.go:103, git.go:69) an **explicit flag takes precedence
+  over the env var**: consult env only when the caller passed no explicit value. For the
+  package-func options seam use a tri-state (e.g. `*bool` or an option-was-passed marker)
+  so `WithSkipPush(false)` genuinely overrides an ambient `BOARD_SKIP_PUSH=1`; for the
+  `Board`/`Config` path, production resolves env→`Config` at the entry point
+  (`cmd/lyx board sync`) so internal sites read the resolved flag only. This keeps env a
+  true *fallback* rather than an ambient override that leaks into parallel tests (see the
+  ambient-leakage note in Testing). Then every boardtest local test (`git_test.go`,
+  `sync_test.go`, `concurrency_test.go`) drops its `t.Setenv(...)` calls, passes the flag
+  explicitly via config/options, and adds `t.Parallel()`.
 - Rationale: The local tests are individually fast but run serially purely because
   `t.Setenv` forbids `t.Parallel()`; their sum (~26s) is the package's real wall-clock.
   Each test already uses `t.TempDir` + isolated `lyxtest` fixtures, so the only shared
@@ -122,29 +130,35 @@ skip, which erodes its value.
   - *Convert all package funcs to methods on `Board`*: larger churn than threading a
     small options seam; `Pull` needs no skip flag at all (it only does `pull --ff-only`).
 
-### C. Trim the bare-repo copy from fixtures for non-pushing tests
+### C. Trim the weft-bare copy from the paired fixture for non-pushing tests
 
-- Decision: Add a lean variant to `internal/lyxtest` (either an option on `CopyPaired`
-  / `CopyWeft`, or sibling builders like `CopyPairedLocal`) that **does not copy the
-  bare repos**. Tests that call `Add`/`Spawn` with `SkipPush:true` (and never push)
-  switch to the lean variant; tests that actually push keep the full fixture. The full
-  (with-bare) behaviour stays the default so nothing silently changes.
+- Decision: Add a lean variant to `internal/lyxtest` (an option on `CopyPaired`, or a
+  sibling builder like `CopyPairedLocal`) that copies hub + **host** bare + weft-prime
+  but **omits the weft-bare**. Tests that call `Add` with `SkipPush:true` (so the weft
+  push is suppressed) switch to the lean variant; tests that push the weft branch keep
+  the full fixture. The full (all-four-repos) behaviour stays the default so nothing
+  silently changes.
 - Rationale: `worktree`'s ~32s is not git logic (`git worktree add` is ~100ms; a paired
   `Add` is ~10 git spawns ≈ 0.3s). A single paired-Add test is ~4.4s alone and balloons
   to ~10s under parallel load — it is **filesystem-I/O-bound**: `CopyPaired` copies four
-  full git repos (hub + bare + weft-prime + weft-bare) per test, every small file
-  scanned by Windows Defender, plus `t.TempDir` teardown. With `SkipPush:true` the push
-  never runs, so the bare repos are pure dead weight; `git worktree add -b` does not
-  touch the remote, and `git remote` (add.go:107) only reads config. Cutting two of the
-  four copied repos roughly halves the per-test I/O for those tests, which is what moves
-  the worktree floor below ~32s.
+  full git repos (hub + host-bare + weft-prime + weft-bare) per test, every small file
+  scanned by Windows Defender, plus `t.TempDir` teardown. **Correction (review r1):**
+  `Add` pushes the *host* branch unconditionally (add.go:172, step 13), so the host bare
+  is a live target and cannot be dropped; only the weft push is gated by `SkipPush`
+  (add.go:182-183), so only the **weft-bare** is dead weight for SkipPush tests.
+  Dropping it cuts one of four copied repos (~25% of the per-test copy), a smaller but
+  real reduction. (`git worktree add -b` does not touch any remote; `git remote`,
+  add.go:107, only reads config.)
 - Rejected:
+  - *Drop both bare repos*: breaks the unconditional host push — SkipPush tests assert
+    `err==nil` and would fail (verified: `add_test.go`/`weft_test.go`/`remove_test.go`
+    happy paths). Only the weft-bare is safe to drop.
   - *Leave worktree at ~32s* (scope option 2): would leave worktree as the new floor
-    once boardtest is parallelized, capping the speedup. User chose to attack it.
+    once boardtest is parallelized, capping the speedup. User chose to attack it,
+    accepting that the corrected payoff is modest.
   - *Disable Defender / environmental fix*: not a code change, not portable, out of our
     control.
-  - *Repack/shrink the template `.git`*: smaller payoff, more complexity; the bare
-    copies are the obvious waste.
+  - *Repack/shrink the template `.git`*: smaller payoff, more complexity.
 
 ### D. Equivalence guardrail = justified subset, not strict superset
 
@@ -211,16 +225,22 @@ skip, which erodes its value.
     config-based. `git_test.go` calls `board.CommitPush(path, …)` and `board.Pull(path)`
     directly → needs the options seam (`Pull` needs none). `concurrency_test.go` uses
     `board.New(cfg)` writes with `BOARD_SKIP_GIT=1` → `cfg.SkipGit = true`.
+  - **`concurrency_test.go` has no `//go:build integration` tag** — it is a *Tier 1*
+    test (its `BOARD_SKIP_GIT=1` runs the no-git path). Converting it (env→`cfg.SkipGit`)
+    is still in scope for consistency and parallel-safety, but it does **not** affect
+    Tier 2 wall-clock; do not count it toward the speedup.
 
 - **Fixtures (workstream C):** `internal/lyxtest/lyxtest.go`. Templates are built once
   per test binary via `sync.Once` (`buildHostHub`, `buildWeftPrime`, `buildWeftOnly`);
   each `Copy*` does a `copyDirRecursive` of the template(s) into `tb.TempDir()` (pure
   filesystem, **zero per-test git spawns** — a deliberate invariant) then rewrites the
   origin URL via `rewriteOriginURLInConfig` (text edit, no spawn). `CopyPaired` copies
-  hub + bare + weft-prime + weft-bare; `CopyWeft` copies weft + bare. The lean variant
-  omits the bare copy and (since no remote is reached) can skip or no-op the origin-URL
-  rewrite for the bare. Consumers in `internal/worktree/weft_test.go`,
-  `add_test.go`, `remove_test.go`, etc. call `Add(..., AddOptions{SkipPush:true})`.
+  hub + host-bare + weft-prime + weft-bare. The lean variant omits **only the weft-bare**
+  (the host bare must stay — `Add` pushes the host branch unconditionally, add.go:172)
+  and can skip or no-op the origin-URL rewrite on the weft-prime's origin (never reached
+  when the weft push is suppressed). Consumers in `internal/worktree/weft_test.go`,
+  `add_test.go`, `remove_test.go`, etc. call `Add(..., AddOptions{SkipPush:true})` — the
+  weft push (add.go:182-183 → `pushWeftBranch`) is the only push `SkipPush` suppresses.
 
 - **Timing harness:** `cmd/testtiming` (`-full` adds `-tags integration`). No
   `network` flag is needed (Decision A). No CI exists (`.github/workflows` absent) — the
@@ -258,12 +278,21 @@ faster, plus a verification that nothing regressed.
   the env fallback still works (a test or manual check that `BOARD_SKIP_PUSH=1` with no
   flag still skips). Watch for ordering assumptions now that tests run concurrently
   (filenames using `time.Now().Unix()` are fine — each test has its own `t.TempDir`).
+  - **Ambient-env leakage (review r1):** `t.Setenv` currently does double duty — it both
+    sets *and neutralizes* ambient env (e.g. `sync_test.go` does `t.Setenv("BOARD_SKIP_GIT","")`
+    precisely to clear any inherited value). Removing it means a flag-converted test that
+    needs git to *run* must set the flag explicitly to `false` (not merely omit it), and
+    the consumption sites must let that explicit `false` win over an ambient
+    `BOARD_SKIP_GIT=1` (the explicit-precedence rule in Decision B). Without both, an
+    ambient `BOARD_SKIP_*=1` would silently no-op the very Sync the test means to
+    exercise. mill-plan must verify a test running under an ambient `BOARD_SKIP_GIT=1`
+    still exercises the real git path.
 - **Workstream C (fixture trim):** switch the `SkipPush:true` worktree/weft tests to the
   lean fixture and confirm they still pass (the junction/exclude/branch assertions don't
-  depend on the bare). Keep at least the pushing tests on the full fixture and confirm
-  they still pass. The lean variant itself is the unit under test — assert it produces a
-  working hub + weft-prime without a bare and that `Add(SkipPush:true)` succeeds against
-  it.
+  depend on the weft-bare). Keep at least one weft-pushing test on the full fixture and
+  confirm it still passes. The lean variant itself is the unit under test — assert it
+  produces a working hub + host-bare + weft-prime (no weft-bare) and that
+  `Add(SkipPush:true)` succeeds against it (including the unconditional host push).
 - **Equivalence check:** diff `go test -tags integration ./... -list '.*'` (and a
   `=== RUN` capture) before vs after; the only removed names must be the two network
   tests. Everything else identical.
@@ -299,3 +328,14 @@ faster, plus a verification that nothing regressed.
   the floor; not worth CLI-signature churn.
 - **Q:** Acceptance criterion — hard target or cheap wins? **A:** Cheap wins, then record
   median timing (option 1). No fixed number; C stops at diminishing returns.
+- **Q (review r1 GAP):** Is the host bare really dead weight under `SkipPush:true`?
+  **A:** No — verified false. `Add` pushes the *host* branch unconditionally (add.go:172);
+  `SkipPush` gates only the *weft* push (add.go:182-183). So C drops only the **weft-bare**
+  (~25% of the copy), not both bares; the host bare stays. Premise and payoff corrected.
+- **Q (review r1 NOTE):** Does keeping env as fallback leak into parallel tests?
+  **A:** Yes if "flag OR env"; fixed to explicit-flag-precedence — an explicit `false`
+  overrides ambient `BOARD_SKIP_*=1`. Flag-converted tests set the flag explicitly;
+  mill-plan verifies the real-git path runs even under an ambient `BOARD_SKIP_GIT=1`.
+- **Q (review r1 NOTE):** `concurrency_test.go` isn't integration-tagged — still convert?
+  **A:** Yes, for consistency/parallel-safety, but it's a Tier 1 test so it does not move
+  the Tier 2 floor; not counted toward the speedup.
