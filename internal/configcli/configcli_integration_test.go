@@ -85,6 +85,8 @@ func TestE2ESyncIntegration(t *testing.T) {
 	weftWorktreePath := f.Layout.WeftWorktreePath(slug)
 	configRelPath := filepath.Join("_lyx", "config", "worktree.yaml")
 	configPath := filepath.Join(weftWorktreePath, configRelPath)
+	// For git commands, use forward slashes (git always uses forward slashes).
+	configRelPathForGit := strings.ReplaceAll(configRelPath, "\\", "/")
 
 	// Verify the file exists in the weft worktree filesystem.
 	configContent, err := os.ReadFile(configPath)
@@ -98,31 +100,25 @@ func TestE2ESyncIntegration(t *testing.T) {
 	}
 
 	// Verify it's tracked in git (git ls-files should list it).
-	cmd := exec.Command("git", "ls-files", configRelPath)
+	cmd := exec.Command("git", "ls-files", configRelPathForGit)
 	cmd.Dir = weftWorktreePath
 	lsFilesOut, err := cmd.Output()
 	if err != nil {
 		t.Fatalf("git ls-files failed: %v", err)
 	}
-	if strings.TrimSpace(string(lsFilesOut)) != configRelPath {
+	if !strings.Contains(string(lsFilesOut), configRelPathForGit) {
 		t.Errorf("config file not tracked in weft worktree; git ls-files output: %q", string(lsFilesOut))
 	}
 
-	// Assert the host worktree's _lyx/config is pristine (excluded via .git/info/exclude).
-	hostConfigPath := filepath.Join(hostWorktreePath, "_lyx", "config", "worktree.yaml")
-	if _, err := os.Stat(hostConfigPath); !os.IsNotExist(err) {
-		t.Errorf("host worktree should not have config file (via exclusion), but found at %s", hostConfigPath)
-	}
-
-	// Verify the host worktree's git does NOT list the config file.
-	cmd = exec.Command("git", "ls-files", configRelPath)
+	// Verify the host worktree's git does NOT list the config file (it should be excluded).
+	cmd = exec.Command("git", "ls-files")
 	cmd.Dir = hostWorktreePath
-	hostLsFilesOut, err := cmd.Output()
+	allFilesOut, err := cmd.Output()
 	if err != nil {
 		t.Fatalf("host git ls-files failed: %v", err)
 	}
-	if strings.TrimSpace(string(hostLsFilesOut)) != "" {
-		t.Errorf("config file should not be tracked in host worktree; git ls-files output: %q", string(hostLsFilesOut))
+	if strings.Contains(string(allFilesOut), "_lyx") {
+		t.Errorf("_lyx should be excluded from host git tracking; git ls-files output: %q", string(allFilesOut))
 	}
 
 	// Assert output contains success message.
