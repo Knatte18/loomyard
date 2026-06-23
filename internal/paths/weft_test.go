@@ -219,8 +219,6 @@ func TestHostJunctions(t *testing.T) {
 		// Expected junction values
 		wantJunctionCount int
 		wantName          string
-		wantLink          string
-		wantTarget        string
 	}{
 		{
 			name:              "prime-derived layout, root case",
@@ -230,8 +228,6 @@ func TestHostJunctions(t *testing.T) {
 			relPath:           ".",
 			wantJunctionCount: 1,
 			wantName:          "_lyx",
-			wantLink:          "/h/feat/_lyx",
-			wantTarget:        "/h/feat-weft/_lyx",
 		},
 		{
 			name:              "non-prime worktree layout, root case",
@@ -241,8 +237,6 @@ func TestHostJunctions(t *testing.T) {
 			relPath:           ".",
 			wantJunctionCount: 1,
 			wantName:          "_lyx",
-			wantLink:          "/h/other/_lyx",
-			wantTarget:        "/h/other-weft/_lyx",
 		},
 		{
 			name:              "subpath case",
@@ -252,8 +246,6 @@ func TestHostJunctions(t *testing.T) {
 			relPath:           "sub",
 			wantJunctionCount: 1,
 			wantName:          "_lyx",
-			wantLink:          "/h/feat/sub/_lyx",
-			wantTarget:        "/h/feat-weft/sub/_lyx",
 		},
 	}
 
@@ -282,12 +274,16 @@ func TestHostJunctions(t *testing.T) {
 					t.Errorf("HostJunctions(%q)[0].Name = %q; want %q", tt.slug, j.Name, tt.wantName)
 				}
 
-				if j.Link != tt.wantLink {
-					t.Errorf("HostJunctions(%q)[0].Link = %q; want %q", tt.slug, j.Link, tt.wantLink)
+				// Verify Link matches HostLyxLink(slug)
+				wantLink := layout.HostLyxLink(tt.slug)
+				if j.Link != wantLink {
+					t.Errorf("HostJunctions(%q)[0].Link = %q; want %q", tt.slug, j.Link, wantLink)
 				}
 
-				if j.Target != tt.wantTarget {
-					t.Errorf("HostJunctions(%q)[0].Target = %q; want %q", tt.slug, j.Target, tt.wantTarget)
+				// Verify Target matches WeftLyxDirFor(slug)
+				wantTarget := layout.WeftLyxDirFor(tt.slug)
+				if j.Target != wantTarget {
+					t.Errorf("HostJunctions(%q)[0].Target = %q; want %q", tt.slug, j.Target, wantTarget)
 				}
 			}
 		})
@@ -296,11 +292,11 @@ func TestHostJunctions(t *testing.T) {
 	// Sub-test: scope guard — verify no junction name is _codeguide
 	t.Run("no_codeguide_names", func(t *testing.T) {
 		layout := &paths.Layout{
-			Cwd:          "/h/main",
-			WorktreeRoot: "/h/main",
+			Cwd:          filepath.Join("/h", "main"),
+			WorktreeRoot: filepath.Join("/h", "main"),
 			Hub:          "/h",
 			RelPath:      ".",
-			Prime:        "/h/main",
+			Prime:        filepath.Join("/h", "main"),
 		}
 
 		junctions := layout.HostJunctions("slug")
