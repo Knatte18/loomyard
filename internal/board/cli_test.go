@@ -1,7 +1,8 @@
 // cli_test.go — tests for the board CLI (cli.go).
 //
 // Drives RunCLI in-process and asserts the JSON + exit-code contract for each
-// subcommand (upsert, list, get, set-phase, remove, rerender).
+// subcommand: JSON envelope shape (ok=true/false), exit codes (0 for success,
+// 1 for error), and each verb's distinctive field (task, tasks[], Home.md written).
 
 package board_test
 
@@ -53,236 +54,246 @@ func runCLI(t *testing.T, args ...string) (exitCode int, stdout string) {
 	return code, buf.String()
 }
 
-func TestCLIUpsertTask(t *testing.T) {
+// TestCLIContract tests the JSON envelope shape and exit code behavior for each
+// happy-path verb: upsert, list, get, set-phase, rerender. Each case asserts
+// exit 0 + ok=true + the verb's distinctive field.
+//
+// Folds: TestCLIUpsertTask, TestCLIListTasks, TestCLIGetTask, TestCLISetPhase,
+// TestCLIRerender (as subtests preserving original names)
+func TestCLIContract(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
-	seedCwd(t)
 
-	// (a) upsert creates a task and returns {"ok":true,"task":{...}}
-	payload := `{"slug":"foo","title":"Foo task"}`
-	exitCode, stdout := runCLI(t, "upsert", payload)
-
-	if exitCode != 0 {
-		t.Fatalf("expected exit 0, got %d; stdout: %s", exitCode, stdout)
+	tests := []struct {
+		name              string
+		setup             func(*testing.T) string // returns cwd
+		verb              string
+		payload           string
+		wantExitCode      int
+		wantOK            bool
+		wantFieldExist    string                                   // field that must exist in result
+		assertFieldExists func(*testing.T, map[string]any, string) // custom assertion
+	}{
+		{
+			name: "TestCLIUpsertTask",
+			setup: func(t *testing.T) string {
+				return seedCwd(t)
+			},
+			verb:           "upsert",
+			payload:        `{"slug":"foo","title":"Foo task"}`,
+			wantExitCode:   0,
+			wantOK:         true,
+			wantFieldExist: "task",
+		},
+		{
+			name: "TestCLIListTasks",
+			setup: func(t *testing.T) string {
+				cwd := seedCwd(t)
+				// First upsert a task
+				runCLI(t, "upsert", `{"slug":"foo","title":"Foo task"}`)
+				return cwd
+			},
+			verb:           "list",
+			payload:        "",
+			wantExitCode:   0,
+			wantOK:         true,
+			wantFieldExist: "tasks",
+			assertFieldExists: func(t *testing.T, result map[string]any, _ string) {
+				tasks, ok := result["tasks"].([]any)
+				if !ok || len(tasks) == 0 {
+					t.Fatalf("expected non-empty tasks array, got %v", result)
+				}
+				// Check first task has layer and has_proposal fields
+				taskMap, ok := tasks[0].(map[string]any)
+				if !ok {
+					t.Fatalf("expected task to be map, got %T", tasks[0])
+				}
+				if _, exists := taskMap["layer"]; !exists {
+					t.Fatalf("expected layer field, got %v", taskMap)
+				}
+				if _, exists := taskMap["has_proposal"]; !exists {
+					t.Fatalf("expected has_proposal field, got %v", taskMap)
+				}
+			},
+		},
+		{
+			name: "TestCLIGetTask",
+			setup: func(t *testing.T) string {
+				cwd := seedCwd(t)
+				// First upsert a task
+				runCLI(t, "upsert", `{"slug":"foo","title":"Foo task"}`)
+				return cwd
+			},
+			verb:           "get",
+			payload:        `{"id_or_slug":"foo"}`,
+			wantExitCode:   0,
+			wantOK:         true,
+			wantFieldExist: "task",
+		},
+		{
+			name: "TestCLISetPhase",
+			setup: func(t *testing.T) string {
+				cwd := seedCwd(t)
+				// First upsert a task
+				runCLI(t, "upsert", `{"slug":"foo","title":"Foo task"}`)
+				return cwd
+			},
+			verb:           "set-phase",
+			payload:        `{"id_or_slug":"foo","phase":"active"}`,
+			wantExitCode:   0,
+			wantOK:         true,
+			wantFieldExist: "ok",
+		},
+		{
+			name: "TestCLIRerender",
+			setup: func(t *testing.T) string {
+				return seedCwd(t)
+			},
+			verb:           "rerender",
+			payload:        "",
+			wantExitCode:   0,
+			wantOK:         true,
+			wantFieldExist: "ok",
+			assertFieldExists: func(t *testing.T, result map[string]any, cwd string) {
+				// Check Home.md exists in <cwd>/board/
+				homePath := filepath.Join(cwd, "board", "Home.md")
+				if _, err := os.Stat(homePath); err != nil {
+					t.Fatalf("Home.md not created: %v", err)
+				}
+			},
+		},
 	}
 
-	var result map[string]any
-	if err := json.Unmarshal([]byte(stdout), &result); err != nil {
-		t.Fatalf("failed to parse output: %v; stdout: %s", err, stdout)
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cwd := tt.setup(t)
 
-	if ok, exists := result["ok"].(bool); !exists || !ok {
-		t.Fatalf("expected ok=true, got %v", result)
-	}
+			var args []string
+			args = append(args, tt.verb)
+			if tt.payload != "" {
+				args = append(args, tt.payload)
+			}
+			exitCode, stdout := runCLI(t, args...)
 
-	if _, exists := result["task"]; !exists {
-		t.Fatalf("expected task in result, got %v", result)
+			if exitCode != tt.wantExitCode {
+				t.Fatalf("expected exit %d, got %d; stdout: %s", tt.wantExitCode, exitCode, stdout)
+			}
+
+			var result map[string]any
+			if err := json.Unmarshal([]byte(stdout), &result); err != nil {
+				t.Fatalf("failed to parse output: %v; stdout: %s", err, stdout)
+			}
+
+			if ok, exists := result["ok"].(bool); !exists || ok != tt.wantOK {
+				t.Fatalf("expected ok=%v, got %v", tt.wantOK, result)
+			}
+
+			if _, exists := result[tt.wantFieldExist]; !exists {
+				t.Fatalf("expected %s in result, got %v", tt.wantFieldExist, result)
+			}
+
+			if tt.assertFieldExists != nil {
+				tt.assertFieldExists(t, result, cwd)
+			}
+		})
 	}
 }
 
-func TestCLIListTasks(t *testing.T) {
+// TestCLIErrorAndEdgeCases tests error paths and edge cases: null task for
+// nonexistent get, error for nonexistent remove, and not-initialized error.
+//
+// Folds: TestCLIGetNonexistentTask (null task case),
+// TestCLIRemoveNonexistentTask (exit 1 + error), TestCLINotInitialized
+func TestCLIErrorAndEdgeCases(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
-	seedCwd(t)
 
-	// First upsert a task
-	payload := `{"slug":"foo","title":"Foo task"}`
-	exitCode, _ := runCLI(t, "upsert", payload)
-	if exitCode != 0 {
-		t.Fatalf("upsert failed")
+	tests := []struct {
+		name         string
+		setup        func(*testing.T) string
+		verb         string
+		payload      string
+		wantExitCode int
+		wantOK       bool
+		wantError    string // if non-empty, error must contain this substring
+		assertResult func(*testing.T, map[string]any)
+	}{
+		{
+			name: "TestCLIGetNonexistentTask",
+			setup: func(t *testing.T) string {
+				return seedCwd(t)
+			},
+			verb:         "get",
+			payload:      `{"id_or_slug":"nonexistent"}`,
+			wantExitCode: 0,
+			wantOK:       true,
+			assertResult: func(t *testing.T, result map[string]any) {
+				// null task is ok=true, but task field is nil
+				if task, exists := result["task"]; !exists || task != nil {
+					t.Fatalf("expected null task, got %v", result)
+				}
+			},
+		},
+		{
+			name: "TestCLIRemoveNonexistentTask",
+			setup: func(t *testing.T) string {
+				return seedCwd(t)
+			},
+			verb:         "remove",
+			payload:      `{"id_or_slug":"nonexistent"}`,
+			wantExitCode: 1,
+			wantOK:       false,
+			wantError:    "", // any error is fine
+		},
+		{
+			name: "TestCLINotInitialized",
+			setup: func(t *testing.T) string {
+				// Do NOT call seedCwd: cwd has no _lyx/
+				cwd := t.TempDir()
+				t.Chdir(cwd)
+				return cwd
+			},
+			verb:         "list",
+			payload:      "",
+			wantExitCode: 1,
+			wantOK:       false,
+			wantError:    "not initialized",
+		},
 	}
 
-	// (b) list returns tasks array with layer and has_proposal fields
-	exitCode, stdout := runCLI(t, "list")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.setup(t)
 
-	if exitCode != 0 {
-		t.Fatalf("expected exit 0, got %d; stdout: %s", exitCode, stdout)
-	}
+			var args []string
+			args = append(args, tt.verb)
+			if tt.payload != "" {
+				args = append(args, tt.payload)
+			}
+			exitCode, stdout := runCLI(t, args...)
 
-	var result map[string]any
-	if err := json.Unmarshal([]byte(stdout), &result); err != nil {
-		t.Fatalf("failed to parse output: %v; stdout: %s", err, stdout)
-	}
+			if exitCode != tt.wantExitCode {
+				t.Fatalf("expected exit %d, got %d; stdout: %s", tt.wantExitCode, exitCode, stdout)
+			}
 
-	if ok, exists := result["ok"].(bool); !exists || !ok {
-		t.Fatalf("expected ok=true, got %v", result)
-	}
+			var result map[string]any
+			if err := json.Unmarshal([]byte(stdout), &result); err != nil {
+				t.Fatalf("failed to parse output: %v; stdout: %s", err, stdout)
+			}
 
-	tasks, ok := result["tasks"].([]any)
-	if !ok || len(tasks) == 0 {
-		t.Fatalf("expected non-empty tasks array, got %v", result)
-	}
+			if ok, exists := result["ok"].(bool); !exists || ok != tt.wantOK {
+				t.Fatalf("expected ok=%v, got %v", tt.wantOK, result)
+			}
 
-	// Check first task has layer and has_proposal fields
-	taskMap, ok := tasks[0].(map[string]any)
-	if !ok {
-		t.Fatalf("expected task to be map, got %T", tasks[0])
-	}
+			if tt.wantError != "" {
+				if errMsg, exists := result["error"].(string); !exists {
+					t.Fatalf("expected error message, got %v", result)
+				} else if !strings.Contains(errMsg, tt.wantError) {
+					t.Fatalf("expected error to contain %q, got %q", tt.wantError, errMsg)
+				}
+			}
 
-	if _, exists := taskMap["layer"]; !exists {
-		t.Fatalf("expected layer field, got %v", taskMap)
-	}
-
-	if _, exists := taskMap["has_proposal"]; !exists {
-		t.Fatalf("expected has_proposal field, got %v", taskMap)
-	}
-}
-
-func TestCLIGetTask(t *testing.T) {
-	t.Setenv("BOARD_SKIP_GIT", "1")
-	seedCwd(t)
-
-	// First upsert a task
-	payload := `{"slug":"foo","title":"Foo task"}`
-	runCLI(t, "upsert", payload)
-
-	// (c) get with existing slug returns task
-	exitCode, stdout := runCLI(t, "get", `{"id_or_slug":"foo"}`)
-
-	if exitCode != 0 {
-		t.Fatalf("expected exit 0, got %d; stdout: %s", exitCode, stdout)
-	}
-
-	var result map[string]any
-	if err := json.Unmarshal([]byte(stdout), &result); err != nil {
-		t.Fatalf("failed to parse output: %v; stdout: %s", err, stdout)
-	}
-
-	if ok, exists := result["ok"].(bool); !exists || !ok {
-		t.Fatalf("expected ok=true, got %v", result)
-	}
-
-	task, ok := result["task"]
-	if !ok || task == nil {
-		t.Fatalf("expected non-null task, got %v", result)
-	}
-}
-
-func TestCLIGetNonexistentTask(t *testing.T) {
-	t.Setenv("BOARD_SKIP_GIT", "1")
-	seedCwd(t)
-
-	// (d) get with nonexistent slug returns null task
-	exitCode, stdout := runCLI(t, "get", `{"id_or_slug":"nonexistent"}`)
-
-	if exitCode != 0 {
-		t.Fatalf("expected exit 0, got %d; stdout: %s", exitCode, stdout)
-	}
-
-	var result map[string]any
-	if err := json.Unmarshal([]byte(stdout), &result); err != nil {
-		t.Fatalf("failed to parse output: %v; stdout: %s", err, stdout)
-	}
-
-	if ok, exists := result["ok"].(bool); !exists || !ok {
-		t.Fatalf("expected ok=true, got %v", result)
-	}
-
-	if task, exists := result["task"]; !exists || task != nil {
-		t.Fatalf("expected null task, got %v", result)
-	}
-}
-
-func TestCLIRemoveNonexistentTask(t *testing.T) {
-	t.Setenv("BOARD_SKIP_GIT", "1")
-	seedCwd(t)
-
-	// (e) remove nonexistent task returns error with exit 1
-	exitCode, stdout := runCLI(t, "remove", `{"id_or_slug":"nonexistent"}`)
-
-	if exitCode != 1 {
-		t.Fatalf("expected exit 1, got %d; stdout: %s", exitCode, stdout)
-	}
-
-	var result map[string]any
-	if err := json.Unmarshal([]byte(stdout), &result); err != nil {
-		t.Fatalf("failed to parse output: %v; stdout: %s", err, stdout)
-	}
-
-	if ok, exists := result["ok"].(bool); !exists || ok {
-		t.Fatalf("expected ok=false, got %v", result)
-	}
-
-	if errMsg, exists := result["error"]; !exists || errMsg == nil {
-		t.Fatalf("expected error message, got %v", result)
-	}
-}
-
-func TestCLISetPhase(t *testing.T) {
-	t.Setenv("BOARD_SKIP_GIT", "1")
-	seedCwd(t)
-
-	// First upsert a task
-	payload := `{"slug":"foo","title":"Foo task"}`
-	runCLI(t, "upsert", payload)
-
-	// (f) set-phase returns exit 0
-	exitCode, stdout := runCLI(t, "set-phase", `{"id_or_slug":"foo","phase":"active"}`)
-
-	if exitCode != 0 {
-		t.Fatalf("expected exit 0, got %d; stdout: %s", exitCode, stdout)
-	}
-
-	var result map[string]any
-	if err := json.Unmarshal([]byte(stdout), &result); err != nil {
-		t.Fatalf("failed to parse output: %v; stdout: %s", err, stdout)
-	}
-
-	if ok, exists := result["ok"].(bool); !exists || !ok {
-		t.Fatalf("expected ok=true, got %v", result)
-	}
-}
-
-func TestCLIRerender(t *testing.T) {
-	t.Setenv("BOARD_SKIP_GIT", "1")
-	cwd := seedCwd(t)
-
-	// (g) rerender returns exit 0 and creates Home.md
-	exitCode, stdout := runCLI(t, "rerender")
-
-	if exitCode != 0 {
-		t.Fatalf("expected exit 0, got %d; stdout: %s", exitCode, stdout)
-	}
-
-	var result map[string]any
-	if err := json.Unmarshal([]byte(stdout), &result); err != nil {
-		t.Fatalf("failed to parse output: %v; stdout: %s", err, stdout)
-	}
-
-	if ok, exists := result["ok"].(bool); !exists || !ok {
-		t.Fatalf("expected ok=true, got %v", result)
-	}
-
-	// Check Home.md exists in <cwd>/board/
-	homePath := filepath.Join(cwd, "board", "Home.md")
-	if _, err := os.Stat(homePath); err != nil {
-		t.Fatalf("Home.md not created: %v", err)
-	}
-}
-
-func TestCLINotInitialized(t *testing.T) {
-	t.Setenv("BOARD_SKIP_GIT", "1")
-	// Do NOT call seedCwd: cwd has no _lyx/
-	cwd := t.TempDir()
-	t.Chdir(cwd)
-
-	// (h) Running a command from cwd without _lyx/ returns exit 1 with error
-	exitCode, stdout := runCLI(t, "list")
-
-	if exitCode != 1 {
-		t.Fatalf("expected exit 1, got %d; stdout: %s", exitCode, stdout)
-	}
-
-	var result map[string]any
-	if err := json.Unmarshal([]byte(stdout), &result); err != nil {
-		t.Fatalf("failed to parse output: %v; stdout: %s", err, stdout)
-	}
-
-	if ok, exists := result["ok"].(bool); !exists || ok {
-		t.Fatalf("expected ok=false, got %v", result)
-	}
-
-	if errMsg, exists := result["error"].(string); !exists {
-		t.Fatalf("expected error message, got %v", result)
-	} else if !strings.Contains(errMsg, "not initialized") {
-		t.Fatalf("expected error to contain 'not initialized', got %q", errMsg)
+			if tt.assertResult != nil {
+				tt.assertResult(t, result)
+			}
+		})
 	}
 }

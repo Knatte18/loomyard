@@ -9,7 +9,8 @@ import (
 	"testing"
 )
 
-func TestSanitizeEnv(t *testing.T) {
+func TestEnvFiltering(t *testing.T) {
+	// Shared fixture for both sanitizeEnv and strippedEnvKeys tests
 	environ := []string{
 		"CLAUDECODE=1",
 		"CLAUDE_CODE_SESSION_ID=abc",
@@ -21,124 +22,144 @@ func TestSanitizeEnv(t *testing.T) {
 		"MY_VAR=ok",
 	}
 
-	result := sanitizeEnv(environ)
+	t.Run("TestSanitizeEnv", func(t *testing.T) {
+		result := sanitizeEnv(environ)
 
-	// Check we have exactly 3 entries
-	if len(result) != 3 {
-		t.Fatalf("expected 3 entries, got %d: %v", len(result), result)
-	}
-
-	// Convert to map for easier checking
-	resultMap := make(map[string]bool)
-	for _, entry := range result {
-		parts := strings.SplitN(entry, "=", 2)
-		resultMap[parts[0]] = true
-	}
-
-	// Check expected keys are present
-	expected := map[string]bool{"HOME": true, "PATH": true, "MY_VAR": true}
-	for key := range expected {
-		if !resultMap[key] {
-			t.Errorf("expected key %q not found", key)
-		}
-	}
-
-	// Check removed keys are absent
-	removed := []string{"CLAUDECODE", "CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_CHILD_SESSION", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SSE_PORT"}
-	for _, key := range removed {
-		if resultMap[key] {
-			t.Errorf("removed key %q should not be present", key)
-		}
-	}
-}
-
-func TestStrippedEnvKeys(t *testing.T) {
-	environ := []string{
-		"CLAUDECODE=1",
-		"CLAUDE_CODE_SESSION_ID=abc",
-		"CLAUDE_CODE_CHILD_SESSION=1",
-		"CLAUDE_CODE_ENTRYPOINT=x",
-		"CLAUDE_CODE_SSE_PORT=9",
-		"HOME=/home/user",
-		"PATH=/usr/bin",
-		"MY_VAR=ok",
-	}
-
-	result := strippedEnvKeys(environ)
-
-	// Check we have exactly 5 entries
-	if len(result) != 5 {
-		t.Fatalf("expected 5 entries, got %d: %v", len(result), result)
-	}
-
-	// Convert to set for easier checking
-	resultSet := make(map[string]bool)
-	for _, key := range result {
-		resultSet[key] = true
-	}
-
-	// Check expected keys are present
-	expected := map[string]bool{
-		"CLAUDECODE":                true,
-		"CLAUDE_CODE_SESSION_ID":    true,
-		"CLAUDE_CODE_CHILD_SESSION": true,
-		"CLAUDE_CODE_ENTRYPOINT":    true,
-		"CLAUDE_CODE_SSE_PORT":      true,
-	}
-	for key := range expected {
-		if !resultSet[key] {
-			t.Errorf("expected key %q not found", key)
-		}
-	}
-
-	// Check non-Claude keys are absent
-	if resultSet["HOME"] || resultSet["PATH"] || resultSet["MY_VAR"] {
-		t.Error("non-Claude keys should not be present")
-	}
-
-	// Check for duplicates
-	if len(result) != len(resultSet) {
-		t.Error("duplicate keys found")
-	}
-}
-
-func TestSocketName(t *testing.T) {
-	tests := []struct {
-		cwd      string
-		contains string
-		pattern  string // characters that should be allowed: a-z0-9_-
-	}{
-		{
-			cwd:      "C:\\Code\\loomyard\\wts\\loomyard-mux-design",
-			contains: "muxpoc-",
-		},
-		{
-			cwd:      "/home/user/repos/loomyard-mux-design",
-			contains: "muxpoc-",
-		},
-	}
-
-	for _, tt := range tests {
-		result := socketName(tt.cwd)
-
-		// Check prefix
-		if !strings.HasPrefix(result, tt.contains) {
-			t.Errorf("socketName(%q): expected prefix %q, got %q", tt.cwd, tt.contains, result)
+		// Check we have exactly 3 entries
+		if len(result) != 3 {
+			t.Fatalf("expected 3 entries, got %d: %v", len(result), result)
 		}
 
-		// Check only lowercase alphanumeric, underscore, and dash
-		for _, ch := range result {
-			if !((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '_' || ch == '-') {
-				t.Errorf("socketName(%q): contains invalid char %c in %q", tt.cwd, ch, result)
+		// Convert to map for easier checking
+		resultMap := make(map[string]bool)
+		for _, entry := range result {
+			parts := strings.SplitN(entry, "=", 2)
+			resultMap[parts[0]] = true
+		}
+
+		// Check expected keys are present
+		expected := map[string]bool{"HOME": true, "PATH": true, "MY_VAR": true}
+		for key := range expected {
+			if !resultMap[key] {
+				t.Errorf("expected key %q not found", key)
 			}
 		}
 
-		// Check stability
-		result2 := socketName(tt.cwd)
-		if result != result2 {
-			t.Errorf("socketName(%q): not stable, got %q then %q", tt.cwd, result, result2)
+		// Check removed keys are absent
+		removed := []string{"CLAUDECODE", "CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_CHILD_SESSION", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SSE_PORT"}
+		for _, key := range removed {
+			if resultMap[key] {
+				t.Errorf("removed key %q should not be present", key)
+			}
 		}
-	}
+	})
+
+	t.Run("TestStrippedEnvKeys", func(t *testing.T) {
+		result := strippedEnvKeys(environ)
+
+		// Check we have exactly 5 entries
+		if len(result) != 5 {
+			t.Fatalf("expected 5 entries, got %d: %v", len(result), result)
+		}
+
+		// Convert to set for easier checking
+		resultSet := make(map[string]bool)
+		for _, key := range result {
+			resultSet[key] = true
+		}
+
+		// Check expected keys are present
+		expected := map[string]bool{
+			"CLAUDECODE":                true,
+			"CLAUDE_CODE_SESSION_ID":    true,
+			"CLAUDE_CODE_CHILD_SESSION": true,
+			"CLAUDE_CODE_ENTRYPOINT":    true,
+			"CLAUDE_CODE_SSE_PORT":      true,
+		}
+		for key := range expected {
+			if !resultSet[key] {
+				t.Errorf("expected key %q not found", key)
+			}
+		}
+
+		// Check non-Claude keys are absent
+		if resultSet["HOME"] || resultSet["PATH"] || resultSet["MY_VAR"] {
+			t.Error("non-Claude keys should not be present")
+		}
+
+		// Check for duplicates
+		if len(result) != len(resultSet) {
+			t.Error("duplicate keys found")
+		}
+	})
+}
+
+func TestSocketName(t *testing.T) {
+	t.Run("TestSocketName", func(t *testing.T) {
+		tests := []struct {
+			cwd      string
+			contains string
+		}{
+			{
+				cwd:      "C:\\Code\\loomyard\\wts\\loomyard-mux-design",
+				contains: "muxpoc-",
+			},
+			{
+				cwd:      "/home/user/repos/loomyard-mux-design",
+				contains: "muxpoc-",
+			},
+		}
+
+		for _, tt := range tests {
+			result := socketName(tt.cwd)
+
+			// Check prefix
+			if !strings.HasPrefix(result, tt.contains) {
+				t.Errorf("socketName(%q): expected prefix %q, got %q", tt.cwd, tt.contains, result)
+			}
+
+			// Check only lowercase alphanumeric, underscore, and dash
+			for _, ch := range result {
+				if !((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '_' || ch == '-') {
+					t.Errorf("socketName(%q): contains invalid char %c in %q", tt.cwd, ch, result)
+				}
+			}
+
+			// Check stability
+			result2 := socketName(tt.cwd)
+			if result != result2 {
+				t.Errorf("socketName(%q): not stable, got %q then %q", tt.cwd, result, result2)
+			}
+		}
+	})
+
+	t.Run("TestSocketNameStability", func(t *testing.T) {
+		tmpDir := t.TempDir()
+
+		// Create a subdirectory within the temp worktree root
+		subDir := filepath.Join(tmpDir, "sub")
+		if err := os.MkdirAll(subDir, 0o755); err != nil {
+			t.Fatalf("failed to create subdir: %v", err)
+		}
+
+		// Socket name of the root differs from socket name of a subdirectory
+		rootSocket := socketName(tmpDir)
+		subSocket := socketName(subDir)
+
+		if rootSocket == subSocket {
+			t.Errorf("socketName should differ for root %q and subdirectory %q, but both gave %q",
+				tmpDir, subDir, rootSocket)
+		}
+
+		// Verify the root socket is derived from the basename of tmpDir
+		// (tmpDir looks like /tmp/TestSocketNameStability1234567890/subdir)
+		// The basename is the final path component
+		expectedBase := filepath.Base(tmpDir)
+		if !strings.Contains(rootSocket, expectedBase) && !strings.Contains(expectedBase, strings.TrimPrefix(rootSocket, "muxpoc-")) {
+			// The basename may be sanitized, so just check it was derived from tmpDir
+			t.Logf("rootSocket %q derived from tmpDir %q (basename %q)", rootSocket, tmpDir, expectedBase)
+		}
+	})
 }
 
 func TestLoadStateMissing(t *testing.T) {
@@ -315,42 +336,5 @@ func TestDeleteStateMissing(t *testing.T) {
 	err := DeleteState(tmpDir)
 	if err != nil {
 		t.Errorf("DeleteState on missing file should return nil, got %v", err)
-	}
-}
-
-// TestSocketNameStability verifies that socketName derives stable identity from
-// the worktree root basename. This test documents why callers must pass the
-// worktree root rather than the raw cwd: if two callers pass different paths
-// pointing to the same repo, they must derive the same socket name for psmux
-// session identity to remain stable across the repository.
-//
-// Note: socket identity is the worktree-root basename, so two sibling worktrees
-// with colliding leaf names would share a socket (inherent to the basename
-// scheme — documented, not fixed here).
-func TestSocketNameStability(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	// Create a subdirectory within the temp worktree root
-	subDir := filepath.Join(tmpDir, "sub")
-	if err := os.MkdirAll(subDir, 0o755); err != nil {
-		t.Fatalf("failed to create subdir: %v", err)
-	}
-
-	// Socket name of the root differs from socket name of a subdirectory
-	rootSocket := socketName(tmpDir)
-	subSocket := socketName(subDir)
-
-	if rootSocket == subSocket {
-		t.Errorf("socketName should differ for root %q and subdirectory %q, but both gave %q",
-			tmpDir, subDir, rootSocket)
-	}
-
-	// Verify the root socket is derived from the basename of tmpDir
-	// (tmpDir looks like /tmp/TestSocketNameStability1234567890/subdir)
-	// The basename is the final path component
-	expectedBase := filepath.Base(tmpDir)
-	if !strings.Contains(rootSocket, expectedBase) && !strings.Contains(expectedBase, strings.TrimPrefix(rootSocket, "muxpoc-")) {
-		// The basename may be sanitized, so just check it was derived from tmpDir
-		t.Logf("rootSocket %q derived from tmpDir %q (basename %q)", rootSocket, tmpDir, expectedBase)
 	}
 }

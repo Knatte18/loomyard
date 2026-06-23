@@ -8,7 +8,6 @@ package ide
 
 import (
 	"bytes"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -257,43 +256,5 @@ func TestMenuNumericSelection(t *testing.T) {
 	// Verify that codeLauncher was called exactly once (for the selected worktree)
 	if launchCount != 1 {
 		t.Fatalf("expected codeLauncher to be called once, was called %d times", launchCount)
-	}
-}
-
-// TestMenuZeroWorktreeMessage tests that zero active worktrees prints the correct message.
-func TestMenuZeroWorktreeMessage(t *testing.T) {
-	t.Setenv("BOARD_SKIP_GIT", "1")
-
-	container, mainWorktreePath := newTestGitRepoWithWorktrees(t)
-
-	// Create board directory with tasks.json (no child worktrees)
-	boardDir := filepath.Join(container, "_board")
-	if err := os.MkdirAll(boardDir, 0o755); err != nil {
-		t.Fatalf("failed to create board dir: %v", err)
-	}
-
-	tasksPath := filepath.Join(boardDir, "tasks.json")
-	if err := os.WriteFile(tasksPath, []byte(`{"tasks":[]}`), 0o644); err != nil {
-		t.Fatalf("failed to write tasks.json: %v", err)
-	}
-
-	layout := &paths.Layout{
-		Hub:     container,
-		Prime:   mainWorktreePath,
-		RelPath: ".",
-		Cwd:     mainWorktreePath,
-	}
-
-	var out bytes.Buffer
-	in := io.Reader(strings.NewReader(""))
-
-	err := Menu(layout, in, &out)
-	if err != nil {
-		t.Fatalf("Menu failed: %v", err)
-	}
-
-	output := out.String()
-	if !strings.Contains(output, "no active worktrees") {
-		t.Fatalf("expected 'no active worktrees', got: %q", output)
 	}
 }

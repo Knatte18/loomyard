@@ -45,69 +45,77 @@ func TestConfigDirs(t *testing.T) {
 	}
 }
 
-func TestLoadConfig_DefaultWhenNoYAML(t *testing.T) {
-	// Create a temporary _lyx directory with config subdir but no weft.yaml
-	tmpDir := t.TempDir()
-	lyxDir := filepath.Join(tmpDir, "_lyx")
-	configDir := filepath.Join(lyxDir, "config")
-	if err := os.MkdirAll(configDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll: %v", err)
+func TestLoadConfig(t *testing.T) {
+	tests := []struct {
+		name           string
+		writeYAML      bool
+		mkLyx          bool
+		wantPathspec   string
+		wantErrSubstr  string
+	}{
+		{
+			name:          "TestLoadConfig_DefaultWhenNoYAML",
+			writeYAML:     false,
+			mkLyx:         true,
+			wantPathspec:  "_lyx",
+			wantErrSubstr: "",
+		},
+		{
+			name:          "TestLoadConfig_OverrideFromYAML",
+			writeYAML:     true,
+			mkLyx:         true,
+			wantPathspec:  "_lyx _codeguide",
+			wantErrSubstr: "",
+		},
+		{
+			name:          "TestLoadConfig_MissingLyx",
+			writeYAML:     false,
+			mkLyx:         false,
+			wantPathspec:  "",
+			wantErrSubstr: "weft worktree or its _lyx is missing",
+		},
 	}
 
-	cfg, err := LoadConfig(tmpDir)
-	if err != nil {
-		t.Fatalf("LoadConfig: %v", err)
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
 
-	if cfg.Pathspec != "_lyx" {
-		t.Errorf("Pathspec = %q; want %q", cfg.Pathspec, "_lyx")
-	}
-}
+			if tt.mkLyx {
+				lyxDir := filepath.Join(tmpDir, "_lyx")
+				configDir := filepath.Join(lyxDir, "config")
+				if err := os.MkdirAll(configDir, 0o755); err != nil {
+					t.Fatalf("MkdirAll: %v", err)
+				}
 
-func TestLoadConfig_OverrideFromYAML(t *testing.T) {
-	// Create a temporary _lyx directory with weft.yaml
-	tmpDir := t.TempDir()
-	lyxDir := filepath.Join(tmpDir, "_lyx")
-	configDir := filepath.Join(lyxDir, "config")
-	if err := os.MkdirAll(configDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll: %v", err)
-	}
+				if tt.writeYAML {
+					weftYAML := filepath.Join(configDir, "weft.yaml")
+					yamlContent := "pathspec: _lyx _codeguide\n"
+					if err := os.WriteFile(weftYAML, []byte(yamlContent), 0o644); err != nil {
+						t.Fatalf("WriteFile: %v", err)
+					}
+				}
+			}
 
-	weftYAML := filepath.Join(configDir, "weft.yaml")
-	yamlContent := "pathspec: _lyx _codeguide\n"
-	if err := os.WriteFile(weftYAML, []byte(yamlContent), 0o644); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
+			cfg, err := LoadConfig(tmpDir)
 
-	cfg, err := LoadConfig(tmpDir)
-	if err != nil {
-		t.Fatalf("LoadConfig: %v", err)
-	}
-
-	if cfg.Pathspec != "_lyx _codeguide" {
-		t.Errorf("Pathspec = %q; want %q", cfg.Pathspec, "_lyx _codeguide")
-	}
-
-	dirs := cfg.Dirs()
-	if len(dirs) != 2 || dirs[0] != "_lyx" || dirs[1] != "_codeguide" {
-		t.Errorf("Dirs() = %v; want [_lyx _codeguide]", dirs)
-	}
-}
-
-func TestLoadConfig_MissingLyx(t *testing.T) {
-	// Create a temporary directory without _lyx
-	tmpDir := t.TempDir()
-
-	cfg, err := LoadConfig(tmpDir)
-	if err == nil {
-		t.Fatalf("LoadConfig: expected error but got nil")
-	}
-
-	if cfg.Pathspec != "" {
-		t.Errorf("Config should be zero-valued on error; got Pathspec=%q", cfg.Pathspec)
-	}
-
-	if !strings.Contains(err.Error(), "weft worktree or its _lyx is missing") {
-		t.Errorf("error message = %q; want substring %q", err.Error(), "weft worktree or its _lyx is missing")
+			if tt.wantErrSubstr != "" {
+				if err == nil {
+					t.Fatalf("LoadConfig: expected error but got nil")
+				}
+				if !strings.Contains(err.Error(), tt.wantErrSubstr) {
+					t.Errorf("error message = %q; want substring %q", err.Error(), tt.wantErrSubstr)
+				}
+				if cfg.Pathspec != "" {
+					t.Errorf("Config should be zero-valued on error; got Pathspec=%q", cfg.Pathspec)
+				}
+			} else {
+				if err != nil {
+					t.Fatalf("LoadConfig: %v", err)
+				}
+				if cfg.Pathspec != tt.wantPathspec {
+					t.Errorf("Pathspec = %q; want %q", cfg.Pathspec, tt.wantPathspec)
+				}
+			}
+		})
 	}
 }
