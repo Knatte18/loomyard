@@ -29,7 +29,7 @@ func TestAdd(t *testing.T) {
 	tests := []struct {
 		name         string
 		branchPrefix string
-		// setup performs scenario-specific prep on top of the fresh CopyPaired fixture.
+		// setup performs scenario-specific prep on top of the fresh CopyPairedLocal fixture.
 		setup func(t *testing.T, f lyxtest.PairedFixture)
 		// opts to pass to Add.
 		opts            AddOptions
