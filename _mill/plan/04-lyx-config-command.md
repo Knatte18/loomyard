@@ -60,24 +60,29 @@ git, mirroring how `internal/ide` tests call `Menu` directly.
 - **Creates:** none
 - **Deletes:** none
 - **Requirements:** In `internal/configcli/configcli.go` add:
-  - `type syncFunc func() int` — runs the post-edit sync and returns an exit code.
+  - `type syncFunc func(w io.Writer) int` — runs the post-edit sync, writing its output to `w`,
+    and returns an exit code. The writer is threaded (not hardcoded `io.Discard`) so a failure
+    is diagnosable.
   - `func editOne(baseDir string, out io.Writer, module string, edit config.EditorFunc, sync syncFunc) int`:
     look up `templateFor(module)` (unknown → print `unknown config module: <module> (known: <moduleNames>)`
     to `out`, return 1); call `config.Edit(baseDir, module, template(), edit)`; if it returns
-    `config.ErrAborted` print `aborted: _lyx/config/<module>.yaml left unchanged` to `out` and
-    return 1; on any other error print the error to `out` and return 1; on success call `sync()`
-    — if non-zero print `edited _lyx/config/<module>.yaml but weft sync failed` and return 1,
-    else print `edited and synced _lyx/config/<module>.yaml` and return 0.
+    `config.ErrAborted` print `aborted: _lyx/config/<module>.yaml unchanged` to `out` and
+    return 1; on any other error print the error to `out` and return 1; on success capture sync
+    output in a local `var buf bytes.Buffer` and call `sync(&buf)` — on success (exit 0) discard
+    `buf` (keeps `out` clean) and print `edited and synced _lyx/config/<module>.yaml`, return 0;
+    on non-zero print `edited _lyx/config/<module>.yaml but weft sync failed: <buf.String()>`
+    (include the captured sync output so the failure is diagnosable) and return 1.
   - `func dispatch(l *paths.Layout, in io.Reader, out io.Writer, args []string, edit config.EditorFunc, sync syncFunc) int`:
     compute `baseDir := filepath.Join(l.WorktreeRoot, l.RelPath)`; if `len(args) >= 1` call
     `editOne(baseDir, out, args[0], edit, sync)`; else call `menu(l, baseDir, in, out, edit, sync)`
     (Card 12).
   - `func RunCLI(out io.Writer, args []string) int`: resolve `cwd, err := paths.Getwd()` then
     `l, err := paths.Resolve(cwd)` (on error print to `out`, return 1); build the real editor
-    `config.DefaultEditor` and the real sync `func() int { return weft.RunCLI(io.Discard,
+    `config.DefaultEditor` and the real sync `func(w io.Writer) int { return weft.RunCLI(w,
     []string{"sync"}) }`; return `dispatch(l, os.Stdin, out, args, config.DefaultEditor, realSync)`.
   Output is human-readable text (this is the interactive-command exception to JSON output); the
-  discarded-writer sync is what keeps the stream clean.
+  sync output is captured into a buffer and discarded on success (keeps the stream clean) but
+  surfaced on failure (diagnosable).
 - **Commit:** `feat(configcli): implement lyx config <module> dispatch with discarded sync output`
 
 ### Card 12: Interactive bare-`lyx config` menu
@@ -137,9 +142,9 @@ git, mirroring how `internal/ide` tests call `Menu` directly.
   - `internal/configcli/configcli_test.go`
 - **Deletes:** none
 - **Requirements:** In `internal/configcli/configcli_test.go`: (a) unit-test `dispatch`/`editOne`
-  with a fake `config.EditorFunc` (writes known valid YAML) and a fake `syncFunc` (records it was
-  called, returns 0) over a temp `baseDir` with `_lyx/` present — assert success message, file
-  written, and sync invoked; (b) unknown-module → exit 1 with the known-modules message and sync
+  with a fake `config.EditorFunc` (writes known valid YAML) and a fake `syncFunc`
+  (`func(io.Writer) int` that records it was called and returns 0) over a temp `baseDir` with
+  `_lyx/` present — assert success message, file written, and sync invoked; (b) unknown-module → exit 1 with the known-modules message and sync
   NOT called; (c) abort path → fake editor returns error, assert exit 1, abort message, sync NOT
   called; (d) menu — feed `in` a selection and a `q`, assert correct module routed and range
   validation; (e) an `//go:build integration` e2e test using `CopyPaired`: FIRST seed the host
@@ -147,9 +152,13 @@ git, mirroring how `internal/ide` tests call `Menu` directly.
   worktree.AddOptions{SkipPush: true})` (without this the host worktree has no `_lyx`, so
   `config.Edit`→`FindBaseDir` would error before any write); resolve a layout for the new host
   worktree via `paths.Resolve(f.Layout.WorktreePath(slug))`; `t.Chdir` into that host worktree
-  so `weft.RunCLI`'s cwd resolution lands on the fixture; run `dispatch` with a fake editor
-  (writes valid YAML) and an injected sync of `func() int { return weft.RunCLI(io.Discard,
-  []string{"commit"}) }` — use `commit`, NOT `sync`, because `sync` calls a detached `spawnPush`
+  so `weft.RunCLI`'s cwd resolution lands on the fixture (this test must NOT call `t.Parallel`,
+  which is incompatible with `t.Chdir`); explicitly clear the skip env so the commit is not a
+  silent no-op — `t.Setenv("WEFT_SKIP_GIT", "")` and `t.Setenv("WEFT_SKIP_PUSH", "")` (both must
+  be unset, since `envSyncOptions()` treats the value `"1"` as skip); run `dispatch` with a fake
+  editor (writes valid YAML) and an injected sync of `func(w io.Writer) int { return
+  weft.RunCLI(w, []string{"commit"}) }` — use `commit`, NOT `sync`, because `sync` calls a
+  detached `spawnPush`
   that cannot run in-process (consistent with the discussion's note that push completion is not
   surfaced). Then assert `_lyx/config/<module>.yaml` is tracked/committed in the weft worktree
   (`git -C <slug>-weft ls-files`/`show`) and that the host worktree's `git ls-files` does not

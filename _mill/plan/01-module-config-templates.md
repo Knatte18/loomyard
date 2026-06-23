@@ -70,8 +70,9 @@ holds; `weft.ConfigTemplate` is new and only needs to parse and carry the `paths
   `func ConfigTemplate() string` returning a fully-commented YAML template for weft config whose
   single key is `pathspec` with the default value from `DefaultConfig().Pathspec` (`_lyx`).
   Follow the comment style of the board/worktree templates (a leading `#`, the key, and a short
-  inline description). The commented line MUST parse as YAML when uncommented and round-trip
-  through `config.Load(..., "weft", ...)` to the `_lyx` default.
+  inline description). The commented `pathspec` line MUST parse as valid YAML when uncommented,
+  yielding the value `_lyx` (verified by the card-4(b) `yaml.Unmarshal` assertion — no
+  `config.Load` fixture needed).
 - **Commit:** `feat(weft): add commented ConfigTemplate for weft.yaml`
 
 ### Card 4: Tests — template parse + init regression

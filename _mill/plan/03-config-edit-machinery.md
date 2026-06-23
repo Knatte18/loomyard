@@ -36,7 +36,8 @@ Batch 4: `config.Edit`, `config.EditorFunc`, `config.DefaultEditor`, and the sen
   - `type EditorFunc func(path string) error` — opens an editor on `path`; a non-nil return
     signals editor failure / user-abort.
   - `var ErrAborted = errors.New("config edit aborted")` — sentinel returned when the edit is
-    aborted (file left untouched by `Edit` beyond any scaffold already written; caller skips sync).
+    aborted; on abort `Edit` leaves the filesystem in its pre-call state (see the scaffold-removal
+    rule below), so the caller can truthfully report the file unchanged and skip sync.
   - `func DefaultEditor(path string) error` — resolves the editor command from `$VISUAL` then
     `$EDITOR`, falling back to `notepad` on Windows (`runtime.GOOS == "windows"`) and `vi`
     elsewhere; runs it via `os/exec` with `Stdin/Stdout/Stderr` wired to the process std streams;
@@ -44,12 +45,15 @@ Batch 4: `config.Edit`, `config.EditorFunc`, `config.DefaultEditor`, and the sen
   - `func Edit(baseDir, module, template string, edit EditorFunc) error` with this flow: call
     `FindBaseDir(baseDir)` (propagate the not-initialized error); compute
     `path = filepath.Join(baseDir, "_lyx", "config", module+".yaml")`; if `path` does not exist,
-    write `template` to it (scaffold, `0o644`, creating `_lyx/config/` if needed); then loop:
-    record the file bytes, call `edit(path)` — if it returns an error, return `ErrAborted`
-    (wrapping the editor error); re-read the bytes and `yaml.Unmarshal` into a
+    write `template` to it (scaffold, `0o644`, creating `_lyx/config/` if needed) and track that
+    this call created the file (`scaffolded := true`); then loop: record the file bytes, call
+    `edit(path)` — if it returns an error, abort; re-read the bytes and `yaml.Unmarshal` into a
     `map[string]any` to validate syntax; on success return `nil`; on parse failure, if the bytes
-    are unchanged from the pre-`edit` snapshot return `ErrAborted` (operator saved without
-    fixing), otherwise print the parse error to `os.Stderr` and loop to re-open the editor.
+    are unchanged from the pre-`edit` snapshot abort (operator saved without fixing), otherwise
+    print the parse error to `os.Stderr` and loop to re-open the editor. **Abort** means: if
+    `scaffolded` is true (this call created the file), `os.Remove` it so the filesystem returns to
+    its pre-call state; then return `ErrAborted` (wrapping the editor error when applicable). When
+    the file pre-existed, abort leaves it as-is (do not delete a file the call did not create).
   - Validation is syntactic only (the file must parse as YAML); do not enforce known keys.
 - **Commit:** `feat(config): add Edit machinery with injectable editor and abort contract`
 
@@ -70,8 +74,11 @@ Batch 4: `config.Edit`, `config.EditorFunc`, `config.DefaultEditor`, and the sen
   the file holds the new bytes; (c) re-edit loop — first fake-editor pass writes invalid YAML
   (changed), second pass writes valid YAML; assert the editor is invoked twice and `Edit` returns
   nil; (d) abort on unchanged-after-failure — fake editor writes invalid YAML then leaves it
-  unchanged; assert `Edit` returns `ErrAborted`; (e) abort on editor error — fake editor returns
-  an error; assert `Edit` returns `ErrAborted`; (f) not-initialized — calling `Edit` with a
+  unchanged; assert `Edit` returns `ErrAborted`; for the abort-on-missing variant (the file did
+  not pre-exist, so `Edit` scaffolded it), additionally assert the file does NOT exist after the
+  abort (scaffold removed); for an abort where the file pre-existed, assert it is left in place;
+  (e) abort on editor error — fake editor returns an error; assert `Edit` returns `ErrAborted`;
+  (f) not-initialized — calling `Edit` with a
   `baseDir` lacking `_lyx/` returns the `FindBaseDir` not-initialized error (not `ErrAborted`).
 - **Commit:** `test(config): cover Edit scaffold, re-edit loop, and abort paths`
 
