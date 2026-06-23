@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: extract-internal-proc
 branch: extract-internal-proc
 plan: _mill/plan
@@ -20,4 +20,15 @@ discussed  '2026-06-23T11:55:06Z'
 planning  '2026-06-23T12:07:57Z'
 plan-fix-r1  '2026-06-23T12:10:56Z'
 planned  '2026-06-23T12:11:21Z'
+implementing  '2026-06-23T12:13:55Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: Create internal/proc
+    state: pending
+  - name: Migrate callers
+    state: pending
 ```
