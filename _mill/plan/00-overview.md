@@ -109,9 +109,9 @@ batches:
 - `internal/board/boardtest/git_test.go`
 - `internal/board/boardtest/sync_test.go`
 - `internal/board/cli.go`
-- `internal/board/cli_test.go`
 - `internal/board/config.go`
 - `internal/board/git.go`
+- `internal/board/skipenv_internal_test.go`
 - `internal/board/sync.go`
 - `internal/lyxtest/lyxtest.go`
 - `internal/worktree/add_test.go`

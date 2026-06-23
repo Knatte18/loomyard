@@ -178,25 +178,34 @@ options (overview Shared Decisions explains why).
     `board.RunCLI` (lines 128/149/170), which after card 4 still folds `BOARD_SKIP_GIT` env
     into cfg via `applySkipEnv`, so their `b.Setenv` remains live and correct. `seedWiki` is
     unchanged (it writes `tasks.json` directly, never through the facade).
+
+  Two further `BOARD_SKIP_GIT=1` env-setters are **intentionally NOT touched** and do not
+  regress: `cmd/lyx/main_test.go` reaches the board only via `RunCLI`, so `applySkipEnv`
+  (card 4) still folds the env in; `internal/ide/menu_test.go` builds the Board but only calls
+  read paths (`HealthCheck`/`GetTask`), which never go through `writeOp`/`spawnSync`, so its
+  env was already vestigial. Neither is in this batch's scope.
 - **Commit:** `test(board): migrate facade write-path tests to cfg.SkipGit`
 
-### Card 10: Unit-test the env→cfg resolution helper
+### Card 10: White-box unit-test the env→cfg resolution helper
 
 - **Context:**
   - `internal/board/cli.go`
   - `internal/board/config.go`
-- **Edits:**
-  - `internal/board/cli_test.go`
-- **Creates:** none
+- **Edits:** none
+- **Creates:**
+  - `internal/board/skipenv_internal_test.go`
 - **Deletes:** none
-- **Requirements:** Add a Tier-1 unit test for `applySkipEnv` (from card 4) in
-  `cli_test.go`: with `BOARD_SKIP_GIT=1` set via `t.Setenv`, `applySkipEnv(Config{})` returns
-  a Config with `SkipGit == true` and `SkipPush == false`; with `BOARD_SKIP_PUSH=1`, the
-  reverse; with neither set, both false; with an already-true `cfg.SkipPush`, env-unset does
-  not clear it. This test legitimately uses `t.Setenv` (it is asserting the env-resolution
-  behaviour itself) and therefore stays serial — that is correct and expected. It needs no
-  git, so it requires no `integration` tag.
-- **Commit:** `test(board): unit-test applySkipEnv env resolution`
+- **Requirements:** `applySkipEnv` (from card 4) is unexported and every existing
+  `internal/board/*_test.go` is the external `package board_test`, so it cannot be called from
+  there. Create a new **white-box** test file `internal/board/skipenv_internal_test.go` with
+  `package board` (Go allows white-box and black-box test files to coexist in one directory)
+  that unit-tests `applySkipEnv` directly: with `BOARD_SKIP_GIT=1` set via `t.Setenv`,
+  `applySkipEnv(Config{})` returns a Config with `SkipGit == true` and `SkipPush == false`;
+  with `BOARD_SKIP_PUSH=1`, the reverse; with neither set, both false; with an already-true
+  `cfg.SkipPush` and env unset, the field is not cleared. This test legitimately uses
+  `t.Setenv` (it asserts the env-resolution behaviour itself) and stays serial — correct and
+  expected. No git, so no `integration` tag. Do not export `applySkipEnv`.
+- **Commit:** `test(board): white-box unit-test applySkipEnv env resolution`
 
 ## Batch Tests
 
