@@ -94,6 +94,7 @@ batches:
 - `internal/config/edit.go`
 - `internal/config/edit_test.go`
 - `internal/configcli/configcli.go`
+- `internal/configcli/configcli_integration_test.go`
 - `internal/configcli/configcli_test.go`
 - `internal/configcli/menu.go`
 - `internal/paths/paths.go`
