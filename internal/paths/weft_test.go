@@ -206,3 +206,108 @@ func TestWeftGeometryAtMainWorktree(t *testing.T) {
 		t.Errorf("At main: WeftRepoRoot() = %q, WeftWorktree() = %q; want equal", weftRepoRoot, weftWorktree)
 	}
 }
+
+// TestHostJunctions verifies that HostJunctions(slug) returns exactly one entry with
+// the correct Name, Link, and Target fields, and that no entry's Name equals _codeguide.
+func TestHostJunctions(t *testing.T) {
+	tests := []struct {
+		name    string
+		hub     string
+		prime   string
+		slug    string
+		relPath string
+		// Expected junction values
+		wantJunctionCount int
+		wantName          string
+		wantLink          string
+		wantTarget        string
+	}{
+		{
+			name:              "prime-derived layout, root case",
+			hub:               "/h",
+			prime:             "/h/main",
+			slug:              "feat",
+			relPath:           ".",
+			wantJunctionCount: 1,
+			wantName:          "_lyx",
+			wantLink:          "/h/feat/_lyx",
+			wantTarget:        "/h/feat-weft/_lyx",
+		},
+		{
+			name:              "non-prime worktree layout, root case",
+			hub:               "/h",
+			prime:             "/h/main",
+			slug:              "other",
+			relPath:           ".",
+			wantJunctionCount: 1,
+			wantName:          "_lyx",
+			wantLink:          "/h/other/_lyx",
+			wantTarget:        "/h/other-weft/_lyx",
+		},
+		{
+			name:              "subpath case",
+			hub:               "/h",
+			prime:             "/h/main",
+			slug:              "feat",
+			relPath:           "sub",
+			wantJunctionCount: 1,
+			wantName:          "_lyx",
+			wantLink:          "/h/feat/sub/_lyx",
+			wantTarget:        "/h/feat-weft/sub/_lyx",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			layout := &paths.Layout{
+				Cwd:          filepath.Join(tt.hub, tt.slug, tt.relPath),
+				WorktreeRoot: filepath.Join(tt.hub, tt.slug),
+				Hub:          tt.hub,
+				RelPath:      tt.relPath,
+				Prime:        tt.prime,
+			}
+
+			junctions := layout.HostJunctions(tt.slug)
+
+			// Verify count
+			if len(junctions) != tt.wantJunctionCount {
+				t.Errorf("HostJunctions(%q) returned %d entries; want %d", tt.slug, len(junctions), tt.wantJunctionCount)
+			}
+
+			// Verify the single entry
+			if len(junctions) > 0 {
+				j := junctions[0]
+
+				if j.Name != tt.wantName {
+					t.Errorf("HostJunctions(%q)[0].Name = %q; want %q", tt.slug, j.Name, tt.wantName)
+				}
+
+				if j.Link != tt.wantLink {
+					t.Errorf("HostJunctions(%q)[0].Link = %q; want %q", tt.slug, j.Link, tt.wantLink)
+				}
+
+				if j.Target != tt.wantTarget {
+					t.Errorf("HostJunctions(%q)[0].Target = %q; want %q", tt.slug, j.Target, tt.wantTarget)
+				}
+			}
+		})
+	}
+
+	// Sub-test: scope guard — verify no junction name is _codeguide
+	t.Run("no_codeguide_names", func(t *testing.T) {
+		layout := &paths.Layout{
+			Cwd:          "/h/main",
+			WorktreeRoot: "/h/main",
+			Hub:          "/h",
+			RelPath:      ".",
+			Prime:        "/h/main",
+		}
+
+		junctions := layout.HostJunctions("slug")
+		for _, j := range junctions {
+			if j.Name == "_codeguide" {
+				t.Errorf("HostJunctions found _codeguide entry (forbidden by design)")
+			}
+		}
+	})
+}
