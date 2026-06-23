@@ -11,11 +11,11 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitignore"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/paths"
+	"github.com/Knatte18/loomyard/internal/worktree"
 )
 
 // RunInit scaffolds the config layer in the current working directory.
@@ -95,7 +95,7 @@ func RunInit(out io.Writer, args []string) int {
 
 	if os.IsNotExist(err) {
 		// File doesn't exist, write the commented template
-		content := generateCommentedWorktreeYAML()
+		content := worktree.ConfigTemplate()
 		if err := os.WriteFile(worktreeYamlPath, []byte(content), 0o644); err != nil {
 			outputInitError(out, fmt.Sprintf("failed to write worktree.yaml: %v", err))
 			return 1
@@ -126,15 +126,6 @@ func RunInit(out io.Writer, args []string) int {
 		"worktree_yaml": status["worktree_yaml"],
 		"gitignore":     status["gitignore"],
 	})
-}
-
-// generateCommentedWorktreeYAML returns a fully-commented YAML template for worktree configuration.
-func generateCommentedWorktreeYAML() string {
-	var sb strings.Builder
-
-	sb.WriteString("# branch_prefix: $env:LYX_BRANCH_PREFIX ?    # prefix prepended to the slug to form the branch name (e.g. \"hanf/\"); empty = branch == slug\n")
-
-	return sb.String()
 }
 
 // outputInitError writes {"ok":false,"error":"..."} and is a helper for RunInit.
