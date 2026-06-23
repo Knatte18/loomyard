@@ -50,5 +50,7 @@ batches:
     start_sha: 0ab5c53361e82867f4aa64bb7eaf711eabd5236f
     commit_sha: c9166fc6df53823038e886a8cb6e8a8af5990546
   - name: lyx-config-command
-    state: pending
+    state: running
+    implementer_session: 20d94d9f-82b3-4606-a0f0-5bc961b0d92f
+    start_sha: 6dfe360127bb1ca16c3b2937ed1cae0cfbd67133
 ```
