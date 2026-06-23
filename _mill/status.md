@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-module-config-templates
 slug: weft-producers
 branch: weft-producers
 plan: _mill/plan
@@ -25,6 +25,7 @@ plan-fix-r2  '2026-06-23T11:20:09Z'
 plan-fix-r3  '2026-06-23T11:23:20Z'
 planned  '2026-06-23T11:23:37Z'
 implementing  '2026-06-23T11:24:38Z'
+approved-module-config-templates  '2026-06-23T11:29:27Z'
 ```
 
 ## Batches
@@ -32,9 +33,10 @@ implementing  '2026-06-23T11:24:38Z'
 ```yaml
 batches:
   - name: module-config-templates
-    state: running
+    state: approved
     implementer_session: 52a9187c-104a-4c21-bb7c-e9d44ea69908
     start_sha: 2d0fa60531e675f55e046bc47b0b54c591075929
+    commit_sha: af6212d53a97a45a976ab325071d025120fe1675
   - name: paths-host-junctions
     state: pending
   - name: config-edit-machinery
