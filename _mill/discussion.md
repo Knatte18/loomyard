@@ -116,7 +116,11 @@ partially scattered. Both gaps block the codeguide work that comes next.
 - Decision: add a centralized host-junction list to `internal/paths` (e.g.
   `HostJunctions()` returning `{name, link-path, weft-target}` records) with **`_lyx` as the
   sole entry**. The `internal/worktree` seeder (`seedLyxJunction` + the `.git/info/exclude`
-  seeding) iterates this list instead of hardcoding `_lyx`.
+  seeding) iterates this list instead of hardcoding `_lyx`. The record carries **three fields
+  because the two seeding ops consume different ones**: junction creation (`seedLyxJunction`)
+  uses **link-path + weft-target**, while exclude seeding (`seedGitExclude`,
+  `internal/worktree/weft.go:137`, which appends the literal directory name and does a
+  line-exact match) iterates the **`name`** field. The record shape must cover both.
 - Rationale: `internal/paths` is the sole geometry owner (CONSTRAINTS.md). The seeder
   hardcoding `_lyx` leaks layout knowledge. Iterating a paths-owned list centralizes the
   "what junctions a host worktree has" fact and makes a future `_codeguide` entry a one-line
@@ -158,6 +162,13 @@ partially scattered. Both gaps block the codeguide work that comes next.
   - `lyx config` is interactive: it prints human-readable text and returns exit 0 on success
     (the one allowed exception to JSON output, matching `lyx ide menu`). This holds precisely
     because the JSON-emitting sync call is given a discarded writer.
+  - **Push completion is NOT surfaced.** `weft sync` commits then calls `spawnPush` — a
+    **detached** child (`internal/weft/cli.go:144`). So the exit code from `weft.RunCLI(["sync"])`
+    reflects only **commit + push-spawn launch**, never the push's eventual result; a push that
+    fails inside the detached child cannot be reported by `lyx config`. This is intentional and
+    consistent with existing `lyx weft sync` semantics — the config-CLI's confirmation means
+    "committed and push launched," not "pushed." The plan must not promise push-completion
+    reporting.
 - Rationale: prevents committing broken config; reuses the existing sync path without leaking its
   JSON into the interactive stream; gives the plan writer and tests a deterministic abort contract.
 - Rejected: aborting outright on first invalid YAML (worse UX); passing the interactive `out` to
