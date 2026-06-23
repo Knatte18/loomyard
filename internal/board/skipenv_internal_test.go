@@ -73,6 +73,15 @@ func TestApplySkipEnv(t *testing.T) {
 			wantSkipGit:  false,
 			wantSkipPush: true,
 		},
+		{
+			name:         "cfg.SkipGit=true, env unset",
+			skipGitEnv:   "",
+			skipPushEnv:  "",
+			cfgSkipGit:   true,
+			cfgSkipPush:  false,
+			wantSkipGit:  true,
+			wantSkipPush: false,
+		},
 	}
 
 	for _, tt := range tests {
