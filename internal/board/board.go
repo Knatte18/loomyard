@@ -174,7 +174,7 @@ func (b *Board) Rerender() error {
 // until nothing is left. It is what the detached `lyx board sync` process runs;
 // it can also be called directly to force a synchronous backup.
 func (b *Board) Sync() error {
-	return Sync(b.boardPath)
+	return Sync(b.boardPath, b.skipGit, b.skipPush)
 }
 
 // HealthCheck verifies the board directory and tasks.json file exist and are readable.
