@@ -11,13 +11,13 @@ import (
 
 func TestApplySkipEnv(t *testing.T) {
 	tests := []struct {
-		name           string
-		skipGitEnv     string
-		skipPushEnv    string
-		cfgSkipGit     bool
-		cfgSkipPush    bool
-		wantSkipGit    bool
-		wantSkipPush   bool
+		name         string
+		skipGitEnv   string
+		skipPushEnv  string
+		cfgSkipGit   bool
+		cfgSkipPush  bool
+		wantSkipGit  bool
+		wantSkipPush bool
 	}{
 		{
 			name:         "both env unset",
