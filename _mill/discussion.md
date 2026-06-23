@@ -134,10 +134,14 @@ skip, which erodes its value.
 
 - Decision: Add a lean variant to `internal/lyxtest` (an option on `CopyPaired`, or a
   sibling builder like `CopyPairedLocal`) that copies hub + **host** bare + weft-prime
-  but **omits the weft-bare**. Tests that call `Add` with `SkipPush:true` (so the weft
-  push is suppressed) switch to the lean variant; tests that push the weft branch keep
-  the full fixture. The full (all-four-repos) behaviour stays the default so nothing
-  silently changes.
+  but **omits the weft-bare**. All current `Add` tests pass `SkipPush:true` (verified: 12
+  call sites in add_test.go/weft_test.go/remove_test.go, zero with the weft push
+  enabled), so they all switch to the lean variant. **There is no existing weft-pushing
+  test to "keep" on the full fixture** — the weft push path (`pushWeftBranch`) is
+  currently uncovered. To keep the full `CopyPaired` exercised and to close that
+  pre-existing gap, the plan adds **one** new weft-pushing test (`AddOptions{}` — neither
+  skip set) on the full fixture, asserting the weft branch lands on the weft-bare. The
+  full (all-four-repos) builder stays the default so nothing silently changes.
 - Rationale: `worktree`'s ~32s is not git logic (`git worktree add` is ~100ms; a paired
   `Add` is ~10 git spawns ≈ 0.3s). A single paired-Add test is ~4.4s alone and balloons
   to ~10s under parallel load — it is **filesystem-I/O-bound**: `CopyPaired` copies four
@@ -219,8 +223,13 @@ skip, which erodes its value.
   - `Board` (board.go:24) stores only `boardPath` + `out`; `New(cfg)` (board.go:30)
     currently drops the rest of `cfg`. `Config` (config.go:18) has `Path`, `Home`,
     `Sidebar`, `ProposalPrefix` — add `SkipGit`/`SkipPush` here.
-  - `(b *Board) Sync()` (board.go:172) just delegates to package `Sync(b.boardPath)`;
-    thread the flags through that call.
+  - `(b *Board) Sync()` (board.go:172) just delegates to package `Sync(b.boardPath)`,
+    which reads env directly (sync.go:32, sync.go:103) — there is **no Config seam there
+    today**. The plan must give package `Sync` (and `CommitPush`) a new options signature
+    so `(b *Board) Sync()` can pass its resolved `SkipGit`/`SkipPush` in. The production
+    path `RunCLI` (cli.go:263, the `sync` case → `b.Sync()`) resolves env→options **once**
+    at that entry point, so the internal `Sync`/`pushUnpushed` sites read the resolved
+    options, not env.
   - Test callers: `sync_test.go` uses `board.New(cfg).Sync()` and `w.Sync()` →
     config-based. `git_test.go` calls `board.CommitPush(path, …)` and `board.Pull(path)`
     directly → needs the options seam (`Pull` needs none). `concurrency_test.go` uses
@@ -235,12 +244,18 @@ skip, which erodes its value.
   each `Copy*` does a `copyDirRecursive` of the template(s) into `tb.TempDir()` (pure
   filesystem, **zero per-test git spawns** — a deliberate invariant) then rewrites the
   origin URL via `rewriteOriginURLInConfig` (text edit, no spawn). `CopyPaired` copies
-  hub + host-bare + weft-prime + weft-bare. The lean variant omits **only the weft-bare**
-  (the host bare must stay — `Add` pushes the host branch unconditionally, add.go:172)
-  and can skip or no-op the origin-URL rewrite on the weft-prime's origin (never reached
-  when the weft push is suppressed). Consumers in `internal/worktree/weft_test.go`,
-  `add_test.go`, `remove_test.go`, etc. call `Add(..., AddOptions{SkipPush:true})` — the
-  weft push (add.go:182-183 → `pushWeftBranch`) is the only push `SkipPush` suppresses.
+  hub + host-bare + weft-prime + weft-bare and returns a `PairedFixture` (lyxtest.go:324)
+  with `Hub`, `Bare`, `WeftPrime`, `WeftBare`, `Layout`. The lean variant omits **only
+  the weft-bare** (the host bare must stay — `Add` pushes the host branch unconditionally,
+  add.go:172) and returns the same `PairedFixture` with **`WeftBare == ""`** and the
+  **weft-prime's origin URL left unrewritten** (it still points at the shared template
+  weft-bare, but is never reached because the weft push is suppressed). This is safe:
+  verified that no `SkipPush:true` test reads `f.WeftBare` (grep: zero `.WeftBare`
+  references in `*_test.go`), and the lean variant must not be used by the new
+  weft-pushing test (which uses full `CopyPaired`). Consumers in
+  `internal/worktree/weft_test.go`, `add_test.go`, `remove_test.go`, etc. call
+  `Add(..., AddOptions{SkipPush:true})` — the weft push (add.go:182-183 →
+  `pushWeftBranch`) is the only push `SkipPush` suppresses.
 
 - **Timing harness:** `cmd/testtiming` (`-full` adds `-tags integration`). No
   `network` flag is needed (Decision A). No CI exists (`.github/workflows` absent) — the
@@ -289,10 +304,13 @@ faster, plus a verification that nothing regressed.
     still exercises the real git path.
 - **Workstream C (fixture trim):** switch the `SkipPush:true` worktree/weft tests to the
   lean fixture and confirm they still pass (the junction/exclude/branch assertions don't
-  depend on the weft-bare). Keep at least one weft-pushing test on the full fixture and
-  confirm it still passes. The lean variant itself is the unit under test — assert it
-  produces a working hub + host-bare + weft-prime (no weft-bare) and that
-  `Add(SkipPush:true)` succeeds against it (including the unconditional host push).
+  depend on the weft-bare). No existing test pushes the weft branch, so **add one new
+  weft-pushing test** (`Add(..., AddOptions{})`) on the full `CopyPaired` that asserts
+  the weft branch lands on the weft-bare — this keeps the full fixture exercised and
+  covers `pushWeftBranch` (currently uncovered). The lean variant itself is the unit
+  under test — assert it produces a working hub + host-bare + weft-prime (no weft-bare)
+  and that `Add(SkipPush:true)` succeeds against it (including the unconditional host
+  push to the host bare).
 - **Equivalence check:** diff `go test -tags integration ./... -list '.*'` (and a
   `=== RUN` capture) before vs after; the only removed names must be the two network
   tests. Everything else identical.
@@ -339,3 +357,15 @@ faster, plus a verification that nothing regressed.
 - **Q (review r1 NOTE):** `concurrency_test.go` isn't integration-tagged — still convert?
   **A:** Yes, for consistency/parallel-safety, but it's a Tier 1 test so it does not move
   the Tier 2 floor; not counted toward the speedup.
+- **Q (review r2 GAP):** "Keep a weft-pushing test on the full fixture" — but does one
+  exist? **A:** No (verified: all 12 `Add` calls use `SkipPush:true`; `pushWeftBranch` is
+  uncovered). Resolution: the plan **adds one** weft-pushing test (`AddOptions{}`) on full
+  `CopyPaired`, closing the pre-existing gap and keeping the full builder exercised.
+- **Q (review r2 GAP):** What does the lean fixture return for `WeftBare`/weft-prime
+  origin? **A:** Same `PairedFixture` with `WeftBare == ""` and weft-prime origin left
+  unrewritten (points at the shared template bare, never reached under `SkipPush`).
+  Verified no `SkipPush` test reads `.WeftBare`; the lean variant is not used by the new
+  weft-pushing test.
+- **Q (review r2 NOTE):** Decision B glosses the package-`Sync` seam — clarify? **A:**
+  Package `Sync`/`CommitPush` get a new options signature; `(b *Board) Sync()` passes its
+  resolved flags through; `RunCLI`'s sync case (cli.go:263) resolves env→options once.
