@@ -128,6 +128,7 @@ git, mirroring how `internal/ide` tests call `Menu` directly.
   - `internal/config/edit.go`
   - `internal/ide/menu_test.go`
   - `internal/lyxtest/lyxtest.go`
+  - `internal/worktree/add.go`
   - `cmd/lyx/main.go`
   - `cmd/lyx/main_test.go`
 - **Edits:**
@@ -141,9 +142,18 @@ git, mirroring how `internal/ide` tests call `Menu` directly.
   written, and sync invoked; (b) unknown-module → exit 1 with the known-modules message and sync
   NOT called; (c) abort path → fake editor returns error, assert exit 1, abort message, sync NOT
   called; (d) menu — feed `in` a selection and a `q`, assert correct module routed and range
-  validation; (e) an `//go:build integration` e2e test using `CopyPaired`: run `dispatch` with a
-  fake editor and the REAL sync (`weft.RunCLI`), then assert `_lyx/config/<module>.yaml` is
-  committed in the weft worktree and that the host worktree's tracked tree does not contain it.
+  validation; (e) an `//go:build integration` e2e test using `CopyPaired`: FIRST seed the host
+  `_lyx` junction by running `worktree.New(worktree.Config{}).Add(f.Layout, slug,
+  worktree.AddOptions{SkipPush: true})` (without this the host worktree has no `_lyx`, so
+  `config.Edit`→`FindBaseDir` would error before any write); resolve a layout for the new host
+  worktree via `paths.Resolve(f.Layout.WorktreePath(slug))`; `t.Chdir` into that host worktree
+  so `weft.RunCLI`'s cwd resolution lands on the fixture; run `dispatch` with a fake editor
+  (writes valid YAML) and an injected sync of `func() int { return weft.RunCLI(io.Discard,
+  []string{"commit"}) }` — use `commit`, NOT `sync`, because `sync` calls a detached `spawnPush`
+  that cannot run in-process (consistent with the discussion's note that push completion is not
+  surfaced). Then assert `_lyx/config/<module>.yaml` is tracked/committed in the weft worktree
+  (`git -C <slug>-weft ls-files`/`show`) and that the host worktree's `git ls-files` does not
+  list it (host stays pristine via `.git/info/exclude`).
   In `cmd/lyx/main_test.go` add a case asserting `run([]string{"config"}, out)` routes to the
   config command (e.g. errors cleanly when `_lyx` is absent rather than hitting the unknown-module
   default).

@@ -60,9 +60,9 @@ This batch is independent of the other three.
   `seedGitExclude(l *paths.Layout, slug string) error` to append each junction's `Name` (looping
   over `l.HostJunctions(slug)`) to `.git/info/exclude`, preserving the line-exact idempotency
   check per name. The call sites in `internal/worktree/add.go` (steps 9 and 10) keep the same
-  signatures. With one junction, output is byte-identical to today. Optionally rename the
-  functions to `seedHostJunctions`/`seedHostExcludes` for clarity, updating `add.go` references;
-  if renamed, update `internal/worktree/remove.go`/`remove_test.go`/`weft_test.go` references too.
+  signatures. With one junction, output is byte-identical to today. Keep the existing function
+  names `seedLyxJunction`/`seedGitExclude` (do NOT rename) so the `add.go` call sites stay
+  unchanged and `add.go` remains read-only Context for this card.
 - **Commit:** `refactor(worktree): seed host junctions from paths.HostJunctions`
 
 ### Card 7: Tests — HostJunctions geometry + seeder behaviour-preserved
@@ -85,7 +85,7 @@ This batch is independent of the other three.
   `internal/worktree/weft_test.go` extend the existing seeder coverage (using the `CopyPaired`
   fixture, `//go:build integration`) to assert that after seeding, the `_lyx` junction exists and
   resolves to the weft `_lyx` target and `.git/info/exclude` contains the line `_lyx` — i.e. the
-  refactor is behaviour-preserving. Update any references if Card 6 renamed the seeder functions.
+  refactor is behaviour-preserving.
 - **Commit:** `test(paths,worktree): cover HostJunctions and seeder parity`
 
 ## Batch Tests
