@@ -143,8 +143,8 @@ func Detach(cmd *exec.Cmd) {
 **`internal/board/board.go`** — `spawnSync` call site unchanged; the function signature stays the same.  
 **`internal/board/spawn.go`** (new single file) — builds cmd, calls `proc.Detach(cmd)`, calls `cmd.Start()`. Env-skip guards (`WEFT_SKIP_GIT`, etc.) do not apply here.  
 **`internal/weft/spawn.go`** (new single file) — builds cmd, calls `proc.Detach(cmd)`, calls `cmd.Start()`. Preserves env-skip guards (`WEFT_SKIP_GIT`, `WEFT_SKIP_PUSH`).  
-**`internal/muxpoc/up.go`** — replace `spawnServer(cmd)` with `proc.Detach(cmd)` at both call sites; add `proc` import.  
-**`internal/vscode/launch_windows.go`** — replace `syscall.SysProcAttr{HideWindow:true, CreationFlags:createNoWindow}` block with `proc.HideWindow(cmd)`; remove `createNoWindow` constant and `syscall` import; add `proc` import.
+**`internal/muxpoc/up.go`** — replace `spawnServer(cmd)` with `proc.Detach(cmd)` at both call sites; add `proc` import. Note: `up.go` sets `cmd.Env = clean` before the spawn call; `proc.Detach` touches only `cmd.SysProcAttr` and does not clobber any previously set `cmd.Env`.  
+**`internal/vscode/launch_windows.go`** — replace `syscall.SysProcAttr{HideWindow:true, CreationFlags:createNoWindow}` block with `proc.HideWindow(cmd)`; remove `createNoWindow` constant and `syscall` import; add `proc` import. The existing comment `// Apply no-console-window flag pattern (from git_windows.go/spawn_windows.go)` references files this task deletes — update the comment to reference `internal/proc` instead.
 
 ## Constraints
 
