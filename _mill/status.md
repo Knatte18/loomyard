@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-approved
+phase: done
 slug: optimize-integration-tier
 branch: optimize-integration-tier
 plan: _mill/plan
@@ -36,6 +36,7 @@ holistic-fixing  '2026-06-23T12:17:36Z'
 holistic-reviewing  '2026-06-23T12:21:42Z'
 holistic-fixing  '2026-06-23T12:25:20Z'
 holistic-approved  '2026-06-23T12:28:03Z'
+done  '2026-06-23T12:29:13Z'
 ```
 
 ## Batches
