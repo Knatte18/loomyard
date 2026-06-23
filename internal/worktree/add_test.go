@@ -3,7 +3,7 @@
 // add_test.go covers Add's happy-path side effects (portal, launchers, pushed
 // branch) and the zero-residue rollback on a post-creation failure. The paired
 // Add creates both host and weft worktrees on the mirrored branch and requires
-// a weft Prime repo; tests build this via lyxtest.CopyPaired and pass
+// a weft Prime repo; tests build this via lyxtest.CopyPairedLocal and pass
 // AddOptions{SkipPush:true}.
 
 package worktree
