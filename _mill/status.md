@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-approved
 slug: extract-internal-proc
 branch: extract-internal-proc
 plan: _mill/plan
@@ -24,6 +24,7 @@ implementing  '2026-06-23T12:13:55Z'
 approved-Create internal/proc  '2026-06-23T12:17:39Z'
 approved-Migrate callers  '2026-06-23T12:22:44Z'
 holistic-reviewing  '2026-06-23T12:23:14Z'
+holistic-approved  '2026-06-23T12:24:49Z'
 ```
 
 ## Batches
