@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: optimize-integration-tier
 branch: optimize-integration-tier
 plan: _mill/plan
@@ -26,4 +26,19 @@ plan-review-r3  '2026-06-23T11:32:47Z'
 plan-fix-r3  '2026-06-23T11:34:08Z'
 plan-fix-r4  '2026-06-23T11:38:22Z'
 planned  '2026-06-23T11:38:40Z'
+implementing  '2026-06-23T11:44:37Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: network-tests-removal
+    state: pending
+  - name: lean-fixture-worktree
+    state: pending
+  - name: board-skip-seam-parallelize
+    state: pending
+  - name: record-timing
+    state: pending
 ```
