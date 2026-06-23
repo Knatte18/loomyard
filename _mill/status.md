@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-lean-fixture-worktree
+phase: approved-board-skip-seam-parallelize
 slug: optimize-integration-tier
 branch: optimize-integration-tier
 plan: _mill/plan
@@ -29,6 +29,7 @@ planned  '2026-06-23T11:38:40Z'
 implementing  '2026-06-23T11:44:37Z'
 approved-network-tests-removal  '2026-06-23T11:48:58Z'
 approved-lean-fixture-worktree  '2026-06-23T11:53:50Z'
+approved-board-skip-seam-parallelize  '2026-06-23T12:04:08Z'
 ```
 
 ## Batches
@@ -46,9 +47,10 @@ batches:
     start_sha: 5667632cfe8faac15afee5cb397d9b4f25b9855c
     commit_sha: 8a1e289bed4f815c310186ac4d0b4f9f1f699303
   - name: board-skip-seam-parallelize
-    state: running
+    state: approved
     implementer_session: 1df5cc1f-5339-40a2-aa18-73a49c48885e
     start_sha: 95c7adc6533d7af25cbc62da378585a2cdd7b8ac
+    commit_sha: 5eb29d2de89415a5bfeab2364690311169c61be1
   - name: record-timing
     state: pending
 ```
