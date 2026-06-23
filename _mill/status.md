@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-network-tests-removal
 slug: optimize-integration-tier
 branch: optimize-integration-tier
 plan: _mill/plan
@@ -27,6 +27,7 @@ plan-fix-r3  '2026-06-23T11:34:08Z'
 plan-fix-r4  '2026-06-23T11:38:22Z'
 planned  '2026-06-23T11:38:40Z'
 implementing  '2026-06-23T11:44:37Z'
+approved-network-tests-removal  '2026-06-23T11:48:58Z'
 ```
 
 ## Batches
@@ -34,9 +35,10 @@ implementing  '2026-06-23T11:44:37Z'
 ```yaml
 batches:
   - name: network-tests-removal
-    state: running
+    state: approved
     implementer_session: e9b83f2c-ed6c-4ee9-8b6c-9a116fc7af69
     start_sha: 1791294153070c490bfa2ddd220a9401c6f2bfdc
+    commit_sha: 350e7f45803ef72a82333b6e3a799642def1d183
   - name: lean-fixture-worktree
     state: pending
   - name: board-skip-seam-parallelize
