@@ -52,5 +52,7 @@ batches:
     start_sha: 95c7adc6533d7af25cbc62da378585a2cdd7b8ac
     commit_sha: 5eb29d2de89415a5bfeab2364690311169c61be1
   - name: record-timing
-    state: pending
+    state: running
+    implementer_session: fba2645b-5fde-4a1f-82dd-11150f6b857b
+    start_sha: 02d6f805d3d4bb53d1185f156bd4a7dece6ff35b
 ```
