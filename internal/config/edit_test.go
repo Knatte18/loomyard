@@ -283,8 +283,3 @@ func TestEdit_NotInitialized(t *testing.T) {
 		t.Errorf("Edit() error = %v; want error containing 'not initialized'", err)
 	}
 }
-
-// stringContains is a helper to check if a substring exists in a string.
-func stringContains(s, substr string) bool {
-	return s != "" && substr != "" && len(s) >= len(substr)
-}
