@@ -1,2 +1,0 @@
-- `os.Chdir` used directly instead of `t.Chdir` in integration test: **Location:** `C:\Code\loomyard\wts\weft-producers\internal\configcli\configcli_integration_test.go:53-56`
-- Overview `docs/overview.md` code block does not show `config` dispatch case: **Location:** `C:\Code\loomyard\wts\weft-producers\docs\overview.md:162-177`
