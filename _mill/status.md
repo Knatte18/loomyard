@@ -34,5 +34,7 @@ batches:
     start_sha: 246f1f4070a343db394e6a01db501ccfe8435986
     commit_sha: f1fc0bb694d5f5aebc6412ec46373a9a4ce530ea
   - name: Migrate callers
-    state: pending
+    state: running
+    implementer_session: 429a76ce-4f5e-4771-a8b4-e8aaed504433
+    start_sha: ab69fa5f9e42d2aee7ca3173940a4e8be910bbdd
 ```
