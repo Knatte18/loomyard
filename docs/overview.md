@@ -130,8 +130,8 @@ The `-weft` suffix is fixed and non-configurable. Weft paths are computed on dem
 ### Status
 
 - **Go implementation** (paths geometry, paired spawn, `lyx weft` command): ✅ task 006 complete. The weft engine (paths geometry, paired `lyx worktree add` spawn, and `lyx weft status|commit|push|pull|sync`) now exists in Go. Paired `lyx worktree add` hard-requires a weft repo built by the downstream hub-creator.
+- **`lyx config` command**: ✅ task 008 partial complete. The interactive menu interface (`lyx config` and `lyx config <module>`) shipped. `_codeguide` junction activation and codeguide config schema remain deferred.
 - **Portals**: on hold pending `_codeguide` junction activation. Portals (symlink-based overlay sharing) remain unimplemented; the weft junction model is the live mechanism.
-- **`_codeguide` junction activation** (`lyx config` TUI, `_lyx/config/` schema): task 008
 
 ```
 github.com/Knatte18/loomyard/
