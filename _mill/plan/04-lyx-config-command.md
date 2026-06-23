@@ -140,6 +140,7 @@ git, mirroring how `internal/ide` tests call `Menu` directly.
   - `cmd/lyx/main_test.go`
 - **Creates:**
   - `internal/configcli/configcli_test.go`
+  - `internal/configcli/configcli_integration_test.go`
 - **Deletes:** none
 - **Requirements:** In `internal/configcli/configcli_test.go`: (a) unit-test `dispatch`/`editOne`
   with a fake `config.EditorFunc` (writes known valid YAML) and a fake `syncFunc`
