@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-fix-r2
+phase: discussed
 slug: weft-producers
 branch: weft-producers
 plan: null
@@ -16,4 +16,5 @@ task_description: |
 ```text
 discussing  '2026-06-23T10:26:49Z'
 discussion-fix-r2  '2026-06-23T11:00:33Z'
+discussed  '2026-06-23T11:00:51Z'
 ```
