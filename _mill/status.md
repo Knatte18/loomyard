@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-fixing
+phase: holistic-reviewing
 slug: optimize-integration-tier
 branch: optimize-integration-tier
 plan: _mill/plan
@@ -33,6 +33,7 @@ approved-board-skip-seam-parallelize  '2026-06-23T12:04:08Z'
 approved-record-timing  '2026-06-23T12:14:04Z'
 holistic-reviewing  '2026-06-23T12:14:39Z'
 holistic-fixing  '2026-06-23T12:17:36Z'
+holistic-reviewing  '2026-06-23T12:21:42Z'
 ```
 
 ## Batches
