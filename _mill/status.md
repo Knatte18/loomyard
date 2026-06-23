@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-module-config-templates
+phase: approved-paths-host-junctions
 slug: weft-producers
 branch: weft-producers
 plan: _mill/plan
@@ -26,6 +26,7 @@ plan-fix-r3  '2026-06-23T11:23:20Z'
 planned  '2026-06-23T11:23:37Z'
 implementing  '2026-06-23T11:24:38Z'
 approved-module-config-templates  '2026-06-23T11:29:27Z'
+approved-paths-host-junctions  '2026-06-23T11:35:42Z'
 ```
 
 ## Batches
@@ -38,9 +39,10 @@ batches:
     start_sha: 2d0fa60531e675f55e046bc47b0b54c591075929
     commit_sha: af6212d53a97a45a976ab325071d025120fe1675
   - name: paths-host-junctions
-    state: running
+    state: approved
     implementer_session: af9468c8-de65-46b7-bcef-c81ff997b0ca
     start_sha: 5e991153378580d3f20ea00b7764f7dc502372a0
+    commit_sha: b65e7ccccaf8ee7db3f91f31d50f7f0bd5205f1a
   - name: config-edit-machinery
     state: pending
   - name: lyx-config-command
