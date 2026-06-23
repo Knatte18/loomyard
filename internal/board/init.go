@@ -74,7 +74,7 @@ func RunInit(out io.Writer, args []string) int {
 
 	if os.IsNotExist(err) {
 		// File doesn't exist, write the commented template
-		content := generateCommentedBoardYAML()
+		content := ConfigTemplate()
 		if err := os.WriteFile(boardYamlPath, []byte(content), 0o644); err != nil {
 			outputInitError(out, fmt.Sprintf("failed to write board.yaml: %v", err))
 			return 1
@@ -126,18 +126,6 @@ func RunInit(out io.Writer, args []string) int {
 		"worktree_yaml": status["worktree_yaml"],
 		"gitignore":     status["gitignore"],
 	})
-}
-
-// generateCommentedBoardYAML returns a fully-commented YAML template.
-func generateCommentedBoardYAML() string {
-	var sb strings.Builder
-
-	sb.WriteString("# path: $env:LYX_BOARD_PATH ? ../_board   # board dir (tasks.json + rendered output); relative to cwd or absolute\n")
-	sb.WriteString("# home: $env:LYX_HOME ? Home.md           # home page file name; relative to board dir\n")
-	sb.WriteString("# sidebar: $env:LYX_SIDEBAR ? _Sidebar.md   # sidebar file name; relative to board dir\n")
-	sb.WriteString("# proposal_prefix: $env:LYX_PROPOSAL_PREFIX ? proposal-   # prefix for proposal files\n")
-
-	return sb.String()
 }
 
 // generateCommentedWorktreeYAML returns a fully-commented YAML template for worktree configuration.
