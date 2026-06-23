@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-fixing
+phase: holistic-reviewing
 slug: weft-producers
 branch: weft-producers
 plan: _mill/plan
@@ -31,6 +31,7 @@ approved-config-edit-machinery  '2026-06-23T11:38:30Z'
 approved-lyx-config-command  '2026-06-23T11:43:27Z'
 holistic-reviewing  '2026-06-23T11:43:59Z'
 holistic-fixing  '2026-06-23T11:47:12Z'
+holistic-reviewing  '2026-06-23T11:54:21Z'
 ```
 
 ## Batches
