@@ -3,7 +3,7 @@
 ```yaml
 task: "Extract internal/proc (cross-OS windowless + detached spawn)"
 slug: extract-internal-proc
-approved: false
+approved: true
 started: 20260623-120601
 parent: main
 root: ""

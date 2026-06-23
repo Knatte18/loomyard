@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planning
+phase: plan-fix-r1
 slug: extract-internal-proc
 branch: extract-internal-proc
 plan: _mill/plan
@@ -18,4 +18,5 @@ discussing  '2026-06-23T11:43:46Z'
 discussion-fix-r1  '2026-06-23T11:54:47Z'
 discussed  '2026-06-23T11:55:06Z'
 planning  '2026-06-23T12:07:57Z'
+plan-fix-r1  '2026-06-23T12:10:56Z'
 ```
