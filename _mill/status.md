@@ -28,7 +28,9 @@ implementing  '2026-06-23T12:13:55Z'
 ```yaml
 batches:
   - name: Create internal/proc
-    state: pending
+    state: running
+    implementer_session: 4f0dc0aa-da3f-467b-99e5-523dce7bad1c
+    start_sha: 246f1f4070a343db394e6a01db501ccfe8435986
   - name: Migrate callers
     state: pending
 ```
