@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-network-tests-removal
+phase: approved-lean-fixture-worktree
 slug: optimize-integration-tier
 branch: optimize-integration-tier
 plan: _mill/plan
@@ -28,6 +28,7 @@ plan-fix-r4  '2026-06-23T11:38:22Z'
 planned  '2026-06-23T11:38:40Z'
 implementing  '2026-06-23T11:44:37Z'
 approved-network-tests-removal  '2026-06-23T11:48:58Z'
+approved-lean-fixture-worktree  '2026-06-23T11:53:50Z'
 ```
 
 ## Batches
@@ -40,9 +41,10 @@ batches:
     start_sha: 1791294153070c490bfa2ddd220a9401c6f2bfdc
     commit_sha: 350e7f45803ef72a82333b6e3a799642def1d183
   - name: lean-fixture-worktree
-    state: running
+    state: approved
     implementer_session: aa7b37c1-7218-4398-b475-0106128caef1
     start_sha: 5667632cfe8faac15afee5cb397d9b4f25b9855c
+    commit_sha: 8a1e289bed4f815c310186ac4d0b4f9f1f699303
   - name: board-skip-seam-parallelize
     state: pending
   - name: record-timing
