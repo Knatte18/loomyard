@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-Create internal/proc
+phase: approved-Migrate callers
 slug: extract-internal-proc
 branch: extract-internal-proc
 plan: _mill/plan
@@ -22,6 +22,7 @@ plan-fix-r1  '2026-06-23T12:10:56Z'
 planned  '2026-06-23T12:11:21Z'
 implementing  '2026-06-23T12:13:55Z'
 approved-Create internal/proc  '2026-06-23T12:17:39Z'
+approved-Migrate callers  '2026-06-23T12:22:44Z'
 ```
 
 ## Batches
@@ -34,7 +35,8 @@ batches:
     start_sha: 246f1f4070a343db394e6a01db501ccfe8435986
     commit_sha: f1fc0bb694d5f5aebc6412ec46373a9a4ce530ea
   - name: Migrate callers
-    state: running
+    state: approved
     implementer_session: 429a76ce-4f5e-4771-a8b4-e8aaed504433
     start_sha: ab69fa5f9e42d2aee7ca3173940a4e8be910bbdd
+    commit_sha: c8c28b1dab93e3303a38cad93e916068e1a66d9a
 ```
