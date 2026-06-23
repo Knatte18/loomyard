@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: weft-producers
 branch: weft-producers
-plan: null
+plan: _mill/plan
 parent: main
 task: 'weft producers: _lyx/config, lyx config, codeguide'
 task_description: |
@@ -17,4 +17,5 @@ task_description: |
 discussing  '2026-06-23T10:26:49Z'
 discussion-fix-r2  '2026-06-23T11:00:33Z'
 discussed  '2026-06-23T11:00:51Z'
+planning  '2026-06-23T11:08:34Z'
 ```
