@@ -66,12 +66,11 @@ func TestE2ESyncIntegration(t *testing.T) {
 
 	// Run dispatch with the fake editor and injected sync.
 	var out bytes.Buffer
-	baseDir := filepath.Join(hostLayout.WorktreeRoot, hostLayout.RelPath)
-	code := editOne(baseDir, &out, "worktree", fakeEdit, injectedSync)
+	code := dispatch(hostLayout, os.Stdin, &out, []string{"worktree"}, fakeEdit, injectedSync)
 
 	// Assert dispatch succeeded.
 	if code != 0 {
-		t.Errorf("editOne() = %d; want 0; output: %s", code, out.String())
+		t.Errorf("dispatch() = %d; want 0; output: %s", code, out.String())
 	}
 
 	// Assert _lyx/config/worktree.yaml is tracked/committed in the weft worktree.
