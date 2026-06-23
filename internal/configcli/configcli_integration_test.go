@@ -46,14 +46,7 @@ func TestE2ESyncIntegration(t *testing.T) {
 
 	// Chdir into the host worktree so weft.RunCLI's cwd resolution lands on the fixture.
 	// NOTE: This test must NOT call t.Parallel() due to t.Chdir.
-	oldCwd, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("Getwd: %v", err)
-	}
-	if err := os.Chdir(hostWorktreePath); err != nil {
-		t.Fatalf("Chdir(%s): %v", hostWorktreePath, err)
-	}
-	defer os.Chdir(oldCwd) // Restore cwd on exit.
+	t.Chdir(hostWorktreePath)
 
 	// Explicitly clear WEFT_SKIP_GIT and WEFT_SKIP_PUSH so the commit is not a silent no-op.
 	t.Setenv("WEFT_SKIP_GIT", "")
