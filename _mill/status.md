@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: weft-producers
 branch: weft-producers
 plan: _mill/plan
@@ -24,4 +24,19 @@ plan-review-r2  '2026-06-23T11:20:09Z'
 plan-fix-r2  '2026-06-23T11:20:09Z'
 plan-fix-r3  '2026-06-23T11:23:20Z'
 planned  '2026-06-23T11:23:37Z'
+implementing  '2026-06-23T11:24:38Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: module-config-templates
+    state: pending
+  - name: paths-host-junctions
+    state: pending
+  - name: config-edit-machinery
+    state: pending
+  - name: lyx-config-command
+    state: pending
 ```
