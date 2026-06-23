@@ -32,7 +32,9 @@ implementing  '2026-06-23T11:24:38Z'
 ```yaml
 batches:
   - name: module-config-templates
-    state: pending
+    state: running
+    implementer_session: 52a9187c-104a-4c21-bb7c-e9d44ea69908
+    start_sha: 2d0fa60531e675f55e046bc47b0b54c591075929
   - name: paths-host-junctions
     state: pending
   - name: config-edit-machinery
