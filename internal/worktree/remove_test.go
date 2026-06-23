@@ -135,7 +135,7 @@ func TestRemove(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			f := lyxtest.CopyPaired(t)
+			f := lyxtest.CopyPairedLocal(t)
 			slug := defaultSlug
 			if tt.slug != "" {
 				slug = tt.slug
@@ -189,7 +189,7 @@ func TestRemoveHostJunctionRemoved(t *testing.T) {
 	t.Parallel()
 
 	const slug = "junction-removal-test"
-	f := lyxtest.CopyPaired(t)
+	f := lyxtest.CopyPairedLocal(t)
 
 	w := New(Config{})
 	_, err := w.Add(f.Layout, slug, AddOptions{SkipPush: true})
@@ -222,7 +222,7 @@ func TestRemoveSubpathJunction(t *testing.T) {
 	const slug = "subpath-junction-test"
 	const subpath = "sub/path"
 
-	f := lyxtest.CopyPaired(t)
+	f := lyxtest.CopyPairedLocal(t)
 
 	// Create a subpath in the hub.
 	subpathDir := filepath.Join(f.Hub, subpath)

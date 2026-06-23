@@ -118,7 +118,7 @@ func TestAdd(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			f := lyxtest.CopyPaired(t)
+			f := lyxtest.CopyPairedLocal(t)
 			tt.setup(t, f)
 
 			w := New(Config{BranchPrefix: tt.branchPrefix})
@@ -177,7 +177,7 @@ func TestAddRollback(t *testing.T) {
 	t.Parallel()
 
 	const slug = "rollback-test"
-	f := lyxtest.CopyPaired(t)
+	f := lyxtest.CopyPairedLocal(t)
 
 	// Pre-create a regular file at the portal location to trip createPortal's refuse-to-clobber.
 	portalLink := filepath.Join(f.Layout.PortalsDir(), slug)
