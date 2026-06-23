@@ -250,8 +250,10 @@ skip, which erodes its value.
   add.go:172) and returns the same `PairedFixture` with **`WeftBare == ""`** and the
   **weft-prime's origin URL left unrewritten** (it still points at the shared template
   weft-bare, but is never reached because the weft push is suppressed). This is safe:
-  verified that no `SkipPush:true` test reads `f.WeftBare` (grep: zero `.WeftBare`
-  references in `*_test.go`), and the lean variant must not be used by the new
+  verified that no `SkipPush:true` *worktree* test reads `f.WeftBare`, so dropping it
+  affects none of the lean-fixture consumers. (`lyxtest_test.go:TestCopyPaired` does read
+  `fixture.WeftBare` — but that test exercises the full `CopyPaired` builder and stays on
+  it, unaffected by the lean variant.) The lean variant must not be used by the new
   weft-pushing test (which uses full `CopyPaired`). Consumers in
   `internal/worktree/weft_test.go`, `add_test.go`, `remove_test.go`, etc. call
   `Add(..., AddOptions{SkipPush:true})` — the weft push (add.go:182-183 →
