@@ -63,10 +63,15 @@ batches: none — this batch only removes.
     git/integration suites are gated behind the `integration` build tag (see
     integration_test.go and bench_git_test.go)"; update it to reference the surviving gated
     files (`git_test.go`, `sync_test.go`) and drop the deleted ones.
-  - `docs/benchmarks/board-performance.md` — the "## Push access" section describes
-    `BenchmarkSyncGit` / `TestIntegrationCommitPush` pushing to `github.com/Knatte18/loomyard-test`.
-    Remove that section (or replace with a one-line note that the integration tier no longer
-    touches a real remote), since both symbols are deleted.
+  - `docs/benchmarks/board-performance.md` — remove **every** reference to the deleted
+    `BenchmarkSyncGit` / `BenchmarkSyncGitNoPush` / `TestIntegrationCommitPush`, not just one
+    section: (a) the "How to run" block (~lines 18-19) with the `-bench SyncGit` invocation and
+    its "Network + push access … required" note; (b) the "Background sync
+    (`-tags integration -bench SyncGit …`)" results table (~lines 86-91, the `SyncGit` /
+    `SyncGitNoPush` rows); (c) any inline mention (e.g. the `SyncGit` reference ~line 109); and
+    (d) the "## Push access" section (~line 140). Replace with nothing, or a one-line note that
+    the integration tier no longer benchmarks against a real remote. Grep the file for `SyncGit`
+    afterward to confirm zero remaining hits.
   - `cmd/testtiming/main.go` — line ~93 prints "(real git + network; this can take ~a
     minute)"; change it to drop "+ network" (the full tier is real local git only). Leave the
     `-full` flag help text intact.

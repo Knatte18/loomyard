@@ -159,11 +159,14 @@ options (overview Shared Decisions explains why).
   sync with `BOARD_SKIP_GIT=1` env. After card 3, `writeOp` keys off `b.skipGit`, so these
   must set `cfg.SkipGit = true` instead — otherwise `spawnSync` fires against a non-repo temp
   dir. Convert:
-  - `boardtest/concurrency_test.go` — `TestConcurrentReadsDuringUpserts` and
-    `TestConcurrentUpsertsDoNotLoseWrites`: replace `t.Setenv("BOARD_SKIP_GIT", "1")` with
-    `cfg.SkipGit = true` on the `Config` used to build the Board; add `t.Parallel()`. (Tier-1
-    file — no integration tag; conversion is for correctness + parallel-safety, not Tier 2
-    wall-clock.)
+  - `boardtest/concurrency_test.go` — `TestConcurrentReadsDuringUpserts` (line 33) and
+    `TestConcurrentUpsertsDoNotLoseWrites` (line 109): replace `t.Setenv("BOARD_SKIP_GIT", "1")`
+    with `cfg.SkipGit = true` on the `Config` used to build the Board; add `t.Parallel()`.
+    Also convert `BenchmarkGetDuringUpsert` (line 150): it sets `b.Setenv("BOARD_SKIP_GIT","1")`,
+    builds the facade Board (line 155) and writes via `UpsertTask` (line 170), so it has the
+    same regression — replace its `b.Setenv` with `cfg.SkipGit = true` on the Config it passes
+    to `board.New`. (Tier-1 file — no integration tag; conversion is for correctness +
+    parallel-safety, not Tier 2 wall-clock.)
   - `internal/board/board_test.go` — `TestUpsertTask` (line 19), `TestRerender` (line 53),
     `TestHealthCheckPasses` (line 80): replace `t.Setenv("BOARD_SKIP_GIT", "1")` with
     `cfg.SkipGit = true` set after `cfg := board.DefaultConfig(); cfg.Path = boardPath`. These
@@ -171,8 +174,9 @@ options (overview Shared Decisions explains why).
     tests (no `t.Setenv`) are unchanged. Keep the `os` import (still used by `os.Stat`).
   - `boardtest/bench_test.go` — `BenchmarkUpsertFacade` (line 182): replace
     `b.Setenv("BOARD_SKIP_GIT", "1")` with `cfg.SkipGit = true` on the `Config` it passes to
-    `board.New`. Leave the store-level benchmarks (`BenchmarkUpsert`/`Get`/`List`) untouched —
-    they do not build a Board, so their `b.Setenv` is vestigial and harmless. `seedWiki` is
+    `board.New`. Leave `BenchmarkUpsert`/`Get`/`List` untouched — they drive the board through
+    `board.RunCLI` (lines 128/149/170), which after card 4 still folds `BOARD_SKIP_GIT` env
+    into cfg via `applySkipEnv`, so their `b.Setenv` remains live and correct. `seedWiki` is
     unchanged (it writes `tasks.json` directly, never through the facade).
 - **Commit:** `test(board): migrate facade write-path tests to cfg.SkipGit`
 
