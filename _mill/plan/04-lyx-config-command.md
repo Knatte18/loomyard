@@ -33,7 +33,6 @@ git, mirroring how `internal/ide` tests call `Menu` directly.
   - `internal/board/template.go`
   - `internal/worktree/template.go`
   - `internal/weft/template.go`
-  - `internal/output/output.go`
 - **Edits:** none
 - **Creates:**
   - `internal/configcli/configcli.go`
@@ -134,6 +133,7 @@ git, mirroring how `internal/ide` tests call `Menu` directly.
   - `internal/ide/menu_test.go`
   - `internal/lyxtest/lyxtest.go`
   - `internal/worktree/add.go`
+  - `internal/paths/paths.go`
   - `cmd/lyx/main.go`
   - `cmd/lyx/main_test.go`
 - **Edits:**

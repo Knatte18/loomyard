@@ -3,7 +3,7 @@
 ```yaml
 task: 'weft producers: _lyx/config, lyx config, codeguide'
 slug: weft-producers
-approved: false
+approved: true
 started: 20260623-110523
 parent: main
 root: ""
