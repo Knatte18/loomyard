@@ -97,9 +97,15 @@ partially scattered. Both gaps block the codeguide work that comes next.
 ### module-owned-templates
 
 - Decision: each module exposes its own commented-config-template generator
-  (`board`, `worktree`, `weft`); `init` and `lyx config` both consume these. Move
-  `generateCommentedBoardYAML` / `generateCommentedWorktreeYAML` out of
-  `internal/board/init.go` into the respective modules; add one for `weft`.
+  (`board`, `worktree`, `weft`); `init` and `lyx config` both consume these.
+  - **`board` and `worktree`:** **relocate** the existing `generateCommentedBoardYAML` /
+    `generateCommentedWorktreeYAML` out of `internal/board/init.go` into the respective
+    modules. These are moves — `init` must scaffold byte-identical content afterward
+    (regression guard, see Testing).
+  - **`weft`:** the commented-template generator is **authored fresh** — `weft` today has only
+    `DefaultConfig()` returning a struct (`internal/weft/config.go:22`), no commented YAML. Its
+    single commented key is `pathspec` (default `_lyx`). The "identical-content" regression
+    guard therefore applies **only to board/worktree**, not weft.
 - Rationale: "modules own their configs" (operator's explicit steer). Single source of
   truth for each module's default/commented YAML, reused by both scaffolding paths.
 - Rejected: keeping templates in `board/init.go` and importing from there — spreads schema
@@ -135,16 +141,28 @@ partially scattered. Both gaps block the codeguide work that comes next.
 
 ### edit-validate-and-sync-behavior
 
-- Decision: after `$EDITOR` exits, re-parse the YAML. On parse failure, report the error and
-  **re-open the editor** (loop), with the operator able to abort (leaving the file as-is and
-  skipping sync). On success, trigger `lyx weft sync` (reuse `weft.RunCLI(out, ["sync"])` —
-  do not reimplement). `weft sync` is a no-op when nothing changed, so an unchanged edit is
-  harmless. `lyx config` is interactive: it prints human-readable text and returns exit 0 on
-  success (the one allowed exception to JSON output, matching `lyx ide menu`).
-- Rationale: prevents committing broken config; reuses the existing sync path; matches the
-  established interactive-command convention.
-- Rejected: aborting outright on invalid YAML (worse UX); writing JSON output (interactive
-  command).
+- Decision: after `$EDITOR` exits, re-parse the YAML. Loop and abort semantics are **explicit**:
+  - **Abort triggers** (deterministic, so the fake-editor tests can drive them): (a) the editor
+    process exits **non-zero**; or (b) after a validation failure the file content is
+    **unchanged** from the previous failed attempt (operator saved without fixing, or exited
+    without editing). On abort: leave the file as-is, **skip sync**, print a human-readable
+    message, and return **exit code 1**.
+  - **Re-edit loop:** on a parse failure where the content *did* change, print the parse error
+    and **re-open the editor**.
+  - **Success:** on valid YAML, trigger `lyx weft sync` by calling `weft.RunCLI` with its output
+    routed to **`io.Discard`** (NOT the interactive `out`) — `weft sync` emits `{"ok":true}`
+    JSON (`internal/weft/cli.go:147`), which must not contaminate `lyx config`'s human-readable
+    stream. The config-CLI inspects the returned exit code and prints its **own** human-readable
+    confirmation ("synced") or, on non-zero, a human-readable sync error. `weft sync` is a no-op
+    when nothing changed, so an unchanged-but-valid edit is harmless.
+  - `lyx config` is interactive: it prints human-readable text and returns exit 0 on success
+    (the one allowed exception to JSON output, matching `lyx ide menu`). This holds precisely
+    because the JSON-emitting sync call is given a discarded writer.
+- Rationale: prevents committing broken config; reuses the existing sync path without leaking its
+  JSON into the interactive stream; gives the plan writer and tests a deterministic abort contract.
+- Rejected: aborting outright on first invalid YAML (worse UX); passing the interactive `out` to
+  `weft.RunCLI` (leaks JSON); an interactive y/n abort prompt (harder to drive deterministically
+  in tests than the editor-exit-code / unchanged-content signals).
 
 ### editor-resolution
 
@@ -195,9 +213,17 @@ Key files and current state (from codebase exploration):
 - **Module dispatch:** `cmd/lyx/main.go:50` thin `switch module` router; add a
   `case "config":` that routes to the new config-CLI layer. The new layer is the place that
   imports both `internal/config` and `internal/weft` (and the modules, for their templates).
-  It can be a new `internal/configcli` package (keeps `main` thin, matches the per-module
-  `RunCLI` pattern) — final package name is mill-plan's call, but it must **not** live inside
-  `internal/config` (circular import) and must **not** be `main`-fattening if avoidable.
+  **Binding constraints on the config-CLI layer** (the package *name* is mill-plan's call, but
+  these requirements are not negotiable):
+  - It must **not** live inside `internal/config` — `internal/weft` already imports
+    `internal/config`, so a `weft` call from `config` would be a circular import.
+  - It must **not** fatten `cmd/lyx/main.go` beyond the thin `case "config":` dispatch — the
+    registry, menu, and edit+sync composition belong in the new layer, matching the existing
+    per-module `RunCLI` pattern.
+  - It is the **only** layer permitted to import both `internal/config` and `internal/weft`
+    (plus the modules for their templates).
+  A new `internal/configcli` package satisfies all three; mill-plan may choose another name
+  that does.
 - **git-ownership prototype:** `internal/board/sync.go` + `internal/git.RunGit(args, cwd)`
   (local-commit + detached coalesced-push); `weft`'s `sync.go` is the direct analog. Writes
   go through the junction (host relpath); only git is geometry-scoped and lyx-owned.
@@ -236,9 +262,11 @@ convention; see `docs/benchmarks/test-suite-timing.md`). **Do not** use `LyxTest
   approach — feed input via `in`, assert on `out`, validate selection/quit/out-of-range),
   and for `lyx config <module>` dispatch incl. unknown-module error. Mock/stub the sync
   trigger so menu/dispatch tests don't require a weft repo.
-- **module template generators:** assert each relocated generator produces parseable YAML
-  whose keys match the module's defaults; assert `init` still scaffolds identical content
-  after the relocation (regression guard so the move is behaviour-preserving).
+- **module template generators:** assert each generator (`board`, `worktree`, `weft`) produces
+  parseable YAML whose keys match the module's defaults. For **board/worktree only** (these are
+  relocations), assert `init` still scaffolds byte-identical content after the move (regression
+  guard so the relocation is behaviour-preserving). The **weft** generator is net-new, so it has
+  no identical-content baseline — assert only that it parses and yields the `pathspec` default.
 - **paths `HostJunctions()` (TDD candidate):** table test asserting it returns exactly the
   `_lyx` entry with the correct link path (`HostLyxLinkHere()`) and weft target
   (`WeftLyxDir()`) for prime and non-prime worktrees. Guard test that it contains **no**
@@ -272,3 +300,11 @@ convention; see `docs/benchmarks/test-suite-timing.md`). **Do not** use `LyxTest
   `internal/paths`, with `_lyx` as the only current entry; the worktree seeder iterates it.
 - **Q:** Test substrate? **A:** `internal/lyxtest` fixtures, `integration` build tag. Not
   `LyxTestHub` (stale `_weft/<slug>` layout; regenerated later by `loom-git-clone`).
+- **Q:** (review r1 gap) How is `weft sync`'s JSON kept out of the interactive `lyx config`
+  output? **A:** Call `weft.RunCLI` with output routed to `io.Discard`; the config-CLI prints
+  its own human-readable confirmation/error from the returned exit code.
+- **Q:** (review r1 gap) What is the concrete abort mechanism for the re-edit loop? **A:** Abort
+  when the editor exits non-zero, or when content is unchanged after a validation failure; on
+  abort leave the file as-is, skip sync, exit 1.
+- **Q:** (review r1 note) Is the weft template a relocation? **A:** No — net-new (weft had only a
+  struct `DefaultConfig`); identical-content regression guard applies to board/worktree only.
