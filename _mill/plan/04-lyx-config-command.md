@@ -6,7 +6,7 @@ batch: lyx-config-command
 number: 4
 cards: 5
 verify: go test -tags integration ./internal/configcli/ ./cmd/lyx/
-depends-on: [1, 3]
+depends-on: [1, 2, 3]
 ```
 
 ## Batch Scope
@@ -17,7 +17,9 @@ for their `ConfigTemplate`. `lyx config <module>` edits that module's YAML and t
 `weft sync`; bare `lyx config` opens an interactive numbered menu (cloning the `internal/ide`
 menu pattern). The post-edit sync routes `weft.RunCLI` output to `io.Discard` so its JSON never
 contaminates the interactive stream; the command prints its own human-readable confirmation.
-Depends on `module-config-templates` (templates) and `config-edit-machinery` (`config.Edit`).
+Depends on `module-config-templates` (templates) and `config-edit-machinery` (`config.Edit`);
+also depends on `paths-host-junctions` solely to serialize the shared `docs/overview.md` edit (no
+code dependency).
 Batch-local decisions: the config base dir is `filepath.Join(l.WorktreeRoot, l.RelPath)` (the
 host `_lyx` parent — correct from any subdir, not raw cwd); abort returns exit 1; the editor and
 sync are injected into an internal `dispatch`/`menu` so unit tests avoid a real editor and real

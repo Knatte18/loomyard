@@ -35,7 +35,7 @@ batches:
   - number: 4
     name: lyx-config-command
     file: 04-lyx-config-command.md
-    depends-on: [1, 3]
+    depends-on: [1, 2, 3]
     verify: go test -tags integration ./internal/configcli/ ./cmd/lyx/
 ```
 
@@ -84,6 +84,7 @@ batches:
 
 - `CONSTRAINTS.md`
 - `cmd/lyx/main.go`
+- `cmd/lyx/main_test.go`
 - `docs/overview.md`
 - `docs/roadmap.md`
 - `internal/board/init.go`
