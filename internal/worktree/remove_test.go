@@ -124,7 +124,7 @@ func TestRemove(t *testing.T) {
 			name: "NonexistentSlug",
 			slug: "ghost",
 			setup: func(t *testing.T, f lyxtest.PairedFixture, slug string) {
-				// weft repo exists (from CopyPaired) but no worktree for this slug.
+				// weft repo exists (from CopyPairedLocal) but no worktree for this slug.
 			},
 			wantErr: true,
 		},
