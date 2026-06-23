@@ -44,7 +44,9 @@ batches:
     start_sha: 5e991153378580d3f20ea00b7764f7dc502372a0
     commit_sha: b65e7ccccaf8ee7db3f91f31d50f7f0bd5205f1a
   - name: config-edit-machinery
-    state: pending
+    state: running
+    implementer_session: 7cddad31-3417-4f1f-9807-048182388b1b
+    start_sha: 0ab5c53361e82867f4aa64bb7eaf711eabd5236f
   - name: lyx-config-command
     state: pending
 ```
