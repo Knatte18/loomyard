@@ -46,7 +46,9 @@ batches:
     start_sha: 5667632cfe8faac15afee5cb397d9b4f25b9855c
     commit_sha: 8a1e289bed4f815c310186ac4d0b4f9f1f699303
   - name: board-skip-seam-parallelize
-    state: pending
+    state: running
+    implementer_session: 1df5cc1f-5339-40a2-aa18-73a49c48885e
+    start_sha: 95c7adc6533d7af25cbc62da378585a2cdd7b8ac
   - name: record-timing
     state: pending
 ```
