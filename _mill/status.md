@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-gitclone-command
+phase: approved-durable-docs
 slug: ly-git-clone
 branch: ly-git-clone
 plan: _mill/plan
@@ -22,6 +22,7 @@ plan-fix-r1  '2026-06-24T16:32:07Z'
 planned  '2026-06-24T16:32:20Z'
 implementing  '2026-06-24T16:34:13Z'
 approved-gitclone-command  '2026-06-24T16:53:30Z'
+approved-durable-docs  '2026-06-24T16:56:50Z'
 ```
 
 ## Batches
@@ -34,7 +35,8 @@ batches:
     start_sha: 81bc407da4944a9c8919a16d8720cd4739edd627
     commit_sha: bf4420d3d70860dd9a1ca5377f5ff723249d7cce
   - name: durable-docs
-    state: running
+    state: approved
     implementer_session: 8914ada9-dc8a-4d50-b17f-ce003587a47c
     start_sha: 97f859ab9f0d9e0ae953c37b3374ccc16a1e3343
+    commit_sha: ab75eeb09331760da23c054a96111cd280f6fc82
 ```
