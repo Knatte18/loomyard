@@ -126,7 +126,9 @@ func TestAdd(t *testing.T) {
 			name: "UnbornBranch",
 			setup: func(t *testing.T, f lyxtest.PairedFixture) {
 				// Create an unborn branch (orphan branch with no commits).
+				// git checkout --orphan stages all parent files; reset them to avoid "dirty" error.
 				lyxtest.MustRun(t, f.Hub, "git", "checkout", "--orphan", "unborn-branch")
+				lyxtest.MustRun(t, f.Hub, "git", "reset")
 			},
 			opts:            AddOptions{SkipPush: true},
 			wantErrContains: "detached HEAD",
