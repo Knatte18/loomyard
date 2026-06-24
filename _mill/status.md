@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: yamlengine
 branch: yamlengine
 plan: _mill/plan
@@ -24,4 +24,25 @@ plan-review-r2  '2026-06-24T08:22:44Z'
 plan-fix-r2  '2026-06-24T08:22:44Z'
 plan-fix-r3  '2026-06-24T08:25:43Z'
 planned  '2026-06-24T08:26:15Z'
+implementing  '2026-06-24T08:27:19Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: yamlengine-engine
+    state: pending
+  - name: paths-config-helpers
+    state: pending
+  - name: templates-live-yaml
+    state: pending
+  - name: envsource
+    state: pending
+  - name: config-engine-integration
+    state: pending
+  - name: lyx-update-init
+    state: pending
+  - name: docs
+    state: pending
 ```
