@@ -4,6 +4,7 @@
 package yamlengine
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -310,5 +311,5 @@ func contains(data []byte, substr string) bool {
 }
 
 func testContainsHelper(s, substr string) bool {
-	return len(substr) == 0 || len(s) >= len(substr)
+	return strings.Contains(s, substr)
 }
