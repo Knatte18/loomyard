@@ -100,7 +100,10 @@ decisions: none beyond `## Shared Decisions` in the overview.
      (`git checkout --detach`) and assert `Add` returns an error containing the substring
      `"detached HEAD"` (matching Card 2's message) and leaves no host worktree dir, host branch,
      weft worktree dir, or weft branch behind (no partial state). May be added as a case in
-     `TestAdd` or as a dedicated test.
+     `TestAdd` or as a dedicated test. Note: Card 2 places the guard *before* host worktree
+     creation (step 7), so on a detached HEAD nothing is created and no rollback path runs — the
+     zero-residue assertion holds trivially. The test asserts the message substring + zero
+     residue; it need not distinguish "guard aborted pre-creation" from "downstream rollback".
   4. **Teardown mirror (confirm).** Ensure `TestAddRollback` still passes with the new
      `createWeftWorktree` signature and continues to assert the weft branch is gone after
      rollback; extend it only if the signature change requires it.
@@ -131,8 +134,9 @@ decisions: none beyond `## Shared Decisions` in the overview.
   branch forks from its parent's weft branch (non-orphan, shared merge-base), `_lyx` never
   merges back while `_codeguide` (future) squash-merges back to the parent weft branch, and a
   detached/unborn host HEAD aborts the spawn. In `docs/overview.md`, under the
-  `## Weft overlay model` section — inserted **after the `### Junction model` subsection** —
-  add a `### Branch model` subsection stating the same: weft
+  `## Weft overlay model` section — inserted **after the `### Junction model` subsection and
+  before `### Weft suffix convention`** — add a `### Branch model` subsection stating the same:
+  weft
   branch name = host branch name; weft-X forks from the weft branch of X's host parent;
   branches are non-orphan to preserve the merge-base needed for the future `_codeguide`
   squash-merge-back; `_lyx` is isolated by pathspec (never merges back), not by orphan

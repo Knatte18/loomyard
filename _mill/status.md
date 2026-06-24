@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r1
+phase: plan-fix-r2
 slug: weft-orphan-branches
 branch: weft-orphan-branches
 plan: _mill/plan
@@ -20,4 +20,5 @@ discussed  '2026-06-24T12:59:44Z'
 planning  '2026-06-24T16:10:27Z'
 plan-review-r1  '2026-06-24T16:15:31Z'
 plan-fix-r1  '2026-06-24T16:16:28Z'
+plan-fix-r2  '2026-06-24T16:19:12Z'
 ```

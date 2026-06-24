@@ -3,7 +3,7 @@
 ```yaml
 task: "Ensure weft branches are orphan branches"
 slug: "weft-orphan-branches"
-approved: false
+approved: true
 started: "20260624-130200"
 parent: "main"
 root: ""
@@ -45,7 +45,10 @@ batches:
   (exit 0); an **unborn branch** makes it exit **non-zero**. See `_mill/discussion.md` →
   Decisions `detached-head-guard`.
 - **Rationale:** With no branch name there is nothing to mirror; `"HEAD"` would be a bogus
-  start-point. Placing the guard before any creation means no rollback is needed.
+  start-point. Placing the guard before any creation means no rollback is needed. (This
+  supersedes `_mill/discussion.md`'s phrasing that the abort "performs the existing full paired
+  rollback" — the plan places the guard ahead of host creation, so nothing is created and no
+  rollback path runs. Same end state: no partial worktree.)
 - **Applies to:** all batches
 
 ### Decision: codeguide merge-back is out of scope
