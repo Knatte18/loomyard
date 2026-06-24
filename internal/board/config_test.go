@@ -140,7 +140,8 @@ proposal_prefix: proposal-
 // are resolved correctly.
 func TestLoadConfig_EnvResolution(t *testing.T) {
 	tmpDir := t.TempDir()
-	t.Setenv("TEST_BOARD_PATH", "/resolved/board/path")
+	absBoard := t.TempDir()
+	t.Setenv("TEST_BOARD_PATH", absBoard)
 
 	// Create _lyx/config/ directories
 	lyxDir := filepath.Join(tmpDir, "_lyx")
@@ -168,8 +169,8 @@ proposal_prefix: proposal-
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if cfg.Path != "/resolved/board/path" {
-		t.Errorf("expected path %q (from env), got %q", "/resolved/board/path", cfg.Path)
+	if cfg.Path != absBoard {
+		t.Errorf("expected path %q (from env), got %q", absBoard, cfg.Path)
 	}
 }
 
