@@ -26,10 +26,10 @@ const (
 )
 
 // Sync commits any pending changes and pushes them to the remote, looping until
-// the working tree is clean and nothing is unpushed. BOARD_SKIP_GIT disables it
-// entirely (used by tests); BOARD_SKIP_PUSH commits locally but skips the push.
-func Sync(boardPath string) error {
-	if os.Getenv("BOARD_SKIP_GIT") == "1" {
+// the working tree is clean and nothing is unpushed. skipGit disables it
+// entirely (used by tests); skipPush commits locally but skips the push.
+func Sync(boardPath string, skipGit, skipPush bool) error {
+	if skipGit {
 		return nil
 	}
 
@@ -51,7 +51,7 @@ func Sync(boardPath string) error {
 		if err != nil {
 			return err
 		}
-		if err := pushUnpushed(boardPath); err != nil {
+		if err := pushUnpushed(boardPath, skipPush); err != nil {
 			return err
 		}
 		// Nothing new arrived this round → done. If a write landed while we were
@@ -98,9 +98,9 @@ func commitDirty(boardPath string) (bool, error) {
 }
 
 // pushUnpushed pushes local commits to the remote, rebasing once on a
-// non-fast-forward. No-op if there is nothing unpushed or BOARD_SKIP_PUSH is set.
-func pushUnpushed(boardPath string) error {
-	if os.Getenv("BOARD_SKIP_PUSH") == "1" {
+// non-fast-forward. No-op if there is nothing unpushed or skipPush is set.
+func pushUnpushed(boardPath string, skipPush bool) error {
+	if skipPush {
 		return nil
 	}
 

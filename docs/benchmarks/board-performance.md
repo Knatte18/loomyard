@@ -14,9 +14,6 @@ git) and the **background sync** (git).
 # Hot path (default): writes + reads, git skipped (BOARD_SKIP_GIT=1).
 go test -run '^$' -bench . -benchmem ./internal/board/boardtest
 
-# Background sync suite: real commit/push against the dummy board.
-# Network + push access to github.com/Knatte18/loomyard-test required.
-go test -tags integration -run '^$' -bench SyncGit -benchmem -benchtime=10x ./internal/board/boardtest
 ```
 
 Board size (number of tasks already in `tasks.json`) is swept over 10 / 100 / 1000
@@ -83,31 +80,16 @@ while endpoint security scans the image, then warms up. The ~200 ms floor is
 process startup (git-bash launch + `CreateProcess`), not wiki work — the
 in-process write is the ~10–18 ms `Upsert` row above.
 
-Background sync (`-tags integration -bench SyncGit -benchtime=10x`):
-
-| Benchmark         | ns/op   | Notes                              |
-|-------------------|---------|------------------------------------|
-| SyncGitNoPush     | ~0.7 s  | commit only (BOARD_SKIP_PUSH=1)    |
-| SyncGit           | ~4.5 s  | commit + push to the remote        |
-
-**Takeaways:**
-- A write returns in ~0.2 s (startup-bound), versus the ~4.4 s it took when the
-  push was synchronous (see the pre-async baseline below). Git is no longer on
-  the hot path.
-- The git cost did not go away — it moved to the background sync (~4.5 s with
-  push). The user just never waits for it; a burst of writes coalesces into ~1
-  push.
-- Reads and writes still scale with board size (JSON unmarshal / re-render of all
-  tasks), but at single-digit milliseconds that is dwarfed by process startup.
-- Configuration loading (os.Getwd() + YAML merge + env expansion) is now part of
-  every CLI invocation but remains sub-millisecond; the startup floor dominates.
+**Note:** The integration tier no longer benchmarks against a remote — all git tests
+are now local and deterministic. Historical network benchmarks (SyncGit, SyncGitNoPush)
+have been removed.
 
 ### Pre-config baseline — synchronous writes (historic reference)
 
 Kept for history. At this earlier revision every write did `pull → commit → push`
 synchronously, so the command waited the full git round-trip. Benchmarks measured
-`UpsertGit` (the whole write incl. push) rather than `SyncGit`. This is also
-before the cwd-authoritative configuration model, so no config-load cost.
+`UpsertGit` (the whole write incl. push). This is also before the
+cwd-authoritative configuration model, so no config-load cost.
 
 | Benchmark            | n=10    | n=100   | n=1000   |
 |----------------------|---------|---------|----------|
@@ -136,11 +118,3 @@ A comparable Go binary starts in ~2–5 ms on a clean machine, so ~30 ms here is
 the OS + endpoint-security (`CreateProcess` interception/scan) floor, paid by
 native exes too — not a Go cost. With git off the hot path, this startup floor is
 now the dominant cost of a write command.
-
-## Push access
-
-`BenchmarkSyncGit` (and `TestIntegrationCommitPush`) push to
-`github.com/Knatte18/loomyard-test`, so the machine's git credential needs write
-access to that repo (granted via collaborator access). Without it, push returns
-HTTP 403 and only the no-push / hot-path suites can run. The repo URL is unchanged
-from earlier revisions and continues to serve as the integration test backend.

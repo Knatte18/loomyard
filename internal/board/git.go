@@ -5,7 +5,6 @@ package board
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/git"
@@ -31,8 +30,9 @@ func Pull(boardPath string) (updated bool, err error) {
 	return updated, nil
 }
 
-// CommitPush stages, commits, and pushes changes with rebase retry logic
-func CommitPush(boardPath string, relPaths []string, message string) error {
+// CommitPush stages, commits, and pushes changes with rebase retry logic.
+// skipPush, when true, commits locally but skips the push.
+func CommitPush(boardPath string, relPaths []string, message string, skipPush bool) error {
 	// Stage files
 	args := append([]string{"add", "--"}, relPaths...)
 	_, _, exitCode, err := git.RunGit(args, boardPath)
@@ -65,8 +65,8 @@ func CommitPush(boardPath string, relPaths []string, message string) error {
 		return BoardPushError("commit failed")
 	}
 
-	// Skip push if env var set
-	if os.Getenv("BOARD_SKIP_PUSH") == "1" {
+	// Skip push if requested
+	if skipPush {
 		return nil
 	}
 

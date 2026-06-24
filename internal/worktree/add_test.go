@@ -3,7 +3,7 @@
 // add_test.go covers Add's happy-path side effects (portal, launchers, pushed
 // branch) and the zero-residue rollback on a post-creation failure. The paired
 // Add creates both host and weft worktrees on the mirrored branch and requires
-// a weft Prime repo; tests build this via lyxtest.CopyPaired and pass
+// a weft Prime repo; tests build this via lyxtest.CopyPairedLocal and pass
 // AddOptions{SkipPush:true}.
 
 package worktree
@@ -29,7 +29,7 @@ func TestAdd(t *testing.T) {
 	tests := []struct {
 		name         string
 		branchPrefix string
-		// setup performs scenario-specific prep on top of the fresh CopyPaired fixture.
+		// setup performs scenario-specific prep on top of the fresh CopyPairedLocal fixture.
 		setup func(t *testing.T, f lyxtest.PairedFixture)
 		// opts to pass to Add.
 		opts            AddOptions
@@ -118,7 +118,7 @@ func TestAdd(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			f := lyxtest.CopyPaired(t)
+			f := lyxtest.CopyPairedLocal(t)
 			tt.setup(t, f)
 
 			w := New(Config{BranchPrefix: tt.branchPrefix})
@@ -177,7 +177,7 @@ func TestAddRollback(t *testing.T) {
 	t.Parallel()
 
 	const slug = "rollback-test"
-	f := lyxtest.CopyPaired(t)
+	f := lyxtest.CopyPairedLocal(t)
 
 	// Pre-create a regular file at the portal location to trip createPortal's refuse-to-clobber.
 	portalLink := filepath.Join(f.Layout.PortalsDir(), slug)
