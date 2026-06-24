@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-board
+phase: approved-misc
 slug: fix-worktree-runcli-test
 branch: fix-worktree-runcli-test
 plan: _mill/plan
@@ -26,6 +26,7 @@ implementing  '2026-06-24T17:05:04Z'
 approved-worktree-fix  '2026-06-24T17:09:15Z'
 approved-config-family  '2026-06-24T17:19:28Z'
 approved-board  '2026-06-24T17:22:21Z'
+approved-misc  '2026-06-24T17:43:40Z'
 ```
 
 ## Batches
@@ -48,7 +49,8 @@ batches:
     start_sha: 92ea05576d4a7dd1a17899f674d5d4d4a88a5487
     commit_sha: e33360d61d22eca0fe2b1ea41a1fb1f28df6c469
   - name: misc
-    state: running
+    state: approved
     implementer_session: e5c5bf7f-cec0-42dc-aa7a-df8d4832f435
     start_sha: 24ea20de7c5dadf76ffa91ebd1fb9ee3f20c2b3e
+    commit_sha: c37450193b6cc382945612c36ef2a4c7a34c5096
 ```
