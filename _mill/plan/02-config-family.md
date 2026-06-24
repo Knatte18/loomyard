@@ -108,6 +108,24 @@ remove latent migration breakage. Independent of all other batches (no shared fi
   import if it is left in.
 - **Commit:** `refactor(configsync): resolve configsync_test.go _lyx paths via internal/paths`
 
+### Card 8: lyxtest/lyxtest.go — fix weft fixture to initialize config files
+
+- **Context:**
+  - `internal/paths/paths.go`
+  - `internal/configreg/configreg.go`
+- **Edits:**
+  - `internal/lyxtest/lyxtest.go`
+- **Creates:** none
+- **Deletes:** none
+- **Requirements:** The TestE2ESyncIntegration integration test fails because the weft fixture
+  (buildWeftPrime) only creates a placeholder file instead of actual config files. Update
+  buildWeftPrime to create proper config files (board.yaml, worktree.yaml, weft.yaml) by
+  reading the templates from configreg.Modules() and writing them to _lyx/config/. This
+  fixtures the pre-existing integration test failure that blocks verify from passing.
+  Replace hardcoded "_lyx" and "config" path literals with paths.LyxDirName and paths.ConfigDir
+  helpers to be consistent with the refactor sweep.
+- **Commit:** `fix(lyxtest): initialize weft fixture config files via configreg templates`
+
 ## Batch Tests
 
 `verify: go test -tags integration ./internal/config/ ./internal/configcli/ ./internal/configsync/`
