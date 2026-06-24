@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-fixing
+phase: holistic-approved
 slug: fix-worktree-runcli-test
 branch: fix-worktree-runcli-test
 plan: _mill/plan
@@ -29,6 +29,8 @@ approved-board  '2026-06-24T17:22:21Z'
 approved-misc  '2026-06-24T17:43:40Z'
 holistic-reviewing  '2026-06-24T17:44:08Z'
 holistic-fixing  '2026-06-24T17:47:13Z'
+nits-fixed-holistic  '2026-06-24T17:51:21Z'
+holistic-approved  '2026-06-24T17:51:35Z'
 ```
 
 ## Batches
