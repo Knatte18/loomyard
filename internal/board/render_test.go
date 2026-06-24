@@ -27,7 +27,7 @@ func TestRenderToDisk(t *testing.T) {
 	}{
 		{
 			name:         "TestRenderToDiskWritesAndCleansOrphans",
-			out:          board.DefaultOutputs(),
+			out:          board.Outputs{Home: "Home.md", Sidebar: "_Sidebar.md", ProposalPrefix: "proposal-"},
 			ghostFile:    "proposal-ghost.md",
 			wantProposal: "proposal-a.md",
 		},
@@ -79,7 +79,7 @@ func TestRenderToDisk(t *testing.T) {
 
 func TestRenderEmptyTaskList(t *testing.T) {
 	// (a) empty task list → Home.md is exactly "# Tasks\n", Sidebar is "", no proposal files
-	result, err := board.Render([]board.Task{}, board.DefaultOutputs())
+	result, err := board.Render([]board.Task{}, board.Outputs{Home: "Home.md", Sidebar: "_Sidebar.md", ProposalPrefix: "proposal-"})
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -208,7 +208,7 @@ func TestRenderProposalAndShapesHomepage(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := board.Render(tt.tasks, board.DefaultOutputs())
+			result, err := board.Render(tt.tasks, board.Outputs{Home: "Home.md", Sidebar: "_Sidebar.md", ProposalPrefix: "proposal-"})
 			if err != nil {
 				t.Fatalf("Render failed: %v", err)
 			}
@@ -316,7 +316,7 @@ func TestRenderSingleTask(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := board.Render([]board.Task{tt.task}, board.DefaultOutputs())
+			result, err := board.Render([]board.Task{tt.task}, board.Outputs{Home: "Home.md", Sidebar: "_Sidebar.md", ProposalPrefix: "proposal-"})
 			if err != nil {
 				t.Fatalf("Render failed: %v", err)
 			}
