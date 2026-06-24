@@ -1,0 +1,2 @@
+- paths_test.go config-helper unit tests gated behind integration build tag: **Location:** `C:\Code\loomyard\wts\yamlengine\internal\paths\paths_test.go:1` (file-level `//go:build integration`)
+- configsync double-stat for fileAbsent determination: **Location:** `C:\Code\loomyard\wts\yamlengine\internal\configsync\configsync.go:51-76`
