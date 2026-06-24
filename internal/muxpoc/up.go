@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/proc"
 )
 
 // cmdUp is the entry point for the 'lyx muxpoc up' subcommand.
@@ -89,7 +90,7 @@ func coldStart(out io.Writer, cfg Config, cwd string, mux PsmuxCmd) int {
 		cfg.PwshPath,
 	)
 	cmd.Env = clean
-	spawnServer(cmd)
+	proc.Detach(cmd)
 
 	if err := cmd.Start(); err != nil {
 		return output.Err(out, fmt.Sprintf("start psmux: %v", err))
@@ -180,7 +181,7 @@ func coldRecover(out io.Writer, cfg Config, cwd string, state *MuxpocState, mux 
 		cfg.PwshPath,
 	)
 	cmd.Env = clean
-	spawnServer(cmd)
+	proc.Detach(cmd)
 
 	if err := cmd.Start(); err != nil {
 		return output.Err(out, fmt.Sprintf("start psmux: %v", err))

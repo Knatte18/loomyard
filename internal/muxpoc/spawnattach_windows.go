@@ -1,32 +1,13 @@
 //go:build windows
 
-// spawn_windows.go — windowless process launching on Windows.
-//
-// spawnServer launches the psmux server as a detached, windowless process with
-// its own process group. spawnAttach launches Windows Terminal maximized and
-// attached to the session.
+// spawnattach_windows.go — Windows Terminal attach for muxpoc.
 
 package muxpoc
 
 import (
 	"fmt"
 	"os/exec"
-	"syscall"
 )
-
-const (
-	createNewProcessGroup = 0x00000200
-	createNoWindow        = 0x08000000
-)
-
-// spawnServer sets cmd.SysProcAttr to launch windowless and detached on Windows.
-// Called before cmd.Start() to launch the psmux server invisible.
-func spawnServer(cmd *exec.Cmd) {
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		HideWindow:    true,
-		CreationFlags: createNoWindow | createNewProcessGroup,
-	}
-}
 
 // spawnAttach launches Windows Terminal maximized and attached: wt.exe -w 0 -M
 // -- <psmuxPath> -L <socket> attach-session -t <session>. If wt.exe is not

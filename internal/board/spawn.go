@@ -1,10 +1,8 @@
-// spawn_other.go — process launching on non-Windows.
+// spawn.go — detached board sync process launching.
 //
-// spawnSync starts `lyx board sync` in its own session (Setsid) so it survives
-// the parent's exit, with no inherited stdio. There are no console-window issues
-// on non-Windows platforms. The Windows variants live in spawn_windows.go.
-
-//go:build !windows
+// spawnSync launches `lyx board sync` as a detached, windowless process.
+// It has its own process group (so the parent's Ctrl-C does not reach it)
+// and survives the parent's exit.
 
 package board
 
@@ -12,9 +10,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"syscall"
+
+	"github.com/Knatte18/loomyard/internal/proc"
 )
 
+// spawnSync launches `lyx board sync` as a detached, windowless process.
 func spawnSync(boardPath string) error {
 	exe, err := os.Executable()
 	if err != nil {
@@ -25,7 +25,7 @@ func spawnSync(boardPath string) error {
 		return err
 	}
 	cmd := exec.Command(exe, "board", "--board-path", abs, "sync")
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	proc.Detach(cmd)
 	// Leave stdin/stdout/stderr nil so no handles are inherited from the parent.
 	return cmd.Start() // intentionally not Wait()ed
 }
