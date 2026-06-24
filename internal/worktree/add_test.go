@@ -122,6 +122,17 @@ func TestAdd(t *testing.T) {
 			wantNoTargetDir: true,
 			wantResultZero:  true,
 		},
+		{
+			name: "UnbornBranch",
+			setup: func(t *testing.T, f lyxtest.PairedFixture) {
+				// Create an unborn branch (orphan branch with no commits).
+				lyxtest.MustRun(t, f.Hub, "git", "checkout", "--orphan", "unborn-branch")
+			},
+			opts:            AddOptions{SkipPush: true},
+			wantErrContains: "detached HEAD",
+			wantNoTargetDir: true,
+			wantResultZero:  true,
+		},
 	}
 
 	for _, tt := range tests {
