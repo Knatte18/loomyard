@@ -87,7 +87,7 @@ observable changes until the new module that needs the extracted lib arrives.
    Weft directories are reached by direct sibling access; portals remain available as the cross-worktree status view.
    The weft **producers** (the `lyx worktree add` paired host+weft spawn) also landed.
 
-6. **Task 007 — Hub-creator / `ly-git-clone`.** Bootstrap and clone new host repos as neighbors in an existing hub, wiring the host↔weft junctions. Builds on the now-complete weft engine + producers (milestone 5). The clone **skill** is `ly-*`, never `lyx-*` (see [naming](overview.md#naming-lyx-binary--loom-orchestrator-module--ly-skills)). Still pending (board-repo creation is milestone 16, not part of this clone).
+6. **Task 007 — Hub-creator / `lyx git-clone`.** Create a fresh Hub (`<name>-HUB/`) and clone the host, weft, and board Primes into it. Builds on the now-complete weft engine + producers (milestone 5). The command is a Go `lyx git-clone` subcommand that clones three repos with no junction wiring or activation — junctions and activation are separate later steps. Board-repo creation is milestone 16, not part of this clone.
 
 7. **Task 008 — configuration TUI.** 🚧 Mostly shipped / in progress. `lyx config` and
    `lyx config <module>` — an interactive menu over the `_lyx/config/` YAML schema.
@@ -188,7 +188,7 @@ These stay in the Python/millpy domain and are **not** planned for `lyx`:
   its own layout.)
 - The millpy wiki daemon and its socket/RPC infrastructure (Loomyard's board is
   one-shot and daemonless by design).
-- Heuristic inference of home-file content shape and board-URL derivation.
+- Heuristic inference of home-file content shape and board-URL derivation. (Note: the deterministic weft→wiki URL rewrite (`.git`→`.wiki.git`) performed by `lyx git-clone` is **in** scope; only *heuristic* inference of board URLs stays out.)
 
 ## Maintenance
 

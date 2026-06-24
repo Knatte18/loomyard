@@ -10,14 +10,15 @@
 //
 // Modules:
 //
-//	init      scaffold _lyx/config/ with all module configs and .gitignore in the current directory
-//	board     task-tracker board — see internal/board.RunCLI for subcommands
-//	config    edit module configuration — see internal/configcli.RunCLI for subcommands
-//	update    reconcile module configs against templates — see internal/update.RunCLI
-//	ide       VS Code launcher — see internal/ide.RunCLI for subcommands
-//	muxpoc    proof-of-concept psmux mux — see internal/muxpoc.RunCLI for subcommands
-//	worktree  git-worktree lifecycle — see internal/worktree.RunCLI for subcommands
-//	weft      weft git operations — see internal/weft.RunCLI for subcommands
+//	init       scaffold _lyx/config/ with all module configs and .gitignore in the current directory
+//	board      task-tracker board — see internal/board.RunCLI for subcommands
+//	config     edit module configuration — see internal/configcli.RunCLI for subcommands
+//	update     reconcile module configs against templates — see internal/update.RunCLI
+//	ide        VS Code launcher — see internal/ide.RunCLI for subcommands
+//	muxpoc     proof-of-concept psmux mux — see internal/muxpoc.RunCLI for subcommands
+//	worktree   git-worktree lifecycle — see internal/worktree.RunCLI for subcommands
+//	weft       weft git operations — see internal/weft.RunCLI for subcommands
+//	git-clone  clone host, weft, and board into a dormant Hub — see internal/gitclone.RunCLI
 //
 // All output is JSON on stdout. Exit code 1 on error.
 package main
@@ -29,6 +30,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/board"
 	"github.com/Knatte18/loomyard/internal/configcli"
+	"github.com/Knatte18/loomyard/internal/gitclone"
 	"github.com/Knatte18/loomyard/internal/ide"
 	"github.com/Knatte18/loomyard/internal/initcli"
 	"github.com/Knatte18/loomyard/internal/muxpoc"
@@ -69,6 +71,8 @@ func run(args []string, out io.Writer) int {
 		return worktree.RunCLI(out, moduleArgs)
 	case "weft":
 		return weft.RunCLI(out, moduleArgs)
+	case "git-clone":
+		return gitclone.RunCLI(out, moduleArgs)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown module: %s\n", module)
 		return 1
