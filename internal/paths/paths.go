@@ -14,6 +14,20 @@ import (
 	"github.com/Knatte18/loomyard/internal/git"
 )
 
+// Config layout constants centralize the directory and file names used by the lyx configuration system.
+// These ensure that all code paths derive their paths from a single source of truth,
+// so the layout can be changed in one place without scattering updates across the codebase.
+const (
+	// LyxDirName is the directory name for the lyx system directory within a worktree.
+	LyxDirName = "_lyx"
+
+	// configDirName is the subdirectory name within LyxDirName that holds configuration files.
+	configDirName = "config"
+
+	// dotEnvName is the filename for environment variable overrides.
+	dotEnvName = ".env"
+)
+
 // ErrNotAGitRepo is returned when a directory is not within a git repository.
 var ErrNotAGitRepo = errors.New("not a git repository")
 
@@ -100,11 +114,36 @@ func Resolve(cwd string) (*Layout, error) {
 	}, nil
 }
 
+// ConfigDir returns the path to the config directory within a baseDir.
+//
+// The config directory is where YAML configuration files are stored, organized by module.
+// Returns filepath.Join(baseDir, LyxDirName, configDirName).
+func ConfigDir(baseDir string) string {
+	return filepath.Join(baseDir, LyxDirName, configDirName)
+}
+
+// ConfigFile returns the path to a module-specific configuration YAML file within a baseDir.
+//
+// The file is constructed by joining the module name with ".yaml" and placing it
+// in the ConfigDir. This is used by callers like config.Load to resolve config paths.
+// Returns filepath.Join(ConfigDir(baseDir), module+".yaml").
+func ConfigFile(baseDir, module string) string {
+	return filepath.Join(ConfigDir(baseDir), module+".yaml")
+}
+
+// DotEnv returns the path to the .env file within a baseDir.
+//
+// The .env file provides environment variable overrides for the worktree.
+// Returns filepath.Join(baseDir, dotEnvName).
+func DotEnv(baseDir string) string {
+	return filepath.Join(baseDir, dotEnvName)
+}
+
 // LyxDir returns the path to the _lyx directory in the current working directory.
 //
-// Returns filepath.Join(Cwd, "_lyx").
+// Returns filepath.Join(Cwd, LyxDirName).
 func (l *Layout) LyxDir() string {
-	return filepath.Join(l.Cwd, "_lyx")
+	return filepath.Join(l.Cwd, LyxDirName)
 }
 
 // WorktreePath returns the path to a sibling worktree with the given slug.
@@ -136,9 +175,9 @@ func (l *Layout) PortalLink(slug string) string {
 //
 // The path is: <Hub>/<slug>/<RelPath>/_lyx
 //
-// Returns filepath.Join(Hub, slug, RelPath, "_lyx").
+// Returns filepath.Join(Hub, slug, RelPath, LyxDirName).
 func (l *Layout) PortalTarget(slug string) string {
-	return filepath.Join(l.Hub, slug, l.RelPath, "_lyx")
+	return filepath.Join(l.Hub, slug, l.RelPath, LyxDirName)
 }
 
 // LaunchersDir returns the path to the _launchers directory in the hub.
@@ -241,9 +280,9 @@ func (l *Layout) WeftWorktree() string {
 // for lyx weft and the pathspec base for weft operations, with RelPath-mirroring like
 // PortalTarget (collapses to <weft>/_lyx at RelPath ".").
 //
-// Returns filepath.Join(WeftWorktree(), RelPath, "_lyx").
+// Returns filepath.Join(WeftWorktree(), RelPath, LyxDirName).
 func (l *Layout) WeftLyxDir() string {
-	return filepath.Join(l.WeftWorktree(), l.RelPath, "_lyx")
+	return filepath.Join(l.WeftWorktree(), l.RelPath, LyxDirName)
 }
 
 // WeftLyxDirFor returns the path to the _lyx directory within a named slug's weft worktree.
@@ -252,9 +291,9 @@ func (l *Layout) WeftLyxDir() string {
 // by spawn seeds for <slug>, and pairs with HostLyxLink(slug) as the junction endpoints.
 // Parallel to HostLyxLink(slug).
 //
-// Returns filepath.Join(WeftWorktreePath(slug), RelPath, "_lyx").
+// Returns filepath.Join(WeftWorktreePath(slug), RelPath, LyxDirName).
 func (l *Layout) WeftLyxDirFor(slug string) string {
-	return filepath.Join(l.WeftWorktreePath(slug), l.RelPath, "_lyx")
+	return filepath.Join(l.WeftWorktreePath(slug), l.RelPath, LyxDirName)
 }
 
 // WeftCodeguideDir returns the path to the _codeguide directory in the current worktree's weft sibling.
@@ -269,9 +308,9 @@ func (l *Layout) WeftCodeguideDir() string {
 // The path is: <hub>/<slug>/<RelPath>/_lyx. This is the host-side junction endpoint that
 // points into the paired weft worktree via WeftLyxDirFor(slug).
 //
-// Returns filepath.Join(WorktreePath(slug), RelPath, "_lyx").
+// Returns filepath.Join(WorktreePath(slug), RelPath, LyxDirName).
 func (l *Layout) HostLyxLink(slug string) string {
-	return filepath.Join(l.WorktreePath(slug), l.RelPath, "_lyx")
+	return filepath.Join(l.WorktreePath(slug), l.RelPath, LyxDirName)
 }
 
 // HostLyxLinkHere returns the path to the _lyx junction link in the current host worktree.
@@ -280,9 +319,9 @@ func (l *Layout) HostLyxLink(slug string) string {
 // not from Cwd. This is intentionally distinct from LyxDir() (which is Cwd-based) and serves
 // as the host-side junction endpoint paired with WeftLyxDir().
 //
-// Returns filepath.Join(WorktreeRoot, RelPath, "_lyx").
+// Returns filepath.Join(WorktreeRoot, RelPath, LyxDirName).
 func (l *Layout) HostLyxLinkHere() string {
-	return filepath.Join(l.WorktreeRoot, l.RelPath, "_lyx")
+	return filepath.Join(l.WorktreeRoot, l.RelPath, LyxDirName)
 }
 
 // HostJunction represents a directory junction in the host worktree that links to a weft directory.
@@ -304,11 +343,11 @@ type HostJunction struct {
 // The junction record carries Name, Link, and Target fields for use by the
 // seeders in internal/worktree.
 //
-// Returns a slice with exactly one entry: {Name: "_lyx", Link: HostLyxLink(slug), Target: WeftLyxDirFor(slug)}.
+// Returns a slice with exactly one entry: {Name: LyxDirName, Link: HostLyxLink(slug), Target: WeftLyxDirFor(slug)}.
 func (l *Layout) HostJunctions(slug string) []HostJunction {
 	return []HostJunction{
 		{
-			Name:   "_lyx",
+			Name:   LyxDirName,
 			Link:   l.HostLyxLink(slug),
 			Target: l.WeftLyxDirFor(slug),
 		},

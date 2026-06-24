@@ -478,3 +478,153 @@ func TestMirroredMethods(t *testing.T) {
 		})
 	})
 }
+
+// TestConfigHelpers tests the free-function config path helpers.
+func TestConfigHelpers(t *testing.T) {
+	t.Parallel()
+
+	t.Run("ConfigDir", func(t *testing.T) {
+		t.Parallel()
+
+		baseDir := "/home/user/project"
+		got := paths.ConfigDir(baseDir)
+		want := filepath.Join(baseDir, paths.LyxDirName, "config")
+
+		if got != want {
+			t.Errorf("ConfigDir(%q) = %q; want %q", baseDir, got, want)
+		}
+	})
+
+	t.Run("ConfigFile", func(t *testing.T) {
+		t.Parallel()
+
+		baseDir := "/home/user/project"
+		module := "myapp"
+		got := paths.ConfigFile(baseDir, module)
+		want := filepath.Join(baseDir, paths.LyxDirName, "config", "myapp.yaml")
+
+		if got != want {
+			t.Errorf("ConfigFile(%q, %q) = %q; want %q", baseDir, module, got, want)
+		}
+	})
+
+	t.Run("DotEnv", func(t *testing.T) {
+		t.Parallel()
+
+		baseDir := "/home/user/project"
+		got := paths.DotEnv(baseDir)
+		want := filepath.Join(baseDir, ".env")
+
+		if got != want {
+			t.Errorf("DotEnv(%q) = %q; want %q", baseDir, got, want)
+		}
+	})
+}
+
+// TestLyxDirNameConstant verifies that LyxDirName is exported and has the expected value.
+func TestLyxDirNameConstant(t *testing.T) {
+	t.Parallel()
+
+	if paths.LyxDirName != "_lyx" {
+		t.Errorf("LyxDirName = %q; want %q", paths.LyxDirName, "_lyx")
+	}
+}
+
+// TestRefactoredMethods verifies that refactored methods using LyxDirName
+// still produce the same paths as before the refactor (backward compatibility guard).
+func TestRefactoredMethods(t *testing.T) {
+	t.Parallel()
+
+	fix := lyxtest.CopyHostHub(t)
+	hub := fix.Hub
+
+	layout, err := paths.Resolve(hub)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v; want nil", err)
+	}
+
+	t.Run("LyxDir", func(t *testing.T) {
+		t.Parallel()
+
+		got := layout.LyxDir()
+		want := filepath.Join(hub, "_lyx")
+
+		if got != want {
+			t.Errorf("LyxDir() = %q; want %q", got, want)
+		}
+	})
+
+	t.Run("PortalTarget", func(t *testing.T) {
+		t.Parallel()
+
+		slug := "test-slug"
+		got := layout.PortalTarget(slug)
+		want := filepath.Join(layout.Hub, slug, ".", "_lyx")
+
+		if got != want {
+			t.Errorf("PortalTarget(%q) = %q; want %q", slug, got, want)
+		}
+	})
+
+	t.Run("WeftLyxDir", func(t *testing.T) {
+		t.Parallel()
+
+		got := layout.WeftLyxDir()
+		want := filepath.Join(layout.WeftWorktree(), ".", "_lyx")
+
+		if got != want {
+			t.Errorf("WeftLyxDir() = %q; want %q", got, want)
+		}
+	})
+
+	t.Run("WeftLyxDirFor", func(t *testing.T) {
+		t.Parallel()
+
+		slug := "test-slug"
+		got := layout.WeftLyxDirFor(slug)
+		want := filepath.Join(layout.WeftWorktreePath(slug), ".", "_lyx")
+
+		if got != want {
+			t.Errorf("WeftLyxDirFor(%q) = %q; want %q", slug, got, want)
+		}
+	})
+
+	t.Run("HostLyxLink", func(t *testing.T) {
+		t.Parallel()
+
+		slug := "test-slug"
+		got := layout.HostLyxLink(slug)
+		want := filepath.Join(layout.WorktreePath(slug), ".", "_lyx")
+
+		if got != want {
+			t.Errorf("HostLyxLink(%q) = %q; want %q", slug, got, want)
+		}
+	})
+
+	t.Run("HostLyxLinkHere", func(t *testing.T) {
+		t.Parallel()
+
+		got := layout.HostLyxLinkHere()
+		want := filepath.Join(layout.WorktreeRoot, ".", "_lyx")
+
+		if got != want {
+			t.Errorf("HostLyxLinkHere() = %q; want %q", got, want)
+		}
+	})
+
+	t.Run("HostJunctions", func(t *testing.T) {
+		t.Parallel()
+
+		slug := "test-slug"
+		junctions := layout.HostJunctions(slug)
+
+		if len(junctions) != 1 {
+			t.Fatalf("HostJunctions() returned %d junctions; want 1", len(junctions))
+		}
+
+		junction := junctions[0]
+		if junction.Name != "_lyx" {
+			t.Errorf("HostJunctions()[0].Name = %q; want %q", junction.Name, "_lyx")
+		}
+	})
+}
