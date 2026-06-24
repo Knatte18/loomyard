@@ -4,6 +4,11 @@
 // seeding junctions and git excludes, pushing to the weft remote, and tearing down
 // both the weft worktree and branch. All git operations use git.RunGit with explicit
 // cwd (WeftRepoRoot or WeftWorktreePath).
+//
+// Weft branch model: each weft branch forks from its parent's weft branch (non-orphan,
+// shared merge-base), preserving history for future _codeguide squash-merge-back.
+// _lyx is isolated by pathspec (never merges back), not by orphan topology. A detached
+// or unborn host HEAD aborts the spawn before any creation, ensuring no partial state.
 
 package worktree
 
