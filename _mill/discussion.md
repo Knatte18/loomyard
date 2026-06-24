@@ -47,15 +47,23 @@ for mid-work subtasks.
   current branch at spawn time), passed as the `git worktree add` start-point — instead of
   always forking from the prime weft HEAD. Branches stay **non-orphan** with a real shared
   merge-base.
+- Guard the parent-branch resolution: if the host worktree is on a **detached HEAD or an
+  unborn branch** (so there is no branch name to mirror), `Add` aborts with a clear error
+  and performs the full paired rollback (see Decisions → `detached-head-guard`).
 - Confirm (and test) that teardown already mirrors host topology: weft branch + worktree +
   remote ref are removed when the task is torn down, leaving no leftover refs.
 - Add/extend tests, including the **subtask-mid-work** case: a sub-branch spawned while
   working in another branch must produce a weft branch that **shares a merge-base with its
   parent's weft branch** (explicitly **not** orphan, and rooted on the parent — not on
   prime `main`).
-- **Rewrite `proposal-weft-orphan-branches.md`** to reject the orphan premise and record
-  the mirror-host-topology model plus the deferred `_codeguide` squash-merge-back design,
-  so the future codeguide task inherits a settled plan.
+- **Correct the wiki proposal `proposal-weft-orphan-branches.md`** to reject the orphan
+  premise and record the mirror-host-topology model plus the deferred `_codeguide`
+  squash-merge-back design. This is a **wiki-module operation**, not an in-tree edit: the
+  proposal is a mill-wiki artifact (it does not exist in this worktree), so it is rewritten
+  only via the wiki daemon / `/mill-wiki-push` — never a raw `git`/`Edit`/`Write` on the
+  wiki. Treat this as a separate bookkeeping step from the code change; the durable design
+  already lives in this `discussion.md`, the `internal/worktree` package header, and
+  `docs/overview.md`.
 
 **Out:**
 
@@ -127,6 +135,23 @@ for mid-work subtasks.
   currently-empty merge-back pathspec, tested via a fake dir) — dead code exercised only by
   synthetic tests, and the codeguide task would revisit it anyway.
 
+### detached-head-guard
+
+- Decision: If the host worktree's HEAD is **not a branch** at spawn time — detached HEAD
+  (`git rev-parse --abbrev-ref HEAD` returns the literal `"HEAD"`) or an unborn branch —
+  `Add` aborts with a clear error (e.g. "cannot spawn weft branch: host worktree is on a
+  detached HEAD / unborn branch") and performs the existing full paired rollback. No weft
+  branch is created.
+- Rationale: The mirror invariant requires a named host branch to mirror; with no branch
+  there is nothing to fork the weft branch from and `"HEAD"` would be a bogus start-point.
+  Normal spawns are always from a named branch (prime on `main`, task worktrees on their
+  task branch), so this guard never fires on the happy path — it only rejects the abnormal
+  "checked out a tag/raw commit" state. This mirrors the existing "missing parent weft
+  branch" failure shape.
+- Rejected: (a) silently fall back to forking from prime weft `main` — violates the mirror
+  invariant and hides operator error; (b) pass `"HEAD"` through to git — worse diagnostics,
+  late failure.
+
 ### future-mergeback-design (specified, not implemented)
 
 - Decision (for the future codeguide task, recorded so it is settled): when a task completes
@@ -155,7 +180,10 @@ What mill-plan needs to know:
   **parent weft branch** = the host worktree's current branch name. That branch name must
   be resolved from the host side (e.g. `git -C <WorktreeRoot> rev-parse --abbrev-ref HEAD`
   / `symbolic-ref --short HEAD`) and threaded into `createWeftWorktree` as a start-point
-  argument. Respect the `internal/paths` invariant — derive all geometry via `paths.Layout`
+  argument. `WorktreeRoot` is the git toplevel of the caller's cwd, so for a mid-work
+  subtask spawn it correctly reflects the parent task's host worktree (on branch Y). If the
+  resolution yields `"HEAD"` (detached) or fails (unborn branch), abort per
+  `detached-head-guard`. Respect the `internal/paths` invariant — derive all geometry via `paths.Layout`
   (`WeftRepoRoot()`, `WeftWorktreePath(slug)`), never raw cwd/rev-parse outside the allowed
   files.
 - **Caller:** `internal/worktree/add.go` → `(*Worktree).Add(...)`, step 8
@@ -165,6 +193,11 @@ What mill-plan needs to know:
   The parent weft-branch name to pass equals that current host branch name (mirror
   invariant: weft branch name = host branch name; `branch = cfg.BranchPrefix + slug` is the
   *new* branch, not the parent).
+- **Signature change ripple:** threading the start-point arg changes `createWeftWorktree`'s
+  signature. The plan must sweep **all** callers — currently only `add.go:142`
+  (`createWeftWorktree(l, slug, branch)`), but the plan must confirm by grepping the tree
+  (incl. `internal/worktree/weft_test.go` and any other test) so the build is not left
+  half-migrated.
 - **Parent weft branch existence:** since the weft repo is shared (all weft worktrees and
   branches live in one repo), the parent weft branch already exists when its host worktree
   exists (prime weft `main`, or weft-Y for a subtask of Y). If the parent weft branch is
@@ -216,15 +249,22 @@ versioned docs/comments, not file-memory.
 Go (`golang-testing` conventions; table-driven where natural). TDD candidates:
 
 - **`createWeftWorktree` start-point (TDD):** spawning a weft worktree roots the new weft
-  branch on the **parent weft branch**, not on the weft repo's arbitrary HEAD. Assert the
-  new weft branch and its parent weft branch **share a merge-base**
-  (`git merge-base <new> <parent>` succeeds / is non-empty) and that the new branch's root
-  is the parent's tip at spawn time.
+  branch on the **parent weft branch**, not on the weft repo's arbitrary HEAD. Capture the
+  parent weft branch's tip SHA at spawn time, then assert `git merge-base <new> <parent>`
+  **equals that exact SHA** — proving the new branch forks from the parent's *tip*, not
+  merely that it shares *some* ancestor. A merge-base-non-empty check is insufficient: it
+  cannot distinguish forking-from-tip from forking-from-an-older-common-ancestor (e.g. prime
+  `main`), so it would not reject the old behavior.
 - **Subtask-mid-work (TDD, proposal item 4):** from a host worktree on a non-`main` branch
-  Y (i.e. a subtask spawned mid-work), spawn a new slug. Assert: (1) the new weft branch
-  shares a merge-base with **weft-Y** (not prime weft `main`); (2) it is **not** an orphan
-  (it has a parent commit / non-empty merge-base) — this is the explicit anti-regression
-  guard against the rejected orphan design.
+  Y (i.e. a subtask spawned mid-work), spawn a new slug. Assert with the **discriminating**
+  check: capture weft-Y's tip SHA at spawn and assert `git merge-base <new-weft> <weft-Y>`
+  **equals weft-Y's tip SHA** — proving the new branch forks from weft-Y's tip, *not* from
+  prime weft `main`. This is the explicit anti-regression guard against both the old
+  prime-`main` behavior and the rejected orphan design (an orphan would have no merge-base
+  at all).
+- **Detached/unborn host HEAD (TDD):** spawning from a host worktree on a detached HEAD (or
+  unborn branch) makes `Add` fail with a clear error and perform full paired rollback — no
+  weft branch or worktree left behind. Guards `detached-head-guard`.
 - **Top-level task:** spawning from host `main` roots the new weft branch on prime weft
   `main` (regression guard that the common case is unchanged).
 - **Teardown mirror:** after teardown, the weft branch, worktree, and (when pushed) remote
@@ -259,3 +299,11 @@ codeguide task owns merge/conflict/squash tests.
 - **Q:** Build a generic dormant merge-back engine now (empty merge-back set, synthetic
   tests)? **A:** No — dead code that proves only plumbing; the codeguide task would revisit
   it anyway. Keep this task to the branch model + tests + proposal rewrite.
+- **Q (review r1 gap):** What if the host worktree is on a detached HEAD / unborn branch at
+  spawn (no branch name to mirror)? **A:** Fail fast — `Add` aborts with a clear error and
+  full paired rollback; never fall back to prime `main` or pass `"HEAD"` through. Confirmed
+  this never fires on the happy path (normal spawns are always on a named branch).
+- **Q (review r1 gap):** How should the subtask-mid-work test prove the fork is rooted on
+  the parent, not prime `main`? **A:** Capture the parent weft tip SHA at spawn and assert
+  `git merge-base <new> <parent>` *equals that SHA* — not merely non-empty, which would not
+  discriminate forking-from-tip from forking-from-an-older-ancestor.
