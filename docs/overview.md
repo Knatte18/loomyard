@@ -95,7 +95,8 @@ lyx organizes overlay artifacts (configuration, task state, codeguide docs, and 
   ├── <prime>/                      (host worktree, main branch; git repo root)
   ├── <prime>-weft/                 (weft Prime worktree; git repo root)
   ├── <slug>/                       (additional host worktree; git repo root)
-  └── <slug>-weft/                  (weft worktree for <slug>; git repo root)
+  ├── <slug>-weft/                  (weft worktree for <slug>; git repo root)
+  └── _board/                       (board repo; the task store)
 ```
 
 ### Git ownership
@@ -109,7 +110,7 @@ The **host repo** is the project's source of truth, maintained by developers. Al
 | `_lyx/config/` | Weft worktree | Weft | Live YAML configuration files for all modules (board, worktree, weft); reconciled via `lyx update` |
 | `.env` | Weft worktree | Weft | Git-ignored per-machine environment variable overrides (KEY=value format) |
 | `_codeguide/` | Weft worktree | Weft | Codeguide documentation (task 008) |
-| `_board/` | Weft worktree | Board | Task board (separate board repo) |
+| `_board/` | Hub | Board | Task board (separate board repo) |
 | Host source | Host worktree | Host | Project source code |
 
 ### Durable vs ephemeral state (`_lyx/` vs `.lyx/`)
@@ -186,6 +187,8 @@ case "board":
     return board.RunCLI(out, moduleArgs)
 case "config":
     return configcli.RunCLI(out, moduleArgs)
+case "git-clone":
+    return gitclone.RunCLI(out, moduleArgs)
 case "update":
     return update.RunCLI(out, moduleArgs)
 case "ide":
@@ -213,6 +216,7 @@ User-facing modules each get one `lyx <module>` namespace:
 - **update** — reconciles all module config files against their live templates, reporting added/removed keys and optionally writing changes (`internal/update`). Dry-run by default; `--apply` writes atomically. ✅ Implemented.
 - **board** — the task-tracker board (`internal/board`). ✅ Implemented.
 - **config** — interactive menu for viewing and editing module configs. ✅ Implemented.
+- **git-clone** — hub-creator: create a fresh Hub and clone the host, weft, and board Primes into it (`internal/gitclone`). ✅ Implemented.
 - **worktree** — git-worktree lifecycle (create / track / tear down). ✅ Implemented.
 - **weft** — owns all git into the paired weft repo (`lyx weft status|commit|push|pull|sync`). ✅ Implemented.
 - **ide** — one-shot VS Code launcher with interactive menu. ✅ Implemented.
