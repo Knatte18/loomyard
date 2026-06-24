@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-fixing
+phase: holistic-reviewing
 slug: yamlengine
 branch: yamlengine
 plan: _mill/plan
@@ -34,6 +34,7 @@ approved-lyx-update-init  '2026-06-24T09:19:57Z'
 approved-docs  '2026-06-24T09:25:15Z'
 holistic-reviewing  '2026-06-24T09:25:40Z'
 holistic-fixing  '2026-06-24T09:28:41Z'
+holistic-reviewing  '2026-06-24T09:33:23Z'
 ```
 
 ## Batches
