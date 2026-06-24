@@ -44,7 +44,9 @@ batches:
     start_sha: 0524440eb167e7dcde95d257879ce402a0b3bc21
     commit_sha: 1d1286589184c28e4ada21f97c979865f4a6e144
   - name: templates-live-yaml
-    state: pending
+    state: running
+    implementer_session: 039ae898-656a-4a59-b5e4-41051cad8ca7
+    start_sha: baa543e3a880fe02b45264b1f6e123993ffa89ac
   - name: envsource
     state: pending
   - name: config-engine-integration
