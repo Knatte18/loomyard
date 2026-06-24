@@ -135,6 +135,7 @@ batches:
 - `internal/configsync/configsync_test.go`
 - `internal/ide/menu_test.go`
 - `internal/initcli/initcli_test.go`
+- `internal/lyxtest/lyxtest.go`
 - `internal/update/update_test.go`
 - `internal/weft/config_test.go`
 - `internal/worktree/cli_test.go`

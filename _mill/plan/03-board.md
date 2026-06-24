@@ -18,7 +18,7 @@ all other batches.
 
 ## Cards
 
-### Card 8: board/cli_test.go — route _lyx/config/board.yaml literals through paths
+### Card 10: board/cli_test.go — route _lyx/config/board.yaml literals through paths
 
 - **Context:**
   - `internal/paths/paths.go`
@@ -34,7 +34,7 @@ all other batches.
   keep `os`/`path/filepath` as used.
 - **Commit:** `refactor(board): resolve cli_test.go _lyx paths via internal/paths`
 
-### Card 9: board/config_test.go — route remaining _lyx/config mkdir literals through paths
+### Card 11: board/config_test.go — route remaining _lyx/config mkdir literals through paths
 
 - **Context:**
   - `internal/paths/paths.go`
@@ -49,7 +49,7 @@ all other batches.
   `paths.ConfigFile` calls and assertions unchanged. `paths` is already imported.
 - **Commit:** `refactor(board): resolve config_test.go _lyx paths via internal/paths`
 
-### Card 10: board/boardtest/bench_test.go — route _lyx/config/board.yaml literals through paths
+### Card 12: board/boardtest/bench_test.go — route _lyx/config/board.yaml literals through paths
 
 - **Context:**
   - `internal/paths/paths.go`
