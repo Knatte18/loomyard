@@ -48,6 +48,7 @@ func ReconcileAll(baseDir string, apply bool) ([]Result, error) {
 
 		// Read existing config file (missing file → empty bytes)
 		existing, err := os.ReadFile(cfgPath)
+		fileAbsent := os.IsNotExist(err)
 		if err != nil && !os.IsNotExist(err) {
 			return nil, fmt.Errorf("read config for %s: %w", m.Name, err)
 		}
@@ -69,8 +70,6 @@ func ReconcileAll(baseDir string, apply bool) ([]Result, error) {
 		}
 
 		// Determine if we should write: apply flag + (file absent OR changes detected)
-		_, statErr := os.Stat(cfgPath)
-		fileAbsent := os.IsNotExist(statErr)
 		hasChanges := len(added)+len(removed) > 0
 
 		if apply && (fileAbsent || hasChanges) {
