@@ -79,9 +79,15 @@ func TestCloneHub_HappyPath(t *testing.T) {
 	_ = makeBareRemote(t, cwd, "myrepo-weft.wiki")
 
 	// Clone the hub
-	hubPath, err := cloneHub(cwd, hostBare, weftBare, "")
+	hubPath, resolvedBoardURL, err := cloneHub(cwd, hostBare, weftBare, "")
 	if err != nil {
 		t.Fatalf("cloneHub: %v", err)
+	}
+
+	// Assert the resolved board URL matches the derived URL
+	expectedBoardURL := filepath.Join(cwd, "myrepo-weft.wiki.git")
+	if resolvedBoardURL != expectedBoardURL {
+		t.Errorf("resolvedBoardURL = %q; want %q", resolvedBoardURL, expectedBoardURL)
 	}
 
 	// Assert hub directory structure
@@ -124,7 +130,7 @@ func TestCloneHub_GeometryRoundTrip(t *testing.T) {
 	_ = makeBareRemote(t, cwd, "myrepo-weft.wiki")
 
 	// Clone the hub
-	hubPath, err := cloneHub(cwd, hostBare, weftBare, "")
+	hubPath, _, err := cloneHub(cwd, hostBare, weftBare, "")
 	if err != nil {
 		t.Fatalf("cloneHub: %v", err)
 	}
@@ -162,9 +168,14 @@ func TestCloneHub_ExplicitBoardURL(t *testing.T) {
 	explicitBoardBare := makeBareRemote(t, cwd, "myboard")
 
 	// Clone with explicit board URL
-	hubPath, err := cloneHub(cwd, hostBare, weftBare, explicitBoardBare)
+	hubPath, resolvedBoardURL, err := cloneHub(cwd, hostBare, weftBare, explicitBoardBare)
 	if err != nil {
 		t.Fatalf("cloneHub: %v", err)
+	}
+
+	// Assert the resolved board URL matches the explicit URL
+	if resolvedBoardURL != explicitBoardBare {
+		t.Errorf("resolvedBoardURL = %q; want %q", resolvedBoardURL, explicitBoardBare)
 	}
 
 	// Assert board repo exists
@@ -201,7 +212,7 @@ func TestCloneHub_AbortIfExists(t *testing.T) {
 	_ = makeBareRemote(t, cwd, "myrepo-weft.wiki")
 
 	// Try to clone (should fail)
-	_, err := cloneHub(cwd, hostBare, weftBare, "")
+	_, _, err := cloneHub(cwd, hostBare, weftBare, "")
 	if err == nil {
 		t.Fatalf("cloneHub should have failed because hub already exists")
 	}
@@ -229,7 +240,7 @@ func TestCloneHub_StrictAbort(t *testing.T) {
 		_ = makeBareRemote(t, cwd, "myrepo-weft.wiki")
 
 		// Clone should fail
-		hubPath, err := cloneHub(cwd, nonExistentHost, weftBare, "")
+		hubPath, _, err := cloneHub(cwd, nonExistentHost, weftBare, "")
 		if err == nil {
 			t.Fatalf("cloneHub should have failed with non-existent host")
 		}
@@ -252,7 +263,7 @@ func TestCloneHub_StrictAbort(t *testing.T) {
 		_ = makeBareRemote(t, cwd, "myrepo-weft.wiki")
 
 		// Clone should fail
-		hubPath, err := cloneHub(cwd, hostBare, nonExistentWeft, "")
+		hubPath, _, err := cloneHub(cwd, hostBare, nonExistentWeft, "")
 		if err == nil {
 			t.Fatalf("cloneHub should have failed with non-existent weft")
 		}
@@ -274,7 +285,7 @@ func TestCloneHub_StrictAbort(t *testing.T) {
 		nonExistentBoard := filepath.Join(cwd, "nonexistent-board.git")
 
 		// Clone should fail
-		hubPath, err := cloneHub(cwd, hostBare, weftBare, nonExistentBoard)
+		hubPath, _, err := cloneHub(cwd, hostBare, weftBare, nonExistentBoard)
 		if err == nil {
 			t.Fatalf("cloneHub should have failed with non-existent board")
 		}
@@ -311,7 +322,7 @@ func TestCloneHub_TeardownFailure(t *testing.T) {
 	})
 
 	// Clone should fail with both the clone error and the removal error
-	_, err := cloneHub(cwd, hostBare, nonExistentWeft, "")
+	_, _, err := cloneHub(cwd, hostBare, nonExistentWeft, "")
 	if err == nil {
 		t.Fatalf("cloneHub should have failed with clone error")
 	}

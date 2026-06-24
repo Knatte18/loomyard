@@ -17,7 +17,7 @@ var removeAll = os.RemoveAll
 //
 // It takes cwd (current working directory), and three repository URLs: hostURL, weftURL, and
 // boardURL (which may be empty to use a derived default). It returns the path to the created
-// Hub directory and any error encountered.
+// Hub directory, the resolved board URL (either explicit or derived), and any error encountered.
 //
 // The operation proceeds in phases:
 //   1. Derive the host repo name; if derivation fails, return an error without cleanup.
@@ -28,18 +28,18 @@ var removeAll = os.RemoveAll
 //   6. Clone weft repo to <Hub>/<name>-weft; on failure, teardown and return the error.
 //   7. Resolve board URL: if boardURL is empty, use deriveBoardURL(weftURL); otherwise use boardURL.
 //   8. Clone board repo to <Hub>/_board; on failure, teardown and return the error.
-//   9. Return the Hub path and nil error.
+//   9. Return the Hub path, resolved board URL, and nil error.
 //
 // If any clone fails, teardownHub removes the entire Hub directory; if removal also fails,
 // the error mentions both the clone failure and the residual Hub path.
-func cloneHub(cwd, hostURL, weftURL, boardURL string) (hubPath string, err error) {
+func cloneHub(cwd, hostURL, weftURL, boardURL string) (hubPath, resolvedBoardURL string, err error) {
 	// Normalize cwd to an absolute path
 	cwd = filepath.Clean(cwd)
 
 	// Step 1: Derive host repo name
 	name := deriveHostName(hostURL)
 	if name == "" {
-		return "", fmt.Errorf("could not derive repo name from host URL %s", hostURL)
+		return "", "", fmt.Errorf("could not derive repo name from host URL %s", hostURL)
 	}
 
 	// Step 2: Compute Hub path
@@ -47,22 +47,22 @@ func cloneHub(cwd, hostURL, weftURL, boardURL string) (hubPath string, err error
 
 	// Step 3: Check if Hub already exists
 	if _, err := os.Stat(hubPath); err == nil {
-		return "", fmt.Errorf("hub already exists at %s", hubPath)
+		return "", "", fmt.Errorf("hub already exists at %s", hubPath)
 	}
 
 	// Step 4: Create Hub directory
 	if err := os.MkdirAll(hubPath, 0o755); err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	// Step 5: Clone host repo
 	if err := cloneRepo(hostURL, filepath.Join(hubPath, name)); err != nil {
-		return "", teardownHub(hubPath, err)
+		return "", "", teardownHub(hubPath, err)
 	}
 
 	// Step 6: Clone weft repo
 	if err := cloneRepo(weftURL, filepath.Join(hubPath, name+weftSuffix)); err != nil {
-		return "", teardownHub(hubPath, err)
+		return "", "", teardownHub(hubPath, err)
 	}
 
 	// Step 7: Resolve board URL
@@ -73,11 +73,11 @@ func cloneHub(cwd, hostURL, weftURL, boardURL string) (hubPath string, err error
 
 	// Step 8: Clone board repo
 	if err := cloneRepo(board, filepath.Join(hubPath, boardDirName)); err != nil {
-		return "", teardownHub(hubPath, err)
+		return "", "", teardownHub(hubPath, err)
 	}
 
 	// Step 9: Success
-	return hubPath, nil
+	return hubPath, board, nil
 }
 
 // cloneRepo clones a repository from url to dest.

@@ -40,18 +40,12 @@ func RunCLI(out io.Writer, args []string) int {
 	}
 
 	// Perform the clone
-	hubPath, err := cloneHub(cwd, hostURL, weftURL, boardURL)
+	hubPath, resolvedBoardURL, err := cloneHub(cwd, hostURL, weftURL, boardURL)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
-	// Determine the resolved board URL (either explicit or derived)
-	resolvedBoardURL := boardURL
-	if resolvedBoardURL == "" {
-		resolvedBoardURL = deriveBoardURL(weftURL)
-	}
-
-	// Return success with hub path and URLs
+	// Return success with hub path and URLs (resolvedBoardURL comes from cloneHub)
 	return output.Ok(out, map[string]any{
 		"hub":   hubPath,
 		"host":  hostURL,
