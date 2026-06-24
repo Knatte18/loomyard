@@ -15,8 +15,8 @@ tests run twice.**
   run constantly and what must stay fast (~3.5 s).
 - **Tier 2 — the opt-in integration loop** (`go test -tags integration ./...`):
   Tier 1 **plus** the gated tests that spawn real `git` (worktrees, commits,
-  pushes, junctions) and, in one case, push to a real GitHub remote. It is slow
-  **by design** — it does far more work (~a minute).
+  pushes, junctions). It is slow **by design** — it does far more work
+  (~a minute).
 
 > **Tier 2 is not a regression of Tier 1.** The heavy git work used to run inside
 > the default loop and made it slow (~82 s historically); the two-tier split moved

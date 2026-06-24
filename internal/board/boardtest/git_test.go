@@ -18,6 +18,7 @@ import (
 )
 
 func TestPull(t *testing.T) {
+	t.Parallel()
 	// Use CopyWeft to get a working clone of main with upstream tracking already
 	// established — no per-test git init/clone/config/commit/push spawns needed.
 	fixture := lyxtest.CopyWeft(t)
@@ -34,9 +35,10 @@ func TestPull(t *testing.T) {
 }
 
 func TestCommitPush(t *testing.T) {
-	t.Run("commits and logs with BOARD_SKIP_PUSH", func(t *testing.T) {
+	t.Run("commits and logs with skipPush=true", func(t *testing.T) {
+		t.Parallel()
 		// CopyHostHub provides a local repo with an initial commit and no upstream
-		// push needed, matching the BOARD_SKIP_PUSH=1 scenario.
+		// push needed, matching the skipPush=true scenario.
 		repoPath := lyxtest.CopyHostHub(t).Hub
 
 		// Write a file to stage for CommitPush.
@@ -45,9 +47,7 @@ func TestCommitPush(t *testing.T) {
 			t.Fatalf("WriteFile failed: %v", err)
 		}
 
-		t.Setenv("BOARD_SKIP_PUSH", "1")
-
-		err := board.CommitPush(repoPath, []string{"test.txt"}, "test commit")
+		err := board.CommitPush(repoPath, []string{"test.txt"}, "test commit", true)
 		if err != nil {
 			t.Fatalf("CommitPush failed: %v", err)
 		}
@@ -64,8 +64,9 @@ func TestCommitPush(t *testing.T) {
 	})
 
 	t.Run("idempotent with no changes", func(t *testing.T) {
+		t.Parallel()
 		// CopyHostHub provides a local repo with an initial commit and no upstream
-		// push needed, matching the BOARD_SKIP_PUSH=1 scenario.
+		// push needed, matching the skipPush=true scenario.
 		repoPath := lyxtest.CopyHostHub(t).Hub
 
 		// Write a file and make the first CommitPush call.
@@ -74,9 +75,7 @@ func TestCommitPush(t *testing.T) {
 			t.Fatalf("WriteFile failed: %v", err)
 		}
 
-		t.Setenv("BOARD_SKIP_PUSH", "1")
-
-		err := board.CommitPush(repoPath, []string{"test.txt"}, "first commit")
+		err := board.CommitPush(repoPath, []string{"test.txt"}, "first commit", true)
 		if err != nil {
 			t.Fatalf("CommitPush failed: %v", err)
 		}
@@ -90,7 +89,7 @@ func TestCommitPush(t *testing.T) {
 		firstCount := strings.TrimSpace(string(output))
 
 		// A second CommitPush with no new changes must not create an extra commit.
-		err = board.CommitPush(repoPath, []string{"test.txt"}, "second commit")
+		err = board.CommitPush(repoPath, []string{"test.txt"}, "second commit", true)
 		if err != nil {
 			t.Fatalf("CommitPush second call failed: %v", err)
 		}
@@ -108,8 +107,7 @@ func TestCommitPush(t *testing.T) {
 	})
 
 	t.Run("rebase retry on non-fast-forward", func(t *testing.T) {
-		t.Setenv("BOARD_SKIP_PUSH", "")
-
+		t.Parallel()
 		// CopyWeft gives cloneA a working tree with upstream tracking established
 		// on main. Clone B is derived from the same bare so both share the remote.
 		fixtureA := lyxtest.CopyWeft(t)
@@ -142,7 +140,7 @@ func TestCommitPush(t *testing.T) {
 		if err := os.WriteFile(fileB, []byte("from B"), 0o644); err != nil {
 			t.Fatalf("WriteFile failed: %v", err)
 		}
-		err := board.CommitPush(cloneBPath, []string{"fileB.txt"}, "commit from B")
+		err := board.CommitPush(cloneBPath, []string{"fileB.txt"}, "commit from B", false)
 		if err != nil {
 			t.Fatalf("CommitPush on B failed: %v", err)
 		}
@@ -152,7 +150,7 @@ func TestCommitPush(t *testing.T) {
 		if err := os.WriteFile(fileA, []byte("from A"), 0o644); err != nil {
 			t.Fatalf("WriteFile failed: %v", err)
 		}
-		err = board.CommitPush(cloneAPath, []string{"fileA.txt"}, "commit from A")
+		err = board.CommitPush(cloneAPath, []string{"fileA.txt"}, "commit from A", false)
 		if err != nil {
 			t.Fatalf("CommitPush on A failed (should have succeeded via rebase): %v", err)
 		}

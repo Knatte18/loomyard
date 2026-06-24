@@ -20,6 +20,9 @@ type Config struct {
 	Home           string `yaml:"home"`
 	Sidebar        string `yaml:"sidebar"`
 	ProposalPrefix string `yaml:"proposal_prefix"`
+	// SkipGit and SkipPush are populated from BOARD_SKIP_* env at the CLI entry.
+	SkipGit  bool
+	SkipPush bool
 }
 
 // Outputs represents the output configuration values derived from Config.

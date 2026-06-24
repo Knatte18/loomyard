@@ -30,11 +30,12 @@ import (
 // writes. Therefore, the writes constant is kept small to bound the filesystem
 // operation stream while preserving the race-condition window for concurrent access.
 func TestConcurrentReadsDuringUpserts(t *testing.T) {
-	t.Setenv("BOARD_SKIP_GIT", "1")
+	t.Parallel()
 	cwd := seedWiki(t, 100)
 	cfg := board.DefaultConfig()
 	// seedWiki creates _lyx/config/board.yaml with path: board, so the board dir is <cwd>/board
 	cfg.Path = filepath.Join(cwd, "board")
+	cfg.SkipGit = true
 	w := board.New(cfg)
 
 	const (
@@ -106,11 +107,12 @@ func TestConcurrentReadsDuringUpserts(t *testing.T) {
 // lock failed to serialize same-process writers, we would see fewer than `writers`
 // tasks or duplicate ids.
 func TestConcurrentUpsertsDoNotLoseWrites(t *testing.T) {
-	t.Setenv("BOARD_SKIP_GIT", "1")
+	t.Parallel()
 	cwd := seedWiki(t, 0)
 	cfg := board.DefaultConfig()
 	// seedWiki creates _lyx/config/board.yaml with path: board, so the board dir is <cwd>/board
 	cfg.Path = filepath.Join(cwd, "board")
+	cfg.SkipGit = true
 	w := board.New(cfg)
 
 	const writers = 16
@@ -147,11 +149,11 @@ func TestConcurrentUpsertsDoNotLoseWrites(t *testing.T) {
 // upserts in the background. Reads take no lock, so this should stay close to the
 // uncontended BenchmarkGet — that gap is the price reads pay for a busy writer.
 func BenchmarkGetDuringUpsert(b *testing.B) {
-	b.Setenv("BOARD_SKIP_GIT", "1")
 	cwd := seedWiki(b, 100)
 	cfg := board.DefaultConfig()
 	// seedWiki creates _lyx/config/board.yaml with path: board, so the board dir is <cwd>/board
 	cfg.Path = filepath.Join(cwd, "board")
+	cfg.SkipGit = true
 	w := board.New(cfg)
 
 	stop := make(chan struct{})

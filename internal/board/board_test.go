@@ -16,11 +16,10 @@ import (
 // both tasks.json and Home.md. Drop: store-layer assertion "update preserves
 // fields" (owned by store_test.go:TestUpsertTaskPreservesFields).
 func TestUpsertTask(t *testing.T) {
-	t.Setenv("BOARD_SKIP_GIT", "1")
-
 	boardPath := t.TempDir()
 	cfg := board.DefaultConfig()
 	cfg.Path = boardPath
+	cfg.SkipGit = true
 	w := board.New(cfg)
 
 	// Creates task, tasks.json written, Home.md written
@@ -50,11 +49,10 @@ func TestUpsertTask(t *testing.T) {
 }
 
 func TestRerender(t *testing.T) {
-	t.Setenv("BOARD_SKIP_GIT", "1")
-
 	boardPath := t.TempDir()
 	cfg := board.DefaultConfig()
 	cfg.Path = boardPath
+	cfg.SkipGit = true
 	w := board.New(cfg)
 
 	// (d) Writes all output files without error on empty store
@@ -77,11 +75,10 @@ func TestRerender(t *testing.T) {
 }
 
 func TestHealthCheckPasses(t *testing.T) {
-	t.Setenv("BOARD_SKIP_GIT", "1")
-
 	boardPath := t.TempDir()
 	cfg := board.DefaultConfig()
 	cfg.Path = boardPath
+	cfg.SkipGit = true
 	w := board.New(cfg)
 
 	// Create a task to initialize the board directory and tasks.json

@@ -90,7 +90,7 @@ func run(full bool, top int) error {
 	}
 	fmt.Printf("Running %s  —  %s\n", tier, cmdline)
 	if full {
-		fmt.Println("(real git + network; this can take ~a minute)")
+		fmt.Println("(real local git; this can take ~a minute)")
 	}
 	fmt.Println()
 

@@ -24,6 +24,8 @@ import (
 type Board struct {
 	boardPath string
 	out       Outputs
+	skipGit   bool
+	skipPush  bool
 }
 
 // New returns a Board operating with the given config.
@@ -31,12 +33,14 @@ func New(cfg Config) *Board {
 	return &Board{
 		boardPath: cfg.Path,
 		out:       cfg.Outputs(),
+		skipGit:   cfg.SkipGit,
+		skipPush:  cfg.SkipPush,
 	}
 }
 
 // writeOp runs the locked, file-only write sequence: lock → load → mutate →
 // render → write files → save. The remote backup is not done here; on success it
-// launches a detached `lyx board sync` (unless BOARD_SKIP_GIT=1) and returns
+// launches a detached `lyx board sync` (unless `b.skipGit` is set) and returns
 // without waiting. The second argument is ignored — the commit message is fixed
 // in the pusher (batched "board sync" commits), not per-write.
 func (b *Board) writeOp(mutate func(*Store) (any, error), _ string) (any, error) {
@@ -80,7 +84,7 @@ func (b *Board) writeOp(mutate func(*Store) (any, error), _ string) (any, error)
 	// (6) Hand the remote backup to a detached sync process and return. The data
 	// is already durable on disk; a failed spawn just defers backup to the next
 	// write, since git push is cumulative.
-	if os.Getenv("BOARD_SKIP_GIT") != "1" {
+	if !b.skipGit {
 		_ = spawnSync(b.boardPath)
 	}
 
@@ -170,7 +174,7 @@ func (b *Board) Rerender() error {
 // until nothing is left. It is what the detached `lyx board sync` process runs;
 // it can also be called directly to force a synchronous backup.
 func (b *Board) Sync() error {
-	return Sync(b.boardPath)
+	return Sync(b.boardPath, b.skipGit, b.skipPush)
 }
 
 // HealthCheck verifies the board directory and tasks.json file exist and are readable.

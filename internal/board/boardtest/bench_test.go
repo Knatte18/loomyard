@@ -179,12 +179,12 @@ func BenchmarkList(b *testing.B) {
 // flag parsing and JSON (un)marshalling. The gap to BenchmarkUpsert is the
 // per-command CLI overhead.
 func BenchmarkUpsertFacade(b *testing.B) {
-	b.Setenv("BOARD_SKIP_GIT", "1")
 	for _, n := range benchSizes {
 		b.Run(fmt.Sprintf("n=%d", n), func(b *testing.B) {
 			dir := seedWiki(b, n)
 			cfg := board.DefaultConfig()
 			cfg.Path = filepath.Join(dir, "board")
+			cfg.SkipGit = true
 			w := board.New(cfg)
 			fields := map[string]any{"slug": "task-0", "title": "Updated"}
 
