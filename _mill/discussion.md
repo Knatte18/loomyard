@@ -29,8 +29,9 @@ path segments in test fixtures** instead of resolving through the `internal/path
 library. `TestRunCLI` is the only one that *fails today* (the migrated read path no
 longer matches its stale write path), but the same anti-pattern — `filepath.Join(base,
 "_lyx", "config")` and literal `"board.yaml"` / `"worktree.yaml"` / `"weft.yaml"` — is
-repeated across 14 test files (enumerated by the reproducible discovery query under
-Scope). Those happen to still pass because their literal matches the current
+repeated across the 15 test files enumerated in the In list below (closed by the
+reproducible discovery query + triage rule under Scope). Those happen to still pass
+because their literal matches the current
 layout, but they are latent breakage: the next path migration re-breaks every one of
 them. The hard rule going forward: **tests resolve all `_lyx`/config paths via
 `internal/paths`, never hardcode the segments.**
@@ -65,8 +66,8 @@ and, by extension, hardens every other test against the same migration hazard.
   - `internal/initcli/initcli_test.go`
   - `internal/update/update_test.go`
   - `internal/ide/menu_test.go`
-  - `internal/configsync/configsync_test.go` (lines 13/19, 67/73, 113 — `_lyx/config` +
-    `board.yaml`/`weft.yaml`)
+  - `internal/configsync/configsync_test.go` (lines 13/19, 67/73, 113, 133 — every
+    `configDir := filepath.Join(tmpDir, "_lyx", "config")` construction + `board.yaml`/`weft.yaml`)
   - `internal/weft/config_test.go` (lines 49-56 — `_lyx`/`config` mkdir in
     `TestLoadConfig_HappyPath`; it already writes via `paths.ConfigFile(tmpDir, "weft")`,
     only the mkdir is stale. The `Dirs()` test-data `"_lyx"`/`"_codeguide"` strings at
@@ -125,7 +126,7 @@ and, by extension, hardens every other test against the same migration hazard.
 - Rationale: The bug exists precisely because a fixture hardcoded the layout and the
   layout moved. Routing through the library makes the tests track any future migration
   automatically — a single source of truth. This is an explicit operator constraint.
-- Rejected: Fix only `cli_test.go` and leave the other 11 files hardcoded — they are
+- Rejected: Fix only `cli_test.go` and leave the other 14 In-list files hardcoded — they are
   latent breakage that the next migration re-breaks; the operator chose the repo-wide
   consistency fix.
 
@@ -224,8 +225,8 @@ and, by extension, hardens every other test against the same migration hazard.
   a hardcoded segment that drifted from the layout; the library is the single source of
   truth and tracks future migrations automatically. (Operator-confirmed hard rule.)
 - **Q:** Scope — fix only the failing `cli_test.go`, or sweep every test that hardcodes
-  `_lyx`/config paths? **A:** [auto-pick] Sweep all 14 config-path-hardcoding test files
-  (enumerated via `rg -l '"_lyx"' --glob '**/*_test.go'` + the triage rule in Scope);
+  `_lyx`/config paths? **A:** [auto-pick] Sweep all 15 config-path-hardcoding test files
+  (the In list; enumerated via `rg -l '"_lyx"' --glob '**/*_test.go'` + the triage rule in Scope);
   exclude `internal/paths` self-tests and `_lyx` link-geometry/content asserts. **Why:**
   the others are latent breakage the next migration re-breaks; operator explicitly asked
   to fix them too. The excluded files either *are* the path spec or don't resolve config.
