@@ -36,7 +36,9 @@ batches:
     start_sha: 9bb300d59419f7914c8076defacee5250bc7484b
     commit_sha: 3e1bffff051788a3c7b79e34266327af2ef7284d
   - name: config-family
-    state: pending
+    state: running
+    implementer_session: d973d93d-bffa-47f0-9bb9-2ad1647b0e19
+    start_sha: 80a984ded1e7e8328e1ddd3d839b50421c40da33
   - name: board
     state: pending
   - name: misc
