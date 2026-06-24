@@ -1,9 +1,9 @@
 // config.go — configuration for the worktree module.
 //
-// Defines the Config type with a single field BranchPrefix, plus DefaultConfig
-// and LoadConfig. LoadConfig delegates entirely to internal/config for resolution;
-// the worktree module never reads config files or knows their layout itself.
-// Mirrors the structure of internal/board/config.go.
+// Defines the Config type with a single field BranchPrefix and LoadConfig.
+// LoadConfig uses internal/config.Load with the ConfigTemplate() to strictly
+// validate and resolve the worktree config file; the worktree module never reads
+// config files or knows their layout itself.
 
 package worktree
 
@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/config"
+	"gopkg.in/yaml.v3"
 )
 
 // Config represents the configuration for a worktree module.
@@ -19,27 +20,17 @@ type Config struct {
 	BranchPrefix string `yaml:"branch_prefix"`
 }
 
-// DefaultConfig returns the default configuration.
-func DefaultConfig() Config {
-	return Config{
-		BranchPrefix: "",
-	}
-}
-
-// LoadConfig resolves the worktree config for baseDir via internal/config.Load,
-// returning a typed Config built from DefaultConfig()'s defaults.
+// LoadConfig loads and unmarshals configuration for the worktree module.
 //
-// If internal/config reports that baseDir is not an initialized Loomyard base, the
-// error is rewrapped to "not initialized here; run \"lyx init\"".
+// Calls config.Load with the worktree ConfigTemplate() to strictly validate
+// the config file against the template, resolve environment variables, and
+// return resolved bytes. Unmarshals the resolved bytes into a Config struct.
+//
+// If <baseDir>/_lyx/ does not exist, returns an error containing
+// "not initialized here; run \"lyx init\"".
 func LoadConfig(baseDir, module string) (Config, error) {
-	// Build defaults map
-	defaults := map[string]string{
-		"branch_prefix": DefaultConfig().BranchPrefix,
-	}
-
-	// Load configuration using internal/config
-	// config.Load checks _lyx/ existence and returns appropriate error
-	raw, err := config.Load(baseDir, module, defaults)
+	// Load and resolve the config file using the template
+	resolved, err := config.Load(baseDir, module, []byte(ConfigTemplate()))
 	if err != nil {
 		// Wrap the generic error with a worktree-specific message
 		if strings.Contains(err.Error(), "not initialized") {
@@ -48,9 +39,10 @@ func LoadConfig(baseDir, module string) (Config, error) {
 		return Config{}, err
 	}
 
-	// Map to typed struct
-	cfg := Config{
-		BranchPrefix: raw["branch_prefix"],
+	// Unmarshal resolved bytes into Config struct
+	var cfg Config
+	if err := yaml.Unmarshal(resolved, &cfg); err != nil {
+		return Config{}, fmt.Errorf("unmarshal worktree config: %w", err)
 	}
 
 	return cfg, nil

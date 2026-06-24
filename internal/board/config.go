@@ -1,8 +1,9 @@
 // config.go — configuration for the board module.
 //
-// Defines the Config and Outputs types, plus DefaultConfig and LoadConfig.
-// LoadConfig delegates entirely to internal/config for resolution; the board
-// module never reads config files or knows their layout itself.
+// Defines the Config and Outputs types and LoadConfig.
+// LoadConfig uses internal/config.Load with the ConfigTemplate() to strictly
+// validate and resolve the board config file; the board module never reads
+// config files or knows their layout itself.
 
 package board
 
@@ -12,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/config"
+	"gopkg.in/yaml.v3"
 )
 
 // Config represents the configuration for a board module.
@@ -41,40 +43,20 @@ func (c Config) Outputs() Outputs {
 	}
 }
 
-// DefaultConfig returns the default configuration.
-func DefaultConfig() Config {
-	return Config{
-		Path:           "../_board",
-		Home:           "Home.md",
-		Sidebar:        "_Sidebar.md",
-		ProposalPrefix: "proposal-",
-	}
-}
-
-// DefaultOutputs returns the Outputs derived from DefaultConfig.
-func DefaultOutputs() Outputs {
-	return DefaultConfig().Outputs()
-}
-
-// LoadConfig loads configuration for a module from configuration files.
+// LoadConfig loads and unmarshals configuration for the board module.
+//
+// Calls config.Load with the board ConfigTemplate() to strictly validate
+// the config file against the template, resolve environment variables, and
+// return resolved bytes. Unmarshals the resolved bytes into a Config struct.
 //
 // If <baseDir>/_lyx/ does not exist, returns an error containing
 // "not initialized here; run \"lyx init\"".
 //
-// Otherwise, loads configuration using internal/config.Load with defaults from
-// DefaultConfig(), and returns the result as a typed Config struct.
+// Preserves relative-Path resolution (if !filepath.IsAbs(cfg.Path), resolves
+// relative to baseDir).
 func LoadConfig(baseDir, module string) (Config, error) {
-	// Build defaults map
-	defaults := map[string]string{
-		"path":            DefaultConfig().Path,
-		"home":            DefaultConfig().Home,
-		"sidebar":         DefaultConfig().Sidebar,
-		"proposal_prefix": DefaultConfig().ProposalPrefix,
-	}
-
-	// Load configuration using internal/config
-	// config.Load checks _lyx/ existence and returns appropriate error
-	raw, err := config.Load(baseDir, module, defaults)
+	// Load and resolve the config file using the template
+	resolved, err := config.Load(baseDir, module, []byte(ConfigTemplate()))
 	if err != nil {
 		// Wrap the generic error with a board-specific message
 		if strings.Contains(err.Error(), "not initialized") {
@@ -83,12 +65,10 @@ func LoadConfig(baseDir, module string) (Config, error) {
 		return Config{}, err
 	}
 
-	// Map to typed struct
-	cfg := Config{
-		Path:           raw["path"],
-		Home:           raw["home"],
-		Sidebar:        raw["sidebar"],
-		ProposalPrefix: raw["proposal_prefix"],
+	// Unmarshal resolved bytes into Config struct
+	var cfg Config
+	if err := yaml.Unmarshal(resolved, &cfg); err != nil {
+		return Config{}, fmt.Errorf("unmarshal board config: %w", err)
 	}
 
 	// Resolve relative path

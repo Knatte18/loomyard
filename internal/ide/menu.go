@@ -23,7 +23,8 @@ import (
 // and only including those whose <path>/<l.RelPath>/_lyx directory exists.
 //
 // Titles are resolved ONLY through the board facade (b.GetTask(slug) → Task.Title).
-// If the board is absent or unhealthy, it returns a HARD error after b.HealthCheck() fails.
+// If the board config cannot be loaded, it returns a HARD error. Similarly, if the board
+// is absent or unhealthy, it returns a HARD error after b.HealthCheck() fails.
 //
 // It prints a numbered picker to out, reads from in, and opens the selected worktree via Spawn.
 // A zero-worktree list prints a message and returns success.
@@ -33,10 +34,13 @@ import (
 //   - in: input reader (for reading user selection)
 //   - out: output writer (for printing the picker menu)
 //
-// Returns an error on failure (HARD error if HealthCheck fails), or nil on success.
+// Returns an error on failure (HARD error if config load or HealthCheck fails), or nil on success.
 func Menu(l *paths.Layout, in io.Reader, out io.Writer) error {
 	// Load board config and create board facade
-	cfg, _ := board.LoadConfig(l.Cwd, "board")
+	cfg, err := board.LoadConfig(l.Cwd, "board")
+	if err != nil {
+		return fmt.Errorf("load board config: %w", err)
+	}
 
 	b := board.New(cfg)
 
@@ -65,7 +69,7 @@ func Menu(l *paths.Layout, in io.Reader, out io.Writer) error {
 		slug := filepath.Base(entry.Path)
 
 		// Check if _lyx exists at <path>/<l.RelPath>/_lyx
-		lyxPath := filepath.Join(entry.Path, l.RelPath, "_lyx")
+		lyxPath := filepath.Join(entry.Path, l.RelPath, paths.LyxDirName)
 		stat, err := os.Stat(lyxPath)
 		if err != nil || !stat.IsDir() {
 			// _lyx doesn't exist or is not a directory; skip
