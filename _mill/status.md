@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-weft-mirror-branching
 slug: weft-orphan-branches
 branch: weft-orphan-branches
 plan: _mill/plan
@@ -23,6 +23,7 @@ plan-fix-r1  '2026-06-24T16:16:28Z'
 plan-fix-r2  '2026-06-24T16:19:12Z'
 planned  '2026-06-24T16:19:37Z'
 implementing  '2026-06-24T16:23:18Z'
+approved-weft-mirror-branching  '2026-06-24T16:28:26Z'
 ```
 
 ## Batches
@@ -30,7 +31,8 @@ implementing  '2026-06-24T16:23:18Z'
 ```yaml
 batches:
   - name: weft-mirror-branching
-    state: running
+    state: approved
     implementer_session: 295c2eb3-8901-4679-9459-51f479ed9f30
     start_sha: 8b8a978c21752660a6c1eb64da11953e981cdc97
+    commit_sha: a076d80a4b8323ac5d05ac144c657c62dfab7580
 ```
