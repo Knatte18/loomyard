@@ -111,6 +111,24 @@ The **host repo** is the project's source of truth, maintained by developers. Al
 | `_board/` | Weft worktree | Board | Task board (separate board repo) |
 | Host source | Host worktree | Host | Project source code |
 
+### Durable vs ephemeral state (`_lyx/` vs `.lyx/`)
+
+Two state roots with opposite lifecycles:
+
+- **`_lyx/`** — **durable, synced, portable.** Lives in the weft repo (git-synced), so it
+  survives a machine and transfers to another. Config, codeguide, the board, and loom's
+  orchestration **status** (current phase, review round, verdict history) go here — loom
+  resume works across machines *because* its status is weft-synced.
+- **`.lyx/`** — **ephemeral, local, machine-bound.** Untracked (listed in
+  `.git/info/exclude`, never `.gitignore`), changing constantly while a run is live. The live
+  psmux runtime state — [`mux`](modules/mux.md)'s `.lyx/mux.json` (server PID, pane→session
+  map) and [`shed`](modules/shed.md)'s `.lyx/shed.json` (worktree→role→pane ledger) — goes
+  here, because a pane ID or a psmux server PID is meaningless on another machine. It is
+  rebuilt by reconciling against live psmux on startup, never synced.
+
+The test: **would this state mean anything on a different machine?** Orchestration progress
+yes → `_lyx/`. A pane handle no → `.lyx/`.
+
 ### Junction model
 
 Each host worktree has a sibling weft worktree. Host worktrees use **junctions** (Windows) or symlinks to route writes into the sibling weft worktree:
@@ -194,13 +212,20 @@ User-facing modules each get one `lyx <module>` namespace:
 - **ide** — one-shot VS Code launcher with interactive menu. ✅ Implemented.
 - **muxpoc** — shipped proof-of-concept psmux orchestrator proving the risky parts of the
   planned mux module. ✅ Implemented.
-- **mux** — psmux session layout (column per worktree; daemon later). 🚧 Design — not built. See
-  [modules/mux.md](modules/mux.md).
+- **mux** — psmux **adapter**: panes, windows, env hygiene, resume, CC-hook wiring, one named
+  server per hub (`lyx mux`). 🚧 Design — not built. See [modules/mux.md](modules/mux.md).
 - **loom** — phased orchestrator: drives Setup → Discussion → Plan → Builder → Finalize, each
   gated by a review (`lyx loom run`, alias `lyx run`). 🚧 Design — not built. See
   [modules/loom.md](modules/loom.md).
 - **review** — generic profile-driven reviewer (handler+fixer, optional cluster) used by `loom`
   and standalone (`lyx review`). 🚧 Design — not built. See [modules/loom.md](modules/loom.md).
+
+Two further design modules have no user CLI — they are internal orchestration layers (see the
+[execution stack](#execution-stack-orchestration-layers)): **shed** (psmux session manager —
+worktree→role→pane layout & focus; [modules/shed.md](modules/shed.md)) and **agent** (run one
+LLM agent via a swappable engine; [modules/agent.md](modules/agent.md)). The cross-OS spawn
+primitive **proc** is likewise internal — the base of the
+[execution stack](#execution-stack-orchestration-layers).
 
 **init** is not a module but a cross-cutting setup command (`lyx init`) that
 scaffolds the shared `_lyx/` config dir for every module.
@@ -208,6 +233,37 @@ scaffolds the shared `_lyx/` config dir for every module.
 The user-facing modules sit on a thin layer of shared infrastructure
 (`internal/config`, `internal/git`, `internal/lock`, `internal/output`, `internal/paths`, `internal/state`) — defined in
 [shared-libs/README.md](shared-libs/README.md).
+
+## Execution stack (orchestration layers)
+
+The orchestrator is not one module but a **layered stack**, each layer knowing only the one
+below it. It exists in this shape for one reason: agents must run as **interactive psmux
+sessions, never headless `claude -p`** (an economic constraint — see
+[modules/agent.md](modules/agent.md#interactive-never-headless--the-economic-constraint)), so
+spawning an agent is not a plain `exec` but "place a pane, launch a provider in it, drive it,
+detect completion."
+
+```
+internal/proc    spawn any OS process (windowless / detached), cross-OS        [OS primitive]
+internal/mux     psmux adapter: panes, windows, send-keys, capture, env        [builds on proc]
+                 hygiene, resume, CC-hook wiring, one named server per hub
+internal/shed    session manager: worktree→role→pane ledger, layout policy,    [builds on mux]
+                 focus, cluster windows — speaks worktrees & roles, not panes
+internal/agent   run ONE LLM agent via a swappable engine over the file        [builds on shed + mux]
+                 contract; Stop-hook completion
+review / loom    orchestration: call agent per spawn, drive the phase machine  [builds on agent]
+```
+
+- **mechanism vs. policy** — `mux` is the adapter (*make psmux do a thing*); `shed` is the
+  policy (*which column, which pane is the operator's*). Keeping them apart keeps `mux` small
+  and `loom` free of geometry.
+- **provider-invariant** — `agent` runs Claude today through an **engine**; the verdict/output
+  contract is provider-invariant, so a different model can be swapped in without touching the
+  review machinery. Non-Claude is not a current priority.
+- Only `mux`, `loom`, and `review` get a user-facing `lyx <module>` CLI; `proc`, `shed`, and
+  `agent` are internal libraries. See [modules/mux.md](modules/mux.md),
+  [modules/shed.md](modules/shed.md), [modules/agent.md](modules/agent.md),
+  [modules/loom.md](modules/loom.md).
 
 ## Tests
 
@@ -218,7 +274,9 @@ git-backed integration — live in the black-box `internal/board/boardtest` pack
 ## Other docs
 
 - [modules/loom.md](modules/loom.md) — the phased orchestrator (`lyx loom` + `lyx review`); design.
-- [modules/mux.md](modules/mux.md) — psmux session layout (design).
+- [modules/mux.md](modules/mux.md) — psmux adapter: panes, env hygiene, resume, hooks (design).
+- [modules/shed.md](modules/shed.md) — psmux session manager: worktree→role→pane layout & focus (design).
+- [modules/agent.md](modules/agent.md) — run one LLM agent via a swappable engine over the file contract (design).
 - [benchmarks/](benchmarks/board-performance.md) — board performance, tracked across revisions.
 - [shared-libs/](shared-libs/README.md) — the shared infrastructure plumbing.
 - [research/](research/) — design exploration (mux research logs).

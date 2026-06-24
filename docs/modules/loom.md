@@ -192,13 +192,15 @@ only at the human gates.
 |-------|------|-------|
 | `loom` (`lyx loom run`) | new Go module | the phase machine / autonomous driver |
 | `review` (`lyx review`) | new Go module | the gate engine: Handler+fixer + optional cluster + progress-judge loop |
-| producers (discussion / plan / builder) | prompt/profile files + a small spawn primitive | **not** modules |
+| producers (discussion / plan / builder) | prompt/profile files | **not** modules — just a prompt + profile fed to `agent.Run` |
+| execution stack | existing/new infra | [`proc`](../overview.md#execution-stack-orchestration-layers) → [`mux`](mux.md) → [`shed`](shed.md) → [`agent`](agent.md) — built once, used by both modules above |
 | Setup | uses existing modules | `worktree`, `weft`, `board` |
 | `/ly-*` skills | thin wrappers | over `lyx loom run` |
 
-The new Go is the two modules plus the shared `internal/agent` spawn primitive — and its
-engine + `internal/proc` / `mux` dependencies (see [Agent execution](#agent-execution)).
-Everything else is prompt files, profiles, and the existing lyx modules.
+The new Go specific to loom is the **two modules** (`loom`, `review`); everything beneath them
+is the shared [execution stack](../overview.md#execution-stack-orchestration-layers) (`proc`,
+`mux`, `shed`, `agent`), and everything else is prompt files, profiles, and the existing lyx
+modules.
 
 ## Entry point
 
@@ -211,40 +213,21 @@ difference is *who* is in the session — a human in Discussion, `lyx run` every
 
 ## Agent execution
 
-Every agent — producers, the review handler, cluster reviewers, the progress-judge — runs
-as an **interactive session inside psmux**, never headless `claude -p`. This is an
-**economic constraint, not a technical one**: Anthropic is removing subscription coverage
-for headless `claude -p` (announced for 2026-06-15, postponed but expected), so headless
-would force API billing; interactive sessions keep the subscription, and psmux is what
-makes a programmatically-driven session interactive.
-
-The orchestrator drives an agent by launching an interactive session in a psmux pane,
-injecting the prompt, and detecting completion via Claude Code hooks. **I/O still rides
+Every agent loom spawns — producers, the review handler, cluster reviewers, the
+progress-judge — runs through the [`internal/agent`](agent.md) layer as an **interactive
+psmux session, never headless `claude -p`** (an economic constraint; see
+[agent.md](agent.md#interactive-never-headless--the-economic-constraint)). **I/O still rides
 the file contract** — the agent writes its output files and Go reads them — so the
 file-contract design above is unchanged; only the *spawn + completion-detection* mechanism
 differs from a headless model.
 
-This adds a dependency: **`internal/agent` depends on the `mux` module** (it drives
-interactive sessions), not on a headless `exec`. mux is therefore on loom's critical path.
-
-```
-internal/proc    spawn any process (windowless / detached)        [OS]
-internal/mux     interactive psmux session management             [builds on proc]
-internal/agent   run ONE LLM agent as an interactive session,     [builds on mux + engine]
-                 via an engine (provider adapter)
-review / loom    use internal/agent per spawn
-```
-
-**Engines (provider-agnostic).** `internal/agent` runs an agent through an **engine** — a
-per-LLM adapter that knows how to launch and drive its provider as a psmux session (a
-Claude engine now; Gemini etc. later). The verdict/output contract is provider-invariant,
-which is exactly what makes engines swappable: you can replace a review handler with a
-different model without touching the review machinery. **Non-Claude support is not a
-current priority.**
-
-**Cluster scaling (long-term).** A single review's handler sits in one pane; N cluster
-reviewers would explode the pane count, so they scale via psmux **windows** instead —
-spawned clusters land in their own windows. This needs a smarter mux and is deferred.
+The consequence for loom: it sits on top of the
+[`proc → mux → shed → agent`](../overview.md#execution-stack-orchestration-layers) stack,
+so that stack is on loom's critical path. loom calls `agent.Run` per spawn and stays
+ignorant of panes, layout, and engines — those belong to [`shed`](shed.md) (placement,
+focus, the **cluster window** where N reviewers go) and [`agent`](agent.md) (the swappable
+provider engine). What loom owns is everything in this document: the phase machine, the
+gate, stuck detection, and the status contract.
 
 ## Principle alignment
 

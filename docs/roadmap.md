@@ -51,19 +51,24 @@ observable changes until the new module that needs the extracted lib arrives.
 7. **Task 008 — `_codeguide` junction and configuration TUI.** ✅ `lyx config` menu interface shipped.
    Remaining: activate `_codeguide` junctions and define `_lyx/config/` YAML schema for codeguide (deferred to a later task).
 
-8. **mux v1 — session layout.** One psmux instance per worktree with stacked agent panes
-   ([modules/mux.md](modules/mux.md)). Event-driven pane switching via Claude Code hooks. No daemon, no Slack.
-   **Note:** A working proof-of-concept of the daemon and pane-recovery model
-   already ships as `internal/muxpoc`.
+8. **mux v1 — adapter + session layout.** Split into two modules: **`mux`** is the psmux
+   adapter (panes, windows, env hygiene, resume, CC-hook wiring, one named server per hub —
+   [modules/mux.md](modules/mux.md)); **`shed`** is the session manager on top of it
+   (worktree→role→pane ledger, column layout, focus — [modules/shed.md](modules/shed.md)). One
+   psmux instance per hub, one column per worktree; event-driven pane switching via Claude Code
+   hooks. No daemon, no Slack. **Note:** A working proof-of-concept of the daemon and
+   pane-recovery model already ships as `internal/muxpoc`.
 
 9. **mux v2 — subprocess panes.** Parent/child pane tree (a spawned reviewer
    appears below its parent). Built only once Agent Dispatch stops being enough.
    **Proven in muxpoc:** see [overview.md#modules](overview.md#modules).
 
 10. **mux daemon.** Standalone watchdog process: detects a psmux crash via
-    `cmd.Wait()`, recovers each pane by relaunching interactive Claude and re-injecting
-    context from mux's own capture journal (native `--resume` does **not** work for
-    programmatically-driven panes — see [modules/mux.md](modules/mux.md#resume-after-crash-the-corrected-model)),
+    `cmd.Wait()`, recovers each pane by relaunching interactive Claude with native
+    `claude --resume` (which **works** for programmatically-driven panes once the inherited
+    Claude-Code parent-session env is stripped — see
+    [modules/mux.md](modules/mux.md#resume-after-crash--native---resume-with-env-hygiene); the
+    capture journal is now optional belt-and-suspenders, not the primary mechanism),
     mutual watchdog so both must die to go dark. See [modules/mux.md](modules/mux.md#deferred).
     **Proven in muxpoc:** see [overview.md#modules](overview.md#modules). **Event-driven pane
     switching / idle detection via Claude Code's own hooks + `claude agents --json` is
@@ -91,8 +96,9 @@ observable changes until the new module that needs the extracted lib arrives.
     proven.
 
 16. **orchestrator — the endgame.** Port mill's spawn → merge → cleanup lifecycle
-    into Go, tying board + worktree + mux together. This is what lets `lyx` finally
-    replace mill/millhouse. The toolkit modules (1–7) are deliberately designed so
+    into Go, tying board + worktree + the `mux → shed → agent` execution stack together under
+    the `loom` / `review` phase machine ([modules/loom.md](modules/loom.md)). This is what lets
+    `lyx` finally replace mill/millhouse. The toolkit modules (1–7) are deliberately designed so
     this is *possible* — clean state files, no hidden interactive assumptions — but
     it is the last thing built.
 
