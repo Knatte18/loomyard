@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: fix-worktree-runcli-test
 branch: fix-worktree-runcli-test
 plan: _mill/plan
@@ -32,6 +32,7 @@ holistic-fixing  '2026-06-24T17:47:13Z'
 nits-fixed-holistic  '2026-06-24T17:51:21Z'
 holistic-approved  '2026-06-24T17:51:35Z'
 done  '2026-06-24T17:52:03Z'
+pr-pending  '2026-06-24T17:52:41Z'
 ```
 
 ## Batches
