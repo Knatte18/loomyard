@@ -12,6 +12,7 @@
 //
 //	init      scaffold _lyx/config/board.yaml and .gitignore in the current directory
 //	board     task-tracker board — see internal/board.RunCLI for subcommands
+//	config    edit module configuration — see internal/configcli.RunCLI for subcommands
 //	ide       VS Code launcher — see internal/ide.RunCLI for subcommands
 //	muxpoc    proof-of-concept psmux mux — see internal/muxpoc.RunCLI for subcommands
 //	worktree  git-worktree lifecycle — see internal/worktree.RunCLI for subcommands
@@ -26,6 +27,7 @@ import (
 	"os"
 
 	"github.com/Knatte18/loomyard/internal/board"
+	"github.com/Knatte18/loomyard/internal/configcli"
 	"github.com/Knatte18/loomyard/internal/ide"
 	"github.com/Knatte18/loomyard/internal/muxpoc"
 	"github.com/Knatte18/loomyard/internal/weft"
@@ -52,6 +54,8 @@ func run(args []string, out io.Writer) int {
 		return board.RunInit(out, moduleArgs)
 	case "board":
 		return board.RunCLI(out, moduleArgs)
+	case "config":
+		return configcli.RunCLI(out, moduleArgs)
 	case "ide":
 		return ide.RunCLI(out, moduleArgs)
 	case "muxpoc":

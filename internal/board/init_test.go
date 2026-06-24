@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/board"
+	"github.com/Knatte18/loomyard/internal/worktree"
 )
 
 // runInit invokes board.RunInit in-process and returns the exit code plus the
@@ -69,6 +70,11 @@ func TestInitFirstRun(t *testing.T) {
 			t.Fatalf("board.yaml not created: %v", err)
 		}
 
+		// Assert written bytes equal board.ConfigTemplate()
+		if string(content) != board.ConfigTemplate() {
+			t.Errorf("board.yaml content = %q; want %q", string(content), board.ConfigTemplate())
+		}
+
 		lines := strings.Split(string(content), "\n")
 		for _, line := range lines {
 			trimmed := strings.TrimSpace(line)
@@ -85,6 +91,11 @@ func TestInitFirstRun(t *testing.T) {
 		worktreeContent, err := os.ReadFile(worktreeYamlPath)
 		if err != nil {
 			t.Fatalf("worktree.yaml not created: %v", err)
+		}
+
+		// Assert written bytes equal worktree.ConfigTemplate()
+		if string(worktreeContent) != worktree.ConfigTemplate() {
+			t.Errorf("worktree.yaml content = %q; want %q", string(worktreeContent), worktree.ConfigTemplate())
 		}
 
 		lines = strings.Split(string(worktreeContent), "\n")

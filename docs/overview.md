@@ -71,7 +71,7 @@ exposes two entry points:
   --show-toplevel`), Hub, relative path, and Prime worktree.
 
 The `Layout` type provides geometry methods: `LyxDir()`, `WorktreePath(slug)`,
-`PortalsDir()`, `PortalLink(slug)`, `PortalTarget(slug)`, `LaunchersDir()`, `LauncherDir(slug)`, `MenuLauncherPath()`, `LauncherSpawnRel(slug)`, `MenuLauncherRel()`, `PrimeName()`, `WeftRepoRoot()`, `WeftWorktreePath(slug)`, `WeftWorktree()`, `WeftLyxDir()`, `WeftLyxDirFor(slug)`, `WeftCodeguideDir()`, `HostLyxLink(slug)`, `HostLyxLinkHere()`.
+`PortalsDir()`, `PortalLink(slug)`, `PortalTarget(slug)`, `LaunchersDir()`, `LauncherDir(slug)`, `MenuLauncherPath()`, `LauncherSpawnRel(slug)`, `MenuLauncherRel()`, `PrimeName()`, `WeftRepoRoot()`, `WeftWorktreePath(slug)`, `WeftWorktree()`, `WeftLyxDir()`, `WeftLyxDirFor(slug)`, `WeftCodeguideDir()`, `HostLyxLink(slug)`, `HostLyxLinkHere()`, `HostJunctions(slug)`.
 
 **Raw `os.Getwd` and `git rev-parse --show-toplevel` are banned** outside `internal/paths`
 and `cmd/lyx/main.go`. The ban is enforced at `go test` / CI time by
@@ -130,8 +130,8 @@ The `-weft` suffix is fixed and non-configurable. Weft paths are computed on dem
 ### Status
 
 - **Go implementation** (paths geometry, paired spawn, `lyx weft` command): ✅ task 006 complete. The weft engine (paths geometry, paired `lyx worktree add` spawn, and `lyx weft status|commit|push|pull|sync`) now exists in Go. Paired `lyx worktree add` hard-requires a weft repo built by the downstream hub-creator.
+- **`lyx config` command**: ✅ task 008 partial complete. The interactive menu interface (`lyx config` and `lyx config <module>`) shipped. `_codeguide` junction activation and codeguide config schema remain deferred.
 - **Portals**: on hold pending `_codeguide` junction activation. Portals (symlink-based overlay sharing) remain unimplemented; the weft junction model is the live mechanism.
-- **`_codeguide` junction activation** (`lyx config` TUI, `_lyx/config/` schema): task 008
 
 ```
 github.com/Knatte18/loomyard/
@@ -165,6 +165,8 @@ case "init":
     return board.RunInit(out, moduleArgs)
 case "board":
     return board.RunCLI(out, moduleArgs)
+case "config":
+    return configcli.RunCLI(out, moduleArgs)
 case "ide":
     return ide.RunCLI(out, moduleArgs)
 case "muxpoc":

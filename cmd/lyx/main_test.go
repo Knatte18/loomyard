@@ -151,3 +151,18 @@ func TestRunDispatchesToWeft(t *testing.T) {
 		t.Fatalf("expected error JSON on out, got %q", out.String())
 	}
 }
+
+func TestRunDispatchesToConfig(t *testing.T) {
+	// Create temp cwd with no _lyx/ directory.
+	// This will cause config resolution to fail, which configcli.RunCLI
+	// will return as an error message (not JSON, but human-readable text).
+	cwd := t.TempDir()
+	t.Chdir(cwd)
+
+	var out bytes.Buffer
+	code := run([]string{"config"}, &out)
+	if code != 1 {
+		t.Fatalf("expected exit 1 for config in uninitialized repo, got %d; output: %s", code, out.String())
+	}
+	// config output is human-readable text (not JSON), so we just check the exit code
+}

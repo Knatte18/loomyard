@@ -72,9 +72,12 @@ func createWeftWorktree(l *paths.Layout, slug, branch string) error {
 	return nil
 }
 
-// seedLyxJunction creates or verifies the host _lyx junction pointing to the weft _lyx directory.
+// seedLyxJunction creates or verifies the host junctions pointing to weft directories.
 //
-// If the junction already exists:
+// It iterates over the junctions returned by l.HostJunctions(slug), applying the same
+// create-or-verify logic per junction using each record's Link and Target.
+//
+// For each junction, if it already exists:
 //   - Validates that it resolves to the correct target via fslink.PointsTo
 //   - Checks using fslink.IsLink to determine if it's a link
 //   - Returns nil (idempotent)
@@ -83,57 +86,63 @@ func createWeftWorktree(l *paths.Layout, slug, branch string) error {
 //   - Creates the junction via fslink.CreateDirLink
 //
 // Otherwise:
-//   - Returns an error indicating the host repo contains a real _lyx that predates weft
+//   - Returns an error indicating the host repo contains a real directory that predates weft
 func seedLyxJunction(l *paths.Layout, slug string) error {
-	link := l.HostLyxLink(slug)
-	target := l.WeftLyxDirFor(slug)
+	junctions := l.HostJunctions(slug)
 
-	_, err := os.Lstat(link)
-	if err == nil {
-		// Link exists. Resolve the target first; if target doesn't exist, report distinctly.
-		targetResolved, errTarget := filepath.EvalSymlinks(target)
-		if errTarget != nil {
-			return fmt.Errorf("weft _lyx directory does not exist at %s; cannot validate junction target", target)
-		}
+	for _, j := range junctions {
+		link := j.Link
+		target := j.Target
 
-		// Check if link is a link and resolves to the correct target
-		isLink, errIsLink := fslink.IsLink(link)
-		if errIsLink != nil {
-			return fmt.Errorf("islink %s: %w", link, errIsLink)
-		}
-		if isLink {
-			linkResolved, errResolve := fslink.PointsTo(link)
-			if errResolve == nil && linkResolved == targetResolved {
-				// Idempotent: junction exists and resolves correctly
-				return nil
+		_, err := os.Lstat(link)
+		if err == nil {
+			// Link exists. Resolve the target first; if target doesn't exist, report distinctly.
+			targetResolved, errTarget := filepath.EvalSymlinks(target)
+			if errTarget != nil {
+				return fmt.Errorf("weft directory does not exist at %s; cannot validate junction target", target)
 			}
+
+			// Check if link is a link and resolves to the correct target
+			isLink, errIsLink := fslink.IsLink(link)
+			if errIsLink != nil {
+				return fmt.Errorf("islink %s: %w", link, errIsLink)
+			}
+			if isLink {
+				linkResolved, errResolve := fslink.PointsTo(link)
+				if errResolve == nil && linkResolved == targetResolved {
+					// Idempotent: junction exists and resolves correctly
+					continue
+				}
+			}
+
+			// Not a link or points elsewhere; this is a real directory issue
+			return fmt.Errorf(
+				"host repo already contains a real %s at %s; it predates weft — migrate via the hub-creator",
+				filepath.Base(link),
+				link,
+			)
 		}
 
-		// Not a link or points elsewhere; this is a real _lyx issue
-		return fmt.Errorf(
-			"host repo already contains a real _lyx at %s; it predates weft — migrate via the hub-creator",
-			link,
-		)
-	}
+		if !os.IsNotExist(err) {
+			return fmt.Errorf("lstat %s: %w", link, err)
+		}
 
-	if !os.IsNotExist(err) {
-		return fmt.Errorf("lstat %s: %w", link, err)
-	}
-
-	// Junction does not exist; create it
-	if err := fslink.CreateDirLink(link, target); err != nil {
-		return err
+		// Junction does not exist; create it
+		if err := fslink.CreateDirLink(link, target); err != nil {
+			return err
+		}
 	}
 
 	return nil
 }
 
-// seedGitExclude adds `_lyx` to the host worktree's .git/info/exclude file if not already present.
+// seedGitExclude adds junction names to the host worktree's .git/info/exclude file if not already present.
 //
-// Resolves the exclude path via git rev-parse --git-path info/exclude.
-// If the path is relative, joins it with the worktree path.
-// Reads the file, appends `_lyx\n` if not already present, and creates parent dirs as needed.
-// Idempotent: re-running when `_lyx` is already present is a no-op.
+// It iterates over the junctions returned by l.HostJunctions(slug) and appends each
+// junction's Name to the exclude file if not already present. Resolves the exclude
+// path via git rev-parse --git-path info/exclude. If the path is relative, joins it
+// with the worktree path. Preserves line-exact idempotency per name.
+// Idempotent: re-running when all junction names are already present is a no-op.
 func seedGitExclude(l *paths.Layout, slug string) error {
 	worktreePath := l.WorktreePath(slug)
 
@@ -169,19 +178,31 @@ func seedGitExclude(l *paths.Layout, slug string) error {
 
 	contentStr := string(content)
 
-	// Check if `_lyx` is already present as a line-exact match
-	for _, line := range strings.Split(contentStr, "\n") {
-		if strings.TrimSpace(line) == "_lyx" {
-			// Already present, idempotent
-			return nil
-		}
-	}
+	// Iterate over junction names and append each if not already present.
+	junctions := l.HostJunctions(slug)
+	for _, j := range junctions {
+		name := j.Name
 
-	// Append `_lyx\n`
-	if contentStr != "" && !strings.HasSuffix(contentStr, "\n") {
-		contentStr += "\n"
+		// Check if name is already present as a line-exact match
+		found := false
+		for _, line := range strings.Split(contentStr, "\n") {
+			if strings.TrimSpace(line) == name {
+				found = true
+				break
+			}
+		}
+
+		if found {
+			// Already present, skip to next junction
+			continue
+		}
+
+		// Append name with newline
+		if contentStr != "" && !strings.HasSuffix(contentStr, "\n") {
+			contentStr += "\n"
+		}
+		contentStr += name + "\n"
 	}
-	contentStr += "_lyx\n"
 
 	// Write back
 	if err := os.WriteFile(excludePath, []byte(contentStr), 0o644); err != nil {

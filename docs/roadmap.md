@@ -48,8 +48,8 @@ observable changes until the new module that needs the extracted lib arrives.
 
 6. **Task 007 — Hub-creator / `lyx-clone` skill.** Bootstrap and clone new host repos as neighbors in an existing hub.
 
-7. **Task 008 — `_codeguide` junction and configuration TUI.** Activate `_codeguide` junctions, implement `lyx config` menu interface,
-   define `_lyx/config/` YAML schema for codeguide.
+7. **Task 008 — `_codeguide` junction and configuration TUI.** ✅ `lyx config` menu interface shipped.
+   Remaining: activate `_codeguide` junctions and define `_lyx/config/` YAML schema for codeguide (deferred to a later task).
 
 8. **mux v1 — session layout.** One psmux instance per worktree with stacked agent panes
    ([modules/mux.md](modules/mux.md)). Event-driven pane switching via Claude Code hooks. No daemon, no Slack.
