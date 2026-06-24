@@ -18,7 +18,7 @@ batches:
     name: weft-mirror-branching
     file: 01-weft-mirror-branching.md
     depends-on: []
-    verify: go test ./internal/worktree/
+    verify: go test -tags integration -run 'TestWeft|TestAdd|TestSeeder' ./internal/worktree/
 ```
 
 ## Shared Decisions

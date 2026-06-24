@@ -5,7 +5,7 @@ task: "Ensure weft branches are orphan branches"
 batch: "weft-mirror-branching"
 number: 1
 cards: 4
-verify: go test ./internal/worktree/
+verify: go test -tags integration -run 'TestWeft|TestAdd|TestSeeder' ./internal/worktree/
 depends-on: []
 ```
 
@@ -104,6 +104,16 @@ decisions: none beyond `## Shared Decisions` in the overview.
   4. **Teardown mirror (confirm).** Ensure `TestAddRollback` still passes with the new
      `createWeftWorktree` signature and continues to assert the weft branch is gone after
      rollback; extend it only if the signature change requires it.
+  5. **Missing parent weft branch.** Put the host prime on a branch `Z` for which **no**
+     matching weft branch exists in the weft repo, then run `Add` for a new slug. Assert `Add`
+     returns an error (the weft `git worktree add` start-point `Z` cannot resolve) and performs
+     full paired rollback — no host worktree dir, host branch, weft worktree dir, or weft
+     branch left behind. (discussion.md Testing → "Missing parent weft branch".)
+  - **Test naming:** name every new test so it matches the batch `verify:` regex
+    `TestWeft|TestAdd|TestSeeder` — fork-point/subtask/missing-parent tests in `weft_test.go`
+    use a `TestWeft…` prefix; the detached-HEAD guard goes in `add_test.go` as a `TestAdd…`
+    case (e.g. a new row in `TestAdd`). Tests not matching the regex will be silently skipped
+    by the verify gate.
 - **Commit:** `test(worktree): assert weft fork mirrors host branch and detached-HEAD aborts`
 
 ### Card 4: Document the weft branch model
@@ -121,7 +131,8 @@ decisions: none beyond `## Shared Decisions` in the overview.
   branch forks from its parent's weft branch (non-orphan, shared merge-base), `_lyx` never
   merges back while `_codeguide` (future) squash-merges back to the parent weft branch, and a
   detached/unborn host HEAD aborts the spawn. In `docs/overview.md`, under the
-  `## Weft overlay model` section, add a `### Branch model` subsection stating the same: weft
+  `## Weft overlay model` section — inserted **after the `### Junction model` subsection** —
+  add a `### Branch model` subsection stating the same: weft
   branch name = host branch name; weft-X forks from the weft branch of X's host parent;
   branches are non-orphan to preserve the merge-base needed for the future `_codeguide`
   squash-merge-back; `_lyx` is isolated by pathspec (never merges back), not by orphan
@@ -130,9 +141,15 @@ decisions: none beyond `## Shared Decisions` in the overview.
 
 ## Batch Tests
 
-`verify: go test ./internal/worktree/` runs the entire `internal/worktree` package, which is
-exactly the surface this batch touches (`weft.go`, `add.go` and their `_test.go` siblings). The
-new tests in Card 3 live in `weft_test.go` (fork-point and subtask-isolation) and `add_test.go`
-(detached-HEAD guard, rollback confirmation). The docs-only edits in Card 4 have no runnable
-surface and are covered by the package compiling. Scope is the single affected package — no
-unbounded cross-repo suite is needed.
+`verify: go test -tags integration -run 'TestWeft|TestAdd|TestSeeder' ./internal/worktree/`.
+The `-tags integration` flag is **mandatory**: every test file this batch touches
+(`weft_test.go`, `add_test.go`) carries `//go:build integration`, so a plain `go test` compiles
+**none** of them (it reports "ok" having run only the three non-tagged files) — the batch's
+entire test surface would be silently unreachable without the tag. The `-run` scope is
+deliberate: the full `-tags integration` package run has a **pre-existing, unrelated failure**
+(`TestRunCLI` in `cli_test.go`), whereas the weft/add/seeder tests are green at baseline; the
+gate must reflect this batch's surface only, so it is scoped to `TestWeft|TestAdd|TestSeeder`
+(every new Card 3 test is named to match this regex). The new tests live in `weft_test.go`
+(fork-point, subtask-isolation, missing-parent-weft-branch) and `add_test.go` (detached-HEAD
+guard, rollback confirmation). The docs-only edits in Card 4 have no runnable surface and are
+covered by the package compiling. Fixing the unrelated `TestRunCLI` failure is out of scope.
