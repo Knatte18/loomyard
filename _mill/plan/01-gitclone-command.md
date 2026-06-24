@@ -75,7 +75,7 @@ teardown-failure test force a removal error.
   - `internal/gitclone/clone.go`
 - **Deletes:** none
 - **Requirements:** Declare the testability seam `var removeAll = os.RemoveAll`. Implement
-  `func cloneHub(cwd, hostURL, weftURL, boardURL string) (hubPath string, err error)`:
+  `func cloneHub(cwd, hostURL, weftURL, boardURL string) (hubPath, resolvedBoardURL string, err error)`:
   (1) `name := deriveHostName(hostURL)`; if `""` return an error "could not derive repo name
   from host URL <hostURL>". (2) `hubPath := filepath.Join(cwd, name+hubSuffix)`. (3) if
   `os.Stat(hubPath)` succeeds, return an error "hub already exists at <hubPath>" **without**
@@ -85,7 +85,8 @@ teardown-failure test force a removal error.
   weft to `filepath.Join(hubPath, name+weftSuffix)`; on failure teardown and return. (7)
   resolve board URL: `board := boardURL`; if `board == ""` then `board = deriveBoardURL(weftURL)`;
   clone board to `filepath.Join(hubPath, boardDirName)`; on failure teardown and return. (8)
-  return `hubPath, nil`. Add `func cloneRepo(url, dest string) error` wrapping
+  return `hubPath, board, nil` (return the resolved board URL so CLI uses exactly the URL that was
+  cloned). Add `func cloneRepo(url, dest string) error` wrapping
   `git.RunGit([]string{"clone", url, dest}, filepath.Dir(dest))` — `dest` is absolute so the
   clone cwd is just its parent Hub dir; non-zero exit returns an error carrying stderr. Add `func teardownHub(hubPath string, cause error) error`: call
   `removeAll(hubPath)`; if it fails, return an error combining `cause` with "residual hub
@@ -109,8 +110,8 @@ teardown-failure test force a removal error.
   Obtain cwd via `paths.Getwd()`; on error `output.Err`. Call
   `cloneHub(cwd, host, weft, boardOrEmpty)`; on error `output.Err(out, err.Error())`; on
   success `output.Ok(out, map[string]any{"hub": hubPath, "host": host, "weft": weft,
-  "board": resolvedBoardURL})` where `resolvedBoardURL` is the explicit board URL or the
-  derived one. Include a short godoc on `RunCLI` noting the precondition that the board repo
+  "board": resolvedBoardURL})` where `resolvedBoardURL` is the board URL returned by
+  `cloneHub` (either explicit or derived). Include a short godoc on `RunCLI` noting the precondition that the board repo
   (default: the weft repo's wiki) must already exist, or the board clone — and thus the whole
   command — aborts.
 - **Commit:** `feat(gitclone): RunCLI entry with JSON output`
@@ -134,10 +135,12 @@ teardown-failure test force a removal error.
   `TestCloneHub_HappyPath` (omit board URL; create the derived weft-wiki bare at
   `<dir>/<weft>.wiki.git`; assert `<name>-HUB/<name>`, `<name>-HUB/<name>-weft`,
   `<name>-HUB/_board` all exist and are git repos, the Hub root is **not** a git repo, and no
-  `_lyx`/`_codeguide` were created); `TestCloneHub_GeometryRoundTrip` (`paths.Resolve` of the
+  `_lyx`/`_codeguide` were created; also assert the returned `resolvedBoardURL` matches the
+  derived URL); `TestCloneHub_GeometryRoundTrip` (`paths.Resolve` of the
   cloned host Prime yields `Hub == hubPath`, `PrimeName == name`, `WeftRepoRoot() ==
   filepath.Join(hubPath, name+"-weft")`); `TestCloneHub_ExplicitBoardURL` (pass an explicit
-  board fixture; assert it is used, not the derived URL); `TestCloneHub_AbortIfExists`
+  board fixture; assert it is used, not the derived URL, and the returned `resolvedBoardURL`
+  matches the explicit URL); `TestCloneHub_AbortIfExists`
   (pre-create `<cwd>/<name>-HUB`; assert `cloneHub` errors and leaves the pre-existing dir
   untouched); `TestCloneHub_StrictAbort` with `t.Run` subtests for host/weft/board each pointed
   at a non-existent remote — assert an error is returned **and** the Hub dir was fully removed;

@@ -94,11 +94,16 @@ func cloneRepo(url, dest string) error {
 
 	// Verify the parent directory exists
 	info, err := os.Stat(parentDir)
-	if err != nil || !info.IsDir() {
+	if err != nil {
 		return fmt.Errorf("parent directory does not exist: %w", err)
 	}
+	if !info.IsDir() {
+		return fmt.Errorf("parent directory does not exist: %s is not a directory", parentDir)
+	}
 
-	// Convert paths to use forward slashes for git compatibility on Windows
+	// Convert paths to use forward slashes for git compatibility on Windows.
+	// dest is split into parent+basename so git resolves cleanly on Windows;
+	// the plan's full-absolute-dest variant is functionally equivalent.
 	gitURL := filepath.ToSlash(url)
 	gitDest := filepath.ToSlash(destName)
 
