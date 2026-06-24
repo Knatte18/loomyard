@@ -23,7 +23,7 @@ func TestWeftSpawnCreatesJunction(t *testing.T) {
 
 	const slug = "weft-junction-test"
 
-	f := lyxtest.CopyPaired(t)
+	f := lyxtest.CopyPairedLocal(t)
 
 	w := New(Config{})
 	_, err := w.Add(f.Layout, slug, AddOptions{SkipPush: true})
@@ -55,7 +55,7 @@ func TestWeftSpawnSeedsExclude(t *testing.T) {
 
 	const slug = "weft-exclude-test"
 
-	f := lyxtest.CopyPaired(t)
+	f := lyxtest.CopyPairedLocal(t)
 
 	w := New(Config{})
 	_, err := w.Add(f.Layout, slug, AddOptions{SkipPush: true})
@@ -110,7 +110,7 @@ func TestWeftSpawnPairedWorktrees(t *testing.T) {
 
 	const slug = "paired-test"
 
-	f := lyxtest.CopyPaired(t)
+	f := lyxtest.CopyPairedLocal(t)
 
 	w := New(Config{})
 	_, err := w.Add(f.Layout, slug, AddOptions{SkipPush: true})
@@ -209,7 +209,7 @@ func TestWeftPrechecks(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			f := lyxtest.CopyPaired(t)
+			f := lyxtest.CopyPairedLocal(t)
 			tt.setup(t, f)
 
 			w := New(Config{})
@@ -240,6 +240,36 @@ func TestWeftPrechecks(t *testing.T) {
 	}
 }
 
+// TestWeftSpawnPushesWeftBranch verifies that Add with SkipPush:false pushes the weft
+// branch to the weft-bare remote. This is the only test that exercises pushWeftBranch and
+// uses a live weft-bare as the push target. It requires the full CopyPaired fixture
+// (not the lean CopyPairedLocal) because it actually pushes to the weft-bare.
+func TestWeftSpawnPushesWeftBranch(t *testing.T) {
+	t.Parallel()
+
+	const slug = "weft-push-test"
+
+	f := lyxtest.CopyPaired(t)
+
+	w := New(Config{})
+	_, err := w.Add(f.Layout, slug, AddOptions{})
+	if err != nil {
+		t.Fatalf("Add(%q): %v", slug, err)
+	}
+
+	// Verify the weft branch was pushed to the weft-bare remote.
+	// Use git ls-remote to check for the mirrored branch ref in the weft-bare.
+	stdout, _, exitCode, _ := git.RunGit([]string{"ls-remote", f.WeftBare}, f.Layout.WeftRepoRoot())
+	if exitCode != 0 {
+		t.Fatalf("git ls-remote weft-bare failed")
+	}
+
+	// The branch should appear as refs/heads/<slug> in the remote.
+	if !strings.Contains(stdout, "refs/heads/"+slug) {
+		t.Errorf("weft branch %q not found in weft-bare after push; output: %s", slug, stdout)
+	}
+}
+
 // TestWeftRollbackOnPostHostCreateFailure simulates a post-host-create failure
 // (e.g. pre-create the weft worktree dir to make createWeftWorktree fail) and
 // asserts both host and weft state is rolled back completely.
@@ -251,7 +281,7 @@ func TestWeftRollbackOnPostHostCreateFailure(t *testing.T) {
 	const slug = "rollback-post-host-test"
 	const branch = "lyx/" + slug // matches the default BranchPrefix
 
-	f := lyxtest.CopyPaired(t)
+	f := lyxtest.CopyPairedLocal(t)
 
 	// Manually create the host and weft worktrees and branches to simulate the state
 	// after Add steps 7-8 complete. This allows us to test rollbackAdd without having

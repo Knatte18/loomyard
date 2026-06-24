@@ -556,6 +556,63 @@ func CopyPaired(tb testing.TB) PairedFixture {
 	}
 }
 
+// CopyPairedLocal returns an isolated copy of the paired-Add fixture optimized for
+// SkipPush:true tests. It copies only the host hub, host bare, and weft-prime,
+// omitting the weft-bare (unused when the weft push is suppressed). This reduces
+// per-test filesystem-copy + Defender cost by ~25%. The returned fixture has
+// Container, Hub, Bare, WeftPrime, and Layout populated, but WeftBare is left empty.
+// Pushing the weft branch against this fixture is unsupported; use CopyPaired instead
+// if the test exercises the weft-bare as a live push target.
+func CopyPairedLocal(tb testing.TB) PairedFixture {
+	tb.Helper()
+
+	templateHub, templateBare := buildHostHub()
+	templateWeftPrime, _ := buildWeftPrime()
+
+	// Create a temp container
+	tempContainer := tb.TempDir()
+
+	// Copy hub
+	copiedHub := filepath.Join(tempContainer, "hub")
+	if err := copyDirRecursive(templateHub, copiedHub); err != nil {
+		tb.Fatalf("copyDirRecursive hub: %v", err)
+	}
+
+	// Copy bare
+	copiedBare := filepath.Join(tempContainer, "bare")
+	if err := copyDirRecursive(templateBare, copiedBare); err != nil {
+		tb.Fatalf("copyDirRecursive bare: %v", err)
+	}
+
+	// Copy weft-prime (must preserve the -weft suffix); omit weft-bare
+	base := filepath.Base(templateHub)
+	copiedWeftPrime := filepath.Join(tempContainer, base+"-weft")
+	if err := copyDirRecursive(templateWeftPrime, copiedWeftPrime); err != nil {
+		tb.Fatalf("copyDirRecursive weftPrime: %v", err)
+	}
+
+	// Rewrite host origin URL; do not rewrite weft-prime's origin URL
+	// (it points at the shared template weft-bare and is never reached under SkipPush:true)
+	if err := rewriteOriginURLInConfig(copiedHub, copiedBare); err != nil {
+		tb.Fatalf("rewriteOriginURLInConfig hub: %v", err)
+	}
+
+	// Get layout from copied hub
+	layout, err := paths.Resolve(copiedHub)
+	if err != nil {
+		tb.Fatalf("paths.Resolve: %v", err)
+	}
+
+	return PairedFixture{
+		Container: tempContainer,
+		Hub:       copiedHub,
+		Bare:      copiedBare,
+		WeftPrime: copiedWeftPrime,
+		WeftBare:  "",
+		Layout:    layout,
+	}
+}
+
 // CopyWeft returns an isolated copy of the weft-only template.
 // The copy is placed in tb.TempDir(); its origin URL is rewritten and
 // upstream tracking is already established (from the template).
