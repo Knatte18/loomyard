@@ -137,12 +137,19 @@ no first step to stand up a real weft-backed hub for any host repo.
 - Rejected: "Warn and continue" / "board is secondary" — false; the board is load-bearing.
   Idempotent resume (skip already-cloned repos) — adds half-state complexity for a command
   run rarely.
+- **Teardown-failure (nested failure):** the teardown is `os.RemoveAll(<hub>)`. On Windows a
+  still-running `git clone` child or an AV/indexer lock can make the removal itself fail. If
+  teardown fails, do **not** mask it: report the residual Hub path explicitly and exit
+  non-zero (`output.Err`), telling the user to remove `<hub>` manually before retrying.
+  Never swallow the removal error and report success.
 
 ### board-url-derivation-default-weft-wiki
 
 - Decision: When `[board-url]` is omitted, derive the board from the **weft** repo's GitHub
-  wiki: rewrite the weft URL's trailing `…<repo>.git` → `…<repo>.wiki.git`. An explicit
-  `[board-url]` overrides this and is used verbatim.
+  wiki. Derivation rule (defined for every URL form): **strip a single trailing `.git` from
+  the weft URL if present, then append `.wiki.git`** — so both `…/<repo>.git` and
+  `…/<repo>` yield `…/<repo>.wiki.git`. An explicit `[board-url]` overrides this and is used
+  verbatim.
 - Rationale: Operator's product requirement — "default board git repo = weft's wiki-repo."
   The derivation is **deterministic string rewriting**, not the "heuristic inference of
   home-file content shape / board-URL derivation" the roadmap's out-of-scope list guards
@@ -215,10 +222,12 @@ What the plan needs to know about the codebase:
 - **fslink rule (recorded for the future, not used here):** when junctions *are* created
   (activation, a later task), they must go through `internal/fslink.CreateDirLink` — never
   OS-native `mklink`/`New-Item -Junction`. This task creates no links.
-- **Reference:** `wiki/proposal-weft-repo.md` §6-7 (board placement + hub-creator),
-  `docs/roadmap.md` milestones 6/16/19, `docs/overview.md` naming section, the millhouse
-  `git-clone` skill (the analog: container scaffolding, name derivation, abort-if-exists,
-  partial-failure cleanup).
+- **Reference:** `docs/roadmap.md` milestones 6/16/19, `docs/overview.md` naming section,
+  the millhouse `git-clone` skill (the analog: container scaffolding, name derivation,
+  abort-if-exists, partial-failure cleanup). The original design write-up
+  `wiki/proposal-weft-repo.md` §6-7 lives in the **daemon-owned wiki repo and is NOT present
+  in this worktree** — treat it as background only. **Every decision needed to write the
+  plan is captured in this file**; the proposal is not required reading.
 
 ## Constraints
 
@@ -257,6 +266,11 @@ manual-only checklist. TDD candidates and scenarios for `internal/gitclone`:
   non-existent remote; assert non-zero exit, a clear error, **and** that the partial Hub was
   removed (no half-state left behind). The board case doubles as the "wiki not initialized"
   scenario.
+- **Teardown-failure (nested failure):** simulate `os.RemoveAll` failing during cleanup
+  (e.g. a locked/undeletable file under the partial Hub); assert the command exits non-zero
+  and surfaces the residual Hub path rather than reporting success.
+- **Board-URL derivation forms:** weft URL with and without a trailing `.git` both yield
+  `…/<repo>.wiki.git`.
 - **Default-derivation integration:** omit `[board-url]`; assert it clones the derived
   weft-wiki fixture.
 
