@@ -163,8 +163,7 @@ func TestSkipSeam(t *testing.T) {
 		remoteBefore, localBefore := remoteCommits(), localCommits()
 
 		dirty(t, work, `[{"id":0,"slug":"a","title":"A"}]`)
-		cfg := board.DefaultConfig()
-		cfg.Path = work
+		cfg := board.Config{Path: work, Home: "Home.md", Sidebar: "_Sidebar.md", ProposalPrefix: "proposal-"}
 		cfg.SkipPush = true
 		if err := board.New(cfg).Sync(); err != nil {
 			t.Fatalf("Sync: %v", err)
@@ -197,8 +196,7 @@ func TestSkipSeam(t *testing.T) {
 		remoteBefore, localBefore := remoteCommits(), localCommits()
 
 		dirty(t, work, `[{"id":0,"slug":"a","title":"A"}]`)
-		cfg := board.DefaultConfig()
-		cfg.Path = work
+		cfg := board.Config{Path: work, Home: "Home.md", Sidebar: "_Sidebar.md", ProposalPrefix: "proposal-"}
 		cfg.SkipGit = true
 		if err := board.New(cfg).Sync(); err != nil {
 			t.Fatalf("Sync: %v", err)
