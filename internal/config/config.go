@@ -1,220 +1,95 @@
-// config.go — generic two-layer configuration loader.
+// config.go implements strict YAML configuration loading backed by yamlengine and envsource.
 //
-// Provides Load function to merge defaults with YAML-based configuration,
-// supporting environment variable expansion with required ($env:NAME) and
-// optional ($env:NAME ? fallback) syntax.
+// The Load function reads a YAML config file, validates it against a template,
+// resolves environment variables, and returns the resolved bytes. The typed wrappers
+// (board.LoadConfig, worktree.LoadConfig, weft.LoadConfig) unmarshal the resolved bytes
+// into their own structs.
 
 package config
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
-	"strings"
 
-	"gopkg.in/yaml.v3"
+	"github.com/Knatte18/loomyard/internal/envsource"
+	"github.com/Knatte18/loomyard/internal/paths"
+	"github.com/Knatte18/loomyard/internal/yamlengine"
 )
-
-// envOptRe matches $env:NAME ? fallback tokens where NAME is [A-Za-z_][A-Za-z0-9_]*
-// and fallback is any trailing content on the line.
-var envOptRe = regexp.MustCompile(`\$env:([A-Za-z_][A-Za-z0-9_]*)\s*\?\s*(.*)$`)
-
-// envReqRe matches $env:NAME tokens where NAME is [A-Za-z_][A-Za-z0-9_]*
-var envReqRe = regexp.MustCompile(`\$env:([A-Za-z_][A-Za-z0-9_]*)`)
 
 // FindBaseDir checks if <cwd>/_lyx exists and returns cwd, or an error if not found.
 //
 // It performs a strict check without walking up to parent directories.
 // Returns the cwd on success, empty string and an error on failure.
 func FindBaseDir(cwd string) (string, error) {
-	lyxDir := filepath.Join(cwd, "_lyx")
+	lyxDir := filepath.Join(cwd, paths.LyxDirName)
 	_, err := os.Stat(lyxDir)
 	if os.IsNotExist(err) {
-		return "", fmt.Errorf("not initialized: _lyx/ directory not found in %s", cwd)
+		return "", fmt.Errorf("not initialized: _lyx/ directory not found")
 	} else if err != nil {
 		return "", fmt.Errorf("stat _lyx: %w", err)
 	}
 	return cwd, nil
 }
 
-// Load loads configuration for a module from defaults and the module's `_lyx/config/<module>.yaml` file.
+// Load loads and resolves configuration from a YAML file using a template.
 //
-// Merges defaults with <baseDir>/_lyx/config/<module>.yaml (if present) and expands
-// environment variables using $env:NAME and $env:NAME ? fallback syntax.
+// Flow:
+// 1. Call FindBaseDir(baseDir) and propagate its error.
+// 2. Compute cfgPath := paths.ConfigFile(baseDir, module) and read it.
+//    If the file is absent, return an error naming the path and instructing "lyx update".
+// 3. Check for missing keys in the file via yamlengine.MissingKeys(template, fileBytes).
+//    If keys are missing, return an error naming cfgPath, the missing key-paths, and "lyx update".
+// 4. Build the environment via envsource.Build(baseDir).
+// 5. Resolve fileBytes via yamlengine.Resolve(fileBytes, env).
+// 6. Return the resolved bytes.
 //
-// If <baseDir>/_lyx/ does not exist, returns an error.
-// If <baseDir>/.env is present, it is loaded and used for env var lookups.
-// OS environment takes precedence over .env values.
-func Load(baseDir, module string, defaults map[string]string) (map[string]string, error) {
-	// Check if _lyx/ directory exists
+// Errors from steps 3-5 wrap the underlying error with the config key/file context.
+func Load(baseDir, module string, template []byte) ([]byte, error) {
+	// Step 1: Check if _lyx/ directory exists
 	_, err := FindBaseDir(baseDir)
 	if err != nil {
 		return nil, err
 	}
 
-	// Load .env file
-	dotenv, err := loadDotEnv(filepath.Join(baseDir, ".env"))
-	if err != nil {
-		return nil, err
-	}
-
-	// Start with defaults
-	result := make(map[string]string, len(defaults))
-	for k, v := range defaults {
-		result[k] = v
-	}
-
-	// Load and merge YAML layer
-	yamlMap, err := loadYAMLLayer(filepath.Join(baseDir, "_lyx", "config", module+".yaml"))
-	if err != nil {
-		return nil, err
-	}
-	for k, v := range yamlMap {
-		result[k] = v
-	}
-
-	// Expand environment variables in all values
-	for key, val := range result {
-		expanded, err := expandEnv(val, dotenv)
-		if err != nil {
-			return nil, fmt.Errorf("config key %q: %w", key, err)
-		}
-		result[key] = expanded
-	}
-
-	return result, nil
-}
-
-// loadDotEnv loads a .env file into a map.
-//
-// Returns an empty map if the file does not exist.
-// Skips empty lines, comment lines (starting with #), and lines without =.
-func loadDotEnv(path string) (map[string]string, error) {
-	file, err := os.Open(path)
+	// Step 2: Read the config file
+	cfgPath := paths.ConfigFile(baseDir, module)
+	fileBytes, err := os.ReadFile(cfgPath)
 	if os.IsNotExist(err) {
-		return make(map[string]string), nil
+		return nil, fmt.Errorf("config file %s not found; run \"lyx update\"", cfgPath)
 	}
 	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-
-	result := make(map[string]string)
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-
-		idx := strings.Index(line, "=")
-		if idx == -1 {
-			// No = found, skip this line
-			continue
-		}
-
-		key := line[:idx]
-		val := line[idx+1:]
-		result[key] = val
+		return nil, fmt.Errorf("read config file %s: %w", cfgPath, err)
 	}
 
-	if err := scanner.Err(); err != nil {
-		return nil, err
-	}
-
-	return result, nil
-}
-
-// loadYAMLLayer loads a YAML file into a string map.
-//
-// Returns an empty map if the file does not exist.
-func loadYAMLLayer(path string) (map[string]string, error) {
-	content, err := os.ReadFile(path)
-	if os.IsNotExist(err) {
-		return make(map[string]string), nil
-	}
+	// Step 3: Check for missing keys
+	missing, err := yamlengine.MissingKeys(template, fileBytes)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("config file %s: %w", cfgPath, err)
+	}
+	if len(missing) > 0 {
+		missingStr := ""
+		for _, key := range missing {
+			if missingStr != "" {
+				missingStr += ", "
+			}
+			missingStr += key
+		}
+		return nil, fmt.Errorf("config file %s: missing keys: %s; run \"lyx update\"", cfgPath, missingStr)
 	}
 
-	result := make(map[string]string)
-	err = yaml.Unmarshal(content, result)
+	// Step 4: Build the environment
+	env, err := envsource.Build(baseDir)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("config file %s: build environment: %w", cfgPath, err)
 	}
 
-	return result, nil
-}
-
-// expandEnv expands environment variables in a value string.
-//
-// Supports two syntaxes:
-// - $env:NAME — required variable; error if unset
-// - $env:NAME ? fallback — optional variable; use fallback if unset
-//
-// Uses a three-phase algorithm:
-// 1. Check for optional syntax
-// 2. Expand required tokens in prefix (before optional marker)
-// 3. Handle optional token if present
-//
-// OS environment is checked first, then the dotenv map.
-func expandEnv(value string, dotenv map[string]string) (string, error) {
-	// Phase 1: Check for optional syntax
-	optMatch := envOptRe.FindStringSubmatchIndex(value)
-	var prefix string
-	var optionalName string
-	var fallback string
-
-	if optMatch != nil {
-		matchStart := optMatch[0]
-		prefix = value[:matchStart]
-		optionalName = value[optMatch[2]:optMatch[3]]
-		fallback = value[optMatch[4]:optMatch[5]]
-	} else {
-		prefix = value
+	// Step 5: Resolve environment variables
+	resolved, err := yamlengine.Resolve(fileBytes, env)
+	if err != nil {
+		return nil, fmt.Errorf("config file %s: %w", cfgPath, err)
 	}
 
-	// Phase 2: Expand required tokens in prefix
-	var expandErr error
-	expandedPrefix := envReqRe.ReplaceAllStringFunc(prefix, func(tok string) string {
-		// Extract the variable name from $env:NAME
-		name := tok[5:] // Skip "$env:"
-
-		// Look up in OS env first, then dotenv
-		if val, ok := os.LookupEnv(name); ok {
-			return val
-		}
-		if val, ok := dotenv[name]; ok {
-			return val
-		}
-
-		// Not found, mark error and return unchanged
-		if expandErr == nil {
-			expandErr = fmt.Errorf("unset required env var %q", name)
-		}
-		return tok
-	})
-
-	if expandErr != nil {
-		return "", expandErr
-	}
-
-	// Phase 3: Handle optional token if present
-	if optMatch != nil {
-		// Look up optional variable
-		if val, ok := os.LookupEnv(optionalName); ok {
-			return expandedPrefix + val, nil
-		}
-		if val, ok := dotenv[optionalName]; ok {
-			return expandedPrefix + val, nil
-		}
-
-		// Not set, use fallback
-		return expandedPrefix + strings.TrimSpace(fallback), nil
-	}
-
-	// No optional token, return the expanded prefix
-	return expandedPrefix, nil
+	// Step 6: Return resolved bytes
+	return resolved, nil
 }

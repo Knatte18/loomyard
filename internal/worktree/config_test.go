@@ -1,3 +1,8 @@
+// config_test.go — unit tests for worktree.LoadConfig.
+//
+// Covers: happy-path with template keys present, branch_prefix parsing,
+// environment variable resolution, and not-initialized error path.
+
 package worktree_test
 
 import (
@@ -6,69 +11,125 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/paths"
 	"github.com/Knatte18/loomyard/internal/worktree"
 )
 
-// TestLoadConfig covers worktree config resolution: defaults when worktree.yaml
-// is absent, branch_prefix parsed from YAML, and the not-initialized error.
-func TestLoadConfig(t *testing.T) {
-	tests := []struct {
-		name string
-		// initLyx controls whether the _lyx/ marker dir is created;
-		// LoadConfig rejects a base dir without it.
-		initLyx bool
-		// yaml, when non-empty, is written to _lyx/config/worktree.yaml.
-		yaml            string
-		wantPrefix      string
-		wantErrContains string
-	}{
-		{name: "DefaultsWhenYAMLAbsent", initLyx: true, wantPrefix: ""},
-		{name: "BranchPrefixFromYAML", initLyx: true, yaml: "branch_prefix: hanf/\n", wantPrefix: "hanf/"},
-		{name: "ErrorWhenNotInitialized", initLyx: false, wantErrContains: `run "lyx init"`},
+// TestLoadConfig_HappyPath tests that LoadConfig loads a valid config
+// with all template keys present and branch_prefix is parsed correctly.
+func TestLoadConfig_HappyPath(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create _lyx/config/ directories
+	lyxDir := filepath.Join(tmpDir, "_lyx")
+	if err := os.Mkdir(lyxDir, 0755); err != nil {
+		t.Fatalf("failed to create _lyx: %v", err)
+	}
+	configDir := filepath.Join(lyxDir, "config")
+	if err := os.Mkdir(configDir, 0755); err != nil {
+		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			baseDir := t.TempDir()
+	// Write a config file with branch_prefix
+	configFile := paths.ConfigFile(tmpDir, "worktree")
+	content := `branch_prefix: hanf/
+`
+	if err := os.WriteFile(configFile, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write config: %v", err)
+	}
 
-			// Create the _lyx/ marker (and optional config) only for the
-			// initialized scenarios; the error case leaves it absent so
-			// LoadConfig takes the not-initialized branch.
-			if tt.initLyx {
-				lyxDir := filepath.Join(baseDir, "_lyx")
-				if err := os.Mkdir(lyxDir, 0755); err != nil {
-					t.Fatalf("create _lyx: %v", err)
-				}
-				if tt.yaml != "" {
-					configDir := filepath.Join(lyxDir, "config")
-					if err := os.Mkdir(configDir, 0755); err != nil {
-						t.Fatalf("create _lyx/config: %v", err)
-					}
-					yamlPath := filepath.Join(configDir, "worktree.yaml")
-					if err := os.WriteFile(yamlPath, []byte(tt.yaml), 0644); err != nil {
-						t.Fatalf("write worktree.yaml: %v", err)
-					}
-				}
-			}
+	cfg, err := worktree.LoadConfig(tmpDir, "worktree")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
-			cfg, err := worktree.LoadConfig(baseDir, "worktree")
+	if cfg.BranchPrefix != "hanf/" {
+		t.Errorf("expected BranchPrefix %q, got %q", "hanf/", cfg.BranchPrefix)
+	}
+}
 
-			if tt.wantErrContains != "" {
-				if err == nil {
-					t.Fatalf("LoadConfig() error = nil; want error containing %q", tt.wantErrContains)
-				}
-				if !strings.Contains(err.Error(), tt.wantErrContains) {
-					t.Errorf("LoadConfig() error = %q; want substring %q", err.Error(), tt.wantErrContains)
-				}
-				return
-			}
+// TestLoadConfig_EmptyBranchPrefix tests that branch_prefix defaults to empty string.
+func TestLoadConfig_EmptyBranchPrefix(t *testing.T) {
+	tmpDir := t.TempDir()
 
-			if err != nil {
-				t.Fatalf("LoadConfig() error = %v; want nil", err)
-			}
-			if cfg.BranchPrefix != tt.wantPrefix {
-				t.Errorf("LoadConfig().BranchPrefix = %q; want %q", cfg.BranchPrefix, tt.wantPrefix)
-			}
-		})
+	// Create _lyx/config/ directories
+	lyxDir := filepath.Join(tmpDir, "_lyx")
+	if err := os.Mkdir(lyxDir, 0755); err != nil {
+		t.Fatalf("failed to create _lyx: %v", err)
+	}
+	configDir := filepath.Join(lyxDir, "config")
+	if err := os.Mkdir(configDir, 0755); err != nil {
+		t.Fatalf("failed to create _lyx/config: %v", err)
+	}
+
+	// Write a config file with empty branch_prefix
+	configFile := paths.ConfigFile(tmpDir, "worktree")
+	content := `branch_prefix: ""
+`
+	if err := os.WriteFile(configFile, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write config: %v", err)
+	}
+
+	cfg, err := worktree.LoadConfig(tmpDir, "worktree")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg.BranchPrefix != "" {
+		t.Errorf("expected empty BranchPrefix, got %q", cfg.BranchPrefix)
+	}
+}
+
+// TestLoadConfig_EnvResolution tests that environment variables in config
+// are resolved correctly.
+func TestLoadConfig_EnvResolution(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("TEST_BRANCH_PREFIX", "feature/")
+
+	// Create _lyx/config/ directories
+	lyxDir := filepath.Join(tmpDir, "_lyx")
+	if err := os.Mkdir(lyxDir, 0755); err != nil {
+		t.Fatalf("failed to create _lyx: %v", err)
+	}
+	configDir := filepath.Join(lyxDir, "config")
+	if err := os.Mkdir(configDir, 0755); err != nil {
+		t.Fatalf("failed to create _lyx/config: %v", err)
+	}
+
+	// Write config with env variable
+	configFile := paths.ConfigFile(tmpDir, "worktree")
+	content := `branch_prefix: ${env:TEST_BRANCH_PREFIX}
+`
+	if err := os.WriteFile(configFile, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write config: %v", err)
+	}
+
+	cfg, err := worktree.LoadConfig(tmpDir, "worktree")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg.BranchPrefix != "feature/" {
+		t.Errorf("expected BranchPrefix %q (from env), got %q", "feature/", cfg.BranchPrefix)
+	}
+}
+
+// TestLoadConfig_NotInitialized tests that missing _lyx/ returns the
+// worktree-specific not-initialized error.
+func TestLoadConfig_NotInitialized(t *testing.T) {
+	tmpDir := t.TempDir()
+	// Do NOT create _lyx/
+
+	cfg, err := worktree.LoadConfig(tmpDir, "worktree")
+	if err == nil {
+		t.Fatalf("expected error for not initialized, got nil; config: %+v", cfg)
+	}
+
+	errMsg := err.Error()
+	if !strings.Contains(errMsg, "not initialized") {
+		t.Errorf("expected error containing 'not initialized', got: %v", err)
+	}
+	if !strings.Contains(errMsg, "lyx init") {
+		t.Errorf("expected error containing 'lyx init', got: %v", err)
 	}
 }

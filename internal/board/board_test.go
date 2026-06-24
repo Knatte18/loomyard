@@ -17,9 +17,7 @@ import (
 // fields" (owned by store_test.go:TestUpsertTaskPreservesFields).
 func TestUpsertTask(t *testing.T) {
 	boardPath := t.TempDir()
-	cfg := board.DefaultConfig()
-	cfg.Path = boardPath
-	cfg.SkipGit = true
+	cfg := board.Config{Path: boardPath, Home: "Home.md", Sidebar: "_Sidebar.md", ProposalPrefix: "proposal-", SkipGit: true}
 	w := board.New(cfg)
 
 	// Creates task, tasks.json written, Home.md written
@@ -50,9 +48,7 @@ func TestUpsertTask(t *testing.T) {
 
 func TestRerender(t *testing.T) {
 	boardPath := t.TempDir()
-	cfg := board.DefaultConfig()
-	cfg.Path = boardPath
-	cfg.SkipGit = true
+	cfg := board.Config{Path: boardPath, Home: "Home.md", Sidebar: "_Sidebar.md", ProposalPrefix: "proposal-", SkipGit: true}
 	w := board.New(cfg)
 
 	// (d) Writes all output files without error on empty store
@@ -76,9 +72,7 @@ func TestRerender(t *testing.T) {
 
 func TestHealthCheckPasses(t *testing.T) {
 	boardPath := t.TempDir()
-	cfg := board.DefaultConfig()
-	cfg.Path = boardPath
-	cfg.SkipGit = true
+	cfg := board.Config{Path: boardPath, Home: "Home.md", Sidebar: "_Sidebar.md", ProposalPrefix: "proposal-", SkipGit: true}
 	w := board.New(cfg)
 
 	// Create a task to initialize the board directory and tasks.json
@@ -99,8 +93,7 @@ func TestHealthCheckPasses(t *testing.T) {
 
 func TestHealthCheckFailsNoBoardDir(t *testing.T) {
 	boardPath := filepath.Join(t.TempDir(), "nonexistent")
-	cfg := board.DefaultConfig()
-	cfg.Path = boardPath
+	cfg := board.Config{Path: boardPath, Home: "Home.md", Sidebar: "_Sidebar.md", ProposalPrefix: "proposal-"}
 	w := board.New(cfg)
 
 	// HealthCheck should fail when board directory does not exist
@@ -112,8 +105,7 @@ func TestHealthCheckFailsNoBoardDir(t *testing.T) {
 
 func TestHealthCheckFailsNoTasksFile(t *testing.T) {
 	boardPath := t.TempDir()
-	cfg := board.DefaultConfig()
-	cfg.Path = boardPath
+	cfg := board.Config{Path: boardPath, Home: "Home.md", Sidebar: "_Sidebar.md", ProposalPrefix: "proposal-"}
 	w := board.New(cfg)
 
 	// HealthCheck should fail when tasks.json does not exist
@@ -125,8 +117,7 @@ func TestHealthCheckFailsNoTasksFile(t *testing.T) {
 
 func TestHealthCheckPassesCorruptFile(t *testing.T) {
 	boardPath := t.TempDir()
-	cfg := board.DefaultConfig()
-	cfg.Path = boardPath
+	cfg := board.Config{Path: boardPath, Home: "Home.md", Sidebar: "_Sidebar.md", ProposalPrefix: "proposal-"}
 	w := board.New(cfg)
 
 	// Create a corrupt but readable tasks.json
