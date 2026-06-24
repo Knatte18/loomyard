@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: weft-orphan-branches
 branch: weft-orphan-branches
 plan: _mill/plan
@@ -22,4 +22,13 @@ plan-review-r1  '2026-06-24T16:15:31Z'
 plan-fix-r1  '2026-06-24T16:16:28Z'
 plan-fix-r2  '2026-06-24T16:19:12Z'
 planned  '2026-06-24T16:19:37Z'
+implementing  '2026-06-24T16:23:18Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: weft-mirror-branching
+    state: pending
 ```
