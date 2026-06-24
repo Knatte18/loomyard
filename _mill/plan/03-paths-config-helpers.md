@@ -29,7 +29,8 @@ other packages are refactored in their own batches.
 - **Edits:**
   - `internal/paths/paths.go`
   - `internal/paths/paths_test.go`
-- **Creates:** none
+- **Creates:**
+  - `internal/paths/paths_unit_test.go`
 - **Deletes:** none
 - **Requirements:**
   - In `internal/paths/paths.go` add an exported `const LyxDirName = "_lyx"` and unexported `const configDirName = "config"` and `const dotEnvName = ".env"`.
