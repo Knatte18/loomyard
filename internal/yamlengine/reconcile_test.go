@@ -212,7 +212,7 @@ key3: extra_val
 	}
 
 	// Merged results should be identical
-	if !strings.EqualFold(strings.TrimSpace(string(merged1)), strings.TrimSpace(string(merged2))) {
+	if strings.TrimSpace(string(merged1)) != strings.TrimSpace(string(merged2)) {
 		t.Errorf("Reconcile() idempotence failed: merged1 != merged2")
 	}
 
