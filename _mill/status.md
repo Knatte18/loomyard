@@ -30,5 +30,7 @@ implementing  '2026-06-24T16:23:18Z'
 ```yaml
 batches:
   - name: weft-mirror-branching
-    state: pending
+    state: running
+    implementer_session: 295c2eb3-8901-4679-9459-51f479ed9f30
+    start_sha: 8b8a978c21752660a6c1eb64da11953e981cdc97
 ```
