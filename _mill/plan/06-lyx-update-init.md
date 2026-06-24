@@ -133,6 +133,7 @@ dry-run by default and writes only with `--apply`. CLI output is JSON via
   - `internal/initcli/initcli.go`
   - `internal/update/update.go`
   - `internal/board/cli.go`
+  - `internal/board/template.go`
 - **Edits:**
   - `cmd/lyx/main.go`
   - `cmd/lyx/main_test.go`
@@ -141,6 +142,7 @@ dry-run by default and writes only with `--apply`. CLI output is JSON via
 - **Requirements:**
   - In `cmd/lyx/main.go`: change the `case "init":` branch to `return initcli.RunInit(out, moduleArgs)` (was `board.RunInit`); add a `case "update":` branch returning `update.RunCLI(out, moduleArgs)`. Add the `initcli` and `update` imports; keep the `board` import (still used for `board.RunCLI`). Update the package doc comment's module list: `init` now scaffolds all module configs (board, worktree, weft) and `.gitignore`, and add an `update` line ("reconcile module configs against templates — see internal/update.RunCLI").
   - Update `cmd/lyx/main_test.go`: adjust the `init` dispatch test for `initcli` and add a test that `update` routes to `update.RunCLI` (e.g. asserts the command is recognized / produces JSON, mirroring the existing per-module dispatch tests).
+  - REWRITE the `board.yaml` fixtures in `TestRunDispatchesToBoard` and `TestRunBoardErrorPropagatesExitCode` (both currently `os.WriteFile(configPath, []byte("path: board\n"), ...)`) to a template-COMPLETE board config so strict `config.Load` (batch 5, Card 8) succeeds — write all four keys, e.g. `path: board\nhome: Home.md\nsidebar: _Sidebar.md\nproposal_prefix: proposal-\n` (matching the board template's key set). Preserve each test's intent: `TestRunDispatchesToBoard` still asserts successful dispatch, and `TestRunBoardErrorPropagatesExitCode` still asserts the error/exit-1 comes from the board subcommand (not from a strict-Load config failure). Without this, batch 6's `./cmd/lyx/` verify fails.
 - **Commit:** `feat(lyx): route init to initcli and add update command`
 
 ## Batch Tests
