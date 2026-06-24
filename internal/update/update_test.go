@@ -16,8 +16,9 @@ func TestRunCLI_DryRun(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Initialize a minimal git repo so paths.Resolve works
-	if err := git.RunGitSimple([]string{"init", tmpDir}); err != nil {
-		t.Fatalf("git init: %v", err)
+	_, _, exitCode, err := git.RunGit([]string{"init"}, tmpDir)
+	if err != nil || exitCode != 0 {
+		t.Fatalf("git init failed: %v (exit code %d)", err, exitCode)
 	}
 
 	// Create config directory with a sample board file
@@ -33,21 +34,21 @@ func TestRunCLI_DryRun(t *testing.T) {
 	}
 
 	// Change to tmpDir
-	oldCwd, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
+	oldCwd, err2 := os.Getwd()
+	if err2 != nil {
+		t.Fatalf("getwd: %v", err2)
 	}
-	if err := os.Chdir(tmpDir); err != nil {
-		t.Fatalf("chdir: %v", err)
+	if err2 := os.Chdir(tmpDir); err2 != nil {
+		t.Fatalf("chdir: %v", err2)
 	}
 	defer os.Chdir(oldCwd)
 
 	// Run dry-run (no --apply)
 	var buf bytes.Buffer
-	exitCode := RunCLI(&buf, []string{})
+	runExitCode := RunCLI(&buf, []string{})
 
-	if exitCode != 0 {
-		t.Errorf("RunCLI() = %d; want 0, output: %s", exitCode, buf.String())
+	if runExitCode != 0 {
+		t.Errorf("RunCLI() = %d; want 0, output: %s", runExitCode, buf.String())
 	}
 
 	// Parse JSON output
@@ -103,8 +104,9 @@ func TestRunCLI_Apply(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Initialize a minimal git repo
-	if err := git.RunGitSimple([]string{"init", tmpDir}); err != nil {
-		t.Fatalf("git init: %v", err)
+	_, _, exitCode, err := git.RunGit([]string{"init"}, tmpDir)
+	if err != nil || exitCode != 0 {
+		t.Fatalf("git init failed: %v (exit code %d)", err, exitCode)
 	}
 
 	// Create config directory
@@ -114,21 +116,21 @@ func TestRunCLI_Apply(t *testing.T) {
 	}
 
 	// Change to tmpDir
-	oldCwd, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
+	oldCwd, err2 := os.Getwd()
+	if err2 != nil {
+		t.Fatalf("getwd: %v", err2)
 	}
-	if err := os.Chdir(tmpDir); err != nil {
-		t.Fatalf("chdir: %v", err)
+	if err2 := os.Chdir(tmpDir); err2 != nil {
+		t.Fatalf("chdir: %v", err2)
 	}
 	defer os.Chdir(oldCwd)
 
 	// Run with --apply
 	var buf bytes.Buffer
-	exitCode := RunCLI(&buf, []string{"--apply"})
+	runExitCode := RunCLI(&buf, []string{"--apply"})
 
-	if exitCode != 0 {
-		t.Errorf("RunCLI(--apply) = %d; want 0, output: %s", exitCode, buf.String())
+	if runExitCode != 0 {
+		t.Errorf("RunCLI(--apply) = %d; want 0, output: %s", runExitCode, buf.String())
 	}
 
 	// Parse JSON output

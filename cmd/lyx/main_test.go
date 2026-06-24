@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/git"
 )
 
 // These tests cover main's own responsibility — module routing — not the board
@@ -172,9 +174,16 @@ func TestRunDispatchesToConfig(t *testing.T) {
 }
 
 func TestRunDispatchesToUpdate(t *testing.T) {
-	// Create temp cwd with _lyx/config to allow update to work.
+	// Create temp cwd with git repo and _lyx/config to allow update to work.
 	// update.RunCLI should recognize the command and produce JSON output.
 	cwd := t.TempDir()
+
+	// Initialize git repo
+	_, _, exitCode, err := git.RunGit([]string{"init"}, cwd)
+	if err != nil || exitCode != 0 {
+		t.Fatalf("git init failed: %v (exit code %d)", err, exitCode)
+	}
+
 	lyxDir := filepath.Join(cwd, "_lyx")
 	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)

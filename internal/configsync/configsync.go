@@ -8,7 +8,6 @@ package configsync
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/fsx"
@@ -70,7 +69,8 @@ func ReconcileAll(baseDir string, apply bool) ([]Result, error) {
 		}
 
 		// Determine if we should write: apply flag + (file absent OR changes detected)
-		fileAbsent := os.IsNotExist(os.Stat(cfgPath)) == true
+		_, statErr := os.Stat(cfgPath)
+		fileAbsent := os.IsNotExist(statErr)
 		hasChanges := len(added)+len(removed) > 0
 
 		if apply && (fileAbsent || hasChanges) {

@@ -15,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/config"
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/paths"
+	"github.com/Knatte18/loomyard/internal/weft"
 )
 
 // syncFunc runs the post-edit sync, writing its output to the given writer,

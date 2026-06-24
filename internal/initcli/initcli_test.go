@@ -21,8 +21,9 @@ func TestRunInit_FirstRun(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Initialize a git repo so paths.Resolve works
-	if err := git.RunGitSimple([]string{"init", tmpDir}); err != nil {
-		t.Fatalf("git init: %v", err)
+	_, _, exitCode, initErr := git.RunGit([]string{"init"}, tmpDir)
+	if initErr != nil || exitCode != 0 {
+		t.Fatalf("git init failed: %v (exit code %d)", initErr, exitCode)
 	}
 
 	oldCwd, err := os.Getwd()
@@ -36,10 +37,10 @@ func TestRunInit_FirstRun(t *testing.T) {
 
 	// Run init
 	var buf bytes.Buffer
-	exitCode := initcli.RunInit(&buf, []string{})
+	runExitCode := initcli.RunInit(&buf, []string{})
 
-	if exitCode != 0 {
-		t.Fatalf("RunInit() = %d; want 0, output: %s", exitCode, buf.String())
+	if runExitCode != 0 {
+		t.Fatalf("RunInit() = %d; want 0, output: %s", runExitCode, buf.String())
 	}
 
 	// Parse and verify JSON
@@ -104,8 +105,9 @@ func TestRunInit_Idempotent(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Initialize git repo
-	if err := git.RunGitSimple([]string{"init", tmpDir}); err != nil {
-		t.Fatalf("git init: %v", err)
+	_, _, exitCode, initErr := git.RunGit([]string{"init"}, tmpDir)
+	if initErr != nil || exitCode != 0 {
+		t.Fatalf("git init failed: %v (exit code %d)", initErr, exitCode)
 	}
 
 	oldCwd, err := os.Getwd()
