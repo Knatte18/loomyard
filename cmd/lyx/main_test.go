@@ -210,3 +210,16 @@ func TestRunDispatchesToUpdate(t *testing.T) {
 		t.Fatalf("expected ok=true from update command, got %v", result)
 	}
 }
+
+func TestRunDispatchesToGitClone(t *testing.T) {
+	// Test dispatching to git-clone with too few arguments (missing weft-url).
+	// gitclone.RunCLI should return an error envelope with ok=false and exit code 1.
+	var out bytes.Buffer
+	code := run([]string{"git-clone"}, &out)
+	if code != 1 {
+		t.Fatalf("expected exit 1 for git-clone with no args, got %d; output: %s", code, out.String())
+	}
+	if !strings.Contains(out.String(), `"ok":false`) {
+		t.Fatalf("expected error JSON on out, got %q", out.String())
+	}
+}

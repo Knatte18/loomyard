@@ -4,6 +4,11 @@
 // seeding junctions and git excludes, pushing to the weft remote, and tearing down
 // both the weft worktree and branch. All git operations use git.RunGit with explicit
 // cwd (WeftRepoRoot or WeftWorktreePath).
+//
+// Weft branch model: each weft branch forks from its parent's weft branch (non-orphan,
+// shared merge-base), preserving history for future _codeguide squash-merge-back.
+// _lyx is isolated by pathspec (never merges back), not by orphan topology. A detached
+// or unborn host HEAD aborts the spawn before any creation, ensuring no partial state.
 
 package worktree
 
@@ -55,12 +60,14 @@ func weftBranchExists(l *paths.Layout, branch string) bool {
 
 // createWeftWorktree creates a new weft worktree at the given path with the given branch.
 //
-// Runs git worktree add -b <branch> <path> in the weft repo root.
+// The new weft branch forks from startPoint (the parent's weft branch), preserving the
+// shared merge-base needed for future squash-merge-back operations. Runs
+// git worktree add -b <branch> <path> <startPoint> in the weft repo root.
 // Returns an error if the command fails or exits with non-zero code.
-func createWeftWorktree(l *paths.Layout, slug, branch string) error {
+func createWeftWorktree(l *paths.Layout, slug, branch, startPoint string) error {
 	weftPath := l.WeftWorktreePath(slug)
 	_, stderr, exitCode, err := git.RunGit(
-		[]string{"worktree", "add", "-b", branch, weftPath},
+		[]string{"worktree", "add", "-b", branch, weftPath, startPoint},
 		l.WeftRepoRoot(),
 	)
 	if err != nil {

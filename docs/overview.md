@@ -95,7 +95,8 @@ lyx organizes overlay artifacts (configuration, task state, codeguide docs, and 
   ├── <prime>/                      (host worktree, main branch; git repo root)
   ├── <prime>-weft/                 (weft Prime worktree; git repo root)
   ├── <slug>/                       (additional host worktree; git repo root)
-  └── <slug>-weft/                  (weft worktree for <slug>; git repo root)
+  ├── <slug>-weft/                  (weft worktree for <slug>; git repo root)
+  └── _board/                       (board repo; the task store)
 ```
 
 ### Git ownership
@@ -109,7 +110,7 @@ The **host repo** is the project's source of truth, maintained by developers. Al
 | `_lyx/config/` | Weft worktree | Weft | Live YAML configuration files for all modules (board, worktree, weft); reconciled via `lyx update` |
 | `.env` | Weft worktree | Weft | Git-ignored per-machine environment variable overrides (KEY=value format) |
 | `_codeguide/` | Weft worktree | Weft | Codeguide documentation (task 008) |
-| `_board/` | Weft worktree | Board | Task board at a **configured** board-repo URL — `lyx board` accepts any URL; `ly-git-clone` defaults it to the weft repo's GitHub wiki (`<weft>.wiki.git`) |
+| `_board/` | Hub | Board | Task board at a **configured** board-repo URL — `lyx board` accepts any URL; `ly-git-clone` defaults it to the weft repo's GitHub wiki (`<weft>.wiki.git`) |
 | Host source | Host worktree | Host | Project source code |
 
 ### Durable vs ephemeral state (`_lyx/` vs `.lyx/`)
@@ -138,6 +139,10 @@ Each host worktree has a sibling weft worktree. Host worktrees use **junctions**
 
 Junctions are listed in `.git/info/exclude` per worktree and are never committed to `.gitignore`. From the CLI's perspective, reads and writes happen transparently — code that writes to `_lyx/config/board.yaml` writes through the junction into the weft repo without awareness of the indirection.
 
+### Branch model
+
+Weft branches mirror host-repo branching. When a new weft worktree is spawned, the new weft branch forks from the weft branch whose name equals the host worktree's current branch at spawn time, preserving a shared merge-base for future squash-merge-back operations (`_codeguide` — see below). This guarantees that subtasks (spawned from non-main branches) inherit the correct fork point: branch isolation is **not** orphan-based (each isolated from history) but **merge-base-preserving** (each on its parent's timeline). `_lyx` is isolated by pathspec (junctions route it into weft; host `.git/info/exclude` hides it) rather than by orphan topology, so no merge-back state is lost.
+
 ### Weft suffix convention
 
 The weft worktree for any host worktree is deterministic:
@@ -157,6 +162,7 @@ github.com/Knatte18/loomyard/
 ├── cmd/lyx/
 │   └── main.go                   entrypoint: routes the <module> argument to a module
 ├── internal/board/               the board module
+├── internal/gitclone/            the git-clone hub-creator
 ├── internal/worktree/            the worktree module
 ├── internal/weft/                the weft module
 ├── internal/ide/                 the ide module
@@ -186,6 +192,8 @@ case "board":
     return board.RunCLI(out, moduleArgs)
 case "config":
     return configcli.RunCLI(out, moduleArgs)
+case "git-clone":
+    return gitclone.RunCLI(out, moduleArgs)
 case "update":
     return update.RunCLI(out, moduleArgs)
 case "ide":
@@ -213,6 +221,7 @@ User-facing modules each get one `lyx <module>` namespace:
 - **update** — reconciles all module config files against their live templates, reporting added/removed keys and optionally writing changes (`internal/update`). Dry-run by default; `--apply` writes atomically. ✅ Implemented.
 - **board** — the task-tracker board (`internal/board`). ✅ Implemented.
 - **config** — interactive menu for viewing and editing module configs. ✅ Implemented.
+- **git-clone** — hub-creator: create a fresh Hub and clone the host, weft, and board Primes into it (`internal/gitclone`). ✅ Implemented.
 - **worktree** — git-worktree lifecycle (create / track / tear down). ✅ Implemented.
 - **weft** — owns all git into the paired weft repo (`lyx weft status|commit|push|pull|sync`). ✅ Implemented.
 - **ide** — one-shot VS Code launcher with interactive menu. ✅ Implemented.
