@@ -79,7 +79,9 @@ func RunInit(out io.Writer, args []string) int {
 		status["gitignore"] = "unchanged"
 	}
 
-	// Step 3: Reconcile all module configs
+	// Step 3: Reconcile all module configs.
+	// Note: init uses cwd as baseDir (where the user runs 'lyx init'), while update uses WorktreeRoot+RelPath.
+	// This is intentional—init is user-driven from any directory, update is file-based from repo root.
 	results, err := configsync.ReconcileAll(cwd, true)
 	if err != nil {
 		return output.Err(out, fmt.Sprintf("failed to reconcile configs: %v", err))
