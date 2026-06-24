@@ -62,7 +62,9 @@ batches:
     start_sha: a6c1fe445cc615ea74020fd5269ce7689acaa96e
     commit_sha: 54ec497fbc367803fbf4d9dbd34425730d461aba
   - name: lyx-update-init
-    state: pending
+    state: running
+    implementer_session: 35c1f07a-f244-4332-93ca-3c1a8c16e360
+    start_sha: d2d36b21ce496c5490ef0976a4c15c90ec315fcc
   - name: docs
     state: pending
 ```
