@@ -1,2 +1,0 @@
-- TeardownFailure test does not assert hub path in error message: **Location:** `internal/gitclone/clone_integration_test.go:318-322`
-- `overview.md` module-tree diagram omits `internal/gitclone/`: **Location:** `docs/overview.md:158-169`
