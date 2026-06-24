@@ -13,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/board"
 	"github.com/Knatte18/loomyard/internal/git"
 	"github.com/Knatte18/loomyard/internal/initcli"
+	"github.com/Knatte18/loomyard/internal/paths"
 	"github.com/Knatte18/loomyard/internal/weft"
 	"github.com/Knatte18/loomyard/internal/worktree"
 )
@@ -54,14 +55,14 @@ func TestRunInit_FirstRun(t *testing.T) {
 	}
 
 	// Verify _lyx/config/ directories exist
-	configDir := filepath.Join(tmpDir, "_lyx", "config")
+	configDir := paths.ConfigDir(tmpDir)
 	if _, err := os.Stat(configDir); err != nil {
 		t.Fatalf("_lyx/config not created: %v", err)
 	}
 
 	// Verify all three config files exist
 	for _, module := range []string{"board", "worktree", "weft"} {
-		cfgPath := filepath.Join(configDir, module+".yaml")
+		cfgPath := paths.ConfigFile(tmpDir, module)
 		if _, err := os.Stat(cfgPath); err != nil {
 			t.Errorf("%s.yaml not created: %v", module, err)
 		}
@@ -127,7 +128,7 @@ func TestRunInit_Idempotent(t *testing.T) {
 	}
 
 	// Capture files and gitignore after first run
-	boardPath := filepath.Join(tmpDir, "_lyx", "config", "board.yaml")
+	boardPath := paths.ConfigFile(tmpDir, "board")
 	content1, err := os.ReadFile(boardPath)
 	if err != nil {
 		t.Fatalf("read board.yaml: %v", err)

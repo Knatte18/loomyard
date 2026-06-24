@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/git"
+	"github.com/Knatte18/loomyard/internal/paths"
 )
 
 // These tests cover main's own responsibility — module routing — not the board
@@ -44,15 +45,15 @@ func TestRunDispatchesToBoard(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
 	// Create temp cwd with _lyx/config/board.yaml
 	cwd := t.TempDir()
-	lyxDir := filepath.Join(cwd, "_lyx")
+	lyxDir := filepath.Join(cwd, paths.LyxDirName)
 	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
-	configDir := filepath.Join(lyxDir, "config")
+	configDir := paths.ConfigDir(cwd)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
-	configPath := filepath.Join(configDir, "board.yaml")
+	configPath := paths.ConfigFile(cwd, "board")
 	// Write a template-complete board config with all required keys
 	boardConfig := "path: board\nhome: Home.md\nsidebar: _Sidebar.md\nproposal_prefix: proposal-\n"
 	if err := os.WriteFile(configPath, []byte(boardConfig), 0o644); err != nil {
@@ -80,15 +81,15 @@ func TestRunBoardErrorPropagatesExitCode(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
 	// Create temp cwd with _lyx/config/board.yaml
 	cwd := t.TempDir()
-	lyxDir := filepath.Join(cwd, "_lyx")
+	lyxDir := filepath.Join(cwd, paths.LyxDirName)
 	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
-	configDir := filepath.Join(lyxDir, "config")
+	configDir := paths.ConfigDir(cwd)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
-	configPath := filepath.Join(configDir, "board.yaml")
+	configPath := paths.ConfigFile(cwd, "board")
 	// Write a template-complete board config with all required keys
 	boardConfig := "path: board\nhome: Home.md\nsidebar: _Sidebar.md\nproposal_prefix: proposal-\n"
 	if err := os.WriteFile(configPath, []byte(boardConfig), 0o644); err != nil {
@@ -184,11 +185,11 @@ func TestRunDispatchesToUpdate(t *testing.T) {
 		t.Fatalf("git init failed: %v (exit code %d)", err, exitCode)
 	}
 
-	lyxDir := filepath.Join(cwd, "_lyx")
+	lyxDir := filepath.Join(cwd, paths.LyxDirName)
 	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
-	configDir := filepath.Join(lyxDir, "config")
+	configDir := paths.ConfigDir(cwd)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}

@@ -47,11 +47,11 @@ func TestLoadConfig_HappyPath(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create _lyx/config/ directories
-	lyxDir := filepath.Join(tmpDir, "_lyx")
+	lyxDir := filepath.Join(tmpDir, paths.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
-	configDir := filepath.Join(lyxDir, "config")
+	configDir := paths.ConfigDir(tmpDir)
 	if err := os.Mkdir(configDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}

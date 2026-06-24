@@ -75,7 +75,7 @@ func TestE2ESyncIntegration(t *testing.T) {
 
 	// Assert _lyx/config/worktree.yaml is tracked/committed in the weft worktree.
 	weftWorktreePath := f.Layout.WeftWorktreePath(slug)
-	configRelPath := filepath.Join("_lyx", "config", "worktree.yaml")
+	configRelPath := paths.ConfigFile(".", "worktree")
 	configPath := filepath.Join(weftWorktreePath, configRelPath)
 	// For git commands, use forward slashes (git always uses forward slashes).
 	configRelPathForGit := strings.ReplaceAll(configRelPath, "\\", "/")

@@ -17,6 +17,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/board"
+	"github.com/Knatte18/loomyard/internal/paths"
 )
 
 // benchSizes is the set of board sizes (number of tasks already in tasks.json)
@@ -36,15 +37,15 @@ func seedWiki(tb testing.TB, n int) string {
 	dir := tb.TempDir()
 
 	// Create _lyx and _lyx/config directories with board.yaml config
-	lyxDir := filepath.Join(dir, "_lyx")
+	lyxDir := filepath.Join(dir, paths.LyxDirName)
 	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
 		tb.Fatalf("mkdir _lyx: %v", err)
 	}
-	configDir := filepath.Join(lyxDir, "config")
+	configDir := paths.ConfigDir(dir)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		tb.Fatalf("mkdir _lyx/config: %v", err)
 	}
-	configPath := filepath.Join(configDir, "board.yaml")
+	configPath := paths.ConfigFile(dir, "board")
 	if err := os.WriteFile(configPath, []byte("path: board\nhome: Home.md\nsidebar: _Sidebar.md\nproposal_prefix: proposal-\n"), 0o644); err != nil {
 		tb.Fatalf("write board.yaml: %v", err)
 	}

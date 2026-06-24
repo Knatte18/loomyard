@@ -13,6 +13,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/paths"
 )
 
@@ -166,14 +167,18 @@ func buildWeftPrime() (weftPrime, weftBare string) {
 			panic("git config user.name: " + err.Error() + "; " + string(output))
 		}
 
-		// Create _lyx/config/placeholder structure
-		lyxConfigDir := filepath.Join(weftPrime, "_lyx", "config")
+		// Create _lyx/config with actual config files from templates
+		lyxConfigDir := paths.ConfigDir(weftPrime)
 		if err := os.MkdirAll(lyxConfigDir, 0o755); err != nil {
 			panic(err)
 		}
 
-		if err := os.WriteFile(filepath.Join(lyxConfigDir, "placeholder"), []byte("weft config"), 0o644); err != nil {
-			panic(err)
+		// Write config files from configreg templates
+		for _, mod := range configreg.Modules() {
+			configPath := paths.ConfigFile(weftPrime, mod.Name)
+			if err := os.WriteFile(configPath, []byte(mod.Template()), 0o644); err != nil {
+				panic(fmt.Sprintf("write %s config: %v", mod.Name, err))
+			}
 		}
 
 		// Commit

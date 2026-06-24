@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/board"
+	"github.com/Knatte18/loomyard/internal/paths"
 )
 
 // seedCwd creates a temp directory with _lyx/config/board.yaml seeded with all template keys,
@@ -24,18 +25,18 @@ func seedCwd(t *testing.T) string {
 	t.Helper()
 
 	cwd := t.TempDir()
-	lyxDir := filepath.Join(cwd, "_lyx")
+	lyxDir := filepath.Join(cwd, paths.LyxDirName)
 	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
 
-	configDir := filepath.Join(lyxDir, "config")
+	configDir := paths.ConfigDir(cwd)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
 
 	// Write board config with all template keys
-	configPath := filepath.Join(configDir, "board.yaml")
+	configPath := paths.ConfigFile(cwd, "board")
 	configContent := `path: board
 home: Home.md
 sidebar: _Sidebar.md

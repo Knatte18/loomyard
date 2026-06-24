@@ -14,11 +14,12 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/paths"
 	"github.com/Knatte18/loomyard/internal/worktree"
 )
 
 // setupCLIRepo creates a hub via lyxtest.CopyHostHub, changes into it, and
-// writes a _lyx/worktree.yaml config so RunCLI can resolve configuration from
+// writes a _lyx/config/worktree.yaml config so RunCLI can resolve configuration from
 // the cwd. Returns the hub path.
 // Stays serial (no t.Parallel) because t.Chdir is required for RunCLI.
 func setupCLIRepo(t *testing.T) string {
@@ -26,11 +27,10 @@ func setupCLIRepo(t *testing.T) string {
 	f := lyxtest.CopyHostHub(t)
 	t.Chdir(f.Hub)
 
-	lyxDir := filepath.Join(f.Hub, "_lyx")
-	if err := os.MkdirAll(lyxDir, 0755); err != nil {
-		t.Fatalf("create _lyx: %v", err)
+	if err := os.MkdirAll(paths.ConfigDir(f.Hub), 0755); err != nil {
+		t.Fatalf("create config dir: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(lyxDir, "worktree.yaml"), []byte("branch_prefix: wt-\n"), 0644); err != nil {
+	if err := os.WriteFile(paths.ConfigFile(f.Hub, "worktree"), []byte("branch_prefix: wt-\n"), 0644); err != nil {
 		t.Fatalf("write worktree.yaml: %v", err)
 	}
 	return f.Hub

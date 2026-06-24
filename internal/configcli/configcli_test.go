@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -49,13 +48,13 @@ func TestEditOneSuccess(t *testing.T) {
 	baseDir := t.TempDir()
 
 	// Create _lyx/config directory
-	configDir := filepath.Join(baseDir, "_lyx", "config")
+	configDir := paths.ConfigDir(baseDir)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
 
 	// Create a fake _lyx/config/board.yaml to satisfy FindBaseDir
-	if err := os.WriteFile(filepath.Join(configDir, "board.yaml"), []byte("# temp\n"), 0o644); err != nil {
+	if err := os.WriteFile(paths.ConfigFile(baseDir, "board"), []byte("# temp\n"), 0o644); err != nil {
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
 
@@ -80,13 +79,13 @@ func TestEditOneUnknownModule(t *testing.T) {
 	baseDir := t.TempDir()
 
 	// Create _lyx/config directory
-	configDir := filepath.Join(baseDir, "_lyx", "config")
+	configDir := paths.ConfigDir(baseDir)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
 
 	// Create a fake _lyx/config/board.yaml to satisfy FindBaseDir
-	if err := os.WriteFile(filepath.Join(configDir, "board.yaml"), []byte("# temp\n"), 0o644); err != nil {
+	if err := os.WriteFile(paths.ConfigFile(baseDir, "board"), []byte("# temp\n"), 0o644); err != nil {
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
 
@@ -114,13 +113,13 @@ func TestEditOneAbort(t *testing.T) {
 	baseDir := t.TempDir()
 
 	// Create _lyx/config directory
-	configDir := filepath.Join(baseDir, "_lyx", "config")
+	configDir := paths.ConfigDir(baseDir)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
 
 	// Create a fake _lyx/config/board.yaml to satisfy FindBaseDir
-	if err := os.WriteFile(filepath.Join(configDir, "board.yaml"), []byte("# temp\n"), 0o644); err != nil {
+	if err := os.WriteFile(paths.ConfigFile(baseDir, "board"), []byte("# temp\n"), 0o644); err != nil {
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
 
@@ -145,13 +144,13 @@ func TestEditOneSyncFails(t *testing.T) {
 	baseDir := t.TempDir()
 
 	// Create _lyx/config directory
-	configDir := filepath.Join(baseDir, "_lyx", "config")
+	configDir := paths.ConfigDir(baseDir)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
 
 	// Create a fake _lyx/config/board.yaml to satisfy FindBaseDir
-	if err := os.WriteFile(filepath.Join(configDir, "board.yaml"), []byte("# temp\n"), 0o644); err != nil {
+	if err := os.WriteFile(paths.ConfigFile(baseDir, "board"), []byte("# temp\n"), 0o644); err != nil {
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
 
@@ -181,13 +180,13 @@ func TestMenuSelection(t *testing.T) {
 	baseDir := t.TempDir()
 
 	// Create _lyx/config directory
-	configDir := filepath.Join(baseDir, "_lyx", "config")
+	configDir := paths.ConfigDir(baseDir)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
 
 	// Create a fake _lyx/config/board.yaml to satisfy FindBaseDir
-	if err := os.WriteFile(filepath.Join(configDir, "board.yaml"), []byte("# temp\n"), 0o644); err != nil {
+	if err := os.WriteFile(paths.ConfigFile(baseDir, "board"), []byte("# temp\n"), 0o644); err != nil {
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
 
@@ -219,13 +218,13 @@ func TestMenuQuit(t *testing.T) {
 	baseDir := t.TempDir()
 
 	// Create _lyx/config directory
-	configDir := filepath.Join(baseDir, "_lyx", "config")
+	configDir := paths.ConfigDir(baseDir)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
 
 	// Create a fake _lyx/config/board.yaml to satisfy FindBaseDir
-	if err := os.WriteFile(filepath.Join(configDir, "board.yaml"), []byte("# temp\n"), 0o644); err != nil {
+	if err := os.WriteFile(paths.ConfigFile(baseDir, "board"), []byte("# temp\n"), 0o644); err != nil {
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
 
@@ -252,13 +251,13 @@ func TestMenuInvalidSelection(t *testing.T) {
 	baseDir := t.TempDir()
 
 	// Create _lyx/config directory
-	configDir := filepath.Join(baseDir, "_lyx", "config")
+	configDir := paths.ConfigDir(baseDir)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
 
 	// Create a fake _lyx/config/board.yaml to satisfy FindBaseDir
-	if err := os.WriteFile(filepath.Join(configDir, "board.yaml"), []byte("# temp\n"), 0o644); err != nil {
+	if err := os.WriteFile(paths.ConfigFile(baseDir, "board"), []byte("# temp\n"), 0o644); err != nil {
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
 
@@ -289,16 +288,16 @@ func TestMenuStatus(t *testing.T) {
 	baseDir := t.TempDir()
 
 	// Create _lyx/config directory
-	configDir := filepath.Join(baseDir, "_lyx", "config")
+	configDir := paths.ConfigDir(baseDir)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
 
 	// Create board.yaml and worktree.yaml to mark them as (configured)
-	if err := os.WriteFile(filepath.Join(configDir, "board.yaml"), []byte("# board\n"), 0o644); err != nil {
+	if err := os.WriteFile(paths.ConfigFile(baseDir, "board"), []byte("# board\n"), 0o644); err != nil {
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(configDir, "worktree.yaml"), []byte("# worktree\n"), 0o644); err != nil {
+	if err := os.WriteFile(paths.ConfigFile(baseDir, "worktree"), []byte("# worktree\n"), 0o644); err != nil {
 		t.Fatalf("failed to write worktree.yaml: %v", err)
 	}
 	// weft.yaml not created, so it should show (default)

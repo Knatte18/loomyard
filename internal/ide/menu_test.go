@@ -55,7 +55,7 @@ func newTestGitRepoWithWorktrees(t *testing.T) (string, string) {
 	mustRunMenu(t, mainWorktreePath, "git", "commit", "-m", "initial")
 
 	// Create main's _lyx directory
-	if err := os.MkdirAll(filepath.Join(mainWorktreePath, "_lyx"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(mainWorktreePath, paths.LyxDirName), 0o755); err != nil {
 		t.Fatalf("failed to create main _lyx: %v", err)
 	}
 
@@ -106,16 +106,16 @@ func TestMenuExcludesMain(t *testing.T) {
 	}()
 
 	// Create _lyx in child
-	if err := os.MkdirAll(filepath.Join(childPath, "_lyx"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(childPath, paths.LyxDirName), 0o755); err != nil {
 		t.Fatalf("failed to create child _lyx: %v", err)
 	}
 
 	// Create board config
-	configDir := filepath.Join(mainWorktreePath, "_lyx", "config")
+	configDir := paths.ConfigDir(mainWorktreePath)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
-	boardConfigPath := filepath.Join(configDir, "board.yaml")
+	boardConfigPath := paths.ConfigFile(mainWorktreePath, "board")
 	boardConfig := `path: ../_board
 home: Home.md
 sidebar: _Sidebar.md
@@ -179,11 +179,11 @@ func TestMenuRequiresLyxDir(t *testing.T) {
 	// Note: child is created but has no _lyx
 
 	// Create board config
-	configDir := filepath.Join(mainWorktreePath, "_lyx", "config")
+	configDir := paths.ConfigDir(mainWorktreePath)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
-	boardConfigPath := filepath.Join(configDir, "board.yaml")
+	boardConfigPath := paths.ConfigFile(mainWorktreePath, "board")
 	boardConfig := `path: ../_board
 home: Home.md
 sidebar: _Sidebar.md
@@ -235,7 +235,7 @@ func TestMenuNumericSelection(t *testing.T) {
 	for _, child := range []string{"child1", "child2"} {
 		childPath := filepath.Join(container, child)
 		mustRunMenu(t, mainWorktreePath, "git", "worktree", "add", "-b", child+"-branch", childPath)
-		if err := os.MkdirAll(filepath.Join(childPath, "_lyx"), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Join(childPath, paths.LyxDirName), 0o755); err != nil {
 			t.Fatalf("failed to create %s _lyx: %v", child, err)
 		}
 	}
@@ -249,11 +249,11 @@ func TestMenuNumericSelection(t *testing.T) {
 	}()
 
 	// Create board config
-	configDir := filepath.Join(mainWorktreePath, "_lyx", "config")
+	configDir := paths.ConfigDir(mainWorktreePath)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
-	boardConfigPath := filepath.Join(configDir, "board.yaml")
+	boardConfigPath := paths.ConfigFile(mainWorktreePath, "board")
 	boardConfig := `path: ../_board
 home: Home.md
 sidebar: _Sidebar.md

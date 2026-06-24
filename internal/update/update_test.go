@@ -6,10 +6,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/git"
+	"github.com/Knatte18/loomyard/internal/paths"
 )
 
 func TestRunCLI_DryRun(t *testing.T) {
@@ -22,12 +22,12 @@ func TestRunCLI_DryRun(t *testing.T) {
 	}
 
 	// Create config directory with a sample board file
-	configDir := filepath.Join(tmpDir, "_lyx", "config")
+	configDir := paths.ConfigDir(tmpDir)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("mkdir config: %v", err)
 	}
 
-	boardPath := filepath.Join(configDir, "board.yaml")
+	boardPath := paths.ConfigFile(tmpDir, "board")
 	originalContent := "path: board\nstale_key: old_value\n"
 	if err := os.WriteFile(boardPath, []byte(originalContent), 0o644); err != nil {
 		t.Fatalf("write board.yaml: %v", err)
@@ -110,7 +110,7 @@ func TestRunCLI_Apply(t *testing.T) {
 	}
 
 	// Create config directory
-	configDir := filepath.Join(tmpDir, "_lyx", "config")
+	configDir := paths.ConfigDir(tmpDir)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("mkdir config: %v", err)
 	}
@@ -149,7 +149,7 @@ func TestRunCLI_Apply(t *testing.T) {
 	}
 
 	// Verify files were created
-	weftPath := filepath.Join(configDir, "weft.yaml")
+	weftPath := paths.ConfigFile(tmpDir, "weft")
 	if _, err := os.Stat(weftPath); err != nil {
 		t.Errorf("weft.yaml not created: %v", err)
 	}
