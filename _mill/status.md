@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: ly-git-clone
 branch: ly-git-clone
-plan: null
+plan: _mill/plan
 parent: main
 task: ly-git-clone hub-creator (host, weft, board)
 task_description: |
@@ -17,4 +17,5 @@ task_description: |
 discussing  '2026-06-24T12:25:01Z'
 discussion-fix-r2  '2026-06-24T16:17:25Z'
 discussed  '2026-06-24T16:17:56Z'
+planning  '2026-06-24T16:28:32Z'
 ```
