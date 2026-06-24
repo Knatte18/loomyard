@@ -158,6 +158,7 @@ github.com/Knatte18/loomyard/
 ├── cmd/lyx/
 │   └── main.go                   entrypoint: routes the <module> argument to a module
 ├── internal/board/               the board module
+├── internal/gitclone/            the git-clone hub-creator
 ├── internal/worktree/            the worktree module
 ├── internal/weft/                the weft module
 ├── internal/ide/                 the ide module
