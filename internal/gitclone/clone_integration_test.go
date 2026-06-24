@@ -321,8 +321,11 @@ func TestCloneHub_TeardownFailure(t *testing.T) {
 	if errMsg == "" {
 		t.Fatalf("error should not be empty")
 	}
-	if !strings.Contains(errMsg, hubPath) {
-		t.Errorf("error message should contain residual hub path: got %q, want to contain %q", errMsg, hubPath)
+
+	// Compute the expected hub path to verify it exists
+	expectedHubPath := filepath.Join(cwd, deriveHostName(hostBare)+"-HUB")
+	if !strings.Contains(errMsg, expectedHubPath) {
+		t.Errorf("error message should contain residual hub path: got %q, want to contain %q", errMsg, expectedHubPath)
 	}
 
 	// Check that removeAll was called
@@ -331,10 +334,10 @@ func TestCloneHub_TeardownFailure(t *testing.T) {
 	}
 
 	// The hub directory should still exist since removal failed
-	if _, statErr := os.Stat(hubPath); statErr != nil {
+	if _, statErr := os.Stat(expectedHubPath); statErr != nil {
 		t.Fatalf("hub directory should still exist after failed removal")
 	}
 
 	// Clean up the residual hub (this will succeed because failureCount >= 2)
-	removeAll(hubPath)
+	removeAll(expectedHubPath)
 }
