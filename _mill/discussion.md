@@ -137,11 +137,14 @@ for mid-work subtasks.
 
 ### detached-head-guard
 
-- Decision: If the host worktree's HEAD is **not a branch** at spawn time — detached HEAD
-  (`git rev-parse --abbrev-ref HEAD` returns the literal `"HEAD"`) or an unborn branch —
+- Decision: If the host worktree's HEAD is **not a usable branch name** at spawn time,
   `Add` aborts with a clear error (e.g. "cannot spawn weft branch: host worktree is on a
   detached HEAD / unborn branch") and performs the existing full paired rollback. No weft
-  branch is created.
+  branch is created. **Two distinct git signals must both be treated as abort triggers**
+  (they differ): a **detached HEAD** makes `git rev-parse --abbrev-ref HEAD` print the
+  literal `"HEAD"` (exit 0); an **unborn branch** makes the same command exit **non-zero**
+  (it does not print `"HEAD"`). The guard fires on either `"HEAD"` output **or** a non-zero
+  exit, so an unborn branch is never mistaken for a valid start-point.
 - Rationale: The mirror invariant requires a named host branch to mirror; with no branch
   there is nothing to fork the weft branch from and `"HEAD"` would be a bogus start-point.
   Normal spawns are always from a named branch (prime on `main`, task worktrees on their
@@ -182,8 +185,8 @@ What mill-plan needs to know:
   / `symbolic-ref --short HEAD`) and threaded into `createWeftWorktree` as a start-point
   argument. `WorktreeRoot` is the git toplevel of the caller's cwd, so for a mid-work
   subtask spawn it correctly reflects the parent task's host worktree (on branch Y). If the
-  resolution yields `"HEAD"` (detached) or fails (unborn branch), abort per
-  `detached-head-guard`. Respect the `internal/paths` invariant — derive all geometry via `paths.Layout`
+  resolution prints `"HEAD"` (detached, exit 0) **or** exits non-zero (unborn branch),
+  abort per `detached-head-guard` — both signals trigger the guard. Respect the `internal/paths` invariant — derive all geometry via `paths.Layout`
   (`WeftRepoRoot()`, `WeftWorktreePath(slug)`), never raw cwd/rev-parse outside the allowed
   files.
 - **Caller:** `internal/worktree/add.go` → `(*Worktree).Add(...)`, step 8

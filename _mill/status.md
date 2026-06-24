@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussion-fix-r2
 slug: weft-orphan-branches
 branch: weft-orphan-branches
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-06-24T12:25:33Z'
+discussion-fix-r2  '2026-06-24T12:59:27Z'
 ```
