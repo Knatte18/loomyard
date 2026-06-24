@@ -52,7 +52,7 @@ func ReconcileAll(baseDir string, apply bool) ([]Result, error) {
 		if err != nil && !os.IsNotExist(err) {
 			return nil, fmt.Errorf("read config for %s: %w", m.Name, err)
 		}
-		if err != nil && os.IsNotExist(err) {
+		if fileAbsent {
 			existing = []byte{}
 		}
 
