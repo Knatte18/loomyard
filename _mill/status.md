@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r2
+phase: planned
 slug: fix-worktree-runcli-test
 branch: fix-worktree-runcli-test
 plan: _mill/plan
@@ -21,4 +21,5 @@ planning  '2026-06-24T16:51:24Z'
 plan-review-r1  '2026-06-24T16:59:06Z'
 plan-fix-r1  '2026-06-24T16:59:06Z'
 plan-fix-r2  '2026-06-24T17:02:35Z'
+planned  '2026-06-24T17:02:48Z'
 ```
