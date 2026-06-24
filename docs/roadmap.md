@@ -2,16 +2,56 @@
 
 Loomyard will, in time, **replace mill/millhouse (Python) entirely** — the Go
 infrastructure becomes the orchestration layer, and the mill skills get reworked
-and trimmed in the same move. That is the long-term endgame, not the next step.
+and trimmed in the same move.
 
 We get there by building **toolkits first**: small, self-contained modules with
 deep internal tests, landed one at a time so the operator keeps full control at
-every step. Orchestration (the part that ties worktrees, the board, and the mux
-together into a spawn→merge→cleanup lifecycle) comes last — until then, mill's
-existing Agent Dispatch handles it.
+every step. The toolkit layer (board, worktree, weft, ide, config) is largely
+done. What remains splits into two tracks:
+
+- **Setup track** — finish bootstrapping a hub: `ly-git-clone`, the config TUI,
+  board-repo creation, `doctor`.
+- **Orchestration stack** — the part that ties worktrees, the board, and psmux
+  into a spawn→review→merge lifecycle. This used to be a single distant "endgame";
+  it is now a **designed, layered path**: `proc → mux → shed → shuttle → review →
+  loom` (see the [execution stack](overview.md#execution-stack-orchestration-layers)
+  and [modules/loom.md](modules/loom.md)). Each layer is its own shippable
+  milestone; mill's existing Agent Dispatch handles orchestration until `loom`
+  lands.
 
 See [overview.md](overview.md#principles) for the design principles these
 milestones follow.
+
+## Build order
+
+The dependency-ordered sequence — what is actually buildable next, respecting what each layer
+needs below it. The numbered [Milestones](#milestones) below carry the detail; this is the
+at-a-glance order.
+
+**Done foundation:** board → shared infra (`config`/`git`/`lock`) → `state` → worktree + ide →
+weft engine + producers → **`proc`** (cross-OS spawn). ✅
+
+**Orchestration spine** — a strict chain, each layer needs the one before it:
+
+```
+proc ✅ ──▶ mux ──▶ shuttle ──▶ review ──▶ loom
+```
+
+- **`mux`** is next — its only dependency (`proc`) is done. Everything orchestration-related is
+  blocked on it. mux is the big one: psmux overlay + **strand** bookkeeping + render sub-package
+  (it absorbs what earlier drafts split into `shed`/`glance`).
+- **`shuttle`** needs `mux`; **`review`** needs `shuttle`; **`loom`** needs `review`. That is the
+  critical path to the orchestrator. `lyx loom status` (the 1-line view) ships as a loom subcommand,
+  not a module.
+
+**Setup track** — independent of the spine, interleave at any time: `ly-git-clone` (ready now;
+needs only the done weft engine) · config TUI (in progress) · `init`/board-repo creation · `doctor`.
+
+**Deferred** — after `loom` works and only if wanted: mux daemon → Slack relay; session sync;
+plugin packaging.
+
+So the immediate front: **`mux`** (unblocks the whole spine) in parallel with **`ly-git-clone`**
+and finishing the **config TUI** — none of which block each other.
 
 ## Milestones
 
@@ -42,65 +82,101 @@ observable changes until the new module that needs the extracted lib arrives.
    via `internal/paths/enforcement_test.go`. (Portals are present and working — a subdir-mirrored
    Hub view of each worktree's `_lyx/`; kept available, not slated for removal.)
 
-5. **Task 006 — Weft engine.** Path geometry for weft worktrees, paired host+weft spawn and teardown, `lyx weft` command.
+5. **Task 006 — Weft engine.** ✅ **Done.** Path geometry for weft worktrees, paired host+weft spawn and teardown, `lyx weft` command (`status|commit|push|pull|sync`).
    Implements the canonical weft overlay model (host stays pristine, all lyx artifacts in companion weft repo).
    Weft directories are reached by direct sibling access; portals remain available as the cross-worktree status view.
+   The weft **producers** (the `lyx worktree add` paired host+weft spawn) also landed.
 
-6. **Task 007 — Hub-creator / `lyx-clone` skill.** Bootstrap and clone new host repos as neighbors in an existing hub.
+6. **Task 007 — Hub-creator / `ly-git-clone`.** Bootstrap and clone new host repos as neighbors in an existing hub, wiring the host↔weft junctions. Builds on the now-complete weft engine + producers (milestone 5). The clone **skill** is `ly-*`, never `lyx-*` (see [naming](overview.md#naming-lyx-binary--loom-orchestrator-module--ly-skills)). Still pending (board-repo creation is milestone 16, not part of this clone).
 
-7. **Task 008 — `_codeguide` junction and configuration TUI.** ✅ `lyx config` menu interface shipped.
-   Remaining: activate `_codeguide` junctions and define `_lyx/config/` YAML schema for codeguide (deferred to a later task).
+7. **Task 008 — configuration TUI.** 🚧 Mostly shipped / in progress. `lyx config` and
+   `lyx config <module>` — an interactive menu over the `_lyx/config/` YAML schema.
+   **`_codeguide` junction activation is split out and deferred** to a separate later task
+   (tracked on the board) — it is no longer part of this milestone.
 
-8. **mux v1 — adapter + session layout.** Split into two modules: **`mux`** is the psmux
-   adapter (panes, windows, env hygiene, resume, CC-hook wiring, one named server per hub —
-   [modules/mux.md](modules/mux.md)); **`shed`** is the session manager on top of it
-   (worktree→role→pane ledger, column layout, focus — [modules/shed.md](modules/shed.md)). One
-   psmux instance per hub, one column per worktree; event-driven pane switching via Claude Code
-   hooks. No daemon, no Slack. **Note:** A working proof-of-concept of the daemon and
-   pane-recovery model already ships as `internal/muxpoc`.
+### Orchestration stack
 
-9. **mux v2 — subprocess panes.** Parent/child pane tree (a spawned reviewer
-   appears below its parent). Built only once Agent Dispatch stops being enough.
-   **Proven in muxpoc:** see [overview.md#modules](overview.md#modules).
+The concrete path to the orchestrator, replacing the old single "endgame" milestone.
+Each layer knows only the one below it; built bottom-up. See the
+[execution stack](overview.md#execution-stack-orchestration-layers).
 
-10. **mux daemon.** Standalone watchdog process: detects a psmux crash via
-    `cmd.Wait()`, recovers each pane by relaunching interactive Claude with native
-    `claude --resume` (which **works** for programmatically-driven panes once the inherited
-    Claude-Code parent-session env is stripped — see
-    [modules/mux.md](modules/mux.md#resume-after-crash--native---resume-with-env-hygiene); the
-    capture journal is now optional belt-and-suspenders, not the primary mechanism),
-    mutual watchdog so both must die to go dark. See [modules/mux.md](modules/mux.md#deferred).
-    **Proven in muxpoc:** see [overview.md#modules](overview.md#modules). **Event-driven pane
-    switching / idle detection via Claude Code's own hooks + `claude agents --json` is
-    explored in [research/mux-hooks-exploration.md](research/mux-hooks-exploration.md)** — a
-    lower-cost alternative to the capture-pane poller for the focus decision.
+8. **`internal/proc`.** ✅ **Done.** Cross-OS windowless/detached process spawn — the OS
+   base every higher layer launches through (build-tagged `proc_windows.go` / `proc_other.go`;
+   third member of the portability family after `fsx` and `fslink`).
 
-11. **Slack relay.** Bidirectional, one channel per worktree, riding on the daemon.
+9. **`internal/mux` — the window to the world.** The big one. Three things in one: **overlay** over
+   psmux (panes, send-keys/capture, env hygiene, native `claude --resume`, CC-hook wiring, one named
+   server per hub — orphan firewall); **strand bookkeeping** (each managed process is a strand — a
+   record with name, worktree slug, parent, generic display spec — persisted to `.lyx/mux.json`);
+   and a **render** sub-package (`internal/mux/render`, `layout = rules(strands)` over a closed
+   generic display vocabulary — a pure-function, golden-file test surface). Callers hand it `{cmd,
+   name, display}`; mux never learns a domain `type`. Scope now: one terminal per worktree
+   (cross-worktree columns deferred). It absorbs what earlier drafts split into `shed`/`glance`.
+   ([modules/mux.md](modules/mux.md)) **Proven in muxpoc** — clean-env boot, interactive claude,
+   child-pane spawn, bottom-dominant layout, and resume after `kill-server`
+   ([overview.md#modules](overview.md#modules)).
 
-12. **`init` grows: create / clone the board repo.** Today `init` only scaffolds
-    `_lyx/`; the board dir is auto-created on first write and made a git repo by
-    hand. This milestone makes `init` create a board repo from scratch or clone one
-    from a remote (analogous to mill-setup phases 1–3).
+10. **`internal/shuttle` — one LLM agent via a swappable engine.** Run a single agent in a strand
+    over the file contract; `Stop`-hook completion; `PreToolUse` guardrails (deny in-process `Agent`
+    + `AskUserQuestion`). The **engine** seam isolates the provider (Claude now; Gemini etc. later,
+    not a priority). Named `shuttle`, not `agent`, to avoid colliding with Claude's own agent
+    vocabulary. Asks `mux.AddStrand` for its pane. ([modules/shuttle.md](modules/shuttle.md))
 
-13. **doctor.** A diagnostics command (`Loomyard doctor`): checks `_lyx/` is present,
-    `*.yaml` parse and use known keys, the board repo is reachable, no stale lock
-    files, the state file is readable — and prints remediation. Pure
-    troubleshooting, no domain logic.
+11. **`review` (`lyx review`) — the gate engine.** Generic profile-driven reviewer: handler+fixer
+    in one agent, optional cluster reviewers (own-window strands), a progress/circularity judge, and
+    N-round stuck detection. One engine serves discussion / plan / builder / ad-hoc review — the
+    per-type difference is the profile (rubric + fasit), not the code. **Independent of `loom`**
+    (builds on `shuttle`, runs standalone); loom just uses it between every phase.
+    ([modules/review.md](modules/review.md))
 
-14. **session sync.** `Loomyard session push/pull` — copy Claude `.jsonl` transcripts
-    across machines so `claude --resume` works elsewhere (sessions are not portable
-    today). See [modules/mux.md](modules/mux.md#session-files-and-portability).
+12. **`loom` (`lyx loom run`, alias `lyx run`) — the phase machine.** The autonomous driver:
+    Setup → Discussion → Plan → Builder → Finalize, each gated by a review, resume-from-disk via
+    the `_lyx/` status file, yielding only at human boundaries (or never, in `--auto`). **This is
+    the orchestrator that finally replaces mill/millhouse** — the top of the stack above, sitting on
+    board + worktree + weft + the `mux → shuttle` layers. `lyx run` is the **session bootstrap**:
+    ensure the worktree's psmux session, add the `lyx loom status` strand (1-line top pane), spawn
+    the driver detached (`proc`), attach the terminal; a `.lyx/lyxrun.cmd` launcher makes it one
+    click. The 1-line view ships as the `lyx loom status` subcommand (a strand), not a module.
+    ([modules/loom.md](modules/loom.md))
 
-15. **Claude Code plugin packaging.** Ship `lyx` as an installable Claude Code
-    plugin, exactly as mill/millpy were, once the binary and module architecture are
-    proven.
+### Deferred mux enhancements
 
-16. **orchestrator — the endgame.** Port mill's spawn → merge → cleanup lifecycle
-    into Go, tying board + worktree + the `mux → shed → agent` execution stack together under
-    the `loom` / `review` phase machine ([modules/loom.md](modules/loom.md)). This is what lets
-    `lyx` finally replace mill/millhouse. The toolkit modules (1–7) are deliberately designed so
-    this is *possible* — clean state files, no hidden interactive assumptions — but
-    it is the last thing built.
+Layer in once the core stack works; not required for `loom` v1.
+
+13. **Cross-worktree columns.** All worktrees in one window, a column per worktree — just a
+    `worktree` strand field + a grouping rule on top of mux's strand model
+    ([modules/mux.md](modules/mux.md#deferred)). Deferred only because one-terminal-per-worktree is
+    the right starting scope.
+
+14. **mux daemon.** Standalone watchdog process: detects a psmux crash via `cmd.Wait()`, recovers
+    each strand by relaunching interactive Claude with native `claude --resume` (which **works** for
+    programmatically-driven panes once the inherited Claude-Code parent-session env is stripped —
+    see [modules/mux.md](modules/mux.md#resume-after-crash--native---resume-with-env-hygiene); the
+    capture journal is optional belt-and-suspenders, not the primary mechanism), mutual watchdog so
+    both must die to go dark. See [modules/mux.md](modules/mux.md#deferred). **Proven in muxpoc**
+    ([overview.md#modules](overview.md#modules)).
+
+15. **Slack relay.** Bidirectional, one channel per worktree, riding on the daemon.
+
+### Setup & supporting milestones
+
+Independent of the orchestration stack; interleave as needed.
+
+16. **`init` grows: create / clone the board repo.** Today `init` only scaffolds `_lyx/`; the
+    board dir is auto-created on first write and made a git repo by hand. This milestone makes
+    `init` create a board repo from scratch or clone one from a remote (analogous to mill-setup
+    phases 1–3). The `ly-git-clone` hub-creator (milestone 6) defers board-repo setup to here.
+
+17. **doctor.** A diagnostics command (`lyx doctor`): checks `_lyx/` is present, `*.yaml` parse and
+    use known keys, the board repo is reachable, no stale lock files, the state file is readable —
+    and prints remediation. Pure troubleshooting, no domain logic.
+
+18. **session sync.** `lyx session push/pull` — copy Claude `.jsonl` transcripts across machines so
+    `claude --resume` works elsewhere (sessions are not portable today). See
+    [modules/mux.md](modules/mux.md#session-files-and-portability).
+
+19. **Claude Code plugin packaging.** Ship `lyx` as an installable Claude Code plugin, exactly as
+    mill/millpy were, once the binary and module architecture are proven.
 
 ## Explicitly out of scope
 
@@ -112,7 +188,6 @@ These stay in the Python/millpy domain and are **not** planned for `lyx`:
   its own layout.)
 - The millpy wiki daemon and its socket/RPC infrastructure (Loomyard's board is
   one-shot and daemonless by design).
-- VS Code workspace colour schemes and project-local customisations.
 - Heuristic inference of home-file content shape and board-URL derivation.
 
 ## Maintenance

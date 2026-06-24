@@ -13,8 +13,9 @@ flow — phase order, the review round-loop, gate decisions, resume — lives in
 (`lyx loom run`). The judgment — discussing, planning, building, reviewing, fixing —
 lives in agents spawned one-shot per step. Go owns the machine; the LLM owns the thinking.
 
-The orchestrator is the **`loom`** module (`lyx loom run`); the gate engine is the generic
-**`review`** module (`lyx review`). The `/ly-*` skill layer shrinks to thin human-facing
+The orchestrator is the **`loom`** module (`lyx loom run`); the gate engine is the separate,
+generic **`review`** module ([`lyx review`](review.md)) — independent of loom but used by it
+between every phase. The `/ly-*` skill layer shrinks to thin human-facing
 wrappers over these. The everyday call has a convenience alias: **`lyx run` → `lyx loom run`**.
 (Naming: `lyx` is the binary, `loom`/`review` are modules, `ly-*` are the skills — see
 [overview.md](../overview.md).)
@@ -61,99 +62,20 @@ a draft artifact and is followed by a review gate. `approved` advances to the ne
 phase; `stuck` routes to the stuck handler (bounce back to an earlier phase, or escalate
 to a human) — never "keep fixing symptoms."
 
-## The X-review block (the gate)
+## The gate
 
-From the orchestrator's view a review is a **black box** with two exits: `APPROVED` or
-`stuck`. What happens inside is not the orchestrator's concern; it is not finished until
-the artifact is approved or the block is definitively stuck.
+Each producing phase is guarded by a **review gate**, and from loom's view that gate is a
+**black box with two exits — `APPROVED` or `stuck`.** loom calls it, and on `APPROVED`
+advances to the next phase; on `stuck` it routes to the stuck handler (bounce back to an
+earlier phase, or escalate to a human) — never "keep fixing symptoms." loom does not see the
+rounds, the handler/fixer, the cluster reviewers, or the progress-judge inside.
 
-Inside, Go drives a round-loop (there is no standing per-block orchestrator agent — that
-was only an LLM today because orchestration was LLM-driven):
-
-1. Go spawns a fresh, **tool-based Handler** for the round.
-2. **A — Review.** The Handler reviews the artifact like a normal reviewer, not yet
-   knowing it will also fix. It writes a review to file with a verdict: `BLOCKING` or
-   `APPROVED`. In step A it **may** spawn N extra **cluster reviewers**, wait for them
-   (or time out), and write a cross-checked review — this is how cluster-review support
-   falls out for free.
-3. **B — Fix.** The Handler then fixes what it found, itself, based on its own review
-   plus its own reasoning — **even if the verdict was `APPROVED`** (non-blocking polish).
-   It writes a fixer-report.
-4. Control returns to Go, which reads the round status. If not `APPROVED`, it spawns a
-   **new** Handler for the next round (2–3 again).
-
-The Handler combines review and fix in one agent on purpose: the review context
-(explore + findings) is already loaded, so the fix is cheap — no re-explore, no cold
-re-read. A fresh Handler per round, hydrated from the prior round's review/fixer-report
-files, avoids both alternatives that today are suboptimal: (1) the original producer
-fixing (token-heavy at long resume) and (2) a separate fixer thread (loses the why).
-
-**No self-grading.** A is pure review and precedes B, so A is a legitimate gate
-identical to today's reviewer. The fix from round N is judged by a fresh Handler's A in
-round N+1. Termination on `APPROVED` is therefore always a clean review round — every
-fix gets an independent confirmation before the block closes.
-
-### Stuck detection
-
-`stuck` is the other exit, and it is the hard part. Two mechanisms, both already present
-in today's review setup:
-
-- **Round cap (N).** Go's deterministic backstop — the loop always terminates.
-- **Progress / circularity.** It is not just the *count* of blocking findings that
-  matters but the *type*: are we going in circles? Oscillation can hold the count flat
-  (fix A, break B; next round fix B, break A → count stays at 1, a perfect loop). So the
-  judge must track finding **identity** across the whole history, not magnitude.
-
-The progress check is the one part that does not become pure Go, for two reasons: it is
-**semantic** (is finding A in round 3 the same underlying issue as finding B in round 1?
-a naive set-diff is fooled by rewording), and it must be **independent of the Handler**
-(else self-grading — a Handler is motivated to claim progress to avoid being declared
-stuck). It does **not** need a standing orchestrator: it is a thin, ephemeral
-**progress-judge** (a Haiku is enough — bounded compare-and-classify over short,
-already-articulated findings) that Go spawns on demand.
-
-- It spawns **conditionally**: only after a `BLOCKING` round *and* when there is a prior
-  round to compare against (not round 1; not after `APPROVED`).
-- Its input is **self-contained** — Go hands it the relevant rounds' reviews (or the
-  canonical-key history); it carries no memory between calls.
-- It is **fail-safe**: uncertain → default "progressing," and let the N-cap be the hard
-  floor. A false "progress" costs a few bounded rounds; a false "stuck" is the costly
-  error, so it must require clear evidence of circularity.
-
-A sharper split: let the progress-judge **canonicalize** each round's findings into
-stable keys (normalize "same issue" → same key), and let **Go** do the cycle detection
-deterministically over the key history ("key X reappeared in rounds 1, 3, 5 → circling").
-Judgment (are these the same issue) in the judge; cycle logic (does the key recur) in Go.
-
-## `lyx review` — the generic reviewer module
-
-One engine serves **all** review: discussion-review, plan-review, builder-review, and
-`review anything` standalone are just different call-sites of the same module. This is
-the lyx way — one one-shot module, reused, not duplicated.
-
-The module **must be configurable on what it reviews**. The per-target configuration is
-a **review profile** (discussion / plan / builder are three profiles; ad-hoc review is a
-fourth). A profile carries:
-
-| Field | Meaning |
-|-------|---------|
-| **target** | What to read — one file (`plan.md`), or for builder a git-diff against base + the working tree. Not always one file. |
-| **against** (fasit) | The source of truth to check the target *against*. The plan is checked against `discussion.md`; the code against `plan.md`. **The easily-missed, most important field** — without it a review degenerates to a pure internal-consistency check, not fidelity to intent. The contract is `{fasit, target} → verdict`, not `target → verdict`. |
-| **rubric** | What counts as `BLOCKING` for this target type. Plan rubric ("is the DAG sound, are batches independent, does it cover the discussion") ≠ code rubric ("correctness, tests green, no regression"). Data, not code. |
-| **fix-scope** | What the fixer may write — a markdown file (`plan.md`) vs the source tree. |
-| **tool-use** | Handler always (reviewing anything real means looking at the world, not just the artifact text). Cluster reviewers graded: builder wants tool-use; discussion can run bulk. |
-| **cluster-N, round-cap** | Optional per profile. |
-
-Three disciplines keep this **one** module and not three forks:
-
-1. **The per-phase difference is the rubric, not the code.** Feed the rubric in; keep one
-   engine. Forking the Handler per phase loses the point.
-2. **The verdict contract is invariant** — `APPROVED | BLOCKING` + structured findings +
-   fixer-report, regardless of what was reviewed. That invariance is exactly what lets Go
-   drive all three phases identically. Vary the payload, never the control surface.
-3. **Rubric and fasit are data.** You can tighten "what is a blocking plan flaw" by
-   editing a rubric file and every plan-review picks it up — without touching the engine.
-   The bar becomes versionable and tunable, separate from the machinery.
+That black box is its **own module — [`review`](review.md)** (`lyx review`), a generic
+profile-driven gate engine reused for every phase (discussion / plan / builder) and standalone.
+The whole point of the black-box boundary is that loom drives all phases **identically** because
+the verdict contract is invariant; only the review *profile* (rubric + fasit) differs per phase.
+See [review.md](review.md) for the round-loop, the combined handler/fixer, stuck detection, and
+the profile schema.
 
 ## `loom` — the autonomous driver
 
@@ -175,16 +97,52 @@ human does the interactive part (which advances the status), and the next `lyx r
 resumes unattended. So `lyx run` is autonomous for everything it can advance and yields
 only at the human gates.
 
+**Auto mode.** A run can be told to *never* yield — `lyx run --auto`. The phase machine is
+unchanged; the only difference is that at a would-be human gate the agent is instructed to **make
+its own best guess and proceed** instead of asking (and the `AskUserQuestion` guardrail —
+[mux.md](mux.md#completion-and-hooks-live-in-shuttle-not-mux) — already forbids it from blocking on a dialog). Auto mode
+does **not** turn off the view: mux still shows every strand (incl. the `lyx loom status` line),
+because you still want to watch. The difference is in loom's *yielding*, not in whether anyone is
+looking.
+
 ### State & contracts
 
 - **The status file in `_lyx/` is the single source of truth** for orchestration state:
   current phase, current review block + round, and the verdict history the progress-judge
   needs. Nothing orchestration-relevant lives anywhere else.
+- **It also carries a human-readable *current-activity* narration** — not just the machine enum,
+  but "*now:* spawned plan-handler round 2, waiting on Stop hook / *last:* round 1 BLOCKING, 3
+  findings / *wait:* —". This is what the `lyx loom status --watch` strand prints (a 1-line pane at
+  the top, [mux.md](mux.md#the-contract-callers-hand-mux-cmd-name-display)) so the operator sees what
+  the Go driver is *doing*, not only what the agents are saying. The driver writes the file; the
+  status strand reads and prints it — mux never parses it, it just hosts the pane.
 - **Round-level resume.** Handler/fixer artifacts are already on disk, so resuming inside
   a review block continues at the current round rather than restarting the phase.
 - **Separation of state.** `lyx review` owns its block's round state in the block's files;
   `lyx run`'s status only needs phase + the block's outcome. When `lyx review` returns
   `APPROVED | stuck`, `lyx run` advances.
+
+### Crash recovery — resume on output files, not live processes
+
+After a crash, a restarted `lyx run` cold-starts from the `_lyx/` status file and must reconcile
+its logical state with whatever agents may or may not still be alive. The discipline that makes
+this tractable: **loom resumes on output FILES, not on live processes.** The file contract means
+"was the work done" is decoupled from "is the process alive." For the step it was on:
+
+1. **Is there a complete output file?** → the step finished; read it and advance. (The agent's
+   process may be long dead — its result survived. This is the common case.)
+2. **Else, is the agent's session still alive?** (via [`mux`](mux.md)'s `.lyx/mux.json` → session
+   id → `claude agents --json`) → *working*: re-attach, just wait on its `Stop` hook (do **not**
+   respawn — that would duplicate). *blocked*: it is a human gate / stuck — surface it.
+3. **Else (dead, no output):** respawn a **fresh** agent for the step, hydrated from the prior
+   round's on-disk artifacts. The round is idempotent, so a fresh handler is deterministic.
+
+loom therefore **never depends on `claude --resume` for correctness** — an unfinished step is
+respawned, not resumed (mux's `--resume` is finicky for programmatically-driven sessions, and a
+never-conversed session has nothing to resume). mux's pane-`--resume` is a *separate, non-critical*
+layer that restores the **visible** sessions for the operator
+([mux.md](mux.md#resume-after-crash--native---resume-with-env-hygiene)); loom's correctness rests on
+files. A dead claude with a finished output file is, to loom, a **done step** — not a problem.
 
 ## Module decomposition
 
@@ -192,42 +150,66 @@ only at the human gates.
 |-------|------|-------|
 | `loom` (`lyx loom run`) | new Go module | the phase machine / autonomous driver |
 | `review` (`lyx review`) | new Go module | the gate engine: Handler+fixer + optional cluster + progress-judge loop |
-| producers (discussion / plan / builder) | prompt/profile files | **not** modules — just a prompt + profile fed to `agent.Run` |
-| execution stack | existing/new infra | [`proc`](../overview.md#execution-stack-orchestration-layers) → [`mux`](mux.md) → [`shed`](shed.md) → [`agent`](agent.md) — built once, used by both modules above |
+| producers (discussion / plan / builder) | prompt/profile files | **not** modules — just a prompt + profile fed to `shuttle.Run` |
+| `lyx loom status` | a loom subcommand | the 1-line status view; runs as a [strand](mux.md#the-strand-model) (`anchor:top`), not a separate module |
+| execution stack | existing/new infra | [`proc`](README.md) → [`mux`](mux.md) → [`shuttle`](shuttle.md) — built once, used by both modules above |
 | Setup | uses existing modules | `worktree`, `weft`, `board` |
 | `/ly-*` skills | thin wrappers | over `lyx loom run` |
 
-The new Go specific to loom is the **two modules** (`loom`, `review`); everything beneath them
-is the shared [execution stack](../overview.md#execution-stack-orchestration-layers) (`proc`,
-`mux`, `shed`, `agent`), and everything else is prompt files, profiles, and the existing lyx
-modules.
+The new Go specific to loom is the **two modules** (`loom`, `review`) plus the `lyx loom status`
+subcommand; beneath them is the shared [execution stack](README.md) (`proc`, `mux`, `shuttle`); and
+everything else is prompt files, profiles, and the existing lyx modules. The display is **not** a
+module — it is `lyx loom status` running in a strand that [`mux`](mux.md) hosts and arranges.
 
-## Entry point
+## Entry point — the session bootstrap
 
-Today: launch `claude` in a terminal, then `/mill-start` — an interactive LLM session
-drives everything. Loom inverts this: you launch a **Go process** (`lyx run`) that drives,
-spawning each agent as an **interactive psmux session** ([Agent execution](#agent-execution))
-and steering it unattended. A double-click wrapper script is convenience on top — it just
-calls `lyx run`. Every agent runs interactively (subscription constraint); the only
-difference is *who* is in the session — a human in Discussion, `lyx run` everywhere else.
+Today: launch `claude` in a terminal, then `/mill-start` — an interactive LLM session drives
+everything. Loom inverts this: `lyx loom run` (alias `lyx run`) is the **session bootstrap** —
+more than the driver alone. Run in a worktree's pane, it:
+
+```
+lyx loom run:
+  1. ensure the worktree's psmux session is up           (mux)
+  2. add the status strand                                (mux.AddStrand "lyx loom status --watch",
+                                                           display: anchor:top, height:fixed(1))
+  3. spawn the loom driver DETACHED                       (internal/proc — it needs no TTY;
+                                                           it reads/writes files, drives strands via mux)
+  4. attach the current terminal to the psmux session     (mux takes the foreground)
+```
+
+So **loom goes to the background and the psmux session takes the window.** loom needs no terminal —
+it coordinates through files and drives strands via mux — so the screen is free for the mux view
+(the status line on top, agents below as they spawn). loom and the view are independent: loom writes
+the `_lyx/` status file; the status strand reads and prints it; neither blocks the other.
+
+**The run-launcher.** A double-click shortcut makes this one click: `lyx worktree add` drops a
+small `.lyx/lyxrun.cmd` (machine-local, untracked — it embeds an absolute path) in the worktree
+that just does `cd <worktree>` then `lyx loom run`. Because everything is
+[cwd-authoritative](../overview.md#principles), the launcher needs no arguments — geometry resolves
+from cwd, so you cannot run it from the wrong place. It reuses the
+[launcher geometry](../overview.md#path-invariants) already in `internal/paths`.
+
+**One terminal per worktree.** Scope for now is exactly that — each worktree its own terminal /
+psmux session. The cross-worktree multi-column view (all worktrees in one window) is a deferred mux
+feature ([mux.md](mux.md#scope-one-terminal-per-worktree-now-cross-worktree-columns-later)) — cheap
+when it comes (a `worktree` strand field + a grouping rule), but not now.
 
 ## Agent execution
 
 Every agent loom spawns — producers, the review handler, cluster reviewers, the
-progress-judge — runs through the [`internal/agent`](agent.md) layer as an **interactive
+progress-judge — runs through the [`internal/shuttle`](shuttle.md) layer as an **interactive
 psmux session, never headless `claude -p`** (an economic constraint; see
-[agent.md](agent.md#interactive-never-headless--the-economic-constraint)). **I/O still rides
+[shuttle.md](shuttle.md#interactive-never-headless--the-economic-constraint)). **I/O still rides
 the file contract** — the agent writes its output files and Go reads them — so the
 file-contract design above is unchanged; only the *spawn + completion-detection* mechanism
 differs from a headless model.
 
-The consequence for loom: it sits on top of the
-[`proc → mux → shed → agent`](../overview.md#execution-stack-orchestration-layers) stack,
-so that stack is on loom's critical path. loom calls `agent.Run` per spawn and stays
-ignorant of panes, layout, and engines — those belong to [`shed`](shed.md) (placement,
-focus, the **cluster window** where N reviewers go) and [`agent`](agent.md) (the swappable
-provider engine). What loom owns is everything in this document: the phase machine, the
-gate, stuck detection, and the status contract.
+The consequence for loom: it sits on top of the [`proc → mux → shuttle`](README.md) stack, so that
+stack is on loom's critical path. loom (via [`review`](review.md)) calls `shuttle.Run` per spawn and
+stays ignorant of strands, layout, and engines — those belong to [`mux`](mux.md) (the strand
+bookkeeping + render: which pane is which, layout, focus, the cluster window where N reviewers go)
+and [`shuttle`](shuttle.md) (the swappable provider engine). What loom owns is everything in this
+document: the phase machine, the gate wiring, and the status contract.
 
 ## Principle alignment
 
