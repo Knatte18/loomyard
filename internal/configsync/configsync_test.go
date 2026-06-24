@@ -4,19 +4,20 @@ package configsync
 
 import (
 	"os"
-	"path/filepath"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/paths"
 )
 
 func TestReconcileAll_DryRun(t *testing.T) {
 	tmpDir := t.TempDir()
-	configDir := filepath.Join(tmpDir, "_lyx", "config")
+	configDir := paths.ConfigDir(tmpDir)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
 
 	// Seed board.yaml with a missing key and a stale key
-	boardPath := filepath.Join(configDir, "board.yaml")
+	boardPath := paths.ConfigFile(tmpDir, "board")
 	if err := os.WriteFile(boardPath, []byte("path: board\nstale_key: old_value\n"), 0o644); err != nil {
 		t.Fatalf("write board.yaml: %v", err)
 	}
@@ -64,13 +65,13 @@ func TestReconcileAll_DryRun(t *testing.T) {
 
 func TestReconcileAll_ApplyCreatesFiles(t *testing.T) {
 	tmpDir := t.TempDir()
-	configDir := filepath.Join(tmpDir, "_lyx", "config")
+	configDir := paths.ConfigDir(tmpDir)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
 
 	// Seed board.yaml
-	boardPath := filepath.Join(configDir, "board.yaml")
+	boardPath := paths.ConfigFile(tmpDir, "board")
 	if err := os.WriteFile(boardPath, []byte("path: board\nstale_key: old_value\n"), 0o644); err != nil {
 		t.Fatalf("write board.yaml: %v", err)
 	}
@@ -110,7 +111,7 @@ func TestReconcileAll_ApplyCreatesFiles(t *testing.T) {
 	}
 
 	// Verify weft.yaml was created
-	weftPath := filepath.Join(configDir, "weft.yaml")
+	weftPath := paths.ConfigFile(tmpDir, "weft")
 	if _, err := os.Stat(weftPath); err != nil {
 		t.Errorf("weft.yaml was not created: %v", err)
 	}
@@ -130,7 +131,7 @@ func TestReconcileAll_ApplyCreatesFiles(t *testing.T) {
 
 func TestReconcileAll_Idempotent(t *testing.T) {
 	tmpDir := t.TempDir()
-	configDir := filepath.Join(tmpDir, "_lyx", "config")
+	configDir := paths.ConfigDir(tmpDir)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
