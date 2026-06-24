@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r1
+phase: planned
 slug: ly-git-clone
 branch: ly-git-clone
 plan: _mill/plan
@@ -19,4 +19,5 @@ discussion-fix-r2  '2026-06-24T16:17:25Z'
 discussed  '2026-06-24T16:17:56Z'
 planning  '2026-06-24T16:28:32Z'
 plan-fix-r1  '2026-06-24T16:32:07Z'
+planned  '2026-06-24T16:32:20Z'
 ```
