@@ -34,7 +34,11 @@ independent, behaviour-preserving substitution. Independent of all other batches
   convert those two and keep the block otherwise intact. Do NOT touch the
   `run([]string{"config"}, ...)` call (that is a CLI subcommand name, not a path). Keep the
   `os.Mkdir` sequences and assertions unchanged. Add `"github.com/Knatte18/loomyard/internal/paths"`
-  to the import block (`package main` does not import it yet); keep `os`/`path/filepath` as used.
+  to the import block (`package main` does not import it yet). **Keep `path/filepath`:** the three
+  `lyxDir := filepath.Join(cwd, "_lyx")` sites (lines 47/83/187) convert to
+  `filepath.Join(cwd, paths.LyxDirName)`, which retains a `filepath.` reference, so the import is
+  still used (this file does NOT orphan `path/filepath`, unlike the combined-form files in the
+  Shared-Decision orphan rule). Keep `os` as used.
 - **Commit:** `refactor(lyx): resolve main_test.go _lyx paths via internal/paths`
 
 ### Card 12: initcli/initcli_test.go — route _lyx/config literals through paths
@@ -67,7 +71,10 @@ independent, behaviour-preserving substitution. Independent of all other batches
   with `paths.ConfigFile(tmpDir, "board")`; and `weftPath := filepath.Join(configDir, "weft.yaml")`
   with `paths.ConfigFile(tmpDir, "weft")`. Keep assertions unchanged. Add
   `"github.com/Knatte18/loomyard/internal/paths"` to the import block (`package update` does not
-  import it yet); keep `os`/`path/filepath` as used.
+  import it yet). **All 4 `filepath.` sites are config-path conversions** — after the
+  substitution there are zero remaining `filepath.` references, so **remove the now-unused
+  `path/filepath` import** (keep `os`, still used). The `go build`/`verify` gate fails on an
+  unused import if it is left in.
 - **Commit:** `refactor(update): resolve update_test.go _lyx paths via internal/paths`
 
 ### Card 14: ide/menu_test.go — route _lyx/config literals through paths

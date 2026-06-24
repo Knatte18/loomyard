@@ -66,7 +66,10 @@ remove latent migration breakage. Independent of all other batches (no shared fi
   argument `filepath.Join(configDir, "board.yaml")` with `paths.ConfigFile(baseDir, "board")`, and
   the single `filepath.Join(configDir, "worktree.yaml")` with `paths.ConfigFile(baseDir, "worktree")`.
   Keep the `os.MkdirAll(configDir, ...)` calls and all assertions unchanged. `paths` is already
-  imported.
+  imported. **All 17 `filepath.` sites in this file are config-path conversions** — after the
+  substitution there are zero remaining `filepath.` references, so **remove the now-unused
+  `path/filepath` import** (keep `os`, which `os.MkdirAll`/`os.WriteFile` still use). The
+  `go build`/`verify` gate fails on an unused import if it is left in.
 - **Commit:** `refactor(configcli): resolve configcli_test.go _lyx paths via internal/paths`
 
 ### Card 6: configcli/configcli_integration_test.go — use paths for the relative config assert
@@ -98,7 +101,11 @@ remove latent migration breakage. Independent of all other batches (no shared fi
   with `paths.ConfigFile(tmpDir, "board")`, and `filepath.Join(configDir, "weft.yaml")` with
   `paths.ConfigFile(tmpDir, "weft")`. Keep the `os.MkdirAll(configDir, ...)` calls and assertions
   unchanged. Add `"github.com/Knatte18/loomyard/internal/paths"` to the import block (this file —
-  `package configsync` — does not import it yet); keep `os`/`path/filepath` as used.
+  `package configsync` — does not import it yet). **All 6 `filepath.` sites are config-path
+  conversions** — after the substitution there are zero remaining `filepath.` references, so
+  **remove the now-unused `path/filepath` import** (keep `os`, still used by
+  `os.MkdirAll`/`os.WriteFile`/`os.ReadFile`). The `go build`/`verify` gate fails on an unused
+  import if it is left in.
 - **Commit:** `refactor(configsync): resolve configsync_test.go _lyx paths via internal/paths`
 
 ## Batch Tests

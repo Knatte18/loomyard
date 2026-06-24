@@ -68,12 +68,22 @@ batches:
 
 - **Decision:** Add `"github.com/Knatte18/loomyard/internal/paths"` to the import block of
   any swept file that does not already import it (8 files do not; see each card). Keep
-  `path/filepath` and `os` imports as long as they remain used. If a substitution leaves a
-  local (e.g. an intermediate `lyxDir` or `configDir`) unreferenced, delete that local; the
-  `go build` / `verify` gate flags any unused import or variable.
-- **Rationale:** Go fails to compile on unused imports/locals. Adding the import is required
-  for the helper calls; the RHS-only recipe generally keeps `lyxDir`/`configDir` referenced
-  (each is still consumed by its own `os.Mkdir`), so removals should be rare.
+  `path/filepath` and `os` imports **only as long as they remain used**. If a substitution
+  leaves a local (e.g. an intermediate `lyxDir` or `configDir`) unreferenced, delete that
+  local; the `go build` / `verify` gate flags any unused import or variable.
+- **`path/filepath` orphan rule:** the bare-`_lyx` substitution `filepath.Join(X, "_lyx")` →
+  `filepath.Join(X, paths.LyxDirName)` *retains* a `filepath.` reference, but the combined-form
+  substitution `filepath.Join(X, "_lyx", "config")` → `paths.ConfigDir(X)` and the
+  `*.yaml` → `paths.ConfigFile(X, …)` substitutions do **not**. In three files —
+  `internal/configcli/configcli_test.go`, `internal/configsync/configsync_test.go`,
+  `internal/update/update_test.go` — **every** `filepath.` call is a combined-form/`*.yaml`
+  conversion with no surviving `filepath.` use, so the `path/filepath` import becomes unused
+  and MUST be removed (verified by grep: 0 surviving `filepath.` refs post-conversion). Every
+  other swept file keeps `path/filepath` (it retains at least one bare-`_lyx` or unrelated
+  `filepath.Join`). Each affected card states this explicitly.
+- **Rationale:** Go fails to compile on unused imports/locals. Adding `paths` is required for
+  the helper calls; the orphan rule above prevents the unused-import build break that would
+  otherwise fail the batch-2 and batch-4 `verify:` gate.
 - **Applies to:** all batches
 
 ### Decision: leave non-config `_lyx` usages untouched
@@ -97,6 +107,20 @@ batches:
 - **Rationale:** There is no new production behaviour to drive out; adding assertions would
   over-scope a fixture-path refactor.
 - **Applies to:** all batches
+
+### Decision: batch 1 fixes the bug; batches 2-4 are a deliberate operator-requested sweep
+
+- **Decision:** Batch 1 alone delivers "Fix failing TestRunCLI". Batches 2-4 are an
+  intentional consistency sweep applying the same `internal/paths` rule to the other 13 test
+  files that hardcode `_lyx`/config segments. They are **not** enforced by
+  `internal/paths/enforcement_test.go` (which bans only `os.Getwd`/`git rev-parse` and skips
+  `_test.go` files) — they are grounded in the operator's explicit instruction (discussion
+  Q&A) and codified in the extended `CONSTRAINTS.md` "`_lyx` and config-file paths" rule, a
+  code-review/planning-discipline invariant rather than a build-enforced one.
+- **Rationale:** The migration that broke `TestRunCLI` (PR #20) would silently re-break any of
+  these files next time; fixing them now removes that latent debt. Reviewers should treat
+  batches 2-4 as a sanctioned cosmetic/consistency sweep, not as scope creep.
+- **Applies to:** batches 2, 3, 4
 
 ## All Files Touched
 
