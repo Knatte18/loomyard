@@ -56,7 +56,9 @@ batches:
     start_sha: 51972a005722ac0ba56bffb46841fa27d21fd5b8
     commit_sha: 0a44f93cdaea2f3380ca374b37a949d8e031c6c8
   - name: config-engine-integration
-    state: pending
+    state: running
+    implementer_session: a796454b-a127-4218-b832-0fea9988817d
+    start_sha: a6c1fe445cc615ea74020fd5269ce7689acaa96e
   - name: lyx-update-init
     state: pending
   - name: docs
