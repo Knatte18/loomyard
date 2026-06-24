@@ -68,8 +68,7 @@ func RunCLI(out io.Writer, args []string) int {
 
 	// If --board-path is set, use it directly (internal use for detached sync child)
 	if *boardPathFlag != "" {
-		cfg = DefaultConfig()
-		cfg.Path = *boardPathFlag
+		cfg = Config{Path: *boardPathFlag}
 	} else {
 		// Load configuration from cwd
 		cwd, err := paths.Getwd()

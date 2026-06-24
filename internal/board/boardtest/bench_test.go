@@ -45,7 +45,7 @@ func seedWiki(tb testing.TB, n int) string {
 		tb.Fatalf("mkdir _lyx/config: %v", err)
 	}
 	configPath := filepath.Join(configDir, "board.yaml")
-	if err := os.WriteFile(configPath, []byte("path: board\n"), 0o644); err != nil {
+	if err := os.WriteFile(configPath, []byte("path: board\nhome: Home.md\nsidebar: _Sidebar.md\nproposal_prefix: proposal-\n"), 0o644); err != nil {
 		tb.Fatalf("write board.yaml: %v", err)
 	}
 
@@ -102,7 +102,7 @@ func BenchmarkRender(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				if _, err := board.Render(tasks, board.DefaultOutputs()); err != nil {
+				if _, err := board.Render(tasks, board.Outputs{Home: "Home.md", Sidebar: "_Sidebar.md", ProposalPrefix: "proposal-"}); err != nil {
 					b.Fatal(err)
 				}
 			}
@@ -182,9 +182,7 @@ func BenchmarkUpsertFacade(b *testing.B) {
 	for _, n := range benchSizes {
 		b.Run(fmt.Sprintf("n=%d", n), func(b *testing.B) {
 			dir := seedWiki(b, n)
-			cfg := board.DefaultConfig()
-			cfg.Path = filepath.Join(dir, "board")
-			cfg.SkipGit = true
+			cfg := board.Config{Path: filepath.Join(dir, "board"), Home: "Home.md", Sidebar: "_Sidebar.md", ProposalPrefix: "proposal-", SkipGit: true}
 			w := board.New(cfg)
 			fields := map[string]any{"slug": "task-0", "title": "Updated"}
 

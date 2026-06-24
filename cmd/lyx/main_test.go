@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/git"
 )
 
 // These tests cover main's own responsibility — module routing — not the board
@@ -51,7 +53,9 @@ func TestRunDispatchesToBoard(t *testing.T) {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
 	configPath := filepath.Join(configDir, "board.yaml")
-	if err := os.WriteFile(configPath, []byte("path: board\n"), 0o644); err != nil {
+	// Write a template-complete board config with all required keys
+	boardConfig := "path: board\nhome: Home.md\nsidebar: _Sidebar.md\nproposal_prefix: proposal-\n"
+	if err := os.WriteFile(configPath, []byte(boardConfig), 0o644); err != nil {
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
 	t.Chdir(cwd)
@@ -85,7 +89,9 @@ func TestRunBoardErrorPropagatesExitCode(t *testing.T) {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
 	configPath := filepath.Join(configDir, "board.yaml")
-	if err := os.WriteFile(configPath, []byte("path: board\n"), 0o644); err != nil {
+	// Write a template-complete board config with all required keys
+	boardConfig := "path: board\nhome: Home.md\nsidebar: _Sidebar.md\nproposal_prefix: proposal-\n"
+	if err := os.WriteFile(configPath, []byte(boardConfig), 0o644); err != nil {
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
 	t.Chdir(cwd)
@@ -165,4 +171,41 @@ func TestRunDispatchesToConfig(t *testing.T) {
 		t.Fatalf("expected exit 1 for config in uninitialized repo, got %d; output: %s", code, out.String())
 	}
 	// config output is human-readable text (not JSON), so we just check the exit code
+}
+
+func TestRunDispatchesToUpdate(t *testing.T) {
+	// Create temp cwd with git repo and _lyx/config to allow update to work.
+	// update.RunCLI should recognize the command and produce JSON output.
+	cwd := t.TempDir()
+
+	// Initialize git repo
+	_, _, exitCode, err := git.RunGit([]string{"init"}, cwd)
+	if err != nil || exitCode != 0 {
+		t.Fatalf("git init failed: %v (exit code %d)", err, exitCode)
+	}
+
+	lyxDir := filepath.Join(cwd, "_lyx")
+	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
+		t.Fatalf("failed to create _lyx: %v", err)
+	}
+	configDir := filepath.Join(lyxDir, "config")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatalf("failed to create _lyx/config: %v", err)
+	}
+	t.Chdir(cwd)
+
+	var out bytes.Buffer
+	code := run([]string{"update"}, &out)
+	if code != 0 {
+		t.Fatalf("expected exit 0 for update, got %d; output: %s", code, out.String())
+	}
+
+	// Verify JSON output with ok=true
+	var result map[string]any
+	if err := json.Unmarshal(out.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse update output: %v; output: %s", err, out.String())
+	}
+	if ok, _ := result["ok"].(bool); !ok {
+		t.Fatalf("expected ok=true from update command, got %v", result)
+	}
 }

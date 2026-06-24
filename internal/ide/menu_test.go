@@ -62,7 +62,7 @@ func newTestGitRepoWithWorktrees(t *testing.T) (string, string) {
 	return container, mainWorktreePath
 }
 
-// TestMenuHardErrorOnMissingBoard tests that Menu hard-errors when board HealthCheck fails.
+// TestMenuHardErrorOnMissingBoard tests that Menu hard-errors when board config cannot be loaded.
 func TestMenuHardErrorOnMissingBoard(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
 
@@ -75,17 +75,19 @@ func TestMenuHardErrorOnMissingBoard(t *testing.T) {
 		Cwd:     mainWorktreePath,
 	}
 
-	// Call Menu without a board directory (no _board exists at <container>/_board)
+	// Call Menu without a board config file (_lyx/config/board.yaml missing)
+	// This should hard-error during LoadConfig
 	var out bytes.Buffer
 	in := strings.NewReader("")
 
 	err := Menu(layout, in, &out)
 	if err == nil {
-		t.Fatalf("expected hard error when board is missing, got nil")
+		t.Fatalf("expected hard error when board config cannot be loaded, got nil")
 	}
 
-	if !strings.Contains(err.Error(), "health check") {
-		t.Fatalf("expected health check error, got: %v", err)
+	// Should be a load error, not a health check error (since we don't get that far)
+	if !strings.Contains(err.Error(), "load board config") && !strings.Contains(err.Error(), "not found") {
+		t.Fatalf("expected load config error, got: %v", err)
 	}
 }
 
@@ -106,6 +108,21 @@ func TestMenuExcludesMain(t *testing.T) {
 	// Create _lyx in child
 	if err := os.MkdirAll(filepath.Join(childPath, "_lyx"), 0o755); err != nil {
 		t.Fatalf("failed to create child _lyx: %v", err)
+	}
+
+	// Create board config
+	configDir := filepath.Join(mainWorktreePath, "_lyx", "config")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatalf("failed to create config dir: %v", err)
+	}
+	boardConfigPath := filepath.Join(configDir, "board.yaml")
+	boardConfig := `path: ../_board
+home: Home.md
+sidebar: _Sidebar.md
+proposal_prefix: proposal-
+`
+	if err := os.WriteFile(boardConfigPath, []byte(boardConfig), 0o644); err != nil {
+		t.Fatalf("failed to write board.yaml: %v", err)
 	}
 
 	// Create board directory with tasks.json
@@ -161,6 +178,21 @@ func TestMenuRequiresLyxDir(t *testing.T) {
 	}()
 	// Note: child is created but has no _lyx
 
+	// Create board config
+	configDir := filepath.Join(mainWorktreePath, "_lyx", "config")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatalf("failed to create config dir: %v", err)
+	}
+	boardConfigPath := filepath.Join(configDir, "board.yaml")
+	boardConfig := `path: ../_board
+home: Home.md
+sidebar: _Sidebar.md
+proposal_prefix: proposal-
+`
+	if err := os.WriteFile(boardConfigPath, []byte(boardConfig), 0o644); err != nil {
+		t.Fatalf("failed to write board.yaml: %v", err)
+	}
+
 	// Create board directory with tasks.json
 	boardDir := filepath.Join(container, "_board")
 	if err := os.MkdirAll(boardDir, 0o755); err != nil {
@@ -215,6 +247,21 @@ func TestMenuNumericSelection(t *testing.T) {
 			mustRunMenu(t, mainWorktreePath, "git", "branch", "-D", child+"-branch")
 		}
 	}()
+
+	// Create board config
+	configDir := filepath.Join(mainWorktreePath, "_lyx", "config")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatalf("failed to create config dir: %v", err)
+	}
+	boardConfigPath := filepath.Join(configDir, "board.yaml")
+	boardConfig := `path: ../_board
+home: Home.md
+sidebar: _Sidebar.md
+proposal_prefix: proposal-
+`
+	if err := os.WriteFile(boardConfigPath, []byte(boardConfig), 0o644); err != nil {
+		t.Fatalf("failed to write board.yaml: %v", err)
+	}
 
 	// Create board directory with tasks.json at <container>/_board
 	boardDir := filepath.Join(container, "_board")

@@ -16,6 +16,16 @@ makes correctness structural, not a matter of discipline.
 
 ## Exported API
 
+### Constants
+
+#### `LyxDirName`
+
+The directory name for the lyx system directory within a worktree. Value: `"_lyx"`.
+
+This constant centralizes the directory name so the layout can be changed in one place without scattering updates across the codebase. All code referring to the lyx directory should use this constant.
+
+### Functions
+
 ### `Getwd() (string, error)`
 
 Returns the current working directory.
@@ -61,9 +71,17 @@ type Layout struct {
 }
 ```
 
+### Config path helpers
+
+These functions resolve configuration file paths. They take a `baseDir` (the directory containing `_lyx/`) as a parameter, not a `Layout`.
+
+- **`ConfigDir(baseDir string) string`** — Returns `filepath.Join(baseDir, LyxDirName, "config")`. The directory where module configuration YAML files are stored.
+- **`ConfigFile(baseDir, module string) string`** — Returns `filepath.Join(ConfigDir(baseDir), module+".yaml")`. The path to a specific module's configuration file (e.g., `_lyx/config/board.yaml`).
+- **`DotEnv(baseDir string) string`** — Returns `filepath.Join(baseDir, ".env")`. The path to the environment variable overrides file.
+
 ### Layout methods
 
-- **`LyxDir() string`** — `filepath.Join(Cwd, "_lyx")`. The Loomyard config/state
+- **`LyxDir() string`** — `filepath.Join(Cwd, LyxDirName)`. The Loomyard config/state
   directory at the current location.
 - **`WorktreePath(slug string) string`** — `filepath.Join(Hub, slug)`. Path to
   a sibling worktree.

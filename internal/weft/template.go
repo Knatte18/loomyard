@@ -1,10 +1,21 @@
 // template.go — weft.yaml template generator.
 //
-// Provides the fully-commented default YAML template for weft configuration.
+// Provides the default YAML template for weft configuration via embedded
+// template.yaml file. Weft templates use literal values (no env-marker substitution).
 
 package weft
 
-// ConfigTemplate returns a fully-commented YAML template for weft configuration.
+import _ "embed"
+
+// configTemplate is the embedded YAML template for weft configuration.
+// It contains a literal pathspec value with no environment variable placeholders.
+//
+//go:embed template.yaml
+var configTemplate string
+
+// ConfigTemplate returns the default YAML template for weft configuration.
+// The template uses literal values that are passed through unchanged by
+// yamlengine.Resolve (no ${env:...} markers are present).
 func ConfigTemplate() string {
-	return "# pathspec: _lyx                          # directory path(s) relative to worktree root, whitespace-separated; _lyx is the default\n"
+	return configTemplate
 }

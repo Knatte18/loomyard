@@ -1,19 +1,21 @@
 // template.go — board.yaml template generator.
 //
-// Provides the fully-commented default YAML template for board configuration.
+// Provides the default YAML template for board configuration via embedded
+// template.yaml file with environment variable resolution.
 
 package board
 
-import "strings"
+import _ "embed"
 
-// ConfigTemplate returns a fully-commented YAML template for board configuration.
+// configTemplate is the embedded YAML template for board configuration.
+// It contains environment variable placeholders with defaults.
+//
+//go:embed template.yaml
+var configTemplate string
+
+// ConfigTemplate returns the default YAML template for board configuration.
+// The template uses ${env:VAR:-default} syntax for configuration values,
+// allowing environment-based overrides while preserving defaults when not set.
 func ConfigTemplate() string {
-	var sb strings.Builder
-
-	sb.WriteString("# path: $env:LYX_BOARD_PATH ? ../_board   # board dir (tasks.json + rendered output); relative to cwd or absolute\n")
-	sb.WriteString("# home: $env:LYX_HOME ? Home.md           # home page file name; relative to board dir\n")
-	sb.WriteString("# sidebar: $env:LYX_SIDEBAR ? _Sidebar.md   # sidebar file name; relative to board dir\n")
-	sb.WriteString("# proposal_prefix: $env:LYX_PROPOSAL_PREFIX ? proposal-   # prefix for proposal files\n")
-
-	return sb.String()
+	return configTemplate
 }
