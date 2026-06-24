@@ -28,8 +28,9 @@ The operator broadened the scope during discussion: the underlying defect is **h
 path segments in test fixtures** instead of resolving through the `internal/paths`
 library. `TestRunCLI` is the only one that *fails today* (the migrated read path no
 longer matches its stale write path), but the same anti-pattern — `filepath.Join(base,
-"_lyx", "config")` and literal `"board.yaml"` / `"worktree.yaml"` — is repeated across
-~12 test files. Those happen to still pass because their literal matches the current
+"_lyx", "config")` and literal `"board.yaml"` / `"worktree.yaml"` / `"weft.yaml"` — is
+repeated across 14 test files (enumerated by the reproducible discovery query under
+Scope). Those happen to still pass because their literal matches the current
 layout, but they are latent breakage: the next path migration re-breaks every one of
 them. The hard rule going forward: **tests resolve all `_lyx`/config paths via
 `internal/paths`, never hardcode the segments.**
@@ -64,8 +65,25 @@ and, by extension, hardens every other test against the same migration hazard.
   - `internal/initcli/initcli_test.go`
   - `internal/update/update_test.go`
   - `internal/ide/menu_test.go`
+  - `internal/configsync/configsync_test.go` (lines 13/19, 67/73, 113 — `_lyx/config` +
+    `board.yaml`/`weft.yaml`)
+  - `internal/weft/config_test.go` (lines 49-56 — `_lyx`/`config` mkdir in
+    `TestLoadConfig_HappyPath`; it already writes via `paths.ConfigFile(tmpDir, "weft")`,
+    only the mkdir is stale. The `Dirs()` test-data `"_lyx"`/`"_codeguide"` strings at
+    lines 21-25 are **string-split inputs, not config paths** — leave them hardcoded.)
   - `internal/configcli/configcli_integration_test.go` (the one borderline relative-path
     assert at line ~78 → `paths.ConfigFile(".", "worktree")`)
+
+  **Sweep discovery & triage (reproducible):** Enumerate candidates with
+  `rg -l '"_lyx"' --glob '**/*_test.go'` (≈24 files). Triage each hit:
+  - **In** — the literal builds an `_lyx`/config **file or dir** path that a `paths`
+    helper covers (`filepath.Join(base, "_lyx", "config")`, `"board.yaml"`,
+    `"worktree.yaml"`, `"weft.yaml"`, or a bare `filepath.Join(base, "_lyx")` used as a
+    real directory).
+  - **Out** — `internal/paths/*_test.go` (the literals *are* the spec under test);
+    `_lyx` used as a junction/link **target geometry** or in **string-content / grep-style
+    assertions** (`portals_test.go`, `weft_test.go`); `_lyx` used as **test-data input**
+    to a parser (`weft/config_test.go` `Dirs()` cases); and `git config` subcommands.
 - Confirm `go test -tags integration ./internal/worktree/` is green, and that the full
   build + all touched packages' tests stay green (`go test -tags integration ./...` for
   the affected packages).
@@ -154,7 +172,7 @@ and, by extension, hardens every other test against the same migration hazard.
   accident* — config load fails first and returns exit 1 / `ok:false`, which coincidentally
   matches the expected unknown-subcommand envelope. After the fix, config loads
   successfully and the `"bogus"` subcommand reaches the `default` case
-  (`internal/worktree/cli.go:146`), which also returns exit 1 / `ok:false`. So the subtest
+  (`internal/worktree/cli.go:147`), which also returns exit 1 / `ok:false`. So the subtest
   keeps passing — now for the right reason. No assertion change needed.
 - **`lyxtest.CopyHostHub`** already provides an `origin` remote (per the existing
   `RemoveWithForceFlag` comment), so no `addRemote` is required.
@@ -206,7 +224,8 @@ and, by extension, hardens every other test against the same migration hazard.
   a hardcoded segment that drifted from the layout; the library is the single source of
   truth and tracks future migrations automatically. (Operator-confirmed hard rule.)
 - **Q:** Scope — fix only the failing `cli_test.go`, or sweep every test that hardcodes
-  `_lyx`/config paths? **A:** [auto-pick] Sweep all ~12 config-path-hardcoding test files;
+  `_lyx`/config paths? **A:** [auto-pick] Sweep all 14 config-path-hardcoding test files
+  (enumerated via `rg -l '"_lyx"' --glob '**/*_test.go'` + the triage rule in Scope);
   exclude `internal/paths` self-tests and `_lyx` link-geometry/content asserts. **Why:**
   the others are latent breakage the next migration re-breaks; operator explicitly asked
   to fix them too. The excluded files either *are* the path spec or don't resolve config.
@@ -214,3 +233,10 @@ and, by extension, hardens every other test against the same migration hazard.
   `configcli_integration_test.go:78`? **A:** [auto-pick] Yes —
   `paths.ConfigFile(".", "worktree")`. **Why:** keeps the "never hardcode segments" rule
   uniform; the helper produces the same relative `_lyx/config/worktree.yaml`.
+- **Q:** (review r1 GAP) The sweep omitted `internal/configsync/configsync_test.go` and
+  `internal/weft/config_test.go` — fold them in or justify excluding? **A:** [auto-pick]
+  Fold both into the In list; they are structural twins of the in-scope files. **Why:**
+  both build genuine `_lyx/config` paths from literals (configsync: `board.yaml`/`weft.yaml`;
+  weft: the `LoadConfig` mkdir), so the "no latent migration breakage" rationale requires
+  them. weft's `Dirs()` test-data `_lyx` strings stay (parser inputs, not paths). Also
+  recorded the reproducible discovery query + triage rule so the set is closeable.
