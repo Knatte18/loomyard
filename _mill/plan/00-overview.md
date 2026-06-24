@@ -42,7 +42,7 @@ batches:
   - number: 6
     name: lyx-update-init
     file: 06-lyx-update-init.md
-    depends-on: [1, 3, 4]
+    depends-on: [1, 3, 4, 5]
     verify: go test ./internal/configreg/ ./internal/configsync/ ./internal/update/ ./internal/initcli/ ./internal/configcli/... ./cmd/lyx/
   - number: 7
     name: docs

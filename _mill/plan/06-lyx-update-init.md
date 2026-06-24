@@ -6,7 +6,7 @@ batch: lyx-update-init
 number: 6
 cards: 6
 verify: go test ./internal/configreg/ ./internal/configsync/ ./internal/update/ ./internal/initcli/ ./internal/configcli/... ./cmd/lyx/
-depends-on: [1, 3, 4]
+depends-on: [1, 3, 4, 5]
 ```
 
 ## Batch Scope
@@ -61,7 +61,7 @@ dry-run by default and writes only with `--apply`. CLI output is JSON via
   - `internal/configsync/configsync_test.go`
 - **Deletes:** none
 - **Requirements:**
-  - Create package `configsync`. Define `type Result struct { Module string; Added, Removed []string; Applied bool }`. Add `func ReconcileAll(baseDir string, apply bool) ([]Result, error)`: for each `configreg.Modules()` entry, compute `cfgPath := paths.ConfigFile(baseDir, m.Name)`, read existing bytes (absent file → empty `[]byte`, not an error), call `merged, added, removed, err := yamlengine.Reconcile([]byte(m.Template()), existing)`; when `apply` is true AND the file is absent OR `len(added)+len(removed) > 0`, write `merged` via `fsx.AtomicWriteBytes(cfgPath, merged)` and set `Applied=true`; append a `Result`. Return the slice. (When `apply` is false, never write; `Applied` is false.)
+  - Create package `configsync`. Define `type Result struct { Module string; Added, Removed []string; Applied bool }`. Add `func ReconcileAll(baseDir string, apply bool) ([]Result, error)`: for each `configreg.Modules()` entry, compute `cfgPath := paths.ConfigFile(baseDir, m.Name)`, read existing bytes (absent file → empty `[]byte`, not an error), call `merged, added, removed, err := yamlengine.Reconcile([]byte(m.Template()), existing)`; when `apply && (fileAbsent || len(added)+len(removed) > 0)`, write `merged` via `fsx.AtomicWriteBytes(cfgPath, merged)` and set `Applied=true`; append a `Result`. Return the slice. (When `apply` is false, never write; `Applied` is false.)
   - Godoc every exported symbol.
   - configsync_test.go (use `t.TempDir` as baseDir, create `_lyx/config/`): seed `board.yaml` missing a key and containing a stale key; run `ReconcileAll(dir, false)` → asserts `Added`/`Removed` for board, files unchanged on disk; run `ReconcileAll(dir, true)` → file rewritten with merged content (missing key added, stale removed, surviving value preserved), `Applied=true`; an absent `weft.yaml` is created from its template on apply; a fully-reconciled file reports empty deltas and `Applied=false` on a second apply (idempotent).
 - **Commit:** `feat(configsync): reconcile all module configs against their templates`
