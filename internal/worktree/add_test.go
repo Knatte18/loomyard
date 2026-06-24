@@ -111,6 +111,30 @@ func TestAdd(t *testing.T) {
 			wantNoTargetDir: true,
 			wantResultZero:  true,
 		}, // Migrated from TestWeftPrechecksHardRequireWeftRepo: result.Slug == ""
+		{
+			name: "DetachedHEAD",
+			setup: func(t *testing.T, f lyxtest.PairedFixture) {
+				// Detach HEAD by checking out a specific commit SHA.
+				lyxtest.MustRun(t, f.Hub, "git", "checkout", "--detach")
+			},
+			opts:            AddOptions{SkipPush: true},
+			wantErrContains: "detached HEAD",
+			wantNoTargetDir: true,
+			wantResultZero:  true,
+		},
+		{
+			name: "UnbornBranch",
+			setup: func(t *testing.T, f lyxtest.PairedFixture) {
+				// Create an unborn branch (orphan branch with no commits).
+				// git checkout --orphan stages all parent files; reset them to avoid "dirty" error.
+				lyxtest.MustRun(t, f.Hub, "git", "checkout", "--orphan", "unborn-branch")
+				lyxtest.MustRun(t, f.Hub, "git", "reset")
+			},
+			opts:            AddOptions{SkipPush: true},
+			wantErrContains: "detached HEAD",
+			wantNoTargetDir: true,
+			wantResultZero:  true,
+		},
 	}
 
 	for _, tt := range tests {

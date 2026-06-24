@@ -138,6 +138,10 @@ Each host worktree has a sibling weft worktree. Host worktrees use **junctions**
 
 Junctions are listed in `.git/info/exclude` per worktree and are never committed to `.gitignore`. From the CLI's perspective, reads and writes happen transparently — code that writes to `_lyx/config/board.yaml` writes through the junction into the weft repo without awareness of the indirection.
 
+### Branch model
+
+Weft branches mirror host-repo branching. When a new weft worktree is spawned, the new weft branch forks from the weft branch whose name equals the host worktree's current branch at spawn time, preserving a shared merge-base for future squash-merge-back operations (`_codeguide` — see below). This guarantees that subtasks (spawned from non-main branches) inherit the correct fork point: branch isolation is **not** orphan-based (each isolated from history) but **merge-base-preserving** (each on its parent's timeline). `_lyx` is isolated by pathspec (junctions route it into weft; host `.git/info/exclude` hides it) rather than by orphan topology, so no merge-back state is lost.
+
 ### Weft suffix convention
 
 The weft worktree for any host worktree is deterministic:
