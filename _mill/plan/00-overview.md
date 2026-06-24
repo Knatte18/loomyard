@@ -3,7 +3,7 @@
 ```yaml
 task: "Fix failing TestRunCLI in internal/worktree"
 slug: "fix-worktree-runcli-test"
-approved: false
+approved: true
 started: "20260624-164843"
 parent: "main"
 root: ""

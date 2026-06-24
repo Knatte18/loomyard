@@ -38,8 +38,9 @@ interface is produced for later batches; all four batches are independent.
   it. Remove the now-unused `lyxDir` local. Add `"github.com/Knatte18/loomyard/internal/paths"`
   to the import block (this file does not import it yet). Keep the existing `os`, `path/filepath`,
   `lyxtest`, and `worktree` imports as they remain used. Do not change `decodeResult`, the
-  `TestRunCLI` subtests, or any assertion — `UnknownSubcommand` keeps passing because `bogus`
-  now reaches the `default` case in `internal/worktree/cli.go` (exit 1 / `ok:false`).
+  `TestRunCLI` subtests, or any assertion — `UnknownSubcommand` keeps passing because, once
+  config loads successfully, `bogus` is rejected as an unknown subcommand (exit 1 / `ok:false`),
+  which matches the subtest's existing expectation.
 - **Commit:** `fix(worktree): write test config via paths.ConfigFile so TestRunCLI passes`
 
 ### Card 2: Route config_test.go mkdir through paths helpers
