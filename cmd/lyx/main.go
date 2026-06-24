@@ -10,9 +10,10 @@
 //
 // Modules:
 //
-//	init      scaffold _lyx/config/board.yaml and .gitignore in the current directory
+//	init      scaffold _lyx/config/ with all module configs and .gitignore in the current directory
 //	board     task-tracker board — see internal/board.RunCLI for subcommands
 //	config    edit module configuration — see internal/configcli.RunCLI for subcommands
+//	update    reconcile module configs against templates — see internal/update.RunCLI
 //	ide       VS Code launcher — see internal/ide.RunCLI for subcommands
 //	muxpoc    proof-of-concept psmux mux — see internal/muxpoc.RunCLI for subcommands
 //	worktree  git-worktree lifecycle — see internal/worktree.RunCLI for subcommands
@@ -29,7 +30,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/board"
 	"github.com/Knatte18/loomyard/internal/configcli"
 	"github.com/Knatte18/loomyard/internal/ide"
+	"github.com/Knatte18/loomyard/internal/initcli"
 	"github.com/Knatte18/loomyard/internal/muxpoc"
+	"github.com/Knatte18/loomyard/internal/update"
 	"github.com/Knatte18/loomyard/internal/weft"
 	"github.com/Knatte18/loomyard/internal/worktree"
 )
@@ -51,11 +54,13 @@ func run(args []string, out io.Writer) int {
 
 	switch module {
 	case "init":
-		return board.RunInit(out, moduleArgs)
+		return initcli.RunInit(out, moduleArgs)
 	case "board":
 		return board.RunCLI(out, moduleArgs)
 	case "config":
 		return configcli.RunCLI(out, moduleArgs)
+	case "update":
+		return update.RunCLI(out, moduleArgs)
 	case "ide":
 		return ide.RunCLI(out, moduleArgs)
 	case "muxpoc":

@@ -16,7 +16,9 @@ See [roadmap.md](../roadmap.md) milestones 2–3 for the extraction order.
 ## Libraries
 
 - [paths.md](paths.md) — `internal/paths`: canonical geometry resolver, sole owner of cwd/root math
-- [config.md](config.md) — `internal/config`: two-layer YAML config (defaults + `_lyx/config/<module>.yaml`), env expansion, `.env` loading
+- [yamlengine.md](yamlengine.md) — `internal/yamlengine`: pure YAML engine for env expansion and config reconciliation
+- [envsource.md](envsource.md) — `internal/envsource`: single source of truth for environment variable sourcing (`.env` + OS overlay)
+- [config.md](config.md) — `internal/config`: strict YAML config loading backed by yamlengine and envsource
 
 ## Implementation-only libraries
 

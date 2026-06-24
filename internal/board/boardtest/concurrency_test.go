@@ -32,10 +32,8 @@ import (
 func TestConcurrentReadsDuringUpserts(t *testing.T) {
 	t.Parallel()
 	cwd := seedWiki(t, 100)
-	cfg := board.DefaultConfig()
 	// seedWiki creates _lyx/config/board.yaml with path: board, so the board dir is <cwd>/board
-	cfg.Path = filepath.Join(cwd, "board")
-	cfg.SkipGit = true
+	cfg := board.Config{Path: filepath.Join(cwd, "board"), Home: "Home.md", Sidebar: "_Sidebar.md", ProposalPrefix: "proposal-", SkipGit: true}
 	w := board.New(cfg)
 
 	const (
@@ -109,10 +107,8 @@ func TestConcurrentReadsDuringUpserts(t *testing.T) {
 func TestConcurrentUpsertsDoNotLoseWrites(t *testing.T) {
 	t.Parallel()
 	cwd := seedWiki(t, 0)
-	cfg := board.DefaultConfig()
 	// seedWiki creates _lyx/config/board.yaml with path: board, so the board dir is <cwd>/board
-	cfg.Path = filepath.Join(cwd, "board")
-	cfg.SkipGit = true
+	cfg := board.Config{Path: filepath.Join(cwd, "board"), Home: "Home.md", Sidebar: "_Sidebar.md", ProposalPrefix: "proposal-", SkipGit: true}
 	w := board.New(cfg)
 
 	const writers = 16
@@ -150,10 +146,8 @@ func TestConcurrentUpsertsDoNotLoseWrites(t *testing.T) {
 // uncontended BenchmarkGet — that gap is the price reads pay for a busy writer.
 func BenchmarkGetDuringUpsert(b *testing.B) {
 	cwd := seedWiki(b, 100)
-	cfg := board.DefaultConfig()
 	// seedWiki creates _lyx/config/board.yaml with path: board, so the board dir is <cwd>/board
-	cfg.Path = filepath.Join(cwd, "board")
-	cfg.SkipGit = true
+	cfg := board.Config{Path: filepath.Join(cwd, "board"), Home: "Home.md", Sidebar: "_Sidebar.md", ProposalPrefix: "proposal-", SkipGit: true}
 	w := board.New(cfg)
 
 	stop := make(chan struct{})

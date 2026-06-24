@@ -10,9 +10,11 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/config"
+	"github.com/Knatte18/loomyard/internal/paths"
 )
 
 // TestEdit_ScaffoldWhenMissing tests that Edit writes the template to
@@ -48,7 +50,7 @@ func TestEdit_ScaffoldWhenMissing(t *testing.T) {
 	}
 
 	// Verify the file exists in the right place.
-	expectedPath := filepath.Join(tmpDir, "_lyx", "config", "testmod.yaml")
+	expectedPath := paths.ConfigFile(tmpDir, "testmod")
 	if _, err := os.Stat(expectedPath); err != nil {
 		t.Errorf("config file not found at %s: %v", expectedPath, err)
 	}
@@ -70,7 +72,7 @@ func TestEdit_EditExistingFile(t *testing.T) {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
 
-	existingPath := filepath.Join(configDir, "testmod.yaml")
+	existingPath := paths.ConfigFile(tmpDir, "testmod")
 	originalContent := "original: value\n"
 	if err := os.WriteFile(existingPath, []byte(originalContent), 0644); err != nil {
 		t.Fatalf("failed to write config file: %v", err)
@@ -165,7 +167,7 @@ func TestEdit_AbortOnUnchangedAfterFailure_Scaffolded(t *testing.T) {
 	}
 
 	// Verify the scaffolded file was removed.
-	configPath := filepath.Join(tmpDir, "_lyx", "config", "testmod.yaml")
+	configPath := paths.ConfigFile(tmpDir, "testmod")
 	if _, err := os.Stat(configPath); !os.IsNotExist(err) {
 		t.Errorf("config file still exists after abort; should have been removed")
 	}
@@ -187,7 +189,7 @@ func TestEdit_AbortOnUnchangedAfterFailure_PreExisting(t *testing.T) {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
 
-	existingPath := filepath.Join(configDir, "testmod.yaml")
+	existingPath := paths.ConfigFile(tmpDir, "testmod")
 	originalContent := "original: value\n"
 	if err := os.WriteFile(existingPath, []byte(originalContent), 0644); err != nil {
 		t.Fatalf("failed to write config file: %v", err)
@@ -249,7 +251,7 @@ func TestEdit_AbortOnEditorError(t *testing.T) {
 	}
 
 	// Verify the scaffolded file was removed.
-	configPath := filepath.Join(tmpDir, "_lyx", "config", "testmod.yaml")
+	configPath := paths.ConfigFile(tmpDir, "testmod")
 	if _, err := os.Stat(configPath); !os.IsNotExist(err) {
 		t.Errorf("config file still exists after abort; should have been removed")
 	}
@@ -279,7 +281,7 @@ func TestEdit_NotInitialized(t *testing.T) {
 		t.Errorf("Edit() returned ErrAborted; want FindBaseDir not-initialized error")
 	}
 
-	if !stringContains(err.Error(), "not initialized") {
+	if !strings.Contains(err.Error(), "not initialized") {
 		t.Errorf("Edit() error = %v; want error containing 'not initialized'", err)
 	}
 }
