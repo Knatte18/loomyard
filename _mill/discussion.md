@@ -160,7 +160,10 @@ blocks that and is error-prone today.
   recursive key-path diff template-vs-file (any missing ⇒ error naming the file +
   missing paths + "run `lyx update`") → `env := envsource.Build(baseDir)` →
   `yamlengine.Resolve(fileBytes, env)`. Load errors **only on missing** template
-  keys; extra/stale keys are tolerated by Load and cleaned by `lyx update`.
+  keys; extra/stale keys are tolerated by Load and cleaned by `lyx update`. The
+  diff is **presence-based on key-paths, not values** — a key present with an empty
+  resolved value (e.g. `branch_prefix` from `${env:LYX_BRANCH_PREFIX:-}`) counts as
+  present and must NOT be flagged missing.
 - Rationale: keeps the engine I/O-free and reusable; policy (file layout, env
   sourcing, error wording) belongs in the consumer.
 - Rejected: a strict `ResolveStrict(template, existing, env)` inside `yamlengine`
@@ -250,7 +253,18 @@ What mill-plan needs to know:
   `raw[...]` → struct. New: pass the embedded template, call the new strict
   `Load`, unmarshal the resolved YAML into the struct. Keep each module's
   error-wrapping ("not initialized here; run \"lyx init\"" for board/worktree;
-  "weft worktree or its _lyx is missing at <dir>" for weft).
+  "weft worktree or its _lyx is missing at <dir>" for weft). **`weft.LoadConfig`
+  keeps its current `weftBaseDir` argument from `WeftWorktree()` (weft/cli.go:98) —
+  the host-baseDir-vs-weft split is unchanged; only its internal `config.Load`
+  call gains the template arg.** (The host `_lyx` junction makes this the same
+  physical file as the host baseDir that `update`/`init`/`config` use.)
+- **Error-ignoring consumer to fix:** `internal/ide/menu.go:39` does
+  `cfg, _ := board.LoadConfig(l.Cwd, "board")` and today relies on
+  `DefaultConfig()` populating `cfg` even on partial failure. Under strict Load a
+  missing-key/absent-file error returns a zero `Config{}` (empty `cfg.Path`), so
+  `b.HealthCheck()` would run against an empty board path. The plan must make this
+  call site **handle the error** (skip/flag the entry rather than HealthCheck an
+  empty path) instead of swallowing it.
 - **Templates to convert (commented Go string-builders → live embedded YAML):**
   - `internal/board/template.go` → keys `path`, `home`, `sidebar`,
     `proposal_prefix` with `${env:LYX_BOARD_PATH:-../_board}`,
@@ -266,6 +280,10 @@ What mill-plan needs to know:
   `registry` (`{name, Template func() string}` for board/worktree/weft) plus
   `templateFor` / `moduleNames`. `lyx config` dispatches at
   `baseDir = filepath.Join(l.WorktreeRoot, l.RelPath)`. `lyx update` reuses this.
+  Whether the registry entry stays `Template func() string` or becomes template
+  bytes, the change ripples into `configcli`'s `templateFor` / `editOne` and the
+  `config.Edit(baseDir, module, template, ...)` signature — these consumers must be
+  updated in lockstep with the chosen shape.
 - **board `--board-path` child:** `internal/board/cli.go:67-83` — the only
   `DefaultConfig()` production caller; `internal/board/sync.go` confirms `Sync`
   uses only `boardPath` (= `cfg.Path`).
@@ -374,3 +392,7 @@ essential and always-active.
 - **Q:** Hardcoded `_lyx`/config paths? **A:** Centralize in `internal/paths` (constant + helpers) and refactor all consumers, including paths.go's own literals.
 - **Q:** How does `lyx update` find weft's config given weft reads from the weft worktree? **A:** Use the host baseDir like `lyx config`; the host `_lyx` is a junction into the weft `_lyx`, so it's one physical file.
 - **Q:** Migration for existing commented-out config files? **A:** No special-casing — strict Load errors, `lyx update --apply` rewrites them to live templates (empty existing → all-added); no values lost.
+- **Q (review r1 gap):** What about `internal/ide/menu.go:39`'s error-ignoring `cfg, _ := board.LoadConfig(...)` under strict Load? **A:** Plan must make that call site handle the error (skip/flag the entry) rather than HealthCheck an empty `cfg.Path`.
+- **Q (review r1 gap):** Does `weft.LoadConfig`'s baseDir change? **A:** No — it keeps `weftBaseDir` from `WeftWorktree()`; only its internal `config.Load` call gains the template arg (host junction makes it the same physical file).
+- **Q (review r1 note):** Could an empty resolved value be treated as a missing key? **A:** No — the strict diff is presence-based on key-paths; an empty value (e.g. `branch_prefix`) counts as present.
+- **Q (review r1 note):** Registry template shape? **A:** `func() string` vs bytes ripples into `configcli` (`templateFor`/`editOne`/`config.Edit`); those must change in lockstep with the chosen shape.
