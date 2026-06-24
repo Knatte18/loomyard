@@ -48,5 +48,7 @@ batches:
     start_sha: 92ea05576d4a7dd1a17899f674d5d4d4a88a5487
     commit_sha: e33360d61d22eca0fe2b1ea41a1fb1f28df6c469
   - name: misc
-    state: pending
+    state: running
+    implementer_session: e5c5bf7f-cec0-42dc-aa7a-df8d4832f435
+    start_sha: 24ea20de7c5dadf76ffa91ebd1fb9ee3f20c2b3e
 ```
