@@ -41,8 +41,18 @@ no first step to stand up a real weft-backed hub for any host repo.
 - Strict pre-flight + failure handling: abort if the Hub dir already exists; on **any**
   clone failure (host, weft, **or board**) tear the Hub down and tell the user to retry.
 - Integration tests against local fixture remotes.
-- A one-line roadmap amendment clarifying that deterministic wiki-URL derivation is in
-  scope (distinct from the "heuristic inference" the out-of-scope bullet guards against).
+- **Durable-doc corrections** (the docs are stale; the landed decisions are canonical):
+  - `docs/roadmap.md` milestone 6 (line ~90): rewrite from "`ly-*` **skill** … wiring
+    host↔weft junctions … neighbors in an existing hub" to: a Go **`lyx git-clone`
+    subcommand** that creates a **fresh** Hub and clones host + weft + board, with **no**
+    junction wiring (activation is a separate step).
+  - `docs/roadmap.md` "Explicitly out of scope" bullet (line ~191): clarify that the
+    deterministic weft→wiki URL rewrite is **in** scope; only *heuristic* inference stays
+    out.
+  - `docs/overview.md` weft-overlay model: correct the **board location** — the Artifacts
+    table currently lists `_board/` under "Weft worktree", and the Topology omits it.
+    Change the table row to **Hub** and add `_board/` as a Hub child in the topology
+    diagram. Board has never been meant to live in the weft; it lives in the Hub.
 
 **Out:**
 
@@ -94,8 +104,11 @@ no first step to stand up a real weft-backed hub for any host repo.
   Prime = `<name>-weft`. Board = `_board`. `<name>` is the **host** repo's basename
   (last URL path segment, `.git` stripped).
 - Rationale: Uppercase `-HUB` makes it maximally visible in a file tree that the container
-  is a hub-variant of the repo named `<name>`, distinct from a plain clone. The `<name>` /
-  `<name>-weft` / `_board` children are exactly what `internal/paths` geometry expects.
+  is a hub-variant of the repo named `<name>`, distinct from a plain clone. The `<name>`
+  (host Prime) and `<name>-weft` children are exactly what `internal/paths` geometry expects
+  (`PrimeName` / `WeftRepoRoot`). `_board` is **not** a geometry-resolved path — there is no
+  `_board` accessor in `internal/paths`; it is a **top-level Hub convention** that
+  activation's `board.yaml` `path` later points at. This command merely places it there.
 - Rejected: lowercase `<name>-hub`; camel `<name>Hub` (proposal's `LyxTestHub`) — both less
   visually loud than the operator wanted.
 
@@ -142,6 +155,27 @@ no first step to stand up a real weft-backed hub for any host repo.
   after its first page is created in the GitHub UI; against a brand-new weft repo the
   derived wiki will 404 and — per the strict-abort rule — the whole command aborts. The
   operator must create/initialize the board first.
+
+### board-location-is-hub-top-level
+
+- Decision: The board repo is cloned to `<hub>/_board/` (top-level Hub child, sibling of the
+  host and weft Primes). It is **never** placed inside the weft worktree.
+- Rationale: Operator decision (Gap A) — the board has never been meant to live in the weft;
+  it lives in the Hub. A top-level `_board` is also cleaner for a no-activation hub-creator:
+  it avoids nesting a second git repo inside the weft worktree (which the weft repo would
+  then need a `.git/info/exclude` entry to ignore — and exclude wiring is activation, out of
+  scope here). The Hub root is not a git repo, so a sibling `_board` needs no exclusion.
+- Rejected: `<prime>-weft/_board/` (inside the weft worktree) — what `docs/overview.md`
+  currently says, but it is **stale/wrong**; this task corrects it (see Scope → durable-doc
+  corrections). The proposal's §Model diagram already shows `_board/` as a Hub child.
+
+### slug-is-historical-deliverable-is-lyx-subcommand
+
+- Decision: The task slug/title `ly-git-clone` is historical (it matches the original
+  "skill-first" plan, `ly-*` namespace). The actual deliverable is the **`lyx git-clone`
+  subcommand** — a `lyx` binary command, not a `/ly-*` Claude Code skill.
+- Rationale: Avoids confusion with the deferred milestone-19 Claude Code plugin/skill work.
+  Recorded here so the plan writer is not misled by the slug into producing a skill.
 
 ## Technical context
 
@@ -254,3 +288,9 @@ fixtures go under `.scratch/`, never a system temp dir.
   essential (lyx reads all tasks from it); a hub without a board is non-functional.
 - **Q:** Where does the skill/plugin live? **A:** Moot — no skill, no `plugins/ly/`; that's
   milestone 19.
+- **Q:** (review gap A) Board location — `<hub>/_board` vs `overview.md`'s "weft worktree"?
+  **A:** Hub, always — board is **never** in the weft and never was meant to be. `overview.md`
+  is stale and gets corrected by this task (artifacts table + topology).
+- **Q:** (review gap B) Is the Go-command/no-junction/fresh-hub stance a deviation from the
+  roadmap? **A:** No — the *roadmap* (milestone 6, line 90) is stale and gets updated to match
+  the landed decisions; our decisions are canonical.
