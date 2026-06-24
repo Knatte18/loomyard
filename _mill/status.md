@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-lyx-update-init
+phase: approved-docs
 slug: yamlengine
 branch: yamlengine
 plan: _mill/plan
@@ -31,6 +31,7 @@ approved-templates-live-yaml  '2026-06-24T08:46:41Z'
 approved-envsource  '2026-06-24T08:50:16Z'
 approved-config-engine-integration  '2026-06-24T09:07:55Z'
 approved-lyx-update-init  '2026-06-24T09:19:57Z'
+approved-docs  '2026-06-24T09:25:15Z'
 ```
 
 ## Batches
@@ -68,7 +69,8 @@ batches:
     start_sha: d2d36b21ce496c5490ef0976a4c15c90ec315fcc
     commit_sha: 6a1d48189b677c109648d7339e327fc7d18e99d6
   - name: docs
-    state: running
+    state: approved
     implementer_session: b64970f9-e1e3-4687-8de2-18b04e96d8e3
     start_sha: 09e74d4ac2912e9209b3b961d2a53928c22b5cbf
+    commit_sha: 3108b992514394b5936ff386b7a9623c3840eea0
 ```
