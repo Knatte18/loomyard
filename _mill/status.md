@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: weft-orphan-branches
 branch: weft-orphan-branches
-plan: null
+plan: _mill/plan
 parent: main
 task: Ensure weft branches are orphan branches
 task_description: |
@@ -17,4 +17,5 @@ task_description: |
 discussing  '2026-06-24T12:25:33Z'
 discussion-fix-r2  '2026-06-24T12:59:27Z'
 discussed  '2026-06-24T12:59:44Z'
+planning  '2026-06-24T16:10:27Z'
 ```
