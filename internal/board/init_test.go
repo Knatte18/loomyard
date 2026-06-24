@@ -2,6 +2,8 @@
 //
 // Covers: creating _lyx/config/board.yaml and .gitignore managed block,
 // idempotency (re-run doesn't clobber or duplicate), and JSON output shape.
+// Templates are no longer commented out, so this test verifies the YAML
+// structure rather than comment-line assertions.
 
 package board_test
 
@@ -75,17 +77,6 @@ func TestInitFirstRun(t *testing.T) {
 			t.Errorf("board.yaml content = %q; want %q", string(content), board.ConfigTemplate())
 		}
 
-		lines := strings.Split(string(content), "\n")
-		for _, line := range lines {
-			trimmed := strings.TrimSpace(line)
-			if trimmed == "" {
-				continue
-			}
-			if !strings.HasPrefix(trimmed, "#") {
-				t.Errorf("expected all non-blank lines to start with #, found: %s", line)
-			}
-		}
-
 		// Verify worktree.yaml exists in _lyx/config/ and is fully commented
 		worktreeYamlPath := filepath.Join(configDir, "worktree.yaml")
 		worktreeContent, err := os.ReadFile(worktreeYamlPath)
@@ -96,17 +87,6 @@ func TestInitFirstRun(t *testing.T) {
 		// Assert written bytes equal worktree.ConfigTemplate()
 		if string(worktreeContent) != worktree.ConfigTemplate() {
 			t.Errorf("worktree.yaml content = %q; want %q", string(worktreeContent), worktree.ConfigTemplate())
-		}
-
-		lines = strings.Split(string(worktreeContent), "\n")
-		for _, line := range lines {
-			trimmed := strings.TrimSpace(line)
-			if trimmed == "" {
-				continue
-			}
-			if !strings.HasPrefix(trimmed, "#") {
-				t.Errorf("expected all non-blank lines to start with #, found: %s", line)
-			}
 		}
 	})
 
