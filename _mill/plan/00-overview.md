@@ -106,7 +106,6 @@ batches:
 - `internal/board/cli.go`
 - `internal/board/config.go`
 - `internal/board/config_test.go`
-- `internal/board/init.go`
 - `internal/board/init_test.go`
 - `internal/board/render_test.go`
 - `internal/board/template.go`
@@ -115,6 +114,7 @@ batches:
 - `internal/config/config.go`
 - `internal/config/config_test.go`
 - `internal/config/edit.go`
+- `internal/config/edit_test.go`
 - `internal/configcli/configcli.go`
 - `internal/configcli/configcli_test.go`
 - `internal/configcli/menu.go`
@@ -125,6 +125,7 @@ batches:
 - `internal/envsource/envsource.go`
 - `internal/envsource/envsource_test.go`
 - `internal/ide/menu.go`
+- `internal/ide/menu_test.go`
 - `internal/initcli/initcli.go`
 - `internal/initcli/initcli_test.go`
 - `internal/paths/paths.go`
