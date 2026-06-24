@@ -133,6 +133,9 @@ func (w *Worktree) Add(l *paths.Layout, slug string, opts AddOptions) (AddResult
 	// (6b) Resolve parent host branch; abort if detached/unborn
 	// This must run BEFORE host worktree creation to avoid partial state.
 	stdout, _, exitCode, err = git.RunGit([]string{"rev-parse", "--abbrev-ref", "HEAD"}, l.WorktreeRoot)
+	if err != nil {
+		return AddResult{}, fmt.Errorf("rev-parse abbrev-ref HEAD: %w", err)
+	}
 	if exitCode != 0 || strings.TrimSpace(stdout) == "HEAD" {
 		return AddResult{}, fmt.Errorf("cannot spawn weft branch: host worktree is on a detached HEAD or unborn branch")
 	}
