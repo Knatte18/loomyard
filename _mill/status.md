@@ -34,5 +34,7 @@ batches:
     start_sha: 81bc407da4944a9c8919a16d8720cd4739edd627
     commit_sha: bf4420d3d70860dd9a1ca5377f5ff723249d7cce
   - name: durable-docs
-    state: pending
+    state: running
+    implementer_session: 8914ada9-dc8a-4d50-b17f-ce003587a47c
+    start_sha: 97f859ab9f0d9e0ae953c37b3374ccc16a1e3343
 ```
