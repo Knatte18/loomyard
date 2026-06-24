@@ -10,6 +10,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/config"
@@ -280,7 +281,7 @@ func TestEdit_NotInitialized(t *testing.T) {
 		t.Errorf("Edit() returned ErrAborted; want FindBaseDir not-initialized error")
 	}
 
-	if !stringContains(err.Error(), "not initialized") {
+	if !strings.Contains(err.Error(), "not initialized") {
 		t.Errorf("Edit() error = %v; want error containing 'not initialized'", err)
 	}
 }

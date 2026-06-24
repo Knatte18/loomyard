@@ -257,7 +257,7 @@ func TestRenderStatusVariants(t *testing.T) {
 				Status: &s,
 			}
 
-			result, err := board.Render([]board.Task{task}, board.DefaultOutputs())
+			result, err := board.Render([]board.Task{task}, board.Outputs{Home: "Home.md", Sidebar: "_Sidebar.md", ProposalPrefix: "proposal-"})
 			if err != nil {
 				t.Fatalf("Render failed: %v", err)
 			}
@@ -376,7 +376,7 @@ func TestRenderSidebarExtendedTitle(t *testing.T) {
 
 	// Test single task extended title
 	t.Run(tests[0].name, func(t *testing.T) {
-		result, err := board.Render([]board.Task{tests[0].task}, board.DefaultOutputs())
+		result, err := board.Render([]board.Task{tests[0].task}, board.Outputs{Home: "Home.md", Sidebar: "_Sidebar.md", ProposalPrefix: "proposal-"})
 		if err != nil {
 			t.Fatalf("Render failed: %v", err)
 		}
@@ -393,7 +393,7 @@ func TestRenderSidebarExtendedTitle(t *testing.T) {
 		doneStatus := "done"
 		taskDone := board.Task{ID: 2, Slug: "task-done", Title: "Done Task", Status: &doneStatus}
 
-		result, err := board.Render([]board.Task{taskA, taskDone}, board.DefaultOutputs())
+		result, err := board.Render([]board.Task{taskA, taskDone}, board.Outputs{Home: "Home.md", Sidebar: "_Sidebar.md", ProposalPrefix: "proposal-"})
 		if err != nil {
 			t.Fatalf("Render failed: %v", err)
 		}
