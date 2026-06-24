@@ -1,3 +1,0 @@
-- writeOp comment references the removed env seam: **Location:** `internal/board/board.go:43`
-- add_test.go package comment refers to CopyPaired after migration: **Location:** `internal/worktree/add_test.go:6-7`
-- remove_test.go stale comment references CopyPaired: **Location:** `internal/worktree/remove_test.go:127`
