@@ -50,8 +50,9 @@ type AddResult struct {
 //  4. Target path: sibling directory named slug; must not exist.
 //  5. Remote check: must have at least one remote configured.
 //  6. Weft prechecks: weft repo must exist; weft worktree and branch must not exist yet.
+//  6b. Resolve parent host branch: capture host HEAD as branch name; abort if detached/unborn.
 //  7. Create: git worktree add -b <branch> <target> in host repo.
-//  8. Create weft worktree with mirrored branch.
+//  8. Create weft worktree with mirrored branch, forking from parent weft branch start-point.
 //  9. Seed host _lyx junction pointing to weft _lyx (also enforces pristine host).
 //
 // 10. Seed host git exclude to skip _lyx.
@@ -129,6 +130,14 @@ func (w *Worktree) Add(l *paths.Layout, slug string, opts AddOptions) (AddResult
 		return AddResult{}, fmt.Errorf("weft branch %q already exists", branch)
 	}
 
+	// (6b) Resolve parent host branch; abort if detached/unborn
+	// This must run BEFORE host worktree creation to avoid partial state.
+	stdout, _, exitCode, err = git.RunGit([]string{"rev-parse", "--abbrev-ref", "HEAD"}, l.WorktreeRoot)
+	if exitCode != 0 || strings.TrimSpace(stdout) == "HEAD" {
+		return AddResult{}, fmt.Errorf("cannot spawn weft branch: host worktree is on a detached HEAD or unborn branch")
+	}
+	parentBranch := strings.TrimSpace(stdout)
+
 	// (7) Create host worktree
 	_, stderr, exitCode, err = git.RunGit([]string{"worktree", "add", "-b", branch, target}, l.WorktreeRoot)
 	if err != nil {
@@ -138,8 +147,8 @@ func (w *Worktree) Add(l *paths.Layout, slug string, opts AddOptions) (AddResult
 		return AddResult{}, fmt.Errorf("worktree add failed: %s", stderr)
 	}
 
-	// (8) Create weft worktree
-	if err := createWeftWorktree(l, slug, branch); err != nil {
+	// (8) Create weft worktree with mirrored branch forking from parent weft branch
+	if err := createWeftWorktree(l, slug, branch, parentBranch); err != nil {
 		w.rollbackAdd(l, slug, branch, target)
 		return AddResult{}, err
 	}
