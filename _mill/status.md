@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-templates-live-yaml
+phase: approved-envsource
 slug: yamlengine
 branch: yamlengine
 plan: _mill/plan
@@ -28,6 +28,7 @@ implementing  '2026-06-24T08:27:19Z'
 approved-yamlengine-engine  '2026-06-24T08:37:03Z'
 approved-paths-config-helpers  '2026-06-24T08:41:24Z'
 approved-templates-live-yaml  '2026-06-24T08:46:41Z'
+approved-envsource  '2026-06-24T08:50:16Z'
 ```
 
 ## Batches
@@ -50,9 +51,10 @@ batches:
     start_sha: baa543e3a880fe02b45264b1f6e123993ffa89ac
     commit_sha: 71b194c6e7b6950397863af20df89c886a45b153
   - name: envsource
-    state: running
+    state: approved
     implementer_session: b2e4c49f-84f6-44f5-9b0e-36d502d21da6
     start_sha: 51972a005722ac0ba56bffb46841fa27d21fd5b8
+    commit_sha: 0a44f93cdaea2f3380ca374b37a949d8e031c6c8
   - name: config-engine-integration
     state: pending
   - name: lyx-update-init
