@@ -284,3 +284,33 @@ func (l *Layout) HostLyxLink(slug string) string {
 func (l *Layout) HostLyxLinkHere() string {
 	return filepath.Join(l.WorktreeRoot, l.RelPath, "_lyx")
 }
+
+// HostJunction represents a directory junction in the host worktree that links to a weft directory.
+//
+// It carries three fields because the two seeding operations (junction creation and
+// git-exclude entry) consume different ones:
+//   - Link: used by junction creation (fslink.CreateDirLink)
+//   - Target: used by junction creation (fslink.CreateDirLink)
+//   - Name: used by git-exclude seeding
+type HostJunction struct {
+	Name   string // Name is the directory name (e.g., "_lyx")
+	Link   string // Link is the host-side path to the junction
+	Target string // Target is the weft-side path the junction points to
+}
+
+// HostJunctions returns the list of host junctions for a given slug.
+//
+// Currently, this returns a single-element slice containing the _lyx junction.
+// The junction record carries Name, Link, and Target fields for use by the
+// seeders in internal/worktree.
+//
+// Returns a slice with exactly one entry: {Name: "_lyx", Link: HostLyxLink(slug), Target: WeftLyxDirFor(slug)}.
+func (l *Layout) HostJunctions(slug string) []HostJunction {
+	return []HostJunction{
+		{
+			Name:   "_lyx",
+			Link:   l.HostLyxLink(slug),
+			Target: l.WeftLyxDirFor(slug),
+		},
+	}
+}

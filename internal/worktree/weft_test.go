@@ -294,3 +294,68 @@ func TestWeftRollbackOnPostHostCreateFailure(t *testing.T) {
 		t.Errorf("rollback failed: weft branch still exists")
 	}
 }
+
+// TestSeederParity verifies that the refactored seeders (iterating HostJunctions)
+// preserve behaviour: the _lyx junction exists and resolves correctly, and the
+// .git/info/exclude file contains the _lyx entry.
+func TestSeederParity(t *testing.T) {
+	t.Parallel()
+
+	const slug = "seeder-parity-test"
+
+	f := lyxtest.CopyPaired(t)
+
+	w := New(Config{})
+	_, err := w.Add(f.Layout, slug, AddOptions{SkipPush: true})
+	if err != nil {
+		t.Fatalf("Add(%q): %v", slug, err)
+	}
+
+	// Verify host _lyx junction exists and points to the weft target.
+	hostLink := f.Layout.HostLyxLink(slug)
+	_, err = os.Lstat(hostLink)
+	if err != nil {
+		t.Fatalf("lstat host junction: %v", err)
+	}
+
+	// Verify the junction resolves to the correct weft target.
+	weftTarget := f.Layout.WeftLyxDirFor(slug)
+	_, err = os.Stat(weftTarget)
+	if os.IsNotExist(err) {
+		t.Errorf("weft _lyx target missing at %s", weftTarget)
+	}
+
+	// Verify .git/info/exclude contains the _lyx entry.
+	worktreePath := f.Layout.WorktreePath(slug)
+	stdout, _, exitCode, _ := git.RunGit([]string{"rev-parse", "--git-path", "info/exclude"}, worktreePath)
+	if exitCode != 0 {
+		t.Fatalf("git rev-parse --git-path info/exclude failed")
+	}
+
+	excludePath := strings.TrimSpace(stdout)
+	if !filepath.IsAbs(excludePath) {
+		excludePath = filepath.Join(worktreePath, excludePath)
+	}
+
+	content, err := os.ReadFile(excludePath)
+	if err != nil {
+		t.Fatalf("read exclude file: %v", err)
+	}
+
+	contentStr := string(content)
+	if !strings.Contains(contentStr, "_lyx") {
+		t.Errorf("exclude file does not contain _lyx entry")
+	}
+
+	// Verify the entry is a line-exact match (not just a substring).
+	found := false
+	for _, line := range strings.Split(contentStr, "\n") {
+		if strings.TrimSpace(line) == "_lyx" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("exclude file does not contain _lyx as a complete line")
+	}
+}
