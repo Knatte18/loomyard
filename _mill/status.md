@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-worktree-fix
 slug: fix-worktree-runcli-test
 branch: fix-worktree-runcli-test
 plan: _mill/plan
@@ -23,6 +23,7 @@ plan-fix-r1  '2026-06-24T16:59:06Z'
 plan-fix-r2  '2026-06-24T17:02:35Z'
 planned  '2026-06-24T17:02:48Z'
 implementing  '2026-06-24T17:05:04Z'
+approved-worktree-fix  '2026-06-24T17:09:15Z'
 ```
 
 ## Batches
@@ -30,9 +31,10 @@ implementing  '2026-06-24T17:05:04Z'
 ```yaml
 batches:
   - name: worktree-fix
-    state: running
+    state: approved
     implementer_session: 9ed07ad7-ad8b-47f3-9150-205be9ac9f07
     start_sha: 9bb300d59419f7914c8076defacee5250bc7484b
+    commit_sha: 3e1bffff051788a3c7b79e34266327af2ef7284d
   - name: config-family
     state: pending
   - name: board
