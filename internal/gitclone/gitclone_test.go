@@ -33,6 +33,11 @@ func TestDeriveHostName(t *testing.T) {
 			want: "repo",
 		},
 		{
+			name: "Windows file path",
+			url:  "C:\\path\\to\\repo.git",
+			want: "repo",
+		},
+		{
 			name: "empty string",
 			url:  "",
 			want: "",

@@ -9,17 +9,16 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/git"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 	"github.com/Knatte18/loomyard/internal/paths"
 )
 
 // makeBareRemote creates a bare git repository with a single commit on the main branch.
 //
-// It initializes a bare repo at <dir>/<name>.git, then seeds it by cloning into a temporary
-// working directory, committing a README, and pushing back to the bare repo. This ensures
-// the bare repo has a main branch with at least one commit, so a later clone will check out
-// a branch (not detached HEAD).
+// It initializes a bare repo at <dir>/<name>.git, then seeds it by initializing a working
+// repository, creating and committing a README, and pushing back to the bare repo.
+// This ensures the bare repo has a main branch with at least one commit, so a later clone
+// will check out a branch (not detached HEAD).
 //
 // Returns the path to the bare repository.
 func makeBareRemote(t *testing.T, dir, name string) string {
@@ -33,13 +32,22 @@ func makeBareRemote(t *testing.T, dir, name string) string {
 	// Initialize bare repo
 	lyxtest.MustRun(t, bare, "git", "init", "--bare")
 
-	// Clone into a working directory to seed it
+	// Create a working directory to seed the bare repo
 	tempWork := filepath.Join(dir, "temp-work-"+name)
-	lyxtest.MustRun(t, dir, "git", "clone", bare, tempWork)
+	if err := os.Mkdir(tempWork, 0o755); err != nil {
+		t.Fatalf("mkdir temp work: %v", err)
+	}
 
-	// Configure git user for the clone
+	// Initialize git repo in working directory
+	lyxtest.MustRun(t, tempWork, "git", "init", "-b", "main")
+
+	// Configure git user for this repo
 	lyxtest.MustRun(t, tempWork, "git", "config", "user.email", "test@test.com")
 	lyxtest.MustRun(t, tempWork, "git", "config", "user.name", "Test")
+
+	// Add bare as origin; use forward slashes for git compatibility on Windows
+	bareURL := filepath.ToSlash(bare)
+	lyxtest.MustRun(t, tempWork, "git", "remote", "add", "origin", bareURL)
 
 	// Create and commit a README
 	readmePath := filepath.Join(tempWork, "README.md")
@@ -67,7 +75,7 @@ func TestCloneHub_HappyPath(t *testing.T) {
 	weftBare := makeBareRemote(t, cwd, "myrepo-weft")
 
 	// Create the derived board bare (weft.wiki)
-	boardBare := makeBareRemote(t, cwd, "myrepo-weft.wiki")
+	_ = makeBareRemote(t, cwd, "myrepo-weft.wiki")
 
 	// Clone the hub
 	hubPath, err := cloneHub(cwd, hostBare, weftBare, "")
@@ -112,7 +120,7 @@ func TestCloneHub_GeometryRoundTrip(t *testing.T) {
 	// Create bare remotes
 	hostBare := makeBareRemote(t, cwd, "myrepo")
 	weftBare := makeBareRemote(t, cwd, "myrepo-weft")
-	boardBare := makeBareRemote(t, cwd, "myrepo-weft.wiki")
+	_ = makeBareRemote(t, cwd, "myrepo-weft.wiki")
 
 	// Clone the hub
 	hubPath, err := cloneHub(cwd, hostBare, weftBare, "")
@@ -149,6 +157,7 @@ func TestCloneHub_ExplicitBoardURL(t *testing.T) {
 	weftBare := makeBareRemote(t, cwd, "myrepo-weft")
 
 	// Create an explicit board bare (different name to verify it's used)
+	_ = makeBareRemote(t, cwd, "myrepo-weft.wiki") // Create the default board URL so derivation would work
 	explicitBoardBare := makeBareRemote(t, cwd, "myboard")
 
 	// Clone with explicit board URL
@@ -188,7 +197,7 @@ func TestCloneHub_AbortIfExists(t *testing.T) {
 	// Create bare remotes
 	hostBare := makeBareRemote(t, cwd, "myrepo")
 	weftBare := makeBareRemote(t, cwd, "myrepo-weft")
-	boardBare := makeBareRemote(t, cwd, "myrepo-weft.wiki")
+	_ = makeBareRemote(t, cwd, "myrepo-weft.wiki")
 
 	// Try to clone (should fail)
 	_, err := cloneHub(cwd, hostBare, weftBare, "")
@@ -216,7 +225,7 @@ func TestCloneHub_StrictAbort(t *testing.T) {
 
 		// Valid weft and board
 		weftBare := makeBareRemote(t, cwd, "myrepo-weft")
-		boardBare := makeBareRemote(t, cwd, "myrepo-weft.wiki")
+		_ = makeBareRemote(t, cwd, "myrepo-weft.wiki")
 
 		// Clone should fail
 		hubPath, err := cloneHub(cwd, nonExistentHost, weftBare, "")
@@ -239,7 +248,7 @@ func TestCloneHub_StrictAbort(t *testing.T) {
 		// Non-existent weft bare
 		nonExistentWeft := filepath.Join(cwd, "nonexistent-weft.git")
 
-		boardBare := makeBareRemote(t, cwd, "myrepo-weft.wiki")
+		_ = makeBareRemote(t, cwd, "myrepo-weft.wiki")
 
 		// Clone should fail
 		hubPath, err := cloneHub(cwd, hostBare, nonExistentWeft, "")
@@ -260,7 +269,7 @@ func TestCloneHub_StrictAbort(t *testing.T) {
 		hostBare := makeBareRemote(t, cwd, "myrepo")
 		weftBare := makeBareRemote(t, cwd, "myrepo-weft")
 
-		// Non-existent board bare
+		// Non-existent board bare; do not create the default board URL so cloning fails
 		nonExistentBoard := filepath.Join(cwd, "nonexistent-board.git")
 
 		// Clone should fail
@@ -287,9 +296,14 @@ func TestCloneHub_TeardownFailure(t *testing.T) {
 
 	// Override removeAll to return an error
 	oldRemoveAll := removeAll
+	failureCount := 0
 	removeAll = func(path string) error {
-		removeAll = oldRemoveAll // Restore for cleanup
-		return os.ErrPermission
+		failureCount++
+		// First call fails, subsequent calls succeed (for cleanup)
+		if failureCount == 1 {
+			return os.ErrPermission
+		}
+		return oldRemoveAll(path)
 	}
 	t.Cleanup(func() {
 		removeAll = oldRemoveAll
@@ -307,11 +321,16 @@ func TestCloneHub_TeardownFailure(t *testing.T) {
 		t.Fatalf("error should not be empty")
 	}
 
+	// Check that removeAll was called
+	if failureCount == 0 {
+		t.Fatalf("removeAll should have been called")
+	}
+
 	// The hub directory should still exist since removal failed
-	if _, err := os.Stat(hubPath); err != nil {
+	if _, statErr := os.Stat(hubPath); statErr != nil {
 		t.Fatalf("hub directory should still exist after failed removal")
 	}
 
-	// Clean up the residual hub
+	// Clean up the residual hub (this will succeed because failureCount >= 2)
 	removeAll(hubPath)
 }
