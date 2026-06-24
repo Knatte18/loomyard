@@ -33,6 +33,9 @@ var removeAll = os.RemoveAll
 // If any clone fails, teardownHub removes the entire Hub directory; if removal also fails,
 // the error mentions both the clone failure and the residual Hub path.
 func cloneHub(cwd, hostURL, weftURL, boardURL string) (hubPath string, err error) {
+	// Normalize cwd to an absolute path
+	cwd = filepath.Clean(cwd)
+
 	// Step 1: Derive host repo name
 	name := deriveHostName(hostURL)
 	if name == "" {
@@ -54,12 +57,12 @@ func cloneHub(cwd, hostURL, weftURL, boardURL string) (hubPath string, err error
 
 	// Step 5: Clone host repo
 	if err := cloneRepo(hostURL, filepath.Join(hubPath, name)); err != nil {
-		return "", teardownHub(hubPath, err)
+		return hubPath, teardownHub(hubPath, err)
 	}
 
 	// Step 6: Clone weft repo
 	if err := cloneRepo(weftURL, filepath.Join(hubPath, name+weftSuffix)); err != nil {
-		return "", teardownHub(hubPath, err)
+		return hubPath, teardownHub(hubPath, err)
 	}
 
 	// Step 7: Resolve board URL
@@ -70,7 +73,7 @@ func cloneHub(cwd, hostURL, weftURL, boardURL string) (hubPath string, err error
 
 	// Step 8: Clone board repo
 	if err := cloneRepo(board, filepath.Join(hubPath, boardDirName)); err != nil {
-		return "", teardownHub(hubPath, err)
+		return hubPath, teardownHub(hubPath, err)
 	}
 
 	// Step 9: Success
@@ -80,13 +83,26 @@ func cloneHub(cwd, hostURL, weftURL, boardURL string) (hubPath string, err error
 // cloneRepo clones a repository from url to dest.
 //
 // The clone is executed via git.RunGit with the parent directory of dest as the cwd,
-// so dest is created as a subdirectory of its parent. Non-zero git exit returns an error
-// wrapping the stderr output.
+// and the basename of dest as the destination argument. Paths are cleaned and normalized.
+// Non-zero git exit returns an error wrapping the stderr output.
 func cloneRepo(url, dest string) error {
-	// Use the parent directory as the cwd so clone creates dest as a subdirectory
+	// Clean and normalize paths
+	dest = filepath.Clean(dest)
 	parentDir := filepath.Dir(dest)
+	parentDir = filepath.Clean(parentDir)
+	destName := filepath.Base(dest)
 
-	stdout, stderr, exitCode, err := git.RunGit([]string{"clone", url, dest}, parentDir)
+	// Verify the parent directory exists
+	info, err := os.Stat(parentDir)
+	if err != nil || !info.IsDir() {
+		return fmt.Errorf("parent directory does not exist: %w", err)
+	}
+
+	// Convert paths to use forward slashes for git compatibility on Windows
+	gitURL := filepath.ToSlash(url)
+	gitDest := filepath.ToSlash(destName)
+
+	stdout, stderr, exitCode, err := git.RunGit([]string{"clone", gitURL, gitDest}, parentDir)
 	if err != nil {
 		return fmt.Errorf("clone failed: %w", err)
 	}

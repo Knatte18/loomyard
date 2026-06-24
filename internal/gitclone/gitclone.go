@@ -6,7 +6,6 @@
 package gitclone
 
 import (
-	"path/filepath"
 	"strings"
 )
 
@@ -21,10 +20,11 @@ const (
 	boardDirName = "_board"
 )
 
-// deriveHostName extracts the host repository basename from a raw URL.
+// deriveHostName extracts the host repository basename from a raw URL or file path.
 //
-// It trims any trailing slash, then takes the final path segment of rawURL after splitting
-// on both forward slash and colon (for SCP-form URLs like git@github.com:user/repo.git).
+// It trims any trailing slash or backslash, then takes the final path segment of rawURL
+// after splitting on forward slash, backslash, and colon (for HTTPS URLs, file paths,
+// and SCP-form URLs like git@github.com:user/repo.git).
 // A single trailing .git extension is stripped if present. Returns an empty string if no
 // basename can be extracted or if the URL contains no path segments.
 //
@@ -33,14 +33,16 @@ const (
 //   - "https://github.com/u/repo" → "repo"
 //   - "git@github.com:u/repo.git" → "repo"
 //   - "https://github.com/u/repo/" → "repo"
+//   - "C:\path\to\repo.git" → "repo"
 //   - "" → ""
 func deriveHostName(rawURL string) string {
-	// Trim trailing slash
+	// Trim trailing slashes (both forward and back)
 	rawURL = strings.TrimSuffix(rawURL, "/")
+	rawURL = strings.TrimSuffix(rawURL, "\\")
 
-	// Split on both / and : to handle both HTTPS and SCP forms
+	// Split on forward slash, backslash, and colon to handle HTTPS, file paths, and SCP forms
 	var parts []string
-	for _, seg := range strings.FieldsFunc(rawURL, func(r rune) bool { return r == '/' || r == ':' }) {
+	for _, seg := range strings.FieldsFunc(rawURL, func(r rune) bool { return r == '/' || r == '\\' || r == ':' }) {
 		if seg != "" {
 			parts = append(parts, seg)
 		}
