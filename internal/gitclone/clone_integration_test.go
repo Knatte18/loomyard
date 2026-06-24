@@ -7,6 +7,7 @@ package gitclone
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lyxtest"
@@ -319,6 +320,9 @@ func TestCloneHub_TeardownFailure(t *testing.T) {
 	errMsg := err.Error()
 	if errMsg == "" {
 		t.Fatalf("error should not be empty")
+	}
+	if !strings.Contains(errMsg, hubPath) {
+		t.Errorf("error message should contain residual hub path: got %q, want to contain %q", errMsg, hubPath)
 	}
 
 	// Check that removeAll was called
