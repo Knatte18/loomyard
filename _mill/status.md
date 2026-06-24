@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-envsource
+phase: approved-config-engine-integration
 slug: yamlengine
 branch: yamlengine
 plan: _mill/plan
@@ -29,6 +29,7 @@ approved-yamlengine-engine  '2026-06-24T08:37:03Z'
 approved-paths-config-helpers  '2026-06-24T08:41:24Z'
 approved-templates-live-yaml  '2026-06-24T08:46:41Z'
 approved-envsource  '2026-06-24T08:50:16Z'
+approved-config-engine-integration  '2026-06-24T09:07:55Z'
 ```
 
 ## Batches
@@ -56,9 +57,10 @@ batches:
     start_sha: 51972a005722ac0ba56bffb46841fa27d21fd5b8
     commit_sha: 0a44f93cdaea2f3380ca374b37a949d8e031c6c8
   - name: config-engine-integration
-    state: running
+    state: approved
     implementer_session: a796454b-a127-4218-b832-0fea9988817d
     start_sha: a6c1fe445cc615ea74020fd5269ce7689acaa96e
+    commit_sha: 54ec497fbc367803fbf4d9dbd34425730d461aba
   - name: lyx-update-init
     state: pending
   - name: docs
