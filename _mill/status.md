@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-yamlengine-engine
+phase: approved-paths-config-helpers
 slug: yamlengine
 branch: yamlengine
 plan: _mill/plan
@@ -26,6 +26,7 @@ plan-fix-r3  '2026-06-24T08:25:43Z'
 planned  '2026-06-24T08:26:15Z'
 implementing  '2026-06-24T08:27:19Z'
 approved-yamlengine-engine  '2026-06-24T08:37:03Z'
+approved-paths-config-helpers  '2026-06-24T08:41:24Z'
 ```
 
 ## Batches
@@ -38,9 +39,10 @@ batches:
     start_sha: 6a9e444729cde64f8917eab9e8caa03000524058
     commit_sha: 5b77df61b6a841cc78589998d5eb2d6bb907a5f9
   - name: paths-config-helpers
-    state: running
+    state: approved
     implementer_session: e04cff45-dcbe-4eb6-9fd9-4aad7d5c61b8
     start_sha: 0524440eb167e7dcde95d257879ce402a0b3bc21
+    commit_sha: 1d1286589184c28e4ada21f97c979865f4a6e144
   - name: templates-live-yaml
     state: pending
   - name: envsource
