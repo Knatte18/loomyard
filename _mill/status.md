@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-approved
+phase: done
 slug: ly-git-clone
 branch: ly-git-clone
 plan: _mill/plan
@@ -28,6 +28,7 @@ holistic-fixing  '2026-06-24T16:58:50Z'
 holistic-reviewing  '2026-06-24T17:03:42Z'
 holistic-fixing  '2026-06-24T17:06:30Z'
 holistic-approved  '2026-06-24T17:12:15Z'
+done  '2026-06-24T17:13:00Z'
 ```
 
 ## Batches
