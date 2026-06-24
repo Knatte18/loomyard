@@ -38,9 +38,10 @@ teardown-failure test force a removal error.
   `<cwd>/<name>-HUB/`, deterministic, with no junctions and no lyx activation (a dormant
   hub). Define unexported constants `hubSuffix = "-HUB"`, `weftSuffix = "-weft"`,
   `boardDirName = "_board"`. Implement `func deriveHostName(rawURL string) string`: return
-  the host repo basename — the final path segment of `rawURL`, splitting on both `/` and `:`
-  so the SCP form `git@github.com:user/repo.git` works, with a single trailing `.git`
-  stripped; return `""` when no basename can be extracted. Implement
+  the host repo basename — first trim any trailing `/`, then take the final path segment of
+  `rawURL`, splitting on both `/` and `:` so the SCP form `git@github.com:user/repo.git`
+  works, with a single trailing `.git` stripped; return `""` when no basename can be
+  extracted. Implement
   `func deriveBoardURL(weftURL string) string`: strip a single trailing `.git` from `weftURL`
   if present, then append `.wiki.git` (so both `…/weft.git` and `…/weft` yield
   `…/weft.wiki.git`). Godoc each function per the golang-comments conventions.
@@ -56,7 +57,8 @@ teardown-failure test force a removal error.
 - **Deletes:** none
 - **Requirements:** Same-package (`package gitclone`) table-driven tests. `TestDeriveHostName`
   covers `https://github.com/u/repo.git`→`repo`, `https://github.com/u/repo`→`repo`,
-  `git@github.com:u/repo.git`→`repo`, and an empty/garbage input → `""`. `TestDeriveBoardURL`
+  `git@github.com:u/repo.git`→`repo`, `https://github.com/u/repo/`→`repo` (trailing slash
+  trimmed), and an empty/garbage input → `""`. `TestDeriveBoardURL`
   covers `https://github.com/u/weft.git`→`https://github.com/u/weft.wiki.git` and
   `https://github.com/u/weft`→`https://github.com/u/weft.wiki.git`. Use the `tt`/`t.Run`
   pattern and the `Func(input) = got; want want` error message format.
@@ -77,14 +79,15 @@ teardown-failure test force a removal error.
   (1) `name := deriveHostName(hostURL)`; if `""` return an error "could not derive repo name
   from host URL <hostURL>". (2) `hubPath := filepath.Join(cwd, name+hubSuffix)`. (3) if
   `os.Stat(hubPath)` succeeds, return an error "hub already exists at <hubPath>" **without**
-  removing it (we did not create it). (4) `os.MkdirAll(hubPath, 0o755)`. (5) clone host to
+  removing it (we did not create it). (4) `os.MkdirAll(hubPath, 0o755)`; if it fails, return
+  the wrapped error directly (no teardown — no clone has run yet). (5) clone host to
   `filepath.Join(hubPath, name)`; on failure call the teardown helper and return. (6) clone
   weft to `filepath.Join(hubPath, name+weftSuffix)`; on failure teardown and return. (7)
   resolve board URL: `board := boardURL`; if `board == ""` then `board = deriveBoardURL(weftURL)`;
   clone board to `filepath.Join(hubPath, boardDirName)`; on failure teardown and return. (8)
-  return `hubPath, nil`. Add `func cloneRepo(url, dest, runFromDir string) error` wrapping
-  `git.RunGit([]string{"clone", url, dest}, runFromDir)` — non-zero exit returns an error
-  carrying stderr. Add `func teardownHub(hubPath string, cause error) error`: call
+  return `hubPath, nil`. Add `func cloneRepo(url, dest string) error` wrapping
+  `git.RunGit([]string{"clone", url, dest}, filepath.Dir(dest))` — `dest` is absolute so the
+  clone cwd is just its parent Hub dir; non-zero exit returns an error carrying stderr. Add `func teardownHub(hubPath string, cause error) error`: call
   `removeAll(hubPath)`; if it fails, return an error combining `cause` with "residual hub
   left at <hubPath>; remove it manually before retrying"; otherwise return `cause` unchanged.
   All git goes through `git.RunGit`; no raw `exec`; no `os.Getwd` (cwd is a parameter).

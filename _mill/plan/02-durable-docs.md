@@ -52,7 +52,12 @@ correctness is the plan-reviewer's and holistic reviewer's concern.
   "Artifacts location" table so its Location column reads **Hub** (was "Weft worktree"); the
   Repo column stays "Board". In the "Topology" diagram, add `_board/` as a Hub child sibling of
   `<prime>/` and `<prime>-weft/` (e.g. a line `├── _board/   (board repo; the task store)`),
-  so the diagram and table agree that the board lives at the Hub top level.
+  so the diagram and table agree that the board lives at the Hub top level. Also add the new
+  subcommand wherever `docs/overview.md` enumerates the `lyx` subcommand surface — the
+  "Module dispatch" switch snippet and any Modules list — so `git-clone` is listed alongside
+  `init`/`board`/`config`/`update`/`ide`/`worktree`/`weft` (mirrors the `main.go` package-doc
+  update in Card 6). If `docs/overview.md` contains no such dispatch enumeration, skip this
+  addition (the table + topology corrections remain required).
 - **Commit:** `docs(overview): correct board location to Hub`
 
 ## Batch Tests

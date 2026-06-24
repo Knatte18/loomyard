@@ -3,7 +3,7 @@
 ```yaml
 task: "ly-git-clone hub-creator (host, weft, board)"
 slug: "ly-git-clone"
-approved: false
+approved: true
 started: "20260624-162514"
 parent: "main"
 root: ""
