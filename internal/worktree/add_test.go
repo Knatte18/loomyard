@@ -111,6 +111,17 @@ func TestAdd(t *testing.T) {
 			wantNoTargetDir: true,
 			wantResultZero:  true,
 		}, // Migrated from TestWeftPrechecksHardRequireWeftRepo: result.Slug == ""
+		{
+			name: "DetachedHEAD",
+			setup: func(t *testing.T, f lyxtest.PairedFixture) {
+				// Detach HEAD by checking out a specific commit SHA.
+				lyxtest.MustRun(t, f.Hub, "git", "checkout", "--detach")
+			},
+			opts:            AddOptions{SkipPush: true},
+			wantErrContains: "detached HEAD",
+			wantNoTargetDir: true,
+			wantResultZero:  true,
+		},
 	}
 
 	for _, tt := range tests {
