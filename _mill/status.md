@@ -38,7 +38,9 @@ batches:
     start_sha: 6a9e444729cde64f8917eab9e8caa03000524058
     commit_sha: 5b77df61b6a841cc78589998d5eb2d6bb907a5f9
   - name: paths-config-helpers
-    state: pending
+    state: running
+    implementer_session: e04cff45-dcbe-4eb6-9fd9-4aad7d5c61b8
+    start_sha: 0524440eb167e7dcde95d257879ce402a0b3bc21
   - name: templates-live-yaml
     state: pending
   - name: envsource
