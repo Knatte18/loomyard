@@ -24,7 +24,7 @@ func TestEdit_ScaffoldWhenMissing(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create _lyx/ directory (the file itself will be scaffolded).
-	lyxDir := filepath.Join(tmpDir, "_lyx")
+	lyxDir := filepath.Join(tmpDir, paths.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
@@ -63,11 +63,11 @@ func TestEdit_EditExistingFile(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create _lyx/ and _lyx/config/ with a pre-existing config file.
-	lyxDir := filepath.Join(tmpDir, "_lyx")
+	lyxDir := filepath.Join(tmpDir, paths.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
-	configDir := filepath.Join(lyxDir, "config")
+	configDir := paths.ConfigDir(tmpDir)
 	if err := os.Mkdir(configDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
@@ -106,7 +106,7 @@ func TestEdit_ReEditLoop(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create _lyx/ directory.
-	lyxDir := filepath.Join(tmpDir, "_lyx")
+	lyxDir := filepath.Join(tmpDir, paths.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
@@ -142,7 +142,7 @@ func TestEdit_AbortOnUnchangedAfterFailure_Scaffolded(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create _lyx/ directory.
-	lyxDir := filepath.Join(tmpDir, "_lyx")
+	lyxDir := filepath.Join(tmpDir, paths.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
@@ -180,11 +180,11 @@ func TestEdit_AbortOnUnchangedAfterFailure_PreExisting(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create _lyx/ and _lyx/config/ with a pre-existing config file.
-	lyxDir := filepath.Join(tmpDir, "_lyx")
+	lyxDir := filepath.Join(tmpDir, paths.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
-	configDir := filepath.Join(lyxDir, "config")
+	configDir := paths.ConfigDir(tmpDir)
 	if err := os.Mkdir(configDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
@@ -227,7 +227,7 @@ func TestEdit_AbortOnEditorError(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create _lyx/ directory.
-	lyxDir := filepath.Join(tmpDir, "_lyx")
+	lyxDir := filepath.Join(tmpDir, paths.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
