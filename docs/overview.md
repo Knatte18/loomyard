@@ -110,7 +110,7 @@ The **host repo** is the project's source of truth, maintained by developers. Al
 | `_lyx/config/` | Weft worktree | Weft | Live YAML configuration files for all modules (board, worktree, weft); reconciled via `lyx update` |
 | `.env` | Weft worktree | Weft | Git-ignored per-machine environment variable overrides (KEY=value format) |
 | `_codeguide/` | Weft worktree | Weft | Codeguide documentation (task 008) |
-| `_board/` | Hub | Board | Task board (separate board repo) |
+| `_board/` | Hub | Board | Task board at a **configured** board-repo URL — `lyx board` accepts any URL; `ly-git-clone` defaults it to the weft repo's GitHub wiki (`<weft>.wiki.git`) |
 | Host source | Host worktree | Host | Project source code |
 
 ### Durable vs ephemeral state (`_lyx/` vs `.lyx/`)
