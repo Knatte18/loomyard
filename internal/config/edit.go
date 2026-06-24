@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"runtime"
 
+	"github.com/Knatte18/loomyard/internal/paths"
 	"gopkg.in/yaml.v3"
 )
 
@@ -58,7 +59,7 @@ func DefaultEditor(path string) error {
 //
 // Flow:
 // 1. Call FindBaseDir(baseDir) to ensure initialization; propagate error if not.
-// 2. Compute path = filepath.Join(baseDir, "_lyx", "config", module+".yaml").
+// 2. Compute path = paths.ConfigFile(baseDir, module).
 // 3. If path does not exist, write template to it (scaffold; 0o644) and track
 //    that this call created the file (scaffolded := true).
 // 4. Loop:
@@ -82,8 +83,8 @@ func Edit(baseDir, module, template string, edit EditorFunc) error {
 		return err
 	}
 
-	// Compute the config file path.
-	path := filepath.Join(baseDir, "_lyx", "config", module+".yaml")
+	// Compute the config file path via paths helper.
+	path := paths.ConfigFile(baseDir, module)
 
 	// Check if the file already exists.
 	_, err = os.Stat(path)
@@ -92,7 +93,7 @@ func Edit(baseDir, module, template string, edit EditorFunc) error {
 	// If the file does not exist, scaffold it from the template.
 	if scaffolded {
 		// Create _lyx/config/ directory if needed.
-		configDir := filepath.Join(baseDir, "_lyx", "config")
+		configDir := paths.ConfigDir(baseDir)
 		if err := os.MkdirAll(configDir, 0755); err != nil {
 			return fmt.Errorf("create config directory: %w", err)
 		}
