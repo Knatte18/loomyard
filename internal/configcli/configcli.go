@@ -12,42 +12,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/Knatte18/loomyard/internal/board"
 	"github.com/Knatte18/loomyard/internal/config"
+	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/paths"
-	"github.com/Knatte18/loomyard/internal/weft"
-	"github.com/Knatte18/loomyard/internal/worktree"
 )
-
-// registry holds an ordered list of available config modules.
-var registry = []struct {
-	Name     string
-	Template func() string
-}{
-	{"board", board.ConfigTemplate},
-	{"worktree", worktree.ConfigTemplate},
-	{"weft", weft.ConfigTemplate},
-}
-
-// templateFor returns the ConfigTemplate function for the named module.
-// Returns (nil, false) if the module name is unknown.
-func templateFor(name string) (func() string, bool) {
-	for _, entry := range registry {
-		if entry.Name == name {
-			return entry.Template, true
-		}
-	}
-	return nil, false
-}
-
-// moduleNames returns the ordered list of available config module names.
-func moduleNames() []string {
-	names := make([]string, len(registry))
-	for i, entry := range registry {
-		names[i] = entry.Name
-	}
-	return names
-}
 
 // syncFunc runs the post-edit sync, writing its output to the given writer,
 // and returns an exit code.
@@ -66,9 +34,9 @@ type syncFunc func(w io.Writer) int
 // 8. If sync returns non-zero, print a failure message with the sync output and return 1.
 func editOne(baseDir string, out io.Writer, module string, edit config.EditorFunc, sync syncFunc) int {
 	// Look up the template for this module.
-	template, ok := templateFor(module)
+	template, ok := configreg.Template(module)
 	if !ok {
-		fmt.Fprintf(out, "unknown config module: %s (known: %v)\n", module, moduleNames())
+		fmt.Fprintf(out, "unknown config module: %s (known: %v)\n", module, configreg.Names())
 		return 1
 	}
 

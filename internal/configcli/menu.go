@@ -9,11 +9,11 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/config"
+	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/paths"
 )
 
@@ -29,12 +29,12 @@ import (
 // Returns the exit code from editOne or an error code (1) on invalid input.
 func menu(l *paths.Layout, baseDir string, in io.Reader, out io.Writer, edit config.EditorFunc, sync syncFunc) int {
 	// Get the list of available modules.
-	names := moduleNames()
+	names := configreg.Names()
 
 	// Print numbered picker with configured/default status.
 	for i, name := range names {
 		// Check if config file exists.
-		configPath := filepath.Join(baseDir, "_lyx", "config", name+".yaml")
+		configPath := paths.ConfigFile(baseDir, name)
 		_, err := os.Stat(configPath)
 		status := "(default)"
 		if err == nil {
