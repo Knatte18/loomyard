@@ -55,12 +55,14 @@ func weftBranchExists(l *paths.Layout, branch string) bool {
 
 // createWeftWorktree creates a new weft worktree at the given path with the given branch.
 //
-// Runs git worktree add -b <branch> <path> in the weft repo root.
+// The new weft branch forks from startPoint (the parent's weft branch), preserving the
+// shared merge-base needed for future squash-merge-back operations. Runs
+// git worktree add -b <branch> <path> <startPoint> in the weft repo root.
 // Returns an error if the command fails or exits with non-zero code.
-func createWeftWorktree(l *paths.Layout, slug, branch string) error {
+func createWeftWorktree(l *paths.Layout, slug, branch, startPoint string) error {
 	weftPath := l.WeftWorktreePath(slug)
 	_, stderr, exitCode, err := git.RunGit(
-		[]string{"worktree", "add", "-b", branch, weftPath},
+		[]string{"worktree", "add", "-b", branch, weftPath, startPoint},
 		l.WeftRepoRoot(),
 	)
 	if err != nil {
