@@ -57,12 +57,12 @@ func cloneHub(cwd, hostURL, weftURL, boardURL string) (hubPath string, err error
 
 	// Step 5: Clone host repo
 	if err := cloneRepo(hostURL, filepath.Join(hubPath, name)); err != nil {
-		return hubPath, teardownHub(hubPath, err)
+		return "", teardownHub(hubPath, err)
 	}
 
 	// Step 6: Clone weft repo
 	if err := cloneRepo(weftURL, filepath.Join(hubPath, name+weftSuffix)); err != nil {
-		return hubPath, teardownHub(hubPath, err)
+		return "", teardownHub(hubPath, err)
 	}
 
 	// Step 7: Resolve board URL
@@ -73,7 +73,7 @@ func cloneHub(cwd, hostURL, weftURL, boardURL string) (hubPath string, err error
 
 	// Step 8: Clone board repo
 	if err := cloneRepo(board, filepath.Join(hubPath, boardDirName)); err != nil {
-		return hubPath, teardownHub(hubPath, err)
+		return "", teardownHub(hubPath, err)
 	}
 
 	// Step 9: Success
