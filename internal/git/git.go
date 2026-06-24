@@ -7,6 +7,8 @@ package git
 import (
 	"bytes"
 	"os/exec"
+
+	"github.com/Knatte18/loomyard/internal/proc"
 )
 
 // RunGit runs a git command and returns stdout, stderr, and exit code
@@ -18,7 +20,7 @@ func RunGit(args []string, cwd string) (stdout, stderr string, exitCode int, err
 	cmd.Stdout = &outBuf
 	cmd.Stderr = &errBuf
 
-	hideProcWindow(cmd) // no console window flash on Windows
+	proc.HideWindow(cmd) // no console window on Windows
 
 	err = cmd.Run()
 

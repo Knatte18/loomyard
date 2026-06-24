@@ -5,10 +5,9 @@ package vscode
 import (
 	"fmt"
 	"os/exec"
-	"syscall"
-)
 
-const createNoWindow = 0x08000000
+	"github.com/Knatte18/loomyard/internal/proc"
+)
 
 // Launch launches VS Code for the given worktree directory on Windows.
 //
@@ -17,11 +16,8 @@ const createNoWindow = 0x08000000
 func Launch(worktreeDir string) error {
 	cmd := exec.Command("cmd", "/c", "code", worktreeDir)
 
-	// Apply no-console-window flag pattern (from git_windows.go/spawn_windows.go)
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		HideWindow:    true,
-		CreationFlags: createNoWindow,
-	}
+	// Apply no-console-window flag pattern (see internal/proc)
+	proc.HideWindow(cmd)
 
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("launch code: %w", err)

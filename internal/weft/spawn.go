@@ -1,10 +1,8 @@
-// spawn_other.go — detached process launching for weft push on non-Windows.
+// spawn.go — detached weft push process launching.
 //
-// spawnPush launches `lyx weft --weft-path <abs> push` in its own session (Setsid)
-// so it survives parent exit. There are no console-window issues on non-Windows platforms.
-// The Windows variants live in spawn_windows.go.
-
-//go:build !windows
+// spawnPush launches `lyx weft --weft-path <abs> push` as a detached, windowless process.
+// It has its own process group (so the parent's Ctrl-C does not reach it)
+// and survives the parent's exit.
 
 package weft
 
@@ -12,12 +10,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"syscall"
+
+	"github.com/Knatte18/loomyard/internal/proc"
 )
 
-// spawnPush launches `lyx weft --weft-path <abs> push` as a detached process.
+// spawnPush launches `lyx weft --weft-path <abs> push` as a detached, windowless process.
 // Returns nil immediately if WEFT_SKIP_GIT or WEFT_SKIP_PUSH is set (no child process forked).
-// Otherwise builds the command, sets it to run in its own session, and starts it
+// Otherwise builds the command, sets it to run detached and windowless, and starts it
 // without waiting.
 func spawnPush(weftPath string) error {
 	if os.Getenv("WEFT_SKIP_GIT") == "1" || os.Getenv("WEFT_SKIP_PUSH") == "1" {
@@ -33,7 +32,7 @@ func spawnPush(weftPath string) error {
 		return err
 	}
 	cmd := exec.Command(exe, "weft", "--weft-path", abs, "push")
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	proc.Detach(cmd)
 	// Leave stdin/stdout/stderr nil so no handles are inherited from the parent.
 	return cmd.Start() // intentionally not Wait()ed
 }
