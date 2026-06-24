@@ -54,7 +54,7 @@ VAR1=value=with=multiple=equals`,
 			content: `VAR1= value with spaces
 VAR2=  leading  space`,
 			want: map[string]string{
-				"VAR1": " value with spaces ",
+				"VAR1": " value with spaces",
 				"VAR2": "  leading  space",
 			},
 		},
