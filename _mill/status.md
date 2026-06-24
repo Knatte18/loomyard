@@ -50,7 +50,9 @@ batches:
     start_sha: baa543e3a880fe02b45264b1f6e123993ffa89ac
     commit_sha: 71b194c6e7b6950397863af20df89c886a45b153
   - name: envsource
-    state: pending
+    state: running
+    implementer_session: b2e4c49f-84f6-44f5-9b0e-36d502d21da6
+    start_sha: 51972a005722ac0ba56bffb46841fa27d21fd5b8
   - name: config-engine-integration
     state: pending
   - name: lyx-update-init
