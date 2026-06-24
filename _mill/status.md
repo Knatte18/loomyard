@@ -32,7 +32,9 @@ implementing  '2026-06-24T08:27:19Z'
 ```yaml
 batches:
   - name: yamlengine-engine
-    state: pending
+    state: running
+    implementer_session: 82764e2a-84aa-46db-a5b0-430e6b18cdc2
+    start_sha: 6a9e444729cde64f8917eab9e8caa03000524058
   - name: paths-config-helpers
     state: pending
   - name: templates-live-yaml
