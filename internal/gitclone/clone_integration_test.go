@@ -311,7 +311,7 @@ func TestCloneHub_TeardownFailure(t *testing.T) {
 	})
 
 	// Clone should fail with both the clone error and the removal error
-	hubPath, err := cloneHub(cwd, hostBare, nonExistentWeft, "")
+	_, err := cloneHub(cwd, hostBare, nonExistentWeft, "")
 	if err == nil {
 		t.Fatalf("cloneHub should have failed with clone error")
 	}
