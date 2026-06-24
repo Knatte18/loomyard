@@ -30,7 +30,9 @@ implementing  '2026-06-24T17:05:04Z'
 ```yaml
 batches:
   - name: worktree-fix
-    state: pending
+    state: running
+    implementer_session: 9ed07ad7-ad8b-47f3-9150-205be9ac9f07
+    start_sha: 9bb300d59419f7914c8076defacee5250bc7484b
   - name: config-family
     state: pending
   - name: board
