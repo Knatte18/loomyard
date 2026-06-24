@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: yamlengine
 branch: yamlengine
 plan: _mill/plan
@@ -38,6 +38,7 @@ holistic-reviewing  '2026-06-24T09:33:23Z'
 holistic-fixing  '2026-06-24T09:40:34Z'
 holistic-approved  '2026-06-24T09:43:16Z'
 done  '2026-06-24T09:44:00Z'
+pr-pending  '2026-06-24T10:06:01Z'
 ```
 
 ## Batches
