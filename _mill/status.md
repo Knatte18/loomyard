@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-weft-mirror-branching
+phase: holistic-reviewing
 slug: weft-orphan-branches
 branch: weft-orphan-branches
 plan: _mill/plan
@@ -24,6 +24,7 @@ plan-fix-r2  '2026-06-24T16:19:12Z'
 planned  '2026-06-24T16:19:37Z'
 implementing  '2026-06-24T16:23:18Z'
 approved-weft-mirror-branching  '2026-06-24T16:28:26Z'
+holistic-reviewing  '2026-06-24T16:28:48Z'
 ```
 
 ## Batches
