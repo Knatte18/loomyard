@@ -181,6 +181,11 @@ blocks that and is error-prone today.
 - Rejected: a per-module "resolve template against empty env" helper (unnecessary
   once we confirmed the child only needs `Path`); keeping `DefaultConfig` as a thin
   wrapper (perpetuates the duplication).
+- Note: the detached child's behavior is unchanged under `Config{Path: ...}`.
+  `DefaultConfig()` never set `SkipGit`/`SkipPush` either (they default to zero),
+  and `applySkipEnv(cfg)` (cli.go:86) still runs afterward to fold in
+  `BOARD_SKIP_*`. So nothing is lost — a plan-writer should not reintroduce a
+  defaults helper to "restore" Skip fields.
 
 ### init/update share the registry (module ownership)
 
@@ -254,9 +259,10 @@ What mill-plan needs to know:
   `Load`, unmarshal the resolved YAML into the struct. Keep each module's
   error-wrapping ("not initialized here; run \"lyx init\"" for board/worktree;
   "weft worktree or its _lyx is missing at <dir>" for weft). **`weft.LoadConfig`
-  keeps its current `weftBaseDir` argument from `WeftWorktree()` (weft/cli.go:98) —
-  the host-baseDir-vs-weft split is unchanged; only its internal `config.Load`
-  call gains the template arg.** (The host `_lyx` junction makes this the same
+  keeps its current `weftBaseDir` argument, built at weft/cli.go:95 as
+  `filepath.Join(l.WeftWorktree(), l.RelPath)` (RelPath-mirrored; the call site is
+  weft/cli.go:98) — the host-baseDir-vs-weft split is unchanged; only its internal
+  `config.Load` call gains the template arg.** (The host `_lyx` junction makes this the same
   physical file as the host baseDir that `update`/`init`/`config` use.)
 - **Error-ignoring consumer to fix:** `internal/ide/menu.go:39` does
   `cfg, _ := board.LoadConfig(l.Cwd, "board")` and today relies on
