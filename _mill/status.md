@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-yamlengine-engine
 slug: yamlengine
 branch: yamlengine
 plan: _mill/plan
@@ -25,6 +25,7 @@ plan-fix-r2  '2026-06-24T08:22:44Z'
 plan-fix-r3  '2026-06-24T08:25:43Z'
 planned  '2026-06-24T08:26:15Z'
 implementing  '2026-06-24T08:27:19Z'
+approved-yamlengine-engine  '2026-06-24T08:37:03Z'
 ```
 
 ## Batches
@@ -32,9 +33,10 @@ implementing  '2026-06-24T08:27:19Z'
 ```yaml
 batches:
   - name: yamlengine-engine
-    state: running
+    state: approved
     implementer_session: 82764e2a-84aa-46db-a5b0-430e6b18cdc2
     start_sha: 6a9e444729cde64f8917eab9e8caa03000524058
+    commit_sha: 5b77df61b6a841cc78589998d5eb2d6bb907a5f9
   - name: paths-config-helpers
     state: pending
   - name: templates-live-yaml
