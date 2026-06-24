@@ -183,10 +183,19 @@ and, by extension, hardens every other test against the same migration hazard.
 
 ## Constraints
 
-- No `CONSTRAINTS.md` at the hub root.
+- `CONSTRAINTS.md` **exists** at the hub root and already mandates a **Path Invariant**:
+  all worktree/hub geometry must be resolved through `internal/paths`, not raw primitives
+  (`paths.Getwd`/`paths.Resolve` + `Layout` methods; `os.Getwd`/`git rev-parse` banned
+  outside `internal/paths` and `cmd/lyx/main.go`, enforced by
+  `internal/paths/enforcement_test.go`). This task's rule is the **config-path corollary**
+  of that invariant — the existing invariant covered cwd/worktree-root resolution but not
+  `_lyx`/config **file** segments, which is exactly the gap that broke `TestRunCLI`.
+  CONSTRAINTS.md has been extended with a "`_lyx` and config-file paths" subsection naming
+  `paths.LyxDirName` / `paths.ConfigDir` / `paths.ConfigFile` and noting it applies to test
+  code (not caught by the enforcement test).
 - **Operator hard rule:** test path resolution for `_lyx`/config must go through
   `internal/paths`; no hardcoded path segments. (Drives
-  `resolve-paths-via-internal-paths-never-hardcode`.)
+  `resolve-paths-via-internal-paths-never-hardcode`; now also codified in CONSTRAINTS.md.)
 - Integration tests are gated behind the `integration` build tag (`//go:build
   integration`); the failing test only runs under `-tags integration`. Verification
   commands must pass `-tags integration`.
