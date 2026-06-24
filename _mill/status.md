@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r2
+phase: plan-fix-r3
 slug: yamlengine
 branch: yamlengine
 plan: _mill/plan
@@ -22,4 +22,5 @@ plan-review-r1  '2026-06-24T08:18:18Z'
 plan-fix-r1  '2026-06-24T08:18:18Z'
 plan-review-r2  '2026-06-24T08:22:44Z'
 plan-fix-r2  '2026-06-24T08:22:44Z'
+plan-fix-r3  '2026-06-24T08:25:43Z'
 ```

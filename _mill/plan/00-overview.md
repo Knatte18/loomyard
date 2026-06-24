@@ -3,7 +3,7 @@
 ```yaml
 task: "Extract yamlengine and migrate config via lyx update"
 slug: yamlengine
-approved: false
+approved: true
 started: "20260624-080534"
 parent: main
 root: ""

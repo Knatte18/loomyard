@@ -148,6 +148,7 @@ config file path, the missing key-paths, and direct the user to `lyx update`.
 
 - **Context:**
   - `internal/board/config.go`
+  - `internal/paths/paths.go`
 - **Edits:**
   - `internal/ide/menu.go`
   - `internal/ide/menu_test.go`
@@ -155,6 +156,7 @@ config file path, the missing key-paths, and direct the user to `lyx update`.
 - **Deletes:** none
 - **Requirements:**
   - In `internal/ide/menu.go` `Menu`, change `cfg, _ := board.LoadConfig(l.Cwd, "board")` to capture and handle the error: `cfg, err := board.LoadConfig(l.Cwd, "board"); if err != nil { return fmt.Errorf("load board config: %w", err) }`. This prevents `b.HealthCheck()` from running against a zero `Config{}` (empty `cfg.Path`) under strict Load. Leave the rest of `Menu` unchanged.
+  - Also centralize the hardcoded `"_lyx"` literal at `internal/ide/menu.go:68` — replace `filepath.Join(entry.Path, l.RelPath, "_lyx")` with `filepath.Join(entry.Path, l.RelPath, paths.LyxDirName)` (the `paths` package is already imported here). No behavior change.
   - Update `internal/ide/menu_test.go` if it relied on `LoadConfig` silently succeeding without a config file: ensure the test sets up a valid `_lyx/config/board.yaml` (via the template) for the success path, and add/adjust a case asserting the HARD error when the board config cannot be loaded. Keep the zero-worktree and picker tests intact.
   - NOTE: `internal/ide/menu_test.go` carries a `//go:build integration` tag, so the batch verify (`go test ./internal/ide/` with no `-tags integration`) does NOT execute these tests — it only confirms the package compiles. The updated menu assertions are validated by review and by the integration tier (`-tags integration`), not by this batch's verify. Ensure the file still COMPILES (and that the existing integration tests, which use an uninitialized `Cwd`, are adjusted to expect the new hard load-error rather than silent success).
 - **Commit:** `fix(ide): handle board config load error in menu (no empty-path HealthCheck)`
