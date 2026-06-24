@@ -1,35 +1,191 @@
 # Module: mux (design)
 
-> **Status:** design, nothing implemented yet. Unlike the earlier sketch, every claim
-> here is **grounded in hands-on testing** — see the evidence log
-> [`mux-exploration.md`](../research/mux-exploration.md), the CC-hooks / `claude agents --json`
-> evidence log [`mux-hooks-exploration.md`](../research/mux-hooks-exploration.md) (event-driven
-> pane switching), and the TUI-behavior reference
-> [`../psmux-tui-behavior.md`](../psmux-tui-behavior.md). **v1 is deliberately tiny**
-> (roadmap milestone 5); subprocess panes (6), the daemon (7), and Slack (8) are in
-> [Deferred](#deferred).
+> **Status:** design, nothing implemented yet. Every claim about psmux here is **grounded in
+> hands-on testing** — see the evidence logs [`mux-exploration.md`](../research/mux-exploration.md)
+> and [`mux-hooks-exploration.md`](../research/mux-hooks-exploration.md), and the TUI-behavior
+> reference [`../psmux-tui-behavior.md`](../psmux-tui-behavior.md). The daemon + Slack relay are in
+> [Deferred](#deferred). See [roadmap.md](../roadmap.md) for sequencing.
 >
-> **Note:** A working proof-of-concept of the daemon and pane-recovery model already
-> exists in `internal/muxpoc` — see [overview.md#modules](../overview.md#modules) for the shipped
-> implementation that validates the hard parts of v2 and v7.
->
-> **Scope (mechanism, not policy).** mux is the psmux **adapter** — pane/window primitives,
-> env hygiene, resume, CC-hook wiring, and one named server per hub. The **policy** layer that
-> decides *which worktree gets which column*, *which pane the operator should be looking at*,
-> and the worktree→role→pane ledger lives one level up in [`shed`](shed.md). This file
-> describes the mechanism and the empirical facts about psmux; layout *policy* is in
-> [shed.md](shed.md). The two together are the
-> [execution stack](../overview.md#execution-stack-orchestration-layers).
+> **Note:** A working proof-of-concept already exists in `internal/muxpoc` — see
+> [overview.md#modules](../overview.md#modules). muxpoc is a POC; it stays as a reference and is
+> **not** extracted into mux. mux is built fresh, informed by what muxpoc proved.
 
-The mux module manages [psmux](../reference/psmux_scripting.md) — a Windows tmux-compatible
-multiplexer (3.3.4) — so the Claude Code sessions running across a repo's worktrees can be
-laid out, observed, and recovered. It is the Go reimplementation of millpy's `_psmux.py`
-(which "doesn't work" and is not used as a reference).
+mux is **the window to the world** — the one module that owns the live psmux session for a
+worktree and decides what the operator sees. It is three things in one:
 
-Driven by `lyx mux <subcommand>`; derives worktree layout from `git worktree list`
-(the worktree module is stateless) and config from
-[`internal/config`](../shared-libs/config.md). mux shells out to `psmux.exe` via Go `exec`
-(no MSYS layer, so no slash-arg mangling — a hazard the probe harness hit from git-bash).
+1. **Overlay over psmux** — the shell that holds *every* psmux command: pane create/kill,
+   send-keys, capture, the layout primitives, env hygiene, native `--resume`, CC-hook wiring, and
+   one named server per hub.
+2. **Strand bookkeeping** — the record of every managed process (a **strand**), persisted to
+   `.lyx/mux.json`.
+3. **Render** (an internal sub-package, [`internal/mux/render`](#render--a-pure-function-over-strands))
+   — a pure function `layout = rules(strands)` over a **closed, generic display vocabulary**.
+
+It is the Go reimplementation of millpy's `_psmux.py` (which "doesn't work" and is not a
+reference). Driven by `lyx mux <subcommand>`; shells out to `psmux.exe` via Go `exec` (no MSYS
+layer, so no slash-arg mangling — a hazard the probe harness hit from git-bash).
+
+## The strand model
+
+Everything mux manages is a **strand**: one tracked process. Most strands are backed by a visible
+pane, but a strand may be **`hidden`** — tracked by mux but not shown in the current layout
+(optionally parked in a dedicated background window — see [Hidden strands](#hidden-strands-and-background-work)).
+A strand is just a metadata record:
+
+```
+strand {
+  id             // stable internal handle (mux-assigned)
+  name           // human-readable label, caller-supplied (e.g. "feature-x:plan-handler")
+  sessionId?     // claude session id, if it has one (for --resume)
+  worktree       // owning worktree slug — generic grouping; mux does not know what the worktree does
+  parent?        // the strand-id that spawned this one — forms the spawn tree
+  display {      // drawn ONLY from mux's closed vocabulary (below)
+    anchor:  top | below-parent | own-window | hidden
+    height:  fixed(n) | grow | share
+    focus:   bool
+    shrinkWhenWaitingOnChild: bool
+  }
+}
+```
+
+`name` vs `id`: `id` is mux's stable internal handle; `name` is the human label the caller picks,
+used for the psmux pane/window title, the dashboard, and `lyx mux status`. Like `display`, the name
+is **opaque to mux** — it is a label, not a domain `type` mux branches on — so it does not
+reintroduce the type-circularity.
+
+### The contract: callers hand mux `{cmd, name, display}`
+
+Anything that wants to be shown calls into mux with a command to run and a **generic display
+spec** — never a domain type. mux runs the command in a pane, records the strand, and re-renders:
+
+```
+AddStrand{ cmd, name, worktree, parent?, display }  →  pane created, strand recorded, layout recomputed
+UpdateStrand{ id, display }                          →  display changes over a strand's life → re-render
+RemoveStrand{ id }                                   →  pane killed, strand dropped → re-render
+```
+
+Examples — the **caller** owns the domain→display mapping; mux never sees "loom-watcher":
+
+```
+loom:     AddStrand{ name:"loom-status", cmd:"lyx loom status --watch",
+                     display:{ anchor:top, height:fixed(1) } }
+shuttle:  AddStrand{ name:"feature-x:plan-handler", cmd:"claude …",
+                     display:{ anchor:below-parent, height:grow, focus:true, shrinkWhenWaitingOnChild:true } }
+review:   AddStrand{ name:"cluster-rev-3", cmd:"claude …", display:{ anchor:own-window } }
+```
+
+### Why a closed, generic vocabulary (not a `type` field)
+
+A domain `type` field (`loom-watcher`, `cluster`, …) would force mux to **know every type its
+consumers might invent** — mux would import its own consumers' vocabulary. Circular. Instead mux
+exposes a **closed, generic** set of display behaviors (anchors, sizing modes, `focus`,
+`shrinkWhenWaitingOnChild`); callers compose from it. The analogy is CSS: an element says
+`position: sticky; top: 0`, never "I am a navbar" — the layout engine knows the generic
+primitives, the author owns the domain→primitive mapping. Consequences:
+
+- **A new domain thing needs zero mux change** — express it in the existing vocabulary.
+- Only a genuinely **new geometric behavior** extends the (still domain-free) vocabulary. Rare.
+- The domain (`type`) stays on the caller side; the presentation stays generic in mux.
+
+### Hidden strands and background work
+
+`anchor: hidden` is a tracked strand with **no place in the current layout** — mux knows about it
+(session, lifecycle, resume) but does not show it. Two uses:
+
+- **Surface on demand.** A strand can flip `hidden ⇄ visible` (via `UpdateStrand`) — run something
+  out of sight, then pull it into view when you want to watch it.
+- **Background work via mux instead of `proc`.** A process that today would be a plain
+  [`internal/proc`](README.md) background spawn (invisible) could instead run as a `hidden` strand,
+  so it is **observable** — mux can gather all such strands into a dedicated psmux **background
+  window** you switch to (`Ctrl+b`) when you want to see them. This is an optional future extension:
+  mux gains the ability to *host* background processes, trading `proc`'s total invisibility for
+  "hidden but surfaceable." Plain `proc` remains for truly fire-and-forget infra that never needs a
+  pane; `hidden` strands are for background work you might want to inspect.
+
+### The active-pane rule
+
+Spawns nest (orchestrator → child → grandchild, ≤3 deep) and **only the deepest/bottom child is
+active** — every ancestor is blocked waiting on its child. So the rule is: **the bottom-most child
+is always the largest and sits at the bottom** (the active pane, where a human types). Ancestors
+collapse to compact strips via `shrinkWhenWaitingOnChild`. This is muxpoc's proven bottom-dominant
+layout (2 panes → 56% bottom; 3 → 60% with 9+9-row ancestors), now expressed declaratively over the
+`parent` tree rather than hand-coded.
+
+### Render — a pure function over strands
+
+The render sub-package is `layout = rules(strands)` — deterministic, no I/O. It reads the strand
+set, applies the rules to the generic `display` fields + the `parent` tree, and emits a psmux
+`window_layout` string that the overlay applies. Because it is pure, it is the clean **test
+surface**: feed a set of strand records + dummy commands, assert the layout string — golden-file
+tests, no psmux and no agents needed. Keep it an **internal sub-package** so it stays modular and
+can be split back out later if mux ever bloats (it is, in effect, the absorbed "viewer").
+
+**Re-render is event-driven, not timed.** Recompute on the **structural** events that change the
+strand set or a strand's display: `AddStrand` / `UpdateStrand` / `RemoveStrand`, or a `pane_dead`.
+The active-bottom-dominant arrangement is derivable from the parent tree, so **no runtime idle
+signal is needed** — completion is [shuttle's concern](#completion-and-hooks-live-in-shuttle-not-mux)
+(via the file contract), not a mux re-render trigger. Debounce a burst into one `ApplyLayout`.
+**(Future:** re-render *within one column* without touching the others — a per-column-independent
+render — once cross-worktree columns arrive.)
+
+### Persistence is load-bearing
+
+The `display` spec, `parent` ref, and the **opaque launch + resume command strings** (built by
+shuttle — `claude …` and `claude --resume …`, which mux re-runs without knowing they are Claude)
+are all **caller-supplied** — they cannot be reconstructed from psmux alone (psmux knows where panes
+are, not that one "should be 1 line at top", is a child of another, or how to relaunch). So mux
+**persists the full strand table** to `.lyx/mux.json` (local, untracked, via `internal/state` —
+see [overview.md](../overview.md#durable-vs-ephemeral-state-_lyx-vs-lyx)). On startup it **reloads
+the strands and reconciles** against live `list-panes` (and, generically, `pane_dead`): drop dead
+strands, keep the live ones, re-apply the layout, and re-run the stored resume command per recovered
+strand. Without this, a crash loses the display intent, the spawn tree, and how to relaunch.
+
+## Scope: one terminal per worktree (now); cross-worktree columns (later)
+
+For now, **one terminal per worktree** — each worktree has its own psmux session, and mux arranges
+that session's strands (the loom-status line on top, agents stacked below, active pane dominant).
+The cross-worktree multi-column view (all worktrees in one window) is **deferred** and is *cheap*
+when it comes: it is just the existing `worktree` strand field plus a rule that groups strands into
+columns by slug. No architectural change — a metadata field and a rule.
+
+## Load-bearing psmux decisions (verified)
+
+1. **mux renders the layout string itself.** `select-layout even-horizontal` is fine for a flat
+   row but **flattens** vertical sub-stacks, so once a column owns a stack the `window_layout`
+   string must be emitted directly. The tmux checksum (rotate-right-1 accumulate, 16-bit) is
+   verified and reproducible in Go; `select-layout "<csum>,<body>"` applies it atomically and
+   honors sizing. The render sub-package computes the body; the overlay applies it.
+2. **Loomyard never owns OS window management.** Popping ONE maximized terminal attached to a
+   session is reliable (`lyx mux attach`); precise multi-window docking and WT multi-tab launches
+   are brittle → best-effort, not core. psmux auto-resizes to whatever client attaches.
+3. **Crash recovery via native `claude --resume`, given env hygiene** — mux assigns each pane a
+   `--session-id` at launch; recovery relaunches `claude --resume <id>` per strand. The one
+   requirement: strip the inherited Claude-Code parent-session env (see [Resume](#resume-after-crash--native---resume-with-env-hygiene)).
+4. **One named psmux server per hub — the orphan firewall.** mux boots its server as
+   `psmux -L lyx-<hub-hash>`, a name derived deterministically from the hub via `internal/paths`.
+   Ownership is then unambiguous: that one server holds lyx's panes, so any other psmux process is
+   provably stray and `lyx mux status` flags it. This fixes the **orphaned-process problem seen
+   during exploration**, where anonymous per-probe servers left panes no one could attribute.
+
+## Subcommands (v1)
+
+| Command | Does |
+|---|---|
+| `lyx mux status` | Reconcile `.lyx/mux.json` strands against the named server's live `list-panes` + `claude agents --json`: report tracked strands, dead sessions, and **orphans** (psmux processes outside `lyx-<hub-hash>`). Cleanup is confirm-gated. |
+| `lyx mux attach` | Pop / attach one maximized terminal to the worktree's psmux session. The popped terminal has a real TTY so claude renders there. |
+| `lyx mux resume` | Rebuild the session from `.lyx/mux.json` and relaunch `claude --resume <id>` per strand (env stripped). |
+
+Callers (`shuttle`, `loom`, `review`) drive `AddStrand`/`UpdateStrand`/`RemoveStrand` through the
+package API, not the CLI.
+
+### Naming
+
+Go packages carry **no prefix** — `internal/mux`, matching `internal/board` (an early `gomux`
+draft was dropped). mux absorbs what earlier drafts split into separate `shed`/`glance` modules:
+with one terminal per worktree and a closed generic display vocabulary, the model (the strand
+bookkeeping) and the view (the render sub-package) sit cleanly inside mux without dragging domain
+knowledge in. The render half is the internal sub-package
+[`internal/mux/render`](#render--a-pure-function-over-strands).
 
 ## Environment assumptions (verified)
 
@@ -45,149 +201,9 @@ Driven by `lyx mux <subcommand>`; derives worktree layout from `git worktree lis
   these bleed into psmux, the pane's claude treats itself as a nested child and **silently stops
   persisting its transcript** — breaking resume. Since Loomyard (Go) is the chokepoint, it builds the
   **psmux server's `exec.Cmd.Env` without those vars** → server + all panes + all claude inherit a
-  clean env. Crucially, agent panes spawned later inherit the *server's* env, so they stay clean
-  even when the spawning `lyx` call was itself launched by a poisoned claude — as long as the
-  server was started clean. See [Resume](#resume-after-crash-native---resume-with-env-hygiene).
-
-## Design model (the load-bearing decisions)
-
-> Decisions **1–4 are the layout *model*** — the empirical facts about what psmux can express
-> and what reads well. The **policy that applies them** (which worktree gets which column, the
-> worktree→role→pane ledger, focus) is owned by [`shed`](shed.md); mux just provides the
-> *apply* mechanism (decision 3) and the windowing primitives. They are kept here because they
-> are grounded in the psmux probes; shed builds on them.
-
-1. **Layout = columns.** One full-height vertical column per worktree. Rows were rejected
-   (4 rows ≈ 16 lines tall = unusable); 4 columns ≈ 69 cols wide is acceptable, 3 ≈ 91
-   comfortable on a 1440p/27″ screen.
-2. **A column is a self-owned subtree.** v1: one pane per column. v2: the same column gains
-   extra panes stacked **downward** (dispatched agents) — no architectural change, just more
-   panes. psmux models this natively (`{…}` = columns, `[…]` = a vertical sub-stack).
-3. **The layout string is applied by mux, computed by shed.** `select-layout even-horizontal`
-   is fine for a flat row (v1) but **flattens** vertical sub-stacks, so once a column owns a
-   stack the `window_layout` string must be emitted directly. mux owns the **mechanism** —
-   `ApplyLayout(body)` computes the tmux checksum (rotate-right-1 accumulate, 16-bit; verified
-   and reproducible in Go) and applies `"<csum>,<body>"` atomically, honoring sizing. shed owns
-   the **body** (which columns, bottom-dominant heights — [shed.md](shed.md#what-shed-owns)).
-4. **The orchestrator/hub is its own psmux *window*, not a column** — keeps the worktree
-   overview at fewer, wider columns.
-5. **Overflow & orchestrator-switch use psmux *windows* inside ONE attached client** — not
-   Windows-Terminal tabs, not multiple psmux clients. `Ctrl+b N` / `select-window` flips the
-   single viewport. This is the only "tab" mechanism mux can drive without client-mirroring,
-   smallest-client-wins shrinkage, or WT-quoting fragility.
-6. **Loomyard never owns OS window management.** Popping ONE maximized terminal attached to a
-   session is reliable (`lyx mux attach`); precise multi-window docking and WT multi-tab
-   launches are brittle → best-effort, not core. mux is host-agnostic; psmux auto-resizes to
-   whatever client attaches.
-7. **Crash recovery via native `claude --resume`, given env hygiene.** mux assigns each pane a
-   `--session-id` at launch and `lyx mux resume` relaunches `claude --resume <id>` per pane. The
-   one requirement: **strip the inherited Claude-Code parent-session env before launching claude**
-   (see [Resume](#resume-after-crash-native---resume-with-env-hygiene)).
-8. **One named psmux server per hub — the orphan firewall.** mux boots its server as
-   `psmux -L lyx-<hub-hash>`, a name derived deterministically from the hub via `internal/paths`.
-   Ownership is then unambiguous: that one server (and only it) holds lyx's panes, so any other
-   psmux process is provably stray and `lyx mux status` can flag it for cleanup. This directly
-   fixes the **orphaned-process problem seen during exploration**, where anonymous per-probe
-   servers left panes no one could attribute. The server PID + the pane→session map persist in
-   **`.lyx/mux.json`** (local, untracked, via `internal/state` — see
-   [overview.md](../overview.md#durable-vs-ephemeral-state-_lyx-vs-lyx)); on startup mux
-   reconciles that file against live `list-panes` and `claude agents --json`.
-
-## Target model: `mux spawn` replaces Agent dispatch (proven feasible — muxpoc)
-
-The end state mux is built toward: **CC stops dispatching sub-agents through the in-process
-Agent tool and instead calls `lyx mux spawn`, which launches a real interactive `claude`
-session in a pane below the orchestrator.** The spawned session must otherwise behave *exactly
-as if it had been spawned via the Agent tool* — same contract:
-
-- **Task in.** The orchestrator hands it a brief/prompt as the positional `[prompt]` arg at
-  launch — the same envelope an Agent-tool dispatch carries (brief_path, subagent_type, model,
-  round).
-- **Result out.** The worker writes its structured result to a **file** (JSON / `<brief>.out.md`)
-  that the orchestrator reads. **This file hand-off is what makes the worker "return" to the
-  parent the way the Agent tool's return value does.** Screen-scraping via `capture-pane` is a
-  fallback for liveness/idle detection, **not** the result channel — coordination must not depend
-  on TUI rendering.
-- **Lifecycle.** The parent blocks on the child as before; while it runs the child is the active,
-  bottom, dominant pane (below).
-
-Why this over Agent dispatch: the work becomes **visible** (watched in a pane), **interactive**
-(the human can intervene), and **crash-survivable** (each worker is a real `--session-id` session,
-recoverable via `--resume`). Agent dispatch stays fine and remains the default until this lands;
-`mux spawn` is a **drop-in replacement that preserves the dispatch semantics**, swapping an
-invisible ephemeral in-process subagent for a live, persistent one.
-
-### Column layout: the active bottom pane dominates (proven)
-
-The proven muxpoc model for stacked panes is **not** even distribution. Nesting goes orchestrator
-→ child → grandchild (≤3 deep, not parallel), and **only the deepest/bottom pane is active** —
-every ancestor is blocked waiting on its child. So the bottom (active) pane gets the **majority of
-the height (~55–60%)** and ancestors collapse to equal, compact strips. Rendered via a hand-built
-`window_layout` string (decision 3) — preset layouts like `even-vertical` cannot express "bottom
-dominant". Verified live: 2 panes → 56% bottom; 3 panes → 60% bottom with 9+9-row ancestors;
-preserved across crash+recover; focus set on the active bottom pane.
-
-### What is real today, and the glue that remains
-
-Every hard primitive is proven end-to-end in muxpoc (see [`mux-exploration.md`](../research/mux-exploration.md)):
-clean-env psmux boot, interactive claude launch, **claude spawning its own child pane by running
-`lyx` from its own Bash tool**, dominant-bottom layout, and `claude --resume` restoring each
-pane's *distinct* context after a `kill-server`. A realistic first cut — **one `lyx` command per
-worktree** (open VS Code per worktree as today; run one terminal command that boots the
-orchestrator and everything it needs) — needs only **glue**, not new primitives:
-
-1. **Orchestrator bootstrap + permissions.** Launch the orchestrator claude with a real
-   bootstrap prompt/skill (not an empty session) and **pre-granted permissions**
-   (`--dangerously-skip-permissions` or a scoped allowlist) so it can run `lyx mux spawn`
-   autonomously without hanging on a permission prompt.
-2. **File/JSON result channel** (above) — the one architectural decision that determines robust
-   vs. fragile.
-3. **Orchestration logic** — already exists in millhouse (mill-go etc.); the work is running it
-   as a *live pane-driving session* rather than an in-process Agent-tool loop.
-
-> **Robustness gap to close:** cold-recover currently relaunches `claude --resume <id>`
-> unconditionally. If a pane crashed *before it had any conversation* (no transcript yet),
-> `--resume` errors with "No conversation found with session ID". Recover must detect this and
-> fall back to a fresh `--session-id` launch. (An empty, never-used session has nothing to
-> resume — observed directly; it is expected, not a mux bug.)
-
-## v1 — one window per repo, one column per worktree (milestone 5)
-
-Every repo gets one psmux window. Each active worktree (from `git worktree list`) owns one
-full-height column. No parent/child panes, no daemon, no hooks. `even-horizontal` gives
-equal columns; no layout math needed yet.
-
-```
-┌─────────────────┬─────────────────┬─────────────────┐
-│ wt: feature-a   │ wt: feature-b   │ wt: feature-c   │
-│ claude          │ claude          │ claude          │
-└─────────────────┴─────────────────┴─────────────────┘
-                 (one psmux window per repo)
-```
-
-Each column launches claude with a **mux-assigned session id**, after **stripping the inherited
-Claude-Code parent-session env** (`CLAUDE_CODE_CHILD_SESSION`, `CLAUDECODE`,
-`CLAUDE_CODE_SESSION_ID`, `CLAUDE_CODE_ENTRYPOINT`, `CLAUDE_CODE_SSE_PORT` — see
-[Resume](#resume-after-crash-native---resume-with-env-hygiene)): `claude --session-id <uuid>
-"<initial task>"`. The id is recorded in `.lyx/mux.json` from t0 (so resume works, decision 7),
-and the task is passed as the **positional `[prompt]` arg**, never typed into a running TUI (see
-[Constraints](#what-actually-works)). The env strip is mandatory or the pane's claude won't persist
-its transcript.
-
-### v1 subcommands
-
-| Command | Does |
-|---|---|
-| `lyx mux sync` | Reconcile the psmux window against `git worktree list`: a column per worktree in list order; add columns for new worktrees, flag columns whose worktree is gone. Re-renders the layout. |
-| `lyx mux attach` | Pop / attach one maximized terminal to the repo's psmux window. The popped terminal has a real TTY so claude renders there; the orchestrator itself never needs to attach — it observes via `capture-pane`. |
-| `lyx mux status` | Reconcile `.lyx/mux.json` against the named server's live `list-panes` + `claude agents --json`: report tracked panes, dead sessions, and **orphans** (psmux processes outside `lyx-<hub-hash>`). Cleanup is confirm-gated. |
-
-### Naming
-
-Go packages carry **no prefix** — `internal/mux`, matching `internal/board` (an early
-`gomux` draft was dropped). The mechanism/policy split is **not** an internal sub-package
-of mux — it is a separate module, [`shed`](shed.md), which owns the worktree→role→pane
-ledger and layout policy and calls mux. mux stays the thin adapter.
+  clean env. Crucially, strands spawned later inherit the *server's* env, so they stay clean even
+  when the spawning `lyx` call was itself launched by a poisoned claude — as long as the server was
+  started clean. See [Resume](#resume-after-crash--native---resume-with-env-hygiene).
 
 ## What actually works (empirical guardrails)
 
@@ -214,8 +230,8 @@ These are the tested facts any implementation must respect. Full evidence in
   The only read mechanism is `capture-pane` on demand; a monitor must **poll-and-diff**
   (~500 ms; capture latency ≈ 23 ms, so ~4–5 % wall-clock).
 - **psmux hooks are a convenience, not a foundation.** (These are psmux's *own* hooks — not
-  Claude Code's; see the [next section](#claude-code-hooks--the-event-driven-signal) for the
-  CC hooks, which *are* the foundation.) `pane-died` fires via `run-shell -b` (needs
+  Claude Code's; the CC hooks belong to [`shuttle`](shuttle.md), see
+  [Completion and hooks](#completion-and-hooks-live-in-shuttle-not-mux).) `pane-died` fires via `run-shell -b` (needs
   `set-option -g remain-on-exit on`; fires with no client attached) — but **format vars do
   not expand in hook commands**, so the hook is a bare trigger that can't say *which* pane
   died (the handler must scan `list-panes -F "#{pane_id} #{pane_dead}"`). `monitor-silence` /
@@ -225,208 +241,131 @@ These are the tested facts any implementation must respect. Full evidence in
   pop-up helper must pop **maximized** or be the sole client. `detach-client` by name is
   unsupported.
 
-## Claude Code hooks — the event-driven signal
+## Completion and hooks live in shuttle, not mux
 
-Distinct from psmux's weak hooks (above), **Claude Code's own hook system is the primary,
-event-driven idle / needs-input signal** — proven in
-[`mux-hooks-exploration.md`](../research/mux-hooks-exploration.md). Because mux runs **one
-separate `claude` process per pane** with a mux-assigned `--session-id`, each process
-**self-identifies**: every hook payload carries its own `session_id`, the exact key mux already
-assigned the pane. So mux ships each spawned claude a `--settings` whose hooks call back:
+mux **does not wire or interpret Claude hooks** — that would make it care what runs in a strand.
+The Claude completion mechanism is entirely [`shuttle`](shuttle.md)'s:
 
-| Hook | Callback | Use |
-|---|---|---|
-| `SessionStart` | `lyx mux on-start --session-id <own>` | confirm / repair the pane↔session map |
-| `UserPromptSubmit` | `lyx mux on-active --session-id <own>` | pane became active |
-| `Stop` | `lyx mux on-idle --session-id <own>` | **the operative idle / needs-input edge** |
+- shuttle builds the full `claude` launch command **and** its `--settings` (the `Stop` /
+  `SessionStart` hooks, the `PreToolUse` guardrails). The `Stop` hook routes to **shuttle's own
+  channel — a file** (it writes the turn-end payload), which fits the file contract. `shuttle.Run`
+  waits on that file + the output file and interprets `last_assistant_message` (done vs. asking).
+  This is the event-driven idle/needs-input edge proven in
+  [`mux-hooks-exploration.md`](../research/mux-hooks-exploration.md) — but it terminates in shuttle.
+- mux receives this as an **opaque command string** via `AddStrand` and spawns it (in a pane, clean
+  server env). It never reads the `--settings`; it does not know a `Stop` hook exists. The Claude
+  marker grammar, the hook semantics, the completion interpretation — all of it (the research) lives
+  in shuttle's Claude engine. mux is the dumb carrier.
 
-`Stop` fires the instant a turn ends and carries `last_assistant_message` (so mux sees
-*whether* the pane is asking a question) and `background_tasks[]` (so it sees if work is still
-in flight). This is **immediate and ≈0-cost** — it replaces the `capture-pane` idle poller for
-the *focus* decision (the poller stays only for the resume journal + death detection).
-`Notification` is a *delayed* (~60 s) nudge and is **not** on the critical path.
+(Platform gotcha shuttle must respect: hook commands run under git-bash on Windows, so a backslash
+in a hook command is silently destroyed — POSIX paths only.)
 
-**Platform gotcha:** hook commands run under **git-bash** on Windows, so a hook command with
-backslashes is silently destroyed — use POSIX/forward-slash paths or a PATH-resolved binary
-(`lyx mux …` resolves fine).
+**mux re-renders on structure, not on hooks.** The layout reacts to the strand set + the parent
+tree, which change via the explicit `AddStrand` / `UpdateStrand` / `RemoveStrand` calls mux already
+receives: a new child shrinks its parent, a removed child grows it back, and `focus` is set by the
+caller (loom at an input gate, via `UpdateStrand`). The active-bottom-dominant arrangement is
+**derivable from the tree** — no runtime idle signal needed.
 
-## PreToolUse guardrails
+**The `Agent` / `AskUserQuestion` guardrails are also shuttle's `--settings`** (Claude-specific),
+carried opaque by mux: a `PreToolUse` deny on `Agent` (steer to `lyx mux spawn` so nested work
+stays a visible strand) and on `AskUserQuestion` (steer to the file contract). mux never sees them.
 
-Two `PreToolUse` matchers in every spawned claude's settings hold the "everything is visible
-in a pane, nothing blocks invisibly" invariant by **denying** a tool and steering the model:
+## Liveness and orphans — generic, not Claude
 
-- **`Agent`** → deny + steer to `lyx mux spawn` (via the Bash tool). The in-process Agent tool
-  would run nested work with no pane and no session id of its own — invisible to mux. Denying
-  it forces every descendant to be a real `lyx mux spawn` pane (the ≤3-deep stack stays all
-  panes, no Agent tool anywhere).
-- **`AskUserQuestion`** → deny + steer to the **file contract**. A modal question the operator
-  can't reliably see/answer through the pane would stall the run; an agent reaching for it is
-  also a sign its prompt was under-specified.
-
-(The `Agent`-deny mechanism is sketched in
-[`mux-hooks-exploration.md`](../research/mux-hooks-exploration.md) §B; the deny-and-steer path
-itself is a pending spike.)
-
-## `claude agents --json` — the reconciler
-
-A machine-wide live registry of every running claude process (`pid`, `cwd`, `sessionId`, and
-for background entries `state ∈ {working, blocked, done, failed}`). mux runs it **on a hook
-event, not on a timer** (~800 ms/call — fine at event cadence, too slow to poll): join on
-`sessionId` to the `.lyx/mux.json` map to detect orphaned panes, dead sessions, and untracked
-processes. `state==blocked` is the **structured needs-input signal** (more reliable than the
-inconsistently-present `waitingFor`). This is the reconciliation channel that backs up the
-event-driven `Stop` edge; the [named server](#design-model-the-load-bearing-decisions)
-(decision 8) is what makes "untracked = orphan" a sound inference.
+mux's own "is this strand's process still alive / is that an orphan" needs are met **generically**,
+with no Claude knowledge: the [named server](#load-bearing-psmux-decisions-verified) (any psmux
+process outside `lyx-<hub-hash>` is provably stray) plus psmux `pane_dead`. A richer cross-check —
+`claude agents --json` joined on `sessionId` (`state ∈ {working, blocked, done, failed}`) — is
+*Claude-specific*, so it belongs with shuttle, surfaced to mux only as a generic "this session is
+gone" signal if at all. mux's core liveness stays provider-invariant.
 
 ## Resume after crash — native `--resume` with env hygiene
 
-`lyx mux resume` rebuilds the layout from `.lyx/mux.json` and relaunches `claude --resume
-<session-id>` per pane. **This works for programmatically-driven panes** — verified end-to-end
-twice (independent thread + in-session): a full transcript persisted (~14 KB, real
-`user`/`assistant` records) and after a `kill-server` crash the resumed pane recalled its codeword.
+`lyx mux resume` rebuilds the session from `.lyx/mux.json` and re-runs each strand's **stored
+resume command** (shuttle built it as `claude --resume <session-id>`; mux runs it opaquely, not
+knowing it is Claude). **This works for programmatically-driven panes** — verified end-to-end twice
+(independent thread + in-session): a full transcript persisted (~14 KB, real `user`/`assistant`
+records) and after a `kill-server` crash the resumed pane recalled its codeword.
 
 ```
 lyx mux resume:
-  read .lyx/mux.json → rebuild windows + columns (layout string)
-  per pane: <strip Claude-Code parent-session env>  (see below)
-            claude --resume <stored session-id>   # full TUI, native resume
+  read .lyx/mux.json → reload strands → render layout string → apply
+  per strand: <spawn with clean server env>            (mux owns the server env)
+              <re-run the strand's stored resume command>   # opaque; shuttle built it
 ```
 
 **The one requirement — lyx must sanitize the psmux child env (mandatory):**
 `CLAUDE_CODE_CHILD_SESSION=1` (prime culprit), plus `CLAUDECODE`, `CLAUDE_CODE_SESSION_ID`,
-`CLAUDE_CODE_ENTRYPOINT`, `CLAUDE_CODE_SSE_PORT`, must not reach the pane. If they do, claude
-treats the pane as a **nested child session and suppresses transcript writing** — leaving only a
-~100-byte `ai-title` stub, so `--resume` finds nothing. This single inherited-env effect caused
-every "doesn't persist" result during exploration; it is **not** send-keys, the visible window, or
-the model. **This is the common path, not an edge case:** the primary way mux is used is *claude
-itself running `lyx` to spawn reviewers/implementers*, so lyx is normally launched from inside a
-Claude Code session and inherits these vars. Because lyx (Go) spawns psmux, it is the natural
-chokepoint: build the **psmux server's `exec.Cmd.Env` without** these vars (verified-fallback: clear
-them in the pane right before the `claude` launch). Agent panes spawned later inherit the server's
-(clean) env, so they stay clean even when the spawning `lyx` call came from a poisoned claude —
-provided the server was started clean. (Untested nuance: psmux env-passthrough on attach — verify
-at implementation; the per-launch clear is the proven fallback.)
+`CLAUDE_CODE_ENTRYPOINT`, `CLAUDE_CODE_SSE_PORT`, must not reach the pane. If they do, claude treats
+the pane as a **nested child session and suppresses transcript writing** — leaving only a ~100-byte
+`ai-title` stub, so `--resume` finds nothing. This single inherited-env effect caused every
+"doesn't persist" result during exploration; it is **not** send-keys, the visible window, or the
+model. Because lyx (Go) spawns psmux, it is the natural chokepoint: build the **psmux server's
+`exec.Cmd.Env` without** these vars (verified-fallback: clear them in the pane right before the
+`claude` launch). Strands spawned later inherit the server's clean env.
 
-`claude -p` headless also persists, but a non-interactive feel is **out of scope** — the panes
-must feel like real interactive sessions, and with env hygiene they are, *and* resumable.
+> **Robustness gap:** cold-recover must not relaunch `claude --resume <id>` unconditionally. If a
+> strand crashed *before any conversation* (no transcript), `--resume` errors with "No conversation
+> found"; recover must detect that and fall back to a fresh `--session-id` launch. (Note: for an
+> unfinished step, [`loom`](loom.md#crash-recovery--resume-on-output-files-not-live-processes)
+> respawns rather than resumes — mux's `--resume` restores the *visible* session, not loom's
+> correctness.)
 
-> The `capture-pane` journal (see daemon) is now an **optional** higher-availability log /
-> belt-and-suspenders — useful for streaming and as a recap supplement, but no longer required
-> for resume. v1 lays the groundwork: assign + store `--session-id` and strip the env at launch.
+> The `capture-pane` journal (see daemon) is an **optional** belt-and-suspenders log — useful for
+> streaming and recap, but not required for resume.
 
 ---
 
 ## Deferred
 
-Post-v1, kept so the design isn't lost. Each maps to a roadmap milestone; do not build until
-the milestone is reached.
+Post-v1, kept so the design isn't lost. Each maps to a later [roadmap](../roadmap.md) milestone; do
+not build until it is reached.
 
-### v2 — subprocess panes (milestone 6)
+### Cross-worktree columns
 
-This is the [target model](#target-model-mux-spawn-replaces-agent-dispatch-proven-feasible--muxpoc)
-realized: `lyx mux spawn` replaces Agent dispatch, spawning a subprocess (e.g. a reviewer) whose
-pane appears **below** its parent in the same column; deeper spawns stack further down (≤3 deep).
-The bottom/active pane dominates the column height; ancestors collapse to compact strips.
+All worktrees in one window, a column per worktree. As noted [above](#scope-one-terminal-per-worktree-now-cross-worktree-columns-later),
+this is just the `worktree` strand field + a grouping rule — a metadata addition, not new
+architecture. Deferred only because one-terminal-per-worktree is the right starting scope.
 
-```
-┌─────────────────┬─────────────────┐
-│ wt: feature-a   │ wt: feature-c   │
-│ claude          │ claude          │
-│  └─ reviewer    │  └─ implement   │
-│      └─ sub-rev │                 │
-└─────────────────┴─────────────────┘
-```
+### mux daemon (deferred)
 
-This is where the **layout-string renderer** (decision 3) becomes mandatory: `even-horizontal`
-would flatten the stack, so mux tracks parent/child pane relationships in `.lyx/mux.json`
-and emits the full `window_layout` string on each mutation. `Ctrl+b z` (per-pane zoom) is the
-read/type grip when a column gets crowded.
-
-### mux daemon (milestone 7)
-
-A process running **outside** psmux is required to detect that psmux itself died (nothing
-inside psmux can). `lyx mux start` launches it as a standalone Windows process (not in a
-pane), running until `lyx mux stop`.
-
-Internal goroutines (corrected for what actually works):
+A process running **outside** psmux is required to detect that psmux itself died (nothing inside
+psmux can). `lyx mux start` launches it as a standalone Windows process (not in a pane), running
+until `lyx mux stop`.
 
 ```
 mux daemon
   ├── psmux watcher  — cmd.Wait() blocks until psmux exits; recovers on crash
-  ├── capture poller — per pane: capture-pane diff ~500ms → append to journal;
+  ├── capture poller — per strand: capture-pane diff ~500ms → append to journal;
   │                    derive state from markers (shortcuts=idle, interrupt=busy);
-  │                    detect death via pane_dead. THIS is the monitoring foundation.
-  ├── pane-died hook — optional low-latency nudge: run-shell -b → lyx mux event;
-  │                    bare trigger (no pane id), so the handler scans list-panes.
+  │                    detect death via pane_dead.
+  ├── pane-died hook — optional low-latency nudge: run-shell -b → lyx mux event
   ├── Slack inbound  — Socket Mode listener; routes Slack messages → send-keys
   └── Slack outbound — journal/state events → filter → post to Slack
 ```
 
-**Why the poller, not hooks:** `pipe-pane` is dead, `monitor-silence`/`alert-silence` are
-non-functional, and `pane-died` can't identify its pane — so event-driven monitoring via
-hooks is insufficient. The capture-pane poller is the real mechanism; it simultaneously feeds
-the resume journal, idle detection, and death detection. `pane-died` is at most a nudge to
-wake the poller.
+**Recovery uses `respawn-pane`** — it reuses the same pane id and revives a dead pane in place
+(layout untouched); it respawns the default shell, into which mux launches `claude --resume <id>`
+(env stripped). **Mutual watchdog:** psmux crash → daemon relaunches it and reloads strands;
+daemon crash → next `pane-died` → `lyx mux ensure-daemon` relaunches it. IPC is a Windows named
+pipe (`\\.\pipe\lyx`).
 
-**Push alternative — control-mode `-CC`:** a single `psmux -CC attach` control client *does*
-work on Windows and pushes live `%output %<pane> <data>` for all panes (verified — this is the
-real-time channel `pipe-pane` fails to provide), plus `%begin/%end`-framed command responses.
-Trade-off: `%output` is the **raw VT100 byte stream** (needs ANSI-stripping), whereas
-`capture-pane` returns already-rendered text. So: use `capture-pane` polling for the journal +
-idle detection (simpler), and reserve `-CC` for true streaming (the Slack relay) or to replace
-N pollers with one control client. **Recovery uses `respawn-pane`** — it reuses the same pane
-id and revives a dead pane in place (layout untouched); it respawns the default shell, into
-which mux then launches `claude --resume <session-id>` (with the parent-session env stripped).
+**Push alternative — control-mode `-CC`:** a single `psmux -CC attach` control client works on
+Windows and pushes live `%output %<pane> <data>` for all panes (the real-time channel `pipe-pane`
+fails to provide), as a raw VT100 stream (needs ANSI-strip). Use `capture-pane` polling for the
+journal; reserve `-CC` for true streaming (Slack) or to replace N pollers with one control client.
 
-**Mutual watchdog.** Both watch each other:
+### Slack relay (deferred)
 
-```
-psmux crashes → daemon detects via cmd.Wait() → relaunches psmux
-  → reads .lyx/mux.json → rebuilds layout → claude --resume <id> per pane
-    (parent-session env stripped — see Resume)
-daemon crashes → next pane-died hook → run-shell -b → `lyx mux ensure-daemon`
-  → checks named pipe / PID → relaunches daemon
-```
+One channel per worktree; the daemon bridges both directions. Outbound filter stays conservative —
+needs-human-input 🔴, recovery-failed 🔴, crash-loop 🔴, recovered ℹ️, task-completed ℹ️. Channel↔
+strand mapping lives in `.lyx/mux.json`.
 
-IPC is a Windows named pipe (`\\.\pipe\lyx`), not HTTP: `lyx mux event` is a short-lived
-process that forwards the (pane-less) event and exits.
+### Session files and portability (the session-sync milestone)
 
-**Respawn on death.**
-
-```
-pane-died (or poller sees pane_dead) → scan list-panes for the dead %id
-  → look up its worktree + session-id in .lyx/mux.json
-  → respawn-pane -t %P  (revive shell, same id) → launch claude --resume <id> (env stripped)
-  → Slack: "ℹ️ Recovered <worktree>"
-crash-loop guard: N respawns within T minutes → stop, urgent Slack alert
-```
-
-### Slack relay (milestone 8)
-
-One channel per worktree; the daemon bridges both directions.
-
-```
-Outbound: poller state-change (needs-input / done / recovered) → filter → POST #lyx-<worktree>
-Inbound:  user types in #lyx-<worktree> → Socket Mode → daemon → send-keys to pane
-```
-
-Outbound filter stays conservative — needs-human-input 🔴, recovery-failed 🔴, crash-loop 🔴,
-recovered ℹ️, task-completed ℹ️. Channel↔pane mapping lives in `.lyx/mux.json`. "Needs
-input" is derived by the poller from the `shortcuts` idle marker plus prompt-pattern matching
-(there is no `alert-silence` to lean on).
-
-### mill-start vs autonomous mode
-
-`mill-start` is interactive by design (the user is present; claude may ask questions) — the
-daemon does not interfere. After mill-start, execution is autonomous and the daemon monitors,
-so the user can walk away and watch via Slack.
-
-### Session files and portability (milestone 11)
-
-Claude stores transcripts at `%USERPROFILE%\.claude\projects\<project>\<session-id>.jsonl`
-(the project segment encodes the cwd with `:`, `\`, and `.` all replaced by `-`). With env
-hygiene (see [Resume](#resume-after-crash-native---resume-with-env-hygiene)) mux's panes populate
-these normally. Sessions are **not** portable across machines, though — `claude --resume` only
-works where the JSONL exists. `lyx session push/pull` (e.g. robocopy to a synced drive) would
-copy them for cross-machine resume. `CLAUDE_CONFIG_DIR` redirects *all* config (incl.
-credentials), so it is unsuitable for selective session sync.
+Claude stores transcripts at `%USERPROFILE%\.claude\projects\<project>\<session-id>.jsonl` (the
+project segment encodes the cwd with `:`, `\`, and `.` all replaced by `-`). With env hygiene
+mux's panes populate these normally, but sessions are **not** portable across machines — `claude
+--resume` only works where the JSONL exists. `lyx session push/pull` would copy them.
+`CLAUDE_CONFIG_DIR` redirects *all* config (incl. credentials), so it is unsuitable for selective
+session sync.
