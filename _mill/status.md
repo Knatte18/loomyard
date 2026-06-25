@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-lyxtest-leaf-seed
+phase: approved-templates-home
 slug: config-test-cleanup
 branch: config-test-cleanup
 plan: _mill/plan
@@ -22,6 +22,7 @@ plan-fix-r1  '2026-06-25T06:46:00Z'
 planned  '2026-06-25T06:46:33Z'
 implementing  '2026-06-25T07:00:53Z'
 approved-lyxtest-leaf-seed  '2026-06-25T07:10:49Z'
+approved-templates-home  '2026-06-25T07:17:14Z'
 ```
 
 ## Batches
@@ -34,9 +35,10 @@ batches:
     start_sha: 827a4e2a83af1cce7bafb7d9c2131910f6922739
     commit_sha: 8d446bfd65a6b1516c7759bf125f37c8891c7358
   - name: templates-home
-    state: running
+    state: approved
     implementer_session: 41d22672-df8c-4c2c-bc99-6d1cf52c4bcf
     start_sha: d5a4af92596423b3f0d5a3c0d1305da4a94d1864
+    commit_sha: 102be8f058bd3ec4c0eba22433e78236bdd68d46
   - name: lyxtest-tidy
     state: pending
 ```
