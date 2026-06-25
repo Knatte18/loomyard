@@ -13,7 +13,6 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/paths"
 )
 
@@ -29,6 +28,36 @@ func MustRun(tb testing.TB, dir string, args ...string) {
 	if output, err := cmd.CombinedOutput(); err != nil {
 		tb.Fatalf("command failed: %v; output: %s", err, output)
 	}
+}
+
+// SeedConfig seeds real configuration into a git repository, making the config
+// files available for tests without importing configreg. The repository must
+// already exist and be initialized with git. The map parameter maps module names
+// to YAML content (obtained by calling ConfigTemplate() on each module's package).
+// SeedConfig creates the _lyx/config directory if needed, writes each module's
+// YAML file, stages all changes, and commits them so the files are checked out
+// in the worktree. This preserves the leaf invariant: lyxtest imports only stdlib
+// and internal/paths, never configreg or feature packages.
+func SeedConfig(tb testing.TB, repoDir string, configByModule map[string]string) {
+	tb.Helper()
+
+	// Create config directory if it doesn't exist.
+	configDir := paths.ConfigDir(repoDir)
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		tb.Fatalf("mkdir config dir: %v", err)
+	}
+
+	// Write each module's config file.
+	for module, content := range configByModule {
+		configPath := paths.ConfigFile(repoDir, module)
+		if err := os.WriteFile(configPath, []byte(content), 0o644); err != nil {
+			tb.Fatalf("write config file %s: %v", module, err)
+		}
+	}
+
+	// Stage and commit the config files so they are checked out in the worktree.
+	MustRun(tb, repoDir, "git", "add", ".")
+	MustRun(tb, repoDir, "git", "commit", "-m", "seed config")
 }
 
 // Template builders: cached, built once per test binary via sync.Once.
@@ -167,18 +196,17 @@ func buildWeftPrime() (weftPrime, weftBare string) {
 			panic("git config user.name: " + err.Error() + "; " + string(output))
 		}
 
-		// Create _lyx/config with actual config files from templates
+		// Create _lyx/config with neutral placeholder (no real config files).
+		// Tests needing real config seed it via SeedConfig.
 		lyxConfigDir := paths.ConfigDir(weftPrime)
 		if err := os.MkdirAll(lyxConfigDir, 0o755); err != nil {
 			panic(err)
 		}
 
-		// Write config files from configreg templates
-		for _, mod := range configreg.Modules() {
-			configPath := paths.ConfigFile(weftPrime, mod.Name)
-			if err := os.WriteFile(configPath, []byte(mod.Template()), 0o644); err != nil {
-				panic(fmt.Sprintf("write %s config: %v", mod.Name, err))
-			}
+		// Write a placeholder file to mark the config dir as initialized.
+		placeholderPath := filepath.Join(lyxConfigDir, "placeholder")
+		if err := os.WriteFile(placeholderPath, []byte("weft config"), 0o644); err != nil {
+			panic(fmt.Sprintf("write placeholder: %v", err))
 		}
 
 		// Commit
