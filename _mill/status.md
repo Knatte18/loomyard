@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-gitexec-rename
+phase: approved-warp-clone-fold
 slug: warp-module
 branch: warp-module
 plan: _mill/plan
@@ -37,6 +37,7 @@ plan-fix-r8  '2026-06-25T14:18:07Z'
 planned  '2026-06-25T14:18:22Z'
 implementing  '2026-06-25T14:21:06Z'
 approved-gitexec-rename  '2026-06-25T14:30:52Z'
+approved-warp-clone-fold  '2026-06-25T14:34:58Z'
 ```
 
 ## Batches
@@ -49,9 +50,10 @@ batches:
     start_sha: ca2fefd6f521d6464abd1fbe26c84346519e421a
     commit_sha: 298da5b31a9d0adc65dc117478430421dca490ec
   - name: warp-clone-fold
-    state: running
+    state: approved
     implementer_session: 59341e77-1ec8-4ee1-9912-4e7272dca98d
     start_sha: 15d9707b619ebaf08d9b237046d98d8d56b8c899
+    commit_sha: f4396c567a65672bcc4961564ab9ed9460598bc0
   - name: warp-worktree-absorb
     state: pending
   - name: topology-primitives-activation
