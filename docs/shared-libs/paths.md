@@ -5,8 +5,8 @@ path math. Centralizes cwd/worktree-root handling so the `cwd ≠ git-repo-path`
 class never recurs.
 
 **Dependency direction (Go enforces it):** `internal/paths` imports only
-`internal/git` + stdlib and **never** a domain module. All domain modules
-(`worktree`, `board`, `ide`, `muxpoc`) import `paths` for geometry.
+`internal/gitexec` + stdlib and **never** a domain module. All domain modules
+(`warp`, `board`, `ide`, `muxpoc`) import `paths` for geometry.
 
 ## The problem
 
