@@ -106,7 +106,8 @@ func RunCLI(out io.Writer, args []string) int {
 	// Dispatch subcommands
 	switch subcommand {
 	case "status":
-		statusMap, err := Status(weftWorktree, l.HostLyxLinkHere(), l.WeftLyxDir(), pathspec)
+		// Junction integrity is now reported by warp status; weft reports only content-sync fields.
+		statusMap, err := Status(weftWorktree, pathspec)
 		if err != nil {
 			return output.Err(out, err.Error())
 		}
