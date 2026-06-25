@@ -28,7 +28,9 @@ implementing  '2026-06-25T07:00:53Z'
 ```yaml
 batches:
   - name: lyxtest-leaf-seed
-    state: pending
+    state: running
+    implementer_session: bcad531b-54d7-4124-a78e-03fb4ca505f0
+    start_sha: 827a4e2a83af1cce7bafb7d9c2131910f6922739
   - name: templates-home
     state: pending
   - name: lyxtest-tidy
