@@ -1,6 +1,6 @@
-// gitclone_test.go — unit tests for URL-derivation helpers.
+// clone_test.go — unit tests for URL-derivation helpers.
 
-package gitclone
+package warp
 
 import (
 	"testing"

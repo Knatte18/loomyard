@@ -2,7 +2,7 @@
 
 // clone_integration_test.go — integration tests for clone orchestration with real git fixtures.
 
-package gitclone
+package warp
 
 import (
 	"os"
