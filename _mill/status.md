@@ -49,7 +49,9 @@ batches:
     start_sha: ca2fefd6f521d6464abd1fbe26c84346519e421a
     commit_sha: 298da5b31a9d0adc65dc117478430421dca490ec
   - name: warp-clone-fold
-    state: pending
+    state: running
+    implementer_session: 59341e77-1ec8-4ee1-9912-4e7272dca98d
+    start_sha: 15d9707b619ebaf08d9b237046d98d8d56b8c899
   - name: warp-worktree-absorb
     state: pending
   - name: topology-primitives-activation
