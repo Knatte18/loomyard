@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-hook-and-launcher
+phase: approved-docs-finalize
 slug: warp-module
 branch: warp-module
 plan: _mill/plan
@@ -44,6 +44,7 @@ approved-coordinated-checkout  '2026-06-25T15:20:59Z'
 approved-status-reconcile-pollution  '2026-06-25T15:36:58Z'
 approved-prune-cleanup  '2026-06-25T15:48:57Z'
 approved-hook-and-launcher  '2026-06-25T16:20:16Z'
+approved-docs-finalize  '2026-06-25T16:30:14Z'
 ```
 
 ## Batches
@@ -91,7 +92,8 @@ batches:
     start_sha: d261abfcf2b0633fbac921956659d75a8405152e
     commit_sha: 947dc8c8cac85e987cf0714f7f4179724d5cf3e6
   - name: docs-finalize
-    state: running
+    state: approved
     implementer_session: 3c715634-4f94-4a3b-8fc6-2147c211e1a2
     start_sha: ee150f2c0dfbda957362c189ba70486027bf88b2
+    commit_sha: 3ef2bf6a1319091417ae0aa78b9dc7da75fa8047
 ```
