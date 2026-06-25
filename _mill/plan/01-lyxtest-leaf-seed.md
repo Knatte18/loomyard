@@ -43,7 +43,10 @@ found` / `missing keys`). Cards 3 and 4 cover the two verified cases plus the sw
   weftPrime), "placeholder")` with content `[]byte("weft config")` and mode `0o644`. Keep the
   surrounding `git add`/`git commit` of the fixture unchanged. Ensure remaining imports still
   compile (`fmt` is still used elsewhere in the file; only drop `configreg`). Do not touch
-  `buildHostHub` or `buildWeftOnly`.
+  `buildHostHub` or `buildWeftOnly`. Note: this fixture placeholder lives at
+  `_lyx/config/placeholder` and is **intentionally distinct** from the bare `_lyx/placeholder`
+  literal that `TestRunCLI_EnvMapToOption` writes (`weft_integration_test.go`) — they are
+  different files; do not try to make them the same path.
 - **Commit:** `refactor(lyxtest): drop configreg import, seed neutral weft-prime fixture`
 
 ### Card 2: Add the configreg-free SeedConfig helper
@@ -100,12 +103,16 @@ found` / `missing keys`). Cards 3 and 4 cover the two verified cases plus the sw
 - **Requirements:** Run `go test -tags integration ./...` after cards 1–3. For **every** test that
   now fails with `config file … not found` or `missing keys` (the `config.Load` errors), add a
   `lyxtest.SeedConfig` call right after its `CopyPaired`/`CopyPairedLocal` call, seeding only the
-  module(s) the failure names. Obtain each template from the module's own package — e.g.
-  `weft.ConfigTemplate()` for `weft.yaml`, `worktree.ConfigTemplate()` for `worktree.yaml` — adding
-  that feature-package import to the test file if needed; **never** import `configreg` from a
+  module(s) the failure names. Obtain each template from the module's own package — use the
+  **unqualified** `ConfigTemplate()` when the test file is in that same package (the `package
+  worktree` files `add_test.go`/`remove_test.go`/`weft_test.go`/`cli_test.go` call bare
+  `ConfigTemplate()`, NOT `worktree.ConfigTemplate()`, which would not compile from inside the
+  package); use the qualified form (e.g. `weft.ConfigTemplate()`) only from a different package,
+  adding that feature-package import to the test file if needed. **Never** import `configreg` from a
   feature-internal package. Verified case to fix: `TestRunCLI_EnvMapToOption` (`package weft`,
-  `weft_integration_test.go`) — seed `map[string]string{"weft": weft.ConfigTemplate()}` into
-  `fixture.WeftPrime` before `RunCLI([]string{"push"})`. The listed `worktree` files are candidates
+  `weft_integration_test.go`) — seed `map[string]string{"weft": ConfigTemplate()}` (unqualified,
+  since the file is `package weft`) into `fixture.WeftPrime` before `RunCLI([]string{"push"})`. The
+  listed `worktree` files are candidates
   only: edit a candidate **only if** the sweep flags it; leave unflagged candidates unchanged. Do
   not modify the unrelated `_lyx/placeholder` literal in `weft_integration_test.go` here (that is
   batch 3).
@@ -115,6 +122,7 @@ found` / `missing keys`). Cards 3 and 4 cover the two verified cases plus the sw
 
 - **Context:**
   - `internal/paths/paths.go`
+  - `internal/lyxtest/lyxtest.go`
 - **Edits:**
   - `internal/lyxtest/lyxtest_test.go`
 - **Creates:** none

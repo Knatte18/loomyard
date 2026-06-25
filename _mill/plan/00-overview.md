@@ -3,7 +3,7 @@
 ```yaml
 task: "Move config templates home by removing the lyxtest->configreg edge"
 slug: config-test-cleanup
-approved: false
+approved: true
 started: "20260625-063846"
 parent: docs-move-psmux-tui
 root: ""
