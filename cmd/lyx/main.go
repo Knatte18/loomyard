@@ -16,7 +16,6 @@
 //	update     reconcile module configs against templates — see internal/update.RunCLI
 //	ide        VS Code launcher — see internal/ide.RunCLI for subcommands
 //	muxpoc     proof-of-concept psmux mux — see internal/muxpoc.RunCLI for subcommands
-//	worktree   git-worktree lifecycle — see internal/worktree.RunCLI for subcommands
 //	weft       weft git operations — see internal/weft.RunCLI for subcommands
 //	warp       host↔weft coordination — see internal/warp.RunCLI for subcommands
 //
@@ -36,7 +35,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/update"
 	"github.com/Knatte18/loomyard/internal/warp"
 	"github.com/Knatte18/loomyard/internal/weft"
-	"github.com/Knatte18/loomyard/internal/worktree"
 )
 
 func main() {
@@ -67,8 +65,6 @@ func run(args []string, out io.Writer) int {
 		return ide.RunCLI(out, moduleArgs)
 	case "muxpoc":
 		return muxpoc.RunCLI(out, moduleArgs)
-	case "worktree":
-		return worktree.RunCLI(out, moduleArgs)
 	case "weft":
 		return weft.RunCLI(out, moduleArgs)
 	case "warp":
