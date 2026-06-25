@@ -73,7 +73,9 @@ batches:
     start_sha: 29e13cbd7111cf9d798c81ed391b815a27adbf30
     commit_sha: cbed8646dcf4d0b755ab88d6574904403a594006
   - name: status-reconcile-pollution
-    state: pending
+    state: running
+    implementer_session: 30102e00-3651-4f5f-a330-e9944be75f4b
+    start_sha: abe08dbe4af5b07ae83c7509eaf1a71bdab9f25b
   - name: prune-cleanup
     state: pending
   - name: hook-and-launcher
