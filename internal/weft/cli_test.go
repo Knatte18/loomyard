@@ -88,8 +88,12 @@ func TestRunCLI_StatusWithMinimalFixture(t *testing.T) {
 		t.Errorf("ok should be true; got false. Error: %v", jsonOut["error"])
 	}
 
-	// Check for junction_ok field
-	if _, hasJunction := jsonOut["junction_ok"]; !hasJunction {
-		t.Errorf("junction_ok field missing from status output")
+	// Junction reporting has moved to warp status; weft status exposes only content-sync fields.
+	// Assert the content fields are present in the output.
+	if _, hasWorktree := jsonOut["weft_worktree"]; !hasWorktree {
+		t.Errorf("weft_worktree field missing from status output")
+	}
+	if _, hasBranch := jsonOut["branch"]; !hasBranch {
+		t.Errorf("branch field missing from status output")
 	}
 }

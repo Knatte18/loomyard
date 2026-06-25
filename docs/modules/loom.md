@@ -218,7 +218,7 @@ boundary**, never mid-operation — `mill-pause`'s natural-stopping-point proper
 | producers (discussion / plan) | prompt/profile files | **not** modules — just a prompt + profile fed to `shuttle.Run` |
 | `lyx loom status` | a loom subcommand | the 1-line status view; runs as a [strand](mux.md#the-strand-model) (`anchor:top`), not a separate module |
 | execution stack | existing/new infra | [`proc`](README.md) → [`mux`](mux.md) → [`shuttle`](shuttle.md) — built once, used by both modules above |
-| Setup | uses existing modules | `worktree`, `weft`, `board` |
+| Setup | uses existing modules | `warp` (topology owner), `weft`, `board` |
 | `/ly-*` skills | thin wrappers | over `lyx loom run` |
 
 The new Go specific to loom is the **two modules** (`loom`, `review`) plus the **Builder loop**
@@ -248,7 +248,7 @@ it coordinates through files and drives strands via mux — so the screen is fre
 (the status line on top, agents below as they spawn). loom and the view are independent: loom writes
 the `_lyx/` status file; the status strand reads and prints it; neither blocks the other.
 
-**The run-launcher.** A double-click shortcut makes this one click: `lyx worktree add` drops a
+**The run-launcher.** A double-click shortcut makes this one click: `lyx warp add` drops a
 small `.lyx/lyxrun.cmd` (machine-local, untracked — it embeds an absolute path) in the worktree
 that just does `cd <worktree>` then `lyx loom run`. Because everything is
 [cwd-authoritative](../overview.md#principles), the launcher needs no arguments — geometry resolves

@@ -4,9 +4,10 @@ Loomyard is a Go toolkit of one-shot CLI modules. Each invocation starts a proce
 runs one command, writes JSON to stdout, and exits — there is no daemon and no
 shared memory. State lives on disk per module and is coordinated with file locks,
 so concurrent `lyx` processes on a machine cooperate through the filesystem. The
-first module, **board** (a task tracker), is implemented; **worktree** is
-implemented; **muxpoc**, a proof-of-concept orchestrator, is shipped; and the
-planned clean `internal/mux` remains design (see [roadmap.md](roadmap.md)).
+first module, **board** (a task tracker), is implemented; **warp** (the host↔weft
+topology owner) is implemented; **muxpoc**, a proof-of-concept orchestrator, is
+shipped; and the planned clean `internal/mux` remains design (see
+[roadmap.md](roadmap.md)).
 
 In the long term, Loomyard is intended to **replace mill/millhouse (Python)** entirely.
 We get there by building these modules as self-contained toolkits first;
@@ -35,7 +36,7 @@ Convenience alias: **`lyx run` → `lyx loom run`** (the everyday autonomous cal
 
 ## Principles
 
-1. **Toolkit-first.** Build small, composable primitives (board, worktree, mux)
+1. **Toolkit-first.** Build small, composable primitives (board, warp, mux)
    before any orchestrator that ties them together. mill's Agent Dispatch
    orchestrates for now.
 2. **Self-contained modules, deep internal tests.** All of a module's domain logic
@@ -107,7 +108,7 @@ The **host repo** is the project's source of truth, maintained by developers. Al
 
 | Artifact | Location | Repo | Purpose |
 |----------|----------|------|---------|
-| `_lyx/config/` | Weft worktree | Weft | Live YAML configuration files for all modules (board, worktree, weft); reconciled via `lyx update` |
+| `_lyx/config/` | Weft worktree | Weft | Live YAML configuration files for all modules (board, warp, weft); reconciled via `lyx update` |
 | `.env` | Weft worktree | Weft | Git-ignored per-machine environment variable overrides (KEY=value format) |
 | `_codeguide/` | Weft worktree | Weft | Codeguide documentation (task 008) |
 | `_board/` | Hub | Board | Task board at a **configured** board-repo URL — `lyx board` accepts any URL; `ly-git-clone` defaults it to the weft repo's GitHub wiki (`<weft>.wiki.git`) |
@@ -153,7 +154,7 @@ The `-weft` suffix is fixed and non-configurable. Weft paths are computed on dem
 
 ### Status
 
-- **Go implementation** (paths geometry, paired spawn, `lyx weft` command): ✅ task 006 complete. The weft engine (paths geometry, paired `lyx worktree add` spawn, and `lyx weft status|commit|push|pull|sync`) now exists in Go. Paired `lyx worktree add` hard-requires a weft repo built by the downstream hub-creator.
+- **Go implementation** (paths geometry, paired spawn, `lyx weft` command): ✅ task 006 complete. The weft engine (paths geometry, paired `lyx warp add` spawn, and `lyx weft status|commit|push|pull|sync`) now exists in Go. Paired `lyx warp add` hard-requires a weft repo built by the downstream hub-creator.
 - **`lyx config` command**: ✅ task 008 partial complete. The interactive menu interface (`lyx config` and `lyx config <module>`) shipped. `_codeguide` junction activation and codeguide config schema remain deferred.
 - **Portals**: on hold pending `_codeguide` junction activation. Portals (symlink-based overlay sharing) remain unimplemented; the weft junction model is the live mechanism.
 
@@ -162,14 +163,13 @@ github.com/Knatte18/loomyard/
 ├── cmd/lyx/
 │   └── main.go                   entrypoint: routes the <module> argument to a module
 ├── internal/board/               the board module
-├── internal/gitclone/            the git-clone hub-creator
-├── internal/worktree/            the worktree module
+├── internal/warp/                the warp module (host↔weft topology owner)
 ├── internal/weft/                the weft module
 ├── internal/ide/                 the ide module
 ├── internal/muxpoc/              the muxpoc POC module
 ├── internal/paths/               geometry resolver (the sole owner of cwd/root math)
 ├── internal/config/              shared config resolution
-├── internal/git/                 shared git operations
+├── internal/gitexec/             shared git operations
 ├── internal/lock/                shared file locking
 └── internal/output/              shared JSON output
 ```
@@ -192,18 +192,16 @@ case "board":
     return board.RunCLI(out, moduleArgs)
 case "config":
     return configcli.RunCLI(out, moduleArgs)
-case "git-clone":
-    return gitclone.RunCLI(out, moduleArgs)
 case "update":
     return update.RunCLI(out, moduleArgs)
 case "ide":
     return ide.RunCLI(out, moduleArgs)
 case "muxpoc":
     return muxpoc.RunCLI(out, moduleArgs)
-case "worktree":
-    return worktree.RunCLI(out, moduleArgs)
 case "weft":
     return weft.RunCLI(out, moduleArgs)
+case "warp":
+    return warp.RunCLI(out, moduleArgs)
 }
 ```
 
@@ -221,10 +219,8 @@ User-facing modules each get one `lyx <module>` namespace:
 - **update** — reconciles all module config files against their live templates, reporting added/removed keys and optionally writing changes (`internal/update`). Dry-run by default; `--apply` writes atomically. ✅ Implemented.
 - **board** — the task-tracker board (`internal/board`). ✅ Implemented.
 - **config** — interactive menu for viewing and editing module configs. ✅ Implemented.
-- **git-clone** — hub-creator: create a fresh Hub and clone the host, weft, and board Primes into it (`internal/gitclone`). ✅ Implemented.
-- **worktree** — git-worktree lifecycle (create / track / tear down). ✅ Implemented.
 - **weft** — owns all git into the paired weft repo (`lyx weft status|commit|push|pull|sync`). ✅ Implemented.
-- **warp** — **host↔weft-coordinated git topology**: clone, dual-worktree add/remove, coordinated checkout (switches host+weft together + re-points junctions), reconcile, cleanup. The single owner of the mirror invariant — consolidates today's `worktree` / `git-clone` / `internal/git`. 🚧 Design — not built. See [modules/warp.md](modules/warp.md).
+- **warp** — **host↔weft-coordinated git topology**: clone (hub-creator), dual-worktree add/remove, coordinated checkout (switches host+weft together + re-points junctions), reconcile, status, prune, cleanup. The single owner of the mirror invariant — consolidates the former `worktree` / `git-clone` modules and `internal/git`; its CLI surface is `lyx warp clone|add|list|remove|checkout|status|reconcile|prune|cleanup`. ✅ Implemented.
 - **ide** — one-shot VS Code launcher with interactive menu. ✅ Implemented.
 - **muxpoc** — shipped proof-of-concept psmux orchestrator proving the risky parts of the
   planned mux module. ✅ Implemented.
@@ -248,7 +244,7 @@ back into mux — see [modules/mux.md](modules/mux.md#naming).)
 scaffolds the shared `_lyx/` config dir for every module.
 
 The user-facing modules sit on a thin layer of shared infrastructure
-(`internal/config`, `internal/git`, `internal/lock`, `internal/output`, `internal/paths`, `internal/state`) — defined in
+(`internal/config`, `internal/gitexec`, `internal/lock`, `internal/output`, `internal/paths`, `internal/state`) — defined in
 [shared-libs/README.md](shared-libs/README.md).
 
 ## Execution stack (orchestration layers)
@@ -305,7 +301,6 @@ git-backed integration — live in the black-box `internal/board/boardtest` pack
 - [modules/mux.md](modules/mux.md) — the window to the world: psmux overlay + strand bookkeeping + render (design).
 - [modules/shuttle.md](modules/shuttle.md) — run one LLM agent via a swappable engine over the file contract (design).
 - [modules/review.md](modules/review.md) — the generic gate engine (handler/fixer + cluster + stuck judge); design.
-- [modules/warp.md](modules/warp.md) — host↔weft-coordinated git topology: clone, dual-worktree, coordinated checkout, reconcile, cleanup (design).
 - [benchmarks/](benchmarks/board-performance.md) — board performance, tracked across revisions.
 - [shared-libs/](shared-libs/README.md) — the shared infrastructure plumbing.
 - [research/](research/) — design exploration (mux research logs).

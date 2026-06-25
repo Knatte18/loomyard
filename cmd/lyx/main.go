@@ -16,9 +16,8 @@
 //	update     reconcile module configs against templates — see internal/update.RunCLI
 //	ide        VS Code launcher — see internal/ide.RunCLI for subcommands
 //	muxpoc     proof-of-concept psmux mux — see internal/muxpoc.RunCLI for subcommands
-//	worktree   git-worktree lifecycle — see internal/worktree.RunCLI for subcommands
 //	weft       weft git operations — see internal/weft.RunCLI for subcommands
-//	git-clone  clone host, weft, and board into a dormant Hub — see internal/gitclone.RunCLI
+//	warp       host↔weft coordination — see internal/warp.RunCLI for subcommands
 //
 // All output is JSON on stdout. Exit code 1 on error.
 package main
@@ -30,13 +29,12 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/board"
 	"github.com/Knatte18/loomyard/internal/configcli"
-	"github.com/Knatte18/loomyard/internal/gitclone"
 	"github.com/Knatte18/loomyard/internal/ide"
 	"github.com/Knatte18/loomyard/internal/initcli"
 	"github.com/Knatte18/loomyard/internal/muxpoc"
 	"github.com/Knatte18/loomyard/internal/update"
+	"github.com/Knatte18/loomyard/internal/warp"
 	"github.com/Knatte18/loomyard/internal/weft"
-	"github.com/Knatte18/loomyard/internal/worktree"
 )
 
 func main() {
@@ -67,12 +65,10 @@ func run(args []string, out io.Writer) int {
 		return ide.RunCLI(out, moduleArgs)
 	case "muxpoc":
 		return muxpoc.RunCLI(out, moduleArgs)
-	case "worktree":
-		return worktree.RunCLI(out, moduleArgs)
 	case "weft":
 		return weft.RunCLI(out, moduleArgs)
-	case "git-clone":
-		return gitclone.RunCLI(out, moduleArgs)
+	case "warp":
+		return warp.RunCLI(out, moduleArgs)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown module: %s\n", module)
 		return 1

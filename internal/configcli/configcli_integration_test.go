@@ -17,8 +17,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 	"github.com/Knatte18/loomyard/internal/paths"
+	"github.com/Knatte18/loomyard/internal/warp"
 	"github.com/Knatte18/loomyard/internal/weft"
-	"github.com/Knatte18/loomyard/internal/worktree"
 )
 
 // TestE2ESyncIntegration is an e2e test using CopyPaired: creates a host worktree with
@@ -37,12 +37,18 @@ func TestE2ESyncIntegration(t *testing.T) {
 	}
 	lyxtest.SeedConfig(t, f.WeftPrime, seeds)
 
-	// FIRST: Seed the host _lyx junction by running worktree.New().Add().
+	// FIRST: Create the host worktree via warp.New().Add() (which is dormant).
+	// Then wire the host _lyx junction via WireJunctions.
 	// Without this the host worktree has no _lyx, so config.Edit→FindBaseDir would error.
-	w := worktree.New(worktree.Config{})
-	_, err := w.Add(f.Layout, slug, worktree.AddOptions{SkipPush: true})
+	w := warp.New(warp.Config{})
+	_, err := w.Add(f.Layout, slug, warp.AddOptions{SkipPush: true})
 	if err != nil {
 		t.Fatalf("worktree.Add(%q): %v", slug, err)
+	}
+
+	// Wire junctions for the new host worktree.
+	if err := warp.WireJunctions(f.Layout, slug); err != nil {
+		t.Fatalf("WireJunctions(%q): %v", slug, err)
 	}
 
 	// Resolve layout for the new host worktree.
@@ -74,16 +80,16 @@ func TestE2ESyncIntegration(t *testing.T) {
 
 	// Run dispatch with the fake editor and injected sync.
 	var out bytes.Buffer
-	code := dispatch(hostLayout, os.Stdin, &out, []string{"worktree"}, fakeEdit, injectedSync)
+	code := dispatch(hostLayout, os.Stdin, &out, []string{"warp"}, fakeEdit, injectedSync)
 
 	// Assert dispatch succeeded.
 	if code != 0 {
 		t.Errorf("dispatch() = %d; want 0; output: %s", code, out.String())
 	}
 
-	// Assert _lyx/config/worktree.yaml is tracked/committed in the weft worktree.
+	// Assert _lyx/config/warp.yaml is tracked/committed in the weft worktree.
 	weftWorktreePath := f.Layout.WeftWorktreePath(slug)
-	configRelPath := paths.ConfigFile(".", "worktree")
+	configRelPath := paths.ConfigFile(".", "warp")
 	configPath := filepath.Join(weftWorktreePath, configRelPath)
 	// For git commands, use forward slashes (git always uses forward slashes).
 	configRelPathForGit := strings.ReplaceAll(configRelPath, "\\", "/")

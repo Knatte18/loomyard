@@ -1,5 +1,5 @@
 // leaf_enforcement_test.go enforces the lyxtest Leaf Invariant: internal/lyxtest
-// must not import internal/configreg or any feature package (board, worktree, weft).
+// must not import internal/configreg or any feature package (board, warp, weft).
 // Tests that need real config seed it via SeedConfig with a configreg-free
 // map[string]string (never configreg types).
 
@@ -16,7 +16,7 @@ import (
 )
 
 // TestLeafInvariant verifies that lyxtest imports only stdlib and internal/paths,
-// never internal/configreg or feature packages (board, worktree, weft).
+// never internal/configreg or feature packages (board, warp, weft).
 // It uses go/parser to read actual import paths, avoiding false positives from
 // string literals in doc comments.
 func TestLeafInvariant(t *testing.T) {
@@ -31,7 +31,7 @@ func TestLeafInvariant(t *testing.T) {
 	bannedImports := []string{
 		"github.com/Knatte18/loomyard/internal/configreg",
 		"github.com/Knatte18/loomyard/internal/board",
-		"github.com/Knatte18/loomyard/internal/worktree",
+		"github.com/Knatte18/loomyard/internal/warp",
 		"github.com/Knatte18/loomyard/internal/weft",
 	}
 

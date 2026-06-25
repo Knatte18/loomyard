@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/git"
+	"github.com/Knatte18/loomyard/internal/gitexec"
 )
 
 // WorktreeEntry represents a single git worktree in the output of `git worktree list`.
@@ -32,7 +32,7 @@ type WorktreeEntry struct {
 //
 // Returns WorktreeEntry slice or an error if parsing or git execution fails.
 func List(sourceDir string) ([]WorktreeEntry, error) {
-	stdout, stderr, exitCode, err := git.RunGit([]string{"worktree", "list", "--porcelain"}, sourceDir)
+	stdout, stderr, exitCode, err := gitexec.RunGit([]string{"worktree", "list", "--porcelain"}, sourceDir)
 	if err != nil {
 		return nil, err
 	}

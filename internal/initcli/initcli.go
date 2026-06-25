@@ -16,20 +16,30 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitignore"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/paths"
+	"github.com/Knatte18/loomyard/internal/warp"
 )
 
 // RunInit is the entry point for the lyx init command.
 //
-// It scaffolds the config layer in the current working directory by:
-//   1. Creating _lyx and _lyx/config directories
-//   2. Maintaining the managed .gitignore block for .lyx/
-//   3. Reconciling all module config files against their templates via ReconcileAll
+// It activates the warp topology by wiring cwd-keyed junctions, then reconciles
+// the config layer in the current working directory by:
+//   1. Resolving the layout from cwd
+//   2. Checking for a weft pairing; if absent, report and exit early
+//   3. Wiring the host _lyx junction via warp.WireJunctions
+//   4. Creating _lyx and _lyx/config directories
+//   5. Maintaining the managed .gitignore block for .lyx/
+//   6. Reconciling all module config files against their templates via ReconcileAll
 //
-// Idempotent: a second run does not clobber existing config files (Reconcile
-// preserves user values) and does not duplicate the .gitignore block.
+// Idempotent: junction wiring is idempotent (via fslink.IsLink/PointsTo); a second run
+// does not clobber existing config files (Reconcile preserves user values) and does not
+// duplicate the .gitignore block.
 //
 // Returns a JSON summary with _lyx/gitignore status and per-module results,
 // and exit code 0 on success, 1 on error.
+//
+// Contract: lyx init is the activator run only inside a warp-hub worktree that
+// already has a weft pairing (from warp clone/add). There is no standalone non-warp
+// lyx init — the no-pairing path reports and exits, requiring warp add/clone first.
 func RunInit(out io.Writer, args []string) int {
 	// Resolve current working directory
 	cwd, err := paths.Getwd()
@@ -37,10 +47,29 @@ func RunInit(out io.Writer, args []string) int {
 		return output.Err(out, fmt.Sprintf("failed to get working directory: %v", err))
 	}
 
+	// Resolve layout from cwd (needed for weft sibling derivation and slug)
+	l, err := paths.Resolve(cwd)
+	if err != nil {
+		return output.Err(out, fmt.Sprintf("failed to resolve layout: %v", err))
+	}
+
+	// Check for weft pairing before activating topology.
+	// If no weft sibling exists, the host is unpaired (dormant Add); report and exit.
+	weftWorktree := l.WeftWorktree()
+	if _, statErr := os.Stat(weftWorktree); os.IsNotExist(statErr) {
+		return output.Err(out, "no weft pairing — run `lyx warp add` or `lyx warp clone` first")
+	}
+
+	// Wire junctions for the current worktree (keyed by its slug: filepath.Base(WorktreeRoot)).
+	slug := filepath.Base(l.WorktreeRoot)
+	if err := warp.WireJunctions(l, slug); err != nil {
+		return output.Err(out, fmt.Sprintf("failed to wire junctions: %v", err))
+	}
+
 	// Track status for each step
 	status := map[string]string{}
 
-	// Step 1: Create _lyx directory
+	// Step 4: Create _lyx directory (activation completed in steps 1-3 above)
 	lyxDir := filepath.Join(cwd, paths.LyxDirName)
 	info, err := os.Stat(lyxDir)
 	if err != nil && !os.IsNotExist(err) {
@@ -67,7 +96,7 @@ func RunInit(out io.Writer, args []string) int {
 		return output.Err(out, fmt.Sprintf("failed to create _lyx/config directory: %v", err))
 	}
 
-	// Step 2: Maintain managed block in .gitignore
+	// Step 5: Maintain managed block in .gitignore
 	changed, err := gitignore.Ensure(cwd, ".lyx/")
 	if err != nil {
 		return output.Err(out, fmt.Sprintf("failed to update .gitignore: %v", err))
@@ -79,7 +108,7 @@ func RunInit(out io.Writer, args []string) int {
 		status["gitignore"] = "unchanged"
 	}
 
-	// Step 3: Reconcile all module configs.
+	// Step 6: Reconcile all module configs.
 	// Note: init uses cwd as baseDir (where the user runs 'lyx init'), while update uses WorktreeRoot+RelPath.
 	// This is intentional—init is user-driven from any directory, update is file-based from repo root.
 	results, err := configsync.ReconcileAll(cwd, true)
