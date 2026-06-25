@@ -24,7 +24,7 @@ import (
 // Returns exit code 0 on success or 1 on error. Output is JSON on out.
 func RunCLI(out io.Writer, args []string) int {
 	if len(args) < 1 {
-		return output.Err(out, "usage: lyx warp <clone|add|list|remove>")
+		return output.Err(out, "usage: lyx warp <clone|add|list|remove|checkout>")
 	}
 
 	subcommand, subArgs := args[0], args[1:]
@@ -38,8 +38,10 @@ func RunCLI(out io.Writer, args []string) int {
 		return runList(out, subArgs)
 	case "remove":
 		return runRemove(out, subArgs)
+	case "checkout":
+		return runCheckout(out, subArgs)
 	default:
-		return output.Err(out, "usage: lyx warp <clone|add|list|remove>")
+		return output.Err(out, "usage: lyx warp <clone|add|list|remove|checkout>")
 	}
 }
 
@@ -104,6 +106,45 @@ func runList(out io.Writer, args []string) int {
 	}
 	return output.Ok(out, map[string]any{
 		"worktrees": entries,
+	})
+}
+
+// runCheckout parses and executes the warp checkout subcommand.
+//
+// It resolves the layout and warp config from the current working directory,
+// then calls Checkout with the supplied branch argument. On success it emits
+// a JSON object with branch and weft_worktree fields.
+func runCheckout(out io.Writer, args []string) int {
+	if len(args) < 1 {
+		return output.Err(out, "usage: lyx warp checkout <branch>")
+	}
+
+	branch := args[0]
+
+	cwd, err := paths.Getwd()
+	if err != nil {
+		return output.Err(out, err.Error())
+	}
+
+	l, err := paths.Resolve(cwd)
+	if err != nil {
+		return output.Err(out, err.Error())
+	}
+
+	cfg, err := LoadConfig(cwd, "warp")
+	if err != nil {
+		return output.Err(out, err.Error())
+	}
+
+	w := New(cfg)
+
+	r, err := w.Checkout(l, branch)
+	if err != nil {
+		return output.Err(out, err.Error())
+	}
+	return output.Ok(out, map[string]any{
+		"branch":        r.Branch,
+		"weft_worktree": r.WeftWorktree,
 	})
 }
 
