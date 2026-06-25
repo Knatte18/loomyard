@@ -49,6 +49,15 @@ func writeLaunchers(l *paths.Layout, slug string) error {
 		return fmt.Errorf("write ide.cmd: %w", err)
 	}
 
+	// Write warp-checkout.cmd — a shortcut that runs coordinated checkout for
+	// this worktree. It climbs to the worktree subpath the same way ide.cmd does
+	// so the user can double-click it from the _launchers directory.
+	warpCheckoutContent := fmt.Sprintf("@cd /d \"%%~dp0%s\" && lyx warp checkout\r\n", spawnRelBackslash)
+	warpCheckoutPath := filepath.Join(launcherDir, "warp-checkout.cmd")
+	if err := os.WriteFile(warpCheckoutPath, []byte(warpCheckoutContent), 0o644); err != nil {
+		return fmt.Errorf("write warp-checkout.cmd: %w", err)
+	}
+
 	// Ensure per-subpath menu launcher exists (never clobber)
 	menuCmdPath := l.MenuLauncherPath()
 	if _, err := os.Stat(menuCmdPath); err == nil {
