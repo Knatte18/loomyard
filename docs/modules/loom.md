@@ -52,6 +52,7 @@ Setup
 Discussion → [Discussion-review] ─ approved ↓   stuck ─┐
 Plan       → [Plan-review]       ─ approved ↓   stuck ─┤
 Builder    → [Builder-review]    ─ approved ↓   stuck ─┤
+Codeguide  (git-diff-targeted docs)                    │
 Finalize                                               │
                                        (stuck handler)─┘
 ```
@@ -62,6 +63,19 @@ worktree, weft pairing present **and in sync** — host branch == weft branch, v
 a draft artifact and is followed by a review gate. `approved` advances to the next
 phase; `stuck` routes to the stuck handler (bounce back to an earlier phase, or escalate
 to a human) — never "keep fixing symptoms."
+
+**Codeguide** is a dedicated step after Builder — deliberately *not* the implementer's job.
+Experience (millhouse) is that implementers, busy with code, forget the docs; a dedicated
+always-run step removes the dependency on anyone remembering, and a fresh-context agent
+reading only the diff often writes better docs than the implementer who is "done in their
+head." Mechanism: loom stamps a **start-SHA** (host `HEAD`) into the status file when Builder
+begins; the Builder agent **commits its own work** (required anyway — for backtracking, and
+so there is a diff to read). The Codeguide step then runs the `codeguide-update` module over
+`git diff <start-SHA>..HEAD` on the host (excluding `_lyx`/`_codeguide`) for a targeted
+update, and commits the docs into the weft via `lyx weft sync` (never raw git — see the
+[warp responsibility boundary](warp.md#responsibility-boundary--warp-vs-weft-vs-host)). The
+`_codeguide` merge-back at Finalize is exactly what `warp cleanup` gates on. (Whether the
+Codeguide step is itself review-gated is an open choice; shown ungated above.)
 
 ## The gate
 
@@ -109,8 +123,9 @@ looking.
 ### State & contracts
 
 - **The status file in `_lyx/` is the single source of truth** for orchestration state:
-  current phase, current review block + round, and the verdict history the progress-judge
-  needs. Nothing orchestration-relevant lives anywhere else.
+  current phase, current review block + round, the verdict history the progress-judge
+  needs, and the **Builder start-SHA** (host `HEAD` at Builder entry — the diff base the
+  Codeguide step reads). Nothing orchestration-relevant lives anywhere else.
 - **It also carries a human-readable *current-activity* narration** — not just the machine enum,
   but "*now:* spawned plan-handler round 2, waiting on Stop hook / *last:* round 1 BLOCKING, 3
   findings / *wait:* —". This is what the `lyx loom status --watch` strand prints (a 1-line pane at
