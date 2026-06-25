@@ -224,6 +224,7 @@ User-facing modules each get one `lyx <module>` namespace:
 - **git-clone** — hub-creator: create a fresh Hub and clone the host, weft, and board Primes into it (`internal/gitclone`). ✅ Implemented.
 - **worktree** — git-worktree lifecycle (create / track / tear down). ✅ Implemented.
 - **weft** — owns all git into the paired weft repo (`lyx weft status|commit|push|pull|sync`). ✅ Implemented.
+- **warp** — **host↔weft-coordinated git topology**: clone, dual-worktree add/remove, coordinated checkout (switches host+weft together + re-points junctions), reconcile, cleanup. The single owner of the mirror invariant — consolidates today's `worktree` / `git-clone` / `internal/git`. 🚧 Design — not built. See [modules/warp.md](modules/warp.md).
 - **ide** — one-shot VS Code launcher with interactive menu. ✅ Implemented.
 - **muxpoc** — shipped proof-of-concept psmux orchestrator proving the risky parts of the
   planned mux module. ✅ Implemented.
@@ -304,6 +305,7 @@ git-backed integration — live in the black-box `internal/board/boardtest` pack
 - [modules/mux.md](modules/mux.md) — the window to the world: psmux overlay + strand bookkeeping + render (design).
 - [modules/shuttle.md](modules/shuttle.md) — run one LLM agent via a swappable engine over the file contract (design).
 - [modules/review.md](modules/review.md) — the generic gate engine (handler/fixer + cluster + stuck judge); design.
+- [modules/warp.md](modules/warp.md) — host↔weft-coordinated git topology: clone, dual-worktree, coordinated checkout, reconcile, cleanup (design).
 - [benchmarks/](benchmarks/board-performance.md) — board performance, tracked across revisions.
 - [shared-libs/](shared-libs/README.md) — the shared infrastructure plumbing.
 - [research/](research/) — design exploration (mux research logs).
