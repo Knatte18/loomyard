@@ -5,7 +5,7 @@ task: 'Introduce warp: the host↔weft-coordinated git module'
 batch: hook-and-launcher
 number: 8
 cards: 4
-verify: go build ./... && go test ./internal/warp/
+verify: go build ./... && go test -tags integration ./internal/warp/
 depends-on: [7]
 ```
 
@@ -76,4 +76,4 @@ Batch-local decisions: the hook is installed at `warp clone` and `warp add` time
 
 ## Batch Tests
 
-`verify: go build ./... && go test ./internal/warp/`. `hook_test.go` is the new TDD surface and carries the shared-`.git/hooks` validation criterion (correct `<base>-weft` resolution for prime and child). The extended `launchers_test.go` covers the shortcut emission. Integration-tagged cases drive a real `git checkout` to confirm the hook warns on drift without blocking.
+`verify: go build ./... && go test -tags integration ./internal/warp/`. `hook_test.go` is the new TDD surface and carries the shared-`.git/hooks` validation criterion (correct `<base>-weft` resolution for prime and child). The extended `launchers_test.go` covers the shortcut emission. Integration-tagged cases drive a real `git checkout` to confirm the hook warns on drift without blocking.

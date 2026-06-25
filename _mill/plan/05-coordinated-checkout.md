@@ -5,7 +5,7 @@ task: 'Introduce warp: the host↔weft-coordinated git module'
 batch: coordinated-checkout
 number: 5
 cards: 3
-verify: go build ./... && go test ./internal/warp/
+verify: go build ./... && go test -tags integration ./internal/warp/
 depends-on: [4]
 ```
 
@@ -65,4 +65,4 @@ Batch-local decision: checkout reuses card-12's adopt-or-create fork-point logic
 
 ## Batch Tests
 
-`verify: go build ./... && go test ./internal/warp/`. `checkout_test.go` is the new TDD surface (write the four scenarios first). The full `internal/warp` suite must stay green — checkout adds a verb and a file without changing existing behaviour. Integration-tagged cases drive real git; run them under the same tag the existing clone integration test uses.
+`verify: go build ./... && go test -tags integration ./internal/warp/`. `checkout_test.go` is the new TDD surface (write the four scenarios first). The full `internal/warp` suite must stay green — checkout adds a verb and a file without changing existing behaviour. Integration-tagged cases drive real git; run them under the same tag the existing clone integration test uses.

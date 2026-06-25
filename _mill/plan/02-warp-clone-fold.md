@@ -5,7 +5,7 @@ task: 'Introduce warp: the host↔weft-coordinated git module'
 batch: warp-clone-fold
 number: 2
 cards: 3
-verify: go build ./... && go test ./internal/warp/ ./cmd/lyx/
+verify: go build ./... && go test -tags integration ./internal/warp/ ./cmd/lyx/
 depends-on: [1]
 ```
 
@@ -66,4 +66,4 @@ Batch-local decision: the user-facing command changes from `lyx git-clone` to `l
 
 ## Batch Tests
 
-`verify: go build ./... && go test ./internal/warp/ ./cmd/lyx/`. `go test ./internal/warp/` runs the moved clone unit + integration tests against the new package. `go test ./cmd/lyx/` confirms the dispatch wiring compiles and the existing `main_test.go` still passes with `warp` replacing `git-clone`. `go build ./...` confirms no dangling `internal/gitclone` references remain anywhere.
+`verify: go build ./... && go test -tags integration ./internal/warp/ ./cmd/lyx/`. `go test ./internal/warp/` runs the moved clone unit + integration tests against the new package. `go test ./cmd/lyx/` confirms the dispatch wiring compiles and the existing `main_test.go` still passes with `warp` replacing `git-clone`. `go build ./...` confirms no dangling `internal/gitclone` references remain anywhere.

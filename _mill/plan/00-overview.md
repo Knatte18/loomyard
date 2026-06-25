@@ -23,7 +23,7 @@ batches:
     name: warp-clone-fold
     file: 02-warp-clone-fold.md
     depends-on: [1]
-    verify: go build ./... && go test ./internal/warp/ ./cmd/lyx/
+    verify: go build ./... && go test -tags integration ./internal/warp/ ./cmd/lyx/
   - number: 3
     name: warp-worktree-absorb
     file: 03-warp-worktree-absorb.md
@@ -38,22 +38,22 @@ batches:
     name: coordinated-checkout
     file: 05-coordinated-checkout.md
     depends-on: [4]
-    verify: go build ./... && go test ./internal/warp/
+    verify: go build ./... && go test -tags integration ./internal/warp/
   - number: 6
     name: status-reconcile-pollution
     file: 06-status-reconcile-pollution.md
     depends-on: [5]
-    verify: go build ./... && go test ./internal/warp/ ./internal/weft/
+    verify: go build ./... && go test -tags integration ./internal/warp/ ./internal/weft/
   - number: 7
     name: prune-cleanup
     file: 07-prune-cleanup.md
     depends-on: [6]
-    verify: go build ./... && go test ./internal/warp/
+    verify: go build ./... && go test -tags integration ./internal/warp/
   - number: 8
     name: hook-and-launcher
     file: 08-hook-and-launcher.md
     depends-on: [7]
-    verify: go build ./... && go test ./internal/warp/
+    verify: go build ./... && go test -tags integration ./internal/warp/
   - number: 9
     name: docs-finalize
     file: 09-docs-finalize.md
@@ -166,6 +166,7 @@ batches:
 - `internal/warp/weftwiring.go`
 - `internal/warp/weftwiring_test.go`
 - `internal/warp/worktreelifecycle.go`
+- `internal/weft/cli.go`
 - `internal/weft/status.go`
 - `internal/weft/status_test.go`
 - `internal/weft/sync.go`

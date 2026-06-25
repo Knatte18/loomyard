@@ -5,7 +5,7 @@ task: 'Introduce warp: the host↔weft-coordinated git module'
 batch: prune-cleanup
 number: 7
 cards: 4
-verify: go build ./... && go test ./internal/warp/
+verify: go build ./... && go test -tags integration ./internal/warp/
 depends-on: [6]
 ```
 
@@ -78,4 +78,4 @@ Batch-local decisions: cleanup flag matrix — **no flag** = dry-run/report; **`
 
 ## Batch Tests
 
-`verify: go build ./... && go test ./internal/warp/`. `prune_test.go`/`cleanup_test.go` are the new TDD surface; assert the destructive paths only trigger under the correct flags and the `_codeguide` gate protects task branches without `--force`. The rest of the `internal/warp` suite stays green.
+`verify: go build ./... && go test -tags integration ./internal/warp/`. `prune_test.go`/`cleanup_test.go` are the new TDD surface; assert the destructive paths only trigger under the correct flags and the `_codeguide` gate protects task branches without `--force`. The rest of the `internal/warp` suite stays green.

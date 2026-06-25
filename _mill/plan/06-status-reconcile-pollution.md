@@ -5,7 +5,7 @@ task: 'Introduce warp: the host↔weft-coordinated git module'
 batch: status-reconcile-pollution
 number: 6
 cards: 5
-verify: go build ./... && go test ./internal/warp/ ./internal/weft/
+verify: go build ./... && go test -tags integration ./internal/warp/ ./internal/weft/
 depends-on: [5]
 ```
 
@@ -56,10 +56,10 @@ Batch-local decisions: reconcile **reports** (does not auto-adopt) on an unmanag
 
 - **Context:**
   - `internal/warp/status.go`
-  - `internal/weft/cli.go`
 - **Edits:**
   - `internal/weft/status.go`
   - `internal/weft/status_test.go`
+  - `internal/weft/cli.go`
 - **Creates:** none
 - **Deletes:** none
 - **Requirements:** In `internal/weft/status.go`, remove the junction-integrity reporting now owned by warp: drop `checkJunction` and the `junction_ok`/`junction_reason` keys from the `Status` map (and the `hostLink`/`weftLyxDir` params that only served the junction check, if they become unused — adjust the `weft/cli.go` caller accordingly). Keep the content fields (`weft_worktree`, `branch`, `dirty`, `ahead`, `behind`). Update `weft/status_test.go` to drop the junction assertions and keep the content-status assertions. `weft` remains the content-sync owner; topology/junction reporting is warp's.
@@ -97,4 +97,4 @@ Batch-local decisions: reconcile **reports** (does not auto-adopt) on an unmanag
 
 ## Batch Tests
 
-`verify: go build ./... && go test ./internal/warp/ ./internal/weft/`. `status_test.go`/`reconcile_test.go` are the new TDD surface. `go test ./internal/weft/` confirms the trimmed `weft status` still passes its content assertions and the `weft/cli.go` caller still compiles. The rest of the `internal/warp` suite stays green.
+`verify: go build ./... && go test -tags integration ./internal/warp/ ./internal/weft/`. `status_test.go`/`reconcile_test.go` are the new TDD surface. `go test ./internal/weft/` confirms the trimmed `weft status` still passes its content assertions and the `weft/cli.go` caller still compiles. The rest of the `internal/warp` suite stays green.

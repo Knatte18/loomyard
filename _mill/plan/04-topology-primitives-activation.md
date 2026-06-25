@@ -60,7 +60,7 @@ Batch-local decisions: the activation direction is strictly `initcli → warp` (
   - `internal/warp/drift.go`
   - `internal/warp/drift_test.go`
 - **Deletes:** none
-- **Requirements:** Create `internal/warp/drift.go` with `func PairInSync(l *paths.Layout) (ok bool, reason string, err error)`: derive the deterministic weft sibling (`<base>-weft` via `paths` geometry), run `gitexec` `rev-parse --abbrev-ref HEAD` in the host worktree and in the weft sibling, return not-ok with reason `"host on X, weft on Y"` when they differ; also stat the host `_lyx` junction (reuse the junction-resolution check) and return not-ok `"junction missing/points elsewhere"` when broken. Stateless — no registry, no status.md read. Add `drift_test.go` covering in-sync, branch-divergence, and broken-junction cases. (`drift_test.go` is created here; it is not in the overview All Files Touched list and the validator will reconcile it.)
+- **Requirements:** Create `internal/warp/drift.go` with `func PairInSync(l *paths.Layout) (ok bool, reason string, err error)`: derive the deterministic weft sibling (`<base>-weft` via `paths` geometry), run `gitexec` `rev-parse --abbrev-ref HEAD` in the host worktree and in the weft sibling, return not-ok with reason `"host on X, weft on Y"` when they differ; also stat the host `_lyx` junction (reuse the junction-resolution check) and return not-ok `"junction missing/points elsewhere"` when broken. Stateless — no registry, no status.md read. Add `drift_test.go` covering in-sync, branch-divergence, and broken-junction cases.
 - **Commit:** `feat(warp): stateless pair-in-sync drift primitive`
 
 ### Card 14: lyx init activates junctions then reconciles config
