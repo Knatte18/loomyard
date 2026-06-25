@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-fixing
 slug: config-test-cleanup
 branch: config-test-cleanup
 plan: _mill/plan
@@ -27,6 +27,7 @@ approved-lyxtest-tidy  '2026-06-25T07:25:15Z'
 holistic-reviewing  '2026-06-25T07:25:36Z'
 holistic-fixing  '2026-06-25T07:27:52Z'
 holistic-reviewing  '2026-06-25T07:32:49Z'
+holistic-fixing  '2026-06-25T07:36:46Z'
 ```
 
 ## Batches
