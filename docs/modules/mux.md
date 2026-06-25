@@ -279,6 +279,15 @@ process outside `lyx-<hub-hash>` is provably stray) plus psmux `pane_dead`. A ri
 *Claude-specific*, so it belongs with shuttle, surfaced to mux only as a generic "this session is
 gone" signal if at all. mux's core liveness stays provider-invariant.
 
+## Pause is not a mux concern
+
+A graceful [pause](loom.md#graceful-pause) needs nothing special from mux. Pause is a *driver*
+property — the Go loop stops spawning the next step; the strands stay in the table and their panes
+stay **alive and idle**. mux keeps hosting them exactly as before; it has no "paused" state. (An
+optional [in-agent interrupt](shuttle.md#in-agent-interrupt-optional) is just shuttle sending `ESC`
+via mux send-keys — still no mux-side state.) The crash recovery below is the fallback for
+*involuntary* death; pause deliberately keeps strands warm so that path is not needed.
+
 ## Resume after crash — native `--resume` with env hygiene
 
 `lyx mux resume` rebuilds the session from `.lyx/mux.json` and re-runs each strand's **stored
