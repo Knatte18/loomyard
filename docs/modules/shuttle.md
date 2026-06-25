@@ -78,6 +78,29 @@ hidden dialog). All of this — hooks, marker grammar, the resume command — is
 [`mux`](mux.md)**, which just spawns the command string shuttle hands it
 ([mux.md](mux.md#completion-and-hooks-live-in-shuttle-not-mux)).
 
+## In-agent interrupt (optional)
+
+[Pause](loom.md#graceful-pause) normally lands at a Go loop's **step boundary** — the leaf agent
+finishes its small unit. To pause *faster* than that, shuttle can **interrupt-and-hold** a live
+agent: send `ESC` to its pane (via [`mux`](mux.md) send-keys), leaving the interactive session
+**alive and idle** rather than killed. Resume continues the warm session in place — no relaunch, no
+`claude --resume`. It is **optional**: with [Builder](loom.md#builder--a-go-loop-advance-the-sibling-of-review-converge)
+decomposed into batches/cards the boundary wait is short, so this is a latency nicety, not a
+requirement.
+
+"Halted vs done" rides the **file contract**, not a special hook: a held agent has not written its
+result file (and its pane is still alive). `mux`'s only liveness signal is `pane-died`, and
+completion semantics are shuttle's — so **no "halted" hook is needed**, and none fires in mux.
+
+## Escalation — fresh spawn, not in-session /model
+
+When an evaluator finds a worker stuck ([Builder](loom.md#builder--a-go-loop-advance-the-sibling-of-review-converge)),
+escalation is a **fresh spawn of a higher-capability model** (Haiku → Sonnet) that reads the
+durable reports — **not** a `/model` switch inside the stuck session. In-session `/model` is
+possible (the session is interactive) but counter-productive for escalation: the new model would
+inherit the stuck session's polluted context, which is exactly what you want to escape. A clean
+spawn reading the reports starts fresh.
+
 ## Dependencies
 
 - [`internal/mux`](mux.md) — `AddStrand`/`RemoveStrand` for the pane; drives it (launch, send-keys,

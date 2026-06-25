@@ -73,6 +73,16 @@ A sharper split: let the progress-judge **canonicalize** each round's findings i
 the key history ("key X reappeared in rounds 1, 3, 5 → circling"). Judgment (are these the same
 issue) in the judge; cycle logic (does the key recur) in Go.
 
+## Pause at the round boundary
+
+The round-loop is a Go loop, so it honours the shared `pause_requested` flag
+([loom](loom.md#graceful-pause)) at the **round boundary** — the atom is the round (after the
+Handler's A/B and any cluster reviewers aggregate), never mid-aggregation. A long gate (5–6 rounds)
+therefore pauses at the *next* round, not only when the block finally exits; resume continues at the
+current round (round-level resume already exists). Whichever loop is innermost-active honours the
+flag first, so a pause requested during a review lands here, at the round boundary, rather than
+waiting for the whole phase.
+
 ## The review profile
 
 The module **must be configurable on what it reviews**. The per-target configuration is a

@@ -52,6 +52,7 @@ Setup
 Discussion → [Discussion-review] ─ approved ↓   stuck ─┐
 Plan       → [Plan-review]       ─ approved ↓   stuck ─┤
 Builder    → [Builder-review]    ─ approved ↓   stuck ─┤
+Codeguide  (git-diff-targeted docs)                    │
 Finalize                                               │
                                        (stuck handler)─┘
 ```
@@ -62,6 +63,19 @@ worktree, weft pairing present **and in sync** — host branch == weft branch, v
 a draft artifact and is followed by a review gate. `approved` advances to the next
 phase; `stuck` routes to the stuck handler (bounce back to an earlier phase, or escalate
 to a human) — never "keep fixing symptoms."
+
+**Codeguide** is a dedicated step after Builder — deliberately *not* the implementer's job.
+Experience (millhouse) is that implementers, busy with code, forget the docs; a dedicated
+always-run step removes the dependency on anyone remembering, and a fresh-context agent
+reading only the diff often writes better docs than the implementer who is "done in their
+head." Mechanism: loom stamps a **start-SHA** (host `HEAD`) into the status file when Builder
+begins; the Builder agent **commits its own work** (required anyway — for backtracking, and
+so there is a diff to read). The Codeguide step then runs the `codeguide-update` module over
+`git diff <start-SHA>..HEAD` on the host (excluding `_lyx`/`_codeguide`) for a targeted
+update, and commits the docs into the weft via `lyx weft sync` (never raw git — see the
+[warp responsibility boundary](warp.md#responsibility-boundary--warp-vs-weft-vs-host)). The
+`_codeguide` merge-back at Finalize is exactly what `warp cleanup` gates on. (Whether the
+Codeguide step is itself review-gated is an open choice; shown ungated above.)
 
 ## The gate
 
@@ -77,6 +91,29 @@ The whole point of the black-box boundary is that loom drives all phases **ident
 the verdict contract is invariant; only the review *profile* (rubric + fasit) differs per phase.
 See [review.md](review.md) for the round-loop, the combined handler/fixer, stuck detection, and
 the profile schema.
+
+## Builder — a Go loop (advance), the sibling of review (converge)
+
+Unlike the discussion and plan producers (each one `shuttle.Run` → one artifact), **Builder is a
+Go loop**, in the same spirit as [`review`](review.md): Go owns the control flow; LLMs are spawned
+on demand for judgment.
+
+- **Advance per batch.** Go drives the plan's batches in dependency order, spawning one implementer
+  worker per batch (a cheaper model by default — e.g. Haiku), and runs a **holistic builder-review
+  at the end** (a full [`review`](review.md) converge-loop over the whole diff).
+- **On-demand evaluation.** Between batches, when Go needs a judgment — "progressing? stuck?
+  escalate?" — it spawns a short evaluator that reads the durable reports/artifacts, decides, and
+  exits. Not a standing supervisor (LLM-watches-LLM in real time was mill's model; here Go
+  sequences and the LLM is consulted on demand).
+- **Escalation by fresh spawn.** A stuck worker is escalated by spawning a **fresh
+  higher-capability model** (Haiku → Sonnet) that reads the durable reports — not a `/model` switch
+  inside the stuck session (which would inherit the polluted context; see
+  [shuttle](shuttle.md#escalation--fresh-spawn-not-in-session-model)).
+
+**Same substrate, different loop semantics:** Builder **advances** (batch → batch → holistic
+review); review **converges** (iterate review+fix on one artifact until `APPROVED`/`stuck`). Both
+are Go loops spawning on-demand judges — which is exactly what makes [pause](#graceful-pause)
+uniform across them.
 
 ## `loom` — the autonomous driver
 
@@ -145,19 +182,47 @@ layer that restores the **visible** sessions for the operator
 ([mux.md](mux.md#resume-after-crash--native---resume-with-env-hygiene)); loom's correctness rests on
 files. A dead claude with a finished output file is, to loom, a **done step** — not a problem.
 
+## Graceful pause
+
+`lyx loom pause` requests a pause; the running orchestration honours it at the next **step
+boundary**, never mid-operation — `mill-pause`'s natural-stopping-point property, made systematic.
+
+- **A property of the loop pattern, not loom alone.** Every Go loop — loom (phases),
+  [`review`](review.md) (rounds), [Builder](#builder--a-go-loop-advance-the-sibling-of-review-converge)
+  (batches) — checks a `pause_requested` flag in the [status file](#state--contracts) at its step
+  boundary and stops before spawning the next unit. The **innermost active loop** honours it first,
+  so pause lands at the finest active boundary (next batch / round / phase). The Go code is almost
+  always *between* steps (it spawns and waits), so catching it there is trivial.
+- **The leaf agent finishes its unit; nothing is killed.** Boundary pause lets the in-flight worker
+  complete its small unit (one batch / round — its output file written), then the driver stops.
+  Resume (`lyx loom run`) spawns the next step from the status file — the same resume-on-files
+  discipline as [crash recovery](#crash-recovery--resume-on-output-files-not-live-processes), minus
+  the crash.
+- **In-agent interrupt is optional.** To pause *faster* than the current unit finishes,
+  [`shuttle`](shuttle.md#in-agent-interrupt-optional) can ESC-and-hold the live agent (session kept
+  warm in the [mux server](mux.md), not killed; resume continues it in place). With Builder
+  decomposed into batches/cards the boundary wait is short, so this is a latency nicety, not a
+  correctness requirement.
+- **Distinct from crash recovery.** Crash (involuntary death) respawns a fresh agent from the
+  on-disk output files (loom never relies on `claude --resume` for correctness — see above). Pause
+  deliberately stops at a boundary, so there is nothing to respawn — the cheaper path. Both rest on
+  the file contract; pause just avoids the death.
+
 ## Module decomposition
 
 | Piece | Form | Notes |
 |-------|------|-------|
 | `loom` (`lyx loom run`) | new Go module | the phase machine / autonomous driver |
 | `review` (`lyx review`) | new Go module | the gate engine: Handler+fixer + optional cluster + progress-judge loop |
-| producers (discussion / plan / builder) | prompt/profile files | **not** modules — just a prompt + profile fed to `shuttle.Run` |
+| builder | Go loop (like `review`) | advance per batch + on-demand evaluator + Haiku→Sonnet escalation + terminal holistic review — **not** a single producer spawn |
+| producers (discussion / plan) | prompt/profile files | **not** modules — just a prompt + profile fed to `shuttle.Run` |
 | `lyx loom status` | a loom subcommand | the 1-line status view; runs as a [strand](mux.md#the-strand-model) (`anchor:top`), not a separate module |
 | execution stack | existing/new infra | [`proc`](README.md) → [`mux`](mux.md) → [`shuttle`](shuttle.md) — built once, used by both modules above |
 | Setup | uses existing modules | `warp` (topology owner), `weft`, `board` |
 | `/ly-*` skills | thin wrappers | over `lyx loom run` |
 
-The new Go specific to loom is the **two modules** (`loom`, `review`) plus the `lyx loom status`
+The new Go specific to loom is the **two modules** (`loom`, `review`) plus the **Builder loop**
+(Go, like `review` — its own module or a loom sub-loop) and the `lyx loom status`
 subcommand; beneath them is the shared [execution stack](README.md) (`proc`, `mux`, `shuttle`); and
 everything else is prompt files, profiles, and the existing lyx modules. The display is **not** a
 module — it is `lyx loom status` running in a strand that [`mux`](mux.md) hosts and arranges.
