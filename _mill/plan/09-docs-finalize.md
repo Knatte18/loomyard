@@ -5,7 +5,7 @@ task: 'Introduce warp: the host↔weft-coordinated git module'
 batch: docs-finalize
 number: 9
 cards: 3
-verify: go build ./...
+verify: go vet -tags integration ./... && go test -tags integration ./...
 depends-on: [8]
 ```
 
@@ -61,4 +61,4 @@ Batch-local decision: `docs/modules/warp.md` is deleted (mechanical per-module d
 
 ## Batch Tests
 
-`verify: go build ./...`. This batch is docs plus one Go edit (the package header comment in `warp.go`); `go build ./...` confirms the comment is well-formed and nothing else regressed. There is no runnable test surface for the markdown changes — they are reference-accuracy edits validated by review.
+`verify: go vet -tags integration ./... && go test -tags integration ./...`. As the final batch this is also the **module-wide integration gate**: `go vet -tags integration ./...` compiles every package (including integration-tagged test files) and confirms no import cycle was introduced by the rename/move/fold and the `initcli → warp` / `configreg → warp` edges; `go test -tags integration ./...` runs the entire suite — unit and integration — across the whole module to catch any cross-package regression. This batch itself is docs plus one Go edit (the package header comment in `warp.go`); the markdown changes have no runnable surface and are validated by review, but the module-wide gate guards the cumulative result of batches 1–8.

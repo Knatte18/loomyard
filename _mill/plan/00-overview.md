@@ -33,7 +33,7 @@ batches:
     name: topology-primitives-activation
     file: 04-topology-primitives-activation.md
     depends-on: [3]
-    verify: go build ./... && go test ./internal/warp/ ./internal/initcli/
+    verify: go build ./... && go test -tags integration ./internal/warp/ ./internal/initcli/
   - number: 5
     name: coordinated-checkout
     file: 05-coordinated-checkout.md
@@ -58,7 +58,7 @@ batches:
     name: docs-finalize
     file: 09-docs-finalize.md
     depends-on: [8]
-    verify: go build ./...
+    verify: go vet -tags integration ./... && go test -tags integration ./...
 ```
 
 ## Shared Decisions

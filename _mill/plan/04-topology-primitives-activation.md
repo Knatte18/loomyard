@@ -5,7 +5,7 @@ task: 'Introduce warp: the host↔weft-coordinated git module'
 batch: topology-primitives-activation
 number: 4
 cards: 4
-verify: go build ./... && go test ./internal/warp/ ./internal/initcli/
+verify: go build ./... && go test -tags integration ./internal/warp/ ./internal/initcli/
 depends-on: [3]
 ```
 
@@ -60,7 +60,7 @@ Batch-local decisions: the activation direction is strictly `initcli → warp` (
   - `internal/warp/drift.go`
   - `internal/warp/drift_test.go`
 - **Deletes:** none
-- **Requirements:** Create `internal/warp/drift.go` with `func PairInSync(l *paths.Layout) (ok bool, reason string, err error)`: derive the deterministic weft sibling (`<base>-weft` via `paths` geometry), run `gitexec` `rev-parse --abbrev-ref HEAD` in the host worktree and in the weft sibling, return not-ok with reason `"host on X, weft on Y"` when they differ; also stat the host `_lyx` junction (reuse the junction-resolution check) and return not-ok `"junction missing/points elsewhere"` when broken. Stateless — no registry, no status.md read. Add `drift_test.go` covering in-sync, branch-divergence, and broken-junction cases.
+- **Requirements:** Create `internal/warp/drift.go` with `func PairInSync(l *paths.Layout) (ok bool, reason string, err error)`: derive the deterministic weft sibling (`<base>-weft` via `paths` geometry), run `gitexec` `rev-parse --abbrev-ref HEAD` in the host worktree and in the weft sibling, return not-ok with reason `"host on X, weft on Y"` when they differ; also stat the host `_lyx` junction (reuse the junction-resolution check) and return not-ok `"junction missing/points elsewhere"` when broken. Stateless — no registry, no status.md read. Add `drift_test.go` covering in-sync, branch-divergence, and broken-junction cases — integration-tagged (`//go:build integration`, mirroring `clone_integration_test.go`) since it drives real host+weft worktrees.
 - **Commit:** `feat(warp): stateless pair-in-sync drift primitive`
 
 ### Card 14: lyx init activates junctions then reconciles config
@@ -76,9 +76,9 @@ Batch-local decisions: the activation direction is strictly `initcli → warp` (
   - `internal/initcli/initcli_test.go`
 - **Creates:** none
 - **Deletes:** none
-- **Requirements:** In `internal/initcli/initcli.go` `RunInit`: before the `configsync.ReconcileAll(cwd, true)` call, invoke warp's junction primitive to wire the cwd-keyed junction(s) for the current worktree (junctions first, config second). If the host worktree has no weft sibling (dormant pairing absent), do **not** create topology — return a clear report ("no weft pairing — run `lyx warp add` / `lyx warp clone`") and stop before reconcile. Add the `internal/warp` import (direction `initcli → warp` only; warp must not import initcli). Update `initcli_test.go` to cover: activation wires the junction then reconciles; missing-pairing reports and does not reconcile. Confirm no import cycle (`go build ./...`).
+- **Requirements:** In `internal/initcli/initcli.go` `RunInit`: before the `configsync.ReconcileAll(cwd, true)` call, invoke warp's junction primitive to wire the cwd-keyed junction(s) for the current worktree (junctions first, config second). If the host worktree has no weft sibling (dormant pairing absent), do **not** create topology — return a clear report ("no weft pairing — run `lyx warp add` / `lyx warp clone`") and stop before reconcile. Add the `internal/warp` import (direction `initcli → warp` only; warp must not import initcli). Update `initcli_test.go` to cover: activation wires the junction then reconciles; missing-pairing reports and does not reconcile (integration-tagged where these cases drive real git). Confirm no import cycle (`go build ./...`).
 - **Commit:** `feat(init): activate cwd-keyed junctions via warp, then reconcile`
 
 ## Batch Tests
 
-`verify: go build ./... && go test ./internal/warp/ ./internal/initcli/`. `go test ./internal/warp/` runs the updated `add_test.go` (dormant + adopt), `drift_test.go`, and the unchanged moved suite (which must still pass — note any moved test that previously asserted junctions-after-add is updated in card 12 to reflect the dormant model and to call the junction primitive / init where it needs an active junction). `go test ./internal/initcli/` covers activation ordering and the missing-pairing report. `go build ./...` proves the `initcli → warp` edge introduces no cycle.
+`verify: go build ./... && go test -tags integration ./internal/warp/ ./internal/initcli/`. The new real-git tests here — `drift_test.go` (which needs real host+weft worktrees on branches to exercise `PairInSync`) and the activation/missing-pairing cases in `initcli_test.go` — are **integration-tagged** (`//go:build integration`, mirroring `clone_integration_test.go`), so the `-tags integration` verify is required for them to run. The updated `add_test.go` (dormant + adopt) and the unchanged moved suite also run (untagged tests run under any tag set); any moved test that previously asserted junctions-after-add is updated in card 12 to reflect the dormant model and to call the junction primitive / init where it needs an active junction. `go build ./...` proves the `initcli → warp` edge introduces no cycle.
