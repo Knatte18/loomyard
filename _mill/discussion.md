@@ -210,6 +210,11 @@ is unnecessary.
   claim was false. The dependency is on config-loading code paths (`config.Load` errors on a
   missing/incomplete config), so the affected set is "every fixture consumer that loads
   config," determined by running the suite — not assumed.
+- For the plan writer: the exact list of consumers to touch is **not statically estimable**
+  and must not be guessed up front. It is determined at implementation time by the batch-1
+  sweep (e.g. `worktree/weft_test.go` has full-`CopyPaired` cases at lines ~252/~336 that push
+  to weft-bare and may or may not load config — confirmed only by running the suite). Plan
+  the `SeedConfig` edits as "apply to each consumer the sweep flags," not as a fixed file set.
 - Rejected: Seeding real config in the shared `buildWeftPrime` template (re-creates the
   `lyxtest → configreg` edge); reintroducing `lyxtest → configreg` to let a feature-internal
   test seed a non-own feature's config.
@@ -233,6 +238,12 @@ is unnecessary.
   `initBareRemote` / `commitAll` used by `buildHostHub` / `buildWeftPrime` / `buildWeftOnly`;
   resolve the `buildWeftOnly` fixture asymmetry; dead-helper audit) is done in **its own
   final batch**, after the cycle fix lands and the full suite is green.
+- Guard (round-2 review): `buildWeftOnly` writes a literal `_lyx/config.yaml` = `"test"`
+  (lyxtest.go:269) — a path *outside* the `paths`-helper layout. Before aligning/renaming it,
+  the tidy batch must first confirm no current consumer reads `_lyx/config.yaml` literally
+  (grep the `CopyWeft` consumers, e.g. `TestPushIntegration` writes exactly that path at
+  weft_integration_test.go:49). If a consumer depends on it, update that consumer in the same
+  batch; do not change the fixture path in isolation.
 - Rationale: It's logically independent from the cycle fix; isolating it as a separate batch
   keeps a behavior-affecting change (neutral fixture + seeding) apart from a pure refactor,
   so a regression is easy to localize. User chose "include as a separate batch."
