@@ -1,18 +1,18 @@
 //go:build integration
 
-// git_test.go covers the git command helpers exposed by this package.
+// gitexec_test.go covers the git command helpers exposed by this package.
 
-package git_test
+package gitexec_test
 
 import (
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/git"
+	"github.com/Knatte18/loomyard/internal/gitexec"
 )
 
 // TestRunGit_Success tests basic git command execution
 func TestRunGit_Success(t *testing.T) {
-	stdout, _, exitCode, err := git.RunGit([]string{"--version"}, ".")
+	stdout, _, exitCode, err := gitexec.RunGit([]string{"--version"}, ".")
 	if err != nil {
 		t.Fatalf("RunGit failed with error: %v", err)
 	}
@@ -27,7 +27,7 @@ func TestRunGit_Success(t *testing.T) {
 // TestRunGit_NonZeroExit tests handling of non-zero exit codes
 func TestRunGit_NonZeroExit(t *testing.T) {
 	tempDir := t.TempDir()
-	stdout, stderr, exitCode, err := git.RunGit([]string{"status"}, tempDir)
+	stdout, stderr, exitCode, err := gitexec.RunGit([]string{"status"}, tempDir)
 	if err != nil {
 		t.Fatalf("RunGit should not return error for non-zero exit: %v", err)
 	}
@@ -45,7 +45,7 @@ func TestRunGit_Cwd(t *testing.T) {
 	tempDir := t.TempDir()
 
 	// Initialize a git repo in the temp directory
-	stdout, stderr, exitCode, err := git.RunGit([]string{"init"}, tempDir)
+	stdout, stderr, exitCode, err := gitexec.RunGit([]string{"init"}, tempDir)
 	if err != nil {
 		t.Fatalf("git init failed: %v", err)
 	}
@@ -55,7 +55,7 @@ func TestRunGit_Cwd(t *testing.T) {
 	_ = stdout
 
 	// Run rev-parse in the same temp directory to verify it's a git repo
-	stdout, stderr, exitCode, err = git.RunGit([]string{"rev-parse", "--absolute-git-dir"}, tempDir)
+	stdout, stderr, exitCode, err = gitexec.RunGit([]string{"rev-parse", "--absolute-git-dir"}, tempDir)
 	if err != nil {
 		t.Fatalf("git rev-parse failed: %v", err)
 	}

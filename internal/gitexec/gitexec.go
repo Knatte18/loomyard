@@ -1,8 +1,8 @@
-// git.go — low-level git command execution.
+// gitexec.go — low-level git command execution.
 //
 // RunGit executes git commands and returns their output and exit code.
 
-package git
+package gitexec
 
 import (
 	"bytes"
