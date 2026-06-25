@@ -1,0 +1,3 @@
+- Stale internal/worktree references in doc comments: **Location 1:** `internal/lyxtest/doc.go:2` ? "test suites across internal/worktree, internal/weft, and internal/paths"
+- Misleading comment in TestCleanup_ApplySkipsProtectedBranch: **Location:** `internal/warp/cleanup_test.go` (approx line 99?104)
+- Inconsistent usage-string prefixes across RunCLI verb handlers: **Location:** `internal/warp/warp.go` ? `runAdd`, `runRemove`, `runCheckout`
