@@ -94,6 +94,12 @@ func TestPushIntegration(t *testing.T) {
 func TestRunCLI_EnvMapToOption(t *testing.T) {
 	// Serial: uses t.Setenv and t.Chdir which affect process-wide state
 	fixture := lyxtest.CopyPaired(t)
+
+	// Seed the weft-prime fixture with the weft config template needed for RunCLI.
+	lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
+		"weft": ConfigTemplate(),
+	})
+
 	hubPath := fixture.Hub
 
 	// Change to the hub directory so paths.Resolve can locate the repo from cwd;

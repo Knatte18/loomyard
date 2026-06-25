@@ -61,6 +61,11 @@ func TestRunCLI_StatusWithMinimalFixture(t *testing.T) {
 	// Serial test: uses t.Chdir to test cwd-resolution entry point
 	fixture := lyxtest.CopyPaired(t)
 
+	// Seed the weft-prime fixture with the weft config template needed for RunCLI.
+	lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
+		"weft": ConfigTemplate(),
+	})
+
 	// Change to the host repo to test cwd resolution
 	t.Chdir(fixture.Hub)
 
