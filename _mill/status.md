@@ -67,7 +67,9 @@ batches:
     start_sha: 7117fbce4cab1eb71570000ae8e8801371121ba5
     commit_sha: b0039aa491942233af5ba43edc6066c2bbdab869
   - name: coordinated-checkout
-    state: pending
+    state: running
+    implementer_session: 03ef3c8d-4cb1-44f4-b0b7-8df977dbbb95
+    start_sha: 29e13cbd7111cf9d798c81ed391b815a27adbf30
   - name: status-reconcile-pollution
     state: pending
   - name: prune-cleanup
