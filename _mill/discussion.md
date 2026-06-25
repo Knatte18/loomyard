@@ -54,8 +54,10 @@ is unnecessary.
   writes the neutral pre-6d24098 placeholder. `lyxtest` becomes a pure leaf again
   (stdlib + `internal/paths` only).
 - Add a config-seeding helper to `lyxtest` with a **configreg-free signature** (see
-  Decision: lyxtest-seed-helper) and call it from `TestE2ESyncIntegration` to seed real
-  config where that one test needs it.
+  Decision: lyxtest-seed-helper) and call it from **every `CopyPaired` consumer that triggers
+  a config `Load`** (at least `TestE2ESyncIntegration` and `TestRunCLI_EnvMapToOption`; the
+  implementer must enumerate the full set — see Decision: where-real-config-is-needed) to
+  seed the real config those tests depend on.
 - Record the "lyxtest must stay a leaf" invariant in `internal/lyxtest/doc.go` and in
   `CONSTRAINTS.md`.
 - Run `go vet -tags integration ./...` as part of this task's per-batch verify so the cycle
@@ -103,6 +105,11 @@ is unnecessary.
   always harmless on its own. Verified importers of `configreg` are `configcli`,
   `configcli/menu`, `configsync`, and `lyxtest` — none are feature packages, and the
   feature packages do not import `configcli`/`configsync`, so no new cycle forms.
+- Note (round-1 review): `internal/configreg/configreg_test.go` is `package configreg` and
+  already imports `weft` (line 8, uses `weft.ConfigTemplate()` at line 36). After the revert,
+  production `configreg` also imports the feature packages, so the internal test shares that
+  import — this is harmless: feature packages do not import `lyxtest` (or `configreg`) from
+  non-test code, and `configreg` is never reached by a feature package's test build. No cycle.
 - Rejected: Keeping `configtmpl` as the template source — defeats the entire purpose
   ("templates home").
 
@@ -121,6 +128,15 @@ is unnecessary.
 - Rejected: Embedding template copies inside `lyxtest` (duplicates the single source of
   truth); seeding real config in the shared template via any feature/registry import
   (reintroduces the edge).
+- Note (round-1 review): the neutral placeholder lives at `paths.ConfigDir(weftPrime)` =
+  `_lyx/config/placeholder`. A separate existing consumer,
+  `internal/weft/weft_integration_test.go:104`, writes a raw-literal
+  `filepath.Join(fixture.WeftPrime, "_lyx", "placeholder")` = **`_lyx/placeholder`** (directly
+  under `_lyx`, *not* under `config/`) purely to have a file to modify. The two paths differ,
+  so there is no collision with the neutral fixture's `_lyx/config/placeholder`. That literal
+  also predates and is independent of this change; it qualifies for the path-helper cleanup
+  (it should use `paths.LyxDirName`) — fold it into the tidy/constraint batch
+  (Decision: lyxtest-tidy-separate-batch), not the cycle-fix batch.
 
 ### lyxtest-seed-helper
 
@@ -132,10 +148,24 @@ is unnecessary.
   builds the plain data on the test side — loop over `configreg.Modules()`, put
   `m.Name → m.Template()` into a `map[string]string` — and calls
   `lyxtest.SeedConfig(t, f.WeftPrime, seeds)` after `CopyPaired`, before the config edit
-  exercises the fixture.
-- Rationale: Keeps git/commit boilerplate inside `lyxtest` (where the tidy step already
-  consolidates it) and produces a real, committed config in weft-prime — most faithful to
-  the fixture's intent. The **critical constraint** (user-mandated): the helper's parameter
+  exercises the fixture. Feature-internal consumers (`package weft`/`worktree`) instead seed
+  only their own feature's template, e.g. `lyxtest.SeedConfig(t, f.WeftPrime,
+  map[string]string{"weft": weft.ConfigTemplate()})` — same package, no `configreg` import.
+- Rationale (corrected after round-1 review — the original rationale was wrong): the real
+  reason the fixture needs real config is **not** that the edited `worktree.yaml` must
+  pre-exist. `config.Edit` *scaffolds* a missing `worktree.yaml` from the template
+  (`internal/config/edit.go:90-104`) and the fake editor overwrites it, so the edit path
+  alone does not need seeded config. The actual dependency is that `weft.RunCLI`
+  (`commit`/`push`/`status`) calls `LoadConfig(weftBaseDir)` **before** dispatching any
+  subcommand (`internal/weft/cli.go:98`), which calls `config.Load(weftBaseDir, "weft", …)`;
+  `config.Load` returns a hard error if `_lyx/config/weft.yaml` is absent
+  (`internal/config/config.go:57-60`) **or** missing template keys (`config.go:66-79`).
+  The commit pathspec is derived from that `weft.yaml` (`cli.go:104`,
+  `internal/weft/config.go` `Pathspec`/`Dirs`). So a fixture without a real, complete
+  `weft.yaml` makes `weft commit`/`push` fail and the test fails at `code != 0` — exactly the
+  failure `6d24098` (which changed only `lyxtest.go`, placeholder → real config) fixed. The
+  helper produces a real, committed `weft.yaml` (and the other modules), which is what the
+  consuming tests require. The **critical constraint** (user-mandated): the helper's parameter
   type must be configreg-free. If it took `[]configreg.Module`, `lyxtest` would import
   `configreg` purely for the type and the cycle returns. Passing pure `string→string` data
   keeps the `configreg.Modules()` conversion on the test side, so `lyxtest` still imports
@@ -147,19 +177,42 @@ is unnecessary.
 
 ### where-real-config-is-needed
 
-- Decision: Treat `TestE2ESyncIntegration` (`internal/configcli/configcli_integration_test.go`,
-  `package configcli`) as the **only** test that needs the paired fixture to carry real
-  config; it seeds via the helper above. The implementer must still verify this is the
-  complete set (see Testing).
-- Rationale: Confirmed by exploration: all other `CopyPaired`/`CopyPairedLocal` consumers in
-  feature-internal packages (`package worktree`: `add_test.go`, `remove_test.go`,
-  `weft_test.go`, `cli_test.go`; `package weft`: `cli_test.go`, `weft_integration_test.go`)
-  either don't read the fixture's config content or seed their **own** literal config inline
-  (e.g. `worktree/cli_test.go:33` writes `branch_prefix: wt-\n` to its own `ConfigFile`).
-  None depend on the shared template carrying real config, and none import `configreg`.
-- Rejected: Seeding real config in the shared `buildWeftPrime` template (the edge);
-  moving any feature-internal test's seeding into a configreg-importing package (none need
-  it).
+- Decision: **Multiple** `CopyPaired` consumers depend on the fixture carrying real config —
+  not just one. Every consumer that triggers a `config.Load` (directly or via
+  `weft.RunCLI` / `worktree`/`board` config loaders) against the fixture must seed the
+  module(s) it loads, using `lyxtest.SeedConfig` (Decision: lyxtest-seed-helper). The rule:
+  - In a package that may import `configreg` (e.g. `package configcli`): seed the full set
+    by looping over `configreg.Modules()`.
+  - In a feature-internal package (`package weft` / `worktree` / `board`, which **cannot**
+    import `configreg`): seed only that feature's own template via its in-package
+    `ConfigTemplate()` (no import needed). If a feature-internal test needs a *different*
+    feature's config, that is the one case requiring care — none found so far; if one
+    appears, move the seeding to a package that may import `configreg` rather than
+    reintroducing `lyxtest → configreg`.
+  - Batch 1 must **enumerate the complete set empirically**: make `buildWeftPrime` neutral,
+    run `go test -tags integration ./...`, and for each test that now fails on a missing/
+    incomplete config (`config file … not found` / `missing keys`), add the appropriate
+    `SeedConfig` call per the rule above.
+- Known cases (verified):
+  - `TestE2ESyncIntegration` (`internal/configcli/configcli_integration_test.go`,
+    `package configcli`) — `dispatch` → `weft.RunCLI("commit")` → `LoadConfig` needs real
+    `weft.yaml`. Seeds the full set from `configreg.Modules()`.
+  - `TestRunCLI_EnvMapToOption` (`internal/weft/weft_integration_test.go`, `package weft`) —
+    `weft.RunCLI("push")` → `LoadConfig` at `cli.go:98` needs real `weft.yaml`. Seeds only
+    `{"weft": weft.ConfigTemplate()}` (own package, no `configreg`).
+- Not affected (verified): `TestPushIntegration` (`package weft`) uses `CopyWeft` and passes
+  the pathspec `["_lyx"]` directly to `Commit` (no config load). Tests that seed their **own**
+  literal config inline (e.g. `worktree/cli_test.go:33` writes `branch_prefix: wt-\n` to its
+  own `ConfigFile`) are independent of the fixture's seeded config. Whether any other
+  `CopyPaired` consumer in `package worktree` (`add_test.go`, `remove_test.go`, `weft_test.go`,
+  `cli_test.go`) triggers a config load is to be confirmed by the batch-1 empirical sweep.
+- Rationale: round-1 review correctly showed the original "only `TestE2ESyncIntegration`"
+  claim was false. The dependency is on config-loading code paths (`config.Load` errors on a
+  missing/incomplete config), so the affected set is "every fixture consumer that loads
+  config," determined by running the suite — not assumed.
+- Rejected: Seeding real config in the shared `buildWeftPrime` template (re-creates the
+  `lyxtest → configreg` edge); reintroducing `lyxtest → configreg` to let a feature-internal
+  test seed a non-own feature's config.
 
 ### no-ci-no-enforcement-test
 
@@ -275,17 +328,19 @@ test build/fixtures. Verification per area:
   seeding, `paths.ConfigFile(repoDir, module)` exists with the expected content and is
   committed (e.g. `git ls-files` lists it). Confirm `CopyPaired` of the neutral fixture
   contains the `_lyx/config/placeholder` and no real `<module>.yaml`.
-- **The one real-config consumer**: `TestE2ESyncIntegration` must stay green after switching
-  to seed via `lyxtest.SeedConfig(t, f.WeftPrime, seeds)`. This is the canary that the
-  seeding-at-test-site approach works end to end (host worktree add → config edit → weft
-  commit → host stays pristine).
-- **Completeness check (required before the cycle fix is considered done):** grep/build to
-  confirm no *other* test relies on the paired/weft fixture carrying real config. The
-  exploration found only `TestE2ESyncIntegration`; the implementer must re-confirm (search
-  `CopyPaired`/`CopyPairedLocal` consumers for reads of `paths.ConfigFile(...)` against the
-  fixture they didn't seed themselves). Any such test in a feature-internal package must
-  either seed its own feature's `ConfigTemplate()` (same package, no import) or be moved —
-  **never** reintroduce `lyxtest → configreg`.
+- **Real-config consumers (more than one — see Decision: where-real-config-is-needed)**:
+  `TestE2ESyncIntegration` (`configcli`) and `TestRunCLI_EnvMapToOption` (`weft`) must stay
+  green after switching to seed via `lyxtest.SeedConfig`. The configcli case is the canary
+  that the seeding-at-test-site approach works end to end (host worktree add → config edit →
+  weft commit → host stays pristine); the weft case verifies the feature-internal
+  seed-own-`ConfigTemplate()` path.
+- **Completeness sweep (required before the cycle fix is considered done):** make
+  `buildWeftPrime` neutral, then run the full `go test -tags integration ./...` and treat
+  every failure of the form `config file … not found` / `missing keys` as a fixture consumer
+  that needs seeding. Fix each with `SeedConfig` per the rule: configreg-importing packages
+  seed the full set from `configreg.Modules()`; feature-internal packages seed their own
+  feature's `ConfigTemplate()`. **Never** reintroduce `lyxtest → configreg`. Do not assume
+  the set is closed at the two known cases — the suite run is the source of truth.
 - **Build/cycle gate (per batch):** `go build ./...` clean; `go vet -tags integration ./...`
   reports no import cycle and no findings; full `go test -tags integration ./...` green
   (26 packages at last count), including `TestE2ESyncIntegration`.
@@ -321,3 +376,18 @@ Done-conditions to assert at the end:
   (exact revert of `c374501`), not `<feature>.yaml`.
 - **Q:** Neutral fixture content for `buildWeftPrime`? **A:** The pre-6d24098 placeholder —
   `_lyx/config/placeholder` containing `"weft config"`, via `paths.ConfigDir`.
+- **Q (round-1 review GAP):** Does a neutral placeholder suffice (drop `SeedConfig`), since
+  `config.Edit` scaffolds the missing `worktree.yaml`? **A:** No — pushed back with evidence.
+  The edited `worktree.yaml` *is* scaffolded+overwritten, but `weft.RunCLI` loads `weft.yaml`
+  for its commit pathspec **before** any subcommand (`cli.go:98`), and `config.Load` errors on
+  a missing/incomplete `weft.yaml` (`config.go:57-79`); `6d24098` (lyxtest-only change) fixed
+  exactly this. So real config is required. **But** the review correctly exposed that the
+  "only one test needs real config" claim was false — `TestRunCLI_EnvMapToOption` (`package
+  weft`) needs it too. Resolution: keep `SeedConfig`, correct the rationale, and seed in every
+  `CopyPaired` consumer that loads config (enumerated empirically in batch 1), with
+  feature-internal tests seeding their own `ConfigTemplate()`.
+- **Q (round-1 review NOTEs):** Placeholder path collision and configreg-test cycle-safety?
+  **A:** Applied both. `_lyx/placeholder` (weft_integration_test.go:104) ≠ the neutral
+  `_lyx/config/placeholder`, no collision; that literal is flagged for the path-helper tidy.
+  `configreg`'s own internal test importing `weft` is harmless post-revert (features never
+  import `lyxtest`/`configreg` in non-test code).
