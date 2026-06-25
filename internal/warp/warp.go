@@ -17,14 +17,14 @@ import (
 
 // RunCLI parses and executes warp subcommands, writing JSON results to out.
 //
-// It accepts a subcommand as the first argument (clone, add, list, remove)
-// and routes to the matching verb handler. Unknown or missing subcommands return a
-// usage error.
+// It accepts a subcommand as the first argument (clone, add, list, remove, checkout,
+// status, reconcile) and routes to the matching verb handler. Unknown or missing
+// subcommands return a usage error.
 //
 // Returns exit code 0 on success or 1 on error. Output is JSON on out.
 func RunCLI(out io.Writer, args []string) int {
 	if len(args) < 1 {
-		return output.Err(out, "usage: lyx warp <clone|add|list|remove|checkout>")
+		return output.Err(out, "usage: lyx warp <clone|add|list|remove|checkout|status|reconcile>")
 	}
 
 	subcommand, subArgs := args[0], args[1:]
@@ -40,8 +40,12 @@ func RunCLI(out io.Writer, args []string) int {
 		return runRemove(out, subArgs)
 	case "checkout":
 		return runCheckout(out, subArgs)
+	case "status":
+		return runStatus(out, subArgs)
+	case "reconcile":
+		return runReconcile(out, subArgs)
 	default:
-		return output.Err(out, "usage: lyx warp <clone|add|list|remove|checkout>")
+		return output.Err(out, "usage: lyx warp <clone|add|list|remove|checkout|status|reconcile>")
 	}
 }
 
@@ -145,6 +149,70 @@ func runCheckout(out io.Writer, args []string) int {
 	return output.Ok(out, map[string]any{
 		"branch":        r.Branch,
 		"weft_worktree": r.WeftWorktree,
+	})
+}
+
+// runStatus parses and executes the warp status subcommand.
+//
+// Resolves the layout and warp config from the current working directory,
+// calls Status to enumerate all host↔weft pairs with drift and pollution data,
+// and emits the result via output.Ok.
+func runStatus(out io.Writer, _ []string) int {
+	cwd, err := paths.Getwd()
+	if err != nil {
+		return output.Err(out, err.Error())
+	}
+
+	l, err := paths.Resolve(cwd)
+	if err != nil {
+		return output.Err(out, err.Error())
+	}
+
+	cfg, err := LoadConfig(cwd, "warp")
+	if err != nil {
+		return output.Err(out, err.Error())
+	}
+
+	w := New(cfg)
+
+	r, err := w.Status(l)
+	if err != nil {
+		return output.Err(out, err.Error())
+	}
+	return output.Ok(out, map[string]any{
+		"pairs": r.Pairs,
+	})
+}
+
+// runReconcile parses and executes the warp reconcile subcommand.
+//
+// Resolves the layout and warp config from the current working directory,
+// calls Reconcile to walk and repair all host↔weft pairs, and emits the
+// result via output.Ok.
+func runReconcile(out io.Writer, _ []string) int {
+	cwd, err := paths.Getwd()
+	if err != nil {
+		return output.Err(out, err.Error())
+	}
+
+	l, err := paths.Resolve(cwd)
+	if err != nil {
+		return output.Err(out, err.Error())
+	}
+
+	cfg, err := LoadConfig(cwd, "warp")
+	if err != nil {
+		return output.Err(out, err.Error())
+	}
+
+	w := New(cfg)
+
+	r, err := w.Reconcile(l)
+	if err != nil {
+		return output.Err(out, err.Error())
+	}
+	return output.Ok(out, map[string]any{
+		"pairs": r.Pairs,
 	})
 }
 
