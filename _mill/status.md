@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-warp-worktree-absorb
+phase: approved-topology-primitives-activation
 slug: warp-module
 branch: warp-module
 plan: _mill/plan
@@ -39,6 +39,7 @@ implementing  '2026-06-25T14:21:06Z'
 approved-gitexec-rename  '2026-06-25T14:30:52Z'
 approved-warp-clone-fold  '2026-06-25T14:34:58Z'
 approved-warp-worktree-absorb  '2026-06-25T14:49:03Z'
+approved-topology-primitives-activation  '2026-06-25T15:08:25Z'
 ```
 
 ## Batches
@@ -61,9 +62,10 @@ batches:
     start_sha: d3343b648368ea3bc8783d26cd78fe077ccbe860
     commit_sha: 95a690f2fe58b59d8c539e72738bb0d334ca5466
   - name: topology-primitives-activation
-    state: running
+    state: approved
     implementer_session: b657b58b-a154-4ded-9b2b-e40c6bc56dfc
     start_sha: 7117fbce4cab1eb71570000ae8e8801371121ba5
+    commit_sha: b0039aa491942233af5ba43edc6066c2bbdab869
   - name: coordinated-checkout
     state: pending
   - name: status-reconcile-pollution
