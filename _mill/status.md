@@ -91,5 +91,7 @@ batches:
     start_sha: d261abfcf2b0633fbac921956659d75a8405152e
     commit_sha: 947dc8c8cac85e987cf0714f7f4179724d5cf3e6
   - name: docs-finalize
-    state: pending
+    state: running
+    implementer_session: 3c715634-4f94-4a3b-8fc6-2147c211e1a2
+    start_sha: ee150f2c0dfbda957362c189ba70486027bf88b2
 ```
