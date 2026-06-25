@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-topology-primitives-activation
+phase: approved-coordinated-checkout
 slug: warp-module
 branch: warp-module
 plan: _mill/plan
@@ -40,6 +40,7 @@ approved-gitexec-rename  '2026-06-25T14:30:52Z'
 approved-warp-clone-fold  '2026-06-25T14:34:58Z'
 approved-warp-worktree-absorb  '2026-06-25T14:49:03Z'
 approved-topology-primitives-activation  '2026-06-25T15:08:25Z'
+approved-coordinated-checkout  '2026-06-25T15:20:59Z'
 ```
 
 ## Batches
@@ -67,9 +68,10 @@ batches:
     start_sha: 7117fbce4cab1eb71570000ae8e8801371121ba5
     commit_sha: b0039aa491942233af5ba43edc6066c2bbdab869
   - name: coordinated-checkout
-    state: running
+    state: approved
     implementer_session: 03ef3c8d-4cb1-44f4-b0b7-8df977dbbb95
     start_sha: 29e13cbd7111cf9d798c81ed391b815a27adbf30
+    commit_sha: cbed8646dcf4d0b755ab88d6574904403a594006
   - name: status-reconcile-pollution
     state: pending
   - name: prune-cleanup
