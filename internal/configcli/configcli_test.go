@@ -125,7 +125,7 @@ func TestEditOneAbort(t *testing.T) {
 
 	var out bytes.Buffer
 	tracker := &fakeSyncTracker{exitCode: 0}
-	code := editOne(baseDir, &out, "worktree", fakeEditor("test\n", errors.New("simulated editor exit 1")), tracker.syncFunc())
+	code := editOne(baseDir, &out, "warp", fakeEditor("test\n", errors.New("simulated editor exit 1")), tracker.syncFunc())
 
 	if code != 1 {
 		t.Errorf("editOne() = %d; want 1", code)

@@ -8,7 +8,6 @@ package warp
 
 import (
 	"flag"
-	"fmt"
 	"io"
 	"os"
 
@@ -87,7 +86,7 @@ func runList(out io.Writer, args []string) int {
 		return output.Err(out, err.Error())
 	}
 
-	l, err := paths.Resolve(cwd)
+	_, err = paths.Resolve(cwd)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -149,15 +148,4 @@ func runRemove(out io.Writer, args []string) int {
 		"path":          r.Path,
 		"links_removed": r.LinksRemoved,
 	})
-}
-
-// addOptionsFromEnv constructs an AddOptions from the WEFT_SKIP_GIT and
-// WEFT_SKIP_PUSH environment variables. This mapping lives at the CLI edge so
-// that in-process callers (tests, library users) can pass options directly
-// without touching the environment.
-func addOptionsFromEnv() AddOptions {
-	return AddOptions{
-		SkipGit:  os.Getenv("WEFT_SKIP_GIT") == "1",
-		SkipPush: os.Getenv("WEFT_SKIP_PUSH") == "1",
-	}
 }

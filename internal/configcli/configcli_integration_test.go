@@ -74,16 +74,16 @@ func TestE2ESyncIntegration(t *testing.T) {
 
 	// Run dispatch with the fake editor and injected sync.
 	var out bytes.Buffer
-	code := dispatch(hostLayout, os.Stdin, &out, []string{"worktree"}, fakeEdit, injectedSync)
+	code := dispatch(hostLayout, os.Stdin, &out, []string{"warp"}, fakeEdit, injectedSync)
 
 	// Assert dispatch succeeded.
 	if code != 0 {
 		t.Errorf("dispatch() = %d; want 0; output: %s", code, out.String())
 	}
 
-	// Assert _lyx/config/worktree.yaml is tracked/committed in the weft worktree.
+	// Assert _lyx/config/warp.yaml is tracked/committed in the weft worktree.
 	weftWorktreePath := f.Layout.WeftWorktreePath(slug)
-	configRelPath := paths.ConfigFile(".", "worktree")
+	configRelPath := paths.ConfigFile(".", "warp")
 	configPath := filepath.Join(weftWorktreePath, configRelPath)
 	// For git commands, use forward slashes (git always uses forward slashes).
 	configRelPathForGit := strings.ReplaceAll(configRelPath, "\\", "/")
