@@ -92,15 +92,13 @@ func TestCleanup_DryRunReportsOrphanBranch(t *testing.T) {
 	}
 }
 
-// TestCleanup_ApplyDeletesNonTaskOrphan asserts that Cleanup with apply=true (no force)
-// deletes a non-task orphaned weft branch that the gate does not protect.
+// TestCleanup_ApplySkipsProtectedBranch asserts that Cleanup with apply=true (no force)
+// does not delete a branch that the gate marks as protected.
 //
-// codeguideFoldedBack returns false for all branches (conservative), making every
-// branch gate-protected. To validate the "non-gate-protected" path, we test the branch
-// deletion directly at the CleanupBranchEntry level: when apply=true but force=false,
-// every branch gets the Protected flag because codeguideFoldedBack returns false.
-// The apply+non-task scenario is therefore identical to the apply+gate scenario under
-// the current conservative stub. We verify the Protected semantics instead.
+// codeguideFoldedBack returns false for all branches (conservative), so every orphan
+// branch is gate-protected even when apply=true. The test verifies that Protected=true
+// and Deleted=false for an orphaned weft branch, and that the branch still exists
+// after Cleanup returns.
 func TestCleanup_ApplySkipsProtectedBranch(t *testing.T) {
 	t.Parallel()
 

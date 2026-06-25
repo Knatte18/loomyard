@@ -52,7 +52,9 @@ import (
 	"flag"
 	"io"
 	"os"
+	"strings"
 
+	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/paths"
 )
@@ -115,7 +117,7 @@ func runAdd(out io.Writer, args []string) int {
 	w := New(cfg)
 
 	if len(args) < 1 {
-		return output.Err(out, "usage: warp add <slug>")
+		return output.Err(out, "usage: lyx warp add <slug>")
 	}
 
 	slug := args[0]
@@ -162,15 +164,13 @@ func runList(out io.Writer, args []string) int {
 // runCheckout parses and executes the warp checkout subcommand.
 //
 // It resolves the layout and warp config from the current working directory,
-// then calls Checkout with the supplied branch argument. On success it emits
-// a JSON object with branch and weft_worktree fields.
+// then calls Checkout with the supplied branch argument. When no branch is
+// supplied (e.g. when invoked from the warp-checkout.cmd launcher shortcut),
+// the current host branch is resolved via git and used as the target — this
+// performs an in-place re-checkout that re-points junctions and re-syncs the
+// weft side without requiring the user to supply a branch name. On success it
+// emits a JSON object with branch and weft_worktree fields.
 func runCheckout(out io.Writer, args []string) int {
-	if len(args) < 1 {
-		return output.Err(out, "usage: lyx warp checkout <branch>")
-	}
-
-	branch := args[0]
-
 	cwd, err := paths.Getwd()
 	if err != nil {
 		return output.Err(out, err.Error())
@@ -179,6 +179,30 @@ func runCheckout(out io.Writer, args []string) int {
 	l, err := paths.Resolve(cwd)
 	if err != nil {
 		return output.Err(out, err.Error())
+	}
+
+	// Resolve the branch: use the supplied argument when present; otherwise
+	// derive it from the current host HEAD so the launcher shortcut (which
+	// emits no branch argument) performs a valid in-place re-checkout.
+	var branch string
+	if len(args) >= 1 {
+		branch = args[0]
+	} else {
+		branchOut, _, exitCode, runErr := gitexec.RunGit(
+			[]string{"branch", "--show-current"},
+			l.WorktreeRoot,
+		)
+		if runErr != nil {
+			return output.Err(out, runErr.Error())
+		}
+		if exitCode != 0 {
+			return output.Err(out, "usage: lyx warp checkout <branch>")
+		}
+		branch = strings.TrimSpace(branchOut)
+		if branch == "" {
+			// Detached HEAD — cannot resolve a branch to re-checkout.
+			return output.Err(out, "usage: lyx warp checkout <branch>")
+		}
 	}
 
 	cfg, err := LoadConfig(cwd, "warp")
@@ -376,7 +400,7 @@ func runRemove(out io.Writer, args []string) int {
 
 	slug := fs.Arg(0)
 	if slug == "" {
-		return output.Err(out, "usage: warp remove [--force] <slug>")
+		return output.Err(out, "usage: lyx warp remove [--force] <slug>")
 	}
 
 	r, err := w.Remove(l, slug, *force)
