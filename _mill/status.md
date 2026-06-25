@@ -40,5 +40,7 @@ batches:
     start_sha: d5a4af92596423b3f0d5a3c0d1305da4a94d1864
     commit_sha: 102be8f058bd3ec4c0eba22433e78236bdd68d46
   - name: lyxtest-tidy
-    state: pending
+    state: running
+    implementer_session: e631c253-7e6c-4b12-971c-1c262ffc1cb9
+    start_sha: 02040b499ad92e6ff764a10bf067c39ba2da5971
 ```
