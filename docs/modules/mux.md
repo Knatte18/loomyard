@@ -3,7 +3,7 @@
 > **Status:** design, nothing implemented yet. Every claim about psmux here is **grounded in
 > hands-on testing** — see the evidence logs [`mux-exploration.md`](../research/mux-exploration.md)
 > and [`mux-hooks-exploration.md`](../research/mux-hooks-exploration.md), and the TUI-behavior
-> reference [`../psmux-tui-behavior.md`](../psmux-tui-behavior.md). The daemon + Slack relay are in
+> reference [`../research/psmux-tui-behavior.md`](../research/psmux-tui-behavior.md). The daemon + Slack relay are in
 > [Deferred](#deferred). See [roadmap.md](../roadmap.md) for sequencing.
 >
 > **Note:** A working proof-of-concept already exists in `internal/muxpoc` — see
