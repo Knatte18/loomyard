@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
@@ -46,6 +47,7 @@ func TestAdd(t *testing.T) {
 			setup:      func(t *testing.T, f lyxtest.PairedFixture) {},
 			opts:       AddOptions{SkipPush: true},
 			wantBranch: "my-task",
+			// Add is dormant: no junctions wired by Add.
 		},
 		{
 			name:         "BranchPrefix",
@@ -266,5 +268,89 @@ func TestAddRollback(t *testing.T) {
 
 	if result.Slug != "" {
 		t.Errorf("Add(%q) result should be zero on error; got non-empty result", slug)
+	}
+}
+
+// TestAddDormant asserts that Add does not wire the host _lyx junction.
+// Junctions are wired by lyx init via WireJunctions, not by Add.
+func TestAddDormant(t *testing.T) {
+	t.Parallel()
+
+	const slug = "dormant-test"
+	f := lyxtest.CopyPairedLocal(t)
+
+	w := New(Config{})
+	result, err := w.Add(f.Layout, slug, AddOptions{SkipPush: true})
+	if err != nil {
+		t.Fatalf("Add(%q) error = %v; want nil", slug, err)
+	}
+
+	// Assert no host _lyx junction was created.
+	hostLink := f.Layout.HostLyxLink(slug)
+	isLink, err := fslink.IsLink(hostLink)
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatalf("fslink.IsLink(%s): %v", hostLink, err)
+	}
+
+	if isLink {
+		t.Errorf("Add(%q) created host junction at %s; want no junction (Add is dormant)", slug, hostLink)
+	}
+
+	// Worktree dir should exist (Add created it).
+	if _, statErr := os.Stat(result.Path); statErr != nil {
+		t.Errorf("Add(%q) worktree dir missing: %v", slug, statErr)
+	}
+}
+
+// TestAddAdoptExistingWeftBranch asserts that Add adopts an existing weft branch
+// instead of aborting with an error.
+func TestAddAdoptExistingWeftBranch(t *testing.T) {
+	t.Parallel()
+
+	const slug = "adopt-test"
+	f := lyxtest.CopyPairedLocal(t)
+
+	// Create a weft branch ahead of time (outside Add).
+	weftBranch := "adopt-test"
+	parentBranch := "main" // Common convention in test fixtures.
+	lyxtest.MustRun(t, f.Layout.WeftRepoRoot(), "git", "branch", weftBranch, parentBranch)
+
+	// Add should adopt the existing branch instead of erroring.
+	w := New(Config{})
+	result, err := w.Add(f.Layout, slug, AddOptions{SkipPush: true})
+	if err != nil {
+		t.Fatalf("Add(%q) with existing weft branch error = %v; want nil (adopt)", slug, err)
+	}
+
+	// Verify the weft worktree was created on the existing branch.
+	weftTarget := f.Layout.WeftWorktreePath(slug)
+	if _, statErr := os.Stat(weftTarget); statErr != nil {
+		t.Errorf("Add(%q) weft worktree dir missing: %v", slug, statErr)
+	}
+
+	// Verify the branch in the weft worktree is the adopted branch.
+	currentBranch, _, exitCode, err := gitexec.RunGit(
+		[]string{"rev-parse", "--abbrev-ref", "HEAD"},
+		weftTarget,
+	)
+	if err != nil || exitCode != 0 {
+		t.Fatalf("get weft current branch: %v (exit %d)", err, exitCode)
+	}
+	if strings.TrimSpace(currentBranch) != weftBranch {
+		t.Errorf("weft worktree branch = %q; want %q (adopted)", strings.TrimSpace(currentBranch), weftBranch)
+	}
+
+	// Assert result is valid and no junctions were wired by Add.
+	if result.Slug != slug {
+		t.Errorf("result.Slug = %q; want %q", result.Slug, slug)
+	}
+
+	hostLink := f.Layout.HostLyxLink(slug)
+	isLink, err := fslink.IsLink(hostLink)
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatalf("fslink.IsLink(%s): %v", hostLink, err)
+	}
+	if isLink {
+		t.Errorf("Add(%q) with adopt created host junction; want no junction (Add is dormant)", slug)
 	}
 }

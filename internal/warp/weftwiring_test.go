@@ -11,14 +11,15 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
-// TestWeftSpawnCreatesJunction verifies that paired Add creates the host _lyx junction
-// pointing to the weft _lyx directory. The test checks that both the junction and
-// the weft target directory exist.
-func TestWeftSpawnCreatesJunction(t *testing.T) {
+// TestWeftSpawnCreatesWeftDirectory verifies that paired Add creates the weft _lyx directory.
+// Add is dormant: it does not create the host junction. The junction is wired by lyx init
+// via WireJunctions. This test verifies the weft-side structure is correct.
+func TestWeftSpawnCreatesWeftDirectory(t *testing.T) {
 	t.Parallel()
 
 	const slug = "weft-junction-test"
@@ -31,13 +32,14 @@ func TestWeftSpawnCreatesJunction(t *testing.T) {
 		t.Fatalf("Add(%q): %v", slug, err)
 	}
 
-	// Verify host _lyx junction exists (Lstat should not fail).
-	// On Windows, directory junctions may appear as regular files when queried via Lstat,
-	// so the primary check is that Lstat doesn't fail (meaning the junction exists).
+	// Verify host _lyx junction does NOT exist (Add is dormant).
 	hostLink := f.Layout.HostLyxLink(slug)
-	_, err = os.Lstat(hostLink)
-	if err != nil {
-		t.Fatalf("lstat host junction: %v", err)
+	isLink, err := fslink.IsLink(hostLink)
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatalf("fslink.IsLink(%s): %v", hostLink, err)
+	}
+	if isLink {
+		t.Errorf("Add created host junction; want no junction (Add is dormant)")
 	}
 
 	// Verify the weft _lyx directory exists (the junction target).
@@ -48,9 +50,10 @@ func TestWeftSpawnCreatesJunction(t *testing.T) {
 	}
 }
 
-// TestWeftSpawnSeedsExclude verifies that Add seeds the _lyx entry in the host worktree's
-// .git/info/exclude file, and that re-seeding is idempotent.
-func TestWeftSpawnSeedsExclude(t *testing.T) {
+// TestWeftSpawnNoExcludeEntry verifies that Add does not seed the exclude file.
+// Add is dormant: it does not create the host junction or exclude entry. These are
+// wired by lyx init via WireJunctions.
+func TestWeftSpawnNoExcludeEntry(t *testing.T) {
 	t.Parallel()
 
 	const slug = "weft-exclude-test"
@@ -75,30 +78,89 @@ func TestWeftSpawnSeedsExclude(t *testing.T) {
 		excludePath = filepath.Join(worktreePath, excludePath)
 	}
 
-	// Read the exclude file.
+	// Read the exclude file (if it exists).
+	content, err := os.ReadFile(excludePath)
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatalf("read exclude file: %v", err)
+	}
+
+	// Verify _lyx is NOT present (Add is dormant).
+	if strings.Contains(string(content), "_lyx") {
+		t.Errorf("Add seeded exclude file with _lyx; want no entry (Add is dormant)")
+	}
+}
+
+// TestWireJunctionsIdempotent verifies that WireJunctions creates the host junction
+// and seeds the exclude entry, and that re-wiring is idempotent.
+func TestWireJunctionsIdempotent(t *testing.T) {
+	t.Parallel()
+
+	const slug = "wire-junctions-test"
+
+	f := lyxtest.CopyPairedLocal(t)
+
+	// First, create a worktree via Add (dormant, no junctions).
+	w := New(Config{})
+	_, err := w.Add(f.Layout, slug, AddOptions{SkipPush: true})
+	if err != nil {
+		t.Fatalf("Add(%q): %v", slug, err)
+	}
+
+	// Now wire junctions via the primitive.
+	if err := WireJunctions(f.Layout, slug); err != nil {
+		t.Fatalf("WireJunctions(%q): %v", slug, err)
+	}
+
+	// Verify host _lyx junction exists and points to the weft target.
+	hostLink := f.Layout.HostLyxLink(slug)
+	isLink, err := fslink.IsLink(hostLink)
+	if err != nil {
+		t.Fatalf("fslink.IsLink(%s): %v", hostLink, err)
+	}
+	if !isLink {
+		t.Errorf("WireJunctions did not create host junction at %s", hostLink)
+	}
+
+	// Verify the weft _lyx directory exists (the junction target).
+	weftLyxTarget := f.Layout.WeftLyxDirFor(slug)
+	if _, err := os.Stat(weftLyxTarget); os.IsNotExist(err) {
+		t.Errorf("weft _lyx target missing at %s", weftLyxTarget)
+	}
+
+	// Verify exclude file contains _lyx.
+	worktreePath := f.Layout.WorktreePath(slug)
+	stdout, _, exitCode, _ := gitexec.RunGit([]string{"rev-parse", "--git-path", "info/exclude"}, worktreePath)
+	if exitCode != 0 {
+		t.Fatalf("git rev-parse --git-path info/exclude failed")
+	}
+
+	excludePath := strings.TrimSpace(stdout)
+	if !filepath.IsAbs(excludePath) {
+		excludePath = filepath.Join(worktreePath, excludePath)
+	}
+
 	content, err := os.ReadFile(excludePath)
 	if err != nil {
 		t.Fatalf("read exclude file: %v", err)
 	}
 
-	// Verify _lyx is present.
 	if !strings.Contains(string(content), "_lyx") {
 		t.Errorf("exclude file does not contain _lyx entry")
 	}
 
-	// Verify re-seeding is idempotent by calling seedGitExclude again.
-	if err := seedGitExclude(f.Layout, slug); err != nil {
-		t.Fatalf("seedGitExclude (idempotent): %v", err)
+	// Verify re-wiring is idempotent.
+	if err := WireJunctions(f.Layout, slug); err != nil {
+		t.Fatalf("WireJunctions (idempotent): %v", err)
 	}
 
-	// Read again and verify content unchanged.
+	// Read exclude again and verify content unchanged.
 	content2, err := os.ReadFile(excludePath)
 	if err != nil {
 		t.Fatalf("read exclude file (2nd time): %v", err)
 	}
 
 	if string(content) != string(content2) {
-		t.Errorf("re-seeding changed exclude file content")
+		t.Errorf("re-wiring changed exclude file content")
 	}
 }
 
@@ -166,17 +228,6 @@ func TestWeftPrechecks(t *testing.T) {
 				}
 			},
 			wantErrContains: "weft worktree directory already exists",
-			wantNoTargetDir: true,
-			wantResultZero:  true,
-		},
-		{
-			name: "TestWeftPrechecksRejectExistingWeftBranch",
-			setup: func(t *testing.T, f lyxtest.PairedFixture) {
-				// Pre-create the weft branch.
-				slug := "weft-prechecks-test"
-				lyxtest.MustRun(t, f.WeftPrime, "git", "branch", slug)
-			},
-			wantErrContains: "weft branch",
 			wantNoTargetDir: true,
 			wantResultZero:  true,
 		},
@@ -268,6 +319,8 @@ func TestWeftSpawnPushesWeftBranch(t *testing.T) {
 
 // TestWeftRollbackOnPostHostCreateFailure simulates a post-host-create failure
 // and asserts both host and weft state is rolled back completely.
+// Note: since Add is dormant (does not create junctions), rollback does not need
+// to remove the host junction.
 func TestWeftRollbackOnPostHostCreateFailure(t *testing.T) {
 	t.Parallel()
 
@@ -318,27 +371,36 @@ func TestWeftRollbackOnPostHostCreateFailure(t *testing.T) {
 	}
 }
 
-// TestSeederParity verifies that the refactored seeders (iterating HostJunctions)
-// preserve behaviour: the _lyx junction exists and resolves correctly, and the
-// .git/info/exclude file contains the _lyx entry.
-func TestSeederParity(t *testing.T) {
+// TestWireJunctionsPreservesBehavior verifies that WireJunctions correctly creates
+// the host _lyx junction and exclude entry. The junction resolves to the correct
+// weft target, and the exclude file is properly seeded.
+func TestWireJunctionsPreservesBehavior(t *testing.T) {
 	t.Parallel()
 
 	const slug = "seeder-parity-test"
 
-	f := lyxtest.CopyPaired(t)
+	f := lyxtest.CopyPairedLocal(t)
 
+	// Create worktree via Add (dormant).
 	w := New(Config{})
 	_, err := w.Add(f.Layout, slug, AddOptions{SkipPush: true})
 	if err != nil {
 		t.Fatalf("Add(%q): %v", slug, err)
 	}
 
+	// Wire junctions via the primitive.
+	if err := WireJunctions(f.Layout, slug); err != nil {
+		t.Fatalf("WireJunctions(%q): %v", slug, err)
+	}
+
 	// Verify host _lyx junction exists and points to the weft target.
 	hostLink := f.Layout.HostLyxLink(slug)
-	_, err = os.Lstat(hostLink)
+	isLink, err := fslink.IsLink(hostLink)
 	if err != nil {
-		t.Fatalf("lstat host junction: %v", err)
+		t.Fatalf("fslink.IsLink(%s): %v", hostLink, err)
+	}
+	if !isLink {
+		t.Errorf("WireJunctions did not create host junction at %s", hostLink)
 	}
 
 	// Verify the junction resolves to the correct weft target.

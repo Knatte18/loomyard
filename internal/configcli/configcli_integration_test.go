@@ -37,12 +37,18 @@ func TestE2ESyncIntegration(t *testing.T) {
 	}
 	lyxtest.SeedConfig(t, f.WeftPrime, seeds)
 
-	// FIRST: Seed the host _lyx junction by running warp.New().Add().
+	// FIRST: Create the host worktree via warp.New().Add() (which is dormant).
+	// Then wire the host _lyx junction via WireJunctions.
 	// Without this the host worktree has no _lyx, so config.Edit→FindBaseDir would error.
 	w := warp.New(warp.Config{})
 	_, err := w.Add(f.Layout, slug, warp.AddOptions{SkipPush: true})
 	if err != nil {
 		t.Fatalf("worktree.Add(%q): %v", slug, err)
+	}
+
+	// Wire junctions for the new host worktree.
+	if err := warp.WireJunctions(f.Layout, slug); err != nil {
+		t.Fatalf("WireJunctions(%q): %v", slug, err)
 	}
 
 	// Resolve layout for the new host worktree.
