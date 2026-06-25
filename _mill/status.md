@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-fix-r2
+phase: discussed
 slug: config-test-cleanup
 branch: config-test-cleanup
 plan: null
@@ -16,4 +16,5 @@ task_description: |
 ```text
 discussing  '2026-06-25T06:05:55Z'
 discussion-fix-r2  '2026-06-25T06:32:44Z'
+discussed  '2026-06-25T06:33:15Z'
 ```
