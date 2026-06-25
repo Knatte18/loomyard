@@ -73,7 +73,13 @@ func InstallPostCheckoutHook(l *paths.Layout) error {
 	}
 
 	// git emits the path with forward slashes; convert to native separators.
+	// When the path is relative (e.g. ".git" in a standard clone), resolve it
+	// relative to the worktree root so the hook lands in the correct directory
+	// regardless of the test process's working directory.
 	commonDir := filepath.FromSlash(strings.TrimSpace(commonDirOut))
+	if !filepath.IsAbs(commonDir) {
+		commonDir = filepath.Join(l.WorktreeRoot, commonDir)
+	}
 	hookPath := filepath.Join(commonDir, "hooks", "post-checkout")
 
 	// Ensure the hooks directory exists (it may not in a freshly-initialised bare repo).

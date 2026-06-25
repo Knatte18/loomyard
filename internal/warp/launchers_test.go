@@ -26,11 +26,12 @@ func TestWriteLaunchers(t *testing.T) {
 	}
 
 	tests := []struct {
-		name       string
-		slug       string
-		relPath    string
-		verifyIde  func(t *testing.T, content string)
-		verifyMenu func(t *testing.T, content string)
+		name           string
+		slug           string
+		relPath        string
+		verifyIde      func(t *testing.T, content string)
+		verifyMenu     func(t *testing.T, content string)
+		verifyCheckout func(t *testing.T, content string)
 	}{
 		{
 			name:    "EmptyRelPath",
@@ -48,6 +49,12 @@ func TestWriteLaunchers(t *testing.T) {
 					t.Errorf("ide-menu.cmd does not contain 'lyx ide menu': %q", content)
 				}
 			},
+			verifyCheckout: func(t *testing.T, content string) {
+				expected := "@cd /d \"%~dp0..\\..\\test-slug\" && lyx warp checkout\r\n"
+				if content != expected {
+					t.Errorf("warp-checkout.cmd content = %q; want %q", content, expected)
+				}
+			},
 		},
 		{
 			name:    "DotRelPath",
@@ -62,6 +69,12 @@ func TestWriteLaunchers(t *testing.T) {
 			verifyMenu: func(t *testing.T, content string) {
 				if !strings.Contains(content, "lyx ide menu") {
 					t.Errorf("ide-menu.cmd does not contain 'lyx ide menu': %q", content)
+				}
+			},
+			verifyCheckout: func(t *testing.T, content string) {
+				expected := "@cd /d \"%~dp0..\\..\\task-a\" && lyx warp checkout\r\n"
+				if content != expected {
+					t.Errorf("warp-checkout.cmd content = %q; want %q", content, expected)
 				}
 			},
 		},
@@ -84,6 +97,13 @@ func TestWriteLaunchers(t *testing.T) {
 				}
 				if !strings.Contains(content, "lyx ide menu") {
 					t.Errorf("ide-menu.cmd does not contain 'lyx ide menu': %q", content)
+				}
+			},
+			verifyCheckout: func(t *testing.T, content string) {
+				// warp-checkout.cmd uses the same climb path as ide.cmd.
+				expected := "@cd /d \"%~dp0..\\..\\..\\..\\task-b\\subdir\\nested\" && lyx warp checkout\r\n"
+				if content != expected {
+					t.Errorf("warp-checkout.cmd content = %q; want %q", content, expected)
 				}
 			},
 		},
@@ -127,6 +147,14 @@ func TestWriteLaunchers(t *testing.T) {
 				t.Fatalf("read ide.cmd: %v", err)
 			}
 			tt.verifyIde(t, string(ideCmdContent))
+
+			// Verify warp-checkout.cmd was created with correct content.
+			warpCheckoutPath := filepath.Join(l.LauncherDir(tt.slug), "warp-checkout.cmd")
+			warpCheckoutContent, err := os.ReadFile(warpCheckoutPath)
+			if err != nil {
+				t.Fatalf("read warp-checkout.cmd: %v", err)
+			}
+			tt.verifyCheckout(t, string(warpCheckoutContent))
 
 			// Verify per-subpath menu was created at l.MenuLauncherPath().
 			menuCmdPath := l.MenuLauncherPath()
@@ -175,7 +203,8 @@ func TestRemoveLaunchers(t *testing.T) {
 		t.Fatalf("writeLaunchers slug2: %v", err)
 	}
 
-	// Verify both launcher dirs exist (via l.LauncherDir).
+	// Verify both launcher dirs exist (via l.LauncherDir) and warp-checkout.cmd
+	// is present inside each (removeLaunchers must clean it via RemoveAll).
 	slug1Dir := l.LauncherDir("slug1")
 	slug2Dir := l.LauncherDir("slug2")
 	if _, err := os.Stat(slug1Dir); err != nil {
@@ -185,12 +214,17 @@ func TestRemoveLaunchers(t *testing.T) {
 		t.Fatalf("slug2 launcher dir does not exist: %v", err)
 	}
 
+	warpCheckoutSlug1 := filepath.Join(slug1Dir, "warp-checkout.cmd")
+	if _, err := os.Stat(warpCheckoutSlug1); err != nil {
+		t.Fatalf("warp-checkout.cmd not found in slug1 dir: %v", err)
+	}
+
 	// Remove slug1 launchers.
 	if err := removeLaunchers(l, "slug1"); err != nil {
 		t.Fatalf("removeLaunchers slug1: %v", err)
 	}
 
-	// Verify slug1 dir is gone but slug2 remains.
+	// Verify slug1 dir (including warp-checkout.cmd) is gone but slug2 remains.
 	if _, err := os.Stat(slug1Dir); err == nil {
 		t.Error("slug1 launcher dir still exists")
 	} else if !os.IsNotExist(err) {
