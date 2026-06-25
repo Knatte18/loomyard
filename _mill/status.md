@@ -34,7 +34,9 @@ batches:
     start_sha: 827a4e2a83af1cce7bafb7d9c2131910f6922739
     commit_sha: 8d446bfd65a6b1516c7759bf125f37c8891c7358
   - name: templates-home
-    state: pending
+    state: running
+    implementer_session: 41d22672-df8c-4c2c-bc99-6d1cf52c4bcf
+    start_sha: d5a4af92596423b3f0d5a3c0d1305da4a94d1864
   - name: lyxtest-tidy
     state: pending
 ```
