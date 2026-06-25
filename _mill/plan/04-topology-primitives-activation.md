@@ -44,6 +44,7 @@ Batch-local decisions: the activation direction is strictly `initcli → warp` (
   - `internal/warp/add.go`
   - `internal/warp/add_test.go`
   - `internal/warp/weftwiring_test.go`
+  - `internal/warp/remove_test.go`
   - `internal/configcli/configcli_integration_test.go`
 - **Creates:** none
 - **Deletes:** none
