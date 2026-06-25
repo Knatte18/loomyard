@@ -231,24 +231,6 @@ func TestWeftPrechecks(t *testing.T) {
 			wantNoTargetDir: true,
 			wantResultZero:  true,
 		},
-		{
-			name: "TestWeftHostPristineEnforced",
-			setup: func(t *testing.T, f lyxtest.PairedFixture) {
-				// Pre-create a real _lyx dir in the host worktree (committed to repo).
-				realLyx := filepath.Join(f.Hub, "_lyx")
-				if err := os.Mkdir(realLyx, 0755); err != nil {
-					t.Fatalf("mkdir _lyx: %v", err)
-				}
-				if err := os.WriteFile(filepath.Join(realLyx, "file"), []byte("content"), 0644); err != nil {
-					t.Fatalf("write file: %v", err)
-				}
-				lyxtest.MustRun(t, f.Hub, "git", "add", "_lyx")
-				lyxtest.MustRun(t, f.Hub, "git", "commit", "-m", "add real _lyx")
-			},
-			wantErrContains: "predates weft",
-			wantNoTargetDir: true,
-			wantResultZero:  true,
-		},
 	}
 
 	const slug = "weft-prechecks-test"

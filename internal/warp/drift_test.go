@@ -13,8 +13,8 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fslink"
-	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/paths"
 )
 
 // TestPairInSync_InSync verifies that a paired host+weft worktree in sync reports ok=true.
@@ -39,7 +39,7 @@ func TestPairInSync_InSync(t *testing.T) {
 
 	// Resolve layout for the paired host worktree and check pair sync.
 	hostWorktreePath := f.Layout.WorktreePath(slug)
-	hostLayout, err := f.Layout.Resolve(hostWorktreePath)
+	hostLayout, err := paths.Resolve(hostWorktreePath)
 	if err != nil {
 		t.Fatalf("resolve layout for host: %v", err)
 	}
@@ -74,12 +74,12 @@ func TestPairInSync_BranchDivergence(t *testing.T) {
 		t.Fatalf("WireJunctions(%q): %v", slug, err)
 	}
 
-	// Manually switch the host worktree to a different branch (checkout main).
+	// Manually create and switch the host worktree to a different branch.
 	hostWorktreePath := f.Layout.WorktreePath(slug)
-	lyxtest.MustRun(t, hostWorktreePath, "git", "checkout", "main")
+	lyxtest.MustRun(t, hostWorktreePath, "git", "checkout", "-b", "diverge-test")
 
 	// Resolve layout for the host and check pair sync.
-	hostLayout, err := f.Layout.Resolve(hostWorktreePath)
+	hostLayout, err := paths.Resolve(hostWorktreePath)
 	if err != nil {
 		t.Fatalf("resolve layout for host: %v", err)
 	}
@@ -118,7 +118,7 @@ func TestPairInSync_BrokenJunction(t *testing.T) {
 	}
 
 	// Remove the host junction to simulate a broken pair.
-	hostLayout, err := f.Layout.Resolve(f.Layout.WorktreePath(slug))
+	hostLayout, err := paths.Resolve(f.Layout.WorktreePath(slug))
 	if err != nil {
 		t.Fatalf("resolve layout: %v", err)
 	}
@@ -163,7 +163,7 @@ func TestPairInSync_JunctionPointsElsewhere(t *testing.T) {
 	}
 
 	// Resolve layout and create a fake weft target directory.
-	hostLayout, err := f.Layout.Resolve(f.Layout.WorktreePath(slug))
+	hostLayout, err := paths.Resolve(f.Layout.WorktreePath(slug))
 	if err != nil {
 		t.Fatalf("resolve layout: %v", err)
 	}

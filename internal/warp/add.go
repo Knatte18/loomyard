@@ -146,17 +146,29 @@ func (w *Worktree) Add(l *paths.Layout, slug string, opts AddOptions) (AddResult
 		return AddResult{}, fmt.Errorf("worktree add failed: %s", stderr)
 	}
 
-	// (8) Create or adopt weft worktree: if weft branch already exists, use it as the
-	// start point; otherwise fork from the parent's weft branch to preserve history.
-	var weftStartPoint string
+	// (8) Create or adopt weft worktree: if weft branch already exists, adopt it
+	// (without -b); otherwise create new with -b forking from parent's weft branch.
+	weftPath := l.WeftWorktreePath(slug)
 	if weftBranchAlreadyExists {
-		weftStartPoint = branch
+		// Adopt: git worktree add <path> <branch> (no -b, branch exists)
+		_, stderr, exitCode, err := gitexec.RunGit(
+			[]string{"worktree", "add", weftPath, branch},
+			l.WeftRepoRoot(),
+		)
+		if err != nil {
+			w.rollbackAdd(l, slug, branch, target)
+			return AddResult{}, fmt.Errorf("failed to adopt weft worktree: %w", err)
+		}
+		if exitCode != 0 {
+			w.rollbackAdd(l, slug, branch, target)
+			return AddResult{}, fmt.Errorf("weft worktree add (adopt) failed: %s", stderr)
+		}
 	} else {
-		weftStartPoint = parentBranch
-	}
-	if err := createWeftWorktree(l, slug, branch, weftStartPoint); err != nil {
-		w.rollbackAdd(l, slug, branch, target)
-		return AddResult{}, err
+		// Create: git worktree add -b <branch> <path> <parentBranch> (fork from parent)
+		if err := createWeftWorktree(l, slug, branch, parentBranch); err != nil {
+			w.rollbackAdd(l, slug, branch, target)
+			return AddResult{}, err
+		}
 	}
 
 	// (9) Create portal junction
