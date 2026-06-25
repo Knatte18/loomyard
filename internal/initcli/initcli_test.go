@@ -1,4 +1,10 @@
+//go:build integration
+
 // initcli_test.go — tests for the lyx init command.
+//
+// Tests verify that lyx init activates junctions and reconciles config only when
+// a weft pairing exists. Tests seeding a weft worktree fixture via lyxtest to
+// provide the paired environment that RunInit requires.
 
 package initcli_test
 
@@ -11,30 +17,20 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/board"
-	"github.com/Knatte18/loomyard/internal/git"
+	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/initcli"
+	"github.com/Knatte18/loomyard/internal/lyxtest"
 	"github.com/Knatte18/loomyard/internal/paths"
+	"github.com/Knatte18/loomyard/internal/warp"
 	"github.com/Knatte18/loomyard/internal/weft"
-	"github.com/Knatte18/loomyard/internal/worktree"
 )
 
 func TestRunInit_FirstRun(t *testing.T) {
-	tmpDir := t.TempDir()
+	// Use a paired fixture (host + weft) so RunInit has a weft pairing to activate.
+	f := lyxtest.CopyPairedLocal(t)
 
-	// Initialize a git repo so paths.Resolve works
-	_, _, exitCode, initErr := git.RunGit([]string{"init"}, tmpDir)
-	if initErr != nil || exitCode != 0 {
-		t.Fatalf("git init failed: %v (exit code %d)", initErr, exitCode)
-	}
-
-	oldCwd, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	if err := os.Chdir(tmpDir); err != nil {
-		t.Fatalf("chdir: %v", err)
-	}
-	defer os.Chdir(oldCwd)
+	// Change to the host worktree root.
+	t.Chdir(f.Layout.WorktreeRoot)
 
 	// Run init
 	var buf bytes.Buffer
@@ -55,21 +51,21 @@ func TestRunInit_FirstRun(t *testing.T) {
 	}
 
 	// Verify _lyx/config/ directories exist
-	configDir := paths.ConfigDir(tmpDir)
+	configDir := paths.ConfigDir(f.Layout.WorktreeRoot)
 	if _, err := os.Stat(configDir); err != nil {
 		t.Fatalf("_lyx/config not created: %v", err)
 	}
 
 	// Verify all three config files exist
-	for _, module := range []string{"board", "worktree", "weft"} {
-		cfgPath := paths.ConfigFile(tmpDir, module)
+	for _, module := range []string{"board", "warp", "weft"} {
+		cfgPath := paths.ConfigFile(f.Layout.WorktreeRoot, module)
 		if _, err := os.Stat(cfgPath); err != nil {
 			t.Errorf("%s.yaml not created: %v", module, err)
 		}
 	}
 
 	// Verify .gitignore has the managed block
-	gitignorePath := filepath.Join(tmpDir, ".gitignore")
+	gitignorePath := filepath.Join(f.Layout.WorktreeRoot, ".gitignore")
 	content, err := os.ReadFile(gitignorePath)
 	if err != nil {
 		t.Fatalf(".gitignore not created: %v", err)
@@ -84,18 +80,18 @@ func TestRunInit_FirstRun(t *testing.T) {
 
 	// Verify strict loads pass
 	t.Run("StrictLoadsPass", func(t *testing.T) {
-		_, err := board.LoadConfig(tmpDir, "board")
+		_, err := board.LoadConfig(f.Layout.WorktreeRoot, "board")
 		if err != nil {
 			t.Errorf("board.LoadConfig failed: %v", err)
 		}
 
-		_, err = worktree.LoadConfig(tmpDir, "worktree")
+		_, err = warp.LoadConfig(f.Layout.WorktreeRoot, "warp")
 		if err != nil {
-			t.Errorf("worktree.LoadConfig failed: %v", err)
+			t.Errorf("warp.LoadConfig failed: %v", err)
 		}
 
 		// Weft loads from the same directory in this test
-		_, err = weft.LoadConfig(tmpDir)
+		_, err = weft.LoadConfig(f.Layout.WorktreeRoot)
 		if err != nil {
 			t.Errorf("weft.LoadConfig failed: %v", err)
 		}
@@ -103,22 +99,10 @@ func TestRunInit_FirstRun(t *testing.T) {
 }
 
 func TestRunInit_Idempotent(t *testing.T) {
-	tmpDir := t.TempDir()
+	// Use a paired fixture (host + weft) so RunInit has a weft pairing to activate.
+	f := lyxtest.CopyPairedLocal(t)
 
-	// Initialize git repo
-	_, _, exitCode, initErr := git.RunGit([]string{"init"}, tmpDir)
-	if initErr != nil || exitCode != 0 {
-		t.Fatalf("git init failed: %v (exit code %d)", initErr, exitCode)
-	}
-
-	oldCwd, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	if err := os.Chdir(tmpDir); err != nil {
-		t.Fatalf("chdir: %v", err)
-	}
-	defer os.Chdir(oldCwd)
+	t.Chdir(f.Layout.WorktreeRoot)
 
 	// First run
 	var buf1 bytes.Buffer
@@ -128,13 +112,13 @@ func TestRunInit_Idempotent(t *testing.T) {
 	}
 
 	// Capture files and gitignore after first run
-	boardPath := paths.ConfigFile(tmpDir, "board")
+	boardPath := paths.ConfigFile(f.Layout.WorktreeRoot, "board")
 	content1, err := os.ReadFile(boardPath)
 	if err != nil {
 		t.Fatalf("read board.yaml: %v", err)
 	}
 
-	gitignorePath := filepath.Join(tmpDir, ".gitignore")
+	gitignorePath := filepath.Join(f.Layout.WorktreeRoot, ".gitignore")
 	gitignore1, err := os.ReadFile(gitignorePath)
 	if err != nil {
 		t.Fatalf("read .gitignore: %v", err)
@@ -183,5 +167,47 @@ func TestRunInit_Idempotent(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// TestRunInit_NoPairing verifies that lyx init reports and exits early when
+// no weft pairing exists (unpaired host from dormant Add).
+//
+// NOTE: This test intentionally does NOT use a paired fixture; it creates a bare
+// git repo with no weft sibling to simulate the unpaired state.
+func TestRunInit_NoPairing(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Initialize a bare git repo (no weft sibling).
+	_, _, exitCode, initErr := gitexec.RunGit([]string{"init"}, tmpDir)
+	if initErr != nil || exitCode != 0 {
+		t.Fatalf("git init failed: %v (exit code %d)", initErr, exitCode)
+	}
+
+	t.Chdir(tmpDir)
+
+	// Run init; should report no pairing and exit.
+	var buf bytes.Buffer
+	runExitCode := initcli.RunInit(&buf, []string{})
+
+	if runExitCode == 0 {
+		t.Errorf("RunInit() = 0; want non-zero (error) when no pairing exists")
+	}
+
+	// Verify error message mentions weft pairing.
+	output := buf.String()
+	if !strings.Contains(output, "no weft pairing") {
+		t.Errorf("RunInit output missing 'no weft pairing'; got: %s", output)
+	}
+
+	// Verify .gitignore and config were NOT created (no reconciliation occurred).
+	gitignorePath := filepath.Join(tmpDir, ".gitignore")
+	if _, err := os.Stat(gitignorePath); err == nil {
+		t.Error(".gitignore should not exist when no pairing")
+	}
+
+	configDir := paths.ConfigDir(tmpDir)
+	if _, err := os.Stat(configDir); err == nil {
+		t.Error("_lyx/config should not exist when no pairing")
 	}
 }

@@ -1,6 +1,6 @@
 # Shared internal libraries
 
-Loomyard's user-facing modules (`board`, `worktree`, `ide`, `muxpoc`) are self-contained: all
+Loomyard's user-facing modules (`board`, `warp`, `ide`, `muxpoc`) are self-contained: all
 of a module's *domain* logic and its deep test suite live in that module's package
 and nowhere else. What they share is a thin layer of **infrastructure plumbing** —
 mechanical helpers with no opinion about tasks, worktrees, or panes. (The planned `mux` module is design; see [overview.md](../overview.md).)
@@ -25,7 +25,7 @@ See [roadmap.md](../roadmap.md) milestones 2–3 for the extraction order.
 The following libraries ship in code and tests; their mechanics are documented there per the [doc-lifecycle convention](../overview.md#documentation-lifecycle):
 
 - `internal/fsx` — atomic file writes + relative-path guard
-- `internal/git` — windowless `RunGit` primitive
+- `internal/gitexec` — windowless `RunGit` primitive
 - `internal/gitignore` — shared `.gitignore` block manager for multiple modules
 - `internal/lock` — cross-process file locking
 - `internal/proc` — cross-OS child-process window-hide (`HideWindow`) and detached-spawn (`Detach`) primitives

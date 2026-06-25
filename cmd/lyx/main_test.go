@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/git"
+	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/paths"
 )
 
@@ -108,17 +108,17 @@ func TestRunBoardErrorPropagatesExitCode(t *testing.T) {
 	}
 }
 
-func TestRunDispatchesToWorktree(t *testing.T) {
+func TestRunDispatchesToWarp(t *testing.T) {
 	// Create temp cwd with no _lyx/ directory.
-	// This will cause LoadConfig to fail, which worktree.RunCLI will return
+	// This will cause LoadConfig to fail, which warp.RunCLI will return
 	// as an error envelope.
 	cwd := t.TempDir()
 	t.Chdir(cwd)
 
 	var out bytes.Buffer
-	code := run([]string{"worktree", "list"}, &out)
+	code := run([]string{"warp", "list"}, &out)
 	if code != 1 {
-		t.Fatalf("expected exit 1 for worktree in uninitialized repo, got %d; output: %s", code, out.String())
+		t.Fatalf("expected exit 1 for warp in uninitialized repo, got %d; output: %s", code, out.String())
 	}
 	if !strings.Contains(out.String(), `"ok":false`) {
 		t.Fatalf("expected error JSON on out, got %q", out.String())
@@ -180,7 +180,7 @@ func TestRunDispatchesToUpdate(t *testing.T) {
 	cwd := t.TempDir()
 
 	// Initialize git repo
-	_, _, exitCode, err := git.RunGit([]string{"init"}, cwd)
+	_, _, exitCode, err := gitexec.RunGit([]string{"init"}, cwd)
 	if err != nil || exitCode != 0 {
 		t.Fatalf("git init failed: %v (exit code %d)", err, exitCode)
 	}
@@ -211,13 +211,13 @@ func TestRunDispatchesToUpdate(t *testing.T) {
 	}
 }
 
-func TestRunDispatchesToGitClone(t *testing.T) {
-	// Test dispatching to git-clone with too few arguments (missing weft-url).
-	// gitclone.RunCLI should return an error envelope with ok=false and exit code 1.
+func TestRunDispatchesToWarpClone(t *testing.T) {
+	// Test dispatching to warp clone with missing arguments.
+	// warp.RunCLI should return an error envelope with ok=false and exit code 1.
 	var out bytes.Buffer
-	code := run([]string{"git-clone"}, &out)
+	code := run([]string{"warp", "clone"}, &out)
 	if code != 1 {
-		t.Fatalf("expected exit 1 for git-clone with no args, got %d; output: %s", code, out.String())
+		t.Fatalf("expected exit 1 for warp clone with no args, got %d; output: %s", code, out.String())
 	}
 	if !strings.Contains(out.String(), `"ok":false`) {
 		t.Fatalf("expected error JSON on out, got %q", out.String())

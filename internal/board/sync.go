@@ -14,7 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/git"
+	"github.com/Knatte18/loomyard/internal/gitexec"
 	flock "github.com/Knatte18/loomyard/internal/lock"
 )
 
@@ -72,7 +72,7 @@ func commitDirty(boardPath string) (bool, error) {
 	}
 	defer lock.Release()
 
-	out, _, code, err := git.RunGit([]string{"status", "--porcelain"}, boardPath)
+	out, _, code, err := gitexec.RunGit([]string{"status", "--porcelain"}, boardPath)
 	if err != nil {
 		return false, fmt.Errorf("status: %w", err)
 	}
@@ -83,13 +83,13 @@ func commitDirty(boardPath string) (bool, error) {
 		return false, nil // clean working tree
 	}
 
-	if _, _, code, err := git.RunGit([]string{"add", "-A"}, boardPath); err != nil {
+	if _, _, code, err := gitexec.RunGit([]string{"add", "-A"}, boardPath); err != nil {
 		return false, fmt.Errorf("add: %w", err)
 	} else if code != 0 {
 		return false, BoardPushError("add failed")
 	}
 
-	if _, _, code, err := git.RunGit([]string{"commit", "-m", "board sync"}, boardPath); err != nil {
+	if _, _, code, err := gitexec.RunGit([]string{"commit", "-m", "board sync"}, boardPath); err != nil {
 		return false, fmt.Errorf("commit: %w", err)
 	} else if code != 0 {
 		return false, BoardPushError("commit failed")
@@ -113,7 +113,7 @@ func pushUnpushed(boardPath string, skipPush bool) error {
 	}
 
 	for attempt := 0; attempt < 2; attempt++ {
-		_, stderr, code, err := git.RunGit([]string{"push"}, boardPath)
+		_, stderr, code, err := gitexec.RunGit([]string{"push"}, boardPath)
 		if err != nil {
 			return fmt.Errorf("push: %w", err)
 		}
@@ -124,8 +124,8 @@ func pushUnpushed(boardPath string, skipPush bool) error {
 		if strings.Contains(stderr, "non-fast-forward") ||
 			strings.Contains(stderr, "rejected") ||
 			strings.Contains(stderr, "fetch first") {
-			if _, _, c, err := git.RunGit([]string{"pull", "--rebase"}, boardPath); err != nil || c != 0 {
-				git.RunGit([]string{"rebase", "--abort"}, boardPath)
+			if _, _, c, err := gitexec.RunGit([]string{"pull", "--rebase"}, boardPath); err != nil || c != 0 {
+				gitexec.RunGit([]string{"rebase", "--abort"}, boardPath)
 				return BoardPushError("rebase failed")
 			}
 			continue
@@ -173,7 +173,7 @@ func ensureLockfilesIgnored(boardPath string) error {
 // hasUnpushed reports whether HEAD is ahead of its upstream. If no upstream is
 // configured it returns true, so the first push (which sets it) still happens.
 func hasUnpushed(boardPath string) (bool, error) {
-	out, _, code, err := git.RunGit([]string{"rev-list", "--count", "@{u}..HEAD"}, boardPath)
+	out, _, code, err := gitexec.RunGit([]string{"rev-list", "--count", "@{u}..HEAD"}, boardPath)
 	if err != nil {
 		return false, fmt.Errorf("rev-list: %w", err)
 	}

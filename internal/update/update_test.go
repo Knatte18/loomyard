@@ -8,7 +8,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/git"
+	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/paths"
 )
 
@@ -16,7 +16,7 @@ func TestRunCLI_DryRun(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Initialize a minimal git repo so paths.Resolve works
-	_, _, exitCode, err := git.RunGit([]string{"init"}, tmpDir)
+	_, _, exitCode, err := gitexec.RunGit([]string{"init"}, tmpDir)
 	if err != nil || exitCode != 0 {
 		t.Fatalf("git init failed: %v (exit code %d)", err, exitCode)
 	}
@@ -104,7 +104,7 @@ func TestRunCLI_Apply(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Initialize a minimal git repo
-	_, _, exitCode, err := git.RunGit([]string{"init"}, tmpDir)
+	_, _, exitCode, err := gitexec.RunGit([]string{"init"}, tmpDir)
 	if err != nil || exitCode != 0 {
 		t.Fatalf("git init failed: %v (exit code %d)", err, exitCode)
 	}

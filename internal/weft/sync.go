@@ -13,7 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/git"
+	"github.com/Knatte18/loomyard/internal/gitexec"
 	flock "github.com/Knatte18/loomyard/internal/lock"
 )
 
@@ -55,21 +55,21 @@ func Commit(weftPath string, pathspec []string, opts SyncOptions) (committed boo
 
 	// Stage the pathspec entries
 	args := append([]string{"add", "--"}, pathspec...)
-	if _, _, code, err := git.RunGit(args, weftPath); err != nil {
+	if _, _, code, err := gitexec.RunGit(args, weftPath); err != nil {
 		return false, fmt.Errorf("add: %w", err)
 	} else if code != 0 {
 		return false, fmt.Errorf("add failed")
 	}
 
 	// Check if there is anything staged
-	_, _, code, err := git.RunGit([]string{"diff", "--cached", "--quiet"}, weftPath)
+	_, _, code, err := gitexec.RunGit([]string{"diff", "--cached", "--quiet"}, weftPath)
 	if err != nil {
 		return false, fmt.Errorf("diff --cached: %w", err)
 	}
 	if code != 0 {
 		// Exit code 1 means changes are staged
 		// Commit them
-		if _, _, code, err := git.RunGit([]string{"commit", "-m", commitMessage}, weftPath); err != nil {
+		if _, _, code, err := gitexec.RunGit([]string{"commit", "-m", commitMessage}, weftPath); err != nil {
 			return false, fmt.Errorf("commit: %w", err)
 		} else if code != 0 {
 			return false, fmt.Errorf("commit failed")
@@ -126,7 +126,7 @@ func Pull(weftPath string, opts SyncOptions) error {
 		return nil
 	}
 
-	_, _, code, err := git.RunGit([]string{"pull", "--ff-only"}, weftPath)
+	_, _, code, err := gitexec.RunGit([]string{"pull", "--ff-only"}, weftPath)
 	if err != nil {
 		return fmt.Errorf("pull: %w", err)
 	}
@@ -140,7 +140,7 @@ func Pull(weftPath string, opts SyncOptions) error {
 // pushUnpushed attempts to push unpushed commits, rebasing once on non-fast-forward.
 func pushUnpushed(weftPath string) error {
 	for attempt := 0; attempt < 2; attempt++ {
-		_, stderr, code, err := git.RunGit([]string{"push"}, weftPath)
+		_, stderr, code, err := gitexec.RunGit([]string{"push"}, weftPath)
 		if err != nil {
 			return fmt.Errorf("push: %w", err)
 		}
@@ -151,8 +151,8 @@ func pushUnpushed(weftPath string) error {
 		if strings.Contains(stderr, "non-fast-forward") ||
 			strings.Contains(stderr, "rejected") ||
 			strings.Contains(stderr, "fetch first") {
-			if _, _, c, err := git.RunGit([]string{"pull", "--rebase"}, weftPath); err != nil || c != 0 {
-				git.RunGit([]string{"rebase", "--abort"}, weftPath)
+			if _, _, c, err := gitexec.RunGit([]string{"pull", "--rebase"}, weftPath); err != nil || c != 0 {
+				gitexec.RunGit([]string{"rebase", "--abort"}, weftPath)
 				return fmt.Errorf("rebase failed")
 			}
 			continue
@@ -165,7 +165,7 @@ func pushUnpushed(weftPath string) error {
 // hasUnpushed reports whether HEAD is ahead of its upstream.
 // If no upstream is configured it returns true (for the first push).
 func hasUnpushed(weftPath string) (bool, error) {
-	out, _, code, err := git.RunGit([]string{"rev-list", "--count", "@{u}..HEAD"}, weftPath)
+	out, _, code, err := gitexec.RunGit([]string{"rev-list", "--count", "@{u}..HEAD"}, weftPath)
 	if err != nil {
 		return false, fmt.Errorf("rev-list: %w", err)
 	}

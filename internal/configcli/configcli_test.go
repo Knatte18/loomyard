@@ -60,7 +60,7 @@ func TestEditOneSuccess(t *testing.T) {
 
 	var out bytes.Buffer
 	tracker := &fakeSyncTracker{exitCode: 0}
-	code := editOne(baseDir, &out, "worktree", fakeEditor("branch_prefix: test\n", nil), tracker.syncFunc())
+	code := editOne(baseDir, &out, "warp", fakeEditor("branch_prefix: test\n", nil), tracker.syncFunc())
 
 	if code != 0 {
 		t.Errorf("editOne() = %d; want 0", code)
@@ -125,7 +125,7 @@ func TestEditOneAbort(t *testing.T) {
 
 	var out bytes.Buffer
 	tracker := &fakeSyncTracker{exitCode: 0}
-	code := editOne(baseDir, &out, "worktree", fakeEditor("test\n", errors.New("simulated editor exit 1")), tracker.syncFunc())
+	code := editOne(baseDir, &out, "warp", fakeEditor("test\n", errors.New("simulated editor exit 1")), tracker.syncFunc())
 
 	if code != 1 {
 		t.Errorf("editOne() = %d; want 1", code)
@@ -293,12 +293,12 @@ func TestMenuStatus(t *testing.T) {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
 
-	// Create board.yaml and worktree.yaml to mark them as (configured)
+	// Create board.yaml and warp.yaml to mark them as (configured)
 	if err := os.WriteFile(paths.ConfigFile(baseDir, "board"), []byte("# board\n"), 0o644); err != nil {
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
-	if err := os.WriteFile(paths.ConfigFile(baseDir, "worktree"), []byte("# worktree\n"), 0o644); err != nil {
-		t.Fatalf("failed to write worktree.yaml: %v", err)
+	if err := os.WriteFile(paths.ConfigFile(baseDir, "warp"), []byte("# warp\n"), 0o644); err != nil {
+		t.Fatalf("failed to write warp.yaml: %v", err)
 	}
 	// weft.yaml not created, so it should show (default)
 
@@ -316,8 +316,8 @@ func TestMenuStatus(t *testing.T) {
 	if !strings.Contains(output, "board (configured)") {
 		t.Errorf("menu output missing 'board (configured)'; got %q", output)
 	}
-	if !strings.Contains(output, "worktree (configured)") {
-		t.Errorf("menu output missing 'worktree (configured)'; got %q", output)
+	if !strings.Contains(output, "warp (configured)") {
+		t.Errorf("menu output missing 'warp (configured)'; got %q", output)
 	}
 	if !strings.Contains(output, "weft (default)") {
 		t.Errorf("menu output missing 'weft (default)'; got %q", output)
