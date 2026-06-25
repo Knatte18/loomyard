@@ -6,7 +6,9 @@
 package configreg
 
 import (
-	"github.com/Knatte18/loomyard/internal/configtmpl"
+	"github.com/Knatte18/loomyard/internal/board"
+	"github.com/Knatte18/loomyard/internal/weft"
+	"github.com/Knatte18/loomyard/internal/worktree"
 )
 
 // Module represents a single config module with its name and template function.
@@ -21,9 +23,9 @@ type Module struct {
 // Each module contains its name and a function to retrieve its YAML template.
 func Modules() []Module {
 	return []Module{
-		{"board", configtmpl.Board},
-		{"worktree", configtmpl.Worktree},
-		{"weft", configtmpl.Weft},
+		{"board", board.ConfigTemplate},
+		{"worktree", worktree.ConfigTemplate},
+		{"weft", weft.ConfigTemplate},
 	}
 }
 
