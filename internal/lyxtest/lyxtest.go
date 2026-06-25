@@ -62,6 +62,43 @@ func SeedConfig(tb testing.TB, repoDir string, configByModule map[string]string)
 
 // Template builders: cached, built once per test binary via sync.Once.
 
+// initRepo initializes a git repository at dir on branch main with user Test/test@test.com.
+// Fixture construction errors are unrecoverable, so any git command failure panics immediately.
+func initRepo(dir string) {
+	mustGit(dir, "init", "-b", "main")
+	mustGit(dir, "config", "user.email", "test@test.com")
+	mustGit(dir, "config", "user.name", "Test")
+}
+
+// commitAll stages every change in dir and creates a commit with the given message.
+// Fixture construction errors are unrecoverable, so any git command failure panics immediately.
+func commitAll(dir, message string) {
+	mustGit(dir, "add", ".")
+	mustGit(dir, "commit", "-m", message)
+}
+
+// initBareRemote creates a bare git repository at dir and adds it as the origin remote
+// of the repo at repoDir. The bare repository starts empty; the caller is responsible
+// for any push that seeds it. Fixture construction errors are unrecoverable, so any
+// failure panics immediately.
+func initBareRemote(dir, repoDir string) {
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		panic(err)
+	}
+	mustGit(dir, "init", "--bare")
+	mustGit(repoDir, "remote", "add", "origin", dir)
+}
+
+// mustGit runs a git subcommand in dir, panicking on non-zero exit.
+// It is the shared low-level helper for all fixture git operations.
+func mustGit(dir string, args ...string) {
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	if output, err := cmd.CombinedOutput(); err != nil {
+		panic("git " + strings.Join(args, " ") + ": " + err.Error() + "; " + string(output))
+	}
+}
+
 // hostHubTemplate caches the host-hub template (git repo with bare origin, left empty).
 var (
 	hostHubOnce     sync.Once
@@ -86,61 +123,17 @@ func buildHostHub() (hub, bare string) {
 			panic(err)
 		}
 
-		// Initialize git repo
-		cmd := exec.Command("git", "init", "-b", "main")
-		cmd.Dir = hub
-		if output, err := cmd.CombinedOutput(); err != nil {
-			panic("git init: " + err.Error() + "; " + string(output))
-		}
+		initRepo(hub)
 
-		// Configure git user
-		cmd = exec.Command("git", "config", "user.email", "test@test.com")
-		cmd.Dir = hub
-		if output, err := cmd.CombinedOutput(); err != nil {
-			panic("git config user.email: " + err.Error() + "; " + string(output))
-		}
-
-		cmd = exec.Command("git", "config", "user.name", "Test")
-		cmd.Dir = hub
-		if output, err := cmd.CombinedOutput(); err != nil {
-			panic("git config user.name: " + err.Error() + "; " + string(output))
-		}
-
-		// Write and commit README
+		// Write and commit README to give the repo a non-empty history.
 		if err := os.WriteFile(filepath.Join(hub, "README"), []byte("test"), 0o644); err != nil {
 			panic(err)
 		}
+		commitAll(hub, "init")
 
-		cmd = exec.Command("git", "add", ".")
-		cmd.Dir = hub
-		if output, err := cmd.CombinedOutput(); err != nil {
-			panic("git add: " + err.Error() + "; " + string(output))
-		}
-
-		cmd = exec.Command("git", "commit", "-m", "init")
-		cmd.Dir = hub
-		if output, err := cmd.CombinedOutput(); err != nil {
-			panic("git commit: " + err.Error() + "; " + string(output))
-		}
-
-		// Create bare remote
+		// Create bare remote and add it as origin (left empty; no push).
 		bare := filepath.Join(tmpDir, "bare")
-		if err := os.Mkdir(bare, 0o755); err != nil {
-			panic(err)
-		}
-
-		cmd = exec.Command("git", "init", "--bare")
-		cmd.Dir = bare
-		if output, err := cmd.CombinedOutput(); err != nil {
-			panic("git init --bare: " + err.Error() + "; " + string(output))
-		}
-
-		// Add remote to hub (leave bare empty)
-		cmd = exec.Command("git", "remote", "add", "origin", bare)
-		cmd.Dir = hub
-		if output, err := cmd.CombinedOutput(); err != nil {
-			panic("git remote add: " + err.Error() + "; " + string(output))
-		}
+		initBareRemote(bare, hub)
 
 		hostHubPath = hub
 		hostHubBarePath = bare
@@ -176,25 +169,7 @@ func buildWeftPrime() (weftPrime, weftBare string) {
 			panic(err)
 		}
 
-		// Initialize git repo
-		cmd := exec.Command("git", "init", "-b", "main")
-		cmd.Dir = weftPrime
-		if output, err := cmd.CombinedOutput(); err != nil {
-			panic("git init: " + err.Error() + "; " + string(output))
-		}
-
-		// Configure git user
-		cmd = exec.Command("git", "config", "user.email", "test@test.com")
-		cmd.Dir = weftPrime
-		if output, err := cmd.CombinedOutput(); err != nil {
-			panic("git config user.email: " + err.Error() + "; " + string(output))
-		}
-
-		cmd = exec.Command("git", "config", "user.name", "Test")
-		cmd.Dir = weftPrime
-		if output, err := cmd.CombinedOutput(); err != nil {
-			panic("git config user.name: " + err.Error() + "; " + string(output))
-		}
+		initRepo(weftPrime)
 
 		// Create _lyx/config with neutral placeholder (no real config files).
 		// Tests needing real config seed it via SeedConfig.
@@ -208,38 +183,11 @@ func buildWeftPrime() (weftPrime, weftBare string) {
 		if err := os.WriteFile(placeholderPath, []byte("weft config"), 0o644); err != nil {
 			panic(fmt.Sprintf("write placeholder: %v", err))
 		}
+		commitAll(weftPrime, "init")
 
-		// Commit
-		cmd = exec.Command("git", "add", ".")
-		cmd.Dir = weftPrime
-		if output, err := cmd.CombinedOutput(); err != nil {
-			panic("git add: " + err.Error() + "; " + string(output))
-		}
-
-		cmd = exec.Command("git", "commit", "-m", "init")
-		cmd.Dir = weftPrime
-		if output, err := cmd.CombinedOutput(); err != nil {
-			panic("git commit: " + err.Error() + "; " + string(output))
-		}
-
-		// Create bare remote
+		// Create bare remote and add it as origin (left empty; no push).
 		weftBare := filepath.Join(tmpDir, base+"-weft-bare")
-		if err := os.Mkdir(weftBare, 0o755); err != nil {
-			panic(err)
-		}
-
-		cmd = exec.Command("git", "init", "--bare")
-		cmd.Dir = weftBare
-		if output, err := cmd.CombinedOutput(); err != nil {
-			panic("git init --bare: " + err.Error() + "; " + string(output))
-		}
-
-		// Add remote (leave empty)
-		cmd = exec.Command("git", "remote", "add", "origin", weftBare)
-		cmd.Dir = weftPrime
-		if output, err := cmd.CombinedOutput(); err != nil {
-			panic("git remote add: " + err.Error() + "; " + string(output))
-		}
+		initBareRemote(weftBare, weftPrime)
 
 		weftPrimePath = weftPrime
 		weftPrimeBarePath = weftBare
@@ -268,28 +216,13 @@ func buildWeftOnly() (weftPath, bare string) {
 
 		weftPath := tmpDir
 
-		// Initialize git repo
-		cmd := exec.Command("git", "init", "-b", "main")
-		cmd.Dir = weftPath
-		if output, err := cmd.CombinedOutput(); err != nil {
-			panic("git init: " + err.Error() + "; " + string(output))
-		}
+		initRepo(weftPath)
 
-		// Configure git user
-		cmd = exec.Command("git", "config", "user.email", "test@test.com")
-		cmd.Dir = weftPath
-		if output, err := cmd.CombinedOutput(); err != nil {
-			panic("git config user.email: " + err.Error() + "; " + string(output))
-		}
-
-		cmd = exec.Command("git", "config", "user.name", "Test")
-		cmd.Dir = weftPath
-		if output, err := cmd.CombinedOutput(); err != nil {
-			panic("git config user.name: " + err.Error() + "; " + string(output))
-		}
-
-		// Create _lyx/config.yaml
-		lyxDir := filepath.Join(weftPath, "_lyx")
+		// Create _lyx/config.yaml — a single tracked file under _lyx so that
+		// TestPushIntegration can commit the "_lyx" pathspec. This fixture only
+		// needs some tracked file under _lyx, not a real config layout; tests that
+		// need real config call SeedConfig after CopyWeft.
+		lyxDir := filepath.Join(weftPath, paths.LyxDirName)
 		if err := os.MkdirAll(lyxDir, 0o755); err != nil {
 			panic(err)
 		}
@@ -297,45 +230,13 @@ func buildWeftOnly() (weftPath, bare string) {
 		if err := os.WriteFile(filepath.Join(lyxDir, "config.yaml"), []byte("test"), 0o644); err != nil {
 			panic(err)
 		}
+		commitAll(weftPath, "init")
 
-		// Commit
-		cmd = exec.Command("git", "add", ".")
-		cmd.Dir = weftPath
-		if output, err := cmd.CombinedOutput(); err != nil {
-			panic("git add: " + err.Error() + "; " + string(output))
-		}
-
-		cmd = exec.Command("git", "commit", "-m", "init")
-		cmd.Dir = weftPath
-		if output, err := cmd.CombinedOutput(); err != nil {
-			panic("git commit: " + err.Error() + "; " + string(output))
-		}
-
-		// Create bare remote
+		// Create bare remote, add it as origin, then push with -u to establish
+		// upstream tracking — this is the only fixture that needs the tracking branch.
 		bare := filepath.Join(tmpDir, "bare")
-		if err := os.Mkdir(bare, 0o755); err != nil {
-			panic(err)
-		}
-
-		cmd = exec.Command("git", "init", "--bare")
-		cmd.Dir = bare
-		if output, err := cmd.CombinedOutput(); err != nil {
-			panic("git init --bare: " + err.Error() + "; " + string(output))
-		}
-
-		// Add remote
-		cmd = exec.Command("git", "remote", "add", "origin", bare)
-		cmd.Dir = weftPath
-		if output, err := cmd.CombinedOutput(); err != nil {
-			panic("git remote add: " + err.Error() + "; " + string(output))
-		}
-
-		// Push main with -u to establish upstream tracking
-		cmd = exec.Command("git", "push", "-u", "origin", "main")
-		cmd.Dir = weftPath
-		if output, err := cmd.CombinedOutput(); err != nil {
-			panic("git push -u: " + err.Error() + "; " + string(output))
-		}
+		initBareRemote(bare, weftPath)
+		mustGit(weftPath, "push", "-u", "origin", "main")
 
 		weftOnlyPath = weftPath
 		weftOnlyBare = bare
