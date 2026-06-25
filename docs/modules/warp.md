@@ -84,37 +84,41 @@ the same adopt-or-create logic in `warp`:
 
 1. The **prime** — cloned by `warp clone` (host prime + weft prime both cloned, on their
    mains → in sync).
-2. **`warp add <branch>`** (paired spawn) — creates host-WT + weft-WT + weft branch +
-   junctions in one step.
-3. A host worktree created **outside lyx** (raw `git worktree`) → warp must then
-   adopt-or-create the weft side (who triggers this — `lyx init`, a `warp` command, or the
-   outer command — is open; see [activation](#junction-activation--an-open-decision)).
+2. **`warp add <branch>`** (paired spawn) — creates host-WT + weft-WT + weft branch. It
+   does **not** wire junctions (it cannot know the working subfolder yet — see
+   [activation](#junction-activation)).
+3. A host worktree created **outside lyx** (raw `git worktree`) → warp adopts-or-creates
+   the weft side (the pairing); junctions are still wired later by `lyx init`.
 
 `reconcile` therefore walks **worktrees**, not the whole branch namespace: it ensures each
 host worktree has an in-sync weft worktree, and never adopts arbitrary branches.
 
-## Junction activation — an open decision
+## Junction activation
 
 Creating the weft worktree (the pairing) is distinct from **wiring the junctions** that
-route `<host>/_lyx` (and `_codeguide`) into the weft. Two questions warp must settle:
+route `<cwd>/_lyx` (and `_codeguide`) into the weft. The pairing is geometry; the junction
+target is a **working-subfolder** decision warp cannot know at creation time. So:
 
-1. **Keying: worktree-root vs cwd/subdir.** Today junctions are wired at the **worktree
-   root** (`<host-WT>/_lyx` → `<weft-WT>/_lyx`) by `lyx worktree add`
-   ([weft.go](../../internal/worktree/weft.go)), keyed to slug geometry. A
-   cwd-authoritative model ([principle 4](../overview.md#principles): cwd ≠ repo root) would
-   instead wire per **cwd subdir**, so a monorepo could activate `_lyx` in several
-   subdirectories. This is a real scope change, not current behavior — decide whether warp
-   keeps root-keying or moves to cwd-keying.
-2. **The prime-activation gap.** `warp clone` produces a *dormant* hub (no junctions). But
-   `lyx init` today only scaffolds `_lyx/config/` content — it does **not** wire junctions
-   (verified: no `fslink` in `internal/initcli`). So the prime-from-clone's junctions
-   currently have no activation owner. Decide who activates: `lyx init` calling warp's
-   junction primitive, a `warp` command, or the outer orchestration command. (`lyx init`'s
-   exact role is being reconsidered — left open here.)
+- **Everything warp creates is dormant.** `warp clone` and `warp add` produce a paired but
+  *unwired* worktree — no junctions. They cannot know which subfolder you will work in, and
+  you may activate **several** subfolders (a monorepo can `_lyx` in more than one), so
+  presuming the worktree root would be wrong.
+- **`lyx init` is the activator**, run in the cwd you want active. It is a **forwarder**
+  that runs sub-steps in order: (1) wire the junction(s) for the cwd via warp's junction
+  primitive, **then** (2) reconcile config (`configsync`). Junctions **first**, because
+  config must land in the weft *through* the junction — and the cloned weft may already hold
+  committed config that reconcile then merges (preserves values) rather than shadows. Keyed
+  to **cwd/subdir**, not the worktree root.
+- **Keying is therefore cwd-driven**, a deliberate change from today's `lyx worktree add`,
+  which wires a single root junction ([weft.go](../../internal/worktree/weft.go)).
+- The **junction mechanism is warp's** (topology, `fslink`); `lyx init` (config layer)
+  *calls* that primitive — never the reverse (`init → warp`, never `warp → init`).
 
-Whatever the keying, the **junction mechanism is warp's** (topology, `fslink`); the config
-layer (`init`) may *call* that primitive — never the reverse (`init → warp`, never
-`warp → init`).
+**Combined command (deferred):** an outer `warp add` + `lyx init` convenience is wanted but
+comes later. **Hard requirement now:** the method that **spawns a task into a new worktree**
+(loom's spawn / Setup) MUST run **both** — `warp add` then `lyx init` (at the worktree root,
+the default cwd) — so a spawned task worktree is fully usable (pairing + junctions + config),
+not a dormant pairing.
 
 ## Coordinated operations are all-or-nothing
 
