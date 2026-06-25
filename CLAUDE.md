@@ -8,6 +8,12 @@ vanishes with the worktree — don't bother saving project facts as memory. Put 
 notes where they get versioned and merged into `main` instead: this `CLAUDE.md`,
 `_codeguide/`, or code comments.
 
+## Pushing to main is OK
+
+Pushing directly to `main` is fine in this repo — no PR or branch-first gate. Small,
+self-contained changes (doc moves, fixups) may be committed and pushed straight to
+`main`. This overrides the global "branch first / commit only when asked" default.
+
 ## Mill wiki
 
 Never write to the mill wiki directly. Absolutely all interaction with the mill
