@@ -85,7 +85,9 @@ batches:
     start_sha: 8901ac3b39e510d3e04e2a4e86645594de56849c
     commit_sha: 3dffe8bf659c5afce5840fe3f9749fd1c0a5fcee
   - name: hook-and-launcher
-    state: pending
+    state: running
+    implementer_session: 79e6613c-ba08-42fa-a3db-9e70cb2169a8
+    start_sha: d261abfcf2b0633fbac921956659d75a8405152e
   - name: docs-finalize
     state: pending
 ```
