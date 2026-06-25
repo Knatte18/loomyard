@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/paths"
 )
 
 func TestPushIntegration(t *testing.T) {
@@ -46,7 +47,7 @@ func TestPushIntegration(t *testing.T) {
 			weftRepo := fixture.WeftPath
 
 			// Commit a change
-			lyxFile := filepath.Join(weftRepo, "_lyx", "config.yaml")
+			lyxFile := filepath.Join(weftRepo, paths.LyxDirName, "config.yaml")
 			if err := os.WriteFile(lyxFile, []byte(tt.fileContent), 0o644); err != nil {
 				t.Fatalf("WriteFile: %v", err)
 			}
@@ -94,6 +95,12 @@ func TestPushIntegration(t *testing.T) {
 func TestRunCLI_EnvMapToOption(t *testing.T) {
 	// Serial: uses t.Setenv and t.Chdir which affect process-wide state
 	fixture := lyxtest.CopyPaired(t)
+
+	// Seed the weft-prime fixture with the weft config template needed for RunCLI.
+	lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
+		"weft": ConfigTemplate(),
+	})
+
 	hubPath := fixture.Hub
 
 	// Change to the hub directory so paths.Resolve can locate the repo from cwd;
@@ -101,7 +108,7 @@ func TestRunCLI_EnvMapToOption(t *testing.T) {
 	t.Chdir(hubPath)
 
 	// Modify a file in the weft config that would be committed
-	weftConfigFile := filepath.Join(fixture.WeftPrime, "_lyx", "placeholder")
+	weftConfigFile := filepath.Join(fixture.WeftPrime, paths.LyxDirName, "placeholder")
 	if err := os.WriteFile(weftConfigFile, []byte("modified"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}

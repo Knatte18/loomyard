@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 	"github.com/Knatte18/loomyard/internal/paths"
 	"github.com/Knatte18/loomyard/internal/weft"
@@ -28,6 +29,13 @@ func TestE2ESyncIntegration(t *testing.T) {
 
 	// Build paired fixture (host + weft).
 	f := lyxtest.CopyPaired(t)
+
+	// Seed the weft-prime fixture with real config templates that weft.RunCLI will need.
+	seeds := make(map[string]string)
+	for _, m := range configreg.Modules() {
+		seeds[m.Name] = m.Template()
+	}
+	lyxtest.SeedConfig(t, f.WeftPrime, seeds)
 
 	// FIRST: Seed the host _lyx junction by running worktree.New().Add().
 	// Without this the host worktree has no _lyx, so config.Edit→FindBaseDir would error.
