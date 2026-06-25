@@ -43,7 +43,9 @@ implementing  '2026-06-25T14:21:06Z'
 ```yaml
 batches:
   - name: gitexec-rename
-    state: pending
+    state: running
+    implementer_session: 7d8d6357-0da8-419a-8c13-a293c659bd76
+    start_sha: ca2fefd6f521d6464abd1fbe26c84346519e421a
   - name: warp-clone-fold
     state: pending
   - name: warp-worktree-absorb
