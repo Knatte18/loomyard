@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-fixing
+phase: holistic-reviewing
 slug: warp-module
 branch: warp-module
 plan: _mill/plan
@@ -47,6 +47,7 @@ approved-hook-and-launcher  '2026-06-25T16:20:16Z'
 approved-docs-finalize  '2026-06-25T16:30:14Z'
 holistic-reviewing  '2026-06-25T16:30:35Z'
 holistic-fixing  '2026-06-25T16:37:50Z'
+holistic-reviewing  '2026-06-25T16:49:24Z'
 ```
 
 ## Batches
