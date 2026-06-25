@@ -20,7 +20,7 @@ Batch-local decision: the worktree/gitclone files edited here (cards 3) are *als
 ### Card 1: Rename internal/git package to internal/gitexec
 
 - **Context:**
-  - `internal/proc/proc.go`
+  - `internal/proc/proc_windows.go`
 - **Edits:** none
 - **Creates:**
   - `internal/gitexec/gitexec.go`

@@ -28,6 +28,7 @@ Batch-local decisions: cleanup flag matrix — **no flag** = dry-run/report; **`
 - **Edits:** none
 - **Creates:**
   - `internal/warp/prune.go`
+- **Deletes:** none
 - **Requirements:** Create `internal/warp/prune.go` with `func (w *Worktree) Prune(l *paths.Layout, apply bool) (PruneResult, error)`: identify orphaned/stale pairs (a weft worktree whose host worktree is gone, or a registered worktree whose directory no longer exists) using the pair enumeration from `Status`/`paths.List`; with `apply == false` report what would be pruned; with `apply == true` remove the stale weft worktree(s) and run `git worktree prune` on both repos. Do not touch live pairs or the board. JSON-tagged `PruneResult`. This is a distinct file from `ancestors.go` (the empty-dir sweeper) — no symbol collision.
 - **Commit:** `feat(warp): prune orphaned/stale host↔weft pairs`
 
@@ -41,6 +42,7 @@ Batch-local decisions: cleanup flag matrix — **no flag** = dry-run/report; **`
 - **Edits:** none
 - **Creates:**
   - `internal/warp/cleanup.go`
+- **Deletes:** none
 - **Requirements:** Create `internal/warp/cleanup.go` with `func (w *Worktree) Cleanup(l *paths.Layout, apply, force bool) (CleanupResult, error)` and an unexported `codeguideFoldedBack(branch string) bool`. Enumerate weft branches with no host sibling (compare weft branch list against host worktree branches; the board repo is excluded entirely). Flag matrix: `apply == false` → report only; `apply == true && !force` → delete only non-gate-protected orphans (a task branch where `codeguideFoldedBack` is false is **skipped** and reported as protected); `apply == true && force` → also delete gate-protected task branches; `force && !apply` → report only (force does not imply apply). `codeguideFoldedBack` returns false for task branches until codeguide merge-back exists (conservative protect) — leave a clear comment marking it the extension point. JSON-tagged `CleanupResult` listing deleted/skipped/reported branches.
 - **Commit:** `feat(warp): gated cleanup of orphan weft branches`
 
@@ -55,6 +57,7 @@ Batch-local decisions: cleanup flag matrix — **no flag** = dry-run/report; **`
 - **Edits:**
   - `internal/warp/warp.go`
 - **Creates:** none
+- **Deletes:** none
 - **Requirements:** In `internal/warp/warp.go` `RunCLI`, add `case "prune"` (flag `--apply`) and `case "cleanup"` (flags `--apply`, `--force`), parsed via `flag.FlagSet`. Resolve layout, `LoadConfig(cwd, "warp")`, `New(cfg)`, call `Prune`/`Cleanup`, emit results via `output.Ok`. Usage strings document the flag matrix for cleanup.
 - **Commit:** `feat(warp): route lyx warp prune and cleanup`
 
@@ -69,6 +72,7 @@ Batch-local decisions: cleanup flag matrix — **no flag** = dry-run/report; **`
 - **Creates:**
   - `internal/warp/prune_test.go`
   - `internal/warp/cleanup_test.go`
+- **Deletes:** none
 - **Requirements:** `prune_test.go`: an orphaned/stale pair is reported in dry-run and removed under `--apply`; a live pair is never touched. `cleanup_test.go`: the full flag matrix — no flag reports only; `--apply` deletes a non-task orphan but skips a gate-protected task branch (reported protected); `--apply --force` deletes the task branch; `--force` alone reports only; the board repo/branch is never a deletion candidate. Integration-tagged where real git is driven. Seed config via `warp.ConfigTemplate()` at the call site.
 - **Commit:** `test(warp): prune and cleanup flag-matrix and gate`
 

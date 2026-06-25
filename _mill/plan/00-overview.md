@@ -117,6 +117,7 @@ batches:
 - `internal/board/git.go`
 - `internal/board/sync.go`
 - `internal/configreg/configreg.go`
+- `internal/gitclone/clone.go`
 - `internal/gitexec/gitexec.go`
 - `internal/gitexec/gitexec_test.go`
 - `internal/initcli/initcli.go`
