@@ -82,6 +82,7 @@ batches:
 - `CONSTRAINTS.md`
 - `internal/board/template.go`
 - `internal/board/template.yaml`
+- `internal/board/template_test.go` (pre-existing)
 - `internal/configcli/configcli_integration_test.go`
 - `internal/configreg/configreg.go`
 - `internal/lyxtest/doc.go`
@@ -90,10 +91,12 @@ batches:
 - `internal/lyxtest/lyxtest_test.go`
 - `internal/weft/template.go`
 - `internal/weft/template.yaml`
+- `internal/weft/template_test.go` (pre-existing)
 - `internal/weft/weft_integration_test.go`
 - `internal/worktree/add_test.go`
 - `internal/worktree/cli_test.go`
 - `internal/worktree/remove_test.go`
 - `internal/worktree/template.go`
 - `internal/worktree/template.yaml`
+- `internal/worktree/template_test.go` (pre-existing)
 - `internal/worktree/weft_test.go`
