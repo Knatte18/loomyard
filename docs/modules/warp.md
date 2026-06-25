@@ -99,6 +99,38 @@ half-done. Same discipline for `warp add` and branch create/delete. This realize
 overview's [correctness-by-tool-design](../overview.md#principles) principle for the
 host↔weft pairing.
 
+## Drift detection — when
+
+Because lyx is **daemonless**, it cannot autonomously notice a raw `git checkout` the
+instant it happens. The bar is *detectable*, not *impossible* (see
+[principle 6](../overview.md#principles)). Drift — host worktree on branch X while its
+weft sibling is still on the old branch, junctions pointing at stale `_lyx` — is caught at
+three points:
+
+1. **Precondition check on every warp/weft/loom operation (the guarantee).** Each
+   operation first verifies the pairing — host worktree's current branch == its weft
+   sibling's branch, junctions resolve — and refuses/warns on divergence before acting, so
+   no real lyx work proceeds on a desynced pair. In particular **`lyx loom run`'s Setup
+   phase** (which already validates "weft pairing present") is strengthened to "present
+   **and in sync**". The detection primitive is **stateless**: the weft sibling is
+   deterministic (`<prime>-weft`), so it is two `git rev-parse --abbrev-ref HEAD` calls + a
+   junction stat — no registry (the check already lives in `weft/status.go`).
+2. **On demand — `lyx warp status` / `lyx doctor`.** Ask any time.
+3. **Optional `post-checkout` git hook (proactive, non-blocking).** Fires at the moment of
+   a raw `git checkout`/`switch` and warns ("host/weft out of sync — run `lyx warp
+   reconcile`") or offers repair. Belt-and-suspenders, never a hard block (principle 6).
+
+**Make the correct path easiest.** Expose **`lyx warp checkout`** as a one-click shortcut
+in the per-worktree launcher menu (the left-hand menu), so switching a prime's branch the
+*coordinated* way is lower-friction than raw `git checkout` — the principle-6 friction
+asymmetry, reducing how often drift is created at all.
+
+**Repair:** `lyx warp reconcile` switches the weft sibling to the mirrored branch +
+re-points junctions. **Policy knob:** if the host is on an *unmanaged* branch (no weft
+sibling — see [branch scope](#branch-scope--what-gets-a-weft-branch)), reconcile either
+**auto-adopts** (creates the weft branch) or **reports** ("run `warp add`/`init`") — decide
+which; reporting is the safer default.
+
 ## CLI surface
 
 `internal/worktree`'s command surface is **fully absorbed into `warp`** — `worktree` is

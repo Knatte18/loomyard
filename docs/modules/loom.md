@@ -57,7 +57,8 @@ Finalize                                               │
 ```
 
 Setup validates geometry and preconditions (cwd/Hub/Prime via `internal/paths`, clean
-worktree, weft pairing present, no half-finished prior run). Each producing phase emits
+worktree, weft pairing present **and in sync** — host branch == weft branch, via
+[`warp`](warp.md#drift-detection--when) — no half-finished prior run). Each producing phase emits
 a draft artifact and is followed by a review gate. `approved` advances to the next
 phase; `stuck` routes to the stuck handler (bounce back to an earlier phase, or escalate
 to a human) — never "keep fixing symptoms."
