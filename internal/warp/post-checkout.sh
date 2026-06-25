@@ -51,7 +51,7 @@ fi
 
 # Warn when they differ; exit 0 always (non-blocking).
 if [ "$HOST_BRANCH" != "$WEFT_BRANCH" ]; then
-    echo "warp: host/weft out of sync — run \`lyx warp reconcile\`" >&2
+    echo "warp: host/weft out of sync — run \`lyx warp checkout <branch>\` to re-sync, or \`lyx warp reconcile\` to inspect" >&2
     echo "  host: $HOST_BRANCH" >&2
     echo "  weft: $WEFT_BRANCH" >&2
 fi

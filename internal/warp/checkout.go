@@ -174,6 +174,11 @@ func (w *Worktree) switchOrForkWeft(l *paths.Layout, branch string) error {
 // been switched. Errors from the rollback are silently discarded; the caller already
 // has the original error and rollback failures are secondary. The primary invariant is
 // that we attempt a best-effort restore rather than leaving the pair half-switched.
+//
+// Junction invariant: WireJunctions is NOT called here because it was not called
+// before the failure point — the junctions still point to the original branch state
+// and are therefore consistent with the rolled-back host branch. Rewiring would be
+// incorrect here and is not needed.
 func (w *Worktree) rollbackHostSwitch(l *paths.Layout, originalBranch string) {
 	// Best-effort: silently ignore rollback failure because the caller already holds
 	// the original error that triggered this rollback.

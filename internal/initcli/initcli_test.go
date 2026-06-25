@@ -30,14 +30,7 @@ func TestRunInit_FirstRun(t *testing.T) {
 	f := lyxtest.CopyPairedLocal(t)
 
 	// Change to the host worktree root.
-	oldCwd, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	if err := os.Chdir(f.Layout.WorktreeRoot); err != nil {
-		t.Fatalf("chdir: %v", err)
-	}
-	defer os.Chdir(oldCwd)
+	t.Chdir(f.Layout.WorktreeRoot)
 
 	// Run init
 	var buf bytes.Buffer
@@ -109,14 +102,7 @@ func TestRunInit_Idempotent(t *testing.T) {
 	// Use a paired fixture (host + weft) so RunInit has a weft pairing to activate.
 	f := lyxtest.CopyPairedLocal(t)
 
-	oldCwd, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	if err := os.Chdir(f.Layout.WorktreeRoot); err != nil {
-		t.Fatalf("chdir: %v", err)
-	}
-	defer os.Chdir(oldCwd)
+	t.Chdir(f.Layout.WorktreeRoot)
 
 	// First run
 	var buf1 bytes.Buffer
@@ -198,14 +184,7 @@ func TestRunInit_NoPairing(t *testing.T) {
 		t.Fatalf("git init failed: %v (exit code %d)", initErr, exitCode)
 	}
 
-	oldCwd, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	if err := os.Chdir(tmpDir); err != nil {
-		t.Fatalf("chdir: %v", err)
-	}
-	defer os.Chdir(oldCwd)
+	t.Chdir(tmpDir)
 
 	// Run init; should report no pairing and exit.
 	var buf bytes.Buffer
