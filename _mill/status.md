@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-coordinated-checkout
+phase: approved-status-reconcile-pollution
 slug: warp-module
 branch: warp-module
 plan: _mill/plan
@@ -41,6 +41,7 @@ approved-warp-clone-fold  '2026-06-25T14:34:58Z'
 approved-warp-worktree-absorb  '2026-06-25T14:49:03Z'
 approved-topology-primitives-activation  '2026-06-25T15:08:25Z'
 approved-coordinated-checkout  '2026-06-25T15:20:59Z'
+approved-status-reconcile-pollution  '2026-06-25T15:36:58Z'
 ```
 
 ## Batches
@@ -73,9 +74,10 @@ batches:
     start_sha: 29e13cbd7111cf9d798c81ed391b815a27adbf30
     commit_sha: cbed8646dcf4d0b755ab88d6574904403a594006
   - name: status-reconcile-pollution
-    state: running
+    state: approved
     implementer_session: 30102e00-3651-4f5f-a330-e9944be75f4b
     start_sha: abe08dbe4af5b07ae83c7509eaf1a71bdab9f25b
+    commit_sha: 1172e22a92c80e392018245fbda9535317749409
   - name: prune-cleanup
     state: pending
   - name: hook-and-launcher
