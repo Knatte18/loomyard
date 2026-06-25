@@ -39,7 +39,11 @@ dependency `config-test-cleanup` is **done** (commit `9fff46f`), so warp can pro
 **In:**
 
 - **`internal/git` → renamed `internal/gitexec`** (thin leaf: `RunGit` + `proc.HideWindow` +
-  exit-code parsing — logic unchanged). All importers updated (`weft`, new `warp`, tests).
+  exit-code parsing — logic unchanged). **All** importers swept, not just `weft`/`warp`:
+  surviving **production** importers `internal/paths` (`paths.go`, `worktreelist.go`) and
+  `internal/board` (`git.go`, `sync.go`) must be updated too, plus the new `warp` and the
+  test-only importers (`internal/update`, `internal/initcli`, `cmd/lyx` tests). Omitting
+  `paths`/`board` leaves the build broken.
 - **`internal/gitclone` → folded into `warp`** as the `clone` verb (hub-bootstrap: host +
   weft + board, no junctions — dormant hub; the board is a plain passenger, never mirrored).
 - **`internal/worktree` → deleted**, its surface absorbed into `warp`: `add`/`remove`/`list`,
@@ -59,13 +63,18 @@ dependency `config-test-cleanup` is **done** (commit `9fff46f`), so warp can pro
   junctions); **`lyx init` becomes the activator** that wires the cwd-keyed junction(s) +
   `.git/info/exclude` *atomically*, then reconciles config. Touches `internal/initcli`.
 - **Host-pollution guard (detection side):** `warp status`/`reconcile` flag `_lyx`/`_codeguide`
-  paths tracked in the host index and offer `git rm --cached` + restore; the junction
-  primitive writes junction + exclude atomically (closes the missing-exclude risk).
+  paths tracked in the host index. For `_lyx` (the junction warp wires) it offers `git rm
+  --cached` + restore junction/exclude. For `_codeguide` it is **report-only this task** (warp
+  wires no `_codeguide` junction yet — nothing to restore). The junction primitive writes
+  junction + exclude atomically (closes the missing-exclude risk).
 - **Drift detection:** host-branch vs weft-branch comparison as a precondition on warp/weft
   ops + on demand via `warp status`; plus an optional **`post-checkout` git hook** that warns
   on raw checkout drift.
-- **`lyx warp checkout` launcher-menu shortcut** (one-click coordinated checkout in the
-  per-worktree launcher menu).
+- **`lyx warp checkout` launcher shortcut** — warp's absorbed launcher generation
+  (`launchers.go`, moved from `worktree`) emits an additional per-worktree `warp-checkout.cmd`
+  (alongside the existing `ide.cmd`) that invokes `lyx warp checkout`. **No `internal/ide`
+  change** — the `ide menu` is a worktree *picker* (pick a worktree → spawn IDE), not a
+  per-worktree action menu, so the shortcut lives entirely in warp's launcher code.
 - **Config module rename `worktree` → `warp`:** `configreg` entry swap + template file
   rename to `warp.yaml`; user config file becomes `_lyx/config/warp.yaml`.
 - **`cmd/lyx/main.go` dispatch:** replace the `worktree` and `git-clone` cases with a single
@@ -111,7 +120,11 @@ dependency `config-test-cleanup` is **done** (commit `9fff46f`), so warp can pro
 - Decision: Rename `internal/git` → `internal/gitexec` in this task. `RunGit(args []string,
   cwd string) (stdout, stderr string, exitCode int, err error)` is unchanged (non-zero git
   exit is returned in `exitCode` with `err == nil`; only spawn failures set `err` + `exitCode
-  == -1`). Update all importers (`weft`, new `warp`, tests).
+  == -1`). Update **all** importers: the surviving production importers `internal/paths`
+  (`paths.go`, `worktreelist.go`) and `internal/board` (`git.go`, `sync.go`) must be swept
+  (note `internal/paths` sits *below* `warp` and imports the leaf directly — `paths → gitexec`
+  is fine), alongside `weft` and the new `warp`; test-only importers are `internal/update`,
+  `internal/initcli`, and `cmd/lyx` tests. Omitting `paths`/`board` breaks the build.
 - Rationale: Settled in the design; `gitexec` is the honest leaf name once `warp`/`weft` sit
   as siblings on it. Mechanical, behaviour-preserving.
 - Rejected: Keep the `internal/git` name — leaves a misleadingly generic package below two
@@ -212,8 +225,12 @@ dependency `config-test-cleanup` is **done** (commit `9fff46f`), so warp can pro
   primitive writes the junction **and** the `.git/info/exclude` entry **atomically** — never
   one without the other (closes the missing-exclude risk). (2) `warp status`/`reconcile`/the
   status path detect any `_lyx`/`_codeguide` path **tracked in the host index** (force-added,
-  or exclude was missing) and flag it + offer `git rm --cached` + restore junction/exclude
-  (closes the force-add risk). No `pre-commit` hook (brittle, bypassable — out of scope).
+  or exclude was missing) and flag it. For `_lyx` it offers `git rm --cached` + restore
+  junction/exclude (closes the force-add risk). For `_codeguide` the action is **report-only
+  this task** — warp creates no `_codeguide` junction yet (`paths.HostJunctions(slug)` returns
+  only the `_lyx` entry; `_codeguide` activation is deferred), so there is no junction/exclude
+  to restore; the guard just flags the polluting `_codeguide` path. No `pre-commit` hook
+  (brittle, bypassable — out of scope).
 - Rationale: The bar is "caught and trivially reverted", not "impossible".
 - Rejected: A hard `pre-commit` block — brittle and bypassable.
 
@@ -229,6 +246,12 @@ dependency `config-test-cleanup` is **done** (commit `9fff46f`), so warp can pro
   — never a hard block.
 - Rationale: lyx is daemonless and cannot notice a raw checkout the instant it happens; the
   hook is the earliest proactive detection point (Q3: include it).
+- Hook script source: an **embedded POSIX `sh` script** (`go:embed` asset in `warp`) installed
+  into the repo's common `.git/hooks/post-checkout`. On git-for-Windows, hooks run under git's
+  bundled bash, so a POSIX `sh` body is the portable choice. Install is idempotent and
+  **non-clobbering** — if a user `post-checkout` already exists, chain it (invoke the existing
+  hook, then warp's check) rather than overwrite. Exact body + chaining mechanics are deferred
+  to the plan.
 - Rejected: Omit the hook — loses the at-creation-time warning. (See Technical context for the
   shared-`.git/hooks` validation item that the "if it works" caveat refers to.)
 - Repair: `warp reconcile` switches the weft sibling to the mirrored branch + re-points
@@ -262,6 +285,11 @@ subcommands. Output is JSON via `internal/output.Ok(w, map[string]any) int` /
 **`internal/git/git.go` (→ `gitexec`):** sole export
 `RunGit(args []string, cwd string) (stdout, stderr string, exitCode int, err error)`. This
 4-tuple convention (non-zero git exit ≠ Go error) is used by every caller — preserve it.
+Production importers that survive this task and **must** be updated by the rename:
+`internal/paths` (`paths.go`, `worktreelist.go`) and `internal/board` (`git.go`, `sync.go`),
+plus `weft` (`sync.go`, `status.go`) and the new `warp`. Test-only importers: `internal/update`,
+`internal/initcli`, `cmd/lyx` tests. (`worktree` + `gitclone` importers disappear with those
+packages.)
 
 **`internal/gitclone/` (→ `warp clone`):** `RunCLI` handles
 `lyx git-clone <host-url> <weft-url> [board-url]`. Internal: `cloneHub(cwd, hostURL, weftURL,
@@ -454,4 +482,18 @@ existing suite is the refactor guardrail.
   **A:** Rename `internal/git`→`gitexec` now; one `internal/warp` package split by verb;
   outer command + loom Setup wiring + `doctor` out of scope (unbuilt deps). (baked assumptions,
   unobjected)
+- **Q:** [review r1 GAP] `gitexec` rename importer sweep — does it cover all importers?
+  **A:** Sweep **all** importers; surviving production importers `internal/paths` and
+  `internal/board` must be updated too (not just `weft`/`warp`/tests), else the build breaks.
+  (round-1 resolution, option 1)
+- **Q:** [review r1 NOTE] `lyx warp checkout` launcher shortcut integration point? **A:** warp's
+  absorbed launcher generation emits a per-worktree `warp-checkout.cmd` calling `lyx warp
+  checkout`; no `internal/ide` change (the `ide menu` is a worktree picker, not an action menu).
+- **Q:** [review r1 NOTE] post-checkout hook script source / Windows execution? **A:** Embedded
+  POSIX `sh` script (`go:embed`) installed into the common `.git/hooks/post-checkout`; runs
+  under git-for-Windows' bundled bash; idempotent, non-clobbering (chain an existing hook).
+  Body/chaining details deferred to the plan.
+- **Q:** [review r1 NOTE] host-pollution guard on `_codeguide` with no warp-wired junction?
+  **A:** `_codeguide` detection is **report-only** this task (no junction to restore); the `git
+  rm --cached` + restore remedy applies to `_lyx` only.
 ```
