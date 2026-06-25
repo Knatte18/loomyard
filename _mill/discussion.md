@@ -57,8 +57,10 @@ dependency `config-test-cleanup` is **done** (commit `9fff46f`), so warp can pro
   junction health). Supersedes `lyx worktree list` + the pairing-health part of `weft status`.
 - **`warp prune`** — remove orphaned/stale pairs. **New functionality** (see Technical
   context: there is no `lyx worktree prune` today; `prune.go` is an internal ancestor-sweeper).
-- **`warp cleanup`** — delete weft branches with no host sibling; dry-run/report by default,
-  destructive only on `--apply`/`--force`, with a `_codeguide` merge-back gate wired in.
+- **`warp cleanup`** — delete weft branches with no host sibling. Flag matrix: **no flag** =
+  dry-run/report; **`--apply`** = delete non-gate-protected orphans; **`--apply --force`** =
+  additionally delete gate-protected task branches (`--force` without `--apply` reports only —
+  it does not imply `--apply`). Gated by the wired-in `_codeguide` merge-back check.
 - **Junction-wiring relocation:** `warp add`/`clone` produce a **dormant** pairing (no
   junctions); **`lyx init` becomes the activator** that wires the cwd-keyed junction(s) +
   `.git/info/exclude` *atomically*, then reconciles config. Touches `internal/initcli`.
@@ -155,6 +157,11 @@ dependency `config-test-cleanup` is **done** (commit `9fff46f`), so warp can pro
   root would be wrong. This realizes the content-vs-topology dependency direction (warp must
   not depend on `initcli`/`configsync`) and the dormant-hub pattern that `gitclone` already
   follows.
+- Missing-pairing behavior: `lyx init` activates an **existing** dormant pairing only. If the
+  host worktree has no weft sibling yet (raw repo, or pairing never created), init **reports**
+  "no weft pairing — run `warp add` / `warp clone`" and does **not** create topology — init
+  never creates pairings (the `init → warp`-only direction; topology creation is `warp`'s job,
+  raw-worktree adoption is `warp reconcile`'s).
 - Rejected: Keep junction-wiring inside `warp add` (single root junction, as
   `worktree.Add`/`seedLyxJunction` does today) — abandons the dormant/activation model and
   the cwd-keyed multi-subfolder support.
@@ -210,9 +217,12 @@ dependency `config-test-cleanup` is **done** (commit `9fff46f`), so warp can pro
 - Decision: `warp cleanup` is **dry-run/report by default**; on `--apply` it deletes weft
   branches with **no host sibling**, but routes task weft branches through a
   `codeguideFoldedBack(branch) bool` gate. Until codeguide merge-back exists, that gate
-  **conservatively protects** task branches (deletable only with an explicit `--force`). The
-  gate is the wired-in extension point — when codeguide merge-back lands it implements the real
-  "has `_codeguide` been folded back to the parent?" check.
+  **conservatively protects** task branches. The flag matrix is explicit: no flag → dry-run
+  report; `--apply` → delete orphan weft branches that are *not* gate-protected (non-task, or —
+  once codeguide lands — folded-back); `--apply --force` → additionally delete gate-protected
+  task branches. `--force` **requires** `--apply` (does not imply it); `--force` alone reports
+  only. The gate is the wired-in extension point — when codeguide merge-back lands it
+  implements the real "has `_codeguide` been folded back to the parent?" check.
 - Rationale: Same destructive discipline as `mill-cleanup`. "Build it with support for it"
   (Q2): the gate exists and is honored now, so enabling the real check later is a one-function
   change, with no data-loss window in the interim.
@@ -376,7 +386,11 @@ installed once into the common hooks dir and, when it fires, must determine *whi
 it ran in (it executes with cwd = the checked-out worktree) and check that worktree's
 deterministic `<x>-weft` sibling. Plan must validate this behaves correctly across multiple
 worktrees of one repo, and decide install/update mechanics (install at `clone`/`add`, idempotent,
-non-clobbering of any existing user hook — chain if present).
+non-clobbering of any existing user hook — chain if present). **Validation criterion the plan
+must satisfy before shipping the hook:** confirm the cwd-based worktree identification resolves
+the correct deterministic `<base>-weft` sibling for **both** the prime (`<PrimeName>-weft`) and
+child (`<slug>-weft`) worktrees — the hook must compare the right pair regardless of which
+worktree the raw checkout happened in.
 
 ## Constraints
 
@@ -496,4 +510,13 @@ existing suite is the refactor guardrail.
 - **Q:** [review r1 NOTE] host-pollution guard on `_codeguide` with no warp-wired junction?
   **A:** `_codeguide` detection is **report-only** this task (no junction to restore); the `git
   rm --cached` + restore remedy applies to `_lyx` only.
+- **Q:** [review r2 NOTE] `warp cleanup` `--apply` vs `--force` matrix? **A:** no flag = report;
+  `--apply` = delete non-gate-protected orphans; `--apply --force` = also delete gate-protected
+  task branches; `--force` requires `--apply` (does not imply it).
+- **Q:** [review r2 NOTE] `lyx init` on a host worktree with no weft pairing? **A:** init
+  activates an existing dormant pairing only; otherwise reports "run `warp add`/`clone`" and
+  creates no topology (init→warp-only; raw-worktree adoption is `warp reconcile`'s).
+- **Q:** [review r2 NOTE] post-checkout hook worktree identification? **A:** plan must validate
+  cwd-based identification resolves the correct `<base>-weft` sibling for both prime and child
+  worktrees before shipping the hook.
 ```
