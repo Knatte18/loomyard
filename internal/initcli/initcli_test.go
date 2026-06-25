@@ -14,8 +14,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/initcli"
 	"github.com/Knatte18/loomyard/internal/paths"
+	"github.com/Knatte18/loomyard/internal/warp"
 	"github.com/Knatte18/loomyard/internal/weft"
-	"github.com/Knatte18/loomyard/internal/worktree"
 )
 
 func TestRunInit_FirstRun(t *testing.T) {
@@ -61,7 +61,7 @@ func TestRunInit_FirstRun(t *testing.T) {
 	}
 
 	// Verify all three config files exist
-	for _, module := range []string{"board", "worktree", "weft"} {
+	for _, module := range []string{"board", "warp", "weft"} {
 		cfgPath := paths.ConfigFile(tmpDir, module)
 		if _, err := os.Stat(cfgPath); err != nil {
 			t.Errorf("%s.yaml not created: %v", module, err)
@@ -89,9 +89,9 @@ func TestRunInit_FirstRun(t *testing.T) {
 			t.Errorf("board.LoadConfig failed: %v", err)
 		}
 
-		_, err = worktree.LoadConfig(tmpDir, "worktree")
+		_, err = warp.LoadConfig(tmpDir, "warp")
 		if err != nil {
-			t.Errorf("worktree.LoadConfig failed: %v", err)
+			t.Errorf("warp.LoadConfig failed: %v", err)
 		}
 
 		// Weft loads from the same directory in this test

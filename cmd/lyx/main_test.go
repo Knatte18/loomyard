@@ -108,17 +108,17 @@ func TestRunBoardErrorPropagatesExitCode(t *testing.T) {
 	}
 }
 
-func TestRunDispatchesToWorktree(t *testing.T) {
+func TestRunDispatchesToWarp(t *testing.T) {
 	// Create temp cwd with no _lyx/ directory.
-	// This will cause LoadConfig to fail, which worktree.RunCLI will return
+	// This will cause LoadConfig to fail, which warp.RunCLI will return
 	// as an error envelope.
 	cwd := t.TempDir()
 	t.Chdir(cwd)
 
 	var out bytes.Buffer
-	code := run([]string{"worktree", "list"}, &out)
+	code := run([]string{"warp", "list"}, &out)
 	if code != 1 {
-		t.Fatalf("expected exit 1 for worktree in uninitialized repo, got %d; output: %s", code, out.String())
+		t.Fatalf("expected exit 1 for warp in uninitialized repo, got %d; output: %s", code, out.String())
 	}
 	if !strings.Contains(out.String(), `"ok":false`) {
 		t.Fatalf("expected error JSON on out, got %q", out.String())

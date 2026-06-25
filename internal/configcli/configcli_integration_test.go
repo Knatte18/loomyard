@@ -17,8 +17,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 	"github.com/Knatte18/loomyard/internal/paths"
+	"github.com/Knatte18/loomyard/internal/warp"
 	"github.com/Knatte18/loomyard/internal/weft"
-	"github.com/Knatte18/loomyard/internal/worktree"
 )
 
 // TestE2ESyncIntegration is an e2e test using CopyPaired: creates a host worktree with
@@ -37,10 +37,10 @@ func TestE2ESyncIntegration(t *testing.T) {
 	}
 	lyxtest.SeedConfig(t, f.WeftPrime, seeds)
 
-	// FIRST: Seed the host _lyx junction by running worktree.New().Add().
+	// FIRST: Seed the host _lyx junction by running warp.New().Add().
 	// Without this the host worktree has no _lyx, so config.Edit→FindBaseDir would error.
-	w := worktree.New(worktree.Config{})
-	_, err := w.Add(f.Layout, slug, worktree.AddOptions{SkipPush: true})
+	w := warp.New(warp.Config{})
+	_, err := w.Add(f.Layout, slug, warp.AddOptions{SkipPush: true})
 	if err != nil {
 		t.Fatalf("worktree.Add(%q): %v", slug, err)
 	}
