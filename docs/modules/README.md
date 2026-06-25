@@ -13,9 +13,16 @@
 | [shuttle.md](shuttle.md) | `internal/shuttle` | run **one** LLM agent via a swappable engine over the file contract | — |
 | [review.md](review.md) | `review` | the gate engine: handler/fixer + cluster + stuck judge | `lyx review` |
 | [loom.md](loom.md) | `loom` | the phase machine: drive each phase through a review gate | `lyx loom` |
+| [warp.md](warp.md) | `warp` | host↔weft-coordinated git **topology**: clone, dual-worktree, checkout, reconcile, cleanup | `lyx warp` |
 
 `internal/proc` (cross-OS process spawn) is the OS base under `mux`; it has no doc of its own —
 see the stack below and [shared-libs](../shared-libs/README.md).
+
+**`warp` is not part of the execution stack below** — it is a *setup-track* module that
+consolidates the host↔weft git topology (today split across `internal/worktree`,
+`internal/gitclone`, `internal/git`). It owns the mirror invariant: every lyx-managed host
+branch/worktree has a paired weft counterpart, kept consistent on add / checkout / clone /
+reconcile. 🚧 Design — see [warp.md](warp.md).
 
 ## Why a stack at all
 

@@ -178,6 +178,15 @@ Independent of the orchestration stack; interleave as needed.
 19. **Claude Code plugin packaging.** Ship `lyx` as an installable Claude Code plugin, exactly as
     mill/millpy were, once the binary and module architecture are proven.
 
+20. **`warp` — host↔weft-coordinated git topology.** 🚧 Design — not built. Consolidate the
+    host↔weft mirror invariant into one module: coordinated checkout (switch host+weft
+    together + re-point junctions — the correctness gap raw `git checkout` leaves today),
+    dual-worktree add/remove, clone, reconcile, and cleanup. **Replaces** `worktree`
+    (milestone 4), **folds in** `git-clone` (milestone 6), and **renames** `internal/git`
+    → `internal/gitexec` (the thin leaf both `weft` and `warp` sit on). The config module
+    `worktree` → `warp` (`_lyx/config/warp.yaml`). Sequenced **after** the
+    `config-test-cleanup` board task. See [modules/warp.md](modules/warp.md).
+
 ## Explicitly out of scope
 
 These stay in the Python/millpy domain and are **not** planned for `lyx`:
