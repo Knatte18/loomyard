@@ -1,17 +1,19 @@
 // template.go — board.yaml template accessor.
 //
-// Provides the default YAML template for board configuration. The template
-// itself lives in the dependency-free internal/configtmpl leaf package; this
-// accessor delegates to it so that configreg can build its module registry
-// without importing the board package.
+// Provides the default YAML template for board configuration, embedded
+// directly from template.yaml at build time. The template uses
+// ${env:VAR:-default} syntax for environment-based overrides.
 
 package board
 
-import "github.com/Knatte18/loomyard/internal/configtmpl"
+import _ "embed"
+
+//go:embed template.yaml
+var configTemplate string
 
 // ConfigTemplate returns the default YAML template for board configuration.
 // The template uses ${env:VAR:-default} syntax for configuration values,
 // allowing environment-based overrides while preserving defaults when not set.
 func ConfigTemplate() string {
-	return configtmpl.Board()
+	return configTemplate
 }
