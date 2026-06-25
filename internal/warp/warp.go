@@ -1,9 +1,51 @@
-// warp.go implements the RunCLI entry point for the warp command.
+// Package warp owns the host↔weft topology for lyx-managed git repositories.
+//
+// warp is the structural counterpart to the content-focused weft module — named
+// for the weaving warp threads, the load-bearing skeleton the weft passes through.
+// Where weft owns every git write into the weft repo (config sync, codeguide
+// commit/push/pull), warp owns everything that governs which worktrees and branches
+// exist and how they pair:
+//
+//   - clone: bootstrap a new hub (host prime + board passenger + weft prime).
+//   - add/remove: create or destroy a dual host+weft worktree pair as an atomic unit.
+//   - checkout: coordinated branch switch across host+weft with junction re-point
+//     (the correctness gap that motivated the module — raw git checkout desyncs).
+//   - reconcile: repair an already-managed pair whose weft side drifted or broke.
+//   - status: paired view of every host↔weft worktree with branch, drift, and
+//     junction-health fields.
+//   - prune: identify and optionally remove stale or orphaned pairs.
+//   - cleanup: delete weft branches whose host sibling is gone, gated on codeguide
+//     merge-back (never destroy a weft branch with un-merged codeguide content).
+//
+// # Topology model
+//
+// Everything warp creates is dormant: warp add produces a paired but junction-less
+// worktree. Junction wiring is deferred to lyx init, which is run in the working
+// subdirectory the developer wants active. This dormant-pairing / lyx-init-activation
+// split is deliberate — a monorepo may activate several subfolders, and warp cannot
+// know the cwd at creation time. lyx init is the activator; it calls warp's junction
+// primitive (topology) and then configsync (config layer) in that order, so config
+// lands in the weft through the already-wired junction.
+//
+// # Dependency direction
+//
+// warp sits below the config layer: warp must NOT import initcli or configsync.
+// initcli imports warp (calls the junction primitive). configreg imports warp for the
+// config template, just as it imports board and weft. This keeps topology below config
+// and prevents import cycles.
+//
+// # Coordinated operations are all-or-nothing
+//
+// Every warp operation that touches both sides checks preconditions first and rolls
+// back the host side when the weft side fails. The pair is always consistent or
+// untouched — never half-switched. The rollbackAdd discipline (junction removed before
+// weft teardown, to avoid Windows junction-lock hazard) applies to every operation.
+//
+// # warp.go
 //
 // warp.go is a thin subcommand dispatcher: it routes the first subcommand argument
 // to the matching warp verb and delegates all further parsing and execution to that
 // verb. Each verb owns its own flags, arguments, and output format.
-
 package warp
 
 import (
