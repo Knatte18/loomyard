@@ -32,7 +32,7 @@ Batch-local decision: the user-facing command changes from `lyx git-clone` to `l
   - `internal/warp/warp.go`
   - `internal/warp/clone.go`
 - **Deletes:** none
-- **Requirements:** Create `internal/warp/warp.go` with `package warp` and `func RunCLI(out io.Writer, args []string) int` — a string-switch dispatcher that, given an empty/unknown subcommand, returns `output.Err(out, "usage: lyx warp <clone|...>")`, and routes `case "clone"` to a `runClone(out, subArgs)` handler. Create `internal/warp/clone.go` holding the clone logic moved from `internal/gitclone/clone.go` + `internal/gitclone/gitclone.go` + the arg-parsing from `internal/gitclone/cli.go`: the unexported `cloneHub`, `cloneRepo`, `teardownHub`, `deriveHostName`, `deriveBoardURL`, the `var removeAll = os.RemoveAll` seam, and `runClone` (parses `<host-url> <weft-url> [board-url]`, usage string `usage: lyx warp clone <host-url> <weft-url> [board-url]`, emits JSON `{hub, host, weft, board}`). Use `gitexec.RunGit`. No behaviour change to the clone geometry (`<name>-HUB`, `<name>-weft`, `_board`).
+- **Requirements:** Create `internal/warp/warp.go` with `package warp` and `func RunCLI(out io.Writer, args []string) int` — a string-switch dispatcher that, given an empty/unknown subcommand, returns `output.Err(out, "usage: lyx warp <clone|...>")`, and routes `case "clone"` to a `runClone(out, subArgs)` handler. Create `internal/warp/clone.go` holding the clone logic moved from `internal/gitclone/clone.go` + `internal/gitclone/gitclone.go` + the arg-parsing from `internal/gitclone/cli.go`: the unexported `cloneHub`, `cloneRepo`, `teardownHub`, `deriveHostName`, `deriveBoardURL`, the `var removeAll = os.RemoveAll` seam, and `runClone` (parses `<host-url> <weft-url> [board-url]`, usage string `usage: lyx warp clone <host-url> <weft-url> [board-url]`, emits JSON `{hub, host, weft, board}`). Use `gitexec.RunGit`. No behaviour change to the clone geometry (`<name>-HUB`, `<name>-weft`, `_board`). Important: `RunCLI` must **not** call `paths.Resolve`/`LoadConfig` at the top of the function — `clone` runs *outside* a git repo and deliberately resolves nothing (it takes URLs as args). Keep the dispatch switch resolution-free at the top; any per-verb geometry resolution happens inside that verb's case (added for add/list/remove in batch 3).
 - **Commit:** `feat(warp): scaffold package and fold gitclone into warp clone`
 
 ### Card 5: Move gitclone tests into warp and delete gitclone
@@ -59,9 +59,10 @@ Batch-local decision: the user-facing command changes from `lyx git-clone` to `l
   - `docs/overview.md`
 - **Edits:**
   - `cmd/lyx/main.go`
+  - `cmd/lyx/main_test.go`
 - **Creates:** none
 - **Deletes:** none
-- **Requirements:** In `cmd/lyx/main.go` remove `case "git-clone": return gitclone.RunCLI(out, moduleArgs)` and its `internal/gitclone` import; add `case "warp": return warp.RunCLI(out, moduleArgs)` with the `internal/warp` import. Leave the `worktree` and `weft` cases untouched (worktree is absorbed in batch 3). The `docs/overview.md` reference is Context-only here — its dispatch snippet is updated in batch 9.
+- **Requirements:** In `cmd/lyx/main.go` remove `case "git-clone": return gitclone.RunCLI(out, moduleArgs)` and its `internal/gitclone` import; add `case "warp": return warp.RunCLI(out, moduleArgs)` with the `internal/warp` import. Leave the `worktree` and `weft` cases untouched (worktree is absorbed in batch 3). In `cmd/lyx/main_test.go`, retarget `TestRunDispatchesToGitClone` (which calls `run([]string{"git-clone"}, &out)` and asserts an `"ok":false` envelope): change it to `run([]string{"warp", "clone"}, &out)` (warp's clone case with missing args → usage error → exit 1 with an `"ok":false` JSON envelope), and rename the test accordingly (e.g. `TestRunDispatchesToWarpClone`). Without this the test hits `default` (exit 1, no output) and batch-2 verify `go test ./cmd/lyx/` fails. The `docs/overview.md` reference is Context-only here — its dispatch snippet is updated in batch 9.
 - **Commit:** `feat(warp): route lyx warp through main dispatch`
 
 ## Batch Tests
