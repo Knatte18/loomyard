@@ -5,6 +5,7 @@ package warp
 import (
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -80,15 +81,15 @@ func runClone(out io.Writer, args []string) int {
 // Hub directory, the resolved board URL (either explicit or derived), and any error encountered.
 //
 // The operation proceeds in phases:
-//   1. Derive the host repo name; if derivation fails, return an error without cleanup.
-//   2. Compute the Hub path as <cwd>/<name>-HUB.
-//   3. Check if the Hub path exists; if so, return an error without removing it (we did not create it).
-//   4. Create the Hub directory; if it fails, return the wrapped error (no teardown yet).
-//   5. Clone host repo to <Hub>/<name>; on failure, teardown and return the error.
-//   6. Clone weft repo to <Hub>/<name>-weft; on failure, teardown and return the error.
-//   7. Resolve board URL: if boardURL is empty, use deriveBoardURL(weftURL); otherwise use boardURL.
-//   8. Clone board repo to <Hub>/_board; on failure, teardown and return the error.
-//   9. Return the Hub path, resolved board URL, and nil error.
+//  1. Derive the host repo name; if derivation fails, return an error without cleanup.
+//  2. Compute the Hub path as <cwd>/<name>-HUB.
+//  3. Check if the Hub path exists; if so, return an error without removing it (we did not create it).
+//  4. Create the Hub directory; if it fails, return the wrapped error (no teardown yet).
+//  5. Clone host repo to <Hub>/<name>; on failure, teardown and return the error.
+//  6. Clone weft repo to <Hub>/<name>-weft; on failure, teardown and return the error.
+//  7. Resolve board URL: if boardURL is empty, use deriveBoardURL(weftURL); otherwise use boardURL.
+//  8. Clone board repo to <Hub>/_board; on failure, teardown and return the error.
+//  9. Return the Hub path, resolved board URL, and nil error.
 //
 // If any clone fails, teardownHub removes the entire Hub directory; if removal also fails,
 // the error mentions both the clone failure and the residual Hub path.
@@ -116,8 +117,21 @@ func cloneHub(cwd, hostURL, weftURL, boardURL string) (hubPath, resolvedBoardURL
 	}
 
 	// Step 5: Clone host repo
-	if err := cloneRepo(hostURL, filepath.Join(hubPath, name)); err != nil {
+	hostWorktreePath := filepath.Join(hubPath, name)
+	if err := cloneRepo(hostURL, hostWorktreePath); err != nil {
 		return "", "", teardownHub(hubPath, err)
+	}
+
+	// Install the post-checkout hook after the host worktree exists so drift
+	// warnings fire on every subsequent git checkout within this repo.
+	// Hook installation is non-fatal: a failure is logged but does not abort
+	// the clone (the hook is belt-and-suspenders for usability, not correctness).
+	if hookLayout, err := paths.Resolve(hostWorktreePath); err == nil {
+		if hookErr := InstallPostCheckoutHook(hookLayout); hookErr != nil {
+			log.Printf("warp clone: post-checkout hook install (non-fatal): %v", hookErr)
+		}
+	} else {
+		log.Printf("warp clone: resolve layout for hook install (non-fatal): %v", err)
 	}
 
 	// Step 6: Clone weft repo
@@ -203,12 +217,12 @@ func teardownHub(hubPath string, cause error) error {
 //
 // Examples:
 //
-//	- "https://github.com/u/repo.git" → "repo"
-//	- "https://github.com/u/repo" → "repo"
-//	- "git@github.com:u/repo.git" → "repo"
-//	- "https://github.com/u/repo/" → "repo"
-//	- "C:\path\to\repo.git" → "repo"
-//	- "" → ""
+//   - "https://github.com/u/repo.git" → "repo"
+//   - "https://github.com/u/repo" → "repo"
+//   - "git@github.com:u/repo.git" → "repo"
+//   - "https://github.com/u/repo/" → "repo"
+//   - "C:\path\to\repo.git" → "repo"
+//   - "" → ""
 func deriveHostName(rawURL string) string {
 	// Trim trailing slashes (both forward and back)
 	rawURL = strings.TrimSuffix(rawURL, "/")
@@ -240,8 +254,8 @@ func deriveHostName(rawURL string) string {
 //
 // Examples:
 //
-//	- "https://github.com/u/weft.git" → "https://github.com/u/weft.wiki.git"
-//	- "https://github.com/u/weft" → "https://github.com/u/weft.wiki.git"
+//   - "https://github.com/u/weft.git" → "https://github.com/u/weft.wiki.git"
+//   - "https://github.com/u/weft" → "https://github.com/u/weft.wiki.git"
 func deriveBoardURL(weftURL string) string {
 	weftURL = strings.TrimSuffix(weftURL, ".git")
 	return weftURL + ".wiki.git"

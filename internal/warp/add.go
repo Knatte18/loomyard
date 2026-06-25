@@ -6,6 +6,7 @@ package warp
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"strings"
 
@@ -144,6 +145,13 @@ func (w *Worktree) Add(l *paths.Layout, slug string, opts AddOptions) (AddResult
 	}
 	if exitCode != 0 {
 		return AddResult{}, fmt.Errorf("worktree add failed: %s", stderr)
+	}
+
+	// Install the post-checkout hook now that the host worktree exists.
+	// Hook installation is non-fatal: a failure is logged but does not abort
+	// Add or trigger the all-or-nothing rollback (the hook is belt-and-suspenders).
+	if hookErr := InstallPostCheckoutHook(l); hookErr != nil {
+		log.Printf("warp add: post-checkout hook install (non-fatal): %v", hookErr)
 	}
 
 	// (8) Create or adopt weft worktree: if weft branch already exists, adopt it
