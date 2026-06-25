@@ -5,7 +5,7 @@ task: 'Introduce warp: the host↔weft-coordinated git module'
 batch: topology-primitives-activation
 number: 4
 cards: 4
-verify: go build ./... && go test -tags integration ./internal/warp/ ./internal/initcli/
+verify: go build ./... && go test -tags integration ./internal/warp/ ./internal/initcli/ ./internal/configcli/
 depends-on: [3]
 ```
 
@@ -82,4 +82,4 @@ Batch-local decisions: the activation direction is strictly `initcli → warp` (
 
 ## Batch Tests
 
-`verify: go build ./... && go test -tags integration ./internal/warp/ ./internal/initcli/`. The new real-git tests here — `drift_test.go` (which needs real host+weft worktrees on branches to exercise `PairInSync`) and the activation/missing-pairing cases in `initcli_test.go` — are **integration-tagged** (`//go:build integration`, mirroring `clone_integration_test.go`), so the `-tags integration` verify is required for them to run. The updated `add_test.go` (dormant + adopt) and the unchanged moved suite also run (untagged tests run under any tag set); any moved test that previously asserted junctions-after-add is updated in card 12 to reflect the dormant model and to call the junction primitive / init where it needs an active junction. `go build ./...` proves the `initcli → warp` edge introduces no cycle.
+`verify: go build ./... && go test -tags integration ./internal/warp/ ./internal/initcli/ ./internal/configcli/`. The new real-git tests here — `drift_test.go` (which needs real host+weft worktrees on branches to exercise `PairInSync`) and the activation/missing-pairing cases in `initcli_test.go` — are **integration-tagged** (`//go:build integration`, mirroring `clone_integration_test.go`), so the `-tags integration` verify is required for them to run. The updated `add_test.go` (dormant + adopt) and the unchanged moved suite also run (untagged tests run under any tag set); any moved test that previously asserted junctions-after-add is updated in card 12 to reflect the dormant model and to call the junction primitive / init where it needs an active junction. `go build ./...` proves the `initcli → warp` edge introduces no cycle.
