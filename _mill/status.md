@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-gitexec-rename
 slug: warp-module
 branch: warp-module
 plan: _mill/plan
@@ -36,6 +36,7 @@ plan-review-r8  '2026-06-25T14:18:07Z'
 plan-fix-r8  '2026-06-25T14:18:07Z'
 planned  '2026-06-25T14:18:22Z'
 implementing  '2026-06-25T14:21:06Z'
+approved-gitexec-rename  '2026-06-25T14:30:52Z'
 ```
 
 ## Batches
@@ -43,9 +44,10 @@ implementing  '2026-06-25T14:21:06Z'
 ```yaml
 batches:
   - name: gitexec-rename
-    state: running
+    state: approved
     implementer_session: 7d8d6357-0da8-419a-8c13-a293c659bd76
     start_sha: ca2fefd6f521d6464abd1fbe26c84346519e421a
+    commit_sha: 298da5b31a9d0adc65dc117478430421dca490ec
   - name: warp-clone-fold
     state: pending
   - name: warp-worktree-absorb
