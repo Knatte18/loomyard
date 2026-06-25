@@ -5,7 +5,7 @@ phase: planned
 slug: config-test-cleanup
 branch: config-test-cleanup
 plan: _mill/plan
-parent: docs-move-psmux-tui
+parent: main
 task: Move config templates home by removing the lyxtest->configreg edge
 task_description: |
   Move config templates home by removing the lyxtest->configreg edge

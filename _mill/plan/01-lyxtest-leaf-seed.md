@@ -82,7 +82,11 @@ found` / `missing keys`). Cards 3 and 4 cover the two verified cases plus the sw
   (`seeds[m.Name] = m.Template()`) and call `lyxtest.SeedConfig(t, f.WeftPrime, seeds)`. Add the
   `internal/configreg` import. This restores the real `weft.yaml` (and the other modules) the
   `weft.RunCLI("commit")` path requires for its pathspec `LoadConfig`. `package configcli` may
-  import `configreg` with no cycle (configreg does not import configcli).
+  import `configreg` with no cycle (configreg does not import configcli). Note: `SeedConfig` writes
+  the real `<module>.yaml` files **alongside** the neutral `_lyx/config/placeholder` (the placeholder
+  is not cleaned up). This is safe because `config.Load` reads a specific `paths.ConfigFile(baseDir,
+  module)` = `_lyx/config/<module>.yaml` (config.go:56), never globbing the directory — the
+  `placeholder` file is never parsed. No need to delete it.
 - **Commit:** `test(configcli): seed fixture config via SeedConfig in E2E sync test`
 
 ### Card 4: Seed feature-internal consumers (empirical sweep)
@@ -100,10 +104,13 @@ found` / `missing keys`). Cards 3 and 4 cover the two verified cases plus the sw
   - `internal/worktree/cli_test.go`
 - **Creates:** none
 - **Deletes:** none
-- **Requirements:** Run `go test -tags integration ./...` after cards 1–3. For **every** test that
-  now fails with `config file … not found` or `missing keys` (the `config.Load` errors), add a
-  `lyxtest.SeedConfig` call right after its `CopyPaired`/`CopyPairedLocal` call, seeding only the
-  module(s) the failure names. Obtain each template from the module's own package — use the
+- **Requirements:** Run `go test -tags integration ./...` after cards 1–3. Triage **every test that
+  starts failing** once the fixture went neutral — not only those with a config-load error. The
+  `config file … not found` / `missing keys` strings are the *expected* signatures, but a consumer
+  that previously relied on a default sourced from real fixture config can instead fail on an
+  ordinary assertion; treat any new failure traceable to the now-missing config as in-scope. For each
+  such test, add a `lyxtest.SeedConfig` call right after its `CopyPaired`/`CopyPairedLocal` call,
+  seeding only the module(s) it needs. Obtain each template from the module's own package — use the
   **unqualified** `ConfigTemplate()` when the test file is in that same package (the `package
   worktree` files `add_test.go`/`remove_test.go`/`weft_test.go`/`cli_test.go` call bare
   `ConfigTemplate()`, NOT `worktree.ConfigTemplate()`, which would not compile from inside the
@@ -135,25 +142,35 @@ found` / `missing keys`). Cards 3 and 4 cover the two verified cases plus the sw
   file (build tags, helpers).
 - **Commit:** `test(lyxtest): cover SeedConfig and the neutral weft-prime fixture`
 
-### Card 6: Record the lyxtest-leaf invariant
+### Card 6: Record and enforce the lyxtest-leaf invariant
 
 - **Context:**
   - `internal/paths/enforcement_test.go`
 - **Edits:**
   - `internal/lyxtest/doc.go`
   - `CONSTRAINTS.md`
-- **Creates:** none
+- **Creates:**
+  - `internal/lyxtest/leaf_enforcement_test.go`
 - **Deletes:** none
 - **Requirements:** In `internal/lyxtest/doc.go`, add a paragraph stating the invariant:
   `internal/lyxtest` must stay a stdlib + `internal/paths` leaf and must never import
   `internal/configreg` or any feature package (`board`/`worktree`/`weft`), because feature packages
   have internal tests that import `lyxtest`; such an import closes a test-build cycle. Tests that
   need real config seed it via `SeedConfig`, converting `configreg.Modules()` (or a feature's own
-  `ConfigTemplate()`) to a `map[string]string` at the test site. Add a corresponding short section
-  to `CONSTRAINTS.md` (a new `## lyxtest Leaf Invariant` heading) capturing the same rule, in the
-  style of the existing Path Invariant section. Note explicitly that this is a code-review /
-  planning-discipline rule (there is no enforcement test, per the task decision).
-- **Commit:** `docs: record the internal/lyxtest leaf invariant`
+  `ConfigTemplate()`) to a `map[string]string` at the test site. Add a corresponding `## lyxtest
+  Leaf Invariant` section to `CONSTRAINTS.md` in the style of the existing Path Invariant section.
+  Then create `internal/lyxtest/leaf_enforcement_test.go` (`package lyxtest`, **no** build tag, so it
+  runs on a plain `go test ./...`) mirroring `internal/paths/enforcement_test.go`: locate the lyxtest
+  source dir via `runtime.Caller(0)` + `filepath.Dir`, then for each non-`_test.go` `.go` file in
+  that dir, parse it with `go/parser` (`parser.ParseFile(..., parser.ImportsOnly)`) and fail the test
+  if any import path equals `github.com/Knatte18/loomyard/internal/configreg`, `.../internal/board`,
+  `.../internal/worktree`, or `.../internal/weft`. **Use `go/parser` to read actual import paths — do
+  NOT string-scan the file**, because `doc.go`'s invariant prose names those packages and would
+  false-positive a substring scan. Rationale for adding this test (per orchestrator): the cycle ships
+  silently precisely because it only materializes under `-tags integration` (the feature-internal
+  tests are integration-tagged); an untagged import-scan test catches a reintroduced edge on every
+  `go test ./...` with a clear message, instead of waiting for someone to run the integration build.
+- **Commit:** `test(lyxtest): record and enforce the leaf invariant (no configreg/feature imports)`
 
 ## Batch Tests
 

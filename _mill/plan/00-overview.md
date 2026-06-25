@@ -5,7 +5,7 @@ task: "Move config templates home by removing the lyxtest->configreg edge"
 slug: config-test-cleanup
 approved: true
 started: "20260625-063846"
-parent: docs-move-psmux-tui
+parent: main
 root: ""
 verify: null
 ```
@@ -85,6 +85,7 @@ batches:
 - `internal/configcli/configcli_integration_test.go`
 - `internal/configreg/configreg.go`
 - `internal/lyxtest/doc.go`
+- `internal/lyxtest/leaf_enforcement_test.go`
 - `internal/lyxtest/lyxtest.go`
 - `internal/lyxtest/lyxtest_test.go`
 - `internal/weft/template.go`

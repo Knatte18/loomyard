@@ -4,7 +4,7 @@
 task: Move config templates home by removing the lyxtest->configreg edge
 slug: config-test-cleanup
 status: discussing
-parent: docs-move-psmux-tui
+parent: main
 ```
 
 ## Problem
@@ -71,10 +71,10 @@ is unnecessary.
 - Do **not** keep `configtmpl` or introduce per-feature leaf sub-packages.
 - **No CI.** This repo has no `.github/workflows` and we are not adding any. No GitHub
   Actions gate is created.
-- **No enforcement test** for the import edge. A circular import here is a thing to simply
-  never write; it does not warrant a dedicated source-scanning test. (The cycle is also
-  build-fatal under `-tags integration`, so the per-batch verify catches a regression
-  anyway.)
+- **No CI**, but an **untagged import-scan enforcement test IS added** (operator amendment,
+  reversing the earlier no-test stance — see Decision: no-ci-no-enforcement-test). Rationale: the
+  cycle is build-fatal only under `-tags integration`, so a plain `go test ./...` would not catch a
+  reintroduced edge; an untagged test that parses `internal/lyxtest/*.go` imports closes that gap.
 - No broad test-suite rewrite — the suite is healthy (no TODO/FIXME, no disabled tests).
   Keep it surgical outside the explicit tidy batch.
 - Do not change `paths.ConfigDir` / `paths.ConfigFile` or the `_lyx/config/<module>.yaml`
@@ -221,16 +221,24 @@ is unnecessary.
 
 ### no-ci-no-enforcement-test
 
-- Decision: No GitHub Actions / CI is created, and **no** dedicated source-scanning
-  enforcement test for the import edge is added. The cycle is guarded by (1) this task's
-  per-batch verify running `go vet -tags integration ./...` (cycle is build-fatal there),
-  and (2) the documented invariant in `CONSTRAINTS.md` + `internal/lyxtest/doc.go`.
-- Rationale: User decision. The repo has no CI and won't grow one for this. The user's
-  position: a circular import like this must simply never be written, and that does not need
-  to be asserted by an explicit test. The integration build already fails loudly if the edge
-  returns.
-- Rejected: Standing up `.github/workflows/ci.yml`; adding a `lyxtest` leaf-enforcement test
-  analogous to `internal/paths/enforcement_test.go`.
+- Decision (amended): No GitHub Actions / CI is created. An **untagged import-scan enforcement
+  test IS added** — `internal/lyxtest/leaf_enforcement_test.go`, parsing `internal/lyxtest/*.go`
+  imports and failing if any reach `configreg`/`board`/`worktree`/`weft`. The cycle is thus guarded
+  by (1) per-batch `go vet -tags integration ./...`, (2) the new untagged enforcement test (catches a
+  regression on plain `go test ./...`), and (3) the documented invariant in `CONSTRAINTS.md` +
+  `internal/lyxtest/doc.go`.
+- Rationale: **Reversal of the original no-test stance, per operator amendment.** The original
+  decision (user: "a circular import must simply never be written; it shouldn't need testing")
+  underweighted *why* the cycle shipped silently: it is build-fatal **only** under `-tags
+  integration` (the feature-internal tests that close it are integration-tagged), so a routine
+  `go test ./...` never sees it. An untagged import-scan test — mirroring the existing
+  `internal/paths/enforcement_test.go` — surfaces a reintroduced edge immediately, with a clear
+  message, on every test run. It costs ~30–40 lines and is the single highest-value safeguard.
+  Still no CI.
+- Implementation note: must use `go/parser` (`ImportsOnly`) to read real import paths, not a string
+  scan — `doc.go`'s invariant prose names those packages and would false-positive a substring scan.
+- Rejected: Standing up `.github/workflows/ci.yml` (no CI). Earlier-rejected-then-restored: the
+  enforcement test itself.
 
 ### lyxtest-tidy-separate-batch
 
@@ -374,10 +382,11 @@ Done-conditions to assert at the end:
   module→yaml, or a lyxtest-local `ConfigSeed`), NOT `[]configreg.Module` — otherwise lyxtest
   imports configreg for the type and the cycle returns. The test (in `configcli`) builds the
   map from `configreg.Modules()` and passes plain data in.
-- **Q:** Persistent gate against a future cycle, given no CI? **A:** No CI (repo has none,
-  not adding one) and **no enforcement test** — a circular import must simply never be
-  written and doesn't warrant an explicit test. Rely on this task's per-batch
-  `go vet -tags integration ./...` (cycle is build-fatal) + the documented invariant.
+- **Q:** Persistent gate against a future cycle, given no CI? **A (amended by operator):** No CI,
+  but **add an untagged import-scan enforcement test** (`leaf_enforcement_test.go`). The original
+  "no test" answer missed that the cycle is build-fatal only under `-tags integration`, so a plain
+  `go test ./...` would not catch a reintroduced edge. The untagged test + per-batch
+  `go vet -tags integration ./...` + the documented invariant together form the gate.
 - **Q:** Where to record the leaf invariant? **A:** `internal/lyxtest/doc.go` comment **and**
   `CONSTRAINTS.md` (which exists at repo root).
 - **Q:** Scope of the lyxtest tidy (helper extraction, fixture asymmetry, dead-helper audit)?
