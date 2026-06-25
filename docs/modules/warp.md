@@ -60,18 +60,51 @@ activates it; the outer command is the everyday convenience that does both.
   pairing code with `warp add`. **The board is a passenger**: a plain `gitexec` clone,
   NOT mirrored; reconcile/cleanup never touch it.
 - **dual-worktree add/remove** — `warp add` creates a host worktree + ensures the weft
-  branch (adopt-if-exists / create-if-missing) + weft worktree + junctions — a *paired*
-  unit, not a single worktree. The misleadingly-named `lyx worktree add` implied one
-  worktree; the `warp` namespace makes the dual nature explicit.
+  branch (adopt-if-exists / create-if-missing) + weft worktree — a *paired* unit, not a
+  single worktree. It does **not** wire junctions (that is `lyx init`'s job, keyed to the
+  working subfolder — see [activation](#junction-activation)). The misleadingly-named `lyx
+  worktree add` implied one worktree; the `warp` namespace makes the dual nature explicit.
 - **branch / checkout / switch** — coordinated: switch host+weft together, re-point
   junctions. **This is the priority correctness gap** that triggered the whole module.
-- **reconcile / repair** — repairs the pairing for *already-managed* branches (missing
+  Owns the **fork-point**: a new weft branch forks from the *parent's* weft branch
+  (merge-base-preserving mirror-host, [overview](../overview.md#branch-model)), not orphan —
+  so `_codeguide` can squash-merge-back later. That fork math is warp's, not a guess at
+  branch-create time.
+- **reconcile / repair** — repairs the pairing for *already-managed* worktrees (missing
   weft worktree, broken/dangling junction, host branch whose weft sibling was lost). It
-  does **NOT** scan all host branches and adopt them — weft branches are opt-in (see
-  below). Absorbs the junction-integrity/drift reporting currently in `weft`.
+  walks **worktrees**, not all host branches (weft branches are opt-in — see
+  [pairing scope](#pairing-scope--what-gets-a-weft-worktreebranch)). Absorbs the
+  junction-integrity/drift reporting currently in `weft`.
+- **list / status** — the **paired view**: every host-WT ↔ weft-WT, its branch, in-sync?,
+  junction health. Supersedes `lyx worktree list` + the pairing-health part of `weft status`.
+- **prune** — remove orphaned/stale pairs (today `internal/worktree/prune.go`).
 - **cleanup** — delete weft branches with no host sibling. Destructive →
   **dry-run / report by default**, explicit flag to actually delete (same discipline as
-  mill-cleanup).
+  mill-cleanup). **Gated on `_codeguide` merge-back:** never delete a task weft branch whose
+  `_codeguide` has not been folded back to its parent — else cleanup *is* the data loss
+  (the merge itself is `weft`'s job; warp only gates on it — see
+  [responsibility boundary](#responsibility-boundary--warp-vs-weft-vs-host)).
+
+## Responsibility boundary — warp vs weft vs host
+
+The content-vs-topology split, made concrete across all three:
+
+- **warp = topology, both sides.** Branch/worktree existence, pairing, fork-point,
+  checkout, the junction *mechanism*, reconcile, cleanup. **Never commits weft content.**
+- **weft = the single git-writer for the weft repo (content).** "lyx weft owns the overlay's
+  git" — every weft-resident content module **authors** and lets `weft` commit: `config`
+  (`configcli`/`update`) and `codeguide` both write through the junction and commit via
+  `weft` (`commit`/`push`/`pull`/`sync`). The `_codeguide` squash-merge-back is `weft`'s git
+  operation, triggered by the codeguide module — **not** warp, **not** raw git.
+- **host content = the developer's raw git.** lyx deliberately does not wrap host
+  commits/push/pull (host stays pristine, developer-maintained). warp touches host only for
+  *topology* (branch/worktree/checkout).
+
+So a weft-resident module never does raw git and never routes commits through warp — it goes
+through `weft`. warp owns *when* a weft branch may safely live or die; `weft` owns *what* is
+committed into it. **Out of scope:** splitting `_codeguide` into its own repo/topology (its
+merge-back is *why* weft is merge-base-preserving) — cleaner in theory but too many moving
+parts; one weft, one topology.
 
 ## Pairing scope — what gets a weft worktree/branch
 
@@ -119,6 +152,27 @@ comes later. **Hard requirement now:** the method that **spawns a task into a ne
 (loom's spawn / Setup) MUST run **both** — `warp add` then `lyx init` (at the worktree root,
 the default cwd) — so a spawned task worktree is fully usable (pairing + junctions + config),
 not a dormant pairing.
+
+## Host-pollution guard
+
+A weft-resident file (under `_lyx` / `_codeguide`) accidentally committed into the **host**
+repo breaks the pristine-host invariant. The protection and its limits:
+
+- **Normal case is safe.** The junction path is in the host worktree's `.git/info/exclude`,
+  so a plain `git add _lyx/x` is **refused** (ignored), `git add .` / `-A` **skip** it, and
+  `git commit -a` won't include it. An agent doing a plain add gets an error and moves on.
+- **Two real risks:** (1) `git add -f _lyx/x` force-bypasses the exclude and stages weft
+  content into the host index; (2) a worktree where the **exclude entry is missing**
+  (junction wired without exclude — an activation-atomicity failure) — then `git add .`
+  silently stages the whole `_lyx` tree into host.
+- **Guard (principle 6 — detectable + easy-undo, not a hard block):**
+  - warp's junction primitive writes the junction **and** the `.git/info/exclude` entry
+    **atomically** — never one without the other (closes risk 2).
+  - `warp status` / `reconcile` / `doctor` detect any `_lyx` / `_codeguide` path **tracked in
+    the host index** (force-added, or exclude was missing) and flag it + offer
+    `git rm --cached` + restore junction/exclude (closes risk 1).
+  - No hard block: a `pre-commit` hook is brittle and bypassable (out of scope); the bar is
+    "caught and trivially reverted", not "impossible".
 
 ## Coordinated operations are all-or-nothing
 
