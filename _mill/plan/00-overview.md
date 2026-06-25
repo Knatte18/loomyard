@@ -3,7 +3,7 @@
 ```yaml
 task: 'Introduce warp: the host↔weft-coordinated git module'
 slug: warp-module
-approved: false
+approved: true
 started: 20260625-120650
 parent: main
 root: ""
