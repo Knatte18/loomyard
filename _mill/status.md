@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: warp-module
 branch: warp-module
 plan: _mill/plan
@@ -35,4 +35,29 @@ plan-fix-r7  '2026-06-25T14:00:45Z'
 plan-review-r8  '2026-06-25T14:18:07Z'
 plan-fix-r8  '2026-06-25T14:18:07Z'
 planned  '2026-06-25T14:18:22Z'
+implementing  '2026-06-25T14:21:06Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: gitexec-rename
+    state: pending
+  - name: warp-clone-fold
+    state: pending
+  - name: warp-worktree-absorb
+    state: pending
+  - name: topology-primitives-activation
+    state: pending
+  - name: coordinated-checkout
+    state: pending
+  - name: status-reconcile-pollution
+    state: pending
+  - name: prune-cleanup
+    state: pending
+  - name: hook-and-launcher
+    state: pending
+  - name: docs-finalize
+    state: pending
 ```
