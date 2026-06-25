@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/fslink"
-	"github.com/Knatte18/loomyard/internal/git"
+	"github.com/Knatte18/loomyard/internal/gitexec"
 )
 
 // Status returns a status report for the weft worktree, including branch, dirty state,
@@ -33,7 +33,7 @@ func Status(weftWorktree, hostLink, weftLyxDir string, pathspec []string) (map[s
 	result["weft_worktree"] = weftWorktree
 
 	// Get branch name
-	branch, _, code, err := git.RunGit([]string{"rev-parse", "--abbrev-ref", "HEAD"}, weftWorktree)
+	branch, _, code, err := gitexec.RunGit([]string{"rev-parse", "--abbrev-ref", "HEAD"}, weftWorktree)
 	if err != nil {
 		return nil, fmt.Errorf("rev-parse --abbrev-ref HEAD: %w", err)
 	}
@@ -44,7 +44,7 @@ func Status(weftWorktree, hostLink, weftLyxDir string, pathspec []string) (map[s
 
 	// Check if dirty (has uncommitted changes in pathspec)
 	args := append([]string{"status", "--porcelain", "--"}, pathspec...)
-	dirty, _, code, err := git.RunGit(args, weftWorktree)
+	dirty, _, code, err := gitexec.RunGit(args, weftWorktree)
 	if err != nil {
 		return nil, fmt.Errorf("status: %w", err)
 	}
@@ -54,7 +54,7 @@ func Status(weftWorktree, hostLink, weftLyxDir string, pathspec []string) (map[s
 	result["dirty"] = strings.TrimSpace(dirty) != ""
 
 	// Check upstream tracking (ahead/behind)
-	aheadOut, _, code, err := git.RunGit([]string{"rev-list", "--count", "@{u}..HEAD"}, weftWorktree)
+	aheadOut, _, code, err := gitexec.RunGit([]string{"rev-list", "--count", "@{u}..HEAD"}, weftWorktree)
 	if err != nil {
 		return nil, fmt.Errorf("rev-list ahead: %w", err)
 	}
@@ -64,7 +64,7 @@ func Status(weftWorktree, hostLink, weftLyxDir string, pathspec []string) (map[s
 		fmt.Sscanf(strings.TrimSpace(aheadOut), "%d", &ahead)
 		result["ahead"] = ahead
 
-		behindOut, _, code, err := git.RunGit([]string{"rev-list", "--count", "HEAD..@{u}"}, weftWorktree)
+		behindOut, _, code, err := gitexec.RunGit([]string{"rev-list", "--count", "HEAD..@{u}"}, weftWorktree)
 		if err != nil {
 			return nil, fmt.Errorf("rev-list behind: %w", err)
 		}

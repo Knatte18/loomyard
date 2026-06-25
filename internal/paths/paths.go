@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/git"
+	"github.com/Knatte18/loomyard/internal/gitexec"
 )
 
 // Config layout constants centralize the directory and file names used by the lyx configuration system.
@@ -72,7 +72,7 @@ func Getwd() (string, error) {
 // Returns the Layout on success, or ErrNotAGitRepo (wrapped with context) on failure.
 func Resolve(cwd string) (*Layout, error) {
 	// Step 1-2: Run git rev-parse --show-toplevel
-	stdout, stderr, exitCode, err := git.RunGit([]string{"rev-parse", "--show-toplevel"}, cwd)
+	stdout, stderr, exitCode, err := gitexec.RunGit([]string{"rev-parse", "--show-toplevel"}, cwd)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrNotAGitRepo, err)
 	}
