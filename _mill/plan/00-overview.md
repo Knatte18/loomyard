@@ -18,7 +18,7 @@ batches:
     name: gitexec-rename
     file: 01-gitexec-rename.md
     depends-on: []
-    verify: go build ./... && go test ./internal/gitexec/ ./internal/board/ ./internal/weft/ ./internal/paths/
+    verify: go build ./... && go test -tags integration ./internal/gitexec/ && go test ./internal/board/ ./internal/weft/ ./internal/paths/
   - number: 2
     name: warp-clone-fold
     file: 02-warp-clone-fold.md

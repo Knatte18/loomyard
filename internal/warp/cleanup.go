@@ -104,10 +104,12 @@ func (w *Worktree) Cleanup(l *paths.Layout, apply, force bool) (CleanupResult, e
 	var result CleanupResult
 
 	for _, branch := range weftBranches {
-		// A weft branch is orphaned when there is no host worktree with a slug equal
-		// to the branch name. The weft branch mirrors the host branch name exactly
-		// (set during warp add), so branch == slug is the correct check.
-		if hostSlugs[branch] {
+		// A weft branch is orphaned when there is no host worktree with a matching slug.
+		// The weft branch name is BranchPrefix+slug (set during warp add), so we must
+		// strip the prefix before the hostSlugs lookup; without trimming, any non-empty
+		// BranchPrefix makes every live weft branch appear as an orphan.
+		slug := strings.TrimPrefix(branch, w.cfg.BranchPrefix)
+		if hostSlugs[slug] {
 			// The host worktree exists for this branch; this is a live pair, skip it.
 			continue
 		}

@@ -253,3 +253,48 @@ func TestCleanup_LiveBranchNeverDeleted(t *testing.T) {
 		t.Errorf("live weft branch %q was deleted by Cleanup; want intact", testSlug)
 	}
 }
+
+// TestCleanup_LiveBranchNeverDeleted_NonEmptyBranchPrefix asserts that a weft branch
+// created with a non-empty BranchPrefix is never treated as an orphan by Cleanup.
+//
+// This is a regression test for the prefix-mismatch bug: when BranchPrefix is non-empty
+// the weft branch name is "prefix/slug", while hostSlugs contains only "slug". Without
+// stripping the prefix before the lookup, every live weft branch appears as an orphan
+// and would be deleted under --apply --force.
+func TestCleanup_LiveBranchNeverDeleted_NonEmptyBranchPrefix(t *testing.T) {
+	t.Parallel()
+
+	f := setupCleanupFixture(t)
+
+	// Use a non-empty BranchPrefix so the weft branch name differs from the slug.
+	// The weft branch will be named "hanf/feature-prefix-live"; the host slug is
+	// "feature-prefix-live". Cleanup must recognise them as a live pair.
+	const prefix = "hanf/"
+	const testSlug = "feature-prefix-live"
+	w := New(Config{BranchPrefix: prefix})
+	_, err := w.Add(f.Layout, testSlug, AddOptions{SkipGit: true})
+	if err != nil {
+		t.Fatalf("Add(%q) with prefix %q: %v", testSlug, prefix, err)
+	}
+
+	weftBranch := prefix + testSlug
+
+	// Run Cleanup in its most aggressive mode — any misidentified live branch would
+	// be deleted here.
+	r, err := w.Cleanup(f.Layout, true, true)
+	if err != nil {
+		t.Fatalf("Cleanup(apply=true, force=true) error = %v; want nil", err)
+	}
+
+	// The live pair's branch must not appear in Cleanup entries at all.
+	for _, entry := range r.Entries {
+		if entry.Branch == weftBranch {
+			t.Errorf("Cleanup included live branch %q (prefix %q) in entries; want not reported", weftBranch, prefix)
+		}
+	}
+
+	// The weft branch must still exist after Cleanup ran.
+	if !weftBranchExists(f.Layout, weftBranch) {
+		t.Errorf("live weft branch %q was deleted by Cleanup despite having a live host worktree; want intact", weftBranch)
+	}
+}

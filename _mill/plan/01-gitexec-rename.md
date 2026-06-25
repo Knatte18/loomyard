@@ -5,7 +5,7 @@ task: 'Introduce warp: the host↔weft-coordinated git module'
 batch: gitexec-rename
 number: 1
 cards: 3
-verify: go build ./... && go test ./internal/gitexec/ ./internal/board/ ./internal/weft/ ./internal/paths/
+verify: go build ./... && go test -tags integration ./internal/gitexec/ && go test ./internal/board/ ./internal/weft/ ./internal/paths/
 depends-on: []
 ```
 
@@ -68,4 +68,4 @@ Batch-local decision: the worktree/gitclone files edited here (cards 3) are *als
 
 ## Batch Tests
 
-`verify: go build ./... && go test ./internal/gitexec/ ./internal/board/ ./internal/weft/ ./internal/paths/`. The module-wide `go build ./...` proves every importer was swept (a missed one fails to compile). The scoped `go test` runs the moved leaf test (`gitexec_test.go`) plus the three surviving production importers' suites to confirm behaviour is preserved. `worktree`/`gitclone` tests are not run here — they are deleted in the next two batches; their compilation is covered by `go build ./...`.
+`verify: go build ./... && go test -tags integration ./internal/gitexec/ && go test ./internal/board/ ./internal/weft/ ./internal/paths/`. The module-wide `go build ./...` proves every importer was swept (a missed one fails to compile). The scoped `go test` runs the moved leaf test (`gitexec_test.go`) plus the three surviving production importers' suites to confirm behaviour is preserved. `worktree`/`gitclone` tests are not run here — they are deleted in the next two batches; their compilation is covered by `go build ./...`.
