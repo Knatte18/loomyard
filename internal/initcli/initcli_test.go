@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/board"
-	"github.com/Knatte18/loomyard/internal/git"
+	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/initcli"
 	"github.com/Knatte18/loomyard/internal/paths"
 	"github.com/Knatte18/loomyard/internal/weft"
@@ -22,7 +22,7 @@ func TestRunInit_FirstRun(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Initialize a git repo so paths.Resolve works
-	_, _, exitCode, initErr := git.RunGit([]string{"init"}, tmpDir)
+	_, _, exitCode, initErr := gitexec.RunGit([]string{"init"}, tmpDir)
 	if initErr != nil || exitCode != 0 {
 		t.Fatalf("git init failed: %v (exit code %d)", initErr, exitCode)
 	}
@@ -106,7 +106,7 @@ func TestRunInit_Idempotent(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Initialize git repo
-	_, _, exitCode, initErr := git.RunGit([]string{"init"}, tmpDir)
+	_, _, exitCode, initErr := gitexec.RunGit([]string{"init"}, tmpDir)
 	if initErr != nil || exitCode != 0 {
 		t.Fatalf("git init failed: %v (exit code %d)", initErr, exitCode)
 	}

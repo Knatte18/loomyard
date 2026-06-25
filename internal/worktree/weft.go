@@ -19,7 +19,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/fslink"
-	"github.com/Knatte18/loomyard/internal/git"
+	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/paths"
 )
 
@@ -36,7 +36,7 @@ func weftRepoExists(l *paths.Layout) bool {
 	}
 
 	// Check if it's a valid git repo
-	_, _, exitCode, err := git.RunGit([]string{"rev-parse", "--is-inside-work-tree"}, weftRepoRoot)
+	_, _, exitCode, err := gitexec.RunGit([]string{"rev-parse", "--is-inside-work-tree"}, weftRepoRoot)
 	if err != nil {
 		return false
 	}
@@ -48,7 +48,7 @@ func weftRepoExists(l *paths.Layout) bool {
 //
 // It uses git rev-parse --verify to check for the branch.
 func weftBranchExists(l *paths.Layout, branch string) bool {
-	_, _, exitCode, err := git.RunGit(
+	_, _, exitCode, err := gitexec.RunGit(
 		[]string{"rev-parse", "--verify", "refs/heads/" + branch},
 		l.WeftRepoRoot(),
 	)
@@ -66,7 +66,7 @@ func weftBranchExists(l *paths.Layout, branch string) bool {
 // Returns an error if the command fails or exits with non-zero code.
 func createWeftWorktree(l *paths.Layout, slug, branch, startPoint string) error {
 	weftPath := l.WeftWorktreePath(slug)
-	_, stderr, exitCode, err := git.RunGit(
+	_, stderr, exitCode, err := gitexec.RunGit(
 		[]string{"worktree", "add", "-b", branch, weftPath, startPoint},
 		l.WeftRepoRoot(),
 	)
@@ -154,7 +154,7 @@ func seedGitExclude(l *paths.Layout, slug string) error {
 	worktreePath := l.WorktreePath(slug)
 
 	// Get the exclude path via git rev-parse --git-path
-	stdout, stderr, exitCode, err := git.RunGit(
+	stdout, stderr, exitCode, err := gitexec.RunGit(
 		[]string{"rev-parse", "--git-path", "info/exclude"},
 		worktreePath,
 	)
@@ -233,7 +233,7 @@ func pushWeftBranch(l *paths.Layout, slug, branch string, opts AddOptions) error
 	}
 
 	weftPath := l.WeftWorktreePath(slug)
-	_, stderr, exitCode, err := git.RunGit(
+	_, stderr, exitCode, err := gitexec.RunGit(
 		[]string{"push", "-u", "origin", branch},
 		weftPath,
 	)
@@ -281,7 +281,7 @@ func removeWeftWorktree(l *paths.Layout, slug, branch string, force bool) error 
 		args = append(args, "--force")
 	}
 	args = append(args, weftPath)
-	_, _, exitCode, err := git.RunGit(args, weftRoot)
+	_, _, exitCode, err := gitexec.RunGit(args, weftRoot)
 	if err != nil || exitCode != 0 {
 		if firstErr == nil {
 			if err != nil {
@@ -293,7 +293,7 @@ func removeWeftWorktree(l *paths.Layout, slug, branch string, force bool) error 
 	}
 
 	// Delete branch
-	_, _, exitCode, err = git.RunGit([]string{"branch", "-D", branch}, weftRoot)
+	_, _, exitCode, err = gitexec.RunGit([]string{"branch", "-D", branch}, weftRoot)
 	if err != nil || exitCode != 0 {
 		if firstErr == nil {
 			if err != nil {
@@ -305,7 +305,7 @@ func removeWeftWorktree(l *paths.Layout, slug, branch string, force bool) error 
 	}
 
 	// Prune worktrees
-	_, _, exitCode, err = git.RunGit([]string{"worktree", "prune"}, weftRoot)
+	_, _, exitCode, err = gitexec.RunGit([]string{"worktree", "prune"}, weftRoot)
 	if err != nil || exitCode != 0 {
 		if firstErr == nil {
 			if err != nil {

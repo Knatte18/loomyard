@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/Knatte18/loomyard/internal/git"
+	"github.com/Knatte18/loomyard/internal/gitexec"
 )
 
 // removeAll is a testability seam for os.RemoveAll, allowing tests to inject errors.
@@ -82,7 +82,7 @@ func cloneHub(cwd, hostURL, weftURL, boardURL string) (hubPath, resolvedBoardURL
 
 // cloneRepo clones a repository from url to dest.
 //
-// The clone is executed via git.RunGit with the parent directory of dest as the cwd,
+// The clone is executed via gitexec.RunGit with the parent directory of dest as the cwd,
 // and the basename of dest as the destination argument. Paths are cleaned and normalized.
 // Non-zero git exit returns an error wrapping the stderr output.
 func cloneRepo(url, dest string) error {
@@ -107,7 +107,7 @@ func cloneRepo(url, dest string) error {
 	gitURL := filepath.ToSlash(url)
 	gitDest := filepath.ToSlash(destName)
 
-	stdout, stderr, exitCode, err := git.RunGit([]string{"clone", gitURL, gitDest}, parentDir)
+	stdout, stderr, exitCode, err := gitexec.RunGit([]string{"clone", gitURL, gitDest}, parentDir)
 	if err != nil {
 		return fmt.Errorf("clone failed: %w", err)
 	}

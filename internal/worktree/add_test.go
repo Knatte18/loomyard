@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/git"
+	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
@@ -233,7 +233,7 @@ func TestAddRollback(t *testing.T) {
 	}
 
 	// 2. No host local branch.
-	_, _, exitCode, _ := git.RunGit([]string{"rev-parse", "--verify", "refs/heads/" + slug}, f.Layout.WorktreeRoot)
+	_, _, exitCode, _ := gitexec.RunGit([]string{"rev-parse", "--verify", "refs/heads/" + slug}, f.Layout.WorktreeRoot)
 	if exitCode == 0 {
 		t.Errorf("Add(%q) rollback failed: host branch %q still exists", slug, slug)
 	}
@@ -247,7 +247,7 @@ func TestAddRollback(t *testing.T) {
 	}
 
 	// 4. No weft branch.
-	_, _, exitCode, _ = git.RunGit([]string{"rev-parse", "--verify", "refs/heads/" + slug}, f.Layout.WeftRepoRoot())
+	_, _, exitCode, _ = gitexec.RunGit([]string{"rev-parse", "--verify", "refs/heads/" + slug}, f.Layout.WeftRepoRoot())
 	if exitCode == 0 {
 		t.Errorf("Add(%q) rollback failed: weft branch %q still exists", slug, slug)
 	}
@@ -259,7 +259,7 @@ func TestAddRollback(t *testing.T) {
 	}
 
 	// 6. No new branch on bare remote.
-	stdout, _, _, _ := git.RunGit([]string{"ls-remote", "origin"}, f.Layout.WorktreeRoot)
+	stdout, _, _, _ := gitexec.RunGit([]string{"ls-remote", "origin"}, f.Layout.WorktreeRoot)
 	if strings.Contains(stdout, slug) {
 		t.Errorf("Add(%q) rollback failed: host branch pushed to remote", slug)
 	}

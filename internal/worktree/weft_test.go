@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/git"
+	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
@@ -65,7 +65,7 @@ func TestWeftSpawnSeedsExclude(t *testing.T) {
 
 	// Get the exclude file path.
 	worktreePath := f.Layout.WorktreePath(slug)
-	stdout, _, exitCode, _ := git.RunGit([]string{"rev-parse", "--git-path", "info/exclude"}, worktreePath)
+	stdout, _, exitCode, _ := gitexec.RunGit([]string{"rev-parse", "--git-path", "info/exclude"}, worktreePath)
 	if exitCode != 0 {
 		t.Fatalf("git rev-parse --git-path info/exclude failed")
 	}
@@ -126,7 +126,7 @@ func TestWeftSpawnPairedWorktrees(t *testing.T) {
 
 	// Verify weft branch exists via WeftRepoRoot().
 	weftRepoRoot := f.Layout.WeftRepoRoot()
-	_, _, exitCode, _ := git.RunGit([]string{"rev-parse", "--verify", "refs/heads/" + slug}, weftRepoRoot)
+	_, _, exitCode, _ := gitexec.RunGit([]string{"rev-parse", "--verify", "refs/heads/" + slug}, weftRepoRoot)
 	if exitCode != 0 {
 		t.Errorf("weft branch %q not created", slug)
 	}
@@ -259,7 +259,7 @@ func TestWeftSpawnPushesWeftBranch(t *testing.T) {
 
 	// Verify the weft branch was pushed to the weft-bare remote.
 	// Use git ls-remote to check for the mirrored branch ref in the weft-bare.
-	stdout, _, exitCode, _ := git.RunGit([]string{"ls-remote", f.WeftBare}, f.Layout.WeftRepoRoot())
+	stdout, _, exitCode, _ := gitexec.RunGit([]string{"ls-remote", f.WeftBare}, f.Layout.WeftRepoRoot())
 	if exitCode != 0 {
 		t.Fatalf("git ls-remote weft-bare failed")
 	}
@@ -308,7 +308,7 @@ func TestWeftRollbackOnPostHostCreateFailure(t *testing.T) {
 	}
 
 	// Verify host branch is gone.
-	stdout, _, _, _ := git.RunGit([]string{"branch"}, f.Layout.WorktreeRoot)
+	stdout, _, _, _ := gitexec.RunGit([]string{"branch"}, f.Layout.WorktreeRoot)
 	if strings.Contains(stdout, slug) {
 		t.Errorf("rollback failed: host branch containing %q still exists", slug)
 	}
@@ -319,7 +319,7 @@ func TestWeftRollbackOnPostHostCreateFailure(t *testing.T) {
 	}
 
 	// Verify weft branch is gone.
-	_, _, exitCode, _ := git.RunGit([]string{"rev-parse", "--verify", "refs/heads/" + branch}, f.Layout.WeftRepoRoot())
+	_, _, exitCode, _ := gitexec.RunGit([]string{"rev-parse", "--verify", "refs/heads/" + branch}, f.Layout.WeftRepoRoot())
 	if exitCode == 0 {
 		t.Errorf("rollback failed: weft branch still exists")
 	}
@@ -357,7 +357,7 @@ func TestSeederParity(t *testing.T) {
 
 	// Verify .git/info/exclude contains the _lyx entry.
 	worktreePath := f.Layout.WorktreePath(slug)
-	stdout, _, exitCode, _ := git.RunGit([]string{"rev-parse", "--git-path", "info/exclude"}, worktreePath)
+	stdout, _, exitCode, _ := gitexec.RunGit([]string{"rev-parse", "--git-path", "info/exclude"}, worktreePath)
 	if exitCode != 0 {
 		t.Fatalf("git rev-parse --git-path info/exclude failed")
 	}
@@ -404,7 +404,7 @@ func TestWeftForkPointMirrorsHost(t *testing.T) {
 
 	// Capture weft main's tip SHA before spawning.
 	weftRepoRoot := f.Layout.WeftRepoRoot()
-	mainTipStdout, _, exitCode, _ := git.RunGit([]string{"rev-parse", "refs/heads/main"}, weftRepoRoot)
+	mainTipStdout, _, exitCode, _ := gitexec.RunGit([]string{"rev-parse", "refs/heads/main"}, weftRepoRoot)
 	if exitCode != 0 {
 		t.Fatalf("git rev-parse refs/heads/main failed")
 	}
@@ -418,7 +418,7 @@ func TestWeftForkPointMirrorsHost(t *testing.T) {
 	}
 
 	// Assert git merge-base <new-weft-branch> main equals mainTip.
-	mergeBaseSHA, _, exitCode, _ := git.RunGit(
+	mergeBaseSHA, _, exitCode, _ := gitexec.RunGit(
 		[]string{"merge-base", slug, "main"},
 		weftRepoRoot,
 	)
@@ -457,7 +457,7 @@ func TestWeftForkPointSubtaskIsolation(t *testing.T) {
 	weftRepoRoot := f.Layout.WeftRepoRoot()
 
 	// First, capture the current main tip for verification later.
-	mainTipStdout, _, _, _ := git.RunGit([]string{"rev-parse", "refs/heads/main"}, weftRepoRoot)
+	mainTipStdout, _, _, _ := gitexec.RunGit([]string{"rev-parse", "refs/heads/main"}, weftRepoRoot)
 	mainTip := strings.TrimSpace(mainTipStdout)
 
 	// Create weft branch Y from main.
@@ -473,7 +473,7 @@ func TestWeftForkPointSubtaskIsolation(t *testing.T) {
 	lyxtest.MustRun(t, tempWeftPath, "git", "commit", "-m", "Y extra commit")
 
 	// Advance weft branch Y to the temp commit's SHA.
-	currentYTipStdout, _, _, _ := git.RunGit([]string{"rev-parse", "refs/heads/temp-Y"}, weftRepoRoot)
+	currentYTipStdout, _, _, _ := gitexec.RunGit([]string{"rev-parse", "refs/heads/temp-Y"}, weftRepoRoot)
 	currentYTip := strings.TrimSpace(currentYTipStdout)
 	lyxtest.MustRun(t, weftRepoRoot, "git", "branch", "-f", "Y", "temp-Y")
 
@@ -489,7 +489,7 @@ func TestWeftForkPointSubtaskIsolation(t *testing.T) {
 	}
 
 	// Assert git merge-base <new-weft-branch> Y equals currentYTip (not mainTip).
-	mergeBaseSHA, _, exitCode, _ := git.RunGit(
+	mergeBaseSHA, _, exitCode, _ := gitexec.RunGit(
 		[]string{"merge-base", slug, "Y"},
 		weftRepoRoot,
 	)
@@ -549,7 +549,7 @@ func TestWeftMissingParentBranch(t *testing.T) {
 	}
 
 	// 2. No host local branch.
-	_, _, exitCode, _ := git.RunGit([]string{"rev-parse", "--verify", "refs/heads/" + slug}, f.Layout.WorktreeRoot)
+	_, _, exitCode, _ := gitexec.RunGit([]string{"rev-parse", "--verify", "refs/heads/" + slug}, f.Layout.WorktreeRoot)
 	if exitCode == 0 {
 		t.Errorf("missing parent: host branch %q still exists", slug)
 	}
@@ -563,7 +563,7 @@ func TestWeftMissingParentBranch(t *testing.T) {
 	}
 
 	// 4. No weft branch.
-	_, _, exitCode, _ = git.RunGit([]string{"rev-parse", "--verify", "refs/heads/" + slug}, f.Layout.WeftRepoRoot())
+	_, _, exitCode, _ = gitexec.RunGit([]string{"rev-parse", "--verify", "refs/heads/" + slug}, f.Layout.WeftRepoRoot())
 	if exitCode == 0 {
 		t.Errorf("missing parent: weft branch %q still exists", slug)
 	}

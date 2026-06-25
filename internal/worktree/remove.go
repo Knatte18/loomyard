@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/fslink"
-	"github.com/Knatte18/loomyard/internal/git"
+	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/paths"
 )
 
@@ -61,7 +61,7 @@ func (w *Worktree) Remove(l *paths.Layout, slug string, force bool) (RemoveResul
 
 	// (3) Host dirty gate (only when !force)
 	if !force {
-		stdout, _, exitCode, err := git.RunGit([]string{"status", "--porcelain"}, target)
+		stdout, _, exitCode, err := gitexec.RunGit([]string{"status", "--porcelain"}, target)
 		if err != nil {
 			return RemoveResult{}, fmt.Errorf("failed to check worktree status: %v", err)
 		}
@@ -76,7 +76,7 @@ func (w *Worktree) Remove(l *paths.Layout, slug string, force bool) (RemoveResul
 	// (4) Weft dirty gate (only when !force)
 	if !force {
 		weftTarget := l.WeftWorktreePath(slug)
-		stdout, _, exitCode, err := git.RunGit([]string{"status", "--porcelain"}, weftTarget)
+		stdout, _, exitCode, err := gitexec.RunGit([]string{"status", "--porcelain"}, weftTarget)
 		if err != nil {
 			// Weft worktree might not exist or be invalid; skip the check.
 			// If it doesn't exist, the weft remove later will handle cleanup.
@@ -101,7 +101,7 @@ func (w *Worktree) Remove(l *paths.Layout, slug string, force bool) (RemoveResul
 	}
 	args = append(args, target)
 
-	_, _, exitCode, err := git.RunGit(args, l.WorktreeRoot)
+	_, _, exitCode, err := gitexec.RunGit(args, l.WorktreeRoot)
 	if err != nil {
 		return RemoveResult{}, fmt.Errorf("failed to run git worktree remove: %v", err)
 	}
@@ -113,7 +113,7 @@ func (w *Worktree) Remove(l *paths.Layout, slug string, force bool) (RemoveResul
 		}
 
 		// Best-effort prune
-		git.RunGit([]string{"worktree", "prune"}, l.WorktreeRoot)
+		gitexec.RunGit([]string{"worktree", "prune"}, l.WorktreeRoot)
 	}
 
 	// (9) Remove weft worktree and branch

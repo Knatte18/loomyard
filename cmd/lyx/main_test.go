@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/git"
+	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/paths"
 )
 
@@ -180,7 +180,7 @@ func TestRunDispatchesToUpdate(t *testing.T) {
 	cwd := t.TempDir()
 
 	// Initialize git repo
-	_, _, exitCode, err := git.RunGit([]string{"init"}, cwd)
+	_, _, exitCode, err := gitexec.RunGit([]string{"init"}, cwd)
 	if err != nil || exitCode != 0 {
 		t.Fatalf("git init failed: %v (exit code %d)", err, exitCode)
 	}

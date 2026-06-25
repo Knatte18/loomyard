@@ -9,7 +9,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/git"
+	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/paths"
 )
 
@@ -75,7 +75,7 @@ type AddResult struct {
 // Returns AddResult on success or an error if any step fails.
 func (w *Worktree) Add(l *paths.Layout, slug string, opts AddOptions) (AddResult, error) {
 	// (1) Clean check
-	stdout, stderr, exitCode, err := git.RunGit([]string{"status", "--porcelain", "--untracked-files=no"}, l.WorktreeRoot)
+	stdout, stderr, exitCode, err := gitexec.RunGit([]string{"status", "--porcelain", "--untracked-files=no"}, l.WorktreeRoot)
 	if err != nil {
 		return AddResult{}, fmt.Errorf("cwd is not a valid git worktree")
 	}
@@ -90,7 +90,7 @@ func (w *Worktree) Add(l *paths.Layout, slug string, opts AddOptions) (AddResult
 	branch := w.cfg.BranchPrefix + slug
 
 	// (3) Branch-exists check
-	_, _, exitCode, err = git.RunGit([]string{"rev-parse", "--verify", "refs/heads/" + branch}, l.WorktreeRoot)
+	_, _, exitCode, err = gitexec.RunGit([]string{"rev-parse", "--verify", "refs/heads/" + branch}, l.WorktreeRoot)
 	if err != nil {
 		return AddResult{}, fmt.Errorf("cwd is not a valid git worktree")
 	}
@@ -105,7 +105,7 @@ func (w *Worktree) Add(l *paths.Layout, slug string, opts AddOptions) (AddResult
 	}
 
 	// (5) Remote check
-	stdout, _, exitCode, err = git.RunGit([]string{"remote"}, l.WorktreeRoot)
+	stdout, _, exitCode, err = gitexec.RunGit([]string{"remote"}, l.WorktreeRoot)
 	if err != nil {
 		return AddResult{}, fmt.Errorf("cwd is not a valid git worktree")
 	}
@@ -132,7 +132,7 @@ func (w *Worktree) Add(l *paths.Layout, slug string, opts AddOptions) (AddResult
 
 	// (6b) Resolve parent host branch; abort if detached/unborn
 	// This must run BEFORE host worktree creation to avoid partial state.
-	stdout, _, exitCode, err = git.RunGit([]string{"rev-parse", "--abbrev-ref", "HEAD"}, l.WorktreeRoot)
+	stdout, _, exitCode, err = gitexec.RunGit([]string{"rev-parse", "--abbrev-ref", "HEAD"}, l.WorktreeRoot)
 	if err != nil {
 		return AddResult{}, fmt.Errorf("rev-parse abbrev-ref HEAD: %w", err)
 	}
@@ -142,7 +142,7 @@ func (w *Worktree) Add(l *paths.Layout, slug string, opts AddOptions) (AddResult
 	parentBranch := strings.TrimSpace(stdout)
 
 	// (7) Create host worktree
-	_, stderr, exitCode, err = git.RunGit([]string{"worktree", "add", "-b", branch, target}, l.WorktreeRoot)
+	_, stderr, exitCode, err = gitexec.RunGit([]string{"worktree", "add", "-b", branch, target}, l.WorktreeRoot)
 	if err != nil {
 		return AddResult{}, fmt.Errorf("cwd is not a valid git worktree")
 	}
@@ -181,7 +181,7 @@ func (w *Worktree) Add(l *paths.Layout, slug string, opts AddOptions) (AddResult
 	}
 
 	// (13) Push host branch (LAST step for host)
-	_, stderr, exitCode, err = git.RunGit([]string{"push", "-u", "origin", branch}, l.WorktreeRoot)
+	_, stderr, exitCode, err = gitexec.RunGit([]string{"push", "-u", "origin", branch}, l.WorktreeRoot)
 	if err != nil {
 		w.rollbackAdd(l, slug, branch, target)
 		return AddResult{}, fmt.Errorf("push: %w", err)
@@ -252,7 +252,7 @@ func (w *Worktree) rollbackAdd(l *paths.Layout, slug, branch, target string) err
 	}
 
 	// (5) Remove host worktree
-	_, _, exitCode, err := git.RunGit([]string{"worktree", "remove", "--force", target}, l.WorktreeRoot)
+	_, _, exitCode, err := gitexec.RunGit([]string{"worktree", "remove", "--force", target}, l.WorktreeRoot)
 	if err != nil || exitCode != 0 {
 		if firstErr == nil {
 			if err != nil {
@@ -264,7 +264,7 @@ func (w *Worktree) rollbackAdd(l *paths.Layout, slug, branch, target string) err
 	}
 
 	// (6) Delete host branch
-	_, _, exitCode, err = git.RunGit([]string{"branch", "-D", branch}, l.WorktreeRoot)
+	_, _, exitCode, err = gitexec.RunGit([]string{"branch", "-D", branch}, l.WorktreeRoot)
 	if err != nil || exitCode != 0 {
 		if firstErr == nil {
 			if err != nil {
@@ -276,7 +276,7 @@ func (w *Worktree) rollbackAdd(l *paths.Layout, slug, branch, target string) err
 	}
 
 	// (7) Prune host worktrees
-	_, _, exitCode, err = git.RunGit([]string{"worktree", "prune"}, l.WorktreeRoot)
+	_, _, exitCode, err = gitexec.RunGit([]string{"worktree", "prune"}, l.WorktreeRoot)
 	if err != nil || exitCode != 0 {
 		if firstErr == nil {
 			if err != nil {
