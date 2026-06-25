@@ -242,3 +242,94 @@ func TestMustRun_Failure(t *testing.T) {
 		t.Errorf("subprocess passed; expected MustRun to call Fatalf and exit non-zero")
 	}
 }
+
+// TestSeedConfig verifies that SeedConfig writes config files and commits them.
+func TestSeedConfig(t *testing.T) {
+	t.Parallel()
+
+	// Create a temp git repo to seed
+	tmpDir := t.TempDir()
+	MustRun(t, tmpDir, "git", "init", "-b", "main")
+	MustRun(t, tmpDir, "git", "config", "user.email", "test@test.com")
+	MustRun(t, tmpDir, "git", "config", "user.name", "Test")
+
+	// Seed config
+	configContent := "test_key: test_value\n"
+	SeedConfig(t, tmpDir, map[string]string{
+		"module1": configContent,
+		"module2": "other: value\n",
+	})
+
+	// Verify files exist with correct content
+	module1Path := filepath.Join(tmpDir, "_lyx", "config", "module1.yaml")
+	content1, err := os.ReadFile(module1Path)
+	if err != nil {
+		t.Fatalf("read module1.yaml: %v", err)
+	}
+	if string(content1) != configContent {
+		t.Errorf("module1 content = %q; want %q", string(content1), configContent)
+	}
+
+	module2Path := filepath.Join(tmpDir, "_lyx", "config", "module2.yaml")
+	content2, err := os.ReadFile(module2Path)
+	if err != nil {
+		t.Fatalf("read module2.yaml: %v", err)
+	}
+	if string(content2) != "other: value\n" {
+		t.Errorf("module2 content = %q; want %q", string(content2), "other: value\n")
+	}
+
+	// Verify files are tracked in git
+	cmd := exec.Command("git", "ls-files")
+	cmd.Dir = tmpDir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git ls-files: %v; output: %s", err, output)
+	}
+	lsOutput := string(output)
+	if !strings.Contains(lsOutput, "_lyx/config/module1.yaml") {
+		t.Errorf("module1.yaml not in git ls-files: %s", lsOutput)
+	}
+	if !strings.Contains(lsOutput, "_lyx/config/module2.yaml") {
+		t.Errorf("module2.yaml not in git ls-files: %s", lsOutput)
+	}
+
+	// Verify working tree is clean (all committed)
+	cmd = exec.Command("git", "status", "--porcelain")
+	cmd.Dir = tmpDir
+	output, err = cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git status: %v", err)
+	}
+	if string(output) != "" {
+		t.Errorf("git status not clean after SeedConfig: %s", string(output))
+	}
+}
+
+// TestCopyPaired_NeutralFixture verifies that CopyPaired produces a neutral fixture
+// with a placeholder file and no real config files.
+func TestCopyPaired_NeutralFixture(t *testing.T) {
+	t.Parallel()
+
+	fixture := CopyPaired(t)
+
+	// Verify the weft-prime contains _lyx/config/placeholder
+	placeholderPath := filepath.Join(fixture.WeftPrime, "_lyx", "config", "placeholder")
+	placeholderContent, err := os.ReadFile(placeholderPath)
+	if err != nil {
+		t.Fatalf("read placeholder: %v", err)
+	}
+	if string(placeholderContent) != "weft config" {
+		t.Errorf("placeholder content = %q; want %q", string(placeholderContent), "weft config")
+	}
+
+	// Verify the weft-prime does NOT contain real config files (e.g., weft.yaml)
+	weftConfigPath := filepath.Join(fixture.WeftPrime, "_lyx", "config", "weft.yaml")
+	if _, err := os.Stat(weftConfigPath); !os.IsNotExist(err) {
+		if err == nil {
+			t.Errorf("weft.yaml should not exist in neutral fixture, but it does")
+		} else {
+			t.Errorf("unexpected error checking weft.yaml: %v", err)
+		}
+	}
+}
