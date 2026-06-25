@@ -42,7 +42,7 @@ Batch-local decision: `docs/modules/warp.md` is deleted (mechanical per-module d
   - `docs/overview.md`
 - **Creates:** none
 - **Deletes:** none
-- **Requirements:** In `docs/overview.md`: mark **warp** as ✅ Implemented in the Modules list (host↔weft topology owner) and remove/supersede the separate **worktree** and **git-clone** module entries (their surface is now `lyx warp …`); update the Module dispatch `switch` snippet to show the `warp` case and drop `worktree`/`git-clone`; update the directory-tree block (`internal/git` → `internal/gitexec`, add `internal/warp`, remove `internal/worktree` and `internal/gitclone`); fix any prose that says `lyx worktree add`/`lyx git-clone` to the `lyx warp …` forms. Leave the weft overlay-model sections intact (weft keeps content-sync).
+- **Requirements:** In `docs/overview.md`: mark **warp** as ✅ Implemented in the Modules list (host↔weft topology owner) and remove/supersede the separate **worktree** and **git-clone** module entries (their surface is now `lyx warp …`); update the Module dispatch `switch` snippet to show the `warp` case and drop `worktree`/`git-clone`; update the directory-tree block (`internal/git` → `internal/gitexec`, add `internal/warp`, remove `internal/worktree` and `internal/gitclone`); fix any prose that says `lyx worktree add`/`lyx git-clone` to the `lyx warp …` forms; and **remove or retarget the two dangling links to `modules/warp.md`** (around lines 227 and 308 — the `See [modules/warp.md]` module-list link and the doc-lifecycle `[modules/warp.md] … (design)` reference), since card 31 deletes that file in this same batch. Leave the weft overlay-model sections intact (weft keeps content-sync).
 - **Commit:** `docs(overview): warp lands; gitexec rename; drop worktree/git-clone`
 
 ### Card 33: Sweep remaining doc references
@@ -56,7 +56,7 @@ Batch-local decision: `docs/modules/warp.md` is deleted (mechanical per-module d
   - `docs/shared-libs/README.md`
 - **Creates:** none
 - **Deletes:** none
-- **Requirements:** Update stale references in these durable docs: `internal/git` → `internal/gitexec`; `internal/worktree` / `internal/gitclone` → `internal/warp`; `lyx worktree …` / `lyx git-clone …` command forms → `lyx warp …`. In `docs/modules/loom.md`, where Setup is described as validating the weft pairing via the `worktree`/`weft` modules, name `warp` as the topology owner (do not add loom implementation — loom remains unbuilt). Keep each doc's surrounding meaning intact; this is a reference-accuracy sweep only.
+- **Requirements:** Update stale references in these durable docs: `internal/git` → `internal/gitexec`; `internal/worktree` / `internal/gitclone` → `internal/warp`; `lyx worktree …` / `lyx git-clone …` command forms → `lyx warp …`. In `docs/modules/loom.md`, where Setup is described as validating the weft pairing via the `worktree`/`weft` modules, name `warp` as the topology owner (do not add loom implementation — loom remains unbuilt). Keep each doc's surrounding meaning intact; this is a reference-accuracy sweep only. **Intentionally excluded (frozen, do not sweep):** `docs/roadmap.md` and `docs/benchmarks/test-suite-timing.md` — the roadmap's landed entries and the benchmark log are point-in-time historical records; rewriting their `internal/git`/`internal/worktree`/`internal/gitclone` package names would falsify the record. They are deliberately left as-is.
 - **Commit:** `docs: sweep gitexec/warp package and command references`
 
 ## Batch Tests
