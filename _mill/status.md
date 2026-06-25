@@ -55,7 +55,9 @@ batches:
     start_sha: 15d9707b619ebaf08d9b237046d98d8d56b8c899
     commit_sha: f4396c567a65672bcc4961564ab9ed9460598bc0
   - name: warp-worktree-absorb
-    state: pending
+    state: running
+    implementer_session: 055b488f-d82d-4e61-b008-4dbbd3a72c88
+    start_sha: d3343b648368ea3bc8783d26cd78fe077ccbe860
   - name: topology-primitives-activation
     state: pending
   - name: coordinated-checkout
