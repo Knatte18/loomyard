@@ -18,13 +18,13 @@ import (
 // RunCLI parses and executes warp subcommands, writing JSON results to out.
 //
 // It accepts a subcommand as the first argument (clone, add, list, remove, checkout,
-// status, reconcile) and routes to the matching verb handler. Unknown or missing
-// subcommands return a usage error.
+// status, reconcile, prune, cleanup) and routes to the matching verb handler. Unknown
+// or missing subcommands return a usage error.
 //
 // Returns exit code 0 on success or 1 on error. Output is JSON on out.
 func RunCLI(out io.Writer, args []string) int {
 	if len(args) < 1 {
-		return output.Err(out, "usage: lyx warp <clone|add|list|remove|checkout|status|reconcile>")
+		return output.Err(out, "usage: lyx warp <clone|add|list|remove|checkout|status|reconcile|prune|cleanup>")
 	}
 
 	subcommand, subArgs := args[0], args[1:]
@@ -44,8 +44,12 @@ func RunCLI(out io.Writer, args []string) int {
 		return runStatus(out, subArgs)
 	case "reconcile":
 		return runReconcile(out, subArgs)
+	case "prune":
+		return runPrune(out, subArgs)
+	case "cleanup":
+		return runCleanup(out, subArgs)
 	default:
-		return output.Err(out, "usage: lyx warp <clone|add|list|remove|checkout|status|reconcile>")
+		return output.Err(out, "usage: lyx warp <clone|add|list|remove|checkout|status|reconcile|prune|cleanup>")
 	}
 }
 
@@ -213,6 +217,91 @@ func runReconcile(out io.Writer, _ []string) int {
 	}
 	return output.Ok(out, map[string]any{
 		"pairs": r.Pairs,
+	})
+}
+
+// runPrune parses and executes the warp prune subcommand.
+//
+// Resolves the layout and warp config from the current working directory,
+// calls Prune to identify stale or orphaned host↔weft pairs, and emits the
+// result via output.Ok. The --apply flag switches from dry-run/report to
+// actually removing stale weft worktrees.
+func runPrune(out io.Writer, args []string) int {
+	cwd, err := paths.Getwd()
+	if err != nil {
+		return output.Err(out, err.Error())
+	}
+
+	l, err := paths.Resolve(cwd)
+	if err != nil {
+		return output.Err(out, err.Error())
+	}
+
+	cfg, err := LoadConfig(cwd, "warp")
+	if err != nil {
+		return output.Err(out, err.Error())
+	}
+
+	fs := flag.NewFlagSet("prune", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	apply := fs.Bool("apply", false, "remove stale weft worktrees (default is dry-run/report)")
+	if err := fs.Parse(args); err != nil {
+		return 1
+	}
+
+	w := New(cfg)
+
+	r, err := w.Prune(l, *apply)
+	if err != nil {
+		return output.Err(out, err.Error())
+	}
+	return output.Ok(out, map[string]any{
+		"entries": r.Entries,
+	})
+}
+
+// runCleanup parses and executes the warp cleanup subcommand.
+//
+// Resolves the layout and warp config from the current working directory,
+// calls Cleanup to find orphaned weft branches, and emits the result via
+// output.Ok. The flag matrix governs deletion:
+//
+//   - (no flags)          dry-run: report orphaned weft branches only.
+//   - --apply             delete non-gate-protected orphan branches.
+//   - --apply --force     also delete gate-protected task branches.
+//   - --force (alone)     report only; --force does not imply --apply.
+func runCleanup(out io.Writer, args []string) int {
+	cwd, err := paths.Getwd()
+	if err != nil {
+		return output.Err(out, err.Error())
+	}
+
+	l, err := paths.Resolve(cwd)
+	if err != nil {
+		return output.Err(out, err.Error())
+	}
+
+	cfg, err := LoadConfig(cwd, "warp")
+	if err != nil {
+		return output.Err(out, err.Error())
+	}
+
+	fs := flag.NewFlagSet("cleanup", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	apply := fs.Bool("apply", false, "delete non-gate-protected orphaned weft branches")
+	force := fs.Bool("force", false, "also delete gate-protected task branches (requires --apply)")
+	if err := fs.Parse(args); err != nil {
+		return 1
+	}
+
+	w := New(cfg)
+
+	r, err := w.Cleanup(l, *apply, *force)
+	if err != nil {
+		return output.Err(out, err.Error())
+	}
+	return output.Ok(out, map[string]any{
+		"entries": r.Entries,
 	})
 }
 
