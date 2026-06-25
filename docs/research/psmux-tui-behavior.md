@@ -3,7 +3,7 @@
 > Provenance: copied from `millhouse/doc/psmux-tui-behavior.md` (sessions
 > `replace-claude-p-with-psmux`, `smoke-test-psmux`). 100% relevant to the Loomyard mux
 > design — it is the prior empirical record of driving a real `claude` TUI inside a
-> psmux pane on this machine. The mux design and [`mux-exploration.md`](research/mux-exploration.md)
+> psmux pane on this machine. The mux design and [`mux-exploration.md`](mux-exploration.md)
 > draw on it directly. Bug-table line numbers refer to millhouse's Python implementation.
 
 Observed 2026-05-31. Session: `replace-claude-p-with-psmux`.

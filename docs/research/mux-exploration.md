@@ -156,7 +156,7 @@ needs a TTY; the orchestrator never attaches — it sees via `capture-pane`.**
   quit-keys); allow 4–6s for TUI-exit screen settle.
 
 ### Real interactive `claude` in a pane (verified 2026-06-11)
-Cross-reference: [`../psmux-tui-behavior.md`](../psmux-tui-behavior.md) (prior millhouse findings,
+Cross-reference: [`psmux-tui-behavior.md`](psmux-tui-behavior.md) (prior millhouse findings,
 claude 2.1.158/159). This session re-verified on claude **2.1.173**.
 - **Renders + drivable.** A real interactive `claude` TUI launched via `send-keys` in a pane
   renders fully in `capture-pane`; `send-keys -l "<text>"` + `send-keys Enter` submits a prompt;
