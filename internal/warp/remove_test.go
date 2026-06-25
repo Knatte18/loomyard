@@ -197,6 +197,11 @@ func TestRemoveHostJunctionRemoved(t *testing.T) {
 		t.Fatalf("Add(%q): %v", slug, err)
 	}
 
+	// Wire junctions (Add is dormant; junctions wired by lyx init or explicitly via WireJunctions).
+	if err := WireJunctions(f.Layout, slug); err != nil {
+		t.Fatalf("WireJunctions(%q): %v", slug, err)
+	}
+
 	// Verify junction exists before Remove.
 	hostLink := f.Layout.HostLyxLink(slug)
 	if _, err := os.Lstat(hostLink); err != nil {
@@ -247,6 +252,11 @@ func TestRemoveSubpathJunction(t *testing.T) {
 	_, err = w.Add(l, slug, AddOptions{SkipPush: true})
 	if err != nil {
 		t.Fatalf("Add(%q) at subpath: %v", slug, err)
+	}
+
+	// Wire junctions (Add is dormant).
+	if err := WireJunctions(l, slug); err != nil {
+		t.Fatalf("WireJunctions(%q) at subpath: %v", slug, err)
 	}
 
 	// Verify nested junction exists.
