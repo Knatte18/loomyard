@@ -79,7 +79,9 @@ batches:
     start_sha: abe08dbe4af5b07ae83c7509eaf1a71bdab9f25b
     commit_sha: 1172e22a92c80e392018245fbda9535317749409
   - name: prune-cleanup
-    state: pending
+    state: running
+    implementer_session: fa30a2e9-3281-4209-b7ea-0cbea10152ef
+    start_sha: 8901ac3b39e510d3e04e2a4e86645594de56849c
   - name: hook-and-launcher
     state: pending
   - name: docs-finalize
