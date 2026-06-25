@@ -73,21 +73,48 @@ activates it; the outer command is the everyday convenience that does both.
   **dry-run / report by default**, explicit flag to actually delete (same discipline as
   mill-cleanup).
 
-## Branch scope — what gets a weft branch
+## Pairing scope — what gets a weft worktree/branch
 
-Only branches **worked on with lyx** get a weft branch. Weft-branch provisioning is an
-explicit **setup step**, never implicit mirroring of every host branch. So `main`,
-`extract-*`, `mill-checkpoint-*` etc. stay unmirrored unless explicitly set up. Three
-entry paths, all converging on the same adopt-or-create logic in `warp`:
+The invariant is **per host-worktree, not per-branch**: every host worktree in the hub has
+a paired weft worktree (on a weft branch). A branch gets a weft branch **precisely when it
+has a host worktree** — so the prime (a worktree on `main`) has the weft prime, while
+branches with no worktree (`main`'s other siblings, `extract-*`, `mill-checkpoint-*`) get
+no weft. The weft side is created at worktree-creation time, three ways, all converging on
+the same adopt-or-create logic in `warp`:
 
-1. Create a host worktree with plain `git worktree` (outside lyx), then run `lyx init`
-   in it → init triggers warp's adopt-or-create: adopt the weft branch if it exists,
-   else create it.
-2. Ask lyx to create the worktree for an existing branch (`warp add <branch>`) → same
-   adopt-or-create, skips the manual `lyx init`.
-3. lyx creates a brand-new branch → fully automatic.
+1. The **prime** — cloned by `warp clone` (host prime + weft prime both cloned, on their
+   mains → in sync).
+2. **`warp add <branch>`** (paired spawn) — creates host-WT + weft-WT + weft branch +
+   junctions in one step.
+3. A host worktree created **outside lyx** (raw `git worktree`) → warp must then
+   adopt-or-create the weft side (who triggers this — `lyx init`, a `warp` command, or the
+   outer command — is open; see [activation](#junction-activation--an-open-decision)).
 
-`reconcile` therefore operates on the managed set, not the whole branch namespace.
+`reconcile` therefore walks **worktrees**, not the whole branch namespace: it ensures each
+host worktree has an in-sync weft worktree, and never adopts arbitrary branches.
+
+## Junction activation — an open decision
+
+Creating the weft worktree (the pairing) is distinct from **wiring the junctions** that
+route `<host>/_lyx` (and `_codeguide`) into the weft. Two questions warp must settle:
+
+1. **Keying: worktree-root vs cwd/subdir.** Today junctions are wired at the **worktree
+   root** (`<host-WT>/_lyx` → `<weft-WT>/_lyx`) by `lyx worktree add`
+   ([weft.go](../../internal/worktree/weft.go)), keyed to slug geometry. A
+   cwd-authoritative model ([principle 4](../overview.md#principles): cwd ≠ repo root) would
+   instead wire per **cwd subdir**, so a monorepo could activate `_lyx` in several
+   subdirectories. This is a real scope change, not current behavior — decide whether warp
+   keeps root-keying or moves to cwd-keying.
+2. **The prime-activation gap.** `warp clone` produces a *dormant* hub (no junctions). But
+   `lyx init` today only scaffolds `_lyx/config/` content — it does **not** wire junctions
+   (verified: no `fslink` in `internal/initcli`). So the prime-from-clone's junctions
+   currently have no activation owner. Decide who activates: `lyx init` calling warp's
+   junction primitive, a `warp` command, or the outer orchestration command. (`lyx init`'s
+   exact role is being reconsidered — left open here.)
+
+Whatever the keying, the **junction mechanism is warp's** (topology, `fslink`); the config
+layer (`init`) may *call* that primitive — never the reverse (`init → warp`, never
+`warp → init`).
 
 ## Coordinated operations are all-or-nothing
 
