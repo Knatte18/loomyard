@@ -178,14 +178,15 @@ Independent of the orchestration stack; interleave as needed.
 19. **Claude Code plugin packaging.** Ship `lyx` as an installable Claude Code plugin, exactly as
     mill/millpy were, once the binary and module architecture are proven.
 
-20. **`warp` — host↔weft-coordinated git topology.** 🚧 Design — not built. Consolidate the
-    host↔weft mirror invariant into one module: coordinated checkout (switch host+weft
-    together + re-point junctions — the correctness gap raw `git checkout` leaves today),
-    dual-worktree add/remove, clone, reconcile, and cleanup. **Replaces** `worktree`
-    (milestone 4), **folds in** `git-clone` (milestone 6), and **renames** `internal/git`
+20. **`warp` — host↔weft-coordinated git topology.** ✅ **Done.** Consolidated the
+    host↔weft mirror invariant into one module: coordinated checkout (switches host+weft
+    together + re-points junctions — the correctness gap raw `git checkout` left),
+    dual-worktree add/remove, clone, reconcile, and cleanup. **Replaced** `worktree`
+    (milestone 4), **folded in** `git-clone` (milestone 6), and **renamed** `internal/git`
     → `internal/gitexec` (the thin leaf both `weft` and `warp` sit on). The config module
-    `worktree` → `warp` (`_lyx/config/warp.yaml`). Sequenced **after** the
-    `config-test-cleanup` board task. See [modules/warp.md](modules/warp.md).
+    `worktree` → `warp` (`_lyx/config/warp.yaml`). The design doc was deleted on landing
+    per the documentation lifecycle; durable parts live in the `internal/warp` package
+    header and the [warp module entry](overview.md#modules) in overview.md.
 
 ## Explicitly out of scope
 
