@@ -28,7 +28,7 @@ batches:
     name: warp-worktree-absorb
     file: 03-warp-worktree-absorb.md
     depends-on: [2]
-    verify: go build ./... && go test ./internal/warp/ ./internal/configreg/ ./cmd/lyx/
+    verify: go build ./... && go test -tags integration ./internal/warp/ ./internal/configreg/ ./internal/configcli/ ./internal/initcli/ ./internal/lyxtest/ ./cmd/lyx/
   - number: 4
     name: topology-primitives-activation
     file: 04-topology-primitives-activation.md
@@ -116,12 +116,16 @@ batches:
 - `docs/shared-libs/paths.md`
 - `internal/board/git.go`
 - `internal/board/sync.go`
+- `internal/configcli/configcli_integration_test.go`
+- `internal/configcli/configcli_test.go`
 - `internal/configreg/configreg.go`
+- `internal/configreg/configreg_test.go`
 - `internal/gitclone/clone.go`
 - `internal/gitexec/gitexec.go`
 - `internal/gitexec/gitexec_test.go`
 - `internal/initcli/initcli.go`
 - `internal/initcli/initcli_test.go`
+- `internal/lyxtest/leaf_enforcement_test.go`
 - `internal/paths/paths.go`
 - `internal/paths/worktreelist.go`
 - `internal/update/update_test.go`
