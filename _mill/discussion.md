@@ -84,6 +84,11 @@ just initialized — so the Hub can be produced end-to-end today.
   deployed binary exercises the actual command surface, JSON output, and topology wiring.
 - Rejected: Importing `internal/warp` and calling `cloneHub` directly (would test the
   library, not the shipped binary, defeating the dogfood goal).
+- Error surface: the tool propagates `lyx warp clone`'s exit code and streams its
+  stdout/stderr verbatim — it does not swallow or reinterpret failures. So the two
+  by-design failure modes surface with a legible cause rather than a silent no-op:
+  `lyx` not on PATH → the exec fails with a clear "command not found"; host/weft/board
+  unreachable → `warp clone` tears down the partial Hub and reports git's stderr.
 
 ### real-github-repos
 
@@ -124,10 +129,12 @@ just initialized — so the Hub can be produced end-to-end today.
 - Rejected: Hardcoding `C:\Code` in the Go tool (machine path leaks into committed source).
   Building under `C:\Code\loomyard\` or a system temp dir (explicitly rejected — must be
   visibly outside loomyard, at `C:\Code\lyx-test-HUB`).
-- Open for the plan: the base against which a **relative** `--parent` resolves (process
-  cwd). Because `sandbox.cmd` `pushd`es to the repo root for `go run`, a relative value
-  resolves from the repo root. Recommend the launcher pass an **absolute** `C:\Code` to
-  avoid ambiguity, while the flag still *accepts* relative paths.
+- Relative-path semantics (decided, not re-opened): a **relative** `--parent` resolves
+  against the sandbox process's working directory (`os.Getwd` — `paths.Getwd()` is plain
+  `os.Getwd`). Because `sandbox.cmd` `pushd`es to the repo root for `go run`, a relative
+  value resolves from the repo root. The launcher therefore passes an **absolute** `C:\Code`
+  so the Hub location is unambiguous; the flag still *accepts* relative paths for ad-hoc
+  runs. The plan adopts this as-is.
 
 ### reset-semantics
 
@@ -206,9 +213,12 @@ depends on GitHub and is unsuitable for CI. Split testable pure logic from the n
   - The exists/reset decision: Hub absent → clone; Hub present + no `--reset` → no-op
     success (no clone invoked); Hub present + `--reset` → remove-then-clone.
 - **Command-dispatch seam:** factor the subprocess call behind an injectable runner
-  variable (mirror `tools/deploy`'s `var removeAll = os.RemoveAll` seam; add a runner seam).
-  A fake runner asserts the tool invokes `lyx warp clone <host> <weft>` (board arg omitted)
-  with `Dir == <parent>`, and that `--reset` triggers `RemoveAll(<hub>)` before the clone.
+  variable (the package-level-var testability seam pattern — e.g. `internal/warp/clone.go:30`'s
+  `var removeAll = os.RemoveAll`; add an analogous runner seam, plus a `removeAll` seam for the
+  `--reset` wipe). A fake runner asserts the tool invokes `lyx warp clone <host> <weft>`
+  (board arg omitted) with `Dir == <parent>`, and that `--reset` triggers `RemoveAll(<hub>)`
+  before the clone. (`tools/deploy` has no such seam — its testability seams are `-dest` and
+  `runtime.Caller`.)
 - **No live-network test in CI.** If a real end-to-end check is wanted, gate it behind a
   build tag / manual invocation; it is not part of `go test ./...`.
 - **Enforcement guard:** `go test ./internal/paths/...` (the source-tree scan) must stay
