@@ -17,42 +17,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/paths"
 )
 
-// TestPairInSync_InSync verifies that a paired host+weft worktree in sync reports ok=true.
-func TestPairInSync_InSync(t *testing.T) {
-	t.Parallel()
-
-	const slug = "pair-in-sync-test"
-
-	f := lyxtest.CopyPairedLocal(t)
-
-	// Create a paired worktree via Add.
-	w := New(Config{})
-	_, err := w.Add(f.Layout, slug, AddOptions{SkipPush: true})
-	if err != nil {
-		t.Fatalf("Add(%q): %v", slug, err)
-	}
-
-	// Wire junctions for the pair.
-	if err := WireJunctions(f.Layout, slug); err != nil {
-		t.Fatalf("WireJunctions(%q): %v", slug, err)
-	}
-
-	// Resolve layout for the paired host worktree and check pair sync.
-	hostWorktreePath := f.Layout.WorktreePath(slug)
-	hostLayout, err := paths.Resolve(hostWorktreePath)
-	if err != nil {
-		t.Fatalf("resolve layout for host: %v", err)
-	}
-
-	ok, reason, err := PairInSync(hostLayout)
-	if err != nil {
-		t.Fatalf("PairInSync: %v", err)
-	}
-	if !ok {
-		t.Errorf("PairInSync() = (false, %q); want (true, '', nil)", reason)
-	}
-}
-
 // TestPairInSync_BranchDivergence verifies that mismatched host and weft branches
 // are detected and reported as out-of-sync.
 func TestPairInSync_BranchDivergence(t *testing.T) {
@@ -117,27 +81,37 @@ func TestPairInSync_BrokenJunction(t *testing.T) {
 		t.Fatalf("WireJunctions(%q): %v", slug, err)
 	}
 
-	// Remove the host junction to simulate a broken pair.
+	// Resolve layout for the paired host worktree.
 	hostLayout, err := paths.Resolve(f.Layout.WorktreePath(slug))
 	if err != nil {
 		t.Fatalf("resolve layout: %v", err)
 	}
 
+	// Pre-check: verify the pair is in-sync immediately after wiring the junction.
+	ok, reason, err := PairInSync(hostLayout)
+	if err != nil {
+		t.Fatalf("PairInSync (pre-check): %v", err)
+	}
+	if !ok {
+		t.Errorf("PairInSync() (pre-check) = (false, %q); want (true, '', nil)", reason)
+	}
+
+	// Step 2: Test missing-junction case. Remove the host junction to simulate a broken pair.
 	hostLink := hostLayout.HostLyxLinkHere()
 	if err := fslink.Remove(hostLink); err != nil {
 		t.Fatalf("remove junction: %v", err)
 	}
 
 	// Check pair sync; should report missing junction.
-	ok, reason, err := PairInSync(hostLayout)
+	ok2, reason2, err := PairInSync(hostLayout)
 	if err != nil {
-		t.Fatalf("PairInSync: %v", err)
+		t.Fatalf("PairInSync (missing junction): %v", err)
 	}
-	if ok {
-		t.Errorf("PairInSync() = (true, '', nil); want out-of-sync due to missing junction")
+	if ok2 {
+		t.Errorf("PairInSync() (missing junction) = (true, '', nil); want out-of-sync due to missing junction")
 	}
-	if !strings.Contains(reason, "junction") {
-		t.Errorf("PairInSync reason = %q; want junction message", reason)
+	if !strings.Contains(reason2, "junction") {
+		t.Errorf("PairInSync reason (missing junction) = %q; want junction message", reason2)
 	}
 }
 
