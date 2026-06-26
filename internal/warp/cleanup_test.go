@@ -216,81 +216,60 @@ func TestCleanup_ApplyForceDeletesTaskBranch(t *testing.T) {
 	}
 }
 
-// TestCleanup_LiveBranchNeverDeleted asserts that a weft branch that has a corresponding
-// live host worktree is never reported or deleted by Cleanup.
+// TestCleanup_LiveBranchNeverDeleted asserts that weft branches with corresponding
+// live host worktrees are never reported or deleted by Cleanup. The test runs sequentially
+// on a shared fixture with both no-prefix and prefixed branch cases to preserve regression
+// coverage for the prefix-mismatch bug.
 func TestCleanup_LiveBranchNeverDeleted(t *testing.T) {
 	t.Parallel()
 
 	f := setupCleanupFixture(t)
 
-	// Add a real paired worktree — its weft branch is live and must never be touched.
-	const testSlug = "feature-cleanup-live"
-	w := New(Config{BranchPrefix: ""})
-	_, err := w.Add(f.Layout, testSlug, AddOptions{SkipGit: true})
+	// Add a live pair with no branch prefix.
+	const noPrefixSlug = "live-task"
+	wNoPrefix := New(Config{BranchPrefix: ""})
+	_, err := wNoPrefix.Add(f.Layout, noPrefixSlug, AddOptions{SkipGit: true})
 	if err != nil {
-		t.Fatalf("Add(%q): %v", testSlug, err)
+		t.Fatalf("Add(%q) with no prefix: %v", noPrefixSlug, err)
 	}
 
-	// Run Cleanup with apply=true force=true (the most aggressive mode).
-	r, err := w.Cleanup(f.Layout, true, true)
-	if err != nil {
-		t.Fatalf("Cleanup(apply=true, force=true) error = %v; want nil", err)
-	}
-
-	// The live pair's branch must not appear in Cleanup entries at all.
-	for _, entry := range r.Entries {
-		if entry.Branch == testSlug {
-			t.Errorf("Cleanup included live branch %q in entries; want not reported", testSlug)
-		}
-	}
-
-	// The weft branch must still exist.
-	if !weftBranchExists(f.Layout, testSlug) {
-		t.Errorf("live weft branch %q was deleted by Cleanup; want intact", testSlug)
-	}
-}
-
-// TestCleanup_LiveBranchNeverDeleted_NonEmptyBranchPrefix asserts that a weft branch
-// created with a non-empty BranchPrefix is never treated as an orphan by Cleanup.
-//
-// This is a regression test for the prefix-mismatch bug: when BranchPrefix is non-empty
-// the weft branch name is "prefix/slug", while hostSlugs contains only "slug". Without
-// stripping the prefix before the lookup, every live weft branch appears as an orphan
-// and would be deleted under --apply --force.
-func TestCleanup_LiveBranchNeverDeleted_NonEmptyBranchPrefix(t *testing.T) {
-	t.Parallel()
-
-	f := setupCleanupFixture(t)
-
-	// Use a non-empty BranchPrefix so the weft branch name differs from the slug.
-	// The weft branch will be named "hanf/feature-prefix-live"; the host slug is
-	// "feature-prefix-live". Cleanup must recognise them as a live pair.
+	// Add a live pair with a branch prefix. This is the regression test case:
+	// when BranchPrefix is non-empty, the weft branch name is "prefix/slug" while
+	// hostSlugs contains only "slug". Without stripping the prefix before the lookup,
+	// the live weft branch appears as an orphan and would be deleted under --apply --force.
 	const prefix = "hanf/"
-	const testSlug = "feature-prefix-live"
-	w := New(Config{BranchPrefix: prefix})
-	_, err := w.Add(f.Layout, testSlug, AddOptions{SkipGit: true})
+	const prefixedSlug = "feature-prefix-live"
+	wPrefixed := New(Config{BranchPrefix: prefix})
+	_, err = wPrefixed.Add(f.Layout, prefixedSlug, AddOptions{SkipGit: true})
 	if err != nil {
-		t.Fatalf("Add(%q) with prefix %q: %v", testSlug, prefix, err)
+		t.Fatalf("Add(%q) with prefix %q: %v", prefixedSlug, prefix, err)
 	}
 
-	weftBranch := prefix + testSlug
+	weftBranchPrefixed := prefix + prefixedSlug
 
-	// Run Cleanup in its most aggressive mode — any misidentified live branch would
-	// be deleted here.
-	r, err := w.Cleanup(f.Layout, true, true)
+	// Run Cleanup in its most aggressive mode with the prefixed config.
+	// The prefixed config is required so that the "hanf/"-prefixed branch
+	// is recognized as live (an empty-prefix config would report/delete it).
+	r, err := wPrefixed.Cleanup(f.Layout, true, true)
 	if err != nil {
 		t.Fatalf("Cleanup(apply=true, force=true) error = %v; want nil", err)
 	}
 
-	// The live pair's branch must not appear in Cleanup entries at all.
+	// Neither live branch must appear in Cleanup entries.
 	for _, entry := range r.Entries {
-		if entry.Branch == weftBranch {
-			t.Errorf("Cleanup included live branch %q (prefix %q) in entries; want not reported", weftBranch, prefix)
+		if entry.Branch == noPrefixSlug {
+			t.Errorf("Cleanup included live branch %q (no prefix) in entries; want not reported", noPrefixSlug)
+		}
+		if entry.Branch == weftBranchPrefixed {
+			t.Errorf("Cleanup included live branch %q (prefix %q) in entries; want not reported", weftBranchPrefixed, prefix)
 		}
 	}
 
-	// The weft branch must still exist after Cleanup ran.
-	if !weftBranchExists(f.Layout, weftBranch) {
-		t.Errorf("live weft branch %q was deleted by Cleanup despite having a live host worktree; want intact", weftBranch)
+	// Both weft branches must still exist after Cleanup.
+	if !weftBranchExists(f.Layout, noPrefixSlug) {
+		t.Errorf("live weft branch %q (no prefix) was deleted by Cleanup; want intact", noPrefixSlug)
+	}
+	if !weftBranchExists(f.Layout, weftBranchPrefixed) {
+		t.Errorf("live weft branch %q (prefix %q) was deleted by Cleanup; want intact", weftBranchPrefixed, prefix)
 	}
 }
