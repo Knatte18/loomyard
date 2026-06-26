@@ -40,17 +40,18 @@ func setupStatusFixture(t *testing.T) lyxtest.PairedFixture {
 	return f
 }
 
-// TestStatus_PairedViewFields asserts that Status populates the core pair fields:
-// host/weft worktree paths, host/weft branch names, and in-sync verdict for a healthy pair.
-func TestStatus_PairedViewFields(t *testing.T) {
+// TestStatus_InSyncVsDrifted asserts that InSync is true for a healthy pair and false
+// (with a non-empty DriftReason) when the weft worktree is on a different branch.
+func TestStatus_InSyncVsDrifted(t *testing.T) {
 	t.Parallel()
 
 	f := setupStatusFixture(t)
 	w := New(Config{})
 
+	// Pre-check: verify Status populates the core pair fields for a healthy pair.
 	result, err := w.Status(f.Layout)
 	if err != nil {
-		t.Fatalf("Status() error = %v; want nil", err)
+		t.Fatalf("Status() (pre-check) error = %v; want nil", err)
 	}
 
 	if len(result.Pairs) == 0 {
@@ -66,7 +67,7 @@ func TestStatus_PairedViewFields(t *testing.T) {
 		}
 	}
 	if pair == nil {
-		t.Fatalf("Status(): no pair found for hub worktree %s", f.Hub)
+		t.Fatalf("Status() (pre-check): no pair found for hub worktree %s", f.Hub)
 	}
 
 	// Host and weft paths must be populated.
@@ -87,45 +88,37 @@ func TestStatus_PairedViewFields(t *testing.T) {
 	if pair.HostBranch != pair.WeftBranch {
 		t.Errorf("HostBranch=%q, WeftBranch=%q; want equal for healthy pair", pair.HostBranch, pair.WeftBranch)
 	}
-}
-
-// TestStatus_InSyncVsDrifted asserts that InSync is true for a healthy pair and false
-// (with a non-empty DriftReason) when the weft worktree is on a different branch.
-func TestStatus_InSyncVsDrifted(t *testing.T) {
-	t.Parallel()
-
-	f := setupStatusFixture(t)
 
 	// Create a diverging branch on the weft only, then switch the weft to it.
 	// This simulates branch drift: host stays on main, weft moves to drifted.
 	lyxtest.MustRun(t, f.Layout.WeftWorktree(), "git", "checkout", "-b", "drifted")
 
-	w := New(Config{})
-	result, err := w.Status(f.Layout)
+	// Re-invoke Status() for the drifted state.
+	result2, err := w.Status(f.Layout)
 	if err != nil {
-		t.Fatalf("Status() error = %v; want nil", err)
+		t.Fatalf("Status() (drifted) error = %v; want nil", err)
 	}
 
-	var pair *PairStatus
-	for i := range result.Pairs {
-		if filepath.Clean(result.Pairs[i].HostWorktree) == filepath.Clean(f.Hub) {
-			pair = &result.Pairs[i]
+	var driftedPair *PairStatus
+	for i := range result2.Pairs {
+		if filepath.Clean(result2.Pairs[i].HostWorktree) == filepath.Clean(f.Hub) {
+			driftedPair = &result2.Pairs[i]
 			break
 		}
 	}
-	if pair == nil {
-		t.Fatalf("Status(): no pair found for hub worktree %s", f.Hub)
+	if driftedPair == nil {
+		t.Fatalf("Status() (drifted): no pair found for hub worktree %s", f.Hub)
 	}
 
 	// The pair must be reported as out of sync with a non-empty reason.
-	if pair.InSync {
+	if driftedPair.InSync {
 		t.Errorf("InSync = true for drifted pair; want false")
 	}
-	if pair.DriftReason == "" {
+	if driftedPair.DriftReason == "" {
 		t.Errorf("DriftReason is empty for drifted pair; want non-empty description")
 	}
-	if !strings.Contains(pair.DriftReason, "drifted") && !strings.Contains(pair.DriftReason, "main") {
-		t.Errorf("DriftReason = %q; want reference to branch names", pair.DriftReason)
+	if !strings.Contains(driftedPair.DriftReason, "drifted") && !strings.Contains(driftedPair.DriftReason, "main") {
+		t.Errorf("DriftReason = %q; want reference to branch names", driftedPair.DriftReason)
 	}
 }
 
