@@ -52,18 +52,22 @@ func createOrphanWeftBranch(t *testing.T, f lyxtest.PairedFixture, branchName st
 	return branchName
 }
 
-// TestCleanup_DryRunReportsOrphanBranch asserts that Cleanup with apply=false
-// reports an orphaned weft branch without deleting it.
-func TestCleanup_DryRunReportsOrphanBranch(t *testing.T) {
+// TestCleanup_ReportOnlyModes asserts that both report-only flag combinations
+// (apply=false force=false and apply=false force=true) report an orphaned weft branch
+// without deleting it. The test runs sequentially on a shared fixture to verify that
+// the branch survives multiple report-only operations.
+func TestCleanup_ReportOnlyModes(t *testing.T) {
 	t.Parallel()
 
 	f := setupCleanupFixture(t)
-	orphanBranch := createOrphanWeftBranch(t, f, "orphan-dry-run")
+	orphanBranch := createOrphanWeftBranch(t, f, "orphan-report-only")
 
 	w := New(Config{})
+
+	// Step 1: apply=false, force=false (default dry-run).
 	r, err := w.Cleanup(f.Layout, false, false)
 	if err != nil {
-		t.Fatalf("Cleanup(apply=false) error = %v; want nil", err)
+		t.Fatalf("Cleanup(apply=false, force=false) error = %v; want nil", err)
 	}
 
 	// The orphaned branch must appear in the report.
@@ -75,20 +79,49 @@ func TestCleanup_DryRunReportsOrphanBranch(t *testing.T) {
 		}
 	}
 	if found == nil {
-		t.Fatalf("Cleanup(apply=false): orphan branch %q not found in entries %+v", orphanBranch, r.Entries)
+		t.Fatalf("Cleanup(apply=false, force=false): orphan branch %q not found in entries %+v", orphanBranch, r.Entries)
 	}
 
 	// Dry-run: must not be marked deleted and must not be marked protected.
 	if found.Deleted {
-		t.Errorf("CleanupBranchEntry.Deleted = true on dry-run; want false")
+		t.Errorf("CleanupBranchEntry.Deleted = true on dry-run (apply=false force=false); want false")
 	}
 	if found.Error != "" {
 		t.Errorf("CleanupBranchEntry.Error = %q on dry-run; want empty", found.Error)
 	}
 
-	// Branch must still exist in the weft repo.
+	// Branch must still exist in the weft repo after dry-run.
 	if !weftBranchExists(f.Layout, orphanBranch) {
 		t.Errorf("orphan branch %q was deleted by dry-run Cleanup; want intact", orphanBranch)
+	}
+
+	// Step 2: apply=false, force=true (force without apply = report only).
+	// This verifies that force does not imply apply.
+	r, err = w.Cleanup(f.Layout, false, true)
+	if err != nil {
+		t.Fatalf("Cleanup(apply=false, force=true) error = %v; want nil", err)
+	}
+
+	// The orphaned branch should appear in the report (dry-run path).
+	found = nil
+	for i := range r.Entries {
+		if r.Entries[i].Branch == orphanBranch {
+			found = &r.Entries[i]
+			break
+		}
+	}
+	if found == nil {
+		t.Fatalf("Cleanup(apply=false, force=true): orphan branch %q not found in entries", orphanBranch)
+	}
+
+	// force alone (without apply) = report only; Deleted must be false.
+	if found.Deleted {
+		t.Errorf("CleanupBranchEntry.Deleted = true with force-alone; want false (report only)")
+	}
+
+	// Branch must still exist after force-alone Cleanup.
+	if !weftBranchExists(f.Layout, orphanBranch) {
+		t.Errorf("orphan branch %q was deleted by force-alone Cleanup; want intact", orphanBranch)
 	}
 }
 
@@ -180,43 +213,6 @@ func TestCleanup_ApplyForceDeletesTaskBranch(t *testing.T) {
 	// Branch must be gone from the weft repo.
 	if weftBranchExists(f.Layout, taskBranch) {
 		t.Errorf("task branch %q still exists after force Cleanup; want deleted", taskBranch)
-	}
-}
-
-// TestCleanup_ForceAloneReportsOnly asserts that --force without --apply produces
-// a report only (no deletions), because force does not imply apply.
-func TestCleanup_ForceAloneReportsOnly(t *testing.T) {
-	t.Parallel()
-
-	f := setupCleanupFixture(t)
-	orphanBranch := createOrphanWeftBranch(t, f, "orphan-force-alone")
-
-	w := New(Config{})
-	r, err := w.Cleanup(f.Layout, false, true)
-	if err != nil {
-		t.Fatalf("Cleanup(apply=false, force=true) error = %v; want nil", err)
-	}
-
-	// The orphaned branch should appear in the report (dry-run path).
-	var found *CleanupBranchEntry
-	for i := range r.Entries {
-		if r.Entries[i].Branch == orphanBranch {
-			found = &r.Entries[i]
-			break
-		}
-	}
-	if found == nil {
-		t.Fatalf("Cleanup(apply=false, force=true): orphan branch %q not found in entries", orphanBranch)
-	}
-
-	// force alone = report only; Deleted must be false.
-	if found.Deleted {
-		t.Errorf("CleanupBranchEntry.Deleted = true with force-alone; want false (report only)")
-	}
-
-	// Branch must still exist.
-	if !weftBranchExists(f.Layout, orphanBranch) {
-		t.Errorf("orphan branch %q was deleted by force-alone Cleanup; want intact", orphanBranch)
 	}
 }
 
