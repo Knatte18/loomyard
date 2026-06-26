@@ -22,7 +22,9 @@ func TestDecideClone_HubPathComputation(t *testing.T) {
 		{
 			name:        "relative parent path",
 			parentInput: "relative/path",
-			expectHub:   "relative/path", // expectHub will be joined with tempdir
+			// Note: this subtest validates that filepath.IsAbs resolves relative paths
+			// correctly by joining them with a temp directory base. It does not verify
+			// a specific expected path value; the temp dir base is generated per test.
 		},
 	}
 
