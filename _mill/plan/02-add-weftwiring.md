@@ -48,7 +48,10 @@ the latter gains the missing-parent scenario). Batch-local: introduces a per-cas
   contain `_lyx` (port the exact path-resolution + read logic from that test); (d) from
   `TestWeftSpawnPairedWorktrees` — the weft worktree dir
   `f.Layout.WeftWorktreePath(slug)` exists and `refs/heads/<branch>` resolves in the weft
-  repo (port its exact ref check). Then delete the standalone `TestAddDormant` from
+  repo (port its exact ref check); and (e) from `TestWeftForkPointMirrorsHost` (deleted in
+  card 6) — the new weft branch forks from the parent (weft `main`): `git merge-base
+  <weftBranch> main` run in the weft repo equals the weft `main` tip SHA. Then delete the
+  standalone `TestAddDormant` from
   `add_test.go` and `TestWeftSpawnCreatesWeftDirectory`, `TestWeftSpawnNoExcludeEntry`,
   `TestWeftSpawnPairedWorktrees` from `weftwiring_test.go`. Keep the `extraAssert` body
   inside the existing per-row loop so weft-spawn assertions run ONLY for the HappyPath row.
@@ -108,9 +111,11 @@ the latter gains the missing-parent scenario). Batch-local: introduces a per-cas
   - `internal/warp/weftwiring_test.go`
 - **Creates:** none
 - **Deletes:** none
-- **Requirements:** Delete `TestWeftForkPointMirrorsHost` — it is a genuine subset of
-  `TestWeftForkPointSubtaskIsolation`, which also asserts the fork point differs from the
-  main tip (kept). For `TestWeftMissingParentBranch`: it is the **only** test of Add's live
+- **Requirements:** Delete `TestWeftForkPointMirrorsHost` — its fork-from-parent mechanism
+  is exercised by `TestWeftForkPointSubtaskIsolation` (kept), and its unique positive
+  main-case assertion (merge-base == weft `main` tip) is folded into card 2's HappyPath
+  `extraAssert` (item e), so no coverage is lost by removing the standalone test. For
+  `TestWeftMissingParentBranch`: it is the **only** test of Add's live
   paired rollback triggered by a *missing parent weft branch* (distinct from
   `TestAddRollback`'s portal-clobber trigger and `TestWeftRollbackOnPostHostCreateFailure`'s
   white-box `rollbackAdd` call), so fold rather than delete. Port its missing-parent trigger

@@ -3,7 +3,7 @@
 ```yaml
 task: "Speed up internal/warp integration tests"
 slug: "warp-test-speedup"
-approved: false
+approved: true
 started: "20260626-065126"
 parent: "main"
 root: ""

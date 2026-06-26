@@ -31,9 +31,11 @@ the shared steps).
 - **Deletes:** none
 - **Requirements:** `TestPairInSync_InSync` only asserts a freshly set-up pair reports
   `ok=true`, `reason=""` — exactly the precondition `TestPairInSync_BrokenJunction` relies
-  on before it removes the junction. Port that in-sync assertion to the start of
-  `TestPairInSync_BrokenJunction` (immediately after setup + `Add`, before the
-  `fslink.Remove` of the junction). Then delete `TestPairInSync_InSync`. Keep
+  on before it removes the junction. Port that in-sync assertion into
+  `TestPairInSync_BrokenJunction` **after its `WireJunctions` call and `hostLayout`
+  resolution (drift_test.go:~116-124), before the `fslink.Remove` of the junction** — the
+  pair only becomes in-sync once the junction is wired, so placing it right after `Add`
+  would observe a missing junction and fail. Then delete `TestPairInSync_InSync`. Keep
   `TestPairInSync_BranchDivergence`.
 - **Commit:** `test(warp): fold PairInSync_InSync into BrokenJunction pre-check`
 
@@ -66,8 +68,10 @@ the shared steps).
 - **Requirements:** `TestStatus_PairedViewFields` is read-only — it asserts a healthy pair's
   field population (HostWorktree, WeftWorktree, HostBranch, WeftBranch populated; in-sync).
   `TestStatus_InSyncVsDrifted` starts from the same healthy state before it drifts the weft
-  branch. Port the field-population assertions into `TestStatus_InSyncVsDrifted` BEFORE its
-  `git checkout -b drifted` mutation. Then delete `TestStatus_PairedViewFields`.
+  branch. In `TestStatus_InSyncVsDrifted`, **call `Status()` BEFORE the `git checkout -b
+  drifted` mutation and run the ported field-population assertions on that healthy result;
+  then perform the drift and call `Status()` again for the existing drift assertions** (two
+  distinct `Status()` invocations). Then delete `TestStatus_PairedViewFields`.
 - **Commit:** `test(warp): fold Status_PairedViewFields into InSyncVsDrifted pre-check`
 
 ### Card 10: Fold Status_CodeguidePollutionReportOnly into LyxPollutionDetected
