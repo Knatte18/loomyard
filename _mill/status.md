@@ -58,5 +58,7 @@ batches:
     start_sha: 4a1dc01061178845da9840ca4bdf32ded8eff170
     commit_sha: 0d66609c2b2c8688f4a35cfd2175c70edbda0beb
   - name: remove-hook-misc
-    state: pending
+    state: running
+    implementer_session: 0a06746c-8908-4c87-ae2d-928cd1748485
+    start_sha: 42c57d66b29b233b668e3dd361a394f2260a74bb
 ```
