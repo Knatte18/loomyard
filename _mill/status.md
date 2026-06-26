@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-fix-r3
+phase: discussed
 slug: warp-test-speedup
 branch: warp-test-speedup
 plan: null
@@ -18,4 +18,5 @@ discussing  '2026-06-25T18:23:06Z'
 discussion-fix-r2  '2026-06-26T05:38:09Z'
 discussed  '2026-06-26T05:38:21Z'
 discussion-fix-r3  '2026-06-26T06:45:07Z'
+discussed  '2026-06-26T06:45:16Z'
 ```
