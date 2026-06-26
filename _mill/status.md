@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: lyx-sandbox
 branch: lyx-sandbox
-plan: null
+plan: _mill/plan
 parent: main
 task: Local lyx sandbox for manual experimentation
 task_description: |
@@ -17,4 +17,5 @@ task_description: |
 discussing  '2026-06-26T18:49:42Z'
 discussion-fix-r1  '2026-06-26T19:31:42Z'
 discussed  '2026-06-26T19:32:23Z'
+planning  '2026-06-26T19:38:22Z'
 ```
