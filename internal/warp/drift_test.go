@@ -113,59 +113,28 @@ func TestPairInSync_BrokenJunction(t *testing.T) {
 	if !strings.Contains(reason2, "junction") {
 		t.Errorf("PairInSync reason (missing junction) = %q; want junction message", reason2)
 	}
-}
 
-// TestPairInSync_JunctionPointsElsewhere verifies that a junction pointing to
-// the wrong target is detected and reported as out-of-sync.
-func TestPairInSync_JunctionPointsElsewhere(t *testing.T) {
-	t.Parallel()
-
-	const slug = "wrong-target-test"
-
-	f := lyxtest.CopyPairedLocal(t)
-
-	// Create a paired worktree via Add.
-	w := New(Config{})
-	_, err := w.Add(f.Layout, slug, AddOptions{SkipPush: true})
-	if err != nil {
-		t.Fatalf("Add(%q): %v", slug, err)
-	}
-
-	// Wire junctions.
-	if err := WireJunctions(f.Layout, slug); err != nil {
-		t.Fatalf("WireJunctions(%q): %v", slug, err)
-	}
-
-	// Resolve layout and create a fake weft target directory.
-	hostLayout, err := paths.Resolve(f.Layout.WorktreePath(slug))
-	if err != nil {
-		t.Fatalf("resolve layout: %v", err)
-	}
-
-	// Create a decoy directory.
+	// Step 3: Test wrong-target junction case. Create a decoy directory and repoint
+	// the junction to it, then verify PairInSync detects the wrong target.
 	decoyTarget := filepath.Join(f.Layout.Hub, "decoy-weft-lyx")
 	if err := os.MkdirAll(decoyTarget, 0755); err != nil {
 		t.Fatalf("mkdir decoy: %v", err)
 	}
 
-	// Remove the junction and re-create it pointing to the decoy.
-	hostLink := hostLayout.HostLyxLinkHere()
-	if err := fslink.Remove(hostLink); err != nil {
-		t.Fatalf("remove junction: %v", err)
-	}
+	// Recreate the junction pointing to the decoy.
 	if err := fslink.CreateDirLink(hostLink, decoyTarget); err != nil {
-		t.Fatalf("create wrong junction: %v", err)
+		t.Fatalf("create wrong-target junction: %v", err)
 	}
 
 	// Check pair sync; should report junction pointing elsewhere.
-	ok, reason, err := PairInSync(hostLayout)
+	ok3, reason3, err := PairInSync(hostLayout)
 	if err != nil {
-		t.Fatalf("PairInSync: %v", err)
+		t.Fatalf("PairInSync (wrong target): %v", err)
 	}
-	if ok {
-		t.Errorf("PairInSync() = (true, '', nil); want out-of-sync due to wrong junction target")
+	if ok3 {
+		t.Errorf("PairInSync() (wrong target) = (true, '', nil); want out-of-sync due to wrong junction target")
 	}
-	if !strings.Contains(reason, "junction") && !strings.Contains(reason, "elsewhere") {
-		t.Errorf("PairInSync reason = %q; want junction target message", reason)
+	if !strings.Contains(reason3, "junction") && !strings.Contains(reason3, "elsewhere") {
+		t.Errorf("PairInSync reason (wrong target) = %q; want junction/elsewhere message", reason3)
 	}
 }
