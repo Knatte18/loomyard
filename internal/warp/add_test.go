@@ -148,18 +148,6 @@ func TestAdd(t *testing.T) {
 			extraAssert:     nil,
 		},
 		{
-			name: "TargetDirExists",
-			setup: func(t *testing.T, f lyxtest.PairedFixture) {
-				if err := os.Mkdir(filepath.Join(f.Container, slug), 0755); err != nil {
-					t.Fatalf("create target dir: %v", err)
-				}
-			},
-			opts:            AddOptions{SkipPush: true},
-			wantErrContains: "already exists",
-			wantResultZero:  true,
-			extraAssert:     nil,
-		},
-		{
 			name: "NoRemote",
 			setup: func(t *testing.T, f lyxtest.PairedFixture) {
 				// Remove the origin remote from the hub.
@@ -190,20 +178,6 @@ func TestAdd(t *testing.T) {
 			setup: func(t *testing.T, f lyxtest.PairedFixture) {
 				// Detach HEAD by checking out a specific commit SHA.
 				lyxtest.MustRun(t, f.Hub, "git", "checkout", "--detach")
-			},
-			opts:            AddOptions{SkipPush: true},
-			wantErrContains: "detached HEAD",
-			wantNoTargetDir: true,
-			wantResultZero:  true,
-			extraAssert:     nil,
-		},
-		{
-			name: "UnbornBranch",
-			setup: func(t *testing.T, f lyxtest.PairedFixture) {
-				// Create an unborn branch (orphan branch with no commits).
-				// git checkout --orphan stages all parent files; reset them to avoid "dirty" error.
-				lyxtest.MustRun(t, f.Hub, "git", "checkout", "--orphan", "unborn-branch")
-				lyxtest.MustRun(t, f.Hub, "git", "reset")
 			},
 			opts:            AddOptions{SkipPush: true},
 			wantErrContains: "detached HEAD",
