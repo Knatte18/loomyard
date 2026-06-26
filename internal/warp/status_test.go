@@ -253,15 +253,8 @@ func TestStatus_LyxPollutionDetected(t *testing.T) {
 	if !found {
 		t.Errorf("no pollution entry with _lyx prefix found; Pollution = %+v", pair.Pollution)
 	}
-}
 
-// TestStatus_CodeguidePollutionReportOnly asserts that a force-added _codeguide path is
-// flagged as report-only (no junction to restore in this release).
-func TestStatus_CodeguidePollutionReportOnly(t *testing.T) {
-	t.Parallel()
-
-	f := setupStatusFixture(t)
-
+	// Phase 2: Test _codeguide pollution (report-only, no remedy in this release).
 	// Create and force-add a file under _codeguide in the host worktree.
 	codeguideDir := filepath.Join(f.Hub, "_codeguide")
 	if err := os.MkdirAll(codeguideDir, 0o755); err != nil {
@@ -278,31 +271,31 @@ func TestStatus_CodeguidePollutionReportOnly(t *testing.T) {
 	// Commit so git ls-files picks it up as tracked (ls-files shows staged and committed files).
 	lyxtest.MustRun(t, f.Hub, "git", "commit", "-m", "test: force-add codeguide pollution")
 
-	w := New(Config{})
-	result, err := w.Status(f.Layout)
+	// Re-invoke Status() for the _codeguide pollution check.
+	result2, err := w.Status(f.Layout)
 	if err != nil {
-		t.Fatalf("Status() error = %v; want nil", err)
+		t.Fatalf("Status() (codeguide phase) error = %v; want nil", err)
 	}
 
-	var pair *PairStatus
-	for i := range result.Pairs {
-		if filepath.Clean(result.Pairs[i].HostWorktree) == filepath.Clean(f.Hub) {
-			pair = &result.Pairs[i]
+	var pair2 *PairStatus
+	for i := range result2.Pairs {
+		if filepath.Clean(result2.Pairs[i].HostWorktree) == filepath.Clean(f.Hub) {
+			pair2 = &result2.Pairs[i]
 			break
 		}
 	}
-	if pair == nil {
-		t.Fatalf("Status(): no pair found for hub worktree %s", f.Hub)
+	if pair2 == nil {
+		t.Fatalf("Status() (codeguide phase): no pair found for hub worktree %s", f.Hub)
 	}
 
-	if len(pair.Pollution) == 0 {
+	if len(pair2.Pollution) == 0 {
 		t.Fatalf("Pollution is empty after force-add of _codeguide file; want at least one entry")
 	}
 
-	found := false
-	for _, pe := range pair.Pollution {
+	found2 := false
+	for _, pe := range pair2.Pollution {
 		if strings.HasPrefix(pe.Path, "_codeguide") {
-			found = true
+			found2 = true
 			if !pe.ReportOnly {
 				t.Errorf("Pollution entry for %q has ReportOnly=false; want true (_codeguide is report-only)", pe.Path)
 			}
@@ -312,8 +305,8 @@ func TestStatus_CodeguidePollutionReportOnly(t *testing.T) {
 			break
 		}
 	}
-	if !found {
-		t.Errorf("no pollution entry with _codeguide prefix found; Pollution = %+v", pair.Pollution)
+	if !found2 {
+		t.Errorf("no pollution entry with _codeguide prefix found; Pollution = %+v", pair2.Pollution)
 	}
 }
 
