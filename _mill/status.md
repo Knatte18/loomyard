@@ -46,7 +46,9 @@ batches:
     start_sha: 813b33eeda01ff808ed73362138f4fcc3a0a5be5
     commit_sha: a572e1639e1fde68fad540a342c1f4de2ebf4c94
   - name: drift-status
-    state: pending
+    state: running
+    implementer_session: 8ca05ef7-e989-4a34-be41-af68b550c89f
+    start_sha: 0b714115a3979d84df89b3f66a62925c26021fb0
   - name: prune-cleanup
     state: pending
   - name: remove-hook-misc
