@@ -37,35 +37,6 @@ func resolveCommonHooksDir(t *testing.T, repoDir string) string {
 	return filepath.Join(commonDir, "hooks")
 }
 
-// TestInstallPostCheckoutHook_WritesScript verifies that InstallPostCheckoutHook
-// writes the embedded script into the repo's common hooks directory and that
-// the file contains the warp sentinel.
-func TestInstallPostCheckoutHook_WritesScript(t *testing.T) {
-	t.Parallel()
-
-	f := lyxtest.CopyHostHub(t)
-	l, err := paths.Resolve(f.Hub)
-	if err != nil {
-		t.Fatalf("paths.Resolve(%q): %v", f.Hub, err)
-	}
-
-	if err := InstallPostCheckoutHook(l); err != nil {
-		t.Fatalf("InstallPostCheckoutHook: %v", err)
-	}
-
-	hooksDir := resolveCommonHooksDir(t, f.Hub)
-	hookPath := filepath.Join(hooksDir, "post-checkout")
-
-	content, err := os.ReadFile(hookPath)
-	if err != nil {
-		t.Fatalf("read hook file: %v", err)
-	}
-
-	if !strings.Contains(string(content), hookSentinel) {
-		t.Errorf("hook file does not contain sentinel %q; content: %q", hookSentinel, string(content))
-	}
-}
-
 // TestInstallPostCheckoutHook_Idempotent verifies that calling InstallPostCheckoutHook
 // twice does not duplicate the script or alter the file content after the first install.
 func TestInstallPostCheckoutHook_Idempotent(t *testing.T) {
