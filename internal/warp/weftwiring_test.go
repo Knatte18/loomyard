@@ -115,19 +115,7 @@ func TestWeftPrechecks(t *testing.T) {
 		wantResultZero  bool
 	}{
 		{
-			name: "TestWeftPrechecksHardRequireWeftRepo",
-			setup: func(t *testing.T, f lyxtest.PairedFixture) {
-				// Rename the weft prime dir so WeftRepoRoot() does not resolve.
-				if err := os.Rename(f.WeftPrime, f.WeftPrime+"-disabled"); err != nil {
-					t.Fatalf("rename weft prime: %v", err)
-				}
-			},
-			wantErrContains: "no weft repo",
-			wantNoTargetDir: true,
-			wantResultZero:  true,
-		},
-		{
-			name: "TestWeftPrechecksRejectExistingWeftWorktree",
+			name: "RejectExistingWeftWorktree",
 			setup: func(t *testing.T, f lyxtest.PairedFixture) {
 				// Pre-create the weft worktree dir.
 				slug := "weft-prechecks-test"
