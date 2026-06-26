@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: warp-test-speedup
 branch: warp-test-speedup
 plan: _mill/plan
@@ -36,6 +36,7 @@ holistic-reviewing  '2026-06-26T08:05:29Z'
 holistic-fixing  '2026-06-26T08:13:55Z'
 holistic-approved  '2026-06-26T08:18:45Z'
 done  '2026-06-26T08:19:36Z'
+pr-pending  '2026-06-26T08:22:59Z'
 ```
 
 ## Batches
