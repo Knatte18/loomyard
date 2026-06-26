@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-remove-hook-misc
+phase: holistic-reviewing
 slug: warp-test-speedup
 branch: warp-test-speedup
 plan: _mill/plan
@@ -32,6 +32,7 @@ approved-add-weftwiring  '2026-06-26T07:32:16Z'
 approved-drift-status  '2026-06-26T07:38:22Z'
 approved-prune-cleanup  '2026-06-26T07:44:45Z'
 approved-remove-hook-misc  '2026-06-26T08:04:57Z'
+holistic-reviewing  '2026-06-26T08:05:29Z'
 ```
 
 ## Batches
