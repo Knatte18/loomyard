@@ -65,10 +65,14 @@ between the steps), each asserting the intermediate state.
 - **Requirements:** `TestCleanup_LiveBranchNeverDeleted` and
   `TestCleanup_LiveBranchNeverDeleted_NonEmptyBranchPrefix` both assert a live pair is never
   touched by `Cleanup`, differing only in branch prefix (none vs `"hanf/"`). Combine into one
-  `TestCleanup_LiveBranchNeverDeleted` that, on one fixture: (1) `Add`s a live pair with no
-  prefix; (2) `Add`s a live pair with the `"hanf/"` prefix; (3) runs `Cleanup(true, true)`
-  once; (4) asserts neither live branch was reported or deleted. This preserves the cited
-  prefix-mismatch regression coverage — do not drop the prefixed case.
+  `TestCleanup_LiveBranchNeverDeleted` that, on one fixture: (1) `Add`s a live pair under a
+  no-prefix slug (e.g. `live-task`); (2) `Add`s a live pair under a prefixed slug (e.g.
+  `feature-prefix-live`, branch `hanf/feature-prefix-live`); (3) runs `Cleanup(true, true)`
+  **once on `New(Config{BranchPrefix: "hanf/"})`** — the prefixed config is required so the
+  `hanf/`-prefixed branch is recognized as live (an empty-prefix config would report/delete
+  it and defeat the regression); (4) asserts neither live branch was reported or deleted.
+  This preserves the cited prefix-mismatch regression coverage — do not drop the prefixed
+  case.
 - **Commit:** `test(warp): combine Cleanup live-branch never-deleted prefix cases`
 
 ## Batch Tests

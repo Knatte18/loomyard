@@ -84,8 +84,10 @@ the shared steps).
   the `_codeguide` report-only assertions as a second sequential phase of
   `TestStatus_LyxPollutionDetected` on the same `setupStatusFixture`: after the `_lyx`
   pollution assertions, create the `_codeguide` pollution (port the `os.MkdirAll` +
-  `os.WriteFile` + `git add -f` + commit logic) and assert the `_codeguide` pollution entry
-  has `ReportOnly=true` and empty `Remedy`. Then delete the standalone
+  `os.WriteFile` + `git add -f` + commit logic), **re-invoke `Status()`** (the first
+  `Status()` for `_lyx` cannot observe a pollution created afterward), and assert the
+  `_codeguide` pollution entry in the fresh result has `ReportOnly=true` and empty `Remedy`.
+  Then delete the standalone
   `TestStatus_CodeguidePollutionReportOnly`. The two pollution checks run sequentially on
   one fixture (no `t.Parallel` between them). Keep `TestStatus_JunctionHealth` and
   `TestStatus_InSyncVsDrifted`.

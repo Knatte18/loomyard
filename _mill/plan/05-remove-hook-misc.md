@@ -71,11 +71,14 @@ fewer fixture builds, no coverage lost. Batch-local: sequential dirty-then-force
   - `internal/warp/hook_test.go`
 - **Creates:** none
 - **Deletes:** none
-- **Requirements:** The first-install phase of `TestInstallPostCheckoutHook_ChainIdempotent`
-  already establishes and validates the chain (user hook backed up, chained wrapper has the
-  sentinel). Port the one assertion unique to `TestInstallPostCheckoutHook_ChainsExistingHook`
-  — that the chained wrapper references `post-checkout.user` — into `_ChainIdempotent` after
-  its first install, then delete `TestInstallPostCheckoutHook_ChainsExistingHook`.
+- **Requirements:** `TestInstallPostCheckoutHook_ChainIdempotent` (hook_test.go) currently
+  asserts only first-install == second-install content; it does NOT read `post-checkout.user`.
+  So port **both** unique assertions of `TestInstallPostCheckoutHook_ChainsExistingHook` into
+  `_ChainIdempotent` after its first install, then delete `ChainsExistingHook`: (1) the
+  **backup-preservation** check — read the backup file `hookPath + ".user"` and assert its
+  content equals the planted user hook (`"#!/bin/sh\necho user\n"`); (2) the chained wrapper
+  **references** `post-checkout.user`. Dropping either would violate the preserve-coverage
+  decision.
 - **Commit:** `test(warp): merge hook ChainsExistingHook assertion into ChainIdempotent`
 
 ### Card 18: Group L — fold List SingleWorktree into TwoWorktrees pre-add check

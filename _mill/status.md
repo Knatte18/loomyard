@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r1
+phase: plan-fix-r2
 slug: warp-test-speedup
 branch: warp-test-speedup
 plan: _mill/plan
@@ -22,4 +22,6 @@ discussed  '2026-06-26T06:45:16Z'
 planning  '2026-06-26T06:54:57Z'
 plan-review-r1  '2026-06-26T07:03:59Z'
 plan-fix-r1  '2026-06-26T07:03:59Z'
+plan-review-r2  '2026-06-26T07:10:42Z'
+plan-fix-r2  '2026-06-26T07:10:42Z'
 ```
