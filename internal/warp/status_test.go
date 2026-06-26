@@ -13,7 +13,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fslink"
-	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 	"github.com/Knatte18/loomyard/internal/paths"
 )
@@ -40,17 +39,18 @@ func setupStatusFixture(t *testing.T) lyxtest.PairedFixture {
 	return f
 }
 
-// TestStatus_PairedViewFields asserts that Status populates the core pair fields:
-// host/weft worktree paths, host/weft branch names, and in-sync verdict for a healthy pair.
-func TestStatus_PairedViewFields(t *testing.T) {
+// TestStatus_InSyncVsDrifted asserts that InSync is true for a healthy pair and false
+// (with a non-empty DriftReason) when the weft worktree is on a different branch.
+func TestStatus_InSyncVsDrifted(t *testing.T) {
 	t.Parallel()
 
 	f := setupStatusFixture(t)
 	w := New(Config{})
 
+	// Pre-check: verify Status populates the core pair fields for a healthy pair.
 	result, err := w.Status(f.Layout)
 	if err != nil {
-		t.Fatalf("Status() error = %v; want nil", err)
+		t.Fatalf("Status() (pre-check) error = %v; want nil", err)
 	}
 
 	if len(result.Pairs) == 0 {
@@ -66,7 +66,7 @@ func TestStatus_PairedViewFields(t *testing.T) {
 		}
 	}
 	if pair == nil {
-		t.Fatalf("Status(): no pair found for hub worktree %s", f.Hub)
+		t.Fatalf("Status() (pre-check): no pair found for hub worktree %s", f.Hub)
 	}
 
 	// Host and weft paths must be populated.
@@ -87,45 +87,37 @@ func TestStatus_PairedViewFields(t *testing.T) {
 	if pair.HostBranch != pair.WeftBranch {
 		t.Errorf("HostBranch=%q, WeftBranch=%q; want equal for healthy pair", pair.HostBranch, pair.WeftBranch)
 	}
-}
-
-// TestStatus_InSyncVsDrifted asserts that InSync is true for a healthy pair and false
-// (with a non-empty DriftReason) when the weft worktree is on a different branch.
-func TestStatus_InSyncVsDrifted(t *testing.T) {
-	t.Parallel()
-
-	f := setupStatusFixture(t)
 
 	// Create a diverging branch on the weft only, then switch the weft to it.
 	// This simulates branch drift: host stays on main, weft moves to drifted.
 	lyxtest.MustRun(t, f.Layout.WeftWorktree(), "git", "checkout", "-b", "drifted")
 
-	w := New(Config{})
-	result, err := w.Status(f.Layout)
+	// Re-invoke Status() for the drifted state.
+	result2, err := w.Status(f.Layout)
 	if err != nil {
-		t.Fatalf("Status() error = %v; want nil", err)
+		t.Fatalf("Status() (drifted) error = %v; want nil", err)
 	}
 
-	var pair *PairStatus
-	for i := range result.Pairs {
-		if filepath.Clean(result.Pairs[i].HostWorktree) == filepath.Clean(f.Hub) {
-			pair = &result.Pairs[i]
+	var driftedPair *PairStatus
+	for i := range result2.Pairs {
+		if filepath.Clean(result2.Pairs[i].HostWorktree) == filepath.Clean(f.Hub) {
+			driftedPair = &result2.Pairs[i]
 			break
 		}
 	}
-	if pair == nil {
-		t.Fatalf("Status(): no pair found for hub worktree %s", f.Hub)
+	if driftedPair == nil {
+		t.Fatalf("Status() (drifted): no pair found for hub worktree %s", f.Hub)
 	}
 
 	// The pair must be reported as out of sync with a non-empty reason.
-	if pair.InSync {
+	if driftedPair.InSync {
 		t.Errorf("InSync = true for drifted pair; want false")
 	}
-	if pair.DriftReason == "" {
+	if driftedPair.DriftReason == "" {
 		t.Errorf("DriftReason is empty for drifted pair; want non-empty description")
 	}
-	if !strings.Contains(pair.DriftReason, "drifted") && !strings.Contains(pair.DriftReason, "main") {
-		t.Errorf("DriftReason = %q; want reference to branch names", pair.DriftReason)
+	if !strings.Contains(driftedPair.DriftReason, "drifted") && !strings.Contains(driftedPair.DriftReason, "main") {
+		t.Errorf("DriftReason = %q; want reference to branch names", driftedPair.DriftReason)
 	}
 }
 
@@ -260,15 +252,8 @@ func TestStatus_LyxPollutionDetected(t *testing.T) {
 	if !found {
 		t.Errorf("no pollution entry with _lyx prefix found; Pollution = %+v", pair.Pollution)
 	}
-}
 
-// TestStatus_CodeguidePollutionReportOnly asserts that a force-added _codeguide path is
-// flagged as report-only (no junction to restore in this release).
-func TestStatus_CodeguidePollutionReportOnly(t *testing.T) {
-	t.Parallel()
-
-	f := setupStatusFixture(t)
-
+	// Phase 2: Test _codeguide pollution (report-only, no remedy in this release).
 	// Create and force-add a file under _codeguide in the host worktree.
 	codeguideDir := filepath.Join(f.Hub, "_codeguide")
 	if err := os.MkdirAll(codeguideDir, 0o755); err != nil {
@@ -285,31 +270,31 @@ func TestStatus_CodeguidePollutionReportOnly(t *testing.T) {
 	// Commit so git ls-files picks it up as tracked (ls-files shows staged and committed files).
 	lyxtest.MustRun(t, f.Hub, "git", "commit", "-m", "test: force-add codeguide pollution")
 
-	w := New(Config{})
-	result, err := w.Status(f.Layout)
+	// Re-invoke Status() for the _codeguide pollution check.
+	result2, err := w.Status(f.Layout)
 	if err != nil {
-		t.Fatalf("Status() error = %v; want nil", err)
+		t.Fatalf("Status() (codeguide phase) error = %v; want nil", err)
 	}
 
-	var pair *PairStatus
-	for i := range result.Pairs {
-		if filepath.Clean(result.Pairs[i].HostWorktree) == filepath.Clean(f.Hub) {
-			pair = &result.Pairs[i]
+	var pair2 *PairStatus
+	for i := range result2.Pairs {
+		if filepath.Clean(result2.Pairs[i].HostWorktree) == filepath.Clean(f.Hub) {
+			pair2 = &result2.Pairs[i]
 			break
 		}
 	}
-	if pair == nil {
-		t.Fatalf("Status(): no pair found for hub worktree %s", f.Hub)
+	if pair2 == nil {
+		t.Fatalf("Status() (codeguide phase): no pair found for hub worktree %s", f.Hub)
 	}
 
-	if len(pair.Pollution) == 0 {
+	if len(pair2.Pollution) == 0 {
 		t.Fatalf("Pollution is empty after force-add of _codeguide file; want at least one entry")
 	}
 
-	found := false
-	for _, pe := range pair.Pollution {
+	found2 := false
+	for _, pe := range pair2.Pollution {
 		if strings.HasPrefix(pe.Path, "_codeguide") {
-			found = true
+			found2 = true
 			if !pe.ReportOnly {
 				t.Errorf("Pollution entry for %q has ReportOnly=false; want true (_codeguide is report-only)", pe.Path)
 			}
@@ -319,18 +304,7 @@ func TestStatus_CodeguidePollutionReportOnly(t *testing.T) {
 			break
 		}
 	}
-	if !found {
-		t.Errorf("no pollution entry with _codeguide prefix found; Pollution = %+v", pair.Pollution)
+	if !found2 {
+		t.Errorf("no pollution entry with _codeguide prefix found; Pollution = %+v", pair2.Pollution)
 	}
-}
-
-// assertBranch is a test helper that reads the current branch of a git worktree at dir
-// and fails the test if it cannot be determined.
-func assertBranch(t *testing.T, dir string) string {
-	t.Helper()
-	out, _, exitCode, err := gitexec.RunGit([]string{"rev-parse", "--abbrev-ref", "HEAD"}, dir)
-	if err != nil || exitCode != 0 {
-		t.Fatalf("readBranch(%s): err=%v exit=%d", dir, err, exitCode)
-	}
-	return strings.TrimSpace(out)
 }

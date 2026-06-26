@@ -49,9 +49,11 @@ func decodeResult(t *testing.T, buf *bytes.Buffer) map[string]any {
 // TestRunDispatchesToWarp covers the subcommand router: a successful list, the unknown-
 // subcommand error envelope, and remove with --force flag parsing.
 func TestRunDispatchesToWarp(t *testing.T) {
-	t.Run("List", func(t *testing.T) {
-		setupCLIRepo(t)
+	// One shared hub for the two read-only subtests; RunCLI reads os.Getwd() so
+	// t.Chdir is set once in the parent and inherited by both sequential subtests.
+	setupCLIRepo(t)
 
+	t.Run("List", func(t *testing.T) {
 		var buf bytes.Buffer
 		if got := warp.RunCLI(&buf, []string{"list"}); got != 0 {
 			t.Errorf("RunCLI(list) = %d; want 0", got)
@@ -71,8 +73,6 @@ func TestRunDispatchesToWarp(t *testing.T) {
 	})
 
 	t.Run("UnknownSubcommand", func(t *testing.T) {
-		setupCLIRepo(t)
-
 		var buf bytes.Buffer
 		if got := warp.RunCLI(&buf, []string{"bogus"}); got != 1 {
 			t.Errorf("RunCLI(bogus) = %d; want 1", got)

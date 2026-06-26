@@ -33,15 +33,17 @@ func setupPruneFixture(t *testing.T) lyxtest.PairedFixture {
 	return f
 }
 
-// TestPrune_DryRunReportsStaleWeft asserts that Prune with apply=false reports an
-// orphaned weft worktree (one whose host sibling has been removed) without deleting it.
-func TestPrune_DryRunReportsStaleWeft(t *testing.T) {
+// TestPrune_StaleWeft asserts that Prune correctly handles stale weft worktrees
+// (orphaned ones whose host siblings have been removed from git).
+// The test runs sequentially on a shared fixture: first in dry-run mode to verify
+// reporting without deletion, then in apply mode to verify actual removal.
+func TestPrune_StaleWeft(t *testing.T) {
 	t.Parallel()
 
 	f := setupPruneFixture(t)
 
 	// Add a real paired worktree so we have a weft directory to make stale.
-	const testSlug = "feature-prune-dry"
+	const testSlug = "feature-prune-stale"
 	w := New(Config{BranchPrefix: ""})
 	_, err := w.Add(f.Layout, testSlug, AddOptions{SkipGit: true})
 	if err != nil {
@@ -51,7 +53,7 @@ func TestPrune_DryRunReportsStaleWeft(t *testing.T) {
 	weftPath := f.Layout.WeftWorktreePath(testSlug)
 	hostPath := f.Layout.WorktreePath(testSlug)
 
-	// Confirm both sides exist.
+	// Confirm both sides exist before removing the host.
 	if _, statErr := os.Stat(hostPath); statErr != nil {
 		t.Fatalf("pre-condition: host worktree %s must exist after Add", hostPath)
 	}
@@ -69,7 +71,7 @@ func TestPrune_DryRunReportsStaleWeft(t *testing.T) {
 		t.Fatalf("pre-condition: weft worktree %s must still exist after host removal", weftPath)
 	}
 
-	// Dry-run: Prune with apply=false.
+	// Step 1: dry-run (apply=false). Prune must report but not remove the stale weft.
 	r, err := w.Prune(f.Layout, false)
 	if err != nil {
 		t.Fatalf("Prune(apply=false) error = %v; want nil", err)
@@ -104,43 +106,15 @@ func TestPrune_DryRunReportsStaleWeft(t *testing.T) {
 	if _, statErr := os.Stat(weftPath); statErr != nil {
 		t.Errorf("weft worktree %s was deleted by dry-run Prune; want intact", weftPath)
 	}
-}
 
-// TestPrune_ApplyRemovesStaleWeft asserts that Prune with apply=true removes a stale
-// weft worktree (one whose host sibling has been deleted from git).
-func TestPrune_ApplyRemovesStaleWeft(t *testing.T) {
-	t.Parallel()
-
-	f := setupPruneFixture(t)
-
-	// Add a real paired worktree.
-	const testSlug = "feature-prune-apply"
-	w := New(Config{BranchPrefix: ""})
-	_, err := w.Add(f.Layout, testSlug, AddOptions{SkipGit: true})
-	if err != nil {
-		t.Fatalf("Add(%q): %v", testSlug, err)
-	}
-
-	weftPath := f.Layout.WeftWorktreePath(testSlug)
-	hostPath := f.Layout.WorktreePath(testSlug)
-
-	// Remove the host worktree registration (and branch) to create a stale weft.
-	lyxtest.MustRun(t, f.Hub, "git", "worktree", "remove", "--force", hostPath)
-	lyxtest.MustRun(t, f.Hub, "git", "branch", "-D", testSlug)
-
-	// Confirm weft is still present before Prune.
-	if _, statErr := os.Stat(weftPath); statErr != nil {
-		t.Fatalf("pre-condition: weft worktree %s must exist before apply Prune", weftPath)
-	}
-
-	// Apply: Prune with apply=true.
-	r, err := w.Prune(f.Layout, true)
+	// Step 2: apply (apply=true). Prune must remove the stale weft on the same fixture.
+	r, err = w.Prune(f.Layout, true)
 	if err != nil {
 		t.Fatalf("Prune(apply=true) error = %v; want nil", err)
 	}
 
-	// Find the entry for the stale weft.
-	var found *PruneEntry
+	// Find the entry for the stale weft again after apply.
+	found = nil
 	for i := range r.Entries {
 		if filepath.Clean(r.Entries[i].WeftWorktree) == filepath.Clean(weftPath) {
 			found = &r.Entries[i]
@@ -148,7 +122,7 @@ func TestPrune_ApplyRemovesStaleWeft(t *testing.T) {
 		}
 	}
 	if found == nil {
-		t.Fatalf("Prune(): no entry for weft path %s", weftPath)
+		t.Fatalf("Prune(apply=true): no entry for weft path %s", weftPath)
 	}
 
 	// Entry must be marked Removed without error.
@@ -159,7 +133,7 @@ func TestPrune_ApplyRemovesStaleWeft(t *testing.T) {
 		t.Errorf("PruneEntry.Error = %q; want empty (removal should succeed)", found.Error)
 	}
 
-	// The weft directory must be gone.
+	// The weft directory must be gone after apply.
 	if _, statErr := os.Stat(weftPath); !os.IsNotExist(statErr) {
 		t.Errorf("weft worktree %s still exists after apply Prune; want deleted", weftPath)
 	}
