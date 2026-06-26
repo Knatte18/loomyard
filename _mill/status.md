@@ -34,7 +34,9 @@ implementing  '2026-06-26T07:21:48Z'
 ```yaml
 batches:
   - name: fixture-hook-strip
-    state: pending
+    state: running
+    implementer_session: c16967e3-2e00-4331-9af1-84e159082653
+    start_sha: cc77aa07c1b9cfe7eb8bce9cc0f9057efc3febeb
   - name: add-weftwiring
     state: pending
   - name: drift-status
