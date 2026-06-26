@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-add-weftwiring
+phase: approved-drift-status
 slug: warp-test-speedup
 branch: warp-test-speedup
 plan: _mill/plan
@@ -29,6 +29,7 @@ planned  '2026-06-26T07:19:24Z'
 implementing  '2026-06-26T07:21:48Z'
 approved-fixture-hook-strip  '2026-06-26T07:24:58Z'
 approved-add-weftwiring  '2026-06-26T07:32:16Z'
+approved-drift-status  '2026-06-26T07:38:22Z'
 ```
 
 ## Batches
@@ -46,9 +47,10 @@ batches:
     start_sha: 813b33eeda01ff808ed73362138f4fcc3a0a5be5
     commit_sha: a572e1639e1fde68fad540a342c1f4de2ebf4c94
   - name: drift-status
-    state: running
+    state: approved
     implementer_session: 8ca05ef7-e989-4a34-be41-af68b550c89f
     start_sha: 0b714115a3979d84df89b3f66a62925c26021fb0
+    commit_sha: 450a4abaffc7505b89128ca6f4cab1b0ec0ab4c5
   - name: prune-cleanup
     state: pending
   - name: remove-hook-misc
