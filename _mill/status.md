@@ -40,7 +40,9 @@ batches:
     start_sha: cc77aa07c1b9cfe7eb8bce9cc0f9057efc3febeb
     commit_sha: ae7395274686dbde1d38fa7cec73e89d7ab6a638
   - name: add-weftwiring
-    state: pending
+    state: running
+    implementer_session: dcd5e7c9-cbd2-4da0-824a-fa1f6c262543
+    start_sha: 813b33eeda01ff808ed73362138f4fcc3a0a5be5
   - name: drift-status
     state: pending
   - name: prune-cleanup
