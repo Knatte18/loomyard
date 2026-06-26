@@ -10,377 +10,265 @@ parent: main
 ## Problem
 
 The `internal/warp` integration suite (`go test -tags integration ./internal/warp/`)
-takes **~85.5s of wall-clock** on a 14-core dev machine, and it is already
-parallel-compressed — 68 `t.Parallel()` calls spread across the test files, so the
-machine's cores are saturated and the 85s is the *parallel* time, not the serial sum.
-The serial sum is far higher (many individual tests are 7–16s). The dominant cost is
-**real `git` subprocess spawns plus endpoint-protection (Cortex XDR) file-scanning of
-the files those spawns create in temp dirs**. Every `warp.Add` spawns ~8–10 git
-processes (`status`, `rev-parse` ×2, `remote`, `worktree add` ×2, `push` ×2) and
-creates a paired host+weft worktree on disk; the EDR scans each new file synchronously.
+takes **~85.5s of wall-clock** on a 14-core dev machine. It is already parallel-
+compressed — 68 `t.Parallel()` calls — yet measurement shows the suite is **EDR/disk-
+bound, not CPU-bound**: the serial sum of work is only ~2–3× the wall time, i.e. adding
+cores barely helps. Endpoint protection (Cortex XDR) scans every file the tests create
+in temp dirs, and that scanning plus git process spawns serialize the suite.
 
-A prior task already harvested the obvious win: `internal/lyxtest` builds its git
-templates **once** (`sync.Once`) and does per-test **filesystem copies** with origin-URL
-rewrites (`CopyPaired` / `CopyPairedLocal` / `CopyHostHub` / `CopyWeft`), eliminating
-per-test `git init` / `git clone`. What remains is that **many tests still run a full
-`warp.Add` purely as setup** — to obtain an *existing* paired worktree — before testing
-something else (status, drift, prune, reconcile, remove, cleanup, checkout). That setup
-Add is the single largest remaining source of git spawns and EDR file-churn.
+The cost concentrates in **per-test fixture builds**. Each test copies a git-repo
+template (via `lyxtest.CopyPairedLocal` / `CopyPaired` / `CopyHostHub`) and runs git
+operations against it. There are **76 such fixture builds** across the suite. A prior
+task already removed the obvious cost (per-test `git init`/`clone` → build-once-copy via
+`sync.Once`), so what remains is the sheer **number and size** of those copies plus the
+git spawns each test performs.
 
-**Why now:** The suite is slow enough to be painful in the normal dev loop, and the
-EDR scanning makes it disproportionately expensive on this Windows environment. The
-template-once infrastructure already exists in `lyxtest` and can be extended to cover
-the pre-paired case, so the marginal cost of this optimization is low and the payoff is
-concentrated in the heaviest tests.
+**Why now:** The suite is slow enough to hurt the dev loop, and the EDR scanning makes
+it disproportionately expensive on this Windows environment.
+
+### Measured economics (captured during discussion)
+
+- Single-threaded fixture-build test (copy + a few git spawns, no `Add`): **2.86s**;
+  with `Add`: **3.76s** (so `Add` ≈ 0.9s). Of the 2.86s, the filesystem copy is ~1.5s
+  and **git process spawns are ~1.3s** — git spawns are roughly half the per-test cost.
+- Each template is **45 files, 28 of them inert `.git/hooks/*.sample`** (62%). A
+  `CopyPairedLocal` copies ~3 such repos (~135 files, ~84 of them hook samples).
+- Stripping hook samples from the templates: **2.86s → 2.44s (~15%)**, test still passes.
+- Effective parallelism ≈ 2–3× (≈180–250s serial work → 85s wall). **More parallelism
+  is not the lever; reducing total file churn and git spawns is.**
 
 ## Scope
 
 **In:**
 
-- A new `lyxtest` **golden pre-paired template** that captures a healthy host+weft
-  worktree pair (on the mirrored branch) built **once** via `sync.Once`, then a
-  **copy-on-write** helper that hands each test a cheap private copy with the git
-  pointers rewritten to its new path.
-- Migration of **setup-only `.Add()` tests** to the copy-on-write fixture: tests that
-  call `.Add()` solely to establish an existing pair and then exercise a *different*
-  subject (status / drift / prune / reconcile / remove / cleanup / checkout, and the
-  eligible `weftwiring` cases). They re-wire portal junctions / launchers per-copy only
-  if the test needs them (cheap filesystem syscalls, no git spawn).
-- **Subtest consolidation where it is provably safe** (read-only scenario groups that can
-  share one copy run sequentially): collapse several near-duplicate test functions into
-  one parent that builds the fixture once.
-- Micro-cleanups: ensure every push-irrelevant test uses `CopyPairedLocal` (SkipPush)
-  rather than `CopyPaired`; remove redundant per-test git setup the template now
-  provides; widen `SkipGit`/`SkipPush` use where a test does not assert on push state.
-- Optional, low-priority production-code trims in the `warp` git path **only if** a
-  clearly-safe win surfaces (see Decisions → production-code).
-- Re-run the verification protocol (operator-run) and record before/after numbers in
-  the plan's result file.
+1. **Strip inert git hook samples** (`.git/hooks/*.sample`) from the `lyxtest` template
+   builders so every fixture build copies ~60% fewer files. One small change in
+   `internal/lyxtest/lyxtest.go`, benefiting all ~76 builds.
+2. **Consolidate fixture builds** per the 13-group map below: fold near-duplicate / read-
+   only tests into siblings as subtests or pre-condition assertions, reducing builds
+   **76 → 59 with no loss of coverage**.
+3. **Aggressively delete low-value tests** per the delete list below: 1 exact-duplicate +
+   8 defensive/subset paths covered elsewhere, reducing builds **59 → 50** (−34% from 76).
+4. Re-run the verification protocol (operator-run) and record before/after numbers in the
+   plan's result file.
 
 **Out:**
 
-- **Sharing one *live* worktree pair across multiple concurrently-running tests.**
-  Rejected on technical grounds (see Decisions → rejected-broad-sharing): git serializes
-  on its own `index`/refs/`*.lock` files even for read commands, so parallel tests
-  against one repo race; and most warp tests mutate their fixture in test-specific ways.
-  Copy-on-write is what makes "one expensive build, many cheap isolated tests" safe.
-- **Cortex XDR / EDR temp-path exclusion.** Confirmed not available — the corporate
-  machine is fully monitored and excluded paths are not permitted. No solution may
-  depend on an EDR exclusion.
-- Adding more parallelism / raising `-parallel`. The suite is already core-saturated;
-  oversubscription gave no benefit and triggers the EDR (it killed VS Code during
+- **`copy-on-write` / pre-paired-worktree template.** Rejected: it swaps `Add` (~0.9s of
+  git spawns) for a *larger* filesystem copy — net ≈ zero, possibly negative. It does not
+  address the bottleneck (file churn + spawns).
+- **Hardlinking `.git/objects` in the copy.** Verified hardlinks need no admin on this
+  machine, but the templates have a tiny history (one commit), so object files are a
+  handful — hardlinking saves almost nothing here. Dropped.
+- **Dropping the bare remote from fixtures.** Same reason — marginal for these tiny repos;
+  the residual cost is git spawns, not bytes. Dropped.
+- **Cortex XDR / EDR temp-path exclusion.** Confirmed unavailable — the corporate machine
+  is fully monitored; excluded paths are not permitted. No solution may depend on it.
+- **More parallelism / raising `-parallel`.** The suite is EDR/disk-bound (~2–3× ceiling);
+  oversubscription gave no benefit and tripped the EDR (it killed VS Code during
   exploration). Do **not** introduce burst/oversubscribed test runs.
-- Rewriting the `warp` operations' transactional/rollback semantics. Correctness of
-  `Add` rollback is not in scope; only test-setup speed is.
+- Rewriting `warp` operation semantics or the transactional Add/rollback flow.
 - Changing the public CLI behaviour of `lyx warp`.
-- The non-warp suites (`board`, `worktree`, `weft`, `paths`) — out of scope except
-  insofar as shared `lyxtest` helpers are touched (existing callers must keep compiling
-  and passing).
+- The non-warp suites except insofar as the shared `lyxtest` helper is touched (existing
+  callers must keep compiling and passing).
 
 ## Decisions
 
-### pre-paired-template — the core lever
+### hook-sample-strip — biggest per-build, trivial, safe
 
-- Decision: Add a `sync.Once`-built **golden** template containing a **single
-  already-created paired worktree** (fixed slug, e.g. `"task"`) on the mirrored branch.
-  The builder assembles a **fresh single container** in one `MkdirTemp` root with the
-  hub and weft-prime **co-located as siblings** (so `WeftRepoRoot = <hub-base>-weft` and
-  `WeftWorktreePath = <slug>-weft` resolve correctly), commits the seed content, then
-  runs the two `git worktree add` calls (host worktree + weft worktree) directly —
-  mirroring `warp.Add`'s git-worktree-creation steps **only**, with no portal, no
-  launcher, no hook, and no push. Expose a copy-on-write helper (e.g.
-  `CopyPairedWithWorktree`) that copies the whole container into `tb.TempDir()` and
-  rewrites all absolute git pointers so the copy is self-consistent at its new path.
-- Rationale: `git worktree add` is the costly, EDR-scanned step. Doing it once and
-  copying the result removes ~8–10 git spawns from every setup-only test. Building the
-  hub and weft-prime in **one** container (not the two separate `MkdirTemp` roots the
-  current `buildHostHub`/`buildWeftPrime` use) is required because `git worktree add`
-  bakes absolute sibling paths into the pair; a fresh combined container keeps the
-  geometry consistent for the copy-rewrite.
-- Rejected:
-  - *Copy a fixture produced by `warp.Add` (portals + launchers included).*
-    `copyDirRecursive` explicitly refuses symlinks/junctions, and Windows junctions
-    store absolute reparse targets that would dangle after copy. Reproducing the git
-    worktree pair directly in the template builder avoids both problems.
-  - *Reuse the existing separate hub/weft-prime templates as-is.* They live in distinct
-    temp roots, so a worktree pair added across them would bind paths that the copy
-    cannot keep consistent.
+- Decision: In `internal/lyxtest/lyxtest.go`, after each repo is initialized, delete the
+  `*.sample` files git copies into `.git/hooks/` (and `hooks/` for the bare). Apply in
+  `initRepo` (covers hub, weft-prime, weft-only) and `initBareRemote` (covers the bares).
+- Rationale: 28 of 45 template files are inert sample hooks that never execute (only
+  non-`.sample` hook files run). Removing them cuts ~60% of files per copied repo. Measured
+  ~15% wall reduction on a fixture-bound test, and it compounds across every build. Zero
+  behaviour change — verified a representative test still passes with samples stripped.
+- Rejected: *Leave them* — they are pure EDR/copy overhead. *`git init --template=<empty>`*
+  — works too, but an explicit post-init strip is simpler and obviously correct.
 
-### copy-on-write isolation — why not share one live pair
+### consolidate-builds — fewer fixtures, no coverage loss (76 → 59)
 
-- Decision: Every test that needs a pair takes its **own** cheap copy of the golden
-  template (filesystem copy + pointer rewrite). Full per-test isolation is retained; all
-  migrated tests keep `t.Parallel()`.
-- Rationale: This is the safe realization of "build once, run many." At ~14-way
-  parallelism only ~14 copies are ever live at once, so the suite already behaves like "a
-  few worktrees exercised by many tests" — just with temporal isolation. The cost traded
-  away (a filesystem copy) is far cheaper than the cost removed (8–10 git spawns), and
-  isolation keeps tests order-independent and parallel-safe.
-- Rejected: see next decision.
+- Decision: Apply the 13 consolidation groups below. Each folds near-duplicate or read-
+  only tests into a sibling — either as extra assertions on an existing fixture, or as
+  sequential subtests sharing one build. Read-only scenarios fold as pre-condition checks
+  before a sibling's mutation; sequential mutating scenarios (where the first call leaves
+  state intact for the second) share one fixture run in order. No assertion is dropped.
+- Rationale: Wall time scales with total fixture work; halving redundant builds removes
+  copy + spawn cost with full coverage retained. Sequential subtests are fine because
+  parallelism is already EDR-capped at ~2–3×, so serializing within a shared fixture costs
+  little wall-clock while cutting churn.
+- Rejected: *Per-test isolation everywhere* — keeps redundant builds for no coverage gain.
 
-### rejected-broad-sharing — one repo, many concurrent tests
+The groups (parent ← folded tests), each saving the stated number of builds:
 
-- Decision: Do **not** share a single live worktree pair across multiple
-  concurrently-running tests (zero-copy shared fixture).
-- Rationale: Two independent reasons make it unsafe, not merely unconventional:
-  1. **Git serializes on its own locks.** Even "read-only" git commands (`status`,
-     `worktree list`, `rev-parse`) write `.git/index`, refs, and `*.lock` files. Two
-     parallel tests issuing git against the same repo race on `index.lock`/ref locks →
-     flaky failures. Warp operations all spawn git, so almost no warp test is git-free.
-  2. **Most tests mutate their fixture in test-specific ways** — pollute `_lyx`
-     (`TestStatus_LyxPollutionDetected`), create `_codeguide` pollution
-     (`TestStatus_CodeguidePollutionReportOnly`), remove a junction
-     (`TestStatus_JunctionHealth`), diverge a branch (drift tests), delete worktrees /
-     branches (remove / cleanup / prune / reconcile). Sharing one pair would corrupt
-     siblings.
-- Rejected alternative kept here for the record: a zero-copy package-level golden used
-  directly by "read-only" tests. It only stays safe for tests that issue **no git** on
-  the fixture **and** run sequentially — a small minority — so it is not worth a second
-  fixture tier. The safe sharing we *do* take is the narrower "subtest consolidation"
-  below.
+| # | Action | Saved |
+|---|--------|-------|
+| A | Fold `TestAddDormant`, `TestWeftSpawnCreatesWeftDirectory`, `TestWeftSpawnNoExcludeEntry`, `TestWeftSpawnPairedWorktrees` assertions into `TestAdd/HappyPath` | 4 |
+| B | Merge `TestWireJunctionsPreservesBehavior` into `TestWireJunctionsIdempotent` (add its line-exact `_lyx` check) | 1 |
+| C | Fold `TestPairInSync_InSync` into `TestPairInSync_BrokenJunction` as a pre-remove check | 1 |
+| D | Fold `TestStatus_PairedViewFields` into `TestStatus_InSyncVsDrifted` before the drift mutation | 1 |
+| E | Delete `TestWeftPrechecks/HardRequireWeftRepo` (exact duplicate of `TestAdd/NoWeftRepo`; keep `RejectExistingWeftWorktree`) | 1 |
+| F | Merge `TestPrune_DryRunReportsStaleWeft` + `TestPrune_ApplyRemovesStaleWeft` into one sequential test | 1 |
+| G | Merge `TestCleanup_DryRunReportsOrphanBranch` + `TestCleanup_ForceAloneReportsOnly` (both report-only) onto one fixture | 1 |
+| H | Combine `TestCleanup_LiveBranchNeverDeleted` + `_NonEmptyBranchPrefix` (both live pairs on one fixture, one Cleanup) | 1 |
+| I | Merge `TestRemove/HostDirty{Without,With}Force` and `WeftDirty{Without,With}Force` into two sequential tests | 2 |
+| J | Delete `TestInstallPostCheckoutHook_WritesScript` (covered by `_Idempotent` first install) | 1 |
+| K | Delete `TestInstallPostCheckoutHook_ChainsExistingHook` (covered by `_ChainIdempotent` first install; add its `post-checkout.user` check) | 1 |
+| L | Fold `TestList/SingleWorktree` into `TestList/TwoWorktrees` as a pre-add check | 1 |
+| M | Share one `setupCLIRepo` between read-only `TestRunDispatchesToWarp/List` + `/UnknownSubcommand` | 1 |
 
-### subtest-consolidation — the bounded extra win
+Total: **17 builds saved (76 → 59).**
 
-- Decision: Where several existing test functions build the same fixture and differ only
-  in a cheap assertion/mutation, consolidate them into one parent test that obtains the
-  fixture once. Read-only scenarios run as **sequential** subtests sharing that one copy
-  (sequential avoids the git-lock race); any scenario that mutates state runs against its
-  **own** copy-on-write pair (either a fresh copy per mutating subtest, or kept as a
-  separate top-level test). Parents stay `t.Parallel()` so subjects still overlap.
-- Rationale: This captures the "many tests, few builds" intent safely: it cuts the number
-  of fixture builds for read-mostly clusters (e.g. the status scenarios) without exposing
-  shared mutable state to concurrent git. The win is bounded (read-only clusters are a
-  minority) but it also reduces EDR file-churn, which matters on this machine.
-- Rejected: *Blanket consolidation of mutating tests under one shared copy.* Sequential
-  mutating subtests corrupt state for later subtests; restoring between them reintroduces
-  git work. Mutating scenarios therefore keep independent copies.
+### aggressive-delete — drop low-value paths (59 → 50)
 
-### which tests migrate vs keep real Add
+- Decision: Delete the following tests outright, accepting the named (minor) coverage loss.
+  1 exact-duplicate + 8 defensive/subset paths whose production behaviour is structurally
+  guaranteed or covered by a higher-value sibling.
+- Rationale: The owner judged the suite over-tested. Each deletion removes one whole
+  fixture build. The deleted paths are defensive/duplicate; the load-bearing coverage stays.
+- Rejected: deleting the KEEP list below — each is the sole coverage of a real path.
 
-- Decision: Migrate a test to the copy-on-write fixture **iff** it calls `.Add()` only to
-  obtain an existing pair and then asserts on a *different* operation. **Keep real
-  `.Add()`** for tests whose subject *is* Add itself: `TestAdd*` (happy path, rollback,
-  adopt-existing-weft-branch, dormant), `TestWeftSpawnPushesWeftBranch` (needs the live
-  push to weft-bare → must keep `CopyPaired`), and any test asserting on the non-empty
-  `BranchPrefix` Add path (e.g. `TestCleanup_LiveBranchNeverDeleted_NonEmptyBranchPrefix`)
-  unless the template is made branch-prefix-agnostic.
-- Rationale: The fixture's value is removing *setup* Adds; tests that verify Add's own
-  behaviour must continue to call it. The fixed-slug, default-`BranchPrefix` template
-  cannot stand in for tests that assert on a different slug/prefix.
-- Rejected: *Migrate everything.* Would lose coverage of Add's real git side effects
-  (push, rollback, adopt).
+| Test | Why low-value / coverage lost | Risk |
+|------|------------------------------|------|
+| `TestWriteLaunchers/DotRelPath` | Exact duplicate of `EmptyRelPath` (`"."` resolves identically) | SAFE |
+| `TestAdd/UnbornBranch` | Same "detached HEAD" guard as `TestAdd/DetachedHEAD` | LOW |
+| `TestWeftForkPointMirrorsHost` | Subset of `_SubtaskIsolation` (which also asserts ≠ main tip) | LOW |
+| `TestRemoveHostJunctionRemoved` | Flat-topology case; nested case in `TestRemoveSubpathJunction` exercises the load-bearing path | LOW |
+| `TestCreatePortalMultipleSubpaths` | Subpath-collision avoidance is structurally guaranteed by RelPath-mirrored paths | LOW |
+| `TestPairInSync_JunctionPointsElsewhere` | Wrong-target case; broken/missing-junction + `Status_JunctionHealth` cover junction failure | LOW |
+| `TestStatus_CodeguidePollutionReportOnly` | Detection covered by the `_lyx` pollution test; only checks a transitional report-only flag | LOW |
+| `TestWeftMissingParentBranch` | Third rollback test; rollback covered by `TestAddRollback` + white-box `rollbackAdd` | LOW |
+| `TestAdd/TargetDirExists` | Defensive precheck; `git worktree add` guards it structurally | LOW |
 
-### fixed-slug template + permitted assertion changes
+Total: **9 builds saved (59 → 50).** Combined reduction from original: **76 → 50, −34%.**
 
-- Decision: The golden template pre-adds **one** pair under a fixed slug and default
-  (empty) `BranchPrefix`, so `branch == slug`. The returned fixture **exposes the slug,
-  the branch, and the host + weft worktree paths as struct fields** (alongside the
-  existing `Hub`/`Bare`/`WeftPrime`/`WeftBare`/`Layout`). Migrated tests read those
-  fields; the **only** permitted assertion change during migration is substituting the
-  old test-chosen slug/branch string for the fixture's exposed value. Behaviour and
-  coverage are otherwise identical. Tests needing a *specific* slug, a second pair, or a
-  custom prefix keep using `CopyPairedLocal` + `.Add()`. Extending the existing
-  `PairedFixture` struct with the new slug/branch/host-worktree/weft-worktree fields is
-  backward-compatible (current callers ignore the added fields), so that is the preferred
-  shape over a brand-new struct; the plan picks one concrete struct + helper name (the
-  `CopyPairedWithWorktree` name here is illustrative) so migrated tests bind to a fixed
-  contract.
-- Rationale: Keeps the template and pointer-rewrite logic simple and deterministic, while
-  being explicit that "behaviourally identical" still allows the mechanical slug-string
-  swap. Each per-test copy is isolated in its own `tb.TempDir()`, so the shared fixed
-  slug is safe under `t.Parallel()`.
-- Rejected: *Parameterized multi-pair / arbitrary-slug template.* More rewrite surface
-  and build cost for little gain; the common case is a single existing pair.
+### keep-list — do not delete despite looking redundant
 
-### git-pointer rewrite on copy
+- `TestWeftSpawnPushesWeftBranch` — the **only** `CopyPaired` fixture and the **only**
+  real-`git push` + weft-bare ref-landing coverage.
+- `TestWeftRollbackOnPostHostCreateFailure` — only white-box `rollbackAdd` entry point.
+- `TestCleanup_LiveBranchNeverDeleted_NonEmptyBranchPrefix` — cited prefix-mismatch
+  regression guard (merged in group H, not deleted).
+- `TestWeftPrechecks/RejectExistingWeftWorktree` — unique error path.
+- All four `Reconcile_*` and four `Checkout_*` — each plants a distinct failure mode on a
+  clean fixture; none read-only.
 
-- Decision: Extend the copy step (analogous to the existing `rewriteOriginURLInConfig`)
-  to rewrite the absolute paths that bind a git worktree to its main repo, for **both**
-  the host and weft pairs:
-  1. The worktree's `.git` **file**: `gitdir: <newMainRepo>/.git/worktrees/<name>`.
-  2. The per-worktree back-pointer `<newMainRepo>/.git/worktrees/<name>/gitdir`:
-     `<newWorktreePath>/.git`.
-  3. `<newMainRepo>/.git/worktrees/<name>/commondir`: expected to be the relative
-     `../..` (which survives a copy). **Fail-fast assert** if it is absolute — the
-     template invariant guarantees relative; an absolute value means a git-version
-     surprise and must error loudly rather than be silently rewritten, keeping the copy
-     deterministic across git versions.
-  4. Existing origin-URL rewrites for hub and weft-prime (already implemented).
-  Use forward-slash formatting (`filepath.ToSlash`) to match the existing rewrite
-  helper's Windows-safe approach.
-- Rationale: A git worktree is bound to its main repo by two absolute paths (the
-  worktree `.git` file → `.git/worktrees/<name>`, and that dir's `gitdir` → worktree's
-  `.git`). Both must be relocated or git refuses to operate on the copy. This mechanic
-  was confirmed by inspecting a live worktree's pointer files.
-- Rejected: *Relative gitdir links.* Git records absolute paths for `worktree add`;
-  rewriting on copy is the established pattern in this codebase (origin URLs already do
-  exactly this).
+### production-code changes — allowed, minimal
 
-### portals / launchers / hook omitted from the template
+- Decision: The only production-adjacent change is the hook-sample strip in
+  `internal/lyxtest/lyxtest.go` (a test-support package). No `internal/warp/*.go`
+  production change is required; do not restructure Add/rollback.
+- Rationale: The whole speedup lives in the test/fixture layer. Leave production logic
+  untouched.
 
-- Decision: The golden template captures the git worktree pair **only**. Portal
-  junctions, launchers, and the **post-checkout hook** are deliberately omitted and
-  recreated on-demand per copy where a test needs them (`createPortal` / `writeLaunchers`
-  / `InstallPostCheckoutHook` are filesystem-only, no git spawn).
-- Rationale: Junctions can't survive `copyDirRecursive` (it refuses them) and store
-  absolute targets; keeping them out avoids that entirely. The hook is a non-fatal
-  belt-and-suspenders side effect of `Add` (add.go:153); omitting it is low-impact
-  because the hook tests (`hook_test.go`) call `InstallPostCheckoutHook` themselves and
-  do not rely on the fixture pre-installing it.
-- Rejected: *Bake portals/hook into the template.* Reintroduces the junction-copy
-  problem and stale absolute targets for negligible benefit.
+### expected-gain — honest, operator-verified
 
-### production-code changes — allowed but gated
-
-- Decision: Production (`internal/warp/*.go`) changes are **permitted** but only for a
-  clearly-safe, self-contained win (e.g. eliminating a provably-redundant `rev-parse`,
-  or wider use of an existing `SkipGit` fast-path). Do **not** restructure the
-  transactional Add/rollback flow. If no clean win surfaces, leave production code
-  untouched — the fixture lever delivers the bulk of the speedup.
-- Rationale: The user explicitly allowed production changes, but the goal is "as fast as
-  *safely* achievable." The fixture work is where the safe, large win is.
-- Rejected: *Aggressive production refactor of the git path.* Out of proportion to a
-  test-speed task and risky.
+- Decision: Target is **~85s → ~50–60s (~25–35% faster)**, not a 2–3× win. The floor is
+  that ~50 tests still each copy a real git repo and spawn git under EDR; the transformative
+  lever (EDR exclusion) is unavailable.
+- Rationale: Modeled from measured per-build cost (~2.4–3.8s), the build-count reduction
+  (76 → 50), the ~15% hook-strip, and the EDR-contention relief from less concurrent churn.
+  Stated as a range because the contention-relief component is real but not precisely
+  measurable without a full run.
 
 ### verification protocol — operator-run, never bursty
 
-- Decision: The implementer must **not** run heavy or oversubscribed test bursts.
-  Verification is operator-driven: a single, non-bursty invocation
-  `go test -tags integration -count=1 -v ./internal/warp/ 2>&1` run by the operator,
-  compared against the captured baseline. The implementer reasons from
-  **git-spawn-count reduction** as the primary proxy and asks the operator to run the
-  timed suite at checkpoints.
-- Rationale: Cortex XDR flags rapid/parallel git-spawn bursts as suspicious and kills
-  VS Code (observed twice during exploration). The operator decides when to run.
-- Rejected: *Implementer-run timed suites.* Trips the EDR; unsafe in this environment.
+- Decision: The implementer must **not** run heavy or oversubscribed test bursts. Single
+  isolated `-run`/`-p 1` checks are acceptable; the full timed comparison
+  (`go test -tags integration -count=1 -v ./internal/warp/ 2>&1`) is run by the **operator**
+  and compared against the 85.5s baseline. The implementer reasons from build-count and
+  spawn-count reduction as the proxy.
+- Rationale: Cortex XDR flags rapid/parallel git-spawn bursts and kills VS Code (observed
+  twice during exploration). The operator decides when to run the full suite.
 
 ## Technical context
 
-- **Suite entry point:** `go test -tags integration ./internal/warp/`. All 15 warp test
-  files carry `//go:build integration`. The package has 32 `.Add()` call sites across 8
-  files (`add`, `cleanup`, `drift`, `hook`, `prune`, `reconcile`, `remove`,
-  `weftwiring`).
-- **Fixture layer — `internal/lyxtest/lyxtest.go`** (the place to extend):
-  - Template builders cached via `sync.Once`: `buildHostHub` (hub + bare, README
-    commit, **own MkdirTemp root**), `buildWeftPrime` (sibling `<hub>-weft` with
-    `_lyx/config/placeholder` + bare, **separate MkdirTemp root**), `buildWeftOnly`
-    (upstream-tracking weft). The new golden builder must instead co-locate hub +
-    weft-prime in one container (see pre-paired-template decision).
-  - Per-test copies: `CopyHostHub`, `CopyPaired`, `CopyPairedLocal` (omits weft-bare for
-    SkipPush, ~25% cheaper), `CopyWeft`. Each uses `copyDirRecursive` (which **refuses
-    symlinks/junctions**) and `rewriteOriginURLInConfig` (single `url =` line under
-    `[remote "origin"]`, forward-slash formatted — the model to follow for the new
-    gitdir rewrites).
-  - **Leaf invariant (CONSTRAINTS.md):** `lyxtest` may import only stdlib +
-    `internal/paths`. The new template/copy code must stay within that — no `configreg`
-    or feature-package imports.
-- **Production `warp.Add`** (`internal/warp/add.go`): the git steps the template builder
-  must reproduce directly (host `git worktree add -b <branch> <target>`; weft create via
-  the equivalent of `createWeftWorktree` forking from the parent weft branch). The
-  template builder reproduces **only** those git-worktree-creation steps — not
-  `createPortal`, `writeLaunchers`, `InstallPostCheckoutHook`, or the pushes.
-- **Portals/launchers/hook** (`internal/warp/portals.go`, `launchers.go`, `hook.go`,
-  `internal/fslink`): junction creation is a filesystem syscall via
-  `fslink.CreateDirLink` (Windows directory junctions, no privileges) — cheap, no git
-  spawn. Tests re-wire on demand after copy.
-- **Git worktree pointer mechanics (confirmed):** worktree `.git` file holds
-  `gitdir: <mainRepo>/.git/worktrees/<name>`; `<mainRepo>/.git/worktrees/<name>/gitdir`
-  holds `<worktree>/.git`; `commondir` is relative. These absolute pointers are what the
-  copy step must rewrite.
-- **Git concurrency:** git commands write `.git/index`, refs, and `*.lock` even for
-  read-style operations; this is why two parallel tests cannot safely share one live
-  repo (motivates copy-on-write and the sequential-only rule for shared read-only
-  subtests).
-- **Paths invariant (CONSTRAINTS.md):** all geometry via `internal/paths` helpers
-  (`paths.ConfigDir`, `paths.ConfigFile`, `paths.LyxDirName`, `Layout.*`), in test code
-  too. No raw `os.Getwd` / `git rev-parse --show-toplevel` outside `internal/paths` and
+- **Suite entry point:** `go test -tags integration ./internal/warp/`. 15 test files carry
+  `//go:build integration`. Baseline `ok internal/warp 85.462s`.
+- **Fixture layer — `internal/lyxtest/lyxtest.go`** (where the hook-strip lands):
+  - `sync.Once` builders: `buildHostHub`, `buildWeftPrime`, `buildWeftOnly`; low-level
+    `initRepo` (git init + config) and `initBareRemote` (git init --bare + remote add) are
+    the strip points. `commitAll`, `mustGit` are helpers.
+  - Per-test copies: `CopyHostHub` (hub+bare), `CopyPairedLocal` (hub+bare+weft-prime, no
+    weft-bare), `CopyPaired` (all four), `CopyWeft`. Each uses `copyDirRecursive` (refuses
+    symlinks/junctions) and `rewriteOriginURLInConfig`.
+  - **Leaf invariant (CONSTRAINTS.md):** `lyxtest` imports only stdlib + `internal/paths`.
+    The hook-strip uses only `os`/`filepath` — invariant preserved.
+- **Build inventory (current 76):** CopyPairedLocal 59, CopyPaired 1, CopyHostHub 16. The
+  per-file detail and per-test mutate/read classification are in the supporting maps
+  produced during discussion (consolidation + aggressive-deletion analyses); the actionable
+  group and delete lists are embedded in Decisions above so this file is self-contained.
+- **Consolidation mechanics:** read-only tests fold as pre-condition assertions before a
+  sibling's mutation (groups C, D, L); sequential mutating tests share a fixture where the
+  first call leaves state intact for the second (F, G, I); structural Add-property checks
+  collapse into `TestAdd/HappyPath` (A). Sequential subtests must NOT use `t.Parallel`
+  between the shared steps; top-level tests keep `t.Parallel`.
+- **Paths invariant (CONSTRAINTS.md):** all geometry via `internal/paths` helpers, in test
+  code too. No raw `os.Getwd` / `git rev-parse --show-toplevel` outside `internal/paths` and
   `cmd/lyx/main.go` (enforced by `internal/paths/enforcement_test.go`).
+- **Template leak (noted, optional):** `buildHostHub` etc. use `os.MkdirTemp` without
+  cleanup, leaving `%TEMP%/lyxtest-*` dirs to accumulate (hundreds observed). Not a per-run
+  speed cost (built once per binary) but adds EDR backlog; a cleanup hook is an optional
+  hygiene follow-up, out of this task's critical path.
 
 ## Constraints
 
 From `CONSTRAINTS.md`:
 
-- **Path invariant:** resolve all cwd/worktree/`_lyx`/config paths through
-  `internal/paths` helpers — including in tests. Banned primitives (`os.Getwd`,
-  `git rev-parse --show-toplevel`) are enforced at `go test` time.
+- **Path invariant:** resolve all cwd/worktree/`_lyx`/config paths through `internal/paths`
+  helpers — including in tests. Enforced at `go test` time.
 - **lyxtest leaf invariant:** `internal/lyxtest` imports only stdlib + `internal/paths`;
   never `configreg` or a feature package. Enforced by
-  `internal/lyxtest/leaf_enforcement_test.go` on every `go test ./...`. The new
-  template/copy code lives here and must obey it.
+  `internal/lyxtest/leaf_enforcement_test.go`. The hook-strip stays within stdlib.
 
 Environmental (from discussion):
 
-- **Cortex XDR** monitors the machine; heavy/bursty parallel git-spawn runs are flagged
-  and can kill VS Code. No EDR temp-path exclusion is available. Implementer must avoid
-  bursty test runs; verification is operator-driven.
+- **Cortex XDR** monitors the machine; heavy/bursty parallel git-spawn runs are flagged and
+  can kill VS Code. No EDR temp-path exclusion is available. Implementer avoids bursty runs;
+  verification is operator-driven.
 
 ## Testing
 
-The "tests" here are largely the fixtures being optimized, so correctness of the new
-fixture is paramount — a subtly-broken copied worktree would silently weaken every
-migrated test.
-
-- **`lyxtest` golden template + copy (TDD candidate):** Add a focused unit test (in a
-  package that may legally exercise `lyxtest`, e.g. `internal/lyxtest/lyxtest_test.go` or
-  a warp test) asserting that a copy of the pre-paired fixture is a *working* git
-  worktree pair: `git status` clean in both host and weft worktrees, `git worktree list`
-  from each main repo lists the copied worktree at its **new** path, the branch is the
-  expected mirrored branch, and no pointer references the template's original temp path.
-  This is the guard that the gitdir rewrites (and the `commondir` fail-fast) are correct.
-  The guard test is **`//go:build integration`-tagged** (its natural home,
-  `internal/lyxtest/lyxtest_test.go`, is integration-tagged), so it adds no git spawns to
-  the untagged `go test ./...` regression run.
-- **Migrated warp tests:** behaviourally identical — same assertions, same coverage —
-  except for the permitted slug/branch-string substitution to the fixture's exposed
-  fields, with setup swapped from `.Add()` to the copy-on-write fixture (+ on-demand
-  portal/launcher/hook creation where the test needs it). After migration, each
-  previously-passing test must still pass.
-- **Consolidated subtests:** where read-only scenarios are folded under one parent, the
-  subtests run sequentially and assert the same things they did as separate functions;
-  any mutating scenario in the cluster keeps its own copy. No assertion is dropped.
-- **Retained real-Add tests:** `TestAdd*`, `TestWeftSpawnPushesWeftBranch`, and the
-  non-empty-`BranchPrefix` cases keep exercising the live git path.
-- **Parallel safety:** every migrated top-level test keeps `t.Parallel()`; each gets its
-  own `tb.TempDir()` copy. Shared read-only subtests run sequentially within their
-  parent. Confirm no shared mutable state is introduced by the fixed-slug template.
+- **Hook-strip:** after the change, the full suite must still pass (the strip removes only
+  inert `*.sample` files; real hooks like the post-checkout hook are unaffected). The hook
+  tests (`hook_test.go`) install their own real hooks and do not depend on samples.
+- **Consolidated tests:** each merged/folded test asserts exactly what its source tests did
+  — same assertions, same coverage — only the fixture build is shared. Read-only fold-ins
+  add their assertion before the sibling's mutation; sequential merges assert the
+  intermediate (pre-second-call) state too. No assertion dropped. Top-level tests keep
+  `t.Parallel`; shared sequential steps do not parallelize among themselves.
+- **Deleted tests:** confirm each deleted test's production path remains exercised by the
+  sibling named in the delete table (or is structurally guaranteed). The KEEP list must
+  remain intact.
 - **Regression guard for sibling suites:** `go test ./...` (untagged) and the other
-  integration suites that import `lyxtest` must still build and pass — the new helper
-  must not change existing `Copy*` signatures/behaviour.
-- **Verification (operator-run):** baseline is the single-invocation
-  `go test -tags integration -count=1 -v ./internal/warp/`. Record per-test and total
-  before/after. Implementer reasons from git-spawn-count reduction between checkpoints
-  and requests an operator run to confirm.
+  integration suites that import `lyxtest` must still build and pass — the hook-strip must
+  not change any `Copy*` signature or observable fixture behaviour.
+- **Verification (operator-run):** baseline `go test -tags integration -count=1 -v
+  ./internal/warp/` = 85.462s. Record per-test and total after each milestone (hook-strip;
+  consolidation; deletes). Target ~50–60s.
 
 ### Baseline (captured during discussion, single clean run)
 
-- Total: `ok internal/warp 85.462s`.
-- Heaviest tests (illustrative): `TestWeftSpawnNoExcludeEntry`/forkpoint/pair-in-sync and
-  reconcile/prune/status/checkout cluster at **7–16s each**; these are precisely the
-  setup-only-`Add` tests targeted by the copy-on-write fixture.
-- Cheap tests (config/list/derive/template) are already <0.05s and are not targets.
+- Total: `ok internal/warp 85.462s`. Heaviest tests 7–16s each under contention (the
+  fixture-bound Add/status/reconcile/prune/weftwiring cluster). Cheap unit-style tests
+  (config/list/derive/template) are <0.05s and untouched.
 
 ## Q&A log
 
 - **Q:** Is the suite slow because of missing parallelism? **A:** No — 68 `t.Parallel()`
-  calls already saturate the 14 cores; 85s is the parallel-compressed time. The cost is
-  per-test git spawns + EDR scanning.
-- **Q:** Which levers should the task pursue? **A:** Pre-paired fixture template (primary)
-  + test micro-cleanups + safe subtest consolidation. **Not** an EDR exclusion.
-- **Q:** Why one worktree per test instead of a few worktrees shared by many tests?
-  **A:** Because git serializes on its own `index`/refs/`*.lock` files even for read
-  commands (parallel tests would race), and most warp tests mutate their fixture in
-  test-specific ways. Copy-on-write gives "build once, many cheap isolated tests" while
-  staying parallel- and git-safe; broad live-sharing is rejected.
-- **Q:** Is a Cortex-XDR-excluded temp path available? **A:** No — the employer monitors
-  everything and does not permit excluded paths. Solutions must not depend on it.
-- **Q:** May production (non-test) code change? **A:** Allowed, but only for clearly-safe
-  self-contained wins; do not restructure Add/rollback. Fixture work carries the speedup.
-- **Q:** Success bar? **A:** As fast as *safely* achievable — pick what works best; keep
-  fixtures correct; no hard number.
-- **Q:** How is speedup verified given the EDR constraint? **A:** Operator runs the timed
-  suite (single, non-bursty invocation); the implementer analyzes and never triggers
-  heavy/oversubscribed runs (it killed VS Code twice during exploration).
-- **Q:** Can a `warp.Add`-produced fixture (with portals/launchers/hook) just be copied?
-  **A:** No — `copyDirRecursive` refuses junctions and Windows junctions store absolute
-  targets. The template captures only the git worktree pair; portals/launchers/hook are
-  recreated per-copy (cheap `fslink`/file ops).
+  already; it is EDR/disk-bound (~2–3× effective parallelism). Reducing file churn + git
+  spawns is the lever.
+- **Q:** Does copy-on-write (pre-paired template) help? **A:** No — measured `Add` ≈ 0.9s,
+  swapped for a bigger copy; net ≈ zero. Dropped.
+- **Q:** What actually dominates a build? **A:** ~1.5s copy + ~1.3s git spawns; templates
+  are 62% inert hook samples. Hence hook-strip (~15%) + fewer builds.
+- **Q:** Can we just delete tests? **A:** Yes — owner chose the aggressive tier. 1 exact
+  duplicate + 8 defensive/subset deletes (59 → 50), with a KEEP list for sole-coverage paths.
+- **Q:** Do hardlinks help (and do they need admin)? **A:** Verified hardlinks need no admin
+  here, but templates are tiny (few objects) so hardlinking saves ~nothing. Dropped, along
+  with bare-remote-drop (same reason).
+- **Q:** Is an EDR-excluded temp path available? **A:** No — employer monitors everything.
+- **Q:** Realistic gain? **A:** ~85s → ~50–60s (~25–35%), operator-verified. Not a 2–3×; the
+  floor is ~50 real git-repo copies + spawns under EDR.
+- **Q:** How is speedup verified given the EDR constraint? **A:** Operator runs the full
+  timed suite at milestones; the implementer never triggers heavy/oversubscribed runs.
