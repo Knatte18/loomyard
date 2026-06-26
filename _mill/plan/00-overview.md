@@ -3,7 +3,7 @@
 ```yaml
 task: "Local lyx sandbox for manual experimentation"
 slug: "lyx-sandbox"
-approved: false
+approved: true
 started: "20260626-193707"
 parent: "main"
 root: ""

@@ -48,7 +48,11 @@ Shared Decisions in `00-overview.md` apply unchanged; this batch defines no over
   - Resolve `-parent` to an absolute path with `filepath.Abs` (relative values resolve
     against the process working directory). Compute `hubPath = filepath.Join(absParent,
     hubName)`. Do **not** call `os.Getwd` or `git rev-parse --show-toplevel` anywhere (the
-    enforcement scan in `internal/paths/enforcement_test.go` bans both tokens tree-wide).
+    enforcement scan in `internal/paths/enforcement_test.go` bans both tokens tree-wide). The
+    scan is a plain substring match over the whole file (comments included; only `_test.go`
+    files are skipped), so the literal strings `os.Getwd` and `--show-toplevel` must not
+    appear in `main.go` even inside comments or doc comments (`os.RemoveAll` in the seam
+    comment is fine).
   - Decision logic: if `hubPath` already exists and `-reset` is not set → print a message
     that the Hub already exists and that `-reset` rebuilds it, then exit 0 **without**
     cloning (no-op success). If `hubPath` exists and `-reset` is set → remove the Hub
@@ -57,7 +61,12 @@ Shared Decisions in `00-overview.md` apply unchanged; this batch defines no over
   - Run the clone with `exec.Command("lyx", "warp", "clone", hostURL, weftURL)` and set
     `cmd.Dir = absParent` so `warp clone` creates `<absParent>/lyx-test-HUB`. Wire
     `cmd.Stdout`/`cmd.Stderr` to the process's stdout/stderr (stream verbatim) and propagate
-    a non-zero exit (per the `error-surface-verbatim` Shared Decision).
+    a non-zero exit (per the `error-surface-verbatim` Shared Decision). Distinguish the two
+    failure shapes: when the clone run returns an `*exec.ExitError`, the subprocess already
+    streamed its own stderr, so exiting non-zero is enough; when it returns a non-`ExitError`
+    (a startup failure such as `lyx` not found on PATH, where there is no subprocess stderr),
+    write a clear cause to stderr (e.g. `sandbox: lyx not found on PATH: <err>`) before
+    exiting non-zero, so the failure is legible rather than a bare exit code.
   - Provide testability seams as package-level variables so the unit tests can exercise the
     decision logic without network or a real `lyx`: a clone-runner variable (e.g.
     `var cloneRun = func(parentDir string) error { ... }`) and a removal variable (e.g.
@@ -69,8 +78,10 @@ Shared Decisions in `00-overview.md` apply unchanged; this batch defines no over
     computation from `-parent` for both an absolute and a relative input; (b) Hub absent →
     the clone runner is invoked with the parent directory; (c) Hub present + no `-reset` →
     the clone runner is **not** invoked (no-op); (d) Hub present + `-reset` → `removeAll` is
-    called on the hub path before the clone runner runs. Use Go's standard `testing` package
-    and table-driven subtests; create any "existing Hub" directory under `t.TempDir()`.
+    called on the hub path before the clone runner runs; (e) the clone runner returns an
+    error → the decision function surfaces it (non-nil return), covering the
+    `error-surface-verbatim` propagation behavior. Use Go's standard `testing` package and
+    table-driven subtests; create any "existing Hub" directory under `t.TempDir()`.
   - Follow Go house style as seen in `tools/deploy/main.go` (flag parsing, `exec.Command`,
     `fmt.Fprintln(os.Stderr, ...)` + `os.Exit(1)` on error). Do not copy deploy's purpose or
     its `runtime.Caller`/`git`-tag logic — the sandbox tool neither locates the module root
