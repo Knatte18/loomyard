@@ -1,8 +1,8 @@
-# Dogfood Hub: lyx-test
+# Sandbox Hub: lyx-test
 
 ## Overview
 
-The **dogfood Hub** is a dedicated bench for manual testing of lyx's core workflows. It exercises the actual deployed `lyx` binary, testing the real command surface, JSON output, and topology wiring that users encounter.
+The **sandbox Hub** is a dedicated bench for manual testing of lyx's core workflows. It exercises the actual deployed `lyx` binary, testing the real command surface, JSON output, and topology wiring that users encounter. Its purpose is **dogfooding** — running lyx against itself to catch regressions early.
 
 The Hub consists of two dedicated GitHub repositories and a local working directory on disk:
 
@@ -14,7 +14,7 @@ The Hub consists of two dedicated GitHub repositories and a local working direct
 
 The Hub is cloned to `C:\Code\lyx-test-HUB` on this machine (the host basename `lyx-test` + `-HUB` suffix, derived via `internal/warp/clone.go`'s `deriveHostName()`).
 
-**Important:** The Hub lives **outside `C:\Code\loomyard\`** so it is never mistaken for part of Loomyard itself. This separation keeps dogfood separate from the orchestrator codebase.
+**Important:** The Hub lives **outside `C:\Code\loomyard\`** so it is never mistaken for part of Loomyard itself. This separation keeps the sandbox separate from the orchestrator codebase.
 
 The Hub directory structure mirrors the lyx topology model:
 
@@ -72,19 +72,19 @@ The `-reset` flag:
 
 **Caution:** `-reset` destroys the entire Hub directory, including any local changes or uncommitted work. Back up any work before using `-reset`.
 
-## Dogfood Purpose
+## Purpose: dogfooding lyx
 
-The dogfood Hub serves as a **testbed for lyx's core agent-driven workflows**. Point lyx's agent-driven orchestrator at the `lyx-test` host repo and exercise the full pipeline:
+The sandbox Hub serves as a **testbed for lyx's core agent-driven workflows**. Point lyx's agent-driven orchestrator at the `lyx-test` host repo and exercise the full pipeline:
 
 - Init, board, weft, warp, and config operations.
 - Phased runs (Setup → Discussion → Plan → Builder → Finalize).
 - Review gates and agent dispatch.
 
-**If the orchestrator breaks on this known-good Hub, it is a LoomYard bug to be fixed.** The dogfood purpose is to catch regressions early and keep the real lyx surface tested.
+**If the orchestrator breaks on this known-good Hub, it is a LoomYard bug to be fixed.** The point of dogfooding is to catch regressions early and keep the real lyx surface tested.
 
 ## Dedicated Use
 
-The two repositories (`lyx-test` and `lyx-test-weft`) are **dedicated to this dogfood use only**. They are not synced with any other project or use case. Do not use them for other purposes.
+The two repositories (`lyx-test` and `lyx-test-weft`) are **dedicated to this sandbox use only**. They are not synced with any other project or use case. Do not use them for other purposes.
 
 ## See Also
 

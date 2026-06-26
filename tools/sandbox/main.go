@@ -1,4 +1,4 @@
-// main.go implements the sandbox tool for building the lyx-test dogfood Hub.
+// main.go implements the sandbox tool for building the lyx-test sandbox Hub.
 // It drives the on-PATH lyx binary to clone a Hub by invoking lyx warp clone.
 
 package main
