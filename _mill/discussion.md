@@ -179,7 +179,12 @@ concentrated in the heaviest tests.
   fields; the **only** permitted assertion change during migration is substituting the
   old test-chosen slug/branch string for the fixture's exposed value. Behaviour and
   coverage are otherwise identical. Tests needing a *specific* slug, a second pair, or a
-  custom prefix keep using `CopyPairedLocal` + `.Add()`.
+  custom prefix keep using `CopyPairedLocal` + `.Add()`. Extending the existing
+  `PairedFixture` struct with the new slug/branch/host-worktree/weft-worktree fields is
+  backward-compatible (current callers ignore the added fields), so that is the preferred
+  shape over a brand-new struct; the plan picks one concrete struct + helper name (the
+  `CopyPairedWithWorktree` name here is illustrative) so migrated tests bind to a fixed
+  contract.
 - Rationale: Keeps the template and pointer-rewrite logic simple and deterministic, while
   being explicit that "behaviourally identical" still allows the mechanical slug-string
   swap. Each per-test copy is isolated in its own `tb.TempDir()`, so the shared fixed
@@ -322,6 +327,9 @@ migrated test.
   from each main repo lists the copied worktree at its **new** path, the branch is the
   expected mirrored branch, and no pointer references the template's original temp path.
   This is the guard that the gitdir rewrites (and the `commondir` fail-fast) are correct.
+  The guard test is **`//go:build integration`-tagged** (its natural home,
+  `internal/lyxtest/lyxtest_test.go`, is integration-tagged), so it adds no git spawns to
+  the untagged `go test ./...` regression run.
 - **Migrated warp tests:** behaviourally identical — same assertions, same coverage —
   except for the permitted slug/branch-string substitution to the fixture's exposed
   fields, with setup swapped from `.Add()` to the copy-on-write fixture (+ on-demand
