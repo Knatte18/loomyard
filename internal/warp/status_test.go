@@ -13,7 +13,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fslink"
-	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 	"github.com/Knatte18/loomyard/internal/paths"
 )
@@ -308,15 +307,4 @@ func TestStatus_LyxPollutionDetected(t *testing.T) {
 	if !found2 {
 		t.Errorf("no pollution entry with _codeguide prefix found; Pollution = %+v", pair2.Pollution)
 	}
-}
-
-// assertBranch is a test helper that reads the current branch of a git worktree at dir
-// and fails the test if it cannot be determined.
-func assertBranch(t *testing.T, dir string) string {
-	t.Helper()
-	out, _, exitCode, err := gitexec.RunGit([]string{"rev-parse", "--abbrev-ref", "HEAD"}, dir)
-	if err != nil || exitCode != 0 {
-		t.Fatalf("readBranch(%s): err=%v exit=%d", dir, err, exitCode)
-	}
-	return strings.TrimSpace(out)
 }
