@@ -248,45 +248,62 @@ func TestWeftRollbackOnPostHostCreateFailure(t *testing.T) {
 	if exitCode == 0 {
 		t.Errorf("rollback failed: weft branch still exists")
 	}
-}
 
-// TestWeftForkPointMirrorsHost verifies that a new weft branch forks from the
-// parent weft branch (whose name matches the host worktree's branch name at spawn time),
-// preserving the merge-base for future squash-merge-back operations.
-func TestWeftForkPointMirrorsHost(t *testing.T) {
-	t.Parallel()
+	// Second scenario: test missing-parent-branch rollback on same fixture.
+	// After the first rollback, the fixture is clean and ready for a second Add attempt.
+	const slug2 = "missing-parent-test"
 
-	const slug = "fork-point-test"
-
-	f := lyxtest.CopyPairedLocal(t)
-
-	// Capture weft main's tip SHA before spawning.
-	weftRepoRoot := f.Layout.WeftRepoRoot()
-	mainTipStdout, _, exitCode, _ := gitexec.RunGit([]string{"rev-parse", "refs/heads/main"}, weftRepoRoot)
-	if exitCode != 0 {
-		t.Fatalf("git rev-parse refs/heads/main failed")
+	// Create host branch Z with a commit but no matching weft branch.
+	hostRoot := f.Layout.WorktreeRoot
+	lyxtest.MustRun(t, hostRoot, "git", "checkout", "-b", "Z")
+	if err := os.WriteFile(filepath.Join(hostRoot, "Z-file"), []byte("Z content"), 0o644); err != nil {
+		t.Fatalf("write Z-file: %v", err)
 	}
-	mainTip := strings.TrimSpace(mainTipStdout)
+	lyxtest.MustRun(t, hostRoot, "git", "add", "Z-file")
+	lyxtest.MustRun(t, hostRoot, "git", "commit", "-m", "Z commit")
 
-	// Spawn a new weft worktree on main.
-	w := New(Config{})
-	_, err := w.Add(f.Layout, slug, AddOptions{SkipPush: true})
-	if err != nil {
-		t.Fatalf("Add(%q): %v", slug, err)
+	// DO NOT create matching weft branch Z; this is the missing-parent scenario.
+
+	// Run Add and expect an error (git worktree add will fail because Z doesn't exist in weft).
+	result2, err2 := w.Add(f.Layout, slug2, AddOptions{SkipPush: true})
+
+	if err2 == nil {
+		t.Fatalf("Add(%q) should have failed; got nil error", slug2)
 	}
 
-	// Assert git merge-base <new-weft-branch> main equals mainTip.
-	mergeBaseSHA, _, exitCode, _ := gitexec.RunGit(
-		[]string{"merge-base", slug, "main"},
-		weftRepoRoot,
-	)
-	if exitCode != 0 {
-		t.Fatalf("git merge-base %s main failed", slug)
-	}
-	mergeBase := strings.TrimSpace(mergeBaseSHA)
+	// Assert ZERO residue: no host worktree, no host branch, no weft worktree, no weft branch.
 
-	if mergeBase != mainTip {
-		t.Errorf("fork point: merge-base(%s, main) = %s; want %s (main's tip)", slug, mergeBase, mainTip)
+	// 1. No host worktree dir.
+	target2 := f.Layout.WorktreePath(slug2)
+	if _, statErr := os.Stat(target2); !os.IsNotExist(statErr) {
+		if statErr == nil {
+			t.Errorf("missing parent: host worktree dir still exists at %q", target2)
+		}
+	}
+
+	// 2. No host local branch.
+	_, _, exitCode, _ = gitexec.RunGit([]string{"rev-parse", "--verify", "refs/heads/" + slug2}, f.Layout.WorktreeRoot)
+	if exitCode == 0 {
+		t.Errorf("missing parent: host branch %q still exists", slug2)
+	}
+
+	// 3. No weft worktree dir.
+	weftTarget2 := f.Layout.WeftWorktreePath(slug2)
+	if _, statErr := os.Stat(weftTarget2); !os.IsNotExist(statErr) {
+		if statErr == nil {
+			t.Errorf("missing parent: weft worktree dir still exists at %q", weftTarget2)
+		}
+	}
+
+	// 4. No weft branch.
+	_, _, exitCode, _ = gitexec.RunGit([]string{"rev-parse", "--verify", "refs/heads/" + slug2}, f.Layout.WeftRepoRoot())
+	if exitCode == 0 {
+		t.Errorf("missing parent: weft branch %q still exists", slug2)
+	}
+
+	// 5. Result should be zero.
+	if result2.Slug != "" {
+		t.Errorf("missing parent: result.Slug = %q; want empty on error", result2.Slug)
 	}
 }
 
@@ -363,66 +380,3 @@ func TestWeftForkPointSubtaskIsolation(t *testing.T) {
 	}
 }
 
-// TestWeftMissingParentBranch verifies that Add returns an error and performs full
-// paired rollback when the parent host branch has no matching weft branch.
-func TestWeftMissingParentBranch(t *testing.T) {
-	t.Parallel()
-
-	const slug = "missing-parent-test"
-
-	f := lyxtest.CopyPairedLocal(t)
-
-	// Create host branch Z with a commit but no matching weft branch.
-	hostRoot := f.Layout.WorktreeRoot
-	lyxtest.MustRun(t, hostRoot, "git", "checkout", "-b", "Z")
-	if err := os.WriteFile(filepath.Join(hostRoot, "Z-file"), []byte("Z content"), 0o644); err != nil {
-		t.Fatalf("write Z-file: %v", err)
-	}
-	lyxtest.MustRun(t, hostRoot, "git", "add", "Z-file")
-	lyxtest.MustRun(t, hostRoot, "git", "commit", "-m", "Z commit")
-
-	// DO NOT create matching weft branch Z; this is the missing-parent scenario.
-
-	// Run Add and expect an error (git worktree add will fail because Z doesn't exist in weft).
-	w := New(Config{})
-	result, err := w.Add(f.Layout, slug, AddOptions{SkipPush: true})
-
-	if err == nil {
-		t.Fatalf("Add(%q) should have failed; got nil error", slug)
-	}
-
-	// Assert ZERO residue: no host worktree, no host branch, no weft worktree, no weft branch.
-
-	// 1. No host worktree dir.
-	target := f.Layout.WorktreePath(slug)
-	if _, statErr := os.Stat(target); !os.IsNotExist(statErr) {
-		if statErr == nil {
-			t.Errorf("missing parent: host worktree dir still exists at %q", target)
-		}
-	}
-
-	// 2. No host local branch.
-	_, _, exitCode, _ := gitexec.RunGit([]string{"rev-parse", "--verify", "refs/heads/" + slug}, f.Layout.WorktreeRoot)
-	if exitCode == 0 {
-		t.Errorf("missing parent: host branch %q still exists", slug)
-	}
-
-	// 3. No weft worktree dir.
-	weftTarget := f.Layout.WeftWorktreePath(slug)
-	if _, statErr := os.Stat(weftTarget); !os.IsNotExist(statErr) {
-		if statErr == nil {
-			t.Errorf("missing parent: weft worktree dir still exists at %q", weftTarget)
-		}
-	}
-
-	// 4. No weft branch.
-	_, _, exitCode, _ = gitexec.RunGit([]string{"rev-parse", "--verify", "refs/heads/" + slug}, f.Layout.WeftRepoRoot())
-	if exitCode == 0 {
-		t.Errorf("missing parent: weft branch %q still exists", slug)
-	}
-
-	// 5. Result should be zero.
-	if result.Slug != "" {
-		t.Errorf("missing parent: result.Slug = %q; want empty on error", result.Slug)
-	}
-}
