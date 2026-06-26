@@ -5,7 +5,6 @@
 package warp_test
 
 import (
-	"fmt"
 	"path/filepath"
 	"testing"
 
@@ -18,73 +17,56 @@ import (
 func TestList(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name string
-		// extraWorktrees is the number of additional worktrees created
-		// alongside the main checkout before listing.
-		extraWorktrees int
-		verify         func(t *testing.T, hub string, entries []warp.WorktreeEntry)
-	}{
-		{
-			name:           "SingleWorktree",
-			extraWorktrees: 0,
-			verify: func(t *testing.T, hub string, entries []warp.WorktreeEntry) {
-				if len(entries) != 1 {
-					t.Fatalf("List() len = %d; want 1", len(entries))
-				}
-				e := entries[0]
-				if !e.Main {
-					t.Errorf("entries[0].Main = false; want true")
-				}
-				if e.Branch != "main" {
-					t.Errorf("entries[0].Branch = %q; want %q", e.Branch, "main")
-				}
-				if e.Head == "" {
-					t.Error(`entries[0].Head = ""; want non-empty`)
-				}
-			},
-		},
-		{
-			name:           "TwoWorktrees",
-			extraWorktrees: 1,
-			verify: func(t *testing.T, hub string, entries []warp.WorktreeEntry) {
-				if len(entries) != 2 {
-					t.Fatalf("List() len = %d; want 2", len(entries))
-				}
-				if !entries[0].Main {
-					t.Errorf("entries[0].Main = false; want true")
-				}
-				// git may emit forward slashes on all platforms; normalize
-				// before comparing the main entry against the hub path.
-				gotPath := filepath.FromSlash(entries[0].Path)
-				if gotPath != hub {
-					t.Errorf("entries[0].Path = %q; want %q", gotPath, hub)
-				}
-				if entries[1].Main {
-					t.Errorf("entries[1].Main = true; want false")
-				}
-			},
-		},
-	}
+	// TwoWorktrees first checks the single-worktree state (pre-add) then adds a
+	// second worktree and verifies the expanded list. Both assertions run
+	// sequentially on the same fixture to save one fixture build.
+	t.Run("TwoWorktrees", func(t *testing.T) {
+		t.Parallel()
 
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
+		f := lyxtest.CopyHostHub(t)
+		w := warp.New(warp.Config{})
 
-			f := lyxtest.CopyHostHub(t)
-			for i := 0; i < tt.extraWorktrees; i++ {
-				wtPath := filepath.Join(filepath.Dir(f.Hub), fmt.Sprintf("wt%d", i+1))
-				lyxtest.MustRun(t, f.Hub, "git", "worktree", "add", wtPath)
-			}
+		// Pre-add: single-worktree assertions (ported from the former SingleWorktree subtest).
+		entries, err := w.List(f.Hub)
+		if err != nil {
+			t.Fatalf("pre-add List() error = %v; want nil", err)
+		}
+		if len(entries) != 1 {
+			t.Fatalf("pre-add List() len = %d; want 1", len(entries))
+		}
+		e := entries[0]
+		if !e.Main {
+			t.Errorf("pre-add entries[0].Main = false; want true")
+		}
+		if e.Branch != "main" {
+			t.Errorf("pre-add entries[0].Branch = %q; want %q", e.Branch, "main")
+		}
+		if e.Head == "" {
+			t.Error(`pre-add entries[0].Head = ""; want non-empty`)
+		}
 
-			w := warp.New(warp.Config{})
-			entries, err := w.List(f.Hub)
-			if err != nil {
-				t.Fatalf("List() error = %v; want nil", err)
-			}
+		// Add a second worktree so the post-add check can verify list expansion.
+		wtPath := filepath.Join(filepath.Dir(f.Hub), "wt1")
+		lyxtest.MustRun(t, f.Hub, "git", "worktree", "add", wtPath)
 
-			tt.verify(t, f.Hub, entries)
-		})
-	}
+		// Post-add: two-worktree assertions.
+		entries, err = w.List(f.Hub)
+		if err != nil {
+			t.Fatalf("post-add List() error = %v; want nil", err)
+		}
+		if len(entries) != 2 {
+			t.Fatalf("post-add List() len = %d; want 2", len(entries))
+		}
+		if !entries[0].Main {
+			t.Errorf("entries[0].Main = false; want true")
+		}
+		// git may emit forward slashes on all platforms; normalize before comparing.
+		gotPath := filepath.FromSlash(entries[0].Path)
+		if gotPath != f.Hub {
+			t.Errorf("entries[0].Path = %q; want %q", gotPath, f.Hub)
+		}
+		if entries[1].Main {
+			t.Errorf("entries[1].Main = true; want false")
+		}
+	})
 }

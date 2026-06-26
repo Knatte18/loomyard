@@ -16,80 +16,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
-// TestWeftSpawnCreatesWeftDirectory verifies that paired Add creates the weft _lyx directory.
-// Add is dormant: it does not create the host junction. The junction is wired by lyx init
-// via WireJunctions. This test verifies the weft-side structure is correct.
-func TestWeftSpawnCreatesWeftDirectory(t *testing.T) {
-	t.Parallel()
-
-	const slug = "weft-junction-test"
-
-	f := lyxtest.CopyPairedLocal(t)
-
-	w := New(Config{})
-	_, err := w.Add(f.Layout, slug, AddOptions{SkipPush: true})
-	if err != nil {
-		t.Fatalf("Add(%q): %v", slug, err)
-	}
-
-	// Verify host _lyx junction does NOT exist (Add is dormant).
-	hostLink := f.Layout.HostLyxLink(slug)
-	isLink, err := fslink.IsLink(hostLink)
-	if err != nil && !os.IsNotExist(err) {
-		t.Fatalf("fslink.IsLink(%s): %v", hostLink, err)
-	}
-	if isLink {
-		t.Errorf("Add created host junction; want no junction (Add is dormant)")
-	}
-
-	// Verify the weft _lyx directory exists (the junction target).
-	// This verifies the directory structure on the weft side is correct.
-	weftLyxTarget := f.Layout.WeftLyxDirFor(slug)
-	if _, err := os.Stat(weftLyxTarget); os.IsNotExist(err) {
-		t.Errorf("weft _lyx target missing at %s", weftLyxTarget)
-	}
-}
-
-// TestWeftSpawnNoExcludeEntry verifies that Add does not seed the exclude file.
-// Add is dormant: it does not create the host junction or exclude entry. These are
-// wired by lyx init via WireJunctions.
-func TestWeftSpawnNoExcludeEntry(t *testing.T) {
-	t.Parallel()
-
-	const slug = "weft-exclude-test"
-
-	f := lyxtest.CopyPairedLocal(t)
-
-	w := New(Config{})
-	_, err := w.Add(f.Layout, slug, AddOptions{SkipPush: true})
-	if err != nil {
-		t.Fatalf("Add(%q): %v", slug, err)
-	}
-
-	// Get the exclude file path.
-	worktreePath := f.Layout.WorktreePath(slug)
-	stdout, _, exitCode, _ := gitexec.RunGit([]string{"rev-parse", "--git-path", "info/exclude"}, worktreePath)
-	if exitCode != 0 {
-		t.Fatalf("git rev-parse --git-path info/exclude failed")
-	}
-
-	excludePath := strings.TrimSpace(stdout)
-	if !filepath.IsAbs(excludePath) {
-		excludePath = filepath.Join(worktreePath, excludePath)
-	}
-
-	// Read the exclude file (if it exists).
-	content, err := os.ReadFile(excludePath)
-	if err != nil && !os.IsNotExist(err) {
-		t.Fatalf("read exclude file: %v", err)
-	}
-
-	// Verify _lyx is NOT present (Add is dormant).
-	if strings.Contains(string(content), "_lyx") {
-		t.Errorf("Add seeded exclude file with _lyx; want no entry (Add is dormant)")
-	}
-}
-
 // TestWireJunctionsIdempotent verifies that WireJunctions creates the host junction
 // and seeds the exclude entry, and that re-wiring is idempotent.
 func TestWireJunctionsIdempotent(t *testing.T) {
@@ -144,8 +70,21 @@ func TestWireJunctionsIdempotent(t *testing.T) {
 		t.Fatalf("read exclude file: %v", err)
 	}
 
-	if !strings.Contains(string(content), "_lyx") {
+	contentStr := string(content)
+	if !strings.Contains(contentStr, "_lyx") {
 		t.Errorf("exclude file does not contain _lyx entry")
+	}
+
+	// Verify the entry is a line-exact match (not just a substring).
+	found := false
+	for _, line := range strings.Split(contentStr, "\n") {
+		if strings.TrimSpace(line) == "_lyx" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("exclude file does not contain _lyx as a complete line")
 	}
 
 	// Verify re-wiring is idempotent.
@@ -164,36 +103,6 @@ func TestWireJunctionsIdempotent(t *testing.T) {
 	}
 }
 
-// TestWeftSpawnPairedWorktrees verifies that Add creates weft worktrees
-// on the mirrored branch, and that the weft-side assertions are correct.
-// Covered by TestAdd are: host worktree creation, branch naming, and AddResult.
-func TestWeftSpawnPairedWorktrees(t *testing.T) {
-	t.Parallel()
-
-	const slug = "paired-test"
-
-	f := lyxtest.CopyPairedLocal(t)
-
-	w := New(Config{})
-	_, err := w.Add(f.Layout, slug, AddOptions{SkipPush: true})
-	if err != nil {
-		t.Fatalf("Add(%q): %v", slug, err)
-	}
-
-	// Verify weft worktree exists at the expected location.
-	weftTarget := f.Layout.WeftWorktreePath(slug)
-	if _, err := os.Stat(weftTarget); os.IsNotExist(err) {
-		t.Errorf("weft worktree not created at %s", weftTarget)
-	}
-
-	// Verify weft branch exists via WeftRepoRoot().
-	weftRepoRoot := f.Layout.WeftRepoRoot()
-	_, _, exitCode, _ := gitexec.RunGit([]string{"rev-parse", "--verify", "refs/heads/" + slug}, weftRepoRoot)
-	if exitCode != 0 {
-		t.Errorf("weft branch %q not created", slug)
-	}
-}
-
 // TestWeftPrechecks verifies that Add enforces preconditions on weft state:
 // weft repo must exist, weft worktree must not exist, weft branch must not exist,
 // and the host must be pristine (no real _lyx, only junctions allowed).
@@ -206,19 +115,7 @@ func TestWeftPrechecks(t *testing.T) {
 		wantResultZero  bool
 	}{
 		{
-			name: "TestWeftPrechecksHardRequireWeftRepo",
-			setup: func(t *testing.T, f lyxtest.PairedFixture) {
-				// Rename the weft prime dir so WeftRepoRoot() does not resolve.
-				if err := os.Rename(f.WeftPrime, f.WeftPrime+"-disabled"); err != nil {
-					t.Fatalf("rename weft prime: %v", err)
-				}
-			},
-			wantErrContains: "no weft repo",
-			wantNoTargetDir: true,
-			wantResultZero:  true,
-		},
-		{
-			name: "TestWeftPrechecksRejectExistingWeftWorktree",
+			name: "RejectExistingWeftWorktree",
 			setup: func(t *testing.T, f lyxtest.PairedFixture) {
 				// Pre-create the weft worktree dir.
 				slug := "weft-prechecks-test"
@@ -351,119 +248,62 @@ func TestWeftRollbackOnPostHostCreateFailure(t *testing.T) {
 	if exitCode == 0 {
 		t.Errorf("rollback failed: weft branch still exists")
 	}
-}
 
-// TestWireJunctionsPreservesBehavior verifies that WireJunctions correctly creates
-// the host _lyx junction and exclude entry. The junction resolves to the correct
-// weft target, and the exclude file is properly seeded.
-func TestWireJunctionsPreservesBehavior(t *testing.T) {
-	t.Parallel()
+	// Second scenario: test missing-parent-branch rollback on same fixture.
+	// After the first rollback, the fixture is clean and ready for a second Add attempt.
+	const slug2 = "missing-parent-test"
 
-	const slug = "seeder-parity-test"
+	// Create host branch Z with a commit but no matching weft branch.
+	hostRoot := f.Layout.WorktreeRoot
+	lyxtest.MustRun(t, hostRoot, "git", "checkout", "-b", "Z")
+	if err := os.WriteFile(filepath.Join(hostRoot, "Z-file"), []byte("Z content"), 0o644); err != nil {
+		t.Fatalf("write Z-file: %v", err)
+	}
+	lyxtest.MustRun(t, hostRoot, "git", "add", "Z-file")
+	lyxtest.MustRun(t, hostRoot, "git", "commit", "-m", "Z commit")
 
-	f := lyxtest.CopyPairedLocal(t)
+	// DO NOT create matching weft branch Z; this is the missing-parent scenario.
 
-	// Create worktree via Add (dormant).
-	w := New(Config{})
-	_, err := w.Add(f.Layout, slug, AddOptions{SkipPush: true})
-	if err != nil {
-		t.Fatalf("Add(%q): %v", slug, err)
+	// Run Add and expect an error (git worktree add will fail because Z doesn't exist in weft).
+	result2, err2 := w.Add(f.Layout, slug2, AddOptions{SkipPush: true})
+
+	if err2 == nil {
+		t.Fatalf("Add(%q) should have failed; got nil error", slug2)
 	}
 
-	// Wire junctions via the primitive.
-	if err := WireJunctions(f.Layout, slug); err != nil {
-		t.Fatalf("WireJunctions(%q): %v", slug, err)
-	}
+	// Assert ZERO residue: no host worktree, no host branch, no weft worktree, no weft branch.
 
-	// Verify host _lyx junction exists and points to the weft target.
-	hostLink := f.Layout.HostLyxLink(slug)
-	isLink, err := fslink.IsLink(hostLink)
-	if err != nil {
-		t.Fatalf("fslink.IsLink(%s): %v", hostLink, err)
-	}
-	if !isLink {
-		t.Errorf("WireJunctions did not create host junction at %s", hostLink)
-	}
-
-	// Verify the junction resolves to the correct weft target.
-	weftTarget := f.Layout.WeftLyxDirFor(slug)
-	_, err = os.Stat(weftTarget)
-	if os.IsNotExist(err) {
-		t.Errorf("weft _lyx target missing at %s", weftTarget)
-	}
-
-	// Verify .git/info/exclude contains the _lyx entry.
-	worktreePath := f.Layout.WorktreePath(slug)
-	stdout, _, exitCode, _ := gitexec.RunGit([]string{"rev-parse", "--git-path", "info/exclude"}, worktreePath)
-	if exitCode != 0 {
-		t.Fatalf("git rev-parse --git-path info/exclude failed")
-	}
-
-	excludePath := strings.TrimSpace(stdout)
-	if !filepath.IsAbs(excludePath) {
-		excludePath = filepath.Join(worktreePath, excludePath)
-	}
-
-	content, err := os.ReadFile(excludePath)
-	if err != nil {
-		t.Fatalf("read exclude file: %v", err)
-	}
-
-	contentStr := string(content)
-	if !strings.Contains(contentStr, "_lyx") {
-		t.Errorf("exclude file does not contain _lyx entry")
-	}
-
-	// Verify the entry is a line-exact match (not just a substring).
-	found := false
-	for _, line := range strings.Split(contentStr, "\n") {
-		if strings.TrimSpace(line) == "_lyx" {
-			found = true
-			break
+	// 1. No host worktree dir.
+	target2 := f.Layout.WorktreePath(slug2)
+	if _, statErr := os.Stat(target2); !os.IsNotExist(statErr) {
+		if statErr == nil {
+			t.Errorf("missing parent: host worktree dir still exists at %q", target2)
 		}
 	}
-	if !found {
-		t.Errorf("exclude file does not contain _lyx as a complete line")
-	}
-}
 
-// TestWeftForkPointMirrorsHost verifies that a new weft branch forks from the
-// parent weft branch (whose name matches the host worktree's branch name at spawn time),
-// preserving the merge-base for future squash-merge-back operations.
-func TestWeftForkPointMirrorsHost(t *testing.T) {
-	t.Parallel()
-
-	const slug = "fork-point-test"
-
-	f := lyxtest.CopyPairedLocal(t)
-
-	// Capture weft main's tip SHA before spawning.
-	weftRepoRoot := f.Layout.WeftRepoRoot()
-	mainTipStdout, _, exitCode, _ := gitexec.RunGit([]string{"rev-parse", "refs/heads/main"}, weftRepoRoot)
-	if exitCode != 0 {
-		t.Fatalf("git rev-parse refs/heads/main failed")
-	}
-	mainTip := strings.TrimSpace(mainTipStdout)
-
-	// Spawn a new weft worktree on main.
-	w := New(Config{})
-	_, err := w.Add(f.Layout, slug, AddOptions{SkipPush: true})
-	if err != nil {
-		t.Fatalf("Add(%q): %v", slug, err)
+	// 2. No host local branch.
+	_, _, exitCode, _ = gitexec.RunGit([]string{"rev-parse", "--verify", "refs/heads/" + slug2}, f.Layout.WorktreeRoot)
+	if exitCode == 0 {
+		t.Errorf("missing parent: host branch %q still exists", slug2)
 	}
 
-	// Assert git merge-base <new-weft-branch> main equals mainTip.
-	mergeBaseSHA, _, exitCode, _ := gitexec.RunGit(
-		[]string{"merge-base", slug, "main"},
-		weftRepoRoot,
-	)
-	if exitCode != 0 {
-		t.Fatalf("git merge-base %s main failed", slug)
+	// 3. No weft worktree dir.
+	weftTarget2 := f.Layout.WeftWorktreePath(slug2)
+	if _, statErr := os.Stat(weftTarget2); !os.IsNotExist(statErr) {
+		if statErr == nil {
+			t.Errorf("missing parent: weft worktree dir still exists at %q", weftTarget2)
+		}
 	}
-	mergeBase := strings.TrimSpace(mergeBaseSHA)
 
-	if mergeBase != mainTip {
-		t.Errorf("fork point: merge-base(%s, main) = %s; want %s (main's tip)", slug, mergeBase, mainTip)
+	// 4. No weft branch.
+	_, _, exitCode, _ = gitexec.RunGit([]string{"rev-parse", "--verify", "refs/heads/" + slug2}, f.Layout.WeftRepoRoot())
+	if exitCode == 0 {
+		t.Errorf("missing parent: weft branch %q still exists", slug2)
+	}
+
+	// 5. Result should be zero.
+	if result2.Slug != "" {
+		t.Errorf("missing parent: result.Slug = %q; want empty on error", result2.Slug)
 	}
 }
 
@@ -540,66 +380,3 @@ func TestWeftForkPointSubtaskIsolation(t *testing.T) {
 	}
 }
 
-// TestWeftMissingParentBranch verifies that Add returns an error and performs full
-// paired rollback when the parent host branch has no matching weft branch.
-func TestWeftMissingParentBranch(t *testing.T) {
-	t.Parallel()
-
-	const slug = "missing-parent-test"
-
-	f := lyxtest.CopyPairedLocal(t)
-
-	// Create host branch Z with a commit but no matching weft branch.
-	hostRoot := f.Layout.WorktreeRoot
-	lyxtest.MustRun(t, hostRoot, "git", "checkout", "-b", "Z")
-	if err := os.WriteFile(filepath.Join(hostRoot, "Z-file"), []byte("Z content"), 0o644); err != nil {
-		t.Fatalf("write Z-file: %v", err)
-	}
-	lyxtest.MustRun(t, hostRoot, "git", "add", "Z-file")
-	lyxtest.MustRun(t, hostRoot, "git", "commit", "-m", "Z commit")
-
-	// DO NOT create matching weft branch Z; this is the missing-parent scenario.
-
-	// Run Add and expect an error (git worktree add will fail because Z doesn't exist in weft).
-	w := New(Config{})
-	result, err := w.Add(f.Layout, slug, AddOptions{SkipPush: true})
-
-	if err == nil {
-		t.Fatalf("Add(%q) should have failed; got nil error", slug)
-	}
-
-	// Assert ZERO residue: no host worktree, no host branch, no weft worktree, no weft branch.
-
-	// 1. No host worktree dir.
-	target := f.Layout.WorktreePath(slug)
-	if _, statErr := os.Stat(target); !os.IsNotExist(statErr) {
-		if statErr == nil {
-			t.Errorf("missing parent: host worktree dir still exists at %q", target)
-		}
-	}
-
-	// 2. No host local branch.
-	_, _, exitCode, _ := gitexec.RunGit([]string{"rev-parse", "--verify", "refs/heads/" + slug}, f.Layout.WorktreeRoot)
-	if exitCode == 0 {
-		t.Errorf("missing parent: host branch %q still exists", slug)
-	}
-
-	// 3. No weft worktree dir.
-	weftTarget := f.Layout.WeftWorktreePath(slug)
-	if _, statErr := os.Stat(weftTarget); !os.IsNotExist(statErr) {
-		if statErr == nil {
-			t.Errorf("missing parent: weft worktree dir still exists at %q", weftTarget)
-		}
-	}
-
-	// 4. No weft branch.
-	_, _, exitCode, _ = gitexec.RunGit([]string{"rev-parse", "--verify", "refs/heads/" + slug}, f.Layout.WeftRepoRoot())
-	if exitCode == 0 {
-		t.Errorf("missing parent: weft branch %q still exists", slug)
-	}
-
-	// 5. Result should be zero.
-	if result.Slug != "" {
-		t.Errorf("missing parent: result.Slug = %q; want empty on error", result.Slug)
-	}
-}

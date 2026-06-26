@@ -121,16 +121,9 @@ func TestCreatePortal(t *testing.T) {
 	if err := removePortal(l, "test-slug"); err != nil {
 		t.Fatalf("second removePortal: %v", err)
 	}
-}
 
-// TestCreatePortalMultipleSubpaths asserts that distinct subpaths do not collide
-// for the same slug (each gets its own mirrored directory).
-func TestCreatePortalMultipleSubpaths(t *testing.T) {
-	t.Parallel()
-
-	f := lyxtest.CopyHostHub(t)
-
-	// Create two distinct subdirectories.
+	// Verify that two distinct subpaths for the same slug yield non-colliding portal
+	// links (ported from the former TestCreatePortalMultipleSubpaths).
 	subdir1 := filepath.Join(f.Hub, "subdir1")
 	subdir2 := filepath.Join(f.Hub, "subdir2")
 	if err := os.MkdirAll(subdir1, 0o755); err != nil {
@@ -140,11 +133,9 @@ func TestCreatePortalMultipleSubpaths(t *testing.T) {
 		t.Fatalf("mkdir subdir2: %v", err)
 	}
 
-	// Setup portal targets via helper for both subdirectories.
 	l1, _ := setupPortalTarget(t, subdir1, "test-slug")
 	l2, _ := setupPortalTarget(t, subdir2, "test-slug")
 
-	// Create portals for the same slug from both subpaths.
 	if err := createPortal(l1, "test-slug"); err != nil {
 		t.Skipf("portal creation not supported on this platform: %v", err)
 	}
@@ -152,7 +143,6 @@ func TestCreatePortalMultipleSubpaths(t *testing.T) {
 		t.Skipf("portal creation not supported on this platform: %v", err)
 	}
 
-	// Verify both portals exist at distinct locations.
 	link1 := l1.PortalLink("test-slug")
 	link2 := l2.PortalLink("test-slug")
 

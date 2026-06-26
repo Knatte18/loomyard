@@ -62,12 +62,29 @@ func SeedConfig(tb testing.TB, repoDir string, configByModule map[string]string)
 
 // Template builders: cached, built once per test binary via sync.Once.
 
+// stripHookSamples removes all *.sample files from the given hooks directory.
+// It uses filepath.Glob to find matches and os.Remove to delete each one,
+// ignoring any errors. The removal is best-effort; missing or locked files
+// must not panic a fixture build.
+func stripHookSamples(hooksDir string) {
+	pattern := filepath.Join(hooksDir, "*.sample")
+	matches, err := filepath.Glob(pattern)
+	if err != nil {
+		// Ignore glob errors (best-effort).
+		return
+	}
+	for _, match := range matches {
+		_ = os.Remove(match)
+	}
+}
+
 // initRepo initializes a git repository at dir on branch main with user Test/test@test.com.
 // Fixture construction errors are unrecoverable, so any git command failure panics immediately.
 func initRepo(dir string) {
 	mustGit(dir, "init", "-b", "main")
 	mustGit(dir, "config", "user.email", "test@test.com")
 	mustGit(dir, "config", "user.name", "Test")
+	stripHookSamples(filepath.Join(dir, ".git", "hooks"))
 }
 
 // commitAll stages every change in dir and creates a commit with the given message.
@@ -86,6 +103,7 @@ func initBareRemote(dir, repoDir string) {
 		panic(err)
 	}
 	mustGit(dir, "init", "--bare")
+	stripHookSamples(filepath.Join(dir, "hooks"))
 	mustGit(repoDir, "remote", "add", "origin", dir)
 }
 

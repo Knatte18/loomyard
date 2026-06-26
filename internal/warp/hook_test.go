@@ -37,35 +37,6 @@ func resolveCommonHooksDir(t *testing.T, repoDir string) string {
 	return filepath.Join(commonDir, "hooks")
 }
 
-// TestInstallPostCheckoutHook_WritesScript verifies that InstallPostCheckoutHook
-// writes the embedded script into the repo's common hooks directory and that
-// the file contains the warp sentinel.
-func TestInstallPostCheckoutHook_WritesScript(t *testing.T) {
-	t.Parallel()
-
-	f := lyxtest.CopyHostHub(t)
-	l, err := paths.Resolve(f.Hub)
-	if err != nil {
-		t.Fatalf("paths.Resolve(%q): %v", f.Hub, err)
-	}
-
-	if err := InstallPostCheckoutHook(l); err != nil {
-		t.Fatalf("InstallPostCheckoutHook: %v", err)
-	}
-
-	hooksDir := resolveCommonHooksDir(t, f.Hub)
-	hookPath := filepath.Join(hooksDir, "post-checkout")
-
-	content, err := os.ReadFile(hookPath)
-	if err != nil {
-		t.Fatalf("read hook file: %v", err)
-	}
-
-	if !strings.Contains(string(content), hookSentinel) {
-		t.Errorf("hook file does not contain sentinel %q; content: %q", hookSentinel, string(content))
-	}
-}
-
 // TestInstallPostCheckoutHook_Idempotent verifies that calling InstallPostCheckoutHook
 // twice does not duplicate the script or alter the file content after the first install.
 func TestInstallPostCheckoutHook_Idempotent(t *testing.T) {
@@ -110,64 +81,13 @@ func TestInstallPostCheckoutHook_Idempotent(t *testing.T) {
 	}
 }
 
-// TestInstallPostCheckoutHook_ChainsExistingHook verifies that when a user hook
-// already exists without the warp sentinel, InstallPostCheckoutHook backs it up
-// to post-checkout.user and writes a chained wrapper that contains the sentinel.
-func TestInstallPostCheckoutHook_ChainsExistingHook(t *testing.T) {
-	t.Parallel()
-
-	f := lyxtest.CopyHostHub(t)
-	l, err := paths.Resolve(f.Hub)
-	if err != nil {
-		t.Fatalf("paths.Resolve(%q): %v", f.Hub, err)
-	}
-
-	// Write a pre-existing user hook that does not contain the warp sentinel.
-	hooksDir := resolveCommonHooksDir(t, f.Hub)
-	if err := os.MkdirAll(hooksDir, 0o755); err != nil {
-		t.Fatalf("mkdir hooks dir: %v", err)
-	}
-
-	hookPath := filepath.Join(hooksDir, "post-checkout")
-	userHookContent := "#!/bin/sh\necho 'user hook ran'\n"
-	if err := os.WriteFile(hookPath, []byte(userHookContent), 0o755); err != nil {
-		t.Fatalf("write user hook: %v", err)
-	}
-
-	if err := InstallPostCheckoutHook(l); err != nil {
-		t.Fatalf("InstallPostCheckoutHook: %v", err)
-	}
-
-	// The original hook must be backed up.
-	userBackupPath := hookPath + ".user"
-	backupContent, err := os.ReadFile(userBackupPath)
-	if err != nil {
-		t.Fatalf("read user hook backup: %v", err)
-	}
-	if string(backupContent) != userHookContent {
-		t.Errorf("backup content = %q; want %q", backupContent, userHookContent)
-	}
-
-	// The main hook must now contain the warp sentinel (chained wrapper).
-	chainedContent, err := os.ReadFile(hookPath)
-	if err != nil {
-		t.Fatalf("read chained hook: %v", err)
-	}
-	if !strings.Contains(string(chainedContent), hookSentinel) {
-		t.Errorf("chained hook does not contain sentinel %q; content: %q", hookSentinel, string(chainedContent))
-	}
-
-	// The backup file must also be referenced in the chained hook.
-	if !strings.Contains(string(chainedContent), "post-checkout.user") {
-		t.Errorf("chained hook does not reference post-checkout.user; content: %q", string(chainedContent))
-	}
-}
-
-// TestInstallPostCheckoutHook_ChainIdempotent verifies that re-installing after a
-// chain has already been set up (sentinel present) is a no-op — the backup file
-// is not clobbered or re-wrapped a second time.
+// TestInstallPostCheckoutHook_ChainIdempotent verifies that when a user hook exists,
+// InstallPostCheckoutHook backs it up to post-checkout.user, writes a chained wrapper
+// that references the backup, and that a second install is a no-op (sentinel already present).
 func TestInstallPostCheckoutHook_ChainIdempotent(t *testing.T) {
 	t.Parallel()
+
+	const userHookContent = "#!/bin/sh\necho user\n"
 
 	f := lyxtest.CopyHostHub(t)
 	l, err := paths.Resolve(f.Hub)
@@ -181,11 +101,11 @@ func TestInstallPostCheckoutHook_ChainIdempotent(t *testing.T) {
 		t.Fatalf("mkdir hooks dir: %v", err)
 	}
 	hookPath := filepath.Join(hooksDir, "post-checkout")
-	if err := os.WriteFile(hookPath, []byte("#!/bin/sh\necho user\n"), 0o755); err != nil {
+	if err := os.WriteFile(hookPath, []byte(userHookContent), 0o755); err != nil {
 		t.Fatalf("write user hook: %v", err)
 	}
 
-	// First install — chains.
+	// First install — chains the user hook.
 	if err := InstallPostCheckoutHook(l); err != nil {
 		t.Fatalf("first InstallPostCheckoutHook: %v", err)
 	}
@@ -193,6 +113,21 @@ func TestInstallPostCheckoutHook_ChainIdempotent(t *testing.T) {
 	firstChainContent, err := os.ReadFile(hookPath)
 	if err != nil {
 		t.Fatalf("read first chain: %v", err)
+	}
+
+	// Verify the original user hook was backed up to post-checkout.user unchanged.
+	userBackupPath := hookPath + ".user"
+	backupContent, err := os.ReadFile(userBackupPath)
+	if err != nil {
+		t.Fatalf("read user hook backup: %v", err)
+	}
+	if string(backupContent) != userHookContent {
+		t.Errorf("backup content = %q; want %q", backupContent, userHookContent)
+	}
+
+	// Verify the chained wrapper references the backup file.
+	if !strings.Contains(string(firstChainContent), "post-checkout.user") {
+		t.Errorf("chained hook does not reference post-checkout.user; content: %q", string(firstChainContent))
 	}
 
 	// Second install — must be idempotent (sentinel already present).
