@@ -294,6 +294,10 @@ Per-file unit tests sit next to the source they test (`store.go` ↔
 `store_test.go`). The cross-cutting suites — benchmarks, concurrency stress, and
 git-backed integration — live in the black-box `internal/board/boardtest` package.
 
+## Dogfood Hub
+
+The **dogfood Hub** is a dedicated bench for manual testing of lyx's core workflows. It lives on disk at `C:\Code\lyx-test-HUB` and exercises the real deployed `lyx` binary: the command surface, JSON output, and topology wiring users encounter. Build it via `sandbox.cmd` once `lyx` is deployed and the GitHub weft wiki is initialized. See [dogfood-hub.md](dogfood-hub.md) for details.
+
 ## Other docs
 
 - [modules/README.md](modules/README.md) — **the module map**: index of every module doc + how the layers stack (design).
@@ -306,3 +310,4 @@ git-backed integration — live in the black-box `internal/board/boardtest` pack
 - [research/](research/) — design exploration (mux research logs).
 - [reference/psmux_scripting.md](reference/psmux_scripting.md) — upstream psmux command reference (vendored).
 - [roadmap.md](roadmap.md) — numbered milestones and long-term direction.
+- [dogfood-hub.md](dogfood-hub.md) — the dogfood Hub: a dedicated bench for manual testing.
