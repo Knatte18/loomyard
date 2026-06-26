@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: lyx-sandbox
 branch: lyx-sandbox
 plan: _mill/plan
@@ -27,6 +27,7 @@ holistic-fixing  '2026-06-26T19:58:08Z'
 nits-fixed-holistic  '2026-06-26T19:59:28Z'
 holistic-approved  '2026-06-26T19:59:38Z'
 done  '2026-06-26T20:00:05Z'
+pr-pending  '2026-06-26T20:04:05Z'
 ```
 
 ## Batches
