@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: lyx-sandbox
 branch: lyx-sandbox
 plan: _mill/plan
@@ -20,4 +20,13 @@ discussed  '2026-06-26T19:32:23Z'
 planning  '2026-06-26T19:38:22Z'
 plan-fix-r1  '2026-06-26T19:41:42Z'
 planned  '2026-06-26T19:42:20Z'
+implementing  '2026-06-26T19:51:58Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: sandbox-tool-and-docs
+    state: pending
 ```
