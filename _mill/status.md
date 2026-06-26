@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-prune-cleanup
+phase: approved-remove-hook-misc
 slug: warp-test-speedup
 branch: warp-test-speedup
 plan: _mill/plan
@@ -31,6 +31,7 @@ approved-fixture-hook-strip  '2026-06-26T07:24:58Z'
 approved-add-weftwiring  '2026-06-26T07:32:16Z'
 approved-drift-status  '2026-06-26T07:38:22Z'
 approved-prune-cleanup  '2026-06-26T07:44:45Z'
+approved-remove-hook-misc  '2026-06-26T08:04:57Z'
 ```
 
 ## Batches
@@ -58,7 +59,8 @@ batches:
     start_sha: 4a1dc01061178845da9840ca4bdf32ded8eff170
     commit_sha: 0d66609c2b2c8688f4a35cfd2175c70edbda0beb
   - name: remove-hook-misc
-    state: running
-    implementer_session: 0a06746c-8908-4c87-ae2d-928cd1748485
-    start_sha: 42c57d66b29b233b668e3dd361a394f2260a74bb
+    state: approved
+    implementer_session: fed9074e-748b-475a-9844-40a56a74bde7
+    start_sha: a6b1124ccb1c829f368abcd91248cad905e01f22
+    commit_sha: ef7b665cf404730750f89595eec501e9842be11d
 ```
