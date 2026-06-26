@@ -41,6 +41,8 @@ func TestAdd(t *testing.T) {
 		wantNoTargetDir bool
 		// wantResultZero asserts result.Slug is empty when error occurs.
 		wantResultZero bool
+		// extraAssert is an optional per-case assertion hook (called only on success path).
+		extraAssert func(t *testing.T, f lyxtest.PairedFixture, res AddResult)
 	}{
 		{
 			name:       "HappyPath",
@@ -48,6 +50,70 @@ func TestAdd(t *testing.T) {
 			opts:       AddOptions{SkipPush: true},
 			wantBranch: "my-task",
 			// Add is dormant: no junctions wired by Add.
+			extraAssert: func(t *testing.T, f lyxtest.PairedFixture, res AddResult) {
+				// (a) from TestAddDormant: host _lyx is NOT a link.
+				hostLink := f.Layout.HostLyxLink(slug)
+				isLink, err := fslink.IsLink(hostLink)
+				if err != nil && !os.IsNotExist(err) {
+					t.Fatalf("fslink.IsLink(%s): %v", hostLink, err)
+				}
+				if isLink {
+					t.Errorf("Add created host junction at %s; want no junction (Add is dormant)", hostLink)
+				}
+
+				// (b) from TestWeftSpawnCreatesWeftDirectory: weft _lyx dir exists.
+				weftLyxTarget := f.Layout.WeftLyxDirFor(slug)
+				if _, err := os.Stat(weftLyxTarget); os.IsNotExist(err) {
+					t.Errorf("weft _lyx target missing at %s", weftLyxTarget)
+				}
+
+				// (c) from TestWeftSpawnNoExcludeEntry: exclude file does NOT contain _lyx.
+				worktreePath := res.Path
+				stdout, _, exitCode, _ := gitexec.RunGit([]string{"rev-parse", "--git-path", "info/exclude"}, worktreePath)
+				if exitCode != 0 {
+					t.Fatalf("git rev-parse --git-path info/exclude failed")
+				}
+				excludePath := strings.TrimSpace(stdout)
+				if !filepath.IsAbs(excludePath) {
+					excludePath = filepath.Join(worktreePath, excludePath)
+				}
+				content, err := os.ReadFile(excludePath)
+				if err != nil && !os.IsNotExist(err) {
+					t.Fatalf("read exclude file: %v", err)
+				}
+				if strings.Contains(string(content), "_lyx") {
+					t.Errorf("Add seeded exclude file with _lyx; want no entry (Add is dormant)")
+				}
+
+				// (d) from TestWeftSpawnPairedWorktrees: weft worktree and branch exist.
+				weftTarget := f.Layout.WeftWorktreePath(slug)
+				if _, err := os.Stat(weftTarget); os.IsNotExist(err) {
+					t.Errorf("weft worktree not created at %s", weftTarget)
+				}
+				weftRepoRoot := f.Layout.WeftRepoRoot()
+				_, _, exitCode, _ = gitexec.RunGit([]string{"rev-parse", "--verify", "refs/heads/" + slug}, weftRepoRoot)
+				if exitCode != 0 {
+					t.Errorf("weft branch %q not created", slug)
+				}
+
+				// (e) from TestWeftForkPointMirrorsHost: merge-base equals weft main tip.
+				mainTipStdout, _, exitCode, _ := gitexec.RunGit([]string{"rev-parse", "refs/heads/main"}, weftRepoRoot)
+				if exitCode != 0 {
+					t.Fatalf("git rev-parse refs/heads/main failed")
+				}
+				mainTip := strings.TrimSpace(mainTipStdout)
+				mergeBaseSHA, _, exitCode, _ := gitexec.RunGit(
+					[]string{"merge-base", slug, "main"},
+					weftRepoRoot,
+				)
+				if exitCode != 0 {
+					t.Fatalf("git merge-base %s main failed", slug)
+				}
+				mergeBase := strings.TrimSpace(mergeBaseSHA)
+				if mergeBase != mainTip {
+					t.Errorf("fork point: merge-base(%s, main) = %s; want %s (main's tip)", slug, mergeBase, mainTip)
+				}
+			},
 		},
 		{
 			name:         "BranchPrefix",
@@ -55,6 +121,7 @@ func TestAdd(t *testing.T) {
 			setup:        func(t *testing.T, f lyxtest.PairedFixture) {},
 			opts:         AddOptions{SkipPush: true},
 			wantBranch:   "hanf/my-task",
+			extraAssert:  nil,
 		},
 		{
 			name: "DirtySource",
@@ -68,6 +135,7 @@ func TestAdd(t *testing.T) {
 			wantErrContains: "source worktree has uncommitted changes",
 			wantNoTargetDir: true,
 			wantResultZero:  true,
+			extraAssert:     nil,
 		},
 		{
 			name: "BranchExists",
@@ -77,6 +145,7 @@ func TestAdd(t *testing.T) {
 			opts:            AddOptions{SkipPush: true},
 			wantErrContains: `branch "my-task" already exists`,
 			wantResultZero:  true,
+			extraAssert:     nil,
 		},
 		{
 			name: "TargetDirExists",
@@ -88,6 +157,7 @@ func TestAdd(t *testing.T) {
 			opts:            AddOptions{SkipPush: true},
 			wantErrContains: "already exists",
 			wantResultZero:  true,
+			extraAssert:     nil,
 		},
 		{
 			name: "NoRemote",
@@ -99,6 +169,7 @@ func TestAdd(t *testing.T) {
 			wantErrContains: "no remote configured",
 			wantNoTargetDir: true,
 			wantResultZero:  true,
+			extraAssert:     nil,
 		},
 		{
 			name: "NoWeftRepo",
@@ -112,6 +183,7 @@ func TestAdd(t *testing.T) {
 			wantErrContains: "no weft repo",
 			wantNoTargetDir: true,
 			wantResultZero:  true,
+			extraAssert:     nil,
 		}, // Migrated from TestWeftPrechecksHardRequireWeftRepo: result.Slug == ""
 		{
 			name: "DetachedHEAD",
@@ -123,6 +195,7 @@ func TestAdd(t *testing.T) {
 			wantErrContains: "detached HEAD",
 			wantNoTargetDir: true,
 			wantResultZero:  true,
+			extraAssert:     nil,
 		},
 		{
 			name: "UnbornBranch",
@@ -136,6 +209,7 @@ func TestAdd(t *testing.T) {
 			wantErrContains: "detached HEAD",
 			wantNoTargetDir: true,
 			wantResultZero:  true,
+			extraAssert:     nil,
 		},
 	}
 
@@ -190,6 +264,10 @@ func TestAdd(t *testing.T) {
 			}
 			if _, statErr := os.Stat(result.Path); statErr != nil {
 				t.Errorf("Add(%q) worktree dir missing: %v", slug, statErr)
+			}
+			// Run per-case extraAssert hook if defined.
+			if tt.extraAssert != nil {
+				tt.extraAssert(t, f, result)
 			}
 		})
 	}
@@ -268,37 +346,6 @@ func TestAddRollback(t *testing.T) {
 
 	if result.Slug != "" {
 		t.Errorf("Add(%q) result should be zero on error; got non-empty result", slug)
-	}
-}
-
-// TestAddDormant asserts that Add does not wire the host _lyx junction.
-// Junctions are wired by lyx init via WireJunctions, not by Add.
-func TestAddDormant(t *testing.T) {
-	t.Parallel()
-
-	const slug = "dormant-test"
-	f := lyxtest.CopyPairedLocal(t)
-
-	w := New(Config{})
-	result, err := w.Add(f.Layout, slug, AddOptions{SkipPush: true})
-	if err != nil {
-		t.Fatalf("Add(%q) error = %v; want nil", slug, err)
-	}
-
-	// Assert no host _lyx junction was created.
-	hostLink := f.Layout.HostLyxLink(slug)
-	isLink, err := fslink.IsLink(hostLink)
-	if err != nil && !os.IsNotExist(err) {
-		t.Fatalf("fslink.IsLink(%s): %v", hostLink, err)
-	}
-
-	if isLink {
-		t.Errorf("Add(%q) created host junction at %s; want no junction (Add is dormant)", slug, hostLink)
-	}
-
-	// Worktree dir should exist (Add created it).
-	if _, statErr := os.Stat(result.Path); statErr != nil {
-		t.Errorf("Add(%q) worktree dir missing: %v", slug, statErr)
 	}
 }
 
