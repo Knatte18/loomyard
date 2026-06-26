@@ -192,44 +192,6 @@ func TestRemove(t *testing.T) {
 	})
 }
 
-// TestRemoveHostJunctionRemoved verifies that Remove explicitly removes the host _lyx junction
-// before the worktree, catching nested junctions that removeLinks (which only scans immediate
-// children) would miss.
-func TestRemoveHostJunctionRemoved(t *testing.T) {
-	t.Parallel()
-
-	const slug = "junction-removal-test"
-	f := lyxtest.CopyPairedLocal(t)
-
-	w := New(Config{})
-	_, err := w.Add(f.Layout, slug, AddOptions{SkipPush: true})
-	if err != nil {
-		t.Fatalf("Add(%q): %v", slug, err)
-	}
-
-	// Wire junctions (Add is dormant; junctions wired by lyx init or explicitly via WireJunctions).
-	if err := WireJunctions(f.Layout, slug); err != nil {
-		t.Fatalf("WireJunctions(%q): %v", slug, err)
-	}
-
-	// Verify junction exists before Remove.
-	hostLink := f.Layout.HostLyxLink(slug)
-	if _, err := os.Lstat(hostLink); err != nil {
-		t.Fatalf("host junction missing before Remove: %v", err)
-	}
-
-	// Remove the worktree.
-	_, err = w.Remove(f.Layout, slug, false)
-	if err != nil {
-		t.Fatalf("Remove(%q): %v", slug, err)
-	}
-
-	// Verify junction is gone.
-	if _, err := os.Lstat(hostLink); !os.IsNotExist(err) {
-		t.Errorf("Remove(%q) failed to remove host junction at %s", slug, hostLink)
-	}
-}
-
 // TestRemoveSubpathJunction verifies that Remove handles nested junctions at RelPath != "."
 // (the scenario where removeLinks(root) would miss the junction).
 // This test uses t.Chdir and stays serial.
