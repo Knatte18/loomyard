@@ -28,5 +28,7 @@ implementing  '2026-06-26T19:51:58Z'
 ```yaml
 batches:
   - name: sandbox-tool-and-docs
-    state: pending
+    state: running
+    implementer_session: 93ab0359-8181-48cc-97e3-8169a06c8faa
+    start_sha: 617f03a241f12b41755450eec7709119ee62c5f0
 ```
