@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: warp-test-speedup
 branch: warp-test-speedup
 plan: _mill/plan
@@ -26,4 +26,21 @@ plan-review-r2  '2026-06-26T07:10:42Z'
 plan-fix-r2  '2026-06-26T07:10:42Z'
 plan-fix-r3  '2026-06-26T07:19:12Z'
 planned  '2026-06-26T07:19:24Z'
+implementing  '2026-06-26T07:21:48Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: fixture-hook-strip
+    state: pending
+  - name: add-weftwiring
+    state: pending
+  - name: drift-status
+    state: pending
+  - name: prune-cleanup
+    state: pending
+  - name: remove-hook-misc
+    state: pending
 ```
