@@ -52,75 +52,6 @@ func TestRemove(t *testing.T) {
 			dirAfter:         "removed",
 		},
 		{
-			name: "HostDirtyWithoutForce",
-			setup: func(t *testing.T, f lyxtest.PairedFixture, slug string) {
-				w := New(Config{})
-				_, err := w.Add(f.Layout, slug, AddOptions{SkipPush: true})
-				if err != nil {
-					t.Fatalf("setup Add(%q): %v", slug, err)
-				}
-				// An untracked file makes the host worktree dirty so the gate trips.
-				target := f.Layout.WorktreePath(slug)
-				if err := os.WriteFile(filepath.Join(target, "untracked.txt"), []byte("untracked"), 0644); err != nil {
-					t.Fatalf("create untracked file: %v", err)
-				}
-			},
-			wantErr:  true,
-			dirAfter: "exists",
-		},
-		{
-			name: "HostDirtyWithForce",
-			setup: func(t *testing.T, f lyxtest.PairedFixture, slug string) {
-				w := New(Config{})
-				_, err := w.Add(f.Layout, slug, AddOptions{SkipPush: true})
-				if err != nil {
-					t.Fatalf("setup Add(%q): %v", slug, err)
-				}
-				target := f.Layout.WorktreePath(slug)
-				if err := os.WriteFile(filepath.Join(target, "untracked.txt"), []byte("untracked"), 0644); err != nil {
-					t.Fatalf("create untracked file: %v", err)
-				}
-			},
-			force:            true,
-			wantLinksRemoved: 0,
-			dirAfter:         "removed",
-		},
-		{
-			name: "WeftDirtyWithoutForce",
-			setup: func(t *testing.T, f lyxtest.PairedFixture, slug string) {
-				w := New(Config{})
-				_, err := w.Add(f.Layout, slug, AddOptions{SkipPush: true})
-				if err != nil {
-					t.Fatalf("setup Add(%q): %v", slug, err)
-				}
-				// Make weft worktree dirty.
-				weftTarget := f.Layout.WeftWorktreePath(slug)
-				if err := os.WriteFile(filepath.Join(weftTarget, "untracked.txt"), []byte("untracked"), 0644); err != nil {
-					t.Fatalf("create untracked file in weft: %v", err)
-				}
-			},
-			wantErr:  true,
-			dirAfter: "exists",
-		},
-		{
-			name: "WeftDirtyWithForce",
-			setup: func(t *testing.T, f lyxtest.PairedFixture, slug string) {
-				w := New(Config{})
-				_, err := w.Add(f.Layout, slug, AddOptions{SkipPush: true})
-				if err != nil {
-					t.Fatalf("setup Add(%q): %v", slug, err)
-				}
-				// Make weft worktree dirty.
-				weftTarget := f.Layout.WeftWorktreePath(slug)
-				if err := os.WriteFile(filepath.Join(weftTarget, "untracked.txt"), []byte("untracked"), 0644); err != nil {
-					t.Fatalf("create untracked file in weft: %v", err)
-				}
-			},
-			force:            true,
-			wantLinksRemoved: 0,
-			dirAfter:         "removed",
-		},
-		{
 			name: "NonexistentSlug",
 			slug: "ghost",
 			setup: func(t *testing.T, f lyxtest.PairedFixture, slug string) {
@@ -180,6 +111,85 @@ func TestRemove(t *testing.T) {
 			}
 		})
 	}
+
+	// HostDirty merges the dirty-without-force and dirty-with-force cases: both
+	// Remove calls run on the same fixture so the second call can observe the
+	// state left by the first.
+	t.Run("HostDirty", func(t *testing.T) {
+		f := lyxtest.CopyPairedLocal(t)
+		const slug = defaultSlug
+
+		w := New(Config{})
+		_, err := w.Add(f.Layout, slug, AddOptions{SkipPush: true})
+		if err != nil {
+			t.Fatalf("setup Add(%q): %v", slug, err)
+		}
+
+		// An untracked file makes the host worktree dirty so the gate trips.
+		target := f.Layout.WorktreePath(slug)
+		if err := os.WriteFile(filepath.Join(target, "untracked.txt"), []byte("untracked"), 0644); err != nil {
+			t.Fatalf("create untracked file: %v", err)
+		}
+
+		// Remove without force must fail; the directory must be intact.
+		if _, err = w.Remove(f.Layout, slug, false); err == nil {
+			t.Fatalf("Remove(%q, force=false) error = nil; want error", slug)
+		}
+		if _, statErr := os.Stat(target); statErr != nil {
+			t.Errorf("Remove(%q, force=false): dir missing; want still present: %v", slug, statErr)
+		}
+
+		// Remove with force must succeed; host and weft worktrees must be gone.
+		if _, err = w.Remove(f.Layout, slug, true); err != nil {
+			t.Fatalf("Remove(%q, force=true) error = %v; want nil", slug, err)
+		}
+		if _, statErr := os.Stat(target); !os.IsNotExist(statErr) {
+			t.Errorf("Remove(%q, force=true): %q still exists; want removed", slug, target)
+		}
+		weftTarget := f.Layout.WeftWorktreePath(slug)
+		if _, statErr := os.Stat(weftTarget); !os.IsNotExist(statErr) {
+			t.Errorf("Remove(%q, force=true): weft %q still exists; want removed", slug, weftTarget)
+		}
+	})
+
+	// WeftDirty mirrors HostDirty but places the untracked file in the weft
+	// worktree, verifying that weft-side dirt is also gated.
+	t.Run("WeftDirty", func(t *testing.T) {
+		f := lyxtest.CopyPairedLocal(t)
+		const slug = defaultSlug
+
+		w := New(Config{})
+		_, err := w.Add(f.Layout, slug, AddOptions{SkipPush: true})
+		if err != nil {
+			t.Fatalf("setup Add(%q): %v", slug, err)
+		}
+
+		// Make the weft worktree dirty so the gate trips.
+		weftTarget := f.Layout.WeftWorktreePath(slug)
+		if err := os.WriteFile(filepath.Join(weftTarget, "untracked.txt"), []byte("untracked"), 0644); err != nil {
+			t.Fatalf("create untracked file in weft: %v", err)
+		}
+
+		// Remove without force must fail; the host directory must be intact.
+		target := f.Layout.WorktreePath(slug)
+		if _, err = w.Remove(f.Layout, slug, false); err == nil {
+			t.Fatalf("Remove(%q, force=false) error = nil; want error", slug)
+		}
+		if _, statErr := os.Stat(target); statErr != nil {
+			t.Errorf("Remove(%q, force=false): dir missing; want still present: %v", slug, statErr)
+		}
+
+		// Remove with force must succeed; host and weft worktrees must be gone.
+		if _, err = w.Remove(f.Layout, slug, true); err != nil {
+			t.Fatalf("Remove(%q, force=true) error = %v; want nil", slug, err)
+		}
+		if _, statErr := os.Stat(target); !os.IsNotExist(statErr) {
+			t.Errorf("Remove(%q, force=true): %q still exists; want removed", slug, target)
+		}
+		if _, statErr := os.Stat(weftTarget); !os.IsNotExist(statErr) {
+			t.Errorf("Remove(%q, force=true): weft %q still exists; want removed", slug, weftTarget)
+		}
+	})
 }
 
 // TestRemoveHostJunctionRemoved verifies that Remove explicitly removes the host _lyx junction
