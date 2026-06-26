@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-fixing
+phase: holistic-approved
 slug: lyx-sandbox
 branch: lyx-sandbox
 plan: _mill/plan
@@ -24,6 +24,8 @@ implementing  '2026-06-26T19:51:58Z'
 approved-sandbox-tool-and-docs  '2026-06-26T19:56:11Z'
 holistic-reviewing  '2026-06-26T19:56:42Z'
 holistic-fixing  '2026-06-26T19:58:08Z'
+nits-fixed-holistic  '2026-06-26T19:59:28Z'
+holistic-approved  '2026-06-26T19:59:38Z'
 ```
 
 ## Batches
