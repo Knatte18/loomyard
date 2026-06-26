@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: warp-test-speedup
 branch: warp-test-speedup
-plan: null
+plan: _mill/plan
 parent: main
 task: Speed up internal/warp integration tests
 task_description: |
@@ -19,4 +19,5 @@ discussion-fix-r2  '2026-06-26T05:38:09Z'
 discussed  '2026-06-26T05:38:21Z'
 discussion-fix-r3  '2026-06-26T06:45:07Z'
 discussed  '2026-06-26T06:45:16Z'
+planning  '2026-06-26T06:54:57Z'
 ```
