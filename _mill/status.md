@@ -52,7 +52,9 @@ batches:
     start_sha: 0b714115a3979d84df89b3f66a62925c26021fb0
     commit_sha: 450a4abaffc7505b89128ca6f4cab1b0ec0ab4c5
   - name: prune-cleanup
-    state: pending
+    state: running
+    implementer_session: a519ca6a-7624-468d-a779-f1d2573630b4
+    start_sha: 4a1dc01061178845da9840ca4bdf32ded8eff170
   - name: remove-hook-misc
     state: pending
 ```
