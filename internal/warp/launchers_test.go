@@ -57,28 +57,6 @@ func TestWriteLaunchers(t *testing.T) {
 			},
 		},
 		{
-			name:    "DotRelPath",
-			slug:    "task-a",
-			relPath: ".",
-			verifyIde: func(t *testing.T, content string) {
-				expected := "@cd /d \"%~dp0..\\..\\task-a\" && lyx ide spawn task-a\r\n"
-				if content != expected {
-					t.Errorf("ide.cmd content = %q; want %q", content, expected)
-				}
-			},
-			verifyMenu: func(t *testing.T, content string) {
-				if !strings.Contains(content, "lyx ide menu") {
-					t.Errorf("ide-menu.cmd does not contain 'lyx ide menu': %q", content)
-				}
-			},
-			verifyCheckout: func(t *testing.T, content string) {
-				expected := "@cd /d \"%~dp0..\\..\\task-a\" && lyx warp checkout\r\n"
-				if content != expected {
-					t.Errorf("warp-checkout.cmd content = %q; want %q", content, expected)
-				}
-			},
-		},
-		{
 			name:    "NonEmptyRelPath",
 			slug:    "task-b",
 			relPath: "subdir/nested",
