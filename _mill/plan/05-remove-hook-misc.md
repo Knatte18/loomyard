@@ -13,7 +13,7 @@ depends-on: [1]
 
 The remaining consolidations and deletions across six small, independent test files:
 remove (group I + one delete), hook (groups J, K), list (group L), the CLI router (group M),
-launchers (one delete), and portals (one delete). Each edit is self-contained per file;
+launchers (one delete), and portals (one fold). Each edit is self-contained per file;
 they are batched together because each is a small change and they share no code. Net: 8
 fewer fixture builds, no coverage lost. Batch-local: sequential dirty-then-force calls
 (group I) and shared read-only subtests (group M) run without `t.Parallel` between steps.
@@ -27,13 +27,16 @@ fewer fixture builds, no coverage lost. Batch-local: sequential dirty-then-force
   - `internal/warp/remove_test.go`
 - **Creates:** none
 - **Deletes:** none
-- **Requirements:** In the `TestRemove` table/subtests, `HostDirtyWithoutForce` +
-  `HostDirtyWithForce` share setup (Add + dirty a host file); the without-force `Remove`
-  fails leaving dirs intact, so the force call can run on the same fixture. Likewise
-  `WeftDirtyWithoutForce` + `WeftDirtyWithForce`. Replace each pair with one sequential
-  subtest: `HostDirty` (Add + dirty host → `Remove(force=false)` errors, dirs intact →
-  `Remove(force=true)` succeeds, dirs gone) and `WeftDirty` (same shape for the weft). Keep
-  `HappyPath`, `NonexistentSlug`, and the junction subtests untouched in this card.
+- **Requirements:** In `TestRemove`, `HostDirtyWithoutForce` + `HostDirtyWithForce` share
+  setup (Add + dirty a host file); the without-force `Remove` fails leaving dirs intact, so
+  the force call can run on the same fixture. Likewise `WeftDirtyWithoutForce` +
+  `WeftDirtyWithForce`. Because the existing `TestRemove` table body issues exactly one
+  `Remove` call per row, these merged cases cannot stay as table rows — implement each as a
+  **standalone `t.Run` sequential subtest beside the table**: `HostDirty` (Add + dirty host
+  → `Remove(force=false)` errors, dirs intact → `Remove(force=true)` succeeds, dirs gone)
+  and `WeftDirty` (same shape for the weft), each on one shared fixture with no `t.Parallel`
+  between the two calls. Leave `HappyPath`/`NonexistentSlug` as table rows and the junction
+  subtests untouched in this card.
 - **Commit:** `test(warp): merge Remove dirty-without/with-force into sequential subtests`
 
 ### Card 15: Delete low-value TestRemoveHostJunctionRemoved
@@ -119,17 +122,21 @@ fewer fixture builds, no coverage lost. Batch-local: sequential dirty-then-force
   and `NonEmptyRelPath`.
 - **Commit:** `test(warp): drop duplicate TestWriteLaunchers/DotRelPath subtest`
 
-### Card 21: Delete low-value TestCreatePortalMultipleSubpaths
+### Card 21: Fold TestCreatePortalMultipleSubpaths assertion into TestCreatePortal
 
 - **Context:** none
 - **Edits:**
   - `internal/warp/portals_test.go`
 - **Creates:** none
 - **Deletes:** none
-- **Requirements:** Delete `TestCreatePortalMultipleSubpaths` — subpath-collision avoidance
-  is structurally guaranteed by the RelPath-mirrored portal paths. Keep `TestCreatePortal`
-  and `TestCreatePortalRootRelPath`.
-- **Commit:** `test(warp): drop redundant TestCreatePortalMultipleSubpaths`
+- **Requirements:** `TestCreatePortalMultipleSubpaths` uniquely asserts that two distinct
+  subpaths for one slug yield non-colliding portal links (`link1 != link2`). Rather than
+  rely on "structurally guaranteed", port that two-subpath `createPortal` + `link1 != link2`
+  assertion as an added sequential step in `TestCreatePortal` (on its existing fixture),
+  then delete the standalone `TestCreatePortalMultipleSubpaths`. Keep `TestCreatePortal` and
+  `TestCreatePortalRootRelPath`. This removes the separate fixture build while keeping the
+  collision-avoidance assertion.
+- **Commit:** `test(warp): fold MultipleSubpaths collision assertion into TestCreatePortal`
 
 ## Batch Tests
 

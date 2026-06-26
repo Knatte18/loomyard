@@ -14,11 +14,12 @@ depends-on: [1]
 Consolidates and prunes the `Add` and weft-wiring test surface — the two files are coupled
 because group A folds weft-spawn structural assertions into `add_test.go`'s `TestAdd` table
 while deleting their standalone homes in `weftwiring_test.go`. Delivers consolidation
-groups A, B, E and four aggressive deletions (two `TestAdd` table cases, two weftwiring
-functions). Net: 9 fewer fixture builds across these two files, no coverage lost (the
-KEEP-list tests `TestWeftSpawnPushesWeftBranch` and `TestWeftRollbackOnPostHostCreateFailure`
-are untouched). Batch-local: introduces a per-case `extraAssert` hook on the `TestAdd`
-table (group A mechanism).
+groups A, B, E plus low-value prunes (two `TestAdd` table cases removed, one weftwiring
+subset deleted, one weftwiring missing-parent rollback folded into a kept test). Net: 9
+fewer fixture builds across these two files, no coverage lost (the KEEP-list tests
+`TestWeftSpawnPushesWeftBranch` and `TestWeftRollbackOnPostHostCreateFailure` are kept;
+the latter gains the missing-parent scenario). Batch-local: introduces a per-case
+`extraAssert` hook on the `TestAdd` table (group A mechanism).
 
 ## Cards
 
@@ -75,14 +76,15 @@ table (group A mechanism).
   - `internal/warp/weftwiring_test.go`
 - **Creates:** none
 - **Deletes:** none
-- **Requirements:** `TestWeftPrechecksHardRequireWeftRepo` (`weftwiring_test.go`) is a
-  byte-for-byte duplicate of the `TestAdd/NoWeftRepo` table case (same rename-weft-prime
-  setup, same `"no weft repo"` error, `wantNoTargetDir`, `wantResultZero`) — the
-  `add_test.go` `NoWeftRepo` case comment notes it was migrated from here. Delete
-  `TestWeftPrechecksHardRequireWeftRepo`. Do NOT delete
-  `TestWeftPrechecksRejectExistingWeftWorktree` — it covers a unique error path
-  (`"weft worktree directory already exists"`) with no `TestAdd` equivalent.
-- **Commit:** `test(warp): delete TestWeftPrechecksHardRequireWeftRepo (duplicate of TestAdd/NoWeftRepo)`
+- **Requirements:** `HardRequireWeftRepo` is a **table row** (a `name:` field) inside the
+  `TestWeftPrechecks` table at `weftwiring_test.go:~209`, not a standalone function. That
+  row is a byte-for-byte duplicate of the `TestAdd/NoWeftRepo` table case (same
+  rename-weft-prime setup, same `"no weft repo"` error, `wantNoTargetDir`, `wantResultZero`)
+  — the `add_test.go` `NoWeftRepo` case comment notes it was migrated from here. Remove the
+  `HardRequireWeftRepo` row from the `TestWeftPrechecks` table, leaving the single
+  `RejectExistingWeftWorktree` row (a unique error path,
+  `"weft worktree directory already exists"`, with no `TestAdd` equivalent — keep it).
+- **Commit:** `test(warp): remove duplicate HardRequireWeftRepo row from TestWeftPrechecks`
 
 ### Card 5: Delete low-value TestAdd table cases (UnbornBranch, TargetDirExists)
 
@@ -99,21 +101,25 @@ table (group A mechanism).
   intact.
 - **Commit:** `test(warp): drop redundant TestAdd UnbornBranch and TargetDirExists cases`
 
-### Card 6: Delete low-value weftwiring tests (ForkPointMirrorsHost, MissingParentBranch)
+### Card 6: Delete ForkPointMirrorsHost; fold MissingParentBranch trigger into a kept test
 
-- **Context:**
-  - `internal/warp/weftwiring_test.go`
+- **Context:** none
 - **Edits:**
   - `internal/warp/weftwiring_test.go`
 - **Creates:** none
 - **Deletes:** none
-- **Requirements:** Delete `TestWeftForkPointMirrorsHost` — it is a subset of
+- **Requirements:** Delete `TestWeftForkPointMirrorsHost` — it is a genuine subset of
   `TestWeftForkPointSubtaskIsolation`, which also asserts the fork point differs from the
-  main tip. Delete `TestWeftMissingParentBranch` — it is the third rollback test; rollback
-  is already covered by `TestAddRollback` (live path) and
-  `TestWeftRollbackOnPostHostCreateFailure` (white-box `rollbackAdd`). Keep
-  `TestWeftForkPointSubtaskIsolation` and `TestWeftRollbackOnPostHostCreateFailure`.
-- **Commit:** `test(warp): drop redundant weftwiring fork-point and missing-parent tests`
+  main tip (kept). For `TestWeftMissingParentBranch`: it is the **only** test of Add's live
+  paired rollback triggered by a *missing parent weft branch* (distinct from
+  `TestAddRollback`'s portal-clobber trigger and `TestWeftRollbackOnPostHostCreateFailure`'s
+  white-box `rollbackAdd` call), so fold rather than delete. Port its missing-parent trigger
+  (the `git checkout -b <Z>` setup that makes the parent weft branch absent) and its
+  zero-residue assertions into `TestWeftRollbackOnPostHostCreateFailure` as a second
+  sequential scenario on the same fixture (after a rollback the worktree is clean, so the
+  second trigger runs cleanly), then delete the standalone `TestWeftMissingParentBranch`.
+  This removes its separate fixture build while keeping the missing-parent rollback coverage.
+- **Commit:** `test(warp): drop ForkPointMirrorsHost; fold missing-parent rollback into RollbackOnPostHostCreateFailure`
 
 ## Batch Tests
 
