@@ -34,7 +34,7 @@ func Command() *cobra.Command {
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			// Resolve current working directory; fail fast if os.Getwd errors.
+			// Resolve current working directory; fail fast if the lookup errors.
 			cwd, err := paths.Getwd()
 			if err != nil {
 				output.Err(cmd.OutOrStdout(), fmt.Sprintf("failed to get working directory: %v", err))
