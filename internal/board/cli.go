@@ -35,6 +35,11 @@ func Command() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "board",
 		Short: "task-tracker board",
+		Long: `board manages the task-tracker wiki board for the current lyx worktree.
+
+Configuration is resolved from the current working directory via _lyx/config/board.yaml.
+The --board-path flag (hidden; injected by the detached sync child) bypasses this resolution.
+Running "lyx board" with no subcommand lists available subcommands without requiring a git repo.`,
 	}
 
 	// --board-path is an internal persistent flag injected by spawnSync so that
