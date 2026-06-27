@@ -44,8 +44,9 @@ func Command() *cobra.Command {
 			ctx := cmd.Context()
 			out := cmd.OutOrStdout()
 
-			// Read the hidden flag value.
-			injectedPath, _ := cmd.Flags().GetString("weft-path")
+			// Read the hidden persistent flag via InheritedFlags to make explicit
+			// that this flag is inherited from the parent command, not local.
+			injectedPath, _ := cmd.InheritedFlags().GetString("weft-path")
 
 			if injectedPath != "" {
 				// Bypass mode: --weft-path was injected by the detached push child.
