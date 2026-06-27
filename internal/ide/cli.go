@@ -1,13 +1,9 @@
-// Package ide provides a one-shot launcher with spawn and interactive menu
-// for managing worktrees. Spawn assigns a color and launches the worktree.
-// Menu presents an interactive picker over active worktrees.
+// cli.go exposes the cobra command tree for the ide module.
 //
-// The spawn command delegates config generation (settings.json, tasks.json,
-// .gitignore registration), color picking, and VS Code launch to internal/vscode.
-// The menu command resolves titles from the board facade.
-//
-// Spawn and menu are Windows-only (POSIX no-ops/errors with a clear message);
-// cross-platform support is in the delegated vscode package.
+// Command() returns the root "ide" command with two subcommands — spawn and menu —
+// each wrapping the existing handler bodies. Layout resolution happens once in a
+// PersistentPreRunE so that the no-arg "lyx ide" listing never requires a git repo.
+
 package ide
 
 import (
@@ -15,57 +11,103 @@ import (
 	"io"
 	"os"
 
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/paths"
+	"github.com/spf13/cobra"
 )
 
-// RunCLI is the main entry point for the ide module CLI.
-// It parses the command-line arguments and dispatches to the appropriate subcommand.
+// Command returns the cobra command tree for the ide module.
 //
-// Subcommands:
-//   - spawn <slug>   Spawn a worktree in VS Code
-//   - menu           Open the interactive worktree picker
+// The parent "ide" command carries a PersistentPreRunE that resolves cwd and
+// layout once before any subcommand runs; the resolved layout is shared via a
+// closure variable. Subcommands spawn and menu close over that variable so they
+// never repeat the resolution. When the parent is invoked with no subcommand,
+// cobra lists available subcommands without invoking the PreRunE (no git repo needed).
+func Command() *cobra.Command {
+	// l is populated by PersistentPreRunE and closed over by each subcommand RunE.
+	var l *paths.Layout
+
+	cmd := &cobra.Command{
+		Use:   "ide",
+		Short: "VS Code worktree launcher",
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+
+			// Resolve current working directory; fail fast if os.Getwd errors.
+			cwd, err := paths.Getwd()
+			if err != nil {
+				output.Err(cmd.OutOrStdout(), fmt.Sprintf("failed to get working directory: %v", err))
+				clihelp.Abort(ctx, 1)
+				return nil
+			}
+
+			// Resolve layout from cwd; requires being inside a git repository.
+			resolved, err := paths.Resolve(cwd)
+			if err != nil {
+				output.Err(cmd.OutOrStdout(), fmt.Sprintf("failed to resolve layout: %v", err))
+				clihelp.Abort(ctx, 1)
+				return nil
+			}
+
+			l = resolved
+			return nil
+		},
+	}
+
+	// spawn subcommand: assigns color, generates .vscode config, and opens VS Code.
+	spawnCmd := &cobra.Command{
+		Use:   "spawn <slug>",
+		Short: "Spawn a worktree in VS Code",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Honour abort from PersistentPreRunE (layout resolution failed).
+			if clihelp.ShouldAbort(cmd.Context()) {
+				return nil
+			}
+
+			// cobra strips the "spawn" token; the slug is now args[0].
+			if len(args) < 1 {
+				clihelp.SetExit(cmd.Context(), output.Err(cmd.OutOrStdout(), "usage: lyx ide spawn <slug>"))
+				return nil
+			}
+			slug := args[0]
+
+			if err := Spawn(l, slug); err != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(cmd.OutOrStdout(), fmt.Sprintf("spawn failed: %v", err)))
+				return nil
+			}
+			clihelp.SetExit(cmd.Context(), output.Ok(cmd.OutOrStdout(), map[string]any{}))
+			return nil
+		},
+	}
+
+	// menu subcommand: presents an interactive picker over active worktrees.
+	menuCmd := &cobra.Command{
+		Use:   "menu",
+		Short: "Open the interactive worktree picker",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Honour abort from PersistentPreRunE (layout resolution failed).
+			if clihelp.ShouldAbort(cmd.Context()) {
+				return nil
+			}
+
+			if err := Menu(l, os.Stdin, cmd.OutOrStdout()); err != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(cmd.OutOrStdout(), fmt.Sprintf("menu failed: %v", err)))
+				return nil
+			}
+			return nil
+		},
+	}
+
+	cmd.AddCommand(spawnCmd, menuCmd)
+	return cmd
+}
+
+// RunCLI is the public seam for the ide module CLI.
 //
-// Returns the exit code (0 on success, 1 on error).
+// It delegates to clihelp.Execute with the cobra command tree, passing out as
+// the capture writer for all output (including cobra's error text). This
+// preserves the existing call contract so that callers and tests are unchanged.
 func RunCLI(out io.Writer, args []string) int {
-	// Resolve current working directory
-	cwd, err := paths.Getwd()
-	if err != nil {
-		return output.Err(out, fmt.Sprintf("failed to get working directory: %v", err))
-	}
-
-	// Resolve layout
-	l, err := paths.Resolve(cwd)
-	if err != nil {
-		return output.Err(out, fmt.Sprintf("failed to resolve layout: %v", err))
-	}
-
-	// Parse subcommand
-	if len(args) < 1 {
-		return output.Err(out, "usage: lyx ide <spawn|menu> [args...]")
-	}
-
-	subcommand := args[0]
-	subArgs := args[1:]
-
-	switch subcommand {
-	case "spawn":
-		if len(subArgs) < 1 {
-			return output.Err(out, "usage: lyx ide spawn <slug>")
-		}
-		slug := subArgs[0]
-		if err := Spawn(l, slug); err != nil {
-			return output.Err(out, fmt.Sprintf("spawn failed: %v", err))
-		}
-		return output.Ok(out, map[string]any{})
-
-	case "menu":
-		if err := Menu(l, os.Stdin, out); err != nil {
-			return output.Err(out, fmt.Sprintf("menu failed: %v", err))
-		}
-		return 0
-
-	default:
-		return output.Err(out, fmt.Sprintf("unknown subcommand: %s", subcommand))
-	}
+	return clihelp.Execute(Command(), out, args)
 }
