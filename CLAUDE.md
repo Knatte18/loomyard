@@ -50,6 +50,21 @@ programmatically-driven session *interactive*.
 - Cluster-reviews (N parallel reviewers) scale via psmux **windows** (spawned clusters
   land in their own windows, not a pane explosion) — long-term mux work, not now.
 
+## Task completion
+
+Every task that adds a module, changes observable CLI behaviour, or introduces
+cross-cutting infrastructure **must update docs and roadmap as part of the same
+commit** — not as a follow-up. Specifically:
+
+- Mark the milestone ✅ Done in `docs/roadmap.md` (with a link to the module doc
+  if one exists).
+- Update or create the module doc in `docs/modules/` if the change touches a named
+  module's design.
+- Update `docs/overview.md` if the module table or execution stack changes.
+
+A commit that ships behaviour without updating the docs is incomplete. The docs
+are the shared reference — they rot the moment the code moves without them.
+
 ## Filesystem links (fslink)
 
 All cross-OS links go through `internal/fslink`. On Windows it uses **directory
