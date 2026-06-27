@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: builtin-cli-help
 branch: builtin-cli-help
-plan: null
+plan: _mill/plan
 parent: main
 task: 'Built-in CLI help: lyx self-documents modules & commands'
 task_description: |
@@ -17,4 +17,5 @@ task_description: |
 discussing  '2026-06-27T14:00:56Z'
 discussion-fix-r6  '2026-06-27T14:53:53Z'
 discussed  '2026-06-27T14:54:13Z'
+planning  '2026-06-27T15:08:32Z'
 ```
