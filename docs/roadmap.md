@@ -178,6 +178,13 @@ Independent of the orchestration stack; interleave as needed.
 19. **Claude Code plugin packaging.** Ship `lyx` as an installable Claude Code plugin, exactly as
     mill/millpy were, once the binary and module architecture are proven.
 
+21. **Built-in CLI help — self-documenting modules & commands.** ✅ **Done.** Cobra refactor of
+    `cmd/lyx` + every module's `RunCLI`: `lyx` lists all modules; `lyx <module>` lists subcommands;
+    `lyx <module> <cmd> --help` gives per-command usage. Help text lives co-located with each
+    command (no central stale table). Introduces `internal/clihelp` (exec + JSON help). A persistent
+    `--json` flag on the root command offers machine-readable help output. The `RunCLI(out, args) int`
+    seam is preserved so all existing tests compile unchanged.
+
 20. **`warp` — host↔weft-coordinated git topology.** ✅ **Done.** Consolidated the
     host↔weft mirror invariant into one module: coordinated checkout (switches host+weft
     together + re-points junctions — the correctness gap raw `git checkout` left),
