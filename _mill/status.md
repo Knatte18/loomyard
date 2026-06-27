@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-root-assembly-and-tests
+phase: holistic-reviewing
 slug: builtin-cli-help
 branch: builtin-cli-help
 plan: _mill/plan
@@ -29,6 +29,7 @@ approved-ide-and-weft  '2026-06-27T16:32:22Z'
 approved-board  '2026-06-27T16:38:56Z'
 approved-muxpoc-and-warp  '2026-06-27T16:48:54Z'
 approved-root-assembly-and-tests  '2026-06-27T16:58:02Z'
+holistic-reviewing  '2026-06-27T16:58:43Z'
 ```
 
 ## Batches
