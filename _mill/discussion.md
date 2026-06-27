@@ -97,11 +97,24 @@ moment the command changes.
   func RunCLI(out io.Writer, args []string) int {
       c := Command()
       c.SetOut(out)
+      c.SetErr(out) // merge cobra's stderr (unknown-command text) into the single seam writer
       c.SetArgs(args)
       if err := c.Execute(); err != nil { return 1 }
       return exitCodeFromHandlers // see exit-and-error-contract
   }
   ```
+
+- **stdout/stderr split — seam merges, binary separates.** The
+  `unknown-command-human-text` decision sends cobra's typo/usage text to **stderr**, but
+  the `RunCLI(out, args) int` seam exposes a single writer. Resolution: the seam wires
+  **both** `SetOut(out)` and `SetErr(out)`, deliberately *merging* the two streams into
+  `out` so in-process tests (e.g. the named weft/ide unknown-command assertions) can
+  capture cobra's message from the one buffer. Production keeps them split:
+  `cmd/lyx/main.go` builds the root with `SetOut(os.Stdout)` and `SetErr(os.Stderr)` so
+  human/typo text goes to stderr and JSON output to stdout. Tests **must not over-pin** the
+  exact unknown-command string: via a per-module seam it reads `unknown command "x" for
+  "board"`, whereas via the assembled root it reads `... for "lyx board"` — assert on a
+  stable substring (`unknown command`) and the exit code, not the full parent qualifier.
 
 - Rejected: (a) "Pure cobra" — dissolve `RunCLI`, drive tests via a shared
   `exec(t,&buf,args...)` helper. Cleaner conceptually but ~1 day of mechanical test churn
@@ -194,6 +207,11 @@ moment the command changes.
 
   At a leaf command `commands` is empty and `flags` is populated; at a parent the reverse.
   Hidden flags (`--board-path`, `--weft-path`) are omitted from the `--json` output too.
+- Scope of `--json`: it **only** alters help rendering. On a real command-execution path
+  (a leaf handler actually running, e.g. `lyx board list --json`) `--json` is a **no-op** —
+  parsed but ignored, never an error — because real command output is already JSON. So the
+  flag is meaningful exactly on the help/no-arg/`--help` paths and inert everywhere else;
+  a plan writer does not need to special-case it inside any handler.
 - Rejected: Human-only help (YAGNI). Overruled by the operator in favour of the structured
   form.
 
@@ -256,6 +274,18 @@ What mill-plan needs to know about the codebase:
   pulls in `spf13/pflag` (its only real transitive dep).
 - **Gotcha** — `internal/update/update.go` deliberately blanks `fs.Usage` to suppress
   stdlib flag help; that hack is removed when flags move to pflag.
+- **Gotcha (muxpoc pre-dispatch is NOT a verbatim per-case move)** — `internal/muxpoc/
+  cli.go` (≈ lines 54–94) builds `cfg` from the tuning flags **and calls
+  `paths.Resolve(layout)` once before the `switch`**, shared by every subcommand. This
+  shared setup has no single `RunE` home and must NOT run on the new no-arg/help listing
+  path — `paths.Resolve` would wrongly require a git repo just to *list* muxpoc's
+  subcommands. Move it into a **`PersistentPreRunE` on the `muxpoc` parent**: cobra runs
+  `PersistentPreRunE` only when a subcommand actually executes, and skips it for the
+  no-arg/`--help` listing (parent has no `Run`). So the "handlers move into `RunE`
+  essentially verbatim" note from `integration-style-c-preserve-seam` has this one
+  exception — muxpoc's pre-`switch` block becomes `PersistentPreRunE`, not per-`RunE`
+  duplication. (configcli's `paths`/config resolution sits inside its single `Run`, so it
+  is unaffected; only muxpoc has shared pre-dispatch across multiple subcommands.)
 - **Gotcha** — two usage-output conventions coexist today (plain-text-to-stderr in
   board/weft/muxpoc top-level dispatch; JSON via `output.Err` in initcli/ide/warp). After
   this task the usage/no-arg/typo surface is uniformly cobra (human text or `--json`), and
@@ -296,10 +326,18 @@ pattern; cwd-dependent modules continue to use `internal/lyxtest` helpers + `t.C
   - **Drift-guard** (`cmd/lyx`): walk the assembled root command tree; assert every
     command (root, each module, each subcommand) has a non-empty `Short`. This is the
     structural self-documentation invariant — failing it is the signal someone added a
-    command without a description.
+    command without a description. **Must tolerate cobra's auto-added commands**: cobra
+    injects `help` and `completion` (the latter with `bash`/`zsh`/`fish`/`powershell`
+    children) into the tree, and `completion`'s subcommands carry cobra's own non-empty
+    `Short`s. Either exclude the `help`/`completion` subtrees from the walk explicitly, or
+    rely on the fact that they already have descriptions — but do NOT assert an exact tree
+    shape that would break when cobra changes its auto-commands.
   - **Help-tree completeness** (`cmd/lyx`): assert `lyx --help` output names every module;
     for each verb-module assert `lyx <module> --help` names every one of its subcommands.
-    Pin the module/subcommand sets so adding/removing one without updating help fails.
+    Use **superset** assertions (the pinned module/subcommand set is a subset of what
+    appears), or explicitly exclude `help`/`completion`, so adding/removing one of OUR
+    commands without updating help fails, while cobra's auto-commands don't make the test
+    brittle.
   - **`--json` help schema** (`cmd/lyx`): `lyx --json`, `lyx <module> --json`, and a leaf
     `lyx <module> <cmd> --help --json` each emit valid JSON matching the schema
     (`name`/`short`/`commands`/`flags`); hidden flags absent; leaf has populated `flags`
