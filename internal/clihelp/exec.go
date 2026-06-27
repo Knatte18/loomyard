@@ -32,6 +32,14 @@ type exitState struct {
 	abort bool
 }
 
+// Code returns the recorded exit code, which is 0 if SetExit was never called with
+// a non-zero value. It is the public read accessor for the unexported code field so
+// that cmd/lyx/main.go can read the exit code after ExecuteContext returns without
+// importing the unexported field directly.
+func (es *exitState) Code() int {
+	return es.code
+}
+
 // NewExitContext allocates a fresh *exitState, stores it in a child context derived
 // from parent, and returns both. Call this once per CLI invocation (in Execute or
 // in each module's RunCLI seam); never store the returned *exitState in a package-level
