@@ -9,12 +9,12 @@ deep internal tests, landed one at a time so the operator keeps full control at
 every step. The toolkit layer (board, worktree, weft, ide, config) is largely
 done. What remains splits into two tracks:
 
-- **Setup track** — finish bootstrapping a hub: `ly-git-clone`, the config TUI,
-  board-repo creation, `doctor`.
+- **Setup track** — finish bootstrapping a hub: config TUI, board-repo creation,
+  `doctor`. (`warp clone` handles the clone step — no standalone `ly-git-clone`.)
 - **Orchestration stack** — the part that ties worktrees, the board, and psmux
   into a spawn→review→merge lifecycle. This used to be a single distant "endgame";
-  it is now a **designed, layered path**: `proc → mux → shed → shuttle → review →
-  loom` (see the [execution stack](overview.md#execution-stack-orchestration-layers)
+  it is now a **designed, layered path**: `proc → mux → shuttle → review → loom`
+  (see the [execution stack](overview.md#execution-stack-orchestration-layers)
   and [modules/loom.md](modules/loom.md)). Each layer is its own shippable
   milestone; mill's existing Agent Dispatch handles orchestration until `loom`
   lands.
@@ -44,14 +44,14 @@ proc ✅ ──▶ mux ──▶ shuttle ──▶ review ──▶ loom
   critical path to the orchestrator. `lyx loom status` (the 1-line view) ships as a loom subcommand,
   not a module.
 
-**Setup track** — independent of the spine, interleave at any time: `ly-git-clone` (ready now;
-needs only the done weft engine) · config TUI (in progress) · `init`/board-repo creation · `doctor`.
+**Setup track** — independent of the spine, interleave at any time: config TUI (in progress) ·
+`init`/board-repo creation · `doctor`.
 
 **Deferred** — after `loom` works and only if wanted: mux daemon → Slack relay; session sync;
 plugin packaging.
 
-So the immediate front: **`mux`** (unblocks the whole spine) in parallel with **`ly-git-clone`**
-and finishing the **config TUI** — none of which block each other.
+So the immediate front: **`mux`** (unblocks the whole spine) in parallel with finishing the
+**config TUI** — none of which block each other.
 
 ## Milestones
 
@@ -179,13 +179,6 @@ Independent of the orchestration stack; interleave as needed.
 19. **Claude Code plugin packaging.** Ship `lyx` as an installable Claude Code plugin, exactly as
     mill/millpy were, once the binary and module architecture are proven.
 
-21. **Built-in CLI help — self-documenting modules & commands.** ✅ **Done.** Cobra refactor of
-    `cmd/lyx` + every module's `RunCLI`: `lyx` lists all modules; `lyx <module>` lists subcommands;
-    `lyx <module> <cmd> --help` gives per-command usage. Help text lives co-located with each
-    command (no central stale table). Introduces `internal/clihelp` (exec + JSON help). A persistent
-    `--json` flag on the root command offers machine-readable help output. The `RunCLI(out, args) int`
-    seam is preserved so all existing tests compile unchanged.
-
 20. **`warp` — host↔weft-coordinated git topology.** ✅ **Done.** Consolidated the
     host↔weft mirror invariant into one module: coordinated checkout (switches host+weft
     together + re-points junctions — the correctness gap raw `git checkout` left),
@@ -195,6 +188,12 @@ Independent of the orchestration stack; interleave as needed.
     `worktree` → `warp` (`_lyx/config/warp.yaml`). The design doc was deleted on landing
     per the documentation lifecycle; durable parts live in the `internal/warp` package
     header and the [warp module entry](overview.md#modules) in overview.md.
+
+21. **Built-in CLI help — self-documenting modules & commands.** ✅ **Done.** Cobra refactor of
+    `cmd/lyx` + every module's `RunCLI`: `lyx` lists all modules; `lyx <module>` lists subcommands;
+    `lyx <module> <cmd> --help` gives per-command usage. Help text lives co-located with each
+    command (no central stale table). Introduces `internal/clihelp` (exec + JSON help). A persistent
+    `--json` flag on the root command offers machine-readable help output.
 
 ## Explicitly out of scope
 
@@ -206,7 +205,7 @@ These stay in the Python/millpy domain and are **not** planned for `lyx`:
   its own layout.)
 - The millpy wiki daemon and its socket/RPC infrastructure (Loomyard's board is
   one-shot and daemonless by design).
-- Heuristic inference of home-file content shape and board-URL derivation. (Note: the deterministic weft→wiki URL rewrite (`.git`→`.wiki.git`) performed by `lyx git-clone` is **in** scope; only *heuristic* inference of board URLs stays out.)
+- Heuristic inference of home-file content shape and board-URL derivation. (Note: the deterministic weft→wiki URL rewrite (`.git`→`.wiki.git`) performed by `lyx warp clone` is **in** scope; only *heuristic* inference of board URLs stays out.)
 
 ## Maintenance
 
