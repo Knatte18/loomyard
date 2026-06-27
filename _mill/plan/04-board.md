@@ -40,9 +40,12 @@ point (now the PreRunE).
   (e.g. "task-tracker board"). Add one subcommand per existing `case` with `Use` =
   subcommand name (e.g. `Use: "upsert [json-payload]"`), a one-line `Short` derived from the
   existing case comment, and a `RunE` (via `clihelp.WrapRun` over a per-subcommand handler
-  func) containing that case's body verbatim — JSON payload extraction, `json.Unmarshal`,
-  the `b.<Method>` call, and the `output.*` response. Preserve the "json payload required"
-  errors. The `b *Board` is closed over (set by the PreRunE in Card 13). Keep the existing
+  func) containing that case's body — JSON payload extraction, `json.Unmarshal`,
+  the `b.<Method>` call, and the `output.*` response. **Rebind the payload arg per the
+  arg-index-shift rule (00-overview → cobra-style-c-seam): the JSON payload is `args[0]`, not
+  `rest[1]` — cobra strips the subcommand before `RunE`, so "json payload required" now means
+  `len(args) == 0`.** Preserve the "json payload required" errors. The `b *Board` is closed
+  over (set by the PreRunE in Card 13). Keep the existing
   `outputError`/`outputSuccess*` helpers. Keep `func RunCLI(out io.Writer, args []string)
   int { return clihelp.Execute(Command(), out, args) }`.
 - **Commit:** `refactor(board): cobra Command() with 11 subcommands`

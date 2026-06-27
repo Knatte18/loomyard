@@ -79,6 +79,9 @@ each `RunE`.
   "host↔weft coordination"), with one subcommand per verb (`clone`, `add <slug>`, `list`,
   `remove [--force] <slug>`, `checkout <branch>`, `status`, `reconcile`, `prune [--apply]`,
   `cleanup [--apply] [--force]`), each `RunE` wrapping the existing `run<Verb>` handler body.
+  **Rebind positional args per the arg-index-shift rule (00-overview → cobra-style-c-seam):
+  the slug/branch positional is `args[0]`, not `rest[1]`/`fs.Arg(0)` — cobra strips the
+  subcommand before `RunE`.**
   Migrate the per-verb flags to **local** flags on their subcommands: `remove` → `--force`;
   `prune` → `--apply`; `cleanup` → `--apply` + `--force` (preserve the existing usage strings
   and the "`--force` alone reports only" semantics inside the handler). clone/add/list/
@@ -102,7 +105,12 @@ each `RunE`.
   (was exit 1 + empty stdout); unknown **subcommand** → `unknown command` substring + exit 1;
   the existing `TestRunCLIUnknownFlagFails` (`{"--no-such-flag","status"}`) is a **bad-flag**
   case → assert the `unknown flag` substring (NOT `unknown command`) + exit 1 — these are two
-  different cobra messages. warp (`warp_test.go`, integration): the `UnknownSubcommand` test
+  different cobra messages. **If `TestRunCLIErrors` (or any table test) asserts a shared
+  `exit 1 + out.Len()==0` guard across the no-arg / unknown-subcommand / bad-flag cases, that
+  shared guard must be DISMANTLED into per-case expectations** — post-cobra the three cases
+  diverge (no-arg → exit 0, non-empty; unknown subcommand → exit 1, `unknown command`;
+  bad flag → exit 1, `unknown flag`), so they can no longer share one assertion. warp
+  (`warp_test.go`, integration): the `UnknownSubcommand` test
   currently `json.Unmarshal`s the buffer and asserts `ok=false` — switch it to assert the
   `unknown command` substring + exit 1 (warp's old unknown path emitted JSON; under cobra the
   buffer holds plain text). Leave warp's `list` success and `remove --force` flag-parsing +

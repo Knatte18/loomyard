@@ -117,10 +117,12 @@ out/err (so tests capture cobra text), while `main()` uses `newRoot()` with **sp
   - `cmd/lyx/jsonhelp_test.go`
 - **Deletes:** none
 - **Requirements:** Add a test that drives `lyx --json`, `lyx <module> --json` (a verb
-  module), and a leaf `lyx <module> <cmd> --help --json`, each via the `run()` seam, and
-  asserts the captured output is valid JSON matching the schema (`name`, `short`,
-  `commands`, `flags`). Assert: the root JSON lists the modules under `commands`; a leaf has
-  populated `flags` and empty `commands`; hidden flags (`--board-path`, `--weft-path`) and the
+  module), and a leaf with a local flag — use `lyx warp remove --help --json` (`remove` owns
+  `--force`) so the populated-`flags` assertion is not vacuous; do NOT pick a flagless leaf
+  like `board upsert`. Each via the `run()` seam; assert the captured output is valid JSON
+  matching the schema (`name`, `short`, `commands`, `flags`). Assert: the root JSON lists the
+  modules under `commands`; the `warp remove` leaf has a populated `flags` (containing
+  `--force`) and empty `commands`; hidden flags (`--board-path`, `--weft-path`) and the
   `--json`/`--help` meta flags are absent from any `flags` array.
 - **Commit:** `test(lyx): --json help schema across tree levels`
 

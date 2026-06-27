@@ -3,7 +3,7 @@
 ```yaml
 task: 'Built-in CLI help: lyx self-documents modules & commands'
 slug: builtin-cli-help
-approved: false
+approved: true
 started: '20260627-150156'
 parent: main
 root: ""
@@ -60,7 +60,12 @@ batches:
   per module as the public seam; it delegates to `clihelp.Execute(Command(), out, args)`.
   `cmd/lyx/main.go` assembles a single root from every module's `Command()`. Handler logic
   moves from `switch` cases into each subcommand's `RunE` verbatim (except shared
-  pre-dispatch — see `prerune-shared-resolution`).
+  pre-dispatch — see `prerune-shared-resolution`). **Arg-index shift (applies to every
+  converted handler):** under `clihelp.WrapRun(fn(out, args))`, `args` is the post-subcommand
+  argument list — cobra has already stripped the subcommand token. A body that did `rest :=
+  fs.Args(); subcommand := rest[0]; payload := rest[1]` must rebind: the subcommand is gone,
+  and the JSON payload / positional slug is now `args[0]` (`fs.Arg(0)` → `args[0]`). Do not
+  copy a `rest[1]`/`fs.Arg(0)` reference verbatim.
 - **Rationale:** cobra gives `--help`/completion/suggestions for free and makes anti-drift
   a framework invariant; the preserved seam keeps the ~51 existing in-process tests
   compiling and passing. Full rationale in `_mill/discussion.md`.

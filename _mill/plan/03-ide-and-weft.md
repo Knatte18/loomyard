@@ -46,7 +46,9 @@ variables (module-local), populated by the PreRunE and closed over by each `RunE
   return `nil`. Each subcommand `RunE` begins with the abort guard (handled by
   `clihelp.WrapRun`) and closes over `l`. The no-arg `lyx ide` now lists `spawn`/`menu`
   (parent has no `Run`) without resolving layout. `spawn` with no slug keeps its existing
-  usage error. Keep `func RunCLI(out io.Writer, args []string) int { return
+  usage error. **Rebind per the arg-index-shift rule (00-overview → cobra-style-c-seam): in
+  the `spawn` `RunE` the slug is `args[0]`, not `args[1:][0]` — cobra strips the `spawn`
+  token before `RunE`.** Keep `func RunCLI(out io.Writer, args []string) int { return
   clihelp.Execute(Command(), out, args) }`.
 - **Commit:** `refactor(ide): cobra Command() with PersistentPreRunE layout resolution`
 
