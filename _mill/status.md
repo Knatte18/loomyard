@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r2
+phase: planned
 slug: builtin-cli-help
 branch: builtin-cli-help
 plan: _mill/plan
@@ -21,4 +21,5 @@ planning  '2026-06-27T15:08:32Z'
 plan-review-r1  '2026-06-27T15:15:55Z'
 plan-fix-r1  '2026-06-27T15:15:55Z'
 plan-fix-r2  '2026-06-27T15:24:23Z'
+planned  '2026-06-27T15:24:38Z'
 ```
