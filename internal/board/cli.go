@@ -1,279 +1,356 @@
-// cli.go — the board module's command router.
+// cli.go exposes the cobra command tree for the board module.
 //
-// RunCLI parses <subcommand> [json-payload], resolves the board configuration
-// from the current working directory (cwd-authoritative model), dispatches to
-// one Board method, and writes the JSON result to the given writer. Owns the
-// board CLI surface so main stays a thin module dispatcher.
-//
-// Configuration resolution (cwd-authoritative):
-// RunCLI delegates to LoadConfig, which resolves the board config from the
-// current working directory via internal/config. The board module never reads
-// config files itself — file layout and overrides are entirely internal/config's
-// concern.
-//
-// When --board-path is set (internal flag for detached sync child), it bypasses
-// configuration resolution and uses the provided path directly.
+// Command() returns the root "board" command with 11 subcommands, each
+// wrapping the existing handler bodies from the legacy switch. Configuration
+// resolution happens once in a PersistentPreRunE so that "lyx board" with no
+// subcommand lists available subcommands without requiring a git repo or board
+// config. The hidden --board-path persistent flag bypasses cwd resolution for
+// the detached sync child process launched by spawn.go.
 
 package board
 
 import (
 	"encoding/json"
-	"flag"
 	"fmt"
 	"io"
 	"os"
 
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/paths"
+	"github.com/spf13/cobra"
 )
 
-// RunCLI parses and executes a "board" subcommand, writing JSON results to out.
-// It returns the process exit code (0 on success, 1 on error).
+// Command returns the cobra command tree for the board module.
 //
-// Usage:
-//
-//	board <subcommand> [json-payload]
-//
-// Configuration resolution (cwd-authoritative):
-// RunCLI resolves the board configuration cwd-authoritatively via internal/config;
-// the module never reads config files or knows their on-disk layout itself.
-// The board path is resolved relative to the cwd.
-//
-// Subcommands and their JSON payloads:
-//
-//	upsert        '{"slug":"my-task","title":"Do X"}'
-//	upsert-batch  '{"tasks":[{"slug":"a"},{"slug":"b"}]}'
-//	set-phase     '{"id_or_slug":"my-task","phase":"done"}'   (phase null to clear)
-//	remove        '{"id_or_slug":"my-task"}'
-//	get           '{"id_or_slug":"my-task"}'
-//	list          (no payload — brief view with computed layer)
-//	list-full     (no payload — raw task structs)
-//	merge         '{"remove_slugs":["old"],"upsert":{...},"set_phase":["new-slug","done"]}'
-//	set-deps      '{"slug":"my-task","depends_on":["other"]}'
-//	rerender      (no payload — rebuild Home.md and _Sidebar.md from current tasks.json)
-//	sync          (no payload — commit + push pending changes to the remote)
-//
-// All output is JSON on out.
-// Success: {"ok":true, ...}
-// Error:   {"ok":false,"error":"..."} with exit code 1.
-func RunCLI(out io.Writer, args []string) int {
-	fs := flag.NewFlagSet("board", flag.ContinueOnError)
-	fs.SetOutput(os.Stderr)
-	boardPathFlag := fs.String("board-path", "", "internal: injected absolute board dir for the detached sync child")
-	if err := fs.Parse(args); err != nil {
-		return 1
+// The parent "board" command carries a PersistentPreRunE that resolves config
+// and constructs the Board instance once, before any subcommand runs. The
+// resolved Board is shared via a closure variable closed over by all 11 RunEs.
+// When the parent is invoked with no subcommand, cobra lists available
+// subcommands without invoking the PreRunE, so no board config is needed.
+func Command() *cobra.Command {
+	// b is populated by PersistentPreRunE and closed over by each subcommand RunE.
+	var b *Board
+
+	cmd := &cobra.Command{
+		Use:   "board",
+		Short: "task-tracker board",
 	}
 
-	var cfg Config
-
-	// If --board-path is set, use it directly (internal use for detached sync child)
-	if *boardPathFlag != "" {
-		cfg = Config{Path: *boardPathFlag}
-	} else {
-		// Load configuration from cwd
-		cwd, err := paths.Getwd()
-		if err != nil {
-			return outputError(out, err.Error())
-		}
-		cfg, err = LoadConfig(cwd, "board")
-		if err != nil {
-			return outputError(out, err.Error())
-		}
+	// --board-path is an internal persistent flag injected by spawnSync so that
+	// the detached sync child can bypass cwd resolution and use the absolute board
+	// path directly. It must be hidden so it does not appear in help output.
+	boardPathFlag := cmd.PersistentFlags().String("board-path", "", "internal: injected absolute board dir for the detached sync child")
+	if err := cmd.PersistentFlags().MarkHidden("board-path"); err != nil {
+		// MarkHidden only errors when the flag name does not exist, which cannot
+		// happen here since we just registered it above.
+		panic(fmt.Sprintf("board: MarkHidden board-path: %v", err))
 	}
 
-	// Fold BOARD_SKIP_* env into cfg at the single production entry point.
-	cfg = applySkipEnv(cfg)
+	cmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
+		ctx := cmd.Context()
 
-	// fs.Args() returns the arguments remaining after flags are parsed.
-	// Expected: ["<subcommand>", "<json-payload>"]
-	rest := fs.Args()
-	if len(rest) < 1 {
-		fmt.Fprintln(os.Stderr, "usage: lyx board <subcommand> [json-payload]")
-		return 1
-	}
+		var cfg Config
 
-	subcommand := rest[0]
-	var jsonPayload string
-	if len(rest) > 1 {
-		jsonPayload = rest[1]
-	}
-
-	b := New(cfg)
-
-	switch subcommand {
-	case "upsert":
-		// Create or update a single task. Payload: task fields as a JSON object.
-		if jsonPayload == "" {
-			return outputError(out, "json payload required")
-		}
-		var fields map[string]any
-		if err := json.Unmarshal([]byte(jsonPayload), &fields); err != nil {
-			return outputError(out, fmt.Sprintf("invalid json: %v", err))
-		}
-		task, err := b.UpsertTask(fields)
-		if err != nil {
-			return outputError(out, err.Error())
-		}
-		return outputSuccessWithTask(out, task)
-
-	case "upsert-batch":
-		// Create or update multiple tasks atomically. Payload: {"tasks":[...]}.
-		if jsonPayload == "" {
-			return outputError(out, "json payload required")
-		}
-		var payload struct {
-			Tasks []map[string]any `json:"tasks"`
-		}
-		if err := json.Unmarshal([]byte(jsonPayload), &payload); err != nil {
-			return outputError(out, fmt.Sprintf("invalid json: %v", err))
-		}
-		if err := b.UpsertTasksBatch(payload.Tasks); err != nil {
-			return outputError(out, err.Error())
-		}
-		return outputSuccessWithCount(out, len(payload.Tasks))
-
-	case "set-phase":
-		// Set or clear the status field of a task.
-		// Payload: {"id_or_slug": "slug-or-id", "phase": "done"}
-		// phase null in JSON clears the status field.
-		if jsonPayload == "" {
-			return outputError(out, "json payload required")
-		}
-		var payload struct {
-			IDOrSlug any     `json:"id_or_slug"`
-			Phase    *string `json:"phase"` // pointer: JSON null → Go nil → status cleared
-		}
-		if err := json.Unmarshal([]byte(jsonPayload), &payload); err != nil {
-			return outputError(out, fmt.Sprintf("invalid json: %v", err))
-		}
-		if err := b.SetPhase(payload.IDOrSlug, payload.Phase); err != nil {
-			return outputError(out, err.Error())
-		}
-		return outputSuccess(out)
-
-	case "remove":
-		// Remove a task. Returns an error if the slug does not exist.
-		// Payload: {"id_or_slug": "slug-or-id"}
-		if jsonPayload == "" {
-			return outputError(out, "json payload required")
-		}
-		var payload struct {
-			IDOrSlug any `json:"id_or_slug"`
-		}
-		if err := json.Unmarshal([]byte(jsonPayload), &payload); err != nil {
-			return outputError(out, fmt.Sprintf("invalid json: %v", err))
-		}
-		if err := b.RemoveTask(payload.IDOrSlug); err != nil {
-			return outputError(out, err.Error())
-		}
-		return outputSuccess(out)
-
-	case "get":
-		// Fetch a single task. Returns {"ok":true,"task":null} if not found (not an error).
-		// Payload: {"id_or_slug": "slug-or-id"}
-		if jsonPayload == "" {
-			return outputError(out, "json payload required")
-		}
-		var payload struct {
-			IDOrSlug any `json:"id_or_slug"`
-		}
-		if err := json.Unmarshal([]byte(jsonPayload), &payload); err != nil {
-			return outputError(out, fmt.Sprintf("invalid json: %v", err))
-		}
-		task, found, err := b.GetTask(payload.IDOrSlug)
-		if err != nil {
-			return outputError(out, err.Error())
-		}
-		if found {
-			return outputGetTask(out, &task)
-		}
-		return outputGetTask(out, nil) // task: null in JSON output
-
-	case "list":
-		// List all tasks with computed fields (layer, has_proposal). No payload.
-		tasks, err := b.ListTasksBrief()
-		if err != nil {
-			return outputError(out, err.Error())
-		}
-		return outputListBrief(out, tasks)
-
-	case "list-full":
-		// List all tasks as stored in tasks.json, without enriched fields. No payload.
-		tasks, err := b.ListTasksFull()
-		if err != nil {
-			return outputError(out, err.Error())
-		}
-		return outputListFull(out, tasks)
-
-	case "merge":
-		// Remove + upsert + set_phase atomically.
-		// Payload: {"remove_slugs":["a"],"upsert":{...},"set_phase":["slug","done"]}
-		// set_phase is optional: omit the field or set to null to skip.
-		if jsonPayload == "" {
-			return outputError(out, "json payload required")
-		}
-		var payload struct {
-			RemoveSlugs []string       `json:"remove_slugs"`
-			Upsert      map[string]any `json:"upsert"`
-			SetPhase    []any          `json:"set_phase"` // two elements: [id_or_slug, phase]
-		}
-		if err := json.Unmarshal([]byte(jsonPayload), &payload); err != nil {
-			return outputError(out, fmt.Sprintf("invalid json: %v", err))
-		}
-
-		// set_phase must be exactly two elements if provided.
-		var setPhasePtr *[2]any
-		if len(payload.SetPhase) > 0 {
-			if len(payload.SetPhase) != 2 {
-				return outputError(out, "set_phase must be array of length 2")
+		// If --board-path is set, use it directly (internal use for detached sync child).
+		if *boardPathFlag != "" {
+			cfg = Config{Path: *boardPathFlag}
+		} else {
+			// Resolve configuration from the current working directory.
+			cwd, err := paths.Getwd()
+			if err != nil {
+				output.Err(cmd.OutOrStdout(), fmt.Sprintf("failed to get working directory: %v", err))
+				clihelp.Abort(ctx, 1)
+				return nil
 			}
-			setPhasePtr = &[2]any{payload.SetPhase[0], payload.SetPhase[1]}
+
+			cfg, err = LoadConfig(cwd, "board")
+			if err != nil {
+				output.Err(cmd.OutOrStdout(), err.Error())
+				clihelp.Abort(ctx, 1)
+				return nil
+			}
 		}
 
-		task, err := b.MergeTasks(payload.RemoveSlugs, payload.Upsert, setPhasePtr)
-		if err != nil {
-			return outputError(out, err.Error())
-		}
-		return outputSuccessWithTask(out, task)
-
-	case "set-deps":
-		// Replace the depends_on list for a task, with full validation.
-		// Payload: {"slug":"my-task","depends_on":["other-task"]}
-		if jsonPayload == "" {
-			return outputError(out, "json payload required")
-		}
-		var payload struct {
-			Slug      string   `json:"slug"`
-			DependsOn []string `json:"depends_on"`
-		}
-		if err := json.Unmarshal([]byte(jsonPayload), &payload); err != nil {
-			return outputError(out, fmt.Sprintf("invalid json: %v", err))
-		}
-		if err := b.SetDeps(payload.Slug, payload.DependsOn); err != nil {
-			return outputError(out, err.Error())
-		}
-		return outputSuccess(out)
-
-	case "rerender":
-		// Rebuild Home.md and _Sidebar.md from the current tasks.json. No payload.
-		// Useful if render files have been corrupted or manually edited.
-		if err := b.Rerender(); err != nil {
-			return outputError(out, err.Error())
-		}
-		return outputSuccess(out)
-
-	case "sync":
-		// Commit and push pending changes to the remote. No payload. Normally
-		// launched detached by a write; can also be run by hand to force a backup.
-		if err := b.Sync(); err != nil {
-			return outputError(out, err.Error())
-		}
-		return outputSuccess(out)
-
-	default:
-		fmt.Fprintf(os.Stderr, "unknown subcommand: %s\n", subcommand)
-		return 1
+		// Fold BOARD_SKIP_* env into cfg at the single production entry point.
+		cfg = applySkipEnv(cfg)
+		b = New(cfg)
+		return nil
 	}
+
+	// upsert subcommand: create or update a single task.
+	upsertCmd := &cobra.Command{
+		Use:   "upsert [json-payload]",
+		Short: "Create or update a single task",
+		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
+			if b == nil {
+				return 0 // abort was signalled; do nothing
+			}
+			// cobra strips the "upsert" token; json payload is now args[0].
+			if len(args) == 0 {
+				return outputError(out, "json payload required")
+			}
+			var fields map[string]any
+			if err := json.Unmarshal([]byte(args[0]), &fields); err != nil {
+				return outputError(out, fmt.Sprintf("invalid json: %v", err))
+			}
+			task, err := b.UpsertTask(fields)
+			if err != nil {
+				return outputError(out, err.Error())
+			}
+			return outputSuccessWithTask(out, task)
+		}),
+	}
+
+	// upsert-batch subcommand: create or update multiple tasks atomically.
+	upsertBatchCmd := &cobra.Command{
+		Use:   "upsert-batch [json-payload]",
+		Short: "Create or update multiple tasks atomically",
+		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
+			if b == nil {
+				return 0
+			}
+			if len(args) == 0 {
+				return outputError(out, "json payload required")
+			}
+			var payload struct {
+				Tasks []map[string]any `json:"tasks"`
+			}
+			if err := json.Unmarshal([]byte(args[0]), &payload); err != nil {
+				return outputError(out, fmt.Sprintf("invalid json: %v", err))
+			}
+			if err := b.UpsertTasksBatch(payload.Tasks); err != nil {
+				return outputError(out, err.Error())
+			}
+			return outputSuccessWithCount(out, len(payload.Tasks))
+		}),
+	}
+
+	// set-phase subcommand: set or clear the status field of a task.
+	setPhaseCmd := &cobra.Command{
+		Use:   "set-phase [json-payload]",
+		Short: "Set or clear the phase of a task",
+		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
+			if b == nil {
+				return 0
+			}
+			if len(args) == 0 {
+				return outputError(out, "json payload required")
+			}
+			var payload struct {
+				IDOrSlug any     `json:"id_or_slug"`
+				Phase    *string `json:"phase"` // pointer: JSON null → Go nil → status cleared
+			}
+			if err := json.Unmarshal([]byte(args[0]), &payload); err != nil {
+				return outputError(out, fmt.Sprintf("invalid json: %v", err))
+			}
+			if err := b.SetPhase(payload.IDOrSlug, payload.Phase); err != nil {
+				return outputError(out, err.Error())
+			}
+			return outputSuccess(out)
+		}),
+	}
+
+	// remove subcommand: remove a task by id or slug.
+	removeCmd := &cobra.Command{
+		Use:   "remove [json-payload]",
+		Short: "Remove a task",
+		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
+			if b == nil {
+				return 0
+			}
+			if len(args) == 0 {
+				return outputError(out, "json payload required")
+			}
+			var payload struct {
+				IDOrSlug any `json:"id_or_slug"`
+			}
+			if err := json.Unmarshal([]byte(args[0]), &payload); err != nil {
+				return outputError(out, fmt.Sprintf("invalid json: %v", err))
+			}
+			if err := b.RemoveTask(payload.IDOrSlug); err != nil {
+				return outputError(out, err.Error())
+			}
+			return outputSuccess(out)
+		}),
+	}
+
+	// get subcommand: fetch a single task; returns task:null if not found (not an error).
+	getCmd := &cobra.Command{
+		Use:   "get [json-payload]",
+		Short: "Fetch a single task",
+		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
+			if b == nil {
+				return 0
+			}
+			if len(args) == 0 {
+				return outputError(out, "json payload required")
+			}
+			var payload struct {
+				IDOrSlug any `json:"id_or_slug"`
+			}
+			if err := json.Unmarshal([]byte(args[0]), &payload); err != nil {
+				return outputError(out, fmt.Sprintf("invalid json: %v", err))
+			}
+			task, found, err := b.GetTask(payload.IDOrSlug)
+			if err != nil {
+				return outputError(out, err.Error())
+			}
+			if found {
+				return outputGetTask(out, &task)
+			}
+			return outputGetTask(out, nil) // task: null in JSON output
+		}),
+	}
+
+	// list subcommand: list all tasks with computed fields (layer, has_proposal).
+	listCmd := &cobra.Command{
+		Use:   "list",
+		Short: "List all tasks with computed fields",
+		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
+			if b == nil {
+				return 0
+			}
+			tasks, err := b.ListTasksBrief()
+			if err != nil {
+				return outputError(out, err.Error())
+			}
+			return outputListBrief(out, tasks)
+		}),
+	}
+
+	// list-full subcommand: list all tasks as stored in tasks.json.
+	listFullCmd := &cobra.Command{
+		Use:   "list-full",
+		Short: "List all tasks as stored in tasks.json",
+		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
+			if b == nil {
+				return 0
+			}
+			tasks, err := b.ListTasksFull()
+			if err != nil {
+				return outputError(out, err.Error())
+			}
+			return outputListFull(out, tasks)
+		}),
+	}
+
+	// merge subcommand: remove + upsert + set_phase atomically.
+	mergeCmd := &cobra.Command{
+		Use:   "merge [json-payload]",
+		Short: "Atomically remove, upsert, and set-phase",
+		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
+			if b == nil {
+				return 0
+			}
+			if len(args) == 0 {
+				return outputError(out, "json payload required")
+			}
+			var payload struct {
+				RemoveSlugs []string       `json:"remove_slugs"`
+				Upsert      map[string]any `json:"upsert"`
+				SetPhase    []any          `json:"set_phase"` // two elements: [id_or_slug, phase]
+			}
+			if err := json.Unmarshal([]byte(args[0]), &payload); err != nil {
+				return outputError(out, fmt.Sprintf("invalid json: %v", err))
+			}
+
+			// set_phase must be exactly two elements if provided.
+			var setPhasePtr *[2]any
+			if len(payload.SetPhase) > 0 {
+				if len(payload.SetPhase) != 2 {
+					return outputError(out, "set_phase must be array of length 2")
+				}
+				setPhasePtr = &[2]any{payload.SetPhase[0], payload.SetPhase[1]}
+			}
+
+			task, err := b.MergeTasks(payload.RemoveSlugs, payload.Upsert, setPhasePtr)
+			if err != nil {
+				return outputError(out, err.Error())
+			}
+			return outputSuccessWithTask(out, task)
+		}),
+	}
+
+	// set-deps subcommand: replace the depends_on list for a task.
+	setDepsCmd := &cobra.Command{
+		Use:   "set-deps [json-payload]",
+		Short: "Replace the depends_on list for a task",
+		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
+			if b == nil {
+				return 0
+			}
+			if len(args) == 0 {
+				return outputError(out, "json payload required")
+			}
+			var payload struct {
+				Slug      string   `json:"slug"`
+				DependsOn []string `json:"depends_on"`
+			}
+			if err := json.Unmarshal([]byte(args[0]), &payload); err != nil {
+				return outputError(out, fmt.Sprintf("invalid json: %v", err))
+			}
+			if err := b.SetDeps(payload.Slug, payload.DependsOn); err != nil {
+				return outputError(out, err.Error())
+			}
+			return outputSuccess(out)
+		}),
+	}
+
+	// rerender subcommand: rebuild Home.md and _Sidebar.md from the current tasks.json.
+	rerenderCmd := &cobra.Command{
+		Use:   "rerender",
+		Short: "Rebuild Home.md and _Sidebar.md from tasks.json",
+		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
+			if b == nil {
+				return 0
+			}
+			if err := b.Rerender(); err != nil {
+				return outputError(out, err.Error())
+			}
+			return outputSuccess(out)
+		}),
+	}
+
+	// sync subcommand: commit and push pending changes to the remote.
+	syncCmd := &cobra.Command{
+		Use:   "sync",
+		Short: "Commit and push pending board changes to the remote",
+		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
+			if b == nil {
+				return 0
+			}
+			if err := b.Sync(); err != nil {
+				return outputError(out, err.Error())
+			}
+			return outputSuccess(out)
+		}),
+	}
+
+	cmd.AddCommand(
+		upsertCmd,
+		upsertBatchCmd,
+		setPhaseCmd,
+		removeCmd,
+		getCmd,
+		listCmd,
+		listFullCmd,
+		mergeCmd,
+		setDepsCmd,
+		rerenderCmd,
+		syncCmd,
+	)
+
+	return cmd
+}
+
+// RunCLI is the public seam for the board module CLI.
+//
+// It delegates to clihelp.Execute with the cobra command tree, passing out as
+// the capture writer for all output (including cobra's error text). This
+// preserves the existing call contract so that callers and tests are unchanged.
+func RunCLI(out io.Writer, args []string) int {
+	return clihelp.Execute(Command(), out, args)
 }
 
 // outputError writes {"ok":false,"error":"..."} and returns exit code 1.
