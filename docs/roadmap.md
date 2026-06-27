@@ -162,10 +162,11 @@ Layer in once the core stack works; not required for `loom` v1.
 
 Independent of the orchestration stack; interleave as needed.
 
-16. **`init` grows: create / clone the board repo.** Today `init` only scaffolds `_lyx/`; the
-    board dir is auto-created on first write and made a git repo by hand. This milestone makes
-    `init` create a board repo from scratch or clone one from a remote (analogous to mill-setup
-    phases 1–3). The `ly-git-clone` hub-creator (milestone 6) defers board-repo setup to here.
+16. **`init` grows: create the board repo from scratch.** `warp clone` already handles the
+    "clone existing board repo" case (it clones all three repos). What remains: when starting
+    fresh with no existing board remote, `init` should create and initialise a board git repo
+    locally (and optionally push it to a new remote). Today the board dir is auto-created on
+    first write and made a git repo by hand.
 
 17. **doctor.** A diagnostics command (`lyx doctor`): checks `_lyx/` is present, `*.yaml` parse and
     use known keys, the board repo is reachable, no stale lock files, the state file is readable —
