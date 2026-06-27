@@ -4,6 +4,9 @@
 // via reconciliation, and maintains the managed .gitignore block.
 // This is idempotent and never clobbers existing user-edited config files.
 
+// Package initcli provides the cobra command and public seam for the lyx init command.
+// It scaffolds the _lyx directory structure and wires warp junctions in the current
+// working directory.
 package initcli
 
 import (
@@ -12,6 +15,9 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/spf13/cobra"
+
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configsync"
 	"github.com/Knatte18/loomyard/internal/gitignore"
 	"github.com/Knatte18/loomyard/internal/output"
@@ -19,28 +25,53 @@ import (
 	"github.com/Knatte18/loomyard/internal/warp"
 )
 
-// RunInit is the entry point for the lyx init command.
+// Command returns the cobra command for lyx init.
+//
+// The returned command is a leaf with Use "init". It scaffolds _lyx/config/ in
+// the current directory, wires warp junctions, and maintains the managed
+// .gitignore block. The public RunInit seam delegates here via clihelp.Execute,
+// so all in-process callers continue to work unchanged.
+func Command() *cobra.Command {
+	return &cobra.Command{
+		Use:   "init",
+		Short: "scaffold _lyx/config/ in the current directory",
+		Long: `init activates the lyx topology for the current worktree.
+
+It wires cwd-keyed warp junctions, creates _lyx/ and _lyx/config/ directories,
+maintains the managed .gitignore block for .lyx/, and reconciles all module
+config files against their templates (idempotent: existing user edits are
+preserved). A weft pairing must already exist (run 'lyx warp add' or
+'lyx warp clone' first).`,
+		RunE: clihelp.WrapRun(runInit),
+	}
+}
+
+// RunInit is the public seam for the lyx init command.
+//
+// It delegates to clihelp.Execute(Command(), out, args) so that all existing
+// in-process callers and tests compile and pass unchanged. The cobra command
+// carries both stdout and stderr into out for single-buffer test capture.
+func RunInit(out io.Writer, args []string) int {
+	return clihelp.Execute(Command(), out, args)
+}
+
+// runInit is the package-private handler that contains the actual init logic.
 //
 // It activates the warp topology by wiring cwd-keyed junctions, then reconciles
 // the config layer in the current working directory by:
-//   1. Resolving the layout from cwd
-//   2. Checking for a weft pairing; if absent, report and exit early
-//   3. Wiring the host _lyx junction via warp.WireJunctions
-//   4. Creating _lyx and _lyx/config directories
-//   5. Maintaining the managed .gitignore block for .lyx/
-//   6. Reconciling all module config files against their templates via ReconcileAll
+//  1. Resolving the layout from cwd
+//  2. Checking for a weft pairing; if absent, report and exit early
+//  3. Wiring the host _lyx junction via warp.WireJunctions
+//  4. Creating _lyx and _lyx/config directories
+//  5. Maintaining the managed .gitignore block for .lyx/
+//  6. Reconciling all module config files against their templates via ReconcileAll
 //
 // Idempotent: junction wiring is idempotent (via fslink.IsLink/PointsTo); a second run
 // does not clobber existing config files (Reconcile preserves user values) and does not
 // duplicate the .gitignore block.
 //
-// Returns a JSON summary with _lyx/gitignore status and per-module results,
-// and exit code 0 on success, 1 on error.
-//
-// Contract: lyx init is the activator run only inside a warp-hub worktree that
-// already has a weft pairing (from warp clone/add). There is no standalone non-warp
-// lyx init — the no-pairing path reports and exits, requiring warp add/clone first.
-func RunInit(out io.Writer, args []string) int {
+// Returns exit code 0 on success, 1 on error.
+func runInit(out io.Writer, args []string) int {
 	// Resolve current working directory
 	cwd, err := paths.Getwd()
 	if err != nil {

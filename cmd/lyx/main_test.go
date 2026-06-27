@@ -23,11 +23,20 @@ import (
 
 func TestRunNoArgs(t *testing.T) {
 	var out bytes.Buffer
-	if code := run(nil, &out); code != 1 {
-		t.Fatalf("expected exit 1 for no args, got %d", code)
+	// Cobra root with no subcommand prints help and exits 0.
+	if code := run(nil, &out); code != 0 {
+		t.Fatalf("expected exit 0 for no args, got %d; output: %q", code, out.String())
 	}
-	if out.Len() != 0 {
-		t.Fatalf("expected no module output, got %q", out.String())
+	// Help output must be non-empty and name a representative set of modules so
+	// the tree is self-documenting at the root level.
+	got := out.String()
+	if got == "" {
+		t.Fatal("expected non-empty help output for no args")
+	}
+	for _, module := range []string{"board", "warp"} {
+		if !strings.Contains(got, module) {
+			t.Errorf("expected help output to name module %q; got:\n%s", module, got)
+		}
 	}
 }
 
@@ -36,8 +45,11 @@ func TestRunUnknownModule(t *testing.T) {
 	if code := run([]string{"bogus", "list"}, &out); code != 1 {
 		t.Fatalf("expected exit 1 for unknown module, got %d", code)
 	}
-	if out.Len() != 0 {
-		t.Fatalf("expected no module output, got %q", out.String())
+	// Cobra prints "unknown command" for an unrecognised subcommand; the merged
+	// seam captures it in out so we can assert the substring.
+	got := out.String()
+	if !strings.Contains(got, "unknown command") {
+		t.Errorf("expected %q in output for unknown module; got: %q", "unknown command", got)
 	}
 }
 

@@ -12,6 +12,9 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/spf13/cobra"
+
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/config"
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/paths"
@@ -81,12 +84,46 @@ func dispatch(l *paths.Layout, in io.Reader, out io.Writer, args []string, edit 
 	return menu(l, baseDir, in, out, edit, sync)
 }
 
-// RunCLI is the public entry point for the lyx config command.
+// Command returns the cobra command for lyx config.
+//
+// The returned command is a leaf with Use "config [module]". It accepts an
+// optional module-name positional: no positional opens the interactive menu;
+// one positional edits that module directly. ValidArgs is set to the known
+// config module names for shell completion only — validation of an unknown
+// module is left to the handler, which prints the existing plain-text error.
+// The public RunCLI seam delegates here via clihelp.Execute so all in-process
+// callers continue to work unchanged.
+func Command() *cobra.Command {
+	return &cobra.Command{
+		Use:   "config [module]",
+		Short: "edit module configuration",
+		Long: `config edits a module's configuration in _lyx/config/ and syncs weft on
+success. With no argument it opens an interactive numbered menu of the known
+modules; with a module name it edits that module directly.`,
+		Args:      cobra.MaximumNArgs(1),
+		ValidArgs: configreg.Names(),
+		RunE:      clihelp.WrapRun(runConfig),
+	}
+}
+
+// RunCLI is the public seam for the lyx config command.
+//
+// It delegates to clihelp.Execute(Command(), out, args) so that all existing
+// in-process callers and tests compile and pass unchanged. The cobra command
+// carries both stdout and stderr into out for single-buffer test capture.
+func RunCLI(out io.Writer, args []string) int {
+	return clihelp.Execute(Command(), out, args)
+}
+
+// runConfig is the package-private handler for the lyx config command.
 //
 // It resolves the layout from the current working directory, builds the real
 // editor (DefaultEditor) and the real sync function (weft.RunCLI with "sync"),
 // and dispatches to dispatch with os.Stdin as the interactive input reader.
-func RunCLI(out io.Writer, args []string) int {
+// Behaviour is unchanged from the pre-cobra RunCLI: no positional → interactive
+// menu; one positional → editOne for that module; unknown module → the existing
+// plain-text error from editOne.
+func runConfig(out io.Writer, args []string) int {
 	// Resolve the current working directory.
 	cwd, err := paths.Getwd()
 	if err != nil {
