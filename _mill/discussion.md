@@ -290,8 +290,10 @@ moment the command changes.
   error would make cobra print its own human text to stderr and break the JSON contract).
   Every muxpoc subcommand `RunE` then begins with a guard `if exitStateFrom(cmd.Context()).
   abort { return nil }`, so the JSON is written exactly once by the PreRunE and the
-  subcommand body is skipped. This guard is muxpoc-specific (it is the only module with a
-  failable shared `PersistentPreRunE`).
+  subcommand body is skipped. This abort guard applies to **every** module that gains a
+  failable shared `PersistentPreRunE` — muxpoc, board, weft, and ide (see the
+  shared-pre-dispatch gotcha in Technical context) — each preserving its existing JSON
+  error envelope on resolution failure.
 - **Production retrieval (`cmd/lyx/main.go`).** `main` seeds the holder and runs the root
   via `ExecuteContext`, then maps a recorded handler failure to the process exit code —
   this is what keeps the "exit codes unchanged" constraint true for real `{"ok":false}`
@@ -358,18 +360,45 @@ What mill-plan needs to know about the codebase:
   pulls in `spf13/pflag` (its only real transitive dep).
 - **Gotcha** — `internal/update/update.go` deliberately blanks `fs.Usage` to suppress
   stdlib flag help; that hack is removed when flags move to pflag.
-- **Gotcha (muxpoc pre-dispatch is NOT a verbatim per-case move)** — `internal/muxpoc/
-  cli.go` (≈ lines 54–94) builds `cfg` from the tuning flags **and calls
-  `paths.Resolve(layout)` once before the `switch`**, shared by every subcommand. This
-  shared setup has no single `RunE` home and must NOT run on the new no-arg/help listing
-  path — `paths.Resolve` would wrongly require a git repo just to *list* muxpoc's
-  subcommands. Move it into a **`PersistentPreRunE` on the `muxpoc` parent**: cobra runs
-  `PersistentPreRunE` only when a subcommand actually executes, and skips it for the
-  no-arg/`--help` listing (parent has no `Run`). So the "handlers move into `RunE`
-  essentially verbatim" note from `integration-style-c-preserve-seam` has this one
-  exception — muxpoc's pre-`switch` block becomes `PersistentPreRunE`, not per-`RunE`
-  duplication. (configcli's `paths`/config resolution sits inside its single `Run`, so it
-  is unaffected; only muxpoc has shared pre-dispatch across multiple subcommands.)
+- **Gotcha (shared cwd-dependent pre-dispatch is NOT a verbatim per-case move) — applies
+  to FOUR modules, not just muxpoc.** Several modules resolve cwd-dependent config/layout
+  **once before their `switch`** and share it across every subcommand. This shared setup
+  has no single `RunE` home and must NOT run on the new no-arg/`--help` **listing** path —
+  resolving layout/config would wrongly require a git repo or config just to *list* a
+  module's subcommands. The fix is uniform: lift each module's shared resolution into a
+  **`PersistentPreRunE` on that module's parent command**. cobra runs `PersistentPreRunE`
+  only when a subcommand actually executes and skips it for the no-arg/`--help` listing
+  (the parent has no `Run`). The affected modules and their pre-dispatch blocks:
+  - **muxpoc** (`internal/muxpoc/cli.go` ≈ 54–94): builds `cfg` from the tuning flags and
+    calls `paths.Resolve` before the switch.
+  - **board** (`internal/board/cli.go` ≈ 67–101): builds `cfg` via `LoadConfig(cwd,…)` and
+    `b := New(cfg)`, **conditional on the `--board-path` bypass** (when set, uses the path
+    directly and skips cwd resolution). The bypass branch must be preserved inside the
+    `PersistentPreRunE`.
+  - **weft** (`internal/weft/cli.go` ≈ 82–104): resolves cwd → `paths.Resolve` → `cfg` via
+    `LoadConfig` → scoped `pathspec`, **conditional on the `--weft-path` bypass** (when set,
+    only `push` is valid; preserve that gate). Preserve the bypass branch in the
+    `PersistentPreRunE`.
+  - **ide** (`internal/ide/cli.go` ≈ 31–41): resolves cwd → `paths.Resolve(l)` — and it does
+    so **before** today's no-arg check (line 44), so under cobra `lyx ide` (no-arg listing)
+    must NOT resolve layout; the `PersistentPreRunE` placement fixes exactly this.
+
+  So the "handlers move into `RunE` essentially verbatim" note in
+  `integration-style-c-preserve-seam` carries this caveat for all four modules: the
+  pre-`switch` block becomes a `PersistentPreRunE`, not per-`RunE` duplication, and the
+  internal-flag bypass branches (board/weft) are preserved within it. (configcli resolves
+  inside its single `Run`, and warp/initcli/update have no shared cwd resolution before a
+  multi-subcommand switch, so those four are unaffected.)
+- **Gotcha (how PreRunE-built values reach each `RunE`).** The `cfg`/layout/`pathspec`/
+  `b *Board` that a `PersistentPreRunE` builds must reach each subcommand's `RunE`. Mechanism:
+  each module's `Command()` constructor declares the shared value(s) as **closure variables**
+  in its scope (e.g. `var cfg Config; var b *Board`); the `PersistentPreRunE` populates them;
+  each subcommand `RunE` closes over them. This is the idiomatic "build the command tree in a
+  constructor that shares closure state" pattern and is module-local — unlike `exitState`
+  (which crosses the main/seam boundary and so rides the context), these values never leave
+  the module, so a closure is the right tool, not the context. On a `PersistentPreRunE`
+  failure the abort path from `exit-and-error-contract` applies (write the JSON error, set
+  `code`+`abort`, return `nil`; each `RunE` guards on `abort`).
 - **Gotcha** — two usage-output conventions coexist today (plain-text-to-stderr in
   board/weft/muxpoc top-level dispatch; JSON via `output.Err` in initcli/ide/warp). After
   this task the usage/no-arg/typo surface is uniformly cobra (human text or `--json`), and
