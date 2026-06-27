@@ -95,14 +95,21 @@ moment the command changes.
 
   ```go
   func RunCLI(out io.Writer, args []string) int {
+      es := &exitState{} // shared exit-code holder, injected via context (see exit-and-error-contract)
       c := Command()
       c.SetOut(out)
       c.SetErr(out) // merge cobra's stderr (unknown-command text) into the single seam writer
       c.SetArgs(args)
-      if err := c.Execute(); err != nil { return 1 }
-      return exitCodeFromHandlers // see exit-and-error-contract
+      ctx := context.WithValue(context.Background(), exitKey, es)
+      if err := c.ExecuteContext(ctx); err != nil { return 1 } // cobra-level error: unknown cmd / bad flag
+      return es.code // handler-recorded exit code (0 on success)
   }
   ```
+
+  The holder is **injected by the caller via the command context**, not by `Command()`'s
+  signature — so `func Command() *cobra.Command` stays exactly as fixed in Scope. See
+  `exit-and-error-contract` for the shared `exitState` definition and how `cmd/lyx/main.go`
+  reads the same holder.
 
 - **stdout/stderr split — seam merges, binary separates.** The
   `unknown-command-human-text` decision sends cobra's typo/usage text to **stderr**, but
@@ -207,6 +214,14 @@ moment the command changes.
 
   At a leaf command `commands` is empty and `flags` is populated; at a parent the reverse.
   Hidden flags (`--board-path`, `--weft-path`) are omitted from the `--json` output too.
+- `flags` array source: **local flags only** (`cmd.LocalFlags()`), excluding hidden flags
+  and the help-meta flags `--json`/`--help`/`-h`. Inherited persistent flags are NOT
+  duplicated onto child nodes — they are documented on the node that *defines* them
+  (muxpoc's persistent tuning flags appear in muxpoc's own node `flags`; the root `--json`
+  is meta and never listed). This mirrors cobra's human help, which separates local
+  "Flags:" from "Global Flags:", and keeps the `--json` schema test's per-node expectations
+  unambiguous. (Verified: no current module defines a `--json` flag, so the persistent root
+  `--json` collides with nothing.)
 - Scope of `--json`: it **only** alters help rendering. On a real command-execution path
   (a leaf handler actually running, e.g. `lyx board list --json`) `--json` is a **no-op** —
   parsed but ignored, never an error — because real command output is already JSON. So the
@@ -228,10 +243,39 @@ moment the command changes.
   exit 1 with no cobra noise; tree/flag failures → cobra's human text + suggestions +
   exit 1. It preserves every existing JSON error assertion while enabling the
   unknown-command UX decision above.
-- Note: `output.Ok`/`output.Err` already return the int exit code today; the holder simply
-  captures that return value inside the `RunE` wrapper. The exact holder mechanism (closure
-  variable vs. a small struct) is an implementation detail for mill-plan, but the contract
-  above is fixed.
+- **Holder mechanism (fixed, signature-preserving).** The exit-code holder is a tiny
+  shared pointer carried in the **command context**, so `func Command() *cobra.Command`
+  needs no out-param:
+
+  ```go
+  type exitState struct{ code int }
+  type ctxKey struct{}
+  var exitKey = ctxKey{}
+
+  func setExit(ctx context.Context, code int) {
+      if es, ok := ctx.Value(exitKey).(*exitState); ok && code != 0 { es.code = code }
+  }
+  ```
+
+  Each handler's `RunE` wrapper does `setExit(cmd.Context(), output.Err(out, msg))` on
+  failure (and returns `nil` to cobra). `output.Ok`/`output.Err` already return the int
+  exit code today, so the wrapper just forwards it. cobra propagates the root context to
+  every subcommand, so a leaf's `cmd.Context()` is the same context the caller seeded.
+- **Production retrieval (`cmd/lyx/main.go`).** `main` seeds the holder and runs the root
+  via `ExecuteContext`, then maps a recorded handler failure to the process exit code —
+  this is what keeps the "exit codes unchanged" constraint true for real `{"ok":false}`
+  failures (e.g. `lyx weft status` outside a worktree):
+
+  ```go
+  es := &exitState{}
+  ctx := context.WithValue(context.Background(), exitKey, es)
+  err := root.ExecuteContext(ctx)
+  if err != nil { os.Exit(1) } // cobra-level error (unknown command / bad flag)
+  os.Exit(es.code)             // handler-recorded exit code (0 on success)
+  ```
+
+  Both the production root and the per-module `RunCLI` seam share this one contract; the
+  holder is by-pointer so no `ExecuteC()`-and-walk-back is needed.
 
 ## Technical context
 
@@ -240,8 +284,10 @@ What mill-plan needs to know about the codebase:
 - **Entry point** — `cmd/lyx/main.go`: `main()` calls `os.Exit(run(os.Args[1:],
   os.Stdout))`; `run()` is a `switch module { case "init": return initcli.RunInit(...) … }`
   dispatcher writing to an `io.Writer`. This becomes: build the root cobra command from
-  each module's `Command()`, `rootCmd.SetArgs(os.Args[1:])`, `Execute()`, map to exit
-  code. The doc-comment module table at the top of `main.go` (lines 11–20) becomes
+  each module's `Command()`, `rootCmd.SetArgs(os.Args[1:])`, run `rootCmd.ExecuteContext`
+  with the seeded exit-state holder, and map to the process exit code (see
+  `exit-and-error-contract` for the exact retrieval). The doc-comment module table at the
+  top of `main.go` (lines 11–20) becomes
   redundant and should be updated/removed (the listing now derives from `Short`s).
 - **Module signature today** — every module exposes `func RunCLI(out io.Writer, args
   []string) int` (initcli exposes `func RunInit(...)`; it is a flat command that ignores a
