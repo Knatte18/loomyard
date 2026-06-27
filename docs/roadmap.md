@@ -87,7 +87,7 @@ observable changes until the new module that needs the extracted lib arrives.
    Weft directories are reached by direct sibling access; portals remain available as the cross-worktree status view.
    The weft **producers** (the `lyx worktree add` paired host+weft spawn) also landed.
 
-6. **Task 007 — Hub-creator / `lyx git-clone`.** Create a fresh Hub (`<name>-HUB/`) and clone the host, weft, and board Primes into it. Builds on the now-complete weft engine + producers (milestone 5). The command is a Go `lyx git-clone` subcommand that clones three repos with no junction wiring or activation — junctions and activation are separate later steps. Board-repo creation is milestone 16, not part of this clone.
+6. **Hub-creator / clone.** ✅ **Done — absorbed by `warp` (milestone 20).** `lyx warp clone <host> <weft>` creates the Hub and clones host, weft, and board. The standalone `lyx git-clone` subcommand was never built; warp made it redundant.
 
 7. **Task 008 — configuration TUI.** 🚧 Mostly shipped / in progress. `lyx config` and
    `lyx config <module>` — an interactive menu over the `_lyx/config/` YAML schema.
