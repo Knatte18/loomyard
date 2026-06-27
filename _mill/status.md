@@ -42,7 +42,9 @@ batches:
     start_sha: dd549127abd18e0dfbb14ee5e38c6880b39745b9
     commit_sha: bd0dee44a0066de4778a8b599c9fd7f76263a3bd
   - name: ide-and-weft
-    state: pending
+    state: running
+    implementer_session: 06d0612f-4eaf-4399-80b3-c3a828e37455
+    start_sha: 29a30d4a77df4a1061f1154028fbc86f2d57e1ef
   - name: board
     state: pending
   - name: muxpoc-and-warp
