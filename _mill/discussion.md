@@ -248,7 +248,10 @@ moment the command changes.
   needs no out-param:
 
   ```go
-  type exitState struct{ code int }
+  type exitState struct {
+      code  int
+      abort bool // set by a failing PersistentPreRunE to short-circuit the leaf RunE
+  }
   type ctxKey struct{}
   var exitKey = ctxKey{}
 
@@ -257,10 +260,28 @@ moment the command changes.
   }
   ```
 
-  Each handler's `RunE` wrapper does `setExit(cmd.Context(), output.Err(out, msg))` on
-  failure (and returns `nil` to cobra). `output.Ok`/`output.Err` already return the int
-  exit code today, so the wrapper just forwards it. cobra propagates the root context to
-  every subcommand, so a leaf's `cmd.Context()` is the same context the caller seeded.
+  Each handler's `RunE` wrapper forwards whatever int its inner handler returns:
+  `setExit(cmd.Context(), handler(out, args))` and returns `nil` to cobra. Note the inner
+  return value is the handler's own int — usually `output.Err(out, msg)` (which returns 1),
+  but **not universally** `internal/output`: `configcli`'s `editOne` writes plain text via
+  `fmt.Fprintf` (`unknown config module: …`, `aborted: …`) and returns its own int code
+  directly. So the wrapper is `setExit(ctx, handler(...))`, agnostic to whether the handler
+  emitted JSON or plain text — the `output.Err` form shown elsewhere is illustrative of the
+  common case, not a requirement that every handler route through `internal/output`. cobra
+  propagates the root context to every subcommand, so a leaf's `cmd.Context()` is the same
+  context the caller seeded.
+- **`PersistentPreRunE` failure (muxpoc) preserves the JSON envelope.** muxpoc's
+  pre-dispatch (moved into `PersistentPreRunE`, see Technical context) can fail at
+  `paths.Resolve` — today that emits `{"ok":false,"error":"not a git repository"}` on
+  stdout, exit 1. To keep that contract, on failure the `PersistentPreRunE`: (1) writes the
+  JSON error via the module's existing `output.Err(out, …)` to `cmd.OutOrStdout()`;
+  (2) records the code and sets the abort flag — `if es := exitStateFrom(ctx); es != nil {
+  es.code = 1; es.abort = true }`; (3) returns `nil` (NOT the error — returning a non-nil
+  error would make cobra print its own human text to stderr and break the JSON contract).
+  Every muxpoc subcommand `RunE` then begins with a guard `if exitStateFrom(cmd.Context()).
+  abort { return nil }`, so the JSON is written exactly once by the PreRunE and the
+  subcommand body is skipped. This guard is muxpoc-specific (it is the only module with a
+  failable shared `PersistentPreRunE`).
 - **Production retrieval (`cmd/lyx/main.go`).** `main` seeds the holder and runs the root
   via `ExecuteContext`, then maps a recorded handler failure to the process exit code —
   this is what keeps the "exit codes unchanged" constraint true for real `{"ok":false}`
@@ -291,8 +312,13 @@ What mill-plan needs to know about the codebase:
   redundant and should be updated/removed (the listing now derives from `Short`s).
 - **Module signature today** — every module exposes `func RunCLI(out io.Writer, args
   []string) int` (initcli exposes `func RunInit(...)`; it is a flat command that ignores a
-  verb). All write JSON via the shared `internal/output` helpers: `output.Ok(out, map)`
-  → `{"ok":true,...}` exit 0; `output.Err(out, msg)` → `{"ok":false,"error":...}` exit 1.
+  verb). **Most** handlers write JSON via the shared `internal/output` helpers:
+  `output.Ok(out, map)` → `{"ok":true,...}` exit 0; `output.Err(out, msg)` →
+  `{"ok":false,"error":...}` exit 1 — but not all: `configcli`'s `editOne` writes plain
+  text via `fmt.Fprintf` (`unknown config module: …`, `aborted: …`, `edited and synced …`)
+  and returns its own int code. The exit-code wrapper (see `exit-and-error-contract`)
+  therefore forwards each handler's returned int regardless of whether it emitted JSON or
+  plain text.
 - **Per-module shape** (the three dispatch families the design must absorb):
   - Verb-switch modules: `internal/board/cli.go` (subcommands: upsert, upsert-batch,
     set-phase, remove, get, list, list-full, merge, set-deps, rerender, sync; internal
@@ -309,8 +335,10 @@ What mill-plan needs to know about the codebase:
     arg and a `Run`; consider `ValidArgs`/`ValidArgsFunction` set to the known module names
     for completion + suggestions. Its existing `unknown config module: %s (known: …)`
     validation stays inside the handler (it is a real error, not a tree typo).
-- **Output helpers** — `internal/output` is the single JSON sink; do not bypass it. Keep
-  every handler routing success/error through it.
+- **Output helpers** — `internal/output` is the JSON sink for the handlers that emit JSON;
+  keep those routing success/error through it (don't bypass it for JSON output). The
+  exception is `configcli`, which intentionally emits human-readable plain text for its
+  edit/menu flow; preserve that behaviour rather than forcing it into the JSON envelope.
 - **Internal flag injection** (must survive migration) — `internal/board/spawn.go:27` and
   `internal/weft/spawn.go:34` shell out to `lyx board --board-path … sync` and `lyx weft
   --weft-path … push` respectively. These flags must be **persistent** on their parent so
@@ -361,13 +389,22 @@ preserved adapter, fix the handful that assert exact usage text, and add tree-le
 for the new help surface. All tests stay in-process (no subprocess) per the current
 pattern; cwd-dependent modules continue to use `internal/lyxtest` helpers + `t.Chdir`.
 
-- **Existing tests (regression)** — the ~51 `RunCLI`/`RunInit`/`run()` call sites across
-  ~11 files should pass unchanged because the adapter preserves signature + JSON + exit
-  codes. Expect ~3–5 assertions to need updating where they assert exact usage/unknown
-  text (the surface that now comes from cobra): `internal/configcli/configcli_test.go`,
-  `internal/ide/cli_test.go`, `internal/weft/cli_test.go`, and `cmd/lyx/main_test.go`
-  (`TestRunUnknownModule`, and the bare-`lyx` test now expecting exit 0 + a module listing
-  rather than exit 1 + empty output).
+- **Existing tests (regression)** — most of the ~51 `RunCLI`/`RunInit`/`run()` call sites
+  across ~11 files pass unchanged because the adapter preserves signature + JSON + exit
+  codes. The assertions that **do** need updating are those that pin the no-arg / unknown /
+  usage surface (which now comes from cobra):
+  - `internal/configcli/configcli_test.go`, `internal/ide/cli_test.go`,
+    `internal/weft/cli_test.go` — exact usage/unknown text assertions.
+  - `cmd/lyx/main_test.go` — `TestRunUnknownModule`, and the bare-`lyx` test now expecting
+    exit 0 + a module listing rather than exit 1 + empty output.
+  - `internal/muxpoc/cli_test.go` — **two assertions change**: no-arg now → exit 0 + a
+    subcommand listing (was exit 1 + empty stdout), and unknown-subcommand/bad-flag now →
+    non-empty output (the seam merges `SetErr` into the single `out` writer, so cobra's
+    error text lands there; was empty stdout). Assert on the `unknown command` substring +
+    exit code, not the exact qualifier.
+
+  Budget: more like ~6–8 assertion edits across these five files (not 3–5), since muxpoc
+  contributes two and several files have a no-arg + an unknown case each.
 - **TDD candidates (write first):**
   - **Drift-guard** (`cmd/lyx`): walk the assembled root command tree; assert every
     command (root, each module, each subcommand) has a non-empty `Short`. This is the
@@ -402,7 +439,11 @@ pattern; cwd-dependent modules continue to use `internal/lyxtest` helpers + `t.C
     `subcommand requires a worktree context`.
   - update: dry-run (no flag) vs `--apply`.
   - initcli: `lyx init` success and the no-pairing error path.
-  - configcli/ide/muxpoc: their existing in-process tests.
+  - configcli/ide: their existing in-process tests (with the usage/unknown-text assertions
+    updated per the regression list above).
+  - muxpoc: existing subcommand-behaviour tests still pass, but its **no-arg and
+    unknown-subcommand assertions are updated** (see regression list) — do not treat
+    muxpoc's test file as unchanged.
 - **No-arg behaviour tests**: `lyx init`/`lyx update`/`lyx config` still *run* (not print
   help) on no-arg; `lyx <verb-module>` prints the listing. Cover at least one of each.
 
