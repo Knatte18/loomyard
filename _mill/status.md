@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-clihelp-foundation
+phase: approved-flat-and-config-modules
 slug: builtin-cli-help
 branch: builtin-cli-help
 plan: _mill/plan
@@ -24,6 +24,7 @@ plan-fix-r2  '2026-06-27T15:24:23Z'
 planned  '2026-06-27T15:24:38Z'
 implementing  '2026-06-27T15:35:25Z'
 approved-clihelp-foundation  '2026-06-27T15:43:27Z'
+approved-flat-and-config-modules  '2026-06-27T16:24:50Z'
 ```
 
 ## Batches
@@ -36,9 +37,10 @@ batches:
     start_sha: 93acb8b31ab4106f7800c44a36bbe33ab98866a1
     commit_sha: 3759599abfa6ab4bfd98a8337d5ed72d9f3b088e
   - name: flat-and-config-modules
-    state: running
+    state: approved
     implementer_session: c8fd9816-cacd-4f63-969e-ba9f663fad19
     start_sha: dd549127abd18e0dfbb14ee5e38c6880b39745b9
+    commit_sha: bd0dee44a0066de4778a8b599c9fd7f76263a3bd
   - name: ide-and-weft
     state: pending
   - name: board
