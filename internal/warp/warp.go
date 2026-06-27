@@ -43,61 +43,142 @@
 //
 // # warp.go
 //
-// warp.go is a thin subcommand dispatcher: it routes the first subcommand argument
-// to the matching warp verb and delegates all further parsing and execution to that
-// verb. Each verb owns its own flags, arguments, and output format.
+// warp.go is the cobra Command() entry point and the RunCLI seam. Command() builds
+// a parent "warp" command with one subcommand per verb; per-verb flags (--force,
+// --apply) are registered as local flags on the subcommands that own them.
 package warp
 
 import (
-	"flag"
 	"io"
-	"os"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/paths"
+	"github.com/spf13/cobra"
 )
 
-// RunCLI parses and executes warp subcommands, writing JSON results to out.
+// Command builds the cobra command tree for the warp module.
 //
-// It accepts a subcommand as the first argument (clone, add, list, remove, checkout,
-// status, reconcile, prune, cleanup) and routes to the matching verb handler. Unknown
-// or missing subcommands return a usage error.
+// The parent command carries no persistent flags or PersistentPreRunE because warp
+// has no shared cwd pre-dispatch — only specific verbs resolve the layout. Per-verb
+// flags (remove --force, prune --apply, cleanup --apply/--force) are registered as
+// local flags on their subcommands. Positional arguments are available as args[0]
+// inside each RunE because cobra strips the subcommand token before calling RunE.
+func Command() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "warp",
+		Short: "host↔weft coordination",
+		Long: `warp manages the host↔weft topology for lyx-managed git repositories.
+It owns worktree pairing, coordinated branch switching, and cleanup.`,
+	}
+
+	// clone <host-url> <weft-url> [board-url]
+	cmd.AddCommand(&cobra.Command{
+		Use:   "clone <host-url> <weft-url> [board-url]",
+		Short: "bootstrap a new hub (host prime + board passenger + weft prime)",
+		RunE:  clihelp.WrapRun(runClone),
+	})
+
+	// add <slug>
+	cmd.AddCommand(&cobra.Command{
+		Use:   "add <slug>",
+		Short: "create a dual host+weft worktree pair",
+		RunE:  clihelp.WrapRun(runAdd),
+	})
+
+	// list
+	cmd.AddCommand(&cobra.Command{
+		Use:   "list",
+		Short: "list all host↔weft worktree pairs",
+		RunE:  clihelp.WrapRun(func(out io.Writer, args []string) int { return runList(out, args) }),
+	})
+
+	// remove [--force] <slug>
+	var removeCmd *cobra.Command
+	removeCmd = &cobra.Command{
+		Use:   "remove [--force] <slug>",
+		Short: "destroy a dual host+weft worktree pair",
+		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
+			// The --force flag is read from the cobra flag set via closure over removeCmd.
+			force, _ := removeCmd.Flags().GetBool("force")
+			return runRemoveWithFlag(out, args, force)
+		}),
+	}
+	removeCmd.Flags().Bool("force", false, "forcefully remove worktree with uncommitted changes")
+	cmd.AddCommand(removeCmd)
+
+	// checkout <branch>
+	cmd.AddCommand(&cobra.Command{
+		Use:   "checkout <branch>",
+		Short: "coordinated branch switch across host+weft with junction re-point",
+		RunE:  clihelp.WrapRun(runCheckout),
+	})
+
+	// status
+	cmd.AddCommand(&cobra.Command{
+		Use:   "status",
+		Short: "show paired host↔weft worktree status with drift and junction-health fields",
+		RunE:  clihelp.WrapRun(func(out io.Writer, args []string) int { return runStatus(out, args) }),
+	})
+
+	// reconcile
+	cmd.AddCommand(&cobra.Command{
+		Use:   "reconcile",
+		Short: "repair a managed pair whose weft side drifted or broke",
+		RunE:  clihelp.WrapRun(func(out io.Writer, args []string) int { return runReconcile(out, args) }),
+	})
+
+	// prune [--apply]
+	var pruneCmd *cobra.Command
+	pruneCmd = &cobra.Command{
+		Use:   "prune [--apply]",
+		Short: "identify and optionally remove stale or orphaned host↔weft pairs",
+		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
+			apply, _ := pruneCmd.Flags().GetBool("apply")
+			return runPruneWithFlag(out, apply)
+		}),
+	}
+	pruneCmd.Flags().Bool("apply", false, "remove stale weft worktrees (default is dry-run/report)")
+	cmd.AddCommand(pruneCmd)
+
+	// cleanup [--apply] [--force]
+	var cleanupCmd *cobra.Command
+	cleanupCmd = &cobra.Command{
+		Use:   "cleanup [--apply] [--force]",
+		Short: "delete weft branches whose host sibling is gone",
+		Long: `cleanup finds weft branches with no corresponding host worktree sibling.
+
+Flag matrix:
+  (no flags)          dry-run: report orphaned weft branches only.
+  --apply             delete non-gate-protected orphan branches.
+  --apply --force     also delete gate-protected task branches.
+  --force (alone)     report only; --force does not imply --apply.`,
+		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
+			apply, _ := cleanupCmd.Flags().GetBool("apply")
+			force, _ := cleanupCmd.Flags().GetBool("force")
+			return runCleanupWithFlags(out, apply, force)
+		}),
+	}
+	cleanupCmd.Flags().Bool("apply", false, "delete non-gate-protected orphaned weft branches")
+	cleanupCmd.Flags().Bool("force", false, "also delete gate-protected task branches (requires --apply)")
+	cmd.AddCommand(cleanupCmd)
+
+	return cmd
+}
+
+// RunCLI is the public seam for the warp module.
 //
-// Returns exit code 0 on success or 1 on error. Output is JSON on out.
+// It delegates to clihelp.Execute(Command(), out, args) so in-process tests can
+// capture all output via a single io.Writer. Returns the exit code (0 on success,
+// 1 on cobra-level error such as unknown command or bad flag).
 func RunCLI(out io.Writer, args []string) int {
-	if len(args) < 1 {
-		return output.Err(out, "usage: lyx warp <clone|add|list|remove|checkout|status|reconcile|prune|cleanup>")
-	}
-
-	subcommand, subArgs := args[0], args[1:]
-
-	switch subcommand {
-	case "clone":
-		return runClone(out, subArgs)
-	case "add":
-		return runAdd(out, subArgs)
-	case "list":
-		return runList(out, subArgs)
-	case "remove":
-		return runRemove(out, subArgs)
-	case "checkout":
-		return runCheckout(out, subArgs)
-	case "status":
-		return runStatus(out, subArgs)
-	case "reconcile":
-		return runReconcile(out, subArgs)
-	case "prune":
-		return runPrune(out, subArgs)
-	case "cleanup":
-		return runCleanup(out, subArgs)
-	default:
-		return output.Err(out, "usage: lyx warp <clone|add|list|remove|checkout|status|reconcile|prune|cleanup>")
-	}
+	return clihelp.Execute(Command(), out, args)
 }
 
 // runAdd parses and executes the warp add subcommand.
+// Under cobra, args[0] is the slug (cobra has already stripped the "add" token).
 func runAdd(out io.Writer, args []string) int {
 	cwd, err := paths.Getwd()
 	if err != nil {
@@ -120,6 +201,7 @@ func runAdd(out io.Writer, args []string) int {
 		return output.Err(out, "usage: lyx warp add <slug>")
 	}
 
+	// args[0] is the slug; cobra has already consumed "add" from the argument list.
 	slug := args[0]
 	r, err := w.Add(l, slug, addOptionsFromEnv())
 	if err != nil {
@@ -134,7 +216,7 @@ func runAdd(out io.Writer, args []string) int {
 }
 
 // runList parses and executes the warp list subcommand.
-func runList(out io.Writer, args []string) int {
+func runList(out io.Writer, _ []string) int {
 	cwd, err := paths.Getwd()
 	if err != nil {
 		return output.Err(out, err.Error())
@@ -184,6 +266,7 @@ func runCheckout(out io.Writer, args []string) int {
 	// Resolve the branch: use the supplied argument when present; otherwise
 	// derive it from the current host HEAD so the launcher shortcut (which
 	// emits no branch argument) performs a valid in-place re-checkout.
+	// Under cobra, args[0] is the branch (cobra stripped the "checkout" token).
 	var branch string
 	if len(args) >= 1 {
 		branch = args[0]
@@ -286,13 +369,9 @@ func runReconcile(out io.Writer, _ []string) int {
 	})
 }
 
-// runPrune parses and executes the warp prune subcommand.
-//
-// Resolves the layout and warp config from the current working directory,
-// calls Prune to identify stale or orphaned host↔weft pairs, and emits the
-// result via output.Ok. The --apply flag switches from dry-run/report to
-// actually removing stale weft worktrees.
-func runPrune(out io.Writer, args []string) int {
+// runPruneWithFlag executes the prune logic with the resolved apply flag.
+// It is called from the pruneCmd RunE after reading --apply from the cobra flag set.
+func runPruneWithFlag(out io.Writer, apply bool) int {
 	cwd, err := paths.Getwd()
 	if err != nil {
 		return output.Err(out, err.Error())
@@ -308,16 +387,9 @@ func runPrune(out io.Writer, args []string) int {
 		return output.Err(out, err.Error())
 	}
 
-	fs := flag.NewFlagSet("prune", flag.ContinueOnError)
-	fs.SetOutput(os.Stderr)
-	apply := fs.Bool("apply", false, "remove stale weft worktrees (default is dry-run/report)")
-	if err := fs.Parse(args); err != nil {
-		return 1
-	}
-
 	w := New(cfg)
 
-	r, err := w.Prune(l, *apply)
+	r, err := w.Prune(l, apply)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -326,17 +398,9 @@ func runPrune(out io.Writer, args []string) int {
 	})
 }
 
-// runCleanup parses and executes the warp cleanup subcommand.
-//
-// Resolves the layout and warp config from the current working directory,
-// calls Cleanup to find orphaned weft branches, and emits the result via
-// output.Ok. The flag matrix governs deletion:
-//
-//   - (no flags)          dry-run: report orphaned weft branches only.
-//   - --apply             delete non-gate-protected orphan branches.
-//   - --apply --force     also delete gate-protected task branches.
-//   - --force (alone)     report only; --force does not imply --apply.
-func runCleanup(out io.Writer, args []string) int {
+// runCleanupWithFlags executes the cleanup logic with the resolved apply and force flags.
+// It is called from the cleanupCmd RunE after reading --apply and --force from the cobra flag set.
+func runCleanupWithFlags(out io.Writer, apply, force bool) int {
 	cwd, err := paths.Getwd()
 	if err != nil {
 		return output.Err(out, err.Error())
@@ -352,17 +416,9 @@ func runCleanup(out io.Writer, args []string) int {
 		return output.Err(out, err.Error())
 	}
 
-	fs := flag.NewFlagSet("cleanup", flag.ContinueOnError)
-	fs.SetOutput(os.Stderr)
-	apply := fs.Bool("apply", false, "delete non-gate-protected orphaned weft branches")
-	force := fs.Bool("force", false, "also delete gate-protected task branches (requires --apply)")
-	if err := fs.Parse(args); err != nil {
-		return 1
-	}
-
 	w := New(cfg)
 
-	r, err := w.Cleanup(l, *apply, *force)
+	r, err := w.Cleanup(l, apply, force)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -371,8 +427,10 @@ func runCleanup(out io.Writer, args []string) int {
 	})
 }
 
-// runRemove parses and executes the warp remove subcommand.
-func runRemove(out io.Writer, args []string) int {
+// runRemoveWithFlag executes the remove logic with the resolved force flag.
+// It is called from the removeCmd RunE after reading --force from the cobra flag set.
+// Under cobra, args[0] is the slug (cobra has already consumed "remove" from the list).
+func runRemoveWithFlag(out io.Writer, args []string, force bool) int {
 	cwd, err := paths.Getwd()
 	if err != nil {
 		return output.Err(out, err.Error())
@@ -390,20 +448,13 @@ func runRemove(out io.Writer, args []string) int {
 
 	w := New(cfg)
 
-	// Parse flags
-	fs := flag.NewFlagSet("remove", flag.ContinueOnError)
-	fs.SetOutput(os.Stderr)
-	force := fs.Bool("force", false, "forcefully remove worktree with uncommitted changes")
-	if err := fs.Parse(args); err != nil {
-		return 1
-	}
-
-	slug := fs.Arg(0)
-	if slug == "" {
+	// args[0] is the slug; cobra has already consumed "remove" from the argument list.
+	if len(args) < 1 {
 		return output.Err(out, "usage: lyx warp remove [--force] <slug>")
 	}
+	slug := args[0]
 
-	r, err := w.Remove(l, slug, *force)
+	r, err := w.Remove(l, slug, force)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
