@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: builtin-cli-help
 branch: builtin-cli-help
 plan: _mill/plan
@@ -22,4 +22,23 @@ plan-review-r1  '2026-06-27T15:15:55Z'
 plan-fix-r1  '2026-06-27T15:15:55Z'
 plan-fix-r2  '2026-06-27T15:24:23Z'
 planned  '2026-06-27T15:24:38Z'
+implementing  '2026-06-27T15:35:25Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: clihelp-foundation
+    state: pending
+  - name: flat-and-config-modules
+    state: pending
+  - name: ide-and-weft
+    state: pending
+  - name: board
+    state: pending
+  - name: muxpoc-and-warp
+    state: pending
+  - name: root-assembly-and-tests
+    state: pending
 ```
