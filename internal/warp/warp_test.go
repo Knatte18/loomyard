@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lyxtest"
@@ -78,9 +79,10 @@ func TestRunDispatchesToWarp(t *testing.T) {
 			t.Errorf("RunCLI(bogus) = %d; want 1", got)
 		}
 
-		result := decodeResult(t, &buf)
-		if ok, _ := result["ok"].(bool); ok {
-			t.Errorf("RunCLI(bogus) ok = %v; want false", result["ok"])
+		// Under cobra, an unknown subcommand prints plain text ("unknown command …")
+		// rather than the old JSON envelope. Assert the cobra message substring.
+		if got := buf.String(); !strings.Contains(got, "unknown command") {
+			t.Errorf("RunCLI(bogus) output = %q; want \"unknown command\" substring", got)
 		}
 	})
 
