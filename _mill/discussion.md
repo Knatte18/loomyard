@@ -222,6 +222,16 @@ moment the command changes.
   "Flags:" from "Global Flags:", and keeps the `--json` schema test's per-node expectations
   unambiguous. (Verified: no current module defines a `--json` flag, so the persistent root
   `--json` collides with nothing.)
+- Interception seam: `--json` cannot be a normal `RunE` because cobra renders help
+  internally (for `--help` and for the no-`Run` parent/no-arg path). The plan installs a
+  **custom `HelpFunc` on the root** via `rootCmd.SetHelpFunc(fn)` (inherited by all
+  children); `fn` checks the persistent `--json` flag and, when set, walks the command being
+  helped and writes the JSON schema to `cmd.OutOrStdout()` instead of calling cobra's
+  default human renderer. This single seam covers all three triggers — `lyx --json`,
+  `lyx <module> --json`, and `lyx <module> <cmd> --help --json` — since cobra routes every
+  help path (explicit `--help` and implicit no-arg/parent help) through the help func. The
+  matching `UsageFunc` is left as cobra's default (usage on cobra-level errors stays human
+  text per `unknown-command-human-text`).
 - Scope of `--json`: it **only** alters help rendering. On a real command-execution path
   (a leaf handler actually running, e.g. `lyx board list --json`) `--json` is a **no-op** —
   parsed but ignored, never an error — because real command output is already JSON. So the
@@ -391,20 +401,33 @@ pattern; cwd-dependent modules continue to use `internal/lyxtest` helpers + `t.C
 
 - **Existing tests (regression)** — most of the ~51 `RunCLI`/`RunInit`/`run()` call sites
   across ~11 files pass unchanged because the adapter preserves signature + JSON + exit
-  codes. The assertions that **do** need updating are those that pin the no-arg / unknown /
-  usage surface (which now comes from cobra):
+  codes. The assertions that **do** need updating are exactly those that pin the **no-arg /
+  unknown-subcommand / unknown-module / usage surface**, which now comes from cobra instead
+  of each module's own output. **General rule (the planner must audit, not just trust this
+  list):** any test that exercises no-arg or an unknown subcommand/module and asserts on the
+  output — *whether it checks plain text OR `json.Unmarshal`s the buffer and asserts
+  `ok=false`* — must change, because that surface is now cobra's plain "unknown command"
+  text merged into `out` (the seam wires `SetErr(out)`), no longer a JSON envelope or empty
+  stdout. Re-assert on the `unknown command` substring + exit code, never a decoded JSON
+  envelope and never the exact parent qualifier. To find every site, grep the test tree for
+  no-arg `RunCLI(&buf, []string{})` / `[]string{"<unknown>"}` calls and for `decode`/
+  `Unmarshal` on those buffers. Known-affected files:
   - `internal/configcli/configcli_test.go`, `internal/ide/cli_test.go`,
-    `internal/weft/cli_test.go` — exact usage/unknown text assertions.
+    `internal/weft/cli_test.go` — usage/unknown text assertions.
   - `cmd/lyx/main_test.go` — `TestRunUnknownModule`, and the bare-`lyx` test now expecting
     exit 0 + a module listing rather than exit 1 + empty output.
-  - `internal/muxpoc/cli_test.go` — **two assertions change**: no-arg now → exit 0 + a
-    subcommand listing (was exit 1 + empty stdout), and unknown-subcommand/bad-flag now →
-    non-empty output (the seam merges `SetErr` into the single `out` writer, so cobra's
-    error text lands there; was empty stdout). Assert on the `unknown command` substring +
-    exit code, not the exact qualifier.
+  - `internal/muxpoc/cli_test.go` — **two assertions**: no-arg now → exit 0 + a subcommand
+    listing (was exit 1 + empty stdout); unknown-subcommand/bad-flag now → non-empty merged
+    output (was empty stdout).
+  - `internal/warp/warp_test.go` — the `UnknownSubcommand` test currently `json.Unmarshal`s
+    the buffer and asserts `ok=false` (warp's old unknown path emitted JSON via
+    `output.Err`, `warp.go:96`); under cobra that buffer holds plain `unknown command` text,
+    so the decode would fail. Switch it to a substring + exit-code assertion. (warp's
+    `list` success and `remove --force` flag-parsing assertions are unaffected.)
 
-  Budget: more like ~6–8 assertion edits across these five files (not 3–5), since muxpoc
-  contributes two and several files have a no-arg + an unknown case each.
+  Budget: ~8–10 assertion edits across these **six** files (not 3–5) — several files have
+  both a no-arg and an unknown case, and warp + muxpoc each convert a JSON-decode assertion
+  to a substring one.
 - **TDD candidates (write first):**
   - **Drift-guard** (`cmd/lyx`): walk the assembled root command tree; assert every
     command (root, each module, each subcommand) has a non-empty `Short`. This is the
@@ -433,8 +456,9 @@ pattern; cwd-dependent modules continue to use `internal/lyxtest` helpers + `t.C
 - **Per-module scenarios to keep covered** (already exist; must still pass):
   - board: a representative success (e.g. `list`/`rerender`) and the JSON error envelope;
     `--board-path` injection path still resolves.
-  - warp: `list` success, `remove --force <slug>` flag parsing + effect, unknown-subcommand
-    error.
+  - warp: `list` success and `remove --force <slug>` flag parsing + effect stay unchanged;
+    its `UnknownSubcommand` test is **updated** (see regression list — JSON-decode → cobra
+    substring assertion).
   - weft: `--weft-path` + non-push subcommand still yields the JSON
     `subcommand requires a worktree context`.
   - update: dry-run (no flag) vs `--apply`.
