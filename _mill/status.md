@@ -48,7 +48,9 @@ batches:
     start_sha: 29a30d4a77df4a1061f1154028fbc86f2d57e1ef
     commit_sha: 07789e246f69acc41ca7f0c48aa31030f891760f
   - name: board
-    state: pending
+    state: running
+    implementer_session: 089c6f0e-3516-4c67-98ac-042bad7dc6fe
+    start_sha: d7af45044b30f2b6df9197e7f7e658311b1d502b
   - name: muxpoc-and-warp
     state: pending
   - name: root-assembly-and-tests
