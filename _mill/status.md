@@ -37,8 +37,8 @@ batches:
     commit_sha: 3759599abfa6ab4bfd98a8337d5ed72d9f3b088e
   - name: flat-and-config-modules
     state: running
-    implementer_session: a20697c1-8c11-4879-96c9-3f5dd357c284
-    start_sha: 990347f2f69ce3c5c695b30396f77b7f6de3fe3c
+    implementer_session: c8fd9816-cacd-4f63-969e-ba9f663fad19
+    start_sha: dd549127abd18e0dfbb14ee5e38c6880b39745b9
   - name: ide-and-weft
     state: pending
   - name: board
