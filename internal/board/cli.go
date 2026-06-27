@@ -88,9 +88,6 @@ Running "lyx board" with no subcommand lists available subcommands without requi
 		Use:   "upsert [json-payload]",
 		Short: "Create or update a single task",
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
-			if b == nil {
-				return 0 // abort was signalled; do nothing
-			}
 			// cobra strips the "upsert" token; json payload is now args[0].
 			if len(args) == 0 {
 				return outputError(out, "json payload required")
@@ -112,9 +109,6 @@ Running "lyx board" with no subcommand lists available subcommands without requi
 		Use:   "upsert-batch [json-payload]",
 		Short: "Create or update multiple tasks atomically",
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
-			if b == nil {
-				return 0
-			}
 			if len(args) == 0 {
 				return outputError(out, "json payload required")
 			}
@@ -136,9 +130,6 @@ Running "lyx board" with no subcommand lists available subcommands without requi
 		Use:   "set-phase [json-payload]",
 		Short: "Set or clear the phase of a task",
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
-			if b == nil {
-				return 0
-			}
 			if len(args) == 0 {
 				return outputError(out, "json payload required")
 			}
@@ -161,9 +152,6 @@ Running "lyx board" with no subcommand lists available subcommands without requi
 		Use:   "remove [json-payload]",
 		Short: "Remove a task",
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
-			if b == nil {
-				return 0
-			}
 			if len(args) == 0 {
 				return outputError(out, "json payload required")
 			}
@@ -185,9 +173,6 @@ Running "lyx board" with no subcommand lists available subcommands without requi
 		Use:   "get [json-payload]",
 		Short: "Fetch a single task",
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
-			if b == nil {
-				return 0
-			}
 			if len(args) == 0 {
 				return outputError(out, "json payload required")
 			}
@@ -213,9 +198,6 @@ Running "lyx board" with no subcommand lists available subcommands without requi
 		Use:   "list",
 		Short: "List all tasks with computed fields",
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
-			if b == nil {
-				return 0
-			}
 			tasks, err := b.ListTasksBrief()
 			if err != nil {
 				return outputError(out, err.Error())
@@ -229,9 +211,6 @@ Running "lyx board" with no subcommand lists available subcommands without requi
 		Use:   "list-full",
 		Short: "List all tasks as stored in tasks.json",
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
-			if b == nil {
-				return 0
-			}
 			tasks, err := b.ListTasksFull()
 			if err != nil {
 				return outputError(out, err.Error())
@@ -245,9 +224,6 @@ Running "lyx board" with no subcommand lists available subcommands without requi
 		Use:   "merge [json-payload]",
 		Short: "Atomically remove, upsert, and set-phase",
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
-			if b == nil {
-				return 0
-			}
 			if len(args) == 0 {
 				return outputError(out, "json payload required")
 			}
@@ -282,9 +258,6 @@ Running "lyx board" with no subcommand lists available subcommands without requi
 		Use:   "set-deps [json-payload]",
 		Short: "Replace the depends_on list for a task",
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
-			if b == nil {
-				return 0
-			}
 			if len(args) == 0 {
 				return outputError(out, "json payload required")
 			}
@@ -307,9 +280,6 @@ Running "lyx board" with no subcommand lists available subcommands without requi
 		Use:   "rerender",
 		Short: "Rebuild Home.md and _Sidebar.md from tasks.json",
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
-			if b == nil {
-				return 0
-			}
 			if err := b.Rerender(); err != nil {
 				return outputError(out, err.Error())
 			}
@@ -322,9 +292,6 @@ Running "lyx board" with no subcommand lists available subcommands without requi
 		Use:   "sync",
 		Short: "Commit and push pending board changes to the remote",
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
-			if b == nil {
-				return 0
-			}
 			if err := b.Sync(); err != nil {
 				return outputError(out, err.Error())
 			}
