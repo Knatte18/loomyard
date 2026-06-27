@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-ide-and-weft
+phase: approved-board
 slug: builtin-cli-help
 branch: builtin-cli-help
 plan: _mill/plan
@@ -26,6 +26,7 @@ implementing  '2026-06-27T15:35:25Z'
 approved-clihelp-foundation  '2026-06-27T15:43:27Z'
 approved-flat-and-config-modules  '2026-06-27T16:24:50Z'
 approved-ide-and-weft  '2026-06-27T16:32:22Z'
+approved-board  '2026-06-27T16:38:56Z'
 ```
 
 ## Batches
@@ -48,9 +49,10 @@ batches:
     start_sha: 29a30d4a77df4a1061f1154028fbc86f2d57e1ef
     commit_sha: 07789e246f69acc41ca7f0c48aa31030f891760f
   - name: board
-    state: running
+    state: approved
     implementer_session: 089c6f0e-3516-4c67-98ac-042bad7dc6fe
     start_sha: d7af45044b30f2b6df9197e7f7e658311b1d502b
+    commit_sha: 1fec79bb591a713c30208268a5815b0e18c05771
   - name: muxpoc-and-warp
     state: pending
   - name: root-assembly-and-tests
