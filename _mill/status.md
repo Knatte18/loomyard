@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-board
+phase: approved-muxpoc-and-warp
 slug: builtin-cli-help
 branch: builtin-cli-help
 plan: _mill/plan
@@ -27,6 +27,7 @@ approved-clihelp-foundation  '2026-06-27T15:43:27Z'
 approved-flat-and-config-modules  '2026-06-27T16:24:50Z'
 approved-ide-and-weft  '2026-06-27T16:32:22Z'
 approved-board  '2026-06-27T16:38:56Z'
+approved-muxpoc-and-warp  '2026-06-27T16:48:54Z'
 ```
 
 ## Batches
@@ -54,9 +55,10 @@ batches:
     start_sha: d7af45044b30f2b6df9197e7f7e658311b1d502b
     commit_sha: 1fec79bb591a713c30208268a5815b0e18c05771
   - name: muxpoc-and-warp
-    state: running
+    state: approved
     implementer_session: ac10d92a-849b-4636-92f6-edcef95e8577
     start_sha: 630632512dc930cca371b9e78b2b73a5e0054d63
+    commit_sha: 8126a9e523cda4a77580dfbb129fae31d7dfff6e
   - name: root-assembly-and-tests
     state: pending
 ```
