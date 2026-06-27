@@ -60,5 +60,7 @@ batches:
     start_sha: 630632512dc930cca371b9e78b2b73a5e0054d63
     commit_sha: 8126a9e523cda4a77580dfbb129fae31d7dfff6e
   - name: root-assembly-and-tests
-    state: pending
+    state: running
+    implementer_session: dfb3c1b2-0352-441c-9d69-6a5abc983952
+    start_sha: c8c238719fb3b8369189f3d6a787454a247c316d
 ```
