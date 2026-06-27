@@ -30,7 +30,9 @@ implementing  '2026-06-27T15:35:25Z'
 ```yaml
 batches:
   - name: clihelp-foundation
-    state: pending
+    state: running
+    implementer_session: 3b09fb59-47c0-40ca-9f33-dc90a9f49f82
+    start_sha: 93acb8b31ab4106f7800c44a36bbe33ab98866a1
   - name: flat-and-config-modules
     state: pending
   - name: ide-and-weft
