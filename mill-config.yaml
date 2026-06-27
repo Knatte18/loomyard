@@ -113,7 +113,7 @@ llm:
 # ---------------------------------------------------------------------------
 
 pipeline:
-  auto_merge: false
+  auto_merge: true
   auto_report: true
   autonomous_mode: false  # Set true by mill-autofix; read by mill-go and mill-plan for autonomous stuck-handling
 
@@ -159,10 +159,10 @@ roles:
 
   implementer:
     self_fix_rounds: 2
-    model: haiku
+    model: sonnet
 
   fixer:
-    model: haiku
+    model: sonnet
 
 # ---------------------------------------------------------------------------
 # Notifications
