@@ -99,8 +99,10 @@ each `RunE`.
 - **Creates:** none
 - **Deletes:** none
 - **Requirements:** muxpoc (`cli_test.go`, unit): no-arg now → exit 0 + subcommand listing
-  (was exit 1 + empty stdout); unknown subcommand/bad flag → `unknown command` substring +
-  exit 1 (was empty stdout). warp (`warp_test.go`, integration): the `UnknownSubcommand` test
+  (was exit 1 + empty stdout); unknown **subcommand** → `unknown command` substring + exit 1;
+  the existing `TestRunCLIUnknownFlagFails` (`{"--no-such-flag","status"}`) is a **bad-flag**
+  case → assert the `unknown flag` substring (NOT `unknown command`) + exit 1 — these are two
+  different cobra messages. warp (`warp_test.go`, integration): the `UnknownSubcommand` test
   currently `json.Unmarshal`s the buffer and asserts `ok=false` — switch it to assert the
   `unknown command` substring + exit 1 (warp's old unknown path emitted JSON; under cobra the
   buffer holds plain text). Leave warp's `list` success and `remove --force` flag-parsing +

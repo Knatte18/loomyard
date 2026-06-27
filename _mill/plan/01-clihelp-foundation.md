@@ -66,9 +66,12 @@ context value (no package-level mutable state).
     error` — returns a cobra `RunE` that: first `if ShouldAbort(cmd.Context()) { return nil
     }`; else calls `SetExit(cmd.Context(), fn(cmd.OutOrStdout(), args))` and returns `nil`.
   - `func Execute(cmd *cobra.Command, out io.Writer, args []string) int` — the seam body:
-    `cmd.SetOut(out); cmd.SetErr(out)` (merged), `ctx, es := NewExitContext(context.Background())`,
-    `cmd.SetArgs(args)`, `if err := cmd.ExecuteContext(ctx); err != nil { return 1 }`, return
-    `es.code`.
+    `cmd.SilenceUsage = true` (so a cobra-error path does not dump the full usage block into
+    the merged buffer — parity with the production root), `cmd.SetOut(out); cmd.SetErr(out)`
+    (merged), `ctx, es := NewExitContext(context.Background())`, `cmd.SetArgs(args)`, `if err
+    := cmd.ExecuteContext(ctx); err != nil { return 1 }`, return `es.code`. (Leave
+    `SilenceErrors` at its default false so cobra still writes the `unknown command`/`unknown
+    flag` message into the merged buffer.)
   Use `github.com/spf13/cobra`. Godoc each exported symbol per `golang-comments`.
 - **Commit:** `feat(clihelp): exit-state holder, seam adapter, and RunE wrapper`
 

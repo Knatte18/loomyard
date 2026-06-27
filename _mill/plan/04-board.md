@@ -11,7 +11,7 @@ depends-on: [1]
 
 ## Batch Scope
 
-Converts the `board` module — the largest verb-switch (12 subcommands: `upsert`,
+Converts the `board` module — the largest verb-switch (11 subcommands: `upsert`,
 `upsert-batch`, `set-phase`, `remove`, `get`, `list`, `list-full`, `merge`, `set-deps`,
 `rerender`, `sync`). board builds `cfg` + `b := New(cfg)` once before its switch, conditional
 on the hidden `--board-path` bypass, so that shared resolution moves into a `PersistentPreRunE`
@@ -20,13 +20,13 @@ with the bypass preserved. Every subcommand keeps its existing JSON payload pars
 on clihelp-foundation; parallel-safe with batches 2, 3, 5.
 
 Batch-local decision: the `Board` instance `b` is the shared resolved value, held in a
-`Command()`-closure variable populated by the `PersistentPreRunE` and closed over by all 12
+`Command()`-closure variable populated by the `PersistentPreRunE` and closed over by all 11
 subcommand `RunE`s. `applySkipEnv` continues to fold `BOARD_SKIP_*` at the single resolution
 point (now the PreRunE).
 
 ## Cards
 
-### Card 12: board Command() with 12 subcommands
+### Card 12: board Command() with 11 subcommands
 
 - **Context:**
   - `internal/clihelp/exec.go`
@@ -45,7 +45,7 @@ point (now the PreRunE).
   errors. The `b *Board` is closed over (set by the PreRunE in Card 13). Keep the existing
   `outputError`/`outputSuccess*` helpers. Keep `func RunCLI(out io.Writer, args []string)
   int { return clihelp.Execute(Command(), out, args) }`.
-- **Commit:** `refactor(board): cobra Command() with 12 subcommands`
+- **Commit:** `refactor(board): cobra Command() with 11 subcommands`
 
 ### Card 13: board PersistentPreRunE + hidden --board-path
 
@@ -90,6 +90,6 @@ point (now the PreRunE).
 ## Batch Tests
 
 `verify: go test ./internal/board/...` — unit, no tag, no external tools (board tests run
-with `BOARD_SKIP_GIT=1` and a seeded `_lyx/config/board.yaml`). Covers the 12 subcommands'
+with `BOARD_SKIP_GIT=1` and a seeded `_lyx/config/board.yaml`). Covers the 11 subcommands'
 behaviour, the JSON error envelope, the `--board-path` bypass, and the updated no-arg/unknown
 assertions.

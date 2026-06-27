@@ -107,7 +107,10 @@ into subcommands.
   initcli/configcli's real behaviours are unaffected (no-arg init still scaffolds, no-arg
   config still opens the menu, unknown config module still prints its own plain text). If a
   given file needs no change after audit, leave it untouched. Do not over-pin the exact cobra
-  qualifier string.
+  qualifier string. **Match the cobra message to the case:** an unknown subcommand →
+  `unknown command` substring; a bad/unknown flag → `unknown flag` substring (or just exit
+  1) — these are two different cobra messages; do not assert `unknown command` for a bad-flag
+  case.
 - **Commit:** `test(cli): update no-arg/unknown assertions for init/update/config`
 
 ## Batch Tests

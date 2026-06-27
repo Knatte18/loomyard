@@ -73,8 +73,10 @@ batches:
   configured `SilenceUsage=true`, `SilenceErrors=false`. Each subcommand `RunE` is a wrapper
   that runs the legacy handler, calls `setExit(cmd.Context(), handlerExitCode)`, and returns
   `nil` to cobra (so cobra never double-prints over a handler's JSON). cobra-level errors
-  (unknown command, bad flag) are left un-silenced → cobra prints human text + suggestions
-  to stderr and `Execute()` returns an error → mapped to exit 1. The holder is allocated
+  (unknown command, bad flag) are left un-silenced → cobra prints human text to stderr and
+  `Execute()` returns an error → mapped to exit 1. `SilenceUsage=true` is set on BOTH the
+  production root AND the module seam (`clihelp.Execute` sets it on the executed `Command()`),
+  so neither dumps the full usage block on an error path. The holder is allocated
   fresh per `main`/`RunCLI` call and seeded via `ExecuteContext`; this is load-bearing for
   parallel tests (122 `t.Parallel()` sites).
 - **Rationale:** Separates the two failure surfaces cleanly while preserving every existing
@@ -84,13 +86,15 @@ batches:
 ### Decision: help-and-unknown-surfaces
 
 - **Decision:** Help is human plain text to stdout, exit 0 (`lyx`, `lyx <verb-module>`,
-  `--help`). Unknown module/subcommand AND bad-flag parse errors → cobra text + "did you
-  mean…?" on stderr, exit 1 (NOT a JSON envelope — verified no test/caller depends on JSON
-  there). Real command results/errors stay JSON via `internal/output` on stdout. The
-  `RunCLI`/`run` seam wires `SetOut(out)` **and** `SetErr(out)` (merged) so in-process tests
-  capture cobra's text from one buffer; production `main` keeps `SetOut(os.Stdout)` /
-  `SetErr(os.Stderr)` split. Tests assert on the `unknown command` substring + exit code,
-  never the exact parent qualifier.
+  `--help`). cobra-level errors go to stderr, exit 1 (NOT a JSON envelope — verified no
+  test/caller depends on JSON there). **Two distinct cobra messages, do not conflate them:**
+  an unknown module/subcommand prints `unknown command "x" for "…"` (+ "did you mean…?"
+  suggestions); a bad/unknown flag prints `unknown flag: --x` (no suggestions). Real command
+  results/errors stay JSON via `internal/output` on stdout. The `RunCLI`/`run` seam wires
+  `SetOut(out)` **and** `SetErr(out)` (merged) so in-process tests capture cobra's text from
+  one buffer; production `main` keeps `SetOut(os.Stdout)` / `SetErr(os.Stderr)` split. Tests
+  assert the matching substring + exit code — `unknown command` for an unknown subcommand,
+  `unknown flag` (or just exit 1) for a bad flag — never the exact parent qualifier.
 - **Rationale:** Discoverability for typos; JSON contract preserved where it matters.
 - **Applies to:** all batches.
 
