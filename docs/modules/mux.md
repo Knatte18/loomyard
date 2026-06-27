@@ -162,7 +162,12 @@ columns by slug. No architectural change — a metadata field and a rule.
    `--session-id` at launch; recovery relaunches `claude --resume <id>` per strand. The one
    requirement: strip the inherited Claude-Code parent-session env (see [Resume](#resume-after-crash--native---resume-with-env-hygiene)).
 4. **One named psmux server per hub — the orphan firewall.** mux boots its server as
-   `psmux -L lyx-<hub-hash>`, a name derived deterministically from the hub via `internal/paths`.
+   `psmux -L lyx-<hub-basename>-<short-hash>` — a legible hub basename plus a short hash of the
+   hub's **absolute path**, derived deterministically via `internal/paths`. The hash is required
+   for two reasons: the name must be unique per absolute hub path (two hubs sharing a basename on
+   different paths must not collide onto one server), and a raw path is not a valid `-L` name
+   (`:` / `\` / spaces). The basename keeps it human-legible in `psmux ls` and `lyx mux status`;
+   the hash keeps it unique and socket-safe.
    Ownership is then unambiguous: that one server holds lyx's panes, so any other psmux process is
    provably stray and `lyx mux status` flags it. This fixes the **orphaned-process problem seen
    during exploration**, where anonymous per-probe servers left panes no one could attribute.
@@ -171,7 +176,7 @@ columns by slug. No architectural change — a metadata field and a rule.
 
 | Command | Does |
 |---|---|
-| `lyx mux status` | Reconcile `.lyx/mux.json` strands against the named server's live `list-panes` + `claude agents --json`: report tracked strands, dead sessions, and **orphans** (psmux processes outside `lyx-<hub-hash>`). Cleanup is confirm-gated. |
+| `lyx mux status` | Reconcile `.lyx/mux.json` strands against the named server's live `list-panes` + `claude agents --json`: report tracked strands, dead sessions, and **orphans** (psmux processes outside `lyx-<hub-basename>-<short-hash>`). Cleanup is confirm-gated. |
 | `lyx mux attach` | Pop / attach one maximized terminal to the worktree's psmux session. The popped terminal has a real TTY so claude renders there. |
 | `lyx mux resume` | Rebuild the session from `.lyx/mux.json` and relaunch `claude --resume <id>` per strand (env stripped). |
 
@@ -274,7 +279,7 @@ stays a visible strand) and on `AskUserQuestion` (steer to the file contract). m
 
 mux's own "is this strand's process still alive / is that an orphan" needs are met **generically**,
 with no Claude knowledge: the [named server](#load-bearing-psmux-decisions-verified) (any psmux
-process outside `lyx-<hub-hash>` is provably stray) plus psmux `pane_dead`. A richer cross-check —
+process outside `lyx-<hub-basename>-<short-hash>` is provably stray) plus psmux `pane_dead`. A richer cross-check —
 `claude agents --json` joined on `sessionId` (`state ∈ {working, blocked, done, failed}`) — is
 *Claude-specific*, so it belongs with shuttle, surfaced to mux only as a generic "this session is
 gone" signal if at all. mux's core liveness stays provider-invariant.
