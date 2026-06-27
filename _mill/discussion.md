@@ -376,9 +376,15 @@ What mill-plan needs to know about the codebase:
     directly and skips cwd resolution). The bypass branch must be preserved inside the
     `PersistentPreRunE`.
   - **weft** (`internal/weft/cli.go` ≈ 82–104): resolves cwd → `paths.Resolve` → `cfg` via
-    `LoadConfig` → scoped `pathspec`, **conditional on the `--weft-path` bypass** (when set,
-    only `push` is valid; preserve that gate). Preserve the bypass branch in the
-    `PersistentPreRunE`.
+    `LoadConfig` → scoped `pathspec`, **conditional on the `--weft-path` bypass**. The
+    bypass is split across two homes, not wholly in the PreRunE: (a) the `PersistentPreRunE`
+    holds only the *resolution-skip* (when `--weft-path` is set, skip cwd/layout/cfg
+    resolution) plus the *"non-push rejected" gate* (any subcommand other than `push` →
+    `output.Err(out, "subcommand requires a worktree context")` and abort); (b) the **push
+    `RunE` itself branches on the flag** — the bypass path calls `Push(weftPath,
+    SyncOptions{})` directly (`cli.go:76`) whereas the normal path does `Commit`+`Push`
+    (`cli.go:123–132`), so the push handler selects behaviour on whether `--weft-path` is
+    set. Do not try to fold the push-only call into the PreRunE.
   - **ide** (`internal/ide/cli.go` ≈ 31–41): resolves cwd → `paths.Resolve(l)` — and it does
     so **before** today's no-arg check (line 44), so under cobra `lyx ide` (no-arg listing)
     must NOT resolve layout; the `PersistentPreRunE` placement fixes exactly this.

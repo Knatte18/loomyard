@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussion-fix-r6
 slug: builtin-cli-help
 branch: builtin-cli-help
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-06-27T14:00:56Z'
+discussion-fix-r6  '2026-06-27T14:53:53Z'
 ```
