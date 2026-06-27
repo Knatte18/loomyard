@@ -1,0 +1,574 @@
+# Discussion: Built-in CLI help: lyx self-documents modules & commands
+
+```yaml
+task: 'Built-in CLI help: lyx self-documents modules & commands'
+slug: builtin-cli-help
+status: discussing
+parent: main
+```
+
+## Problem
+
+When `lyx` is used standalone — dogfooding in `lyx-test`, or anywhere the loomyard
+source is not beside you — the binary must be able to describe its own command surface.
+Today it cannot. `lyx` with no args prints a single bare line `usage: lyx <module>
+[args...]` to stderr and exits 1 (`cmd/lyx/main.go` `run()`); an unknown module prints
+only `unknown module: <x>`; and each module dispatches subcommands via a `switch` that
+carries no descriptions. So you cannot discover what `lyx` can do from the binary alone —
+you must read the source. That defeats standalone use, which is the whole point of a
+deployed `lyx` on PATH.
+
+**Why now:** standalone/dogfooding use (`lyx-sandbox`, hand-driving `lyx` in `lyx-test`)
+is becoming the normal way to exercise the tool, and the undiscoverable command surface
+is the immediate blocker. Make `lyx` self-documenting recursively: `lyx` lists modules,
+`lyx <module>` lists that module's commands, and `--help` at any level shows usage. The
+hard constraint is anti-drift — help must be co-located with the command it describes and
+the top-level listing must be **assembled from** each module's own self-description, never
+a hand-maintained parallel table, because help kept separate from the command rots the
+moment the command changes.
+
+## Scope
+
+**In:**
+
+- Introduce `github.com/spf13/cobra` as the command-tree framework for `lyx`.
+- Each module exposes `func Command() *cobra.Command` carrying `Use` / `Short` / `Long`
+  metadata co-located with its handlers. Applies to all 8 modules: `init` (initcli),
+  `board`, `config` (configcli), `update`, `ide`, `muxpoc`, `weft`, `warp`.
+- `cmd/lyx/main.go` builds a single root `lyx` cobra command assembled from every
+  module's `Command()`. The root prints the module listing; each verb-module prints its
+  subcommand listing; `--help` works at every level.
+- Migrate each command's flags from stdlib `flag` to cobra/pflag so `--help` auto-lists
+  per-flag usage. Mark internal flags (`--board-path`, `--weft-path`) hidden.
+- Add a persistent `--json` flag that renders any help output (module listing, subcommand
+  listing, `--help`) as structured JSON instead of human text.
+- Preserve a thin `RunCLI(out io.Writer, args []string) int` adapter per module (and
+  `RunInit` for initcli) as the public seam over `Command()`, so existing in-process tests
+  keep compiling and passing.
+- New tests: help-tree completeness, `--json` schema, exit codes, and a drift-guard that
+  asserts every command in the tree has a non-empty `Short`.
+
+**Out:**
+
+- The JSON-on-stdout contract for **real command output** is untouched — every existing
+  handler keeps writing `{"ok":true,...}` / `{"ok":false,...}` via `internal/output`.
+  Only the help/usage surface and the typo/unknown-command surface change.
+- No change to module behaviour, business logic, config resolution, or output schemas of
+  any existing subcommand.
+- No new modules or subcommands; this is purely the help/dispatch refactor.
+- No *authoring* of shell-completion beyond what cobra generates for free — but cobra's
+  built-in `lyx completion <bash|zsh|fish|powershell>` command is **kept enabled and
+  exposed** (not disabled). It is part of the cobra payoff and costs nothing; we simply do
+  not hand-write or deeply test completion logic. The drift-guard / help-tree tests must
+  tolerate this auto-command (see Testing). Do NOT call `root.CompletionOptions.
+  DisableDefaultCmd = true`.
+- No migration of `lyx init` / `lyx update` / `lyx config` away from running on no-arg
+  (see Decisions → no-arg-semantics). They keep their current primary UX.
+
+## Decisions
+
+### framework-cobra-vs-registry
+
+- Decision: Use `github.com/spf13/cobra` for the command tree (not a hand-rolled command
+  registry).
+- Rationale: cobra is purpose-built for a self-documenting multi-command CLI — `--help`/
+  `-h` at every level, `lyx help <module>`, "did you mean…?" suggestions, and shell
+  completion all generated for free, with `Short`/`Long` living in the command struct
+  (co-location native). Crucially it makes the anti-drift guarantee a **framework
+  invariant**: a new module cannot appear in `lyx --help` without being registered as a
+  child command with `Use`/`Short`. The registry would give the same guarantee only via a
+  completeness test we must remember to write and maintain.
+- Rejected: Hand-rolled registry (slice of command structs). Lower churn and zero
+  dependency, but every help affordance (`--help`, suggestions, completion, flag usage)
+  would be hand-built, and anti-drift would rest on a discipline-test rather than the
+  framework. The dependency cost is negligible (pinned via `go.sum`, compiled into the
+  static binary).
+
+### integration-style-c-preserve-seam
+
+- Decision: Style C — one root cobra tree built from per-module `Command() *cobra.Command`
+  constructors, with a thin `RunCLI(out, args) int` adapter preserved per module as the
+  public seam.
+- Rationale: This is the best of both. The single root tree gives full cobra benefits at
+  the top level (`lyx --help`, completion, suggestions across the whole tree). The
+  preserved `RunCLI` adapter means the ~51 existing in-process test call sites keep
+  compiling and passing unchanged — signature, JSON-on-stdout, and exit-code contracts are
+  all preserved. Handler logic moves from `switch` cases into `RunE` bodies essentially
+  verbatim.
+- The adapter shape:
+
+  ```go
+  func RunCLI(out io.Writer, args []string) int {
+      es := &exitState{} // shared exit-code holder, injected via context (see exit-and-error-contract)
+      c := Command()
+      c.SetOut(out)
+      c.SetErr(out) // merge cobra's stderr (unknown-command text) into the single seam writer
+      c.SetArgs(args)
+      ctx := context.WithValue(context.Background(), exitKey, es)
+      if err := c.ExecuteContext(ctx); err != nil { return 1 } // cobra-level error: unknown cmd / bad flag
+      return es.code // handler-recorded exit code (0 on success)
+  }
+  ```
+
+  The holder is **injected by the caller via the command context**, not by `Command()`'s
+  signature — so `func Command() *cobra.Command` stays exactly as fixed in Scope. See
+  `exit-and-error-contract` for the shared `exitState` definition and how `cmd/lyx/main.go`
+  reads the same holder.
+
+- **stdout/stderr split — seam merges, binary separates.** The
+  `unknown-command-human-text` decision sends cobra's typo/usage text to **stderr**, but
+  the `RunCLI(out, args) int` seam exposes a single writer. Resolution: the seam wires
+  **both** `SetOut(out)` and `SetErr(out)`, deliberately *merging* the two streams into
+  `out` so in-process tests (e.g. the named weft/ide unknown-command assertions) can
+  capture cobra's message from the one buffer. Production keeps them split:
+  `cmd/lyx/main.go` builds the root with `SetOut(os.Stdout)` and `SetErr(os.Stderr)` so
+  human/typo text goes to stderr and JSON output to stdout. Tests **must not over-pin** the
+  exact unknown-command string: via a per-module seam it reads `unknown command "x" for
+  "board"`, whereas via the assembled root it reads `... for "lyx board"` — assert on a
+  stable substring (`unknown command`) and the exit code, not the full parent qualifier.
+
+- Rejected: (a) "Pure cobra" — dissolve `RunCLI`, drive tests via a shared
+  `exec(t,&buf,args...)` helper. Cleaner conceptually but ~1 day of mechanical test churn
+  (replace 51 call sites) for no functional gain. (b) "Adapter-per-module with no shared
+  root" — each module builds an independent cobra root inside `RunCLI`; then top-level
+  `lyx --help` and cross-tree completion are NOT cobra-generated and main.go must
+  hand-maintain the module listing, partially defeating the anti-drift goal.
+
+### unknown-command-human-text
+
+- Decision: On an unknown module or unknown subcommand (a typo on the command tree), let
+  cobra print its `unknown command "x" for "lyx"` message plus "did you mean…?"
+  suggestions to **stderr**, and exit 1. Real command errors (a valid command failing,
+  e.g. weft's `subcommand requires a worktree context`) stay JSON `{"ok":false,...}` on
+  stdout as today.
+- Rationale: The unknown-command surface is a human typo path with no machine consumer;
+  cobra's suggestions maximize discoverability, which is the whole point of the task. The
+  JSON error contract only matters for real, programmatically-consumed failures, which are
+  unaffected.
+- Rejected: Wrapping unknown-command as a JSON `{"ok":false,"error":"unknown command:
+  x"}` envelope on stdout. Uniform with the output contract but throws away cobra's
+  suggestions and human readability for the one surface that most needs them.
+- **Bad-flag parse errors follow the same rule (small, verified-safe contract change).**
+  Under pflag, an unknown/invalid flag (e.g. `lyx update --bogus`) produces cobra's error
+  text on **stderr** + exit 1, NOT a JSON `{"ok":false}` envelope. Today one module emits
+  JSON here (`update.go` returns `output.Err` on `flag.Parse` failure), but this is an
+  intentional, harmless change: verified that **no test** asserts JSON for a bad-flag case
+  (grep of the test tree finds no bad-flag/`--bogus` assertions; `update.go`'s
+  parse-error→`output.Err` path is untested), and **no caller** depends on it — the only
+  programmatic flag injectors are board/weft's detached children, which always pass
+  well-formed `--board-path`/`--weft-path`, never malformed flags. So bad-flag errors fold
+  cleanly into the cobra/stderr surface alongside unknown-command. (If a future caller ever
+  needs JSON on bad-flag, route pflag errors through the JSON path — but nothing needs it
+  now.)
+
+### no-arg-semantics
+
+- Decision: Adopt the cobra-idiomatic no-arg split. Verb-modules with subcommands
+  (`board`, `warp`, `weft`, `ide`, `muxpoc`) have **no `Run`** on the parent, so
+  `lyx <module>` prints that module's subcommand listing and exits 0. Flat/interactive
+  modules keep their current behaviour: `lyx init` scaffolds, `lyx update` dry-runs,
+  `lyx config` opens the interactive menu (each has a `Run`/`RunE`); their help is reached
+  via `lyx <module> --help`. Bare `lyx` prints the module listing and exits 0.
+- Rationale: This is cobra's default behaviour with zero extra code — a parent command
+  with no `Run` prints help; a leaf with a `Run` executes. Forcing help onto
+  `lyx init`/`update`/`config` would break their primary UX and require inventing new
+  explicit verbs (`lyx config menu`, `lyx update apply`), which is gratuitous churn.
+- Rejected: Forcing `lyx <module>` with no further arg to print help uniformly for all 8
+  modules. More superficially consistent, but changes the established primary UX of three
+  commands for no real benefit.
+- Note on exit code: bare `lyx` now exits **0** (help is a successful query), changing
+  today's exit 1. This is intentional and consistent with treating help as success.
+
+### flags-to-pflag
+
+- Decision: Migrate every command's flags from stdlib `flag.FlagSet` to cobra/pflag
+  (`cmd.Flags()` / `cmd.PersistentFlags()`), so `--help` auto-renders per-flag usage via
+  cobra. Hide the internal injected flags `--board-path` (board) and `--weft-path` (weft)
+  via `MarkHidden`. muxpoc's top-level tuning flags (`--psmux`, `--pwsh`, `--claude`,
+  `--launch`, `--resume`, `--width`, `--height`, `--interval`) become **persistent** flags
+  on the `muxpoc` parent (inherited by its subcommands). warp's per-verb flags (`remove
+  --force`, `prune --apply`, `cleanup --apply/--force`) and update's `--apply` become local
+  flags on their respective commands.
+- Rationale: Auto-generated, co-located flag help is exactly the per-flag layer the task
+  asks for ("per-flag/arg usage lives in the command's own flagset"). pflag's stricter
+  parsing is safe here: an audit of every programmatic/injected call-site shows they all
+  already use double-dash long flags (`--board-path`, `--weft-path`, `--force`, `--apply`)
+  — no single-dash long flags exist anywhere — so pflag breaks nothing.
+- Verified call-sites for the internal flags (must keep working after migration):
+  - `internal/board/spawn.go:27` → `exec.Command(exe, "board", "--board-path", abs,
+    "sync")` (flag before subcommand → must be a **persistent** flag on the `board`
+    parent so cobra accepts it pre-subcommand).
+  - `internal/weft/spawn.go:34` → `exec.Command(exe, "weft", "--weft-path", abs, "push")`
+    (same — persistent flag on the `weft` parent).
+- Rejected: Keep stdlib `flag` parsing inside `RunE` and hand-write flag help in `Long`.
+  Less churn but flag help no longer auto-generates and stays drift-prone, undercutting a
+  primary cobra benefit.
+
+### json-help-form
+
+- Decision: Provide a `--json` rendering of help, in addition to the human listing. A
+  persistent `--json` bool flag on the root; when set on a help path (no-arg module/
+  subcommand listing, or `--help`), the help output for that node is emitted as structured
+  JSON to stdout instead of human text.
+- Rationale: Operator opted in. Enables future tooling/completion generation off a stable
+  machine-readable description of the command tree.
+- Schema (per node):
+
+  ```json
+  {
+    "name":  "lyx warp",
+    "short": "host↔weft coordination",
+    "long":  "…",
+    "commands": [
+      { "name": "add", "short": "create a dormant host+weft pair", "usage": "lyx warp add <slug>" }
+    ],
+    "flags": [
+      { "name": "--force", "shorthand": "", "usage": "…", "default": "false", "type": "bool" }
+    ]
+  }
+  ```
+
+  At a leaf command `commands` is empty and `flags` is populated; at a parent the reverse.
+  Hidden flags (`--board-path`, `--weft-path`) are omitted from the `--json` output too.
+- `flags` array source: **local flags only** (`cmd.LocalFlags()`), excluding hidden flags
+  and the help-meta flags `--json`/`--help`/`-h`. Inherited persistent flags are NOT
+  duplicated onto child nodes — they are documented on the node that *defines* them
+  (muxpoc's persistent tuning flags appear in muxpoc's own node `flags`; the root `--json`
+  is meta and never listed). This mirrors cobra's human help, which separates local
+  "Flags:" from "Global Flags:", and keeps the `--json` schema test's per-node expectations
+  unambiguous. (Verified: no current module defines a `--json` flag, so the persistent root
+  `--json` collides with nothing.)
+- Interception seam: `--json` cannot be a normal `RunE` because cobra renders help
+  internally (for `--help` and for the no-`Run` parent/no-arg path). The plan installs a
+  **custom `HelpFunc` on the root** via `rootCmd.SetHelpFunc(fn)` (inherited by all
+  children); `fn` checks the persistent `--json` flag and, when set, walks the command being
+  helped and writes the JSON schema to `cmd.OutOrStdout()` instead of calling cobra's
+  default human renderer. This single seam covers all three triggers — `lyx --json`,
+  `lyx <module> --json`, and `lyx <module> <cmd> --help --json` — since cobra routes every
+  help path (explicit `--help` and implicit no-arg/parent help) through the help func. The
+  matching `UsageFunc` is left as cobra's default (usage on cobra-level errors stays human
+  text per `unknown-command-human-text`).
+- Scope of `--json`: it **only** alters help rendering. On a real command-execution path
+  (a leaf handler actually running, e.g. `lyx board list --json`) `--json` is a **no-op** —
+  parsed but ignored, never an error — because real command output is already JSON. So the
+  flag is meaningful exactly on the help/no-arg/`--help` paths and inert everywhere else;
+  a plan writer does not need to special-case it inside any handler. To be explicit:
+  `--json` is **not a second output-mode switch** — it does not toggle JSON-vs-human for
+  command results (those are already always JSON). It only selects the *help* rendering, so
+  no handler reads it and it must not be documented or tested as an output-format toggle.
+- Rejected: Human-only help (YAGNI). Overruled by the operator in favour of the structured
+  form.
+
+### exit-and-error-contract
+
+- Decision: Configure the root with `SilenceUsage = true` and `SilenceErrors = false`.
+  Handlers (`RunE`) write their JSON envelope via `internal/output` exactly as today and
+  signal failure by recording exit code 1 (a holder captured by the module's `Command()`
+  constructor) and returning `nil` to cobra — so cobra never prints a second "Error:" line
+  on top of a handler's JSON. Cobra-level errors (unknown command, bad flag) are left
+  un-silenced so cobra prints their human text + suggestions to stderr; `Execute()`
+  returning such an error maps to exit 1 in the adapter/`main`.
+- Rationale: This cleanly separates the two failure surfaces: handler failures → JSON +
+  exit 1 with no cobra noise; tree/flag failures → cobra's human text + suggestions +
+  exit 1. It preserves every existing JSON error assertion while enabling the
+  unknown-command UX decision above.
+- **Holder mechanism (fixed, signature-preserving).** The exit-code holder is a tiny
+  shared pointer carried in the **command context**, so `func Command() *cobra.Command`
+  needs no out-param:
+
+  ```go
+  type exitState struct {
+      code  int
+      abort bool // set by a failing PersistentPreRunE to short-circuit the leaf RunE
+  }
+  type ctxKey struct{}
+  var exitKey = ctxKey{}
+
+  func setExit(ctx context.Context, code int) {
+      if es, ok := ctx.Value(exitKey).(*exitState); ok && code != 0 { es.code = code }
+  }
+  ```
+
+  Each handler's `RunE` wrapper forwards whatever int its inner handler returns:
+  `setExit(cmd.Context(), handler(out, args))` and returns `nil` to cobra. Note the inner
+  return value is the handler's own int — usually `output.Err(out, msg)` (which returns 1),
+  but **not universally** `internal/output`: `configcli`'s `editOne` writes plain text via
+  `fmt.Fprintf` (`unknown config module: …`, `aborted: …`) and returns its own int code
+  directly. So the wrapper is `setExit(ctx, handler(...))`, agnostic to whether the handler
+  emitted JSON or plain text — the `output.Err` form shown elsewhere is illustrative of the
+  common case, not a requirement that every handler route through `internal/output`. cobra
+  propagates the root context to every subcommand, so a leaf's `cmd.Context()` is the same
+  context the caller seeded.
+- **The holder MUST be per-invocation — never a package-level `var exitCode int`.** Each
+  `main`/`RunCLI` call allocates its own `&exitState{}` and seeds it into that call's
+  context; nothing is shared across invocations. This is load-bearing, not stylistic: the
+  in-process test suite runs heavily in parallel (122 `t.Parallel()` sites; warp's suite has
+  previously been bitten by a global-monkey-patch race), so a shared mutable exit holder
+  would race across concurrently-executing `RunCLI` calls. Context-injection is chosen over
+  a `Command()`-local closure precisely because the caller (main/seam) must *read* the code
+  back across the fixed `func Command() *cobra.Command` boundary after `Execute` — a closure
+  hidden inside `Command()` could not be read by the caller. The implementer must not
+  "simplify" this into a package global.
+- **`PersistentPreRunE` failure (muxpoc) preserves the JSON envelope.** muxpoc's
+  pre-dispatch (moved into `PersistentPreRunE`, see Technical context) can fail at
+  `paths.Resolve` — today that emits `{"ok":false,"error":"not a git repository"}` on
+  stdout, exit 1. To keep that contract, on failure the `PersistentPreRunE`: (1) writes the
+  JSON error via the module's existing `output.Err(out, …)` to `cmd.OutOrStdout()`;
+  (2) records the code and sets the abort flag — `if es := exitStateFrom(ctx); es != nil {
+  es.code = 1; es.abort = true }`; (3) returns `nil` (NOT the error — returning a non-nil
+  error would make cobra print its own human text to stderr and break the JSON contract).
+  Every muxpoc subcommand `RunE` then begins with a guard `if exitStateFrom(cmd.Context()).
+  abort { return nil }`, so the JSON is written exactly once by the PreRunE and the
+  subcommand body is skipped. This abort guard applies to **every** module that gains a
+  failable shared `PersistentPreRunE` — muxpoc, board, weft, and ide (see the
+  shared-pre-dispatch gotcha in Technical context) — each preserving its existing JSON
+  error envelope on resolution failure.
+- **Production retrieval (`cmd/lyx/main.go`).** `main` seeds the holder and runs the root
+  via `ExecuteContext`, then maps a recorded handler failure to the process exit code —
+  this is what keeps the "exit codes unchanged" constraint true for real `{"ok":false}`
+  failures (e.g. `lyx weft status` outside a worktree):
+
+  ```go
+  es := &exitState{}
+  ctx := context.WithValue(context.Background(), exitKey, es)
+  err := root.ExecuteContext(ctx)
+  if err != nil { os.Exit(1) } // cobra-level error (unknown command / bad flag)
+  os.Exit(es.code)             // handler-recorded exit code (0 on success)
+  ```
+
+  Both the production root and the per-module `RunCLI` seam share this one contract; the
+  holder is by-pointer so no `ExecuteC()`-and-walk-back is needed.
+
+## Technical context
+
+What mill-plan needs to know about the codebase:
+
+- **Entry point** — `cmd/lyx/main.go`: `main()` calls `os.Exit(run(os.Args[1:],
+  os.Stdout))`; `run()` is a `switch module { case "init": return initcli.RunInit(...) … }`
+  dispatcher writing to an `io.Writer`. This becomes: build the root cobra command from
+  each module's `Command()`, `rootCmd.SetArgs(os.Args[1:])`, run `rootCmd.ExecuteContext`
+  with the seeded exit-state holder, and map to the process exit code (see
+  `exit-and-error-contract` for the exact retrieval). The doc-comment module table at the
+  top of `main.go` (lines 11–20) becomes
+  redundant and should be updated/removed (the listing now derives from `Short`s).
+- **Module signature today** — every module exposes `func RunCLI(out io.Writer, args
+  []string) int` (initcli exposes `func RunInit(...)`; it is a flat command that ignores a
+  verb). **Most** handlers write JSON via the shared `internal/output` helpers:
+  `output.Ok(out, map)` → `{"ok":true,...}` exit 0; `output.Err(out, msg)` →
+  `{"ok":false,"error":...}` exit 1 — but not all: `configcli`'s `editOne` writes plain
+  text via `fmt.Fprintf` (`unknown config module: …`, `aborted: …`, `edited and synced …`)
+  and returns its own int code. The exit-code wrapper (see `exit-and-error-contract`)
+  therefore forwards each handler's returned int regardless of whether it emitted JSON or
+  plain text.
+- **Per-module shape** (the three dispatch families the design must absorb):
+  - Verb-switch modules: `internal/board/cli.go` (subcommands: upsert, upsert-batch,
+    set-phase, remove, get, list, list-full, merge, set-deps, rerender, sync; internal
+    `--board-path` flag), `internal/warp/warp.go` (clone, add, list, remove, checkout,
+    status, reconcile, prune, cleanup; per-verb flags on remove/prune/cleanup),
+    `internal/weft/cli.go` (status, commit, push, pull, sync; internal `--weft-path`
+    flag), `internal/ide/cli.go` (spawn `<slug>`, menu), `internal/muxpoc/cli.go` (up,
+    review, attach, status, down, daemon; top-level tuning flags).
+  - Flat commands: `internal/initcli/initcli.go` (`RunInit`, no verb — `lyx init`
+    scaffolds), `internal/update/update.go` (no verb — `lyx update`, with `--apply`).
+  - Module-name + interactive: `internal/configcli/configcli.go` — `lyx config` opens an
+    interactive menu; `lyx config <module>` edits that module's config (positional is a
+    module name, not a verb). Under cobra this is one command with an optional positional
+    arg and a `Run`; consider `ValidArgs`/`ValidArgsFunction` set to the known module names
+    for completion + suggestions. Its existing `unknown config module: %s (known: …)`
+    validation stays inside the handler (it is a real error, not a tree typo).
+- **Output helpers** — `internal/output` is the JSON sink for the handlers that emit JSON;
+  keep those routing success/error through it (don't bypass it for JSON output). The
+  exception is `configcli`, which intentionally emits human-readable plain text for its
+  edit/menu flow; preserve that behaviour rather than forcing it into the JSON envelope.
+- **Internal flag injection** (must survive migration) — `internal/board/spawn.go:27` and
+  `internal/weft/spawn.go:34` shell out to `lyx board --board-path … sync` and `lyx weft
+  --weft-path … push` respectively. These flags must be **persistent** on their parent so
+  cobra accepts them positioned before the subcommand.
+- **No existing cobra usage** — `go.mod` (module `github.com/Knatte18/loomyard`, Go 1.26)
+  has no cobra today; deps are `gofrs/flock`, `golang.org/x/sys`, `yaml.v3`. Adding cobra
+  pulls in `spf13/pflag` (its only real transitive dep).
+- **Gotcha** — `internal/update/update.go` deliberately blanks `fs.Usage` to suppress
+  stdlib flag help; that hack is removed when flags move to pflag.
+- **Gotcha (shared cwd-dependent pre-dispatch is NOT a verbatim per-case move) — applies
+  to FOUR modules, not just muxpoc.** Several modules resolve cwd-dependent config/layout
+  **once before their `switch`** and share it across every subcommand. This shared setup
+  has no single `RunE` home and must NOT run on the new no-arg/`--help` **listing** path —
+  resolving layout/config would wrongly require a git repo or config just to *list* a
+  module's subcommands. The fix is uniform: lift each module's shared resolution into a
+  **`PersistentPreRunE` on that module's parent command**. cobra runs `PersistentPreRunE`
+  only when a subcommand actually executes and skips it for the no-arg/`--help` listing
+  (the parent has no `Run`). The affected modules and their pre-dispatch blocks:
+  - **muxpoc** (`internal/muxpoc/cli.go` ≈ 54–94): builds `cfg` from the tuning flags and
+    calls `paths.Resolve` before the switch.
+  - **board** (`internal/board/cli.go` ≈ 67–101): builds `cfg` via `LoadConfig(cwd,…)` and
+    `b := New(cfg)`, **conditional on the `--board-path` bypass** (when set, uses the path
+    directly and skips cwd resolution). The bypass branch must be preserved inside the
+    `PersistentPreRunE`.
+  - **weft** (`internal/weft/cli.go` ≈ 82–104): resolves cwd → `paths.Resolve` → `cfg` via
+    `LoadConfig` → scoped `pathspec`, **conditional on the `--weft-path` bypass**. The
+    bypass is split across two homes, not wholly in the PreRunE: (a) the `PersistentPreRunE`
+    holds only the *resolution-skip* (when `--weft-path` is set, skip cwd/layout/cfg
+    resolution) plus the *"non-push rejected" gate* (any subcommand other than `push` →
+    `output.Err(out, "subcommand requires a worktree context")` and abort); (b) the **push
+    `RunE` itself branches on the flag** — the bypass path calls `Push(weftPath,
+    SyncOptions{})` directly (`cli.go:76`) whereas the normal path does `Commit`+`Push`
+    (`cli.go:123–132`), so the push handler selects behaviour on whether `--weft-path` is
+    set. Do not try to fold the push-only call into the PreRunE.
+  - **ide** (`internal/ide/cli.go` ≈ 31–41): resolves cwd → `paths.Resolve(l)` — and it does
+    so **before** today's no-arg check (line 44), so under cobra `lyx ide` (no-arg listing)
+    must NOT resolve layout; the `PersistentPreRunE` placement fixes exactly this.
+
+  So the "handlers move into `RunE` essentially verbatim" note in
+  `integration-style-c-preserve-seam` carries this caveat for all four modules: the
+  pre-`switch` block becomes a `PersistentPreRunE`, not per-`RunE` duplication, and the
+  internal-flag bypass branches (board/weft) are preserved within it. (configcli resolves
+  inside its single `Run`, and warp/initcli/update have no shared cwd resolution before a
+  multi-subcommand switch, so those four are unaffected.)
+- **Gotcha (how PreRunE-built values reach each `RunE`).** The `cfg`/layout/`pathspec`/
+  `b *Board` that a `PersistentPreRunE` builds must reach each subcommand's `RunE`. Mechanism:
+  each module's `Command()` constructor declares the shared value(s) as **closure variables**
+  in its scope (e.g. `var cfg Config; var b *Board`); the `PersistentPreRunE` populates them;
+  each subcommand `RunE` closes over them. This is the idiomatic "build the command tree in a
+  constructor that shares closure state" pattern and is module-local — unlike `exitState`
+  (which crosses the main/seam boundary and so rides the context), these values never leave
+  the module, so a closure is the right tool, not the context. On a `PersistentPreRunE`
+  failure the abort path from `exit-and-error-contract` applies (write the JSON error, set
+  `code`+`abort`, return `nil`; each `RunE` guards on `abort`).
+- **Gotcha** — two usage-output conventions coexist today (plain-text-to-stderr in
+  board/weft/muxpoc top-level dispatch; JSON via `output.Err` in initcli/ide/warp). After
+  this task the usage/no-arg/typo surface is uniformly cobra (human text or `--json`), and
+  the JSON envelope is reserved for real command results/errors.
+
+## Constraints
+
+- **Anti-drift is the core constraint**: help text co-located with the command; the
+  top-level listing assembled from per-module `Short`s; no central hand-maintained table.
+  Enforced structurally by cobra plus the drift-guard test (every command has a non-empty
+  `Short`).
+- **Preserve the real-output JSON contract**: existing subcommands' stdout JSON and exit
+  codes are unchanged. Only help/usage/typo surfaces change.
+- **Preserve the in-process test seam**: `RunCLI(out, args) int` / `RunInit(out, args)
+  int` must remain callable so existing tests keep working.
+- **pflag double-dash**: all programmatic/injected flag call-sites must use `--long`
+  form (already true; keep it true for any new injection).
+- **Cross-platform**: `lyx` runs on Windows (junctions, `cmd /c code`, psmux) and
+  POSIX; nothing in the help refactor is platform-specific, but the muxpoc spawn/attach
+  files are split by GOOS — leave that structure intact.
+- No `CONSTRAINTS.md` exists at the hub root.
+
+## Testing
+
+Approach: keep the existing in-process `RunCLI(&buf, args)` tests working via the
+preserved adapter, fix the handful that assert exact usage text, and add tree-level tests
+for the new help surface. All tests stay in-process (no subprocess) per the current
+pattern; cwd-dependent modules continue to use `internal/lyxtest` helpers + `t.Chdir`.
+
+- **Existing tests (regression)** — most of the ~51 `RunCLI`/`RunInit`/`run()` call sites
+  across ~11 files pass unchanged because the adapter preserves signature + JSON + exit
+  codes. The assertions that **do** need updating are exactly those that pin the **no-arg /
+  unknown-subcommand / unknown-module / usage surface**, which now comes from cobra instead
+  of each module's own output. **General rule (the planner must audit, not just trust this
+  list):** any test that exercises no-arg or an unknown subcommand/module and asserts on the
+  output — *whether it checks plain text OR `json.Unmarshal`s the buffer and asserts
+  `ok=false`* — must change, because that surface is now cobra's plain "unknown command"
+  text merged into `out` (the seam wires `SetErr(out)`), no longer a JSON envelope or empty
+  stdout. Re-assert on the `unknown command` substring + exit code, never a decoded JSON
+  envelope and never the exact parent qualifier. To find every site, grep the test tree for
+  no-arg `RunCLI(&buf, []string{})` / `[]string{"<unknown>"}` calls and for `decode`/
+  `Unmarshal` on those buffers. Known-affected files:
+  - `internal/configcli/configcli_test.go`, `internal/ide/cli_test.go`,
+    `internal/weft/cli_test.go` — usage/unknown text assertions.
+  - `cmd/lyx/main_test.go` — **both** the no-arg test (`TestRunNoArgs`/equivalent) and
+    `TestRunUnknownModule` change. The no-arg test today asserts exit 1 **and empty
+    output**; both flip — assert exit **0** AND that the output is **non-empty and names the
+    modules** (e.g. contains `board`, `warp`), not merely the exit code. `TestRunUnknownModule`
+    keeps exit 1 but its output is now cobra's `unknown command` text (substring assertion),
+    not empty.
+  - `internal/muxpoc/cli_test.go` — **two assertions**: no-arg now → exit 0 + a subcommand
+    listing (was exit 1 + empty stdout); unknown-subcommand/bad-flag now → non-empty merged
+    output (was empty stdout).
+  - `internal/warp/warp_test.go` — the `UnknownSubcommand` test currently `json.Unmarshal`s
+    the buffer and asserts `ok=false` (warp's old unknown path emitted JSON via
+    `output.Err`, `warp.go:96`); under cobra that buffer holds plain `unknown command` text,
+    so the decode would fail. Switch it to a substring + exit-code assertion. (warp's
+    `list` success and `remove --force` flag-parsing assertions are unaffected.)
+
+  Budget: ~8–10 assertion edits across these **six** files (not 3–5) — several files have
+  both a no-arg and an unknown case, and warp + muxpoc each convert a JSON-decode assertion
+  to a substring one.
+- **TDD candidates (write first):**
+  - **Drift-guard** (`cmd/lyx`): walk the assembled root command tree; assert every
+    command (root, each module, each subcommand) has a non-empty `Short`. This is the
+    structural self-documentation invariant — failing it is the signal someone added a
+    command without a description. **Must tolerate cobra's auto-added commands**: cobra
+    injects `help` and `completion` (the latter with `bash`/`zsh`/`fish`/`powershell`
+    children) into the tree, and `completion`'s subcommands carry cobra's own non-empty
+    `Short`s. Either exclude the `help`/`completion` subtrees from the walk explicitly, or
+    rely on the fact that they already have descriptions — but do NOT assert an exact tree
+    shape that would break when cobra changes its auto-commands.
+  - **Help-tree completeness** (`cmd/lyx`): assert `lyx --help` output names every module;
+    for each verb-module assert `lyx <module> --help` names every one of its subcommands.
+    Use **superset** assertions (the pinned module/subcommand set is a subset of what
+    appears), or explicitly exclude `help`/`completion`, so adding/removing one of OUR
+    commands without updating help fails, while cobra's auto-commands don't make the test
+    brittle.
+  - **`--json` help schema** (`cmd/lyx`): `lyx --json`, `lyx <module> --json`, and a leaf
+    `lyx <module> <cmd> --help --json` each emit valid JSON matching the schema
+    (`name`/`short`/`commands`/`flags`); hidden flags absent; leaf has populated `flags`
+    and empty `commands`.
+  - **Exit-code contract** (`cmd/lyx` + per module): bare `lyx` → exit 0; `lyx <verb-module>`
+    no-arg → exit 0 with subcommand listing; unknown module/subcommand → exit 1 with a
+    stderr message; a real handler failure → exit 1 with a JSON `{"ok":false}` envelope on
+    stdout (assert one representative, e.g. weft `--weft-path … status` still gives the
+    JSON `subcommand requires a worktree context`).
+- **Per-module scenarios to keep covered** (already exist; must still pass):
+  - board: a representative success (e.g. `list`/`rerender`) and the JSON error envelope;
+    `--board-path` injection path still resolves.
+  - warp: `list` success and `remove --force <slug>` flag parsing + effect stay unchanged;
+    its `UnknownSubcommand` test is **updated** (see regression list — JSON-decode → cobra
+    substring assertion).
+  - weft: `--weft-path` + non-push subcommand still yields the JSON
+    `subcommand requires a worktree context`.
+  - update: dry-run (no flag) vs `--apply`.
+  - initcli: `lyx init` success and the no-pairing error path.
+  - configcli/ide: their existing in-process tests (with the usage/unknown-text assertions
+    updated per the regression list above).
+  - muxpoc: existing subcommand-behaviour tests still pass, but its **no-arg and
+    unknown-subcommand assertions are updated** (see regression list) — do not treat
+    muxpoc's test file as unchanged.
+- **No-arg behaviour tests**: `lyx init`/`lyx update`/`lyx config` still *run* (not print
+  help) on no-arg; `lyx <verb-module>` prints the listing. Cover at least one of each.
+
+Avoid prescribing exact assertion shapes for the new tests beyond the schema above — that
+is mill-plan's job.
+
+## Q&A log
+
+- **Q:** Hand-rolled command registry or spf13/cobra? **A:** cobra — it is more
+  comprehensive (free `--help`/completion/suggestions) and, decisively, makes anti-drift a
+  framework invariant: a new module can't appear in help without a `Use`/`Short`, vs. the
+  registry relying on a completeness test we must remember to write.
+- **Q:** How much work is the test-suite migration under cobra? **A:** Small if we keep the
+  `RunCLI`/`Command()` seam (Style C): the ~51 in-process call sites keep working; only
+  ~3–5 exact-text assertions change. The bulk of the work is production-side (switch →
+  cobra tree), which is the feature itself.
+- **Q:** Integration style? **A:** Style C — one root cobra tree built from per-module
+  `Command() *cobra.Command`, with a thin `RunCLI(out,args) int` adapter preserved for
+  tests/compat.
+- **Q:** Unknown module/subcommand (typo) behaviour? **A:** cobra human text + "did you
+  mean…?" to stderr, exit 1. Real command errors stay JSON `{"ok":false}`.
+- **Q:** No-arg semantics across verb / flat / interactive modules? **A:** cobra-idiomatic
+  split — verb-modules print their subcommand listing (exit 0); `init`/`update`/`config`
+  keep running on no-arg, help via `--help`. Bare `lyx` now exits 0.
+- **Q:** Migrate flags to cobra/pflag? **A:** Yes — auto-generated per-flag help; hide
+  internal `--board-path`/`--weft-path`. Audit confirms all injected flags already use
+  double-dash, so pflag's stricter parsing breaks nothing.
+- **Q:** Offer a `--json` form of help for tooling? **A:** Yes (operator opted in, over the
+  YAGNI recommendation) — a persistent `--json` flag renders any help node as structured
+  JSON per the documented schema.
+- **Q:** How do exit codes / error printing reconcile with cobra? **A:** `SilenceUsage=true`,
+  `SilenceErrors=false`; handlers write JSON and signal failure via an exit-code holder
+  returning `nil` to cobra (no double-print); cobra-level errors (unknown command/bad flag)
+  are printed by cobra and map to exit 1.
+- **Q:** Scope of modules? **A:** All 8 — board, warp, weft, ide, muxpoc, config, init,
+  update. Real-output JSON contract untouched.
