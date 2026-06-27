@@ -56,8 +56,12 @@ moment the command changes.
 - No change to module behaviour, business logic, config resolution, or output schemas of
   any existing subcommand.
 - No new modules or subcommands; this is purely the help/dispatch refactor.
-- No shell-completion authoring effort beyond what cobra generates for free (cobra's
-  built-in `completion` command is left enabled but is not a deliverable to test deeply).
+- No *authoring* of shell-completion beyond what cobra generates for free — but cobra's
+  built-in `lyx completion <bash|zsh|fish|powershell>` command is **kept enabled and
+  exposed** (not disabled). It is part of the cobra payoff and costs nothing; we simply do
+  not hand-write or deeply test completion logic. The drift-guard / help-tree tests must
+  tolerate this auto-command (see Testing). Do NOT call `root.CompletionOptions.
+  DisableDefaultCmd = true`.
 - No migration of `lyx init` / `lyx update` / `lyx config` away from running on no-arg
   (see Decisions → no-arg-semantics). They keep their current primary UX.
 
@@ -144,6 +148,18 @@ moment the command changes.
 - Rejected: Wrapping unknown-command as a JSON `{"ok":false,"error":"unknown command:
   x"}` envelope on stdout. Uniform with the output contract but throws away cobra's
   suggestions and human readability for the one surface that most needs them.
+- **Bad-flag parse errors follow the same rule (small, verified-safe contract change).**
+  Under pflag, an unknown/invalid flag (e.g. `lyx update --bogus`) produces cobra's error
+  text on **stderr** + exit 1, NOT a JSON `{"ok":false}` envelope. Today one module emits
+  JSON here (`update.go` returns `output.Err` on `flag.Parse` failure), but this is an
+  intentional, harmless change: verified that **no test** asserts JSON for a bad-flag case
+  (grep of the test tree finds no bad-flag/`--bogus` assertions; `update.go`'s
+  parse-error→`output.Err` path is untested), and **no caller** depends on it — the only
+  programmatic flag injectors are board/weft's detached children, which always pass
+  well-formed `--board-path`/`--weft-path`, never malformed flags. So bad-flag errors fold
+  cleanly into the cobra/stderr surface alongside unknown-command. (If a future caller ever
+  needs JSON on bad-flag, route pflag errors through the JSON path — but nothing needs it
+  now.)
 
 ### no-arg-semantics
 
@@ -236,7 +252,10 @@ moment the command changes.
   (a leaf handler actually running, e.g. `lyx board list --json`) `--json` is a **no-op** —
   parsed but ignored, never an error — because real command output is already JSON. So the
   flag is meaningful exactly on the help/no-arg/`--help` paths and inert everywhere else;
-  a plan writer does not need to special-case it inside any handler.
+  a plan writer does not need to special-case it inside any handler. To be explicit:
+  `--json` is **not a second output-mode switch** — it does not toggle JSON-vs-human for
+  command results (those are already always JSON). It only selects the *help* rendering, so
+  no handler reads it and it must not be documented or tested as an output-format toggle.
 - Rejected: Human-only help (YAGNI). Overruled by the operator in favour of the structured
   form.
 
@@ -280,6 +299,16 @@ moment the command changes.
   common case, not a requirement that every handler route through `internal/output`. cobra
   propagates the root context to every subcommand, so a leaf's `cmd.Context()` is the same
   context the caller seeded.
+- **The holder MUST be per-invocation — never a package-level `var exitCode int`.** Each
+  `main`/`RunCLI` call allocates its own `&exitState{}` and seeds it into that call's
+  context; nothing is shared across invocations. This is load-bearing, not stylistic: the
+  in-process test suite runs heavily in parallel (122 `t.Parallel()` sites; warp's suite has
+  previously been bitten by a global-monkey-patch race), so a shared mutable exit holder
+  would race across concurrently-executing `RunCLI` calls. Context-injection is chosen over
+  a `Command()`-local closure precisely because the caller (main/seam) must *read* the code
+  back across the fixed `func Command() *cobra.Command` boundary after `Execute` — a closure
+  hidden inside `Command()` could not be read by the caller. The implementer must not
+  "simplify" this into a package global.
 - **`PersistentPreRunE` failure (muxpoc) preserves the JSON envelope.** muxpoc's
   pre-dispatch (moved into `PersistentPreRunE`, see Technical context) can fail at
   `paths.Resolve` — today that emits `{"ok":false,"error":"not a git repository"}` on
@@ -449,8 +478,12 @@ pattern; cwd-dependent modules continue to use `internal/lyxtest` helpers + `t.C
   `Unmarshal` on those buffers. Known-affected files:
   - `internal/configcli/configcli_test.go`, `internal/ide/cli_test.go`,
     `internal/weft/cli_test.go` — usage/unknown text assertions.
-  - `cmd/lyx/main_test.go` — `TestRunUnknownModule`, and the bare-`lyx` test now expecting
-    exit 0 + a module listing rather than exit 1 + empty output.
+  - `cmd/lyx/main_test.go` — **both** the no-arg test (`TestRunNoArgs`/equivalent) and
+    `TestRunUnknownModule` change. The no-arg test today asserts exit 1 **and empty
+    output**; both flip — assert exit **0** AND that the output is **non-empty and names the
+    modules** (e.g. contains `board`, `warp`), not merely the exit code. `TestRunUnknownModule`
+    keeps exit 1 but its output is now cobra's `unknown command` text (substring assertion),
+    not empty.
   - `internal/muxpoc/cli_test.go` — **two assertions**: no-arg now → exit 0 + a subcommand
     listing (was exit 1 + empty stdout); unknown-subcommand/bad-flag now → non-empty merged
     output (was empty stdout).
