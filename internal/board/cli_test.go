@@ -304,3 +304,50 @@ func TestCLIErrorAndEdgeCases(t *testing.T) {
 		})
 	}
 }
+
+// TestCLINoArg asserts that invoking board with no subcommand exits 0 and
+// lists available subcommands in the output. Under cobra, the no-arg parent
+// command prints usage/help and exits cleanly — no config resolution is attempted.
+func TestCLINoArg(t *testing.T) {
+	t.Setenv("BOARD_SKIP_GIT", "1")
+
+	// No-arg board does not require a seeded cwd because PersistentPreRunE is
+	// not invoked when no subcommand is given — cobra handles the listing path.
+	cwd := t.TempDir()
+	t.Chdir(cwd)
+
+	exitCode, stdout := runCLI(t)
+
+	if exitCode != 0 {
+		t.Errorf("RunCLI() exit = %d; want 0\nstdout: %s", exitCode, stdout)
+	}
+
+	// cobra's usage output lists subcommand names; verify at least one known
+	// subcommand name appears so we know a real listing was printed.
+	if !strings.Contains(stdout, "upsert") {
+		t.Errorf("no-arg output does not list subcommands; stdout: %s", stdout)
+	}
+}
+
+// TestCLIUnknownSubcommand asserts that an unknown subcommand exits 1 and
+// emits "unknown command" in the output. This is cobra's built-in unknown-command
+// message, replacing the legacy "unknown subcommand" plain-text error.
+func TestCLIUnknownSubcommand(t *testing.T) {
+	t.Setenv("BOARD_SKIP_GIT", "1")
+
+	// An unknown subcommand triggers cobra-level error handling before the
+	// PersistentPreRunE runs, so no seeded cwd is required.
+	cwd := t.TempDir()
+	t.Chdir(cwd)
+
+	exitCode, stdout := runCLI(t, "no-such-subcommand")
+
+	if exitCode != 1 {
+		t.Errorf("RunCLI(unknown) exit = %d; want 1\nstdout: %s", exitCode, stdout)
+	}
+
+	// cobra's error text for an unknown subcommand always contains "unknown command".
+	if !strings.Contains(stdout, "unknown command") {
+		t.Errorf("unknown subcommand output does not contain %q; stdout: %s", "unknown command", stdout)
+	}
+}
