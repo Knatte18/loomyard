@@ -53,8 +53,9 @@ func TestRunCLIUnknownSubcommandFails(t *testing.T) {
 }
 
 // TestRunCLIUnknownFlagFails verifies that a bad flag produces the "unknown flag"
-// cobra message and exits 1. This is distinct from an unknown subcommand — cobra
-// emits different messages for the two cases and tests must not conflate them.
+// cobra message wrapped in a JSON error envelope and exits 1. This is distinct from
+// an unknown subcommand — cobra emits different messages for the two cases and tests
+// must not conflate them.
 func TestRunCLIUnknownFlagFails(t *testing.T) {
 	var out bytes.Buffer
 	code := RunCLI(&out, []string{"--no-such-flag", "status"})
@@ -62,7 +63,17 @@ func TestRunCLIUnknownFlagFails(t *testing.T) {
 	if code != 1 {
 		t.Errorf("RunCLI(--no-such-flag status) = %d; want 1", code)
 	}
-	if got := out.String(); !strings.Contains(got, "unknown flag") {
-		t.Errorf("RunCLI(--no-such-flag status) output = %q; want \"unknown flag\" substring", got)
+
+	// RunRoot wraps the cobra flag-parse error in a JSON envelope; parse and assert ok=false.
+	var env map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
+		t.Fatalf("RunCLI(--no-such-flag status) output is not valid JSON: %v; got: %q", err, out.String())
+	}
+	if ok, _ := env["ok"].(bool); ok {
+		t.Errorf("RunCLI(--no-such-flag status) ok = true; want false")
+	}
+	// The error field contains "unknown flag" (the cobra message for an unrecognised flag).
+	if errMsg, _ := env["error"].(string); !strings.Contains(errMsg, "unknown flag") {
+		t.Errorf("RunCLI(--no-such-flag status) error = %q; want \"unknown flag\" substring", errMsg)
 	}
 }

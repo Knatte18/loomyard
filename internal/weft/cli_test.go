@@ -35,8 +35,9 @@ func TestRunCLI_NoArgs(t *testing.T) {
 // TestRunCLI_UnknownSubcommand verifies that an unknown subcommand exits 1 and
 // emits a JSON error envelope with ok=false.
 func TestRunCLI_UnknownSubcommand(t *testing.T) {
-	// A temp dir is sufficient: GroupRunE fires before PersistentPreRunE reaches
-	// layout resolution, so no git repo is needed.
+	// A temp dir is sufficient: the PersistentPreRunE guard (cmd.Name() == "weft") returns nil
+	// early, bypassing layout resolution, so no git repo is needed when GroupRunE handles
+	// the unknown subcommand.
 	tmpDir := t.TempDir()
 	t.Chdir(tmpDir)
 
