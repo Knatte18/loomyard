@@ -3,7 +3,7 @@
 ```yaml
 task: "Sandbox test-suite launcher and task harvester"
 slug: "sandbox-suite"
-approved: false
+approved: true
 started: "20260628-195210"
 parent: "main"
 root: ""

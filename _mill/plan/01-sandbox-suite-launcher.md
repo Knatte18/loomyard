@@ -23,9 +23,11 @@ out-of-package edit is `docs/sandbox-hub.md`.
 
 Batch-local conventions (in addition to `## Shared Decisions` in the overview):
 
-- New constants live beside the existing ones in `tools/sandbox/main.go`
-  (`hostURL`, `weftURL`, `hubName`): add `hostDirName = "lyx-test"` (the host clone's
-  subdir under `lyx-test-HUB`, per `docs/sandbox-hub.md`).
+- The existing `main.go` `const` block holds `hostURL`, `weftURL`, `hubName`. The new
+  `hostDirName = "lyx-test"` const (the host clone's subdir under `lyx-test-HUB`, per
+  `docs/sandbox-hub.md`) is added in `suite.go` (Card 2), not `main.go`, so each commit
+  compiles standalone; `suite`-specific consts (`suiteFileName`, `defaultInstruction`)
+  also live in `suite.go`.
 - Testability seams are package-level `var` function values mirroring `cloneRun` /
   `removeAll`, so tests stub them without launching `claude`/`lyx` or touching PATH.
 
@@ -64,33 +66,7 @@ Batch-local conventions (in addition to `## Shared Decisions` in the overview):
   ASCII-friendly markdown per the `markdown` rules.
 - **Commit:** `docs(sandbox): add tracked test-scheme template for the suite agent`
 
-### Card 2: Subcommand dispatch in `main.go`
-
-- **Context:**
-  - `sandbox.cmd`
-- **Edits:**
-  - `tools/sandbox/main.go`
-- **Creates:** none
-- **Deletes:** none
-- **Requirements:** Refactor `tools/sandbox/main.go` to dispatch on a subcommand while
-  preserving back-compat. Extract the parse-and-dispatch body of `main()` into a new
-  testable `func run(argv []string) int` (returns an exit code; `main()` becomes
-  `os.Exit(run(os.Args[1:]))`). In `run`: build a top-level `flag.FlagSet` that defines
-  `-parent` (string, required) and `-reset` (bool, build-only, kept top-level for
-  back-compat); parse `argv`; resolve `*parent` to an absolute path exactly as today
-  (error to stderr + return 1 when empty or on `filepath.Abs` failure). Determine the
-  subcommand from the first remaining positional (`fs.Args()`): empty or `"build"` →
-  compute `hubPath := filepath.Join(absParent, hubName)` and call the existing
-  `decideClone(hubPath, *reset)` (so bare `sandbox.cmd` and `sandbox.cmd -reset` keep
-  working unchanged); `"suite"` → parse the remaining args (`fs.Args()[1:]`) with a
-  dedicated `flag.FlagSet` defining `-claude` (string, claude binary override) and
-  `-prompt` (string, instruction override), then call `runSuite(absParent, claudeFlag,
-  promptFlag)` (added in Card 3); any other token → print `sandbox: unknown subcommand
-  %q` to stderr and return 1. Add `hostDirName = "lyx-test"` to the existing `const`
-  block. All errors keep the `sandbox:` stderr prefix and non-zero return.
-- **Commit:** `feat(sandbox): add build/suite subcommand dispatch`
-
-### Card 3: `suite` run logic
+### Card 2: `suite` run logic
 
 - **Context:**
   - `tools/sandbox/main.go`
@@ -100,8 +76,14 @@ Batch-local conventions (in addition to `## Shared Decisions` in the overview):
   - `tools/sandbox/suite.go`
 - **Deletes:** none
 - **Requirements:** Create `tools/sandbox/suite.go` (`package main`) implementing the
-  suite launcher. Embed the template: `//go:embed test-scheme.md` into a package var
-  (e.g. `var testSchemeMD string`). Add constants `suiteFileName = "SANDBOX-SUITE.md"`
+  suite launcher. This card is sequenced **before** the dispatch card so each commit
+  builds: `suite.go` defines `runSuite` and its own `hostDirName` const, and only reads
+  the existing `hubName` const from `main.go` (a package-level function that nothing yet
+  calls compiles fine in Go). Add `hostDirName = "lyx-test"` as a `const` in `suite.go`
+  (the host clone's subdir under `lyx-test-HUB`, per `docs/sandbox-hub.md`). Embed the
+  template: add a blank `import _ "embed"` and `//go:embed test-scheme.md` bound to a
+  package var (e.g. `var testSchemeMD string`) — the blank `embed` import is required or
+  the file will not compile. Add constants `suiteFileName = "SANDBOX-SUITE.md"`
   and `defaultInstruction = "Read ./SANDBOX-SUITE.md and follow the instructions in it
   exactly."`. Provide testability seams as package-level `var`s: `lookPath =
   exec.LookPath` (resolve `lyx`/`claude` on PATH) and `launchAgent = func(hostRepoDir,
@@ -134,6 +116,34 @@ Batch-local conventions (in addition to `## Shared Decisions` in the overview):
     if the returned code is non-zero, return an error so `run` propagates a non-zero exit
     (best-effort under `go run`). Do NOT use `os.Getwd` or `git rev-parse` anywhere.
 - **Commit:** `feat(sandbox): implement suite launcher (fingerprint, copy, exclude, launch)`
+
+### Card 3: Subcommand dispatch in `main.go`
+
+- **Context:**
+  - `sandbox.cmd`
+  - `tools/sandbox/suite.go`
+- **Edits:**
+  - `tools/sandbox/main.go`
+- **Creates:** none
+- **Deletes:** none
+- **Requirements:** Refactor `tools/sandbox/main.go` to dispatch on a subcommand while
+  preserving back-compat. Extract the parse-and-dispatch body of `main()` into a new
+  testable `func run(argv []string) int` (returns an exit code; `main()` becomes
+  `os.Exit(run(os.Args[1:]))`). In `run`: build a top-level `flag.FlagSet` that defines
+  `-parent` (string, required) and `-reset` (bool, build-only, kept top-level for
+  back-compat); parse `argv`; resolve `*parent` to an absolute path exactly as today
+  (error to stderr + return 1 when empty or on `filepath.Abs` failure). Determine the
+  subcommand from the first remaining positional (`fs.Args()`): empty or `"build"` →
+  compute `hubPath := filepath.Join(absParent, hubName)` and call the existing
+  `decideClone(hubPath, *reset)` (so bare `sandbox.cmd` and `sandbox.cmd -reset` keep
+  working unchanged); `"suite"` → parse the remaining args (`fs.Args()[1:]`) with a
+  dedicated `flag.FlagSet` defining `-claude` (string, claude binary override) and
+  `-prompt` (string, instruction override), then call `runSuite(absParent, claudeFlag,
+  promptFlag)` (added in Card 2); any other token → print `sandbox: unknown subcommand
+  %q` to stderr and return 1. (`hostDirName` is already defined in `suite.go` from Card
+  2 — do not redeclare it here.) All errors keep the `sandbox:` stderr prefix and
+  non-zero return.
+- **Commit:** `feat(sandbox): add build/suite subcommand dispatch`
 
 ### Card 4: Tests for dispatch and suite
 
