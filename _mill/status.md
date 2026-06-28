@@ -39,7 +39,9 @@ batches:
     start_sha: 9a7178be97144cb87033da4d0fb936b540027562
     commit_sha: fdbd24383981d20dff407c22f2f453b2d82a0aee
   - name: config-print-and-help
-    state: pending
+    state: running
+    implementer_session: 4d682616-36bb-4d1d-83e6-9906f683d630
+    start_sha: 4a38ac273a73ec5db62bfcfbe353d0601ab93646
   - name: warp-features
     state: pending
   - name: weft-commit-doc
