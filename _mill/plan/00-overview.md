@@ -3,7 +3,7 @@
 ```yaml
 task: "Board fixes from sandbox run — payload keys, help, rerender"
 slug: "board-sandbox-fixes"
-approved: false
+approved: true
 started: "20260628-150626"
 parent: "main"
 root: ""

@@ -73,6 +73,7 @@ its new error-on-missing.
 
 - **Context:**
   - `_mill/discussion.md`
+  - `internal/board/store.go`
 - **Edits:**
   - `internal/board/cli.go`
   - `internal/board/board.go`
@@ -106,7 +107,11 @@ its new error-on-missing.
   `internal/board/boardtest/bench_test.go`, change `BenchmarkGet`'s payload from
   `{"id_or_slug":"task-0"}` to `{"slug":"task-0"}`; in `cmd/lyx/main_test.go`, change the
   `remove '{"id_or_slug":"nope"}'` case to `{"slug":"nope"}` (it asserts exit 1 — now via
-  the genuine not-found path rather than incidental unknown-key rejection).
+  the genuine not-found path rather than incidental unknown-key rejection). For the
+  `set-status` handler in this card, read the `status` value from the decoded payload map
+  and pass it as the `*string` to `Board.SetStatus`; the full `status`-key
+  required-vs-`null` presence semantics are added in Card 3 (this card only needs the
+  status value plumbed through so the renamed test passes).
 - **Commit:** `feat(board): accept slug or id on get/set-status/remove`
 
 ### Card 3: Error on missing target + require `status` key on `set-status`
@@ -210,7 +215,11 @@ its new error-on-missing.
   `merge` with stale top-level `set_phase` errors; `set-deps` with a stray key errors;
   `set-deps '{"slug":"x"}'` (no depends_on) errors;
   `set-deps '{"slug":"x","depends_on":[]}'` succeeds and clears; `upsert-batch '{"taks":[…]}'`
-  errors; `upsert-batch` with absent/empty `tasks` errors.
+  errors; `upsert-batch` with absent/empty `tasks` errors. Add an atomic-rollback case in
+  `internal/board/store_test.go` (or `cli_test.go`): a `merge` whose `set_status` targets a
+  non-existent slug/id returns an error AND leaves the store unchanged (the remove + upsert
+  steps do not persist — `writeOp` discards the in-memory mutation when the mutate func
+  errors, so assert the on-disk task list is identical to before the failed merge).
 - **Commit:** `feat(board): strict payload shapes for set-deps, upsert-batch, merge`
 
 ## Batch Tests
