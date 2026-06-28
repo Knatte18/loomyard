@@ -31,7 +31,17 @@ func Command() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "ide",
 		Short: "VS Code worktree launcher",
+		// RunE is set so that bare "lyx ide" lists subcommands and "lyx ide bogus"
+		// emits a JSON error envelope instead of falling through to cobra's plain-text help.
+		RunE: clihelp.GroupRunE,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			// Guard: when the ide group command itself is invoked (bare listing or
+			// unknown-subcommand error path), skip layout resolution so that neither
+			// path requires a git repository to be present.
+			if cmd.Name() == "ide" {
+				return nil
+			}
+
 			ctx := cmd.Context()
 
 			// Resolve current working directory; fail fast if the lookup errors.
