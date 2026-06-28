@@ -95,6 +95,34 @@ func TestRunCLI_WeftPathPushOnly(t *testing.T) {
 	}
 }
 
+// TestRunCLI_CommitHelp asserts that "weft commit --help" output documents the fixed
+// commit message and does not advertise a --message flag that does not exist.
+func TestRunCLI_CommitHelp(t *testing.T) {
+	t.Parallel()
+
+	var out bytes.Buffer
+	exitCode := RunCLI(&out, []string{"commit", "--help"})
+
+	if exitCode != 0 {
+		t.Errorf("RunCLI(commit --help) = %d; want 0", exitCode)
+	}
+
+	got := out.String()
+
+	// The Long text documents the fixed commit message string.
+	if !strings.Contains(got, "weft sync") {
+		t.Errorf("commit --help output missing fixed message string %q; got:\n%s", "weft sync", got)
+	}
+
+	// No --message or -m flag should exist on this command.
+	if strings.Contains(got, "--message") {
+		t.Errorf("commit --help output unexpectedly contains --message flag; got:\n%s", got)
+	}
+	if strings.Contains(got, "-m,") || strings.Contains(got, "-m ") {
+		t.Errorf("commit --help output unexpectedly contains -m flag; got:\n%s", got)
+	}
+}
+
 // TestRunCLI_StatusWithMinimalFixture tests the status subcommand via cwd resolution.
 func TestRunCLI_StatusWithMinimalFixture(t *testing.T) {
 	// Serial test: uses t.Chdir to test cwd-resolution entry point.
@@ -126,7 +154,7 @@ func TestRunCLI_StatusWithMinimalFixture(t *testing.T) {
 		t.Errorf("ok should be true; got false. Error: %v", jsonOut["error"])
 	}
 
-	// Junction reporting has moved to warp status; weft status exposes only content-sync fields.
+	// Junction reporting has moved to warp pairs; weft status exposes only content-sync fields.
 	if _, hasWorktree := jsonOut["weft_worktree"]; !hasWorktree {
 		t.Errorf("weft_worktree field missing from status output")
 	}
