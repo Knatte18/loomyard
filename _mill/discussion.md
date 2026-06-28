@@ -52,12 +52,20 @@ evolving artifact wired to a launcher.
     (idempotent) so the agent's black-box `git status` stays clean.
   - Launch **`claude --dangerously-skip-permissions "<instruction>"`** as an
     interactive TUI, **cwd = Hub host repo**, inheriting the terminal stdio/env;
-    wait for it and propagate its exit code.
+    wait for it and surface its exit status. **Exit-code caveat:** `sandbox.cmd`
+    runs the tool via `go run`, which collapses any non-zero child exit to `1`, so
+    propagation is best-effort (zero vs. non-zero only) — the exact claude exit
+    code does not survive the wrapper. The Go tool should still return the child's
+    code (so a direct `go run` caller sees it), but document that `sandbox.cmd`
+    surfaces only success/failure.
   - Default instruction: `Read ./SANDBOX-SUITE.md and follow the instructions in
     it exactly.` Overridable via a `-prompt` flag; claude binary overridable via
     `-claude`.
   - If the Hub does not exist, **error** with a message telling the operator to run
-    the build first (no auto-build).
+    the build first (no auto-build). The existence check is on the **host subdir**
+    (`<parent>/lyx-test-HUB/lyx-test`, the `hostDirName` clone target with a real
+    `.git`), not the bare `lyx-test-HUB` Hub dir — the host subdir is the cwd, the
+    `SANDBOX-SUITE.md` write target, and the `.git/info/exclude` target.
 - Update `docs/sandbox-hub.md` to document the `suite` command and workflow (same
   commit).
 
@@ -192,8 +200,13 @@ evolving artifact wired to a launcher.
 ## Constraints
 
 - **Black-box:** the launcher must never hand the agent a path into the lyx source
-  tree; cwd is the Hub host repo and the only inputs are `lyx` (PATH) + the copied
-  scheme.
+  tree; cwd is the Hub host repo and the agent's inputs are `lyx` (PATH) + the
+  copied scheme. **`gh` precondition:** filing findings via `lyx ghissues create`
+  shells out to the `gh` CLI (`internal/ghissues/cli.go`, targeting
+  `Knatte18/loomyard`), so `gh` must be **installed and authenticated** for the
+  capture step to work. The refreshed scheme must state this precondition (and the
+  launcher may optionally warn if `gh` is absent on PATH); "black-box" constrains
+  *source visibility*, not the tool set — `lyx` + `gh` are both expected on PATH.
 - **No headless claude.** Interactive TUI only (`claude "<prompt>"`).
 - **`tools/` stays self-contained** — no import of `internal/paths`; paths derive
   from `-parent`. No `os.Getwd` / `git rev-parse` (path invariant, even though
