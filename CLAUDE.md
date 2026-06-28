@@ -68,17 +68,24 @@ programmatically-driven session *interactive*.
 ## Task completion
 
 Every task that adds a module, changes observable CLI behaviour, or introduces
-cross-cutting infrastructure **must update docs and roadmap as part of the same
-commit** — not as a follow-up. Specifically:
+cross-cutting infrastructure **must update docs as part of the same commit** —
+not as a follow-up. Specifically:
 
-- Mark the milestone ✅ Done in `docs/roadmap.md` (with a link to the module doc
-  if one exists).
 - Update or create the module doc in `docs/modules/` if the change touches a named
   module's design.
 - Update `docs/overview.md` if the module table or execution stack changes.
+- Record new cross-cutting invariants in `CONSTRAINTS.md` (same commit).
 
 A commit that ships behaviour without updating the docs is incomplete. The docs
 are the shared reference — they rot the moment the code moves without them.
+
+**`docs/roadmap.md` is for planned milestones only.** Update it only when a task
+**completes a planned milestone** (mark it ✅ Done, with a link to the module doc
+if one exists) or **adds a new planned milestone**. Do *not* append notes to the
+roadmap for bugfixes, hardening, or ergonomics/polish passes — that is delivered
+work, not a planned goal, and a collection of fixes is not its own milestone.
+Such changes are recorded by git history, the relevant module doc, and
+`CONSTRAINTS.md` invariants — not by the roadmap.
 
 ## Filesystem links (fslink)
 
