@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussed
 slug: cli-help-ergonomics
 branch: cli-help-ergonomics
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-06-28T14:19:51Z'
+discussed  '2026-06-28T14:48:47Z'
 ```
