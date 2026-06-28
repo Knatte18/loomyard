@@ -134,6 +134,16 @@ func Command() *cobra.Command {
 	commitCmd := &cobra.Command{
 		Use:   "commit",
 		Short: "Commit weft changes",
+		Long: `Stages changes in the configured pathspec and commits them to the weft worktree.
+
+The commit message is always the fixed string "weft sync" — it is not generated
+from changed files and cannot be customized with a flag.
+
+Staging is scoped to the directories listed in the weft config (default: _lyx).
+
+Related commands:
+  lyx weft push   — commit then push in the same process
+  lyx weft sync   — commit then async-push (detached child process)`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
