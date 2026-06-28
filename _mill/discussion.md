@@ -46,9 +46,11 @@ This task owns only the **producing** side (create issues). The **consuming** si
   reporting step relies on an agent that has *only* `lyx.exe` on PATH discovering this
   command via `lyx ghissues create --help`. Therefore:
   - The `ghissues` parent command **must** have a `Short`, and the `create` command
-    **must** have both a `Short` and a `Long`. (Missing `Short` also fails the
-    cobra-drift / JSON-help guards in `cmd/lyx/jsonhelp_test.go`, which assert
-    `short` is non-empty at the module level.)
+    **must** have both a `Short` and a `Long`. (A missing `Short` anywhere in the tree
+    is caught generically by `cmd/lyx/drift_test.go`'s recursive `newRoot()` walk
+    (`TestDriftGuard_AllCommandsHaveShort`). The `cmd/lyx/jsonhelp_test.go` tests do
+    **not** walk all modules — they hardcode `board`/`warp remove` — so `ghissues`
+    JSON-help coverage is something the plan must add explicitly, see Testing.)
   - The `create` `Long` must include concrete usage examples — at minimum
     `lyx ghissues create "title" -b -` (with prose stating **`-` means read the body
     from stdin**) and `lyx ghissues create "title" --label enhancement`.
@@ -294,8 +296,10 @@ What mill-plan needs to know about the codebase:
   `*exec.ExitError`→exit-code structure for the real gh runner. `proc.HideWindow`
   (`internal/proc/proc_windows.go`) prevents a console flash on Windows — call it
   for any subprocess.
-- **Binary discovery**: `exec.LookPath("gh")` with a graceful error is the
-  established pattern (`internal/muxpoc/review.go:47`, `internal/muxpoc/up.go:77`).
+- **Binary discovery**: use `exec.LookPath("gh")` with a graceful error. The
+  LookPath-with-graceful-error idiom is established in `internal/muxpoc/review.go:47`
+  and `internal/muxpoc/up.go:77` (those sites look up `"claude"`, not `"gh"` — the
+  precedent is the pattern, not the binary name).
 - **Registration** (`cmd/lyx/main.go`): add
   `"github.com/Knatte18/loomyard/internal/ghissues"` to the import block
   (lines 22-30), add `ghissues.Command(),` to the `root.AddCommand(...)` call
