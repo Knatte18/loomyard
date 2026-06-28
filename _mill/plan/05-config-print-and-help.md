@@ -31,6 +31,7 @@ success (exit 0, not wrapped); only errors are JSON. Path access goes through
   - `internal/output/output.go`
 - **Edits:**
   - `internal/configcli/configcli.go`
+  - `internal/configcli/configcli_integration_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Requirements:**
