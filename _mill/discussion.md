@@ -123,6 +123,12 @@ This task owns only the **producing** side (create issues). The **consuming** si
 
 - Decision: `--label` is repeatable and defaults to `["bug"]` when unset. Any
   supplied `--label` flags replace the default. No keyword/title heuristic.
+  **Implementation note:** declare the flag as a pflag `StringArray` with default
+  value `[]string{"bug"}` — **not** `StringSlice` (which CSV-splits values, so a
+  label containing a comma would be mangled). pflag's "first explicit `Set` replaces
+  the default slice, subsequent `Set`s append" semantics is what makes a supplied
+  `--label enhancement` yield exactly `["enhancement"]` (not `["bug","enhancement"]`).
+  Do **not** hand-roll seed-then-append logic, which would defeat the replacement.
 - Rationale: Explicit and predictable for an autonomous caller; the agent decides
   the label, the tool does not guess. `bug` is the right default for a bug-reporter.
 - Rejected: *Auto bug-vs-enhancement heuristic from title text* (like
@@ -144,7 +150,13 @@ This task owns only the **producing** side (create issues). The **consuming** si
   (e.g. `var runGH = realRunGH`) plus a package-level stdin reader seam
   (e.g. `var stdin io.Reader = os.Stdin`). Tests override both to assert the exact
   argument vector passed to `gh` and to feed stdin, with no real `gh` call or
-  network.
+  network. **Return contract:** `runGH` mirrors `gitexec.RunGit`'s signature —
+  `func(args []string) (stdout, stderr string, exitCode int, err error)`. The
+  production `realRunGH` first does `exec.LookPath("gh")`; a not-found result is
+  surfaced as a non-nil `err` with `exitCode == -1` (distinct from a found-but-failed
+  gh, which returns `err == nil`, `exitCode > 0`, and gh's message in `stderr`). This
+  lets the handler branch into three distinct outcomes — gh-not-found, gh-non-zero-exit
+  (surface `stderr`), and success — each with its own error message.
 - Rationale: The codebase has no external-command mock; the established alternative
   is a `*_SKIP` env gate (board/weft), but a skip env would only no-op the call —
   it could not verify that the correct `gh issue create --repo … --title … --label …`
@@ -273,9 +285,12 @@ TDD candidates / scenarios to cover:
   `ok:true`, `url` present, `number` omitted (success not failed on parse miss).
 - **Number parsing**: URL ending `/issues/123` → `number == 123` (int, not string).
 - **Registration smoke**: `lyx ghissues` (no subcommand) lists `create`; covered by
-  the root help tree (`cmd/lyx/helptree_test.go` / `jsonhelp_test.go` may need a new
-  entry — mill-plan should check whether those tests enumerate modules and update
-  expectations to include `ghissues`).
+  the root help tree. **The plan must add `"ghissues"` to the `requiredModules` lists
+  in both `cmd/lyx/helptree_test.go` and `cmd/lyx/jsonhelp_test.go`.** Those tests
+  assert required-modules ⊆ rendered output (a *superset* check), so they pass whether
+  or not `ghissues` is registered — without adding `ghissues` to `requiredModules`,
+  the registration coverage is vacuous. Adding it makes the tests actually fail if
+  the `cmd/lyx/main.go` wiring (import + `AddCommand` + `Long` list) is missing.
 
 Injection safety is structural (argv passed to `exec.Command`, no shell), so it needs
 an assertion that title/body are passed as single argv elements rather than a
