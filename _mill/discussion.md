@@ -138,6 +138,10 @@ the cross-cutting error-format work are a sibling task (not touched here).
 - Decision: `store.SetStatus` (renamed from `SetPhase`) returns a "task not found: …"
   error when no task matches; `set-status` surfaces it, and `merge` fails atomically if
   its status target is missing. `remove` already errors on missing — unchanged.
+- `get` is the exception: it is a **query, not a mutation**, so a valid-but-absent
+  slug/id keeps returning `task:null` (not an error). The malformed-payload cases
+  (no `slug`/`id` key, or an unknown key) still error — that is a bad request, distinct
+  from a well-formed lookup that finds nothing.
 - Rationale: The silent no-op was the masking half of B1; operators got zero feedback on
   a typo'd target. Erroring is the only way the CLI tells the truth. No production caller
   relies on idempotent set-phase (only tests), so the change is safe.
@@ -169,6 +173,11 @@ the cross-cutting error-format work are a sibling task (not touched here).
   - **Single-target lookup payloads** (`get`, `set-status`, `remove`): allowed set is
     `{slug, id}` for `get`/`remove` and `{slug, id, status}` for `set-status` — a stale
     `phase`/`id_or_slug` errors instead of leaving `Status` nil and silently clearing.
+  - **`upsert-batch` wrapper:** allowed top-level set `{tasks}` — a typo'd wrapper key
+    (`"taks"`) errors instead of decoding to an empty batch that silently succeeds with
+    `count:0`. An absent or empty `tasks` array is also an error (nothing to upsert is a
+    mistake, not a no-op). Each element of `tasks` is then validated by the upsert-fields
+    allowlist at the store chokepoint.
   - **`set-deps`:** allowed set `{slug, depends_on}`, with `depends_on` **required** —
     `set-deps` replaces the dependency list wholesale, so a typo'd key (`"depends"`) or an
     absent `depends_on` would otherwise silently clear a task's deps (a W11-class silent
@@ -348,6 +357,12 @@ TDD candidates (write the failing test first, then implement):
   first-created task (whose ID is 0); an absent `id` key is distinguished from `id:0`
   (presence keyed on map membership, not the int zero-value). Cover the int-vs-float64
   JSON-number decode alongside it.
+- **upsert-batch wrapper (round-3 review note).** A typo'd wrapper key
+  (`upsert-batch '{"taks":[…]}'`) errors instead of succeeding with `count:0`; an absent
+  or empty `tasks` array errors.
+- **`get` not-found stays a query (round-3 review note).** `get` with a valid slug/id
+  that matches no task returns `task:null` (not an error); `get` with no `slug`/`id` key
+  or an unknown key errors as a malformed payload.
 - **status round-trips on upsert.** `upsert '{"slug":"x","status":"active"}'` creates a
   task whose stored `status` is `active` and renders the `[active]` badge in `Home.md`.
 - **Manifest cleanup (W13).** Render once with `home: Home.md`; change config to
@@ -407,3 +422,9 @@ existing passing tests for unaffected paths must stay green.
   replaces deps wholesale, so a typo'd key would be a silent-clear footgun.
 - **Q (review r2):** Is `id=0` a valid lookup? **A:** Yes — the first task gets ID 0, so
   key presence is detected via map membership, never the int zero-value.
+- **Q (review r3):** Does the `upsert-batch` wrapper reject unknown keys? **A:** Yes —
+  allowed top-level `{tasks}`; a typo'd wrapper or an absent/empty `tasks` errors instead
+  of silently succeeding with `count:0`.
+- **Q (review r3):** Does `get` error on a missing target? **A:** No — `get` is a query;
+  a valid-but-absent slug/id returns `task:null`. Only malformed payloads (no key /
+  unknown key) error. Error-on-missing applies to mutations (`set-status`/`remove`/`merge`).
