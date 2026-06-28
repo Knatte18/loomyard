@@ -87,6 +87,15 @@ Running "lyx board" with no subcommand lists available subcommands without requi
 	upsertCmd := &cobra.Command{
 		Use:   "upsert [json-payload]",
 		Short: "Create or update a single task",
+		Long: `Create or update a task. Required field: "slug". Optional fields:
+  "title"      string — human-readable title
+  "brief"      string — one-line summary shown in board listings
+  "body"       string — full markdown body (proposal / background)
+  "group"      string — layer or group label
+  "depends_on" array  — list of slug strings this task depends on
+
+Example:
+  lyx board upsert '{"slug":"my-task","title":"My Task","brief":"Short description"}'`,
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			// cobra strips the "upsert" token; json payload is now args[0].
 			if len(args) == 0 {
@@ -108,6 +117,11 @@ Running "lyx board" with no subcommand lists available subcommands without requi
 	upsertBatchCmd := &cobra.Command{
 		Use:   "upsert-batch [json-payload]",
 		Short: "Create or update multiple tasks atomically",
+		Long: `Create or update multiple tasks in one atomic write. Payload: {"tasks": [...]}.
+Each task object uses the same fields as "lyx board upsert" (slug required).
+
+Example:
+  lyx board upsert-batch '{"tasks":[{"slug":"t1","title":"Task one"},{"slug":"t2","title":"Task two"}]}'`,
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			if len(args) == 0 {
 				return outputError(out, "json payload required")
@@ -129,6 +143,13 @@ Running "lyx board" with no subcommand lists available subcommands without requi
 	setPhaseCmd := &cobra.Command{
 		Use:   "set-phase [json-payload]",
 		Short: "Set or clear the phase of a task",
+		Long: `Set or clear the phase (status) of a task. Fields:
+  "id_or_slug" string|number — task slug (string) or numeric ID
+  "phase"      string|null   — new phase value; null clears the phase
+
+Example:
+  lyx board set-phase '{"id_or_slug":"my-task","phase":"active"}'
+  lyx board set-phase '{"id_or_slug":"my-task","phase":null}'`,
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			if len(args) == 0 {
 				return outputError(out, "json payload required")
@@ -151,6 +172,11 @@ Running "lyx board" with no subcommand lists available subcommands without requi
 	removeCmd := &cobra.Command{
 		Use:   "remove [json-payload]",
 		Short: "Remove a task",
+		Long: `Remove a task by slug or numeric ID. Fields:
+  "id_or_slug" string|number — task slug (string) or numeric ID
+
+Example:
+  lyx board remove '{"id_or_slug":"my-task"}'`,
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			if len(args) == 0 {
 				return outputError(out, "json payload required")
@@ -172,6 +198,11 @@ Running "lyx board" with no subcommand lists available subcommands without requi
 	getCmd := &cobra.Command{
 		Use:   "get [json-payload]",
 		Short: "Fetch a single task",
+		Long: `Fetch a single task by slug or numeric ID. Returns {"task":null} if not found (not an error). Fields:
+  "id_or_slug" string|number — task slug (string) or numeric ID
+
+Example:
+  lyx board get '{"id_or_slug":"my-task"}'`,
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			if len(args) == 0 {
 				return outputError(out, "json payload required")
@@ -223,6 +254,13 @@ Running "lyx board" with no subcommand lists available subcommands without requi
 	mergeCmd := &cobra.Command{
 		Use:   "merge [json-payload]",
 		Short: "Atomically remove, upsert, and set-phase",
+		Long: `Remove tasks, upsert a task, and set a phase in one atomic write. All three operations are optional. Fields:
+  "remove_slugs" array  — slug strings to remove (omit or [] to skip)
+  "upsert"       object — task fields to upsert (omit to skip; same fields as "lyx board upsert")
+  "set_phase"    array  — [id_or_slug, phase] pair to set (omit or [] to skip)
+
+Example:
+  lyx board merge '{"remove_slugs":["old"],"upsert":{"slug":"new","title":"New task"},"set_phase":["new","active"]}'`,
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			if len(args) == 0 {
 				return outputError(out, "json payload required")
@@ -257,6 +295,12 @@ Running "lyx board" with no subcommand lists available subcommands without requi
 	setDepsCmd := &cobra.Command{
 		Use:   "set-deps [json-payload]",
 		Short: "Replace the depends_on list for a task",
+		Long: `Replace the full depends_on list for a task. This overwrites the existing list. Fields:
+  "slug"       string — task slug to update
+  "depends_on" array  — complete list of dependency slug strings (replaces existing)
+
+Example:
+  lyx board set-deps '{"slug":"my-task","depends_on":["dep-a","dep-b"]}'`,
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			if len(args) == 0 {
 				return outputError(out, "json payload required")

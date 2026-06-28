@@ -124,6 +124,11 @@ func Command() *cobra.Command {
 	commitCmd := &cobra.Command{
 		Use:   "commit",
 		Short: "Commit weft changes",
+		Long: `Stage and commit all pathspec-scoped changes in the weft worktree.
+The commit message is auto-generated from the set of changed files.
+
+Use "lyx weft push" to commit and push in one step.
+Use "lyx weft sync" to commit and push asynchronously (non-blocking).`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
