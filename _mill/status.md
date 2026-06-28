@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-w16-reject-unknown-subcommand
+phase: approved-config-print-and-help
 slug: cli-help-ergonomics
 branch: cli-help-ergonomics
 plan: _mill/plan
@@ -22,6 +22,7 @@ planned  '2026-06-28T15:06:22Z'
 implementing  '2026-06-28T15:48:09Z'
 approved-foundation-error-envelope  '2026-06-28T15:56:48Z'
 approved-w16-reject-unknown-subcommand  '2026-06-28T16:11:44Z'
+approved-config-print-and-help  '2026-06-28T16:26:02Z'
 ```
 
 ## Batches
@@ -39,9 +40,10 @@ batches:
     start_sha: 9a7178be97144cb87033da4d0fb936b540027562
     commit_sha: fdbd24383981d20dff407c22f2f453b2d82a0aee
   - name: config-print-and-help
-    state: running
+    state: approved
     implementer_session: 4d682616-36bb-4d1d-83e6-9906f683d630
     start_sha: 4a38ac273a73ec5db62bfcfbe353d0601ab93646
+    commit_sha: 43d433dc2beaf107315290a56de5602c361f43bc
   - name: warp-features
     state: pending
   - name: weft-commit-doc
