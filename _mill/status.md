@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: ghissues-module
 branch: ghissues-module
 plan: _mill/plan
@@ -28,6 +28,7 @@ approved-wire-and-docs  '2026-06-28T14:46:42Z'
 holistic-reviewing  '2026-06-28T14:47:07Z'
 holistic-approved  '2026-06-28T14:51:23Z'
 done  '2026-06-28T14:51:44Z'
+pr-pending  '2026-06-28T14:53:08Z'
 ```
 
 ## Batches
