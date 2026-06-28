@@ -8,6 +8,7 @@ package muxpoc
 
 import (
 	"bytes"
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -27,8 +28,8 @@ func TestRunCLINoArg(t *testing.T) {
 	}
 }
 
-// TestRunCLIUnknownSubcommandFails verifies that an unknown subcommand produces
-// the "unknown command" cobra message and exits 1.
+// TestRunCLIUnknownSubcommandFails verifies that an unknown subcommand exits 1
+// and emits a JSON error envelope with ok=false.
 func TestRunCLIUnknownSubcommandFails(t *testing.T) {
 	var out bytes.Buffer
 	code := RunCLI(&out, []string{"bogus"})
@@ -36,8 +37,18 @@ func TestRunCLIUnknownSubcommandFails(t *testing.T) {
 	if code != 1 {
 		t.Errorf("RunCLI(bogus) = %d; want 1", code)
 	}
-	if got := out.String(); !strings.Contains(got, "unknown command") {
-		t.Errorf("RunCLI(bogus) output = %q; want \"unknown command\" substring", got)
+
+	// GroupRunE wraps the error in a JSON envelope; parse and assert ok=false.
+	var env map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
+		t.Fatalf("RunCLI(bogus) output is not valid JSON: %v; got: %q", err, out.String())
+	}
+	if ok, _ := env["ok"].(bool); ok {
+		t.Errorf("RunCLI(bogus) ok = true; want false")
+	}
+	// The error text contains "unknown" (GroupRunE produces "unknown subcommand").
+	if errMsg, _ := env["error"].(string); !strings.Contains(errMsg, "unknown") {
+		t.Errorf("RunCLI(bogus) error = %q; want \"unknown\" substring", errMsg)
 	}
 }
 

@@ -79,10 +79,14 @@ func TestRunDispatchesToWarp(t *testing.T) {
 			t.Errorf("RunCLI(bogus) = %d; want 1", got)
 		}
 
-		// Under cobra, an unknown subcommand prints plain text ("unknown command …")
-		// rather than the old JSON envelope. Assert the cobra message substring.
-		if got := buf.String(); !strings.Contains(got, "unknown command") {
-			t.Errorf("RunCLI(bogus) output = %q; want \"unknown command\" substring", got)
+		// GroupRunE now wraps the error in a JSON envelope; parse and assert ok=false.
+		result := decodeResult(t, &buf)
+		if ok, _ := result["ok"].(bool); ok {
+			t.Errorf("RunCLI(bogus) ok = %v; want false", result["ok"])
+		}
+		// The error text contains "unknown" (GroupRunE produces "unknown subcommand").
+		if errMsg, _ := result["error"].(string); !strings.Contains(errMsg, "unknown") {
+			t.Errorf("RunCLI(bogus) error = %q; want \"unknown\" substring", errMsg)
 		}
 	})
 

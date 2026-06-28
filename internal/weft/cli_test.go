@@ -32,15 +32,13 @@ func TestRunCLI_NoArgs(t *testing.T) {
 	}
 }
 
-// TestRunCLI_UnknownSubcommand verifies that an unknown subcommand produces the
-// cobra "unknown command" message and exits 1.
+// TestRunCLI_UnknownSubcommand verifies that an unknown subcommand exits 1 and
+// emits a JSON error envelope with ok=false.
 func TestRunCLI_UnknownSubcommand(t *testing.T) {
-	// Use a real weft fixture so paths.Resolve succeeds in the PersistentPreRunE
-	// and the cobra dispatch table is reached before any resolution is done.
-	// (cobra routes unknown commands before invoking PersistentPreRunE, so the
-	// fixture is only needed for safety; the test would pass in a bare dir too.)
-	fixture := lyxtest.CopyWeft(t)
-	t.Chdir(fixture.WeftPath)
+	// A temp dir is sufficient: GroupRunE fires before PersistentPreRunE reaches
+	// layout resolution, so no git repo is needed.
+	tmpDir := t.TempDir()
+	t.Chdir(tmpDir)
 
 	var out bytes.Buffer
 	exitCode := RunCLI(&out, []string{"unknown"})
@@ -48,8 +46,18 @@ func TestRunCLI_UnknownSubcommand(t *testing.T) {
 	if exitCode != 1 {
 		t.Errorf("RunCLI with unknown subcommand returned %d; want 1", exitCode)
 	}
-	if !strings.Contains(out.String(), "unknown command") {
-		t.Errorf("RunCLI(unknown) output missing \"unknown command\"; got: %q", out.String())
+
+	// GroupRunE wraps the error in a JSON envelope; parse and assert ok=false.
+	var env map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
+		t.Fatalf("RunCLI(unknown) output is not valid JSON: %v; got: %q", err, out.String())
+	}
+	if ok, _ := env["ok"].(bool); ok {
+		t.Errorf("RunCLI(unknown) ok = true; want false")
+	}
+	// The error text contains "unknown" (GroupRunE produces "unknown subcommand").
+	if errMsg, _ := env["error"].(string); !strings.Contains(errMsg, "unknown") {
+		t.Errorf("RunCLI(unknown) error = %q; want \"unknown\" substring", errMsg)
 	}
 }
 
