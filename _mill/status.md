@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: ghissues-module
 branch: ghissues-module
-plan: null
+plan: _mill/plan
 parent: main
 task: ghissues module — file LoomYard bugs as GitHub issues
 task_description: |
@@ -19,4 +19,5 @@ discussion-fix-r1  '2026-06-28T13:48:59Z'
 discussed  '2026-06-28T13:49:14Z'
 discussion-fix-r2  '2026-06-28T14:08:43Z'
 discussed  '2026-06-28T14:09:00Z'
+planning  '2026-06-28T14:11:48Z'
 ```
