@@ -27,7 +27,9 @@ implementing  '2026-06-28T15:48:09Z'
 ```yaml
 batches:
   - name: foundation-error-envelope
-    state: pending
+    state: running
+    implementer_session: 45d7a55a-8e13-41ab-b137-bdc8109b9785
+    start_sha: e9ee248fdd88604710495825405b06e303ef684a
   - name: w16-reject-unknown-subcommand
     state: pending
   - name: config-print-and-help
