@@ -35,12 +35,24 @@ This task owns only the **producing** side (create issues). The **consuming** si
   `RunCLI(out io.Writer, args []string) int` seam, following the **warp variant**
   (no `PersistentPreRunE`, `clihelp.WrapRun` handlers, positional `args[0]` = title).
 - One subcommand: `lyx ghissues create <title> [flags]`.
-  - `--title` is the positional `args[0]`.
+  - `--title` is the single positional arg. The command uses `cobra.ExactArgs(1)`
+    so zero or 2+ positional args are rejected by cobra before the RunE runs.
   - `--body` / `-b` — issue body (markdown). When the value is exactly `-`, read the
     entire body from stdin (so agents can pipe long reports). Optional.
   - `--label` — repeatable; **defaults to `bug`** when not supplied; any supplied
     `--label` flags *replace* the default (so `--label enhancement` files an
     enhancement). No title-text auto-heuristic.
+- **Rich `--help` is in-scope, not optional.** The sandbox-suite (task 031)
+  reporting step relies on an agent that has *only* `lyx.exe` on PATH discovering this
+  command via `lyx ghissues create --help`. Therefore:
+  - The `ghissues` parent command **must** have a `Short`, and the `create` command
+    **must** have both a `Short` and a `Long`. (Missing `Short` also fails the
+    cobra-drift / JSON-help guards in `cmd/lyx/jsonhelp_test.go`, which assert
+    `short` is non-empty at the module level.)
+  - The `create` `Long` must include concrete usage examples — at minimum
+    `lyx ghissues create "title" -b -` (with prose stating **`-` means read the body
+    from stdin**) and `lyx ghissues create "title" --label enhancement`.
+  - The help-tree guard tests must be updated to include `ghissues` (see Testing).
 - Target repo is a **hardcoded constant** `Knatte18/loomyard` baked into the binary.
   No flag, no env var, no config file overrides it.
 - Wraps the **`gh` CLI** (`gh issue create --repo Knatte18/loomyard ...`). Discovery
@@ -123,12 +135,15 @@ This task owns only the **producing** side (create issues). The **consuming** si
 
 - Decision: `--label` is repeatable and defaults to `["bug"]` when unset. Any
   supplied `--label` flags replace the default. No keyword/title heuristic.
-  **Implementation note:** declare the flag as a pflag `StringArray` with default
-  value `[]string{"bug"}` — **not** `StringSlice` (which CSV-splits values, so a
-  label containing a comma would be mangled). pflag's "first explicit `Set` replaces
-  the default slice, subsequent `Set`s append" semantics is what makes a supplied
-  `--label enhancement` yield exactly `["enhancement"]` (not `["bug","enhancement"]`).
-  Do **not** hand-roll seed-then-append logic, which would defeat the replacement.
+  **Implementation note:** declare the flag as a pflag `StringArray` with an **empty**
+  default (`[]string{}`) — **not** `StringSlice` (which CSV-splits values, so a label
+  containing a comma would be mangled). Apply the `bug` default **explicitly in the
+  RunE**, not as the pflag default: `if len(labels) == 0 { labels = []string{"bug"} }`.
+  This is clearer and avoids depending on pflag's "first-Set-replaces-default"
+  subtlety: with an empty pflag default, supplied `--label enhancement` yields exactly
+  `["enhancement"]`, and an unset flag is filled with `["bug"]` by the RunE. Keep a
+  test asserting `--label enhancement` produces `["enhancement"]` (the `bug` default
+  is replaced, not appended).
 - Rationale: Explicit and predictable for an autonomous caller; the agent decides
   the label, the tool does not guess. `bug` is the right default for a bug-reporter.
 - Rejected: *Auto bug-vs-enhancement heuristic from title text* (like
@@ -168,18 +183,49 @@ This task owns only the **producing** side (create issues). The **consuming** si
   *real gh against a throwaway repo in tests* — network/auth-dependent, flaky, and
   would actually file issues.
 
+### rich-help-in-scope
+
+- Decision: Discoverable `--help` is a first-class deliverable, not a nicety. The
+  `ghissues` parent has a `Short`; `create` has a `Short` and a `Long` with concrete
+  examples (`-b -` for stdin, `--label enhancement`), and the `Long` explicitly states
+  that `-` means "read the body from stdin".
+- Rationale: The sandbox-suite (task 031) reporting loop depends on an agent that has
+  only `lyx.exe` on PATH — no source, no skills, no docs. Its *only* way to learn how
+  to file a bug is `lyx ghissues create --help`. If the help text is thin, the whole
+  downstream reporting step is unusable. A missing `Short` also fails the existing
+  cobra-drift / JSON-help guard tests.
+- Rejected: *Terse/auto-generated help only* — leaves the agent unable to discover the
+  stdin and label conventions; breaks the 031 dependency.
+
+### arg-validation-exactargs
+
+- Decision: `create` uses `cobra.Args = cobra.ExactArgs(1)` so exactly one positional
+  (the title) is required; zero or 2+ positionals are rejected by cobra before the
+  RunE runs.
+- Rationale: Predictable, explicit failure for a programmatic caller (e.g. an
+  unquoted multi-word title surfaces as "accepts 1 arg(s)" rather than silently
+  filing an issue titled with only the first word). Less hand-rolled `len(args)`
+  checking in the RunE.
+- Rejected: *Manual `len(args)` check* (warp-style) — works, but `ExactArgs(1)` is the
+  idiomatic cobra mechanism and gives a consistent error message for free.
+
 ## Technical context
 
 What mill-plan needs to know about the codebase:
 
 - **Module shape (warp variant).** Follow `internal/warp/warp.go`:
-  `Command()` builds a parent `&cobra.Command{Use:"ghissues", ...}` with **no**
-  `PersistentPreRunE` and **no** persistent flags. The `create` subcommand uses
+  `Command()` builds a parent `&cobra.Command{Use:"ghissues", Short: ...}` (the
+  parent **must** carry a non-empty `Short`) with **no** `PersistentPreRunE` and
+  **no** persistent flags. The `create` subcommand carries a `Short`, a `Long` (with
+  examples — see rich-help-in-scope), `Args: cobra.ExactArgs(1)`, and
   `RunE: clihelp.WrapRun(runCreate)` where `runCreate` is
-  `func(out io.Writer, args []string) int`. Subcommand-local flags (`--body`/`-b`,
-  `--label`) are declared on the `create` command and read inside the RunE via a
-  closure over the `*cobra.Command` (see warp's `removeCmd` closure pattern at
-  `internal/warp/warp.go:88-110`). `RunCLI` is the one-liner
+  `func(out io.Writer, args []string) int`. With `ExactArgs(1)`, the RunE can read the
+  title as `args[0]` without a `len(args)` guard. Subcommand-local flags
+  (`--body`/`-b`, `--label`) are declared on the `create` command and read inside the
+  RunE via a closure over the `*cobra.Command` (see warp's `removeCmd` closure pattern
+  at `internal/warp/warp.go:88-110`). Apply the label default in the RunE
+  (`if len(labels) == 0 { labels = []string{"bug"} }`), and declare `--label` with
+  pflag's `StringArray` (empty default), not `StringSlice`. `RunCLI` is the one-liner
   `return clihelp.Execute(Command(), out, args)`.
 - **`clihelp.WrapRun`** (`internal/clihelp/exec.go:108-118`) bridges the
   `func(out,args) int` handler into a cobra `RunE`, checking `ShouldAbort` and
@@ -269,13 +315,15 @@ TDD candidates / scenarios to cover:
   received is `["issue","create","--repo","Knatte18/loomyard","--title","My bug
   title","--label","bug"]`.
 - **Custom labels**: `["create","T","--label","enhancement","--label","p1"]` →
-  argv contains `--label enhancement --label p1` and **not** the default `bug`.
+  argv contains `--label enhancement --label p1` and **not** the default `bug`
+  (asserts the RunE default is replaced, not appended).
 - **Body via flag**: `-b "details"` → argv contains `--body details`.
 - **Body via stdin**: `-b -` with the `stdin` seam set to a reader → argv `--body`
   carries the full piped content; assert multi-line content survives intact.
 - **Body omitted**: no `--body` → argv has no `--body` element; still `ok:true`.
-- **Missing title**: `["create"]` → `ok:false`, exit 1, usage-style error; `runGH`
-  is **not** called.
+- **Wrong arg count (ExactArgs)**: `["create"]` (zero positionals) and
+  `["create","a","b"]` (two positionals) → non-zero exit, cobra's "accepts 1 arg(s)"
+  error; `runGH` is **not** called.
 - **gh not found**: stub the LookPath/runner seam to report gh-missing → `ok:false`,
   exit 1, message names gh/PATH; (verify the not-found path is distinct from a
   non-zero-exit path).
@@ -291,6 +339,17 @@ TDD candidates / scenarios to cover:
   or not `ghissues` is registered — without adding `ghissues` to `requiredModules`,
   the registration coverage is vacuous. Adding it makes the tests actually fail if
   the `cmd/lyx/main.go` wiring (import + `AddCommand` + `Long` list) is missing.
+- **Help-tree subcommand guard**: add a `ghissues` case to the table in
+  `cmd/lyx/helptree_test.go`'s `TestHelpTree_VerbModuleSubcommands` with
+  `wantSubs: []string{"create"}`, so `lyx ghissues` (no subcommand) is asserted to
+  exit 0 and list `create`. This is the cobra-drift guard the orch thread flagged.
+- **Rich-help / Short guard**: the JSON-help tests in `cmd/lyx/jsonhelp_test.go`
+  assert `short` is non-empty at the module level. The plan should add coverage that
+  `lyx ghissues --json` reports a non-empty `short` and lists `create`, and that
+  `lyx ghissues create --help --json` reports a non-empty `short` and exposes the
+  `--body` and `--label` flags (mirror `TestJSONHelp_LeafWithFlag` for `warp remove`).
+  This guards the in-scope requirement that the sandbox agent can discover the command
+  and its stdin/label conventions via `--help`.
 
 Injection safety is structural (argv passed to `exec.Command`, no shell), so it needs
 an assertion that title/body are passed as single argv elements rather than a
@@ -318,3 +377,19 @@ dedicated escaping test.
 - **Q (tie-breaker):** gh create has no `--json`; how to return number+url? **A:**
   Capture the URL gh prints to stdout; parse the trailing segment as `number`; on a
   parse miss return `ok:true` with `url` and omit `number` rather than failing.
+- **Q (orch-thread, post-approval fold-in):** Is rich `--help` optional? **A:** No —
+  it is in-scope. The sandbox-suite (031) agent has only `lyx.exe` and discovers this
+  command via `lyx ghissues create --help`. `create` needs a `Short` + a `Long` with
+  examples (`-b -` for stdin, `--label enhancement`), the parent needs a `Short`, and
+  the cobra help-tree guard tests must be updated to include `ghissues`.
+- **Q (orch-thread):** How is the `bug` label default applied? **A:** In the RunE
+  (`if len(labels)==0 { labels = []string{"bug"} }`) with `--label` declared as a
+  pflag `StringArray` (empty default) — explicit and clearer than relying on the
+  pflag-default replacement behaviour. Keep the test that `--label enhancement`
+  replaces `bug`.
+- **Q (orch-thread):** How are positional args validated? **A:** `cobra.ExactArgs(1)`
+  on `create` — reject zero or 2+ positionals explicitly.
+- **Q (orch emphasis):** Capture that **lyx.exe uses Cobra.** **A:** Yes — the module
+  is a Cobra command tree (warp variant): `cobra.Command` parent + `create` subcommand,
+  `cobra.ExactArgs(1)`, `clihelp.WrapRun`, wired into the Cobra root in
+  `cmd/lyx/main.go`, and guarded by the Cobra help-tree drift tests.
