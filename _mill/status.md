@@ -31,8 +31,8 @@ implementing  '2026-06-28T14:18:33Z'
 batches:
   - name: ghissues-module
     state: running
-    implementer_session: 0f214dfb-4853-424e-918e-3182f472261d
-    start_sha: b70b16e06eb771f03580f776c7f7ab0ea7d0a07d
+    implementer_session: 9ba4a209-e31a-4884-80af-f2fc99066579
+    start_sha: be7208cbb4e88cd2ec5c9355d8598d7897687943
   - name: wire-and-docs
     state: pending
 ```
