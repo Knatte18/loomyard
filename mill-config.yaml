@@ -159,10 +159,10 @@ roles:
 
   implementer:
     self_fix_rounds: 2
-    model: sonnet
+    model: sonnethigh
 
   fixer:
-    model: sonnet
+    model: sonnethigh
 
 # ---------------------------------------------------------------------------
 # Notifications
