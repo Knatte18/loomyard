@@ -45,7 +45,9 @@ batches:
     start_sha: 4a38ac273a73ec5db62bfcfbe353d0601ab93646
     commit_sha: 43d433dc2beaf107315290a56de5602c361f43bc
   - name: warp-features
-    state: pending
+    state: running
+    implementer_session: ea7e3da5-26c1-4844-9281-ee4bbb7da83c
+    start_sha: ef76a61874d3ae4dc4aa5ae82f0baea22db3d27b
   - name: weft-commit-doc
     state: pending
   - name: docs-roadmap-constraints
