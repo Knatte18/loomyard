@@ -329,14 +329,14 @@ func TestCLINoArg(t *testing.T) {
 	}
 }
 
-// TestCLIUnknownSubcommand asserts that an unknown subcommand exits 1 and
-// emits "unknown command" in the output. This is cobra's built-in unknown-command
-// message, replacing the legacy "unknown subcommand" plain-text error.
+// TestCLIUnknownSubcommand asserts that an unknown subcommand exits 1 and emits
+// a JSON error envelope with ok=false. GroupRunE handles the unknown-subcommand
+// path, so the output is always a machine-parseable JSON envelope.
 func TestCLIUnknownSubcommand(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
 
-	// An unknown subcommand triggers cobra-level error handling before the
-	// PersistentPreRunE runs, so no seeded cwd is required.
+	// GroupRunE fires before PersistentPreRunE reaches layout resolution, so a
+	// plain temp dir (no board config, no git repo) is sufficient.
 	cwd := t.TempDir()
 	t.Chdir(cwd)
 
@@ -346,9 +346,17 @@ func TestCLIUnknownSubcommand(t *testing.T) {
 		t.Errorf("RunCLI(unknown) exit = %d; want 1\nstdout: %s", exitCode, stdout)
 	}
 
-	// cobra's error text for an unknown subcommand always contains "unknown command".
-	if !strings.Contains(stdout, "unknown command") {
-		t.Errorf("unknown subcommand output does not contain %q; stdout: %s", "unknown command", stdout)
+	// GroupRunE wraps the error in a JSON envelope; parse and assert ok=false.
+	var env map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(stdout)), &env); err != nil {
+		t.Fatalf("RunCLI(unknown) output is not valid JSON: %v; stdout: %q", err, stdout)
+	}
+	if ok, _ := env["ok"].(bool); ok {
+		t.Errorf("RunCLI(unknown) ok = true; want false")
+	}
+	// The error text contains "unknown" (GroupRunE produces "unknown subcommand").
+	if errMsg, _ := env["error"].(string); !strings.Contains(errMsg, "unknown") {
+		t.Errorf("RunCLI(unknown) error = %q; want \"unknown\" substring", errMsg)
 	}
 }
 

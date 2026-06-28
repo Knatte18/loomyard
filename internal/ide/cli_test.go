@@ -7,6 +7,7 @@ package ide
 
 import (
 	"bytes"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -52,8 +53,8 @@ func TestRunCLI_NoArgs(t *testing.T) {
 	}
 }
 
-// TestRunCLI_UnknownSubcommand verifies that an unknown subcommand produces the
-// cobra "unknown command" message and exits 1.
+// TestRunCLI_UnknownSubcommand verifies that an unknown subcommand exits 1 and
+// emits a JSON error envelope with ok=false.
 func TestRunCLI_UnknownSubcommand(t *testing.T) {
 	t.Parallel()
 
@@ -63,8 +64,18 @@ func TestRunCLI_UnknownSubcommand(t *testing.T) {
 	if code != 1 {
 		t.Errorf("RunCLI(unknown) = %d; want 1", code)
 	}
-	if !strings.Contains(out.String(), "unknown command") {
-		t.Errorf("RunCLI(unknown) output missing \"unknown command\"; got: %q", out.String())
+
+	// GroupRunE wraps the error in a JSON envelope; parse and assert ok=false.
+	var env map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
+		t.Fatalf("RunCLI(unknown) output is not valid JSON: %v; got: %q", err, out.String())
+	}
+	if ok, _ := env["ok"].(bool); ok {
+		t.Errorf("RunCLI(unknown) ok = true; want false")
+	}
+	// The error text contains "unknown" (GroupRunE produces "unknown subcommand").
+	if errMsg, _ := env["error"].(string); !strings.Contains(errMsg, "unknown") {
+		t.Errorf("RunCLI(unknown) error = %q; want \"unknown\" substring", errMsg)
 	}
 }
 

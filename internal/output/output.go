@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 )
 
 // Ok writes a JSON response with ok=true plus the supplied fields, and returns exit code 0.
@@ -24,10 +25,12 @@ func Ok(w io.Writer, fields map[string]any) int {
 }
 
 // Err writes a JSON response with ok=false and the given error message, and returns exit code 1.
+// The message is trimmed of leading and trailing whitespace (including newlines) so that
+// embedded tool output such as "fatal: ...\n" does not leak formatting into the JSON field.
 //
 // Marshal errors are ignored (carry-over from board's writeJSON).
 func Err(w io.Writer, msg string) int {
-	data, _ := json.Marshal(map[string]any{"ok": false, "error": msg})
+	data, _ := json.Marshal(map[string]any{"ok": false, "error": strings.TrimSpace(msg)})
 	fmt.Fprintln(w, string(data))
 	return 1
 }

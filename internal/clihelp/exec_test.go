@@ -5,6 +5,7 @@ package clihelp
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"strings"
 	"sync"
@@ -62,8 +63,18 @@ func TestExecute_UnknownSubcommandReturnsOneAndWritesUnknownCommand(t *testing.T
 	if got != 1 {
 		t.Errorf("Execute(bogus) = %d; want 1", got)
 	}
+
+	// The cobra error message must still be present — now embedded in the JSON value.
 	if !strings.Contains(buf.String(), "unknown command") {
 		t.Errorf("Execute(bogus) output = %q; want to contain \"unknown command\"", buf.String())
+	}
+
+	// The output must be a well-formed JSON envelope with ok=false.
+	var env map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(buf.String())), &env); err != nil {
+		t.Errorf("Execute(bogus) output is not valid JSON: %v; output: %q", err, buf.String())
+	} else if ok, _ := env["ok"].(bool); ok {
+		t.Errorf("Execute(bogus) envelope ok = true; want false")
 	}
 }
 

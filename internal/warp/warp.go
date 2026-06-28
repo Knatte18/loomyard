@@ -11,7 +11,7 @@
 //   - checkout: coordinated branch switch across host+weft with junction re-point
 //     (the correctness gap that motivated the module — raw git checkout desyncs).
 //   - reconcile: repair an already-managed pair whose weft side drifted or broke.
-//   - status: paired view of every host↔weft worktree with branch, drift, and
+//   - pairs: paired view of every host↔weft worktree with branch, drift, and
 //     junction-health fields.
 //   - prune: identify and optionally remove stale or orphaned pairs.
 //   - cleanup: delete weft branches whose host sibling is gone, gated on codeguide
@@ -72,27 +72,64 @@ func Command() *cobra.Command {
 		Short: "host↔weft coordination",
 		Long: `warp manages the host↔weft topology for lyx-managed git repositories.
 It owns worktree pairing, coordinated branch switching, and cleanup.`,
+		// RunE is set so that bare "lyx warp" lists subcommands and "lyx warp bogus"
+		// emits a JSON error envelope instead of falling through to cobra's plain-text help.
+		RunE: clihelp.GroupRunE,
 	}
 
-	// clone <host-url> <weft-url> [board-url]
-	cmd.AddCommand(&cobra.Command{
-		Use:   "clone <host-url> <weft-url> [board-url]",
+	// clone [--reset] <host-url> <weft-url> [board-url]
+	var cloneCmd *cobra.Command
+	cloneCmd = &cobra.Command{
+		Use:   "clone [--reset] <host-url> <weft-url> [board-url]",
 		Short: "bootstrap a new hub (host prime + board passenger + weft prime)",
-		RunE:  clihelp.WrapRun(runClone),
-	})
+		Long: `Clone three repositories into a new hub directory (<parent>/<host-name>-HUB):
+
+  <host-name>      — host prime (the main working repo)
+  <host-name>-weft — weft prime (lyx artefacts: config, codeguide, weft commits)
+  _board           — board passenger (task-tracker wiki)
+
+The board URL defaults to <weft-url>.wiki.git when omitted.
+Use --reset to tear down an existing hub before cloning (idempotent re-clone).
+
+After cloning, run "lyx init" inside the host worktree to activate junctions and config.
+
+Example:
+  lyx warp clone https://github.com/user/repo https://github.com/user/repo-weft`,
+		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
+			// Read the --reset flag from the cobra flag set via closure over cloneCmd.
+			reset, _ := cloneCmd.Flags().GetBool("reset")
+			return runCloneWithReset(out, args, reset)
+		}),
+	}
+	cloneCmd.Flags().Bool("reset", false, "remove an existing hub before cloning (idempotent re-clone)")
+	cmd.AddCommand(cloneCmd)
 
 	// add <slug>
 	cmd.AddCommand(&cobra.Command{
 		Use:   "add <slug>",
 		Short: "create a dual host+weft worktree pair",
-		RunE:  clihelp.WrapRun(runAdd),
+		Long: `Create a new paired host and weft git worktree for the given slug.
+
+The new weft branch is forked from the HEAD of the worktree you run
+"lyx warp add" from — that worktree's current checked-out branch, not main
+and not prime's branch. This makes the new pair an exact continuation of
+the context you were working in.
+
+The command errors if the worktree is on a detached HEAD or an unborn branch,
+because a fork point cannot be determined in either case.`,
+		RunE: clihelp.WrapRun(runAdd),
 	})
 
 	// list
 	cmd.AddCommand(&cobra.Command{
 		Use:   "list",
-		Short: "list all host↔weft worktree pairs",
-		RunE:  clihelp.WrapRun(func(out io.Writer, args []string) int { return runList(out, args) }),
+		Short: "list host worktrees (use 'lyx warp pairs' for full pair geometry)",
+		Long: `List all host worktrees registered in the current hub.
+
+This command outputs host worktree paths only. For the full host↔weft pair
+geometry view — including weft pairing, branch drift, and junction health —
+use "lyx warp pairs".`,
+		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int { return runList(out, args) }),
 	})
 
 	// remove [--force] <slug>
@@ -116,11 +153,11 @@ It owns worktree pairing, coordinated branch switching, and cleanup.`,
 		RunE:  clihelp.WrapRun(runCheckout),
 	})
 
-	// status
+	// pairs
 	cmd.AddCommand(&cobra.Command{
-		Use:   "status",
-		Short: "show paired host↔weft worktree status with drift and junction-health fields",
-		RunE:  clihelp.WrapRun(func(out io.Writer, args []string) int { return runStatus(out, args) }),
+		Use:   "pairs",
+		Short: "show full host↔weft pair geometry with drift and junction-health fields",
+		RunE:  clihelp.WrapRun(func(out io.Writer, args []string) int { return runPairs(out, args) }),
 	})
 
 	// reconcile
@@ -305,12 +342,12 @@ func runCheckout(out io.Writer, args []string) int {
 	})
 }
 
-// runStatus parses and executes the warp status subcommand.
+// runPairs parses and executes the warp pairs subcommand (formerly "status").
 //
 // Resolves the layout and warp config from the current working directory,
 // calls Status to enumerate all host↔weft pairs with drift and pollution data,
 // and emits the result via output.Ok.
-func runStatus(out io.Writer, _ []string) int {
+func runPairs(out io.Writer, _ []string) int {
 	cwd, err := paths.Getwd()
 	if err != nil {
 		return output.Err(out, err.Error())

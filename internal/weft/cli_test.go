@@ -32,15 +32,14 @@ func TestRunCLI_NoArgs(t *testing.T) {
 	}
 }
 
-// TestRunCLI_UnknownSubcommand verifies that an unknown subcommand produces the
-// cobra "unknown command" message and exits 1.
+// TestRunCLI_UnknownSubcommand verifies that an unknown subcommand exits 1 and
+// emits a JSON error envelope with ok=false.
 func TestRunCLI_UnknownSubcommand(t *testing.T) {
-	// Use a real weft fixture so paths.Resolve succeeds in the PersistentPreRunE
-	// and the cobra dispatch table is reached before any resolution is done.
-	// (cobra routes unknown commands before invoking PersistentPreRunE, so the
-	// fixture is only needed for safety; the test would pass in a bare dir too.)
-	fixture := lyxtest.CopyWeft(t)
-	t.Chdir(fixture.WeftPath)
+	// A temp dir is sufficient: the PersistentPreRunE guard (cmd.Name() == "weft") returns nil
+	// early, bypassing layout resolution, so no git repo is needed when GroupRunE handles
+	// the unknown subcommand.
+	tmpDir := t.TempDir()
+	t.Chdir(tmpDir)
 
 	var out bytes.Buffer
 	exitCode := RunCLI(&out, []string{"unknown"})
@@ -48,8 +47,18 @@ func TestRunCLI_UnknownSubcommand(t *testing.T) {
 	if exitCode != 1 {
 		t.Errorf("RunCLI with unknown subcommand returned %d; want 1", exitCode)
 	}
-	if !strings.Contains(out.String(), "unknown command") {
-		t.Errorf("RunCLI(unknown) output missing \"unknown command\"; got: %q", out.String())
+
+	// GroupRunE wraps the error in a JSON envelope; parse and assert ok=false.
+	var env map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
+		t.Fatalf("RunCLI(unknown) output is not valid JSON: %v; got: %q", err, out.String())
+	}
+	if ok, _ := env["ok"].(bool); ok {
+		t.Errorf("RunCLI(unknown) ok = true; want false")
+	}
+	// The error text contains "unknown" (GroupRunE produces "unknown subcommand").
+	if errMsg, _ := env["error"].(string); !strings.Contains(errMsg, "unknown") {
+		t.Errorf("RunCLI(unknown) error = %q; want \"unknown\" substring", errMsg)
 	}
 }
 
@@ -87,6 +96,34 @@ func TestRunCLI_WeftPathPushOnly(t *testing.T) {
 	}
 }
 
+// TestRunCLI_CommitHelp asserts that "weft commit --help" output documents the fixed
+// commit message and does not advertise a --message flag that does not exist.
+func TestRunCLI_CommitHelp(t *testing.T) {
+	t.Parallel()
+
+	var out bytes.Buffer
+	exitCode := RunCLI(&out, []string{"commit", "--help"})
+
+	if exitCode != 0 {
+		t.Errorf("RunCLI(commit --help) = %d; want 0", exitCode)
+	}
+
+	got := out.String()
+
+	// The Long text documents the fixed commit message string.
+	if !strings.Contains(got, "weft sync") {
+		t.Errorf("commit --help output missing fixed message string %q; got:\n%s", "weft sync", got)
+	}
+
+	// No --message or -m flag should exist on this command.
+	if strings.Contains(got, "--message") {
+		t.Errorf("commit --help output unexpectedly contains --message flag; got:\n%s", got)
+	}
+	if strings.Contains(got, "-m,") || strings.Contains(got, "-m ") {
+		t.Errorf("commit --help output unexpectedly contains -m flag; got:\n%s", got)
+	}
+}
+
 // TestRunCLI_StatusWithMinimalFixture tests the status subcommand via cwd resolution.
 func TestRunCLI_StatusWithMinimalFixture(t *testing.T) {
 	// Serial test: uses t.Chdir to test cwd-resolution entry point.
@@ -118,7 +155,7 @@ func TestRunCLI_StatusWithMinimalFixture(t *testing.T) {
 		t.Errorf("ok should be true; got false. Error: %v", jsonOut["error"])
 	}
 
-	// Junction reporting has moved to warp status; weft status exposes only content-sync fields.
+	// Junction reporting has moved to warp pairs; weft status exposes only content-sync fields.
 	if _, hasWorktree := jsonOut["weft_worktree"]; !hasWorktree {
 		t.Errorf("weft_worktree field missing from status output")
 	}
