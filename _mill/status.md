@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-payload-contract
+phase: approved-rerender-manifest
 slug: board-sandbox-fixes
 branch: board-sandbox-fixes
 plan: _mill/plan
@@ -26,6 +26,7 @@ plan-fix-r3  '2026-06-28T15:32:14Z'
 planned  '2026-06-28T15:32:28Z'
 implementing  '2026-06-28T15:48:01Z'
 approved-payload-contract  '2026-06-28T16:07:27Z'
+approved-rerender-manifest  '2026-06-28T16:14:26Z'
 ```
 
 ## Batches
@@ -38,9 +39,10 @@ batches:
     start_sha: 480d7ce480ba8f1ad2b88409bb3db94d0d2b80ae
     commit_sha: eaccf6ac7cccaec5bc612eaf2cdf0f91c05ee945
   - name: rerender-manifest
-    state: running
+    state: approved
     implementer_session: 720ffdff-bcbc-47a3-a23b-f8c83fea8b97
     start_sha: 0981cbb623469ae78b89ca7d0facfddb077c0f05
+    commit_sha: 6fcdf4691ae538b79c1d67c1b1655469e5c28d2f
   - name: cli-help
     state: pending
 ```
