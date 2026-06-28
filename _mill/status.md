@@ -30,7 +30,9 @@ implementing  '2026-06-28T14:18:33Z'
 ```yaml
 batches:
   - name: ghissues-module
-    state: pending
+    state: running
+    implementer_session: 0f214dfb-4853-424e-918e-3182f472261d
+    start_sha: b70b16e06eb771f03580f776c7f7ab0ea7d0a07d
   - name: wire-and-docs
     state: pending
 ```
