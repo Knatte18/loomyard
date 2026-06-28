@@ -167,6 +167,7 @@ github.com/Knatte18/loomyard/
 ├── internal/weft/                the weft module
 ├── internal/ide/                 the ide module
 ├── internal/muxpoc/              the muxpoc POC module
+├── internal/ghissues/            the ghissues module (file bugs to GitHub via gh)
 ├── internal/paths/               geometry resolver (the sole owner of cwd/root math)
 ├── internal/config/              shared config resolution
 ├── internal/gitexec/             shared git operations
@@ -179,34 +180,19 @@ only thing that imports a module.
 
 ## Module dispatch
 
-`cmd/lyx/main.go` is a thin router. `run(args, out)` reads the first argument
-(`<module>`) and hands the rest to that module's CLI handler — `lyx board ...`
-calls `board.RunCLI`. Each module owns its own flags, subcommands, and JSON
-output. Adding a module is one more `case`; nothing else in `main` changes.
+`cmd/lyx/main.go` assembles all modules into a single cobra root via `newRoot()`.
+Each module contributes a `Command() *cobra.Command` that is passed to
+`root.AddCommand(...)`, so every module and subcommand is discoverable via
+`lyx --help` without any central dispatch table. Adding a module is three steps:
+import the package, add `<module>.Command()` to `root.AddCommand(...)` in
+`newRoot()`, and append the module name to `root.Long`.
 
-```go
-switch module {
-case "init":
-    return initcli.RunInit(out, moduleArgs)
-case "board":
-    return board.RunCLI(out, moduleArgs)
-case "config":
-    return configcli.RunCLI(out, moduleArgs)
-case "update":
-    return update.RunCLI(out, moduleArgs)
-case "ide":
-    return ide.RunCLI(out, moduleArgs)
-case "muxpoc":
-    return muxpoc.RunCLI(out, moduleArgs)
-case "weft":
-    return weft.RunCLI(out, moduleArgs)
-case "warp":
-    return warp.RunCLI(out, moduleArgs)
-}
-```
-
-`main()` is just `os.Exit(run(os.Args[1:], os.Stdout))`, which keeps `run`
-testable without spawning the binary or trapping `os.Exit`.
+`run(args, out)` is the testable seam: it builds a fresh root, merges stdout and
+stderr into `out`, and calls `root.ExecuteContext`, returning the process exit code
+without spawning a binary or trapping `os.Exit`. Each module also exposes
+`RunCLI(out io.Writer, args []string) int` — exactly
+`return clihelp.Execute(Command(), out, args)` — as an in-process test seam that
+drives a module in isolation without involving the cobra root.
 
 All commands print JSON: `{"ok":true, ...}` on success,
 `{"ok":false,"error":"..."}` on failure (exit code 1).
@@ -224,6 +210,10 @@ User-facing modules each get one `lyx <module>` namespace:
 - **ide** — one-shot VS Code launcher with interactive menu. ✅ Implemented.
 - **muxpoc** — shipped proof-of-concept psmux orchestrator proving the risky parts of the
   planned mux module. ✅ Implemented.
+- **ghissues** — file bugs and enhancements against `Knatte18/loomyard` via the `gh` CLI
+  (`lyx ghissues create <title>`). Target repo is hardcoded; supports `--body` (or `-` for
+  stdin) and `--label`; defaults to `bug`. Callable from any sandbox agent context with no
+  config. ✅ Implemented.
 - **mux** — **the window to the world**: psmux overlay + **strand** bookkeeping + render. Hosts
   every managed process as a strand, arranges them, persists to `.lyx/mux.json` (`lyx mux`). 🚧
   Design — not built. See [modules/mux.md](modules/mux.md).

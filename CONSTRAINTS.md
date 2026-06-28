@@ -83,6 +83,12 @@ load-bearing and partly enforced at `go test` time.
   every module and each module names every subcommand. When you add a module or a
   subcommand, update the pinned sets in that test (root `requiredModules`, and the
   module's `wantSubs`).
+- **Registration and Long-list enforced by guards.** `cmd/lyx/registration_test.go`
+  (source/AST scan: every `internal/*` package with `func Command() *cobra.Command`
+  must be registered in `newRoot()` — "exists ⇒ registered") and
+  `cmd/lyx/longlist_test.go` (live tree: every registered child must appear in
+  `root.Long` — "registered ⇒ in --help prose") enforce these automatically on every
+  `go test ./cmd/lyx/...` run.
 - **Handlers and output.** Bridge a `func(out io.Writer, args []string) int` handler
   into cobra via `clihelp.WrapRun`; use `clihelp` exit handling (`ShouldAbort` /
   `SetExit` / `Abort`) rather than ad-hoc `os.Exit`. Emit results through the
