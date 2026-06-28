@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-fix-r1
+phase: discussed
 slug: ghissues-module
 branch: ghissues-module
 plan: null
@@ -16,4 +16,5 @@ task_description: |
 ```text
 discussing  '2026-06-28T13:25:30Z'
 discussion-fix-r1  '2026-06-28T13:48:59Z'
+discussed  '2026-06-28T13:49:14Z'
 ```
