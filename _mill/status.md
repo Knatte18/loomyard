@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: ghissues-module
 branch: ghissues-module
 plan: _mill/plan
@@ -22,4 +22,15 @@ discussed  '2026-06-28T14:09:00Z'
 planning  '2026-06-28T14:11:48Z'
 plan-fix-r1  '2026-06-28T14:16:42Z'
 planned  '2026-06-28T14:16:58Z'
+implementing  '2026-06-28T14:18:33Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: ghissues-module
+    state: pending
+  - name: wire-and-docs
+    state: pending
 ```
