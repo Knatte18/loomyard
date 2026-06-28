@@ -3,7 +3,7 @@
 ```yaml
 task: "CLI help & error ergonomics from sandbox run"
 slug: "cli-help-ergonomics"
-approved: false
+approved: true
 started: "20260628-145356"
 parent: "main"
 root: ""

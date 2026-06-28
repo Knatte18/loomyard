@@ -41,6 +41,8 @@ success (exit 0, not wrapped); only errors are JSON. Path access goes through
   - Add the print path, gated on the `print` flag, evaluated **before** the existing
     edit/menu dispatch. Compute `baseDir := filepath.Join(l.WorktreeRoot, l.RelPath)` and
     resolve each file with `paths.ConfigFile(baseDir, module)` (never a literal).
+  - Preserve the existing `Args: cobra.MaximumNArgs(1)` on the `config` command when
+    switching to the `configCmd` variable, so `config a b c` still rejects extra positionals.
   - Single-module form (`config <module> --print`, `len(args) >= 1`): if `module` is not a
     known registry name (`configreg.Template(module)` returns `ok == false`), return the
     harmonized unknown-module JSON error (card 19). Otherwise `os.ReadFile` the resolved
@@ -77,8 +79,10 @@ success (exit 0, not wrapped); only errors are JSON. Path access goes through
 
 - **Context:**
   - `internal/output/output.go`
+  - `internal/configreg/configreg.go`
 - **Edits:**
   - `internal/configcli/configcli.go`
+  - `cmd/lyx/main_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Requirements:** Replace the plain-text `fmt.Fprintf(out, ...); return 1` error emissions
@@ -93,6 +97,10 @@ success (exit 0, not wrapped); only errors are JSON. Path access goes through
     prompts/success text, and the `--print` raw-YAML output are NOT errors and stay as-is.
     Add the `internal/output` import; drop the now-unused `fmt` import only if nothing else
     uses it (the success `Fprintf` lines likely still need `fmt`).
+  - Fix the now-stale comment in `cmd/lyx/main_test.go` `TestRunDispatchesToConfig` that
+    says config output is human-readable text / not JSON — config errors are now JSON. Update
+    the comment text only (the test's exit-code assertion is unaffected); do not weaken the
+    test.
 - **Commit:** `fix(config): emit config errors as JSON envelope`
 
 ### Card 20: Config tests — print, dynamic Long, JSON errors

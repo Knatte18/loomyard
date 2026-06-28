@@ -26,6 +26,7 @@ clean break — no `status` alias is kept.
 
 - **Context:**
   - `internal/clihelp/exec.go`
+  - `internal/output/output.go`
   - `internal/warp/warp_test.go`
 - **Edits:**
   - `internal/warp/warp.go`
