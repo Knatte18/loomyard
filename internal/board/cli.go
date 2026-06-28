@@ -87,6 +87,22 @@ Running "lyx board" with no subcommand lists available subcommands without requi
 	upsertCmd := &cobra.Command{
 		Use:   "upsert [json-payload]",
 		Short: "Create or update a single task",
+		Long: `Create or update a task identified by its slug. Unknown keys are rejected.
+
+Required field:
+  "slug"       string — unique task identifier
+
+Optional fields:
+  "title"      string — human-readable title
+  "brief"      string — one-line summary shown in board listings
+  "body"       string — full markdown body (proposal / background)
+  "depends_on" array  — list of slug strings this task depends on
+  "isolated"   bool   — true if the task has no dependencies by design
+  "deferred"   bool   — true if the task is deferred
+  "status"     string — lifecycle status (e.g. "active", "done")
+
+Example:
+  lyx board upsert '{"slug":"my-task","title":"My Task","brief":"Short summary"}'`,
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			// cobra strips the "upsert" token; json payload is now args[0].
 			if len(args) == 0 {
@@ -110,6 +126,15 @@ Running "lyx board" with no subcommand lists available subcommands without requi
 	upsertBatchCmd := &cobra.Command{
 		Use:   "upsert-batch [json-payload]",
 		Short: "Create or update multiple tasks atomically",
+		Long: `Create or update multiple tasks in one atomic write. Unknown wrapper keys are rejected.
+An absent or empty "tasks" array is an error. Each task element uses the same fields as
+"lyx board upsert" ("slug" required per element); unknown element keys are also rejected.
+
+Required wrapper field:
+  "tasks" array — one or more task objects (each with "slug" required)
+
+Example:
+  lyx board upsert-batch '{"tasks":[{"slug":"t1","title":"One"},{"slug":"t2","title":"Two"}]}'`,
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			if len(args) == 0 {
 				return outputError(out, "json payload required")
@@ -164,6 +189,17 @@ Running "lyx board" with no subcommand lists available subcommands without requi
 	setStatusCmd := &cobra.Command{
 		Use:   "set-status [json-payload]",
 		Short: "Set or clear the status of a task",
+		Long: `Set or clear the lifecycle status of a task. Unknown keys are rejected.
+Exactly one of "slug" or "id" is required. "status" is always required; use null to clear.
+
+Fields:
+  "slug"   string      — task slug (mutually exclusive with "id")
+  "id"     integer     — numeric task ID (mutually exclusive with "slug")
+  "status" string|null — new status value; null clears the current status
+
+Examples:
+  lyx board set-status '{"slug":"my-task","status":"active"}'
+  lyx board set-status '{"id":96,"status":null}'`,
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			if len(args) == 0 {
 				return outputError(out, "json payload required")
@@ -201,6 +237,15 @@ Running "lyx board" with no subcommand lists available subcommands without requi
 	removeCmd := &cobra.Command{
 		Use:   "remove [json-payload]",
 		Short: "Remove a task",
+		Long: `Remove a task by slug or numeric ID. Unknown keys are rejected.
+Exactly one of "slug" or "id" is required. Errors if the task is not found.
+
+Fields:
+  "slug" string  — task slug (mutually exclusive with "id")
+  "id"   integer — numeric task ID (mutually exclusive with "slug")
+
+Example:
+  lyx board remove '{"slug":"my-task"}'`,
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			if len(args) == 0 {
 				return outputError(out, "json payload required")
@@ -222,6 +267,16 @@ Running "lyx board" with no subcommand lists available subcommands without requi
 	getCmd := &cobra.Command{
 		Use:   "get [json-payload]",
 		Short: "Fetch a single task",
+		Long: `Fetch a single task by slug or numeric ID. Unknown keys are rejected.
+Exactly one of "slug" or "id" is required. Returns {"task":null} if not found (not an error).
+Malformed payloads (no identifier key, unknown key) are errors.
+
+Fields:
+  "slug" string  — task slug (mutually exclusive with "id")
+  "id"   integer — numeric task ID (mutually exclusive with "slug")
+
+Example:
+  lyx board get '{"id":96}'`,
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			if len(args) == 0 {
 				return outputError(out, "json payload required")
@@ -274,6 +329,20 @@ Running "lyx board" with no subcommand lists available subcommands without requi
 	mergeCmd := &cobra.Command{
 		Use:   "merge [json-payload]",
 		Short: "Atomically remove, upsert, and set-status",
+		Long: `Remove tasks, upsert a task, and optionally set status in one atomic write.
+Unknown top-level keys are rejected. The inner "set_status" object is validated
+identically to the standalone "set-status" command ({slug|id, status}, exactly-one-of).
+
+Fields:
+  "remove_slugs" array  — slug strings to remove (optional; omit to skip)
+  "upsert"       object — task to create or update (required; same fields as "lyx board upsert")
+  "set_status"   object — status to set after upsert (optional):
+    "slug"   string      — task slug (mutually exclusive with "id")
+    "id"     integer     — numeric task ID (mutually exclusive with "slug")
+    "status" string|null — new status; null clears
+
+Example:
+  lyx board merge '{"remove_slugs":["old"],"upsert":{"slug":"new","title":"New"},"set_status":{"slug":"new","status":"active"}}'`,
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			if len(args) == 0 {
 				return outputError(out, "json payload required")
@@ -363,6 +432,15 @@ Running "lyx board" with no subcommand lists available subcommands without requi
 	setDepsCmd := &cobra.Command{
 		Use:   "set-deps [json-payload]",
 		Short: "Replace the depends_on list for a task",
+		Long: `Replace the full depends_on list for a task wholesale. Unknown keys are rejected.
+Both fields are required. An absent "depends_on" is an error; an explicit [] clears the list.
+
+Fields:
+  "slug"       string — task slug to update (required)
+  "depends_on" array  — complete list of dependency slug strings; replaces existing list (required)
+
+Example:
+  lyx board set-deps '{"slug":"my-task","depends_on":["dep-a","dep-b"]}'`,
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			if len(args) == 0 {
 				return outputError(out, "json payload required")
