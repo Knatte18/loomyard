@@ -195,19 +195,6 @@ Independent of the orchestration stack; interleave as needed.
     command (no central stale table). Introduces `internal/clihelp` (exec + JSON help). A persistent
     `--json` flag on the root command offers machine-readable help output.
 
-    **CLI help & error ergonomics pass (2026-06-28):** A sandbox run drove a follow-up
-    hardening pass: all Cobra-level errors (unknown command/flag, arg validation) now emit
-    the same `{"ok":false,"error":"..."}` JSON envelope as domain errors, centralized in
-    `clihelp.Execute` / `RunRoot` with `SilenceErrors = true` (W14); `output.Err` trims
-    trailing whitespace from all error messages (W15); every parent module group sets
-    `RunE = clihelp.GroupRunE` so unknown subcommands error rather than silently print help
-    (W16); `warp clone --reset` flag and a `Long` describing hub layout added (W2/W3);
-    `warp add` `Long` documents that the fork point is the invoking worktree's HEAD (W6);
-    `warp status` renamed to `warp pairs` with `warp list` clarified (W7); `weft commit`
-    `Long` documents the fixed `"weft sync"` commit message (W4); `lyx config [module]
-    --print` emits raw on-disk YAML and the `config` `Long` lists valid module names
-    dynamically (W12/W5).
-
 22. **`ghissues` — file LoomYard bugs as GitHub issues.** ✅ **Done.** `lyx ghissues create <title>`
     files a new issue on the `Knatte18/loomyard` GitHub repository via the `gh` CLI. The target repo
     is hardcoded (no config required), making the command trivially callable from any sandbox agent
