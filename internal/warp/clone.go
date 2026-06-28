@@ -29,6 +29,30 @@ const (
 // removeAll is a testability seam for os.RemoveAll, allowing tests to inject errors.
 var removeAll = os.RemoveAll
 
+// runCloneWithReset wraps runClone with an optional --reset that removes an existing hub first.
+func runCloneWithReset(out io.Writer, args []string, reset bool) int {
+	if len(args) < 2 || len(args) > 3 {
+		return output.Err(out, "usage: lyx warp clone [--reset] <host-url> <weft-url> [board-url]")
+	}
+	if reset {
+		cwd, err := paths.Getwd()
+		if err != nil {
+			return output.Err(out, err.Error())
+		}
+		name := deriveHostName(args[0])
+		if name == "" {
+			return output.Err(out, fmt.Sprintf("could not derive repo name from host URL %s", args[0]))
+		}
+		hubPath := filepath.Join(filepath.Clean(cwd), name+hubSuffix)
+		if _, statErr := os.Stat(hubPath); statErr == nil {
+			if err := removeAll(hubPath); err != nil {
+				return output.Err(out, fmt.Sprintf("--reset: remove %s: %v", hubPath, err))
+			}
+		}
+	}
+	return runClone(out, args)
+}
+
 // runClone parses and executes the warp clone command, writing JSON results to out.
 //
 // It accepts exactly 2 or 3 positional arguments: hostURL, weftURL, and an optional boardURL.
