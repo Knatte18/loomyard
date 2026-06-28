@@ -38,6 +38,10 @@ func TestRunNoArgs(t *testing.T) {
 			t.Errorf("expected help output to name module %q; got:\n%s", module, got)
 		}
 	}
+	// Help is plain-text, never a JSON error envelope.
+	if strings.Contains(got, `"ok":false`) {
+		t.Errorf("bare lyx emitted a JSON error envelope; help paths must not be wrapped; output:\n%s", got)
+	}
 }
 
 func TestRunUnknownModule(t *testing.T) {
@@ -45,11 +49,19 @@ func TestRunUnknownModule(t *testing.T) {
 	if code := run([]string{"bogus", "list"}, &out); code != 1 {
 		t.Fatalf("expected exit 1 for unknown module, got %d", code)
 	}
-	// Cobra prints "unknown command" for an unrecognised subcommand; the merged
-	// seam captures it in out so we can assert the substring.
+	// The "unknown command" text must be present — now embedded in the JSON error value.
 	got := out.String()
 	if !strings.Contains(got, "unknown command") {
 		t.Errorf("expected %q in output for unknown module; got: %q", "unknown command", got)
+	}
+
+	// The output must be a well-formed JSON envelope with ok=false.
+	var env map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(got)), &env); err != nil {
+		t.Fatalf("run([bogus list]) output is not valid JSON: %v; output: %q", err, got)
+	}
+	if ok, _ := env["ok"].(bool); ok {
+		t.Errorf("run([bogus list]) envelope ok = true; want false")
 	}
 }
 

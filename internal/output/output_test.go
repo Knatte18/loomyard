@@ -90,6 +90,38 @@ func TestErr_ReturnsOneExitCode(t *testing.T) {
 	}
 }
 
+// TestErr_TrimsTrailingNewline asserts that Err strips leading and trailing
+// whitespace from the message before encoding it into the JSON error field.
+// This covers embedded tool output such as "fatal: not a git repository\n"
+// which must not leak newline characters into the JSON value.
+func TestErr_TrimsTrailingNewline(t *testing.T) {
+	buf := &bytes.Buffer{}
+
+	// Simulate a git error string that ends with a newline.
+	exitCode := output.Err(buf, "fatal: not a git repository\n")
+
+	if exitCode != 1 {
+		t.Errorf("Err(newline msg) = %d; want 1", exitCode)
+	}
+
+	// The envelope must be valid JSON.
+	var result map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+		t.Fatalf("Err(newline msg) output is not valid JSON: %v; output: %q", err, buf.String())
+	}
+
+	// ok must be false.
+	if ok, exists := result["ok"]; !exists || ok != false {
+		t.Errorf("Err(newline msg) ok = %v; want false", result["ok"])
+	}
+
+	// The error field must have the newline stripped.
+	errField, _ := result["error"].(string)
+	if errField != "fatal: not a git repository" {
+		t.Errorf("Err(newline msg) error field = %q; want %q", errField, "fatal: not a git repository")
+	}
+}
+
 // TestOk_MutatesFieldsMap tests that Ok mutates the supplied fields map by adding ok
 func TestOk_MutatesFieldsMap(t *testing.T) {
 	buf := &bytes.Buffer{}
