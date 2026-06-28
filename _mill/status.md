@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-approved
+phase: done
 slug: board-sandbox-fixes
 branch: board-sandbox-fixes
 plan: _mill/plan
@@ -32,6 +32,7 @@ holistic-reviewing  '2026-06-28T16:18:53Z'
 holistic-fixing  '2026-06-28T16:24:00Z'
 nits-fixed-holistic  '2026-06-28T16:29:37Z'
 holistic-approved  '2026-06-28T16:29:47Z'
+done  '2026-06-28T16:30:10Z'
 ```
 
 ## Batches
