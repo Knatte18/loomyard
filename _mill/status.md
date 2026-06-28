@@ -57,5 +57,7 @@ batches:
     start_sha: 37fe2ef137c2b1fd75f17965935324600eaa7273
     commit_sha: dc8245fbfb1b0d2a57557f97cca4c76d92a8cd98
   - name: docs-roadmap-constraints
-    state: pending
+    state: running
+    implementer_session: 6c879d34-7672-43eb-b295-08112ab02301
+    start_sha: 75e4c6f77dda93887c542c211db9d14f51ffb3eb
 ```
