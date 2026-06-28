@@ -52,7 +52,7 @@ behavior change.
   - `get`: fields `slug` (string) OR `id` (integer) — exactly one; returns `{"task":null}`
     if not found (not an error). Example: `lyx board get '{"id":96}'`.
   - `merge`: fields `remove_slugs` (array of slug strings, optional), `upsert` (object,
-    same fields as `upsert`, optional), `set_status` (object `{slug|id, status}` validated
+    same fields as `upsert`, required), `set_status` (object `{slug|id, status}` validated
     like `set-status`, optional). Example:
     `lyx board merge '{"remove_slugs":["old"],"upsert":{"slug":"new","title":"New"},"set_status":{"slug":"new","status":"active"}}'`.
   - `set-deps`: fields `slug` (string, required), `depends_on` (array of slug strings,

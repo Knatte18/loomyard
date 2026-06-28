@@ -751,6 +751,20 @@ func TestCLILookupContract(t *testing.T) {
 			wantOK:       false,
 			wantError:    "task not found",
 		},
+		// Stray old key "phase" in set-status payload must error; the strict
+		// resolveLookup allows only {slug, id, status} and rejects all others.
+		{
+			name: "set_status_stray_phase_errors",
+			setup: func(t *testing.T) {
+				seedCwd(t)
+				runCLI(t, "upsert", `{"slug":"x","title":"X"}`)
+			},
+			verb:         "set-status",
+			payload:      `{"slug":"x","phase":"done","status":"active"}`,
+			wantExitCode: 1,
+			wantOK:       false,
+			wantError:    "unknown field",
+		},
 	}
 
 	for _, tt := range tests {
