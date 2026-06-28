@@ -79,6 +79,11 @@ are reusable, parts are wrong (see Decisions).
   into a shared helper so the module seam and the root don't drift. Help output (`--help`,
   bare-group listing) is a *successful* query and stays human-readable text (exit 0) — only
   actual errors are JSON-wrapped.
+- Production stream: the wrapped JSON error goes to **stdout** (via `cmd.OutOrStdout()`),
+  matching how domain errors already reach stdout through `output.Err`. In `cmd/lyx/main.go`
+  `main()` keeps stdout/stderr split (`main.go:37-38`), so the wrapping must target stdout
+  explicitly there — a programmatic caller reading stdout sees the same envelope for Cobra
+  errors and domain errors. The merged-writer `run()` test seam captures it regardless.
 - Rationale: One change covers every module seam and the root. Cobra returns a non-nil
   error only for genuine Cobra-level failures (flag-parse, unknown command, arg
   validation, or an error returned by a `RunE`); our handlers use `clihelp.WrapRun`/`SetExit`
@@ -96,10 +101,12 @@ are reusable, parts are wrong (see Decisions).
 - Decision: Give each parent module group (`board`, `warp`, `weft`, `ide`, `muxpoc`) a
   `RunE` that returns an `unknown subcommand %q for %q` error when extra args are present
   and otherwise calls `cmd.Help()`. Combined with W14 this surfaces as a JSON error. For
-  the two groups with a `PersistentPreRunE` (`weft`, `board`), add a one-line guard at the
-  top of that hook that returns early when `cmd` is the parent group itself (e.g.
-  `cmd.Name() == "weft"`), so the bare-group help path and the unknown-subcommand error
-  path do **not** trigger git/layout resolution.
+  the **four** groups with a layout-resolving `PersistentPreRunE` (`weft`, `board`, `ide`,
+  `muxpoc` — verified: `weft/cli.go:43`, `board/cli.go`, `ide/cli.go:34`,
+  `muxpoc/cli.go:81`), add a one-line guard at the top of that hook that returns early when
+  `cmd` is the parent group itself (e.g. `cmd.Name() == "weft"`), so the bare-group help
+  path and the unknown-subcommand error path do **not** trigger git/layout resolution.
+  `warp` has no `PersistentPreRunE`, so it needs only the `RunE`.
 - Rationale (verified against cobra v1.10.2 `command.go`): Cobra's `Find` only emits
   "unknown command" via `legacyArgs` when the matched command has **no parent** — that is
   why `lyx unknownmodule` (root) errors but `lyx warp foo` (mounted child) does not. In
@@ -107,7 +114,7 @@ are reusable, parts are wrong (see Decisions).
   `ValidateArgs` (968) and the `PersistentPreRunE` chain (985), so setting `Args: NoArgs`
   on a non-runnable group is ineffective (help short-circuits first). Making the group
   runnable via `RunE` is the idiomatic fix; the `PersistentPreRunE` guard preserves the
-  existing "list subcommands without a git repo" property for weft/board.
+  existing "list subcommands without a git repo" property for weft/board/ide/muxpoc.
 - Note on test asymmetry: the per-module `RunCLI(["bogus"])` tests pass today because in
   isolation the module *is* its own root (`!HasParent` → `legacyArgs` → "unknown
   command"). The silent-help bug only manifests when groups are mounted under `lyx`, so
@@ -147,6 +154,19 @@ are reusable, parts are wrong (see Decisions).
   a hand-built `_lyx/config/<module>.yaml` literal (Path Invariant).
 - Rejected: a `{ok:true,config:{...}}` JSON envelope (loses comments/template form, adds a
   parse step); requiring a module arg with no aggregate dump (couples discovery to W5).
+- Error-format harmonization (resolves the review's W12/W5 consistency note): `configcli`
+  currently emits its unknown-module and edit/abort errors as **plain text** via
+  `fmt.Fprintf` (`configcli.go:43,56,70`), not `output.Err`. To avoid the contradiction
+  where `lyx config bogus` is plain text but `lyx config bogus --print` is JSON, **harmonize
+  config's existing error paths to `output.Err`** so every config error is the JSON
+  envelope. Specifically: `editOne`'s "unknown config module" (line 43), the `ErrAborted`
+  abort message (line 56), the generic edit-error (line 56-57), and the sync-failure
+  message (line 70), plus `runConfig`'s `Getwd`/`Resolve` failures (lines 130,137), all
+  route through `output.Err`. The on-success `--print` output (raw YAML) and the
+  "edited and synced" / interactive-menu success text stay as-is (success is not an error).
+  Note: the unknown-module error text must still surface the known-module list (it
+  currently prints `(known: %v)` from `configreg.Names()`) — preserve that inside the JSON
+  `error` string so W5's discoverability is not lost on the error path.
 
 ### W5 — List valid module names in config help, derived dynamically
 
@@ -183,9 +203,12 @@ are reusable, parts are wrong (see Decisions).
 - Rationale: "list" reads as more complete than "status", which is backwards; "pairs"
   names what the command actually reports. The rename is low-blast-radius: the only
   references to the `status` *subcommand* are `internal/warp/warp.go` (the `Use:` string
-  and `runStatus`) and the pinned `cmd/lyx/helptree_test.go` set — no launchers, docs, or
-  Go callers invoke `lyx warp status` (verified by grep; the many `git status` hits are
-  unrelated). Internal handler `runStatus` may be renamed `runPairs` for clarity.
+  and `runStatus`) and the pinned `cmd/lyx/helptree_test.go` set — no launchers or Go
+  callers invoke `lyx warp status` (verified by grep; the many `git status` hits are
+  unrelated). Internal handler `runStatus` may be renamed `runPairs` for clarity. Two
+  **doc-comment** references to "warp status" rot on rename and must be updated to "warp
+  pairs": `internal/weft/cli_test.go:121` and `internal/weft/status_test.go:45` (comments
+  only — no code or assertion change).
 - Rejected: keep the name and only clarify help (chosen against by the operator);
   keep `status` plus a `pairs` alias (operator chose a clean rename, no alias).
 
@@ -250,6 +273,13 @@ Per-module specifics:
 - **Groups needing the W16 RunE**: `board`, `warp`, `weft`, `ide` (`internal/ide/cli.go`),
   `muxpoc` (`internal/muxpoc/cli.go`). `init`, `update`, `config` are leaf/optional-arg
   commands, not groups, and are excluded.
+- **Groups needing the W16 `PersistentPreRunE` early-return guard**: `weft`
+  (`cli.go:43`), `board` (`cli.go`), `ide` (`cli.go:34` — resolves cwd→layout, aborts
+  without a git repo), `muxpoc` (`cli.go:81` — resolves the worktree root, emits
+  `not a git repository` without one). `warp` has no `PersistentPreRunE` and is exempt.
+  Each `PersistentPreRunE` already has the "no-arg listing never requires a git repo"
+  intent in its doc comment — making the parent runnable (W16 RunE) is exactly what would
+  break that, so the guard is mandatory for all four.
 
 Gotchas:
 
@@ -287,8 +317,10 @@ TDD candidates (assertion shapes left to mill-plan):
   Verify `--help` / bare-group listing still emits plain text and exit 0 (not wrapped).
 - **W16 (cmd/lyx — mounted)**: new tests that `lyx warp bogus`, `lyx weft bogus`,
   `lyx board bogus`, `lyx ide bogus`, `lyx muxpoc bogus` each error (JSON, exit 1) instead
-  of printing help; and that bare `lyx weft` / `lyx board` still print the subcommand
-  listing with **no git repo present** (guards the PersistentPreRunE early-return).
+  of printing help; and that bare `lyx weft` / `lyx board` / `lyx ide` / `lyx muxpoc`
+  still print the subcommand listing with **no git repo present** (guards the
+  PersistentPreRunE early-return on all four groups — ide and muxpoc included, since both
+  resolve layout in their hook and would otherwise emit `not a git repository`).
 - **W15 (output)**: `output.Err` trims leading/trailing whitespace; an input like
   `"fatal: not a git repository\n"` yields a `error` value with no trailing newline.
 - **W2/W3 (warp)**: `warp clone --reset` removes a pre-existing hub then clones (use the
@@ -308,6 +340,11 @@ TDD candidates (assertion shapes left to mill-plan):
   the JSON error envelope, exit 1.
 - **W5 (configcli)**: `config --help` `Long` contains every name from `configreg.Names()`
   (assert membership dynamically, not a hardcoded list).
+- **Config error harmonization (configcli)**: `lyx config bogus` (unknown module, no
+  `--print`) now emits the JSON `{ok:false,error:...}` envelope (not plain `fmt.Fprintf`
+  text), exit 1, and the `error` string still contains the known-module names; the abort
+  and sync-failure paths likewise emit JSON. Existing `configcli_test.go` assertions that
+  match the old plain-text strings must be updated to the envelope.
 - **drift/helptree**: full tree still passes `TestDriftGuard_AllCommandsHaveShort`; new
   `Long`s and the `pairs` rename reflected in pinned sets.
 
@@ -332,4 +369,16 @@ stays embedded in the JSON) but should gain envelope assertions.
 - **Q:** `warp list` vs `warp status` naming (W7)? **A:** Rename `status`→`pairs` (clean,
   no alias); clarify `list` help. Verified no external callers of `warp status`.
 - **Q:** Where to trim git error whitespace (W15)? **A:** Centralize in `output.Err`.
+- **Q (review r1 GAP):** Does the W16 `PersistentPreRunE` guard cover all affected groups?
+  **A:** No — extended from {weft, board} to {weft, board, ide, muxpoc}; ide
+  (`cli.go:34`) and muxpoc (`cli.go:81`) also resolve layout in their hook, so they need
+  the guard too. Added ide/muxpoc bare-group no-git-repo tests.
+- **Q (review r1 NOTE):** Which stream gets the W14 JSON error in production? **A:**
+  stdout (via `cmd.OutOrStdout()`), matching domain errors; `main()` must target stdout
+  explicitly given its split streams.
+- **Q (review r1 NOTE):** config errors plain-text vs JSON? **A:** Harmonize config's
+  existing edit/menu/unknown-module error paths to `output.Err` so `lyx config bogus` and
+  `lyx config bogus --print` are both JSON; preserve the known-module list in the message.
+- **Q (review r1 NOTE):** Stale "warp status" doc comments? **A:** Update
+  `weft/cli_test.go:121` and `weft/status_test.go:45` to "warp pairs" (comments only).
 ```
