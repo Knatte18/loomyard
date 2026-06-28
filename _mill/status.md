@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-weft-commit-doc
+phase: approved-docs-roadmap-constraints
 slug: cli-help-ergonomics
 branch: cli-help-ergonomics
 plan: _mill/plan
@@ -25,6 +25,7 @@ approved-w16-reject-unknown-subcommand  '2026-06-28T16:11:44Z'
 approved-config-print-and-help  '2026-06-28T16:26:02Z'
 approved-warp-features  '2026-06-28T16:37:45Z'
 approved-weft-commit-doc  '2026-06-28T16:42:17Z'
+approved-docs-roadmap-constraints  '2026-06-28T16:45:57Z'
 ```
 
 ## Batches
@@ -57,7 +58,8 @@ batches:
     start_sha: 37fe2ef137c2b1fd75f17965935324600eaa7273
     commit_sha: dc8245fbfb1b0d2a57557f97cca4c76d92a8cd98
   - name: docs-roadmap-constraints
-    state: running
+    state: approved
     implementer_session: 6c879d34-7672-43eb-b295-08112ab02301
     start_sha: 75e4c6f77dda93887c542c211db9d14f51ffb3eb
+    commit_sha: 083ff3ac7506b834f44e211a52a8695f235e3abf
 ```
