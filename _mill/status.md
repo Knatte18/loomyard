@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: board-sandbox-fixes
 branch: board-sandbox-fixes
 plan: _mill/plan
@@ -24,4 +24,17 @@ plan-review-r2  '2026-06-28T15:25:11Z'
 plan-fix-r2  '2026-06-28T15:25:11Z'
 plan-fix-r3  '2026-06-28T15:32:14Z'
 planned  '2026-06-28T15:32:28Z'
+implementing  '2026-06-28T15:48:01Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: payload-contract
+    state: pending
+  - name: rerender-manifest
+    state: pending
+  - name: cli-help
+    state: pending
 ```
