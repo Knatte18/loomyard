@@ -36,5 +36,7 @@ batches:
     start_sha: be7208cbb4e88cd2ec5c9355d8598d7897687943
     commit_sha: 699837f5872690f0cf8c463dc2620c500e7bab6b
   - name: wire-and-docs
-    state: pending
+    state: running
+    implementer_session: f227b5ba-0402-40f3-9a10-41cb5d4c442c
+    start_sha: b45c7894cca12ef6b9ddc19a44352e485b2ffd9a
 ```
