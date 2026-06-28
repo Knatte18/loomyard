@@ -1,5 +1,20 @@
 # CLAUDE.md — Loomyard (lyx)
 
+## CONSTRAINTS.md is authoritative — read it, follow it
+
+This repo has a `CONSTRAINTS.md` at its root. It exists, it is non-negotiable, and it
+**MUST be read before writing or reviewing any code** and followed exactly. It encodes
+structural invariants that are partly enforced at `go test` / CI time and partly by
+review discipline — violating one breaks the build or silently rots the design.
+
+Do **not** ever claim "no constraints in repo" or proceed as if there are none. The file
+is there. If you have not read it this session, read it now (`CONSTRAINTS.md`). Current
+invariants include: the **Path Invariant** (`internal/paths` owns all cwd/geometry and
+`_lyx`/config paths), the **lyxtest Leaf Invariant**, the **CLI / Cobra Invariant**
+(module `Command()`/`RunCLI` seam, `Short` on every command, help-tree tests), and the
+**Documentation Lifecycle**. When you add a new cross-cutting invariant, record it in
+`CONSTRAINTS.md` in the same commit.
+
 ## Persistent notes, not file-memory
 
 This project is worked in short-lived mill **worktrees** that get torn down once a task
