@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-wire-and-docs
+phase: holistic-reviewing
 slug: ghissues-module
 branch: ghissues-module
 plan: _mill/plan
@@ -25,6 +25,7 @@ planned  '2026-06-28T14:16:58Z'
 implementing  '2026-06-28T14:18:33Z'
 approved-ghissues-module  '2026-06-28T14:37:17Z'
 approved-wire-and-docs  '2026-06-28T14:46:42Z'
+holistic-reviewing  '2026-06-28T14:47:07Z'
 ```
 
 ## Batches
