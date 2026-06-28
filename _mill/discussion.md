@@ -39,15 +39,25 @@ the cross-cutting error-format work are a sibling task (not touched here).
 **In:**
 
 - Unify the single-target lookup contract on `get`/`set-status`/`remove`: accept
-  **`slug`** (string) **or** `id` (integer); exactly one required.
+  **`slug`** (string) **or** `id` (integer); exactly one required. These commands
+  **also reject unknown keys** (so a stale `phase`/`id_or_slug` errors instead of being
+  silently ignored).
 - Rename the status concept to a single name: command `set-phase` → **`set-status`**,
   payload key `phase` → **`status`**. The on-disk JSON field is already `status` and
   does **not** change.
 - Remove the `id_or_slug` key and the `phase` key entirely — **no back-compat aliases**.
 - Make `set-status` (and `merge`'s status step) **error** with "task not found" when the
   target does not exist (kill the silent no-op).
-- Make `upsert`/`upsert-batch`/`merge` **reject unknown payload keys** with a clear
-  error (fixes W11's silent `phase` drop and also catches typos like `titel`).
+- On `set-status`, **require the `status` key to be present**: an explicit `"status":null`
+  means "clear the status" (intentional), while an *absent* `status` key is an error
+  (`missing required field: status`). This disambiguates a deliberate clear from a typo
+  that would otherwise silently clear.
+- Make **every board write and lookup payload reject unknown keys** with a clear error —
+  `upsert`/`upsert-batch`/`merge` (both `merge`'s top-level keys and its inner `upsert`
+  object) **and** `get`/`set-status`/`remove`. This fixes W11's silent `phase` drop,
+  catches typos like `titel`, and closes the rename footgun on the renamed commands
+  (a stale top-level `set_phase` on `merge`, or `phase` on `set-status`, errors loudly
+  instead of being silently dropped).
 - Allow `status` as a legitimate `upsert` field (so a task can be created with a status
   in one call) — it already round-trips correctly; the unknown-key rejection is what
   makes a stray `phase` an error instead of a silent drop.
@@ -124,22 +134,48 @@ the cross-cutting error-format work are a sibling task (not touched here).
 - Rationale: The silent no-op was the masking half of B1; operators got zero feedback on
   a typo'd target. Erroring is the only way the CLI tells the truth. No production caller
   relies on idempotent set-phase (only tests), so the change is safe.
+- `status` key required on `set-status`: because `status` is a nullable field, an absent
+  key and an explicit `null` would otherwise both decode to nil and be
+  indistinguishable. The contract is: `"status":null` clears the status (intentional);
+  an absent `status` key is an error (`missing required field: status`). Combined with
+  unknown-key rejection, this means `set-status '{"slug":"x","phase":"done"}'` errors
+  twice over (unknown `phase` + missing `status`) rather than silently clearing.
 - Rejected: Keeping the idempotent silent no-op — re-arms the exact footgun this task
-  exists to remove.
+  exists to remove. Treating absent `status` as a clear — cannot distinguish a typo from
+  a deliberate clear.
 
 ### reject-unknown-keys (C)
 
-- Decision: `upsert`, `upsert-batch`, and `merge`'s `upsert` object reject any payload
-  key outside the allowed set `{slug, title, depends_on, isolated, deferred, brief, body,
-  status}` with a clear error naming the offending key. (`group` is already rejected;
-  fold it into the same mechanism. `id` and `phase` are therefore rejected on upsert.)
+- Decision: **Every** board write and lookup payload rejects unknown keys with a clear
+  error naming the offending key — no command silently ignores a stray field.
+  - **Upsert fields** (`upsert`, `upsert-batch`, and `merge`'s inner `upsert` object):
+    allowed set `{slug, title, depends_on, isolated, deferred, brief, body, status}`.
+    (`group` is already rejected; fold it into the same mechanism. `id` and `phase` are
+    therefore rejected on upsert.)
+  - **`merge` top-level keys:** allowed set `{remove_slugs, upsert, set_status}` — a
+    stale top-level `set_phase` errors instead of being silently dropped (which would
+    skip the status step with no feedback).
+  - **Single-target lookup payloads** (`get`, `set-status`, `remove`): allowed set is
+    `{slug, id}` for `get`/`remove` and `{slug, id, status}` for `set-status` — a stale
+    `phase`/`id_or_slug` errors instead of leaving `Status` nil and silently clearing.
 - Rationale: "No silent drop" (W11) generalizes: the JSON round-trip in
-  `NewTask`/`ApplyPatch` currently ignores *all* unknown fields, so `phase`, `titel`, and
-  any typo vanish silently. A strict allowlist turns every such mistake into immediate,
-  actionable feedback. A friendly hint for the common `phase` case ("unknown field
-  'phase'; did you mean 'status'?") is a nice-to-have.
+  `NewTask`/`ApplyPatch` and the typed single-target structs currently ignore *all*
+  unknown fields, so `phase`, `titel`, and any typo vanish silently. The most dangerous
+  case is the renamed commands: a `phase` left on `set-status` or a `set_phase` left on
+  `merge` would re-arm the exact silent-no-op this task exists to kill. A strict
+  allowlist on every payload turns every such mistake into immediate, actionable
+  feedback. A friendly hint for the common `phase` case ("unknown field 'phase'; did
+  you mean 'status'?") is a nice-to-have.
+- Placement: the upsert-fields allowlist is enforced **at the store boundary**
+  (`Store.UpsertTask` / `Store.UpsertTasksBatch` / `Store.MergeTasks`), before the JSON
+  round-trip in `NewTask`/`ApplyPatch`, so a single chokepoint covers create, patch, and
+  the merge-upsert path uniformly. The top-level `merge` and single-target lookup
+  allowlists are enforced where those payloads are parsed (the cli.go RunE / facade
+  boundary), since they never reach the upsert chokepoint.
 - Rejected: Special-casing only `phase` — leaves every other typo silently dropped.
-  Doing nothing — fails the W11 "no silent drop" requirement.
+  Scoping rejection to upsert paths only — leaves the rename footgun live on
+  `set-status` and `merge`'s top-level (the round-1 review gap). Doing nothing — fails
+  the W11 "no silent drop" requirement.
 
 ### manifest-cleanup (Q6 / W13)
 
@@ -154,6 +190,15 @@ the cross-cutting error-format work are a sibling task (not touched here).
   unrelated wiki pages (a hand-added `README.md` was never in the manifest). The
   manifest file lists only rendered `.md` outputs (never itself), so it is never a
   deletion candidate.
+- Failure modes (best-effort, matching today's `removeOrphanProposals` which never fails
+  a write): a **missing** manifest — including an existing board upgraded from a
+  pre-manifest version (it has `Home.md` but no sidecar) — means "nothing known to clean
+  up"; the render simply proceeds and **seeds** the manifest with the current output set
+  (removing nothing on that first pass). A **corrupt/unreadable** manifest is treated the
+  same as missing (degrade gracefully, log nothing fatal) and is overwritten by the
+  current set. Manifest read/write errors never fail the write — the rendered `.md` files
+  and `tasks.json` are the source of truth; a stale file left behind is harmless and gets
+  cleaned on the next successful render.
 - Rejected: Sweep (delete any top-level `*.md` not in the current render set) — would
   delete unrelated wiki files; unsafe. Narrow sidecar for only `home`/`sidebar` — leaves
   two cleanup mechanisms; the manifest unifies them for free. Dropping W13 — the user
@@ -181,20 +226,31 @@ Board module lives in `internal/board/`. Key files and what changes:
 - **`store.go`** — `GetTask`/`RemoveTask`/`SetPhase` switch on `any` (int/float64/string).
   Replace with explicit slug-vs-id resolution. **`SetPhase` → `SetStatus` must error on
   missing target** (store.go:335-354). `UpsertTask`/`UpsertTasksBatch`/`MergeTasks` are
-  where unknown-key rejection belongs (or in task.go — see below). JSON numbers from
-  payloads arrive as `float64`; the `id` lookup must handle the int/float64 boundary.
+  the **single chokepoint** for the upsert-fields allowlist: validate the incoming
+  `fields` map keys against `{slug, title, depends_on, isolated, deferred, brief, body,
+  status}` here, before the `NewTask`/`ApplyPatch` round-trip, so create + patch + merge-
+  upsert are covered uniformly. JSON numbers from payloads arrive as `float64`; the `id`
+  lookup must handle the int/float64 boundary.
 - **`task.go`** — `NewTask`/`ApplyPatch` do the JSON round-trip that silently drops
-  unknown fields (task.go:56-65, 94-99). The allowlist check goes here (or at the store
-  boundary) — validate `fields` keys against `{slug, title, depends_on, isolated,
-  deferred, brief, body, status}` before the round-trip; `group` rejection already lives
-  here (task.go:30-32, 77-79) and should fold into the same allowlist error path. `Task`
-  struct field tags are unchanged (`status` stays `status`).
+  unknown fields (task.go:56-65, 94-99). The upsert allowlist is enforced *upstream* at
+  the store boundary (above), not here — but the existing `group` rejection
+  (task.go:30-32, 77-79) should be folded into that same allowlist so there is one error
+  path, not two. `Task` struct field tags are unchanged (`status` stays `status`).
+- **Single-target + merge top-level validation** lives at the cli.go RunE / facade
+  boundary (those payloads never reach the store upsert chokepoint): `get`/`remove`
+  accept only `{slug, id}`; `set-status` accepts only `{slug, id, status}` and requires
+  `status` present; `merge` accepts only top-level `{remove_slugs, upsert, set_status}`.
+  Decode into a `map[string]any` first to detect unknown keys (Go's typed-struct decode
+  silently ignores them), then validate, then bind the typed fields.
 - **`render.go`** — `RenderToDisk` (render.go:23) and `removeOrphanProposals`
   (render.go:41) are the cleanup seam. `Render` returns `map[filename → content]`
   (render.go:58); that map's keys are the current render set. Manifest = persist those
   keys; on next render diff old vs new and `os.Remove` the dropped ones. `Outputs` carries
   `Home`/`Sidebar`/`ProposalPrefix` (config.go:31-44); the output filenames come from
-  config (template.yaml defaults: `Home.md`, `_Sidebar.md`, `proposal-`).
+  config (template.yaml defaults: `Home.md`, `_Sidebar.md`, `proposal-`). Manifest
+  read/write is best-effort like the current `removeOrphanProposals` — wrap in the same
+  never-fail-the-write discipline; a missing or corrupt manifest is treated as "nothing
+  to clean" and reseeded from the current render set.
 - **`cmd/lyx/helptree_test.go`** — board `wantSubs` (line 50-53) pins `"set-phase"`;
   change to `"set-status"` in the **same commit** (CLI/Cobra Invariant + task-completion
   rule).
@@ -250,10 +306,17 @@ TDD candidates (write the failing test first, then implement):
 - **Existing idempotency test must flip.** The current `store_test.go` test asserting
   `SetPhase` is a silent no-op on a missing task must be updated to assert the new error
   behavior (it is an intended contract change, not a regression).
-- **Reject unknown keys (W11).** `upsert`/`upsert-batch`/`merge` with a stray `phase`
-  key error (not silently drop); a stray typo key (`titel`) errors; `group` still errors
-  via the same path; a payload using only allowed keys (`status` included) succeeds and
-  the `status` value is persisted.
+- **Reject unknown keys — upsert paths (W11).** `upsert`/`upsert-batch`/`merge`'s inner
+  `upsert` with a stray `phase` key error (not silently drop); a stray typo key (`titel`)
+  errors; `group` still errors via the same path; a payload using only allowed keys
+  (`status` included) succeeds and the `status` value is persisted.
+- **Reject unknown keys — single-target + merge top-level (round-1 review gap).**
+  `set-status '{"slug":"x","phase":"done"}'` errors (does not silently clear `status`);
+  `get`/`remove` with a stray `id_or_slug`/`phase` key error; `merge` with a stale
+  top-level `set_phase` key errors (does not skip the status step silently).
+- **`set-status` requires `status` present.** `set-status '{"slug":"x"}'` (no `status`)
+  errors with `missing required field: status`; `set-status '{"slug":"x","status":null}'`
+  succeeds and clears the status (distinct outcomes for absent vs. explicit null).
 - **status round-trips on upsert.** `upsert '{"slug":"x","status":"active"}'` creates a
   task whose stored `status` is `active` and renders the `[active]` badge in `Home.md`.
 - **Manifest cleanup (W13).** Render once with `home: Home.md`; change config to
@@ -262,6 +325,10 @@ TDD candidates (write the failing test first, then implement):
   (e.g. `README.md`) in the board dir is **never** removed. Keep the existing
   orphaned-proposal cleanup behavior green (a task losing its body still removes its
   proposal file) — now via the manifest path.
+- **Manifest degradation (round-1 review note).** A board with rendered files but **no**
+  manifest (pre-upgrade state) renders without error and seeds the manifest, removing
+  nothing on that first pass. A **corrupt/unreadable** manifest does not fail the write —
+  it is treated as absent and overwritten by the current render set.
 - **Help schema (W1).** `--help` for each of the seven leaf commands contains the
   documented field schema (assert the new field names: `slug`/`id`/`status`, and absence
   of `id_or_slug`/`phase`/`group`).
@@ -289,3 +356,15 @@ existing passing tests for unaffected paths must stay green.
 - **Q:** Could the cleanup delete unrelated wiki files? **A:** No — the manifest only
   records files board itself rendered, so cleanup only ever removes board-written files;
   hand-added pages are never in the manifest.
+- **Q (review r1):** Does strict-key rejection cover the renamed single-target commands?
+  **A:** Yes — extend it to *every* board write and lookup payload, not just upsert. A
+  stale `phase` on `set-status` or `set_phase` on `merge` must error, else the silent
+  no-op the task kills is re-armed on the most-renamed commands.
+- **Q (review r1):** Absent vs. null `status` on `set-status`? **A:** `"status":null`
+  clears (intentional); absent `status` key is an error. They must be distinguishable.
+- **Q (review r1):** Where does the upsert allowlist live? **A:** One chokepoint at the
+  store boundary (`UpsertTask`/`UpsertTasksBatch`/`MergeTasks`) before the JSON round-trip,
+  covering create + patch + merge-upsert; fold the existing `group` rejection into it.
+- **Q (review r1):** Manifest failure modes? **A:** Best-effort like today's proposal
+  cleanup — missing/corrupt manifest degrades gracefully (never fails a write) and is
+  reseeded from the current render set.
