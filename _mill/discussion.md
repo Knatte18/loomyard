@@ -84,6 +84,14 @@ are reusable, parts are wrong (see Decisions).
   `main()` keeps stdout/stderr split (`main.go:37-38`), so the wrapping must target stdout
   explicitly there — a programmatic caller reading stdout sees the same envelope for Cobra
   errors and domain errors. The merged-writer `run()` test seam captures it regardless.
+- Root `SilenceErrors` flip (resolves the review's double-emit note): `newRoot()` currently
+  sets `SilenceErrors: false` (`cmd/lyx/main.go:85`) so cobra prints its own plain-text
+  error. Since `main()`/`run()` call `root.ExecuteContext` **directly** (not
+  `clihelp.Execute`), `newRoot()` must set `SilenceErrors: true` as part of this change —
+  otherwise the root path would double-emit (cobra plain text **and** the JSON wrapper).
+  Both the seam (`clihelp.Execute`) and the root must set `SilenceErrors: true`; factor the
+  "on non-nil error → `output.Err(stdout, TrimSpace(msg))`" wrapping into a shared helper
+  both call so they cannot drift.
 - Rationale: One change covers every module seam and the root. Cobra returns a non-nil
   error only for genuine Cobra-level failures (flag-parse, unknown command, arg
   validation, or an error returned by a `RunE`); our handlers use `clihelp.WrapRun`/`SetExit`
@@ -141,9 +149,19 @@ are reusable, parts are wrong (see Decisions).
 - Decision: Add a `--print` boolean flag to `lyx config`. `lyx config <module> --print`
   prints that module's on-disk `_lyx/config/<module>.yaml` verbatim to stdout and exits 0;
   `lyx config --print` (no module arg) prints all known modules' files (each clearly
-  delimited, e.g. a `# <module>` header line). On error (unknown module, or config not
-  initialized / file missing) emit the standard JSON error envelope via `output.Err` and
-  exit 1.
+  delimited, e.g. a `# <module>` header line).
+- Missing-file semantics (resolves the review's aggregate-print gap): config files are
+  created lazily (`config.Edit` writes from the template on first edit), so absent files
+  are normal. The **single-module** form (`config <module> --print`) **errors** (JSON
+  envelope, exit 1) when that module's file is missing — the operator asked for a specific
+  file. The **aggregate** form (`config --print`) is deterministic and never errors on
+  absence: it iterates `configreg.Names()` in registry order and, for each module, emits
+  the `# <module>` delimiter header followed by either the file's YAML (if present) or a
+  single `# (not configured)` comment line (if absent), then exits 0. This makes the
+  "dumps all modules" test deterministic regardless of which files exist. An unknown
+  **module name** passed to `--print` still errors (JSON, exit 1) via the W5/W12
+  harmonized error path. A hard I/O error (file exists but unreadable) errors (JSON, exit
+  1) in both forms.
 - Rationale: The operator in the run inspected config by reading the YAML file directly;
   `--print` reproduces that without launching the editor. Raw YAML preserves comments and
   the env-var-substitution template form (which a YAML→JSON conversion would lose) and is
@@ -336,8 +354,11 @@ TDD candidates (assertion shapes left to mill-plan):
   does not claim a `-m` flag exists.
 - **W12 (configcli)**: `lyx config <module> --print` emits the on-disk YAML verbatim and
   exits 0 without invoking the editor (inject a fake editor/seam to assert it is never
-  called); `lyx config --print` dumps all modules; unknown module / missing config yields
-  the JSON error envelope, exit 1.
+  called); single-module `--print` on a **missing** file errors (JSON, exit 1).
+  `lyx config --print` (aggregate) emits a `# <module>` header for every name in
+  `configreg.Names()` — YAML for present files, `# (not configured)` for absent ones — and
+  exits 0 **even when some files are missing** (seed only a subset to assert determinism);
+  an unknown module name still errors (JSON, exit 1).
 - **W5 (configcli)**: `config --help` `Long` contains every name from `configreg.Names()`
   (assert membership dynamically, not a hardcoded list).
 - **Config error harmonization (configcli)**: `lyx config bogus` (unknown module, no
@@ -381,4 +402,11 @@ stays embedded in the JSON) but should gain envelope assertions.
   `lyx config bogus --print` are both JSON; preserve the known-module list in the message.
 - **Q (review r1 NOTE):** Stale "warp status" doc comments? **A:** Update
   `weft/cli_test.go:121` and `weft/status_test.go:45` to "warp pairs" (comments only).
+- **Q (review r2 GAP):** What does aggregate `config --print` do when some module files are
+  absent (they're created lazily)? **A:** Never errors — emits a `# <module>` header for
+  every known module, YAML when present and `# (not configured)` when absent, exit 0. The
+  single-module form still errors (exit 1) on a missing file.
+- **Q (review r2 NOTE):** Does W14 need a root-side change too? **A:** Yes — `newRoot()`
+  must flip `SilenceErrors` from false to true (`main.go:85`), else the root path
+  double-emits cobra text + JSON. Shared wrapping helper used by both seam and root.
 ```
