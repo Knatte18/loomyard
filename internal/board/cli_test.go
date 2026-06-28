@@ -62,7 +62,7 @@ func runCLI(t *testing.T, args ...string) (exitCode int, stdout string) {
 }
 
 // TestCLIContract tests the JSON envelope shape and exit code behavior for each
-// happy-path verb: upsert, list, get, set-phase, rerender. Each case asserts
+// happy-path verb: upsert, list, get, set-status, rerender. Each case asserts
 // exit 0 + ok=true + the verb's distinctive field.
 //
 // Folds: TestCLIUpsertTask, TestCLIListTasks, TestCLIGetTask, TestCLISetPhase,
@@ -144,8 +144,8 @@ func TestCLIContract(t *testing.T) {
 				runCLI(t, "upsert", `{"slug":"foo","title":"Foo task"}`)
 				return cwd
 			},
-			verb:           "set-phase",
-			payload:        `{"id_or_slug":"foo","phase":"active"}`,
+			verb:           "set-status",
+			payload:        `{"id_or_slug":"foo","status":"active"}`,
 			wantExitCode:   0,
 			wantOK:         true,
 			wantFieldExist: "ok",

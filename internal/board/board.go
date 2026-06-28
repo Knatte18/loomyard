@@ -112,10 +112,12 @@ func (b *Board) UpsertTask(fields map[string]any) (Task, error) {
 	return result.(Task), nil
 }
 
-func (b *Board) SetPhase(idOrSlug any, phase *string) error {
+// SetStatus sets or clears the status field of the task identified by idOrSlug.
+// It acquires the write lock, mutates the store, and triggers a render.
+func (b *Board) SetStatus(idOrSlug any, status *string) error {
 	slugForMsg := fmt.Sprintf("%v", idOrSlug)
 	_, err := b.writeOp(func(s *Store) (any, error) {
-		return nil, s.SetPhase(idOrSlug, phase)
+		return nil, s.SetStatus(idOrSlug, status)
 	}, slugForMsg)
 	return err
 }

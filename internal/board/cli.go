@@ -125,22 +125,22 @@ Running "lyx board" with no subcommand lists available subcommands without requi
 		}),
 	}
 
-	// set-phase subcommand: set or clear the status field of a task.
-	setPhaseCmd := &cobra.Command{
-		Use:   "set-phase [json-payload]",
-		Short: "Set or clear the phase of a task",
+	// set-status subcommand: set or clear the status field of a task.
+	setStatusCmd := &cobra.Command{
+		Use:   "set-status [json-payload]",
+		Short: "Set or clear the status of a task",
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			if len(args) == 0 {
 				return outputError(out, "json payload required")
 			}
 			var payload struct {
 				IDOrSlug any     `json:"id_or_slug"`
-				Phase    *string `json:"phase"` // pointer: JSON null → Go nil → status cleared
+				Status   *string `json:"status"` // pointer: JSON null → Go nil → status cleared
 			}
 			if err := json.Unmarshal([]byte(args[0]), &payload); err != nil {
 				return outputError(out, fmt.Sprintf("invalid json: %v", err))
 			}
-			if err := b.SetPhase(payload.IDOrSlug, payload.Phase); err != nil {
+			if err := b.SetStatus(payload.IDOrSlug, payload.Status); err != nil {
 				return outputError(out, err.Error())
 			}
 			return outputSuccess(out)
@@ -302,7 +302,7 @@ Running "lyx board" with no subcommand lists available subcommands without requi
 	cmd.AddCommand(
 		upsertCmd,
 		upsertBatchCmd,
-		setPhaseCmd,
+		setStatusCmd,
 		removeCmd,
 		getCmd,
 		listCmd,

@@ -331,8 +331,9 @@ func (s *Store) RemoveTask(idOrSlug any) error {
 	return fmt.Errorf("task not found: %v", idOrSlug)
 }
 
-// SetPhase sets or clears the status field for the given task. Silent no-op if slug not found.
-func (s *Store) SetPhase(idOrSlug any, phase *string) error {
+// SetStatus sets or clears the status field for the task identified by idOrSlug.
+// If no task matches id or slug, it is a silent no-op (returns nil).
+func (s *Store) SetStatus(idOrSlug any, status *string) error {
 	for i := range s.tasks {
 		match := false
 		switch v := idOrSlug.(type) {
@@ -345,11 +346,11 @@ func (s *Store) SetPhase(idOrSlug any, phase *string) error {
 		}
 
 		if match {
-			s.tasks[i].Status = phase
+			s.tasks[i].Status = status
 			return nil
 		}
 	}
-	// SetPhase is idempotent: no error for missing task
+	// Silent no-op for missing task; Card 3 changes this to an error.
 	return nil
 }
 
@@ -570,15 +571,16 @@ func (s *Store) MergeTasks(removeSlugs []string, upsert map[string]any, setPhase
 		return Task{}, err
 	}
 
-	// Execute: set phase if provided
+	// Execute: set status if provided. Errors are intentionally ignored here;
+	// Card 5 replaces this block with a typed selector that propagates errors.
 	if setPhase != nil && len(setPhase) >= 2 {
 		idOrSlug := setPhase[0]
-		var phase *string
+		var status *string
 		if setPhase[1] != nil {
-			phaseStr := setPhase[1].(string)
-			phase = &phaseStr
+			statusStr := setPhase[1].(string)
+			status = &statusStr
 		}
-		s.SetPhase(idOrSlug, phase)
+		s.SetStatus(idOrSlug, status)
 	}
 
 	return upserted, nil

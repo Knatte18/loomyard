@@ -48,7 +48,7 @@ func TestHelpTree_VerbModuleSubcommands(t *testing.T) {
 			name:   "board",
 			module: "board",
 			wantSubs: []string{
-				"upsert", "upsert-batch", "set-phase", "remove", "get",
+				"upsert", "upsert-batch", "set-status", "remove", "get",
 				"list", "list-full", "merge", "set-deps", "rerender", "sync",
 			},
 		},

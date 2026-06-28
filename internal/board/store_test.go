@@ -265,11 +265,11 @@ func TestRemoveTaskMissing(t *testing.T) {
 	}
 }
 
-// TestSetPhase verifies SetPhase behaviour: clearing status via nil and the
-// silent no-op for a missing slug.
+// TestSetStatus verifies SetStatus behaviour: clearing status via nil and the
+// current silent no-op for a missing slug (changed to an error in Card 3).
 //
 // Folds: TestSetPhaseNil, TestSetPhaseMissing
-func TestSetPhase(t *testing.T) {
+func TestSetStatus(t *testing.T) {
 	t.Run("TestSetPhaseNil", func(t *testing.T) {
 		s := board.NewStore("")
 
@@ -282,14 +282,14 @@ func TestSetPhase(t *testing.T) {
 
 		status := "in progress"
 		task.Status = &status
-		// Manually update since SetPhase might not have been called before
+		// Manually update via upsert so the store has the initial status set.
 		s.UpsertTask(map[string]any{
 			"slug":   "task1",
 			"status": status,
 		})
 
-		// (k) nil phase clears status
-		err = s.SetPhase("task1", nil)
+		// nil status clears the stored status field.
+		err = s.SetStatus("task1", nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -303,8 +303,8 @@ func TestSetPhase(t *testing.T) {
 	t.Run("TestSetPhaseMissing", func(t *testing.T) {
 		s := board.NewStore("")
 
-		// (k) no-op (nil return) for missing slug
-		err := s.SetPhase("nonexistent", nil)
+		// Silent no-op for missing slug (no error); Card 3 changes this to an error.
+		err := s.SetStatus("nonexistent", nil)
 		if err != nil {
 			t.Fatalf("expected nil error for missing task, got %v", err)
 		}
@@ -336,7 +336,7 @@ func TestMergeTasks(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		// (l) remove + upsert + set_phase all execute atomically
+		// (l) remove + upsert + set_status all execute atomically
 		phase := "done"
 		result, err := s.MergeTasks(
 			[]string{"a"},
