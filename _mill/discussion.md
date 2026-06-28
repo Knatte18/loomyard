@@ -229,6 +229,41 @@ This task owns only the **producing** side (create issues). The **consuming** si
 - Rejected: *Manual `len(args)` check* (warp-style) — works, but `ExactArgs(1)` is the
   idiomatic cobra mechanism and gives a consistent error message for free.
 
+### cli-registration-enforcement
+
+- Decision: Add two build-time guard tests under `cmd/lyx/` that mechanically enforce
+  the CLI / Cobra Invariant's registration + self-documentation rules (which today are
+  only pinned by hardcoded superset lists in `helptree_test.go` and a `Short`-only walk
+  in `drift_test.go`):
+  - **Test A — `cmd/lyx/registration_test.go`** (AST source scan, modelled on
+    `internal/paths/enforcement_test.go`): walk `internal/`, parse every non-`_test.go`
+    `.go` file with `go/parser`, and collect the package of every top-level
+    `func Command() *cobra.Command` (no receiver, no params) into a *discovered* set.
+    Parse `cmd/lyx/main.go` and collect the selector ident `X` from every `X.Command()`
+    argument to `root.AddCommand(...)` into a *registered* set. Assert
+    `discovered ⊆ registered`; any unregistered module → `t.Errorf` naming the package.
+    An explicit (empty) `allowlist` var documents future exceptions. ("exists ⇒
+    registered".)
+  - **Test B — `cmd/lyx/longlist_test.go`** (live tree, modelled on
+    `drift_test.go`'s `newRoot()` walk): for each child of `newRoot().Commands()`
+    (skipping `help`/`completion`), assert `strings.Contains(root.Long, child.Name())`.
+    The set is derived from the live tree — no hardcoded list. ("registered ⇒ in --help
+    prose".)
+- Rationale: The existing pinned `helptree_test.go` uses superset assertions, so a
+  module that has a `Command()` but was never added to `newRoot()` passes silently; and
+  `root.Long` can drift from the registered set. These two guards close both holes
+  generically (for every present and future module, including `ghissues` itself). This
+  is a deliberate scope expansion requested by the orchestrator (task 032).
+- Implementation notes: assume selector-ident == package name (holds in this repo); if
+  any module diverges, match on package name and note the assumption in a code comment.
+  Keep `helptree_test.go` (subcommand-level pinning still has value) and update its
+  pinned sets for `ghissues` as already planned. Extend (do **not** recreate) the CLI /
+  Cobra Invariant section in `CONSTRAINTS.md` with a line about these two guards, in the
+  same commit (per the task-completion rule).
+- Rejected: *Rely on pinned superset lists only* — that is exactly the hole being
+  closed; *put the scan in `internal/paths`* — wrong package; the registration scan
+  belongs next to the root it guards (`cmd/lyx`).
+
 ## Technical context
 
 What mill-plan needs to know about the codebase:
@@ -370,6 +405,17 @@ TDD candidates / scenarios to cover:
   `--body` and `--label` flags (mirror `TestJSONHelp_LeafWithFlag` for `warp remove`).
   This guards the in-scope requirement that the sandbox agent can discover the command
   and its stdin/label conventions via `--help`.
+- **Registration guard (Test A, `cmd/lyx/registration_test.go`)**: model on
+  `internal/paths/enforcement_test.go`. Assert `discovered ⊆ registered` — fails if any
+  `internal/*` package with a `func Command() *cobra.Command` is not added to
+  `newRoot()`. Should pass once `ghissues` is registered (card 4) and fail if that
+  wiring is removed. Include a small predicate/sub-test sanity check in the style of
+  enforcement_test.go's `predicate` sub-test if practical.
+- **Long-list consistency (Test B, `cmd/lyx/longlist_test.go`)**: model on
+  `drift_test.go`'s live-tree walk. For each `newRoot().Commands()` child (skip
+  `help`/`completion`), assert `root.Long` contains the child name. Fails if a
+  registered module is missing from the root `Long` string — including `ghissues` until
+  card 4 appends it.
 
 Injection safety is structural (argv passed to `exec.Command`, no shell), so it needs
 an assertion that title/body are passed as single argv elements rather than a
@@ -413,3 +459,13 @@ dedicated escaping test.
   is a Cobra command tree (warp variant): `cobra.Command` parent + `create` subcommand,
   `cobra.ExactArgs(1)`, `clihelp.WrapRun`, wired into the Cobra root in
   `cmd/lyx/main.go`, and guarded by the Cobra help-tree drift tests.
+- **Q (orch scope expansion, task 032):** Should the task also close the CLI-framework
+  registration hole? **A:** Yes — add Test A (`registration_test.go`, AST scan,
+  exists⇒registered) and Test B (`longlist_test.go`, live tree, registered⇒in `Long`
+  prose), modelled on `internal/paths/enforcement_test.go` and `drift_test.go`. Keep
+  `helptree_test.go` and update its pins for `ghissues`. Extend the CLI/Cobra Invariant
+  in `CONSTRAINTS.md` (do not recreate it) with a line about the two guards, same commit.
+- **Q (orch correction):** Where does the `CONSTRAINTS.md` CLI/Cobra Invariant text
+  come from? **A:** main's commit `6097e0b` added it (plus a "CONSTRAINTS.md is
+  authoritative" note in `CLAUDE.md`); merged into this branch via `/mill-merge-in`
+  before planning the guards, so the section is extended rather than reinvented.
