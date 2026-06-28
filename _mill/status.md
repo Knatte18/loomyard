@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-fixing
+phase: holistic-approved
 slug: cli-help-ergonomics
 branch: cli-help-ergonomics
 plan: _mill/plan
@@ -28,6 +28,8 @@ approved-weft-commit-doc  '2026-06-28T16:42:17Z'
 approved-docs-roadmap-constraints  '2026-06-28T16:45:57Z'
 holistic-reviewing  '2026-06-28T16:46:25Z'
 holistic-fixing  '2026-06-28T16:52:08Z'
+nits-fixed-holistic  '2026-06-28T16:57:30Z'
+holistic-approved  '2026-06-28T16:57:39Z'
 ```
 
 ## Batches
