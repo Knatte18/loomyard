@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: board-sandbox-fixes
 branch: board-sandbox-fixes
-plan: null
+plan: _mill/plan
 parent: main
 task: Board fixes from sandbox run — payload keys, help, rerender
 task_description: |
@@ -17,4 +17,5 @@ task_description: |
 discussing  '2026-06-28T14:18:50Z'
 discussion-fix-r3  '2026-06-28T15:02:54Z'
 discussed  '2026-06-28T15:03:12Z'
+planning  '2026-06-28T15:10:45Z'
 ```
