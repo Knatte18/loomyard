@@ -89,6 +89,18 @@ load-bearing and partly enforced at `go test` time.
   `internal/output` JSON envelope (`output.Ok` / `output.Err`) — one JSON object per
   line. A persistent `--json` flag on the root exposes machine-readable help
   (`internal/clihelp/jsonhelp.go`).
+- **Errors are JSON.** Cobra-level errors (unknown command/flag, arg validation) are
+  wrapped in the `internal/output` JSON envelope (`{"ok":false,"error":"..."}`) on
+  stdout at the `clihelp.Execute` / `RunRoot` seam and at the `cmd/lyx` root, both of
+  which set `SilenceErrors = true`. `output.Err` trims the message with
+  `strings.TrimSpace`. Do not reintroduce bare plain-text error paths — config's were
+  harmonized in the CLI ergonomics pass (2026-06-28).
+- **Parent groups reject unknown subcommands.** Every parent module group (`board`,
+  `warp`, `weft`, `ide`, `muxpoc`) sets `RunE = clihelp.GroupRunE`, which errors
+  `unknown subcommand %q for %q` on extra args and otherwise shows help. Groups with a
+  layout-resolving `PersistentPreRunE` (`weft`, `board`, `ide`, `muxpoc`) guard it with
+  an early return at the top of that hook when `cmd.Name()` equals the group name,
+  preserving the "list subcommands without a git repo" property for bare-group invocations.
 
 ### For New Code
 
