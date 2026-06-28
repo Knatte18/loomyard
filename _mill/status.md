@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: config-engine-rename
 branch: config-engine-rename
 plan: _mill/plan
@@ -20,4 +20,13 @@ discussed  '2026-06-28T19:25:55Z'
 planning  '2026-06-28T19:30:42Z'
 plan-fix-r1  '2026-06-28T19:33:42Z'
 planned  '2026-06-28T19:34:27Z'
+implementing  '2026-06-28T19:45:21Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: rename
+    state: pending
 ```
