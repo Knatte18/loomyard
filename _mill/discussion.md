@@ -62,6 +62,26 @@ This task owns only the **producing** side (create issues). The **consuming** si
   - Failure: `{"ok":false,"error":"<msg>"}` with exit code 1.
 - Registration in `cmd/lyx/main.go` (`newRoot()` import + `AddCommand` + the `Long`
   module list).
+- **CLI-framework registration enforcement (scope expansion, task 032).** Two new
+  guard tests in `cmd/lyx/` that close the registration hole the current pinned
+  help-tree tests miss (a module can have a `Command()` yet never be wired into
+  `newRoot()`):
+  - **Test A — registration guard (`cmd/lyx/registration_test.go`):** a source/AST
+    scan modelled on `internal/paths/enforcement_test.go`. Walk `internal/`, parse
+    each non-`_test.go` file with `go/parser`, collect the package of every top-level
+    `func Command() *cobra.Command` (no receiver, no params) into a *discovered* set;
+    parse `cmd/lyx/main.go` to collect the selector idents `X` from every `X.Command()`
+    argument to `root.AddCommand(...)` into a *registered* set; assert
+    `discovered ⊆ registered`. An explicit (initially empty) `allowlist` var carries
+    documented exceptions. This makes it impossible to add a module without wiring it
+    into `main.go` — including `ghissues` itself ("exists ⇒ registered").
+  - **Test B — Long-list consistency (`cmd/lyx/longlist_test.go`):** from the *live*
+    tree (`newRoot()`), for each child in `root.Commands()` (skipping `help` and
+    `completion`), assert `strings.Contains(root.Long, child.Name())`. The set is
+    derived from the live tree — no hardcoded list — so `root.Long` cannot drift from
+    the actually-registered modules ("registered ⇒ in --help prose").
+  - A short note documenting these as enforcement for the CLI/Cobra invariant is added
+    to `CONSTRAINTS.md` in the same commit.
 - Durable design documentation in the package header comment (warp-style).
 - Roadmap/overview doc updates per the task-completion rule (see Constraints).
 
