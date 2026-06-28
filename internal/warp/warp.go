@@ -77,12 +77,32 @@ It owns worktree pairing, coordinated branch switching, and cleanup.`,
 		RunE: clihelp.GroupRunE,
 	}
 
-	// clone <host-url> <weft-url> [board-url]
-	cmd.AddCommand(&cobra.Command{
-		Use:   "clone <host-url> <weft-url> [board-url]",
+	// clone [--reset] <host-url> <weft-url> [board-url]
+	var cloneCmd *cobra.Command
+	cloneCmd = &cobra.Command{
+		Use:   "clone [--reset] <host-url> <weft-url> [board-url]",
 		Short: "bootstrap a new hub (host prime + board passenger + weft prime)",
-		RunE:  clihelp.WrapRun(runClone),
-	})
+		Long: `Clone three repositories into a new hub directory (<parent>/<host-name>-HUB):
+
+  <host-name>      — host prime (the main working repo)
+  <host-name>-weft — weft prime (lyx artefacts: config, codeguide, weft commits)
+  _board           — board passenger (task-tracker wiki)
+
+The board URL defaults to <weft-url>.wiki.git when omitted.
+Use --reset to tear down an existing hub before cloning (idempotent re-clone).
+
+After cloning, run "lyx init" inside the host worktree to activate junctions and config.
+
+Example:
+  lyx warp clone https://github.com/user/repo https://github.com/user/repo-weft`,
+		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
+			// Read the --reset flag from the cobra flag set via closure over cloneCmd.
+			reset, _ := cloneCmd.Flags().GetBool("reset")
+			return runCloneWithReset(out, args, reset)
+		}),
+	}
+	cloneCmd.Flags().Bool("reset", false, "remove an existing hub before cloning (idempotent re-clone)")
+	cmd.AddCommand(cloneCmd)
 
 	// add <slug>
 	cmd.AddCommand(&cobra.Command{
