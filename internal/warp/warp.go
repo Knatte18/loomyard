@@ -72,6 +72,9 @@ func Command() *cobra.Command {
 		Short: "host↔weft coordination",
 		Long: `warp manages the host↔weft topology for lyx-managed git repositories.
 It owns worktree pairing, coordinated branch switching, and cleanup.`,
+		// RunE is set so that bare "lyx warp" lists subcommands and "lyx warp bogus"
+		// emits a JSON error envelope instead of falling through to cobra's plain-text help.
+		RunE: clihelp.GroupRunE,
 	}
 
 	// clone <host-url> <weft-url> [board-url]
