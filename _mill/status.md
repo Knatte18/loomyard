@@ -44,5 +44,7 @@ batches:
     start_sha: 0981cbb623469ae78b89ca7d0facfddb077c0f05
     commit_sha: 6fcdf4691ae538b79c1d67c1b1655469e5c28d2f
   - name: cli-help
-    state: pending
+    state: running
+    implementer_session: ff252d7f-2c62-4b16-bdd9-93c95cbb1db6
+    start_sha: 77f02da468f9fa4776c355723bd394c7ac60be27
 ```
