@@ -40,7 +40,17 @@ func Command() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "weft",
 		Short: "weft git operations",
+		// RunE is set so that bare "lyx weft" lists subcommands and "lyx weft bogus"
+		// emits a JSON error envelope instead of falling through to cobra's plain-text help.
+		RunE: clihelp.GroupRunE,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			// Guard: when the weft group command itself is invoked (bare listing or
+			// unknown-subcommand error path), skip layout/config resolution so that
+			// neither path requires a git repository to be present.
+			if cmd.Name() == "weft" {
+				return nil
+			}
+
 			ctx := cmd.Context()
 			out := cmd.OutOrStdout()
 
