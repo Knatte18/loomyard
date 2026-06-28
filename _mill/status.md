@@ -38,7 +38,9 @@ batches:
     start_sha: 480d7ce480ba8f1ad2b88409bb3db94d0d2b80ae
     commit_sha: eaccf6ac7cccaec5bc612eaf2cdf0f91c05ee945
   - name: rerender-manifest
-    state: pending
+    state: running
+    implementer_session: 720ffdff-bcbc-47a3-a23b-f8c83fea8b97
+    start_sha: 0981cbb623469ae78b89ca7d0facfddb077c0f05
   - name: cli-help
     state: pending
 ```
