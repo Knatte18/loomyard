@@ -448,7 +448,7 @@ func TestMergeTasks(t *testing.T) {
 				"slug":  "c",
 				"title": "C",
 			},
-			&[2]any{"c", phase},
+			&board.MergeStatusUpdate{Selector: "c", Status: &phase},
 		)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -524,6 +524,60 @@ func TestMergeTasks(t *testing.T) {
 			t.Errorf("expected task b to still exist after rollback")
 		}
 	})
+}
+
+// TestMergeTasksSetStatusRollback verifies that a merge whose set_status targets a
+// non-existent slug returns an error and leaves the store unchanged. The remove and
+// upsert steps are applied in-memory but writeOp discards them when mutate errors —
+// confirmed by loading a fresh store from disk and asserting the task list is identical.
+func TestMergeTasksSetStatusRollback(t *testing.T) {
+	tmpDir := t.TempDir()
+	taskPath := filepath.Join(tmpDir, "tasks.json")
+
+	// Create an initial store with one task.
+	s := board.NewStore(taskPath)
+	if err := s.Load(); err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if _, err := s.UpsertTask(map[string]any{"slug": "existing", "title": "Existing"}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	if err := s.Save(); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	// Reload to simulate a fresh writeOp cycle.
+	s2 := board.NewStore(taskPath)
+	if err := s2.Load(); err != nil {
+		t.Fatalf("load s2: %v", err)
+	}
+
+	// MergeTasks with a set_status that targets a non-existent slug. The remove +
+	// upsert steps execute in-memory, but set_status errors so MergeTasks returns an
+	// error. The caller (writeOp) must not call Save() on error.
+	status := "active"
+	_, err := s2.MergeTasks(
+		nil,
+		map[string]any{"slug": "new-task", "title": "New"},
+		&board.MergeStatusUpdate{Selector: "ghost", Status: &status},
+	)
+	if err == nil {
+		t.Fatalf("expected error when set_status targets non-existent slug")
+	}
+	if !stringContains(err.Error(), "task not found") {
+		t.Errorf("expected 'task not found' error, got %v", err)
+	}
+
+	// Load a fresh store from disk (as writeOp would after not calling Save).
+	// The on-disk task list must be identical to before the failed merge.
+	s3 := board.NewStore(taskPath)
+	if err := s3.Load(); err != nil {
+		t.Fatalf("load s3: %v", err)
+	}
+	tasks := s3.Tasks()
+	if len(tasks) != 1 || tasks[0].Slug != "existing" {
+		t.Errorf("expected on-disk store to be unchanged (1 task 'existing'), got %v", tasks)
+	}
 }
 
 func TestListTasksBriefLayerAndProposal(t *testing.T) {

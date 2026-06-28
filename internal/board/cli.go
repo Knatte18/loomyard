@@ -105,6 +105,8 @@ Running "lyx board" with no subcommand lists available subcommands without requi
 	}
 
 	// upsert-batch subcommand: create or update multiple tasks atomically.
+	// Allowed wrapper key: {tasks}. A typo'd wrapper (e.g. "taks") errors;
+	// an absent or empty tasks array also errors (nothing to upsert is a mistake).
 	upsertBatchCmd := &cobra.Command{
 		Use:   "upsert-batch [json-payload]",
 		Short: "Create or update multiple tasks atomically",
@@ -112,16 +114,48 @@ Running "lyx board" with no subcommand lists available subcommands without requi
 			if len(args) == 0 {
 				return outputError(out, "json payload required")
 			}
-			var payload struct {
-				Tasks []map[string]any `json:"tasks"`
-			}
-			if err := json.Unmarshal([]byte(args[0]), &payload); err != nil {
+
+			// Decode into a map to detect unknown wrapper keys.
+			var raw map[string]any
+			if err := json.Unmarshal([]byte(args[0]), &raw); err != nil {
 				return outputError(out, fmt.Sprintf("invalid json: %v", err))
 			}
-			if err := b.UpsertTasksBatch(payload.Tasks); err != nil {
+
+			// Only "tasks" is permitted at the wrapper level; a typo'd key would
+			// decode silently to count:0 with the old typed-struct approach.
+			for k := range raw {
+				if k != "tasks" {
+					return outputError(out, fmt.Sprintf("unknown field: %q", k))
+				}
+			}
+
+			// tasks is required and must be a non-empty array.
+			tasksVal, hasTasksKey := raw["tasks"]
+			if !hasTasksKey || tasksVal == nil {
+				return outputError(out, "missing required field: tasks")
+			}
+			tasksArr, ok := tasksVal.([]any)
+			if !ok {
+				return outputError(out, "tasks must be an array")
+			}
+			if len(tasksArr) == 0 {
+				return outputError(out, "tasks array must not be empty")
+			}
+
+			// Convert []any to []map[string]any; the store validates each element's fields.
+			tasks := make([]map[string]any, len(tasksArr))
+			for i, v := range tasksArr {
+				m, ok := v.(map[string]any)
+				if !ok {
+					return outputError(out, fmt.Sprintf("tasks[%d] must be an object", i))
+				}
+				tasks[i] = m
+			}
+
+			if err := b.UpsertTasksBatch(tasks); err != nil {
 				return outputError(out, err.Error())
 			}
-			return outputSuccessWithCount(out, len(payload.Tasks))
+			return outputSuccessWithCount(out, len(tasks))
 		}),
 	}
 
@@ -234,33 +268,87 @@ Running "lyx board" with no subcommand lists available subcommands without requi
 		}),
 	}
 
-	// merge subcommand: remove + upsert + set_phase atomically.
+	// merge subcommand: remove slugs, upsert one task, and optionally set status — atomically.
+	// Allowed top-level keys: {remove_slugs, upsert, set_status}. The inner set_status
+	// object is validated identically to the set-status command.
 	mergeCmd := &cobra.Command{
 		Use:   "merge [json-payload]",
-		Short: "Atomically remove, upsert, and set-phase",
+		Short: "Atomically remove, upsert, and set-status",
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			if len(args) == 0 {
 				return outputError(out, "json payload required")
 			}
-			var payload struct {
-				RemoveSlugs []string       `json:"remove_slugs"`
-				Upsert      map[string]any `json:"upsert"`
-				SetPhase    []any          `json:"set_phase"` // two elements: [id_or_slug, phase]
-			}
-			if err := json.Unmarshal([]byte(args[0]), &payload); err != nil {
+
+			// Decode into a map first to detect unknown top-level keys.
+			var raw map[string]any
+			if err := json.Unmarshal([]byte(args[0]), &raw); err != nil {
 				return outputError(out, fmt.Sprintf("invalid json: %v", err))
 			}
 
-			// set_phase must be exactly two elements if provided.
-			var setPhasePtr *[2]any
-			if len(payload.SetPhase) > 0 {
-				if len(payload.SetPhase) != 2 {
-					return outputError(out, "set_phase must be array of length 2")
+			// Enforce strict top-level key set; a stale set_phase errors rather than
+			// being silently dropped (which would skip the status step with no feedback).
+			for k := range raw {
+				if k != "remove_slugs" && k != "upsert" && k != "set_status" {
+					return outputError(out, fmt.Sprintf("unknown field: %q", k))
 				}
-				setPhasePtr = &[2]any{payload.SetPhase[0], payload.SetPhase[1]}
 			}
 
-			task, err := b.MergeTasks(payload.RemoveSlugs, payload.Upsert, setPhasePtr)
+			// Parse remove_slugs (optional, default empty).
+			var removeSlugs []string
+			if rsVal, ok := raw["remove_slugs"]; ok && rsVal != nil {
+				rsArr, ok := rsVal.([]any)
+				if !ok {
+					return outputError(out, "remove_slugs must be an array")
+				}
+				for _, v := range rsArr {
+					s, ok := v.(string)
+					if !ok {
+						return outputError(out, "remove_slugs elements must be strings")
+					}
+					removeSlugs = append(removeSlugs, s)
+				}
+			}
+
+			// Parse upsert (required: contains the task fields to create or update).
+			upsertVal, hasUpsert := raw["upsert"]
+			if !hasUpsert || upsertVal == nil {
+				return outputError(out, "missing required field: upsert")
+			}
+			upsertFields, ok := upsertVal.(map[string]any)
+			if !ok {
+				return outputError(out, "upsert must be an object")
+			}
+
+			// Parse set_status (optional): validate using the same resolveLookup
+			// logic as the standalone set-status command — {slug,id,status} allowed,
+			// exactly-one-of slug/id, and status key required.
+			var setStatusPtr *MergeStatusUpdate
+			if ssVal, ok := raw["set_status"]; ok && ssVal != nil {
+				ssBytes, err := json.Marshal(ssVal)
+				if err != nil {
+					return outputError(out, fmt.Sprintf("set_status: marshal error: %v", err))
+				}
+				selector, ssMap, err := resolveLookup(ssBytes, "status")
+				if err != nil {
+					return outputError(out, "set_status: "+err.Error())
+				}
+				// status key is required inside set_status, mirroring the standalone command.
+				sv, hasStatusKey := ssMap["status"]
+				if !hasStatusKey {
+					return outputError(out, "set_status: missing required field: status")
+				}
+				var status *string
+				if sv != nil {
+					s, ok := sv.(string)
+					if !ok {
+						return outputError(out, "set_status.status must be a string or null")
+					}
+					status = &s
+				}
+				setStatusPtr = &MergeStatusUpdate{Selector: selector, Status: status}
+			}
+
+			task, err := b.MergeTasks(removeSlugs, upsertFields, setStatusPtr)
 			if err != nil {
 				return outputError(out, err.Error())
 			}
@@ -269,6 +357,9 @@ Running "lyx board" with no subcommand lists available subcommands without requi
 	}
 
 	// set-deps subcommand: replace the depends_on list for a task.
+	// Allowed keys: {slug, depends_on}. depends_on is required (absent errors;
+	// explicit [] clears the list, distinguishing intentional clear from a typo
+	// that would otherwise silently wipe the task's dependency list).
 	setDepsCmd := &cobra.Command{
 		Use:   "set-deps [json-payload]",
 		Short: "Replace the depends_on list for a task",
@@ -276,14 +367,53 @@ Running "lyx board" with no subcommand lists available subcommands without requi
 			if len(args) == 0 {
 				return outputError(out, "json payload required")
 			}
-			var payload struct {
-				Slug      string   `json:"slug"`
-				DependsOn []string `json:"depends_on"`
-			}
-			if err := json.Unmarshal([]byte(args[0]), &payload); err != nil {
+
+			// Decode into a map to detect unknown keys and key presence.
+			var m map[string]any
+			if err := json.Unmarshal([]byte(args[0]), &m); err != nil {
 				return outputError(out, fmt.Sprintf("invalid json: %v", err))
 			}
-			if err := b.SetDeps(payload.Slug, payload.DependsOn); err != nil {
+
+			// Reject unknown keys so a typo ("depends") errors instead of silently
+			// clearing the dependency list.
+			for k := range m {
+				if k != "slug" && k != "depends_on" {
+					return outputError(out, fmt.Sprintf("unknown field: %q", k))
+				}
+			}
+
+			// slug is required to identify the target task.
+			slug, ok := m["slug"].(string)
+			if !ok || slug == "" {
+				return outputError(out, "missing required field: slug")
+			}
+
+			// depends_on is required: absent key errors; explicit [] clears the list.
+			depsVal, hasDeps := m["depends_on"]
+			if !hasDeps {
+				return outputError(out, "missing required field: depends_on")
+			}
+
+			var dependsOn []string
+			if depsVal != nil {
+				arr, ok := depsVal.([]any)
+				if !ok {
+					return outputError(out, "depends_on must be an array")
+				}
+				dependsOn = make([]string, 0, len(arr))
+				for _, v := range arr {
+					s, ok := v.(string)
+					if !ok {
+						return outputError(out, "depends_on elements must be strings")
+					}
+					dependsOn = append(dependsOn, s)
+				}
+			} else {
+				// Explicit null — treat as empty (clear the list).
+				dependsOn = []string{}
+			}
+
+			if err := b.SetDeps(slug, dependsOn); err != nil {
 				return outputError(out, err.Error())
 			}
 			return outputSuccess(out)

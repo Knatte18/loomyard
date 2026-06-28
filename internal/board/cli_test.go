@@ -352,6 +352,217 @@ func TestCLIUnknownSubcommand(t *testing.T) {
 	}
 }
 
+// TestCLIStrictPayloadShapes verifies the strict key/shape validation added in Card 5
+// for set-deps, upsert-batch, and merge (top-level and inner set_status object).
+func TestCLIStrictPayloadShapes(t *testing.T) {
+	t.Setenv("BOARD_SKIP_GIT", "1")
+
+	tests := []struct {
+		name         string
+		setup        func(*testing.T)
+		verb         string
+		payload      string
+		wantExitCode int
+		wantOK       bool
+		wantError    string
+		assertResult func(*testing.T, map[string]any)
+	}{
+		// set-deps: unknown key errors
+		{
+			name: "set_deps_unknown_key_errors",
+			setup: func(t *testing.T) {
+				seedCwd(t)
+				runCLI(t, "upsert", `{"slug":"task-a","title":"A"}`)
+			},
+			verb:         "set-deps",
+			payload:      `{"slug":"task-a","depends":["task-b"]}`,
+			wantExitCode: 1,
+			wantOK:       false,
+			wantError:    "unknown field",
+		},
+		// set-deps: absent depends_on key errors
+		{
+			name: "set_deps_absent_depends_on_errors",
+			setup: func(t *testing.T) {
+				seedCwd(t)
+				runCLI(t, "upsert", `{"slug":"task-a","title":"A"}`)
+			},
+			verb:         "set-deps",
+			payload:      `{"slug":"task-a"}`,
+			wantExitCode: 1,
+			wantOK:       false,
+			wantError:    "missing required field: depends_on",
+		},
+		// set-deps: explicit [] clears the list
+		{
+			name: "set_deps_empty_array_clears",
+			setup: func(t *testing.T) {
+				seedCwd(t)
+				runCLI(t, "upsert", `{"slug":"task-a","title":"A"}`)
+				runCLI(t, "upsert", `{"slug":"task-b","title":"B"}`)
+				runCLI(t, "set-deps", `{"slug":"task-b","depends_on":["task-a"]}`)
+			},
+			verb:         "set-deps",
+			payload:      `{"slug":"task-b","depends_on":[]}`,
+			wantExitCode: 0,
+			wantOK:       true,
+			assertResult: func(t *testing.T, _ map[string]any) {
+				_, out := runCLI(t, "get", `{"slug":"task-b"}`)
+				var r map[string]any
+				if err := json.Unmarshal([]byte(out), &r); err != nil {
+					t.Fatalf("parse: %v", err)
+				}
+				task, _ := r["task"].(map[string]any)
+				deps, _ := task["depends_on"].([]any)
+				if len(deps) != 0 {
+					t.Errorf("expected empty depends_on after clear, got %v", deps)
+				}
+			},
+		},
+		// upsert-batch: typo'd wrapper key errors
+		{
+			name: "upsert_batch_typo_wrapper_errors",
+			setup: func(t *testing.T) {
+				seedCwd(t)
+			},
+			verb:         "upsert-batch",
+			payload:      `{"taks":[{"slug":"task-a","title":"A"}]}`,
+			wantExitCode: 1,
+			wantOK:       false,
+			wantError:    "unknown field",
+		},
+		// upsert-batch: absent tasks key errors
+		{
+			name: "upsert_batch_absent_tasks_errors",
+			setup: func(t *testing.T) {
+				seedCwd(t)
+			},
+			verb:         "upsert-batch",
+			payload:      `{}`,
+			wantExitCode: 1,
+			wantOK:       false,
+			wantError:    "missing required field: tasks",
+		},
+		// upsert-batch: empty tasks array errors
+		{
+			name: "upsert_batch_empty_tasks_errors",
+			setup: func(t *testing.T) {
+				seedCwd(t)
+			},
+			verb:         "upsert-batch",
+			payload:      `{"tasks":[]}`,
+			wantExitCode: 1,
+			wantOK:       false,
+			wantError:    "tasks array must not be empty",
+		},
+		// merge: stale top-level set_phase errors
+		{
+			name: "merge_stale_set_phase_errors",
+			setup: func(t *testing.T) {
+				seedCwd(t)
+			},
+			verb:         "merge",
+			payload:      `{"upsert":{"slug":"task-a","title":"A"},"set_phase":["task-a","done"]}`,
+			wantExitCode: 1,
+			wantOK:       false,
+			wantError:    "unknown field",
+		},
+		// merge: inner set_status with unknown key (phase) errors
+		{
+			name: "merge_set_status_unknown_inner_key_errors",
+			setup: func(t *testing.T) {
+				seedCwd(t)
+			},
+			verb:         "merge",
+			payload:      `{"upsert":{"slug":"task-a","title":"A"},"set_status":{"slug":"task-a","phase":"done"}}`,
+			wantExitCode: 1,
+			wantOK:       false,
+			wantError:    "unknown field",
+		},
+		// merge: inner set_status missing status key errors
+		{
+			name: "merge_set_status_missing_status_key_errors",
+			setup: func(t *testing.T) {
+				seedCwd(t)
+			},
+			verb:         "merge",
+			payload:      `{"upsert":{"slug":"task-a","title":"A"},"set_status":{"slug":"task-a"}}`,
+			wantExitCode: 1,
+			wantOK:       false,
+			wantError:    "missing required field: status",
+		},
+		// merge: happy path with set_status succeeds
+		{
+			name: "merge_with_set_status_succeeds",
+			setup: func(t *testing.T) {
+				seedCwd(t)
+				runCLI(t, "upsert", `{"slug":"old-task","title":"Old"}`)
+			},
+			verb:         "merge",
+			payload:      `{"remove_slugs":["old-task"],"upsert":{"slug":"new-task","title":"New"},"set_status":{"slug":"new-task","status":"active"}}`,
+			wantExitCode: 0,
+			wantOK:       true,
+			assertResult: func(t *testing.T, _ map[string]any) {
+				_, out := runCLI(t, "get", `{"slug":"new-task"}`)
+				var r map[string]any
+				if err := json.Unmarshal([]byte(out), &r); err != nil {
+					t.Fatalf("parse: %v", err)
+				}
+				task, _ := r["task"].(map[string]any)
+				if task == nil {
+					t.Fatalf("new-task not found")
+				}
+				if task["status"] != "active" {
+					t.Errorf("expected status=active, got %v", task["status"])
+				}
+			},
+		},
+		// merge: set_status targeting non-existent slug errors (atomic rollback via writeOp)
+		{
+			name: "merge_set_status_missing_target_errors",
+			setup: func(t *testing.T) {
+				seedCwd(t)
+			},
+			verb:         "merge",
+			payload:      `{"upsert":{"slug":"new-task","title":"New"},"set_status":{"slug":"ghost","status":"done"}}`,
+			wantExitCode: 1,
+			wantOK:       false,
+			wantError:    "task not found",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.setup(t)
+
+			exitCode, stdout := runCLI(t, tt.verb, tt.payload)
+
+			if exitCode != tt.wantExitCode {
+				t.Fatalf("exit = %d; want %d; stdout: %s", exitCode, tt.wantExitCode, stdout)
+			}
+
+			var result map[string]any
+			if err := json.Unmarshal([]byte(stdout), &result); err != nil {
+				t.Fatalf("parse: %v; stdout: %s", err, stdout)
+			}
+
+			if ok, _ := result["ok"].(bool); ok != tt.wantOK {
+				t.Fatalf("ok = %v; want %v; stdout: %s", ok, tt.wantOK, stdout)
+			}
+
+			if tt.wantError != "" {
+				if errMsg, _ := result["error"].(string); !strings.Contains(errMsg, tt.wantError) {
+					t.Fatalf("error = %q; want substring %q", errMsg, tt.wantError)
+				}
+			}
+
+			if tt.assertResult != nil {
+				tt.assertResult(t, result)
+			}
+		})
+	}
+}
+
 // TestCLILookupContract covers the slug-or-id lookup contract on get, set-status,
 // and remove: both key forms succeed; id=0 resolves the first-created task; neither
 // key and both keys error; unknown keys (e.g. old id_or_slug) error.

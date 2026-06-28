@@ -130,8 +130,12 @@ func (b *Board) RemoveTask(idOrSlug any) error {
 	return err
 }
 
-func (b *Board) MergeTasks(removeSlugs []string, upsert map[string]any, setPhase *[2]any) (Task, error) {
-	// Extract slug for message
+// MergeTasks atomically removes slugs, upserts one task, and optionally applies a
+// status update. setStatus carries the pre-resolved task selector and status value;
+// pass nil to skip the status step. A status update that targets a missing task
+// causes the entire merge to fail (writeOp discards the in-memory mutation).
+func (b *Board) MergeTasks(removeSlugs []string, upsert map[string]any, setStatus *MergeStatusUpdate) (Task, error) {
+	// Extract slug for the commit message; the store validates the full field set.
 	slugVal, hasSlug := upsert["slug"]
 	if !hasSlug {
 		return Task{}, fmt.Errorf("slug key is missing")
@@ -142,7 +146,7 @@ func (b *Board) MergeTasks(removeSlugs []string, upsert map[string]any, setPhase
 	}
 
 	result, err := b.writeOp(func(s *Store) (any, error) {
-		return s.MergeTasks(removeSlugs, upsert, setPhase)
+		return s.MergeTasks(removeSlugs, upsert, setStatus)
 	}, slugStr)
 
 	if err != nil {

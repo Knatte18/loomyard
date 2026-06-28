@@ -209,6 +209,15 @@ func (s *Store) validateWrite(snapshot []Task, incoming Task) error {
 	return nil
 }
 
+// MergeStatusUpdate carries the resolved set_status step for a MergeTasks call.
+// Selector is a Go string when the task is identified by slug, or float64 when
+// identified by numeric id (JSON numbers decode as float64). Status is nil to
+// clear the status field.
+type MergeStatusUpdate struct {
+	Selector any
+	Status   *string
+}
+
 // upsertAllowedKeys is the authoritative set of field names accepted by all
 // upsert paths (UpsertTask, UpsertTasksBatch, MergeTasks). It is enforced at the
 // store boundary before the NewTask/ApplyPatch JSON round-trip so create, patch,
@@ -544,9 +553,11 @@ func (s *Store) UpsertTasksBatch(tasks []map[string]any) error {
 	return nil
 }
 
-// MergeTasks removes slugs, upserts one task, and optionally sets a phase — all atomically.
-// setPhase is [id_or_slug, phase_string_or_nil], or nil to skip the phase update.
-func (s *Store) MergeTasks(removeSlugs []string, upsert map[string]any, setPhase *[2]any) (Task, error) {
+// MergeTasks removes slugs, upserts one task, and optionally sets a status — all atomically.
+// setStatus is the resolved status-update step, or nil to skip it. When setStatus
+// targets a missing task, SetStatus returns an error and writeOp discards the
+// in-memory mutation without saving, leaving the on-disk state unchanged.
+func (s *Store) MergeTasks(removeSlugs []string, upsert map[string]any, setStatus *MergeStatusUpdate) (Task, error) {
 	// Project snapshot: snapshot minus removeSlugs
 	projected := make([]Task, 0, len(s.tasks))
 	for _, t := range s.tasks {
@@ -622,16 +633,13 @@ func (s *Store) MergeTasks(removeSlugs []string, upsert map[string]any, setPhase
 		return Task{}, err
 	}
 
-	// Execute: set status if provided. Errors are intentionally ignored here;
-	// Card 5 replaces this block with a typed selector that propagates errors.
-	if setPhase != nil && len(setPhase) >= 2 {
-		idOrSlug := setPhase[0]
-		var status *string
-		if setPhase[1] != nil {
-			statusStr := setPhase[1].(string)
-			status = &statusStr
+	// Execute: apply the status update if provided. SetStatus now errors on a
+	// missing target; the error propagates here so writeOp (board.go) discards
+	// the in-memory mutation without calling Save, leaving on-disk state unchanged.
+	if setStatus != nil {
+		if err := s.SetStatus(setStatus.Selector, setStatus.Status); err != nil {
+			return Task{}, err
 		}
-		s.SetStatus(idOrSlug, status)
 	}
 
 	return upserted, nil
