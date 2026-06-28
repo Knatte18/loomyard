@@ -97,7 +97,7 @@ func TestUpsertTaskPreservesFields(t *testing.T) {
 func TestUpsertTaskGroupKeyError(t *testing.T) {
 	s := board.NewStore("")
 
-	// (d) `group` key returns validation error
+	// (d) `group` key is rejected by the store allowlist (coverage relocated from task_test.go)
 	_, err := s.UpsertTask(map[string]any{
 		"slug":  "task1",
 		"group": "something",
@@ -105,9 +105,110 @@ func TestUpsertTaskGroupKeyError(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected error for group key")
 	}
-	if err.Error() != "group key is not allowed; use depends_on, isolated, deferred instead" {
+	if err.Error() != `unknown field: "group"` {
 		t.Errorf("unexpected error message: %v", err)
 	}
+}
+
+// TestUpsertFieldAllowlist verifies that the store chokepoint rejects unknown upsert
+// fields on all three entry points: UpsertTask, UpsertTasksBatch, and MergeTasks.
+// Also verifies that `status` IS in the allowed set and is persisted correctly.
+func TestUpsertFieldAllowlist(t *testing.T) {
+	t.Run("upsert_stray_phase_key_errors", func(t *testing.T) {
+		s := board.NewStore("")
+		_, err := s.UpsertTask(map[string]any{
+			"slug":  "task1",
+			"phase": "active",
+		})
+		if err == nil {
+			t.Fatalf("expected error for stray phase key")
+		}
+		// The "phase" key gets a friendly hint toward the renamed "status" field.
+		wantSubstr := `unknown field: "phase"`
+		if !stringContains(err.Error(), wantSubstr) {
+			t.Errorf("expected error containing %q, got %v", wantSubstr, err)
+		}
+		if !stringContains(err.Error(), "status") {
+			t.Errorf("expected hint mentioning 'status', got %v", err)
+		}
+	})
+
+	t.Run("upsert_typo_key_errors", func(t *testing.T) {
+		s := board.NewStore("")
+		_, err := s.UpsertTask(map[string]any{
+			"slug":  "task1",
+			"titel": "A",
+		})
+		if err == nil {
+			t.Fatalf("expected error for typo key 'titel'")
+		}
+		if !stringContains(err.Error(), `"titel"`) {
+			t.Errorf("expected error to name the offending key, got %v", err)
+		}
+	})
+
+	t.Run("upsert_status_field_allowed_and_persisted", func(t *testing.T) {
+		s := board.NewStore("")
+		task, err := s.UpsertTask(map[string]any{
+			"slug":   "task1",
+			"status": "active",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if task.Status == nil || *task.Status != "active" {
+			t.Errorf("expected status=active, got %v", task.Status)
+		}
+		// Verify the value is persisted in the store.
+		retrieved, found := s.GetTask("task1")
+		if !found {
+			t.Fatalf("task not found after upsert")
+		}
+		if retrieved.Status == nil || *retrieved.Status != "active" {
+			t.Errorf("expected stored status=active, got %v", retrieved.Status)
+		}
+	})
+
+	t.Run("upsert_batch_stray_phase_errors", func(t *testing.T) {
+		s := board.NewStore("")
+		err := s.UpsertTasksBatch([]map[string]any{
+			{"slug": "task1", "phase": "done"},
+		})
+		if err == nil {
+			t.Fatalf("expected error for batch with stray phase key")
+		}
+		if !stringContains(err.Error(), `"phase"`) {
+			t.Errorf("expected error naming 'phase', got %v", err)
+		}
+	})
+
+	t.Run("merge_upsert_stray_phase_errors", func(t *testing.T) {
+		s := board.NewStore("")
+		_, err := s.MergeTasks(
+			nil,
+			map[string]any{"slug": "task1", "phase": "done"},
+			nil,
+		)
+		if err == nil {
+			t.Fatalf("expected error for merge-upsert with stray phase key")
+		}
+		if !stringContains(err.Error(), `"phase"`) {
+			t.Errorf("expected error naming 'phase', got %v", err)
+		}
+	})
+
+	t.Run("group_still_errors_via_allowlist", func(t *testing.T) {
+		s := board.NewStore("")
+		err := s.UpsertTasksBatch([]map[string]any{
+			{"slug": "task1", "group": "G"},
+		})
+		if err == nil {
+			t.Fatalf("expected error for group key via allowlist")
+		}
+		if !stringContains(err.Error(), `"group"`) {
+			t.Errorf("expected error naming 'group', got %v", err)
+		}
+	})
 }
 
 // TestValidateDependencyErrors verifies that UpsertTask rejects all invalid dependency

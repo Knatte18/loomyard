@@ -209,8 +209,45 @@ func (s *Store) validateWrite(snapshot []Task, incoming Task) error {
 	return nil
 }
 
+// upsertAllowedKeys is the authoritative set of field names accepted by all
+// upsert paths (UpsertTask, UpsertTasksBatch, MergeTasks). It is enforced at the
+// store boundary before the NewTask/ApplyPatch JSON round-trip so create, patch,
+// and merge-upsert are all covered by one chokepoint. The "id" field is excluded
+// because it is auto-assigned; "phase" and "group" are excluded by omission.
+var upsertAllowedKeys = map[string]bool{
+	"slug":       true,
+	"title":      true,
+	"depends_on": true,
+	"isolated":   true,
+	"deferred":   true,
+	"brief":      true,
+	"body":       true,
+	"status":     true,
+}
+
+// validateUpsertFields rejects any key in fields that is not in upsertAllowedKeys.
+// Returns a clear error naming the offending key; adds a hint for the common "phase"
+// typo directing the caller to the renamed "status" field.
+func validateUpsertFields(fields map[string]any) error {
+	for k := range fields {
+		if !upsertAllowedKeys[k] {
+			if k == "phase" {
+				return fmt.Errorf("unknown field: %q (did you mean \"status\"?)", k)
+			}
+			return fmt.Errorf("unknown field: %q", k)
+		}
+	}
+	return nil
+}
+
 // UpsertTask creates or updates the task identified by fields["slug"].
+// Rejects unknown fields via validateUpsertFields before any other processing.
 func (s *Store) UpsertTask(fields map[string]any) (Task, error) {
+	// Validate field allowlist at the store chokepoint before the JSON round-trip.
+	if err := validateUpsertFields(fields); err != nil {
+		return Task{}, err
+	}
+
 	index := s.slugIndex()
 	slugVal, hasSlug := fields["slug"]
 	if !hasSlug {
@@ -417,7 +454,16 @@ func (s *Store) ListTasksFull() []Task {
 }
 
 // UpsertTasksBatch applies multiple upserts atomically — validates all first, then applies all or none.
+// Each task's field map is validated by the upsert allowlist before projection.
 func (s *Store) UpsertTasksBatch(tasks []map[string]any) error {
+	// Validate all tasks against the allowlist first, for fast-fail on bad input
+	// before doing any projection or mutation work.
+	for _, fields := range tasks {
+		if err := validateUpsertFields(fields); err != nil {
+			return err
+		}
+	}
+
 	// Project the full post-operation snapshot
 	snapshot := s.tasks
 	for _, fields := range tasks {
@@ -514,6 +560,11 @@ func (s *Store) MergeTasks(removeSlugs []string, upsert map[string]any, setPhase
 		if !shouldRemove {
 			projected = append(projected, t)
 		}
+	}
+
+	// Validate upsert field allowlist before any other processing of the merge upsert.
+	if err := validateUpsertFields(upsert); err != nil {
+		return Task{}, err
 	}
 
 	// Validate the upserted task against projected snapshot

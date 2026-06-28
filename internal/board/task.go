@@ -26,11 +26,8 @@ type Task struct {
 
 // NewTask builds a Task from a raw field map, assigning nextID.
 // Uses JSON round-trip so field types are validated exactly as they would be on disk.
+// Unknown-field validation is the caller's responsibility (store.validateUpsertFields).
 func NewTask(fields map[string]any, nextID int) (Task, error) {
-	if fields["group"] != nil {
-		return Task{}, fmt.Errorf("group key is not allowed; use depends_on, isolated, deferred instead")
-	}
-
 	// Validate slug upfront
 	slugVal, hasSlug := fields["slug"]
 	if !hasSlug {
@@ -73,11 +70,8 @@ func NewTask(fields map[string]any, nextID int) (Task, error) {
 
 // ApplyPatch overlays fields onto existing and returns the updated Task.
 // Uses JSON round-trip: existing → map → overlay fields → Task, preserving fields not in the patch.
+// Unknown-field validation is the caller's responsibility (store.validateUpsertFields).
 func ApplyPatch(existing Task, fields map[string]any) (Task, error) {
-	if fields["group"] != nil {
-		return Task{}, fmt.Errorf("group key is not allowed; use depends_on, isolated, deferred instead")
-	}
-
 	// Marshal existing task to map
 	existingJSON, err := json.Marshal(existing)
 	if err != nil {
