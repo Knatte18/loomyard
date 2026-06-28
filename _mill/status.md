@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-rename
 slug: config-engine-rename
 branch: config-engine-rename
 plan: _mill/plan
@@ -21,6 +21,7 @@ planning  '2026-06-28T19:30:42Z'
 plan-fix-r1  '2026-06-28T19:33:42Z'
 planned  '2026-06-28T19:34:27Z'
 implementing  '2026-06-28T19:45:21Z'
+approved-rename  '2026-06-28T20:00:38Z'
 ```
 
 ## Batches
@@ -28,7 +29,8 @@ implementing  '2026-06-28T19:45:21Z'
 ```yaml
 batches:
   - name: rename
-    state: running
+    state: approved
     implementer_session: 3d46d870-2997-41e7-a598-8b4280a80242
     start_sha: 82f3def517aae0cff3406431f523eed0aa152a46
+    commit_sha: 333135e60f562147a09490d6c8b1b685a4d5a3bb
 ```
