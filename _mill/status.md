@@ -32,7 +32,9 @@ implementing  '2026-06-28T15:48:01Z'
 ```yaml
 batches:
   - name: payload-contract
-    state: pending
+    state: running
+    implementer_session: 50dad741-3773-4f93-b471-b32bdf1d17e7
+    start_sha: 480d7ce480ba8f1ad2b88409bb3db94d0d2b80ae
   - name: rerender-manifest
     state: pending
   - name: cli-help
