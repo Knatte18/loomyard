@@ -208,6 +208,12 @@ Independent of the orchestration stack; interleave as needed.
     --print` emits raw on-disk YAML and the `config` `Long` lists valid module names
     dynamically (W12/W5).
 
+22. **`ghissues` — file LoomYard bugs as GitHub issues.** ✅ **Done.** `lyx ghissues create <title>`
+    files a new issue on the `Knatte18/loomyard` GitHub repository via the `gh` CLI. The target repo
+    is hardcoded (no config required), making the command trivially callable from any sandbox agent
+    context. Supports `--body` (or `-` to read from stdin) and `--label`; defaults to the `bug`
+    label when no label is supplied. Durable design lives in the `internal/ghissues` package header.
+
 ## Explicitly out of scope
 
 These stay in the Python/millpy domain and are **not** planned for `lyx`:
