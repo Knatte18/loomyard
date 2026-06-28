@@ -51,7 +51,9 @@ batches:
     start_sha: ef76a61874d3ae4dc4aa5ae82f0baea22db3d27b
     commit_sha: 4f9210c89fc78c45480de8a4485bfc01b6856677
   - name: weft-commit-doc
-    state: pending
+    state: running
+    implementer_session: b3b58274-0cae-42bd-8431-77f64fe2049c
+    start_sha: 37fe2ef137c2b1fd75f17965935324600eaa7273
   - name: docs-roadmap-constraints
     state: pending
 ```
