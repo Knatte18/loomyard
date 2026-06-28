@@ -186,7 +186,7 @@ func TestRunDispatchesToWeft(t *testing.T) {
 func TestRunDispatchesToConfig(t *testing.T) {
 	// Create temp cwd with no _lyx/ directory.
 	// This will cause config resolution to fail, which configcli.RunCLI
-	// will return as an error message (not JSON, but human-readable text).
+	// will return as a JSON error envelope (ok:false) at exit code 1.
 	cwd := t.TempDir()
 	t.Chdir(cwd)
 
@@ -195,7 +195,8 @@ func TestRunDispatchesToConfig(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("expected exit 1 for config in uninitialized repo, got %d; output: %s", code, out.String())
 	}
-	// config output is human-readable text (not JSON), so we just check the exit code
+	// config errors are emitted as the JSON envelope (ok:false); exit code is the
+	// only assertion here because the precise error text is an implementation detail.
 }
 
 func TestRunDispatchesToUpdate(t *testing.T) {

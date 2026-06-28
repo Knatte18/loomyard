@@ -104,8 +104,7 @@ func editOne(baseDir string, out io.Writer, module string, edit config.EditorFun
 	// Look up the template for this module.
 	template, ok := configreg.Template(module)
 	if !ok {
-		fmt.Fprintf(out, "unknown config module: %s (known: %v)\n", module, configreg.Names())
-		return 1
+		return output.Err(out, fmt.Sprintf("unknown config module: %s (known: %v)", module, configreg.Names()))
 	}
 
 	// Call config.Edit to open the file in the editor.
@@ -113,12 +112,10 @@ func editOne(baseDir string, out io.Writer, module string, edit config.EditorFun
 	if err != nil {
 		// Check if this is an abort (user saved without fixing YAML).
 		if errors.Is(err, config.ErrAborted) {
-			fmt.Fprintf(out, "aborted: _lyx/config/%s.yaml unchanged\n", module)
-			return 1
+			return output.Err(out, fmt.Sprintf("aborted: _lyx/config/%s.yaml unchanged", module))
 		}
 		// Any other error (I/O, parse loop termination, etc.).
-		fmt.Fprintf(out, "%v\n", err)
-		return 1
+		return output.Err(out, err.Error())
 	}
 
 	// Edit succeeded; now call sync and capture its output.
@@ -131,8 +128,7 @@ func editOne(baseDir string, out io.Writer, module string, edit config.EditorFun
 	}
 
 	// Sync failed; include its output in the failure message for diagnosis.
-	fmt.Fprintf(out, "edited _lyx/config/%s.yaml but weft sync failed: %s\n", module, buf.String())
-	return 1
+	return output.Err(out, fmt.Sprintf("edited _lyx/config/%s.yaml but weft sync failed: %s", module, buf.String()))
 }
 
 // dispatch routes the config command to the print path (when printOnly is true),
@@ -215,15 +211,13 @@ func runConfig(out io.Writer, args []string, printOnly bool) int {
 	// Resolve the current working directory.
 	cwd, err := paths.Getwd()
 	if err != nil {
-		fmt.Fprintf(out, "%v\n", err)
-		return 1
+		return output.Err(out, err.Error())
 	}
 
 	// Resolve the layout.
 	l, err := paths.Resolve(cwd)
 	if err != nil {
-		fmt.Fprintf(out, "%v\n", err)
-		return 1
+		return output.Err(out, err.Error())
 	}
 
 	// Build the real editor and sync functions.
