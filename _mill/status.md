@@ -33,7 +33,9 @@ batches:
     start_sha: e9ee248fdd88604710495825405b06e303ef684a
     commit_sha: 294da5a0f4bec744b94117a8ece19bde1cc82b72
   - name: w16-reject-unknown-subcommand
-    state: pending
+    state: running
+    implementer_session: de0e97bc-71a4-4771-ad09-fe19c667a88c
+    start_sha: 9a7178be97144cb87033da4d0fb936b540027562
   - name: config-print-and-help
     state: pending
   - name: warp-features
