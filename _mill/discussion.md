@@ -53,10 +53,11 @@ the cross-cutting error-format work are a sibling task (not touched here).
   (`missing required field: status`). This disambiguates a deliberate clear from a typo
   that would otherwise silently clear.
 - Make **every board write and lookup payload reject unknown keys** with a clear error —
-  `upsert`/`upsert-batch`/`merge` (both `merge`'s top-level keys and its inner `upsert`
-  object) **and** `get`/`set-status`/`remove`. This fixes W11's silent `phase` drop,
-  catches typos like `titel`, and closes the rename footgun on the renamed commands
-  (a stale top-level `set_phase` on `merge`, or `phase` on `set-status`, errors loudly
+  `upsert`/`upsert-batch`/`merge` (its top-level keys, its inner `upsert` object, **and**
+  its inner `set_status` object), `get`/`set-status`/`remove`, **and** `set-deps`. This
+  fixes W11's silent `phase` drop, catches typos like `titel`/`depends`, and closes the
+  rename footgun on every entry point (a stale top-level `set_phase` on `merge`, a
+  `phase` inside `merge`'s `set_status`, or `phase` on `set-status` all error loudly
   instead of being silently dropped).
 - Allow `status` as a legitimate `upsert` field (so a task can be created with a status
   in one call) — it already round-trips correctly; the unknown-key rejection is what
@@ -122,9 +123,15 @@ the cross-cutting error-format work are a sibling task (not touched here).
   an agent runs `lyx board get '{"id":96}'`, reads the slug from the result, and uses the
   slug for everything downstream (`depends_on`, `remove_slugs`, `set-deps` all key on
   slug). The slug is always visible in `Home.md`, so this is purely an ergonomic addition.
+- Presence detection: `id=0` is a **valid** lookup target — `store.nextID()` assigns 0 to
+  the first task (store.go:99-101). So "which key is present" must be decided by **JSON
+  key presence** (decode into a `map[string]any` and test membership), never by the int
+  zero-value. `{"id":0}` resolves the first task; an absent `id` is distinct from `id:0`.
+  The exactly-one-of check counts present keys, not non-zero values.
 - Rejected: Keeping the vague `id_or_slug` single key — the name is a euphemism and the
   cross-command inconsistency it caused (`slug` vs `id_or_slug`) was the B1/B2 root cause.
-  `slug`-only — would drop the wanted numeric-lookup ergonomic.
+  `slug`-only — would drop the wanted numeric-lookup ergonomic. Detecting presence via the
+  int zero-value — would make `{"id":0}` indistinguishable from an absent `id`.
 
 ### error-on-missing-target (Q2)
 
@@ -155,9 +162,18 @@ the cross-cutting error-format work are a sibling task (not touched here).
   - **`merge` top-level keys:** allowed set `{remove_slugs, upsert, set_status}` — a
     stale top-level `set_phase` errors instead of being silently dropped (which would
     skip the status step with no feedback).
+  - **`merge`'s inner `set_status` object:** validated **identically to `set-status`** —
+    allowed set `{slug, id, status}`, exactly-one-of `slug|id`, and `status` key required.
+    A `set_status: {"slug":"x","phase":"done"}` inside a merge errors, just as the
+    standalone command would; the rename footgun is closed on every entry point.
   - **Single-target lookup payloads** (`get`, `set-status`, `remove`): allowed set is
     `{slug, id}` for `get`/`remove` and `{slug, id, status}` for `set-status` — a stale
     `phase`/`id_or_slug` errors instead of leaving `Status` nil and silently clearing.
+  - **`set-deps`:** allowed set `{slug, depends_on}`, with `depends_on` **required** —
+    `set-deps` replaces the dependency list wholesale, so a typo'd key (`"depends"`) or an
+    absent `depends_on` would otherwise silently clear a task's deps (a W11-class silent
+    drop). Absent `depends_on` is an error; an explicit `[]` clears the list (the
+    intentional path), mirroring the `set-status` absent-vs-null rule.
 - Rationale: "No silent drop" (W11) generalizes: the JSON round-trip in
   `NewTask`/`ApplyPatch` and the typed single-target structs currently ignore *all*
   unknown fields, so `phase`, `titel`, and any typo vanish silently. The most dangerous
@@ -236,12 +252,17 @@ Board module lives in `internal/board/`. Key files and what changes:
   the store boundary (above), not here — but the existing `group` rejection
   (task.go:30-32, 77-79) should be folded into that same allowlist so there is one error
   path, not two. `Task` struct field tags are unchanged (`status` stays `status`).
-- **Single-target + merge top-level validation** lives at the cli.go RunE / facade
-  boundary (those payloads never reach the store upsert chokepoint): `get`/`remove`
-  accept only `{slug, id}`; `set-status` accepts only `{slug, id, status}` and requires
-  `status` present; `merge` accepts only top-level `{remove_slugs, upsert, set_status}`.
-  Decode into a `map[string]any` first to detect unknown keys (Go's typed-struct decode
-  silently ignores them), then validate, then bind the typed fields.
+- **Single-target, set-deps, and merge top-level/inner validation** lives at the cli.go
+  RunE / facade boundary (those payloads never reach the store upsert chokepoint):
+  `get`/`remove` accept only `{slug, id}`; `set-status` accepts only `{slug, id, status}`
+  and requires `status` present; `set-deps` accepts only `{slug, depends_on}` and requires
+  `depends_on` present; `merge` accepts only top-level `{remove_slugs, upsert, set_status}`
+  and validates its inner `set_status` object exactly like the standalone `set-status`.
+  Decode into a `map[string]any` first to detect unknown keys **and** to test key presence
+  (Go's typed-struct decode silently ignores unknowns and cannot distinguish absent from
+  zero-value), then validate, then bind the typed fields. Note `id=0` is a real target
+  (`store.nextID()` starts at 0), so presence is keyed on map membership, not the int
+  zero-value.
 - **`render.go`** — `RenderToDisk` (render.go:23) and `removeOrphanProposals`
   (render.go:41) are the cleanup seam. `Render` returns `map[filename → content]`
   (render.go:58); that map's keys are the current render set. Manifest = persist those
@@ -314,9 +335,19 @@ TDD candidates (write the failing test first, then implement):
   `set-status '{"slug":"x","phase":"done"}'` errors (does not silently clear `status`);
   `get`/`remove` with a stray `id_or_slug`/`phase` key error; `merge` with a stale
   top-level `set_phase` key errors (does not skip the status step silently).
+- **Reject unknown keys — merge inner set_status + set-deps (round-2 review gap).**
+  `merge` with `set_status:{"slug":"x","phase":"done"}` errors (inner object validated
+  like `set-status`, including exactly-one-of and status-required); `set-deps` with a
+  stray key (`"depends"`) errors; `set-deps '{"slug":"x"}'` (no `depends_on`) errors with
+  `missing required field: depends_on`, while `set-deps '{"slug":"x","depends_on":[]}'`
+  succeeds and clears the list.
 - **`set-status` requires `status` present.** `set-status '{"slug":"x"}'` (no `status`)
   errors with `missing required field: status`; `set-status '{"slug":"x","status":null}'`
   succeeds and clears the status (distinct outcomes for absent vs. explicit null).
+- **`id=0` lookup boundary (round-2 review note).** `get '{"id":0}'` resolves the
+  first-created task (whose ID is 0); an absent `id` key is distinguished from `id:0`
+  (presence keyed on map membership, not the int zero-value). Cover the int-vs-float64
+  JSON-number decode alongside it.
 - **status round-trips on upsert.** `upsert '{"slug":"x","status":"active"}'` creates a
   task whose stored `status` is `active` and renders the `[active]` badge in `Home.md`.
 - **Manifest cleanup (W13).** Render once with `home: Home.md`; change config to
@@ -368,3 +399,11 @@ existing passing tests for unaffected paths must stay green.
 - **Q (review r1):** Manifest failure modes? **A:** Best-effort like today's proposal
   cleanup — missing/corrupt manifest degrades gracefully (never fails a write) and is
   reseeded from the current render set.
+- **Q (review r2):** Is `merge`'s inner `set_status` validated like `set-status`?
+  **A:** Yes — same `{slug,id,status}` allowlist, exactly-one-of, and status-required, so
+  the rename footgun is closed on every entry point, not just the standalone command.
+- **Q (review r2):** Does `set-deps` reject unknown keys? **A:** Yes — allowed
+  `{slug, depends_on}`, `depends_on` required (absent errors; explicit `[]` clears). It
+  replaces deps wholesale, so a typo'd key would be a silent-clear footgun.
+- **Q (review r2):** Is `id=0` a valid lookup? **A:** Yes — the first task gets ID 0, so
+  key presence is detected via map membership, never the int zero-value.
