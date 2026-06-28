@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -158,6 +159,17 @@ func dispatch(l *paths.Layout, in io.Reader, out io.Writer, args []string, edit 
 	return menu(l, baseDir, in, out, edit, sync)
 }
 
+// buildConfigLong constructs the Long description for the config command,
+// embedding the live list of known modules from the registry so the help text
+// stays in sync without requiring manual updates when modules are added or removed.
+func buildConfigLong() string {
+	return "config edits a module's configuration in _lyx/config/ and syncs weft on\n" +
+		"success. With no argument it opens an interactive numbered menu of the known\n" +
+		"modules; with a module name it edits that module directly.\n\n" +
+		"Use --print to print the on-disk YAML without launching the editor.\n\n" +
+		"Known modules: " + strings.Join(configreg.Names(), ", ") + "."
+}
+
 // Command returns the cobra command for lyx config.
 //
 // The returned command uses a configCmd variable (closure pattern) so that the
@@ -167,11 +179,9 @@ func dispatch(l *paths.Layout, in io.Reader, out io.Writer, args []string, edit 
 // set to the known config module names for shell completion only.
 func Command() *cobra.Command {
 	configCmd := &cobra.Command{
-		Use:   "config [module]",
-		Short: "edit module configuration",
-		Long: `config edits a module's configuration in _lyx/config/ and syncs weft on
-success. With no argument it opens an interactive numbered menu of the known
-modules; with a module name it edits that module directly.`,
+		Use:       "config [module]",
+		Short:     "edit module configuration",
+		Long:      buildConfigLong(),
 		Args:      cobra.MaximumNArgs(1),
 		ValidArgs: configreg.Names(),
 	}
