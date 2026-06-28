@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-ghissues-module
+phase: approved-wire-and-docs
 slug: ghissues-module
 branch: ghissues-module
 plan: _mill/plan
@@ -24,6 +24,7 @@ plan-fix-r1  '2026-06-28T14:16:42Z'
 planned  '2026-06-28T14:16:58Z'
 implementing  '2026-06-28T14:18:33Z'
 approved-ghissues-module  '2026-06-28T14:37:17Z'
+approved-wire-and-docs  '2026-06-28T14:46:42Z'
 ```
 
 ## Batches
@@ -36,7 +37,8 @@ batches:
     start_sha: be7208cbb4e88cd2ec5c9355d8598d7897687943
     commit_sha: 699837f5872690f0cf8c463dc2620c500e7bab6b
   - name: wire-and-docs
-    state: running
+    state: approved
     implementer_session: f227b5ba-0402-40f3-9a10-41cb5d4c442c
     start_sha: b45c7894cca12ef6b9ddc19a44352e485b2ffd9a
+    commit_sha: 19a5eb101e0efa6ba5422a50d6f46518f75ef0a7
 ```
