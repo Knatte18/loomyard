@@ -97,7 +97,7 @@ func TestUpsertTaskPreservesFields(t *testing.T) {
 func TestUpsertTaskGroupKeyError(t *testing.T) {
 	s := board.NewStore("")
 
-	// (d) `group` key returns validation error
+	// (d) `group` key is rejected by the store allowlist (coverage relocated from task_test.go)
 	_, err := s.UpsertTask(map[string]any{
 		"slug":  "task1",
 		"group": "something",
@@ -105,9 +105,110 @@ func TestUpsertTaskGroupKeyError(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected error for group key")
 	}
-	if err.Error() != "group key is not allowed; use depends_on, isolated, deferred instead" {
+	if err.Error() != `unknown field: "group"` {
 		t.Errorf("unexpected error message: %v", err)
 	}
+}
+
+// TestUpsertFieldAllowlist verifies that the store chokepoint rejects unknown upsert
+// fields on all three entry points: UpsertTask, UpsertTasksBatch, and MergeTasks.
+// Also verifies that `status` IS in the allowed set and is persisted correctly.
+func TestUpsertFieldAllowlist(t *testing.T) {
+	t.Run("upsert_stray_phase_key_errors", func(t *testing.T) {
+		s := board.NewStore("")
+		_, err := s.UpsertTask(map[string]any{
+			"slug":  "task1",
+			"phase": "active",
+		})
+		if err == nil {
+			t.Fatalf("expected error for stray phase key")
+		}
+		// The "phase" key gets a friendly hint toward the renamed "status" field.
+		wantSubstr := `unknown field: "phase"`
+		if !stringContains(err.Error(), wantSubstr) {
+			t.Errorf("expected error containing %q, got %v", wantSubstr, err)
+		}
+		if !stringContains(err.Error(), "status") {
+			t.Errorf("expected hint mentioning 'status', got %v", err)
+		}
+	})
+
+	t.Run("upsert_typo_key_errors", func(t *testing.T) {
+		s := board.NewStore("")
+		_, err := s.UpsertTask(map[string]any{
+			"slug":  "task1",
+			"titel": "A",
+		})
+		if err == nil {
+			t.Fatalf("expected error for typo key 'titel'")
+		}
+		if !stringContains(err.Error(), `"titel"`) {
+			t.Errorf("expected error to name the offending key, got %v", err)
+		}
+	})
+
+	t.Run("upsert_status_field_allowed_and_persisted", func(t *testing.T) {
+		s := board.NewStore("")
+		task, err := s.UpsertTask(map[string]any{
+			"slug":   "task1",
+			"status": "active",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if task.Status == nil || *task.Status != "active" {
+			t.Errorf("expected status=active, got %v", task.Status)
+		}
+		// Verify the value is persisted in the store.
+		retrieved, found := s.GetTask("task1")
+		if !found {
+			t.Fatalf("task not found after upsert")
+		}
+		if retrieved.Status == nil || *retrieved.Status != "active" {
+			t.Errorf("expected stored status=active, got %v", retrieved.Status)
+		}
+	})
+
+	t.Run("upsert_batch_stray_phase_errors", func(t *testing.T) {
+		s := board.NewStore("")
+		err := s.UpsertTasksBatch([]map[string]any{
+			{"slug": "task1", "phase": "done"},
+		})
+		if err == nil {
+			t.Fatalf("expected error for batch with stray phase key")
+		}
+		if !stringContains(err.Error(), `"phase"`) {
+			t.Errorf("expected error naming 'phase', got %v", err)
+		}
+	})
+
+	t.Run("merge_upsert_stray_phase_errors", func(t *testing.T) {
+		s := board.NewStore("")
+		_, err := s.MergeTasks(
+			nil,
+			map[string]any{"slug": "task1", "phase": "done"},
+			nil,
+		)
+		if err == nil {
+			t.Fatalf("expected error for merge-upsert with stray phase key")
+		}
+		if !stringContains(err.Error(), `"phase"`) {
+			t.Errorf("expected error naming 'phase', got %v", err)
+		}
+	})
+
+	t.Run("group_still_errors_via_allowlist", func(t *testing.T) {
+		s := board.NewStore("")
+		err := s.UpsertTasksBatch([]map[string]any{
+			{"slug": "task1", "group": "G"},
+		})
+		if err == nil {
+			t.Fatalf("expected error for group key via allowlist")
+		}
+		if !stringContains(err.Error(), `"group"`) {
+			t.Errorf("expected error naming 'group', got %v", err)
+		}
+	})
 }
 
 // TestValidateDependencyErrors verifies that UpsertTask rejects all invalid dependency
@@ -265,11 +366,11 @@ func TestRemoveTaskMissing(t *testing.T) {
 	}
 }
 
-// TestSetPhase verifies SetPhase behaviour: clearing status via nil and the
-// silent no-op for a missing slug.
+// TestSetStatus verifies SetStatus behaviour: clearing status via nil and the
+// current silent no-op for a missing slug (changed to an error in Card 3).
 //
 // Folds: TestSetPhaseNil, TestSetPhaseMissing
-func TestSetPhase(t *testing.T) {
+func TestSetStatus(t *testing.T) {
 	t.Run("TestSetPhaseNil", func(t *testing.T) {
 		s := board.NewStore("")
 
@@ -282,14 +383,14 @@ func TestSetPhase(t *testing.T) {
 
 		status := "in progress"
 		task.Status = &status
-		// Manually update since SetPhase might not have been called before
+		// Manually update via upsert so the store has the initial status set.
 		s.UpsertTask(map[string]any{
 			"slug":   "task1",
 			"status": status,
 		})
 
-		// (k) nil phase clears status
-		err = s.SetPhase("task1", nil)
+		// nil status clears the stored status field.
+		err = s.SetStatus("task1", nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -303,10 +404,13 @@ func TestSetPhase(t *testing.T) {
 	t.Run("TestSetPhaseMissing", func(t *testing.T) {
 		s := board.NewStore("")
 
-		// (k) no-op (nil return) for missing slug
-		err := s.SetPhase("nonexistent", nil)
-		if err != nil {
-			t.Fatalf("expected nil error for missing task, got %v", err)
+		// Missing target now returns "task not found" instead of the former silent no-op.
+		err := s.SetStatus("nonexistent", nil)
+		if err == nil {
+			t.Fatalf("expected error for missing task, got nil")
+		}
+		if err.Error() != "task not found: nonexistent" {
+			t.Errorf("unexpected error message: %v", err)
 		}
 	})
 }
@@ -336,7 +440,7 @@ func TestMergeTasks(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		// (l) remove + upsert + set_phase all execute atomically
+		// (l) remove + upsert + set_status all execute atomically
 		phase := "done"
 		result, err := s.MergeTasks(
 			[]string{"a"},
@@ -344,7 +448,7 @@ func TestMergeTasks(t *testing.T) {
 				"slug":  "c",
 				"title": "C",
 			},
-			&[2]any{"c", phase},
+			&board.MergeStatusUpdate{Selector: "c", Status: &phase},
 		)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -420,6 +524,60 @@ func TestMergeTasks(t *testing.T) {
 			t.Errorf("expected task b to still exist after rollback")
 		}
 	})
+}
+
+// TestMergeTasksSetStatusRollback verifies that a merge whose set_status targets a
+// non-existent slug returns an error and leaves the store unchanged. The remove and
+// upsert steps are applied in-memory but writeOp discards them when mutate errors —
+// confirmed by loading a fresh store from disk and asserting the task list is identical.
+func TestMergeTasksSetStatusRollback(t *testing.T) {
+	tmpDir := t.TempDir()
+	taskPath := filepath.Join(tmpDir, "tasks.json")
+
+	// Create an initial store with one task.
+	s := board.NewStore(taskPath)
+	if err := s.Load(); err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if _, err := s.UpsertTask(map[string]any{"slug": "existing", "title": "Existing"}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	if err := s.Save(); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	// Reload to simulate a fresh writeOp cycle.
+	s2 := board.NewStore(taskPath)
+	if err := s2.Load(); err != nil {
+		t.Fatalf("load s2: %v", err)
+	}
+
+	// MergeTasks with a set_status that targets a non-existent slug. The remove +
+	// upsert steps execute in-memory, but set_status errors so MergeTasks returns an
+	// error. The caller (writeOp) must not call Save() on error.
+	status := "active"
+	_, err := s2.MergeTasks(
+		nil,
+		map[string]any{"slug": "new-task", "title": "New"},
+		&board.MergeStatusUpdate{Selector: "ghost", Status: &status},
+	)
+	if err == nil {
+		t.Fatalf("expected error when set_status targets non-existent slug")
+	}
+	if !stringContains(err.Error(), "task not found") {
+		t.Errorf("expected 'task not found' error, got %v", err)
+	}
+
+	// Load a fresh store from disk (as writeOp would after not calling Save).
+	// The on-disk task list must be identical to before the failed merge.
+	s3 := board.NewStore(taskPath)
+	if err := s3.Load(); err != nil {
+		t.Fatalf("load s3: %v", err)
+	}
+	tasks := s3.Tasks()
+	if len(tasks) != 1 || tasks[0].Slug != "existing" {
+		t.Errorf("expected on-disk store to be unchanged (1 task 'existing'), got %v", tasks)
+	}
 }
 
 func TestListTasksBriefLayerAndProposal(t *testing.T) {

@@ -135,11 +135,11 @@ func pushUnpushed(boardPath string, skipPush bool) error {
 	return BoardPushError("push still failing after rebase retry")
 }
 
-// ensureLockfilesIgnored adds the lock-file patterns to the board's .gitignore
-// (idempotently) so the flock files that live alongside tasks.json are never
-// staged or committed. A committed .gitignore is shared with every clone via the
-// remote, so the lock files are ignored on every machine from clone time — the
-// first sync commits the .gitignore once.
+// ensureLockfilesIgnored adds the lock-file and manifest-sidecar patterns to the
+// board's .gitignore (idempotently) so the flock files and the render manifest that
+// live alongside tasks.json are never staged or committed. A committed .gitignore is
+// shared with every clone via the remote, so the sidecars are ignored on every machine
+// from clone time — the first sync commits the .gitignore once.
 func ensureLockfilesIgnored(boardPath string) error {
 	gitignorePath := filepath.Join(boardPath, ".gitignore")
 	existing, err := os.ReadFile(gitignorePath)
@@ -148,7 +148,7 @@ func ensureLockfilesIgnored(boardPath string) error {
 	}
 
 	var missing []string
-	for _, pat := range []string{"*.lock", "*.swaplock"} {
+	for _, pat := range []string{"*.lock", "*.swaplock", renderManifestFile} {
 		if !strings.Contains(string(existing), pat) {
 			missing = append(missing, pat)
 		}

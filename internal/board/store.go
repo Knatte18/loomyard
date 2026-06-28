@@ -209,8 +209,54 @@ func (s *Store) validateWrite(snapshot []Task, incoming Task) error {
 	return nil
 }
 
+// MergeStatusUpdate carries the resolved set_status step for a MergeTasks call.
+// Selector is a Go string when the task is identified by slug, or float64 when
+// identified by numeric id (JSON numbers decode as float64). Status is nil to
+// clear the status field.
+type MergeStatusUpdate struct {
+	Selector any
+	Status   *string
+}
+
+// upsertAllowedKeys is the authoritative set of field names accepted by all
+// upsert paths (UpsertTask, UpsertTasksBatch, MergeTasks). It is enforced at the
+// store boundary before the NewTask/ApplyPatch JSON round-trip so create, patch,
+// and merge-upsert are all covered by one chokepoint. The "id" field is excluded
+// because it is auto-assigned; "phase" and "group" are excluded by omission.
+var upsertAllowedKeys = map[string]bool{
+	"slug":       true,
+	"title":      true,
+	"depends_on": true,
+	"isolated":   true,
+	"deferred":   true,
+	"brief":      true,
+	"body":       true,
+	"status":     true,
+}
+
+// validateUpsertFields rejects any key in fields that is not in upsertAllowedKeys.
+// Returns a clear error naming the offending key; adds a hint for the common "phase"
+// typo directing the caller to the renamed "status" field.
+func validateUpsertFields(fields map[string]any) error {
+	for k := range fields {
+		if !upsertAllowedKeys[k] {
+			if k == "phase" {
+				return fmt.Errorf("unknown field: %q (did you mean \"status\"?)", k)
+			}
+			return fmt.Errorf("unknown field: %q", k)
+		}
+	}
+	return nil
+}
+
 // UpsertTask creates or updates the task identified by fields["slug"].
+// Rejects unknown fields via validateUpsertFields before any other processing.
 func (s *Store) UpsertTask(fields map[string]any) (Task, error) {
+	// Validate field allowlist at the store chokepoint before the JSON round-trip.
+	if err := validateUpsertFields(fields); err != nil {
+		return Task{}, err
+	}
+
 	index := s.slugIndex()
 	slugVal, hasSlug := fields["slug"]
 	if !hasSlug {
@@ -331,8 +377,9 @@ func (s *Store) RemoveTask(idOrSlug any) error {
 	return fmt.Errorf("task not found: %v", idOrSlug)
 }
 
-// SetPhase sets or clears the status field for the given task. Silent no-op if slug not found.
-func (s *Store) SetPhase(idOrSlug any, phase *string) error {
+// SetStatus sets or clears the status field for the task identified by idOrSlug.
+// Returns fmt.Errorf("task not found: %v", idOrSlug) when no task matches id or slug.
+func (s *Store) SetStatus(idOrSlug any, status *string) error {
 	for i := range s.tasks {
 		match := false
 		switch v := idOrSlug.(type) {
@@ -345,12 +392,12 @@ func (s *Store) SetPhase(idOrSlug any, phase *string) error {
 		}
 
 		if match {
-			s.tasks[i].Status = phase
+			s.tasks[i].Status = status
 			return nil
 		}
 	}
-	// SetPhase is idempotent: no error for missing task
-	return nil
+	// No task matched — error so callers get clear feedback instead of a silent no-op.
+	return fmt.Errorf("task not found: %v", idOrSlug)
 }
 
 // SetDeps replaces the depends_on list for slug, running full validation. Returns error if slug not found.
@@ -416,7 +463,16 @@ func (s *Store) ListTasksFull() []Task {
 }
 
 // UpsertTasksBatch applies multiple upserts atomically — validates all first, then applies all or none.
+// Each task's field map is validated by the upsert allowlist before projection.
 func (s *Store) UpsertTasksBatch(tasks []map[string]any) error {
+	// Validate all tasks against the allowlist first, for fast-fail on bad input
+	// before doing any projection or mutation work.
+	for _, fields := range tasks {
+		if err := validateUpsertFields(fields); err != nil {
+			return err
+		}
+	}
+
 	// Project the full post-operation snapshot
 	snapshot := s.tasks
 	for _, fields := range tasks {
@@ -497,9 +553,11 @@ func (s *Store) UpsertTasksBatch(tasks []map[string]any) error {
 	return nil
 }
 
-// MergeTasks removes slugs, upserts one task, and optionally sets a phase — all atomically.
-// setPhase is [id_or_slug, phase_string_or_nil], or nil to skip the phase update.
-func (s *Store) MergeTasks(removeSlugs []string, upsert map[string]any, setPhase *[2]any) (Task, error) {
+// MergeTasks removes slugs, upserts one task, and optionally sets a status — all atomically.
+// setStatus is the resolved status-update step, or nil to skip it. When setStatus
+// targets a missing task, SetStatus returns an error and writeOp discards the
+// in-memory mutation without saving, leaving the on-disk state unchanged.
+func (s *Store) MergeTasks(removeSlugs []string, upsert map[string]any, setStatus *MergeStatusUpdate) (Task, error) {
 	// Project snapshot: snapshot minus removeSlugs
 	projected := make([]Task, 0, len(s.tasks))
 	for _, t := range s.tasks {
@@ -513,6 +571,11 @@ func (s *Store) MergeTasks(removeSlugs []string, upsert map[string]any, setPhase
 		if !shouldRemove {
 			projected = append(projected, t)
 		}
+	}
+
+	// Validate upsert field allowlist before any other processing of the merge upsert.
+	if err := validateUpsertFields(upsert); err != nil {
+		return Task{}, err
 	}
 
 	// Validate the upserted task against projected snapshot
@@ -570,15 +633,13 @@ func (s *Store) MergeTasks(removeSlugs []string, upsert map[string]any, setPhase
 		return Task{}, err
 	}
 
-	// Execute: set phase if provided
-	if setPhase != nil && len(setPhase) >= 2 {
-		idOrSlug := setPhase[0]
-		var phase *string
-		if setPhase[1] != nil {
-			phaseStr := setPhase[1].(string)
-			phase = &phaseStr
+	// Execute: apply the status update if provided. SetStatus now errors on a
+	// missing target; the error propagates here so writeOp (board.go) discards
+	// the in-memory mutation without calling Save, leaving on-disk state unchanged.
+	if setStatus != nil {
+		if err := s.SetStatus(setStatus.Selector, setStatus.Status); err != nil {
+			return Task{}, err
 		}
-		s.SetPhase(idOrSlug, phase)
 	}
 
 	return upserted, nil
