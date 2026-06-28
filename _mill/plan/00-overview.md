@@ -3,7 +3,7 @@
 ```yaml
 task: "Rename internal/config to internal/configengine"
 slug: "config-engine-rename"
-approved: false
+approved: true
 started: "20260628-192924"
 parent: "main"
 root: ""
