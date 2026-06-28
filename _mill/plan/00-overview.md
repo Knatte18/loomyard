@@ -84,7 +84,6 @@ batches:
 
 - `cmd/lyx/helptree_test.go`
 - `internal/board/board.go`
-- `internal/board/board_test.go`
 - `internal/board/cli.go`
 - `internal/board/cli_test.go`
 - `internal/board/help_test.go`
