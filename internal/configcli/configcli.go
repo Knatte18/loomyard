@@ -17,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/config"
 	"github.com/Knatte18/loomyard/internal/configreg"
+	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/paths"
 	"github.com/Knatte18/loomyard/internal/weft"
 )
@@ -24,6 +25,68 @@ import (
 // syncFunc runs the post-edit sync, writing its output to the given writer,
 // and returns an exit code.
 type syncFunc func(w io.Writer) int
+
+// printModule reads and writes the on-disk YAML for a single config module to out.
+//
+// It validates the module name against the registry before touching the filesystem,
+// returning an output.Err JSON envelope when the module is unknown or the file
+// cannot be read. On os.IsNotExist it returns a descriptive "not configured" message
+// rather than a raw OS error so the caller gets actionable output. On success the raw
+// file bytes are written verbatim and exit 0 is returned.
+func printModule(baseDir string, out io.Writer, module string) int {
+	// Validate the module name against the registry before touching the filesystem.
+	if _, ok := configreg.Template(module); !ok {
+		return output.Err(out, fmt.Sprintf("unknown config module: %s (known: %v)", module, configreg.Names()))
+	}
+
+	path := paths.ConfigFile(baseDir, module)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return output.Err(out, fmt.Sprintf("config module %s not configured (path: %s)", module, path))
+		}
+		return output.Err(out, fmt.Sprintf("read config file: %v", err))
+	}
+
+	// Write the raw YAML bytes verbatim; on success exit 0.
+	_, _ = out.Write(data)
+	return 0
+}
+
+// printAll writes a header-delimited YAML dump of all config modules to out.
+//
+// Each module section starts with a "# <name>" delimiter line. If the config file
+// exists its YAML content follows; if the file is absent a "# (not configured)"
+// comment is written instead. Read errors other than not-found are fatal and return
+// an output.Err envelope immediately rather than emitting partial output.
+//
+// The aggregate form never errors on absence — it exits 0 regardless of how many
+// modules are configured so callers can use it for inspection without a fully-seeded
+// workspace.
+func printAll(baseDir string, out io.Writer) int {
+	for _, name := range configreg.Names() {
+		// Write a section delimiter so the reader can separate module blocks.
+		fmt.Fprintf(out, "# %s\n", name)
+
+		path := paths.ConfigFile(baseDir, name)
+		data, err := os.ReadFile(path)
+		if err != nil {
+			if os.IsNotExist(err) {
+				fmt.Fprintf(out, "# (not configured)\n")
+				continue
+			}
+			// Unexpected I/O failure; abort rather than emit partial output.
+			return output.Err(out, fmt.Sprintf("read config file: %v", err))
+		}
+
+		// Write the file's YAML content; ensure a trailing newline for clean section separation.
+		_, _ = out.Write(data)
+		if len(data) > 0 && data[len(data)-1] != '\n' {
+			fmt.Fprintf(out, "\n")
+		}
+	}
+	return 0
+}
 
 // editOne edits a single config module and optionally syncs on success.
 //
@@ -71,13 +134,24 @@ func editOne(baseDir string, out io.Writer, module string, edit config.EditorFun
 	return 1
 }
 
-// dispatch routes the config command to either editOne (if a module is specified)
-// or menu (for the interactive numbered menu).
+// dispatch routes the config command to the print path (when printOnly is true),
+// editOne (if a module is specified), or menu (for the interactive numbered menu).
 //
-// The baseDir is computed from the layout as filepath.Join(WorktreeRoot, RelPath),
-// which is the host _lyx parent.
-func dispatch(l *paths.Layout, in io.Reader, out io.Writer, args []string, edit config.EditorFunc, sync syncFunc) int {
+// When printOnly is true the command is read-only: it writes on-disk YAML to out
+// without opening an editor. The print path is evaluated before any edit/menu logic.
+// The baseDir is computed from the layout as filepath.Join(WorktreeRoot, RelPath).
+func dispatch(l *paths.Layout, in io.Reader, out io.Writer, args []string, edit config.EditorFunc, sync syncFunc, printOnly bool) int {
 	baseDir := filepath.Join(l.WorktreeRoot, l.RelPath)
+
+	// Handle --print before any edit/menu dispatch; the print path is read-only
+	// and never opens the editor.
+	if printOnly {
+		if len(args) >= 1 {
+			return printModule(baseDir, out, args[0])
+		}
+		return printAll(baseDir, out)
+	}
+
 	if len(args) >= 1 {
 		return editOne(baseDir, out, args[0], edit, sync)
 	}
@@ -86,15 +160,13 @@ func dispatch(l *paths.Layout, in io.Reader, out io.Writer, args []string, edit 
 
 // Command returns the cobra command for lyx config.
 //
-// The returned command is a leaf with Use "config [module]". It accepts an
-// optional module-name positional: no positional opens the interactive menu;
-// one positional edits that module directly. ValidArgs is set to the known
-// config module names for shell completion only — validation of an unknown
-// module is left to the handler, which prints the existing plain-text error.
-// The public RunCLI seam delegates here via clihelp.Execute so all in-process
-// callers continue to work unchanged.
+// The returned command uses a configCmd variable (closure pattern) so that the
+// --print flag value is readable in the RunE handler. The --print flag makes
+// config read-only: it prints on-disk YAML without launching the editor.
+// Args is cobra.MaximumNArgs(1) so extra positionals are rejected. ValidArgs is
+// set to the known config module names for shell completion only.
 func Command() *cobra.Command {
-	return &cobra.Command{
+	configCmd := &cobra.Command{
 		Use:   "config [module]",
 		Short: "edit module configuration",
 		Long: `config edits a module's configuration in _lyx/config/ and syncs weft on
@@ -102,8 +174,15 @@ success. With no argument it opens an interactive numbered menu of the known
 modules; with a module name it edits that module directly.`,
 		Args:      cobra.MaximumNArgs(1),
 		ValidArgs: configreg.Names(),
-		RunE:      clihelp.WrapRun(runConfig),
 	}
+	configCmd.Flags().Bool("print", false, "print on-disk config as YAML without launching the editor")
+	// The RunE closure captures configCmd so the --print flag is readable without
+	// consulting os.Args directly.
+	configCmd.RunE = clihelp.WrapRun(func(out io.Writer, args []string) int {
+		printOnly, _ := configCmd.Flags().GetBool("print")
+		return runConfig(out, args, printOnly)
+	})
+	return configCmd
 }
 
 // RunCLI is the public seam for the lyx config command.
@@ -120,10 +199,9 @@ func RunCLI(out io.Writer, args []string) int {
 // It resolves the layout from the current working directory, builds the real
 // editor (DefaultEditor) and the real sync function (weft.RunCLI with "sync"),
 // and dispatches to dispatch with os.Stdin as the interactive input reader.
-// Behaviour is unchanged from the pre-cobra RunCLI: no positional → interactive
-// menu; one positional → editOne for that module; unknown module → the existing
-// plain-text error from editOne.
-func runConfig(out io.Writer, args []string) int {
+// When printOnly is true the command is read-only: it prints on-disk YAML
+// without opening an editor or running sync.
+func runConfig(out io.Writer, args []string, printOnly bool) int {
 	// Resolve the current working directory.
 	cwd, err := paths.Getwd()
 	if err != nil {
@@ -143,6 +221,6 @@ func runConfig(out io.Writer, args []string) int {
 		return weft.RunCLI(w, []string{"sync"})
 	}
 
-	// Dispatch to the interactive menu or specific module.
-	return dispatch(l, os.Stdin, out, args, config.DefaultEditor, realSync)
+	// Dispatch to the print path, interactive menu, or specific module.
+	return dispatch(l, os.Stdin, out, args, config.DefaultEditor, realSync, printOnly)
 }
