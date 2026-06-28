@@ -69,10 +69,15 @@ it being tracked, because a missing manifest degrades gracefully.
   coverage driving `RenderToDisk` (or the `Board.Rerender` path) with different `Outputs`:
   (1) render with `Home: "Home.md"`, then render the same tasks with `Home: "Index.md"`,
   assert `Home.md` is removed and `Index.md` exists; (2) same for a `Sidebar` rename and a
-  `ProposalPrefix` change; (3) the existing orphaned-proposal behavior still holds — a
-  task that loses its `Body` has its `proposal-<slug>.md` removed on the next render (now
-  via the manifest); (4) a hand-added unrelated file (e.g. `README.md`) in the board dir
-  is NEVER removed; (5) graceful degradation — rendering when no manifest exists seeds it
+  `ProposalPrefix` change; (3) orphaned-proposal cleanup now works ACROSS renders, not in a
+  single pass — the existing `TestRenderToDisk` case that pre-creates a hand-placed
+  `proposal-ghost.md` and asserts ONE `RenderToDisk` removes it via the old glob MUST be
+  restructured (the manifest only removes files it previously recorded, so a first render
+  with no prior manifest seeds only and removes nothing): either pre-seed the manifest with
+  `proposal-ghost.md` before the render, or use two renders. Also cover the body-loss
+  path: a task that renders a proposal (recorded in the manifest) then loses its `Body` has
+  its `proposal-<slug>.md` removed on the next render; (4) a hand-added unrelated file
+  (e.g. `README.md`) in the board dir is NEVER removed; (5) graceful degradation — rendering when no manifest exists seeds it
   and removes nothing, and a corrupt/unreadable manifest does not fail the write and is
   overwritten by the current render set. Follow the existing `render_test.go` fixture
   conventions for constructing `Outputs` and a temp board dir.

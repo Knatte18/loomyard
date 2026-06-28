@@ -36,6 +36,8 @@ its new error-on-missing.
   - `internal/board/cli.go`
   - `internal/board/board.go`
   - `internal/board/store.go`
+  - `internal/board/store_test.go`
+  - `internal/board/cli_test.go`
   - `cmd/lyx/helptree_test.go`
 - **Creates:** none
 - **Deletes:** none
@@ -53,6 +55,13 @@ its new error-on-missing.
   `cmd/lyx/helptree_test.go` (the `wantSubs` list for the `board` module) replacing
   `"set-phase"` with `"set-status"`. The `set-status` command must keep a non-empty
   `Short` so `cmd/lyx/drift_test.go`'s `TestDriftGuard_AllCommandsHaveShort` stays green.
+  Convert every existing reference to the renamed symbols so this commit compiles and
+  passes: in `internal/board/store_test.go` rename `s.SetPhase(...)` call sites to
+  `s.SetStatus(...)` (e.g. `TestSetPhase`/`TestSetPhaseNil`/`TestMergeTasks`); in
+  `internal/board/cli_test.go` change `set-phase` command tokens to `set-status` and the
+  `"phase"` payload key to `"status"` (e.g. `TestCLISetPhase`). Leave the `id_or_slug`
+  lookup-key references in `cli_test.go` untouched in THIS card — they still compile and
+  pass after the rename (the lookup key changes in Card 2, which owns their conversion).
 - **Commit:** `refactor(board): rename set-phase to set-status, phase key to status`
 
 ### Card 2: `slug`-or-`id` lookup contract on `get`/`set-status`/`remove`
@@ -78,11 +87,14 @@ its new error-on-missing.
   `id` is present. Pass that `any` to the existing `Board.GetTask`/`Board.RemoveTask`/
   `Board.SetStatus`, whose store-level type switches already handle `string`/`int`/
   `float64`. `Board.GetTask`/`RemoveTask`/`SetStatus` keep their `idOrSlug any` parameter
-  shape (rename the param for clarity if desired) — no store resolution rewrite. Add
-  `internal/board/cli_test.go` cases: `get`/`remove`/`set-status` succeed with
-  `{"slug":...}`; succeed with `{"id":N}`; `get '{"id":0}'` resolves the first-created
-  task (ID 0); error with neither key; error with both keys; cover the int-vs-float64
-  JSON-number path.
+  shape (rename the param for clarity if desired) — no store resolution rewrite. Convert
+  every existing `id_or_slug` lookup reference in `internal/board/cli_test.go` (e.g.
+  `TestCLIGetTask`, the renamed set-status case, and any `TestCLIErrorAndEdgeCases`
+  lookup cases) from `{"id_or_slug":...}` to the new `{"slug":...}` / `{"id":...}` shape so
+  this commit compiles and passes. Add `internal/board/cli_test.go` cases:
+  `get`/`remove`/`set-status` succeed with `{"slug":...}`; succeed with `{"id":N}`;
+  `get '{"id":0}'` resolves the first-created task (ID 0); error with neither key; error
+  with both keys; cover the int-vs-float64 JSON-number path.
 - **Commit:** `feat(board): accept slug or id on get/set-status/remove`
 
 ### Card 3: Error on missing target + require `status` key on `set-status`
@@ -140,8 +152,14 @@ its new error-on-missing.
   the status (the W11 fix). Add `internal/board/store_test.go` cases: upsert/upsert-batch/
   merge-upsert with a stray `phase` key error; with a typo key (`titel`) error; `group`
   still errors via the allowlist; a payload with only allowed keys (including `status`)
-  succeeds and persists `status`. Update `internal/board/task_test.go` if it asserts the
-  old `group`-specific error message.
+  succeeds and persists `status`. Because the `group` rejection moves OUT of
+  `NewTask`/`ApplyPatch`, those functions no longer return a `group` error directly: in
+  `internal/board/task_test.go`, delete the subtests that call `NewTask`/`ApplyPatch`
+  directly and assert a `group` error (they would otherwise fail — no error is returned),
+  and relocate that coverage to `internal/board/store_test.go` (assert
+  `Store.UpsertTask`/`UpsertTasksBatch`/`MergeTasks` reject `group`). Update the existing
+  `store_test.go` `TestUpsertTaskGroupKeyError` exact-message assertion to the new
+  allowlist error message.
 - **Commit:** `feat(board): reject unknown upsert fields at the store chokepoint`
 
 ### Card 5: CLI-boundary strict shapes + `merge` `set_status` object
@@ -151,7 +169,9 @@ its new error-on-missing.
 - **Edits:**
   - `internal/board/cli.go`
   - `internal/board/board.go`
+  - `internal/board/store.go`
   - `internal/board/cli_test.go`
+  - `internal/board/store_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Requirements:** Add strict-key/shape validation at the cli.go RunE boundary for the
@@ -168,11 +188,15 @@ its new error-on-missing.
   `status` key required). Update `Board.MergeTasks` in `internal/board/board.go`: replace
   the `setPhase *[2]any` parameter with a resolved status-update selector (e.g. a small
   struct carrying the `any` id/slug selector and the `*string` status, or `nil` when the
-  `set_status` object is omitted); `Store.MergeTasks` then calls the renamed
-  `Store.SetStatus` (which now errors on missing target). Add `internal/board/cli_test.go`
-  cases: `merge` with `set_status:{"slug":"x","phase":"done"}` errors (inner validated
-  like set-status); `merge` with stale top-level `set_phase` errors; `set-deps` with a
-  stray key errors; `set-deps '{"slug":"x"}'` (no depends_on) errors;
+  `set_status` object is omitted); `Store.MergeTasks` in `internal/board/store.go` changes
+  its `setPhase *[2]any` parameter to the same resolved selector and calls the renamed
+  `Store.SetStatus` (which now errors on missing target). Convert the existing
+  `internal/board/store_test.go` `TestMergeTasks` call site (currently
+  `s.MergeTasks(..., &[2]any{"c", phase})`) to the new selector shape so this commit
+  compiles and passes. Add `internal/board/cli_test.go` cases: `merge` with
+  `set_status:{"slug":"x","phase":"done"}` errors (inner validated like set-status);
+  `merge` with stale top-level `set_phase` errors; `set-deps` with a stray key errors;
+  `set-deps '{"slug":"x"}'` (no depends_on) errors;
   `set-deps '{"slug":"x","depends_on":[]}'` succeeds and clears; `upsert-batch '{"taks":[…]}'`
   errors; `upsert-batch` with absent/empty `tasks` errors.
 - **Commit:** `feat(board): strict payload shapes for set-deps, upsert-batch, merge`
