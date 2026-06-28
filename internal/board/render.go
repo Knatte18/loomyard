@@ -3,23 +3,35 @@
 // Render is a pure function: tasks in, a map of filename → content out
 // (Home.md, _Sidebar.md, and proposal-*.md for tasks with a body). No I/O — the
 // caller writes the files. The three outputs are built by renderHome,
-// renderSidebar, and renderProposals respectively.
+// renderSidebar, and renderProposals respectively. RenderToDisk drives the write
+// path and maintains a manifest sidecar (.board-rendered.json) so that renamed or
+// removed outputs are cleaned up on the next render.
 
 package board
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/fsx"
 )
 
-// RenderToDisk renders the tasks and persists the board's readable representation:
-// it writes every rendered file atomically and removes any proposal files (using
-// the configured prefix) the render no longer produces. render.go owns all .md output;
-// board.go owns only tasks.json. This is the single call the write path makes for rendering.
+// renderManifestFile is the name of the sidecar that records the filenames the
+// last render produced. It is gitignored (via ensureLockfilesIgnored) so it never
+// adds commit churn, and it is never itself a member of the rendered file set.
+const renderManifestFile = ".board-rendered.json"
+
+// RenderToDisk renders the tasks and persists the board's readable representation.
+// It writes every rendered file atomically, then removes any file the previous render
+// produced that the current render no longer produces (covering Home/Sidebar renames
+// and ProposalPrefix changes, not just orphaned proposals), and finally updates the
+// manifest sidecar so the next render knows what to clean. render.go owns all .md
+// output; board.go owns only tasks.json. This is the single call the write path makes
+// for rendering.
 func RenderToDisk(boardPath string, tasks []Task, out Outputs) error {
 	files, err := Render(tasks, out)
 	if err != nil {
@@ -30,25 +42,55 @@ func RenderToDisk(boardPath string, tasks []Task, out Outputs) error {
 			return fmt.Errorf("write %s: %w", relPath, err)
 		}
 	}
-	removeOrphanProposals(boardPath, files, out.ProposalPrefix)
+
+	// Read the previous manifest to discover files no longer produced by this render.
+	// A missing or corrupt manifest is treated as an empty set — nothing to clean on
+	// the first pass after an upgrade; the manifest is seeded from the current output.
+	previous := readRenderManifest(boardPath)
+	for _, name := range previous {
+		if _, kept := files[name]; !kept {
+			// Best-effort removal: a stale file left behind is harmless and cleaned up
+			// on the next render, mirroring the old removeOrphanProposals contract.
+			os.Remove(filepath.Join(boardPath, name))
+		}
+	}
+
+	// Persist the current file set so the next render knows what to clean.
+	writeRenderManifest(boardPath, files)
 	return nil
 }
 
-// removeOrphanProposals deletes proposal files (using the configured prefix)
-// the current render no longer produces (a task lost its body or was removed).
-// Best-effort: a stale file left behind is harmless and cleaned up on the next
-// render, so it never fails a write.
-func removeOrphanProposals(boardPath string, rendered map[string]string, proposalPrefix string) {
-	pattern := filepath.Join(boardPath, proposalPrefix+"*.md")
-	existing, err := filepath.Glob(pattern)
+// readRenderManifest returns the list of filenames recorded in the manifest sidecar
+// from the previous render. It returns nil when the manifest is absent or unreadable
+// (corrupt JSON, permission error, etc.) so the caller treats "nothing known" as a
+// graceful no-op rather than an error.
+func readRenderManifest(boardPath string) []string {
+	data, err := os.ReadFile(filepath.Join(boardPath, renderManifestFile))
+	if err != nil {
+		return nil
+	}
+	var names []string
+	if err := json.Unmarshal(data, &names); err != nil {
+		// Corrupt manifest: treat as absent; it will be overwritten by the current set.
+		return nil
+	}
+	return names
+}
+
+// writeRenderManifest persists the current render's file set to the manifest sidecar
+// as a sorted JSON array for stable, diff-friendly output. Best-effort: errors are
+// silently discarded so a manifest write failure never blocks a successful render.
+func writeRenderManifest(boardPath string, files map[string]string) {
+	names := make([]string, 0, len(files))
+	for name := range files {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	data, err := json.Marshal(names)
 	if err != nil {
 		return
 	}
-	for _, path := range existing {
-		if _, kept := rendered[filepath.Base(path)]; !kept {
-			os.Remove(path)
-		}
-	}
+	_ = fsx.AtomicWriteBytes(filepath.Join(boardPath, renderManifestFile), data)
 }
 
 // Render produces the board output files from the task list.
