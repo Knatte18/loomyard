@@ -67,8 +67,19 @@ naming confusion in the config family before that larger move lands.
   - `docs/roadmap.md` (lines ~31, ~65, ~78): update the literal package-name token
     `internal/config` → `internal/configengine` in place (name-accuracy fix only — see
     Decisions; no milestone note is appended).
-- **Full stale-reference sweep** (beyond the original brief's list):
-  - `internal/paths/paths.go` (line ~128): comment `config.Load` → `configengine.Load`.
+- **Full stale-reference sweep** (beyond the original brief's list) — every `internal/config`
+  / package-name reference, including doc comments, becomes `internal/configengine` /
+  `configengine`:
+  - `internal/paths/paths.go`: comment `config.Load` (line ~128) → `configengine.Load`,
+    **and** comment `that authority stays in internal/config` (line ~70) →
+    `internal/configengine`.
+  - `internal/warp/worktreelifecycle.go` (line ~7): comment
+    `resolved cwd-authoritatively via internal/config` → `internal/configengine`. (This
+    file is **not** an importer — comment-only update.)
+  - `internal/board/config.go`, `internal/warp/config.go`, `internal/weft/config.go`
+    (line ~4 each): the file-header doc comment `LoadConfig uses internal/config.Load …`
+    → `internal/configengine.Load …`. (These files are already importers above; the
+    header comment is an additional in-file reference to update, not just the import line.)
   - `docs/benchmarks/test-suite-timing.md` (lines ~65, ~335): the table row labels
     `config` → `configengine`.
 - Record the **package-naming convention** in `CONSTRAINTS.md` as a new
@@ -122,8 +133,12 @@ naming confusion in the config family before that larger move lands.
 
 ### update-roadmap-name-token-in-place
 
-- Decision: Update the three historical `internal/config` mentions in `docs/roadmap.md`
-  (lines ~31, ~65, ~78) to `internal/configengine` **in place**, as a name-accuracy fix.
+- Decision: Update the three historical `config`-package mentions in `docs/roadmap.md`
+  **in place**, as a name-accuracy fix. Lines ~65 and ~78 read `internal/config` →
+  `internal/configengine`. Line ~31 is a **bare** `config` token inside the list
+  `` `config`/`git`/`lock` `` — replace it with bare `` `configengine` `` (not
+  `internal/configengine`) so it stays consistent with its sibling bare tokens
+  `` `git` ``/`` `lock` ``.
 - Rationale: CLAUDE.md's roadmap discipline forbids *appending rename notes / milestone
   entries* to the roadmap — it does not forbid keeping an existing token factually
   correct. These are literal package-name references describing already-done foundation
@@ -197,11 +212,14 @@ From `CONSTRAINTS.md` (hub root):
   rename. Green here is the proof of behaviour preservation — the existing
   `config` / `configcli` / `board` / `warp` / `weft` suites all exercise the engine
   through its (unchanged) API.
-- **Verification of completeness:** after the edit, a tree-wide grep for the old package
-  import path `internal/config"` and the bare `config.` qualifier (excluding the
-  legitimately-unrelated `configcli` / `configreg` / `configsync` / `configengine`
-  tokens) must return nothing referring to the renamed engine. The CLI drift/registration
-  guards (`cmd/lyx/drift_test.go`, `registration_test.go`, `helptree_test.go`,
+- **Verification of completeness:** after the edit, a **word-boundary** tree-wide grep —
+  `grep -rn "internal/config\b"` over `*.go` and `docs/`, plus a check for the bare
+  `config` package token — with the `config{cli,reg,sync,engine}` tokens excluded, must
+  return nothing referring to the renamed engine. A word-boundary pattern is required
+  because the prior plan's `internal/config"` (quoted-import) and bare `config.`
+  (qualifier) patterns miss comment forms like `internal/config;` and `internal/config)`
+  — exactly the stale refs the sweep must eliminate. The CLI drift/registration guards
+  (`cmd/lyx/drift_test.go`, `registration_test.go`, `helptree_test.go`,
   `longlist_test.go`) must remain green.
 
 ## Q&A log
@@ -219,3 +237,9 @@ From `CONSTRAINTS.md` (hub root):
 - **Q:** Rename the engine's filenames to `configengine.go`? **A:** No — keep
   `config.go` / `edit.go`; `yamlengine` names files by responsibility, not package, and
   `config.go`/`edit.go` already follow that.
+- **Q:** (Review round 1 GAP) The sweep list missed real comment refs and the
+  verification grep couldn't prove "zero stale references". Resolve? **A:** Apply all —
+  add `internal/paths/paths.go:70`, `internal/warp/worktreelifecycle.go:7`, and the
+  `board`/`warp`/`weft` `config.go:4` header comments to the sweep; switch the
+  completeness check to a word-boundary `internal/config\b` grep; and specify
+  `docs/roadmap.md` line 31's bare `config` → bare `configengine`.
