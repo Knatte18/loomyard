@@ -57,7 +57,11 @@ naming confusion in the config family before that larger move lands.
   `configengine.Edit→FindBaseDir`.
 - Docs:
   - `git mv docs/shared-libs/config.md` → `docs/shared-libs/configengine.md`; update its
-    heading and body references from `internal/config` → `internal/configengine`.
+    heading and body references from `internal/config` → `internal/configengine`. This
+    includes the **bare** `` `config` `` actor token at line ~22
+    (`` `config` errors with `not initialized…` ``) → bare `` `configengine` `` — the
+    same bare-token class handled explicitly for `roadmap.md:31`; the word-boundary
+    verification grep is what guarantees it isn't skipped.
   - `docs/shared-libs/README.md` (line ~21): update the bullet link/target
     `config.md` → `configengine.md` and `internal/config` → `internal/configengine`.
   - `docs/shared-libs/paths.md` (line ~129): `internal/config.FindBaseDir` →
