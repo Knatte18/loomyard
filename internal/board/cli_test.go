@@ -131,7 +131,7 @@ func TestCLIContract(t *testing.T) {
 				return cwd
 			},
 			verb:           "get",
-			payload:        `{"id_or_slug":"foo"}`,
+			payload:        `{"slug":"foo"}`,
 			wantExitCode:   0,
 			wantOK:         true,
 			wantFieldExist: "task",
@@ -145,7 +145,7 @@ func TestCLIContract(t *testing.T) {
 				return cwd
 			},
 			verb:           "set-status",
-			payload:        `{"id_or_slug":"foo","status":"active"}`,
+			payload:        `{"slug":"foo","status":"active"}`,
 			wantExitCode:   0,
 			wantOK:         true,
 			wantFieldExist: "ok",
@@ -229,11 +229,11 @@ func TestCLIErrorAndEdgeCases(t *testing.T) {
 				return seedCwd(t)
 			},
 			verb:         "get",
-			payload:      `{"id_or_slug":"nonexistent"}`,
+			payload:      `{"slug":"nonexistent"}`,
 			wantExitCode: 0,
 			wantOK:       true,
 			assertResult: func(t *testing.T, result map[string]any) {
-				// null task is ok=true, but task field is nil
+				// A valid-but-absent target returns ok=true with task:null (not an error).
 				if task, exists := result["task"]; !exists || task != nil {
 					t.Fatalf("expected null task, got %v", result)
 				}
@@ -245,7 +245,7 @@ func TestCLIErrorAndEdgeCases(t *testing.T) {
 				return seedCwd(t)
 			},
 			verb:         "remove",
-			payload:      `{"id_or_slug":"nonexistent"}`,
+			payload:      `{"slug":"nonexistent"}`,
 			wantExitCode: 1,
 			wantOK:       false,
 			wantError:    "", // any error is fine
@@ -349,5 +349,175 @@ func TestCLIUnknownSubcommand(t *testing.T) {
 	// cobra's error text for an unknown subcommand always contains "unknown command".
 	if !strings.Contains(stdout, "unknown command") {
 		t.Errorf("unknown subcommand output does not contain %q; stdout: %s", "unknown command", stdout)
+	}
+}
+
+// TestCLILookupContract covers the slug-or-id lookup contract on get, set-status,
+// and remove: both key forms succeed; id=0 resolves the first-created task; neither
+// key and both keys error; unknown keys (e.g. old id_or_slug) error.
+func TestCLILookupContract(t *testing.T) {
+	t.Setenv("BOARD_SKIP_GIT", "1")
+
+	tests := []struct {
+		name         string
+		setup        func(*testing.T) // seeds cwd + board state
+		verb         string
+		payload      string
+		wantExitCode int
+		wantOK       bool
+		wantError    string // substring; empty means any error message is fine
+		assertResult func(*testing.T, map[string]any)
+	}{
+		{
+			name: "get_by_slug",
+			setup: func(t *testing.T) {
+				seedCwd(t)
+				runCLI(t, "upsert", `{"slug":"task-a","title":"A"}`)
+			},
+			verb:         "get",
+			payload:      `{"slug":"task-a"}`,
+			wantExitCode: 0,
+			wantOK:       true,
+			assertResult: func(t *testing.T, result map[string]any) {
+				task, ok := result["task"].(map[string]any)
+				if !ok {
+					t.Fatalf("expected task object, got %v", result["task"])
+				}
+				if task["slug"] != "task-a" {
+					t.Errorf("get_by_slug: got slug %v; want task-a", task["slug"])
+				}
+			},
+		},
+		{
+			name: "get_by_id",
+			setup: func(t *testing.T) {
+				seedCwd(t)
+				// The first upserted task gets id=0.
+				runCLI(t, "upsert", `{"slug":"task-a","title":"A"}`)
+			},
+			verb:         "get",
+			payload:      `{"id":0}`,
+			wantExitCode: 0,
+			wantOK:       true,
+			assertResult: func(t *testing.T, result map[string]any) {
+				// id:0 must resolve the first-created task; verifies the int-vs-float64
+				// JSON-number decode boundary (JSON decodes 0 as float64(0)).
+				task, ok := result["task"].(map[string]any)
+				if !ok {
+					t.Fatalf("get_by_id: expected task object for id=0, got %v", result["task"])
+				}
+				if task["slug"] != "task-a" {
+					t.Errorf("get_by_id: got slug %v; want task-a", task["slug"])
+				}
+			},
+		},
+		{
+			name: "get_neither_key_errors",
+			setup: func(t *testing.T) {
+				seedCwd(t)
+			},
+			verb:         "get",
+			payload:      `{}`,
+			wantExitCode: 1,
+			wantOK:       false,
+			wantError:    "one of slug or id is required",
+		},
+		{
+			name: "get_both_keys_errors",
+			setup: func(t *testing.T) {
+				seedCwd(t)
+			},
+			verb:         "get",
+			payload:      `{"slug":"x","id":1}`,
+			wantExitCode: 1,
+			wantOK:       false,
+			wantError:    "only one of slug or id may be given",
+		},
+		{
+			name: "get_unknown_key_errors",
+			setup: func(t *testing.T) {
+				seedCwd(t)
+			},
+			verb:         "get",
+			payload:      `{"id_or_slug":"x"}`,
+			wantExitCode: 1,
+			wantOK:       false,
+			wantError:    "unknown field",
+		},
+		{
+			name: "remove_by_slug",
+			setup: func(t *testing.T) {
+				seedCwd(t)
+				runCLI(t, "upsert", `{"slug":"task-a","title":"A"}`)
+			},
+			verb:         "remove",
+			payload:      `{"slug":"task-a"}`,
+			wantExitCode: 0,
+			wantOK:       true,
+		},
+		{
+			name: "remove_by_id",
+			setup: func(t *testing.T) {
+				seedCwd(t)
+				runCLI(t, "upsert", `{"slug":"task-a","title":"A"}`)
+			},
+			verb:         "remove",
+			payload:      `{"id":0}`,
+			wantExitCode: 0,
+			wantOK:       true,
+		},
+		{
+			name: "set_status_by_slug",
+			setup: func(t *testing.T) {
+				seedCwd(t)
+				runCLI(t, "upsert", `{"slug":"task-a","title":"A"}`)
+			},
+			verb:         "set-status",
+			payload:      `{"slug":"task-a","status":"active"}`,
+			wantExitCode: 0,
+			wantOK:       true,
+		},
+		{
+			name: "set_status_by_id",
+			setup: func(t *testing.T) {
+				seedCwd(t)
+				runCLI(t, "upsert", `{"slug":"task-a","title":"A"}`)
+			},
+			verb:         "set-status",
+			payload:      `{"id":0,"status":"active"}`,
+			wantExitCode: 0,
+			wantOK:       true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.setup(t)
+
+			exitCode, stdout := runCLI(t, tt.verb, tt.payload)
+
+			if exitCode != tt.wantExitCode {
+				t.Fatalf("exit = %d; want %d; stdout: %s", exitCode, tt.wantExitCode, stdout)
+			}
+
+			var result map[string]any
+			if err := json.Unmarshal([]byte(stdout), &result); err != nil {
+				t.Fatalf("failed to parse output: %v; stdout: %s", err, stdout)
+			}
+
+			if ok, _ := result["ok"].(bool); ok != tt.wantOK {
+				t.Fatalf("ok = %v; want %v; stdout: %s", ok, tt.wantOK, stdout)
+			}
+
+			if tt.wantError != "" {
+				if errMsg, _ := result["error"].(string); !strings.Contains(errMsg, tt.wantError) {
+					t.Fatalf("error = %q; want substring %q", errMsg, tt.wantError)
+				}
+			}
+
+			if tt.assertResult != nil {
+				tt.assertResult(t, result)
+			}
+		})
 	}
 }

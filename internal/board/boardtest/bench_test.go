@@ -142,7 +142,7 @@ func BenchmarkGet(b *testing.B) {
 		b.Run(fmt.Sprintf("n=%d", n), func(b *testing.B) {
 			dir := seedWiki(b, n)
 			b.Chdir(dir)
-			args := []string{"get", `{"id_or_slug":"task-0"}`}
+			args := []string{"get", `{"slug":"task-0"}`}
 
 			b.ReportAllocs()
 			b.ResetTimer()

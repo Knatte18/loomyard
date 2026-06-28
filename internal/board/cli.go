@@ -125,7 +125,8 @@ Running "lyx board" with no subcommand lists available subcommands without requi
 		}),
 	}
 
-	// set-status subcommand: set or clear the status field of a task.
+	// set-status subcommand: set or clear the status field of a task identified by
+	// slug or numeric id. Allowed keys: {slug, id, status}.
 	setStatusCmd := &cobra.Command{
 		Use:   "set-status [json-payload]",
 		Short: "Set or clear the status of a task",
@@ -133,21 +134,31 @@ Running "lyx board" with no subcommand lists available subcommands without requi
 			if len(args) == 0 {
 				return outputError(out, "json payload required")
 			}
-			var payload struct {
-				IDOrSlug any     `json:"id_or_slug"`
-				Status   *string `json:"status"` // pointer: JSON null → Go nil → status cleared
+			// resolveLookup enforces {slug, id, status} allowed keys and exactly-one-of slug/id.
+			selector, m, err := resolveLookup([]byte(args[0]), "status")
+			if err != nil {
+				return outputError(out, err.Error())
 			}
-			if err := json.Unmarshal([]byte(args[0]), &payload); err != nil {
-				return outputError(out, fmt.Sprintf("invalid json: %v", err))
+
+			// Read the status value from the decoded map. Key presence distinguishes
+			// an explicit null (clear) from an absent key (Card 3 will error on absent).
+			var status *string
+			if sv, hasStatus := m["status"]; hasStatus && sv != nil {
+				s, ok := sv.(string)
+				if !ok {
+					return outputError(out, "status must be a string or null")
+				}
+				status = &s
 			}
-			if err := b.SetStatus(payload.IDOrSlug, payload.Status); err != nil {
+
+			if err := b.SetStatus(selector, status); err != nil {
 				return outputError(out, err.Error())
 			}
 			return outputSuccess(out)
 		}),
 	}
 
-	// remove subcommand: remove a task by id or slug.
+	// remove subcommand: remove a task by slug or numeric id.
 	removeCmd := &cobra.Command{
 		Use:   "remove [json-payload]",
 		Short: "Remove a task",
@@ -155,20 +166,20 @@ Running "lyx board" with no subcommand lists available subcommands without requi
 			if len(args) == 0 {
 				return outputError(out, "json payload required")
 			}
-			var payload struct {
-				IDOrSlug any `json:"id_or_slug"`
+			// resolveLookup enforces {slug, id} allowed keys and exactly-one-of.
+			selector, _, err := resolveLookup([]byte(args[0]))
+			if err != nil {
+				return outputError(out, err.Error())
 			}
-			if err := json.Unmarshal([]byte(args[0]), &payload); err != nil {
-				return outputError(out, fmt.Sprintf("invalid json: %v", err))
-			}
-			if err := b.RemoveTask(payload.IDOrSlug); err != nil {
+			if err := b.RemoveTask(selector); err != nil {
 				return outputError(out, err.Error())
 			}
 			return outputSuccess(out)
 		}),
 	}
 
-	// get subcommand: fetch a single task; returns task:null if not found (not an error).
+	// get subcommand: fetch a single task by slug or numeric id; returns task:null
+	// for a valid-but-absent target (not an error). Malformed payloads error.
 	getCmd := &cobra.Command{
 		Use:   "get [json-payload]",
 		Short: "Fetch a single task",
@@ -176,13 +187,12 @@ Running "lyx board" with no subcommand lists available subcommands without requi
 			if len(args) == 0 {
 				return outputError(out, "json payload required")
 			}
-			var payload struct {
-				IDOrSlug any `json:"id_or_slug"`
+			// resolveLookup enforces {slug, id} allowed keys and exactly-one-of.
+			selector, _, err := resolveLookup([]byte(args[0]))
+			if err != nil {
+				return outputError(out, err.Error())
 			}
-			if err := json.Unmarshal([]byte(args[0]), &payload); err != nil {
-				return outputError(out, fmt.Sprintf("invalid json: %v", err))
-			}
-			task, found, err := b.GetTask(payload.IDOrSlug)
+			task, found, err := b.GetTask(selector)
 			if err != nil {
 				return outputError(out, err.Error())
 			}
@@ -314,6 +324,60 @@ Running "lyx board" with no subcommand lists available subcommands without requi
 	)
 
 	return cmd
+}
+
+// resolveLookup decodes a raw JSON payload into a map, validates that every key
+// is within the allowed set ({slug, id} plus any extraKeys), and returns the task
+// selector and decoded map. Presence is detected via map-key membership so id:0
+// is a valid distinct-from-absent lookup. Returns a Go string when slug is present
+// or a float64 when id is present (JSON numbers decode as float64).
+func resolveLookup(raw []byte, extraKeys ...string) (any, map[string]any, error) {
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return nil, nil, fmt.Errorf("invalid json: %v", err)
+	}
+
+	// Build the full allowed key set from the base {slug, id} plus any extras.
+	allowed := map[string]bool{"slug": true, "id": true}
+	for _, k := range extraKeys {
+		allowed[k] = true
+	}
+
+	// Reject any key outside the allowed set before checking presence.
+	for k := range m {
+		if !allowed[k] {
+			return nil, nil, fmt.Errorf("unknown field: %q", k)
+		}
+	}
+
+	// Detect which identifier is present via map-key membership, not zero-value,
+	// so {"id":0} is distinct from an absent "id" key.
+	_, hasSlug := m["slug"]
+	_, hasID := m["id"]
+
+	if !hasSlug && !hasID {
+		return nil, nil, fmt.Errorf("one of slug or id is required")
+	}
+	if hasSlug && hasID {
+		return nil, nil, fmt.Errorf("only one of slug or id may be given")
+	}
+
+	if hasSlug {
+		slugStr, ok := m["slug"].(string)
+		if !ok || slugStr == "" {
+			return nil, nil, fmt.Errorf("slug must be a non-empty string")
+		}
+		return slugStr, m, nil
+	}
+
+	// JSON numbers always decode as float64; the store's type-switch handles both
+	// float64 and int, so pass the float64 directly.
+	switch v := m["id"].(type) {
+	case float64:
+		return v, m, nil
+	default:
+		return nil, nil, fmt.Errorf("id must be a number")
+	}
 }
 
 // RunCLI is the public seam for the board module CLI.
