@@ -39,7 +39,7 @@ func TestE2ESyncIntegration(t *testing.T) {
 
 	// FIRST: Create the host worktree via warp.New().Add() (which is dormant).
 	// Then wire the host _lyx junction via WireJunctions.
-	// Without this the host worktree has no _lyx, so config.Edit→FindBaseDir would error.
+	// Without this the host worktree has no _lyx, so configengine.Edit→FindBaseDir would error.
 	w := warp.New(warp.Config{})
 	_, err := w.Add(f.Layout, slug, warp.AddOptions{SkipPush: true})
 	if err != nil {
