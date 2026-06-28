@@ -61,6 +61,9 @@ func Command() *cobra.Command {
 		Short: "proof-of-concept psmux mux",
 		Long: `muxpoc is a shipped proof-of-concept psmux orchestrator that proves
 the risky parts — daemon and pane recovery — of the planned mux module.`,
+		// RunE is set so that bare "lyx muxpoc" lists subcommands and "lyx muxpoc bogus"
+		// emits a JSON error envelope instead of falling through to cobra's plain-text help.
+		RunE: clihelp.GroupRunE,
 	}
 
 	// Register persistent tuning flags with the same defaults and usage strings
@@ -75,10 +78,16 @@ the risky parts — daemon and pane recovery — of the planned mux module.`,
 	cmd.PersistentFlags().Duration("interval", 2*time.Second, "poll interval for session checks")
 
 	// PersistentPreRunE resolves the worktree root and builds cfg before any subcommand
-	// runs. It is skipped by cobra when the parent is invoked with no Run/RunE (i.e.
-	// "lyx muxpoc" alone just lists subcommands). On failure, it writes an error JSON
-	// response and signals abort so that the leaf RunE is a no-op.
+	// runs. On failure, it writes an error JSON response and signals abort so that the
+	// leaf RunE is a no-op.
 	cmd.PersistentPreRunE = func(c *cobra.Command, _ []string) error {
+		// Guard: when the muxpoc group command itself is invoked (bare listing or
+		// unknown-subcommand error path via GroupRunE), skip cwd/layout resolution
+		// so that neither path requires a git repository to be present.
+		if c.Name() == "muxpoc" {
+			return nil
+		}
+
 		cwd, err := paths.Getwd()
 		if err != nil {
 			output.Err(c.OutOrStdout(), fmt.Sprintf("failed to get current working directory: %v", err))
