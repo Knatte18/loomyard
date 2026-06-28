@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: config-engine-rename
 branch: config-engine-rename
-plan: null
+plan: _mill/plan
 parent: main
 task: Rename internal/config to internal/configengine
 task_description: |
@@ -17,4 +17,5 @@ task_description: |
 discussing  '2026-06-28T19:13:27Z'
 discussion-fix-r2  '2026-06-28T19:25:40Z'
 discussed  '2026-06-28T19:25:55Z'
+planning  '2026-06-28T19:30:42Z'
 ```
