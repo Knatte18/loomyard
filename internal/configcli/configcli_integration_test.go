@@ -80,7 +80,7 @@ func TestE2ESyncIntegration(t *testing.T) {
 
 	// Run dispatch with the fake editor and injected sync.
 	var out bytes.Buffer
-	code := dispatch(hostLayout, os.Stdin, &out, []string{"warp"}, fakeEdit, injectedSync)
+	code := dispatch(hostLayout, os.Stdin, &out, []string{"warp"}, fakeEdit, injectedSync, false)
 
 	// Assert dispatch succeeded.
 	if code != 0 {

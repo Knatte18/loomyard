@@ -1,12 +1,14 @@
 // configcli_test.go — unit and integration tests for configcli.
 //
-// Unit tests (untagged): dispatch/editOne with fake editor+sync over temp baseDir.
-// Integration test (//go:build integration): e2e test with real weft.RunCLI over CopyPaired.
+// Unit tests (untagged): dispatch/editOne/printModule/printAll with fake editor+sync
+// over temp baseDirs seeded via the paths helpers. Integration test (//go:build
+// integration): e2e test with real weft.RunCLI over CopyPaired.
 
 package configcli
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -15,6 +17,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/config"
+	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/paths"
 )
 
@@ -100,11 +103,21 @@ func TestEditOneUnknownModule(t *testing.T) {
 		t.Error("sync should not be called for unknown module")
 	}
 	output := out.String()
-	if !strings.Contains(output, "unknown config module") {
-		t.Errorf("editOne output missing unknown module message; got %q", output)
+
+	// Verify the output is a valid JSON error envelope — errors are no longer plain text.
+	var env map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(output)), &env); err != nil {
+		t.Fatalf("editOne(unknown) output is not valid JSON: %v; got %q", err, output)
 	}
-	if !strings.Contains(output, "known:") {
-		t.Errorf("editOne output missing known modules list; got %q", output)
+	if ok, _ := env["ok"].(bool); ok {
+		t.Errorf("editOne(unknown) envelope ok = true; want false")
+	}
+	msg, _ := env["error"].(string)
+	if !strings.Contains(msg, "unknown config module") {
+		t.Errorf("editOne(unknown) error field missing 'unknown config module'; got %q", msg)
+	}
+	if !strings.Contains(msg, "known:") {
+		t.Errorf("editOne(unknown) error field missing known-module list; got %q", msg)
 	}
 }
 
@@ -321,5 +334,153 @@ func TestMenuStatus(t *testing.T) {
 	}
 	if !strings.Contains(output, "weft (default)") {
 		t.Errorf("menu output missing 'weft (default)'; got %q", output)
+	}
+}
+
+// makeNeverCalledEditor returns an EditorFunc that fails the test if called.
+// Passed to dispatch in --print tests to prove the print path never opens an editor.
+func makeNeverCalledEditor(t *testing.T) config.EditorFunc {
+	t.Helper()
+	return func(path string) error {
+		t.Helper()
+		t.Errorf("editor was called on path %q; --print must never launch the editor", path)
+		return nil
+	}
+}
+
+// makeLayoutAt returns a minimal *paths.Layout with WorktreeRoot at baseDir and RelPath ".".
+func makeLayoutAt(baseDir string) *paths.Layout {
+	return &paths.Layout{
+		WorktreeRoot: baseDir,
+		RelPath:      ".",
+	}
+}
+
+// seedModuleConfig writes YAML content to the config file for the named module under baseDir.
+func seedModuleConfig(t *testing.T, baseDir, module, content string) {
+	t.Helper()
+	dir := paths.ConfigDir(baseDir)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("failed to create config dir: %v", err)
+	}
+	if err := os.WriteFile(paths.ConfigFile(baseDir, module), []byte(content), 0o644); err != nil {
+		t.Fatalf("failed to seed config for module %s: %v", module, err)
+	}
+}
+
+// assertJSONErrContains verifies that output is a well-formed JSON error envelope
+// with ok:false and an error field containing wantSubstr.
+func assertJSONErrContains(t *testing.T, output, wantSubstr string) {
+	t.Helper()
+	var env map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(output)), &env); err != nil {
+		t.Fatalf("output is not valid JSON: %v; got %q", err, output)
+	}
+	if ok, _ := env["ok"].(bool); ok {
+		t.Errorf("JSON envelope ok = true; want false")
+	}
+	if wantSubstr != "" {
+		msg, _ := env["error"].(string)
+		if !strings.Contains(msg, wantSubstr) {
+			t.Errorf("JSON error field missing %q; got %q", wantSubstr, msg)
+		}
+	}
+}
+
+// TestPrintModule_Seeded verifies that config <module> --print emits the on-disk
+// YAML verbatim at exit 0 and never invokes the editor.
+func TestPrintModule_Seeded(t *testing.T) {
+	baseDir := t.TempDir()
+	const warpYAML = "branch_prefix: feature/\n"
+	seedModuleConfig(t, baseDir, "warp", warpYAML)
+
+	l := makeLayoutAt(baseDir)
+	var out bytes.Buffer
+	code := dispatch(l, nil, &out, []string{"warp"}, makeNeverCalledEditor(t), nil, true)
+
+	if code != 0 {
+		t.Errorf("dispatch(print=true, seeded) = %d; want 0; output: %q", code, out.String())
+	}
+	if got := out.String(); got != warpYAML {
+		t.Errorf("dispatch(print=true, seeded) output = %q; want %q", got, warpYAML)
+	}
+}
+
+// TestPrintModule_KnownButUnseeded verifies that config <module> --print for a known
+// module with no on-disk file returns an ok:false JSON envelope at exit 1.
+func TestPrintModule_KnownButUnseeded(t *testing.T) {
+	baseDir := t.TempDir()
+	// Create the config directory but not the warp.yaml file.
+	if err := os.MkdirAll(paths.ConfigDir(baseDir), 0o755); err != nil {
+		t.Fatalf("failed to create config dir: %v", err)
+	}
+
+	l := makeLayoutAt(baseDir)
+	var out bytes.Buffer
+	code := dispatch(l, nil, &out, []string{"warp"}, makeNeverCalledEditor(t), nil, true)
+
+	if code != 1 {
+		t.Errorf("dispatch(print=true, unseeded) = %d; want 1", code)
+	}
+	assertJSONErrContains(t, out.String(), "not configured")
+}
+
+// TestPrintAggregate_PartialSeed verifies the aggregate --print form with a partial
+// module seed. It asserts deterministic headers for every registry module, inline YAML
+// for seeded ones, and # (not configured) for absent ones, all at exit 0.
+func TestPrintAggregate_PartialSeed(t *testing.T) {
+	baseDir := t.TempDir()
+	const boardYAML = "path: board\nhome: Home.md\n"
+	seedModuleConfig(t, baseDir, "board", boardYAML)
+	// warp and weft are intentionally not seeded.
+
+	l := makeLayoutAt(baseDir)
+	var out bytes.Buffer
+	code := dispatch(l, nil, &out, nil, makeNeverCalledEditor(t), nil, true)
+
+	if code != 0 {
+		t.Errorf("dispatch(print=true, aggregate) = %d; want 0; output: %q", code, out.String())
+	}
+	got := out.String()
+
+	// Every registry module must have a section header in output order.
+	for _, name := range configreg.Names() {
+		if !strings.Contains(got, "# "+name) {
+			t.Errorf("aggregate output missing header for %q; output:\n%s", name, got)
+		}
+	}
+	// board is seeded; its YAML content must appear.
+	if !strings.Contains(got, "path: board") {
+		t.Errorf("aggregate output missing seeded board YAML; output:\n%s", got)
+	}
+	// warp and weft are absent; their sections must each say # (not configured).
+	if count := strings.Count(got, "# (not configured)"); count < 2 {
+		t.Errorf("expected ≥2 '# (not configured)' lines; got %d; output:\n%s", count, got)
+	}
+}
+
+// TestPrintUnknownModule verifies that config bogus --print returns an ok:false JSON
+// envelope at exit 1 whose error field names the unknown module.
+func TestPrintUnknownModule(t *testing.T) {
+	baseDir := t.TempDir()
+	l := makeLayoutAt(baseDir)
+	var out bytes.Buffer
+	code := dispatch(l, nil, &out, []string{"bogus"}, makeNeverCalledEditor(t), nil, true)
+
+	if code != 1 {
+		t.Errorf("dispatch(print=true, unknown) = %d; want 1", code)
+	}
+	assertJSONErrContains(t, out.String(), "unknown config module")
+}
+
+// TestConfigLong_ContainsModuleNames verifies that the config command's Long help text
+// includes every name from configreg.Names(), proving the help text stays in sync with
+// the registry rather than drifting from a hardcoded list.
+func TestConfigLong_ContainsModuleNames(t *testing.T) {
+	longText := Command().Long
+	for _, name := range configreg.Names() {
+		if !strings.Contains(longText, name) {
+			t.Errorf("config Long missing module name %q; Long = %q", name, longText)
+		}
 	}
 }

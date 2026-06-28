@@ -38,6 +38,10 @@ func TestRunNoArgs(t *testing.T) {
 			t.Errorf("expected help output to name module %q; got:\n%s", module, got)
 		}
 	}
+	// Help is plain-text, never a JSON error envelope.
+	if strings.Contains(got, `"ok":false`) {
+		t.Errorf("bare lyx emitted a JSON error envelope; help paths must not be wrapped; output:\n%s", got)
+	}
 }
 
 func TestRunUnknownModule(t *testing.T) {
@@ -45,11 +49,19 @@ func TestRunUnknownModule(t *testing.T) {
 	if code := run([]string{"bogus", "list"}, &out); code != 1 {
 		t.Fatalf("expected exit 1 for unknown module, got %d", code)
 	}
-	// Cobra prints "unknown command" for an unrecognised subcommand; the merged
-	// seam captures it in out so we can assert the substring.
+	// The "unknown command" text must be present — now embedded in the JSON error value.
 	got := out.String()
 	if !strings.Contains(got, "unknown command") {
 		t.Errorf("expected %q in output for unknown module; got: %q", "unknown command", got)
+	}
+
+	// The output must be a well-formed JSON envelope with ok=false.
+	var env map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(got)), &env); err != nil {
+		t.Fatalf("run([bogus list]) output is not valid JSON: %v; output: %q", err, got)
+	}
+	if ok, _ := env["ok"].(bool); ok {
+		t.Errorf("run([bogus list]) envelope ok = true; want false")
 	}
 }
 
@@ -174,7 +186,7 @@ func TestRunDispatchesToWeft(t *testing.T) {
 func TestRunDispatchesToConfig(t *testing.T) {
 	// Create temp cwd with no _lyx/ directory.
 	// This will cause config resolution to fail, which configcli.RunCLI
-	// will return as an error message (not JSON, but human-readable text).
+	// will return as a JSON error envelope (ok:false) at exit code 1.
 	cwd := t.TempDir()
 	t.Chdir(cwd)
 
@@ -183,7 +195,8 @@ func TestRunDispatchesToConfig(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("expected exit 1 for config in uninitialized repo, got %d; output: %s", code, out.String())
 	}
-	// config output is human-readable text (not JSON), so we just check the exit code
+	// config errors are emitted as the JSON envelope (ok:false); exit code is the
+	// only assertion here because the precise error text is an implementation detail.
 }
 
 func TestRunDispatchesToUpdate(t *testing.T) {

@@ -29,6 +29,38 @@ const (
 // removeAll is a testability seam for os.RemoveAll, allowing tests to inject errors.
 var removeAll = os.RemoveAll
 
+// runCloneWithReset wraps runClone with an optional hub removal when the --reset flag is set.
+//
+// It validates the argument count first (2–3 positional args) so the usage error message is
+// consistent whether or not --reset is set. When reset is true it computes the expected hub
+// path (deriveHostName(args[0]) + hubSuffix joined onto the current working directory) and,
+// if that directory already exists, removes it via the removeAll seam before delegating to
+// runClone. When reset is false it calls runClone directly. The removeAll seam allows tests
+// to observe the hub path without executing a real git clone.
+func runCloneWithReset(out io.Writer, args []string, reset bool) int {
+	if len(args) < 2 || len(args) > 3 {
+		return output.Err(out, "usage: lyx warp clone [--reset] <host-url> <weft-url> [board-url]")
+	}
+	if reset {
+		cwd, err := paths.Getwd()
+		if err != nil {
+			return output.Err(out, err.Error())
+		}
+		name := deriveHostName(args[0])
+		if name == "" {
+			return output.Err(out, fmt.Sprintf("could not derive repo name from host URL %s", args[0]))
+		}
+		hubPath := filepath.Join(filepath.Clean(cwd), name+hubSuffix)
+		// Remove the hub only when it exists; a missing hub is not an error for --reset.
+		if _, statErr := os.Stat(hubPath); statErr == nil {
+			if err := removeAll(hubPath); err != nil {
+				return output.Err(out, fmt.Sprintf("--reset: remove %s: %v", hubPath, err))
+			}
+		}
+	}
+	return runClone(out, args)
+}
+
 // runClone parses and executes the warp clone command, writing JSON results to out.
 //
 // It accepts exactly 2 or 3 positional arguments: hostURL, weftURL, and an optional boardURL.

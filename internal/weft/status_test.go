@@ -42,7 +42,7 @@ func TestStatus(t *testing.T) {
 			}
 
 			// Call the trimmed signature: Status no longer accepts hostLink or weftLyxDir;
-			// junction topology is now reported by warp status.
+			// junction topology is now reported by warp pairs.
 			status, err := Status(weftRepo, []string{"_lyx"})
 			if err != nil {
 				t.Fatalf("Status: %v", err)

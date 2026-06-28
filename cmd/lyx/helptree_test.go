@@ -57,7 +57,7 @@ func TestHelpTree_VerbModuleSubcommands(t *testing.T) {
 			module: "warp",
 			wantSubs: []string{
 				"clone", "add", "list", "remove", "checkout",
-				"status", "reconcile", "prune", "cleanup",
+				"pairs", "reconcile", "prune", "cleanup",
 			},
 		},
 		{

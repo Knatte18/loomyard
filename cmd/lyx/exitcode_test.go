@@ -72,9 +72,11 @@ func TestExitCode_HelpPaths(t *testing.T) {
 }
 
 // TestExitCode_UnknownModule asserts that an unknown module (an argument that does
-// not match any registered subcommand on the root) exits 1 and produces cobra's
-// "unknown command" text. This is the root-level unknown-command path; it differs
-// from a bad subcommand on a verb-module (cobra shows help there, see cobra docs).
+// not match any registered subcommand on the root) exits 1, contains cobra's
+// "unknown command" text inside the JSON error field, and is a well-formed
+// JSON envelope with ok=false. The plain-text "unknown command" substring must still
+// be reachable inside the JSON value so callers can programmatically identify the class
+// of error.
 func TestExitCode_UnknownModule(t *testing.T) {
 	var out bytes.Buffer
 	code := run([]string{"bogus"}, &out)
@@ -82,9 +84,18 @@ func TestExitCode_UnknownModule(t *testing.T) {
 		t.Fatalf("run([bogus]) = %d; want 1. output:\n%s", code, out.String())
 	}
 
-	// Cobra writes "unknown command" for an unrecognised subcommand on the root.
+	// The "unknown command" text must be present — now embedded in the JSON error value.
 	if !strings.Contains(out.String(), "unknown command") {
 		t.Fatalf("expected 'unknown command' in output for unknown module; got:\n%s", out.String())
+	}
+
+	// The output must be a well-formed JSON envelope with ok=false.
+	var env map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
+		t.Fatalf("run([bogus]) output is not valid JSON: %v; output:\n%s", err, out.String())
+	}
+	if ok, _ := env["ok"].(bool); ok {
+		t.Fatalf("run([bogus]) envelope ok = true; want false")
 	}
 }
 

@@ -1,20 +1,26 @@
 // exec.go provides the per-invocation exit-state holder, the RunCLI seam adapter,
-// and the legacy-handler-to-RunE wrapper for the clihelp package.
+// the legacy-handler-to-RunE wrapper, the shared root-execution helper, and the
+// module-group RunE helper for the clihelp package.
 //
 // The exit state is carried as a context value (never a package-level variable) so
 // that concurrent test invocations each track their own exit code without races.
 
 // Package clihelp provides the shared cobra infrastructure used by cmd/lyx and every
 // module's RunCLI seam. It holds per-invocation exit state, a seam adapter that wires
-// a cobra command tree into an io.Writer-based call contract, and a RunE wrapper that
-// bridges legacy handler functions into cobra's RunE signature.
+// a cobra command tree into an io.Writer-based call contract, a RunE wrapper that
+// bridges legacy handler functions into cobra's RunE signature, and helpers that
+// centralise JSON-envelope error wrapping for Cobra-level errors.
 package clihelp
 
 import (
 	"context"
+	"fmt"
 	"io"
+	"strings"
 
 	"github.com/spf13/cobra"
+
+	"github.com/Knatte18/loomyard/internal/output"
 )
 
 // ctxKey is an unexported type for context keys in this package,
@@ -117,28 +123,54 @@ func WrapRun(fn func(out io.Writer, args []string) int) func(*cobra.Command, []s
 	}
 }
 
+// RunRoot sets SilenceErrors and SilenceUsage on cmd, seeds a fresh exit context,
+// runs cmd.ExecuteContext, and on a non-nil cobra error writes the JSON error envelope
+// to out and returns 1. On nil error it returns the exit code recorded via SetExit.
+// Callers must configure cmd's output writers and args before calling RunRoot; this
+// function only supplies the context, the silence flags, and the error-wrapping policy.
+// Both Execute and cmd/lyx use RunRoot so the wrapping logic has exactly one implementation.
+func RunRoot(cmd *cobra.Command, out io.Writer) int {
+	// Silence cobra's own error printing; we emit a JSON envelope instead so the
+	// caller always gets a machine-parseable error shape rather than plain text.
+	cmd.SilenceErrors = true
+
+	// Suppress the usage block on error paths; the command path already identifies
+	// the problem well enough, and a usage dump bloats test snapshots.
+	cmd.SilenceUsage = true
+
+	ctx, es := NewExitContext(context.Background())
+	if err := cmd.ExecuteContext(ctx); err != nil {
+		// Wrap the cobra error in the standard JSON envelope so all error paths
+		// (unknown command, bad flag, arg validation) have the same shape as domain
+		// errors. TrimSpace strips any newline cobra appends to its error strings.
+		return output.Err(out, strings.TrimSpace(err.Error()))
+	}
+	return es.code
+}
+
 // Execute is the RunCLI seam used by every module and by cmd/lyx.
 // It wires cmd to write both stdout and stderr into out (so in-process tests
-// capture all output from a single buffer), sets SilenceUsage so cobra does not
-// dump a full usage block on error paths, runs the command tree with args, and
-// returns the recorded exit code (or 1 for a cobra-level error such as an unknown
-// command or bad flag). SilenceErrors is left at its default false so cobra still
-// writes "unknown command"/"unknown flag" messages into out.
+// capture all output from a single buffer), sets args, and delegates to RunRoot
+// for context seeding, silence flags, execution, and JSON error wrapping.
 func Execute(cmd *cobra.Command, out io.Writer, args []string) int {
 	// Merge stdout and stderr into a single writer so in-process tests capture
 	// cobra's error text from the same buffer as handler output.
 	cmd.SetOut(out)
 	cmd.SetErr(out)
 
-	// Suppress the full usage block on error paths; the command path already
-	// identifies the problem well enough, and the block bloats test snapshots.
-	cmd.SilenceUsage = true
-
-	ctx, es := NewExitContext(context.Background())
 	cmd.SetArgs(args)
 
-	if err := cmd.ExecuteContext(ctx); err != nil {
-		return 1
+	return RunRoot(cmd, out)
+}
+
+// GroupRunE is the RunE for parent module group commands (e.g. "lyx warp", "lyx board").
+// When args is non-empty it returns an error naming the unknown subcommand; when args is
+// empty it delegates to the command's built-in help output. Wire this as
+// cmd.RunE = clihelp.GroupRunE on each group command so that bare invocations print help
+// and invocations with an unrecognised subcommand emit a JSON error envelope via RunRoot.
+func GroupRunE(cmd *cobra.Command, args []string) error {
+	if len(args) > 0 {
+		return fmt.Errorf("unknown subcommand %q for %q", args[0], cmd.CommandPath())
 	}
-	return es.code
+	return cmd.Help()
 }

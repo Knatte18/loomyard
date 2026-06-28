@@ -52,7 +52,18 @@ Running "lyx board" with no subcommand lists available subcommands without requi
 		panic(fmt.Sprintf("board: MarkHidden board-path: %v", err))
 	}
 
+	// RunE is set so that bare "lyx board" lists subcommands and "lyx board bogus"
+	// emits a JSON error envelope instead of falling through to cobra's plain-text help.
+	cmd.RunE = clihelp.GroupRunE
+
 	cmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
+		// Guard: when the board group command itself is invoked (bare listing or
+		// unknown-subcommand error path), skip config resolution so that neither
+		// path requires a git repository or board config to be present.
+		if cmd.Name() == "board" {
+			return nil
+		}
+
 		ctx := cmd.Context()
 
 		var cfg Config
