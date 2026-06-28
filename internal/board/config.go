@@ -1,7 +1,7 @@
 // config.go — configuration for the board module.
 //
 // Defines the Config and Outputs types and LoadConfig.
-// LoadConfig uses internal/config.Load with the ConfigTemplate() to strictly
+// LoadConfig uses internal/configengine.Load with the ConfigTemplate() to strictly
 // validate and resolve the board config file; the board module never reads
 // config files or knows their layout itself.
 
@@ -12,7 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/config"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"gopkg.in/yaml.v3"
 )
 
@@ -45,7 +45,7 @@ func (c Config) Outputs() Outputs {
 
 // LoadConfig loads and unmarshals configuration for the board module.
 //
-// Calls config.Load with the board ConfigTemplate() to strictly validate
+// Calls configengine.Load with the board ConfigTemplate() to strictly validate
 // the config file against the template, resolve environment variables, and
 // return resolved bytes. Unmarshals the resolved bytes into a Config struct.
 //
@@ -56,7 +56,7 @@ func (c Config) Outputs() Outputs {
 // relative to baseDir).
 func LoadConfig(baseDir, module string) (Config, error) {
 	// Load and resolve the config file using the template
-	resolved, err := config.Load(baseDir, module, []byte(ConfigTemplate()))
+	resolved, err := configengine.Load(baseDir, module, []byte(ConfigTemplate()))
 	if err != nil {
 		// Wrap the generic error with a board-specific message
 		if strings.Contains(err.Error(), "not initialized") {
