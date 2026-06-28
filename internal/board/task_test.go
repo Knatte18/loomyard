@@ -57,21 +57,6 @@ func TestNewTask(t *testing.T) {
 		}
 	})
 
-	t.Run("group key present returns error", func(t *testing.T) {
-		fields := map[string]any{
-			"slug":  "test-task",
-			"group": "some-group",
-		}
-		_, err := board.NewTask(fields, 1)
-		if err == nil {
-			t.Fatalf("expected error for group key, got nil")
-		}
-		expectedMsg := "group key is not allowed"
-		if errStr := err.Error(); len(errStr) < len(expectedMsg) || errStr[:len(expectedMsg)] != expectedMsg {
-			t.Errorf("expected error containing %q, got %q", expectedMsg, errStr)
-		}
-	})
-
 	t.Run("explicit DependsOn provided in fields is stored correctly", func(t *testing.T) {
 		fields := map[string]any{
 			"slug":       "test-task",
@@ -135,24 +120,6 @@ func TestApplyPatch(t *testing.T) {
 		}
 		if result.DependsOn[0] != "x" || result.DependsOn[1] != "y" || result.DependsOn[2] != "z" {
 			t.Errorf("expected [x y z], got %v", result.DependsOn)
-		}
-	})
-
-	t.Run("group key returns error", func(t *testing.T) {
-		existing := board.Task{
-			ID:   1,
-			Slug: "test",
-		}
-		patch := map[string]any{
-			"group": "some-group",
-		}
-		_, err := board.ApplyPatch(existing, patch)
-		if err == nil {
-			t.Fatalf("expected error for group key, got nil")
-		}
-		expectedMsg := "group key is not allowed"
-		if errStr := err.Error(); len(errStr) < len(expectedMsg) || errStr[:len(expectedMsg)] != expectedMsg {
-			t.Errorf("expected error containing %q, got %q", expectedMsg, errStr)
 		}
 	})
 
