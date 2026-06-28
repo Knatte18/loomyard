@@ -21,7 +21,11 @@ and `proposal_prefix` changes, not just orphaned proposals. Independent of batch
 and may run in parallel. Batch-local decision: the manifest is transient local state,
 gitignored exactly like the existing `*.lock`/`*.swaplock` sidecars (via
 `ensureLockfilesIgnored`), so it never adds commit churn; correctness does not depend on
-it being tracked, because a missing manifest degrades gracefully.
+it being tracked, because a missing manifest degrades gracefully. Note on atomicity: Card
+8 deletes `removeOrphanProposals`, which leaves the existing single-pass ghost-removal
+assertion in `render_test.go` red until Card 9 restructures it — intermediate per-card red
+WITHIN this batch is accepted, since mill-go runs the batch `verify:` only after the
+implementer finishes every card in the batch, not per-commit.
 
 ## Cards
 

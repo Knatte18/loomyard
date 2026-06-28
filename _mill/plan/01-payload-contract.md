@@ -5,7 +5,7 @@ task: "Board fixes from sandbox run — payload keys, help, rerender"
 batch: "payload-contract"
 number: 1
 cards: 5
-verify: go test ./internal/board/ ./cmd/lyx/
+verify: go test ./internal/board/... ./cmd/lyx/
 depends-on: []
 ```
 
@@ -57,11 +57,16 @@ its new error-on-missing.
   `Short` so `cmd/lyx/drift_test.go`'s `TestDriftGuard_AllCommandsHaveShort` stays green.
   Convert every existing reference to the renamed symbols so this commit compiles and
   passes: in `internal/board/store_test.go` rename `s.SetPhase(...)` call sites to
-  `s.SetStatus(...)` (e.g. `TestSetPhase`/`TestSetPhaseNil`/`TestMergeTasks`); in
+  `s.SetStatus(...)` (the direct call sites are in `TestSetPhase` and `TestSetPhaseNil`/
+  `TestSetPhaseMissing` — NOT `TestMergeTasks`, which calls `MergeTasks`); in
   `internal/board/cli_test.go` change `set-phase` command tokens to `set-status` and the
   `"phase"` payload key to `"status"` (e.g. `TestCLISetPhase`). Leave the `id_or_slug`
   lookup-key references in `cli_test.go` untouched in THIS card — they still compile and
   pass after the rename (the lookup key changes in Card 2, which owns their conversion).
+  Docs check (task-completion discipline): grepping `docs/` for `set-phase` and per-board-
+  command references returns nothing, and the rename does not change the `docs/roadmap.md`
+  module table or the `docs/overview.md` execution stack — so no roadmap/overview edit is
+  required; the board CLI `--help` (`Long` blocks, batch 2) is the documentation surface.
 - **Commit:** `refactor(board): rename set-phase to set-status, phase key to status`
 
 ### Card 2: `slug`-or-`id` lookup contract on `get`/`set-status`/`remove`
@@ -72,6 +77,8 @@ its new error-on-missing.
   - `internal/board/cli.go`
   - `internal/board/board.go`
   - `internal/board/cli_test.go`
+  - `internal/board/boardtest/bench_test.go`
+  - `cmd/lyx/main_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Requirements:** Replace the `id_or_slug` payload key on the `get`, `remove`, and
@@ -94,7 +101,12 @@ its new error-on-missing.
   this commit compiles and passes. Add `internal/board/cli_test.go` cases:
   `get`/`remove`/`set-status` succeed with `{"slug":...}`; succeed with `{"id":N}`;
   `get '{"id":0}'` resolves the first-created task (ID 0); error with neither key; error
-  with both keys; cover the int-vs-float64 JSON-number path.
+  with both keys; cover the int-vs-float64 JSON-number path. Also convert the two
+  blast-radius test files that still use the removed key: in
+  `internal/board/boardtest/bench_test.go`, change `BenchmarkGet`'s payload from
+  `{"id_or_slug":"task-0"}` to `{"slug":"task-0"}`; in `cmd/lyx/main_test.go`, change the
+  `remove '{"id_or_slug":"nope"}'` case to `{"slug":"nope"}` (it asserts exit 1 — now via
+  the genuine not-found path rather than incidental unknown-key rejection).
 - **Commit:** `feat(board): accept slug or id on get/set-status/remove`
 
 ### Card 3: Error on missing target + require `status` key on `set-status`
@@ -203,7 +215,7 @@ its new error-on-missing.
 
 ## Batch Tests
 
-`verify: go test ./internal/board/ ./cmd/lyx/` covers the board package unit tests
+`verify: go test ./internal/board/... ./cmd/lyx/` covers the board package unit tests
 (`cli_test.go`, `store_test.go`, `task_test.go`, `board_test.go`) edited across cards 2–5,
 and the `cmd/lyx` package tests (`helptree_test.go` pin updated in card 1, `drift_test.go`
 status-guard) affected by the command rename. Both packages are in the batch's blast

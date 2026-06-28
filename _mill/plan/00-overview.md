@@ -18,7 +18,7 @@ batches:
     name: payload-contract
     file: 01-payload-contract.md
     depends-on: []
-    verify: go test ./internal/board/ ./cmd/lyx/
+    verify: go test ./internal/board/... ./cmd/lyx/
   - number: 2
     name: cli-help
     file: 02-cli-help.md
@@ -83,7 +83,9 @@ batches:
 ## All Files Touched
 
 - `cmd/lyx/helptree_test.go`
+- `cmd/lyx/main_test.go`
 - `internal/board/board.go`
+- `internal/board/boardtest/bench_test.go`
 - `internal/board/cli.go`
 - `internal/board/cli_test.go`
 - `internal/board/help_test.go`
