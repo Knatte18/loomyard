@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: cli-help-ergonomics
 branch: cli-help-ergonomics
-plan: null
+plan: _mill/plan
 parent: main
 task: CLI help & error ergonomics from sandbox run
 task_description: |
@@ -16,4 +16,5 @@ task_description: |
 ```text
 discussing  '2026-06-28T14:19:51Z'
 discussed  '2026-06-28T14:48:47Z'
+planning  '2026-06-28T14:58:15Z'
 ```
