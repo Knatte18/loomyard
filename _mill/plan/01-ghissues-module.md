@@ -59,9 +59,11 @@ Batch-local decisions (beyond `## Shared Decisions`):
     `["issue","create","--repo",targetRepo,"--title",title]` then `"--body", *body` when
     `body != nil`, then one `"--label", l` pair per label in order.
   - `createIssue(title string, body *string, labels []string) (url string, number int, err error)`:
-    call `runGH(buildCreateArgs(...))`. If the returned `err != nil` with `exitCode == -1`
-    treat as gh-not-found and return an error like `gh not found on PATH: <err>`. If
-    `exitCode != 0` return an error like `gh issue create failed: <stderr-trimmed>`.
+    call `runGH(buildCreateArgs(...))`. If the returned `err != nil`, distinguish the
+    cause: when `errors.Is(err, exec.ErrNotFound)` return `gh not found on PATH: <err>`
+    (the `LookPath` miss); otherwise return `failed to run gh: <err>` (a generic exec
+    failure — both share `exitCode == -1`, so use `errors.Is`, not the exit code, to tell
+    them apart). If `err == nil` and `exitCode != 0` return `gh issue create failed: <stderr-trimmed>`.
     On success, take the last non-empty trimmed line of stdout as `url`; parse the
     trailing `/<n>` path segment as `number` (strconv.Atoi). If the segment is not a
     parseable int, return `(url, 0, nil)` — success with `number == 0` (cli.go omits a
@@ -145,8 +147,10 @@ Batch-local decisions (beyond `## Shared Decisions`):
       the stderr text.
     - Unparseable URL: fake returns non-URL stdout + exit 0 → `ok:true`, `url` present,
       `number` absent from the envelope.
-    - Number parsing: URL ending `/issues/123` → `number == 123` (JSON number, asserted
-      as int value).
+    - Number parsing: URL ending `/issues/123` → `number == 123`. Note: decoding the
+      envelope into `map[string]any` yields `float64`, so the test must compare against
+      `float64(123)` (or decode into a typed struct with an `int` field) — do not assert
+      an `int` literal against the map value.
   - Follow `golang-testing` conventions (table tests, `t.Run` subtests, no real network).
 - **Commit:** `test(ghissues): white-box unit tests for create (argv, stdin, labels, gh failures)`
 

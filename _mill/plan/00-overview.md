@@ -3,7 +3,7 @@
 ```yaml
 task: "ghissues module — file LoomYard bugs as GitHub issues"
 slug: "ghissues-module"
-approved: false
+approved: true
 started: "20260628-140823"
 parent: "main"
 root: ""

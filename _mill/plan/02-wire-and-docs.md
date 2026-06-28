@@ -137,7 +137,12 @@ Batch-local decisions:
     durable design lives in the package header).
   - `docs/overview.md`: update the prose/module enumeration that lists lyx modules to
     include `ghissues` where appropriate (keep consistent with how board/warp/weft are
-    listed). No module-doc file.
+    listed). No module-doc file. Additionally, since you are already in this file,
+    refresh the stale "Module dispatch" prose (around lines 180-209) that still describes
+    the pre-cobra `switch module` / `RunCLI` routing: update it to reflect that dispatch
+    now goes through the cobra root assembled in `cmd/lyx/main.go` `newRoot()` (each
+    module contributes `Command()`; `RunCLI` remains the in-process test seam). Keep the
+    edit tight and accurate; do not rewrite unrelated sections.
   - `CONSTRAINTS.md`: **extend** (do not recreate) the existing `## CLI / Cobra Invariant`
     section with a short addition under its Rule list noting the two new enforcement
     guards: `cmd/lyx/registration_test.go` (source/AST scan: every `internal/*` package
