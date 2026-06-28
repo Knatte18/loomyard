@@ -140,10 +140,15 @@ Running "lyx board" with no subcommand lists available subcommands without requi
 				return outputError(out, err.Error())
 			}
 
-			// Read the status value from the decoded map. Key presence distinguishes
-			// an explicit null (clear) from an absent key (Card 3 will error on absent).
+			// status key is required: an absent key is an error; an explicit null clears
+			// the status. This distinguishes a deliberate clear from a typo that would
+			// otherwise silently clear the status value.
+			sv, hasStatus := m["status"]
+			if !hasStatus {
+				return outputError(out, "missing required field: status")
+			}
 			var status *string
-			if sv, hasStatus := m["status"]; hasStatus && sv != nil {
+			if sv != nil {
 				s, ok := sv.(string)
 				if !ok {
 					return outputError(out, "status must be a string or null")

@@ -303,10 +303,13 @@ func TestSetStatus(t *testing.T) {
 	t.Run("TestSetPhaseMissing", func(t *testing.T) {
 		s := board.NewStore("")
 
-		// Silent no-op for missing slug (no error); Card 3 changes this to an error.
+		// Missing target now returns "task not found" instead of the former silent no-op.
 		err := s.SetStatus("nonexistent", nil)
-		if err != nil {
-			t.Fatalf("expected nil error for missing task, got %v", err)
+		if err == nil {
+			t.Fatalf("expected error for missing task, got nil")
+		}
+		if err.Error() != "task not found: nonexistent" {
+			t.Errorf("unexpected error message: %v", err)
 		}
 	})
 }

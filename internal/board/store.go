@@ -332,7 +332,7 @@ func (s *Store) RemoveTask(idOrSlug any) error {
 }
 
 // SetStatus sets or clears the status field for the task identified by idOrSlug.
-// If no task matches id or slug, it is a silent no-op (returns nil).
+// Returns fmt.Errorf("task not found: %v", idOrSlug) when no task matches id or slug.
 func (s *Store) SetStatus(idOrSlug any, status *string) error {
 	for i := range s.tasks {
 		match := false
@@ -350,8 +350,8 @@ func (s *Store) SetStatus(idOrSlug any, status *string) error {
 			return nil
 		}
 	}
-	// Silent no-op for missing task; Card 3 changes this to an error.
-	return nil
+	// No task matched — error so callers get clear feedback instead of a silent no-op.
+	return fmt.Errorf("task not found: %v", idOrSlug)
 }
 
 // SetDeps replaces the depends_on list for slug, running full validation. Returns error if slug not found.

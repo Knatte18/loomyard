@@ -488,6 +488,58 @@ func TestCLILookupContract(t *testing.T) {
 			wantExitCode: 0,
 			wantOK:       true,
 		},
+		// Card 3: set-status requires the status key and errors on missing target.
+		{
+			name: "set_status_absent_status_key_errors",
+			setup: func(t *testing.T) {
+				seedCwd(t)
+				runCLI(t, "upsert", `{"slug":"task-a","title":"A"}`)
+			},
+			verb:         "set-status",
+			payload:      `{"slug":"task-a"}`,
+			wantExitCode: 1,
+			wantOK:       false,
+			wantError:    "missing required field: status",
+		},
+		{
+			name: "set_status_null_status_clears",
+			setup: func(t *testing.T) {
+				seedCwd(t)
+				runCLI(t, "upsert", `{"slug":"task-a","title":"A"}`)
+				runCLI(t, "set-status", `{"slug":"task-a","status":"active"}`)
+			},
+			verb:         "set-status",
+			payload:      `{"slug":"task-a","status":null}`,
+			wantExitCode: 0,
+			wantOK:       true,
+			assertResult: func(t *testing.T, result map[string]any) {
+				// Verify status was actually cleared by doing a get.
+				_, getOut := runCLI(t, "get", `{"slug":"task-a"}`)
+				var getResult map[string]any
+				if err := json.Unmarshal([]byte(getOut), &getResult); err != nil {
+					t.Fatalf("failed to parse get output: %v", err)
+				}
+				task, _ := getResult["task"].(map[string]any)
+				if task == nil {
+					t.Fatalf("task not found after status clear")
+				}
+				// status field should be absent (omitempty) or null in the JSON.
+				if _, hasStatus := task["status"]; hasStatus {
+					t.Errorf("expected status to be absent after null clear, got %v", task["status"])
+				}
+			},
+		},
+		{
+			name: "set_status_missing_target_errors",
+			setup: func(t *testing.T) {
+				seedCwd(t)
+			},
+			verb:         "set-status",
+			payload:      `{"slug":"nonexistent","status":"active"}`,
+			wantExitCode: 1,
+			wantOK:       false,
+			wantError:    "task not found",
+		},
 	}
 
 	for _, tt := range tests {
