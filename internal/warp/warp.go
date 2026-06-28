@@ -49,7 +49,6 @@
 package warp
 
 import (
-	"fmt"
 	"io"
 	"strings"
 
@@ -73,38 +72,14 @@ func Command() *cobra.Command {
 		Short: "host↔weft coordination",
 		Long: `warp manages the host↔weft topology for lyx-managed git repositories.
 It owns worktree pairing, coordinated branch switching, and cleanup.`,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if len(args) > 0 {
-				return fmt.Errorf("unknown subcommand %q — run 'lyx warp --help' for usage", args[0])
-			}
-			return cmd.Help()
-		},
 	}
 
-	// clone [--reset] <host-url> <weft-url> [board-url]
-	var cloneCmd *cobra.Command
-	cloneCmd = &cobra.Command{
-		Use:   "clone [--reset] <host-url> <weft-url> [board-url]",
+	// clone <host-url> <weft-url> [board-url]
+	cmd.AddCommand(&cobra.Command{
+		Use:   "clone <host-url> <weft-url> [board-url]",
 		Short: "bootstrap a new hub (host prime + board passenger + weft prime)",
-		Long: `Clone three repositories into a new hub directory (<parent>/<host-name>-HUB):
-  <host-name>      — host prime (the main working repo)
-  <host-name>-weft — weft prime (lyx artefacts: config, codeguide, weft commits)
-  _board           — board passenger (task-tracker wiki)
-
-The board-url defaults to <weft-url>.wiki.git if omitted.
-Use --reset to tear down an existing hub before cloning (idempotent re-clone).
-
-After cloning, run "lyx init" inside the host worktree to activate junctions and config.
-
-Example:
-  lyx warp clone https://github.com/user/repo https://github.com/user/repo-weft`,
-		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
-			reset, _ := cloneCmd.Flags().GetBool("reset")
-			return runCloneWithReset(out, args, reset)
-		}),
-	}
-	cloneCmd.Flags().Bool("reset", false, "remove an existing hub before cloning (idempotent re-clone)")
-	cmd.AddCommand(cloneCmd)
+		RunE:  clihelp.WrapRun(runClone),
+	})
 
 	// add <slug>
 	cmd.AddCommand(&cobra.Command{
