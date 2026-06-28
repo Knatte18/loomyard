@@ -54,6 +54,54 @@ If a test needs real config:
 
 The enforcement test (`internal/lyxtest/leaf_enforcement_test.go`) is run on every `go test ./...` and fails the build if any of the banned imports appear in lyxtest source files.
 
+## CLI / Cobra Invariant
+
+Every lyx CLI module is a cobra command tree assembled under one root in
+`cmd/lyx/main.go`. The seam, the registration, and the self-documentation are all
+load-bearing and partly enforced at `go test` time.
+
+### Rule
+
+- **Module seam.** Every CLI module exposes `Command() *cobra.Command` (builds that
+  module's command subtree) and a thin `RunCLI(out io.Writer, args []string) int` seam
+  that is exactly `return clihelp.Execute(Command(), out, args)`. Tests and the root
+  both drive the module through this seam — never re-implement argument parsing.
+- **Registration.** A new module MUST be wired into `cmd/lyx/main.go` `newRoot()`:
+  (1) import the package, (2) `root.AddCommand(<module>.Command())`, and (3) append the
+  module name to the root command's `Long` module-list string. A module that is not
+  registered is invisible to `lyx --help`.
+- **Every command has a `Short`.** Both the parent module command and every subcommand
+  MUST carry a non-empty `Short`. Enforced by `cmd/lyx/drift_test.go`
+  (`TestDriftGuard_AllCommandsHaveShort`), which walks the whole tree and fails the
+  build on any blank `Short`. Commands whose `--help` is the discovery path (anything an
+  agent or operator must learn from the binary alone) SHOULD also carry a `Long` with
+  concrete usage examples.
+- **Help is co-located, never a central table.** Help text lives on each command
+  (`Short`/`Long`), so it cannot drift from behaviour. Do not add a hand-maintained
+  command listing anywhere else.
+- **Help tree is pinned by test.** `cmd/lyx/helptree_test.go` asserts the root names
+  every module and each module names every subcommand. When you add a module or a
+  subcommand, update the pinned sets in that test (root `requiredModules`, and the
+  module's `wantSubs`).
+- **Handlers and output.** Bridge a `func(out io.Writer, args []string) int` handler
+  into cobra via `clihelp.WrapRun`; use `clihelp` exit handling (`ShouldAbort` /
+  `SetExit` / `Abort`) rather than ad-hoc `os.Exit`. Emit results through the
+  `internal/output` JSON envelope (`output.Ok` / `output.Err`) — one JSON object per
+  line. A persistent `--json` flag on the root exposes machine-readable help
+  (`internal/clihelp/jsonhelp.go`).
+
+### For New Code
+
+When adding a CLI module or subcommand:
+- Follow the **warp variant** (`internal/warp/warp.go`) for a module with positional
+  args and per-subcommand local flags: no `PersistentPreRunE`, `clihelp.WrapRun`
+  handlers, flags read via a closure over the `*cobra.Command`. Follow the **board/weft
+  variant** when you need a `PersistentPreRunE` to resolve shared state once.
+- Set `Short` on the new command immediately (the drift guard will fail otherwise), and
+  a `Long` with examples when the command is meant to be self-discoverable.
+- Update `cmd/lyx/helptree_test.go` pinned sets in the **same commit** (this is also the
+  Task-completion docs discipline from `CLAUDE.md`).
+
 ## Documentation Lifecycle
 
 For the convention governing which docs are kept and which are deleted (mechanical per-module docs vs. durable design docs), see [docs/overview.md#documentation-lifecycle](docs/overview.md#documentation-lifecycle).
