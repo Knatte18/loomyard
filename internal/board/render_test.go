@@ -1,11 +1,14 @@
 // render_test.go — unit tests for rendering (render.go).
 //
 // Home.md / _Sidebar.md / proposal output across task shapes: dependencies,
-// status, isolated, deferred, orphans, and title formatting.
+// status, isolated, deferred, orphans, and title formatting. Also covers the
+// manifest-based cleanup introduced in RenderToDisk: renamed outputs are removed
+// across consecutive renders, and a missing or corrupt manifest degrades gracefully.
 
 package board_test
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,14 +18,18 @@ import (
 )
 
 // TestRenderToDisk verifies that RenderToDisk writes expected files and removes
-// orphaned proposal files. Subtests cover the default prefix and a custom prefix.
+// orphaned proposal files via the manifest. Subtests cover the default prefix and a
+// custom prefix. The ghost file is pre-seeded into the manifest so the manifest-based
+// cleanup removes it on the single RenderToDisk call (the manifest only removes files
+// it previously recorded, so a first render with no prior manifest seeds and removes
+// nothing — see TestRenderToDiskManifestCleanup for that scenario).
 //
 // Folds: TestRenderToDiskWritesAndCleansOrphans, TestRenderToDiskWithCustomProposalPrefix
 func TestRenderToDisk(t *testing.T) {
 	tests := []struct {
 		name         string
 		out          board.Outputs
-		ghostFile    string // stale proposal filename to pre-create
+		ghostFile    string // stale proposal filename to pre-create and pre-seed in manifest
 		wantProposal string // expected proposal file after render
 	}{
 		{
@@ -54,6 +61,10 @@ func TestRenderToDisk(t *testing.T) {
 				t.Fatal(err)
 			}
 
+			// Pre-seed the manifest to simulate a prior render that produced the ghost
+			// file; the manifest-based cleanup removes it in the next RenderToDisk call.
+			seedManifest(t, dir, []string{tt.ghostFile})
+
 			if err := board.RenderToDisk(dir, tasks, tt.out); err != nil {
 				t.Fatalf("RenderToDisk: %v", err)
 			}
@@ -75,6 +86,189 @@ func TestRenderToDisk(t *testing.T) {
 			}
 		})
 	}
+}
+
+// seedManifest writes a .board-rendered.json manifest into dir listing names,
+// simulating the sidecar that a prior render would have left behind.
+func seedManifest(t *testing.T, dir string, names []string) {
+	t.Helper()
+	data, err := json.Marshal(names)
+	if err != nil {
+		t.Fatalf("seedManifest: marshal: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".board-rendered.json"), data, 0o644); err != nil {
+		t.Fatalf("seedManifest: write: %v", err)
+	}
+}
+
+// TestRenderToDiskManifestCleanup covers the manifest-based cleanup scenarios:
+// renamed outputs removed across consecutive renders, body loss removing a proposal,
+// unrelated files left untouched, and graceful degradation for missing/corrupt manifests.
+func TestRenderToDiskManifestCleanup(t *testing.T) {
+	t.Run("HomeRename", func(t *testing.T) {
+		dir := t.TempDir()
+		tasks := []board.Task{{ID: 0, Slug: "a", Title: "A"}}
+
+		// First render produces Home.md and seeds the manifest with it.
+		out1 := board.Outputs{Home: "Home.md", Sidebar: "_Sidebar.md", ProposalPrefix: "proposal-"}
+		if err := board.RenderToDisk(dir, tasks, out1); err != nil {
+			t.Fatalf("first RenderToDisk: %v", err)
+		}
+
+		// Second render uses Index.md; the manifest from the first render lists Home.md,
+		// so it is removed because the new output set does not contain it.
+		out2 := board.Outputs{Home: "Index.md", Sidebar: "_Sidebar.md", ProposalPrefix: "proposal-"}
+		if err := board.RenderToDisk(dir, tasks, out2); err != nil {
+			t.Fatalf("second RenderToDisk: %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(dir, "Index.md")); err != nil {
+			t.Errorf("Index.md should exist after second render: %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(dir, "Home.md")); !os.IsNotExist(err) {
+			t.Errorf("Home.md should have been removed after rename to Index.md")
+		}
+	})
+
+	t.Run("SidebarRename", func(t *testing.T) {
+		dir := t.TempDir()
+		tasks := []board.Task{{ID: 0, Slug: "a", Title: "A"}}
+
+		out1 := board.Outputs{Home: "Home.md", Sidebar: "_Sidebar.md", ProposalPrefix: "proposal-"}
+		if err := board.RenderToDisk(dir, tasks, out1); err != nil {
+			t.Fatalf("first RenderToDisk: %v", err)
+		}
+
+		out2 := board.Outputs{Home: "Home.md", Sidebar: "_Nav.md", ProposalPrefix: "proposal-"}
+		if err := board.RenderToDisk(dir, tasks, out2); err != nil {
+			t.Fatalf("second RenderToDisk: %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(dir, "_Nav.md")); err != nil {
+			t.Errorf("_Nav.md should exist after second render: %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(dir, "_Sidebar.md")); !os.IsNotExist(err) {
+			t.Errorf("_Sidebar.md should have been removed after rename to _Nav.md")
+		}
+	})
+
+	t.Run("ProposalPrefixChange", func(t *testing.T) {
+		dir := t.TempDir()
+		tasks := []board.Task{{ID: 0, Slug: "a", Title: "A", Body: "body"}}
+
+		// First render with prefix "proposal-" produces proposal-a.md.
+		out1 := board.Outputs{Home: "Home.md", Sidebar: "_Sidebar.md", ProposalPrefix: "proposal-"}
+		if err := board.RenderToDisk(dir, tasks, out1); err != nil {
+			t.Fatalf("first RenderToDisk: %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(dir, "proposal-a.md")); err != nil {
+			t.Fatalf("proposal-a.md should exist after first render: %v", err)
+		}
+
+		// Second render with prefix "task-" produces task-a.md; manifest cleanup
+		// removes proposal-a.md because it is no longer in the output set.
+		out2 := board.Outputs{Home: "Home.md", Sidebar: "_Sidebar.md", ProposalPrefix: "task-"}
+		if err := board.RenderToDisk(dir, tasks, out2); err != nil {
+			t.Fatalf("second RenderToDisk: %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(dir, "task-a.md")); err != nil {
+			t.Errorf("task-a.md should exist after second render: %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(dir, "proposal-a.md")); !os.IsNotExist(err) {
+			t.Errorf("proposal-a.md should have been removed after prefix change to task-")
+		}
+	})
+
+	t.Run("BodyLoss", func(t *testing.T) {
+		dir := t.TempDir()
+		task := board.Task{ID: 0, Slug: "a", Title: "A", Body: "original body"}
+		out := board.Outputs{Home: "Home.md", Sidebar: "_Sidebar.md", ProposalPrefix: "proposal-"}
+
+		// First render: task has a body → proposal-a.md is produced and recorded in the manifest.
+		if err := board.RenderToDisk(dir, []board.Task{task}, out); err != nil {
+			t.Fatalf("first RenderToDisk: %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(dir, "proposal-a.md")); err != nil {
+			t.Fatalf("proposal-a.md should exist after first render: %v", err)
+		}
+
+		// Second render: task loses its body → proposal-a.md is absent from the new
+		// output set but present in the manifest, so the manifest cleanup removes it.
+		task.Body = ""
+		if err := board.RenderToDisk(dir, []board.Task{task}, out); err != nil {
+			t.Fatalf("second RenderToDisk: %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(dir, "proposal-a.md")); !os.IsNotExist(err) {
+			t.Errorf("proposal-a.md should have been removed after the task lost its body")
+		}
+	})
+
+	t.Run("UnrelatedFileNotRemoved", func(t *testing.T) {
+		dir := t.TempDir()
+		tasks := []board.Task{{ID: 0, Slug: "a", Title: "A"}}
+
+		// A hand-added file in the board dir that was never produced by a render.
+		readme := filepath.Join(dir, "README.md")
+		if err := os.WriteFile(readme, []byte("# Readme"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		out := board.Outputs{Home: "Home.md", Sidebar: "_Sidebar.md", ProposalPrefix: "proposal-"}
+		// First render seeds the manifest with the rendered files (not README.md).
+		if err := board.RenderToDisk(dir, tasks, out); err != nil {
+			t.Fatalf("first RenderToDisk: %v", err)
+		}
+		// Second render triggers cleanup; README.md was never in the manifest so it is untouched.
+		if err := board.RenderToDisk(dir, tasks, out); err != nil {
+			t.Fatalf("second RenderToDisk: %v", err)
+		}
+		if _, err := os.Stat(readme); err != nil {
+			t.Errorf("README.md should not have been removed (never in manifest): %v", err)
+		}
+	})
+
+	t.Run("NoManifestSeedsAndRemovesNothing", func(t *testing.T) {
+		dir := t.TempDir()
+		tasks := []board.Task{{ID: 0, Slug: "a", Title: "A"}}
+
+		// A file that looks like an orphan under the old glob approach but is absent
+		// from the manifest because no manifest exists yet (pre-upgrade state).
+		stale := filepath.Join(dir, "proposal-stale.md")
+		if err := os.WriteFile(stale, []byte("old"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		out := board.Outputs{Home: "Home.md", Sidebar: "_Sidebar.md", ProposalPrefix: "proposal-"}
+
+		// First render with no prior manifest: nothing is removed (graceful degradation),
+		// and the manifest is seeded with the current output set.
+		if err := board.RenderToDisk(dir, tasks, out); err != nil {
+			t.Fatalf("RenderToDisk should not fail when no manifest exists: %v", err)
+		}
+		if _, err := os.Stat(stale); err != nil {
+			t.Errorf("stale file should NOT be removed on first render (no prior manifest): %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(dir, ".board-rendered.json")); err != nil {
+			t.Errorf("manifest should have been created after first render: %v", err)
+		}
+	})
+
+	t.Run("CorruptManifestDoesNotFailWrite", func(t *testing.T) {
+		dir := t.TempDir()
+		tasks := []board.Task{{ID: 0, Slug: "a", Title: "A"}}
+
+		// Write a corrupt manifest; RenderToDisk must treat it as absent (no cleanup)
+		// and overwrite it with the current render set.
+		if err := os.WriteFile(filepath.Join(dir, ".board-rendered.json"), []byte("not valid json {{{"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		out := board.Outputs{Home: "Home.md", Sidebar: "_Sidebar.md", ProposalPrefix: "proposal-"}
+		if err := board.RenderToDisk(dir, tasks, out); err != nil {
+			t.Errorf("RenderToDisk should not fail with a corrupt manifest: %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(dir, "Home.md")); err != nil {
+			t.Errorf("Home.md should be written even with corrupt manifest: %v", err)
+		}
+	})
 }
 
 func TestRenderEmptyTaskList(t *testing.T) {

@@ -123,7 +123,7 @@ func TestRunBoardErrorPropagatesExitCode(t *testing.T) {
 
 	// remove of a nonexistent task fails — exit code must bubble up through run.
 	var out bytes.Buffer
-	code := run([]string{"board", "remove", `{"id_or_slug":"nope"}`}, &out)
+	code := run([]string{"board", "remove", `{"slug":"nope"}`}, &out)
 	if code != 1 {
 		t.Fatalf("expected exit 1 from failing board command, got %d; output: %s", code, out.String())
 	}
