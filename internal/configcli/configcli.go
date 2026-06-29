@@ -20,7 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/paths"
-	"github.com/Knatte18/loomyard/internal/weft"
+	"github.com/Knatte18/loomyard/internal/weftcli"
 )
 
 // syncFunc runs the post-edit sync, writing its output to the given writer,
@@ -222,7 +222,7 @@ func runConfig(out io.Writer, args []string, printOnly bool) int {
 
 	// Build the real editor and sync functions.
 	realSync := func(w io.Writer) int {
-		return weft.RunCLI(w, []string{"sync"})
+		return weftcli.RunCLI(w, []string{"sync"})
 	}
 
 	// Dispatch to the print path, interactive menu, or specific module.

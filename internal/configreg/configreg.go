@@ -8,7 +8,7 @@ package configreg
 import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/warp"
-	"github.com/Knatte18/loomyard/internal/weft"
+	"github.com/Knatte18/loomyard/internal/weftengine"
 )
 
 // Module represents a single config module with its name and template function.
@@ -25,7 +25,7 @@ func Modules() []Module {
 	return []Module{
 		{"board", boardengine.ConfigTemplate},
 		{"warp", warp.ConfigTemplate},
-		{"weft", weft.ConfigTemplate},
+		{"weft", weftengine.ConfigTemplate},
 	}
 }
 

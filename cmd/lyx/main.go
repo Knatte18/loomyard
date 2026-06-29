@@ -28,7 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/muxpoc"
 	"github.com/Knatte18/loomyard/internal/update"
 	"github.com/Knatte18/loomyard/internal/warp"
-	"github.com/Knatte18/loomyard/internal/weft"
+	"github.com/Knatte18/loomyard/internal/weftcli"
 )
 
 func main() {
@@ -93,7 +93,7 @@ Available modules: init, board, config, update, ide, muxpoc, weft, warp, ghissue
 		update.Command(),
 		ide.Command(),
 		muxpoc.Command(),
-		weft.Command(),
+		weftcli.Command(),
 		warp.Command(),
 		ghissues.Command(),
 	)

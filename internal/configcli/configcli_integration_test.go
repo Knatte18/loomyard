@@ -18,7 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 	"github.com/Knatte18/loomyard/internal/paths"
 	"github.com/Knatte18/loomyard/internal/warp"
-	"github.com/Knatte18/loomyard/internal/weft"
+	"github.com/Knatte18/loomyard/internal/weftcli"
 )
 
 // TestE2ESyncIntegration is an e2e test using CopyPaired: creates a host worktree with
@@ -75,7 +75,7 @@ func TestE2ESyncIntegration(t *testing.T) {
 	// Create an injected sync function that calls weft.RunCLI with "commit" instead of "sync".
 	// (sync calls a detached spawnPush that cannot run in-process, so we use commit.)
 	injectedSync := func(w io.Writer) int {
-		return weft.RunCLI(w, []string{"commit"})
+		return weftcli.RunCLI(w, []string{"commit"})
 	}
 
 	// Run dispatch with the fake editor and injected sync.

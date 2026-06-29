@@ -22,7 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 	"github.com/Knatte18/loomyard/internal/paths"
 	"github.com/Knatte18/loomyard/internal/warp"
-	"github.com/Knatte18/loomyard/internal/weft"
+	"github.com/Knatte18/loomyard/internal/weftengine"
 )
 
 func TestRunInit_FirstRun(t *testing.T) {
@@ -91,7 +91,7 @@ func TestRunInit_FirstRun(t *testing.T) {
 		}
 
 		// Weft loads from the same directory in this test
-		_, err = weft.LoadConfig(f.Layout.WorktreeRoot)
+		_, err = weftengine.LoadConfig(f.Layout.WorktreeRoot)
 		if err != nil {
 			t.Errorf("weft.LoadConfig failed: %v", err)
 		}
