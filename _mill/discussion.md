@@ -56,7 +56,11 @@ surface), and its precursor — the `config → configengine` PR — is already 
 - Update stale **comment-only** references to the renamed packages for accuracy
   (non-functional but they drift on rename): `internal/lyxtest/doc.go` (mentions
   `internal/warp`, `internal/weft`), `tools/sandbox/main.go` (mentions
-  `internal/warp/clone.go`), `cmd/lyx/main_test.go` (mentions `internal/board`).
+  `internal/warp/clone.go`), `cmd/lyx/main_test.go` (mentions `internal/board`),
+  `internal/paths/paths.go:344` (mentions "seeders in `internal/warp`"), and
+  `cmd/testtiming/main.go:36,180` (illustrative `internal/board` in a doc-comment /
+  `shortPkg` example — will name a nonexistent package post-rename; update the
+  illustrative path or note it is purely illustrative).
 
 **Out:**
 
@@ -239,12 +243,19 @@ Per-module file placement:
     must be split before ide, or ide's retarget done in board's batch — see Testing.
   - Importers: `cmd/lyx/main.go` (`ide.Command` → `idecli.Command`).
 
-- **ghissues** (`internal/ghissues` → `ghissuescli` + `ghissuesengine`):
-  - `ghissuescli`: `cli.go` (cobra + `runCreate`) + `cli_test.go`.
-  - `ghissuesengine`: `ghissues.go`. **Export** the symbols `cli.go` calls
-    (`createIssue` → `CreateIssue`, and the gh argv/parse/runGH/stdin seams it
-    references — `buildCreateArgs`, `realRunGH`, `lastNonEmptyLine` as needed).
-    `CreateIssue` returns `(url, number, error)`.
+- **ghissues** (`internal/ghissues` → `ghissuescli` + `ghissuesengine`): the current
+  `ghissues.go` mixes a **cli-side seam** (`var stdin io.Reader`, read by `runCreate`
+  in `cli.go:94`) with **engine seams** (`var runGH`, `createIssue`). A wholesale
+  `ghissues.go → ghissuesengine` move would break `runCreate` and the white-box
+  `cli_test.go`. Resolve the seam placement explicitly:
+  - `ghissuescli`: `cli.go` (cobra + `runCreate`) **plus the `stdin` seam** (move
+    `var stdin io.Reader = os.Stdin` here — it is a CLI-input concern that only
+    `runCreate` reads). `runCreate` calls `ghissuesengine.CreateIssue`.
+  - `ghissuesengine`: the rest of `ghissues.go`. **Export exactly two symbols**:
+    `CreateIssue` (returns `(url, number, error)`; called by `runCreate`) and a
+    **settable seam** `var RunGH = realRunGH` (so tests can swap the gh invocation).
+    Keep `targetRepo`, `realRunGH`, `buildCreateArgs`, `lastNonEmptyLine`
+    engine-internal (unexported — only `createIssue`/`CreateIssue` uses them).
   - Importers: `cmd/lyx/main.go` (`ghissues.Command` → `ghissuescli.Command`).
 
 - **muxpoc** (`internal/muxpoc` → `internal/muxpoccli`, **rename only**):
@@ -317,8 +328,17 @@ tests. Per unit:
 - **board / weft / warp / ide / ghissues split**: move each `_test.go` into whichever
   new package it exercises (cli-handler tests → `<module>cli`; domain tests →
   `<module>engine`). Keep every existing assertion; the tests are the
-  behaviour-preservation guard. For ghissues, the engine tests must use the newly
-  **exported** names. Confirm `go test ./...` is green after each module.
+  behaviour-preservation guard. Confirm `go test ./...` is green after each module.
+- **ghissues tests specifically**: `cli_test.go` is white-box (package `ghissues`)
+  and drives the full `cobra → flag → createIssue → runGH` pipeline through `RunCLI`,
+  swapping **both** `runGH` (L24) and `stdin` (L161). After the split it becomes
+  package `ghissuescli`: it sets the exported `ghissuesengine.RunGH` seam (instead of
+  the unexported `runGH`) and the local `stdin` seam. Engine-only assertions (e.g.
+  `buildCreateArgs` argv, `lastNonEmptyLine`, URL/number parsing in isolation) may be
+  left driving through `ghissuescli`'s `RunCLI` as today, or factored into a
+  `ghissuesengine` white-box test — either is acceptable so long as the existing
+  scenarios (happy path, custom labels, body via flag/stdin/omitted, wrong arg count,
+  gh-not-found, gh non-zero exit, unparseable URL, number parsing) all still run.
 - **board/boardtest support package**: inspect and relocate; fix all importers'
   paths.
 - **muxpoc rename**: package-decl + import-path change only; `muxpoc_smoke_test.go`,
@@ -390,3 +410,12 @@ Sequencing (one unit per batch, build+test green between each; shared files
   pure domain (constants used by `sync.go`) → placed in `weftengine`. Comment-only
   refs to old paths in `internal/lyxtest/doc.go`, `tools/sandbox/main.go`,
   `cmd/lyx/main_test.go` to be updated for accuracy.
+- **Q:** (review r2 GAP) How is the ghissues cli/engine seam split, given `ghissues.go`
+  mixes the `stdin` (cli) and `runGH` (engine) seams and the white-box `cli_test.go`
+  swaps `runGH`? **A:** `stdin` → `ghissuescli`; export only `CreateIssue` and a
+  settable `RunGH` seam in `ghissuesengine`; `cli_test.go` → `ghissuescli`, swapping
+  `ghissuesengine.RunGH`. `buildCreateArgs`/`lastNonEmptyLine`/`realRunGH`/`targetRepo`
+  stay engine-internal.
+- **Q:** (review r2 NOTE) Comment sweep complete? **A:** Added
+  `internal/paths/paths.go:344` and `cmd/testtiming/main.go:36,180` (illustrative) to
+  the comment-accuracy sweep.
