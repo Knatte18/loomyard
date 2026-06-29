@@ -28,5 +28,7 @@ implementing  '2026-06-29T05:44:53Z'
 ```yaml
 batches:
   - name: sandbox-suite-launcher
-    state: pending
+    state: running
+    implementer_session: ab35b369-a4d2-4f5e-b216-5cdcc5d2431c
+    start_sha: 921fea3f4d24d45d1739a8dec896011104627b16
 ```
