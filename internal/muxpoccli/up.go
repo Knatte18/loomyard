@@ -3,7 +3,7 @@
 // coldStart initializes a new psmux session with a primary pane. coldRecover
 // reconnects to an existing session and restarts its panes from saved state.
 
-package muxpoc
+package muxpoccli
 
 import (
 	"fmt"

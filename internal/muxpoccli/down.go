@@ -4,7 +4,7 @@
 // intentional shutdown, distinguishing from a crash (which would leave state
 // for recovery via 'up').
 
-package muxpoc
+package muxpoccli
 
 import (
 	"fmt"

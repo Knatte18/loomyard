@@ -1,4 +1,4 @@
-package muxpoc
+package muxpoccli
 
 import (
 	"strings"

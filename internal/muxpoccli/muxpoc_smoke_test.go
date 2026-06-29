@@ -1,6 +1,6 @@
 //go:build smoke
 
-package muxpoc
+package muxpoccli
 
 import (
 	"bytes"

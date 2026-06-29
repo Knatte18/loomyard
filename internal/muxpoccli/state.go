@@ -6,7 +6,7 @@
 // to prevent child processes from inheriting them. socketName derives a stable,
 // sanitised socket name from cwd. newSessionID generates UUID v4 for sessions.
 
-package muxpoc
+package muxpoccli
 
 import (
 	"crypto/rand"

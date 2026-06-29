@@ -2,7 +2,7 @@
 //
 // cmdReview adds a new review pane to an active session via split-window.
 
-package muxpoc
+package muxpoccli
 
 import (
 	"fmt"

@@ -3,7 +3,7 @@
 // cmdStatus reports comprehensive status: whether state exists, whether the
 // server is running, live pane information from the server, and saved pane metadata.
 
-package muxpoc
+package muxpoccli
 
 import (
 	"fmt"

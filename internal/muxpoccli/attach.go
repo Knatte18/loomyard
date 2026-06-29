@@ -3,7 +3,7 @@
 // cmdAttach launches the psmux session in a maximized terminal (Windows Terminal
 // on Windows, plain psmux attach on other platforms).
 
-package muxpoc
+package muxpoccli
 
 import (
 	"fmt"

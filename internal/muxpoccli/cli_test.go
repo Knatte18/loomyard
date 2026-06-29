@@ -4,7 +4,7 @@
 // safe to run without psmux installed. The no-arg, unknown-subcommand, and
 // bad-flag cases are tested separately because post-cobra they produce
 // distinct exit codes and output content.
-package muxpoc
+package muxpoccli
 
 import (
 	"bytes"

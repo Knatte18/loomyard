@@ -2,7 +2,7 @@
 
 // spawnattach_other.go — psmux attach for non-Windows.
 
-package muxpoc
+package muxpoccli
 
 import (
 	"fmt"

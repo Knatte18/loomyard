@@ -5,7 +5,7 @@
 // format). LivePane represents a single pane state. expandTpl is a template helper
 // for launch/resume commands. (Config is defined in cli.go.)
 
-package muxpoc
+package muxpoccli
 
 import (
 	"fmt"

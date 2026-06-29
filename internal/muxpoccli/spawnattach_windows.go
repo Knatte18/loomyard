@@ -2,7 +2,7 @@
 
 // spawnattach_windows.go — Windows Terminal attach for muxpoc.
 
-package muxpoc
+package muxpoccli
 
 import (
 	"fmt"

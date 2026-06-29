@@ -16,7 +16,7 @@
 //   - status   Show session and pane status
 //   - down     Stop the session and delete state
 //   - daemon   Foreground poller that recovers a crashed session (crash-loop-guarded)
-package muxpoc
+package muxpoccli
 
 import (
 	"fmt"

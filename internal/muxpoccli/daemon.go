@@ -5,7 +5,7 @@
 // maxRecoveries times within a windowDur window). Recoveries are tracked in a
 // daemon-process-local slice that resets on daemon restart.
 
-package muxpoc
+package muxpoccli
 
 import (
 	"fmt"
