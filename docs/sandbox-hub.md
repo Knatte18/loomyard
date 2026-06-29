@@ -72,6 +72,72 @@ The `-reset` flag:
 
 **Caution:** `-reset` destroys the entire Hub directory, including any local changes or uncommitted work. Back up any work before using `-reset`.
 
+## Running the Suite Agent
+
+Once the Hub is built, the `suite` subcommand runs an automated black-box test session
+against the deployed `lyx.exe`.
+
+### Prerequisites
+
+- Hub already built (`sandbox.cmd` with no subcommand, or `sandbox.cmd build`).
+- `lyx` on PATH (deployed via `deploy.cmd`).
+- `gh` installed and authenticated (`gh auth status`). The `lyx ghissues create` command
+  that the agent uses to file findings delegates to the `gh` CLI.
+
+### Usage
+
+```cmd
+sandbox.cmd suite
+```
+
+This command, run from the lyx repo directory:
+
+1. Locates the Hub host repo at `C:\Code\lyx-test-HUB\lyx-test`.
+2. Fingerprints the deployed `lyx.exe` (absolute path, size, modtime, SHA256 prefix).
+3. Copies a fresh `SANDBOX-SUITE.md` into the Hub host repo, prepending the fingerprint
+   block to the embedded template (`tools/sandbox/test-scheme.md`). Any previous copy
+   is overwritten so every session starts from a clean slate.
+4. Adds `SANDBOX-SUITE.md` to `lyx-test-HUB/lyx-test/.git/info/exclude` so the
+   copied file does not show up as an untracked change inside the host repo.
+5. Launches an interactive `claude --dangerously-skip-permissions` session with the
+   host repo as the working directory and a single instruction:
+   `"Read ./SANDBOX-SUITE.md and follow the instructions in it exactly."`
+
+The agent works entirely as a black box: it sees only `lyx` on PATH and the copied
+scheme. It must not access the lyx source tree. Findings (WARN or FAIL verdicts) are
+filed directly from inside the host repo via `lyx ghissues create`, which feeds the
+`GitHub issue -> mill-ghissues-to-tasks` pipeline.
+
+### Optional flags
+
+```cmd
+sandbox.cmd suite -claude <path>   # override the claude binary (default: resolve from PATH)
+sandbox.cmd suite -prompt <text>   # override the instruction string (default: built-in)
+```
+
+### Exit-code caveat
+
+The sandbox tool reports success (0) or failure (1) only; claude's precise exit code is
+not preserved because `runSuite` returns an error on any non-zero code and `run()`
+propagates that as exit 1. For reliable exit-code observation, build the tool first
+(`go build -o sandbox.exe ./tools/sandbox`) and run the compiled binary.
+
+### Future: psmux launch
+
+The direct `claude` launch used today will be replaced by a psmux interactive session
+once the `mux` module is available. The file contract (`SANDBOX-SUITE.md` driving the
+agent) is unchanged; only the launch mechanism will differ.
+
+## Build subcommand (default)
+
+The bare `sandbox.cmd` and `sandbox.cmd -reset` invocations are unchanged. They
+correspond to the implicit `build` subcommand:
+
+```cmd
+sandbox.cmd           # same as: sandbox.cmd build
+sandbox.cmd -reset    # same as: sandbox.cmd build -reset
+```
+
 ## Purpose: dogfooding lyx
 
 The sandbox Hub serves as a **testbed for lyx's core agent-driven workflows**. Point lyx's agent-driven orchestrator at the `lyx-test` host repo and exercise the full pipeline:
