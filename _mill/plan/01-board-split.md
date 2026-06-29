@@ -70,7 +70,13 @@ not split until batch 4. No behaviour changes: all moved test assertions are pre
   `store.go`, `task.go`, `layer.go`, `render.go`, `git.go`, `sync.go`, `config.go`,
   `template.go`, `spawn.go` containing `spawnSync`, the `template.yaml` asset, and their
   domain `*_test.go` files) into `internal/boardengine` with their content byte-identical
-  except the package clause `package board` → `package boardengine`. `config.go` keeps its
+  except the package clause. **Preserve each file's external/internal package
+  distinction:** the production files and the internal-test `template.go`/`template_test.go`
+  (declared `package board`) become `package boardengine`; the **external** test files
+  `board_test.go`, `store_test.go`, `task_test.go`, `layer_test.go`, `render_test.go`,
+  `config_test.go` (declared `package board_test`) become `package boardengine_test`
+  (NOT `boardengine` — an external test file must not self-import its package, and a
+  directory cannot hold two non-test packages). `config.go` keeps its
   `internal/configengine` import. `spawn.go`'s `spawnSync` is called engine-internally by
   `Board.Sync()` so it stays unexported. The already-exported engine surface (`Board`,
   `New`, `Store`, `Task`, `NewTask`, `ApplyPatch`, `ComputeLayers`, `RenderOrder`,
@@ -125,9 +131,12 @@ not split until batch 4. No behaviour changes: all moved test assertions are pre
   - `internal/boardcli/skipenv_internal_test.go`
 - **Deletes:** none
 - **Requirements:** Move `cli.go` (carrying `Command()` and the `RunCLI` seam) and its
-  tests `cli_test.go`, `help_test.go`, `skipenv_internal_test.go` into `internal/boardcli`
-  with package clause `package board` → `package boardcli`. Retarget every reference to a
-  board domain symbol that `cli.go`/its tests use (e.g. `New`, `LoadConfig`, `Board`,
+  tests `cli_test.go`, `help_test.go`, `skipenv_internal_test.go` into `internal/boardcli`.
+  **Preserve each file's external/internal package distinction:** `cli.go` and the
+  internal-test `skipenv_internal_test.go` (declared `package board`) become
+  `package boardcli`; the **external** test files `cli_test.go` and `help_test.go`
+  (declared `package board_test`) become `package boardcli_test` (NOT `boardcli`).
+  Retarget every reference to a board domain symbol that `cli.go`/its tests use (e.g. `New`, `LoadConfig`, `Board`,
   `BriefTask`, `MergeStatusUpdate`, `Sync`, and any others) to the `boardengine` package:
   add the `internal/boardengine` import and qualify those selectors as
   `boardengine.<Symbol>`. Preserve all `Short`/`Long` strings and the `clihelp.Execute`

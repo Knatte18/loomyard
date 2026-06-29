@@ -186,12 +186,16 @@ split** by what each test drives. Importers retargeted this batch: `cmd/lyx/main
   other engine symbols the handlers call (`New`, `Config`, `AddOptions`, etc.) as
   `warpengine.<Symbol>`. The `RunCLI` seam body stays exactly
   `clihelp.Execute(Command(), out, args)`. Move `warp_test.go` to
-  `internal/warpcli/warp_test.go` (preserve its `//go:build integration` tag). Put the
-  reset-swap test (and any handler-driving test from `clone_test.go`) into
-  `internal/warpcli/clone_cli_test.go`, swapping the exported `warpengine.RemoveAll` seam
-  cross-package; preserve the original `//go:build integration` tag. If `clone_test.go`
-  contained any **untagged** handler test, place it in a separate untagged warpcli clone
-  test file rather than mixing build tags in one file.
+  `internal/warpcli/warp_test.go`, preserving its `//go:build integration` tag; it is an
+  **external** test file (declared `package warp_test`) so its clause becomes
+  `package warpcli_test` (NOT `warpcli`). Put the reset-swap test (and any handler-driving
+  test from `clone_test.go`) into `internal/warpcli/clone_cli_test.go`, swapping the
+  exported `warpengine.RemoveAll` seam cross-package; the reset-swap test comes from the
+  internal `package warp` `clone_integration_test.go`, so this file is `package warpcli`
+  (internal, which can still swap the exported `warpengine.RemoveAll` cross-package).
+  Preserve the original `//go:build integration` tag. If `clone_test.go` contained any
+  **untagged** handler test, place it in a separate untagged warpcli clone test file
+  rather than mixing build tags in one file.
 - **Commit:** `refactor(warp): extract warpcli command package and clone handler half`
 
 ### Card 11: Retarget importers and delete `internal/warp`

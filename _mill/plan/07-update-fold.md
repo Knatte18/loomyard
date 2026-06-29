@@ -33,13 +33,15 @@ subcommand and `lyx config <module>` to the `RunE` arg, so both coexist.
 - **Creates:**
   - `internal/configcli/reconcile_test.go`
 - **Deletes:** none
-- **Requirements:** Create `internal/configcli/reconcile_test.go` (package `configcli`)
-  migrating the two scenarios from `internal/update/update_test.go` to drive the new
-  subcommand through the config seam: dry-run default — `configcli.RunCLI(&buf,
-  []string{"reconcile"})` returns 0, JSON `ok=true`, top-level `applied=false`, the on-disk
-  `board.yaml` is unchanged, and `modules` is a non-empty array whose first entry has
-  `module`/`added`/`removed`/`applied` fields; and `--apply` —
-  `configcli.RunCLI(&buf, []string{"reconcile", "--apply"})` returns 0, JSON
+- **Requirements:** Create `internal/configcli/reconcile_test.go` as an **internal** test
+  file `package configcli` (matching the existing `configcli_test.go`, and matching
+  `update_test.go`'s internal `package update`); because it is internal it calls the seam
+  **unqualified** as `RunCLI(...)`, never `configcli.RunCLI(...)`. Migrate the two
+  scenarios from `internal/update/update_test.go` to drive the new subcommand through the
+  config seam: dry-run default — `RunCLI(&buf, []string{"reconcile"})` returns 0, JSON
+  `ok=true`, top-level `applied=false`, the on-disk `board.yaml` is unchanged, and
+  `modules` is a non-empty array whose first entry has `module`/`added`/`removed`/`applied`
+  fields; and `--apply` — `RunCLI(&buf, []string{"reconcile", "--apply"})` returns 0, JSON
   `applied=true`, and `weft.yaml` is created on disk. Reuse the update_test fixture setup
   verbatim (`gitexec.RunGit(["init"], tmpDir)`, `paths.ConfigDir`, `paths.ConfigFile`,
   chdir into the temp repo). Keep the test untagged (matching `update_test.go`). This test
