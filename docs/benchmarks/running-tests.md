@@ -38,7 +38,7 @@ go test -tags integration ./... -count=1
 go test ./... -count=1 -json
 
 # One package, verbose, with per-test seconds.
-go test ./internal/weft -count=1 -v
+go test ./internal/weftengine -count=1 -v
 ```
 
 `-count=1` disables the test cache so every run is honest; without it, unchanged
@@ -73,7 +73,7 @@ Running Tier 1 (offline)  —  go test ./... -count=1
 
 PACKAGE                                   ELAPSED
 ----------------------------------------  --------
-internal/board/boardtest                     1.49s
+internal/boardengine/boardtest                1.49s
 cmd/lyx                                       0.93s
 ...
 internal/git                              (no test files)
@@ -91,7 +91,7 @@ If the suite feels slow locally, the highest-leverage levers, in order:
 
 1. **Rely on the test cache** — drop `-count=1` for iterative runs; only changed
    packages re-run, so a no-op `go test ./...` returns in ~1 s.
-2. **Scope to the package you're editing** — `go test ./internal/weft` beats the
+2. **Scope to the package you're editing** — `go test ./internal/weftengine` beats the
    whole repo.
 3. **Stay in the offline tier.** Tier 1 (`go test ./...`) spawns zero git
    subprocesses repo-wide. Only reach for `-tags integration` when you are

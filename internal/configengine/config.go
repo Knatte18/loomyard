@@ -37,9 +37,9 @@ func FindBaseDir(cwd string) (string, error) {
 // Flow:
 // 1. Call FindBaseDir(baseDir) and propagate its error.
 // 2. Compute cfgPath := paths.ConfigFile(baseDir, module) and read it.
-//    If the file is absent, return an error naming the path and instructing "lyx update".
+//    If the file is absent, return an error naming the path and instructing "lyx config reconcile".
 // 3. Check for missing keys in the file via yamlengine.MissingKeys(template, fileBytes).
-//    If keys are missing, return an error naming cfgPath, the missing key-paths, and "lyx update".
+//    If keys are missing, return an error naming cfgPath, the missing key-paths, and "lyx config reconcile".
 // 4. Build the environment via envsource.Build(baseDir).
 // 5. Resolve fileBytes via yamlengine.Resolve(fileBytes, env).
 // 6. Return the resolved bytes.
@@ -56,7 +56,7 @@ func Load(baseDir, module string, template []byte) ([]byte, error) {
 	cfgPath := paths.ConfigFile(baseDir, module)
 	fileBytes, err := os.ReadFile(cfgPath)
 	if os.IsNotExist(err) {
-		return nil, fmt.Errorf("config file %s not found; run \"lyx update\"", cfgPath)
+		return nil, fmt.Errorf("config file %s not found; run \"lyx config reconcile\"", cfgPath)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("read config file %s: %w", cfgPath, err)
@@ -75,7 +75,7 @@ func Load(baseDir, module string, template []byte) ([]byte, error) {
 			}
 			missingStr += key
 		}
-		return nil, fmt.Errorf("config file %s: missing keys: %s; run \"lyx update\"", cfgPath, missingStr)
+		return nil, fmt.Errorf("config file %s: missing keys: %s; run \"lyx config reconcile\"", cfgPath, missingStr)
 	}
 
 	// Step 4: Build the environment

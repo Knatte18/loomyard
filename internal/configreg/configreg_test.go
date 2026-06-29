@@ -5,7 +5,7 @@ package configreg
 import (
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/weft"
+	"github.com/Knatte18/loomyard/internal/weftengine"
 )
 
 func TestNames(t *testing.T) {
@@ -33,7 +33,7 @@ func TestTemplate_Found(t *testing.T) {
 		return
 	}
 	// Verify the template function returns the expected content.
-	want := weft.ConfigTemplate()
+	want := weftengine.ConfigTemplate()
 	if got() != want {
 		t.Errorf("Template(\"weft\")() = %q; want %q", got(), want)
 	}

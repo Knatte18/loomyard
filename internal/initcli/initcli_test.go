@@ -16,13 +16,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/board"
+	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/initcli"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 	"github.com/Knatte18/loomyard/internal/paths"
-	"github.com/Knatte18/loomyard/internal/warp"
-	"github.com/Knatte18/loomyard/internal/weft"
+	"github.com/Knatte18/loomyard/internal/warpengine"
+	"github.com/Knatte18/loomyard/internal/weftengine"
 )
 
 func TestRunInit_FirstRun(t *testing.T) {
@@ -80,18 +80,18 @@ func TestRunInit_FirstRun(t *testing.T) {
 
 	// Verify strict loads pass
 	t.Run("StrictLoadsPass", func(t *testing.T) {
-		_, err := board.LoadConfig(f.Layout.WorktreeRoot, "board")
+		_, err := boardengine.LoadConfig(f.Layout.WorktreeRoot, "board")
 		if err != nil {
 			t.Errorf("board.LoadConfig failed: %v", err)
 		}
 
-		_, err = warp.LoadConfig(f.Layout.WorktreeRoot, "warp")
+		_, err = warpengine.LoadConfig(f.Layout.WorktreeRoot, "warp")
 		if err != nil {
 			t.Errorf("warp.LoadConfig failed: %v", err)
 		}
 
 		// Weft loads from the same directory in this test
-		_, err = weft.LoadConfig(f.Layout.WorktreeRoot)
+		_, err = weftengine.LoadConfig(f.Layout.WorktreeRoot)
 		if err != nil {
 			t.Errorf("weft.LoadConfig failed: %v", err)
 		}

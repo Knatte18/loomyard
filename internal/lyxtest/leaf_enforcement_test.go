@@ -1,6 +1,7 @@
 // leaf_enforcement_test.go enforces the lyxtest Leaf Invariant: internal/lyxtest
-// must not import internal/configreg or any feature package (board, warp, weft).
-// Tests that need real config seed it via SeedConfig with a configreg-free
+// must not import internal/configreg or any feature package (boardengine/boardcli,
+// warpengine/warpcli, weftengine/weftcli, ideengine/idecli, ghissuesengine/ghissuescli,
+// muxpoccli). Tests that need real config seed it via SeedConfig with a configreg-free
 // map[string]string (never configreg types).
 
 package lyxtest
@@ -16,7 +17,8 @@ import (
 )
 
 // TestLeafInvariant verifies that lyxtest imports only stdlib and internal/paths,
-// never internal/configreg or feature packages (board, warp, weft).
+// never internal/configreg or any feature package (boardengine/boardcli, warpengine/warpcli,
+// weftengine/weftcli, ideengine/idecli, ghissuesengine/ghissuescli, muxpoccli).
 // It uses go/parser to read actual import paths, avoiding false positives from
 // string literals in doc comments.
 func TestLeafInvariant(t *testing.T) {
@@ -27,12 +29,23 @@ func TestLeafInvariant(t *testing.T) {
 	}
 	lyxtestDir := filepath.Dir(file)
 
-	// List of banned import paths (canonical Go import paths).
+	// List of banned import paths (canonical Go import paths). These are the
+	// feature packages and configreg that would close a test-build cycle if
+	// lyxtest imported them (feature tests import lyxtest; a reverse import
+	// would make the cycle: lyxtest → feature → lyxtest).
 	bannedImports := []string{
 		"github.com/Knatte18/loomyard/internal/configreg",
-		"github.com/Knatte18/loomyard/internal/board",
-		"github.com/Knatte18/loomyard/internal/warp",
-		"github.com/Knatte18/loomyard/internal/weft",
+		"github.com/Knatte18/loomyard/internal/boardengine",
+		"github.com/Knatte18/loomyard/internal/boardcli",
+		"github.com/Knatte18/loomyard/internal/warpengine",
+		"github.com/Knatte18/loomyard/internal/warpcli",
+		"github.com/Knatte18/loomyard/internal/weftengine",
+		"github.com/Knatte18/loomyard/internal/weftcli",
+		"github.com/Knatte18/loomyard/internal/ideengine",
+		"github.com/Knatte18/loomyard/internal/idecli",
+		"github.com/Knatte18/loomyard/internal/ghissuesengine",
+		"github.com/Knatte18/loomyard/internal/ghissuescli",
+		"github.com/Knatte18/loomyard/internal/muxpoccli",
 	}
 
 	var failures []string

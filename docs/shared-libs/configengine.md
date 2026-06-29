@@ -34,8 +34,8 @@ The `Load(baseDir, module, template []byte)` function reads the on-disk config f
 **Flow:**
 
 1. Call `FindBaseDir(baseDir)` — check that `_lyx/` exists at baseDir.
-2. Read the config file at `paths.ConfigFile(baseDir, module)` (e.g., `_lyx/config/board.yaml`). If absent, return an error instructing the user to run `lyx update`.
-3. Check for missing template keys via `yamlengine.MissingKeys(template, fileBytes)`. If any keys are missing, return an error naming the file, the missing key-paths, and instructing the user to run `lyx update`.
+2. Read the config file at `paths.ConfigFile(baseDir, module)` (e.g., `_lyx/config/board.yaml`). If absent, return an error instructing the user to run `lyx config reconcile`.
+3. Check for missing template keys via `yamlengine.MissingKeys(template, fileBytes)`. If any keys are missing, return an error naming the file, the missing key-paths, and instructing the user to run `lyx config reconcile`.
 4. Build the environment via `envsource.Build(baseDir)` (reads `.env`, overlays OS env).
 5. Resolve environment variables via `yamlengine.Resolve(fileBytes, env)` (expands `${env:...}` markers).
 6. Return the resolved bytes. Typed wrappers unmarshal into their own config structs.
@@ -44,7 +44,7 @@ The `Load(baseDir, module, template []byte)` function reads the on-disk config f
 
 - **All defaults live in the template YAML file**, not in code. The template is embedded via `//go:embed` and passed to `Load()`.
 - **Errors are strict**: missing template keys, absent files, or unset required env vars cause hard errors with clear messages naming the file and the problem.
-- **Extra/stale keys are tolerated** by `Load()` and cleaned up by `lyx update` (reconciliation).
+- **Extra/stale keys are tolerated** by `Load()` and cleaned up by `lyx config reconcile` (reconciliation).
 - **A key present with an empty value counts as present** and is not flagged missing.
 
 ## Environment variable grammar
@@ -79,7 +79,7 @@ Resolved YAML bytes (as returned by `yamlengine.Resolve`). Typed wrappers (`boar
 
 ## Migration from old format
 
-Existing config files in the old commented format (all lines commented out) are treated as empty by `Reconcile`. Running `lyx update --apply` from the host worktree reconciles all module configs against their templates, rewriting old-format files to live templates with all keys present. Because the host `_lyx` is a directory junction into the weft worktree's `_lyx`, a single host `lyx update` reaches all config files (board, worktree, and weft). No separate command in the weft sibling is needed.
+Existing config files in the old commented format (all lines commented out) are treated as empty by `Reconcile`. Running `lyx config reconcile --apply` from the host worktree reconciles all module configs against their templates, rewriting old-format files to live templates with all keys present. Because the host `_lyx` is a directory junction into the weft worktree's `_lyx`, a single host `lyx config reconcile` reaches all config files (board, worktree, and weft). No separate command in the weft sibling is needed.
 
 ## Exported functions
 
@@ -107,8 +107,8 @@ Loads and resolves a module's configuration from disk.
 
 **Error cases:**
 
-- **Config file absent:** Returns error `config file <path> not found; run "lyx update"`.
-- **Missing template keys:** Returns error `config file <path>: missing keys: <comma-separated key-paths>; run "lyx update"`.
+- **Config file absent:** Returns error `config file <path> not found; run "lyx config reconcile"`.
+- **Missing template keys:** Returns error `config file <path>: missing keys: <comma-separated key-paths>; run "lyx config reconcile"`.
 - **Unset required env var:** Returns error `config file <path>: unset required env var "NAME"`.
 - **Env build failure:** Returns error `config file <path>: build environment: <underlying error>`.
 - **YAML syntax error:** Returns error `config file <path>: <parse/marshal error>`.

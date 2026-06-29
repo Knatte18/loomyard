@@ -97,6 +97,27 @@ func TestMountedBareGroupListing_NoGitRepo(t *testing.T) {
 	}
 }
 
+// TestUpdateCommandRemoved verifies that "lyx update" no longer resolves after the
+// command was folded into "lyx config reconcile". It must exit 1 with a JSON error
+// envelope whose ok field is false.
+func TestUpdateCommandRemoved(t *testing.T) {
+	var out bytes.Buffer
+	code := run([]string{"update"}, &out)
+
+	if code != 1 {
+		t.Errorf("run([update]) = %d; want 1 (update should be unknown)\noutput: %s", code, out.String())
+	}
+
+	// Cobra must emit a well-formed JSON error envelope via RunRoot.
+	var env map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
+		t.Fatalf("run([update]) output is not valid JSON: %v; output: %q", err, out.String())
+	}
+	if ok, _ := env["ok"].(bool); ok {
+		t.Errorf("run([update]) ok = true; want false")
+	}
+}
+
 // TestMountedBareWarp verifies that bare "lyx warp" exits 0 and prints the subcommand
 // listing. warp has no PersistentPreRunE so no guard is needed; GroupRunE with empty
 // args delegates to cmd.Help(). This test confirms the GroupRunE-only wiring from card 5.

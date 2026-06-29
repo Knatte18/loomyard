@@ -19,16 +19,15 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/Knatte18/loomyard/internal/board"
+	"github.com/Knatte18/loomyard/internal/boardcli"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configcli"
-	"github.com/Knatte18/loomyard/internal/ghissues"
-	"github.com/Knatte18/loomyard/internal/ide"
+	"github.com/Knatte18/loomyard/internal/ghissuescli"
+	"github.com/Knatte18/loomyard/internal/idecli"
 	"github.com/Knatte18/loomyard/internal/initcli"
-	"github.com/Knatte18/loomyard/internal/muxpoc"
-	"github.com/Knatte18/loomyard/internal/update"
-	"github.com/Knatte18/loomyard/internal/warp"
-	"github.com/Knatte18/loomyard/internal/weft"
+	"github.com/Knatte18/loomyard/internal/muxpoccli"
+	"github.com/Knatte18/loomyard/internal/warpcli"
+	"github.com/Knatte18/loomyard/internal/weftcli"
 )
 
 func main() {
@@ -75,7 +74,7 @@ It assembles every module's cobra command tree under a single root so that
 all modules are discoverable via "lyx --help" and every subcommand carries
 its own --help and --json help output.
 
-Available modules: init, board, config, update, ide, muxpoc, weft, warp, ghissues.`,
+Available modules: init, board, config, ide, muxpoc, weft, warp, ghissues.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
@@ -88,14 +87,13 @@ Available modules: init, board, config, update, ide, muxpoc, weft, warp, ghissue
 	// Add every module's Command() as a direct child of the root.
 	root.AddCommand(
 		initcli.Command(),
-		board.Command(),
+		boardcli.Command(),
 		configcli.Command(),
-		update.Command(),
-		ide.Command(),
-		muxpoc.Command(),
-		weft.Command(),
-		warp.Command(),
-		ghissues.Command(),
+		idecli.Command(),
+		muxpoccli.Command(),
+		weftcli.Command(),
+		warpcli.Command(),
+		ghissuescli.Command(),
 	)
 
 	return root

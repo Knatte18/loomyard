@@ -22,7 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitignore"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/paths"
-	"github.com/Knatte18/loomyard/internal/warp"
+	"github.com/Knatte18/loomyard/internal/warpengine"
 )
 
 // Command returns the cobra command for lyx init.
@@ -93,7 +93,7 @@ func runInit(out io.Writer, args []string) int {
 
 	// Wire junctions for the current worktree (keyed by its slug: filepath.Base(WorktreeRoot)).
 	slug := filepath.Base(l.WorktreeRoot)
-	if err := warp.WireJunctions(l, slug); err != nil {
+	if err := warpengine.WireJunctions(l, slug); err != nil {
 		return output.Err(out, fmt.Sprintf("failed to wire junctions: %v", err))
 	}
 

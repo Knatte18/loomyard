@@ -186,7 +186,7 @@ Independent of the orchestration stack; interleave as needed.
     (milestone 4), **folded in** `git-clone` (milestone 6), and **renamed** `internal/git`
     → `internal/gitexec` (the thin leaf both `weft` and `warp` sit on). The config module
     `worktree` → `warp` (`_lyx/config/warp.yaml`). The design doc was deleted on landing
-    per the documentation lifecycle; durable parts live in the `internal/warp` package
+    per the documentation lifecycle; durable parts live in the `internal/warpengine` package
     header and the [warp module entry](overview.md#modules) in overview.md.
 
 21. **Built-in CLI help — self-documenting modules & commands.** ✅ **Done.** Cobra refactor of
@@ -199,7 +199,7 @@ Independent of the orchestration stack; interleave as needed.
     files a new issue on the `Knatte18/loomyard` GitHub repository via the `gh` CLI. The target repo
     is hardcoded (no config required), making the command trivially callable from any sandbox agent
     context. Supports `--body` (or `-` to read from stdin) and `--label`; defaults to the `bug`
-    label when no label is supplied. Durable design lives in the `internal/ghissues` package header.
+    label when no label is supplied. Durable design lives in the `internal/ghissuesengine` package header.
 
 ## Explicitly out of scope
 
