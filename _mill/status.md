@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r2
+phase: planned
 slug: cobra-cli-engine-sweep
 branch: cobra-cli-engine-sweep
 plan: _mill/plan
@@ -21,4 +21,5 @@ planning  '2026-06-29T12:10:45Z'
 plan-review-r1  '2026-06-29T12:19:11Z'
 plan-fix-r1  '2026-06-29T12:19:11Z'
 plan-fix-r2  '2026-06-29T14:44:58Z'
+planned  '2026-06-29T14:45:19Z'
 ```
