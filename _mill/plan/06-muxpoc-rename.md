@@ -9,6 +9,18 @@ verify: "go build ./... && go test ./... && go test -tags integration ./..."
 depends-on: [5]
 ```
 
+## Rename mechanic — `git mv`, not rewrite
+
+This is a **pure directory rename** with no file moves between packages. Do NOT recreate
+the files under the new path with full-file writes:
+
+1. `git mv internal/muxpoc internal/muxpoccli` to rename the whole directory at once — git
+   records every file as a rename, history preserved, diff stays minimal.
+2. Then apply **surgical edits** only to the lines that change: the `package muxpoc` →
+   `package muxpoccli` declaration in each file, plus the sole importer in
+   `cmd/lyx/main.go`.
+3. Never write a file from scratch and then delete its old twin.
+
 ## Batch Scope
 
 **Rename only — no cli/engine split.** muxpoc is a throwaway POC slated for replacement by

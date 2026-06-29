@@ -9,6 +9,24 @@ verify: "go build ./... && go test ./... && go test -tags integration ./..."
 depends-on: [2]
 ```
 
+## Rename mechanic — `git mv`, not rewrite
+
+The cards below list **Creates:** / **Deletes:** as the END STATE, not the procedure.
+Almost every "created" file is the matching old-package file **moved**, not authored from
+scratch. For each moved file:
+
+1. `git mv <old-path> <new-path>` first — git records a rename, history is preserved, and
+   the diff stays a small rename instead of an add+delete.
+2. Then apply **surgical edits** only to the lines that actually change: the `package`
+   declaration, import paths, identifier/type retargeting, and any `Command()`/`RunCLI`
+   seam split.
+3. Use full-file creation **only** for a genuinely new file with no predecessor. Never
+   write a file from scratch and then delete its old twin.
+
+Note: a file that is **split across two packages** (e.g. `clone.go` → `warpcli/clone.go`
++ `warpengine/clone.go`) is still a move — `git mv` the file to the larger half, then
+extract the smaller half into the second file with surgical edits.
+
 ## Batch Scope
 
 Split `internal/warp` into `internal/warpengine` (domain kernel) and `internal/warpcli`

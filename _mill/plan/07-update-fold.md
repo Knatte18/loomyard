@@ -9,6 +9,19 @@ verify: "go build ./... && go test ./... && go test -tags integration ./..."
 depends-on: [6]
 ```
 
+## Rename mechanic — `git mv` where code moves, not rewrite
+
+This batch is mostly behavioural (new `reconcile` subcommand) but it **re-homes** logic
+out of `internal/update`. Where a file or its body moves to `internal/configcli`, move it
+rather than rewriting:
+
+1. `git mv <old-path> <new-path>` first for any file that relocates, then apply surgical
+   edits to the package declaration, import paths, and identifier retargeting.
+2. Genuinely new code (the test-first `reconcile` test, the new subcommand wiring) is
+   authored normally — full-file creation is correct only where there is no predecessor
+   file.
+3. Never write a file from scratch and then delete its old twin.
+
 ## Batch Scope
 
 The one behavioural change in the whole task: remove `internal/update` and re-home its

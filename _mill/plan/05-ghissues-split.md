@@ -9,6 +9,20 @@ verify: "go build ./... && go test ./... && go test -tags integration ./..."
 depends-on: [4]
 ```
 
+## Rename mechanic — `git mv`, not rewrite
+
+The cards below list **Creates:** / **Deletes:** as the END STATE, not the procedure.
+Almost every "created" file is the matching old-package file **moved**, not authored from
+scratch. For each moved file:
+
+1. `git mv <old-path> <new-path>` first — git records a rename, history is preserved, and
+   the diff stays a small rename instead of an add+delete.
+2. Then apply **surgical edits** only to the lines that actually change: the `package`
+   declaration, import paths, identifier/type retargeting, and any `Command()`/`RunCLI`
+   seam split.
+3. Use full-file creation **only** for a genuinely new file with no predecessor. Never
+   write a file from scratch and then delete its old twin.
+
 ## Batch Scope
 
 Split `internal/ghissues` into `internal/ghissuesengine` (the gh-issue domain) and
