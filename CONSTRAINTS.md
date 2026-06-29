@@ -31,7 +31,7 @@ If you need an `_lyx` / config path (in production or test code), use `paths.Lyx
 
 ## lyxtest Leaf Invariant
 
-`internal/lyxtest` must remain a leaf package importing only the standard library and `internal/paths`. It must not import `internal/configreg` or any feature package (`board`, `worktree`, `weft`).
+`internal/lyxtest` must remain a leaf package importing only the standard library and `internal/paths`. It must not import `internal/configreg` or any feature package (`boardengine`/`boardcli`, `warpengine`/`warpcli`, `weftengine`/`weftcli`, etc.).
 
 ### Rule
 
@@ -47,9 +47,9 @@ The cycle closes silently when `lyxtest` imports `configreg` and `configreg` imp
 ### For New Tests
 
 If a test needs real config:
-- Obtain each module's template from the module's own `ConfigTemplate()` function (e.g., `weft.ConfigTemplate()`).
+- Obtain each module's template from the module's own `ConfigTemplate()` function (e.g., `weftengine.ConfigTemplate()`).
 - Use the unqualified name (`ConfigTemplate()`) when calling from a file in that same package.
-- Use the qualified form (e.g., `weft.ConfigTemplate()`) from a different package, adding the feature import as needed to the test file.
+- Use the qualified form (e.g., `weftengine.ConfigTemplate()`) from a different package, adding the feature import as needed to the test file.
 - Pass the templates to `lyxtest.SeedConfig(tb, repoDir, map[string]string{...})` **never** pass `configreg.Module` types or call `configreg` from inside lyxtest.
 
 The enforcement test (`internal/lyxtest/leaf_enforcement_test.go`) is run on every `go test ./...` and fails the build if any of the banned imports appear in lyxtest source files.
@@ -111,9 +111,9 @@ load-bearing and partly enforced at `go test` time.
 ### For New Code
 
 When adding a CLI module or subcommand:
-- Follow the **warp variant** (`internal/warp/warp.go`) for a module with positional
+- Follow the **warp variant** (`internal/warpcli/warp.go`) for a module with positional
   args and per-subcommand local flags: no `PersistentPreRunE`, `clihelp.WrapRun`
-  handlers, flags read via a closure over the `*cobra.Command`. Follow the **board/weft
+  handlers, flags read via a closure over the `*cobra.Command`. Follow the **boardcli/weftcli
   variant** when you need a `PersistentPreRunE` to resolve shared state once.
 - Set `Short` on the new command immediately (the drift guard will fail otherwise), and
   a `Long` with examples when the command is meant to be self-discoverable.
@@ -122,18 +122,36 @@ When adding a CLI module or subcommand:
 
 ### Package naming
 
-A command-owning package takes the command's bare name: `internal/warp` owns `lyx warp`,
-`internal/weft` owns `lyx weft`, `internal/board` owns `lyx board`. A `cli` suffix is used
-**only** when the bare name is unavailable — either taken by a sibling package or reserved
-by Go itself:
-- `config` is the config **engine** (`internal/configengine`), so the `lyx config` command
-  lives in `internal/configcli`.
-- `init` is the Go reserved identifier `func init()`, so the `lyx init` command lives in
-  `internal/initcli`.
+Every package registered in `newRoot()` (i.e. anything that lands in Cobra) is named
+`<module>cli`; the domain kernel a non-CLI consumer needs is extracted as `<module>engine`.
+This is the **inverted** convention from the earlier bare-name rule. Precedent:
+`internal/yamlengine`, `internal/configengine`, and now `internal/boardcli` /
+`internal/boardengine`, `internal/warpcli` / `internal/warpengine`, etc.
 
-Therefore `configcli` and `initcli` are principled, deliberate exceptions to the
-bare-name rule, not inconsistency. Reach for a `cli` suffix only when the bare name is
-genuinely blocked; otherwise use the bare command name.
+**Litmus test.** Ask of every function or file: does it return `(T, error)` with no Cobra,
+no `io.Writer`-for-output, and no exit codes? → it belongs in the engine. Does it exist
+only because of the command line (flags, subcommand wiring, `Short`/`Long`, exit-code
+handling)? → it belongs in the cli package.
+
+**cli/engine boundary:**
+- **cli** owns `Command() *cobra.Command`, the `RunCLI` seam, Cobra subcommands, flags,
+  `Short`/`Long`, `PersistentPreRunE`, and exit-code handling.
+- **engine** owns the domain kernel: types and operations returning `(T, error)` with no
+  Cobra, no `io.Writer`-for-output, and no exit codes.
+
+**Dependency direction:** cli imports engine. engine → engine is allowed (e.g. `ideengine`
+imports `boardengine`). Engine must never import a `cli` package or cobra; doing so would
+close an import cycle and lock the kernel out of loom consumption.
+
+**Skip clause.** Create an engine unless:
+- The logic is trivial or incidental and no real kernel exists — `initcli` and `configcli`
+  are thin command wrappers with no domain kernel worth extracting.
+- The module is throwaway — `muxpoccli` is a proof-of-concept slated for replacement by the
+  full `mux` module.
+
+"No external consumer today" is **not** a skip reason. Loom is the designed future consumer
+of every engine; the absence of a caller today does not justify merging cli and engine into
+one package.
 
 ## Documentation Lifecycle
 
