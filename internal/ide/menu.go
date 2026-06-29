@@ -13,7 +13,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/board"
+	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/paths"
 )
 
@@ -37,12 +37,12 @@ import (
 // Returns an error on failure (HARD error if config load or HealthCheck fails), or nil on success.
 func Menu(l *paths.Layout, in io.Reader, out io.Writer) error {
 	// Load board config and create board facade
-	cfg, err := board.LoadConfig(l.Cwd, "board")
+	cfg, err := boardengine.LoadConfig(l.Cwd, "board")
 	if err != nil {
 		return fmt.Errorf("load board config: %w", err)
 	}
 
-	b := board.New(cfg)
+	b := boardengine.New(cfg)
 
 	// HARD error if board is absent/unhealthy
 	if err := b.HealthCheck(); err != nil {

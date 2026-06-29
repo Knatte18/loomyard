@@ -16,7 +16,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/board"
+	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/initcli"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
@@ -80,7 +80,7 @@ func TestRunInit_FirstRun(t *testing.T) {
 
 	// Verify strict loads pass
 	t.Run("StrictLoadsPass", func(t *testing.T) {
-		_, err := board.LoadConfig(f.Layout.WorktreeRoot, "board")
+		_, err := boardengine.LoadConfig(f.Layout.WorktreeRoot, "board")
 		if err != nil {
 			t.Errorf("board.LoadConfig failed: %v", err)
 		}

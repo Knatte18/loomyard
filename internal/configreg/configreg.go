@@ -6,7 +6,7 @@
 package configreg
 
 import (
-	"github.com/Knatte18/loomyard/internal/board"
+	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/warp"
 	"github.com/Knatte18/loomyard/internal/weft"
 )
@@ -23,7 +23,7 @@ type Module struct {
 // Each module contains its name and a function to retrieve its YAML template.
 func Modules() []Module {
 	return []Module{
-		{"board", board.ConfigTemplate},
+		{"board", boardengine.ConfigTemplate},
 		{"warp", warp.ConfigTemplate},
 		{"weft", weft.ConfigTemplate},
 	}

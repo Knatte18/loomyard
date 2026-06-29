@@ -19,7 +19,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/Knatte18/loomyard/internal/board"
+	"github.com/Knatte18/loomyard/internal/boardcli"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configcli"
 	"github.com/Knatte18/loomyard/internal/ghissues"
@@ -88,7 +88,7 @@ Available modules: init, board, config, update, ide, muxpoc, weft, warp, ghissue
 	// Add every module's Command() as a direct child of the root.
 	root.AddCommand(
 		initcli.Command(),
-		board.Command(),
+		boardcli.Command(),
 		configcli.Command(),
 		update.Command(),
 		ide.Command(),
