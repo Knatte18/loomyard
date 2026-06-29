@@ -53,6 +53,10 @@ surface), and its precursor — the `config → configengine` PR — is already 
   (litmus, boundary, dependency direction, skip clause) — see Decisions.
 - Update docs (`docs/overview.md` module table; affected `docs/modules/*`,
   `docs/shared-libs/*`).
+- Update stale **comment-only** references to the renamed packages for accuracy
+  (non-functional but they drift on rename): `internal/lyxtest/doc.go` (mentions
+  `internal/warp`, `internal/weft`), `tools/sandbox/main.go` (mentions
+  `internal/warp/clone.go`), `cmd/lyx/main_test.go` (mentions `internal/board`).
 
 **Out:**
 
@@ -198,7 +202,9 @@ Per-module file placement:
 - **weft** (`internal/weft` → `weftcli` + `weftengine`):
   - `weftcli`: `cli.go` (rich `PersistentPreRunE`, hidden `--weft-path` bypass) +
     `cli_test.go`.
-  - `weftengine`: `config.go`, `sync.go` (`Commit`/`Push`/`Pull`/`SyncOptions`),
+  - `weftengine`: `weft.go` (package doc + domain constants `commitMessage`/
+    `lockDirName`/`writeLockFile`/`pushLockFile` + `scopedPathspec`, used by
+    `sync.go`), `config.go`, `sync.go` (`Commit`/`Push`/`Pull`/`SyncOptions`),
     `status.go` (`Status`), `template.go` (`ConfigTemplate`), `spawn.go`
     (`spawnPush` detached child). Engine tests: `config_test.go`, `sync_test.go`,
     `status_test.go`, `template_test.go`, `weft_integration_test.go`, `template.yaml`.
@@ -327,6 +333,14 @@ tests. Per unit:
   - `cmd/lyx/helptree_test.go` — drop `update` from root `requiredModules`; add
     `reconcile` to `configcli`'s `wantSubs`.
   - `cmd/lyx/drift_test.go` — `reconcile` subcommand must carry a non-empty `Short`.
+  - `internal/lyxtest/leaf_enforcement_test.go` — its `bannedImports` slice
+    (lines ~31–35) hardcodes `internal/board`, `internal/warp`, `internal/weft`.
+    After the rename those import paths vanish, so the leaf-invariant guard would
+    silently stop guarding the feature packages while still passing. Update
+    `bannedImports` to the new feature paths (`boardengine`/`boardcli`,
+    `warpengine`/`warpcli`, `weftengine`/`weftcli`, and the other `*engine`/`*cli`
+    packages) so the lyxtest Leaf Invariant keeps protecting against a
+    `lyxtest → configreg → feature` cycle.
 - TDD candidate: the `config reconcile` subcommand (write the migrated reconcile test
   first, then wire the subcommand). Everything else is mechanical relocation verified
   by the moved suites + `go build ./... && go test ./...`.
@@ -367,3 +381,12 @@ Sequencing (one unit per batch, build+test green between each; shared files
   boundary, dependency direction, skip clause) in the final batch.
 - **Q:** Batch order? **A:** Sequential, one unit per batch, green between each:
   board → weft → warp → ide → ghissues → muxpoc → update-fold → CONSTRAINTS/docs.
+- **Q:** (review r1 GAP) Which guard tests beyond cmd/lyx are affected? **A:** Also
+  `internal/lyxtest/leaf_enforcement_test.go` — its hardcoded `bannedImports`
+  (`internal/board|warp|weft`) must be retargeted to the new `*engine`/`*cli` paths,
+  else the lyxtest Leaf Invariant silently stops guarding. Added to the final guard
+  batch.
+- **Q:** (review r1 NOTEs) Any omitted files / stale references? **A:** `weft.go` is
+  pure domain (constants used by `sync.go`) → placed in `weftengine`. Comment-only
+  refs to old paths in `internal/lyxtest/doc.go`, `tools/sandbox/main.go`,
+  `cmd/lyx/main_test.go` to be updated for accuracy.
