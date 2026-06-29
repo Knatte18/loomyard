@@ -42,7 +42,9 @@ batches:
     start_sha: 895926fc6c80a83b7333269d9661aaa0cdada95b
     commit_sha: d38093386c2f7efab6d8b37e81744ae8a1ef6cfa
   - name: warp split
-    state: pending
+    state: running
+    implementer_session: c9f84ec5-699a-4862-9385-bf8c94366fd7
+    start_sha: 845475a305ce584f6ffed1afadb709fcbed3cd2a
   - name: ide split
     state: pending
   - name: ghissues split
