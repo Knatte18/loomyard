@@ -156,15 +156,17 @@ surface), and its precursor — the `config → configengine` PR — is already 
   - warp `clone.go` → **split the file**: handler half (`runClone`,
     `runCloneWithReset`) → `warpcli`; domain half (`cloneHub`, `cloneRepo`,
     `teardownHub`, `deriveHostName`, `deriveBoardURL`) → `warpengine`. Because the
-    cli half (`runCloneWithReset`) calls into the engine half, **export the surface it
-    needs**: `deriveHostName` → `warpengine.DeriveHostName`, the `hubSuffix` const →
-    `warpengine.HubSuffix`, and the `removeAll` test seam → a single exported settable
+    cli half calls into the engine half, **export the surface it needs**:
+    `cloneHub` → `warpengine.CloneHub` (called by `runClone`, clone.go:95; returns
+    `(hubPath, resolvedBoardURL, err)`), `deriveHostName` → `warpengine.DeriveHostName`
+    and the `hubSuffix` const → `warpengine.HubSuffix` (both called by
+    `runCloneWithReset`), and the `removeAll` test seam → a single exported settable
     seam `warpengine.RemoveAll` (`var RemoveAll = os.RemoveAll`) used by **both**
     `runCloneWithReset` (cli) and `teardownHub` (engine). The reset-swap test
     (`clone_integration_test.go:309–353`) tests `runCloneWithReset`'s reset path, so it
     goes to `warpcli` and swaps `warpengine.RemoveAll` (cross-package, the ghissues
-    seam pattern). `deriveBoardURL`/`cloneRepo`/`cloneHub` stay engine-internal unless
-    a cli-half caller needs them.
+    seam pattern). `deriveBoardURL`/`cloneRepo` stay engine-internal (only `cloneHub`
+    calls them).
   - ide `menu.go` (interactive `Menu(l, in io.Reader, out io.Writer) error`) →
     **engine** (`ideengine`); it returns `error`, has no cobra, and its `board`
     usage retargets to `boardengine`.
@@ -380,6 +382,11 @@ tests. Per unit:
   new package it exercises (cli-handler tests → `<module>cli`; domain tests →
   `<module>engine`). Keep every existing assertion; the tests are the
   behaviour-preservation guard. Confirm `go test ./...` is green after each module.
+- **warp `clone_integration_test.go` must be physically split** (a single `_test.go`
+  cannot belong to two packages): the `cloneHub`-driving domain scenarios → a
+  `warpengine` test file (calling `warpengine.CloneHub`); the reset-swap test
+  (lines 309–353, exercising `runCloneWithReset`) → a `warpcli` test file (swapping
+  `warpengine.RemoveAll`). `clone_test.go` likewise splits by what each test drives.
 - **ghissues tests specifically**: `cli_test.go` is white-box (package `ghissues`)
   and drives the full `cobra → flag → createIssue → runGH` pipeline through `RunCLI`,
   swapping **both** `runGH` (L24) and `stdin` (L161). After the split it becomes
@@ -493,3 +500,10 @@ Sequencing (one unit per batch, build+test green between each; shared files
   engine); reset-swap test → warpcli, swaps `warpengine.RemoveAll`.
 - **Q:** (review r4 NOTE) board exports omitted? **A:** Added `BriefTask`,
   `MergeStatusUpdate` (referenced by `boardcli/cli.go`) to the boardengine export list.
+- **Q:** (review r5 GAP) warp clone export set incomplete — `runClone` calls
+  `cloneHub`. **A:** Add `cloneHub` → `warpengine.CloneHub` (returns
+  `(hubPath, resolvedBoardURL, err)`); `cloneRepo`/`deriveBoardURL` stay
+  engine-internal (only `cloneHub` calls them).
+- **Q:** (review r5 NOTE) Can `clone_integration_test.go` just "move"? **A:** No — it
+  must be **physically split**: `cloneHub` scenarios → `warpengine` test, reset-swap
+  test (309–353) → `warpcli` test.
