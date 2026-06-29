@@ -18,8 +18,8 @@ import (
 )
 
 // These tests cover main's own responsibility — module routing — not the board
-// behaviour itself (that lives in internal/board). They drive run() directly so
-// no binary build or os.Exit is involved.
+// behaviour itself (that lives in internal/boardcli / internal/boardengine). They
+// drive run() directly so no binary build or os.Exit is involved.
 
 func TestRunNoArgs(t *testing.T) {
 	var out bytes.Buffer
