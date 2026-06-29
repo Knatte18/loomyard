@@ -22,7 +22,7 @@ consolidates the host↔weft git topology (the former `internal/worktree` and
 `internal/gitclone` modules plus the renamed `internal/gitexec` leaf). It owns the mirror
 invariant: every lyx-managed host branch/worktree has a paired weft counterpart, kept
 consistent on add / checkout / clone / reconcile. ✅ Implemented — its design rationale now
-lives in the `internal/warp` package header (the design doc was deleted when the module
+lives in the `internal/warpengine` package header (the design doc was deleted when the module
 landed, per the [doc lifecycle](../overview.md#documentation-lifecycle)).
 
 ## Why a stack at all

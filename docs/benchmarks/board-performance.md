@@ -1,7 +1,7 @@
 # Benchmarks: board command performance
 
 Tracks how fast the board commands run, and how that changes across revisions.
-The benchmark suite lives in [`internal/board/boardtest`](../../internal/board/boardtest).
+The benchmark suite lives in [`internal/boardengine/boardtest`](../../internal/boardengine/boardtest).
 
 Since the async-sync change (see [overview.md#modules](../overview.md#modules)) a write only
 touches the filesystem and returns; the git round-trip happens in a detached
@@ -12,7 +12,7 @@ git) and the **background sync** (git).
 
 ```sh
 # Hot path (default): writes + reads, git skipped (BOARD_SKIP_GIT=1).
-go test -run '^$' -bench . -benchmem ./internal/board/boardtest
+go test -run '^$' -bench . -benchmem ./internal/boardengine/boardtest
 
 ```
 
