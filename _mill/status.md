@@ -36,7 +36,9 @@ batches:
     start_sha: 29a68c19d23d86d805a05325fb6fe7424b04b4d7
     commit_sha: a0c204703fd15413e49fa5a32e57885b79d3ebb8
   - name: weft split
-    state: pending
+    state: running
+    implementer_session: 167f5b0b-34e4-47fa-84aa-03a2623a5dac
+    start_sha: 895926fc6c80a83b7333269d9661aaa0cdada95b
   - name: warp split
     state: pending
   - name: ide split
