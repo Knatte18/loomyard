@@ -33,7 +33,7 @@ import (
 // are decoded; the stream carries more (e.g. per-line Output) that we ignore.
 type testEvent struct {
 	Action  string  // "start" | "run" | "pass" | "fail" | "skip" | "output" | ...
-	Package string  // import path, e.g. "github.com/Knatte18/loomyard/internal/board"
+	Package string  // import path, e.g. "github.com/Knatte18/loomyard/internal/boardengine"
 	Test    string  // empty for package-level events; "TestX" / "TestX/sub" for tests
 	Elapsed float64 // seconds; meaningful on the terminal pass/fail/skip event
 	Output  string  // raw test output (only on Action == "output")
@@ -177,7 +177,7 @@ func parseLine(line []byte, pkgs map[string]*pkgResult, tests *[]testResult) {
 	*tests = append(*tests, testResult{pkg: ev.Package, test: ev.Test, elapsed: ev.Elapsed, action: ev.Action})
 }
 
-// shortPkg trims the module prefix so the table shows "internal/board" rather
+// shortPkg trims the module prefix so the table shows "internal/boardengine" rather
 // than the full import path.
 func shortPkg(pkg string) string {
 	const prefix = "github.com/Knatte18/loomyard/"

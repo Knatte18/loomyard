@@ -37,7 +37,7 @@ var cloneRun = func(parentDir string) error {
 	return nil
 }
 
-// removeAll is a testability seam for os.RemoveAll, matching the pattern in internal/warp/clone.go.
+// removeAll is a testability seam for os.RemoveAll, matching the pattern in internal/warpengine/clone.go.
 var removeAll = os.RemoveAll
 
 // decideClone determines whether to clone the Hub and performs the necessary actions.

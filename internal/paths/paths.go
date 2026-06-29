@@ -341,7 +341,7 @@ type HostJunction struct {
 //
 // Currently, this returns a single-element slice containing the _lyx junction.
 // The junction record carries Name, Link, and Target fields for use by the
-// seeders in internal/warp.
+// seeders in internal/warpengine.
 //
 // Returns a slice with exactly one entry: {Name: LyxDirName, Link: HostLyxLink(slug), Target: WeftLyxDirFor(slug)}.
 func (l *Layout) HostJunctions(slug string) []HostJunction {

@@ -6,7 +6,7 @@
 > reference [`../research/psmux-tui-behavior.md`](../research/psmux-tui-behavior.md). The daemon + Slack relay are in
 > [Deferred](#deferred). See [roadmap.md](../roadmap.md) for sequencing.
 >
-> **Note:** A working proof-of-concept already exists in `internal/muxpoc` — see
+> **Note:** A working proof-of-concept already exists in `internal/muxpoccli` — see
 > [overview.md#modules](../overview.md#modules). muxpoc is a POC; it stays as a reference and is
 > **not** extracted into mux. mux is built fresh, informed by what muxpoc proved.
 
@@ -185,8 +185,10 @@ package API, not the CLI.
 
 ### Naming
 
-Go packages carry **no prefix** — `internal/mux`, matching `internal/board` (an early `gomux`
-draft was dropped). mux absorbs what earlier drafts split into separate `shed`/`glance` modules:
+Go packages carry **no prefix** — `internal/mux` (an early `gomux` draft was dropped). Under
+the current cli/engine naming convention (see [CONSTRAINTS.md](../../CONSTRAINTS.md#package-naming)),
+mux will be split into `internal/muxcli` + `internal/muxengine` when it lands. mux absorbs what
+earlier drafts split into separate `shed`/`glance` modules:
 with one terminal per worktree and a closed generic display vocabulary, the model (the strand
 bookkeeping) and the view (the render sub-package) sit cleanly inside mux without dragging domain
 knowledge in. The render half is the internal sub-package

@@ -191,7 +191,8 @@ func ensureGitExclude(repoDir, entry string) error {
 // empty the function resolves "claude" from PATH and uses defaultInstruction.
 func runSuite(parentDir, claudeOverride, promptOverride string) error {
 	// Derive the host repo path from the shared hubName const (main.go) and the
-	// suite-local hostDirName const; neither os.Getwd nor git rev-parse is used.
+	// suite-local hostDirName const; the function relies on those consts rather than
+	// the raw cwd primitive or git top-level resolution.
 	hostRepoDir := filepath.Join(parentDir, hubName, hostDirName)
 
 	// Guard against a missing Hub so the operator gets a clear, actionable message

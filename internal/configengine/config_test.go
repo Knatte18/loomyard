@@ -94,8 +94,8 @@ func TestLoad_MissingKey(t *testing.T) {
 	if !strings.Contains(errMsg, "home") {
 		t.Errorf("expected error containing 'home', got: %v", err)
 	}
-	if !strings.Contains(errMsg, "lyx update") {
-		t.Errorf("expected error containing 'lyx update', got: %v", err)
+	if !strings.Contains(errMsg, "lyx config reconcile") {
+		t.Errorf("expected error containing 'lyx config reconcile', got: %v", err)
 	}
 }
 
@@ -124,8 +124,8 @@ func TestLoad_AbsentFile(t *testing.T) {
 	if !strings.Contains(errMsg, "not found") {
 		t.Errorf("expected error containing 'not found', got: %v", err)
 	}
-	if !strings.Contains(errMsg, "lyx update") {
-		t.Errorf("expected error containing 'lyx update', got: %v", err)
+	if !strings.Contains(errMsg, "lyx config reconcile") {
+		t.Errorf("expected error containing 'lyx config reconcile', got: %v", err)
 	}
 }
 

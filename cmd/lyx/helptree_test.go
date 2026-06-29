@@ -25,12 +25,22 @@ func TestHelpTree_RootNamesAllModules(t *testing.T) {
 	got := out.String()
 	// Every module must appear by name in the root help output.
 	requiredModules := []string{
-		"init", "board", "config", "update", "ide", "muxpoc", "weft", "warp", "ghissues",
+		"init", "board", "config", "ide", "muxpoc", "weft", "warp", "ghissues",
 	}
 	for _, module := range requiredModules {
 		if !strings.Contains(got, module) {
 			t.Errorf("root help output missing module %q; got:\n%s", module, got)
 		}
+	}
+
+	// Assert that the reconcile subcommand is discoverable under config.
+	// Invoke "lyx config --help" which short-circuits cobra's help and exits 0.
+	var configOut bytes.Buffer
+	if code := run([]string{"config", "--help"}, &configOut); code != 0 {
+		t.Fatalf("run([config --help]) = %d; want 0. output:\n%s", code, configOut.String())
+	}
+	if !strings.Contains(configOut.String(), "reconcile") {
+		t.Errorf("config --help output missing %q; got:\n%s", "reconcile", configOut.String())
 	}
 }
 
