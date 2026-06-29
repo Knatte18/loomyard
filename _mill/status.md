@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-weft split
+phase: approved-warp split
 slug: cobra-cli-engine-sweep
 branch: cobra-cli-engine-sweep
 plan: _mill/plan
@@ -25,6 +25,7 @@ planned  '2026-06-29T14:45:19Z'
 implementing  '2026-06-29T14:47:10Z'
 approved-board split  '2026-06-29T15:45:44Z'
 approved-weft split  '2026-06-29T16:19:27Z'
+approved-warp split  '2026-06-29T16:47:32Z'
 ```
 
 ## Batches
@@ -42,9 +43,10 @@ batches:
     start_sha: 895926fc6c80a83b7333269d9661aaa0cdada95b
     commit_sha: d38093386c2f7efab6d8b37e81744ae8a1ef6cfa
   - name: warp split
-    state: running
+    state: approved
     implementer_session: c9f84ec5-699a-4862-9385-bf8c94366fd7
     start_sha: 845475a305ce584f6ffed1afadb709fcbed3cd2a
+    commit_sha: 9dc8c8cbbe2745433c14fe04d88e0f364cdec40a
   - name: ide split
     state: pending
   - name: ghissues split
