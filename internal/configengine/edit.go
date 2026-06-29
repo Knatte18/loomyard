@@ -5,7 +5,7 @@
 // from a template and removes them on abort to leave the filesystem in its pre-call
 // state. Injected EditorFunc allows tests to drive the editor without a real process.
 
-package config
+package configengine
 
 import (
 	"errors"

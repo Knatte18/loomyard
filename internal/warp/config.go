@@ -1,7 +1,7 @@
 // config.go — configuration for the warp module.
 //
 // Defines the Config type with a single field BranchPrefix and LoadConfig.
-// LoadConfig uses internal/config.Load with the ConfigTemplate() to strictly
+// LoadConfig uses internal/configengine.Load with the ConfigTemplate() to strictly
 // validate and resolve the warp config file; the warp module never reads
 // config files or knows their layout itself.
 
@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/config"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"gopkg.in/yaml.v3"
 )
 
@@ -22,7 +22,7 @@ type Config struct {
 
 // LoadConfig loads and unmarshals configuration for the warp module.
 //
-// Calls config.Load with the warp ConfigTemplate() to strictly validate
+// Calls configengine.Load with the warp ConfigTemplate() to strictly validate
 // the config file against the template, resolve environment variables, and
 // return resolved bytes. Unmarshals the resolved bytes into a Config struct.
 //
@@ -30,7 +30,7 @@ type Config struct {
 // "not initialized here; run \"lyx init\"".
 func LoadConfig(baseDir, module string) (Config, error) {
 	// Load and resolve the config file using the template
-	resolved, err := config.Load(baseDir, module, []byte(ConfigTemplate()))
+	resolved, err := configengine.Load(baseDir, module, []byte(ConfigTemplate()))
 	if err != nil {
 		// Wrap the generic error with a warp-specific message
 		if strings.Contains(err.Error(), "not initialized") {

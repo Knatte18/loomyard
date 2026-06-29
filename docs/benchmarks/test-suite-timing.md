@@ -62,7 +62,7 @@ integration time actually goes.
 | `cmd/lyx`                  | 1.0 s          | 2.3 s      | —                                                |
 | `internal/vscode`          | no test files¹ | 3.2 s      | vscode configuration generation                  |
 | `internal/board`           | 0.9 s          | 1.3 s      | heavy tests relocated to `boardtest`             |
-| `config`, `fsx`, `gitignore`, `fslink`, `lock`, `output`, `state` | < 1.2 s each | < 1.2 s each | pure unit, no git |
+| `configengine`, `fsx`, `gitignore`, `fslink`, `lock`, `output`, `state` | < 1.2 s each | < 1.2 s each | pure unit, no git |
 
 ¹ No untagged test files — every test in the package needs `-tags integration`, so
 the package is absent from the default `-list` and contributes nothing to Tier 1.
@@ -332,7 +332,7 @@ could not be hidden by parallelism.
 | `git`                             |  1.8 s |
 | `output`                          |  1.5 s |
 | `cmd/lyx`                         |  1.3 s |
-| `config`                          |  1.1 s |
+| `configengine`                    |  1.1 s |
 | `lock`                            |  0.9 s |
 | `gitignore`                       |  0.5 s |
 | **Sum**                           | **147.5 s** |
