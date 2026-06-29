@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-fixing
+phase: holistic-approved
 slug: cobra-cli-engine-sweep
 branch: cobra-cli-engine-sweep
 plan: _mill/plan
@@ -33,6 +33,8 @@ approved-update fold to config reconcile  '2026-06-29T17:26:14Z'
 approved-constraints docs guards and comment sweep  '2026-06-29T17:37:56Z'
 holistic-reviewing  '2026-06-29T17:38:25Z'
 holistic-fixing  '2026-06-29T17:44:16Z'
+nits-fixed-holistic  '2026-06-29T17:56:39Z'
+holistic-approved  '2026-06-29T17:56:52Z'
 ```
 
 ## Batches
