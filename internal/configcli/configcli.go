@@ -16,7 +16,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/config"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/paths"
@@ -94,24 +94,24 @@ func printAll(baseDir string, out io.Writer) int {
 // Flow:
 // 1. Look up the template for the given module name via templateFor.
 // 2. If unknown, print an error message listing known modules and return 1.
-// 3. Call config.Edit to open the file in the editor and validate YAML.
-// 4. If config.Edit returns config.ErrAborted, print the abort message and return 1.
-// 5. If config.Edit returns any other error, print it and return 1.
+// 3. Call configengine.Edit to open the file in the editor and validate YAML.
+// 4. If configengine.Edit returns configengine.ErrAborted, print the abort message and return 1.
+// 5. If configengine.Edit returns any other error, print it and return 1.
 // 6. On success, call sync with a buffered writer to capture its output.
 // 7. If sync returns 0, discard the buffer and print the success message.
 // 8. If sync returns non-zero, print a failure message with the sync output and return 1.
-func editOne(baseDir string, out io.Writer, module string, edit config.EditorFunc, sync syncFunc) int {
+func editOne(baseDir string, out io.Writer, module string, edit configengine.EditorFunc, sync syncFunc) int {
 	// Look up the template for this module.
 	template, ok := configreg.Template(module)
 	if !ok {
 		return output.Err(out, fmt.Sprintf("unknown config module: %s (known: %v)", module, configreg.Names()))
 	}
 
-	// Call config.Edit to open the file in the editor.
-	err := config.Edit(baseDir, module, template(), edit)
+	// Call configengine.Edit to open the file in the editor.
+	err := configengine.Edit(baseDir, module, template(), edit)
 	if err != nil {
 		// Check if this is an abort (user saved without fixing YAML).
-		if errors.Is(err, config.ErrAborted) {
+		if errors.Is(err, configengine.ErrAborted) {
 			return output.Err(out, fmt.Sprintf("aborted: _lyx/config/%s.yaml unchanged", module))
 		}
 		// Any other error (I/O, parse loop termination, etc.).
@@ -137,7 +137,7 @@ func editOne(baseDir string, out io.Writer, module string, edit config.EditorFun
 // When printOnly is true the command is read-only: it writes on-disk YAML to out
 // without opening an editor. The print path is evaluated before any edit/menu logic.
 // The baseDir is computed from the layout as filepath.Join(WorktreeRoot, RelPath).
-func dispatch(l *paths.Layout, in io.Reader, out io.Writer, args []string, edit config.EditorFunc, sync syncFunc, printOnly bool) int {
+func dispatch(l *paths.Layout, in io.Reader, out io.Writer, args []string, edit configengine.EditorFunc, sync syncFunc, printOnly bool) int {
 	baseDir := filepath.Join(l.WorktreeRoot, l.RelPath)
 
 	// Handle --print before any edit/menu dispatch; the print path is read-only
@@ -226,5 +226,5 @@ func runConfig(out io.Writer, args []string, printOnly bool) int {
 	}
 
 	// Dispatch to the print path, interactive menu, or specific module.
-	return dispatch(l, os.Stdin, out, args, config.DefaultEditor, realSync, printOnly)
+	return dispatch(l, os.Stdin, out, args, configengine.DefaultEditor, realSync, printOnly)
 }

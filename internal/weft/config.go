@@ -1,7 +1,7 @@
 // config.go — configuration for the weft module.
 //
 // Defines the Config type with a Pathspec field and LoadConfig.
-// LoadConfig uses internal/config.Load with the ConfigTemplate() to strictly
+// LoadConfig uses internal/configengine.Load with the ConfigTemplate() to strictly
 // validate and resolve the weft config file; the weft module never reads
 // config files or knows their layout itself.
 
@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/config"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"gopkg.in/yaml.v3"
 )
 
@@ -27,7 +27,7 @@ func (c Config) Dirs() []string {
 
 // LoadConfig loads and unmarshals configuration for the weft module from weftBaseDir.
 //
-// Calls config.Load with the weft ConfigTemplate() to strictly validate
+// Calls configengine.Load with the weft ConfigTemplate() to strictly validate
 // the config file against the template, resolve environment variables, and
 // return resolved bytes. Unmarshals the resolved bytes into a Config struct.
 //
@@ -38,7 +38,7 @@ func (c Config) Dirs() []string {
 // "weft worktree or its _lyx is missing at <weftBaseDir>".
 func LoadConfig(weftBaseDir string) (Config, error) {
 	// Load and resolve the config file using the template
-	resolved, err := config.Load(weftBaseDir, "weft", []byte(ConfigTemplate()))
+	resolved, err := configengine.Load(weftBaseDir, "weft", []byte(ConfigTemplate()))
 	if err != nil {
 		// Wrap the generic error with a weft-specific message
 		if strings.Contains(err.Error(), "not initialized") {

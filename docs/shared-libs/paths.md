@@ -126,7 +126,7 @@ vs backslashes from `os.Getwd()` are reconciled once in `paths` via
 
 **Config resolution stays cwd-authoritative.** `paths.Resolve` is geometry-only and
 does NOT check for `_lyx/`. The cwd-authoritative config invariant (`_lyx/` must
-exist at cwd) remains enforced by `internal/config.FindBaseDir`. Board and other
+exist at cwd) remains enforced by `internal/configengine.FindBaseDir`. Board and other
 modules keep passing `cwd` to their `LoadConfig` (obtained via `paths.Getwd`). This
 lets `board init` (pre-init, no `_lyx/`) and other early-stage commands call into
 `paths` without a spurious "not initialized" failure.

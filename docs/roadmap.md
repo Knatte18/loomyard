@@ -28,7 +28,7 @@ The dependency-ordered sequence — what is actually buildable next, respecting 
 needs below it. The numbered [Milestones](#milestones) below carry the detail; this is the
 at-a-glance order.
 
-**Done foundation:** board → shared infra (`config`/`git`/`lock`) → `state` → worktree + ide →
+**Done foundation:** board → shared infra (`configengine`/`git`/`lock`) → `state` → worktree + ide →
 weft engine + producers → **`proc`** (cross-OS spawn). ✅
 
 **Orchestration spine** — a strict chain, each layer needs the one before it:
@@ -62,7 +62,7 @@ observable changes until the new module that needs the extracted lib arrives.
 1. **board** — the task tracker. ✅ **Done.** See the board module in
    [overview.md#modules](overview.md#modules).
 
-2. **Extract shared infrastructure: `internal/config`, `internal/git`,
+2. **Extract shared infrastructure: `internal/configengine`, `internal/git`,
    `internal/lock`.** ✅ **Done.** See
    [shared-libs/](shared-libs/README.md).
 
@@ -75,7 +75,7 @@ observable changes until the new module that needs the extracted lib arrives.
 4. **worktree module + portals, launchers, and ide module.** ✅ **Done.** Create / track / tear down
    git worktrees; manage container junctions and spawnable
    launchers; VS Code launcher with interactive menu; centralized path geometry
-   in `internal/paths`. Consumes `internal/config` + `internal/git`; owns the **junction-aware teardown**
+   in `internal/paths`. Consumes `internal/configengine` + `internal/git`; owns the **junction-aware teardown**
    sequence (the Windows locked-worktree hazard). The module is **stateless by design** — `lyx worktree list` is a thin
    `git worktree list` wrapper; there is no worktree registry. Introduces `internal/paths` as the sole geometry owner, banning
    raw `os.Getwd` and `git rev-parse --show-toplevel` outside `internal/paths` and `cmd/lyx/main.go`

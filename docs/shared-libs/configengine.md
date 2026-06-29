@@ -1,4 +1,4 @@
-# `internal/config`
+# `internal/configengine`
 
 Loads and resolves a module's configuration from the current working directory. This is the
 one place that knows the `_lyx/` layout and enforces strict validation against a template.
@@ -19,7 +19,7 @@ one place that knows the `_lyx/` layout and enforces strict validation against a
 ```
 
 `_lyx/` presence is what makes a directory "initialised". If it is absent,
-`config` errors with `not initialized: _lyx/ directory not found in <dir>` (the
+`configengine` errors with `not initialized: _lyx/ directory not found in <dir>` (the
 raw error from `FindBaseDir`; the board rewraps it into `not initialized here; run "lyx init"`).
 Resolution is **cwd-authoritative** — the cwd does **not** need to equal the git-repo root (a
 first-class constraint; it caused constant trouble in millpy precisely because it

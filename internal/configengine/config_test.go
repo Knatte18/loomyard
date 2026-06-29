@@ -4,7 +4,7 @@
 // missing-key detection, absent-file errors, env variable resolution via templates,
 // nested-key handling, and the not-initialized error path.
 
-package config_test
+package configengine_test
 
 import (
 	"os"
@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/config"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/paths"
 	"gopkg.in/yaml.v3"
 )
@@ -40,7 +40,7 @@ func TestLoad_HappyPath(t *testing.T) {
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
 
-	resolved, err := config.Load(tmpDir, "board", template)
+	resolved, err := configengine.Load(tmpDir, "board", template)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -82,7 +82,7 @@ func TestLoad_MissingKey(t *testing.T) {
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
 
-	_, err := config.Load(tmpDir, "board", template)
+	_, err := configengine.Load(tmpDir, "board", template)
 	if err == nil {
 		t.Fatalf("expected error for missing key, got nil")
 	}
@@ -115,7 +115,7 @@ func TestLoad_AbsentFile(t *testing.T) {
 
 	template := []byte("path: _board\n")
 
-	_, err := config.Load(tmpDir, "board", template)
+	_, err := configengine.Load(tmpDir, "board", template)
 	if err == nil {
 		t.Fatalf("expected error for absent file, got nil")
 	}
@@ -155,7 +155,7 @@ func TestLoad_EnvResolution(t *testing.T) {
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
 
-	resolved, err := config.Load(tmpDir, "board", template)
+	resolved, err := configengine.Load(tmpDir, "board", template)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -196,7 +196,7 @@ func TestLoad_OptionalEnv(t *testing.T) {
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
 
-	resolved, err := config.Load(tmpDir, "board", template)
+	resolved, err := configengine.Load(tmpDir, "board", template)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -235,7 +235,7 @@ func TestLoad_ExtraKeyTolerated(t *testing.T) {
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
 
-	resolved, err := config.Load(tmpDir, "board", template)
+	resolved, err := configengine.Load(tmpDir, "board", template)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -253,7 +253,7 @@ func TestLoad_NotInitialized(t *testing.T) {
 
 	template := []byte("path: _board\n")
 
-	_, err := config.Load(tmpDir, "board", template)
+	_, err := configengine.Load(tmpDir, "board", template)
 	if err == nil {
 		t.Fatalf("expected error for not initialized, got nil")
 	}
@@ -287,7 +287,7 @@ func TestLoad_NestedKeyTemplate(t *testing.T) {
 		t.Fatalf("failed to write test.yaml: %v", err)
 	}
 
-	resolved, err := config.Load(tmpDir, "test", template)
+	resolved, err := configengine.Load(tmpDir, "test", template)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -321,7 +321,7 @@ func TestFindBaseDir_Present(t *testing.T) {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
 
-	result, err := config.FindBaseDir(tmpDir)
+	result, err := configengine.FindBaseDir(tmpDir)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -335,7 +335,7 @@ func TestFindBaseDir_Present(t *testing.T) {
 func TestFindBaseDir_Absent(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	result, err := config.FindBaseDir(tmpDir)
+	result, err := configengine.FindBaseDir(tmpDir)
 	if err == nil {
 		t.Fatalf("expected error, got nil; result: %v", result)
 	}

@@ -67,7 +67,7 @@ func Getwd() (string, error) {
 //  6. Set RelPath = filepath.Rel(WorktreeRoot, Cwd)
 //  7. Call List(cwd) and set Prime to the Main==true entry's Path
 //
-// Resolve does NOT check for _lyx/ (that authority stays in internal/config).
+// Resolve does NOT check for _lyx/ (that authority stays in internal/configengine).
 //
 // Returns the Layout on success, or ErrNotAGitRepo (wrapped with context) on failure.
 func Resolve(cwd string) (*Layout, error) {
@@ -125,7 +125,7 @@ func ConfigDir(baseDir string) string {
 // ConfigFile returns the path to a module-specific configuration YAML file within a baseDir.
 //
 // The file is constructed by joining the module name with ".yaml" and placing it
-// in the ConfigDir. This is used by callers like config.Load to resolve config paths.
+// in the ConfigDir. This is used by callers like configengine.Load to resolve config paths.
 // Returns filepath.Join(ConfigDir(baseDir), module+".yaml").
 func ConfigFile(baseDir, module string) string {
 	return filepath.Join(ConfigDir(baseDir), module+".yaml")

@@ -169,7 +169,7 @@ github.com/Knatte18/loomyard/
 ├── internal/muxpoc/              the muxpoc POC module
 ├── internal/ghissues/            the ghissues module (file bugs to GitHub via gh)
 ├── internal/paths/               geometry resolver (the sole owner of cwd/root math)
-├── internal/config/              shared config resolution
+├── internal/configengine/        shared config resolution
 ├── internal/gitexec/             shared git operations
 ├── internal/lock/                shared file locking
 └── internal/output/              shared JSON output
@@ -234,7 +234,7 @@ back into mux — see [modules/mux.md](modules/mux.md#naming).)
 scaffolds the shared `_lyx/` config dir for every module.
 
 The user-facing modules sit on a thin layer of shared infrastructure
-(`internal/config`, `internal/gitexec`, `internal/lock`, `internal/output`, `internal/paths`, `internal/state`) — defined in
+(`internal/configengine`, `internal/gitexec`, `internal/lock`, `internal/output`, `internal/paths`, `internal/state`) — defined in
 [shared-libs/README.md](shared-libs/README.md).
 
 ## Execution stack (orchestration layers)

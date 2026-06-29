@@ -5,7 +5,7 @@
 // (board.LoadConfig, worktree.LoadConfig, weft.LoadConfig) unmarshal the resolved bytes
 // into their own structs.
 
-package config
+package configengine
 
 import (
 	"fmt"

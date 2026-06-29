@@ -120,6 +120,21 @@ When adding a CLI module or subcommand:
 - Update `cmd/lyx/helptree_test.go` pinned sets in the **same commit** (this is also the
   Task-completion docs discipline from `CLAUDE.md`).
 
+### Package naming
+
+A command-owning package takes the command's bare name: `internal/warp` owns `lyx warp`,
+`internal/weft` owns `lyx weft`, `internal/board` owns `lyx board`. A `cli` suffix is used
+**only** when the bare name is unavailable — either taken by a sibling package or reserved
+by Go itself:
+- `config` is the config **engine** (`internal/configengine`), so the `lyx config` command
+  lives in `internal/configcli`.
+- `init` is the Go reserved identifier `func init()`, so the `lyx init` command lives in
+  `internal/initcli`.
+
+Therefore `configcli` and `initcli` are principled, deliberate exceptions to the
+bare-name rule, not inconsistency. Reach for a `cli` suffix only when the bare name is
+genuinely blocked; otherwise use the bare command name.
+
 ## Documentation Lifecycle
 
 For the convention governing which docs are kept and which are deleted (mechanical per-module docs vs. durable design docs), see [docs/overview.md#documentation-lifecycle](docs/overview.md#documentation-lifecycle).

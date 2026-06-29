@@ -4,7 +4,7 @@
 // all operations) together with RunCLI routing in warp.go, so the lyx binary
 // stays a thin module dispatcher.
 //
-// Configuration is resolved cwd-authoritatively via internal/config; the package
+// Configuration is resolved cwd-authoritatively via internal/configengine; the package
 // never reads config files or knows their on-disk layout itself.
 
 package warp
