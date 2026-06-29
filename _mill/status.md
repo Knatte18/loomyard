@@ -54,7 +54,9 @@ batches:
     start_sha: cbd63e57d5d1a7e47a87f6bd601342234f5aebb7
     commit_sha: 0d78080254199eaf5e7dec57289fabec322b7b71
   - name: ghissues split
-    state: pending
+    state: running
+    implementer_session: 96c70934-52da-4684-b208-20c925d7b315
+    start_sha: fb11e088bfa69570cbf66e03316046d3c5b5eb32
   - name: muxpoc rename
     state: pending
   - name: update fold to config reconcile
