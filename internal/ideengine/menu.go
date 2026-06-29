@@ -2,7 +2,7 @@
 // resolving each worktree's title via the board facade and hard-erroring when
 // the board fails its health check.
 
-package ide
+package ideengine
 
 import (
 	"bufio"

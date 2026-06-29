@@ -4,7 +4,7 @@
 // board-facade titles, numeric selection, the zero-worktree path, and the
 // missing-board hard error.
 
-package ide
+package ideengine
 
 import (
 	"bytes"
@@ -143,10 +143,10 @@ proposal_prefix: proposal-
 		Cwd:     mainWorktreePath,
 	}
 
-	// Stub codeLauncher
-	originalLauncher := codeLauncher
-	defer func() { codeLauncher = originalLauncher }()
-	codeLauncher = func(dir string) error { return nil }
+	// Stub CodeLauncher
+	originalLauncher := CodeLauncher
+	defer func() { CodeLauncher = originalLauncher }()
+	CodeLauncher = func(dir string) error { return nil }
 
 	// Simulate user selecting first worktree (child, not main)
 	var out bytes.Buffer
@@ -282,11 +282,11 @@ proposal_prefix: proposal-
 		Cwd:     mainWorktreePath,
 	}
 
-	// Stub codeLauncher to verify it gets called
+	// Stub CodeLauncher to verify it gets called
 	var launchCount int
-	originalLauncher := codeLauncher
-	defer func() { codeLauncher = originalLauncher }()
-	codeLauncher = func(dir string) error {
+	originalLauncher := CodeLauncher
+	defer func() { CodeLauncher = originalLauncher }()
+	CodeLauncher = func(dir string) error {
 		launchCount++
 		return nil
 	}
@@ -300,8 +300,8 @@ proposal_prefix: proposal-
 		t.Fatalf("Menu failed: %v", err)
 	}
 
-	// Verify that codeLauncher was called exactly once (for the selected worktree)
+	// Verify that CodeLauncher was called exactly once (for the selected worktree)
 	if launchCount != 1 {
-		t.Fatalf("expected codeLauncher to be called once, was called %d times", launchCount)
+		t.Fatalf("expected CodeLauncher to be called once, was called %d times", launchCount)
 	}
 }

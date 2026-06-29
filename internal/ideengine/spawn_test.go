@@ -1,6 +1,6 @@
 // spawn_test.go covers the end-to-end spawn flow with a stubbed code launcher.
 
-package ide
+package ideengine
 
 import (
 	"os"
@@ -11,7 +11,7 @@ import (
 )
 
 // TestSpawn covers end-to-end spawn flow: config generation, launcher invocation,
-// and no-clobber behavior. The shared codeLauncher global keeps this test serial.
+// and no-clobber behavior. The shared CodeLauncher global keeps this test serial.
 func TestSpawn(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -35,9 +35,9 @@ func TestSpawn(t *testing.T) {
 		},
 	}
 
-	// Stub codeLauncher once for all subtests
-	originalLauncher := codeLauncher
-	defer func() { codeLauncher = originalLauncher }()
+	// Stub CodeLauncher once for all subtests
+	originalLauncher := CodeLauncher
+	defer func() { CodeLauncher = originalLauncher }()
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -59,9 +59,9 @@ func TestSpawn(t *testing.T) {
 				RelPath: tt.relpath,
 			}
 
-			// Stub codeLauncher to record its argument
+			// Stub CodeLauncher to record its argument
 			var launchedDir string
-			codeLauncher = func(dir string) error {
+			CodeLauncher = func(dir string) error {
 				launchedDir = dir
 				return nil
 			}
@@ -84,10 +84,10 @@ func TestSpawn(t *testing.T) {
 				t.Fatalf("tasks.json not created: %v", err)
 			}
 
-			// Verify codeLauncher was called with correct path (worktreeDir/relpath)
+			// Verify CodeLauncher was called with correct path (worktreeDir/relpath)
 			expectedDir := filepath.Join(childWorktreePath, tt.relpath)
 			if launchedDir != expectedDir {
-				t.Errorf("codeLauncher called with %q; want %q", launchedDir, expectedDir)
+				t.Errorf("CodeLauncher called with %q; want %q", launchedDir, expectedDir)
 			}
 
 			// For TestSpawnDoesNotClobber, run a second Spawn and verify no modification

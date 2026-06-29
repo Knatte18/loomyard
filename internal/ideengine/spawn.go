@@ -1,7 +1,7 @@
 // spawn.go implements `ide spawn`: it assigns a title-bar color, generates the
 // worktree's .vscode/ config when absent, and launches VS Code.
 
-package ide
+package ideengine
 
 import (
 	"path/filepath"
@@ -10,9 +10,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/vscode"
 )
 
-// codeLauncher is a package-level injectable seam that can be overridden in tests.
-// It defaults to vscode.Launch but can be stubbed to record its argument for testing.
-var codeLauncher = vscode.Launch
+// CodeLauncher is the exported package-level injectable seam that can be overridden
+// in tests. It defaults to vscode.Launch but can be stubbed to record its argument
+// for testing. Exported so that cli_test.go in the idecli package can swap it.
+var CodeLauncher = vscode.Launch
 
 // Spawn generates a worktree's .vscode/ config (if absent) and launches VS Code.
 //
@@ -20,7 +21,7 @@ var codeLauncher = vscode.Launch
 //  1. Compute worktreeDir := l.WorktreePath(slug)
 //  2. Compute color := vscode.PickColor(l)
 //  3. Call vscode.WriteConfig(worktreeDir, l.RelPath, slug, color)
-//  4. Open the worktree at its relpath (dir holding _lyx/ and .vscode/) via codeLauncher
+//  4. Open the worktree at its relpath (dir holding _lyx/ and .vscode/) via CodeLauncher
 //
 // Returns an error if any step fails.
 func Spawn(l *paths.Layout, slug string) error {
@@ -37,7 +38,7 @@ func Spawn(l *paths.Layout, slug string) error {
 
 	// Launch VS Code at the rel path (the dir holding _lyx/ and .vscode/)
 	openDir := filepath.Join(worktreeDir, l.RelPath)
-	if err := codeLauncher(openDir); err != nil {
+	if err := CodeLauncher(openDir); err != nil {
 		return err
 	}
 
