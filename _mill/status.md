@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-rename
+phase: holistic-reviewing
 slug: config-engine-rename
 branch: config-engine-rename
 plan: _mill/plan
@@ -22,6 +22,7 @@ plan-fix-r1  '2026-06-28T19:33:42Z'
 planned  '2026-06-28T19:34:27Z'
 implementing  '2026-06-28T19:45:21Z'
 approved-rename  '2026-06-28T20:00:38Z'
+holistic-reviewing  '2026-06-29T05:43:53Z'
 ```
 
 ## Batches
