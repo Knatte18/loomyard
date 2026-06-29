@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/config"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/paths"
 )
@@ -27,7 +27,7 @@ import (
 // Handles 'q' to quit (return 0).
 // Parses selection as 1-indexed number, validates range, routes to editOne on valid choice.
 // Returns the exit code from editOne or an error code (1) on invalid input.
-func menu(l *paths.Layout, baseDir string, in io.Reader, out io.Writer, edit config.EditorFunc, sync syncFunc) int {
+func menu(l *paths.Layout, baseDir string, in io.Reader, out io.Writer, edit configengine.EditorFunc, sync syncFunc) int {
 	// Get the list of available modules.
 	names := configreg.Names()
 

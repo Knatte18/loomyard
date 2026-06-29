@@ -4,7 +4,7 @@
 // validation failure, abort on unchanged-after-failure (both scaffolded and
 // pre-existing), abort on editor error, and not-initialized propagation.
 
-package config_test
+package configengine_test
 
 import (
 	"errors"
@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/config"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/paths"
 )
 
@@ -39,7 +39,7 @@ func TestEdit_ScaffoldWhenMissing(t *testing.T) {
 		return err
 	}
 
-	err := config.Edit(tmpDir, "testmod", template, fakeEditor)
+	err := configengine.Edit(tmpDir, "testmod", template, fakeEditor)
 	if err != nil {
 		t.Fatalf("Edit() = %v; want nil", err)
 	}
@@ -84,7 +84,7 @@ func TestEdit_EditExistingFile(t *testing.T) {
 		return os.WriteFile(path, []byte(newContent), 0644)
 	}
 
-	err := config.Edit(tmpDir, "testmod", "unused-template", fakeEditor)
+	err := configengine.Edit(tmpDir, "testmod", "unused-template", fakeEditor)
 	if err != nil {
 		t.Fatalf("Edit() = %v; want nil", err)
 	}
@@ -125,7 +125,7 @@ func TestEdit_ReEditLoop(t *testing.T) {
 		return os.WriteFile(path, []byte("valid: true\n"), 0644)
 	}
 
-	err := config.Edit(tmpDir, "testmod", template, fakeEditor)
+	err := configengine.Edit(tmpDir, "testmod", template, fakeEditor)
 	if err != nil {
 		t.Fatalf("Edit() = %v; want nil", err)
 	}
@@ -161,8 +161,8 @@ func TestEdit_AbortOnUnchangedAfterFailure_Scaffolded(t *testing.T) {
 		return nil
 	}
 
-	err := config.Edit(tmpDir, "testmod", template, fakeEditor)
-	if !errors.Is(err, config.ErrAborted) {
+	err := configengine.Edit(tmpDir, "testmod", template, fakeEditor)
+	if !errors.Is(err, configengine.ErrAborted) {
 		t.Fatalf("Edit() = %v; want ErrAborted", err)
 	}
 
@@ -209,8 +209,8 @@ func TestEdit_AbortOnUnchangedAfterFailure_PreExisting(t *testing.T) {
 		return nil
 	}
 
-	err := config.Edit(tmpDir, "testmod", "unused-template", fakeEditor)
-	if !errors.Is(err, config.ErrAborted) {
+	err := configengine.Edit(tmpDir, "testmod", "unused-template", fakeEditor)
+	if !errors.Is(err, configengine.ErrAborted) {
 		t.Fatalf("Edit() = %v; want ErrAborted", err)
 	}
 
@@ -240,8 +240,8 @@ func TestEdit_AbortOnEditorError(t *testing.T) {
 		return editorErr
 	}
 
-	err := config.Edit(tmpDir, "testmod", template, fakeEditor)
-	if !errors.Is(err, config.ErrAborted) {
+	err := configengine.Edit(tmpDir, "testmod", template, fakeEditor)
+	if !errors.Is(err, configengine.ErrAborted) {
 		t.Fatalf("Edit() = %v; want ErrAborted", err)
 	}
 
@@ -271,13 +271,13 @@ func TestEdit_NotInitialized(t *testing.T) {
 		return nil
 	}
 
-	err := config.Edit(tmpDir, "testmod", template, fakeEditor)
+	err := configengine.Edit(tmpDir, "testmod", template, fakeEditor)
 	if err == nil {
 		t.Fatalf("Edit() = nil; want error")
 	}
 
 	// Verify the error is about not being initialized, not ErrAborted.
-	if errors.Is(err, config.ErrAborted) {
+	if errors.Is(err, configengine.ErrAborted) {
 		t.Errorf("Edit() returned ErrAborted; want FindBaseDir not-initialized error")
 	}
 

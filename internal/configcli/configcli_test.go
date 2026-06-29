@@ -16,14 +16,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/config"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/paths"
 )
 
 // fakeEditor returns a fake EditorFunc that writes the given valid YAML
 // and returns the given error.
-func fakeEditor(validYAML string, returnErr error) config.EditorFunc {
+func fakeEditor(validYAML string, returnErr error) configengine.EditorFunc {
 	return func(path string) error {
 		if returnErr != nil {
 			return returnErr
@@ -121,7 +121,7 @@ func TestEditOneUnknownModule(t *testing.T) {
 	}
 }
 
-// TestEditOneAbort tests the abort path: editor returns error (config.ErrAborted).
+// TestEditOneAbort tests the abort path: editor returns error (configengine.ErrAborted).
 func TestEditOneAbort(t *testing.T) {
 	baseDir := t.TempDir()
 
@@ -339,7 +339,7 @@ func TestMenuStatus(t *testing.T) {
 
 // makeNeverCalledEditor returns an EditorFunc that fails the test if called.
 // Passed to dispatch in --print tests to prove the print path never opens an editor.
-func makeNeverCalledEditor(t *testing.T) config.EditorFunc {
+func makeNeverCalledEditor(t *testing.T) configengine.EditorFunc {
 	t.Helper()
 	return func(path string) error {
 		t.Helper()
