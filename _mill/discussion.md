@@ -145,18 +145,35 @@ surface), and its precursor — the `config → configengine` PR — is already 
 ### ambiguous-file-placement
 
 - Decision:
-  - board `spawn.go` and weft `spawn.go` (detached-binary re-invoke for background
-    push) → **engine** (no cobra; invoked by the engine `Sync`/`Push`).
+  - board `spawn.go` (`spawnSync`) → **`boardengine`**. Its caller is
+    `Board.Sync()` (`board.go:88`) — engine-internal, so this is a clean
+    engine→engine placement; no export needed.
+  - weft `spawn.go` (`spawnPush`) → **`weftcli`** (NOT engine). Its only caller is
+    the sync `RunE` in `cli.go:230`; weft has **no engine `Sync()`** (only `Commit`/
+    `Push`/`Pull`). It is the CLI's mechanism for backgrounding the push it just ran,
+    so it stays with the CLI and needs no export. (This is the asymmetry vs. board,
+    whose spawn is engine-called.)
   - warp `clone.go` → **split the file**: handler half (`runClone`,
     `runCloneWithReset`) → `warpcli`; domain half (`cloneHub`, `cloneRepo`,
-    `teardownHub`, `deriveHostName`, `deriveBoardURL`) → `warpengine`.
+    `teardownHub`, `deriveHostName`, `deriveBoardURL`) → `warpengine`. Because the
+    cli half (`runCloneWithReset`) calls into the engine half, **export the surface it
+    needs**: `deriveHostName` → `warpengine.DeriveHostName`, the `hubSuffix` const →
+    `warpengine.HubSuffix`, and the `removeAll` test seam → a single exported settable
+    seam `warpengine.RemoveAll` (`var RemoveAll = os.RemoveAll`) used by **both**
+    `runCloneWithReset` (cli) and `teardownHub` (engine). The reset-swap test
+    (`clone_integration_test.go:309–353`) tests `runCloneWithReset`'s reset path, so it
+    goes to `warpcli` and swaps `warpengine.RemoveAll` (cross-package, the ghissues
+    seam pattern). `deriveBoardURL`/`cloneRepo`/`cloneHub` stay engine-internal unless
+    a cli-half caller needs them.
   - ide `menu.go` (interactive `Menu(l, in io.Reader, out io.Writer) error`) →
     **engine** (`ideengine`); it returns `error`, has no cobra, and its `board`
     usage retargets to `boardengine`.
-- Rationale: follow the litmus; the spawn helpers and clone domain helpers are pure
-  domain infra called by engine code. `Menu` takes a reader/writer but is interactive
-  domain (no cobra, returns error), the kind of picker loom would drive.
-- Rejected: keeping the detached-spawn helpers in the `cli` packages.
+- Rationale: follow the litmus AND the actual call direction. A symbol moves to the
+  package its caller can reach; when a cli-half caller needs an engine symbol, export
+  it (never the reverse — engine never imports cli). `Menu` takes a reader/writer but
+  is interactive domain (no cobra, returns error), the kind of picker loom would drive.
+- Rejected: blindly placing both `spawn.go` files in engine (weft's would orphan its
+  cli caller); leaving warp's cli-half calls pointing at unexported engine helpers.
 
 ### update-fold
 
@@ -216,21 +233,25 @@ Per-module file placement:
   - Engine exports already present: `Board`, `New`, `Store`, `Task`, `NewTask`,
     `ApplyPatch`, `ComputeLayers`, `RenderOrder`, `ExtendedTitle`, `Render`,
     `RenderToDisk`, `Pull`, `CommitPush`, `Sync`, `Config`, `Outputs`, `LoadConfig`,
-    `ConfigTemplate`.
+    `ConfigTemplate`, `BriefTask`, `MergeStatusUpdate` (the last two are referenced by
+    `boardcli`'s `cli.go` — already exported, they move to `boardengine` with the rest).
   - Importers to retarget: `internal/configreg` (`board.ConfigTemplate` →
     `boardengine.ConfigTemplate`), `internal/ide` `menu.go` (`board.LoadConfig`,
     `board.New` → `boardengine`), `cmd/lyx/main.go` (`board.Command` →
     `boardcli.Command`).
 
 - **weft** (`internal/weft` → `weftcli` + `weftengine`):
-  - `weftcli`: `cli.go` (rich `PersistentPreRunE`, hidden `--weft-path` bypass) +
+  - `weftcli`: `cli.go` (rich `PersistentPreRunE`, hidden `--weft-path` bypass),
+    **`spawn.go`** (`spawnPush` — CLI-only caller; stays unexported in weftcli) +
     `cli_test.go`.
   - `weftengine`: `weft.go` (package doc + domain constants `commitMessage`/
-    `lockDirName`/`writeLockFile`/`pushLockFile` + `scopedPathspec`, used by
-    `sync.go`), `config.go`, `sync.go` (`Commit`/`Push`/`Pull`/`SyncOptions`),
-    `status.go` (`Status`), `template.go` (`ConfigTemplate`), `spawn.go`
-    (`spawnPush` detached child). Engine tests: `config_test.go`, `sync_test.go`,
-    `status_test.go`, `template_test.go`, `weft_integration_test.go`, `template.yaml`.
+    `lockDirName`/`writeLockFile`/`pushLockFile` — these are used by `sync.go` and
+    stay engine-internal — plus `scopedPathspec`, which is called by `weftcli`'s
+    `PersistentPreRunE` (`cli.go:104`) and must be **exported as
+    `ScopedPathspec`**), `config.go`, `sync.go` (`Commit`/`Push`/`Pull`/
+    `SyncOptions`), `status.go` (`Status`), `template.go` (`ConfigTemplate`). Engine
+    tests: `config_test.go`, `sync_test.go`, `status_test.go`, `template_test.go`,
+    `weft_integration_test.go`, `template.yaml`.
   - Importers: `configreg` (`weft.ConfigTemplate` → `weftengine`), `configcli`
     (`weft.RunCLI` → `weftcli.RunCLI`), `cmd/lyx/main.go` (`weft.Command` →
     `weftcli.Command`).
@@ -238,7 +259,9 @@ Per-module file placement:
 - **warp** (`internal/warp` → `warpcli` + `warpengine`):
   - `warpcli`: `warp.go` (cobra tree + handlers), the **handler half of `clone.go`**
     (`runClone`, `runCloneWithReset`). cli tests: `warp_test.go`, plus the handler
-    portions of `clone_test.go`/`clone_integration_test.go`.
+    portions of `clone_test.go`/`clone_integration_test.go` — including the
+    reset-swap test (`clone_integration_test.go:309–353`), which swaps the exported
+    `warpengine.RemoveAll` seam.
   - `warpengine`: `add.go`, `checkout.go`, `remove.go`, `prune.go`, `cleanup.go`,
     `status.go`, `list.go`, `reconcile.go`, `worktreelifecycle.go` (`Worktree`,
     `New`), `drift.go` (`PairInSync`), `junction.go` (`WireJunctions`), `hook.go`
@@ -246,6 +269,11 @@ Per-module file placement:
     `ancestors.go`, `config.go`, `template.go` (`ConfigTemplate`), the **domain half
     of `clone.go`**, `post-checkout.sh` asset. Engine tests: all the corresponding
     `*_test.go` files.
+  - Exports the cli half needs (because `runCloneWithReset` stays in `warpcli` but
+    calls into the clone domain half): `deriveHostName` → **`DeriveHostName`**, the
+    `hubSuffix` const → **`HubSuffix`**, and the `removeAll` seam → a single exported
+    settable seam **`var RemoveAll = os.RemoveAll`** owned by `warpengine` and used by
+    both `runCloneWithReset` (cli) and `teardownHub` (engine).
   - warp's package doc (`warp.go`) already states the dependency discipline: warp must
     NOT import `initcli`/`configsync`; `initcli` imports warp; `configreg` imports warp.
     After the split those land on `warpengine`.
@@ -453,3 +481,15 @@ Sequencing (one unit per batch, build+test green between each; shared files
 - **Q:** (review r3 NOTE) Any unlisted warp importer? **A:** Yes —
   `internal/configcli/configcli_integration_test.go` (warp engine symbols →
   `warpengine`); added to warp's retarget set.
+- **Q:** (review r4 GAP) weft `spawnPush`/`scopedPathspec` placement — they're called
+  by cli, not an engine `Sync()`. **A:** weft has no engine `Sync()`. `spawn.go`
+  (`spawnPush`) → **weftcli** (CLI-only caller, no export). `scopedPathspec` (in
+  `weft.go`, called by `cli.go:104`) → **weftengine, exported as `ScopedPathspec`**.
+  Corrected the earlier "invoked by engine Sync/Push" rationale. (board's `spawnSync`
+  IS engine-called via `Board.Sync()`, hence the asymmetry.)
+- **Q:** (review r4 GAP) warp clone split leaves cli calling unexported engine
+  helpers. **A:** Export `DeriveHostName`, `HubSuffix`, and a single settable
+  `warpengine.RemoveAll` seam (used by both `runCloneWithReset` cli + `teardownHub`
+  engine); reset-swap test → warpcli, swaps `warpengine.RemoveAll`.
+- **Q:** (review r4 NOTE) board exports omitted? **A:** Added `BriefTask`,
+  `MergeStatusUpdate` (referenced by `boardcli/cli.go`) to the boardengine export list.
