@@ -117,10 +117,10 @@ sandbox.cmd suite -prompt <text>   # override the instruction string (default: b
 
 ### Exit-code caveat
 
-The suite subcommand propagates the claude session's exit code as an error, but `go run`
-cannot forward non-zero exit codes to the calling shell. For reliable exit-code
-observation, build the tool first (`go build -o sandbox.exe ./tools/sandbox`) and run
-the compiled binary.
+The sandbox tool reports success (0) or failure (1) only; claude's precise exit code is
+not preserved because `runSuite` returns an error on any non-zero code and `run()`
+propagates that as exit 1. For reliable exit-code observation, build the tool first
+(`go build -o sandbox.exe ./tools/sandbox`) and run the compiled binary.
 
 ### Future: psmux launch
 

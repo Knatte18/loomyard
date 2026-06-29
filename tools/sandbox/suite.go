@@ -54,13 +54,9 @@ var launchAgent = func(hostRepoDir, claudePath, instruction string) int {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		var exitErr *exec.ExitError
-		if ok := func() bool {
-			// Use a type assertion rather than errors.As because exec.ExitError
-			// is not wrapped by cmd.Run -- it is returned directly.
-			exitErr, _ = err.(*exec.ExitError)
-			return exitErr != nil
-		}(); ok {
+		// exec.ExitError is returned directly by cmd.Run, never wrapped, so a
+		// plain two-value type assertion is the idiomatic way to extract the code.
+		if exitErr, ok := err.(*exec.ExitError); ok {
 			return exitErr.ExitCode()
 		}
 		// Startup failure (binary not found at runtime, permission error, etc.)
