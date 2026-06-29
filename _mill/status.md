@@ -48,7 +48,9 @@ batches:
     start_sha: 845475a305ce584f6ffed1afadb709fcbed3cd2a
     commit_sha: 9dc8c8cbbe2745433c14fe04d88e0f364cdec40a
   - name: ide split
-    state: pending
+    state: running
+    implementer_session: 902200cf-c455-44e2-80a4-d8e578f0c3d7
+    start_sha: cbd63e57d5d1a7e47a87f6bd601342234f5aebb7
   - name: ghissues split
     state: pending
   - name: muxpoc rename
