@@ -25,7 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/ghissuescli"
 	"github.com/Knatte18/loomyard/internal/idecli"
 	"github.com/Knatte18/loomyard/internal/initcli"
-	"github.com/Knatte18/loomyard/internal/muxpoc"
+	"github.com/Knatte18/loomyard/internal/muxpoccli"
 	"github.com/Knatte18/loomyard/internal/update"
 	"github.com/Knatte18/loomyard/internal/warpcli"
 	"github.com/Knatte18/loomyard/internal/weftcli"
@@ -92,7 +92,7 @@ Available modules: init, board, config, update, ide, muxpoc, weft, warp, ghissue
 		configcli.Command(),
 		update.Command(),
 		idecli.Command(),
-		muxpoc.Command(),
+		muxpoccli.Command(),
 		weftcli.Command(),
 		warpcli.Command(),
 		ghissuescli.Command(),
