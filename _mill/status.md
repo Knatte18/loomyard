@@ -66,7 +66,9 @@ batches:
     start_sha: afef4ff6dc4aa100cf8aceb42200e041be3a5014
     commit_sha: 172c955af13e17f67e7e25371080cbe9553e5287
   - name: update fold to config reconcile
-    state: pending
+    state: running
+    implementer_session: dd63225c-0209-4fa4-b2c3-06cde9287525
+    start_sha: 0ef0fa5e23a137c9bfe5e2eac6eba2caa61010bb
   - name: constraints docs guards and comment sweep
     state: pending
 ```
