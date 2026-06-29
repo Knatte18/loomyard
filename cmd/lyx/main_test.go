@@ -199,12 +199,12 @@ func TestRunDispatchesToConfig(t *testing.T) {
 	// only assertion here because the precise error text is an implementation detail.
 }
 
-func TestRunDispatchesToUpdate(t *testing.T) {
-	// Create temp cwd with git repo and _lyx/config to allow update to work.
-	// update.RunCLI should recognize the command and produce JSON output.
+func TestRunDispatchesToConfigReconcile(t *testing.T) {
+	// Create temp cwd with git repo and _lyx/config to allow config reconcile to work.
+	// configcli.RunCLI should recognize the subcommand and produce JSON output.
 	cwd := t.TempDir()
 
-	// Initialize git repo
+	// Initialize git repo so paths.Resolve succeeds.
 	_, _, exitCode, err := gitexec.RunGit([]string{"init"}, cwd)
 	if err != nil || exitCode != 0 {
 		t.Fatalf("git init failed: %v (exit code %d)", err, exitCode)
@@ -221,18 +221,18 @@ func TestRunDispatchesToUpdate(t *testing.T) {
 	t.Chdir(cwd)
 
 	var out bytes.Buffer
-	code := run([]string{"update"}, &out)
+	code := run([]string{"config", "reconcile"}, &out)
 	if code != 0 {
-		t.Fatalf("expected exit 0 for update, got %d; output: %s", code, out.String())
+		t.Fatalf("expected exit 0 for config reconcile, got %d; output: %s", code, out.String())
 	}
 
-	// Verify JSON output with ok=true
+	// Verify JSON output with ok=true.
 	var result map[string]any
 	if err := json.Unmarshal(out.Bytes(), &result); err != nil {
-		t.Fatalf("failed to parse update output: %v; output: %s", err, out.String())
+		t.Fatalf("failed to parse config reconcile output: %v; output: %s", err, out.String())
 	}
 	if ok, _ := result["ok"].(bool); !ok {
-		t.Fatalf("expected ok=true from update command, got %v", result)
+		t.Fatalf("expected ok=true from config reconcile command, got %v", result)
 	}
 }
 

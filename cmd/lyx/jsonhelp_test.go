@@ -91,7 +91,7 @@ func TestJSONHelp_RootSchema(t *testing.T) {
 	// by renderCmdJSON so we must NOT assert them here.
 	cmds := commandNames(h.Commands)
 	requiredModules := []string{
-		"init", "board", "config", "update", "ide", "muxpoc", "weft", "warp", "ghissues",
+		"init", "board", "config", "ide", "muxpoc", "weft", "warp", "ghissues",
 	}
 	for _, mod := range requiredModules {
 		if !cmds[mod] {
