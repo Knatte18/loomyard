@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: sandbox-suite
 branch: sandbox-suite
 plan: _mill/plan
@@ -20,4 +20,13 @@ discussed  '2026-06-28T19:50:54Z'
 planning  '2026-06-28T19:56:27Z'
 plan-fix-r1  '2026-06-28T20:01:35Z'
 planned  '2026-06-28T20:01:51Z'
+implementing  '2026-06-29T05:44:53Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: sandbox-suite-launcher
+    state: pending
 ```
