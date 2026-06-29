@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
+	"github.com/Knatte18/loomyard/internal/configsync"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/paths"
 	"github.com/Knatte18/loomyard/internal/weftcli"
@@ -166,13 +167,60 @@ func buildConfigLong() string {
 		"Known modules: " + strings.Join(configreg.Names(), ", ") + "."
 }
 
+// runReconcile is the package-private handler for the lyx config reconcile subcommand.
+//
+// It reconciles all module config files against their templates via configsync.ReconcileAll
+// and emits a JSON envelope. When apply is false (dry-run) no files are written; when
+// apply is true, changes are committed to disk atomically. Returns exit code 0 on success,
+// 1 on any error.
+func runReconcile(out io.Writer, apply bool) int {
+	// Resolve the current working directory and layout.
+	cwd, err := paths.Getwd()
+	if err != nil {
+		return output.Err(out, fmt.Sprintf("getwd: %v", err))
+	}
+
+	l, err := paths.Resolve(cwd)
+	if err != nil {
+		return output.Err(out, fmt.Sprintf("resolve layout: %v", err))
+	}
+
+	// Compute baseDir as the host _lyx parent: the worktree root joined with the relative path.
+	baseDir := filepath.Join(l.WorktreeRoot, l.RelPath)
+
+	// Reconcile all modules; apply controls whether changes are written to disk.
+	results, err := configsync.ReconcileAll(baseDir, apply)
+	if err != nil {
+		return output.Err(out, fmt.Sprintf("reconcile: %v", err))
+	}
+
+	// Build module result objects for JSON output.
+	modules := make([]map[string]any, len(results))
+	for i, result := range results {
+		modules[i] = map[string]any{
+			"module":  result.Module,
+			"added":   result.Added,
+			"removed": result.Removed,
+			"applied": result.Applied,
+		}
+	}
+
+	// Emit the JSON envelope with the aggregate applied flag and per-module details.
+	return output.Ok(out, map[string]any{
+		"applied": apply,
+		"modules": modules,
+	})
+}
+
 // Command returns the cobra command for lyx config.
 //
 // The returned command uses a configCmd variable (closure pattern) so that the
 // --print flag value is readable in the RunE handler. The --print flag makes
 // config read-only: it prints on-disk YAML without launching the editor.
 // Args is cobra.MaximumNArgs(1) so extra positionals are rejected. ValidArgs is
-// set to the known config module names for shell completion only.
+// set to the known config module names for shell completion only. A reconcile
+// subcommand is registered so that "lyx config reconcile" is routed there while
+// "lyx config <module>" continues to invoke the edit/menu RunE.
 func Command() *cobra.Command {
 	configCmd := &cobra.Command{
 		Use:       "config [module]",
@@ -188,6 +236,24 @@ func Command() *cobra.Command {
 		printOnly, _ := configCmd.Flags().GetBool("print")
 		return runConfig(out, args, printOnly)
 	})
+
+	// Build the reconcile subcommand and register it so cobra routes
+	// "lyx config reconcile" here while "lyx config <module>" continues
+	// to invoke the edit/menu RunE above.
+	reconcileCmd := &cobra.Command{
+		Use:   "reconcile",
+		Short: "reconcile module configs against templates",
+		Long: `reconcile compares all module configuration files in _lyx/config/ against
+their live templates, reporting added keys (new in template) and removed keys
+(deleted from template). By default it is a dry-run: no files are written.
+Pass --apply to write the reconciled files to disk atomically.`,
+	}
+	apply := reconcileCmd.Flags().Bool("apply", false, "apply changes to disk (default: dry-run)")
+	reconcileCmd.RunE = clihelp.WrapRun(func(out io.Writer, args []string) int {
+		return runReconcile(out, *apply)
+	})
+	configCmd.AddCommand(reconcileCmd)
+
 	return configCmd
 }
 
