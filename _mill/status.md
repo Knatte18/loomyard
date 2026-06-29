@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-muxpoc rename
+phase: approved-update fold to config reconcile
 slug: cobra-cli-engine-sweep
 branch: cobra-cli-engine-sweep
 plan: _mill/plan
@@ -29,6 +29,7 @@ approved-warp split  '2026-06-29T16:47:32Z'
 approved-ide split  '2026-06-29T16:56:10Z'
 approved-ghissues split  '2026-06-29T17:06:14Z'
 approved-muxpoc rename  '2026-06-29T17:14:07Z'
+approved-update fold to config reconcile  '2026-06-29T17:26:14Z'
 ```
 
 ## Batches
@@ -66,9 +67,10 @@ batches:
     start_sha: afef4ff6dc4aa100cf8aceb42200e041be3a5014
     commit_sha: 172c955af13e17f67e7e25371080cbe9553e5287
   - name: update fold to config reconcile
-    state: running
+    state: approved
     implementer_session: dd63225c-0209-4fa4-b2c3-06cde9287525
     start_sha: 0ef0fa5e23a137c9bfe5e2eac6eba2caa61010bb
+    commit_sha: e89f1f2bc5a2fc98e45fb0e0fe4431220c9ac051
   - name: constraints docs guards and comment sweep
     state: pending
 ```
