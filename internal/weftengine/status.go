@@ -1,6 +1,6 @@
 // status.go — weft content-sync status reporting.
 //
-// Junction topology reporting has been moved to internal/warp (warp is the topology
+// Junction topology reporting has been moved to internal/warpengine (warpengine is the topology
 // owner). This file reports only content-sync state: branch, dirty flag, and upstream
 // ahead/behind counts.
 
@@ -22,7 +22,7 @@ import (
 //   - ahead: int (null if no upstream)
 //   - behind: int (null if no upstream)
 //
-// Junction integrity is no longer reported here; it is owned by internal/warp.
+// Junction integrity is no longer reported here; it is owned by internal/warpengine.
 // Status completes and returns even when there is no upstream (ahead/behind are null).
 func Status(weftWorktree string, pathspec []string) (map[string]any, error) {
 	result := make(map[string]any)

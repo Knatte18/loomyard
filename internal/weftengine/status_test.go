@@ -3,7 +3,7 @@
 // status_test.go — tests for weft content-sync status reporting.
 //
 // Junction integrity assertions have been removed from this file; they are now
-// owned by internal/warp/status_test.go which exercises checkJunctionHealth directly.
+// owned by internal/warpengine/status_test.go which exercises checkJunctionHealth directly.
 
 package weftengine
 
