@@ -77,8 +77,22 @@ load-bearing and partly enforced at `go test` time.
   agent or operator must learn from the binary alone) SHOULD also carry a `Long` with
   concrete usage examples.
 - **Help is co-located, never a central table.** Help text lives on each command
-  (`Short`/`Long`), so it cannot drift from behaviour. Do not add a hand-maintained
+  (`Short`/`Long`), which keeps it next to the behaviour it describes. But co-location
+  reduces *distance*, not *drift*: the prose can still fall out of sync with the code,
+  and has — the board `Long` once described cwd-based config resolution that no longer
+  matched the implementation while every test stayed green. Do not add a hand-maintained
   command listing anywhere else.
+- **Help prose is review-checked against the current implementation.** Presence of
+  `Short` is machine-enforced (`drift_test.go`); *accuracy* of `Short`/`Long` is not and
+  cannot be — prose-vs-behaviour is a matter of judgement, so it is a **review
+  obligation**. When a change alters observable behaviour (path/config resolution,
+  defaults, flags, output shape, side effects), the reviewer MUST read every `Short` and
+  `Long` that describes that behaviour and confirm the text matches the code **as changed
+  in this diff**, not as it used to read. A help string that still describes the old
+  behaviour is a review-blocking defect, exactly like a failing test. Where a help fact is
+  mechanical (module lists, default values, resolved paths), prefer **generating** it from
+  the source — e.g. configcli's `Known modules:` line is built from `configreg.Names()`,
+  so it cannot drift — rather than hand-writing a claim that can.
 - **Help tree is pinned by test.** `cmd/lyx/helptree_test.go` asserts the root names
   every module and each module names every subcommand. When you add a module or a
   subcommand, update the pinned sets in that test (root `requiredModules`, and the
