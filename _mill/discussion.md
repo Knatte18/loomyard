@@ -52,7 +52,24 @@ surface), and its precursor — the `config → configengine` PR — is already 
   convention **and** codify the cli/engine split rules as first-class repo rules
   (litmus, boundary, dependency direction, skip clause) — see Decisions.
 - Update docs (`docs/overview.md` module table; affected `docs/modules/*`,
-  `docs/shared-libs/*`).
+  `docs/shared-libs/*`). Also:
+  - `docs/benchmarks/*` — fix **runnable command paths and clickable links** that
+    name renamed packages: `board-performance.md` (the link
+    `[internal/board/boardtest](../../internal/board/boardtest)` and the
+    `go test ... ./internal/board/boardtest` command → `internal/boardengine/boardtest`),
+    `running-tests.md` (`go test ./internal/weft`, `go test ./internal/board/boardtest`
+    examples → new package paths). The **historical timing tables / narrative in
+    `test-suite-timing.md`** are point-in-time measurement records; leave the
+    historical package-name cells as-is (rewriting past measurements would falsify the
+    record) — fix only any runnable command or clickable link there.
+  - `docs/sandbox-hub.md` — the clickable link
+    `[internal/warp/clone.go](../internal/warp/clone.go)` will 404 post-rename; retarget
+    it to `internal/warpengine/clone.go` (the `deriveHostName`/`cloneHub` domain half
+    lands in `warpengine`), and fix the `deriveHostName` attribution path.
+  - `docs/roadmap.md` — correct the stale path refs (`internal/warp`,
+    `internal/ghissues`) for accuracy. This is a **path correction**, not a roadmap
+    content change or milestone append, so it does not violate the "roadmap =
+    planned milestones only" rule.
 - Update stale **comment-only** references to the renamed packages for accuracy
   (non-functional but they drift on rename): `internal/lyxtest/doc.go` (mentions
   `internal/warp`, `internal/weft`), `tools/sandbox/main.go` (mentions
@@ -190,10 +207,12 @@ Per-module file placement:
     `template.go` (`ConfigTemplate`), `spawn.go`. Engine tests: `board_test.go`,
     `store_test.go`, `task_test.go`, `layer_test.go`, `render_test.go`,
     `config_test.go`, `template_test.go`, `template.yaml` asset.
-  - `internal/board/boardtest/` is a test-support subpackage — **inspect its package
-    name, what it provides, and who imports it**; relocate it (likely under
-    `boardengine`) and fix importers. Its new import path must be updated wherever
-    used.
+  - `internal/board/boardtest/` is a test-support subpackage — its new home is
+    **pinned to `internal/boardengine/boardtest`** (it supports the board domain
+    tests). Move it there, update its `doc.go` comment, fix every importer's path, and
+    update the doc command/link references (see docs sweep:
+    `internal/board/boardtest` → `internal/boardengine/boardtest`). Inspect its
+    importers during the board batch to confirm the retarget set.
   - Engine exports already present: `Board`, `New`, `Store`, `Task`, `NewTask`,
     `ApplyPatch`, `ComputeLayers`, `RenderOrder`, `ExtendedTitle`, `Render`,
     `RenderToDisk`, `Pull`, `CommitPush`, `Sync`, `Config`, `Outputs`, `LoadConfig`,
@@ -232,7 +251,11 @@ Per-module file placement:
     After the split those land on `warpengine`.
   - Importers: `configreg` (`warp.ConfigTemplate` → `warpengine`), `initcli`
     (`warp.WireJunctions` → `warpengine`), `cmd/lyx/main.go` (`warp.Command` →
-    `warpcli.Command`).
+    `warpcli.Command`), and **`internal/configcli/configcli_integration_test.go`**
+    (uses `warp.New`, `warp.Config`, `warp.AddOptions`, `w.Add`, `warp.WireJunctions`
+    → all `warpengine`; its `weft.RunCLI` usage retargets to `weftcli.RunCLI` in the
+    weft batch). The importer list is exhaustive for production + test consumers; the
+    build-green gate is the backstop.
 
 - **ide** (`internal/ide` → `idecli` + `ideengine`):
   - `idecli`: `cli.go` + `cli_test.go`.
@@ -419,3 +442,14 @@ Sequencing (one unit per batch, build+test green between each; shared files
 - **Q:** (review r2 NOTE) Comment sweep complete? **A:** Added
   `internal/paths/paths.go:344` and `cmd/testtiming/main.go:36,180` (illustrative) to
   the comment-accuracy sweep.
+- **Q:** (review r3 GAP) Docs scope beyond overview/modules/shared-libs? **A:** Add
+  `docs/benchmarks/*` (runnable command paths + clickable links only; leave historical
+  timing tables as point-in-time records), `docs/sandbox-hub.md` (fix the
+  `internal/warp/clone.go` 404 link → `internal/warpengine/clone.go`), and
+  `docs/roadmap.md` (correct stale path refs — a path correction, not a milestone
+  append, so allowed).
+- **Q:** (review r3 NOTE) boardtest's new home? **A:** Pinned to
+  `internal/boardengine/boardtest`.
+- **Q:** (review r3 NOTE) Any unlisted warp importer? **A:** Yes —
+  `internal/configcli/configcli_integration_test.go` (warp engine symbols →
+  `warpengine`); added to warp's retarget set.
