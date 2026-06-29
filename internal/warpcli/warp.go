@@ -1,4 +1,4 @@
-// Package warp owns the host↔weft topology for lyx-managed git repositories.
+// Package warpcli owns the host↔weft topology for lyx-managed git repositories.
 //
 // warp is the structural counterpart to the content-focused weft module — named
 // for the weaving warp threads, the load-bearing skeleton the weft passes through.
@@ -46,7 +46,7 @@
 // warp.go is the cobra Command() entry point and the RunCLI seam. Command() builds
 // a parent "warp" command with one subcommand per verb; per-verb flags (--force,
 // --apply) are registered as local flags on the subcommands that own them.
-package warp
+package warpcli
 
 import (
 	"io"
@@ -56,6 +56,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/paths"
+	"github.com/Knatte18/loomyard/internal/warpengine"
 	"github.com/spf13/cobra"
 )
 
@@ -227,12 +228,12 @@ func runAdd(out io.Writer, args []string) int {
 		return output.Err(out, err.Error())
 	}
 
-	cfg, err := LoadConfig(cwd, "warp")
+	cfg, err := warpengine.LoadConfig(cwd, "warp")
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
-	w := New(cfg)
+	w := warpengine.New(cfg)
 
 	if len(args) < 1 {
 		return output.Err(out, "usage: lyx warp add <slug>")
@@ -264,12 +265,12 @@ func runList(out io.Writer, _ []string) int {
 		return output.Err(out, err.Error())
 	}
 
-	cfg, err := LoadConfig(cwd, "warp")
+	cfg, err := warpengine.LoadConfig(cwd, "warp")
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
-	w := New(cfg)
+	w := warpengine.New(cfg)
 
 	entries, err := w.List(cwd)
 	if err != nil {
@@ -325,12 +326,12 @@ func runCheckout(out io.Writer, args []string) int {
 		}
 	}
 
-	cfg, err := LoadConfig(cwd, "warp")
+	cfg, err := warpengine.LoadConfig(cwd, "warp")
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
-	w := New(cfg)
+	w := warpengine.New(cfg)
 
 	r, err := w.Checkout(l, branch)
 	if err != nil {
@@ -358,12 +359,12 @@ func runPairs(out io.Writer, _ []string) int {
 		return output.Err(out, err.Error())
 	}
 
-	cfg, err := LoadConfig(cwd, "warp")
+	cfg, err := warpengine.LoadConfig(cwd, "warp")
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
-	w := New(cfg)
+	w := warpengine.New(cfg)
 
 	r, err := w.Status(l)
 	if err != nil {
@@ -390,12 +391,12 @@ func runReconcile(out io.Writer, _ []string) int {
 		return output.Err(out, err.Error())
 	}
 
-	cfg, err := LoadConfig(cwd, "warp")
+	cfg, err := warpengine.LoadConfig(cwd, "warp")
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
-	w := New(cfg)
+	w := warpengine.New(cfg)
 
 	r, err := w.Reconcile(l)
 	if err != nil {
@@ -419,12 +420,12 @@ func runPruneWithFlag(out io.Writer, apply bool) int {
 		return output.Err(out, err.Error())
 	}
 
-	cfg, err := LoadConfig(cwd, "warp")
+	cfg, err := warpengine.LoadConfig(cwd, "warp")
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
-	w := New(cfg)
+	w := warpengine.New(cfg)
 
 	r, err := w.Prune(l, apply)
 	if err != nil {
@@ -448,12 +449,12 @@ func runCleanupWithFlags(out io.Writer, apply, force bool) int {
 		return output.Err(out, err.Error())
 	}
 
-	cfg, err := LoadConfig(cwd, "warp")
+	cfg, err := warpengine.LoadConfig(cwd, "warp")
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
-	w := New(cfg)
+	w := warpengine.New(cfg)
 
 	r, err := w.Cleanup(l, apply, force)
 	if err != nil {
@@ -478,12 +479,12 @@ func runRemoveWithFlag(out io.Writer, args []string, force bool) int {
 		return output.Err(out, err.Error())
 	}
 
-	cfg, err := LoadConfig(cwd, "warp")
+	cfg, err := warpengine.LoadConfig(cwd, "warp")
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
-	w := New(cfg)
+	w := warpengine.New(cfg)
 
 	// args[0] is the slug; cobra has already consumed "remove" from the argument list.
 	if len(args) < 1 {
@@ -500,4 +501,10 @@ func runRemoveWithFlag(out io.Writer, args []string, force bool) int {
 		"path":          r.Path,
 		"links_removed": r.LinksRemoved,
 	})
+}
+
+// addOptionsFromEnv populates AddOptions from environment variables at the CLI edge.
+// Tests pass AddOptions directly to avoid relying on environment state.
+func addOptionsFromEnv() warpengine.AddOptions {
+	return warpengine.AddOptions{}
 }

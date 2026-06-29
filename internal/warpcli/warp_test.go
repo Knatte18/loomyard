@@ -4,7 +4,7 @@
 // These tests keep t.Chdir and stay serial (no t.Parallel) because RunCLI
 // reads os.Getwd() at the call edge.
 
-package warp_test
+package warpcli_test
 
 import (
 	"bytes"
@@ -16,7 +16,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 	"github.com/Knatte18/loomyard/internal/paths"
-	"github.com/Knatte18/loomyard/internal/warp"
+	"github.com/Knatte18/loomyard/internal/warpcli"
 )
 
 // setupCLIRepo creates a hub via lyxtest.CopyHostHub, changes into it, and
@@ -68,7 +68,7 @@ func TestRunCLI_CloneResetRemovesHub(t *testing.T) {
 		}
 		var buf bytes.Buffer
 		// Clone will fail (fake URL) but --reset must remove the hub first.
-		_ = warp.RunCLI(&buf, []string{"clone", "--reset",
+		_ = warpcli.RunCLI(&buf, []string{"clone", "--reset",
 			"https://x.invalid/repo.git", "https://x.invalid/repo-weft.git"})
 		// Regardless of clone outcome, the original hub must be gone.
 		if _, err := os.Stat(hubPath); !os.IsNotExist(err) {
@@ -82,7 +82,7 @@ func TestRunCLI_CloneResetRemovesHub(t *testing.T) {
 			t.Fatalf("create hub dir: %v", err)
 		}
 		var buf bytes.Buffer
-		code := warp.RunCLI(&buf, []string{"clone",
+		code := warpcli.RunCLI(&buf, []string{"clone",
 			"https://x.invalid/repo.git", "https://x.invalid/repo-weft.git"})
 		if code != 1 {
 			t.Errorf("RunCLI(clone) without --reset when hub exists = %d; want 1", code)
@@ -98,7 +98,7 @@ func TestRunCLI_CloneResetRemovesHub(t *testing.T) {
 // and hub layout terms from the Long description.
 func TestRunCLI_CloneHelp(t *testing.T) {
 	var buf bytes.Buffer
-	code := warp.RunCLI(&buf, []string{"clone", "--help"})
+	code := warpcli.RunCLI(&buf, []string{"clone", "--help"})
 	if code != 0 {
 		t.Fatalf("RunCLI(clone --help) = %d; want 0", code)
 	}
@@ -119,7 +119,7 @@ func TestRunCLI_PairsReplacesStatus(t *testing.T) {
 
 	t.Run("pairs_runs_pairs_handler", func(t *testing.T) {
 		var buf bytes.Buffer
-		code := warp.RunCLI(&buf, []string{"pairs"})
+		code := warpcli.RunCLI(&buf, []string{"pairs"})
 		if code != 0 {
 			t.Errorf("RunCLI(pairs) = %d; want 0\noutput: %s", code, buf.String())
 		}
@@ -134,7 +134,7 @@ func TestRunCLI_PairsReplacesStatus(t *testing.T) {
 
 	t.Run("status_is_unknown_subcommand", func(t *testing.T) {
 		var buf bytes.Buffer
-		code := warp.RunCLI(&buf, []string{"status"})
+		code := warpcli.RunCLI(&buf, []string{"status"})
 		if code != 1 {
 			t.Errorf("RunCLI(status) = %d; want 1", code)
 		}
@@ -153,7 +153,7 @@ func TestRunCLI_PairsReplacesStatus(t *testing.T) {
 // fork-point wording explaining that the new pair branches from the caller's HEAD.
 func TestRunCLI_AddHelpForksFromHead(t *testing.T) {
 	var buf bytes.Buffer
-	code := warp.RunCLI(&buf, []string{"add", "--help"})
+	code := warpcli.RunCLI(&buf, []string{"add", "--help"})
 	if code != 0 {
 		t.Fatalf("RunCLI(add --help) = %d; want 0", code)
 	}
@@ -174,7 +174,7 @@ func TestRunDispatchesToWarp(t *testing.T) {
 
 	t.Run("List", func(t *testing.T) {
 		var buf bytes.Buffer
-		if got := warp.RunCLI(&buf, []string{"list"}); got != 0 {
+		if got := warpcli.RunCLI(&buf, []string{"list"}); got != 0 {
 			t.Errorf("RunCLI(list) = %d; want 0", got)
 		}
 
@@ -193,7 +193,7 @@ func TestRunDispatchesToWarp(t *testing.T) {
 
 	t.Run("UnknownSubcommand", func(t *testing.T) {
 		var buf bytes.Buffer
-		if got := warp.RunCLI(&buf, []string{"bogus"}); got != 1 {
+		if got := warpcli.RunCLI(&buf, []string{"bogus"}); got != 1 {
 			t.Errorf("RunCLI(bogus) = %d; want 1", got)
 		}
 
@@ -219,7 +219,7 @@ func TestRunDispatchesToWarp(t *testing.T) {
 		lyxtest.MustRun(t, hub, "git", "worktree", "add", "-b", branch, target)
 
 		var buf bytes.Buffer
-		if got := warp.RunCLI(&buf, []string{"remove", "--force", slug}); got != 0 {
+		if got := warpcli.RunCLI(&buf, []string{"remove", "--force", slug}); got != 0 {
 			t.Errorf("RunCLI(remove --force) = %d; want 0\noutput: %s", got, buf.String())
 		}
 
