@@ -4,7 +4,7 @@
 // Tests verify in-sync, branch-divergence, and broken-junction cases over real
 // host+weft worktrees.
 
-package warp
+package warpengine
 
 import (
 	"os"

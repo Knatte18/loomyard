@@ -4,7 +4,7 @@
 // with branch present is recreated, broken junction is re-pointed, raw (non-lyx) host
 // worktree is adopted dormant, and an unmanaged-branch worktree is reported and untouched.
 
-package warp
+package warpengine
 
 import (
 	"os"

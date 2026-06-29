@@ -4,7 +4,7 @@
 // the case where the worktree dir is gone but the portal/launcher are still cleaned
 // up before the not-found return, and both host and weft dirty gates.
 
-package warp
+package warpengine
 
 import (
 	"os"

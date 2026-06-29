@@ -6,7 +6,7 @@
 // a weft Prime repo; tests build this via lyxtest.CopyPairedLocal and pass
 // AddOptions{SkipPush:true}.
 
-package warp
+package warpengine
 
 import (
 	"os"

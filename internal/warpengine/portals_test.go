@@ -3,7 +3,7 @@
 // portals_test.go covers portal junction create/remove, including mirrored link
 // placement and idempotent removal that prunes empty ancestors.
 
-package warp
+package warpengine
 
 import (
 	"os"

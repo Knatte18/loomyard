@@ -3,7 +3,7 @@
 // prune_test.go covers the Prune verb: an orphaned/stale pair is reported in dry-run
 // and removed under --apply; a live pair is never touched.
 
-package warp
+package warpengine
 
 import (
 	"os"

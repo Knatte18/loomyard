@@ -2,14 +2,14 @@
 
 // list_test.go covers the git worktree list porcelain parser.
 
-package warp_test
+package warpengine_test
 
 import (
 	"path/filepath"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lyxtest"
-	"github.com/Knatte18/loomyard/internal/warp"
+	"github.com/Knatte18/loomyard/internal/warpengine"
 )
 
 // TestList covers the porcelain parser: a fresh repo yields exactly the main
@@ -24,7 +24,7 @@ func TestList(t *testing.T) {
 		t.Parallel()
 
 		f := lyxtest.CopyHostHub(t)
-		w := warp.New(warp.Config{})
+		w := warpengine.New(warpengine.Config{})
 
 		// Pre-add: single-worktree assertions (ported from the former SingleWorktree subtest).
 		entries, err := w.List(f.Hub)

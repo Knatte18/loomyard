@@ -3,7 +3,7 @@
 // launchers_test.go covers launcher content generation, per-subpath menus, and
 // teardown (Windows-gated; skipped where symlink/junction creation is unavailable).
 
-package warp
+package warpengine
 
 import (
 	"os"

@@ -4,7 +4,7 @@
 // drifted detection, junction health reflected, and host-pollution flagging for both
 // _lyx (remediable) and _codeguide (report-only).
 
-package warp
+package warpengine
 
 import (
 	"os"

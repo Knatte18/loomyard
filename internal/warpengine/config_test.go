@@ -1,9 +1,9 @@
-// config_test.go — unit tests for warp.LoadConfig.
+// config_test.go — unit tests for warpengine.LoadConfig.
 //
 // Covers: happy-path with template keys present, branch_prefix parsing,
 // environment variable resolution, and not-initialized error path.
 
-package warp_test
+package warpengine_test
 
 import (
 	"os"
@@ -12,7 +12,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/paths"
-	"github.com/Knatte18/loomyard/internal/warp"
+	"github.com/Knatte18/loomyard/internal/warpengine"
 )
 
 // TestLoadConfig_HappyPath tests that LoadConfig loads a valid config
@@ -38,7 +38,7 @@ func TestLoadConfig_HappyPath(t *testing.T) {
 		t.Fatalf("failed to write config: %v", err)
 	}
 
-	cfg, err := warp.LoadConfig(tmpDir, "warp")
+	cfg, err := warpengine.LoadConfig(tmpDir, "warp")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -70,7 +70,7 @@ func TestLoadConfig_EmptyBranchPrefix(t *testing.T) {
 		t.Fatalf("failed to write config: %v", err)
 	}
 
-	cfg, err := warp.LoadConfig(tmpDir, "warp")
+	cfg, err := warpengine.LoadConfig(tmpDir, "warp")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -104,7 +104,7 @@ func TestLoadConfig_EnvResolution(t *testing.T) {
 		t.Fatalf("failed to write config: %v", err)
 	}
 
-	cfg, err := warp.LoadConfig(tmpDir, "warp")
+	cfg, err := warpengine.LoadConfig(tmpDir, "warp")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -120,7 +120,7 @@ func TestLoadConfig_NotInitialized(t *testing.T) {
 	tmpDir := t.TempDir()
 	// Do NOT create _lyx/
 
-	cfg, err := warp.LoadConfig(tmpDir, "warp")
+	cfg, err := warpengine.LoadConfig(tmpDir, "warp")
 	if err == nil {
 		t.Fatalf("expected error for not initialized, got nil; config: %+v", cfg)
 	}

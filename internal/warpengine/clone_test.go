@@ -1,6 +1,6 @@
 // clone_test.go — unit tests for URL-derivation helpers.
 
-package warp
+package warpengine
 
 import (
 	"testing"
@@ -46,9 +46,9 @@ func TestDeriveHostName(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := deriveHostName(tt.url)
+			got := DeriveHostName(tt.url)
 			if got != tt.want {
-				t.Errorf("deriveHostName(%q) = %q; want %q", tt.url, got, tt.want)
+				t.Errorf("DeriveHostName(%q) = %q; want %q", tt.url, got, tt.want)
 			}
 		})
 	}

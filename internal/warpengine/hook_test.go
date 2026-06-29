@@ -4,7 +4,7 @@
 // chain of an existing user hook, correct weft-sibling resolution for prime and
 // child worktrees, and an end-to-end checkout that fires the drift warning.
 
-package warp
+package warpengine
 
 import (
 	"os"

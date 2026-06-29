@@ -4,7 +4,7 @@
 // precondition refusal, host rollback on weft-side failure, and checkout onto an
 // unmanaged branch that causes the weft branch to be forked from the parent's weft.
 
-package warp
+package warpengine
 
 import (
 	"os"

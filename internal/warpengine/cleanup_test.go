@@ -5,7 +5,7 @@
 // (reported protected); --apply --force deletes the task branch; --force alone
 // reports only; the board repo/branch is never a deletion candidate.
 
-package warp
+package warpengine
 
 import (
 	"path/filepath"

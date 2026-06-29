@@ -3,7 +3,7 @@
 // weftwiring_test.go covers paired weft worktree spawn, prechecks, and rollback behavior.
 // These are white-box tests that exercise the weft helpers in weftwiring.go directly.
 
-package warp
+package warpengine
 
 import (
 	"os"
@@ -379,4 +379,3 @@ func TestWeftForkPointSubtaskIsolation(t *testing.T) {
 		t.Errorf("subtask isolation: fork point equals main's tip; should be isolated to branch Y")
 	}
 }
-
