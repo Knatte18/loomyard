@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: cobra-cli-engine-sweep
 branch: cobra-cli-engine-sweep
 plan: _mill/plan
@@ -36,6 +36,7 @@ holistic-fixing  '2026-06-29T17:44:16Z'
 nits-fixed-holistic  '2026-06-29T17:56:39Z'
 holistic-approved  '2026-06-29T17:56:52Z'
 done  '2026-06-29T17:57:27Z'
+pr-pending  '2026-06-29T17:58:46Z'
 ```
 
 ## Batches
