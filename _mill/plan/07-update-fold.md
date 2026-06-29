@@ -95,6 +95,8 @@ subcommand and `lyx config <module>` to the `RunE` arg, so both coexist.
 - **Edits:**
   - `cmd/lyx/main.go`
   - `cmd/lyx/helptree_test.go`
+  - `cmd/lyx/jsonhelp_test.go`
+  - `cmd/lyx/main_test.go`
   - `cmd/lyx/unknown_subcommand_test.go`
   - `internal/configreg/configreg.go`
 - **Creates:** none
