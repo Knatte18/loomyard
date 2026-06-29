@@ -72,5 +72,7 @@ batches:
     start_sha: 0ef0fa5e23a137c9bfe5e2eac6eba2caa61010bb
     commit_sha: e89f1f2bc5a2fc98e45fb0e0fe4431220c9ac051
   - name: constraints docs guards and comment sweep
-    state: pending
+    state: running
+    implementer_session: 0669c08f-1b70-4dee-a60a-3462a675ef87
+    start_sha: 0b3d928042318ed10c652b1c93bc6dd2286432b3
 ```
