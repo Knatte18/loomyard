@@ -2,6 +2,9 @@
 
 ## Overview
 
+> **Just want to run it?** See the operator runbook: [sandbox-howto.md](sandbox-howto.md)
+> (deploy → clone Hub → run suite). This document is the reference for topology and design.
+
 The **sandbox Hub** is a dedicated bench for manual testing of lyx's core workflows. It exercises the actual deployed `lyx` binary, testing the real command surface, JSON output, and topology wiring that users encounter. Its purpose is **dogfooding** — running lyx against itself to catch regressions early.
 
 The Hub consists of two dedicated GitHub repositories and a local working directory on disk:

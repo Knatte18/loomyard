@@ -291,7 +291,7 @@ git-backed integration — live in the black-box `internal/boardengine/boardtest
 
 ## Sandbox Hub
 
-The **sandbox Hub** is a dedicated bench for manual testing of lyx's core workflows — its purpose is dogfooding lyx against itself. It lives on disk at `C:\Code\lyx-test-HUB` and exercises the real deployed `lyx` binary: the command surface, JSON output, and topology wiring users encounter. Build it via `sandbox.cmd` once `lyx` is deployed and the GitHub weft wiki is initialized. See [sandbox-hub.md](sandbox-hub.md) for details.
+The **sandbox Hub** is a dedicated bench for manual testing of lyx's core workflows — its purpose is dogfooding lyx against itself. It lives on disk at `C:\Code\lyx-test-HUB` and exercises the real deployed `lyx` binary: the command surface, JSON output, and topology wiring users encounter. Build it via `sandbox.cmd` once `lyx` is deployed and the GitHub weft wiki is initialized. See [sandbox-howto.md](sandbox-howto.md) for the step-by-step runbook (deploy → clone Hub → run suite) and [sandbox-hub.md](sandbox-hub.md) for topology and design details.
 
 ## Other docs
 
@@ -305,4 +305,5 @@ The **sandbox Hub** is a dedicated bench for manual testing of lyx's core workfl
 - [research/](research/) — design exploration (mux research logs).
 - [reference/psmux_scripting.md](reference/psmux_scripting.md) — upstream psmux command reference (vendored).
 - [roadmap.md](roadmap.md) — numbered milestones and long-term direction.
+- [sandbox-howto.md](sandbox-howto.md) — operator runbook: deploy `lyx`, build the Hub, run the suite agent (procedure).
 - [sandbox-hub.md](sandbox-hub.md) — the sandbox Hub: a dedicated bench for manual (dogfooding) testing.
