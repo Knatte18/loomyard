@@ -1,0 +1,369 @@
+# Discussion: Rename Cobra modules to `<module>cli`, extract kernels as `<module>engine`
+
+```yaml
+task: Rename Cobra modules to <module>cli, extract kernels as <module>engine
+slug: cobra-cli-engine-sweep
+status: discussing
+parent: main
+```
+
+## Problem
+
+The `internal/` module names are inconsistent. The recent `config → configengine`
+work introduced the convention "a `cli` suffix only when the bare name is taken"
+(so `configcli`/`configengine`, `initcli`), while every other Cobra module keeps a
+bare name (`board`, `warp`, `weft`, …). Those bare names are also domain nouns that
+collide with the real things they name (`weft`/`warp`/`board` are both packages and
+domain concepts), and they mix two responsibilities in one package: the Cobra
+command layer and the pure domain logic.
+
+This task **inverts** the convention written into `CONSTRAINTS.md` by the
+`configengine` PR. The new, uniform rule: **anything registered in `newRoot()` (i.e.
+anything that lands in Cobra) is named `<module>cli`; the domain kernel a non-CLI
+consumer needs is extracted as `<module>engine`.** Precedent already exists
+(`yamlengine`, `configengine`). The designed future consumer of every engine is
+**loom** (does not exist yet) — the orchestrator that will drive these operations
+programmatically instead of through the binary.
+
+Why now: it must land when no other large CLI change is in flight (high conflict
+surface), and its precursor — the `config → configengine` PR — is already merged.
+
+## Scope
+
+**In:**
+
+- Split these modules into two packages each (`<module>cli` + `<module>engine`), in
+  **new directories**, deleting the old `internal/<module>` directory:
+  - `internal/board`   → `internal/boardcli` + `internal/boardengine`
+  - `internal/weft`    → `internal/weftcli` + `internal/weftengine`
+  - `internal/warp`    → `internal/warpcli` + `internal/warpengine`
+  - `internal/ide`     → `internal/idecli` + `internal/ideengine`
+  - `internal/ghissues`→ `internal/ghissuescli` + `internal/ghissuesengine`
+- **Rename-only** (no split): `internal/muxpoc` → `internal/muxpoccli` (package +
+  directory rename; all files stay inside `muxpoccli` unchanged). Deliberate
+  exception: muxpoc is a throwaway POC slated for replacement by the real `mux`
+  module, so a clean cli/engine boundary is wasted polish. The `cli` suffix alone
+  achieves the disambiguation goal.
+- **Fold `update` away**: remove `internal/update`; re-home its behaviour as a
+  `reconcile` subcommand on `lyx config` (`lyx update` → `lyx config reconcile`).
+- Update every cross-module importer, `cmd/lyx/main.go`, `internal/configreg`, and
+  the affected guard tests to the new package names.
+- Rewrite the `CONSTRAINTS.md` CLI/Cobra invariant: invert the package-naming
+  convention **and** codify the cli/engine split rules as first-class repo rules
+  (litmus, boundary, dependency direction, skip clause) — see Decisions.
+- Update docs (`docs/overview.md` module table; affected `docs/modules/*`,
+  `docs/shared-libs/*`).
+
+**Out:**
+
+- **No behaviour changes** other than the single observable CLI change
+  (`lyx update` → `lyx config reconcile`). This is a behaviour-preserving sweep.
+- **`Use:` command names do not change** — only Go package (and directory) names.
+  `lyx board`, `lyx warp`, etc. invoke exactly as before.
+- **No backward-compat alias** for `update` (no hidden forwarding command).
+- **muxpoc is not split** — do not extract a `muxpocengine`.
+- **No opportunistic refactors / dead-code cleanup / behaviour tweaks** beyond what
+  the rename mechanically requires.
+- No new module functionality; `loom` is not created here.
+
+## Decisions
+
+### package-layout
+
+- Decision: each split module becomes **two new directories**, `internal/<module>cli`
+  (package `<module>cli`) and `internal/<module>engine` (package `<module>engine`);
+  the old `internal/<module>` directory is deleted. Directory name == package name.
+- Rationale: matches existing precedent (`internal/configengine`, `internal/yamlengine`).
+  Go requires one package per directory.
+- Rejected: keeping the engine in `internal/<module>` with only a renamed package
+  declaration (dir ≠ package; inconsistent with precedent).
+
+### cli-engine-boundary
+
+- Decision: the **cli** package owns everything that exists because of the command
+  line — `Command() *cobra.Command`, the `RunCLI(out io.Writer, args []string) int`
+  seam, Cobra subcommands, flags, `Short`/`Long`, `clihelp`/`output` envelope
+  handlers, exit-code handling, `PersistentPreRunE`. The **engine** package owns the
+  domain kernel — types and operations that return `(T, error)`, with no Cobra, no
+  `io.Writer`, no exit codes.
+- Litmus: returns `(T, error)`, no cobra / `io.Writer` / exit codes → engine; exists
+  only because of the command line → cli.
+- Dependency direction: **cli imports engine**; **engine → engine is allowed**
+  (e.g. `ideengine` imports `boardengine`); **engine must never import a `cli`
+  package or cobra.**
+- Rationale: this is the convention the whole task establishes; it makes the kernel
+  loom-consumable and keeps the import graph acyclic and one-directional.
+- Rejected: leaving domain logic co-located with Cobra (the status quo this task
+  removes).
+
+### split-is-earned
+
+- Decision: create an engine **unless** the logic is **(a) trivial/incidental** (as
+  with `initcli`, `configcli` — thin wrappers with no real domain kernel) or
+  **(b) throwaway** (as with `muxpoccli` — a POC slated for replacement). "No
+  external consumer today" is **not** a reason to skip: loom is the designed future
+  consumer for all of these, and `board`/`warp`/`weft`/`ide` are split on exactly
+  that ground, not because a caller exists now.
+- Rationale: an empty/near-empty `<module>engine` is the indirection we are trying to
+  avoid; but permanent, non-trivial domain logic earns its engine even with no
+  current caller.
+- Applied results:
+  - board, warp, weft → split (rich domain kernels).
+  - ide → split (`Spawn` = open editor for a worktree, `Menu` = pick a task; both
+    permanent, non-trivial domain loom will drive).
+  - ghissues → split (`createIssue` + the gh argv/stdin seams are real domain).
+  - muxpoc → **no split** (throwaway POC).
+- Rejected: (1) splitting all modules uniformly regardless of kernel size; (2)
+  keeping ide cli-only because it has no caller today (inconsistent with the same
+  reasoning that splits board/warp/weft).
+
+### ambiguous-file-placement
+
+- Decision:
+  - board `spawn.go` and weft `spawn.go` (detached-binary re-invoke for background
+    push) → **engine** (no cobra; invoked by the engine `Sync`/`Push`).
+  - warp `clone.go` → **split the file**: handler half (`runClone`,
+    `runCloneWithReset`) → `warpcli`; domain half (`cloneHub`, `cloneRepo`,
+    `teardownHub`, `deriveHostName`, `deriveBoardURL`) → `warpengine`.
+  - ide `menu.go` (interactive `Menu(l, in io.Reader, out io.Writer) error`) →
+    **engine** (`ideengine`); it returns `error`, has no cobra, and its `board`
+    usage retargets to `boardengine`.
+- Rationale: follow the litmus; the spawn helpers and clone domain helpers are pure
+  domain infra called by engine code. `Menu` takes a reader/writer but is interactive
+  domain (no cobra, returns error), the kind of picker loom would drive.
+- Rejected: keeping the detached-spawn helpers in the `cli` packages.
+
+### update-fold
+
+- Decision: remove `internal/update` entirely. Add a `reconcile` subcommand to
+  `configcli.Command()` carrying the `--apply` flag (dry-run default), whose handler
+  is the current `runUpdate` body (resolve `Layout`, `configsync.ReconcileAll(baseDir,
+  apply)`, emit the JSON envelope). Remove `update` from `cmd/lyx/main.go`
+  (`import`, `root.AddCommand`) and from the root command's `Long` module list. No
+  alias.
+- Rationale: `update` is vague and misleading (it does not update the binary; it
+  reconciles module configs against templates) and is a thin CLI shell over
+  `configsync.ReconcileAll`. `config reconcile` names it correctly and lives next to
+  the other config operations. Behaviour is unchanged; only the invocation path moves.
+- Rejected: keeping `lyx update`; adding a hidden deprecated alias.
+- Note: `configcli` must add the `internal/configsync` import. `lyx config` keeps its
+  existing `[module]` edit/menu `RunE`; Cobra resolves `lyx config reconcile` to the
+  new subcommand and `lyx config <module>` to the `RunE` arg, so both coexist.
+
+### constraints-as-deliverable
+
+- Decision: the cli/engine split rules established here are codified in
+  `CONSTRAINTS.md` as repo rules in the **same task** (final batch): (1) invert the
+  package-naming convention (anything in `newRoot()`/cobra → `<module>cli`; domain
+  kernel → `<module>engine`; cite `yamlengine`/`configengine`); (2) record the
+  litmus, the cli/engine boundary, the dependency direction (cli→engine, engine→engine
+  allowed, engine never imports cli/cobra), and the skip clause (trivial/incidental or
+  throwaway). Per `CLAUDE.md`, a new cross-cutting invariant is recorded in
+  `CONSTRAINTS.md` in the same commit as the behaviour.
+- Rationale: the convention only holds if it is written down and review-enforced; the
+  current `CONSTRAINTS.md` "Package naming" section says the opposite and must be
+  replaced.
+- Rejected: leaving the rule implicit / documenting it only in a module doc.
+
+## Technical context
+
+**Module map (from codebase exploration). Cobra is concentrated in exactly one file
+per module** (`cli.go`, `warp.go`, or `update.go`); each module exposes the same seam
+pair `Command() *cobra.Command` + `RunCLI(out io.Writer, args []string) int`
+(delegating to `clihelp.Execute`); only `cmd/lyx/main.go` wires these into the root.
+
+Per-module file placement:
+
+- **board** (`internal/board` → `boardcli` + `boardengine`):
+  - `boardcli`: `cli.go` (+ `cli_test.go`, `help_test.go`, `skipenv_internal_test.go` —
+    verify which package each `_test.go` belongs to by what it exercises).
+  - `boardengine`: `board.go` (Board facade), `store.go`, `task.go`, `layer.go`,
+    `render.go`, `git.go`, `sync.go`, `config.go` (imports `configengine`),
+    `template.go` (`ConfigTemplate`), `spawn.go`. Engine tests: `board_test.go`,
+    `store_test.go`, `task_test.go`, `layer_test.go`, `render_test.go`,
+    `config_test.go`, `template_test.go`, `template.yaml` asset.
+  - `internal/board/boardtest/` is a test-support subpackage — **inspect its package
+    name, what it provides, and who imports it**; relocate it (likely under
+    `boardengine`) and fix importers. Its new import path must be updated wherever
+    used.
+  - Engine exports already present: `Board`, `New`, `Store`, `Task`, `NewTask`,
+    `ApplyPatch`, `ComputeLayers`, `RenderOrder`, `ExtendedTitle`, `Render`,
+    `RenderToDisk`, `Pull`, `CommitPush`, `Sync`, `Config`, `Outputs`, `LoadConfig`,
+    `ConfigTemplate`.
+  - Importers to retarget: `internal/configreg` (`board.ConfigTemplate` →
+    `boardengine.ConfigTemplate`), `internal/ide` `menu.go` (`board.LoadConfig`,
+    `board.New` → `boardengine`), `cmd/lyx/main.go` (`board.Command` →
+    `boardcli.Command`).
+
+- **weft** (`internal/weft` → `weftcli` + `weftengine`):
+  - `weftcli`: `cli.go` (rich `PersistentPreRunE`, hidden `--weft-path` bypass) +
+    `cli_test.go`.
+  - `weftengine`: `config.go`, `sync.go` (`Commit`/`Push`/`Pull`/`SyncOptions`),
+    `status.go` (`Status`), `template.go` (`ConfigTemplate`), `spawn.go`
+    (`spawnPush` detached child). Engine tests: `config_test.go`, `sync_test.go`,
+    `status_test.go`, `template_test.go`, `weft_integration_test.go`, `template.yaml`.
+  - Importers: `configreg` (`weft.ConfigTemplate` → `weftengine`), `configcli`
+    (`weft.RunCLI` → `weftcli.RunCLI`), `cmd/lyx/main.go` (`weft.Command` →
+    `weftcli.Command`).
+
+- **warp** (`internal/warp` → `warpcli` + `warpengine`):
+  - `warpcli`: `warp.go` (cobra tree + handlers), the **handler half of `clone.go`**
+    (`runClone`, `runCloneWithReset`). cli tests: `warp_test.go`, plus the handler
+    portions of `clone_test.go`/`clone_integration_test.go`.
+  - `warpengine`: `add.go`, `checkout.go`, `remove.go`, `prune.go`, `cleanup.go`,
+    `status.go`, `list.go`, `reconcile.go`, `worktreelifecycle.go` (`Worktree`,
+    `New`), `drift.go` (`PairInSync`), `junction.go` (`WireJunctions`), `hook.go`
+    (`InstallPostCheckoutHook`), `weftwiring.go`, `launchers.go`, `portals.go`,
+    `ancestors.go`, `config.go`, `template.go` (`ConfigTemplate`), the **domain half
+    of `clone.go`**, `post-checkout.sh` asset. Engine tests: all the corresponding
+    `*_test.go` files.
+  - warp's package doc (`warp.go`) already states the dependency discipline: warp must
+    NOT import `initcli`/`configsync`; `initcli` imports warp; `configreg` imports warp.
+    After the split those land on `warpengine`.
+  - Importers: `configreg` (`warp.ConfigTemplate` → `warpengine`), `initcli`
+    (`warp.WireJunctions` → `warpengine`), `cmd/lyx/main.go` (`warp.Command` →
+    `warpcli.Command`).
+
+- **ide** (`internal/ide` → `idecli` + `ideengine`):
+  - `idecli`: `cli.go` + `cli_test.go`.
+  - `ideengine`: `spawn.go` (`Spawn(l *paths.Layout, slug string) error`), `menu.go`
+    (`Menu(...)`; retarget its `board.*` usage — `LoadConfig`/`New`/`HealthCheck`/
+    `GetTask` — to `boardengine`). Engine tests: `spawn_test.go`, `menu_test.go`.
+  - `ideengine` imports `boardengine` (the one engine→engine edge). Ordering: board
+    must be split before ide, or ide's retarget done in board's batch — see Testing.
+  - Importers: `cmd/lyx/main.go` (`ide.Command` → `idecli.Command`).
+
+- **ghissues** (`internal/ghissues` → `ghissuescli` + `ghissuesengine`):
+  - `ghissuescli`: `cli.go` (cobra + `runCreate`) + `cli_test.go`.
+  - `ghissuesengine`: `ghissues.go`. **Export** the symbols `cli.go` calls
+    (`createIssue` → `CreateIssue`, and the gh argv/parse/runGH/stdin seams it
+    references — `buildCreateArgs`, `realRunGH`, `lastNonEmptyLine` as needed).
+    `CreateIssue` returns `(url, number, error)`.
+  - Importers: `cmd/lyx/main.go` (`ghissues.Command` → `ghissuescli.Command`).
+
+- **muxpoc** (`internal/muxpoc` → `internal/muxpoccli`, **rename only**):
+  - Rename directory and package declaration in every file to `muxpoccli`; no file
+    moves, no engine. `Config` (defined in `cli.go`) stays put. All of `up.go`,
+    `down.go`, `status.go`, `review.go`, `attach.go`, `daemon.go`, `cmd.go`,
+    `state.go`, `spawnattach_*.go` stay inside `muxpoccli`.
+  - Importers: `cmd/lyx/main.go` (`muxpoc.Command` → `muxpoccli.Command`).
+
+- **update fold** (`internal/update` → deleted; `lyx config reconcile`):
+  - `runUpdate` body: `paths.Getwd` → `paths.Resolve` → `baseDir =
+    filepath.Join(l.WorktreeRoot, l.RelPath)` → `configsync.ReconcileAll(baseDir,
+    apply)` → map each result (`module`/`added`/`removed`/`applied`) into the JSON
+    envelope via `output.Ok`. Dry-run unless `--apply`.
+  - Move this into `configcli` as the `reconcile` subcommand handler; add the
+    `internal/configsync` import to `configcli`.
+  - Delete `internal/update` (incl. `update_test.go`); migrate its assertions to a
+    new `configcli` reconcile test.
+
+**No `loom` / `internal/loom` package exists yet** — confirmed by exploration. The
+engine extraction is for the convention and loom's designed future use.
+
+**`cmd/testtiming/main.go`** references the string `"github.com/Knatte18/loomyard/
+internal/board"` only in a comment / `shortPkg` trimming example — verify it has no
+functional hardcoded package list that breaks; update if it does.
+
+## Constraints
+
+From `CONSTRAINTS.md` (hub root) — all remain in force:
+
+- **Path Invariant** — all cwd/geometry and `_lyx`/config paths go through
+  `internal/paths` (`paths.Getwd`, `paths.Resolve`, `paths.ConfigDir`,
+  `paths.ConfigFile`, `paths.LyxDirName`). Enforced by
+  `internal/paths/enforcement_test.go`. Moving files between packages must not
+  introduce raw `os.Getwd` / `git rev-parse` or literal `_lyx`/config path strings.
+- **lyxtest Leaf Invariant** — `internal/lyxtest` imports only stdlib + `internal/paths`;
+  never `configreg` or a feature package. Tests needing config seed via
+  `lyxtest.SeedConfig` with templates obtained from the (now `*engine`)
+  `ConfigTemplate()` functions. Update those call sites to the new engine import paths.
+- **CLI / Cobra Invariant** — module seam (`Command()` + `RunCLI` = exactly
+  `clihelp.Execute(Command(), out, args)`), registration in `newRoot()`, `Short` on
+  every command (`drift_test.go`), help co-located, help tree pinned
+  (`helptree_test.go`), registration + Long-list guards
+  (`registration_test.go`/`longlist_test.go`), JSON error envelope, parent groups
+  reject unknown subcommands via `clihelp.GroupRunE`. **This invariant's "Package
+  naming" section is rewritten by this task** (see constraints-as-deliverable).
+- **Documentation Lifecycle** + `CLAUDE.md` task-completion docs discipline — module
+  docs / `docs/overview.md` / `CONSTRAINTS.md` updated in the same commit as the
+  behaviour.
+- **fslink** — cross-OS links go through `internal/fslink` (directory junctions on
+  Windows). Relevant if any moved warp file touches linking; keep using `fslink`.
+
+Discovered during discussion:
+
+- The whole sweep is **behaviour-preserving** except `lyx update` → `lyx config
+  reconcile`. Build (`go build ./...`) and tests (`go test ./...`) must be green
+  **after each module's batch**, not only at the end.
+- `registration_test.go` assumes the selector identifier equals the package name
+  (e.g. `warpcli.Command()`, package `warpcli`) — that assumption still holds after
+  the rename; update the test's allowlist to the new `*cli` package names. Only the
+  `*cli` packages have a `Command()`, so "exists ⇒ registered" continues to hold; the
+  `*engine` packages have no `Command()`.
+
+## Testing
+
+Behaviour-preserving sweep, so the dominant test work is **relocating existing test
+files to the correct new package and fixing import paths**, not writing new behaviour
+tests. Per unit:
+
+- **board / weft / warp / ide / ghissues split**: move each `_test.go` into whichever
+  new package it exercises (cli-handler tests → `<module>cli`; domain tests →
+  `<module>engine`). Keep every existing assertion; the tests are the
+  behaviour-preservation guard. For ghissues, the engine tests must use the newly
+  **exported** names. Confirm `go test ./...` is green after each module.
+- **board/boardtest support package**: inspect and relocate; fix all importers'
+  paths.
+- **muxpoc rename**: package-decl + import-path change only; `muxpoc_smoke_test.go`,
+  `cli_test.go`, `cmd_test.go`, `state_test.go` move with the package. No new tests.
+- **update → config reconcile** (the one behavioural change worth a focused test):
+  migrate `update_test.go`'s scenarios into a `configcli` reconcile test — dry-run
+  default (no writes), `--apply` writes, JSON envelope shape (`applied`, `modules[]`
+  with `module`/`added`/`removed`/`applied`). Verify `lyx update` no longer resolves.
+- **Guard tests (final batch)**:
+  - `cmd/lyx/registration_test.go` — update allowlist to new `*cli` package names.
+  - `cmd/lyx/longlist_test.go` — remove `update` from the root `Long` expectation.
+  - `cmd/lyx/helptree_test.go` — drop `update` from root `requiredModules`; add
+    `reconcile` to `configcli`'s `wantSubs`.
+  - `cmd/lyx/drift_test.go` — `reconcile` subcommand must carry a non-empty `Short`.
+- TDD candidate: the `config reconcile` subcommand (write the migrated reconcile test
+  first, then wire the subcommand). Everything else is mechanical relocation verified
+  by the moved suites + `go build ./... && go test ./...`.
+
+Sequencing (one unit per batch, build+test green between each; shared files
+`main.go`/`configreg.go` force serialization):
+`board → weft → warp → ide → ghissues → muxpoc(rename) → update→config-reconcile fold
+→ CONSTRAINTS + docs rewrite`.
+
+## Q&A log
+
+- **Q:** New dirs per module or rename package in place? **A:** New dirs
+  `<module>cli` + `<module>engine`, delete old `internal/<module>` (matches
+  `configengine`/`yamlengine`).
+- **Q:** Backward-compat alias for `update`? **A:** No — hard-remove; only
+  `lyx config reconcile`.
+- **Q:** When is an engine warranted? **A:** Split is *earned*: create an engine
+  unless logic is (a) trivial/incidental (initcli, configcli) or (b) throwaway (POC).
+  "No external consumer today" is NOT a skip reason — loom is the designed future
+  consumer for all of them.
+- **Q:** muxpoc — split? **A:** No. Rename-only to `muxpoccli`; it's a throwaway POC
+  to be replaced by the real `mux` module. daemon/attach/state stay inside
+  `muxpoccli`.
+- **Q:** ide — split or cli-only (no caller today)? **A:** Split (`idecli` +
+  `ideengine`). `Spawn`/`Menu` are permanent, non-trivial domain loom will drive;
+  cli-only would be inconsistent with board/warp/weft split on the same grounds.
+- **Q:** ghissues engine symbols are unexported — split anyway? **A:** Yes, split and
+  export; `createIssue` + gh seams are real domain loom will call.
+- **Q:** Where do the ambiguous files go? **A:** board/weft `spawn.go` → engine;
+  warp `clone.go` → split (handlers→cli, domain→engine); ide `menu.go` → engine.
+- **Q:** Scope beyond the rename? **A:** Strictly behaviour-preserving; only
+  observable change is `lyx update` → `lyx config reconcile`. No opportunistic
+  refactors.
+- **Q:** Is engine→engine allowed (ideengine→boardengine)? **A:** Yes. Only forbidden
+  direction is engine → cli/cobra.
+- **Q:** Do the new split rules go anywhere durable? **A:** Yes — codify them in
+  `CONSTRAINTS.md` as repo rules (invert package-naming convention + record litmus,
+  boundary, dependency direction, skip clause) in the final batch.
+- **Q:** Batch order? **A:** Sequential, one unit per batch, green between each:
+  board → weft → warp → ide → ghissues → muxpoc → update-fold → CONSTRAINTS/docs.
