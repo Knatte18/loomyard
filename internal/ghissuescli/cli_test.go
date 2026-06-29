@@ -1,10 +1,11 @@
 // cli_test.go contains white-box unit tests for the ghissues CLI.
 //
-// Tests live in package ghissues (same package as the production code) so the
-// runGH and stdin seams can be replaced without exporting them. All tests drive
-// the full cobra→flag→createIssue→runGH pipeline through RunCLI.
+// Tests live in package ghissuescli (same package as the production code) so the
+// local stdin seam can be replaced without exporting it; the gh executor is
+// swapped via the exported ghissuesengine.RunGH seam. All tests drive the full
+// cobra→flag→CreateIssue→RunGH pipeline through RunCLI.
 
-package ghissues
+package ghissuescli
 
 import (
 	"bytes"
@@ -12,20 +13,22 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/ghissuesengine"
 )
 
-// installFakeGH replaces the runGH package-level seam with a fake that records
-// every argv slice it receives and returns the caller-supplied values. The
-// original seam is restored via t.Cleanup so each test case is independent.
+// installFakeGH replaces the exported ghissuesengine.RunGH seam with a fake that
+// records every argv slice it receives and returns the caller-supplied values.
+// The original seam is restored via t.Cleanup so each test case is independent.
 func installFakeGH(t *testing.T, fakeStdout, fakeStderr string, fakeExitCode int, fakeErr error) *[][]string {
 	t.Helper()
 	var recorded [][]string
-	orig := runGH
-	runGH = func(args []string) (string, string, int, error) {
+	orig := ghissuesengine.RunGH
+	ghissuesengine.RunGH = func(args []string) (string, string, int, error) {
 		recorded = append(recorded, args)
 		return fakeStdout, fakeStderr, fakeExitCode, fakeErr
 	}
-	t.Cleanup(func() { runGH = orig })
+	t.Cleanup(func() { ghissuesengine.RunGH = orig })
 	return &recorded
 }
 
@@ -75,7 +78,7 @@ func TestRunCreate_HappyPath(t *testing.T) {
 	}
 
 	if len(*argv) != 1 {
-		t.Fatalf("runGH call count = %d; want 1", len(*argv))
+		t.Fatalf("RunGH call count = %d; want 1", len(*argv))
 	}
 	got := (*argv)[0]
 	wantArgv := []string{"issue", "create", "--repo", "Knatte18/loomyard", "--title", "My bug title", "--label", "bug"}
@@ -105,7 +108,7 @@ func TestRunCreate_CustomLabels(t *testing.T) {
 		t.Errorf("envelope ok = %v; want true", env["ok"])
 	}
 	if len(*argv) != 1 {
-		t.Fatalf("runGH call count = %d; want 1", len(*argv))
+		t.Fatalf("RunGH call count = %d; want 1", len(*argv))
 	}
 	got := (*argv)[0]
 	labelArgs := extractLabelValues(got)
@@ -135,7 +138,7 @@ func TestRunCreate_BodyViaFlag(t *testing.T) {
 		t.Errorf("RunCLI() exit = %d; want 0", code)
 	}
 	if len(*argv) != 1 {
-		t.Fatalf("runGH call count = %d; want 1", len(*argv))
+		t.Fatalf("RunGH call count = %d; want 1", len(*argv))
 	}
 	got := (*argv)[0]
 	bodyVal := extractFlagValue(got, "--body")
@@ -167,7 +170,7 @@ func TestRunCreate_BodyViaStdin(t *testing.T) {
 		t.Errorf("RunCLI() exit = %d; want 0", code)
 	}
 	if len(*argv) != 1 {
-		t.Fatalf("runGH call count = %d; want 1", len(*argv))
+		t.Fatalf("RunGH call count = %d; want 1", len(*argv))
 	}
 	got := (*argv)[0]
 	bodyVal := extractFlagValue(got, "--body")
@@ -195,7 +198,7 @@ func TestRunCreate_BodyOmitted(t *testing.T) {
 		t.Errorf("envelope ok = %v; want true", env["ok"])
 	}
 	if len(*argv) != 1 {
-		t.Fatalf("runGH call count = %d; want 1", len(*argv))
+		t.Fatalf("RunGH call count = %d; want 1", len(*argv))
 	}
 	got := (*argv)[0]
 	if bodyVal := extractFlagValue(got, "--body"); bodyVal != nil {
@@ -205,7 +208,7 @@ func TestRunCreate_BodyOmitted(t *testing.T) {
 
 // TestRunCreate_WrongArgCount verifies that cobra's ExactArgs(1) guard rejects
 // both too-few and too-many positional arguments: non-zero exit, the cobra
-// "accepts 1 arg(s)" message in output, and the fake runGH never called.
+// "accepts 1 arg(s)" message in output, and the fake RunGH never called.
 func TestRunCreate_WrongArgCount(t *testing.T) {
 	tests := []struct {
 		name string
@@ -229,19 +232,19 @@ func TestRunCreate_WrongArgCount(t *testing.T) {
 			if !strings.Contains(stdout, "accepts 1 arg") {
 				t.Errorf("output does not contain cobra arg-count message; stdout: %q", stdout)
 			}
-			// runGH must never be reached when cobra's validation rejects the args.
+			// RunGH must never be reached when cobra's validation rejects the args.
 			if len(*argv) != 0 {
-				t.Errorf("runGH called %d time(s); want 0", len(*argv))
+				t.Errorf("RunGH called %d time(s); want 0", len(*argv))
 			}
 		})
 	}
 }
 
-// TestRunCreate_GhNotFound verifies that when the fake runGH returns an error
+// TestRunCreate_GhNotFound verifies that when the fake RunGH returns an error
 // satisfying errors.Is(err, exec.ErrNotFound), the envelope is ok:false with
 // exit 1 and the error message mentions both "gh" and "PATH".
 func TestRunCreate_GhNotFound(t *testing.T) {
-	// exec.ErrNotFound is the sentinel checked by errors.Is in createIssue to
+	// exec.ErrNotFound is the sentinel checked by errors.Is in CreateIssue to
 	// distinguish a missing binary from a generic exec failure.
 	installFakeGH(t, "", "", -1, exec.ErrNotFound)
 

@@ -4,15 +4,26 @@
 // string" using Changed("body"), following the warp module pattern for local-flag
 // access inside a cobra RunE.
 
-package ghissues
+// Package ghissuescli provides the cobra command tree for filing LoomYard bugs
+// and enhancements as GitHub issues directly from lyx.exe. The module is
+// reachable as `lyx ghissues create` and delegates the actual gh invocation to
+// the ghissuesengine domain package.
+package ghissuescli
 
 import (
 	"io"
+	"os"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/ghissuesengine"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/spf13/cobra"
 )
+
+// stdin is the seam that runCreate reads for body content when --body is "-".
+// Tests replace this with a strings.Reader to exercise the stdin path without
+// blocking on real OS input.
+var stdin io.Reader = os.Stdin
 
 // Command builds the cobra command tree for the ghissues module.
 //
@@ -74,7 +85,7 @@ func RunCLI(out io.Writer, args []string) int {
 // It reads the title from args[0], resolves the body from the --body flag (nil
 // when the flag was not provided, full stdin content when set to "-", or the flag
 // string directly for any other value), applies the default "bug" label when no
-// --label flags are given, and delegates to createIssue. The cmd parameter is the
+// --label flags are given, and delegates to ghissuesengine.CreateIssue. The cmd parameter is the
 // cobra command for the "create" subcommand; the closure passes it so that
 // Changed("body") can distinguish "flag not set" from "flag set to empty string".
 func runCreate(out io.Writer, args []string, cmd *cobra.Command) int {
@@ -109,7 +120,7 @@ func runCreate(out io.Writer, args []string, cmd *cobra.Command) int {
 		labels = []string{"bug"}
 	}
 
-	url, number, err := createIssue(title, body, labels)
+	url, number, err := ghissuesengine.CreateIssue(title, body, labels)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
