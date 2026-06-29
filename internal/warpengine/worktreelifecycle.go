@@ -7,7 +7,7 @@
 // Configuration is resolved cwd-authoritatively via internal/configengine; the package
 // never reads config files or knows their on-disk layout itself.
 
-package warp
+package warpengine
 
 // Worktree is the high-level facade over worktree operations.
 // It holds configuration needed by all worktree methods.

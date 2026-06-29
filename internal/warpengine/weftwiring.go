@@ -10,7 +10,7 @@
 // _lyx is isolated by pathspec (never merges back), not by orphan topology. A detached
 // or unborn host HEAD aborts the spawn before any creation, ensuring no partial state.
 
-package warp
+package warpengine
 
 import (
 	"fmt"

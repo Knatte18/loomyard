@@ -4,7 +4,7 @@
 // the host and weft worktrees are on the same branch, and that the host _lyx
 // junction is valid and points to the weft _lyx directory.
 
-package warp
+package warpengine
 
 import (
 	"fmt"

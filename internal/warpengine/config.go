@@ -5,7 +5,7 @@
 // validate and resolve the warp config file; the warp module never reads
 // config files or knows their layout itself.
 
-package warp
+package warpengine
 
 import (
 	"fmt"

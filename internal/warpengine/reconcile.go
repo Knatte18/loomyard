@@ -6,7 +6,7 @@
 // a raw (non-lyx) host worktree by creating the weft side dormant, and reports (but does
 // not touch) a host worktree on an unmanaged branch.
 
-package warp
+package warpengine
 
 import (
 	"fmt"

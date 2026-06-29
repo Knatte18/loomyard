@@ -3,7 +3,7 @@
 // directory no longer exists; a pair is orphaned when a weft worktree has no
 // corresponding host worktree sibling.
 
-package warp
+package warpengine
 
 import (
 	"fmt"

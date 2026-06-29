@@ -2,7 +2,7 @@
 // of removed worktrees and portals. This is a rename from the worktree package's prune.go
 // to avoid collision with the future prune verb in batch 7.
 
-package warp
+package warpengine
 
 import (
 	"os"

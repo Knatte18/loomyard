@@ -1,23 +1,21 @@
 // clone.go implements the clone orchestration logic with strict-abort teardown.
 
-package warp
+package warpengine
 
 import (
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/paths"
 )
 
 const (
-	// hubSuffix is the directory suffix appended to the derived repo name to form the Hub directory.
-	hubSuffix = "-HUB"
+	// HubSuffix is the directory suffix appended to the derived repo name to form the Hub directory.
+	HubSuffix = "-HUB"
 
 	// weftSuffix is the directory suffix appended to the repo name to form the weft directory.
 	weftSuffix = "-weft"
@@ -26,87 +24,11 @@ const (
 	boardDirName = "_board"
 )
 
-// removeAll is a testability seam for os.RemoveAll, allowing tests to inject errors.
-var removeAll = os.RemoveAll
+// RemoveAll is an exported testability seam for os.RemoveAll, allowing tests to inject errors.
+// It is used by teardownHub (engine) and runCloneWithReset (warpcli) so both sides share a single swap point.
+var RemoveAll = os.RemoveAll
 
-// runCloneWithReset wraps runClone with an optional hub removal when the --reset flag is set.
-//
-// It validates the argument count first (2–3 positional args) so the usage error message is
-// consistent whether or not --reset is set. When reset is true it computes the expected hub
-// path (deriveHostName(args[0]) + hubSuffix joined onto the current working directory) and,
-// if that directory already exists, removes it via the removeAll seam before delegating to
-// runClone. When reset is false it calls runClone directly. The removeAll seam allows tests
-// to observe the hub path without executing a real git clone.
-func runCloneWithReset(out io.Writer, args []string, reset bool) int {
-	if len(args) < 2 || len(args) > 3 {
-		return output.Err(out, "usage: lyx warp clone [--reset] <host-url> <weft-url> [board-url]")
-	}
-	if reset {
-		cwd, err := paths.Getwd()
-		if err != nil {
-			return output.Err(out, err.Error())
-		}
-		name := deriveHostName(args[0])
-		if name == "" {
-			return output.Err(out, fmt.Sprintf("could not derive repo name from host URL %s", args[0]))
-		}
-		hubPath := filepath.Join(filepath.Clean(cwd), name+hubSuffix)
-		// Remove the hub only when it exists; a missing hub is not an error for --reset.
-		if _, statErr := os.Stat(hubPath); statErr == nil {
-			if err := removeAll(hubPath); err != nil {
-				return output.Err(out, fmt.Sprintf("--reset: remove %s: %v", hubPath, err))
-			}
-		}
-	}
-	return runClone(out, args)
-}
-
-// runClone parses and executes the warp clone command, writing JSON results to out.
-//
-// It accepts exactly 2 or 3 positional arguments: hostURL, weftURL, and an optional boardURL.
-// The boardURL defaults to the derived weft wiki URL if omitted.
-//
-// Precondition: the board repository (default: the weft repository's wiki) must already exist
-// and be reachable via the provided URL. If the board repository is missing or inaccessible,
-// the board clone fails and the entire command aborts with the Hub directory cleaned up.
-//
-// Returns exit code 0 on success or 1 on error. Success output is JSON with hub path and URLs;
-// error output is JSON with an error message.
-func runClone(out io.Writer, args []string) int {
-	// Validate positional arguments
-	if len(args) < 2 || len(args) > 3 {
-		return output.Err(out, "usage: lyx warp clone <host-url> <weft-url> [board-url]")
-	}
-
-	hostURL := args[0]
-	weftURL := args[1]
-	boardURL := ""
-	if len(args) == 3 {
-		boardURL = args[2]
-	}
-
-	// Obtain current working directory
-	cwd, err := paths.Getwd()
-	if err != nil {
-		return output.Err(out, err.Error())
-	}
-
-	// Perform the clone
-	hubPath, resolvedBoardURL, err := cloneHub(cwd, hostURL, weftURL, boardURL)
-	if err != nil {
-		return output.Err(out, err.Error())
-	}
-
-	// Return success with hub path and URLs (resolvedBoardURL comes from cloneHub)
-	return output.Ok(out, map[string]any{
-		"hub":   hubPath,
-		"host":  hostURL,
-		"weft":  weftURL,
-		"board": resolvedBoardURL,
-	})
-}
-
-// cloneHub orchestrates the cloning of host, weft, and board repositories into a Hub directory.
+// CloneHub orchestrates the cloning of host, weft, and board repositories into a Hub directory.
 //
 // It takes cwd (current working directory), and three repository URLs: hostURL, weftURL, and
 // boardURL (which may be empty to use a derived default). It returns the path to the created
@@ -125,18 +47,18 @@ func runClone(out io.Writer, args []string) int {
 //
 // If any clone fails, teardownHub removes the entire Hub directory; if removal also fails,
 // the error mentions both the clone failure and the residual Hub path.
-func cloneHub(cwd, hostURL, weftURL, boardURL string) (hubPath, resolvedBoardURL string, err error) {
+func CloneHub(cwd, hostURL, weftURL, boardURL string) (hubPath, resolvedBoardURL string, err error) {
 	// Normalize cwd to an absolute path
 	cwd = filepath.Clean(cwd)
 
 	// Step 1: Derive host repo name
-	name := deriveHostName(hostURL)
+	name := DeriveHostName(hostURL)
 	if name == "" {
 		return "", "", fmt.Errorf("could not derive repo name from host URL %s", hostURL)
 	}
 
 	// Step 2: Compute Hub path
-	hubPath = filepath.Join(cwd, name+hubSuffix)
+	hubPath = filepath.Join(cwd, name+HubSuffix)
 
 	// Step 3: Check if Hub already exists
 	if _, err := os.Stat(hubPath); err == nil {
@@ -230,16 +152,16 @@ func cloneRepo(url, dest string) error {
 // teardownHub removes the Hub directory and returns an error combining the cause with
 // information about the failed removal (if applicable).
 //
-// If removeAll succeeds, teardownHub returns cause unchanged. If removeAll fails,
+// If RemoveAll succeeds, teardownHub returns cause unchanged. If RemoveAll fails,
 // teardownHub returns an error combining cause with a message about the residual Hub.
 func teardownHub(hubPath string, cause error) error {
-	if err := removeAll(hubPath); err != nil {
+	if err := RemoveAll(hubPath); err != nil {
 		return fmt.Errorf("%w; residual hub left at %s; remove it manually before retrying", cause, hubPath)
 	}
 	return cause
 }
 
-// deriveHostName extracts the host repository basename from a raw URL or file path.
+// DeriveHostName extracts the host repository basename from a raw URL or file path.
 //
 // It trims any trailing slash or backslash, then takes the final path segment of rawURL
 // after splitting on forward slash, backslash, and colon (for HTTPS URLs, file paths,
@@ -255,7 +177,7 @@ func teardownHub(hubPath string, cause error) error {
 //   - "https://github.com/u/repo/" → "repo"
 //   - "C:\path\to\repo.git" → "repo"
 //   - "" → ""
-func deriveHostName(rawURL string) string {
+func DeriveHostName(rawURL string) string {
 	// Trim trailing slashes (both forward and back)
 	rawURL = strings.TrimSuffix(rawURL, "/")
 	rawURL = strings.TrimSuffix(rawURL, "\\")

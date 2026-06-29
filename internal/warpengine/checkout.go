@@ -5,7 +5,7 @@
 // the host switch is rolled back to the original branch so the pair is never left
 // half-switched.
 
-package warp
+package warpengine
 
 import (
 	"fmt"

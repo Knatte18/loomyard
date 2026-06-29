@@ -1,7 +1,7 @@
 // list.go exposes the worktree List operation as a thin wrapper over the shared
 // porcelain parser in internal/paths.
 
-package warp
+package warpengine
 
 import (
 	"github.com/Knatte18/loomyard/internal/paths"

@@ -4,7 +4,7 @@
 // reports branch, in-sync verdict, junction health, and scans the host index for any
 // _lyx or _codeguide paths that have been accidentally git-tracked (host pollution).
 
-package warp
+package warpengine
 
 import (
 	"fmt"

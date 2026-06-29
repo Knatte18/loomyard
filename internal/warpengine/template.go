@@ -4,7 +4,7 @@
 // directly from template.yaml at build time. The template uses
 // ${env:VAR:-default} syntax for environment-based overrides.
 
-package warp
+package warpengine
 
 import _ "embed"
 

@@ -2,7 +2,7 @@
 // launchers, then pushes last, performing a best-effort full rollback on any
 // post-creation failure so a partial worktree is never left behind.
 
-package warp
+package warpengine
 
 import (
 	"fmt"

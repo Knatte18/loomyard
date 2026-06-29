@@ -11,7 +11,7 @@
 // The board repo is excluded entirely — Cleanup only enumerates weft branches
 // and compares them against the set of known host worktree slugs.
 
-package warp
+package warpengine
 
 import (
 	"fmt"

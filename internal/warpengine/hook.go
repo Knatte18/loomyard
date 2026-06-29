@@ -2,7 +2,7 @@
 // common hooks directory. The install is idempotent (sentinel-guarded) and
 // non-clobbering: an existing user hook is chained rather than overwritten.
 
-package warp
+package warpengine
 
 import (
 	_ "embed"

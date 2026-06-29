@@ -5,7 +5,7 @@
 // guarding against re-entry and enforcing the host-pristine invariant by refusing
 // to wire when the host contains a pre-existing real directory predating weft.
 
-package warp
+package warpengine
 
 import (
 	"fmt"

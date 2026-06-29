@@ -1,7 +1,7 @@
 // remove.go implements Remove: it tears down the portal and launchers before the
 // target-exists check, so cleanup still runs when the worktree dir is already gone.
 
-package warp
+package warpengine
 
 import (
 	"fmt"
