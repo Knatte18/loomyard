@@ -30,7 +30,9 @@ implementing  '2026-06-29T14:47:10Z'
 ```yaml
 batches:
   - name: board split
-    state: pending
+    state: running
+    implementer_session: 8dd70085-5f61-4e88-a59b-744a6f07a6ff
+    start_sha: 29a68c19d23d86d805a05325fb6fe7424b04b4d7
   - name: weft split
     state: pending
   - name: warp split
