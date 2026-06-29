@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-constraints docs guards and comment sweep
+phase: holistic-reviewing
 slug: cobra-cli-engine-sweep
 branch: cobra-cli-engine-sweep
 plan: _mill/plan
@@ -31,6 +31,7 @@ approved-ghissues split  '2026-06-29T17:06:14Z'
 approved-muxpoc rename  '2026-06-29T17:14:07Z'
 approved-update fold to config reconcile  '2026-06-29T17:26:14Z'
 approved-constraints docs guards and comment sweep  '2026-06-29T17:37:56Z'
+holistic-reviewing  '2026-06-29T17:38:25Z'
 ```
 
 ## Batches
