@@ -60,7 +60,11 @@ usage is retargeted in batch 3), and `internal/initcli/initcli_test.go`.
   domain `*_test.go` files into `internal/weftengine` with package clause
   `package weft` → `package weftengine`. **Rename `scopedPathspec` → exported
   `ScopedPathspec`** (it is called cross-package by the weftcli `PersistentPreRunE` in
-  card 6). Keep `commitMessage`/`lockDirName`/`writeLockFile`/`pushLockFile` unexported
+  card 6). When renaming, also update every **in-package** call site that moves with the
+  engine: the internal `sync_test.go` (declared `package weft` → `weftengine`) calls
+  `scopedPathspec(...)` at lines ≈97 and ≈111 — change both to `ScopedPathspec(...)` so the
+  moved test compiles. Keep `commitMessage`/`lockDirName`/`writeLockFile`/`pushLockFile`
+  unexported
   (used only by `sync.go`). `cli.go` is read-only Context here only to confirm which
   symbols the cli half consumes — do not move it (card 6). Preserve the `//go:build
   integration` tag verbatim on `sync_test.go`, `status_test.go`, and

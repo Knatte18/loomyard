@@ -3,7 +3,7 @@
 ```yaml
 task: "Rename Cobra modules to `<module>cli`, extract kernels as `<module>engine`"
 slug: "cobra-cli-engine-sweep"
-approved: false
+approved: true
 started: "20260629-115456"
 parent: "main"
 root: ""
