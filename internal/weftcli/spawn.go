@@ -4,7 +4,7 @@
 // It has its own process group (so the parent's Ctrl-C does not reach it)
 // and survives the parent's exit.
 
-package weft
+package weftcli
 
 import (
 	"os"

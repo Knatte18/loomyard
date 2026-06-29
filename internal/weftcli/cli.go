@@ -6,7 +6,7 @@
 // listing never requires a git repo. A hidden persistent --weft-path flag enables
 // the detached push child path (bypass mode) used by spawnPush.
 
-package weft
+package weftcli
 
 import (
 	"io"
@@ -16,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/paths"
+	"github.com/Knatte18/loomyard/internal/weftengine"
 	"github.com/spf13/cobra"
 )
 
@@ -31,7 +32,7 @@ func Command() *cobra.Command {
 	// Closure vars populated by PersistentPreRunE and read by subcommand RunEs.
 	var (
 		l        *paths.Layout
-		cfg      Config
+		cfg      weftengine.Config
 		pathspec []string
 		bypass   bool   // true when --weft-path is set
 		weftPath string // populated from --weft-path in bypass mode
@@ -93,7 +94,7 @@ func Command() *cobra.Command {
 
 			weftBaseDir := filepath.Join(l.WeftWorktree(), l.RelPath)
 
-			loadedCfg, err := LoadConfig(weftBaseDir)
+			loadedCfg, err := weftengine.LoadConfig(weftBaseDir)
 			if err != nil {
 				output.Err(out, err.Error())
 				clihelp.Abort(ctx, 1)
@@ -101,7 +102,7 @@ func Command() *cobra.Command {
 			}
 			cfg = loadedCfg
 
-			pathspec = scopedPathspec(l.RelPath, cfg.Dirs())
+			pathspec = weftengine.ScopedPathspec(l.RelPath, cfg.Dirs())
 			return nil
 		},
 	}
@@ -120,7 +121,7 @@ func Command() *cobra.Command {
 				return nil
 			}
 			out := cmd.OutOrStdout()
-			statusMap, err := Status(l.WeftWorktree(), pathspec)
+			statusMap, err := weftengine.Status(l.WeftWorktree(), pathspec)
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
@@ -149,7 +150,7 @@ Related commands:
 				return nil
 			}
 			out := cmd.OutOrStdout()
-			committed, err := Commit(l.WeftWorktree(), pathspec, envSyncOptions())
+			committed, err := weftengine.Commit(l.WeftWorktree(), pathspec, envSyncOptions())
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
@@ -171,7 +172,7 @@ Related commands:
 
 			if bypass {
 				// Detached push child: use injected weftPath directly, skip commit.
-				if err := Push(weftPath, SyncOptions{}); err != nil {
+				if err := weftengine.Push(weftPath, weftengine.SyncOptions{}); err != nil {
 					clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 					return nil
 				}
@@ -181,12 +182,12 @@ Related commands:
 
 			// Normal mode: commit first, then push.
 			opts := envSyncOptions()
-			_, err := Commit(l.WeftWorktree(), pathspec, opts)
+			_, err := weftengine.Commit(l.WeftWorktree(), pathspec, opts)
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
-			if err := Push(l.WeftWorktree(), opts); err != nil {
+			if err := weftengine.Push(l.WeftWorktree(), opts); err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
@@ -204,7 +205,7 @@ Related commands:
 				return nil
 			}
 			out := cmd.OutOrStdout()
-			if err := Pull(l.WeftWorktree(), envSyncOptions()); err != nil {
+			if err := weftengine.Pull(l.WeftWorktree(), envSyncOptions()); err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
@@ -222,7 +223,7 @@ Related commands:
 				return nil
 			}
 			out := cmd.OutOrStdout()
-			_, err := Commit(l.WeftWorktree(), pathspec, envSyncOptions())
+			_, err := weftengine.Commit(l.WeftWorktree(), pathspec, envSyncOptions())
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
@@ -240,9 +241,9 @@ Related commands:
 	return cmd
 }
 
-// envSyncOptions reads WEFT_SKIP_* environment variables and returns a SyncOptions.
-func envSyncOptions() SyncOptions {
-	return SyncOptions{
+// envSyncOptions reads WEFT_SKIP_* environment variables and returns a weftengine.SyncOptions.
+func envSyncOptions() weftengine.SyncOptions {
+	return weftengine.SyncOptions{
 		SkipGit:  os.Getenv("WEFT_SKIP_GIT") == "1",
 		SkipPush: os.Getenv("WEFT_SKIP_PUSH") == "1",
 	}
