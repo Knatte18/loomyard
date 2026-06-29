@@ -3,7 +3,7 @@
 // Covers: ConfigTemplate returns valid YAML with correct schema and resolves to
 // the correct literal value (no env-marker substitution) when the environment is empty.
 
-package weft
+package weftengine
 
 import (
 	"testing"

@@ -5,7 +5,7 @@
 // Junction integrity assertions have been removed from this file; they are now
 // owned by internal/warp/status_test.go which exercises checkJunctionHealth directly.
 
-package weft
+package weftengine
 
 import (
 	"os"

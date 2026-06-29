@@ -4,7 +4,7 @@
 // owner). This file reports only content-sync state: branch, dirty flag, and upstream
 // ahead/behind counts.
 
-package weft
+package weftengine
 
 import (
 	"fmt"

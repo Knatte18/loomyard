@@ -1,6 +1,6 @@
 // config_test.go — tests for weft configuration.
 
-package weft
+package weftengine
 
 import (
 	"os"

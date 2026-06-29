@@ -5,7 +5,7 @@
 // validate and resolve the weft config file; the weft module never reads
 // config files or knows their layout itself.
 
-package weft
+package weftengine
 
 import (
 	"fmt"

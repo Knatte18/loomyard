@@ -5,7 +5,7 @@
 // from upstream. All operations coordinate via file locks in the weft worktree.
 // Skipping behavior is controlled via SyncOptions, not environment variables.
 
-package weft
+package weftengine
 
 import (
 	"fmt"

@@ -4,7 +4,7 @@
 // directly from template.yaml at build time. Weft templates use literal
 // values with no ${env:...} markers.
 
-package weft
+package weftengine
 
 import _ "embed"
 
