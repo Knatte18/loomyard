@@ -29,8 +29,9 @@ Three distinct names for three layers, deliberately non-overlapping to avoid the
 
 **Never name skills `lyx-*` or `loom-*`** — skills are `ly-*`, distinct from both the binary
 (`lyx`) and every module (`loom`, `review`, …), so no name is shared between a skill and a
-script/module (the ambiguity that forced the millhouse `mill` → `millpy` rename). Internal Go
-packages (`internal/board`, `internal/weft`, …) keep their own names and are not user-facing.
+script/module (the ambiguity that forced the millhouse `mill` → `millpy` rename). Internal Go feature packages follow the `<module>cli` / `<module>engine` split
+(e.g. `internal/boardcli` + `internal/boardengine`, `internal/warpcli` + `internal/warpengine`) —
+see the Package naming rule in [CONSTRAINTS.md](../CONSTRAINTS.md#package-naming).
 
 Convenience alias: **`lyx run` → `lyx loom run`** (the everyday autonomous call).
 
@@ -108,7 +109,7 @@ The **host repo** is the project's source of truth, maintained by developers. Al
 
 | Artifact | Location | Repo | Purpose |
 |----------|----------|------|---------|
-| `_lyx/config/` | Weft worktree | Weft | Live YAML configuration files for all modules (board, warp, weft); reconciled via `lyx update` |
+| `_lyx/config/` | Weft worktree | Weft | Live YAML configuration files for all modules (board, warp, weft); reconciled via `lyx config reconcile` |
 | `.env` | Weft worktree | Weft | Git-ignored per-machine environment variable overrides (KEY=value format) |
 | `_codeguide/` | Weft worktree | Weft | Codeguide documentation (task 008) |
 | `_board/` | Hub | Board | Task board at a **configured** board-repo URL — `lyx board` accepts any URL; `ly-git-clone` defaults it to the weft repo's GitHub wiki (`<weft>.wiki.git`) |
@@ -162,12 +163,17 @@ The `-weft` suffix is fixed and non-configurable. Weft paths are computed on dem
 github.com/Knatte18/loomyard/
 ├── cmd/lyx/
 │   └── main.go                   entrypoint: routes the <module> argument to a module
-├── internal/board/               the board module
-├── internal/warp/                the warp module (host↔weft topology owner)
-├── internal/weft/                the weft module
-├── internal/ide/                 the ide module
-├── internal/muxpoc/              the muxpoc POC module
-├── internal/ghissues/            the ghissues module (file bugs to GitHub via gh)
+├── internal/boardcli/            the board CLI command
+├── internal/boardengine/         the board domain kernel
+├── internal/warpcli/             the warp CLI command (host↔weft topology owner)
+├── internal/warpengine/          the warp domain kernel
+├── internal/weftcli/             the weft CLI command
+├── internal/weftengine/          the weft domain kernel
+├── internal/idecli/              the ide CLI command
+├── internal/ideengine/           the ide domain kernel
+├── internal/muxpoccli/           the muxpoc POC module
+├── internal/ghissuescli/         the ghissues CLI command
+├── internal/ghissuesengine/      the ghissues domain kernel
 ├── internal/paths/               geometry resolver (the sole owner of cwd/root math)
 ├── internal/configengine/        shared config resolution
 ├── internal/gitexec/             shared git operations
@@ -202,9 +208,8 @@ All commands print JSON: `{"ok":true, ...}` on success,
 User-facing modules each get one `lyx <module>` namespace:
 
 - **init** — scaffolds the `_lyx/` directory structure and creates all module config files via reconciliation against templates (`internal/initcli`). Idempotent: does not clobber existing config files. ✅ Implemented.
-- **update** — reconciles all module config files against their live templates, reporting added/removed keys and optionally writing changes (`internal/update`). Dry-run by default; `--apply` writes atomically. ✅ Implemented.
-- **board** — the task-tracker board (`internal/board`). ✅ Implemented.
-- **config** — interactive menu for viewing and editing module configs. ✅ Implemented.
+- **board** — the task-tracker board (`internal/boardcli` + `internal/boardengine`). ✅ Implemented.
+- **config** — interactive menu for viewing and editing module configs; `lyx config reconcile` reconciles all module config files against their live templates (dry-run by default, `--apply` writes atomically). ✅ Implemented.
 - **weft** — owns all git into the paired weft repo (`lyx weft status|commit|push|pull|sync`). ✅ Implemented.
 - **warp** — **host↔weft-coordinated git topology**: clone (hub-creator), dual-worktree add/remove, coordinated checkout (switches host+weft together + re-points junctions), reconcile, status, prune, cleanup. The single owner of the mirror invariant — consolidates the former `worktree` / `git-clone` modules and `internal/git`; its CLI surface is `lyx warp clone|add|list|remove|checkout|status|reconcile|prune|cleanup`. ✅ Implemented.
 - **ide** — one-shot VS Code launcher with interactive menu. ✅ Implemented.
@@ -282,7 +287,7 @@ requirement), agents run, output files are read, nobody need watch.
 
 Per-file unit tests sit next to the source they test (`store.go` ↔
 `store_test.go`). The cross-cutting suites — benchmarks, concurrency stress, and
-git-backed integration — live in the black-box `internal/board/boardtest` package.
+git-backed integration — live in the black-box `internal/boardengine/boardtest` package.
 
 ## Sandbox Hub
 
