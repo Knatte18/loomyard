@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-warp split
+phase: approved-ide split
 slug: cobra-cli-engine-sweep
 branch: cobra-cli-engine-sweep
 plan: _mill/plan
@@ -26,6 +26,7 @@ implementing  '2026-06-29T14:47:10Z'
 approved-board split  '2026-06-29T15:45:44Z'
 approved-weft split  '2026-06-29T16:19:27Z'
 approved-warp split  '2026-06-29T16:47:32Z'
+approved-ide split  '2026-06-29T16:56:10Z'
 ```
 
 ## Batches
@@ -48,9 +49,10 @@ batches:
     start_sha: 845475a305ce584f6ffed1afadb709fcbed3cd2a
     commit_sha: 9dc8c8cbbe2745433c14fe04d88e0f364cdec40a
   - name: ide split
-    state: running
+    state: approved
     implementer_session: 902200cf-c455-44e2-80a4-d8e578f0c3d7
     start_sha: cbd63e57d5d1a7e47a87f6bd601342234f5aebb7
+    commit_sha: 0d78080254199eaf5e7dec57289fabec322b7b71
   - name: ghissues split
     state: pending
   - name: muxpoc rename
