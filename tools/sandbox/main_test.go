@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -197,4 +198,160 @@ func TestDecideClone_CloneRunError(t *testing.T) {
 func isExecExitError(err error) bool {
 	_, ok := err.(*exec.ExitError)
 	return ok
+}
+
+// TestRun_MissingParent tests that run returns non-zero when -parent is absent.
+func TestRun_MissingParent(t *testing.T) {
+	code := run([]string{})
+	if code == 0 {
+		t.Error("run() = 0; want non-zero when -parent is missing")
+	}
+}
+
+// TestRun_DefaultBuildRoutesToClone tests that a bare run with no subcommand
+// routes to decideClone (the build path) and invokes cloneRun.
+func TestRun_DefaultBuildRoutesToClone(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	cloneRunCalled := false
+	oldCloneRun := cloneRun
+	defer func() { cloneRun = oldCloneRun }()
+	cloneRun = func(parentDir string) error {
+		cloneRunCalled = true
+		return nil
+	}
+
+	// No subcommand → defaults to build.
+	code := run([]string{"-parent", tmpDir})
+	if code != 0 {
+		t.Errorf("run() = %d; want 0", code)
+	}
+	if !cloneRunCalled {
+		t.Error("cloneRun was not called for default (build) subcommand")
+	}
+}
+
+// TestRun_BuildSubcommandRoutesToClone tests that the explicit "build" token
+// also routes to the clone path.
+func TestRun_BuildSubcommandRoutesToClone(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	cloneRunCalled := false
+	oldCloneRun := cloneRun
+	defer func() { cloneRun = oldCloneRun }()
+	cloneRun = func(parentDir string) error {
+		cloneRunCalled = true
+		return nil
+	}
+
+	code := run([]string{"-parent", tmpDir, "build"})
+	if code != 0 {
+		t.Errorf("run() = %d; want 0", code)
+	}
+	if !cloneRunCalled {
+		t.Error("cloneRun was not called for explicit build subcommand")
+	}
+}
+
+// TestRun_ResetRoutesToBuildWithReset tests that -reset with no subcommand
+// removes the existing Hub and re-runs the clone.
+func TestRun_ResetRoutesToBuildWithReset(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create the Hub directory so removeAll is triggered.
+	hubPath := filepath.Join(tmpDir, hubName)
+	if err := os.MkdirAll(hubPath, 0o755); err != nil {
+		t.Fatalf("create hub: %v", err)
+	}
+
+	removeAllCalled := false
+	cloneRunCalled := false
+
+	oldRemoveAll := removeAll
+	oldCloneRun := cloneRun
+	defer func() {
+		removeAll = oldRemoveAll
+		cloneRun = oldCloneRun
+	}()
+
+	removeAll = func(path string) error {
+		removeAllCalled = true
+		return os.RemoveAll(path)
+	}
+	cloneRun = func(parentDir string) error {
+		cloneRunCalled = true
+		return nil
+	}
+
+	code := run([]string{"-parent", tmpDir, "-reset"})
+	if code != 0 {
+		t.Errorf("run() = %d; want 0", code)
+	}
+	if !removeAllCalled {
+		t.Error("removeAll was not called when -reset is set")
+	}
+	if !cloneRunCalled {
+		t.Error("cloneRun was not called when -reset is set")
+	}
+}
+
+// TestRun_SuiteRoutesSuiteToLaunch tests that the "suite" positional routes to
+// the suite path and ultimately invokes launchAgent with the correct directory.
+func TestRun_SuiteRoutesSuiteToLaunch(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create the Hub host repo directory that runSuite requires.
+	hostRepoDir := filepath.Join(tmpDir, hubName, hostDirName)
+	if err := os.MkdirAll(filepath.Join(hostRepoDir, ".git", "info"), 0o755); err != nil {
+		t.Fatalf("create host repo dir: %v", err)
+	}
+
+	// Provide a real file so binaryFingerprint can stat and hash it.
+	fakeLyx := filepath.Join(tmpDir, "lyx.exe")
+	if err := os.WriteFile(fakeLyx, []byte("fake lyx binary"), 0o755); err != nil {
+		t.Fatalf("write fake lyx: %v", err)
+	}
+	fakeClaude := filepath.Join(tmpDir, "claude.exe")
+
+	oldLookPath := lookPath
+	defer func() { lookPath = oldLookPath }()
+	lookPath = func(name string) (string, error) {
+		switch name {
+		case "lyx":
+			return fakeLyx, nil
+		case "claude":
+			return fakeClaude, nil
+		default:
+			return "", fmt.Errorf("not found: %s", name)
+		}
+	}
+
+	launchAgentCalled := false
+	oldLaunchAgent := launchAgent
+	defer func() { launchAgent = oldLaunchAgent }()
+	launchAgent = func(dir, claude, instruction string) int {
+		launchAgentCalled = true
+		if dir != hostRepoDir {
+			t.Errorf("launchAgent dir = %q; want %q", dir, hostRepoDir)
+		}
+		return 0
+	}
+
+	code := run([]string{"-parent", tmpDir, "suite"})
+	if code != 0 {
+		t.Errorf("run() = %d; want 0", code)
+	}
+	if !launchAgentCalled {
+		t.Error("launchAgent was not called for suite subcommand")
+	}
+}
+
+// TestRun_UnknownSubcommandReturnsNonZero tests that an unrecognised positional
+// argument causes run to return a non-zero code.
+func TestRun_UnknownSubcommandReturnsNonZero(t *testing.T) {
+	tmpDir := t.TempDir()
+	code := run([]string{"-parent", tmpDir, "unknowncmd"})
+	if code == 0 {
+		t.Error("run() = 0; want non-zero for unknown subcommand")
+	}
 }
