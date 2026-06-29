@@ -77,7 +77,11 @@ surface), and its precursor — the `config → configengine` PR — is already 
   `internal/paths/paths.go:344` (mentions "seeders in `internal/warp`"), and
   `cmd/testtiming/main.go:36,180` (illustrative `internal/board` in a doc-comment /
   `shortPkg` example — will name a nonexistent package post-rename; update the
-  illustrative path or note it is purely illustrative).
+  illustrative path or note it is purely illustrative), and
+  `internal/configreg/configreg.go:3-4` (doc comment names modules `board, warp, weft`
+  and says "used by init, **update**, and config CLI commands" — drop/replace the
+  `update` mention, since `update` is folded into `config reconcile`; configreg.go is
+  already edited for the importer retargets, so fold the comment fix into that edit).
 
 **Out:**
 
@@ -292,6 +296,13 @@ Per-module file placement:
   - `ideengine`: `spawn.go` (`Spawn(l *paths.Layout, slug string) error`), `menu.go`
     (`Menu(...)`; retarget its `board.*` usage — `LoadConfig`/`New`/`HealthCheck`/
     `GetTask` — to `boardengine`). Engine tests: `spawn_test.go`, `menu_test.go`.
+  - **`codeLauncher` seam**: `spawn.go:15` defines `var codeLauncher = vscode.Launch`,
+    swapped by `cli_test.go` (→ `idecli`), `menu_test.go` and `spawn_test.go` (both →
+    `ideengine`). Since `cli_test.go` leaves the package, **export it** as a settable
+    seam `ideengine.CodeLauncher = vscode.Launch`; `spawn.go`/`menu.go` reference
+    `CodeLauncher`; the in-package engine tests swap it directly; `idecli`'s
+    `cli_test.go` swaps `ideengine.CodeLauncher` cross-package (the warp `RemoveAll` /
+    ghissues `RunGH` pattern). (Note the shared global keeps these tests serial.)
   - `ideengine` imports `boardengine` (the one engine→engine edge). Ordering: board
     must be split before ide, or ide's retarget done in board's batch — see Testing.
   - Importers: `cmd/lyx/main.go` (`ide.Command` → `idecli.Command`).
@@ -507,3 +518,10 @@ Sequencing (one unit per batch, build+test green between each; shared files
 - **Q:** (review r5 NOTE) Can `clone_integration_test.go` just "move"? **A:** No — it
   must be **physically split**: `cloneHub` scenarios → `warpengine` test, reset-swap
   test (309–353) → `warpcli` test.
+- **Q:** (review r6 GAP) ide `codeLauncher` seam across the split? **A:** Export it as
+  settable `ideengine.CodeLauncher = vscode.Launch`. `cli_test.go` (→ idecli) swaps it
+  cross-package; `menu_test.go`/`spawn_test.go` (→ ideengine) swap it in-package. Same
+  seam class as warp `RemoveAll` / ghissues `RunGH`.
+- **Q:** (review r6 NOTE) configreg doc comment stale? **A:** `configreg.go:3-4` names
+  `update` — drop the `update` mention (folded into `config reconcile`); folded into
+  the configreg importer-retarget edit.
