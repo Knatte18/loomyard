@@ -7,7 +7,7 @@ package configreg
 
 import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
-	"github.com/Knatte18/loomyard/internal/warp"
+	"github.com/Knatte18/loomyard/internal/warpengine"
 	"github.com/Knatte18/loomyard/internal/weftengine"
 )
 
@@ -24,7 +24,7 @@ type Module struct {
 func Modules() []Module {
 	return []Module{
 		{"board", boardengine.ConfigTemplate},
-		{"warp", warp.ConfigTemplate},
+		{"warp", warpengine.ConfigTemplate},
 		{"weft", weftengine.ConfigTemplate},
 	}
 }

@@ -17,7 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 	"github.com/Knatte18/loomyard/internal/paths"
-	"github.com/Knatte18/loomyard/internal/warp"
+	"github.com/Knatte18/loomyard/internal/warpengine"
 	"github.com/Knatte18/loomyard/internal/weftcli"
 )
 
@@ -37,17 +37,17 @@ func TestE2ESyncIntegration(t *testing.T) {
 	}
 	lyxtest.SeedConfig(t, f.WeftPrime, seeds)
 
-	// FIRST: Create the host worktree via warp.New().Add() (which is dormant).
+	// FIRST: Create the host worktree via warpengine.New().Add() (which is dormant).
 	// Then wire the host _lyx junction via WireJunctions.
 	// Without this the host worktree has no _lyx, so configengine.Edit→FindBaseDir would error.
-	w := warp.New(warp.Config{})
-	_, err := w.Add(f.Layout, slug, warp.AddOptions{SkipPush: true})
+	w := warpengine.New(warpengine.Config{})
+	_, err := w.Add(f.Layout, slug, warpengine.AddOptions{SkipPush: true})
 	if err != nil {
 		t.Fatalf("worktree.Add(%q): %v", slug, err)
 	}
 
 	// Wire junctions for the new host worktree.
-	if err := warp.WireJunctions(f.Layout, slug); err != nil {
+	if err := warpengine.WireJunctions(f.Layout, slug); err != nil {
 		t.Fatalf("WireJunctions(%q): %v", slug, err)
 	}
 
@@ -87,7 +87,7 @@ func TestE2ESyncIntegration(t *testing.T) {
 		t.Errorf("dispatch() = %d; want 0; output: %s", code, out.String())
 	}
 
-	// Assert _lyx/config/warp.yaml is tracked/committed in the weft worktree.
+	// Assert _lyx/config/warpengine.yaml is tracked/committed in the weft worktree.
 	weftWorktreePath := f.Layout.WeftWorktreePath(slug)
 	configRelPath := paths.ConfigFile(".", "warp")
 	configPath := filepath.Join(weftWorktreePath, configRelPath)

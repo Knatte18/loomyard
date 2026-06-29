@@ -21,7 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/initcli"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 	"github.com/Knatte18/loomyard/internal/paths"
-	"github.com/Knatte18/loomyard/internal/warp"
+	"github.com/Knatte18/loomyard/internal/warpengine"
 	"github.com/Knatte18/loomyard/internal/weftengine"
 )
 
@@ -85,7 +85,7 @@ func TestRunInit_FirstRun(t *testing.T) {
 			t.Errorf("board.LoadConfig failed: %v", err)
 		}
 
-		_, err = warp.LoadConfig(f.Layout.WorktreeRoot, "warp")
+		_, err = warpengine.LoadConfig(f.Layout.WorktreeRoot, "warp")
 		if err != nil {
 			t.Errorf("warp.LoadConfig failed: %v", err)
 		}
