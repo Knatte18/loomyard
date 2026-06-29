@@ -244,7 +244,8 @@ Per-module file placement:
   - Importers to retarget: `internal/configreg` (`board.ConfigTemplate` →
     `boardengine.ConfigTemplate`), `internal/ide` `menu.go` (`board.LoadConfig`,
     `board.New` → `boardengine`), `cmd/lyx/main.go` (`board.Command` →
-    `boardcli.Command`).
+    `boardcli.Command`), and **`internal/initcli/initcli_test.go`** (`board.LoadConfig`
+    → `boardengine.LoadConfig`).
 
 - **weft** (`internal/weft` → `weftcli` + `weftengine`):
   - `weftcli`: `cli.go` (rich `PersistentPreRunE`, hidden `--weft-path` bypass),
@@ -260,7 +261,9 @@ Per-module file placement:
     `weft_integration_test.go`, `template.yaml`.
   - Importers: `configreg` (`weft.ConfigTemplate` → `weftengine`), `configcli`
     (`weft.RunCLI` → `weftcli.RunCLI`), `cmd/lyx/main.go` (`weft.Command` →
-    `weftcli.Command`).
+    `weftcli.Command`), **`internal/initcli/initcli_test.go`** (`weft.LoadConfig` →
+    `weftengine.LoadConfig`), and **`internal/configreg/configreg_test.go`**
+    (`weft.ConfigTemplate` → `weftengine.ConfigTemplate`).
 
 - **warp** (`internal/warp` → `warpcli` + `warpengine`):
   - `warpcli`: `warp.go` (cobra tree + handlers), the **handler half of `clone.go`**
@@ -288,8 +291,9 @@ Per-module file placement:
     `warpcli.Command`), and **`internal/configcli/configcli_integration_test.go`**
     (uses `warp.New`, `warp.Config`, `warp.AddOptions`, `w.Add`, `warp.WireJunctions`
     → all `warpengine`; its `weft.RunCLI` usage retargets to `weftcli.RunCLI` in the
-    weft batch). The importer list is exhaustive for production + test consumers; the
-    build-green gate is the backstop.
+    weft batch), and **`internal/initcli/initcli_test.go`** (`warp.LoadConfig` →
+    `warpengine.LoadConfig`). The importer list is exhaustive for production + test
+    consumers; the build-green gate is the backstop.
 
 - **ide** (`internal/ide` → `idecli` + `ideengine`):
   - `idecli`: `cli.go` + `cli_test.go`.
