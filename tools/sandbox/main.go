@@ -1,5 +1,7 @@
-// main.go implements the sandbox tool for building the lyx-test sandbox Hub.
-// It drives the on-PATH lyx binary to clone a Hub by invoking lyx warp clone.
+// main.go implements the sandbox tool entry point, flag parsing, and subcommand
+// dispatch. It supports two subcommands: "build" (default, clones the Hub) and
+// "suite" (runs the embedded test-scheme agent). The -parent and -reset flags
+// live at the top level to preserve back-compat with existing callers.
 
 package main
 
@@ -66,29 +68,79 @@ func decideClone(hubPath string, reset bool) error {
 	return cloneRun(parentDir)
 }
 
-func main() {
-	parentDir := flag.String("parent", "", "parent directory where the Hub will be created (required)")
-	reset := flag.Bool("reset", false, "rebuild the Hub even if it already exists")
-	flag.Parse()
+// run is the testable entry point for the sandbox tool. It parses argv, resolves
+// the -parent path, and dispatches to the appropriate subcommand. It returns 0
+// on success and 1 on any error, writing a "sandbox: ..." message to stderr.
+func run(argv []string) int {
+	// Top-level flagset holds flags that apply to all subcommands. -reset is
+	// build-only but stays here so existing callers (sandbox.cmd -reset) keep
+	// working without a subcommand token.
+	fs := flag.NewFlagSet("sandbox", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	parentDir := fs.String("parent", "", "parent directory where the Hub will be created (required)")
+	reset := fs.Bool("reset", false, "rebuild the Hub even if it already exists (build subcommand only)")
 
-	if *parentDir == "" {
-		fmt.Fprintln(os.Stderr, "sandbox: -parent is required (error if empty)")
-		os.Exit(1)
+	if err := fs.Parse(argv); err != nil {
+		// flag.ContinueOnError already wrote the usage message to stderr.
+		return 1
 	}
 
-	// Resolve -parent to an absolute path
+	if *parentDir == "" {
+		fmt.Fprintln(os.Stderr, "sandbox: -parent is required")
+		return 1
+	}
+
+	// Resolve -parent to an absolute path so every downstream path computation
+	// is stable regardless of the caller's working directory.
 	absParent, err := filepath.Abs(*parentDir)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "sandbox: resolve parent path: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 
-	// Compute hub path
-	hubPath := filepath.Join(absParent, hubName)
-
-	// Decide and execute
-	if err := decideClone(hubPath, *reset); err != nil {
-		fmt.Fprintf(os.Stderr, "sandbox: %v\n", err)
-		os.Exit(1)
+	// Dispatch on the first remaining positional argument. An absent positional
+	// defaults to "build" so the bare `sandbox.cmd` invocation is unchanged.
+	subcommand := ""
+	if args := fs.Args(); len(args) > 0 {
+		subcommand = args[0]
 	}
+
+	switch subcommand {
+	case "", "build":
+		// Default subcommand: clone or reset the Hub.
+		hubPath := filepath.Join(absParent, hubName)
+		if err := decideClone(hubPath, *reset); err != nil {
+			fmt.Fprintf(os.Stderr, "sandbox: %v\n", err)
+			return 1
+		}
+
+	case "suite":
+		// Parse suite-specific flags from the remaining positionals after "suite".
+		sf := flag.NewFlagSet("sandbox suite", flag.ContinueOnError)
+		sf.SetOutput(os.Stderr)
+		claudeFlag := sf.String("claude", "", "path to the claude binary (default: resolve from PATH)")
+		promptFlag := sf.String("prompt", "", "instruction string passed to the agent (default: built-in)")
+
+		remaining := fs.Args()[1:]
+		if err := sf.Parse(remaining); err != nil {
+			return 1
+		}
+
+		if err := runSuite(absParent, *claudeFlag, *promptFlag); err != nil {
+			fmt.Fprintf(os.Stderr, "sandbox: %v\n", err)
+			return 1
+		}
+
+	default:
+		fmt.Fprintf(os.Stderr, "sandbox: unknown subcommand %q\n", subcommand)
+		return 1
+	}
+
+	return 0
+}
+
+// main delegates entirely to run so the dispatch logic can be tested without
+// spawning a subprocess.
+func main() {
+	os.Exit(run(os.Args[1:]))
 }
