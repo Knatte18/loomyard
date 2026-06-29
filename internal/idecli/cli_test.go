@@ -3,7 +3,7 @@
 // cli_test.go covers the ide CLI cobra surface: spawn dispatch with a stubbed
 // launcher, the unknown-subcommand cobra error, and the no-arg listing path.
 
-package ide
+package idecli
 
 import (
 	"bytes"
@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/ideengine"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
@@ -21,10 +22,10 @@ func TestRunCLISpawnDispatch(t *testing.T) {
 
 	t.Chdir(gitRepo)
 
-	// Stub codeLauncher so the test does not open VS Code.
-	originalLauncher := codeLauncher
-	defer func() { codeLauncher = originalLauncher }()
-	codeLauncher = func(dir string) error { return nil }
+	// Stub ideengine.CodeLauncher so the test does not open VS Code.
+	originalLauncher := ideengine.CodeLauncher
+	defer func() { ideengine.CodeLauncher = originalLauncher }()
+	ideengine.CodeLauncher = func(dir string) error { return nil }
 
 	var out bytes.Buffer
 	code := RunCLI(&out, []string{"spawn", "child"})

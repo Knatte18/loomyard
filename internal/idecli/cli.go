@@ -4,7 +4,7 @@
 // each wrapping the existing handler bodies. Layout resolution happens once in a
 // PersistentPreRunE so that the no-arg "lyx ide" listing never requires a git repo.
 
-package ide
+package idecli
 
 import (
 	"fmt"
@@ -12,6 +12,7 @@ import (
 	"os"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/ideengine"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/paths"
 	"github.com/spf13/cobra"
@@ -82,7 +83,7 @@ func Command() *cobra.Command {
 			}
 			slug := args[0]
 
-			if err := Spawn(l, slug); err != nil {
+			if err := ideengine.Spawn(l, slug); err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(cmd.OutOrStdout(), fmt.Sprintf("spawn failed: %v", err)))
 				return nil
 			}
@@ -101,7 +102,7 @@ func Command() *cobra.Command {
 				return nil
 			}
 
-			if err := Menu(l, os.Stdin, cmd.OutOrStdout()); err != nil {
+			if err := ideengine.Menu(l, os.Stdin, cmd.OutOrStdout()); err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(cmd.OutOrStdout(), fmt.Sprintf("menu failed: %v", err)))
 				return nil
 			}
