@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-ide split
+phase: approved-ghissues split
 slug: cobra-cli-engine-sweep
 branch: cobra-cli-engine-sweep
 plan: _mill/plan
@@ -27,6 +27,7 @@ approved-board split  '2026-06-29T15:45:44Z'
 approved-weft split  '2026-06-29T16:19:27Z'
 approved-warp split  '2026-06-29T16:47:32Z'
 approved-ide split  '2026-06-29T16:56:10Z'
+approved-ghissues split  '2026-06-29T17:06:14Z'
 ```
 
 ## Batches
@@ -54,9 +55,10 @@ batches:
     start_sha: cbd63e57d5d1a7e47a87f6bd601342234f5aebb7
     commit_sha: 0d78080254199eaf5e7dec57289fabec322b7b71
   - name: ghissues split
-    state: running
+    state: approved
     implementer_session: 96c70934-52da-4684-b208-20c925d7b315
     start_sha: fb11e088bfa69570cbf66e03316046d3c5b5eb32
+    commit_sha: 4a27fb3a5c7e3855743a4f135c988567b6a8f433
   - name: muxpoc rename
     state: pending
   - name: update fold to config reconcile
