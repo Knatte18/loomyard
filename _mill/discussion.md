@@ -62,6 +62,14 @@ This task closes the enforcement hole (machine-enforce geometry *construction*, 
     env override) — **not** as part of any env-removal initiative.
   - Reword `boardcli` `Long` so it stops conflating the config *file* (cwd-resolved) with
     the board *data dir* (paths-derived).
+- **`internal/lyxtest/lyxtest.go` — route its geometry through paths.** This file is a
+  test-support *library* (package `lyxtest`), **not** a `*_test.go` file, so the
+  production-only AST scan compiles and scans it. It builds `filepath.Join(<parent>, base+"-weft")`
+  at three sites (~lines 185, 475, 541) — rule (b) (`+`-operand) would flag them. Convert each to
+  `paths.WeftSiblingPath(<parent>, base)`. The Leaf Invariant explicitly permits
+  `lyxtest → internal/paths`, so this is a legal import and the correct fix — it closes a real
+  fixture-geometry leak rather than allowlisting it, keeping the geometry-scan allowlist at
+  `internal/paths` only.
 - **`internal/paths/enforcement_test.go` — add an AST-based geometry-literal scan** (keep the
   existing `os.Getwd` / `--show-toplevel` substring ban). Production-only; flags geometry-token
   literals only in path-construction context. Details under Decisions.
@@ -84,8 +92,12 @@ This task closes the enforcement hole (machine-enforce geometry *construction*, 
 - **status.go git-pathspec literals** (`"_lyx"` / `"_codeguide"` passed to `git ls-files` and
   used in `strings.HasPrefix` on git output) — left as-is; they are pathspec/parse usage, not
   path construction. Documented as allowed (see Decisions).
-- **Test-file geometry** — the enforcement scan is production-only; test fixtures that build
-  `_board`/`-weft` paths are not flagged (review-discipline, as today).
+- **`*_test.go` geometry** — the enforcement scan is production-only; geometry built inside
+  `*_test.go` files (e.g. `ideengine/menu_test.go`, `warpengine/*_test.go`,
+  `clone_integration_test.go`, board config tests) is not flagged (review-discipline, as today).
+  Note: this exemption is for `*_test.go` files **only** — `internal/lyxtest/lyxtest.go` is a
+  non-`_test.go` library file and is therefore **in** scope (converted via `paths.WeftSiblingPath`,
+  see In-scope above), not exempt.
 - **`_portals` / `_launchers` / `_codeguide` constants** — these tokens stay as inline literals
   inside `internal/paths` (already paths-owned/allowlisted). No new constants for them; only the
   three suffix/dir names warp needs (`WeftSuffix`, `BoardDirName`, `HubSuffix`) are extracted.
@@ -180,9 +192,12 @@ This task closes the enforcement hole (machine-enforce geometry *construction*, 
   scoping to Join/`+`/const-decl catches *construction* and never *description*. Production-only
   mirrors the existing `_test.go` skip and `registration_test.go`; several test fixtures
   legitimately build these paths.
-- Rejected: Substring scan of geometry tokens (false positives on prose); scanning test files
-  (would flag legitimate fixtures — `lyxtest.go`, `ideengine/menu_test.go`, `clone_integration_test.go`,
-  board config tests; test geometry stays a review rule).
+- Rejected: Substring scan of geometry tokens (false positives on prose); scanning `*_test.go`
+  files (would flag legitimate fixtures — `ideengine/menu_test.go`, `clone_integration_test.go`,
+  board config tests; `*_test.go` geometry stays a review rule). **Note:**
+  `internal/lyxtest/lyxtest.go` is *not* a `*_test.go` file, so it is scanned and must be
+  converted (see the lyxtest decision below) — it is **not** covered by the test-file exemption,
+  and it is **not** added to the allowlist (allowlist stays `internal/paths` only).
 
 ### status.go git-pathspecs are allowed bypasses
 
@@ -194,6 +209,19 @@ This task closes the enforcement hole (machine-enforce geometry *construction*, 
   Documenting them prevents a future reviewer reading them as missed leaks.
 - Rejected: Constant-izing them (would require a new `_codeguide` constant for non-construction
   use, expanding scope past geometry ownership for no enforcement benefit).
+
+### lyxtest.go geometry routed through paths (not allowlisted)
+
+- Decision: Convert `internal/lyxtest/lyxtest.go`'s three `filepath.Join(<parent>, base+"-weft")`
+  sites (~lines 185, 475, 541) to `paths.WeftSiblingPath(<parent>, base)`. Do **not** add
+  `internal/lyxtest` to the enforcement allowlist.
+- Rationale: `lyxtest.go` is a library file in package `lyxtest`, not a `*_test.go` file, so the
+  production-only scan compiles and scans it; rule (b) would flag the `+"-weft"` operands.
+  Routing through `paths.WeftSiblingPath` closes a genuine fixture-geometry leak and keeps the
+  allowlist at `internal/paths` only (the zero-extra-exceptions goal). The Leaf Invariant permits
+  `lyxtest → internal/paths`, so the import is legal; add it if not already present.
+- Rejected: Allowlist `internal/lyxtest` (hides a real leak; lyxtest is not a geometry owner);
+  broaden the scan's skip to whole packages (same downside, and weakens the guard).
 
 ## Technical context
 
@@ -216,6 +244,11 @@ Modules and files mill-plan needs:
   reference must be updated).
 - **`internal/warpengine/{prune,reconcile,status}.go`** — leak sites enumerated above. `prune.go`
   has the only *reverse* parse (pass-2, ~lines 121-128).
+- **`internal/lyxtest/lyxtest.go`** — non-`*_test.go` library file with three
+  `filepath.Join(<parent>, base+"-weft")` sites (~lines 185, 475, 541). Convert to
+  `paths.WeftSiblingPath`. `lyxtest` may already import `internal/paths` (Leaf Invariant allows
+  it); add the import if missing. Line ~240 has a `"_lyx"` mention in a *comment* — not scanned,
+  leave it.
 - **`internal/boardcli/cli.go`** — `PersistentPreRunE` (lines 60-96): currently
   `boardengine.LoadConfig(cwd, "board")` supplies `Config.Path` from the `path:` key. Rewire so
   the normal branch resolves `layout, _ := paths.Resolve(cwd)` and sets
@@ -285,14 +318,20 @@ From `CONSTRAINTS.md` (authoritative):
   (behaviour unchanged). Update `clone_integration_test.go` references to the deleted consts. A
   focused test for `paths.WeftHostSlug` parity with the old prune pass-2 logic (same host slugs
   recovered, same skips).
+- **`internal/lyxtest`:** the three converted `WeftSiblingPath` sites must produce identical
+  fixture paths — existing `lyxtest`-dependent suites (warp/weft integration fixtures) staying
+  green is the parity check; no new assertions needed beyond confirming the build still scans clean.
 - **`internal/boardengine` / `internal/boardcli`:** the `path:`-resolution tests in
   `config_test.go` (relative/absolute/env/`../` cases) become obsolete with the key removed —
   delete or repurpose. `template_test.go` expects `path` among required keys and asserts
   `{"path", "../_board"}` resolution — update to drop `path`. Add a `boardcli` test that the data
-  dir resolves to `paths.BoardDir(l.Hub)` by default and that `--board-path` overrides it. Verify
-  `boardtest/concurrency_test.go` and `bench_test.go` (which seed `path: board`) still pass — their
-  board-dir expectation moves from `<cwd>/board` to `paths.BoardDir(hub)`; adjust seeds/expectations
-  as needed.
+  dir resolves to `paths.BoardDir(l.Hub)` by default and that `--board-path` overrides it.
+  **Fixtures that construct `boardengine.Config{Path: ...}` directly** (`board_test.go`,
+  `boardtest/concurrency_test.go`, `bench_test.go`) set an explicit `Path` and never go through the
+  cli `LoadConfig`→`BoardDir` path, so their board dir does **not** change — only stale
+  `seedWiki … path: board` comments may need a wording touch-up. Do not re-resolve their expected
+  paths. (During planning, confirm whether any of these actually invoke the cli resolution path;
+  the ones that build `Config` directly do not.)
 - **Repo-wide:** `go build ./...` and `go test ./...` green. The enforcement test is the gate —
   it must fail on a reintroduced `filepath.Join(x, "_board")` / `slug + "-weft"` /
   `const s = "-weft"` outside paths, and pass on the fully-converted tree.
@@ -325,3 +364,12 @@ From `CONSTRAINTS.md` (authoritative):
 - **Q:** Is "loomyard should never need env-vars" part of this task? **A:** No — separate future
   direction. This task is Path-Invariant hardening, scope = geometry only. No env-engine removal,
   no `LYX_BRANCH_PREFIX` / `*_SKIP_*` / editor-var changes, no backlog task filed.
+- **Q:** (review r1 GAP) `internal/lyxtest/lyxtest.go` is a non-`*_test.go` file that builds
+  `base+"-weft"` joins — the production-only scan would flag it, contradicting "allowlist =
+  internal/paths only." **A:** Convert its three sites to `paths.WeftSiblingPath` (Leaf Invariant
+  permits `lyxtest → paths`); do not allowlist it. lyxtest.go is now in-scope; the test-file
+  exemption is `*_test.go`-only.
+- **Q:** (review r1 NOTE) Does the board-dir change move the expected path in
+  `boardtest/concurrency_test.go` / `bench_test.go`? **A:** No — those fixtures construct
+  `Config{Path: ...}` directly and never hit the cli `LoadConfig`→`BoardDir` path, so their board
+  dir is unchanged; only stale `path: board` seed comments are affected. Testing note corrected.
