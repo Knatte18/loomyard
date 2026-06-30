@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r1
+phase: planned
 slug: rename-ghissues-to-selfreport
 branch: rename-ghissues-to-selfreport
 plan: _mill/plan
@@ -18,4 +18,5 @@ discussing  '2026-06-30T13:59:10Z'
 discussed  '2026-06-30T14:12:11Z'
 planning  '2026-06-30T14:20:01Z'
 plan-fix-r1  '2026-06-30T14:24:09Z'
+planned  '2026-06-30T14:24:59Z'
 ```
