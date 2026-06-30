@@ -52,8 +52,15 @@ This task closes the enforcement hole (machine-enforce geometry *construction*, 
   - `prune.go:79`, `reconcile.go:102`, `status.go:91` (construction) → `Layout` weft methods.
   - `prune.go` pass-2 suffix strip/match → `paths.WeftHostSlug(name)`.
   - `clone.go` — delete the local `weftSuffix` / `boardDirName` / `HubSuffix` consts; build
-    paths via `paths.WeftSiblingPath` / `paths.BoardDir` / `paths.HubPath`. (clone then needs
-    no `Layout` — pure funcs + consts suffice during bootstrap.)
+    paths via `paths.WeftSiblingPath` / `paths.BoardDir` / `paths.HubPath` (sites at
+    `clone.go:61` HubSuffix, `:92` weftSuffix, `:103` boardDirName). clone then needs no `Layout` —
+    pure funcs + consts suffice during bootstrap.
+  - **`internal/warpcli/clone.go:51`** — `filepath.Join(cwd, name+warpengine.HubSuffix)` →
+    `paths.HubPath(cwd, name)`. `HubSuffix` is currently **exported** from `warpengine` and
+    consumed here, so deleting it breaks `warpcli` compilation; this site must convert in the same
+    change. (Full reference map of the deleted/moved consts: `warpengine/clone.go:61,92,103`,
+    `warpcli/clone.go:51`, and the test sites `clone_integration_test.go:95,181` — every one must
+    move to a `paths` call.)
 - **`internal/boardengine` + `internal/boardcli` — board data dir becomes paths-owned:**
   - Remove the `path:` key from the board config template (`template.yaml`). Geometry is
     paths-owned and must **not** be config/env-overridable.
@@ -176,6 +183,11 @@ This task closes the enforcement hole (machine-enforce geometry *construction*, 
   - Parses each non-test `.go` file outside `internal/paths` with `go/parser` (mirroring
     `cmd/lyx/registration_test.go`).
   - Token set: `_board`, `-weft`, `-HUB`, `_portals`, `_launchers`, `_codeguide`, `_lyx`.
+  - **Match semantics: whole-token equality, not substring.** A string literal is a geometry
+    token only when its full unquoted value **equals** a token exactly. Compound suffixes that
+    merely *contain* a token are **not** flagged — e.g. `"-weft-bare"` (a lyxtest fixture suffix,
+    see below), `"_boardroom"`, `"-HUBBUB"`. This is deliberate: substring matching would
+    false-positive on legitimate compound fixture names and is the looser, more brittle rule.
   - Flags a geometry-token **string literal** only in path-construction context:
     (a) an argument to a `filepath.Join(...)` call, or (b) an operand of a binary `+` expression.
   - Also flags a string **const declaration** whose value is exactly a geometry token (catches
@@ -185,8 +197,10 @@ This task closes the enforcement hole (machine-enforce geometry *construction*, 
     `_board`).
   - Keeps a predicate/AST-fixture sub-test in sync: synthetic positives
     (`filepath.Join(x, "_board")`, `slug + "-weft"`, `const s = "-weft"`) must flag; synthetic
-    negatives (a doc comment, `Long: "...-weft..."` struct-field literal, a plain non-token
-    string) must pass.
+    negatives must pass — including a doc comment, a `Long: "...-weft..."` struct-field literal
+    (context-scoping), a plain non-token string, **and a compound near-token**
+    (`slug + "-weft-bare"`, `filepath.Join(x, "_boardroom")`) to pin whole-token matching, not
+    just context-scoping.
 - Rationale: A substring extension would false-positive on doc comments, cobra help prose (warp's
   `Long` describes the `<name>-weft` / `_board` layout for users), and template strings. AST
   scoping to Join/`+`/const-decl catches *construction* and never *description*. Production-only
@@ -220,6 +234,10 @@ This task closes the enforcement hole (machine-enforce geometry *construction*, 
   Routing through `paths.WeftSiblingPath` closes a genuine fixture-geometry leak and keeps the
   allowlist at `internal/paths` only (the zero-extra-exceptions goal). The Leaf Invariant permits
   `lyxtest → internal/paths`, so the import is legal; add it if not already present.
+- **Out of scope (do NOT convert):** `lyxtest.go`'s `base+"-weft-bare"` sites (~lines 207, 481).
+  `-weft-bare` is a fixture-local suffix (a bare weft clone), **not** a geometry token; under
+  whole-token matching it is not flagged, so it correctly stays a plain literal in `lyxtest`.
+  Only the three exact `base+"-weft"` sites are converted.
 - Rejected: Allowlist `internal/lyxtest` (hides a real leak; lyxtest is not a geometry owner);
   broaden the scan's skip to whole packages (same downside, and weakens the guard).
 
@@ -237,22 +255,30 @@ Modules and files mill-plan needs:
   `ast.Inspect`. Reuse its `discovered_non_empty`-style sanity sub-test so a silently-broken
   walk can't all-pass.
 - **`internal/warpengine/clone.go`** (consts at lines 16-25) — `HubSuffix` is currently
-  **exported** from warp and used by warpcli/tests; moving it to `paths.HubSuffix` means updating
-  those references. `weftSuffix`/`boardDirName` are unexported. `clone_integration_test.go`
-  references `boardDirName` (lines 95, 181) — those become `paths.BoardDir(hubPath)` /
-  `paths.BoardDirName` (test won't be scanned, but the deleted const breaks compilation, so the
-  reference must be updated).
+  **exported** from warp and consumed by `internal/warpcli/clone.go:51`
+  (`filepath.Join(cwd, name+warpengine.HubSuffix)`); moving it to `paths` means that site converts
+  to `paths.HubPath(cwd, name)` in the same change or warpcli fails to compile. `weftSuffix` /
+  `boardDirName` are unexported (warpengine-internal). `clone_integration_test.go` references
+  `boardDirName` (lines 95, 181) — those become `paths.BoardDir(hubPath)` (test won't be scanned,
+  but the deleted const breaks compilation, so the reference must be updated). Net: after deleting
+  the three consts, grep the tree for any remaining `HubSuffix` / `weftSuffix` / `boardDirName`
+  identifier and confirm zero references survive.
 - **`internal/warpengine/{prune,reconcile,status}.go`** — leak sites enumerated above. `prune.go`
   has the only *reverse* parse (pass-2, ~lines 121-128).
 - **`internal/lyxtest/lyxtest.go`** — non-`*_test.go` library file with three
   `filepath.Join(<parent>, base+"-weft")` sites (~lines 185, 475, 541). Convert to
   `paths.WeftSiblingPath`. `lyxtest` may already import `internal/paths` (Leaf Invariant allows
   it); add the import if missing. Line ~240 has a `"_lyx"` mention in a *comment* — not scanned,
-  leave it.
+  leave it. The `base+"-weft-bare"` sites (~lines 207, 481) are **not** converted — `-weft-bare`
+  is a fixture suffix, not a geometry token (whole-token match does not flag it).
 - **`internal/boardcli/cli.go`** — `PersistentPreRunE` (lines 60-96): currently
   `boardengine.LoadConfig(cwd, "board")` supplies `Config.Path` from the `path:` key. Rewire so
-  the normal branch resolves `layout, _ := paths.Resolve(cwd)` and sets
-  `cfg.Path = paths.BoardDir(layout.Hub)` after `LoadConfig` returns the non-geometry keys. The
+  the normal branch resolves `layout, err := paths.Resolve(cwd)` and sets
+  `cfg.Path = paths.BoardDir(layout.Hub)` after `LoadConfig` returns the non-geometry keys. **The
+  `Resolve` error must be surfaced, not discarded** — on error, emit it through the JSON envelope
+  exactly like the existing `LoadConfig` failure path (`output.Err(cmd.OutOrStdout(), err.Error())`
+  + `clihelp.Abort(ctx, 1)`), never `layout, _ :=` (a swallowed error would leave
+  `cfg.Path = filepath.Join("", "_board") = "_board"`, a silently-wrong relative dir). The
   `--board-path` branch (`cfg = boardengine.Config{Path: *boardPathFlag}`) is unchanged. The bare
   `lyx board` group path (guard `if cmd.Name() == "board"`) skips PreRunE → no `Resolve` needed
   without a git repo. `Long` (lines 39-43) is the help-prose reword; the file-header comment
@@ -373,3 +399,16 @@ From `CONSTRAINTS.md` (authoritative):
   `boardtest/concurrency_test.go` / `bench_test.go`? **A:** No — those fixtures construct
   `Config{Path: ...}` directly and never hit the cli `LoadConfig`→`BoardDir` path, so their board
   dir is unchanged; only stale `path: board` seed comments are affected. Testing note corrected.
+- **Q:** (review r2 GAP) Does the detector match geometry tokens by substring or whole-token?
+  `lyxtest.go` also has `base+"-weft-bare"` (lines 207/481). **A:** Whole-token equality. A literal
+  is a token only if its full value *equals* a token; `-weft-bare` merely contains `-weft`, so it
+  is not flagged and is **not** converted (fixture-local suffix). Added compound-near-token
+  negatives to the AST fixture sub-test to pin this.
+- **Q:** (review r2 NOTE) Deleting `warpengine.HubSuffix` — what else breaks? **A:**
+  `internal/warpcli/clone.go:51` consumes the exported const; it converts to `paths.HubPath(cwd,
+  name)` in the same change. Full reference map added (warpengine/clone.go:61/92/103,
+  warpcli/clone.go:51, clone_integration_test.go:95/181).
+- **Q:** (review r2 NOTE) `layout, _ := paths.Resolve(cwd)` in boardcli swallows the error. **A:**
+  Surface it via the JSON envelope (`output.Err` + `clihelp.Abort`), matching the existing
+  `LoadConfig` failure path — never discard it (a swallowed error yields a silently-wrong
+  `cfg.Path = "_board"`).
