@@ -3,7 +3,7 @@
 ```yaml
 task: "Rename internal/paths to internal/hubgeometry"
 slug: rename-paths-to-hubgeometry
-approved: false
+approved: true
 started: 20260630-161302
 parent: main
 root: ""
