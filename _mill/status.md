@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: rename-paths-to-hubgeometry
 branch: rename-paths-to-hubgeometry
 plan: _mill/plan
@@ -21,4 +21,15 @@ plan-review-r1  '2026-06-30T16:20:17Z'
 plan-fix-r1  '2026-06-30T16:20:17Z'
 plan-review-r2  '2026-06-30T16:23:27Z'
 planned  '2026-06-30T16:23:41Z'
+implementing  '2026-06-30T16:33:39Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: code-rename
+    state: pending
+  - name: docs
+    state: pending
 ```
