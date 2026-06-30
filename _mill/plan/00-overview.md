@@ -3,7 +3,7 @@
 ```yaml
 task: "Refine SANDBOX-SUITE.md from the 2026-06-30 sandbox run"
 slug: "sandbox-suite-refinements"
-approved: false
+approved: true
 started: "20260630-055411"
 parent: "main"
 root: ""

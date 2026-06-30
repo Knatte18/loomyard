@@ -11,8 +11,10 @@ depends-on: []
 
 ## Batch Scope
 
-This batch delivers all seven meta/doc refinements to the lyx sandbox suite from the
-2026-06-30 S0–S6 pass (issues #39, #40, #41). Every change is an edit to the single
+This batch delivers the seven meta/doc refinement items from the discussion (issues #39,
+#40, #41), spread across the six cards below — Card 1 groups three closely-related edits
+(the Operating-model paragraph, the S4 reword, and the S6 verdict note). Every change is
+an edit to the single
 authored source file `tools/sandbox/test-scheme.md`, which `tools/sandbox/suite.go`
 embeds and renders into `SANDBOX-SUITE.md` at launch. It is one batch because the edits
 all live in one ~180-line markdown file and a single implementer holds the whole file in
@@ -65,8 +67,8 @@ preserved (pinned by `suite_test.go`); see Shared Decisions in `00-overview.md`.
 - **Moves:** none
 - **Requirements:**
   - Add a **PowerShell JSON-quoting** note to the `## Pre-conditions` section. State that
-    on the suite's documented default shell (Windows PowerShell), backslash-escaping a
-    JSON argument is the intuitive-but-wrong move and yields
+    when driving the suite from Windows PowerShell (the assumed session shell on Windows),
+    backslash-escaping a JSON argument is the intuitive-but-wrong move and yields
     `{"error":"invalid json: invalid character '\\' looking for beginning of object key string","ok":false}`;
     the working form is a single-quoted string with literal inner double quotes, e.g.
     `lyx board upsert '{"slug":"s3-demo","title":"S3 demo"}'`. (The example mirrors the
@@ -107,7 +109,10 @@ preserved (pinned by `suite_test.go`); see Shared Decisions in `00-overview.md`.
     (e.g. a `T1 "Test task from S3"` task persists from prior runs), so the agent must not
     assume a fresh board — and instruct the agent to **clean up the test tasks it creates**
     at session end. Add this note to S3 **only**; do **not** edit S1 (its "Hub
-    orientation" text makes no fresh-board assumption).
+    orientation" text makes no fresh-board assumption). The note leans on the `lyx board
+    list` subcommand (the agent observes the persisted `T1` task) and the `lyx board
+    remove` subcommand (used to clean up the test tasks) — both defined in
+    `internal/boardcli/cli.go`.
 - **Commit:** `docs(sandbox): note board durability + test-task cleanup in S3`
 
 ### Card 5: Reframe S5 as an operator-only step
