@@ -246,6 +246,18 @@ Batch-local decision: every importer must be retargeted in this one batch becaus
   - `internal/initcli/initcli.go`
   - `internal/initcli/initcli_test.go`
   - `internal/muxpoccli/cli.go`
+
+### Card 8a (holistic-r1): Fix stale paths.X prose comments in out-of-manifest files
+
+- **Context:**
+  - holistic review finding: stale `paths.X` qualifiers in comments of six files absent from original manifest
+- **Edits:**
+  - `internal/boardengine/config.go`
+  - `internal/boardengine/template_test.go`
+  - `internal/warpcli/clone_cli_test.go`
+  - `internal/idecli/cli_test.go`
+  - `cmd/lyx/unknown_subcommand_test.go`
+  - `internal/muxpoccli/muxpoc_smoke_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
