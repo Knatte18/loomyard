@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-approved
+phase: done
 slug: harden-path-invariant
 branch: harden-path-invariant
 plan: _mill/plan
@@ -30,6 +30,7 @@ holistic-reviewing  '2026-06-30T13:44:47Z'
 holistic-fixing  '2026-06-30T13:53:06Z'
 nits-fixed-holistic  '2026-06-30T14:04:04Z'
 holistic-approved  '2026-06-30T14:04:04Z'
+done  '2026-06-30T14:04:37Z'
 ```
 
 ## Batches
