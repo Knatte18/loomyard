@@ -116,7 +116,8 @@ func TestReconcileAll_ApplyCreatesFiles(t *testing.T) {
 		t.Errorf("weft.yaml was not created: %v", err)
 	}
 
-	// Verify board.yaml was rewritten (stale_key removed)
+	// Verify board.yaml was rewritten: stale_key removed and path: also removed
+	// (path: is no longer in the board template; Reconcile treats it as an extra key).
 	content, err := os.ReadFile(boardPath)
 	if err != nil {
 		t.Fatalf("read board.yaml: %v", err)
@@ -124,8 +125,8 @@ func TestReconcileAll_ApplyCreatesFiles(t *testing.T) {
 	if contains(string(content), "stale_key") {
 		t.Error("board.yaml still contains stale_key after apply; should have been removed")
 	}
-	if !contains(string(content), "path: board") {
-		t.Error("board.yaml missing user value 'path: board' after apply; should be preserved")
+	if contains(string(content), "path:") {
+		t.Error("board.yaml still contains path: key after apply; should have been removed (not in template)")
 	}
 }
 

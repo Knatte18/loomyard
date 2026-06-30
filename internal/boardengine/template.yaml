@@ -1,4 +1,3 @@
-path: ${env:LYX_BOARD_PATH:-../_board}  # board dir; tasks.json + rendered output; relative to cwd or absolute
 home: ${env:LYX_HOME:-Home.md}           # home page file name; relative to board dir
 sidebar: ${env:LYX_SIDEBAR:-_Sidebar.md}   # sidebar file name; relative to board dir
 proposal_prefix: ${env:LYX_PROPOSAL_PREFIX:-proposal-}   # prefix for proposal files

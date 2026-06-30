@@ -9,7 +9,57 @@ All worktree and hub geometry must be resolved through `internal/paths`, not raw
 - All cwd and worktree root queries MUST go through `internal/paths.Getwd()` and `internal/paths.Resolve()`.
 - Raw `os.Getwd` is forbidden outside `internal/paths` and `cmd/lyx/main.go`.
 - Raw `git rev-parse --show-toplevel` is forbidden outside `internal/paths` and `cmd/lyx/main.go`.
-- The ban is enforced at `go test` / CI time by `internal/paths/enforcement_test.go`, which scans the entire source tree and fails the build if either primitive is found.
+- The ban is enforced at `go test` / CI time by `internal/paths/enforcement_test.go`, which scans the entire source tree and fails the build if either primitive is found in any non-test `.go` file outside the allowlist.
+
+### Geometry-literal ban (machine-enforced)
+
+The geometry path tokens `_board`, `-weft`, `-HUB`, `_portals`, `_launchers`, `_codeguide`, and `_lyx` are owned solely by `internal/paths`. No other package may use them in a **path-construction context** in production code.
+
+**What counts as a path-construction context** (enforced by `TestEnforcement_GeometryLiterals` in `enforcement_test.go`):
+
+- An argument to a `filepath.Join(...)` call.
+- An operand of a binary `+` (`token.ADD`) expression.
+- The value of a string `const` declaration.
+
+**Matching is whole-token** (exact string equality after unquoting, not substring), so compound names like `_boardroom` or `-weft-bare` are not flagged.
+
+**Scope:** production files only. Files matching `*_test.go` are excluded — test geometry (fixtures, path assertions) is a code-review rule, not machine-enforced.
+
+**Allowlist:** `internal/paths` is the only permitted package.
+
+**Legitimately-allowed bypasses** (not flagged because they are not path-construction contexts):
+
+- Git pathspec literals in `[]string{...}` slice literals passed to git commands (e.g. `status.go` `["_lyx", "_codeguide"]` for `git ls-files`).
+- String-equality or `strings.HasPrefix` comparisons against these names (e.g. `tracked == "_lyx"`) — these use `==` or a function call, not `filepath.Join`/`+`/`const`.
+- Pure filenames in non-geometry config (`home`/`sidebar`/`proposal_prefix`), clone URLs, user-supplied destinations, and comment prose.
+
+### Geometry vocabulary API
+
+The following exported symbols in `internal/paths` own the geometry vocabulary:
+
+**Constants:**
+
+- `WeftSuffix` (`"-weft"`) — suffix appended to a host-slug to form its weft sibling directory name.
+- `BoardDirName` (`"_board"`) — name of the board data directory inside the hub.
+- `HubSuffix` (`"-HUB"`) — suffix appended to a repo name to form its hub container directory.
+- `LyxDirName` (`"_lyx"`) — the lyx system directory name within a worktree.
+
+**Pure bootstrap functions** (no resolved `Layout` required):
+
+- `WeftSiblingPath(hub, slug string) string` — returns `filepath.Join(hub, slug+WeftSuffix)`.
+- `BoardDir(hub string) string` — returns `filepath.Join(hub, BoardDirName)`.
+- `HubPath(parent, name string) string` — returns `filepath.Join(parent, name+HubSuffix)`.
+
+**Reverse parser:**
+
+- `WeftHostSlug(name string) (slug string, ok bool)` — strips `WeftSuffix` and reports whether the result is a non-empty slug. Used to identify weft siblings in hub scans.
+
+### Geometry is paths-owned and not config/env-overridable
+
+Geometry directories (`<hub>/_board`, `<hub>/<slug>-weft`, etc.) are structural invariants of the Loomyard layout and are never configurable via environment variables or YAML config keys.
+
+- The board data directory is resolved as `--board-path` flag (transient override) > `paths.BoardDir(l.Hub)`. It is **not** a config file key.
+- Non-geometry config values (e.g. `home`, `sidebar`, `proposal_prefix`) continue to use the `${env:NAME:-default}` form in their template YAML files — only geometry is excluded from config.
 
 ### `_lyx` and config-file paths
 
@@ -18,7 +68,7 @@ All worktree and hub geometry must be resolved through `internal/paths`, not raw
   - `paths.ConfigDir(base)` — the `<base>/_lyx/config` directory.
   - `paths.ConfigFile(base, module)` — the `<base>/_lyx/config/<module>.yaml` file (e.g. `module` = `"board"`, `"worktree"`, `"weft"`). For a relative path, pass `"."` as `base`.
 - **This rule applies to test code too.** A migration of the config layout (PR #20 moved configs from `_lyx/<module>.yaml` to `_lyx/config/<module>.yaml`) silently broke a hardcoded test fixture (`internal/worktree/cli_test.go`) because its literal write path drifted from the loader's read path. Routing every path through the helpers makes such migrations track automatically. The two genuine exceptions are `internal/paths/*_test.go` (those literals *are* the spec under test) and `_lyx` used as link-target geometry or string-content assertions — neither resolves a config path.
-- This case is **not** caught by `internal/paths/enforcement_test.go` (which only bans `os.Getwd` / `git rev-parse`); it is a code-review and planning-discipline rule.
+- The geometry-literal ban (above) now machine-enforces the production side of this rule for the geometry subset; config-path discipline in test code remains a code-review obligation.
 
 ### For New Code
 
@@ -28,6 +78,8 @@ If you need a cwd or worktree root:
 - Use the `Layout` methods to derive paths: `LyxDir()`, `WorktreePath(slug)`, `PortalsDir()`, `PortalLink(slug)`, `PortalTarget(slug)`, `LaunchersDir()`, `LauncherDir(slug)`, `MenuLauncherPath()`, `LauncherSpawnRel(slug)`, `MenuLauncherRel()`, `PrimeName()`, `WeftRepoRoot()`, `WeftWorktreePath(slug)`, `WeftWorktree()`, `WeftLyxDir()`, `WeftLyxDirFor(slug)`, `WeftCodeguideDir()`, `HostLyxLink(slug)`, `HostLyxLinkHere()`, `HostJunctions(slug)`.
 
 If you need an `_lyx` / config path (in production or test code), use `paths.LyxDirName`, `paths.ConfigDir(base)`, and `paths.ConfigFile(base, module)` as above.
+
+If you need to construct a weft, board, or hub path, use the geometry API: `paths.WeftSiblingPath(hub, slug)`, `paths.BoardDir(hub)`, `paths.HubPath(parent, name)`. Never use the string literals (`"-weft"`, `"_board"`, `"-HUB"`) directly in production code — the geometry-literal ban will reject them.
 
 ## lyxtest Leaf Invariant
 

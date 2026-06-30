@@ -14,9 +14,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 )
 
-// Config layout constants centralize the directory and file names used by the lyx configuration system.
-// These ensure that all code paths derive their paths from a single source of truth,
-// so the layout can be changed in one place without scattering updates across the codebase.
+// Layout and geometry constants centralize the directory and file names used by the lyx
+// configuration system and the weft/board/hub geometry vocabulary. All code that constructs
+// paths from these names must import this package and use these constants — never inline
+// the string literals.
 const (
 	// LyxDirName is the directory name for the lyx system directory within a worktree.
 	LyxDirName = "_lyx"
@@ -26,6 +27,21 @@ const (
 
 	// dotEnvName is the filename for environment variable overrides.
 	dotEnvName = ".env"
+
+	// WeftSuffix is the suffix appended to a host-worktree slug to form the weft sibling
+	// directory name (e.g. "feat" → "feat-weft"). It is the single source of this literal
+	// for the whole repo; use WeftSiblingPath/WeftRepoRoot/WeftWorktreePath rather than
+	// constructing the path from this constant directly.
+	WeftSuffix = "-weft"
+
+	// BoardDirName is the name of the board data directory inside the hub (i.e. <hub>/_board).
+	// It is the single source of this literal; use BoardDir(hub) to obtain the full path.
+	BoardDirName = "_board"
+
+	// HubSuffix is the suffix appended to a repo name to form the hub container directory
+	// (e.g. "loomyard" → "loomyard-HUB"). It is the single source of this literal;
+	// use HubPath(parent, name) to obtain the full path.
+	HubSuffix = "-HUB"
 )
 
 // ErrNotAGitRepo is returned when a directory is not within a git repository.
@@ -137,6 +153,56 @@ func ConfigFile(baseDir, module string) string {
 // Returns filepath.Join(baseDir, dotEnvName).
 func DotEnv(baseDir string) string {
 	return filepath.Join(baseDir, dotEnvName)
+}
+
+// WeftSiblingPath returns the absolute path to the weft sibling worktree for the
+// given slug inside hub.
+//
+// It is a pure bootstrap helper for callers that have no resolved Layout. The result
+// is filepath.Join(hub, slug+WeftSuffix), which is the canonical form of the
+// <hub>/<slug>-weft directory. The three weft Layout methods delegate here so that
+// the WeftSuffix constant is consumed in exactly one place.
+func WeftSiblingPath(hub, slug string) string {
+	return filepath.Join(hub, slug+WeftSuffix)
+}
+
+// BoardDir returns the absolute path to the board data directory inside hub.
+//
+// It is a pure bootstrap helper for callers that have no resolved Layout. The result
+// is filepath.Join(hub, BoardDirName), which is the canonical form of the
+// <hub>/_board directory used by the board engine.
+func BoardDir(hub string) string {
+	return filepath.Join(hub, BoardDirName)
+}
+
+// HubPath returns the absolute path to the hub container directory for the given repo name
+// inside parent.
+//
+// It is a pure bootstrap helper for callers that have no resolved Layout. The result
+// is filepath.Join(parent, name+HubSuffix), which is the canonical form of the
+// <parent>/<name>-HUB directory.
+func HubPath(parent, name string) string {
+	return filepath.Join(parent, name+HubSuffix)
+}
+
+// WeftHostSlug parses a weft sibling directory name and returns the host slug it
+// corresponds to.
+//
+// It reports whether name ends with WeftSuffix AND the stripped prefix is non-empty.
+// The non-empty guard rejects a bare "-weft" entry (which would yield an empty slug),
+// matching the skip condition in warpengine/prune.go's hub scan. When ok is true,
+// slug is the result of strings.TrimSuffix(name, WeftSuffix) and may be passed
+// directly to any of the geometry constructors as the host slug.
+func WeftHostSlug(name string) (slug string, ok bool) {
+	if !strings.HasSuffix(name, WeftSuffix) {
+		return "", false
+	}
+	// Strip the suffix; reject a bare "-weft" name (empty slug).
+	s := strings.TrimSuffix(name, WeftSuffix)
+	if s == "" {
+		return "", false
+	}
+	return s, true
 }
 
 // LyxDir returns the path to the _lyx directory in the current working directory.
@@ -254,24 +320,24 @@ func (l *Layout) PrimeName() string {
 
 // WeftRepoRoot returns the path to the weft Prime worktree (the git -C target for weft worktree add/remove).
 //
-// Returns filepath.Join(Hub, PrimeName()+"-weft").
+// Returns WeftSiblingPath(Hub, PrimeName()), which is filepath.Join(Hub, PrimeName()+WeftSuffix).
 func (l *Layout) WeftRepoRoot() string {
-	return filepath.Join(l.Hub, l.PrimeName()+"-weft")
+	return WeftSiblingPath(l.Hub, l.PrimeName())
 }
 
 // WeftWorktreePath returns the path to a sibling weft worktree with the given slug.
 //
-// Returns filepath.Join(Hub, slug+"-weft"), parallel to WorktreePath(slug).
+// Returns WeftSiblingPath(Hub, slug), parallel to WorktreePath(slug).
 func (l *Layout) WeftWorktreePath(slug string) string {
-	return filepath.Join(l.Hub, slug+"-weft")
+	return WeftSiblingPath(l.Hub, slug)
 }
 
 // WeftWorktree returns the path to the weft worktree paired with the current host worktree.
 //
-// Returns filepath.Join(Hub, filepath.Base(WorktreeRoot)+"-weft"), the weft analog
-// of WorktreeRoot. At the main worktree, this equals WeftRepoRoot().
+// Returns WeftSiblingPath(Hub, filepath.Base(WorktreeRoot)), the weft analog of
+// WorktreeRoot. At the main worktree, this equals WeftRepoRoot().
 func (l *Layout) WeftWorktree() string {
-	return filepath.Join(l.Hub, filepath.Base(l.WorktreeRoot)+"-weft")
+	return WeftSiblingPath(l.Hub, filepath.Base(l.WorktreeRoot))
 }
 
 // WeftLyxDir returns the path to the _lyx directory in the current worktree's weft sibling.

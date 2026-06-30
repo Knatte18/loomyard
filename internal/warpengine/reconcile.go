@@ -99,7 +99,7 @@ func (w *Worktree) Reconcile(l *paths.Layout) (ReconcileResult, error) {
 
 		// Derive the paired weft worktree path from the host worktree base name.
 		slug := filepath.Base(hostPath)
-		weftPath := filepath.Join(l.Hub, slug+"-weft")
+		weftPath := l.WeftWorktreePath(slug)
 
 		pr := ReconcilePairResult{
 			HostWorktree: hostPath,

@@ -182,7 +182,7 @@ func buildWeftPrime() (weftPrime, weftBare string) {
 			panic(err)
 		}
 
-		weftPrime := filepath.Join(tmpDir, base+"-weft")
+		weftPrime := paths.WeftSiblingPath(tmpDir, base)
 		if err := os.Mkdir(weftPrime, 0o755); err != nil {
 			panic(err)
 		}
@@ -472,7 +472,7 @@ func CopyPaired(tb testing.TB) PairedFixture {
 
 	// Copy weft-prime (must preserve the -weft suffix)
 	base := filepath.Base(templateHub)
-	copiedWeftPrime := filepath.Join(tempContainer, base+"-weft")
+	copiedWeftPrime := paths.WeftSiblingPath(tempContainer, base)
 	if err := copyDirRecursive(templateWeftPrime, copiedWeftPrime); err != nil {
 		tb.Fatalf("copyDirRecursive weftPrime: %v", err)
 	}
@@ -538,7 +538,7 @@ func CopyPairedLocal(tb testing.TB) PairedFixture {
 
 	// Copy weft-prime (must preserve the -weft suffix); omit weft-bare
 	base := filepath.Base(templateHub)
-	copiedWeftPrime := filepath.Join(tempContainer, base+"-weft")
+	copiedWeftPrime := paths.WeftSiblingPath(tempContainer, base)
 	if err := copyDirRecursive(templateWeftPrime, copiedWeftPrime); err != nil {
 		tb.Fatalf("copyDirRecursive weftPrime: %v", err)
 	}

@@ -31,7 +31,7 @@ The default is taken **literally** — no trimming, no quote-stripping, no inter
 Markers may appear inside a larger string for composition and interpolation:
 
 ```yaml
-path: ${env:LYX_BOARD_PATH:-../_board}/sub
+path: ${env:LYX_EXAMPLE_PATH:-../_board}/sub
 url: https://${env:HOST:-localhost}:${env:PORT:-8080}
 ```
 

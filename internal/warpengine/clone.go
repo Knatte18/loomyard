@@ -13,17 +13,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/paths"
 )
 
-const (
-	// HubSuffix is the directory suffix appended to the derived repo name to form the Hub directory.
-	HubSuffix = "-HUB"
-
-	// weftSuffix is the directory suffix appended to the repo name to form the weft directory.
-	weftSuffix = "-weft"
-
-	// boardDirName is the directory name for the board repository within the Hub.
-	boardDirName = "_board"
-)
-
 // RemoveAll is an exported testability seam for os.RemoveAll, allowing tests to inject errors.
 // It is used by teardownHub (engine) and runCloneWithReset (warpcli) so both sides share a single swap point.
 var RemoveAll = os.RemoveAll
@@ -58,7 +47,7 @@ func CloneHub(cwd, hostURL, weftURL, boardURL string) (hubPath, resolvedBoardURL
 	}
 
 	// Step 2: Compute Hub path
-	hubPath = filepath.Join(cwd, name+HubSuffix)
+	hubPath = paths.HubPath(cwd, name)
 
 	// Step 3: Check if Hub already exists
 	if _, err := os.Stat(hubPath); err == nil {
@@ -89,7 +78,7 @@ func CloneHub(cwd, hostURL, weftURL, boardURL string) (hubPath, resolvedBoardURL
 	}
 
 	// Step 6: Clone weft repo
-	if err := cloneRepo(weftURL, filepath.Join(hubPath, name+weftSuffix)); err != nil {
+	if err := cloneRepo(weftURL, paths.WeftSiblingPath(hubPath, name)); err != nil {
 		return "", "", teardownHub(hubPath, err)
 	}
 
@@ -100,7 +89,7 @@ func CloneHub(cwd, hostURL, weftURL, boardURL string) (hubPath, resolvedBoardURL
 	}
 
 	// Step 8: Clone board repo
-	if err := cloneRepo(board, filepath.Join(hubPath, boardDirName)); err != nil {
+	if err := cloneRepo(board, paths.BoardDir(hubPath)); err != nil {
 		return "", "", teardownHub(hubPath, err)
 	}
 

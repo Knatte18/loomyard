@@ -3,6 +3,11 @@
 // Drives RunCLI in-process and asserts the JSON + exit-code contract for each
 // subcommand: JSON envelope shape (ok=true/false), exit codes (0 for success,
 // 1 for error), and each verb's distinctive field (task, tasks[], Home.md written).
+//
+// Board data dir strategy: seedCwd initialises a git repo (git init) in the cwd
+// so that PersistentPreRunE can call paths.Resolve without error. The board data
+// dir is then Hub/_board where Hub = filepath.Dir(cwd). This is the production
+// code path; no --board-path injection is used for operational tests.
 
 package boardcli_test
 
@@ -10,6 +15,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -18,31 +24,31 @@ import (
 	"github.com/Knatte18/loomyard/internal/paths"
 )
 
-// seedCwd creates a temp directory with _lyx/config/board.yaml seeded with all template keys,
-// changes to that directory, and returns the cwd path. The caller must restore
-// the original cwd after the test (or use t.Chdir).
+// seedCwd creates a temp directory with _lyx/config/board.yaml seeded with all
+// template keys (home, sidebar, proposal_prefix; path: is not a template key),
+// initialises a git repo there (so paths.Resolve succeeds), changes to that
+// directory, and returns the cwd path. The board data dir is Hub/_board where
+// Hub = filepath.Dir(cwd); callers can compute it as paths.BoardDir(filepath.Dir(cwd)).
 func seedCwd(t *testing.T) string {
 	t.Helper()
 
 	cwd := t.TempDir()
-	lyxDir := filepath.Join(cwd, paths.LyxDirName)
-	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
-		t.Fatalf("failed to create _lyx: %v", err)
+
+	// Initialise a git repo so PersistentPreRunE can call paths.Resolve without error.
+	if out, err := exec.Command("git", "-C", cwd, "init").CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v\n%s", err, out)
 	}
 
-	configDir := paths.ConfigDir(cwd)
-	if err := os.MkdirAll(configDir, 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(cwd, paths.LyxDirName), 0o755); err != nil {
+		t.Fatalf("failed to create _lyx: %v", err)
+	}
+	if err := os.MkdirAll(paths.ConfigDir(cwd), 0o755); err != nil {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
 
-	// Write board config with all template keys
-	configPath := paths.ConfigFile(cwd, "board")
-	configContent := `path: board
-home: Home.md
-sidebar: _Sidebar.md
-proposal_prefix: proposal-
-`
-	if err := os.WriteFile(configPath, []byte(configContent), 0o644); err != nil {
+	// Write board config with all template keys; path: is no longer a template key.
+	configContent := "home: Home.md\nsidebar: _Sidebar.md\nproposal_prefix: proposal-\n"
+	if err := os.WriteFile(paths.ConfigFile(cwd, "board"), []byte(configContent), 0o644); err != nil {
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
 
@@ -51,8 +57,8 @@ proposal_prefix: proposal-
 }
 
 // runCLI invokes boardcli.RunCLI in-process and returns the exit code plus the JSON
-// written to out. Caller must have called seedCwd and t.Chdir to set up the cwd.
-// BOARD_SKIP_GIT must be set by the caller.
+// written to out. Caller must have called seedCwd (or otherwise set up cwd and the
+// git repo) before calling runCLI. BOARD_SKIP_GIT must be set by the caller.
 func runCLI(t *testing.T, args ...string) (exitCode int, stdout string) {
 	t.Helper()
 
@@ -161,10 +167,11 @@ func TestCLIContract(t *testing.T) {
 			wantOK:         true,
 			wantFieldExist: "ok",
 			assertFieldExists: func(t *testing.T, result map[string]any, cwd string) {
-				// Check Home.md exists in <cwd>/board/
-				homePath := filepath.Join(cwd, "board", "Home.md")
+				// seedCwd initialised a git repo at cwd; Hub = filepath.Dir(cwd);
+				// paths.Resolve derives Hub from the git root, so board renders at Hub/_board.
+				homePath := filepath.Join(paths.BoardDir(filepath.Dir(cwd)), "Home.md")
 				if _, err := os.Stat(homePath); err != nil {
-					t.Fatalf("Home.md not created: %v", err)
+					t.Fatalf("Home.md not created at %q: %v", homePath, err)
 				}
 			},
 		},
@@ -805,4 +812,90 @@ func TestCLILookupContract(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestCLIBoardPathResolution verifies the two board data dir resolution paths in
+// PersistentPreRunE: without --board-path the CLI uses paths.BoardDir(hub) derived
+// from paths.Resolve; with --board-path the supplied path takes precedence.
+// This test initialises a real git repo so that paths.Resolve succeeds.
+func TestCLIBoardPathResolution(t *testing.T) {
+	t.Setenv("BOARD_SKIP_GIT", "1")
+
+	// Build a two-level fixture: topDir is the Hub; worktree is a git repo inside it.
+	// paths.Resolve(worktree) derives Hub = topDir, so
+	// paths.BoardDir(Hub) = filepath.Join(topDir, "_board").
+	topDir := t.TempDir()
+	worktree := filepath.Join(topDir, "worktree")
+	if err := os.MkdirAll(worktree, 0o755); err != nil {
+		t.Fatalf("mkdir worktree: %v", err)
+	}
+	if out, err := exec.Command("git", "-C", worktree, "init").CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v\n%s", err, out)
+	}
+
+	// Seed _lyx/config/board.yaml without path: (not a template key).
+	if err := os.MkdirAll(paths.ConfigDir(worktree), 0o755); err != nil {
+		t.Fatalf("mkdir config: %v", err)
+	}
+	configContent := "home: Home.md\nsidebar: _Sidebar.md\nproposal_prefix: proposal-\n"
+	if err := os.WriteFile(paths.ConfigFile(worktree, "board"), []byte(configContent), 0o644); err != nil {
+		t.Fatalf("write board.yaml: %v", err)
+	}
+
+	// Change to the worktree so paths.Getwd() in the CLI returns it.
+	t.Chdir(worktree)
+
+	expectedBoardDir := paths.BoardDir(topDir)
+
+	t.Run("no_board_path_resolves_via_paths", func(t *testing.T) {
+		// PersistentPreRunE calls paths.Resolve and derives cfg.Path = BoardDir(topDir).
+		// Upsert writes tasks.json inside that derived board dir.
+		exitCode, stdout := runCLI(t, "upsert", `{"slug":"path-test","title":"Path Test"}`)
+		if exitCode != 0 {
+			t.Fatalf("upsert exit %d; stdout: %s", exitCode, stdout)
+		}
+		tasksFile := filepath.Join(expectedBoardDir, "tasks.json")
+		if _, err := os.Stat(tasksFile); err != nil {
+			t.Errorf("board not at paths.BoardDir(hub) %q: %v", expectedBoardDir, err)
+		}
+	})
+
+	t.Run("board_path_flag_overrides_resolution", func(t *testing.T) {
+		// --board-path bypasses paths.Resolve and uses the supplied path directly.
+		// list is a read-only operation that works under --board-path (no render step),
+		// so we verify redirection by comparing task counts: absOverride is a fresh
+		// empty dir (0 tasks) while expectedBoardDir already has the "path-test" task
+		// from the first subtest (1 task).
+		absOverride := t.TempDir()
+
+		// list from the override dir returns 0 tasks (empty board).
+		exitOverride, outOverride := runCLI(t, "--board-path", absOverride, "list")
+		if exitOverride != 0 {
+			t.Fatalf("list --board-path exit %d; stdout: %s", exitOverride, outOverride)
+		}
+		var overrideResult map[string]any
+		if err := json.Unmarshal([]byte(outOverride), &overrideResult); err != nil {
+			t.Fatalf("parse override list: %v", err)
+		}
+		overrideTasks, _ := overrideResult["tasks"].([]any)
+		if len(overrideTasks) != 0 {
+			t.Errorf("--board-path override: got %d task(s) from fresh dir %q; want 0",
+				len(overrideTasks), absOverride)
+		}
+
+		// list via the default (git-resolved) path returns the "path-test" task.
+		exitDefault, outDefault := runCLI(t, "list")
+		if exitDefault != 0 {
+			t.Fatalf("list (default path) exit %d; stdout: %s", exitDefault, outDefault)
+		}
+		var defaultResult map[string]any
+		if err := json.Unmarshal([]byte(outDefault), &defaultResult); err != nil {
+			t.Fatalf("parse default list: %v", err)
+		}
+		defaultTasks, _ := defaultResult["tasks"].([]any)
+		if len(defaultTasks) == 0 {
+			t.Errorf("default board path %q: got 0 tasks; want >= 1 (path-test task from first subtest)",
+				expectedBoardDir)
+		}
+	})
 }

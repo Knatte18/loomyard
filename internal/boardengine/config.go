@@ -9,7 +9,6 @@ package boardengine
 
 import (
 	"fmt"
-	"path/filepath"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
@@ -18,7 +17,11 @@ import (
 
 // Config represents the configuration for a board module.
 type Config struct {
-	Path           string `yaml:"path"`
+	// Path is the absolute path to the board data directory. It is set by the
+	// caller (boardcli.Command's PersistentPreRunE via paths.BoardDir or the
+	// --board-path flag), never by the config file. yaml:"-" prevents the
+	// yaml.v3 unmarshaller from mapping any leftover path: key onto this field.
+	Path           string `yaml:"-"`
 	Home           string `yaml:"home"`
 	Sidebar        string `yaml:"sidebar"`
 	ProposalPrefix string `yaml:"proposal_prefix"`
@@ -52,28 +55,27 @@ func (c Config) Outputs() Outputs {
 // If <baseDir>/_lyx/ does not exist, returns an error containing
 // "not initialized here; run \"lyx init\"".
 //
-// Preserves relative-Path resolution (if !filepath.IsAbs(cfg.Path), resolves
-// relative to baseDir).
+// LoadConfig no longer resolves a data-dir path. Config.Path is always empty
+// on return; the caller is responsible for setting it (boardcli sets it via
+// paths.BoardDir or the --board-path flag).
 func LoadConfig(baseDir, module string) (Config, error) {
-	// Load and resolve the config file using the template
+	// Load and resolve the config file using the template.
 	resolved, err := configengine.Load(baseDir, module, []byte(ConfigTemplate()))
 	if err != nil {
-		// Wrap the generic error with a board-specific message
+		// Wrap the generic error with a board-specific message so that callers
+		// surface a consistent "not initialized here" phrase rather than the
+		// lower-level configengine phrasing.
 		if strings.Contains(err.Error(), "not initialized") {
 			return Config{}, fmt.Errorf("not initialized here; run \"lyx init\"")
 		}
 		return Config{}, err
 	}
 
-	// Unmarshal resolved bytes into Config struct
+	// Unmarshal resolved bytes into Config. Path has yaml:"-" so it is never
+	// populated from the file; the caller sets it after LoadConfig returns.
 	var cfg Config
 	if err := yaml.Unmarshal(resolved, &cfg); err != nil {
 		return Config{}, fmt.Errorf("unmarshal board config: %w", err)
-	}
-
-	// Resolve relative path
-	if !filepath.IsAbs(cfg.Path) {
-		cfg.Path = filepath.Join(baseDir, cfg.Path)
 	}
 
 	return cfg, nil
