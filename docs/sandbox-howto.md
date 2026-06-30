@@ -84,8 +84,8 @@ sandbox.cmd suite
 ```
 
 This copies a fresh `SANDBOX-SUITE.md` (fingerprint + embedded scheme) into the
-Hub host repo and launches the interactive agent there. Let it run; it files
-findings itself.
+Hub host repo and launches the interactive agent there. Let it run; it records
+findings to `sandbox-report.json` itself.
 
 Optional overrides:
 
