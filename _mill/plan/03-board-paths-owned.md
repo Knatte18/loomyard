@@ -47,12 +47,16 @@ here so the change is atomic. Depends only on batch 1; shares no edited files wi
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** In the `Config` struct remove the `yaml:"path"` tag from the `Path` field so a
-  leftover `path:` key in an existing file is no longer unmarshalled into it (keep the field —
-  it is now cli-populated like `SkipGit`/`SkipPush`; restate its doc comment to say it is set by
-  the caller, not the config file). In `LoadConfig`, delete the relative-path resolution block
-  (`if !filepath.IsAbs(cfg.Path) { cfg.Path = filepath.Join(baseDir, cfg.Path) }`). Remove the
-  `path/filepath` import if it becomes unused after that deletion. `LoadConfig` now returns only
+- **Requirements:** In the `Config` struct change the `Path` field's tag to `yaml:"-"` so yaml.v3
+  does not map a leftover `path:` key onto it (an untagged `Path` would still match `path:` because
+  yaml.v3 lowercases field names — `yaml:"-"` is the real exclusion; the cli-overwrite in Card 14
+  is the functional guarantee either way). Keep the field — it is now cli-populated like
+  `SkipGit`/`SkipPush`; restate its doc comment to say it is set by the caller, not the config
+  file. In `LoadConfig`, delete the relative-path resolution block
+  (`if !filepath.IsAbs(cfg.Path) { cfg.Path = filepath.Join(baseDir, cfg.Path) }`) AND update the
+  `LoadConfig` function godoc (the "Preserves relative-Path resolution …" sentence, ~lines 53–56)
+  to state that `LoadConfig` no longer resolves a data-dir path. Remove the `path/filepath` import
+  if it becomes unused after the deletion. `LoadConfig` now returns only
   `home`/`sidebar`/`proposal_prefix`; `Path` stays zero from this function.
 - **Commit:** `refactor(board): stop resolving data-dir path in LoadConfig`
 
@@ -99,13 +103,17 @@ here so the change is atomic. Depends only on batch 1; shares no edited files wi
 - **Moves:** none
 - **Requirements:** `template_test.go`: drop `path` from the expected-required-keys set
   (`TestConfigTemplate_HasRequiredKeys`) and remove the `{"path", "../_board"}` row from
-  `TestConfigTemplate_ResolvesToDefaults`. `config_test.go`: delete (or repurpose) the now-obsolete
-  `path:`-resolution cases (relative `_custom_board`, absolute, `../custom_board`, and the
-  `${env:TEST_BOARD_PATH}` env case at ~lines 36/83/119/158) — `LoadConfig` no longer resolves a
-  data-dir path; keep any cases that exercise `home`/`sidebar`/`proposal_prefix`. `cli_test.go`:
-  add a test that with no `--board-path`, the resolved `cfg.Path` equals `paths.BoardDir(hub)` for
-  a fixture worktree, and that `--board-path <abs>` overrides it. Fixtures that build
-  `boardengine.Config{Path: ...}` directly (in `boardengine` tests) need no path change.
+  `TestConfigTemplate_ResolvesToDefaults`. `config_test.go`: **repurpose** `TestLoadConfig_HappyPath`
+  (~line 36) — remove only its `path:` seed line and the path-suffix assertion (~lines 51–52), but
+  KEEP its `home`/`sidebar`/`proposal_prefix` and env-resolution coverage (do not delete the test).
+  **Delete** the now-obsolete pure path-resolution cases — absolute (~line 83), `../custom_board`
+  (~line 119), and the `${env:TEST_BOARD_PATH}` data-dir env case (~line 158) — since `LoadConfig`
+  no longer resolves a data-dir path. `cli_test.go`: strip the stale `path:` seed line from any
+  board-config fixture (e.g. `seedCwd`, ~line 40 `path: board`) and fix any "all template keys"
+  comment that referenced it; then add a test that with no `--board-path`, the resolved `cfg.Path`
+  equals `paths.BoardDir(hub)` for a fixture worktree, and that `--board-path <abs>` overrides it.
+  Fixtures that build `boardengine.Config{Path: ...}` directly (in `boardengine` tests) keep their
+  explicit `Path` — that is a struct field, not a config seed.
 - **Commit:** `test(board): update template/config/cli tests for paths-owned data dir`
 
 ### Card 16: Fix configsync test for stripped path key

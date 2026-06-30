@@ -3,7 +3,7 @@
 ```yaml
 task: 'Harden the Path Invariant: close enforcement hole + fix geometry leaks'
 slug: harden-path-invariant
-approved: false
+approved: true
 started: 20260630-045749
 parent: main
 root: ""
