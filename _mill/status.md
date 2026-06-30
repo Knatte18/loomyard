@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-paths-foundation
 slug: harden-path-invariant
 branch: harden-path-invariant
 plan: _mill/plan
@@ -21,6 +21,7 @@ planning  '2026-06-30T05:01:36Z'
 plan-fix-r1  '2026-06-30T05:07:56Z'
 planned  '2026-06-30T05:08:15Z'
 implementing  '2026-06-30T05:12:44Z'
+approved-paths-foundation  '2026-06-30T05:18:37Z'
 ```
 
 ## Batches
@@ -28,9 +29,10 @@ implementing  '2026-06-30T05:12:44Z'
 ```yaml
 batches:
   - name: paths-foundation
-    state: running
+    state: approved
     implementer_session: 1921b511-fcb0-4105-bcc9-d8e05f308845
     start_sha: 8a4c214bccb26f5b2e55082d986771bb88364f68
+    commit_sha: 25c30ae3fafe28c57c1f1d3b631c9fac1595b9d8
   - name: warp-geometry
     state: pending
   - name: board-paths-owned
