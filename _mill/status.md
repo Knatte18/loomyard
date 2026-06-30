@@ -46,7 +46,9 @@ batches:
     start_sha: 981711764041986a2d92eaa61b95dbfb0ad97357
     commit_sha: 29040a54ef27c67a139d32d94a4fddd713ee735d
   - name: lyxtest-geometry
-    state: pending
+    state: running
+    implementer_session: 6480df3b-a85e-4879-b8bd-f27f273c9a9d
+    start_sha: 95f2775f7133a847933f0567bd2ee968cfb72dac
   - name: enforcement-and-docs
     state: pending
 ```
