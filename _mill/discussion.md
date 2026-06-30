@@ -44,8 +44,12 @@ simply no longer the sandbox's transport.
   Handle malformed-report and missing-report cases with clear errors.
 - Register `sandbox-report.json` in the **host repo's** `.git/info/exclude` (alongside the
   existing `SANDBOX-SUITE.md` entry) so the host repo stays clean.
-- `sandbox.cmd`: pass the loomyard repo root (`%~dp0`) into the suite tool via a new flag so
-  the tool knows where to fetch the report to (see Decision: scratch-destination).
+- `sandbox.cmd`: pass the loomyard repo root (`%~dp0`) into the suite tool via a new
+  **top-level** flag so the tool knows where to fetch the report to (see Decision:
+  scratch-destination).
+- `suite.go`: before launching the agent, **remove any pre-existing
+  `<host>/sandbox-report.json`** so a clean exit with no rewrite surfaces as missing-report
+  rather than a stale finding list under a fresh fingerprint (see Decision: clean-slate-report).
 - `tools/sandbox/suite_test.go`: tests for the fetch/validate/stamp logic — happy path lands
   at the expected `.scratch` path with stamped meta; malformed report → parse error; missing
   report → missing-file message.
@@ -82,8 +86,22 @@ simply no longer the sandbox's transport.
 - Decision: the loomyard-side tool (`tools/sandbox`, run via `sandbox.cmd` from the loomyard
   root) performs the fetch. It learns the loomyard root from the **launcher**: `sandbox.cmd`
   passes its own directory (`%~dp0`, which *is* the loomyard repo root) into the tool via a
-  new flag (e.g. `-loomyard`), exactly as it already hardcodes `-parent C:\Code`. The report
-  is written to `<loomyard-root>/.scratch/sandbox-report-<sha12>.json`.
+  new **top-level** flag `-loomyard`, exactly as it already hardcodes `-parent C:\Code`.
+  - **Flag placement (top-level, not suite-local).** `sandbox.cmd` is `go run ./tools/sandbox
+    -parent C:\Code %*`, and `%*` already carries the `suite` subcommand token. A flag added
+    to the launcher therefore lands *before* `suite` and must be parsed by the top-level
+    flagset `fs` in `main.go` (alongside `-parent`/`-reset`), then threaded into `runSuite`
+    as a parameter — **not** as a suite-local flag on `sf`.
+  - **`%~dp0` trailing-backslash quoting.** `%~dp0` ends in a backslash, so a naive
+    `-loomyard "%~dp0"` becomes `-loomyard "C:\...\"` where the trailing `\"` escapes the
+    closing quote and corrupts parsing. Pass it as `-loomyard "%~dp0."` (append a `.`, giving
+    `...\.`) and `filepath.Clean` it inside the tool, or otherwise strip the trailing
+    separator. The plan must use the dot-suffix form (or an equivalent that avoids a
+    backslash immediately before the closing quote).
+  - The report is written to `<loomyard-root>/.scratch/sandbox-report-<sha12>.json`. The
+    fetch helper takes the **loomyard root** as its destination argument (see the
+    fetch-helper signature note in Technical context) and itself joins `.scratch` and
+    `MkdirAll`s it.
 - Rationale: the sandbox **agent** runs only in the sandbox and writes only there; retrieval
   is done by the LoomYard side, which knows where itself is and where the sandbox is. The
   Path Invariant forbids `os.Getwd`/`git rev-parse` in `tools/sandbox` (it is scanned and not
@@ -97,13 +115,22 @@ simply no longer the sandbox's transport.
 ### validation-strictness
 
 - Decision: after reading the agent's report, **typed-decode** it into the contract struct
-  and require `source == "sandbox-report"` and a present `items` array before trusting it. A
-  parse failure or a wrong/missing `source` is a clear, immediate error from the suite run.
+  and require `source == "sandbox-report"` and a **present** `items` array before trusting it.
+  A parse failure or a wrong/missing `source` is a clear, immediate error from the suite run.
+- **Decode shape (absent vs empty `items`).** With `encoding/json`, a missing `items` key and
+  `items: []` both decode to a nil/empty `[]Item` if the field is a plain slice, so a plain
+  slice cannot tell "absent" from "empty". To enforce *present*, decode `Items` as a
+  **pointer to slice** (`Items *[]Item` with tag `json:"items"`): a `nil` pointer means the
+  key was absent → reject as malformed; a non-nil pointer to a possibly-empty slice (`[]` is
+  valid) means present → accept. (`json.RawMessage` is the equivalent alternative.) An empty
+  `items: []` is a **valid** report — see clean-slate-report: empty findings are written, not
+  treated as missing.
 - Rationale: the JSON is LLM-produced, so it can be malformed or valid-but-wrong-shape.
   Catching it at suite time gives a legible error instead of a confusing crash later in the
   triage. The decode→stamp→re-encode also naturally produces the normalized output file.
 - Rejected: bare `json.Unmarshal` that only checks "is it JSON" — a valid-JSON-wrong-shape
-  report would slip through to the triage.
+  report would slip through to the triage. Plain `Items []Item` — cannot distinguish an
+  absent `items` key from a legitimately empty one.
 
 ### scheme-filename
 
@@ -130,6 +157,27 @@ simply no longer the sandbox's transport.
   a byte copy could not carry the authoritative fingerprint.
 - Rejected: `io.Copy` of the raw bytes — cannot stamp `meta`.
 
+### clean-slate-report
+
+- Decision: in `runSuite`, **before launching the agent**, remove any pre-existing
+  `<host>/sandbox-report.json` (e.g. `os.Remove`, ignoring `os.IsNotExist`). This mirrors how
+  `SANDBOX-SUITE.md` is overwritten fresh each run, so every session starts with no report on
+  disk.
+- Rationale: `sandbox-report.json` is git-excluded in the host repo, so a copy from a prior
+  run persists there. Without a pre-launch clean, an agent that exits 0 but does **not**
+  rewrite the report (e.g. it forgot, or the session ended early) would leave the previous
+  run's findings in place; `suite.go` would then fetch that **stale** list and stamp it with
+  the **current** binary's fingerprint — a silent correctness bug (wrong findings attributed
+  to a new binary). With the pre-launch removal, that same scenario correctly surfaces as the
+  missing-report case.
+- Interaction with empty findings: a run with no WARN/FAIL findings still has the agent write
+  `{"source":"sandbox-report","items":[]}`; the pre-launch clean does not conflict with that —
+  an empty-but-present report is valid and is fetched. Only a truly absent file is the
+  missing-report error.
+- Rejected: leave the stale file and rely on the agent always rewriting it — depends on
+  perfect LLM compliance for a correctness property; the cheap pre-launch `os.Remove` makes it
+  structural.
+
 ### fetch-only-on-clean-exit
 
 - Decision: the fetch/validate runs only when the agent session exits 0. A non-zero agent
@@ -148,8 +196,9 @@ simply no longer the sandbox's transport.
   loomyard repo root and `%~dp0` *is* that root.
 - **`main.go`** parses flags and dispatches `build` (default) vs `suite`. The `suite` branch
   parses `-claude`/`-prompt` and calls `runSuite(absParent, claude, prompt)`. A new
-  `-loomyard` (or similarly named) top-level/suite flag threads the loomyard root to
-  `runSuite`.
+  **top-level** `-loomyard` flag (on `fs`, alongside `-parent`/`-reset` — *not* on the
+  suite-local `sf`, because `sandbox.cmd`'s `%*` puts `suite` after the launcher's own flags)
+  threads the loomyard root into `runSuite` as an added parameter.
 - **`suite.go`** today: fingerprints `lyx` (`binaryFingerprint` → `binaryInfo{Path,Size,
   ModTime,SHA256[:12]}`), renders `SANDBOX-SUITE.md` (header + embedded body) into
   `<parent>/lyx-test-HUB/lyx-test/`, registers it in that repo's `.git/info/exclude`
@@ -188,7 +237,9 @@ simply no longer the sandbox's transport.
 - **Existing tests** (`suite_test.go`) cover fingerprinting, `renderScheme`, `ensureGitExclude`
   (4 cases), and `runSuite` orchestration via `lookPath`/`launchAgent` seams + temp host repo.
   The new tests follow the same seam/temp-dir pattern; the fetch helper should be a pure
-  function (host-repo path + dest dir + `binaryInfo` in, error out) so it can be tested
+  function whose signature is `(hostRepoDir, loomyardRoot string, info binaryInfo) error` —
+  the destination argument is the **loomyard root**, and the helper itself joins `.scratch`
+  and `MkdirAll`s it (it does not receive a pre-joined `.scratch` dir). That keeps it testable
   directly without launching anything.
 - **No `_codeguide/`** in this repo; navigation is via `docs/overview.md`, `git log`, and grep.
 - Both docs reference `tools/sandbox/test-scheme.md` (howto "See also"; hub step 3) — these are
@@ -221,25 +272,35 @@ From `CONSTRAINTS.md` (hub root):
 Go tests (`tools/sandbox/suite_test.go`), following the existing seam + `t.TempDir()` pattern;
 `go build ./... && go test ./...` must stay green.
 
-- **TDD candidate — the fetch/validate/stamp helper** (new, in `report.go`): pure function over
-  (host-repo dir, dest `.scratch` dir, `binaryInfo`). Write its tests first:
+- **TDD candidate — the fetch/validate/stamp helper** (new, in `report.go`): pure function
+  `(hostRepoDir, loomyardRoot string, info binaryInfo) error` — the destination is the
+  **loomyard root**; the helper joins `.scratch` and `MkdirAll`s it. Write its tests first:
   - **Happy path:** a valid `{source:"sandbox-report", items:[…]}` file in the host repo →
-    lands at `<dest>/.scratch/sandbox-report-<sha12>.json`; the written file's
+    lands at `<loomyardRoot>/.scratch/sandbox-report-<sha12>.json`; the written file's
     `meta.fingerprint` equals the passed `binaryInfo` (path/size/modtime/sha256); `items` are
     preserved; any `meta` in the input is overwritten.
-  - **Empty findings:** `items: []` is valid → still written (not treated as missing).
+  - **Empty findings:** `items: []` (present but empty) is valid → still written (not treated
+    as missing).
+  - **Absent `items` key:** JSON with correct `source` but **no** `items` key → clear
+    validation error (the `*[]Item` pointer is nil); distinct from the empty-but-present case
+    above.
   - **Malformed report:** non-JSON / truncated file → clear parse error mentioning the path;
     nothing written to `.scratch`.
   - **Wrong shape:** valid JSON but `source` missing/incorrect → clear error (validation), not
     a silent pass.
   - **Missing report:** no `sandbox-report.json` in the host repo → clear missing-file message
     distinct from the parse error.
-  - **`.scratch` created:** dest `.scratch` dir does not pre-exist → it is created
-    (`MkdirAll`).
+  - **`.scratch` created:** the loomyard root's `.scratch` dir does not pre-exist → the helper
+    creates it (`MkdirAll`).
+- **Clean-slate removal:** a `sandbox-report.json` left in the host repo from a prior run is
+  removed before launch — assert that after `runSuite` with a stub `launchAgent` that writes
+  **nothing**, the prior file is gone and the run reports the missing-report case (not a stale
+  fetch). (See Decision: clean-slate-report.)
 - **`runSuite` wiring:** extend the existing `launchAgent`-stub tests so a stub that "writes" a
   valid report into the temp host repo results in the report landing under the temp loomyard
   root's `.scratch`; the existing `TestRunSuite_NonZeroLaunchCode` must still pass (non-zero
-  exit → no fetch attempt, original error returned).
+  exit → no fetch attempt, original error returned). `runSuite` now takes the loomyard root as
+  a parameter — update the existing call sites/tests accordingly.
 - **`ensureGitExclude` for the report:** assert the host repo's `.git/info/exclude` contains
   `sandbox-report.json` after a run (idempotent alongside the existing `SANDBOX-SUITE.md`
   entry).

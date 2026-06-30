@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussion-fix-r1
 slug: sandbox-report-json
 branch: sandbox-report-json
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-06-30T18:19:10Z'
+discussion-fix-r1  '2026-06-30T18:39:20Z'
 ```
