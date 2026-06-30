@@ -320,24 +320,24 @@ func (l *Layout) PrimeName() string {
 
 // WeftRepoRoot returns the path to the weft Prime worktree (the git -C target for weft worktree add/remove).
 //
-// Returns filepath.Join(Hub, PrimeName()+"-weft").
+// Returns WeftSiblingPath(Hub, PrimeName()), which is filepath.Join(Hub, PrimeName()+WeftSuffix).
 func (l *Layout) WeftRepoRoot() string {
-	return filepath.Join(l.Hub, l.PrimeName()+"-weft")
+	return WeftSiblingPath(l.Hub, l.PrimeName())
 }
 
 // WeftWorktreePath returns the path to a sibling weft worktree with the given slug.
 //
-// Returns filepath.Join(Hub, slug+"-weft"), parallel to WorktreePath(slug).
+// Returns WeftSiblingPath(Hub, slug), parallel to WorktreePath(slug).
 func (l *Layout) WeftWorktreePath(slug string) string {
-	return filepath.Join(l.Hub, slug+"-weft")
+	return WeftSiblingPath(l.Hub, slug)
 }
 
 // WeftWorktree returns the path to the weft worktree paired with the current host worktree.
 //
-// Returns filepath.Join(Hub, filepath.Base(WorktreeRoot)+"-weft"), the weft analog
-// of WorktreeRoot. At the main worktree, this equals WeftRepoRoot().
+// Returns WeftSiblingPath(Hub, filepath.Base(WorktreeRoot)), the weft analog of
+// WorktreeRoot. At the main worktree, this equals WeftRepoRoot().
 func (l *Layout) WeftWorktree() string {
-	return filepath.Join(l.Hub, filepath.Base(l.WorktreeRoot)+"-weft")
+	return WeftSiblingPath(l.Hub, filepath.Base(l.WorktreeRoot))
 }
 
 // WeftLyxDir returns the path to the _lyx directory in the current worktree's weft sibling.
