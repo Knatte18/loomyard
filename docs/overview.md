@@ -174,6 +174,8 @@ github.com/Knatte18/loomyard/
 ├── internal/muxpoccli/           the muxpoc POC module
 ├── internal/ghissuescli/         the ghissues CLI command
 ├── internal/ghissuesengine/      the ghissues domain kernel
+├── internal/selfreportcli/       the selfreport CLI command
+├── internal/selfreportengine/    the selfreport domain kernel
 ├── internal/hubgeometry/         geometry resolver (the sole owner of cwd/root math)
 ├── internal/configengine/        shared config resolution
 ├── internal/gitexec/             shared git operations
@@ -215,8 +217,8 @@ User-facing modules each get one `lyx <module>` namespace:
 - **ide** — one-shot VS Code launcher with interactive menu. ✅ Implemented.
 - **muxpoc** — shipped proof-of-concept psmux orchestrator proving the risky parts of the
   planned mux module. ✅ Implemented.
-- **ghissues** — file bugs and enhancements against `Knatte18/loomyard` via the `gh` CLI
-  (`lyx ghissues create <title>`). Target repo is hardcoded; supports `--body` (or `-` for
+- **selfreport** — file bugs and enhancements against `Knatte18/loomyard` via the `gh` CLI
+  (`lyx selfreport create <title>`). Target repo is hardcoded; supports `--body` (or `-` for
   stdin) and `--label`; defaults to `bug`. Callable from any sandbox agent context with no
   config. ✅ Implemented.
 - **mux** — **the window to the world**: psmux overlay + **strand** bookkeeping + render. Hosts

@@ -91,7 +91,7 @@ func TestJSONHelp_RootSchema(t *testing.T) {
 	// by renderCmdJSON so we must NOT assert them here.
 	cmds := commandNames(h.Commands)
 	requiredModules := []string{
-		"init", "board", "config", "ide", "muxpoc", "weft", "warp", "ghissues",
+		"init", "board", "config", "ide", "muxpoc", "weft", "warp", "selfreport",
 	}
 	for _, mod := range requiredModules {
 		if !cmds[mod] {
@@ -142,26 +142,26 @@ func TestJSONHelp_VerbModuleSchema(t *testing.T) {
 	}
 }
 
-// TestJSONHelp_GhissuesSchema asserts that "lyx ghissues --json" produces valid
+// TestJSONHelp_SelfreportSchema asserts that "lyx selfreport --json" produces valid
 // JSON with a non-empty short and lists the "create" subcommand under commands.
-// This pins the parent module node of the ghissues help tree into the JSON schema test.
-func TestJSONHelp_GhissuesSchema(t *testing.T) {
+// This pins the parent module node of the selfreport help tree into the JSON schema test.
+func TestJSONHelp_SelfreportSchema(t *testing.T) {
 	var out bytes.Buffer
-	code := run([]string{"ghissues", "--json"}, &out)
+	code := run([]string{"selfreport", "--json"}, &out)
 	if code != 0 {
-		t.Fatalf("run([ghissues --json]) = %d; want 0. output:\n%s", code, out.String())
+		t.Fatalf("run([selfreport --json]) = %d; want 0. output:\n%s", code, out.String())
 	}
 
 	h := decodeHelpJSON(t, &out)
 
 	if h.Short == "" {
-		t.Error("ghissues JSON: short is empty")
+		t.Error("selfreport JSON: short is empty")
 	}
 
-	// The ghissues module must list its "create" subcommand.
+	// The selfreport module must list its "create" subcommand.
 	cmds := commandNames(h.Commands)
 	if !cmds["create"] {
-		t.Errorf("ghissues JSON commands missing 'create'; commands: %v", h.Commands)
+		t.Errorf("selfreport JSON commands missing 'create'; commands: %v", h.Commands)
 	}
 }
 
@@ -208,41 +208,41 @@ func TestJSONHelp_LeafWithFlag(t *testing.T) {
 	}
 }
 
-// TestJSONHelp_GhissuesCreateLeaf asserts that "lyx ghissues create --help --json"
+// TestJSONHelp_SelfreportCreateLeaf asserts that "lyx selfreport create --help --json"
 // (a leaf command that owns --body and --label) produces valid JSON with a non-empty
 // short, an empty commands array, and flags that include --body and --label while
 // excluding meta flags --json and --help.
-func TestJSONHelp_GhissuesCreateLeaf(t *testing.T) {
+func TestJSONHelp_SelfreportCreateLeaf(t *testing.T) {
 	var out bytes.Buffer
 	// --help triggers the HelpFunc even on a leaf; --json switches it to JSON mode.
-	code := run([]string{"ghissues", "create", "--help", "--json"}, &out)
+	code := run([]string{"selfreport", "create", "--help", "--json"}, &out)
 	if code != 0 {
-		t.Fatalf("run([ghissues create --help --json]) = %d; want 0. output:\n%s", code, out.String())
+		t.Fatalf("run([selfreport create --help --json]) = %d; want 0. output:\n%s", code, out.String())
 	}
 
 	h := decodeHelpJSON(t, &out)
 
 	if h.Short == "" {
-		t.Error("ghissues create JSON: short is empty")
+		t.Error("selfreport create JSON: short is empty")
 	}
 
 	// A leaf command has no subcommands.
 	if len(h.Commands) != 0 {
-		t.Errorf("ghissues create JSON commands: want empty, got %v", h.Commands)
+		t.Errorf("selfreport create JSON commands: want empty, got %v", h.Commands)
 	}
 
 	// flags must include --body and --label.
 	flags := flagNames(h.Flags)
 	for _, want := range []string{"--body", "--label"} {
 		if !flags[want] {
-			t.Errorf("ghissues create JSON flags missing %q; flags: %v", want, h.Flags)
+			t.Errorf("selfreport create JSON flags missing %q; flags: %v", want, h.Flags)
 		}
 	}
 
 	// Meta flags must be absent.
 	for _, meta := range []string{"--json", "--help"} {
 		if flags[meta] {
-			t.Errorf("ghissues create JSON flags must not include meta flag %q", meta)
+			t.Errorf("selfreport create JSON flags must not include meta flag %q", meta)
 		}
 	}
 }

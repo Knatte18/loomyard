@@ -1,22 +1,22 @@
-// cli.go assembles the Cobra command tree for the ghissues module and wires the
+// cli.go assembles the Cobra command tree for the selfreport module and wires the
 // RunCLI seam. The "create" subcommand's RunE closure reads flag state via the
 // named createCmd variable to distinguish "flag not set" from "flag set to empty
 // string" using Changed("body"), following the warp module pattern for local-flag
 // access inside a cobra RunE.
 
-// Package ghissuescli provides the cobra command tree for filing LoomYard bugs
+// Package selfreportcli provides the cobra command tree for filing LoomYard bugs
 // and enhancements as GitHub issues directly from lyx.exe. The module is
-// reachable as `lyx ghissues create` and delegates the actual gh invocation to
-// the ghissuesengine domain package.
-package ghissuescli
+// reachable as `lyx selfreport create` and delegates the actual gh invocation to
+// the selfreportengine domain package.
+package selfreportcli
 
 import (
 	"io"
 	"os"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/ghissuesengine"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/selfreportengine"
 	"github.com/spf13/cobra"
 )
 
@@ -25,17 +25,17 @@ import (
 // blocking on real OS input.
 var stdin io.Reader = os.Stdin
 
-// Command builds the cobra command tree for the ghissues module.
+// Command builds the cobra command tree for the selfreport module.
 //
 // The parent command has no PersistentPreRunE and no persistent flags because
-// ghissues requires no shared setup — the only verb is "create", which is fully
+// selfreport requires no shared setup — the only verb is "create", which is fully
 // self-contained and talks to a hardcoded external service (gh CLI +
 // Knatte18/loomyard). Per-verb flags are declared as local flags on the "create"
 // subcommand; body and label resolution happens inside that subcommand's RunE.
 func Command() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "ghissues",
-		Short: "file LoomYard bugs and enhancements as GitHub issues",
+		Use:   "selfreport",
+		Short: "self-report a LoomYard bug or enhancement to lyx's own repo via gh",
 	}
 
 	// createCmd is declared as a named variable so that its RunE closure can
@@ -45,19 +45,19 @@ func Command() *cobra.Command {
 	var createCmd *cobra.Command
 	createCmd = &cobra.Command{
 		Use:   "create <title>",
-		Short: "create a new GitHub issue on the LoomYard repository via gh",
+		Short: "file a self-report issue on the LoomYard repository via gh",
 		Long: `create files a new issue on the Knatte18/loomyard GitHub repository via the gh CLI.
 The gh CLI must be installed and authenticated before running this command.
 
 Examples:
 
-  lyx ghissues create "Crash on empty board" -b -
+  lyx selfreport create "Crash on empty board" -b -
       Create a bug issue and read the issue body from stdin; "-" means read from stdin.
 
-  lyx ghissues create "Add dark mode" --label enhancement
+  lyx selfreport create "Add dark mode" --label enhancement
       Create an enhancement issue; --label replaces the default "bug" label.
 
-  lyx ghissues create "Panic on nil pointer"
+  lyx selfreport create "Panic on nil pointer"
       Create a bug issue with no body; the default "bug" label is applied automatically.`,
 		Args: cobra.ExactArgs(1),
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
@@ -71,7 +71,7 @@ Examples:
 	return cmd
 }
 
-// RunCLI is the public seam for the ghissues module.
+// RunCLI is the public seam for the selfreport module.
 //
 // It delegates to clihelp.Execute(Command(), out, args) so in-process tests can
 // capture all output via a single io.Writer. Returns the exit code (0 on success,
@@ -80,12 +80,12 @@ func RunCLI(out io.Writer, args []string) int {
 	return clihelp.Execute(Command(), out, args)
 }
 
-// runCreate executes the logic for "ghissues create <title>".
+// runCreate executes the logic for "selfreport create <title>".
 //
 // It reads the title from args[0], resolves the body from the --body flag (nil
 // when the flag was not provided, full stdin content when set to "-", or the flag
 // string directly for any other value), applies the default "bug" label when no
-// --label flags are given, and delegates to ghissuesengine.CreateIssue. The cmd parameter is the
+// --label flags are given, and delegates to selfreportengine.CreateIssue. The cmd parameter is the
 // cobra command for the "create" subcommand; the closure passes it so that
 // Changed("body") can distinguish "flag not set" from "flag set to empty string".
 func runCreate(out io.Writer, args []string, cmd *cobra.Command) int {
@@ -120,7 +120,7 @@ func runCreate(out io.Writer, args []string, cmd *cobra.Command) int {
 		labels = []string{"bug"}
 	}
 
-	url, number, err := ghissuesengine.CreateIssue(title, body, labels)
+	url, number, err := selfreportengine.CreateIssue(title, body, labels)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}

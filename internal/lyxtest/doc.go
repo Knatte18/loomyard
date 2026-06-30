@@ -8,7 +8,7 @@
 // Leaf Invariant: internal/lyxtest must remain a leaf package importing only the
 // standard library and internal/hubgeometry. It must not import internal/configreg or any
 // feature package (boardengine/boardcli, warpengine/warpcli, weftengine/weftcli,
-// ideengine/idecli, ghissuesengine/ghissuescli, muxpoccli). Feature packages'
+// ideengine/idecli, selfreportengine/selfreportcli, muxpoccli). Feature packages'
 // internal tests import lyxtest; a configreg or feature import would close a
 // test-build cycle. Tests that need real configuration seed it via SeedConfig, which
 // takes a configreg-free map[string]string (module name to YAML content), converting
