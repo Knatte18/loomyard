@@ -28,5 +28,7 @@ implementing  '2026-06-30T06:01:17Z'
 ```yaml
 batches:
   - name: scheme-refinements
-    state: pending
+    state: running
+    implementer_session: f8206d34-aeb0-4178-9816-3831fe458c06
+    start_sha: 054a1187177a5501f800749572cfbf183a0f9312
 ```
