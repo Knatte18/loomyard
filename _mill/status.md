@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-fixing
 slug: harden-path-invariant
 branch: harden-path-invariant
 plan: _mill/plan
@@ -27,6 +27,7 @@ approved-board-paths-owned  '2026-06-30T05:54:15Z'
 approved-lyxtest-geometry  '2026-06-30T05:57:04Z'
 approved-enforcement-and-docs  '2026-06-30T11:24:06Z'
 holistic-reviewing  '2026-06-30T13:44:47Z'
+holistic-fixing  '2026-06-30T13:53:06Z'
 ```
 
 ## Batches
