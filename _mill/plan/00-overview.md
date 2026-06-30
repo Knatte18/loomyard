@@ -3,7 +3,7 @@
 ```yaml
 task: Rename internal/ghissues → selfreport
 slug: rename-ghissues-to-selfreport
-approved: false
+approved: true
 started: 20260630-141815
 parent: main
 root: ""

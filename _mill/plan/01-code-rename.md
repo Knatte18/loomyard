@@ -85,9 +85,12 @@ is updated atomically — an intermediate state with a half-renamed package does
     the `create` subcommand `Short` similarly (e.g. "file a self-report issue on the
     LoomYard repository via gh"). In the `create` `Long`, keep the gh-prerequisite note
     and the three worked examples but change every `lyx ghissues create …` → `lyx
-    selfreport create …`. Update the package doc comment and the `Command`/`RunCLI`/
+    selfreport create …`. Update the top-of-file header comment block (the `cli.go
+    assembles the Cobra command tree for the ghissues module …` lines — a distinct block,
+    not the package doc comment), the package doc comment, and the `Command`/`RunCLI`/
     `runCreate` doc comments that say "ghissues"/"ghissuesengine"/"the ghissues module"
-    to the selfreport equivalents. Keep both `Short` values non-empty (drift guard) and
+    to the selfreport equivalents (the filename stays `cli.go`; only the module phrase
+    changes). Keep both `Short` values non-empty (drift guard) and
     keep the `RunCLI` seam exactly `return clihelp.Execute(Command(), out, args)`.
   - In `cli_test.go`: change `package ghissuescli` → `package selfreportcli`; change the
     import `.../internal/ghissuesengine` → `.../internal/selfreportengine` and retarget
