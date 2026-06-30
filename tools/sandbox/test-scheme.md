@@ -125,9 +125,9 @@ missing command surface.
 **Goal:** "Create something in the host repo (a file, a small change) and get it
 committed and tracked the way lyx intends."
 
-**Watch:** Does the host/weft coordination behave? Are junctions wired correctly? Does
-lyx own this flow or do you fall back to raw `git`? Falling back is a gap in the lyx
-surface.
+**Watch:** The host is an ordinary git repo — committing host changes with plain `git`
+is acceptable and **not** a finding. Watch lyx's actual responsibility: host/weft
+coordination (junctions wired correctly, weft mirroring behaves).
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
