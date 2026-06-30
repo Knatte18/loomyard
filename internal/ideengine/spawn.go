@@ -6,7 +6,7 @@ package ideengine
 import (
 	"path/filepath"
 
-	"github.com/Knatte18/loomyard/internal/paths"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/vscode"
 )
 
@@ -24,7 +24,7 @@ var CodeLauncher = vscode.Launch
 //  4. Open the worktree at its relpath (dir holding _lyx/ and .vscode/) via CodeLauncher
 //
 // Returns an error if any step fails.
-func Spawn(l *paths.Layout, slug string) error {
+func Spawn(l *hubgeometry.Layout, slug string) error {
 	// Compute worktreeDir from slug
 	worktreeDir := l.WorktreePath(slug)
 

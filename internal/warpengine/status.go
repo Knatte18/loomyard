@@ -1,6 +1,6 @@
 // status.go implements the paired host↔weft status view and host-pollution detection for warp.
 //
-// Status enumerates all host worktrees via paths.List, pairs each with its weft sibling,
+// Status enumerates all host worktrees via hubgeometry.List, pairs each with its weft sibling,
 // reports branch, in-sync verdict, junction health, and scans the host index for any
 // _lyx or _codeguide paths that have been accidentally git-tracked (host pollution).
 
@@ -14,7 +14,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/paths"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
 // PollutionEntry describes a single tracked path in the host index that should never
@@ -60,7 +60,7 @@ type StatusResult struct {
 // Status returns the paired host↔weft status view for all worktrees reachable from
 // the given layout, plus host-pollution detection on the host index.
 //
-// For each host worktree discovered via paths.List, Status:
+// For each host worktree discovered via hubgeometry.List, Status:
 //   - Derives the paired weft worktree path via layout geometry
 //   - Reads the host branch and weft branch (if the weft exists)
 //   - Reports in-sync status via PairInSync from the host's layout
@@ -73,9 +73,9 @@ type StatusResult struct {
 // and Prime fields for deriving the weft repo root and weft worktree names.
 // Returns an error only on fatal system failures; per-worktree errors are recorded
 // inline in PairStatus.DriftReason / PairStatus.JunctionReason.
-func (w *Worktree) Status(l *paths.Layout) (StatusResult, error) {
+func (w *Worktree) Status(l *hubgeometry.Layout) (StatusResult, error) {
 	// Enumerate all host worktrees from any worktree in the repository.
-	entries, err := paths.List(l.WorktreeRoot)
+	entries, err := hubgeometry.List(l.WorktreeRoot)
 	if err != nil {
 		return StatusResult{}, fmt.Errorf("list worktrees: %w", err)
 	}
@@ -124,7 +124,7 @@ func (w *Worktree) Status(l *paths.Layout) (StatusResult, error) {
 		// Build a per-host-worktree layout to call PairInSync. PairInSync requires a
 		// Layout whose WorktreeRoot is the host worktree being inspected, so we derive
 		// one from the host path rather than reusing l (which points to the cwd worktree).
-		hostLayout, layoutErr := paths.Resolve(hostPath)
+		hostLayout, layoutErr := hubgeometry.Resolve(hostPath)
 		if layoutErr != nil {
 			pair.DriftReason = fmt.Sprintf("resolve host layout: %v", layoutErr)
 			result.Pairs = append(result.Pairs, pair)

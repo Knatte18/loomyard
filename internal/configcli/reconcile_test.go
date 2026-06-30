@@ -12,7 +12,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/paths"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
 // TestReconcile_DryRun verifies that "lyx config reconcile" without --apply writes
@@ -21,25 +21,25 @@ import (
 func TestReconcile_DryRun(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Initialize a minimal git repo so paths.Resolve works.
+	// Initialize a minimal git repo so hubgeometry.Resolve works.
 	_, _, exitCode, err := gitexec.RunGit([]string{"init"}, tmpDir)
 	if err != nil || exitCode != 0 {
 		t.Fatalf("git init failed: %v (exit code %d)", err, exitCode)
 	}
 
 	// Create config directory with a sample board file.
-	configDir := paths.ConfigDir(tmpDir)
+	configDir := hubgeometry.ConfigDir(tmpDir)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("mkdir config: %v", err)
 	}
 
-	boardPath := paths.ConfigFile(tmpDir, "board")
+	boardPath := hubgeometry.ConfigFile(tmpDir, "board")
 	originalContent := "path: board\nstale_key: old_value\n"
 	if err := os.WriteFile(boardPath, []byte(originalContent), 0o644); err != nil {
 		t.Fatalf("write board.yaml: %v", err)
 	}
 
-	// Chdir into the temp repo so paths.Getwd inside RunCLI resolves to a git repo.
+	// Chdir into the temp repo so hubgeometry.Getwd inside RunCLI resolves to a git repo.
 	oldCwd, err2 := os.Getwd()
 	if err2 != nil {
 		t.Fatalf("getwd: %v", err2)
@@ -118,7 +118,7 @@ func TestReconcile_Apply(t *testing.T) {
 	}
 
 	// Create config directory.
-	configDir := paths.ConfigDir(tmpDir)
+	configDir := hubgeometry.ConfigDir(tmpDir)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("mkdir config: %v", err)
 	}
@@ -157,7 +157,7 @@ func TestReconcile_Apply(t *testing.T) {
 	}
 
 	// Verify weft.yaml was created on disk.
-	weftPath := paths.ConfigFile(tmpDir, "weft")
+	weftPath := hubgeometry.ConfigFile(tmpDir, "weft")
 	if _, err := os.Stat(weftPath); err != nil {
 		t.Errorf("weft.yaml not created: %v", err)
 	}

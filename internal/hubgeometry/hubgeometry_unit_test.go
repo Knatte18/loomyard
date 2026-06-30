@@ -1,13 +1,13 @@
-// paths_unit_test.go — pure path-math unit tests for config helpers and constants.
+// hubgeometry_unit_test.go — pure path-math unit tests for config helpers and constants.
 // These tests do not require a git repository and run under standard unit test verification.
 
-package paths_test
+package hubgeometry_test
 
 import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/paths"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
 // TestConfigHelpers tests the free-function config path helpers.
@@ -18,8 +18,8 @@ func TestConfigHelpers(t *testing.T) {
 		t.Parallel()
 
 		baseDir := "/home/user/project"
-		got := paths.ConfigDir(baseDir)
-		want := filepath.Join(baseDir, paths.LyxDirName, "config")
+		got := hubgeometry.ConfigDir(baseDir)
+		want := filepath.Join(baseDir, hubgeometry.LyxDirName, "config")
 
 		if got != want {
 			t.Errorf("ConfigDir(%q) = %q; want %q", baseDir, got, want)
@@ -31,8 +31,8 @@ func TestConfigHelpers(t *testing.T) {
 
 		baseDir := "/home/user/project"
 		module := "myapp"
-		got := paths.ConfigFile(baseDir, module)
-		want := filepath.Join(baseDir, paths.LyxDirName, "config", "myapp.yaml")
+		got := hubgeometry.ConfigFile(baseDir, module)
+		want := filepath.Join(baseDir, hubgeometry.LyxDirName, "config", "myapp.yaml")
 
 		if got != want {
 			t.Errorf("ConfigFile(%q, %q) = %q; want %q", baseDir, module, got, want)
@@ -43,7 +43,7 @@ func TestConfigHelpers(t *testing.T) {
 		t.Parallel()
 
 		baseDir := "/home/user/project"
-		got := paths.DotEnv(baseDir)
+		got := hubgeometry.DotEnv(baseDir)
 		want := filepath.Join(baseDir, ".env")
 
 		if got != want {
@@ -56,7 +56,7 @@ func TestConfigHelpers(t *testing.T) {
 func TestLyxDirNameConstant(t *testing.T) {
 	t.Parallel()
 
-	if paths.LyxDirName != "_lyx" {
-		t.Errorf("LyxDirName = %q; want %q", paths.LyxDirName, "_lyx")
+	if hubgeometry.LyxDirName != "_lyx" {
+		t.Errorf("LyxDirName = %q; want %q", hubgeometry.LyxDirName, "_lyx")
 	}
 }

@@ -15,8 +15,8 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configreg"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
-	"github.com/Knatte18/loomyard/internal/paths"
 	"github.com/Knatte18/loomyard/internal/warpengine"
 	"github.com/Knatte18/loomyard/internal/weftcli"
 )
@@ -53,9 +53,9 @@ func TestE2ESyncIntegration(t *testing.T) {
 
 	// Resolve layout for the new host worktree.
 	hostWorktreePath := f.Layout.WorktreePath(slug)
-	hostLayout, err := paths.Resolve(hostWorktreePath)
+	hostLayout, err := hubgeometry.Resolve(hostWorktreePath)
 	if err != nil {
-		t.Fatalf("paths.Resolve(%q): %v", hostWorktreePath, err)
+		t.Fatalf("hubgeometry.Resolve(%q): %v", hostWorktreePath, err)
 	}
 
 	// Chdir into the host worktree so weft.RunCLI's cwd resolution lands on the fixture.
@@ -89,7 +89,7 @@ func TestE2ESyncIntegration(t *testing.T) {
 
 	// Assert _lyx/config/warpengine.yaml is tracked/committed in the weft worktree.
 	weftWorktreePath := f.Layout.WeftWorktreePath(slug)
-	configRelPath := paths.ConfigFile(".", "warp")
+	configRelPath := hubgeometry.ConfigFile(".", "warp")
 	configPath := filepath.Join(weftWorktreePath, configRelPath)
 	// For git commands, use forward slashes (git always uses forward slashes).
 	configRelPathForGit := strings.ReplaceAll(configRelPath, "\\", "/")

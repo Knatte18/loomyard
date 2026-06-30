@@ -3,7 +3,7 @@
 // Command() returns the root "board" command with 11 subcommands. Configuration
 // resolution happens once in a PersistentPreRunE: the config file (home, sidebar,
 // proposal_prefix) is loaded from _lyx/config/board.yaml, and the board data dir
-// is resolved as paths.BoardDir(layout.Hub) via paths.Resolve. The hidden
+// is resolved as hubgeometry.BoardDir(layout.Hub) via hubgeometry.Resolve. The hidden
 // --board-path persistent flag overrides the data dir for the detached sync child
 // process launched by spawn.go, bypassing both config and path resolution.
 
@@ -17,8 +17,8 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/output"
-	"github.com/Knatte18/loomyard/internal/paths"
 	"github.com/spf13/cobra"
 )
 
@@ -77,7 +77,7 @@ available subcommands without requiring a git repo.`,
 			cfg = boardengine.Config{Path: *boardPathFlag}
 		} else {
 			// Resolve configuration from the current working directory.
-			cwd, err := paths.Getwd()
+			cwd, err := hubgeometry.Getwd()
 			if err != nil {
 				output.Err(cmd.OutOrStdout(), fmt.Sprintf("failed to get working directory: %v", err))
 				clihelp.Abort(ctx, 1)
@@ -94,13 +94,13 @@ available subcommands without requiring a git repo.`,
 			// Resolve the worktree layout to derive the board data dir. The board
 			// data dir is geometry (<hub>/_board) and must come from paths, not from
 			// the config file or an environment variable.
-			layout, rerr := paths.Resolve(cwd)
+			layout, rerr := hubgeometry.Resolve(cwd)
 			if rerr != nil {
 				output.Err(cmd.OutOrStdout(), rerr.Error())
 				clihelp.Abort(ctx, 1)
 				return nil
 			}
-			cfg.Path = paths.BoardDir(layout.Hub)
+			cfg.Path = hubgeometry.BoardDir(layout.Hub)
 		}
 
 		// Fold BOARD_SKIP_* env into cfg at the single production entry point.

@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/paths"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
 // AddOptions controls optional behaviour for Add. Tests pass these directly
@@ -72,7 +72,7 @@ type AddResult struct {
 // The ORIGINAL error is returned; rollback-step failures are not masked.
 //
 // Returns AddResult on success or an error if any step fails.
-func (w *Worktree) Add(l *paths.Layout, slug string, opts AddOptions) (AddResult, error) {
+func (w *Worktree) Add(l *hubgeometry.Layout, slug string, opts AddOptions) (AddResult, error) {
 	// (1) Clean check
 	stdout, stderr, exitCode, err := gitexec.RunGit([]string{"status", "--porcelain", "--untracked-files=no"}, l.WorktreeRoot)
 	if err != nil {
@@ -231,7 +231,7 @@ func (w *Worktree) Add(l *paths.Layout, slug string, opts AddOptions) (AddResult
 // Note: Add does not create the host _lyx junction (it is dormant), so rollback
 // does not remove it. The junction is wired by lyx init via WireJunctions.
 // All errors are collected; the original error passed to the caller is preserved.
-func (w *Worktree) rollbackAdd(l *paths.Layout, slug, branch, target string) error {
+func (w *Worktree) rollbackAdd(l *hubgeometry.Layout, slug, branch, target string) error {
 	var firstErr error
 
 	// (1) Remove weft worktree and branch

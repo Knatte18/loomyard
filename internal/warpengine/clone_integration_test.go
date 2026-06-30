@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
-	"github.com/Knatte18/loomyard/internal/paths"
 )
 
 // makeBareRemote creates a bare git repository with a single commit on the main branch.
@@ -92,7 +92,7 @@ func TestCloneHub_HappyPath(t *testing.T) {
 	// Assert hub directory structure
 	hostPath := filepath.Join(hubPath, "myrepo")
 	weftPath := filepath.Join(hubPath, "myrepo-weft")
-	boardPath := paths.BoardDir(hubPath)
+	boardPath := hubgeometry.BoardDir(hubPath)
 
 	// Check that repos exist and are git repos
 	for _, path := range []string{hostPath, weftPath, boardPath} {
@@ -136,9 +136,9 @@ func TestCloneHub_GeometryRoundTrip(t *testing.T) {
 
 	// Resolve geometry from the cloned host Prime
 	hostPath := filepath.Join(hubPath, "myrepo")
-	layout, err := paths.Resolve(hostPath)
+	layout, err := hubgeometry.Resolve(hostPath)
 	if err != nil {
-		t.Fatalf("paths.Resolve: %v", err)
+		t.Fatalf("hubgeometry.Resolve: %v", err)
 	}
 
 	// Assert geometry
@@ -178,7 +178,7 @@ func TestCloneHub_ExplicitBoardURL(t *testing.T) {
 	}
 
 	// Assert board repo exists
-	boardPath := paths.BoardDir(hubPath)
+	boardPath := hubgeometry.BoardDir(hubPath)
 	if _, err := os.Stat(boardPath); err != nil {
 		t.Fatalf("board does not exist: %s", boardPath)
 	}

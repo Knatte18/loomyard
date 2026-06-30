@@ -18,13 +18,13 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/paths"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
 // weftRepoExists reports whether a weft repo exists at the expected location.
 //
 // A weft repo must be a directory that passes the git rev-parse --is-inside-work-tree check.
-func weftRepoExists(l *paths.Layout) bool {
+func weftRepoExists(l *hubgeometry.Layout) bool {
 	weftRepoRoot := l.WeftRepoRoot()
 
 	// Check if directory exists
@@ -45,7 +45,7 @@ func weftRepoExists(l *paths.Layout) bool {
 // weftBranchExists reports whether a branch exists in the weft repo.
 //
 // It uses git rev-parse --verify to check for the branch.
-func weftBranchExists(l *paths.Layout, branch string) bool {
+func weftBranchExists(l *hubgeometry.Layout, branch string) bool {
 	_, _, exitCode, err := gitexec.RunGit(
 		[]string{"rev-parse", "--verify", "refs/heads/" + branch},
 		l.WeftRepoRoot(),
@@ -62,7 +62,7 @@ func weftBranchExists(l *paths.Layout, branch string) bool {
 // shared merge-base needed for future squash-merge-back operations. Runs
 // git worktree add -b <branch> <path> <startPoint> in the weft repo root.
 // Returns an error if the command fails or exits with non-zero code.
-func createWeftWorktree(l *paths.Layout, slug, branch, startPoint string) error {
+func createWeftWorktree(l *hubgeometry.Layout, slug, branch, startPoint string) error {
 	weftPath := l.WeftWorktreePath(slug)
 	_, stderr, exitCode, err := gitexec.RunGit(
 		[]string{"worktree", "add", "-b", branch, weftPath, startPoint},
@@ -85,7 +85,7 @@ func createWeftWorktree(l *paths.Layout, slug, branch, startPoint string) error 
 //
 // Otherwise, runs git push -u origin <branch> from the weft worktree.
 // Returns an error if the command fails or exits with non-zero code.
-func pushWeftBranch(l *paths.Layout, slug, branch string, opts AddOptions) error {
+func pushWeftBranch(l *hubgeometry.Layout, slug, branch string, opts AddOptions) error {
 	if opts.SkipGit || opts.SkipPush {
 		return nil
 	}
@@ -110,7 +110,7 @@ func pushWeftBranch(l *paths.Layout, slug, branch string, opts AddOptions) error
 // Uses fslink.Remove to delete the junction/symlink only (idempotent).
 // Returns nil if the junction does not exist (idempotent).
 // Returns an error if removal fails for reasons other than not-exist.
-func removeHostJunction(l *paths.Layout, slug string) error {
+func removeHostJunction(l *hubgeometry.Layout, slug string) error {
 	link := l.HostLyxLink(slug)
 	if err := fslink.Remove(link); err != nil {
 		return fmt.Errorf("remove host junction %s: %w", link, err)
@@ -127,7 +127,7 @@ func removeHostJunction(l *paths.Layout, slug string) error {
 //
 // All commands run with cwd = WeftRepoRoot.
 // Returns the first error encountered, or nil if all steps succeed.
-func removeWeftWorktree(l *paths.Layout, slug, branch string, force bool) error {
+func removeWeftWorktree(l *hubgeometry.Layout, slug, branch string, force bool) error {
 	weftPath := l.WeftWorktreePath(slug)
 	weftRoot := l.WeftRepoRoot()
 

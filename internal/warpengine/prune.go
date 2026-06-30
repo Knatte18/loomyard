@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/paths"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
 // PruneEntry describes one stale or orphaned pair that Prune has identified.
@@ -51,13 +51,13 @@ type PruneResult struct {
 //
 // Live pairs (both host and weft directories exist and are registered) are never
 // touched. The board repo is excluded entirely — Prune only considers host worktrees
-// discovered via paths.List.
+// discovered via hubgeometry.List.
 //
 // Returns PruneResult on success or an error on fatal system failures. Per-entry
 // removal errors are recorded inline in PruneEntry.Error.
-func (w *Worktree) Prune(l *paths.Layout, apply bool) (PruneResult, error) {
+func (w *Worktree) Prune(l *hubgeometry.Layout, apply bool) (PruneResult, error) {
 	// Enumerate all registered host worktrees from the repository.
-	entries, err := paths.List(l.WorktreeRoot)
+	entries, err := hubgeometry.List(l.WorktreeRoot)
 	if err != nil {
 		return PruneResult{}, fmt.Errorf("list worktrees: %w", err)
 	}
@@ -122,7 +122,7 @@ func (w *Worktree) Prune(l *paths.Layout, apply bool) (PruneResult, error) {
 		// Only consider directories that follow the <slug>-weft naming convention.
 		// WeftHostSlug rejects entries that are not valid weft names (wrong suffix or
 		// empty slug after stripping), matching the skip semantics of the old guard.
-		hostSlug, ok := paths.WeftHostSlug(name)
+		hostSlug, ok := hubgeometry.WeftHostSlug(name)
 		if !ok {
 			continue
 		}
@@ -158,7 +158,7 @@ func (w *Worktree) Prune(l *paths.Layout, apply bool) (PruneResult, error) {
 // It writes any removal error into pe.Error and returns true only when
 // the removal completed without error. The caller has already set pe fields
 // other than Removed and Error.
-func removeStalePair(l *paths.Layout, weftPath string, pe *PruneEntry) bool {
+func removeStalePair(l *hubgeometry.Layout, weftPath string, pe *PruneEntry) bool {
 	// Attempt to remove via git worktree remove --force. We use --force because
 	// the host is already gone so the weft may have been left in a dirty state.
 	_, stderr, exitCode, err := gitexec.RunGit(

@@ -1,7 +1,7 @@
 // worktreelist.go parses `git worktree list --porcelain` into structured
 // entries; it is the single porcelain parser shared across the codebase.
 
-package paths
+package hubgeometry
 
 import (
 	"fmt"

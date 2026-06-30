@@ -55,7 +55,7 @@ func TestMountedUnknownSubcommand(t *testing.T) {
 // TestMountedBareGroupListing_NoGitRepo verifies that bare "lyx <group>" exits 0 and
 // prints the human-readable subcommand listing without emitting an error envelope or a
 // "not a git repository" message. Each test runs from a temp dir (not a git repo) so
-// that a PersistentPreRunE guard regression — which would invoke paths.Resolve and fail
+// that a PersistentPreRunE guard regression — which would invoke hubgeometry.Resolve and fail
 // — surfaces as a visible test failure.
 func TestMountedBareGroupListing_NoGitRepo(t *testing.T) {
 	tests := []struct {
@@ -70,7 +70,7 @@ func TestMountedBareGroupListing_NoGitRepo(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.group, func(t *testing.T) {
 			// Run from a temp dir that is not a git repo; the PersistentPreRunE guard
-			// must fire before paths.Resolve is called, keeping the exit code at 0.
+			// must fire before hubgeometry.Resolve is called, keeping the exit code at 0.
 			tmpDir := t.TempDir()
 			t.Chdir(tmpDir)
 

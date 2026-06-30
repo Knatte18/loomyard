@@ -1,8 +1,8 @@
 // enforcement_test.go is a repo-wide guard: it walks every package and fails
-// the build if any file outside internal/paths reaches for raw cwd or top-level
-// git geometry, keeping internal/paths the sole geometry owner.
+// the build if any file outside internal/hubgeometry reaches for raw cwd or top-level
+// git geometry, keeping internal/hubgeometry the sole geometry owner.
 
-package paths
+package hubgeometry
 
 import (
 	"go/ast"
@@ -18,7 +18,7 @@ import (
 )
 
 // TestEnforcement walks the repo source tree and verifies that no source file
-// outside internal/paths and cmd/lyx contains the raw cwd/root primitives
+// outside internal/hubgeometry and cmd/lyx contains the raw cwd/root primitives
 // os.Getwd or git rev-parse --show-toplevel.
 func TestEnforcement(t *testing.T) {
 	t.Run("tree-scan", func(t *testing.T) {
@@ -27,7 +27,7 @@ func TestEnforcement(t *testing.T) {
 		if !ok {
 			t.Fatal("could not determine test file location")
 		}
-		// Two levels up from internal/paths/enforcement_test.go → repo root
+		// Two levels up from internal/hubgeometry/enforcement_test.go → repo root
 		repoRoot := filepath.Dir(filepath.Dir(filepath.Dir(file)))
 
 		// Predicate: returns true if the bytes contain a banned token.
@@ -65,8 +65,8 @@ func TestEnforcement(t *testing.T) {
 				// Normalize path separators to forward slashes for comparison.
 				pkgDir = filepath.ToSlash(pkgDir)
 
-				// Check allowlist: internal/paths, cmd/lyx/main.go
-				isAllowed := pkgDir == "internal/paths" ||
+				// Check allowlist: internal/hubgeometry, cmd/lyx/main.go
+				isAllowed := pkgDir == "internal/hubgeometry" ||
 					(pkgDir == "cmd/lyx" && d.Name() == "main.go")
 
 				// Skip files in the allowlist (they are allowed to contain banned tokens).
@@ -137,7 +137,7 @@ func TestEnforcement(t *testing.T) {
 }
 
 // TestEnforcement_GeometryLiterals walks the repo source tree and verifies that no
-// production file outside internal/paths constructs a geometry path token as a string
+// production file outside internal/hubgeometry constructs a geometry path token as a string
 // literal in a path-construction context: a filepath.Join argument, a binary +
 // operand, or a string const declaration value. Whole-token matching (exact equality,
 // not substring) avoids false positives on compound names such as "_boardroom" or
@@ -145,7 +145,7 @@ func TestEnforcement(t *testing.T) {
 // rule, not a machine-enforced invariant.
 func TestEnforcement_GeometryLiterals(t *testing.T) {
 	// geometryToken reports whether s is exactly one of the forbidden geometry path
-	// tokens. Only internal/paths is permitted to use these in path-construction context.
+	// tokens. Only internal/hubgeometry is permitted to use these in path-construction context.
 	geometryToken := func(s string) bool {
 		switch s {
 		case "_board", "-weft", "-HUB", "_portals", "_launchers", "_codeguide", "_lyx":
@@ -311,14 +311,14 @@ func TestEnforcement_GeometryLiterals(t *testing.T) {
 	})
 
 	// tree-scan sub-test: walks every production Go file in the repo (excluding test
-	// files and the internal/paths allowlist) and fails if any file constructs a
+	// files and the internal/hubgeometry allowlist) and fails if any file constructs a
 	// geometry token in a path context.
 	t.Run("tree-scan", func(t *testing.T) {
 		_, thisFile, _, ok := runtime.Caller(0)
 		if !ok {
 			t.Fatal("could not determine test file location via runtime.Caller")
 		}
-		// Two filepath.Dir calls walk from internal/paths/enforcement_test.go → repo root.
+		// Two filepath.Dir calls walk from internal/hubgeometry/enforcement_test.go → repo root.
 		repoRoot := filepath.Dir(filepath.Dir(filepath.Dir(thisFile)))
 
 		var scanned int
@@ -342,9 +342,9 @@ func TestEnforcement_GeometryLiterals(t *testing.T) {
 			if relErr != nil {
 				return relErr
 			}
-			// Allowlist: internal/paths is the sole permitted owner of geometry literals
+			// Allowlist: internal/hubgeometry is the sole permitted owner of geometry literals
 			// in path-construction context.
-			if filepath.ToSlash(filepath.Dir(relPath)) == "internal/paths" {
+			if filepath.ToSlash(filepath.Dir(relPath)) == "internal/hubgeometry" {
 				return nil
 			}
 
@@ -364,17 +364,17 @@ func TestEnforcement_GeometryLiterals(t *testing.T) {
 			t.Fatalf("failed to walk repo tree: %v", err)
 		}
 
-		// Sanity check: at least one production file outside internal/paths must have
+		// Sanity check: at least one production file outside internal/hubgeometry must have
 		// been scanned so a misconfigured walk (wrong root, all files skipped) cannot
 		// silently produce a vacuous all-pass result.
 		t.Run("scanned_non_empty", func(t *testing.T) {
 			if scanned == 0 {
-				t.Error("geometry-literal guard: no production Go files scanned outside internal/paths; the AST walk may be misconfigured")
+				t.Error("geometry-literal guard: no production Go files scanned outside internal/hubgeometry; the AST walk may be misconfigured")
 			}
 		})
 
 		if len(failures) > 0 {
-			t.Errorf("geometry-literal construction found outside internal/paths in:\n%v", failures)
+			t.Errorf("geometry-literal construction found outside internal/hubgeometry in:\n%v", failures)
 		}
 	})
 }

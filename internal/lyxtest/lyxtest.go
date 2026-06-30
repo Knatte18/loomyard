@@ -13,7 +13,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/paths"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
 // MustRun runs a command with the given arguments in the specified directory.
@@ -37,19 +37,19 @@ func MustRun(tb testing.TB, dir string, args ...string) {
 // SeedConfig creates the _lyx/config directory if needed, writes each module's
 // YAML file, stages all changes, and commits them so the files are checked out
 // in the worktree. This preserves the leaf invariant: lyxtest imports only stdlib
-// and internal/paths, never configreg or feature packages.
+// and internal/hubgeometry, never configreg or feature packages.
 func SeedConfig(tb testing.TB, repoDir string, configByModule map[string]string) {
 	tb.Helper()
 
 	// Create config directory if it doesn't exist.
-	configDir := paths.ConfigDir(repoDir)
+	configDir := hubgeometry.ConfigDir(repoDir)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		tb.Fatalf("mkdir config dir: %v", err)
 	}
 
 	// Write each module's config file.
 	for module, content := range configByModule {
-		configPath := paths.ConfigFile(repoDir, module)
+		configPath := hubgeometry.ConfigFile(repoDir, module)
 		if err := os.WriteFile(configPath, []byte(content), 0o644); err != nil {
 			tb.Fatalf("write config file %s: %v", module, err)
 		}
@@ -182,7 +182,7 @@ func buildWeftPrime() (weftPrime, weftBare string) {
 			panic(err)
 		}
 
-		weftPrime := paths.WeftSiblingPath(tmpDir, base)
+		weftPrime := hubgeometry.WeftSiblingPath(tmpDir, base)
 		if err := os.Mkdir(weftPrime, 0o755); err != nil {
 			panic(err)
 		}
@@ -191,7 +191,7 @@ func buildWeftPrime() (weftPrime, weftBare string) {
 
 		// Create _lyx/config with neutral placeholder (no real config files).
 		// Tests needing real config seed it via SeedConfig.
-		lyxConfigDir := paths.ConfigDir(weftPrime)
+		lyxConfigDir := hubgeometry.ConfigDir(weftPrime)
 		if err := os.MkdirAll(lyxConfigDir, 0o755); err != nil {
 			panic(err)
 		}
@@ -240,7 +240,7 @@ func buildWeftOnly() (weftPath, bare string) {
 		// TestPushIntegration can commit the "_lyx" pathspec. This fixture only
 		// needs some tracked file under _lyx, not a real config layout; tests that
 		// need real config call SeedConfig after CopyWeft.
-		lyxDir := filepath.Join(weftPath, paths.LyxDirName)
+		lyxDir := filepath.Join(weftPath, hubgeometry.LyxDirName)
 		if err := os.MkdirAll(lyxDir, 0o755); err != nil {
 			panic(err)
 		}
@@ -279,7 +279,7 @@ type PairedFixture struct {
 	Bare      string
 	WeftPrime string
 	WeftBare  string
-	Layout    *paths.Layout
+	Layout    *hubgeometry.Layout
 }
 
 // WeftFixture represents an isolated copy of the weft-only template
@@ -472,7 +472,7 @@ func CopyPaired(tb testing.TB) PairedFixture {
 
 	// Copy weft-prime (must preserve the -weft suffix)
 	base := filepath.Base(templateHub)
-	copiedWeftPrime := paths.WeftSiblingPath(tempContainer, base)
+	copiedWeftPrime := hubgeometry.WeftSiblingPath(tempContainer, base)
 	if err := copyDirRecursive(templateWeftPrime, copiedWeftPrime); err != nil {
 		tb.Fatalf("copyDirRecursive weftPrime: %v", err)
 	}
@@ -493,9 +493,9 @@ func CopyPaired(tb testing.TB) PairedFixture {
 	}
 
 	// Get layout from copied hub
-	layout, err := paths.Resolve(copiedHub)
+	layout, err := hubgeometry.Resolve(copiedHub)
 	if err != nil {
-		tb.Fatalf("paths.Resolve: %v", err)
+		tb.Fatalf("hubgeometry.Resolve: %v", err)
 	}
 
 	return PairedFixture{
@@ -538,7 +538,7 @@ func CopyPairedLocal(tb testing.TB) PairedFixture {
 
 	// Copy weft-prime (must preserve the -weft suffix); omit weft-bare
 	base := filepath.Base(templateHub)
-	copiedWeftPrime := paths.WeftSiblingPath(tempContainer, base)
+	copiedWeftPrime := hubgeometry.WeftSiblingPath(tempContainer, base)
 	if err := copyDirRecursive(templateWeftPrime, copiedWeftPrime); err != nil {
 		tb.Fatalf("copyDirRecursive weftPrime: %v", err)
 	}
@@ -550,9 +550,9 @@ func CopyPairedLocal(tb testing.TB) PairedFixture {
 	}
 
 	// Get layout from copied hub
-	layout, err := paths.Resolve(copiedHub)
+	layout, err := hubgeometry.Resolve(copiedHub)
 	if err != nil {
-		tb.Fatalf("paths.Resolve: %v", err)
+		tb.Fatalf("hubgeometry.Resolve: %v", err)
 	}
 
 	return PairedFixture{

@@ -19,7 +19,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/paths"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
 // CleanupBranchEntry describes the fate of one orphaned weft branch under Cleanup.
@@ -65,7 +65,7 @@ func codeguideFoldedBack(_ string) bool {
 // worktree sibling and, according to the flag matrix, reports or deletes them.
 //
 // Orphaned weft branches are identified by comparing all weft branch names against
-// the set of host worktree slugs enumerated via paths.List. The board repo branch
+// the set of host worktree slugs enumerated via hubgeometry.List. The board repo branch
 // namespace is excluded — only the weft repo's branches are examined.
 //
 // The flag matrix governs deletion:
@@ -77,11 +77,11 @@ func codeguideFoldedBack(_ string) bool {
 //
 // Returns CleanupResult on success or an error on fatal system failures. Per-branch
 // deletion errors are recorded inline in CleanupBranchEntry.Error.
-func (w *Worktree) Cleanup(l *paths.Layout, apply, force bool) (CleanupResult, error) {
+func (w *Worktree) Cleanup(l *hubgeometry.Layout, apply, force bool) (CleanupResult, error) {
 	// Enumerate host worktrees to build the set of known host slugs.
-	// We use paths.List rather than scanning the hub directory so we only consider
+	// We use hubgeometry.List rather than scanning the hub directory so we only consider
 	// git-registered worktrees, not arbitrary directories.
-	entries, err := paths.List(l.WorktreeRoot)
+	entries, err := hubgeometry.List(l.WorktreeRoot)
 	if err != nil {
 		return CleanupResult{}, fmt.Errorf("list host worktrees: %w", err)
 	}
@@ -148,7 +148,7 @@ func (w *Worktree) Cleanup(l *paths.Layout, apply, force bool) (CleanupResult, e
 // It runs git branch --format=%(refname:short) in the weft repo root to get a
 // clean, newline-delimited list of branch names with no decoration. Returns an
 // error if the git command fails to spawn or exits non-zero.
-func listWeftBranches(l *paths.Layout) ([]string, error) {
+func listWeftBranches(l *hubgeometry.Layout) ([]string, error) {
 	out, stderr, exitCode, err := gitexec.RunGit(
 		[]string{"branch", "--format=%(refname:short)"},
 		l.WeftRepoRoot(),
@@ -170,7 +170,7 @@ func listWeftBranches(l *paths.Layout) ([]string, error) {
 
 // deleteWeftBranch deletes a single weft branch via git branch -D and records
 // any error in entry.Error. Returns true only when the deletion succeeded.
-func deleteWeftBranch(l *paths.Layout, branch string, entry *CleanupBranchEntry) bool {
+func deleteWeftBranch(l *hubgeometry.Layout, branch string, entry *CleanupBranchEntry) bool {
 	_, stderr, exitCode, err := gitexec.RunGit(
 		[]string{"branch", "-D", branch},
 		l.WeftRepoRoot(),

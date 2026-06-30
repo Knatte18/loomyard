@@ -13,7 +13,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/paths"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
 // CheckoutResult contains the fields produced by a successful Checkout.
@@ -41,7 +41,7 @@ type CheckoutResult struct {
 //     return the original error untouched; the pair is never left half-switched.
 //
 // Returns CheckoutResult on success or an error if any step fails.
-func (w *Worktree) Checkout(l *paths.Layout, branch string) (CheckoutResult, error) {
+func (w *Worktree) Checkout(l *hubgeometry.Layout, branch string) (CheckoutResult, error) {
 	weftWorktree := l.WeftWorktree()
 
 	// (1) Precondition: refuse if the weft worktree is dirty. A dirty weft would mean
@@ -118,7 +118,7 @@ func (w *Worktree) Checkout(l *paths.Layout, branch string) (CheckoutResult, err
 // as the fork point and creates the new branch in-place via git switch -c. This
 // preserves the shared merge-base needed for future squash-merge-back operations,
 // matching Add's adopt-or-create fork-point logic.
-func (w *Worktree) switchOrForkWeft(l *paths.Layout, branch string) error {
+func (w *Worktree) switchOrForkWeft(l *hubgeometry.Layout, branch string) error {
 	weftWorktree := l.WeftWorktree()
 
 	if weftBranchExists(l, branch) {
@@ -179,7 +179,7 @@ func (w *Worktree) switchOrForkWeft(l *paths.Layout, branch string) error {
 // before the failure point — the junctions still point to the original branch state
 // and are therefore consistent with the rolled-back host branch. Rewiring would be
 // incorrect here and is not needed.
-func (w *Worktree) rollbackHostSwitch(l *paths.Layout, originalBranch string) {
+func (w *Worktree) rollbackHostSwitch(l *hubgeometry.Layout, originalBranch string) {
 	// Best-effort: silently ignore rollback failure because the caller already holds
 	// the original error that triggered this rollback.
 	_, _, _, _ = gitexec.RunGit([]string{"switch", originalBranch}, l.WorktreeRoot)

@@ -12,8 +12,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
-	"github.com/Knatte18/loomyard/internal/paths"
 )
 
 // TestWriteLaunchers covers launcher file creation on Windows.
@@ -107,9 +107,9 @@ func TestWriteLaunchers(t *testing.T) {
 				cwd = f.Hub
 			}
 
-			l, err := paths.Resolve(cwd)
+			l, err := hubgeometry.Resolve(cwd)
 			if err != nil {
-				t.Fatalf("paths.Resolve(%q): %v", cwd, err)
+				t.Fatalf("hubgeometry.Resolve(%q): %v", cwd, err)
 			}
 
 			// Write launchers.
@@ -168,9 +168,9 @@ func TestRemoveLaunchers(t *testing.T) {
 	}
 
 	f := lyxtest.CopyHostHub(t)
-	l, err := paths.Resolve(f.Hub)
+	l, err := hubgeometry.Resolve(f.Hub)
 	if err != nil {
-		t.Fatalf("paths.Resolve(%q): %v", f.Hub, err)
+		t.Fatalf("hubgeometry.Resolve(%q): %v", f.Hub, err)
 	}
 
 	// Write launchers for two slugs.

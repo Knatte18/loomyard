@@ -20,8 +20,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configsync"
 	"github.com/Knatte18/loomyard/internal/gitignore"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/output"
-	"github.com/Knatte18/loomyard/internal/paths"
 	"github.com/Knatte18/loomyard/internal/warpengine"
 )
 
@@ -73,13 +73,13 @@ func RunInit(out io.Writer, args []string) int {
 // Returns exit code 0 on success, 1 on error.
 func runInit(out io.Writer, args []string) int {
 	// Resolve current working directory
-	cwd, err := paths.Getwd()
+	cwd, err := hubgeometry.Getwd()
 	if err != nil {
 		return output.Err(out, fmt.Sprintf("failed to get working directory: %v", err))
 	}
 
 	// Resolve layout from cwd (needed for weft sibling derivation and slug)
-	l, err := paths.Resolve(cwd)
+	l, err := hubgeometry.Resolve(cwd)
 	if err != nil {
 		return output.Err(out, fmt.Sprintf("failed to resolve layout: %v", err))
 	}
@@ -101,7 +101,7 @@ func runInit(out io.Writer, args []string) int {
 	status := map[string]string{}
 
 	// Step 4: Create _lyx directory (activation completed in steps 1-3 above)
-	lyxDir := filepath.Join(cwd, paths.LyxDirName)
+	lyxDir := filepath.Join(cwd, hubgeometry.LyxDirName)
 	info, err := os.Stat(lyxDir)
 	if err != nil && !os.IsNotExist(err) {
 		return output.Err(out, fmt.Sprintf("failed to stat _lyx: %v", err))
@@ -122,7 +122,7 @@ func runInit(out io.Writer, args []string) int {
 	}
 
 	// Create _lyx/config/ subdirectory to hold configuration files
-	configDir := paths.ConfigDir(cwd)
+	configDir := hubgeometry.ConfigDir(cwd)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		return output.Err(out, fmt.Sprintf("failed to create _lyx/config directory: %v", err))
 	}

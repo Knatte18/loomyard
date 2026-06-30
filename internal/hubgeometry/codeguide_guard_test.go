@@ -1,10 +1,10 @@
-// codeguide_guard_test.go is a guard to ensure that internal/paths never
-// discovers or enumerates the _codeguide directory. This documents that paths
+// codeguide_guard_test.go is a guard to ensure that internal/hubgeometry never
+// discovers or enumerates the _codeguide directory. This documents that hubgeometry
 // never scans the worktree to mirror dirs — a future nested/ignored _codeguide
 // can never be treated as a sibling. Geometry methods like WeftCodeguideDir() are
 // exceptions: they compute paths purely via filepath.Join with no discovery logic.
 
-package paths
+package hubgeometry
 
 import (
 	"io/fs"
@@ -15,7 +15,7 @@ import (
 	"testing"
 )
 
-// TestCodeguideGuard verifies that no production source file in internal/paths
+// TestCodeguideGuard verifies that no production source file in internal/hubgeometry
 // contains the literal substring _codeguide.
 func TestCodeguideGuard(t *testing.T) {
 	t.Run("tree-scan", func(t *testing.T) {
@@ -24,7 +24,7 @@ func TestCodeguideGuard(t *testing.T) {
 		if !ok {
 			t.Fatal("could not determine test file location")
 		}
-		// One level up from internal/paths/codeguide_guard_test.go → package dir
+		// One level up from internal/hubgeometry/codeguide_guard_test.go → package dir
 		pkgDir := filepath.Dir(file)
 
 		// Predicate: returns true if the bytes contain _codeguide.
@@ -42,10 +42,10 @@ func TestCodeguideGuard(t *testing.T) {
 
 			// Only check .go files that are not _test.go files.
 			if !d.IsDir() && strings.HasSuffix(d.Name(), ".go") && !strings.HasSuffix(d.Name(), "_test.go") {
-				// Skip paths.go: it contains geometry methods like WeftCodeguideDir() that compute
+				// Skip hubgeometry.go: it contains geometry methods like WeftCodeguideDir() that compute
 				// paths purely via filepath.Join, which is allowed. The guard applies only to
 				// discovery/enumeration logic, not to geometry computation.
-				if d.Name() == "paths.go" {
+				if d.Name() == "hubgeometry.go" {
 					return nil
 				}
 				data, err := os.ReadFile(path)
