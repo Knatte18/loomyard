@@ -47,8 +47,15 @@ forced rewriting every `paths`/"Path Invariant" reference twice.
   - The already-topic-named files **stay**: `geometry_test.go`, `weft_test.go`,
     `worktreelist.go`, `worktreelist_test.go`, `codeguide_guard_test.go`,
     `enforcement_test.go`.
-- Change the package clause `package paths` → `package hubgeometry` in **every** file
-  in the directory (all `.go` files, production and test).
+- Change the package clause in **every** file in the directory. Note the package is
+  **split across two package names** (verify the exact split before editing):
+  - Production + same-package (white-box) tests declare `package paths` → become
+    `package hubgeometry`: `paths.go` (→`hubgeometry.go`), `worktreelist.go`,
+    `enforcement_test.go`, `codeguide_guard_test.go`.
+  - External (black-box) test files declare `package paths_test` → become
+    `package hubgeometry_test`: `paths_test.go` (→`hubgeometry_test.go`),
+    `paths_unit_test.go` (→`hubgeometry_unit_test.go`), `geometry_test.go`,
+    `weft_test.go`, `worktreelist_test.go`.
 - Update the package doc comment in `hubgeometry.go` ("Package paths is the single
   owner…" → "Package hubgeometry is the single owner…").
 - Update every importer: the import path
@@ -193,9 +200,12 @@ What mill-plan needs to know:
   README and overview link to it, so update those links too). `roadmap.md` per
   `CLAUDE.md` is milestone-only, but a stale module-path reference is a correctness fix,
   not a new note — update the reference in place, don't append roadmap commentary.
-- **Package clause is in every file in the dir:** all of `hubgeometry.go`,
-  `worktreelist.go`, and every `*_test.go` in the package declare `package paths` today
-  and must become `package hubgeometry`.
+- **Package clause is split across two names:** `paths.go`/`worktreelist.go` and the
+  white-box tests `enforcement_test.go`/`codeguide_guard_test.go` declare `package paths`
+  (→ `package hubgeometry`); the black-box test files `paths_test.go`,
+  `paths_unit_test.go`, `geometry_test.go`, `weft_test.go`, `worktreelist_test.go`
+  declare `package paths_test` (→ `package hubgeometry_test`). Do not assume a single
+  package name — confirm each file's clause.
 
 ## Constraints
 
@@ -250,7 +260,9 @@ new tests are required.
   return nothing:
   - `grep -rn "internal/paths" .`
   - `grep -rn "Path Invariant" .`
-  - `grep -rn "package paths\b" .`
+  - `grep -rn "package paths(_test)?\b" .` — matches both the white-box (`package paths`)
+    and black-box (`package paths_test`) clauses; a plain `package paths\b` misses
+    `package paths_test` because `_` is a word character.
   - `grep -rn "#path-invariant" .` — the lowercase heading-anchor slug; catches the
     `docs/modules/loom.md` link if its `#path-invariants` fragment was missed (the
     text greps above do not match the hyphenated lowercase fragment).
