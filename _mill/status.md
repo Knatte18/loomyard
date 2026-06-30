@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-emitter-and-fetch
 slug: sandbox-report-json
 branch: sandbox-report-json
 plan: _mill/plan
@@ -23,6 +23,7 @@ plan-fix-r1  '2026-06-30T18:49:21Z'
 plan-fix-r2  '2026-06-30T18:55:50Z'
 planned  '2026-06-30T19:01:11Z'
 implementing  '2026-06-30T19:03:16Z'
+approved-emitter-and-fetch  '2026-06-30T19:10:50Z'
 ```
 
 ## Batches
@@ -30,9 +31,10 @@ implementing  '2026-06-30T19:03:16Z'
 ```yaml
 batches:
   - name: emitter-and-fetch
-    state: running
+    state: approved
     implementer_session: 6af578a8-45c7-4f3d-828b-afeeb8134b38
     start_sha: f403bf379fc8c033b461c69a5d6315f374b1509a
+    commit_sha: d6a34201e8072534576765d4e6c8860e74955aa7
   - name: docs
     state: pending
 ```
