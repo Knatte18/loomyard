@@ -2,7 +2,7 @@
 // the RunCLI seam that wires it into the legacy io.Writer-based call contract.
 //
 // Command() builds a parent "muxpoc" cobra command with persistent tuning flags
-// and a PersistentPreRunE that resolves the worktree root via paths.Resolve.
+// and a PersistentPreRunE that resolves the worktree root via hubgeometry.Resolve.
 // Each subcommand's RunE closes over the resolved cfg variable that PreRunE populates.
 
 // Package muxpoc is a shipped proof-of-concept psmux orchestrator that proves
@@ -24,8 +24,8 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/output"
-	"github.com/Knatte18/loomyard/internal/paths"
 	"github.com/spf13/cobra"
 )
 
@@ -46,7 +46,7 @@ type Config struct {
 //
 // The parent command carries persistent tuning flags (--psmux, --pwsh, --claude,
 // --launch, --resume, --width, --height, --interval) so every subcommand inherits
-// them. A PersistentPreRunE resolves the worktree root via paths.Resolve and
+// them. A PersistentPreRunE resolves the worktree root via hubgeometry.Resolve and
 // populates the closure-local cfg variable; on failure it writes an error response
 // and signals abort so that subcommand RunE bodies do not execute against an
 // uninitialised environment. Running "lyx muxpoc" with no arguments lists
@@ -88,14 +88,14 @@ the risky parts — daemon and pane recovery — of the planned mux module.`,
 			return nil
 		}
 
-		cwd, err := paths.Getwd()
+		cwd, err := hubgeometry.Getwd()
 		if err != nil {
 			output.Err(c.OutOrStdout(), fmt.Sprintf("failed to get current working directory: %v", err))
 			clihelp.Abort(c.Context(), 1)
 			return nil
 		}
 
-		layout, err := paths.Resolve(cwd)
+		layout, err := hubgeometry.Resolve(cwd)
 		if err != nil {
 			output.Err(c.OutOrStdout(), fmt.Sprintf("not a git repository: %v", err))
 			clihelp.Abort(c.Context(), 1)

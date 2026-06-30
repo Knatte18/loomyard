@@ -9,10 +9,10 @@ import (
 	"os"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/paths"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
-// Build reads the .env file at paths.DotEnv(baseDir) and overlays the OS environment,
+// Build reads the .env file at hubgeometry.DotEnv(baseDir) and overlays the OS environment,
 // returning a merged map where OS values take precedence over .env values.
 //
 // The .env file is parsed line-by-line, skipping blank lines and lines beginning with #.
@@ -25,7 +25,7 @@ import (
 // Returns the merged map on success, or an error if the .env file cannot be read.
 func Build(baseDir string) (map[string]string, error) {
 	// Read the .env file
-	dotEnvPath := paths.DotEnv(baseDir)
+	dotEnvPath := hubgeometry.DotEnv(baseDir)
 	dotEnvMap, err := readDotEnv(dotEnvPath)
 	if err != nil {
 		return nil, err

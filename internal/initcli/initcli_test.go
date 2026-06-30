@@ -18,9 +18,9 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/initcli"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
-	"github.com/Knatte18/loomyard/internal/paths"
 	"github.com/Knatte18/loomyard/internal/warpengine"
 	"github.com/Knatte18/loomyard/internal/weftengine"
 )
@@ -51,14 +51,14 @@ func TestRunInit_FirstRun(t *testing.T) {
 	}
 
 	// Verify _lyx/config/ directories exist
-	configDir := paths.ConfigDir(f.Layout.WorktreeRoot)
+	configDir := hubgeometry.ConfigDir(f.Layout.WorktreeRoot)
 	if _, err := os.Stat(configDir); err != nil {
 		t.Fatalf("_lyx/config not created: %v", err)
 	}
 
 	// Verify all three config files exist
 	for _, module := range []string{"board", "warp", "weft"} {
-		cfgPath := paths.ConfigFile(f.Layout.WorktreeRoot, module)
+		cfgPath := hubgeometry.ConfigFile(f.Layout.WorktreeRoot, module)
 		if _, err := os.Stat(cfgPath); err != nil {
 			t.Errorf("%s.yaml not created: %v", module, err)
 		}
@@ -112,7 +112,7 @@ func TestRunInit_Idempotent(t *testing.T) {
 	}
 
 	// Capture files and gitignore after first run
-	boardPath := paths.ConfigFile(f.Layout.WorktreeRoot, "board")
+	boardPath := hubgeometry.ConfigFile(f.Layout.WorktreeRoot, "board")
 	content1, err := os.ReadFile(boardPath)
 	if err != nil {
 		t.Fatalf("read board.yaml: %v", err)
@@ -206,7 +206,7 @@ func TestRunInit_NoPairing(t *testing.T) {
 		t.Error(".gitignore should not exist when no pairing")
 	}
 
-	configDir := paths.ConfigDir(tmpDir)
+	configDir := hubgeometry.ConfigDir(tmpDir)
 	if _, err := os.Stat(configDir); err == nil {
 		t.Error("_lyx/config should not exist when no pairing")
 	}
