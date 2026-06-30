@@ -22,6 +22,21 @@ Before starting a session:
 4. **`gh` installed and authenticated.** The `lyx ghissues create` command delegates to
    the `gh` CLI. Run `gh auth status` to confirm authentication before starting.
 
+### PowerShell JSON-quoting
+
+When driving the suite from Windows PowerShell (the assumed session shell on Windows),
+backslash-escaping a JSON argument is the intuitive-but-wrong move and yields:
+
+```
+{"error":"invalid json: invalid character '\\' looking for beginning of object key string","ok":false}
+```
+
+The working form is a single-quoted string with literal inner double quotes, e.g.
+
+```powershell
+lyx board upsert '{"slug":"s3-demo","title":"S3 demo"}'
+```
+
 ### Operating model
 
 lyx resolves against the current directory's own `_lyx/` and does **not** walk up to a
@@ -121,6 +136,9 @@ surface.
 ### S3 -- Board and task interaction
 
 **Goal:** "Add a task to the board, list tasks, change its state."
+
+**Note:** When passing JSON in PowerShell, use single-quoted strings with literal inner
+double quotes — see the PowerShell JSON-quoting note in Pre-conditions.
 
 **Watch:** Board CRUD via `lyx board`. JSON output sane. State transitions work.
 
