@@ -29,7 +29,9 @@ implementing  '2026-06-30T16:33:39Z'
 ```yaml
 batches:
   - name: code-rename
-    state: pending
+    state: running
+    implementer_session: 64e80e11-c737-4e5b-beea-9dcd4888bfe8
+    start_sha: b3e368efe74b3efd96c91386c912f80543f8a94b
   - name: docs
     state: pending
 ```
