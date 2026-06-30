@@ -28,6 +28,12 @@ de-facto done gate.
   - `internal/paths/paths.go`
 - **Edits:**
   - `internal/paths/enforcement_test.go`
+  - `cmd/lyx/main_test.go` (repo-wide verify backstop: batch 3 routed `boardcli`'s
+    board-data-dir through `paths.Resolve`, which requires a git repo; the board
+    dispatch tests in this file seed a temp cwd without `git init`, so they must
+    `git init` to match the new path-resolution contract — mirrors the existing
+    pattern in `TestRunDispatchesToConfigReconcile`. Caught only by batch 5's
+    repo-wide `go test ./...`, outside batch 3's scoped verify.)
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
