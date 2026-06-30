@@ -7,7 +7,6 @@ package warpcli
 import (
 	"fmt"
 	"io"
-	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/paths"
@@ -48,7 +47,7 @@ func runCloneWithReset(out io.Writer, args []string, reset bool) int {
 		if name == "" {
 			return output.Err(out, fmt.Sprintf("could not derive repo name from host URL %s", hostURL))
 		}
-		hubPath := filepath.Join(cwd, name+warpengine.HubSuffix)
+		hubPath := paths.HubPath(cwd, name)
 		if err := warpengine.RemoveAll(hubPath); err != nil {
 			return output.Err(out, fmt.Sprintf("reset: remove hub at %s: %v", hubPath, err))
 		}

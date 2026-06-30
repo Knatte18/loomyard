@@ -18,6 +18,7 @@ import (
 
 // TestLoadConfig_HappyPath tests that LoadConfig loads a valid config
 // with all template keys present and resolves environment variables.
+// LoadConfig no longer sets Config.Path; the caller does that via paths.BoardDir.
 func TestLoadConfig_HappyPath(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -31,10 +32,9 @@ func TestLoadConfig_HappyPath(t *testing.T) {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
 
-	// Write a config file with all template keys
+	// Write a config file with all template keys (path: is not a template key)
 	configFile := paths.ConfigFile(tmpDir, "board")
-	content := `path: _custom_board
-home: Home.md
+	content := `home: Home.md
 sidebar: _Sidebar.md
 proposal_prefix: proposal-
 `
@@ -47,9 +47,9 @@ proposal_prefix: proposal-
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Verify relative path was resolved
-	if !strings.HasSuffix(cfg.Path, "_custom_board") {
-		t.Errorf("expected path to end with %q, got %q", "_custom_board", cfg.Path)
+	// Path is never set by LoadConfig; the caller sets it via paths.BoardDir.
+	if cfg.Path != "" {
+		t.Errorf("expected Path to be empty after LoadConfig; got %q", cfg.Path)
 	}
 	if cfg.Home != "Home.md" {
 		t.Errorf("expected Home %q, got %q", "Home.md", cfg.Home)
@@ -62,8 +62,9 @@ proposal_prefix: proposal-
 	}
 }
 
-// TestLoadConfig_AbsolutePathResolution tests that absolute paths in config
-// are passed through unchanged.
+// TestLoadConfig_AbsolutePathResolution verifies that a path: key in the config
+// file is ignored by LoadConfig because Config.Path has yaml:"-".
+// The board data dir is geometry owned by paths.BoardDir; the config key is a no-op.
 func TestLoadConfig_AbsolutePathResolution(t *testing.T) {
 	tmpDir := t.TempDir()
 	absBoard := t.TempDir()
@@ -78,7 +79,7 @@ func TestLoadConfig_AbsolutePathResolution(t *testing.T) {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
 
-	// Write config with absolute path
+	// Write config with an absolute path: key that should be ignored.
 	configFile := paths.ConfigFile(tmpDir, "board")
 	content := `path: ` + absBoard + `
 home: Home.md
@@ -94,13 +95,16 @@ proposal_prefix: proposal-
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if cfg.Path != absBoard {
-		t.Errorf("expected path %q, got %q", absBoard, cfg.Path)
+	// yaml:"-" means the path: key in the file is never mapped to Config.Path.
+	if cfg.Path != "" {
+		t.Errorf("expected Path to be empty (yaml:\"-\" ignores config key); got %q", cfg.Path)
 	}
 }
 
-// TestLoadConfig_RelativePathResolution tests that relative paths are resolved
-// relative to baseDir.
+// TestLoadConfig_RelativePathResolution verifies that a relative path: key in the
+// config file is ignored by LoadConfig because Config.Path has yaml:"-".
+// LoadConfig no longer performs any relative-path resolution; the board data dir
+// is geometry owned by paths.BoardDir.
 func TestLoadConfig_RelativePathResolution(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -114,7 +118,7 @@ func TestLoadConfig_RelativePathResolution(t *testing.T) {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
 
-	// Write config with relative path
+	// Write config with a relative path: key that should be ignored.
 	configFile := paths.ConfigFile(tmpDir, "board")
 	content := `path: ../custom_board
 home: Home.md
@@ -130,14 +134,17 @@ proposal_prefix: proposal-
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	expected := filepath.Join(tmpDir, "../custom_board")
-	if cfg.Path != expected {
-		t.Errorf("expected path %q, got %q", expected, cfg.Path)
+	// yaml:"-" means the path: key in the file is never mapped to Config.Path;
+	// no relative-path resolution is performed.
+	if cfg.Path != "" {
+		t.Errorf("expected Path to be empty (yaml:\"-\" ignores config key); got %q", cfg.Path)
 	}
 }
 
-// TestLoadConfig_EnvResolution tests that environment variables in config
-// are resolved correctly.
+// TestLoadConfig_EnvResolution verifies that a path: key using ${env:...} syntax
+// in the config file is ignored by LoadConfig because Config.Path has yaml:"-".
+// The env-override mechanism for the board data dir has been removed; the data
+// dir is now geometry owned by paths.BoardDir and is not env-overridable.
 func TestLoadConfig_EnvResolution(t *testing.T) {
 	tmpDir := t.TempDir()
 	absBoard := t.TempDir()
@@ -153,7 +160,7 @@ func TestLoadConfig_EnvResolution(t *testing.T) {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
 
-	// Write config with env variable
+	// Write config with an env-variable path: key that should be ignored.
 	configFile := paths.ConfigFile(tmpDir, "board")
 	content := `path: ${env:TEST_BOARD_PATH}
 home: Home.md
@@ -169,8 +176,10 @@ proposal_prefix: proposal-
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if cfg.Path != absBoard {
-		t.Errorf("expected path %q (from env), got %q", absBoard, cfg.Path)
+	// yaml:"-" means Config.Path is never populated from the config file, even
+	// after env-variable resolution expands the value.
+	if cfg.Path != "" {
+		t.Errorf("expected Path to be empty (yaml:\"-\" ignores config key); got %q", cfg.Path)
 	}
 }
 

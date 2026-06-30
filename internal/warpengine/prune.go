@@ -76,7 +76,7 @@ func (w *Worktree) Prune(l *paths.Layout, apply bool) (PruneResult, error) {
 		hostPath = filepath.Clean(hostPath)
 		slug := filepath.Base(hostPath)
 
-		weftPath := filepath.Join(l.Hub, slug+"-weft")
+		weftPath := l.WeftWorktreePath(slug)
 
 		// Check whether the host worktree directory actually exists on disk.
 		_, hostStatErr := os.Stat(hostPath)
@@ -120,12 +120,12 @@ func (w *Worktree) Prune(l *paths.Layout, apply bool) (PruneResult, error) {
 		name := dirEntry.Name()
 
 		// Only consider directories that follow the <slug>-weft naming convention.
-		if len(name) <= len("-weft") || name[len(name)-len("-weft"):] != "-weft" {
+		// WeftHostSlug rejects entries that are not valid weft names (wrong suffix or
+		// empty slug after stripping), matching the skip semantics of the old guard.
+		hostSlug, ok := paths.WeftHostSlug(name)
+		if !ok {
 			continue
 		}
-
-		// Derive the corresponding host slug by stripping the "-weft" suffix.
-		hostSlug := name[:len(name)-len("-weft")]
 
 		// Skip if a live host worktree exists for this slug — the pair is healthy.
 		if liveHostSlugs[hostSlug] {

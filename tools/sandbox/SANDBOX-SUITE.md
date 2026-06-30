@@ -1,4 +1,4 @@
-# Sandbox test-scheme -- lyx black-box agent suite
+# SANDBOX-SUITE -- lyx black-box agent suite
 
 ## What this is
 
@@ -21,6 +21,31 @@ Before starting a session:
 3. **`lyx` on PATH.** Confirm `lyx --help` works from any directory.
 4. **`gh` installed and authenticated.** The `lyx selfreport create` command delegates to
    the `gh` CLI. Run `gh auth status` to confirm authentication before starting.
+
+### PowerShell JSON-quoting
+
+When driving the suite from Windows PowerShell (the assumed session shell on Windows),
+backslash-escaping a JSON argument is the intuitive-but-wrong move and yields:
+
+```
+{"error":"invalid json: invalid character '\\' looking for beginning of object key string","ok":false}
+```
+
+The working form is a single-quoted string with literal inner double quotes, e.g.
+
+```powershell
+lyx board upsert '{"slug":"s3-demo","title":"S3 demo"}'
+```
+
+### Operating model
+
+lyx resolves against the current directory's own `_lyx/` and does **not** walk up to a
+parent. The hub host repo is initialized at its root, so the agent runs the entire
+session from there (cwd is fixed at the root). Running a lyx command from a subdirectory
+that has not itself been initialized correctly reports
+`not initialized here; run "lyx init"` — that is expected behaviour, **not a finding**.
+Note: `lyx init` in a subdirectory would create `_lyx/` there and make lyx work in that
+subdir, but the agent must **not** scaffold nested `_lyx/` during a session.
 
 ## Black-box rule
 
@@ -100,9 +125,9 @@ missing command surface.
 **Goal:** "Create something in the host repo (a file, a small change) and get it
 committed and tracked the way lyx intends."
 
-**Watch:** Does the host/weft coordination behave? Are junctions wired correctly? Does
-lyx own this flow or do you fall back to raw `git`? Falling back is a gap in the lyx
-surface.
+**Watch:** The host is an ordinary git repo — committing host changes with plain `git`
+is acceptable and **not** a finding. Watch lyx's actual responsibility: host/weft
+coordination (junctions wired correctly, weft mirroring behaves).
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -111,6 +136,14 @@ surface.
 ### S3 -- Board and task interaction
 
 **Goal:** "Add a task to the board, list tasks, change its state."
+
+**Note:** When passing JSON in PowerShell, use single-quoted strings with literal inner
+double quotes — see the PowerShell JSON-quoting note in Pre-conditions.
+
+**Durability note:** The board is durable across sessions — it starts non-empty (e.g. a
+`T1 "Test task from S3"` task persists from prior runs). Do not assume a fresh board.
+Use `lyx board list` to observe current state before adding tasks, and use
+`lyx board remove` to clean up any test tasks you create at session end.
 
 **Watch:** Board CRUD via `lyx board`. JSON output sane. State transitions work.
 
@@ -122,19 +155,8 @@ surface.
 
 **Goal:** "Inspect lyx's config for this hub, change a value, confirm it took."
 
-**Watch:** `lyx config` read/write. Does it find the right config scope from cwd?
-
-**Verdict:** `OK` / `WARN` / `FAIL`
-
----
-
-### S5 -- Re-clone and reset idempotency
-
-**Goal:** (operator-external -- run the sandbox tool from outside the hub) Re-run
-`sandbox.cmd -reset` over an existing hub.
-
-**Watch:** Clean teardown and rebuild. No stale junctions, no leftover state, no
-"directory in use" Windows handle errors.
+**Watch:** From the worktree root, does `lyx config` read/write the correct
+`_lyx/config/` and round-trip a value?
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -146,11 +168,11 @@ surface.
 Run an unknown subcommand."
 
 **Watch:** Are errors legible? Does lyx say what to do, or just fail? This is where
-standalone usability lives or dies.
+standalone usability lives or dies. A legible `not initialized` / "run from the
+initialized root"-style message is the `OK` (ergonomics-pass) outcome — not a `FAIL`.
+Do not file it as a finding.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
-
----
 
 ## Session log format
 
@@ -165,7 +187,6 @@ S1: <OK|WARN|FAIL> -- <one-line note if not OK>
 S2: <OK|WARN|FAIL> -- <one-line note if not OK>
 S3: <OK|WARN|FAIL> -- <one-line note if not OK>
 S4: <OK|WARN|FAIL> -- <one-line note if not OK>
-S5: <OK|WARN|FAIL> -- <one-line note if not OK>
 S6: <OK|WARN|FAIL> -- <one-line note if not OK>
 
 Issues filed: <count> (links)
@@ -180,3 +201,7 @@ fingerprint header in every issue body.
   matters now. Add scenarios as modules grow (mux, shuttle, review, loom).
 - The psmux interactive launcher will replace the direct `claude` launch in a future
   iteration; the file contract (this `SANDBOX-SUITE.md` driving the agent) is unchanged.
+- The host repo `Knatte18/lyx-test` README uses the phrase "cwd-relpath mirroring"; this
+  refers to **weft path mirroring** (how the weft worktree mirrors host subpaths) — not
+  to running lyx from subdirectories. "cwd-relpath" does not appear elsewhere in this
+  scheme.

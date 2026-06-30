@@ -69,6 +69,14 @@ func TestRunDispatchesToBoard(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
 	// Create temp cwd with _lyx/config/board.yaml
 	cwd := t.TempDir()
+
+	// Initialize a git repo so the board's PersistentPreRunE can call paths.Resolve
+	// without error. The board data dir is now geometry (paths.BoardDir(Hub)) rather
+	// than a config key, so the dispatched command resolves the worktree layout.
+	if _, _, exitCode, err := gitexec.RunGit([]string{"init"}, cwd); err != nil || exitCode != 0 {
+		t.Fatalf("git init failed: %v (exit code %d)", err, exitCode)
+	}
+
 	lyxDir := filepath.Join(cwd, paths.LyxDirName)
 	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
@@ -78,8 +86,9 @@ func TestRunDispatchesToBoard(t *testing.T) {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
 	configPath := paths.ConfigFile(cwd, "board")
-	// Write a template-complete board config with all required keys
-	boardConfig := "path: board\nhome: Home.md\nsidebar: _Sidebar.md\nproposal_prefix: proposal-\n"
+	// Write a template-complete board config. path: is no longer a template key
+	// (the board data dir is paths-owned), so only home/sidebar/proposal_prefix remain.
+	boardConfig := "home: Home.md\nsidebar: _Sidebar.md\nproposal_prefix: proposal-\n"
 	if err := os.WriteFile(configPath, []byte(boardConfig), 0o644); err != nil {
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
@@ -105,6 +114,14 @@ func TestRunBoardErrorPropagatesExitCode(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
 	// Create temp cwd with _lyx/config/board.yaml
 	cwd := t.TempDir()
+
+	// Initialize a git repo so PersistentPreRunE's paths.Resolve succeeds; this
+	// ensures the exit-1 assertion below tests the board command's own failure
+	// (removing a nonexistent task), not an upstream layout-resolution error.
+	if _, _, exitCode, err := gitexec.RunGit([]string{"init"}, cwd); err != nil || exitCode != 0 {
+		t.Fatalf("git init failed: %v (exit code %d)", err, exitCode)
+	}
+
 	lyxDir := filepath.Join(cwd, paths.LyxDirName)
 	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
@@ -114,8 +131,9 @@ func TestRunBoardErrorPropagatesExitCode(t *testing.T) {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
 	configPath := paths.ConfigFile(cwd, "board")
-	// Write a template-complete board config with all required keys
-	boardConfig := "path: board\nhome: Home.md\nsidebar: _Sidebar.md\nproposal_prefix: proposal-\n"
+	// Write a template-complete board config. path: is no longer a template key
+	// (the board data dir is paths-owned), so only home/sidebar/proposal_prefix remain.
+	boardConfig := "home: Home.md\nsidebar: _Sidebar.md\nproposal_prefix: proposal-\n"
 	if err := os.WriteFile(configPath, []byte(boardConfig), 0o644); err != nil {
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
