@@ -88,7 +88,7 @@ func (w *Worktree) Status(l *paths.Layout) (StatusResult, error) {
 
 		// Derive the paired weft worktree path from the host worktree base name.
 		// e.g. <hub>/my-task → <hub>/my-task-weft
-		weftPath := filepath.Join(l.Hub, filepath.Base(hostPath)+"-weft")
+		weftPath := l.WeftWorktreePath(filepath.Base(hostPath))
 
 		pair := PairStatus{
 			HostWorktree: hostPath,
