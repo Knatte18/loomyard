@@ -62,7 +62,7 @@ here so the change is atomic. Depends only on batch 1; shares no edited files wi
   - `internal/boardengine/config.go`
   - `internal/boardengine/board.go`
   - `internal/paths/paths.go`
-  - `internal/clihelp/clihelp.go`
+  - `internal/clihelp/exec.go`
 - **Edits:**
   - `internal/boardcli/cli.go`
 - **Creates:** none
