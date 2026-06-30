@@ -185,6 +185,26 @@ func HubPath(parent, name string) string {
 	return filepath.Join(parent, name+HubSuffix)
 }
 
+// WeftHostSlug parses a weft sibling directory name and returns the host slug it
+// corresponds to.
+//
+// It reports whether name ends with WeftSuffix AND the stripped prefix is non-empty.
+// The non-empty guard rejects a bare "-weft" entry (which would yield an empty slug),
+// matching the skip condition in warpengine/prune.go's hub scan. When ok is true,
+// slug is the result of strings.TrimSuffix(name, WeftSuffix) and may be passed
+// directly to any of the geometry constructors as the host slug.
+func WeftHostSlug(name string) (slug string, ok bool) {
+	if !strings.HasSuffix(name, WeftSuffix) {
+		return "", false
+	}
+	// Strip the suffix; reject a bare "-weft" name (empty slug).
+	s := strings.TrimSuffix(name, WeftSuffix)
+	if s == "" {
+		return "", false
+	}
+	return s, true
+}
+
 // LyxDir returns the path to the _lyx directory in the current working directory.
 //
 // Returns filepath.Join(Cwd, LyxDirName).
