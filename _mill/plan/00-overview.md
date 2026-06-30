@@ -105,9 +105,10 @@ batches:
 
 ## All Files Touched
 
-_Full union of every `Creates:` / `Edits:` across every batch, sorted
-alphabetically. `Moves:` targets (the renamed package dir and `paths.md`)
-are listed separately in their batch files and are not part of this union._
+_Full union of every `Edits:` / `Creates:` plus every `Moves:` target across
+every batch, sorted alphabetically. mill-go reads this to warn if two parallel
+batches touch the same file. The old pre-rename paths (`internal/paths/*`,
+`docs/shared-libs/paths.md`) are the `Moves:` sources and are intentionally absent._
 
 - `CLAUDE.md`
 - `CONSTRAINTS.md`
@@ -121,6 +122,7 @@ are listed separately in their batch files and are not part of this union._
 - `docs/roadmap.md`
 - `docs/shared-libs/README.md`
 - `docs/shared-libs/envsource.md`
+- `docs/shared-libs/hubgeometry.md`
 - `internal/boardcli/cli.go`
 - `internal/boardcli/cli_test.go`
 - `internal/boardengine/boardtest/bench_test.go`
@@ -137,6 +139,15 @@ are listed separately in their batch files and are not part of this union._
 - `internal/configsync/configsync.go`
 - `internal/configsync/configsync_test.go`
 - `internal/envsource/envsource.go`
+- `internal/hubgeometry/codeguide_guard_test.go`
+- `internal/hubgeometry/enforcement_test.go`
+- `internal/hubgeometry/geometry_test.go`
+- `internal/hubgeometry/hubgeometry.go`
+- `internal/hubgeometry/hubgeometry_test.go`
+- `internal/hubgeometry/hubgeometry_unit_test.go`
+- `internal/hubgeometry/weft_test.go`
+- `internal/hubgeometry/worktreelist.go`
+- `internal/hubgeometry/worktreelist_test.go`
 - `internal/idecli/cli.go`
 - `internal/ideengine/menu.go`
 - `internal/ideengine/menu_test.go`
