@@ -14,8 +14,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
-	"github.com/Knatte18/loomyard/internal/paths"
 	"github.com/Knatte18/loomyard/internal/weftengine"
 )
 
@@ -184,12 +184,12 @@ func TestRunCLI_EnvMapToOption(t *testing.T) {
 
 	hubPath := fixture.Hub
 
-	// Change to the hub directory so paths.Resolve can locate the repo from cwd;
+	// Change to the hub directory so hubgeometry.Resolve can locate the repo from cwd;
 	// t.Chdir restores the original cwd automatically after the test.
 	t.Chdir(hubPath)
 
 	// Modify a file in the weft config that would be committed
-	weftConfigFile := filepath.Join(fixture.WeftPrime, paths.LyxDirName, "placeholder")
+	weftConfigFile := filepath.Join(fixture.WeftPrime, hubgeometry.LyxDirName, "placeholder")
 	if err := os.WriteFile(weftConfigFile, []byte("modified"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}

@@ -18,7 +18,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardcli"
 	"github.com/Knatte18/loomyard/internal/boardengine"
-	"github.com/Knatte18/loomyard/internal/paths"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
 // benchSizes is the set of board sizes (number of tasks already in tasks.json)
@@ -38,15 +38,15 @@ func seedWiki(tb testing.TB, n int) string {
 	dir := tb.TempDir()
 
 	// Create _lyx and _lyx/config directories with board.yaml config
-	lyxDir := filepath.Join(dir, paths.LyxDirName)
+	lyxDir := filepath.Join(dir, hubgeometry.LyxDirName)
 	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
 		tb.Fatalf("mkdir _lyx: %v", err)
 	}
-	configDir := paths.ConfigDir(dir)
+	configDir := hubgeometry.ConfigDir(dir)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		tb.Fatalf("mkdir _lyx/config: %v", err)
 	}
-	configPath := paths.ConfigFile(dir, "board")
+	configPath := hubgeometry.ConfigFile(dir, "board")
 	if err := os.WriteFile(configPath, []byte("path: board\nhome: Home.md\nsidebar: _Sidebar.md\nproposal_prefix: proposal-\n"), 0o644); err != nil {
 		tb.Fatalf("write board.yaml: %v", err)
 	}

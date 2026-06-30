@@ -13,8 +13,8 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fslink"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
-	"github.com/Knatte18/loomyard/internal/paths"
 )
 
 // setupReconcileFixture prepares a CopyPairedLocal fixture with warp config seeded into the
@@ -181,9 +181,9 @@ func TestReconcile_RawHostWorktreeAdopted(t *testing.T) {
 	})
 
 	// Confirm no _lyx in the raw worktree and no weft branch.
-	rawLayout, err := paths.Resolve(rawHostPath)
+	rawLayout, err := hubgeometry.Resolve(rawHostPath)
 	if err != nil {
-		t.Fatalf("paths.Resolve(rawHostPath): %v", err)
+		t.Fatalf("hubgeometry.Resolve(rawHostPath): %v", err)
 	}
 	if weftBranchExists(rawLayout, rawBranch) {
 		t.Fatalf("pre-condition: weft branch %q must not exist for raw-adopt path", rawBranch)
@@ -227,7 +227,7 @@ func TestReconcile_RawHostWorktreeAdopted(t *testing.T) {
 	}
 
 	// The host _lyx must still be absent (dormant = no junction; lyx init wires it).
-	lyxPath := filepath.Join(rawHostPath, paths.LyxDirName)
+	lyxPath := filepath.Join(rawHostPath, hubgeometry.LyxDirName)
 	if _, statErr := os.Lstat(lyxPath); !os.IsNotExist(statErr) {
 		t.Errorf("host _lyx at %s exists after raw-adopt; want absent (lyx init wires the junction)", lyxPath)
 	}
@@ -257,15 +257,15 @@ func TestReconcile_UnmanagedBranchReportedUntouched(t *testing.T) {
 	})
 
 	// Place a real _lyx directory (not a junction) so the worktree is not "raw".
-	fakeLyx := filepath.Join(unmanagedHostPath, paths.LyxDirName)
+	fakeLyx := filepath.Join(unmanagedHostPath, hubgeometry.LyxDirName)
 	if err := os.MkdirAll(fakeLyx, 0o755); err != nil {
 		t.Fatalf("MkdirAll fake _lyx: %v", err)
 	}
 
 	// Confirm pre-conditions: no weft branch, not raw (has _lyx dir).
-	unmanagedLayout, err := paths.Resolve(unmanagedHostPath)
+	unmanagedLayout, err := hubgeometry.Resolve(unmanagedHostPath)
 	if err != nil {
-		t.Fatalf("paths.Resolve(unmanagedHostPath): %v", err)
+		t.Fatalf("hubgeometry.Resolve(unmanagedHostPath): %v", err)
 	}
 	if weftBranchExists(unmanagedLayout, unmanagedBranch) {
 		t.Fatalf("pre-condition: weft branch %q must not exist", unmanagedBranch)

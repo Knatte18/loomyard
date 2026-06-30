@@ -25,7 +25,7 @@ func TestConfigTemplate_ValidYAML(t *testing.T) {
 // TestConfigTemplate_HasRequiredKeys asserts that the template contains
 // all expected configuration keys (home, sidebar, proposal_prefix).
 // The geometry key path is intentionally absent — board data dir is now
-// owned by paths.BoardDir, not the config file.
+// owned by hubgeometry.BoardDir, not the config file.
 func TestConfigTemplate_HasRequiredKeys(t *testing.T) {
 	got := ConfigTemplate()
 	var result map[string]any

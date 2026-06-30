@@ -52,7 +52,7 @@ func TestSmokeFullLifecycle(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chdir(origWd) })
 
-	// Initialize temp dir as a git repo so paths.Resolve succeeds
+	// Initialize temp dir as a git repo so hubgeometry.Resolve succeeds
 	initCmd := exec.Command("git", "init", "-b", "main")
 	initCmd.Dir = cwd
 	if err := initCmd.Run(); err != nil {

@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/output"
-	"github.com/Knatte18/loomyard/internal/paths"
 	"github.com/Knatte18/loomyard/internal/warpengine"
 )
 
@@ -25,7 +25,7 @@ func runClone(out io.Writer, args []string) int {
 // cloning, making the operation idempotent. The teardown uses warpengine.RemoveAll
 // so tests can inject errors by swapping that exported var.
 func runCloneWithReset(out io.Writer, args []string, reset bool) int {
-	cwd, err := paths.Getwd()
+	cwd, err := hubgeometry.Getwd()
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -47,7 +47,7 @@ func runCloneWithReset(out io.Writer, args []string, reset bool) int {
 		if name == "" {
 			return output.Err(out, fmt.Sprintf("could not derive repo name from host URL %s", hostURL))
 		}
-		hubPath := paths.HubPath(cwd, name)
+		hubPath := hubgeometry.HubPath(cwd, name)
 		if err := warpengine.RemoveAll(hubPath); err != nil {
 			return output.Err(out, fmt.Sprintf("reset: remove hub at %s: %v", hubPath, err))
 		}

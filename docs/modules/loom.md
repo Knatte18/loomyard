@@ -57,7 +57,7 @@ Finalize                                               │
                                        (stuck handler)─┘
 ```
 
-Setup validates geometry and preconditions (cwd/Hub/Prime via `internal/paths`, clean
+Setup validates geometry and preconditions (cwd/Hub/Prime via `internal/hubgeometry`, clean
 worktree, weft pairing present **and in sync** — host branch == weft branch, via
 [`warp`](warp.md#drift-detection--when) — no half-finished prior run). Each producing phase emits
 a draft artifact and is followed by a review gate. `approved` advances to the next
@@ -253,7 +253,7 @@ small `.lyx/lyxrun.cmd` (machine-local, untracked — it embeds an absolute path
 that just does `cd <worktree>` then `lyx loom run`. Because everything is
 [cwd-authoritative](../overview.md#principles), the launcher needs no arguments — geometry resolves
 from cwd, so you cannot run it from the wrong place. It reuses the
-[launcher geometry](../overview.md#path-invariants) already in `internal/paths`.
+[launcher geometry](../overview.md#hub-geometry-invariants) already in `internal/hubgeometry`.
 
 **One terminal per worktree.** Scope for now is exactly that — each worktree its own terminal /
 psmux session. The cross-worktree multi-column view (all worktrees in one window) is a deferred mux

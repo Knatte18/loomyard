@@ -14,8 +14,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
-	"github.com/Knatte18/loomyard/internal/paths"
 	"github.com/Knatte18/loomyard/internal/warpcli"
 )
 
@@ -28,10 +28,10 @@ func setupCLIRepo(t *testing.T) string {
 	f := lyxtest.CopyHostHub(t)
 	t.Chdir(f.Hub)
 
-	if err := os.MkdirAll(paths.ConfigDir(f.Hub), 0755); err != nil {
+	if err := os.MkdirAll(hubgeometry.ConfigDir(f.Hub), 0755); err != nil {
 		t.Fatalf("create config dir: %v", err)
 	}
-	if err := os.WriteFile(paths.ConfigFile(f.Hub, "warp"), []byte("branch_prefix: wt-\n"), 0644); err != nil {
+	if err := os.WriteFile(hubgeometry.ConfigFile(f.Hub, "warp"), []byte("branch_prefix: wt-\n"), 0644); err != nil {
 		t.Fatalf("write warp.yaml: %v", err)
 	}
 	return f.Hub

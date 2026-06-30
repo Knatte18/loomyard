@@ -15,7 +15,7 @@ See [roadmap.md](../roadmap.md) milestones 2–3 for the extraction order.
 
 ## Libraries
 
-- [paths.md](paths.md) — `internal/paths`: canonical geometry resolver, sole owner of cwd/root math
+- [hubgeometry.md](hubgeometry.md) — `internal/hubgeometry`: canonical geometry resolver, sole owner of cwd/root math
 - [yamlengine.md](yamlengine.md) — `internal/yamlengine`: pure YAML engine for env expansion and config reconciliation
 - [envsource.md](envsource.md) — `internal/envsource`: single source of truth for environment variable sourcing (`.env` + OS overlay)
 - [configengine.md](configengine.md) — `internal/configengine`: strict YAML config loading backed by yamlengine and envsource

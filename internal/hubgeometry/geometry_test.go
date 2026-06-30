@@ -2,13 +2,13 @@
 // parser added in the paths-foundation batch. It also asserts parity between the
 // refactored weft Layout methods and their WeftSiblingPath equivalents.
 
-package paths_test
+package hubgeometry_test
 
 import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/paths"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
 // TestWeftSiblingPath verifies that WeftSiblingPath joins hub and slug with WeftSuffix.
@@ -25,19 +25,19 @@ func TestWeftSiblingPath(t *testing.T) {
 			name: "simple slug",
 			hub:  "/h",
 			slug: "feat",
-			want: filepath.Join("/h", "feat"+paths.WeftSuffix),
+			want: filepath.Join("/h", "feat"+hubgeometry.WeftSuffix),
 		},
 		{
 			name: "nested hub",
 			hub:  "/repos/loomyard-HUB",
 			slug: "main",
-			want: filepath.Join("/repos/loomyard-HUB", "main"+paths.WeftSuffix),
+			want: filepath.Join("/repos/loomyard-HUB", "main"+hubgeometry.WeftSuffix),
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := paths.WeftSiblingPath(tt.hub, tt.slug)
+			got := hubgeometry.WeftSiblingPath(tt.hub, tt.slug)
 			if got != tt.want {
 				t.Errorf("WeftSiblingPath(%q, %q) = %q; want %q", tt.hub, tt.slug, got, tt.want)
 			}
@@ -57,18 +57,18 @@ func TestBoardDir(t *testing.T) {
 		{
 			name: "simple hub",
 			hub:  "/h",
-			want: filepath.Join("/h", paths.BoardDirName),
+			want: filepath.Join("/h", hubgeometry.BoardDirName),
 		},
 		{
 			name: "nested hub",
 			hub:  "/repos/loomyard-HUB",
-			want: filepath.Join("/repos/loomyard-HUB", paths.BoardDirName),
+			want: filepath.Join("/repos/loomyard-HUB", hubgeometry.BoardDirName),
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := paths.BoardDir(tt.hub)
+			got := hubgeometry.BoardDir(tt.hub)
 			if got != tt.want {
 				t.Errorf("BoardDir(%q) = %q; want %q", tt.hub, got, tt.want)
 			}
@@ -90,19 +90,19 @@ func TestHubPath(t *testing.T) {
 			name:     "simple repo name",
 			parent:   "/repos",
 			repoName: "loomyard",
-			want:     filepath.Join("/repos", "loomyard"+paths.HubSuffix),
+			want:     filepath.Join("/repos", "loomyard"+hubgeometry.HubSuffix),
 		},
 		{
 			name:     "nested parent",
 			parent:   "/home/user/code",
 			repoName: "myproject",
-			want:     filepath.Join("/home/user/code", "myproject"+paths.HubSuffix),
+			want:     filepath.Join("/home/user/code", "myproject"+hubgeometry.HubSuffix),
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := paths.HubPath(tt.parent, tt.repoName)
+			got := hubgeometry.HubPath(tt.parent, tt.repoName)
 			if got != tt.want {
 				t.Errorf("HubPath(%q, %q) = %q; want %q", tt.parent, tt.repoName, got, tt.want)
 			}
@@ -154,7 +154,7 @@ func TestWeftHostSlug(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotSlug, gotOK := paths.WeftHostSlug(tt.input)
+			gotSlug, gotOK := hubgeometry.WeftHostSlug(tt.input)
 			if gotSlug != tt.wantSlug || gotOK != tt.wantOK {
 				t.Errorf("WeftHostSlug(%q) = (%q, %v); want (%q, %v)",
 					tt.input, gotSlug, gotOK, tt.wantSlug, tt.wantOK)
@@ -172,7 +172,7 @@ func TestWeftLayoutMethodParity(t *testing.T) {
 	prime := filepath.Join(hub, "main")
 	slug := "feat"
 
-	layout := &paths.Layout{
+	layout := &hubgeometry.Layout{
 		Cwd:          filepath.Join(hub, slug),
 		WorktreeRoot: filepath.Join(hub, slug),
 		Hub:          hub,
@@ -182,7 +182,7 @@ func TestWeftLayoutMethodParity(t *testing.T) {
 
 	// WeftWorktreePath(slug) must equal WeftSiblingPath(hub, slug).
 	gotWorktreePath := layout.WeftWorktreePath(slug)
-	wantWorktreePath := paths.WeftSiblingPath(hub, slug)
+	wantWorktreePath := hubgeometry.WeftSiblingPath(hub, slug)
 	if gotWorktreePath != wantWorktreePath {
 		t.Errorf("WeftWorktreePath(%q) = %q; want WeftSiblingPath(%q, %q) = %q",
 			slug, gotWorktreePath, hub, slug, wantWorktreePath)
@@ -190,7 +190,7 @@ func TestWeftLayoutMethodParity(t *testing.T) {
 
 	// WeftRepoRoot() must equal WeftSiblingPath(hub, filepath.Base(prime)).
 	gotRepoRoot := layout.WeftRepoRoot()
-	wantRepoRoot := paths.WeftSiblingPath(hub, filepath.Base(prime))
+	wantRepoRoot := hubgeometry.WeftSiblingPath(hub, filepath.Base(prime))
 	if gotRepoRoot != wantRepoRoot {
 		t.Errorf("WeftRepoRoot() = %q; want WeftSiblingPath(%q, %q) = %q",
 			gotRepoRoot, hub, filepath.Base(prime), wantRepoRoot)
@@ -198,7 +198,7 @@ func TestWeftLayoutMethodParity(t *testing.T) {
 
 	// WeftWorktree() must equal WeftSiblingPath(hub, filepath.Base(WorktreeRoot)).
 	gotWorktree := layout.WeftWorktree()
-	wantWorktree := paths.WeftSiblingPath(hub, filepath.Base(layout.WorktreeRoot))
+	wantWorktree := hubgeometry.WeftSiblingPath(hub, filepath.Base(layout.WorktreeRoot))
 	if gotWorktree != wantWorktree {
 		t.Errorf("WeftWorktree() = %q; want WeftSiblingPath(%q, %q) = %q",
 			gotWorktree, hub, filepath.Base(layout.WorktreeRoot), wantWorktree)

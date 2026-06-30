@@ -13,8 +13,8 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fslink"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
-	"github.com/Knatte18/loomyard/internal/paths"
 )
 
 // TestPairInSync_BranchDivergence verifies that mismatched host and weft branches
@@ -43,7 +43,7 @@ func TestPairInSync_BranchDivergence(t *testing.T) {
 	lyxtest.MustRun(t, hostWorktreePath, "git", "checkout", "-b", "diverge-test")
 
 	// Resolve layout for the host and check pair sync.
-	hostLayout, err := paths.Resolve(hostWorktreePath)
+	hostLayout, err := hubgeometry.Resolve(hostWorktreePath)
 	if err != nil {
 		t.Fatalf("resolve layout for host: %v", err)
 	}
@@ -82,7 +82,7 @@ func TestPairInSync_BrokenJunction(t *testing.T) {
 	}
 
 	// Resolve layout for the paired host worktree.
-	hostLayout, err := paths.Resolve(f.Layout.WorktreePath(slug))
+	hostLayout, err := hubgeometry.Resolve(f.Layout.WorktreePath(slug))
 	if err != nil {
 		t.Fatalf("resolve layout: %v", err)
 	}

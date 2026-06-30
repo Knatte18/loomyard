@@ -13,27 +13,27 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
-	"github.com/Knatte18/loomyard/internal/paths"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
 // TestLoadConfig_HappyPath tests that LoadConfig loads a valid config
 // with all template keys present and resolves environment variables.
-// LoadConfig no longer sets Config.Path; the caller does that via paths.BoardDir.
+// LoadConfig no longer sets Config.Path; the caller does that via hubgeometry.BoardDir.
 func TestLoadConfig_HappyPath(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create _lyx/config/ directories
-	lyxDir := filepath.Join(tmpDir, paths.LyxDirName)
+	lyxDir := filepath.Join(tmpDir, hubgeometry.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
-	configDir := paths.ConfigDir(tmpDir)
+	configDir := hubgeometry.ConfigDir(tmpDir)
 	if err := os.Mkdir(configDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
 
 	// Write a config file with all template keys (path: is not a template key)
-	configFile := paths.ConfigFile(tmpDir, "board")
+	configFile := hubgeometry.ConfigFile(tmpDir, "board")
 	content := `home: Home.md
 sidebar: _Sidebar.md
 proposal_prefix: proposal-
@@ -47,7 +47,7 @@ proposal_prefix: proposal-
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Path is never set by LoadConfig; the caller sets it via paths.BoardDir.
+	// Path is never set by LoadConfig; the caller sets it via hubgeometry.BoardDir.
 	if cfg.Path != "" {
 		t.Errorf("expected Path to be empty after LoadConfig; got %q", cfg.Path)
 	}
@@ -64,23 +64,23 @@ proposal_prefix: proposal-
 
 // TestLoadConfig_AbsolutePathResolution verifies that a path: key in the config
 // file is ignored by LoadConfig because Config.Path has yaml:"-".
-// The board data dir is geometry owned by paths.BoardDir; the config key is a no-op.
+// The board data dir is geometry owned by hubgeometry.BoardDir; the config key is a no-op.
 func TestLoadConfig_AbsolutePathResolution(t *testing.T) {
 	tmpDir := t.TempDir()
 	absBoard := t.TempDir()
 
 	// Create _lyx/config/ directories
-	lyxDir := filepath.Join(tmpDir, paths.LyxDirName)
+	lyxDir := filepath.Join(tmpDir, hubgeometry.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
-	configDir := paths.ConfigDir(tmpDir)
+	configDir := hubgeometry.ConfigDir(tmpDir)
 	if err := os.Mkdir(configDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
 
 	// Write config with an absolute path: key that should be ignored.
-	configFile := paths.ConfigFile(tmpDir, "board")
+	configFile := hubgeometry.ConfigFile(tmpDir, "board")
 	content := `path: ` + absBoard + `
 home: Home.md
 sidebar: _Sidebar.md
@@ -104,22 +104,22 @@ proposal_prefix: proposal-
 // TestLoadConfig_RelativePathResolution verifies that a relative path: key in the
 // config file is ignored by LoadConfig because Config.Path has yaml:"-".
 // LoadConfig no longer performs any relative-path resolution; the board data dir
-// is geometry owned by paths.BoardDir.
+// is geometry owned by hubgeometry.BoardDir.
 func TestLoadConfig_RelativePathResolution(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create _lyx/config/ directories
-	lyxDir := filepath.Join(tmpDir, paths.LyxDirName)
+	lyxDir := filepath.Join(tmpDir, hubgeometry.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
-	configDir := paths.ConfigDir(tmpDir)
+	configDir := hubgeometry.ConfigDir(tmpDir)
 	if err := os.Mkdir(configDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
 
 	// Write config with a relative path: key that should be ignored.
-	configFile := paths.ConfigFile(tmpDir, "board")
+	configFile := hubgeometry.ConfigFile(tmpDir, "board")
 	content := `path: ../custom_board
 home: Home.md
 sidebar: _Sidebar.md
@@ -144,24 +144,24 @@ proposal_prefix: proposal-
 // TestLoadConfig_EnvResolution verifies that a path: key using ${env:...} syntax
 // in the config file is ignored by LoadConfig because Config.Path has yaml:"-".
 // The env-override mechanism for the board data dir has been removed; the data
-// dir is now geometry owned by paths.BoardDir and is not env-overridable.
+// dir is now geometry owned by hubgeometry.BoardDir and is not env-overridable.
 func TestLoadConfig_EnvResolution(t *testing.T) {
 	tmpDir := t.TempDir()
 	absBoard := t.TempDir()
 	t.Setenv("TEST_BOARD_PATH", absBoard)
 
 	// Create _lyx/config/ directories
-	lyxDir := filepath.Join(tmpDir, paths.LyxDirName)
+	lyxDir := filepath.Join(tmpDir, hubgeometry.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
-	configDir := paths.ConfigDir(tmpDir)
+	configDir := hubgeometry.ConfigDir(tmpDir)
 	if err := os.Mkdir(configDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
 
 	// Write config with an env-variable path: key that should be ignored.
-	configFile := paths.ConfigFile(tmpDir, "board")
+	configFile := hubgeometry.ConfigFile(tmpDir, "board")
 	content := `path: ${env:TEST_BOARD_PATH}
 home: Home.md
 sidebar: _Sidebar.md

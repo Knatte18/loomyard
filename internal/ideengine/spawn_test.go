@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/paths"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
 // TestSpawn covers end-to-end spawn flow: config generation, launcher invocation,
@@ -53,7 +53,7 @@ func TestSpawn(t *testing.T) {
 				}
 			}
 
-			layout := &paths.Layout{
+			layout := &hubgeometry.Layout{
 				Hub:     container,
 				Prime:   mainWorktreePath,
 				RelPath: tt.relpath,
