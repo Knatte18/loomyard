@@ -174,8 +174,6 @@ Do not file it as a finding.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
----
-
 ## Operator steps
 
 ### S5 -- Re-clone and reset idempotency (operator-run)
