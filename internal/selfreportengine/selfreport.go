@@ -1,13 +1,13 @@
-// ghissues.go contains the gh-CLI executor, argument builder, and CreateIssue
-// domain function for the ghissuesengine package. It holds everything from the
-// original ghissues package that does not belong to the cobra command layer:
+// selfreport.go contains the gh-CLI executor, argument builder, and CreateIssue
+// domain function for the selfreportengine package. It holds everything from the
+// selfreport module that does not belong to the cobra command layer:
 // the RunGH seam, realRunGH, buildCreateArgs, lastNonEmptyLine, and CreateIssue.
 
-// Package ghissuesengine provides the domain kernel for filing GitHub issues
+// Package selfreportengine provides the domain kernel for filing GitHub issues
 // via the gh CLI. It exposes CreateIssue as the single entry point and RunGH
 // as a swappable seam for testing, keeping all implementation details
 // (targetRepo, buildCreateArgs, lastNonEmptyLine, realRunGH) unexported.
-package ghissuesengine
+package selfreportengine
 
 import (
 	"bytes"
