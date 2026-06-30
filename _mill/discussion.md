@@ -61,6 +61,16 @@ forced rewriting every `paths`/"Path Invariant" reference twice.
   and ~347) and every `internal/paths` mention in its comments.
 - Update any other string literals / comments in `.go` files that name `internal/paths`
   or `package paths`.
+- **Update the codeguide-guard filename literal (load-bearing, easy to miss).**
+  `internal/paths/codeguide_guard_test.go:48` skips the geometry file by a *filename*
+  literal: `if d.Name() == "paths.go" { return nil }`. This skip is **filename-based,
+  not package-name-based** — a plain `internal/paths`/`package paths` string sweep will
+  not catch it. Because `paths.go` legitimately contains the `_codeguide` literal
+  (lines 365/369, `WeftCodeguideDir`), after `git mv paths.go → hubgeometry.go` the
+  skip stops matching, the guard's tree-scan reads `hubgeometry.go`, finds `_codeguide`,
+  and `TestCodeguideGuard/tree-scan` fails. The literal **must** become `"hubgeometry.go"`
+  (and the surrounding comment at lines 45-47 that names `paths.go` should be updated
+  to `hubgeometry.go` for accuracy).
 - Rename the **invariant** in `CONSTRAINTS.md`: "Path Invariant" → "Hub Geometry
   Invariant" (the `## Path Invariant` heading and every reference to it, including the
   lyxtest Leaf Invariant's "importing only the standard library and `internal/paths`"),
@@ -162,8 +172,10 @@ What mill-plan needs to know:
   permits `cmd/lyx/main.go`; that entry is unaffected by the rename (no change needed).
 - **Doc/instruction references to find:** `internal/paths` appears in `CLAUDE.md`,
   `CONSTRAINTS.md`, `docs/overview.md`, `docs/shared-libs/paths.md`,
-  `docs/shared-libs/README.md`, `docs/modules/loom.md`, `docs/modules/mux.md`,
-  `docs/benchmarks/test-suite-timing.md`, `docs/roadmap.md`. The invariant name
+  `docs/shared-libs/README.md`, `docs/shared-libs/envsource.md`, `docs/modules/loom.md`,
+  `docs/modules/mux.md`, `docs/benchmarks/test-suite-timing.md`, `docs/roadmap.md`.
+  (`docs/shared-libs/envsource.md:5` names the dependency-direction line
+  "`internal/envsource` imports `internal/paths`".) The invariant name
   "Path Invariant" appears in `CLAUDE.md`, `CONSTRAINTS.md`, `docs/overview.md`.
   Re-discover with `grep -rln "internal/paths" .` and `grep -rln "Path Invariant" .`
   before finishing; exclude `_mill/` from edits.
@@ -212,8 +224,11 @@ new tests are required.
     the allowlist string literals weren't updated to `"internal/hubgeometry"`, or if any
     importer accidentally acquired a banned primitive/literal. This is the single most
     likely thing to break and the primary signal the rename is correct.
-  - `internal/hubgeometry/codeguide_guard_test.go` — confirm it doesn't hardcode the old
-    package path/name; update if it does.
+  - `internal/hubgeometry/codeguide_guard_test.go` — `TestCodeguideGuard/tree-scan` skips
+    the geometry file by the **filename** literal `"paths.go"` (line 48), which must be
+    changed to `"hubgeometry.go"` (see the Scope bullet above). If left unchanged this
+    test fails after the file rename — it is the second most likely break after the
+    enforcement allowlist.
   - `internal/lyxtest/leaf_enforcement_test.go` — confirms lyxtest's import set is still
     {stdlib, internal/hubgeometry}.
   - `cmd/lyx/*` guards (`drift_test.go`, `helptree_test.go`, `registration_test.go`,
