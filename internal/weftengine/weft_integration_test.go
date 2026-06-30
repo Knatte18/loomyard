@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
-	"github.com/Knatte18/loomyard/internal/paths"
 )
 
 func TestPushIntegration(t *testing.T) {
@@ -45,7 +45,7 @@ func TestPushIntegration(t *testing.T) {
 			weftRepo := fixture.WeftPath
 
 			// Commit a change
-			lyxFile := filepath.Join(weftRepo, paths.LyxDirName, "config.yaml")
+			lyxFile := filepath.Join(weftRepo, hubgeometry.LyxDirName, "config.yaml")
 			if err := os.WriteFile(lyxFile, []byte(tt.fileContent), 0o644); err != nil {
 				t.Fatalf("WriteFile: %v", err)
 			}

@@ -14,8 +14,8 @@ import (
 	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/output"
-	"github.com/Knatte18/loomyard/internal/paths"
 	"github.com/Knatte18/loomyard/internal/weftengine"
 	"github.com/spf13/cobra"
 )
@@ -31,7 +31,7 @@ import (
 func Command() *cobra.Command {
 	// Closure vars populated by PersistentPreRunE and read by subcommand RunEs.
 	var (
-		l        *paths.Layout
+		l        *hubgeometry.Layout
 		cfg      weftengine.Config
 		pathspec []string
 		bypass   bool   // true when --weft-path is set
@@ -77,14 +77,14 @@ func Command() *cobra.Command {
 			}
 
 			// Normal mode: resolve cwd → layout → config → pathspec.
-			cwd, err := paths.Getwd()
+			cwd, err := hubgeometry.Getwd()
 			if err != nil {
 				output.Err(out, err.Error())
 				clihelp.Abort(ctx, 1)
 				return nil
 			}
 
-			resolved, err := paths.Resolve(cwd)
+			resolved, err := hubgeometry.Resolve(cwd)
 			if err != nil {
 				output.Err(out, err.Error())
 				clihelp.Abort(ctx, 1)
