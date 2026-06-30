@@ -62,7 +62,7 @@ func TestBinaryFingerprint_MissingPath(t *testing.T) {
 }
 
 // TestRenderScheme_ContainsHeaderAndBody verifies that renderScheme embeds the
-// binary fingerprint fields and the embedded test-scheme body in its output.
+// binary fingerprint fields and the embedded SANDBOX-SUITE body in its output.
 func TestRenderScheme_ContainsHeaderAndBody(t *testing.T) {
 	info := binaryInfo{
 		Path:    "/fake/lyx.exe",
@@ -80,7 +80,7 @@ func TestRenderScheme_ContainsHeaderAndBody(t *testing.T) {
 		{"path", "/fake/lyx.exe"},
 		{"size", "1234 bytes"},
 		{"sha256", "abc123def456"},
-		{"scheme heading", "Sandbox test-scheme"},
+		{"scheme heading", "SANDBOX-SUITE"},
 	}
 	for _, c := range checks {
 		if !strings.Contains(got, c.want) {

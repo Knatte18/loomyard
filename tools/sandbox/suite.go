@@ -1,5 +1,5 @@
 // suite.go implements the "sandbox suite" subcommand: copies the embedded
-// test-scheme template into the Hub host repo, stamps a lyx binary fingerprint,
+// SANDBOX-SUITE template into the Hub host repo, stamps a lyx binary fingerprint,
 // registers the file as a git exclude entry, and launches an interactive Claude
 // session to execute the scheme.
 
@@ -24,7 +24,7 @@ const (
 	// the host repo clone. The Hub layout is <parent>/<hubName>/<hostDirName>.
 	hostDirName = "lyx-test"
 
-	// suiteFileName is the name of the test-scheme file written into the Hub
+	// suiteFileName is the name of the suite scheme file written into the Hub
 	// host repo at each suite run. It is intentionally kept out of git via
 	// .git/info/exclude (see ensureGitExclude).
 	suiteFileName = "SANDBOX-SUITE.md"
@@ -34,8 +34,8 @@ const (
 	defaultInstruction = "Read ./SANDBOX-SUITE.md and follow the instructions in it exactly."
 )
 
-//go:embed test-scheme.md
-var testSchemeMD string
+//go:embed SANDBOX-SUITE.md
+var sandboxSuiteMD string
 
 // lookPath is a testability seam over exec.LookPath so tests can inject fake
 // PATH resolution without modifying the real environment.
@@ -67,7 +67,7 @@ var launchAgent = func(hostRepoDir, claudePath, instruction string) int {
 }
 
 // binaryInfo holds a snapshot of a binary file's identity at a point in time.
-// It is used to stamp the test-scheme with a reproducible fingerprint so that
+// It is used to stamp the SANDBOX-SUITE with a reproducible fingerprint so that
 // filed issues can be traced to the exact binary that triggered them.
 type binaryInfo struct {
 	// Path is the absolute filesystem path to the binary.
@@ -116,7 +116,7 @@ func binaryFingerprint(path string) (binaryInfo, error) {
 }
 
 // header returns a small markdown block that stamps the binary's identity into
-// the copied test-scheme. The agent is instructed to include this block in every
+// the copied SANDBOX-SUITE. The agent is instructed to include this block in every
 // issue it files so that a maintainer can reproduce the exact build.
 func (b binaryInfo) header() string {
 	return fmt.Sprintf("## Binary under test\n\n"+
@@ -132,10 +132,10 @@ func (b binaryInfo) header() string {
 }
 
 // renderScheme combines the binary fingerprint header with the embedded
-// test-scheme body to produce the full SANDBOX-SUITE.md content that the
+// SANDBOX-SUITE body to produce the full SANDBOX-SUITE.md content that the
 // launcher writes into the Hub host repo.
 func renderScheme(info binaryInfo) string {
-	return info.header() + "\n" + testSchemeMD
+	return info.header() + "\n" + sandboxSuiteMD
 }
 
 // ensureGitExclude idempotently appends entry to <repoDir>/.git/info/exclude.
