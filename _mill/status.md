@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-docs
+phase: holistic-reviewing
 slug: rename-paths-to-hubgeometry
 branch: rename-paths-to-hubgeometry
 plan: _mill/plan
@@ -24,6 +24,7 @@ planned  '2026-06-30T16:23:41Z'
 implementing  '2026-06-30T16:33:39Z'
 approved-code-rename  '2026-06-30T16:44:14Z'
 approved-docs  '2026-06-30T18:25:58Z'
+holistic-reviewing  '2026-06-30T18:26:26Z'
 ```
 
 ## Batches
