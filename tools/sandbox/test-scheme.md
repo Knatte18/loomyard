@@ -22,6 +22,16 @@ Before starting a session:
 4. **`gh` installed and authenticated.** The `lyx ghissues create` command delegates to
    the `gh` CLI. Run `gh auth status` to confirm authentication before starting.
 
+### Operating model
+
+lyx resolves against the current directory's own `_lyx/` and does **not** walk up to a
+parent. The hub host repo is initialized at its root, so the agent runs the entire
+session from there (cwd is fixed at the root). Running a lyx command from a subdirectory
+that has not itself been initialized correctly reports
+`not initialized here; run "lyx init"` — that is expected behaviour, **not a finding**.
+Note: `lyx init` in a subdirectory would create `_lyx/` there and make lyx work in that
+subdir, but the agent must **not** scaffold nested `_lyx/` during a session.
+
 ## Black-box rule
 
 **The agent under test works exclusively inside the Hub host repo (`lyx-test-HUB/lyx-test`).
@@ -122,7 +132,8 @@ surface.
 
 **Goal:** "Inspect lyx's config for this hub, change a value, confirm it took."
 
-**Watch:** `lyx config` read/write. Does it find the right config scope from cwd?
+**Watch:** From the worktree root, does `lyx config` read/write the correct
+`_lyx/config/` and round-trip a value?
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -146,7 +157,9 @@ surface.
 Run an unknown subcommand."
 
 **Watch:** Are errors legible? Does lyx say what to do, or just fail? This is where
-standalone usability lives or dies.
+standalone usability lives or dies. A legible `not initialized` / "run from the
+initialized root"-style message is the `OK` (ergonomics-pass) outcome — not a `FAIL`.
+Do not file it as a finding.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
