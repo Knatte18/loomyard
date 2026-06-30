@@ -85,8 +85,18 @@ forced rewriting every `paths`/"Path Invariant" reference twice.
   across the repo with `internal/hubgeometry` / "Hub Geometry Invariant":
   - `CLAUDE.md` (project instructions — names "the **Path Invariant** (`internal/paths`
     owns all cwd/geometry and `_lyx`/config paths)").
-  - `docs/overview.md`, `docs/shared-libs/README.md`, `docs/modules/loom.md`,
-    `docs/modules/mux.md`, `docs/benchmarks/test-suite-timing.md`, `docs/roadmap.md`.
+  - `docs/overview.md`, `docs/shared-libs/README.md`, `docs/shared-libs/envsource.md`
+    (line 5, dependency-direction line "`internal/envsource` imports `internal/paths`"),
+    `docs/modules/loom.md`, `docs/modules/mux.md`, `docs/benchmarks/test-suite-timing.md`,
+    `docs/roadmap.md`.
+  - **Heading-anchor rename + dependent cross-doc link (load-bearing, easy to miss).**
+    `docs/overview.md:64` is the section heading `## Path Invariants` (plural). Renaming
+    it to `## Hub Geometry Invariants` changes its GitHub auto-anchor slug from
+    `#path-invariants` to `#hub-geometry-invariants`. `docs/modules/loom.md:256` links to
+    `[launcher geometry](../overview.md#path-invariants)`, so that link **must** be
+    updated to `../overview.md#hub-geometry-invariants` in the same commit or it silently
+    404s. Note the slug is lowercase/hyphenated, so the `"Path Invariant"` / `"internal/paths"`
+    text greps will NOT catch it — it needs its own check (see Testing).
 
 **Out:**
 
@@ -236,9 +246,16 @@ new tests are required.
     package name in a string, update it.
 - **Formatting:** run `gofmt`/`goimports` so import blocks are correctly grouped after
   the path change.
-- **No-dangling-reference check:** after edits, `grep -rn "internal/paths" .` (excluding
-  `_mill/`) and `grep -rn "Path Invariant" .` and `grep -rn "package paths\b" .` must all
-  return nothing.
+- **No-dangling-reference check:** after edits, each of these (excluding `_mill/`) must
+  return nothing:
+  - `grep -rn "internal/paths" .`
+  - `grep -rn "Path Invariant" .`
+  - `grep -rn "package paths\b" .`
+  - `grep -rn "#path-invariant" .` — the lowercase heading-anchor slug; catches the
+    `docs/modules/loom.md` link if its `#path-invariants` fragment was missed (the
+    text greps above do not match the hyphenated lowercase fragment).
+  - `grep -rn '"paths.go"' .` — the codeguide-guard filename literal; the package-name
+    greps above do not match it.
 
 ## Q&A log
 
