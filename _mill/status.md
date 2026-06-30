@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-scheme-refinements
 slug: sandbox-suite-refinements
 branch: sandbox-suite-refinements
 plan: _mill/plan
@@ -21,6 +21,7 @@ planning  '2026-06-30T05:55:17Z'
 plan-fix-r1  '2026-06-30T05:58:49Z'
 planned  '2026-06-30T05:59:27Z'
 implementing  '2026-06-30T06:01:17Z'
+approved-scheme-refinements  '2026-06-30T06:07:32Z'
 ```
 
 ## Batches
@@ -28,7 +29,8 @@ implementing  '2026-06-30T06:01:17Z'
 ```yaml
 batches:
   - name: scheme-refinements
-    state: running
+    state: approved
     implementer_session: f8206d34-aeb0-4178-9816-3831fe458c06
     start_sha: 054a1187177a5501f800749572cfbf183a0f9312
+    commit_sha: 8249f8c43222cf500d6a20c0dba8f8b1232ef005
 ```
