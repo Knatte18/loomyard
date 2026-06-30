@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-board-paths-owned
+phase: approved-lyxtest-geometry
 slug: harden-path-invariant
 branch: harden-path-invariant
 plan: _mill/plan
@@ -24,6 +24,7 @@ implementing  '2026-06-30T05:12:44Z'
 approved-paths-foundation  '2026-06-30T05:18:37Z'
 approved-warp-geometry  '2026-06-30T05:27:34Z'
 approved-board-paths-owned  '2026-06-30T05:54:15Z'
+approved-lyxtest-geometry  '2026-06-30T05:57:04Z'
 ```
 
 ## Batches
@@ -46,9 +47,10 @@ batches:
     start_sha: 981711764041986a2d92eaa61b95dbfb0ad97357
     commit_sha: 29040a54ef27c67a139d32d94a4fddd713ee735d
   - name: lyxtest-geometry
-    state: running
+    state: approved
     implementer_session: 6480df3b-a85e-4879-b8bd-f27f273c9a9d
     start_sha: 95f2775f7133a847933f0567bd2ee968cfb72dac
+    commit_sha: fed10dba219a06a995428c8fcde8e0c626b41164
   - name: enforcement-and-docs
     state: pending
 ```
