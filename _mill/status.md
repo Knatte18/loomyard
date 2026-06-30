@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-code-rename
+phase: approved-docs
 slug: rename-paths-to-hubgeometry
 branch: rename-paths-to-hubgeometry
 plan: _mill/plan
@@ -23,6 +23,7 @@ plan-review-r2  '2026-06-30T16:23:27Z'
 planned  '2026-06-30T16:23:41Z'
 implementing  '2026-06-30T16:33:39Z'
 approved-code-rename  '2026-06-30T16:44:14Z'
+approved-docs  '2026-06-30T18:25:58Z'
 ```
 
 ## Batches
@@ -35,7 +36,8 @@ batches:
     start_sha: b3e368efe74b3efd96c91386c912f80543f8a94b
     commit_sha: 6f6b168145623df865f802ea6659fb1a54c59114
   - name: docs
-    state: running
+    state: approved
     implementer_session: a678294f-fa67-4f58-b808-7bcb83317d3b
     start_sha: 99850197efca630a43615d8bfa2a362fcf36ba4b
+    commit_sha: d61e4e27ca792d3b8e746669d2a88629bc1ffbc4
 ```
