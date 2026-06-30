@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: sandbox-report-json
 branch: sandbox-report-json
-plan: null
+plan: _mill/plan
 parent: main
 task: 'Sandbox suite: emit findings JSON on the shared analysis contract'
 task_description: |
@@ -17,4 +17,5 @@ task_description: |
 discussing  '2026-06-30T18:19:10Z'
 discussion-fix-r1  '2026-06-30T18:39:20Z'
 discussed  '2026-06-30T18:39:30Z'
+planning  '2026-06-30T18:45:09Z'
 ```
