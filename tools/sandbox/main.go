@@ -1,6 +1,6 @@
 // main.go implements the sandbox tool entry point, flag parsing, and subcommand
 // dispatch. It supports two subcommands: "build" (default, clones the Hub) and
-// "suite" (runs the embedded test-scheme agent). The -parent and -reset flags
+// "suite" (runs the embedded SANDBOX-SUITE agent). The -parent and -reset flags
 // live at the top level to preserve back-compat with existing callers.
 
 package main

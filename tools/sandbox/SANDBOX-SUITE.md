@@ -1,4 +1,4 @@
-# Sandbox test-scheme -- lyx black-box agent suite
+# SANDBOX-SUITE -- lyx black-box agent suite
 
 ## What this is
 
@@ -174,28 +174,6 @@ Do not file it as a finding.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
-## Operator steps
-
-### S5 -- Re-clone and reset idempotency (operator-run)
-
-This step is performed by the operator **before** (and optionally **after**) the agent
-session, from outside the Hub host repo. It is **not** part of the agent transcript.
-
-```cmd
-sandbox.cmd -reset
-```
-
-**What to verify:** Clean teardown and rebuild — no stale junctions, no leftover state,
-no "directory in use" Windows handle errors.
-
-**Why operator-only:** The `-reset` flag destroys the entire Hub directory, including
-the worktree the agent's shell is `cwd`-ed into. Letting the agent run `-reset` would
-tear out the directory it is working in. The black-box rule also forbids the agent from
-accessing the sandbox tool, which lives outside the Hub.
-
-The S5 result is operator-supplied and transcribed into the session log; it is not a
-verdict the agent files.
-
 ## Session log format
 
 After running all scenarios, record a short session summary:
@@ -209,7 +187,6 @@ S1: <OK|WARN|FAIL> -- <one-line note if not OK>
 S2: <OK|WARN|FAIL> -- <one-line note if not OK>
 S3: <OK|WARN|FAIL> -- <one-line note if not OK>
 S4: <OK|WARN|FAIL> -- <one-line note if not OK>
-S5: <operator-supplied>
 S6: <OK|WARN|FAIL> -- <one-line note if not OK>
 
 Issues filed: <count> (links)
@@ -227,4 +204,4 @@ fingerprint header in every issue body.
 - The host repo `Knatte18/lyx-test` README uses the phrase "cwd-relpath mirroring"; this
   refers to **weft path mirroring** (how the weft worktree mirrors host subpaths) — not
   to running lyx from subdirectories. "cwd-relpath" does not appear elsewhere in this
-  test-scheme.
+  scheme.
