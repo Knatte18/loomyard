@@ -6,18 +6,18 @@ import (
 	"os"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/paths"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
 func TestReconcileAll_DryRun(t *testing.T) {
 	tmpDir := t.TempDir()
-	configDir := paths.ConfigDir(tmpDir)
+	configDir := hubgeometry.ConfigDir(tmpDir)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
 
 	// Seed board.yaml with a missing key and a stale key
-	boardPath := paths.ConfigFile(tmpDir, "board")
+	boardPath := hubgeometry.ConfigFile(tmpDir, "board")
 	if err := os.WriteFile(boardPath, []byte("path: board\nstale_key: old_value\n"), 0o644); err != nil {
 		t.Fatalf("write board.yaml: %v", err)
 	}
@@ -65,13 +65,13 @@ func TestReconcileAll_DryRun(t *testing.T) {
 
 func TestReconcileAll_ApplyCreatesFiles(t *testing.T) {
 	tmpDir := t.TempDir()
-	configDir := paths.ConfigDir(tmpDir)
+	configDir := hubgeometry.ConfigDir(tmpDir)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
 
 	// Seed board.yaml
-	boardPath := paths.ConfigFile(tmpDir, "board")
+	boardPath := hubgeometry.ConfigFile(tmpDir, "board")
 	if err := os.WriteFile(boardPath, []byte("path: board\nstale_key: old_value\n"), 0o644); err != nil {
 		t.Fatalf("write board.yaml: %v", err)
 	}
@@ -111,7 +111,7 @@ func TestReconcileAll_ApplyCreatesFiles(t *testing.T) {
 	}
 
 	// Verify weft.yaml was created
-	weftPath := paths.ConfigFile(tmpDir, "weft")
+	weftPath := hubgeometry.ConfigFile(tmpDir, "weft")
 	if _, err := os.Stat(weftPath); err != nil {
 		t.Errorf("weft.yaml was not created: %v", err)
 	}
@@ -132,7 +132,7 @@ func TestReconcileAll_ApplyCreatesFiles(t *testing.T) {
 
 func TestReconcileAll_Idempotent(t *testing.T) {
 	tmpDir := t.TempDir()
-	configDir := paths.ConfigDir(tmpDir)
+	configDir := hubgeometry.ConfigDir(tmpDir)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}

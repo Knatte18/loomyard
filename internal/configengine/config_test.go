@@ -13,7 +13,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/paths"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"gopkg.in/yaml.v3"
 )
 
@@ -22,11 +22,11 @@ func TestLoad_HappyPath(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create _lyx/config/ directories
-	lyxDir := filepath.Join(tmpDir, paths.LyxDirName)
+	lyxDir := filepath.Join(tmpDir, hubgeometry.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
-	configDir := paths.ConfigDir(tmpDir)
+	configDir := hubgeometry.ConfigDir(tmpDir)
 	if err := os.Mkdir(configDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
@@ -35,7 +35,7 @@ func TestLoad_HappyPath(t *testing.T) {
 	template := []byte("path: _board\nhome: Home.md\n")
 
 	// Write config file matching template
-	yamlFile := paths.ConfigFile(tmpDir, "board")
+	yamlFile := hubgeometry.ConfigFile(tmpDir, "board")
 	if err := os.WriteFile(yamlFile, []byte("path: custom_path\nhome: Index.md\n"), 0644); err != nil {
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
@@ -64,11 +64,11 @@ func TestLoad_MissingKey(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create _lyx/config/ directories
-	lyxDir := filepath.Join(tmpDir, paths.LyxDirName)
+	lyxDir := filepath.Join(tmpDir, hubgeometry.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
-	configDir := paths.ConfigDir(tmpDir)
+	configDir := hubgeometry.ConfigDir(tmpDir)
 	if err := os.Mkdir(configDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
@@ -77,7 +77,7 @@ func TestLoad_MissingKey(t *testing.T) {
 	template := []byte("path: _board\nhome: Home.md\n")
 
 	// Config file missing "home" key
-	yamlFile := paths.ConfigFile(tmpDir, "board")
+	yamlFile := hubgeometry.ConfigFile(tmpDir, "board")
 	if err := os.WriteFile(yamlFile, []byte("path: custom_path\n"), 0644); err != nil {
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
@@ -104,11 +104,11 @@ func TestLoad_AbsentFile(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create _lyx/config/ directories but NOT board.yaml
-	lyxDir := filepath.Join(tmpDir, paths.LyxDirName)
+	lyxDir := filepath.Join(tmpDir, hubgeometry.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
-	configDir := paths.ConfigDir(tmpDir)
+	configDir := hubgeometry.ConfigDir(tmpDir)
 	if err := os.Mkdir(configDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
@@ -134,11 +134,11 @@ func TestLoad_EnvResolution(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create _lyx/config/ directories
-	lyxDir := filepath.Join(tmpDir, paths.LyxDirName)
+	lyxDir := filepath.Join(tmpDir, hubgeometry.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
-	configDir := paths.ConfigDir(tmpDir)
+	configDir := hubgeometry.ConfigDir(tmpDir)
 	if err := os.Mkdir(configDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
@@ -150,7 +150,7 @@ func TestLoad_EnvResolution(t *testing.T) {
 	template := []byte("path: ${env:TEST_CONFIG_VAR}\n")
 
 	// Config file with the same env marker
-	yamlFile := paths.ConfigFile(tmpDir, "board")
+	yamlFile := hubgeometry.ConfigFile(tmpDir, "board")
 	if err := os.WriteFile(yamlFile, []byte("path: ${env:TEST_CONFIG_VAR}\n"), 0644); err != nil {
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
@@ -176,11 +176,11 @@ func TestLoad_OptionalEnv(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create _lyx/config/ directories
-	lyxDir := filepath.Join(tmpDir, paths.LyxDirName)
+	lyxDir := filepath.Join(tmpDir, hubgeometry.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
-	configDir := paths.ConfigDir(tmpDir)
+	configDir := hubgeometry.ConfigDir(tmpDir)
 	if err := os.Mkdir(configDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
@@ -191,7 +191,7 @@ func TestLoad_OptionalEnv(t *testing.T) {
 	template := []byte("path: ${env:TEST_OPTIONAL_VAR:-default_path}\n")
 
 	// Config file with optional env
-	yamlFile := paths.ConfigFile(tmpDir, "board")
+	yamlFile := hubgeometry.ConfigFile(tmpDir, "board")
 	if err := os.WriteFile(yamlFile, []byte("path: ${env:TEST_OPTIONAL_VAR:-default_path}\n"), 0644); err != nil {
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
@@ -217,11 +217,11 @@ func TestLoad_ExtraKeyTolerated(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create _lyx/config/ directories
-	lyxDir := filepath.Join(tmpDir, paths.LyxDirName)
+	lyxDir := filepath.Join(tmpDir, hubgeometry.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
-	configDir := paths.ConfigDir(tmpDir)
+	configDir := hubgeometry.ConfigDir(tmpDir)
 	if err := os.Mkdir(configDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
@@ -230,7 +230,7 @@ func TestLoad_ExtraKeyTolerated(t *testing.T) {
 	template := []byte("path: _board\n")
 
 	// Config file with extra key
-	yamlFile := paths.ConfigFile(tmpDir, "board")
+	yamlFile := hubgeometry.ConfigFile(tmpDir, "board")
 	if err := os.WriteFile(yamlFile, []byte("path: custom_path\nextra_key: extra_value\n"), 0644); err != nil {
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
@@ -269,11 +269,11 @@ func TestLoad_NestedKeyTemplate(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create _lyx/config/ directories
-	lyxDir := filepath.Join(tmpDir, paths.LyxDirName)
+	lyxDir := filepath.Join(tmpDir, hubgeometry.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
-	configDir := paths.ConfigDir(tmpDir)
+	configDir := hubgeometry.ConfigDir(tmpDir)
 	if err := os.Mkdir(configDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
@@ -282,7 +282,7 @@ func TestLoad_NestedKeyTemplate(t *testing.T) {
 	template := []byte("server:\n  host: localhost\n  port: '8080'\n")
 
 	// Config file with nested values
-	yamlFile := paths.ConfigFile(tmpDir, "test")
+	yamlFile := hubgeometry.ConfigFile(tmpDir, "test")
 	if err := os.WriteFile(yamlFile, []byte("server:\n  host: example.com\n  port: '9090'\n"), 0644); err != nil {
 		t.Fatalf("failed to write test.yaml: %v", err)
 	}
@@ -316,7 +316,7 @@ func TestFindBaseDir_Present(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create _lyx/ directory
-	lyxDir := filepath.Join(tmpDir, paths.LyxDirName)
+	lyxDir := filepath.Join(tmpDir, hubgeometry.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}

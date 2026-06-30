@@ -13,7 +13,7 @@ import (
 	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/envsource"
-	"github.com/Knatte18/loomyard/internal/paths"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 )
 
@@ -22,7 +22,7 @@ import (
 // It performs a strict check without walking up to parent directories.
 // Returns the cwd on success, empty string and an error on failure.
 func FindBaseDir(cwd string) (string, error) {
-	lyxDir := filepath.Join(cwd, paths.LyxDirName)
+	lyxDir := filepath.Join(cwd, hubgeometry.LyxDirName)
 	_, err := os.Stat(lyxDir)
 	if os.IsNotExist(err) {
 		return "", fmt.Errorf("not initialized: _lyx/ directory not found")
@@ -35,14 +35,14 @@ func FindBaseDir(cwd string) (string, error) {
 // Load loads and resolves configuration from a YAML file using a template.
 //
 // Flow:
-// 1. Call FindBaseDir(baseDir) and propagate its error.
-// 2. Compute cfgPath := paths.ConfigFile(baseDir, module) and read it.
-//    If the file is absent, return an error naming the path and instructing "lyx config reconcile".
-// 3. Check for missing keys in the file via yamlengine.MissingKeys(template, fileBytes).
-//    If keys are missing, return an error naming cfgPath, the missing key-paths, and "lyx config reconcile".
-// 4. Build the environment via envsource.Build(baseDir).
-// 5. Resolve fileBytes via yamlengine.Resolve(fileBytes, env).
-// 6. Return the resolved bytes.
+//  1. Call FindBaseDir(baseDir) and propagate its error.
+//  2. Compute cfgPath := hubgeometry.ConfigFile(baseDir, module) and read it.
+//     If the file is absent, return an error naming the path and instructing "lyx config reconcile".
+//  3. Check for missing keys in the file via yamlengine.MissingKeys(template, fileBytes).
+//     If keys are missing, return an error naming cfgPath, the missing key-paths, and "lyx config reconcile".
+//  4. Build the environment via envsource.Build(baseDir).
+//  5. Resolve fileBytes via yamlengine.Resolve(fileBytes, env).
+//  6. Return the resolved bytes.
 //
 // Errors from steps 3-5 wrap the underlying error with the config key/file context.
 func Load(baseDir, module string, template []byte) ([]byte, error) {
@@ -53,7 +53,7 @@ func Load(baseDir, module string, template []byte) ([]byte, error) {
 	}
 
 	// Step 2: Read the config file
-	cfgPath := paths.ConfigFile(baseDir, module)
+	cfgPath := hubgeometry.ConfigFile(baseDir, module)
 	fileBytes, err := os.ReadFile(cfgPath)
 	if os.IsNotExist(err) {
 		return nil, fmt.Errorf("config file %s not found; run \"lyx config reconcile\"", cfgPath)
