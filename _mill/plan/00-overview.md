@@ -95,4 +95,7 @@ batches:
 - `docs/sandbox-hub.md`
 - `internal/lyxtest/doc.go`
 - `internal/lyxtest/leaf_enforcement_test.go`
+- `internal/selfreportcli/cli.go`
+- `internal/selfreportcli/cli_test.go`
+- `internal/selfreportengine/selfreport.go`
 - `tools/sandbox/test-scheme.md`
