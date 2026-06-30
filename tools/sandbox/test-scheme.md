@@ -19,7 +19,7 @@ Before starting a session:
 2. **Materialize the hub.** Run `sandbox.cmd` (or `sandbox.cmd -reset` to start clean)
    to clone the host and weft into a fresh `lyx-test-HUB`.
 3. **`lyx` on PATH.** Confirm `lyx --help` works from any directory.
-4. **`gh` installed and authenticated.** The `lyx ghissues create` command delegates to
+4. **`gh` installed and authenticated.** The `lyx selfreport create` command delegates to
    the `gh` CLI. Run `gh auth status` to confirm authentication before starting.
 
 ## Black-box rule
@@ -60,11 +60,11 @@ For each scenario below:
 ## Capturing findings
 
 After all scenarios are run, file **each** non-`OK` finding as a GitHub issue on the
-LoomYard repository using `lyx ghissues create` from inside the Hub host repo.
+LoomYard repository using `lyx selfreport create` from inside the Hub host repo.
 
-**Discover the command's flags via `lyx ghissues create --help`** before using it.
+**Discover the command's flags via `lyx selfreport create --help`** before using it.
 
-There is no harvester and no `lyx board upsert` step. `lyx ghissues create` is the only
+There is no harvester and no `lyx board upsert` step. `lyx selfreport create` is the only
 capture path. Each issue must include the fingerprint header (see above) in the body.
 
 ## Scenarios
@@ -171,7 +171,7 @@ S6: <OK|WARN|FAIL> -- <one-line note if not OK>
 Issues filed: <count> (links)
 ```
 
-File one GitHub issue per WARN or FAIL finding via `lyx ghissues create`. Include the
+File one GitHub issue per WARN or FAIL finding via `lyx selfreport create`. Include the
 fingerprint header in every issue body.
 
 ## Notes
