@@ -66,6 +66,7 @@ same card so it does not silently 404.
   - `docs/overview.md`
   - `docs/shared-libs/README.md`
   - `docs/shared-libs/envsource.md`
+  - `docs/shared-libs/configengine.md`
   - `docs/modules/loom.md`
   - `docs/modules/mux.md`
   - `docs/benchmarks/test-suite-timing.md`
@@ -93,7 +94,12 @@ same card so it does not silently 404.
   - In `docs/shared-libs/README.md`: update the `paths.md` / `internal/paths` entry to
     `hubgeometry.md` / `internal/hubgeometry`.
   - In `docs/shared-libs/envsource.md`: update the dependency-direction line (~line 5)
-    "`internal/envsource` imports `internal/paths`" → `internal/hubgeometry`.
+    "`internal/envsource` imports `internal/paths`" → `internal/hubgeometry`, and the
+    `paths.DotEnv` qualifier (~line 15) → `hubgeometry.DotEnv`.
+  - In `docs/shared-libs/configengine.md`: update the `paths.` package-selector qualifiers
+    (`paths.ConfigFile` ~line 37, `paths.DotEnv` ~line 70) → `hubgeometry.` to track the
+    renamed package. These reference the renamed `internal/hubgeometry` API; left stale they
+    are dangling references the `package-name-hubgeometry` Shared Decision forbids.
   - In `docs/modules/mux.md`, `docs/benchmarks/test-suite-timing.md`, and
     `docs/roadmap.md`: replace every `internal/paths` reference with `internal/hubgeometry`
     (in `roadmap.md` this is an in-place correctness fix to a stale module reference, not

@@ -121,6 +121,7 @@ batches touch the same file. The old pre-rename paths (`internal/paths/*`,
 - `docs/overview.md`
 - `docs/roadmap.md`
 - `docs/shared-libs/README.md`
+- `docs/shared-libs/configengine.md`
 - `docs/shared-libs/envsource.md`
 - `docs/shared-libs/hubgeometry.md`
 - `internal/boardcli/cli.go`
