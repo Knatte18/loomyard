@@ -43,7 +43,9 @@ positive (#35).
   `test-scheme.md` body at run time — see `tools/sandbox/suite.go`). All seven
   refinements land here:
   1. Add an **Operating-model** paragraph to Pre-conditions (cwd-local resolution;
-     subdir failure is expected, not a finding).
+     subdir failure is expected, not a finding); and a one-line **S6 Watch**
+     clarification that a legible "not initialized" / "run from the initialized root"
+     message is the `OK` ergonomics outcome, not a finding.
   2. Add a **PowerShell JSON-quoting** note to Pre-conditions, with a one-line pointer
      in S3.
   3. Reword **S2** so a raw-`git` host commit is not framed as a gap.
@@ -52,8 +54,10 @@ positive (#35).
      mark its session-log line operator-supplied.
   6. Add a **board-durability** note to S3 (board persists across sessions; clean up
      test tasks you create).
-  7. Add a short suite note to the **Notes** section clarifying "cwd-relpath mirroring"
-     = weft path mirroring.
+  7. Add a short suite note to the **Notes** section clarifying that the host
+     `Knatte18/lyx-test` README's phrase "cwd-relpath mirroring" refers to weft path
+     mirroring, not running lyx from subdirs (name the README as the phrase's source,
+     since "cwd-relpath" does not otherwise appear in the suite).
 
 **Out:**
 
@@ -124,7 +128,11 @@ positive (#35).
   reports `not initialized here; run "lyx init"` — **that is expected behaviour, not a
   finding.** Note (explanatory) that `lyx init` in a subdirectory would create `_lyx/`
   there and make lyx work in that subdir, but the agent should **not** scaffold nested
-  `_lyx/` during a session.
+  `_lyx/` during a session. **This paragraph also governs S6's verdict:** when S6 runs a
+  hub-only command from outside the hub or an uninitialized directory, a legible "not
+  initialized" / "run from the initialized root"-style message is the `OK`
+  (ergonomics-pass) outcome, not a FAIL — add a one-line S6 Watch note to that effect so
+  the suite does not re-create the #35 false positive at S6.
 - Rationale: #41/#35 — the model was never stated, so an agent treated the expected
   subdir failure as a bug. Verified against source: `boardengine.LoadConfig` /
   `warpengine` gate on `<baseDir>/_lyx/` existence with no upward walk.
@@ -193,7 +201,10 @@ positive (#35).
 
 - Decision: Clarify the external host README's "cwd-relpath mirroring" wording **and add
   a short suite note in the Notes section** of test-scheme.md saying the same (that the
-  phrase refers to weft path mirroring, not running lyx from subdirs). The README itself was edited and pushed
+  phrase refers to weft path mirroring, not running lyx from subdirs). The suite note
+  must **name the external host `Knatte18/lyx-test` README** as the source of the phrase,
+  because "cwd-relpath" does not otherwise appear anywhere in `test-scheme.md` and would
+  float without a referent for an agent who only reads the suite. The README itself was edited and pushed
   to `Knatte18/lyx-test` (commit `d9e5e66`) so the fix is permanent and survives
   `sandbox.cmd -reset`.
 - Rationale: #41.3 — the README's phrasing compounds the subdir confusion. The README
