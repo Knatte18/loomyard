@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: harden-path-invariant
 branch: harden-path-invariant
 plan: _mill/plan
@@ -20,4 +20,21 @@ discussed  '2026-06-30T04:54:40Z'
 planning  '2026-06-30T05:01:36Z'
 plan-fix-r1  '2026-06-30T05:07:56Z'
 planned  '2026-06-30T05:08:15Z'
+implementing  '2026-06-30T05:12:44Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: paths-foundation
+    state: pending
+  - name: warp-geometry
+    state: pending
+  - name: board-paths-owned
+    state: pending
+  - name: lyxtest-geometry
+    state: pending
+  - name: enforcement-and-docs
+    state: pending
 ```
