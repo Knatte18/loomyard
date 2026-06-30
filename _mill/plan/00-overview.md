@@ -101,6 +101,7 @@ batches:
 - `sandbox.cmd`
 - `tools/sandbox/SANDBOX-SUITE.md`
 - `tools/sandbox/main.go`
+- `tools/sandbox/main_test.go`
 - `tools/sandbox/report.go`
 - `tools/sandbox/report_test.go`
 - `tools/sandbox/suite.go`

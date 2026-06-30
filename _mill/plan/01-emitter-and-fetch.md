@@ -113,7 +113,10 @@ one-test-file-per-source convention — pure-helper tests in the new `report_tes
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Remove Pre-conditions item 4 (`gh` installed/authenticated) entirely.
+- **Requirements:** In the "## What this is" intro, reword the line "treating every break,
+  surprise, or rough edge as a LoomYard bug to file." so it reflects **recording** each finding
+  in `sandbox-report.json` rather than filing an issue (e.g. "…as a LoomYard finding to record
+  in the report."). Remove Pre-conditions item 4 (`gh` installed/authenticated) entirely.
   Rewrite the "Capturing findings" section: instead of filing each non-OK finding via `lyx
   selfreport create`, instruct the agent to write **all** WARN/FAIL findings to
   `./sandbox-report.json` (in the host-repo cwd) on this exact schema, and to **always** write
@@ -176,29 +179,42 @@ one-test-file-per-source convention — pure-helper tests in the new `report_tes
   absent or empty.
 - **Commit:** `test(sandbox): cover fetchReport validate/stamp/fetch paths`
 
-### Card 7: runSuite wiring tests — loomyard param, fetch, stale-removal, exclude (suite_test.go)
+### Card 7: runSuite + run wiring tests — loomyard param, fetch, stale-removal, exclude (suite_test.go, main_test.go)
 
 - **Context:**
   - `tools/sandbox/suite.go`
   - `tools/sandbox/report.go`
+  - `tools/sandbox/main.go`
 - **Edits:**
   - `tools/sandbox/suite_test.go`
+  - `tools/sandbox/main_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Update every existing `runSuite(...)` call site for the new signature,
-  passing a `t.TempDir()` loomyard root: `TestRunSuite_HubAbsent`, `TestRunSuite_LaunchInvocation`,
-  `TestRunSuite_Overrides`, `TestRunSuite_NonZeroLaunchCode`, `TestRunSuite_ClaudeNotFound`. Add
-  `TestRunSuite_FetchesReport`: a `launchAgent` stub that writes a valid
-  `{source:"sandbox-report",items:[…]}` into the temp host repo and returns 0 → assert the report
-  lands under `<loomyardRoot>/.scratch/sandbox-report-<sha>.json`. Add
-  `TestRunSuite_StaleReportRemoved`: pre-create `<host>/sandbox-report.json` with stale content,
-  use a stub that writes nothing and returns 0 → assert the prior file is gone after `runSuite`
-  and `runSuite` returns the missing-report error (no stale fetch into `.scratch`). Add
-  `TestRunSuite_ExcludesReport`: after a run, assert `<host>/.git/info/exclude` contains
-  `sandbox-report.json` (alongside the existing `SANDBOX-SUITE.md` entry). Ensure
-  `TestRunSuite_NonZeroLaunchCode` still asserts the original non-zero error and that no report
-  is fetched (stub returns non-zero, writes nothing; `.scratch` stays absent).
+- **Requirements:** **`suite_test.go`:** Update every existing `runSuite(...)` call site for the
+  new signature, passing a `t.TempDir()` loomyard root: `TestRunSuite_HubAbsent`,
+  `TestRunSuite_LaunchInvocation`, `TestRunSuite_Overrides`, `TestRunSuite_NonZeroLaunchCode`,
+  `TestRunSuite_ClaudeNotFound`. **Critical:** any call site whose `launchAgent` stub returns 0
+  and asserts `runSuite` returns nil (`TestRunSuite_LaunchInvocation`, `TestRunSuite_Overrides`)
+  must have its stub **also write a valid `{source:"sandbox-report",items:[…]}` into
+  `<hostRepoDir>/sandbox-report.json`** — otherwise the new post-launch `fetchReport` hits the
+  missing-report error and the test fails. `TestRunSuite_NonZeroLaunchCode` (stub returns
+  non-zero) and the two pre-launch-return tests (`HubAbsent`, `ClaudeNotFound`) need no report
+  (no fetch occurs) — just the new loomyard-root argument. Add `TestRunSuite_FetchesReport`: a
+  stub that writes a valid report and returns 0 → assert the report lands under
+  `<loomyardRoot>/.scratch/sandbox-report-<sha>.json`. Add `TestRunSuite_StaleReportRemoved`:
+  pre-create `<host>/sandbox-report.json` with stale content, use a stub that writes nothing and
+  returns 0 → assert the prior file is gone after `runSuite` and `runSuite` returns the
+  missing-report error (no stale fetch into `.scratch`). Add `TestRunSuite_ExcludesReport`: after
+  a run, assert `<host>/.git/info/exclude` contains `sandbox-report.json` (alongside the existing
+  `SANDBOX-SUITE.md` entry). Ensure `TestRunSuite_NonZeroLaunchCode` still asserts the original
+  non-zero error and that no report is fetched (`.scratch` stays absent).
+  **`main_test.go`:** Update `TestRun_SuiteRoutesSuiteToLaunch` (currently
+  `run([]string{"-parent", tmpDir, "suite"})`): pass `-loomyard <t.TempDir()>` in the argv, and
+  make its `launchAgent` stub write a valid `sandbox-report.json` into `hostRepoDir` so the fetch
+  succeeds and `run` still returns 0. Add `TestRun_SuiteRequiresLoomyard`: call
+  `run([]string{"-parent", tmpDir, "suite"})` with **no** `-loomyard` → assert a non-zero return
+  and that `launchAgent` was **not** called (covers the new required-flag guard from Card 2).
 - **Commit:** `test(sandbox): wire loomyard root + fetch + stale-removal + exclude`
 
 ## Batch Tests
