@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r1
+phase: planned
 slug: harden-path-invariant
 branch: harden-path-invariant
 plan: _mill/plan
@@ -19,4 +19,5 @@ discussion-fix-r3  '2026-06-30T04:54:14Z'
 discussed  '2026-06-30T04:54:40Z'
 planning  '2026-06-30T05:01:36Z'
 plan-fix-r1  '2026-06-30T05:07:56Z'
+planned  '2026-06-30T05:08:15Z'
 ```
