@@ -18,11 +18,19 @@ makes correctness structural, not a matter of discipline.
 
 ### Constants
 
-#### `LyxDirName`
+The following constants centralize every geometry and layout literal so no other package needs to repeat a string value. All production code that constructs paths from these names must import `internal/paths` and use these constants — never inline string literals.
 
-The directory name for the lyx system directory within a worktree. Value: `"_lyx"`.
+#### Layout constants
 
-This constant centralizes the directory name so the layout can be changed in one place without scattering updates across the codebase. All code referring to the lyx directory should use this constant.
+- **`LyxDirName`** (`"_lyx"`) — directory name for the lyx system directory within a worktree. Used by `LyxDir()`, `HostLyxLink`, `WeftLyxDir`, etc.
+
+#### Geometry vocabulary constants
+
+These three constants are the single source of the geometry tokens for the whole repo. They are the only place these string values are permitted to appear in `filepath.Join` args, `+` operands, or `const` declarations (the geometry-literal ban in `TestEnforcement_GeometryLiterals` enforces this allowlist).
+
+- **`WeftSuffix`** (`"-weft"`) — suffix appended to a host-worktree slug to form its weft sibling directory name (e.g. `"feat"` → `"feat-weft"`). Use `WeftSiblingPath` / `WeftRepoRoot` / `WeftWorktreePath` rather than constructing the path from this constant directly.
+- **`BoardDirName`** (`"_board"`) — name of the board data directory inside the hub (i.e. `<hub>/_board`). Use `BoardDir(hub)` to obtain the full path.
+- **`HubSuffix`** (`"-HUB"`) — suffix appended to a repo name to form its hub container directory (e.g. `"loomyard"` → `"loomyard-HUB"`). Use `HubPath(parent, name)` to obtain the full path.
 
 ### Functions
 
@@ -78,6 +86,18 @@ These functions resolve configuration file paths. They take a `baseDir` (the dir
 - **`ConfigDir(baseDir string) string`** — Returns `filepath.Join(baseDir, LyxDirName, "config")`. The directory where module configuration YAML files are stored.
 - **`ConfigFile(baseDir, module string) string`** — Returns `filepath.Join(ConfigDir(baseDir), module+".yaml")`. The path to a specific module's configuration file (e.g., `_lyx/config/board.yaml`).
 - **`DotEnv(baseDir string) string`** — Returns `filepath.Join(baseDir, ".env")`. The path to the environment variable overrides file.
+
+### Geometry bootstrap functions
+
+These pure functions construct geometry paths without requiring a resolved `Layout`. They are the correct way for early-stage callers (pre-init, pre-layout, bootstrap code) to form geometry paths. They consume the geometry constants above — no caller needs to repeat the raw suffix strings.
+
+- **`WeftSiblingPath(hub, slug string) string`** — Returns `filepath.Join(hub, slug+WeftSuffix)`. The canonical `<hub>/<slug>-weft` weft sibling path. Used by `WeftRepoRoot()`, `WeftWorktreePath()`, and `WeftWorktree()`.
+- **`BoardDir(hub string) string`** — Returns `filepath.Join(hub, BoardDirName)`. The canonical `<hub>/_board` board data path. Used by the board engine for path resolution when no `Layout` is available.
+- **`HubPath(parent, name string) string`** — Returns `filepath.Join(parent, name+HubSuffix)`. The canonical `<parent>/<name>-HUB` hub container path.
+
+### Reverse parser
+
+- **`WeftHostSlug(name string) (slug string, ok bool)`** — Reports whether `name` ends with `WeftSuffix` and the stripped prefix (the host slug) is non-empty. When `ok` is true, `slug` is the result of `strings.TrimSuffix(name, WeftSuffix)` and may be passed directly to the geometry constructors. The non-empty guard rejects a bare `"-weft"` entry. Used by `warpengine/prune.go` to identify weft siblings in a hub scan.
 
 ### Layout methods
 
@@ -138,10 +158,30 @@ enumerates or mirrors user content. A nested or git-ignored `_codeguide` sibling
 
 ## The enforcement wall
 
-**Raw `os.Getwd` and `git rev-parse --show-toplevel` are banned** outside
-`internal/paths` and `cmd/lyx/main.go`. This ban is enforced at `go test` / CI
-time by `internal/paths/enforcement_test.go`, which walks the entire source tree
-and fails the build if either literal token is found in any non-test `.go` file
-outside the allowlist.
+`internal/paths/enforcement_test.go` runs two repo-wide AST scans on every
+`go test ./internal/paths/...` run:
 
-See [CONSTRAINTS.md](../../CONSTRAINTS.md) for details and guidance for new code.
+**`TestEnforcement` (cwd/root primitives ban):**
+Raw `os.Getwd` and `git rev-parse --show-toplevel` are banned outside
+`internal/paths` and `cmd/lyx/main.go`. The scan uses a substring check on the
+raw file bytes and fails the build if either token appears in any non-test `.go`
+file outside the allowlist.
+
+**`TestEnforcement_GeometryLiterals` (geometry-literal construction ban):**
+The geometry path tokens `_board`, `-weft`, `-HUB`, `_portals`, `_launchers`,
+`_codeguide`, and `_lyx` may not appear as string literals in a
+**path-construction context** in any production file outside `internal/paths`.
+Path-construction contexts are:
+
+- An argument to a `filepath.Join(...)` call.
+- An operand of a binary `+` (`token.ADD`) expression.
+- The value of a string `const` declaration.
+
+Matching is **whole-token** (exact equality after `strconv.Unquote`, not
+substring), so compound names like `_boardroom` or `-weft-bare` are not flagged.
+Test files (`*_test.go`) are excluded from the scan — test geometry is a
+code-review obligation, not machine-enforced. A `scanned_non_empty` sub-test
+guards against a misconfigured walk that would silently produce a vacuous pass.
+
+See [CONSTRAINTS.md](../../CONSTRAINTS.md) for the full invariant specification
+and guidance for new code.

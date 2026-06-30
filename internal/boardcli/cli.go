@@ -1,11 +1,11 @@
 // cli.go exposes the cobra command tree for the board module.
 //
-// Command() returns the root "board" command with 11 subcommands, each
-// wrapping the existing handler bodies from the legacy switch. Configuration
-// resolution happens once in a PersistentPreRunE so that "lyx board" with no
-// subcommand lists available subcommands without requiring a git repo or board
-// config. The hidden --board-path persistent flag bypasses cwd resolution for
-// the detached sync child process launched by spawn.go.
+// Command() returns the root "board" command with 11 subcommands. Configuration
+// resolution happens once in a PersistentPreRunE: the config file (home, sidebar,
+// proposal_prefix) is loaded from _lyx/config/board.yaml, and the board data dir
+// is resolved as paths.BoardDir(layout.Hub) via paths.Resolve. The hidden
+// --board-path persistent flag overrides the data dir for the detached sync child
+// process launched by spawn.go, bypassing both config and path resolution.
 
 package boardcli
 
@@ -38,9 +38,12 @@ func Command() *cobra.Command {
 		Short: "task-tracker board",
 		Long: `board manages the task-tracker wiki board for the current lyx worktree.
 
-Configuration is resolved from the current working directory via _lyx/config/board.yaml.
-The --board-path flag (hidden; injected by the detached sync child) bypasses this resolution.
-Running "lyx board" with no subcommand lists available subcommands without requiring a git repo.`,
+The config file (_lyx/config/board.yaml) controls non-geometry settings: home,
+sidebar, and proposal_prefix filenames. The board data dir (<hub>/_board) is
+derived from the worktree layout via the paths package and is not config- or
+env-overridable. The hidden --board-path flag overrides the data dir for the
+detached sync child process. Running "lyx board" with no subcommand lists
+available subcommands without requiring a git repo.`,
 	}
 
 	// --board-path is an internal persistent flag injected by spawnSync so that
@@ -87,6 +90,17 @@ Running "lyx board" with no subcommand lists available subcommands without requi
 				clihelp.Abort(ctx, 1)
 				return nil
 			}
+
+			// Resolve the worktree layout to derive the board data dir. The board
+			// data dir is geometry (<hub>/_board) and must come from paths, not from
+			// the config file or an environment variable.
+			layout, rerr := paths.Resolve(cwd)
+			if rerr != nil {
+				output.Err(cmd.OutOrStdout(), rerr.Error())
+				clihelp.Abort(ctx, 1)
+				return nil
+			}
+			cfg.Path = paths.BoardDir(layout.Hub)
 		}
 
 		// Fold BOARD_SKIP_* env into cfg at the single production entry point.

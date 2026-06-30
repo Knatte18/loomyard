@@ -92,7 +92,7 @@ func TestCloneHub_HappyPath(t *testing.T) {
 	// Assert hub directory structure
 	hostPath := filepath.Join(hubPath, "myrepo")
 	weftPath := filepath.Join(hubPath, "myrepo-weft")
-	boardPath := filepath.Join(hubPath, boardDirName)
+	boardPath := paths.BoardDir(hubPath)
 
 	// Check that repos exist and are git repos
 	for _, path := range []string{hostPath, weftPath, boardPath} {
@@ -178,7 +178,7 @@ func TestCloneHub_ExplicitBoardURL(t *testing.T) {
 	}
 
 	// Assert board repo exists
-	boardPath := filepath.Join(hubPath, boardDirName)
+	boardPath := paths.BoardDir(hubPath)
 	if _, err := os.Stat(boardPath); err != nil {
 		t.Fatalf("board does not exist: %s", boardPath)
 	}

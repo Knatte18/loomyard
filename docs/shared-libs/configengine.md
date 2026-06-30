@@ -57,7 +57,7 @@ Config values use POSIX-style brace-delimited env markers:
 **Interpolation:** Markers may appear inside a larger string:
 
 ```yaml
-path: ${env:LYX_BOARD_PATH:-../_board}/sub
+path: ${env:LYX_EXAMPLE_PATH:-../_board}/sub
 url: https://${env:HOST:-localhost}:${env:PORT:-8080}
 ```
 
