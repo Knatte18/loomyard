@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-docs
+phase: holistic-reviewing
 slug: sandbox-report-json
 branch: sandbox-report-json
 plan: _mill/plan
@@ -25,6 +25,7 @@ planned  '2026-06-30T19:01:11Z'
 implementing  '2026-06-30T19:03:16Z'
 approved-emitter-and-fetch  '2026-06-30T19:10:50Z'
 approved-docs  '2026-06-30T19:13:33Z'
+holistic-reviewing  '2026-06-30T19:13:43Z'
 ```
 
 ## Batches
