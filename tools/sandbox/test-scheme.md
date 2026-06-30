@@ -162,18 +162,6 @@ Use `lyx board list` to observe current state before adding tasks, and use
 
 ---
 
-### S5 -- Re-clone and reset idempotency
-
-**Goal:** (operator-external -- run the sandbox tool from outside the hub) Re-run
-`sandbox.cmd -reset` over an existing hub.
-
-**Watch:** Clean teardown and rebuild. No stale junctions, no leftover state, no
-"directory in use" Windows handle errors.
-
-**Verdict:** `OK` / `WARN` / `FAIL`
-
----
-
 ### S6 -- Wrong-directory and error ergonomics
 
 **Goal:** "Run a hub-only command from outside the hub. Run a command with a bad flag.
@@ -188,6 +176,28 @@ Do not file it as a finding.
 
 ---
 
+## Operator steps
+
+### S5 -- Re-clone and reset idempotency (operator-run)
+
+This step is performed by the operator **before** (and optionally **after**) the agent
+session, from outside the Hub host repo. It is **not** part of the agent transcript.
+
+```cmd
+sandbox.cmd -reset
+```
+
+**What to verify:** Clean teardown and rebuild — no stale junctions, no leftover state,
+no "directory in use" Windows handle errors.
+
+**Why operator-only:** The `-reset` flag destroys the entire Hub directory, including
+the worktree the agent's shell is `cwd`-ed into. Letting the agent run `-reset` would
+tear out the directory it is working in. The black-box rule also forbids the agent from
+accessing the sandbox tool, which lives outside the Hub.
+
+The S5 result is operator-supplied and transcribed into the session log; it is not a
+verdict the agent files.
+
 ## Session log format
 
 After running all scenarios, record a short session summary:
@@ -201,7 +211,7 @@ S1: <OK|WARN|FAIL> -- <one-line note if not OK>
 S2: <OK|WARN|FAIL> -- <one-line note if not OK>
 S3: <OK|WARN|FAIL> -- <one-line note if not OK>
 S4: <OK|WARN|FAIL> -- <one-line note if not OK>
-S5: <OK|WARN|FAIL> -- <one-line note if not OK>
+S5: <operator-supplied>
 S6: <OK|WARN|FAIL> -- <one-line note if not OK>
 
 Issues filed: <count> (links)
