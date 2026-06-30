@@ -3,7 +3,7 @@
 ```yaml
 task: 'Sandbox suite: emit findings JSON on the shared analysis contract'
 slug: sandbox-report-json
-approved: false
+approved: true
 started: 20260630-184256
 parent: main
 root: ""

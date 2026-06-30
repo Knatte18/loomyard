@@ -4,7 +4,7 @@
 task: 'Sandbox suite: emit findings JSON on the shared analysis contract'
 batch: emitter-and-fetch
 number: 1
-cards: 7
+cards: 6
 verify: go build ./... && go test ./tools/sandbox/... ./internal/paths/...
 depends-on: []
 ```
@@ -60,52 +60,45 @@ one-test-file-per-source convention — pure-helper tests in the new `report_tes
   written (the `Items != nil` check passes because the pointer is non-nil).
 - **Commit:** `feat(sandbox): add sandbox-report.json contract + fetchReport helper`
 
-### Card 2: -loomyard top-level flag wired into the suite subcommand (main.go)
-
-- **Context:**
-  - `tools/sandbox/suite.go`
-  - `sandbox.cmd`
-- **Edits:**
-  - `tools/sandbox/main.go`
-- **Creates:** none
-- **Deletes:** none
-- **Moves:** none
-- **Requirements:** In `run`, on the top-level flagset `fs` (next to `parentDir`/`reset`), add
-  `loomyard := fs.String("loomyard", "", "loomyard repo root for fetching the sandbox report
-  (required for the suite subcommand)")`. In the `case "suite":` branch, after `absParent` is
-  resolved: require `*loomyard != ""` else `fmt.Fprintln(os.Stderr, "sandbox: -loomyard is
-  required for the suite subcommand"); return 1`. Resolve it to an absolute, cleaned path:
-  `absLoomyard, err := filepath.Abs(filepath.Clean(*loomyard))` (the `Clean` strips the trailing
-  `.`/separator that `sandbox.cmd` passes via `%~dp0.`); on error print `sandbox: resolve
-  loomyard path: %v` and `return 1`. Pass `absLoomyard` into `runSuite` as a new second
-  positional argument: `runSuite(absParent, absLoomyard, *claudeFlag, *promptFlag)`. The
-  `build` subcommand is unchanged and does not read `-loomyard`.
-- **Commit:** `feat(sandbox): add -loomyard top-level flag for the suite subcommand`
-
-### Card 3: runSuite — stale-report clean, exclude, and fetch wiring (suite.go)
+### Card 2: -loomyard flag + runSuite signature/fetch wiring (main.go, suite.go)
 
 - **Context:**
   - `tools/sandbox/report.go`
+  - `sandbox.cmd`
 - **Edits:**
+  - `tools/sandbox/main.go`
   - `tools/sandbox/suite.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Change the `runSuite` signature to `func runSuite(parentDir, loomyardRoot,
-  claudeOverride, promptOverride string) error`. After `ensureGitExclude(hostRepoDir,
-  suiteFileName)` and before resolving claude: remove any stale report —
-  `os.Remove(filepath.Join(hostRepoDir, reportFileName))` and ignore the error when
-  `os.IsNotExist` (return wrapped on any other error); then register the report in the host
-  repo's exclude: `ensureGitExclude(hostRepoDir, reportFileName)` (wrap error). After the
-  existing `launchAgent` non-zero-exit guard returns its error, and before `return nil`, on
-  clean exit call `fetchReport(hostRepoDir, loomyardRoot, info)` and return its wrapped error
-  (`fetch sandbox report: %w`) if non-nil. Update the `binaryInfo` doc comment and the
-  `header()` doc comment that reference "filed issues"/"issues filed" to describe the emitted
-  `sandbox-report.json` / `meta.fingerprint` provenance instead (e.g. "so the emitted report
-  can be traced to the exact binary"). Do not change `header()`'s rendered markdown block.
-- **Commit:** `feat(sandbox): emit + fetch sandbox-report.json after a clean suite run`
+- **Requirements:** This card lands the `-loomyard` flag, the `runSuite` signature change, and
+  its call site together so the package compiles at the card boundary (the signature + call site
+  are inherently atomic — splitting them red-lines `go build`).
+  **`main.go`:** on the top-level flagset `fs` (next to `parentDir`/`reset`), add `loomyard :=
+  fs.String("loomyard", "", "loomyard repo root for fetching the sandbox report (required for
+  the suite subcommand)")`. In the `case "suite":` branch, after `absParent` is resolved:
+  require `*loomyard != ""` else `fmt.Fprintln(os.Stderr, "sandbox: -loomyard is required for the
+  suite subcommand"); return 1`. Resolve it to an absolute, cleaned path: `absLoomyard, err :=
+  filepath.Abs(filepath.Clean(*loomyard))` (the `Clean` strips the trailing `.`/separator that
+  `sandbox.cmd` passes via `%~dp0.`); on error print `sandbox: resolve loomyard path: %v` and
+  `return 1`. Pass `absLoomyard` into `runSuite` as a new second positional argument:
+  `runSuite(absParent, absLoomyard, *claudeFlag, *promptFlag)`. The `build` subcommand is
+  unchanged and does not read `-loomyard`.
+  **`suite.go`:** change the signature to `func runSuite(parentDir, loomyardRoot, claudeOverride,
+  promptOverride string) error`. After `ensureGitExclude(hostRepoDir, suiteFileName)` and before
+  resolving claude: remove any stale report — `os.Remove(filepath.Join(hostRepoDir,
+  reportFileName))` and ignore the error when `os.IsNotExist` (return wrapped on any other
+  error); then register the report in the host repo's exclude: `ensureGitExclude(hostRepoDir,
+  reportFileName)` (wrap error). After the existing `launchAgent` non-zero-exit guard returns its
+  error, and before `return nil`, on clean exit call `fetchReport(hostRepoDir, loomyardRoot,
+  info)` and return its wrapped error (`fetch sandbox report: %w`) if non-nil. Update the
+  `binaryInfo` doc comment and the `header()` doc comment that reference "filed issues"/"issues
+  filed" to describe the emitted `sandbox-report.json` / `meta.fingerprint` provenance instead
+  (e.g. "so the emitted report can be traced to the exact binary"). Do not change `header()`'s
+  rendered markdown block.
+- **Commit:** `feat(sandbox): add -loomyard flag and emit + fetch sandbox-report.json`
 
-### Card 4: Rewrite SANDBOX-SUITE.md scheme to emit the JSON report
+### Card 3: Rewrite SANDBOX-SUITE.md scheme to emit the JSON report
 
 - **Context:** none
 - **Edits:**
@@ -136,7 +129,7 @@ one-test-file-per-source convention — pure-helper tests in the new `report_tes
   and all S0–S6 scenarios unchanged.
 - **Commit:** `feat(sandbox): rewrite suite scheme to emit sandbox-report.json`
 
-### Card 5: Launcher passes -loomyard (sandbox.cmd)
+### Card 4: Launcher passes -loomyard (sandbox.cmd)
 
 - **Context:** none
 - **Edits:**
@@ -152,7 +145,7 @@ one-test-file-per-source convention — pure-helper tests in the new `report_tes
   lands under `.scratch/`).
 - **Commit:** `feat(sandbox): pass -loomyard repo root from the launcher`
 
-### Card 6: Unit tests for fetchReport (report_test.go)
+### Card 5: Unit tests for fetchReport (report_test.go)
 
 - **Context:**
   - `tools/sandbox/report.go`
@@ -179,7 +172,7 @@ one-test-file-per-source convention — pure-helper tests in the new `report_tes
   absent or empty.
 - **Commit:** `test(sandbox): cover fetchReport validate/stamp/fetch paths`
 
-### Card 7: runSuite + run wiring tests — loomyard param, fetch, stale-removal, exclude (suite_test.go, main_test.go)
+### Card 6: runSuite + run wiring tests — loomyard param, fetch, stale-removal, exclude (suite_test.go, main_test.go)
 
 - **Context:**
   - `tools/sandbox/suite.go`
@@ -205,8 +198,9 @@ one-test-file-per-source convention — pure-helper tests in the new `report_tes
   `<loomyardRoot>/.scratch/sandbox-report-<sha>.json`. Add `TestRunSuite_StaleReportRemoved`:
   pre-create `<host>/sandbox-report.json` with stale content, use a stub that writes nothing and
   returns 0 → assert the prior file is gone after `runSuite` and `runSuite` returns the
-  missing-report error (no stale fetch into `.scratch`). Add `TestRunSuite_ExcludesReport`: after
-  a run, assert `<host>/.git/info/exclude` contains `sandbox-report.json` (alongside the existing
+  missing-report error (no stale fetch into `.scratch`). Add `TestRunSuite_ExcludesReport`: use a stub that
+  writes a valid report and returns 0 (so the full clean path runs), then assert
+  `<host>/.git/info/exclude` contains `sandbox-report.json` (alongside the existing
   `SANDBOX-SUITE.md` entry). Ensure `TestRunSuite_NonZeroLaunchCode` still asserts the original
   non-zero error and that no report is fetched (`.scratch` stays absent).
   **`main_test.go`:** Update `TestRun_SuiteRoutesSuiteToLaunch` (currently
@@ -232,6 +226,6 @@ one-test-file-per-source convention — pure-helper tests in the new `report_tes
   `os.Getwd`/`git rev-parse`/banned-geometry-literal in the new `tools/sandbox` code fails this
   batch's verify directly, rather than only at a repo-wide run. This is the cross-cutting guard
   for the new code; the scope is justified because the new code lives in a tree that guard scans.
-- TDD intent: `fetchReport` (card 1) is the TDD candidate — its `report_test.go` (card 6)
+- TDD intent: `fetchReport` (card 1) is the TDD candidate — its `report_test.go` (card 5)
   pins the validate/stamp/fetch contract. Cards are ordered impl-before-test only so the package
   compiles at each card boundary; the verify gate runs over the whole batch.

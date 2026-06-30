@@ -20,7 +20,7 @@ removal of the `gh`/`selfreport` transport). No file overlap with batch 1.
 
 ## Cards
 
-### Card 8: Rewrite docs/sandbox-howto.md for the JSON-report flow
+### Card 7: Rewrite docs/sandbox-howto.md for the JSON-report flow
 
 - **Context:**
   - `tools/sandbox/SANDBOX-SUITE.md`
@@ -44,7 +44,7 @@ removal of the `gh`/`selfreport` transport). No file overlap with batch 1.
   agent follows". Leave the deploy/build steps and the exit-code caveat unchanged.
 - **Commit:** `docs(sandbox): rewrite howto for the JSON-report flow`
 
-### Card 9: Update docs/sandbox-hub.md for the JSON-report flow
+### Card 8: Update docs/sandbox-hub.md for the JSON-report flow
 
 - **Context:**
   - `tools/sandbox/SANDBOX-SUITE.md`
