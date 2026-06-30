@@ -83,6 +83,11 @@ This task closes the enforcement hole (machine-enforce geometry *construction*, 
 - **`CONSTRAINTS.md`** — record the now-machine-enforced geometry-construction ban and the new
   `paths` API (same commit, per doc-lifecycle rule).
 - **`docs/shared-libs/paths.md`** — document the new consts/functions and the enforcement.
+- **`docs/shared-libs/yamlengine.md:34` + `docs/shared-libs/configengine.md:60`** — both use the
+  now-dead `${env:LYX_BOARD_PATH:-../_board}/sub` as the canonical `${env:}` example. The
+  mechanism is unchanged, but `LYX_BOARD_PATH` ceases to exist once the board `path:` key is
+  removed, so swap the sample var for a generic placeholder (e.g.
+  `${env:LYX_EXAMPLE_PATH:-../_board}/sub`). Doc-accuracy fix only — no behaviour change.
 
 **Out:**
 
@@ -295,6 +300,9 @@ Modules and files mill-plan needs:
   per-module doc for warp/board under `docs/modules/`, and `docs/overview.md` needs no change
   (no module added/removed). `docs/roadmap.md` is **not** touched (this is hardening, not a
   milestone).
+- **`docs/shared-libs/yamlengine.md` + `docs/shared-libs/configengine.md`** — each has one
+  `${env:LYX_BOARD_PATH:-../_board}/sub` example (yamlengine.md:34, configengine.md:60). Swap the
+  dead `LYX_BOARD_PATH` for a generic placeholder var; the `${env:}` mechanism itself is untouched.
 - **`CONSTRAINTS.md`** — Path Invariant section is the authoritative invariant doc; update in the
   same commit.
 
