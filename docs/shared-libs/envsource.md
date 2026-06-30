@@ -2,7 +2,7 @@
 
 The **single source of truth** for how environment variables enter the system. It reads the `.env` file and overlays the OS environment into a unified map.
 
-**Dependency direction (Go enforces it):** `internal/envsource` imports `internal/paths` and stdlib only, never domain modules. All modules that need env data call `envsource.Build()`.
+**Dependency direction (Go enforces it):** `internal/envsource` imports `internal/hubgeometry` and stdlib only, never domain modules. All modules that need env data call `envsource.Build()`.
 
 ## Exported function
 
@@ -12,7 +12,7 @@ Reads and merges environment variables from `.env` and the OS environment.
 
 **Behavior:**
 
-1. Calls `paths.DotEnv(baseDir)` to compute the path to the `.env` file.
+1. Calls `hubgeometry.DotEnv(baseDir)` to compute the path to the `.env` file.
 2. Reads the `.env` file line-by-line, parsing `KEY=VALUE` pairs.
 3. Reads the OS environment via `os.Environ()`.
 4. Merges the two: OS values **take precedence** over `.env` values for any duplicate key.

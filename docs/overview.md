@@ -61,11 +61,11 @@ Convenience alias: **`lyx run` → `lyx loom run`** (the everyday autonomous cal
    never *needed* (it would be strictly more work), and `lyx weft status` flags drift — but it is a
    friction asymmetry, not a wall.
 
-## Path Invariants
+## Hub Geometry Invariants
 
-**All worktree and Hub geometry resolves through `internal/paths`.**
+**All worktree and Hub geometry resolves through `internal/hubgeometry`.**
 
-The `internal/paths` package is the sole owner of cwd and worktree-root geometry math. It
+The `internal/hubgeometry` package is the sole owner of cwd and worktree-root geometry math. It
 exposes two entry points:
 
 - `Getwd()` — the only permitted call to `os.Getwd` outside `cmd/lyx/main.go`.
@@ -75,9 +75,9 @@ exposes two entry points:
 The `Layout` type provides geometry methods: `LyxDir()`, `WorktreePath(slug)`,
 `PortalsDir()`, `PortalLink(slug)`, `PortalTarget(slug)`, `LaunchersDir()`, `LauncherDir(slug)`, `MenuLauncherPath()`, `LauncherSpawnRel(slug)`, `MenuLauncherRel()`, `PrimeName()`, `WeftRepoRoot()`, `WeftWorktreePath(slug)`, `WeftWorktree()`, `WeftLyxDir()`, `WeftLyxDirFor(slug)`, `WeftCodeguideDir()`, `HostLyxLink(slug)`, `HostLyxLinkHere()`, `HostJunctions(slug)`.
 
-**Raw `os.Getwd` and `git rev-parse --show-toplevel` are banned** outside `internal/paths`
+**Raw `os.Getwd` and `git rev-parse --show-toplevel` are banned** outside `internal/hubgeometry`
 and `cmd/lyx/main.go`. The ban is enforced at `go test` / CI time by
-`internal/paths/enforcement_test.go`, which walks the entire source tree and fails the build
+`internal/hubgeometry/enforcement_test.go`, which walks the entire source tree and fails the build
 if either literal token is found in any non-test `.go` file outside the allowlist.
 
 See [CONSTRAINTS.md](../CONSTRAINTS.md) for details.
@@ -174,7 +174,7 @@ github.com/Knatte18/loomyard/
 ├── internal/muxpoccli/           the muxpoc POC module
 ├── internal/ghissuescli/         the ghissues CLI command
 ├── internal/ghissuesengine/      the ghissues domain kernel
-├── internal/paths/               geometry resolver (the sole owner of cwd/root math)
+├── internal/hubgeometry/         geometry resolver (the sole owner of cwd/root math)
 ├── internal/configengine/        shared config resolution
 ├── internal/gitexec/             shared git operations
 ├── internal/lock/                shared file locking
@@ -239,7 +239,7 @@ back into mux — see [modules/mux.md](modules/mux.md#naming).)
 scaffolds the shared `_lyx/` config dir for every module.
 
 The user-facing modules sit on a thin layer of shared infrastructure
-(`internal/configengine`, `internal/gitexec`, `internal/lock`, `internal/output`, `internal/paths`, `internal/state`) — defined in
+(`internal/configengine`, `internal/gitexec`, `internal/lock`, `internal/output`, `internal/hubgeometry`, `internal/state`) — defined in
 [shared-libs/README.md](shared-libs/README.md).
 
 ## Execution stack (orchestration layers)
