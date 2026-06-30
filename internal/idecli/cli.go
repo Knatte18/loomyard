@@ -12,9 +12,9 @@ import (
 	"os"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/ideengine"
 	"github.com/Knatte18/loomyard/internal/output"
-	"github.com/Knatte18/loomyard/internal/paths"
 	"github.com/spf13/cobra"
 )
 
@@ -27,7 +27,7 @@ import (
 // cobra lists available subcommands without invoking the PreRunE (no git repo needed).
 func Command() *cobra.Command {
 	// l is populated by PersistentPreRunE and closed over by each subcommand RunE.
-	var l *paths.Layout
+	var l *hubgeometry.Layout
 
 	cmd := &cobra.Command{
 		Use:   "ide",
@@ -46,7 +46,7 @@ func Command() *cobra.Command {
 			ctx := cmd.Context()
 
 			// Resolve current working directory; fail fast if the lookup errors.
-			cwd, err := paths.Getwd()
+			cwd, err := hubgeometry.Getwd()
 			if err != nil {
 				output.Err(cmd.OutOrStdout(), fmt.Sprintf("failed to get working directory: %v", err))
 				clihelp.Abort(ctx, 1)
@@ -54,7 +54,7 @@ func Command() *cobra.Command {
 			}
 
 			// Resolve layout from cwd; requires being inside a git repository.
-			resolved, err := paths.Resolve(cwd)
+			resolved, err := hubgeometry.Resolve(cwd)
 			if err != nil {
 				output.Err(cmd.OutOrStdout(), fmt.Sprintf("failed to resolve layout: %v", err))
 				clihelp.Abort(ctx, 1)
