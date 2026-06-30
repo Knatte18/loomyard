@@ -1,19 +1,19 @@
 # Constraints
 
-## Path Invariant
+## Hub Geometry Invariant
 
-All worktree and hub geometry must be resolved through `internal/paths`, not raw primitives. This invariant is enforced at build time.
+All worktree and hub geometry must be resolved through `internal/hubgeometry`, not raw primitives. This invariant is enforced at build time.
 
 ### Rule
 
-- All cwd and worktree root queries MUST go through `internal/paths.Getwd()` and `internal/paths.Resolve()`.
-- Raw `os.Getwd` is forbidden outside `internal/paths` and `cmd/lyx/main.go`.
-- Raw `git rev-parse --show-toplevel` is forbidden outside `internal/paths` and `cmd/lyx/main.go`.
-- The ban is enforced at `go test` / CI time by `internal/paths/enforcement_test.go`, which scans the entire source tree and fails the build if either primitive is found in any non-test `.go` file outside the allowlist.
+- All cwd and worktree root queries MUST go through `internal/hubgeometry.Getwd()` and `internal/hubgeometry.Resolve()`.
+- Raw `os.Getwd` is forbidden outside `internal/hubgeometry` and `cmd/lyx/main.go`.
+- Raw `git rev-parse --show-toplevel` is forbidden outside `internal/hubgeometry` and `cmd/lyx/main.go`.
+- The ban is enforced at `go test` / CI time by `internal/hubgeometry/enforcement_test.go`, which scans the entire source tree and fails the build if either primitive is found in any non-test `.go` file outside the allowlist.
 
 ### Geometry-literal ban (machine-enforced)
 
-The geometry path tokens `_board`, `-weft`, `-HUB`, `_portals`, `_launchers`, `_codeguide`, and `_lyx` are owned solely by `internal/paths`. No other package may use them in a **path-construction context** in production code.
+The geometry path tokens `_board`, `-weft`, `-HUB`, `_portals`, `_launchers`, `_codeguide`, and `_lyx` are owned solely by `internal/hubgeometry`. No other package may use them in a **path-construction context** in production code.
 
 **What counts as a path-construction context** (enforced by `TestEnforcement_GeometryLiterals` in `enforcement_test.go`):
 
@@ -25,7 +25,7 @@ The geometry path tokens `_board`, `-weft`, `-HUB`, `_portals`, `_launchers`, `_
 
 **Scope:** production files only. Files matching `*_test.go` are excluded — test geometry (fixtures, path assertions) is a code-review rule, not machine-enforced.
 
-**Allowlist:** `internal/paths` is the only permitted package.
+**Allowlist:** `internal/hubgeometry` is the only permitted package.
 
 **Legitimately-allowed bypasses** (not flagged because they are not path-construction contexts):
 
@@ -35,7 +35,7 @@ The geometry path tokens `_board`, `-weft`, `-HUB`, `_portals`, `_launchers`, `_
 
 ### Geometry vocabulary API
 
-The following exported symbols in `internal/paths` own the geometry vocabulary:
+The following exported symbols in `internal/hubgeometry` own the geometry vocabulary:
 
 **Constants:**
 
@@ -58,32 +58,32 @@ The following exported symbols in `internal/paths` own the geometry vocabulary:
 
 Geometry directories (`<hub>/_board`, `<hub>/<slug>-weft`, etc.) are structural invariants of the Loomyard layout and are never configurable via environment variables or YAML config keys.
 
-- The board data directory is resolved as `--board-path` flag (transient override) > `paths.BoardDir(l.Hub)`. It is **not** a config file key.
+- The board data directory is resolved as `--board-path` flag (transient override) > `hubgeometry.BoardDir(l.Hub)`. It is **not** a config file key.
 - Non-geometry config values (e.g. `home`, `sidebar`, `proposal_prefix`) continue to use the `${env:NAME:-default}` form in their template YAML files — only geometry is excluded from config.
 
 ### `_lyx` and config-file paths
 
-- The `_lyx` directory name, its `config/` subdirectory, and any `<module>.yaml` config file MUST be resolved through `internal/paths` helpers — never built from string literals like `filepath.Join(base, "_lyx", "config")` or `"board.yaml"`.
-  - `paths.LyxDirName` — the `_lyx` directory name constant (use `filepath.Join(base, paths.LyxDirName)` for a bare `_lyx` dir).
-  - `paths.ConfigDir(base)` — the `<base>/_lyx/config` directory.
-  - `paths.ConfigFile(base, module)` — the `<base>/_lyx/config/<module>.yaml` file (e.g. `module` = `"board"`, `"worktree"`, `"weft"`). For a relative path, pass `"."` as `base`.
-- **This rule applies to test code too.** A migration of the config layout (PR #20 moved configs from `_lyx/<module>.yaml` to `_lyx/config/<module>.yaml`) silently broke a hardcoded test fixture (`internal/worktree/cli_test.go`) because its literal write path drifted from the loader's read path. Routing every path through the helpers makes such migrations track automatically. The two genuine exceptions are `internal/paths/*_test.go` (those literals *are* the spec under test) and `_lyx` used as link-target geometry or string-content assertions — neither resolves a config path.
+- The `_lyx` directory name, its `config/` subdirectory, and any `<module>.yaml` config file MUST be resolved through `internal/hubgeometry` helpers — never built from string literals like `filepath.Join(base, "_lyx", "config")` or `"board.yaml"`.
+  - `hubgeometry.LyxDirName` — the `_lyx` directory name constant (use `filepath.Join(base, hubgeometry.LyxDirName)` for a bare `_lyx` dir).
+  - `hubgeometry.ConfigDir(base)` — the `<base>/_lyx/config` directory.
+  - `hubgeometry.ConfigFile(base, module)` — the `<base>/_lyx/config/<module>.yaml` file (e.g. `module` = `"board"`, `"worktree"`, `"weft"`). For a relative path, pass `"."` as `base`.
+- **This rule applies to test code too.** A migration of the config layout (PR #20 moved configs from `_lyx/<module>.yaml` to `_lyx/config/<module>.yaml`) silently broke a hardcoded test fixture (`internal/worktree/cli_test.go`) because its literal write path drifted from the loader's read path. Routing every path through the helpers makes such migrations track automatically. The two genuine exceptions are `internal/hubgeometry/*_test.go` (those literals *are* the spec under test) and `_lyx` used as link-target geometry or string-content assertions — neither resolves a config path.
 - The geometry-literal ban (above) now machine-enforces the production side of this rule for the geometry subset; config-path discipline in test code remains a code-review obligation.
 
 ### For New Code
 
 If you need a cwd or worktree root:
-- Call `paths.Getwd()` to get the current working directory.
-- Call `paths.Resolve(cwd)` to obtain a `Layout` with all geometry fields (root, hub, relative path, etc.).
+- Call `hubgeometry.Getwd()` to get the current working directory.
+- Call `hubgeometry.Resolve(cwd)` to obtain a `Layout` with all geometry fields (root, hub, relative path, etc.).
 - Use the `Layout` methods to derive paths: `LyxDir()`, `WorktreePath(slug)`, `PortalsDir()`, `PortalLink(slug)`, `PortalTarget(slug)`, `LaunchersDir()`, `LauncherDir(slug)`, `MenuLauncherPath()`, `LauncherSpawnRel(slug)`, `MenuLauncherRel()`, `PrimeName()`, `WeftRepoRoot()`, `WeftWorktreePath(slug)`, `WeftWorktree()`, `WeftLyxDir()`, `WeftLyxDirFor(slug)`, `WeftCodeguideDir()`, `HostLyxLink(slug)`, `HostLyxLinkHere()`, `HostJunctions(slug)`.
 
-If you need an `_lyx` / config path (in production or test code), use `paths.LyxDirName`, `paths.ConfigDir(base)`, and `paths.ConfigFile(base, module)` as above.
+If you need an `_lyx` / config path (in production or test code), use `hubgeometry.LyxDirName`, `hubgeometry.ConfigDir(base)`, and `hubgeometry.ConfigFile(base, module)` as above.
 
-If you need to construct a weft, board, or hub path, use the geometry API: `paths.WeftSiblingPath(hub, slug)`, `paths.BoardDir(hub)`, `paths.HubPath(parent, name)`. Never use the string literals (`"-weft"`, `"_board"`, `"-HUB"`) directly in production code — the geometry-literal ban will reject them.
+If you need to construct a weft, board, or hub path, use the geometry API: `hubgeometry.WeftSiblingPath(hub, slug)`, `hubgeometry.BoardDir(hub)`, `hubgeometry.HubPath(parent, name)`. Never use the string literals (`"-weft"`, `"_board"`, `"-HUB"`) directly in production code — the geometry-literal ban will reject them.
 
 ## lyxtest Leaf Invariant
 
-`internal/lyxtest` must remain a leaf package importing only the standard library and `internal/paths`. It must not import `internal/configreg` or any feature package (`boardengine`/`boardcli`, `warpengine`/`warpcli`, `weftengine`/`weftcli`, etc.).
+`internal/lyxtest` must remain a leaf package importing only the standard library and `internal/hubgeometry`. It must not import `internal/configreg` or any feature package (`boardengine`/`boardcli`, `warpengine`/`warpcli`, `weftengine`/`weftcli`, etc.).
 
 ### Rule
 
