@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: sandbox-report-json
 branch: sandbox-report-json
 plan: _mill/plan
@@ -22,4 +22,15 @@ plan-review-r1  '2026-06-30T18:49:21Z'
 plan-fix-r1  '2026-06-30T18:49:21Z'
 plan-fix-r2  '2026-06-30T18:55:50Z'
 planned  '2026-06-30T19:01:11Z'
+implementing  '2026-06-30T19:03:16Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: emitter-and-fetch
+    state: pending
+  - name: docs
+    state: pending
 ```
