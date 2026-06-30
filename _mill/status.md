@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-docs
+phase: holistic-reviewing
 slug: rename-ghissues-to-selfreport
 branch: rename-ghissues-to-selfreport
 plan: _mill/plan
@@ -22,6 +22,7 @@ planned  '2026-06-30T14:24:59Z'
 implementing  '2026-06-30T15:25:51Z'
 approved-code-rename  '2026-06-30T15:34:40Z'
 approved-docs  '2026-06-30T15:39:45Z'
+holistic-reviewing  '2026-06-30T15:40:09Z'
 ```
 
 ## Batches
