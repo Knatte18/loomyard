@@ -155,6 +155,36 @@ func DotEnv(baseDir string) string {
 	return filepath.Join(baseDir, dotEnvName)
 }
 
+// WeftSiblingPath returns the absolute path to the weft sibling worktree for the
+// given slug inside hub.
+//
+// It is a pure bootstrap helper for callers that have no resolved Layout. The result
+// is filepath.Join(hub, slug+WeftSuffix), which is the canonical form of the
+// <hub>/<slug>-weft directory. The three weft Layout methods delegate here so that
+// the WeftSuffix constant is consumed in exactly one place.
+func WeftSiblingPath(hub, slug string) string {
+	return filepath.Join(hub, slug+WeftSuffix)
+}
+
+// BoardDir returns the absolute path to the board data directory inside hub.
+//
+// It is a pure bootstrap helper for callers that have no resolved Layout. The result
+// is filepath.Join(hub, BoardDirName), which is the canonical form of the
+// <hub>/_board directory used by the board engine.
+func BoardDir(hub string) string {
+	return filepath.Join(hub, BoardDirName)
+}
+
+// HubPath returns the absolute path to the hub container directory for the given repo name
+// inside parent.
+//
+// It is a pure bootstrap helper for callers that have no resolved Layout. The result
+// is filepath.Join(parent, name+HubSuffix), which is the canonical form of the
+// <parent>/<name>-HUB directory.
+func HubPath(parent, name string) string {
+	return filepath.Join(parent, name+HubSuffix)
+}
+
 // LyxDir returns the path to the _lyx directory in the current working directory.
 //
 // Returns filepath.Join(Cwd, LyxDirName).
