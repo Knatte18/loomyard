@@ -52,5 +52,7 @@ batches:
     start_sha: 95f2775f7133a847933f0567bd2ee968cfb72dac
     commit_sha: fed10dba219a06a995428c8fcde8e0c626b41164
   - name: enforcement-and-docs
-    state: pending
+    state: running
+    implementer_session: a587976e-cbeb-4999-ab1b-102065331644
+    start_sha: 23536ce07e9af3e113efd37a3fd0df87789c27cc
 ```
