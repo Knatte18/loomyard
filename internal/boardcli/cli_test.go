@@ -4,10 +4,10 @@
 // subcommand: JSON envelope shape (ok=true/false), exit codes (0 for success,
 // 1 for error), and each verb's distinctive field (task, tasks[], Home.md written).
 //
-// Board data dir strategy: seedCwd creates a fresh temp dir for the board and
-// publishes it via boardTestPathEnv. runCLI detects the env var and injects
-// --board-path automatically, bypassing paths.Resolve (which needs a git repo).
-// TestCLIBoardPathResolution covers the git-based resolution path separately.
+// Board data dir strategy: seedCwd initialises a git repo (git init) in the cwd
+// so that PersistentPreRunE can call paths.Resolve without error. The board data
+// dir is then Hub/_board where Hub = filepath.Dir(cwd). This is the production
+// code path; no --board-path injection is used for operational tests.
 
 package boardcli_test
 
@@ -24,58 +24,43 @@ import (
 	"github.com/Knatte18/loomyard/internal/paths"
 )
 
-// boardTestPathEnv is the env var seedCwd sets to communicate the board temp dir
-// to runCLI. runCLI injects --board-path when this var is non-empty, so that
-// operational tests do not need a git repo for paths.Resolve.
-const boardTestPathEnv = "BOARD_TEST_PATH"
-
 // seedCwd creates a temp directory with _lyx/config/board.yaml seeded with all
-// template keys (home, sidebar, proposal_prefix; path is not a template key),
-// changes to that directory, and returns the cwd path. It also creates a fresh
-// board temp dir and publishes it via boardTestPathEnv so that runCLI auto-injects
-// --board-path, bypassing paths.Resolve for tests that do not need a git repo.
+// template keys (home, sidebar, proposal_prefix; path: is not a template key),
+// initialises a git repo there (so paths.Resolve succeeds), changes to that
+// directory, and returns the cwd path. The board data dir is Hub/_board where
+// Hub = filepath.Dir(cwd); callers can compute it as paths.BoardDir(filepath.Dir(cwd)).
 func seedCwd(t *testing.T) string {
 	t.Helper()
 
 	cwd := t.TempDir()
-	lyxDir := filepath.Join(cwd, paths.LyxDirName)
-	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
-		t.Fatalf("failed to create _lyx: %v", err)
+
+	// Initialise a git repo so PersistentPreRunE can call paths.Resolve without error.
+	if out, err := exec.Command("git", "-C", cwd, "init").CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v\n%s", err, out)
 	}
 
-	configDir := paths.ConfigDir(cwd)
-	if err := os.MkdirAll(configDir, 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(cwd, paths.LyxDirName), 0o755); err != nil {
+		t.Fatalf("failed to create _lyx: %v", err)
+	}
+	if err := os.MkdirAll(paths.ConfigDir(cwd), 0o755); err != nil {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
 
 	// Write board config with all template keys; path: is no longer a template key.
-	configPath := paths.ConfigFile(cwd, "board")
 	configContent := "home: Home.md\nsidebar: _Sidebar.md\nproposal_prefix: proposal-\n"
-	if err := os.WriteFile(configPath, []byte(configContent), 0o644); err != nil {
+	if err := os.WriteFile(paths.ConfigFile(cwd, "board"), []byte(configContent), 0o644); err != nil {
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
-
-	// Publish a dedicated board dir so runCLI can inject --board-path without
-	// needing a git repo for paths.Resolve.
-	boardDir := t.TempDir()
-	t.Setenv(boardTestPathEnv, boardDir)
 
 	t.Chdir(cwd)
 	return cwd
 }
 
 // runCLI invokes boardcli.RunCLI in-process and returns the exit code plus the JSON
-// written to out. When boardTestPathEnv is set (by seedCwd), it prepends
-// --board-path <dir> to args so that paths.Resolve is bypassed for tests that
-// operate on plain temp dirs with no git repo.
-// BOARD_SKIP_GIT must be set by the caller.
+// written to out. Caller must have called seedCwd (or otherwise set up cwd and the
+// git repo) before calling runCLI. BOARD_SKIP_GIT must be set by the caller.
 func runCLI(t *testing.T, args ...string) (exitCode int, stdout string) {
 	t.Helper()
-
-	// Auto-inject --board-path when seedCwd has published a board dir.
-	if boardDir := os.Getenv(boardTestPathEnv); boardDir != "" {
-		args = append([]string{"--board-path", boardDir}, args...)
-	}
 
 	var buf bytes.Buffer
 	code := boardcli.RunCLI(&buf, args)
@@ -181,14 +166,10 @@ func TestCLIContract(t *testing.T) {
 			wantExitCode:   0,
 			wantOK:         true,
 			wantFieldExist: "ok",
-			assertFieldExists: func(t *testing.T, result map[string]any, _ string) {
-				// Board dir is the temp dir published by seedCwd via boardTestPathEnv;
-				// Home.md is rendered there, not at a cwd-relative path.
-				boardDir := os.Getenv(boardTestPathEnv)
-				if boardDir == "" {
-					t.Fatal("boardTestPathEnv not set; seedCwd was not called")
-				}
-				homePath := filepath.Join(boardDir, "Home.md")
+			assertFieldExists: func(t *testing.T, result map[string]any, cwd string) {
+				// seedCwd initialised a git repo at cwd; Hub = filepath.Dir(cwd);
+				// paths.Resolve derives Hub from the git root, so board renders at Hub/_board.
+				homePath := filepath.Join(paths.BoardDir(filepath.Dir(cwd)), "Home.md")
 				if _, err := os.Stat(homePath); err != nil {
 					t.Fatalf("Home.md not created at %q: %v", homePath, err)
 				}
@@ -839,7 +820,6 @@ func TestCLILookupContract(t *testing.T) {
 // This test initialises a real git repo so that paths.Resolve succeeds.
 func TestCLIBoardPathResolution(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
-	// Do NOT set boardTestPathEnv — runCLI must not auto-inject --board-path here.
 
 	// Build a two-level fixture: topDir is the Hub; worktree is a git repo inside it.
 	// paths.Resolve(worktree) derives Hub = topDir, so
@@ -868,8 +848,8 @@ func TestCLIBoardPathResolution(t *testing.T) {
 	expectedBoardDir := paths.BoardDir(topDir)
 
 	t.Run("no_board_path_resolves_via_paths", func(t *testing.T) {
-		// boardTestPathEnv is not set, so runCLI does not inject --board-path.
 		// PersistentPreRunE calls paths.Resolve and derives cfg.Path = BoardDir(topDir).
+		// Upsert writes tasks.json inside that derived board dir.
 		exitCode, stdout := runCLI(t, "upsert", `{"slug":"path-test","title":"Path Test"}`)
 		if exitCode != 0 {
 			t.Fatalf("upsert exit %d; stdout: %s", exitCode, stdout)
@@ -881,15 +861,41 @@ func TestCLIBoardPathResolution(t *testing.T) {
 	})
 
 	t.Run("board_path_flag_overrides_resolution", func(t *testing.T) {
-		// Passing --board-path explicitly must bypass paths.Resolve and use the given path.
+		// --board-path bypasses paths.Resolve and uses the supplied path directly.
+		// list is a read-only operation that works under --board-path (no render step),
+		// so we verify redirection by comparing task counts: absOverride is a fresh
+		// empty dir (0 tasks) while expectedBoardDir already has the "path-test" task
+		// from the first subtest (1 task).
 		absOverride := t.TempDir()
-		exitCode, stdout := runCLI(t, "--board-path", absOverride, "upsert", `{"slug":"override","title":"Override"}`)
-		if exitCode != 0 {
-			t.Fatalf("upsert --board-path exit %d; stdout: %s", exitCode, stdout)
+
+		// list from the override dir returns 0 tasks (empty board).
+		exitOverride, outOverride := runCLI(t, "--board-path", absOverride, "list")
+		if exitOverride != 0 {
+			t.Fatalf("list --board-path exit %d; stdout: %s", exitOverride, outOverride)
 		}
-		tasksFile := filepath.Join(absOverride, "tasks.json")
-		if _, err := os.Stat(tasksFile); err != nil {
-			t.Errorf("board not at --board-path %q: %v", absOverride, err)
+		var overrideResult map[string]any
+		if err := json.Unmarshal([]byte(outOverride), &overrideResult); err != nil {
+			t.Fatalf("parse override list: %v", err)
+		}
+		overrideTasks, _ := overrideResult["tasks"].([]any)
+		if len(overrideTasks) != 0 {
+			t.Errorf("--board-path override: got %d task(s) from fresh dir %q; want 0",
+				len(overrideTasks), absOverride)
+		}
+
+		// list via the default (git-resolved) path returns the "path-test" task.
+		exitDefault, outDefault := runCLI(t, "list")
+		if exitDefault != 0 {
+			t.Fatalf("list (default path) exit %d; stdout: %s", exitDefault, outDefault)
+		}
+		var defaultResult map[string]any
+		if err := json.Unmarshal([]byte(outDefault), &defaultResult); err != nil {
+			t.Fatalf("parse default list: %v", err)
+		}
+		defaultTasks, _ := defaultResult["tasks"].([]any)
+		if len(defaultTasks) == 0 {
+			t.Errorf("default board path %q: got 0 tasks; want >= 1 (path-test task from first subtest)",
+				expectedBoardDir)
 		}
 	})
 }
