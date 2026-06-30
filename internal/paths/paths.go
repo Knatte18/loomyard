@@ -14,9 +14,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 )
 
-// Config layout constants centralize the directory and file names used by the lyx configuration system.
-// These ensure that all code paths derive their paths from a single source of truth,
-// so the layout can be changed in one place without scattering updates across the codebase.
+// Layout and geometry constants centralize the directory and file names used by the lyx
+// configuration system and the weft/board/hub geometry vocabulary. All code that constructs
+// paths from these names must import this package and use these constants — never inline
+// the string literals.
 const (
 	// LyxDirName is the directory name for the lyx system directory within a worktree.
 	LyxDirName = "_lyx"
@@ -26,6 +27,21 @@ const (
 
 	// dotEnvName is the filename for environment variable overrides.
 	dotEnvName = ".env"
+
+	// WeftSuffix is the suffix appended to a host-worktree slug to form the weft sibling
+	// directory name (e.g. "feat" → "feat-weft"). It is the single source of this literal
+	// for the whole repo; use WeftSiblingPath/WeftRepoRoot/WeftWorktreePath rather than
+	// constructing the path from this constant directly.
+	WeftSuffix = "-weft"
+
+	// BoardDirName is the name of the board data directory inside the hub (i.e. <hub>/_board).
+	// It is the single source of this literal; use BoardDir(hub) to obtain the full path.
+	BoardDirName = "_board"
+
+	// HubSuffix is the suffix appended to a repo name to form the hub container directory
+	// (e.g. "loomyard" → "loomyard-HUB"). It is the single source of this literal;
+	// use HubPath(parent, name) to obtain the full path.
+	HubSuffix = "-HUB"
 )
 
 // ErrNotAGitRepo is returned when a directory is not within a git repository.
