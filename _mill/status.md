@@ -35,8 +35,8 @@ batches:
     commit_sha: 25c30ae3fafe28c57c1f1d3b631c9fac1595b9d8
   - name: warp-geometry
     state: running
-    implementer_session: 3f673954-f634-4c17-9355-ce8290e40e2c
-    start_sha: ba3fa8208dd622b965ca85ebd45a027a04f252ee
+    implementer_session: 8ca83ef7-b4ea-4f59-9134-2eb99bb3722e
+    start_sha: 15eb58c5a467462b24eb27ed0b06736aeb04109e
   - name: board-paths-owned
     state: pending
   - name: lyxtest-geometry
