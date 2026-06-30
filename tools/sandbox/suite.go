@@ -68,7 +68,8 @@ var launchAgent = func(hostRepoDir, claudePath, instruction string) int {
 
 // binaryInfo holds a snapshot of a binary file's identity at a point in time.
 // It is used to stamp the SANDBOX-SUITE with a reproducible fingerprint so that
-// filed issues can be traced to the exact binary that triggered them.
+// the emitted sandbox-report.json (meta.fingerprint) can be traced to the
+// exact binary that triggered it.
 type binaryInfo struct {
 	// Path is the absolute filesystem path to the binary.
 	Path string
@@ -116,8 +117,9 @@ func binaryFingerprint(path string) (binaryInfo, error) {
 }
 
 // header returns a small markdown block that stamps the binary's identity into
-// the copied SANDBOX-SUITE. The agent is instructed to include this block in every
-// issue it files so that a maintainer can reproduce the exact build.
+// the copied SANDBOX-SUITE. The same fingerprint is later stamped into
+// meta.fingerprint of the emitted sandbox-report.json so a maintainer can
+// reproduce the exact build that produced a finding.
 func (b binaryInfo) header() string {
 	return fmt.Sprintf("## Binary under test\n\n"+
 		"- Path: `%s`\n"+
@@ -186,10 +188,13 @@ func ensureGitExclude(repoDir, entry string) error {
 // runSuite executes the "sandbox suite" subcommand. It locates the Hub host
 // repo under parentDir, fingerprints the deployed lyx binary, writes a fresh
 // SANDBOX-SUITE.md into the host repo (overwriting any prior copy), registers
-// it in .git/info/exclude, and starts an interactive Claude session with the
-// given instruction string. claudeOverride and promptOverride are optional: when
-// empty the function resolves "claude" from PATH and uses defaultInstruction.
-func runSuite(parentDir, claudeOverride, promptOverride string) error {
+// it in .git/info/exclude, clears any stale sandbox-report.json from a prior
+// run, and starts an interactive Claude session with the given instruction
+// string. On a clean (exit-0) session, it fetches the agent-written
+// sandbox-report.json into <loomyardRoot>/.scratch. claudeOverride and
+// promptOverride are optional: when empty the function resolves "claude" from
+// PATH and uses defaultInstruction.
+func runSuite(parentDir, loomyardRoot, claudeOverride, promptOverride string) error {
 	// Derive the host repo path from the shared hubName const (main.go) and the
 	// suite-local hostDirName const; the function relies on those consts rather than
 	// the raw cwd primitive or git top-level resolution.
@@ -228,6 +233,21 @@ func runSuite(parentDir, claudeOverride, promptOverride string) error {
 		return fmt.Errorf("ensure git exclude: %w", err)
 	}
 
+	// Remove any report left over from a previous session. Without this, a
+	// clean-exit session that fails to rewrite the file would silently fetch
+	// stale findings under a fresh fingerprint; removing it makes that case
+	// correctly surface as the missing-report error instead.
+	reportPath := filepath.Join(hostRepoDir, reportFileName)
+	if err := os.Remove(reportPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove stale %s: %w", reportFileName, err)
+	}
+
+	// Exclude the report from git tracking in the host repo for the same
+	// reason as the scheme file above.
+	if err := ensureGitExclude(hostRepoDir, reportFileName); err != nil {
+		return fmt.Errorf("ensure git exclude: %w", err)
+	}
+
 	// Resolve the claude binary: honour an explicit override flag, otherwise
 	// search PATH -- the agent must be installed like any other tool.
 	claudePath := claudeOverride
@@ -248,6 +268,12 @@ func runSuite(parentDir, claudeOverride, promptOverride string) error {
 	// exit code cannot be forwarded through `go run` itself.
 	if code := launchAgent(hostRepoDir, claudePath, instruction); code != 0 {
 		return fmt.Errorf("claude exited with code %d", code)
+	}
+
+	// Fetch the agent's report only on a clean exit; a crashed session is
+	// already a visible failure and is not worth partial-report handling.
+	if err := fetchReport(hostRepoDir, loomyardRoot, info); err != nil {
+		return fmt.Errorf("fetch sandbox report: %w", err)
 	}
 	return nil
 }

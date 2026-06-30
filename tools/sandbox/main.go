@@ -79,6 +79,7 @@ func run(argv []string) int {
 	fs.SetOutput(os.Stderr)
 	parentDir := fs.String("parent", "", "parent directory where the Hub will be created (required)")
 	reset := fs.Bool("reset", false, "rebuild the Hub even if it already exists (build subcommand only)")
+	loomyard := fs.String("loomyard", "", "loomyard repo root for fetching the sandbox report (required for the suite subcommand)")
 
 	if err := fs.Parse(argv); err != nil {
 		// flag.ContinueOnError already wrote the usage message to stderr.
@@ -115,6 +116,20 @@ func run(argv []string) int {
 		}
 
 	case "suite":
+		// The suite subcommand fetches the agent's report into the loomyard repo,
+		// so it cannot run without knowing that repo's root.
+		if *loomyard == "" {
+			fmt.Fprintln(os.Stderr, "sandbox: -loomyard is required for the suite subcommand")
+			return 1
+		}
+		// filepath.Clean strips the trailing "."/separator that sandbox.cmd passes
+		// via "%~dp0." before resolving to an absolute path.
+		absLoomyard, err := filepath.Abs(filepath.Clean(*loomyard))
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "sandbox: resolve loomyard path: %v\n", err)
+			return 1
+		}
+
 		// Parse suite-specific flags from the remaining positionals after "suite".
 		sf := flag.NewFlagSet("sandbox suite", flag.ContinueOnError)
 		sf.SetOutput(os.Stderr)
@@ -126,7 +141,7 @@ func run(argv []string) int {
 			return 1
 		}
 
-		if err := runSuite(absParent, *claudeFlag, *promptFlag); err != nil {
+		if err := runSuite(absParent, absLoomyard, *claudeFlag, *promptFlag); err != nil {
 			fmt.Fprintf(os.Stderr, "sandbox: %v\n", err)
 			return 1
 		}
