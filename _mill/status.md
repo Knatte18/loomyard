@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussion-fix-r1
 slug: lyx-sandbox-fixes
 branch: lyx-sandbox-fixes
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-06-30T19:06:14Z'
+discussion-fix-r1  '2026-06-30T19:30:27Z'
 ```

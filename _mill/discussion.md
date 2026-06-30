@@ -101,13 +101,22 @@ side specifically because weft is the unusual "piggyback" repo.
 
 ### Raw git stderr leak fixed at the source plus call sites
 
-- Decision: `hubgeometry.go:96` (`Resolve()`) stops interpolating raw git stderr into
-  the wrapped `ErrNotAGitRepo` message. The four call sites that add their own redundant
-  prefix on top of `hubgeometry.Resolve()`'s error — `idecli/cli.go:59`
-  (`"failed to resolve layout: %v"`), `initcli/initcli.go:84` (same), `configcli.go:185`
-  (`"resolve layout: %v"`), `muxpoccli/cli.go:100` (`"not a git repository: %v"`) — drop
-  that prefix and pass the (now-clean) error straight through, matching the existing
-  no-prefix call sites in `warpcli/warp.go` and `weftcli/cli.go`.
+- Decision: `hubgeometry.go:96` (`Resolve()`, the `exitCode != 0` branch) changes from
+  `fmt.Errorf("%w: %s", ErrNotAGitRepo, stderr)` to bare `ErrNotAGitRepo` — no appended
+  text at all. The sentinel's own message ("not a git repository") is self-describing
+  once the raw git stderr is dropped; per the earlier decision to decline adding any
+  hint/guidance text to error messages, nothing is added back in its place.
+  `hubgeometry.go:93` (the `err != nil` branch, a Go-level subprocess-spawn failure —
+  e.g. the `git` binary missing — wrapped as `fmt.Errorf("%w: %v", ErrNotAGitRepo, err)`)
+  is explicitly OUT of scope and unchanged: that `err` is Go's own exec-layer error, not
+  git's stderr output, so it does not reproduce the "fatal: ..." leak #36 point 3
+  describes, and the diagnostic content (why the subprocess itself couldn't launch) is
+  useful, not noise. The four call sites that add their own redundant prefix on top of
+  `hubgeometry.Resolve()`'s error — `idecli/cli.go:59` (`"failed to resolve layout: %v"`),
+  `initcli/initcli.go:84` (same), `configcli.go:185` (`"resolve layout: %v"`),
+  `muxpoccli/cli.go:100` (`"not a git repository: %v"`) — drop that prefix and pass the
+  (now-clean) error straight through, matching the existing no-prefix call sites in
+  `warpcli/warp.go` and `weftcli/cli.go`.
 - Rationale: The #36 point 3 repro
   (`"not a git repository: fatal: not a git repository (or any of the parent
   directories): .git"`) comes directly from
@@ -232,7 +241,15 @@ side specifically because weft is the unusual "piggyback" repo.
   contain no backslash. Note for mill-plan: a plain `go test ./...` on a Unix CI runner
   would not catch the original separator bug (Unix already produces forward-slash
   naturally) — the assertion needs to check for the absence of `\` explicitly, not rely
-  on OS-dependent behavior, so it's meaningful on both platforms.
+  on OS-dependent behavior, so it's meaningful on both platforms. Critically, the
+  existing tests in this area compare `filepath.Clean(jsonField) == filepath.Clean(expected)`
+  (or similar `Clean`-wrapped comparisons) — on Windows, `filepath.Clean` re-normalizes
+  forward slashes back to backslash, so a `Clean`-wrapped comparison would pass both
+  before and after the fix and never actually exercise the separator guarantee. The new
+  (or updated) assertions must check the raw JSON field string directly — e.g.
+  `!strings.Contains(jsonField, "\\")` — never through a `filepath.Clean`/`filepath.FromSlash`
+  wrapper that would silently re-introduce the platform-native separator before the
+  comparison runs.
 - No test changes needed for `internal/output` or `internal/clihelp` — JSON-always
   behavior is unchanged.
 - `tools/sandbox/SANDBOX-SUITE.md` changes are documentation-only; the suite itself is
