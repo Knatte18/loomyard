@@ -13,8 +13,8 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fslink"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
-	"github.com/Knatte18/loomyard/internal/paths"
 )
 
 // setupStatusFixture prepares a CopyPairedLocal fixture with warp config seeded and the
@@ -160,7 +160,7 @@ func TestStatus_JunctionHealth(t *testing.T) {
 	}
 
 	// Rebuild layout since the junction removal may affect resolution.
-	brokenLayout, err := paths.Resolve(f.Hub)
+	brokenLayout, err := hubgeometry.Resolve(f.Hub)
 	if err != nil {
 		t.Fatalf("Resolve after junction removal: %v", err)
 	}

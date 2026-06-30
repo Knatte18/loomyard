@@ -11,8 +11,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
-	"github.com/Knatte18/loomyard/internal/paths"
 )
 
 // TestRemove covers paired teardown: clean removal of both host and weft, the dirty-tree
@@ -210,9 +210,9 @@ func TestRemoveSubpathJunction(t *testing.T) {
 	// Change to subpath to resolve Layout with RelPath set.
 	t.Chdir(subpathDir)
 
-	l, err := paths.Resolve(subpathDir)
+	l, err := hubgeometry.Resolve(subpathDir)
 	if err != nil {
-		t.Fatalf("paths.Resolve: %v", err)
+		t.Fatalf("hubgeometry.Resolve: %v", err)
 	}
 
 	// Verify RelPath is set.
