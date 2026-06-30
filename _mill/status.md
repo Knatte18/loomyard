@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: harden-path-invariant
 branch: harden-path-invariant
-plan: null
+plan: _mill/plan
 parent: main
 task: 'Harden the Path Invariant: close enforcement hole + fix geometry leaks'
 task_description: |
@@ -17,4 +17,5 @@ task_description: |
 discussing  '2026-06-30T04:14:39Z'
 discussion-fix-r3  '2026-06-30T04:54:14Z'
 discussed  '2026-06-30T04:54:40Z'
+planning  '2026-06-30T05:01:36Z'
 ```
