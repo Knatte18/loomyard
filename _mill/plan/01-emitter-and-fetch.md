@@ -5,7 +5,7 @@ task: 'Sandbox suite: emit findings JSON on the shared analysis contract'
 batch: emitter-and-fetch
 number: 1
 cards: 6
-verify: go build ./... && go test ./tools/sandbox/... ./internal/paths/...
+verify: go build ./... && go test ./tools/sandbox/... ./internal/hubgeometry/...
 depends-on: []
 ```
 
