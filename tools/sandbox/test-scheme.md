@@ -226,3 +226,7 @@ fingerprint header in every issue body.
   matters now. Add scenarios as modules grow (mux, shuttle, review, loom).
 - The psmux interactive launcher will replace the direct `claude` launch in a future
   iteration; the file contract (this `SANDBOX-SUITE.md` driving the agent) is unchanged.
+- The host repo `Knatte18/lyx-test` README uses the phrase "cwd-relpath mirroring"; this
+  refers to **weft path mirroring** (how the weft worktree mirrors host subpaths) — not
+  to running lyx from subdirectories. "cwd-relpath" does not appear elsewhere in this
+  test-scheme.
