@@ -28,7 +28,9 @@ implementing  '2026-06-30T05:12:44Z'
 ```yaml
 batches:
   - name: paths-foundation
-    state: pending
+    state: running
+    implementer_session: 1921b511-fcb0-4105-bcc9-d8e05f308845
+    start_sha: 8a4c214bccb26f5b2e55082d986771bb88364f68
   - name: warp-geometry
     state: pending
   - name: board-paths-owned
