@@ -5,7 +5,7 @@ task: "Rename internal/paths to internal/hubgeometry"
 batch: "code-rename"
 number: 1
 cards: 8
-verify: go build ./... && go test ./...
+verify: go build ./... && go test ./... && go vet -tags integration ./...
 depends-on: []
 ```
 
@@ -261,11 +261,20 @@ Batch-local decision: every importer must be retargeted in this one batch becaus
 
 ## Batch Tests
 
-`verify: go build ./... && go test ./...` — the rename touches packages across the whole
-tree, so the verify is intentionally repo-wide (this is the cross-cutting case the
-per-batch-scoping rule explicitly allows). `go build ./...` proves every importer was
-retargeted (a missed `internal/paths` import fails to compile). `go test ./...` runs the
-load-bearing guards that the rename must keep green:
+`verify: go build ./... && go test ./... && go vet -tags integration ./...` — the rename
+touches packages across the whole tree, so the verify is intentionally repo-wide (this is
+the cross-cutting case the per-batch-scoping rule explicitly allows). `go build ./...`
+proves every importer was retargeted (a missed `internal/paths` import fails to compile).
+`go test ./...` runs the load-bearing guards. The trailing `go vet -tags integration ./...`
+is required because three edited files carry `//go:build integration`
+(`internal/configcli/configcli_integration_test.go`,
+`internal/warpengine/clone_integration_test.go`,
+`internal/weftengine/weft_integration_test.go`) — `go build` skips all `_test.go` and
+untagged `go test ./...` excludes them, so without the tagged vet a botched
+`paths.`→`hubgeometry.` retarget in those three would ship green. `go vet -tags
+integration` type-checks (compiles) them without running the heavy integration suites.
+
+`go test ./...` runs the load-bearing guards that the rename must keep green:
 
 - `internal/hubgeometry/enforcement_test.go` — `TestEnforcement_*` (raw-primitive ban)
   and `TestEnforcement_GeometryLiterals` (geometry-literal ban). Fail loudly if the two

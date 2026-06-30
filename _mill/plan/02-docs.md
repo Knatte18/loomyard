@@ -79,14 +79,17 @@ same card so it does not silently 404.
     → `internal/hubgeometry`, `package paths` → `package hubgeometry`, and `paths.`
     qualifier → `hubgeometry.` inside the moved file.
   - In `docs/overview.md`: rename the heading `## Path Invariants` → `## Hub Geometry
-    Invariants`, update the body prose (`internal/paths` → `internal/hubgeometry`, the
-    "sole owner of cwd and worktree-root geometry math" sentence, the `Getwd()`/`Resolve()`
-    references), and update any link to the renamed `shared-libs/paths.md`.
-  - In `docs/modules/loom.md`: update the cross-doc anchor link at ~line 256
+    Invariants`, and replace **every** `internal/paths` occurrence in the file with
+    `internal/hubgeometry` — not only in the renamed heading's section but also the
+    directory-tree entry (`├── internal/paths/ …`, ~line 177) and the shared-modules list
+    (~line 242). Also update the prose "sole owner of cwd and worktree-root geometry math"
+    sentence and the `Getwd()`/`Resolve()`/`enforcement_test.go` references, and update any
+    link to the renamed `shared-libs/paths.md`. Backstop with the comprehensive-sweep grep.
+  - In `docs/modules/loom.md`: replace **every** `internal/paths` occurrence with
+    `internal/hubgeometry` (both the line-60 "cwd/Hub/Prime via `internal/paths`" reference
+    and the line-256 reference), and update the cross-doc anchor link at ~line 256
     `[launcher geometry](../overview.md#path-invariants)` →
-    `(../overview.md#hub-geometry-invariants)` to match the renamed heading's new slug,
-    and replace the trailing `internal/paths` reference on that line with
-    `internal/hubgeometry`.
+    `(../overview.md#hub-geometry-invariants)` to match the renamed heading's new slug.
   - In `docs/shared-libs/README.md`: update the `paths.md` / `internal/paths` entry to
     `hubgeometry.md` / `internal/hubgeometry`.
   - In `docs/shared-libs/envsource.md`: update the dependency-direction line (~line 5)

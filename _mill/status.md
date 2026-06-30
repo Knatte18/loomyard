@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planning
+phase: plan-fix-r1
 slug: rename-paths-to-hubgeometry
 branch: rename-paths-to-hubgeometry
 plan: _mill/plan
@@ -17,4 +17,6 @@ task_description: |
 discussing  '2026-06-30T15:25:19Z'
 discussed  '2026-06-30T15:55:37Z'
 planning  '2026-06-30T16:13:53Z'
+plan-review-r1  '2026-06-30T16:20:17Z'
+plan-fix-r1  '2026-06-30T16:20:17Z'
 ```

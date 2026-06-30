@@ -22,7 +22,7 @@ batches:
     name: code-rename
     file: 01-code-rename.md
     depends-on: []
-    verify: go build ./... && go test ./...
+    verify: go build ./... && go test ./... && go vet -tags integration ./...
   - number: 2
     name: docs
     file: 02-docs.md
