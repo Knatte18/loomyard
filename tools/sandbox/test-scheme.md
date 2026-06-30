@@ -140,6 +140,11 @@ coordination (junctions wired correctly, weft mirroring behaves).
 **Note:** When passing JSON in PowerShell, use single-quoted strings with literal inner
 double quotes — see the PowerShell JSON-quoting note in Pre-conditions.
 
+**Durability note:** The board is durable across sessions — it starts non-empty (e.g. a
+`T1 "Test task from S3"` task persists from prior runs). Do not assume a fresh board.
+Use `lyx board list` to observe current state before adding tasks, and use
+`lyx board remove` to clean up any test tasks you create at session end.
+
 **Watch:** Board CRUD via `lyx board`. JSON output sane. State transitions work.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
