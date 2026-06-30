@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-approved
+phase: done
 slug: rename-paths-to-hubgeometry
 branch: rename-paths-to-hubgeometry
 plan: _mill/plan
@@ -28,6 +28,7 @@ holistic-reviewing  '2026-06-30T18:26:26Z'
 holistic-fixing  '2026-06-30T18:31:36Z'
 nits-fixed-holistic  '2026-06-30T18:37:13Z'
 holistic-approved  '2026-06-30T18:37:37Z'
+done  '2026-06-30T18:38:07Z'
 ```
 
 ## Batches
