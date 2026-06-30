@@ -18,7 +18,7 @@ import (
 // Config represents the configuration for a board module.
 type Config struct {
 	// Path is the absolute path to the board data directory. It is set by the
-	// caller (boardcli.Command's PersistentPreRunE via paths.BoardDir or the
+	// caller (boardcli.Command's PersistentPreRunE via hubgeometry.BoardDir or the
 	// --board-path flag), never by the config file. yaml:"-" prevents the
 	// yaml.v3 unmarshaller from mapping any leftover path: key onto this field.
 	Path           string `yaml:"-"`
@@ -57,7 +57,7 @@ func (c Config) Outputs() Outputs {
 //
 // LoadConfig no longer resolves a data-dir path. Config.Path is always empty
 // on return; the caller is responsible for setting it (boardcli sets it via
-// paths.BoardDir or the --board-path flag).
+// hubgeometry.BoardDir or the --board-path flag).
 func LoadConfig(baseDir, module string) (Config, error) {
 	// Load and resolve the config file using the template.
 	resolved, err := configengine.Load(baseDir, module, []byte(ConfigTemplate()))
