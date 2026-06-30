@@ -11,7 +11,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/fsx"
-	"github.com/Knatte18/loomyard/internal/paths"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 )
 
@@ -30,7 +30,7 @@ type Result struct {
 // ReconcileAll reconciles all module config files against their templates.
 //
 // For each module returned by configreg.Modules(), it:
-//   - Computes cfgPath := paths.ConfigFile(baseDir, m.Name)
+//   - Computes cfgPath := hubgeometry.ConfigFile(baseDir, m.Name)
 //   - Reads existing bytes from disk (absent file → empty []byte, not an error)
 //   - Calls yamlengine.Reconcile([]byte(m.Template()), existing)
 //   - When apply && (fileAbsent || len(added)+len(removed) > 0):
@@ -44,7 +44,7 @@ func ReconcileAll(baseDir string, apply bool) ([]Result, error) {
 	var results []Result
 
 	for _, m := range configreg.Modules() {
-		cfgPath := paths.ConfigFile(baseDir, m.Name)
+		cfgPath := hubgeometry.ConfigFile(baseDir, m.Name)
 
 		// Read existing config file (missing file → empty bytes)
 		existing, err := os.ReadFile(cfgPath)

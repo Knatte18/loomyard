@@ -1,13 +1,13 @@
 // weft_test.go covers the weft geometry methods on Layout and verifies the
 // host↔weft junction pairing for the RelPath "." and subpath cases.
 
-package paths_test
+package hubgeometry_test
 
 import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/paths"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
 // TestWeftGeometryMethods covers the eight weft geometry methods with both
@@ -78,7 +78,7 @@ func TestWeftGeometryMethods(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			layout := &paths.Layout{
+			layout := &hubgeometry.Layout{
 				Cwd:          filepath.Join(tt.hub, "feat", tt.relPath),
 				WorktreeRoot: filepath.Join(tt.hub, "feat"),
 				Hub:          tt.hub,
@@ -158,7 +158,7 @@ func TestWeftGeometryMethods(t *testing.T) {
 func TestHostLyxLinkHereDivergesFromLyxDir(t *testing.T) {
 	// Equal case: Cwd == WorktreeRoot and RelPath == "." -> both resolve to the
 	// same _lyx directory.
-	atRoot := &paths.Layout{
+	atRoot := &hubgeometry.Layout{
 		Cwd:          filepath.Join("/h", "feat"),
 		WorktreeRoot: filepath.Join("/h", "feat"),
 		Hub:          "/h",
@@ -173,7 +173,7 @@ func TestHostLyxLinkHereDivergesFromLyxDir(t *testing.T) {
 	// Divergent case: Cwd points at the worktree root but RelPath is a real
 	// subdir, so LyxDir() (Cwd-anchored) and HostLyxLinkHere() (WorktreeRoot+
 	// RelPath-anchored) must differ.
-	atSub := &paths.Layout{
+	atSub := &hubgeometry.Layout{
 		Cwd:          filepath.Join("/h", "feat"),
 		WorktreeRoot: filepath.Join("/h", "feat"),
 		Hub:          "/h",
@@ -191,7 +191,7 @@ func TestHostLyxLinkHereDivergesFromLyxDir(t *testing.T) {
 func TestWeftGeometryAtMainWorktree(t *testing.T) {
 	hub := "/h"
 	main := "/h/main"
-	layout := &paths.Layout{
+	layout := &hubgeometry.Layout{
 		Cwd:          main,
 		WorktreeRoot: main,
 		Hub:          hub,
@@ -251,7 +251,7 @@ func TestHostJunctions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			layout := &paths.Layout{
+			layout := &hubgeometry.Layout{
 				Cwd:          filepath.Join(tt.hub, tt.slug, tt.relPath),
 				WorktreeRoot: filepath.Join(tt.hub, tt.slug),
 				Hub:          tt.hub,
@@ -291,7 +291,7 @@ func TestHostJunctions(t *testing.T) {
 
 	// Sub-test: scope guard — verify no junction name is _codeguide
 	t.Run("no_codeguide_names", func(t *testing.T) {
-		layout := &paths.Layout{
+		layout := &hubgeometry.Layout{
 			Cwd:          filepath.Join("/h", "main"),
 			WorktreeRoot: filepath.Join("/h", "main"),
 			Hub:          "/h",

@@ -15,7 +15,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/paths"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
 // ReconcileAction describes the corrective action applied to one host↔weft pair.
@@ -81,12 +81,12 @@ type ReconcileResult struct {
 //     not apply, or branch is not managed) → report, touch nothing.
 //
 // The layout l provides Hub, Prime, and WeftRepoRoot geometry. Reconcile never walks
-// the raw branch namespace — it only acts on worktrees it finds via paths.List.
+// the raw branch namespace — it only acts on worktrees it finds via hubgeometry.List.
 // Returns an error only on fatal system failures; per-worktree errors are recorded
 // inline in ReconcilePairResult.Error.
-func (w *Worktree) Reconcile(l *paths.Layout) (ReconcileResult, error) {
+func (w *Worktree) Reconcile(l *hubgeometry.Layout) (ReconcileResult, error) {
 	// Enumerate all host worktrees from any worktree in the repository.
-	entries, err := paths.List(l.WorktreeRoot)
+	entries, err := hubgeometry.List(l.WorktreeRoot)
 	if err != nil {
 		return ReconcileResult{}, fmt.Errorf("list worktrees: %w", err)
 	}
@@ -108,7 +108,7 @@ func (w *Worktree) Reconcile(l *paths.Layout) (ReconcileResult, error) {
 
 		// Build a per-host-worktree layout so junction geometry and branch resolution
 		// are rooted at the correct worktree rather than the cwd worktree.
-		hostLayout, layoutErr := paths.Resolve(hostPath)
+		hostLayout, layoutErr := hubgeometry.Resolve(hostPath)
 		if layoutErr != nil {
 			pr.Error = fmt.Sprintf("resolve layout: %v", layoutErr)
 			pr.Action = ReconcileActionUnmanagedReported
@@ -169,8 +169,8 @@ func (w *Worktree) Reconcile(l *paths.Layout) (ReconcileResult, error) {
 //     weft branch and worktree dormant (no junction).
 //  3. Otherwise → report unmanaged and touch nothing.
 func (w *Worktree) reconcileMissingWeft(
-	l *paths.Layout,
-	hostLayout *paths.Layout,
+	l *hubgeometry.Layout,
+	hostLayout *hubgeometry.Layout,
 	hostPath, weftPath, slug, hostBranch string,
 	pr *ReconcilePairResult,
 ) ReconcileAction {
@@ -210,7 +210,7 @@ func (w *Worktree) reconcileMissingWeft(
 
 // adoptWeftWorktree creates a git worktree at weftPath for the existing branch in the
 // weft repo. This is the "adopt" path: the branch already exists so no -b flag is used.
-func adoptWeftWorktree(hostLayout *paths.Layout, weftPath, branch string) error {
+func adoptWeftWorktree(hostLayout *hubgeometry.Layout, weftPath, branch string) error {
 	// git worktree add <path> <branch> — no -b because the branch already exists.
 	_, stderr, exitCode, err := gitexec.RunGit(
 		[]string{"worktree", "add", weftPath, branch},
@@ -233,7 +233,7 @@ func adoptWeftWorktree(hostLayout *paths.Layout, weftPath, branch string) error 
 // This is a heuristic: if _lyx exists as a directory or junction the host may already be
 // managed by a different lyx instance, which is beyond raw adoption.
 func isRawHostWorktree(hostPath string) bool {
-	lyxPath := filepath.Join(hostPath, paths.LyxDirName)
+	lyxPath := filepath.Join(hostPath, hubgeometry.LyxDirName)
 	_, err := os.Lstat(lyxPath)
 	// A raw host worktree has no _lyx at all.
 	return os.IsNotExist(err)
@@ -242,7 +242,7 @@ func isRawHostWorktree(hostPath string) bool {
 // createDormantWeftForRawHost creates a weft branch and worktree for a raw host worktree,
 // leaving it dormant (no junction wiring). The weft branch forks from the current weft HEAD
 // (parallel to the add adopt-or-create logic). The caller must run lyx init to wire junctions.
-func createDormantWeftForRawHost(hostLayout *paths.Layout, l *paths.Layout, slug, hostBranch string) error {
+func createDormantWeftForRawHost(hostLayout *hubgeometry.Layout, l *hubgeometry.Layout, slug, hostBranch string) error {
 	weftRoot := hostLayout.WeftRepoRoot()
 
 	// Capture the current weft HEAD branch as the fork point for the new weft branch.

@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/paths"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/warpengine"
 )
 
@@ -21,17 +21,17 @@ func TestLoadConfig_HappyPath(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create _lyx/config/ directories
-	lyxDir := filepath.Join(tmpDir, paths.LyxDirName)
+	lyxDir := filepath.Join(tmpDir, hubgeometry.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
-	configDir := paths.ConfigDir(tmpDir)
+	configDir := hubgeometry.ConfigDir(tmpDir)
 	if err := os.Mkdir(configDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
 
 	// Write a config file with branch_prefix
-	configFile := paths.ConfigFile(tmpDir, "warp")
+	configFile := hubgeometry.ConfigFile(tmpDir, "warp")
 	content := `branch_prefix: hanf/
 `
 	if err := os.WriteFile(configFile, []byte(content), 0644); err != nil {
@@ -53,17 +53,17 @@ func TestLoadConfig_EmptyBranchPrefix(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create _lyx/config/ directories
-	lyxDir := filepath.Join(tmpDir, paths.LyxDirName)
+	lyxDir := filepath.Join(tmpDir, hubgeometry.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
-	configDir := paths.ConfigDir(tmpDir)
+	configDir := hubgeometry.ConfigDir(tmpDir)
 	if err := os.Mkdir(configDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
 
 	// Write a config file with empty branch_prefix
-	configFile := paths.ConfigFile(tmpDir, "warp")
+	configFile := hubgeometry.ConfigFile(tmpDir, "warp")
 	content := `branch_prefix: ""
 `
 	if err := os.WriteFile(configFile, []byte(content), 0644); err != nil {
@@ -87,17 +87,17 @@ func TestLoadConfig_EnvResolution(t *testing.T) {
 	t.Setenv("TEST_BRANCH_PREFIX", "feature/")
 
 	// Create _lyx/config/ directories
-	lyxDir := filepath.Join(tmpDir, paths.LyxDirName)
+	lyxDir := filepath.Join(tmpDir, hubgeometry.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
-	configDir := paths.ConfigDir(tmpDir)
+	configDir := hubgeometry.ConfigDir(tmpDir)
 	if err := os.Mkdir(configDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
 
 	// Write config with env variable
-	configFile := paths.ConfigFile(tmpDir, "warp")
+	configFile := hubgeometry.ConfigFile(tmpDir, "warp")
 	content := `branch_prefix: ${env:TEST_BRANCH_PREFIX}
 `
 	if err := os.WriteFile(configFile, []byte(content), 0644); err != nil {

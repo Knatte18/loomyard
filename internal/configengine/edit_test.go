@@ -14,7 +14,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/paths"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
 // TestEdit_ScaffoldWhenMissing tests that Edit writes the template to
@@ -24,7 +24,7 @@ func TestEdit_ScaffoldWhenMissing(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create _lyx/ directory (the file itself will be scaffolded).
-	lyxDir := filepath.Join(tmpDir, paths.LyxDirName)
+	lyxDir := filepath.Join(tmpDir, hubgeometry.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
@@ -50,7 +50,7 @@ func TestEdit_ScaffoldWhenMissing(t *testing.T) {
 	}
 
 	// Verify the file exists in the right place.
-	expectedPath := paths.ConfigFile(tmpDir, "testmod")
+	expectedPath := hubgeometry.ConfigFile(tmpDir, "testmod")
 	if _, err := os.Stat(expectedPath); err != nil {
 		t.Errorf("config file not found at %s: %v", expectedPath, err)
 	}
@@ -63,16 +63,16 @@ func TestEdit_EditExistingFile(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create _lyx/ and _lyx/config/ with a pre-existing config file.
-	lyxDir := filepath.Join(tmpDir, paths.LyxDirName)
+	lyxDir := filepath.Join(tmpDir, hubgeometry.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
-	configDir := paths.ConfigDir(tmpDir)
+	configDir := hubgeometry.ConfigDir(tmpDir)
 	if err := os.Mkdir(configDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
 
-	existingPath := paths.ConfigFile(tmpDir, "testmod")
+	existingPath := hubgeometry.ConfigFile(tmpDir, "testmod")
 	originalContent := "original: value\n"
 	if err := os.WriteFile(existingPath, []byte(originalContent), 0644); err != nil {
 		t.Fatalf("failed to write config file: %v", err)
@@ -106,7 +106,7 @@ func TestEdit_ReEditLoop(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create _lyx/ directory.
-	lyxDir := filepath.Join(tmpDir, paths.LyxDirName)
+	lyxDir := filepath.Join(tmpDir, hubgeometry.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
@@ -142,7 +142,7 @@ func TestEdit_AbortOnUnchangedAfterFailure_Scaffolded(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create _lyx/ directory.
-	lyxDir := filepath.Join(tmpDir, paths.LyxDirName)
+	lyxDir := filepath.Join(tmpDir, hubgeometry.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
@@ -167,7 +167,7 @@ func TestEdit_AbortOnUnchangedAfterFailure_Scaffolded(t *testing.T) {
 	}
 
 	// Verify the scaffolded file was removed.
-	configPath := paths.ConfigFile(tmpDir, "testmod")
+	configPath := hubgeometry.ConfigFile(tmpDir, "testmod")
 	if _, err := os.Stat(configPath); !os.IsNotExist(err) {
 		t.Errorf("config file still exists after abort; should have been removed")
 	}
@@ -180,16 +180,16 @@ func TestEdit_AbortOnUnchangedAfterFailure_PreExisting(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create _lyx/ and _lyx/config/ with a pre-existing config file.
-	lyxDir := filepath.Join(tmpDir, paths.LyxDirName)
+	lyxDir := filepath.Join(tmpDir, hubgeometry.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
-	configDir := paths.ConfigDir(tmpDir)
+	configDir := hubgeometry.ConfigDir(tmpDir)
 	if err := os.Mkdir(configDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
 
-	existingPath := paths.ConfigFile(tmpDir, "testmod")
+	existingPath := hubgeometry.ConfigFile(tmpDir, "testmod")
 	originalContent := "original: value\n"
 	if err := os.WriteFile(existingPath, []byte(originalContent), 0644); err != nil {
 		t.Fatalf("failed to write config file: %v", err)
@@ -227,7 +227,7 @@ func TestEdit_AbortOnEditorError(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create _lyx/ directory.
-	lyxDir := filepath.Join(tmpDir, paths.LyxDirName)
+	lyxDir := filepath.Join(tmpDir, hubgeometry.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
@@ -251,7 +251,7 @@ func TestEdit_AbortOnEditorError(t *testing.T) {
 	}
 
 	// Verify the scaffolded file was removed.
-	configPath := paths.ConfigFile(tmpDir, "testmod")
+	configPath := hubgeometry.ConfigFile(tmpDir, "testmod")
 	if _, err := os.Stat(configPath); !os.IsNotExist(err) {
 		t.Errorf("config file still exists after abort; should have been removed")
 	}

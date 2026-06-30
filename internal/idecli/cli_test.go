@@ -17,7 +17,7 @@ import (
 
 // TestRunCLISpawnDispatch tests that spawn subcommand dispatches correctly with stubbed launcher.
 func TestRunCLISpawnDispatch(t *testing.T) {
-	// Create a real git repo so paths.Resolve succeeds inside the PersistentPreRunE.
+	// Create a real git repo so hubgeometry.Resolve succeeds inside the PersistentPreRunE.
 	gitRepo := lyxtest.CopyHostHub(t).Hub
 
 	t.Chdir(gitRepo)

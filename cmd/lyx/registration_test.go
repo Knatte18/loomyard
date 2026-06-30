@@ -63,7 +63,7 @@ func TestRegistration_AllModulesRegistered(t *testing.T) {
 	// Resolve the repo root from this test file's on-disk path.
 	// This file lives at cmd/lyx/registration_test.go, so two filepath.Dir
 	// calls walk up to the repo root — the same pattern used by
-	// internal/paths/enforcement_test.go.
+	// internal/hubgeometry/enforcement_test.go.
 	_, testFile, _, ok := runtime.Caller(0)
 	if !ok {
 		t.Fatal("could not determine test file location via runtime.Caller")

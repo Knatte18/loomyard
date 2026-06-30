@@ -34,7 +34,7 @@ The `Load(baseDir, module, template []byte)` function reads the on-disk config f
 **Flow:**
 
 1. Call `FindBaseDir(baseDir)` — check that `_lyx/` exists at baseDir.
-2. Read the config file at `paths.ConfigFile(baseDir, module)` (e.g., `_lyx/config/board.yaml`). If absent, return an error instructing the user to run `lyx config reconcile`.
+2. Read the config file at `hubgeometry.ConfigFile(baseDir, module)` (e.g., `_lyx/config/board.yaml`). If absent, return an error instructing the user to run `lyx config reconcile`.
 3. Check for missing template keys via `yamlengine.MissingKeys(template, fileBytes)`. If any keys are missing, return an error naming the file, the missing key-paths, and instructing the user to run `lyx config reconcile`.
 4. Build the environment via `envsource.Build(baseDir)` (reads `.env`, overlays OS env).
 5. Resolve environment variables via `yamlengine.Resolve(fileBytes, env)` (expands `${env:...}` markers).
@@ -67,7 +67,7 @@ Multiple markers in one value are all expanded. A value with no marker is a lite
 
 ## `.env` loading
 
-Environment variables are sourced by `envsource.Build(baseDir)`, which reads `paths.DotEnv(baseDir)` (typically `<cwd>/.env`) and overlays the OS environment.
+Environment variables are sourced by `envsource.Build(baseDir)`, which reads `hubgeometry.DotEnv(baseDir)` (typically `<cwd>/.env`) and overlays the OS environment.
 
 - **Format**: `KEY=VALUE` lines, blank lines skipped, lines starting with `#` are comments, split on first `=` only.
 - **Precedence: OS env wins.** Any variable set in the process environment overrides the corresponding `.env` value.

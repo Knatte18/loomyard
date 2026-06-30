@@ -163,7 +163,7 @@ columns by slug. No architectural change — a metadata field and a rule.
    requirement: strip the inherited Claude-Code parent-session env (see [Resume](#resume-after-crash--native---resume-with-env-hygiene)).
 4. **One named psmux server per hub — the orphan firewall.** mux boots its server as
    `psmux -L lyx-<hub-basename>-<short-hash>` — a legible hub basename plus a short hash of the
-   hub's **absolute path**, derived deterministically via `internal/paths`. The hash is required
+   hub's **absolute path**, derived deterministically via `internal/hubgeometry`. The hash is required
    for two reasons: the name must be unique per absolute hub path (two hubs sharing a basename on
    different paths must not collide onto one server), and a raw path is not a valid `-L` name
    (`:` / `\` / spaces). The basename keeps it human-legible in `psmux ls` and `lyx mux status`;

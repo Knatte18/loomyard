@@ -9,7 +9,7 @@ review discipline — violating one breaks the build or silently rots the design
 
 Do **not** ever claim "no constraints in repo" or proceed as if there are none. The file
 is there. If you have not read it this session, read it now (`CONSTRAINTS.md`). Current
-invariants include: the **Path Invariant** (`internal/paths` owns all cwd/geometry and
+invariants include: the **Hub Geometry Invariant** (`internal/hubgeometry` owns all cwd/geometry and
 `_lyx`/config paths), the **lyxtest Leaf Invariant**, the **CLI / Cobra Invariant**
 (module `Command()`/`RunCLI` seam, `Short` on every command, help-tree tests), and the
 **Documentation Lifecycle**. When you add a new cross-cutting invariant, record it in

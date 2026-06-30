@@ -75,11 +75,11 @@ observable changes until the new module that needs the extracted lib arrives.
 4. **worktree module + portals, launchers, and ide module.** ✅ **Done.** Create / track / tear down
    git worktrees; manage container junctions and spawnable
    launchers; VS Code launcher with interactive menu; centralized path geometry
-   in `internal/paths`. Consumes `internal/configengine` + `internal/git`; owns the **junction-aware teardown**
+   in `internal/hubgeometry`. Consumes `internal/configengine` + `internal/git`; owns the **junction-aware teardown**
    sequence (the Windows locked-worktree hazard). The module is **stateless by design** — `lyx worktree list` is a thin
-   `git worktree list` wrapper; there is no worktree registry. Introduces `internal/paths` as the sole geometry owner, banning
-   raw `os.Getwd` and `git rev-parse --show-toplevel` outside `internal/paths` and `cmd/lyx/main.go`
-   via `internal/paths/enforcement_test.go`. (Portals are present and working — a subdir-mirrored
+   `git worktree list` wrapper; there is no worktree registry. Introduces `internal/hubgeometry` as the sole geometry owner, banning
+   raw `os.Getwd` and `git rev-parse --show-toplevel` outside `internal/hubgeometry` and `cmd/lyx/main.go`
+   via `internal/hubgeometry/enforcement_test.go`. (Portals are present and working — a subdir-mirrored
    Hub view of each worktree's `_lyx/`; kept available, not slated for removal.)
 
 5. **Task 006 — Weft engine.** ✅ **Done.** Path geometry for weft worktrees, paired host+weft spawn and teardown, `lyx weft` command (`status|commit|push|pull|sync`).

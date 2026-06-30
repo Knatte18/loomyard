@@ -15,7 +15,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/paths"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
 // WireJunctions creates directory junctions and seeds git-exclude entries for the
@@ -37,7 +37,7 @@ import (
 // Returns nil on success. Returns an error if:
 //   - The host contains a real directory predating weft (violation of pristine invariant)
 //   - Junction or exclude operations fail (wrapped with context)
-func WireJunctions(l *paths.Layout, slug string) error {
+func WireJunctions(l *hubgeometry.Layout, slug string) error {
 	// Create or verify host junctions
 	if err := seedLyxJunction(l, slug); err != nil {
 		return err
@@ -66,7 +66,7 @@ func WireJunctions(l *paths.Layout, slug string) error {
 //
 // Otherwise:
 //   - Returns an error indicating the host repo contains a real directory that predates weft
-func seedLyxJunction(l *paths.Layout, slug string) error {
+func seedLyxJunction(l *hubgeometry.Layout, slug string) error {
 	junctions := l.HostJunctions(slug)
 
 	for _, j := range junctions {
@@ -122,7 +122,7 @@ func seedLyxJunction(l *paths.Layout, slug string) error {
 // path via git rev-parse --git-path info/exclude. If the path is relative, joins it
 // with the worktree path. Preserves line-exact idempotency per name.
 // Idempotent: re-running when all junction names are already present is a no-op.
-func seedGitExclude(l *paths.Layout, slug string) error {
+func seedGitExclude(l *hubgeometry.Layout, slug string) error {
 	worktreePath := l.WorktreePath(slug)
 
 	// Get the exclude path via git rev-parse --git-path

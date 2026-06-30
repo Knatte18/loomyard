@@ -14,7 +14,7 @@ import (
 	"os/exec"
 	"runtime"
 
-	"github.com/Knatte18/loomyard/internal/paths"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"gopkg.in/yaml.v3"
 )
 
@@ -57,21 +57,21 @@ func DefaultEditor(path string) error {
 // on validation failure.
 //
 // Flow:
-// 1. Call FindBaseDir(baseDir) to ensure initialization; propagate error if not.
-// 2. Compute path = paths.ConfigFile(baseDir, module).
-// 3. If path does not exist, write template to it (scaffold; 0o644) and track
-//    that this call created the file (scaffolded := true).
-// 4. Loop:
-//    a. Record the file bytes.
-//    b. Call edit(path); if it returns an error, abort.
-//    c. Re-read the bytes and yaml.Unmarshal into map[string]any to validate.
-//    d. On parse success, return nil.
-//    e. On parse failure, if bytes unchanged from pre-edit snapshot, abort
-//       (operator saved without fixing); otherwise print the parse error to
-//       os.Stderr and loop to re-open the editor.
-// 5. Abort means: if scaffolded, os.Remove the file so the filesystem returns to
-//    its pre-call state; then return ErrAborted (wrapping the editor error when
-//    applicable). When the file pre-existed, abort leaves it as-is.
+//  1. Call FindBaseDir(baseDir) to ensure initialization; propagate error if not.
+//  2. Compute path = hubgeometry.ConfigFile(baseDir, module).
+//  3. If path does not exist, write template to it (scaffold; 0o644) and track
+//     that this call created the file (scaffolded := true).
+//  4. Loop:
+//     a. Record the file bytes.
+//     b. Call edit(path); if it returns an error, abort.
+//     c. Re-read the bytes and yaml.Unmarshal into map[string]any to validate.
+//     d. On parse success, return nil.
+//     e. On parse failure, if bytes unchanged from pre-edit snapshot, abort
+//     (operator saved without fixing); otherwise print the parse error to
+//     os.Stderr and loop to re-open the editor.
+//  5. Abort means: if scaffolded, os.Remove the file so the filesystem returns to
+//     its pre-call state; then return ErrAborted (wrapping the editor error when
+//     applicable). When the file pre-existed, abort leaves it as-is.
 //
 // Validation is syntactic only (the file must parse as YAML); known keys are
 // not enforced.
@@ -83,7 +83,7 @@ func Edit(baseDir, module, template string, edit EditorFunc) error {
 	}
 
 	// Compute the config file path via paths helper.
-	path := paths.ConfigFile(baseDir, module)
+	path := hubgeometry.ConfigFile(baseDir, module)
 
 	// Check if the file already exists.
 	_, err = os.Stat(path)
@@ -92,7 +92,7 @@ func Edit(baseDir, module, template string, edit EditorFunc) error {
 	// If the file does not exist, scaffold it from the template.
 	if scaffolded {
 		// Create _lyx/config/ directory if needed.
-		configDir := paths.ConfigDir(baseDir)
+		configDir := hubgeometry.ConfigDir(baseDir)
 		if err := os.MkdirAll(configDir, 0755); err != nil {
 			return fmt.Errorf("create config directory: %w", err)
 		}

@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/paths"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
 // ErrUnsupported is returned when vscode launch is attempted on an unsupported platform.
@@ -42,7 +42,7 @@ var mainColor = "#2d7d46"
 //   - Return the first palette color that is not mainColor and not in use
 //   - If all non-green colors are used, return the first non-green (palette[1])
 //   - If hub/dirs missing, return first non-green
-func PickColor(l *paths.Layout) string {
+func PickColor(l *hubgeometry.Layout) string {
 	used := make(map[string]bool)
 
 	// Try to read the hub directory

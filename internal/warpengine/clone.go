@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/paths"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
 // RemoveAll is an exported testability seam for os.RemoveAll, allowing tests to inject errors.
@@ -47,7 +47,7 @@ func CloneHub(cwd, hostURL, weftURL, boardURL string) (hubPath, resolvedBoardURL
 	}
 
 	// Step 2: Compute Hub path
-	hubPath = paths.HubPath(cwd, name)
+	hubPath = hubgeometry.HubPath(cwd, name)
 
 	// Step 3: Check if Hub already exists
 	if _, err := os.Stat(hubPath); err == nil {
@@ -69,7 +69,7 @@ func CloneHub(cwd, hostURL, weftURL, boardURL string) (hubPath, resolvedBoardURL
 	// warnings fire on every subsequent git checkout within this repo.
 	// Hook installation is non-fatal: a failure is logged but does not abort
 	// the clone (the hook is belt-and-suspenders for usability, not correctness).
-	if hookLayout, err := paths.Resolve(hostWorktreePath); err == nil {
+	if hookLayout, err := hubgeometry.Resolve(hostWorktreePath); err == nil {
 		if hookErr := InstallPostCheckoutHook(hookLayout); hookErr != nil {
 			log.Printf("warp clone: post-checkout hook install (non-fatal): %v", hookErr)
 		}
@@ -78,7 +78,7 @@ func CloneHub(cwd, hostURL, weftURL, boardURL string) (hubPath, resolvedBoardURL
 	}
 
 	// Step 6: Clone weft repo
-	if err := cloneRepo(weftURL, paths.WeftSiblingPath(hubPath, name)); err != nil {
+	if err := cloneRepo(weftURL, hubgeometry.WeftSiblingPath(hubPath, name)); err != nil {
 		return "", "", teardownHub(hubPath, err)
 	}
 
@@ -89,7 +89,7 @@ func CloneHub(cwd, hostURL, weftURL, boardURL string) (hubPath, resolvedBoardURL
 	}
 
 	// Step 8: Clone board repo
-	if err := cloneRepo(board, paths.BoardDir(hubPath)); err != nil {
+	if err := cloneRepo(board, hubgeometry.BoardDir(hubPath)); err != nil {
 		return "", "", teardownHub(hubPath, err)
 	}
 

@@ -1,9 +1,9 @@
 //go:build integration
 
-// paths_test.go covers Layout resolution, the geometry accessors, and the
+// hubgeometry_test.go covers Layout resolution, the geometry accessors, and the
 // ErrNotAGitRepo path for directories outside a git repo.
 
-package paths_test
+package hubgeometry_test
 
 import (
 	"errors"
@@ -11,8 +11,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
-	"github.com/Knatte18/loomyard/internal/paths"
 )
 
 // TestResolve_FromWorktreeRoot verifies that Resolve from the worktree root
@@ -23,7 +23,7 @@ func TestResolve_FromWorktreeRoot(t *testing.T) {
 	fix := lyxtest.CopyHostHub(t)
 	hub := fix.Hub
 
-	layout, err := paths.Resolve(hub)
+	layout, err := hubgeometry.Resolve(hub)
 	if err != nil {
 		t.Fatalf("Resolve() error = %v; want nil", err)
 	}
@@ -68,7 +68,7 @@ func TestResolve_FromSubdirectory(t *testing.T) {
 		t.Fatalf("failed to create subdirectory: %v", err)
 	}
 
-	layout, err := paths.Resolve(subDir)
+	layout, err := hubgeometry.Resolve(subDir)
 	if err != nil {
 		t.Fatalf("Resolve() error = %v; want nil", err)
 	}
@@ -96,7 +96,7 @@ func TestResolve_GeometryMethods(t *testing.T) {
 	fix := lyxtest.CopyHostHub(t)
 	hub := fix.Hub
 
-	layout, err := paths.Resolve(hub)
+	layout, err := hubgeometry.Resolve(hub)
 	if err != nil {
 		t.Fatalf("Resolve() error = %v; want nil", err)
 	}
@@ -154,7 +154,7 @@ func TestResolve_ForwardSlashNormalization(t *testing.T) {
 	hub := fix.Hub
 
 	// Call Resolve normally; both cwd and --show-toplevel output get normalized
-	layout, err := paths.Resolve(hub)
+	layout, err := hubgeometry.Resolve(hub)
 	if err != nil {
 		t.Fatalf("Resolve() error = %v; want nil", err)
 	}
@@ -176,13 +176,13 @@ func TestResolve_NotAGitRepo(t *testing.T) {
 
 	nonGitDir := t.TempDir()
 
-	layout, err := paths.Resolve(nonGitDir)
+	layout, err := hubgeometry.Resolve(nonGitDir)
 
 	if layout != nil {
 		t.Errorf("Resolve() returned non-nil layout in non-git dir: %v", layout)
 	}
 
-	if !errors.Is(err, paths.ErrNotAGitRepo) {
+	if !errors.Is(err, hubgeometry.ErrNotAGitRepo) {
 		t.Errorf("Resolve() error = %v; want wrapped ErrNotAGitRepo", err)
 	}
 }
@@ -200,7 +200,7 @@ func TestMirroredMethods(t *testing.T) {
 		t.Run("at root", func(t *testing.T) {
 			t.Parallel()
 
-			layout, err := paths.Resolve(hub)
+			layout, err := hubgeometry.Resolve(hub)
 			if err != nil {
 				t.Fatalf("Resolve() error = %v; want nil", err)
 			}
@@ -221,7 +221,7 @@ func TestMirroredMethods(t *testing.T) {
 				t.Fatalf("failed to create subdir: %v", err)
 			}
 
-			layout, err := paths.Resolve(subDir)
+			layout, err := hubgeometry.Resolve(subDir)
 			if err != nil {
 				t.Fatalf("Resolve() error = %v; want nil", err)
 			}
@@ -246,12 +246,12 @@ func TestMirroredMethods(t *testing.T) {
 				t.Fatalf("failed to create subdir2: %v", err)
 			}
 
-			layout1, err := paths.Resolve(subDir1)
+			layout1, err := hubgeometry.Resolve(subDir1)
 			if err != nil {
 				t.Fatalf("Resolve(subDir1) error = %v; want nil", err)
 			}
 
-			layout2, err := paths.Resolve(subDir2)
+			layout2, err := hubgeometry.Resolve(subDir2)
 			if err != nil {
 				t.Fatalf("Resolve(subDir2) error = %v; want nil", err)
 			}
@@ -272,7 +272,7 @@ func TestMirroredMethods(t *testing.T) {
 		t.Run("at root (backward compat)", func(t *testing.T) {
 			t.Parallel()
 
-			layout, err := paths.Resolve(hub)
+			layout, err := hubgeometry.Resolve(hub)
 			if err != nil {
 				t.Fatalf("Resolve() error = %v; want nil", err)
 			}
@@ -294,7 +294,7 @@ func TestMirroredMethods(t *testing.T) {
 				t.Fatalf("failed to create subdir: %v", err)
 			}
 
-			layout, err := paths.Resolve(subDir)
+			layout, err := hubgeometry.Resolve(subDir)
 			if err != nil {
 				t.Fatalf("Resolve() error = %v; want nil", err)
 			}
@@ -319,12 +319,12 @@ func TestMirroredMethods(t *testing.T) {
 				t.Fatalf("failed to create subdir2: %v", err)
 			}
 
-			layout1, err := paths.Resolve(subDir1)
+			layout1, err := hubgeometry.Resolve(subDir1)
 			if err != nil {
 				t.Fatalf("Resolve(subDir1) error = %v; want nil", err)
 			}
 
-			layout2, err := paths.Resolve(subDir2)
+			layout2, err := hubgeometry.Resolve(subDir2)
 			if err != nil {
 				t.Fatalf("Resolve(subDir2) error = %v; want nil", err)
 			}
@@ -345,7 +345,7 @@ func TestMirroredMethods(t *testing.T) {
 		t.Run("at root", func(t *testing.T) {
 			t.Parallel()
 
-			layout, err := paths.Resolve(hub)
+			layout, err := hubgeometry.Resolve(hub)
 			if err != nil {
 				t.Fatalf("Resolve() error = %v; want nil", err)
 			}
@@ -365,7 +365,7 @@ func TestMirroredMethods(t *testing.T) {
 				t.Fatalf("failed to create subdir: %v", err)
 			}
 
-			layout, err := paths.Resolve(subDir)
+			layout, err := hubgeometry.Resolve(subDir)
 			if err != nil {
 				t.Fatalf("Resolve() error = %v; want nil", err)
 			}
@@ -384,7 +384,7 @@ func TestMirroredMethods(t *testing.T) {
 		t.Run("at root", func(t *testing.T) {
 			t.Parallel()
 
-			layout, err := paths.Resolve(hub)
+			layout, err := hubgeometry.Resolve(hub)
 			if err != nil {
 				t.Fatalf("Resolve() error = %v; want nil", err)
 			}
@@ -410,7 +410,7 @@ func TestMirroredMethods(t *testing.T) {
 				t.Fatalf("failed to create subdir: %v", err)
 			}
 
-			layout, err := paths.Resolve(subDir)
+			layout, err := hubgeometry.Resolve(subDir)
 			if err != nil {
 				t.Fatalf("Resolve() error = %v; want nil", err)
 			}
@@ -435,7 +435,7 @@ func TestMirroredMethods(t *testing.T) {
 		t.Run("at root", func(t *testing.T) {
 			t.Parallel()
 
-			layout, err := paths.Resolve(hub)
+			layout, err := hubgeometry.Resolve(hub)
 			if err != nil {
 				t.Fatalf("Resolve() error = %v; want nil", err)
 			}
@@ -460,7 +460,7 @@ func TestMirroredMethods(t *testing.T) {
 				t.Fatalf("failed to create subdir: %v", err)
 			}
 
-			layout, err := paths.Resolve(subDir)
+			layout, err := hubgeometry.Resolve(subDir)
 			if err != nil {
 				t.Fatalf("Resolve() error = %v; want nil", err)
 			}
@@ -487,7 +487,7 @@ func TestRefactoredMethods(t *testing.T) {
 	fix := lyxtest.CopyHostHub(t)
 	hub := fix.Hub
 
-	layout, err := paths.Resolve(hub)
+	layout, err := hubgeometry.Resolve(hub)
 	if err != nil {
 		t.Fatalf("Resolve() error = %v; want nil", err)
 	}

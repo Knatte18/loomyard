@@ -1,12 +1,12 @@
-# `internal/paths`
+# `internal/hubgeometry`
 
 The **canonical geometry resolver** — the single owner of all worktree and Hub
 path math. Centralizes cwd/worktree-root handling so the `cwd ≠ git-repo-path` bug
 class never recurs.
 
-**Dependency direction (Go enforces it):** `internal/paths` imports only
+**Dependency direction (Go enforces it):** `internal/hubgeometry` imports only
 `internal/gitexec` + stdlib and **never** a domain module. All domain modules
-(`warp`, `board`, `ide`, `muxpoc`) import `paths` for geometry.
+(`warp`, `board`, `ide`, `muxpoc`) import `hubgeometry` for geometry.
 
 ## The problem
 
@@ -18,7 +18,7 @@ makes correctness structural, not a matter of discipline.
 
 ### Constants
 
-The following constants centralize every geometry and layout literal so no other package needs to repeat a string value. All production code that constructs paths from these names must import `internal/paths` and use these constants — never inline string literals.
+The following constants centralize every geometry and layout literal so no other package needs to repeat a string value. All production code that constructs paths from these names must import `internal/hubgeometry` and use these constants — never inline string literals.
 
 #### Layout constants
 
@@ -39,7 +39,7 @@ These three constants are the single source of the geometry tokens for the whole
 Returns the current working directory.
 
 **Behavior:** A thin wrapper over `os.Getwd`; the only permitted `os.Getwd` call
-outside `internal/paths` (and `cmd/lyx/main.go`).
+outside `internal/hubgeometry` (and `cmd/lyx/main.go`).
 
 **Returns:** On success, the cleaned absolute path of the cwd. On failure, an error
 (e.g., the cwd no longer exists).
@@ -131,9 +131,9 @@ These pure functions construct geometry paths without requiring a resolved `Layo
 
 ## Design principles
 
-**Geometry-only.** `paths` computes *where* things are, never *mutates* them.
+**Geometry-only.** `hubgeometry` computes *where* things are, never *mutates* them.
 Worktree creation/removal, junction setup, and config scaffolding stay in the
-domain modules. `paths` is the dumb geometry resolver so they can be smart about
+domain modules. `hubgeometry` is the dumb geometry resolver so they can be smart about
 state transitions.
 
 **Single call per invocation.** Most callsites invoke `Resolve(cwd)` once at the
@@ -141,36 +141,36 @@ start of a command and re-use the returned `Layout` throughout. This amortizes a
 git calls and normalization upfront.
 
 **Normalization in one place.** Forward slashes from `git rev-parse --show-toplevel`
-vs backslashes from `os.Getwd()` are reconciled once in `paths` via
+vs backslashes from `os.Getwd()` are reconciled once in `hubgeometry` via
 `filepath.FromSlash` + `filepath.Clean`, so callers never deal with mixed forms.
 
-**Config resolution stays cwd-authoritative.** `paths.Resolve` is geometry-only and
+**Config resolution stays cwd-authoritative.** `hubgeometry.Resolve` is geometry-only and
 does NOT check for `_lyx/`. The cwd-authoritative config invariant (`_lyx/` must
 exist at cwd) remains enforced by `internal/configengine.FindBaseDir`. Board and other
-modules keep passing `cwd` to their `LoadConfig` (obtained via `paths.Getwd`). This
+modules keep passing `cwd` to their `LoadConfig` (obtained via `hubgeometry.Getwd`). This
 lets `board init` (pre-init, no `_lyx/`) and other early-stage commands call into
-`paths` without a spurious "not initialized" failure.
+`hubgeometry` without a spurious "not initialized" failure.
 
-**Mirrored system dirs never enumerate the worktree.** `paths` only derives Loomyard's
+**Mirrored system dirs never enumerate the worktree.** `hubgeometry` only derives Loomyard's
 own system directories (`_lyx`, `_portals`, `_launchers`) from `RelPath` and never
 enumerates or mirrors user content. A nested or git-ignored `_codeguide` sibling
 (or any other sibling repo) is never mirrored as a subpath-specific copy.
 
 ## The enforcement wall
 
-`internal/paths/enforcement_test.go` runs two repo-wide AST scans on every
-`go test ./internal/paths/...` run:
+`internal/hubgeometry/enforcement_test.go` runs two repo-wide AST scans on every
+`go test ./internal/hubgeometry/...` run:
 
 **`TestEnforcement` (cwd/root primitives ban):**
 Raw `os.Getwd` and `git rev-parse --show-toplevel` are banned outside
-`internal/paths` and `cmd/lyx/main.go`. The scan uses a substring check on the
+`internal/hubgeometry` and `cmd/lyx/main.go`. The scan uses a substring check on the
 raw file bytes and fails the build if either token appears in any non-test `.go`
 file outside the allowlist.
 
 **`TestEnforcement_GeometryLiterals` (geometry-literal construction ban):**
 The geometry path tokens `_board`, `-weft`, `-HUB`, `_portals`, `_launchers`,
 `_codeguide`, and `_lyx` may not appear as string literals in a
-**path-construction context** in any production file outside `internal/paths`.
+**path-construction context** in any production file outside `internal/hubgeometry`.
 Path-construction contexts are:
 
 - An argument to a `filepath.Join(...)` call.

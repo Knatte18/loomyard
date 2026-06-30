@@ -54,8 +54,8 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/output"
-	"github.com/Knatte18/loomyard/internal/paths"
 	"github.com/Knatte18/loomyard/internal/warpengine"
 	"github.com/spf13/cobra"
 )
@@ -218,12 +218,12 @@ func RunCLI(out io.Writer, args []string) int {
 // runAdd parses and executes the warp add subcommand.
 // Under cobra, args[0] is the slug (cobra has already stripped the "add" token).
 func runAdd(out io.Writer, args []string) int {
-	cwd, err := paths.Getwd()
+	cwd, err := hubgeometry.Getwd()
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
-	l, err := paths.Resolve(cwd)
+	l, err := hubgeometry.Resolve(cwd)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -255,12 +255,12 @@ func runAdd(out io.Writer, args []string) int {
 
 // runList parses and executes the warp list subcommand.
 func runList(out io.Writer, _ []string) int {
-	cwd, err := paths.Getwd()
+	cwd, err := hubgeometry.Getwd()
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
-	_, err = paths.Resolve(cwd)
+	_, err = hubgeometry.Resolve(cwd)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -291,12 +291,12 @@ func runList(out io.Writer, _ []string) int {
 // weft side without requiring the user to supply a branch name. On success it
 // emits a JSON object with branch and weft_worktree fields.
 func runCheckout(out io.Writer, args []string) int {
-	cwd, err := paths.Getwd()
+	cwd, err := hubgeometry.Getwd()
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
-	l, err := paths.Resolve(cwd)
+	l, err := hubgeometry.Resolve(cwd)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -349,12 +349,12 @@ func runCheckout(out io.Writer, args []string) int {
 // calls Status to enumerate all host↔weft pairs with drift and pollution data,
 // and emits the result via output.Ok.
 func runPairs(out io.Writer, _ []string) int {
-	cwd, err := paths.Getwd()
+	cwd, err := hubgeometry.Getwd()
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
-	l, err := paths.Resolve(cwd)
+	l, err := hubgeometry.Resolve(cwd)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -381,12 +381,12 @@ func runPairs(out io.Writer, _ []string) int {
 // calls Reconcile to walk and repair all host↔weft pairs, and emits the
 // result via output.Ok.
 func runReconcile(out io.Writer, _ []string) int {
-	cwd, err := paths.Getwd()
+	cwd, err := hubgeometry.Getwd()
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
-	l, err := paths.Resolve(cwd)
+	l, err := hubgeometry.Resolve(cwd)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -410,12 +410,12 @@ func runReconcile(out io.Writer, _ []string) int {
 // runPruneWithFlag executes the prune logic with the resolved apply flag.
 // It is called from the pruneCmd RunE after reading --apply from the cobra flag set.
 func runPruneWithFlag(out io.Writer, apply bool) int {
-	cwd, err := paths.Getwd()
+	cwd, err := hubgeometry.Getwd()
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
-	l, err := paths.Resolve(cwd)
+	l, err := hubgeometry.Resolve(cwd)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -439,12 +439,12 @@ func runPruneWithFlag(out io.Writer, apply bool) int {
 // runCleanupWithFlags executes the cleanup logic with the resolved apply and force flags.
 // It is called from the cleanupCmd RunE after reading --apply and --force from the cobra flag set.
 func runCleanupWithFlags(out io.Writer, apply, force bool) int {
-	cwd, err := paths.Getwd()
+	cwd, err := hubgeometry.Getwd()
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
-	l, err := paths.Resolve(cwd)
+	l, err := hubgeometry.Resolve(cwd)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -469,12 +469,12 @@ func runCleanupWithFlags(out io.Writer, apply, force bool) int {
 // It is called from the removeCmd RunE after reading --force from the cobra flag set.
 // Under cobra, args[0] is the slug (cobra has already consumed "remove" from the list).
 func runRemoveWithFlag(out io.Writer, args []string, force bool) int {
-	cwd, err := paths.Getwd()
+	cwd, err := hubgeometry.Getwd()
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
-	l, err := paths.Resolve(cwd)
+	l, err := hubgeometry.Resolve(cwd)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}

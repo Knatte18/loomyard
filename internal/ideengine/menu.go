@@ -14,12 +14,12 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
-	"github.com/Knatte18/loomyard/internal/paths"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
 // Menu presents an interactive picker of active worktrees, allowing the user to open one via Spawn.
 //
-// It discovers active worktrees from paths.List(l.Cwd), excluding the main worktree (Main==true)
+// It discovers active worktrees from hubgeometry.List(l.Cwd), excluding the main worktree (Main==true)
 // and only including those whose <path>/<l.RelPath>/_lyx directory exists.
 //
 // Titles are resolved ONLY through the board facade (b.GetTask(slug) → Task.Title).
@@ -35,7 +35,7 @@ import (
 //   - out: output writer (for printing the picker menu)
 //
 // Returns an error on failure (HARD error if config load or HealthCheck fails), or nil on success.
-func Menu(l *paths.Layout, in io.Reader, out io.Writer) error {
+func Menu(l *hubgeometry.Layout, in io.Reader, out io.Writer) error {
 	// Load board config and create board facade
 	cfg, err := boardengine.LoadConfig(l.Cwd, "board")
 	if err != nil {
@@ -49,8 +49,8 @@ func Menu(l *paths.Layout, in io.Reader, out io.Writer) error {
 		return fmt.Errorf("board health check failed: %w", err)
 	}
 
-	// Discover active worktrees via paths.List
-	entries, err := paths.List(l.Cwd)
+	// Discover active worktrees via hubgeometry.List
+	entries, err := hubgeometry.List(l.Cwd)
 	if err != nil {
 		return fmt.Errorf("list worktrees: %w", err)
 	}
@@ -69,7 +69,7 @@ func Menu(l *paths.Layout, in io.Reader, out io.Writer) error {
 		slug := filepath.Base(entry.Path)
 
 		// Check if _lyx exists at <path>/<l.RelPath>/_lyx
-		lyxPath := filepath.Join(entry.Path, l.RelPath, paths.LyxDirName)
+		lyxPath := filepath.Join(entry.Path, l.RelPath, hubgeometry.LyxDirName)
 		stat, err := os.Stat(lyxPath)
 		if err != nil || !stat.IsDir() {
 			// _lyx doesn't exist or is not a directory; skip

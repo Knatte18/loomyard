@@ -10,7 +10,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/paths"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
 // RemoveResult contains the result of successfully removing a worktree.
@@ -44,7 +44,7 @@ type RemoveResult struct {
 // 10. Leave <container>/_launchers/ide-menu.cmd in place.
 //
 // Returns RemoveResult on success or an error if the target doesn't exist or other failures occur.
-func (w *Worktree) Remove(l *paths.Layout, slug string, force bool) (RemoveResult, error) {
+func (w *Worktree) Remove(l *hubgeometry.Layout, slug string, force bool) (RemoveResult, error) {
 	// Compute weft branch name (mirrored)
 	branch := w.cfg.BranchPrefix + slug
 

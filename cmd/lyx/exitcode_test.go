@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/paths"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
 // setupBoardConfig creates a minimal _lyx/config/board.yaml in a temp directory
@@ -24,15 +24,15 @@ func setupBoardConfig(t *testing.T) {
 	t.Helper()
 	cwd := t.TempDir()
 
-	lyxDir := filepath.Join(cwd, paths.LyxDirName)
+	lyxDir := filepath.Join(cwd, hubgeometry.LyxDirName)
 	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
 		t.Fatalf("setupBoardConfig: MkdirAll _lyx: %v", err)
 	}
-	configDir := paths.ConfigDir(cwd)
+	configDir := hubgeometry.ConfigDir(cwd)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("setupBoardConfig: MkdirAll _lyx/config: %v", err)
 	}
-	configPath := paths.ConfigFile(cwd, "board")
+	configPath := hubgeometry.ConfigFile(cwd, "board")
 	boardConfig := "path: board\nhome: Home.md\nsidebar: _Sidebar.md\nproposal_prefix: proposal-\n"
 	if err := os.WriteFile(configPath, []byte(boardConfig), 0o644); err != nil {
 		t.Fatalf("setupBoardConfig: write board.yaml: %v", err)

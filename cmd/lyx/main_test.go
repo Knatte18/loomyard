@@ -14,7 +14,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/paths"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
 // These tests cover main's own responsibility — module routing — not the board
@@ -70,22 +70,22 @@ func TestRunDispatchesToBoard(t *testing.T) {
 	// Create temp cwd with _lyx/config/board.yaml
 	cwd := t.TempDir()
 
-	// Initialize a git repo so the board's PersistentPreRunE can call paths.Resolve
-	// without error. The board data dir is now geometry (paths.BoardDir(Hub)) rather
+	// Initialize a git repo so the board's PersistentPreRunE can call hubgeometry.Resolve
+	// without error. The board data dir is now geometry (hubgeometry.BoardDir(Hub)) rather
 	// than a config key, so the dispatched command resolves the worktree layout.
 	if _, _, exitCode, err := gitexec.RunGit([]string{"init"}, cwd); err != nil || exitCode != 0 {
 		t.Fatalf("git init failed: %v (exit code %d)", err, exitCode)
 	}
 
-	lyxDir := filepath.Join(cwd, paths.LyxDirName)
+	lyxDir := filepath.Join(cwd, hubgeometry.LyxDirName)
 	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
-	configDir := paths.ConfigDir(cwd)
+	configDir := hubgeometry.ConfigDir(cwd)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
-	configPath := paths.ConfigFile(cwd, "board")
+	configPath := hubgeometry.ConfigFile(cwd, "board")
 	// Write a template-complete board config. path: is no longer a template key
 	// (the board data dir is paths-owned), so only home/sidebar/proposal_prefix remain.
 	boardConfig := "home: Home.md\nsidebar: _Sidebar.md\nproposal_prefix: proposal-\n"
@@ -115,22 +115,22 @@ func TestRunBoardErrorPropagatesExitCode(t *testing.T) {
 	// Create temp cwd with _lyx/config/board.yaml
 	cwd := t.TempDir()
 
-	// Initialize a git repo so PersistentPreRunE's paths.Resolve succeeds; this
+	// Initialize a git repo so PersistentPreRunE's hubgeometry.Resolve succeeds; this
 	// ensures the exit-1 assertion below tests the board command's own failure
 	// (removing a nonexistent task), not an upstream layout-resolution error.
 	if _, _, exitCode, err := gitexec.RunGit([]string{"init"}, cwd); err != nil || exitCode != 0 {
 		t.Fatalf("git init failed: %v (exit code %d)", err, exitCode)
 	}
 
-	lyxDir := filepath.Join(cwd, paths.LyxDirName)
+	lyxDir := filepath.Join(cwd, hubgeometry.LyxDirName)
 	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
-	configDir := paths.ConfigDir(cwd)
+	configDir := hubgeometry.ConfigDir(cwd)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
-	configPath := paths.ConfigFile(cwd, "board")
+	configPath := hubgeometry.ConfigFile(cwd, "board")
 	// Write a template-complete board config. path: is no longer a template key
 	// (the board data dir is paths-owned), so only home/sidebar/proposal_prefix remain.
 	boardConfig := "home: Home.md\nsidebar: _Sidebar.md\nproposal_prefix: proposal-\n"
@@ -222,17 +222,17 @@ func TestRunDispatchesToConfigReconcile(t *testing.T) {
 	// configcli.RunCLI should recognize the subcommand and produce JSON output.
 	cwd := t.TempDir()
 
-	// Initialize git repo so paths.Resolve succeeds.
+	// Initialize git repo so hubgeometry.Resolve succeeds.
 	_, _, exitCode, err := gitexec.RunGit([]string{"init"}, cwd)
 	if err != nil || exitCode != 0 {
 		t.Fatalf("git init failed: %v (exit code %d)", err, exitCode)
 	}
 
-	lyxDir := filepath.Join(cwd, paths.LyxDirName)
+	lyxDir := filepath.Join(cwd, hubgeometry.LyxDirName)
 	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
-	configDir := paths.ConfigDir(cwd)
+	configDir := hubgeometry.ConfigDir(cwd)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}

@@ -14,7 +14,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/paths"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
 // PairInSync reports whether the host worktree and its paired weft worktree are in sync.
@@ -29,7 +29,7 @@ import (
 // Returns (true, "", nil) if the pair is in sync.
 // Returns (false, reason, nil) if the pair is out of sync; reason describes the divergence.
 // Returns (false, "", err) if the check encounters a system error (e.g., git failure, stat error).
-func PairInSync(l *paths.Layout) (ok bool, reason string, err error) {
+func PairInSync(l *hubgeometry.Layout) (ok bool, reason string, err error) {
 	// Verify the host worktree's current branch via rev-parse --abbrev-ref HEAD.
 	hostOut, _, exitCode, err := gitexec.RunGit(
 		[]string{"rev-parse", "--abbrev-ref", "HEAD"},

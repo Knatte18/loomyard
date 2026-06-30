@@ -14,7 +14,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
-	"github.com/Knatte18/loomyard/internal/paths"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
 // menu presents an interactive picker of available config modules.
@@ -27,14 +27,14 @@ import (
 // Handles 'q' to quit (return 0).
 // Parses selection as 1-indexed number, validates range, routes to editOne on valid choice.
 // Returns the exit code from editOne or an error code (1) on invalid input.
-func menu(l *paths.Layout, baseDir string, in io.Reader, out io.Writer, edit configengine.EditorFunc, sync syncFunc) int {
+func menu(l *hubgeometry.Layout, baseDir string, in io.Reader, out io.Writer, edit configengine.EditorFunc, sync syncFunc) int {
 	// Get the list of available modules.
 	names := configreg.Names()
 
 	// Print numbered picker with configured/default status.
 	for i, name := range names {
 		// Check if config file exists.
-		configPath := paths.ConfigFile(baseDir, name)
+		configPath := hubgeometry.ConfigFile(baseDir, name)
 		_, err := os.Stat(configPath)
 		status := "(default)"
 		if err == nil {

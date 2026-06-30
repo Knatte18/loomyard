@@ -56,7 +56,7 @@ integration time actually goes.
 | `internal/board/boardtest` | 2.0 s          | **31.2 s** | real git commit/push (local only, parallelized)  |
 | `internal/ide`             | 0.6 s          | 25.8 s     | spawns the binary, drives the TUI                |
 | `internal/lyxtest`         | no test files¹ | 11.1 s     | builds the shared git fixture templates          |
-| `internal/paths`           | 0.6 s          | 8.2 s      | mirrored-path filesystem geometry                |
+| `internal/hubgeometry`     | 0.6 s          | 8.2 s      | mirrored-path filesystem geometry                |
 | `internal/muxpoc`          | 1.6 s          | 3.0 s      | —                                                |
 | `internal/git`             | no test files¹ | 2.0 s      | gated git-wrapper tests                          |
 | `cmd/lyx`                  | 1.0 s          | 2.3 s      | —                                                |
@@ -271,7 +271,7 @@ CGO-capable CI.
 
 ### 2026-06-21 — after `optimize-test-suite`
 
-The git-spawning tests in `internal/worktree`, `internal/weft`, and `internal/paths`
+The git-spawning tests in `internal/worktree`, `internal/weft`, and `internal/hubgeometry`
 were migrated onto shared `lyxtest` fixtures, gated behind a build tag, and
 parallelised. This introduced the two-tier split (later completed for board/ide on
 2026-06-22).
@@ -281,7 +281,7 @@ parallelised. This introduced the two-tier split (later completed for board/ide 
 | Package              | Tier 1 before          | Tier 1 after | Tier 2 after |
 |----------------------|------------------------|--------------|--------------|
 | `internal/worktree`  | 53.6 s                 | **1.06 s**   | 30.6 s       |
-| `internal/paths`     | 19.8 s                 | **0.17 s**   | 4.05 s       |
+| `internal/hubgeometry` | 19.8 s               | **0.17 s**   | 4.05 s       |
 | `internal/weft`      | not separately listed¹ | **0.22 s**   | 21.5 s       |
 
 ¹ The 2026-06-15 block did not record `internal/weft` as its own row, so there is no
@@ -389,7 +389,7 @@ All prior Tier 1 (~3.5 s) overhead is preserved.
 | `internal/board/boardtest` | **~41.8 s** | **31.2 s** | **−10.6 s** | **Parallelized** local git tests; no more `BOARD_SKIP_*` env seam forcing serial; now runs 26 s of git logic in parallel (was serial) |
 | `internal/ide` | 13.9 s | **25.8 s** | +11.9 s | Fixture overhead shared across longer worktree runs |
 | `internal/lyxtest` | 5.8 s | **11.1 s** | +5.3 s | Template-build cost unchanged; fixture copies now overlap with longer tests |
-| `internal/paths` | 4.9 s | **8.2 s** | +3.3 s | Fixture overhead in parallel contention |
+| `internal/hubgeometry` | 4.9 s | **8.2 s** | +3.3 s | Fixture overhead in parallel contention |
 | `internal/muxpoc` | 1.5 s | 3.0 s | +1.5 s | Minor shift |
 | Other packages | < 2 s each | < 2 s each | **unchanged** | No git integration tests |
 

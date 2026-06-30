@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/paths"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
 // TestPickColor covers the palette picker, ensuring it selects unused non-green colors
@@ -113,7 +113,7 @@ func TestPickColor(t *testing.T) {
 
 			tt.setupFunc(tmpDir, mainPath)
 
-			layout := &paths.Layout{
+			layout := &hubgeometry.Layout{
 				Hub:     tmpDir,
 				Prime:   mainPath,
 				RelPath: tt.RelPath,

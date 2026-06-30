@@ -10,21 +10,21 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
-	"github.com/Knatte18/loomyard/internal/paths"
 )
 
 // setupPortalTarget resolves a layout from the given directory and creates
 // the target _lyx directory structure for the given slug and layout.
 // Returns the resolved layout and the created _lyx target directory path.
 // If portal creation is unsupported on this platform, skips the test.
-func setupPortalTarget(t *testing.T, dir string, slug string) (*paths.Layout, string) {
+func setupPortalTarget(t *testing.T, dir string, slug string) (*hubgeometry.Layout, string) {
 	t.Helper()
 
 	// Resolve layout from directory.
-	l, err := paths.Resolve(dir)
+	l, err := hubgeometry.Resolve(dir)
 	if err != nil {
-		t.Fatalf("paths.Resolve(%q): %v", dir, err)
+		t.Fatalf("hubgeometry.Resolve(%q): %v", dir, err)
 	}
 
 	// Create target _lyx directory structure.
@@ -42,7 +42,7 @@ func setupPortalTarget(t *testing.T, dir string, slug string) (*paths.Layout, st
 }
 
 // TestCreatePortal covers the createPortal and removePortal helpers.
-// It creates a paths.Layout from a test repo subdirectory (non-trivial RelPath),
+// It creates a hubgeometry.Layout from a test repo subdirectory (non-trivial RelPath),
 // creates the target _lyx/ dir, calls createPortal and asserts the junction
 // resolves to the target at the mirrored location l.PortalLink(slug).
 // Then it calls removePortal and asserts the link is gone, empty ancestors are

@@ -19,8 +19,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/configsync"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/output"
-	"github.com/Knatte18/loomyard/internal/paths"
 	"github.com/Knatte18/loomyard/internal/weftcli"
 )
 
@@ -41,7 +41,7 @@ func printModule(baseDir string, out io.Writer, module string) int {
 		return output.Err(out, fmt.Sprintf("unknown config module: %s (known: %v)", module, configreg.Names()))
 	}
 
-	path := paths.ConfigFile(baseDir, module)
+	path := hubgeometry.ConfigFile(baseDir, module)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -70,7 +70,7 @@ func printAll(baseDir string, out io.Writer) int {
 		// Write a section delimiter so the reader can separate module blocks.
 		fmt.Fprintf(out, "# %s\n", name)
 
-		path := paths.ConfigFile(baseDir, name)
+		path := hubgeometry.ConfigFile(baseDir, name)
 		data, err := os.ReadFile(path)
 		if err != nil {
 			if os.IsNotExist(err) {
@@ -138,7 +138,7 @@ func editOne(baseDir string, out io.Writer, module string, edit configengine.Edi
 // When printOnly is true the command is read-only: it writes on-disk YAML to out
 // without opening an editor. The print path is evaluated before any edit/menu logic.
 // The baseDir is computed from the layout as filepath.Join(WorktreeRoot, RelPath).
-func dispatch(l *paths.Layout, in io.Reader, out io.Writer, args []string, edit configengine.EditorFunc, sync syncFunc, printOnly bool) int {
+func dispatch(l *hubgeometry.Layout, in io.Reader, out io.Writer, args []string, edit configengine.EditorFunc, sync syncFunc, printOnly bool) int {
 	baseDir := filepath.Join(l.WorktreeRoot, l.RelPath)
 
 	// Handle --print before any edit/menu dispatch; the print path is read-only
@@ -175,12 +175,12 @@ func buildConfigLong() string {
 // 1 on any error.
 func runReconcile(out io.Writer, apply bool) int {
 	// Resolve the current working directory and layout.
-	cwd, err := paths.Getwd()
+	cwd, err := hubgeometry.Getwd()
 	if err != nil {
 		return output.Err(out, fmt.Sprintf("getwd: %v", err))
 	}
 
-	l, err := paths.Resolve(cwd)
+	l, err := hubgeometry.Resolve(cwd)
 	if err != nil {
 		return output.Err(out, fmt.Sprintf("resolve layout: %v", err))
 	}
@@ -275,13 +275,13 @@ func RunCLI(out io.Writer, args []string) int {
 // without opening an editor or running sync.
 func runConfig(out io.Writer, args []string, printOnly bool) int {
 	// Resolve the current working directory.
-	cwd, err := paths.Getwd()
+	cwd, err := hubgeometry.Getwd()
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
 	// Resolve the layout.
-	l, err := paths.Resolve(cwd)
+	l, err := hubgeometry.Resolve(cwd)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}

@@ -10,7 +10,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/paths"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
 // writeLaunchers writes per-worktree launchers for the given slug.
@@ -28,7 +28,7 @@ import (
 //	@cd /d "%~dp0<climb-backslash>" && lyx ide menu
 //
 // On non-Windows: returns nil (no-op).
-func writeLaunchers(l *paths.Layout, slug string) error {
+func writeLaunchers(l *hubgeometry.Layout, slug string) error {
 	if runtime.GOOS != "windows" {
 		return nil // No-op on non-Windows
 	}
@@ -91,7 +91,7 @@ func writeLaunchers(l *paths.Layout, slug string) error {
 // in the leaf _launchers/<RelPath>/ dir, the prune stops there in practice,
 // removing only LauncherDir(slug) itself (intended asymmetry).
 // Returns nil if the directory does not exist (os.RemoveAll returns nil for non-existent paths).
-func removeLaunchers(l *paths.Layout, slug string) error {
+func removeLaunchers(l *hubgeometry.Layout, slug string) error {
 	launcherDir := l.LauncherDir(slug)
 	if err := os.RemoveAll(launcherDir); err != nil {
 		return fmt.Errorf("remove launcher dir %s: %w", launcherDir, err)

@@ -12,7 +12,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/paths"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
 // postCheckoutScript is the embedded POSIX sh post-checkout hook body.
@@ -58,7 +58,7 @@ _user_exit=$?
 // On platforms that support chmod (non-Windows), the file is marked executable.
 // On Windows, git reads and executes the hook via its bundled bash regardless of
 // the file mode, so the chmod is a no-op but harmless.
-func InstallPostCheckoutHook(l *paths.Layout) error {
+func InstallPostCheckoutHook(l *hubgeometry.Layout) error {
 	// Resolve the common git directory so the hook lands in the shared .git
 	// even when called from a linked worktree (where --git-dir differs).
 	commonDirOut, _, exitCode, err := gitexec.RunGit(

@@ -76,10 +76,10 @@ func makeBareRemote(t *testing.T, dir, name string) string {
 // It swaps warpengine.RemoveAll cross-package to inject a teardown error, then calls
 // runCloneWithReset with a non-existent board URL so the board clone triggers teardown.
 // The test stays serial (no t.Parallel) because it changes the global RemoveAll seam and
-// relies on t.Chdir for the cwd that runCloneWithReset reads via paths.Getwd().
+// relies on t.Chdir for the cwd that runCloneWithReset reads via hubgeometry.Getwd().
 func TestCloneHub_TeardownFailure(t *testing.T) {
 	cwd := t.TempDir()
-	t.Chdir(cwd) // runCloneWithReset reads paths.Getwd() so cwd must be set.
+	t.Chdir(cwd) // runCloneWithReset reads hubgeometry.Getwd() so cwd must be set.
 
 	// Swap RemoveAll to inject a teardown failure; restore after test.
 	orig := warpengine.RemoveAll
