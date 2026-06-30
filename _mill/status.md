@@ -40,7 +40,9 @@ batches:
     start_sha: 15eb58c5a467462b24eb27ed0b06736aeb04109e
     commit_sha: c60b822f1da31a373930651b7ba659d4011cf8b3
   - name: board-paths-owned
-    state: pending
+    state: running
+    implementer_session: a4092a5f-298e-4784-aa66-63d1ce8d138a
+    start_sha: 981711764041986a2d92eaa61b95dbfb0ad97357
   - name: lyxtest-geometry
     state: pending
   - name: enforcement-and-docs
