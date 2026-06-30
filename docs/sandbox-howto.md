@@ -13,23 +13,21 @@ parent `C:\Code`.
 
 `sandbox.cmd suite` fingerprints the `lyx.exe` on PATH, drops a fresh
 `SANDBOX-SUITE.md` into the Hub host repo, and launches an interactive black-box
-agent that drives `lyx` from PATH only (never the source tree). The agent files
-WARN/FAIL findings via `lyx selfreport create`.
+agent that drives `lyx` from PATH only (never the source tree). The agent writes
+WARN/FAIL findings to `sandbox-report.json` in the host repo; on a clean exit
+`sandbox.cmd suite` fetches a normalized copy into this repo's
+`.scratch/sandbox-report-<fingerprint>.json`.
 
 Because the agent tests **the binary on PATH**, a stale binary means you are
 testing old code. Always deploy before a run (step 2).
 
 ## Prerequisites (one-time)
 
-1. **`gh` authenticated** — the agent files findings through the `gh` CLI.
-   ```cmd
-   gh auth status
-   ```
-2. **Sandbox wiki initialized** — the board repo is the weft repo's GitHub wiki.
+1. **Sandbox wiki initialized** — the board repo is the weft repo's GitHub wiki.
    `lyx-test-weft` must have Wikis enabled and at least one page, or
    `warp clone` fails and the Hub is torn down. See
    [sandbox-hub.md#prerequisites](sandbox-hub.md#prerequisites).
-3. **`C:\Code\tools\bin` is on PATH** — that is where `deploy.cmd` installs `lyx`.
+2. **`C:\Code\tools\bin` is on PATH** — that is where `deploy.cmd` installs `lyx`.
 
 ## Each run
 
@@ -98,8 +96,11 @@ sandbox.cmd suite -prompt <text>   # override the instruction string
 
 ### 5. Triage findings
 
-The agent files WARN/FAIL findings as GitHub issues on the LoomYard repo. Pull
-them into the backlog, then groom/spawn as usual.
+The agent no longer files GitHub issues itself. Instead: the suite emits
+`sandbox-report.json` in the Hub host repo → `suite.go` fetches it into this
+repo's `.scratch/sandbox-report-<fingerprint>.json` on a clean exit → run the
+report-to-tasks triage skill (millhouse#586) against that file to pull findings
+into the backlog, then groom/spawn as usual.
 
 ## Troubleshooting
 
@@ -107,11 +108,10 @@ them into the backlog, then groom/spawn as usual.
 |---|---|---|
 | `lyx` not found / old behaviour | binary on PATH is stale or `C:\Code\tools\bin` not on PATH | rerun `deploy.cmd`; check PATH |
 | `warp clone` fails during build | sandbox wiki not initialized | enable Wikis + add a page on `lyx-test-weft`, then `sandbox.cmd -reset` |
-| agent cannot file findings | `gh` not authenticated | `gh auth login` |
 | Hub looks corrupt / half-cloned | interrupted earlier run | `sandbox.cmd -reset` |
 | exit code always 0/1, not claude's | launcher collapses claude's code | build and run `go build -o sandbox.exe ./tools/sandbox` for precise codes |
 
 ## See also
 
 - [sandbox-hub.md](sandbox-hub.md) — Hub topology, repo layout, design rationale.
-- [tools/sandbox/test-scheme.md](../tools/sandbox/test-scheme.md) — the embedded test scheme the agent follows.
+- [tools/sandbox/SANDBOX-SUITE.md](../tools/sandbox/SANDBOX-SUITE.md) — the embedded test scheme the agent follows.
