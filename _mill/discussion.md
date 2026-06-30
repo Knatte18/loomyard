@@ -27,7 +27,8 @@ session:
   closed invalid).
 - Smaller friction: PowerShell users backslash-escape JSON args and hit a cryptic
   parse error (#40.1); S2 wrongly calls a raw-`git` host commit a "gap" (#40.2); the
-  board is durable across sessions but S1/S3 wording assumes a fresh board (#40.3).
+  board is durable across sessions but the scheme's S3 board wording implicitly assumes
+  a fresh board (#40.3).
 
 **Why now:** the suite is the spine for hardening lyx; every session pays these costs
 until the scheme is corrected, and the 2026-06-30 pass already wasted effort on a false
@@ -39,8 +40,8 @@ positive (#35).
 
 - Edit **`tools/sandbox/test-scheme.md`** (this is the source of the `SANDBOX-SUITE.md`
   the issues name; the launcher generates `SANDBOX-SUITE.md` = fingerprint header +
-  `test-scheme.md` body at run time — see `tools/sandbox/suite.go`). All five refinements
-  land here:
+  `test-scheme.md` body at run time — see `tools/sandbox/suite.go`). All seven
+  refinements land here:
   1. Add an **Operating-model** paragraph to Pre-conditions (cwd-local resolution;
      subdir failure is expected, not a finding).
   2. Add a **PowerShell JSON-quoting** note to Pre-conditions, with a one-line pointer
@@ -51,7 +52,8 @@ positive (#35).
      mark its session-log line operator-supplied.
   6. Add a **board-durability** note to S3 (board persists across sessions; clean up
      test tasks you create).
-  7. Add a short suite note clarifying "cwd-relpath mirroring" = weft path mirroring.
+  7. Add a short suite note to the **Notes** section clarifying "cwd-relpath mirroring"
+     = weft path mirroring.
 
 **Out:**
 
@@ -61,6 +63,10 @@ positive (#35).
 - **No renumbering of scenarios.** S5 is removed from the agent list but S6 stays S6
   (numbering gap is intentional) to preserve continuity with prior issue references and
   the session-log format. See Decisions.
+- **No edit to S1 (Hub orientation).** Although #40.3 names "S1/S3," S1's current text
+  makes no fresh-board assumption, so it is intentionally left untouched; the
+  board-durability note lands in S3 and covers durability for the whole session. See
+  Decisions → `board-durability-note`.
 - **No "run from a subdir" behavior probe in S6.** The brief's wording ("promote 'run
   from a subdir' to an explicit S6 watch bullet") is explicitly **not** implemented — it
   contradicts #41 and #40's own revision. See Decisions → `subdir-handling`.
@@ -172,20 +178,22 @@ positive (#35).
 
 ### board-durability-note
 
-- Decision: Add a note (in S3) that the board is **durable across sessions** — it starts
-  non-empty (e.g. a `T1 "Test task from S3"` persists from prior runs), so do not assume
-  a fresh board — and instruct the agent to **clean up test tasks it creates** at session
-  end.
-- Rationale: #40.3 — S1/S3 wording assumed a fresh board, making verdicts
-  non-reproducible.
+- Decision: Add a note (in **S3** only) that the board is **durable across sessions** —
+  it starts non-empty (e.g. a `T1 "Test task from S3"` persists from prior runs), so do
+  not assume a fresh board — and instruct the agent to **clean up test tasks it creates**
+  at session end. **S1 is not edited:** its current text ("Hub orientation") makes no
+  fresh-board assumption, so the single S3 note suffices for the whole session.
+- Rationale: #40.3 — the scheme's board wording implicitly assumed a fresh board, making
+  verdicts non-reproducible. The issue cited "S1/S3," but on inspection only S3 carries
+  the assumption; S1 needs no change.
 - Rejected: leaving test tasks behind (option 2 — accumulates cruft); durability note
   with no cleanup guidance (option 3).
 
 ### external-readme-clarified-out-of-band
 
 - Decision: Clarify the external host README's "cwd-relpath mirroring" wording **and add
-  a short suite note** in test-scheme.md saying the same (that the phrase refers to weft
-  path mirroring, not running lyx from subdirs). The README itself was edited and pushed
+  a short suite note in the Notes section** of test-scheme.md saying the same (that the
+  phrase refers to weft path mirroring, not running lyx from subdirs). The README itself was edited and pushed
   to `Knatte18/lyx-test` (commit `d9e5e66`) so the fix is permanent and survives
   `sandbox.cmd -reset`.
 - Rationale: #41.3 — the README's phrasing compounds the subdir confusion. The README
