@@ -1,11 +1,11 @@
-// cli_test.go contains white-box unit tests for the ghissues CLI.
+// cli_test.go contains white-box unit tests for the selfreport CLI.
 //
-// Tests live in package ghissuescli (same package as the production code) so the
+// Tests live in package selfreportcli (same package as the production code) so the
 // local stdin seam can be replaced without exporting it; the gh executor is
-// swapped via the exported ghissuesengine.RunGH seam. All tests drive the full
+// swapped via the exported selfreportengine.RunGH seam. All tests drive the full
 // cobra→flag→CreateIssue→RunGH pipeline through RunCLI.
 
-package ghissuescli
+package selfreportcli
 
 import (
 	"bytes"
@@ -14,21 +14,21 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/ghissuesengine"
+	"github.com/Knatte18/loomyard/internal/selfreportengine"
 )
 
-// installFakeGH replaces the exported ghissuesengine.RunGH seam with a fake that
+// installFakeGH replaces the exported selfreportengine.RunGH seam with a fake that
 // records every argv slice it receives and returns the caller-supplied values.
 // The original seam is restored via t.Cleanup so each test case is independent.
 func installFakeGH(t *testing.T, fakeStdout, fakeStderr string, fakeExitCode int, fakeErr error) *[][]string {
 	t.Helper()
 	var recorded [][]string
-	orig := ghissuesengine.RunGH
-	ghissuesengine.RunGH = func(args []string) (string, string, int, error) {
+	orig := selfreportengine.RunGH
+	selfreportengine.RunGH = func(args []string) (string, string, int, error) {
 		recorded = append(recorded, args)
 		return fakeStdout, fakeStderr, fakeExitCode, fakeErr
 	}
-	t.Cleanup(func() { ghissuesengine.RunGH = orig })
+	t.Cleanup(func() { selfreportengine.RunGH = orig })
 	return &recorded
 }
 

@@ -84,7 +84,7 @@ against the deployed `lyx.exe`.
 
 - Hub already built (`sandbox.cmd` with no subcommand, or `sandbox.cmd build`).
 - `lyx` on PATH (deployed via `deploy.cmd`).
-- `gh` installed and authenticated (`gh auth status`). The `lyx ghissues create` command
+- `gh` installed and authenticated (`gh auth status`). The `lyx selfreport create` command
   that the agent uses to file findings delegates to the `gh` CLI.
 
 ### Usage
@@ -108,8 +108,7 @@ This command, run from the lyx repo directory:
 
 The agent works entirely as a black box: it sees only `lyx` on PATH and the copied
 scheme. It must not access the lyx source tree. Findings (WARN or FAIL verdicts) are
-filed directly from inside the host repo via `lyx ghissues create`, which feeds the
-`GitHub issue -> mill-ghissues-to-tasks` pipeline.
+filed directly from inside the host repo via `lyx selfreport create`.
 
 ### Optional flags
 

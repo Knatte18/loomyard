@@ -22,10 +22,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardcli"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configcli"
-	"github.com/Knatte18/loomyard/internal/ghissuescli"
 	"github.com/Knatte18/loomyard/internal/idecli"
 	"github.com/Knatte18/loomyard/internal/initcli"
 	"github.com/Knatte18/loomyard/internal/muxpoccli"
+	"github.com/Knatte18/loomyard/internal/selfreportcli"
 	"github.com/Knatte18/loomyard/internal/warpcli"
 	"github.com/Knatte18/loomyard/internal/weftcli"
 )
@@ -74,7 +74,7 @@ It assembles every module's cobra command tree under a single root so that
 all modules are discoverable via "lyx --help" and every subcommand carries
 its own --help and --json help output.
 
-Available modules: init, board, config, ide, muxpoc, weft, warp, ghissues.`,
+Available modules: init, board, config, ide, muxpoc, weft, warp, selfreport.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
@@ -93,7 +93,7 @@ Available modules: init, board, config, ide, muxpoc, weft, warp, ghissues.`,
 		muxpoccli.Command(),
 		weftcli.Command(),
 		warpcli.Command(),
-		ghissuescli.Command(),
+		selfreportcli.Command(),
 	)
 
 	return root

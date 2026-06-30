@@ -14,8 +14,7 @@ parent `C:\Code`.
 `sandbox.cmd suite` fingerprints the `lyx.exe` on PATH, drops a fresh
 `SANDBOX-SUITE.md` into the Hub host repo, and launches an interactive black-box
 agent that drives `lyx` from PATH only (never the source tree). The agent files
-WARN/FAIL findings via `lyx ghissues create`, which feed the
-`GitHub issue → mill-ghissues-to-tasks` pipeline.
+WARN/FAIL findings via `lyx selfreport create`.
 
 Because the agent tests **the binary on PATH**, a stale binary means you are
 testing old code. Always deploy before a run (step 2).
@@ -100,8 +99,7 @@ sandbox.cmd suite -prompt <text>   # override the instruction string
 ### 5. Triage findings
 
 The agent files WARN/FAIL findings as GitHub issues on the LoomYard repo. Pull
-them into the backlog with the mill pipeline (`/mill-ghissues-to-tasks`), then
-groom/spawn as usual.
+them into the backlog, then groom/spawn as usual.
 
 ## Troubleshooting
 
