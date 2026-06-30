@@ -30,7 +30,9 @@ implementing  '2026-06-30T19:03:16Z'
 ```yaml
 batches:
   - name: emitter-and-fetch
-    state: pending
+    state: running
+    implementer_session: 6af578a8-45c7-4f3d-828b-afeeb8134b38
+    start_sha: f403bf379fc8c033b461c69a5d6315f374b1509a
   - name: docs
     state: pending
 ```
