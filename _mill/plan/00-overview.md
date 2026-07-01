@@ -3,7 +3,7 @@
 ```yaml
 task: Fix lyx CLI defects + host-commit gap from the sandbox run
 slug: lyx-sandbox-fixes
-approved: false
+approved: true
 started: 20260630-193602
 parent: main
 root: ""

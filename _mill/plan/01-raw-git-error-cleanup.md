@@ -144,11 +144,10 @@ and Batch 3 do not depend on it and touch disjoint files.
     doubles the sentinel's own "not a git repository" text on top of itself. Change it
     to `output.Err(c.OutOrStdout(), err.Error())`.
   - In `cli_test.go`, add a new test that runs `RunCLI` with `["status"]` from a non-git
-    temp directory and asserts the parsed JSON envelope's `error` field equals exactly
-    `"not a git repository"` (i.e. NOT `"not a git repository: not a git repository"`).
-    Follow the existing chdir-into-temp-dir pattern used elsewhere in this package
-    (e.g. `internal/configcli/reconcile_test.go`'s `TestReconcile_DryRun`, read for
-    pattern only).
+    temp directory (use `t.Chdir(t.TempDir())` — no existing test in this package has a
+    chdir helper to mirror, but `t.Chdir` is idiomatic and self-sufficient) and asserts
+    the parsed JSON envelope's `error` field equals exactly `"not a git repository"`
+    (i.e. NOT `"not a git repository: not a git repository"`).
 - **Commit:** `fix(muxpoccli): stop doubling "not a git repository" in resolve-layout error`
 
 ## Batch Tests
