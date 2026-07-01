@@ -40,5 +40,7 @@ batches:
     start_sha: a70fec3428c70701727f008409530474f8183418
     commit_sha: 60f7205b63e07ce95713fd5394256c93dba37838
   - name: sandbox-suite-doc-hardening
-    state: pending
+    state: running
+    implementer_session: fa2841da-31f3-483d-baf4-b1c119b4b7cd
+    start_sha: 38214256b3e38e143d3ab3e5947ab49456c725ca
 ```
