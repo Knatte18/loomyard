@@ -157,8 +157,16 @@ cleanup, and no longer needs the fallback instructions — though that follow-up
   directly — that part is plain filesystem I/O, not a git operation. Then commit that
   deletion through `weftengine.Commit(weftPath, pathspec, message, opts)` (scoped
   pathspec `weftengine.ScopedPathspec(l.RelPath, []string{hubgeometry.LyxDirName})`),
-  and push it through `weftengine.Push(weftPath, opts)` — mirroring the existing
-  `weftcli` commit→push pattern (see `internal/weftcli/cli.go`).
+  and push through `weftengine.Push(weftPath, opts)` — mirroring the existing `weftcli`
+  `push` subcommand's pattern exactly (`internal/weftcli/cli.go`'s `push` RunE, lines
+  ~183-193): `Push` is called **unconditionally** after `Commit`, not gated on
+  `Commit`'s `committed` return value. `weftengine.Push` already no-ops via its own
+  internal `hasUnpushed` check when there's nothing to push, so calling it
+  unconditionally is both correct and idempotent — and critically, it is what recovers
+  a prior partial run where the deletion committed locally but the push itself failed
+  (see the residual-risk note under Testing). Gating `Push` behind `committed` would be
+  a bug: a rerun after a "committed, push failed" partial state would see `committed ==
+  false` (nothing new to stage) and never retry the stuck push.
 - Rationale: explicit user directive — "all git operations to weft go through the weft
   module" (`weftengine` already owns all git-into-weft operations per its own package
   doc: "Package weftengine owns all git operations into the paired weft worktree").
@@ -331,11 +339,16 @@ the existing `initcli_test.go` / `warpengine/remove_test.go` style with
     "unchanged" no-op values, no error.
   - `TestRunInit_Undo_Idempotent` — run `--undo` twice in a row; second run must be a
     clean no-op matching `TestRunInit_Undo_NeverInitialized`'s expectations.
-  - `TestRunInit_Undo_RealDirectoryGuard` — pre-create a **real** directory (not a
-    junction) at the host `_lyx` path (with content, plus a prior `init` so gitignore/
-    exclude/weft-content all exist too); assert `--undo` hard-errors, and *everything*
-    is left untouched — not just the real directory itself, but also the weft-side
-    `_lyx` content, the `.gitignore` managed block, and the `.git/info/exclude` line
+  - `TestRunInit_Undo_RealDirectoryGuard` — two-phase setup required, not a single
+    pre-creation: `seedLyxJunction` (inside `WireJunctions`) itself hard-errors on a
+    real non-junction `_lyx` directory, so `init` cannot succeed at all if the real
+    directory exists *before* it runs — gitignore/exclude/weft-content would never get
+    created in that case. Instead: (1) run `init` successfully first (so the junction,
+    gitignore block, exclude line, and weft-content all legitimately exist), (2) then
+    remove the junction and replace it with a real directory (simulating external
+    corruption after the fact), (3) then run `--undo`. Assert `--undo` hard-errors, and
+    *everything* is left untouched — not just the real directory itself, but also the
+    weft-side `_lyx` content, the `.gitignore` managed block, and the `.git/info/exclude` line
     (per the "abort scope" decision: the guard firing aborts the whole run, no partial
     revert of the other independent steps).
   - `TestRunInit_Undo_TargetMismatch` — after init, repoint the junction (or hand-craft
@@ -345,7 +358,11 @@ the existing `initcli_test.go` / `warpengine/remove_test.go` style with
   - `TestRunInit_Undo_PartialRecovery` — simulate a crash-between-steps state (junction
     already removed, weft-side content still present) and assert `--undo` finishes the
     job cleanly (no error), covering the "no separate pairing gate" decision's edge
-    case.
+    case. Also cover the narrower partial state where the weft-side deletion was
+    already committed locally but the push failed (e.g. a transient network error mid-
+    `weftengine.Push`): assert a rerun still succeeds and pushes the pending commit —
+    this is exactly why `Push` must be called unconditionally after `Commit` rather
+    than gated on `Commit`'s `committed` return value (see the Decisions section).
   - Use `WEFT_SKIP_PUSH=1` (and/or `WEFT_SKIP_GIT=1` where appropriate) in tests that
     don't need to exercise the real commit/push path, mirroring existing env-based test
     bypass conventions.
