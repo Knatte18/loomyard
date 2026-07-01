@@ -161,20 +161,32 @@ No batch-local decisions beyond `## Shared Decisions` in the overview.
 
 - **Context:**
   - `internal/configreg/configreg.go`
-  - `internal/configcli/configcli_integration_test.go`
 - **Edits:**
   - `internal/configcli/configcli.go`
   - `internal/configcli/configcli_test.go`
+  - `internal/configcli/configcli_integration_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:**
+  - Changing `dispatch()`'s signature (see below) breaks every existing call site that
+    invokes it directly with the old 7-argument list. Two files call `dispatch()` directly
+    today: `internal/configcli/configcli_test.go` (4 call sites) and
+    `internal/configcli/configcli_integration_test.go` (1 call site, guarded by
+    `//go:build integration` — this batch's plain `go test ./internal/configcli/...`
+    verify does NOT compile that file, so this update would otherwise silently never be
+    checked by this batch's own test run). Update all 5 existing `dispatch(...)` call
+    sites across both files to pass an additional `nil` argument for the new `setFlags`
+    parameter (in the position specified below), so both files continue to compile.
   - In `Command()`, add
     `configCmd.Flags().StringArray("set", nil, "set config key=value directly, bypassing the editor (repeatable)")`.
   - In the `RunE` closure inside `Command()`, read the flag via
     `setFlags, _ := configCmd.Flags().GetStringArray("set")` and thread it through
-    `runConfig` into `dispatch` (add a `setFlags []string` parameter to both function
-    signatures, alongside the existing `printOnly bool` parameter).
+    `runConfig` into `dispatch` (append a `setFlags []string` parameter as the LAST
+    parameter of both function signatures, after the existing `printOnly bool`
+    parameter — e.g. `dispatch(l, in, out, args, edit, sync, printOnly, setFlags)` — so
+    every existing call site is fixed mechanically by appending one `nil` argument, per
+    the 5-call-site update above).
   - Add `func parseSetFlags(raw []string) ([]yamlengine.KV, error)` in `configcli.go`
     (import `"github.com/Knatte18/loomyard/internal/yamlengine"` for the `yamlengine.KV`
     type defined by Card 1): for each entry in `raw`, split on the **first** `=` only

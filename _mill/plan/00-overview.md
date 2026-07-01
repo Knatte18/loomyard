@@ -47,6 +47,12 @@ batches:
   violated in the config/warp/weft surface.
 - **Applies to:** `warpengine-stderr-fix`, `weft-hubgeometry-stderr-fix`. (Not
   `config-set-flag` — that batch does not touch any git-stderr call sites.)
+  **Deliberately NOT applied to:** `internal/boardengine/git.go:27`, `:100`, and
+  `internal/boardengine/sync.go:133`, which have the identical
+  `"... failed: %s", stderr` shape but belong to a different module (board) outside this
+  task's WARN-driven scope (config + warp/weft only, per `_mill/discussion.md`'s Scope →
+  Out). Left for a separate task if desired — not a gap in this task's coverage of its
+  own stated scope.
 
 ### Decision: `--set` never invokes the interactive editor
 
@@ -84,6 +90,7 @@ batches:
 
 - `docs/overview.md`
 - `internal/configcli/configcli.go`
+- `internal/configcli/configcli_integration_test.go`
 - `internal/configcli/configcli_test.go`
 - `internal/configengine/edit.go`
 - `internal/configengine/set.go`
