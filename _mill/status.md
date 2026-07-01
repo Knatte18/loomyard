@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-weftengine-commit-message
+phase: approved-gitignore-remove
 slug: lyx-deinit
 branch: lyx-deinit
 plan: _mill/plan
@@ -30,6 +30,7 @@ plan-fix-r5  '2026-07-01T09:28:09Z'
 planned  '2026-07-01T09:28:41Z'
 implementing  '2026-07-01T09:30:49Z'
 approved-weftengine-commit-message  '2026-07-01T09:37:49Z'
+approved-gitignore-remove  '2026-07-01T09:43:09Z'
 ```
 
 ## Batches
@@ -42,9 +43,10 @@ batches:
     start_sha: 1c51293dc6eccaefe1523a88a81da682e7477a77
     commit_sha: 92df7e7b127dab118fae87f1e480899ce3d029b9
   - name: gitignore-remove
-    state: running
+    state: approved
     implementer_session: 96e8abb7-f2bc-4e13-85ca-a4bc08e57d63
     start_sha: c035646eeaf2d2fa381fc15f26f3002eaf665531
+    commit_sha: 00d576c70a48ea8d2ca973f6a14b8c9d5ccbe9a5
   - name: warpengine-unwire-junctions
     state: pending
   - name: initcli-undo
