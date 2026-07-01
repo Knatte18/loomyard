@@ -97,7 +97,7 @@ batches:
 - `internal/warpengine/cleanup.go`
 - `internal/warpengine/cleanup_test.go`
 - `internal/warpengine/clone.go`
-- `internal/warpengine/clone_integration_test.go`
+- `internal/warpengine/clone_test.go`
 - `internal/warpengine/junction.go`
 - `internal/warpengine/prune.go`
 - `internal/warpengine/prune_test.go`
