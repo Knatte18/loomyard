@@ -68,9 +68,10 @@ func SetValues(template, existing []byte, pairs []KV) (SetResult, error) {
 	}
 	sort.Strings(known)
 
-	// Layer existing's values onto the template working tree, exactly as
-	// Reconcile does, so a --set call preserves whatever the user already
-	// customized rather than resetting untouched keys back to defaults.
+	// Layer existing's values onto the template working tree via the same
+	// applyExistingOverrides helper Reconcile uses, so a --set call preserves
+	// whatever the user already customized rather than resetting untouched
+	// keys back to defaults.
 	if len(existing) > 0 {
 		var existingNode yaml.Node
 		if err := yaml.Unmarshal(existing, &existingNode); err != nil {
@@ -79,13 +80,7 @@ func SetValues(template, existing []byte, pairs []KV) (SetResult, error) {
 		existingLeaves := make(map[string]*yaml.Node)
 		collectLeafPaths(&existingNode, existingLeaves)
 
-		for path, existingLeaf := range existingLeaves {
-			if templateLeaf, ok := templateLeaves[path]; ok {
-				templateLeaf.Value = existingLeaf.Value
-				templateLeaf.Tag = existingLeaf.Tag
-				templateLeaf.Style = existingLeaf.Style
-			}
-		}
+		applyExistingOverrides(templateLeaves, existingLeaves)
 	}
 
 	// Validate every requested key against the template's leaf set before
