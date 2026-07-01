@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r1
+phase: planned
 slug: lyx-sandbox-fixes
 branch: lyx-sandbox-fixes
 plan: _mill/plan
@@ -19,4 +19,5 @@ discussion-fix-r1  '2026-06-30T19:30:27Z'
 discussed  '2026-06-30T19:30:39Z'
 planning  '2026-07-01T04:08:47Z'
 plan-fix-r1  '2026-07-01T04:13:08Z'
+planned  '2026-07-01T04:13:23Z'
 ```
