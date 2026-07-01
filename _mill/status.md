@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-fix-r2
+phase: discussed
 slug: lyx-deinit
 branch: lyx-deinit
 plan: null
@@ -16,4 +16,5 @@ task_description: |
 ```text
 discussing  '2026-07-01T08:12:31Z'
 discussion-fix-r2  '2026-07-01T08:46:06Z'
+discussed  '2026-07-01T08:46:21Z'
 ```
