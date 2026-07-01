@@ -23,6 +23,18 @@ type SyncOptions struct {
 	SkipPush bool // Skip push operations if true; affects Push only.
 }
 
+// EnvSyncOptions reads the WEFT_SKIP_GIT and WEFT_SKIP_PUSH environment variables
+// and returns the SyncOptions they describe. It is exported so that every caller
+// needing the same env-based test bypass — weftcli's subcommands and the --undo
+// path in a different package — shares one implementation instead of duplicating
+// the env-var string literals.
+func EnvSyncOptions() SyncOptions {
+	return SyncOptions{
+		SkipGit:  os.Getenv("WEFT_SKIP_GIT") == "1",
+		SkipPush: os.Getenv("WEFT_SKIP_PUSH") == "1",
+	}
+}
+
 // ensureLockDir creates the lock directory inside the weft worktree and returns its path.
 func ensureLockDir(weftPath string) (string, error) {
 	lockDir := filepath.Join(weftPath, lockDirName)
@@ -32,10 +44,12 @@ func ensureLockDir(weftPath string) (string, error) {
 	return lockDir, nil
 }
 
-// Commit stages and commits pathspec-scoped changes in the weft worktree.
+// Commit stages and commits pathspec-scoped changes in the weft worktree, using
+// message as the commit message. Callers that have no reason to customize the
+// message should pass DefaultCommitMessage.
 // Returns (false, nil) if opts.SkipGit is true or if there is nothing staged.
 // Returns (true, nil) if a commit was made.
-func Commit(weftPath string, pathspec []string, opts SyncOptions) (committed bool, err error) {
+func Commit(weftPath string, pathspec []string, message string, opts SyncOptions) (committed bool, err error) {
 	if opts.SkipGit {
 		return false, nil
 	}
@@ -69,7 +83,7 @@ func Commit(weftPath string, pathspec []string, opts SyncOptions) (committed boo
 	if code != 0 {
 		// Exit code 1 means changes are staged
 		// Commit them
-		if _, _, code, err := gitexec.RunGit([]string{"commit", "-m", commitMessage}, weftPath); err != nil {
+		if _, _, code, err := gitexec.RunGit([]string{"commit", "-m", message}, weftPath); err != nil {
 			return false, fmt.Errorf("commit: %w", err)
 		} else if code != 0 {
 			return false, fmt.Errorf("commit failed")
