@@ -44,5 +44,7 @@ batches:
     start_sha: e8d84f54f523304573712754e66b8b28e6bf51a7
     commit_sha: 79a183c2ee32625774bd8844b0c5018691a0a798
   - name: weft-hubgeometry-stderr-fix
-    state: pending
+    state: running
+    implementer_session: b55724be-06b4-4048-ae7a-705e3c8d7947
+    start_sha: 2fa9a7466a6f221011931bddb8ad7d263e5f1c5b
 ```
