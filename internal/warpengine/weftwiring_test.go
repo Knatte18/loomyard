@@ -196,6 +196,70 @@ func TestWeftSpawnPushesWeftBranch(t *testing.T) {
 	}
 }
 
+// TestCreateWeftWorktree_InvalidStartPointFails asserts that createWeftWorktree's error
+// on an invalid start point is composed from local context (the weft path and branch,
+// plus the git exit code) rather than git's own stderr text.
+func TestCreateWeftWorktree_InvalidStartPointFails(t *testing.T) {
+	t.Parallel()
+
+	const slug = "create-weft-invalid-start"
+	const branch = "create-weft-invalid-start"
+
+	f := lyxtest.CopyPairedLocal(t)
+
+	err := createWeftWorktree(f.Layout, slug, branch, "nonexistent-start-point-xyz")
+	if err == nil {
+		t.Fatalf("createWeftWorktree(...) error = nil; want failure for a nonexistent start point")
+	}
+
+	// Compare against filepath.Base(weftPath) rather than the raw path: %q escapes
+	// backslashes on Windows, so the literal OS-native path never appears unescaped
+	// in err.Error() even though the weft path is faithfully reported.
+	weftPath := f.Layout.WeftWorktreePath(slug)
+	if weftName := filepath.Base(weftPath); !strings.Contains(err.Error(), weftName) {
+		t.Errorf("createWeftWorktree(...) error = %q; want substring %q (weft path)", err.Error(), weftName)
+	}
+	if !strings.Contains(err.Error(), branch) {
+		t.Errorf("createWeftWorktree(...) error = %q; want substring %q (branch)", err.Error(), branch)
+	}
+	if strings.Contains(err.Error(), "fatal:") {
+		t.Errorf("createWeftWorktree(...) error = %q; want no %q substring (raw git stderr leak)", err.Error(), "fatal:")
+	}
+}
+
+// TestPushWeftBranch_NoRemoteFails asserts that pushWeftBranch's error when no remote is
+// configured is composed from local context (the branch and git exit code) rather than
+// git's own stderr text.
+func TestPushWeftBranch_NoRemoteFails(t *testing.T) {
+	t.Parallel()
+
+	const slug = "push-weft-no-remote"
+	const branch = "push-weft-no-remote"
+
+	f := lyxtest.CopyPairedLocal(t)
+
+	w := New(Config{})
+	// SkipGit suppresses the push inside Add itself; we call pushWeftBranch directly
+	// below to exercise its error path without touching the shared template weft-bare.
+	if _, err := w.Add(f.Layout, slug, AddOptions{SkipGit: true}); err != nil {
+		t.Fatalf("Add(%q): %v", slug, err)
+	}
+
+	weftPath := f.Layout.WeftWorktreePath(slug)
+	lyxtest.MustRun(t, weftPath, "git", "remote", "remove", "origin")
+
+	err := pushWeftBranch(f.Layout, slug, branch, AddOptions{})
+	if err == nil {
+		t.Fatalf("pushWeftBranch(...) error = nil; want failure with no remote configured")
+	}
+	if !strings.Contains(err.Error(), branch) {
+		t.Errorf("pushWeftBranch(...) error = %q; want substring %q (branch)", err.Error(), branch)
+	}
+	if strings.Contains(err.Error(), "fatal:") {
+		t.Errorf("pushWeftBranch(...) error = %q; want no %q substring (raw git stderr leak)", err.Error(), "fatal:")
+	}
+}
+
 // TestWeftRollbackOnPostHostCreateFailure simulates a post-host-create failure
 // and asserts both host and weft state is rolled back completely.
 // Note: since Add is dormant (does not create junctions), rollback does not need
