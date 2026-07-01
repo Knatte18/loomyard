@@ -93,7 +93,9 @@ No batch-local decisions differ from `## Shared Decisions` in the overview.
 
 ### Card 3: Update `weftengine` tests for the new `Commit` signature and add message-content coverage
 
-- **Context:** none
+- **Context:**
+  - `internal/weftengine/sync.go`
+  - `internal/weftengine/weft.go`
 - **Edits:**
   - `internal/weftengine/sync_test.go`
 - **Creates:** none

@@ -124,6 +124,8 @@ load-bearing for Card 8's exact step ordering.
   - `internal/warpengine/junction.go`
   - `internal/gitignore/gitignore.go`
   - `internal/hubgeometry/hubgeometry.go`
+  - `internal/lyxtest/lyxtest.go`
+  - `internal/fslink/fslink.go`
 - **Creates:**
   - `internal/initcli/undo_test.go`
 - **Edits:** none
@@ -136,9 +138,10 @@ load-bearing for Card 8's exact step ordering.
     (see that test's own entry below for why). Use `t.Setenv("WEFT_SKIP_PUSH", "1")`
     (and/or `WEFT_SKIP_GIT`) in tests that don't need to exercise the real commit/push
     path.
-  - `TestRunInit_Undo_HappyPath`: run `initcli.RunInit` then `initcli.RunCLI(&buf,
-    []string{"--undo"})` (or the equivalent in-process call the batch's `runUndo`
-    wiring exposes); assert the JSON output has `ok: true` with `lyx_junction:
+  - `TestRunInit_Undo_HappyPath`: run `initcli.RunInit(&buf, []string{})` then
+    `initcli.RunInit(&buf2, []string{"--undo"})` (the same seam handles both the
+    forward and `--undo` paths, dispatching on the flag); assert the JSON output has
+    `ok: true` with `lyx_junction:
     "removed"`, `weft_content: "cleared"`, `git_exclude: "reverted"`, `gitignore:
     "reverted"`; assert on disk that the host junction is gone, the weft-side `_lyx`
     directory is gone, `git status --porcelain` in the weft worktree is clean (deletion
