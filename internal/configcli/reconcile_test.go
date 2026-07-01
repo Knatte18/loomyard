@@ -106,6 +106,39 @@ func TestReconcile_DryRun(t *testing.T) {
 	}
 }
 
+// TestReconcile_NotAGitRepo verifies that "lyx config reconcile" run from a
+// non-git temp directory surfaces hubgeometry's bare ErrNotAGitRepo sentinel
+// with no "resolve layout:" prefix and no raw "fatal:" git stderr.
+func TestReconcile_NotAGitRepo(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Chdir into the non-git temp dir so hubgeometry.Getwd inside RunCLI resolves there.
+	oldCwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	defer os.Chdir(oldCwd) //nolint:errcheck
+
+	var buf bytes.Buffer
+	runExitCode := RunCLI(&buf, []string{"reconcile"})
+
+	if runExitCode != 1 {
+		t.Errorf("RunCLI(reconcile) in non-git dir = %d; want 1", runExitCode)
+	}
+
+	var result map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+		t.Fatalf("parse JSON: %v, output: %s", err, buf.String())
+	}
+	errMsg, _ := result["error"].(string)
+	if errMsg != "not a git repository" {
+		t.Errorf("RunCLI(reconcile) error = %q; want exactly \"not a git repository\"", errMsg)
+	}
+}
+
 // TestReconcile_Apply verifies that "lyx config reconcile --apply" writes config
 // files to disk and returns a JSON envelope with ok=true and applied=true.
 func TestReconcile_Apply(t *testing.T) {
