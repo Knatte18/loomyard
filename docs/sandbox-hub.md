@@ -106,10 +106,11 @@ This command, run from the lyx repo directory:
 
 The agent works entirely as a black box: it sees only `lyx` on PATH and the copied
 scheme. It must not access the lyx source tree. Findings (WARN or FAIL verdicts) are
-written to `sandbox-report.json` in the host repo; on a clean exit, `suite.go` fetches
-and normalizes that report into the `-loomyard` root the launcher supplies (the lyx
-repo root), at `.scratch/sandbox-report-<fingerprint>.json`, on the shared
-sandbox-report-json contract (millhouse#586).
+written to `sandbox-report.json` in the host repo. The suite subcommand only launches
+the agent — it does **not** fetch the report. An interactive `claude` session never
+self-terminates and its manual exit gives a non-zero code, so gating a fetch on a
+clean exit would never fire. Collecting the report is a separate operator step
+(`fetch-report`, below).
 
 ### Optional flags
 
@@ -118,12 +119,35 @@ sandbox.cmd suite -claude <path>   # override the claude binary (default: resolv
 sandbox.cmd suite -prompt <text>   # override the instruction string (default: built-in)
 ```
 
-### Exit-code caveat
+### Exit-code note
 
-The sandbox tool reports success (0) or failure (1) only; claude's precise exit code is
-not preserved because `runSuite` returns an error on any non-zero code and `run()`
-propagates that as exit 1. For reliable exit-code observation, build the tool first
-(`go build -o sandbox.exe ./tools/sandbox`) and run the compiled binary.
+The suite treats any exit code from the interactive `claude` session as normal — a
+manual exit is expected — so `runSuite` always returns success and prints a reminder
+to run `sandbox.cmd fetch-report`. The claude session's precise exit code is not
+otherwise acted upon.
+
+## Fetching the report
+
+After the suite session ends, collect the agent-written report into this repo's
+`.scratch/`:
+
+```cmd
+sandbox.cmd fetch-report -loomyard <lyx-repo-root>
+```
+
+This command:
+
+1. Locates the Hub host repo at `C:\Code\lyx-test-HUB\lyx-test`.
+2. Re-fingerprints the `lyx.exe` currently on PATH (for the normal run-then-fetch flow
+   this is the same binary the suite fingerprinted).
+3. Reads `sandbox-report.json` from the host repo, validates it against the shared
+   sandbox-report-json contract (millhouse#586), stamps `meta.fingerprint`, and writes
+   a normalized copy to `<loomyard>/.scratch/sandbox-report-<fingerprint>.json`.
+
+If the agent produced no report, `fetch-report` fails with a distinct "not found"
+error so the operator can tell "the agent wrote nothing" from "the agent wrote garbage".
+The launcher (`sandbox.cmd`) always passes `-loomyard`; it is required only by this
+subcommand.
 
 ### Future: psmux launch
 

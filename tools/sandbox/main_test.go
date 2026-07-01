@@ -297,9 +297,10 @@ func TestRun_ResetRoutesToBuildWithReset(t *testing.T) {
 
 // TestRun_SuiteRoutesSuiteToLaunch tests that the "suite" positional routes to
 // the suite path and ultimately invokes launchAgent with the correct directory.
+// The suite subcommand no longer fetches, so it needs neither -loomyard nor a
+// report written by the launch stub.
 func TestRun_SuiteRoutesSuiteToLaunch(t *testing.T) {
 	tmpDir := t.TempDir()
-	loomyardRoot := t.TempDir()
 
 	// Create the Hub host repo directory that runSuite requires.
 	hostRepoDir := filepath.Join(tmpDir, hubName, hostDirName)
@@ -335,16 +336,10 @@ func TestRun_SuiteRoutesSuiteToLaunch(t *testing.T) {
 		if dir != hostRepoDir {
 			t.Errorf("launchAgent dir = %q; want %q", dir, hostRepoDir)
 		}
-		// runSuite fetches the report after a clean exit; write one so the
-		// fetch succeeds and run still returns 0.
-		reportPath := filepath.Join(hostRepoDir, reportFileName)
-		if err := os.WriteFile(reportPath, []byte(`{"source": "sandbox-report", "items": []}`), 0o644); err != nil {
-			t.Fatalf("write sandbox report: %v", err)
-		}
 		return 0
 	}
 
-	code := run([]string{"-parent", tmpDir, "-loomyard", loomyardRoot, "suite"})
+	code := run([]string{"-parent", tmpDir, "suite"})
 	if code != 0 {
 		t.Errorf("run() = %d; want 0", code)
 	}
@@ -353,22 +348,52 @@ func TestRun_SuiteRoutesSuiteToLaunch(t *testing.T) {
 	}
 }
 
-// TestRun_SuiteRequiresLoomyard verifies that the suite subcommand fails fast
-// and never calls launchAgent when -loomyard is not supplied, covering the
-// required-flag guard added alongside the -loomyard flag.
-func TestRun_SuiteRequiresLoomyard(t *testing.T) {
+// TestRun_FetchReportRoutesToFetch verifies that the "fetch-report" positional
+// routes to runFetch: with a built Hub, an on-PATH lyx, and a host report, the
+// dispatch reaches fetchReport and run returns 0.
+func TestRun_FetchReportRoutesToFetch(t *testing.T) {
 	tmpDir := t.TempDir()
+	loomyardRoot := t.TempDir()
 
-	oldLaunchAgent := launchAgent
-	defer func() { launchAgent = oldLaunchAgent }()
-	launchAgent = func(dir, claude, instruction string) int {
-		t.Error("launchAgent should not be called when -loomyard is missing")
-		return 1
+	// Create the Hub host repo directory that runFetch requires, and drop a valid
+	// report there for the fetch to pick up.
+	hostRepoDir := filepath.Join(tmpDir, hubName, hostDirName)
+	if err := os.MkdirAll(hostRepoDir, 0o755); err != nil {
+		t.Fatalf("create host repo dir: %v", err)
+	}
+	reportPath := filepath.Join(hostRepoDir, reportFileName)
+	if err := os.WriteFile(reportPath, []byte(`{"source": "sandbox-report", "items": []}`), 0o644); err != nil {
+		t.Fatalf("write sandbox report: %v", err)
 	}
 
-	code := run([]string{"-parent", tmpDir, "suite"})
+	// Provide a real file so binaryFingerprint can stat and hash it.
+	fakeLyx := filepath.Join(tmpDir, "lyx.exe")
+	if err := os.WriteFile(fakeLyx, []byte("fake lyx binary"), 0o755); err != nil {
+		t.Fatalf("write fake lyx: %v", err)
+	}
+	oldLookPath := lookPath
+	defer func() { lookPath = oldLookPath }()
+	lookPath = func(name string) (string, error) {
+		if name == "lyx" {
+			return fakeLyx, nil
+		}
+		return "", fmt.Errorf("not found: %s", name)
+	}
+
+	code := run([]string{"-parent", tmpDir, "-loomyard", loomyardRoot, "fetch-report"})
+	if code != 0 {
+		t.Errorf("run() = %d; want 0", code)
+	}
+}
+
+// TestRun_FetchReportRequiresLoomyard verifies that the fetch-report subcommand
+// fails fast when -loomyard is not supplied, covering the required-flag guard.
+func TestRun_FetchReportRequiresLoomyard(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	code := run([]string{"-parent", tmpDir, "fetch-report"})
 	if code == 0 {
-		t.Error("run() = 0; want non-zero when -loomyard is missing for suite subcommand")
+		t.Error("run() = 0; want non-zero when -loomyard is missing for fetch-report subcommand")
 	}
 }
 

@@ -1,7 +1,8 @@
 // main.go implements the sandbox tool entry point, flag parsing, and subcommand
-// dispatch. It supports two subcommands: "build" (default, clones the Hub) and
-// "suite" (runs the embedded SANDBOX-SUITE agent). The -parent and -reset flags
-// live at the top level to preserve back-compat with existing callers.
+// dispatch. It supports three subcommands: "build" (default, clones the Hub),
+// "suite" (runs the embedded SANDBOX-SUITE agent), and "fetch-report" (collects
+// the agent-written report into .scratch). The -parent and -reset flags live at
+// the top level to preserve back-compat with existing callers.
 
 package main
 
@@ -79,7 +80,7 @@ func run(argv []string) int {
 	fs.SetOutput(os.Stderr)
 	parentDir := fs.String("parent", "", "parent directory where the Hub will be created (required)")
 	reset := fs.Bool("reset", false, "rebuild the Hub even if it already exists (build subcommand only)")
-	loomyard := fs.String("loomyard", "", "loomyard repo root for fetching the sandbox report (required for the suite subcommand)")
+	loomyard := fs.String("loomyard", "", "loomyard repo root for fetching the sandbox report (required for the fetch-report subcommand)")
 
 	if err := fs.Parse(argv); err != nil {
 		// flag.ContinueOnError already wrote the usage message to stderr.
@@ -116,19 +117,8 @@ func run(argv []string) int {
 		}
 
 	case "suite":
-		// The suite subcommand fetches the agent's report into the loomyard repo,
-		// so it cannot run without knowing that repo's root.
-		if *loomyard == "" {
-			fmt.Fprintln(os.Stderr, "sandbox: -loomyard is required for the suite subcommand")
-			return 1
-		}
-		// filepath.Clean strips the trailing "."/separator that sandbox.cmd passes
-		// via "%~dp0." before resolving to an absolute path.
-		absLoomyard, err := filepath.Abs(filepath.Clean(*loomyard))
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "sandbox: resolve loomyard path: %v\n", err)
-			return 1
-		}
+		// The suite subcommand only launches the agent; fetching the report is a
+		// separate step (fetch-report), so -loomyard is not required here.
 
 		// Parse suite-specific flags from the remaining positionals after "suite".
 		sf := flag.NewFlagSet("sandbox suite", flag.ContinueOnError)
@@ -141,7 +131,27 @@ func run(argv []string) int {
 			return 1
 		}
 
-		if err := runSuite(absParent, absLoomyard, *claudeFlag, *promptFlag); err != nil {
+		if err := runSuite(absParent, *claudeFlag, *promptFlag); err != nil {
+			fmt.Fprintf(os.Stderr, "sandbox: %v\n", err)
+			return 1
+		}
+
+	case "fetch-report":
+		// fetch-report collects the agent-written report into the loomyard repo,
+		// so it cannot run without knowing that repo's root.
+		if *loomyard == "" {
+			fmt.Fprintln(os.Stderr, "sandbox: -loomyard is required for the fetch-report subcommand")
+			return 1
+		}
+		// filepath.Clean strips the trailing "."/separator that sandbox.cmd passes
+		// via "%~dp0." before resolving to an absolute path.
+		absLoomyard, err := filepath.Abs(filepath.Clean(*loomyard))
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "sandbox: resolve loomyard path: %v\n", err)
+			return 1
+		}
+
+		if err := runFetch(absParent, absLoomyard); err != nil {
 			fmt.Fprintf(os.Stderr, "sandbox: %v\n", err)
 			return 1
 		}

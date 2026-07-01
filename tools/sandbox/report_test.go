@@ -6,6 +6,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -229,5 +230,107 @@ func TestFetchReport_ScratchDirCreated(t *testing.T) {
 	}
 	if _, err := os.Stat(scratchDir); err != nil {
 		t.Errorf(".scratch was not created: %v", err)
+	}
+}
+
+// makeFetchHostRepo builds the Hub host-repo layout under a fresh temp dir and
+// returns both the parentDir that runFetch expects and the host repo path.
+func makeFetchHostRepo(t *testing.T) (parentDir, hostRepoDir string) {
+	t.Helper()
+	parentDir = t.TempDir()
+	hostRepoDir = filepath.Join(parentDir, hubName, hostDirName)
+	if err := os.MkdirAll(hostRepoDir, 0o755); err != nil {
+		t.Fatalf("create host repo dir: %v", err)
+	}
+	return parentDir, hostRepoDir
+}
+
+// stubLyxLookPath points lookPath at fakeLyx for "lyx" so runFetch can
+// fingerprint a real temp file, and returns a restore function.
+func stubLyxLookPath(t *testing.T, fakeLyx string) func() {
+	t.Helper()
+	old := lookPath
+	lookPath = func(name string) (string, error) {
+		if name == "lyx" {
+			return fakeLyx, nil
+		}
+		return "", fmt.Errorf("not found on PATH: %s", name)
+	}
+	return func() { lookPath = old }
+}
+
+// TestRunFetch_HappyPath verifies that runFetch fingerprints the on-PATH lyx and
+// fetches a valid host report into <loomyardRoot>/.scratch under that fingerprint.
+func TestRunFetch_HappyPath(t *testing.T) {
+	parentDir, hostRepoDir := makeFetchHostRepo(t)
+	loomyardRoot := t.TempDir()
+
+	// binaryFingerprint stats and hashes the file, so it must really exist.
+	fakeLyx := filepath.Join(parentDir, "lyx.exe")
+	if err := os.WriteFile(fakeLyx, []byte("fake lyx binary"), 0o755); err != nil {
+		t.Fatalf("write fake lyx: %v", err)
+	}
+	restore := stubLyxLookPath(t, fakeLyx)
+	defer restore()
+
+	writeHostReport(t, hostRepoDir, `{"source": "sandbox-report", "items": []}`)
+
+	if err := runFetch(parentDir, loomyardRoot); err != nil {
+		t.Fatalf("runFetch() error: %v", err)
+	}
+
+	// The destination name embeds the SHA256 of the on-PATH binary runFetch hashed.
+	info, err := binaryFingerprint(fakeLyx)
+	if err != nil {
+		t.Fatalf("binaryFingerprint: %v", err)
+	}
+	destPath := filepath.Join(loomyardRoot, ".scratch", "sandbox-report-"+info.SHA256+".json")
+	if _, err := os.Stat(destPath); err != nil {
+		t.Errorf("fetched report not found at %s: %v", destPath, err)
+	}
+}
+
+// TestRunFetch_HubAbsent verifies that runFetch returns a clear, actionable
+// error and does not touch lookPath when the Hub host subdir does not exist.
+func TestRunFetch_HubAbsent(t *testing.T) {
+	parentDir := t.TempDir()
+	loomyardRoot := t.TempDir()
+
+	old := lookPath
+	defer func() { lookPath = old }()
+	lookPath = func(name string) (string, error) {
+		t.Error("lookPath should not be called when the Hub is absent")
+		return "", fmt.Errorf("unexpected")
+	}
+
+	err := runFetch(parentDir, loomyardRoot)
+	if err == nil {
+		t.Fatal("runFetch should return error when the Hub host subdir is absent")
+	}
+	if !strings.Contains(err.Error(), "sandbox build") {
+		t.Errorf("error should mention 'sandbox build'; got %q", err.Error())
+	}
+}
+
+// TestRunFetch_MissingHostReport verifies that runFetch surfaces fetchReport's
+// missing-report error when the agent produced no sandbox-report.json.
+func TestRunFetch_MissingHostReport(t *testing.T) {
+	parentDir, _ := makeFetchHostRepo(t)
+	loomyardRoot := t.TempDir()
+
+	fakeLyx := filepath.Join(parentDir, "lyx.exe")
+	if err := os.WriteFile(fakeLyx, []byte("fake lyx binary"), 0o755); err != nil {
+		t.Fatalf("write fake lyx: %v", err)
+	}
+	restore := stubLyxLookPath(t, fakeLyx)
+	defer restore()
+
+	// Deliberately do not write a host report.
+	err := runFetch(parentDir, loomyardRoot)
+	if err == nil {
+		t.Fatal("runFetch should return error when the host report is missing")
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Errorf("error should mention the report was not found; got %q", err.Error())
 	}
 }

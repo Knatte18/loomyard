@@ -190,11 +190,11 @@ func ensureGitExclude(repoDir, entry string) error {
 // SANDBOX-SUITE.md into the host repo (overwriting any prior copy), registers
 // it in .git/info/exclude, clears any stale sandbox-report.json from a prior
 // run, and starts an interactive Claude session with the given instruction
-// string. On a clean (exit-0) session, it fetches the agent-written
-// sandbox-report.json into <loomyardRoot>/.scratch. claudeOverride and
-// promptOverride are optional: when empty the function resolves "claude" from
-// PATH and uses defaultInstruction.
-func runSuite(parentDir, loomyardRoot, claudeOverride, promptOverride string) error {
+// string. It does not fetch the agent's report -- that is the separate
+// fetch-report subcommand (runFetch), run by the operator after the session.
+// claudeOverride and promptOverride are optional: when empty the function
+// resolves "claude" from PATH and uses defaultInstruction.
+func runSuite(parentDir, claudeOverride, promptOverride string) error {
 	// Derive the host repo path from the shared hubName const (main.go) and the
 	// suite-local hostDirName const; the function relies on those consts rather than
 	// the raw cwd primitive or git top-level resolution.
@@ -233,10 +233,10 @@ func runSuite(parentDir, loomyardRoot, claudeOverride, promptOverride string) er
 		return fmt.Errorf("ensure git exclude: %w", err)
 	}
 
-	// Remove any report left over from a previous session. Without this, a
-	// clean-exit session that fails to rewrite the file would silently fetch
-	// stale findings under a fresh fingerprint; removing it makes that case
-	// correctly surface as the missing-report error instead.
+	// Remove any report left over from a previous session so a fetch-report run
+	// after this session cannot pick up stale findings under a fresh fingerprint;
+	// if the agent writes nothing, fetch-report then correctly surfaces the
+	// missing-report error instead.
 	reportPath := filepath.Join(hostRepoDir, reportFileName)
 	if err := os.Remove(reportPath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("remove stale %s: %w", reportFileName, err)
@@ -263,17 +263,13 @@ func runSuite(parentDir, loomyardRoot, claudeOverride, promptOverride string) er
 		instruction = defaultInstruction
 	}
 
-	// Launch the interactive agent session. A non-zero exit code is propagated
-	// as an error so `go run` callers observe a failure even though the actual
-	// exit code cannot be forwarded through `go run` itself.
-	if code := launchAgent(hostRepoDir, claudePath, instruction); code != 0 {
-		return fmt.Errorf("claude exited with code %d", code)
-	}
-
-	// Fetch the agent's report only on a clean exit; a crashed session is
-	// already a visible failure and is not worth partial-report handling.
-	if err := fetchReport(hostRepoDir, loomyardRoot, info); err != nil {
-		return fmt.Errorf("fetch sandbox report: %w", err)
-	}
+	// Launch the interactive agent session. An interactive claude session never
+	// self-terminates, so its manual exit is expected and its non-zero exit code
+	// is NORMAL -- it must not be treated as a failure. Fetching the report is a
+	// separate step, so print guidance and return nil regardless of the code.
+	code := launchAgent(hostRepoDir, claudePath, instruction)
+	fmt.Fprintf(os.Stderr,
+		"sandbox: agent session ended (exit code %d). Run \"sandbox.cmd fetch-report\" to collect findings into .scratch.\n",
+		code)
 	return nil
 }
