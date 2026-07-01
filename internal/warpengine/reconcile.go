@@ -214,7 +214,7 @@ func (w *Worktree) reconcileMissingWeft(
 // weft repo. This is the "adopt" path: the branch already exists so no -b flag is used.
 func adoptWeftWorktree(hostLayout *hubgeometry.Layout, weftPath, branch string) error {
 	// git worktree add <path> <branch> — no -b because the branch already exists.
-	_, stderr, exitCode, err := gitexec.RunGit(
+	_, _, exitCode, err := gitexec.RunGit(
 		[]string{"worktree", "add", weftPath, branch},
 		hostLayout.WeftRepoRoot(),
 	)
@@ -222,7 +222,7 @@ func adoptWeftWorktree(hostLayout *hubgeometry.Layout, weftPath, branch string) 
 		return fmt.Errorf("git worktree add: %w", err)
 	}
 	if exitCode != 0 {
-		return fmt.Errorf("git worktree add failed: %s", stderr)
+		return fmt.Errorf("adopt weft worktree %q for branch %q failed (git exit %d)", weftPath, branch, exitCode)
 	}
 	return nil
 }

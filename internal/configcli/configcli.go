@@ -22,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/weftcli"
+	"github.com/Knatte18/loomyard/internal/yamlengine"
 )
 
 // syncFunc runs the post-edit sync, writing its output to the given writer,
@@ -132,14 +133,93 @@ func editOne(baseDir string, out io.Writer, module string, edit configengine.Edi
 	return output.Err(out, fmt.Sprintf("edited _lyx/config/%s.yaml but weft sync failed: %s", module, buf.String()))
 }
 
+// parseSetFlags parses a list of raw "key=value" strings (as collected from
+// repeated --set flags) into yamlengine.KV pairs.
+//
+// Each entry is split on the first '=' only, so a value may itself contain
+// '=' characters without truncating. An entry with no '=' at all is
+// malformed and returns a descriptive error rather than silently treating
+// the whole string as a key with an empty value.
+func parseSetFlags(raw []string) ([]yamlengine.KV, error) {
+	pairs := make([]yamlengine.KV, 0, len(raw))
+	for _, entry := range raw {
+		parts := strings.SplitN(entry, "=", 2)
+		if len(parts) < 2 {
+			return nil, fmt.Errorf("invalid --set value %q: expected key=value", entry)
+		}
+		pairs = append(pairs, yamlengine.KV{Key: parts[0], Value: parts[1]})
+	}
+	return pairs, nil
+}
+
+// setModule writes pairs into a single config module's file and optionally
+// syncs on success, mirroring editOne's structure but with no editor
+// invocation: configengine.Set performs the whole non-interactive write in
+// one call.
+//
+// Flow:
+// 1. Look up the template for the given module name via configreg.Template.
+// 2. If unknown, print an error message listing known modules and return 1.
+// 3. Call configengine.Set to scaffold-if-missing and apply pairs.
+// 4. If Set returns an error (e.g. an unknown config key), print it and return 1.
+// 5. On success, call sync with a buffered writer to capture its output.
+// 6. If sync returns 0, discard the buffer and print the success message.
+// 7. If sync returns non-zero, print a failure message with the sync output and return 1.
+func setModule(baseDir string, out io.Writer, module string, pairs []yamlengine.KV, sync syncFunc) int {
+	// Look up the template for this module.
+	template, ok := configreg.Template(module)
+	if !ok {
+		return output.Err(out, fmt.Sprintf("unknown config module: %s (known: %v)", module, configreg.Names()))
+	}
+
+	// Call configengine.Set to scaffold-if-missing and apply pairs directly,
+	// with no editor invocation.
+	if err := configengine.Set(baseDir, module, template(), pairs); err != nil {
+		return output.Err(out, err.Error())
+	}
+
+	// Set succeeded; now call sync and capture its output, exactly as editOne does.
+	var buf bytes.Buffer
+	exitCode := sync(&buf)
+	if exitCode == 0 {
+		// Sync succeeded; discard output to keep the stream clean.
+		fmt.Fprintf(out, "edited and synced _lyx/config/%s.yaml\n", module)
+		return 0
+	}
+
+	// Sync failed; include its output in the failure message for diagnosis.
+	return output.Err(out, fmt.Sprintf("edited _lyx/config/%s.yaml but weft sync failed: %s", module, buf.String()))
+}
+
 // dispatch routes the config command to the print path (when printOnly is true),
-// editOne (if a module is specified), or menu (for the interactive numbered menu).
+// the --set path (when setFlags is non-empty), editOne (if a module is
+// specified), or menu (for the interactive numbered menu).
 //
 // When printOnly is true the command is read-only: it writes on-disk YAML to out
 // without opening an editor. The print path is evaluated before any edit/menu logic.
-// The baseDir is computed from the layout as filepath.Join(WorktreeRoot, RelPath).
-func dispatch(l *hubgeometry.Layout, in io.Reader, out io.Writer, args []string, edit configengine.EditorFunc, sync syncFunc, printOnly bool) int {
+// The --set path is a fully non-interactive write: it never calls edit and is
+// mutually exclusive with --print. The baseDir is computed from the layout as
+// filepath.Join(WorktreeRoot, RelPath).
+func dispatch(l *hubgeometry.Layout, in io.Reader, out io.Writer, args []string, edit configengine.EditorFunc, sync syncFunc, printOnly bool, setFlags []string) int {
 	baseDir := filepath.Join(l.WorktreeRoot, l.RelPath)
+
+	// Handle --set before any --print/edit/menu dispatch: it is a fully
+	// non-interactive write path that never opens the editor, so its
+	// validation (mutual exclusivity with --print, module-required) must run
+	// before either of those branches gets a chance to act.
+	if len(setFlags) > 0 && printOnly {
+		return output.Err(out, "--print and --set are mutually exclusive")
+	}
+	if len(setFlags) > 0 && len(args) < 1 {
+		return output.Err(out, "module required with --set")
+	}
+	if len(setFlags) > 0 {
+		pairs, err := parseSetFlags(setFlags)
+		if err != nil {
+			return output.Err(out, err.Error())
+		}
+		return setModule(baseDir, out, args[0], pairs, sync)
+	}
 
 	// Handle --print before any edit/menu dispatch; the print path is read-only
 	// and never opens the editor.
@@ -162,8 +242,13 @@ func dispatch(l *hubgeometry.Layout, in io.Reader, out io.Writer, args []string,
 func buildConfigLong() string {
 	return "config edits a module's configuration in _lyx/config/ and syncs weft on\n" +
 		"success. With no argument it opens an interactive numbered menu of the known\n" +
-		"modules; with a module name it edits that module directly.\n\n" +
+		"modules; with a module name it edits that module directly. The editor is\n" +
+		"resolved from $VISUAL or $EDITOR; with neither set it falls back to notepad\n" +
+		"on Windows or vi elsewhere.\n\n" +
 		"Use --print to print the on-disk YAML without launching the editor.\n\n" +
+		"Use --set key=value (repeatable) to write one or more config values directly,\n" +
+		"bypassing the editor entirely, e.g.\n" +
+		"  lyx config board --set proposal_prefix=foo- --set home=Home.md\n\n" +
 		"Known modules: " + strings.Join(configreg.Names(), ", ") + "."
 }
 
@@ -232,11 +317,13 @@ func Command() *cobra.Command {
 		ValidArgs: configreg.Names(),
 	}
 	configCmd.Flags().Bool("print", false, "print on-disk config as YAML without launching the editor")
-	// The RunE closure captures configCmd so the --print flag is readable without
-	// consulting os.Args directly.
+	configCmd.Flags().StringArray("set", nil, "set config key=value directly, bypassing the editor (repeatable)")
+	// The RunE closure captures configCmd so the --print/--set flags are
+	// readable without consulting os.Args directly.
 	configCmd.RunE = clihelp.WrapRun(func(out io.Writer, args []string) int {
 		printOnly, _ := configCmd.Flags().GetBool("print")
-		return runConfig(out, args, printOnly)
+		setFlags, _ := configCmd.Flags().GetStringArray("set")
+		return runConfig(out, args, printOnly, setFlags)
 	})
 
 	// Build the reconcile subcommand and register it so cobra routes
@@ -274,8 +361,9 @@ func RunCLI(out io.Writer, args []string) int {
 // editor (DefaultEditor) and the real sync function (weft.RunCLI with "sync"),
 // and dispatches to dispatch with os.Stdin as the interactive input reader.
 // When printOnly is true the command is read-only: it prints on-disk YAML
-// without opening an editor or running sync.
-func runConfig(out io.Writer, args []string, printOnly bool) int {
+// without opening an editor or running sync. setFlags carries the raw
+// "key=value" strings collected from repeated --set flags.
+func runConfig(out io.Writer, args []string, printOnly bool, setFlags []string) int {
 	// Resolve the current working directory.
 	cwd, err := hubgeometry.Getwd()
 	if err != nil {
@@ -293,6 +381,6 @@ func runConfig(out io.Writer, args []string, printOnly bool) int {
 		return weftcli.RunCLI(w, []string{"sync"})
 	}
 
-	// Dispatch to the print path, interactive menu, or specific module.
-	return dispatch(l, os.Stdin, out, args, configengine.DefaultEditor, realSync, printOnly)
+	// Dispatch to the print path, --set path, interactive menu, or specific module.
+	return dispatch(l, os.Stdin, out, args, configengine.DefaultEditor, realSync, printOnly, setFlags)
 }
