@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-warp-path-separator-fix
+phase: approved-sandbox-suite-doc-hardening
 slug: lyx-sandbox-fixes
 branch: lyx-sandbox-fixes
 plan: _mill/plan
@@ -23,6 +23,7 @@ planned  '2026-07-01T04:13:23Z'
 implementing  '2026-07-01T04:18:12Z'
 approved-raw-git-error-message-cleanup  '2026-07-01T04:23:54Z'
 approved-warp-path-separator-fix  '2026-07-01T04:30:57Z'
+approved-sandbox-suite-doc-hardening  '2026-07-01T04:32:55Z'
 ```
 
 ## Batches
@@ -40,7 +41,8 @@ batches:
     start_sha: a70fec3428c70701727f008409530474f8183418
     commit_sha: 60f7205b63e07ce95713fd5394256c93dba37838
   - name: sandbox-suite-doc-hardening
-    state: running
+    state: approved
     implementer_session: fa2841da-31f3-483d-baf4-b1c119b4b7cd
     start_sha: 38214256b3e38e143d3ab3e5947ab49456c725ca
+    commit_sha: 73fa9dcbbf44039acfc9e2b819712a8f219c9241
 ```
