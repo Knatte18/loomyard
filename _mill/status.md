@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: sandbox-cli-ergonomics
 branch: sandbox-cli-ergonomics
 plan: _mill/plan
@@ -33,6 +33,7 @@ holistic-fixing  '2026-07-01T09:04:32Z'
 nits-fixed-holistic  '2026-07-01T09:08:59Z'
 holistic-approved  '2026-07-01T09:09:12Z'
 done  '2026-07-01T09:10:01Z'
+pr-pending  '2026-07-01T09:11:45Z'
 ```
 
 ## Batches
