@@ -54,10 +54,12 @@ load-bearing for Card 8's exact step ordering.
   - Update the `init` command's `Long` text to document `--undo` with a concrete
     example invocation and a one-sentence description of what it reverses (junction,
     weft-side `_lyx` content, `.gitignore` block, `.git/info/exclude` entry), per the
-    CLI/Cobra Invariant's "help accuracy is a review obligation" rule. Leave `Short`
-    text as-is (it already accurately describes the forward path; `--undo` is
-    documented in `Long`, matching how `configcli`/`configcli.go`'s `--print`/`--apply`
-    flags are documented in their parent commands' `Long` text rather than in `Short`).
+    CLI/Cobra Invariant's "help accuracy is a review obligation" rule. Update `Short`
+    from `"scaffold _lyx/config/ in the current directory"` to `"scaffold _lyx/config/
+    in the current directory (or reverse it with --undo)"` — a small tweak for
+    `--help` subcommand-listing discoverability, since the command becomes
+    bidirectional. `Long` remains the authoritative, detailed documentation of
+    `--undo`'s exact behavior.
   - In new file `internal/initcli/undo.go`, implement
     `func runUndo(out io.Writer, args []string) int`, following this exact step order
     (per the overview's "abort scope" and "Push runs unconditionally" Shared

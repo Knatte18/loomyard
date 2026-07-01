@@ -133,10 +133,16 @@ revisited together at that time — not preemptively generalized now.
   - `TestUnwireJunctions_NeverWired`: call `UnwireJunctions` on a freshly-paired
     fixture where `WireJunctions` was never called for this slug; assert no error and
     `UnwireResult{}` (both fields false).
-  - `TestUnwireJunctions_RealDirectoryGuard`: pre-create a real directory (not a
-    junction) at `l.HostLyxLink(slug)` (no prior `WireJunctions` call needed since the
-    junction never existed); assert `UnwireJunctions` returns an error, the directory
-    and its contents are untouched, and `.git/info/exclude` is unmodified.
+  - `TestUnwireJunctions_RealDirectoryGuard`: `unseedLyxJunction` resolves the
+    canonical weft-side target via `filepath.EvalSymlinks` *before* checking
+    `fslink.IsLink` (per Card 6's mandated check order), so the weft-side target must
+    exist and resolve first, or this test would hit the "missing target" branch instead
+    of the intended "real directory" branch. First create the corresponding weft-side
+    target directory directly (e.g. `os.MkdirAll(l.WeftLyxDirFor(slug), 0o755)` — a
+    full `Add`/`WireJunctions` call is not needed, just the target directory existing
+    so `EvalSymlinks` succeeds), then create a real directory (not a junction) at
+    `l.HostLyxLink(slug)`; assert `UnwireJunctions` returns an error, the real
+    directory and its contents are untouched, and `.git/info/exclude` is unmodified.
   - `TestUnwireJunctions_TargetMismatch`: call `WireJunctions` to create a valid
     junction, then replace it (remove and recreate via `fslink.CreateDirLink`) pointing
     at a different, unrelated directory; assert `UnwireJunctions` returns an error, the
