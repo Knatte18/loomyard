@@ -38,7 +38,9 @@ batches:
     start_sha: e86ba99f802f8fcbfc6e60562ce8b226bff50545
     commit_sha: f48a2474ead840ecd9368b3c65b88ac1b882e9b9
   - name: warpengine-stderr-fix
-    state: pending
+    state: running
+    implementer_session: e9171f2d-48b5-4ddb-9d41-f2a23f355869
+    start_sha: e8d84f54f523304573712754e66b8b28e6bf51a7
   - name: weft-hubgeometry-stderr-fix
     state: pending
 ```
