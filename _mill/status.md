@@ -32,7 +32,9 @@ implementing  '2026-07-01T08:24:32Z'
 ```yaml
 batches:
   - name: config-set-flag
-    state: pending
+    state: running
+    implementer_session: 44a69cb4-8d4a-4536-86b8-575ee4188ccf
+    start_sha: e86ba99f802f8fcbfc6e60562ce8b226bff50545
   - name: warpengine-stderr-fix
     state: pending
   - name: weft-hubgeometry-stderr-fix
