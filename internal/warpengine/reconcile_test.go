@@ -110,6 +110,73 @@ func TestReconcile_MissingWeftWorktreeRecreated(t *testing.T) {
 	_ = weftPath
 }
 
+// TestReconcile_MissingWeftRecreateFailsNoStderrLeak asserts that when the weft-worktree
+// recreate path (adoptWeftWorktree) fails, ReconcilePairResult.Error is composed from
+// local context (the weft path, branch, and git exit code) rather than git's own stderr
+// text. The failure is forced by locking the weft branch in a separate weft worktree so
+// `git worktree add <path> <branch>` fails with "already checked out", mirroring
+// TestCheckout_HostRollback's lock technique.
+func TestReconcile_MissingWeftRecreateFailsNoStderrLeak(t *testing.T) {
+	t.Parallel()
+
+	f := setupReconcileFixture(t)
+
+	const testSlug = "feature-recreate-fail"
+	w := New(Config{BranchPrefix: ""})
+	_, err := w.Add(f.Layout, testSlug, AddOptions{SkipGit: true})
+	if err != nil {
+		t.Fatalf("Add(%q): %v", testSlug, err)
+	}
+
+	featureWeftPath := f.Layout.WeftWorktreePath(testSlug)
+
+	// Remove the weft worktree directory but keep the branch, so Reconcile takes the
+	// recreate path (rule 1).
+	lyxtest.MustRun(t, f.Layout.WeftRepoRoot(), "git", "worktree", "remove", "--force", featureWeftPath)
+	if !weftBranchExists(f.Layout, testSlug) {
+		t.Fatalf("pre-condition: weft branch %q must exist for recreate path", testSlug)
+	}
+
+	// Lock the weft branch by checking it out in a separate weft worktree, so the
+	// recreate's `git worktree add <path> <branch>` fails with "already checked out".
+	lockPath := filepath.Join(f.Layout.Hub, "lock-reconcile-recreate")
+	lyxtest.MustRun(t, f.Layout.WeftRepoRoot(), "git", "worktree", "add", lockPath, testSlug)
+	t.Cleanup(func() {
+		lyxtest.MustRun(t, f.Layout.WeftRepoRoot(), "git", "worktree", "remove", "--force", lockPath)
+	})
+
+	r, err := w.Reconcile(f.Layout)
+	if err != nil {
+		t.Fatalf("Reconcile() error = %v; want nil", err)
+	}
+
+	var found *ReconcilePairResult
+	for i := range r.Pairs {
+		if filepath.Clean(r.Pairs[i].WeftWorktree) == filepath.Clean(featureWeftPath) {
+			found = &r.Pairs[i]
+			break
+		}
+	}
+	if found == nil {
+		t.Fatalf("Reconcile(): no pair result for weft path %s", featureWeftPath)
+	}
+	if found.Action != ReconcileActionWeftRecreated {
+		t.Errorf("Action = %q; want %q", found.Action, ReconcileActionWeftRecreated)
+	}
+	if found.Error == "" {
+		t.Fatalf("Error = \"\"; want non-empty (recreate should fail while the branch is locked)")
+	}
+	if !strings.Contains(found.Error, testSlug) {
+		t.Errorf("Error = %q; want substring %q (branch name)", found.Error, testSlug)
+	}
+	if strings.Contains(found.Error, "fatal:") {
+		t.Errorf("Error = %q; want no %q substring (raw git stderr leak)", found.Error, "fatal:")
+	}
+	if strings.Contains(found.Error, "already checked out") {
+		t.Errorf("Error = %q; want no %q substring (raw git stderr leak)", found.Error, "already checked out")
+	}
+}
+
 // TestReconcile_BrokenJunctionRepointed asserts that Reconcile re-points a host _lyx junction
 // that was removed (broken/dangling) while the weft worktree is still present.
 func TestReconcile_BrokenJunctionRepointed(t *testing.T) {
