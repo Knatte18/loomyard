@@ -13,8 +13,10 @@ parent: main
 when driving a real `lyx.exe` against the GitHub sandbox repos. It currently only
 covers S0–S4 plus S6 (S5 was deleted at some point, leaving a numbering gap) —
 `init`, `board`, and `config` get scenarios, but `weft` (a core module) is only
-grazed in passing by S2, and `warp` (host↔weft pairing) has no positive-path
-scenario at all — S6 only tests its *bad*-checkout error path. There is also no
+grazed in passing by S2, and `warp` (host↔weft pairing) has **no scenario at
+all** — the existing S6 (renamed S5) is a generic, module-agnostic
+wrong-directory/bad-flag/unknown-subcommand ergonomics check with no
+warp-specific content. There is also no
 mechanism that stops a brand-new lyx module from silently never getting a sandbox
 scenario — nothing parallels the "exists ⇒ registered" guard the CLI/Cobra
 Invariant already enforces for `newRoot()` registration.
@@ -37,7 +39,9 @@ so that guarantee holds going forward.
 - New scenario **S7 — Weft lifecycle**: `weft status/commit/push/pull/sync`
   end to end — make a change, commit via weft, verify status/mirroring.
 - New scenario **S8 — Warp introspection**: valid `warp list/pairs/checkout/
-  reconcile`, beyond the bad-checkout error case already covered by S5.
+  reconcile`. `warp` has no existing scenario today — S8 is the module's
+  first (the renamed S5 error-ergonomics check is generic and mentions no
+  warp-specific case).
 - Extend existing **S4 — Config round-trip** to also run
   `lyx config reconcile` after the existing edit/round-trip check.
 - Renumber: rename the current S6 (wrong-directory/error-ergonomics) to
@@ -197,6 +201,12 @@ so that guarantee holds going forward.
   right after S1 orientation) — the task explicitly specifies the renumber
   is forward-only (S6→S5, new scenarios take S6, S7, ...), so mid-sequence
   insertion was never on the table.
+- Correction from discussion review round 1: an earlier draft of this
+  document claimed the renamed S5 already tested a "bad-checkout" case for
+  warp and framed S8 as going "beyond" it. The actual S5/S6 Watch text is
+  generic (wrong-directory / bad-flag / unknown-subcommand) with no
+  warp-specific content anywhere — `warp` has zero scenario coverage before
+  this task, and S8 is its first scenario, full stop.
 
 ### Weft lifecycle scenario (S7): durability note required
 
@@ -263,6 +273,15 @@ so that guarantee holds going forward.
   scenario should flag) — if it looks like a real bug, record it as a
   scenario finding rather than silently working around it; it is not a
   reason to change the invariant test design above.
+- Durability note required (added in discussion review round 1, same style
+  as S3/S7/S8): S6 scaffolds a real nested `_lyx/` in the subfolder and
+  touches `.gitignore` there — state persisting across sandbox sessions
+  unless the hub is rebuilt with `sandbox-build.cmd -reset` (which the
+  suite's own Pre-conditions describe as optional, not mandatory, before
+  each session). S6 must therefore remove the nested `_lyx/` (and revert any
+  `.gitignore` change) from the subfolder at session end, so a later run
+  reliably observes "not yet initialized" rather than silently reusing a
+  prior run's leftovers.
 
 ## Technical context
 
@@ -359,3 +378,15 @@ so that guarantee holds going forward.
   `longlist_test.go` because it needs `newRoot()`, confirmed by checking that
   every other guard needing live command-tree introspection already lives in
   `cmd/lyx/`.
+- **Q:** (Discussion review round 1, gap) Does the renamed S5
+  error-ergonomics scenario already cover a "bad-checkout" case for warp,
+  making S8 an extension rather than warp's first scenario? **A:** No —
+  verified against the actual `SANDBOX-SUITE.md` text, S5/S6's Watch section
+  is generic (wrong-directory/bad-flag/unknown-subcommand) with no
+  warp-specific content; `warp` has zero coverage before this task and S8 is
+  its first scenario.
+- **Q:** (Discussion review round 1, gap) Does S6 (subfolder init) need a
+  durability/cleanup note like S3/S7/S8? **A:** Yes — it scaffolds a real
+  nested `_lyx/` and touches `.gitignore` in the subfolder, which persists
+  across sessions since hub `-reset` is optional, not automatic; S6 must
+  clean up the nested `_lyx/`/`.gitignore` change at session end.
