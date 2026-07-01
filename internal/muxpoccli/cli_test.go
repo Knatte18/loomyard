@@ -52,6 +52,29 @@ func TestRunCLIUnknownSubcommandFails(t *testing.T) {
 	}
 }
 
+// TestRunCLINotAGitRepo verifies that "lyx muxpoc status" run from a non-git
+// temp directory surfaces hubgeometry's bare ErrNotAGitRepo sentinel exactly
+// once — not doubled as "not a git repository: not a git repository: ...".
+func TestRunCLINotAGitRepo(t *testing.T) {
+	t.Chdir(t.TempDir())
+
+	var out bytes.Buffer
+	code := RunCLI(&out, []string{"status"})
+
+	if code != 1 {
+		t.Errorf("RunCLI(status) in non-git dir = %d; want 1", code)
+	}
+
+	var env map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
+		t.Fatalf("RunCLI(status) output is not valid JSON: %v; got: %q", err, out.String())
+	}
+	errMsg, _ := env["error"].(string)
+	if errMsg != "not a git repository" {
+		t.Errorf("RunCLI(status) error = %q; want exactly \"not a git repository\" (not doubled)", errMsg)
+	}
+}
+
 // TestRunCLIUnknownFlagFails verifies that a bad flag produces the "unknown flag"
 // cobra message wrapped in a JSON error envelope and exits 1. This is distinct from
 // an unknown subcommand — cobra emits different messages for the two cases and tests

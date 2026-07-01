@@ -97,7 +97,10 @@ the risky parts — daemon and pane recovery — of the planned mux module.`,
 
 		layout, err := hubgeometry.Resolve(cwd)
 		if err != nil {
-			output.Err(c.OutOrStdout(), fmt.Sprintf("not a git repository: %v", err))
+			// hubgeometry.Resolve's error is already self-describing (it IS the
+			// "not a git repository" sentinel); pass it through bare rather than
+			// doubling that same text on top of it.
+			output.Err(c.OutOrStdout(), err.Error())
 			clihelp.Abort(c.Context(), 1)
 			return nil
 		}
