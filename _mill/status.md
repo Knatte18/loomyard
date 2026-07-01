@@ -36,7 +36,9 @@ implementing  '2026-07-01T09:30:49Z'
 ```yaml
 batches:
   - name: weftengine-commit-message
-    state: pending
+    state: running
+    implementer_session: 81aca49b-ef09-48b1-983f-0e09f28dde85
+    start_sha: 1c51293dc6eccaefe1523a88a81da682e7477a77
   - name: gitignore-remove
     state: pending
   - name: warpengine-unwire-junctions
