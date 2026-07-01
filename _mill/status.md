@@ -34,7 +34,9 @@ batches:
     start_sha: 86df7d85aa82b5ae1a2909b65725965b0af15f52
     commit_sha: 6f7df1070f7447b1a0fee77e0f8e6ff03fe1d731
   - name: warp-path-separator-fix
-    state: pending
+    state: running
+    implementer_session: 97916ca2-2a5b-4a95-b5a4-dfb40df0f0d1
+    start_sha: a70fec3428c70701727f008409530474f8183418
   - name: sandbox-suite-doc-hardening
     state: pending
 ```
