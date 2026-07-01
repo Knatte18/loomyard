@@ -71,7 +71,7 @@ func runFetch(parentDir, loomyardRoot string) error {
 	// Guard against a missing Hub so the operator gets a clear, actionable message
 	// rather than a confusing downstream read failure.
 	if _, err := os.Stat(hostRepoDir); os.IsNotExist(err) {
-		return fmt.Errorf("hub host repo not found at %s -- run `sandbox build` first", hostRepoDir)
+		return fmt.Errorf("hub host repo not found at %s -- run sandbox-build.cmd first", hostRepoDir)
 	} else if err != nil {
 		return fmt.Errorf("stat host repo %s: %w", hostRepoDir, err)
 	}
@@ -92,7 +92,17 @@ func runFetch(parentDir, loomyardRoot string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("fetched %d finding(s) -> %s\n", count, destPath)
+	if count == 0 {
+		// Nothing to triage; no Next step to point at.
+		fmt.Printf("fetched 0 finding(s) -> %q (clean run -- nothing to triage)\n", destPath)
+		return nil
+	}
+	// Point the operator at the concrete triage skill, quoting the path so it
+	// survives spaces when pasted into the /mill-report-to-tasks invocation.
+	fmt.Printf("fetched %d finding(s) -> %q\n\n"+
+		"Next: /mill-report-to-tasks %q\n"+
+		"      (groups the findings into wiki tasks; nothing is written until you approve)\n",
+		count, destPath, destPath)
 	return nil
 }
 

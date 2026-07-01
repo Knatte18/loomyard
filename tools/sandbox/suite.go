@@ -203,7 +203,7 @@ func runSuite(parentDir, claudeOverride, promptOverride string) error {
 	// Guard against a missing Hub so the operator gets a clear, actionable message
 	// rather than a confusing downstream file-write failure.
 	if _, err := os.Stat(hostRepoDir); os.IsNotExist(err) {
-		return fmt.Errorf("hub host repo not found at %s -- run `sandbox build` first", hostRepoDir)
+		return fmt.Errorf("hub host repo not found at %s -- run sandbox-build.cmd first", hostRepoDir)
 	} else if err != nil {
 		return fmt.Errorf("stat host repo %s: %w", hostRepoDir, err)
 	}
@@ -269,7 +269,7 @@ func runSuite(parentDir, claudeOverride, promptOverride string) error {
 	// separate step, so print guidance and return nil regardless of the code.
 	code := launchAgent(hostRepoDir, claudePath, instruction)
 	fmt.Fprintf(os.Stderr,
-		"sandbox: agent session ended (exit code %d). Run \"sandbox.cmd fetch\" to collect findings into .scratch.\n",
+		"sandbox: agent session ended (exit code %d). Run sandbox-fetch.cmd to collect findings into .scratch.\n",
 		code)
 	return nil
 }

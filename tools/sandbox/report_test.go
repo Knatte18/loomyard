@@ -307,8 +307,8 @@ func TestRunFetch_HubAbsent(t *testing.T) {
 	if err == nil {
 		t.Fatal("runFetch should return error when the Hub host subdir is absent")
 	}
-	if !strings.Contains(err.Error(), "sandbox build") {
-		t.Errorf("error should mention 'sandbox build'; got %q", err.Error())
+	if !strings.Contains(err.Error(), "sandbox-build.cmd") {
+		t.Errorf("error should mention 'sandbox-build.cmd'; got %q", err.Error())
 	}
 }
 

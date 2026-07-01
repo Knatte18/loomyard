@@ -1,8 +1,9 @@
 // main.go implements the sandbox tool entry point, flag parsing, and subcommand
 // dispatch. It supports three subcommands: "build" (default, clones the Hub),
 // "suite" (runs the embedded SANDBOX-SUITE agent), and "fetch" (collects
-// the agent-written report into .scratch). The -parent and -reset flags live at
-// the top level to preserve back-compat with existing callers.
+// the agent-written report into .scratch). Only -parent and -loomyard live at
+// the top level; -reset is a build-subcommand flag, parsed after the "build"
+// token like suite parses its -claude/-prompt flags.
 
 package main
 
@@ -73,13 +74,11 @@ func decideClone(hubPath string, reset bool) error {
 // the -parent path, and dispatches to the appropriate subcommand. It returns 0
 // on success and 1 on any error, writing a "sandbox: ..." message to stderr.
 func run(argv []string) int {
-	// Top-level flagset holds flags that apply to all subcommands. -reset is
-	// build-only but stays here so existing callers (sandbox.cmd -reset) keep
-	// working without a subcommand token.
+	// Top-level flagset holds flags that apply across subcommands. -reset is
+	// build-only, so it is parsed by the build subcommand below rather than here.
 	fs := flag.NewFlagSet("sandbox", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	parentDir := fs.String("parent", "", "parent directory where the Hub will be created (required)")
-	reset := fs.Bool("reset", false, "rebuild the Hub even if it already exists (build subcommand only)")
 	loomyard := fs.String("loomyard", "", "loomyard repo root for fetching the sandbox report (required for the fetch subcommand)")
 
 	if err := fs.Parse(argv); err != nil {
@@ -101,7 +100,7 @@ func run(argv []string) int {
 	}
 
 	// Dispatch on the first remaining positional argument. An absent positional
-	// defaults to "build" so the bare `sandbox.cmd` invocation is unchanged.
+	// defaults to "build" so the bare `sandbox-build.cmd` invocation still builds.
 	subcommand := ""
 	if args := fs.Args(); len(args) > 0 {
 		subcommand = args[0]
@@ -109,7 +108,21 @@ func run(argv []string) int {
 
 	switch subcommand {
 	case "", "build":
-		// Default subcommand: clone or reset the Hub.
+		// Default subcommand: clone or reset the Hub. Parse the build-only -reset
+		// flag from the positionals after the "build" token (absent when the bare
+		// sandbox-build.cmd is used, so reset defaults to false).
+		bf := flag.NewFlagSet("sandbox build", flag.ContinueOnError)
+		bf.SetOutput(os.Stderr)
+		reset := bf.Bool("reset", false, "rebuild the Hub even if it already exists")
+
+		rest := fs.Args()
+		if len(rest) > 0 && rest[0] == "build" {
+			rest = rest[1:]
+		}
+		if err := bf.Parse(rest); err != nil {
+			return 1
+		}
+
 		hubPath := filepath.Join(absParent, hubName)
 		if err := decideClone(hubPath, *reset); err != nil {
 			fmt.Fprintf(os.Stderr, "sandbox: %v\n", err)
@@ -143,8 +156,8 @@ func run(argv []string) int {
 			fmt.Fprintln(os.Stderr, "sandbox: -loomyard is required for the fetch subcommand")
 			return 1
 		}
-		// filepath.Clean strips the trailing "."/separator that sandbox.cmd passes
-		// via "%~dp0." before resolving to an absolute path.
+		// filepath.Clean strips the trailing "."/separator that sandbox-fetch.cmd
+		// passes via "%~dp0." before resolving to an absolute path.
 		absLoomyard, err := filepath.Abs(filepath.Clean(*loomyard))
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "sandbox: resolve loomyard path: %v\n", err)
