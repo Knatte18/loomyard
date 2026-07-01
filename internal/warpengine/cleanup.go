@@ -149,7 +149,7 @@ func (w *Worktree) Cleanup(l *hubgeometry.Layout, apply, force bool) (CleanupRes
 // clean, newline-delimited list of branch names with no decoration. Returns an
 // error if the git command fails to spawn or exits non-zero.
 func listWeftBranches(l *hubgeometry.Layout) ([]string, error) {
-	out, stderr, exitCode, err := gitexec.RunGit(
+	out, _, exitCode, err := gitexec.RunGit(
 		[]string{"branch", "--format=%(refname:short)"},
 		l.WeftRepoRoot(),
 	)
@@ -157,7 +157,7 @@ func listWeftBranches(l *hubgeometry.Layout) ([]string, error) {
 		return nil, fmt.Errorf("git branch: %w", err)
 	}
 	if exitCode != 0 {
-		return nil, fmt.Errorf("git branch exited %d: %s", exitCode, stderr)
+		return nil, fmt.Errorf("list weft branches failed (git exit %d)", exitCode)
 	}
 
 	raw := strings.TrimSpace(out)
@@ -171,7 +171,7 @@ func listWeftBranches(l *hubgeometry.Layout) ([]string, error) {
 // deleteWeftBranch deletes a single weft branch via git branch -D and records
 // any error in entry.Error. Returns true only when the deletion succeeded.
 func deleteWeftBranch(l *hubgeometry.Layout, branch string, entry *CleanupBranchEntry) bool {
-	_, stderr, exitCode, err := gitexec.RunGit(
+	_, _, exitCode, err := gitexec.RunGit(
 		[]string{"branch", "-D", branch},
 		l.WeftRepoRoot(),
 	)
@@ -180,7 +180,7 @@ func deleteWeftBranch(l *hubgeometry.Layout, branch string, entry *CleanupBranch
 		return false
 	}
 	if exitCode != 0 {
-		entry.Error = fmt.Sprintf("git branch -D %s failed: %s", branch, stderr)
+		entry.Error = fmt.Sprintf("delete weft branch %q failed (git exit %d)", branch, exitCode)
 		return false
 	}
 	return true

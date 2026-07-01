@@ -53,6 +53,33 @@ func DefaultEditor(path string) error {
 	return cmd.Run()
 }
 
+// scaffoldIfMissing writes template to path (creating configDir first) when
+// path does not yet exist, and reports whether it did so.
+//
+// It is shared by Edit and Set so both entry points scaffold a missing config
+// file identically: a caller that scaffolds must know so it can remove the
+// fresh file on any later abort, restoring the pre-call filesystem state.
+func scaffoldIfMissing(path, configDir, template string) (scaffolded bool, err error) {
+	// Check if the file already exists.
+	_, statErr := os.Stat(path)
+	scaffolded = os.IsNotExist(statErr)
+	if !scaffolded {
+		return false, nil
+	}
+
+	// Create _lyx/config/ directory if needed.
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		return false, fmt.Errorf("create config directory: %w", err)
+	}
+
+	// Write the template to the new file.
+	if err := os.WriteFile(path, []byte(template), 0o644); err != nil {
+		return false, fmt.Errorf("scaffold config file: %w", err)
+	}
+
+	return true, nil
+}
+
 // Edit opens a config file in an editor, validates the YAML syntax, and loops
 // on validation failure.
 //
@@ -85,22 +112,11 @@ func Edit(baseDir, module, template string, edit EditorFunc) error {
 	// Compute the config file path via paths helper.
 	path := hubgeometry.ConfigFile(baseDir, module)
 
-	// Check if the file already exists.
-	_, err = os.Stat(path)
-	scaffolded := os.IsNotExist(err)
-
-	// If the file does not exist, scaffold it from the template.
-	if scaffolded {
-		// Create _lyx/config/ directory if needed.
-		configDir := hubgeometry.ConfigDir(baseDir)
-		if err := os.MkdirAll(configDir, 0755); err != nil {
-			return fmt.Errorf("create config directory: %w", err)
-		}
-
-		// Write the template to the new file.
-		if err := os.WriteFile(path, []byte(template), 0o644); err != nil {
-			return fmt.Errorf("scaffold config file: %w", err)
-		}
+	// Scaffold the file from the template if it does not already exist.
+	configDir := hubgeometry.ConfigDir(baseDir)
+	scaffolded, err := scaffoldIfMissing(path, configDir, template)
+	if err != nil {
+		return err
 	}
 
 	// Loop until valid YAML is saved or edit is aborted.

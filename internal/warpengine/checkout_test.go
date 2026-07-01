@@ -210,6 +210,19 @@ func TestCheckout_HostRollback(t *testing.T) {
 		t.Fatalf("Checkout(%q) error = nil; want weft-side failure triggering rollback", targetBranch)
 	}
 
+	// The error message must be composed from local context (the branch name), not from
+	// git's own stderr text. Pin the absence of git-authored wording so a future edit
+	// cannot silently reintroduce a raw stderr leak.
+	if !strings.Contains(err.Error(), targetBranch) {
+		t.Errorf("Checkout(%q) error = %q; want substring %q (branch name)", targetBranch, err.Error(), targetBranch)
+	}
+	if strings.Contains(err.Error(), "fatal:") {
+		t.Errorf("Checkout(%q) error = %q; want no %q substring (raw git stderr leak)", targetBranch, err.Error(), "fatal:")
+	}
+	if strings.Contains(err.Error(), "already checked out") {
+		t.Errorf("Checkout(%q) error = %q; want no %q substring (raw git stderr leak)", targetBranch, err.Error(), "already checked out")
+	}
+
 	// The host must be rolled back to main — it must NOT be on target.
 	hostBranchOut, _, exitCode, err2 := gitexec.RunGit(
 		[]string{"rev-parse", "--abbrev-ref", "HEAD"},
@@ -232,6 +245,30 @@ func TestCheckout_HostRollback(t *testing.T) {
 	}
 	if got := strings.TrimSpace(weftBranchOut); got != "main" {
 		t.Errorf("weft branch after rollback = %q; want %q (pair must be untouched)", got, "main")
+	}
+}
+
+// TestCheckout_HostSwitchNonexistentBranch asserts that Checkout on a branch name that
+// does not exist anywhere (host or weft) fails with an error composed from local context
+// (the branch name) rather than git's own stderr text.
+func TestCheckout_HostSwitchNonexistentBranch(t *testing.T) {
+	t.Parallel()
+
+	f := setupCheckoutFixture(t)
+
+	const targetBranch = "nonexistent-branch-xyz"
+
+	w := New(Config{})
+	_, err := w.Checkout(f.Layout, targetBranch)
+
+	if err == nil {
+		t.Fatalf("Checkout(%q) error = nil; want host-switch failure (branch does not exist)", targetBranch)
+	}
+	if !strings.Contains(err.Error(), targetBranch) {
+		t.Errorf("Checkout(%q) error = %q; want substring %q (branch name)", targetBranch, err.Error(), targetBranch)
+	}
+	if strings.Contains(err.Error(), "fatal:") {
+		t.Errorf("Checkout(%q) error = %q; want no %q substring (raw git stderr leak)", targetBranch, err.Error(), "fatal:")
 	}
 }
 

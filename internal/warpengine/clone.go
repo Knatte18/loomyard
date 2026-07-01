@@ -124,13 +124,13 @@ func cloneRepo(url, dest string) error {
 	gitURL := filepath.ToSlash(url)
 	gitDest := filepath.ToSlash(destName)
 
-	stdout, stderr, exitCode, err := gitexec.RunGit([]string{"clone", gitURL, gitDest}, parentDir)
+	stdout, _, exitCode, err := gitexec.RunGit([]string{"clone", gitURL, gitDest}, parentDir)
 	if err != nil {
 		return fmt.Errorf("clone failed: %w", err)
 	}
 
 	if exitCode != 0 {
-		return fmt.Errorf("clone failed: %s", stderr)
+		return fmt.Errorf("clone %q to %q failed (git exit %d)", url, dest, exitCode)
 	}
 
 	_ = stdout // stdout is not used; we only check for errors

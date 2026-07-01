@@ -64,7 +64,7 @@ func weftBranchExists(l *hubgeometry.Layout, branch string) bool {
 // Returns an error if the command fails or exits with non-zero code.
 func createWeftWorktree(l *hubgeometry.Layout, slug, branch, startPoint string) error {
 	weftPath := l.WeftWorktreePath(slug)
-	_, stderr, exitCode, err := gitexec.RunGit(
+	_, _, exitCode, err := gitexec.RunGit(
 		[]string{"worktree", "add", "-b", branch, weftPath, startPoint},
 		l.WeftRepoRoot(),
 	)
@@ -72,7 +72,7 @@ func createWeftWorktree(l *hubgeometry.Layout, slug, branch, startPoint string) 
 		return fmt.Errorf("failed to run git worktree add for weft: %w", err)
 	}
 	if exitCode != 0 {
-		return fmt.Errorf("weft worktree add failed: %s", stderr)
+		return fmt.Errorf("create weft worktree %q for branch %q failed (git exit %d)", weftPath, branch, exitCode)
 	}
 	return nil
 }
@@ -91,7 +91,7 @@ func pushWeftBranch(l *hubgeometry.Layout, slug, branch string, opts AddOptions)
 	}
 
 	weftPath := l.WeftWorktreePath(slug)
-	_, stderr, exitCode, err := gitexec.RunGit(
+	_, _, exitCode, err := gitexec.RunGit(
 		[]string{"push", "-u", "origin", branch},
 		weftPath,
 	)
@@ -99,7 +99,7 @@ func pushWeftBranch(l *hubgeometry.Layout, slug, branch string, opts AddOptions)
 		return fmt.Errorf("failed to run git push for weft: %w", err)
 	}
 	if exitCode != 0 {
-		return fmt.Errorf("weft push failed: %s", stderr)
+		return fmt.Errorf("push weft branch %q failed (git exit %d)", branch, exitCode)
 	}
 
 	return nil

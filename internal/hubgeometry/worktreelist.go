@@ -32,12 +32,12 @@ type WorktreeEntry struct {
 //
 // Returns WorktreeEntry slice or an error if parsing or git execution fails.
 func List(sourceDir string) ([]WorktreeEntry, error) {
-	stdout, stderr, exitCode, err := gitexec.RunGit([]string{"worktree", "list", "--porcelain"}, sourceDir)
+	stdout, _, exitCode, err := gitexec.RunGit([]string{"worktree", "list", "--porcelain"}, sourceDir)
 	if err != nil {
 		return nil, err
 	}
 	if exitCode != 0 {
-		return nil, fmt.Errorf("git worktree list failed: %s", stderr)
+		return nil, fmt.Errorf("list git worktrees in %q failed (git exit %d)", sourceDir, exitCode)
 	}
 
 	return parseWorktreePorcelain(stdout)

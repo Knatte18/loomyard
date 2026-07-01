@@ -126,7 +126,7 @@ func seedGitExclude(l *hubgeometry.Layout, slug string) error {
 	worktreePath := l.WorktreePath(slug)
 
 	// Get the exclude path via git rev-parse --git-path
-	stdout, stderr, exitCode, err := gitexec.RunGit(
+	stdout, _, exitCode, err := gitexec.RunGit(
 		[]string{"rev-parse", "--git-path", "info/exclude"},
 		worktreePath,
 	)
@@ -134,7 +134,7 @@ func seedGitExclude(l *hubgeometry.Layout, slug string) error {
 		return fmt.Errorf("failed to get git-path for info/exclude: %w", err)
 	}
 	if exitCode != 0 {
-		return fmt.Errorf("git rev-parse --git-path failed: %s", stderr)
+		return fmt.Errorf("resolve git exclude path for %q failed (git exit %d)", worktreePath, exitCode)
 	}
 
 	excludePath := strings.TrimSpace(stdout)

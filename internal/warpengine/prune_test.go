@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
@@ -148,6 +149,82 @@ func TestPrune_StaleWeft(t *testing.T) {
 	if _, statErr := os.Stat(weftPath); !os.IsNotExist(statErr) {
 		t.Errorf("weft worktree %s still exists after apply Prune; want deleted", weftPath)
 	}
+}
+
+// TestPrune_DoubleRemovalFailureNoStderrLeak asserts that when both the git-level
+// removal (`git worktree remove --force`) AND the os.RemoveAll fallback fail,
+// pe.Error is composed from local context (the weft path and git exit code) rather
+// than git's own stderr text. The git-level failure is forced by locking the weft
+// worktree (`git worktree lock`, which even --force cannot override); the fallback
+// failure is forced by holding an open file handle inside the weft worktree, which
+// blocks deletion on Windows.
+func TestPrune_DoubleRemovalFailureNoStderrLeak(t *testing.T) {
+	t.Parallel()
+
+	f := setupPruneFixture(t)
+
+	const testSlug = "feature-prune-double-fail"
+	w := New(Config{BranchPrefix: ""})
+	_, err := w.Add(f.Layout, testSlug, AddOptions{SkipGit: true})
+	if err != nil {
+		t.Fatalf("Add(%q): %v", testSlug, err)
+	}
+
+	weftPath := f.Layout.WeftWorktreePath(testSlug)
+	hostPath := f.Layout.WorktreePath(testSlug)
+
+	// Remove only the host worktree so the pair becomes stale/orphaned.
+	lyxtest.MustRun(t, f.Hub, "git", "worktree", "remove", "--force", hostPath)
+	lyxtest.MustRun(t, f.Hub, "git", "branch", "-D", testSlug)
+
+	// Force the git-level removal to fail: a locked worktree is refused even by
+	// `git worktree remove --force` (double -f or an explicit unlock is required).
+	lyxtest.MustRun(t, f.Layout.WeftRepoRoot(), "git", "worktree", "lock", weftPath, "--reason", "test-lock")
+
+	// Force the os.RemoveAll fallback to also fail: hold an open file handle inside
+	// the weft worktree so deletion is blocked (Windows refuses to unlink an
+	// open-for-read file out from under an active handle).
+	blockerPath := filepath.Join(weftPath, "prune-double-fail-blocker")
+	if err := os.WriteFile(blockerPath, []byte("blocker"), 0o644); err != nil {
+		t.Fatalf("write blocker file: %v", err)
+	}
+	blocker, err := os.Open(blockerPath)
+	if err != nil {
+		t.Fatalf("open blocker file: %v", err)
+	}
+	defer blocker.Close()
+
+	r, err := w.Prune(f.Layout, true)
+	if err != nil {
+		t.Fatalf("Prune(apply=true) error = %v; want nil", err)
+	}
+
+	var found *PruneEntry
+	for i := range r.Entries {
+		if filepath.Clean(r.Entries[i].WeftWorktree) == filepath.Clean(weftPath) {
+			found = &r.Entries[i]
+			break
+		}
+	}
+	if found == nil {
+		t.Fatalf("Prune(apply=true): no entry for weft path %s; entries = %+v", weftPath, r.Entries)
+	}
+
+	if found.Removed {
+		t.Errorf("PruneEntry.Removed = true despite lock + open handle; want false (both removal paths should fail)")
+	}
+	if found.Error == "" {
+		t.Fatalf("PruneEntry.Error = \"\"; want non-empty (both removal paths should fail)")
+	}
+	if strings.Contains(found.Error, "fatal:") {
+		t.Errorf("PruneEntry.Error = %q; want no %q substring (raw git stderr leak)", found.Error, "fatal:")
+	}
+
+	// Release the handle and unlock/remove the worktree so t.Cleanup (TempDir removal)
+	// does not fail on Windows, and so the fixture teardown succeeds cleanly.
+	blocker.Close()
+	_, _, _, _ = gitexec.RunGit([]string{"worktree", "unlock", weftPath}, f.Layout.WeftRepoRoot())
+	_, _, _, _ = gitexec.RunGit([]string{"worktree", "remove", "--force", weftPath}, f.Layout.WeftRepoRoot())
 }
 
 // TestPrune_LivePairNeverTouched asserts that Prune, whether in dry-run or apply mode,

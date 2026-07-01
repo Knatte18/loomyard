@@ -165,7 +165,7 @@ func (w *Worktree) Prune(l *hubgeometry.Layout, apply bool) (PruneResult, error)
 func removeStalePair(l *hubgeometry.Layout, weftPath string, pe *PruneEntry) bool {
 	// Attempt to remove via git worktree remove --force. We use --force because
 	// the host is already gone so the weft may have been left in a dirty state.
-	_, stderr, exitCode, err := gitexec.RunGit(
+	_, _, exitCode, err := gitexec.RunGit(
 		[]string{"worktree", "remove", "--force", weftPath},
 		l.WeftRepoRoot(),
 	)
@@ -176,7 +176,7 @@ func removeStalePair(l *hubgeometry.Layout, weftPath string, pe *PruneEntry) boo
 	if exitCode != 0 {
 		// git worktree remove --force failed; fall back to os.RemoveAll.
 		if removeErr := os.RemoveAll(weftPath); removeErr != nil {
-			pe.Error = fmt.Sprintf("git worktree remove failed (%s); fallback os.RemoveAll also failed: %v", stderr, removeErr)
+			pe.Error = fmt.Sprintf("remove weft worktree %q failed (git exit %d); fallback cleanup also failed: %v", weftPath, exitCode, removeErr)
 			return false
 		}
 	}

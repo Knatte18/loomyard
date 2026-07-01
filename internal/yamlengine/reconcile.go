@@ -73,14 +73,7 @@ func Reconcile(template, existing []byte) (merged []byte, added, removed []strin
 	sort.Strings(removed)
 
 	// Reconcile: overwrite template leaf values with existing values
-	for path, existingLeaf := range existingLeaves {
-		if templateLeaf, ok := templateLeaves[path]; ok {
-			// Preserve the user's value in the template leaf
-			templateLeaf.Value = existingLeaf.Value
-			templateLeaf.Tag = existingLeaf.Tag
-			templateLeaf.Style = existingLeaf.Style
-		}
-	}
+	applyExistingOverrides(templateLeaves, existingLeaves)
 
 	// Marshal the mutated template back to bytes
 	merged, err = yaml.Marshal(&templateNode)
@@ -131,6 +124,22 @@ func MissingKeys(template, existing []byte) ([]string, error) {
 	sort.Strings(missing)
 
 	return missing, nil
+}
+
+// applyExistingOverrides copies each existing leaf's value, tag, and style
+// onto the matching template leaf in place, leaving template leaves with no
+// counterpart in existing untouched. Both Reconcile and SetValues share this
+// merge step: it is the single definition of what "layer existing onto
+// template" means, so the two call sites cannot drift out of sync.
+func applyExistingOverrides(templateLeaves, existingLeaves map[string]*yaml.Node) {
+	for path, existingLeaf := range existingLeaves {
+		if templateLeaf, ok := templateLeaves[path]; ok {
+			// Preserve the user's value in the template leaf.
+			templateLeaf.Value = existingLeaf.Value
+			templateLeaf.Tag = existingLeaf.Tag
+			templateLeaf.Style = existingLeaf.Style
+		}
+	}
 }
 
 // collectLeafPaths walks a YAML node tree and collects all leaf key-paths

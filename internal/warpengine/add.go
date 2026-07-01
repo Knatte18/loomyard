@@ -74,7 +74,7 @@ type AddResult struct {
 // Returns AddResult on success or an error if any step fails.
 func (w *Worktree) Add(l *hubgeometry.Layout, slug string, opts AddOptions) (AddResult, error) {
 	// (1) Clean check
-	stdout, stderr, exitCode, err := gitexec.RunGit([]string{"status", "--porcelain", "--untracked-files=no"}, l.WorktreeRoot)
+	stdout, _, exitCode, err := gitexec.RunGit([]string{"status", "--porcelain", "--untracked-files=no"}, l.WorktreeRoot)
 	if err != nil {
 		return AddResult{}, fmt.Errorf("cwd is not a valid git worktree")
 	}
@@ -139,12 +139,12 @@ func (w *Worktree) Add(l *hubgeometry.Layout, slug string, opts AddOptions) (Add
 	parentBranch := strings.TrimSpace(stdout)
 
 	// (7) Create host worktree
-	_, stderr, exitCode, err = gitexec.RunGit([]string{"worktree", "add", "-b", branch, target}, l.WorktreeRoot)
+	_, _, exitCode, err = gitexec.RunGit([]string{"worktree", "add", "-b", branch, target}, l.WorktreeRoot)
 	if err != nil {
 		return AddResult{}, fmt.Errorf("cwd is not a valid git worktree")
 	}
 	if exitCode != 0 {
-		return AddResult{}, fmt.Errorf("worktree add failed: %s", stderr)
+		return AddResult{}, fmt.Errorf("create worktree %q for branch %q failed (git exit %d)", target, branch, exitCode)
 	}
 
 	// Install the post-checkout hook now that the host worktree exists.
@@ -159,7 +159,7 @@ func (w *Worktree) Add(l *hubgeometry.Layout, slug string, opts AddOptions) (Add
 	weftPath := l.WeftWorktreePath(slug)
 	if weftBranchAlreadyExists {
 		// Adopt: git worktree add <path> <branch> (no -b, branch exists)
-		_, stderr, exitCode, err := gitexec.RunGit(
+		_, _, exitCode, err := gitexec.RunGit(
 			[]string{"worktree", "add", weftPath, branch},
 			l.WeftRepoRoot(),
 		)
@@ -169,7 +169,7 @@ func (w *Worktree) Add(l *hubgeometry.Layout, slug string, opts AddOptions) (Add
 		}
 		if exitCode != 0 {
 			w.rollbackAdd(l, slug, branch, target)
-			return AddResult{}, fmt.Errorf("weft worktree add (adopt) failed: %s", stderr)
+			return AddResult{}, fmt.Errorf("adopt weft worktree for branch %q failed (git exit %d)", branch, exitCode)
 		}
 	} else {
 		// Create: git worktree add -b <branch> <path> <parentBranch> (fork from parent)
@@ -192,14 +192,14 @@ func (w *Worktree) Add(l *hubgeometry.Layout, slug string, opts AddOptions) (Add
 	}
 
 	// (11) Push host branch (LAST step for host)
-	_, stderr, exitCode, err = gitexec.RunGit([]string{"push", "-u", "origin", branch}, l.WorktreeRoot)
+	_, _, exitCode, err = gitexec.RunGit([]string{"push", "-u", "origin", branch}, l.WorktreeRoot)
 	if err != nil {
 		w.rollbackAdd(l, slug, branch, target)
 		return AddResult{}, fmt.Errorf("push: %w", err)
 	}
 	if exitCode != 0 {
 		w.rollbackAdd(l, slug, branch, target)
-		return AddResult{}, fmt.Errorf("push failed: %s", stderr)
+		return AddResult{}, fmt.Errorf("push branch %q failed (git exit %d)", branch, exitCode)
 	}
 
 	// (12) Push weft branch
