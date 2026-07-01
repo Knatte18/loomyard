@@ -73,12 +73,25 @@ load-bearing for Card 8's exact step ordering.
        `output.Err(out, err.Error())` **immediately** — do not run any of steps 4-5
        below. This is the full-abort behavior from the "any junction inconsistency is a
        hard error" Shared Decision.
-    4. Weft-side content: `weftLyxDir := l.WeftLyxDirFor(slug)`. Check
+    4. Weft-side content: first check whether a weft worktree exists at all via
+       `os.Stat(l.WeftWorktree())`. If it does **not** exist (a truly-unpaired host —
+       the same condition `runInit` itself hard-gates on with "no weft pairing"), skip
+       every remaining part of this step entirely: do not call `os.RemoveAll`,
+       `weftengine.Commit`, or `weftengine.Push`. Track `weftContentStatus :=
+       "not_present"` and proceed straight to step 5. This guard is required because
+       `weftengine.Commit`'s internal `ensureLockDir` calls `os.MkdirAll(weftPath +
+       "/.weft", ...)` unconditionally — calling `Commit` against a nonexistent
+       `l.WeftWorktree()` would silently create a stray `<slug>-weft/.weft/` directory
+       tree on disk and then fail with a "not a git repository" error from the
+       subsequent `git add`, breaking the "clean no-op on a never-paired host" case the
+       "no separate pre-gate" Shared Decision requires.
+       If the weft worktree *does* exist: `weftLyxDir := l.WeftLyxDirFor(slug)`. Check
        `os.Stat(weftLyxDir)`: if it exists, call `os.RemoveAll(weftLyxDir)` and track
        `weftContentStatus := "cleared"`; if it does not exist, track
        `weftContentStatus := "not_present"` (do not call `os.RemoveAll` in this case).
-       Then — **regardless of whether the directory existed this invocation** — always
-       call `weftengine.Commit(l.WeftWorktree(), weftengine.ScopedPathspec(l.RelPath,
+       Then — **regardless of whether weftLyxDir existed this invocation** (but only
+       once we already know the weft worktree itself exists) — always call
+       `weftengine.Commit(l.WeftWorktree(), weftengine.ScopedPathspec(l.RelPath,
        []string{hubgeometry.LyxDirName}), "lyx init --undo: clear _lyx",
        weftengine.EnvSyncOptions())`; on error, return `output.Err(out, err.Error())`.
        Then, unconditionally (not gated on the `committed` bool `Commit` returned),
@@ -158,6 +171,16 @@ load-bearing for Card 8's exact step ordering.
     weft-side content, no host init ever ran." Then run `--undo` with no prior `init`;
     assert `ok: true` with `lyx_junction: "not_present"`, `weft_content: "not_present"`,
     `git_exclude: "unchanged"`, `gitignore: "unchanged"`, and no error.
+  - `TestRunInit_Undo_NoWeftPairing`: covers the truly-unpaired host case (no weft
+    sibling worktree exists at all — not merely "never `init`'d" but "never `warp
+    add`'d either"), mirroring `initcli_test.go`'s existing `TestRunInit_NoPairing`
+    fixture: a bare git repo created directly via `gitexec.RunGit([]string{"init"},
+    tmpDir)`, with no weft sibling. Run `--undo` (no prior `init` is possible here,
+    since `init` itself refuses to run without a weft pairing); assert `ok: true`,
+    `weft_content: "not_present"`, no error, and — critically — assert no
+    `<slug>-weft` directory (nor a stray `.weft` lock dir under it) was created as a
+    side effect of the `--undo` call. This is the exact regression the weft-worktree
+    existence guard in Card 8 step 4 exists to prevent.
   - `TestRunInit_Undo_Idempotent`: run `--undo` twice in a row after a prior `init`;
     assert the second run matches `TestRunInit_Undo_NeverInitialized`'s expected
     output shape (clean no-op).
