@@ -123,17 +123,23 @@ No batch-local decisions beyond `## Shared Decisions` in the overview.
     `path := hubgeometry.ConfigFile(baseDir, module)` and
     `configDir := hubgeometry.ConfigDir(baseDir)`; call
     `scaffolded, err := scaffoldIfMissing(path, configDir, template)` and propagate any
-    error; read the file via `os.ReadFile(path)` and propagate any error; call
+    error. From this point on, ANY error path (not just the unknown-key case) must, when
+    `scaffolded` is true, `os.Remove(path)` before returning — mirroring `Edit`'s
+    abort-removes-scaffold contract fully: a failed `--set` must never leave a fresh
+    default-valued file behind, regardless of which step failed. Concretely: read the file
+    via `os.ReadFile(path)`; on error, remove-if-scaffolded then propagate. Call
     `result, err := yamlengine.SetValues([]byte(template), existingBytes, pairs)` (the
     `yamlengine.KV`/`yamlengine.SetResult` types and `SetValues` function are defined by
     Card 1 in `internal/yamlengine/set.go` — import
-    `"github.com/Knatte18/loomyard/internal/yamlengine"`) and propagate any error; if
-    `len(result.Unknown) > 0`: when `scaffolded` is true, `os.Remove(path)` first (mirroring
-    `Edit`'s abort-removes-scaffold contract so a failed `--set` never leaves a fresh
-    default-valued file behind), then return
-    `fmt.Errorf("unknown config key(s): %s (known: %s)", strings.Join(result.Unknown, ", "), strings.Join(result.Known, ", "))`;
-    otherwise `os.WriteFile(path, result.Merged, 0o644)` and return its error (nil on
-    success).
+    `"github.com/Knatte18/loomyard/internal/yamlengine"`); on error, remove-if-scaffolded
+    then propagate. If `len(result.Unknown) > 0`: remove-if-scaffolded, then return
+    `fmt.Errorf("unknown config key(s): %s (known: %s)", strings.Join(result.Unknown, ", "), strings.Join(result.Known, ", "))`.
+    Otherwise call `os.WriteFile(path, result.Merged, 0o644)`; on error, remove-if-scaffolded
+    then propagate; on success, return nil. (Covering every error branch rather than only
+    the unknown-key case costs nothing here — a `SetValues`/`os.WriteFile` failure after a
+    fresh scaffold is near-impossible in practice since the template and the
+    just-written bytes are trusted-parseable — but it keeps `Set`'s abort contract
+    identical to `Edit`'s in every failure branch, not just one.)
 - **Commit:** `feat(configengine): add Set for non-interactive single/multi-key config writes`
 
 ### Card 4: `configengine.Set` tests

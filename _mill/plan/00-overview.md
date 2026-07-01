@@ -3,7 +3,7 @@
 ```yaml
 task: "CLI ergonomics from the sandbox run: config editor + warp error wrapping"
 slug: sandbox-cli-ergonomics
-approved: false
+approved: true
 started: "20260701-080000"
 parent: main
 root: ""

@@ -260,7 +260,7 @@ Decisions` in the overview.
 ## Batch Tests
 
 `verify: go test ./internal/warpengine/...` runs every test file this batch touches
-(`checkout_test.go`, `add_test.go`, `cleanup_test.go`, `clone_integration_test.go`,
+(`checkout_test.go`, `add_test.go`, `cleanup_test.go`, `clone_test.go`,
 `prune_test.go`, `reconcile_test.go`, `weftwiring_test.go`) plus the whole package's
 existing suite, catching any regression from the message-text edits across all 8 files.
 `junction.go`'s single site (Card 12) has no dedicated test file and no fault-injection

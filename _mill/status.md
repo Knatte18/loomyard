@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r2
+phase: plan-fix-r3
 slug: sandbox-cli-ergonomics
 branch: sandbox-cli-ergonomics
 plan: _mill/plan
@@ -22,4 +22,5 @@ plan-review-r1  '2026-07-01T08:09:48Z'
 plan-fix-r1  '2026-07-01T08:09:48Z'
 plan-review-r2  '2026-07-01T08:16:07Z'
 plan-fix-r2  '2026-07-01T08:16:07Z'
+plan-fix-r3  '2026-07-01T08:21:03Z'
 ```
