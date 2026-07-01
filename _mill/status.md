@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: lyx-deinit
 branch: lyx-deinit
 plan: _mill/plan
@@ -28,4 +28,19 @@ plan-review-r4  '2026-07-01T09:22:17Z'
 plan-fix-r4  '2026-07-01T09:22:37Z'
 plan-fix-r5  '2026-07-01T09:28:09Z'
 planned  '2026-07-01T09:28:41Z'
+implementing  '2026-07-01T09:30:49Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: weftengine-commit-message
+    state: pending
+  - name: gitignore-remove
+    state: pending
+  - name: warpengine-unwire-junctions
+    state: pending
+  - name: initcli-undo
+    state: pending
 ```
