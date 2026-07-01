@@ -484,3 +484,145 @@ func TestConfigLong_ContainsModuleNames(t *testing.T) {
 		}
 	}
 }
+
+// countingEditor returns a configengine.EditorFunc that increments *calls
+// every time it is invoked, so tests can assert the --set path never opens
+// the editor by asserting the counter stays at 0.
+func countingEditor(calls *int) configengine.EditorFunc {
+	return func(path string) error {
+		*calls++
+		return nil
+	}
+}
+
+// TestDispatchSet_NeverInvokesEditor verifies that a successful --set
+// invocation never calls the injected EditorFunc.
+func TestDispatchSet_NeverInvokesEditor(t *testing.T) {
+	baseDir := t.TempDir()
+	seedModuleConfig(t, baseDir, "warp", "branch_prefix: old-\n")
+
+	l := makeLayoutAt(baseDir)
+	var out bytes.Buffer
+	editorCalls := 0
+	tracker := &fakeSyncTracker{exitCode: 0}
+	code := dispatch(l, nil, &out, []string{"warp"}, countingEditor(&editorCalls), tracker.syncFunc(), false, []string{"branch_prefix=new-"})
+
+	if code != 0 {
+		t.Errorf("dispatch(--set) = %d; want 0; output: %q", code, out.String())
+	}
+	if editorCalls != 0 {
+		t.Errorf("dispatch(--set) invoked the editor %d times; want 0", editorCalls)
+	}
+}
+
+// TestDispatchSet_UnknownKeyNeverSyncs verifies that an unknown key passed to
+// --set returns an error and the injected sync function is never invoked.
+func TestDispatchSet_UnknownKeyNeverSyncs(t *testing.T) {
+	baseDir := t.TempDir()
+	seedModuleConfig(t, baseDir, "warp", "branch_prefix: old-\n")
+
+	l := makeLayoutAt(baseDir)
+	var out bytes.Buffer
+	editorCalls := 0
+	tracker := &fakeSyncTracker{exitCode: 0}
+	code := dispatch(l, nil, &out, []string{"warp"}, countingEditor(&editorCalls), tracker.syncFunc(), false, []string{"bogus_key=x"})
+
+	if code != 1 {
+		t.Errorf("dispatch(--set unknown key) = %d; want 1", code)
+	}
+	if tracker.called {
+		t.Error("sync should not be called when --set names an unknown key")
+	}
+	assertJSONErrContains(t, out.String(), "unknown config key")
+}
+
+// TestDispatchSet_PrintMutuallyExclusive verifies that passing both --print
+// and --set returns the mutual-exclusivity error, with neither the editor
+// nor sync invoked.
+func TestDispatchSet_PrintMutuallyExclusive(t *testing.T) {
+	baseDir := t.TempDir()
+	l := makeLayoutAt(baseDir)
+	var out bytes.Buffer
+	editorCalls := 0
+	tracker := &fakeSyncTracker{exitCode: 0}
+	code := dispatch(l, nil, &out, []string{"warp"}, countingEditor(&editorCalls), tracker.syncFunc(), true, []string{"branch_prefix=new-"})
+
+	if code != 1 {
+		t.Errorf("dispatch(--print, --set) = %d; want 1", code)
+	}
+	if editorCalls != 0 {
+		t.Errorf("dispatch(--print, --set) invoked the editor %d times; want 0", editorCalls)
+	}
+	if tracker.called {
+		t.Error("sync should not be called when --print and --set are both set")
+	}
+	assertJSONErrContains(t, out.String(), "mutually exclusive")
+}
+
+// TestDispatchSet_NoModuleRequiresOne verifies that --set with no module
+// positional returns the module-required error.
+func TestDispatchSet_NoModuleRequiresOne(t *testing.T) {
+	baseDir := t.TempDir()
+	l := makeLayoutAt(baseDir)
+	var out bytes.Buffer
+	tracker := &fakeSyncTracker{exitCode: 0}
+	code := dispatch(l, nil, &out, nil, makeNeverCalledEditor(t), tracker.syncFunc(), false, []string{"branch_prefix=new-"})
+
+	if code != 1 {
+		t.Errorf("dispatch(--set, no module) = %d; want 1", code)
+	}
+	assertJSONErrContains(t, out.String(), "module required with --set")
+}
+
+// TestDispatchSet_MultipleValuesOneSync verifies that multiple --set values
+// in one dispatch() call all land in a single sync invocation.
+func TestDispatchSet_MultipleValuesOneSync(t *testing.T) {
+	baseDir := t.TempDir()
+	seedModuleConfig(t, baseDir, "warp", "branch_prefix: old-\n")
+
+	l := makeLayoutAt(baseDir)
+	var out bytes.Buffer
+	syncCalls := 0
+	sync := func(w io.Writer) int {
+		syncCalls++
+		return 0
+	}
+	code := dispatch(l, nil, &out, []string{"warp"}, makeNeverCalledEditor(t), sync, false, []string{"branch_prefix=new-"})
+
+	if code != 0 {
+		t.Errorf("dispatch(--set multiple) = %d; want 0; output: %q", code, out.String())
+	}
+	if syncCalls != 1 {
+		t.Errorf("dispatch(--set multiple) called sync %d times; want 1", syncCalls)
+	}
+}
+
+// TestDispatchSet_MalformedValue verifies that a malformed --set value with
+// no '=' returns the parseSetFlags error.
+func TestDispatchSet_MalformedValue(t *testing.T) {
+	baseDir := t.TempDir()
+	l := makeLayoutAt(baseDir)
+	var out bytes.Buffer
+	tracker := &fakeSyncTracker{exitCode: 0}
+	code := dispatch(l, nil, &out, []string{"warp"}, makeNeverCalledEditor(t), tracker.syncFunc(), false, []string{"no-equals-sign"})
+
+	if code != 1 {
+		t.Errorf("dispatch(--set malformed) = %d; want 1", code)
+	}
+	if tracker.called {
+		t.Error("sync should not be called for a malformed --set value")
+	}
+	assertJSONErrContains(t, out.String(), "expected key=value")
+}
+
+// TestConfigLong_MentionsEditorFallbackAndSet verifies that buildConfigLong's
+// output documents both the EDITOR/VISUAL editor fallback and the --set flag.
+func TestConfigLong_MentionsEditorFallbackAndSet(t *testing.T) {
+	longText := buildConfigLong()
+	if !strings.Contains(longText, "EDITOR") || !strings.Contains(longText, "VISUAL") {
+		t.Errorf("config Long missing EDITOR/VISUAL fallback documentation; Long = %q", longText)
+	}
+	if !strings.Contains(longText, "--set") {
+		t.Errorf("config Long missing --set documentation; Long = %q", longText)
+	}
+}
