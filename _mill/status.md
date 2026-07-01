@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: sandbox-cli-ergonomics
 branch: sandbox-cli-ergonomics
 plan: _mill/plan
@@ -24,4 +24,17 @@ plan-review-r2  '2026-07-01T08:16:07Z'
 plan-fix-r2  '2026-07-01T08:16:07Z'
 plan-fix-r3  '2026-07-01T08:21:03Z'
 planned  '2026-07-01T08:21:24Z'
+implementing  '2026-07-01T08:24:32Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: config-set-flag
+    state: pending
+  - name: warpengine-stderr-fix
+    state: pending
+  - name: weft-hubgeometry-stderr-fix
+    state: pending
 ```
