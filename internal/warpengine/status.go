@@ -90,9 +90,11 @@ func (w *Worktree) Status(l *hubgeometry.Layout) (StatusResult, error) {
 		// e.g. <hub>/my-task → <hub>/my-task-weft
 		weftPath := l.WeftWorktreePath(filepath.Base(hostPath))
 
+		// Emit forward-slash paths in the JSON-tagged fields only; hostPath/weftPath
+		// stay OS-native below for os.Stat, git subprocess calls, and junction checks.
 		pair := PairStatus{
-			HostWorktree: hostPath,
-			WeftWorktree: weftPath,
+			HostWorktree: filepath.ToSlash(hostPath),
+			WeftWorktree: filepath.ToSlash(weftPath),
 		}
 
 		// Read the host branch.

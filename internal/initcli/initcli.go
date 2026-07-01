@@ -81,7 +81,9 @@ func runInit(out io.Writer, args []string) int {
 	// Resolve layout from cwd (needed for weft sibling derivation and slug)
 	l, err := hubgeometry.Resolve(cwd)
 	if err != nil {
-		return output.Err(out, fmt.Sprintf("failed to resolve layout: %v", err))
+		// hubgeometry.Resolve's error is already self-describing; pass it
+		// through bare rather than restating it with a redundant prefix.
+		return output.Err(out, err.Error())
 	}
 
 	// Check for weft pairing before activating topology.

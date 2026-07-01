@@ -8,6 +8,7 @@ package idecli
 import (
 	"bytes"
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 
@@ -77,6 +78,40 @@ func TestRunCLI_UnknownSubcommand(t *testing.T) {
 	// The error text contains "unknown" (GroupRunE produces "unknown subcommand").
 	if errMsg, _ := env["error"].(string); !strings.Contains(errMsg, "unknown") {
 		t.Errorf("RunCLI(unknown) error = %q; want \"unknown\" substring", errMsg)
+	}
+}
+
+// TestRunCLI_NotAGitRepo verifies that "lyx ide menu" run from a non-git temp
+// directory surfaces hubgeometry's bare ErrNotAGitRepo sentinel with no
+// "failed to resolve layout:" prefix and no raw "fatal:" git stderr — the
+// PersistentPreRunE aborts before menu's body runs, so the interactive picker
+// is never reached.
+func TestRunCLI_NotAGitRepo(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	oldCwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	defer os.Chdir(oldCwd) //nolint:errcheck
+
+	var out bytes.Buffer
+	code := RunCLI(&out, []string{"menu"})
+
+	if code != 1 {
+		t.Errorf("RunCLI(menu) in non-git dir = %d; want 1", code)
+	}
+
+	var env map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
+		t.Fatalf("RunCLI(menu) output is not valid JSON: %v; got: %q", err, out.String())
+	}
+	errMsg, _ := env["error"].(string)
+	if errMsg != "not a git repository" {
+		t.Errorf("RunCLI(menu) error = %q; want exactly \"not a git repository\"", errMsg)
 	}
 }
 

@@ -56,7 +56,9 @@ func Command() *cobra.Command {
 			// Resolve layout from cwd; requires being inside a git repository.
 			resolved, err := hubgeometry.Resolve(cwd)
 			if err != nil {
-				output.Err(cmd.OutOrStdout(), fmt.Sprintf("failed to resolve layout: %v", err))
+				// hubgeometry.Resolve's error is already self-describing; pass it
+				// through bare rather than restating it with a redundant prefix.
+				output.Err(cmd.OutOrStdout(), err.Error())
 				clihelp.Abort(ctx, 1)
 				return nil
 			}

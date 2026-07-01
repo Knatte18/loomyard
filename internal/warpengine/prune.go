@@ -85,9 +85,11 @@ func (w *Worktree) Prune(l *hubgeometry.Layout, apply bool) (PruneResult, error)
 		if hostMissing {
 			// The host worktree is registered in git but the directory is gone.
 			// Its paired weft worktree (if any) is now orphaned.
+			// Emit forward-slash paths in the JSON-tagged fields only; hostPath/weftPath
+			// stay OS-native below for os.Stat and the removeStalePair git operations.
 			pe := PruneEntry{
-				HostWorktree: hostPath,
-				WeftWorktree: weftPath,
+				HostWorktree: filepath.ToSlash(hostPath),
+				WeftWorktree: filepath.ToSlash(weftPath),
 				Reason:       "host worktree directory missing",
 			}
 
@@ -136,9 +138,11 @@ func (w *Worktree) Prune(l *hubgeometry.Layout, apply bool) (PruneResult, error)
 		weftPath := filepath.Join(l.Hub, name)
 		hostPath := filepath.Join(l.Hub, hostSlug)
 
+		// Emit forward-slash paths in the JSON-tagged fields only; hostPath/weftPath
+		// stay OS-native below for the removeStalePair git operations.
 		pe := PruneEntry{
-			HostWorktree: hostPath,
-			WeftWorktree: weftPath,
+			HostWorktree: filepath.ToSlash(hostPath),
+			WeftWorktree: filepath.ToSlash(weftPath),
 			Reason:       "weft worktree has no host sibling",
 		}
 

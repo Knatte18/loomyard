@@ -85,15 +85,20 @@ func Getwd() (string, error) {
 //
 // Resolve does NOT check for _lyx/ (that authority stays in internal/configengine).
 //
-// Returns the Layout on success, or ErrNotAGitRepo (wrapped with context) on failure.
+// Returns the Layout on success, ErrNotAGitRepo (wrapped with exec-layer context) when
+// the git subprocess itself fails to spawn, or the bare ErrNotAGitRepo sentinel (with
+// no appended text) when git ran but reported a non-zero exit.
 func Resolve(cwd string) (*Layout, error) {
-	// Step 1-2: Run git rev-parse --show-toplevel
-	stdout, stderr, exitCode, err := gitexec.RunGit([]string{"rev-parse", "--show-toplevel"}, cwd)
+	// Step 1-2: Run git rev-parse --show-toplevel. stderr is discarded: it is git's raw,
+	// unwrapped text and must never leak into our JSON error envelope.
+	stdout, _, exitCode, err := gitexec.RunGit([]string{"rev-parse", "--show-toplevel"}, cwd)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrNotAGitRepo, err)
 	}
 	if exitCode != 0 {
-		return nil, fmt.Errorf("%w: %s", ErrNotAGitRepo, stderr)
+		// git ran and reported failure (e.g. cwd is outside any git repository);
+		// return the bare sentinel with no appended content.
+		return nil, ErrNotAGitRepo
 	}
 
 	// Step 3: Normalize output

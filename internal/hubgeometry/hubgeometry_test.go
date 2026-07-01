@@ -9,6 +9,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
@@ -184,6 +185,15 @@ func TestResolve_NotAGitRepo(t *testing.T) {
 
 	if !errors.Is(err, hubgeometry.ErrNotAGitRepo) {
 		t.Errorf("Resolve() error = %v; want wrapped ErrNotAGitRepo", err)
+	}
+
+	// Pin the bare-sentinel behavior: git's raw stderr must never leak into the
+	// error text, and no other content may be appended to the sentinel message.
+	if strings.Contains(err.Error(), "fatal:") {
+		t.Errorf("Resolve() error = %q; must not contain raw git stderr (\"fatal:\")", err.Error())
+	}
+	if err.Error() != hubgeometry.ErrNotAGitRepo.Error() {
+		t.Errorf("Resolve() error = %q; want exactly %q", err.Error(), hubgeometry.ErrNotAGitRepo.Error())
 	}
 }
 

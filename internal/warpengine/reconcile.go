@@ -101,9 +101,11 @@ func (w *Worktree) Reconcile(l *hubgeometry.Layout) (ReconcileResult, error) {
 		slug := filepath.Base(hostPath)
 		weftPath := l.WeftWorktreePath(slug)
 
+		// Emit forward-slash paths in the JSON-tagged fields only; hostPath/weftPath
+		// stay OS-native below for hubgeometry.Resolve, os.Stat, and readBranch.
 		pr := ReconcilePairResult{
-			HostWorktree: hostPath,
-			WeftWorktree: weftPath,
+			HostWorktree: filepath.ToSlash(hostPath),
+			WeftWorktree: filepath.ToSlash(weftPath),
 		}
 
 		// Build a per-host-worktree layout so junction geometry and branch resolution

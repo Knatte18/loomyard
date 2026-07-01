@@ -77,6 +77,16 @@ func TestStatus_InSyncVsDrifted(t *testing.T) {
 		t.Errorf("PairStatus.WeftWorktree is empty; want non-empty")
 	}
 
+	// JSON-boundary paths must be forward-slash even on Windows (issue #37). Check the
+	// raw field value directly -- filepath.Clean would re-normalize forward slashes back
+	// to OS-native backslash and silently defeat this assertion.
+	if strings.Contains(pair.HostWorktree, "\\") {
+		t.Errorf("PairStatus.HostWorktree = %q; want no backslash separators", pair.HostWorktree)
+	}
+	if strings.Contains(pair.WeftWorktree, "\\") {
+		t.Errorf("PairStatus.WeftWorktree = %q; want no backslash separators", pair.WeftWorktree)
+	}
+
 	// Branch fields must be populated (both start on "main" in the fixture).
 	if pair.HostBranch == "" {
 		t.Errorf("PairStatus.HostBranch is empty; want non-empty")

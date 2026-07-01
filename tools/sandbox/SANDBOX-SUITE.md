@@ -146,7 +146,9 @@ committed and tracked the way lyx intends."
 
 **Watch:** The host is an ordinary git repo — committing host changes with plain `git`
 is acceptable and **not** a finding. Watch lyx's actual responsibility: host/weft
-coordination (junctions wired correctly, weft mirroring behaves).
+coordination (junctions wired correctly, weft mirroring behaves). The absence of a
+lyx-owned host-commit command is an intentional design choice, not a gap — do not file
+it as an enhancement suggestion.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -189,7 +191,13 @@ Run an unknown subcommand."
 **Watch:** Are errors legible? Does lyx say what to do, or just fail? This is where
 standalone usability lives or dies. A legible `not initialized` / "run from the
 initialized root"-style message is the `OK` (ergonomics-pass) outcome — not a `FAIL`.
-Do not file it as a finding.
+Do not file it as a finding. `lyx`'s error output is a JSON envelope
+(`{"ok":false,"error":"..."}`) on every error path by design — that is the deliberate
+machine-parseable contract, not a defect. "Legible" means the `error` field's message
+text clearly identifies the problem, not that the output reads as human prose with a
+hint or usage suggestion. This does not cover a raw subprocess/tool string leaking
+unwrapped into the `error` field (e.g. a bare git `fatal:` line, or any other tool's
+raw stderr) — that is still a legitimate `WARN`/`FAIL` finding.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 

@@ -170,6 +170,30 @@ func TestRunInit_Idempotent(t *testing.T) {
 	}
 }
 
+// TestRunInit_NotAGitRepo verifies that lyx init run from a non-git temp
+// directory surfaces hubgeometry's bare ErrNotAGitRepo sentinel with no
+// "failed to resolve layout:" prefix and no raw "fatal:" git stderr.
+func TestRunInit_NotAGitRepo(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Chdir(tmpDir)
+
+	var buf bytes.Buffer
+	runExitCode := initcli.RunInit(&buf, []string{})
+
+	if runExitCode == 0 {
+		t.Errorf("RunInit() = 0; want non-zero (error) when not a git repository")
+	}
+
+	var result map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+		t.Fatalf("parse JSON: %v, output: %s", err, buf.String())
+	}
+	errMsg, _ := result["error"].(string)
+	if errMsg != "not a git repository" {
+		t.Errorf("RunInit() error = %q; want exactly \"not a git repository\"", errMsg)
+	}
+}
+
 // TestRunInit_NoPairing verifies that lyx init reports and exits early when
 // no weft pairing exists (unpaired host from dormant Add).
 //

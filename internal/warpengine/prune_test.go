@@ -8,6 +8,7 @@ package warpengine
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lyxtest"
@@ -92,6 +93,16 @@ func TestPrune_StaleWeft(t *testing.T) {
 	}
 	if found == nil {
 		t.Fatalf("Prune(): no entry for weft path %s; entries = %+v", weftPath, r.Entries)
+	}
+
+	// JSON-boundary paths must be forward-slash even on Windows (issue #37). Check the
+	// raw field value directly -- filepath.Clean would re-normalize forward slashes back
+	// to OS-native backslash and silently defeat this assertion.
+	if strings.Contains(found.HostWorktree, "\\") {
+		t.Errorf("PruneEntry.HostWorktree = %q; want no backslash separators", found.HostWorktree)
+	}
+	if strings.Contains(found.WeftWorktree, "\\") {
+		t.Errorf("PruneEntry.WeftWorktree = %q; want no backslash separators", found.WeftWorktree)
 	}
 
 	// Dry-run must not mark Removed, and the weft directory must still exist.
