@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-warpengine-stderr-fix
+phase: approved-weft-hubgeometry-stderr-fix
 slug: sandbox-cli-ergonomics
 branch: sandbox-cli-ergonomics
 plan: _mill/plan
@@ -27,6 +27,7 @@ planned  '2026-07-01T08:21:24Z'
 implementing  '2026-07-01T08:24:32Z'
 approved-config-set-flag  '2026-07-01T08:35:02Z'
 approved-warpengine-stderr-fix  '2026-07-01T08:52:09Z'
+approved-weft-hubgeometry-stderr-fix  '2026-07-01T08:59:21Z'
 ```
 
 ## Batches
@@ -44,7 +45,8 @@ batches:
     start_sha: e8d84f54f523304573712754e66b8b28e6bf51a7
     commit_sha: 79a183c2ee32625774bd8844b0c5018691a0a798
   - name: weft-hubgeometry-stderr-fix
-    state: running
+    state: approved
     implementer_session: b55724be-06b4-4048-ae7a-705e3c8d7947
     start_sha: 2fa9a7466a6f221011931bddb8ad7d263e5f1c5b
+    commit_sha: 85d769d89f090cc3b8bba2f519586d54f549a1ac
 ```
