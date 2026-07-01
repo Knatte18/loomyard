@@ -396,7 +396,7 @@ func TestPrintModule_Seeded(t *testing.T) {
 
 	l := makeLayoutAt(baseDir)
 	var out bytes.Buffer
-	code := dispatch(l, nil, &out, []string{"warp"}, makeNeverCalledEditor(t), nil, true)
+	code := dispatch(l, nil, &out, []string{"warp"}, makeNeverCalledEditor(t), nil, true, nil)
 
 	if code != 0 {
 		t.Errorf("dispatch(print=true, seeded) = %d; want 0; output: %q", code, out.String())
@@ -417,7 +417,7 @@ func TestPrintModule_KnownButUnseeded(t *testing.T) {
 
 	l := makeLayoutAt(baseDir)
 	var out bytes.Buffer
-	code := dispatch(l, nil, &out, []string{"warp"}, makeNeverCalledEditor(t), nil, true)
+	code := dispatch(l, nil, &out, []string{"warp"}, makeNeverCalledEditor(t), nil, true, nil)
 
 	if code != 1 {
 		t.Errorf("dispatch(print=true, unseeded) = %d; want 1", code)
@@ -436,7 +436,7 @@ func TestPrintAggregate_PartialSeed(t *testing.T) {
 
 	l := makeLayoutAt(baseDir)
 	var out bytes.Buffer
-	code := dispatch(l, nil, &out, nil, makeNeverCalledEditor(t), nil, true)
+	code := dispatch(l, nil, &out, nil, makeNeverCalledEditor(t), nil, true, nil)
 
 	if code != 0 {
 		t.Errorf("dispatch(print=true, aggregate) = %d; want 0; output: %q", code, out.String())
@@ -465,7 +465,7 @@ func TestPrintUnknownModule(t *testing.T) {
 	baseDir := t.TempDir()
 	l := makeLayoutAt(baseDir)
 	var out bytes.Buffer
-	code := dispatch(l, nil, &out, []string{"bogus"}, makeNeverCalledEditor(t), nil, true)
+	code := dispatch(l, nil, &out, []string{"bogus"}, makeNeverCalledEditor(t), nil, true, nil)
 
 	if code != 1 {
 		t.Errorf("dispatch(print=true, unknown) = %d; want 1", code)
