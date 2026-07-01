@@ -135,7 +135,7 @@ Decisions` in the overview.
   - `internal/hubgeometry/hubgeometry_test.go`
 - **Edits:**
   - `internal/warpengine/clone.go`
-  - `internal/warpengine/clone_integration_test.go`
+  - `internal/warpengine/clone_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -146,8 +146,12 @@ Decisions` in the overview.
   `fmt.Errorf("clone %q to %q failed (git exit %d)", url, dest, exitCode)`. Drop the
   now-fully-unused `stderr` binding per the same rule as Card 8 (note `stdout` is already
   discarded via `_ = stdout` in this function — do not disturb that line).
-- **Tests:** Add a test in `clone_integration_test.go` that calls `cloneRepo` (or the
-  exported path that reaches it) with an invalid/nonexistent source URL, asserting the
+- **Tests:** Add the invalid-URL `cloneRepo` test to `clone_test.go`, NOT
+  `clone_integration_test.go` — that file carries `//go:build integration` and is
+  unreachable by this batch's plain `go test ./internal/warpengine/...` verify (and by
+  the top-level `go build ./...`), so a test placed there would silently never run. A
+  bogus/nonexistent source URL needs no real-git fixtures, so it belongs in
+  `clone_test.go` alongside `TestDeriveHostName`/`TestDeriveBoardURL`. Assert the
   returned error contains the attempted URL/destination and no `"fatal:"` substring.
 - **Commit:** `fix(warpengine): stop leaking git stderr in clone error messages`
 

@@ -42,20 +42,34 @@ No batch-local decisions beyond `## Shared Decisions` in the overview.
     set; `Known` is `template`'s full sorted leaf-key set (for building caller error
     messages).
   - Add `func SetValues(template, existing []byte, pairs []KV) (SetResult, error)`:
-    parse `template` via `yaml.Unmarshal` into a `yaml.Node`, collect its leaf key-paths via
-    the existing unexported `collectLeafPaths` helper already in `reconcile.go` (same
-    package — reuse it, do not duplicate) into `Known` (sorted). If `len(existing) == 0`
-    (mirroring `Reconcile`'s empty-existing handling for the fresh-scaffold case), use the
-    template's own parsed node tree as the working tree; otherwise parse `existing`
-    separately into its own `yaml.Node` and collect its leaf paths into a working-tree
-    leaves map. For each `pairs[i].Key` not present in `Known`, add it to the `Unknown` set
-    (dedup via a `map[string]bool`, then sort). If `Unknown` is non-empty after checking
-    every pair, return `SetResult{Unknown: <sorted>, Known: <sorted>}` immediately with
-    `Merged` nil and a nil error — perform no mutation. If `Unknown` is empty, iterate
-    `pairs` in the given order and set each matching leaf node's `Value` field on the
-    working tree (a later `pairs[i]` for a repeated `Key` overwrites an earlier one — do
-    not error on duplicate keys within one call), then `yaml.Marshal` the mutated working
-    tree into `Merged` and return it.
+    parse `template` via `yaml.Unmarshal` into a `yaml.Node` (`templateNode`), collect its
+    leaf key-paths via the existing unexported `collectLeafPaths` helper already in
+    `reconcile.go` (same package — reuse it, do not duplicate) into `Known` (sorted). The
+    **working tree is always `templateNode`** — never a bare parse of `existing` — so that
+    every template leaf is guaranteed to exist as a real, settable node even when
+    `existing` is a stale/partial file missing some template keys (this is the exact bug a
+    plan-review round-1 finding caught: mutating a bare `existing`-only tree silently
+    no-ops when a valid, template-known key has no corresponding node in `existing`).
+    Build the working tree by mirroring `Reconcile`'s own merge step: if `len(existing) >
+    0`, parse it into its own `yaml.Node`, collect ITS leaf paths, and for each path present
+    in both `existing`'s leaves and `Known`, overwrite `templateNode`'s corresponding leaf
+    `Value`/`Tag`/`Style` with `existing`'s (identical to the loop in `Reconcile` — reuse
+    that logic rather than reimplementing it, e.g. by factoring the shared merge-loop out
+    of `Reconcile` into a small unexported helper both functions call, or by calling
+    `Reconcile` internally and re-parsing its output into the working tree — either is
+    acceptable as long as the result is that `templateNode` carries `existing`'s overrides
+    for every path `existing` and the template share). If `len(existing) == 0`, the working
+    tree is `templateNode` unmodified (mirrors `Reconcile`'s empty-existing case). For each
+    `pairs[i].Key` not present in `Known`, add it to the `Unknown` set (dedup via a
+    `map[string]bool`, then sort). If `Unknown` is non-empty after checking every pair,
+    return `SetResult{Unknown: <sorted>, Known: <sorted>}` immediately with `Merged` nil
+    and a nil error — perform no mutation. If `Unknown` is empty, every `pairs[i].Key` is
+    now guaranteed to have a real node in the working tree (`templateNode`) because the
+    working tree always contains every template leaf — iterate `pairs` in the given order
+    and set each matching leaf node's `Value` field on the working tree (a later
+    `pairs[i]` for a repeated `Key` overwrites an earlier one — do not error on duplicate
+    keys within one call), then `yaml.Marshal` the mutated working tree into `Merged` and
+    return it.
 - **Commit:** `feat(yamlengine): add SetValues for single-key config writes`
 
 ### Card 2: `yamlengine.SetValues` tests
@@ -77,7 +91,12 @@ No batch-local decisions beyond `## Shared Decisions` in the overview.
   order in `existing` are preserved in `Merged` when only one key changes (mirror the
   idempotency-style assertions already in `TestReconcile_*` in `reconcile_test.go`); (f)
   `existing` of length 0 behaves like `Reconcile`'s empty-existing case — `Merged` is
-  equivalent to the template with the requested keys set.
+  equivalent to the template with the requested keys set; (g) a `pairs[i].Key` that is
+  present in `template` (so it passes `Known` validation) but ABSENT from a non-empty,
+  partial `existing` (e.g. `existing` has only one of the template's three keys) is
+  actually applied in `Merged` — assert the resulting key's value is set, not silently
+  dropped (this is the plan-review round-1 regression case: a stale/partial `existing`
+  file must not cause a validated `--set` to silently no-op).
 - **Commit:** `test(yamlengine): cover SetValues key validation and mutation`
 
 ### Card 3: `configengine.Set` — scaffold + write orchestration
