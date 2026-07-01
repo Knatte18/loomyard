@@ -157,7 +157,7 @@ func pushUnpushed(weftPath string) error {
 			}
 			continue
 		}
-		return fmt.Errorf("push failed: %s", stderr)
+		return fmt.Errorf("push from %q failed (git exit %d) after rebase retry", weftPath, code)
 	}
 	return fmt.Errorf("push still failing after rebase retry")
 }
