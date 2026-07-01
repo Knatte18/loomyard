@@ -191,7 +191,7 @@ func ensureGitExclude(repoDir, entry string) error {
 // it in .git/info/exclude, clears any stale sandbox-report.json from a prior
 // run, and starts an interactive Claude session with the given instruction
 // string. It does not fetch the agent's report -- that is the separate
-// fetch-report subcommand (runFetch), run by the operator after the session.
+// fetch subcommand (runFetch), run by the operator after the session.
 // claudeOverride and promptOverride are optional: when empty the function
 // resolves "claude" from PATH and uses defaultInstruction.
 func runSuite(parentDir, claudeOverride, promptOverride string) error {
@@ -233,9 +233,9 @@ func runSuite(parentDir, claudeOverride, promptOverride string) error {
 		return fmt.Errorf("ensure git exclude: %w", err)
 	}
 
-	// Remove any report left over from a previous session so a fetch-report run
+	// Remove any report left over from a previous session so a fetch run
 	// after this session cannot pick up stale findings under a fresh fingerprint;
-	// if the agent writes nothing, fetch-report then correctly surfaces the
+	// if the agent writes nothing, fetch then correctly surfaces the
 	// missing-report error instead.
 	reportPath := filepath.Join(hostRepoDir, reportFileName)
 	if err := os.Remove(reportPath); err != nil && !os.IsNotExist(err) {
@@ -269,7 +269,7 @@ func runSuite(parentDir, claudeOverride, promptOverride string) error {
 	// separate step, so print guidance and return nil regardless of the code.
 	code := launchAgent(hostRepoDir, claudePath, instruction)
 	fmt.Fprintf(os.Stderr,
-		"sandbox: agent session ended (exit code %d). Run \"sandbox.cmd fetch-report\" to collect findings into .scratch.\n",
+		"sandbox: agent session ended (exit code %d). Run \"sandbox.cmd fetch\" to collect findings into .scratch.\n",
 		code)
 	return nil
 }

@@ -1,6 +1,6 @@
 // main.go implements the sandbox tool entry point, flag parsing, and subcommand
 // dispatch. It supports three subcommands: "build" (default, clones the Hub),
-// "suite" (runs the embedded SANDBOX-SUITE agent), and "fetch-report" (collects
+// "suite" (runs the embedded SANDBOX-SUITE agent), and "fetch" (collects
 // the agent-written report into .scratch). The -parent and -reset flags live at
 // the top level to preserve back-compat with existing callers.
 
@@ -80,7 +80,7 @@ func run(argv []string) int {
 	fs.SetOutput(os.Stderr)
 	parentDir := fs.String("parent", "", "parent directory where the Hub will be created (required)")
 	reset := fs.Bool("reset", false, "rebuild the Hub even if it already exists (build subcommand only)")
-	loomyard := fs.String("loomyard", "", "loomyard repo root for fetching the sandbox report (required for the fetch-report subcommand)")
+	loomyard := fs.String("loomyard", "", "loomyard repo root for fetching the sandbox report (required for the fetch subcommand)")
 
 	if err := fs.Parse(argv); err != nil {
 		// flag.ContinueOnError already wrote the usage message to stderr.
@@ -118,7 +118,7 @@ func run(argv []string) int {
 
 	case "suite":
 		// The suite subcommand only launches the agent; fetching the report is a
-		// separate step (fetch-report), so -loomyard is not required here.
+		// separate step (fetch), so -loomyard is not required here.
 
 		// Parse suite-specific flags from the remaining positionals after "suite".
 		sf := flag.NewFlagSet("sandbox suite", flag.ContinueOnError)
@@ -136,11 +136,11 @@ func run(argv []string) int {
 			return 1
 		}
 
-	case "fetch-report":
-		// fetch-report collects the agent-written report into the loomyard repo,
+	case "fetch":
+		// fetch collects the agent-written report into the loomyard repo,
 		// so it cannot run without knowing that repo's root.
 		if *loomyard == "" {
-			fmt.Fprintln(os.Stderr, "sandbox: -loomyard is required for the fetch-report subcommand")
+			fmt.Fprintln(os.Stderr, "sandbox: -loomyard is required for the fetch subcommand")
 			return 1
 		}
 		// filepath.Clean strips the trailing "."/separator that sandbox.cmd passes

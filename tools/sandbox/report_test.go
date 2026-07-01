@@ -64,7 +64,7 @@ func TestFetchReport_HappyPath(t *testing.T) {
 		"items": [{"ref": "S6", "title": "bad error", "body": "verdict: WARN\n\nrepro steps"}]
 	}`)
 
-	if err := fetchReport(hostRepoDir, loomyardRoot, info); err != nil {
+	if _, _, err := fetchReport(hostRepoDir, loomyardRoot, info); err != nil {
 		t.Fatalf("fetchReport() error: %v", err)
 	}
 
@@ -108,7 +108,7 @@ func TestFetchReport_EmptyItemsPresent(t *testing.T) {
 
 	writeHostReport(t, hostRepoDir, `{"source": "sandbox-report", "items": []}`)
 
-	if err := fetchReport(hostRepoDir, loomyardRoot, info); err != nil {
+	if _, _, err := fetchReport(hostRepoDir, loomyardRoot, info); err != nil {
 		t.Fatalf("fetchReport() error: %v", err)
 	}
 
@@ -128,7 +128,7 @@ func TestFetchReport_ItemsKeyAbsent(t *testing.T) {
 
 	writeHostReport(t, hostRepoDir, `{"source": "sandbox-report"}`)
 
-	err := fetchReport(hostRepoDir, loomyardRoot, info)
+	_, _, err := fetchReport(hostRepoDir, loomyardRoot, info)
 	if err == nil {
 		t.Fatal("fetchReport() error = nil; want error for missing items key")
 	}
@@ -149,7 +149,7 @@ func TestFetchReport_MalformedJSON(t *testing.T) {
 
 	writeHostReport(t, hostRepoDir, `{"source": "sandbox-report", "items": [`)
 
-	err := fetchReport(hostRepoDir, loomyardRoot, info)
+	_, _, err := fetchReport(hostRepoDir, loomyardRoot, info)
 	if err == nil {
 		t.Fatal("fetchReport() error = nil; want parse error for malformed JSON")
 	}
@@ -180,7 +180,7 @@ func TestFetchReport_WrongSource(t *testing.T) {
 
 			writeHostReport(t, hostRepoDir, tt.body)
 
-			err := fetchReport(hostRepoDir, loomyardRoot, info)
+			_, _, err := fetchReport(hostRepoDir, loomyardRoot, info)
 			if err == nil {
 				t.Fatal("fetchReport() error = nil; want validation error for wrong source")
 			}
@@ -199,7 +199,7 @@ func TestFetchReport_MissingReport(t *testing.T) {
 	loomyardRoot := t.TempDir()
 	info := fakeBinaryInfo()
 
-	err := fetchReport(hostRepoDir, loomyardRoot, info)
+	_, _, err := fetchReport(hostRepoDir, loomyardRoot, info)
 	if err == nil {
 		t.Fatal("fetchReport() error = nil; want error for missing report file")
 	}
@@ -225,7 +225,7 @@ func TestFetchReport_ScratchDirCreated(t *testing.T) {
 
 	writeHostReport(t, hostRepoDir, `{"source": "sandbox-report", "items": []}`)
 
-	if err := fetchReport(hostRepoDir, loomyardRoot, info); err != nil {
+	if _, _, err := fetchReport(hostRepoDir, loomyardRoot, info); err != nil {
 		t.Fatalf("fetchReport() error: %v", err)
 	}
 	if _, err := os.Stat(scratchDir); err != nil {

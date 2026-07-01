@@ -110,7 +110,7 @@ written to `sandbox-report.json` in the host repo. The suite subcommand only lau
 the agent — it does **not** fetch the report. An interactive `claude` session never
 self-terminates and its manual exit gives a non-zero code, so gating a fetch on a
 clean exit would never fire. Collecting the report is a separate operator step
-(`fetch-report`, below).
+(`fetch`, below).
 
 ### Optional flags
 
@@ -123,7 +123,7 @@ sandbox.cmd suite -prompt <text>   # override the instruction string (default: b
 
 The suite treats any exit code from the interactive `claude` session as normal — a
 manual exit is expected — so `runSuite` always returns success and prints a reminder
-to run `sandbox.cmd fetch-report`. The claude session's precise exit code is not
+to run `sandbox.cmd fetch`. The claude session's precise exit code is not
 otherwise acted upon.
 
 ## Fetching the report
@@ -132,7 +132,7 @@ After the suite session ends, collect the agent-written report into this repo's
 `.scratch/`:
 
 ```cmd
-sandbox.cmd fetch-report -loomyard <lyx-repo-root>
+sandbox.cmd fetch -loomyard <lyx-repo-root>
 ```
 
 This command:
@@ -144,7 +144,7 @@ This command:
    sandbox-report-json contract (millhouse#586), stamps `meta.fingerprint`, and writes
    a normalized copy to `<loomyard>/.scratch/sandbox-report-<fingerprint>.json`.
 
-If the agent produced no report, `fetch-report` fails with a distinct "not found"
+If the agent produced no report, `fetch` fails with a distinct "not found"
 error so the operator can tell "the agent wrote nothing" from "the agent wrote garbage".
 The launcher (`sandbox.cmd`) always passes `-loomyard`; it is required only by this
 subcommand.

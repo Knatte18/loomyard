@@ -24,7 +24,7 @@ const (
 
 // sandboxReport is the top-level shape of sandbox-report.json. The agent
 // writes only Source and Items; Meta is stamped by fetchReport from the
-// authoritative binaryInfo during the fetch-report step (see the
+// authoritative binaryInfo during the fetch step (see the
 // "suite.go stamps meta.fingerprint" Shared Decision).
 type sandboxReport struct {
 	Source string        `json:"source"`
@@ -57,7 +57,7 @@ type reportItem struct {
 	Body  string `json:"body"`
 }
 
-// runFetch executes the "sandbox fetch-report" subcommand, run by the operator
+// runFetch executes the "sandbox fetch" subcommand, run by the operator
 // after a suite session ends. It mirrors runSuite's host-repo derivation,
 // re-fingerprints the lyx currently on PATH, and fetches the agent-written
 // sandbox-report.json into <loomyardRoot>/.scratch. For the normal flow (run the
@@ -88,16 +88,22 @@ func runFetch(parentDir, loomyardRoot string) error {
 		return fmt.Errorf("fingerprint lyx binary: %w", err)
 	}
 
-	return fetchReport(hostRepoDir, loomyardRoot, info)
+	destPath, count, err := fetchReport(hostRepoDir, loomyardRoot, info)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("fetched %d finding(s) -> %s\n", count, destPath)
+	return nil
 }
 
 // fetchReport reads sandbox-report.json from hostRepoDir, validates it
 // against the sandbox-report contract, stamps its meta.fingerprint from info,
 // and writes the normalized result to
-// <loomyardRoot>/.scratch/sandbox-report-<sha256>.json. It is called by the
-// separate fetch-report step (runFetch) after a suite session, per the
-// "normalized re-serialize" Shared Decision.
-func fetchReport(hostRepoDir, loomyardRoot string, info binaryInfo) error {
+// <loomyardRoot>/.scratch/sandbox-report-<sha256>.json. It returns the written
+// destination path and the number of findings (items) so the caller can report
+// what it fetched. It is called by the separate fetch step (runFetch) after a
+// suite session, per the "normalized re-serialize" Shared Decision.
+func fetchReport(hostRepoDir, loomyardRoot string, info binaryInfo) (string, int, error) {
 	reportPath := filepath.Join(hostRepoDir, reportFileName)
 
 	raw, err := os.ReadFile(reportPath)
@@ -106,25 +112,25 @@ func fetchReport(hostRepoDir, loomyardRoot string, info binaryInfo) error {
 			// A missing report means the agent finished without writing one --
 			// surface this distinctly from a parse error so the operator knows
 			// the agent itself misbehaved, not that the file was malformed.
-			return fmt.Errorf("sandbox report not found at %s: the agent produced no report", reportPath)
+			return "", 0, fmt.Errorf("sandbox report not found at %s: the agent produced no report", reportPath)
 		}
-		return fmt.Errorf("read sandbox report %s: %w", reportPath, err)
+		return "", 0, fmt.Errorf("read sandbox report %s: %w", reportPath, err)
 	}
 
 	var report sandboxReport
 	if err := json.Unmarshal(raw, &report); err != nil {
-		return fmt.Errorf("parse sandbox report %s: %w", reportPath, err)
+		return "", 0, fmt.Errorf("parse sandbox report %s: %w", reportPath, err)
 	}
 
 	if report.Source != reportSourceID {
-		return fmt.Errorf("sandbox report has wrong source %q (want %q)", report.Source, reportSourceID)
+		return "", 0, fmt.Errorf("sandbox report has wrong source %q (want %q)", report.Source, reportSourceID)
 	}
 	// Items is decoded as *[]reportItem so a nil pointer (key absent) can be
 	// distinguished from a non-nil pointer to an empty slice (key present,
 	// zero findings) -- see the "typed-decode validation with *[]Item" Shared
 	// Decision. Only the former is rejected.
 	if report.Items == nil {
-		return fmt.Errorf("sandbox report is missing its items array")
+		return "", 0, fmt.Errorf("sandbox report is missing its items array")
 	}
 
 	// The agent does not know its own fingerprint, so the fetch helper -- which
@@ -139,18 +145,18 @@ func fetchReport(hostRepoDir, loomyardRoot string, info binaryInfo) error {
 
 	normalized, err := json.MarshalIndent(report, "", "  ")
 	if err != nil {
-		return fmt.Errorf("marshal normalized sandbox report: %w", err)
+		return "", 0, fmt.Errorf("marshal normalized sandbox report: %w", err)
 	}
 
 	scratchDir := filepath.Join(loomyardRoot, ".scratch")
 	if err := os.MkdirAll(scratchDir, 0o755); err != nil {
-		return fmt.Errorf("create scratch dir %s: %w", scratchDir, err)
+		return "", 0, fmt.Errorf("create scratch dir %s: %w", scratchDir, err)
 	}
 
 	destPath := filepath.Join(scratchDir, "sandbox-report-"+info.SHA256+".json")
 	if err := os.WriteFile(destPath, normalized, 0o644); err != nil {
-		return fmt.Errorf("write fetched sandbox report %s: %w", destPath, err)
+		return "", 0, fmt.Errorf("write fetched sandbox report %s: %w", destPath, err)
 	}
 
-	return nil
+	return destPath, len(*report.Items), nil
 }
