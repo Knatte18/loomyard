@@ -56,7 +56,8 @@ programmatically-driven session *interactive*.
   pane/window, injecting the prompt, and detecting completion via Claude Code hooks.
   I/O still rides the **file contract** (the agent writes its output files; Go reads
   them) — that part is unchanged from a headless model.
-- Therefore `internal/agent` depends on the **mux** module; it cannot be built purely
+- Therefore the agent-driving layer (loom's producers, the review handler, cluster
+  reviewers, the progress-judge) will depend on the **mux** module; it cannot be built
   on a headless `exec`. mux is on loom's critical path for this reason.
 - Agents are provider-agnostic via **engines** — per-LLM adapters (a Claude engine now;
   Gemini etc. later) that know how to launch/drive their provider as a psmux session.
