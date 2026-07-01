@@ -32,7 +32,6 @@ No batch-local decisions beyond `## Shared Decisions` in the overview.
 - **Edits:** none
 - **Creates:**
   - `internal/yamlengine/set.go`
-  - `internal/yamlengine/set_test.go`
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** In `internal/yamlengine/set.go` (package `yamlengine`):
@@ -64,12 +63,13 @@ No batch-local decisions beyond `## Shared Decisions` in the overview.
 - **Context:**
   - `internal/yamlengine/reconcile_test.go`
 - **Edits:** none
-- **Creates:** none (tests belong in `internal/yamlengine/set_test.go`, created by Card 1 —
-  write the test bodies in that same file as part of this card)
+- **Creates:**
+  - `internal/yamlengine/set_test.go`
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** In `internal/yamlengine/set_test.go` (created empty/stubbed by Card 1),
-  write table/individual tests for `SetValues` covering: (a) an unknown key among multiple
+- **Requirements:** In new file `internal/yamlengine/set_test.go`, write
+  table/individual tests for `SetValues` (defined in `internal/yamlengine/set.go` by
+  Card 1) covering: (a) an unknown key among multiple
   `pairs` returns a non-empty `Unknown` and a nil `Merged` — no partial mutation is
   observable; (b) a value containing an `=` character round-trips byte-for-byte in
   `Merged`; (c) a value containing spaces round-trips byte-for-byte in `Merged`; (d)
@@ -88,7 +88,6 @@ No batch-local decisions beyond `## Shared Decisions` in the overview.
   - `internal/configengine/edit.go`
 - **Creates:**
   - `internal/configengine/set.go`
-  - `internal/configengine/set_test.go`
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:**
@@ -123,11 +122,12 @@ No batch-local decisions beyond `## Shared Decisions` in the overview.
 - **Context:**
   - `internal/configengine/edit_test.go`
 - **Edits:** none
-- **Creates:** none (tests belong in `internal/configengine/set_test.go`, created by Card 3
-  — write the test bodies in that same file as part of this card)
+- **Creates:**
+  - `internal/configengine/set_test.go`
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** In `internal/configengine/set_test.go`, write tests for `Set` covering:
+- **Requirements:** In new file `internal/configengine/set_test.go`, write tests for
+  `Set` (defined in `internal/configengine/set.go` by Card 3) covering:
   (a) scaffold-when-missing then set — calling `Set` against a `baseDir` with no existing
   config file creates it from `template` and applies the requested pairs in one call
   (mirror `TestEdit_ScaffoldWhenMissing`'s fixture setup in `edit_test.go`); (b) an unknown
