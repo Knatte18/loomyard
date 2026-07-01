@@ -227,10 +227,23 @@ func makeFakeLyx(t *testing.T, tmpDir string) string {
 	return fakeLyx
 }
 
+// writeValidSuiteReport writes a minimal valid sandbox-report.json into
+// hostRepoDir, as a clean-exit launchAgent stub must do so the post-launch
+// fetchReport call inside runSuite finds something to fetch.
+func writeValidSuiteReport(t *testing.T, hostRepoDir string) {
+	t.Helper()
+	path := filepath.Join(hostRepoDir, reportFileName)
+	body := `{"source": "sandbox-report", "items": []}`
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatalf("write valid suite report: %v", err)
+	}
+}
+
 // TestRunSuite_HubAbsent verifies that runSuite returns a clear error and does
 // not call launchAgent when the Hub host subdirectory does not exist.
 func TestRunSuite_HubAbsent(t *testing.T) {
 	parentDir := t.TempDir()
+	loomyardRoot := t.TempDir()
 
 	restore := stubSuiteSeams(t, "", "", func(dir, claude, instruction string) int {
 		t.Error("launchAgent should not be called when Hub is absent")
@@ -238,7 +251,7 @@ func TestRunSuite_HubAbsent(t *testing.T) {
 	})
 	defer restore()
 
-	err := runSuite(parentDir, "", "")
+	err := runSuite(parentDir, loomyardRoot, "", "")
 	if err == nil {
 		t.Fatal("runSuite should return error when Hub host subdir is absent")
 	}
@@ -251,6 +264,7 @@ func TestRunSuite_HubAbsent(t *testing.T) {
 // the correct host-repo directory, claude binary path, and default instruction.
 func TestRunSuite_LaunchInvocation(t *testing.T) {
 	parentDir, hostRepoDir := makeHostRepo(t)
+	loomyardRoot := t.TempDir()
 	fakeLyx := makeFakeLyx(t, parentDir)
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
 
@@ -259,11 +273,14 @@ func TestRunSuite_LaunchInvocation(t *testing.T) {
 		gotDir = dir
 		gotClaude = claude
 		gotInstruction = instruction
+		// runSuite fetches the report after a clean exit; write one so the
+		// fetch succeeds and runSuite returns nil as this test expects.
+		writeValidSuiteReport(t, hostRepoDir)
 		return 0
 	})
 	defer restore()
 
-	if err := runSuite(parentDir, "", ""); err != nil {
+	if err := runSuite(parentDir, loomyardRoot, "", ""); err != nil {
 		t.Fatalf("runSuite error: %v", err)
 	}
 	if gotDir != hostRepoDir {
@@ -280,7 +297,8 @@ func TestRunSuite_LaunchInvocation(t *testing.T) {
 // TestRunSuite_Overrides verifies that runSuite honours the -claude and -prompt
 // override arguments, passing them straight to launchAgent without PATH lookup.
 func TestRunSuite_Overrides(t *testing.T) {
-	parentDir, _ := makeHostRepo(t)
+	parentDir, hostRepoDir := makeHostRepo(t)
+	loomyardRoot := t.TempDir()
 	fakeLyx := makeFakeLyx(t, parentDir)
 
 	customClaude := filepath.Join(parentDir, "custom-claude.exe")
@@ -303,10 +321,13 @@ func TestRunSuite_Overrides(t *testing.T) {
 	launchAgent = func(dir, claude, instruction string) int {
 		gotClaude = claude
 		gotInstruction = instruction
+		// runSuite fetches the report after a clean exit; write one so the
+		// fetch succeeds and runSuite returns nil as this test expects.
+		writeValidSuiteReport(t, hostRepoDir)
 		return 0
 	}
 
-	if err := runSuite(parentDir, customClaude, customPrompt); err != nil {
+	if err := runSuite(parentDir, loomyardRoot, customClaude, customPrompt); err != nil {
 		t.Fatalf("runSuite error: %v", err)
 	}
 	if gotClaude != customClaude {
@@ -321,6 +342,7 @@ func TestRunSuite_Overrides(t *testing.T) {
 // launchAgent is propagated as an error by runSuite.
 func TestRunSuite_NonZeroLaunchCode(t *testing.T) {
 	parentDir, _ := makeHostRepo(t)
+	loomyardRoot := t.TempDir()
 	fakeLyx := makeFakeLyx(t, parentDir)
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
 
@@ -329,12 +351,16 @@ func TestRunSuite_NonZeroLaunchCode(t *testing.T) {
 	})
 	defer restore()
 
-	err := runSuite(parentDir, "", "")
+	err := runSuite(parentDir, loomyardRoot, "", "")
 	if err == nil {
 		t.Fatal("runSuite should return error when launchAgent returns non-zero")
 	}
 	if !strings.Contains(err.Error(), "2") {
 		t.Errorf("error should mention exit code 2; got %q", err.Error())
+	}
+	// A non-zero exit must not fetch a report -- .scratch should stay absent.
+	if _, err := os.Stat(filepath.Join(loomyardRoot, ".scratch")); !os.IsNotExist(err) {
+		t.Errorf(".scratch should remain absent after a non-zero launch; stat err = %v", err)
 	}
 }
 
@@ -342,6 +368,7 @@ func TestRunSuite_NonZeroLaunchCode(t *testing.T) {
 // claude cannot be resolved from PATH and no override is given.
 func TestRunSuite_ClaudeNotFound(t *testing.T) {
 	parentDir, _ := makeHostRepo(t)
+	loomyardRoot := t.TempDir()
 	fakeLyx := makeFakeLyx(t, parentDir)
 
 	oldLookPath := lookPath
@@ -361,11 +388,108 @@ func TestRunSuite_ClaudeNotFound(t *testing.T) {
 		return 1
 	}
 
-	err := runSuite(parentDir, "", "")
+	err := runSuite(parentDir, loomyardRoot, "", "")
 	if err == nil {
 		t.Fatal("runSuite should return error when claude is not on PATH")
 	}
 	if !strings.Contains(err.Error(), "claude") {
 		t.Errorf("error should mention 'claude'; got %q", err.Error())
+	}
+}
+
+// TestRunSuite_FetchesReport verifies that runSuite fetches the agent-written
+// report into <loomyardRoot>/.scratch on a clean exit.
+func TestRunSuite_FetchesReport(t *testing.T) {
+	parentDir, hostRepoDir := makeHostRepo(t)
+	loomyardRoot := t.TempDir()
+	fakeLyx := makeFakeLyx(t, parentDir)
+	fakeClaude := filepath.Join(parentDir, "claude.exe")
+
+	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction string) int {
+		writeValidSuiteReport(t, hostRepoDir)
+		return 0
+	})
+	defer restore()
+
+	if err := runSuite(parentDir, loomyardRoot, "", ""); err != nil {
+		t.Fatalf("runSuite error: %v", err)
+	}
+
+	info, err := binaryFingerprint(fakeLyx)
+	if err != nil {
+		t.Fatalf("binaryFingerprint: %v", err)
+	}
+	destPath := filepath.Join(loomyardRoot, ".scratch", "sandbox-report-"+info.SHA256+".json")
+	if _, err := os.Stat(destPath); err != nil {
+		t.Errorf("fetched report not found at %s: %v", destPath, err)
+	}
+}
+
+// TestRunSuite_StaleReportRemoved verifies that runSuite removes a prior
+// sandbox-report.json before launching the agent, so a stub that writes
+// nothing surfaces the missing-report error rather than fetching stale
+// findings under a fresh fingerprint.
+func TestRunSuite_StaleReportRemoved(t *testing.T) {
+	parentDir, hostRepoDir := makeHostRepo(t)
+	loomyardRoot := t.TempDir()
+	fakeLyx := makeFakeLyx(t, parentDir)
+	fakeClaude := filepath.Join(parentDir, "claude.exe")
+
+	// Pre-create a stale report from a prior run.
+	stalePath := filepath.Join(hostRepoDir, reportFileName)
+	if err := os.WriteFile(stalePath, []byte(`{"source": "sandbox-report", "items": [{"ref": "S0", "title": "stale", "body": "stale"}]}`), 0o644); err != nil {
+		t.Fatalf("write stale report: %v", err)
+	}
+
+	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction string) int {
+		// Writes nothing: simulates an agent session that ends cleanly without
+		// rewriting the report.
+		return 0
+	})
+	defer restore()
+
+	err := runSuite(parentDir, loomyardRoot, "", "")
+	if err == nil {
+		t.Fatal("runSuite should return the missing-report error when no fresh report is written")
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Errorf("error should mention the report was not found; got %q", err.Error())
+	}
+	if _, statErr := os.Stat(stalePath); !os.IsNotExist(statErr) {
+		t.Errorf("stale report should have been removed before launch; stat err = %v", statErr)
+	}
+	if _, statErr := os.Stat(filepath.Join(loomyardRoot, ".scratch")); !os.IsNotExist(statErr) {
+		t.Errorf(".scratch should remain absent; no stale report should be fetched")
+	}
+}
+
+// TestRunSuite_ExcludesReport verifies that runSuite registers
+// sandbox-report.json in the host repo's .git/info/exclude, alongside the
+// existing SANDBOX-SUITE.md entry.
+func TestRunSuite_ExcludesReport(t *testing.T) {
+	parentDir, hostRepoDir := makeHostRepo(t)
+	loomyardRoot := t.TempDir()
+	fakeLyx := makeFakeLyx(t, parentDir)
+	fakeClaude := filepath.Join(parentDir, "claude.exe")
+
+	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction string) int {
+		writeValidSuiteReport(t, hostRepoDir)
+		return 0
+	})
+	defer restore()
+
+	if err := runSuite(parentDir, loomyardRoot, "", ""); err != nil {
+		t.Fatalf("runSuite error: %v", err)
+	}
+
+	excludePath := filepath.Join(hostRepoDir, ".git", "info", "exclude")
+	content, err := os.ReadFile(excludePath)
+	if err != nil {
+		t.Fatalf("read .git/info/exclude: %v", err)
+	}
+	for _, entry := range []string{suiteFileName, reportFileName} {
+		if !strings.Contains(string(content), entry) {
+			t.Errorf(".git/info/exclude missing entry %q; got %q", entry, string(content))
+		}
 	}
 }

@@ -299,6 +299,7 @@ func TestRun_ResetRoutesToBuildWithReset(t *testing.T) {
 // the suite path and ultimately invokes launchAgent with the correct directory.
 func TestRun_SuiteRoutesSuiteToLaunch(t *testing.T) {
 	tmpDir := t.TempDir()
+	loomyardRoot := t.TempDir()
 
 	// Create the Hub host repo directory that runSuite requires.
 	hostRepoDir := filepath.Join(tmpDir, hubName, hostDirName)
@@ -334,15 +335,40 @@ func TestRun_SuiteRoutesSuiteToLaunch(t *testing.T) {
 		if dir != hostRepoDir {
 			t.Errorf("launchAgent dir = %q; want %q", dir, hostRepoDir)
 		}
+		// runSuite fetches the report after a clean exit; write one so the
+		// fetch succeeds and run still returns 0.
+		reportPath := filepath.Join(hostRepoDir, reportFileName)
+		if err := os.WriteFile(reportPath, []byte(`{"source": "sandbox-report", "items": []}`), 0o644); err != nil {
+			t.Fatalf("write sandbox report: %v", err)
+		}
 		return 0
 	}
 
-	code := run([]string{"-parent", tmpDir, "suite"})
+	code := run([]string{"-parent", tmpDir, "-loomyard", loomyardRoot, "suite"})
 	if code != 0 {
 		t.Errorf("run() = %d; want 0", code)
 	}
 	if !launchAgentCalled {
 		t.Error("launchAgent was not called for suite subcommand")
+	}
+}
+
+// TestRun_SuiteRequiresLoomyard verifies that the suite subcommand fails fast
+// and never calls launchAgent when -loomyard is not supplied, covering the
+// required-flag guard added alongside the -loomyard flag.
+func TestRun_SuiteRequiresLoomyard(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	oldLaunchAgent := launchAgent
+	defer func() { launchAgent = oldLaunchAgent }()
+	launchAgent = func(dir, claude, instruction string) int {
+		t.Error("launchAgent should not be called when -loomyard is missing")
+		return 1
+	}
+
+	code := run([]string{"-parent", tmpDir, "suite"})
+	if code == 0 {
+		t.Error("run() = 0; want non-zero when -loomyard is missing for suite subcommand")
 	}
 }
 

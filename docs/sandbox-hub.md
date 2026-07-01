@@ -84,8 +84,6 @@ against the deployed `lyx.exe`.
 
 - Hub already built (`sandbox.cmd` with no subcommand, or `sandbox.cmd build`).
 - `lyx` on PATH (deployed via `deploy.cmd`).
-- `gh` installed and authenticated (`gh auth status`). The `lyx selfreport create` command
-  that the agent uses to file findings delegates to the `gh` CLI.
 
 ### Usage
 
@@ -98,7 +96,7 @@ This command, run from the lyx repo directory:
 1. Locates the Hub host repo at `C:\Code\lyx-test-HUB\lyx-test`.
 2. Fingerprints the deployed `lyx.exe` (absolute path, size, modtime, SHA256 prefix).
 3. Copies a fresh `SANDBOX-SUITE.md` into the Hub host repo, prepending the fingerprint
-   block to the embedded template (`tools/sandbox/test-scheme.md`). Any previous copy
+   block to the embedded template (`tools/sandbox/SANDBOX-SUITE.md`). Any previous copy
    is overwritten so every session starts from a clean slate.
 4. Adds `SANDBOX-SUITE.md` to `lyx-test-HUB/lyx-test/.git/info/exclude` so the
    copied file does not show up as an untracked change inside the host repo.
@@ -108,7 +106,10 @@ This command, run from the lyx repo directory:
 
 The agent works entirely as a black box: it sees only `lyx` on PATH and the copied
 scheme. It must not access the lyx source tree. Findings (WARN or FAIL verdicts) are
-filed directly from inside the host repo via `lyx selfreport create`.
+written to `sandbox-report.json` in the host repo; on a clean exit, `suite.go` fetches
+and normalizes that report into the `-loomyard` root the launcher supplies (the lyx
+repo root), at `.scratch/sandbox-report-<fingerprint>.json`, on the shared
+sandbox-report-json contract (millhouse#586).
 
 ### Optional flags
 
