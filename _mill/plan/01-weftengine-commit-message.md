@@ -98,6 +98,7 @@ No batch-local decisions differ from `## Shared Decisions` in the overview.
   - `internal/weftengine/weft.go`
 - **Edits:**
   - `internal/weftengine/sync_test.go`
+  - `internal/weftengine/weft_integration_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -106,6 +107,10 @@ No batch-local decisions differ from `## Shared Decisions` in the overview.
     `TestCommit_ScopedPathspec`, `TestPush`, `TestPull_FastForward` — four call sites
     total) to pass `DefaultCommitMessage` as the new `message` argument, matching the
     new signature from Card 1.
+  - Update the one `Commit(...)` call site in `weft_integration_test.go`
+    (`TestPushIntegration`'s shared table-test body) to pass `DefaultCommitMessage` as
+    the new `message` argument as well — this file was missed in the original batch
+    scope and surfaced as a build failure only when running with `-tags integration`.
   - Add a new test `TestCommit_CustomMessage` that commits a change with a distinct
     custom message string (e.g. `"custom test message"`) and asserts that message (not
     `DefaultCommitMessage`) is what lands in the weft repo's history — read it via
