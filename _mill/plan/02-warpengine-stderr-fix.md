@@ -259,10 +259,14 @@ Decisions` in the overview.
 
 ## Batch Tests
 
-`verify: go test ./internal/warpengine/...` runs every test file this batch touches
-(`checkout_test.go`, `add_test.go`, `cleanup_test.go`, `clone_test.go`,
-`prune_test.go`, `reconcile_test.go`, `weftwiring_test.go`) plus the whole package's
-existing suite, catching any regression from the message-text edits across all 8 files.
+`verify: go test ./internal/warpengine/...` compiles and runs this batch's touched test
+files, but only `clone_test.go` is untagged — `checkout_test.go`, `add_test.go`,
+`cleanup_test.go`, `prune_test.go`, `reconcile_test.go`, and `weftwiring_test.go` all
+carry `//go:build integration`, so the batch-local `verify:` string above does not
+itself execute the new no-`"fatal:"` assertions added to those six files by cards 8-10
+and 13-17. Exercising them requires `go test -tags integration ./...`, consistent with
+`docs/benchmarks/running-tests.md`'s documented Tier 2 loop; CI's merge gate runs both
+tiers, so the gap is only in this batch's `verify:` string, not in actual coverage.
 `junction.go`'s single site (Card 12) has no dedicated test file and no fault-injection
 seam in this codebase to force it — that site is verified by code inspection and
 compilation only, which the implementer must call out explicitly in its card's commit or

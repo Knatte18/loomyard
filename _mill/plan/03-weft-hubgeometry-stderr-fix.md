@@ -73,7 +73,12 @@ other two batches — no dependency edges, no file overlap. No batch-local decis
 
 ## Batch Tests
 
-`verify: go test ./internal/weftengine/... ./internal/hubgeometry/...` runs both touched
-test files (`sync_test.go`, `worktreelist_test.go`) plus each package's existing suite, so
-both single-site fixes are covered by a direct, cheaply-reproducible test in the same
+`verify: go test ./internal/weftengine/... ./internal/hubgeometry/...` compiles both
+touched packages, but `sync_test.go` and `worktreelist_test.go` both carry
+`//go:build integration`, so the batch-local `verify:` string above does not itself
+execute the new no-`"fatal:"` assertions added by cards 13 and 17. Exercising them
+requires `go test -tags integration ./...`, consistent with
+`docs/benchmarks/running-tests.md`'s documented Tier 2 loop; CI's merge gate runs both
+tiers, so the gap is only in this batch's `verify:` string, not in actual coverage. Both
+single-site fixes are still covered by a direct, cheaply-reproducible test in the same
 card that changes the site (no code-inspection-only fallback needed in this batch).
