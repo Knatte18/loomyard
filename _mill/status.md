@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: lyx-sandbox-fixes
 branch: lyx-sandbox-fixes
 plan: _mill/plan
@@ -20,4 +20,17 @@ discussed  '2026-06-30T19:30:39Z'
 planning  '2026-07-01T04:08:47Z'
 plan-fix-r1  '2026-07-01T04:13:08Z'
 planned  '2026-07-01T04:13:23Z'
+implementing  '2026-07-01T04:18:12Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: raw-git-error-message-cleanup
+    state: pending
+  - name: warp-path-separator-fix
+    state: pending
+  - name: sandbox-suite-doc-hardening
+    state: pending
 ```
