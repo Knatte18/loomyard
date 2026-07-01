@@ -3,7 +3,7 @@
 ```yaml
 task: "Add lyx init --undo / deinit command"
 slug: "lyx-deinit"
-approved: false
+approved: true
 started: "20260701-085202"
 parent: "main"
 root: ""

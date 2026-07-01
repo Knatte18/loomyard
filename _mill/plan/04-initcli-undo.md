@@ -76,19 +76,26 @@ load-bearing for Card 8's exact step ordering.
        below. This is the full-abort behavior from the "any junction inconsistency is a
        hard error" Shared Decision.
     4. Weft-side content: first check whether a weft worktree exists at all via
-       `os.Stat(l.WeftWorktree())`. If it does **not** exist (a truly-unpaired host —
-       the same condition `runInit` itself hard-gates on with "no weft pairing"), skip
-       every remaining part of this step entirely: do not call `os.RemoveAll`,
-       `weftengine.Commit`, or `weftengine.Push`. Track `weftContentStatus :=
-       "not_present"` and proceed straight to step 5. This guard is required because
-       `weftengine.Commit`'s internal `ensureLockDir` calls `os.MkdirAll(weftPath +
-       "/.weft", ...)` unconditionally — calling `Commit` against a nonexistent
-       `l.WeftWorktree()` would silently create a stray `<slug>-weft/.weft/` directory
-       tree on disk and then fail with a "not a git repository" error from the
-       subsequent `git add`, breaking the "clean no-op on a never-paired host" case the
-       "no separate pre-gate" Shared Decision requires.
+       `os.Stat(l.WeftWorktree())`. On a stat error other than not-exist (`err != nil &&
+       !os.IsNotExist(err)`), return `output.Err(out, err.Error())` immediately —
+       mirror `runInit`'s own `os.Stat(lyxDir)` handling a few lines into that file for
+       this same stat-error-vs-not-exist distinction. If it does **not** exist (a
+       truly-unpaired host — the same condition `runInit` itself hard-gates on with "no
+       weft pairing"), skip every remaining part of this step entirely: do not call
+       `os.RemoveAll`, `weftengine.Commit`, or `weftengine.Push`. Track
+       `weftContentStatus := "not_present"` and proceed straight to step 5. This guard
+       is required because `weftengine.Commit`'s internal `ensureLockDir` calls
+       `os.MkdirAll(weftPath + "/.weft", ...)` unconditionally — calling `Commit`
+       against a nonexistent `l.WeftWorktree()` would silently create a stray
+       `<slug>-weft/.weft/` directory tree on disk and then fail with a "not a git
+       repository" error from the subsequent `git add`, breaking the "clean no-op on a
+       never-paired host" case the "no separate pre-gate" Shared Decision requires.
        If the weft worktree *does* exist: `weftLyxDir := l.WeftLyxDirFor(slug)`. Check
-       `os.Stat(weftLyxDir)`: if it exists, call `os.RemoveAll(weftLyxDir)` and track
+       `os.Stat(weftLyxDir)`, applying the identical stat-error-vs-not-exist handling
+       as above. If it exists, call `os.RemoveAll(weftLyxDir)` and check its returned
+       error — on failure, return `output.Err(out, err.Error())` (matching every other
+       `os.RemoveAll` call site in `warpengine`, e.g. `remove.go`, `prune.go`,
+       `launchers.go`, which all surface the error rather than ignoring it) — then track
        `weftContentStatus := "cleared"`; if it does not exist, track
        `weftContentStatus := "not_present"` (do not call `os.RemoveAll` in this case).
        Then — **regardless of whether weftLyxDir existed this invocation** (but only
