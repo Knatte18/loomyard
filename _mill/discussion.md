@@ -31,8 +31,11 @@ so that guarantee holds going forward.
 **In:**
 
 - New scenario **S6 — Subfolder init**: from a non-root subdirectory of the
-  host repo, run `lyx init` there, then exercise `board`/`config` from that
-  subdir, confirming lyx resolves against the subdir's own `_lyx`.
+  host repo, run `lyx init` there, then exercise `config` from that subdir to
+  confirm lyx resolves against the subdir's own `_lyx`; also run `board` from
+  the subdir as a "still works from any subfolder" smoke check (board's data
+  lives at the hub level, so it does not itself demonstrate subfolder-scoped
+  resolution — see Decisions for why).
 - Rewrite the "Operating model" note in `SANDBOX-SUITE.md` (currently forbids
   nested `_lyx` scaffolding during a session) to carve out this one scenario
   as the explicit, controlled exception.
@@ -71,6 +74,13 @@ so that guarantee holds going forward.
   in scope for S8.
 - Subcommand-level coverage granularity is out of scope for this task (see
   Decisions — module-level only, for now).
+- **Adding a `lyx deinit`/`init --undo` command is explicitly out of scope
+  for this task.** Writing S6 surfaced that no such command exists (see
+  Decisions → Subfolder init scenario), which is a real product gap — it's
+  filed as a separate backlog task (`lyx-deinit`, in the wiki) rather than
+  bundled into this task's scope. This task's S6 cleanup uses a temporary,
+  ad-hoc plain-filesystem/git workaround (see Decisions) until that
+  follow-up task lands.
 
 ## Decisions
 
@@ -251,9 +261,12 @@ so that guarantee holds going forward.
 
 - Decision: S6 verifies that `lyx init`, run from a subdirectory of the
   already-initialized host repo, creates `_lyx/` scoped to that subdirectory
-  (not at the repo root), and that subsequent `board`/`config` commands run
-  from that same subdir resolve against the subdir's own `_lyx/config`
-  rather than the root's.
+  (not at the repo root), and that a subsequent `config` command run from
+  that same subdir resolves against the subdir's own `_lyx/config` rather
+  than the root's. `board` is also run from the subdir, but only as a
+  "still works, doesn't error" smoke check — see the correction below on
+  why board does not demonstrate subfolder-scoped resolution the way config
+  does.
 - Rationale: this is `hubgeometry.Resolve(cwd)`'s existing contract —
   `WorktreeRoot` comes from `git rev-parse --show-toplevel` (repo root,
   unaffected by cwd depth) while `RelPath` is `filepath.Rel(WorktreeRoot,
@@ -282,6 +295,45 @@ so that guarantee holds going forward.
   `.gitignore` change) from the subfolder at session end, so a later run
   reliably observes "not yet initialized" rather than silently reusing a
   prior run's leftovers.
+- Correction from discussion review round 2: the nested `_lyx/` the
+  subfolder init creates is **not a plain directory — it's a real directory
+  junction**, wired by `warpengine.WireJunctions` before init's own
+  `os.Stat`/`MkdirAll` step even runs. `HostLyxLink(slug)` and
+  `WeftLyxDirFor(slug)` (`internal/hubgeometry/hubgeometry.go`) are both
+  keyed on `RelPath`, so the subfolder junction is
+  `<host>/<subdir>/_lyx` → `<weft-worktree>/<subdir>/_lyx`, and
+  `ReconcileAll(cwd, true)` writes the module config YAMLs *through* that
+  junction into the weft worktree. Removing only the host-side junction
+  leaves the real weft-side `<subdir>/_lyx/config/*.yaml` (and any weft
+  commit made against it) behind — the durability note above must say
+  cleanup removes **both** the host junction *and* the weft-side target
+  directory it points to (or an equivalent weft-side revert), not just the
+  host `_lyx/`/`.gitignore`, or the "reliably observes not-yet-initialized"
+  guarantee it exists to provide does not actually hold.
+- **No `lyx` command exists to reverse `init`** (confirmed: no `deinit`
+  subcommand, no `--undo` flag on `init`). Cleanup must therefore fall back
+  to plain filesystem/git housekeeping, outside `lyx`, for the parts of the
+  reversal `lyx` doesn't own — the same precedent S2 already documents
+  ("committing host changes with plain git is acceptable and not a
+  finding... absence of a lyx-owned command is an intentional design
+  choice, not a gap"). This is an explicit **temporary/ad-hoc** measure: a
+  new backlog task, `lyx-deinit` (filed in the wiki during this discussion),
+  proposes an actual `lyx init --undo` / `lyx deinit` command. Once that
+  lands, S6's cleanup note should be rewritten to call the new command
+  instead of the manual steps below, and the durability guarantee
+  re-reviewed to see if the manual fallback is still needed at all.
+  Concretely, S6's cleanup note is: remove the host-side `_lyx` junction,
+  remove the weft-side `<subdir>/_lyx` directory it pointed to, and revert
+  the `.gitignore` change — all via plain filesystem/git commands, not
+  through `lyx`.
+- Correction from discussion review round 2 (accuracy note): `board`'s data
+  directory is `hubgeometry.BoardDir(layout.Hub)` (`internal/boardcli/cli.go`)
+  — hub-level and cwd-depth-invariant, unlike `config`'s subdir-scoped
+  `_lyx/config`. Running `lyx board list` from the S6 subdir returns the
+  *same* hub board as from the root; it does not prove subfolder-scoped
+  resolution. `config` is the scenario's actual subfolder-scoping
+  demonstrator; `board`-from-subdir only shows the command still runs
+  without error from a non-root cwd.
 
 ## Technical context
 
@@ -390,3 +442,21 @@ so that guarantee holds going forward.
   nested `_lyx/` and touches `.gitignore` in the subfolder, which persists
   across sessions since hub `-reset` is optional, not automatic; S6 must
   clean up the nested `_lyx/`/`.gitignore` change at session end.
+- **Q:** (Discussion review round 2, gap) Does the S6 cleanup note need to
+  say more than "remove the nested `_lyx/`"? **A:** Yes — the nested `_lyx/`
+  is a real directory junction into the weft worktree
+  (`HostLyxLink`/`WeftLyxDirFor` are both `RelPath`-keyed), and
+  `ReconcileAll` writes config YAMLs through it into the weft side; cleanup
+  must remove the weft-side target too, not just the host junction.
+- **Q:** (Discussion review round 2, note) Does running `board` from the S6
+  subdir actually prove subfolder-scoped resolution? **A:** No —
+  `hubgeometry.BoardDir(layout.Hub)` is hub-level and cwd-depth-invariant;
+  `config` is the real subfolder-scoping demonstrator, `board`-from-subdir
+  is only a "still runs from here" smoke check.
+- **Q:** There's no `lyx` command to reverse `init` — how should S6's
+  cleanup be handled, given this task's scope is the sandbox suite/doc, not
+  new CLI features? **A:** Temporary ad-hoc plain-filesystem/git cleanup for
+  now (matching S2's existing "plain git for housekeeping lyx doesn't own"
+  precedent), plus a new backlog task (`lyx-deinit`) filed in the wiki
+  proposing a real `lyx init --undo`/`lyx deinit` command — once that lands,
+  it should replace the ad-hoc cleanup steps in S6.
