@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-weft-hubgeometry-stderr-fix
+phase: holistic-reviewing
 slug: sandbox-cli-ergonomics
 branch: sandbox-cli-ergonomics
 plan: _mill/plan
@@ -28,6 +28,7 @@ implementing  '2026-07-01T08:24:32Z'
 approved-config-set-flag  '2026-07-01T08:35:02Z'
 approved-warpengine-stderr-fix  '2026-07-01T08:52:09Z'
 approved-weft-hubgeometry-stderr-fix  '2026-07-01T08:59:21Z'
+holistic-reviewing  '2026-07-01T08:59:43Z'
 ```
 
 ## Batches
