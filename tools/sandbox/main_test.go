@@ -348,7 +348,7 @@ func TestRun_SuiteRoutesSuiteToLaunch(t *testing.T) {
 	}
 }
 
-// TestRun_FetchReportRoutesToFetch verifies that the "fetch-report" positional
+// TestRun_FetchReportRoutesToFetch verifies that the "fetch" positional
 // routes to runFetch: with a built Hub, an on-PATH lyx, and a host report, the
 // dispatch reaches fetchReport and run returns 0.
 func TestRun_FetchReportRoutesToFetch(t *testing.T) {
@@ -380,20 +380,20 @@ func TestRun_FetchReportRoutesToFetch(t *testing.T) {
 		return "", fmt.Errorf("not found: %s", name)
 	}
 
-	code := run([]string{"-parent", tmpDir, "-loomyard", loomyardRoot, "fetch-report"})
+	code := run([]string{"-parent", tmpDir, "-loomyard", loomyardRoot, "fetch"})
 	if code != 0 {
 		t.Errorf("run() = %d; want 0", code)
 	}
 }
 
-// TestRun_FetchReportRequiresLoomyard verifies that the fetch-report subcommand
+// TestRun_FetchReportRequiresLoomyard verifies that the fetch subcommand
 // fails fast when -loomyard is not supplied, covering the required-flag guard.
 func TestRun_FetchReportRequiresLoomyard(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	code := run([]string{"-parent", tmpDir, "fetch-report"})
+	code := run([]string{"-parent", tmpDir, "fetch"})
 	if code == 0 {
-		t.Error("run() = 0; want non-zero when -loomyard is missing for fetch-report subcommand")
+		t.Error("run() = 0; want non-zero when -loomyard is missing for fetch subcommand")
 	}
 }
 

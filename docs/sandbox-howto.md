@@ -16,7 +16,7 @@ parent `C:\Code`.
 agent that drives `lyx` from PATH only (never the source tree). The agent writes
 WARN/FAIL findings to `sandbox-report.json` in the host repo. The suite only
 launches the agent; collecting the report is a separate step — after the session
-ends you run `sandbox.cmd fetch-report` to fetch a normalized copy into this repo's
+ends you run `sandbox.cmd fetch` to fetch a normalized copy into this repo's
 `.scratch/sandbox-report-<fingerprint>.json`.
 
 Because the agent tests **the binary on PATH**, a stale binary means you are
@@ -99,7 +99,7 @@ sandbox.cmd suite -prompt <text>   # override the instruction string
 ### 5. Fetch the report
 
 ```cmd
-sandbox.cmd fetch-report
+sandbox.cmd fetch
 ```
 
 Reads `sandbox-report.json` from the Hub host repo, validates and stamps it, and
@@ -110,7 +110,7 @@ ends; if the agent wrote no report, this fails with a distinct "not found" error
 ### 6. Triage findings
 
 The agent no longer files GitHub issues itself. Instead: the suite emits
-`sandbox-report.json` in the Hub host repo → `sandbox.cmd fetch-report` fetches it
+`sandbox-report.json` in the Hub host repo → `sandbox.cmd fetch` fetches it
 into this repo's `.scratch/sandbox-report-<fingerprint>.json` → run the
 report-to-tasks triage skill (millhouse#586) against that file to pull findings
 into the backlog, then groom/spawn as usual.

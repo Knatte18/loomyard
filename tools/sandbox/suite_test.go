@@ -375,7 +375,7 @@ func TestRunSuite_ClaudeNotFound(t *testing.T) {
 }
 
 // TestRunSuite_StaleReportRemoved verifies that runSuite removes a prior
-// sandbox-report.json before launching the agent, so a later fetch-report run
+// sandbox-report.json before launching the agent, so a later fetch run
 // cannot pick up stale findings under a fresh fingerprint. runSuite itself no
 // longer fetches, so it returns nil regardless of whether a fresh report exists.
 func TestRunSuite_StaleReportRemoved(t *testing.T) {
