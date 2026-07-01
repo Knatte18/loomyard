@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-fixing
 slug: sandbox-cli-ergonomics
 branch: sandbox-cli-ergonomics
 plan: _mill/plan
@@ -29,6 +29,7 @@ approved-config-set-flag  '2026-07-01T08:35:02Z'
 approved-warpengine-stderr-fix  '2026-07-01T08:52:09Z'
 approved-weft-hubgeometry-stderr-fix  '2026-07-01T08:59:21Z'
 holistic-reviewing  '2026-07-01T08:59:43Z'
+holistic-fixing  '2026-07-01T09:04:32Z'
 ```
 
 ## Batches
