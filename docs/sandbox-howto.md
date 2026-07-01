@@ -5,18 +5,19 @@ This is the **ordered procedure**; for the topology, repo layout, and design
 rationale see [sandbox-hub.md](sandbox-hub.md).
 
 All commands run from the lyx repo root (`C:\Code\loomyard\wts\loomyard`) unless
-stated otherwise. The two launchers (`deploy.cmd`, `sandbox.cmd`) hardcode the
-machine-specific paths for this machine: deploy target `C:\Code\tools\bin`, Hub
-parent `C:\Code`.
+stated otherwise. The launchers (`deploy.cmd`, `sandbox-build.cmd`,
+`sandbox-suite.cmd`, `sandbox-fetch.cmd`) hardcode the machine-specific paths for
+this machine: deploy target `C:\Code\tools\bin`, Hub parent `C:\Code`. Each
+sandbox launcher does exactly one thing (build / suite / fetch).
 
 ## What the suite does
 
-`sandbox.cmd suite` fingerprints the `lyx.exe` on PATH, drops a fresh
+`sandbox-suite.cmd` fingerprints the `lyx.exe` on PATH, drops a fresh
 `SANDBOX-SUITE.md` into the Hub host repo, and launches an interactive black-box
 agent that drives `lyx` from PATH only (never the source tree). The agent writes
 WARN/FAIL findings to `sandbox-report.json` in the host repo. The suite only
 launches the agent; collecting the report is a separate step — after the session
-ends you run `sandbox.cmd fetch` to fetch a normalized copy into this repo's
+ends you run `sandbox-fetch.cmd` to fetch a normalized copy into this repo's
 `.scratch/sandbox-report-<fingerprint>.json`.
 
 Because the agent tests **the binary on PATH**, a stale binary means you are
@@ -65,23 +66,23 @@ exists. If you still see `update` in `lyx --help`, the deploy did not take.)
 **First time** — clone the Hub to `C:\Code\lyx-test-HUB`:
 
 ```cmd
-sandbox.cmd
+sandbox-build.cmd
 ```
 
 **Reset** — tear down and re-clone a clean Hub (destroys all local Hub state):
 
 ```cmd
-sandbox.cmd -reset
+sandbox-build.cmd -reset
 ```
 
-Skip this step on repeat runs if the existing Hub is fine — `sandbox.cmd suite`
+Skip this step on repeat runs if the existing Hub is fine — `sandbox-suite.cmd`
 does not require a reset each time. Reset when the Hub topology may be stale
 (e.g. after a warp/weft change) or when a previous run left it dirty.
 
 ### 4. Run the suite
 
 ```cmd
-sandbox.cmd suite
+sandbox-suite.cmd
 ```
 
 This copies a fresh `SANDBOX-SUITE.md` (fingerprint + embedded scheme) into the
@@ -92,14 +93,14 @@ the suite treats any exit code as normal and does not fetch the report itself.
 Optional overrides:
 
 ```cmd
-sandbox.cmd suite -claude <path>   # override the claude binary (default: from PATH)
-sandbox.cmd suite -prompt <text>   # override the instruction string
+sandbox-suite.cmd -claude <path>   # override the claude binary (default: from PATH)
+sandbox-suite.cmd -prompt <text>   # override the instruction string
 ```
 
 ### 5. Fetch the report
 
 ```cmd
-sandbox.cmd fetch
+sandbox-fetch.cmd
 ```
 
 Reads `sandbox-report.json` from the Hub host repo, validates and stamps it, and
@@ -110,18 +111,25 @@ ends; if the agent wrote no report, this fails with a distinct "not found" error
 ### 6. Triage findings
 
 The agent no longer files GitHub issues itself. Instead: the suite emits
-`sandbox-report.json` in the Hub host repo → `sandbox.cmd fetch` fetches it
+`sandbox-report.json` in the Hub host repo → `sandbox-fetch.cmd` fetches it
 into this repo's `.scratch/sandbox-report-<fingerprint>.json` → run the
-report-to-tasks triage skill (millhouse#586) against that file to pull findings
-into the backlog, then groom/spawn as usual.
+report-to-tasks triage skill against that file:
+
+```
+/mill-report-to-tasks "<path-to-fetched-json>"
+```
+
+The path (the `.scratch/sandbox-report-<fingerprint>.json` that fetch printed) is
+a required positional argument. The skill groups the findings into wiki tasks;
+nothing is written until you approve. Then groom/spawn as usual.
 
 ## Troubleshooting
 
 | Symptom | Cause | Fix |
 |---|---|---|
 | `lyx` not found / old behaviour | binary on PATH is stale or `C:\Code\tools\bin` not on PATH | rerun `deploy.cmd`; check PATH |
-| `warp clone` fails during build | sandbox wiki not initialized | enable Wikis + add a page on `lyx-test-weft`, then `sandbox.cmd -reset` |
-| Hub looks corrupt / half-cloned | interrupted earlier run | `sandbox.cmd -reset` |
+| `warp clone` fails during build | sandbox wiki not initialized | enable Wikis + add a page on `lyx-test-weft`, then `sandbox-build.cmd -reset` |
+| Hub looks corrupt / half-cloned | interrupted earlier run | `sandbox-build.cmd -reset` |
 | exit code always 0/1, not claude's | launcher collapses claude's code | build and run `go build -o sandbox.exe ./tools/sandbox` for precise codes |
 
 ## See also

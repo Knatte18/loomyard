@@ -50,7 +50,7 @@ If `lyx` is not on PATH, the sandbox tool will fail with a clear error message.
 ### First Build
 
 ```cmd
-sandbox.cmd
+sandbox-build.cmd
 ```
 
 This command:
@@ -66,7 +66,7 @@ This command:
 To remove and rebuild the Hub:
 
 ```cmd
-sandbox.cmd -reset
+sandbox-build.cmd -reset
 ```
 
 The `-reset` flag:
@@ -82,13 +82,13 @@ against the deployed `lyx.exe`.
 
 ### Prerequisites
 
-- Hub already built (`sandbox.cmd` with no subcommand, or `sandbox.cmd build`).
+- Hub already built (`sandbox-build.cmd`).
 - `lyx` on PATH (deployed via `deploy.cmd`).
 
 ### Usage
 
 ```cmd
-sandbox.cmd suite
+sandbox-suite.cmd
 ```
 
 This command, run from the lyx repo directory:
@@ -115,15 +115,15 @@ clean exit would never fire. Collecting the report is a separate operator step
 ### Optional flags
 
 ```cmd
-sandbox.cmd suite -claude <path>   # override the claude binary (default: resolve from PATH)
-sandbox.cmd suite -prompt <text>   # override the instruction string (default: built-in)
+sandbox-suite.cmd -claude <path>   # override the claude binary (default: resolve from PATH)
+sandbox-suite.cmd -prompt <text>   # override the instruction string (default: built-in)
 ```
 
 ### Exit-code note
 
 The suite treats any exit code from the interactive `claude` session as normal — a
 manual exit is expected — so `runSuite` always returns success and prints a reminder
-to run `sandbox.cmd fetch`. The claude session's precise exit code is not
+to run `sandbox-fetch.cmd`. The claude session's precise exit code is not
 otherwise acted upon.
 
 ## Fetching the report
@@ -132,7 +132,7 @@ After the suite session ends, collect the agent-written report into this repo's
 `.scratch/`:
 
 ```cmd
-sandbox.cmd fetch -loomyard <lyx-repo-root>
+sandbox-fetch.cmd
 ```
 
 This command:
@@ -144,10 +144,14 @@ This command:
    sandbox-report-json contract (millhouse#586), stamps `meta.fingerprint`, and writes
    a normalized copy to `<loomyard>/.scratch/sandbox-report-<fingerprint>.json`.
 
+On success it prints the fetched path and, when there are findings, the exact
+`/mill-report-to-tasks "<path>"` triage command to run next (nothing is written to
+the wiki until you approve); a clean run says so and points at nothing.
+
 If the agent produced no report, `fetch` fails with a distinct "not found"
 error so the operator can tell "the agent wrote nothing" from "the agent wrote garbage".
-The launcher (`sandbox.cmd`) always passes `-loomyard`; it is required only by this
-subcommand.
+Only `sandbox-fetch.cmd` passes `-loomyard` (as `"%~dp0."`, the loomyard repo
+root); it is required only by this subcommand.
 
 ### Future: psmux launch
 
@@ -155,15 +159,21 @@ The direct `claude` launch used today will be replaced by a psmux interactive se
 once the `mux` module is available. The file contract (`SANDBOX-SUITE.md` driving the
 agent) is unchanged; only the launch mechanism will differ.
 
-## Build subcommand (default)
+## Launchers and subcommands
 
-The bare `sandbox.cmd` and `sandbox.cmd -reset` invocations are unchanged. They
-correspond to the implicit `build` subcommand:
+The single Go tool (`tools/sandbox`) still dispatches three subcommands
+internally — `build` (default), `suite`, and `fetch` — but each is fronted by its
+own single-purpose launcher, mirroring how `deploy.cmd` does one thing:
 
 ```cmd
-sandbox.cmd           # same as: sandbox.cmd build
-sandbox.cmd -reset    # same as: sandbox.cmd build -reset
+sandbox-build.cmd            # go run ./tools/sandbox -parent C:\Code build
+sandbox-build.cmd -reset     # ... build -reset  (tear down and re-clone)
+sandbox-suite.cmd            # ... suite  (run the interactive agent)
+sandbox-fetch.cmd            # ... -loomyard "%~dp0." fetch  (collect the report)
 ```
+
+`-reset` is a flag of the `build` subcommand (parsed after the `build` token), so
+`sandbox-build.cmd -reset` forwards `%*` straight through to `... build -reset`.
 
 ## Purpose: dogfooding lyx
 

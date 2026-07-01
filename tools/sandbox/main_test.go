@@ -253,9 +253,9 @@ func TestRun_BuildSubcommandRoutesToClone(t *testing.T) {
 	}
 }
 
-// TestRun_ResetRoutesToBuildWithReset tests that -reset with no subcommand
-// removes the existing Hub and re-runs the clone.
-func TestRun_ResetRoutesToBuildWithReset(t *testing.T) {
+// TestRun_BuildResetRoutesToBuildWithReset tests that -reset passed after the
+// build token removes the existing Hub and re-runs the clone.
+func TestRun_BuildResetRoutesToBuildWithReset(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create the Hub directory so removeAll is triggered.
@@ -283,7 +283,9 @@ func TestRun_ResetRoutesToBuildWithReset(t *testing.T) {
 		return nil
 	}
 
-	code := run([]string{"-parent", tmpDir, "-reset"})
+	// -reset is now a build-subcommand flag, parsed after the build token, which
+	// is exactly what sandbox-build.cmd -reset forwards to the tool.
+	code := run([]string{"-parent", tmpDir, "build", "-reset"})
 	if code != 0 {
 		t.Errorf("run() = %d; want 0", code)
 	}
@@ -292,6 +294,48 @@ func TestRun_ResetRoutesToBuildWithReset(t *testing.T) {
 	}
 	if !cloneRunCalled {
 		t.Error("cloneRun was not called when -reset is set")
+	}
+}
+
+// TestRun_BuildNoResetDoesNotRemove tests that a bare build (no -reset) over an
+// existing Hub does not remove it -- reset must be explicit.
+func TestRun_BuildNoResetDoesNotRemove(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create the Hub directory; without -reset it must be left untouched.
+	hubPath := filepath.Join(tmpDir, hubName)
+	if err := os.MkdirAll(hubPath, 0o755); err != nil {
+		t.Fatalf("create hub: %v", err)
+	}
+
+	removeAllCalled := false
+	cloneRunCalled := false
+
+	oldRemoveAll := removeAll
+	oldCloneRun := cloneRun
+	defer func() {
+		removeAll = oldRemoveAll
+		cloneRun = oldCloneRun
+	}()
+
+	removeAll = func(path string) error {
+		removeAllCalled = true
+		return os.RemoveAll(path)
+	}
+	cloneRun = func(parentDir string) error {
+		cloneRunCalled = true
+		return nil
+	}
+
+	code := run([]string{"-parent", tmpDir, "build"})
+	if code != 0 {
+		t.Errorf("run() = %d; want 0", code)
+	}
+	if removeAllCalled {
+		t.Error("removeAll was called for a bare build without -reset")
+	}
+	if cloneRunCalled {
+		t.Error("cloneRun was called for an existing Hub without -reset")
 	}
 }
 

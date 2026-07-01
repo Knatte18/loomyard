@@ -293,7 +293,7 @@ git-backed integration — live in the black-box `internal/boardengine/boardtest
 
 ## Sandbox Hub
 
-The **sandbox Hub** is a dedicated bench for manual testing of lyx's core workflows — its purpose is dogfooding lyx against itself. It lives on disk at `C:\Code\lyx-test-HUB` and exercises the real deployed `lyx` binary: the command surface, JSON output, and topology wiring users encounter. Build it via `sandbox.cmd` once `lyx` is deployed and the GitHub weft wiki is initialized. See [sandbox-howto.md](sandbox-howto.md) for the step-by-step runbook (deploy → clone Hub → run suite) and [sandbox-hub.md](sandbox-hub.md) for topology and design details.
+The **sandbox Hub** is a dedicated bench for manual testing of lyx's core workflows — its purpose is dogfooding lyx against itself. It lives on disk at `C:\Code\lyx-test-HUB` and exercises the real deployed `lyx` binary: the command surface, JSON output, and topology wiring users encounter. Build it via `sandbox-build.cmd` once `lyx` is deployed and the GitHub weft wiki is initialized (`sandbox-suite.cmd` then runs the agent, `sandbox-fetch.cmd` collects its report). See [sandbox-howto.md](sandbox-howto.md) for the step-by-step runbook (deploy → clone Hub → run suite) and [sandbox-hub.md](sandbox-hub.md) for topology and design details.
 
 ## Other docs
 
