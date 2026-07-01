@@ -30,6 +30,18 @@ Per the overview's "any junction inconsistency is a hard error" Shared Decision:
 `.git/info/exclude` — if junction validation hard-errors, the exclude file must not be
 touched either.
 
+`unseedLyxJunction` is deliberately scoped to the single `_lyx` junction
+(`l.HostLyxLink(slug)` / `l.WeftLyxDirFor(slug)`) rather than iterating
+`l.HostJunctions(slug)` the way `unseedGitExclude` does. This is an accepted
+scope-narrowing, not an oversight: `HostJunctions` currently returns exactly one entry
+(the `_lyx` junction is the only junction type `hubgeometry` models today), and
+`UnwireResult.JunctionRemoved` is a single bool by design to match. `unseedGitExclude`
+iterates `HostJunctions` only because `seedGitExclude` already does (for future-proofing
+the exclude-file bookkeeping specifically); `unseedLyxJunction` does not need that same
+generality since `--undo` only ever unwires the one junction it validates. If
+`HostJunctions` ever grows a second entry, `unseedLyxJunction`/`UnwireResult` should be
+revisited together at that time — not preemptively generalized now.
+
 ## Cards
 
 ### Card 6: Add `UnwireJunctions`, `unseedLyxJunction`, and `unseedGitExclude`
@@ -52,28 +64,30 @@ touched either.
     }
     ```
   - Add `func unseedLyxJunction(l *hubgeometry.Layout, slug string) (removed bool, err error)`,
-    mirroring `seedLyxJunction`'s existing validation style:
+    mirroring `seedLyxJunction`'s existing validation style **in the same check order**
+    `seedLyxJunction` itself uses (target-resolution before the link-type check, not
+    the other way around):
     - `link := l.HostLyxLink(slug)`; `os.Lstat(link)`. If `os.IsNotExist(err)`: return
       `(false, nil)` — the junction was never wired (or was already unwired); this is
       the legitimate no-op case, not an error. If a different stat error: return
       `(false, fmt.Errorf(...))` wrapping it.
-    - If the path exists: call `fslink.IsLink(link)`. If it returns `false` (a real
-      directory, not a junction): return `(false, err)` where `err` is a hard error
-      whose message states the host `_lyx` at `link` is a real directory rather than a
-      junction, and that it is refusing to remove it (mirror `seedLyxJunction`'s "host
-      repo already contains a real directory; it predates weft" phrasing style — do not
-      call `fslink.Remove` or touch the directory in any way).
-    - If it is a link: resolve the canonical expected target via
-      `target := l.WeftLyxDirFor(slug)` then `filepath.EvalSymlinks(target)`. If that
-      fails (target missing/unreachable): return `(false, err)` where `err` is a hard
-      error stating the junction points to a missing/unreachable weft directory and
-      this indicates a corrupted or externally-modified junction — do not remove the
-      link.
-    - Resolve the link's actual target via `fslink.PointsTo(link)`. If it errors,
-      return `(false, err)` wrapping it. If the resolved link target does not equal the
-      resolved canonical target: return `(false, err)` where `err` is a hard error
-      stating the junction points somewhere unexpected and this indicates corruption or
-      external modification — do not remove the link.
+    - If the path exists: resolve the canonical expected target first, exactly as
+      `seedLyxJunction` does — `target := l.WeftLyxDirFor(slug)` then
+      `targetResolved, errTarget := filepath.EvalSymlinks(target)`. If that fails
+      (target missing/unreachable): return `(false, err)` where `err` is a hard error
+      stating the junction points to a missing/unreachable weft directory and this
+      indicates a corrupted or externally-modified junction — do not touch the link.
+    - Only then call `fslink.IsLink(link)`. If it returns `false` (a real directory,
+      not a junction): return `(false, err)` where `err` is a hard error whose message
+      states the host `_lyx` at `link` is a real directory rather than a junction, and
+      that it is refusing to remove it (mirror `seedLyxJunction`'s "host repo already
+      contains a real directory; it predates weft" phrasing style — do not call
+      `fslink.Remove` or touch the directory in any way).
+    - If it is a link: resolve its actual target via `fslink.PointsTo(link)`. If it
+      errors, return `(false, err)` wrapping it. If the resolved link target does not
+      equal `targetResolved` from the earlier step: return `(false, err)` where `err`
+      is a hard error stating the junction points somewhere unexpected and this
+      indicates corruption or external modification — do not remove the link.
     - Only when the link exists, is a link, and resolves to the correct target: call
       `fslink.Remove(link)`. On error, return `(false, err)` wrapping it. On success,
       return `(true, nil)`.

@@ -131,7 +131,9 @@ load-bearing for Card 8's exact step ordering.
 - **Moves:** none
 - **Requirements:**
   - `//go:build integration` build tag, using `lyxtest.CopyPairedLocal(t)` per the
-    existing `initcli_test.go` fixture pattern. Use `t.Setenv("WEFT_SKIP_PUSH", "1")`
+    existing `initcli_test.go` fixture pattern for every sub-test except
+    `TestRunInit_Undo_PartialRecovery` part (b), which needs `lyxtest.CopyPaired(t)`
+    (see that test's own entry below for why). Use `t.Setenv("WEFT_SKIP_PUSH", "1")`
     (and/or `WEFT_SKIP_GIT`) in tests that don't need to exercise the real commit/push
     path.
   - `TestRunInit_Undo_HappyPath`: run `initcli.RunInit` then `initcli.RunCLI(&buf,
@@ -143,10 +145,16 @@ load-bearing for Card 8's exact step ordering.
     was committed, and pushed unless `WEFT_SKIP_PUSH` was set), the `.gitignore`
     managed block is fully removed (not just emptied — assert the marker strings are
     entirely absent), and the `.git/info/exclude` line is gone.
-  - `TestRunInit_Undo_NeverInitialized`: run `--undo` on a freshly-paired fixture with
-    no prior `init`; assert `ok: true` with `lyx_junction: "not_present"`,
-    `weft_content: "not_present"`, `git_exclude: "unchanged"`, `gitignore:
-    "unchanged"`, and no error.
+  - `TestRunInit_Undo_NeverInitialized`: `lyxtest.CopyPairedLocal`'s weft-prime
+    template always pre-seeds `_lyx/config/placeholder` (via
+    `lyxtest.buildWeftPrime`) purely as fixture scaffolding for other tests —
+    production `warpengine` spawn code (`Add`/`WireJunctions`) never creates this file,
+    so it does not reflect a real never-initialized directory. Before calling `--undo`,
+    remove that placeholder (and the now-empty `_lyx/config` and `_lyx` directories) at
+    `filepath.Join(fixture.WeftPrime, "_lyx")` so the fixture genuinely represents "no
+    weft-side content, no host init ever ran." Then run `--undo` with no prior `init`;
+    assert `ok: true` with `lyx_junction: "not_present"`, `weft_content: "not_present"`,
+    `git_exclude: "unchanged"`, `gitignore: "unchanged"`, and no error.
   - `TestRunInit_Undo_Idempotent`: run `--undo` twice in a row after a prior `init`;
     assert the second run matches `TestRunInit_Undo_NeverInitialized`'s expected
     output shape (clean no-op).
@@ -164,15 +172,20 @@ load-bearing for Card 8's exact step ordering.
     at the wrong target) and the weft-side content, `.gitignore`, and
     `.git/info/exclude` are all untouched too (same full-abort assertions as the
     real-directory-guard test).
-  - `TestRunInit_Undo_PartialRecovery`: (a) after `init`, manually remove the host
-    junction only (simulating a crash between removing the junction and clearing weft
-    content) and assert a subsequent `--undo` run finishes cleanly (no error) and
-    clears the still-present weft-side content; (b) separately, after `init`, manually
-    perform the weft-side deletion and commit (mirroring what step 4 of `runUndo` would
-    do) but do not push, then run `--undo` again and assert it succeeds and the pending
-    commit is now pushed (asserting the local weft repo's `HEAD` matches the remote
-    after the second `--undo` call) — this is the scenario the "Push runs
-    unconditionally" Shared Decision exists to handle.
+  - `TestRunInit_Undo_PartialRecovery`: part (a) uses `lyxtest.CopyPairedLocal(t)` like
+    every other sub-test in this file: after `init`, manually remove the host junction
+    only (simulating a crash between removing the junction and clearing weft content)
+    and assert a subsequent `--undo` run finishes cleanly (no error) and clears the
+    still-present weft-side content. Part (b) needs a real weft-bare remote to assert
+    against, which `CopyPairedLocal` does not provide (its doc comment states
+    `WeftBare` is left empty and that pushing against it is unsupported) — use
+    `lyxtest.CopyPaired(t)` for this sub-test instead: after `init`, manually perform
+    the weft-side deletion and commit (mirroring what step 4 of `runUndo` would do) but
+    do not push, then run `--undo` again (without `WEFT_SKIP_PUSH` set, so the real
+    push path executes) and assert it succeeds and the pending commit is now pushed —
+    asserting the local weft repo's `HEAD` matches `WeftBare`'s `HEAD` after the second
+    `--undo` call. This is the scenario the "Push runs unconditionally" Shared Decision
+    exists to handle.
 - **Commit:** `test(initcli): cover lyx init --undo`
 
 ## Batch Tests
