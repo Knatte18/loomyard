@@ -28,7 +28,9 @@ implementing  '2026-07-01T04:18:12Z'
 ```yaml
 batches:
   - name: raw-git-error-message-cleanup
-    state: pending
+    state: running
+    implementer_session: ff10f848-67ed-449c-a82e-b3301a036a80
+    start_sha: 86df7d85aa82b5ae1a2909b65725965b0af15f52
   - name: warp-path-separator-fix
     state: pending
   - name: sandbox-suite-doc-hardening
