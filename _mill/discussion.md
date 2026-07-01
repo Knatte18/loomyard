@@ -100,6 +100,32 @@ cleanup, and no longer needs the fallback instructions — though that follow-up
 - Rejected: resolving and clearing the junction's actual (mismatched) target — could
   silently mask a corrupted/hand-edited junction or a torn-down weft sibling.
 
+### Abort scope when a hard-error guard fires
+
+- Decision: when either guard above fires (real non-junction directory, or a
+  mismatched/dangling junction target), `runUndo` aborts immediately and performs
+  **none** of the other steps — no weft-content clearing, no `.gitignore` revert, no
+  `.git/info/exclude` revert. The junction-validation step must run and fully succeed
+  (or be a clean no-op because the link is simply absent) before any other step is
+  attempted. This makes the guard failure atomic-in-effect: either the run proceeds
+  past validation and all applicable steps happen, or nothing happens beyond reporting
+  the error.
+- Rationale: explicit user directive — a non-junction `_lyx` directory in the host is a
+  serious error and "should NOT be attempted to be fixed" (bør ikke forsøkes fikset) —
+  meaning not just "don't delete the real directory" but "don't touch anything else in
+  this run either." Running the other independent steps around a blocked/corrupted
+  junction would leave a confusing mixed state (gitignore/exclude/weft-content already
+  reverted, but the actual anomaly still sitting there) that's harder to diagnose than
+  a clean, fully-untouched abort.
+- Rejected: running the other independent steps anyway (weft-content clear, gitignore
+  revert, exclude revert) around the blocked junction — maximizes "progress made" per
+  invocation, but produces a partially-reverted state that obscures the anomaly instead
+  of preserving it for investigation.
+- Implementation note for mill-plan: this means `runUndo`'s step ordering matters —
+  the junction-validation/removal step (via `warpengine.UnwireJunctions`) must run
+  first and its error, if any, must short-circuit before the weft-content-clearing,
+  gitignore-revert, or exclude-revert steps are attempted.
+
 ### No separate "weft pairing" pre-gate
 
 - Decision: `--undo` does **not** have an early "no weft pairing" gate like plain
@@ -182,10 +208,16 @@ cleanup, and no longer needs the fallback instructions — though that follow-up
 - Decision: add `gitignore.Remove(repoRoot string, entries ...string) (changed bool,
   err error)` to `internal/gitignore/gitignore.go`, structured as `Ensure`'s mirror: it
   parses the same managed block, removes the given entries from the tracked set instead
-  of adding them, and — since `.lyx/` is currently the only entry lyx ever adds — removes
-  the entire block (both markers) when the resulting set is empty, restoring
-  `.gitignore` to its pre-init shape. Idempotent: returns `changed=false` if the block
-  or entries are already absent.
+  of adding them, and removes the entire block (both markers) only when the resulting
+  set is empty — restoring `.gitignore` to its pre-init shape in the common case, but
+  leaving the block (with the other module's entry intact) when another module still
+  contributes to it. Premise correction: `.lyx/` is **not** the only entry ever written
+  into this shared block — `internal/vscode/config.go`'s `WriteConfig` also calls
+  `gitignore.Ensure(dir, ".vscode/")` into the same managed block. So
+  `gitignore.Remove(cwd, ".lyx/")` must only remove the `.lyx/` entry (and the block
+  markers, if the set becomes fully empty as a result); if `.vscode/` (or any other
+  contributed entry) is still present, the block must survive with that entry intact.
+  Idempotent: returns `changed=false` if the block or entries are already absent.
 - Rationale: symmetric with `Ensure`; reuses the exact same parsing structure
   (before-block/block-interior/after-block) so behavior stays consistent between the
   two functions.
@@ -260,14 +292,27 @@ From `CONSTRAINTS.md` (all apply to this task):
   registration/help-tree entries are needed; but the `Short`/`Long` on the existing
   `lyx init` command must be updated to document `--undo` (concrete example), since
   "help accuracy is a review obligation" whenever observable behaviour changes. No
-  `Command()` seam changes beyond registering the flag.
+  `Command()` seam changes beyond registering the flag. Also explicitly re-verify
+  `internal/weftcli/cli.go`'s `commit` subcommand `Long` text (lines ~140-141: "The
+  commit message is always the fixed string \"weft sync\" ... cannot be customized
+  with a flag") — this stays literally true after the `weftengine.Commit` signature
+  change (the three `weftcli` call sites keep passing `DefaultCommitMessage`
+  explicitly, and no new `weftcli` flag is introduced), but since the change touches
+  `Commit`'s message handling directly, this help text must be re-confirmed rather than
+  assumed unaffected.
 - **Documentation Lifecycle** — this adds new observable CLI behaviour (a flag with
   real side effects), so the same commit must update the relevant `docs/modules/` entry
   for `initcli`/`warpengine`/`gitignore` if one exists, and record the new
   `UnwireJunctions`/`gitignore.Remove` cross-cutting pieces in `CONSTRAINTS.md` if they
   rise to the level of a structural invariant (likely not — they're mirror-image
-  helpers of existing exported functions, not new invariants). `docs/roadmap.md` is
-  **not** touched — this is a feature addition, not a planned-milestone completion.
+  helpers of existing exported functions, not new invariants). `docs/overview.md` has
+  an existing **init** bullet (line ~212: "scaffolds the `_lyx/` directory structure
+  and creates all module config files via reconciliation against templates...") that
+  describes `init`'s observable behaviour — confirm during planning whether this bullet
+  needs a one-line addition mentioning `--undo`, per this repo's CLAUDE.md instruction
+  to update `docs/overview.md` when the module table/execution stack changes.
+  `docs/roadmap.md` is **not** touched — this is a feature addition, not a
+  planned-milestone completion.
 
 ## Testing
 
@@ -287,11 +332,16 @@ the existing `initcli_test.go` / `warpengine/remove_test.go` style with
   - `TestRunInit_Undo_Idempotent` — run `--undo` twice in a row; second run must be a
     clean no-op matching `TestRunInit_Undo_NeverInitialized`'s expectations.
   - `TestRunInit_Undo_RealDirectoryGuard` — pre-create a **real** directory (not a
-    junction) at the host `_lyx` path; assert `--undo` hard-errors, and the directory
-    and its contents are left untouched.
+    junction) at the host `_lyx` path (with content, plus a prior `init` so gitignore/
+    exclude/weft-content all exist too); assert `--undo` hard-errors, and *everything*
+    is left untouched — not just the real directory itself, but also the weft-side
+    `_lyx` content, the `.gitignore` managed block, and the `.git/info/exclude` line
+    (per the "abort scope" decision: the guard firing aborts the whole run, no partial
+    revert of the other independent steps).
   - `TestRunInit_Undo_TargetMismatch` — after init, repoint the junction (or hand-craft
     one) at a different target than `WeftLyxDirFor(slug)`; assert `--undo` hard-errors
-    without removing the junction or touching either directory.
+    without removing the junction, and without touching the weft-side content,
+    `.gitignore`, or `.git/info/exclude` either (same full-abort assertion as above).
   - `TestRunInit_Undo_PartialRecovery` — simulate a crash-between-steps state (junction
     already removed, weft-side content still present) and assert `--undo` finishes the
     job cleanly (no error), covering the "no separate pairing gate" decision's edge
@@ -352,3 +402,10 @@ shape).
   `--undo`'s commit be labeled? **A:** Extend `weftengine.Commit` to accept a message
   parameter, so the undo path's commit is accurately labeled instead of reusing the
   generic `"weft sync"` message.
+- **Q:** (discussion-review round 1 gap) When a hard-error guard fires — real
+  non-junction `_lyx` directory, or a junction pointing at the wrong/missing target —
+  should `--undo` abort immediately (touching nothing else), or still run the other
+  independent steps (weft-content clear, gitignore revert, exclude revert) around the
+  blocked junction? **A:** A `_lyx` directory in the host that isn't a proper junction
+  is a serious error, and no fix should even be attempted — full abort, nothing else
+  runs in that invocation.
