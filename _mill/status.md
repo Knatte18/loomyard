@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-sandbox-suite-doc-hardening
+phase: holistic-reviewing
 slug: lyx-sandbox-fixes
 branch: lyx-sandbox-fixes
 plan: _mill/plan
@@ -24,6 +24,7 @@ implementing  '2026-07-01T04:18:12Z'
 approved-raw-git-error-message-cleanup  '2026-07-01T04:23:54Z'
 approved-warp-path-separator-fix  '2026-07-01T04:30:57Z'
 approved-sandbox-suite-doc-hardening  '2026-07-01T04:32:55Z'
+holistic-reviewing  '2026-07-01T04:33:21Z'
 ```
 
 ## Batches
