@@ -139,6 +139,23 @@ scriptability gap in the same pass since both were flagged by the same sandbox r
   template key added but not yet reconciled to disk), but every current template's schema
   is small and fully known ahead of time, so the flexibility buys nothing but silent typos.
 
+### `--set` requires a module positional and is mutually exclusive with `--print`
+
+- Decision: `lyx config --set key=value` with **no module positional** (`Args` is
+  `cobra.MaximumNArgs(1)`, so this is syntactically valid) is an error — `--set` always
+  needs a module to know which file to write, and must fail clearly (e.g. "module required
+  with --set") rather than doing nothing or guessing. Likewise, passing both `--print` and
+  `--set` in one invocation is an error (mutually exclusive) rather than silently picking
+  one — `--print` is read-only and `--set` writes, so combining them is always a caller
+  mistake worth surfacing rather than resolving via silent precedence.
+- Rationale: raised in discussion review round 1 — the dispatch-ordering description
+  ("`--print` carved out first") left both the zero-module and both-flags-given cases
+  unspecified. An unspecified case in a flag that writes to disk is worse than an explicit
+  error.
+- Rejected: silently defaulting to the interactive menu when `--set` has no module (surprising
+  — a script passing `--set` never wants the menu); letting `--print` silently win when both
+  flags are given (hides a caller mistake instead of surfacing it).
+
 ### `--set` scaffolds the config file from the template if missing
 
 - Decision: if the module's `_lyx/config/<module>.yaml` doesn't exist yet, `--set` creates

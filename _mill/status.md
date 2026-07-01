@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussion-fix-r1
 slug: sandbox-cli-ergonomics
 branch: sandbox-cli-ergonomics
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-07-01T07:27:38Z'
+discussion-fix-r1  '2026-07-01T07:51:53Z'
 ```
