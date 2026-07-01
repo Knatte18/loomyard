@@ -182,7 +182,9 @@ func runReconcile(out io.Writer, apply bool) int {
 
 	l, err := hubgeometry.Resolve(cwd)
 	if err != nil {
-		return output.Err(out, fmt.Sprintf("resolve layout: %v", err))
+		// hubgeometry.Resolve's error is already self-describing; pass it
+		// through bare rather than restating it with a redundant prefix.
+		return output.Err(out, err.Error())
 	}
 
 	// Compute baseDir as the host _lyx parent: the worktree root joined with the relative path.

@@ -153,6 +153,16 @@ func TestReconcile_BrokenJunctionRepointed(t *testing.T) {
 		t.Errorf("Error = %q; want empty (repoint should succeed)", found.Error)
 	}
 
+	// JSON-boundary paths must be forward-slash even on Windows (issue #37). Check the
+	// raw field value directly -- filepath.Clean would re-normalize forward slashes back
+	// to OS-native backslash and silently defeat this assertion.
+	if strings.Contains(found.HostWorktree, "\\") {
+		t.Errorf("ReconcilePairResult.HostWorktree = %q; want no backslash separators", found.HostWorktree)
+	}
+	if strings.Contains(found.WeftWorktree, "\\") {
+		t.Errorf("ReconcilePairResult.WeftWorktree = %q; want no backslash separators", found.WeftWorktree)
+	}
+
 	// Assert the junction was restored.
 	isLink, err = fslink.IsLink(hostLink)
 	if err != nil || !isLink {
