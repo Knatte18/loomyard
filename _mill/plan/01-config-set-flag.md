@@ -1,0 +1,237 @@
+# Batch: config-set-flag
+
+```yaml
+task: "CLI ergonomics from the sandbox run: config editor + warp error wrapping"
+batch: config-set-flag
+number: 1
+cards: 7
+verify: go test ./internal/yamlengine/... ./internal/configengine/... ./internal/configcli/...
+depends-on: []
+```
+
+## Batch Scope
+
+This batch delivers `lyx config <module> --set key=value` (repeatable) — a fully
+non-interactive way to write one or more config values with no editor invocation — plus
+documentation of the existing EDITOR/VISUAL/notepad/vi fallback. It is one batch because
+the three layers (value-preserving YAML mutation in `internal/yamlengine`, scaffold+write
+orchestration in `internal/configengine`, and CLI flag/dispatch wiring in
+`internal/configcli`) are a single vertical feature slice with no independently-useful
+seam, and card 3 depends on card 2's `Set` function existing (cards run sequentially
+within a batch). External interface the next cards/batches consume: none — this batch's
+output (`--set`) is user-facing CLI surface, not consumed by other batches in this plan.
+No batch-local decisions beyond `## Shared Decisions` in the overview.
+
+## Cards
+
+### Card 1: `yamlengine.SetValues` — value-preserving key=value mutation
+
+- **Context:**
+  - `internal/yamlengine/reconcile.go`
+  - `internal/yamlengine/reconcile_test.go`
+- **Edits:** none
+- **Creates:**
+  - `internal/yamlengine/set.go`
+  - `internal/yamlengine/set_test.go`
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:** In `internal/yamlengine/set.go` (package `yamlengine`):
+  - Add `type KV struct { Key string; Value string }`.
+  - Add `type SetResult struct { Merged []byte; Unknown []string; Known []string }` —
+    `Merged` is the new file bytes (valid only when `Unknown` is empty); `Unknown` is the
+    sorted, deduplicated list of `pairs[i].Key` values not present in `template`'s leaf-key
+    set; `Known` is `template`'s full sorted leaf-key set (for building caller error
+    messages).
+  - Add `func SetValues(template, existing []byte, pairs []KV) (SetResult, error)`:
+    parse `template` via `yaml.Unmarshal` into a `yaml.Node`, collect its leaf key-paths via
+    the existing unexported `collectLeafPaths` helper already in `reconcile.go` (same
+    package — reuse it, do not duplicate) into `Known` (sorted). If `len(existing) == 0`
+    (mirroring `Reconcile`'s empty-existing handling for the fresh-scaffold case), use the
+    template's own parsed node tree as the working tree; otherwise parse `existing`
+    separately into its own `yaml.Node` and collect its leaf paths into a working-tree
+    leaves map. For each `pairs[i].Key` not present in `Known`, add it to the `Unknown` set
+    (dedup via a `map[string]bool`, then sort). If `Unknown` is non-empty after checking
+    every pair, return `SetResult{Unknown: <sorted>, Known: <sorted>}` immediately with
+    `Merged` nil and a nil error — perform no mutation. If `Unknown` is empty, iterate
+    `pairs` in the given order and set each matching leaf node's `Value` field on the
+    working tree (a later `pairs[i]` for a repeated `Key` overwrites an earlier one — do
+    not error on duplicate keys within one call), then `yaml.Marshal` the mutated working
+    tree into `Merged` and return it.
+- **Commit:** `feat(yamlengine): add SetValues for single-key config writes`
+
+### Card 2: `yamlengine.SetValues` tests
+
+- **Context:**
+  - `internal/yamlengine/reconcile_test.go`
+- **Edits:** none
+- **Creates:** none (tests belong in `internal/yamlengine/set_test.go`, created by Card 1 —
+  write the test bodies in that same file as part of this card)
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:** In `internal/yamlengine/set_test.go` (created empty/stubbed by Card 1),
+  write table/individual tests for `SetValues` covering: (a) an unknown key among multiple
+  `pairs` returns a non-empty `Unknown` and a nil `Merged` — no partial mutation is
+  observable; (b) a value containing an `=` character round-trips byte-for-byte in
+  `Merged`; (c) a value containing spaces round-trips byte-for-byte in `Merged`; (d)
+  multiple valid `pairs` in one call are all reflected in `Merged`; (e) comments and key
+  order in `existing` are preserved in `Merged` when only one key changes (mirror the
+  idempotency-style assertions already in `TestReconcile_*` in `reconcile_test.go`); (f)
+  `existing` of length 0 behaves like `Reconcile`'s empty-existing case — `Merged` is
+  equivalent to the template with the requested keys set.
+- **Commit:** `test(yamlengine): cover SetValues key validation and mutation`
+
+### Card 3: `configengine.Set` — scaffold + write orchestration
+
+- **Context:**
+  - `internal/configengine/edit_test.go`
+- **Edits:**
+  - `internal/configengine/edit.go`
+- **Creates:**
+  - `internal/configengine/set.go`
+  - `internal/configengine/set_test.go`
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:**
+  - In `internal/configengine/edit.go`, extract the existing inline scaffold block inside
+    `Edit` (the code that, when the config file is missing, creates `_lyx/config/` via
+    `os.MkdirAll` and writes `template` via `os.WriteFile`) into a new unexported function
+    `func scaffoldIfMissing(path, configDir, template string) (scaffolded bool, err error)`
+    that performs exactly the same steps and returns whether it scaffolded. Update `Edit` to
+    call this helper in place of its inline block, preserving `Edit`'s existing behavior
+    byte-for-byte (including the `scaffolded` bool it uses later for abort-cleanup).
+  - In new file `internal/configengine/set.go` (package `configengine`), add:
+    `func Set(baseDir, module, template string, pairs []yamlengine.KV) error`. It must:
+    call `FindBaseDir(baseDir)` and propagate any error; compute
+    `path := hubgeometry.ConfigFile(baseDir, module)` and
+    `configDir := hubgeometry.ConfigDir(baseDir)`; call
+    `scaffolded, err := scaffoldIfMissing(path, configDir, template)` and propagate any
+    error; read the file via `os.ReadFile(path)` and propagate any error; call
+    `result, err := yamlengine.SetValues([]byte(template), existingBytes, pairs)` (the
+    `yamlengine.KV`/`yamlengine.SetResult` types and `SetValues` function are defined by
+    Card 1 in `internal/yamlengine/set.go` — import
+    `"github.com/Knatte18/loomyard/internal/yamlengine"`) and propagate any error; if
+    `len(result.Unknown) > 0`: when `scaffolded` is true, `os.Remove(path)` first (mirroring
+    `Edit`'s abort-removes-scaffold contract so a failed `--set` never leaves a fresh
+    default-valued file behind), then return
+    `fmt.Errorf("unknown config key(s): %s (known: %s)", strings.Join(result.Unknown, ", "), strings.Join(result.Known, ", "))`;
+    otherwise `os.WriteFile(path, result.Merged, 0o644)` and return its error (nil on
+    success).
+- **Commit:** `feat(configengine): add Set for non-interactive single/multi-key config writes`
+
+### Card 4: `configengine.Set` tests
+
+- **Context:**
+  - `internal/configengine/edit_test.go`
+- **Edits:** none
+- **Creates:** none (tests belong in `internal/configengine/set_test.go`, created by Card 3
+  — write the test bodies in that same file as part of this card)
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:** In `internal/configengine/set_test.go`, write tests for `Set` covering:
+  (a) scaffold-when-missing then set — calling `Set` against a `baseDir` with no existing
+  config file creates it from `template` and applies the requested pairs in one call
+  (mirror `TestEdit_ScaffoldWhenMissing`'s fixture setup in `edit_test.go`); (b) an unknown
+  key against a freshly-missing file removes the just-scaffolded file (assert
+  `os.Stat(path)` returns `os.IsNotExist` after the call) and returns a non-nil error
+  mentioning the unknown key; (c) an unknown key against a pre-existing file leaves that
+  file byte-for-byte unchanged and returns a non-nil error; (d) setting one key on an
+  existing multi-key file preserves the other keys' values.
+- **Commit:** `test(configengine): cover Set scaffold and rejection behavior`
+
+### Card 5: `configcli` — `--set` flag, dispatch routing, and EDITOR/VISUAL docs
+
+- **Context:**
+  - `internal/configreg/configreg.go`
+  - `internal/configcli/configcli_integration_test.go`
+- **Edits:**
+  - `internal/configcli/configcli.go`
+  - `internal/configcli/configcli_test.go`
+- **Creates:** none
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:**
+  - In `Command()`, add
+    `configCmd.Flags().StringArray("set", nil, "set config key=value directly, bypassing the editor (repeatable)")`.
+  - In the `RunE` closure inside `Command()`, read the flag via
+    `setFlags, _ := configCmd.Flags().GetStringArray("set")` and thread it through
+    `runConfig` into `dispatch` (add a `setFlags []string` parameter to both function
+    signatures, alongside the existing `printOnly bool` parameter).
+  - Add `func parseSetFlags(raw []string) ([]yamlengine.KV, error)` in `configcli.go`
+    (import `"github.com/Knatte18/loomyard/internal/yamlengine"` for the `yamlengine.KV`
+    type defined by Card 1): for each entry in `raw`, split on the **first** `=` only
+    (`strings.SplitN(entry, "=", 2)`); an entry with no `=` (`SplitN` returns a 1-element
+    slice) returns an error
+    `fmt.Errorf("invalid --set value %q: expected key=value", entry)`; otherwise append
+    `yamlengine.KV{Key: parts[0], Value: parts[1]}`.
+  - In `dispatch()`, before the existing `printOnly`/module/menu branches: if
+    `len(setFlags) > 0` and `printOnly` is true, return
+    `output.Err(out, "--print and --set are mutually exclusive")`; else if
+    `len(setFlags) > 0` and `len(args) < 1`, return
+    `output.Err(out, "module required with --set")`; else if `len(setFlags) > 0`, call
+    `parseSetFlags(setFlags)`, propagate its error via `output.Err(out, err.Error())`, then
+    call a new `setModule(baseDir, out, args[0], pairs, sync)`.
+  - Add
+    `func setModule(baseDir string, out io.Writer, module string, pairs []yamlengine.KV, sync syncFunc) int`
+    in `configcli.go`, mirroring `editOne`'s structure: look up
+    `configreg.Template(module)` (identical unknown-module error to `editOne`'s, via
+    `output.Err`); call `configengine.Set(baseDir, module, template(), pairs)` and
+    propagate its error via `output.Err(out, err.Error())`; on success, run `sync` exactly
+    as `editOne` does and print the identical success/failure message shape
+    (`"edited and synced _lyx/config/%s.yaml\n"` on `sync` success,
+    `"edited _lyx/config/%s.yaml but weft sync failed: %s"` on `sync` failure).
+  - Update `buildConfigLong()`: add a sentence documenting that with no `$EDITOR`/`$VISUAL`
+    set, the editor falls back to `notepad` on Windows or `vi` elsewhere, and add a
+    `--set` usage example, e.g.
+    `` lyx config board --set proposal_prefix=foo- --set home=Home.md ``.
+- **Commit:** `feat(configcli): add --set flag and document EDITOR/VISUAL fallback`
+
+### Card 6: `configcli` `--set` dispatch tests
+
+- **Context:**
+  - `internal/configcli/configcli_integration_test.go`
+- **Edits:**
+  - `internal/configcli/configcli_test.go`
+- **Creates:** none
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:** In `internal/configcli/configcli_test.go`, add tests covering: (a)
+  `--set` never invokes the injected `EditorFunc` (use a fake `EditorFunc` with a call
+  counter, assert it stays 0 across a successful `--set` invocation); (b) an unknown key
+  passed to `--set` returns an error and the injected `sync` function is never invoked; (c)
+  passing both `--print` and `--set` returns the mutual-exclusivity error, with neither the
+  editor nor `sync` invoked; (d) `--set` with no module positional returns the
+  module-required error; (e) multiple `--set` values in one `dispatch()` call all land in a
+  single `sync` invocation (assert `sync` call count is 1, not N); (f) a malformed `--set`
+  value with no `=` returns the `parseSetFlags` error; (g) a help-text test asserting
+  `buildConfigLong()`'s output mentions both `EDITOR`/`VISUAL` and `--set`.
+- **Commit:** `test(configcli): cover --set dispatch, validation, and help text`
+
+### Card 7: `docs/overview.md` — document `--set`
+
+- **Context:**
+  - `internal/configcli/configcli.go`
+- **Edits:**
+  - `docs/overview.md`
+- **Creates:** none
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:** Update the `config` module bullet in `docs/overview.md` (the line
+  starting "**config** — interactive menu for viewing and editing module configs; `lyx
+  config reconcile` reconciles...") to also mention `lyx config <module> --set
+  key=value` (repeatable) as a non-interactive way to write one or more config values
+  directly, with no editor invocation — per CLAUDE.md's Task Completion rule that
+  observable CLI behavior changes must update `docs/overview.md` in the same commit. Do
+  not touch `docs/roadmap.md` (this is ergonomics polish, not a planned milestone).
+- **Commit:** `docs(overview): document lyx config --set`
+
+## Batch Tests
+
+`verify: go test ./internal/yamlengine/... ./internal/configengine/... ./internal/configcli/...`
+covers every file this batch touches: Card 1/2 add and test `yamlengine.SetValues`
+directly; Card 3/4 add and test `configengine.Set` (scaffold, unknown-key rejection,
+rollback-on-scaffold-failure, preservation of other keys); Card 5/6 add and test the
+`configcli` `--set` flag end-to-end via `dispatch()` (never touches the editor, validates
+mutual exclusion and the module-required case, batches multiple `--set` values into one
+sync). Card 7 (`docs/overview.md`) is a documentation-only edit with no runnable surface —
+covered by the top-level `go build ./...` compile check in the overview only insofar as it
+confirms no other card broke the build; the doc content itself is reviewed, not tested.
