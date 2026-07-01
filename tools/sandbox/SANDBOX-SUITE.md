@@ -5,7 +5,7 @@
 A structured test-loop for exercising `lyx` against the real GitHub test repos
 (`Knatte18/lyx-test` as host, `Knatte18/lyx-test-weft` as weft). Not an automated
 suite -- the value is a Claude session driving `lyx` by hand in a real hub, treating
-every break, surprise, or rough edge as a LoomYard bug to file.
+every break, surprise, or rough edge as a LoomYard finding to record in the report.
 
 This parallels how millhouse was bootstrapped: get lyx working well enough that an
 agent can operate it in a real repo, then use that experience to harden lyx.
@@ -19,8 +19,6 @@ Before starting a session:
 2. **Materialize the hub.** Run `sandbox.cmd` (or `sandbox.cmd -reset` to start clean)
    to clone the host and weft into a fresh `lyx-test-HUB`.
 3. **`lyx` on PATH.** Confirm `lyx --help` works from any directory.
-4. **`gh` installed and authenticated.** The `lyx selfreport create` command delegates to
-   the `gh` CLI. Run `gh auth status` to confirm authentication before starting.
 
 ### PowerShell JSON-quoting
 
@@ -63,8 +61,10 @@ The launcher prepends a "binary under test" fingerprint block to this file when 
 copies it into the Hub host repo. The fingerprint records the absolute path, file size,
 modification time, and a short SHA-256 of the `lyx.exe` binary at launch time.
 
-**Every issue filed during this session must include that fingerprint in the issue body**
-so that a maintainer can reproduce the exact binary that triggered the finding.
+The same fingerprint identifies the binary for the report's provenance: after this
+session ends cleanly, the launcher stamps it into `meta.fingerprint` of the fetched
+`sandbox-report.json` so a maintainer can reproduce the exact binary that produced
+each finding. The agent does not need to transcribe the fingerprint anywhere itself.
 
 ## How to run a scenario
 
@@ -84,13 +84,32 @@ For each scenario below:
 
 ## Capturing findings
 
-After all scenarios are run, file **each** non-`OK` finding as a GitHub issue on the
-LoomYard repository using `lyx selfreport create` from inside the Hub host repo.
+After all scenarios are run, write **all** `WARN`/`FAIL` findings to `./sandbox-report.json`
+(in the host-repo cwd) on this exact schema. **Always write the file, even when there are
+zero `WARN`/`FAIL` findings** -- in that case `items` is an empty array.
 
-**Discover the command's flags via `lyx selfreport create --help`** before using it.
+```json
+{
+  "source": "sandbox-report",
+  "items": [
+    {
+      "ref": "S6",
+      "title": "…",
+      "body": "verdict: WARN\n\n…repro…"
+    }
+  ]
+}
+```
 
-There is no harvester and no `lyx board upsert` step. `lyx selfreport create` is the only
-capture path. Each issue must include the fingerprint header (see above) in the body.
+- `source` is the literal string `"sandbox-report"`.
+- `items[]` holds only `WARN`/`FAIL` findings -- do not record `OK` scenarios here.
+- `ref` is the scenario id (`S0`-`S6`).
+- `title` is a short one-line summary.
+- `body` folds the detail, repro steps, and verdict into one markdown string.
+
+Write only `source` and `items` -- the launcher stamps `meta` (including the binary
+fingerprint) after the session ends. Confine all free text to the `title`/`body` string
+fields so the JSON stays well-formed.
 
 ## Scenarios
 
@@ -189,11 +208,11 @@ S3: <OK|WARN|FAIL> -- <one-line note if not OK>
 S4: <OK|WARN|FAIL> -- <one-line note if not OK>
 S6: <OK|WARN|FAIL> -- <one-line note if not OK>
 
-Issues filed: <count> (links)
+sandbox-report.json written: <count of WARN/FAIL items>
 ```
 
-File one GitHub issue per WARN or FAIL finding via `lyx selfreport create`. Include the
-fingerprint header in every issue body.
+`./sandbox-report.json` must be written before the session ends, per the Capturing
+findings section above -- with `items: []` when every scenario was `OK`.
 
 ## Notes
 
