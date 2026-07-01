@@ -61,10 +61,11 @@ The launcher prepends a "binary under test" fingerprint block to this file when 
 copies it into the Hub host repo. The fingerprint records the absolute path, file size,
 modification time, and a short SHA-256 of the `lyx.exe` binary at launch time.
 
-The same fingerprint identifies the binary for the report's provenance: after this
-session ends cleanly, the launcher stamps it into `meta.fingerprint` of the fetched
-`sandbox-report.json` so a maintainer can reproduce the exact binary that produced
-each finding. The agent does not need to transcribe the fingerprint anywhere itself.
+The same fingerprint identifies the binary for the report's provenance: a separate
+fetch step (run after this session) stamps it into `meta.fingerprint` of the
+fetched `sandbox-report.json` so a maintainer can reproduce the exact binary that
+produced each finding. The agent does not need to transcribe the fingerprint
+anywhere itself.
 
 ## How to run a scenario
 
@@ -107,9 +108,9 @@ zero `WARN`/`FAIL` findings** -- in that case `items` is an empty array.
 - `title` is a short one-line summary.
 - `body` folds the detail, repro steps, and verdict into one markdown string.
 
-Write only `source` and `items` -- the launcher stamps `meta` (including the binary
-fingerprint) after the session ends. Confine all free text to the `title`/`body` string
-fields so the JSON stays well-formed.
+Write only `source` and `items` -- a separate fetch step (run after the session)
+stamps `meta` (including the binary fingerprint). Confine all free text to the
+`title`/`body` string fields so the JSON stays well-formed.
 
 ## Scenarios
 
