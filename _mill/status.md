@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-yamlengine-preserve
+phase: approved-configengine-set-signature
 slug: config-set-key-loss
 branch: config-set-key-loss
 plan: _mill/plan
@@ -22,6 +22,7 @@ plan-fix-r1  '2026-07-02T10:54:23Z'
 planned  '2026-07-02T10:54:43Z'
 implementing  '2026-07-02T10:59:49Z'
 approved-yamlengine-preserve  '2026-07-02T11:05:25Z'
+approved-configengine-set-signature  '2026-07-02T11:09:58Z'
 ```
 
 ## Batches
@@ -34,9 +35,10 @@ batches:
     start_sha: f557edb52c02abb91b768614b77e23248b660e56
     commit_sha: 8ae3efb72abe5069d3175fd87545daa90e3bb00c
   - name: configengine-set-signature
-    state: running
+    state: approved
     implementer_session: 36f645dc-9ee1-43c6-a084-7e0a62a629d4
     start_sha: 914ddbb9122a658b4f59557d6d73c0620ca20901
+    commit_sha: a43a54eeb99c257196e66c73bd2395416e277a5a
   - name: configcli-json-envelope
     state: pending
 ```
