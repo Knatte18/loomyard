@@ -124,9 +124,11 @@ func editOne(baseDir string, out io.Writer, module string, edit configengine.Edi
 	var buf bytes.Buffer
 	exitCode := sync(&buf)
 	if exitCode == 0 {
-		// Sync succeeded; discard output to keep the stream clean.
-		fmt.Fprintf(out, "edited and synced _lyx/config/%s.yaml\n", module)
-		return 0
+		// Sync succeeded; emit a JSON envelope.
+		return output.Ok(out, map[string]any{
+			"module":  module,
+			"message": fmt.Sprintf("edited and synced _lyx/config/%s.yaml", module),
+		})
 	}
 
 	// Sync failed; include its output in the failure message for diagnosis.
@@ -174,7 +176,8 @@ func setModule(baseDir string, out io.Writer, module string, pairs []yamlengine.
 
 	// Call configengine.Set to scaffold-if-missing and apply pairs directly,
 	// with no editor invocation.
-	if err := configengine.Set(baseDir, module, template(), pairs); err != nil {
+	preserved, err := configengine.Set(baseDir, module, template(), pairs)
+	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
@@ -182,9 +185,16 @@ func setModule(baseDir string, out io.Writer, module string, pairs []yamlengine.
 	var buf bytes.Buffer
 	exitCode := sync(&buf)
 	if exitCode == 0 {
-		// Sync succeeded; discard output to keep the stream clean.
-		fmt.Fprintf(out, "edited and synced _lyx/config/%s.yaml\n", module)
-		return 0
+		// Sync succeeded; emit a JSON envelope. "preserved" is only included
+		// when non-empty so a clean write's envelope carries no such field.
+		fields := map[string]any{
+			"module":  module,
+			"message": fmt.Sprintf("edited and synced _lyx/config/%s.yaml", module),
+		}
+		if len(preserved) > 0 {
+			fields["preserved"] = preserved
+		}
+		return output.Ok(out, fields)
 	}
 
 	// Sync failed; include its output in the failure message for diagnosis.
