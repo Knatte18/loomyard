@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-docs
+phase: holistic-reviewing
 slug: internal-mux
 branch: internal-mux
 plan: _mill/plan
@@ -34,6 +34,7 @@ approved-muxengine-operations  '2026-07-02T19:22:42Z'
 approved-muxcli  '2026-07-02T19:34:12Z'
 approved-cmd-lyx-integration  '2026-07-02T19:46:21Z'
 approved-docs  '2026-07-02T19:57:05Z'
+holistic-reviewing  '2026-07-02T19:57:22Z'
 ```
 
 ## Batches
