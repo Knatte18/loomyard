@@ -41,7 +41,7 @@ mux is **three things in one module**:
   one psmux session per worktree inside it.
 - **Strand bookkeeping**: the strand record + persistence to `.lyx/mux.json` via
   `internal/state`, and reconcile against live `list-panes` on startup (pane-id is ephemeral,
-  re-derived; claude session-id is the durable key).
+  re-derived; the mux-generated **`guid` is the durable key**, `sessionId` is opaque metadata).
 - **Render sub-package** `internal/muxengine/render`: pure `rules(strands) → window_layout`
   string, handling anchors `top`, `below-parent`, `hidden` (bottom-active-dominant stack),
   with the tmux checksum. own-window deferred.
@@ -51,7 +51,8 @@ mux is **three things in one module**:
   `os.Stderr` sink; default level `Warn`.
 - **`internal/hubgeometry`**: add ownership of the ephemeral `.lyx` dir (a `Layout` accessor).
 - **mux config**: register `mux` in `internal/configreg` with a `mux.yaml` template (tool
-  paths, dimensions, active-pane share).
+  paths, dimensions, layout knobs `collapsedStripRows`/`topBandRows`/`minFullRows`, and the
+  `strand-name` template).
 - **Park muxpoc**: unwire `internal/muxpoccli` from the CLI (keep the code as reference).
 - Docs + invariants: `docs/modules/mux.md` reconciled to the as-built design (its stale
   decision-3), `docs/overview.md` module table updated, any new cross-cutting invariant
@@ -82,12 +83,34 @@ mux is **three things in one module**:
 
 ### Domain-free strand contract (opaque command strings, no `type`)
 
-- **Decision:** `AddStrand{ name, worktree, parent?, cmd, resumeCmd?, sessionId?, display }`
-  where `display{ anchor, height, focus, shrinkWhenWaitingOnChild }`. mux **stores all fields
-  and reads none semantically** — `cmd` and `resumeCmd` are opaque launch/resume strings
-  (built by the caller/shuttle), `sessionId` is opaque metadata (for status/reconcile), and
-  there is **no domain `type` field ever**. `UpdateStrand{ id, display }` and
-  `RemoveStrand{ id }` re-render.
+- **Decision — the stored strand record:** `{ guid, name, worktree, parent?, cmd, resumeCmd?,
+  sessionId?, paneId, display{ anchor, focus, shrinkWhenWaitingOnChild } }`. mux **stores all
+  fields and reads none semantically** — `cmd`/`resumeCmd` are opaque launch/resume strings
+  (built by the caller/shuttle), `sessionId` is opaque metadata, `paneId` is the ephemeral
+  psmux id (re-derived on reconcile), and there is **no domain `type` field ever**.
+  `UpdateStrand{ guid, display }` and `RemoveStrand{ guid }` re-render. (No `display.height` —
+  height is fully derived; see the render decision.)
+- **Strand identity — GUID is the canonical key, `name` is the descriptive label (orch #1, feedback_02):**
+  - **`guid`** — mux-generated at `AddStrand` (128-bit via `crypto/rand`, hex), **100% unique**,
+    the **durable key**: parent links are stored as the parent's `guid`, reconcile keys on it,
+    and it is the identity `UpdateStrand`/`RemoveStrand` mutate. This **replaces `sessionId` as
+    the durable key** — `sessionId` (claude's, optional/absent for a shell or status strand)
+    stays pure opaque metadata, never an identity.
+  - **`name`** — caller-supplied descriptive label, stored **verbatim** (mux never parses it —
+    dumb-carrier). Used for the pane title, `status` output, and as a **convenience selector**.
+  - **Referential integrity:** `--parent <ref>` and `remove <ref>` accept **either a `guid` or a
+    `name`**; a `name` is resolved to its `guid` when **unambiguous**, else the command fails
+    with `ambiguous name, use the GUID`. `name` is **not** required unique (the `guid` is the
+    identity); it is only a shortcut when it happens to be unambiguous.
+  - **How `name` is set — a domain-free config template (feedback_02):** the name is composed
+    from a `mux.yaml` `strand-name` template (see the config decision), default
+    `<ROLE>:<ROUND>:<SHORT_GUID>`. `--role`/`--round` are **formatting-only inputs consumed at
+    add-time** to fill the template — they are **never persisted as strand fields and mux never
+    branches on them** (the sharp difference from a forbidden `type` field: they feed one string
+    substitution, then are discarded). Substitution is a pure `FormatStrandName(template, parts)`
+    helper in the cli/caller layer (reusable by shuttle), not engine semantics. `--name`
+    overrides the template verbatim; if neither `--name` nor `--role` is given, the name falls
+    back to `<SHORT_GUID>` alone (always present, never empty).
 - **`resumeCmd` is optional (nullable).** A stateless strand (e.g. a `lyx loom status --watch`
   status line, or a plain shell pane) has no meaningful `--resume`. On `resume`, a strand
   **with** a `resumeCmd` runs it; a strand **without** one re-runs its `cmd` (a fresh launch —
@@ -157,16 +180,10 @@ mux is **three things in one module**:
   rules (orch #1):**
   - `shrinkWhenWaitingOnChild` (bool, default **true**): a `below-parent` strand that is an
     **ancestor** (has a visible child below it in the parent chain) collapses to a **single
-    compact strip of a configurable height** (`collapsedStripRows`, from `mux.yaml` — see the
-    config decision); the bottom-most/active strand takes the **remainder** of the window
-    height (after all ancestor strips + 1-row dividers). This is the *mechanism* behind
-    active-bottom-dominance, made per-strand: a strand with it **false** keeps its `height`
-    even while an ancestor (opt-out of the shrink). This replaces muxpoc's fixed
-    `activePaneShare=55%` percentage split — the strip thickness is now an operator-tunable
-    config value (default chosen to reproduce muxpoc's proven ~9-row ancestor strips), and the
-    active pane's dominance is *derived* as the remainder rather than a hardcoded percentage.
-    The layout **mechanics** (checksum + `window_layout` string) are unchanged and still reused
-    from muxpoc verbatim; only the height *policy* changes.
+    compact strip** of `collapsedStripRows` rows (from `mux.yaml` — see the config decision).
+    A strand with it **false** opts out of collapsing and is treated as a **co-equal full pane**
+    (keeps a full share alongside the active strand — for "keep watching this parent while the
+    child runs"). Default true reproduces muxpoc's bottom-dominant behavior.
   - `focus` (bool, default unset): the render's `select-pane` target. **Exactly one** pane is
     focused per session; if no strand sets `focus:true`, render defaults to the bottom-most
     (active) strand (muxpoc's "always select the bottom pane"). If a caller sets `focus:true`
@@ -175,6 +192,24 @@ mux is **three things in one module**:
     strand.
   - Both are asserted by isolated render tests (see Testing), so they are defined behavior,
     not latent rot.
+- **Derived height policy — no per-strand `height` field (orch #1b, Q3):** heights are fully
+  derived, so `display` carries no `height`. Given usable height `H_u` = window height − top
+  band(s) − 1-row dividers: each `top` strand is a fixed band of `topBandRows` rows (config,
+  default 1 — a status line); in the `below-parent` stack, each **shrink:true ancestor** is a
+  strip of `collapsedStripRows`, and the **active/focused strand plus every shrink:false strand**
+  are "full" panes that split the remaining height **equally**. This replaces muxpoc's fixed
+  `activePaneShare=55%` — strip thickness and band height are operator-tunable config, dominance
+  is *derived* as the remainder. The layout **mechanics** (checksum + `window_layout` string)
+  are reused from muxpoc **verbatim**; only the height *policy* changes.
+- **Clamp rule — render is total, never emits a non-positive pane (orch #B):** when fixed demand
+  (top bands + all strips + dividers + a `minFullRows` floor, default 3, per full pane) exceeds
+  the window, reduce in strict priority: (1) shrink the strips below nominal down to 1 row, then
+  (2) reduce full panes equally down to `minFullRows`, then (3) as a last resort keep the active
+  pane at whatever remains and clamp earlier panes to 1 row. Render **always** yields a valid,
+  non-negative layout string — a torn/negative pane height would make psmux reject the layout.
+- **Sibling ordering is deterministic (orch #E):** two strands sharing a parent (same depth in
+  the chain) are ordered by **insertion order** (their position in the persisted strand table,
+  which is GUID-stable), so the layout string is deterministic and golden-file tests are stable.
 - **Rationale:** purity makes render the clean golden-file test surface (no psmux/agents
   needed). The mechanics/policy split keeps the checksum math stable while the domain-facing
   policy stays small and total over a closed set — exactly where future change happens.
@@ -283,10 +318,20 @@ mux is **three things in one module**:
 ### mux config via configreg
 
 - **Decision:** register `mux` in `internal/configreg` with a `mux.yaml` template holding
-  machine-specific tool paths (`psmux`, `pwsh`, `claude`), dimensions (width/height), and
-  **`collapsedStripRows`** (the height, in rows, of a collapsed ancestor strip — see the render
-  decision; replaces muxpoc's fixed 55% active-pane share, letting the operator tune the strip
-  thickness). Loaded via `configengine.Load(baseDir, "mux", []byte(ConfigTemplate()))`.
+  machine-specific tool paths (`psmux`, `pwsh`, `claude`), dimensions (width/height), the layout
+  knobs **`collapsedStripRows`** (rows of a collapsed ancestor strip — replaces muxpoc's fixed
+  55% active-pane share), **`topBandRows`** (default 1 — height of a `top` status band), and
+  **`minFullRows`** (default 3 — the clamp floor for a full pane; see the render decision), plus
+  the **`strand-name`** template (default `<ROLE>:<ROUND>:<SHORT_GUID>`; tokens
+  `<WORKTREE> <ROLE> <ROUND> <SHORT_GUID>`). Loaded via
+  `configengine.Load(baseDir, "mux", []byte(ConfigTemplate()))`.
+- **`strand-name` is a config field, NOT hardcoded (feedback_02).** The default is
+  `<ROLE>:<ROUND>:<SHORT_GUID>` but the operator can reorder/replace it. `<WORKTREE>` is a token
+  but **omitted from the default** — inside a per-worktree session the worktree is redundant (it
+  *is* the session), and long worktree names hurt readability; it earns its place only in the
+  deferred cross-worktree/mplex view (add it then). Substitution stays domain-free: `<ROLE>`/
+  `<ROUND>` are formatting-only inputs (see the strand-identity decision), never persisted or
+  branched on.
 - **Rationale:** tool paths are machine-specific and belong in config, not code defaults;
   strip thickness is a layout-tuning knob the operator should control; matches the repo
   convention and makes sandbox use clean. shuttle will likely reuse tool-path config.
@@ -339,20 +384,49 @@ Behavior in the three states:
 not render-unit-tests only:**
 
 ```
-lyx mux add --name <label> --cmd <launch-cmd> [--resume-cmd <cmd>] [--parent <strand-id>]
-            [--anchor top|below-parent|hidden] [--height fixed:N|grow|share] [--focus]
+lyx mux add --cmd <launch-cmd> [--role <role>] [--round <n>] [--name <override>]
+            [--resume-cmd <cmd>] [--parent <guid-or-name>]
+            [--anchor top|below-parent|hidden] [--focus]
 ```
 
 - `--anchor` defaults to **`below-parent`**. Exposing it means the sandbox scenario can
   integration-test all three v1 anchors (top status line, below-parent stack, hidden), not
   just the default. `own-window` is rejected by `add` in v1 (deferred anchor).
+- **Name:** `--role`/`--round` fill the `strand-name` template; `--name` overrides it verbatim;
+  neither given → name = `<SHORT_GUID>`. mux generates the strand's `guid` and prints it (with
+  the resolved name) in the `add` JSON so a later `--parent` can reference it.
+- **No `--height`** — height is fully derived (see the render decision).
 - `--resume-cmd` optional (see strand contract). `--focus` sets `display.focus:true`.
-- `remove` takes a strand id (`lyx mux remove <strand-id>`).
+- `--parent` and `remove` take a **`guid` or an unambiguous `name`** (`lyx mux remove
+  <guid-or-name>`); an ambiguous name errors (`use the GUID`).
 
-**`attach` is session-level, not per-strand (orch minor):** `lyx mux attach` pops one
-**maximized** terminal attached to this worktree's psmux **session** (the whole layout is
-visible; the popped terminal has a real TTY so claude renders). It takes **no** strand
-argument — you attach to the session and see every strand's pane, then `Ctrl+b z` to zoom one.
+**`attach` is session-level, in-place (orch minor + orch #F):** `lyx mux attach` runs
+`psmux attach` to this worktree's psmux **session** **in the operator's current terminal** — no
+strand argument (you see every strand's pane, then `Ctrl+b z` to zoom one). v1 attaches in-place
+rather than popping a new window, so `mux.yaml` needs **no** terminal-emulator path; you run
+`lyx mux attach` from a terminal you already have. (Popping a dedicated terminal window — needed
+if the driver is a headless programmatic session with no TTY to attach into — is deferred and
+would add a terminal-emulator config value.)
+
+**`remove` of a non-leaf, and parent integrity (orch #D):** `remove <ref>` **cascades** — it
+removes the strand and all its descendants in the parent chain (removing a subtree, never
+orphaning children into a broken chain), then re-renders. On `add`, a `--parent` that names no
+existing strand is rejected; a parent link that would form a **cycle** is rejected at add-time,
+and render additionally breaks any cycle defensively (walk with a visited-set, treat a repeat as
+a root) so the pure function stays **total** even on a corrupt table.
+
+**Session name, first pane, canvas, debounce (orch #G/H/I/J):**
+- **Session name** = the worktree slug (`filepath.Base(WorktreeRoot)`), inside the per-hub
+  server. Sibling worktrees can't share a basename, so it is collision-free. (G)
+- **First pane:** psmux `new-session` always creates one initial shell pane. The **first strand
+  adopts** that pane (captured via `display-message -p "#{pane_id}"`); every subsequent strand
+  is a fresh `split-window -P -F "#{pane_id}"`. (H)
+- **Dimensions** (`mux.yaml` width/height, muxpoc's 220×50) are the **assumed virtual canvas**
+  for the detached session — the layout math targets them; on `attach` psmux re-flows to the
+  real terminal size. v1 accepts that the dominance math was computed for the virtual canvas. (I)
+- **Debounce** (coalescing a burst of mutations into one `ApplyLayout`) is an **in-process
+  driver** concern only (shuttle/loom making rapid `AddStrand` calls); a one-shot CLI verb is a
+  single mutation → single apply, so there is nothing to debounce there. (J)
 
 ### Park muxpoc (keep as reference, unwire from CLI)
 
@@ -367,6 +441,32 @@ argument — you attach to the session and see every strand's pane, then `Ctrl+b
   exposing a second mux-ish command. Smaller/safer than deleting.
 - **Rejected:** leaving muxpoc registered (two mux-ish commands, confusing); deleting muxpoc
   now (loses the live reference before mux is proven).
+
+## Forward-compatibility (v2: session-per-repo, column-per-worktree)
+
+v2 (deferred) inverts the topology: **one session per repo/hub**, and **each worktree becomes a
+column** within that session's window (mplex), with the current per-worktree strand stack living
+*inside* each column. v1 must not bake in the false assumption "a session = one worktree's whole
+world." Three near-zero-cost seams keep the v2 migration cheap — they are also just good v1
+hygiene (avoiding a false assumption), **not** speculative v2 machinery:
+
+1. **Every strand carries `worktree`** (already in the record). It is the v2 **column-grouping
+   key**: v2 groups strands into columns by `worktree`. In v1 all strands share one worktree, but
+   the field stays — it is the whole bridge. Do not drop it as "redundant in v1".
+2. **The stack render is region-relative.** The pure stack builder takes a bounding box
+   `(x, y, w, h)` and returns a **sub-layout** for that region, even though v1 always passes the
+   full window `(0, 0, W, H)`. The tmux layout string already nests (`csum,WxH,0,0[…[…]…]`), so
+   v2 columns are an outer horizontal split of these vertical stacks — a wrapping layer, no render
+   rewrite. (This is only a region parameter; do **not** build the column arrangement now.)
+3. **`MuxState` is a flat, GUID-keyed strand list**, each strand self-describing its `worktree`
+   and `parent` — not "the strands of *this* worktree". So v2's hub-level state is a **union**
+   (concatenation of the per-worktree files), not a reshape.
+
+Explicitly **out of v1** (would be premature): hub-level state, hub-level lock, the column
+arrangement/render, session-per-repo, and a `column` anchor. The lock stays per-worktree
+(`.lyx/mux.lock`) and is promoted to hub-level in v2 (a natural change). Columns are an *outer*
+grouping on `worktree`, orthogonal to the within-column anchor (`top`/`below-parent`/`hidden`),
+so the anchor vocabulary is unchanged (`column`/left-right remains a deferred vocab candidate).
 
 ## Technical context
 
@@ -413,9 +513,10 @@ constraint). See `docs/overview.md` and `docs/modules/{mux,shuttle}.md`.
 - **Two distinct pane-id capture strategies** (both required): `split-window -P -F "#{pane_id}"`
   for a **new** pane; `display-message -p "#{pane_id}"` for the `new-session` pane
   (`display-message` is unreliable for freshly-split panes on a detached session).
-- **Pane-id is ephemeral, claude session-id is durable.** psmux reassigns pane ids across a
-  server restart; on reconcile/recover, re-derive pane ids and re-persist; the stored
-  session-id is the stable key.
+- **Pane-id is ephemeral, the strand `guid` is durable.** psmux reassigns pane ids across a
+  server restart; on reconcile/recover, re-derive pane ids and re-persist; the mux-generated
+  `guid` is the stable key (claude's `sessionId` is opaque metadata, not the identity — see the
+  strand-identity decision).
 - **Launch/resume via `send-keys ... "Enter"`** into the pane shell (proven). The `[prompt]`
   positional/argv content, if any, is inside the opaque `cmd` string shuttle builds — mux just
   send-keys the whole string.
@@ -526,6 +627,13 @@ JSON envelope (`ok` true/false).
   - **`focus`** (orch #1): with no strand focused, the select-pane target = bottom-most; with
     one strand `focus:true`, that strand is the target; exactly one focused pane; ties resolve
     to the bottom-most focused strand.
+  - **shrink:false + clamp priority** (orch #1b/#B): a `shrink:false` ancestor becomes a co-equal
+    full pane (splits the remainder equally with the active); the clamp reduces in strict order
+    (strips → full panes → active-last) so a too-small window still yields only positive pane
+    heights.
+  - **sibling order** (orch #E): two strands sharing a parent render in insertion order.
+  - **parent cycle** (orch #D): a cyclic parent table renders total (cycle broken via a
+    visited-set), never loops.
 - **muxengine strand bookkeeping (TDD candidate).** `AddStrand`/`UpdateStrand`/`RemoveStrand`
   mutate the table and persist; round-trip through `state.ReadJSON/WriteJSON` (absent file →
   empty table; corruption surfaced). Reconcile: given a saved table + a fake `list-panes`
@@ -534,6 +642,12 @@ JSON envelope (`ok` true/false).
   `CleanClaudeEnv`: strips exactly `CLAUDECODE` + `CLAUDE_CODE_*`, returns the stripped keys,
   leaves the rest untouched. `resumeCmd` optional: a strand without one falls back to re-running
   `cmd` on resume.
+- **strand identity + naming (feedback_02).** `AddStrand` generates a unique `guid`; `name` is
+  formatted from the `strand-name` template with `--role`/`--round` consumed (not persisted),
+  `--name` overriding verbatim, and `<SHORT_GUID>` fallback when neither is given.
+  `FormatStrandName` is a pure table test over templates/tokens. `--parent`/`remove` resolve a
+  `guid` or an **unambiguous** `name` (ambiguous → error). `RemoveStrand` **cascades** to
+  descendants; an `add` with a non-existent or cyclic parent is rejected.
 - **up vs resume boundary (orch #3).** Assert `up` never emits a strand launch/resume command
   (substrate only), only server/session bring-up + layout + reconcile; assert `resume` replays
   the stored `resumeCmd` (or `cmd` when absent) per strand and re-persists pane ids. Cover the
@@ -577,8 +691,8 @@ JSON envelope (`ok` true/false).
 - **Q:** `.lyx/mux.json` path resolution? **A:** Add `.lyx` ownership to `hubgeometry` (a `Layout` accessor); do not hardcode. `.lyx` (ephemeral) ≠ `_lyx` (durable).
 - **Q:** logger design? **A:** `os.Stderr` sink (injectable `io.Writer`, deliberately not through clihelp's seam), persistent `-v`/`-vv` flag on the `cmd/lyx` root, default `Warn` (non-negotiable — zero lines on a normal run), `slog.LevelVar` + `slog.TextHandler`, `Debug/Info/Warn`. No file sink.
 - **Q:** Resume model / how much now? **A:** Native `claude --resume` via the stored opaque resume cmd; store **both** launch + resume cmds; capture-pane journal **deferred** to the daemon; "no-transcript → fresh launch" fallback deferred (shuttle/daemon). Note the stale contradictory bullet in `mux-exploration.md` — native-resume is authoritative.
-- **Q:** Strand contract? **A:** `AddStrand{ name, worktree, parent?, cmd, resumeCmd, sessionId?, display{anchor,height,focus,shrinkWhenWaitingOnChild} }`; mux stores all, reads none semantically; **no domain `type`**. mux does NOT assign the session-id (shuttle owns launch+resume construction).
-- **Q:** mux config? **A:** Config file via `configreg` (`mux.yaml`: tool paths, dims, active-pane share), not flags-with-defaults.
+- **Q:** Strand contract? **A:** `AddStrand{ name, worktree, parent?, cmd, resumeCmd, sessionId?, display{anchor,height,focus,shrinkWhenWaitingOnChild} }`; mux stores all, reads none semantically; **no domain `type`**. mux does NOT assign the session-id (shuttle owns launch+resume construction). _(Superseded by feedback_02: record adds a mux-generated `guid` (the durable key) and drops `display.height`; see the strand-identity decision + the feedback_02 identity Q&A.)_
+- **Q:** mux config? **A:** Config file via `configreg` (`mux.yaml`: tool paths, dims, active-pane share), not flags-with-defaults. _(Superseded by feedback_02: `active-pane share` → layout knobs `collapsedStripRows`/`topBandRows`/`minFullRows` + the `strand-name` template; see the config decision.)_
 - **Q:** Render anchor scope? **A:** `top` + `below-parent` + `hidden` in v1; `own-window` deferred (no consumer). Keep the closed 4-member vocabulary; grow only when a real consumer needs it (new `rules()` case + test same commit).
 - **Q:** Render code structure? **A:** Anchor→layout **policy** must be explicit/legible and **separated** from layout **mechanics** (checksum/string builder), so changing/adding an anchor is a localized, obvious edit.
 
@@ -591,4 +705,13 @@ _Orch review round (feedback_01):_
 - **Q (orch #4):** Does `add` expose `--anchor`? **A:** Yes — full flag spec (`--name --cmd --resume-cmd --parent --anchor[=below-parent] --height --focus`); `--anchor` gives top/hidden a CLI + sandbox integration path.
 - **Q (orch #5):** Tool paths in synced `mux.yaml` vs portability? **A:** Keep in `mux.yaml`; document that v1 chooses correctness (explicit absolute paths, required by the ConPTY-stub finding) over cross-machine portability (deferred anyway). Do not PATH-relativize; future per-machine override rides the gitignored `.env`.
 - **Q (orch #6):** Concurrency across separate CLI processes + in-process driver? **A:** One coarse mux operation lock (`.lyx/mux.lock`) around the whole read→mutate→persist→render→apply cycle. Ordering: outer `mux.lock` before `state`'s inner `mux.json.lock` (deadlock-free). Per-worktree scope; OS handle auto-releases on process death → no stale-lock-stealing in v1.
-- **Q (orch minor):** `attach` target? **A:** Session-level (pop one maximized terminal attached to the worktree's psmux session); no strand arg. **`resumeCmd`?** Optional/nullable; absent → resume re-runs `cmd`.
+- **Q (orch minor):** `attach` target? **A:** Session-level, **in-place** (`psmux attach` in the current terminal — no terminal-emulator config; popping a window is deferred); no strand arg. **`resumeCmd`?** Optional/nullable; absent → resume re-runs `cmd`.
+
+_Orch review round (feedback_02):_
+
+- **Q (identity):** How is a strand identified? **A:** mux-generated **GUID** = canonical durable key (replaces `sessionId`, demoted to opaque metadata); caller-set **`name`** = descriptive label; `--parent`/`remove` take a GUID or an unambiguous name.
+- **Q (naming):** How is `name` set? **A:** From a **config** `strand-name` template (default `<ROLE>:<ROUND>:<SHORT_GUID>`, NOT hardcoded); `--role`/`--round` are domain-free formatting-only inputs; `--name` overrides; `<SHORT_GUID>` fallback. `<WORKTREE>` token exists but is omitted from the default (redundant inside a per-worktree session).
+- **Q (height):** Keep `--height`? **A:** No — dropped; height fully derived (`topBandRows` band, `collapsedStripRows` strips, active + `shrink:false` = full panes splitting the remainder) with a clamp rule so render stays total.
+- **Q (defaults B/D/E):** clamp / remove-non-leaf / sibling order? **A:** clamp = strips → full → active priority (never a non-positive pane); `remove` cascades to descendants + reject cyclic/unknown parent (render breaks cycles defensively); siblings ordered by insertion.
+- **Q (F–J):** attach / session name / first pane / dimensions / debounce? **A:** attach in-place (`psmux attach`, no terminal-emulator config); session name = worktree slug; first strand adopts the `new-session` pane; dimensions = assumed virtual canvas (re-flows on attach); debounce is in-process-driver-only.
+- **Q (v2):** Forward-compat for session-per-repo / column-per-worktree? **A:** Three cheap seams — strand carries `worktree` (column key), region-relative stack render, flat GUID-keyed `MuxState` (union not reshape); hub state/lock + column render stay out of v1.
