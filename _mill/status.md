@@ -30,7 +30,9 @@ implementing  '2026-07-02T07:33:23Z'
 ```yaml
 batches:
   - name: sandbox-suite-doc
-    state: pending
+    state: running
+    implementer_session: b7b62898-4164-42af-8b65-727af08fa87f
+    start_sha: bfd3d99d74f1c68caca9d2074185658cdad2129c
   - name: coverage-invariant
     state: pending
 ```
