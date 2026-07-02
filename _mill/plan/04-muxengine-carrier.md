@@ -120,11 +120,12 @@ Batch-local decisions:
   - `internal/muxpoccli/state.go`
 - **Edits:** none
 - **Creates:**
-  - `internal/muxengine/naming.go`
-  - `internal/muxengine/naming_test.go`
+  - `internal/muxengine/server.go`
+  - `internal/muxengine/server_test.go`
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** In `internal/muxengine/naming.go`: `func ServerName(hubPath string)
+- **Requirements:** In `internal/muxengine/server.go` (named `server.go`, not `naming.go`, so
+  it is not confusable with the strand-`name.go` sibling): `func ServerName(hubPath string)
   string` returns `lyx-<hub-basename>-<short-hash>` where `<hub-basename> =
   filepath.Base(hubPath)` and `<short-hash>` = first 8 hex chars of
   `sha256(abs-hub-path)` (use the cleaned/abs hub path). `func SessionName(worktreeRoot
@@ -132,11 +133,11 @@ Batch-local decisions:
   socketName(hubPath string) string` returns the socket-safe server name (same as
   `ServerName`, guaranteed no `:`/`\`/space — sanitize like muxpoc's `socketName` regex if
   needed, but the sha8 form is already safe). Server-name construction lives here (psmux
-  domain), computed from `Layout.Hub` obtained via hubgeometry. In `naming_test.go`: assert
+  domain), computed from `Layout.Hub` obtained via hubgeometry. In `server_test.go`: assert
   determinism, socket-safety (no `:`/`\`/space), that two hubs sharing a basename on
   different absolute paths produce **distinct** names, and that the hash is stable/case-path
   normalized as intended.
-- **Commit:** `feat(muxengine): per-hub server name with sha256 hub-path hash`
+- **Commit:** `feat(muxengine): per-hub server name (server.go) with sha256 hub-path hash`
 
 ### Card 14: MuxState record model + persistence
 
@@ -163,9 +164,14 @@ Batch-local decisions:
   `(nil, nil)`; corruption surfaced. `func SaveState(dotLyxDir string, s *MuxState) error`
   -> `state.WriteJSON`. Add a mapper `func toRenderStrands(strands []Strand, liveIDs
   map[string]bool) []render.Strand` producing the render view (`GUID`, `Parent`, `Display`,
-  `PaneID`, `Live = liveIDs[PaneID]`). In `state_test.go`: round-trip a `MuxState` through
-  Save/Load (absent file -> `(nil,nil)`; corruption -> error); assert `toRenderStrands`
-  copies display fields and sets `Live` from the live set.
+  `PaneID`, `Live = liveIDs[PaneID]`). `liveIDs` is the set of pane ids **present in the
+  window** per `list-panes` (a dead-but-`remain-on-exit` pane still counts as present until it
+  is killed), so `Live` means "this strand owns a present window pane". The mapper maps **all**
+  strands (it does not filter) — `render.partitionByAnchor` (batch 3, card 6) is the single
+  place not-live / empty-`PaneID` strands are dropped from the layout (GAP B). In
+  `state_test.go`: round-trip a `MuxState` through Save/Load (absent file -> `(nil,nil)`;
+  corruption -> error); assert `toRenderStrands` copies display fields and sets `Live` from the
+  live set.
 - **Commit:** `feat(muxengine): MuxState record model and .lyx/mux.json persistence`
 
 ### Card 15: config (mux.yaml template + LoadConfig) + strand-name/guid helpers

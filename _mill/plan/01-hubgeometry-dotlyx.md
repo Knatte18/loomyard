@@ -14,9 +14,15 @@ depends-on: []
 Adds ownership of the **ephemeral `.lyx`** directory to `internal/hubgeometry`, so mux
 resolves `.lyx/mux.json` and `.lyx/mux.lock` through a geometry accessor rather than a
 hardcoded literal (Hub Geometry Invariant). This is the single external interface later
-batches consume: `(*Layout).DotLyxDir()`. `.lyx` (dot, ephemeral, machine-bound, in
-`.git/info/exclude`) is deliberately **distinct** from the existing `_lyx` (underscore,
-durable/weft-synced). Batch-local decision: the accessor is added **without** registering
+batches consume: `(*Layout).DotLyxDir()`. `.lyx` (dot, ephemeral, machine-bound) is deliberately **distinct** from the existing `_lyx`
+(underscore, durable/weft-synced).
+
+**Git-ignore is already handled — no card needed (GAP C).** `.lyx/` is already git-ignored:
+the root `.gitignore` carries `.lyx/`, and `lyx init` maintains that managed block via
+`gitignore.Ensure(cwd, ".lyx/")` (`internal/initengine/init.go:101`; `lyx init --undo` reverts
+it). Since `lyx init` is the precondition for every lyx module (mux's `LoadConfig` errors with
+`run "lyx init"` when uninitialized), mux's `.lyx/mux.json` + `.lyx/mux.lock` are covered with
+zero new wiring. Do **not** add a git-ignore card. Batch-local decision: the accessor is added **without** registering
 `.lyx` as a machine-enforced geometry token (YAGNI — the accessor is the single source of
 the path, and no other package constructs `.lyx` paths; if a future reviewer wants
 enforcement, adding `".lyx"` to `enforcement_test.go`'s `geometryToken` switch is the

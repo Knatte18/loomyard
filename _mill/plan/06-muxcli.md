@@ -208,8 +208,9 @@ Batch-local decisions:
 - **Moves:** none
 - **Requirements:** In `internal/muxcli/attach.go`, add the `attach` verb as `(c *muxCLI)
   attachCmd()` (session-level, no strand arg). RunE: run all fail-able work **pre-flight on
-  the envelope** (session existence via `c.eng`, lock/reconcile) — emit `output.Err` +
-  non-zero on any failure; only the **terminal-handover tail** (`psmux -L <socket>
+  the envelope** — call `c.eng.Status()` (which takes the op lock + reconciles and returns a
+  non-nil error when the server/session is absent, e.g. `no mux session; run "lyx mux up"`);
+  on any error emit `output.Err` + non-zero exit — only the **terminal-handover tail** (`psmux -L <socket>
   attach-session -t <session>` inheriting the operator's stdio, in-place — no `wt.exe` new
   window) is exempt and emits **no** JSON on success. Build the invocation with the exported
   engine accessors `c.eng.Socket()` (the psmux `-L` socket) + `c.eng.SessionName()` (the

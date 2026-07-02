@@ -34,8 +34,11 @@ Batch-local decisions:
   are **not** in this type (engine maps them out before calling `Rules`).
 - `Params` carries the tunable knobs (`TopBandRows`, `CollapsedStripRows`, `MinFullRows`)
   so render stays config-agnostic (the engine passes values loaded from `mux.yaml`).
-- `hidden` strands are excluded from the layout string **by construction** (the engine never
-  passes a `hidden` strand as `Live`, and render also skips any `anchor==hidden`).
+- `hidden` strands are excluded from the layout string **by construction** (a hidden strand
+  never owns a pane). More generally, `partitionByAnchor` (card 6) is the **single filter**
+  that drops any strand which is `hidden`, `Live == false`, or has an empty `PaneID`, so render
+  only ever lays out strands that own a present window pane and can never emit an empty
+  `paneNum` (GAP B).
 
 ## Cards
 
@@ -116,17 +119,21 @@ Batch-local decisions:
 - **Requirements:** In `internal/muxengine/render/policy.go`, implement the **legible**
   anchor->placement dispatch that is easy to extend. Provide `func partitionByAnchor(strands
   []Strand) (top []Strand, stack []Strand)` that routes `AnchorTop` strands to a pinned band
-  set and `AnchorBelowParent` strands to the stack, **excludes** `AnchorHidden` entirely, and
-  **rejects** `AnchorOwnWindow` (return it in neither set — own-window is deferred; also have
-  `Rules` in card 9 surface an error if an own-window strand is passed). Provide `func
+  set and `AnchorBelowParent` strands to the stack, and **excludes** (routes to neither set) a
+  strand that is `AnchorHidden`, **or has `Live == false`, or has an empty `PaneID`** — render
+  is total and only ever lays out strands that actually own a present window pane, so it can
+  never emit a `paneNum` from an empty id (this is the single place not-live/pane-less strands
+  are filtered out of the layout — see GAP B). It **rejects** `AnchorOwnWindow` (return it in
+  neither set — own-window is deferred; also have `Rules` in card 9 surface an error if an
+  own-window strand is passed). Provide `func
   orderStack(stack []Strand) []Strand` implementing deterministic ordering: strands ordered by
   parent chain depth (roots first, then children), and **siblings sharing a parent ordered by
   insertion order** (their index in the input slice). Provide cycle-safe traversal: `func
   breakCycles(stack []Strand) []Strand` that walks the parent chain with a visited-set and
   treats a repeat as a root, so a corrupt cyclic table still produces a total ordering (no
-  infinite loop). In `policy_test.go`: assert hidden strands are dropped; own-window is not
-  placed; sibling insertion order; a cyclic parent table terminates and renders every strand
-  once.
+  infinite loop). In `policy_test.go`: assert hidden strands are dropped; a `Live==false` **or**
+  empty-`PaneID` strand is dropped from both partitions; own-window is not placed; sibling
+  insertion order; a cyclic parent table terminates and renders every strand once.
 - **Commit:** `feat(render): add legible anchor->placement policy with cycle-safe ordering`
 
 ### Card 7: focus + shrinkWhenWaitingOnChild resolution

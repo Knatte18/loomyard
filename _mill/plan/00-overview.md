@@ -145,8 +145,6 @@ across every batch, sorted alphabetically._
 - `internal/muxengine/lock_test.go`
 - `internal/muxengine/name.go`
 - `internal/muxengine/name_test.go`
-- `internal/muxengine/naming.go`
-- `internal/muxengine/naming_test.go`
 - `internal/muxengine/overlay.go`
 - `internal/muxengine/parse.go`
 - `internal/muxengine/parse_test.go`
@@ -163,6 +161,10 @@ across every batch, sorted alphabetically._
 - `internal/muxengine/render/rules.go`
 - `internal/muxengine/render/rules_test.go`
 - `internal/muxengine/render/types.go`
+- `internal/muxengine/server.go`
+- `internal/muxengine/server_test.go`
+- `internal/muxengine/spawn.go`
+- `internal/muxengine/spawn_test.go`
 - `internal/muxengine/state.go`
 - `internal/muxengine/state_test.go`
 - `internal/muxengine/strand.go`
