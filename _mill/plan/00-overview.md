@@ -133,3 +133,4 @@ batches:
 - `internal/weftengine/sync.go`
 - `internal/weftengine/sync_test.go`
 - `internal/weftengine/weft.go`
+- `internal/weftengine/weft_integration_test.go`
