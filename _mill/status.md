@@ -6,6 +6,7 @@ slug: internal-mux
 branch: internal-mux
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: 'Build internal/mux: the window to the world (overlay + strands + render)'
 task_description: |
   Build internal/mux: the window to the world (overlay + strands + render)
@@ -32,7 +33,9 @@ implementing  '2026-07-02T18:22:14Z'
 ```yaml
 batches:
   - name: hubgeometry-dotlyx
-    state: pending
+    state: running
+    implementer_session: ea6365ec-5a23-434c-903b-6e8f314d3cb4
+    start_sha: 0b4189fa43dd0709b70e5b36a31ee134ad7d6f97
   - name: logger
     state: pending
   - name: render
