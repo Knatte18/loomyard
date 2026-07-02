@@ -69,6 +69,29 @@ Every lyx CLI module is a cobra subtree assembled under one root in `cmd/lyx/mai
   `registration_test.go` (exists ⇒ registered), `longlist_test.go` (registered ⇒ in
   `root.Long`). Update the pinned sets in the same commit when adding a module/subcommand.
 
+## Sandbox Suite Coverage
+
+Every registered lyx module must be exercised by the black-box sandbox suite or be
+explicitly excluded with a reason.
+
+- **Tagging.** A `tools/sandbox/SANDBOX-SUITE.md` scenario that drives a specific
+  module declares it with a `**Covers:** <module>[, <module>...]` line, in the same
+  bold-label style as the scenario's `**Goal:**`/`**Watch:**`/`**Verdict:**` lines.
+  Coverage is checked at module granularity against the live cobra root
+  (`newRoot().Commands()`, skipping `help`/`completion`) — the same enumeration
+  `longlist_test.go` already uses, never a separately hand-maintained list.
+- **Allowlist.** Modules that are intentionally never sandbox-exercised are named
+  on the test's `excludedModules` allowlist with a one-line reason: `muxpoc` (PoC,
+  slated for replacement by the mux module), `ide` (side-effect heavy: `spawn`
+  opens a real VS Code window, `menu` is an interactive stdin picker),
+  `selfreport` (`create` files a real GitHub issue).
+- **Exists ⇒ covered or excluded.** Adding a new registered module requires either
+  a scenario tagged with that module's `**Covers:**` or a new allowlist entry with
+  a reason — the same "exists ⇒ registered" discipline as the CLI/Cobra Invariant's
+  registration guard.
+- **Enforced by** `cmd/lyx/sandbox_coverage_test.go`
+  (`TestSandboxCoverage_AllModulesCoveredOrExcluded`) on every `go test`.
+
 ## Documentation Lifecycle
 
 Which docs are kept vs deleted (mechanical per-module docs vs durable design docs):
