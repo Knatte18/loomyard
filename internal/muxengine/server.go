@@ -53,10 +53,10 @@ func socketName(hubPath string) string {
 func cleanAbsHubPath(hubPath string) string {
 	abs, err := filepath.Abs(hubPath)
 	if err != nil {
-		// filepath.Abs only fails if os.Getwd fails; fall back to a cleaned
-		// version of the input so ServerName stays total rather than
-		// panicking or returning an error the caller would have to plumb
-		// through every call site.
+		// filepath.Abs only fails when the current working directory cannot
+		// be resolved; fall back to a cleaned version of the input so
+		// ServerName stays total rather than panicking or returning an error
+		// the caller would have to plumb through every call site.
 		return filepath.Clean(hubPath)
 	}
 	return abs
