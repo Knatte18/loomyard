@@ -24,18 +24,34 @@ func Rules(strands []Strand, box Box, p Params) (layout string, focus string, er
 	// so a bad persisted record can never hang layout.
 	fixed := breakCycles(strands)
 	top, stack := partitionByAnchor(fixed)
+	ordered := orderStack(stack)
 
-	// Reserve a fixed band at the top of box for each AnchorTop strand,
-	// each followed by a one-row divider, before laying out the
-	// below-parent stack in the remaining region.
+	// Reserve a fixed band at the top of box for each AnchorTop strand, each
+	// followed by a one-row divider — except the very last top band's
+	// divider, which is only reserved when a below-parent stack follows it
+	// to consume the region past it. With >=2 top strands and zero stack
+	// strands there would otherwise be nothing left to fill the remainder of
+	// box.H (buildStackBody would then emit a window_layout string shorter
+	// than box.H, which psmux's select-layout rejects — a failure surfacing
+	// after launchStrandLocked already created the new pane, orphaning it;
+	// orch_04 review 04, finding #2), so the last top band instead stretches
+	// to absorb every leftover row: heights + dividers then always sum to
+	// exactly box.H regardless of how many top/stack strands are present.
 	placements := make([]placement, 0, len(top)+len(stack))
 	y := box.Y
-	for _, s := range top {
-		placements = append(placements, placement{id: s.PaneID, height: p.TopBandRows})
-		y += p.TopBandRows + 1
+	for i, s := range top {
+		height := p.TopBandRows
+		isLastTop := i == len(top)-1
+		if isLastTop && len(ordered) == 0 {
+			height = box.H - (y - box.Y)
+		}
+		placements = append(placements, placement{id: s.PaneID, height: height})
+		y += height
+		if !isLastTop || len(ordered) > 0 {
+			y++ // one-row divider before the next top band or the stack region
+		}
 	}
 
-	ordered := orderStack(stack)
 	stackBox := Box{X: box.X, Y: y, W: box.W, H: box.H - (y - box.Y)}
 	placements = append(placements, stackHeights(ordered, stackBox, p)...)
 

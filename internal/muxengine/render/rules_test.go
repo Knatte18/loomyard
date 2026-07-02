@@ -34,13 +34,34 @@ func TestRulesGolden(t *testing.T) {
 		wantFocus string
 	}{
 		{
+			// Regression for orch_04 review 04 finding #2: with >=2 top
+			// strands and zero stack strands, nothing but the last top band
+			// is left to fill the rest of box.H, so it must stretch — a
+			// fixed-height last band here would leave 13 rows unaccounted
+			// for (box.H 20 minus two 3-row bands minus one 1-row divider),
+			// producing a window_layout string select-layout rejects.
 			name: "TopPinnedAsFixedBandAboveStack",
 			strands: []Strand{
 				{GUID: "ta", PaneID: "%10", Live: true, Display: Display{Anchor: AnchorTop}},
 				{GUID: "tb", PaneID: "%20", Live: true, Display: Display{Anchor: AnchorTop}},
 			},
 			box:       Box{X: 0, Y: 0, W: 100, H: 20},
-			wantBody:  "100x20,0,0[100x3,0,0,10,100x3,0,4,20]",
+			wantBody:  "100x20,0,0[100x3,0,0,10,100x16,0,4,20]",
+			wantFocus: "", // no below-parent stack to default focus onto
+		},
+		{
+			// A second, distinct (3 top, 0 stack) instance of the same
+			// finding #2 combination, pinning that the stretch always lands
+			// on the LAST top band specifically (not split across all of
+			// them, and not the first).
+			name: "ThreeTopBandsNoStackLastBandAbsorbsRemainder",
+			strands: []Strand{
+				{GUID: "ta", PaneID: "%10", Live: true, Display: Display{Anchor: AnchorTop}},
+				{GUID: "tb", PaneID: "%20", Live: true, Display: Display{Anchor: AnchorTop}},
+				{GUID: "tc", PaneID: "%30", Live: true, Display: Display{Anchor: AnchorTop}},
+			},
+			box:       Box{X: 0, Y: 0, W: 100, H: 15},
+			wantBody:  "100x15,0,0[100x3,0,0,10,100x3,0,4,20,100x7,0,8,30]",
 			wantFocus: "", // no below-parent stack to default focus onto
 		},
 		{
