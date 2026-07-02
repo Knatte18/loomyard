@@ -3,7 +3,7 @@
 ```yaml
 task: "Fix lyx config --set dropping unrecognized keys + reconcile not detecting drift"
 slug: config-set-key-loss
-approved: false
+approved: true
 started: "20260702-104548"
 parent: main
 root: ""

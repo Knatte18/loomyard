@@ -77,7 +77,8 @@ DAG.
 
 ### Card 9: Update --set help text for the preserve-and-warn behavior
 
-- **Context:** none
+- **Context:**
+  - `internal/configcli/configcli_test.go`
 - **Edits:**
   - `internal/configcli/configcli.go`
 - **Creates:** none
@@ -101,6 +102,7 @@ DAG.
 
 - **Context:**
   - `internal/configcli/configcli.go`
+  - `internal/configcli/reconcile_test.go`
 - **Edits:**
   - `internal/configcli/configcli_test.go`
 - **Creates:** none
@@ -136,6 +138,28 @@ DAG.
     branch_prefix=new-`. Assert exit code `0` and that the decoded JSON
     output map has no `"preserved"` key at all (`_, ok :=
     env["preserved"]; ok` must be `false`).
+  - Add `TestDispatchSet_PreservedKeyDetectedByReconcile`: closes the loop on
+    the task's second symptom (reconcile "not detecting drift") with an
+    end-to-end test that chains `--set` into `reconcile`, mirroring
+    `reconcile_test.go`'s `TestReconcile_DryRun` git-repo setup pattern
+    (`gitexec.RunGit([]string{"init"}, tmpDir)`, then `os.Chdir(tmpDir)` with
+    a `defer os.Chdir(oldCwd)` restore) since `RunCLI(&buf,
+    []string{"reconcile"})` resolves its layout from cwd via
+    `hubgeometry.Resolve`, unlike `dispatch`, which takes an explicit
+    `*hubgeometry.Layout`. Steps: (1) seed `warp`'s config via
+    `seedModuleConfig(t, tmpDir, "warp", "branch_prefix: old-\nlegacy_key:
+    keepme\n")`; (2) call `dispatch(makeLayoutAt(tmpDir), nil, &setOut,
+    []string{"warp"}, makeNeverCalledEditor(t), (&fakeSyncTracker{exitCode:
+    0}).syncFunc(), false, []string{"branch_prefix=new-"})` and assert exit
+    code `0` (this is the same preserving `--set` call as
+    `TestDispatchSet_PreservesUnrecognizedKeyReportsWarning`, just now
+    followed by a reconcile call); (3) call `RunCLI(&reconcileOut,
+    []string{"reconcile"})` and assert exit code `0`; (4) parse
+    `reconcileOut` as JSON, find the `modules` array entry whose `"module"`
+    field is `"warp"`, and assert its `"removed"` field contains
+    `"legacy_key"` — proving reconcile's existing drift-detection correctly
+    sees the orphan once `--set` stops silently destroying it before
+    reconcile ever gets a chance to look.
 - **Commit:** `test(configcli): cover the JSON success envelope and preserved-key reporting`
 
 ### Card 11: Strengthen the integration test's success assertion
