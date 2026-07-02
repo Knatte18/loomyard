@@ -40,5 +40,7 @@ batches:
     start_sha: 914ddbb9122a658b4f59557d6d73c0620ca20901
     commit_sha: a43a54eeb99c257196e66c73bd2395416e277a5a
   - name: configcli-json-envelope
-    state: pending
+    state: running
+    implementer_session: f7bed8de-6e4a-4f50-8170-68ea2f954f4e
+    start_sha: 4d4338b6b15a1ed7b13e0a7ecb81f757c429857f
 ```
