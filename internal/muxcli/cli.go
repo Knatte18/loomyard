@@ -95,6 +95,8 @@ strands, plus rendering their layout on every mutation.`,
 		},
 	}
 
+	parent.AddCommand(c.upCmd(), c.downCmd())
+
 	return parent
 }
 
