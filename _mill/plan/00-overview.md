@@ -3,7 +3,7 @@
 ```yaml
 task: "Expand the sandbox suite: subfolder init, weft, warp, config reconcile + coverage invariant"
 slug: "sandbox-suite-expand"
-approved: false
+approved: true
 started: "20260702-071523"
 parent: "main"
 root: ""
