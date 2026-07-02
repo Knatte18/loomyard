@@ -1,85 +1,114 @@
-# Module: mux (design)
+# Module: mux (as-built)
 
-> **Status:** design, nothing implemented yet. Every claim about psmux here is **grounded in
-> hands-on testing** — see the evidence logs [`mux-exploration.md`](../research/mux-exploration.md)
-> and [`mux-hooks-exploration.md`](../research/mux-hooks-exploration.md), and the TUI-behavior
-> reference [`../research/psmux-tui-behavior.md`](../research/psmux-tui-behavior.md). The daemon + Slack relay are in
-> [Deferred](#deferred). See [roadmap.md](../roadmap.md) for sequencing.
+> **Status:** ✅ built (`internal/muxengine` + `internal/muxengine/render` + `internal/muxcli`,
+> wired into `lyx mux`). This doc is reconciled to the **as-built** design; earlier drafts of
+> this file described mux constructing the Claude `--session-id` / launch command itself (a
+> "decision-3" that predated the shuttle split) — **that decision is superseded**, see
+> [Load-bearing psmux decisions](#load-bearing-psmux-decisions-verified) item 3 and
+> [Resume](#resume-native---resume-via-the-stored-opaque-resumecmd) below. Every claim about
+> psmux here is **grounded in hands-on testing** — see the evidence logs
+> [`mux-exploration.md`](../research/mux-exploration.md) and
+> [`mux-hooks-exploration.md`](../research/mux-hooks-exploration.md), and the TUI-behavior
+> reference [`../research/psmux-tui-behavior.md`](../research/psmux-tui-behavior.md). The daemon,
+> the `pane-died` auto-trigger, the `own-window` anchor, cross-worktree columns/mplex, and session
+> portability are all **deferred** — see [Deferred](#deferred). See [roadmap.md](../roadmap.md)
+> for sequencing.
 >
-> **Note:** A working proof-of-concept already exists in `internal/muxpoccli` — see
-> [overview.md#modules](../overview.md#modules). muxpoc is a POC; it stays as a reference and is
-> **not** extracted into mux. mux is built fresh, informed by what muxpoc proved.
+> **Note:** A working proof-of-concept, `internal/muxpoccli`, informed this design (the tmux
+> layout checksum, the `window_layout` string format, and the pane-id/parse plumbing are reused
+> **verbatim** from it — see [Load-bearing psmux decisions](#load-bearing-psmux-decisions-verified)).
+> muxpoc stays on disk as a reference and is **parked** — unwired from the `lyx` CLI, not deleted.
+> See [overview.md#modules](../overview.md#modules).
 
 mux is **the window to the world** — the one module that owns the live psmux session for a
-worktree and decides what the operator sees. It is three things in one:
+worktree and decides what the operator sees. It is three things in one, split across three
+packages (`muxcli -> muxengine -> render`, the only import direction — render never imports
+the engine):
 
-1. **Overlay over psmux** — the shell that holds *every* psmux command: pane create/kill,
-   send-keys, capture, the layout primitives, env hygiene, native `--resume`, CC-hook wiring, and
-   one named server per hub.
-2. **Strand bookkeeping** — the record of every managed process (a **strand**), persisted to
-   `.lyx/mux.json`.
-3. **Render** (an internal sub-package, [`internal/mux/render`](#render--a-pure-function-over-strands))
-   — a pure function `layout = rules(strands)` over a **closed, generic display vocabulary**.
+1. **Overlay over psmux** (`internal/muxengine`) — the shell that holds *every* psmux command:
+   pane create/kill, send-keys, capture, the layout primitives, env hygiene, native `--resume`,
+   and one named server per hub.
+2. **Strand bookkeeping** (`internal/muxengine`) — the record of every managed process (a
+   **strand**), persisted to `.lyx/mux.json`.
+3. **Render** (`internal/muxengine/render`, a pure leaf package —
+   [see below](#render--a-pure-function-over-strands)) — a pure function `Rules(strands, box) ->
+   (layout, focus)` over a **closed, generic display vocabulary**. `muxengine` imports `render`
+   and maps its own persisted records down to `render.Strand`; render never imports muxengine, so
+   the graph stays acyclic.
 
 It is the Go reimplementation of millpy's `_psmux.py` (which "doesn't work" and is not a
-reference). Driven by `lyx mux <subcommand>`; shells out to `psmux.exe` via Go `exec` (no MSYS
-layer, so no slash-arg mangling — a hazard the probe harness hit from git-bash).
+reference). Driven by `lyx mux <subcommand>` (`internal/muxcli`, the cobra CLI over `muxengine`);
+shells out to `psmux.exe` via Go `exec` (no MSYS layer, so no slash-arg mangling — a hazard the
+probe harness hit from git-bash).
 
 ## The strand model
 
 Everything mux manages is a **strand**: one tracked process. Most strands are backed by a visible
-pane, but a strand may be **`hidden`** — tracked by mux but not shown in the current layout
-(optionally parked in a dedicated background window — see [Hidden strands](#hidden-strands-and-background-work)).
-A strand is just a metadata record:
+pane, but a strand may be **`hidden`** — tracked by mux but not shown in the current layout (see
+[Hidden strands](#hidden-strands-and-background-work)). A strand is a metadata record — mux
+**stores every field a caller writes and reads none of them semantically**, and there is
+deliberately **no domain `type` field**:
 
 ```
 strand {
-  id             // stable internal handle (mux-assigned)
-  name           // human-readable label, caller-supplied (e.g. "feature-x:plan-handler")
-  sessionId?     // claude session id, if it has one (for --resume)
+  guid           // mux-generated (128-bit crypto/rand, hex) — the durable identity/selector
+  name           // caller-supplied descriptive label, stored verbatim — display-only, never a selector
   worktree       // owning worktree slug — generic grouping; mux does not know what the worktree does
-  parent?        // the strand-id that spawned this one — forms the spawn tree
-  display {      // drawn ONLY from mux's closed vocabulary (below)
+  parent?        // the parent strand's guid — forms the spawn tree
+  cmd            // opaque launch command string mux never parses
+  resumeCmd?     // opaque resume command string, optional — see Resume
+  sessionId?     // opaque metadata (e.g. claude's session id); mux neither writes nor reads it in v1
+  paneId         // the live psmux pane id — ephemeral, re-derived on reconcile
+  display {      // drawn ONLY from mux's closed vocabulary (below) — no height field, it is derived
     anchor:  top | below-parent | own-window | hidden
-    height:  fixed(n) | grow | share
     focus:   bool
     shrinkWhenWaitingOnChild: bool
   }
 }
 ```
 
-`name` vs `id`: `id` is mux's stable internal handle; `name` is the human label the caller picks,
-used for the psmux pane/window title, the dashboard, and `lyx mux status`. Like `display`, the name
-is **opaque to mux** — it is a label, not a domain `type` mux branches on — so it does not
-reintroduce the type-circularity.
+**`guid` is the durable key; `name` is display-only.** `guid` is mux-generated at `AddStrand` and
+is the identity every selector uses — `--parent <guid>`, `remove <guid>`, `UpdateStrand(guid,
+…)`/`RemoveStrand(guid, …)` all key on it, and parent links store the parent's `guid`. `name` is a
+caller-supplied label used only for the pane title and `status` output; it is **not** a selector
+and carries no uniqueness requirement. It is composed at `add` time from a `mux.yaml`
+`strand-name` template (default `<ROLE>:<ROUND>:<SHORT_GUID>`) — `--role`/`--round` are
+formatting-only inputs consumed once to fill the template, never persisted or branched on (the
+sharp difference from a forbidden `type` field).
 
-### The contract: callers hand mux `{cmd, name, display}`
+### The contract: callers hand mux `{cmd, name, display, …}`, mux never reads it semantically
 
 Anything that wants to be shown calls into mux with a command to run and a **generic display
 spec** — never a domain type. mux runs the command in a pane, records the strand, and re-renders:
 
 ```
-AddStrand{ cmd, name, worktree, parent?, display }  →  pane created, strand recorded, layout recomputed
-UpdateStrand{ id, display }                          →  display changes over a strand's life → re-render
-RemoveStrand{ id }                                   →  pane killed, strand dropped → re-render
+AddStrand{ cmd, name, worktree, parent?, resumeCmd?, display }  →  guid assigned, pane created
+                                                                    (unless anchor:hidden), layout recomputed
+UpdateStrand{ guid, display }                                   →  display changes over a strand's
+                                                                    life → re-render (may surface a
+                                                                    hidden strand; may not hide a live one)
+RemoveStrand{ guid, recursive }                                 →  pane(s) killed, strand(s) dropped,
+                                                                    cascades over descendants → re-render
 ```
 
 Examples — the **caller** owns the domain→display mapping; mux never sees "loom-watcher":
 
 ```
 loom:     AddStrand{ name:"loom-status", cmd:"lyx loom status --watch",
-                     display:{ anchor:top, height:fixed(1) } }
-shuttle:  AddStrand{ name:"feature-x:plan-handler", cmd:"claude …",
-                     display:{ anchor:below-parent, height:grow, focus:true, shrinkWhenWaitingOnChild:true } }
-review:   AddStrand{ name:"cluster-rev-3", cmd:"claude …", display:{ anchor:own-window } }
+                     display:{ anchor:top } }
+shuttle:  AddStrand{ name:"feature-x:plan-handler", cmd:"claude …", resumeCmd:"claude --resume …",
+                     display:{ anchor:below-parent, focus:true, shrinkWhenWaitingOnChild:true } }
+review:   AddStrand{ name:"cluster-rev-3", cmd:"claude …", display:{ anchor:own-window } }  // deferred anchor
 ```
 
 ### Why a closed, generic vocabulary (not a `type` field)
 
 A domain `type` field (`loom-watcher`, `cluster`, …) would force mux to **know every type its
 consumers might invent** — mux would import its own consumers' vocabulary. Circular. Instead mux
-exposes a **closed, generic** set of display behaviors (anchors, sizing modes, `focus`,
-`shrinkWhenWaitingOnChild`); callers compose from it. The analogy is CSS: an element says
+exposes a **closed, generic** set of display behaviors (anchors, `focus`,
+`shrinkWhenWaitingOnChild`; heights are fully derived, not caller-set — see
+[the height policy](#render--a-pure-function-over-strands)); callers compose from it. The analogy
+is CSS: an element says
 `position: sticky; top: 0`, never "I am a navbar" — the layout engine knows the generic
 primitives, the author owns the domain→primitive mapping. Consequences:
 
@@ -90,10 +119,15 @@ primitives, the author owns the domain→primitive mapping. Consequences:
 ### Hidden strands and background work
 
 `anchor: hidden` is a tracked strand with **no place in the current layout** — mux knows about it
-(session, lifecycle, resume) but does not show it. Two uses:
+(session, lifecycle, resume) but does not show it. **In v1 a hidden strand has no live pane at
+all**: `cmd` is not run at `add` time, so `anchor: hidden` is only valid at `add` (pending a
+future surface). Two uses:
 
-- **Surface on demand.** A strand can flip `hidden ⇄ visible` (via `UpdateStrand`) — run something
-  out of sight, then pull it into view when you want to watch it.
+- **Surface on demand, one-directional in v1.** `UpdateStrand` may flip a strand's anchor off
+  `hidden` (to `top`/`below-parent`) — creating its pane and running `cmd` — but **rejects
+  `visible → hidden`** (`cannot hide a live strand in v1`); hiding a *running* strand is deferred
+  background work. This keeps the invariant "a hidden strand never has a live pane" true across
+  `add`/`update`/`resume` — `resume` also skips `hidden` strands (they are pending, not dead).
 - **Background work via mux instead of `proc`.** A process that today would be a plain
   [`internal/proc`](README.md) background spawn (invisible) could instead run as a `hidden` strand,
   so it is **observable** — mux can gather all such strands into a dedicated psmux **background
@@ -108,37 +142,86 @@ Spawns nest (orchestrator → child → grandchild, ≤3 deep) and **only the de
 active** — every ancestor is blocked waiting on its child. So the rule is: **the bottom-most child
 is always the largest and sits at the bottom** (the active pane, where a human types). Ancestors
 collapse to compact strips via `shrinkWhenWaitingOnChild`. This is muxpoc's proven bottom-dominant
-layout (2 panes → 56% bottom; 3 → 60% with 9+9-row ancestors), now expressed declaratively over the
-`parent` tree rather than hand-coded.
+layout (2 panes → 56% bottom; 3 → 60% with 9+9-row ancestors, from a **fixed** 55%
+`activePaneShare`), now expressed declaratively over the `parent` tree via a **derived** height
+policy rather than hand-coded — see the height policy below.
 
 ### Render — a pure function over strands
 
-The render sub-package is `layout = rules(strands)` — deterministic, no I/O. It reads the strand
-set, applies the rules to the generic `display` fields + the `parent` tree, and emits a psmux
-`window_layout` string that the overlay applies. Because it is pure, it is the clean **test
-surface**: feed a set of strand records + dummy commands, assert the layout string — golden-file
-tests, no psmux and no agents needed. Keep it an **internal sub-package** so it stays modular and
-can be split back out later if mux ever bloats (it is, in effect, the absorbed "viewer").
+`internal/muxengine/render` is `Rules(strands, box, params) -> (layout, focus, err)` —
+deterministic, no I/O, and **total**: it always returns a valid, non-negative layout string (see
+the clamp rule below), never errors on a well-formed strand set. `muxengine` maps its persisted
+records down to `render.Strand` (only `guid`, `parent`, `display`, `paneId`, `live` — render never
+sees `cmd`/`resumeCmd`/`sessionId`/`worktree`/`name`) and calls `Rules`. Because it is pure, it is
+the clean **test surface**: feed a set of strand records, assert the layout string — golden-file
+tests, no psmux and no agents needed.
 
-**Re-render is event-driven, not timed.** Recompute on the **structural** events that change the
-strand set or a strand's display: `AddStrand` / `UpdateStrand` / `RemoveStrand`, or a `pane_dead`.
-The active-bottom-dominant arrangement is derivable from the parent tree, so **no runtime idle
-signal is needed** — completion is [shuttle's concern](#completion-and-hooks-live-in-shuttle-not-mux)
-(via the file contract), not a mux re-render trigger. Debounce a burst into one `ApplyLayout`.
+**Two distinct layers inside render**, kept separate so an anchor is a localized, obvious edit:
+
+- **Layout policy** (`policy.go`, `height.go`) — an explicit per-anchor dispatch (`top` /
+  `below-parent` / `hidden` in v1; `own-window` is a closed vocabulary member but rejected —
+  deferred until a consumer exists) and the **derived height policy**: given usable height
+  `H_u` = window height − top band(s) − 1-row dividers, each `top` strand is a fixed
+  `topBandRows` band (config, default 1); in the `below-parent` stack, a **shrink:true ancestor**
+  collapses to a `collapsedStripRows` strip and the **active/focused strand plus every
+  shrink:false strand** split the remainder equally, with any integer-division leftover going to
+  the active/bottom pane (deterministic, mirroring muxpoc's single-bottom-pane absorbing the
+  remainder). A **clamp rule** keeps render total when fixed demand exceeds the window: shrink
+  strips to 1 row, then reduce full panes to a `minFullRows` floor (config, default 3), then clamp
+  earlier panes to 1 row as a last resort — a torn/negative height would make psmux reject the
+  layout, so render never emits one. Sibling ordering (same-parent strands) is **insertion order**
+  (position in the persisted strand table), so the layout string is deterministic.
+- **Layout mechanics** (`checksum.go`, `layout.go`) — the `window_layout` string builder and the
+  tmux checksum, reused **verbatim** from muxpoc (see
+  [Load-bearing psmux decisions](#load-bearing-psmux-decisions-verified) item 1); only the height
+  *policy* feeding it changed.
+
+**Re-render is on-demand, not event-driven or timed.** v1 is daemonless: the layout recomputes
+**in-process on each mutation** (`AddStrand`/`UpdateStrand`/`RemoveStrand` recompute + apply within
+the same call) and **on-demand on every CLI verb** (`status`, `resume`, the next `add`/`remove`
+reconcile against live `list-panes` and re-apply). There is **no live `pane-died` listener** — a
+dead pane is noticed the next time a verb runs, not instantly (the listener + a hidden handler
+verb are deferred with [the daemon](#mux-daemon-deferred)). The whole
+`read -> mutate -> persist -> render -> apply` cycle is guarded by one **mux operation lock** at
+`.lyx/mux.lock`, acquired once at each engine operation's entry (never by a CLI verb directly —
+see [Cross-process concurrency](#cross-process-concurrency-one-mux-operation-lock) below), so two
+concurrent mutators (an operator's CLI verb and shuttle/loom driving `AddStrand` in-process) never
+clobber each other's layout. Completion/idle detection is
+[shuttle's concern](#completion-and-hooks-live-in-shuttle-not-mux) (via the file contract), never a
+mux re-render trigger.
+
+### Cross-process concurrency: one mux operation lock
+
+Each public engine op (`AddStrand`/`UpdateStrand`/`RemoveStrand`, and the `up`/`resume`/
+`status`-reconcile-apply ops) acquires `.lyx/mux.lock` (via `internal/lock`) **once at its own
+entry** and holds it for its whole read→mutate→persist→render→apply cycle, composing internally
+from unexported, unlocked helpers that never re-acquire the lock. **CLI verbs never take the lock
+themselves** — they only call the engine op. This single-acquisition-point rule is mandatory, not
+stylistic: `internal/lock` (gofrs/flock) is **non-reentrant across separate handles even
+in-process** on Windows, so a CLI verb locking and then calling a lock-taking engine op would
+self-deadlock. Lock ordering is strict **outer → inner**: `mux.lock` is always acquired before
+`internal/state`'s own `mux.json.lock`. The lock is scoped per-worktree (`.lyx/mux.lock` lives in
+the worktree's `.lyx/`), and the OS file handle releases automatically if a holding process dies —
+v1 needs no stale-lock detection.
+
 **(Future:** re-render *within one column* without touching the others — a per-column-independent
 render — once cross-worktree columns arrive.)
 
 ### Persistence is load-bearing
 
-The `display` spec, `parent` ref, and the **opaque launch + resume command strings** (built by
-shuttle — `claude …` and `claude --resume …`, which mux re-runs without knowing they are Claude)
-are all **caller-supplied** — they cannot be reconstructed from psmux alone (psmux knows where panes
-are, not that one "should be 1 line at top", is a child of another, or how to relaunch). So mux
-**persists the full strand table** to `.lyx/mux.json` (local, untracked, via `internal/state` —
-see [overview.md](../overview.md#durable-vs-ephemeral-state-_lyx-vs-lyx)). On startup it **reloads
-the strands and reconciles** against live `list-panes` (and, generically, `pane_dead`): drop dead
-strands, keep the live ones, re-apply the layout, and re-run the stored resume command per recovered
-strand. Without this, a crash loses the display intent, the spawn tree, and how to relaunch.
+The `display` spec, `parent` ref, and the **opaque launch + resume command strings** (`cmd` /
+`resumeCmd`, built by the caller — shuttle's `claude …` and `claude --resume …`, which mux re-runs
+without knowing they are Claude) are all **caller-supplied** — they cannot be reconstructed from
+psmux alone (psmux knows where panes are, not that one "should be 1 line at top", is a child of
+another, or how to relaunch). So mux **persists the full strand table** to `.lyx/mux.json` (local,
+untracked, via `internal/state` — see
+[overview.md](../overview.md#durable-vs-ephemeral-state-_lyx-vs-lyx)), keyed by `guid`. On every
+verb it **reconciles against live `list-panes`**: a strand whose pane is gone/`pane_dead=1` has its
+pane binding **cleared but its record kept** (so `resume` can rebuild it) — only an explicit
+`remove` deletes a record. `resume` then recreates a pane for each not-live, non-`hidden` strand
+and re-runs its stored `resumeCmd` (or `cmd` if it has none — see
+[Resume](#resume-native---resume-via-the-stored-opaque-resumecmd)). Without this, a crash loses the
+display intent, the spawn tree, and how to relaunch.
 
 ## Scope: one terminal per worktree (now); cross-worktree columns (later)
 
@@ -155,15 +238,27 @@ columns by slug. No architectural change — a metadata field and a rule.
    string must be emitted directly. The tmux checksum (rotate-right-1 accumulate, 16-bit) is
    verified and reproducible in Go; `select-layout "<csum>,<body>"` applies it atomically and
    honors sizing. The render sub-package computes the body; the overlay applies it.
-2. **Loomyard never owns OS window management.** Popping ONE maximized terminal attached to a
-   session is reliable (`lyx mux attach`); precise multi-window docking and WT multi-tab launches
-   are brittle → best-effort, not core. psmux auto-resizes to whatever client attaches.
-3. **Crash recovery via native `claude --resume`, given env hygiene** — mux assigns each pane a
-   `--session-id` at launch; recovery relaunches `claude --resume <id>` per strand. The one
-   requirement: strip the inherited Claude-Code parent-session env (see [Resume](#resume-after-crash--native---resume-with-env-hygiene)).
-4. **One named psmux server per hub — the orphan firewall.** mux boots its server as
-   `psmux -L lyx-<hub-basename>-<short-hash>` — a legible hub basename plus a short hash of the
-   hub's **absolute path**, derived deterministically via `internal/hubgeometry`. The hash is required
+2. **Loomyard never owns OS window management.** `lyx mux attach` attaches **in-place, in the
+   operator's current terminal** — no popped/dedicated window in v1, so `mux.yaml` needs no
+   terminal-emulator path. Popping a dedicated maximized terminal (needed if the driver is a
+   headless programmatic session with no TTY to attach into) is deferred; precise multi-window
+   docking and WT multi-tab launches remain brittle → best-effort, not core. psmux auto-resizes to
+   whatever client attaches.
+3. **Crash recovery via native `--resume`, given env hygiene — mux stores, never constructs, the
+   resume command (supersedes an earlier "decision-3").** An earlier draft of this doc had mux
+   itself assigning each pane a `--session-id` and building `claude --resume <id>`; that would make
+   mux read/construct a Claude-specific command, breaking the dumb-carrier contract. **As built,**
+   the caller (shuttle) builds both the launch `cmd` and the opaque `resumeCmd` and hands them to
+   `AddStrand`; mux stores them verbatim and `resume` replays the stored `resumeCmd` per strand
+   without parsing it. The one requirement mux itself owns: strip the inherited Claude-Code
+   parent-session env from the psmux **server** spawn (see
+   [Resume](#resume-native---resume-via-the-stored-opaque-resumecmd)).
+4. **One named psmux server per hub — the orphan firewall — with one psmux session per
+   worktree inside it.** mux boots its server as `psmux -L lyx-<hub-basename>-<short-hash>` — a
+   legible hub basename plus a short hash of the hub's **absolute path**, derived deterministically
+   via `internal/hubgeometry`; the session name is the worktree slug
+   (`filepath.Base(WorktreeRoot)`), so sibling worktrees under the same hub share one server but
+   never collide on a session. The hash is required
    for two reasons: the name must be unique per absolute hub path (two hubs sharing a basename on
    different paths must not collide onto one server), and a raw path is not a valid `-L` name
    (`:` / `\` / spaces). The basename keeps it human-legible in `psmux ls` and `lyx mux status`;
@@ -172,27 +267,46 @@ columns by slug. No architectural change — a metadata field and a rule.
    provably stray and `lyx mux status` flags it. This fixes the **orphaned-process problem seen
    during exploration**, where anonymous per-probe servers left panes no one could attribute.
 
-## Subcommands (v1)
+## Subcommands (v1, as built)
+
+`up`/`resume` have a sharp boundary: **`up` never launches or relaunches a strand command — it is
+substrate-only; `resume` is the only replayer.**
 
 | Command | Does |
 |---|---|
-| `lyx mux status` | Reconcile `.lyx/mux.json` strands against the named server's live `list-panes` + `claude agents --json`: report tracked strands, dead sessions, and **orphans** (psmux processes outside `lyx-<hub-basename>-<short-hash>`). Cleanup is confirm-gated. |
-| `lyx mux attach` | Pop / attach one maximized terminal to the worktree's psmux session. The popped terminal has a real TTY so claude renders there. |
-| `lyx mux resume` | Rebuild the session from `.lyx/mux.json` and relaunch `claude --resume <id>` per strand (env stripped). |
+| `lyx mux up` | Ensure the server (clean env) + this worktree's session exist (boot if absent, no-op if up). Reconcile + apply the layout from the current strand table. **Runs no strand command.** |
+| `lyx mux add` | `AddStrand` — `--cmd`, optional `--role`/`--round`/`--name`/`--resume-cmd`/`--parent <guid>`/`--anchor top\|below-parent\|hidden`/`--focus`. Prints the assigned `guid` + resolved `name`. A `hidden` strand gets no pane until surfaced. |
+| `lyx mux remove <guid>` | `RemoveStrand` — requires `--recursive` on a non-leaf (fails otherwise: `strand has children, use --recursive`); the engine API itself always cascades. Result JSON lists every removed strand. |
+| `lyx mux status` | Reconcile `.lyx/mux.json` strands against the named server's live `list-panes`: report **this session's** tracked strands and their live/dead state. v1 does **not** actively enumerate stray/orphan psmux servers (a reliable listing on Windows is unverified) — the named server still provides the orphan-firewall property, `status` just doesn't scan for it yet. |
+| `lyx mux attach` | `psmux attach` to this worktree's session **in the operator's current terminal, in place** (no popped window) — see the [envelope exception](#attach-is-a-documented-envelope-exception) below. |
+| `lyx mux resume` | For every persisted strand that is **not live and not `hidden`**, (re)create its pane and run its stored `resumeCmd` (or `cmd` if it has none). Already-live strands are left untouched (no double send-keys); `hidden` strands are skipped (pending, not dead). Boots the server+session first if absent. |
+| `lyx mux down` | Kill the mux server and clear this worktree's strand state. |
 
-Callers (`shuttle`, `loom`, `review`) drive `AddStrand`/`UpdateStrand`/`RemoveStrand` through the
-package API, not the CLI.
+`UpdateStrand` is engine-API-only — there is no `lyx mux update` verb in v1. Callers (`shuttle`,
+`loom`, `review`) drive `AddStrand`/`UpdateStrand`/`RemoveStrand` in-process through the
+`internal/muxengine` package API for anything the CLI's flag surface doesn't cover (e.g. focus
+changes).
+
+### `attach` is a documented envelope exception
+
+`lyx mux attach` hands off the operator's stdio to `psmux attach` and blocks — the terminal-handover
+tail cannot emit the CLI/Cobra Invariant's `output.Ok`/`Err` JSON envelope. Everything that can
+fail (session missing, lock contention, reconcile) runs **pre-flight and stays on the envelope**;
+only the post-handoff tail is exempt, and on success it emits **no** JSON. This follows the
+existing interactive-`ide` precedent and is registered in
+[CONSTRAINTS.md](../../CONSTRAINTS.md#cli--cobra-invariant).
 
 ### Naming
 
-Go packages carry **no prefix** — `internal/mux` (an early `gomux` draft was dropped). Under
-the current cli/engine naming convention (see [CONSTRAINTS.md](../../CONSTRAINTS.md#package-naming)),
-mux will be split into `internal/muxcli` + `internal/muxengine` when it lands. mux absorbs what
-earlier drafts split into separate `shed`/`glance` modules:
-with one terminal per worktree and a closed generic display vocabulary, the model (the strand
-bookkeeping) and the view (the render sub-package) sit cleanly inside mux without dragging domain
-knowledge in. The render half is the internal sub-package
-[`internal/mux/render`](#render--a-pure-function-over-strands).
+Under the cli/engine naming convention (see the "Package naming" rule in
+[CONSTRAINTS.md](../../CONSTRAINTS.md#cli--cobra-invariant)), mux is split into `internal/muxcli` (the
+cobra CLI) + `internal/muxengine` (the domain kernel) + `internal/muxengine/render` (the pure
+display-vocabulary leaf). muxengine absorbs what earlier drafts split into separate
+`shed`/`glance` modules: with one terminal per worktree and a closed generic display vocabulary,
+the model (strand bookkeeping) and the view (render) sit cleanly inside mux without dragging
+domain knowledge in. The render half is
+[`internal/muxengine/render`](#render--a-pure-function-over-strands); `muxcli -> muxengine ->
+render` is the only import direction.
 
 ## Environment assumptions (verified)
 
@@ -210,7 +324,7 @@ knowledge in. The render half is the internal sub-package
   **psmux server's `exec.Cmd.Env` without those vars** → server + all panes + all claude inherit a
   clean env. Crucially, strands spawned later inherit the *server's* env, so they stay clean even
   when the spawning `lyx` call was itself launched by a poisoned claude — as long as the server was
-  started clean. See [Resume](#resume-after-crash--native---resume-with-env-hygiene).
+  started clean. See [Resume](#resume-native---resume-via-the-stored-opaque-resumecmd).
 
 ## What actually works (empirical guardrails)
 
@@ -274,17 +388,20 @@ caller (loom at an input gate, via `UpdateStrand`). The active-bottom-dominant a
 **derivable from the tree** — no runtime idle signal needed.
 
 **The `Agent` / `AskUserQuestion` guardrails are also shuttle's `--settings`** (Claude-specific),
-carried opaque by mux: a `PreToolUse` deny on `Agent` (steer to `lyx mux spawn` so nested work
+carried opaque by mux: a `PreToolUse` deny on `Agent` (steer to `lyx mux add` so nested work
 stays a visible strand) and on `AskUserQuestion` (steer to the file contract). mux never sees them.
 
 ## Liveness and orphans — generic, not Claude
 
-mux's own "is this strand's process still alive / is that an orphan" needs are met **generically**,
-with no Claude knowledge: the [named server](#load-bearing-psmux-decisions-verified) (any psmux
-process outside `lyx-<hub-basename>-<short-hash>` is provably stray) plus psmux `pane_dead`. A richer cross-check —
-`claude agents --json` joined on `sessionId` (`state ∈ {working, blocked, done, failed}`) — is
-*Claude-specific*, so it belongs with shuttle, surfaced to mux only as a generic "this session is
-gone" signal if at all. mux's core liveness stays provider-invariant.
+mux's own "is this strand's process still alive" need is met **generically**, with no Claude
+knowledge: reconcile against live `list-panes` and psmux `pane_dead`. The
+[named server](#load-bearing-psmux-decisions-verified) (any psmux process outside
+`lyx-<hub-basename>-<short-hash>` is provably stray) *enables* orphan detection, but **`lyx mux
+status` does not actively enumerate stray servers in v1** — a reliable psmux-server listing on
+Windows is unverified, so active listing is deferred and `status` reports only **this session**
+(its tracked strands + their live/dead state). A richer cross-check — joining on Claude's own
+session-state API — is *Claude-specific*, so it belongs with shuttle, surfaced to mux only as a
+generic "this session is gone" signal if at all. mux's core liveness stays provider-invariant.
 
 ## Pause is not a mux concern
 
@@ -295,19 +412,24 @@ optional [in-agent interrupt](shuttle.md#in-agent-interrupt-optional) is just sh
 via mux send-keys — still no mux-side state.) The crash recovery below is the fallback for
 *involuntary* death; pause deliberately keeps strands warm so that path is not needed.
 
-## Resume after crash — native `--resume` with env hygiene
+## Resume: native `--resume` via the stored, opaque `resumeCmd`
 
-`lyx mux resume` rebuilds the session from `.lyx/mux.json` and re-runs each strand's **stored
-resume command** (shuttle built it as `claude --resume <session-id>`; mux runs it opaquely, not
-knowing it is Claude). **This works for programmatically-driven panes** — verified end-to-end twice
-(independent thread + in-session): a full transcript persisted (~14 KB, real `user`/`assistant`
-records) and after a `kill-server` crash the resumed pane recalled its codeword.
+`lyx mux resume` rebuilds a strand's pane for every persisted strand that is **not live and not
+`hidden`**, then re-runs that strand's **stored `resumeCmd`** (falling back to `cmd` if the strand
+has none) — mux never constructs a `--session-id` or a `claude --resume …` string itself, it only
+replays what the caller (shuttle) built and handed to `AddStrand` opaquely. Already-live strands
+are left untouched (no double send-keys). **Native resume works for programmatically-driven
+panes** — verified end-to-end twice (independent thread + in-session): a full transcript persisted
+(~14 KB, real `user`/`assistant` records) and after a `kill-server` crash the resumed pane recalled
+its codeword.
 
 ```
 lyx mux resume:
-  read .lyx/mux.json → reload strands → render layout string → apply
-  per strand: <spawn with clean server env>            (mux owns the server env)
-              <re-run the strand's stored resume command>   # opaque; shuttle built it
+  read .lyx/mux.json → reconcile against live list-panes → boot server+session if absent
+  for each strand that is not live and not hidden:
+    <(re)create its pane with clean server env>     (mux owns the server env)
+    <re-run resumeCmd, or cmd if resumeCmd is unset>   # opaque; caller built it, mux just replays it
+  apply layout → re-persist pane ids
 ```
 
 **The one requirement — lyx must sanitize the psmux child env (mandatory):**
@@ -320,12 +442,14 @@ model. Because lyx (Go) spawns psmux, it is the natural chokepoint: build the **
 `exec.Cmd.Env` without** these vars (verified-fallback: clear them in the pane right before the
 `claude` launch). Strands spawned later inherit the server's clean env.
 
-> **Robustness gap:** cold-recover must not relaunch `claude --resume <id>` unconditionally. If a
-> strand crashed *before any conversation* (no transcript), `--resume` errors with "No conversation
-> found"; recover must detect that and fall back to a fresh `--session-id` launch. (Note: for an
-> unfinished step, [`loom`](loom.md#crash-recovery--resume-on-output-files-not-live-processes)
-> respawns rather than resumes — mux's `--resume` restores the *visible* session, not loom's
-> correctness.)
+> **Robustness gap (deferred — the "no transcript → fresh launch" fallback):** cold-recover must
+> not replay a `resumeCmd` unconditionally. If a strand crashed *before any conversation* (no
+> transcript), native `--resume` errors with "No conversation found"; a full recover would need to
+> detect that and fall back to a fresh launch (re-running `cmd` instead). Detecting this needs pane
+> reads, so it is deferred to shuttle/the daemon — v1 mux just replays the stored `resumeCmd`
+> opaquely and does not inspect the result. (Note: for an unfinished step,
+> [`loom`](loom.md#crash-recovery--resume-on-output-files-not-live-processes) respawns rather than
+> resumes — mux's `resume` restores the *visible* session, not loom's correctness.)
 
 > The `capture-pane` journal (see daemon) is an **optional** belt-and-suspenders log — useful for
 > streaming and recap, but not required for resume.
@@ -336,6 +460,24 @@ model. Because lyx (Go) spawns psmux, it is the natural chokepoint: build the **
 
 Post-v1, kept so the design isn't lost. Each maps to a later [roadmap](../roadmap.md) milestone; do
 not build until it is reached.
+
+### `pane-died` auto-trigger (deferred with the daemon)
+
+v1 is daemonless and re-renders **on-demand** (see [Render](#render--a-pure-function-over-strands))
+— a dead pane is noticed the next time a verb runs, not instantly. An automatic, low-latency
+re-render on pane death needs the psmux `pane-died` hook (`run-shell -b`, needs
+`remain-on-exit on`, fires detached) calling back into a **hidden lyx handler verb** — but the hook
+can't expand format vars (it is a bare trigger), and a daemonless one-shot process has nothing
+listening for it. That whole path (hook + hidden handler verb + poller) belongs to the
+[mux daemon](#mux-daemon-deferred); v1 deliberately does not add a hidden `on-pane-died` verb.
+
+### `own-window` anchor (deferred until a consumer exists)
+
+The anchor vocabulary is the closed four-member set `top | below-parent | own-window | hidden`,
+but `render.Rules` **rejects** `own-window` in v1 (`lyx mux add --anchor own-window` is likewise
+rejected) — it needs real window-management plumbing (review clusters spawning their own psmux
+window) that has no consumer yet. Adding it later is a localized `render` change (a new policy
+case + its golden test), not a redesign.
 
 ### Cross-worktree columns
 
@@ -361,8 +503,8 @@ mux daemon
 ```
 
 **Recovery uses `respawn-pane`** — it reuses the same pane id and revives a dead pane in place
-(layout untouched); it respawns the default shell, into which mux launches `claude --resume <id>`
-(env stripped). **Mutual watchdog:** psmux crash → daemon relaunches it and reloads strands;
+(layout untouched); it respawns the default shell, into which mux runs the strand's stored
+`resumeCmd` opaquely (env stripped). **Mutual watchdog:** psmux crash → daemon relaunches it and reloads strands;
 daemon crash → next `pane-died` → `lyx mux ensure-daemon` relaunches it. IPC is a Windows named
 pipe (`\\.\pipe\lyx`).
 
