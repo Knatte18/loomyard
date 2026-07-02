@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-hubgeometry-dotlyx
+phase: approved-logger
 slug: internal-mux
 branch: internal-mux
 plan: _mill/plan
@@ -27,6 +27,7 @@ plan-fix-r3  '2026-07-02T17:44:40Z'
 planned  '2026-07-02T17:45:00Z'
 implementing  '2026-07-02T18:22:14Z'
 approved-hubgeometry-dotlyx  '2026-07-02T18:25:35Z'
+approved-logger  '2026-07-02T18:28:38Z'
 ```
 
 ## Batches
@@ -39,9 +40,10 @@ batches:
     start_sha: 0b4189fa43dd0709b70e5b36a31ee134ad7d6f97
     commit_sha: 7d980cb69895c131b61dd5f284260334fcd1b37f
   - name: logger
-    state: running
+    state: approved
     implementer_session: 358ab17f-342d-4f59-8d50-2c43a51e722b
     start_sha: 9feed7bb97299d312eab427c11c6ae6972ac255c
+    commit_sha: 77b7ea2fe28aeccba7d9571f7c140bba2fd5b4a6
   - name: render
     state: pending
   - name: muxengine-carrier
