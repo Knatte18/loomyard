@@ -42,6 +42,8 @@ mux is **three things in one module**:
 - **Strand bookkeeping**: the strand record + persistence to `.lyx/mux.json` via
   `internal/state`, and reconcile against live `list-panes` on startup (pane-id is ephemeral,
   re-derived; the mux-generated **`guid` is the durable key**, `sessionId` is opaque metadata).
+  **Reconcile clears the pane binding of dead strands but keeps their record** (so `resume` can
+  rebuild them); only `remove` deletes a record.
 - **Render sub-package** `internal/muxengine/render`: pure `rules(strands) → window_layout`
   string, handling anchors `top`, `below-parent`, `hidden` (bottom-active-dominant stack),
   with the tmux checksum. own-window deferred.
@@ -95,13 +97,18 @@ mux is **three things in one module**:
     the **durable key**: parent links are stored as the parent's `guid`, reconcile keys on it,
     and it is the identity `UpdateStrand`/`RemoveStrand` mutate. This **replaces `sessionId` as
     the durable key** — `sessionId` (claude's, optional/absent for a shell or status strand)
-    stays pure opaque metadata, never an identity.
+    stays pure opaque metadata, never an identity. **In v1 mux neither writes nor reads it**: the
+    CLI `add` exposes no flag for it, and mux never consumes it (its only reader — a join against
+    claude's agent list in `status` — is Claude-specific and deferred to shuttle/daemon). It
+    exists in the record only so shuttle can set it later; **do not derive it from the `cmd`
+    string** (that would break dumb-carrier). (internalmux #D)
   - **`name`** — caller-supplied descriptive label, stored **verbatim** (mux never parses it —
-    dumb-carrier). Used for the pane title, `status` output, and as a **convenience selector**.
-  - **Referential integrity:** `--parent <ref>` and `remove <ref>` accept **either a `guid` or a
-    `name`**; a `name` is resolved to its `guid` when **unambiguous**, else the command fails
-    with `ambiguous name, use the GUID`. `name` is **not** required unique (the `guid` is the
-    identity); it is only a shortcut when it happens to be unambiguous.
+    dumb-carrier). Used **only for display**: the pane title and `status` output. It is **not** a
+    selector and carries no uniqueness requirement.
+  - **Referential integrity — `guid`-only selectors (internalmux #C2):** `--parent <guid>` and
+    `remove <guid>` take the **`guid`** (always unique, printed in the `add` JSON so a later
+    reference is trivial). Keeping selectors guid-only removes an ambiguity-resolution path + its
+    failure mode for marginal hand-CLI convenience; `name` stays purely cosmetic.
   - **How `name` is set — a domain-free config template (feedback_02):** the name is composed
     from a `mux.yaml` `strand-name` template (see the config decision), default
     `<ROLE>:<ROUND>:<SHORT_GUID>`. `--role`/`--round` are **formatting-only inputs consumed at
@@ -222,7 +229,8 @@ mux is **three things in one module**:
   `AddStrand`/`UpdateStrand`/`RemoveStrand` recompute + apply within the same invocation (under
   the mux operation lock; a burst debounced into one `ApplyLayout`) — **and (b) on-demand on
   every CLI verb**: `status`, `resume`, and the next `add`/`remove` read live `list-panes`,
-  reconcile (drop dead strands, re-derive pane ids), and re-apply the layout. There is **no
+  reconcile (clear the pane binding of dead strands — **keep the record** — and re-derive pane
+  ids), and re-apply the layout. There is **no
   live `pane-died` listener in v1.** So dead panes are noticed the next time a verb runs, not
   instantly.
 - **Dead-pane detectability:** v1 sets `set-option -g remain-on-exit on` so a pane whose
@@ -365,9 +373,9 @@ content. `up` NEVER launches/relaunches a strand command; `resume` is the only r
 
 | Verb | Does |
 |---|---|
-| `up` | Ensure the server (clean env) + this worktree's session **exist** (boot if absent; no-op if up). Apply the layout from the current strand table. Reconcile (drop dead strands, re-derive pane ids). **Runs no strand command.** |
-| `resume` | For each persisted strand: (re)create its pane if missing/dead, then run its stored `resumeCmd` (or `cmd` if no `resumeCmd`). Boots server+session first if absent. Apply layout; re-persist pane ids. |
-| reconcile | Shared by **every** verb (read table + live `list-panes` → drop dead, re-derive ids). Not a separate command. |
+| `up` | Ensure the server (clean env) + this worktree's session **exist** (boot if absent; no-op if up). Apply the layout from the current strand table. Reconcile (clear the pane binding of dead strands, **keep the record**, re-derive pane ids). **Runs no strand command.** |
+| `resume` | For each persisted strand that is **not live** (no pane / `pane_dead=1`): (re)create its pane, then run its stored `resumeCmd` (or `cmd` if no `resumeCmd` — every strand has at least a `cmd`, so all not-live strands are rebuildable). Boots server+session first if absent. **Strands already live are left untouched** (no double send-keys). Apply layout; re-persist pane ids. |
+| reconcile | Shared by **every** verb (read table + live `list-panes`). For a dead/absent pane it **clears the pane binding and marks the strand not-live, but keeps the record** (so `resume` can rebuild it) and excludes it from render; re-derives ids for live panes. **Only `remove` deletes a record.** Not a separate command. |
 
 Behavior in the three states:
 - **Server dead (reboot):** `resume` rebuilds — boots server+session, recreates a pane per
@@ -376,16 +384,17 @@ Behavior in the three states:
   strand content.
 - **Server up, CLI restarted (the normal one-shot case):** any verb reconciles against live
   `list-panes` and re-applies the layout; **no relaunch** (panes are alive).
-- **Single strand's pane died (server alive):** on-demand reconcile detects `pane_dead=1` and
-  drops it from the table + re-renders (parent grows back). Bringing it back = `resume` (which
-  recreates + replays that strand; strands already live are left untouched).
+- **Single strand's pane died (server alive):** on-demand reconcile detects `pane_dead=1`, clears
+  that strand's pane binding (marks it not-live) but **keeps its record**, and re-renders (parent
+  grows back). Bringing it back = `resume` (recreates its pane + replays it; already-live strands
+  untouched). The record persists until an explicit `remove`, so it is always resume-able.
 
 **`add` flag spec (orch #4) — exposes `--anchor` so top/hidden get a real CLI + sandbox path,
 not render-unit-tests only:**
 
 ```
 lyx mux add --cmd <launch-cmd> [--role <role>] [--round <n>] [--name <override>]
-            [--resume-cmd <cmd>] [--parent <guid-or-name>]
+            [--resume-cmd <cmd>] [--parent <guid>]
             [--anchor top|below-parent|hidden] [--focus]
 ```
 
@@ -397,8 +406,8 @@ lyx mux add --cmd <launch-cmd> [--role <role>] [--round <n>] [--name <override>]
   the resolved name) in the `add` JSON so a later `--parent` can reference it.
 - **No `--height`** — height is fully derived (see the render decision).
 - `--resume-cmd` optional (see strand contract). `--focus` sets `display.focus:true`.
-- `--parent` and `remove` take a **`guid` or an unambiguous `name`** (`lyx mux remove
-  <guid-or-name>`); an ambiguous name errors (`use the GUID`).
+- `--parent` and `remove` take the **`guid`** (`lyx mux remove <guid>`; `--recursive` required to
+  remove a non-leaf). `name` is display-only, never a selector.
 
 **`attach` is session-level, in-place (orch minor + orch #F):** `lyx mux attach` runs
 `psmux attach` to this worktree's psmux **session** **in the operator's current terminal** — no
@@ -408,12 +417,21 @@ rather than popping a new window, so `mux.yaml` needs **no** terminal-emulator p
 if the driver is a headless programmatic session with no TTY to attach into — is deferred and
 would add a terminal-emulator config value.)
 
-**`remove` of a non-leaf, and parent integrity (orch #D):** `remove <ref>` **cascades** — it
-removes the strand and all its descendants in the parent chain (removing a subtree, never
-orphaning children into a broken chain), then re-renders. On `add`, a `--parent` that names no
-existing strand is rejected; a parent link that would form a **cycle** is rejected at add-time,
-and render additionally breaks any cycle defensively (walk with a visited-set, treat a repeat as
-a root) so the pure function stays **total** even on a corrupt table.
+**`remove` of a non-leaf, and parent integrity (orch #D + internalmux #B):** removing a strand
+with descendants **cascades** (removes the subtree, never orphaning children into a broken chain),
+then re-renders. Two guards on the operator footgun:
+- **CLI:** `lyx mux remove <guid>` on a **non-leaf** requires `--recursive`; without it the command
+  fails with `strand has children, use --recursive` (so `remove <parent>` never silently kills N
+  descendants). With `--recursive` it cascades.
+- **Engine API:** `RemoveStrand(guid)` **always cascades** — the in-process caller (shuttle/loom)
+  owns the spawn tree and manages it deliberately.
+- **Observability:** the `remove` result JSON **lists every removed strand** (`guid` + `name`), so
+  a cascade is always visible.
+
+On `add`, a `--parent` naming no existing strand is rejected; a parent link that would form a
+**cycle** is rejected at add-time, and render additionally breaks any cycle defensively (walk with
+a visited-set, treat a repeat as a root) so the pure function stays **total** even on a corrupt
+table.
 
 **Session name, first pane, canvas, debounce (orch #G/H/I/J):**
 - **Session name** = the worktree slug (`filepath.Base(WorktreeRoot)`), inside the per-hub
@@ -637,17 +655,20 @@ JSON envelope (`ok` true/false).
 - **muxengine strand bookkeeping (TDD candidate).** `AddStrand`/`UpdateStrand`/`RemoveStrand`
   mutate the table and persist; round-trip through `state.ReadJSON/WriteJSON` (absent file →
   empty table; corruption surfaced). Reconcile: given a saved table + a fake `list-panes`
-  result (incl. `pane_dead=1` rows, which `remain-on-exit on` produces), drop dead strands,
-  keep live, re-derive pane ids. Debounce: a burst of mutations → one `ApplyLayout`.
+  result (incl. `pane_dead=1` rows, which `remain-on-exit on` produces), **clear the pane binding
+  of dead strands but keep their record** (assert the record survives and is resume-able; only
+  `remove` deletes), keep live, re-derive pane ids. Debounce: a burst of mutations → one
+  `ApplyLayout`.
   `CleanClaudeEnv`: strips exactly `CLAUDECODE` + `CLAUDE_CODE_*`, returns the stripped keys,
   leaves the rest untouched. `resumeCmd` optional: a strand without one falls back to re-running
   `cmd` on resume.
 - **strand identity + naming (feedback_02).** `AddStrand` generates a unique `guid`; `name` is
   formatted from the `strand-name` template with `--role`/`--round` consumed (not persisted),
   `--name` overriding verbatim, and `<SHORT_GUID>` fallback when neither is given.
-  `FormatStrandName` is a pure table test over templates/tokens. `--parent`/`remove` resolve a
-  `guid` or an **unambiguous** `name` (ambiguous → error). `RemoveStrand` **cascades** to
-  descendants; an `add` with a non-existent or cyclic parent is rejected.
+  `FormatStrandName` is a pure table test over templates/tokens. `--parent`/`remove` take the
+  `guid` (guid-only). CLI `remove` on a non-leaf without `--recursive` errors; `RemoveStrand`
+  (engine) always **cascades** and the result lists every removed strand; an `add` with a
+  non-existent or cyclic parent is rejected.
 - **up vs resume boundary (orch #3).** Assert `up` never emits a strand launch/resume command
   (substrate only), only server/session bring-up + layout + reconcile; assert `resume` replays
   the stored `resumeCmd` (or `cmd` when absent) per strand and re-persists pane ids. Cover the
@@ -709,7 +730,7 @@ _Orch review round (feedback_01):_
 
 _Orch review round (feedback_02):_
 
-- **Q (identity):** How is a strand identified? **A:** mux-generated **GUID** = canonical durable key (replaces `sessionId`, demoted to opaque metadata); caller-set **`name`** = descriptive label; `--parent`/`remove` take a GUID or an unambiguous name.
+- **Q (identity):** How is a strand identified? **A:** mux-generated **GUID** = canonical durable key (replaces `sessionId`, demoted to opaque metadata); caller-set **`name`** = descriptive display-only label; `--parent`/`remove` are **GUID-only** (internalmux #C2 — no name-selector/ambiguity path).
 - **Q (naming):** How is `name` set? **A:** From a **config** `strand-name` template (default `<ROLE>:<ROUND>:<SHORT_GUID>`, NOT hardcoded); `--role`/`--round` are domain-free formatting-only inputs; `--name` overrides; `<SHORT_GUID>` fallback. `<WORKTREE>` token exists but is omitted from the default (redundant inside a per-worktree session).
 - **Q (height):** Keep `--height`? **A:** No — dropped; height fully derived (`topBandRows` band, `collapsedStripRows` strips, active + `shrink:false` = full panes splitting the remainder) with a clamp rule so render stays total.
 - **Q (defaults B/D/E):** clamp / remove-non-leaf / sibling order? **A:** clamp = strips → full → active priority (never a non-positive pane); `remove` cascades to descendants + reject cyclic/unknown parent (render breaks cycles defensively); siblings ordered by insertion.
