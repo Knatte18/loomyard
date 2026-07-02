@@ -51,7 +51,9 @@ batches:
     start_sha: a0194750e5e7feb8cd3fe4feac96acf4e017b1fe
     commit_sha: cf6bedec81061791eeb66d92b4af79540066c16e
   - name: muxengine-carrier
-    state: pending
+    state: running
+    implementer_session: 93f2d6ae-c777-4a5c-9761-a46532bacd39
+    start_sha: 5e885b8b6aff9d9cbae1fd79a6c89ea7a07da9b2
   - name: muxengine-operations
     state: pending
   - name: muxcli
