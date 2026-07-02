@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: config-set-key-loss
 branch: config-set-key-loss
 plan: _mill/plan
@@ -20,4 +20,17 @@ discussed  '2026-07-02T10:43:22Z'
 planning  '2026-07-02T10:49:18Z'
 plan-fix-r1  '2026-07-02T10:54:23Z'
 planned  '2026-07-02T10:54:43Z'
+implementing  '2026-07-02T10:59:49Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: yamlengine-preserve
+    state: pending
+  - name: configengine-set-signature
+    state: pending
+  - name: configcli-json-envelope
+    state: pending
 ```
