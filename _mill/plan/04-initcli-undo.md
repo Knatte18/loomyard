@@ -36,10 +36,24 @@ load-bearing for Card 8's exact step ordering.
   - `internal/hubgeometry/hubgeometry.go`
 - **Edits:**
   - `internal/initcli/initcli.go`
+  - `internal/weftengine/sync.go`
+  - `internal/weftengine/sync_test.go`
 - **Creates:**
   - `internal/initcli/undo.go`
 - **Deletes:** none
 - **Moves:** none
+- **Discovered-during-implementation fix:** `weftengine.Commit`'s `git add --
+  <pathspec>` step errors with "pathspec ... did not match any files" (exit
+  128) when the pathspec target has already been fully removed from both the
+  working tree and the git index by a prior commit (e.g. a second `lyx init
+  --undo` run after the first one already committed the `_lyx` deletion) —
+  the exact case Card 8 step 4's "always call `weftengine.Commit`, regardless
+  of whether `weftLyxDir` existed this invocation" requirement exercises.
+  `Commit` now tolerates that specific git stderr message as a "nothing to
+  stage" no-op (matching its existing `committed == false` contract) instead
+  of surfacing it as a hard error, so a caller that unconditionally
+  re-invokes `Commit` against a since-cleared pathspec stays idempotent.
+  Covered by a new case in `internal/weftengine/sync_test.go`'s `TestCommit`.
 - **Requirements:**
   - In `internal/initcli/initcli.go`'s `Command()`: register a bool flag
     `initCmd.Flags().Bool("undo", false, "reverse a previous init: remove the _lyx
