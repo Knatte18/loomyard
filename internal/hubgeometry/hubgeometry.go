@@ -22,6 +22,12 @@ const (
 	// LyxDirName is the directory name for the lyx system directory within a worktree.
 	LyxDirName = "_lyx"
 
+	// dotLyxDirName is the directory name for the ephemeral, machine-bound lyx state
+	// directory within a worktree. It is deliberately distinct from LyxDirName ("_lyx"):
+	// "_lyx" (underscore) is durable and weft-synced, while ".lyx" (dot) is ephemeral and
+	// local to the machine (e.g. mux's runtime state and lock files never travel with weft).
+	dotLyxDirName = ".lyx"
+
 	// configDirName is the subdirectory name within LyxDirName that holds configuration files.
 	configDirName = "config"
 
@@ -215,6 +221,15 @@ func WeftHostSlug(name string) (slug string, ok bool) {
 // Returns filepath.Join(Cwd, LyxDirName).
 func (l *Layout) LyxDir() string {
 	return filepath.Join(l.Cwd, LyxDirName)
+}
+
+// DotLyxDir returns the path to the ephemeral .lyx directory in the current working
+// directory. This is where machine-bound, non-weft-synced runtime state lives (e.g. mux's
+// mux.json and mux.lock), distinct from the durable, weft-synced LyxDir() ("_lyx").
+//
+// Returns filepath.Join(Cwd, dotLyxDirName).
+func (l *Layout) DotLyxDir() string {
+	return filepath.Join(l.Cwd, dotLyxDirName)
 }
 
 // WorktreePath returns the path to a sibling worktree with the given slug.
