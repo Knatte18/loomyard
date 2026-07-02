@@ -23,10 +23,14 @@ import (
 // flag. Every error path removes a freshly-scaffolded file before returning,
 // mirroring Edit's abort-removes-scaffold contract, so a failed --set never
 // leaves a fresh default-valued file behind on disk.
-func Set(baseDir, module, template string, pairs []yamlengine.KV) error {
+//
+// The returned []string is the sorted list of pre-existing top-level config
+// keys not present in template that were preserved verbatim rather than
+// dropped (see yamlengine.SetValues); it is always nil on any error return.
+func Set(baseDir, module, template string, pairs []yamlengine.KV) ([]string, error) {
 	// Check that baseDir is initialized.
 	if _, err := FindBaseDir(baseDir); err != nil {
-		return err
+		return nil, err
 	}
 
 	path := hubgeometry.ConfigFile(baseDir, module)
@@ -34,7 +38,7 @@ func Set(baseDir, module, template string, pairs []yamlengine.KV) error {
 
 	scaffolded, err := scaffoldIfMissing(path, configDir, template)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// removeIfScaffolded restores the pre-call filesystem state on any later
@@ -49,24 +53,24 @@ func Set(baseDir, module, template string, pairs []yamlengine.KV) error {
 	existingBytes, err := os.ReadFile(path)
 	if err != nil {
 		removeIfScaffolded()
-		return err
+		return nil, err
 	}
 
 	result, err := yamlengine.SetValues([]byte(template), existingBytes, pairs)
 	if err != nil {
 		removeIfScaffolded()
-		return err
+		return nil, err
 	}
 
 	if len(result.Unknown) > 0 {
 		removeIfScaffolded()
-		return fmt.Errorf("unknown config key(s): %s (known: %s)", strings.Join(result.Unknown, ", "), strings.Join(result.Known, ", "))
+		return nil, fmt.Errorf("unknown config key(s): %s (known: %s)", strings.Join(result.Unknown, ", "), strings.Join(result.Known, ", "))
 	}
 
 	if err := os.WriteFile(path, result.Merged, 0o644); err != nil {
 		removeIfScaffolded()
-		return err
+		return nil, err
 	}
 
-	return nil
+	return result.Preserved, nil
 }

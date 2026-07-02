@@ -148,6 +148,147 @@ func TestSetValues_PartialExistingDoesNotSuppressSet(t *testing.T) {
 	assertMergedKeyValue(t, result, "key3", "default3")
 }
 
+// TestSetValues_PreservesUnknownExistingKey verifies that a top-level key in
+// existing with no counterpart in the template survives verbatim in Merged,
+// is reported in SetResult.Preserved, is marked with the preserved marker
+// comment, and is appended after every template key.
+func TestSetValues_PreservesUnknownExistingKey(t *testing.T) {
+	template := []byte("key1: default1\nkey2: default2\n")
+	existing := []byte("key1: user_val1\nkey2: user_val2\npath: ../_board\n")
+
+	result, err := SetValues(template, existing, []KV{{Key: "key1", Value: "new_val1"}})
+	if err != nil {
+		t.Fatalf("SetValues() unexpected error: %v", err)
+	}
+	if result.Unknown != nil {
+		t.Fatalf("SetValues() Unknown = %v; want none", result.Unknown)
+	}
+
+	// The orphaned key's original value must survive, unmodified.
+	assertMergedKeyValue(t, result, "path", "../_board")
+
+	if len(result.Preserved) != 1 || result.Preserved[0] != "path" {
+		t.Errorf("SetValues() Preserved = %v; want [\"path\"]", result.Preserved)
+	}
+
+	merged := string(result.Merged)
+	if !strings.Contains(merged, "# preserved (not in current template)") {
+		t.Errorf("SetValues() merged missing preserved marker comment; got %q", merged)
+	}
+
+	// The preserved key must be appended after every template key.
+	idxKey1 := strings.Index(merged, "key1")
+	idxKey2 := strings.Index(merged, "key2")
+	idxPath := strings.Index(merged, "path")
+	if idxPath < idxKey1 || idxPath < idxKey2 {
+		t.Errorf("SetValues() preserved key does not appear after every template key; merged = %q", merged)
+	}
+}
+
+// TestSetValues_PreservesMultipleUnknownKeysSorted verifies that when existing
+// has multiple top-level orphan keys given in non-alphabetical order,
+// SetResult.Preserved is sorted alphabetically and every orphan survives.
+func TestSetValues_PreservesMultipleUnknownKeysSorted(t *testing.T) {
+	template := []byte("key1: default1\n")
+	existing := []byte("key1: user_val1\nzebra: z_val\napple: a_val\nmango: m_val\n")
+
+	result, err := SetValues(template, existing, nil)
+	if err != nil {
+		t.Fatalf("SetValues() unexpected error: %v", err)
+	}
+
+	want := []string{"apple", "mango", "zebra"}
+	if len(result.Preserved) != len(want) {
+		t.Fatalf("SetValues() Preserved = %v; want %v", result.Preserved, want)
+	}
+	for i, key := range want {
+		if result.Preserved[i] != key {
+			t.Errorf("SetValues() Preserved[%d] = %q; want %q", i, result.Preserved[i], key)
+		}
+	}
+
+	assertMergedKeyValue(t, result, "apple", "a_val")
+	assertMergedKeyValue(t, result, "mango", "m_val")
+	assertMergedKeyValue(t, result, "zebra", "z_val")
+}
+
+// TestSetValues_NoPreservedWhenAllKeysKnown is an explicit regression guard
+// for the new Preserved field on the ordinary, no-orphan path: when every
+// key in existing is already present in the template, nothing is grafted.
+func TestSetValues_NoPreservedWhenAllKeysKnown(t *testing.T) {
+	template := []byte("key1: default1\nkey2: default2\n")
+	existing := []byte("key1: user_val1\nkey2: user_val2\n")
+
+	result, err := SetValues(template, existing, []KV{{Key: "key1", Value: "new_val1"}})
+	if err != nil {
+		t.Fatalf("SetValues() unexpected error: %v", err)
+	}
+
+	if len(result.Preserved) != 0 {
+		t.Errorf("SetValues() Preserved = %v; want none", result.Preserved)
+	}
+	if strings.Contains(string(result.Merged), "# preserved (not in current template)") {
+		t.Errorf("SetValues() merged unexpectedly contains preserved marker comment; got %q", result.Merged)
+	}
+}
+
+// TestSetValues_PreservedKeyIdempotent proves that the marker-comment-set-
+// not-appended rule makes a preserving --set idempotent: calling SetValues
+// again with existing set to the first call's Merged must reproduce the
+// same Merged bytes and the same Preserved list, with no comment growth.
+func TestSetValues_PreservedKeyIdempotent(t *testing.T) {
+	template := []byte("key1: default1\n")
+	existing := []byte("key1: user_val1\npath: ../_board\n")
+	pairs := []KV{{Key: "key1", Value: "new_val1"}}
+
+	first, err := SetValues(template, existing, pairs)
+	if err != nil {
+		t.Fatalf("SetValues() first call unexpected error: %v", err)
+	}
+
+	second, err := SetValues(template, first.Merged, pairs)
+	if err != nil {
+		t.Fatalf("SetValues() second call unexpected error: %v", err)
+	}
+
+	if string(second.Merged) != string(first.Merged) {
+		t.Errorf("SetValues() second call Merged = %q; want identical to first call Merged %q", second.Merged, first.Merged)
+	}
+
+	if len(second.Preserved) != len(first.Preserved) {
+		t.Fatalf("SetValues() second call Preserved = %v; want identical to first call Preserved %v", second.Preserved, first.Preserved)
+	}
+	for i := range first.Preserved {
+		if second.Preserved[i] != first.Preserved[i] {
+			t.Errorf("SetValues() second call Preserved[%d] = %q; want %q", i, second.Preserved[i], first.Preserved[i])
+		}
+	}
+}
+
+// TestSetValues_PreservesNonFlatOrphanWhole verifies root-key-granularity
+// preservation handles a non-flat orphan (a nested mapping under a top-level
+// key absent from the template) without any special-case logic: the whole
+// subtree survives verbatim, and Preserved records only the top-level key
+// name, not a flattened dotted path into the nested structure.
+func TestSetValues_PreservesNonFlatOrphanWhole(t *testing.T) {
+	template := []byte("key1: default1\n")
+	existing := []byte("key1: user_val1\nextra:\n  nested: value\n")
+
+	result, err := SetValues(template, existing, nil)
+	if err != nil {
+		t.Fatalf("SetValues() unexpected error: %v", err)
+	}
+
+	if len(result.Preserved) != 1 || result.Preserved[0] != "extra" {
+		t.Errorf("SetValues() Preserved = %v; want [\"extra\"]", result.Preserved)
+	}
+
+	merged := string(result.Merged)
+	if !strings.Contains(merged, "extra:") || !strings.Contains(merged, "nested: value") {
+		t.Errorf("SetValues() merged does not preserve nested orphan structure verbatim; got %q", merged)
+	}
+}
+
 // assertMergedKeyValue is a test helper that unmarshals result.Merged into a
 // map and asserts the given top-level key holds want.
 func assertMergedKeyValue(t *testing.T, result SetResult, key, want string) {
