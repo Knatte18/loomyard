@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r1
+phase: planned
 slug: config-set-key-loss
 branch: config-set-key-loss
 plan: _mill/plan
@@ -19,4 +19,5 @@ discussion-fix-r1  '2026-07-02T10:42:57Z'
 discussed  '2026-07-02T10:43:22Z'
 planning  '2026-07-02T10:49:18Z'
 plan-fix-r1  '2026-07-02T10:54:23Z'
+planned  '2026-07-02T10:54:43Z'
 ```
