@@ -54,5 +54,7 @@ batches:
     start_sha: 80ae1b72ad949bd99d13c7780efa33efed4908f4
     commit_sha: 40fb51bab84479ffb6af63dcdabcb5b2ec200006
   - name: initcli-undo
-    state: pending
+    state: running
+    implementer_session: 9519cdd3-9e4e-4c8d-82be-61570890600c
+    start_sha: 09f020a1da2ef0bc28d9443865bf9e7588fa37ec
 ```
