@@ -90,8 +90,10 @@ mux is **three things in one module**:
   fields and reads none semantically** — `cmd`/`resumeCmd` are opaque launch/resume strings
   (built by the caller/shuttle), `sessionId` is opaque metadata, `paneId` is the ephemeral
   psmux id (re-derived on reconcile), and there is **no domain `type` field ever**.
-  `UpdateStrand{ guid, display }` and `RemoveStrand{ guid }` re-render. (No `display.height` —
-  height is fully derived; see the render decision.)
+  `UpdateStrand{ guid, display }` and `RemoveStrand{ guid }` re-render. `UpdateStrand` may flip
+  `anchor: hidden → visible` (surface a pending strand: create pane + run `cmd`) but **rejects
+  `visible → hidden`** in v1 (see the render decision's hidden-strand rule). (No `display.height`
+  — height is fully derived; see the render decision.)
 - **Strand identity — GUID is the canonical key, `name` is the descriptive label (orch #1, feedback_02):**
   - **`guid`** — mux-generated at `AddStrand` (128-bit via `crypto/rand`, hex), **100% unique**,
     the **durable key**: parent links are stored as the parent's `guid`, reconcile keys on it,
@@ -158,10 +160,13 @@ mux is **three things in one module**:
   psmux session per worktree inside it. `<hub-basename>` = `filepath.Base(Layout.Hub)`;
   `<short-hash>` = first 8 hex chars of `sha256(abs-hub-path)`. Server-name construction lives
   in `muxengine` (psmux domain), computed from `Layout.Hub` (obtained via hubgeometry).
-- **Rationale:** the name is the **orphan firewall** — any psmux process outside this server
-  is provably stray, so `status` can flag it. The hash makes the name unique per absolute hub
-  path (two hubs sharing a basename must not collide) and socket-safe (raw paths contain
-  `:`/`\`/spaces). Matches `mux.md` decision-4 and the future mplex/columns direction.
+- **Rationale:** the name is the **orphan firewall** — any psmux process outside this server is
+  provably stray. The named server *enables* orphan detection, but **v1 `status` does not actively
+  enumerate stray servers** (internalmux NOTE3): a reliable psmux-server listing on Windows is
+  unverified, so active listing is deferred; v1 `status` reports only **this** session (tracked
+  strands + live/dead reconcile). The hash makes the name unique per absolute hub path (two hubs
+  sharing a basename must not collide) and socket-safe (raw paths contain `:`/`\`/spaces). Matches
+  `mux.md` decision-4 and the future mplex/columns direction.
 - **Rejected:** muxpoc's server-per-worktree (`muxpoc-<basename>`, no hash) — loses the
   hub-level orphan firewall and diverges from `mux.md`. No hub-path hash exists in the repo
   today, so mux implements it.
@@ -174,6 +179,16 @@ mux is **three things in one module**:
   (tracked, excluded from the layout string). The anchor vocabulary stays the closed
   four-member set (`top | below-parent | own-window | hidden`); `own-window` is deferred until
   review clusters exist.
+- **Hidden strand realization — no pane exists until surfaced (internalmux GAP1 A + regel 1/3):**
+  a `hidden` strand is a **record with no psmux pane**, and its `cmd` is **not run at `add` time**.
+  The pane is created and `cmd` launched only when the strand is **surfaced** — `UpdateStrand`
+  flips its `anchor` off `hidden` (to `top`/`below-parent`). So render's exclusion of `hidden` is
+  **by construction** (there is no live pane to enumerate), never a live-but-filtered pane, which
+  keeps the layout string consistent with the window's live pane set. **In v1 `anchor: hidden` is
+  valid only at `add` time** (pre-registration / pending surface): `UpdateStrand` may flip
+  `hidden → visible` but **rejects `visible → hidden`** (`cannot hide a live strand in v1`) —
+  hiding a *running* strand is the deferred "observable background work". This holds the invariant
+  *a hidden strand never has a live pane* across all three paths (add / update / resume).
 - **The anchor→layout logic must be clear and easy to change/extend:** keep two distinct
   layers — (1) **layout policy** (which strand lands where: an explicit per-anchor
   rule structure — a legible dispatch/table from anchor → placement rule, not implicit/buried
@@ -236,7 +251,13 @@ mux is **three things in one module**:
 - **Dead-pane detectability:** v1 sets `set-option -g remain-on-exit on` so a pane whose
   process exits **persists as `pane_dead=1`** (rather than vanishing — which would also kill
   the session if it were the last pane), letting the on-demand reconcile detect it via
-  `list-panes -F "#{pane_id} #{pane_dead}"`.
+  `list-panes -F "#{pane_id} #{pane_dead}"`. Because `select-layout` must enumerate exactly the
+  window's live panes, reconcile then **kills the dead pane before re-applying the layout**
+  — *except* a **sole-remaining** dead pane (killing it would end the session), which is kept and
+  rendered until `resume`/`remove`. `remain-on-exit on` thus gives reconcile the chance to *see*
+  the death deliberately, then reap it (internalmux GAP2). Order inside the mux lock: **kill dead
+  → re-enumerate live → compute layout → apply** (the kill mutates the pane set the next
+  `select-layout` enumerates, so enumeration must follow the kill).
 - **The psmux `pane-died` hook is deferred with the daemon.** An automatic, low-latency
   re-render on pane death would require the psmux hook (`run-shell -b`, needs `remain-on-exit`,
   fires detached) calling back into a **hidden lyx handler verb** — but the hook can't expand
@@ -293,10 +314,13 @@ mux is **three things in one module**:
 ### logger: stderr sink, root flag, default Warn
 
 - **Decision:** `internal/logger` wraps `log/slog`: `logger.Debug/Info/Warn` over a
-  `slog.TextHandler` bound to a package `slog.LevelVar`. A **persistent `-v`/`-vv` flag on the
-  `cmd/lyx` root** sets the level once at startup (`-v` = Info, `-vv`/`--verbose` = Debug),
-  default **`Warn`**. The sink is an **injectable `io.Writer` field defaulting to the real
-  `os.Stderr`** — deliberately **not** routed through `clihelp`'s stdout/stderr seam.
+  `slog.TextHandler` bound to a package `slog.LevelVar`. A single **persistent count flag on the
+  `cmd/lyx` root** — cobra `CountVarP("verbose", "v", …)` — sets the level once at startup: count
+  **0 → `Warn`** (default), **1 → Info**, **≥2 → Debug**. `--verbose` is the long form of the same
+  count flag, so one `-v`/`--verbose` = Info and `-vv` (= `--verbose --verbose`) = Debug
+  (internalmux NOTE2 — the earlier "`--verbose`=Debug" phrasing was imprecise). The sink is an
+  **injectable `io.Writer` field defaulting to the real `os.Stderr`** — deliberately **not**
+  routed through `clihelp`'s stdout/stderr seam.
 - **Rationale:** two hard constraints — (1) the sink must be separate from the command's JSON
   output writer so stdout (JSON envelope) and stderr (logs) stay on separate streams in
   production, and in tests logs go to real `os.Stderr` rather than the merged seam buffer, so
@@ -374,8 +398,8 @@ content. `up` NEVER launches/relaunches a strand command; `resume` is the only r
 | Verb | Does |
 |---|---|
 | `up` | Ensure the server (clean env) + this worktree's session **exist** (boot if absent; no-op if up). Apply the layout from the current strand table. Reconcile (clear the pane binding of dead strands, **keep the record**, re-derive pane ids). **Runs no strand command.** |
-| `resume` | For each persisted strand that is **not live** (no pane / `pane_dead=1`): (re)create its pane, then run its stored `resumeCmd` (or `cmd` if no `resumeCmd` — every strand has at least a `cmd`, so all not-live strands are rebuildable). Boots server+session first if absent. **Strands already live are left untouched** (no double send-keys). Apply layout; re-persist pane ids. |
-| reconcile | Shared by **every** verb (read table + live `list-panes`). For a dead/absent pane it **clears the pane binding and marks the strand not-live, but keeps the record** (so `resume` can rebuild it) and excludes it from render; re-derives ids for live panes. **Only `remove` deletes a record.** Not a separate command. |
+| `resume` | For each persisted strand that is **not live AND not `hidden`** (no pane / `pane_dead=1`, `anchor != hidden`): (re)create its pane, then run its stored `resumeCmd` (or `cmd` if no `resumeCmd` — every strand has at least a `cmd`, so all such strands are rebuildable). **`hidden` strands are skipped** — they are "pending first surface", not dead, so resume does not surface them (internalmux GAP1 regel 2). Boots server+session first if absent. **Strands already live are left untouched** (no double send-keys). Apply layout; re-persist pane ids. |
+| reconcile | Shared by **every** verb (read table + live `list-panes`). For a dead/absent pane it **clears the pane binding and marks the strand not-live, but keeps the record** (so `resume` can rebuild it) and excludes it from render; re-derives ids for live panes. To keep the layout string consistent with psmux's live pane set it **kills the physical `pane_dead=1` pane before re-applying the layout** — *except* a **sole-remaining** dead pane (kept + rendered until `resume`/`remove`). Order: **kill dead → re-enumerate → layout → apply**. **Only `remove` deletes a record.** Not a separate command. |
 
 Behavior in the three states:
 - **Server dead (reboot):** `resume` rebuilds — boots server+session, recreates a pane per
@@ -416,6 +440,16 @@ rather than popping a new window, so `mux.yaml` needs **no** terminal-emulator p
 `lyx mux attach` from a terminal you already have. (Popping a dedicated terminal window — needed
 if the driver is a headless programmatic session with no TTY to attach into — is deferred and
 would add a terminal-emulator config value.)
+
+`attach` is a **documented, narrow exception to the JSON-envelope invariant (internalmux NOTE1).**
+An in-place `psmux attach` inherits the operator's stdio and blocks — it cannot emit the
+`output.Ok`/`Err` envelope the CLI/Cobra Invariant otherwise requires. The exception is scoped
+tightly: everything that can fail (session missing, lock contention, reconcile) runs **pre-flight
+and stays on the envelope** (emits `output.Err`, returns non-zero); only the **terminal-handover
+tail** — after stdio is inherited — is exempt, and on success it emits **no** JSON. This follows
+the existing interactive-`ide` precedent and is registered in `CONSTRAINTS.md` (CLI/Cobra
+Invariant) in the same commit. The test asserts the **built `psmux attach` invocation** (target =
+worktree session), not a JSON round-trip.
 
 **`remove` of a non-leaf, and parent integrity (orch #D + internalmux #B):** removing a strand
 with descendants **cascades** (removes the subtree, never orphaning children into a broken chain),
@@ -598,6 +632,9 @@ From `CONSTRAINTS.md` (authoritative) and this discussion:
   `RunE = clihelp.GroupRunE` on the parent; `<module>cli`/`<module>engine` split (cli imports
   engine; engine never imports cobra/cli/`io.Writer`); registration + help-tree + longlist +
   drift tests updated in the same commit. Help prose accuracy is a review obligation.
+  **`attach` is a registered exception** (like the interactive `ide` commands): its
+  terminal-handover tail emits no JSON envelope — only its pre-flight errors do. Record this
+  exception in `CONSTRAINTS.md` when the module lands (internalmux NOTE1).
 - **Sandbox Suite Coverage.** Every registered module is exercised by a
   `tools/sandbox/SANDBOX-SUITE.md` scenario tagged `**Covers:** mux`, or excluded with a
   reason. Add a mux scenario (parking muxpoc removes its exclude entry).
@@ -657,8 +694,9 @@ JSON envelope (`ok` true/false).
   empty table; corruption surfaced). Reconcile: given a saved table + a fake `list-panes`
   result (incl. `pane_dead=1` rows, which `remain-on-exit on` produces), **clear the pane binding
   of dead strands but keep their record** (assert the record survives and is resume-able; only
-  `remove` deletes), keep live, re-derive pane ids. Debounce: a burst of mutations → one
-  `ApplyLayout`.
+  `remove` deletes), keep live, re-derive pane ids, and **kill the physical `pane_dead=1` pane
+  before re-apply — except a sole-remaining dead pane, which is kept and rendered** (GAP2).
+  Debounce: a burst of mutations → one `ApplyLayout`.
   `CleanClaudeEnv`: strips exactly `CLAUDECODE` + `CLAUDE_CODE_*`, returns the stripped keys,
   leaves the rest untouched. `resumeCmd` optional: a strand without one falls back to re-running
   `cmd` on resume.
@@ -671,7 +709,9 @@ JSON envelope (`ok` true/false).
   non-existent or cyclic parent is rejected.
 - **up vs resume boundary (orch #3).** Assert `up` never emits a strand launch/resume command
   (substrate only), only server/session bring-up + layout + reconcile; assert `resume` replays
-  the stored `resumeCmd` (or `cmd` when absent) per strand and re-persists pane ids. Cover the
+  the stored `resumeCmd` (or `cmd` when absent) per strand and re-persists pane ids; assert
+  `resume` **skips `hidden` strands** (`not-live AND anchor != hidden` — a hidden strand is
+  pending-surface, not dead, so resume does not surface it, GAP1 regel 2). Cover the
   three states (server dead / server-up-CLI-restarted / single pane died) at the seam that can
   be driven without a live psmux (pure planning of "what commands would run"), with the live
   psmux round-trip behind the smoke tag.
@@ -683,7 +723,9 @@ JSON envelope (`ok` true/false).
 - **`add --anchor` integration (orch #4).** Drive `lyx mux add --anchor top|below-parent|hidden`
   through `RunCLI` and assert the strand lands with the right anchor (and the sandbox scenario
   exercises all three end-to-end), so top/hidden have real CLI/integration coverage, not only
-  render unit tests.
+  render unit tests. Assert a `hidden` strand lands **with no pane and `cmd` un-run** (launch
+  deferred to surface); `UpdateStrand` flipping `hidden → visible` creates the pane + runs `cmd`;
+  `UpdateStrand` `visible → hidden` is **rejected** (GAP1 regel 1/3).
 - **server naming.** `lyx-<hub-basename>-<short-hash>` is deterministic, socket-safe (no
   `:`/`\`/space), and distinct for two hubs sharing a basename on different absolute paths.
 - **hub-path hash.** `sha256(abs-hub-path)`-first-8-hex is stable and case/path-normalized as
@@ -736,3 +778,11 @@ _Orch review round (feedback_02):_
 - **Q (defaults B/D/E):** clamp / remove-non-leaf / sibling order? **A:** clamp = strips → full → active priority (never a non-positive pane); `remove` cascades to descendants + reject cyclic/unknown parent (render breaks cycles defensively); siblings ordered by insertion.
 - **Q (F–J):** attach / session name / first pane / dimensions / debounce? **A:** attach in-place (`psmux attach`, no terminal-emulator config); session name = worktree slug; first strand adopts the `new-session` pane; dimensions = assumed virtual canvas (re-flows on attach); debounce is in-process-driver-only.
 - **Q (v2):** Forward-compat for session-per-repo / column-per-worktree? **A:** Three cheap seams — strand carries `worktree` (column key), region-relative stack render, flat GUID-keyed `MuxState` (union not reshape); hub state/lock + column render stay out of v1.
+
+_Orch review round (first discussion review):_
+
+- **Q (GAP1):** How is a `hidden` strand realized in psmux? **A:** No pane until surfaced — a record whose `cmd` is not run at `add`; the pane is created + `cmd` run only when `UpdateStrand` flips `anchor` off `hidden`. Exclusion from the layout is **by construction** (no live pane exists). `anchor: hidden` is add-time-only; `visible → hidden` is **rejected** in v1 (regel 3). `resume` **skips** hidden strands (`not-live AND anchor != hidden`) — hidden = pending-surface, not dead (regel 2). Same bug-class as reconcile-drop-vs-resume: *died* strands rebuild, *hidden* strands stay put.
+- **Q (GAP2):** Dead pane vs `select-layout` consistency? **A:** reconcile **kills** the physical `pane_dead=1` pane before re-applying the layout (so the string matches the live pane set), *except* a **sole-remaining** dead pane (killing ends the session) which is kept + rendered until `resume`/`remove`. Order: kill → re-enumerate → layout → apply, under the mux lock.
+- **Q (NOTE1):** `attach` in-place vs the JSON-envelope invariant? **A:** Documented **narrow exception** — pre-flight failures stay on the envelope; only the terminal-handover tail is exempt (no success JSON). Registered in `CONSTRAINTS.md` (CLI/Cobra), interactive-`ide` precedent; test asserts the built `attach` invocation.
+- **Q (NOTE2):** `-v`/`-vv` mechanics? **A:** One cobra `CountVarP("verbose","v")`: 0 → Warn, 1 → Info, ≥2 → Debug; `--verbose` is the long form of the same count.
+- **Q (NOTE3):** Does v1 `status` do orphan detection? **A:** No — the named server *enables* the firewall, but active stray-server enumeration (unverified on Windows) is deferred; v1 `status` = this session only.
