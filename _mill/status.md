@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-coverage-invariant
+phase: holistic-reviewing
 slug: sandbox-suite-expand
 branch: sandbox-suite-expand
 plan: _mill/plan
@@ -25,6 +25,7 @@ planned  '2026-07-02T07:24:30Z'
 implementing  '2026-07-02T07:33:23Z'
 approved-sandbox-suite-doc  '2026-07-02T07:37:46Z'
 approved-coverage-invariant  '2026-07-02T07:40:50Z'
+holistic-reviewing  '2026-07-02T07:41:08Z'
 ```
 
 ## Batches
