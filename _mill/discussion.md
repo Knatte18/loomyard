@@ -65,6 +65,10 @@ mux is **three things in one module**:
   never reads them; its only liveness signal is the generic `pane-died`.
 - **The mux daemon** (out-of-psmux crash detection, `capture-pane` journal + poller, Slack
   relay) — deferred.
+- **Automatic `pane-died`-driven re-render** (the psmux hook + a hidden `on-pane-died` handler
+  verb + low-latency nudge) — deferred with the daemon. v1 re-renders **on-demand** (in-process
+  per mutation + reconcile on each CLI verb); dead panes are detectable via `remain-on-exit on`
+  but noticed only when a verb next runs.
 - **Cross-worktree columns / `mplex`** and the `own-window` anchor — deferred (no consumer
   yet).
 - **The "no transcript → fresh launch" resume fallback** — deferred (needs pane reads /
@@ -78,12 +82,20 @@ mux is **three things in one module**:
 
 ### Domain-free strand contract (opaque command strings, no `type`)
 
-- **Decision:** `AddStrand{ name, worktree, parent?, cmd, resumeCmd, sessionId?, display }`
+- **Decision:** `AddStrand{ name, worktree, parent?, cmd, resumeCmd?, sessionId?, display }`
   where `display{ anchor, height, focus, shrinkWhenWaitingOnChild }`. mux **stores all fields
   and reads none semantically** — `cmd` and `resumeCmd` are opaque launch/resume strings
   (built by the caller/shuttle), `sessionId` is opaque metadata (for status/reconcile), and
   there is **no domain `type` field ever**. `UpdateStrand{ id, display }` and
   `RemoveStrand{ id }` re-render.
+- **`resumeCmd` is optional (nullable).** A stateless strand (e.g. a `lyx loom status --watch`
+  status line, or a plain shell pane) has no meaningful `--resume`. On `resume`, a strand
+  **with** a `resumeCmd` runs it; a strand **without** one re-runs its `cmd` (a fresh launch —
+  appropriate for stateless/idempotent strands). (orch minor)
+- **`display.focus` and `display.shrinkWhenWaitingOnChild` have precise v1 render semantics**
+  (they are NOT undefined-but-present fields — see the render decision below for the rules and
+  tests). `shrinkWhenWaitingOnChild` defaults **true**; `focus` defaults to *unset* (render
+  then focuses the bottom-most/active strand). (orch #1)
 - **Rationale:** a `type` field would force mux to import its consumers' vocabulary
   (circular). The CSS model: the caller says `anchor: top`, never "I am a status line". Keeps
   mux provider- and domain-invariant. Matches `mux.md`'s closed-vocabulary contract and the
@@ -133,7 +145,7 @@ mux is **three things in one module**:
   four-member set (`top | below-parent | own-window | hidden`); `own-window` is deferred until
   review clusters exist.
 - **The anchor→layout logic must be clear and easy to change/extend:** keep two distinct
-  layers — (1) **layout policy** (which anchor lands where: an explicit per-anchor
+  layers — (1) **layout policy** (which strand lands where: an explicit per-anchor
   rule structure — a legible dispatch/table from anchor → placement rule, not implicit/buried
   logic), separated from (2) **layout mechanics** (the `window_layout` string builder + the
   tmux checksum). Adding or changing an anchor is then a localized, obvious edit: a new
@@ -141,21 +153,83 @@ mux is **three things in one module**:
   each anchor multiplies the layout/test cases; the vocabulary grows only when a real consumer
   needs a new spatial relation. Deferred candidates (until a consumer exists): `own-window`,
   and later `bottom` (absolute bottom-pin) and `column`/left-right (mplex).
+- **`focus` and `shrinkWhenWaitingOnChild` are part of the layout policy, with defined v1
+  rules (orch #1):**
+  - `shrinkWhenWaitingOnChild` (bool, default **true**): a `below-parent` strand that is an
+    **ancestor** (has a visible child below it in the parent chain) collapses to a **single
+    compact strip of a configurable height** (`collapsedStripRows`, from `mux.yaml` — see the
+    config decision); the bottom-most/active strand takes the **remainder** of the window
+    height (after all ancestor strips + 1-row dividers). This is the *mechanism* behind
+    active-bottom-dominance, made per-strand: a strand with it **false** keeps its `height`
+    even while an ancestor (opt-out of the shrink). This replaces muxpoc's fixed
+    `activePaneShare=55%` percentage split — the strip thickness is now an operator-tunable
+    config value (default chosen to reproduce muxpoc's proven ~9-row ancestor strips), and the
+    active pane's dominance is *derived* as the remainder rather than a hardcoded percentage.
+    The layout **mechanics** (checksum + `window_layout` string) are unchanged and still reused
+    from muxpoc verbatim; only the height *policy* changes.
+  - `focus` (bool, default unset): the render's `select-pane` target. **Exactly one** pane is
+    focused per session; if no strand sets `focus:true`, render defaults to the bottom-most
+    (active) strand (muxpoc's "always select the bottom pane"). If a caller sets `focus:true`
+    on a specific strand (e.g. loom parking focus on a parent at an input gate), render
+    focuses that strand instead. Ties (multiple focus:true) resolve to the bottom-most such
+    strand.
+  - Both are asserted by isolated render tests (see Testing), so they are defined behavior,
+    not latent rot.
 - **Rationale:** purity makes render the clean golden-file test surface (no psmux/agents
   needed). The mechanics/policy split keeps the checksum math stable while the domain-facing
   policy stays small and total over a closed set — exactly where future change happens.
 - **Rejected:** all four anchors incl. `own-window` (no consumer, adds window management now);
   just `below-parent` (too lean — loom needs the top status line and hidden strands).
 
-### Re-render on structural events, debounced
+### Re-render is on-demand in v1 (daemonless); pane-died auto-trigger deferred (orch #2)
 
-- **Decision:** recompute the layout on `AddStrand`/`UpdateStrand`/`RemoveStrand` and on
-  `pane-died`. Active-bottom-dominance is derivable from the parent tree; focus is caller-set —
-  **no runtime idle signal is needed** for layout. Debounce a burst of mutations into one
-  `ApplyLayout`.
-- **Rationale:** completion/idle is shuttle's concern (via the file contract), not a mux
-  re-render trigger; matches `mux.md`.
-- **Rejected:** timed re-render / idle-driven re-render (couples mux to Claude semantics).
+- **Decision:** the layout is recomputed **(a) in-process on each mutation** —
+  `AddStrand`/`UpdateStrand`/`RemoveStrand` recompute + apply within the same invocation (under
+  the mux operation lock; a burst debounced into one `ApplyLayout`) — **and (b) on-demand on
+  every CLI verb**: `status`, `resume`, and the next `add`/`remove` read live `list-panes`,
+  reconcile (drop dead strands, re-derive pane ids), and re-apply the layout. There is **no
+  live `pane-died` listener in v1.** So dead panes are noticed the next time a verb runs, not
+  instantly.
+- **Dead-pane detectability:** v1 sets `set-option -g remain-on-exit on` so a pane whose
+  process exits **persists as `pane_dead=1`** (rather than vanishing — which would also kill
+  the session if it were the last pane), letting the on-demand reconcile detect it via
+  `list-panes -F "#{pane_id} #{pane_dead}"`.
+- **The psmux `pane-died` hook is deferred with the daemon.** An automatic, low-latency
+  re-render on pane death would require the psmux hook (`run-shell -b`, needs `remain-on-exit`,
+  fires detached) calling back into a **hidden lyx handler verb** — but the hook can't expand
+  format vars (bare trigger), and a daemonless one-shot has nothing listening. That whole path
+  (hook + handler verb + poller) belongs to the deferred **daemon**; v1 deliberately does not
+  add a hidden `on-pane-died` verb. This resolves the earlier contradiction (a "recompute on
+  pane-died" trigger with no daemon to run it).
+- **Rationale:** completion/idle is shuttle's concern (file contract), not a mux re-render
+  trigger; and a daemonless module can only act when invoked. On-demand reconcile + in-process
+  mutation re-render covers every v1 consumer path without a background process.
+- **Rejected:** timed/idle-driven re-render (couples mux to Claude semantics); a hidden
+  `on-pane-died` handler verb in v1 (daemon-era; no listener without the daemon).
+
+### Cross-process concurrency: a mux operation lock around the whole mutate+apply cycle (orch #6)
+
+- **Decision:** guard the **entire** `read → mutate → persist → render → apply(select-layout)`
+  cycle with a single **mux operation lock** at `.lyx/mux.lock` (via `internal/lock`). Every
+  mutating path acquires it — both the separate CLI processes (`add`/`remove`/`resume`/`up`)
+  **and** the in-process engine calls a long-lived driver makes (shuttle's/loom's
+  `AddStrand`/`UpdateStrand`/`RemoveStrand`). This is distinct from, and coarser than, the
+  `internal/state` per-write lock on `mux.json`.
+- **Why:** each CLI verb is its own process doing read→render→`select-layout`, and shuttle
+  drives `AddStrand` in-process concurrently. Locking only the JSON write (as `state` does)
+  still lets two mutations both read, both render, and **clobber each other's layout**. The
+  concurrent scenario is real (the loom driver adding a strand while an operator runs
+  `lyx mux add`), so v1 serializes the full cycle rather than assuming a single driver.
+- **Lock ordering (deadlock-free):** the **outer `mux.lock` is always acquired BEFORE**
+  `state.WriteJSON` internally takes its `mux.json.lock`. Strict **outer → inner**, never the
+  reverse — so there is no lock-ordering cycle and no deadlock.
+- **Scope is per-worktree:** `mux.lock` lives in the worktree's `.lyx/`, so two *different*
+  worktrees never contend on it (each has its own). The OS file handle is **released
+  automatically if a holding process dies** (the handle closes on exit) — so v1 needs **no**
+  stale-lock detection / lock-stealing machinery; do not build any.
+- **Rejected:** "assume one driver at a time" + document it (a torn/clobbered layout the moment
+  loom and an operator both touch the session — a latent correctness bug); reusing the `state`
+  JSON lock as the cycle lock (wrong granularity — it does not cover the `select-layout` apply).
 
 ### Env hygiene lives in muxengine (not proc)
 
@@ -209,27 +283,76 @@ mux is **three things in one module**:
 ### mux config via configreg
 
 - **Decision:** register `mux` in `internal/configreg` with a `mux.yaml` template holding
-  machine-specific tool paths (`psmux`, `pwsh`, `claude`), dimensions (width/height), and the
-  active-pane share. Loaded via `configengine.Load(baseDir, "mux", []byte(ConfigTemplate()))`.
+  machine-specific tool paths (`psmux`, `pwsh`, `claude`), dimensions (width/height), and
+  **`collapsedStripRows`** (the height, in rows, of a collapsed ancestor strip — see the render
+  decision; replaces muxpoc's fixed 55% active-pane share, letting the operator tune the strip
+  thickness). Loaded via `configengine.Load(baseDir, "mux", []byte(ConfigTemplate()))`.
 - **Rationale:** tool paths are machine-specific and belong in config, not code defaults;
-  matches the repo convention and makes sandbox/other-machine use clean. shuttle will likely
-  reuse tool-path config.
+  strip thickness is a layout-tuning knob the operator should control; matches the repo
+  convention and makes sandbox use clean. shuttle will likely reuse tool-path config.
+- **Portability note (orch #5) — v1 chooses correctness over cross-machine portability, on
+  purpose.** `_lyx/config/` is **weft-synced**, so an absolute tool path committed into
+  `mux.yaml` will be wrong on machine #2. But the empirical finding is that psmux/claude/pwsh
+  **must** be launched with **explicit absolute paths** (bare `pwsh` resolves to a 0-byte
+  WindowsApps ConPTY stub that renders nothing). v1 deliberately prioritizes correctness
+  (explicit paths that actually work here) over cross-machine portability — which is **deferred
+  anyway** (session-file portability is a later milestone). **Do NOT "fix" this by making paths
+  PATH-relative** (it reintroduces the ConPTY-stub failure). The future cross-machine path is
+  the existing gitignored per-machine `.env` (weft-local, never synced — see overview.md), which
+  can override the synced defaults per machine; that is a later refinement, not v1.
 - **Rejected:** cobra flags with hardcoded defaults (muxpoc style — bakes machine paths into
-  code); flags-now-config-later (risks a churny migration).
+  code); flags-now-config-later (risks a churny migration); PATH-relative tool names (breaks on
+  the ConPTY stub).
 
 ### CLI verb set (minimal-but-functional)
 
-- **Decision:** `up` (idempotent boot; cold-recovers a dead session's strands), `add`/`remove`
-  (thin strand CRUD = the seam that exercises `AddStrand`/`RemoveStrand` + re-render without
-  shuttle), `status` (reconcile vs live `list-panes` + orphans), `attach` (pop one maximized
-  terminal), `resume` (replay stored resume cmds), `down` (teardown + delete state).
+- **Decision:** `up`, `add`, `remove`, `status`, `attach`, `resume`, `down`. (`UpdateStrand` is
+  engine-API-only — no CLI verb in v1.)
 - **Rationale:** smallest set that is genuinely functional and independently sandbox-testable
   before shuttle exists; `add`/`remove` make the engine drivable and cover the load-bearing
-  re-render behaviors (parent shrinks on add, grows on remove). Keeps `resume` explicit per
-  `mux.md`.
+  re-render behaviors (parent shrinks on add, grows on remove).
 - **Rejected:** folding `resume` into `up` (diverges from `mux.md`); even-leaner
   `up/add/status/attach/down` (can't exercise RemoveStrand re-render or crash recovery via
   CLI).
+
+**Sharp `up` vs `resume` boundary (orch #3) — `up` = substrate only, `resume` = replay
+content. `up` NEVER launches/relaunches a strand command; `resume` is the only replayer:**
+
+| Verb | Does |
+|---|---|
+| `up` | Ensure the server (clean env) + this worktree's session **exist** (boot if absent; no-op if up). Apply the layout from the current strand table. Reconcile (drop dead strands, re-derive pane ids). **Runs no strand command.** |
+| `resume` | For each persisted strand: (re)create its pane if missing/dead, then run its stored `resumeCmd` (or `cmd` if no `resumeCmd`). Boots server+session first if absent. Apply layout; re-persist pane ids. |
+| reconcile | Shared by **every** verb (read table + live `list-panes` → drop dead, re-derive ids). Not a separate command. |
+
+Behavior in the three states:
+- **Server dead (reboot):** `resume` rebuilds — boots server+session, recreates a pane per
+  strand, replays each strand's resume/launch cmd, re-persists new pane ids. `up` alone on a
+  dead server just boots an **empty** session (a fresh workspace) — it does not resurrect
+  strand content.
+- **Server up, CLI restarted (the normal one-shot case):** any verb reconciles against live
+  `list-panes` and re-applies the layout; **no relaunch** (panes are alive).
+- **Single strand's pane died (server alive):** on-demand reconcile detects `pane_dead=1` and
+  drops it from the table + re-renders (parent grows back). Bringing it back = `resume` (which
+  recreates + replays that strand; strands already live are left untouched).
+
+**`add` flag spec (orch #4) — exposes `--anchor` so top/hidden get a real CLI + sandbox path,
+not render-unit-tests only:**
+
+```
+lyx mux add --name <label> --cmd <launch-cmd> [--resume-cmd <cmd>] [--parent <strand-id>]
+            [--anchor top|below-parent|hidden] [--height fixed:N|grow|share] [--focus]
+```
+
+- `--anchor` defaults to **`below-parent`**. Exposing it means the sandbox scenario can
+  integration-test all three v1 anchors (top status line, below-parent stack, hidden), not
+  just the default. `own-window` is rejected by `add` in v1 (deferred anchor).
+- `--resume-cmd` optional (see strand contract). `--focus` sets `display.focus:true`.
+- `remove` takes a strand id (`lyx mux remove <strand-id>`).
+
+**`attach` is session-level, not per-strand (orch minor):** `lyx mux attach` pops one
+**maximized** terminal attached to this worktree's psmux **session** (the whole layout is
+visible; the popped terminal has a real TTY so claude renders). It takes **no** strand
+argument — you attach to the session and see every strand's pane, then `Ctrl+b z` to zoom one.
 
 ### Park muxpoc (keep as reference, unwire from CLI)
 
@@ -276,9 +399,13 @@ constraint). See `docs/overview.md` and `docs/modules/{mux,shuttle}.md`.
   the body bytes, 4 lowercase hex digits. **Reuse verbatim.** Pinned fixture: body
   `220x50,0,0[220x15,0,0,1,220x15,0,16,4,220x18,0,32,3]` → `acd7`.
 - **layout string** format `csum,WxH,0,0[paneWxpaneH,x,y,paneNum,...]` where paneNum = pane id
-  with leading `%` stripped; panes ordered top→bottom. **bottom-active-dominant**: bottom pane
-  gets `activePaneShare=55`%, ancestors split the remainder equally (reuse the 55 constant).
-  Applied atomically via `select-layout "<csum>,<body>"`, then `select-pane` the bottom pane.
+  with leading `%` stripped; panes ordered top→bottom. **bottom-active-dominant** (v1 height
+  policy, see the render decision): each collapsed ancestor strip = `collapsedStripRows`
+  (config), the bottom/active pane = the remainder; a pinned `top` strand is a fixed-height
+  band above the stack; `hidden` strands are excluded. (This replaces muxpoc's fixed
+  `activePaneShare=55%` — the *mechanics* below are reused verbatim, only the height policy
+  differs.) Applied atomically via `select-layout "<csum>,<body>"`, then `select-pane` the
+  focused strand (default bottom).
 - **psmux subprocess wrapper** (`PsmuxCmd`): `run(args...)` (discard I/O) and `output(args...)`
   (capture stdout) **always prepend `-L <socketName>`**. The **server-spawning `new-session`
   is NOT routed through it** — it's raw `exec.Command` so `cmd.Env = CleanClaudeEnv(...)` +
@@ -383,19 +510,45 @@ JSON envelope (`ok` true/false).
   Golden-file / table tests over strand sets — no psmux, no agents:
   - checksum matches the pinned `acd7` fixture; checksum prefix always equals
     `layoutChecksum(body)`.
-  - bottom-active-dominant invariants (reuse muxpoc's): heights + 1-row dividers exactly fill
-    window height; bottom pane strictly tallest and ≥50%; ancestors equal; cumulative y-offsets.
-  - **anchor policy** cases: `top` pinned as a fixed-height pane above the stack;
+  - bottom-active-dominant invariants: heights + 1-row dividers exactly fill window height;
+    each collapsed ancestor strip = `collapsedStripRows`; the bottom/active pane = the
+    remainder and is strictly tallest; cumulative y-offsets. Parameterize over
+    `collapsedStripRows` (the config knob) and assert the remainder-height math holds for
+    several values + degenerate cases (window too short for N strips → clamp rule).
+  - **anchor policy** cases: `top` pinned as a fixed-height band above the stack;
     `below-parent` forms the bottom-dominant stack ordered by parent chain; `hidden` strands
     are **excluded** from the layout string entirely; mixed sets (top + stack + hidden);
     empty/single-strand edge cases. Each anchor's rule is independently asserted so adding an
     anchor adds an isolated test.
+  - **`shrinkWhenWaitingOnChild`** (orch #1): an ancestor with it true collapses to a
+    `collapsedStripRows` strip; with it false keeps its `height` while still an ancestor
+    (assert the bottom pane's remainder shrinks accordingly).
+  - **`focus`** (orch #1): with no strand focused, the select-pane target = bottom-most; with
+    one strand `focus:true`, that strand is the target; exactly one focused pane; ties resolve
+    to the bottom-most focused strand.
 - **muxengine strand bookkeeping (TDD candidate).** `AddStrand`/`UpdateStrand`/`RemoveStrand`
   mutate the table and persist; round-trip through `state.ReadJSON/WriteJSON` (absent file →
   empty table; corruption surfaced). Reconcile: given a saved table + a fake `list-panes`
-  result, drop dead strands, keep live, re-derive pane ids. Debounce: a burst of mutations →
-  one `ApplyLayout`. `CleanClaudeEnv`: strips exactly `CLAUDECODE` + `CLAUDE_CODE_*`, returns
-  the stripped keys, leaves the rest untouched.
+  result (incl. `pane_dead=1` rows, which `remain-on-exit on` produces), drop dead strands,
+  keep live, re-derive pane ids. Debounce: a burst of mutations → one `ApplyLayout`.
+  `CleanClaudeEnv`: strips exactly `CLAUDECODE` + `CLAUDE_CODE_*`, returns the stripped keys,
+  leaves the rest untouched. `resumeCmd` optional: a strand without one falls back to re-running
+  `cmd` on resume.
+- **up vs resume boundary (orch #3).** Assert `up` never emits a strand launch/resume command
+  (substrate only), only server/session bring-up + layout + reconcile; assert `resume` replays
+  the stored `resumeCmd` (or `cmd` when absent) per strand and re-persists pane ids. Cover the
+  three states (server dead / server-up-CLI-restarted / single pane died) at the seam that can
+  be driven without a live psmux (pure planning of "what commands would run"), with the live
+  psmux round-trip behind the smoke tag.
+- **Concurrency lock (orch #6).** Assert every mutating path acquires `.lyx/mux.lock`; the
+  outer `mux.lock` is acquired before `state`'s inner `mux.json.lock` (ordering test); two
+  concurrent mutations serialize (no interleaved render/apply); the lock is per-worktree
+  (different `.lyx/` dirs don't contend); a process dying while holding it leaves no stale lock
+  (handle auto-released — assert a subsequent acquire succeeds).
+- **`add --anchor` integration (orch #4).** Drive `lyx mux add --anchor top|below-parent|hidden`
+  through `RunCLI` and assert the strand lands with the right anchor (and the sandbox scenario
+  exercises all three end-to-end), so top/hidden have real CLI/integration coverage, not only
+  render unit tests.
 - **server naming.** `lyx-<hub-basename>-<short-hash>` is deterministic, socket-safe (no
   `:`/`\`/space), and distinct for two hubs sharing a basename on different absolute paths.
 - **hub-path hash.** `sha256(abs-hub-path)`-first-8-hex is stable and case/path-normalized as
@@ -428,3 +581,14 @@ JSON envelope (`ok` true/false).
 - **Q:** mux config? **A:** Config file via `configreg` (`mux.yaml`: tool paths, dims, active-pane share), not flags-with-defaults.
 - **Q:** Render anchor scope? **A:** `top` + `below-parent` + `hidden` in v1; `own-window` deferred (no consumer). Keep the closed 4-member vocabulary; grow only when a real consumer needs it (new `rules()` case + test same commit).
 - **Q:** Render code structure? **A:** Anchor→layout **policy** must be explicit/legible and **separated** from layout **mechanics** (checksum/string builder), so changing/adding an anchor is a localized, obvious edit.
+
+_Orch review round (feedback_01):_
+
+- **Q (orch #1):** `focus`/`shrinkWhenWaitingOnChild` undefined in v1? **A:** Define both with precise render rules + isolated tests (not trim). `shrink` default true → ancestor collapses to a `collapsedStripRows` strip; `focus` default unset → bottom-most focused, caller may override.
+- **Q (orch #1b):** Collapsed strip thickness? **A:** Configurable via `mux.yaml` `collapsedStripRows` (replaces muxpoc's fixed 55% active-share); active pane = the remainder. Mechanics (checksum/string) unchanged.
+- **Q (orch #2):** What triggers `pane-died` re-render in a daemonless model? **A:** Nothing live in v1 — re-render is on-demand (in-process per mutation + reconcile on each verb); `remain-on-exit on` makes dead panes detectable. The psmux hook + hidden handler verb are deferred with the daemon (removes the earlier contradiction).
+- **Q (orch #3):** `up` vs `resume` boundary? **A:** `up` = substrate only (boot/ensure session + layout + reconcile, **never** replays a command); `resume` = the only replayer (recreate panes + run stored resume/launch cmds). Defined across three states.
+- **Q (orch #4):** Does `add` expose `--anchor`? **A:** Yes — full flag spec (`--name --cmd --resume-cmd --parent --anchor[=below-parent] --height --focus`); `--anchor` gives top/hidden a CLI + sandbox integration path.
+- **Q (orch #5):** Tool paths in synced `mux.yaml` vs portability? **A:** Keep in `mux.yaml`; document that v1 chooses correctness (explicit absolute paths, required by the ConPTY-stub finding) over cross-machine portability (deferred anyway). Do not PATH-relativize; future per-machine override rides the gitignored `.env`.
+- **Q (orch #6):** Concurrency across separate CLI processes + in-process driver? **A:** One coarse mux operation lock (`.lyx/mux.lock`) around the whole read→mutate→persist→render→apply cycle. Ordering: outer `mux.lock` before `state`'s inner `mux.json.lock` (deadlock-free). Per-worktree scope; OS handle auto-releases on process death → no stale-lock-stealing in v1.
+- **Q (orch minor):** `attach` target? **A:** Session-level (pop one maximized terminal attached to the worktree's psmux session); no strand arg. **`resumeCmd`?** Optional/nullable; absent → resume re-runs `cmd`.
