@@ -92,6 +92,29 @@ A key present with an empty value counts as present and is NOT reported missing.
 
 **Returns:** A sorted slice of missing key-paths, or an error if YAML parsing fails.
 
+### `SetValues(template, existing []byte, pairs []KV) (SetResult, error)`
+
+Applies an explicit list of key=value pairs to a template-shaped YAML document. This is the non-interactive `lyx config <module> --set key=value` write path — unlike `Reconcile`, which merges an entire existing file into a template, `SetValues` mutates only the requested leaf keys while still routing every write through the template-shaped working tree.
+
+**Behavior:**
+
+1. Unmarshals `template` into the `yaml.Node` tree that is mutated and, on success, marshalled. This tree — never a bare parse of `existing` — is always the one written, so every template leaf always has a real, settable node regardless of what `existing` contains (a stale or partial existing file cannot hide a valid key behind a missing node).
+2. If `existing` is non-empty, layers its leaf values onto the matching template leaves (the same `applyExistingOverrides` step `Reconcile` uses), then grafts any of `existing`'s top-level keys that have no counterpart in the template's top-level keys onto the template's root mapping — see "Orphan-key preservation" below.
+3. Validates every `pairs[i].Key` against the template's leaf-key set. If any requested key is absent from that set, the whole call is rejected: no mutation occurs, `SetResult.Unknown` holds the sorted, deduplicated list of absent requested keys, `SetResult.Known` holds the template's full sorted leaf-key set (for building a "known keys are..." error message), and `SetResult.Merged` is nil.
+4. Otherwise applies every pair to the working tree in order (a later pair for a repeated key wins) and marshals the mutated tree into `SetResult.Merged`.
+
+**Orphan-key preservation:**
+
+Any existing top-level key absent from the template — scalar, mapping, or sequence, at any depth — is carried through into `Merged` verbatim rather than silently dropped. Preservation compares at **root-key (top-level) granularity**: the whole value subtree of an orphaned key is grafted onto the template's root mapping as-is, so a nested or indexed orphan needs no special-case detection logic. Grafted keys are appended after all template keys, in sorted key-name order, each marked with the fixed comment `# preserved (not in current template)` set unconditionally via direct assignment (never appended/concatenated) on every call — including repeat calls against a file that already carries the marker from a prior run. This unconditional-assignment rule is what makes a preserving `--set` idempotent: calling `SetValues` again with the previous call's `Merged` as `existing` reproduces byte-identical output, with no comment growth or duplication. `SetResult.Preserved` reports the sorted list of top-level keys preserved this way (nil/empty when none).
+
+**Key properties:**
+
+- `pairs` referencing a key absent from the template's leaf set rejects the whole call via `Unknown`/`Known`, with no mutation — a key a user did not ask to touch is never subject to this check; only keys explicitly passed in `pairs` are validated.
+- The `KV` struct holds a single requested `pairs` entry: `Key` is a dotted leaf key-path (the same shape `collectLeafPaths` produces, e.g. `level1.level2.key`), `Value` is the raw string to store.
+- The `SetResult` struct holds four fields: `Merged` (the new file bytes, valid only when `Unknown` is empty), `Unknown` (sorted, deduplicated list of requested keys absent from the template), `Known` (the template's full sorted leaf-key set), and `Preserved` (the sorted list of orphaned top-level keys carried through, nil/empty when none).
+
+**Returns:** A `SetResult` as described above, or an error if YAML parsing or marshaling fails.
+
 ## Key-path notation
 
 Key-paths use dotted notation for nested mappings and bracket notation for list indices:
