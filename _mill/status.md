@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-sandbox-suite-doc
 slug: sandbox-suite-expand
 branch: sandbox-suite-expand
 plan: _mill/plan
@@ -23,6 +23,7 @@ plan-fix-r1  '2026-07-02T07:21:06Z'
 plan-review-r2  '2026-07-02T07:24:09Z'
 planned  '2026-07-02T07:24:30Z'
 implementing  '2026-07-02T07:33:23Z'
+approved-sandbox-suite-doc  '2026-07-02T07:37:46Z'
 ```
 
 ## Batches
@@ -30,9 +31,10 @@ implementing  '2026-07-02T07:33:23Z'
 ```yaml
 batches:
   - name: sandbox-suite-doc
-    state: running
+    state: approved
     implementer_session: b7b62898-4164-42af-8b65-727af08fa87f
     start_sha: bfd3d99d74f1c68caca9d2074185658cdad2129c
+    commit_sha: 03b0221276b7df4ad31ee9c37688b039e208a115
   - name: coverage-invariant
     state: pending
 ```
