@@ -104,9 +104,13 @@ so that guarantee holds going forward.
   - `S4` (config, extended with reconcile) → `**Covers:** config`
   - `S7` (weft lifecycle) → `**Covers:** weft`
   - `S8` (warp introspection) → `**Covers:** warp`
-  - `S0` (discovery) and `S1` (hub orientation) drive no single module — no
-    `Covers:` line (or an explicit `**Covers:** (discovery)` that the test
-    ignores as a non-module token; implementer's call).
+  - `S0` (discovery) and `S1` (hub orientation) drive no single module —
+    they carry **no `Covers:` line at all**. (An earlier draft floated an
+    explicit `**Covers:** (discovery)` sentinel as an alternative; that is
+    rejected because a literal `(discovery)` token would then appear in
+    `covered` and trip Assert 2's drift guard, which requires every `covered`
+    token to be a registered module. Mandating "no line" removes that
+    tension without needing a parenthesized-token-stripping parser branch.)
   - `S5` (error ergonomics, renamed from S6) also drives no single module —
     it's a cross-cutting ergonomics check, not a module scenario.
 - Rationale: module names ("config", "ide", "warp"...) already appear
@@ -178,7 +182,10 @@ so that guarantee holds going forward.
     `tools/sandbox/SANDBOX-SUITE.md`. Resolve the doc's absolute path the same
     way `registration_test.go` resolves the repo root — via
     `runtime.Caller(0)` + `filepath.Dir` walk-up, since this test file lives
-    two directories deep from repo root just like that one.
+    two directories deep from repo root just like that one. Because S0/S1
+    carry no `Covers:` line (see Coverage mechanism), every token that *does*
+    appear is expected to be a bare registered-module name — so Assert 2 can
+    treat all of `covered` as module tokens with no special-casing.
   - `excluded`: the hardcoded allowlist map from the previous decision
     (`muxpoc`, `ide`, `selfreport`), each with its reason string.
   - Assert 1 (coverage): for every `m` in `registered`, `m` must be in
