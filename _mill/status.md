@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-cmd-lyx-integration
+phase: approved-docs
 slug: internal-mux
 branch: internal-mux
 plan: _mill/plan
@@ -33,6 +33,7 @@ approved-muxengine-carrier  '2026-07-02T18:50:24Z'
 approved-muxengine-operations  '2026-07-02T19:22:42Z'
 approved-muxcli  '2026-07-02T19:34:12Z'
 approved-cmd-lyx-integration  '2026-07-02T19:46:21Z'
+approved-docs  '2026-07-02T19:57:05Z'
 ```
 
 ## Batches
@@ -75,7 +76,8 @@ batches:
     start_sha: 5d809f3aede15a220a7d7a38e2567f366c2b1bef
     commit_sha: 2429c56beb4f97416343f0f8c12c2d9001b1388c
   - name: docs
-    state: running
+    state: approved
     implementer_session: e07cfe9c-6e83-49ad-9cc8-15ed3bea4a4f
     start_sha: c1def236502277b48c6d92db0ddc58fc306cd8c3
+    commit_sha: 5993b7da17eed22b819ce2668637065b00572903
 ```
