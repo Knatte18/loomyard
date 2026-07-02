@@ -28,7 +28,9 @@ implementing  '2026-07-02T10:59:49Z'
 ```yaml
 batches:
   - name: yamlengine-preserve
-    state: pending
+    state: running
+    implementer_session: ab0778be-522c-48a4-85a8-57161a25c22e
+    start_sha: f557edb52c02abb91b768614b77e23248b660e56
   - name: configengine-set-signature
     state: pending
   - name: configcli-json-envelope
