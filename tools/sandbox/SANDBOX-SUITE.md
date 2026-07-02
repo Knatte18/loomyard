@@ -162,6 +162,8 @@ it as an enhancement suggestion.
 
 **Goal:** "Add a task to the board, list tasks, change its state."
 
+**Covers:** board
+
 **Note:** When passing JSON in PowerShell, use single-quoted strings with literal inner
 double quotes — see the PowerShell JSON-quoting note in Pre-conditions.
 
@@ -179,6 +181,8 @@ Use `lyx board list` to observe current state before adding tasks, and use
 ### S4 -- Config round-trip
 
 **Goal:** "Inspect lyx's config for this hub, change a value, confirm it took."
+
+**Covers:** config
 
 **Watch:** From the worktree root, write a value with `lyx config <module> --set
 key=value` (non-interactive, bypasses the editor; mutually exclusive with `--print`;
@@ -217,6 +221,8 @@ raw stderr) — that is still a legitimate `WARN`/`FAIL` finding.
 `lyx init` there. Then run `config` and `board` from that same subdir. Finally, reverse
 it with `lyx init --undo`."
 
+**Covers:** init
+
 **Durability note:** S6 scaffolds a real nested `_lyx/` in the subfolder — a directory
 junction into the weft worktree, not a plain directory — and touches `.gitignore`
 there. That state persists across sandbox sessions unless the hub is rebuilt with
@@ -245,6 +251,8 @@ the scaffolding?
 **Goal:** "Make a small, clearly-marked change inside the weft-tracked scope and run it
 through `weft status`, `commit`, `push`, `pull`, and `sync`."
 
+**Covers:** weft
+
 **Durability note:** S7 runs against the real shared sandbox remotes. Make a small,
 clearly-marked test change and do not leave the weft/host remotes diverged or broken for
 the next session.
@@ -265,6 +273,8 @@ confusing-but-expected rough edge to note as a `WARN`, not to pre-judge here.
 
 **Goal:** "Exercise `warp list`, `warp pairs`, `warp reconcile`, and `warp checkout` on
 a healthy pair."
+
+**Covers:** warp
 
 **Durability note:** Record the branch active before the scenario starts. Run
 `warp checkout <other-branch>` to prove the coordinated switch works, then
