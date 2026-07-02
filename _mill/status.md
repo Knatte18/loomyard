@@ -39,7 +39,9 @@ batches:
     start_sha: 0b4189fa43dd0709b70e5b36a31ee134ad7d6f97
     commit_sha: 7d980cb69895c131b61dd5f284260334fcd1b37f
   - name: logger
-    state: pending
+    state: running
+    implementer_session: 358ab17f-342d-4f59-8d50-2c43a51e722b
+    start_sha: 9feed7bb97299d312eab427c11c6ae6972ac255c
   - name: render
     state: pending
   - name: muxengine-carrier
