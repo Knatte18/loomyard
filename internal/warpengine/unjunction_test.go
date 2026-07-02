@@ -248,9 +248,18 @@ func TestUnwireJunctions_Subpath(t *testing.T) {
 		t.Skip("this test requires RelPath != \".\"; got: " + l.RelPath)
 	}
 
+	// The weft repo's Prime template only checks out a root-level _lyx directory,
+	// not one nested under the subpath, so the nested weft-side target does not
+	// exist purely from Add. unseedLyxJunction resolves that target via
+	// filepath.EvalSymlinks before removing the link (same guard as
+	// TestUnwireJunctions_RealDirectoryGuard exercises), so create it directly here
+	// to exercise the legitimate removal path rather than the missing-target guard.
 	w := New(Config{})
 	if _, err := w.Add(l, slug, AddOptions{SkipPush: true}); err != nil {
 		t.Fatalf("Add(%q) at subpath: %v", slug, err)
+	}
+	if err := os.MkdirAll(l.WeftLyxDirFor(slug), 0o755); err != nil {
+		t.Fatalf("mkdir nested weft target: %v", err)
 	}
 	if err := WireJunctions(l, slug); err != nil {
 		t.Fatalf("WireJunctions(%q) at subpath: %v", slug, err)
