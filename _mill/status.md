@@ -69,7 +69,9 @@ batches:
     start_sha: d4a3a0b3d687e05d9ad9047657ad04a9dad275e5
     commit_sha: defe2a4884259f2c9585b91f1b8c58e292c90cf7
   - name: cmd-lyx-integration
-    state: pending
+    state: running
+    implementer_session: 0c79d409-4703-4771-8adc-29a186882428
+    start_sha: 5d809f3aede15a220a7d7a38e2567f366c2b1bef
   - name: docs
     state: pending
 ```
