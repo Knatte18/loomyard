@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: internal-mux
 branch: internal-mux
 plan: _mill/plan
@@ -41,6 +41,7 @@ holistic-fixing  '2026-07-02T20:14:57Z'
 nits-fixed-holistic  '2026-07-02T20:16:55Z'
 holistic-approved  '2026-07-02T20:17:10Z'
 done  '2026-07-02T20:17:43Z'
+pr-pending  '2026-07-02T20:18:27Z'
 ```
 
 ## Batches
