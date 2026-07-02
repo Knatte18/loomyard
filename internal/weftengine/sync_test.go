@@ -50,7 +50,7 @@ func TestCommit(t *testing.T) {
 			}
 
 			// Commit only the _lyx pathspec
-			committed, err := Commit(weftRepo, []string{"_lyx"}, tt.opts)
+			committed, err := Commit(weftRepo, []string{"_lyx"}, DefaultCommitMessage, tt.opts)
 			if err != nil {
 				t.Fatalf("Commit: %v", err)
 			}
@@ -109,12 +109,85 @@ func TestCommit_ScopedPathspec(t *testing.T) {
 		t.Fatalf("WriteFile: %v", err)
 	}
 
-	committed, err := Commit(weftRepo, ScopedPathspec(".", []string{"_lyx"}), SyncOptions{})
+	committed, err := Commit(weftRepo, ScopedPathspec(".", []string{"_lyx"}), DefaultCommitMessage, SyncOptions{})
 	if err != nil {
 		t.Fatalf("Commit: %v", err)
 	}
 	if !committed {
 		t.Errorf("Commit() with ScopedPathspec = false; want true")
+	}
+}
+
+// TestCommit_CustomMessage asserts that a custom message passed to Commit is what
+// lands in the weft repo's history, not DefaultCommitMessage — this is the behavior
+// the --undo path (a different package) relies on to record a distinct commit
+// message for its weft-side deletion.
+func TestCommit_CustomMessage(t *testing.T) {
+	t.Parallel()
+	fixture := lyxtest.CopyWeft(t)
+	weftRepo := fixture.WeftPath
+
+	lyxFile := filepath.Join(weftRepo, "_lyx", "config.yaml")
+	if err := os.WriteFile(lyxFile, []byte("modified"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	const customMessage = "custom test message"
+	committed, err := Commit(weftRepo, []string{"_lyx"}, customMessage, SyncOptions{})
+	if err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+	if !committed {
+		t.Fatalf("Commit should have succeeded")
+	}
+
+	cmd := exec.Command("git", "log", "-1", "--format=%s")
+	cmd.Dir = weftRepo
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git log -1 --format=%%s: %v", err)
+	}
+	got := strings.TrimSpace(string(out))
+	if got != customMessage {
+		t.Errorf("commit message = %q; want %q", got, customMessage)
+	}
+}
+
+// TestCommit_PathspecAlreadyRemoved verifies that Commit tolerates a
+// pathspec that has already been fully removed from both the working tree
+// and the git index by a prior commit -- the case a caller hits when it
+// unconditionally re-invokes Commit against a since-cleared pathspec (e.g.
+// `lyx init --undo` run a second time after the first run already committed
+// the _lyx deletion). It must report (false, nil), the same "nothing to
+// stage" contract as the CleanTree case in TestCommit, rather than
+// surfacing git's "pathspec ... did not match any files" as a hard error.
+func TestCommit_PathspecAlreadyRemoved(t *testing.T) {
+	t.Parallel()
+	fixture := lyxtest.CopyWeft(t)
+	weftRepo := fixture.WeftPath
+
+	// Remove the pathspec's whole directory and commit that removal, so the
+	// second Commit call below sees a pathspec matching nothing at all.
+	lyxDir := filepath.Join(weftRepo, "_lyx")
+	if err := os.RemoveAll(lyxDir); err != nil {
+		t.Fatalf("RemoveAll: %v", err)
+	}
+	committed, err := Commit(weftRepo, []string{"_lyx"}, DefaultCommitMessage, SyncOptions{})
+	if err != nil {
+		t.Fatalf("first Commit (removal): %v", err)
+	}
+	if !committed {
+		t.Fatalf("first Commit (removal) should have succeeded")
+	}
+
+	// Second call: the pathspec no longer matches anything on disk or in the
+	// index. This must be a clean no-op, not an error.
+	committed, err = Commit(weftRepo, []string{"_lyx"}, DefaultCommitMessage, SyncOptions{})
+	if err != nil {
+		t.Fatalf("second Commit (already-removed pathspec): %v", err)
+	}
+	if committed {
+		t.Errorf("second Commit (already-removed pathspec) = true; want false (nothing to stage)")
 	}
 }
 
@@ -141,7 +214,7 @@ func TestPush(t *testing.T) {
 				t.Fatalf("WriteFile: %v", err)
 			}
 
-			committed, err := Commit(weftRepo, []string{"_lyx"}, SyncOptions{})
+			committed, err := Commit(weftRepo, []string{"_lyx"}, DefaultCommitMessage, SyncOptions{})
 			if err != nil {
 				t.Fatalf("Commit: %v", err)
 			}
@@ -175,7 +248,7 @@ func TestPush_BrokenRemoteFailsWithoutStderrLeak(t *testing.T) {
 	if err := os.WriteFile(lyxFile, []byte("modified"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
-	committed, err := Commit(weftRepo, []string{"_lyx"}, SyncOptions{})
+	committed, err := Commit(weftRepo, []string{"_lyx"}, DefaultCommitMessage, SyncOptions{})
 	if err != nil {
 		t.Fatalf("Commit: %v", err)
 	}
@@ -214,7 +287,7 @@ func TestPull_FastForward(t *testing.T) {
 	if err := os.WriteFile(lyxFile, []byte("v1"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
-	committed, err := Commit(weftRepo, []string{"_lyx"}, SyncOptions{})
+	committed, err := Commit(weftRepo, []string{"_lyx"}, DefaultCommitMessage, SyncOptions{})
 	if err != nil {
 		t.Fatalf("Commit: %v", err)
 	}
