@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: config-set-key-loss
 branch: config-set-key-loss
 plan: _mill/plan
@@ -27,6 +27,7 @@ approved-configcli-json-envelope  '2026-07-02T11:15:41Z'
 holistic-reviewing  '2026-07-02T11:16:03Z'
 holistic-approved  '2026-07-02T11:18:40Z'
 done  '2026-07-02T11:19:02Z'
+pr-pending  '2026-07-02T11:20:11Z'
 ```
 
 ## Batches
