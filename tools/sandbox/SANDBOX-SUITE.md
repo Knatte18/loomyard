@@ -42,8 +42,11 @@ parent. The hub host repo is initialized at its root, so the agent runs the enti
 session from there (cwd is fixed at the root). Running a lyx command from a subdirectory
 that has not itself been initialized correctly reports
 `not initialized here; run "lyx init"` — that is expected behaviour, **not a finding**.
-Note: `lyx init` in a subdirectory would create `_lyx/` there and make lyx work in that
-subdir, but the agent must **not** scaffold nested `_lyx/` during a session.
+The agent must **not** scaffold nested `_lyx/` during a session, with exactly one
+controlled exception: **S6** deliberately runs `lyx init` in a subdirectory to prove
+the subfolder-scoping contract, and reverses that scaffolding with `lyx init --undo`
+at session end (see S6's durability note). Outside of S6, creating a nested `_lyx/`
+is out of scope for a session and not something to try "just to see what happens."
 
 ## Black-box rule
 
@@ -94,7 +97,7 @@ zero `WARN`/`FAIL` findings** -- in that case `items` is an empty array.
   "source": "sandbox-report",
   "items": [
     {
-      "ref": "S6",
+      "ref": "S5",
       "title": "…",
       "body": "verdict: WARN\n\n…repro…"
     }
@@ -104,7 +107,7 @@ zero `WARN`/`FAIL` findings** -- in that case `items` is an empty array.
 
 - `source` is the literal string `"sandbox-report"`.
 - `items[]` holds only `WARN`/`FAIL` findings -- do not record `OK` scenarios here.
-- `ref` is the scenario id (`S0`-`S6`).
+- `ref` is the scenario id (`S0`-`S8`).
 - `title` is a short one-line summary.
 - `body` folds the detail, repro steps, and verdict into one markdown string.
 
@@ -159,6 +162,8 @@ it as an enhancement suggestion.
 
 **Goal:** "Add a task to the board, list tasks, change its state."
 
+**Covers:** board
+
 **Note:** When passing JSON in PowerShell, use single-quoted strings with literal inner
 double quotes — see the PowerShell JSON-quoting note in Pre-conditions.
 
@@ -177,14 +182,20 @@ Use `lyx board list` to observe current state before adding tasks, and use
 
 **Goal:** "Inspect lyx's config for this hub, change a value, confirm it took."
 
-**Watch:** From the worktree root, does `lyx config` read/write the correct
-`_lyx/config/` and round-trip a value?
+**Covers:** config
+
+**Watch:** From the worktree root, write a value with `lyx config <module> --set
+key=value` (non-interactive, bypasses the editor; mutually exclusive with `--print`;
+requires a module argument), read it back with `lyx config <module> --print`, then run
+`lyx config reconcile`. Does the write/read round-trip the correct `_lyx/config/` file,
+and does `reconcile` report a clean (no unexpected added/removed keys) result against
+the value you just wrote?
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
 ---
 
-### S6 -- Wrong-directory and error ergonomics
+### S5 -- Wrong-directory and error ergonomics
 
 **Goal:** "Run a hub-only command from outside the hub. Run a command with a bad flag.
 Run an unknown subcommand."
@@ -202,6 +213,85 @@ raw stderr) — that is still a legitimate `WARN`/`FAIL` finding.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
+---
+
+### S6 -- Subfolder init
+
+**Goal:** "From a non-root subdirectory of the already-initialized host repo, run
+`lyx init` there. Then run `config` and `board` from that same subdir. Finally, reverse
+it with `lyx init --undo`."
+
+**Covers:** init
+
+**Durability note:** S6 scaffolds a real nested `_lyx/` in the subfolder — a directory
+junction into the weft worktree, not a plain directory — and touches `.gitignore`
+there. That state persists across sandbox sessions unless the hub is rebuilt with
+`sandbox-build.cmd -reset` (optional, not mandatory, per Pre-conditions), so S6 must run
+`lyx init --undo` from the subdir at session end to restore the "not yet initialized"
+state. `init --undo` is not purely local: clearing the weft-side `_lyx` content commits
+and pushes that deletion to the shared `lyx-test-weft` remote, so each S6 run leaves an
+init-then-undo commit pair in the weft repo's history. It is a clean no-op on a
+never-initialized directory, so it is always safe to run at session end even if S6
+bailed early.
+
+**Watch:** Does `lyx init` scaffold a subdir-scoped `_lyx/` (not at the repo root)? Does
+`lyx config --print`/`--set` run from the subdir resolve against the subdir's own
+`_lyx/config` rather than the root's — the actual subfolder-scoping demonstrator? Does
+`lyx board` still run cleanly from the subdir — a "still works from any subfolder" smoke
+check only; board's data lives at the hub level, so this does *not* itself prove
+subfolder-scoped resolution the way `config` does. Does `lyx init --undo` cleanly reverse
+the scaffolding?
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
+---
+
+### S7 -- Weft lifecycle
+
+**Goal:** "Make a small, clearly-marked change inside the weft-tracked scope and run it
+through `weft status`, `commit`, `push`, `pull`, and `sync`."
+
+**Covers:** weft
+
+**Durability note:** S7 runs against the real shared sandbox remotes. Make a small,
+clearly-marked test change and do not leave the weft/host remotes diverged or broken for
+the next session.
+
+**Watch:** Does `weft status` report the change accurately? Do `commit`/`push` mirror it
+to the weft remote? The commit message is always the fixed string `"weft sync"` — it is
+not generated from changed files and there is no `-m` flag to customize it. Staging is
+scoped to the directories listed in the weft config (default `_lyx`), so the test change
+should land inside that scope to be picked up at all. `weft sync` pushes via a detached
+child process, so `status` immediately after `sync` may lag behind the actual push — a
+confusing-but-expected rough edge to note as a `WARN`, not to pre-judge here.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
+---
+
+### S8 -- Warp introspection
+
+**Goal:** "Exercise `warp list`, `warp pairs`, `warp reconcile`, and `warp checkout` on
+a healthy pair."
+
+**Covers:** warp
+
+**Durability note:** Record the branch active before the scenario starts. Run
+`warp checkout <other-branch>` to prove the coordinated switch works, then
+`warp checkout <original-branch>` to restore it, leaving hub state clean for the rest of
+the session.
+
+**Watch:** Do `warp list`/`warp pairs` report sane host↔weft geometry? Is
+`warp reconcile` a safe no-op/idempotent read+report on an already-healthy pair — note
+it has no `--apply`/dry-run flag, unlike `config reconcile`; it always performs its
+repair check directly, so a destructive result on a healthy pair would itself be a
+finding worth recording. Does `warp checkout` perform a coordinated host+weft switch
+cleanly? A *bad* `warp checkout` (e.g. an unknown branch) now yields a clean wrapped
+error (`host switch to branch %q failed (git exit %d)`), not raw git stderr — a legible
+error there is the expected `OK` outcome, not a finding.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
 ## Session log format
 
 After running all scenarios, record a short session summary:
@@ -215,7 +305,10 @@ S1: <OK|WARN|FAIL> -- <one-line note if not OK>
 S2: <OK|WARN|FAIL> -- <one-line note if not OK>
 S3: <OK|WARN|FAIL> -- <one-line note if not OK>
 S4: <OK|WARN|FAIL> -- <one-line note if not OK>
+S5: <OK|WARN|FAIL> -- <one-line note if not OK>
 S6: <OK|WARN|FAIL> -- <one-line note if not OK>
+S7: <OK|WARN|FAIL> -- <one-line note if not OK>
+S8: <OK|WARN|FAIL> -- <one-line note if not OK>
 
 sandbox-report.json written: <count of WARN/FAIL items>
 ```
