@@ -1,19 +1,16 @@
 //go:build integration
 
-// undo_test.go — tests for the lyx init --undo command.
+// undo_test.go — tests for Undo.
 //
 // Tests cover the happy-path reversal, the two clean-no-op cases (never
-// initialized, never weft-paired), idempotency of running --undo twice, the
+// initialized, never weft-paired), idempotency of running Undo twice, the
 // two hard-error junction-inconsistency guards (real directory, target
 // mismatch) that must leave everything untouched, and partial-recovery from
-// a prior interrupted --undo run. Tests seed fixtures via lyxtest, mirroring
-// initcli_test.go's existing pattern.
+// a prior interrupted Undo run.
 
-package initcli_test
+package initengine
 
 import (
-	"bytes"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"sort"
@@ -23,28 +20,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
-	"github.com/Knatte18/loomyard/internal/initcli"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
-
-// assertField asserts that result[key] is the string want.
-func assertField(t *testing.T, result map[string]any, key, want string) {
-	t.Helper()
-	got, _ := result[key].(string)
-	if got != want {
-		t.Errorf("result[%q] = %q; want %q", key, got, want)
-	}
-}
-
-// mustParseJSON unmarshals buf into a map, failing the test on error.
-func mustParseJSON(t *testing.T, buf *bytes.Buffer) map[string]any {
-	t.Helper()
-	var result map[string]any
-	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
-		t.Fatalf("parse JSON: %v, output: %s", err, buf.String())
-	}
-	return result
-}
 
 // mustReadFile reads path, failing the test on error.
 func mustReadFile(t *testing.T, path string) string {
@@ -92,7 +69,7 @@ func excludeContainsLine(content, name string) bool {
 
 // snapshotDir returns a deterministic, sorted newline-joined listing of every
 // path under dir (relative to dir), for before/after equality checks on
-// directory trees that must be left untouched by an aborted --undo.
+// directory trees that must be left untouched by an aborted Undo.
 func snapshotDir(t *testing.T, dir string) string {
 	t.Helper()
 
@@ -115,48 +92,49 @@ func snapshotDir(t *testing.T, dir string) string {
 	return strings.Join(entries, "\n")
 }
 
-// TestRunInit_Undo_HappyPath verifies that --undo fully reverses a prior init:
-// the host junction, the weft-side content, the .gitignore block, and the
+// TestUndo_HappyPath verifies that Undo fully reverses a prior Init: the host
+// junction, the weft-side content, the .gitignore block, and the
 // .git/info/exclude entry are all gone, and the weft-side deletion was
 // committed (push is exercised via WEFT_SKIP_PUSH, not asserted here — the
-// real push path is covered separately by TestRunInit_Undo_PartialRecovery/b).
-func TestRunInit_Undo_HappyPath(t *testing.T) {
+// real push path is covered separately by TestUndo_PartialRecovery/b).
+func TestUndo_HappyPath(t *testing.T) {
 	f := lyxtest.CopyPairedLocal(t)
-	t.Chdir(f.Layout.WorktreeRoot)
 	// CopyPairedLocal's weft-prime origin is left pointing at the shared
-	// template bare (never rewritten); skip push so --undo cannot reach it.
+	// template bare (never rewritten); skip push so Undo cannot reach it.
 	t.Setenv("WEFT_SKIP_PUSH", "1")
 
-	var buf bytes.Buffer
-	if code := initcli.RunInit(&buf, []string{}); code != 0 {
-		t.Fatalf("RunInit() = %d; want 0, output: %s", code, buf.String())
+	if _, err := Init(f.Layout.WorktreeRoot); err != nil {
+		t.Fatalf("Init() = %v; want nil", err)
 	}
 
-	var buf2 bytes.Buffer
-	code := initcli.RunInit(&buf2, []string{"--undo"})
-	if code != 0 {
-		t.Fatalf("RunInit(--undo) = %d; want 0, output: %s", code, buf2.String())
+	result, err := Undo(f.Layout.WorktreeRoot)
+	if err != nil {
+		t.Fatalf("Undo() = %v; want nil", err)
 	}
 
-	result := mustParseJSON(t, &buf2)
-	if ok, _ := result["ok"].(bool); !ok {
-		t.Errorf("ok flag is not true; output: %s", buf2.String())
+	if result.LyxJunction != "removed" {
+		t.Errorf("result.LyxJunction = %q; want %q", result.LyxJunction, "removed")
 	}
-	assertField(t, result, "lyx_junction", "removed")
-	assertField(t, result, "weft_content", "cleared")
-	assertField(t, result, "git_exclude", "reverted")
-	assertField(t, result, "gitignore", "reverted")
+	if result.WeftContent != "cleared" {
+		t.Errorf("result.WeftContent = %q; want %q", result.WeftContent, "cleared")
+	}
+	if result.GitExclude != "reverted" {
+		t.Errorf("result.GitExclude = %q; want %q", result.GitExclude, "reverted")
+	}
+	if result.Gitignore != "reverted" {
+		t.Errorf("result.Gitignore = %q; want %q", result.Gitignore, "reverted")
+	}
 
 	// Host junction is gone.
 	hostLink := f.Layout.HostLyxLinkHere()
 	if _, statErr := os.Lstat(hostLink); !os.IsNotExist(statErr) {
-		t.Errorf("host junction %s still exists after --undo", hostLink)
+		t.Errorf("host junction %s still exists after Undo", hostLink)
 	}
 
 	// Weft-side _lyx directory is gone.
 	weftLyxDir := f.Layout.WeftLyxDir()
 	if _, statErr := os.Stat(weftLyxDir); !os.IsNotExist(statErr) {
-		t.Errorf("weft _lyx dir %s still exists after --undo", weftLyxDir)
+		t.Errorf("weft _lyx dir %s still exists after Undo", weftLyxDir)
 	}
 
 	// The deletion was committed: the _lyx pathspec is clean (scoped like
@@ -167,7 +145,7 @@ func TestRunInit_Undo_HappyPath(t *testing.T) {
 		t.Fatalf("git status in weft worktree failed: %v (exit %d)", err, exitCode)
 	}
 	if strings.TrimSpace(stdout) != "" {
-		t.Errorf("weft worktree _lyx pathspec not clean after --undo: %q", stdout)
+		t.Errorf("weft worktree _lyx pathspec not clean after Undo: %q", stdout)
 	}
 
 	// The .gitignore managed block is fully removed, not just emptied.
@@ -183,15 +161,14 @@ func TestRunInit_Undo_HappyPath(t *testing.T) {
 	// The .git/info/exclude line is gone.
 	excludeContent := readExcludeContent(t, f.Layout, filepath.Base(f.Layout.WorktreeRoot))
 	if excludeContainsLine(excludeContent, hubgeometry.LyxDirName) {
-		t.Errorf(".git/info/exclude still contains %q line after --undo", hubgeometry.LyxDirName)
+		t.Errorf(".git/info/exclude still contains %q line after Undo", hubgeometry.LyxDirName)
 	}
 }
 
-// TestRunInit_Undo_NeverInitialized verifies that --undo is a clean no-op on
-// a directory that was never lyx-initialized (host or weft side).
-func TestRunInit_Undo_NeverInitialized(t *testing.T) {
+// TestUndo_NeverInitialized verifies that Undo is a clean no-op on a
+// directory that was never lyx-initialized (host or weft side).
+func TestUndo_NeverInitialized(t *testing.T) {
 	f := lyxtest.CopyPairedLocal(t)
-	t.Chdir(f.Layout.WorktreeRoot)
 	t.Setenv("WEFT_SKIP_PUSH", "1")
 
 	// lyxtest.CopyPairedLocal's weft-prime template always pre-seeds
@@ -205,38 +182,37 @@ func TestRunInit_Undo_NeverInitialized(t *testing.T) {
 		t.Fatalf("remove weft-prime placeholder _lyx: %v", err)
 	}
 
-	var buf bytes.Buffer
-	code := initcli.RunInit(&buf, []string{"--undo"})
-	if code != 0 {
-		t.Fatalf("RunInit(--undo) = %d; want 0, output: %s", code, buf.String())
+	result, err := Undo(f.Layout.WorktreeRoot)
+	if err != nil {
+		t.Fatalf("Undo() = %v; want nil", err)
 	}
 
-	result := mustParseJSON(t, &buf)
-	if ok, _ := result["ok"].(bool); !ok {
-		t.Errorf("ok flag is not true; output: %s", buf.String())
+	if result.LyxJunction != "not_present" {
+		t.Errorf("result.LyxJunction = %q; want %q", result.LyxJunction, "not_present")
 	}
-	assertField(t, result, "lyx_junction", "not_present")
-	assertField(t, result, "weft_content", "not_present")
-	assertField(t, result, "git_exclude", "unchanged")
-	assertField(t, result, "gitignore", "unchanged")
-	if _, hasError := result["error"]; hasError {
-		t.Errorf("result has unexpected error field; output: %s", buf.String())
+	if result.WeftContent != "not_present" {
+		t.Errorf("result.WeftContent = %q; want %q", result.WeftContent, "not_present")
+	}
+	if result.GitExclude != "unchanged" {
+		t.Errorf("result.GitExclude = %q; want %q", result.GitExclude, "unchanged")
+	}
+	if result.Gitignore != "unchanged" {
+		t.Errorf("result.Gitignore = %q; want %q", result.Gitignore, "unchanged")
 	}
 }
 
-// TestRunInit_Undo_NoWeftPairing covers the truly-unpaired host case (no weft
+// TestUndo_NoWeftPairing covers the truly-unpaired host case (no weft
 // sibling worktree at all — not merely "never init'd" but "never warp add'd
-// either"). --undo must not create a stray weft sibling as a side effect.
-func TestRunInit_Undo_NoWeftPairing(t *testing.T) {
+// either"). Undo must not create a stray weft sibling as a side effect.
+func TestUndo_NoWeftPairing(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Initialize a bare git repo (no weft sibling), mirroring
-	// initcli_test.go's TestRunInit_NoPairing fixture.
+	// init_test.go's TestInit_NoPairing fixture.
 	if _, _, exitCode, err := gitexec.RunGit([]string{"init"}, tmpDir); err != nil || exitCode != 0 {
 		t.Fatalf("git init failed: %v (exit code %d)", err, exitCode)
 	}
 
-	t.Chdir(tmpDir)
 	t.Setenv("WEFT_SKIP_PUSH", "1")
 
 	l, err := hubgeometry.Resolve(tmpDir)
@@ -244,73 +220,65 @@ func TestRunInit_Undo_NoWeftPairing(t *testing.T) {
 		t.Fatalf("hubgeometry.Resolve: %v", err)
 	}
 
-	var buf bytes.Buffer
-	code := initcli.RunInit(&buf, []string{"--undo"})
-	if code != 0 {
-		t.Fatalf("RunInit(--undo) = %d; want 0, output: %s", code, buf.String())
+	result, err := Undo(tmpDir)
+	if err != nil {
+		t.Fatalf("Undo() = %v; want nil", err)
 	}
 
-	result := mustParseJSON(t, &buf)
-	if ok, _ := result["ok"].(bool); !ok {
-		t.Errorf("ok flag is not true; output: %s", buf.String())
-	}
-	assertField(t, result, "weft_content", "not_present")
-	if _, hasError := result["error"]; hasError {
-		t.Errorf("result has unexpected error field; output: %s", buf.String())
+	if result.WeftContent != "not_present" {
+		t.Errorf("result.WeftContent = %q; want %q", result.WeftContent, "not_present")
 	}
 
 	// No <slug>-weft directory (nor a stray .weft lock dir under it) was
-	// created as a side effect of the --undo call.
+	// created as a side effect of the Undo call.
 	if _, statErr := os.Stat(l.WeftWorktree()); !os.IsNotExist(statErr) {
-		t.Errorf("--undo created a stray weft worktree at %s (stat err: %v)", l.WeftWorktree(), statErr)
+		t.Errorf("Undo created a stray weft worktree at %s (stat err: %v)", l.WeftWorktree(), statErr)
 	}
 }
 
-// TestRunInit_Undo_Idempotent verifies that running --undo a second time in a
-// row (after a prior init and a first successful --undo) is a clean no-op,
-// matching TestRunInit_Undo_NeverInitialized's expected output shape.
-func TestRunInit_Undo_Idempotent(t *testing.T) {
+// TestUndo_Idempotent verifies that running Undo a second time in a row
+// (after a prior Init and a first successful Undo) is a clean no-op,
+// matching TestUndo_NeverInitialized's expected output shape.
+func TestUndo_Idempotent(t *testing.T) {
 	f := lyxtest.CopyPairedLocal(t)
-	t.Chdir(f.Layout.WorktreeRoot)
 	t.Setenv("WEFT_SKIP_PUSH", "1")
 
-	var buf bytes.Buffer
-	if code := initcli.RunInit(&buf, []string{}); code != 0 {
-		t.Fatalf("RunInit() = %d; want 0, output: %s", code, buf.String())
+	if _, err := Init(f.Layout.WorktreeRoot); err != nil {
+		t.Fatalf("Init() = %v; want nil", err)
 	}
 
-	var buf1 bytes.Buffer
-	if code := initcli.RunInit(&buf1, []string{"--undo"}); code != 0 {
-		t.Fatalf("first RunInit(--undo) = %d; want 0, output: %s", code, buf1.String())
+	if _, err := Undo(f.Layout.WorktreeRoot); err != nil {
+		t.Fatalf("first Undo() = %v; want nil", err)
 	}
 
-	var buf2 bytes.Buffer
-	code := initcli.RunInit(&buf2, []string{"--undo"})
-	if code != 0 {
-		t.Fatalf("second RunInit(--undo) = %d; want 0, output: %s", code, buf2.String())
+	result, err := Undo(f.Layout.WorktreeRoot)
+	if err != nil {
+		t.Fatalf("second Undo() = %v; want nil", err)
 	}
 
-	result := mustParseJSON(t, &buf2)
-	if ok, _ := result["ok"].(bool); !ok {
-		t.Errorf("ok flag is not true; output: %s", buf2.String())
+	if result.LyxJunction != "not_present" {
+		t.Errorf("result.LyxJunction = %q; want %q", result.LyxJunction, "not_present")
 	}
-	assertField(t, result, "lyx_junction", "not_present")
-	assertField(t, result, "weft_content", "not_present")
-	assertField(t, result, "git_exclude", "unchanged")
-	assertField(t, result, "gitignore", "unchanged")
+	if result.WeftContent != "not_present" {
+		t.Errorf("result.WeftContent = %q; want %q", result.WeftContent, "not_present")
+	}
+	if result.GitExclude != "unchanged" {
+		t.Errorf("result.GitExclude = %q; want %q", result.GitExclude, "unchanged")
+	}
+	if result.Gitignore != "unchanged" {
+		t.Errorf("result.Gitignore = %q; want %q", result.Gitignore, "unchanged")
+	}
 }
 
-// TestRunInit_Undo_RealDirectoryGuard verifies that --undo hard-errors and
-// leaves everything untouched when the host _lyx path has been externally
-// corrupted into a real directory after a prior init.
-func TestRunInit_Undo_RealDirectoryGuard(t *testing.T) {
+// TestUndo_RealDirectoryGuard verifies that Undo hard-errors and leaves
+// everything untouched when the host _lyx path has been externally
+// corrupted into a real directory after a prior Init.
+func TestUndo_RealDirectoryGuard(t *testing.T) {
 	f := lyxtest.CopyPairedLocal(t)
-	t.Chdir(f.Layout.WorktreeRoot)
 	t.Setenv("WEFT_SKIP_PUSH", "1")
 
-	var buf bytes.Buffer
-	if code := initcli.RunInit(&buf, []string{}); code != 0 {
-		t.Fatalf("RunInit() = %d; want 0, output: %s", code, buf.String())
+	if _, err := Init(f.Layout.WorktreeRoot); err != nil {
+		t.Fatalf("Init() = %v; want nil", err)
 	}
 
 	// Simulate external corruption: replace the junction with a real
@@ -333,15 +301,9 @@ func TestRunInit_Undo_RealDirectoryGuard(t *testing.T) {
 	gitignoreBefore := mustReadFile(t, gitignorePath)
 	excludeBefore := readExcludeContent(t, f.Layout, filepath.Base(f.Layout.WorktreeRoot))
 
-	var buf2 bytes.Buffer
-	code := initcli.RunInit(&buf2, []string{"--undo"})
-	if code == 0 {
-		t.Fatalf("RunInit(--undo) = 0; want non-zero (error) on real-directory guard, output: %s", buf2.String())
-	}
-
-	result := mustParseJSON(t, &buf2)
-	if _, hasError := result["error"]; !hasError {
-		t.Errorf("result missing error field; output: %s", buf2.String())
+	_, err := Undo(f.Layout.WorktreeRoot)
+	if err == nil {
+		t.Fatal("Undo() = nil; want error on real-directory guard")
 	}
 
 	// The real directory and its content must be untouched.
@@ -366,17 +328,15 @@ func TestRunInit_Undo_RealDirectoryGuard(t *testing.T) {
 	}
 }
 
-// TestRunInit_Undo_TargetMismatch verifies that --undo hard-errors and leaves
+// TestUndo_TargetMismatch verifies that Undo hard-errors and leaves
 // everything untouched when the host junction has been externally
-// re-pointed at an unrelated directory after a prior init.
-func TestRunInit_Undo_TargetMismatch(t *testing.T) {
+// re-pointed at an unrelated directory after a prior Init.
+func TestUndo_TargetMismatch(t *testing.T) {
 	f := lyxtest.CopyPairedLocal(t)
-	t.Chdir(f.Layout.WorktreeRoot)
 	t.Setenv("WEFT_SKIP_PUSH", "1")
 
-	var buf bytes.Buffer
-	if code := initcli.RunInit(&buf, []string{}); code != 0 {
-		t.Fatalf("RunInit() = %d; want 0, output: %s", code, buf.String())
+	if _, err := Init(f.Layout.WorktreeRoot); err != nil {
+		t.Fatalf("Init() = %v; want nil", err)
 	}
 
 	// Replace the valid junction with one pointing at an unrelated directory.
@@ -398,15 +358,9 @@ func TestRunInit_Undo_TargetMismatch(t *testing.T) {
 	gitignoreBefore := mustReadFile(t, gitignorePath)
 	excludeBefore := readExcludeContent(t, f.Layout, filepath.Base(f.Layout.WorktreeRoot))
 
-	var buf2 bytes.Buffer
-	code := initcli.RunInit(&buf2, []string{"--undo"})
-	if code == 0 {
-		t.Fatalf("RunInit(--undo) = 0; want non-zero (error) on target mismatch, output: %s", buf2.String())
-	}
-
-	result := mustParseJSON(t, &buf2)
-	if _, hasError := result["error"]; !hasError {
-		t.Errorf("result missing error field; output: %s", buf2.String())
+	_, err := Undo(f.Layout.WorktreeRoot)
+	if err == nil {
+		t.Fatal("Undo() = nil; want error on target mismatch")
 	}
 
 	// The mismatched junction must still exist and still point at the wrong target.
@@ -415,7 +369,7 @@ func TestRunInit_Undo_TargetMismatch(t *testing.T) {
 		t.Fatalf("fslink.IsLink(%s): %v", hostLink, err)
 	}
 	if !isLink {
-		t.Errorf("junction %s no longer a link after aborted --undo", hostLink)
+		t.Errorf("junction %s no longer a link after aborted Undo", hostLink)
 	}
 	resolved, err := fslink.PointsTo(hostLink)
 	if err != nil {
@@ -441,20 +395,18 @@ func TestRunInit_Undo_TargetMismatch(t *testing.T) {
 	}
 }
 
-// TestRunInit_Undo_PartialRecovery covers recovery from a --undo run that was
+// TestUndo_PartialRecovery covers recovery from an Undo run that was
 // interrupted partway through: part (a) simulates a crash right after the
 // junction was removed but before weft content was cleared; part (b)
 // simulates a crash right after the weft-side deletion was committed but
 // before it was pushed (the "Push runs unconditionally" Shared Decision).
-func TestRunInit_Undo_PartialRecovery(t *testing.T) {
+func TestUndo_PartialRecovery(t *testing.T) {
 	t.Run("a", func(t *testing.T) {
 		f := lyxtest.CopyPairedLocal(t)
-		t.Chdir(f.Layout.WorktreeRoot)
 		t.Setenv("WEFT_SKIP_PUSH", "1")
 
-		var buf bytes.Buffer
-		if code := initcli.RunInit(&buf, []string{}); code != 0 {
-			t.Fatalf("RunInit() = %d; want 0, output: %s", code, buf.String())
+		if _, err := Init(f.Layout.WorktreeRoot); err != nil {
+			t.Fatalf("Init() = %v; want nil", err)
 		}
 
 		// Simulate a crash between removing the junction and clearing weft
@@ -464,22 +416,21 @@ func TestRunInit_Undo_PartialRecovery(t *testing.T) {
 			t.Fatalf("remove host junction: %v", err)
 		}
 
-		var buf2 bytes.Buffer
-		code := initcli.RunInit(&buf2, []string{"--undo"})
-		if code != 0 {
-			t.Fatalf("recovery RunInit(--undo) = %d; want 0, output: %s", code, buf2.String())
+		result, err := Undo(f.Layout.WorktreeRoot)
+		if err != nil {
+			t.Fatalf("recovery Undo() = %v; want nil", err)
 		}
 
-		result := mustParseJSON(t, &buf2)
-		if ok, _ := result["ok"].(bool); !ok {
-			t.Errorf("ok flag is not true; output: %s", buf2.String())
+		if result.LyxJunction != "not_present" {
+			t.Errorf("result.LyxJunction = %q; want %q", result.LyxJunction, "not_present")
 		}
-		assertField(t, result, "lyx_junction", "not_present")
-		assertField(t, result, "weft_content", "cleared")
+		if result.WeftContent != "cleared" {
+			t.Errorf("result.WeftContent = %q; want %q", result.WeftContent, "cleared")
+		}
 
 		weftLyxDir := f.Layout.WeftLyxDir()
 		if _, statErr := os.Stat(weftLyxDir); !os.IsNotExist(statErr) {
-			t.Errorf("weft _lyx dir %s still exists after recovery --undo", weftLyxDir)
+			t.Errorf("weft _lyx dir %s still exists after recovery Undo", weftLyxDir)
 		}
 	})
 
@@ -488,7 +439,6 @@ func TestRunInit_Undo_PartialRecovery(t *testing.T) {
 		// template bare, unsupported as a real push target; use CopyPaired,
 		// whose bares are rewritten per-test, so the real push below is safe.
 		f := lyxtest.CopyPaired(t)
-		t.Chdir(f.Layout.WorktreeRoot)
 
 		// lyxtest.CopyPaired's weft-prime template (unlike CopyWeft's) has no
 		// upstream tracking established; a real weft worktree gets that from
@@ -496,20 +446,19 @@ func TestRunInit_Undo_PartialRecovery(t *testing.T) {
 		// establish the same baseline here before simulating the partial run.
 		lyxtest.MustRun(t, f.Layout.WeftWorktree(), "git", "push", "-u", "origin", "main")
 
-		var buf bytes.Buffer
-		if code := initcli.RunInit(&buf, []string{}); code != 0 {
-			t.Fatalf("RunInit() = %d; want 0, output: %s", code, buf.String())
+		if _, err := Init(f.Layout.WorktreeRoot); err != nil {
+			t.Fatalf("Init() = %v; want nil", err)
 		}
 
 		// Manually perform the weft-side deletion and commit (mirroring what
-		// step 4 of runUndo would do) but do not push, simulating a prior
-		// --undo run that committed locally but failed to push. runUndo's
-		// step 3 (junction removal) always runs before step 4, so a run that
-		// reached step 4 necessarily already removed the host junction too;
-		// mirror that here so the full --undo call below sees an
-		// already-clean junction step (no-op) rather than a corrupted one
-		// (unseedLyxJunction validates the weft-side target still exists
-		// before touching the link, which the deletion below removes).
+		// step 4 of Undo would do) but do not push, simulating a prior Undo
+		// run that committed locally but failed to push. Undo's step 3
+		// (junction removal) always runs before step 4, so a run that reached
+		// step 4 necessarily already removed the host junction too; mirror
+		// that here so the full Undo call below sees an already-clean
+		// junction step (no-op) rather than a corrupted one (the weft-side
+		// unwiring guard validates the weft-side target still exists before
+		// touching the link, which the deletion below removes).
 		hostLink := f.Layout.HostLyxLinkHere()
 		if err := fslink.Remove(hostLink); err != nil {
 			t.Fatalf("remove host junction: %v", err)
@@ -521,17 +470,10 @@ func TestRunInit_Undo_PartialRecovery(t *testing.T) {
 		lyxtest.MustRun(t, f.Layout.WeftWorktree(), "git", "add", "--", hubgeometry.LyxDirName)
 		lyxtest.MustRun(t, f.Layout.WeftWorktree(), "git", "commit", "-m", "lyx init --undo: clear _lyx")
 
-		// Run --undo without WEFT_SKIP_PUSH set, so the real push path
-		// executes and recovers the stranded local commit.
-		var buf2 bytes.Buffer
-		code := initcli.RunInit(&buf2, []string{"--undo"})
-		if code != 0 {
-			t.Fatalf("recovery RunInit(--undo) = %d; want 0, output: %s", code, buf2.String())
-		}
-
-		result := mustParseJSON(t, &buf2)
-		if ok, _ := result["ok"].(bool); !ok {
-			t.Errorf("ok flag is not true; output: %s", buf2.String())
+		// Run Undo without WEFT_SKIP_PUSH set, so the real push path executes
+		// and recovers the stranded local commit.
+		if _, err := Undo(f.Layout.WorktreeRoot); err != nil {
+			t.Fatalf("recovery Undo() = %v; want nil", err)
 		}
 
 		// Resolve the explicit "main" branch ref rather than the bare repo's
@@ -548,7 +490,7 @@ func TestRunInit_Undo_PartialRecovery(t *testing.T) {
 			t.Fatalf("git rev-parse refs/heads/main in weft bare failed: %v (exit %d)", err, exitCode)
 		}
 		if strings.TrimSpace(localHead) != strings.TrimSpace(bareHead) {
-			t.Errorf("weft local HEAD %s != weft bare HEAD %s after --undo push", strings.TrimSpace(localHead), strings.TrimSpace(bareHead))
+			t.Errorf("weft local HEAD %s != weft bare HEAD %s after Undo push", strings.TrimSpace(localHead), strings.TrimSpace(bareHead))
 		}
 	})
 }
