@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-review-r2
+phase: planned
 slug: sandbox-suite-expand
 branch: sandbox-suite-expand
 plan: _mill/plan
@@ -21,4 +21,5 @@ planning  '2026-07-02T07:17:37Z'
 plan-review-r1  '2026-07-02T07:21:06Z'
 plan-fix-r1  '2026-07-02T07:21:06Z'
 plan-review-r2  '2026-07-02T07:24:09Z'
+planned  '2026-07-02T07:24:30Z'
 ```
