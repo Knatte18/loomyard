@@ -1,8 +1,0 @@
-{"status":"success","commit_sha":"788314f0e1400335d52a4c5801cde61d4206b3cb","session_id":"bb9b2435-4071-4d6e-a291-06e9631b71fa"}
-
-Summary of work done for this batch (`02-coverage-invariant.md`, Card 4):
-
-- Created `C:\Code\loomyard\wts\sandbox-suite-expand\cmd\lyx\sandbox_coverage_test.go` — a new `package main` test that builds the live cobra root via `newRoot()`, collects `registered` module names (skipping `help`/`completion`), parses `**Covers:**` tags from `tools/sandbox/SANDBOX-SUITE.md` (repo root resolved via `runtime.Caller(0)` + three `filepath.Dir` walk-ups), and enforces two assertions: every registered module is covered or on the `excludedModules` allowlist (`muxpoc`, `ide`, `selfreport`, each with a reason), and every covered/excluded token names a real registered module (drift guard). Includes a `discovered_non_empty` sanity sub-test guarding against a vacuous pass.
-- Edited `C:\Code\loomyard\wts\sandbox-suite-expand\CONSTRAINTS.md` — added the `## Sandbox Suite Coverage` invariant section (between `## CLI / Cobra Invariant` and `## Documentation Lifecycle`), documenting the tagging convention, allowlist, and the enforcing test.
-
-Verify command `go test ./cmd/lyx/...` passes. Both files were committed together in a single commit (`788314f`) via the `git-commit` skill, then pushed to the `sandbox-suite-expand` branch. Working tree is clean of tracked in-scope changes.
