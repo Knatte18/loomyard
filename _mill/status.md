@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-initcli-undo
+phase: holistic-reviewing
 slug: lyx-deinit
 branch: lyx-deinit
 plan: _mill/plan
@@ -33,6 +33,7 @@ approved-weftengine-commit-message  '2026-07-01T09:37:49Z'
 approved-gitignore-remove  '2026-07-01T09:43:09Z'
 approved-warpengine-unwire-junctions  '2026-07-02T05:34:00Z'
 approved-initcli-undo  '2026-07-02T05:50:17Z'
+holistic-reviewing  '2026-07-02T05:50:36Z'
 ```
 
 ## Batches
