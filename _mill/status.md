@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-fix-r2
+phase: discussed
 slug: internal-mux
 branch: internal-mux
 plan: null
@@ -16,4 +16,5 @@ task_description: |
 ```text
 discussing  '2026-07-02T12:14:31Z'
 discussion-fix-r2  '2026-07-02T16:46:39Z'
+discussed  '2026-07-02T16:59:47Z'
 ```
