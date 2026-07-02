@@ -35,7 +35,10 @@ so that guarantee holds going forward.
   confirm lyx resolves against the subdir's own `_lyx`; also run `board` from
   the subdir as a "still works from any subfolder" smoke check (board's data
   lives at the hub level, so it does not itself demonstrate subfolder-scoped
-  resolution — see Decisions for why).
+  resolution — see Decisions for why). Finally, run `lyx init --undo` from
+  the subdir to reverse the scaffolding — this is both S6's cleanup step and
+  a real exercise of the newly-merged `init --undo` reversal path (see
+  Technical context).
 - Rewrite the "Operating model" note in `SANDBOX-SUITE.md` (currently forbids
   nested `_lyx` scaffolding during a session) to carve out this one scenario
   as the explicit, controlled exception.
@@ -45,8 +48,12 @@ so that guarantee holds going forward.
   reconcile`. `warp` has no existing scenario today — S8 is the module's
   first (the renamed S5 error-ergonomics check is generic and mentions no
   warp-specific case).
-- Extend existing **S4 — Config round-trip** to also run
-  `lyx config reconcile` after the existing edit/round-trip check.
+- Extend existing **S4 — Config round-trip**: the round-trip now uses the
+  non-interactive `lyx config <module> --set key=value` write path (merged
+  into `main` after this discussion began — see Technical context) followed
+  by `lyx config <module> --print` to read the value back, then finally
+  `lyx config reconcile`. This makes the whole S4 round-trip sandbox-native
+  (no editor), which the original discussion could not assume.
 - Renumber: rename the current S6 (wrong-directory/error-ergonomics) to
   **S5**; new scenarios from this task take S6, S7, S8. Fix the session-log
   format list (`S0`...`S5`... `S8`) to match. This renumber is forward-only —
@@ -63,24 +70,25 @@ so that guarantee holds going forward.
 - `muxpoc`, `ide`, and `selfreport` get **no new scenarios** — see Decisions
   for why all three are whole-module exclusions in the coverage allowlist,
   not partial/subcommand exclusions.
-- The `config` module's interactive editor flow (`lyx config <module>` without
-  `--print`, which launches a real editor process) stays untested — only
-  `--print` and `reconcile` are sandbox-exercised. This does **not** need its
-  own allowlist entry: coverage is module-level, and `config` is already
-  covered via S4.
+- The `config` module's interactive editor flow (`lyx config <module>` with
+  neither `--print` nor `--set`, which launches a real editor process) and
+  the interactive numbered menu (`lyx config` with no module) stay untested —
+  `--print`, `--set`, and `reconcile` are the sandbox-exercised paths. This
+  does **not** need its own allowlist entry: coverage is module-level, and
+  `config` is already covered via S4.
 - `warp add`/`clone`/`remove`/`prune`/`cleanup` are not exercised by S8 —
   they mutate/destroy worktree pairs and are out of scope for an
   introspection scenario. Only `list`, `pairs`, `checkout`, `reconcile` are
   in scope for S8.
 - Subcommand-level coverage granularity is out of scope for this task (see
   Decisions — module-level only, for now).
-- **Adding a `lyx deinit`/`init --undo` command is explicitly out of scope
-  for this task.** Writing S6 surfaced that no such command exists (see
-  Decisions → Subfolder init scenario), which is a real product gap — it's
-  filed as a separate backlog task (`lyx-deinit`, in the wiki) rather than
-  bundled into this task's scope. This task's S6 cleanup uses a temporary,
-  ad-hoc plain-filesystem/git workaround (see Decisions) until that
-  follow-up task lands.
+- **Implementing the `init --undo` reversal command is not part of this
+  task** — it was surfaced by this discussion, filed as the `lyx-deinit`
+  backlog task, and has since been **implemented and merged into `main`**
+  (as `lyx init --undo`, a flag on `init`, not a standalone `deinit` module).
+  This task now simply *uses* that command as S6's cleanup step (see
+  Decisions → Subfolder init scenario); the earlier plan for a temporary
+  ad-hoc filesystem/git cleanup workaround is obsolete and has been removed.
 
 ## Decisions
 
@@ -291,8 +299,8 @@ so that guarantee holds going forward.
   touches `.gitignore` there — state persisting across sandbox sessions
   unless the hub is rebuilt with `sandbox-build.cmd -reset` (which the
   suite's own Pre-conditions describe as optional, not mandatory, before
-  each session). S6 must therefore remove the nested `_lyx/` (and revert any
-  `.gitignore` change) from the subfolder at session end, so a later run
+  each session). S6 must therefore reverse that scaffolding at session end
+  via `lyx init --undo` (see the cleanup bullet below), so a later run
   reliably observes "not yet initialized" rather than silently reusing a
   prior run's leftovers.
 - Correction from discussion review round 2: the nested `_lyx/` the
@@ -303,29 +311,41 @@ so that guarantee holds going forward.
   keyed on `RelPath`, so the subfolder junction is
   `<host>/<subdir>/_lyx` → `<weft-worktree>/<subdir>/_lyx`, and
   `ReconcileAll(cwd, true)` writes the module config YAMLs *through* that
-  junction into the weft worktree. Removing only the host-side junction
-  leaves the real weft-side `<subdir>/_lyx/config/*.yaml` (and any weft
-  commit made against it) behind — the durability note above must say
-  cleanup removes **both** the host junction *and* the weft-side target
-  directory it points to (or an equivalent weft-side revert), not just the
-  host `_lyx/`/`.gitignore`, or the "reliably observes not-yet-initialized"
-  guarantee it exists to provide does not actually hold.
-- **No `lyx` command exists to reverse `init`** (confirmed: no `deinit`
-  subcommand, no `--undo` flag on `init`). Cleanup must therefore fall back
-  to plain filesystem/git housekeeping, outside `lyx`, for the parts of the
-  reversal `lyx` doesn't own — the same precedent S2 already documents
-  ("committing host changes with plain git is acceptable and not a
-  finding... absence of a lyx-owned command is an intentional design
-  choice, not a gap"). This is an explicit **temporary/ad-hoc** measure: a
-  new backlog task, `lyx-deinit` (filed in the wiki during this discussion),
-  proposes an actual `lyx init --undo` / `lyx deinit` command. Once that
-  lands, S6's cleanup note should be rewritten to call the new command
-  instead of the manual steps below, and the durability guarantee
-  re-reviewed to see if the manual fallback is still needed at all.
-  Concretely, S6's cleanup note is: remove the host-side `_lyx` junction,
-  remove the weft-side `<subdir>/_lyx` directory it pointed to, and revert
-  the `.gitignore` change — all via plain filesystem/git commands, not
-  through `lyx`.
+  junction into the weft worktree. This is exactly why a naive "delete the
+  nested `_lyx/`" cleanup is insufficient — it would leave the real
+  weft-side `<subdir>/_lyx/config/*.yaml` (and any weft commit made against
+  it) behind. The merged `lyx init --undo` command handles this correctly:
+  it unwires the host junction, clears the weft-side `_lyx` content and
+  commits+pushes that deletion, and reverts both the `.gitignore` block and
+  the `.git/info/exclude` entry (`internal/initengine/undo.go`). That is
+  precisely the "remove **both** the host junction and the weft-side target"
+  requirement this correction identified — which is why S6's cleanup is now
+  a single `lyx init --undo` call rather than manual multi-step housekeeping.
+- **S6 cleanup = `lyx init --undo`** (revised after merging `main`). An
+  earlier draft of this discussion recorded that no `lyx` command could
+  reverse `init` and therefore planned a temporary ad-hoc filesystem/git
+  workaround. That command now exists — `lyx init --undo` was implemented and
+  merged (the `lyx-deinit` backlog task), so the ad-hoc plan is dropped
+  entirely. S6's cleanup is a single `lyx init --undo` run from the same
+  subdirectory. Key properties the implementer should rely on
+  (`internal/initcli/initcli.go`, `internal/initengine/undo.go`):
+  - It is a **clean no-op on a never-initialized directory** (no
+    weft-pairing pre-gate, unlike plain `init`), so it is always safe to run
+    at session end even if S6 bailed early.
+  - It is **not purely local**: clearing the weft-side `_lyx` content
+    commits and pushes that deletion to the real shared `lyx-test-weft`
+    remote. This is correct (it restores pristine state) but means each S6
+    run leaves an init-then-undo commit pair in the weft repo's history —
+    call this out in the S6 note the same way S7's weft-lifecycle note flags
+    that it writes to the shared remote.
+  - Running `lyx init --undo` also **exercises a real reversal path** end to
+    end, so S6's cleanup doubles as coverage of the `init --undo` surface —
+    no separate scenario is needed for it, and it does not change the
+    `Covers: init` mapping (still module-level).
+  - The JSON envelope reports per-step outcomes (`lyx_junction`,
+    `weft_content`, `git_exclude`, `gitignore` each `removed`/`cleared`/
+    `reverted`/`not_present`/`unchanged`); a legible OK envelope here is the
+    expected outcome, not a finding.
 - Correction from discussion review round 2 (accuracy note): `board`'s data
   directory is `hubgeometry.BoardDir(layout.Hub)` (`internal/boardcli/cli.go`)
   — hub-level and cwd-depth-invariant, unlike `config`'s subdir-scoped
@@ -354,15 +374,40 @@ so that guarantee holds going forward.
 - **`internal/warpcli/warp.go`**: `warp` subcommands are `clone`, `add`,
   `list`, `remove`, `checkout`, `pairs`, `reconcile`, `prune`, `cleanup`.
   Only `list`/`pairs`/`checkout`/`reconcile` are in scope for S8.
-- **`internal/configcli/configcli.go`**: `config [module]` (edit/menu,
-  excluded from sandbox testing when it opens the real editor),
-  `config [module] --print` (read-only, already sandbox-safe), and
-  `config reconcile [--apply]` (dry-run by default — the new S4 addition).
-- **`internal/initcli/initcli.go`**: `lyx init` requires an existing weft
-  pairing (`l.WeftWorktree()` must already exist) before it will scaffold
-  `_lyx/`; this is already true at the hub level before S6 runs (the hub was
-  materialized by `sandbox-build.cmd` with host+weft cloned), so it isn't a
-  new precondition S6 needs to set up.
+- **`internal/configcli/configcli.go`** (updated on `main` after this
+  discussion began): `config [module]` (edit/menu — launches a real editor
+  or interactive stdin menu, excluded from sandbox testing),
+  `config [module] --print` (read-only, sandbox-safe),
+  `config [module] --set key=value` (**new**: repeatable `StringArray` flag,
+  fully non-interactive write bypassing the editor; mutually exclusive with
+  `--print`; requires a module argument; e.g.
+  `lyx config board --set proposal_prefix=foo- --set home=Home.md`), and
+  `config reconcile [--apply]` (dry-run by default). `--set` + `--print` are
+  what makes S4's round-trip fully sandbox-native. The write path is backed
+  by the new `internal/configengine/set.go` and `internal/yamlengine/set.go`
+  (engines, not CLI modules — they add no new registered command, so the
+  coverage-invariant module set is unchanged).
+- **`internal/initcli/initcli.go`** (updated on `main`): `lyx init` requires
+  an existing weft pairing (`l.WeftWorktree()` must already exist) before it
+  scaffolds `_lyx/`; already true at the hub level before S6 runs (hub was
+  materialized by `sandbox-build.cmd` with host+weft cloned). The scaffolding
+  logic now lives in the extracted `internal/initengine` package. **New:**
+  `lyx init --undo` (flag on `init`, handled by `initengine.Undo`) reverses a
+  prior init — no weft-pairing pre-gate, clean no-op on an uninitialized dir,
+  and it commits+pushes the weft-side deletion. This is S6's cleanup step
+  (see Decisions → Subfolder init scenario). Both `--undo` and `--set` are
+  new *flags/subpaths on existing modules* (`init`, `config`) — they add no
+  new top-level module, so `registered` (init, board, config, ide, muxpoc,
+  weft, warp, selfreport) is unchanged and the coverage design holds as-is.
+- **`internal/warpcli` / `internal/warpengine/checkout.go`** (updated on
+  `main`, commit `edde385`): `warp checkout`'s error path was hardened —
+  it previously interpolated raw git stderr (`host switch failed: <stderr>`)
+  and now emits a clean, wrapped message (`host switch to branch %q failed
+  (git exit %d)`). Relevant to **S8** (a bad `warp checkout` now yields a
+  legible wrapped error, not raw git output) and to the renamed **S5**
+  error-ergonomics scenario (this is precisely the "raw subprocess string
+  leaking unwrapped" case S5's Watch note calls a finding — that specific
+  warp leak is now fixed, so S5/S8 should observe the clean form).
 - **`internal/hubgeometry/hubgeometry.go`**: `Resolve(cwd)` — `WorktreeRoot`
   is the git toplevel, `RelPath` is `filepath.Rel(WorktreeRoot, cwd)`. This
   is the mechanism S6 is validating end-to-end.
@@ -373,9 +418,13 @@ so that guarantee holds going forward.
   subfolder contract but does not change it; no code in `internal/hubgeometry`
   is touched by this task.
 - **CLI / Cobra Invariant** — the new coverage test is a direct sibling of
-  the existing registration/longlist/helptree guards under this invariant;
-  no new CLI surface is added by this task (only a new test + doc changes),
-  so the existing `Short`/registration/help-tree guards are unaffected.
+  the existing registration/longlist/helptree guards under this invariant.
+  *This* task adds no CLI surface of its own (only a new test + doc changes),
+  so the existing `Short`/registration/help-tree guards are unaffected. The
+  `init --undo` and `config --set` surface merged from `main` was added by
+  other tasks with their own guard updates; because both are flags on
+  existing modules (not new registered commands), they leave the coverage
+  test's `registered` module set unchanged.
 - **Documentation Lifecycle** — this task **must** add the new "Sandbox
   Suite Coverage" invariant to `CONSTRAINTS.md` in the same commit as the new
   test, following the existing invariants' format (short prose + "Enforced
@@ -455,8 +504,21 @@ so that guarantee holds going forward.
   is only a "still runs from here" smoke check.
 - **Q:** There's no `lyx` command to reverse `init` — how should S6's
   cleanup be handled, given this task's scope is the sandbox suite/doc, not
-  new CLI features? **A:** Temporary ad-hoc plain-filesystem/git cleanup for
-  now (matching S2's existing "plain git for housekeeping lyx doesn't own"
-  precedent), plus a new backlog task (`lyx-deinit`) filed in the wiki
-  proposing a real `lyx init --undo`/`lyx deinit` command — once that lands,
-  it should replace the ad-hoc cleanup steps in S6.
+  new CLI features? **A:** (superseded — see next entry) At the time:
+  temporary ad-hoc plain-filesystem/git cleanup, plus a new `lyx-deinit`
+  backlog task proposing a real reversal command.
+- **Q:** (Revision after merging `main`) The `lyx-deinit` task and a
+  `config set` task both landed and merged into `main` — how does that
+  change S6 and S4? **A:** S6's cleanup is now a single `lyx init --undo`
+  call (the reversal command shipped as a flag on `init`), replacing the
+  obsolete ad-hoc workaround; running it also doubles as coverage of the
+  reversal path. S4's config round-trip is now fully sandbox-native via the
+  new non-interactive `lyx config <module> --set key=value` write plus
+  `--print` read-back, then `reconcile`. Neither change adds a new registered
+  module, so the coverage-invariant design is unchanged.
+- **Q:** (Revision after merging `main`) Does the merged `warp checkout`
+  error-wrapping change affect any scenario? **A:** Yes, as context: a bad
+  `warp checkout` now emits a clean wrapped error instead of leaking raw git
+  stderr, so S8 (warp) and the renamed S5 (error ergonomics) should observe
+  the legible form — the specific raw-stderr leak S5's Watch note flags as a
+  finding is now fixed for warp checkout.
