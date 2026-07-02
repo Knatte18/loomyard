@@ -23,6 +23,18 @@ type SyncOptions struct {
 	SkipPush bool // Skip push operations if true; affects Push only.
 }
 
+// EnvSyncOptions reads the WEFT_SKIP_GIT and WEFT_SKIP_PUSH environment variables
+// and returns the SyncOptions they describe. It is exported so that every caller
+// needing the same env-based test bypass — weftcli's subcommands and the --undo
+// path in a different package — shares one implementation instead of duplicating
+// the env-var string literals.
+func EnvSyncOptions() SyncOptions {
+	return SyncOptions{
+		SkipGit:  os.Getenv("WEFT_SKIP_GIT") == "1",
+		SkipPush: os.Getenv("WEFT_SKIP_PUSH") == "1",
+	}
+}
+
 // ensureLockDir creates the lock directory inside the weft worktree and returns its path.
 func ensureLockDir(weftPath string) (string, error) {
 	lockDir := filepath.Join(weftPath, lockDirName)
@@ -32,10 +44,12 @@ func ensureLockDir(weftPath string) (string, error) {
 	return lockDir, nil
 }
 
-// Commit stages and commits pathspec-scoped changes in the weft worktree.
+// Commit stages and commits pathspec-scoped changes in the weft worktree, using
+// message as the commit message. Callers that have no reason to customize the
+// message should pass DefaultCommitMessage.
 // Returns (false, nil) if opts.SkipGit is true or if there is nothing staged.
 // Returns (true, nil) if a commit was made.
-func Commit(weftPath string, pathspec []string, opts SyncOptions) (committed bool, err error) {
+func Commit(weftPath string, pathspec []string, message string, opts SyncOptions) (committed bool, err error) {
 	if opts.SkipGit {
 		return false, nil
 	}
@@ -53,23 +67,31 @@ func Commit(weftPath string, pathspec []string, opts SyncOptions) (committed boo
 	}
 	defer lock.Release()
 
-	// Stage the pathspec entries
+	// Stage the pathspec entries. A pathspec that matches nothing at all --
+	// neither on disk nor in the git index -- is not a real failure: it means
+	// a prior commit already fully removed and committed that path (e.g. a
+	// second `lyx init --undo` run after the first one committed the _lyx
+	// deletion). Treat that specific git error as "nothing to stage" so a
+	// caller that unconditionally re-invokes Commit against a since-cleared
+	// pathspec stays idempotent, exactly like the "nothing staged" case below.
 	args := append([]string{"add", "--"}, pathspec...)
-	if _, _, code, err := gitexec.RunGit(args, weftPath); err != nil {
+	_, stderr, code, err := gitexec.RunGit(args, weftPath)
+	if err != nil {
 		return false, fmt.Errorf("add: %w", err)
-	} else if code != 0 {
-		return false, fmt.Errorf("add failed")
+	}
+	if code != 0 && !strings.Contains(stderr, "did not match any files") {
+		return false, fmt.Errorf("add failed: %s", stderr)
 	}
 
 	// Check if there is anything staged
-	_, _, code, err := gitexec.RunGit([]string{"diff", "--cached", "--quiet"}, weftPath)
+	_, _, code, err = gitexec.RunGit([]string{"diff", "--cached", "--quiet"}, weftPath)
 	if err != nil {
 		return false, fmt.Errorf("diff --cached: %w", err)
 	}
 	if code != 0 {
 		// Exit code 1 means changes are staged
 		// Commit them
-		if _, _, code, err := gitexec.RunGit([]string{"commit", "-m", commitMessage}, weftPath); err != nil {
+		if _, _, code, err := gitexec.RunGit([]string{"commit", "-m", message}, weftPath); err != nil {
 			return false, fmt.Errorf("commit: %w", err)
 		} else if code != 0 {
 			return false, fmt.Errorf("commit failed")
@@ -157,7 +179,7 @@ func pushUnpushed(weftPath string) error {
 			}
 			continue
 		}
-		return fmt.Errorf("push failed: %s", stderr)
+		return fmt.Errorf("push from %q failed (git exit %d) after rebase retry", weftPath, code)
 	}
 	return fmt.Errorf("push still failing after rebase retry")
 }

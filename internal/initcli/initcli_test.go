@@ -1,178 +1,86 @@
 //go:build integration
 
-// initcli_test.go — tests for the lyx init command.
-//
-// Tests verify that lyx init activates junctions and reconciles config only when
-// a weft pairing exists. Tests seeding a weft worktree fixture via lyxtest to
-// provide the paired environment that RunInit requires.
+// initcli_test.go covers the lyx init cobra surface: flag dispatch between
+// plain init and --undo, JSON envelope formatting, and error passthrough.
+// The behavioral matrix (junction wiring, gitignore reconciliation, undo
+// reversal, idempotency, abort guards, partial recovery) is covered directly
+// against internal/initengine's Init/Undo, not duplicated here.
 
 package initcli_test
 
 import (
 	"bytes"
 	"encoding/json"
-	"os"
-	"path/filepath"
-	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/boardengine"
-	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/initcli"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
-	"github.com/Knatte18/loomyard/internal/warpengine"
-	"github.com/Knatte18/loomyard/internal/weftengine"
 )
 
-func TestRunInit_FirstRun(t *testing.T) {
-	// Use a paired fixture (host + weft) so RunInit has a weft pairing to activate.
+// TestRunInit_Smoke verifies that plain `lyx init` wires through to
+// initengine.Init and formats its result as the {"ok":true,...} envelope
+// with the expected top-level keys.
+func TestRunInit_Smoke(t *testing.T) {
 	f := lyxtest.CopyPairedLocal(t)
-
-	// Change to the host worktree root.
 	t.Chdir(f.Layout.WorktreeRoot)
 
-	// Run init
 	var buf bytes.Buffer
-	runExitCode := initcli.RunInit(&buf, []string{})
-
-	if runExitCode != 0 {
-		t.Fatalf("RunInit() = %d; want 0, output: %s", runExitCode, buf.String())
+	if code := initcli.RunInit(&buf, []string{}); code != 0 {
+		t.Fatalf("RunInit() = %d; want 0, output: %s", code, buf.String())
 	}
 
-	// Parse and verify JSON
 	var result map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
 		t.Fatalf("parse JSON: %v, output: %s", err, buf.String())
 	}
-
 	if ok, _ := result["ok"].(bool); !ok {
 		t.Error("ok flag is not true")
 	}
-
-	// Verify _lyx/config/ directories exist
-	configDir := hubgeometry.ConfigDir(f.Layout.WorktreeRoot)
-	if _, err := os.Stat(configDir); err != nil {
-		t.Fatalf("_lyx/config not created: %v", err)
-	}
-
-	// Verify all three config files exist
-	for _, module := range []string{"board", "warp", "weft"} {
-		cfgPath := hubgeometry.ConfigFile(f.Layout.WorktreeRoot, module)
-		if _, err := os.Stat(cfgPath); err != nil {
-			t.Errorf("%s.yaml not created: %v", module, err)
+	for _, key := range []string{"lyx_dir", "gitignore", "modules"} {
+		if _, present := result[key]; !present {
+			t.Errorf("result missing %q key; output: %s", key, buf.String())
 		}
 	}
-
-	// Verify .gitignore has the managed block
-	gitignorePath := filepath.Join(f.Layout.WorktreeRoot, ".gitignore")
-	content, err := os.ReadFile(gitignorePath)
-	if err != nil {
-		t.Fatalf(".gitignore not created: %v", err)
-	}
-	contentStr := string(content)
-	if !strings.Contains(contentStr, "# === lyx-managed ===") {
-		t.Error(".gitignore missing start marker")
-	}
-	if !strings.Contains(contentStr, ".lyx/") {
-		t.Error(".gitignore missing .lyx/ entry")
-	}
-
-	// Verify strict loads pass
-	t.Run("StrictLoadsPass", func(t *testing.T) {
-		_, err := boardengine.LoadConfig(f.Layout.WorktreeRoot, "board")
-		if err != nil {
-			t.Errorf("board.LoadConfig failed: %v", err)
-		}
-
-		_, err = warpengine.LoadConfig(f.Layout.WorktreeRoot, "warp")
-		if err != nil {
-			t.Errorf("warp.LoadConfig failed: %v", err)
-		}
-
-		// Weft loads from the same directory in this test
-		_, err = weftengine.LoadConfig(f.Layout.WorktreeRoot)
-		if err != nil {
-			t.Errorf("weft.LoadConfig failed: %v", err)
-		}
-	})
 }
 
-func TestRunInit_Idempotent(t *testing.T) {
-	// Use a paired fixture (host + weft) so RunInit has a weft pairing to activate.
+// TestRunInit_UndoFlagDispatch verifies that the --undo flag routes to
+// initengine.Undo (not Init) and formats its result as the {"ok":true,...}
+// envelope with the undo-specific top-level keys.
+func TestRunInit_UndoFlagDispatch(t *testing.T) {
 	f := lyxtest.CopyPairedLocal(t)
-
 	t.Chdir(f.Layout.WorktreeRoot)
+	// CopyPairedLocal's weft-prime origin is left pointing at the shared
+	// template bare (never rewritten); skip push so --undo cannot reach it.
+	t.Setenv("WEFT_SKIP_PUSH", "1")
 
-	// First run
-	var buf1 bytes.Buffer
-	exitCode1 := initcli.RunInit(&buf1, []string{})
-	if exitCode1 != 0 {
-		t.Fatalf("first RunInit() = %d; want 0, output: %s", exitCode1, buf1.String())
+	var buf bytes.Buffer
+	if code := initcli.RunInit(&buf, []string{}); code != 0 {
+		t.Fatalf("RunInit() = %d; want 0, output: %s", code, buf.String())
 	}
 
-	// Capture files and gitignore after first run
-	boardPath := hubgeometry.ConfigFile(f.Layout.WorktreeRoot, "board")
-	content1, err := os.ReadFile(boardPath)
-	if err != nil {
-		t.Fatalf("read board.yaml: %v", err)
-	}
-
-	gitignorePath := filepath.Join(f.Layout.WorktreeRoot, ".gitignore")
-	gitignore1, err := os.ReadFile(gitignorePath)
-	if err != nil {
-		t.Fatalf("read .gitignore: %v", err)
-	}
-
-	// Second run
 	var buf2 bytes.Buffer
-	exitCode2 := initcli.RunInit(&buf2, []string{})
-	if exitCode2 != 0 {
-		t.Fatalf("second RunInit() = %d; want 0, output: %s", exitCode2, buf2.String())
+	code := initcli.RunInit(&buf2, []string{"--undo"})
+	if code != 0 {
+		t.Fatalf("RunInit(--undo) = %d; want 0, output: %s", code, buf2.String())
 	}
 
-	// Verify files unchanged
-	content2, err := os.ReadFile(boardPath)
-	if err != nil {
-		t.Fatalf("read board.yaml after second run: %v", err)
-	}
-	if string(content1) != string(content2) {
-		t.Error("board.yaml changed on second run (should be idempotent)")
-	}
-
-	// Verify gitignore unchanged
-	gitignore2, err := os.ReadFile(gitignorePath)
-	if err != nil {
-		t.Fatalf("read .gitignore after second run: %v", err)
-	}
-	if string(gitignore1) != string(gitignore2) {
-		t.Error(".gitignore changed on second run (should be idempotent)")
-	}
-
-	// Verify JSON output indicates no changes
 	var result map[string]any
 	if err := json.Unmarshal(buf2.Bytes(), &result); err != nil {
-		t.Fatalf("parse second run JSON: %v", err)
+		t.Fatalf("parse JSON: %v, output: %s", err, buf2.String())
 	}
-
-	modules, ok := result["modules"].([]any)
-	if !ok {
-		t.Error("modules is not an array")
-	} else {
-		for _, mod := range modules {
-			if m, ok := mod.(map[string]any); ok {
-				if applied, _ := m["applied"].(bool); applied {
-					moduleName, _ := m["module"].(string)
-					t.Errorf("module %s reports applied=true on second run (should be idempotent)", moduleName)
-				}
-			}
+	if ok, _ := result["ok"].(bool); !ok {
+		t.Errorf("ok flag is not true; output: %s", buf2.String())
+	}
+	for _, key := range []string{"lyx_junction", "weft_content", "git_exclude", "gitignore"} {
+		if _, present := result[key]; !present {
+			t.Errorf("result missing %q key; output: %s", key, buf2.String())
 		}
 	}
 }
 
 // TestRunInit_NotAGitRepo verifies that lyx init run from a non-git temp
-// directory surfaces hubgeometry's bare ErrNotAGitRepo sentinel with no
-// "failed to resolve layout:" prefix and no raw "fatal:" git stderr.
+// directory surfaces initengine's bare error unprefixed through the JSON
+// error envelope — the cli layer must not restate or wrap it.
 func TestRunInit_NotAGitRepo(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Chdir(tmpDir)
@@ -191,47 +99,5 @@ func TestRunInit_NotAGitRepo(t *testing.T) {
 	errMsg, _ := result["error"].(string)
 	if errMsg != "not a git repository" {
 		t.Errorf("RunInit() error = %q; want exactly \"not a git repository\"", errMsg)
-	}
-}
-
-// TestRunInit_NoPairing verifies that lyx init reports and exits early when
-// no weft pairing exists (unpaired host from dormant Add).
-//
-// NOTE: This test intentionally does NOT use a paired fixture; it creates a bare
-// git repo with no weft sibling to simulate the unpaired state.
-func TestRunInit_NoPairing(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	// Initialize a bare git repo (no weft sibling).
-	_, _, exitCode, initErr := gitexec.RunGit([]string{"init"}, tmpDir)
-	if initErr != nil || exitCode != 0 {
-		t.Fatalf("git init failed: %v (exit code %d)", initErr, exitCode)
-	}
-
-	t.Chdir(tmpDir)
-
-	// Run init; should report no pairing and exit.
-	var buf bytes.Buffer
-	runExitCode := initcli.RunInit(&buf, []string{})
-
-	if runExitCode == 0 {
-		t.Errorf("RunInit() = 0; want non-zero (error) when no pairing exists")
-	}
-
-	// Verify error message mentions weft pairing.
-	output := buf.String()
-	if !strings.Contains(output, "no weft pairing") {
-		t.Errorf("RunInit output missing 'no weft pairing'; got: %s", output)
-	}
-
-	// Verify .gitignore and config were NOT created (no reconciliation occurred).
-	gitignorePath := filepath.Join(tmpDir, ".gitignore")
-	if _, err := os.Stat(gitignorePath); err == nil {
-		t.Error(".gitignore should not exist when no pairing")
-	}
-
-	configDir := hubgeometry.ConfigDir(tmpDir)
-	if _, err := os.Stat(configDir); err == nil {
-		t.Error("_lyx/config should not exist when no pairing")
 	}
 }

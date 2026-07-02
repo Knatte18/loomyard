@@ -9,6 +9,7 @@ package warpengine
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
@@ -213,6 +214,60 @@ func TestCleanup_ApplyForceDeletesTaskBranch(t *testing.T) {
 	// Branch must be gone from the weft repo.
 	if weftBranchExists(f.Layout, taskBranch) {
 		t.Errorf("task branch %q still exists after force Cleanup; want deleted", taskBranch)
+	}
+}
+
+// TestCleanup_DeleteFailureNoStderrLeak asserts that when deleteWeftBranch fails
+// (the orphaned branch is locked by being checked out in another weft worktree),
+// entry.Error is composed from local context (the branch name and git exit code)
+// rather than git's own stderr text.
+func TestCleanup_DeleteFailureNoStderrLeak(t *testing.T) {
+	t.Parallel()
+
+	f := setupCleanupFixture(t)
+	orphanBranch := createOrphanWeftBranch(t, f, "orphan-delete-fails")
+
+	// Lock the orphan branch by checking it out in a separate weft worktree so that
+	// `git branch -D` on it fails (branch checked out elsewhere).
+	lockPath := filepath.Join(f.Layout.Hub, "lock-cleanup-orphan")
+	lyxtest.MustRun(t, f.Layout.WeftRepoRoot(), "git", "worktree", "add", lockPath, orphanBranch)
+	t.Cleanup(func() {
+		_, _, _, _ = gitexec.RunGit([]string{"worktree", "remove", "--force", lockPath}, f.Layout.WeftRepoRoot())
+	})
+
+	w := New(Config{})
+	r, err := w.Cleanup(f.Layout, true, true)
+	if err != nil {
+		t.Fatalf("Cleanup(apply=true, force=true) error = %v; want nil", err)
+	}
+
+	var found *CleanupBranchEntry
+	for i := range r.Entries {
+		if r.Entries[i].Branch == orphanBranch {
+			found = &r.Entries[i]
+			break
+		}
+	}
+	if found == nil {
+		t.Fatalf("Cleanup(apply=true, force=true): locked orphan branch %q not found in entries %+v", orphanBranch, r.Entries)
+	}
+
+	if found.Deleted {
+		t.Errorf("CleanupBranchEntry.Deleted = true for a locked branch; want false (delete should fail)")
+	}
+	if found.Error == "" {
+		t.Fatalf("CleanupBranchEntry.Error = \"\"; want non-empty (delete should fail)")
+	}
+	if !strings.Contains(found.Error, orphanBranch) {
+		t.Errorf("CleanupBranchEntry.Error = %q; want substring %q (branch name)", found.Error, orphanBranch)
+	}
+	if strings.Contains(found.Error, "fatal:") {
+		t.Errorf("CleanupBranchEntry.Error = %q; want no %q substring (raw git stderr leak)", found.Error, "fatal:")
+	}
+
+	// Branch must still exist — the deletion failed.
+	if !weftBranchExists(f.Layout, orphanBranch) {
+		t.Errorf("orphan branch %q was deleted despite lock; want intact", orphanBranch)
 	}
 }
 

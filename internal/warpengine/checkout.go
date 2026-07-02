@@ -77,7 +77,7 @@ func (w *Worktree) Checkout(l *hubgeometry.Layout, branch string) (CheckoutResul
 
 	// (3) Switch the host worktree to the target branch. Git propagates its own refusal
 	// (e.g., conflicting local changes) unchanged; we do not suppress it.
-	_, hostSwitchStderr, exitCode, err := gitexec.RunGit(
+	_, _, exitCode, err = gitexec.RunGit(
 		[]string{"switch", branch},
 		l.WorktreeRoot,
 	)
@@ -85,7 +85,7 @@ func (w *Worktree) Checkout(l *hubgeometry.Layout, branch string) (CheckoutResul
 		return CheckoutResult{}, fmt.Errorf("host switch: %w", err)
 	}
 	if exitCode != 0 {
-		return CheckoutResult{}, fmt.Errorf("host switch failed: %s", hostSwitchStderr)
+		return CheckoutResult{}, fmt.Errorf("host switch to branch %q failed (git exit %d)", branch, exitCode)
 	}
 
 	// (4) Resolve the weft sibling branch. On any failure, roll back the host switch.
@@ -123,7 +123,7 @@ func (w *Worktree) switchOrForkWeft(l *hubgeometry.Layout, branch string) error 
 
 	if weftBranchExists(l, branch) {
 		// Branch already exists in the weft repo: switch the weft worktree to it.
-		_, stderr, exitCode, err := gitexec.RunGit(
+		_, _, exitCode, err := gitexec.RunGit(
 			[]string{"switch", branch},
 			weftWorktree,
 		)
@@ -131,7 +131,7 @@ func (w *Worktree) switchOrForkWeft(l *hubgeometry.Layout, branch string) error 
 			return fmt.Errorf("weft switch: %w", err)
 		}
 		if exitCode != 0 {
-			return fmt.Errorf("weft switch failed: %s", stderr)
+			return fmt.Errorf("weft switch to branch %q failed (git exit %d)", branch, exitCode)
 		}
 		return nil
 	}
@@ -154,7 +154,7 @@ func (w *Worktree) switchOrForkWeft(l *hubgeometry.Layout, branch string) error 
 
 	// Create the new weft branch forked from the parent weft branch and switch
 	// the weft worktree to it immediately via git switch -c.
-	_, stderr, exitCode, err := gitexec.RunGit(
+	_, _, exitCode, err = gitexec.RunGit(
 		[]string{"switch", "-c", branch, parentWeftBranch},
 		weftWorktree,
 	)
@@ -162,7 +162,7 @@ func (w *Worktree) switchOrForkWeft(l *hubgeometry.Layout, branch string) error 
 		return fmt.Errorf("fork weft branch: %w", err)
 	}
 	if exitCode != 0 {
-		return fmt.Errorf("fork weft branch failed: %s", stderr)
+		return fmt.Errorf("fork weft branch %q from %q failed (git exit %d)", branch, parentWeftBranch, exitCode)
 	}
 
 	return nil

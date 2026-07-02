@@ -116,3 +116,27 @@ func TestList(t *testing.T) {
 		})
 	}
 }
+
+// TestList_NotAGitRepo asserts that calling List against a directory that is not
+// inside any git repository fails with an error composed from local context (the
+// source directory and git's exit code), not git's raw stderr text.
+func TestList_NotAGitRepo(t *testing.T) {
+	t.Parallel()
+
+	notARepo := t.TempDir()
+
+	entries, err := hubgeometry.List(notARepo)
+	if err == nil {
+		t.Fatalf("List(%q) error = nil; want error (not a git repository)", notARepo)
+	}
+	wantSubstr := fmt.Sprintf("%q", notARepo)
+	if !strings.Contains(err.Error(), wantSubstr) {
+		t.Errorf("List(%q) error = %q; want substring %q (source dir)", notARepo, err.Error(), wantSubstr)
+	}
+	if strings.Contains(err.Error(), "fatal:") {
+		t.Errorf("List(%q) error = %q; want no %q substring (raw git stderr leak)", notARepo, err.Error(), "fatal:")
+	}
+	if entries != nil {
+		t.Errorf("List(%q) entries = %v; want nil", notARepo, entries)
+	}
+}
