@@ -179,14 +179,24 @@ func (e *Engine) Up() (UpResult, error) {
 	return result, err
 }
 
-// Resume boots the server+session if absent, then — for every persisted
-// strand that is not live and not anchor:hidden — realizes it into a live
-// pane via the shared launchStrandLocked (GAP A), replaying its ResumeCmd
-// (or Cmd, when ResumeCmd is empty; every strand has at least a Cmd, so
-// every such strand is rebuildable). Already-live strands are left
-// untouched (no double send-keys); hidden strands are skipped (pending
-// first surface, not dead — GAP1). Finishes by reconciling, re-applying the
-// layout, and re-persisting pane ids.
+// Resume boots the server+session if absent, then reconciles first (clearing
+// any stale pane bindings a crashed-and-reborn server left behind — a
+// standalone resume-after-crash has no earlier op in this process to have
+// run reconcile already, unlike add/surface's up-then-mutate sequencing).
+// Without this, a strand's stale non-empty PaneID from before the crash
+// would make planLaunch see a "pane already held" table and split instead of
+// adopting the new session's sole initial pane, leaving it orphaned and
+// causing the final layout apply to enumerate one pane fewer than psmux
+// actually holds (GAP2). Then — for every persisted strand that is not live
+// and not anchor:hidden — it realizes the strand into a live pane via the
+// shared launchStrandLocked (GAP A), replaying its ResumeCmd (or Cmd, when
+// ResumeCmd is empty; every strand has at least a Cmd, so every such strand
+// is rebuildable). Already-live strands are left untouched (no double
+// send-keys); hidden strands are skipped (pending first surface, not dead —
+// GAP1). Finishes by reconciling again, re-applying the layout, and
+// re-persisting pane ids (the reconcileApplyPersistLocked tail is a cheap
+// no-op re-check when the pre-launch reconcile already left the table
+// clean).
 func (e *Engine) Resume() (ResumeResult, error) {
 	var result ResumeResult
 	err := e.withOpLock(func() error {
@@ -202,6 +212,16 @@ func (e *Engine) Resume() (ResumeResult, error) {
 		live, err := e.psmux.listPanes(e.SessionName())
 		if err != nil {
 			return fmt.Errorf("list panes: %w", err)
+		}
+		killed, err := e.reconcileLocked(st, live)
+		if err != nil {
+			return fmt.Errorf("reconcile: %w", err)
+		}
+		if len(killed) > 0 {
+			live, err = e.psmux.listPanes(e.SessionName())
+			if err != nil {
+				return fmt.Errorf("list panes after reconcile: %w", err)
+			}
 		}
 		toLaunch := planResumeLaunches(st.Strands, liveIDSet(live))
 
@@ -255,11 +275,18 @@ func (e *Engine) Down() (DownResult, error) {
 }
 
 // Status reconciles against live panes and reports this session's tracked
-// strands (guid, name, pane id, live/dead). It returns a non-nil error when
-// the server/session is absent, so a pre-flight caller (e.g. attach) can
-// surface that on its envelope before attempting anything that needs a live
-// session. Status only reports this session — active stray-server
-// enumeration across the hub is deferred (NOTE3).
+// strands (guid, name, pane id, live/dead). Unlike the mutating ops, it
+// deliberately stops after reconcile: reconcile's dead-pane-kill/binding-
+// clear is a real state correction, but Status is a read verb, so it does
+// NOT run applyLayoutLocked's select-layout/select-pane (which would move
+// input focus and rewrite the window layout as a side effect of a query) or
+// re-persist the reconciled table (the next mutating op re-derives and
+// persists the same correction; nothing is lost by leaving mux.json as-is
+// between queries). It returns a non-nil error when the server/session is
+// absent, so a pre-flight caller (e.g. attach) can surface that on its
+// envelope before attempting anything that needs a live session. Status
+// only reports this session — active stray-server enumeration across the
+// hub is deferred (NOTE3).
 func (e *Engine) Status() (StatusResult, error) {
 	var result StatusResult
 	err := e.withOpLock(func() error {
@@ -277,9 +304,12 @@ func (e *Engine) Status() (StatusResult, error) {
 			return err
 		}
 
-		live, err := e.reconcileApplyPersistLocked(st)
+		live, err := e.psmux.listPanes(session)
 		if err != nil {
-			return err
+			return fmt.Errorf("list panes: %w", err)
+		}
+		if _, err := e.reconcileLocked(st, live); err != nil {
+			return fmt.Errorf("reconcile: %w", err)
 		}
 
 		liveIDs := liveIDSet(live)
