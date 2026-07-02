@@ -30,20 +30,39 @@ import (
 // The returned command is a leaf with Use "init". It scaffolds _lyx/config/ in
 // the current directory, wires warp junctions, and maintains the managed
 // .gitignore block. The public RunInit seam delegates here via clihelp.Execute,
-// so all in-process callers continue to work unchanged.
+// so all in-process callers continue to work unchanged. A local initCmd
+// variable holds the composite literal (mirroring configcli.Command()'s
+// configCmd pattern) so the --undo flag can be registered on it and read back
+// in the RunE closure.
 func Command() *cobra.Command {
-	return &cobra.Command{
+	initCmd := &cobra.Command{
 		Use:   "init",
-		Short: "scaffold _lyx/config/ in the current directory",
+		Short: "scaffold _lyx/config/ in the current directory (or reverse it with --undo)",
 		Long: `init activates the lyx topology for the current worktree.
 
 It wires cwd-keyed warp junctions, creates _lyx/ and _lyx/config/ directories,
 maintains the managed .gitignore block for .lyx/, and reconciles all module
 config files against their templates (idempotent: existing user edits are
 preserved). A weft pairing must already exist (run 'lyx warp add' or
-'lyx warp clone' first).`,
-		RunE: clihelp.WrapRun(runInit),
+'lyx warp clone' first).
+
+Pass --undo to reverse a previous init: this removes the host _lyx junction,
+clears the weft-side _lyx content (committing and pushing the deletion),
+and reverts the managed .gitignore block and the .git/info/exclude entry
+that init added. --undo is safe to run on a directory that was never
+initialized (a clean no-op) and is mainly useful for test/sandbox cleanup.
+
+  lyx init --undo`,
 	}
+	initCmd.Flags().Bool("undo", false, "reverse a previous init: remove the _lyx junction, weft-side content, and the .gitignore/.git-exclude entries it added")
+	initCmd.RunE = clihelp.WrapRun(func(out io.Writer, args []string) int {
+		undo, _ := initCmd.Flags().GetBool("undo")
+		if undo {
+			return runUndo(out, args)
+		}
+		return runInit(out, args)
+	})
+	return initCmd
 }
 
 // RunInit is the public seam for the lyx init command.
