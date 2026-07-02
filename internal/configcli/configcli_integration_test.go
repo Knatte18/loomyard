@@ -7,6 +7,7 @@ package configcli
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"os"
 	"os/exec"
@@ -131,5 +132,19 @@ func TestE2ESyncIntegration(t *testing.T) {
 	outStr := out.String()
 	if !strings.Contains(outStr, "edited and synced") {
 		t.Errorf("dispatch output missing success message; got %q", outStr)
+	}
+
+	// Assert the output is a JSON envelope with ok:true and module:"warp",
+	// the same shape Card 7/8 introduced, exercised here end-to-end through
+	// the real dispatch/weftcli.RunCLI("commit") path rather than a fake sync.
+	var env map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(outStr)), &env); err != nil {
+		t.Fatalf("dispatch output is not valid JSON: %v; got %q", err, outStr)
+	}
+	if ok, _ := env["ok"].(bool); !ok {
+		t.Errorf("dispatch output envelope ok = %v; want true; got %q", env["ok"], outStr)
+	}
+	if module, _ := env["module"].(string); module != "warp" {
+		t.Errorf("dispatch output envelope module = %q; want \"warp\"; got %q", module, outStr)
 	}
 }

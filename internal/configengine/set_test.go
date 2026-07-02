@@ -2,8 +2,9 @@
 //
 // Tests cover: scaffold-then-set when the config file is missing, rollback
 // of a freshly-scaffolded file on an unknown key, byte-for-byte preservation
-// of a pre-existing file on an unknown key, and preservation of untouched
-// keys when setting one key on an existing multi-key file.
+// of a pre-existing file on an unknown key, preservation of untouched
+// keys when setting one key on an existing multi-key file, and end-to-end
+// reporting of Set's returned preserved-keys list for an orphaned key.
 
 package configengine_test
 
@@ -30,7 +31,7 @@ func TestSet_ScaffoldWhenMissingThenSet(t *testing.T) {
 	}
 
 	template := "key1: value1\nkey2: value2\n"
-	err := configengine.Set(tmpDir, "testmod", template, []yamlengine.KV{{Key: "key1", Value: "set1"}})
+	_, err := configengine.Set(tmpDir, "testmod", template, []yamlengine.KV{{Key: "key1", Value: "set1"}})
 	if err != nil {
 		t.Fatalf("Set() = %v; want nil", err)
 	}
@@ -60,7 +61,7 @@ func TestSet_UnknownKeyRemovesScaffoldedFile(t *testing.T) {
 	}
 
 	template := "key1: value1\n"
-	err := configengine.Set(tmpDir, "testmod", template, []yamlengine.KV{{Key: "bogus", Value: "x"}})
+	_, err := configengine.Set(tmpDir, "testmod", template, []yamlengine.KV{{Key: "bogus", Value: "x"}})
 	if err == nil {
 		t.Fatalf("Set() = nil; want error for unknown key")
 	}
@@ -96,7 +97,7 @@ func TestSet_UnknownKeyLeavesExistingFileUnchanged(t *testing.T) {
 	}
 
 	template := "key1: default1\n"
-	err := configengine.Set(tmpDir, "testmod", template, []yamlengine.KV{{Key: "bogus", Value: "x"}})
+	_, err := configengine.Set(tmpDir, "testmod", template, []yamlengine.KV{{Key: "bogus", Value: "x"}})
 	if err == nil {
 		t.Fatalf("Set() = nil; want error for unknown key")
 	}
@@ -131,7 +132,7 @@ func TestSet_PreservesOtherKeysOnExistingFile(t *testing.T) {
 	}
 
 	template := "key1: default1\nkey2: default2\n"
-	err := configengine.Set(tmpDir, "testmod", template, []yamlengine.KV{{Key: "key1", Value: "new_value1"}})
+	_, err := configengine.Set(tmpDir, "testmod", template, []yamlengine.KV{{Key: "key1", Value: "new_value1"}})
 	if err != nil {
 		t.Fatalf("Set() = %v; want nil", err)
 	}
@@ -145,5 +146,45 @@ func TestSet_PreservesOtherKeysOnExistingFile(t *testing.T) {
 	}
 	if !strings.Contains(string(finalBytes), "key2: original_value2") {
 		t.Errorf("Set() file = %q; want key2: original_value2 (untouched)", string(finalBytes))
+	}
+}
+
+// TestSet_PreservesUnrecognizedExistingKeyEndToEnd verifies that a real
+// on-disk config file carrying a top-level key absent from the template
+// survives a Set call untouched, and that Set reports the preserved key
+// name in its returned []string.
+func TestSet_PreservesUnrecognizedExistingKeyEndToEnd(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	lyxDir := filepath.Join(tmpDir, hubgeometry.LyxDirName)
+	if err := os.Mkdir(lyxDir, 0755); err != nil {
+		t.Fatalf("failed to create _lyx: %v", err)
+	}
+	configDir := hubgeometry.ConfigDir(tmpDir)
+	if err := os.Mkdir(configDir, 0755); err != nil {
+		t.Fatalf("failed to create _lyx/config: %v", err)
+	}
+
+	path := hubgeometry.ConfigFile(tmpDir, "testmod")
+	originalContent := "key1: original_value1\nlegacy: keepme\n"
+	if err := os.WriteFile(path, []byte(originalContent), 0644); err != nil {
+		t.Fatalf("failed to write config file: %v", err)
+	}
+
+	template := "key1: default1\n"
+	preserved, err := configengine.Set(tmpDir, "testmod", template, []yamlengine.KV{{Key: "key1", Value: "new_value1"}})
+	if err != nil {
+		t.Fatalf("Set() = %v; want nil", err)
+	}
+	if len(preserved) != 1 || preserved[0] != "legacy" {
+		t.Errorf("Set() preserved = %v; want [\"legacy\"]", preserved)
+	}
+
+	finalBytes, readErr := os.ReadFile(path)
+	if readErr != nil {
+		t.Fatalf("failed to read config file: %v", readErr)
+	}
+	if !strings.Contains(string(finalBytes), "legacy: keepme") {
+		t.Errorf("Set() file = %q; want legacy: keepme preserved verbatim", string(finalBytes))
 	}
 }

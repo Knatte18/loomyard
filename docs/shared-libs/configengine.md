@@ -118,3 +118,23 @@ All error messages include the file path and context to guide the user.
 **Returns:** On success, the resolved YAML bytes. On error, nil bytes and an error message.
 
 Typed wrappers like `board.LoadConfig(cwd, "board")` call `Load` with the board template, then unmarshal the result into a typed struct.
+
+### `Set(baseDir, module, template string, pairs []yamlengine.KV) ([]string, error)`
+
+Writes an explicit list of key=value pairs into a module's config file. This is the non-interactive counterpart to `Edit` used by the `lyx config <module> --set key=value` CLI path — no editor is invoked and there is no validation loop.
+
+**Behavior:**
+
+1. Calls `FindBaseDir(baseDir)` to check that `_lyx/` exists, then scaffolds the config file from `template` when it is absent (the same `scaffoldIfMissing` helper `Edit` uses, so both entry points create and roll back a fresh default-valued file identically).
+2. Delegates the actual mutation to `yamlengine.SetValues(template, existingBytes, pairs)`, which validates every requested pair's key against the template's leaf-key set and, when all keys are known, applies the pairs and marshals the merged result.
+3. Rejects the whole call — freshly-scaffolded file removed, existing file left untouched — when any *requested* pair's key is absent from the template's leaf-key set (existing, unchanged behavior; see `internal/yamlengine`'s `SetValues` documentation for the full validation and preservation mechanism).
+4. On any error return, a freshly-scaffolded file is removed before returning, exactly mirroring `Edit`'s abort-removes-scaffold contract: a failed `--set` never leaves a fresh default-valued file behind on disk.
+
+**Error cases:**
+
+- **Not initialized:** Propagates `FindBaseDir`'s error.
+- **Scaffold failure:** Propagates the underlying filesystem error.
+- **Unknown config key(s):** Returns error `unknown config key(s): <requested keys> (known: <template's known keys>)`.
+- **Read/write failure:** Propagates the underlying filesystem error.
+
+**Returns:** On success, the sorted list of pre-existing top-level config keys not present in `template` that were preserved verbatim rather than dropped (see `internal/yamlengine`'s `SetValues` documentation for the full preservation mechanism), and a nil error. This list is nil/empty when no such orphaned key was present. On any error return, the returned `[]string` is always nil.
