@@ -221,8 +221,14 @@ mux is **three things in one module**:
   strip of `collapsedStripRows`, and the **active/focused strand plus every shrink:false strand**
   are "full" panes that split the remaining height **equally**. This replaces muxpoc's fixed
   `activePaneShare=55%` — strip thickness and band height are operator-tunable config, dominance
-  is *derived* as the remainder. The layout **mechanics** (checksum + `window_layout` string)
-  are reused from muxpoc **verbatim**; only the height *policy* changes.
+  is *derived* as the remainder. **Integer-division remainder is deterministic (internalmux
+  review r2, NOTE1):** when the remaining height does not divide evenly among ≥2 co-equal full
+  panes, the **leftover rows are assigned to the active/bottom pane** (the others get the floor).
+  This mirrors muxpoc's single-bottom-pane absorbing the leftover (`bottomH = usable −
+  ancestorH*(n−1)`), so "heights + dividers exactly fill the window height" stays a **total,
+  deterministic** golden invariant even with multiple full panes. The layout **mechanics**
+  (checksum + `window_layout` string) are reused from muxpoc **verbatim**; only the height
+  *policy* changes.
 - **Clamp rule — render is total, never emits a non-positive pane (orch #B):** when fixed demand
   (top bands + all strips + dividers + a `minFullRows` floor, default 3, per full pane) exceeds
   the window, reduce in strict priority: (1) shrink the strips below nominal down to 1 row, then
@@ -274,11 +280,19 @@ mux is **three things in one module**:
 ### Cross-process concurrency: a mux operation lock around the whole mutate+apply cycle (orch #6)
 
 - **Decision:** guard the **entire** `read → mutate → persist → render → apply(select-layout)`
-  cycle with a single **mux operation lock** at `.lyx/mux.lock` (via `internal/lock`). Every
-  mutating path acquires it — both the separate CLI processes (`add`/`remove`/`resume`/`up`)
-  **and** the in-process engine calls a long-lived driver makes (shuttle's/loom's
-  `AddStrand`/`UpdateStrand`/`RemoveStrand`). This is distinct from, and coarser than, the
-  `internal/state` per-write lock on `mux.json`.
+  cycle with a single **mux operation lock** at `.lyx/mux.lock` (via `internal/lock`). This is
+  distinct from, and coarser than, the `internal/state` per-write lock on `mux.json`.
+- **Acquired at exactly ONE layer — the engine operation boundary (internalmux review r2,
+  NOTE2):** each public engine op (`AddStrand`/`UpdateStrand`/`RemoveStrand` + the `up`/`resume`/
+  `status`-reconcile-apply ops) acquires `mux.lock` **once at entry** and holds it for its whole
+  cycle, composing from **unexported, unlocked** helpers. **CLI verbs never take the lock
+  themselves** — they just call the engine op, which locks. This is mandatory because
+  `internal/lock` (gofrs/flock) is **non-reentrant across separate handles even in-process** on
+  Windows: if a CLI verb locked and then called an engine op that also locked, it would
+  **self-deadlock**. One acquisition point (engine entry) removes that risk while still
+  serializing the full cycle across both separate CLI processes and a long-lived in-process
+  driver (shuttle/loom). Engine ops must not call each other while holding the lock (use the
+  unlocked helpers), for the same reentrancy reason.
 - **Why:** each CLI verb is its own process doing read→render→`select-layout`, and shuttle
   drives `AddStrand` in-process concurrently. Locking only the JSON write (as `state` does)
   still lets two mutations both read, both render, and **clobber each other's layout**. The
@@ -671,6 +685,10 @@ JSON envelope (`ok` true/false).
     remainder and is strictly tallest; cumulative y-offsets. Parameterize over
     `collapsedStripRows` (the config knob) and assert the remainder-height math holds for
     several values + degenerate cases (window too short for N strips → clamp rule).
+  - **remainder determinism with ≥2 full panes (internalmux r2 NOTE1):** with the active strand
+    + one or more `shrink:false` full panes, an integer-division remainder is assigned to the
+    **active/bottom** pane (others get the floor); assert heights still exactly fill and the
+    layout is deterministic (no ambiguous leftover owner).
   - **anchor policy** cases: `top` pinned as a fixed-height band above the stack;
     `below-parent` forms the bottom-dominant stack ordered by parent chain; `hidden` strands
     are **excluded** from the layout string entirely; mixed sets (top + stack + hidden);
@@ -715,11 +733,13 @@ JSON envelope (`ok` true/false).
   three states (server dead / server-up-CLI-restarted / single pane died) at the seam that can
   be driven without a live psmux (pure planning of "what commands would run"), with the live
   psmux round-trip behind the smoke tag.
-- **Concurrency lock (orch #6).** Assert every mutating path acquires `.lyx/mux.lock`; the
-  outer `mux.lock` is acquired before `state`'s inner `mux.json.lock` (ordering test); two
-  concurrent mutations serialize (no interleaved render/apply); the lock is per-worktree
-  (different `.lyx/` dirs don't contend); a process dying while holding it leaves no stale lock
-  (handle auto-released — assert a subsequent acquire succeeds).
+- **Concurrency lock (orch #6 + internalmux r2 NOTE2).** Assert the lock is acquired at **exactly
+  one layer** — the engine op — and that a CLI verb does **not** re-take it (a test that a CLI
+  verb → engine-op path never double-acquires, i.e. no self-deadlock from the non-reentrant
+  flock); the outer `mux.lock` is acquired before `state`'s inner `mux.json.lock` (ordering
+  test); two concurrent mutations serialize (no interleaved render/apply); the lock is
+  per-worktree (different `.lyx/` dirs don't contend); a process dying while holding it leaves no
+  stale lock (handle auto-released — assert a subsequent acquire succeeds).
 - **`add --anchor` integration (orch #4).** Drive `lyx mux add --anchor top|below-parent|hidden`
   through `RunCLI` and assert the strand lands with the right anchor (and the sandbox scenario
   exercises all three end-to-end), so top/hidden have real CLI/integration coverage, not only
