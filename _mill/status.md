@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-muxengine-operations
+phase: approved-muxcli
 slug: internal-mux
 branch: internal-mux
 plan: _mill/plan
@@ -31,6 +31,7 @@ approved-logger  '2026-07-02T18:28:38Z'
 approved-render  '2026-07-02T18:41:20Z'
 approved-muxengine-carrier  '2026-07-02T18:50:24Z'
 approved-muxengine-operations  '2026-07-02T19:22:42Z'
+approved-muxcli  '2026-07-02T19:34:12Z'
 ```
 
 ## Batches
@@ -63,9 +64,10 @@ batches:
     start_sha: 146d0e8f870d8c99a382f82fd026887354685d87
     commit_sha: e38ca50e05fcb7dbad2164a3b00e41547966a542
   - name: muxcli
-    state: running
+    state: approved
     implementer_session: fded9050-8f4e-46ef-93d9-64a8e0dae6a4
     start_sha: d4a3a0b3d687e05d9ad9047657ad04a9dad275e5
+    commit_sha: defe2a4884259f2c9585b91f1b8c58e292c90cf7
   - name: cmd-lyx-integration
     state: pending
   - name: docs
