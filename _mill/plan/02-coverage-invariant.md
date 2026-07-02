@@ -45,9 +45,11 @@ invariants in CONSTRAINTS.md in the same commit").
   `cmd/lyx/longlist_test.go`'s `TestLongList_NamesEveryRegisteredModule`. Do not
   hand-maintain a module list.
   (b) Resolve the repo root from the test file's own location via
-  `runtime.Caller(0)` + two `filepath.Dir` walk-ups (this file lives at
-  `cmd/lyx/sandbox_coverage_test.go`), the same technique
-  `cmd/lyx/registration_test.go` uses, then read
+  `runtime.Caller(0)` + **three** `filepath.Dir` walk-ups (this file lives at
+  `cmd/lyx/sandbox_coverage_test.go`: `cmd/lyx/…` → `cmd/lyx` → `cmd` → repo
+  root), matching the *code* at `cmd/lyx/registration_test.go:71`
+  (`filepath.Dir(filepath.Dir(filepath.Dir(testFile)))`) — note that file's
+  own comment saying "two" is stale; the code is authoritative. Then read
   `tools/sandbox/SANDBOX-SUITE.md` from disk under that root. Parse `covered` =
   the set of whitespace/comma-separated module tokens from every line matching
   the `**Covers:**` prefix. Because S0/S1/S5 carry no `Covers:` line, every token
