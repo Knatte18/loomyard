@@ -62,6 +62,15 @@ func (e *Engine) SessionName() string {
 	return SessionName(e.layout.WorktreeRoot)
 }
 
+// PsmuxPath returns the resolved psmux binary path this engine's PsmuxCmd
+// was built from, so a caller that must build its own raw exec.Command (like
+// attach's in-place attach-session handover, which needs stdio inheritance
+// psmux's own run/output helpers don't support) can target the same binary
+// without reaching into engine config directly.
+func (e *Engine) PsmuxPath() string {
+	return e.cfg.Psmux
+}
+
 // withOpLock acquires the mux operation lock at
 // <worktree>/.lyx/mux.lock exactly once, runs fn while holding it, and
 // releases it (via defer) before returning fn's error. This is the ONLY

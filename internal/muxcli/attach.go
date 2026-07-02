@@ -56,7 +56,7 @@ Example:
 				return nil
 			}
 
-			attach := exec.Command(c.cfg.Psmux, attachArgv(c.eng.Socket(), c.eng.SessionName())...)
+			attach := exec.Command(c.eng.PsmuxPath(), attachArgv(c.eng.Socket(), c.eng.SessionName())...)
 			attach.Stdin = os.Stdin
 			attach.Stdout = os.Stdout
 			attach.Stderr = os.Stderr

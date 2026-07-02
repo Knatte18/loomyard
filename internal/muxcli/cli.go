@@ -20,14 +20,13 @@ import (
 
 // muxCLI is the receiver every mux verb hangs off of, so each subcommand's
 // RunE reads the same PersistentPreRunE-populated state. eng is the domain
-// handle every verb calls into; cfg is kept alongside it because attach
-// (card 27) needs the resolved psmux binary path to build its in-place
-// attach-session invocation, and Engine exposes no such accessor (only
-// Socket/SessionName, its own psmux-facing identity). The zero muxCLI is
-// not valid until PersistentPreRunE has populated both fields.
+// handle every verb calls into, including for psmux-facing identity (attach,
+// card 27, reads the resolved psmux binary path via eng.PsmuxPath() to build
+// its in-place attach-session invocation, alongside Socket/SessionName) — no
+// verb needs the resolved Config directly. The zero muxCLI is not valid
+// until PersistentPreRunE has populated eng.
 type muxCLI struct {
 	eng *muxengine.Engine
-	cfg muxengine.Config
 }
 
 // Command returns the cobra command tree for the mux module.
@@ -90,7 +89,6 @@ strands, plus rendering their layout on every mutation.`,
 			}
 
 			c.eng = muxengine.New(cfg, layout)
-			c.cfg = cfg
 			return nil
 		},
 	}
