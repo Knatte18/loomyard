@@ -1,1 +1,0 @@
-- `status` mutates the live layout as a side effect: **Location:** `internal/muxengine/lifecycle.go:263-295`
