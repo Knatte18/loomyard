@@ -51,18 +51,22 @@ Batch-local decisions:
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** In `internal/muxcli/cli.go` (package `muxcli` — no import alias, so the
-  registration AST guard matches `muxcli.Command()`): `func Command() *cobra.Command` with
-  parent `Use: "mux"`, non-empty `Short`, `RunE: clihelp.GroupRunE`, and a
+  registration AST guard matches `muxcli.Command()`): define a receiver `type muxCLI struct {
+  eng *muxengine.Engine }` so every verb (defined in cards 22-27 as methods on `*muxCLI`) can
+  read the same PreRunE-populated engine. `func Command() *cobra.Command`: build the parent
+  (`Use: "mux"`, non-empty `Short`, `RunE: clihelp.GroupRunE`), create `c := &muxCLI{}`, set a
   `PersistentPreRunE` that returns `nil` early when `cmd.Name() == "mux"`, else resolves
   `hubgeometry.Getwd()` -> `hubgeometry.Resolve(cwd)` -> `muxengine.LoadConfig(baseDir,
-  "mux")` -> `muxengine.New(cfg, layout)` into a closure `var eng *muxengine.Engine` (on
-  failure: `output.Err(cmd.OutOrStdout(), err.Error())` + `clihelp.Abort(cmd.Context(), 1)`
-  + `return nil`). `func RunCLI(out io.Writer, args []string) int { return
-  clihelp.Execute(Command(), out, args) }`. Register the seven subcommands (cards 22-27) in
-  the order `up, add, remove, status, attach, resume, down` (matching batch 7's helptree
-  `wantSubs`). Every subcommand carries a non-empty `Short`. This card wires the scaffold and
-  empty subcommand stubs (or references the funcs the later cards fill).
-- **Commit:** `feat(muxcli): cobra scaffold with Command/RunCLI seam and PreRunE engine wiring`
+  "mux")` -> `muxengine.New(cfg, layout)` into `c.eng` (on failure: `output.Err(
+  cmd.OutOrStdout(), err.Error())` + `clihelp.Abort(cmd.Context(), 1)` + `return nil`), and
+  return the parent. **This card registers NO subcommands** — each verb card (22-27) creates
+  its `(c *muxCLI) xCmd()` method AND edits this `Command()` to `parent.AddCommand(c.xCmd())`,
+  so every card compiles at its own boundary (no forward reference to a not-yet-created
+  builder). `func RunCLI(out io.Writer, args []string) int { return clihelp.Execute(Command(),
+  out, args) }`. By the end of batch 6 all seven verbs (`up, down, add, remove, status,
+  resume, attach`) are registered (helptree's `wantSubs` in batch 7 is a set check, so
+  AddCommand order is irrelevant); every subcommand carries a non-empty `Short`.
+- **Commit:** `feat(muxcli): cobra scaffold with muxCLI receiver, Command/RunCLI seam, PreRunE wiring`
 
 ### Card 22: `up` and `down` verbs
 
@@ -77,14 +81,15 @@ Batch-local decisions:
   - `internal/muxcli/up.go`
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** In `internal/muxcli/up.go`, add the `up` and `down` subcommand builders
-  (returning `*cobra.Command`), each RunE following Idiom B: `if
-  clihelp.ShouldAbort(cmd.Context()) { return nil }`; call `eng.Up()` / `eng.Down()`; on
-  error `clihelp.SetExit(ctx, output.Err(out, err.Error()))`; on success
-  `clihelp.SetExit(ctx, output.Ok(out, <resultMap>))`; always `return nil`. `up` help must
-  state it is substrate-only (boots server/session, applies layout, reconciles — runs **no**
-  strand command); `down` kills the server + clears state. Non-empty `Short` + a `Long` with
-  an example on each. Wire both into `Command()` (edit `cli.go`).
+- **Requirements:** In `internal/muxcli/up.go`, add the `up` and `down` verbs as methods
+  `(c *muxCLI) upCmd()` and `(c *muxCLI) downCmd()` (each returning `*cobra.Command`), each
+  RunE following Idiom B: `if clihelp.ShouldAbort(cmd.Context()) { return nil }`; call
+  `c.eng.Up()` / `c.eng.Down()`; on error `clihelp.SetExit(ctx, output.Err(out,
+  err.Error()))`; on success `clihelp.SetExit(ctx, output.Ok(out, <resultMap>))`; always
+  `return nil`. `up` help must state it is substrate-only (boots server/session, applies
+  layout, reconciles — runs **no** strand command); `down` kills the server + clears state.
+  Non-empty `Short` + a `Long` with an example on each. Edit `Command()` in `cli.go` to
+  `parent.AddCommand(c.upCmd(), c.downCmd())`.
 - **Commit:** `feat(muxcli): up and down verbs`
 
 ### Card 23: `add` verb (full flag spec)
@@ -94,8 +99,6 @@ Batch-local decisions:
   - `internal/clihelp/exec.go`
   - `internal/output/output.go`
   - `internal/muxengine/strand.go`
-  - `internal/muxengine/name.go`
-  - `internal/muxengine/config.go`
   - `internal/muxengine/render/types.go`
 - **Edits:**
   - `internal/muxcli/cli.go`
@@ -103,17 +106,19 @@ Batch-local decisions:
   - `internal/muxcli/add.go`
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** In `internal/muxcli/add.go`, build the `add` command with flags `--cmd`
-  (required), `--role`, `--round`, `--name`, `--resume-cmd`, `--parent`, `--anchor` (default
-  `below-parent`), `--focus`. In RunE (Idiom B): reject `--anchor own-window` (deferred) and
-  any value outside `top|below-parent|hidden` with `output.Err`; resolve the name via
-  `muxengine.FormatStrandName(cfg.StrandName, parts)` filling `<ROLE>/<ROUND>/<WORKTREE>` and
-  computing `<SHORT_GUID>` from the guid the engine returns (if `--name` given, override
-  verbatim; if neither `--name` nor `--role`, fall back to `<SHORT_GUID>`); build the
-  `muxengine.AddSpec` (opaque `Cmd`/`ResumeCmd`, `Worktree` from layout, `Display{Anchor,
-  Focus, ShrinkWhenWaitingOnChild:true}`); call `eng.AddStrand(spec)`; emit `output.Ok` with
-  the generated `guid` + resolved `name` (so a later `--parent`/`remove` can reference it).
-  Non-empty `Short` + `Long` with an example. Wire into `Command()`.
+- **Requirements:** In `internal/muxcli/add.go`, add the `add` verb as `(c *muxCLI) addCmd()`
+  with flags `--cmd` (required), `--role`, `--round`, `--name`, `--resume-cmd`, `--parent`,
+  `--anchor` (default `below-parent`), `--focus`. In RunE (Idiom B): reject `--anchor
+  own-window` (deferred) and any value outside `top|below-parent|hidden` with `output.Err`;
+  build `muxengine.AddSpec{ Role: <--role>, Round: <--round>, NameOverride: <--name>, Cmd:
+  <--cmd>, ResumeCmd: <--resume-cmd>, Parent: <--parent>, Display: render.Display{Anchor:
+  <--anchor>, Focus: <--focus>, ShrinkWhenWaitingOnChild: true} }` — the CLI is a thin
+  flag-to-spec mapper; the engine (`AddStrand`, card 19) owns guid generation, worktree
+  stamping, and name resolution (`NameOverride` else `FormatStrandName` else `<SHORT_GUID>`),
+  so the CLI needs neither `cfg` nor `layout`. Call `c.eng.AddStrand(spec)`; emit `output.Ok`
+  with the returned strand's `guid` + resolved `name` (so a later `--parent`/`remove` can
+  reference it). Non-empty `Short` + `Long` with an example. Edit `Command()` in `cli.go` to
+  `parent.AddCommand(c.addCmd())`.
 - **Commit:** `feat(muxcli): add verb with anchor/role/parent flag spec`
 
 ### Card 24: `remove` verb (--recursive guard, removed-list JSON)
@@ -129,16 +134,13 @@ Batch-local decisions:
   - `internal/muxcli/remove.go`
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** In `internal/muxcli/remove.go`, build `remove <guid>` with a
-  `--recursive` bool flag. RunE (Idiom B): require exactly one positional `guid`; if the
-  target strand is a **non-leaf** and `--recursive` is not set, emit `output.Err` with
-  `strand has children, use --recursive` and non-zero exit (do this via a pre-check helper on
-  the engine, e.g. `eng.HasChildren(guid)`, or by having `RemoveStrand` accept a
-  `recursive bool` and refuse a non-leaf without it — pick the engine API that keeps the CLI
-  a thin caller; if adding `HasChildren`, note it edits `strand.go`, but prefer threading
-  `recursive` into the existing `RemoveStrand` signature). With `--recursive` (or a leaf),
-  call the cascade and emit `output.Ok` listing every removed strand (`guid` + `name`) from
-  the `Removed` result. Non-empty `Short` + `Long`. Wire into `Command()`.
+- **Requirements:** In `internal/muxcli/remove.go`, add the `remove <guid>` verb as `(c
+  *muxCLI) removeCmd()` with a `--recursive` bool flag. RunE (Idiom B): require exactly one
+  positional `guid`; call `c.eng.RemoveStrand(guid, recursive)` — the engine (card 19)
+  returns the `strand has children, use --recursive` error for a non-leaf when `recursive` is
+  false, which the CLI surfaces via `output.Err` + non-zero exit; on success emit `output.Ok`
+  listing every removed strand (`guid` + `name`) from the `Removed` result. Non-empty `Short`
+  + `Long`. Edit `Command()` in `cli.go` to `parent.AddCommand(c.removeCmd())`.
 - **Commit:** `feat(muxcli): remove verb with --recursive guard and removed-list output`
 
 ### Card 25: `status` verb
@@ -154,10 +156,11 @@ Batch-local decisions:
   - `internal/muxcli/status.go`
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** In `internal/muxcli/status.go`, build `status`. RunE (Idiom B): call
-  `eng.Status()` and emit `output.Ok` with the tracked strands + live/dead reconcile for
-  **this session only** (no stray-server enumeration — deferred). Non-empty `Short` + `Long`
-  noting v1 reports only the current worktree's session. Wire into `Command()`.
+- **Requirements:** In `internal/muxcli/status.go`, add the `status` verb as `(c *muxCLI)
+  statusCmd()`. RunE (Idiom B): call `c.eng.Status()` and emit `output.Ok` with the tracked
+  strands + live/dead reconcile for **this session only** (no stray-server enumeration —
+  deferred). Non-empty `Short` + `Long` noting v1 reports only the current worktree's session.
+  Edit `Command()` in `cli.go` to `parent.AddCommand(c.statusCmd())`.
 - **Commit:** `feat(muxcli): status verb (this session only)`
 
 ### Card 26: `resume` verb
@@ -173,11 +176,12 @@ Batch-local decisions:
   - `internal/muxcli/resume.go`
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** In `internal/muxcli/resume.go`, build `resume`. RunE (Idiom B): call
-  `eng.Resume()` and emit `output.Ok` with the per-strand replay result. Help must state
-  `resume` is the only replayer (recreates not-live, non-hidden panes and runs each stored
-  `resumeCmd`/`cmd`), skips `hidden` strands, and leaves already-live strands untouched.
-  Non-empty `Short` + `Long` with an example. Wire into `Command()`.
+- **Requirements:** In `internal/muxcli/resume.go`, add the `resume` verb as `(c *muxCLI)
+  resumeCmd()`. RunE (Idiom B): call `c.eng.Resume()` and emit `output.Ok` with the per-strand
+  replay result. Help must state `resume` is the only replayer (recreates not-live, non-hidden
+  panes and runs each stored `resumeCmd`/`cmd`), skips `hidden` strands, and leaves
+  already-live strands untouched. Non-empty `Short` + `Long` with an example. Edit `Command()`
+  in `cli.go` to `parent.AddCommand(c.resumeCmd())`.
 - **Commit:** `feat(muxcli): resume verb`
 
 ### Card 27: `attach` verb (in-place; JSON-envelope exception) + integration/smoke tests
@@ -200,20 +204,20 @@ Batch-local decisions:
   - `internal/muxcli/smoke_test.go`
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** In `internal/muxcli/attach.go`, build `attach` (session-level, no strand
-  arg). RunE: run all fail-able work **pre-flight on the envelope** (session existence via
-  `eng`/`hasSession`, lock/reconcile) — emit `output.Err` + non-zero on any failure; only the
-  **terminal-handover tail** (`psmux -L <socket> attach-session -t <session>` inheriting the
-  operator's stdio, in-place — no `wt.exe` new window) is exempt and emits **no** JSON on
-  success. Build the invocation with the exported engine accessors `eng.Socket()` (the psmux
-  `-L` socket) + `eng.SessionName()` (the `attach-session -t` target) — never the unexported
-  `muxengine.socketName`. In
-  `cli_test.go` (default, no psmux): assert via `muxcli.RunCLI(&out, args)` that bare `lyx
-  mux` lists the seven subcommands (exit 0), an unknown subcommand yields `ok=false` exit 1,
-  and the built `attach` invocation targets the worktree session (assert the argv, not a JSON
-  round-trip — the documented exception). Use `lyxtest.SeedConfig`/`CopyPaired` for a fixture
-  hub. In `smoke_test.go` (`//go:build smoke`): a real `up` -> `add` -> `status` -> `down`
-  round-trip against a live psmux server. Wire `attach` into `Command()`.
+- **Requirements:** In `internal/muxcli/attach.go`, add the `attach` verb as `(c *muxCLI)
+  attachCmd()` (session-level, no strand arg). RunE: run all fail-able work **pre-flight on
+  the envelope** (session existence via `c.eng`, lock/reconcile) — emit `output.Err` +
+  non-zero on any failure; only the **terminal-handover tail** (`psmux -L <socket>
+  attach-session -t <session>` inheriting the operator's stdio, in-place — no `wt.exe` new
+  window) is exempt and emits **no** JSON on success. Build the invocation with the exported
+  engine accessors `c.eng.Socket()` (the psmux `-L` socket) + `c.eng.SessionName()` (the
+  `attach-session -t` target) — never the unexported `muxengine.socketName`. In `cli_test.go`
+  (default, no psmux): assert via `muxcli.RunCLI(&out, args)` that bare `lyx mux` lists the
+  seven subcommands (exit 0), an unknown subcommand yields `ok=false` exit 1, and the built
+  `attach` invocation targets the worktree session (assert the argv, not a JSON round-trip —
+  the documented exception). Use `lyxtest.SeedConfig`/`CopyPaired` for a fixture hub. In
+  `smoke_test.go` (`//go:build smoke`): a real `up` -> `add` -> `status` -> `down` round-trip
+  against a live psmux server. Edit `Command()` in `cli.go` to `parent.AddCommand(c.attachCmd())`.
 - **Commit:** `feat(muxcli): attach verb (in-place, envelope exception) with integration tests`
 
 ## Batch Tests

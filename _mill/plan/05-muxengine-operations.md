@@ -156,13 +156,20 @@ Batch-local decisions (from the discussion, load-bearing):
 - **Requirements:** In `internal/muxengine/strand.go`, add the mutation ops on `*Engine`,
   each acquiring `withOpLock` and delegating to an unexported `*Locked` helper that composes
   the now-existing `reconcileLocked` (card 17) + `applyLayoutLocked` (card 18). `func (e
-  *Engine) AddStrand(spec AddSpec) (Strand, error)`: generate `newGUID`; validate
-  `spec.Parent` names an existing strand (reject unknown); reject a parent link that would
-  form a **cycle**; build the `Strand` (opaque `Cmd`/`ResumeCmd`, `Display` from `spec`); if
-  `anchor == hidden`, register the record with **no pane** and do **not** run `cmd` (defer to
-  surface); otherwise the pane creation/launch happens in the apply/lifecycle path. Define
-  `type AddSpec struct { Name, Worktree, Parent, Cmd, ResumeCmd string; Display
-  render.Display }`. `func (e *Engine) UpdateStrand(guid string, display render.Display)
+  *Engine) AddStrand(spec AddSpec) (Strand, error)`: generate `newGUID`; **stamp
+  `Worktree = e.layout.WorktreeRoot`** (the engine owns its geometry — the CLI never supplies
+  it); **resolve the `Name`** — use `spec.NameOverride` verbatim when set, else
+  `FormatStrandName(e.cfg.StrandName, parts)` with `parts` = `{ROLE: spec.Role, ROUND:
+  spec.Round, WORKTREE: filepath.Base(e.layout.WorktreeRoot), SHORT_GUID: guid[:8]}`, else the
+  bare `guid[:8]` when neither name nor role is given (so the engine, which owns guid
+  generation, also owns the guid-dependent name — the CLI can't compute `<SHORT_GUID>` before
+  the guid exists); validate `spec.Parent` names an existing strand (reject unknown); reject a
+  parent link that would form a **cycle**; build the `Strand` (opaque `Cmd`/`ResumeCmd`,
+  `Display` from `spec`); if `anchor == hidden`, register the record with **no pane** and do
+  **not** run `cmd` (defer to surface); otherwise the pane creation/launch happens in the
+  apply/lifecycle path. Define `type AddSpec struct { Role, Round, NameOverride, Parent, Cmd,
+  ResumeCmd string; Display render.Display }` (`Role`/`Round`/`NameOverride` are
+  formatting-only inputs consumed here, never persisted as fields). `func (e *Engine) UpdateStrand(guid string, display render.Display)
   (Strand, error)`: mutate by guid; **reject** a `visible -> hidden` transition (error
   `cannot hide a live strand in v1`); allow `hidden -> visible` (mark for surface: create
   pane + run `cmd` in apply). `func (e *Engine) RemoveStrand(guid string, recursive bool)
