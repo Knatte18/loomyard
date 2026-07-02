@@ -24,7 +24,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/configcli"
 	"github.com/Knatte18/loomyard/internal/idecli"
 	"github.com/Knatte18/loomyard/internal/initcli"
-	"github.com/Knatte18/loomyard/internal/muxpoccli"
+	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/muxcli"
 	"github.com/Knatte18/loomyard/internal/selfreportcli"
 	"github.com/Knatte18/loomyard/internal/warpcli"
 	"github.com/Knatte18/loomyard/internal/weftcli"
@@ -64,6 +65,10 @@ func run(args []string, out io.Writer) int {
 func newRoot() *cobra.Command {
 	// jsonFlag is captured by InstallJSONHelp so the help func can read it.
 	var jsonFlag bool
+	// verbosity is the repeat count of -v/--verbose, bound below and read in
+	// root's PersistentPreRunE to set the logger threshold before any
+	// subcommand body runs.
+	var verbosity int
 
 	root := &cobra.Command{
 		Use:   "lyx",
@@ -74,9 +79,18 @@ It assembles every module's cobra command tree under a single root so that
 all modules are discoverable via "lyx --help" and every subcommand carries
 its own --help and --json help output.
 
-Available modules: init, board, config, ide, muxpoc, weft, warp, selfreport.`,
+Available modules: init, board, config, ide, mux, weft, warp, selfreport.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		// Several module groups (board, ide, mux, weft) install their own
+		// PersistentPreRunE for config/layout resolution. EnableTraverseRunHooks
+		// (set below) makes cobra run root's hook first, then each ancestor's
+		// down to the target command, instead of only the nearest one — so this
+		// hook is guaranteed to fire before every module's own guard.
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			logger.SetVerbosity(verbosity)
+			return nil
+		},
 	}
 
 	// --json is a persistent flag on the root so it is inherited by all descendants.
@@ -84,13 +98,22 @@ Available modules: init, board, config, ide, muxpoc, weft, warp, selfreport.`,
 	root.PersistentFlags().BoolVar(&jsonFlag, "json", false, "emit help as structured JSON instead of plain text")
 	clihelp.InstallJSONHelp(root, &jsonFlag)
 
+	// -v/--verbose is a repeat-count persistent flag: absent (0) keeps the
+	// default Warn threshold, one -v raises it to Info, -vv (or more) to Debug.
+	root.PersistentFlags().CountVarP(&verbosity, "verbose", "v", "increase log verbosity (-v info, -vv debug)")
+
+	// Run every ancestor's PersistentPreRunE (root's included), not just the
+	// nearest one to the invoked subcommand, so root's verbosity wiring above
+	// always fires alongside each module's own PersistentPreRunE.
+	cobra.EnableTraverseRunHooks = true
+
 	// Add every module's Command() as a direct child of the root.
 	root.AddCommand(
 		initcli.Command(),
 		boardcli.Command(),
 		configcli.Command(),
 		idecli.Command(),
-		muxpoccli.Command(),
+		muxcli.Command(),
 		weftcli.Command(),
 		warpcli.Command(),
 		selfreportcli.Command(),
