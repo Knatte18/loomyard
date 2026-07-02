@@ -323,6 +323,50 @@ func TestAddRollback(t *testing.T) {
 	}
 }
 
+// TestAddAdoptWeftBranchLockedFails asserts that when Add attempts to adopt an
+// existing weft branch that is already checked out in another weft worktree, the
+// resulting error is composed from local context (the branch name and git exit
+// code) rather than git's own stderr text.
+func TestAddAdoptWeftBranchLockedFails(t *testing.T) {
+	t.Parallel()
+
+	const slug = "adopt-lock-test"
+	f := lyxtest.CopyPairedLocal(t)
+
+	// Create a weft branch ahead of time (outside Add) so Add routes to the adopt path.
+	weftBranch := slug
+	parentBranch := "main"
+	lyxtest.MustRun(t, f.Layout.WeftRepoRoot(), "git", "branch", weftBranch, parentBranch)
+
+	// Lock the weft branch by checking it out in a separate weft worktree. This causes
+	// the adopt-path `git worktree add <path> <branch>` inside Add to fail with
+	// "already checked out".
+	lockPath := filepath.Join(f.Layout.Hub, "lock-weft-adopt")
+	lyxtest.MustRun(t, f.Layout.WeftRepoRoot(), "git", "worktree", "add", lockPath, weftBranch)
+	t.Cleanup(func() {
+		_, _, _, _ = gitexec.RunGit([]string{"worktree", "remove", "--force", lockPath}, f.Layout.WeftRepoRoot())
+	})
+
+	w := New(Config{})
+	result, err := w.Add(f.Layout, slug, AddOptions{SkipPush: true})
+
+	if err == nil {
+		t.Fatalf("Add(%q) with locked weft branch error = nil; want adopt failure", slug)
+	}
+	if !strings.Contains(err.Error(), weftBranch) {
+		t.Errorf("Add(%q) error = %q; want substring %q (branch name)", slug, err.Error(), weftBranch)
+	}
+	if strings.Contains(err.Error(), "fatal:") {
+		t.Errorf("Add(%q) error = %q; want no %q substring (raw git stderr leak)", slug, err.Error(), "fatal:")
+	}
+	if strings.Contains(err.Error(), "already checked out") {
+		t.Errorf("Add(%q) error = %q; want no %q substring (raw git stderr leak)", slug, err.Error(), "already checked out")
+	}
+	if result.Slug != "" {
+		t.Errorf("Add(%q) result should be zero on error; got non-empty result", slug)
+	}
+}
+
 // TestAddAdoptExistingWeftBranch asserts that Add adopts an existing weft branch
 // instead of aborting with an error.
 func TestAddAdoptExistingWeftBranch(t *testing.T) {

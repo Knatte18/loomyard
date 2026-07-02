@@ -5,6 +5,7 @@
 package weftengine
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -229,6 +230,50 @@ func TestPush(t *testing.T) {
 
 			// Verify that nothing failed
 		})
+	}
+}
+
+// TestPush_BrokenRemoteFailsWithoutStderrLeak asserts that when a push fails for a
+// reason the rebase-retry loop cannot address (here, a remote URL that does not
+// point at any git repository), the returned error is composed from local context
+// (the weft path and git's exit code) rather than git's own stderr text.
+func TestPush_BrokenRemoteFailsWithoutStderrLeak(t *testing.T) {
+	t.Parallel()
+
+	fixture := lyxtest.CopyWeft(t)
+	weftRepo := fixture.WeftPath
+
+	// Modify and commit so there is something unpushed.
+	lyxFile := filepath.Join(weftRepo, "_lyx", "config.yaml")
+	if err := os.WriteFile(lyxFile, []byte("modified"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	committed, err := Commit(weftRepo, []string{"_lyx"}, SyncOptions{})
+	if err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+	if !committed {
+		t.Fatalf("Commit should have succeeded")
+	}
+
+	// Point origin at a path that is not a git repository at all. The local
+	// remote-tracking ref (used by hasUnpushed's @{u} lookup) is unaffected, but
+	// the push itself fails for a reason that does not match any of the
+	// retry-triggering substrings ("non-fast-forward", "rejected", "fetch first"),
+	// so it survives the rebase-retry loop and reaches the final error path.
+	badRemote := filepath.Join(t.TempDir(), "does-not-exist")
+	lyxtest.MustRun(t, weftRepo, "git", "remote", "set-url", "origin", badRemote)
+
+	err = Push(weftRepo, SyncOptions{})
+	if err == nil {
+		t.Fatalf("Push() error = nil; want error (broken remote)")
+	}
+	wantSubstr := fmt.Sprintf("%q", weftRepo)
+	if !strings.Contains(err.Error(), wantSubstr) {
+		t.Errorf("Push() error = %q; want substring %q (weft path)", err.Error(), wantSubstr)
+	}
+	if strings.Contains(err.Error(), "fatal:") {
+		t.Errorf("Push() error = %q; want no %q substring (raw git stderr leak)", err.Error(), "fatal:")
 	}
 }
 

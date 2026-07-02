@@ -1,8 +1,10 @@
-// clone_test.go — unit tests for URL-derivation helpers.
+// clone_test.go — unit tests for URL-derivation helpers and cloneRepo's error path.
 
 package warpengine
 
 import (
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -51,6 +53,32 @@ func TestDeriveHostName(t *testing.T) {
 				t.Errorf("DeriveHostName(%q) = %q; want %q", tt.url, got, tt.want)
 			}
 		})
+	}
+}
+
+// TestCloneRepo_InvalidURLFails asserts that cloneRepo's error on a bogus/nonexistent
+// source URL is composed from local context (the attempted URL and destination, plus
+// the git exit code) rather than git's own stderr text. No real git fixture is needed:
+// a nonexistent source path is enough to make `git clone` fail immediately.
+func TestCloneRepo_InvalidURLFails(t *testing.T) {
+	dest := filepath.Join(t.TempDir(), "cloned-repo")
+	const url = "/does/not/exist/nonexistent-repo.git"
+
+	err := cloneRepo(url, dest)
+	if err == nil {
+		t.Fatalf("cloneRepo(%q, %q) error = nil; want failure for a nonexistent source", url, dest)
+	}
+	if !strings.Contains(err.Error(), url) {
+		t.Errorf("cloneRepo(%q, %q) error = %q; want substring %q (attempted URL)", url, dest, err.Error(), url)
+	}
+	// Compare against filepath.Base(dest) rather than the raw dest string: %q escapes
+	// backslashes on Windows, so the literal OS-native dest path would never appear
+	// unescaped in err.Error() even though the destination is faithfully reported.
+	if destName := filepath.Base(dest); !strings.Contains(err.Error(), destName) {
+		t.Errorf("cloneRepo(%q, %q) error = %q; want substring %q (destination)", url, dest, err.Error(), destName)
+	}
+	if strings.Contains(err.Error(), "fatal:") {
+		t.Errorf("cloneRepo(%q, %q) error = %q; want no %q substring (raw git stderr leak)", url, dest, err.Error(), "fatal:")
 	}
 }
 
