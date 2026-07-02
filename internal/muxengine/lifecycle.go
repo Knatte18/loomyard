@@ -274,6 +274,27 @@ func (e *Engine) Down() (DownResult, error) {
 	return result, err
 }
 
+// requireSessionLocked returns a friendly, actionable error when this
+// worktree's psmux session does not exist, instead of letting a caller fall
+// through to a raw psmux error surfacing later from deep inside
+// launchStrandLocked or listPanes. Status has always pre-flighted this way;
+// AddStrand and RemoveStrand share the identical check (same error string)
+// because both hit psmux directly with no earlier session check of their
+// own — AddStrand via launchStrandLocked, RemoveStrand via
+// reconcileApplyPersistLocked's listPanes — which otherwise surfaces a
+// cryptic psmux error when a caller runs add/remove before up. It assumes
+// the op lock is already held and always makes a real psmux round trip.
+func (e *Engine) requireSessionLocked() error {
+	up, err := e.psmux.hasSession(e.SessionName())
+	if err != nil {
+		return fmt.Errorf("check session: %w", err)
+	}
+	if !up {
+		return fmt.Errorf(`no mux session; run "lyx mux up"`)
+	}
+	return nil
+}
+
 // Status reports this session's tracked strands (guid, name, pane id,
 // live/dead) purely by cross-referencing the persisted table against the
 // live pane set list-panes just reported. Status is a read verb, so unlike
@@ -294,14 +315,10 @@ func (e *Engine) Down() (DownResult, error) {
 func (e *Engine) Status() (StatusResult, error) {
 	var result StatusResult
 	err := e.withOpLock(func() error {
+		if err := e.requireSessionLocked(); err != nil {
+			return err
+		}
 		session := e.SessionName()
-		up, err := e.psmux.hasSession(session)
-		if err != nil {
-			return fmt.Errorf("check session: %w", err)
-		}
-		if !up {
-			return fmt.Errorf(`no mux session; run "lyx mux up"`)
-		}
 
 		st, err := e.loadOrInitStateLocked()
 		if err != nil {

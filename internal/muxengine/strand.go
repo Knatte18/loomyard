@@ -265,10 +265,17 @@ func (e *Engine) removeStrandLocked(st *MuxState, guid string, recursive bool) (
 // reconciles and re-applies the layout. The engine, not the caller, stamps
 // Worktree and generates GUID, since it owns both this worktree's geometry
 // and guid generation (the guid-dependent <SHORT_GUID> name token cannot be
-// computed before the guid exists).
+// computed before the guid exists). Pre-flights the session's existence
+// (mirroring Status) so running add before up fails with the same friendly
+// "no mux session" error instead of a raw psmux error surfacing later from
+// inside launchStrandLocked.
 func (e *Engine) AddStrand(spec AddSpec) (Strand, error) {
 	var result Strand
 	err := e.withOpLock(func() error {
+		if err := e.requireSessionLocked(); err != nil {
+			return err
+		}
+
 		st, err := e.loadOrInitStateLocked()
 		if err != nil {
 			return err
@@ -320,10 +327,17 @@ func (e *Engine) UpdateStrand(guid string, display render.Display) (Strand, erro
 // removal through its whole subtree (recursive must be true for a
 // non-leaf, or the call errors instead of silently deleting descendants),
 // then reconciles and re-applies the layout. Returns every strand actually
-// removed.
+// removed. Pre-flights the session's existence (mirroring Status) so
+// running remove before up fails with the same friendly "no mux session"
+// error instead of a raw psmux error surfacing later from inside
+// reconcileApplyPersistLocked's listPanes.
 func (e *Engine) RemoveStrand(guid string, recursive bool) (Removed, error) {
 	var result Removed
 	err := e.withOpLock(func() error {
+		if err := e.requireSessionLocked(); err != nil {
+			return err
+		}
+
 		st, err := e.loadOrInitStateLocked()
 		if err != nil {
 			return err

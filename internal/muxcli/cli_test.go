@@ -128,6 +128,63 @@ func TestRunCLI_ResolvesLayoutAndConfig(t *testing.T) {
 	}
 }
 
+// TestRunCLI_AddNotUp_FriendlyError verifies that running `add` before `up`
+// surfaces the same friendly "no mux session" error Status has always given,
+// rather than a raw psmux error bubbling up from launchStrandLocked's first
+// unguarded psmux call (orch_04 finding #3).
+func TestRunCLI_AddNotUp_FriendlyError(t *testing.T) {
+	fixture := lyxtest.CopyPaired(t)
+	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
+		"mux": muxengine.ConfigTemplate(),
+	})
+	t.Chdir(fixture.Hub)
+
+	var out bytes.Buffer
+	exitCode := RunCLI(&out, []string{"add", "--cmd", "pwsh -NoExit -Command Write-Host ready"})
+
+	if exitCode != 1 {
+		t.Errorf("RunCLI(add) before up = %d; want 1 (no live psmux session)", exitCode)
+	}
+
+	var env map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
+		t.Fatalf("RunCLI(add) output is not valid JSON: %v; got: %q", err, out.String())
+	}
+	wantErr := `no mux session; run "lyx mux up"`
+	if errMsg, _ := env["error"].(string); errMsg != wantErr {
+		t.Errorf("RunCLI(add) before up error = %q; want %q", errMsg, wantErr)
+	}
+}
+
+// TestRunCLI_RemoveNotUp_FriendlyError verifies that running `remove` before
+// `up` surfaces the same friendly "no mux session" error, rather than a raw
+// psmux error bubbling up from reconcileApplyPersistLocked's first unguarded
+// listPanes call (orch_04 finding #3). The guid is a placeholder — the
+// pre-flight session check must fail before the table is even consulted.
+func TestRunCLI_RemoveNotUp_FriendlyError(t *testing.T) {
+	fixture := lyxtest.CopyPaired(t)
+	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
+		"mux": muxengine.ConfigTemplate(),
+	})
+	t.Chdir(fixture.Hub)
+
+	var out bytes.Buffer
+	exitCode := RunCLI(&out, []string{"remove", "does-not-exist"})
+
+	if exitCode != 1 {
+		t.Errorf("RunCLI(remove) before up = %d; want 1 (no live psmux session)", exitCode)
+	}
+
+	var env map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
+		t.Fatalf("RunCLI(remove) output is not valid JSON: %v; got: %q", err, out.String())
+	}
+	wantErr := `no mux session; run "lyx mux up"`
+	if errMsg, _ := env["error"].(string); errMsg != wantErr {
+		t.Errorf("RunCLI(remove) before up error = %q; want %q", errMsg, wantErr)
+	}
+}
+
 // TestAttachArgv verifies the attach invocation targets the worktree
 // session: "-L <socket> attach-session -t <session>". This is the built
 // attach invocation's one assertable seam — the argv build, not a JSON
