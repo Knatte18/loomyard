@@ -274,19 +274,23 @@ func (e *Engine) Down() (DownResult, error) {
 	return result, err
 }
 
-// Status reconciles against live panes and reports this session's tracked
-// strands (guid, name, pane id, live/dead). Unlike the mutating ops, it
-// deliberately stops after reconcile: reconcile's dead-pane-kill/binding-
-// clear is a real state correction, but Status is a read verb, so it does
-// NOT run applyLayoutLocked's select-layout/select-pane (which would move
-// input focus and rewrite the window layout as a side effect of a query) or
-// re-persist the reconciled table (the next mutating op re-derives and
-// persists the same correction; nothing is lost by leaving mux.json as-is
-// between queries). It returns a non-nil error when the server/session is
-// absent, so a pre-flight caller (e.g. attach) can surface that on its
-// envelope before attempting anything that needs a live session. Status
-// only reports this session — active stray-server enumeration across the
-// hub is deferred (NOTE3).
+// Status reports this session's tracked strands (guid, name, pane id,
+// live/dead) purely by cross-referencing the persisted table against the
+// live pane set list-panes just reported. Status is a read verb, so unlike
+// the mutating ops it must not touch psmux beyond the read-only
+// has-session/list-panes calls: it does NOT run reconcileLocked (which kills
+// dead-but-not-sole panes and clears their strands' bindings — a real state
+// correction that belongs to a mutating op, not a query) and it does NOT run
+// applyLayoutLocked's select-layout/select-pane (which would move input
+// focus and rewrite the window layout as a side effect of a query). The
+// persisted PaneID is reported unchanged; Live is derived by checking it
+// against the live set. Nothing is lost by leaving mux.json as-is between
+// queries — the next mutating op reconciles and persists the correction
+// itself. It returns a non-nil error when the server/session is absent, so a
+// pre-flight caller (e.g. attach) can surface that on its envelope before
+// attempting anything that needs a live session. Status only reports this
+// session — active stray-server enumeration across the hub is deferred
+// (NOTE3).
 func (e *Engine) Status() (StatusResult, error) {
 	var result StatusResult
 	err := e.withOpLock(func() error {
@@ -307,9 +311,6 @@ func (e *Engine) Status() (StatusResult, error) {
 		live, err := e.psmux.listPanes(session)
 		if err != nil {
 			return fmt.Errorf("list panes: %w", err)
-		}
-		if _, err := e.reconcileLocked(st, live); err != nil {
-			return fmt.Errorf("reconcile: %w", err)
 		}
 
 		liveIDs := liveIDSet(live)
