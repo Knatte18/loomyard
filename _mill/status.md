@@ -36,5 +36,7 @@ batches:
     start_sha: bfd3d99d74f1c68caca9d2074185658cdad2129c
     commit_sha: 03b0221276b7df4ad31ee9c37688b039e208a115
   - name: coverage-invariant
-    state: pending
+    state: running
+    implementer_session: bb9b2435-4071-4d6e-a291-06e9631b71fa
+    start_sha: b1acda5e280af5c7e0654ccbd4224e73ecd9cbd9
 ```
