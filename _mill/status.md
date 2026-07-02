@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: internal-mux
 branch: internal-mux
 plan: _mill/plan
@@ -24,4 +24,27 @@ plan-review-r2  '2026-07-02T17:30:26Z'
 plan-fix-r2  '2026-07-02T17:32:37Z'
 plan-fix-r3  '2026-07-02T17:44:40Z'
 planned  '2026-07-02T17:45:00Z'
+implementing  '2026-07-02T18:22:14Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: hubgeometry-dotlyx
+    state: pending
+  - name: logger
+    state: pending
+  - name: render
+    state: pending
+  - name: muxengine-carrier
+    state: pending
+  - name: muxengine-operations
+    state: pending
+  - name: muxcli
+    state: pending
+  - name: cmd-lyx-integration
+    state: pending
+  - name: docs
+    state: pending
 ```
