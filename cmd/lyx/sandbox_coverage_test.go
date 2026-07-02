@@ -24,7 +24,6 @@ var coversLinePattern = regexp.MustCompile(`^\*\*Covers:\*\*\s*(.+)$`)
 // reason. Coverage is module-level (see CONSTRAINTS.md's Sandbox Suite Coverage
 // invariant), so each entry excludes the whole module, not individual subcommands.
 var excludedModules = map[string]string{
-	"muxpoc":     "PoC, slated for replacement by the mux module",
 	"ide":        "side-effect heavy: spawn opens a real VS Code window, menu is an interactive stdin picker",
 	"selfreport": "create files a real GitHub issue",
 }
