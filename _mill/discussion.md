@@ -298,6 +298,12 @@ mux is **three things in one module**:
   still lets two mutations both read, both render, and **clobber each other's layout**. The
   concurrent scenario is real (the loom driver adding a strand while an operator runs
   `lyx mux add`), so v1 serializes the full cycle rather than assuming a single driver.
+  **(Clarification — do not misread "serializes across both CLI processes and the in-process
+  driver" as "both acquire the lock": only the engine op acquires `mux.lock`, at its single
+  entry point per the ONE-layer bullet above. A CLI process is serialized *because* it calls
+  that engine op, never because the CLI verb takes the lock itself — a CLI-then-engine
+  double-acquire would self-deadlock on the non-reentrant flock. This supersedes any looser
+  earlier phrasing; the authoritative rule is: CLI verbs NEVER lock.)**
 - **Lock ordering (deadlock-free):** the **outer `mux.lock` is always acquired BEFORE**
   `state.WriteJSON` internally takes its `mux.json.lock`. Strict **outer → inner**, never the
   reverse — so there is no lock-ordering cycle and no deadlock.
@@ -787,7 +793,7 @@ _Orch review round (feedback_01):_
 - **Q (orch #3):** `up` vs `resume` boundary? **A:** `up` = substrate only (boot/ensure session + layout + reconcile, **never** replays a command); `resume` = the only replayer (recreate panes + run stored resume/launch cmds). Defined across three states.
 - **Q (orch #4):** Does `add` expose `--anchor`? **A:** Yes — full flag spec (`--name --cmd --resume-cmd --parent --anchor[=below-parent] --height --focus`); `--anchor` gives top/hidden a CLI + sandbox integration path.
 - **Q (orch #5):** Tool paths in synced `mux.yaml` vs portability? **A:** Keep in `mux.yaml`; document that v1 chooses correctness (explicit absolute paths, required by the ConPTY-stub finding) over cross-machine portability (deferred anyway). Do not PATH-relativize; future per-machine override rides the gitignored `.env`.
-- **Q (orch #6):** Concurrency across separate CLI processes + in-process driver? **A:** One coarse mux operation lock (`.lyx/mux.lock`) around the whole read→mutate→persist→render→apply cycle. Ordering: outer `mux.lock` before `state`'s inner `mux.json.lock` (deadlock-free). Per-worktree scope; OS handle auto-releases on process death → no stale-lock-stealing in v1.
+- **Q (orch #6):** Concurrency across separate CLI processes + in-process driver? **A:** One coarse mux operation lock (`.lyx/mux.lock`) around the whole read→mutate→persist→render→apply cycle. **Acquired at exactly one layer — the engine op entry; CLI verbs NEVER take it** (a CLI-then-engine double-acquire self-deadlocks on the non-reentrant flock — the CLI is serialized because it *calls* the engine op, not because it locks). Ordering: outer `mux.lock` before `state`'s inner `mux.json.lock` (deadlock-free). Per-worktree scope; OS handle auto-releases on process death → no stale-lock-stealing in v1.
 - **Q (orch minor):** `attach` target? **A:** Session-level, **in-place** (`psmux attach` in the current terminal — no terminal-emulator config; popping a window is deferred); no strand arg. **`resumeCmd`?** Optional/nullable; absent → resume re-runs `cmd`.
 
 _Orch review round (feedback_02):_
