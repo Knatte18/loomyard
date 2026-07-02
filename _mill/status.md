@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-approved
 slug: config-set-key-loss
 branch: config-set-key-loss
 plan: _mill/plan
@@ -25,6 +25,7 @@ approved-yamlengine-preserve  '2026-07-02T11:05:25Z'
 approved-configengine-set-signature  '2026-07-02T11:09:58Z'
 approved-configcli-json-envelope  '2026-07-02T11:15:41Z'
 holistic-reviewing  '2026-07-02T11:16:03Z'
+holistic-approved  '2026-07-02T11:18:40Z'
 ```
 
 ## Batches
