@@ -10,10 +10,14 @@ import (
 )
 
 const (
-	commitMessage = "weft sync"
-	lockDirName   = ".weft"
-	writeLockFile = "weft.write.lock"
-	pushLockFile  = "weft.push.lock"
+	// DefaultCommitMessage is the message used by every Commit caller that does not
+	// need a custom one (e.g. the regular weft sync path). Callers with a distinct
+	// reason to commit — such as the --undo path clearing weft content — pass their
+	// own message to Commit instead.
+	DefaultCommitMessage = "weft sync"
+	lockDirName          = ".weft"
+	writeLockFile        = "weft.write.lock"
+	pushLockFile         = "weft.push.lock"
 )
 
 // ScopedPathspec returns a slice of pathspec entries, each being the join of relPath

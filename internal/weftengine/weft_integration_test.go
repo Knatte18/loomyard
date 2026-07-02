@@ -50,7 +50,7 @@ func TestPushIntegration(t *testing.T) {
 				t.Fatalf("WriteFile: %v", err)
 			}
 
-			committed, err := Commit(weftRepo, []string{"_lyx"}, SyncOptions{})
+			committed, err := Commit(weftRepo, []string{"_lyx"}, DefaultCommitMessage, SyncOptions{})
 			if err != nil {
 				t.Fatalf("Commit: %v", err)
 			}

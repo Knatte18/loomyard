@@ -10,7 +10,6 @@ package weftcli
 
 import (
 	"io"
-	"os"
 	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
@@ -150,7 +149,7 @@ Related commands:
 				return nil
 			}
 			out := cmd.OutOrStdout()
-			committed, err := weftengine.Commit(l.WeftWorktree(), pathspec, envSyncOptions())
+			committed, err := weftengine.Commit(l.WeftWorktree(), pathspec, weftengine.DefaultCommitMessage, weftengine.EnvSyncOptions())
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
@@ -181,8 +180,8 @@ Related commands:
 			}
 
 			// Normal mode: commit first, then push.
-			opts := envSyncOptions()
-			_, err := weftengine.Commit(l.WeftWorktree(), pathspec, opts)
+			opts := weftengine.EnvSyncOptions()
+			_, err := weftengine.Commit(l.WeftWorktree(), pathspec, weftengine.DefaultCommitMessage, opts)
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
@@ -205,7 +204,7 @@ Related commands:
 				return nil
 			}
 			out := cmd.OutOrStdout()
-			if err := weftengine.Pull(l.WeftWorktree(), envSyncOptions()); err != nil {
+			if err := weftengine.Pull(l.WeftWorktree(), weftengine.EnvSyncOptions()); err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
@@ -223,7 +222,7 @@ Related commands:
 				return nil
 			}
 			out := cmd.OutOrStdout()
-			_, err := weftengine.Commit(l.WeftWorktree(), pathspec, envSyncOptions())
+			_, err := weftengine.Commit(l.WeftWorktree(), pathspec, weftengine.DefaultCommitMessage, weftengine.EnvSyncOptions())
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
@@ -239,14 +238,6 @@ Related commands:
 
 	cmd.AddCommand(statusCmd, commitCmd, pushCmd, pullCmd, syncCmd)
 	return cmd
-}
-
-// envSyncOptions reads WEFT_SKIP_* environment variables and returns a weftengine.SyncOptions.
-func envSyncOptions() weftengine.SyncOptions {
-	return weftengine.SyncOptions{
-		SkipGit:  os.Getenv("WEFT_SKIP_GIT") == "1",
-		SkipPush: os.Getenv("WEFT_SKIP_PUSH") == "1",
-	}
 }
 
 // RunCLI is the public seam for the weft module CLI.

@@ -115,6 +115,182 @@ func seedLyxJunction(l *hubgeometry.Layout, slug string) error {
 	return nil
 }
 
+// UnwireResult reports which parts of UnwireJunctions actually changed state,
+// distinguishing a real reversal from a no-op on an already-clean (or
+// never-wired) worktree.
+type UnwireResult struct {
+	// JunctionRemoved reports whether the host _lyx junction was present and removed.
+	JunctionRemoved bool
+	// ExcludeChanged reports whether a junction-name line was removed from
+	// .git/info/exclude.
+	ExcludeChanged bool
+}
+
+// UnwireJunctions reverses WireJunctions for the current worktree, keyed by slug:
+// it removes the host _lyx junction and its .git/info/exclude entry, undoing
+// exactly what WireJunctions seeded — nothing more (the worktree pairing and weft
+// content are untouched; see Remove for the larger paired-teardown operation).
+//
+// The junction is unwired before the exclude entry, mirroring WireJunctions'
+// creation order in reverse. Per the "any junction inconsistency is a hard error"
+// invariant, if unseedLyxJunction reports an error the exclude file is never
+// touched: an unexpected junction state (a real directory, or a link pointing
+// somewhere unexpected) aborts the whole operation so a corrupted or
+// externally-modified junction is never silently worked around.
+//
+// Returns an empty UnwireResult and nil error when the junction was never wired
+// (the legitimate no-op case). Returns an error, with JunctionRemoved reflecting
+// what already happened, if the exclude-file update fails after a successful
+// junction removal.
+func UnwireJunctions(l *hubgeometry.Layout, slug string) (UnwireResult, error) {
+	removed, err := unseedLyxJunction(l, slug)
+	if err != nil {
+		return UnwireResult{}, err
+	}
+
+	changed, err := unseedGitExclude(l, slug)
+	if err != nil {
+		return UnwireResult{JunctionRemoved: removed}, err
+	}
+
+	return UnwireResult{JunctionRemoved: removed, ExcludeChanged: changed}, nil
+}
+
+// unseedLyxJunction removes the host _lyx junction for slug, mirroring
+// seedLyxJunction's validation in the same order (target resolution before the
+// link-type check) so the two functions stay in lockstep as the junction model
+// evolves.
+//
+// It is deliberately scoped to the single _lyx junction (HostLyxLink/WeftLyxDirFor)
+// rather than iterating l.HostJunctions(slug) the way unseedGitExclude does:
+// HostJunctions returns exactly one entry today, and UnwireResult.JunctionRemoved
+// is a single bool by design to match. If HostJunctions ever grows a second entry,
+// this function and UnwireResult should be revisited together.
+//
+// Returns (false, nil) if the junction does not exist — it was never wired, or was
+// already unwired; this is the legitimate no-op case, not an error. Returns an
+// error, without touching the link, if the weft-side target is missing or
+// unreachable, if the host path is a real directory rather than a junction, or if
+// the junction resolves to an unexpected target — all of these indicate corruption
+// or external modification rather than a normal unwire.
+func unseedLyxJunction(l *hubgeometry.Layout, slug string) (removed bool, err error) {
+	link := l.HostLyxLink(slug)
+
+	if _, err := os.Lstat(link); err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("lstat %s: %w", link, err)
+	}
+
+	// The link exists. Resolve the canonical weft-side target first, exactly as
+	// seedLyxJunction does, so a missing/unreachable target is reported distinctly
+	// from a wrong-target junction.
+	target := l.WeftLyxDirFor(slug)
+	targetResolved, errTarget := filepath.EvalSymlinks(target)
+	if errTarget != nil {
+		return false, fmt.Errorf("weft directory does not exist at %s; cannot validate junction target", target)
+	}
+
+	isLink, err := fslink.IsLink(link)
+	if err != nil {
+		return false, fmt.Errorf("islink %s: %w", link, err)
+	}
+	if !isLink {
+		// A real directory predating weft (or otherwise not a junction); refuse to
+		// touch it rather than risk deleting user content.
+		return false, fmt.Errorf(
+			"host repo already contains a real %s at %s; it is not a junction — refusing to remove it",
+			filepath.Base(link),
+			link,
+		)
+	}
+
+	linkResolved, err := fslink.PointsTo(link)
+	if err != nil {
+		return false, fmt.Errorf("resolve link target %s: %w", link, err)
+	}
+	if linkResolved != targetResolved {
+		// The junction points somewhere other than the expected weft directory —
+		// corruption or external modification, not a normal unwire target.
+		return false, fmt.Errorf(
+			"host junction %s points to unexpected target %s (want %s); refusing to remove it",
+			link, linkResolved, targetResolved,
+		)
+	}
+
+	if err := fslink.Remove(link); err != nil {
+		return false, fmt.Errorf("remove host junction %s: %w", link, err)
+	}
+	return true, nil
+}
+
+// unseedGitExclude removes junction-name lines previously added by seedGitExclude
+// from the host worktree's .git/info/exclude file.
+//
+// It resolves the exclude path exactly as seedGitExclude does (git rev-parse
+// --git-path info/exclude, joined with the worktree path if relative), then for
+// each junction in l.HostJunctions(slug) removes any line that trims to exactly
+// that junction's Name (the same line-exact comparison seedGitExclude uses to
+// detect presence). The remaining lines are rewritten in their original order.
+//
+// Returns (false, nil) without touching the file if the exclude file does not
+// exist, or if no matching line was found — both are legitimate no-op cases.
+func unseedGitExclude(l *hubgeometry.Layout, slug string) (changed bool, err error) {
+	worktreePath := l.WorktreePath(slug)
+
+	stdout, stderr, exitCode, err := gitexec.RunGit(
+		[]string{"rev-parse", "--git-path", "info/exclude"},
+		worktreePath,
+	)
+	if err != nil {
+		return false, fmt.Errorf("failed to get git-path for info/exclude: %w", err)
+	}
+	if exitCode != 0 {
+		return false, fmt.Errorf("git rev-parse --git-path failed: %s", stderr)
+	}
+
+	excludePath := strings.TrimSpace(stdout)
+	if !filepath.IsAbs(excludePath) {
+		excludePath = filepath.Join(worktreePath, excludePath)
+	}
+
+	content, err := os.ReadFile(excludePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// Nothing was ever seeded; nothing to revert.
+			return false, nil
+		}
+		return false, fmt.Errorf("read exclude file: %w", err)
+	}
+
+	// Build the set of junction names to strip; today this is always the single
+	// _lyx entry, but iterate l.HostJunctions(slug) for parity with seedGitExclude.
+	names := make(map[string]bool)
+	for _, j := range l.HostJunctions(slug) {
+		names[j.Name] = true
+	}
+
+	lines := strings.Split(string(content), "\n")
+	kept := make([]string, 0, len(lines))
+	for _, line := range lines {
+		if names[strings.TrimSpace(line)] {
+			changed = true
+			continue
+		}
+		kept = append(kept, line)
+	}
+
+	if !changed {
+		return false, nil
+	}
+
+	if err := os.WriteFile(excludePath, []byte(strings.Join(kept, "\n")), 0o644); err != nil {
+		return false, fmt.Errorf("write exclude file: %w", err)
+	}
+	return true, nil
+}
+
 // seedGitExclude adds junction names to the host worktree's .git/info/exclude file if not already present.
 //
 // It iterates over the junctions returned by l.HostJunctions(slug) and appends each

@@ -49,57 +49,23 @@ func Ensure(repoRoot string, entries ...string) (changed bool, err error) {
 	// Normalize line endings: convert CRLF to LF for consistent parsing
 	existingContent = strings.ReplaceAll(existingContent, "\r\n", "\n")
 
-	// Parse the file: capture before-block, block interior, and after-block
-	var blockExists bool
-	var oldEntries map[string]bool
-	var beforeBlock, afterBlock []string
-	var inBlock bool
-	var blockEnded bool
+	beforeBlock, afterBlock, oldEntries, blockExists := parseManagedBlock(existingContent)
 
-	lines := strings.Split(existingContent, "\n")
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == startMarker {
-			inBlock = true
-			blockExists = true
-			oldEntries = make(map[string]bool)
-		} else if trimmed == endMarker {
-			inBlock = false
-			blockEnded = true
-		} else if inBlock {
-			// Capture old block entries (non-empty trimmed lines)
-			if trimmed != "" {
-				oldEntries[trimmed] = true
-			}
-		} else if blockEnded {
-			// After block has ended, collect lines after
-			afterBlock = append(afterBlock, line)
-		} else {
-			// Before block starts, collect lines before
-			beforeBlock = append(beforeBlock, line)
-		}
-	}
+	// Capture the entries as they stood before merging in the incoming ones,
+	// so the idempotency check below compares like-for-like.
+	oldSorted := sortedEntrySet(oldEntries)
 
 	// Build the new set of entries: union of old and new, deduplicated, sorted
-	if oldEntries == nil {
-		oldEntries = make(map[string]bool)
-	}
 	for _, entry := range entries {
 		entry = strings.TrimSpace(entry)
 		if entry != "" {
 			oldEntries[entry] = true
 		}
 	}
+	sortedEntries := sortedEntrySet(oldEntries)
 
-	// Sort entries deterministically
-	var sortedEntries []string
-	for entry := range oldEntries {
-		sortedEntries = append(sortedEntries, entry)
-	}
-	sort.Strings(sortedEntries)
-
-	// Check if content has changed
-	oldSorted := getOldSortedEntries(lines)
+	// Skip the write entirely when nothing would actually change; this is
+	// what makes repeated Ensure calls for the same entries idempotent.
 	if !fileIsNew && blockExists && entriesEqual(oldSorted, sortedEntries) {
 		return false, nil
 	}
@@ -115,9 +81,7 @@ func Ensure(repoRoot string, entries ...string) (changed bool, err error) {
 		result = append(result, "") // blank line before block if there's content
 	}
 	result = append(result, startMarker)
-	for _, entry := range sortedEntries {
-		result = append(result, entry)
-	}
+	result = append(result, sortedEntries...)
 	result = append(result, endMarker)
 
 	// Add after-block content
@@ -135,33 +99,140 @@ func Ensure(repoRoot string, entries ...string) (changed bool, err error) {
 	return true, nil
 }
 
-// getOldSortedEntries extracts entries from the existing block and returns them sorted.
-func getOldSortedEntries(lines []string) []string {
-	var entries []string
-	var inBlock bool
-	var oldEntries map[string]bool = make(map[string]bool)
+// Remove reverses Ensure for the given entries: it deletes them from the
+// lyx-managed block in <repoRoot>/.gitignore, leaving any other module's
+// entries, the block itself, and all content outside the block untouched.
+// It exists so that `lyx init --undo` can revert only the entries it
+// originally added via Ensure without disturbing a .gitignore that other
+// modules (or the user) have since added their own entries to.
+//
+// Returns changed=false without touching the file when: the file does not
+// exist, it has no managed block, or none of the given entries are
+// currently in the block (nothing to remove). Returns changed=true when the
+// file was rewritten -- either with just the given entries dropped from the
+// block, or with the entire managed block (and the blank line Ensure
+// inserts before it) removed when dropping them would leave the block
+// empty, restoring the file to what it would look like had Ensure never
+// been called with those entries.
+func Remove(repoRoot string, entries ...string) (changed bool, err error) {
+	gitignorePath := filepath.Join(repoRoot, ".gitignore")
 
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == startMarker {
-			inBlock = true
-		} else if trimmed == endMarker {
-			inBlock = false
-		} else if inBlock {
-			if trimmed != "" {
-				oldEntries[trimmed] = true
-			}
+	content, err := os.ReadFile(gitignorePath)
+	if err != nil {
+		// No file means nothing to remove; mirror Ensure's no-op-on-absence
+		// idempotency contract rather than treating this as an error.
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to read .gitignore: %w", err)
+	}
+
+	// Normalize line endings before parsing, matching Ensure.
+	existingContent := strings.ReplaceAll(string(content), "\r\n", "\n")
+	beforeBlock, afterBlock, oldEntries, blockExists := parseManagedBlock(existingContent)
+	if !blockExists {
+		return false, nil
+	}
+
+	// Only rewrite the file if at least one of the requested entries is
+	// actually present in the block; otherwise this is a no-op removal.
+	var anyPresent bool
+	for _, entry := range entries {
+		if oldEntries[strings.TrimSpace(entry)] {
+			anyPresent = true
+			break
 		}
 	}
-
-	for entry := range oldEntries {
-		entries = append(entries, entry)
+	if !anyPresent {
+		return false, nil
 	}
-	sort.Strings(entries)
-	return entries
+	for _, entry := range entries {
+		delete(oldEntries, strings.TrimSpace(entry))
+	}
+	remainingEntries := sortedEntrySet(oldEntries)
+
+	// Build the new file content
+	var result []string
+	result = append(result, beforeBlock...)
+	if len(remainingEntries) > 0 {
+		// Other modules' entries remain: keep the block, in the same shape
+		// Ensure builds it in.
+		if len(beforeBlock) > 0 && strings.TrimSpace(beforeBlock[len(beforeBlock)-1]) != "" {
+			result = append(result, "") // blank line before block if there's content
+		}
+		result = append(result, startMarker)
+		result = append(result, remainingEntries...)
+		result = append(result, endMarker)
+	}
+	// If remainingEntries is empty, the block (and the blank line Ensure
+	// would have inserted before it) is omitted entirely rather than left
+	// behind as an empty shell.
+	result = append(result, afterBlock...)
+
+	// An empty result means the file has nothing left in it at all; write
+	// it as a genuinely empty file rather than a lone trailing newline.
+	var newContent string
+	if len(result) > 0 {
+		newContent = strings.Join(result, "\n")
+		newContent = strings.TrimRight(newContent, "\n") + "\n"
+	}
+
+	if err := os.WriteFile(gitignorePath, []byte(newContent), 0o644); err != nil {
+		return false, fmt.Errorf("failed to write .gitignore: %w", err)
+	}
+
+	return true, nil
 }
 
-// entriesEqual checks if two sorted entry lists are equal.
+// parseManagedBlock splits .gitignore content into the lines before the
+// lyx-managed block, the set of entries currently inside it, and the lines
+// after it. Ensure and Remove both build on this single parse so their
+// notion of "does the block exist" and "what does it contain" cannot drift
+// apart from one another.
+func parseManagedBlock(content string) (beforeBlock, afterBlock []string, entries map[string]bool, blockExists bool) {
+	entries = make(map[string]bool)
+	var inBlock bool
+	var blockEnded bool
+
+	lines := strings.Split(content, "\n")
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		switch {
+		case trimmed == startMarker:
+			inBlock = true
+			blockExists = true
+		case trimmed == endMarker:
+			inBlock = false
+			blockEnded = true
+		case inBlock:
+			// Capture old block entries (non-empty trimmed lines)
+			if trimmed != "" {
+				entries[trimmed] = true
+			}
+		case blockEnded:
+			// After block has ended, collect lines after
+			afterBlock = append(afterBlock, line)
+		default:
+			// Before block starts, collect lines before
+			beforeBlock = append(beforeBlock, line)
+		}
+	}
+	return beforeBlock, afterBlock, entries, blockExists
+}
+
+// sortedEntrySet returns the keys of an entry set sorted deterministically,
+// matching the order Ensure writes entries into the block.
+func sortedEntrySet(entries map[string]bool) []string {
+	var sorted []string
+	for entry := range entries {
+		sorted = append(sorted, entry)
+	}
+	sort.Strings(sorted)
+	return sorted
+}
+
+// entriesEqual reports whether two sorted entry lists contain the same
+// elements in the same order.
 func entriesEqual(a, b []string) bool {
 	if len(a) != len(b) {
 		return false

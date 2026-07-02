@@ -1,7 +1,8 @@
 // gitignore_test.go — table-driven tests for the gitignore package.
 //
 // Covers: new-file creation, set-merge across modules, idempotency,
-// outside-block preservation, and delimiter correctness.
+// outside-block preservation, delimiter correctness, and Remove's mirror
+// behavior (block deletion, partial removal, and no-op cases).
 
 package gitignore_test
 
@@ -274,6 +275,138 @@ func TestEnsureDelimiterExactness(t *testing.T) {
 	}
 	if strings.Contains(contentStr, "# === end lyx-managed") && !strings.Contains(contentStr, "# === end lyx-managed ===") {
 		t.Errorf("found incorrect variant of end marker")
+	}
+}
+
+// TestRemoveDeletesBlockWhenOnlyRemovedEntryPresent tests that Remove drops
+// the entire managed block (both markers) when the only entry it contains
+// is the one being removed, while preserving surrounding content.
+func TestRemoveDeletesBlockWhenOnlyRemovedEntryPresent(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Write outside content, then seed the block with only .lyx/ via Ensure.
+	gitignorePath := filepath.Join(tmpDir, ".gitignore")
+	if err := os.WriteFile(gitignorePath, []byte("*.log\n"), 0o644); err != nil {
+		t.Fatalf("failed to write initial .gitignore: %v", err)
+	}
+	if _, err := gitignore.Ensure(tmpDir, ".lyx/"); err != nil {
+		t.Fatalf("Ensure failed: %v", err)
+	}
+
+	changed, err := gitignore.Remove(tmpDir, ".lyx/")
+	if err != nil {
+		t.Fatalf("Remove failed: %v", err)
+	}
+	if !changed {
+		t.Errorf("Remove(dir, \".lyx/\") changed = false; want true")
+	}
+
+	content, err := os.ReadFile(gitignorePath)
+	if err != nil {
+		t.Fatalf("failed to read .gitignore: %v", err)
+	}
+	contentStr := string(content)
+
+	if strings.Contains(contentStr, "# === lyx-managed ===") {
+		t.Errorf("expected start marker to be gone, got: %q", contentStr)
+	}
+	if strings.Contains(contentStr, "# === end lyx-managed ===") {
+		t.Errorf("expected end marker to be gone, got: %q", contentStr)
+	}
+	if strings.Contains(contentStr, ".lyx/") {
+		t.Errorf("expected .lyx/ entry to be gone, got: %q", contentStr)
+	}
+	if !strings.Contains(contentStr, "*.log") {
+		t.Errorf("expected surrounding content *.log to be preserved, got: %q", contentStr)
+	}
+}
+
+// TestRemoveKeepsBlockWhenOtherEntriesRemain tests that Remove drops only
+// the targeted entry when other modules' entries remain in the block.
+func TestRemoveKeepsBlockWhenOtherEntriesRemain(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	if _, err := gitignore.Ensure(tmpDir, ".lyx/", ".vscode/"); err != nil {
+		t.Fatalf("Ensure failed: %v", err)
+	}
+
+	changed, err := gitignore.Remove(tmpDir, ".lyx/")
+	if err != nil {
+		t.Fatalf("Remove failed: %v", err)
+	}
+	if !changed {
+		t.Errorf("Remove(dir, \".lyx/\") changed = false; want true")
+	}
+
+	gitignorePath := filepath.Join(tmpDir, ".gitignore")
+	content, err := os.ReadFile(gitignorePath)
+	if err != nil {
+		t.Fatalf("failed to read .gitignore: %v", err)
+	}
+	contentStr := string(content)
+
+	if !strings.Contains(contentStr, "# === lyx-managed ===") {
+		t.Errorf("expected the block to survive, got: %q", contentStr)
+	}
+	if !strings.Contains(contentStr, "# === end lyx-managed ===") {
+		t.Errorf("expected the block to survive, got: %q", contentStr)
+	}
+	if strings.Contains(contentStr, ".lyx/") {
+		t.Errorf("expected .lyx/ entry to be gone, got: %q", contentStr)
+	}
+	if !strings.Contains(contentStr, ".vscode/") {
+		t.Errorf("expected .vscode/ entry to remain, got: %q", contentStr)
+	}
+}
+
+// TestRemoveNoOpWhenEntryNotPresent tests that Remove leaves the file
+// byte-for-byte unchanged when the requested entry was never in the block.
+func TestRemoveNoOpWhenEntryNotPresent(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	if _, err := gitignore.Ensure(tmpDir, ".vscode/"); err != nil {
+		t.Fatalf("Ensure failed: %v", err)
+	}
+
+	gitignorePath := filepath.Join(tmpDir, ".gitignore")
+	before, err := os.ReadFile(gitignorePath)
+	if err != nil {
+		t.Fatalf("failed to read .gitignore: %v", err)
+	}
+
+	changed, err := gitignore.Remove(tmpDir, ".lyx/")
+	if err != nil {
+		t.Fatalf("Remove failed: %v", err)
+	}
+	if changed {
+		t.Errorf("Remove(dir, \".lyx/\") changed = true; want false")
+	}
+
+	after, err := os.ReadFile(gitignorePath)
+	if err != nil {
+		t.Fatalf("failed to read .gitignore after Remove: %v", err)
+	}
+	if string(before) != string(after) {
+		t.Errorf("expected file content unchanged, before: %q, after: %q", before, after)
+	}
+}
+
+// TestRemoveNoOpWhenFileMissing tests that Remove no-ops without creating a
+// .gitignore file when none exists.
+func TestRemoveNoOpWhenFileMissing(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	changed, err := gitignore.Remove(tmpDir, ".lyx/")
+	if err != nil {
+		t.Fatalf("Remove failed: %v", err)
+	}
+	if changed {
+		t.Errorf("Remove(dir, \".lyx/\") changed = true; want false")
+	}
+
+	gitignorePath := filepath.Join(tmpDir, ".gitignore")
+	if _, err := os.Stat(gitignorePath); !os.IsNotExist(err) {
+		t.Errorf("expected no .gitignore to be created, stat err: %v", err)
 	}
 }
 
