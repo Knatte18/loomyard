@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussion-fix-r1
 slug: config-set-key-loss
 branch: config-set-key-loss
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-07-02T10:15:31Z'
+discussion-fix-r1  '2026-07-02T10:42:57Z'
 ```

@@ -81,10 +81,10 @@ log).
   the only sanctioned way to remove it; `--set <orphaned-key>=...` continues to be
   rejected as `unknown config key(s)` exactly as today (this is correct, existing
   behavior tied to template membership, not something this task touches).
-- Nested or indexed (dotted-path / `key[i]`) unknown-leaf preservation. All three
-  current templates (`board`, `warp`, `weft` — see Technical context) are flat,
-  single-level `key: value` mappings; preservation is implemented for flat top-level
-  keys only. See Decisions → `flat-keys-only`.
+- Full leaf-path-level (dotted/indexed) reconstruction for orphaned config
+  structure — preservation operates at root-key (top-level) granularity instead,
+  which handles any shape (scalar, nested mapping, sequence) uniformly without
+  needing leaf-path-specific logic. See Decisions → `root-key-preservation`.
 - Any change to `internal/configengine.Edit`'s core edit/validate/abort loop — it
   never routes through `SetValues`/`Reconcile` (opens the raw on-disk file directly in
   the editor) and was confirmed unaffected by the key-loss bug. Only its final
@@ -118,27 +118,43 @@ log).
 
 ### set-preserve-and-warn
 
-- Decision: `--set` never silently drops an existing key. `yamlengine.SetValues` walks
-  `existingLeaves` after building `templateLeaves`, and for any leaf path present in
-  `existingLeaves` but absent from `templateLeaves`, grafts a new node onto
-  `templateNode`'s root mapping carrying that leaf's original value — appended after
-  all template keys, **sorted by key name**, under a single header comment (e.g.
-  `# preserved (not in current template)`). Add `SetResult.Preserved []string` (sorted)
-  reporting which keys were carried through untouched, populated whenever this
-  grafting occurs (nil/empty otherwise). `configengine.Set`'s signature changes from
-  `(baseDir, module, template string, pairs []yamlengine.KV) error` to
+- Decision: `--set` never silently drops an existing key. `yamlengine.SetValues`
+  compares `existingNode`'s root mapping's **direct (top-level) keys** against
+  `templateNode`'s root mapping's direct keys, and for any existing top-level key
+  absent from the template, grafts that key's **entire value subtree verbatim**
+  (whatever it is — scalar, mapping, or sequence) onto `templateNode`'s root mapping —
+  appended after all template keys, **sorted by key name**. The grafted key node's
+  `HeadComment` is **unconditionally set (never appended/concatenated)** to a fixed
+  marker string (e.g. `# preserved (not in current template)`), replacing whatever
+  comment the key carried on disk. Add `SetResult.Preserved []string` (sorted,
+  top-level key names) reporting which keys were carried through untouched, populated
+  whenever this grafting occurs (nil/empty otherwise). `configengine.Set`'s signature
+  changes from `(baseDir, module, template string, pairs []yamlengine.KV) error` to
   `(...) ([]string, error)`, threading `SetResult.Preserved` up to the caller.
   `configcli.setModule` includes the preserved list in its JSON success envelope (see
   `output-format-json-envelope`) whenever non-empty.
+- Idempotency guarantee: a preserving `--set` call is idempotent — running it again
+  (with the preserved key still on disk, untouched) produces byte-identical output.
+  This holds because (a) the graft always operates on the *current* on-disk top-level
+  value subtree, so repeated runs graft the same content, and (b) the marker
+  `HeadComment` is *set*, not appended, every time — it cannot stack or grow across
+  repeated runs regardless of what comment (marker or original) the key carried
+  going in. See Testing for the regression case this backs.
 - Rationale: matches the project's "no silent data loss" bar. The user is informed
   every time (not just once) until they resolve the drift via `lyx config reconcile`,
   which is the explicit, correct tool for that job — reusing it rather than growing a
-  second, partial reconciliation mechanism inside `--set`.
+  second, partial reconciliation mechanism inside `--set`. Operating at root-key
+  (rather than flattened-leaf) granularity also means a nested/structured orphan key
+  (see `root-key-preservation`) is preserved as a whole, correct subtree instead of
+  being decomposed and partially reconstructed.
 - Rejected: fail-closed (refuse `--set` entirely when any unrecognized key exists) —
   adds friction to unrelated, otherwise-valid edits and was not the operator's pick.
   Silent preservation with no warning — stops the data loss but leaves the user unaware
   their config carries deprecated fields indefinitely; rejected in favor of surfacing
-  it every time.
+  it every time. Leaf-path-level grafting (matching `applyExistingOverrides`'s
+  granularity) — rejected after discussion-review found it leaves non-flat orphans
+  unhandled (see `root-key-preservation`); root-key granularity is simpler and covers
+  every shape uniformly.
 
 ### output-format-json-envelope
 
@@ -170,18 +186,31 @@ log).
   operator pointed at CONSTRAINTS.md's JSON-envelope requirement and the `boardcli`/
   `warpcli`/`runReconcile` precedent.
 
-### flat-keys-only
+### root-key-preservation
 
-- Decision: the preserve-on-`--set` mechanism only handles top-level, non-nested,
-  non-indexed leaf key-paths (the shape `collectLeafPaths` calls a plain key, e.g.
-  `"path"` — not `"a.b.c"` or `"items[0]"`).
-- Rationale: YAGNI — all three current templates (`internal/boardengine/template.yaml`,
-  `internal/warpengine/template.yaml`, `internal/weftengine/template.yaml`) are flat
-  single-level `key: value` mappings with no nesting or sequences. Building generic
-  nested-path node reconstruction for a case that cannot currently occur is
-  unjustified complexity.
-- Rejected: generic nested-path grafting — no current template exercises it; add if a
-  future template introduces nesting.
+- Decision: preservation operates at **root-key (top-level) granularity**, not
+  flattened-leaf granularity. This means it uniformly handles every existing
+  top-level key the template doesn't recognize — including a **non-flat orphan**
+  (a top-level key whose value is itself a nested mapping or sequence) — by grafting
+  the whole subtree verbatim. There is no special-case detection needed for
+  "nested vs. flat": the graft always operates on whatever value node the orphaned
+  top-level key has, at any depth.
+- Rationale: discussion-review (round 1) found the earlier `flat-keys-only` framing
+  left an unguarded gap — `configengine.Edit`'s interactive path validates only YAML
+  *syntax* (`yaml.Unmarshal` into `map[string]any`), not shape, so a user *can*
+  hand-edit a nested structure into `_lyx/config/<module>.yaml` today even though no
+  current template itself is nested. Under the old leaf-path-level design, such a
+  key would have silently vanished on the next `--set` — reintroducing the exact
+  data-loss class this task exists to fix. Root-key granularity closes this
+  unconditionally: every top-level orphan is preserved whole, regardless of its
+  internal shape, with no code path that silently drops one.
+- Rejected: leaf-path-level grafting scoped to flat keys only (original framing) —
+  correct for the three current templates but leaves a real, reachable gap for
+  hand-edited nested config. Failing loudly on a non-flat orphan instead of
+  preserving it — rejected because it would make `--set` refuse to work on an
+  otherwise-unrelated key edit just because some other, untouched key happens to
+  carry nested structure; preserving it whole causes no harm and requires no extra
+  user action.
 
 ### reconcile-unchanged
 
@@ -220,8 +249,9 @@ Files this task touches:
   deliberately never populated from the config file; confirms why `path` is correctly
   absent from the template and why `--set path=...` correctly stays rejected.
 - `internal/boardengine/template.yaml`, `internal/warpengine/template.yaml`,
-  `internal/weftengine/template.yaml` — confirmed flat, single-level templates (no
-  nesting) — informs the `flat-keys-only` scope decision.
+  `internal/weftengine/template.yaml` — confirmed flat, single-level templates today;
+  the `root-key-preservation` design is not scoped to this shape, but it's the shape
+  every current regression test will exercise.
 
 Root-cause chain for the implementer to internalize: `configengine.Set` reads
 `existingBytes` from disk, then calls `yamlengine.SetValues(template, existingBytes,
@@ -230,9 +260,15 @@ gets marshalled), collects `templateLeaves`, then layers `existingLeaves`' value
 *matching* `templateLeaves` via `applyExistingOverrides` — but leaves in `existing`
 that have no template counterpart are never copied anywhere, so they vanish from the
 final `Merged` output with no trace. The fix is a fourth step after
-`applyExistingOverrides`: for every `existingLeaves` entry not in `templateLeaves`,
-append a new node to `templateNode`'s root mapping content and record the key in
-`Preserved`.
+`applyExistingOverrides`, operating independently of the leaf-path machinery: walk
+`existingNode`'s root `MappingNode.Content` in key/value pairs (same iteration shape
+`collectLeafPathsHelper` already uses for `MappingNode`), and for every top-level key
+not present as a top-level key in `templateNode`'s root mapping, append that key node
+and its full value node (clone or reuse — implementer's call, but never mutate the
+source `existingNode`) to `templateNode`'s root `MappingNode.Content`, set the fixed
+marker string as the appended pair's comment (`HeadComment` on the key node, per
+yaml.v3 convention for a comment line above a mapping entry — verify against yaml.v3
+behavior during implementation), and record the key name in `Preserved`.
 
 ## Constraints
 
@@ -261,12 +297,21 @@ planning; update only if it references `--set`'s current behavior).
 ## Testing
 
 - **`internal/yamlengine/set_test.go`** (TDD candidate): new test(s) verifying
-  `SetValues` preserves an unrelated unknown existing leaf verbatim into `Merged` and
-  reports it via `SetResult.Preserved`; a multi-preserved-key case asserting sorted
-  order; a zero-preserved regression case confirming existing byte-for-byte assertions
-  (`TestSetValues_PartialExistingDoesNotSuppressSet` et al.) are unaffected when no
-  unrecognized existing keys are present. Also verify the header comment is present
-  above preserved keys and that preserved keys are appended after all template keys.
+  `SetValues` preserves an unrelated unknown existing top-level key verbatim into
+  `Merged` and reports it via `SetResult.Preserved`; a multi-preserved-key case
+  asserting sorted order; a zero-preserved regression case confirming existing
+  byte-for-byte assertions (`TestSetValues_PartialExistingDoesNotSuppressSet` et al.)
+  are unaffected when no unrecognized existing keys are present. Also verify the
+  marker comment is present above preserved keys and that preserved keys are appended
+  after all template keys.
+  - **Idempotency case:** call `SetValues` twice in sequence, feeding the first call's
+    `Merged` output back in as the second call's `existing` — assert the second call's
+    `Merged` is byte-identical to the first's (no comment duplication/growth, no
+    duplicate preserved key entries).
+  - **Non-flat orphan case:** `existing` contains a top-level key absent from the
+    template whose value is a nested mapping (or sequence) rather than a scalar —
+    assert the whole subtree survives verbatim in `Merged` and the top-level key name
+    appears once in `SetResult.Preserved`.
 - **`internal/configengine/set_test.go`**: existing tests
   (`TestSet_ScaffoldWhenMissingThenSet`, `TestSet_UnknownKeyRemovesScaffoldedFile`,
   `TestSet_UnknownKeyLeavesExistingFileUnchanged`, `TestSet_PreservesOtherKeysOnExistingFile`)
