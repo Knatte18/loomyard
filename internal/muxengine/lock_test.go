@@ -109,14 +109,12 @@ func TestWithOpLock_SerializesConcurrentCalls(t *testing.T) {
 	}
 
 	select {
-	case <-secondStarted:
 	case err := <-secondErr:
-		t.Fatalf("second withOpLock failed instead of proceeding: %v", err)
+		if err != nil {
+			t.Fatalf("second withOpLock: %v", err)
+		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("second withOpLock did not proceed after the first released")
-	}
-	if err := <-secondErr; err != nil {
-		t.Fatalf("second withOpLock: %v", err)
 	}
 }
 
