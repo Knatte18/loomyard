@@ -170,6 +170,7 @@ Batch-local decisions:
   - `internal/warpengine/template.yaml`
   - `internal/configengine/config.go`
   - `internal/muxpoccli/state.go`
+  - `internal/lyxtest/lyxtest.go`
 - **Edits:** none
 - **Creates:**
   - `internal/muxengine/config.go`
@@ -191,7 +192,8 @@ Batch-local decisions:
   `internal/muxengine/config.go`: `type Config struct { Psmux, Pwsh, Claude string; Width,
   Height, CollapsedStripRows, TopBandRows, MinFullRows int; StrandName string }` (yaml tags
   matching the template) and `func LoadConfig(baseDir, module string) (Config, error)` via
-  `configengine.Load(baseDir, "mux", []byte(ConfigTemplate()))` + `yaml.Unmarshal`, mapping
+  `configengine.Load(baseDir, module, []byte(ConfigTemplate()))` + `yaml.Unmarshal` (thread
+  the `module` arg through — do not hardcode `"mux"`, mirroring warpengine), mapping
   the "not initialized" error to a `run "lyx init"` hint (copy warpengine's shape). In
   `internal/muxengine/name.go`: `func newGUID() (string, error)` (128-bit `crypto/rand`, hex)
   and `func FormatStrandName(template string, parts map[string]string) string` — a pure

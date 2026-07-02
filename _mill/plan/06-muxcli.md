@@ -189,7 +189,7 @@ Batch-local decisions:
   - `internal/muxpoccli/spawnattach_other.go`
   - `internal/clihelp/exec.go`
   - `internal/output/output.go`
-  - `internal/muxengine/naming.go`
+  - `internal/muxengine/lock.go`
   - `internal/muxengine/lifecycle.go`
   - `internal/lyxtest/lyxtest.go`
 - **Edits:**
@@ -205,7 +205,9 @@ Batch-local decisions:
   `eng`/`hasSession`, lock/reconcile) — emit `output.Err` + non-zero on any failure; only the
   **terminal-handover tail** (`psmux -L <socket> attach-session -t <session>` inheriting the
   operator's stdio, in-place — no `wt.exe` new window) is exempt and emits **no** JSON on
-  success. Build the invocation with `muxengine.SessionName` + `socketName`. In
+  success. Build the invocation with the exported engine accessors `eng.Socket()` (the psmux
+  `-L` socket) + `eng.SessionName()` (the `attach-session -t` target) — never the unexported
+  `muxengine.socketName`. In
   `cli_test.go` (default, no psmux): assert via `muxcli.RunCLI(&out, args)` that bare `lyx
   mux` lists the seven subcommands (exit 0), an unknown subcommand yields `ok=false` exit 1,
   and the built `attach` invocation targets the worktree session (assert the argv, not a JSON

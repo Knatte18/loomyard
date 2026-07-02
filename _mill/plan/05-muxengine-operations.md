@@ -11,20 +11,25 @@ depends-on: [3, 4]
 
 ## Batch Scope
 
-Composes the batch-4 carrier primitives into the engine's public operations: strand
-mutation (`AddStrand`/`UpdateStrand`/`RemoveStrand`), reconcile-against-live-panes, the
-single mux operation lock, `ApplyLayout` (render -> `select-layout`/`select-pane`), and the
-lifecycle ops (`Up`/`Resume`/`Down`/`Status`). This is the seam shuttle/loom and `muxcli`
-(batch 6) call. External interface: an `Engine` type (holding resolved `Config`, `Layout`
-geometry, and a `PsmuxCmd`) with exported methods `AddStrand`, `UpdateStrand`, `RemoveStrand`,
-`Up`, `Resume`, `Down`, `Status`, each returning `(resultStruct, error)` — no cobra, no
+Composes the batch-4 carrier primitives into the engine's public operations: reconcile-
+against-live-panes, `ApplyLayout` (render -> `select-layout`/`select-pane`), strand mutation
+(`AddStrand`/`UpdateStrand`/`RemoveStrand`), and the lifecycle ops (`Up`/`Resume`/`Down`/
+`Status`). This is the seam shuttle/loom and `muxcli` (batch 6) call. External interface: an
+`Engine` type (holding resolved `Config`, `Layout` geometry, and a `PsmuxCmd`) with exported
+methods `AddStrand`, `UpdateStrand`, `RemoveStrand`, `Up`, `Resume`, `Down`, `Status`, plus
+`Socket()`/`SessionName()` accessors, each returning `(resultStruct, error)` — no cobra, no
 io.Writer, no exit codes (engine-purity litmus).
+
+**Card order matters:** the low-level composable helpers come first so later cards never
+forward-reference an undefined symbol at per-card build time — 16 (Engine+lock) -> 17
+(reconcile) -> 18 (apply) -> 19 (strand mutation, which *composes* reconcile+apply) -> 20
+(lifecycle, which composes all of the above).
 
 Batch-local decisions (from the discussion, load-bearing):
 - **Single-layer lock:** each public engine op acquires `.lyx/mux.lock` **once at entry**
   (via `internal/lock.AcquireWriteLock` on `layout.DotLyxDir()/mux.lock`) and holds it for
   the whole `read->mutate->persist->render->apply` cycle, composing from unexported
-  **unlocked** helpers (`addStrandLocked`, `reconcileLocked`, `applyLayoutLocked`, ...).
+  **unlocked** helpers (`reconcileLocked`, `applyLayoutLocked`, `addStrandLocked`, ...).
   Public ops never call each other while holding the lock. CLI verbs (batch 6) never lock.
 - **Reconcile keeps records:** a dead/absent pane -> clear that strand's `PaneID` + mark
   not-live, **keep the record** (only `RemoveStrand` deletes). Kill the physical
@@ -38,7 +43,7 @@ Batch-local decisions (from the discussion, load-bearing):
 
 ## Cards
 
-### Card 16: Engine type + single mux operation lock
+### Card 16: Engine type, single mux operation lock, session/socket accessors
 
 - **Context:**
   - `internal/lock/lock.go`
@@ -46,6 +51,7 @@ Batch-local decisions (from the discussion, load-bearing):
   - `internal/muxengine/overlay.go`
   - `internal/muxengine/config.go`
   - `internal/muxengine/state.go`
+  - `internal/muxengine/naming.go`
 - **Edits:** none
 - **Creates:**
   - `internal/muxengine/lock.go`
@@ -55,8 +61,11 @@ Batch-local decisions (from the discussion, load-bearing):
 - **Requirements:** In `internal/muxengine/lock.go`, define the engine value: `type Engine
   struct { cfg Config; layout *hubgeometry.Layout; psmux PsmuxCmd }` and a constructor `func
   New(cfg Config, layout *hubgeometry.Layout) *Engine` (builds the `PsmuxCmd` from
-  `cfg.Psmux` + `socketName(layout.Hub)`). Add the lock helper `func (e *Engine)
-  withOpLock(fn func() error) error` that acquires `lock.AcquireWriteLock(filepath.Join(
+  `cfg.Psmux` + `socketName(layout.Hub)`). Add exported accessors so `muxcli` never needs the
+  unexported naming helpers or the raw `layout`: `func (e *Engine) Socket() string { return
+  socketName(e.layout.Hub) }` and `func (e *Engine) SessionName() string { return
+  SessionName(e.layout.WorktreeRoot) }`. Add the lock helper `func (e *Engine) withOpLock(fn
+  func() error) error` that acquires `lock.AcquireWriteLock(filepath.Join(
   e.layout.DotLyxDir(), "mux.lock"))` **once**, `defer`s `Release()`, and runs `fn` — this
   is the ONLY acquisition point; every public op wraps its body in `withOpLock` and calls
   unexported `*Locked` helpers that assume the lock is held. Document the non-reentrancy
@@ -64,45 +73,11 @@ Batch-local decisions (from the discussion, load-bearing):
   ordering in a comment. In `lock_test.go`: assert the lock path is under `.lyx/`
   (per-worktree); assert two `withOpLock` calls serialize (second blocks until first
   releases) using a fixture `.lyx` dir; assert a released lock can be re-acquired (no stale
-  lock — handle auto-released on `Release`).
-- **Commit:** `feat(muxengine): Engine type and single-layer mux operation lock`
+  lock — handle auto-released on `Release`); assert `Socket()`/`SessionName()` return the
+  expected `lyx-<hub-basename>-<hash>` / worktree-slug strings.
+- **Commit:** `feat(muxengine): Engine type, single-layer mux op lock, socket/session accessors`
 
-### Card 17: strand mutation — AddStrand / UpdateStrand / RemoveStrand
-
-- **Context:**
-  - `internal/muxengine/state.go`
-  - `internal/muxengine/name.go`
-  - `internal/muxengine/render/types.go`
-  - `internal/muxengine/lock.go`
-- **Edits:**
-  - `internal/muxengine/lock.go`
-- **Creates:**
-  - `internal/muxengine/strand.go`
-  - `internal/muxengine/strand_test.go`
-- **Deletes:** none
-- **Moves:** none
-- **Requirements:** In `internal/muxengine/strand.go`, add the mutation ops on `*Engine`,
-  each acquiring `withOpLock` and delegating to an unexported `*Locked` helper that also
-  runs reconcile+apply (card 18/19 provide those; here call the helpers). `func (e *Engine)
-  AddStrand(spec AddSpec) (Strand, error)`: generate `newGUID`; validate `spec.Parent` names
-  an existing strand (reject unknown); reject a parent link that would form a **cycle**;
-  build the `Strand` (opaque `Cmd`/`ResumeCmd`, `Display` from `spec`); if `anchor ==
-  hidden`, register the record with **no pane** and do **not** run `cmd` (defer to surface);
-  otherwise the pane creation/launch happens in the apply/lifecycle path. Define `type
-  AddSpec struct { Name, Worktree, Parent, Cmd, ResumeCmd string; Display render.Display }`.
-  `func (e *Engine) UpdateStrand(guid string, display render.Display) (Strand, error)`:
-  mutate by guid; **reject** a `visible -> hidden` transition (error `cannot hide a live
-  strand in v1`); allow `hidden -> visible` (mark for surface: create pane + run `cmd` in
-  apply). `func (e *Engine) RemoveStrand(guid string) (Removed, error)`: **always cascade**
-  — remove the strand and its whole descendant subtree; return `type Removed struct {
-  Strands []struct{ GUID, Name string } }` listing every removed strand. In `strand_test.go`
-  (drive the unlocked helpers or the public ops against a fixture `.lyx`): assert guid is
-  generated + unique; unknown/cyclic parent rejected; hidden-add stores a record with empty
-  `PaneID` and unrun `cmd`; `UpdateStrand` visible->hidden rejected, hidden->visible allowed;
-  `RemoveStrand` cascades and the result lists every removed strand.
-- **Commit:** `feat(muxengine): AddStrand/UpdateStrand/RemoveStrand with cascade and hidden rules`
-
-### Card 18: reconcile against live panes
+### Card 17: reconcile against live panes
 
 - **Context:**
   - `internal/muxengine/overlay.go`
@@ -129,10 +104,10 @@ Batch-local decisions (from the discussion, load-bearing):
   `reconcile_test.go`, table-test `planReconcile` with saved tables + fake `list-panes`
   results incl. `pane_dead=1` rows: dead strand's record survives with cleared `PaneID`;
   live strands keep ids; dead panes are scheduled for kill except a sole-remaining one; only
-  `RemoveStrand` (card 17) ever deletes a record.
+  `RemoveStrand` (card 19) ever deletes a record.
 - **Commit:** `feat(muxengine): reconcile clears dead pane bindings, keeps records, kills dead-except-sole`
 
-### Card 19: ApplyLayout — render to select-layout/select-pane (+ debounce)
+### Card 18: ApplyLayout — render to select-layout/select-pane (+ debounce)
 
 - **Context:**
   - `internal/muxengine/overlay.go`
@@ -163,6 +138,44 @@ Batch-local decisions (from the discussion, load-bearing):
   for a canonical strand table (reuse render golden expectations) with no live psmux.
 - **Commit:** `feat(muxengine): ApplyLayout renders and applies select-layout/select-pane`
 
+### Card 19: strand mutation — AddStrand / UpdateStrand / RemoveStrand
+
+- **Context:**
+  - `internal/muxengine/state.go`
+  - `internal/muxengine/name.go`
+  - `internal/muxengine/render/types.go`
+  - `internal/muxengine/lock.go`
+  - `internal/muxengine/reconcile.go`
+  - `internal/muxengine/apply.go`
+- **Edits:** none
+- **Creates:**
+  - `internal/muxengine/strand.go`
+  - `internal/muxengine/strand_test.go`
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:** In `internal/muxengine/strand.go`, add the mutation ops on `*Engine`,
+  each acquiring `withOpLock` and delegating to an unexported `*Locked` helper that composes
+  the now-existing `reconcileLocked` (card 17) + `applyLayoutLocked` (card 18). `func (e
+  *Engine) AddStrand(spec AddSpec) (Strand, error)`: generate `newGUID`; validate
+  `spec.Parent` names an existing strand (reject unknown); reject a parent link that would
+  form a **cycle**; build the `Strand` (opaque `Cmd`/`ResumeCmd`, `Display` from `spec`); if
+  `anchor == hidden`, register the record with **no pane** and do **not** run `cmd` (defer to
+  surface); otherwise the pane creation/launch happens in the apply/lifecycle path. Define
+  `type AddSpec struct { Name, Worktree, Parent, Cmd, ResumeCmd string; Display
+  render.Display }`. `func (e *Engine) UpdateStrand(guid string, display render.Display)
+  (Strand, error)`: mutate by guid; **reject** a `visible -> hidden` transition (error
+  `cannot hide a live strand in v1`); allow `hidden -> visible` (mark for surface: create
+  pane + run `cmd` in apply). `func (e *Engine) RemoveStrand(guid string, recursive bool)
+  (Removed, error)`: a **non-leaf** with `recursive == false` returns an error `strand has
+  children, use --recursive`; otherwise **cascade** — remove the strand and its whole
+  descendant subtree; return `type Removed struct { Strands []struct{ GUID, Name string } }`
+  listing every removed strand. In `strand_test.go` (drive the ops against a fixture `.lyx`):
+  assert guid is generated + unique; unknown/cyclic parent rejected; hidden-add stores a
+  record with empty `PaneID` and unrun `cmd`; `UpdateStrand` visible->hidden rejected,
+  hidden->visible allowed; `RemoveStrand` on a non-leaf without `recursive` errors, and with
+  `recursive` cascades and lists every removed strand.
+- **Commit:** `feat(muxengine): AddStrand/UpdateStrand/RemoveStrand with cascade and hidden rules`
+
 ### Card 20: lifecycle — Up / Resume / Down / Status
 
 - **Context:**
@@ -177,8 +190,7 @@ Batch-local decisions (from the discussion, load-bearing):
   - `internal/muxengine/apply.go`
   - `internal/proc/proc_windows.go`
   - `internal/muxengine/lock.go`
-- **Edits:**
-  - `internal/muxengine/lock.go`
+- **Edits:** none
 - **Creates:**
   - `internal/muxengine/lifecycle.go`
   - `internal/muxengine/lifecycle_test.go`
@@ -208,8 +220,8 @@ Batch-local decisions (from the discussion, load-bearing):
 ## Batch Tests
 
 `verify: go test ./internal/muxengine/...` runs the whole engine package: lock serialization
-+ per-worktree scope + no-stale-lock, strand mutation (guid/cascade/hidden/cycle rules),
-`planReconcile`, `planLayout`, and the lifecycle planning seams. All live psmux I/O
-(`new-session`, `send-keys`, `select-layout`) is confined to `//go:build smoke` tests so the
-default `verify:` stays hermetic and fast. Concurrency is asserted via `withOpLock`
-serialization on a fixture `.lyx` dir (real gofrs/flock, no psmux).
++ per-worktree scope + no-stale-lock + accessor strings, `planReconcile`, `planLayout`,
+strand mutation (guid/cascade/hidden/cycle rules), and the lifecycle planning seams. All
+live psmux I/O (`new-session`, `send-keys`, `select-layout`) is confined to `//go:build
+smoke` tests so the default `verify:` stays hermetic and fast. Concurrency is asserted via
+`withOpLock` serialization on a fixture `.lyx` dir (real gofrs/flock, no psmux).
