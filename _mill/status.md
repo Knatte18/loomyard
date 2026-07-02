@@ -49,8 +49,8 @@ batches:
     commit_sha: 00d576c70a48ea8d2ca973f6a14b8c9d5ccbe9a5
   - name: warpengine-unwire-junctions
     state: running
-    implementer_session: 915d20d5-0490-49a1-a82f-2049c9c0b534
-    start_sha: e7f18060f092c341f9f076470bc58febc0fec702
+    implementer_session: 082089c0-0eae-4d79-9195-0922a11f9b48
+    start_sha: 80ae1b72ad949bd99d13c7780efa33efed4908f4
   - name: initcli-undo
     state: pending
 ```
