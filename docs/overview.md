@@ -209,7 +209,7 @@ All commands print JSON: `{"ok":true, ...}` on success,
 
 User-facing modules each get one `lyx <module>` namespace:
 
-- **init** — scaffolds the `_lyx/` directory structure and creates all module config files via reconciliation against templates (`internal/initcli`). Idempotent: does not clobber existing config files. ✅ Implemented.
+- **init** — scaffolds the `_lyx/` directory structure and creates all module config files via reconciliation against templates (`internal/initcli`). Idempotent: does not clobber existing config files. `lyx init --undo` reverses that scaffolding (junction, weft-side content, `.gitignore` block, `.git/info/exclude` entry) for test/sandbox cleanup. ✅ Implemented.
 - **board** — the task-tracker board (`internal/boardcli` + `internal/boardengine`). ✅ Implemented.
 - **config** — interactive menu for viewing and editing module configs; `lyx config reconcile` reconciles all module config files against their live templates (dry-run by default, `--apply` writes atomically). ✅ Implemented.
 - **weft** — owns all git into the paired weft repo (`lyx weft status|commit|push|pull|sync`). ✅ Implemented.
