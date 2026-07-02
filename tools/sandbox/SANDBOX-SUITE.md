@@ -94,7 +94,7 @@ zero `WARN`/`FAIL` findings** -- in that case `items` is an empty array.
   "source": "sandbox-report",
   "items": [
     {
-      "ref": "S6",
+      "ref": "S5",
       "title": "…",
       "body": "verdict: WARN\n\n…repro…"
     }
@@ -104,7 +104,7 @@ zero `WARN`/`FAIL` findings** -- in that case `items` is an empty array.
 
 - `source` is the literal string `"sandbox-report"`.
 - `items[]` holds only `WARN`/`FAIL` findings -- do not record `OK` scenarios here.
-- `ref` is the scenario id (`S0`-`S6`).
+- `ref` is the scenario id (`S0`-`S8`).
 - `title` is a short one-line summary.
 - `body` folds the detail, repro steps, and verdict into one markdown string.
 
@@ -184,7 +184,7 @@ Use `lyx board list` to observe current state before adding tasks, and use
 
 ---
 
-### S6 -- Wrong-directory and error ergonomics
+### S5 -- Wrong-directory and error ergonomics
 
 **Goal:** "Run a hub-only command from outside the hub. Run a command with a bad flag.
 Run an unknown subcommand."
@@ -215,7 +215,10 @@ S1: <OK|WARN|FAIL> -- <one-line note if not OK>
 S2: <OK|WARN|FAIL> -- <one-line note if not OK>
 S3: <OK|WARN|FAIL> -- <one-line note if not OK>
 S4: <OK|WARN|FAIL> -- <one-line note if not OK>
+S5: <OK|WARN|FAIL> -- <one-line note if not OK>
 S6: <OK|WARN|FAIL> -- <one-line note if not OK>
+S7: <OK|WARN|FAIL> -- <one-line note if not OK>
+S8: <OK|WARN|FAIL> -- <one-line note if not OK>
 
 sandbox-report.json written: <count of WARN/FAIL items>
 ```
