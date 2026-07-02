@@ -89,10 +89,9 @@ explicitly excluded with a reason.
   (`newRoot().Commands()`, skipping `help`/`completion`) — the same enumeration
   `longlist_test.go` already uses, never a separately hand-maintained list.
 - **Allowlist.** Modules that are intentionally never sandbox-exercised are named
-  on the test's `excludedModules` allowlist with a one-line reason: `muxpoc` (PoC,
-  slated for replacement by the mux module), `ide` (side-effect heavy: `spawn`
-  opens a real VS Code window, `menu` is an interactive stdin picker),
-  `selfreport` (`create` files a real GitHub issue).
+  on the test's `excludedModules` allowlist with a one-line reason: `ide`
+  (side-effect heavy: `spawn` opens a real VS Code window, `menu` is an
+  interactive stdin picker), `selfreport` (`create` files a real GitHub issue).
 - **Exists ⇒ covered or excluded.** Adding a new registered module requires either
   a scenario tagged with that module's `**Covers:**` or a new allowlist entry with
   a reason — the same "exists ⇒ registered" discipline as the CLI/Cobra Invariant's
