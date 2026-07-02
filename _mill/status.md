@@ -63,7 +63,9 @@ batches:
     start_sha: 146d0e8f870d8c99a382f82fd026887354685d87
     commit_sha: e38ca50e05fcb7dbad2164a3b00e41547966a542
   - name: muxcli
-    state: pending
+    state: running
+    implementer_session: fded9050-8f4e-46ef-93d9-64a8e0dae6a4
+    start_sha: d4a3a0b3d687e05d9ad9047657ad04a9dad275e5
   - name: cmd-lyx-integration
     state: pending
   - name: docs
