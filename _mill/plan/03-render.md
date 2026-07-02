@@ -15,13 +15,18 @@ Creates `internal/muxengine/render`, the pure leaf package that owns the closed 
 vocabulary and the deterministic `rules(strands) -> window_layout` function. No I/O, no
 psmux, no engine import — this is the golden-file test surface. The external interface
 batches 4/5 consume: the value types (`Anchor`, `Display`, `Strand`, `Box`, `Params`) and
-`func Rules(strands []Strand, box Box, p Params) (layout string, focusTarget string,
-err error)`. Two distinct layers live here and must stay separate (a legibility constraint
-from the discussion): **layout policy** (which strand lands where + how tall) vs **layout
-mechanics** (the `window_layout` string builder + tmux checksum). Adding an anchor must be a
-localized change (a `policy.go` case + its test), never a mechanics rewrite. The checksum
-and string format are ported **verbatim** from `internal/muxpoccli/cmd.go`; only the height
-policy differs from muxpoc.
+`func Rules(strands []Strand, box Box, p Params) (layout string, focus string, err error)`.
+Two distinct layers live here and must stay separate (a legibility constraint from the
+discussion): **layout policy** (which strand lands where + how tall) vs **layout mechanics**
+(the `window_layout` string builder + tmux checksum). Adding an anchor must be a localized
+change (a `policy.go` case + its test), never a mechanics rewrite. The checksum and string
+format are ported **verbatim** from `internal/muxpoccli/cmd.go`; only the height policy
+differs from muxpoc.
+
+**Card order matters:** each card must build on its own without forward-referencing a
+symbol a later card creates — types (3) -> checksum (4) -> layout mechanics + `placement`
+(5) -> anchor policy (6) -> focus/ancestor helpers (7) -> derived height policy, which
+consumes `placement` and `isAncestor` (8) -> `Rules` composition (9).
 
 Batch-local decisions:
 - `render.Strand` holds only what layout needs: `GUID`, `Parent` (parent guid or ""),
@@ -124,37 +129,7 @@ Batch-local decisions:
   once.
 - **Commit:** `feat(render): add legible anchor->placement policy with cycle-safe ordering`
 
-### Card 7: derived height policy + clamp rule
-
-- **Context:**
-  - `internal/muxpoccli/cmd.go`
-  - `internal/muxengine/render/types.go`
-- **Edits:** none
-- **Creates:**
-  - `internal/muxengine/render/height.go`
-  - `internal/muxengine/render/height_test.go`
-- **Deletes:** none
-- **Moves:** none
-- **Requirements:** In `internal/muxengine/render/height.go`, implement the derived height
-  policy replacing muxpoc's fixed `activePaneShare`. `func stackHeights(stack []Strand, box
-  Box, p Params) []placement` computes: usable height `Hu = box.H - dividers` (one row per
-  gap between panes); each `top` band is a fixed `p.TopBandRows` (handled by the caller/card 9
-  which reserves top bands before calling); within the below-parent stack, a **shrink:true
-  ancestor** (a strand that has a visible child below it in the chain) collapses to
-  `p.CollapsedStripRows`; the **active/bottom strand plus every shrink:false strand** are
-  "full" panes splitting the remaining rows **equally**, with the **integer-division remainder
-  assigned to the active/bottom pane** (others get the floor) so heights sum exactly (the
-  determinism rule). Implement the **clamp** in strict priority when fixed demand exceeds the
-  window: (1) shrink strips toward 1 row, (2) reduce full panes equally toward `p.MinFullRows`,
-  (3) last resort keep the active pane at the remainder and clamp earlier panes to 1 row.
-  `stackHeights` must **never** return a non-positive height. In `height_test.go`, parameterize
-  over `CollapsedStripRows` and assert: heights + 1-row dividers exactly fill `box.H`; each
-  collapsed ancestor == `CollapsedStripRows`; active pane is strictly tallest with a single
-  ancestor; remainder-with->=2-full-panes goes to the active/bottom pane deterministically; a
-  too-short window still yields only positive heights via the clamp order.
-- **Commit:** `feat(render): derived height policy with deterministic remainder and clamp rule`
-
-### Card 8: focus + shrinkWhenWaitingOnChild resolution
+### Card 7: focus + shrinkWhenWaitingOnChild resolution
 
 - **Context:**
   - `internal/muxengine/render/types.go`
@@ -170,10 +145,44 @@ Batch-local decisions:
   (ties resolve to bottom-most); otherwise default to the **bottom-most/active** strand
   (muxpoc's "always select the bottom pane"). Also `func isAncestor(s Strand, ordered
   []Strand) bool` — true when `s` has a visible child below it in the ordered stack — used by
-  the height policy to decide whether a `shrink:true` strand collapses (a `shrink:false`
-  ancestor stays a co-equal full pane). No standalone test file; covered by `height_test.go`
-  and `rules_test.go`. State this in Batch Tests.
+  the height policy (card 8) to decide whether a `shrink:true` strand collapses (a
+  `shrink:false` ancestor stays a co-equal full pane). No standalone test file; covered by
+  `height_test.go` (card 8) and `rules_test.go` (card 9). State this in Batch Tests.
 - **Commit:** `feat(render): focus target selection and ancestor/shrink resolution`
+
+### Card 8: derived height policy + clamp rule
+
+- **Context:**
+  - `internal/muxpoccli/cmd.go`
+  - `internal/muxengine/render/types.go`
+  - `internal/muxengine/render/layout.go`
+  - `internal/muxengine/render/focus.go`
+- **Edits:** none
+- **Creates:**
+  - `internal/muxengine/render/height.go`
+  - `internal/muxengine/render/height_test.go`
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:** In `internal/muxengine/render/height.go`, implement the derived height
+  policy replacing muxpoc's fixed `activePaneShare`. `func stackHeights(stack []Strand, box
+  Box, p Params) []placement` (returning the `placement` type from card 5's `layout.go`, and
+  using `isAncestor` from card 7's `focus.go`) computes: usable height `Hu = box.H - dividers`
+  (one row per gap between panes); each `top` band is a fixed `p.TopBandRows` (handled by the
+  caller/card 9 which reserves top bands before calling); within the below-parent stack, a
+  **shrink:true ancestor** (a strand that has a visible child below it in the chain, via
+  `isAncestor`) collapses to `p.CollapsedStripRows`; the **active/bottom strand plus every
+  shrink:false strand** are "full" panes splitting the remaining rows **equally**, with the
+  **integer-division remainder assigned to the active/bottom pane** (others get the floor) so
+  heights sum exactly (the determinism rule). Implement the **clamp** in strict priority when
+  fixed demand exceeds the window: (1) shrink strips toward 1 row, (2) reduce full panes
+  equally toward `p.MinFullRows`, (3) last resort keep the active pane at the remainder and
+  clamp earlier panes to 1 row. `stackHeights` must **never** return a non-positive height.
+  In `height_test.go`, parameterize over `CollapsedStripRows` and assert: heights + 1-row
+  dividers exactly fill `box.H`; each collapsed ancestor == `CollapsedStripRows`; active pane
+  is strictly tallest with a single ancestor; remainder-with->=2-full-panes goes to the
+  active/bottom pane deterministically; a too-short window still yields only positive heights
+  via the clamp order.
+- **Commit:** `feat(render): derived height policy with deterministic remainder and clamp rule`
 
 ### Card 9: Rules() composition + golden tests
 
@@ -190,24 +199,26 @@ Batch-local decisions:
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** In `internal/muxengine/render/rules.go`, implement the public entry
-  `func Rules(strands []Strand, box Box, p Params) (layout string, focusTarget string, err
-  error)`: reject any `AnchorOwnWindow` strand with a non-nil error (deferred anchor); call
-  `breakCycles` then `partitionByAnchor`; reserve `len(top)*p.TopBandRows` rows (+dividers)
-  as fixed top bands at the top of `box`; run `orderStack` + `stackHeights` for the
-  below-parent region below the bands; assemble all placements (top bands then stack) via
-  `buildStackBody` + `wrapLayout`; compute `focusTarget` via `focusTarget(ordered)`. The
-  function is pure and total for any non-own-window input. In `rules_test.go`, add golden /
-  table tests over strand sets: `top` pinned as a fixed band above the stack; `below-parent`
-  forms the bottom-dominant stack ordered by parent chain; `hidden` strands excluded from
-  the string; mixed set (top + stack + hidden); empty and single-strand edge cases; the
-  emitted checksum prefix always equals `layoutChecksum(body)`; own-window input returns an
-  error. Assert full layout strings for at least the canonical multi-strand cases (golden).
+  `func Rules(strands []Strand, box Box, p Params) (layout string, focus string, err error)`
+  — name the second return `focus` (NOT `focusTarget`, which would shadow the `focusTarget`
+  helper from card 7). Body: reject any `AnchorOwnWindow` strand with a non-nil error
+  (deferred anchor); call `breakCycles` then `partitionByAnchor`; reserve
+  `len(top)*p.TopBandRows` rows (+dividers) as fixed top bands at the top of `box`; run
+  `orderStack` + `stackHeights` for the below-parent region below the bands; assemble all
+  placements (top bands then stack) via `buildStackBody` + `wrapLayout`; set `focus =
+  focusTarget(ordered)`. The function is pure and total for any non-own-window input. In
+  `rules_test.go`, add golden / table tests over strand sets: `top` pinned as a fixed band
+  above the stack; `below-parent` forms the bottom-dominant stack ordered by parent chain;
+  `hidden` strands excluded from the string; mixed set (top + stack + hidden); empty and
+  single-strand edge cases; the emitted checksum prefix always equals `layoutChecksum(body)`;
+  own-window input returns an error. Assert full layout strings for at least the canonical
+  multi-strand cases (golden).
 - **Commit:** `feat(render): compose Rules() over policy+mechanics with golden tests`
 
 ## Batch Tests
 
 `verify: go test ./internal/muxengine/render/...` covers the entire pure package. Cards 5
-(`layout.go`) and 8 (`focus.go`) intentionally ship no standalone `_test.go` — they are
-exercised through `height_test.go` and the golden `rules_test.go` (card 9), which assert the
-end-to-end layout strings and thus their outputs. Everything is pure (no psmux, no agents),
-so the whole batch runs under the default `go test` with no build tag.
+(`layout.go`) and 7 (`focus.go`) intentionally ship no standalone `_test.go` — they are
+exercised through `height_test.go` (card 8) and the golden `rules_test.go` (card 9), which
+assert the end-to-end layout strings and thus their outputs. Everything is pure (no psmux, no
+agents), so the whole batch runs under the default `go test` with no build tag.

@@ -35,55 +35,61 @@ Batch-local decisions:
 
 ## Cards
 
-### Card 10: muxengine package doc + psmux overlay wrapper
+### Card 10: package doc + pure pane/size/order parsers (+ LivePane)
 
 - **Context:**
   - `internal/muxpoccli/cmd.go`
-  - `internal/muxpoccli/cli.go`
+  - `internal/muxpoccli/cmd_test.go`
 - **Edits:** none
 - **Creates:**
   - `internal/muxengine/doc.go`
-  - `internal/muxengine/overlay.go`
+  - `internal/muxengine/parse.go`
+  - `internal/muxengine/parse_test.go`
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** In `internal/muxengine/doc.go`, a package doc comment (package
   `muxengine`) stating the module's role: the psmux overlay + strand bookkeeping + render
   consumer, the dumb-carrier contract (stores all strand fields, reads none semantically, no
   domain `type`), and the one-named-server-per-hub firewall. In
-  `internal/muxengine/overlay.go`, port the `PsmuxCmd` wrapper from `muxpoccli/cmd.go`:
-  `type PsmuxCmd struct { psmuxPath, socket string }` (or a small `Config`-free struct
-  carrying the resolved psmux binary path + socket name), `func NewPsmuxCmd(psmuxPath,
-  socket string) PsmuxCmd`, and methods `run(args ...string) error` and `output(args
-  ...string) (string, error)` that **always prepend** `-L <socket>`. Add the typed helpers
-  ported from muxpoc: `hasSession(name string) (bool, error)` (exit 1 -> `(false,nil)`;
-  other errors surface), `listPanes(session string) ([]LivePane, error)`,
-  `activePaneID(session string) (string, error)` (`display-message -p`), `windowSize(session
-  string) (int, int, error)`, `paneIDsTopToBottom(session string) ([]string, error)`. Define
-  `type LivePane struct { ID string; Dead bool; Width int; Height int }` with json tags.
-  Strip all Claude/`review`-specific behavior.
-- **Commit:** `feat(muxengine): add psmux overlay wrapper and package doc`
+  `internal/muxengine/parse.go`, define `type LivePane struct { ID string; Dead bool; Width
+  int; Height int }` (with json tags) and port the pure parse functions from
+  `muxpoccli/cmd.go`: `func parsePaneList(out string) ([]LivePane, error)` (parses
+  `#{pane_id} #{pane_dead} #{pane_width} #{pane_height}` lines; `dead := parts[1] == "1"`;
+  empty -> `nil, nil`), `func parseWindowSize(out string) (int, int, error)` (splits `WxH`
+  on `x`), `func parsePaneOrder(out string) ([]string, error)` (parses `#{pane_top}
+  #{pane_id}`, sorts by top ascending, returns ids top-first). This card creates no overlay —
+  it must compile standalone (parsers + `LivePane` only), so the overlay card (11) that calls
+  these can build on top. In `parse_test.go`, table-test each parser incl. the `pane_dead=1`
+  row (which `remain-on-exit on` produces), empty input, and malformed lines.
+- **Commit:** `feat(muxengine): package doc, LivePane, and pure pane/size/order parsers`
 
-### Card 11: pure pane/size/order parsers
+### Card 11: psmux overlay wrapper
 
 - **Context:**
   - `internal/muxpoccli/cmd.go`
-  - `internal/muxpoccli/cmd_test.go`
-  - `internal/muxengine/overlay.go`
+  - `internal/muxpoccli/cli.go`
+  - `internal/muxengine/parse.go`
+  - `internal/logger/logger.go`
 - **Edits:** none
 - **Creates:**
-  - `internal/muxengine/parse.go`
-  - `internal/muxengine/parse_test.go`
+  - `internal/muxengine/overlay.go`
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Port the pure parse functions from `muxpoccli/cmd.go` into
-  `internal/muxengine/parse.go`: `func parsePaneList(out string) ([]LivePane, error)`
-  (parses `#{pane_id} #{pane_dead} #{pane_width} #{pane_height}` lines; `dead := parts[1]
-  == "1"`; empty -> `nil, nil`), `func parseWindowSize(out string) (int, int, error)`
-  (splits `WxH` on `x`), `func parsePaneOrder(out string) ([]string, error)` (parses
-  `#{pane_top} #{pane_id}`, sorts by top ascending, returns ids top-first). The overlay
-  methods in card 10 call these. In `parse_test.go`, table-test each parser incl. the
-  `pane_dead=1` row (which `remain-on-exit on` produces), empty input, and malformed lines.
-- **Commit:** `feat(muxengine): pure pane/size/order parsers ported from muxpoc`
+- **Requirements:** In `internal/muxengine/overlay.go`, port the `PsmuxCmd` wrapper from
+  `muxpoccli/cmd.go`: `type PsmuxCmd struct { psmuxPath, socket string }` (or a small
+  `Config`-free struct carrying the resolved psmux binary path + socket name), `func
+  NewPsmuxCmd(psmuxPath, socket string) PsmuxCmd`, and methods `run(args ...string) error`
+  and `output(args ...string) (string, error)` that **always prepend** `-L <socket>`. Each
+  `run`/`output` emits a `logger.Debug("psmux", "args", <full args>)` trace line before
+  exec (this is the module's logger consumer — default `Warn` means it is silent in normal
+  runs, `-vv` surfaces every psmux invocation for diagnosis). Add the typed helpers ported
+  from muxpoc, all built on the card-10 parsers + `LivePane`: `hasSession(name string)
+  (bool, error)` (exit 1 -> `(false,nil)`; other errors surface), `listPanes(session string)
+  ([]LivePane, error)` (calls `parsePaneList`), `activePaneID(session string) (string,
+  error)` (`display-message -p`), `windowSize(session string) (int, int, error)` (calls
+  `parseWindowSize`), `paneIDsTopToBottom(session string) ([]string, error)` (calls
+  `parsePaneOrder`). Strip all Claude/`review`-specific behavior.
+- **Commit:** `feat(muxengine): add psmux overlay wrapper with Debug command tracing`
 
 ### Card 12: env hygiene — CleanClaudeEnv
 
