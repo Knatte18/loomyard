@@ -56,8 +56,10 @@ Batch-local decisions:
   read the same PreRunE-populated engine. `func Command() *cobra.Command`: build the parent
   (`Use: "mux"`, non-empty `Short`, `RunE: clihelp.GroupRunE`), create `c := &muxCLI{}`, set a
   `PersistentPreRunE` that returns `nil` early when `cmd.Name() == "mux"`, else resolves
-  `hubgeometry.Getwd()` -> `hubgeometry.Resolve(cwd)` -> `muxengine.LoadConfig(baseDir,
-  "mux")` -> `muxengine.New(cfg, layout)` into `c.eng` (on failure: `output.Err(
+  `hubgeometry.Getwd()` -> `layout, _ := hubgeometry.Resolve(cwd)` -> `muxengine.LoadConfig(
+  baseDir, "mux")` with **`baseDir = layout.Cwd`** (the `_lyx/config/` root is anchored at
+  `layout.Cwd`; `configengine.FindBaseDir` walks up from there) -> `muxengine.New(cfg, layout)`
+  into `c.eng` (on failure: `output.Err(
   cmd.OutOrStdout(), err.Error())` + `clihelp.Abort(cmd.Context(), 1)` + `return nil`), and
   return the parent. **This card registers NO subcommands** — each verb card (22-27) creates
   its `(c *muxCLI) xCmd()` method AND edits this `Command()` to `parent.AddCommand(c.xCmd())`,

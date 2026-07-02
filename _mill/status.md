@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r2
+phase: plan-fix-r3
 slug: internal-mux
 branch: internal-mux
 plan: _mill/plan
@@ -22,4 +22,5 @@ plan-review-r1  '2026-07-02T17:21:25Z'
 plan-fix-r1  '2026-07-02T17:23:47Z'
 plan-review-r2  '2026-07-02T17:30:26Z'
 plan-fix-r2  '2026-07-02T17:32:37Z'
+plan-fix-r3  '2026-07-02T17:44:40Z'
 ```

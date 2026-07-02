@@ -188,6 +188,7 @@ Batch-local decisions:
 
 - **Context:**
   - `internal/muxengine/render/types.go`
+  - `internal/muxengine/render/checksum.go`
   - `internal/muxengine/render/layout.go`
   - `internal/muxengine/render/policy.go`
   - `internal/muxengine/render/height.go`

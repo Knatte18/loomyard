@@ -3,7 +3,7 @@
 ```yaml
 task: 'Build internal/mux: the window to the world (overlay + strands + render)'
 slug: 'internal-mux'
-approved: false
+approved: true
 started: '20260702-170634'
 parent: 'main'
 root: ""

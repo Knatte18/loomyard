@@ -62,8 +62,9 @@ for a now-unregistered module would itself break that test).
 - **Requirements:** Update the pinned lists for `mux` (add) and `muxpoc` (remove). In
   `helptree_test.go`: in `requiredModules`, replace `"muxpoc"` with `"mux"`; in the
   per-module subcommand table, remove the `muxpoc` case and add a `mux` case with `wantSubs:
-  []string{"up", "add", "remove", "status", "attach", "resume", "down"}` (matching the
-  `Command()` registration order in `internal/muxcli/cli.go`). In `jsonhelp_test.go`: in the
+  []string{"up", "add", "remove", "status", "attach", "resume", "down"}` (the seven mux verbs;
+  helptree is a set/superset `strings.Contains` check, so the listed order need not match the
+  `AddCommand` order in `internal/muxcli/cli.go`). In `jsonhelp_test.go`: in the
   `requiredModules` slice inside `TestJSONHelp_RootSchema`, replace `"muxpoc"` with `"mux"`.
   In `unknown_subcommand_test.go`: in `TestMountedUnknownSubcommand`, replace `{"muxpoc"}`
   with `{"mux"}`; in `TestMountedBareGroupListing_NoGitRepo`, replace `{"muxpoc", "up"}` with
