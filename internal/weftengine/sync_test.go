@@ -152,6 +152,44 @@ func TestCommit_CustomMessage(t *testing.T) {
 	}
 }
 
+// TestCommit_PathspecAlreadyRemoved verifies that Commit tolerates a
+// pathspec that has already been fully removed from both the working tree
+// and the git index by a prior commit -- the case a caller hits when it
+// unconditionally re-invokes Commit against a since-cleared pathspec (e.g.
+// `lyx init --undo` run a second time after the first run already committed
+// the _lyx deletion). It must report (false, nil), the same "nothing to
+// stage" contract as the CleanTree case in TestCommit, rather than
+// surfacing git's "pathspec ... did not match any files" as a hard error.
+func TestCommit_PathspecAlreadyRemoved(t *testing.T) {
+	t.Parallel()
+	fixture := lyxtest.CopyWeft(t)
+	weftRepo := fixture.WeftPath
+
+	// Remove the pathspec's whole directory and commit that removal, so the
+	// second Commit call below sees a pathspec matching nothing at all.
+	lyxDir := filepath.Join(weftRepo, "_lyx")
+	if err := os.RemoveAll(lyxDir); err != nil {
+		t.Fatalf("RemoveAll: %v", err)
+	}
+	committed, err := Commit(weftRepo, []string{"_lyx"}, DefaultCommitMessage, SyncOptions{})
+	if err != nil {
+		t.Fatalf("first Commit (removal): %v", err)
+	}
+	if !committed {
+		t.Fatalf("first Commit (removal) should have succeeded")
+	}
+
+	// Second call: the pathspec no longer matches anything on disk or in the
+	// index. This must be a clean no-op, not an error.
+	committed, err = Commit(weftRepo, []string{"_lyx"}, DefaultCommitMessage, SyncOptions{})
+	if err != nil {
+		t.Fatalf("second Commit (already-removed pathspec): %v", err)
+	}
+	if committed {
+		t.Errorf("second Commit (already-removed pathspec) = true; want false (nothing to stage)")
+	}
+}
+
 func TestPush(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

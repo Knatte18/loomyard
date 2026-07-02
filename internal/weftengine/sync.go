@@ -67,16 +67,24 @@ func Commit(weftPath string, pathspec []string, message string, opts SyncOptions
 	}
 	defer lock.Release()
 
-	// Stage the pathspec entries
+	// Stage the pathspec entries. A pathspec that matches nothing at all --
+	// neither on disk nor in the git index -- is not a real failure: it means
+	// a prior commit already fully removed and committed that path (e.g. a
+	// second `lyx init --undo` run after the first one committed the _lyx
+	// deletion). Treat that specific git error as "nothing to stage" so a
+	// caller that unconditionally re-invokes Commit against a since-cleared
+	// pathspec stays idempotent, exactly like the "nothing staged" case below.
 	args := append([]string{"add", "--"}, pathspec...)
-	if _, _, code, err := gitexec.RunGit(args, weftPath); err != nil {
+	_, stderr, code, err := gitexec.RunGit(args, weftPath)
+	if err != nil {
 		return false, fmt.Errorf("add: %w", err)
-	} else if code != 0 {
-		return false, fmt.Errorf("add failed")
+	}
+	if code != 0 && !strings.Contains(stderr, "did not match any files") {
+		return false, fmt.Errorf("add failed: %s", stderr)
 	}
 
 	// Check if there is anything staged
-	_, _, code, err := gitexec.RunGit([]string{"diff", "--cached", "--quiet"}, weftPath)
+	_, _, code, err = gitexec.RunGit([]string{"diff", "--cached", "--quiet"}, weftPath)
 	if err != nil {
 		return false, fmt.Errorf("diff --cached: %w", err)
 	}
