@@ -1,25 +1,4 @@
-# mux — reusable review+fix prompt
-
-This file is a **complete, self-contained prompt**. To run another review+fix cycle on the
-`mux` module, paste everything between the `>>> BEGIN PROMPT` and `<<< END PROMPT` markers into
-a fresh thread (adjust the worktree path / branch / spec sha if they have changed). Nothing
-outside those markers is part of the prompt — this preamble is just documentation.
-
-The prompt is designed around the hard lesson from the first round: **mux's bugs do not show up
-in `go test` or the single-strand smoke test — they only surface when you drive real psmux
-through the multi-pane, dead-pane, crash, and cross-worktree paths.** The prompt therefore
-forces hands-on live psmux driving of specific scenarios, then authorizes fixes.
-
-Since the first round, the repo ships a **dedicated live-driving suite**,
-`tools/sandbox/MUX-SANDBOX-SUITE.md` (scenarios M0–M11, run via `deploy.cmd` +
-`mux-sandbox-suite.cmd` + `sandbox-fetch.cmd`). The prompt now points the reviewer at that
-suite as the primary vehicle for driving real psmux, and **authorizes the reviewer to extend
-the suite** (add `M12+` scenarios) when it finds a live/visual behavior worth capturing.
-
----
-
-```
->>> BEGIN PROMPT
+# mux — independent review + fix
 
 You are a senior engineer doing a COMPLETE, adversarial, INDEPENDENT review of the `mux`
 module in the loomyard repo, followed by FIXING what you find. Work in the worktree at
@@ -133,7 +112,10 @@ Live psmux driving via the MUX SANDBOX SUITE (PRIMARY — this is where the bugs
 The repo ships a dedicated, maintained live-psmux suite: `tools/sandbox/MUX-SANDBOX-SUITE.md`,
 scenarios M0–M11, driven through the harness. Run it — do not only hand-roll fixtures:
 - Deploy the current source as the binary under test: `deploy.cmd` (puts a fresh `lyx.exe`
-  on PATH; re-run after ANY source change you want to exercise).
+  on PATH). CRITICAL FOOTGUN: the suite runs the DEPLOYED snapshot, NOT your working tree — it
+  has no idea you edited source. You MUST re-run `deploy.cmd` after EVERY source change before
+  re-running the suite, or you will validate the STALE binary and wrongly conclude a fix works
+  (or fails). Deploy first, always; when in doubt, re-deploy.
 - Launch the interactive suite session: `mux-sandbox-suite.cmd` (repo root) — it runs
   `go run ./tools/sandbox -parent C:\Code mux-suite`, materializes the sandbox Hub host repo,
   and copies MUX-SANDBOX-SUITE.md (with a binary-fingerprint header) into it. Follow that
@@ -223,8 +205,12 @@ These were consciously deferred last time; decide whether any now warrants fixin
   -run <name> -count=3` processes at once), not just once — a single PASS is not proof of
   determinism. If a fix touches a boot/reboot poll, prefer a deadline-based loop over a
   fixed-attempt count in the production code too.
-- Keep `go build`/`go vet`/`go test` green after every change; re-run the smoke + live scenarios
-  to confirm the fix holds and nothing regressed.
+- Keep `go build`/`go vet`/`go test` green after every change. Then RE-DEPLOY (`deploy.cmd`)
+  and re-run the smoke + live suite scenarios to confirm the fix holds and nothing regressed —
+  re-deploying FIRST is mandatory: the MUX SANDBOX SUITE exercises the deployed `lyx.exe`, not
+  your edited tree, so skipping the re-deploy re-tests the OLD binary and gives a false PASS/FAIL.
+  (The hand-rolled `go build -o <scratch>/lyx.exe` path self-refreshes each build; the suite path
+  does NOT — it is your responsibility to `deploy.cmd` before every suite re-run.)
 - Update `docs/modules/mux.md` (and `docs/overview.md` / `CONSTRAINTS.md` if invariants or the
   module table move) IN THE SAME change — reconcile any prose the fix makes stale. Do NOT add
   bugfix/hardening notes to `docs/roadmap.md` (roadmap is for planned milestones only, per
@@ -247,6 +233,3 @@ These were consciously deferred last time; decide whether any now warrants fixin
 
 Begin with the clean-room review (read the SPEC + code + docs, then drive real psmux), produce
 your independent findings, then implement and verify the fixes.
-
-<<< END PROMPT
-```
