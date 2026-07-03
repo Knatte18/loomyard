@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: mux-sandbox-suite
 branch: mux-sandbox-suite
-plan: null
+plan: _mill/plan
 parent: internal-mux
 task: Dedicated sandbox suite for mux
 task_description: |
@@ -17,4 +17,5 @@ task_description: |
 discussing  '2026-07-03T07:27:49Z'
 discussion-fix-r1  '2026-07-03T08:05:00Z'
 discussed  '2026-07-03T08:05:17Z'
+planning  '2026-07-03T08:16:25Z'
 ```
