@@ -35,8 +35,10 @@ foundation now.
   `mux-sandbox-suite.cmd` launcher — full launcher parity with the existing `suite`
   subcommand, sharing its mechanics via a parameterized `runSuite`.
 - Generalize `cmd/lyx/sandbox_coverage_test.go` (`parseCoveredModules`) to scan every
-  file matching the glob `tools/sandbox/*SANDBOX-SUITE.md`, and update its three
-  hardcoded error-message strings that name the single file.
+  file matching the glob `tools/sandbox/*SANDBOX-SUITE.md`, and update every
+  single-file reference in it: the three assertion error-message strings, the
+  `t.Fatalf` in `parseCoveredModules`'s read path, and the package/function doc
+  comments that describe single-file behaviour.
 - Move S9 out of `SANDBOX-SUITE.md`, leave a short pointer, and fix the collateral
   drift there (session-log template lists S9; "Capturing findings" says refs are
   `S0`–`S8`).
@@ -114,7 +116,9 @@ foundation now.
   scanned pattern (and, where useful, the specific file a stale tag came from).
 - Rationale: Future suites (shuttle, review, loom) count automatically with zero test
   edits. A deleted suite file still fails Assert-1 indirectly because its module loses
-  coverage.
+  coverage. As a guard against a mistyped glob silently matching only one file, the
+  test asserts the glob matches at least two files (the count in the repo today; a
+  future suite only raises it).
 - Rejected: An explicit hardcoded file list (the hand-maintained-list pattern the
   invariant avoids elsewhere).
 
@@ -127,11 +131,15 @@ foundation now.
 
 ### `attach` is an operator-assisted visual checkpoint
 
-- Decision: The agent has no interactive TTY, so the attach scenario instructs the
-  agent to pause and tell the operator to run `lyx mux attach` in a second terminal,
-  visually confirm the layout, then detach; the agent records the operator's verdict.
-- Rationale: The visual takeover is the suite's stated value; only a human can confirm
-  it. Everything else stays autonomous.
+- Decision: The attach scenario instructs the agent to pause and tell the operator to
+  run `lyx mux attach` in a **second terminal**, visually confirm the layout, then
+  detach; the agent records the operator's verdict.
+- Rationale: The agent session runs in the operator's terminal (`launchAgent` inherits
+  stdin/stdout), so an agent-run `lyx mux attach` would collide with its own terminal:
+  either the takeover seizes the terminal the claude TUI owns, or the command runs as
+  a piped tool subprocess with no visible takeover at all. Either way the agent cannot
+  visually confirm panes — and visual confirmation is the suite's stated value, which
+  only a human can give. Everything else stays autonomous.
 - Rejected: Agent-only indirect verification via `capture-pane` (never validates the
   visual takeover); optional human check (dilutes the one scenario that matters
   visually).
@@ -190,9 +198,11 @@ foundation now.
   via `coversLinePattern`, asserts covered-or-excluded (Assert-1) and no stale tags
   (Assert-2), with a `discovered_non_empty` sub-test. `parseCoveredModules` resolves
   the repo root from `runtime.Caller(0)` (three `filepath.Dir` walk-ups) and reads the
-  single hardcoded suite path — this is the function to generalize. Three
-  `t.Errorf`/`t.Error` strings currently name `tools/sandbox/SANDBOX-SUITE.md`
-  explicitly and need rewording for multi-suite.
+  single hardcoded suite path — this is the function to generalize. Every
+  single-file reference needs rewording for multi-suite: three `t.Errorf`/`t.Error`
+  assertion strings, the `t.Fatalf` in the read path, and the package/function doc
+  comments (file header, test doc comment, `parseCoveredModules` doc comment) that
+  name `tools/sandbox/SANDBOX-SUITE.md` and describe single-file behaviour.
 - **Main suite doc** (`tools/sandbox/SANDBOX-SUITE.md`): S9 sits at the end of
   `## Scenarios` with `**Covers:** mux` and the live-psmux caveat note — the block to
   extract. Collateral drift to fix when it moves: the `## Session log format` template
@@ -247,8 +257,8 @@ From `CONSTRAINTS.md` (read this session):
   `parseCoveredModules` to the glob; assert post-change: `mux` is covered via
   `MUX-SANDBOX-SUITE.md`, the union is non-empty, Assert-2 still flags a stale tag in
   *either* file. Both existing sub-tests (`discovered_non_empty`, the assert loops)
-  survive. Consider asserting the glob matches ≥2 files so a silently-wrong pattern
-  can't produce a vacuous pass on one file.
+  survive. The test asserts the glob matches ≥2 files (decided, not optional) so a
+  silently-wrong pattern can't produce a vacuous pass on one file.
 - **`tools/sandbox` unit tests** (`suite_test.go`, `main_test.go`) — extend for the
   parameterized `runSuite`: the `mux-suite` subcommand writes `MUX-SANDBOX-SUITE.md`
   (not `SANDBOX-SUITE.md`) into the host repo, prepends the fingerprint header,
