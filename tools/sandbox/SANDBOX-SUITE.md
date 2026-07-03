@@ -294,27 +294,9 @@ error there is the expected `OK` outcome, not a finding.
 
 ---
 
-### S9 -- Mux lifecycle
-
-**Goal:** "Stand up the psmux strand overlay for this worktree, add a strand, check its
-status, attach to it, resume it, and tear the overlay down."
-
-**Covers:** mux
-
-**Watch:** Drive `lyx mux up` -> `lyx mux add` -> `lyx mux status` -> `lyx mux attach` ->
-`lyx mux resume` -> `lyx mux down` in that order. Does `up` bring the overlay online
-cleanly? Does `add` report a guid you can use for `attach`/`resume`? Does `status` reflect
-the strand you just added? Does `attach` land you in the right pane, and `resume` replay
-the strand's launch command? Does `down` tear the overlay down without leaving stray
-psmux state behind?
-
-**Note:** The overlay steps in this scenario need a live psmux server, so they carry the
-same live-psmux caveat as other environment-dependent scenarios in this suite: if psmux
-is unavailable in the sandbox session, note that as the outcome rather than treating it
-as a mux defect. The `**Covers:** mux` tag above satisfies the sandbox coverage guard
-(`sandbox_coverage_test.go`) regardless of runtime availability.
-
-**Verdict:** `OK` / `WARN` / `FAIL`
+mux has its own dedicated suite, `MUX-SANDBOX-SUITE.md` in this same directory,
+launched via `mux-sandbox-suite.cmd` -- mux needs a live psmux server and visual
+verification, a different test mode from this suite.
 
 ## Session log format
 
@@ -333,7 +315,6 @@ S5: <OK|WARN|FAIL> -- <one-line note if not OK>
 S6: <OK|WARN|FAIL> -- <one-line note if not OK>
 S7: <OK|WARN|FAIL> -- <one-line note if not OK>
 S8: <OK|WARN|FAIL> -- <one-line note if not OK>
-S9: <OK|WARN|FAIL> -- <one-line note if not OK>
 
 sandbox-report.json written: <count of WARN/FAIL items>
 ```
@@ -344,7 +325,10 @@ findings section above -- with `items: []` when every scenario was `OK`.
 ## Notes
 
 - Scenario set is deliberately small and host/weft-centric -- that is the spine that
-  matters now. Add scenarios as modules grow (shuttle, review, loom).
+  matters now. Add scenarios as modules grow (shuttle, review, loom). A module whose
+  testing model is fundamentally different gets its own sibling suite file
+  (`*SANDBOX-SUITE.md`), with mux (`MUX-SANDBOX-SUITE.md`) as the precedent; the
+  coverage guard scans all of them.
 - The psmux interactive launcher will replace the direct `claude` launch in a future
   iteration; the file contract (this `SANDBOX-SUITE.md` driving the agent) is unchanged.
 - The host repo `Knatte18/lyx-test` README uses the phrase "cwd-relpath mirroring"; this
