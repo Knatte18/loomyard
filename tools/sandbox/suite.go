@@ -1,7 +1,10 @@
-// suite.go implements the "sandbox suite" subcommand: copies the embedded
-// SANDBOX-SUITE template into the Hub host repo, stamps a lyx binary fingerprint,
-// registers the file as a git exclude entry, and launches an interactive Claude
-// session to execute the scheme.
+// suite.go implements the "sandbox suite" and "sandbox mux-suite" subcommands:
+// copies one of the embedded suite templates (main or mux) into the Hub host
+// repo, stamps a lyx binary fingerprint, registers the file as a git exclude
+// entry, and launches an interactive Claude session to execute it. The two
+// suites share every mechanic (fingerprinting, git-exclude, stale-report
+// cleanup, agent launch) via the suiteSpec parameterization of runSuite; only
+// the file name, embedded doc body, and default instruction differ.
 
 package main
 
@@ -23,19 +26,47 @@ const (
 	// hostDirName is the subdirectory under the Hub (lyx-test-HUB) that holds
 	// the host repo clone. The Hub layout is <parent>/<hubName>/<hostDirName>.
 	hostDirName = "lyx-test"
-
-	// suiteFileName is the name of the suite scheme file written into the Hub
-	// host repo at each suite run. It is intentionally kept out of git via
-	// .git/info/exclude (see ensureGitExclude).
-	suiteFileName = "SANDBOX-SUITE.md"
-
-	// defaultInstruction is the literal prompt string handed to the claude
-	// binary as its sole argument when no -prompt override is supplied.
-	defaultInstruction = "Read ./SANDBOX-SUITE.md and follow the instructions in it exactly."
 )
 
 //go:embed SANDBOX-SUITE.md
 var sandboxSuiteMD string
+
+//go:embed MUX-SANDBOX-SUITE.md
+var muxSandboxSuiteMD string
+
+// suiteSpec parameterizes runSuite over the two supported suites (main and
+// mux): the file written into the Hub host repo, the embedded doc body
+// rendered into it, and the default prompt handed to claude when the operator
+// supplies no -prompt override. Every other mechanic (fingerprinting,
+// git-exclude, stale-report cleanup, agent launch) is shared across specs.
+type suiteSpec struct {
+	// fileName is the name of the suite scheme file written into the Hub host
+	// repo at each suite run. It is intentionally kept out of git via
+	// .git/info/exclude (see ensureGitExclude).
+	fileName string
+	// doc is the embedded suite body rendered into fileName, following the
+	// binary fingerprint header.
+	doc string
+	// instruction is the literal prompt string handed to the claude binary as
+	// its sole argument when no -prompt override is supplied.
+	instruction string
+}
+
+// mainSuite is the original SANDBOX-SUITE spec: the general black-box scheme
+// exercising the lyx CLI end-to-end.
+var mainSuite = suiteSpec{
+	fileName:    "SANDBOX-SUITE.md",
+	doc:         sandboxSuiteMD,
+	instruction: "Read ./SANDBOX-SUITE.md and follow the instructions in it exactly.",
+}
+
+// muxSuite is the MUX-SANDBOX-SUITE spec: the dedicated scheme exercising the
+// mux/psmux lifecycle scenarios split out of the main suite.
+var muxSuite = suiteSpec{
+	fileName:    "MUX-SANDBOX-SUITE.md",
+	doc:         muxSandboxSuiteMD,
+	instruction: "Read ./MUX-SANDBOX-SUITE.md and follow the instructions in it exactly.",
+}
 
 // lookPath is a testability seam over exec.LookPath so tests can inject fake
 // PATH resolution without modifying the real environment.
@@ -67,8 +98,8 @@ var launchAgent = func(hostRepoDir, claudePath, instruction string) int {
 }
 
 // binaryInfo holds a snapshot of a binary file's identity at a point in time.
-// It is used to stamp the SANDBOX-SUITE with a reproducible fingerprint so that
-// the emitted sandbox-report.json (meta.fingerprint) can be traced to the
+// It is used to stamp the copied suite file with a reproducible fingerprint so
+// that the emitted sandbox-report.json (meta.fingerprint) can be traced to the
 // exact binary that triggered it.
 type binaryInfo struct {
 	// Path is the absolute filesystem path to the binary.
@@ -117,7 +148,7 @@ func binaryFingerprint(path string) (binaryInfo, error) {
 }
 
 // header returns a small markdown block that stamps the binary's identity into
-// the copied SANDBOX-SUITE. The same fingerprint is later stamped into
+// the copied suite file. The same fingerprint is later stamped into
 // meta.fingerprint of the emitted sandbox-report.json so a maintainer can
 // reproduce the exact build that produced a finding.
 func (b binaryInfo) header() string {
@@ -133,11 +164,11 @@ func (b binaryInfo) header() string {
 	)
 }
 
-// renderScheme combines the binary fingerprint header with the embedded
-// SANDBOX-SUITE body to produce the full SANDBOX-SUITE.md content that the
-// launcher writes into the Hub host repo.
-func renderScheme(info binaryInfo) string {
-	return info.header() + "\n" + sandboxSuiteMD
+// renderScheme combines the binary fingerprint header with doc (a suiteSpec's
+// embedded body) to produce the full suite file content that the launcher
+// writes into the Hub host repo.
+func renderScheme(info binaryInfo, doc string) string {
+	return info.header() + "\n" + doc
 }
 
 // ensureGitExclude idempotently appends entry to <repoDir>/.git/info/exclude.
@@ -185,16 +216,17 @@ func ensureGitExclude(repoDir, entry string) error {
 	return nil
 }
 
-// runSuite executes the "sandbox suite" subcommand. It locates the Hub host
-// repo under parentDir, fingerprints the deployed lyx binary, writes a fresh
-// SANDBOX-SUITE.md into the host repo (overwriting any prior copy), registers
-// it in .git/info/exclude, clears any stale sandbox-report.json from a prior
-// run, and starts an interactive Claude session with the given instruction
-// string. It does not fetch the agent's report -- that is the separate
-// fetch subcommand (runFetch), run by the operator after the session.
-// claudeOverride and promptOverride are optional: when empty the function
-// resolves "claude" from PATH and uses defaultInstruction.
-func runSuite(parentDir, claudeOverride, promptOverride string) error {
+// runSuite executes the "sandbox suite" / "sandbox mux-suite" subcommands. It
+// locates the Hub host repo under parentDir, fingerprints the deployed lyx
+// binary, writes a fresh spec.fileName into the host repo (overwriting any
+// prior copy), registers it in .git/info/exclude, clears any stale
+// sandbox-report.json from a prior run, and starts an interactive Claude
+// session with the given instruction string. It does not fetch the agent's
+// report -- that is the separate fetch subcommand (runFetch), run by the
+// operator after the session. claudeOverride and promptOverride are optional:
+// when empty the function resolves "claude" from PATH and uses
+// spec.instruction. spec selects which suite (mainSuite or muxSuite) is run.
+func runSuite(parentDir, claudeOverride, promptOverride string, spec suiteSpec) error {
 	// Derive the host repo path from the shared hubName const (main.go) and the
 	// suite-local hostDirName const; the function relies on those consts rather than
 	// the raw cwd primitive or git top-level resolution.
@@ -222,14 +254,14 @@ func runSuite(parentDir, claudeOverride, promptOverride string) error {
 
 	// Write the rendered scheme (fingerprint header + body) into the host repo,
 	// overwriting any copy left from a previous run so every session starts fresh.
-	suitePath := filepath.Join(hostRepoDir, suiteFileName)
-	if err := os.WriteFile(suitePath, []byte(renderScheme(info)), 0o644); err != nil {
-		return fmt.Errorf("write %s: %w", suiteFileName, err)
+	suitePath := filepath.Join(hostRepoDir, spec.fileName)
+	if err := os.WriteFile(suitePath, []byte(renderScheme(info, spec.doc)), 0o644); err != nil {
+		return fmt.Errorf("write %s: %w", spec.fileName, err)
 	}
 
 	// Exclude the scheme file from git tracking in the host repo so it does not
 	// show up as an untracked change when the agent runs git status or similar.
-	if err := ensureGitExclude(hostRepoDir, suiteFileName); err != nil {
+	if err := ensureGitExclude(hostRepoDir, spec.fileName); err != nil {
 		return fmt.Errorf("ensure git exclude: %w", err)
 	}
 
@@ -260,7 +292,7 @@ func runSuite(parentDir, claudeOverride, promptOverride string) error {
 
 	instruction := promptOverride
 	if instruction == "" {
-		instruction = defaultInstruction
+		instruction = spec.instruction
 	}
 
 	// Launch the interactive agent session. An interactive claude session never

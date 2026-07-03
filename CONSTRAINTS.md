@@ -82,20 +82,24 @@ Every lyx CLI module is a cobra subtree assembled under one root in `cmd/lyx/mai
 Every registered lyx module must be exercised by the black-box sandbox suite or be
 explicitly excluded with a reason.
 
-- **Tagging.** A `tools/sandbox/SANDBOX-SUITE.md` scenario that drives a specific
-  module declares it with a `**Covers:** <module>[, <module>...]` line, in the same
-  bold-label style as the scenario's `**Goal:**`/`**Watch:**`/`**Verdict:**` lines.
-  Coverage is checked at module granularity against the live cobra root
-  (`newRoot().Commands()`, skipping `help`/`completion`) — the same enumeration
-  `longlist_test.go` already uses, never a separately hand-maintained list.
-- **Allowlist.** Modules that are intentionally never sandbox-exercised are named
-  on the test's `excludedModules` allowlist with a one-line reason: `ide`
-  (side-effect heavy: `spawn` opens a real VS Code window, `menu` is an
-  interactive stdin picker), `selfreport` (`create` files a real GitHub issue).
+- **Tagging.** A scenario in **any** suite file matching
+  `tools/sandbox/*SANDBOX-SUITE.md` (today: `SANDBOX-SUITE.md`,
+  `MUX-SANDBOX-SUITE.md`) that drives a specific module declares it with a
+  `**Covers:** <module>[, <module>...]` line, in the same bold-label style as the
+  scenario's `**Goal:**`/`**Watch:**`/`**Verdict:**` lines. The guard unions tags
+  across all matched files. Coverage is checked at module granularity against the
+  live cobra root (`newRoot().Commands()`, skipping `help`/`completion`) — the same
+  enumeration `longlist_test.go` already uses, never a separately hand-maintained
+  list. The guard fails fast if the glob matches fewer than two files (vacuous-glob
+  protection).
+- **Allowlist.** Modules that are intentionally never sandbox-exercised across any
+  suite file are named on the test's `excludedModules` allowlist with a one-line
+  reason: `ide` (side-effect heavy: `spawn` opens a real VS Code window, `menu` is
+  an interactive stdin picker), `selfreport` (`create` files a real GitHub issue).
 - **Exists ⇒ covered or excluded.** Adding a new registered module requires either
-  a scenario tagged with that module's `**Covers:**` or a new allowlist entry with
-  a reason — the same "exists ⇒ registered" discipline as the CLI/Cobra Invariant's
-  registration guard.
+  a scenario in some suite file tagged with that module's `**Covers:**` or a new
+  allowlist entry with a reason — the same "exists ⇒ registered" discipline as the
+  CLI/Cobra Invariant's registration guard.
 - **Enforced by** `cmd/lyx/sandbox_coverage_test.go`
   (`TestSandboxCoverage_AllModulesCoveredOrExcluded`) on every `go test`.
 
