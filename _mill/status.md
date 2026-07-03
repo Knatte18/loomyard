@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-approved
+phase: done
 slug: mux-sandbox-suite
 branch: mux-sandbox-suite
 plan: _mill/plan
@@ -28,6 +28,7 @@ holistic-reviewing  '2026-07-03T08:41:52Z'
 holistic-fixing  '2026-07-03T08:44:27Z'
 nits-fixed-holistic  '2026-07-03T08:47:08Z'
 holistic-approved  '2026-07-03T08:47:17Z'
+done  '2026-07-03T08:47:44Z'
 ```
 
 ## Batches
