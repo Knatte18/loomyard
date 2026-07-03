@@ -34,7 +34,9 @@ batches:
     start_sha: 84ac6c56f17028020c7ae5d7b362c0c9e3cd47be
     commit_sha: 5d04e1885e9575c09a0bb2681ffc7e6ff506d44c
   - name: mux-suite-launcher
-    state: pending
+    state: running
+    implementer_session: f15e059f-ceca-4698-b584-2a5b7f08fbda
+    start_sha: 35bc7d00508925fa5582a20f830b8ea9411c2511
   - name: docs
     state: pending
 ```
