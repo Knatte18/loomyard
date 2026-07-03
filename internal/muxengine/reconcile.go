@@ -20,12 +20,15 @@ import "fmt"
 // occupies a slot in list-panes' output, so leaving it un-killed while
 // excluding its strand from the layout would make the layout string
 // enumerate fewer panes than psmux still holds (GAP2). The one exception is
-// a sole-remaining dead pane — killing the session's last pane ends the
-// session outright — so that pane is deliberately left un-killed, and its
-// strand's binding is NOT cleared: it is still present, so render must
-// still place it. solePane (a pane id, non-empty only in that one case)
-// names it, so callers/tests can assert on the exception explicitly rather
-// than inferring it from an empty deadToKill.
+// enforced by the session-survival rule: killing the session's last pane
+// ends the session outright, so at least one pane must always survive. When
+// any pane is still alive, every dead pane is killable. When every pane is
+// dead, exactly one dead pane is kept (keptDeadPane) so the session — and
+// that strand's still-rebuildable record — survives until resume/remove; its
+// strand's binding is NOT cleared, since the pane is still present and render
+// must still place it. keptDeadPane (a pane id, non-empty only when a dead
+// pane is deliberately spared) names it, so callers/tests can assert on the
+// exception explicitly rather than inferring it from deadToKill.
 //
 // For every other strand: (a) a strand whose PaneID is absent from live, or
 // whose pane was just scheduled for killing, has its GUID returned in
@@ -33,24 +36,37 @@ import "fmt"
 // its binding is gone so it renders as not-live; (b) a strand whose pane is
 // present and not being killed keeps its binding untouched — Live derives
 // true for it downstream, via toRenderStrands' liveIDs lookup.
-func planReconcile(strands []Strand, live []LivePane) (clearedGUIDs []string, deadToKill []string, solePane string) {
+func planReconcile(strands []Strand, live []LivePane) (clearedGUIDs []string, deadToKill []string, keptDeadPane string) {
 	liveByID := make(map[string]LivePane, len(live))
 	for _, p := range live {
 		liveByID[p.ID] = p
 	}
 
-	// A dead pane is "sole-remaining" only when it is the single pane in
-	// the whole window — killing it would end the session. A dead pane
-	// alongside any other pane (dead or alive) is not sole-remaining and
-	// gets killed normally.
-	solePaneID := ""
-	if len(live) == 1 && live[0].Dead {
-		solePaneID = live[0].ID
+	// If any pane is still alive, killing every dead pane leaves the session
+	// with at least that live pane, so all dead panes are killable. If every
+	// pane in the window is dead, one dead pane must be spared — killing the
+	// last pane ends the session — so keptDeadPane names the first dead pane
+	// to keep.
+	anyAlive := false
+	for _, p := range live {
+		if !p.Dead {
+			anyAlive = true
+			break
+		}
+	}
+	keptDeadPaneID := ""
+	if !anyAlive {
+		for _, p := range live {
+			if p.Dead {
+				keptDeadPaneID = p.ID
+				break
+			}
+		}
 	}
 
 	killSet := make(map[string]bool, len(live))
 	for _, p := range live {
-		if p.Dead && p.ID != solePaneID {
+		if p.Dead && p.ID != keptDeadPaneID {
 			killSet[p.ID] = true
 			deadToKill = append(deadToKill, p.ID)
 		}
@@ -64,11 +80,22 @@ func planReconcile(strands []Strand, live []LivePane) (clearedGUIDs []string, de
 		if !present || killSet[p.ID] {
 			clearedGUIDs = append(clearedGUIDs, s.GUID)
 		}
-		// present and not being killed (including the sole-remaining dead
-		// pane): binding stays, Live derives true downstream.
+		// present and not being killed (including the kept dead pane):
+		// binding stays, so render still places it.
 	}
 
-	return clearedGUIDs, deadToKill, solePaneID
+	return clearedGUIDs, deadToKill, keptDeadPaneID
+}
+
+// clearAllPaneBindings drops every strand's PaneID. It is used after a
+// session is freshly booted (server rebirth): psmux restarts pane numbering
+// from %0/%1, so a persisted binding can collide with a reborn pane id and be
+// mistaken for a live strand by reconcile. A just-booted session hosts none
+// of the prior strands, so every binding is stale by definition.
+func clearAllPaneBindings(st *MuxState) {
+	for i := range st.Strands {
+		st.Strands[i].PaneID = ""
+	}
 }
 
 // reconcileLocked reconciles the persisted table against psmux's live pane

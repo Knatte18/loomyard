@@ -16,11 +16,29 @@ import (
 
 // liveIDSet builds the set of pane ids present in live — alive or
 // dead-but-remain-on-exit — matching toRenderStrands' Live derivation:
-// "present in the window", not "still running".
+// "present in the window", not "still running". Render uses this set because
+// select-layout must enumerate every pane psmux still holds, dead ones
+// included.
 func liveIDSet(live []LivePane) map[string]bool {
 	ids := make(map[string]bool, len(live))
 	for _, p := range live {
 		ids[p.ID] = true
+	}
+	return ids
+}
+
+// aliveIDSet builds the set of pane ids that are present AND not dead — the
+// "still running" set, as distinct from liveIDSet's "present in the window"
+// set. Resume-planning and Status use this so a dead-but-remain-on-exit pane
+// counts as not-live: a strand bound to such a pane must be relaunched by
+// Resume and reported dead by Status, rather than being mistaken for a live
+// strand just because psmux still lists its (dead) pane.
+func aliveIDSet(live []LivePane) map[string]bool {
+	ids := make(map[string]bool, len(live))
+	for _, p := range live {
+		if !p.Dead {
+			ids[p.ID] = true
+		}
 	}
 	return ids
 }

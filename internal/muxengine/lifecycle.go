@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/muxengine/render"
@@ -96,14 +97,17 @@ func planResumeLaunches(strands []Strand, liveIDs map[string]bool) []Strand {
 // separately via launchStrandLocked after this returns — matching the
 // sharp up=substrate / resume=replay boundary. It assumes the op lock is
 // already held and always makes a real psmux round trip.
-func (e *Engine) ensureServerAndSessionLocked() error {
+// It reports booted=true when it spawned a fresh session and false when the
+// session already existed, so callers can tell a server rebirth (bindings are
+// all stale) from a normal no-op bring-up.
+func (e *Engine) ensureServerAndSessionLocked() (booted bool, err error) {
 	session := e.SessionName()
 	up, err := e.psmux.hasSession(session)
 	if err != nil {
-		return fmt.Errorf("check session: %w", err)
+		return false, fmt.Errorf("check session: %w", err)
 	}
 	if up {
-		return nil
+		return false, nil
 	}
 
 	// Env hygiene: a spawned server must never inherit this process's own
@@ -120,27 +124,32 @@ func (e *Engine) ensureServerAndSessionLocked() error {
 	cmd.Env = clean
 	proc.Detach(cmd)
 	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("start psmux: %w", err)
+		return false, fmt.Errorf("start psmux: %w", err)
 	}
 
-	// Poll rather than assume a fixed delay is always enough: wait for the
-	// server to come online, retrying on a short interval up to a bounded
-	// number of attempts.
-	const pollAttempts = 3
-	const pollInterval = 200 * time.Millisecond
-	time.Sleep(500 * time.Millisecond)
-	for i := 0; i < pollAttempts; i++ {
+	// Wait for the freshly spawned server to accept commands by polling
+	// against a generous deadline, not a fixed handful of attempts: a loaded
+	// machine (e.g. an orchestrator running many psmux servers and agent
+	// TUIs at once) can take noticeably longer to bring a server online than
+	// a quiet one, and a too-short window would fail the whole op with a
+	// spurious "did not start" error. hasSession returns (false, nil) while
+	// the server is still coming up (exit 1 = no server yet), so the loop
+	// simply retries until it reports up or the deadline passes.
+	const bootTimeout = 5 * time.Second
+	const bootPoll = 100 * time.Millisecond
+	deadline := time.Now().Add(bootTimeout)
+	for {
 		up, err := e.psmux.hasSession(session)
 		if err != nil {
-			return fmt.Errorf("check session: %w", err)
+			return false, fmt.Errorf("check session: %w", err)
 		}
 		if up {
 			break
 		}
-		if i == pollAttempts-1 {
-			return fmt.Errorf("psmux session did not start in time")
+		if time.Now().After(deadline) {
+			return false, fmt.Errorf("psmux session did not start within %s", bootTimeout)
 		}
-		time.Sleep(pollInterval)
+		time.Sleep(bootPoll)
 	}
 
 	// remain-on-exit keeps a pane whose command exits around as
@@ -148,9 +157,9 @@ func (e *Engine) ensureServerAndSessionLocked() error {
 	// if it were the last pane) — the mechanism reconcile's dead-pane
 	// detection depends on.
 	if err := e.psmux.run("set-option", "-g", "remain-on-exit", "on"); err != nil {
-		return fmt.Errorf("set remain-on-exit: %w", err)
+		return false, fmt.Errorf("set remain-on-exit: %w", err)
 	}
-	return nil
+	return true, nil
 }
 
 // Up ensures the named server and this worktree's session exist (booting
@@ -161,13 +170,22 @@ func (e *Engine) ensureServerAndSessionLocked() error {
 func (e *Engine) Up() (UpResult, error) {
 	var result UpResult
 	err := e.withOpLock(func() error {
-		if err := e.ensureServerAndSessionLocked(); err != nil {
+		booted, err := e.ensureServerAndSessionLocked()
+		if err != nil {
 			return err
 		}
 
 		st, err := e.loadOrInitStateLocked()
 		if err != nil {
 			return err
+		}
+
+		// On a server rebirth the reborn session reuses pane ids (the initial
+		// pane is %1 again), so a persisted binding would be mistaken for a
+		// live strand. Clear every binding: a just-booted session hosts none
+		// of the prior strands. Up leaves them not-live (Resume rebuilds them).
+		if booted {
+			clearAllPaneBindings(st)
 		}
 
 		if _, err := e.reconcileApplyPersistLocked(st); err != nil {
@@ -201,13 +219,21 @@ func (e *Engine) Up() (UpResult, error) {
 func (e *Engine) Resume() (ResumeResult, error) {
 	var result ResumeResult
 	err := e.withOpLock(func() error {
-		if err := e.ensureServerAndSessionLocked(); err != nil {
+		booted, err := e.ensureServerAndSessionLocked()
+		if err != nil {
 			return err
 		}
 
 		st, err := e.loadOrInitStateLocked()
 		if err != nil {
 			return err
+		}
+
+		// On a server rebirth the reborn session reuses pane ids, so a stale
+		// binding would look live to reconcile below and wrongly skip relaunch.
+		// Clear every binding first so all non-hidden strands are rebuilt.
+		if booted {
+			clearAllPaneBindings(st)
 		}
 
 		live, err := e.psmux.listPanes(e.SessionName())
@@ -224,7 +250,9 @@ func (e *Engine) Resume() (ResumeResult, error) {
 				return fmt.Errorf("list panes after reconcile: %w", err)
 			}
 		}
-		toLaunch := planResumeLaunches(st.Strands, liveIDSet(live))
+		// aliveIDSet, not liveIDSet: a strand bound to a dead-but-present pane
+		// (e.g. the kept sole dead pane) is not live and must be relaunched.
+		toLaunch := planResumeLaunches(st.Strands, aliveIDSet(live))
 
 		launch := make(map[string]bool, len(toLaunch))
 		for _, s := range toLaunch {
@@ -253,16 +281,26 @@ func (e *Engine) Resume() (ResumeResult, error) {
 	return result, err
 }
 
-// Down tears the session down: kill-server (ignoring "already down" — Down
-// is idempotent, so calling it against an already-stopped session is not an
-// error) and delete mux.json (ignoring not-exist). It does not reconcile or
-// apply — there is nothing left to render once the state file is gone.
+// Down tears this worktree's session down: kill-session (never kill-server —
+// the per-hub server is shared with sibling worktrees, and killing it would
+// destroy their live sessions too) and delete mux.json (ignoring not-exist).
+// Errors from kill-session are ignored so Down stays idempotent against an
+// already-stopped session. When this was the last session on the server, the
+// now-empty server is cleaned up so no stray process lingers. It does not
+// reconcile or apply — there is nothing left to render once the state file is
+// gone.
 func (e *Engine) Down() (DownResult, error) {
 	var result DownResult
 	err := e.withOpLock(func() error {
-		// Ignore the error: the server may already be down, and Down must
+		// Ignore the error: the session may already be gone, and Down must
 		// stay idempotent either way.
-		_ = e.psmux.run("kill-server")
+		_ = e.psmux.run("kill-session", "-t", e.SessionName())
+
+		// Tidy the server only if no sessions remain. A missing server makes
+		// list-sessions error, which we treat as "already gone" and skip.
+		if out, err := e.psmux.output("list-sessions", "-F", "#{session_name}"); err == nil && strings.TrimSpace(out) == "" {
+			_ = e.psmux.run("kill-server")
+		}
 
 		path := filepath.Join(e.layout.DotLyxDir(), muxStateFileName)
 		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
@@ -331,10 +369,14 @@ func (e *Engine) Status() (StatusResult, error) {
 			return fmt.Errorf("list panes: %w", err)
 		}
 
-		liveIDs := liveIDSet(live)
+		// aliveIDSet, not liveIDSet: report a strand bound to a
+		// dead-but-present pane as not live — the operator asks status whether
+		// the strand's process is running, not whether psmux still lists a
+		// (dead) pane for it.
+		aliveIDs := aliveIDSet(live)
 		strands := make([]StrandStatus, len(st.Strands))
 		for i, s := range st.Strands {
-			strands[i] = StrandStatus{GUID: s.GUID, Name: s.Name, PaneID: s.PaneID, Live: liveIDs[s.PaneID]}
+			strands[i] = StrandStatus{GUID: s.GUID, Name: s.Name, PaneID: s.PaneID, Live: aliveIDs[s.PaneID]}
 		}
 
 		result = StatusResult{Session: session, Socket: e.Socket(), Strands: strands}

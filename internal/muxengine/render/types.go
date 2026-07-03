@@ -41,20 +41,23 @@ const (
 	AnchorHidden Anchor = "hidden"
 )
 
-// Display carries the per-strand layout settings render acts on.
+// Display carries the per-strand layout settings render acts on. Its JSON
+// tags are load-bearing: the engine persists Display verbatim inside the
+// mux.json strand record, so these lowerCamel keys are the on-disk contract
+// callers (shuttle) will read and write.
 type Display struct {
 	// Anchor selects which placement strategy governs this strand.
-	Anchor Anchor
+	Anchor Anchor `json:"anchor"`
 	// Focus marks this strand as the one that should receive psmux input
 	// focus. At most one strand is expected to set Focus; if several do,
 	// render breaks the tie by picking the bottom-most.
-	Focus bool
+	Focus bool `json:"focus"`
 	// ShrinkWhenWaitingOnChild, when true, lets this strand collapse to a
 	// compact strip once one of its descendants is present in the layout
 	// — the ancestor is blocked waiting on that child, so it need not
 	// stay full height. When false the strand stays a co-equal full pane
 	// even while a descendant is present.
-	ShrinkWhenWaitingOnChild bool
+	ShrinkWhenWaitingOnChild bool `json:"shrinkWhenWaitingOnChild"`
 }
 
 // Strand is the layout-facing projection of an engine strand: only the

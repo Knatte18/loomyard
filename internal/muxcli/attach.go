@@ -24,9 +24,10 @@ func attachArgv(socket, session string) []string {
 }
 
 // attachCmd builds the `attach` subcommand: a session-level verb (no strand
-// argument) that runs Status() pre-flight — Status takes the op lock,
-// reconciles, and returns a non-nil error when the server/session is absent
-// — then hands the operator's own stdin/stdout/stderr to a psmux
+// argument) that runs Status() pre-flight — Status takes the op lock and
+// returns a non-nil error when the server/session is absent (it is read-only:
+// it reports live/dead without reconciling) — then hands the operator's own
+// stdin/stdout/stderr to a psmux
 // attach-session child, in place. Only that terminal-handover tail is
 // exempt from the JSON-envelope contract; every step before it still
 // reports through output.Err/output.Ok.

@@ -193,7 +193,7 @@ func TestRemoveStrandLocked_NonLeafWithoutRecursiveErrors(t *testing.T) {
 		{GUID: "child", Parent: "parent"},
 	}}
 
-	_, err := e.removeStrandLocked(st, "parent", false)
+	_, _, err := e.removeStrandLocked(st, "parent", false)
 	if err == nil {
 		t.Fatal("removeStrandLocked(non-leaf, recursive=false) = nil error, want error")
 	}
@@ -211,7 +211,7 @@ func TestRemoveStrandLocked_RecursiveCascadesAndListsEveryRemoved(t *testing.T) 
 		{GUID: "unrelated", Name: "unrelated-name"},
 	}}
 
-	removed, err := e.removeStrandLocked(st, "root", true)
+	removed, _, err := e.removeStrandLocked(st, "root", true)
 	if err != nil {
 		t.Fatalf("removeStrandLocked(recursive=true): %v", err)
 	}
@@ -235,7 +235,7 @@ func TestRemoveStrandLocked_UnknownGuidRejected(t *testing.T) {
 	e := newTestEngine(t)
 	st := &MuxState{}
 
-	if _, err := e.removeStrandLocked(st, "does-not-exist", true); err == nil {
+	if _, _, err := e.removeStrandLocked(st, "does-not-exist", true); err == nil {
 		t.Fatal("removeStrandLocked(unknown guid) = nil error, want error")
 	}
 }
