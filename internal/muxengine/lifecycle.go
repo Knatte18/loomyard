@@ -123,8 +123,9 @@ func (e *Engine) ensureServerAndSessionLocked() error {
 		return fmt.Errorf("start psmux: %w", err)
 	}
 
-	// Poll rather than assume a fixed delay is always enough, mirroring
-	// muxpoccli's up.go boot-wait loop.
+	// Poll rather than assume a fixed delay is always enough: wait for the
+	// server to come online, retrying on a short interval up to a bounded
+	// number of attempts.
 	const pollAttempts = 3
 	const pollInterval = 200 * time.Millisecond
 	time.Sleep(500 * time.Millisecond)
@@ -252,10 +253,10 @@ func (e *Engine) Resume() (ResumeResult, error) {
 	return result, err
 }
 
-// Down tears the session down: kill-server (ignoring "already down" —
-// Down is idempotent, matching muxpoccli's down.go) and delete mux.json
-// (ignoring not-exist). It does not reconcile or apply — there is nothing
-// left to render once the state file is gone.
+// Down tears the session down: kill-server (ignoring "already down" — Down
+// is idempotent, so calling it against an already-stopped session is not an
+// error) and delete mux.json (ignoring not-exist). It does not reconcile or
+// apply — there is nothing left to render once the state file is gone.
 func (e *Engine) Down() (DownResult, error) {
 	var result DownResult
 	err := e.withOpLock(func() error {

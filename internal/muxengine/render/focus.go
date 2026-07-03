@@ -9,9 +9,9 @@ package render
 // focus, exactly one per session. If one or more strands in ordered declare
 // Display.Focus, the bottom-most such strand wins (ties resolve to
 // bottom-most). Otherwise the bottom-most strand in ordered is the default
-// focus target, mirroring muxpoc's "always select the bottom pane"
-// convention — ordered places the deepest/active descendant last. Returns
-// "" when ordered is empty.
+// focus target — ordered places the deepest/active descendant last, so the
+// bottom pane is always the one currently in use. Returns "" when ordered is
+// empty.
 func focusTarget(ordered []Strand) string {
 	for i := len(ordered) - 1; i >= 0; i-- {
 		if ordered[i].Display.Focus {

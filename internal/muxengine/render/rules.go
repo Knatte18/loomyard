@@ -56,8 +56,8 @@ func Rules(strands []Strand, box Box, p Params) (layout string, focus string, er
 	placements = append(placements, stackHeights(ordered, stackBox, p)...)
 
 	body := buildStackBody(box, placements)
-	// focus resolves over the below-parent order only, mirroring muxpoc's
-	// "always select the bottom (active) pane" default; it does not
-	// consider the fixed top bands.
+	// focus resolves over the below-parent order only, so the bottom
+	// (active) pane is the default focus target; it does not consider the
+	// fixed top bands.
 	return wrapLayout(body), focusTarget(ordered), nil
 }

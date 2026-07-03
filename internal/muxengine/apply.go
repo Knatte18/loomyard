@@ -45,9 +45,9 @@ func (e *Engine) planLayout(st *MuxState, live []LivePane) (layout, focus string
 // resolved focus pane via select-pane. It assumes the op lock is already
 // held and that reconcile has already run against live (this function
 // makes no reconcile decisions of its own). When live has fewer than two
-// panes it skips both psmux calls entirely — mirroring muxpoc's
-// applyColumnLayout guard, since a single pane already fills the window and
-// select-layout/select-pane would be a needless round trip.
+// panes it skips both psmux calls entirely, since a single pane already
+// fills the window and select-layout/select-pane would be a needless round
+// trip.
 func (e *Engine) applyLayoutLocked(st *MuxState, live []LivePane) error {
 	layout, focus, err := e.planLayout(st, live)
 	if err != nil {

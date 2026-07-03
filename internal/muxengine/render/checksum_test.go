@@ -1,6 +1,7 @@
-// checksum_test.go pins the layoutChecksum fixture ported from
-// muxpoccli/cmd_test.go and asserts the general four-lowercase-hex-digit
-// shape every checksum must have.
+// checksum_test.go pins a known-good layoutChecksum fixture from live psmux
+// testing, asserting that the tmux/psmux layout-checksum algorithm stays
+// correct, and also asserts the general four-lowercase-hex-digit shape every
+// checksum must have.
 
 package render
 
@@ -12,8 +13,8 @@ func TestLayoutChecksum(t *testing.T) {
 		body string
 		want string
 	}{
-		// Pinned value from live psmux testing, carried over verbatim from
-		// muxpoccli/cmd_test.go so the ported math stays proven-correct.
+		// Pinned value from live psmux testing, asserting the tmux/psmux
+		// layout-checksum algorithm stays proven-correct.
 		{"MatchesPsmuxFixture", "220x50,0,0[220x15,0,0,1,220x15,0,16,4,220x18,0,32,3]", "acd7"},
 		{"ArbitraryInputIsFourHexDigits", "anything", ""},
 		{"EmptyInputIsFourHexDigits", "", ""},

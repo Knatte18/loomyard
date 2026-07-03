@@ -1,10 +1,10 @@
-// height.go implements the derived height policy that replaces muxpoc's
-// fixed activePaneShare: within the below-parent stack, a shrink:true
-// ancestor collapses to a compact strip once it has a present descendant,
-// and the active/bottom pane plus every shrink:false strand split the
-// remaining rows equally (remainder to the active pane). When the window is
-// too short to satisfy that natural policy, a strict-priority clamp
-// reclaims rows so every pane still gets a positive height.
+// height.go implements the derived height policy: within the below-parent
+// stack, a shrink:true ancestor collapses to a compact strip once it has a
+// present descendant, and the active/bottom pane plus every shrink:false
+// strand split the remaining rows equally (remainder to the active pane).
+// When the window is too short to satisfy that natural policy, a
+// strict-priority clamp reclaims rows so every pane still gets a positive
+// height.
 
 package render
 
