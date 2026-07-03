@@ -28,7 +28,9 @@ implementing  '2026-07-03T08:26:05Z'
 ```yaml
 batches:
   - name: suite-doc-and-guard
-    state: pending
+    state: running
+    implementer_session: 64f5e151-79ad-43de-b7c5-07df79d8ec48
+    start_sha: 84ac6c56f17028020c7ae5d7b362c0c9e3cd47be
   - name: mux-suite-launcher
     state: pending
   - name: docs
