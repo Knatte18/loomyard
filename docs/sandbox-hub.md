@@ -159,16 +159,30 @@ The direct `claude` launch used today will be replaced by a psmux interactive se
 once the `mux` module is available. The file contract (`SANDBOX-SUITE.md` driving the
 agent) is unchanged; only the launch mechanism will differ.
 
+## Running the mux suite
+
+Alongside the main suite, `mux-sandbox-suite.cmd` runs a dedicated black-box suite
+against `lyx mux`. It mirrors the main-suite flow: it copies a fingerprinted
+`MUX-SANDBOX-SUITE.md` into the Hub host repo, git-excludes the copy the same way
+`SANDBOX-SUITE.md` is excluded, clears any stale `sandbox-report.json`, and launches
+the interactive agent there. Because it exercises live psmux panes (crash simulation,
+layout verification, attach), it needs a live psmux (`psmux.exe` on PATH) as a
+precondition beyond what the main suite requires. Findings land in the same
+`sandbox-report.json` in the host repo, so `sandbox-fetch.cmd` collects a mux-suite
+report exactly as it collects a main-suite report — the two suites share one report
+pipeline, one run at a time.
+
 ## Launchers and subcommands
 
-The single Go tool (`tools/sandbox`) still dispatches three subcommands
-internally — `build` (default), `suite`, and `fetch` — but each is fronted by its
-own single-purpose launcher, mirroring how `deploy.cmd` does one thing:
+The single Go tool (`tools/sandbox`) still dispatches four subcommands
+internally — `build` (default), `suite`, `mux-suite`, and `fetch` — but each is
+fronted by its own single-purpose launcher, mirroring how `deploy.cmd` does one thing:
 
 ```cmd
 sandbox-build.cmd            # go run ./tools/sandbox -parent C:\Code build
 sandbox-build.cmd -reset     # ... build -reset  (tear down and re-clone)
 sandbox-suite.cmd            # ... suite  (run the interactive agent)
+mux-sandbox-suite.cmd        # ... mux-suite  (run the mux-specific interactive agent)
 sandbox-fetch.cmd            # ... -loomyard "%~dp0." fetch  (collect the report)
 ```
 

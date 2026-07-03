@@ -6,9 +6,10 @@ rationale see [sandbox-hub.md](sandbox-hub.md).
 
 All commands run from the lyx repo root (`C:\Code\loomyard\wts\loomyard`) unless
 stated otherwise. The launchers (`deploy.cmd`, `sandbox-build.cmd`,
-`sandbox-suite.cmd`, `sandbox-fetch.cmd`) hardcode the machine-specific paths for
-this machine: deploy target `C:\Code\tools\bin`, Hub parent `C:\Code`. Each
-sandbox launcher does exactly one thing (build / suite / fetch).
+`sandbox-suite.cmd`, `mux-sandbox-suite.cmd`, `sandbox-fetch.cmd`) hardcode the
+machine-specific paths for this machine: deploy target `C:\Code\tools\bin`, Hub
+parent `C:\Code`. Each sandbox launcher does exactly one thing (build / suite /
+mux-suite / fetch).
 
 ## What the suite does
 
@@ -97,6 +98,28 @@ sandbox-suite.cmd -claude <path>   # override the claude binary (default: from P
 sandbox-suite.cmd -prompt <text>   # override the instruction string
 ```
 
+### 4b. Run the mux suite (optional, needs live psmux)
+
+```cmd
+mux-sandbox-suite.cmd
+```
+
+This copies a fingerprinted `MUX-SANDBOX-SUITE.md` into the Hub host repo and
+launches the interactive agent there, same as step 4 but for `lyx mux`'s
+scenarios. It needs a live psmux (`psmux.exe` on PATH) and PowerShell 7. The
+attach scenario (M7) pauses for the operator to run `lyx mux attach` in a
+second terminal and confirm visually. Findings go to the same
+`sandbox-report.json`, so step 5 (`sandbox-fetch.cmd`) and step 6 (triage)
+apply unchanged — fetch between sessions, do not run both suites and fetch
+once.
+
+Same `-claude`/`-prompt` overrides as `sandbox-suite.cmd`:
+
+```cmd
+mux-sandbox-suite.cmd -claude <path>   # override the claude binary (default: from PATH)
+mux-sandbox-suite.cmd -prompt <text>   # override the instruction string
+```
+
 ### 5. Fetch the report
 
 ```cmd
@@ -136,3 +159,4 @@ nothing is written until you approve. Then groom/spawn as usual.
 
 - [sandbox-hub.md](sandbox-hub.md) — Hub topology, repo layout, design rationale.
 - [tools/sandbox/SANDBOX-SUITE.md](../tools/sandbox/SANDBOX-SUITE.md) — the embedded test scheme the agent follows.
+- [tools/sandbox/MUX-SANDBOX-SUITE.md](../tools/sandbox/MUX-SANDBOX-SUITE.md) — the embedded mux-specific test scheme `mux-sandbox-suite.cmd` follows.
