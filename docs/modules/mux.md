@@ -70,8 +70,8 @@ strand {
 **`guid` is the durable key; `name` is display-only.** `guid` is mux-generated at `AddStrand` and
 is the identity every selector uses — `--parent <guid>`, `remove <guid>`, `UpdateStrand(guid,
 …)`/`RemoveStrand(guid, …)` all key on it, and parent links store the parent's `guid`. `name` is a
-caller-supplied label used only for the pane title and `status` output; it is **not** a selector
-and carries no uniqueness requirement. It is composed at `add` time from a `mux.yaml`
+caller-supplied label surfaced in `add`/`status`/`remove` output (v1 does not yet set it as the
+psmux pane title); it is **not** a selector and carries no uniqueness requirement. It is composed at `add` time from a `mux.yaml`
 `strand-name` template (default `<ROLE>:<ROUND>:<SHORT_GUID>`) — `--role`/`--round` are
 formatting-only inputs consumed once to fill the template, never persisted or branched on (the
 sharp difference from a forbidden `type` field).
@@ -143,9 +143,10 @@ active** — every ancestor is blocked waiting on its child. So the rule is: **t
 is always the largest and sits at the bottom** (the active pane, where a human types). Ancestors
 collapse to compact strips via `shrinkWhenWaitingOnChild`. This bottom-dominant layout — active/
 bottom pane largest, ancestors collapsed to strips — is expressed declaratively over the `parent`
-tree via a **derived** height policy (the active/bottom pane takes the largest share, e.g. 2 panes
-→ 56% bottom; 3 → 60% with 9+9-row ancestors) rather than a hand-coded **fixed** `activePaneShare`
-— see the height policy below.
+tree via a **derived** height policy (each shrink:true ancestor collapses to a fixed
+`collapsedStripRows` strip and the active/bottom pane absorbs all remaining rows, so with the
+default `collapsed_strip_rows: 3` in a 50-row window a 2-pane stack gives the bottom pane ~46 rows)
+rather than a hand-coded **fixed** `activePaneShare` — see the height policy below.
 
 ### Render — a pure function over strands
 
@@ -179,8 +180,11 @@ tests, no psmux and no agents needed.
 
 **Re-render is on-demand, not event-driven or timed.** v1 is daemonless: the layout recomputes
 **in-process on each mutation** (`AddStrand`/`UpdateStrand`/`RemoveStrand` recompute + apply within
-the same call) and **on-demand on every CLI verb** (`status`, `resume`, the next `add`/`remove`
-reconcile against live `list-panes` and re-apply). There is **no live `pane-died` listener** — a
+the same call) and **on-demand on the mutating verbs** (`up`/`resume` and the next `add`/`remove`
+reconcile against live `list-panes` and re-apply). `status` is the exception — it is **read-only**:
+it cross-references `list-panes` to report live/dead but never reconciles (kills dead panes /
+clears bindings) or re-applies the layout, so a query never moves focus or mutates state. There is
+**no live `pane-died` listener** — a
 dead pane is noticed the next time a verb runs, not instantly (the listener + a hidden handler
 verb are deferred with [the daemon](#mux-daemon-deferred)). The whole
 `read -> mutate -> persist -> render -> apply` cycle is guarded by one **mux operation lock** at
@@ -217,9 +221,9 @@ psmux alone (psmux knows where panes are, not that one "should be 1 line at top"
 another, or how to relaunch). So mux **persists the full strand table** to `.lyx/mux.json` (local,
 untracked, via `internal/state` — see
 [overview.md](../overview.md#durable-vs-ephemeral-state-_lyx-vs-lyx)), keyed by `guid`. On every
-verb it **reconciles against live `list-panes`**: a strand whose pane is gone/`pane_dead=1` has its
-pane binding **cleared but its record kept** (so `resume` can rebuild it) — only an explicit
-`remove` deletes a record. `resume` then recreates a pane for each not-live, non-`hidden` strand
+**mutating** verb it **reconciles against live `list-panes`** (`status` reports without
+reconciling): a strand whose pane is gone/`pane_dead=1` has its pane binding **cleared but its
+record kept** (so `resume` can rebuild it) — only an explicit `remove` deletes a record. `resume` then recreates a pane for each not-live, non-`hidden` strand
 and re-runs its stored `resumeCmd` (or `cmd` if it has none — see
 [Resume](#resume-native---resume-via-the-stored-opaque-resumecmd)). Without this, a crash loses the
 display intent, the spawn tree, and how to relaunch.
@@ -278,10 +282,10 @@ substrate-only; `resume` is the only replayer.**
 | `lyx mux up` | Ensure the server (clean env) + this worktree's session exist (boot if absent, no-op if up). Reconcile + apply the layout from the current strand table. **Runs no strand command.** |
 | `lyx mux add` | `AddStrand` — `--cmd`, optional `--role`/`--round`/`--name`/`--resume-cmd`/`--parent <guid>`/`--anchor top\|below-parent\|hidden`/`--focus`. Prints the assigned `guid` + resolved `name`. A `hidden` strand gets no pane until surfaced. |
 | `lyx mux remove <guid>` | `RemoveStrand` — requires `--recursive` on a non-leaf (fails otherwise: `strand has children, use --recursive`); the engine API itself always cascades. Result JSON lists every removed strand. |
-| `lyx mux status` | Reconcile `.lyx/mux.json` strands against the named server's live `list-panes`: report **this session's** tracked strands and their live/dead state. v1 does **not** actively enumerate stray/orphan psmux servers (a reliable listing on Windows is unverified) — the named server still provides the orphan-firewall property, `status` just doesn't scan for it yet. |
+| `lyx mux status` | **Read-only** cross-reference of `.lyx/mux.json` strands against the named server's live `list-panes`: report **this session's** tracked strands and their live/dead state, where **live means present *and* not `pane_dead`** (a crashed strand reads `live:false`). Unlike the mutating verbs, `status` does **not** reconcile (it never kills dead panes or rewrites bindings) and does **not** re-apply the layout — a query must not move focus or mutate state; the next mutating verb persists any correction. v1 does **not** actively enumerate stray/orphan psmux servers (a reliable listing on Windows is unverified) — the named server still provides the orphan-firewall property, `status` just doesn't scan for it yet. |
 | `lyx mux attach` | `psmux attach` to this worktree's session **in the operator's current terminal, in place** (no popped window) — see the [envelope exception](#attach-is-a-documented-envelope-exception) below. |
-| `lyx mux resume` | For every persisted strand that is **not live and not `hidden`**, (re)create its pane and run its stored `resumeCmd` (or `cmd` if it has none). Already-live strands are left untouched (no double send-keys); `hidden` strands are skipped (pending, not dead). Boots the server+session first if absent. |
-| `lyx mux down` | Kill the mux server and clear this worktree's strand state. |
+| `lyx mux resume` | For every persisted strand that is **not live and not `hidden`**, (re)create its pane and run its stored `resumeCmd` (or `cmd` if it has none). Already-live strands are left untouched (no double send-keys); `hidden` strands are skipped (pending, not dead). Boots the server+session first if absent; after a **server rebirth** it clears every stale pane binding first, so a reborn session's reused pane ids are never mistaken for live strands. |
+| `lyx mux down` | Kill **this worktree's session** (`kill-session`, never the shared per-hub server — sibling worktrees keep running) and clear this worktree's strand state. When this was the server's last session, the now-empty server is cleaned up too. |
 
 `UpdateStrand` is engine-API-only — there is no `lyx mux update` verb in v1. Callers (`shuttle`,
 `loom`, `review`) drive `AddStrand`/`UpdateStrand`/`RemoveStrand` in-process through the

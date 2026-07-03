@@ -55,14 +55,18 @@ func TestPlanReconcile(t *testing.T) {
 			wantSolePane: "%1",
 		},
 		{
-			name: "TwoDeadPanesNeitherIsSole",
+			// Every pane is dead: one must be spared so the session survives
+			// (killing the last pane ends it). The first dead pane is kept
+			// (binding stays), the rest are killed and their bindings cleared.
+			name: "AllDeadKeepsFirstPaneAndKillsTheRest",
 			strands: []Strand{
 				{GUID: "g1", PaneID: "%1"},
 				{GUID: "g2", PaneID: "%2"},
 			},
 			live:           []LivePane{{ID: "%1", Dead: true}, {ID: "%2", Dead: true}},
-			wantCleared:    []string{"g1", "g2"},
-			wantDeadToKill: []string{"%1", "%2"},
+			wantCleared:    []string{"g2"},
+			wantDeadToKill: []string{"%2"},
+			wantSolePane:   "%1",
 		},
 		{
 			name:        "StrandWithNoPaneIDIgnored",

@@ -231,13 +231,15 @@ func (e *Engine) updateStrandLocked(st *MuxState, guid string, display render.Di
 // recursive is rejected outright; otherwise the whole descendant subtree is
 // cascaded away (never orphaning children into a broken parent chain). It
 // assumes the op lock is already held, never touches psmux itself, and so
-// is fully hermetically testable.
-func (e *Engine) removeStrandLocked(st *MuxState, guid string, recursive bool) (Removed, error) {
+// is fully hermetically testable. It returns the pane ids of every removed
+// strand that held a live pane binding, so the caller can kill those panes
+// explicitly rather than relying on select-layout to reap them.
+func (e *Engine) removeStrandLocked(st *MuxState, guid string, recursive bool) (Removed, []string, error) {
 	if _, ok := strandByGUID(st.Strands, guid); !ok {
-		return Removed{}, fmt.Errorf("unknown strand %q", guid)
+		return Removed{}, nil, fmt.Errorf("unknown strand %q", guid)
 	}
 	if len(directChildren(st.Strands, guid)) > 0 && !recursive {
-		return Removed{}, fmt.Errorf("strand has children, use --recursive")
+		return Removed{}, nil, fmt.Errorf("strand has children, use --recursive")
 	}
 
 	toRemove := descendantSubtree(st.Strands, guid)
@@ -247,17 +249,21 @@ func (e *Engine) removeStrandLocked(st *MuxState, guid string, recursive bool) (
 	}
 
 	var removed Removed
+	var paneIDs []string
 	remaining := make([]Strand, 0, len(st.Strands))
 	for _, s := range st.Strands {
 		if removeSet[s.GUID] {
 			removed.Strands = append(removed.Strands, struct{ GUID, Name string }{s.GUID, s.Name})
+			if s.PaneID != "" {
+				paneIDs = append(paneIDs, s.PaneID)
+			}
 			continue
 		}
 		remaining = append(remaining, s)
 	}
 	st.Strands = remaining
 
-	return removed, nil
+	return removed, paneIDs, nil
 }
 
 // AddStrand registers a new strand from spec and, unless added
@@ -286,6 +292,15 @@ func (e *Engine) AddStrand(spec AddSpec) (Strand, error) {
 			return err
 		}
 
+		// Persist immediately after the launch succeeds, before the layout
+		// apply. If apply then fails, the strand is already tracked (with its
+		// new PaneID), so the next reconcile repairs the layout — the launched
+		// pane never becomes an untracked orphan the next select-layout would
+		// silently reap.
+		if err := SaveState(e.layout.DotLyxDir(), st); err != nil {
+			return fmt.Errorf("persist strand: %w", err)
+		}
+
 		if _, err := e.reconcileApplyPersistLocked(st); err != nil {
 			return err
 		}
@@ -299,11 +314,18 @@ func (e *Engine) AddStrand(spec AddSpec) (Strand, error) {
 // UpdateStrand mutates guid's display settings, then reconciles and
 // re-applies the layout. It rejects a visible->hidden transition
 // ("cannot hide a live strand in v1"); a hidden->visible transition
-// surfaces the strand (creates its pane, runs its cmd). UpdateStrand is
+// surfaces the strand (creates its pane, runs its cmd). Pre-flights the
+// session's existence (like AddStrand/RemoveStrand) so surfacing a hidden
+// strand before "up" fails with the friendly "no mux session" error instead
+// of a raw psmux error from inside launchStrandLocked. UpdateStrand is
 // engine-API-only in v1 — there is no CLI verb for it.
 func (e *Engine) UpdateStrand(guid string, display render.Display) (Strand, error) {
 	var result Strand
 	err := e.withOpLock(func() error {
+		if err := e.requireSessionLocked(); err != nil {
+			return err
+		}
+
 		st, err := e.loadOrInitStateLocked()
 		if err != nil {
 			return err
@@ -311,6 +333,12 @@ func (e *Engine) UpdateStrand(guid string, display render.Display) (Strand, erro
 
 		if _, err := e.updateStrandLocked(st, guid, display); err != nil {
 			return err
+		}
+
+		// Persist immediately after a possible surface launch, before the
+		// layout apply, for the same orphan-avoidance reason as AddStrand.
+		if err := SaveState(e.layout.DotLyxDir(), st); err != nil {
+			return fmt.Errorf("persist strand: %w", err)
 		}
 
 		if _, err := e.reconcileApplyPersistLocked(st); err != nil {
@@ -343,9 +371,19 @@ func (e *Engine) RemoveStrand(guid string, recursive bool) (Removed, error) {
 			return err
 		}
 
-		removed, err := e.removeStrandLocked(st, guid, recursive)
+		removed, paneIDs, err := e.removeStrandLocked(st, guid, recursive)
 		if err != nil {
 			return err
+		}
+
+		// Kill the removed strands' panes explicitly rather than relying on
+		// select-layout to reap panes missing from the layout string (a
+		// psmux-only side effect; tmux would reject a mismatched layout
+		// instead). Best-effort: a pane may already be dead or gone, and
+		// psmux refuses to kill a session's last pane — the reconcile tail
+		// below re-enumerates and re-applies either way.
+		for _, id := range paneIDs {
+			_ = e.psmux.run("kill-pane", "-t", id)
 		}
 
 		if _, err := e.reconcileApplyPersistLocked(st); err != nil {

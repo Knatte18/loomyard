@@ -65,6 +65,14 @@ Example:
 				return nil
 			}
 
+			// Focus targets the below-parent stack's active pane; a top status
+			// band is not an input target, and render never focuses it. Reject
+			// the combination rather than silently ignoring --focus.
+			if focus && render.Anchor(anchor) == render.AnchorTop {
+				clihelp.SetExit(cmd.Context(), output.Err(out, "--focus cannot be combined with --anchor top"))
+				return nil
+			}
+
 			spec := muxengine.AddSpec{
 				Role:         role,
 				Round:        round,

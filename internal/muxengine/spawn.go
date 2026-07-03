@@ -65,8 +65,15 @@ func (e *Engine) launchStrandLocked(st *MuxState, s *Strand, launchCmd string) e
 	}
 
 	s.PaneID = paneID
-	if err := e.psmux.run("send-keys", "-t", paneID, launchCmd, "Enter"); err != nil {
+	// Send the command as a literal string (-l) so psmux never reinterprets
+	// any part of the opaque launchCmd as a key name (e.g. "Enter", "C-c") or
+	// splits it on an embedded ';' — the caller (shuttle) builds arbitrary
+	// PowerShell command chains. A separate Enter then submits it.
+	if err := e.psmux.run("send-keys", "-t", paneID, "-l", launchCmd); err != nil {
 		return fmt.Errorf("send launch command: %w", err)
+	}
+	if err := e.psmux.run("send-keys", "-t", paneID, "Enter"); err != nil {
+		return fmt.Errorf("submit launch command: %w", err)
 	}
 	return nil
 }
