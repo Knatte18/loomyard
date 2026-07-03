@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-docs
+phase: holistic-reviewing
 slug: mux-sandbox-suite
 branch: mux-sandbox-suite
 plan: _mill/plan
@@ -24,6 +24,7 @@ implementing  '2026-07-03T08:26:05Z'
 approved-suite-doc-and-guard  '2026-07-03T08:32:07Z'
 approved-mux-suite-launcher  '2026-07-03T08:37:22Z'
 approved-docs  '2026-07-03T08:41:30Z'
+holistic-reviewing  '2026-07-03T08:41:52Z'
 ```
 
 ## Batches
