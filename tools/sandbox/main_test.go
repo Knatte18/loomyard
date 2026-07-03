@@ -392,6 +392,126 @@ func TestRun_SuiteRoutesSuiteToLaunch(t *testing.T) {
 	}
 }
 
+// TestRun_MuxSuiteRoutesToLaunch tests that the "mux-suite" positional routes
+// to the mux-suite path and ultimately invokes launchAgent with the correct
+// host repo directory and the mux default instruction, mirroring
+// TestRun_SuiteRoutesSuiteToLaunch for the "suite" dispatch.
+func TestRun_MuxSuiteRoutesToLaunch(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create the Hub host repo directory that runSuite requires.
+	hostRepoDir := filepath.Join(tmpDir, hubName, hostDirName)
+	if err := os.MkdirAll(filepath.Join(hostRepoDir, ".git", "info"), 0o755); err != nil {
+		t.Fatalf("create host repo dir: %v", err)
+	}
+
+	// Provide a real file so binaryFingerprint can stat and hash it.
+	fakeLyx := filepath.Join(tmpDir, "lyx.exe")
+	if err := os.WriteFile(fakeLyx, []byte("fake lyx binary"), 0o755); err != nil {
+		t.Fatalf("write fake lyx: %v", err)
+	}
+	fakeClaude := filepath.Join(tmpDir, "claude.exe")
+
+	oldLookPath := lookPath
+	defer func() { lookPath = oldLookPath }()
+	lookPath = func(name string) (string, error) {
+		switch name {
+		case "lyx":
+			return fakeLyx, nil
+		case "claude":
+			return fakeClaude, nil
+		default:
+			return "", fmt.Errorf("not found: %s", name)
+		}
+	}
+
+	launchAgentCalled := false
+	var gotInstruction string
+	oldLaunchAgent := launchAgent
+	defer func() { launchAgent = oldLaunchAgent }()
+	launchAgent = func(dir, claude, instruction string) int {
+		launchAgentCalled = true
+		gotInstruction = instruction
+		if dir != hostRepoDir {
+			t.Errorf("launchAgent dir = %q; want %q", dir, hostRepoDir)
+		}
+		return 0
+	}
+
+	code := run([]string{"-parent", tmpDir, "mux-suite"})
+	if code != 0 {
+		t.Errorf("run() = %d; want 0", code)
+	}
+	if !launchAgentCalled {
+		t.Error("launchAgent was not called for mux-suite subcommand")
+	}
+	if gotInstruction != muxSuite.instruction {
+		t.Errorf("launchAgent instruction = %q; want %q", gotInstruction, muxSuite.instruction)
+	}
+}
+
+// TestRun_MuxSuiteFlagsRoutedAfterToken tests that -claude/-prompt flags
+// following the "mux-suite" positional are parsed and forwarded to
+// launchAgent, mirroring the "suite" subcommand's flag handling.
+func TestRun_MuxSuiteFlagsRoutedAfterToken(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	hostRepoDir := filepath.Join(tmpDir, hubName, hostDirName)
+	if err := os.MkdirAll(filepath.Join(hostRepoDir, ".git", "info"), 0o755); err != nil {
+		t.Fatalf("create host repo dir: %v", err)
+	}
+
+	fakeLyx := filepath.Join(tmpDir, "lyx.exe")
+	if err := os.WriteFile(fakeLyx, []byte("fake lyx binary"), 0o755); err != nil {
+		t.Fatalf("write fake lyx: %v", err)
+	}
+	customClaude := filepath.Join(tmpDir, "custom-claude.exe")
+	customPrompt := "Do the mux thing my way."
+
+	oldLookPath := lookPath
+	defer func() { lookPath = oldLookPath }()
+	lookPath = func(name string) (string, error) {
+		if name == "lyx" {
+			return fakeLyx, nil
+		}
+		t.Errorf("unexpected lookPath call for %q; claude override should skip PATH lookup", name)
+		return "", fmt.Errorf("not found: %s", name)
+	}
+
+	var gotClaude, gotInstruction string
+	oldLaunchAgent := launchAgent
+	defer func() { launchAgent = oldLaunchAgent }()
+	launchAgent = func(dir, claude, instruction string) int {
+		gotClaude = claude
+		gotInstruction = instruction
+		return 0
+	}
+
+	code := run([]string{"-parent", tmpDir, "mux-suite", "-claude", customClaude, "-prompt", customPrompt})
+	if code != 0 {
+		t.Errorf("run() = %d; want 0", code)
+	}
+	if gotClaude != customClaude {
+		t.Errorf("launchAgent claude = %q; want %q", gotClaude, customClaude)
+	}
+	if gotInstruction != customPrompt {
+		t.Errorf("launchAgent instruction = %q; want %q", gotInstruction, customPrompt)
+	}
+}
+
+// TestRun_MuxSuiteErrorPropagation tests that a runSuite error under the
+// mux-suite dispatch (Hub absent) is propagated as a non-zero exit code,
+// mirroring the error-propagation coverage the "suite" dispatch relies on via
+// TestRunSuite_HubAbsent at the runSuite level.
+func TestRun_MuxSuiteErrorPropagation(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	code := run([]string{"-parent", tmpDir, "mux-suite"})
+	if code == 0 {
+		t.Error("run() = 0; want non-zero when Hub host repo is absent for mux-suite subcommand")
+	}
+}
+
 // TestRun_FetchReportRoutesToFetch verifies that the "fetch" positional
 // routes to runFetch: with a built Hub, an on-PATH lyx, and a host report, the
 // dispatch reaches fetchReport and run returns 0.
