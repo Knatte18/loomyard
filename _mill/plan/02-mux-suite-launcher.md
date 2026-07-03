@@ -77,9 +77,14 @@ directive needs the file on disk. The external interface batch 3 documents:
 - **Moves:** none
 - **Requirements:** Extend the existing table/seam-based tests (reuse the `lookPath`
   and `launchAgent` seams and the existing host-repo fixture helpers):
-  - `suite_test.go`: existing `runSuite` tests are updated mechanically for the new
-    `spec` parameter by passing `mainSuite` — their assertions must remain otherwise
-    unchanged (this is the refactor-is-behaviour-preserving proof). Add mux-path
+  - `suite_test.go`: existing tests are updated mechanically for Card 5's signature
+    and const changes: `runSuite` call sites gain the `mainSuite` spec argument;
+    `TestRenderScheme_ContainsHeaderAndBody`'s `renderScheme(info)` call becomes
+    `renderScheme(info, sandboxSuiteMD)`; and the existing references to the removed
+    consts switch to the spec fields — `defaultInstruction` → `mainSuite.instruction`,
+    `suiteFileName` → `mainSuite.fileName`. Beyond these mechanical retargets the
+    assertions must remain unchanged (this is the refactor-is-behaviour-preserving
+    proof). Add mux-path
     coverage asserting `runSuite(..., muxSuite)`: writes `MUX-SANDBOX-SUITE.md` (not
     `SANDBOX-SUITE.md`) into the host repo with the fingerprint header prepended;
     appends `MUX-SANDBOX-SUITE.md` and `sandbox-report.json` to `.git/info/exclude`;

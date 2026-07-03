@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planning
+phase: plan-fix-r1
 slug: mux-sandbox-suite
 branch: mux-sandbox-suite
 plan: _mill/plan
@@ -18,4 +18,5 @@ discussing  '2026-07-03T07:27:49Z'
 discussion-fix-r1  '2026-07-03T08:05:00Z'
 discussed  '2026-07-03T08:05:17Z'
 planning  '2026-07-03T08:16:25Z'
+plan-fix-r1  '2026-07-03T08:20:14Z'
 ```

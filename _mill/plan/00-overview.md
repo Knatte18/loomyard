@@ -3,7 +3,7 @@
 ```yaml
 task: Dedicated sandbox suite for mux
 slug: mux-sandbox-suite
-approved: false
+approved: true
 started: 20260703-081340
 parent: internal-mux
 root: ""
