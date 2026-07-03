@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-mux-suite-launcher
+phase: approved-docs
 slug: mux-sandbox-suite
 branch: mux-sandbox-suite
 plan: _mill/plan
@@ -23,6 +23,7 @@ planned  '2026-07-03T08:20:32Z'
 implementing  '2026-07-03T08:26:05Z'
 approved-suite-doc-and-guard  '2026-07-03T08:32:07Z'
 approved-mux-suite-launcher  '2026-07-03T08:37:22Z'
+approved-docs  '2026-07-03T08:41:30Z'
 ```
 
 ## Batches
@@ -40,7 +41,8 @@ batches:
     start_sha: 35bc7d00508925fa5582a20f830b8ea9411c2511
     commit_sha: 8536dd745d299a47c1796f999888def5fefbc320
   - name: docs
-    state: running
+    state: approved
     implementer_session: 658b94af-515e-40e2-b366-8ece2fedfe41
     start_sha: 47cf331fb7d33cd168295126446af25519d62ff3
+    commit_sha: 2a5c9797158a98dc14800b59e91ae7283d655f8d
 ```
