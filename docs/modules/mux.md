@@ -362,6 +362,15 @@ These are the tested facts any implementation must respect. Full evidence in
   pop-up helper must pop **maximized** or be the sole client. `detach-client` by name is
   unsupported.
 
+## Manual test surface: the mux sandbox suite
+
+mux's live/visual testing runs through the dedicated black-box suite
+[`tools/sandbox/MUX-SANDBOX-SUITE.md`](../../tools/sandbox/MUX-SANDBOX-SUITE.md),
+launched via `mux-sandbox-suite.cmd` against the sandbox Hub host repo (see
+[sandbox-howto.md](../sandbox-howto.md)). The hermetic unit/golden tests and the
+opt-in `-tags smoke` test remain the automated layer; the suite's attach scenario is
+operator-assisted because attach is an interactive terminal takeover.
+
 ## Completion and hooks live in shuttle, not mux
 
 mux **does not wire or interpret Claude hooks** — that would make it care what runs in a strand.
