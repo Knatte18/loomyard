@@ -98,8 +98,8 @@ var launchAgent = func(hostRepoDir, claudePath, instruction string) int {
 }
 
 // binaryInfo holds a snapshot of a binary file's identity at a point in time.
-// It is used to stamp the SANDBOX-SUITE with a reproducible fingerprint so that
-// the emitted sandbox-report.json (meta.fingerprint) can be traced to the
+// It is used to stamp the copied suite file with a reproducible fingerprint so
+// that the emitted sandbox-report.json (meta.fingerprint) can be traced to the
 // exact binary that triggered it.
 type binaryInfo struct {
 	// Path is the absolute filesystem path to the binary.
@@ -148,7 +148,7 @@ func binaryFingerprint(path string) (binaryInfo, error) {
 }
 
 // header returns a small markdown block that stamps the binary's identity into
-// the copied SANDBOX-SUITE. The same fingerprint is later stamped into
+// the copied suite file. The same fingerprint is later stamped into
 // meta.fingerprint of the emitted sandbox-report.json so a maintainer can
 // reproduce the exact build that produced a finding.
 func (b binaryInfo) header() string {
