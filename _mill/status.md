@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: mux-sandbox-suite
 branch: mux-sandbox-suite
 plan: _mill/plan
@@ -20,4 +20,17 @@ discussed  '2026-07-03T08:05:17Z'
 planning  '2026-07-03T08:16:25Z'
 plan-fix-r1  '2026-07-03T08:20:14Z'
 planned  '2026-07-03T08:20:32Z'
+implementing  '2026-07-03T08:26:05Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: suite-doc-and-guard
+    state: pending
+  - name: mux-suite-launcher
+    state: pending
+  - name: docs
+    state: pending
 ```
