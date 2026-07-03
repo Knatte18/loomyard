@@ -141,10 +141,11 @@ future surface). Two uses:
 Spawns nest (orchestrator → child → grandchild, ≤3 deep) and **only the deepest/bottom child is
 active** — every ancestor is blocked waiting on its child. So the rule is: **the bottom-most child
 is always the largest and sits at the bottom** (the active pane, where a human types). Ancestors
-collapse to compact strips via `shrinkWhenWaitingOnChild`. This is muxpoc's proven bottom-dominant
-layout (2 panes → 56% bottom; 3 → 60% with 9+9-row ancestors, from a **fixed** 55%
-`activePaneShare`), now expressed declaratively over the `parent` tree via a **derived** height
-policy rather than hand-coded — see the height policy below.
+collapse to compact strips via `shrinkWhenWaitingOnChild`. This bottom-dominant layout — active/
+bottom pane largest, ancestors collapsed to strips — is expressed declaratively over the `parent`
+tree via a **derived** height policy (the active/bottom pane takes the largest share, e.g. 2 panes
+→ 56% bottom; 3 → 60% with 9+9-row ancestors) rather than a hand-coded **fixed** `activePaneShare`
+— see the height policy below.
 
 ### Render — a pure function over strands
 
@@ -165,14 +166,14 @@ tests, no psmux and no agents needed.
   `topBandRows` band (config, default 1); in the `below-parent` stack, a **shrink:true ancestor**
   collapses to a `collapsedStripRows` strip and the **active/focused strand plus every
   shrink:false strand** split the remainder equally, with any integer-division leftover going to
-  the active/bottom pane (deterministic, mirroring muxpoc's single-bottom-pane absorbing the
+  the active/bottom pane (deterministic — the single bottom pane absorbs the
   remainder). A **clamp rule** keeps render total when fixed demand exceeds the window: shrink
   strips to 1 row, then reduce full panes to a `minFullRows` floor (config, default 3), then clamp
   earlier panes to 1 row as a last resort — a torn/negative height would make psmux reject the
   layout, so render never emits one. Sibling ordering (same-parent strands) is **insertion order**
   (position in the persisted strand table), so the layout string is deterministic.
 - **Layout mechanics** (`checksum.go`, `layout.go`) — the `window_layout` string builder and the
-  tmux checksum, reused **verbatim** from muxpoc (see
+  **tmux layout checksum** (see
   [Load-bearing psmux decisions](#load-bearing-psmux-decisions-verified) item 1); only the height
   *policy* feeding it changed.
 
