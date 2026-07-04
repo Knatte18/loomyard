@@ -285,7 +285,7 @@ substrate-only; `resume` is the only replayer.**
 | `lyx mux status` | **Read-only** cross-reference of `.lyx/mux.json` strands against the named server's live `list-panes`: report **this session's** tracked strands and their live/dead state, where **live means present *and* not `pane_dead`** (a crashed strand reads `live:false`). Unlike the mutating verbs, `status` does **not** reconcile (it never kills dead panes or rewrites bindings) and does **not** re-apply the layout — a query must not move focus or mutate state; the next mutating verb persists any correction. v1 does **not** actively enumerate stray/orphan psmux servers (a reliable listing on Windows is unverified) — the named server still provides the orphan-firewall property, `status` just doesn't scan for it yet. |
 | `lyx mux attach` | `psmux attach` to this worktree's session **in the operator's current terminal, in place** (no popped window) — see the [envelope exception](#attach-is-a-documented-envelope-exception) below. |
 | `lyx mux resume` | For every persisted strand that is **not live and not `hidden`**, (re)create its pane and run its stored `resumeCmd` (or `cmd` if it has none). Already-live strands are left untouched (no double send-keys); `hidden` strands are skipped (pending, not dead). Boots the server+session first if absent; after a **server rebirth** it clears every stale pane binding first, so a reborn session's reused pane ids are never mistaken for live strands. |
-| `lyx mux down` | Kill **this worktree's session** (`kill-session`, never the shared per-hub server — sibling worktrees keep running) and clear this worktree's strand state. When this was the server's last session, the now-empty server is cleaned up too. |
+| `lyx mux down` | Kill **this worktree's session** (`kill-session`, never the shared per-hub server — sibling worktrees keep running) and clear this worktree's strand state. When this was the server's last session, the now-empty server is cleaned up too — and `down` **waits until the server process has actually exited** before returning (psmux's `kill-server` is asynchronous; returning early let an immediate `up` spawn a duplicate server process on the same socket, whose loser lingered as an unreachable stray). |
 
 `UpdateStrand` is engine-API-only — there is no `lyx mux update` verb in v1. Callers (`shuttle`,
 `loom`, `review`) drive `AddStrand`/`UpdateStrand`/`RemoveStrand` in-process through the
@@ -366,6 +366,29 @@ These are the tested facts any implementation must respect. Full evidence in
 - **Smallest client wins.** Two clients on one session shrink the window to the smaller; a
   pop-up helper must pop **maximized** or be the sole client. `detach-client` by name is
   unsupported.
+- **`select-layout` applies cells positionally and cannot reorder panes.** psmux assigns a
+  layout string's cells to panes in the window's **current top-to-bottom order** and ignores
+  the pane numbers embedded in the string for placement; `swap-pane`/`move-pane`/`join-pane`
+  are all **silently non-functional** (exit 0, no effect), so panes cannot be physically
+  reordered at all. mux therefore emits cells **in the window's actual pane order** (each
+  pane keeps its own strand's intended height — `render.Rules` takes the live pane order and
+  re-sequences); after a partial rebuild the *vertical order* may diverge from the intended
+  table order until the next full rebuild, but every strand always gets its own geometry. A
+  layout string whose pane-number set mismatches the live pane set (e.g. a duplicate number)
+  makes psmux **destroy the session's panes wholesale** — never emit one.
+- **`split-window` fails silently on a too-small target.** Splitting a pane that is too
+  short exits 0, creates **no** pane, and prints an existing pane's id as if it were the new
+  one. mux never splits the session target (that splits the *active* pane, which psmux may
+  have parked on a 1-row band after `select-layout`); it splits the **tallest alive pane**
+  explicitly and hard-errors when the reported id is not genuinely new.
+- **`kill-pane` on a session's sole pane does not remove it.** Under `remain-on-exit on`
+  psmux corpses it as a present `pane_dead=1` pane (exit 0) instead of refusing;
+  `display-message` still names the corpse as the active pane, and `send-keys` into a corpse
+  exits 0 while running **nothing**. mux therefore never adopts a dead pane — the first
+  strand adopts only an **alive** unbound pane, and everything else splits.
+- **psmux normalizes applied heights off-by-one.** A band/strip emitted as N rows
+  consistently materializes as N+1 in `list-panes` (e.g. `top_band_rows: 1` shows height 2).
+  Cosmetic psmux normalization — not a mux bug; do not chase it.
 
 ## Manual test surface: the mux sandbox suite
 
@@ -373,8 +396,16 @@ mux's live/visual testing runs through the dedicated black-box suite
 [`tools/sandbox/MUX-SANDBOX-SUITE.md`](../../tools/sandbox/MUX-SANDBOX-SUITE.md),
 launched via `mux-sandbox-suite.cmd` against the sandbox Hub host repo (see
 [sandbox-howto.md](../sandbox-howto.md)). The hermetic unit/golden tests and the
-opt-in `-tags smoke` test remain the automated layer; the suite's attach scenario is
-operator-assisted because attach is an interactive terminal takeover.
+opt-in `-tags smoke` tests remain the automated layer. Two paths long thought
+headless-unreachable are covered by smoke tests too: **attach** is driven inside a
+pane of a separate harness psmux server (a pane has a real ConPTY terminal;
+`PSMUX_SESSION` must be unset or psmux refuses to nest), whose `capture-pane` shows
+the attached session actually rendering — the suite's M7 attach scenario stays
+operator-assisted for the human visual check only; and **native `claude --resume`**
+is proven end-to-end by `TestSmokeClaudeResumeRecallsCodeword` (codeword → kill-server
+→ resume via the stored `claude --continue` → codeword recalled), which is exactly the
+env-hygiene + opaque-resumeCmd contract — it skips when no `claude` is on PATH and
+consumes a real (subscription) session when present.
 
 ## Completion and hooks live in shuttle, not mux
 
@@ -443,8 +474,18 @@ lyx mux resume:
   for each strand that is not live and not hidden:
     <(re)create its pane with clean server env>     (mux owns the server env)
     <re-run resumeCmd, or cmd if resumeCmd is unset>   # opaque; caller built it, mux just replays it
+    <persist + re-apply the layout>   # per launch, not once at the end — see below
   apply layout → re-persist pane ids
 ```
+
+Resume persists and re-applies the layout **after every individual launch**, for two
+reasons: (1) a launch that fails mid-loop must not leave earlier launched panes untracked
+(an unpersisted pane would be reaped as untracked by the next apply, or double-launched by
+the next resume) — the same persist-before-the-fragile-apply rule `AddStrand` follows; and
+(2) consecutive splits without a re-apply halve the same target pane until psmux silently
+refuses to split it — re-applying re-stretches the bottom pane so each launch splits the
+tallest pane the height policy just sized. `resumed` in the result counts the strands
+actually launched.
 
 **The one requirement — lyx must sanitize the psmux child env (mandatory):**
 `CLAUDE_CODE_CHILD_SESSION=1` (prime culprit), plus `CLAUDECODE`, `CLAUDE_CODE_SESSION_ID`,

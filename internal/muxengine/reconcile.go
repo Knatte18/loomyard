@@ -20,8 +20,10 @@ import "fmt"
 // occupies a slot in list-panes' output, so leaving it un-killed while
 // excluding its strand from the layout would make the layout string
 // enumerate fewer panes than psmux still holds (GAP2). The one exception is
-// enforced by the session-survival rule: killing the session's last pane
-// ends the session outright, so at least one pane must always survive. When
+// enforced by the session-survival rule: at least one pane must always
+// survive, since psmux offers no clean way to empty a window (under
+// remain-on-exit a last-pane kill corpses an alive pane rather than
+// refusing, and can end the session for a dead one — mux never asks). When
 // any pane is still alive, every dead pane is killable. When every pane is
 // dead, exactly one dead pane is kept (keptDeadPane) so the session — and
 // that strand's still-rebuildable record — survives until resume/remove; its

@@ -17,29 +17,75 @@ import (
 	"strings"
 )
 
-// planLaunch reports whether the next strand realized into a pane should
-// adopt the session's initial new-session pane rather than split a fresh
-// one. psmux's new-session always creates one initial shell pane; the
-// first strand into a fresh session adopts it (no other strand in st
-// currently holds a live pane binding), and every subsequent strand splits
-// a new pane. This is pure so the decision is unit-testable without psmux.
-func planLaunch(st *MuxState) (adopt bool) {
-	for _, s := range st.Strands {
+// planPaneTarget decides how the next strand realization obtains its pane:
+// adopt an existing pane (adoptID != "") or split off a target pane
+// (splitTargetID != ""). Exactly one of the two is non-empty on success.
+//
+// Adoption is the fresh-session case: no strand currently holds a pane
+// binding AND an alive (present, not pane_dead) pane exists — the first
+// alive pane in live, i.e. the new-session initial shell pane. A dead pane
+// is never adopted: psmux's display-message happily names a pane_dead=1
+// corpse as the active pane, and send-keys into a corpse exits 0 while
+// running nothing, so blind adoption silently swallows the strand's command.
+//
+// Every other realization splits. The split target is the tallest alive
+// pane (the stretch/active pane under mux's height policy, so always the
+// most splittable): psmux's split-window on a too-small pane fails
+// SILENTLY — exit 0, no new pane, and it prints an existing pane's id — so
+// the target must never be left to whatever pane happens to be active.
+// When no pane is alive (only the sole kept pane_dead corpse remains), the
+// tallest present pane is the target — splitting a dead pane works, and the
+// caller's reconcile tail reaps the corpse once the new pane is alive.
+// A session with no panes at all cannot host a strand and is an error.
+func planPaneTarget(strands []Strand, live []LivePane) (adoptID, splitTargetID string, err error) {
+	if len(live) == 0 {
+		return "", "", fmt.Errorf("session has no panes to adopt or split")
+	}
+
+	anyBound := false
+	for _, s := range strands {
 		if s.PaneID != "" {
-			return false
+			anyBound = true
+			break
 		}
 	}
-	return true
+	if !anyBound {
+		for _, p := range live {
+			if !p.Dead {
+				return p.ID, "", nil
+			}
+		}
+	}
+
+	splitTargetID = ""
+	tallestAlive := -1
+	for _, p := range live {
+		if !p.Dead && p.Height > tallestAlive {
+			tallestAlive = p.Height
+			splitTargetID = p.ID
+		}
+	}
+	if splitTargetID == "" {
+		// Every pane is dead: split off the (kept) corpse.
+		splitTargetID = live[0].ID
+	}
+	return "", splitTargetID, nil
 }
 
 // launchStrandLocked realizes s into a live psmux pane and runs launchCmd
 // in it: it adopts the session's initial new-session pane when no other
-// strand currently holds a live pane (planLaunch decides which), or splits
-// a fresh pane otherwise, captures the resulting pane id into s.PaneID, and
-// sends launchCmd via send-keys. It assumes the op lock is already held.
-// This is the single realization path add/surface/resume all share (GAP
-// A); it always makes a real psmux round trip, so no hermetic test calls it
-// directly with a non-hidden/surfacing strand.
+// strand currently holds a pane binding and that pane is alive, or splits
+// the tallest alive pane otherwise (planPaneTarget decides which), captures
+// the resulting pane id into s.PaneID, and sends launchCmd via send-keys.
+// A split whose reported pane id is not genuinely new (psmux's silent
+// too-small-to-split failure prints an existing pane's id with exit 0) is a
+// hard error — recording it would bind two strands to one pane, and the
+// next select-layout string would then carry a duplicate pane number, which
+// psmux answers by destroying the session's panes wholesale. It assumes the
+// op lock is already held. This is the single realization path
+// add/surface/resume all share (GAP A); it always makes a real psmux round
+// trip, so no hermetic test calls it directly with a non-hidden/surfacing
+// strand.
 //
 // s.PaneID is the only field this sets — there is no persisted "live" flag
 // to set alongside it (Strand carries none): once PaneID is populated and
@@ -49,19 +95,25 @@ func planLaunch(st *MuxState) (adopt bool) {
 func (e *Engine) launchStrandLocked(st *MuxState, s *Strand, launchCmd string) error {
 	session := e.SessionName()
 
-	var paneID string
-	if planLaunch(st) {
-		id, err := e.psmux.activePaneID(session)
-		if err != nil {
-			return fmt.Errorf("adopt new-session pane: %w", err)
-		}
-		paneID = id
-	} else {
-		out, err := e.psmux.output("split-window", "-t", session, "-P", "-F", "#{pane_id}")
+	live, err := e.psmux.listPanes(session)
+	if err != nil {
+		return fmt.Errorf("list panes: %w", err)
+	}
+	adoptID, splitTargetID, err := planPaneTarget(st.Strands, live)
+	if err != nil {
+		return err
+	}
+
+	paneID := adoptID
+	if paneID == "" {
+		out, err := e.psmux.output("split-window", "-t", splitTargetID, "-P", "-F", "#{pane_id}")
 		if err != nil {
 			return fmt.Errorf("split window: %w", err)
 		}
 		paneID = strings.TrimSpace(out)
+		if paneID == "" || liveIDSet(live)[paneID] {
+			return fmt.Errorf("split-window created no new pane (got %q; target %s likely too small to split)", paneID, splitTargetID)
+		}
 	}
 
 	s.PaneID = paneID
@@ -89,7 +141,6 @@ func (e *Engine) loadOrInitStateLocked() (*MuxState, error) {
 	}
 	if st == nil {
 		st = &MuxState{
-			Server:  e.Socket(),
 			Socket:  e.Socket(),
 			Session: e.SessionName(),
 		}

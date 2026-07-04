@@ -92,7 +92,7 @@ zero `WARN`/`FAIL` findings** -- in that case `items` is an empty array.
 
 - `source` is the literal string `"sandbox-report"`.
 - `items[]` holds only `WARN`/`FAIL` findings -- do not record `OK` scenarios here.
-- `ref` is the scenario id (`M0`-`M11`).
+- `ref` is the scenario id (`M0`-`M15`).
 - `title` is a short one-line summary.
 - `body` folds the detail, repro steps, and verdict into one markdown string.
 
@@ -255,6 +255,72 @@ strands.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
+---
+
+### M12 -- Layout survival under mixed adds
+
+**Goal:** "Build a busy session -- two top-anchored strands, then a parent strand,
+then a child under it -- and confirm every strand still has its own live pane."
+
+**Watch:** After all four `add`s, `lyx mux status` reports all four strands
+`live: true`, and `psmux -L <socket> list-panes` (controlled exception) shows exactly
+four panes with sane geometry (the two top strands as compact bands, the child as the
+dominant bottom pane). A pane count below four, an empty pane list, or a strand that
+flips to `live: false` after the next verb means a split/apply silently destroyed
+panes -- that is a `FAIL`, not cosmetics.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
+---
+
+### M13 -- Add after removing the last strand
+
+**Goal:** "Remove the session's only strand, then add a fresh one and prove its
+command actually runs."
+
+**Watch:** `lyx mux remove <guid>` on the sole strand succeeds; the following
+`lyx mux add --cmd <long-running command>` returns a guid, and the strand reads
+`live: true` in `status` **both immediately and again after one more verb** (e.g.
+`lyx mux up`) -- a strand that reads live once and then flips to `live: false` with an
+empty `paneId` adopted a dead leftover pane and its command never ran (`FAIL`).
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
+---
+
+### M14 -- Attach visual (operator or capture-assisted)
+
+**Goal:** "Confirm `lyx mux attach` actually renders the session's panes, not just
+that the command exits."
+
+**Watch:** With the overlay up and at least one strand added, `lyx mux attach` from a
+**second terminal** shows the strands' panes and the psmux status bar; `Ctrl+b d`
+detaches cleanly and the session keeps running (`lyx mux status` still lists it).
+Operator-assisted like M7. (The automated layer covers this headlessly:
+`TestSmokeAttachRendersInsideHarnessPane` drives attach inside a harness psmux pane
+and asserts the rendered content -- so a `FAIL` here is a visual/UX issue, not a
+correctness gap.)
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
+---
+
+### M15 -- Claude resume recall (needs a logged-in claude)
+
+**Goal:** "Prove a real agent's conversation survives a crash: launch claude in a
+strand, give it a codeword, crash the server, resume, and confirm the codeword comes
+back."
+
+**Watch:** `lyx mux add --cmd "claude '...codeword...'" --resume-cmd "claude
+--continue"`; after claude answers, `psmux -L <socket> kill-server` (controlled
+exception) simulates a crash; `lyx mux resume` replays `claude --continue` and the
+resumed pane recalls the codeword. If `claude --continue` reports **"No conversation
+found"**, env hygiene failed to let the transcript persist -- that is a `FAIL` (the one
+Claude-adjacent thing mux owns). Skip with a note if no claude is configured. (Covered
+headlessly by `TestSmokeClaudeResumeRecallsCodeword`.)
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
 ## Session log format
 
 After running all scenarios, record a short session summary:
@@ -275,6 +341,10 @@ M8: <OK|WARN|FAIL> -- <one-line note if not OK>
 M9: <OK|WARN|FAIL> -- <one-line note if not OK>
 M10: <OK|WARN|FAIL> -- <one-line note if not OK>
 M11: <OK|WARN|FAIL> -- <one-line note if not OK>
+M12: <OK|WARN|FAIL> -- <one-line note if not OK>
+M13: <OK|WARN|FAIL> -- <one-line note if not OK>
+M14: <OK|WARN|FAIL> -- <one-line note if not OK>
+M15: <OK|WARN|FAIL> -- <one-line note if not OK>
 
 sandbox-report.json written: <count of WARN/FAIL items>
 ```

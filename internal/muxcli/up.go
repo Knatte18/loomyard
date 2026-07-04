@@ -1,7 +1,8 @@
 // up.go implements the `up` and `down` mux verbs: up boots the substrate
-// (server + session) this worktree's strands render into, and down tears it
-// back down. Neither verb touches a strand's command — up never launches
-// one, and down deletes the whole persisted state along with the server.
+// (server + session) this worktree's strands render into, and down tears
+// this worktree's session and persisted state back down (the shared per-hub
+// server dies only when this was its last session). Neither verb touches a
+// strand's command — up never launches one.
 
 package muxcli
 
@@ -51,15 +52,17 @@ Example:
 	}
 }
 
-// downCmd builds the `down` subcommand: kills this hub's named psmux server
-// and clears this worktree's persisted strand state.
+// downCmd builds the `down` subcommand: kills this worktree's psmux session
+// and clears its persisted strand state.
 func (c *muxCLI) downCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "down",
-		Short: "kill the mux server and clear this worktree's strand state",
-		Long: `down kills this hub's named psmux server and deletes the persisted
-strand state for this worktree. down is idempotent: calling it again with
-no server up still succeeds.
+		Short: "kill this worktree's mux session and clear its strand state",
+		Long: `down kills this worktree's psmux session and deletes its persisted
+strand state. Sibling worktrees sharing the hub's server are untouched;
+when this was the server's last session, the now-empty server is shut down
+too (down waits until the server process has actually exited). down is
+idempotent: calling it again with no session up still succeeds.
 
 Example:
   lyx mux down`,

@@ -7,6 +7,7 @@
 package muxcli
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 
@@ -64,9 +65,18 @@ Example:
 
 			// Terminal-handover tail: stdio is now inherited by the child
 			// process, so this is the one documented exception to "every RunE
-			// ends in a JSON envelope" — the error return is intentionally
-			// discarded rather than written to an envelope no one can read.
-			_ = attach.Run()
+			// ends in a JSON envelope" — no JSON is written here even on
+			// failure (psmux's own stderr already reached the operator's
+			// terminal), but the child's exit code still propagates so a
+			// failed attach is not reported as success.
+			if err := attach.Run(); err != nil {
+				exitCode := 1
+				var exitErr *exec.ExitError
+				if errors.As(err, &exitErr) {
+					exitCode = exitErr.ExitCode()
+				}
+				clihelp.SetExit(cmd.Context(), exitCode)
+			}
 			return nil
 		},
 	}

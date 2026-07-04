@@ -125,7 +125,7 @@ Two state roots with opposite lifecycles:
   resume works across machines *because* its status is weft-synced.
 - **`.lyx/`** — **ephemeral, local, machine-bound.** Untracked (listed in
   `.git/info/exclude`, never `.gitignore`), changing constantly while a run is live. The live
-  psmux runtime state — [`mux`](modules/mux.md)'s `.lyx/mux.json` (the server/socket names + the
+  psmux runtime state — [`mux`](modules/mux.md)'s `.lyx/mux.json` (the socket/session names + the
   [strand](modules/mux.md#the-strand-model) table: each managed process, its session, parent,
   ephemeral pane id, and display spec) — goes here, because a pane ID or the psmux socket is
   meaningless on another machine. It is rebuilt by reconciling against live psmux on startup, never

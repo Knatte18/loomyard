@@ -34,15 +34,15 @@ type Strand struct {
 	Display   render.Display `json:"display"`
 }
 
-// MuxState is the persisted record for one hub's psmux server: the server
-// and socket name, the session this state file belongs to, the env keys
-// stripped at server-spawn time, and every strand across the session as a
-// flat, GUID-keyed list. The flat list is the v2 union seam — each strand
-// self-describes its own Worktree rather than being nested under a
-// per-worktree map, so a strand can be looked up or iterated without first
-// knowing which worktree owns it.
+// MuxState is the persisted record for one hub's psmux server: the socket
+// name (which doubles as the server name — one identity, stored once), the
+// session this state file belongs to, the env keys stripped at server-spawn
+// time (stamped when this worktree's op booted the server, for diagnosis),
+// and every strand across the session as a flat, GUID-keyed list. The flat
+// list is the v2 union seam — each strand self-describes its own Worktree
+// rather than being nested under a per-worktree map, so a strand can be
+// looked up or iterated without first knowing which worktree owns it.
 type MuxState struct {
-	Server      string   `json:"server"`
 	Socket      string   `json:"socket"`
 	Session     string   `json:"session"`
 	StrippedEnv []string `json:"strippedEnv"`

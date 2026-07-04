@@ -27,7 +27,6 @@ func TestSaveState_ThenLoadState_RoundTrips(t *testing.T) {
 	dotLyxDir := filepath.Join(t.TempDir(), ".lyx")
 
 	want := &MuxState{
-		Server:      "lyx-loomyard-HUB-abcd1234",
 		Socket:      "lyx-loomyard-HUB-abcd1234",
 		Session:     "internal-mux",
 		StrippedEnv: []string{"CLAUDECODE", "CLAUDE_CODE_SESSION_ID"},
@@ -73,7 +72,7 @@ func TestSaveState_ThenLoadState_RoundTrips(t *testing.T) {
 		t.Fatal("LoadState after SaveState = nil, want non-nil")
 	}
 
-	if got.Server != want.Server || got.Socket != want.Socket || got.Session != want.Session {
+	if got.Socket != want.Socket || got.Session != want.Session {
 		t.Errorf("top-level fields = %+v, want %+v", got, want)
 	}
 	if len(got.StrippedEnv) != len(want.StrippedEnv) {
@@ -91,7 +90,7 @@ func TestSaveState_ThenLoadState_RoundTrips(t *testing.T) {
 
 func TestLoadState_CorruptFileErrors(t *testing.T) {
 	dotLyxDir := filepath.Join(t.TempDir(), ".lyx")
-	if err := SaveState(dotLyxDir, &MuxState{Server: "s"}); err != nil {
+	if err := SaveState(dotLyxDir, &MuxState{Socket: "s"}); err != nil {
 		t.Fatalf("SaveState: %v", err)
 	}
 

@@ -380,8 +380,10 @@ func (e *Engine) RemoveStrand(guid string, recursive bool) (Removed, error) {
 		// select-layout to reap panes missing from the layout string (a
 		// psmux-only side effect; tmux would reject a mismatched layout
 		// instead). Best-effort: a pane may already be dead or gone, and
-		// psmux refuses to kill a session's last pane — the reconcile tail
-		// below re-enumerates and re-applies either way.
+		// killing a session's LAST pane does not remove it — under
+		// remain-on-exit psmux corpses it as pane_dead=1 (exit 0), keeping
+		// the session alive — the reconcile tail below re-enumerates and
+		// re-applies either way, and planPaneTarget never adopts a corpse.
 		for _, id := range paneIDs {
 			_ = e.psmux.run("kill-pane", "-t", id)
 		}

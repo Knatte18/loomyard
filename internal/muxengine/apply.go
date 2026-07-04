@@ -10,6 +10,7 @@ package muxengine
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/Knatte18/loomyard/internal/muxengine/render"
 )
@@ -43,19 +44,38 @@ func aliveIDSet(live []LivePane) map[string]bool {
 	return ids
 }
 
+// paneIDsByTop returns live's pane ids sorted by vertical position
+// (pane_top), top first — the window's actual top-to-bottom pane order,
+// which is the order psmux applies layout cells against (see render.Rules'
+// paneOrder contract). The sort is stable so panes reporting the same top
+// (which psmux does not produce for a vertical stack, but a corrupt
+// snapshot might) keep list-panes order.
+func paneIDsByTop(live []LivePane) []string {
+	sorted := make([]LivePane, len(live))
+	copy(sorted, live)
+	sort.SliceStable(sorted, func(i, j int) bool { return sorted[i].Top < sorted[j].Top })
+
+	ids := make([]string, len(sorted))
+	for i, p := range sorted {
+		ids[i] = p.ID
+	}
+	return ids
+}
+
 // planLayout computes the tmux window_layout string and focus pane id that
 // applyLayoutLocked would apply for st's current strand table against live,
 // without touching psmux. It maps every strand into render's projection via
 // toRenderStrands (render, not the engine, drops not-live/pane-less/hidden
 // strands from placement — GAP B, card 6) and calls render.Rules with
-// keyed struct fields.
+// keyed struct fields, handing it live's actual top-to-bottom pane order so
+// the emitted cells land on the panes they were sized for.
 func (e *Engine) planLayout(st *MuxState, live []LivePane) (layout, focus string, err error) {
 	strands := toRenderStrands(st.Strands, liveIDSet(live))
 	return render.Rules(strands, render.Box{X: 0, Y: 0, W: e.cfg.Width, H: e.cfg.Height}, render.Params{
 		TopBandRows:        e.cfg.TopBandRows,
 		CollapsedStripRows: e.cfg.CollapsedStripRows,
 		MinFullRows:        e.cfg.MinFullRows,
-	})
+	}, paneIDsByTop(live))
 }
 
 // applyLayoutLocked renders the current strand table into a tmux
