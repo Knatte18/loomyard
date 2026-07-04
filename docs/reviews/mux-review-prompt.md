@@ -105,31 +105,39 @@ worktree dir — a "no stray state" violation that surfaces in the smoke suite a
 `TempDir RemoveAll … \hub: The process cannot access the file because it is being used by another
 process`.
 
-The prior round fixed this for `down` ONLY: `Down` now snapshots this session's pane process
-SUBTREE (pane pids + transitive descendants via one Win32_Process pass) before `kill-session` and
-deadline-waits for it to exit (`reapPaneChildren`). `TestSmokeUpAddStatusDown` and the new
-`TestSmokeDownReapsPaneChildProcesses` now pass. That fix is correct — do not undo it.
+Two prior rounds have chipped at this and each left a residual — do NOT undo their work, GENERALIZE
+and HARDEN it:
+- Round 3 (Opus) reaped `down`: `Down` snapshots this session's pane process subtree before
+  `kill-session` and waits for it to exit.
+- Round 4 (Fable) factored a SHARED seam — `descendantClosurePIDs` + grace-waited `reapPaneChildren`
+  in `lifecycle.go`, which both `down` and `remove` now funnel through (`remove` seeds roots from
+  alive panes only), made the force-kill synchronous, and added
+  `TestSmokeRemoveReapsRemovedPaneChildProcesses`. The `remove` path and its targeted tests now
+  pass under concurrent load. This seam is the right factoring — build ON it.
 
-But independent verification under CONCURRENT load (3× the full smoke suite at once) shows the
-SAME race still fires in OTHER pane-destroying paths — reproduced in
-`TestSmokeRemoveLastStrandThenAddRunsTheNewCommand` and `TestSmokeDownReleasesServerBeforeReturning`
-(identical `\hub: being used by another process`). The reap is not general enough. RESOLVE this
-round:
-- `remove` (`RemoveStrand` → `kill-pane`) destroys a pane but does NOT reap that pane's child
-  subtree, so a removed strand's grandchild lingers holding the worktree dir. Every pane-destroying
-  path needs the same reap `down` got — at minimum `remove`; also weigh the `up`-after-`down` churn
-  boundary and the crash / `kill-server` recovery path.
-- Prefer factoring the reap into ONE helper that every pane-destroying path funnels through, rather
-  than bolting it onto each verb separately — decide the right seam (the existing
-  `paneProcessTreePIDsLocked` + `reapPaneChildren` are the building blocks).
-- Confirm the reap is robust UNDER LOAD: the deadline + force-kill must actually close the window
-  even when the Win32_Process probe is itself contended (a force-`Kill` on Windows is async, and a
-  killed process's dir-handle release can still lag). If the current 5s deadline / snapshot timing
-  is the weak point, fix it.
-- VERIFY by running the FULL smoke suite BOTH back-to-back AND CONCURRENTLY under load (e.g. 3×
-  `go test -tags smoke ./internal/muxcli/... -run Smoke` at once), never a single serial or
-  isolated run — a serial/isolated PASS is explicitly NOT proof; that is exactly how the prior
-  round's "merge-ready" verdict missed the remaining paths.
+But independent verification under 3× CONCURRENT full smoke suites still shows the race is NOT
+fully closed — reproduced in ~1/3 runs, now in `TestSmokeUpAddStatusDown` (at ~52s runtime — i.e.
+under severe CPU saturation the `down` reap's fixed deadline is too short and the grandchild
+outlives it) and `TestSmokeAttachRendersInsideHarnessPane`, AND **two stray `psmux` server
+processes survived teardown** (a concrete "no stray state" leak). RESOLVE this round:
+- Decide whether each residual failure is a REAL product defect or TEST-HARNESS fragility under an
+  artificial 3×-self-saturated machine, by tracing WHICH process holds the worktree dir at cleanup
+  and whether it is a mux-managed pane descendant or a test-only artifact (e.g. the Attach test
+  spins its own psmux harness that mux's `down`/`remove` reap does not cover). Fix the RIGHT layer:
+  do NOT over-engineer the product for an artificial test condition, but DO close any genuine leak.
+- The reap deadline is evidently too short under saturation: make the wait robust when the machine
+  is CPU-starved (the Win32_Process probe is itself slow then), rather than a fixed 5s.
+- The **stray-server leak** is real and product-side: under down→up churn a `psmux` server can
+  survive `down`. Enumerate and reap stray servers on the named socket (the building blocks
+  `serverProcessesOnSocket` / `serverPIDLocked` exist) so `down` provably leaves zero psmux for its
+  socket.
+- AFTER the fix, update every artifact the fix makes stale IN THE SAME change: the module doc's
+  psmux "what actually works" guardrails, the smoke tests, the sandbox suite `M`-scenarios, and
+  `CONSTRAINTS.md` if an invariant moves (the Documentation Lifecycle is not optional).
+- VERIFY by running the FULL smoke suite 3× CONCURRENTLY several times — zero `\hub: being used`
+  race markers AND zero stray `psmux` at teardown (`tasklist | grep -i psmux`). A serial or single
+  concurrent PASS is explicitly NOT proof; that is how each prior round's "merge-ready" verdict
+  missed its residual.
 
 ## What to TEST — do not just read, EXERCISE it
 Report the exact commands you ran and what you observed.
