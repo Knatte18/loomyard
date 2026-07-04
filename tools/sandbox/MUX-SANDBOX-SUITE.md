@@ -251,7 +251,12 @@ subtree and the result JSON lists every removed strand.
 **Watch:** `lyx mux down` kills the server and clears the worktree's strand state;
 `psmux -L <socket> ls` (controlled exception) confirms no server survives, and a
 follow-up `lyx mux status` reports the friendly no-session error rather than stale
-strands.
+strands. "No stray state" also means **no pane process survives**: `down` waits for this
+session's whole pane process subtree to exit before returning, so immediately after `down`
+no leftover shell keeps the worktree directory busy (checkable by confirming the worktree
+dir can be renamed/removed, or that the pre-`down` `#{pane_pid}` values and their
+descendants are gone from `tasklist`). Covered headlessly by
+`TestSmokeDownReapsPaneChildProcesses`.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 

@@ -285,7 +285,7 @@ substrate-only; `resume` is the only replayer.**
 | `lyx mux status` | **Read-only** cross-reference of `.lyx/mux.json` strands against the named server's live `list-panes`: report **this session's** tracked strands and their live/dead state, where **live means present *and* not `pane_dead`** (a crashed strand reads `live:false`). Unlike the mutating verbs, `status` does **not** reconcile (it never kills dead panes or rewrites bindings) and does **not** re-apply the layout — a query must not move focus or mutate state; the next mutating verb persists any correction. v1 does **not** actively enumerate stray/orphan psmux servers (a reliable listing on Windows is unverified) — the named server still provides the orphan-firewall property, `status` just doesn't scan for it yet. |
 | `lyx mux attach` | `psmux attach` to this worktree's session **in the operator's current terminal, in place** (no popped window) — see the [envelope exception](#attach-is-a-documented-envelope-exception) below. |
 | `lyx mux resume` | For every persisted strand that is **not live and not `hidden`**, (re)create its pane and run its stored `resumeCmd` (or `cmd` if it has none). Already-live strands are left untouched (no double send-keys); `hidden` strands are skipped (pending, not dead). Boots the server+session first if absent; after a **server rebirth** it clears every stale pane binding first, so a reborn session's reused pane ids are never mistaken for live strands. |
-| `lyx mux down` | Kill **this worktree's session** (`kill-session`, never the shared per-hub server — sibling worktrees keep running) and clear this worktree's strand state. When this was the server's last session, the now-empty server is cleaned up too — and `down` **waits until the server process has actually exited** before returning (psmux's `kill-server` is asynchronous; returning early let an immediate `up` spawn a duplicate server process on the same socket, whose loser lingered as an unreachable stray). |
+| `lyx mux down` | Kill **this worktree's session** (`kill-session`, never the shared per-hub server — sibling worktrees keep running) and clear this worktree's strand state. When this was the server's last session, the now-empty server is cleaned up too — and `down` **waits until the server process has actually exited** before returning (psmux's `kill-server` is asynchronous; returning early let an immediate `up` spawn a duplicate server process on the same socket, whose loser lingered as an unreachable stray). `down` **also waits for this session's pane process subtrees to exit** (psmux terminates pane children asynchronously, and on Windows the process holding the worktree directory is a deeper descendant of `#{pane_pid}`) so it never returns leaving a pane grandchild alive and the worktree dir busy. |
 
 `UpdateStrand` is engine-API-only — there is no `lyx mux update` verb in v1. Callers (`shuttle`,
 `loom`, `review`) drive `AddStrand`/`UpdateStrand`/`RemoveStrand` in-process through the
@@ -389,6 +389,14 @@ These are the tested facts any implementation must respect. Full evidence in
 - **psmux normalizes applied heights off-by-one.** A band/strip emitted as N rows
   consistently materializes as N+1 in `list-panes` (e.g. `top_band_rows: 1` shows height 2).
   Cosmetic psmux normalization — not a mux bug; do not chase it.
+- **`#{pane_pid}` is the pane's *launcher*, not the process holding the pane's cwd.** On
+  Windows psmux nests the real shell (and whatever it runs) *below* the pane's immediate
+  child process, so the process whose cwd is the worktree is a deeper descendant of
+  `#{pane_pid}`. psmux tears the whole subtree down asynchronously on `kill-session`/
+  `kill-server`, so `down` reaps this session's entire pane **process subtree** (the pane
+  pids plus their transitive descendants, resolved in one `Win32_Process` pass) and waits
+  for them to exit — otherwise a lagging grandchild keeps the worktree directory busy after
+  `down` already reported a clean teardown.
 
 ## Manual test surface: the mux sandbox suite
 

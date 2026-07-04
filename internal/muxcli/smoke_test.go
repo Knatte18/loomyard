@@ -525,6 +525,105 @@ func TestSmokeDownReleasesServerBeforeReturning(t *testing.T) {
 	}
 }
 
+// paneProcessTree returns the OS pids of the session's pane child processes
+// AND their full descendant subtrees. #{pane_pid} names only the pane's
+// immediate launcher; on Windows the process actually holding the worktree
+// directory is a deeper descendant, so the reap-correctness assertion must
+// track the whole subtree, computed here with the same Win32_Process closure
+// the engine uses.
+func paneProcessTree(t *testing.T, psmuxPath, pwshPath, socket, session string) []int {
+	t.Helper()
+	out, err := exec.Command(psmuxPath, "-L", socket, "list-panes", "-t", session, "-F", "#{pane_pid}").Output()
+	if err != nil {
+		t.Fatalf("list-panes #{pane_pid}: %v", err)
+	}
+	var roots []string
+	for _, l := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if l = strings.TrimSpace(l); l != "" {
+			if _, perr := strconv.Atoi(l); perr != nil {
+				t.Fatalf("parse pane pid %q: %v", l, perr)
+			}
+			roots = append(roots, l)
+		}
+	}
+	if len(roots) == 0 {
+		return nil
+	}
+	script := fmt.Sprintf(`$roots=@(%s)
+$all=Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId
+$acc=New-Object System.Collections.Generic.HashSet[int]
+foreach($r in $roots){[void]$acc.Add([int]$r)}
+$changed=$true
+while($changed){$changed=$false;foreach($p in $all){if($acc.Contains([int]$p.ParentProcessId) -and -not $acc.Contains([int]$p.ProcessId)){[void]$acc.Add([int]$p.ProcessId);$changed=$true}}}
+$acc`, strings.Join(roots, ","))
+	treeOut, err := exec.Command(pwshPath, "-NoProfile", "-NonInteractive", "-Command", script).Output()
+	if err != nil {
+		t.Fatalf("compute pane process tree: %v", err)
+	}
+	var pids []int
+	for _, l := range strings.Split(strings.TrimSpace(string(treeOut)), "\n") {
+		if l = strings.TrimSpace(l); l != "" {
+			pid, perr := strconv.Atoi(l)
+			if perr != nil {
+				t.Fatalf("parse subtree pid %q: %v", l, perr)
+			}
+			pids = append(pids, pid)
+		}
+	}
+	return pids
+}
+
+// TestSmokeDownReapsPaneChildProcesses pins the pane-child reaping gap this
+// round fixed: psmux terminates pane children asynchronously, so a down that
+// waited only on the server process could return while a pane's shell subtree
+// (a deep descendant whose cwd is the worktree) was still alive — a "no stray
+// state" violation that surfaced as a worktree-dir-in-use failure under load.
+// down now waits for this session's whole pane process subtree to exit before
+// returning, so the instant down returns every pane descendant must be gone.
+// Loops several add->down cycles to give the async teardown a chance to lag.
+func TestSmokeDownReapsPaneChildProcesses(t *testing.T) {
+	psmuxPath := psmuxBinaryPath(t)
+
+	fixture := lyxtest.CopyPaired(t)
+	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
+		"mux": muxengine.ConfigTemplate(),
+	})
+	t.Chdir(fixture.Hub)
+	t.Cleanup(func() {
+		var buf bytes.Buffer
+		RunCLI(&buf, []string{"down"})
+	})
+
+	pwshPath := `C:\Code\tools\powershell7\pwsh.exe`
+	launch := "pwsh -NoExit -Command Write-Host ready"
+	for cycle := 0; cycle < 3; cycle++ {
+		var out bytes.Buffer
+		if code := RunCLI(&out, []string{"up"}); code != 0 {
+			t.Fatalf("cycle %d up = %d; want 0, output: %s", cycle, code, out.String())
+		}
+		addStrand(t, launch, "--name", "reap")
+		addStrand(t, launch, "--name", "reap2")
+		socket, session := socketAndSession(t)
+		pids := paneProcessTree(t, psmuxPath, pwshPath, socket, session)
+		if len(pids) == 0 {
+			t.Fatalf("cycle %d: session reported no pane process subtree", cycle)
+		}
+
+		out.Reset()
+		if code := RunCLI(&out, []string{"down"}); code != 0 {
+			t.Fatalf("cycle %d down = %d; want 0, output: %s", cycle, code, out.String())
+		}
+		// No sleep: every pane descendant must already be gone the instant down
+		// returned. processGone reuses the same non-child Wait probe the
+		// server-pid test uses.
+		for _, pid := range pids {
+			if !processGone(pid) {
+				t.Fatalf("cycle %d: pane subtree pid %d still running immediately after down returned", cycle, pid)
+			}
+		}
+	}
+}
+
 // capturePane returns the rendered content of the target pane on socket via
 // capture-pane -p (a controlled psmux exception, like listPaneLines).
 func capturePane(t *testing.T, psmuxPath, socket, target string) string {
