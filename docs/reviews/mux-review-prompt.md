@@ -93,6 +93,35 @@ Claude Code hooks (Stop/SessionStart/PreToolUse, marker/idle detection, resume-c
 construction) belong to `shuttle`, not mux. Their absence is correct — do not flag it. mux is a
 dumb carrier: it runs opaque command strings and its only liveness signal is generic `pane-died`.
 
+## Known open issue seeded from prior-round verification — resolve or confirm-fixed this round
+Independent verification of the prior round's fixes (commit `f6eb06b`) found the smoke suite is
+NOT deterministic under back-to-back load — the very bar this prompt demands. Treat this as a
+first-class finding to diagnose and RESOLVE this round (do not merely re-observe it):
+
+- Symptom: `TestSmokeUpAddStatusDown` fails REPRODUCIBLY as the FIRST test of a full back-to-back
+  smoke run (`go test -tags smoke ./internal/muxcli/... -run Smoke -v -count=1`) but PASSES in
+  isolation. The failure is Go's automatic `t.TempDir()` cleanup, not a test-body assertion:
+  `TempDir RemoveAll cleanup: unlinkat …\hub: The process cannot access the file because it is
+  being used by another process`.
+- Root observed: a pane grandchild process (`pwsh -NoExit`, cwd = the temp hub) outlives
+  `lyx mux down` and still holds the hub-dir handle when Go's TempDir RemoveAll fires.
+  `TestSmokeRemoveLastStrandThenAddRunsTheNewCommand` has an identical teardown yet passes — so
+  this is a timing RACE, not a missing helper.
+- The question you MUST decide (it changes the fix): is this
+  (a) pure test-teardown hygiene — the test / `lyxtest` cleanup does not wait for pane child
+      processes to exit before the temp dir is removed; or
+  (b) a real product gap — `down` was made synchronous w.r.t. the server SOCKET (the prior
+      round's F4 fix) but NOT w.r.t. the pane CHILD processes, so agent grandchildren can outlive
+      a `down` that reports everything torn down (an F4-adjacent "no stray state" violation).
+  Determine which by driving it live (watch the `pwsh` grandchild's lifetime relative to `down`
+  returning). If (b), fix the product: `down` / teardown must reap pane child processes
+  deterministically (or the "no stray state" guarantee is documented AND enforced). If (a),
+  harden the test / `lyxtest` teardown to wait for child-process release (deadline poll), matching
+  the determinism discipline in "Fixing" below.
+- Verify the fix by running the FULL smoke suite back-to-back several times under load (NOT the
+  test in isolation) — a single isolated PASS is explicitly NOT proof; that is how this slipped
+  through the prior round.
+
 ## What to TEST — do not just read, EXERCISE it
 Report the exact commands you ran and what you observed.
 
