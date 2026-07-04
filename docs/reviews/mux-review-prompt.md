@@ -97,47 +97,58 @@ construction) belong to `shuttle`, not mux. Their absence is correct — do not 
 dumb carrier: it runs opaque command strings and its only liveness signal is generic `pane-died`.
 
 ## Known open issue seeded from prior-round verification — resolve or confirm-fixed this round
-psmux terminates a pane's child processes ASYNCHRONOUSLY when a pane is destroyed; on Windows the
-process that actually holds the worktree directory is a DEEP descendant of the pane pid (the
-`#{pane_pid}` is only a WindowsApps launcher stub — the real `pwsh` and whatever it launched nest
-below it). So any mux verb that destroys a pane can return while a grandchild still holds the
-worktree dir — a "no stray state" violation that surfaces in the smoke suite as
-`TempDir RemoveAll … \hub: The process cannot access the file because it is being used by another
-process`.
+The stray-state race that rounds 3→4→5 chased is now CLOSED for the case that matters — do NOT
+re-open or re-litigate it, and do NOT undo prior work; the seam is correct, BUILD ON IT:
+- Round 3 (Opus) reaped `down`: snapshot the pane process subtree before `kill-session`, wait for exit.
+- Round 4 (Fable) factored the SHARED seam — `descendantClosurePIDs` + grace-waited `reapPaneChildren`
+  in `lifecycle.go`, funnelled by both `down` and `remove` (`strand.go`); synchronous force-kill;
+  `TestSmokeRemoveReapsRemovedPaneChildProcesses`.
+- Round 5 (Opus) traced the ACTUAL worktree-dir holder by reading each process's cwd from its PEB and
+  split the residual in two: (1) PRODUCT — `down`'s fixed 5s server-wait timed out under saturation
+  and returned early, SKIPPING the reap and LEAKING the psmux server (spawned with no `cmd.Dir`, so
+  its cwd is the worktree hub) plus its `__warm__` and pane children; fixed so `down` ALWAYS reaps
+  and `ensureServerGoneLocked` force-reaps every psmux on the socket and CONFIRMS it is clear, with
+  saturation-tolerant confirmation-based deadlines (`reapExitTimeout`). (2) TEST-HARNESS — once the
+  server leak was gone, the remaining `\hub` holder was `conhost.exe`, the OS ConPTY host (cwd=hub,
+  NOT a `#{pane_pid}` descendant, exits on its own); handled test-side with `deferHubRelease` + the
+  attach test reaping its own harness subtree; added `TestSmokeDownLeavesNoPsmuxOnSocket`.
 
-Two prior rounds have chipped at this and each left a residual — do NOT undo their work, GENERALIZE
-and HARDEN it:
-- Round 3 (Opus) reaped `down`: `Down` snapshots this session's pane process subtree before
-  `kill-session` and waits for it to exit.
-- Round 4 (Fable) factored a SHARED seam — `descendantClosurePIDs` + grace-waited `reapPaneChildren`
-  in `lifecycle.go`, which both `down` and `remove` now funnel through (`remove` seeds roots from
-  alive panes only), made the force-kill synchronous, and added
-  `TestSmokeRemoveReapsRemovedPaneChildProcesses`. The `remove` path and its targeted tests now
-  pass under concurrent load. This seam is the right factoring — build ON it.
+Independent verification CONFIRMS the product fix: across 3× concurrent full smoke suites **zero
+stray psmux survived teardown** (was 2 before R5), and serial `-count=5` of the reap tests is 5/5
+CLEAN. The correctness well is DRY — there is no remaining async race that leaks mux-managed state.
+Do NOT re-fix this; do NOT add more product reaping for it.
 
-But independent verification under 3× CONCURRENT full smoke suites still shows the race is NOT
-fully closed — reproduced in ~1/3 runs, now in `TestSmokeUpAddStatusDown` (at ~52s runtime — i.e.
-under severe CPU saturation the `down` reap's fixed deadline is too short and the grandchild
-outlives it) and `TestSmokeAttachRendersInsideHarnessPane`, AND **two stray `psmux` server
-processes survived teardown** (a concrete "no stray state" leak). RESOLVE this round:
-- Decide whether each residual failure is a REAL product defect or TEST-HARNESS fragility under an
-  artificial 3×-self-saturated machine, by tracing WHICH process holds the worktree dir at cleanup
-  and whether it is a mux-managed pane descendant or a test-only artifact (e.g. the Attach test
-  spins its own psmux harness that mux's `down`/`remove` reap does not cover). Fix the RIGHT layer:
-  do NOT over-engineer the product for an artificial test condition, but DO close any genuine leak.
-- The reap deadline is evidently too short under saturation: make the wait robust when the machine
-  is CPU-starved (the Win32_Process probe is itself slow then), rather than a fixed 5s.
-- The **stray-server leak** is real and product-side: under down→up churn a `psmux` server can
-  survive `down`. Enumerate and reap stray servers on the named socket (the building blocks
-  `serverProcessesOnSocket` / `serverPIDLocked` exist) so `down` provably leaves zero psmux for its
-  socket.
-- AFTER the fix, update every artifact the fix makes stale IN THE SAME change: the module doc's
-  psmux "what actually works" guardrails, the smoke tests, the sandbox suite `M`-scenarios, and
-  `CONSTRAINTS.md` if an invariant moves (the Documentation Lifecycle is not optional).
-- VERIFY by running the FULL smoke suite 3× CONCURRENTLY several times — zero `\hub: being used`
-  race markers AND zero stray `psmux` at teardown (`tasklist | grep -i psmux`). A serial or single
-  concurrent PASS is explicitly NOT proof; that is how each prior round's "merge-ready" verdict
-  missed its residual.
+What independent verification STILL catches under 3× CONCURRENT full suites (~2/3 runs) is a
+DIFFERENT class — pure TIMEOUT-UNDER-CPU-SATURATION, proven by the 5/5 serial pass:
+- `TestSmokeDownReapsPaneChildProcesses` fails only on the framework's `TempDir RemoveAll` because
+  `conhost.exe` held the hub PAST `deferHubRelease`'s fixed 30s deadline when three suites peg the
+  CPU (the OS teardown is starved — not a mux leak; no psmux survived).
+- `up` itself sometimes fails: `psmux session did not start after 2 attempts of 20s` — boot starved
+  under the CPU peg (real single-instance boot is ~1–2s).
+
+RESOLVE this round — make the 3×-concurrent gate MEANINGFUL again without masking a real leak:
+- FIRST re-confirm the split still holds on the CURRENT tree: reproduce a 3×-concurrent failure and
+  trace WHAT holds the hub at cleanup (cwd-from-PEB, as R5 did). If it is genuinely `conhost.exe`
+  (OS-parented, and `tasklist | grep -i psmux` shows ZERO on the socket), it is NOT a product leak —
+  do NOT reap it in the product. If it is EVER a live mux pane descendant or a psmux on the socket,
+  THAT is a real leak and you fix the product.
+- Make the TEST HARNESS saturation-tolerant so the gate measures CORRECTNESS-under-concurrency, not
+  SPEED-under-a-CPU-peg: give `deferHubRelease` a saturation-tolerant, confirmation-based deadline
+  (like the product reap already has) instead of a fixed 30s, and make the smoke `up` in the tests
+  tolerant of a starved machine (more attempts / longer per-attempt when suites contend) — WITHOUT
+  hiding a genuine boot regression and WITHOUT weakening any stray-state assertion.
+- Also evaluate COST: `TestSmokeDownReapsPaneChildProcesses` now takes 38–54s even SERIALLY, driven
+  by `reapExitTimeout`=15s / `forceKillExitGrace`=5s. Confirm these ceilings are no larger than a
+  correct confirmation-based reap needs — a reap that CONFIRMS the socket is clear should return fast
+  in the common case and only approach the ceiling under real starvation. Do not make `down` slower
+  than it must be.
+- AFTER the fix, update every artifact it makes stale IN THE SAME change: the module doc's psmux
+  guardrails, the smoke tests, the sandbox suite `M`-scenarios, and `CONSTRAINTS.md` if an invariant
+  moves (the Documentation Lifecycle is not optional).
+- VERIFY by running the FULL smoke suite 3× CONCURRENTLY several times AND serial `-count=5` — zero
+  `\hub: being used` race markers, zero stray `psmux` at teardown (`tasklist | grep -i psmux`), zero
+  `did not start` boot failures. A serial or single concurrent PASS is explicitly NOT proof; that is
+  how each prior round's "merge-ready" verdict missed its residual.
 
 ## What to TEST — do not just read, EXERCISE it
 Report the exact commands you ran and what you observed.
