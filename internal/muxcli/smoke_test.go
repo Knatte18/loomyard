@@ -58,6 +58,7 @@ func TestSmokeUpAddStatusDown(t *testing.T) {
 	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
 		"mux": muxengine.ConfigTemplate(),
 	})
+	deferHubRelease(t, fixture.Hub)
 	t.Chdir(fixture.Hub)
 
 	// Always attempt to tear the server down, even if an assertion below
@@ -152,6 +153,7 @@ func TestSmokeCrashRecovery(t *testing.T) {
 	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
 		"mux": muxengine.ConfigTemplate(),
 	})
+	deferHubRelease(t, fixture.Hub)
 	t.Chdir(fixture.Hub)
 	t.Cleanup(func() {
 		var buf bytes.Buffer
@@ -345,6 +347,7 @@ func TestSmokeTopBandsThenStackAddsKeepEverySessionPane(t *testing.T) {
 	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
 		"mux": muxengine.ConfigTemplate(),
 	})
+	deferHubRelease(t, fixture.Hub)
 	t.Chdir(fixture.Hub)
 	t.Cleanup(func() {
 		var buf bytes.Buffer
@@ -400,6 +403,7 @@ func TestSmokeRemoveLastStrandThenAddRunsTheNewCommand(t *testing.T) {
 	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
 		"mux": muxengine.ConfigTemplate(),
 	})
+	deferHubRelease(t, fixture.Hub)
 	t.Chdir(fixture.Hub)
 	t.Cleanup(func() {
 		var buf bytes.Buffer
@@ -493,6 +497,7 @@ func TestSmokeDownReleasesServerBeforeReturning(t *testing.T) {
 	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
 		"mux": muxengine.ConfigTemplate(),
 	})
+	deferHubRelease(t, fixture.Hub)
 	t.Chdir(fixture.Hub)
 	t.Cleanup(func() {
 		var buf bytes.Buffer
@@ -588,6 +593,7 @@ func TestSmokeDownReapsPaneChildProcesses(t *testing.T) {
 	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
 		"mux": muxengine.ConfigTemplate(),
 	})
+	deferHubRelease(t, fixture.Hub)
 	t.Chdir(fixture.Hub)
 	t.Cleanup(func() {
 		var buf bytes.Buffer
@@ -624,6 +630,50 @@ func TestSmokeDownReapsPaneChildProcesses(t *testing.T) {
 	}
 }
 
+// TestSmokeDownLeavesNoPsmuxOnSocket pins the stray-server guarantee down's
+// robust teardown owns: after down tears the shared server down, ZERO psmux
+// process may still name this worktree's socket — not the main server, not its
+// __warm__ helper. The psmux server is spawned with the worktree as its cwd, so
+// a server that outlives down keeps the worktree directory busy (a real "no
+// stray state" leak observed under down->up churn on a saturated machine, where
+// a fixed-deadline server wait timed out and aborted down before the socket was
+// cleared). Several add->down cycles give the async kill-server a chance to lag.
+func TestSmokeDownLeavesNoPsmuxOnSocket(t *testing.T) {
+	psmuxBinaryPath(t)
+	pwshPath := `C:\Code\tools\powershell7\pwsh.exe`
+
+	fixture := lyxtest.CopyPaired(t)
+	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
+		"mux": muxengine.ConfigTemplate(),
+	})
+	deferHubRelease(t, fixture.Hub)
+	t.Chdir(fixture.Hub)
+	t.Cleanup(func() {
+		var buf bytes.Buffer
+		RunCLI(&buf, []string{"down"})
+	})
+
+	launch := "pwsh -NoExit -Command Write-Host ready"
+	for cycle := 0; cycle < 3; cycle++ {
+		var out bytes.Buffer
+		if code := RunCLI(&out, []string{"up"}); code != 0 {
+			t.Fatalf("cycle %d up = %d; want 0, output: %s", cycle, code, out.String())
+		}
+		socket, _ := socketAndSession(t)
+		addStrand(t, launch, "--name", "s1")
+		addStrand(t, launch, "--name", "s2")
+
+		out.Reset()
+		if code := RunCLI(&out, []string{"down"}); code != 0 {
+			t.Fatalf("cycle %d down = %d; want 0, output: %s", cycle, code, out.String())
+		}
+		// No sleep: the moment down returns, the socket must be free of psmux.
+		if pids := psmuxSocketPids(t, pwshPath, socket); len(pids) != 0 {
+			t.Fatalf("cycle %d: psmux still on socket %s after down returned: pids=%v", cycle, socket, pids)
+		}
+	}
+}
+
 // TestSmokeRemoveReapsRemovedPaneChildProcesses pins the reap gap this round
 // generalized from down to remove: kill-pane on a removed strand's pane
 // terminates that pane's children asynchronously, and on Windows the process
@@ -642,6 +692,7 @@ func TestSmokeRemoveReapsRemovedPaneChildProcesses(t *testing.T) {
 	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
 		"mux": muxengine.ConfigTemplate(),
 	})
+	deferHubRelease(t, fixture.Hub)
 	t.Chdir(fixture.Hub)
 	t.Cleanup(func() {
 		var buf bytes.Buffer
@@ -758,6 +809,132 @@ $acc`, root)
 	return pids
 }
 
+// deferHubRelease registers a cleanup that blocks until the fixture hub
+// directory is releasable, so the framework's TempDir RemoveAll — which runs
+// AFTER this cleanup — does not race the OS's asynchronous ConPTY teardown and
+// fail with a worktree-dir-in-use error under load. The lingering holder is the
+// conhost.exe the OS parents to psmux to host each pane's pseudo-console: mux
+// never spawns it directly and it exits on its own moments after the pane dies,
+// so reaping it is NOT mux's job (a dying OS console host is not stray agent
+// state) — the test simply waits it out. Registered before t.Chdir and the down
+// cleanup so it runs AFTER them (cwd already restored out of hub) but BEFORE
+// RemoveAll. Best-effort: if the hub is somehow still held after a generous
+// deadline, it returns and lets RemoveAll surface the real error.
+func deferHubRelease(t *testing.T, hub string) {
+	t.Helper()
+	t.Cleanup(func() {
+		// A process cannot rename its own cwd; make sure ours is not in hub
+		// while probing, then restore it so a later test's cwd-relative work
+		// (e.g. buildLyxBinary resolving the module root) is not corrupted.
+		prev, _ := os.Getwd()
+		_ = os.Chdir(os.TempDir())
+		probe := hub + ".relprobe"
+		deadline := time.Now().Add(30 * time.Second)
+		for {
+			if err := os.Rename(hub, probe); err == nil {
+				_ = os.Rename(probe, hub)
+				break
+			}
+			if time.Now().After(deadline) {
+				break
+			}
+			time.Sleep(200 * time.Millisecond)
+		}
+		// Restore the original cwd only when it is outside hub (the normal
+		// case, since t.Chdir's own restore has already run by now); never
+		// chdir back into a hub that is about to be removed.
+		if prev != "" && !strings.HasPrefix(strings.ToLower(prev), strings.ToLower(hub)) {
+			_ = os.Chdir(prev)
+		}
+	})
+}
+
+// psmuxSocketPids returns the OS pids of every psmux.exe process whose command
+// line names the given -L socket (the server plus its __warm__ helper),
+// enumerated through the Windows process table — the same reliable signal
+// muxengine.serverProcessesOnSocket uses, reproduced here so the harness reap
+// can find its private server without a mux engine handle.
+func psmuxSocketPids(t *testing.T, pwshPath, socket string) []int {
+	t.Helper()
+	script := fmt.Sprintf(
+		`(Get-CimInstance Win32_Process -Filter "Name='psmux.exe'" | Where-Object { $_.CommandLine -match [regex]::Escape('-L %s') }).ProcessId`,
+		socket)
+	out, err := exec.Command(pwshPath, "-NoProfile", "-NonInteractive", "-Command", script).Output()
+	if err != nil {
+		return nil
+	}
+	var pids []int
+	for _, l := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if p, perr := strconv.Atoi(strings.TrimSpace(l)); perr == nil && p > 0 {
+			pids = append(pids, p)
+		}
+	}
+	return pids
+}
+
+// pidClosure expands roots to roots-plus-their-transitive-descendant pids in
+// one Win32_Process pass — the same descendant-closure the engine's reap uses,
+// so a harness reap can cover the pane shells nested below its server.
+func pidClosure(t *testing.T, pwshPath string, roots []int) []int {
+	t.Helper()
+	if len(roots) == 0 {
+		return nil
+	}
+	lits := make([]string, len(roots))
+	for i, p := range roots {
+		lits[i] = strconv.Itoa(p)
+	}
+	script := fmt.Sprintf(`$roots=@(%s)
+$all=Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId
+$acc=New-Object System.Collections.Generic.HashSet[int]
+foreach($r in $roots){[void]$acc.Add([int]$r)}
+$changed=$true
+while($changed){$changed=$false;foreach($p in $all){if($acc.Contains([int]$p.ParentProcessId) -and -not $acc.Contains([int]$p.ProcessId)){[void]$acc.Add([int]$p.ProcessId);$changed=$true}}}
+$acc`, strings.Join(lits, ","))
+	out, err := exec.Command(pwshPath, "-NoProfile", "-NonInteractive", "-Command", script).Output()
+	if err != nil {
+		return roots
+	}
+	var pids []int
+	for _, l := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if p, perr := strconv.Atoi(strings.TrimSpace(l)); perr == nil && p > 0 {
+			pids = append(pids, p)
+		}
+	}
+	if len(pids) == 0 {
+		return roots
+	}
+	return pids
+}
+
+// reapHarnessServer tears down the test's private harness psmux server and
+// waits for its whole process subtree (the server, its __warm__ helper, and the
+// pane shells whose cwd is the fixture hub) to actually exit before returning.
+// The harness is the test's own scaffolding, not a mux-managed session, so
+// mux's down reap never covers it; without this wait its async teardown can
+// outlive the framework's TempDir cleanup and leave the fixture hub dir busy
+// under load. It snapshots the subtree BEFORE kill-server (while the processes
+// still exist to enumerate), kills the server, then polls each pid to genuine
+// exit, force-killing any straggler that outlives a generous deadline.
+func reapHarnessServer(t *testing.T, psmuxPath, pwshPath, socket string) {
+	t.Helper()
+	subtree := pidClosure(t, pwshPath, psmuxSocketPids(t, pwshPath, socket))
+	_ = exec.Command(psmuxPath, "-L", socket, "kill-server").Run()
+	deadline := time.Now().Add(20 * time.Second)
+	for _, pid := range subtree {
+		for !processGone(pid) {
+			if time.Now().After(deadline) {
+				if p, err := os.FindProcess(pid); err == nil {
+					_ = p.Kill()
+				}
+				time.Sleep(500 * time.Millisecond)
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
+}
+
 // capturePane returns the rendered content of the target pane on socket via
 // capture-pane -p (a controlled psmux exception, like listPaneLines).
 func capturePane(t *testing.T, psmuxPath, socket, target string) string {
@@ -836,6 +1013,7 @@ func TestSmokeAttachRendersInsideHarnessPane(t *testing.T) {
 	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
 		"mux": muxengine.ConfigTemplate(),
 	})
+	deferHubRelease(t, fixture.Hub)
 	t.Chdir(fixture.Hub)
 	t.Cleanup(func() {
 		var buf bytes.Buffer
@@ -856,8 +1034,15 @@ func TestSmokeAttachRendersInsideHarnessPane(t *testing.T) {
 		`C:\Code\tools\powershell7\pwsh.exe`).Run(); err != nil {
 		t.Fatalf("boot harness server: %v", err)
 	}
+	// Reap the harness server's WHOLE process subtree before the framework's
+	// TempDir cleanup runs. The harness is this test's own scaffolding, spawned
+	// with cwd = the fixture hub, so its server + __warm__ helper + pane shells
+	// all keep the fixture hub directory busy; mux's own down reap never covers
+	// a foreign harness socket. Without this wait the harness's async teardown
+	// can outlive TempDir's RemoveAll under load and fail it with a
+	// worktree-dir-in-use error — a test-harness artifact, not a mux defect.
 	t.Cleanup(func() {
-		_ = exec.Command(psmuxPath, "-L", harness, "kill-server").Run()
+		reapHarnessServer(t, psmuxPath, `C:\Code\tools\powershell7\pwsh.exe`, harness)
 	})
 	deadline := time.Now().Add(10 * time.Second)
 	for exec.Command(psmuxPath, "-L", harness, "has-session", "-t", "h").Run() != nil {
@@ -1000,6 +1185,7 @@ func TestSmokeClaudeResumeRecallsCodeword(t *testing.T) {
 	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
 		"mux": muxengine.ConfigTemplate(),
 	})
+	deferHubRelease(t, fixture.Hub)
 	t.Chdir(fixture.Hub)
 	t.Cleanup(func() {
 		var buf bytes.Buffer

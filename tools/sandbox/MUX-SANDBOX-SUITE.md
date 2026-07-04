@@ -255,12 +255,22 @@ Covered headlessly by `TestSmokeRemoveReapsRemovedPaneChildProcesses`.
 **Watch:** `lyx mux down` kills the server and clears the worktree's strand state;
 `psmux -L <socket> ls` (controlled exception) confirms no server survives, and a
 follow-up `lyx mux status` reports the friendly no-session error rather than stale
-strands. "No stray state" also means **no pane process survives**: `down` waits for this
-session's whole pane process subtree to exit before returning, so immediately after `down`
-no leftover shell keeps the worktree directory busy (checkable by confirming the worktree
-dir can be renamed/removed, or that the pre-`down` `#{pane_pid}` values and their
-descendants are gone from `tasklist`). Covered headlessly by
-`TestSmokeDownReapsPaneChildProcesses`.
+strands. "No stray state" means, concretely, that the instant `down` returns: (a) **no
+psmux process names this socket** — `down` force-reaps the server *and* its internal
+`__warm__` helper and confirms the socket is clear, because both carry the worktree as
+their cwd and a survivor would keep the worktree dir busy (check with `tasklist | findstr
+psmux` filtered to this `-L` socket — expect zero); and (b) **no pane process subtree
+survives** — `down` always reaps this session's whole pane process subtree before
+returning (checkable via the pre-`down` `#{pane_pid}` values and their descendants being
+gone from `tasklist`). Covered headlessly by `TestSmokeDownReapsPaneChildProcesses` and
+`TestSmokeDownLeavesNoPsmuxOnSocket`.
+
+> **Not a FAIL:** a `conhost.exe` (the OS ConPTY host psmux uses per pane) may linger for a
+> beat with the worktree as its cwd and then exit on its own. It is not a `#{pane_pid}`
+> descendant and mux does not reap it — a dying OS console host is not stray *agent* state.
+> Under heavy concurrent load this can briefly delay deleting the worktree dir; that is an OS
+> teardown race, not a mux leak. Only a surviving **psmux** process or a live **pane shell**
+> is a `FAIL` here.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 

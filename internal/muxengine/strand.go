@@ -13,7 +13,6 @@ package muxengine
 import (
 	"fmt"
 	"path/filepath"
-	"time"
 
 	"github.com/Knatte18/loomyard/internal/muxengine/render"
 )
@@ -458,8 +457,11 @@ func (e *Engine) RemoveStrand(guid string, recursive bool) (Removed, error) {
 
 		// Reap after the layout is already repaired, so the surviving panes
 		// re-tile immediately and only the return is gated on the async pane
-		// teardown finishing.
-		reapPaneChildren(reapPIDs, 5*time.Second)
+		// teardown finishing. Uses the same saturation-tolerant deadline as
+		// down (reapExitTimeout): the reap confirms each pid is gone rather than
+		// trusting a fixed timer, so a loaded machine cannot leave a removed
+		// strand's grandchild holding the worktree directory.
+		reapPaneChildren(reapPIDs, reapExitTimeout)
 
 		result = removed
 		return nil

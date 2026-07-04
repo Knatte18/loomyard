@@ -387,29 +387,25 @@ func (e *Engine) Down() (DownResult, error) {
 		// Tidy the server only if no sessions remain (empty list-sessions
 		// output covers both "zero sessions" and "no server" — psmux does
 		// not distinguish them, and kill-server is harmless in both).
+		var serverErr error
 		if out, err := e.psmux.output("list-sessions", "-F", "#{session_name}"); err == nil && strings.TrimSpace(out) == "" {
 			_ = e.psmux.run("kill-server")
-			if err := waitProcessExit(serverPID, 5*time.Second); err != nil {
-				return err
-			}
-			// The pid wait covers the main server; psmux's "__warm__" helper
-			// can outlive it and squat on the socket, wedging the next boot —
-			// force-reap whatever remains so down leaves the socket truly
-			// free the moment it returns.
-			if len(e.serverProcessesOnSocket()) > 0 {
-				if err := e.reapSocketProcesses(); err != nil {
-					return err
-				}
-			}
+			serverErr = e.ensureServerGoneLocked(serverPID)
 		}
 
-		// Wait for this session's pane children to finish dying (kill-session
-		// / kill-server terminate them asynchronously), force-killing any that
-		// outlive the deadline, so down never returns while a pane grandchild
-		// still holds the worktree directory. Runs in both branches — down
-		// reaps its own session's pane children whether or not the shared
-		// server was torn down.
-		reapPaneChildren(panePIDs, 5*time.Second)
+		// ALWAYS reap this session's pane child subtree, even when the server
+		// teardown above hit trouble: a slow or failed server death must never
+		// skip the pane reap. An earlier fixed-deadline server wait returned on
+		// timeout and aborted down BEFORE this reap under CPU saturation,
+		// leaking both the server (whose cwd is this worktree) and pane children
+		// that kept the worktree directory busy. kill-session / kill-server
+		// terminate pane children asynchronously, so force-kill any that outlive
+		// the deadline.
+		reapPaneChildren(panePIDs, reapExitTimeout)
+
+		if serverErr != nil {
+			return serverErr
+		}
 
 		path := filepath.Join(e.layout.DotLyxDir(), muxStateFileName)
 		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
@@ -522,8 +518,42 @@ $acc`, strings.Join(rootLiterals, ","))
 // forceKillExitGrace bounds how long reapPaneChildren waits, per pid, for a
 // force-killed process to actually exit. TerminateProcess is asynchronous on
 // Windows, so a kill with no follow-up wait closes nothing — the killed
-// process can still hold the worktree directory when the caller returns.
-const forceKillExitGrace = 2 * time.Second
+// process can still hold the worktree directory when the caller returns. It is
+// generous because on a CPU-saturated machine even a TerminateProcess'd process
+// can take seconds to be reaped by the OS and release its handles.
+const forceKillExitGrace = 5 * time.Second
+
+// reapExitTimeout bounds how long the pane-child and server reaps wait for a
+// graceful async teardown before force-killing stragglers. It is deliberately
+// generous rather than the old fixed 5s: on a CPU-saturated machine psmux's
+// async pane/server teardown — and the Win32_Process probe the reap relies on —
+// both slow down, so a tight deadline risks force-killing prematurely (harmless)
+// or, in the pre-fix code, a fixed wait that ERRORED and aborted the teardown.
+// The reaps confirm each process is actually gone rather than trusting the
+// timer, so this value only bounds a pathological hang; the common quiet-machine
+// path returns as soon as the processes exit.
+const reapExitTimeout = 15 * time.Second
+
+// ensureServerGoneLocked guarantees no psmux process remains on this engine's
+// socket after a kill-server, so down provably leaves zero psmux for its socket
+// the moment it returns. kill-server is asynchronous and, under CPU saturation,
+// the main server AND its "__warm__" helper — both spawned with the worktree as
+// their cwd, so both keep the worktree directory busy — can outlive any fixed
+// wait. It first gives the graceful teardown a bounded window to finish on its
+// own (the common, quiet-machine path), then, if any psmux still names the
+// socket, force-reaps them and confirms the socket is clear. Force-reap-and-
+// confirm rather than a fixed wait that aborts down: a stray server holding the
+// worktree directory is a real "no stray state" leak, so down must actively
+// clear it, never merely hope it dies in time. Returns an error only if the
+// socket is still not clear after the force-reap — a genuine, reportable
+// failure. It assumes the op lock is already held.
+func (e *Engine) ensureServerGoneLocked(serverPID int) error {
+	_ = waitProcessExit(serverPID, reapExitTimeout)
+	if len(e.serverProcessesOnSocket()) == 0 {
+		return nil
+	}
+	return e.reapSocketProcesses()
+}
 
 // reapPaneChildren waits for every pane child process to exit, force-killing
 // any that outlive the deadline, so a pane-destroying op leaves no pane
@@ -619,7 +649,7 @@ func (e *Engine) reapSocketProcesses() error {
 			_ = proc.Kill()
 		}
 	}
-	return e.waitServerProcessesGone(5 * time.Second)
+	return e.waitServerProcessesGone(reapExitTimeout)
 }
 
 // waitProcessExit blocks until the process with pid has exited, or errors
