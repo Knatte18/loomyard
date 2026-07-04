@@ -19,10 +19,13 @@ have your own list. Specifically do not open anything under `.scratch/` (it is g
 holds prior reviews: `mux-review-*.md`, `internalmux_*.md`, `orch_*.md`, `*review*.md`) or any
 `_mill/reviews/` content. Reading the design SPEC and the module docs is expected and required
 (those are not reviews). After you have formed and written your own independent findings, you
-MAY consult `.scratch/mux-review-fable5*.md` (a prior round's review + fixes + fixer-report) to
-(a) confirm previously-fixed behaviors have not regressed and (b) re-evaluate the deferred
-items listed at the bottom of this prompt — but only AFTER your own pass, so the independent
-signal is preserved.
+MAY consult the prior rounds' review material under `.scratch/` — ANY `mux-review-*.md` and its
+`*-fixer-report.md`, regardless of which model produced it (rounds rotate across Opus / Fable /
+Sonnet, so do NOT assume a single model's filename prefix — the most recent prior round is
+whichever `mux-review-*` file is newest), EXCEPT your own `-<yourtag>` deliverables — to
+(a) confirm previously-fixed behaviors have not regressed and (b) re-evaluate the deferred items
+listed at the bottom of this prompt — but only AFTER your own pass, so the independent signal is
+preserved.
 
 ## What to read
 - Code: `internal/muxengine/**` (incl. `render/**`), `internal/muxcli/**`, and the `cmd/lyx`
