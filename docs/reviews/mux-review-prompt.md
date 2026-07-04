@@ -94,33 +94,39 @@ construction) belong to `shuttle`, not mux. Their absence is correct — do not 
 dumb carrier: it runs opaque command strings and its only liveness signal is generic `pane-died`.
 
 ## Known open issue seeded from prior-round verification — resolve or confirm-fixed this round
-Independent verification of the prior round's fixes (commit `f6eb06b`) found the smoke suite is
-NOT deterministic under back-to-back load — the very bar this prompt demands. Treat this as a
-first-class finding to diagnose and RESOLVE this round (do not merely re-observe it):
+psmux terminates a pane's child processes ASYNCHRONOUSLY when a pane is destroyed; on Windows the
+process that actually holds the worktree directory is a DEEP descendant of the pane pid (the
+`#{pane_pid}` is only a WindowsApps launcher stub — the real `pwsh` and whatever it launched nest
+below it). So any mux verb that destroys a pane can return while a grandchild still holds the
+worktree dir — a "no stray state" violation that surfaces in the smoke suite as
+`TempDir RemoveAll … \hub: The process cannot access the file because it is being used by another
+process`.
 
-- Symptom: `TestSmokeUpAddStatusDown` fails REPRODUCIBLY as the FIRST test of a full back-to-back
-  smoke run (`go test -tags smoke ./internal/muxcli/... -run Smoke -v -count=1`) but PASSES in
-  isolation. The failure is Go's automatic `t.TempDir()` cleanup, not a test-body assertion:
-  `TempDir RemoveAll cleanup: unlinkat …\hub: The process cannot access the file because it is
-  being used by another process`.
-- Root observed: a pane grandchild process (`pwsh -NoExit`, cwd = the temp hub) outlives
-  `lyx mux down` and still holds the hub-dir handle when Go's TempDir RemoveAll fires.
-  `TestSmokeRemoveLastStrandThenAddRunsTheNewCommand` has an identical teardown yet passes — so
-  this is a timing RACE, not a missing helper.
-- The question you MUST decide (it changes the fix): is this
-  (a) pure test-teardown hygiene — the test / `lyxtest` cleanup does not wait for pane child
-      processes to exit before the temp dir is removed; or
-  (b) a real product gap — `down` was made synchronous w.r.t. the server SOCKET (the prior
-      round's F4 fix) but NOT w.r.t. the pane CHILD processes, so agent grandchildren can outlive
-      a `down` that reports everything torn down (an F4-adjacent "no stray state" violation).
-  Determine which by driving it live (watch the `pwsh` grandchild's lifetime relative to `down`
-  returning). If (b), fix the product: `down` / teardown must reap pane child processes
-  deterministically (or the "no stray state" guarantee is documented AND enforced). If (a),
-  harden the test / `lyxtest` teardown to wait for child-process release (deadline poll), matching
-  the determinism discipline in "Fixing" below.
-- Verify the fix by running the FULL smoke suite back-to-back several times under load (NOT the
-  test in isolation) — a single isolated PASS is explicitly NOT proof; that is how this slipped
-  through the prior round.
+The prior round fixed this for `down` ONLY: `Down` now snapshots this session's pane process
+SUBTREE (pane pids + transitive descendants via one Win32_Process pass) before `kill-session` and
+deadline-waits for it to exit (`reapPaneChildren`). `TestSmokeUpAddStatusDown` and the new
+`TestSmokeDownReapsPaneChildProcesses` now pass. That fix is correct — do not undo it.
+
+But independent verification under CONCURRENT load (3× the full smoke suite at once) shows the
+SAME race still fires in OTHER pane-destroying paths — reproduced in
+`TestSmokeRemoveLastStrandThenAddRunsTheNewCommand` and `TestSmokeDownReleasesServerBeforeReturning`
+(identical `\hub: being used by another process`). The reap is not general enough. RESOLVE this
+round:
+- `remove` (`RemoveStrand` → `kill-pane`) destroys a pane but does NOT reap that pane's child
+  subtree, so a removed strand's grandchild lingers holding the worktree dir. Every pane-destroying
+  path needs the same reap `down` got — at minimum `remove`; also weigh the `up`-after-`down` churn
+  boundary and the crash / `kill-server` recovery path.
+- Prefer factoring the reap into ONE helper that every pane-destroying path funnels through, rather
+  than bolting it onto each verb separately — decide the right seam (the existing
+  `paneProcessTreePIDsLocked` + `reapPaneChildren` are the building blocks).
+- Confirm the reap is robust UNDER LOAD: the deadline + force-kill must actually close the window
+  even when the Win32_Process probe is itself contended (a force-`Kill` on Windows is async, and a
+  killed process's dir-handle release can still lag). If the current 5s deadline / snapshot timing
+  is the weak point, fix it.
+- VERIFY by running the FULL smoke suite BOTH back-to-back AND CONCURRENTLY under load (e.g. 3×
+  `go test -tags smoke ./internal/muxcli/... -run Smoke` at once), never a single serial or
+  isolated run — a serial/isolated PASS is explicitly NOT proof; that is exactly how the prior
+  round's "merge-ready" verdict missed the remaining paths.
 
 ## What to TEST — do not just read, EXERCISE it
 Report the exact commands you ran and what you observed.
