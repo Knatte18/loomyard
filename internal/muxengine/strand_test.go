@@ -262,3 +262,67 @@ func TestResolveStrandName(t *testing.T) {
 		})
 	}
 }
+
+// TestAddStrandLocked_AnchorValidatedAtEngineBoundary pins the engine-API
+// guard the CLI cannot provide: an in-process caller (shuttle) passing the
+// deferred own-window anchor or a mistyped anchor must be rejected BEFORE
+// any pane is launched or record registered — without this, the strand
+// would persist, its pane would launch, and every subsequent apply would
+// fail in render until the strand was removed.
+func TestAddStrandLocked_AnchorValidatedAtEngineBoundary(t *testing.T) {
+	e := newTestEngine(t)
+
+	for _, anchor := range []render.Anchor{render.AnchorOwnWindow, render.Anchor("sideways"), render.Anchor("")} {
+		st := &MuxState{}
+		_, err := e.addStrandLocked(st, AddSpec{Cmd: "x", Display: render.Display{Anchor: anchor}})
+		if err == nil {
+			t.Fatalf("addStrandLocked(anchor=%q) = nil error, want rejection", anchor)
+		}
+		if len(st.Strands) != 0 {
+			t.Errorf("anchor %q: st.Strands = %+v, want no record registered on a rejected add", anchor, st.Strands)
+		}
+	}
+}
+
+// TestUpdateStrandLocked_AnchorValidatedAtEngineBoundary mirrors the add
+// guard for UpdateStrand: flipping a live strand's anchor to own-window (or
+// garbage) must be rejected with the strand's display unchanged — a
+// persisted own-window display would poison every later apply.
+func TestUpdateStrandLocked_AnchorValidatedAtEngineBoundary(t *testing.T) {
+	e := newTestEngine(t)
+
+	for _, anchor := range []render.Anchor{render.AnchorOwnWindow, render.Anchor("sideways")} {
+		st := &MuxState{Strands: []Strand{
+			{GUID: "g1", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent}},
+		}}
+		_, err := e.updateStrandLocked(st, "g1", render.Display{Anchor: anchor})
+		if err == nil {
+			t.Fatalf("updateStrandLocked(anchor=%q) = nil error, want rejection", anchor)
+		}
+		if st.Strands[0].Display.Anchor != render.AnchorBelowParent {
+			t.Errorf("anchor %q: strand Display.Anchor = %v, want unchanged after a rejected update", anchor, st.Strands[0].Display.Anchor)
+		}
+	}
+}
+
+// TestAlivePanePIDs pins RemoveStrand's reap-root selection: only panes that
+// are being removed AND are present AND not dead contribute their pane pid —
+// a dead pane's recorded pid may already have been reused by an unrelated
+// process, so it must never seed the descendant closure the reap force-kills.
+func TestAlivePanePIDs(t *testing.T) {
+	live := []LivePane{
+		{ID: "%1", Dead: false, PID: 100},
+		{ID: "%2", Dead: true, PID: 200},
+		{ID: "%3", Dead: false, PID: 300},
+		{ID: "%4", Dead: false, PID: 0},
+	}
+
+	got := alivePanePIDs([]string{"%1", "%2", "%4", "%9"}, live)
+	if len(got) != 1 || got[0] != 100 {
+		t.Fatalf("alivePanePIDs = %v, want [100] (alive+requested only; dead %%2 excluded, pid-less %%4 excluded, absent %%9 excluded)", got)
+	}
+
+	if got := alivePanePIDs(nil, live); got != nil {
+		t.Errorf("alivePanePIDs(no panes) = %v, want nil", got)
+	}
+}

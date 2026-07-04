@@ -13,6 +13,7 @@ package muxengine
 import (
 	"fmt"
 	"path/filepath"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/muxengine/render"
 )
@@ -33,6 +34,25 @@ type AddSpec struct {
 // display name.
 type Removed struct {
 	Strands []struct{ GUID, Name string }
+}
+
+// validateAnchor rejects a Display anchor the engine cannot realize, at the
+// op boundary — BEFORE any pane is launched or state persisted. The CLI
+// performs the same closed-vocabulary check for flag-specific messages, but
+// the engine API is the seam in-process callers (shuttle) drive directly:
+// without this guard an own-window or mistyped anchor would launch a pane,
+// persist the strand, and only then fail in render at the apply step — after
+// which EVERY subsequent mutating verb keeps failing at apply until that
+// strand is removed.
+func validateAnchor(anchor render.Anchor) error {
+	switch anchor {
+	case render.AnchorTop, render.AnchorBelowParent, render.AnchorHidden:
+		return nil
+	case render.AnchorOwnWindow:
+		return fmt.Errorf("anchor %q is deferred, not supported in v1", render.AnchorOwnWindow)
+	default:
+		return fmt.Errorf("invalid anchor %q; want top|below-parent|hidden", anchor)
+	}
 }
 
 // strandIndex returns the index of the strand with the given guid in
@@ -164,6 +184,10 @@ func needsLaunchOnSurface(wasHidden bool, display render.Display) bool {
 // entirely, so no psmux round trip happens); a non-hidden add always makes
 // a real psmux round trip via launchStrandLocked.
 func (e *Engine) addStrandLocked(st *MuxState, spec AddSpec) (Strand, error) {
+	if err := validateAnchor(spec.Display.Anchor); err != nil {
+		return Strand{}, err
+	}
+
 	guid, err := newGUID()
 	if err != nil {
 		return Strand{}, fmt.Errorf("generate guid: %w", err)
@@ -205,6 +229,10 @@ func (e *Engine) addStrandLocked(st *MuxState, spec AddSpec) (Strand, error) {
 // already held. Hermetically testable except for the actual surfacing
 // launch, which always makes a real psmux round trip.
 func (e *Engine) updateStrandLocked(st *MuxState, guid string, display render.Display) (Strand, error) {
+	if err := validateAnchor(display.Anchor); err != nil {
+		return Strand{}, err
+	}
+
 	idx := strandIndex(st.Strands, guid)
 	if idx == -1 {
 		return Strand{}, fmt.Errorf("unknown strand %q", guid)
@@ -351,6 +379,26 @@ func (e *Engine) UpdateStrand(guid string, display render.Display) (Strand, erro
 	return result, err
 }
 
+// alivePanePIDs returns the #{pane_pid} roots of the panes in paneIDs
+// that are currently present AND not dead in live. Pane-destroying ops use
+// this to snapshot reap roots before kill-pane: only a still-running pane's
+// pid is a safe descendant-closure root (a dead pane's recorded pid may
+// already have been reused by an unrelated process — see
+// descendantClosurePIDs).
+func alivePanePIDs(paneIDs []string, live []LivePane) []int {
+	wanted := make(map[string]bool, len(paneIDs))
+	for _, id := range paneIDs {
+		wanted[id] = true
+	}
+	var pids []int
+	for _, p := range live {
+		if wanted[p.ID] && !p.Dead && p.PID > 0 {
+			pids = append(pids, p.PID)
+		}
+	}
+	return pids
+}
+
 // RemoveStrand removes guid and, when it has descendants, cascades the
 // removal through its whole subtree (recursive must be true for a
 // non-leaf, or the call errors instead of silently deleting descendants),
@@ -358,7 +406,13 @@ func (e *Engine) UpdateStrand(guid string, display render.Display) (Strand, erro
 // removed. Pre-flights the session's existence (mirroring Status) so
 // running remove before up fails with the same friendly "no mux session"
 // error instead of a raw psmux error surfacing later from inside
-// reconcileApplyPersistLocked's listPanes.
+// reconcileApplyPersistLocked's listPanes. Like Down, it waits for the
+// destroyed panes' process subtrees to exit before returning: psmux
+// terminates a pane's children asynchronously, and on Windows the process
+// actually holding the worktree directory is a deep descendant of
+// #{pane_pid} — a remove that returned without the reap could leave a
+// removed strand's grandchild alive and the worktree dir busy (the same "no
+// stray state" gap Down's reap closed).
 func (e *Engine) RemoveStrand(guid string, recursive bool) (Removed, error) {
 	var result Removed
 	err := e.withOpLock(func() error {
@@ -376,6 +430,16 @@ func (e *Engine) RemoveStrand(guid string, recursive bool) (Removed, error) {
 			return err
 		}
 
+		// Snapshot the doomed panes' process subtrees BEFORE kill-pane, while
+		// the panes still exist to be listed and their pids are guaranteed
+		// un-reused (the processes are still running).
+		var reapPIDs []int
+		if len(paneIDs) > 0 {
+			if live, err := e.psmux.listPanes(e.SessionName()); err == nil {
+				reapPIDs = e.descendantClosurePIDs(alivePanePIDs(paneIDs, live))
+			}
+		}
+
 		// Kill the removed strands' panes explicitly rather than relying on
 		// select-layout to reap panes missing from the layout string (a
 		// psmux-only side effect; tmux would reject a mismatched layout
@@ -391,6 +455,11 @@ func (e *Engine) RemoveStrand(guid string, recursive bool) (Removed, error) {
 		if _, err := e.reconcileApplyPersistLocked(st); err != nil {
 			return err
 		}
+
+		// Reap after the layout is already repaired, so the surviving panes
+		// re-tile immediately and only the return is gated on the async pane
+		// teardown finishing.
+		reapPaneChildren(reapPIDs, 5*time.Second)
 
 		result = removed
 		return nil

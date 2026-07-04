@@ -25,8 +25,13 @@ package render
 type Anchor string
 
 const (
-	// AnchorTop pins a strand to a fixed-height band at the top of the
-	// window, above the below-parent stack.
+	// AnchorTop reserves a fixed-height band for a strand at the top of the
+	// window, above the below-parent stack. The band's GEOMETRY is always
+	// honored; its POSITION is only physically top when the strand's pane
+	// precedes the stack panes in the window's creation order — psmux
+	// applies layout cells positionally and cannot reorder panes (see
+	// Rules' paneOrder contract), so a top strand added after stack strands
+	// keeps its compact band height at its actual position.
 	AnchorTop Anchor = "top"
 	// AnchorBelowParent places a strand in the vertically stacked region
 	// below the top bands, ordered by parent-chain depth.

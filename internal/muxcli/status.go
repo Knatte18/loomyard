@@ -1,7 +1,9 @@
-// status.go implements the `status` mux verb: reports this worktree's
-// tracked strands and their live/dead state after reconciling against the
-// live pane set. v1 reports only the current session — enumerating stray
-// servers across the hub is deferred.
+// status.go implements the `status` mux verb: a read-only cross-reference
+// of this worktree's tracked strands against the live pane set, reporting
+// each strand's live/dead state. Unlike the mutating verbs it never
+// reconciles (no pane kills, no binding rewrites) and never re-applies the
+// layout. v1 reports only the current session — enumerating stray servers
+// across the hub is deferred.
 
 package muxcli
 
@@ -17,9 +19,10 @@ func (c *muxCLI) statusCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "status",
 		Short: "show this worktree's tracked strands and their live/dead state",
-		Long: `status reconciles against the live pane set and reports every strand
+		Long: `status cross-references the live pane set and reports every strand
 tracked for this worktree's session: guid, name, pane id, and whether its
-pane is currently alive.
+pane is currently alive. It is read-only — it never kills dead panes,
+rewrites bindings, or re-applies the layout; the next mutating verb does.
 
 v1 reports only the current worktree's session — enumerating stray servers
 across the hub is deferred.

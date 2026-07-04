@@ -238,7 +238,11 @@ strand's command into a new pane.
 
 **Watch:** Removing a strand that has children without `--recursive` fails with
 `strand has children, use --recursive`; with `--recursive` the removal cascades over the
-subtree and the result JSON lists every removed strand.
+subtree and the result JSON lists every removed strand. "No stray state" also applies to
+`remove`: like `down`, it waits for the removed panes' whole process subtree to exit before
+returning, so immediately after a `remove` no leftover shell keeps the worktree directory
+busy (the pre-`remove` `#{pane_pid}` values and their descendants are gone from `tasklist`).
+Covered headlessly by `TestSmokeRemoveReapsRemovedPaneChildProcesses`.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 

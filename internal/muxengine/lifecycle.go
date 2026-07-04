@@ -442,40 +442,51 @@ func (e *Engine) serverPIDLocked() int {
 
 // panePIDsLocked returns the OS pids of this worktree's session's pane child
 // processes — the immediate shell psmux launched in each pane, as psmux
-// reports them via the #{pane_pid} format variable. It returns nil when the
-// session is absent or the query fails (callers treat that as "no children to
-// reap"). It must run BEFORE kill-session, while the panes still exist to be
-// listed, and assumes the op lock is already held. Callers that need the
-// process actually holding the worktree directory want the whole subtree
-// (paneProcessTreePIDsLocked), not just these launcher pids.
+// reports them via the #{pane_pid} format variable (carried on LivePane by
+// listPanes). It returns nil when the session is absent or the query fails
+// (callers treat that as "no children to reap"). It must run BEFORE
+// kill-session, while the panes still exist to be listed, and assumes the op
+// lock is already held. Callers that need the process actually holding the
+// worktree directory want the whole subtree (paneProcessTreePIDsLocked), not
+// just these launcher pids.
 func (e *Engine) panePIDsLocked() []int {
-	out, err := e.psmux.output("list-panes", "-t", e.SessionName(), "-F", "#{pane_pid}")
+	live, err := e.psmux.listPanes(e.SessionName())
 	if err != nil {
 		return nil
 	}
 	var pids []int
-	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
-		if pid, err := strconv.Atoi(strings.TrimSpace(line)); err == nil && pid > 0 {
-			pids = append(pids, pid)
+	for _, p := range live {
+		if p.PID > 0 {
+			pids = append(pids, p.PID)
 		}
 	}
 	return pids
 }
 
 // paneProcessTreePIDsLocked returns this session's pane child pids AND their
-// full descendant subtrees. #{pane_pid} names only the pane's immediate
-// launcher process, but on Windows psmux nests the real shell (and the strand
-// command it runs) below it, and it is that deeper descendant whose cwd is the
-// worktree directory — so Down must reap the whole subtree, not just the pane
-// pid, or a leftover grandchild keeps the worktree dir busy. The descendant
-// closure is computed in one Win32_Process pass through the configured pwsh
-// (the same reliable Windows process-table probe serverProcessesOnSocket
-// uses). It falls back to the bare pane pids if the pwsh probe fails
-// (including non-Windows, where Win32_Process does not exist) and returns nil
-// when there is no session or pane. Must run BEFORE kill-session, while the
-// panes still exist, and assumes the op lock is held.
+// full descendant subtrees — the snapshot Down reaps after kill-session. It
+// returns nil when there is no session or pane. Must run BEFORE
+// kill-session, while the panes still exist, and assumes the op lock is
+// held.
 func (e *Engine) paneProcessTreePIDsLocked() []int {
-	roots := e.panePIDsLocked()
+	return e.descendantClosurePIDs(e.panePIDsLocked())
+}
+
+// descendantClosurePIDs expands roots to roots-plus-their-transitive-
+// descendant pids. #{pane_pid} names only a pane's immediate launcher
+// process, but on Windows psmux nests the real shell (and the strand command
+// it runs) below it, and it is that deeper descendant whose cwd is the
+// worktree directory — so every pane-destroying op (Down's kill-session,
+// RemoveStrand's kill-pane) must reap the whole subtree, not just the pane
+// pid, or a leftover grandchild keeps the worktree dir busy. The closure is
+// computed in one Win32_Process pass through the configured pwsh (the same
+// reliable Windows process-table probe serverProcessesOnSocket uses). It
+// falls back to the bare roots if the pwsh probe fails (including
+// non-Windows, where Win32_Process does not exist) and returns nil for no
+// roots. Callers must pass only roots that are still running (a dead pane's
+// recorded pid may already have been reused by an unrelated process, and a
+// closure over a reused pid would mark innocent processes for force-kill).
+func (e *Engine) descendantClosurePIDs(roots []int) []int {
 	if len(roots) == 0 {
 		return nil
 	}
@@ -483,7 +494,7 @@ func (e *Engine) paneProcessTreePIDsLocked() []int {
 	for i, pid := range roots {
 		rootLiterals[i] = strconv.Itoa(pid)
 	}
-	// Seed a set with the pane pids, then repeatedly absorb any process whose
+	// Seed a set with the root pids, then repeatedly absorb any process whose
 	// parent is already in the set — the transitive descendant closure.
 	script := fmt.Sprintf(`$roots=@(%s)
 $all=Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId
@@ -508,27 +519,40 @@ $acc`, strings.Join(rootLiterals, ","))
 	return pids
 }
 
+// forceKillExitGrace bounds how long reapPaneChildren waits, per pid, for a
+// force-killed process to actually exit. TerminateProcess is asynchronous on
+// Windows, so a kill with no follow-up wait closes nothing — the killed
+// process can still hold the worktree directory when the caller returns.
+const forceKillExitGrace = 2 * time.Second
+
 // reapPaneChildren waits for every pane child process to exit, force-killing
-// any that outlive the deadline, so Down leaves no pane grandchild holding
-// worktree resources. psmux terminates pane children asynchronously when a
-// session/server is killed, so a Down that waited only on the server process
-// could return while a pane's shell (whose cwd is the worktree) was still
-// alive — the F4-adjacent "no stray state" gap that surfaces as a
-// worktree-dir-in-use failure under load. The wait is the normal path (the
+// any that outlive the deadline, so a pane-destroying op leaves no pane
+// grandchild holding worktree resources. psmux terminates pane children
+// asynchronously when a pane/session/server is killed, so an op that
+// returned without this wait could do so while a pane's shell (whose cwd is
+// the worktree) was still alive — the "no stray state" gap that surfaces as
+// a worktree-dir-in-use failure under load. The wait is the normal path (the
 // graceful psmux teardown reaps each child moments later); the force-kill
 // fires only for a pid that failed to exit within the deadline, so it can
-// never target a reused pid (a pid that never exited cannot have been reused).
+// never target a reused pid (a pid that never exited cannot have been
+// reused) — and it then waits again, briefly, for the kill to land, because
+// a fire-and-forget TerminateProcess leaves the same window it was supposed
+// to close.
 func reapPaneChildren(pids []int, timeout time.Duration) {
 	deadline := time.Now().Add(timeout)
 	for _, pid := range pids {
 		if pid <= 0 {
 			continue
 		}
-		if err := waitProcessExit(pid, time.Until(deadline)); err != nil {
-			if p, findErr := os.FindProcess(pid); findErr == nil {
-				_ = p.Kill()
-			}
+		if err := waitProcessExit(pid, time.Until(deadline)); err == nil {
+			continue
 		}
+		p, findErr := os.FindProcess(pid)
+		if findErr != nil {
+			continue
+		}
+		_ = p.Kill()
+		_ = waitProcessExit(pid, forceKillExitGrace)
 	}
 }
 

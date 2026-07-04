@@ -102,11 +102,12 @@ func (p PsmuxCmd) hasSession(name string) (bool, error) {
 }
 
 // listPanes returns all panes in the session, parsed from
-// list-panes -F "#{pane_id} #{pane_dead} #{pane_top} #{pane_width} #{pane_height}".
+// list-panes -F "#{pane_id} #{pane_dead} #{pane_top} #{pane_width} #{pane_height} #{pane_pid}".
 // pane_top rides along so callers can derive the window's actual top-to-bottom
-// pane order without a second round trip.
+// pane order, and pane_pid so pane-destroying ops can snapshot a pane's
+// process subtree, without a second round trip.
 func (p PsmuxCmd) listPanes(session string) ([]LivePane, error) {
-	out, err := p.output("list-panes", "-t", session, "-F", "#{pane_id} #{pane_dead} #{pane_top} #{pane_width} #{pane_height}")
+	out, err := p.output("list-panes", "-t", session, "-F", "#{pane_id} #{pane_dead} #{pane_top} #{pane_width} #{pane_height} #{pane_pid}")
 	if err != nil {
 		return nil, err
 	}

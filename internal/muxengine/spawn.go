@@ -72,6 +72,21 @@ func planPaneTarget(strands []Strand, live []LivePane) (adoptID, splitTargetID s
 	return "", splitTargetID, nil
 }
 
+// sendKeysLiteralArg returns the argument psmux `send-keys -l` must be
+// handed so text is typed verbatim. psmux (3.3.4) parses a '-'-leading
+// literal argument as flags and silently drops it — exit 0, nothing typed —
+// and a `--` separator does not stop that parsing, so an opaque cmd/
+// resumeCmd beginning with '-' would never run while the strand still read
+// live (its pane shell is alive). Prefixing one space inside the same
+// argument makes psmux treat it as text (verified live), and the pane's
+// shell ignores the leading blank when the line is submitted.
+func sendKeysLiteralArg(text string) string {
+	if strings.HasPrefix(text, "-") {
+		return " " + text
+	}
+	return text
+}
+
 // launchStrandLocked realizes s into a live psmux pane and runs launchCmd
 // in it: it adopts the session's initial new-session pane when no other
 // strand currently holds a pane binding and that pane is alive, or splits
@@ -121,7 +136,7 @@ func (e *Engine) launchStrandLocked(st *MuxState, s *Strand, launchCmd string) e
 	// any part of the opaque launchCmd as a key name (e.g. "Enter", "C-c") or
 	// splits it on an embedded ';' — the caller (shuttle) builds arbitrary
 	// PowerShell command chains. A separate Enter then submits it.
-	if err := e.psmux.run("send-keys", "-t", paneID, "-l", launchCmd); err != nil {
+	if err := e.psmux.run("send-keys", "-t", paneID, "-l", sendKeysLiteralArg(launchCmd)); err != nil {
 		return fmt.Errorf("send launch command: %w", err)
 	}
 	if err := e.psmux.run("send-keys", "-t", paneID, "Enter"); err != nil {

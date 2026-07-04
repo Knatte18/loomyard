@@ -281,7 +281,7 @@ substrate-only; `resume` is the only replayer.**
 |---|---|
 | `lyx mux up` | Ensure the server (clean env) + this worktree's session exist (boot if absent, no-op if up). Reconcile + apply the layout from the current strand table. **Runs no strand command.** |
 | `lyx mux add` | `AddStrand` — `--cmd`, optional `--role`/`--round`/`--name`/`--resume-cmd`/`--parent <guid>`/`--anchor top\|below-parent\|hidden`/`--focus`. Prints the assigned `guid` + resolved `name`. A `hidden` strand gets no pane until surfaced. |
-| `lyx mux remove <guid>` | `RemoveStrand` — requires `--recursive` on a non-leaf (fails otherwise: `strand has children, use --recursive`); the engine API itself always cascades. Result JSON lists every removed strand. |
+| `lyx mux remove <guid>` | `RemoveStrand` — requires `--recursive` on a non-leaf (fails otherwise: `strand has children, use --recursive`); the engine API itself always cascades. Kills each removed strand's pane explicitly and, like `down`, **waits for the removed panes' process subtrees to exit before returning** (psmux terminates pane children asynchronously, and on Windows the process holding the worktree directory is a deeper descendant of `#{pane_pid}`) so a removed strand's grandchild never lingers holding the worktree dir. Result JSON lists every removed strand. |
 | `lyx mux status` | **Read-only** cross-reference of `.lyx/mux.json` strands against the named server's live `list-panes`: report **this session's** tracked strands and their live/dead state, where **live means present *and* not `pane_dead`** (a crashed strand reads `live:false`). Unlike the mutating verbs, `status` does **not** reconcile (it never kills dead panes or rewrites bindings) and does **not** re-apply the layout — a query must not move focus or mutate state; the next mutating verb persists any correction. v1 does **not** actively enumerate stray/orphan psmux servers (a reliable listing on Windows is unverified) — the named server still provides the orphan-firewall property, `status` just doesn't scan for it yet. |
 | `lyx mux attach` | `psmux attach` to this worktree's session **in the operator's current terminal, in place** (no popped window) — see the [envelope exception](#attach-is-a-documented-envelope-exception) below. |
 | `lyx mux resume` | For every persisted strand that is **not live and not `hidden`**, (re)create its pane and run its stored `resumeCmd` (or `cmd` if it has none). Already-live strands are left untouched (no double send-keys); `hidden` strands are skipped (pending, not dead). Boots the server+session first if absent; after a **server rebirth** it clears every stale pane binding first, so a reborn session's reused pane ids are never mistaken for live strands. |
@@ -386,17 +386,33 @@ These are the tested facts any implementation must respect. Full evidence in
   `display-message` still names the corpse as the active pane, and `send-keys` into a corpse
   exits 0 while running **nothing**. mux therefore never adopts a dead pane — the first
   strand adopts only an **alive** unbound pane, and everything else splits.
-- **psmux normalizes applied heights off-by-one.** A band/strip emitted as N rows
-  consistently materializes as N+1 in `list-panes` (e.g. `top_band_rows: 1` shows height 2).
-  Cosmetic psmux normalization — not a mux bug; do not chase it.
+- **psmux normalizes applied heights off-by-one — in *both* directions.** An emitted N-row
+  cell does not materialize as exactly N in `list-panes`: a `top_band_rows: 1` band shows
+  height 2 (N+1), while a collapsed ancestor strip emitted at `collapsed_strip_rows: 3` in a
+  2-pane stack comes back as height 2 (N−1). It is cosmetic psmux normalization either way —
+  not a mux bug; do not chase the discrepancy in either direction.
 - **`#{pane_pid}` is the pane's *launcher*, not the process holding the pane's cwd.** On
   Windows psmux nests the real shell (and whatever it runs) *below* the pane's immediate
   child process, so the process whose cwd is the worktree is a deeper descendant of
   `#{pane_pid}`. psmux tears the whole subtree down asynchronously on `kill-session`/
-  `kill-server`, so `down` reaps this session's entire pane **process subtree** (the pane
-  pids plus their transitive descendants, resolved in one `Win32_Process` pass) and waits
-  for them to exit — otherwise a lagging grandchild keeps the worktree directory busy after
-  `down` already reported a clean teardown.
+  `kill-pane`/`kill-server`, so **every mux verb that destroys a pane** (`down`'s
+  `kill-session`, `remove`'s `kill-pane`) reaps the destroyed panes' entire **process
+  subtree** (the pane pids plus their transitive descendants, resolved in one
+  `Win32_Process` pass through the one shared `descendantClosurePIDs`/`reapPaneChildren`
+  seam) and waits for them to exit — otherwise a lagging grandchild keeps the worktree
+  directory busy after the verb already reported a clean teardown. `remove` seeds the reap
+  only from **alive** panes it is removing (a dead pane's recorded pid may already be reused,
+  so it is never a force-kill root), and the force-kill of a lingering pid waits briefly for
+  the kill to actually land (Windows `TerminateProcess` is asynchronous).
+- **mux owns the session window; operator-split panes are not preserved.** psmux
+  `select-layout` **destroys any pane not present in the applied layout string**, and mux
+  re-applies the layout on every mutating verb (`up`/`add`/`remove`/`resume`) from its own
+  strand table. A pane an operator creates by hand (a raw `psmux split-window` into the mux
+  session) is therefore silently reaped by the next mux verb — it is not in the table, so it
+  is not in the string. This is deliberate for v1: to run an extra process **as** a visible
+  pane, add it through `lyx mux add` (it becomes a tracked strand); for a scratch shell that
+  mux must not touch, use a separate psmux session/socket. Preserving unknown operator panes
+  is deferred (it would require render to place panes it has no strand for).
 
 ## Manual test surface: the mux sandbox suite
 

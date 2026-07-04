@@ -137,3 +137,27 @@ func TestLoadOrInitStateLocked_ExistingFileLoadsVerbatim(t *testing.T) {
 		t.Errorf("loadOrInitStateLocked() Strands = %+v, want the persisted strand", st.Strands)
 	}
 }
+
+// TestSendKeysLiteralArg pins the dash-escape rule for psmux send-keys -l:
+// psmux parses a '-'-leading literal argument as flags and silently drops
+// it (exit 0, nothing typed; '--' does not stop the parsing), so a
+// dash-leading opaque cmd must be sent with one leading space — which the
+// pane shell ignores — while every other text passes through verbatim.
+func TestSendKeysLiteralArg(t *testing.T) {
+	tests := []struct {
+		text string
+		want string
+	}{
+		{"claude --continue", "claude --continue"},
+		{"-join('a','b')", " -join('a','b')"},
+		{"--flag-first", " --flag-first"},
+		{" -already-spaced", " -already-spaced"},
+		{"", ""},
+		{"echo one; echo Enter", "echo one; echo Enter"},
+	}
+	for _, tt := range tests {
+		if got := sendKeysLiteralArg(tt.text); got != tt.want {
+			t.Errorf("sendKeysLiteralArg(%q) = %q, want %q", tt.text, got, tt.want)
+		}
+	}
+}

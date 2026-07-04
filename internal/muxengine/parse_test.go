@@ -15,10 +15,10 @@ func TestParsePaneList(t *testing.T) {
 	}{
 		{
 			name: "two panes, second dead, out of vertical order",
-			out:  "%3 1 32 220 18\n%1 0 0 220 15\n",
+			out:  "%3 1 32 220 18 4242\n%1 0 0 220 15 1717\n",
 			want: []LivePane{
-				{ID: "%3", Dead: true, Top: 32, Width: 220, Height: 18},
-				{ID: "%1", Dead: false, Top: 0, Width: 220, Height: 15},
+				{ID: "%3", Dead: true, Top: 32, Width: 220, Height: 18, PID: 4242},
+				{ID: "%1", Dead: false, Top: 0, Width: 220, Height: 15, PID: 1717},
 			},
 		},
 		{
@@ -28,22 +28,27 @@ func TestParsePaneList(t *testing.T) {
 		},
 		{
 			name:    "missing fields",
-			out:     "%1 0 0 220",
+			out:     "%1 0 0 220 15",
 			wantErr: true,
 		},
 		{
 			name:    "non-numeric top",
-			out:     "%1 0 abc 220 15",
+			out:     "%1 0 abc 220 15 4242",
 			wantErr: true,
 		},
 		{
 			name:    "non-numeric width",
-			out:     "%1 0 0 abc 15",
+			out:     "%1 0 0 abc 15 4242",
 			wantErr: true,
 		},
 		{
 			name:    "non-numeric height",
-			out:     "%1 0 0 220 xyz",
+			out:     "%1 0 0 220 xyz 4242",
+			wantErr: true,
+		},
+		{
+			name:    "non-numeric pid",
+			out:     "%1 0 0 220 15 pid",
 			wantErr: true,
 		},
 	}

@@ -624,6 +624,140 @@ func TestSmokeDownReapsPaneChildProcesses(t *testing.T) {
 	}
 }
 
+// TestSmokeRemoveReapsRemovedPaneChildProcesses pins the reap gap this round
+// generalized from down to remove: kill-pane on a removed strand's pane
+// terminates that pane's children asynchronously, and on Windows the process
+// actually holding the worktree directory is a deep descendant of
+// #{pane_pid} — so a remove that returned without reaping could leave a
+// removed strand's grandchild alive and the worktree dir busy under load
+// (the same class down's reap already closed). remove now snapshots the
+// removed panes' process subtrees before kill-pane and waits for them to
+// exit before returning, so the instant remove returns every descendant of
+// the removed pane must be gone. A sibling strand is kept alive throughout
+// so the session survives and the removed pane is never the sole pane.
+func TestSmokeRemoveReapsRemovedPaneChildProcesses(t *testing.T) {
+	psmuxPath := psmuxBinaryPath(t)
+
+	fixture := lyxtest.CopyPaired(t)
+	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
+		"mux": muxengine.ConfigTemplate(),
+	})
+	t.Chdir(fixture.Hub)
+	t.Cleanup(func() {
+		var buf bytes.Buffer
+		RunCLI(&buf, []string{"down"})
+	})
+
+	pwshPath := `C:\Code\tools\powershell7\pwsh.exe`
+	launch := "pwsh -NoExit -Command Write-Host ready"
+	for cycle := 0; cycle < 3; cycle++ {
+		var out bytes.Buffer
+		if code := RunCLI(&out, []string{"up"}); code != 0 {
+			t.Fatalf("cycle %d up = %d; want 0, output: %s", cycle, code, out.String())
+		}
+		// Keeper first (adopts the initial pane), then the victim we remove.
+		keeper := addStrand(t, launch, "--name", "keeper")
+		victim := addStrand(t, launch, "--name", "victim")
+		socket, session := socketAndSession(t)
+
+		// Resolve the victim's pane, then snapshot only its process subtree.
+		out.Reset()
+		if code := RunCLI(&out, []string{"status"}); code != 0 {
+			t.Fatalf("cycle %d status = %d; want 0, output: %s", cycle, code, out.String())
+		}
+		vs, ok := statusStrand(t, out.Bytes(), victim)
+		if !ok {
+			t.Fatalf("cycle %d: status missing victim %s: %s", cycle, victim, out.String())
+		}
+		victimPane, _ := vs["paneId"].(string)
+		if victimPane == "" {
+			t.Fatalf("cycle %d: victim %s has no pane: %s", cycle, victim, out.String())
+		}
+		pids := panePaneSubtree(t, psmuxPath, pwshPath, socket, session, victimPane)
+		if len(pids) == 0 {
+			t.Fatalf("cycle %d: victim pane %s reported no process subtree", cycle, victimPane)
+		}
+
+		out.Reset()
+		if code := RunCLI(&out, []string{"remove", victim}); code != 0 {
+			t.Fatalf("cycle %d remove = %d; want 0, output: %s", cycle, code, out.String())
+		}
+		// No sleep: every descendant of the removed pane must already be gone
+		// the instant remove returned.
+		for _, pid := range pids {
+			if !processGone(pid) {
+				t.Fatalf("cycle %d: removed pane %s subtree pid %d still running immediately after remove returned", cycle, victimPane, pid)
+			}
+		}
+
+		// The keeper must survive the remove untouched, and down cleans up for
+		// the next cycle.
+		out.Reset()
+		if code := RunCLI(&out, []string{"status"}); code != 0 {
+			t.Fatalf("cycle %d post-remove status = %d; want 0, output: %s", cycle, code, out.String())
+		}
+		if ks, ok := statusStrand(t, out.Bytes(), keeper); !ok {
+			t.Fatalf("cycle %d: keeper %s gone after removing victim: %s", cycle, keeper, out.String())
+		} else if live, _ := ks["live"].(bool); !live {
+			t.Errorf("cycle %d: keeper %s live = false after removing victim; want true", cycle, keeper)
+		}
+		out.Reset()
+		if code := RunCLI(&out, []string{"down"}); code != 0 {
+			t.Fatalf("cycle %d down = %d; want 0, output: %s", cycle, code, out.String())
+		}
+	}
+}
+
+// panePaneSubtree returns the OS pids of a SINGLE pane's child process AND
+// its full descendant subtree, resolved with the same Win32_Process closure
+// the engine uses — the per-pane analogue of paneProcessTree, so the remove
+// reap assertion tracks exactly the removed pane's subtree and not the
+// surviving keeper's.
+func panePaneSubtree(t *testing.T, psmuxPath, pwshPath, socket, session, paneID string) []int {
+	t.Helper()
+	out, err := exec.Command(psmuxPath, "-L", socket, "list-panes", "-t", session,
+		"-F", "#{pane_id} #{pane_pid}").Output()
+	if err != nil {
+		t.Fatalf("list-panes #{pane_id} #{pane_pid}: %v", err)
+	}
+	root := ""
+	for _, l := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		fields := strings.Fields(strings.TrimSpace(l))
+		if len(fields) == 2 && fields[0] == paneID {
+			root = fields[1]
+			break
+		}
+	}
+	if root == "" {
+		t.Fatalf("pane %s not found in list-panes output %q", paneID, out)
+	}
+	if _, perr := strconv.Atoi(root); perr != nil {
+		t.Fatalf("parse pane pid %q: %v", root, perr)
+	}
+	script := fmt.Sprintf(`$roots=@(%s)
+$all=Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId
+$acc=New-Object System.Collections.Generic.HashSet[int]
+foreach($r in $roots){[void]$acc.Add([int]$r)}
+$changed=$true
+while($changed){$changed=$false;foreach($p in $all){if($acc.Contains([int]$p.ParentProcessId) -and -not $acc.Contains([int]$p.ProcessId)){[void]$acc.Add([int]$p.ProcessId);$changed=$true}}}
+$acc`, root)
+	treeOut, err := exec.Command(pwshPath, "-NoProfile", "-NonInteractive", "-Command", script).Output()
+	if err != nil {
+		t.Fatalf("compute pane subtree: %v", err)
+	}
+	var pids []int
+	for _, l := range strings.Split(strings.TrimSpace(string(treeOut)), "\n") {
+		if l = strings.TrimSpace(l); l != "" {
+			pid, perr := strconv.Atoi(l)
+			if perr != nil {
+				t.Fatalf("parse subtree pid %q: %v", l, perr)
+			}
+			pids = append(pids, pid)
+		}
+	}
+	return pids
+}
+
 // capturePane returns the rendered content of the target pane on socket via
 // capture-pane -p (a controlled psmux exception, like listPaneLines).
 func capturePane(t *testing.T, psmuxPath, socket, target string) string {
