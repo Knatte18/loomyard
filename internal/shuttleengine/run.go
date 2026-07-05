@@ -214,6 +214,36 @@ func (run *Run) Send(text string) error {
 	return playInputs(run.runner.mux, run.state.StrandGUID, run.runner.engine.ComposeSend(text))
 }
 
+// Interrupt stops the in-progress turn of the run whose strand is identified
+// by guid, without needing an in-process Run handle — this is how the CLI's
+// interrupt verb reaches a run started by a separate process. It resolves
+// guid via FindRun to confirm it actually names a shuttle run, then plays
+// the engine's InterruptSequence through the mux seam via the same
+// playInputs helper (*Run).Interrupt uses.
+func (r *Runner) Interrupt(guid string) error {
+	if _, _, err := FindRun(r.cfg, r.layout, guid); err != nil {
+		return fmt.Errorf("shuttle: %q is not a shuttle strand", guid)
+	}
+	return playInputs(r.mux, guid, r.engine.InterruptSequence())
+}
+
+// Send types text as the next turn of the run whose strand is identified by
+// guid, without needing an in-process Run handle — this is how the CLI's
+// send verb reaches a run started by a separate process. It enforces the
+// same single-line rule as (*Run).Send, resolves guid via FindRun to
+// confirm it actually names a shuttle run, then plays the engine's
+// ComposeSend choreography through the mux seam via the same playInputs
+// helper (*Run).Send uses.
+func (r *Runner) Send(guid, text string) error {
+	if strings.ContainsAny(text, "\n\r") {
+		return fmt.Errorf("shuttle: Send: text must be a single line; multiline updates ride the file contract (write a file, Send a one-line pointer to it)")
+	}
+	if _, _, err := FindRun(r.cfg, r.layout, guid); err != nil {
+		return fmt.Errorf("shuttle: %q is not a shuttle strand", guid)
+	}
+	return playInputs(r.mux, guid, r.engine.ComposeSend(text))
+}
+
 // playInputs plays inputs into guid's pane through mux, in order: a Key
 // step sends a named key (SendKey), a Text step types literal text and,
 // when Submit is set, follows it with Enter (SendText's submit flag) — the

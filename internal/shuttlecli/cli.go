@@ -36,8 +36,8 @@ type shuttleCLI struct {
 // when the group command itself is invoked (bare "lyx shuttle" listing or an
 // unknown-subcommand error via GroupRunE) so neither path requires a git
 // repository. Every verb card creates its own (c *shuttleCLI) xCmd() builder
-// and registers it here via parent.AddCommand — this card registers only
-// run.
+// and registers it here via parent.AddCommand: run.go, interrupt.go, and
+// send.go.
 func Command() *cobra.Command {
 	c := &shuttleCLI{}
 
@@ -105,7 +105,7 @@ provider specifics.`,
 		},
 	}
 
-	parent.AddCommand(c.runCmd())
+	parent.AddCommand(c.runCmd(), c.interruptCmd(), c.sendCmd())
 
 	return parent
 }

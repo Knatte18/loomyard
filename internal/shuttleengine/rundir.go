@@ -139,6 +139,16 @@ func findRunByStrand(root, guid string) (RunState, string, error) {
 	return RunState{}, "", fmt.Errorf("shuttle: no run found for strand %q", guid)
 }
 
+// FindRun resolves guid to the RunState and run directory of the shuttle run
+// whose strand it names, deriving the run directory root from cfg/layout the
+// same way Start does. This is how the CLI's interrupt/send verbs (and any
+// other out-of-process caller) turn an operator-supplied guid into the run
+// they need to act on, confirming the guid actually names a shuttle run
+// before ever touching mux.
+func FindRun(cfg Config, layout *hubgeometry.Layout, guid string) (RunState, string, error) {
+	return findRunByStrand(runDirRoot(cfg, layout), guid)
+}
+
 // sweepOrphans removes every run directory under root whose run.json names
 // a StrandGUID absent from strandGUIDs (the live set from mux state),
 // guarded by minAge: a directory whose mtime is younger than minAge is

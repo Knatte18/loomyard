@@ -1,8 +1,9 @@
 // cli_test.go covers the shuttlecli cobra seam through RunCLI: bare-group
-// listing, the unknown-subcommand JSON envelope, and run's flag-shape
-// validation. No live psmux/claude session is required by any test in this
-// file; the full run/interrupt/send round-trip against a live agent lives in
-// smoke tests (batch 6) and the sandbox suite.
+// listing, the unknown-subcommand JSON envelope, run's flag-shape
+// validation, and interrupt/send's exact-args validation. No live
+// psmux/claude session is required by any test in this file; the full
+// run/interrupt/send round-trip against a live agent lives in smoke tests
+// (batch 6) and the sandbox suite.
 
 package shuttlecli
 
@@ -26,7 +27,7 @@ func TestRunCLI_NoArgs(t *testing.T) {
 	}
 
 	got := out.String()
-	wantSubs := []string{"run"}
+	wantSubs := []string{"run", "interrupt", "send"}
 	for _, sub := range wantSubs {
 		if !strings.Contains(got, sub) {
 			t.Errorf("RunCLI(nil) no-arg listing missing subcommand %q; got:\n%s", sub, got)
@@ -98,6 +99,66 @@ func TestRunCLI_Run_FlagValidation(t *testing.T) {
 			}
 			if !strings.Contains(out.String(), tt.wantErr) {
 				t.Errorf("RunCLI(%v) output = %q; want substring %q", tt.args, out.String(), tt.wantErr)
+			}
+		})
+	}
+}
+
+// TestRunCLI_Interrupt_ArgValidation verifies that "lyx shuttle interrupt"
+// enforces exactly one positional <guid> argument via cobra's Args
+// validation, which runs before PersistentPreRunE — so this fires even
+// against a non-git directory with no config to resolve.
+func TestRunCLI_Interrupt_ArgValidation(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{"NoArgs", []string{"interrupt"}},
+		{"TooManyArgs", []string{"interrupt", "guid-1", "guid-2"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Chdir(t.TempDir())
+
+			var out bytes.Buffer
+			exitCode := RunCLI(&out, tt.args)
+
+			if exitCode != 1 {
+				t.Errorf("RunCLI(%v) = %d; want 1", tt.args, exitCode)
+			}
+			if !strings.Contains(out.String(), `"ok":false`) {
+				t.Errorf("RunCLI(%v) output missing ok:false envelope; got: %q", tt.args, out.String())
+			}
+		})
+	}
+}
+
+// TestRunCLI_Send_ArgValidation verifies that "lyx shuttle send" enforces
+// exactly two positional arguments (<guid> <text>) via cobra's Args
+// validation, for the same reason as TestRunCLI_Interrupt_ArgValidation.
+func TestRunCLI_Send_ArgValidation(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{"NoArgs", []string{"send"}},
+		{"OnlyGuid", []string{"send", "guid-1"}},
+		{"TooManyArgs", []string{"send", "guid-1", "text", "extra"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Chdir(t.TempDir())
+
+			var out bytes.Buffer
+			exitCode := RunCLI(&out, tt.args)
+
+			if exitCode != 1 {
+				t.Errorf("RunCLI(%v) = %d; want 1", tt.args, exitCode)
+			}
+			if !strings.Contains(out.String(), `"ok":false`) {
+				t.Errorf("RunCLI(%v) output missing ok:false envelope; got: %q", tt.args, out.String())
 			}
 		})
 	}
