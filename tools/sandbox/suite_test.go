@@ -62,7 +62,7 @@ func TestBinaryFingerprint_MissingPath(t *testing.T) {
 }
 
 // TestRenderScheme_ContainsHeaderAndBody verifies that renderScheme embeds the
-// binary fingerprint fields and the embedded SANDBOX-SUITE body in its output.
+// binary fingerprint fields and the embedded SANDBOX-CORE-SUITE body in its output.
 func TestRenderScheme_ContainsHeaderAndBody(t *testing.T) {
 	info := binaryInfo{
 		Path:    "/fake/lyx.exe",
@@ -80,7 +80,7 @@ func TestRenderScheme_ContainsHeaderAndBody(t *testing.T) {
 		{"path", "/fake/lyx.exe"},
 		{"size", "1234 bytes"},
 		{"sha256", "abc123def456"},
-		{"scheme heading", "SANDBOX-SUITE"},
+		{"scheme heading", "SANDBOX-CORE-SUITE"},
 	}
 	for _, c := range checks {
 		if !strings.Contains(got, c.want) {
@@ -92,7 +92,7 @@ func TestRenderScheme_ContainsHeaderAndBody(t *testing.T) {
 // TestEnsureGitExclude covers the four behaviour scenarios for idempotent
 // exclude-file management.
 func TestEnsureGitExclude(t *testing.T) {
-	const entry = "SANDBOX-SUITE.md"
+	const entry = "SANDBOX-CORE-SUITE.md"
 
 	// createGitDir sets up a minimal <dir>/.git directory (without info/).
 	createGitDir := func(t *testing.T) string {
@@ -409,7 +409,7 @@ func TestRunSuite_StaleReportRemoved(t *testing.T) {
 
 // TestRunSuite_ExcludesReport verifies that runSuite registers
 // sandbox-report.json in the host repo's .git/info/exclude, alongside the
-// existing SANDBOX-SUITE.md entry.
+// existing SANDBOX-CORE-SUITE.md entry.
 func TestRunSuite_ExcludesReport(t *testing.T) {
 	parentDir, hostRepoDir := makeHostRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
@@ -437,7 +437,7 @@ func TestRunSuite_ExcludesReport(t *testing.T) {
 }
 
 // TestRunSuite_MuxSpec_WritesMuxFile verifies that runSuite(..., muxSuite)
-// writes MUX-SANDBOX-SUITE.md (not SANDBOX-SUITE.md) into the host repo, with
+// writes SANDBOX-MUX-SUITE.md (not SANDBOX-CORE-SUITE.md) into the host repo, with
 // the fingerprint header prepended to the embedded mux doc body.
 func TestRunSuite_MuxSpec_WritesMuxFile(t *testing.T) {
 	parentDir, hostRepoDir := makeHostRepo(t)
@@ -472,7 +472,7 @@ func TestRunSuite_MuxSpec_WritesMuxFile(t *testing.T) {
 }
 
 // TestRunSuite_MuxSpec_ExcludesFiles verifies that a muxSuite run registers
-// MUX-SANDBOX-SUITE.md and sandbox-report.json in .git/info/exclude.
+// SANDBOX-MUX-SUITE.md and sandbox-report.json in .git/info/exclude.
 func TestRunSuite_MuxSpec_ExcludesFiles(t *testing.T) {
 	parentDir, hostRepoDir := makeHostRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
@@ -548,7 +548,7 @@ func TestRunSuite_MuxSpec_DefaultInstruction(t *testing.T) {
 	if gotInstruction != muxSuite.instruction {
 		t.Errorf("launchAgent instruction = %q; want %q", gotInstruction, muxSuite.instruction)
 	}
-	if gotInstruction != "Read ./MUX-SANDBOX-SUITE.md and follow the instructions in it exactly." {
+	if gotInstruction != "Read ./SANDBOX-MUX-SUITE.md and follow the instructions in it exactly." {
 		t.Errorf("launchAgent instruction = %q; want the literal mux default", gotInstruction)
 	}
 }

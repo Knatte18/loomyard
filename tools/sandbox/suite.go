@@ -28,10 +28,10 @@ const (
 	hostDirName = "lyx-test"
 )
 
-//go:embed SANDBOX-SUITE.md
+//go:embed SANDBOX-CORE-SUITE.md
 var sandboxSuiteMD string
 
-//go:embed MUX-SANDBOX-SUITE.md
+//go:embed SANDBOX-MUX-SUITE.md
 var muxSandboxSuiteMD string
 
 // suiteSpec parameterizes runSuite over the two supported suites (main and
@@ -52,20 +52,20 @@ type suiteSpec struct {
 	instruction string
 }
 
-// mainSuite is the original SANDBOX-SUITE spec: the general black-box scheme
+// mainSuite is the original SANDBOX-CORE-SUITE spec: the general black-box scheme
 // exercising the lyx CLI end-to-end.
 var mainSuite = suiteSpec{
-	fileName:    "SANDBOX-SUITE.md",
+	fileName:    "SANDBOX-CORE-SUITE.md",
 	doc:         sandboxSuiteMD,
-	instruction: "Read ./SANDBOX-SUITE.md and follow the instructions in it exactly.",
+	instruction: "Read ./SANDBOX-CORE-SUITE.md and follow the instructions in it exactly.",
 }
 
-// muxSuite is the MUX-SANDBOX-SUITE spec: the dedicated scheme exercising the
+// muxSuite is the SANDBOX-MUX-SUITE spec: the dedicated scheme exercising the
 // mux/psmux lifecycle scenarios split out of the main suite.
 var muxSuite = suiteSpec{
-	fileName:    "MUX-SANDBOX-SUITE.md",
+	fileName:    "SANDBOX-MUX-SUITE.md",
 	doc:         muxSandboxSuiteMD,
-	instruction: "Read ./MUX-SANDBOX-SUITE.md and follow the instructions in it exactly.",
+	instruction: "Read ./SANDBOX-MUX-SUITE.md and follow the instructions in it exactly.",
 }
 
 // lookPath is a testability seam over exec.LookPath so tests can inject fake

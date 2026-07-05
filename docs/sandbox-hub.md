@@ -88,21 +88,21 @@ against the deployed `lyx.exe`.
 ### Usage
 
 ```cmd
-sandbox-suite.cmd
+sandbox-core-suite.cmd
 ```
 
 This command, run from the lyx repo directory:
 
 1. Locates the Hub host repo at `C:\Code\lyx-test-HUB\lyx-test`.
 2. Fingerprints the deployed `lyx.exe` (absolute path, size, modtime, SHA256 prefix).
-3. Copies a fresh `SANDBOX-SUITE.md` into the Hub host repo, prepending the fingerprint
-   block to the embedded template (`tools/sandbox/SANDBOX-SUITE.md`). Any previous copy
+3. Copies a fresh `SANDBOX-CORE-SUITE.md` into the Hub host repo, prepending the fingerprint
+   block to the embedded template (`tools/sandbox/SANDBOX-CORE-SUITE.md`). Any previous copy
    is overwritten so every session starts from a clean slate.
-4. Adds `SANDBOX-SUITE.md` to `lyx-test-HUB/lyx-test/.git/info/exclude` so the
+4. Adds `SANDBOX-CORE-SUITE.md` to `lyx-test-HUB/lyx-test/.git/info/exclude` so the
    copied file does not show up as an untracked change inside the host repo.
 5. Launches an interactive `claude --dangerously-skip-permissions` session with the
    host repo as the working directory and a single instruction:
-   `"Read ./SANDBOX-SUITE.md and follow the instructions in it exactly."`
+   `"Read ./SANDBOX-CORE-SUITE.md and follow the instructions in it exactly."`
 
 The agent works entirely as a black box: it sees only `lyx` on PATH and the copied
 scheme. It must not access the lyx source tree. Findings (WARN or FAIL verdicts) are
@@ -115,8 +115,8 @@ clean exit would never fire. Collecting the report is a separate operator step
 ### Optional flags
 
 ```cmd
-sandbox-suite.cmd -claude <path>   # override the claude binary (default: resolve from PATH)
-sandbox-suite.cmd -prompt <text>   # override the instruction string (default: built-in)
+sandbox-core-suite.cmd -claude <path>   # override the claude binary (default: resolve from PATH)
+sandbox-core-suite.cmd -prompt <text>   # override the instruction string (default: built-in)
 ```
 
 ### Exit-code note
@@ -156,15 +156,15 @@ root); it is required only by this subcommand.
 ### Future: psmux launch
 
 The direct `claude` launch used today will be replaced by a psmux interactive session
-once the `mux` module is available. The file contract (`SANDBOX-SUITE.md` driving the
+once the `mux` module is available. The file contract (`SANDBOX-CORE-SUITE.md` driving the
 agent) is unchanged; only the launch mechanism will differ.
 
 ## Running the mux suite
 
-Alongside the main suite, `mux-sandbox-suite.cmd` runs a dedicated black-box suite
+Alongside the main suite, `sandbox-mux-suite.cmd` runs a dedicated black-box suite
 against `lyx mux`. It mirrors the main-suite flow: it copies a fingerprinted
-`MUX-SANDBOX-SUITE.md` into the Hub host repo, git-excludes the copy the same way
-`SANDBOX-SUITE.md` is excluded, clears any stale `sandbox-report.json`, and launches
+`SANDBOX-MUX-SUITE.md` into the Hub host repo, git-excludes the copy the same way
+`SANDBOX-CORE-SUITE.md` is excluded, clears any stale `sandbox-report.json`, and launches
 the interactive agent there. Because it exercises live psmux panes (crash simulation,
 layout verification, attach), it needs a live psmux (`psmux.exe` on PATH) as a
 precondition beyond what the main suite requires. Findings land in the same
@@ -181,8 +181,8 @@ fronted by its own single-purpose launcher, mirroring how `deploy.cmd` does one 
 ```cmd
 sandbox-build.cmd            # go run ./tools/sandbox -parent C:\Code build
 sandbox-build.cmd -reset     # ... build -reset  (tear down and re-clone)
-sandbox-suite.cmd            # ... suite  (run the interactive agent)
-mux-sandbox-suite.cmd        # ... mux-suite  (run the mux-specific interactive agent)
+sandbox-core-suite.cmd            # ... suite  (run the interactive agent)
+sandbox-mux-suite.cmd        # ... mux-suite  (run the mux-specific interactive agent)
 sandbox-fetch.cmd            # ... -loomyard "%~dp0." fetch  (collect the report)
 ```
 

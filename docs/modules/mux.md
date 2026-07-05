@@ -450,8 +450,8 @@ These are the tested facts any implementation must respect. Full evidence in
 ## Manual test surface: the mux sandbox suite
 
 mux's live/visual testing runs through the dedicated black-box suite
-[`tools/sandbox/MUX-SANDBOX-SUITE.md`](../../tools/sandbox/MUX-SANDBOX-SUITE.md),
-launched via `mux-sandbox-suite.cmd` against the sandbox Hub host repo (see
+[`tools/sandbox/SANDBOX-MUX-SUITE.md`](../../tools/sandbox/SANDBOX-MUX-SUITE.md),
+launched via `sandbox-mux-suite.cmd` against the sandbox Hub host repo (see
 [sandbox-howto.md](../sandbox-howto.md)). The hermetic unit/golden tests and the
 opt-in `-tags smoke` tests remain the automated layer. Two paths long thought
 headless-unreachable are covered by smoke tests too: **attach** is driven inside a

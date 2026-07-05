@@ -1,7 +1,7 @@
 // main.go implements the sandbox tool entry point, flag parsing, and subcommand
 // dispatch. It supports four subcommands: "build" (default, clones the Hub),
-// "suite" (runs the embedded SANDBOX-SUITE agent), "mux-suite" (runs the
-// embedded MUX-SANDBOX-SUITE agent), and "fetch" (collects the agent-written
+// "suite" (runs the embedded SANDBOX-CORE-SUITE agent), "mux-suite" (runs the
+// embedded SANDBOX-MUX-SUITE agent), and "fetch" (collects the agent-written
 // report into .scratch). Only -parent and -loomyard live at the top level;
 // -reset is a build-subcommand flag, parsed after the "build" token like
 // suite/mux-suite parse their -claude/-prompt flags.
@@ -152,7 +152,7 @@ func run(argv []string) int {
 
 	case "mux-suite":
 		// The mux-suite subcommand mirrors "suite" exactly, but runs the
-		// dedicated MUX-SANDBOX-SUITE scheme via the muxSuite spec; fetching the
+		// dedicated SANDBOX-MUX-SUITE scheme via the muxSuite spec; fetching the
 		// report is the same shared fetch subcommand, so -loomyard is not
 		// required here either.
 

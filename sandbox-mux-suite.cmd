@@ -1,5 +1,5 @@
 @echo off
-REM Launcher for the lyx MUX-SANDBOX-SUITE: runs the interactive mux black-box
+REM Launcher for the lyx SANDBOX-MUX-SUITE: runs the interactive mux black-box
 REM agent session (live psmux required). The machine-specific parent directory
 REM is hardcoded HERE (the base under which sandbox Hubs are created) — the Go
 REM tool stays general.

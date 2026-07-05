@@ -1,9 +1,9 @@
-# MUX-SANDBOX-SUITE -- lyx mux black-box agent suite
+# SANDBOX-MUX-SUITE -- lyx mux black-box agent suite
 
 ## What this is
 
 A structured test-loop for exercising `lyx mux` against a **live psmux server** in the
-sandbox Hub host repo. Unlike the host/weft-centric main suite (`SANDBOX-SUITE.md`), the
+sandbox Hub host repo. Unlike the host/weft-centric main suite (`SANDBOX-CORE-SUITE.md`), the
 value here is partly **visual**: panes popping up, layout holding. Not an automated
 suite -- an agent drives it, an operator watches.
 
@@ -423,5 +423,5 @@ findings section above -- with `items: []` when every scenario was `OK`.
 
 ## Notes
 
-- Host/weft scenarios stay in `SANDBOX-SUITE.md`; this suite grows with mux (windows
+- Host/weft scenarios stay in `SANDBOX-CORE-SUITE.md`; this suite grows with mux (windows
   for clusters, daemon) -- add `M` scenarios here, not in the main suite.

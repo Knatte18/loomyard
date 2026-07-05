@@ -33,7 +33,7 @@ preserved.
 - Docs: `docs/modules/mux.md`, `docs/research/mux-exploration.md`,
   `docs/research/mux-hooks-exploration.md`, `docs/overview.md`, `docs/roadmap.md`,
   `CONSTRAINTS.md`, `README.md`.
-- The dedicated live-driving suite you will RUN: `tools/sandbox/MUX-SANDBOX-SUITE.md`
+- The dedicated live-driving suite you will RUN: `tools/sandbox/SANDBOX-MUX-SUITE.md`
   (scenarios M0–M11) plus `docs/sandbox-howto.md` for how the sandbox harness works. This
   suite is the maintained, structured vehicle for driving real psmux — see "What to TEST".
 - Repo rules you MUST follow: `CLAUDE.md` (root + `~/.claude/CLAUDE.md`) and `CONSTRAINTS.md`
@@ -169,16 +169,16 @@ Smoke (real psmux, behind a build tag):
   `pwsh` resolves to a 0-byte WindowsApps ConPTY stub that renders nothing.
 
 Live psmux driving via the MUX SANDBOX SUITE (PRIMARY — this is where the bugs surface).
-The repo ships a dedicated, maintained live-psmux suite: `tools/sandbox/MUX-SANDBOX-SUITE.md`,
+The repo ships a dedicated, maintained live-psmux suite: `tools/sandbox/SANDBOX-MUX-SUITE.md`,
 scenarios M0–M11, driven through the harness. Run it — do not only hand-roll fixtures:
 - Deploy the current source as the binary under test: `deploy.cmd` (puts a fresh `lyx.exe`
   on PATH). CRITICAL FOOTGUN: the suite runs the DEPLOYED snapshot, NOT your working tree — it
   has no idea you edited source. You MUST re-run `deploy.cmd` after EVERY source change before
   re-running the suite, or you will validate the STALE binary and wrongly conclude a fix works
   (or fails). Deploy first, always; when in doubt, re-deploy.
-- Launch the interactive suite session: `mux-sandbox-suite.cmd` (repo root) — it runs
+- Launch the interactive suite session: `sandbox-mux-suite.cmd` (repo root) — it runs
   `go run ./tools/sandbox -parent C:\Code mux-suite`, materializes the sandbox Hub host repo,
-  and copies MUX-SANDBOX-SUITE.md (with a binary-fingerprint header) into it. Follow that
+  and copies SANDBOX-MUX-SUITE.md (with a binary-fingerprint header) into it. Follow that
   file's own Pre-conditions + "How to run a scenario" sections as the source of truth.
 - After the session, pull the findings back with `sandbox-fetch.cmd` (stamps the binary
   fingerprint into the fetched `sandbox-report.json` `meta`).
@@ -186,7 +186,7 @@ scenarios M0–M11, driven through the harness. Run it — do not only hand-roll
   pane → resume recreates it), M9 (kill-server → crash-resume rebuilds all), M6 (≥2-top layout
   tiling), M10 (recursive remove), M11 (down leaves no stray psmux). Walk every one and record
   OK/WARN/FAIL per the suite's verdict key.
-- NOTE the persona split: MUX-SANDBOX-SUITE.md's black-box rule ("do not read the lyx source
+- NOTE the persona split: SANDBOX-MUX-SUITE.md's black-box rule ("do not read the lyx source
   tree") binds the *agent-under-test* persona, NOT you. As the reviewer you read the source
   AND drive the suite — use the suite's scenarios/harness as your live-driving checklist while
   still reasoning about the code. The `attach` scenario (M7) is operator-assisted (needs a TTY
@@ -248,11 +248,11 @@ These were consciously deferred last time; decide whether any now warrants fixin
   the composed behavior is what actually protects the recovery paths.
 - EXTEND THE MUX SANDBOX SUITE when it helps. If the review surfaces a live/visual behavior that
   M0–M11 do not cover — or you find yourself repeatedly hand-driving a scenario the suite should
-  own — add it to `tools/sandbox/MUX-SANDBOX-SUITE.md` as a new `M12+` scenario (match the
+  own — add it to `tools/sandbox/SANDBOX-MUX-SUITE.md` as a new `M12+` scenario (match the
   existing Goal/Watch/Verdict shape; note any controlled `psmux -L <socket>` exception; keep the
   black-box ethos for the agent-under-test persona). The suite is meant to grow with mux — this
   is encouraged, not scope-creep. If you touch the suite's scenario set, keep the coverage guard
-  green (`go test ./cmd/lyx/...` — `sandbox_coverage_test.go` scans `tools/sandbox/*SANDBOX-SUITE.md`
+  green (`go test ./cmd/lyx/...` — `sandbox_coverage_test.go` scans `tools/sandbox/*SUITE.md`
   for the `**Covers:** mux` tag) and honor the Documentation Lifecycle / Sandbox Suite Coverage
   invariant in `CONSTRAINTS.md` in the SAME change.
 - MAKE SMOKE TESTS DETERMINISTIC. Timing-sensitive psmux operations are asynchronous: `kill-server`

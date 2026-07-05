@@ -32,7 +32,7 @@ previously-fixed behaviors have not regressed and (b) re-evaluate the deferred i
 - Code: `<CODE PATHS — e.g. internal/<module>engine/**, internal/<module>cli/**, cmd/lyx integration>`.
 - Docs: `<MODULE DOC — docs/modules/<module>.md>`, `docs/overview.md`, `docs/roadmap.md`,
   `CONSTRAINTS.md`, `README.md`, and any `docs/research/<module>-*.md`.
-- The dedicated live-driving suite you will RUN: `<tools/sandbox/<MODULE>-SANDBOX-SUITE.md>` plus
+- The dedicated live-driving suite you will RUN: `<tools/sandbox/SANDBOX-<MODULE>-SUITE.md>` plus
   [`docs/sandbox-howto.md`](../sandbox-howto.md) for how the harness works.
 - Repo rules you MUST follow: `CLAUDE.md` (root + `~/.claude/CLAUDE.md`) and `CONSTRAINTS.md`
   (Hub Geometry, CLI/Cobra, lyxtest Leaf, Sandbox Suite Coverage, Documentation Lifecycle). A change
@@ -91,7 +91,7 @@ Live driving via the SANDBOX SUITE (PRIMARY — where the bugs surface):
 - Deploy the current source as the binary under test: `deploy.cmd`. **FOOTGUN:** the suite runs the
   DEPLOYED snapshot, not your working tree — re-run `deploy.cmd` after EVERY source change or you
   validate a stale binary. Deploy first, always.
-- Launch the suite per `<MODULE>-SANDBOX-SUITE.md`'s own pre-conditions; walk every scenario and
+- Launch the suite per `SANDBOX-<MODULE>-SUITE.md`'s own pre-conditions; walk every scenario and
   record OK/WARN/FAIL. The suite is a FLOOR — devise and run MANY more adversarial scenarios of your
   own beyond it (combine verbs in orders the suite never tries; chase anything the code makes you
   suspicious of). Report exact commands + observations.

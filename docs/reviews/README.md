@@ -124,7 +124,7 @@ campaign; keep it — don't let an artificial stress peg block a correct module.
 
 Static and hermetic tests can't see the real bugs; a maintained **live-driving suite** is how the
 round agent (and you) exercise the real substrate. For mux that is
-[`tools/sandbox/MUX-SANDBOX-SUITE.md`](../../tools/sandbox/MUX-SANDBOX-SUITE.md) (scenarios M0–Mn),
+[`tools/sandbox/SANDBOX-MUX-SUITE.md`](../../tools/sandbox/SANDBOX-MUX-SUITE.md) (scenarios M0–Mn),
 run through the harness documented in [sandbox-howto.md](../sandbox-howto.md). Reusable rules that
 bit us and are worth carrying to any module's suite:
 
@@ -147,7 +147,7 @@ bit us and are worth carrying to any module's suite:
    `docs/reviews/<module>-review-prompt.md` and fill every `<PLACEHOLDER>` (what to read, the
    high-yield focus list = where *this* module's bugs actually live, the exact test commands, the
    substrate-teardown check).
-2. Stand up a live suite under `tools/sandbox/<MODULE>-SANDBOX-SUITE.md` (mux's is the worked
+2. Stand up a live suite under `tools/sandbox/SANDBOX-<MODULE>-SUITE.md` (mux's is the worked
    pattern) and wire its coverage guard.
 3. Run the loop: seed → spawn (rotate model) → independently verify → re-seed → repeat until a
    safety pass finds nothing and your gates agree. Then do any operator-assisted step the harness

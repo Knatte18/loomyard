@@ -1,6 +1,6 @@
 // sandbox_coverage_test.go enforces the "Sandbox Suite Coverage" invariant: every
 // registered lyx module must either be exercised by a scenario in one of the
-// tools/sandbox/*SANDBOX-SUITE.md suite files (declared via an explicit **Covers:**
+// tools/sandbox/*SUITE.md suite files (declared via an explicit **Covers:**
 // tag) or be named on this test's exclusion allowlist with a documented reason. This
 // is the sandbox-suite analogue of registration_test.go's "exists => registered" guard.
 
@@ -17,7 +17,7 @@ import (
 )
 
 // coversLinePattern matches a "**Covers:** <module>[, <module>...]" line in any
-// tools/sandbox/*SANDBOX-SUITE.md suite file, capturing the comma/whitespace-separated
+// tools/sandbox/*SUITE.md suite file, capturing the comma/whitespace-separated
 // module list.
 var coversLinePattern = regexp.MustCompile(`^\*\*Covers:\*\*\s*(.+)$`)
 
@@ -32,7 +32,7 @@ var excludedModules = map[string]string{
 
 // TestSandboxCoverage_AllModulesCoveredOrExcluded discovers every module
 // registered in the live cobra root and every module declared covered by a
-// **Covers:** tag across all tools/sandbox/*SANDBOX-SUITE.md suite files, then
+// **Covers:** tag across all tools/sandbox/*SUITE.md suite files, then
 // asserts that every registered module is either covered or on the
 // excludedModules allowlist, and that every covered/excluded module name
 // actually corresponds to a live registered module (catching typos and stale
@@ -61,7 +61,7 @@ func TestSandboxCoverage_AllModulesCoveredOrExcluded(t *testing.T) {
 			t.Error("sandbox coverage guard: no registered modules found via newRoot().Commands(); the cobra root may be misconfigured")
 		}
 		if len(covered) == 0 {
-			t.Error("sandbox coverage guard: no **Covers:** tags found across tools/sandbox/*SANDBOX-SUITE.md; the doc parse may be misconfigured")
+			t.Error("sandbox coverage guard: no **Covers:** tags found across tools/sandbox/*SUITE.md; the doc parse may be misconfigured")
 		}
 	})
 
@@ -75,7 +75,7 @@ func TestSandboxCoverage_AllModulesCoveredOrExcluded(t *testing.T) {
 			continue
 		}
 		t.Errorf(
-			"module %q is registered in newRoot() but has no **Covers:** tag in any tools/sandbox/*SANDBOX-SUITE.md file and is not on the excludedModules allowlist in cmd/lyx/sandbox_coverage_test.go; add a scenario tag or an allowlist entry with a reason",
+			"module %q is registered in newRoot() but has no **Covers:** tag in any tools/sandbox/*SUITE.md file and is not on the excludedModules allowlist in cmd/lyx/sandbox_coverage_test.go; add a scenario tag or an allowlist entry with a reason",
 			m,
 		)
 	}
@@ -102,7 +102,7 @@ func TestSandboxCoverage_AllModulesCoveredOrExcluded(t *testing.T) {
 	}
 }
 
-// parseCoveredModules scans every tools/sandbox/*SANDBOX-SUITE.md suite file on disk
+// parseCoveredModules scans every tools/sandbox/*SUITE.md suite file on disk
 // (resolving the repo root from this test file's own on-disk location, exactly as
 // registration_test.go does) and returns a map from module token to the sorted list
 // of suite-file basenames that declare it via a **Covers:** line — so Assert-2's
@@ -119,17 +119,17 @@ func parseCoveredModules(t *testing.T) map[string][]string {
 	}
 	repoRoot := filepath.Dir(filepath.Dir(filepath.Dir(testFile)))
 
-	suitePattern := filepath.Join(repoRoot, "tools", "sandbox", "*SANDBOX-SUITE.md")
+	suitePattern := filepath.Join(repoRoot, "tools", "sandbox", "*SUITE.md")
 	suitePaths, err := filepath.Glob(suitePattern)
 	if err != nil {
-		t.Fatalf("could not glob tools/sandbox/*SANDBOX-SUITE.md: %v", err)
+		t.Fatalf("could not glob tools/sandbox/*SUITE.md: %v", err)
 	}
-	// Vacuous-glob guard: the repo ships at least SANDBOX-SUITE.md and
-	// MUX-SANDBOX-SUITE.md, so fewer than two matches means the pattern or
+	// Vacuous-glob guard: the repo ships at least SANDBOX-CORE-SUITE.md and
+	// SANDBOX-MUX-SUITE.md, so fewer than two matches means the pattern or
 	// directory resolved wrong rather than the suite set having genuinely shrunk.
 	if len(suitePaths) < 2 {
 		t.Fatalf(
-			"tools/sandbox/*SANDBOX-SUITE.md glob matched %d file(s) (%v); expected at least 2 (the repo ships SANDBOX-SUITE.md and MUX-SANDBOX-SUITE.md) — the pattern or directory is likely wrong",
+			"tools/sandbox/*SUITE.md glob matched %d file(s) (%v); expected at least 2 (the repo ships SANDBOX-CORE-SUITE.md and SANDBOX-MUX-SUITE.md) — the pattern or directory is likely wrong",
 			len(suitePaths), suitePaths,
 		)
 	}
