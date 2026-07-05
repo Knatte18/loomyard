@@ -130,17 +130,29 @@ fixes it. The guard is green at the batch-end `verify:`, which is the gate that 
 
 - **Context:**
   - `tools/sandbox/SANDBOX-MUX-SUITE.md`
-  - `tools/sandbox/suite.go`
   - `cmd/lyx/sandbox_coverage_test.go`
   - `sandbox-mux-suite.cmd`
   - `docs/sandbox-howto.md`
-- **Edits:** none
+- **Edits:**
+  - `tools/sandbox/main.go`
+  - `tools/sandbox/suite.go`
+  - `tools/sandbox/main_test.go`
+  - `tools/sandbox/suite_test.go`
 - **Creates:**
   - `tools/sandbox/SANDBOX-SHUTTLE-SUITE.md`
   - `sandbox-shuttle-suite.cmd`
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** New suite file modeled structurally on `SANDBOX-MUX-SUITE.md`
+- **Requirements:** Wire the new suite into the launcher exactly as `mux-suite` is wired:
+  add a `shuttleSuite` `suiteSpec` to `suite.go` (embed `SANDBOX-SHUTTLE-SUITE.md` via
+  `//go:embed`, default instruction `"Read ./SANDBOX-SHUTTLE-SUITE.md and follow the
+  instructions in it exactly."`) and a `"shuttle-suite"` case to `main.go`'s subcommand
+  switch mirroring the `"mux-suite"` case exactly (own flagset, `-claude`/`-prompt`
+  flags, `runSuite(absParent, *claudeFlag, *promptFlag, shuttleSuite)`). Add dispatch
+  tests to `main_test.go` mirroring `TestRun_MuxSuiteRoutesToLaunch` /
+  `TestRun_MuxSuiteFlagsRoutedAfterToken` / `TestRun_MuxSuiteErrorPropagation` for
+  `shuttle-suite`, and spec tests to `suite_test.go` mirroring the `TestRunSuite_MuxSpec_*`
+  family for `shuttleSuite`. New suite file modeled structurally on `SANDBOX-MUX-SUITE.md`
   (same bold-label scenario grammar: `**Goal:**`/`**Watch:**`/`**Verdict:**` plus
   `**Covers:** shuttle` on scenarios that drive the module). Minimum scenarios:
   (S1) autonomous `lyx shuttle run` happy path — prompt instructing the agent to write a

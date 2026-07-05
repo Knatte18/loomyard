@@ -188,3 +188,7 @@ batches:
 - `internal/shuttleengine/wait_test.go`
 - `sandbox-shuttle-suite.cmd`
 - `tools/sandbox/SANDBOX-SHUTTLE-SUITE.md`
+- `tools/sandbox/main.go`
+- `tools/sandbox/main_test.go`
+- `tools/sandbox/suite.go`
+- `tools/sandbox/suite_test.go`
