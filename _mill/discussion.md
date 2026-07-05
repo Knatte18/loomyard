@@ -50,7 +50,9 @@ deleted in this task.
   the existing `Strand.SessionID` field), an exported `SendKeys` op (generic key/text
   transport to a strand's pane, needed by Interrupt/Send), and an exported `CapturePane` op
   (needed for startup probing / trust-dialog detection). Remove the unused `claude:` key
-  from mux's `template.yaml`.
+  from mux — the `template.yaml` line, the `Config.Claude` struct field
+  (`internal/muxengine/config.go:24`), and the empty-default assertion in
+  `config_test.go:53-54`.
 - Run-artifact lifecycle: per-run directory (prompt file, settings.json, events.jsonl,
   run.json), deleted on clean completion, kept on failure, orphan-swept later.
 - Docs: delete `docs/modules/shuttle.md` **and** `docs/modules/mux.md` (documentation
@@ -112,8 +114,10 @@ deleted in this task.
   (~10), `run_timeout_min` (default 30), `startup_timeout_s`, and Claude-engine keys
   prefixed `claude_`: `claude` (binary path, empty = PATH), `claude_deny_agent_tool`
   (default true), `claude_deny_ask_user_question` (default true). The unused `claude:` key
-  is removed from `internal/muxengine/template.yaml` in the same change (config reconcile
-  handles the schema change; verify `lyx config` reconcile behaviour for removed keys).
+  is removed from mux in the same change — `internal/muxengine/template.yaml`, the
+  `Config.Claude` struct field (`config.go:24`), and its config-test assertion
+  (`config_test.go:53-54`) — with config reconcile handling the schema change (verify
+  `lyx config` reconcile behaviour for removed keys).
 - Rationale: shuttle owns its provider config; mux stays a dumb carrier. Guardrails are
   config-toggleable per operator request ("modulert"). Engine-specific keys grouped by
   prefix because templates are flat.
@@ -212,17 +216,40 @@ deleted in this task.
   with the captured pane content as diagnostics.
 - Rejected: no overall deadline (a hung-but-alive agent blocks a review round forever).
 
-### Guardrails: PreToolUse deny, config-toggleable, verified by smoke test
+### Guardrails: PreToolUse deny — Agent always, AskUserQuestion mode-coupled
 
-- Decision: settings.json includes `PreToolUse` deny rules — `Agent` (steer: do the work
-  in-session / request a visible strand; nested work must never go invisible) and
-  `AskUserQuestion` (steer: write the question to the output file and end the turn — which
-  shuttle surfaces as `asking`). Each toggleable via `claude_deny_*` config keys, default on.
-  `spec.Autonomous` (default true) adds `--dangerously-skip-permissions`.
-- Rationale: holds the everything-visible-in-mux invariant and prevents blocking on a hidden
-  dialog. The deny-and-steer path is **unprobed** (open item in
-  `docs/research/mux-hooks-exploration.md`) — this task must verify it live (smoke test).
-- Rejected: guardrails as per-spec options only (invites forgetting them).
+- Decision: settings.json includes `PreToolUse` deny rules, composed per run:
+  - **`Agent` deny — always on, in both modes** (config-toggleable via `claude_deny_agent_tool`).
+    Steer: do the work in-session / request a visible strand. Invisible nested work is
+    equally wrong attended and unattended.
+  - **`AskUserQuestion` deny — coupled to `spec.Autonomous`** (config-toggleable via
+    `claude_deny_ask_user_question`). `Autonomous: true` (default; unattended): denied,
+    because the dialog blocks silently with nobody watching and shuttle cannot even see that
+    the agent is asking (no Stop fires). `Autonomous: false` (attended — the caller knows the
+    operator will interact, e.g. a discussion phase): **allowed** — in a psmux pane the agent
+    is a CLI TUI where AskUserQuestion is a keyboard-navigable picker that works well; the
+    operator is attached and answers in place, the turn continues, and shuttle correctly sees
+    nothing. (mill's blanket AskUserQuestion ban came from the VS Code extension context; it
+    does not transfer to CLI panes.)
+  - `spec.Autonomous` also controls `--dangerously-skip-permissions` (on when autonomous).
+- Decision: **the deny-steer must preserve escalation.** Steer text (autonomous mode): "You
+  cannot open an interactive dialog. If you are blocked or need operator input, state the
+  question/blocker as your final message and end your turn WITHOUT writing the result file."
+  Never "decide yourself" — that instruction belongs (if at all) to the caller's prompt, not
+  shuttle's guardrail. `asking` is thus the **escalation channel**: an agent that is truly
+  stuck stops cheaply and the Go caller must handle it; shuttle never auto-answers or
+  auto-continues. (Operator incident motivating this: an auto-mode agent that found the
+  review machinery broken, was effectively forbidden to ask, and "chose" to ship everything
+  unreviewed — the correct behaviour was to halt and escalate "reviewer is broken". What a
+  future loom `--auto` does with a blocker-level `asking` — answer vs halt to human — is
+  loom's policy design, out of scope here; shuttle guarantees the channel.)
+- Rationale: holds the everything-visible-in-mux invariant, prevents silent blocking, and
+  keeps the stop-and-ask path always available. The deny-and-steer path is **unprobed**
+  (open item in `docs/research/mux-hooks-exploration.md`) — this task must verify it live
+  (smoke test).
+- Rejected: unconditional AskUserQuestion deny (forces plain-text questions even when the
+  operator sits attached and the CLI picker is the better UX); no deny at all (autonomous
+  runs can hang invisibly on a dialog).
 
 ### Trust dialog: engine-side defensive dismissal
 
@@ -261,6 +288,27 @@ deleted in this task.
   → engine; transport is generic → mux `SendKeys`.
 - Rejected: interrupt-only hold (doesn't cover the use case); Go-API-only (operator locked
   out from other terminals).
+
+### Spec surface (consolidated)
+
+- Decision: the run spec is minimal and closed — no `ExtraArgs` escape hatch; extend the
+  struct when a real need arrives. Fields:
+  - `Prompt string` (required) — buffered to the run's prompt file by the engine.
+  - `OutputFiles []string` (required, ≥1) — the result contract; empty spec is rejected.
+  - `Model string` (optional → `--model`).
+  - `Autonomous bool` (default true) — controls `--dangerously-skip-permissions` and the
+    AskUserQuestion guardrail (see Guardrails decision).
+  - `Role, Round string` (optional) — strand-name formatting inputs, passed to `AddSpec`.
+  - `Parent string` (optional) — parent strand guid.
+  - `Display render.Display` — passed through to mux verbatim.
+  - `Timeout time.Duration` (0 ⇒ config `run_timeout_min`).
+  - `KeepPane bool` (default false) — when true, `done` skips both `RemoveStrand` and the
+    run-dir deletion (debugging aid: inspect the finished session and artifacts). Outcomes
+    other than `done` always keep pane + dir regardless.
+- Rationale: one visible, documented surface instead of fields scattered across decisions;
+  `KeepPane`'s semantics pinned (it modifies only the `done` cleanup path).
+- Rejected: `ExtraArgs []string` (launch line becomes an undeclared contract, undermines the
+  engine seam).
 
 ### Session identity and resume command
 
@@ -404,3 +452,6 @@ psmux/claude behavioural uncertainty is exactly where it pays.
 - **Q:** mux.md authority? **A:** Operator: module docs of built modules always rot — use the mux *code* as the source of truth; delete `docs/modules/mux.md` in this task.
 - **Q:** (review r1 gap) Empty `OutputFiles`? **A:** Mandatory, ≥1 — a run without a result file has no defined "done"; reject empty spec loudly. Operator convinced by "the file hand-off is what makes the run return"; no-result runs belong in `lyx mux add`.
 - **Q:** (review r1 notes) Orphan-sweep race and send-after-return? **A:** Sweep gets an age guard (never touch dirs younger than the startup window); Interrupt/Send documented as live-run-only, no re-wait path in v1.
+- **Q:** (review r2 gap) AskUserQuestion steer contradicted `asking` (write-to-output-file would classify as `done`)? **A:** Resolved two ways: the deny is now **mode-coupled** — allowed when `Autonomous: false` (operator attached; CLI picker works well; the old mill ban was a VS Code-extension artifact), denied when autonomous; and the autonomous steer is "ask as your final message, end the turn WITHOUT writing the result file" ⇒ `asking` with the question in `LastAssistantMessage`.
+- **Q:** What about an agent that is HARD stuck in auto mode and must escalate? **A:** `asking` IS the escalation channel and must never be closed: the steer never says "decide yourself" (operator incident: an auto agent forbidden to ask found the review machinery broken and shipped everything unreviewed instead of halting). Caller-side auto-policy for blocker-level asks is loom's later design; shuttle guarantees the stop-and-ask path.
+- **Q:** (review r2 notes) mux `claude:` removal ripple; `KeepPane` ambiguity? **A:** Removal includes `Config.Claude` field + config-test assertion; spec surface consolidated into its own decision with `KeepPane` semantics pinned (modifies only the `done` cleanup path).
