@@ -12,6 +12,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
@@ -186,4 +187,50 @@ func (r *Runner) sweepOrphansOpportunistic() {
 	if _, err := sweepOrphans(runDirRoot(r.cfg, r.layout), guids, minAge, time.Now()); err != nil {
 		log.Printf("shuttle: orphan sweep failed (non-fatal, new run proceeds): %v", err)
 	}
+}
+
+// Interrupt stops run's in-progress turn without killing its pane or
+// session: it plays the engine's InterruptSequence (e.g. a single Escape
+// key press) through the mux seam. The pane stays warm and idle afterward —
+// the caller typically follows with Send to give the agent updated
+// instructions and let it continue, or lets the operator attach directly.
+// Safe to call concurrently with a blocked Wait: mux's op lock serializes
+// the underlying send-keys calls, and Interrupt mutates no Run-local state.
+func (run *Run) Interrupt() error {
+	return playInputs(run.runner.mux, run.state.StrandGUID, run.runner.engine.InterruptSequence())
+}
+
+// Send types text as run's next turn: text must be a single line — the file
+// contract carries multiline updates (write a file and Send a one-line
+// pointer to it, e.g. "read <file> — updated instructions — and continue").
+// It plays the engine's ComposeSend choreography (typically clearing a
+// leaked auto-suggest before typing text and submitting it) through the mux
+// seam. Safe to call concurrently with a blocked Wait, for the same reason
+// as Interrupt.
+func (run *Run) Send(text string) error {
+	if strings.ContainsAny(text, "\n\r") {
+		return fmt.Errorf("shuttle: Send: text must be a single line; multiline updates ride the file contract (write a file, Send a one-line pointer to it)")
+	}
+	return playInputs(run.runner.mux, run.state.StrandGUID, run.runner.engine.ComposeSend(text))
+}
+
+// playInputs plays inputs into guid's pane through mux, in order: a Key
+// step sends a named key (SendKey), a Text step types literal text and,
+// when Submit is set, follows it with Enter (SendText's submit flag) — the
+// shared choreography both Interrupt and Send drive, and the same one
+// batch 5's CLI interrupt/send verbs reuse through the engine so every
+// caller plays a PaneInput sequence identically.
+func playInputs(mux MuxOps, guid string, inputs []PaneInput) error {
+	for _, in := range inputs {
+		if in.Key != "" {
+			if err := mux.SendKey(guid, in.Key); err != nil {
+				return fmt.Errorf("shuttle: send key %q: %w", in.Key, err)
+			}
+			continue
+		}
+		if err := mux.SendText(guid, in.Text, in.Submit); err != nil {
+			return fmt.Errorf("shuttle: send text: %w", err)
+		}
+	}
+	return nil
 }

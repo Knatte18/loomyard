@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
@@ -134,5 +135,67 @@ func TestRunner_Start_SweepErrorDoesNotBlockStart(t *testing.T) {
 	}
 	if run == nil {
 		t.Fatal("Start() returned nil run")
+	}
+}
+
+// newInterruptTestRun returns a bare Run handle wired to mux/engine, with
+// no Start/Wait machinery involved — Interrupt/Send only ever touch
+// runner.mux and runner.engine through run.state.StrandGUID.
+func newInterruptTestRun(t *testing.T, mux MuxOps, engine Engine) *Run {
+	t.Helper()
+	root := t.TempDir()
+	layout := &hubgeometry.Layout{Cwd: root, WorktreeRoot: root}
+	runner := NewRunner(mux, engine, layout, Config{})
+	return &Run{
+		runner: runner,
+		state:  RunState{StrandGUID: "strand-1"},
+	}
+}
+
+func TestRun_Interrupt_PlaysEscape(t *testing.T) {
+	mux := &fakeMux{}
+	engine := &fakeEngine{}
+	run := newInterruptTestRun(t, mux, engine)
+
+	if err := run.Interrupt(); err != nil {
+		t.Fatalf("Interrupt() error: %v", err)
+	}
+
+	if len(mux.SendKeyCalls) != 1 || mux.SendKeyCalls[0].Key != "Escape" {
+		t.Errorf("SendKey calls = %+v, want exactly one Escape", mux.SendKeyCalls)
+	}
+	if len(mux.SendTextCalls) != 0 {
+		t.Errorf("SendText calls = %+v, want none", mux.SendTextCalls)
+	}
+}
+
+func TestRun_Send_RejectsNewlines(t *testing.T) {
+	mux := &fakeMux{}
+	engine := &fakeEngine{}
+	run := newInterruptTestRun(t, mux, engine)
+
+	if err := run.Send("line one\nline two"); err == nil {
+		t.Fatal("Send() = nil error, want rejection for multiline text")
+	}
+	if len(mux.CallLog) != 0 {
+		t.Errorf("mux calls = %v, want none (rejected before any mux call)", mux.CallLog)
+	}
+}
+
+func TestRun_Send_PlaysEscThenTextWithSubmit(t *testing.T) {
+	mux := &fakeMux{}
+	engine := &fakeEngine{}
+	run := newInterruptTestRun(t, mux, engine)
+
+	if err := run.Send("updated instructions"); err != nil {
+		t.Fatalf("Send() error: %v", err)
+	}
+
+	wantLog := []string{"SendKey:Escape", "SendText:updated instructions"}
+	if !reflect.DeepEqual(mux.CallLog, wantLog) {
+		t.Errorf("call order = %v, want %v", mux.CallLog, wantLog)
+	}
+	if len(mux.SendTextCalls) != 1 || !mux.SendTextCalls[0].Submit {
+		t.Errorf("SendText calls = %+v, want one call with Submit=true", mux.SendTextCalls)
 	}
 }
