@@ -117,45 +117,18 @@ one. Use the more capable model for the final safety pass and for correctness-cr
   never get committed; commit code + docs + suite + tests explicitly.
 - Every task that changes behaviour must update the module doc / `overview.md` / `CONSTRAINTS.md` in
   the **same** commit (per `CLAUDE.md`). Do not add bugfix notes to `docs/roadmap.md`.
-- Keep a short handoff note (e.g. `.scratch/<module>-review-HANDOFF.md`) so the loop survives a
-  context compaction: what round is running, what is closed-and-verified, what is next. This is a
-  terse *status* note, written and refreshed by the orchestrator on its own initiative after each
-  round's verification — not the detailed report below.
-
-## Detailed handoff (on operator request)
-The short hygiene note above is not enough to reconstruct full context after a compaction, or to
-brief a genuinely fresh orchestrator thread that never saw this session. When the operator asks for
-it (e.g. "write an orchestrator handoff"), write a SEPARATE, more detailed file —
-`.scratch/<module>-review-ORCHESTRATOR-HANDOFF.md` — that a new orchestrator (with none of this
-session's memory) could read cold and continue the loop correctly without re-deriving anything.
-Unlike the short note, write this one narratively, not just as bullet fragments. Include:
-
-- **Round-by-round history**, each with: round tag (`<model>-r<N>`), what model actually ran it (see
-  the model-attribution caveat below), what it closed (file:line + one-line description), the exact
-  independent-verification method used for each (which not-false-green proofs were run and how),
-  and the commit sha the round's work landed in.
-- **Current state**: what is CLOSED-AND-VERIFIED (do not re-litigate), what RESIDUAL is currently
-  seeded in the per-module review prompt's "Round context" section, what is on the DEFERRED list and
-  why it's still open.
-- **What is running right now** (if anything): which round, which model was requested, and its
-  current status as far as you know it (running / paused-by-operator / finished-not-yet-verified).
-  Do NOT record internal agent/task IDs — they are ephemeral harness handles that mean nothing in a
-  new session; identify work by round tag and git state instead.
-- **Model-attribution caveat**: some harness UIs surface the ORCHESTRATOR's own model in places that
-  look like they're describing the round agent's model. If a requested model rotation (e.g. Fable)
-  looks like it silently ran as something else, this is the first thing to double check with the
-  operator before concluding the rotation request is broken — don't assume a routing bug and burn a
-  round re-spawning on that assumption alone.
-- **Operator-interaction norms observed this session**: e.g., the operator pausing/resuming a live
-  round mid-task is normal (rule 5 above) and was exercised; note if anything about that interaction
-  needs continuity (a round paused mid-review with an open question, say).
-- **Any procedural lessons learned or method gaps found and fixed this session** (e.g., a sequencing
-  gap in the template), with the commit sha that fixed them, so a fresh orchestrator doesn't
-  rediscover the same gap the hard way.
-- **The exact next action** to take on resuming, stated as an instruction, not a description (e.g.
-  "wait for round N's completion notification, then run the verification protocol, focusing
-  specifically on X because round N's own report claimed Y which is unverified").
-
-This file is written ON REQUEST, not after every round (that would just duplicate the short hygiene
-note at higher cost). It is also gitignored (`.scratch/`) — like everything else under `.scratch/`,
-it is a working artifact, not part of the module's permanent documentation.
+- Keep ONE handoff note (e.g. `.scratch/<module>-review-HANDOFF.md`) so the loop survives a context
+  compaction, or briefs a genuinely fresh orchestrator that never saw this session. Refresh it after
+  every round's verification. Size its detail to what actually happened, not to a fixed template —
+  a quiet round that closed clean might only need a few lines; an eventful round (a process defect
+  caught and fixed, a confusing model-attribution question, several operator steering interruptions)
+  earns a fuller write-up so none of that has to be rediscovered. At minimum always cover: what round
+  is running/paused right now (identify it by round tag + git state, never by internal agent/task
+  ID — those are ephemeral and mean nothing in a new session), what is CLOSED-AND-VERIFIED (with the
+  commit sha, so it's never re-litigated), what RESIDUAL is currently seeded in the per-module review
+  prompt, what is on the DEFERRED list, and the exact next action to take (as an instruction, not a
+  description). When something noteworthy happens — a method gap found and fixed, an operator
+  norm worth remembering, a caveat like "the round-agent's model may not be what the UI appears to
+  show" — fold it into this same file rather than starting a second one; a single up-to-date file
+  beats two that can silently drift out of sync. The operator can ask for it to be refreshed or
+  expanded at any point, not just after a round.
