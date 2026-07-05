@@ -245,8 +245,13 @@ risk — decide whether any now warrants action:
   test harness) was not fully exercised end-to-end.
 
 ## Fixing — after the review
-- Load the code-quality guidance (`/code-quality` skill or `mill:code-quality`) before editing.
-  Prefer surgical edits; match existing style and the file-level doc-comment convention.
+- Load the code-quality guidance (`/code-quality` skill or `mill:code-quality`) AND the
+  language-specific skills for this codebase (`mill:golang-build`, `mill:golang-testing`,
+  `mill:golang-comments`) before editing — all of them, not just code-quality. (This is called out
+  explicitly because round 2 of this exact loop loaded code-quality only and skipped the golang
+  skills when it reached this step; the operator caught it live and had to stop the round to
+  redirect it.) Prefer surgical edits; match existing style and the file-level doc-comment
+  convention.
 - For every bug you fix, add or extend a test that would have caught it. For a live-only defect,
   add a `//go:build smoke` test that walks the failing scenario against the real substrate (the
   existing `internal/shuttlecli` smoke test files show the pattern, incl. a skip when the substrate

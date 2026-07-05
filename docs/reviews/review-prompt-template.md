@@ -125,8 +125,13 @@ deferred-that-should-be-v1 and shipped-beyond-scope.
 round. Empty on the first round.>`
 
 ## Fixing — after the review
-- Load the code-quality guidance (`/code-quality` skill) before editing. Prefer surgical edits;
-  match existing style and the file-level doc-comment convention.
+- Load the code-quality guidance (`/code-quality` skill) AND the language-specific skill(s) for this
+  codebase (e.g. `mill:golang-build`/`mill:golang-testing`/`mill:golang-comments` for a Go module —
+  substitute the matching set for whatever language this module is written in) before editing — ALL
+  of the relevant skills, not code-quality alone. (This rule exists because a round agent on
+  shuttle's second round loaded code-quality only and skipped the language-specific skills when it
+  reached this step; the operator caught it live and had to stop the round to redirect it.) Prefer
+  surgical edits; match existing style and the file-level doc-comment convention.
 - For every bug you fix, add or extend a test that would have caught it. For a live-only defect, add
   a `//go:build smoke` test that walks the failing scenario against the real substrate (the existing
   smoke test file shows the pattern, incl. a skip when the substrate is absent). A hermetic unit test
