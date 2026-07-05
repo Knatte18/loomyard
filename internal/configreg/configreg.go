@@ -8,6 +8,7 @@ package configreg
 import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/muxengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/warpengine"
 	"github.com/Knatte18/loomyard/internal/weftengine"
 )
@@ -26,6 +27,7 @@ func Modules() []Module {
 	return []Module{
 		{"board", boardengine.ConfigTemplate},
 		{"mux", muxengine.ConfigTemplate},
+		{"shuttle", shuttleengine.ConfigTemplate},
 		{"warp", warpengine.ConfigTemplate},
 		{"weft", weftengine.ConfigTemplate},
 	}
