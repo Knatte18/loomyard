@@ -110,6 +110,48 @@ func TestRunner_Start_AddStrandFailure_CleansRunDir(t *testing.T) {
 	}
 }
 
+func TestRunner_Start_SaveRunStateFailure_RemovesStrandAndRunDir(t *testing.T) {
+	// AddStrand succeeds (the strand and its launching pane exist), but the
+	// subsequent saveRunState fails. Start must tear the strand back down and
+	// remove the run directory rather than leaking a live, untracked pane no
+	// run.json can ever bind.
+	mux := &fakeMux{AddStrandResult: muxengine.Strand{GUID: "strand-1"}}
+	engine := &fakeEngine{
+		PrepareLaunch: Launch{Cmd: "cmd", SessionID: "sess"},
+		// Plant run.json as a DIRECTORY so the later saveRunState write can
+		// never succeed, forcing the mid-op failure this test exercises.
+		PrepareHook: func(runDir string) {
+			if err := os.MkdirAll(filepath.Join(runDir, runStateFileName), 0o755); err != nil {
+				t.Fatalf("plant run.json dir: %v", err)
+			}
+		},
+	}
+	runner, layout := newTestRunner(t, mux, engine)
+
+	if _, err := runner.Start(Spec{Prompt: "x", OutputFiles: []string{"out.md"}}); err == nil {
+		t.Fatal("Start() = nil error, want save-run-state failure to propagate")
+	}
+
+	foundRemove := false
+	for _, c := range mux.RemoveStrandCalls {
+		if c.GUID == "strand-1" && !c.Recursive {
+			foundRemove = true
+		}
+	}
+	if !foundRemove {
+		t.Errorf("RemoveStrand(strand-1, false) not recorded after save-state failure; strand leaked. calls = %+v", mux.RemoveStrandCalls)
+	}
+
+	root := runDirRoot(runner.cfg, layout)
+	entries, rerr := os.ReadDir(root)
+	if rerr != nil && !os.IsNotExist(rerr) {
+		t.Fatalf("read run dir root: %v", rerr)
+	}
+	if len(entries) != 0 {
+		t.Errorf("run dir root has %d leftover entr(y/ies), want 0 (save-state failure must clean up)", len(entries))
+	}
+}
+
 func TestRunner_Start_SweepErrorDoesNotBlockStart(t *testing.T) {
 	mux := &fakeMux{AddStrandResult: muxengine.Strand{GUID: "strand-1"}}
 	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd", SessionID: "sess"}}

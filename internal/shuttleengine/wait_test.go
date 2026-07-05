@@ -228,6 +228,52 @@ func TestRun_Wait_Died_ViaStatusNotLive(t *testing.T) {
 	}
 }
 
+func TestRun_Wait_Died_ButOutputFilesExist_ClassifiesDone(t *testing.T) {
+	// The pane died (mux.Status reports not live) but every output file
+	// already exists on disk — the agent must have written its result and
+	// then been killed (or exited) before its Stop hook ever appended a
+	// turn-end line, so pollEventsTick had nothing to classify from. The
+	// file contract is still satisfied: this must report done, not died, so
+	// a caller does not needlessly respawn already-completed work.
+	runDir := t.TempDir()
+	eventsPath := filepath.Join(runDir, "events.jsonl") // never created: no Stop event fired
+	outputFile := filepath.Join(runDir, "out.md")
+	if err := os.WriteFile(outputFile, []byte("result"), 0o644); err != nil {
+		t.Fatalf("seed output file: %v", err)
+	}
+
+	mux := &fakeMux{StatusQueue: []muxengine.StatusResult{{Strands: []muxengine.StrandStatus{{GUID: "strand-1", Live: false}}}}}
+	engine := &fakeEngine{}
+	runner := newWaitTestRunner(t, mux, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+	fc := newFakeClock(time.Now())
+	run := &Run{
+		runner:   runner,
+		spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
+		runDir:   runDir,
+		state:    RunState{StrandGUID: "strand-1", EventsPath: eventsPath},
+		clock:    fc,
+		deadline: fc.Now().Add(time.Minute),
+	}
+
+	result, err := run.Wait()
+	if err != nil {
+		t.Fatalf("Wait() error: %v", err)
+	}
+	if result.Outcome != OutcomeDone {
+		t.Errorf("Outcome = %q, want %q (file contract satisfied despite a dead pane and no Stop event)", result.Outcome, OutcomeDone)
+	}
+	// A "done" outcome without KeepPane still runs the normal cleanup path.
+	foundRemove := false
+	for _, c := range mux.RemoveStrandCalls {
+		if c.GUID == "strand-1" && !c.Recursive {
+			foundRemove = true
+		}
+	}
+	if !foundRemove {
+		t.Errorf("RemoveStrand(strand-1, false) not recorded, calls = %+v", mux.RemoveStrandCalls)
+	}
+}
+
 func TestRun_Wait_Died_ViaStartupTimeout_TrustDismissRecorded(t *testing.T) {
 	runDir := t.TempDir()
 	eventsPath := filepath.Join(runDir, "events.jsonl") // never created

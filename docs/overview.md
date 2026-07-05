@@ -301,8 +301,10 @@ requirement), agents run, output files are read, nobody need watch.
   the `lyx loom status` strand (a 1-line top pane), spawns the loom driver **detached** (via `proc`,
   no TTY), and attaches the terminal to the session. loom runs in the background; the mux view takes
   the foreground. A `.lyx/lyxrun.cmd` launcher makes it one click.
-- Only `mux`, `loom`, and `review` get a user-facing `lyx <module>` CLI; `proc` and `shuttle` are
-  internal libraries. See the [module map](modules/README.md).
+- `mux`, `shuttle`, `loom`, and `review` each get a user-facing `lyx <module>` CLI
+  (`lyx shuttle run|interrupt|send` lets an operator or another process drive one agent
+  standalone, before loom/review exist); `proc` alone stays an internal library with no CLI
+  of its own. See the [module map](modules/README.md).
 
 ## Tests
 

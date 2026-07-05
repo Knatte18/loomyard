@@ -70,6 +70,29 @@ func TestBuildSettings_StopHookAlwaysPresent(t *testing.T) {
 	}
 }
 
+func TestBuildSettings_EventsPathSingleQuoteEscaped(t *testing.T) {
+	// A run directory path containing a literal apostrophe (an unusual but
+	// legal Windows path character, e.g. a worktree named "operator's-box")
+	// must not be able to break out of the Stop hook's single-quoted shell
+	// argument: the embedded quote is escaped via the standard sh idiom
+	// rather than passed through raw.
+	data, err := buildSettings(`/c/run's dir/events.jsonl`, false, shuttleengine.Config{})
+	if err != nil {
+		t.Fatalf("buildSettings() error: %v", err)
+	}
+	doc := parseSettings(t, data)
+	stop := hooksFor(doc, "Stop")
+	entry, _ := stop[0].(map[string]any)
+	innerHooks, _ := entry["hooks"].([]any)
+	cmd, _ := innerHooks[0].(map[string]any)
+	command, _ := cmd["command"].(string)
+
+	want := `cat >> '/c/run'\''s dir/events.jsonl' && printf '\n' >> '/c/run'\''s dir/events.jsonl'`
+	if command != want {
+		t.Errorf("Stop hook command = %q; want %q (embedded single quote must be sh-escaped, not passed through raw)", command, want)
+	}
+}
+
 func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 	tests := []struct {
 		name             string

@@ -56,6 +56,15 @@ type settingsDoc struct {
 	Hooks settingsHooks `json:"hooks"`
 }
 
+// shQuote wraps s in POSIX shell single quotes for embedding in a git-bash
+// hook command, escaping any embedded literal single quote with the
+// standard sh idiom (close the quote, emit an escaped quote, reopen the
+// quote) so a run directory path containing an apostrophe cannot break out
+// of the quoted argument and have its remainder interpreted as shell syntax.
+func shQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
 // denyJSON builds the literal `echo`-able deny-and-steer JSON payload a
 // PreToolUse hook command prints on stdout to deny a tool call. steer must
 // contain no single quotes: the payload rides inside a single-quoted `echo`
@@ -74,7 +83,10 @@ func denyJSON(steer string) string {
 // PreToolUse guardrails cfg and interactive select. eventsPathPosix must
 // already be a git-bash POSIX path (shuttleengine.PosixPath) — hook
 // commands run under git-bash on Windows, where a bare backslash path is
-// silently misinterpreted as an escape sequence.
+// silently misinterpreted as an escape sequence. eventsPathPosix is embedded
+// via shQuote rather than a bare `'%s'`, so a run directory containing a
+// literal apostrophe (an unusual but legal Windows path character) cannot
+// break out of the quoted shell argument.
 //
 // The Agent-tool deny is included whenever cfg.ClaudeDenyAgentTool is set,
 // in both interactive and autonomous runs — Claude Code's in-process Agent
@@ -86,7 +98,8 @@ func denyJSON(steer string) string {
 // Decision "Interactive bool encodes the discussion's Autonomous default
 // true").
 func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.Config) ([]byte, error) {
-	stopCmd := fmt.Sprintf("cat >> '%s' && printf '\\n' >> '%s'", eventsPathPosix, eventsPathPosix)
+	quotedEventsPath := shQuote(eventsPathPosix)
+	stopCmd := fmt.Sprintf("cat >> %s && printf '\\n' >> %s", quotedEventsPath, quotedEventsPath)
 
 	doc := settingsDoc{
 		Hooks: settingsHooks{

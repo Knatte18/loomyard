@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -30,6 +31,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 )
 
+// countingLine matches a pane line that is just a number — the mid-turn
+// signal TestSmokeInterruptSendContinues waits on: several of these mean the
+// agent is actively counting (its turn is underway), so an interrupt has
+// something to interrupt. Polling for this instead of sleeping a fixed grace
+// is what makes the test deterministic — a fast model that would have blown
+// through a fixed sleep is still caught mid-turn because the task never
+// self-completes.
+var countingLine = regexp.MustCompile(`(?m)^\s*\d+\s*$`)
+
 // waitOutcome carries a completed run.Wait() call's result off the
 // background goroutine TestSmokeInterruptSendContinues drives it in, so the
 // test can select on it after sending the interrupt-and-redirect sequence.
@@ -38,10 +48,10 @@ type waitOutcome struct {
 	err    error
 }
 
-// TestSmokeInterruptSendContinues starts a run whose prompt directs a slow
-// multi-step task before writing its output file, then — after a startup
-// grace window, so the pane is past claude's one-time trust dialog and
-// ready for input — calls run.Interrupt() followed by run.Send() with a
+// TestSmokeInterruptSendContinues starts a run whose prompt directs an
+// open-ended, never-self-completing task, polls the pane's captured content
+// until the task is genuinely underway (deterministic mid-turn detection —
+// see countingLine), then calls run.Interrupt() followed by run.Send() with a
 // one-line replacement instruction. Asserts Wait still returns "done" and
 // the output file carries the REDIRECTED content: the discussion's core
 // interrupt use case (stop, update, continue) proven against a real claude
@@ -88,13 +98,24 @@ func TestSmokeInterruptSendContinues(t *testing.T) {
 	if err != nil {
 		t.Fatalf("muxengine.LoadConfig: %v", err)
 	}
-	runner := shuttleengine.NewRunner(muxengine.New(muxCfg, layout), claudeengine.New(), layout, shuttleCfg)
+	muxEngine := muxengine.New(muxCfg, layout)
+	runner := shuttleengine.NewRunner(muxEngine, claudeengine.New(), layout, shuttleCfg)
 
 	outputPath := filepath.Join(fixture.Hub, "smoke-interrupt-output.txt")
+	// Deliberately open-ended: the task has no natural completion point
+	// before the interrupt+send sequence redirects it. A fixed-duration task
+	// (e.g. "count to 100") flakes on a fast model that finishes inside
+	// whatever grace window the test sleeps — the interrupt+send path never
+	// gets exercised, and the test still passes on the resulting "done"
+	// outcome (a false positive for the exact behavior it means to prove;
+	// see the round-1 review finding this replaced). Counting upward forever
+	// guarantees the run is never done on its own, so reaching the poll
+	// below always means the agent is genuinely mid-turn.
 	prompt := fmt.Sprintf(
-		"Slowly count out loud from 1 to 100, one number per line with a brief pause in "+
-			"your thinking between each, and only once you finish counting, write exactly "+
-			"DONE to %s and stop.",
+		"Count out loud starting from 1, one number per line, going up forever with no "+
+			"upper bound and no pause to ask anything — do not write any file and do not stop "+
+			"counting until you are told otherwise. (The file %s only matters if you are later "+
+			"told to write it.)",
 		outputPath,
 	)
 
@@ -113,25 +134,34 @@ func TestSmokeInterruptSendContinues(t *testing.T) {
 		waitCh <- waitOutcome{result, waitErr}
 	}()
 
-	// Give the pane time to clear claude's one-time trust dialog and reach
-	// its ready-for-input state — Wait's own startup probe (already running
-	// concurrently above) dismisses the dialog itself, so this is purely a
-	// grace window, not a manual dismissal. cfg.StartupTimeoutS is the
-	// ceiling Wait itself tolerates before fast-failing the run as died;
-	// sleeping two thirds of it leaves headroom on both sides under a
-	// saturated machine.
-	startupGrace := time.Duration(shuttleCfg.StartupTimeoutS) * time.Second * 2 / 3
-	time.Sleep(startupGrace)
+	// Deterministic mid-turn detection: poll the pane's own captured content
+	// for the counting task actually underway (at least a few numeric
+	// lines), rather than sleeping a fixed grace window. This survives both
+	// a slow machine (keeps polling past the old fixed sleep) and a fast one
+	// (the open-ended task above guarantees there is always a mid-turn state
+	// to observe — it never self-completes).
+	guid := run.StrandGUID()
+	deadline := time.Now().Add(time.Duration(shuttleCfg.StartupTimeoutS)*time.Second + 60*time.Second)
+	for {
+		select {
+		case res := <-waitCh:
+			t.Fatalf("run reached a terminal outcome (%s, err=%v) before the interrupt+send sequence was sent — the agent never reached a countable mid-turn state", res.result.Outcome, res.err)
+		default:
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for the pane to show the counting task underway (guid %s)", guid)
+		}
 
-	// Guard against a race where the run already reached a terminal outcome
-	// during the grace window (e.g. a saturated machine blew through the
-	// startup deadline) — sending Interrupt/Send into a pane whose run
-	// already finished would just be confusing noise on top of the real
-	// failure.
-	select {
-	case res := <-waitCh:
-		t.Fatalf("run reached a terminal outcome (%s, err=%v) before the interrupt+send sequence was sent — startup grace was insufficient or the run failed early", res.result.Outcome, res.err)
-	default:
+		capture, err := muxEngine.CapturePane(guid)
+		if err != nil {
+			t.Logf("CapturePane during mid-turn poll (retrying): %v", err)
+			time.Sleep(time.Second)
+			continue
+		}
+		if len(countingLine.FindAllString(capture, -1)) >= 3 {
+			break
+		}
+		time.Sleep(time.Second)
 	}
 
 	if err := run.Interrupt(); err != nil {

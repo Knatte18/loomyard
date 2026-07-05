@@ -163,7 +163,12 @@ type fakeEngine struct {
 
 	PrepareLaunch Launch
 	PrepareErr    error
-	PrepareCalls  []struct {
+	// PrepareHook, when set, runs inside Prepare with the run directory
+	// before it returns — a test uses it to plant on-disk state (e.g. a
+	// run.json directory that makes the later saveRunState fail) without a
+	// bespoke Engine double.
+	PrepareHook  func(runDir string)
+	PrepareCalls []struct {
 		RunDir string
 		Spec   Spec
 		Cfg    Config
@@ -185,6 +190,9 @@ func (e *fakeEngine) Prepare(runDir string, spec Spec, cfg Config) (Launch, erro
 	}{runDir, spec, cfg})
 	if e.PrepareErr != nil {
 		return Launch{}, e.PrepareErr
+	}
+	if e.PrepareHook != nil {
+		e.PrepareHook(runDir)
 	}
 	return e.PrepareLaunch, nil
 }

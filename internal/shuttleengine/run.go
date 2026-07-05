@@ -90,7 +90,12 @@ const (
 // engine to prepare its provider-specific artifacts; register the strand
 // with mux using the engine's Launch commands; and persist run.json. On an
 // AddStrand failure the just-created run directory is removed before the
-// error returns — there is nothing yet a caller could resume.
+// error returns — there is nothing yet a caller could resume. A failure
+// persisting run.json AFTER AddStrand succeeded removes both the run
+// directory and the just-registered strand: without run.json nothing can
+// resolve the strand's guid back to this run (findRunByStrand scans
+// run.json files), so leaving the strand behind would launch a live,
+// untracked agent pane no caller can ever wait on, interrupt, or clean up.
 func (r *Runner) Start(spec Spec) (*Run, error) {
 	if err := spec.validate(r.layout.WorktreeRoot, r.cfg); err != nil {
 		return nil, err
@@ -139,6 +144,17 @@ func (r *Runner) Start(spec Spec) (*Run, error) {
 		CreatedAt:    time.Now().UTC().Format(time.RFC3339),
 	}
 	if err := saveRunState(runDir, state); err != nil {
+		// The strand registered and its pane is already launching, but
+		// without a persisted run.json nothing can find, wait on, or clean up
+		// this run: findRunByStrand can't resolve its guid, no process ever
+		// enters Wait, and sweepOrphans would only reach it much later. Tear
+		// the strand and directory back down so the failure is honest rather
+		// than leaking a live, untracked agent pane — the same cleanup the
+		// AddStrand-failure path above performs.
+		if _, rerr := r.mux.RemoveStrand(strand.GUID, false); rerr != nil {
+			log.Printf("shuttle: start run: remove strand %s after save-state failure (non-fatal): %v", strand.GUID, rerr)
+		}
+		_ = os.RemoveAll(runDir)
 		return nil, fmt.Errorf("shuttle: save run state: %w", err)
 	}
 
@@ -151,6 +167,15 @@ func (r *Runner) Start(spec Spec) (*Run, error) {
 		clock:    clk,
 		deadline: clk.Now().Add(spec.Timeout),
 	}, nil
+}
+
+// StrandGUID returns the mux strand guid bound to this run. It is available
+// as soon as Start returns — before Wait completes — so an in-process caller
+// holding the handle can capture the run's pane, log its identity, or resolve
+// it for diagnosis while the run is still in flight (the same guid Result
+// carries once Wait finishes).
+func (run *Run) StrandGUID() string {
+	return run.state.StrandGUID
 }
 
 // Run starts spec and blocks until it reaches a terminal outcome — the

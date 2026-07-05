@@ -3,7 +3,11 @@
 // probes the startup window for a trust-dialog dismissal or a fast-failing
 // dead pane, and runs the done-outcome cleanup (strand removal + run dir
 // deletion). Wait is the only place in the run loop that sleeps — the clock
-// seam defined here lets tests replay a whole poll sequence instantly.
+// seam defined here lets tests replay a whole poll sequence instantly. A
+// pane that goes not-live (crashed, killed, or exited) is classified done
+// rather than died when every output file already exists — the file
+// contract can be satisfied an instant before the process disappears,
+// racing ahead of its own Stop hook.
 
 package shuttleengine
 
@@ -193,9 +197,14 @@ func allOutputFilesExist(files []string) bool {
 // *started to true (ending the probe for the rest of this Wait call), and
 // a still-booting pane is left pending unless startupDeadline has passed,
 // which fast-fails the run as died rather than waiting out the full
-// spec.Timeout on a pane that will never come up. Returns a non-nil error
-// only for mux.Status itself failing — a mechanism failure Wait's caller
-// tracks across consecutive ticks; every other failure along this path (a
+// spec.Timeout on a pane that will never come up. A pane reported not live
+// is classified done rather than died when every output file already
+// exists: the agent can write its result and then have its process die
+// (crash, kill, or a race with its own Stop hook) before a qualifying Stop
+// event is ever recorded, and the file contract — not the Stop event — is
+// shuttle's actual "did it finish" signal. Returns a non-nil error only for
+// mux.Status itself failing — a mechanism failure Wait's caller tracks
+// across consecutive ticks; every other failure along this path (a
 // CapturePane error, a SendKey error dismissing the trust prompt) is logged
 // and treated as "still pending" rather than propagated, since none of
 // them is fatal to the run on its own.
@@ -213,6 +222,13 @@ func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time) (Out
 		}
 	}
 	if !live {
+		// The file contract, not the Stop event, is the authoritative
+		// "finished" signal: a pane that died after writing every output
+		// file has still delivered a valid result, even though no Stop line
+		// ever made it into events.jsonl (see pollEventsTick).
+		if allOutputFilesExist(run.spec.OutputFiles) {
+			return OutcomeDone, nil
+		}
 		return OutcomeDied, nil
 	}
 
