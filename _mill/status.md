@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-cli-and-registration
+phase: approved-smoke-tests
 slug: internal-shuttle
 branch: internal-shuttle
 plan: _mill/plan
@@ -27,6 +27,7 @@ approved-shuttle-foundation  '2026-07-05T15:19:21Z'
 approved-claude-engine  '2026-07-05T15:27:41Z'
 approved-run-loop  '2026-07-05T15:44:35Z'
 approved-cli-and-registration  '2026-07-05T15:57:24Z'
+approved-smoke-tests  '2026-07-05T16:06:49Z'
 ```
 
 ## Batches
@@ -59,9 +60,10 @@ batches:
     start_sha: 076b82b5fdca34d14633b72d195722a1b9829a3d
     commit_sha: d932282dcb1aaab35d704a7641b761a0064d98f9
   - name: smoke-tests
-    state: running
+    state: approved
     implementer_session: ac7b9e68-0308-4e9a-8c85-93abfaa96eee
     start_sha: ac76f1854841a542c3d3882729c2b814acafcb93
+    commit_sha: 76d11d327c713c826b89df093e1b632187e2eeb3
   - name: docs-lifecycle
     state: pending
 ```
