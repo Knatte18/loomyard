@@ -125,8 +125,8 @@ Two state roots with opposite lifecycles:
   resume works across machines *because* its status is weft-synced.
 - **`.lyx/`** — **ephemeral, local, machine-bound.** Untracked (listed in
   `.git/info/exclude`, never `.gitignore`), changing constantly while a run is live. The live
-  psmux runtime state — [`mux`](modules/mux.md)'s `.lyx/mux.json` (the socket/session names + the
-  [strand](modules/mux.md#the-strand-model) table: each managed process, its session, parent,
+  psmux runtime state — `mux`'s (see the `internal/muxengine` package documentation) `.lyx/mux.json`
+  (the socket/session names + the strand table: each managed process, its session, parent,
   ephemeral pane id, and display spec) — goes here, because a pane ID or the psmux socket is
   meaningless on another machine. It is rebuilt by reconciling against live psmux on startup, never
   synced.
@@ -221,8 +221,8 @@ User-facing modules each get one `lyx <module>` namespace:
 - **ide** — one-shot VS Code launcher with interactive menu. ✅ Implemented.
 - **muxpoc** — proof-of-concept psmux orchestrator that proved the risky parts (layout checksum,
   bottom-dominant layout, env hygiene, native `--resume`) later reused by the **mux** module.
-  **Parked** — kept on disk as a reference, unregistered from the `lyx` CLI. See
-  [modules/mux.md](modules/mux.md).
+  **Parked** — kept on disk as a reference, unregistered from the `lyx` CLI. See the
+  `internal/muxengine` package documentation.
 - **selfreport** — file bugs and enhancements against `Knatte18/loomyard` via the `gh` CLI
   (`lyx selfreport create <title>`). Target repo is hardcoded; supports `--body` (or `-` for
   stdin) and `--label`; defaults to `bug`. Callable from any sandbox agent context with no
@@ -230,7 +230,17 @@ User-facing modules each get one `lyx <module>` namespace:
 - **mux** — **the window to the world**: psmux overlay + **strand** bookkeeping + render
   (`internal/muxcli` + `internal/muxengine` + `internal/muxengine/render`). Hosts every managed
   process as a strand, arranges them, persists to `.lyx/mux.json` (`lyx mux
-  up|add|remove|status|attach|resume|down`). ✅ Implemented. See [modules/mux.md](modules/mux.md).
+  up|add|remove|status|attach|resume|down`). ✅ Implemented. See the `internal/muxengine` package
+  documentation.
+- **shuttle** — run **one** LLM agent as an interactive psmux strand over the file contract
+  (`internal/shuttleengine` + `internal/shuttleengine/claudeengine` + `internal/shuttlecli`;
+  `lyx shuttle run|interrupt|send`). `Stop`-hook completion is read off an events file and
+  classified into four outcomes — `done`/`asking`/`died`/`timeout` — with `asking` as the
+  escalation channel back to a human or a higher-capability model. `PreToolUse` guardrails deny
+  the in-process `Agent` tool always, and `AskUserQuestion` too when the run is autonomous
+  (`Interactive: false`, the default). The provider is swappable behind an **engine** seam; Claude
+  is the only v1 engine (Gemini etc. later, not a current priority). ✅ Implemented. See the
+  `internal/shuttleengine` package documentation.
 - **loom** — phased orchestrator: drives Setup → Discussion → Plan → Builder → Finalize, each
   gated by a review (`lyx loom run`, alias `lyx run`). 🚧 Design — not built. See
   [modules/loom.md](modules/loom.md).
@@ -238,11 +248,10 @@ User-facing modules each get one `lyx <module>` namespace:
   independent of `loom` but used by it between every phase, and standalone (`lyx review`). 🚧
   Design — not built. See [modules/review.md](modules/review.md).
 
-One further design module is internal: **shuttle** (run one LLM agent via a swappable engine;
-[modules/shuttle.md](modules/shuttle.md)). The cross-OS spawn primitive **proc** is likewise
-internal — the base of the stack. The [module map](modules/README.md) explains how proc / mux /
-shuttle fit together. (Earlier drafts split mux into separate `shed`/`glance` modules; both folded
-back into mux — see [modules/mux.md](modules/mux.md#naming).)
+The cross-OS spawn primitive **proc** is the one remaining internal (non-CLI) layer — the base of
+the stack. The [module map](modules/README.md) explains how proc / mux / shuttle fit together.
+(Earlier drafts split mux into separate `shed`/`glance` modules; both folded back into mux — see
+the `internal/muxengine` package documentation.)
 
 **init** is not a module but a cross-cutting setup command (`lyx init`) that
 scaffolds the shared `_lyx/` config dir for every module.
@@ -255,8 +264,8 @@ The user-facing modules sit on a thin layer of shared infrastructure
 
 The orchestrator is not one module but a **layered stack**, each layer knowing only the one
 below it. It exists in this shape for one reason: agents must run as **interactive psmux
-sessions, never headless `claude -p`** (an economic constraint — see
-[modules/shuttle.md](modules/shuttle.md#interactive-never-headless--the-economic-constraint)), so
+sessions, never headless `claude -p`** (an economic constraint — see the `internal/shuttleengine`
+package documentation), so
 spawning an agent is not a plain `exec` but "place a pane, launch a provider in it, drive it,
 detect completion." Full side-by-side disambiguation: the [module map](modules/README.md).
 
@@ -265,7 +274,7 @@ internal/proc     spawn any OS process (windowless / detached), cross-OS      [O
 internal/mux      the window to the world — overlay + strand bookkeeping +     [builds on proc]  ✅
                   render; hosts every managed process as a strand, arranges
                   them, persists to .lyx/mux.json
-internal/shuttle  run ONE LLM agent in a strand via a swappable engine over    [builds on mux]
+internal/shuttle  run ONE LLM agent in a strand via a swappable engine over    [builds on mux]    ✅
                   the file contract; Stop-hook completion
 review            generic gate engine: handler/fixer + cluster + stuck judge   [builds on shuttle]
 loom              phase machine: drive each phase through a review gate         [builds on review]
@@ -281,7 +290,8 @@ requirement), agents run, output files are read, nobody need watch.
   generic (anchor / focus / shrinkWhenWaitingOnChild; height is derived, not caller-set) — never a
   domain `type`, so mux never learns what a "phase" or "cluster" is. Earlier drafts split the model
   and view into separate `shed`/`glance` modules; with one terminal per worktree they fold cleanly
-  into `internal/muxengine` + `internal/muxengine/render`. See [modules/mux.md](modules/mux.md).
+  into `internal/muxengine` + `internal/muxengine/render`. See the `internal/muxengine` package
+  documentation.
 - **provider-invariant** — `shuttle` runs Claude today through an **engine**; the verdict/output
   contract is provider-invariant, so a different model can be swapped in without touching the
   review machinery. Non-Claude is not a current priority.
@@ -308,8 +318,8 @@ The **sandbox Hub** is a dedicated bench for manual testing of lyx's core workfl
 
 - [modules/README.md](modules/README.md) — **the module map**: index of every module doc + how the layers stack (design).
 - [modules/loom.md](modules/loom.md) — the phased orchestrator (`lyx loom` + `lyx review`); design.
-- [modules/mux.md](modules/mux.md) — the window to the world: psmux overlay + strand bookkeeping + render (as-built).
-- [modules/shuttle.md](modules/shuttle.md) — run one LLM agent via a swappable engine over the file contract (design).
+- `internal/muxengine` package documentation — the window to the world: psmux overlay + strand bookkeeping + render (as-built; module doc deleted per the documentation lifecycle).
+- `internal/shuttleengine` package documentation — run one LLM agent via a swappable engine over the file contract (as-built; module doc deleted per the documentation lifecycle).
 - [modules/review.md](modules/review.md) — the generic gate engine (handler/fixer + cluster + stuck judge); design.
 - [benchmarks/](benchmarks/board-performance.md) — board performance, tracked across revisions.
 - [shared-libs/](shared-libs/README.md) — the shared infrastructure plumbing.
