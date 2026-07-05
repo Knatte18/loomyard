@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-claude-engine
+phase: approved-run-loop
 slug: internal-shuttle
 branch: internal-shuttle
 plan: _mill/plan
@@ -25,6 +25,7 @@ implementing  '2026-07-05T15:01:54Z'
 approved-mux-extensions  '2026-07-05T15:11:07Z'
 approved-shuttle-foundation  '2026-07-05T15:19:21Z'
 approved-claude-engine  '2026-07-05T15:27:41Z'
+approved-run-loop  '2026-07-05T15:44:35Z'
 ```
 
 ## Batches
@@ -47,9 +48,10 @@ batches:
     start_sha: 7a45edc3be50e2662a32d6c10f6afa3015d5030c
     commit_sha: a01a22c5d0b1108310230be4758afa5a6297d940
   - name: run-loop
-    state: running
+    state: approved
     implementer_session: 68dae419-4b1b-4354-b1e1-e7abd6147a41
     start_sha: 00ec21bc50b5959797df722628097fda858428b2
+    commit_sha: 0ccd12136d51ddae5a46148aa5138b4f0df7b70d
   - name: cli-and-registration
     state: pending
   - name: smoke-tests
