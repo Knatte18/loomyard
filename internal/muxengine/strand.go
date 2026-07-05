@@ -451,17 +451,21 @@ func (e *Engine) RemoveStrand(guid string, recursive bool) (Removed, error) {
 			_ = e.psmux.run("kill-pane", "-t", id)
 		}
 
-		if _, err := e.reconcileApplyPersistLocked(st); err != nil {
-			return err
-		}
-
-		// Reap after the layout is already repaired, so the surviving panes
-		// re-tile immediately and only the return is gated on the async pane
-		// teardown finishing. Uses the same saturation-tolerant deadline as
-		// down (reapExitTimeout): the reap confirms each pid is gone rather than
-		// trusting a fixed timer, so a loaded machine cannot leave a removed
-		// strand's grandchild holding the worktree directory.
+		// Reap after the layout repair, so the surviving panes re-tile
+		// immediately and only the return is gated on the async pane teardown
+		// finishing — but ALWAYS reap, even when the repair failed: the panes
+		// were already killed above, so their subtrees are dying
+		// asynchronously either way, and skipping the reap on a transient
+		// apply error would leave a removed strand's grandchild holding the
+		// worktree directory (the same never-skip-the-reap rule down
+		// follows). Uses the same saturation-tolerant deadline as down
+		// (reapExitTimeout): the reap confirms each pid is gone rather than
+		// trusting a fixed timer.
+		_, applyErr := e.reconcileApplyPersistLocked(st)
 		reapPaneChildren(reapPIDs, reapExitTimeout)
+		if applyErr != nil {
+			return applyErr
+		}
 
 		result = removed
 		return nil

@@ -11,7 +11,7 @@ import "fmt"
 
 // planReconcile is the pure planning half of reconcile: given the current
 // strand table and the live pane set list-panes just reported, it decides
-// which strands' pane bindings must be cleared and which dead panes must be
+// which strands' pane bindings must be cleared and which panes must be
 // killed before the layout is re-applied. It never touches psmux itself, so
 // the decision logic is unit-testable without a running server.
 //
@@ -30,7 +30,19 @@ import "fmt"
 // strand's binding is NOT cleared, since the pane is still present and render
 // must still place it. keptDeadPane (a pane id, non-empty only when a dead
 // pane is deliberately spared) names it, so callers/tests can assert on the
-// exception explicitly rather than inferring it from deadToKill.
+// exception explicitly rather than inferring it from panesToKill.
+//
+// UNTRACKED panes — live panes no strand owns (an operator's raw
+// split-window into the mux session, or an orphan from a mid-op crash
+// before persist) — are also scheduled for killing, but only while mux owns
+// content in the window (>=1 strand bound to a present pane). Killing them
+// here, deterministically, replaces relying on select-layout's positional
+// reaping: psmux assigns layout cells to panes in window order and destroys
+// whichever panes sit BEYOND the emitted cell count, so with a foreign pane
+// present the reaped victim is positional — observed live to destroy a
+// TRACKED strand's pane while the foreign pane survived. With no bound
+// content at all, foreign panes are left untouched (mux has nothing to lay
+// out — the apply is skipped too, see anyPlacedStrand).
 //
 // For every other strand: (a) a strand whose PaneID is absent from live, or
 // whose pane was just scheduled for killing, has its GUID returned in
@@ -38,7 +50,7 @@ import "fmt"
 // its binding is gone so it renders as not-live; (b) a strand whose pane is
 // present and not being killed keeps its binding untouched — Live derives
 // true for it downstream, via toRenderStrands' liveIDs lookup.
-func planReconcile(strands []Strand, live []LivePane) (clearedGUIDs []string, deadToKill []string, keptDeadPane string) {
+func planReconcile(strands []Strand, live []LivePane) (clearedGUIDs []string, panesToKill []string, keptDeadPane string) {
 	liveByID := make(map[string]LivePane, len(live))
 	for _, p := range live {
 		liveByID[p.ID] = p
@@ -70,7 +82,33 @@ func planReconcile(strands []Strand, live []LivePane) (clearedGUIDs []string, de
 	for _, p := range live {
 		if p.Dead && p.ID != keptDeadPaneID {
 			killSet[p.ID] = true
-			deadToKill = append(deadToKill, p.ID)
+			panesToKill = append(panesToKill, p.ID)
+		}
+	}
+
+	// Deterministic untracked-pane reaping (see the doc comment): kill every
+	// live pane no strand owns, but only while some strand is bound to a
+	// present pane — killing an alive pane at worst corpses it under
+	// remain-on-exit, so the bound pane always keeps the session alive.
+	boundPaneIDs := make(map[string]bool, len(strands))
+	for _, s := range strands {
+		if s.PaneID != "" {
+			boundPaneIDs[s.PaneID] = true
+		}
+	}
+	anyBoundPresent := false
+	for _, p := range live {
+		if boundPaneIDs[p.ID] {
+			anyBoundPresent = true
+			break
+		}
+	}
+	if anyBoundPresent {
+		for _, p := range live {
+			if !boundPaneIDs[p.ID] && !killSet[p.ID] && p.ID != keptDeadPaneID {
+				killSet[p.ID] = true
+				panesToKill = append(panesToKill, p.ID)
+			}
 		}
 	}
 
@@ -86,7 +124,7 @@ func planReconcile(strands []Strand, live []LivePane) (clearedGUIDs []string, de
 		// binding stays, so render still places it.
 	}
 
-	return clearedGUIDs, deadToKill, keptDeadPaneID
+	return clearedGUIDs, panesToKill, keptDeadPaneID
 }
 
 // clearAllPaneBindings drops every strand's PaneID. It is used after a
@@ -101,18 +139,19 @@ func clearAllPaneBindings(st *MuxState) {
 }
 
 // reconcileLocked reconciles the persisted table against psmux's live pane
-// set: it kills each dead-but-not-sole pane planReconcile identifies, then
-// clears the PaneID of every strand whose pane is gone or was just killed
-// (keeping the record — only RemoveStrand deletes one). It assumes the op
-// lock is already held by the caller, mutates st in place, and returns the
-// pane ids actually killed so the caller can re-derive the post-kill live
-// set without a second list-panes round trip.
+// set: it kills each pane planReconcile schedules (dead-but-not-sole panes,
+// plus untracked panes while mux owns bound content), then clears the
+// PaneID of every strand whose pane is gone or was just killed (keeping the
+// record — only RemoveStrand deletes one). It assumes the op lock is
+// already held by the caller, mutates st in place, and returns the pane ids
+// actually killed so the caller can re-derive the post-kill live set
+// without a second list-panes round trip.
 func (e *Engine) reconcileLocked(st *MuxState, live []LivePane) (killed []string, err error) {
-	clearedGUIDs, deadToKill, _ := planReconcile(st.Strands, live)
+	clearedGUIDs, panesToKill, _ := planReconcile(st.Strands, live)
 
-	for _, id := range deadToKill {
+	for _, id := range panesToKill {
 		if err := e.psmux.run("kill-pane", "-t", id); err != nil {
-			return killed, fmt.Errorf("kill dead pane %s: %w", id, err)
+			return killed, fmt.Errorf("kill pane %s: %w", id, err)
 		}
 		killed = append(killed, id)
 	}

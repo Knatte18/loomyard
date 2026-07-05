@@ -92,7 +92,7 @@ zero `WARN`/`FAIL` findings** -- in that case `items` is an empty array.
 
 - `source` is the literal string `"sandbox-report"`.
 - `items[]` holds only `WARN`/`FAIL` findings -- do not record `OK` scenarios here.
-- `ref` is the scenario id (`M0`-`M15`).
+- `ref` is the scenario id (`M0`-`M16`).
 - `title` is a short one-line summary.
 - `body` folds the detail, repro steps, and verdict into one markdown string.
 
@@ -265,12 +265,13 @@ returning (checkable via the pre-`down` `#{pane_pid}` values and their descendan
 gone from `tasklist`). Covered headlessly by `TestSmokeDownReapsPaneChildProcesses` and
 `TestSmokeDownLeavesNoPsmuxOnSocket`.
 
-> **Not a FAIL:** a `conhost.exe` (the OS ConPTY host psmux uses per pane) may linger for a
-> beat with the worktree as its cwd and then exit on its own. It is not a `#{pane_pid}`
-> descendant and mux does not reap it — a dying OS console host is not stray *agent* state.
-> Under heavy concurrent load this can briefly delay deleting the worktree dir; that is an OS
-> teardown race, not a mux leak. Only a surviving **psmux** process or a live **pane shell**
-> is a `FAIL` here.
+> **Not a FAIL:** a `conhost.exe` (the OS ConPTY host psmux uses per pane) may linger with
+> the worktree as its cwd — usually it exits on its own a beat later, but under heavy CPU
+> saturation it can be orphaned and then holds the dir indefinitely. It is not a
+> `#{pane_pid}` descendant and mux does not reap it — an OS console host is not stray
+> *agent* state (the smoke harness kills hub-holding conhosts itself; see
+> `deferHubRelease`). A held worktree dir is therefore not by itself a mux leak. Only a
+> surviving **psmux** process or a live **pane shell** is a `FAIL` here.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -340,6 +341,24 @@ headlessly by `TestSmokeClaudeResumeRecallsCodeword`.)
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
+### M16 -- Foreign pane in the mux session
+
+**Goal:** "With the overlay up and **no strands added**, create a pane in the mux session
+behind mux's back, then run `lyx mux up` again and prove the session is still usable."
+
+**Watch:** `psmux -L <socket> split-window -t <session>` (controlled exception) simulates
+an operator-split/foreign pane. The follow-up `lyx mux up` must **not** destroy the
+session's pane set (`psmux -L <socket> list-panes` still shows panes — an empty pane list
+means an empty layout was applied and psmux wiped the window: `FAIL`). A subsequent
+`lyx mux add --cmd <long-running command>` must succeed and read `live: true` in `status`
+(a "session has no panes to adopt or split" error means the session became a zero-pane
+husk: `FAIL`), and after that add the foreign pane is **deterministically reaped** by
+reconcile (the documented "mux owns the session window" policy, not a finding) — what
+would be a `FAIL` is a *tracked* strand's pane disappearing instead of the foreign one.
+Covered headlessly by `TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable`.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
 ## Session log format
 
 After running all scenarios, record a short session summary:
@@ -364,6 +383,7 @@ M12: <OK|WARN|FAIL> -- <one-line note if not OK>
 M13: <OK|WARN|FAIL> -- <one-line note if not OK>
 M14: <OK|WARN|FAIL> -- <one-line note if not OK>
 M15: <OK|WARN|FAIL> -- <one-line note if not OK>
+M16: <OK|WARN|FAIL> -- <one-line note if not OK>
 
 sandbox-report.json written: <count of WARN/FAIL items>
 ```

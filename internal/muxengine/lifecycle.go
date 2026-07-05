@@ -59,6 +59,21 @@ type StatusResult struct {
 	Strands []StrandStatus
 }
 
+// Boot-loop tuning for ensureServerAndSessionLocked. bootAttemptTimeout is
+// the per-spawn window before a still-session-less socket is treated as a
+// zombie boot and reaped; bootOverallTimeout is the total budget across
+// spawn/reap/respawn cycles, sized for a CPU-saturated machine (a quiet boot
+// is ~1-2s; three concurrent smoke suites have been observed to starve a
+// boot past two full 20s windows). staleSocketGrace is how long a
+// session-less socket-holder must persist before the pre-boot check treats
+// it as stale rather than a sibling worktree's still-registering fresh boot.
+const (
+	bootAttemptTimeout = 20 * time.Second
+	bootPoll           = 100 * time.Millisecond
+	bootOverallTimeout = 90 * time.Second
+	staleSocketGrace   = 5 * time.Second
+)
+
 // planUpLaunches always returns nil: Up never launches or relaunches a
 // strand command — only Resume replays. This trivial-but-explicit function
 // exists so Up's "never launches" contract has a concrete, unit-testable
@@ -109,21 +124,34 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 		return false, nil, fmt.Errorf("check session: %w", err)
 	}
 	if up {
-		return false, nil, nil
+		// A session that exists but holds ZERO panes is broken substrate: it
+		// cannot host a strand (there is no pane to adopt or split, and psmux
+		// offers no way to add a pane to an empty window), so add would fail
+		// forever while up kept reporting success. The state is reachable
+		// when an applied layout once destroyed every pane (psmux reaps any
+		// pane absent from a select-layout string). Kill the husk and fall
+		// through to a fresh boot — the booted=true return then makes the
+		// caller clear every stale binding, exactly like a server rebirth.
+		live, err := e.psmux.listPanes(session)
+		if err != nil {
+			return false, nil, fmt.Errorf("list panes: %w", err)
+		}
+		if len(live) > 0 {
+			return false, nil, nil
+		}
+		_ = e.psmux.run("kill-session", "-t", session)
 	}
 
 	// A stale socket-holder wedges a fresh boot: psmux's internal "__warm__"
 	// helper can outlive a kill-server and sit on the -L socket without ever
 	// hosting a session, so a new-session spawned against it never
-	// materializes. A socket whose holder reports zero sessions is such a
-	// stale helper, a dying server, or an unreachable zombie — never a
-	// healthy shared server (sibling worktrees' sessions would list) — so
-	// force-reaping it before spawning is safe.
-	if out, err := e.psmux.output("list-sessions", "-F", "#{session_name}"); err != nil || strings.TrimSpace(out) == "" {
-		if len(e.serverProcessesOnSocket()) > 0 {
-			if err := e.reapSocketProcesses(); err != nil {
-				return false, nil, fmt.Errorf("stale psmux socket-holder: %w", err)
-			}
+	// materializes. A socket whose holder reports zero sessions across the
+	// grace window is such a stale helper, a dying server, or an unreachable
+	// zombie — never a healthy shared server (sibling worktrees' sessions
+	// would list) — so force-reaping it before spawning is safe.
+	if e.sessionlessSocketHolderPersists() {
+		if err := e.reapSocketProcesses(); err != nil {
+			return false, nil, fmt.Errorf("stale psmux socket-holder: %w", err)
 		}
 	}
 
@@ -147,22 +175,24 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 		return nil
 	}
 
-	// Boot with a bounded retry. Two distinct slow paths hide behind "the
-	// session is not answering yet": (a) an honestly slow boot on a loaded
-	// machine — covered by polling a generous per-attempt deadline rather
-	// than a fixed handful of attempts; and (b) a ZOMBIE boot — psmux has a
+	// Boot with a deadline-based retry. Two distinct slow paths hide behind
+	// "the session is not answering yet": (a) an honestly slow boot on a
+	// loaded machine — a real boot is ~1-2s quiet but has been observed to
+	// exceed two full 20s attempt windows when several concurrent test
+	// suites peg the CPU, so the loop retries against an overall deadline
+	// rather than a fixed attempt count; and (b) a ZOMBIE boot — psmux has a
 	// race under concurrent server startups where the spawned server process
 	// runs but never becomes reachable on its socket (list-sessions empty,
 	// has-session exit 1, forever), which no amount of waiting fixes. After
 	// a full attempt window with the socket still session-less, everything
 	// on the socket is force-reaped by pid (kill-server cannot reach an
-	// unreachable zombie) and the spawn retried once. If the socket DOES
-	// list sessions, the server is healthy/shared and is never reaped — the
-	// error then reports the truly unexpected state instead.
-	const bootAttemptTimeout = 20 * time.Second
-	const bootPoll = 100 * time.Millisecond
-	const bootAttempts = 2
-	for attempt := 1; ; attempt++ {
+	// unreachable zombie) and the spawn retried. If the socket DOES list
+	// sessions, the server is healthy/shared and is never reaped — the error
+	// then reports the truly unexpected state instead. A genuine
+	// never-boots regression still fails, at bootOverallTimeout instead of
+	// after two attempts.
+	bootDeadline := time.Now().Add(bootOverallTimeout)
+	for {
 		if err := spawnSession(); err != nil {
 			return false, nil, err
 		}
@@ -190,8 +220,8 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 		if err := e.reapSocketProcesses(); err != nil {
 			return false, nil, fmt.Errorf("reap zombie psmux boot: %w", err)
 		}
-		if attempt >= bootAttempts {
-			return false, nil, fmt.Errorf("psmux session did not start after %d attempts of %s", bootAttempts, bootAttemptTimeout)
+		if time.Now().After(bootDeadline) {
+			return false, nil, fmt.Errorf("psmux session did not start within %s", bootOverallTimeout)
 		}
 	}
 
@@ -384,11 +414,16 @@ func (e *Engine) Down() (DownResult, error) {
 		// stay idempotent either way.
 		_ = e.psmux.run("kill-session", "-t", e.SessionName())
 
-		// Tidy the server only if no sessions remain (empty list-sessions
-		// output covers both "zero sessions" and "no server" — psmux does
-		// not distinguish them, and kill-server is harmless in both).
+		// Tidy the server only if no sessions remain. An EMPTY list-sessions
+		// covers both "zero sessions" and "no server" (psmux does not
+		// distinguish them, and kill-server is harmless in both); an ERRORED
+		// list-sessions means the socket-holder is unreachable — a zombie
+		// server cannot be hosting healthy sibling sessions, so it is torn
+		// down too rather than left squatting on the socket with the
+		// worktree as its cwd (the same sessionless-holder reasoning the
+		// pre-boot check applies).
 		var serverErr error
-		if out, err := e.psmux.output("list-sessions", "-F", "#{session_name}"); err == nil && strings.TrimSpace(out) == "" {
+		if out, err := e.psmux.output("list-sessions", "-F", "#{session_name}"); err != nil || strings.TrimSpace(out) == "" {
 			_ = e.psmux.run("kill-server")
 			serverErr = e.ensureServerGoneLocked(serverPID)
 		}
@@ -416,6 +451,35 @@ func (e *Engine) Down() (DownResult, error) {
 		return nil
 	})
 	return result, err
+}
+
+// sessionlessSocketHolderPersists reports whether a psmux process is
+// squatting on this engine's socket without hosting any session, and keeps
+// doing so across staleSocketGrace. The grace window exists because the mux
+// op lock is per-worktree: a SIBLING worktree's up may have just spawned
+// this shared server, and between its process appearing and its session
+// registering the socket looks exactly like a stale holder — reaping it then
+// would kill the sibling's healthy boot out from under it. A genuinely stale
+// holder (a "__warm__" helper that outlived kill-server, a dying server, an
+// unreachable zombie) stays session-less forever, so waiting the grace out
+// never misses it. The common fresh-boot path (nothing on the socket)
+// returns false on the first probe.
+func (e *Engine) sessionlessSocketHolderPersists() bool {
+	deadline := time.Now().Add(staleSocketGrace)
+	for {
+		// A socket that lists sessions hosts a healthy shared server — never
+		// in scope for reaping, no matter what else is pending.
+		if out, err := e.psmux.output("list-sessions", "-F", "#{session_name}"); err == nil && strings.TrimSpace(out) != "" {
+			return false
+		}
+		if len(e.serverProcessesOnSocket()) == 0 {
+			return false
+		}
+		if time.Now().After(deadline) {
+			return true
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
 }
 
 // serverPIDLocked returns the psmux server's OS pid as psmux reports it via

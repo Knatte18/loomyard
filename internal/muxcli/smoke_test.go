@@ -31,6 +31,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/muxengine"
 )
 
+// smokePwshPath is the PowerShell 7 binary the smoke helpers shell out to
+// for Windows process-table and PEB probes. Explicit absolute path, never a
+// bare "pwsh": the WindowsApps execution alias is a 0-byte ConPTY stub.
+const smokePwshPath = `C:\Code\tools\powershell7\pwsh.exe`
+
 // psmuxBinaryPath returns the psmux binary path from the environment or the
 // default install location, skipping the calling test when it is absent so a
 // -tags=smoke run never hard-fails on a machine without the tool.
@@ -257,16 +262,19 @@ func TestSmokeCrashRecovery(t *testing.T) {
 // non-zero (the server/session is gone), or fails the test after a timeout.
 // psmux's kill-server is asynchronous — it returns before the socket is
 // released — so a test that simulates a crash must wait for the server to
-// actually die before exercising recovery, or it races the teardown.
+// actually die before exercising recovery, or it races the teardown. The
+// deadline is saturation-sized: the teardown is ~1s quiet, but concurrent
+// suites pegging the CPU have starved fixed 5s waits of this shape.
 func waitServerGone(t *testing.T, psmuxPath, socket, session string) {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
+	const timeout = 30 * time.Second
+	deadline := time.Now().Add(timeout)
 	for {
 		if err := exec.Command(psmuxPath, "-L", socket, "has-session", "-t", session).Run(); err != nil {
 			return // non-zero exit: server/session gone
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("psmux server still up 5s after kill-server (socket %s)", socket)
+			t.Fatalf("psmux server still up %s after kill-server (socket %s)", timeout, socket)
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
@@ -445,6 +453,76 @@ func TestSmokeRemoveLastStrandThenAddRunsTheNewCommand(t *testing.T) {
 	}
 }
 
+// TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable pins the empty-layout
+// defect this round fixed: with ZERO strands tracked and a foreign pane in
+// the session (an operator's raw split-window — 2+ panes, none mux's), the
+// old apply emitted a layout string enumerating no cells, which psmux
+// answers (exit 0) by destroying EVERY pane — leaving a zero-pane zombie
+// session in which add fails forever ("session has no panes to adopt or
+// split") while up keeps reporting success. Now (a) apply is skipped when no
+// strand owns a present pane, so the foreign panes survive an up, and (b)
+// even a zero-pane husk (simulated separately below via the same foreign
+// route) is healed by the next up's fresh boot.
+func TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable(t *testing.T) {
+	psmuxPath := psmuxBinaryPath(t)
+
+	fixture := lyxtest.CopyPaired(t)
+	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
+		"mux": muxengine.ConfigTemplate(),
+	})
+	deferHubRelease(t, fixture.Hub)
+	t.Chdir(fixture.Hub)
+	t.Cleanup(func() {
+		var buf bytes.Buffer
+		RunCLI(&buf, []string{"down"})
+	})
+
+	var out bytes.Buffer
+	if code := RunCLI(&out, []string{"up"}); code != 0 {
+		t.Fatalf("up = %d; want 0, output: %s", code, out.String())
+	}
+	socket, session := socketAndSession(t)
+
+	// A foreign pane mux does not track (the operator-split case): the
+	// session now has 2 panes and 0 strands.
+	if err := exec.Command(psmuxPath, "-L", socket, "split-window", "-t", session).Run(); err != nil {
+		t.Fatalf("foreign split-window: %v", err)
+	}
+
+	// The trap: up with zero placeable strands must NOT apply an empty
+	// layout. Every pane must survive it.
+	out.Reset()
+	if code := RunCLI(&out, []string{"up"}); code != 0 {
+		t.Fatalf("second up = %d; want 0, output: %s", code, out.String())
+	}
+	if panes := listPaneLines(t, psmuxPath, socket, session); len(panes) == 0 {
+		t.Fatalf("up with only foreign panes destroyed the session's pane set (zero panes remain)")
+	}
+
+	// The session must still be able to host a strand: the add both proves
+	// the substrate survived and (documented policy) deterministically reaps
+	// the untracked foreign pane via reconcile — the strand's own pane must
+	// be the one that survives, never the foreign one (psmux's positional
+	// layout reaping would pick an indeterminate victim).
+	guid := addStrand(t, "pwsh -NoExit -Command Write-Host ready", "--name", "after-foreign")
+	out.Reset()
+	if code := RunCLI(&out, []string{"status"}); code != 0 {
+		t.Fatalf("status = %d; want 0, output: %s", code, out.String())
+	}
+	strand, found := statusStrand(t, out.Bytes(), guid)
+	if !found {
+		t.Fatalf("status missing strand %s; output: %s", guid, out.String())
+	}
+	if live, _ := strand["live"].(bool); !live {
+		t.Errorf("strand added after foreign-pane up: live = false; want true; status: %s", out.String())
+	}
+	strandPane, _ := strand["paneId"].(string)
+	panes := listPaneLines(t, psmuxPath, socket, session)
+	if len(panes) != 1 || !strings.HasPrefix(panes[0], strandPane+" ") {
+		t.Errorf("after add, session panes = %v; want exactly the strand's pane %s (foreign pane must be reaped, strand pane never displaced)", panes, strandPane)
+	}
+}
+
 // serverPID asks psmux for the server's OS pid via the #{pid} format
 // variable (the only server-liveness signal psmux exposes: list-sessions
 // and kill-server both exit 0 whether or not a server holds the socket).
@@ -600,7 +678,7 @@ func TestSmokeDownReapsPaneChildProcesses(t *testing.T) {
 		RunCLI(&buf, []string{"down"})
 	})
 
-	pwshPath := `C:\Code\tools\powershell7\pwsh.exe`
+	pwshPath := smokePwshPath
 	launch := "pwsh -NoExit -Command Write-Host ready"
 	for cycle := 0; cycle < 3; cycle++ {
 		var out bytes.Buffer
@@ -640,7 +718,7 @@ func TestSmokeDownReapsPaneChildProcesses(t *testing.T) {
 // cleared). Several add->down cycles give the async kill-server a chance to lag.
 func TestSmokeDownLeavesNoPsmuxOnSocket(t *testing.T) {
 	psmuxBinaryPath(t)
-	pwshPath := `C:\Code\tools\powershell7\pwsh.exe`
+	pwshPath := smokePwshPath
 
 	fixture := lyxtest.CopyPaired(t)
 	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
@@ -699,7 +777,7 @@ func TestSmokeRemoveReapsRemovedPaneChildProcesses(t *testing.T) {
 		RunCLI(&buf, []string{"down"})
 	})
 
-	pwshPath := `C:\Code\tools\powershell7\pwsh.exe`
+	pwshPath := smokePwshPath
 	launch := "pwsh -NoExit -Command Write-Host ready"
 	for cycle := 0; cycle < 3; cycle++ {
 		var out bytes.Buffer
@@ -809,17 +887,94 @@ $acc`, root)
 	return pids
 }
 
-// deferHubRelease registers a cleanup that blocks until the fixture hub
-// directory is releasable, so the framework's TempDir RemoveAll — which runs
-// AFTER this cleanup — does not race the OS's asynchronous ConPTY teardown and
-// fail with a worktree-dir-in-use error under load. The lingering holder is the
-// conhost.exe the OS parents to psmux to host each pane's pseudo-console: mux
-// never spawns it directly and it exits on its own moments after the pane dies,
-// so reaping it is NOT mux's job (a dying OS console host is not stray agent
-// state) — the test simply waits it out. Registered before t.Chdir and the down
-// cleanup so it runs AFTER them (cwd already restored out of hub) but BEFORE
-// RemoveAll. Best-effort: if the hub is somehow still held after a generous
-// deadline, it returns and lets RemoveAll surface the real error.
+// hubHolder is one process still holding the fixture hub as its current
+// working directory, as reported by hubHolders.
+type hubHolder struct {
+	pid  int
+	name string
+}
+
+// hubHolders returns every process whose current working directory is inside
+// dir, read from each process's PEB (RTL_USER_PROCESS_PARAMETERS.
+// CurrentDirectory via NtQueryInformationProcess) — the only way to find the
+// conhost.exe holders, since Win32_Process exposes no cwd column. Returns nil
+// when nothing holds dir or the probe fails (callers degrade to waiting).
+func hubHolders(t *testing.T, pwshPath, dir string) []hubHolder {
+	t.Helper()
+	script := fmt.Sprintf(`
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class PebReader {
+    [StructLayout(LayoutKind.Sequential)]
+    public struct PBI { public IntPtr r1; public IntPtr Peb; public IntPtr r2; public IntPtr r3; public IntPtr Pid; public IntPtr r4; }
+    [DllImport("ntdll.dll")] public static extern int NtQueryInformationProcess(IntPtr h, int c, ref PBI p, int l, out int r);
+    [DllImport("kernel32.dll")] public static extern IntPtr OpenProcess(uint a, bool i, int pid);
+    [DllImport("kernel32.dll")] public static extern bool ReadProcessMemory(IntPtr h, IntPtr a, byte[] b, int s, out IntPtr r);
+    [DllImport("kernel32.dll")] public static extern bool CloseHandle(IntPtr h);
+    public static string GetCwd(int pid) {
+        IntPtr h = OpenProcess(0x0410, false, pid); // QUERY_INFORMATION | VM_READ
+        if (h == IntPtr.Zero) return null;
+        try {
+            var pbi = new PBI(); int rl;
+            if (NtQueryInformationProcess(h, 0, ref pbi, Marshal.SizeOf(pbi), out rl) != 0) return null;
+            byte[] p = new byte[8]; IntPtr rd;
+            if (!ReadProcessMemory(h, (IntPtr)((long)pbi.Peb + 0x20), p, 8, out rd)) return null; // PEB.ProcessParameters
+            long pp = BitConverter.ToInt64(p, 0); if (pp == 0) return null;
+            byte[] us = new byte[16];
+            if (!ReadProcessMemory(h, (IntPtr)(pp + 0x38), us, 16, out rd)) return null; // CurrentDirectory.DosPath
+            ushort len = BitConverter.ToUInt16(us, 0); long sp = BitConverter.ToInt64(us, 8);
+            if (len == 0 || sp == 0) return null;
+            byte[] ch = new byte[len];
+            if (!ReadProcessMemory(h, (IntPtr)sp, ch, len, out rd)) return null;
+            return System.Text.Encoding.Unicode.GetString(ch);
+        } finally { CloseHandle(h); }
+    }
+}
+'@
+$needle = '%s'
+Get-Process | ForEach-Object {
+    $cwd = [PebReader]::GetCwd($_.Id)
+    if ($cwd -and $cwd.StartsWith($needle, [System.StringComparison]::OrdinalIgnoreCase)) {
+        "{0} {1}" -f $_.Id, $_.ProcessName
+    }
+}`, strings.ReplaceAll(dir, "'", "''"))
+	out, err := exec.Command(pwshPath, "-NoProfile", "-NonInteractive", "-Command", script).Output()
+	if err != nil {
+		return nil
+	}
+	var holders []hubHolder
+	for _, l := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		fields := strings.Fields(strings.TrimSpace(l))
+		if len(fields) != 2 {
+			continue
+		}
+		pid, perr := strconv.Atoi(fields[0])
+		if perr != nil || pid <= 0 {
+			continue
+		}
+		holders = append(holders, hubHolder{pid: pid, name: fields[1]})
+	}
+	return holders
+}
+
+// deferHubRelease registers a cleanup that makes the fixture hub directory
+// releasable before the framework's TempDir RemoveAll — which runs AFTER this
+// cleanup — so RemoveAll never fails with a worktree-dir-in-use error. The
+// holder in question is the conhost.exe the OS parents to psmux to host each
+// pane's pseudo-console: mux never spawns it, it is not a #{pane_pid}
+// descendant, and on a quiet machine it exits on its own a beat after its
+// pane dies — but under CPU saturation it can be ORPHANED and then holds the
+// hub cwd indefinitely (observed: conhosts from failed runs still pinning
+// their fixture hubs hours later), so no fixed wait can ever out-last it.
+// The cleanup therefore confirms rather than waits: a short grace for the
+// self-exit path, then it kills any conhost whose PEB cwd is inside the hub
+// (safe — its console app is already gone; killing an orphaned host leaks
+// nothing) and keeps confirming until the hub actually renames. A NON-conhost
+// holder is a genuine leak (a pane child or psmux the product reap missed)
+// and fails the test loudly instead of being masked. Registered before
+// t.Chdir and the down cleanup so it runs AFTER them (cwd already restored
+// out of hub) but BEFORE RemoveAll.
 func deferHubRelease(t *testing.T, hub string) {
 	t.Helper()
 	t.Cleanup(func() {
@@ -828,18 +983,55 @@ func deferHubRelease(t *testing.T, hub string) {
 		// (e.g. buildLyxBinary resolving the module root) is not corrupted.
 		prev, _ := os.Getwd()
 		_ = os.Chdir(os.TempDir())
-		probe := hub + ".relprobe"
-		deadline := time.Now().Add(30 * time.Second)
-		for {
-			if err := os.Rename(hub, probe); err == nil {
-				_ = os.Rename(probe, hub)
-				break
+
+		released := func() bool {
+			probe := hub + ".relprobe"
+			if err := os.Rename(hub, probe); err != nil {
+				return false
 			}
-			if time.Now().After(deadline) {
-				break
-			}
-			time.Sleep(200 * time.Millisecond)
+			_ = os.Rename(probe, hub)
+			return true
 		}
+		waitReleased := func(timeout time.Duration) bool {
+			deadline := time.Now().Add(timeout)
+			for {
+				if released() {
+					return true
+				}
+				if time.Now().After(deadline) {
+					return false
+				}
+				time.Sleep(200 * time.Millisecond)
+			}
+		}
+
+		// Grace phase: the healthy path, where the ConPTY host exits on its
+		// own moments after its pane died.
+		if !waitReleased(10 * time.Second) {
+			// Escalation phase: identify the actual holders. Orphaned
+			// conhosts are killed (re-scanned each round — one can appear
+			// late while the OS teardown is starved); anything else holding
+			// the hub is a real leak the kill must not paper over.
+			deadline := time.Now().Add(90 * time.Second)
+			for {
+				for _, h := range hubHolders(t, smokePwshPath, hub) {
+					if strings.EqualFold(h.name, "conhost") {
+						if p, err := os.FindProcess(h.pid); err == nil {
+							_ = p.Kill()
+						}
+						continue
+					}
+					t.Errorf("non-conhost process %d (%s) still holds fixture hub %s after teardown — a real stray-state leak, not an OS ConPTY artifact", h.pid, h.name, hub)
+				}
+				if waitReleased(5 * time.Second) {
+					break
+				}
+				if time.Now().After(deadline) {
+					break // let RemoveAll surface the residual error
+				}
+			}
+		}
+
 		// Restore the original cwd only when it is outside hub (the normal
 		// case, since t.Chdir's own restore has already run by now); never
 		// chdir back into a hub that is about to be removed.
@@ -1031,7 +1223,7 @@ func TestSmokeAttachRendersInsideHarnessPane(t *testing.T) {
 	// so the lyx process typed into its pane resolves the right geometry.
 	harness := fmt.Sprintf("lyx-attach-harness-%d", os.Getpid())
 	if err := exec.Command(psmuxPath, "-L", harness, "new-session", "-d", "-s", "h", "-x", "140", "-y", "42",
-		`C:\Code\tools\powershell7\pwsh.exe`).Run(); err != nil {
+		smokePwshPath).Run(); err != nil {
 		t.Fatalf("boot harness server: %v", err)
 	}
 	// Reap the harness server's WHOLE process subtree before the framework's
@@ -1042,12 +1234,14 @@ func TestSmokeAttachRendersInsideHarnessPane(t *testing.T) {
 	// can outlive TempDir's RemoveAll under load and fail it with a
 	// worktree-dir-in-use error — a test-harness artifact, not a mux defect.
 	t.Cleanup(func() {
-		reapHarnessServer(t, psmuxPath, `C:\Code\tools\powershell7\pwsh.exe`, harness)
+		reapHarnessServer(t, psmuxPath, smokePwshPath, harness)
 	})
-	deadline := time.Now().Add(10 * time.Second)
+	// Saturation-sized boot deadline: a quiet harness boot is ~1s, but
+	// concurrent suites pegging the CPU starve it well past 10s.
+	deadline := time.Now().Add(30 * time.Second)
 	for exec.Command(psmuxPath, "-L", harness, "has-session", "-t", "h").Run() != nil {
 		if time.Now().After(deadline) {
-			t.Fatal("harness session did not come up within 10s")
+			t.Fatal("harness session did not come up within 30s")
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
@@ -1091,21 +1285,40 @@ func paneEventuallyContains(t *testing.T, psmuxPath, socket, target, want string
 	}
 }
 
-// claudeTranscriptFiles returns the set of every *.jsonl transcript path
-// currently under ~/.claude/projects. Claude persists one JSONL per
-// conversation, keyed by a project directory derived from the session's
-// cwd; the snapshot-diff against this set is how the test spots the ONE new
-// transcript its own claude launch produced, without having to reproduce
-// claude's exact cwd-to-key encoding.
-func claudeTranscriptFiles(t *testing.T) map[string]bool {
+// claudeProjectDir returns the ~/.claude/projects/<encoded-cwd> directory
+// claude persists transcripts into for sessions whose cwd is dir. Claude
+// encodes the cwd into the project directory name by replacing every
+// non-alphanumeric character with '-' (verified against a live transcript:
+// `C:\...\Temp\TestSmoke...\001\hub` -> `C--...-Temp-TestSmoke...-001-hub`).
+// Scoping the transcript watch to THIS directory is what keeps a
+// concurrently running sibling suite's brand-new transcript — which a global
+// snapshot-diff over all of ~/.claude/projects wrongly matched — from being
+// mistaken for the one under test.
+func claudeProjectDir(t *testing.T, dir string) string {
 	t.Helper()
 	home, err := os.UserHomeDir()
 	if err != nil {
 		t.Fatalf("resolve home dir: %v", err)
 	}
-	root := filepath.Join(home, ".claude", "projects")
+	encoded := []byte(dir)
+	for i, c := range encoded {
+		isAlnum := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+		if !isAlnum {
+			encoded[i] = '-'
+		}
+	}
+	return filepath.Join(home, ".claude", "projects", string(encoded))
+}
+
+// claudeTranscriptFiles returns the set of every *.jsonl transcript path
+// currently under projectDir (a claudeProjectDir result). Claude persists
+// one JSONL per conversation inside its session-cwd's project directory, so
+// watching only this test's directory pins the observation to this test's
+// own claude.
+func claudeTranscriptFiles(t *testing.T, projectDir string) map[string]bool {
+	t.Helper()
 	found := map[string]bool{}
-	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+	_ = filepath.WalkDir(projectDir, func(path string, d os.DirEntry, err error) error {
 		if err == nil && !d.IsDir() && strings.HasSuffix(path, ".jsonl") {
 			found[path] = true
 		}
@@ -1116,22 +1329,21 @@ func claudeTranscriptFiles(t *testing.T) map[string]bool {
 
 // waitTranscriptStable blocks until a transcript that did NOT exist in
 // `before` (the snapshot taken just before this test launched its claude)
-// appears and stops growing — the direct, TUI-independent proof that claude
-// persisted a conversation. Excluding `before` keeps a concurrently-growing
-// transcript from another session (e.g. the outer Claude Code session that
-// may be running this suite) from ever being mistaken for the one under
-// test. It dismisses the trust gate on every poll (a fresh dir re-triggers
+// appears under projectDir — this test's own claude project directory, so a
+// concurrent sibling suite's transcript can never match — and stops growing:
+// the direct, TUI-independent proof that claude persisted a conversation.
+// It dismisses the trust gate on every poll (a fresh dir re-triggers
 // it). "Stable" means the same non-zero size across two consecutive polls,
 // so an in-progress write is never mistaken for a finished one. Returns the
 // new transcript's path.
-func waitTranscriptStable(t *testing.T, before map[string]bool, dismissTrust func(paneID string), paneID string, timeout time.Duration) string {
+func waitTranscriptStable(t *testing.T, projectDir string, before map[string]bool, dismissTrust func(paneID string), paneID string, timeout time.Duration) string {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
 	sizes := map[string]int64{}
 	for {
 		dismissTrust(paneID)
 
-		for path := range claudeTranscriptFiles(t) {
+		for path := range claudeTranscriptFiles(t, projectDir) {
 			if before[path] {
 				continue // pre-existing — not this test's transcript
 			}
@@ -1201,10 +1413,13 @@ func TestSmokeClaudeResumeRecallsCodeword(t *testing.T) {
 	launch := fmt.Sprintf(`& '%s' 'Remember the codeword %s. Reply with exactly: STORED %s'`, claudePath, codeword, codeword)
 	resume := fmt.Sprintf(`& '%s' --continue`, claudePath)
 
-	// Snapshot existing transcripts BEFORE the launch, so phase 1 can spot
-	// the one new transcript this test's claude produces (see
-	// waitTranscriptStable) without reproducing claude's cwd-to-key encoding.
-	transcriptsBefore := claudeTranscriptFiles(t)
+	// Scope the transcript watch to THIS test's claude project directory
+	// (derived from the fixture hub — the pane's cwd) and snapshot what is
+	// already in it BEFORE the launch, so phase 1 can only ever match the one
+	// transcript this test's own claude produces — never a concurrent sibling
+	// suite's (each suite has a unique temp hub, hence a unique project dir).
+	projectDir := claudeProjectDir(t, fixture.Hub)
+	transcriptsBefore := claudeTranscriptFiles(t, projectDir)
 	guid := addStrand(t, launch, "--resume-cmd", resume, "--name", "agent")
 	socket, session := socketAndSession(t)
 
@@ -1247,7 +1462,7 @@ func TestSmokeClaudeResumeRecallsCodeword(t *testing.T) {
 	// for the .jsonl to appear and stop growing is the direct proof that env
 	// hygiene let claude persist — the whole point of this test.
 	paneID := readPane()
-	transcript := waitTranscriptStable(t, transcriptsBefore, dismissTrust, paneID, 180*time.Second)
+	transcript := waitTranscriptStable(t, projectDir, transcriptsBefore, dismissTrust, paneID, 180*time.Second)
 	t.Logf("phase 1 transcript persisted: %s", transcript)
 
 	// Phase 2: crash the whole server, then resume. The stored resumeCmd is

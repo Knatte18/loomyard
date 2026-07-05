@@ -21,12 +21,12 @@ func equalStringSlices(a, b []string) bool {
 
 func TestPlanReconcile(t *testing.T) {
 	tests := []struct {
-		name           string
-		strands        []Strand
-		live           []LivePane
-		wantCleared    []string
-		wantDeadToKill []string
-		wantSolePane   string
+		name            string
+		strands         []Strand
+		live            []LivePane
+		wantCleared     []string
+		wantPanesToKill []string
+		wantSolePane    string
 	}{
 		{
 			name:        "GoneStrandClearedRecordKept",
@@ -41,11 +41,11 @@ func TestPlanReconcile(t *testing.T) {
 			wantCleared: nil,
 		},
 		{
-			name:           "NonSoleDeadPaneScheduledForKillAndBindingCleared",
-			strands:        []Strand{{GUID: "g1", PaneID: "%1"}, {GUID: "g2", PaneID: "%2"}},
-			live:           []LivePane{{ID: "%1", Dead: true}, {ID: "%2", Dead: false}},
-			wantCleared:    []string{"g1"},
-			wantDeadToKill: []string{"%1"},
+			name:            "NonSoleDeadPaneScheduledForKillAndBindingCleared",
+			strands:         []Strand{{GUID: "g1", PaneID: "%1"}, {GUID: "g2", PaneID: "%2"}},
+			live:            []LivePane{{ID: "%1", Dead: true}, {ID: "%2", Dead: false}},
+			wantCleared:     []string{"g1"},
+			wantPanesToKill: []string{"%1"},
 		},
 		{
 			name:         "SoleRemainingDeadPaneKeptAndNotScheduledForKill",
@@ -63,10 +63,10 @@ func TestPlanReconcile(t *testing.T) {
 				{GUID: "g1", PaneID: "%1"},
 				{GUID: "g2", PaneID: "%2"},
 			},
-			live:           []LivePane{{ID: "%1", Dead: true}, {ID: "%2", Dead: true}},
-			wantCleared:    []string{"g2"},
-			wantDeadToKill: []string{"%2"},
-			wantSolePane:   "%1",
+			live:            []LivePane{{ID: "%1", Dead: true}, {ID: "%2", Dead: true}},
+			wantCleared:     []string{"g2"},
+			wantPanesToKill: []string{"%2"},
+			wantSolePane:    "%1",
 		},
 		{
 			name:        "StrandWithNoPaneIDIgnored",
@@ -83,16 +83,36 @@ func TestPlanReconcile(t *testing.T) {
 			live:        []LivePane{{ID: "%1", Dead: false}},
 			wantCleared: []string{"gone"},
 		},
+		{
+			// A live pane no strand owns (operator split / mid-op-crash
+			// orphan) is killed deterministically while a strand is bound to
+			// a present pane — never left to select-layout's positional
+			// reaping, which can destroy a tracked pane instead.
+			name:            "UntrackedAlivePaneKilledWhileBoundContentPresent",
+			strands:         []Strand{{GUID: "g1", PaneID: "%1"}},
+			live:            []LivePane{{ID: "%1", Dead: false}, {ID: "%7", Dead: false}},
+			wantCleared:     nil,
+			wantPanesToKill: []string{"%7"},
+		},
+		{
+			// With NO strand bound to any present pane, mux has nothing to
+			// lay out and leaves foreign panes strictly alone (the apply is
+			// skipped too — anyPlacedStrand).
+			name:        "UntrackedPanesUntouchedWhenNothingBound",
+			strands:     []Strand{{GUID: "cleared", PaneID: ""}},
+			live:        []LivePane{{ID: "%7", Dead: false}, {ID: "%8", Dead: false}},
+			wantCleared: nil,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotCleared, gotDead, gotSole := planReconcile(tt.strands, tt.live)
+			gotCleared, gotKill, gotSole := planReconcile(tt.strands, tt.live)
 			if !equalStringSlices(gotCleared, tt.wantCleared) {
 				t.Errorf("planReconcile() clearedGUIDs = %v, want %v", gotCleared, tt.wantCleared)
 			}
-			if !equalStringSlices(gotDead, tt.wantDeadToKill) {
-				t.Errorf("planReconcile() deadToKill = %v, want %v", gotDead, tt.wantDeadToKill)
+			if !equalStringSlices(gotKill, tt.wantPanesToKill) {
+				t.Errorf("planReconcile() panesToKill = %v, want %v", gotKill, tt.wantPanesToKill)
 			}
 			if gotSole != tt.wantSolePane {
 				t.Errorf("planReconcile() solePane = %q, want %q", gotSole, tt.wantSolePane)

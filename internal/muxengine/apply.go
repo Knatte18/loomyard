@@ -78,6 +78,24 @@ func (e *Engine) planLayout(st *MuxState, live []LivePane) (layout, focus string
 	}, paneIDsByTop(live))
 }
 
+// anyPlacedStrand reports whether at least one strand would be placed by
+// render.Rules against the given present-pane set: a non-hidden strand whose
+// PaneID names a pane still present in the window (matching
+// partitionByAnchor's filter). applyLayoutLocked uses this to refuse to apply
+// a layout that enumerates ZERO panes: psmux accepts an empty-cell layout
+// string (exit 0) and answers it by destroying every pane in the session,
+// leaving a zero-pane zombie session no later add can host a strand in
+// (verified live — an `up` in a session holding only foreign/operator panes
+// wiped them all and wedged the session).
+func anyPlacedStrand(strands []Strand, presentIDs map[string]bool) bool {
+	for _, s := range strands {
+		if s.Display.Anchor != render.AnchorHidden && s.PaneID != "" && presentIDs[s.PaneID] {
+			return true
+		}
+	}
+	return false
+}
+
 // applyLayoutLocked renders the current strand table into a tmux
 // window_layout string and applies it via select-layout, then focuses the
 // resolved focus pane via select-pane. It assumes the op lock is already
@@ -85,7 +103,10 @@ func (e *Engine) planLayout(st *MuxState, live []LivePane) (layout, focus string
 // makes no reconcile decisions of its own). When live has fewer than two
 // panes it skips both psmux calls entirely, since a single pane already
 // fills the window and select-layout/select-pane would be a needless round
-// trip.
+// trip. It also skips them when no strand owns a present pane: the layout
+// string would then enumerate zero panes, which psmux answers by destroying
+// the session's entire pane set (see anyPlacedStrand) — with nothing of
+// mux's to lay out, there is nothing worth destroying foreign panes over.
 func (e *Engine) applyLayoutLocked(st *MuxState, live []LivePane) error {
 	layout, focus, err := e.planLayout(st, live)
 	if err != nil {
@@ -93,6 +114,9 @@ func (e *Engine) applyLayoutLocked(st *MuxState, live []LivePane) error {
 	}
 
 	if len(live) < 2 {
+		return nil
+	}
+	if !anyPlacedStrand(st.Strands, liveIDSet(live)) {
 		return nil
 	}
 

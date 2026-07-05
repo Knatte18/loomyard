@@ -53,7 +53,7 @@ deliberately **no domain `type` field**:
 strand {
   guid           // mux-generated (128-bit crypto/rand, hex) — the durable identity/selector
   name           // caller-supplied descriptive label, stored verbatim — display-only, never a selector
-  worktree       // owning worktree slug — generic grouping; mux does not know what the worktree does
+  worktree       // owning worktree root path — generic grouping; mux does not know what the worktree does
   parent?        // the parent strand's guid — forms the spawn tree
   cmd            // opaque launch command string mux never parses
   resumeCmd?     // opaque resume command string, optional — see Resume
@@ -279,13 +279,13 @@ substrate-only; `resume` is the only replayer.**
 
 | Command | Does |
 |---|---|
-| `lyx mux up` | Ensure the server (clean env) + this worktree's session exist (boot if absent, no-op if up). Reconcile + apply the layout from the current strand table. **Runs no strand command.** |
+| `lyx mux up` | Ensure the server (clean env) + this worktree's session exist (boot if absent, no-op if up). A session that exists but holds **zero panes** is broken substrate (nothing to adopt or split, and psmux cannot add a pane to an empty window) — `up` kills the husk and boots fresh, clearing stale bindings like any rebirth. The boot itself is **deadline-based and zombie-tolerant**: a spawn that stays session-less for a full attempt window is force-reaped and retried against an overall budget sized for a CPU-saturated machine, and the pre-boot stale-socket check waits out a short grace so a **sibling worktree's still-registering fresh boot** is never mistaken for a stale holder. Reconcile + apply the layout from the current strand table. **Runs no strand command.** |
 | `lyx mux add` | `AddStrand` — `--cmd`, optional `--role`/`--round`/`--name`/`--resume-cmd`/`--parent <guid>`/`--anchor top\|below-parent\|hidden`/`--focus`. Prints the assigned `guid` + resolved `name`. A `hidden` strand gets no pane until surfaced. |
-| `lyx mux remove <guid>` | `RemoveStrand` — requires `--recursive` on a non-leaf (fails otherwise: `strand has children, use --recursive`); the engine API itself always cascades. Kills each removed strand's pane explicitly and, like `down`, **waits for the removed panes' process subtrees to exit before returning** (psmux terminates pane children asynchronously, and on Windows the process holding the worktree directory is a deeper descendant of `#{pane_pid}`) so a removed strand's grandchild never lingers holding the worktree dir. Result JSON lists every removed strand. |
+| `lyx mux remove <guid>` | `RemoveStrand` — requires `--recursive` on a non-leaf (fails otherwise: `strand has children, use --recursive`); the engine API itself always cascades. Kills each removed strand's pane explicitly and, like `down`, **waits for the removed panes' process subtrees to exit before returning** (psmux terminates pane children asynchronously, and on Windows the process holding the worktree directory is a deeper descendant of `#{pane_pid}`) so a removed strand's grandchild never lingers holding the worktree dir — and like `down`, the reap runs **even when the post-kill layout repair fails** (the panes are already dying; a transient apply error must never skip the reap). Result JSON lists every removed strand. |
 | `lyx mux status` | **Read-only** cross-reference of `.lyx/mux.json` strands against the named server's live `list-panes`: report **this session's** tracked strands and their live/dead state, where **live means present *and* not `pane_dead`** (a crashed strand reads `live:false`). Unlike the mutating verbs, `status` does **not** reconcile (it never kills dead panes or rewrites bindings) and does **not** re-apply the layout — a query must not move focus or mutate state; the next mutating verb persists any correction. v1 does **not** actively enumerate stray/orphan psmux servers (a reliable listing on Windows is unverified) — the named server still provides the orphan-firewall property, `status` just doesn't scan for it yet. |
 | `lyx mux attach` | `psmux attach` to this worktree's session **in the operator's current terminal, in place** (no popped window) — see the [envelope exception](#attach-is-a-documented-envelope-exception) below. |
 | `lyx mux resume` | For every persisted strand that is **not live and not `hidden`**, (re)create its pane and run its stored `resumeCmd` (or `cmd` if it has none). Already-live strands are left untouched (no double send-keys); `hidden` strands are skipped (pending, not dead). Boots the server+session first if absent; after a **server rebirth** it clears every stale pane binding first, so a reborn session's reused pane ids are never mistaken for live strands. |
-| `lyx mux down` | Kill **this worktree's session** (`kill-session`, never the shared per-hub server — sibling worktrees keep running) and clear this worktree's strand state. When this was the server's last session, the now-empty server is torn down too — and `down` **guarantees the socket is free of every psmux process before returning**: the psmux server (and its internal `__warm__` helper) are spawned with the worktree as their cwd, so a server that outlives `down` keeps the worktree directory busy. `down` gives the async `kill-server` a bounded window to finish gracefully, then **force-reaps any psmux still naming the socket and confirms the socket is clear** (`ensureServerGoneLocked`). Critically, a slow or failed server death **never aborts the pane reap**: `down` **always** reaps this session's pane process subtrees (`reapPaneChildren`, force-killing stragglers) — an earlier fixed 5s server wait that *returned an error on timeout* skipped that reap under CPU saturation, leaking both the server and pane children that held the worktree dir. The reap deadlines are saturation-tolerant (`reapExitTimeout`) and confirm each process is actually gone rather than trusting a fixed timer. **What `down` does not reap:** the ConPTY `conhost.exe` the OS parents to psmux to host each pane's pseudo-console. It is not a `#{pane_pid}` descendant, mux never spawns it directly, and it exits on its own moments after the pane dies — reaping a dying OS console host is not mux's job. (It is why a test that deletes the worktree the instant `down` returns must briefly wait for that OS teardown; see the smoke suite's `deferHubRelease`.) |
+| `lyx mux down` | Kill **this worktree's session** (`kill-session`, never the shared per-hub server — sibling worktrees keep running) and clear this worktree's strand state. When this was the server's last session — or the socket's holder is **unreachable** (an errored `list-sessions` means a zombie server, which cannot be hosting healthy sibling sessions) — the server is torn down too, and `down` **guarantees the socket is free of every psmux process before returning**: the psmux server (and its internal `__warm__` helper) are spawned with the worktree as their cwd, so a server that outlives `down` keeps the worktree directory busy. `down` gives the async `kill-server` a bounded window to finish gracefully, then **force-reaps any psmux still naming the socket and confirms the socket is clear** (`ensureServerGoneLocked`). Critically, a slow or failed server death **never aborts the pane reap**: `down` **always** reaps this session's pane process subtrees (`reapPaneChildren`, force-killing stragglers) — an earlier fixed 5s server wait that *returned an error on timeout* skipped that reap under CPU saturation, leaking both the server and pane children that held the worktree dir. The reap deadlines are saturation-tolerant (`reapExitTimeout`) and confirm each process is actually gone rather than trusting a fixed timer. **What `down` does not reap:** the ConPTY `conhost.exe` the OS parents to psmux to host each pane's pseudo-console. It is not a `#{pane_pid}` descendant, mux never spawns it directly, and it exits on its own moments after the pane dies — reaping a dying OS console host is not mux's job. (It is why a test that deletes the worktree the instant `down` returns must briefly wait for that OS teardown; see the smoke suite's `deferHubRelease`.) |
 
 `UpdateStrand` is engine-API-only — there is no `lyx mux update` verb in v1. Callers (`shuttle`,
 `loom`, `review`) drive `AddStrand`/`UpdateStrand`/`RemoveStrand` in-process through the
@@ -418,21 +418,34 @@ These are the tested facts any implementation must respect. Full evidence in
 - **The ConPTY `conhost.exe` is an OS artifact mux does not reap.** On Windows psmux hosts each
   pane's pseudo-console via a `conhost.exe` the OS parents to the console subsystem, not to
   `#{pane_pid}` — so it is *not* in the pane process subtree the reap walks. It inherits the
-  worktree as its cwd and lingers a beat after its pane dies, then exits on its own. mux
-  deliberately does **not** hunt it down: a dying OS console host is not stray *agent* state,
+  worktree as its cwd; on a quiet machine it exits on its own a beat after its pane dies, but
+  under CPU saturation it can be **orphaned and then holds the worktree cwd indefinitely**
+  (observed: conhosts from starved runs still pinning their fixture dirs hours later). mux
+  deliberately does **not** hunt it down: an OS console host is not stray *agent* state,
   and enumerating processes by cwd to force-kill it would be over-engineering the product for
   an artificial condition (a caller deleting the worktree the instant `down` returns). Test
-  harnesses that do exactly that must wait the OS teardown out (the smoke suite's
-  `deferHubRelease`).
-- **mux owns the session window; operator-split panes are not preserved.** psmux
-  `select-layout` **destroys any pane not present in the applied layout string**, and mux
-  re-applies the layout on every mutating verb (`up`/`add`/`remove`/`resume`) from its own
-  strand table. A pane an operator creates by hand (a raw `psmux split-window` into the mux
-  session) is therefore silently reaped by the next mux verb — it is not in the table, so it
-  is not in the string. This is deliberate for v1: to run an extra process **as** a visible
-  pane, add it through `lyx mux add` (it becomes a tracked strand); for a scratch shell that
-  mux must not touch, use a separate psmux session/socket. Preserving unknown operator panes
-  is deferred (it would require render to place panes it has no strand for).
+  harnesses that do exactly that cannot just wait the OS teardown out (no deadline outlasts an
+  orphan) — the smoke suite's `deferHubRelease` gives the self-exit path a grace, then kills
+  any conhost whose PEB cwd is inside the fixture dir, and fails loudly if a **non**-conhost
+  process holds it (that would be a real leak, never masked).
+- **mux owns the session window; operator-split panes are not preserved — and mux reaps
+  them itself, deterministically.** psmux's `select-layout` applies cells **positionally**
+  and destroys whichever panes sit beyond the emitted cell count in window order — so
+  leaving a foreign pane (a raw operator `psmux split-window` into the mux session) to
+  select-layout's implicit reaping destroys an **indeterminate** victim: observed live, a
+  *tracked strand's* pane was destroyed while the foreign pane survived. Reconcile therefore
+  **kills every untracked live pane explicitly** on each mutating verb
+  (`up`/`add`/`remove`/`resume`) while at least one strand is bound to a present pane, so a
+  strand's pane is never displaced by a foreign one. This is deliberate for v1: to run an
+  extra process **as** a visible pane, add it through `lyx mux add` (it becomes a tracked
+  strand); for a scratch shell that mux must not touch, use a separate psmux session/socket.
+  Preserving unknown operator panes is deferred (it would require render to place panes it
+  has no strand for). **Two hard floors:** (1) with **no** strand bound to a present pane mux
+  touches nothing — foreign panes are neither killed nor reaped, because (2) mux never
+  applies a layout that enumerates **zero** panes — psmux accepts an empty-cell layout
+  (exit 0) and answers it by destroying the session's entire pane set, leaving a zero-pane
+  husk no strand can ever be launched into. Should a zero-pane husk arise anyway,
+  `up`/`resume` heal it by rebooting the session (see the `up` row).
 
 ## Manual test surface: the mux sandbox suite
 

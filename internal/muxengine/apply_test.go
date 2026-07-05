@@ -98,6 +98,54 @@ func TestApplyLayoutLocked_SkipsPsmuxWhenFewerThanTwoLivePanes(t *testing.T) {
 	})
 }
 
+func TestApplyLayoutLocked_SkipsPsmuxWhenNoStrandOwnsAPresentPane(t *testing.T) {
+	// e's psmux points at a nonexistent binary (newTestEngine's fixture);
+	// if applyLayoutLocked issued select-layout here it would fail loudly.
+	// Two live panes but no strand owning either: the rendered layout would
+	// enumerate ZERO cells, and psmux answers an empty-cell layout by
+	// destroying every pane in the session — so the apply must be skipped.
+	e := newTestEngine(t)
+
+	t.Run("NoStrandsAtAll", func(t *testing.T) {
+		st := &MuxState{}
+		if err := e.applyLayoutLocked(st, []LivePane{{ID: "%1"}, {ID: "%2"}}); err != nil {
+			t.Errorf("applyLayoutLocked(no strands, 2 panes) = %v, want nil", err)
+		}
+	})
+
+	t.Run("OnlyUnboundAndHiddenStrands", func(t *testing.T) {
+		st := &MuxState{Strands: []Strand{
+			{GUID: "cleared", PaneID: "", Display: render.Display{Anchor: render.AnchorBelowParent}},
+			{GUID: "hid", PaneID: "%1", Display: render.Display{Anchor: render.AnchorHidden}},
+		}}
+		if err := e.applyLayoutLocked(st, []LivePane{{ID: "%1"}, {ID: "%2"}}); err != nil {
+			t.Errorf("applyLayoutLocked(no placeable strand, 2 panes) = %v, want nil", err)
+		}
+	})
+}
+
+func TestAnyPlacedStrand(t *testing.T) {
+	present := map[string]bool{"%1": true, "%2": true}
+	cases := []struct {
+		name    string
+		strands []Strand
+		want    bool
+	}{
+		{"NoStrands", nil, false},
+		{"BoundPresentVisible", []Strand{{GUID: "a", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent}}}, true},
+		{"BoundAbsentPane", []Strand{{GUID: "a", PaneID: "%9", Display: render.Display{Anchor: render.AnchorBelowParent}}}, false},
+		{"UnboundStrand", []Strand{{GUID: "a", PaneID: "", Display: render.Display{Anchor: render.AnchorTop}}}, false},
+		{"HiddenStrandNeverPlaced", []Strand{{GUID: "a", PaneID: "%1", Display: render.Display{Anchor: render.AnchorHidden}}}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := anyPlacedStrand(tc.strands, present); got != tc.want {
+				t.Errorf("anyPlacedStrand(%s) = %v, want %v", tc.name, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestPaneIDsByTop_SortsByVerticalPosition(t *testing.T) {
 	live := []LivePane{
 		{ID: "%3", Top: 32},
