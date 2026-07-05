@@ -65,6 +65,10 @@ type Run struct {
 	// deadline is the wall-clock time after which an in-progress run is
 	// classified OutcomeTimeout (spec.Timeout after Start).
 	deadline time.Time
+	// clock is Wait's poll-loop time seam (wait.go): realClock{} in
+	// production, overridden with a fake by same-package tests so a whole
+	// poll sequence replays instantly.
+	clock clock
 }
 
 // The run directory's fixed artifact file names. Every Engine.Prepare
@@ -137,12 +141,14 @@ func (r *Runner) Start(spec Spec) (*Run, error) {
 		return nil, fmt.Errorf("shuttle: save run state: %w", err)
 	}
 
+	clk := clock(realClock{})
 	return &Run{
 		runner:   r,
 		spec:     spec,
 		runDir:   runDir,
 		state:    state,
-		deadline: time.Now().Add(spec.Timeout),
+		clock:    clk,
+		deadline: clk.Now().Add(spec.Timeout),
 	}, nil
 }
 
