@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-smoke-tests
+phase: approved-docs-lifecycle
 slug: internal-shuttle
 branch: internal-shuttle
 plan: _mill/plan
@@ -28,6 +28,7 @@ approved-claude-engine  '2026-07-05T15:27:41Z'
 approved-run-loop  '2026-07-05T15:44:35Z'
 approved-cli-and-registration  '2026-07-05T15:57:24Z'
 approved-smoke-tests  '2026-07-05T16:06:49Z'
+approved-docs-lifecycle  '2026-07-05T16:17:01Z'
 ```
 
 ## Batches
@@ -65,7 +66,8 @@ batches:
     start_sha: ac76f1854841a542c3d3882729c2b814acafcb93
     commit_sha: 76d11d327c713c826b89df093e1b632187e2eeb3
   - name: docs-lifecycle
-    state: running
+    state: approved
     implementer_session: 010567a4-2004-4207-8258-45180d2c7a93
     start_sha: ee7e001508956487045a8ea926f058f89c5efd75
+    commit_sha: 31907f69eb06d6c0bf2bda21eb5686d01b5a4b64
 ```
