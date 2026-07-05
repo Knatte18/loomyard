@@ -14,9 +14,25 @@ module in the loomyard repo, followed by FIXING what you find. Work in the workt
 1. REVIEW: form your own independent judgment of `<MODULE>`'s scope and correctness. Hunt for bugs
    by reading the code AND by driving the real substrate (`<SUBSTRATE — e.g. real psmux>`) — this is
    where the defects hide.
-2. FIX: after you have a findings list, implement the fixes, verify each against the real substrate,
-   keep the whole test suite green, and update the docs in the same change. Do NOT commit or push
-   unless the user explicitly tells you to — leave the changes in the working tree and report them.
+2. FIX: after you have a findings list, implement the fixes one at a time, verify each against the
+   real substrate, keep the whole test suite green, and update the docs in the same change as the
+   fix they document. COMMIT after each individual fix lands green (see "Commit per fix" below). Do
+   NOT push unless the user explicitly tells you to.
+
+## Commit per fix (BLOCKING — do not batch fixes into one uncommitted diff)
+As soon as one finding's fix is implemented, green (`go build`/`vet`/hermetic test, plus the live
+smoke/suite check if the finding needed one), and its doc update (if any) is included, COMMIT it —
+on the current branch, no push — before starting the next finding. Commit message format:
+`<module>: fix <finding-id> — <one-line what/why>` (e.g. `shuttle: fix M1 — assert redirected file
+content, not Wait outcome, after interrupt+send`). Do not commit `.scratch/` (gitignored; your
+review and fixer reports never belong in a commit regardless). This exists because a round agent's
+session can be killed mid-fix by something entirely outside the method's control (a corrupted
+terminal, a lost connection) — round 2 of shuttle's own loop hit exactly this. A single monolithic
+uncommitted diff left behind by a crash forces the orchestrator to reverse-engineer, finding by
+finding, which fixes are actually complete versus half-done, from the diff alone. A trail of small
+commits turns that same crash into something the orchestrator can just read: `git log` shows
+exactly which findings landed clean, and anything with no commit is unambiguously not done yet —
+no guesswork, no risk of mistaking a half-applied fix for a finished one.
 
 ## Sequencing rule (BLOCKING — do not skip, do not interleave)
 Job 1 must be COMPLETE — and its full review report SAVED to
@@ -148,8 +164,9 @@ round. Empty on the first round.>`
 - Update `<docs/modules/<module>.md>` (and `docs/overview.md` / `CONSTRAINTS.md` if invariants or the
   module table move) IN THE SAME change. Do NOT add bugfix/hardening notes to `docs/roadmap.md`
   (roadmap is planned milestones only, per CLAUDE.md).
-- Tear down all substrate state; confirm zero stray processes. Do NOT commit or push unless the user
-  explicitly asks. Report the changed files and how you verified each fix.
+- Tear down all substrate state; confirm zero stray processes. COMMIT each fix as you finish it
+  (see "Commit per fix" above) — do NOT push unless the user explicitly asks. Report the changed
+  files and how you verified each fix.
 
 ## Deliverables
 1. A structured review report (Executive summary with top risks + merge-readiness opinion; Scope

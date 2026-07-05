@@ -11,10 +11,21 @@ exactly like the mux campaign hardened `internal-mux` before its own merge.
 1. REVIEW: form your own independent judgment of shuttle's scope and correctness. Hunt for bugs by
    reading the code AND by driving a real psmux session with a real, logged-in `claude` (this is
    where shuttle's defects hide — it drives an actual interactive TUI over a file contract).
-2. FIX: after you have a findings list, implement the fixes, verify each against the real
-   substrate, keep the whole test suite green, and update the docs in the same change. Do NOT
-   commit or push unless the user explicitly tells you to — leave the changes in the working tree
-   and report them.
+2. FIX: after you have a findings list, implement the fixes ONE AT A TIME, verify each against the
+   real substrate, keep the whole test suite green, and update the docs in the same change as the
+   fix they document. COMMIT after each individual fix lands green (see "Commit per fix" below). Do
+   NOT push unless the user explicitly tells you to.
+
+## Commit per fix (BLOCKING — do not batch fixes into one uncommitted diff)
+As soon as one finding's fix is implemented, green, and its doc update (if any) is included, COMMIT
+it — on the current branch, no push — before starting the next finding. Commit message format:
+`shuttle: fix <finding-id> — <one-line what/why>` (e.g. `shuttle: fix M1 — assert redirected file
+content, not Wait outcome, after interrupt+send`), so the finding ID matches exactly what your
+review report calls it. Do not commit `.scratch/` (gitignored). This exists because round 2 of this
+exact loop was killed mid-fix by a terminal corruption issue outside the method's control, leaving
+several real fixes sitting as one uncommitted diff with no fixer report — the orchestrator had to
+reverse-engineer, finding by finding, which fixes were actually complete before it could safely
+continue. Small per-finding commits make that recovery trivial instead.
 
 ## Sequencing rule (BLOCKING — do not skip, do not interleave)
 Job 1 must be COMPLETE — and its full review report SAVED to
@@ -272,8 +283,8 @@ risk — decide whether any now warrants action:
   change. Do NOT add bugfix/hardening notes to `docs/roadmap.md` (roadmap is planned milestones
   only, per `CLAUDE.md`).
 - Tear down all substrate state; confirm zero stray psmux processes and no leftover shuttle run
-  directories. Do NOT commit or push unless the user explicitly asks. Report the changed files and
-  how you verified each fix.
+  directories. COMMIT each fix as you finish it (see "Commit per fix" above) — do NOT push unless
+  the user explicitly asks. Report the changed files and how you verified each fix.
 
 ## Deliverables
 1. A structured review report (Executive summary with top risks + merge-readiness opinion; Scope

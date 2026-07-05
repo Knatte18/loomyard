@@ -69,15 +69,30 @@ tests pass but I don't trust it under load / crash / concurrency."*
    verification found — or, once clean, flips it to a **safety pass** ("no known residual; confirm
    merge-readiness or find what every prior round missed").
 2. **Spawn.** One fresh `general-purpose` Agent with a `model:` override, told **only** to read the
-   prompt file and do exactly what it says, tagged `<model>-r<N>`, told **not** to commit. It writes
-   two deliverables under `.scratch/` (gitignored): `<module>-review-<tag>.md` and
+   prompt file and do exactly what it says, tagged `<model>-r<N>`, told to **commit each individual
+   fix as it lands** (message identifying the finding it closes — see "Commit per fix" in
+   [`review-prompt-template.md`](review-prompt-template.md)) but **never push**. It writes two
+   deliverables under `.scratch/` (gitignored): `<module>-review-<tag>.md` and
    `<module>-review-<tag>-fixer-report.md`.
 3. **Verify — the part that actually catches residuals.** See the protocol below. The round's own
    verdict is **never** the gate: in the mux campaign rounds 3, 4, and 5 each self-reported
    "merge-ready" and each left a residual the orchestrator's independent verification caught.
-4. **Commit + re-seed + rotate.** Commit the round's partial fix (a clean base for the next round),
-   honestly labeled if incomplete. Re-seed the prompt with the new finding. Spawn the next round
-   with a **different** model.
+4. **Re-seed + rotate.** The round's fixes are already committed one-by-one (per-fix commits, not
+   a single wrap-up commit from the orchestrator — see below). Re-seed the prompt with whatever
+   verification found. Spawn the next round with a **different** model.
+
+### Why commit per fix, not one commit for the whole round
+
+A round agent's session can be killed by something entirely outside the method's control — a
+corrupted terminal, a lost connection — mid-fix, with no self-report at all. If its fixes sit as
+one uncommitted working-tree diff, the orchestrator has to reverse-engineer, finding by finding,
+which ones actually landed clean. Committing after each individual fix (green build/vet/test, plus
+the live check if the finding needed one) turns that same crash into something the orchestrator can
+just read: `git log` on the branch shows exactly which findings are done, and anything with no
+commit is unambiguously not done — no guesswork. This happened for real on shuttle's round 2: the
+operator's terminal broke mid-fix, the round had produced a review and several real fixes, but with
+no commits and no fixer report, the orchestrator had to independently re-derive which fixes were
+actually complete from a raw diff before it could safely continue.
 
 ### Why rotate the model
 

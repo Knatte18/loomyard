@@ -63,8 +63,10 @@ converged. The single discipline that makes this work: **you never trust a round
    re-litigated. Commit the re-seed.
 2. **Spawn.** `Agent` tool → `subagent_type: general-purpose`, `model: <the operator's pick this
    round>`, prompt = *"Read `docs/reviews/<module>-review-prompt.md` and do exactly what it says."*
-   Give it a tag `<model>-r<N>`, tell it **not to commit or push**, and ask it to reply with only a
-   concise executive summary + counts by severity + an explicit merge-readiness verdict.
+   Give it a tag `<model>-r<N>`, tell it to **commit each individual fix as it lands** (message
+   identifying the finding it closes — the prompt template's "Commit per fix" section has the exact
+   format) but **never push**, and ask it to reply with only a concise executive summary + counts by
+   severity + an explicit merge-readiness verdict.
 3. **Notify + wait.** When it completes, `PushNotification` the operator if they are away from the
    terminal. Do **not** read the agent's raw transcript file (it will overflow your context) — its
    final message and the `.scratch/` deliverables are enough.
@@ -74,9 +76,14 @@ converged. The single discipline that makes this work: **you never trust a round
    claims to catch, confirm the test FAILS at the right assertion, then revert (confirm an empty
    diff). A test you did not watch fail is not yet proven.
 5. **Decide.**
-   - **Residual found** → commit the round's partial work (honestly labeled if incomplete — it is the
-     clean base for the next round), re-seed the prompt (step 1) with the new finding, and spawn the
-     next round with a **different** model.
+   - **Residual found** → the round's fixes should already be committed one-by-one as they landed
+     (per-fix commits — see the spawn step). If the round left anything genuinely uncommitted (e.g.
+     it was killed mid-fix with no self-report at all), that is exactly the failure mode per-fix
+     commits are meant to make cheap to recover from: read `git log` to see precisely which findings
+     already landed clean, then either finish the remainder yourself or spawn a narrow, targeted
+     fixer agent (rule 4 above) scoped to "read the existing review report + the current diff/log,
+     finish and commit whatever is left" — not a fresh full review round. Re-seed the prompt (step 1)
+     with the new finding, and spawn the next full round with a **different** model.
    - **Clean** → a further safety pass with a *different* model is cheap insurance. Convergence is
      when a safety pass **and** your gates **and** (for a live-substrate module) an operator-assisted
      visual check all agree.
