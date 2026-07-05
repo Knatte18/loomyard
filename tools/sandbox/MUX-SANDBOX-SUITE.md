@@ -92,7 +92,7 @@ zero `WARN`/`FAIL` findings** -- in that case `items` is an empty array.
 
 - `source` is the literal string `"sandbox-report"`.
 - `items[]` holds only `WARN`/`FAIL` findings -- do not record `OK` scenarios here.
-- `ref` is the scenario id (`M0`-`M16`).
+- `ref` is the scenario id (`M0`-`M17`).
 - `title` is a short one-line summary.
 - `body` folds the detail, repro steps, and verdict into one markdown string.
 
@@ -359,6 +359,35 @@ Covered headlessly by `TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable`.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
+---
+
+### M17 -- Cross-worktree scope (down in one worktree spares its sibling)
+
+**Goal:** "With the overlay up and a strand added in THIS worktree, confirm a **sibling
+worktree on the same hub** can run its own mux session at the same time, and that tearing
+THIS worktree's overlay `down` leaves the sibling's session, panes, and agents untouched."
+
+**Watch:** The psmux server is **per-hub** -- sibling worktrees under one hub share one
+server (one `-L <socket>`) but each owns a distinct session (named after its worktree
+basename). So a second worktree on the same hub that runs `lyx mux up` + `lyx mux add`
+must appear as a **second session on the same socket, backed by the same single server**
+(no duplicate server spawned): `psmux -L <socket> ls` (controlled exception) lists both
+sessions, and `#{pid}` from each is identical. The proof is what happens on `lyx mux down`
+in the FIRST worktree: it must kill **only its own session** (`psmux -L <socket>
+has-session -t <this-session>` now fails) while the sibling's session **stays live** --
+`psmux -L <socket> has-session -t <sibling-session>` still succeeds, its pane is still
+present and not `pane_dead`, and the shared server's `#{pid}` is unchanged. The sibling's
+overlay dying because a `down` next door killed the shared server is a `FAIL`. (Only when
+the *last* session on the hub goes `down` is the server itself torn down -- M11's
+stray-state guarantee.) Materializing a real second worktree is environment setup outside
+the mux surface, so the authoritative headless coverage is
+`TestSmokeDownInOneWorktreeLeavesSiblingSessionAlive`, which boots two clones on one hub,
+downs one, and asserts the other's session/pane/agent-subtree stay live on the still-single
+shared server; treat this scenario as `OK` when that coverage holds and no sibling worktree
+is available to hand-drive.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
 ## Session log format
 
 After running all scenarios, record a short session summary:
@@ -384,6 +413,7 @@ M13: <OK|WARN|FAIL> -- <one-line note if not OK>
 M14: <OK|WARN|FAIL> -- <one-line note if not OK>
 M15: <OK|WARN|FAIL> -- <one-line note if not OK>
 M16: <OK|WARN|FAIL> -- <one-line note if not OK>
+M17: <OK|WARN|FAIL> -- <one-line note if not OK>
 
 sandbox-report.json written: <count of WARN/FAIL items>
 ```
