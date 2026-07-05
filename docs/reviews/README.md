@@ -1,10 +1,18 @@
 # Serial review+fix loop — a reusable hardening method
 
 This directory holds the **manual, human-in-the-loop review method** we used to harden `mux`
-before merging it to `main`, plus the concrete prompt that drove it. The method is
+before merging it to `main`, plus the two prompts that drove it. The method is
 **module-agnostic** — it is written down here so the modules built *on top of* mux
 ([`shuttle`](../modules/shuttle.md), [`review`](../modules/review.md), [`loom`](../modules/loom.md))
 can reuse it instead of re-inventing it each time.
+
+**The files here:**
+- [`orchestrator-prompt.md`](orchestrator-prompt.md) — paste-ready prompt that bootstraps a thread
+  into the **orchestrator** role (drives the loop, spawns rounds, independently verifies).
+- [`review-prompt-template.md`](review-prompt-template.md) — module-agnostic skeleton for the
+  **round agent** prompt (the reviewer-fixer a round spawns).
+- [`mux-review-prompt.md`](mux-review-prompt.md) — the fully-worked `mux` instance of that template.
+- This README — the method itself (roles, loop, verification protocol) explained in prose.
 
 > **This is the hand-executed prototype of the [`review`](../modules/review.md) module.** The
 > automated gate engine described there — a fresh Handler per round that does **A: review** then
