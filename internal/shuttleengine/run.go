@@ -221,6 +221,18 @@ func (r *Runner) sweepOrphansOpportunistic() {
 // instructions and let it continue, or lets the operator attach directly.
 // Safe to call concurrently with a blocked Wait: mux's op lock serializes
 // the underlying send-keys calls, and Interrupt mutates no Run-local state.
+//
+// Calibration (verified live): a provider's Stop hook fires on ANY turn end,
+// including one ended by Interrupt itself, not only a self-completed or
+// asking turn. A blocked Wait can therefore classify and return (typically
+// OutcomeAsking, since the file contract is usually still unmet) from the
+// INTERRUPTED turn's own Stop event before a caller's subsequent Send ever
+// starts its redirect turn — Wait has no notion of "an interrupt is coming,
+// don't classify yet." Interrupt+Send still reliably DELIVER the redirect
+// to the still-live pane (the agent process keeps running independently of
+// whatever Wait already returned), but a caller must not assume the SAME
+// Wait call will observe the redirect's own eventual outcome — this is the
+// documented v1 limitation that there is no re-wait path once Wait returns.
 func (run *Run) Interrupt() error {
 	return playInputs(run.runner.mux, run.state.StrandGUID, run.runner.engine.InterruptSequence())
 }
