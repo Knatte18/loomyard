@@ -16,21 +16,27 @@ import (
 
 // Startup classifies capture, the pane's currently rendered content, during
 // the window between launch and claude becoming ready for input. It checks
-// the trust-screen case first: claude shows a one-time "do you trust this
-// folder?" gate (matched case-insensitively on both "trust" and "folder"
-// being present — the same heuristic muxcli's dismissTrust proved live)
-// that must be dismissed before any input-ready marker can appear. Absent
-// that, the TUI's own input marker "❯" or the ASCII status hint
-// "shortcuts" (from its "? for shortcuts" footer — robust across a
-// non-ASCII-space rendering quirk that can corrupt "❯") means claude has
-// reached its ready-for-input state. Anything else is still booting.
+// the ready markers FIRST: the TUI's own input marker "❯" or the ASCII
+// status hint "shortcuts" (from its "? for shortcuts" footer — robust
+// across a non-ASCII-space rendering quirk that can corrupt "❯") means
+// claude has reached its ready-for-input state, and that takes priority over
+// the trust-prompt heuristic below. Readiness is checked first (not the
+// trust prompt) because the trust match is a loose, case-insensitive
+// substring test ("trust" and "folder" both present) that could in
+// principle also match unrelated pane content (e.g. an agent's own message
+// echoed onto the screen); checking readiness first means such a false
+// trust-prompt match can never mask a pane that has, in fact, already
+// become ready. Absent a ready marker, claude showing a one-time "do you
+// trust this folder?" gate (the same substring heuristic muxcli's
+// dismissTrust proved live) must be dismissed before any ready marker can
+// appear. Anything else is still booting.
 func (c *Claude) Startup(capture string) shuttleengine.StartupState {
 	lower := strings.ToLower(capture)
-	if strings.Contains(lower, "trust") && strings.Contains(lower, "folder") {
-		return shuttleengine.StartupTrustPrompt
-	}
 	if strings.Contains(capture, "❯") || strings.Contains(lower, "shortcuts") {
 		return shuttleengine.StartupReady
+	}
+	if strings.Contains(lower, "trust") && strings.Contains(lower, "folder") {
+		return shuttleengine.StartupTrustPrompt
 	}
 	return shuttleengine.StartupPending
 }

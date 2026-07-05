@@ -47,6 +47,17 @@ func TestStartup_Classification(t *testing.T) {
 			capture: "",
 			want:    shuttleengine.StartupPending,
 		},
+		{
+			// A pane already showing a ready marker must classify Ready even
+			// when the trust-prompt's loose substring match ("trust" AND
+			// "folder" both present, case-insensitively) would also fire —
+			// e.g. an agent's own echoed message mentioning both words. Ready
+			// is checked first precisely so this can never mask an
+			// already-ready pane (see startup.go's Startup doc comment).
+			name:    "ready_wins_over_coincidental_trust_words",
+			capture: "❯ please trust that the folder layout is correct before proceeding",
+			want:    shuttleengine.StartupReady,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
