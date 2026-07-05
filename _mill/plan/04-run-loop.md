@@ -55,6 +55,7 @@ batch 5: `Runner`, `NewRunner`, `Run` (handle), `Result`, `Runner.Start/Run`,
   - `internal/shuttleengine/rundir.go`
   - `internal/shuttleengine/mux.go`
   - `internal/muxengine/state.go`
+  - `internal/muxengine/strand.go`
   - `internal/hubgeometry/hubgeometry.go`
 - **Edits:** none
 - **Creates:**

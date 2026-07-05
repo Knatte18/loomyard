@@ -17,6 +17,11 @@ the sandbox-suite coverage the Sandbox Coverage invariant demands. This is where
 `claudeengine` gets injected into the runner — the only place the two sides of the seam
 meet.
 
+Batch-local note: `cmd/lyx/sandbox_coverage_test.go` asserts BOTH directions
+(registered ⊆ covered and covered ⊆ registered), so card 20 (registration) and card 21
+(suite tag) each leave that one guard transiently red on their own commit — no card order
+fixes it. The guard is green at the batch-end `verify:`, which is the gate that counts.
+
 ## Cards
 
 ### Card 18: shuttlecli package with the run verb

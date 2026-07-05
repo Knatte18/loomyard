@@ -3,7 +3,7 @@
 ```yaml
 task: 'Build internal/shuttle: one LLM agent via a swappable engine'
 slug: internal-shuttle
-approved: false
+approved: true
 started: '20260705-144755'
 parent: main
 root: ""
