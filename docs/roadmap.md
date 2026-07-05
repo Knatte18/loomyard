@@ -160,6 +160,15 @@ Layer in once the core stack works; not required for `loom` v1.
     capture journal is optional belt-and-suspenders, not the primary mechanism), mutual watchdog so
     both must die to go dark. See [modules/mux.md](modules/mux.md#deferred). **Proven in muxpoc,
     now built into mux's on-demand reconcile** ([overview.md#modules](overview.md#modules)).
+    **Possible extension — foreign-pane self-heal:** today mux is one-shot, so an operator-split or
+    stray "faux" pane is only reaped on the *next* mux verb (reconcile owns the session window). The
+    daemon could close that gap by reconciling on its own. Design steer for when this is picked up:
+    prefer **event-driven psmux hooks** (e.g. `after-split-window` / `window-layout-changed`) over a
+    polling loop — near-free and responsive; fall back to a low-frequency sweep only if psmux lacks
+    the hook. Gate it behind a policy that distinguishes a bug-induced faux pane from an operator's
+    **intentional** scratch pane (a grace period or an opt-out) — silent real-time reaping is a UX
+    hazard, not a win. Prerequisite: make the reap probe cheaper first (it currently spawns a fresh
+    pwsh + full `Win32_Process` WMI enumeration per poll), so a daemon loop is not a CPU drain.
 
 15. **Slack relay.** Bidirectional, one channel per worktree, riding on the daemon.
 
