@@ -41,7 +41,9 @@ batches:
     start_sha: c2f2a152ff5d25b9fa55c4126243e4ff5952b985
     commit_sha: b3ee7037daaa9d815eae2efc875e0ee58a27be1f
   - name: claude-engine
-    state: pending
+    state: running
+    implementer_session: 1f3018fb-31e0-4c58-be1b-e7cde9a1c99e
+    start_sha: 7a45edc3be50e2662a32d6c10f6afa3015d5030c
   - name: run-loop
     state: pending
   - name: cli-and-registration
