@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-approved
 slug: internal-shuttle
 branch: internal-shuttle
 plan: _mill/plan
@@ -32,6 +32,7 @@ approved-docs-lifecycle  '2026-07-05T16:17:01Z'
 holistic-reviewing  '2026-07-05T16:17:28Z'
 holistic-fixing  '2026-07-05T16:23:31Z'
 holistic-reviewing  '2026-07-05T16:30:43Z'
+holistic-approved  '2026-07-05T16:34:14Z'
 ```
 
 ## Batches
