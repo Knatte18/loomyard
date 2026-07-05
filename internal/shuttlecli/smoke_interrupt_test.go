@@ -10,6 +10,28 @@
 // needs the *Run handle while Wait blocks elsewhere — the CLI's `run` verb
 // blocks on Runner.Run (Start+Wait combined) and never hands back a handle
 // to interrupt.
+//
+// Determinism notes (round opus-r2): live-driving against real claude
+// (2.1.200) established two things a prior round's version of this test did
+// not account for. First, an "open-ended, never-completing" counting prompt
+// is NOT actually open-ended against a real model: it self-bounds its own
+// output (observed stopping near ~200 lines with "I'll pause here — I can't
+// produce output without bound in a single response") and ends its turn on
+// its own, so the run can reach a terminal outcome before the mid-turn poll
+// ever catches it — this is retried (see maxMidTurnAttempts) rather than
+// treated as a hard failure. Second, and more fundamentally: the provider's
+// Stop hook fires on ANY turn end, including one ended by Interrupt itself —
+// so a blocked Wait can classify and return (typically OutcomeAsking, since
+// the output file is not yet written) from the INTERRUPTED turn's own Stop
+// event before Send's redirect turn ever starts. This is not a bug to work
+// around; it is the documented v1 limitation that there is no re-wait path
+// once Wait returns (see (*Run).Interrupt's doc comment). Asserting
+// Wait()'s outcome is therefore not a deterministic property of a correct
+// interrupt+send sequence. What IS deterministic, and what this test
+// asserts, is that the redirect actually reaches the still-live pane and
+// the agent (which keeps running independently of whatever Wait already
+// returned) eventually rewrites the output file — proven by polling the
+// file directly rather than trusting Wait's classification.
 
 package shuttlecli
 
@@ -36,26 +58,151 @@ import (
 // agent is actively counting (its turn is underway), so an interrupt has
 // something to interrupt. Polling for this instead of sleeping a fixed grace
 // is what makes the test deterministic — a fast model that would have blown
-// through a fixed sleep is still caught mid-turn because the task never
-// self-completes.
+// through a fixed sleep is still caught mid-turn, most of the time, because
+// generating each line takes an observable moment.
 var countingLine = regexp.MustCompile(`(?m)^\s*\d+\s*$`)
 
 // waitOutcome carries a completed run.Wait() call's result off the
 // background goroutine TestSmokeInterruptSendContinues drives it in, so the
-// test can select on it after sending the interrupt-and-redirect sequence.
+// test can select on it without blocking the main goroutine.
 type waitOutcome struct {
 	result shuttleengine.Result
 	err    error
 }
 
+// maxMidTurnAttempts bounds how many fresh runs TestSmokeInterruptSendContinues
+// starts while trying to catch one genuinely mid-turn (real claude sometimes
+// ends the counting turn on its own before the poll below observes it — see
+// the file-level doc comment). Each attempt is cheap relative to the
+// determinism this buys: a single flaky "didn't catch it in time" no longer
+// fails the whole test.
+const maxMidTurnAttempts = 4
+
+// startMidTurnCountingRun starts one shuttle run whose prompt directs an
+// open-ended counting task, then polls the pane's captured content for proof
+// the task is genuinely underway (at least a few numeric lines), rather than
+// sleeping a fixed grace window. Returns the run handle, its wait-outcome
+// channel, and true once mid-turn is observed. If the run reaches a terminal
+// outcome first (real claude sometimes self-ends the counting turn — see the
+// file-level doc comment), OR the counting window elapses with neither a
+// terminal outcome nor visible counting (a slow-to-start turn is not
+// distinguishable from a hang on a single attempt); either way it tears the
+// strand down and returns ok=false so the caller can retry with a fresh run.
+// The caller bounds total attempts via maxMidTurnAttempts.
+func startMidTurnCountingRun(t *testing.T, runner *shuttleengine.Runner, muxEngine *muxengine.Engine, shuttleCfg shuttleengine.Config, outputPath string) (run *shuttleengine.Run, waitCh chan waitOutcome, ok bool) {
+	t.Helper()
+
+	prompt := fmt.Sprintf(
+		"Count out loud starting from 1, one number per line, going up forever with no "+
+			"upper bound and no pause to ask anything — do not write any file and do not stop "+
+			"counting until you are told otherwise. (The file %s only matters if you are later "+
+			"told to write it.)",
+		outputPath,
+	)
+
+	run, err := runner.Start(shuttleengine.Spec{
+		Prompt:      prompt,
+		OutputFiles: []string{outputPath},
+		Timeout:     5 * time.Minute,
+	})
+	if err != nil {
+		t.Fatalf("runner.Start: %v", err)
+	}
+
+	waitCh = make(chan waitOutcome, 1)
+	go func() {
+		result, waitErr := run.Wait()
+		waitCh <- waitOutcome{result, waitErr}
+	}()
+
+	guid := run.StrandGUID()
+
+	// abandonAttempt tears this run's strand down and signals the caller to
+	// retry with a fresh one. Both non-success exits below funnel through it:
+	// an attempt that ends before yielding a usable mid-turn window is a
+	// transient miss against a live model, not a test failure, so it must be
+	// retried rather than hard-failed. The strand is removed because an
+	// asking/died/timeout run (or one still mid-turn when we give up) would
+	// otherwise survive per the run-loop cleanup rules and leak into the next
+	// attempt; RemoveStrand's error is non-fatal cleanup noise.
+	abandonAttempt := func(reason string) (*shuttleengine.Run, chan waitOutcome, bool) {
+		t.Logf("%s; retrying with a fresh run", reason)
+		if _, rerr := muxEngine.RemoveStrand(guid, false); rerr != nil {
+			t.Logf("cleanup: remove strand %s after abandoned attempt (non-fatal): %v", guid, rerr)
+		}
+		return nil, nil, false
+	}
+
+	// The counting window is generous relative to startup: real claude can
+	// spend a while on preamble before the first number, and slow startup
+	// alone must not be mistaken for a hang. If it still elapses with neither
+	// a terminal outcome nor visible counting, we abandon and retry rather
+	// than hard-fail (the caller bounds total attempts via maxMidTurnAttempts).
+	deadline := time.Now().Add(time.Duration(shuttleCfg.StartupTimeoutS)*time.Second + 120*time.Second)
+	for {
+		select {
+		case res := <-waitCh:
+			// Real claude self-bounded the counting turn (or otherwise ended
+			// it) before we ever observed it mid-turn: not a test failure,
+			// just an attempt that didn't get a usable window.
+			return abandonAttempt(fmt.Sprintf("attempt reached a terminal outcome (%s, err=%v) before mid-turn was observed", res.result.Outcome, res.err))
+		default:
+		}
+		if time.Now().After(deadline) {
+			// The window elapsed with neither a terminal outcome nor visible
+			// counting. This is indistinguishable from a slow-to-start turn,
+			// so abandon and retry instead of hard-failing on the first miss;
+			// a genuine persistent hang exhausts maxMidTurnAttempts and the
+			// caller then fails the test.
+			return abandonAttempt(fmt.Sprintf("timed out waiting for the pane to show the counting task underway (guid %s)", guid))
+		}
+
+		capture, err := muxEngine.CapturePane(guid)
+		if err != nil {
+			t.Logf("CapturePane during mid-turn poll (retrying): %v", err)
+			time.Sleep(time.Second)
+			continue
+		}
+		if len(countingLine.FindAllString(capture, -1)) >= 3 {
+			return run, waitCh, true
+		}
+		time.Sleep(time.Second)
+	}
+}
+
+// pollFileContentEquals polls path until its trimmed content equals want or
+// deadline passes, returning the last content read and whether it matched.
+// This is the test's deterministic substitute for trusting Wait's outcome
+// (see the file-level doc comment): the redirected agent keeps running and
+// writing independently of whatever Wait already returned, so the file
+// itself — not the run loop's classification — is the property to observe.
+func pollFileContentEquals(path, want string, deadline time.Time) (last string, matched bool) {
+	for {
+		if data, err := os.ReadFile(path); err == nil {
+			last = strings.TrimSpace(string(data))
+			if last == want {
+				return last, true
+			}
+		}
+		if time.Now().After(deadline) {
+			return last, false
+		}
+		time.Sleep(time.Second)
+	}
+}
+
 // TestSmokeInterruptSendContinues starts a run whose prompt directs an
-// open-ended, never-self-completing task, polls the pane's captured content
-// until the task is genuinely underway (deterministic mid-turn detection —
-// see countingLine), then calls run.Interrupt() followed by run.Send() with a
-// one-line replacement instruction. Asserts Wait still returns "done" and
-// the output file carries the REDIRECTED content: the discussion's core
-// interrupt use case (stop, update, continue) proven against a real claude
-// pane rather than a hermetic fake.
+// open-ended counting task, retries with a fresh run if real claude
+// self-ends the turn before a mid-turn window is observed (see
+// startMidTurnCountingRun), then calls run.Interrupt() followed by
+// run.Send() with a one-line replacement instruction. It asserts the
+// deterministic property established live (see the file-level doc
+// comment): the output file eventually carries the REDIRECTED content,
+// proven by polling the file directly rather than asserting on Wait's
+// classification of the interrupted turn. Wait is still drained and its
+// outcome logged, and a mechanism failure (an error, or a died/timeout
+// outcome) still fails the test — only the specific "must be done" claim is
+// dropped.
 func TestSmokeInterruptSendContinues(t *testing.T) {
 	claudeBinaryPath(t)
 
@@ -102,66 +249,19 @@ func TestSmokeInterruptSendContinues(t *testing.T) {
 	runner := shuttleengine.NewRunner(muxEngine, claudeengine.New(), layout, shuttleCfg)
 
 	outputPath := filepath.Join(fixture.Hub, "smoke-interrupt-output.txt")
-	// Deliberately open-ended: the task has no natural completion point
-	// before the interrupt+send sequence redirects it. A fixed-duration task
-	// (e.g. "count to 100") flakes on a fast model that finishes inside
-	// whatever grace window the test sleeps — the interrupt+send path never
-	// gets exercised, and the test still passes on the resulting "done"
-	// outcome (a false positive for the exact behavior it means to prove;
-	// see the round-1 review finding this replaced). Counting upward forever
-	// guarantees the run is never done on its own, so reaching the poll
-	// below always means the agent is genuinely mid-turn.
-	prompt := fmt.Sprintf(
-		"Count out loud starting from 1, one number per line, going up forever with no "+
-			"upper bound and no pause to ask anything — do not write any file and do not stop "+
-			"counting until you are told otherwise. (The file %s only matters if you are later "+
-			"told to write it.)",
-		outputPath,
-	)
 
-	run, err := runner.Start(shuttleengine.Spec{
-		Prompt:      prompt,
-		OutputFiles: []string{outputPath},
-		Timeout:     5 * time.Minute,
-	})
-	if err != nil {
-		t.Fatalf("runner.Start: %v", err)
-	}
-
-	waitCh := make(chan waitOutcome, 1)
-	go func() {
-		result, waitErr := run.Wait()
-		waitCh <- waitOutcome{result, waitErr}
-	}()
-
-	// Deterministic mid-turn detection: poll the pane's own captured content
-	// for the counting task actually underway (at least a few numeric
-	// lines), rather than sleeping a fixed grace window. This survives both
-	// a slow machine (keeps polling past the old fixed sleep) and a fast one
-	// (the open-ended task above guarantees there is always a mid-turn state
-	// to observe — it never self-completes).
-	guid := run.StrandGUID()
-	deadline := time.Now().Add(time.Duration(shuttleCfg.StartupTimeoutS)*time.Second + 60*time.Second)
-	for {
-		select {
-		case res := <-waitCh:
-			t.Fatalf("run reached a terminal outcome (%s, err=%v) before the interrupt+send sequence was sent — the agent never reached a countable mid-turn state", res.result.Outcome, res.err)
-		default:
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("timed out waiting for the pane to show the counting task underway (guid %s)", guid)
-		}
-
-		capture, err := muxEngine.CapturePane(guid)
-		if err != nil {
-			t.Logf("CapturePane during mid-turn poll (retrying): %v", err)
-			time.Sleep(time.Second)
-			continue
-		}
-		if len(countingLine.FindAllString(capture, -1)) >= 3 {
+	var run *shuttleengine.Run
+	var waitCh chan waitOutcome
+	for attempt := 1; attempt <= maxMidTurnAttempts; attempt++ {
+		r, ch, ok := startMidTurnCountingRun(t, runner, muxEngine, shuttleCfg, outputPath)
+		if ok {
+			run, waitCh = r, ch
 			break
 		}
-		time.Sleep(time.Second)
+		t.Logf("mid-turn attempt %d/%d did not catch the run mid-turn", attempt, maxMidTurnAttempts)
+	}
+	if run == nil {
+		t.Fatalf("never observed the counting task genuinely underway after %d attempts", maxMidTurnAttempts)
 	}
 
 	if err := run.Interrupt(); err != nil {
@@ -171,23 +271,33 @@ func TestSmokeInterruptSendContinues(t *testing.T) {
 		t.Fatalf("run.Send: %v", err)
 	}
 
+	// The deterministic assertion: regardless of how Wait classifies the
+	// interrupted turn (its own Stop event can resolve Wait before the
+	// redirect's turn ever starts — see the file-level doc comment), the
+	// redirected instruction reaches the still-live pane and the agent
+	// eventually rewrites the output file.
+	fileDeadline := time.Now().Add(3 * time.Minute)
+	if last, matched := pollFileContentEquals(outputPath, "REDIRECTED", fileDeadline); !matched {
+		t.Fatalf("output file content = %q after 3m; want %q (the interrupt+send sequence must have redirected the run)", last, "REDIRECTED")
+	}
+
+	// Drain Wait so the goroutine and mux/run-dir state settle before
+	// teardown. Log the outcome rather than asserting a specific value —
+	// both OutcomeDone and OutcomeAsking are legitimate depending on which
+	// Stop event Wait's poll loop happened to observe first (see the
+	// file-level doc comment) — but an error, or OutcomeDied/OutcomeTimeout,
+	// indicates a genuine mechanism failure, not a benign classification
+	// race, and still fails the test.
 	select {
 	case res := <-waitCh:
+		t.Logf("run.Wait outcome=%s err=%v", res.result.Outcome, res.err)
 		if res.err != nil {
 			t.Fatalf("run.Wait: %v", res.err)
 		}
-		if res.result.Outcome != shuttleengine.OutcomeDone {
-			t.Fatalf("run.Wait outcome = %q; want %q", res.result.Outcome, shuttleengine.OutcomeDone)
+		if res.result.Outcome == shuttleengine.OutcomeDied || res.result.Outcome == shuttleengine.OutcomeTimeout {
+			t.Fatalf("run.Wait outcome = %q; want %q or %q (a died/timeout outcome after a successful redirect indicates a real mechanism failure)", res.result.Outcome, shuttleengine.OutcomeDone, shuttleengine.OutcomeAsking)
 		}
 	case <-time.After(5 * time.Minute):
 		t.Fatal("run.Wait did not return within 5m after the interrupt+send sequence")
-	}
-
-	data, err := os.ReadFile(outputPath)
-	if err != nil {
-		t.Fatalf("read output file: %v", err)
-	}
-	if got := strings.TrimSpace(string(data)); got != "REDIRECTED" {
-		t.Errorf("output file content = %q; want %q (the interrupt+send sequence must have redirected the run)", got, "REDIRECTED")
 	}
 }
