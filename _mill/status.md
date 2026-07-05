@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-mux-extensions
+phase: approved-shuttle-foundation
 slug: internal-shuttle
 branch: internal-shuttle
 plan: _mill/plan
@@ -23,6 +23,7 @@ plan-fix-r1  '2026-07-05T15:00:23Z'
 planned  '2026-07-05T15:00:43Z'
 implementing  '2026-07-05T15:01:54Z'
 approved-mux-extensions  '2026-07-05T15:11:07Z'
+approved-shuttle-foundation  '2026-07-05T15:19:21Z'
 ```
 
 ## Batches
@@ -35,9 +36,10 @@ batches:
     start_sha: 619bfc5024e7f15d236f248442d9cff2b37dd637
     commit_sha: c96cb4071db9768782a0cc567c5852f484d31262
   - name: shuttle-foundation
-    state: running
+    state: approved
     implementer_session: 8d98482c-aff5-4557-ad82-7ae844009d55
     start_sha: c2f2a152ff5d25b9fa55c4126243e4ff5952b985
+    commit_sha: b3ee7037daaa9d815eae2efc875e0ee58a27be1f
   - name: claude-engine
     state: pending
   - name: run-loop
