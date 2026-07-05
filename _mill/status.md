@@ -65,5 +65,7 @@ batches:
     start_sha: ac76f1854841a542c3d3882729c2b814acafcb93
     commit_sha: 76d11d327c713c826b89df093e1b632187e2eeb3
   - name: docs-lifecycle
-    state: pending
+    state: running
+    implementer_session: 010567a4-2004-4207-8258-45180d2c7a93
+    start_sha: ee7e001508956487045a8ea926f058f89c5efd75
 ```
