@@ -38,6 +38,25 @@ func TestParseEvents_LenientFixture(t *testing.T) {
 	}
 }
 
+// TestParseEvents_RawPreservesSurroundingWhitespace verifies that Raw carries
+// the exact original line bytes -- including incidental leading/trailing
+// whitespace -- rather than the trimmed copy used internally for the
+// blank-line check and JSON parse.
+func TestParseEvents_RawPreservesSurroundingWhitespace(t *testing.T) {
+	c := New()
+	const line = `  {"hook_event_name":"Stop","last_assistant_message":"padded"}  `
+	events, err := c.ParseEvents([]byte(line))
+	if err != nil {
+		t.Fatalf("ParseEvents() error: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("ParseEvents() returned %d events; want 1", len(events))
+	}
+	if !bytes.Equal(events[0].Raw, []byte(line)) {
+		t.Errorf("events[0].Raw = %q; want the untrimmed original line %q", events[0].Raw, line)
+	}
+}
+
 func TestParseEvents_EmptyInput(t *testing.T) {
 	c := New()
 	events, err := c.ParseEvents([]byte(""))

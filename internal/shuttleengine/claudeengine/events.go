@@ -48,7 +48,10 @@ func (c *Claude) ParseEvents(data []byte) ([]shuttleengine.StopEvent, error) {
 		lastMessage, _ := fields["last_assistant_message"].(string)
 		events = append(events, shuttleengine.StopEvent{
 			LastAssistantMessage: lastMessage,
-			Raw:                  []byte(trimmed),
+			// Raw preserves the original line bytes (not the trimmed copy used
+			// above for the blank check and JSON parse) so a byte-exact
+			// round-trip is possible if a caller ever needs it.
+			Raw: []byte(line),
 		})
 	}
 
