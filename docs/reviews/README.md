@@ -40,7 +40,13 @@ tests pass but I don't trust it under load / crash / concurrency."*
   *not* a fork — a fork would inherit the orchestrator's context and destroy independence). It does
   two jobs in order: **A — review** (form its own findings by reading the code *and* driving the
   real substrate), then **B — fix** (implement, test, update docs). One agent does both because the
-  review context is already loaded, so the fix is cheap.
+  review context is already loaded, so the fix is cheap. **The order is not advisory — it is a hard
+  gate.** Job A must be fully written to its review-report file on disk before the agent touches any
+  production or test file; fixing findings as it spots them (instead of after the report is saved)
+  turns the "review" into a post-hoc rationalization of edits already made, which defeats the whole
+  point of an independent judgment. Every per-module review prompt must state this explicitly (see
+  the "Sequencing rule" in [`review-prompt-template.md`](review-prompt-template.md)) — this was
+  missing from the template until shuttle's round 1 interleaved the two jobs.
 
 ## The loop
 

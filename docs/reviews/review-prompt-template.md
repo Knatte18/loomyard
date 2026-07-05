@@ -18,6 +18,18 @@ module in the loomyard repo, followed by FIXING what you find. Work in the workt
    keep the whole test suite green, and update the docs in the same change. Do NOT commit or push
    unless the user explicitly tells you to — leave the changes in the working tree and report them.
 
+## Sequencing rule (BLOCKING — do not skip, do not interleave)
+Job 1 must be COMPLETE — and its full review report SAVED to
+`.scratch/<module>-review-<yourtag>.md` on disk — before you touch (edit, create, or delete) a
+single production or test file. Do not fix findings as you go, even ones that look small and
+obviously right. A review written or finished after code has already changed is no longer an
+independent judgment — it is a post-hoc rationalization of edits you already made, and it silently
+destroys the one property this whole method depends on. If you catch yourself wanting to patch
+something the moment you spot it: don't. Write it down as a finding, keep reading, finish the
+review, save the file, THEN start Job 2. (This rule exists because a round agent interleaved review
+and fix on shuttle's very first round — it had modified four production/test files before writing
+a single line of its review report.)
+
 ## Clean-room review constraint (do this part unprimed)
 Form your OWN findings first. Do NOT read any prior review or review-dialogue files before you have
 your own list. Specifically do not open anything under `.scratch/` (gitignored; holds prior reviews
