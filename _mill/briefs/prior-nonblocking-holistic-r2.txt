@@ -1,1 +1,0 @@
-- ParseEvents' Raw carries the trimmed line, not the exact original bytes: internal/shuttleengine/claudeengine/events.go:51 (Raw: []byte(trimmed)) - Card 12 specifies Raw: <line bytes>; implementation trimmed whitespace before storing, so byte-exact round-trip was not preserved. Fixed in holistic-fix round 1 (commit b378874).
