@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussion-fix-r3
 slug: internal-shuttle
 branch: internal-shuttle
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-07-05T13:39:11Z'
+discussion-fix-r3  '2026-07-05T14:42:12Z'
 ```

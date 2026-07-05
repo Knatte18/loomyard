@@ -193,6 +193,12 @@ deleted in this task.
 - Decision: the **caller** names the expected output files (`spec.OutputFiles []string`) and
   writes its own prompt instructing the agent where to write. shuttle never templates prompt
   content — dumb transport, like mux.
+- Decision (path contract): `OutputFiles` entries are **absolute, or relative to the
+  worktree root** — the engine resolves relative entries against `layout.WorktreeRoot` at
+  spec validation and stores/polls absolute paths from then on. One convention, pinned,
+  because the caller's prompt and shuttle's existence check must agree on the base (the Go
+  process cwd and the pane cwd are both the worktree in practice, but the contract must not
+  depend on that coincidence).
 - Decision: **`OutputFiles` is mandatory — at least one path.** `Run` (and `lyx shuttle run`)
   rejects an empty spec with an error. The file hand-off is what makes a run "return" to its
   caller; with zero expected files "all files exist" is vacuously true and every Stop would
@@ -295,6 +301,7 @@ deleted in this task.
   struct when a real need arrives. Fields:
   - `Prompt string` (required) — buffered to the run's prompt file by the engine.
   - `OutputFiles []string` (required, ≥1) — the result contract; empty spec is rejected.
+    Absolute, or relative to the worktree root (resolved to absolute at validation).
   - `Model string` (optional → `--model`).
   - `Autonomous bool` (default true) — controls `--dangerously-skip-permissions` and the
     AskUserQuestion guardrail (see Guardrails decision).
