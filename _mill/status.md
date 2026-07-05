@@ -6,6 +6,7 @@ slug: internal-shuttle
 branch: internal-shuttle
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: 'Build internal/shuttle: one LLM agent via a swappable engine'
 task_description: |
   Build internal/shuttle: one LLM agent via a swappable engine
@@ -28,7 +29,9 @@ implementing  '2026-07-05T15:01:54Z'
 ```yaml
 batches:
   - name: mux-extensions
-    state: pending
+    state: running
+    implementer_session: 3829c3cb-a9f9-4bda-ae1e-efe4b8433f47
+    start_sha: 619bfc5024e7f15d236f248442d9cff2b37dd637
   - name: shuttle-foundation
     state: pending
   - name: claude-engine
