@@ -5,6 +5,10 @@
 // resolveLivePaneID lookup every one of them shares, matching the
 // dumb-carrier contract the rest of the package follows: mux moves bytes in
 // and out of a pane, it never interprets them.
+//
+// CapturePane in particular follows Status's read-only discipline: a query
+// must never move input focus or mutate persisted state as a side effect of
+// being asked a question.
 
 package muxengine
 
@@ -98,4 +102,38 @@ func (e *Engine) SendKey(guid, key string) error {
 		}
 		return nil
 	})
+}
+
+// CapturePane returns guid's live pane's current screen contents via
+// psmux's capture-pane, resolving the pane the same way SendText/SendKey do.
+// It is a read-only query, mirroring Status's discipline: it does not
+// reconcile (which can kill dead-but-not-sole panes), does not re-apply the
+// layout (which would move input focus as a side effect), and does not
+// persist — a caller polling CapturePane in a tight loop pays no layout-apply
+// cost per call and never disturbs whichever pane currently has focus.
+func (e *Engine) CapturePane(guid string) (string, error) {
+	var captured string
+	err := e.withOpLock(func() error {
+		if err := e.requireSessionLocked(); err != nil {
+			return err
+		}
+
+		st, err := e.loadOrInitStateLocked()
+		if err != nil {
+			return err
+		}
+
+		paneID, err := resolveLivePaneID(st, guid)
+		if err != nil {
+			return err
+		}
+
+		out, err := e.psmux.output("capture-pane", "-p", "-t", paneID)
+		if err != nil {
+			return fmt.Errorf("capture pane: %w", err)
+		}
+		captured = out
+		return nil
+	})
+	return captured, err
 }
