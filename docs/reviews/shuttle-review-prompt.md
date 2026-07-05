@@ -150,12 +150,44 @@ explicitly future work per `docs/roadmap.md` milestone 10's notes — shuttle on
 agent well.
 
 ## Round context seeded from prior-round verification
-**Round 1 — no prior round exists yet.** This is the FIRST clean-room review+fix round for
-`shuttle` in this hardening loop (mirroring the mux campaign's R3, its first independently-verified
-round). There is no CLOSED-AND-VERIFIED history and no deferred-items list to carry forward — find
-and fix whatever you find. State the **merge bar** so you calibrate: correctness in the NORMAL
-single-instance flow (one shuttle run, one strand, one claude session) is the gate; an N×-concurrent
-stress suite (if you choose to run one) is a diagnostic amplifier, not a merge blocker.
+**Residual to close (round 2).** Round 1 (opus-r1) found and fixed 3 real bugs plus a docs fix,
+all independently verified via revert-and-fail proofs — do NOT re-open or re-litigate these,
+they are CLOSED AND VERIFIED:
+- F1: a `saveRunState` failure during `Start` left a live, untracked strand with no recovery path
+  (`internal/shuttleengine/run.go`) — fixed by removing the strand and run dir on that failure path.
+- F2: a pane dying right after satisfying the file contract but before its Stop hook fired was
+  misclassified as `died` instead of `done` (`internal/shuttleengine/wait.go`) — fixed by checking
+  output files first.
+- F4: the Stop hook's shell command did not escape single quotes in the run's events path
+  (`internal/shuttleengine/claudeengine/settings.go`) — fixed with the standard POSIX quote idiom.
+- docs: `docs/overview.md` self-contradicted its own module table, claiming shuttle has no CLI —
+  fixed.
+
+**One residual remains — this is YOUR job this round.** F3, round 1's rewrite of
+`internal/shuttlecli/smoke_interrupt_test.go`'s `TestSmokeInterruptSendContinues`, is NOT reliable.
+The old test used a fixed sleep (flaky in one direction: could pass without ever exercising
+interrupt/send). Round 1 replaced it with an open-ended "count slowly to a very large number"
+prompt plus pane-polling to catch the agent mid-turn before interrupting — but on independent
+rerun (twice, two different ways) this new version is ALSO flaky, in a different direction: real
+claude sometimes responds to that prompt by stopping to ask a clarifying question instead of
+counting indefinitely, so the run lands in `"asking"` before the test ever gets to interrupt it.
+Round 1's own "reran twice, both passed" claim did not hold under independent verification.
+Fix the right layer, not just the symptom — candidate directions (pick what actually works, don't
+assume one is sufficient without proving it via multiple independent reruns, not just one or two):
+- Reword the prompt to explicitly foreclose ANY question or confirmation ("do not ask, do not
+  confirm anything, start counting immediately and do not stop until told to").
+- And/or have the test treat an early `"asking"` outcome as a retry signal (re-launch, or
+  interrupt-and-redirect) rather than a hard test failure, since no prompt wording can be 100%
+  deterministic against a live LLM's behavior.
+- And/or pick a different mid-turn-inducing task that is less prone to eliciting a clarifying
+  question in the first place.
+Add a regression test/rerun-proof for whatever you land on — prove determinism by running it
+several times in a row (not just once or twice), the same discipline the method's Fixing section
+already requires for any smoke test.
+
+State the **merge bar** so you calibrate: correctness in the NORMAL single-instance flow (one
+shuttle run, one strand, one claude session) is the gate; an N×-concurrent stress suite (if you
+choose to run one) is a diagnostic amplifier, not a merge blocker.
 
 ## What to TEST — do not just read, EXERCISE it
 Report the exact commands you ran and what you observed.
@@ -204,8 +236,13 @@ behavior), severity (BLOCKING / MEDIUM / LOW / NIT), suggested fix, and CONFIRME
 flag deferred-that-should-be-v1 and shipped-beyond-scope.
 
 ## Deferred items from the prior round — RE-EVALUATE these (after your own pass)
-None yet — this is round 1. (Future rounds: the orchestrator fills this in from what this round
-consciously defers.)
+Round 1 (opus-r1) honestly flagged these as consciously-deferred verification limits, not new
+risk — decide whether any now warrants action:
+- S2's operator-assisted attach step (needs a real TTY in a second terminal) was not driven live.
+- A live concurrent-run orphan-sweep race (two shuttle runs racing `sweepOrphans`'s age guard) was
+  not driven live under real concurrency, only reasoned about.
+- A manual second-process CLI invocation of `interrupt`/`send` (as opposed to the in-process Go
+  test harness) was not fully exercised end-to-end.
 
 ## Fixing — after the review
 - Load the code-quality guidance (`/code-quality` skill or `mill:code-quality`) before editing.
