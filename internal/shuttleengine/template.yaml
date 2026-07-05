@@ -1,0 +1,8 @@
+run_dir: ${env:LYX_SHUTTLE_RUN_DIR:-}  # per-run directory root; empty resolves to <worktree>/.lyx/shuttle via hubgeometry (never constructed here)
+poll_interval_ms: 500  # milliseconds between polls of a run's completion state
+liveness_every_n_polls: 10  # how often (in polls) to check pane liveness alongside the completion file
+run_timeout_min: 30  # minutes before an in-progress run is classified as timed out
+startup_timeout_s: 90  # seconds allowed for the claude process to start and reach a live pane
+claude: ${env:LYX_SHUTTLE_CLAUDE:-}  # path to the claude executable; empty falls back to "claude" on PATH — prefer an explicit path, PATH aliases can hit the 0-byte WindowsApps stub
+claude_deny_agent_tool: true  # emit a PreToolUse deny for the in-process Agent tool
+claude_deny_ask_user_question: true  # emit a PreToolUse deny for the AskUserQuestion tool (autonomous runs only)
