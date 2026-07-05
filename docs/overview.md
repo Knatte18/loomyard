@@ -6,8 +6,8 @@ shared memory. State lives on disk per module and is coordinated with file locks
 so concurrent `lyx` processes on a machine cooperate through the filesystem. The
 first module, **board** (a task tracker), is implemented; **warp** (the host↔weft
 topology owner) is implemented; **muxpoc**, a proof-of-concept orchestrator, is
-shipped; and the planned clean `internal/mux` remains design (see
-[roadmap.md](roadmap.md)).
+parked (kept on disk as a reference, unwired from the CLI); and **mux**, the clean
+psmux overlay it informed, is implemented (see [roadmap.md](roadmap.md)).
 
 In the long term, Loomyard is intended to **replace mill/millhouse (Python)** entirely.
 We get there by building these modules as self-contained toolkits first;
@@ -125,10 +125,11 @@ Two state roots with opposite lifecycles:
   resume works across machines *because* its status is weft-synced.
 - **`.lyx/`** — **ephemeral, local, machine-bound.** Untracked (listed in
   `.git/info/exclude`, never `.gitignore`), changing constantly while a run is live. The live
-  psmux runtime state — [`mux`](modules/mux.md)'s `.lyx/mux.json` (server PID + the
-  [strand](modules/mux.md#the-strand-model) table: each managed process, its session, parent, and
-  display spec) — goes here, because a pane ID or a psmux server PID is meaningless on another
-  machine. It is rebuilt by reconciling against live psmux on startup, never synced.
+  psmux runtime state — [`mux`](modules/mux.md)'s `.lyx/mux.json` (the socket/session names + the
+  [strand](modules/mux.md#the-strand-model) table: each managed process, its session, parent,
+  ephemeral pane id, and display spec) — goes here, because a pane ID or the psmux socket is
+  meaningless on another machine. It is rebuilt by reconciling against live psmux on startup, never
+  synced.
 
 The test: **would this state mean anything on a different machine?** Orchestration progress
 yes → `_lyx/`. A pane handle no → `.lyx/`.
@@ -171,7 +172,10 @@ github.com/Knatte18/loomyard/
 ├── internal/weftengine/          the weft domain kernel
 ├── internal/idecli/              the ide CLI command
 ├── internal/ideengine/           the ide domain kernel
-├── internal/muxpoccli/           the muxpoc POC module
+├── internal/muxpoccli/           the muxpoc POC module (parked)
+├── internal/muxcli/              the mux CLI command
+├── internal/muxengine/           the mux domain kernel (overlay + strand bookkeeping)
+├── internal/muxengine/render/    pure display-vocabulary leaf (layout = Rules(strands))
 ├── internal/ghissuescli/         the ghissues CLI command
 ├── internal/ghissuesengine/      the ghissues domain kernel
 ├── internal/selfreportcli/       the selfreport CLI command
@@ -215,15 +219,18 @@ User-facing modules each get one `lyx <module>` namespace:
 - **weft** — owns all git into the paired weft repo (`lyx weft status|commit|push|pull|sync`). ✅ Implemented.
 - **warp** — **host↔weft-coordinated git topology**: clone (hub-creator), dual-worktree add/remove, coordinated checkout (switches host+weft together + re-points junctions), reconcile, status, prune, cleanup. The single owner of the mirror invariant — consolidates the former `worktree` / `git-clone` modules and `internal/git`; its CLI surface is `lyx warp clone|add|list|remove|checkout|status|reconcile|prune|cleanup`. ✅ Implemented.
 - **ide** — one-shot VS Code launcher with interactive menu. ✅ Implemented.
-- **muxpoc** — shipped proof-of-concept psmux orchestrator proving the risky parts of the
-  planned mux module. ✅ Implemented.
+- **muxpoc** — proof-of-concept psmux orchestrator that proved the risky parts (layout checksum,
+  bottom-dominant layout, env hygiene, native `--resume`) later reused by the **mux** module.
+  **Parked** — kept on disk as a reference, unregistered from the `lyx` CLI. See
+  [modules/mux.md](modules/mux.md).
 - **selfreport** — file bugs and enhancements against `Knatte18/loomyard` via the `gh` CLI
   (`lyx selfreport create <title>`). Target repo is hardcoded; supports `--body` (or `-` for
   stdin) and `--label`; defaults to `bug`. Callable from any sandbox agent context with no
   config. ✅ Implemented.
-- **mux** — **the window to the world**: psmux overlay + **strand** bookkeeping + render. Hosts
-  every managed process as a strand, arranges them, persists to `.lyx/mux.json` (`lyx mux`). 🚧
-  Design — not built. See [modules/mux.md](modules/mux.md).
+- **mux** — **the window to the world**: psmux overlay + **strand** bookkeeping + render
+  (`internal/muxcli` + `internal/muxengine` + `internal/muxengine/render`). Hosts every managed
+  process as a strand, arranges them, persists to `.lyx/mux.json` (`lyx mux
+  up|add|remove|status|attach|resume|down`). ✅ Implemented. See [modules/mux.md](modules/mux.md).
 - **loom** — phased orchestrator: drives Setup → Discussion → Plan → Builder → Finalize, each
   gated by a review (`lyx loom run`, alias `lyx run`). 🚧 Design — not built. See
   [modules/loom.md](modules/loom.md).
@@ -255,7 +262,7 @@ detect completion." Full side-by-side disambiguation: the [module map](modules/R
 
 ```
 internal/proc     spawn any OS process (windowless / detached), cross-OS      [OS primitive]
-internal/mux      the window to the world — overlay + strand bookkeeping +     [builds on proc]
+internal/mux      the window to the world — overlay + strand bookkeeping +     [builds on proc]  ✅
                   render; hosts every managed process as a strand, arranges
                   them, persists to .lyx/mux.json
 internal/shuttle  run ONE LLM agent in a strand via a swappable engine over    [builds on mux]
@@ -267,12 +274,14 @@ loom              phase machine: drive each phase through a review gate         
 The whole stack runs **headless** (auto mode): strands exist (the interactive-session
 requirement), agents run, output files are read, nobody need watch.
 
-- **mux is three things** — an **overlay** over psmux, **strand bookkeeping** (a strand = one
-  tracked process: a metadata record with a name, worktree slug, parent, and a *generic* display
-  spec), and a **render** sub-package (`layout = rules(strands)`). Callers hand mux `{cmd, name,
-  display}` where `display` is generic (anchor / height / focus) — never a domain `type`, so mux
-  never learns what a "phase" or "cluster" is. Earlier drafts split the model and view into separate
-  `shed`/`glance` modules; with one terminal per worktree they fold cleanly into mux.
+- **mux is three things, and it is built** — an **overlay** over psmux, **strand bookkeeping** (a
+  strand = one tracked process: a metadata record with a `guid`, `name`, worktree slug, parent, and
+  a *generic* display spec), and a **render** sub-package (`internal/muxengine/render`,
+  `layout = Rules(strands, box)`). Callers hand mux `{cmd, name, display}` where `display` is
+  generic (anchor / focus / shrinkWhenWaitingOnChild; height is derived, not caller-set) — never a
+  domain `type`, so mux never learns what a "phase" or "cluster" is. Earlier drafts split the model
+  and view into separate `shed`/`glance` modules; with one terminal per worktree they fold cleanly
+  into `internal/muxengine` + `internal/muxengine/render`. See [modules/mux.md](modules/mux.md).
 - **provider-invariant** — `shuttle` runs Claude today through an **engine**; the verdict/output
   contract is provider-invariant, so a different model can be swapped in without touching the
   review machinery. Non-Claude is not a current priority.
@@ -293,13 +302,13 @@ git-backed integration — live in the black-box `internal/boardengine/boardtest
 
 ## Sandbox Hub
 
-The **sandbox Hub** is a dedicated bench for manual testing of lyx's core workflows — its purpose is dogfooding lyx against itself. It lives on disk at `C:\Code\lyx-test-HUB` and exercises the real deployed `lyx` binary: the command surface, JSON output, and topology wiring users encounter. Build it via `sandbox-build.cmd` once `lyx` is deployed and the GitHub weft wiki is initialized (`sandbox-suite.cmd` then runs the agent, `sandbox-fetch.cmd` collects its report). See [sandbox-howto.md](sandbox-howto.md) for the step-by-step runbook (deploy → clone Hub → run suite) and [sandbox-hub.md](sandbox-hub.md) for topology and design details.
+The **sandbox Hub** is a dedicated bench for manual testing of lyx's core workflows — its purpose is dogfooding lyx against itself. It lives on disk at `C:\Code\lyx-test-HUB` and exercises the real deployed `lyx` binary: the command surface, JSON output, and topology wiring users encounter. Build it via `sandbox-build.cmd` once `lyx` is deployed and the GitHub weft wiki is initialized (`sandbox-core-suite.cmd` then runs the agent, `sandbox-mux-suite.cmd` runs the mux-specific suite (`SANDBOX-MUX-SUITE.md`, needs live psmux), and `sandbox-fetch.cmd` collects the report from either — the same fetch command for both). See [sandbox-howto.md](sandbox-howto.md) for the step-by-step runbook (deploy → clone Hub → run suite) and [sandbox-hub.md](sandbox-hub.md) for topology and design details.
 
 ## Other docs
 
 - [modules/README.md](modules/README.md) — **the module map**: index of every module doc + how the layers stack (design).
 - [modules/loom.md](modules/loom.md) — the phased orchestrator (`lyx loom` + `lyx review`); design.
-- [modules/mux.md](modules/mux.md) — the window to the world: psmux overlay + strand bookkeeping + render (design).
+- [modules/mux.md](modules/mux.md) — the window to the world: psmux overlay + strand bookkeeping + render (as-built).
 - [modules/shuttle.md](modules/shuttle.md) — run one LLM agent via a swappable engine over the file contract (design).
 - [modules/review.md](modules/review.md) — the generic gate engine (handler/fixer + cluster + stuck judge); design.
 - [benchmarks/](benchmarks/board-performance.md) — board performance, tracked across revisions.
@@ -309,3 +318,4 @@ The **sandbox Hub** is a dedicated bench for manual testing of lyx's core workfl
 - [roadmap.md](roadmap.md) — numbered milestones and long-term direction.
 - [sandbox-howto.md](sandbox-howto.md) — operator runbook: deploy `lyx`, build the Hub, run the suite agent (procedure).
 - [sandbox-hub.md](sandbox-hub.md) — the sandbox Hub: a dedicated bench for manual (dogfooding) testing.
+- [reviews/README.md](reviews/README.md) — the **serial review+fix loop**: a reusable method for hardening a live-substrate module before merge (orchestrator-driven, model-rotating, clean-room self-fixing rounds + independent verification). The hand-executed prototype of the [`review`](modules/review.md) module; ships two paste-ready prompts — an [orchestrator prompt](reviews/orchestrator-prompt.md) (drives the loop + verifies) and a [round-agent prompt template](reviews/review-prompt-template.md) (the reviewer-fixer), to instantiate per module.

@@ -4,6 +4,11 @@
 > this file is deleted when the module lands and its durable parts fold into the package header
 > and `overview.md`. It was split out of [loom.md](loom.md): `loom` owns the phase machine;
 > `review` owns the gate that guards every phase.
+>
+> **Hand-executed prototype:** [`docs/reviews/`](../reviews/README.md) documents the manual,
+> human-in-the-loop form of this exact loop (A-review → B-fix, fresh Handler per round, no
+> self-grading, independent confirmation) — the method used to harden `mux` over seven rounds
+> before merge. This module automates that loop by moving the orchestrator role into Go.
 
 `review` (`lyx review`) is the **gate engine** — a generic, profile-driven reviewer that takes
 an artifact and an "against" and returns one of two verdicts: **`APPROVED`** or **`stuck`**. It

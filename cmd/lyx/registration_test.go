@@ -174,8 +174,9 @@ func TestRegistration_AllModulesRegistered(t *testing.T) {
 
 	// allowlist holds packages that expose func Command() *cobra.Command but are
 	// intentionally not registered in newRoot() (for documented future exceptions).
-	// It is empty today — every Command()-bearing package must be wired in.
-	allowlist := map[string]bool{}
+	// muxpoccli is parked: it stays on disk and still exports Command(), but is
+	// intentionally unwired pending its replacement by the mux module.
+	allowlist := map[string]bool{"muxpoccli": true}
 
 	for pkg := range discovered {
 		if allowlist[pkg] {
