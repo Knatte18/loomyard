@@ -53,7 +53,9 @@ batches:
     start_sha: 00ec21bc50b5959797df722628097fda858428b2
     commit_sha: 0ccd12136d51ddae5a46148aa5138b4f0df7b70d
   - name: cli-and-registration
-    state: pending
+    state: running
+    implementer_session: 64160fc0-d5da-4b99-9922-edc06149f719
+    start_sha: 076b82b5fdca34d14633b72d195722a1b9829a3d
   - name: smoke-tests
     state: pending
   - name: docs-lifecycle
