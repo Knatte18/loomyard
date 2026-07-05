@@ -20,9 +20,14 @@ import (
 // claude executable path, and which PreToolUse denies the claude engine
 // emits.
 type Config struct {
-	RunDir                    string `yaml:"run_dir"`
-	PollIntervalMS            int    `yaml:"poll_interval_ms"`
-	LivenessEveryNPolls       int    `yaml:"liveness_every_n_polls"`
+	RunDir              string `yaml:"run_dir"`
+	PollIntervalMS      int    `yaml:"poll_interval_ms"`
+	LivenessEveryNPolls int    `yaml:"liveness_every_n_polls"`
+	// RunTimeoutMin is the fallback run deadline in minutes, used whenever a
+	// Spec's own Timeout is zero (see Spec.Timeout's doc comment). It has no
+	// "unlimited" value: setting this to 0 does not mean "no timeout" — it
+	// makes every deadline-deferring run's deadline equal to its own start
+	// time, so Wait classifies it OutcomeTimeout on the very first poll tick.
 	RunTimeoutMin             int    `yaml:"run_timeout_min"`
 	StartupTimeoutS           int    `yaml:"startup_timeout_s"`
 	Claude                    string `yaml:"claude"`

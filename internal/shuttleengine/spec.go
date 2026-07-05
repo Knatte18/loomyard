@@ -50,7 +50,11 @@ type Spec struct {
 	// run's strand.
 	Display render.Display
 	// Timeout is the wall-clock deadline after which an in-progress run is
-	// classified as timed out. Zero defers to cfg.RunTimeoutMin.
+	// classified as timed out. Zero defers to cfg.RunTimeoutMin minutes —
+	// note that this means cfg.RunTimeoutMin itself has no "unlimited"
+	// value: a configured RunTimeoutMin of 0 makes every run's deadline equal
+	// to its start time, so it is classified OutcomeTimeout on the very
+	// first poll tick, not "no timeout".
 	Timeout time.Duration
 	// KeepPane, when true, leaves the strand and its pane alive after a
 	// "done" outcome instead of the default RemoveStrand + run-dir cleanup.
