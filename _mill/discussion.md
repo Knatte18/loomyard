@@ -160,7 +160,11 @@ deleted in this task.
   lives** (resumeCmd and respawn reference them). Cleanup: on `done` → `RemoveStrand` +
   `os.RemoveAll(runDir)`; on `asking`/`died`/`timeout` → keep strand and directory (operator
   can attach/inspect; it is the diagnosis material). Orphan sweep: a later shuttle run
-  removes run dirs whose strand guid no longer exists in `mux.json`. `.lyx/` is untracked.
+  removes run dirs whose strand guid no longer exists in `mux.json` — **guarded by an age
+  threshold**: a dir younger than the startup window (`startup_timeout_s`, with margin) is
+  never swept, because a concurrently starting run creates its dir and `run.json` *before*
+  `AddStrand` persists the strand, and an unguarded sweep in that window would delete an
+  in-flight run. `.lyx/` is untracked.
 - Rejected: never clean (accumulates over long worktree lives); always delete at return
   (loses diagnosis + respawn inputs).
 
@@ -185,9 +189,17 @@ deleted in this task.
 - Decision: the **caller** names the expected output files (`spec.OutputFiles []string`) and
   writes its own prompt instructing the agent where to write. shuttle never templates prompt
   content — dumb transport, like mux.
+- Decision: **`OutputFiles` is mandatory — at least one path.** `Run` (and `lyx shuttle run`)
+  rejects an empty spec with an error. The file hand-off is what makes a run "return" to its
+  caller; with zero expected files "all files exist" is vacuously true and every Stop would
+  silently classify as `done`, making `asking` unreachable and turning a misconfigured spec
+  into silent success. Even tree-mutating agents (future builder workers) end with a small
+  report file — the same discipline mill's implementer JSON report uses. A run with no
+  result contract belongs one layer down (`lyx mux add`), not in shuttle.
 - Rejected: output-file-existence alone (cannot distinguish asking from working — loom needs
   that distinction for human gates); shuttle-side prompt placeholders (prompt opinions belong
-  in review/loom profiles).
+  in review/loom profiles); empty-OutputFiles-allowed variants (Stop ⇒ `done` degenerates
+  the verdict; Stop ⇒ `asking` makes `done` unreachable instead).
 
 ### Waiting: file polling + periodic liveness + deadline
 
@@ -236,6 +248,14 @@ deleted in this task.
   handle with `Wait/Interrupt/Send`; `Run(spec)` = Start+Wait convenience. CLI:
   `lyx shuttle interrupt <guid>` / `lyx shuttle send <guid> <text>` resolve the run via
   `run.json` (guid ↔ run dir), so an operator can do it from another terminal.
+- Decision (v1 limitation, explicit): Interrupt/Send are only meaningful **against a live,
+  blocking Run** — the in-process handle, or a still-blocking `lyx shuttle run` poked from
+  another terminal (its wait loop keeps reading the same `events.jsonl`, so the next Stop is
+  classified normally). Once `Run` has returned (e.g. `asking`), no process re-enters the
+  wait loop: a later `send` injects keys but nothing classifies the next outcome. There is
+  deliberately **no re-wait path in v1** (`lyx shuttle wait <guid>` is not built); the
+  operator handles an already-returned `asking` by attaching (`lyx mux attach`) and typing,
+  or the caller starts a fresh run. Revisit when review/loom show a concrete need.
 - Rationale (operator): there is no way today to stop an agent with updated information —
   you must interrupt, give new info, and let it continue. Key sequences are Claude-specific
   → engine; transport is generic → mux `SendKeys`.
@@ -382,3 +402,5 @@ psmux/claude behavioural uncertainty is exactly where it pays.
 - **Q:** In-agent interrupt in v1? **A:** Yes — operator's core need: stop an agent, give it updated info, let it continue. `Interrupt` + `Send` pair, Go API + CLI verbs; multiline updates via file + one-line pointer.
 - **Q:** Testing rigor? **A:** Three layers (hermetic / smoke / sandbox) plus the `docs/reviews/` hand-executed review loop before merge, as with mux.
 - **Q:** mux.md authority? **A:** Operator: module docs of built modules always rot — use the mux *code* as the source of truth; delete `docs/modules/mux.md` in this task.
+- **Q:** (review r1 gap) Empty `OutputFiles`? **A:** Mandatory, ≥1 — a run without a result file has no defined "done"; reject empty spec loudly. Operator convinced by "the file hand-off is what makes the run return"; no-result runs belong in `lyx mux add`.
+- **Q:** (review r1 notes) Orphan-sweep race and send-after-return? **A:** Sweep gets an age guard (never touch dirs younger than the startup window); Interrupt/Send documented as live-run-only, no re-wait path in v1.
