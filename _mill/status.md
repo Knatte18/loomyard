@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-docs-lifecycle
+phase: holistic-reviewing
 slug: internal-shuttle
 branch: internal-shuttle
 plan: _mill/plan
@@ -29,6 +29,7 @@ approved-run-loop  '2026-07-05T15:44:35Z'
 approved-cli-and-registration  '2026-07-05T15:57:24Z'
 approved-smoke-tests  '2026-07-05T16:06:49Z'
 approved-docs-lifecycle  '2026-07-05T16:17:01Z'
+holistic-reviewing  '2026-07-05T16:17:28Z'
 ```
 
 ## Batches
