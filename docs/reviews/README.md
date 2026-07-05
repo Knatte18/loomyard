@@ -3,7 +3,8 @@
 This directory holds the **manual, human-in-the-loop review method** we used to harden `mux`
 before merging it to `main`, plus the two prompts that drove it. The method is
 **module-agnostic** — it is written down here so the modules built *on top of* mux
-([`shuttle`](../modules/shuttle.md), [`review`](../modules/review.md), [`loom`](../modules/loom.md))
+(`shuttle` — see the `internal/shuttleengine` package documentation, [`review`](../modules/review.md),
+[`loom`](../modules/loom.md))
 can reuse it instead of re-inventing it each time.
 
 **The files here:**

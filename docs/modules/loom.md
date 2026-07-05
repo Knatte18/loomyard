@@ -107,8 +107,8 @@ on demand for judgment.
   sequences and the LLM is consulted on demand).
 - **Escalation by fresh spawn.** A stuck worker is escalated by spawning a **fresh
   higher-capability model** (Haiku → Sonnet) that reads the durable reports — not a `/model` switch
-  inside the stuck session (which would inherit the polluted context; see
-  [shuttle](shuttle.md#escalation--fresh-spawn-not-in-session-model)).
+  inside the stuck session (which would inherit the polluted context; see the
+  `internal/shuttleengine` package documentation for the escalation rationale).
 
 **Same substrate, different loop semantics:** Builder **advances** (batch → batch → holistic
 review); review **converges** (iterate review+fix on one artifact until `APPROVED`/`stuck`). Both
@@ -137,8 +137,8 @@ only at the human gates.
 
 **Auto mode.** A run can be told to *never* yield — `lyx run --auto`. The phase machine is
 unchanged; the only difference is that at a would-be human gate the agent is instructed to **make
-its own best guess and proceed** instead of asking (and the `AskUserQuestion` guardrail —
-[mux.md](mux.md#completion-and-hooks-live-in-shuttle-not-mux) — already forbids it from blocking on a dialog). Auto mode
+its own best guess and proceed** instead of asking (and the `AskUserQuestion` guardrail — see the
+`internal/shuttleengine/claudeengine` package documentation — already forbids it from blocking on a dialog). Auto mode
 does **not** turn off the view: mux still shows every strand (incl. the `lyx loom status` line),
 because you still want to watch. The difference is in loom's *yielding*, not in whether anyone is
 looking.
@@ -151,7 +151,7 @@ looking.
 - **It also carries a human-readable *current-activity* narration** — not just the machine enum,
   but "*now:* spawned plan-handler round 2, waiting on Stop hook / *last:* round 1 BLOCKING, 3
   findings / *wait:* —". This is what the `lyx loom status --watch` strand prints (a 1-line pane at
-  the top, [mux.md](mux.md#the-contract-callers-hand-mux-cmd-name-display)) so the operator sees what
+  the top, per the `internal/muxengine` package documentation on the strand contract) so the operator sees what
   the Go driver is *doing*, not only what the agents are saying. The driver writes the file; the
   status strand reads and prints it — mux never parses it, it just hosts the pane.
 - **Round-level resume.** Handler/fixer artifacts are already on disk, so resuming inside
@@ -169,7 +169,8 @@ this tractable: **loom resumes on output FILES, not on live processes.** The fil
 
 1. **Is there a complete output file?** → the step finished; read it and advance. (The agent's
    process may be long dead — its result survived. This is the common case.)
-2. **Else, is the agent's session still alive?** (via [`mux`](mux.md)'s `.lyx/mux.json` → session
+2. **Else, is the agent's session still alive?** (via `mux`'s — see
+   [overview.md#modules](../overview.md#modules) — `.lyx/mux.json` → session
    id → `claude agents --json`) → *working*: re-attach, just wait on its `Stop` hook (do **not**
    respawn — that would duplicate). *blocked*: it is a human gate / stuck — surface it.
 3. **Else (dead, no output):** respawn a **fresh** agent for the step, hydrated from the prior
@@ -178,8 +179,8 @@ this tractable: **loom resumes on output FILES, not on live processes.** The fil
 loom therefore **never depends on `claude --resume` for correctness** — an unfinished step is
 respawned, not resumed (mux's `--resume` is finicky for programmatically-driven sessions, and a
 never-conversed session has nothing to resume). mux's pane-`--resume` is a *separate, non-critical*
-layer that restores the **visible** sessions for the operator
-([mux.md](mux.md#resume-after-crash--native---resume-with-env-hygiene)); loom's correctness rests on
+layer that restores the **visible** sessions for the operator (see the `internal/muxengine` package
+documentation on resume); loom's correctness rests on
 files. A dead claude with a finished output file is, to loom, a **done step** — not a problem.
 
 ## Graceful pause
@@ -199,8 +200,9 @@ boundary**, never mid-operation — `mill-pause`'s natural-stopping-point proper
   discipline as [crash recovery](#crash-recovery--resume-on-output-files-not-live-processes), minus
   the crash.
 - **In-agent interrupt is optional.** To pause *faster* than the current unit finishes,
-  [`shuttle`](shuttle.md#in-agent-interrupt-optional) can ESC-and-hold the live agent (session kept
-  warm in the [mux server](mux.md), not killed; resume continues it in place). With Builder
+  `shuttle` (see the `internal/shuttleengine` package documentation) can ESC-and-hold the live
+  agent (session kept warm in the mux server — see [overview.md#modules](../overview.md#modules),
+  not killed; resume continues it in place). With Builder
   decomposed into batches/cards the boundary wait is short, so this is a latency nicety, not a
   correctness requirement.
 - **Distinct from crash recovery.** Crash (involuntary death) respawns a fresh agent from the
@@ -216,8 +218,8 @@ boundary**, never mid-operation — `mill-pause`'s natural-stopping-point proper
 | `review` (`lyx review`) | new Go module | the gate engine: Handler+fixer + optional cluster + progress-judge loop |
 | builder | Go loop (like `review`) | advance per batch + on-demand evaluator + Haiku→Sonnet escalation + terminal holistic review — **not** a single producer spawn |
 | producers (discussion / plan) | prompt/profile files | **not** modules — just a prompt + profile fed to `shuttle.Run` |
-| `lyx loom status` | a loom subcommand | the 1-line status view; runs as a [strand](mux.md#the-strand-model) (`anchor:top`), not a separate module |
-| execution stack | existing/new infra | [`proc`](README.md) → [`mux`](mux.md) → [`shuttle`](shuttle.md) — built once, used by both modules above |
+| `lyx loom status` | a loom subcommand | the 1-line status view; runs as a strand (see `internal/muxengine`; `anchor:top`), not a separate module |
+| execution stack | existing/new infra | [`proc`](README.md) → mux → shuttle — see [overview.md#execution-stack](../overview.md#execution-stack-orchestration-layers) — built once, used by both modules above |
 | Setup | uses existing modules | `warp` (topology owner), `weft`, `board` |
 | `/ly-*` skills | thin wrappers | over `lyx loom run` |
 
@@ -225,7 +227,8 @@ The new Go specific to loom is the **two modules** (`loom`, `review`) plus the *
 (Go, like `review` — its own module or a loom sub-loop) and the `lyx loom status`
 subcommand; beneath them is the shared [execution stack](README.md) (`proc`, `mux`, `shuttle`); and
 everything else is prompt files, profiles, and the existing lyx modules. The display is **not** a
-module — it is `lyx loom status` running in a strand that [`mux`](mux.md) hosts and arranges.
+module — it is `lyx loom status` running in a strand that `mux` (see
+[overview.md#modules](../overview.md#modules)) hosts and arranges.
 
 ## Entry point — the session bootstrap
 
@@ -257,24 +260,25 @@ from cwd, so you cannot run it from the wrong place. It reuses the
 
 **One terminal per worktree.** Scope for now is exactly that — each worktree its own terminal /
 psmux session. The cross-worktree multi-column view (all worktrees in one window) is a deferred mux
-feature ([mux.md](mux.md#scope-one-terminal-per-worktree-now-cross-worktree-columns-later)) — cheap
+feature (see the `internal/muxengine` package documentation) — cheap
 when it comes (a `worktree` strand field + a grouping rule), but not now.
 
 ## Agent execution
 
 Every agent loom spawns — producers, the review handler, cluster reviewers, the
-progress-judge — runs through the [`internal/shuttle`](shuttle.md) layer as an **interactive
-psmux session, never headless `claude -p`** (an economic constraint; see
-[shuttle.md](shuttle.md#interactive-never-headless--the-economic-constraint)). **I/O still rides
+progress-judge — runs through the `internal/shuttleengine` layer as an **interactive
+psmux session, never headless `claude -p`** (an economic constraint; see the
+`internal/shuttleengine` package documentation). **I/O still rides
 the file contract** — the agent writes its output files and Go reads them — so the
 file-contract design above is unchanged; only the *spawn + completion-detection* mechanism
 differs from a headless model.
 
 The consequence for loom: it sits on top of the [`proc → mux → shuttle`](README.md) stack, so that
 stack is on loom's critical path. loom (via [`review`](review.md)) calls `shuttle.Run` per spawn and
-stays ignorant of strands, layout, and engines — those belong to [`mux`](mux.md) (the strand
+stays ignorant of strands, layout, and engines — those belong to `mux` (see
+[overview.md#modules](../overview.md#modules); the strand
 bookkeeping + render: which pane is which, layout, focus, the cluster window where N reviewers go)
-and [`shuttle`](shuttle.md) (the swappable provider engine). What loom owns is everything in this
+and `shuttle` (see the `internal/shuttleengine` package documentation; the swappable provider engine). What loom owns is everything in this
 document: the phase machine, the gate wiring, and the status contract.
 
 ## Principle alignment
