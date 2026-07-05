@@ -1,9 +1,10 @@
 // main.go implements the sandbox tool entry point, flag parsing, and subcommand
-// dispatch. It supports three subcommands: "build" (default, clones the Hub),
-// "suite" (runs the embedded SANDBOX-SUITE agent), and "fetch" (collects
-// the agent-written report into .scratch). Only -parent and -loomyard live at
-// the top level; -reset is a build-subcommand flag, parsed after the "build"
-// token like suite parses its -claude/-prompt flags.
+// dispatch. It supports four subcommands: "build" (default, clones the Hub),
+// "suite" (runs the embedded SANDBOX-CORE-SUITE agent), "mux-suite" (runs the
+// embedded SANDBOX-MUX-SUITE agent), and "fetch" (collects the agent-written
+// report into .scratch). Only -parent and -loomyard live at the top level;
+// -reset is a build-subcommand flag, parsed after the "build" token like
+// suite/mux-suite parse their -claude/-prompt flags.
 
 package main
 
@@ -144,7 +145,30 @@ func run(argv []string) int {
 			return 1
 		}
 
-		if err := runSuite(absParent, *claudeFlag, *promptFlag); err != nil {
+		if err := runSuite(absParent, *claudeFlag, *promptFlag, mainSuite); err != nil {
+			fmt.Fprintf(os.Stderr, "sandbox: %v\n", err)
+			return 1
+		}
+
+	case "mux-suite":
+		// The mux-suite subcommand mirrors "suite" exactly, but runs the
+		// dedicated SANDBOX-MUX-SUITE scheme via the muxSuite spec; fetching the
+		// report is the same shared fetch subcommand, so -loomyard is not
+		// required here either.
+
+		// Parse mux-suite-specific flags from the remaining positionals after
+		// "mux-suite".
+		mf := flag.NewFlagSet("sandbox mux-suite", flag.ContinueOnError)
+		mf.SetOutput(os.Stderr)
+		claudeFlag := mf.String("claude", "", "path to the claude binary (default: resolve from PATH)")
+		promptFlag := mf.String("prompt", "", "instruction string passed to the agent (default: built-in)")
+
+		remaining := fs.Args()[1:]
+		if err := mf.Parse(remaining); err != nil {
+			return 1
+		}
+
+		if err := runSuite(absParent, *claudeFlag, *promptFlag, muxSuite); err != nil {
 			fmt.Fprintf(os.Stderr, "sandbox: %v\n", err)
 			return 1
 		}

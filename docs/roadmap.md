@@ -34,15 +34,16 @@ weft engine + producers → **`proc`** (cross-OS spawn). ✅
 **Orchestration spine** — a strict chain, each layer needs the one before it:
 
 ```
-proc ✅ ──▶ mux ──▶ shuttle ──▶ review ──▶ loom
+proc ✅ ──▶ mux ✅ ──▶ shuttle ──▶ review ──▶ loom
 ```
 
-- **`mux`** is next — its only dependency (`proc`) is done. Everything orchestration-related is
-  blocked on it. mux is the big one: psmux overlay + **strand** bookkeeping + render sub-package
-  (it absorbs what earlier drafts split into `shed`/`glance`).
-- **`shuttle`** needs `mux`; **`review`** needs `shuttle`; **`loom`** needs `review`. That is the
-  critical path to the orchestrator. `lyx loom status` (the 1-line view) ships as a loom subcommand,
-  not a module.
+- **`mux`** is done — psmux overlay + **strand** bookkeeping + render sub-package
+  (`internal/muxcli` + `internal/muxengine` + `internal/muxengine/render`; it absorbs what earlier
+  drafts split into `shed`/`glance`). See [milestone 9](#orchestration-stack) /
+  [modules/mux.md](modules/mux.md).
+- **`shuttle`** needs `mux` and is next — its only dependency is done. **`review`** needs
+  `shuttle`; **`loom`** needs `review`. That is the critical path to the orchestrator. `lyx loom
+  status` (the 1-line view) ships as a loom subcommand, not a module.
 
 **Setup track** — independent of the spine, interleave at any time: config TUI (in progress) ·
 `init`/board-repo creation · `doctor`.
@@ -50,8 +51,8 @@ proc ✅ ──▶ mux ──▶ shuttle ──▶ review ──▶ loom
 **Deferred** — after `loom` works and only if wanted: mux daemon → Slack relay; session sync;
 plugin packaging.
 
-So the immediate front: **`mux`** (unblocks the whole spine) in parallel with finishing the
-**config TUI** — none of which block each other.
+So the immediate front: **`shuttle`** (unblocks the rest of the spine) in parallel with finishing
+the **config TUI** — none of which block each other.
 
 ## Milestones
 
@@ -104,17 +105,20 @@ Each layer knows only the one below it; built bottom-up. See the
    base every higher layer launches through (build-tagged `proc_windows.go` / `proc_other.go`;
    third member of the portability family after `fsx` and `fslink`).
 
-9. **`internal/mux` — the window to the world.** The big one. Three things in one: **overlay** over
-   psmux (panes, send-keys/capture, env hygiene, native `claude --resume`, CC-hook wiring, one named
-   server per hub — orphan firewall); **strand bookkeeping** (each managed process is a strand — a
-   record with name, worktree slug, parent, generic display spec — persisted to `.lyx/mux.json`);
-   and a **render** sub-package (`internal/mux/render`, `layout = rules(strands)` over a closed
-   generic display vocabulary — a pure-function, golden-file test surface). Callers hand it `{cmd,
-   name, display}`; mux never learns a domain `type`. Scope now: one terminal per worktree
-   (cross-worktree columns deferred). It absorbs what earlier drafts split into `shed`/`glance`.
-   ([modules/mux.md](modules/mux.md)) **Proven in muxpoc** — clean-env boot, interactive claude,
-   child-pane spawn, bottom-dominant layout, and resume after `kill-server`
-   ([overview.md#modules](overview.md#modules)).
+9. **`internal/mux` — the window to the world.** ✅ **Done.** Three things in one, split across
+   `internal/muxcli` + `internal/muxengine` + `internal/muxengine/render`: **overlay** over psmux
+   (panes, send-keys/capture, env hygiene, native `--resume`, one named server per hub — orphan
+   firewall — with one session per worktree); **strand bookkeeping** (each managed process is a
+   strand — a `guid`-keyed record with name, worktree slug, parent, opaque `cmd`/`resumeCmd`,
+   generic display spec — persisted to `.lyx/mux.json`); and a **render** sub-package
+   (`internal/muxengine/render`, `Rules(strands, box) -> (layout, focus)` over a closed generic
+   display vocabulary — a pure-function, golden-file test surface, heights fully derived). Callers
+   hand it `{cmd, name, display}`; mux never learns a domain `type`. Scope: one terminal per
+   worktree (cross-worktree columns deferred). It absorbs what earlier drafts split into
+   `shed`/`glance`. CLI verbs: `up`, `add`, `remove`, `status`, `attach`, `resume`, `down`.
+   ([modules/mux.md](modules/mux.md)) **Built on what muxpoc proved** — clean-env boot,
+   interactive claude, child-pane spawn, bottom-dominant layout, and resume after `kill-server`;
+   muxpoc itself is now parked ([overview.md#modules](overview.md#modules)).
 
 10. **`internal/shuttle` — one LLM agent via a swappable engine.** Run a single agent in a strand
     over the file contract; `Stop`-hook completion; `PreToolUse` guardrails (deny in-process `Agent`
@@ -149,12 +153,22 @@ Layer in once the core stack works; not required for `loom` v1.
     the right starting scope.
 
 14. **mux daemon.** Standalone watchdog process: detects a psmux crash via `cmd.Wait()`, recovers
-    each strand by relaunching interactive Claude with native `claude --resume` (which **works** for
-    programmatically-driven panes once the inherited Claude-Code parent-session env is stripped —
-    see [modules/mux.md](modules/mux.md#resume-after-crash--native---resume-with-env-hygiene); the
+    each strand by replaying its stored opaque `resumeCmd` (native `--resume` **works** for
+    programmatically-driven Claude panes once the inherited Claude-Code parent-session env is
+    stripped — see
+    [modules/mux.md](modules/mux.md#resume-native---resume-via-the-stored-opaque-resumecmd); the
     capture journal is optional belt-and-suspenders, not the primary mechanism), mutual watchdog so
-    both must die to go dark. See [modules/mux.md](modules/mux.md#deferred). **Proven in muxpoc**
-    ([overview.md#modules](overview.md#modules)).
+    both must die to go dark. See [modules/mux.md](modules/mux.md#deferred). **Proven in muxpoc,
+    now built into mux's on-demand reconcile** ([overview.md#modules](overview.md#modules)).
+    **Possible extension — foreign-pane self-heal:** today mux is one-shot, so an operator-split or
+    stray "faux" pane is only reaped on the *next* mux verb (reconcile owns the session window). The
+    daemon could close that gap by reconciling on its own. Design steer for when this is picked up:
+    prefer **event-driven psmux hooks** (e.g. `after-split-window` / `window-layout-changed`) over a
+    polling loop — near-free and responsive; fall back to a low-frequency sweep only if psmux lacks
+    the hook. Gate it behind a policy that distinguishes a bug-induced faux pane from an operator's
+    **intentional** scratch pane (a grace period or an opt-out) — silent real-time reaping is a UX
+    hazard, not a win. Prerequisite: make the reap probe cheaper first (it currently spawns a fresh
+    pwsh + full `Win32_Process` WMI enumeration per poll), so a daemon loop is not a CPU drain.
 
 15. **Slack relay.** Bidirectional, one channel per worktree, riding on the daemon.
 
@@ -174,7 +188,7 @@ Independent of the orchestration stack; interleave as needed.
 
 18. **session sync.** `lyx session push/pull` — copy Claude `.jsonl` transcripts across machines so
     `claude --resume` works elsewhere (sessions are not portable today). See
-    [modules/mux.md](modules/mux.md#session-files-and-portability).
+    [modules/mux.md](modules/mux.md#session-files-and-portability-the-session-sync-milestone).
 
 19. **Claude Code plugin packaging.** Ship `lyx` as an installable Claude Code plugin, exactly as
     mill/millpy were, once the binary and module architecture are proven.

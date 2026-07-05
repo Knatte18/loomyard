@@ -60,3 +60,24 @@ func TestLyxDirNameConstant(t *testing.T) {
 		t.Errorf("LyxDirName = %q; want %q", hubgeometry.LyxDirName, "_lyx")
 	}
 }
+
+// TestDotLyxDir verifies that DotLyxDir resolves to "<Cwd>/.lyx" and is distinct from
+// LyxDir ("<Cwd>/_lyx"), since the two directories serve different durability
+// contracts (ephemeral/machine-bound vs. durable/weft-synced).
+func TestDotLyxDir(t *testing.T) {
+	t.Parallel()
+
+	cwd := filepath.Join("home", "user", "project")
+	layout := &hubgeometry.Layout{Cwd: cwd}
+
+	got := layout.DotLyxDir()
+	want := filepath.Join(cwd, ".lyx")
+
+	if got != want {
+		t.Errorf("DotLyxDir() = %q; want %q", got, want)
+	}
+
+	if got == layout.LyxDir() {
+		t.Errorf("DotLyxDir() = %q; must be distinct from LyxDir() = %q", got, layout.LyxDir())
+	}
+}

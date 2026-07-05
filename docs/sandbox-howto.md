@@ -6,14 +6,15 @@ rationale see [sandbox-hub.md](sandbox-hub.md).
 
 All commands run from the lyx repo root (`C:\Code\loomyard\wts\loomyard`) unless
 stated otherwise. The launchers (`deploy.cmd`, `sandbox-build.cmd`,
-`sandbox-suite.cmd`, `sandbox-fetch.cmd`) hardcode the machine-specific paths for
-this machine: deploy target `C:\Code\tools\bin`, Hub parent `C:\Code`. Each
-sandbox launcher does exactly one thing (build / suite / fetch).
+`sandbox-core-suite.cmd`, `sandbox-mux-suite.cmd`, `sandbox-fetch.cmd`) hardcode the
+machine-specific paths for this machine: deploy target `C:\Code\tools\bin`, Hub
+parent `C:\Code`. Each sandbox launcher does exactly one thing (build / suite /
+mux-suite / fetch).
 
 ## What the suite does
 
-`sandbox-suite.cmd` fingerprints the `lyx.exe` on PATH, drops a fresh
-`SANDBOX-SUITE.md` into the Hub host repo, and launches an interactive black-box
+`sandbox-core-suite.cmd` fingerprints the `lyx.exe` on PATH, drops a fresh
+`SANDBOX-CORE-SUITE.md` into the Hub host repo, and launches an interactive black-box
 agent that drives `lyx` from PATH only (never the source tree). The agent writes
 WARN/FAIL findings to `sandbox-report.json` in the host repo. The suite only
 launches the agent; collecting the report is a separate step — after the session
@@ -75,17 +76,17 @@ sandbox-build.cmd
 sandbox-build.cmd -reset
 ```
 
-Skip this step on repeat runs if the existing Hub is fine — `sandbox-suite.cmd`
+Skip this step on repeat runs if the existing Hub is fine — `sandbox-core-suite.cmd`
 does not require a reset each time. Reset when the Hub topology may be stale
 (e.g. after a warp/weft change) or when a previous run left it dirty.
 
 ### 4. Run the suite
 
 ```cmd
-sandbox-suite.cmd
+sandbox-core-suite.cmd
 ```
 
-This copies a fresh `SANDBOX-SUITE.md` (fingerprint + embedded scheme) into the
+This copies a fresh `SANDBOX-CORE-SUITE.md` (fingerprint + embedded scheme) into the
 Hub host repo and launches the interactive agent there. Let it run; it records
 findings to `sandbox-report.json` itself. Exit the agent session when it is done —
 the suite treats any exit code as normal and does not fetch the report itself.
@@ -93,8 +94,30 @@ the suite treats any exit code as normal and does not fetch the report itself.
 Optional overrides:
 
 ```cmd
-sandbox-suite.cmd -claude <path>   # override the claude binary (default: from PATH)
-sandbox-suite.cmd -prompt <text>   # override the instruction string
+sandbox-core-suite.cmd -claude <path>   # override the claude binary (default: from PATH)
+sandbox-core-suite.cmd -prompt <text>   # override the instruction string
+```
+
+### 4b. Run the mux suite (optional, needs live psmux)
+
+```cmd
+sandbox-mux-suite.cmd
+```
+
+This copies a fingerprinted `SANDBOX-MUX-SUITE.md` into the Hub host repo and
+launches the interactive agent there, same as step 4 but for `lyx mux`'s
+scenarios. It needs a live psmux (`psmux.exe` on PATH) and PowerShell 7. The
+attach scenario (M7) pauses for the operator to run `lyx mux attach` in a
+second terminal and confirm visually. Findings go to the same
+`sandbox-report.json`, so step 5 (`sandbox-fetch.cmd`) and step 6 (triage)
+apply unchanged — fetch between sessions, do not run both suites and fetch
+once.
+
+Same `-claude`/`-prompt` overrides as `sandbox-core-suite.cmd`:
+
+```cmd
+sandbox-mux-suite.cmd -claude <path>   # override the claude binary (default: from PATH)
+sandbox-mux-suite.cmd -prompt <text>   # override the instruction string
 ```
 
 ### 5. Fetch the report
@@ -135,4 +158,5 @@ nothing is written until you approve. Then groom/spawn as usual.
 ## See also
 
 - [sandbox-hub.md](sandbox-hub.md) — Hub topology, repo layout, design rationale.
-- [tools/sandbox/SANDBOX-SUITE.md](../tools/sandbox/SANDBOX-SUITE.md) — the embedded test scheme the agent follows.
+- [tools/sandbox/SANDBOX-CORE-SUITE.md](../tools/sandbox/SANDBOX-CORE-SUITE.md) — the embedded test scheme the agent follows.
+- [tools/sandbox/SANDBOX-MUX-SUITE.md](../tools/sandbox/SANDBOX-MUX-SUITE.md) — the embedded mux-specific test scheme `sandbox-mux-suite.cmd` follows.

@@ -1,4 +1,4 @@
-# SANDBOX-SUITE -- lyx black-box agent suite
+# SANDBOX-CORE-SUITE -- lyx black-box agent suite
 
 ## What this is
 
@@ -292,6 +292,12 @@ error there is the expected `OK` outcome, not a finding.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
+---
+
+mux has its own dedicated suite, `SANDBOX-MUX-SUITE.md` in this same directory,
+launched via `sandbox-mux-suite.cmd` -- mux needs a live psmux server and visual
+verification, a different test mode from this suite.
+
 ## Session log format
 
 After running all scenarios, record a short session summary:
@@ -319,9 +325,12 @@ findings section above -- with `items: []` when every scenario was `OK`.
 ## Notes
 
 - Scenario set is deliberately small and host/weft-centric -- that is the spine that
-  matters now. Add scenarios as modules grow (mux, shuttle, review, loom).
+  matters now. Add scenarios as modules grow (shuttle, review, loom). A module whose
+  testing model is fundamentally different gets its own sibling suite file
+  (`*SUITE.md`), with mux (`SANDBOX-MUX-SUITE.md`) as the precedent; the
+  coverage guard scans all of them.
 - The psmux interactive launcher will replace the direct `claude` launch in a future
-  iteration; the file contract (this `SANDBOX-SUITE.md` driving the agent) is unchanged.
+  iteration; the file contract (this `SANDBOX-CORE-SUITE.md` driving the agent) is unchanged.
 - The host repo `Knatte18/lyx-test` README uses the phrase "cwd-relpath mirroring"; this
   refers to **weft path mirroring** (how the weft worktree mirrors host subpaths) — not
   to running lyx from subdirectories. "cwd-relpath" does not appear elsewhere in this

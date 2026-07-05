@@ -62,7 +62,7 @@ func TestBinaryFingerprint_MissingPath(t *testing.T) {
 }
 
 // TestRenderScheme_ContainsHeaderAndBody verifies that renderScheme embeds the
-// binary fingerprint fields and the embedded SANDBOX-SUITE body in its output.
+// binary fingerprint fields and the embedded SANDBOX-CORE-SUITE body in its output.
 func TestRenderScheme_ContainsHeaderAndBody(t *testing.T) {
 	info := binaryInfo{
 		Path:    "/fake/lyx.exe",
@@ -70,7 +70,7 @@ func TestRenderScheme_ContainsHeaderAndBody(t *testing.T) {
 		ModTime: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
 		SHA256:  "abc123def456",
 	}
-	got := renderScheme(info)
+	got := renderScheme(info, sandboxSuiteMD)
 
 	// Each field must appear in the rendered output.
 	checks := []struct {
@@ -80,7 +80,7 @@ func TestRenderScheme_ContainsHeaderAndBody(t *testing.T) {
 		{"path", "/fake/lyx.exe"},
 		{"size", "1234 bytes"},
 		{"sha256", "abc123def456"},
-		{"scheme heading", "SANDBOX-SUITE"},
+		{"scheme heading", "SANDBOX-CORE-SUITE"},
 	}
 	for _, c := range checks {
 		if !strings.Contains(got, c.want) {
@@ -92,7 +92,7 @@ func TestRenderScheme_ContainsHeaderAndBody(t *testing.T) {
 // TestEnsureGitExclude covers the four behaviour scenarios for idempotent
 // exclude-file management.
 func TestEnsureGitExclude(t *testing.T) {
-	const entry = "SANDBOX-SUITE.md"
+	const entry = "SANDBOX-CORE-SUITE.md"
 
 	// createGitDir sets up a minimal <dir>/.git directory (without info/).
 	createGitDir := func(t *testing.T) string {
@@ -238,7 +238,7 @@ func TestRunSuite_HubAbsent(t *testing.T) {
 	})
 	defer restore()
 
-	err := runSuite(parentDir, "", "")
+	err := runSuite(parentDir, "", "", mainSuite)
 	if err == nil {
 		t.Fatal("runSuite should return error when Hub host subdir is absent")
 	}
@@ -263,7 +263,7 @@ func TestRunSuite_LaunchInvocation(t *testing.T) {
 	})
 	defer restore()
 
-	if err := runSuite(parentDir, "", ""); err != nil {
+	if err := runSuite(parentDir, "", "", mainSuite); err != nil {
 		t.Fatalf("runSuite error: %v", err)
 	}
 	if gotDir != hostRepoDir {
@@ -272,8 +272,8 @@ func TestRunSuite_LaunchInvocation(t *testing.T) {
 	if gotClaude != fakeClaude {
 		t.Errorf("launchAgent claude = %q; want %q", gotClaude, fakeClaude)
 	}
-	if gotInstruction != defaultInstruction {
-		t.Errorf("launchAgent instruction = %q; want %q", gotInstruction, defaultInstruction)
+	if gotInstruction != mainSuite.instruction {
+		t.Errorf("launchAgent instruction = %q; want %q", gotInstruction, mainSuite.instruction)
 	}
 }
 
@@ -306,7 +306,7 @@ func TestRunSuite_Overrides(t *testing.T) {
 		return 0
 	}
 
-	if err := runSuite(parentDir, customClaude, customPrompt); err != nil {
+	if err := runSuite(parentDir, customClaude, customPrompt, mainSuite); err != nil {
 		t.Fatalf("runSuite error: %v", err)
 	}
 	if gotClaude != customClaude {
@@ -331,7 +331,7 @@ func TestRunSuite_NonZeroLaunchTolerated(t *testing.T) {
 	})
 	defer restore()
 
-	if err := runSuite(parentDir, "", ""); err != nil {
+	if err := runSuite(parentDir, "", "", mainSuite); err != nil {
 		t.Fatalf("runSuite should tolerate a non-zero interactive exit; got error: %v", err)
 	}
 	// runSuite no longer fetches, so it must not create the loomyard .scratch dir.
@@ -365,7 +365,7 @@ func TestRunSuite_ClaudeNotFound(t *testing.T) {
 		return 1
 	}
 
-	err := runSuite(parentDir, "", "")
+	err := runSuite(parentDir, "", "", mainSuite)
 	if err == nil {
 		t.Fatal("runSuite should return error when claude is not on PATH")
 	}
@@ -399,7 +399,7 @@ func TestRunSuite_StaleReportRemoved(t *testing.T) {
 	})
 	defer restore()
 
-	if err := runSuite(parentDir, "", ""); err != nil {
+	if err := runSuite(parentDir, "", "", mainSuite); err != nil {
 		t.Fatalf("runSuite should return nil; got error: %v", err)
 	}
 	if _, statErr := os.Stat(stalePath); !os.IsNotExist(statErr) {
@@ -409,7 +409,7 @@ func TestRunSuite_StaleReportRemoved(t *testing.T) {
 
 // TestRunSuite_ExcludesReport verifies that runSuite registers
 // sandbox-report.json in the host repo's .git/info/exclude, alongside the
-// existing SANDBOX-SUITE.md entry.
+// existing SANDBOX-CORE-SUITE.md entry.
 func TestRunSuite_ExcludesReport(t *testing.T) {
 	parentDir, hostRepoDir := makeHostRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
@@ -420,7 +420,7 @@ func TestRunSuite_ExcludesReport(t *testing.T) {
 	})
 	defer restore()
 
-	if err := runSuite(parentDir, "", ""); err != nil {
+	if err := runSuite(parentDir, "", "", mainSuite); err != nil {
 		t.Fatalf("runSuite error: %v", err)
 	}
 
@@ -429,9 +429,149 @@ func TestRunSuite_ExcludesReport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read .git/info/exclude: %v", err)
 	}
-	for _, entry := range []string{suiteFileName, reportFileName} {
+	for _, entry := range []string{mainSuite.fileName, reportFileName} {
 		if !strings.Contains(string(content), entry) {
 			t.Errorf(".git/info/exclude missing entry %q; got %q", entry, string(content))
 		}
+	}
+}
+
+// TestRunSuite_MuxSpec_WritesMuxFile verifies that runSuite(..., muxSuite)
+// writes SANDBOX-MUX-SUITE.md (not SANDBOX-CORE-SUITE.md) into the host repo, with
+// the fingerprint header prepended to the embedded mux doc body.
+func TestRunSuite_MuxSpec_WritesMuxFile(t *testing.T) {
+	parentDir, hostRepoDir := makeHostRepo(t)
+	fakeLyx := makeFakeLyx(t, parentDir)
+	fakeClaude := filepath.Join(parentDir, "claude.exe")
+
+	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction string) int {
+		return 0
+	})
+	defer restore()
+
+	if err := runSuite(parentDir, "", "", muxSuite); err != nil {
+		t.Fatalf("runSuite error: %v", err)
+	}
+
+	muxPath := filepath.Join(hostRepoDir, muxSuite.fileName)
+	content, err := os.ReadFile(muxPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", muxSuite.fileName, err)
+	}
+	if !strings.Contains(string(content), "Binary under test") {
+		t.Errorf("%s missing fingerprint header; got %q", muxSuite.fileName, string(content))
+	}
+	if !strings.Contains(string(content), muxSandboxSuiteMD) {
+		t.Errorf("%s does not contain the embedded mux doc body", muxSuite.fileName)
+	}
+
+	// The main suite's file must not be written by a mux-spec run.
+	if _, err := os.Stat(filepath.Join(hostRepoDir, mainSuite.fileName)); !os.IsNotExist(err) {
+		t.Errorf("%s should not be written by a muxSuite run; stat err = %v", mainSuite.fileName, err)
+	}
+}
+
+// TestRunSuite_MuxSpec_ExcludesFiles verifies that a muxSuite run registers
+// SANDBOX-MUX-SUITE.md and sandbox-report.json in .git/info/exclude.
+func TestRunSuite_MuxSpec_ExcludesFiles(t *testing.T) {
+	parentDir, hostRepoDir := makeHostRepo(t)
+	fakeLyx := makeFakeLyx(t, parentDir)
+	fakeClaude := filepath.Join(parentDir, "claude.exe")
+
+	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction string) int {
+		return 0
+	})
+	defer restore()
+
+	if err := runSuite(parentDir, "", "", muxSuite); err != nil {
+		t.Fatalf("runSuite error: %v", err)
+	}
+
+	excludePath := filepath.Join(hostRepoDir, ".git", "info", "exclude")
+	content, err := os.ReadFile(excludePath)
+	if err != nil {
+		t.Fatalf("read .git/info/exclude: %v", err)
+	}
+	for _, entry := range []string{muxSuite.fileName, reportFileName} {
+		if !strings.Contains(string(content), entry) {
+			t.Errorf(".git/info/exclude missing entry %q; got %q", entry, string(content))
+		}
+	}
+}
+
+// TestRunSuite_MuxSpec_DeletesStaleReport verifies that a muxSuite run deletes
+// a pre-seeded stale sandbox-report.json before launching the agent, mirroring
+// the main suite's stale-report cleanup.
+func TestRunSuite_MuxSpec_DeletesStaleReport(t *testing.T) {
+	parentDir, hostRepoDir := makeHostRepo(t)
+	fakeLyx := makeFakeLyx(t, parentDir)
+	fakeClaude := filepath.Join(parentDir, "claude.exe")
+
+	stalePath := filepath.Join(hostRepoDir, reportFileName)
+	if err := os.WriteFile(stalePath, []byte(`{"source": "sandbox-report", "items": [{"ref": "M0", "title": "stale", "body": "stale"}]}`), 0o644); err != nil {
+		t.Fatalf("write stale report: %v", err)
+	}
+
+	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction string) int {
+		if _, statErr := os.Stat(stalePath); !os.IsNotExist(statErr) {
+			t.Errorf("stale report should be removed before launch; stat err = %v", statErr)
+		}
+		return 0
+	})
+	defer restore()
+
+	if err := runSuite(parentDir, "", "", muxSuite); err != nil {
+		t.Fatalf("runSuite should return nil; got error: %v", err)
+	}
+	if _, statErr := os.Stat(stalePath); !os.IsNotExist(statErr) {
+		t.Errorf("stale report should have been removed before launch; stat err = %v", statErr)
+	}
+}
+
+// TestRunSuite_MuxSpec_DefaultInstruction verifies that a muxSuite run with no
+// -prompt override passes the mux default instruction to launchAgent.
+func TestRunSuite_MuxSpec_DefaultInstruction(t *testing.T) {
+	parentDir, _ := makeHostRepo(t)
+	fakeLyx := makeFakeLyx(t, parentDir)
+	fakeClaude := filepath.Join(parentDir, "claude.exe")
+
+	var gotInstruction string
+	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction string) int {
+		gotInstruction = instruction
+		return 0
+	})
+	defer restore()
+
+	if err := runSuite(parentDir, "", "", muxSuite); err != nil {
+		t.Fatalf("runSuite error: %v", err)
+	}
+	if gotInstruction != muxSuite.instruction {
+		t.Errorf("launchAgent instruction = %q; want %q", gotInstruction, muxSuite.instruction)
+	}
+	if gotInstruction != "Read ./SANDBOX-MUX-SUITE.md and follow the instructions in it exactly." {
+		t.Errorf("launchAgent instruction = %q; want the literal mux default", gotInstruction)
+	}
+}
+
+// TestRunSuite_MuxSpec_PromptOverride verifies that a -prompt override passed
+// to a muxSuite run reaches launchAgent verbatim, bypassing the mux default.
+func TestRunSuite_MuxSpec_PromptOverride(t *testing.T) {
+	parentDir, _ := makeHostRepo(t)
+	fakeLyx := makeFakeLyx(t, parentDir)
+	fakeClaude := filepath.Join(parentDir, "claude.exe")
+	customPrompt := "Do the mux thing entirely differently."
+
+	var gotInstruction string
+	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction string) int {
+		gotInstruction = instruction
+		return 0
+	})
+	defer restore()
+
+	if err := runSuite(parentDir, "", customPrompt, muxSuite); err != nil {
+		t.Fatalf("runSuite error: %v", err)
+	}
+	if gotInstruction != customPrompt {
+		t.Errorf("launchAgent instruction = %q; want override %q", gotInstruction, customPrompt)
 	}
 }
