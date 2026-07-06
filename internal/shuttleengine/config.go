@@ -28,7 +28,15 @@ type Config struct {
 	// "unlimited" value: setting this to 0 does not mean "no timeout" — it
 	// makes every deadline-deferring run's deadline equal to its own start
 	// time, so Wait classifies it OutcomeTimeout on the very first poll tick.
-	RunTimeoutMin             int    `yaml:"run_timeout_min"`
+	RunTimeoutMin int `yaml:"run_timeout_min"`
+	// StartupTimeoutS bounds how long Wait's startup probe waits for the
+	// provider TUI to become ready before fast-failing the run OutcomeDied
+	// (see checkLivenessTick). It ALSO has no "unlimited" or "disabled"
+	// value at 0: a 0 makes the very first startup probe tick fast-fail as
+	// died (the deadline is already in the past), and it zeroes
+	// sweepOrphansOpportunistic's minAge = 2×StartupTimeoutS guard,
+	// removing the pre-AddStrand protection window a concurrently starting
+	// run's orphan sweep relies on.
 	StartupTimeoutS           int    `yaml:"startup_timeout_s"`
 	Claude                    string `yaml:"claude"`
 	ClaudeDenyAgentTool       bool   `yaml:"claude_deny_agent_tool"`
