@@ -161,10 +161,10 @@ explicitly future work per `docs/roadmap.md` milestone 10's notes — shuttle on
 agent well.
 
 ## Round context seeded from prior-round verification
-**Safety pass (round 3).** There is NO known residual. Rounds 1 and 2 each found real bugs, fixed
-them, and every fix was independently verified by the orchestrator (hermetic gates + live smoke
-reruns, not the round's own self-report) — do NOT re-open or re-litigate any of these, they are
-CLOSED AND VERIFIED:
+**Safety pass (round 4).** There is NO known residual. Rounds 1, 2, and 3 each found real bugs,
+fixed them, and every fix was independently verified by the orchestrator (hermetic gates + live
+smoke reruns, not the round's own self-report) — do NOT re-open or re-litigate any of these, they
+are CLOSED AND VERIFIED:
 - F1 (round 1): a `saveRunState` failure during `Start` left a live, untracked strand with no
   recovery path (`internal/shuttleengine/run.go`) — fixed by removing the strand and run dir on
   that failure path.
@@ -176,28 +176,55 @@ CLOSED AND VERIFIED:
   idiom.
 - docs (round 1): `docs/overview.md` self-contradicted its own module table, claiming shuttle has
   no CLI — fixed.
-- M1 (round 2): `TestSmokeInterruptSendContinues` asserted the racy `Wait == done` property, which
-  live probing showed is not deterministic against a real claude (its Stop hook fires on ANY turn
-  end, including one Interrupt itself caused). Rewritten to assert the deterministic property
-  instead — the redirected output file's content — proven clean over 3 consecutive live reruns
-  after the fix (following one reproduced pre-fix failure).
+- M1 (round 2): `TestSmokeInterruptSendContinues` asserted the racy `Wait == done` property —
+  rewritten to assert the deterministic redirected-file-content property instead.
 - M2 (round 2): the `Interrupt` doc comment overpromised a deterministic `done` after interrupt+send;
   calibrated to describe what live probing actually established.
-- L1 (round 2): `Startup`'s trust-prompt heuristic was checked before the ready markers, which could
-  in principle mask an already-ready pane; reordered so ready markers win, with a regression test.
 - N1 (round 2): `run_timeout_min: 0` silently means "times out immediately," not "unlimited";
   documented in `config.go`, `spec.go`, `template.yaml`.
+- **H1 (round 3, BLOCKING — a regression IN round 2's own L1 fix)**: the real claude trust dialog
+  (`❯ 1. Yes, I trust this folder`) contains the "❯" ready marker itself, so round 2's
+  ready-before-trust ordering hung EVERY fresh-directory run at the trust gate until timeout.
+  Reordered to check trust FIRST with tight whitespace-stripped whole-phrase needles
+  (`trustthisfolder`, `filesinthisfolder`), which still preserves the original L1 concern (a
+  coincidentally-worded ready pane still classifies Ready). This is exactly why a round that finds
+  something doesn't count as a safety pass — even a fix independently verified two rounds ago can
+  regress against a real substrate detail no one had captured yet.
+- M1 (round 3): a pre-existing `OutputFiles` entry silently classified an asking run as done on the
+  first Stop — now rejected at spec validation.
+- M2 (round 3): `Interrupt`/`Send` against a dead/untracked strand silently no-opped (`ok:true`) —
+  now checks `mux.Status` liveness first and refuses with a clear error (closes what round 2 had
+  deferred as its own L2).
+- H2 (round 3): `Send`'s Escape+text choreography could silently coalesce and vanish in the TUI's
+  input parser — now verifies delivery via pane-capture polling before returning success.
+- L1 (round 3): a `muxengine.LoadState` error (corrupt/unreadable `mux.json`) degraded to "sweep
+  with an empty live set," which could delete kept `died`/`asking`/`timeout` run dirs over an
+  unrelated I/O problem — now skips the sweep entirely on a read error.
+- L2 (round 3): `pollEventsTick` advanced its read offset before `ParseEvents` succeeded, so a
+  transient parse error would silently discard the unconsumed batch forever — offset now only
+  advances after a successful parse.
+- L3 (round 3): `--model` was interpolated unquoted into the pwsh launch line — now single-quoted
+  like every other argument.
+- N1 (round 3): the steer-text init guard only rejected an embedded single quote, not `"` or `\` —
+  now rejects all three.
+- N2 (round 3): `startup_timeout_s: 0` silently fast-fails startup AND zeroes the orphan-sweep age
+  guard — documented.
+- N3 (round 3): `Runner.Interrupt`/`Send` masked `FindRun`'s underlying error behind a generic "not
+  a shuttle strand" message — now wraps it (`%w`) so a real I/O error isn't misreported as a bad guid.
 
-Round 2 also **deliberately deferred as low-priority, do NOT treat as new work**: L2 (`Interrupt`/
-`Send` on a terminal-but-kept `died`/`timeout` run has no liveness guard before poking a possibly-
-dead pane — plausible, unverified end-to-end, low priority) and L3 (a turn-end `Stop` with
-`background_tasks` still running classifies `asking`, which is defensible, not a bug).
+Round 3 also **examined and judged genuinely defensible, not a bug — do NOT treat as new work**: a
+turn-end `Stop` with `background_tasks` still running classifies `asking` (the file contract is
+genuinely unmet; no action needed for v1).
 
-**Your job this round: a genuinely independent clean-room safety pass.** Find what every prior
-round missed, or honestly confirm merge-readiness — "no new defects, ship it" is the expected,
-valuable outcome of a safety pass, do not invent work to justify the round. Read the full prior
-findings above and the deferred list below only AFTER forming your own independent judgment (per
-the Clean-room review constraint above).
+**Your job this round: a genuinely independent clean-room safety pass.** Rounds 1-3 each found real
+defects — round 3 even found a BLOCKING regression in a fix two rounds ago had already verified
+clean, so do not assume there is nothing left just because this is titled a "safety pass." Find what
+every prior round missed, or honestly confirm merge-readiness — "no new defects, ship it" is the
+expected, valuable outcome of a safety pass, but only if it is actually true after a genuinely
+adversarial look, not a rubber stamp. Fix EVERY finding you record, all severities including NIT —
+severity affects how you report a finding, not whether you fix it (see "How to judge each finding"
+below). Read the full prior findings above and the deferred list below only AFTER forming your own
+independent judgment (per the Clean-room review constraint above).
 
 State the **merge bar** so you calibrate: correctness in the NORMAL single-instance flow (one
 shuttle run, one strand, one claude session) is the gate; an N×-concurrent stress suite (if you
