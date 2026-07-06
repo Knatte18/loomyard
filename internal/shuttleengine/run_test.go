@@ -182,6 +182,42 @@ func TestRunner_Start_SweepErrorDoesNotBlockStart(t *testing.T) {
 	}
 }
 
+func TestRunner_Start_SweepSkipsEntirelyOnMuxStateReadError(t *testing.T) {
+	// A LoadState ERROR must not degrade to "sweep with an empty live set":
+	// that would delete every old-enough run dir, including a kept
+	// asking/died/timeout dir mux still genuinely tracks, over an unrelated
+	// I/O problem. It must skip the sweep for this Start entirely instead.
+	mux := &fakeMux{AddStrandResult: muxengine.Strand{GUID: "strand-1"}}
+	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd", SessionID: "sess"}}
+
+	worktree := t.TempDir()
+	layout := &hubgeometry.Layout{Cwd: worktree, WorktreeRoot: worktree}
+	cfg := Config{StartupTimeoutS: 30, RunTimeoutMin: 5}
+
+	if err := os.MkdirAll(layout.DotLyxDir(), 0o755); err != nil {
+		t.Fatalf("mkdir .lyx: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(layout.DotLyxDir(), "mux.json"), []byte("not json"), 0o644); err != nil {
+		t.Fatalf("seed corrupt mux.json: %v", err)
+	}
+
+	// An old, kept run dir (as an asking/died/timeout outcome would leave
+	// behind) whose strand is not in mux.json's live set — because mux.json
+	// itself is unreadable, not because the strand is genuinely gone.
+	shuttleRoot := runDirRoot(cfg, layout)
+	keptDir := seedRun(t, shuttleRoot, "kept-run", "some-other-strand")
+	setDirMTime(t, keptDir, time.Now(), 10*time.Minute)
+
+	runner := NewRunner(mux, engine, layout, cfg)
+	if _, err := runner.Start(Spec{Prompt: "x", OutputFiles: []string{"out.md"}}); err != nil {
+		t.Fatalf("Start() error: %v", err)
+	}
+
+	if _, err := os.Stat(keptDir); err != nil {
+		t.Errorf("kept run dir was removed despite a mux-state read error, want it preserved: %v", err)
+	}
+}
+
 // newInterruptTestRun returns a bare Run handle wired to mux/engine, with
 // no Start/Wait machinery involved — Interrupt/Send only ever touch
 // runner.mux and runner.engine through run.state.StrandGUID.

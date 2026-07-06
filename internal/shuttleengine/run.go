@@ -191,18 +191,26 @@ func (r *Runner) Run(spec Spec) (Result, error) {
 }
 
 // sweepOrphansOpportunistic removes run directories whose strand is no
-// longer tracked in mux state, using the live-guid set read from mux.json
-// (an absent or unreadable state file degrades to an empty set — the age
-// guard inside sweepOrphans is what keeps a genuinely still-starting run
-// safe either way, not this set being complete). A failure anywhere in this
-// step — loading mux state or the sweep itself — is logged and never blocks
-// Start: an orphaned run directory left behind by a failed sweep costs
+// longer tracked in mux state, using the live-guid set read from mux.json.
+// A genuinely absent state file (st == nil, no error — the post-`mux down`
+// case) degrades to an empty live set: every dir old enough is a real
+// orphan there. A LoadState ERROR (corrupt or unreadable mux.json) is
+// different and skips the sweep entirely for this Start, rather than also
+// degrading to an empty set: treating a read failure as "no live strands"
+// would sweep every run dir past the age guard — including the kept
+// asking/died/timeout dirs of strands mux still actually tracks — destroying
+// diagnosis material over an unrelated I/O problem. Either way, a failure
+// here never blocks Start: an orphaned run directory left behind costs
 // nothing but disk, while blocking a new run on housekeeping would.
 func (r *Runner) sweepOrphansOpportunistic() {
+	st, err := muxengine.LoadState(r.layout.DotLyxDir())
+	if err != nil {
+		log.Printf("shuttle: orphan sweep: load mux state failed, skipping this sweep (non-fatal, new run proceeds): %v", err)
+		return
+	}
+
 	guids := map[string]bool{}
-	if st, err := muxengine.LoadState(r.layout.DotLyxDir()); err != nil {
-		log.Printf("shuttle: orphan sweep: load mux state (non-fatal, treating as no live strands): %v", err)
-	} else if st != nil {
+	if st != nil {
 		for _, s := range st.Strands {
 			guids[s.GUID] = true
 		}
