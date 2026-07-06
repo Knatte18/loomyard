@@ -7,6 +7,7 @@ package shuttleengine
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -25,9 +26,13 @@ type Spec struct {
 	Prompt string
 	// OutputFiles names the files the agent is instructed to write. The
 	// run is not "done" until every entry exists — the file contract: a
-	// run's output file IS its return value. Entries may be absolute or
-	// relative to the worktree root; validate resolves relative entries
-	// and rewrites this slice in place with the resolved absolute paths.
+	// run's output file IS its return value. Entries must NOT already
+	// exist when the run starts (validate rejects a pre-existing entry):
+	// a stale file would satisfy the contract on the very first turn end,
+	// silently classifying an asking or unfinished run as done. Entries
+	// may be absolute or relative to the worktree root; validate resolves
+	// relative entries and rewrites this slice in place with the resolved
+	// absolute paths.
 	OutputFiles []string
 	// Model, when non-empty, selects a specific provider model; empty
 	// defers to the engine/provider default.
@@ -68,9 +73,14 @@ type Spec struct {
 // entry is resolved to an absolute path — already-absolute entries are kept
 // verbatim, relative entries are joined onto worktreeRoot and
 // filepath.Clean-ed — and the resolved paths are written back into
-// s.OutputFiles so every later reader sees only absolute paths. A zero
-// Timeout is replaced with cfg.RunTimeoutMin minutes, and an empty
-// Display.Anchor defaults to render.AnchorBelowParent.
+// s.OutputFiles so every later reader sees only absolute paths. A resolved
+// entry that already exists on disk is rejected: outcome classification
+// tests bare existence, so a stale file would classify the run done on its
+// very first turn end — a misconfigured spec must fail loudly here, never
+// become silent success (proven live: an asking run against a pre-existing
+// output file returned "done" with the question discarded). A zero Timeout
+// is replaced with cfg.RunTimeoutMin minutes, and an empty Display.Anchor
+// defaults to render.AnchorBelowParent.
 func (s *Spec) validate(worktreeRoot string, cfg Config) error {
 	if s.Prompt == "" {
 		return fmt.Errorf("shuttle: spec.Prompt must not be empty")
@@ -91,6 +101,15 @@ func (s *Spec) validate(worktreeRoot string, cfg Config) error {
 		resolved[i] = filepath.Clean(filepath.Join(worktreeRoot, f))
 	}
 	s.OutputFiles = resolved
+
+	// Reject entries that already exist: "done" is bare file existence, so
+	// a stale artifact would satisfy the contract before the agent writes
+	// anything, silently swallowing an asking outcome as success.
+	for _, f := range s.OutputFiles {
+		if _, err := os.Stat(f); err == nil {
+			return fmt.Errorf("shuttle: spec.OutputFiles entry %q already exists — a pre-existing file would satisfy the file contract immediately; remove it or name a fresh path", f)
+		}
+	}
 
 	if s.Timeout == 0 {
 		s.Timeout = time.Duration(cfg.RunTimeoutMin) * time.Minute

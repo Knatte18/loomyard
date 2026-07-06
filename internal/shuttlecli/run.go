@@ -51,7 +51,9 @@ func (c *shuttleCLI) runCmd() *cobra.Command {
 outcome (done/asking/died/timeout), and prints that outcome as a single JSON
 envelope. A run's output files ARE its return value: "done" means every
 --output-file entry now exists, "asking" means the agent ended its turn with
-a question instead.
+a question instead. An --output-file entry must not already exist when the
+run starts — a stale file would satisfy the contract immediately, so the run
+is rejected instead.
 
 Example (autonomous, two output files):
   lyx shuttle run --prompt "review this diff" --output-file review.md --output-file findings.json
@@ -131,7 +133,7 @@ Example (interactive, agent may ask clarifying questions):
 
 	cmd.Flags().StringVar(&prompt, "prompt", "", "task prompt text (mutually exclusive with --prompt-file)")
 	cmd.Flags().StringVar(&promptFile, "prompt-file", "", "path to a file whose contents become the task prompt")
-	cmd.Flags().StringArrayVar(&outputFiles, "output-file", nil, "output file the agent must write (repeatable; required at least once)")
+	cmd.Flags().StringArrayVar(&outputFiles, "output-file", nil, "output file the agent must write (repeatable; required at least once; must not already exist)")
 	cmd.Flags().StringVar(&model, "model", "", "provider model override; empty defers to the engine/provider default")
 	cmd.Flags().BoolVar(&interactive, "interactive", false, "run interactively (the agent may ask questions); default is autonomous")
 	cmd.Flags().StringVar(&role, "role", "", "role token used to fill the strand-name template")

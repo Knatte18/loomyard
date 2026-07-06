@@ -5,7 +5,9 @@
 package shuttleengine
 
 import (
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -54,6 +56,26 @@ func TestSpec_Validate_AbsoluteOutputFilesPassThroughVerbatim(t *testing.T) {
 	}
 	if s.OutputFiles[0] != abs {
 		t.Errorf("OutputFiles[0] = %q, want %q (absolute passthrough)", s.OutputFiles[0], abs)
+	}
+}
+
+func TestSpec_Validate_PreExistingOutputFileRejected(t *testing.T) {
+	// A pre-existing output file would satisfy the file contract on the
+	// very first turn end, silently classifying an asking run as done
+	// (proven live) — validate must reject it loudly instead.
+	worktreeRoot := t.TempDir()
+	stale := filepath.Join(worktreeRoot, "out.md")
+	if err := os.WriteFile(stale, []byte("stale artifact"), 0o644); err != nil {
+		t.Fatalf("seed stale output file: %v", err)
+	}
+
+	s := &Spec{Prompt: "do the thing", OutputFiles: []string{"out.md"}}
+	err := s.validate(worktreeRoot, Config{RunTimeoutMin: 30})
+	if err == nil {
+		t.Fatal("validate() = nil, want error for pre-existing output file")
+	}
+	if !strings.Contains(err.Error(), "already exists") {
+		t.Errorf("validate() error = %q, want it to name the pre-existing file", err)
 	}
 }
 
