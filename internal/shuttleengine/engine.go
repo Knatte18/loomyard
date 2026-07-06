@@ -22,12 +22,21 @@ const (
 	// output files and its last message reads as a question — it is
 	// blocked on operator input.
 	OutcomeAsking Outcome = "asking"
-	// OutcomeDied means the run's pane or process ended before the output
-	// files were written and without an asking signal — an unrecoverable
-	// failure of the pane itself.
+	// OutcomeDied means the run's PANE died (or its provider never became
+	// ready inside the startup window) before the output files were written
+	// and without an asking signal. Pane death is the only process failure
+	// shuttle can observe: a provider process that crashes MID-RUN while its
+	// pane's shell survives is invisible to the liveness check (the pane
+	// stays live, no Stop ever arrives) and classifies OutcomeTimeout at the
+	// deadline instead — proven live, and not probe-able either, since the
+	// dead provider's final TUI frame stays rendered in the pane.
 	OutcomeDied Outcome = "died"
 	// OutcomeTimeout means the run's wall-clock Timeout elapsed before the
-	// output files were written.
+	// output files were written. Besides a genuinely slow or hung agent,
+	// this is also the honest classification for a provider that crashed
+	// mid-run behind a still-live pane shell (see OutcomeDied) — the strand
+	// and run directory are kept either way, so the pane tells the operator
+	// which of the two happened.
 	OutcomeTimeout Outcome = "timeout"
 )
 
