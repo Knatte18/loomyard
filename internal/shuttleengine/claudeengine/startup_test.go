@@ -18,7 +18,27 @@ func TestStartup_Classification(t *testing.T) {
 		want    shuttleengine.StartupState
 	}{
 		{
-			name:    "trust_prompt",
+			// The REAL trust dialog as captured live from a psmux pane
+			// (claude 2.1.200): the TUI's space-stripping rendering quirk is
+			// preserved verbatim, and — critically — the dialog contains the
+			// "❯" ready marker as its option-selection caret. This is the
+			// regression case for the round-2 ready-first ordering, which
+			// classified this capture Ready and never dismissed the dialog.
+			name: "trust_prompt_real_dialog_with_ready_caret",
+			capture: "Accessingworkspace:\n\nC:\\some\\fresh\\dir\n\n" +
+				"Quicksafetycheck:Isthisaprojectyoucreatedoroneyoutrust?\n\n" +
+				"ClaudeCode'llbeabletoread,edit,andexecutefileshere.\n\n" +
+				"Securityguide\n\n❯1.Yes,Itrustthisfolder\n2.No,exit\n\nEntertoconfirm·Esctocancel",
+			want: shuttleengine.StartupTrustPrompt,
+		},
+		{
+			// The same dialog under a normal (space-preserving) rendering.
+			name:    "trust_prompt_real_dialog_spaced",
+			capture: "Security guide\n\n❯ 1. Yes, I trust this folder\n  2. No, exit\n\nEnter to confirm · Esc to cancel",
+			want:    shuttleengine.StartupTrustPrompt,
+		},
+		{
+			name:    "trust_prompt_older_wording",
 			capture: "Do you trust the files in this folder?\n> 1. Yes, proceed\n  2. No, exit",
 			want:    shuttleengine.StartupTrustPrompt,
 		},
@@ -48,14 +68,22 @@ func TestStartup_Classification(t *testing.T) {
 			want:    shuttleengine.StartupPending,
 		},
 		{
-			// A pane already showing a ready marker must classify Ready even
-			// when the trust-prompt's loose substring match ("trust" AND
-			// "folder" both present, case-insensitively) would also fire —
-			// e.g. an agent's own echoed message mentioning both words. Ready
-			// is checked first precisely so this can never mask an
-			// already-ready pane (see startup.go's Startup doc comment).
+			// A ready pane whose agent text coincidentally mentions trusting
+			// a folder must still classify Ready: the trust needles match
+			// whole phrases ("trust this folder" / "files in this folder"),
+			// never loose word co-occurrence, precisely so the trust-first
+			// ordering cannot mask an already-ready pane (the round-2 L1
+			// concern, preserved across the trust-first reordering).
 			name:    "ready_wins_over_coincidental_trust_words",
 			capture: "❯ please trust that the folder layout is correct before proceeding",
+			want:    shuttleengine.StartupReady,
+		},
+		{
+			// The bypass-permissions ready footer (captured live) carries no
+			// "shortcuts" text at all — "❯" must remain a sufficient ready
+			// marker on its own.
+			name:    "ready_bypass_permissions_footer",
+			capture: "❯\n⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents",
 			want:    shuttleengine.StartupReady,
 		},
 	}

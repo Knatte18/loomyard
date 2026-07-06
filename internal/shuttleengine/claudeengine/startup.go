@@ -10,35 +10,69 @@ package claudeengine
 
 import (
 	"strings"
+	"unicode"
 
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
+// trustDialogNeedles are the whitespace-stripped, lowercased phrases that
+// identify claude's one-time "do you trust this folder?" gate in a pane
+// capture: "I trust this folder" (its confirm option, current TUI) and
+// "files in this folder" (the older question wording). Matching whole
+// phrases — never loose word co-occurrence — is what lets the trust check
+// run BEFORE the ready markers without masking a genuinely ready pane whose
+// agent text merely mentions trusting a folder.
+var trustDialogNeedles = []string{"trustthisfolder", "filesinthisfolder"}
+
 // Startup classifies capture, the pane's currently rendered content, during
-// the window between launch and claude becoming ready for input. It checks
-// the ready markers FIRST: the TUI's own input marker "❯" or the ASCII
-// status hint "shortcuts" (from its "? for shortcuts" footer — robust
-// across a non-ASCII-space rendering quirk that can corrupt "❯") means
-// claude has reached its ready-for-input state, and that takes priority over
-// the trust-prompt heuristic below. Readiness is checked first (not the
-// trust prompt) because the trust match is a loose, case-insensitive
-// substring test ("trust" and "folder" both present) that could in
-// principle also match unrelated pane content (e.g. an agent's own message
-// echoed onto the screen); checking readiness first means such a false
-// trust-prompt match can never mask a pane that has, in fact, already
-// become ready. Absent a ready marker, claude showing a one-time "do you
-// trust this folder?" gate (the same substring heuristic muxcli's
-// dismissTrust proved live) must be dismissed before any ready marker can
-// appear. Anything else is still booting.
+// the window between launch and claude becoming ready for input.
+//
+// The trust gate is checked FIRST, because the REAL trust dialog contains
+// the "❯" ready marker itself — the selection caret on its
+// "❯ 1. Yes, I trust this folder" option (proven live against claude
+// 2.1.200) — so a ready-first ordering classifies the dialog as ready and
+// the Enter dismissal never fires, hanging every run in a not-yet-trusted
+// directory until its full timeout. The trust match is deliberately tight:
+// whole phrase needles over a whitespace-stripped, lowercased capture (the
+// TUI's rendering can drop spaces entirely, an observed capture quirk), so
+// an agent's own on-screen text that merely mentions trusting a folder
+// (e.g. "trust that the folder layout is correct") cannot match and mask a
+// pane that is in fact already ready.
+//
+// Absent a trust match, the ready markers apply: the TUI's own input marker
+// "❯" or the ASCII footer hint "shortcuts" (from "? for shortcuts" — kept
+// as a fallback for renderings that corrupt "❯"; note the bypass-permissions
+// footer shows no "shortcuts" text at all, so "❯" must stay a ready marker).
+// Anything else is still booting. Known limitation: a shell prompt styled
+// with "❯" (starship/oh-my-posh profiles — mux panes load the operator's
+// pwsh profile) also satisfies the ready marker, which degrades the
+// fast-fail for a claude that exits at launch into waiting out the full run
+// timeout; environment-dependent and accepted for v1.
 func (c *Claude) Startup(capture string) shuttleengine.StartupState {
-	lower := strings.ToLower(capture)
-	if strings.Contains(capture, "❯") || strings.Contains(lower, "shortcuts") {
+	normalized := normalizeCapture(capture)
+	for _, needle := range trustDialogNeedles {
+		if strings.Contains(normalized, needle) {
+			return shuttleengine.StartupTrustPrompt
+		}
+	}
+	if strings.Contains(capture, "❯") || strings.Contains(normalized, "shortcuts") {
 		return shuttleengine.StartupReady
 	}
-	if strings.Contains(lower, "trust") && strings.Contains(lower, "folder") {
-		return shuttleengine.StartupTrustPrompt
-	}
 	return shuttleengine.StartupPending
+}
+
+// normalizeCapture lowercases capture and strips every whitespace rune —
+// the canonical form Startup matches its phrase needles against. The claude
+// TUI's pane rendering can drop spaces entirely (an observed capture quirk:
+// "Yes,Itrustthisfolder"), so any space-sensitive match would be unreliable
+// in exactly the captures that matter.
+func normalizeCapture(capture string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsSpace(r) {
+			return -1
+		}
+		return unicode.ToLower(r)
+	}, capture)
 }
 
 // InterruptSequence returns the key choreography that interrupts an
