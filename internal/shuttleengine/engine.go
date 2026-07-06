@@ -1,6 +1,6 @@
 // engine.go defines the provider seam: the Engine interface every LLM
 // adapter implements, and the plain value types that cross it (Launch,
-// PaneInput, StopEvent, StartupState, Outcome). shuttleengine owns this
+// PaneInput, Event, StartupState, Outcome). shuttleengine owns this
 // seam and never imports a concrete engine — the provider-seam import rule,
 // enforced by seam_enforcement_test.go — so a second provider only ever
 // needs to satisfy Engine, never touch the run loop or CLI machinery.
@@ -80,16 +80,38 @@ type PaneInput struct {
 	SettleMS int
 }
 
-// StopEvent is one parsed Stop-hook line from a run's events.jsonl: the
-// provider's turn-end signal, carrying the last message the agent produced
-// before ending its turn (used to classify OutcomeAsking) and the raw JSON
-// line it was parsed from (for callers that need fields ParseEvents does
-// not surface).
-type StopEvent struct {
-	// LastAssistantMessage is the agent's final message for this turn, or
-	// "" if the event carried none.
-	LastAssistantMessage string
-	// Raw is the exact JSON line this StopEvent was parsed from.
+// EventKind discriminates the two signals ParseEvents can surface from a
+// run's events.jsonl: a turn-end and a live, in-progress question. It is a
+// parse-time discriminator only — it selects which payload field an Event's
+// Message comes from (see events.go); it is not itself a classification
+// input for pollEventsTick, which treats both kinds identically (see
+// wait.go).
+type EventKind int
+
+// The set of kinds a parsed Event can carry.
+const (
+	// EventStop is the provider's turn-end signal: the agent ended its turn
+	// without writing the run's output files.
+	EventStop EventKind = iota
+	// EventAsk is a live, in-progress signal that the agent is asking a
+	// question via a provider tool call (e.g. Claude's AskUserQuestion),
+	// observed the instant the tool call opens rather than at turn end.
+	EventAsk
+)
+
+// Event is one parsed line from a run's events.jsonl: either the provider's
+// turn-end signal (EventStop) or a live, in-progress ask (EventAsk). Message
+// carries the last assistant message for EventStop or the question text for
+// EventAsk (used either way to classify OutcomeAsking), and Raw is the exact
+// JSON line it was parsed from (for callers that need fields ParseEvents
+// does not surface).
+type Event struct {
+	// Kind discriminates which signal this Event carries.
+	Kind EventKind
+	// Message is the agent's final message for EventStop, or the question
+	// text for EventAsk; "" if the event carried none.
+	Message string
+	// Raw is the exact JSON line this Event was parsed from.
 	Raw []byte
 }
 
@@ -123,11 +145,13 @@ type Engine interface {
 	// run loop types into a pane to start or resume the run. runDir already
 	// exists; Prepare only ever writes files inside it.
 	Prepare(runDir string, spec Spec, cfg Config) (Launch, error)
-	// ParseEvents parses one run's events.jsonl contents into StopEvents.
-	// It is lenient: malformed or unrecognized lines are skipped, never
-	// fatal, since partial appends and cross-version unknown fields are
-	// expected while a run is still in progress.
-	ParseEvents(data []byte) ([]StopEvent, error)
+	// ParseEvents parses one run's events.jsonl contents into Events,
+	// surfacing both the provider's turn-end signal (EventStop) and a live,
+	// in-progress ask (EventAsk). It is lenient: malformed or unrecognized
+	// lines are skipped, never fatal, since partial appends and
+	// cross-version unknown fields are expected while a run is still in
+	// progress.
+	ParseEvents(data []byte) ([]Event, error)
 	// Startup classifies a pane capture taken during the startup window,
 	// distinguishing a still-booting pane from one showing a trust prompt
 	// from one that has reached its input-ready state. The same
