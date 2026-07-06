@@ -157,6 +157,42 @@ func TestBuildSettings_NoForbiddenCharsInSteerText(t *testing.T) {
 	}
 }
 
+// TestPrepare_PromptLaunchLimit pins the maxLaunchPromptBytes guard: a
+// prompt over the limit is rejected up front with a self-describing error
+// (before any run artifact is written), because past the Windows
+// command-line ceiling the pane launch is guaranteed to fail and would
+// otherwise surface only as an opaque `died` a full startup window later. A
+// prompt exactly at the limit still prepares normally.
+func TestPrepare_PromptLaunchLimit(t *testing.T) {
+	cfg := shuttleengine.Config{}
+	c := New()
+
+	t.Run("OverLimit_RejectedBeforeArtifacts", func(t *testing.T) {
+		runDir := t.TempDir()
+		spec := shuttleengine.Spec{Prompt: strings.Repeat("p", maxLaunchPromptBytes+1)}
+		_, err := c.Prepare(runDir, spec, cfg)
+		if err == nil {
+			t.Fatal("Prepare() with an over-limit prompt = nil error; want the launch-limit rejection")
+		}
+		if !strings.Contains(err.Error(), "launch limit") {
+			t.Errorf("Prepare() error = %q; want it to name the launch limit", err)
+		}
+		// The rejection must precede artifact writes — a half-prepared run
+		// dir would look resumable to a later diagnosis pass.
+		if _, statErr := os.Stat(filepath.Join(runDir, "prompt.md")); !os.IsNotExist(statErr) {
+			t.Errorf("prompt.md exists after a rejected Prepare (stat err=%v); want no artifacts written", statErr)
+		}
+	})
+
+	t.Run("AtLimit_Accepted", func(t *testing.T) {
+		runDir := t.TempDir()
+		spec := shuttleengine.Spec{Prompt: strings.Repeat("p", maxLaunchPromptBytes)}
+		if _, err := c.Prepare(runDir, spec, cfg); err != nil {
+			t.Fatalf("Prepare() with an at-limit prompt error: %v; want nil", err)
+		}
+	})
+}
+
 func TestPrepare_WritesArtifactsAndReturnsConsistentLaunch(t *testing.T) {
 	runDir := t.TempDir()
 	spec := shuttleengine.Spec{Prompt: "do the thing", Interactive: false}

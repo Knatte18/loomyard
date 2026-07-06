@@ -59,6 +59,18 @@ func newSessionID() (string, error) {
 // backslash path), and the claude binary/flags cfg and spec.Interactive
 // select.
 func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengine.Config) (shuttleengine.Launch, error) {
+	// Reject an over-ceiling prompt before any artifact is written: past
+	// maxLaunchPromptBytes the pane launch is guaranteed to fail against the
+	// Windows command-line limit, and the only symptom would be an opaque
+	// `died` a full startup window later. Failing here is immediate and
+	// self-describing instead.
+	if len(spec.Prompt) > maxLaunchPromptBytes {
+		return shuttleengine.Launch{}, fmt.Errorf(
+			"prompt is %d bytes, over the %d-byte launch limit: the pane launch expands the whole prompt into one command-line argument and Windows caps a process command line at 32,767 characters — move the long content into a file and make the prompt a short pointer to it",
+			len(spec.Prompt), maxLaunchPromptBytes,
+		)
+	}
+
 	sessionID, err := newSessionID()
 	if err != nil {
 		return shuttleengine.Launch{}, fmt.Errorf("mint session id: %w", err)

@@ -14,6 +14,20 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
+// maxLaunchPromptBytes is the largest prompt (in UTF-8 bytes) Prepare
+// accepts. The launch line reads the prompt file via `(Get-Content -Raw …)`,
+// so the pane's pwsh expands the ENTIRE prompt into one argument of the
+// claude process's command line — and Windows caps a CreateProcess command
+// line at 32,767 UTF-16 characters. A prompt over that ceiling makes the
+// launch itself fail inside the pane ("The command line is too long", proven
+// live with a 40 KB prompt), which the run loop can only see as an opaque
+// `died` after the full startup window. UTF-8 byte count is a safe upper
+// bound on UTF-16 length (every code point's UTF-16 unit count ≤ its UTF-8
+// byte count), and the ~2.7 KB left under the ceiling covers the binary
+// path, session id, settings path, flags, quoting, and psmux's own claude
+// wrapper function on the same line.
+const maxLaunchPromptBytes = 30000
+
 // pwshSingleQuote wraps s in pwsh single quotes, doubling any embedded
 // single quote (pwsh's own escape for a literal `'` inside a single-quoted
 // string) so a path containing a quote or a space still round-trips as one
@@ -34,8 +48,10 @@ func claudeBinary(cfg shuttleengine.Config) string {
 
 // buildLaunchCmd composes the pwsh line that starts a fresh claude session:
 // the prompt is read from promptPath via Get-Content rather than typed
-// inline, so an arbitrarily large or quote-laden prompt never has to survive
-// pwsh command-line escaping. --model is appended only when model is
+// inline, so a large or quote-laden prompt never has to survive psmux
+// send-keys or pwsh string escaping — though it still becomes one argument
+// of the claude process's command line, which is why Prepare bounds it at
+// maxLaunchPromptBytes. --model is appended only when model is
 // non-empty (an empty value defers to claude's own default) and, like every
 // other argument on this line, single-quoted: a raw interpolation would let
 // a model value containing a space, quote, or pwsh metacharacter (`;`, `|`,
