@@ -32,6 +32,14 @@
 // the agent (which keeps running independently of whatever Wait already
 // returned) eventually rewrites the output file — proven by polling the
 // file directly rather than trusting Wait's classification.
+//
+// Determinism notes (round fable-r6): the provider TUI renders NO streamed
+// response text while a turn is in progress — the whole response flushes to
+// the pane in ONE frame at turn end (proven by capturing this exact counting
+// run every 250ms). Mid-turn detection therefore keys on the pane capture
+// CHANGING between polls (the in-turn spinner repaints at least once per
+// second) rather than on any visible content shape; see
+// midTurnActivityThreshold for the live calibration.
 
 package shuttlecli
 
@@ -40,7 +48,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -53,14 +60,25 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 )
 
-// countingLine matches a pane line that is just a number — the mid-turn
-// signal TestSmokeInterruptSendContinues waits on: several of these mean the
-// agent is actively counting (its turn is underway), so an interrupt has
-// something to interrupt. Polling for this instead of sleeping a fixed grace
-// is what makes the test deterministic — a fast model that would have blown
-// through a fixed sleep is still caught mid-turn, most of the time, because
-// generating each line takes an observable moment.
-var countingLine = regexp.MustCompile(`(?m)^\s*\d+\s*$`)
+// midTurnActivityThreshold is how many pane-capture changes (across polls of
+// an input-ready pane) startMidTurnCountingRun requires before declaring the
+// agent genuinely mid-turn. Calibrated live (round fable-r6) by capturing
+// this exact counting run every 250ms: the provider TUI showed only its
+// spinner line — whose elapsed-seconds counter repaints at least once per
+// second — for the whole ~24-second turn, flushed the entire response in ONE
+// frame as the turn ended, and then stayed completely static (68+ seconds
+// without a single changed capture). A changing capture is therefore the
+// only mid-turn signal the pane gives: a heuristic matching the counting
+// CONTENT (the previous "3+ numeric lines" shape) could only ever match
+// AFTER the turn was over, which is why it watched a genuinely mid-turn
+// agent for 210 straight seconds without firing. Three changes at the
+// 1-second poll cadence mean roughly three seconds of sustained turn
+// activity — comfortably inside even the shortest observed counting turn
+// (~20s), unreachable by an idle pane (zero changes), and insulated from
+// launch noise because only captures the engine classifies StartupReady
+// (the provider TUI actually on screen — the same gate Interrupt/Send
+// enforce) participate at all.
+const midTurnActivityThreshold = 3
 
 // waitOutcome carries a completed run.Wait() call's result off the
 // background goroutine TestSmokeInterruptSendContinues drives it in, so the
@@ -80,16 +98,17 @@ const maxMidTurnAttempts = 4
 
 // startMidTurnCountingRun starts one shuttle run whose prompt directs an
 // open-ended counting task, then polls the pane's captured content for proof
-// the task is genuinely underway (at least a few numeric lines), rather than
-// sleeping a fixed grace window. Returns the run handle, its wait-outcome
-// channel, and true once mid-turn is observed. If the run reaches a terminal
-// outcome first (real claude sometimes self-ends the counting turn — see the
-// file-level doc comment), OR the counting window elapses with neither a
-// terminal outcome nor visible counting (a slow-to-start turn is not
-// distinguishable from a hang on a single attempt); either way it tears the
-// strand down and returns ok=false so the caller can retry with a fresh run.
-// The caller bounds total attempts via maxMidTurnAttempts.
-func startMidTurnCountingRun(t *testing.T, runner *shuttleengine.Runner, muxEngine *muxengine.Engine, shuttleCfg shuttleengine.Config, outputPath string) (run *shuttleengine.Run, waitCh chan waitOutcome, ok bool) {
+// the turn is genuinely underway: the capture keeps CHANGING while the
+// provider TUI is on screen (see midTurnActivityThreshold for why matching
+// the counting content itself cannot work — the TUI renders no streamed text
+// mid-turn). Returns the run handle, its wait-outcome channel, and true once
+// mid-turn is observed. If the run reaches a terminal outcome first (real
+// claude sometimes self-ends the counting turn — see the file-level doc
+// comment), OR the window elapses with neither a terminal outcome nor
+// observed turn activity (a launch that never brought the provider TUI up),
+// it tears the strand down and returns ok=false so the caller can retry with
+// a fresh run. The caller bounds total attempts via maxMidTurnAttempts.
+func startMidTurnCountingRun(t *testing.T, runner *shuttleengine.Runner, engine shuttleengine.Engine, muxEngine *muxengine.Engine, shuttleCfg shuttleengine.Config, outputPath string) (run *shuttleengine.Run, waitCh chan waitOutcome, ok bool) {
 	t.Helper()
 
 	prompt := fmt.Sprintf(
@@ -133,12 +152,21 @@ func startMidTurnCountingRun(t *testing.T, runner *shuttleengine.Runner, muxEngi
 		return nil, nil, false
 	}
 
-	// The counting window is generous relative to startup: real claude can
-	// spend a while on preamble before the first number, and slow startup
-	// alone must not be mistaken for a hang. If it still elapses with neither
-	// a terminal outcome nor visible counting, we abandon and retry rather
-	// than hard-fail (the caller bounds total attempts via maxMidTurnAttempts).
+	// The activity window is generous relative to startup: slow startup alone
+	// must not be mistaken for a hang. If it still elapses with neither a
+	// terminal outcome nor observed turn activity, we abandon and retry
+	// rather than hard-fail (the caller bounds total attempts via
+	// maxMidTurnAttempts).
 	deadline := time.Now().Add(time.Duration(shuttleCfg.StartupTimeoutS)*time.Second + 120*time.Second)
+
+	// Turn-activity detection state: previousCapture is the last capture the
+	// engine classified StartupReady, and observedChanges counts how many
+	// later ready captures differed from their predecessor. Boot frames (no
+	// provider TUI on screen yet) neither baseline nor count — the shell
+	// echoing the launch line changes the pane too, but is not turn activity.
+	previousCapture := ""
+	haveBaseline := false
+	observedChanges := 0
 	for {
 		select {
 		case res := <-waitCh:
@@ -149,12 +177,13 @@ func startMidTurnCountingRun(t *testing.T, runner *shuttleengine.Runner, muxEngi
 		default:
 		}
 		if time.Now().After(deadline) {
-			// The window elapsed with neither a terminal outcome nor visible
-			// counting. This is indistinguishable from a slow-to-start turn,
-			// so abandon and retry instead of hard-failing on the first miss;
-			// a genuine persistent hang exhausts maxMidTurnAttempts and the
-			// caller then fails the test.
-			return abandonAttempt(fmt.Sprintf("timed out waiting for the pane to show the counting task underway (guid %s)", guid))
+			// The window elapsed with neither a terminal outcome nor observed
+			// turn activity — the provider TUI never came up (or froze), since
+			// a live turn repaints its spinner every second. Abandon and retry
+			// instead of hard-failing on the first miss; a genuine persistent
+			// hang exhausts maxMidTurnAttempts and the caller then fails the
+			// test.
+			return abandonAttempt(fmt.Sprintf("timed out waiting for the pane to show turn activity (guid %s)", guid))
 		}
 
 		capture, err := muxEngine.CapturePane(guid)
@@ -163,8 +192,17 @@ func startMidTurnCountingRun(t *testing.T, runner *shuttleengine.Runner, muxEngi
 			time.Sleep(time.Second)
 			continue
 		}
-		if len(countingLine.FindAllString(capture, -1)) >= 3 {
-			return run, waitCh, true
+		// Only input-ready frames participate — the same StartupReady gate
+		// Interrupt/Send enforce, so a detection here implies the interrupt
+		// that follows will find the pane state it requires.
+		if engine.Startup(capture) == shuttleengine.StartupReady {
+			if haveBaseline && capture != previousCapture {
+				observedChanges++
+				if observedChanges >= midTurnActivityThreshold {
+					return run, waitCh, true
+				}
+			}
+			previousCapture, haveBaseline = capture, true
 		}
 		time.Sleep(time.Second)
 	}
@@ -246,14 +284,15 @@ func TestSmokeInterruptSendContinues(t *testing.T) {
 		t.Fatalf("muxengine.LoadConfig: %v", err)
 	}
 	muxEngine := muxengine.New(muxCfg, layout)
-	runner := shuttleengine.NewRunner(muxEngine, claudeengine.New(), layout, shuttleCfg)
+	engine := claudeengine.New()
+	runner := shuttleengine.NewRunner(muxEngine, engine, layout, shuttleCfg)
 
 	outputPath := filepath.Join(fixture.Hub, "smoke-interrupt-output.txt")
 
 	var run *shuttleengine.Run
 	var waitCh chan waitOutcome
 	for attempt := 1; attempt <= maxMidTurnAttempts; attempt++ {
-		r, ch, ok := startMidTurnCountingRun(t, runner, muxEngine, shuttleCfg, outputPath)
+		r, ch, ok := startMidTurnCountingRun(t, runner, engine, muxEngine, shuttleCfg, outputPath)
 		if ok {
 			run, waitCh = r, ch
 			break
