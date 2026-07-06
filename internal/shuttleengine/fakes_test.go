@@ -10,6 +10,7 @@
 package shuttleengine
 
 import (
+	"fmt"
 	"strings"
 	"sync"
 
@@ -174,7 +175,15 @@ type fakeEngine struct {
 		Cfg    Config
 	}
 
-	ParseEventsErr error
+	// ParseEventsErr, when set, makes every ParseEvents call fail.
+	// ParseEventsFailCount, when > 0, makes only the first N calls fail
+	// (ParseEventsErr's error, or a generic fixed error if ParseEventsErr is
+	// nil) before ParseEvents starts succeeding normally on the SAME bytes —
+	// the fake used to prove pollEventsTick re-reads and re-parses unconsumed
+	// bytes after a transient parse failure instead of discarding them.
+	ParseEventsErr       error
+	ParseEventsFailCount int
+	parseEventsCallsSeen int
 
 	StartupScript []StartupState
 	StartupCalls  []string
@@ -198,6 +207,17 @@ func (e *fakeEngine) Prepare(runDir string, spec Spec, cfg Config) (Launch, erro
 }
 
 func (e *fakeEngine) ParseEvents(data []byte) ([]StopEvent, error) {
+	e.mu.Lock()
+	e.parseEventsCallsSeen++
+	callNum := e.parseEventsCallsSeen
+	e.mu.Unlock()
+
+	if e.ParseEventsFailCount > 0 && callNum <= e.ParseEventsFailCount {
+		if e.ParseEventsErr != nil {
+			return nil, e.ParseEventsErr
+		}
+		return nil, fmt.Errorf("fakeEngine: scripted ParseEvents failure %d/%d", callNum, e.ParseEventsFailCount)
+	}
 	if e.ParseEventsErr != nil {
 		return nil, e.ParseEventsErr
 	}

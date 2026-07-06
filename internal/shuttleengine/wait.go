@@ -109,20 +109,25 @@ func (run *Run) Wait() (Result, error) {
 	}
 }
 
-// pollEventsTick reads any events.jsonl bytes appended since run.offset,
-// parses them via the engine, and advances run.offset past whatever it
-// consumed. It classifies OutcomeDone/OutcomeAsking from the LAST StopEvent
-// among the newly parsed ones (a batch containing more than one Stop — e.g.
-// an interrupted turn immediately followed by a resumed one — is classified
-// by its most recent turn-end, and every consumed byte still counts, so
-// none of the earlier events in the same batch is ever reprocessed).
-// Returns outcome == "" when there is nothing new to classify yet.
+// pollEventsTick reads any events.jsonl bytes appended since run.offset and
+// parses them via the engine. run.offset only advances past what it read
+// AFTER ParseEvents succeeds: if ParseEvents errors, the bytes stay
+// unconsumed so Wait's events-failure retry actually re-reads and
+// re-classifies them on the next tick, rather than silently discarding a
+// batch that may contain the run's only qualifying Stop event (the Engine
+// seam permits an erroring parser; the retry counter Wait maintains implies
+// this re-read guarantee). It classifies OutcomeDone/OutcomeAsking from the
+// LAST StopEvent among the newly parsed ones (a batch containing more than
+// one Stop — e.g. an interrupted turn immediately followed by a resumed
+// one — is classified by its most recent turn-end, and every consumed byte
+// still counts once parsing succeeds, so none of the earlier events in the
+// same batch is ever reprocessed). Returns outcome == "" when there is
+// nothing new to classify yet.
 func (run *Run) pollEventsTick() (Outcome, string, error) {
 	data, newOffset, err := readEventsFrom(run.state.EventsPath, run.offset)
 	if err != nil {
 		return "", "", err
 	}
-	run.offset = newOffset
 	if len(data) == 0 {
 		return "", "", nil
 	}
@@ -131,6 +136,10 @@ func (run *Run) pollEventsTick() (Outcome, string, error) {
 	if err != nil {
 		return "", "", err
 	}
+	// Only now, with parsing proven successful, is it safe to advance past
+	// these bytes — a parse failure must leave them for the next tick to
+	// retry rather than discarding them unread.
+	run.offset = newOffset
 	if len(events) == 0 {
 		return "", "", nil
 	}

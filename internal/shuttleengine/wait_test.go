@@ -385,6 +385,52 @@ func TestRun_Wait_MultiStopOffsetTracking(t *testing.T) {
 	}
 }
 
+func TestRun_Wait_ParseEventsFailure_BytesReReadOnRetry(t *testing.T) {
+	// A ParseEvents error must NOT advance run.offset past the bytes it
+	// failed to parse: if it did, the batch's Stop event would be discarded
+	// unread once ParseEvents starts succeeding on the NEXT tick's (empty)
+	// read, and the run would never classify. This proves the fix: the
+	// same fixture is retried and DOES classify once the transient failure
+	// clears.
+	runDir := t.TempDir()
+	eventsPath := filepath.Join(runDir, "events.jsonl")
+	fixture := "STOP:hello\n"
+	if err := os.WriteFile(eventsPath, []byte(fixture), 0o644); err != nil {
+		t.Fatalf("seed events: %v", err)
+	}
+	outputFile := filepath.Join(runDir, "out.md") // never created -> asking once classified
+
+	mux := &fakeMux{}
+	// Fail the first two ParseEvents calls; the third (retrying the SAME
+	// unconsumed bytes) succeeds. maxEventsReadRetries is 3, so this must
+	// stay under that budget to prove a retry recovers rather than erroring.
+	engine := &fakeEngine{ParseEventsFailCount: 2}
+	runner := newWaitTestRunner(t, mux, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 100, StartupTimeoutS: 30})
+	fc := newFakeClock(time.Now())
+	run := &Run{
+		runner:   runner,
+		spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
+		runDir:   runDir,
+		state:    RunState{StrandGUID: "strand-1", EventsPath: eventsPath},
+		clock:    fc,
+		deadline: fc.Now().Add(time.Minute),
+	}
+
+	result, err := run.Wait()
+	if err != nil {
+		t.Fatalf("Wait() error: %v, want the retry to recover and classify", err)
+	}
+	if result.Outcome != OutcomeAsking {
+		t.Errorf("Outcome = %q, want %q", result.Outcome, OutcomeAsking)
+	}
+	if result.LastAssistantMessage != "hello" {
+		t.Errorf("LastAssistantMessage = %q, want %q — the batch a failed parse left unconsumed must still be classified once parsing succeeds", result.LastAssistantMessage, "hello")
+	}
+	if run.offset != int64(len(fixture)) {
+		t.Errorf("offset = %d, want %d (bytes consumed only after a successful parse)", run.offset, len(fixture))
+	}
+}
+
 func TestRun_Wait_EventsOffsetResilience_PartialLine(t *testing.T) {
 	runDir := t.TempDir()
 	eventsPath := filepath.Join(runDir, "events.jsonl")
