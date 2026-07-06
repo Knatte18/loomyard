@@ -193,3 +193,15 @@ verification is what caught every residual. R6 was the first round to survive ve
 belt-and-suspenders safety pass) and the orchestrator's gates *and* a live operator-assisted `attach`
 test all agreed: clean. That convergence — round verdict + independent gates + live operator sign-off,
 across rotated models — is the bar this method is built to reach.
+
+### Why fix every finding, including NITs — not just BLOCKING/MEDIUM
+
+The mux campaign above took seven rounds to converge. In retrospect, the operator's experience with
+an earlier review setup (millhouse's own) points at a likely contributor: when a round's prompt only
+required fixing higher-severity findings and let NIT/LOW findings sit as "reported but not fixed,"
+round count went up — unfixed NITs don't just stay static, they re-surface (or silently vanish)
+across subsequent rounds instead of ever closing, adding rounds that should not have been needed.
+Round count dropped sharply once the instruction changed to fix everything a round finds, all
+severities, in the same round. This is why the shuttle instance of this method (and the template,
+going forward) requires fixing every recorded finding — including NITs — not just the
+BLOCKING/MEDIUM ones; severity affects how a finding is reported, not whether it gets fixed.
