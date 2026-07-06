@@ -1,4 +1,4 @@
-run_dir: ${env:LYX_SHUTTLE_RUN_DIR:-}  # per-run directory root; empty resolves to <worktree>/.lyx/shuttle via hubgeometry (never constructed here)
+run_dir: ${env:LYX_SHUTTLE_RUN_DIR:-}  # per-run directory root; empty resolves to <worktree>/.lyx/shuttle via hubgeometry (never constructed here); must stay worktree-LOCAL — the orphan sweep checks run dirs against this worktree's mux.json only, so a root shared across worktrees would sweep the other worktrees' kept run dirs as orphans
 poll_interval_ms: 500  # milliseconds between polls of a run's completion state; 0 or negative is floored back to 500 (an unfloored 0 would silently busy-spin the wait loop)
 liveness_every_n_polls: 10  # how often (in polls) to check pane liveness alongside the completion file
 run_timeout_min: 30  # minutes before an in-progress run is classified as timed out; 0 is NOT "unlimited" — it times out immediately

@@ -155,7 +155,12 @@ func FindRun(cfg Config, layout *hubgeometry.Layout, guid string) (RunState, str
 // never removed, live guid or not. The guard exists because a concurrently
 // starting run creates its directory and run.json before AddStrand
 // persists the strand — without it, an unguarded sweep could delete a
-// run that is still starting up. A directory whose run.json is missing or
+// run that is still starting up. strandGUIDs comes from ONE worktree's
+// mux.json, which is why the configured run_dir must stay worktree-local
+// (template.yaml documents this): under a root shared across worktrees,
+// every other worktree's runs would look like orphans here and their kept
+// diagnosis dirs would be swept once past the age guard. A directory whose
+// run.json is missing or
 // unreadable is treated the same as an orphan (no strand can be confirmed
 // live for it) but is still subject to the same age guard. now is the
 // caller-supplied clock so tests can control aging deterministically.
