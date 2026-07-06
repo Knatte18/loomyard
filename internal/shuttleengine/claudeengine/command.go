@@ -36,7 +36,10 @@ func claudeBinary(cfg shuttleengine.Config) string {
 // the prompt is read from promptPath via Get-Content rather than typed
 // inline, so an arbitrarily large or quote-laden prompt never has to survive
 // pwsh command-line escaping. --model is appended only when model is
-// non-empty (an empty value defers to claude's own default), and
+// non-empty (an empty value defers to claude's own default) and, like every
+// other argument on this line, single-quoted: a raw interpolation would let
+// a model value containing a space, quote, or pwsh metacharacter (`;`, `|`,
+// `$`) corrupt the single line typed into the pane.
 // --dangerously-skip-permissions is appended only when interactive is
 // false — the autonomous default (Shared Decision "Interactive bool encodes
 // the discussion's Autonomous default true"). The result is exactly one
@@ -48,7 +51,7 @@ func buildLaunchCmd(bin, promptPath, settingsPath, sessionID, model string, inte
 		pwshSingleQuote(bin), pwshSingleQuote(promptPath), sessionID, pwshSingleQuote(settingsPath),
 	)
 	if model != "" {
-		cmd += " --model " + model
+		cmd += " --model " + pwshSingleQuote(model)
 	}
 	if !interactive {
 		cmd += " --dangerously-skip-permissions"

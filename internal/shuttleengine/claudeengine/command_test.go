@@ -92,7 +92,7 @@ func TestBuildLaunchCmd(t *testing.T) {
 			sessionID:    "abc-123",
 			model:        "claude-opus-4",
 			interactive:  false,
-			want:         `& 'claude' (Get-Content -Raw 'C:\run\prompt.md') --session-id abc-123 --settings 'C:\run\settings.json' --model claude-opus-4 --dangerously-skip-permissions`,
+			want:         `& 'claude' (Get-Content -Raw 'C:\run\prompt.md') --session-id abc-123 --settings 'C:\run\settings.json' --model 'claude-opus-4' --dangerously-skip-permissions`,
 		},
 		{
 			name:         "interactive_with_model",
@@ -102,7 +102,20 @@ func TestBuildLaunchCmd(t *testing.T) {
 			sessionID:    "abc-123",
 			model:        "claude-opus-4",
 			interactive:  true,
-			want:         `& 'claude' (Get-Content -Raw 'C:\run\prompt.md') --session-id abc-123 --settings 'C:\run\settings.json' --model claude-opus-4`,
+			want:         `& 'claude' (Get-Content -Raw 'C:\run\prompt.md') --session-id abc-123 --settings 'C:\run\settings.json' --model 'claude-opus-4'`,
+		},
+		{
+			// A model value with a space or embedded quote must not corrupt
+			// the single launch line — --model is single-quoted exactly
+			// like every other argument on the line.
+			name:         "model_with_space_and_quote",
+			bin:          "claude",
+			promptPath:   `C:\run\prompt.md`,
+			settingsPath: `C:\run\settings.json`,
+			sessionID:    "abc-123",
+			model:        "my model's name",
+			interactive:  false,
+			want:         `& 'claude' (Get-Content -Raw 'C:\run\prompt.md') --session-id abc-123 --settings 'C:\run\settings.json' --model 'my model''s name' --dangerously-skip-permissions`,
 		},
 		{
 			name:         "paths_with_spaces_and_quotes",
