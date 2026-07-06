@@ -1,9 +1,11 @@
 # Proposal: how to build `mux` (single-worktree agent stack)
 
-> **Status:** proposal, separate from the older [`mux.md`](../modules/mux.md) design. It folds in the
+> **Status:** proposal, separate from the older mux design (superseded — mux is now built as
+> `internal/muxengine`; see the package documentation and
+> [overview.md#modules](../overview.md#modules)). It folds in the
 > hands-on findings from [`mux-hooks-exploration.md`](mux-hooks-exploration.md) and the proven
 > primitives in [`muxpoc.md`](../overview.md#modules), and it adopts a **module split** (below). Nothing here
-> is built yet. When accepted, `mux.md` should be re-scoped to match (its "column per worktree"
+> is built yet. When accepted, the mux design should be re-scoped to match (its "column per worktree"
 > content moves to `mplex`).
 
 ## The module split (recommended)
@@ -133,7 +135,7 @@ value. Stacking to ≤3 deep, `resume`, `status`, and the deny-guardrail come ri
 
 ## `mplex` (future, low priority — sketch only)
 
-One psmux instance, **a column per worktree**, tiling several worktrees at once (the old `mux.md`
+One psmux instance, **a column per worktree**, tiling several worktrees at once (the old mux design's
 "v1"). It composes over `mux`: each column is a worktree's orchestrator. Cross-worktree discovery can
 reuse **`claude agents --json --cwd <repo>`** (sessions per subtree) and the supervisor for headless
 columns. Overflow/orchestrator-switch via psmux **windows** inside one attached client (proven in
@@ -147,4 +149,6 @@ columns. Overflow/orchestrator-switch via psmux **windows** inside one attached 
   productionises it.
 - [`mux-hooks-exploration.md`](mux-hooks-exploration.md) — the evidence for decisions 1, 4–6, 8–9 and
   the §A-vs-§D split.
-- [`mux.md`](../modules/mux.md) — the older design; on acceptance, re-scope it (its column-per-worktree part → `mplex`).
+- `internal/muxengine` (see the package documentation and
+  [overview.md#modules](../overview.md#modules)) — the as-built module this proposal informed
+  (its column-per-worktree part remains a candidate for a future `mplex`).

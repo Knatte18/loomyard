@@ -9,8 +9,8 @@
 
 | Doc | Module | One-line role | CLI? |
 |-----|--------|---------------|------|
-| [mux.md](mux.md) | `internal/mux` | the window to the world: psmux overlay + **strand** bookkeeping + render | `lyx mux` |
-| [shuttle.md](shuttle.md) | `internal/shuttle` | run **one** LLM agent via a swappable engine over the file contract | — |
+| — | `internal/muxengine` | the window to the world: psmux overlay + **strand** bookkeeping + render (✅ built — see [overview.md#modules](../overview.md#modules) and the package documentation) | `lyx mux` |
+| — | `internal/shuttleengine` + `internal/shuttleengine/claudeengine` + `internal/shuttlecli` | run **one** LLM agent via a swappable engine over the file contract (✅ built — see [overview.md#modules](../overview.md#modules) and the package documentation) | `lyx shuttle` |
 | [review.md](review.md) | `review` | the gate engine: handler/fixer + cluster + stuck judge | `lyx review` |
 | [loom.md](loom.md) | `loom` | the phase machine: drive each phase through a review gate | `lyx loom` |
 
@@ -28,7 +28,7 @@ landed, per the [doc lifecycle](../overview.md#documentation-lifecycle)).
 ## Why a stack at all
 
 Spawning an agent is **not** a plain `exec`. Agents must run as **interactive psmux sessions** (an
-economic constraint — see [shuttle.md](shuttle.md#interactive-never-headless--the-economic-constraint)),
+economic constraint — see the `internal/shuttleengine` package documentation),
 so "run one agent" decomposes into: *start a process → make it a visible/interactive pane → run the
 LLM in it → decide the result.* Each layer knows only the one below it.
 
@@ -51,10 +51,10 @@ terminal per worktree** and a **closed, generic display vocabulary**, all three 
 into mux without dragging domain knowledge in:
 
 1. **Overlay** over psmux — every psmux command, env hygiene, resume, hooks, named server.
-2. **Strand bookkeeping** — a [`strand`](mux.md#the-strand-model) is one tracked process (a
-   metadata record: session, worktree slug, parent, generic `display` spec), persisted to
-   `.lyx/mux.json`.
-3. **Render** ([`internal/mux/render`](mux.md#render--a-pure-function-over-strands)) — a pure
+2. **Strand bookkeeping** — a strand (see the `internal/muxengine` package documentation) is one
+   tracked process (a metadata record: session, worktree slug, parent, generic `display` spec),
+   persisted to `.lyx/mux.json`.
+3. **Render** (`internal/muxengine/render`) — a pure
    function `layout = rules(strands)` over the generic vocabulary. Kept an internal sub-package so
    it can split back out if mux bloats.
 

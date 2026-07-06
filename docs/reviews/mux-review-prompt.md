@@ -30,7 +30,9 @@ preserved.
 ## What to read
 - Code: `internal/muxengine/**` (incl. `render/**`), `internal/muxcli/**`, and the `cmd/lyx`
   integration (`main.go`, sandbox/help/registration guard tests).
-- Docs: `docs/modules/mux.md`, `docs/research/mux-exploration.md`,
+- Docs: the `internal/muxengine` package documentation (the design doc this prompt originally
+  pointed at was deleted per the documentation lifecycle once mux landed),
+  `docs/research/mux-exploration.md`,
   `docs/research/mux-hooks-exploration.md`, `docs/overview.md`, `docs/roadmap.md`,
   `CONSTRAINTS.md`, `README.md`.
 - The dedicated live-driving suite you will RUN: `tools/sandbox/SANDBOX-MUX-SUITE.md`
@@ -271,8 +273,9 @@ These were consciously deferred last time; decide whether any now warrants fixin
   your edited tree, so skipping the re-deploy re-tests the OLD binary and gives a false PASS/FAIL.
   (The hand-rolled `go build -o <scratch>/lyx.exe` path self-refreshes each build; the suite path
   does NOT — it is your responsibility to `deploy.cmd` before every suite re-run.)
-- Update `docs/modules/mux.md` (and `docs/overview.md` / `CONSTRAINTS.md` if invariants or the
-  module table move) IN THE SAME change — reconcile any prose the fix makes stale. Do NOT add
+- Update the `internal/muxengine` package documentation (and `docs/overview.md` / `CONSTRAINTS.md`
+  if invariants or the module table move) IN THE SAME change — reconcile any prose the fix makes
+  stale. Do NOT add
   bugfix/hardening notes to `docs/roadmap.md` (roadmap is for planned milestones only, per
   CLAUDE.md).
 - Tear down all psmux state; confirm zero psmux processes.

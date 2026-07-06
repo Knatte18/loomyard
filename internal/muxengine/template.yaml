@@ -1,6 +1,5 @@
 psmux: ${env:LYX_MUX_PSMUX:-C:\Code\tools\bin\psmux.exe}  # path to the psmux executable
 pwsh: ${env:LYX_MUX_PWSH:-C:\Code\tools\powershell7\pwsh.exe}  # path to the powershell executable used inside panes
-claude: ${env:LYX_MUX_CLAUDE:-}  # path to the claude executable; empty finds it on PATH
 width: 220  # psmux window width
 height: 50  # psmux window height
 collapsed_strip_rows: 3  # height a shrink:true ancestor collapses to once a descendant is present

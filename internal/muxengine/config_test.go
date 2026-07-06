@@ -50,9 +50,6 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 	if cfg.Pwsh != `C:\Code\tools\powershell7\pwsh.exe` {
 		t.Errorf("Pwsh = %q, want default", cfg.Pwsh)
 	}
-	if cfg.Claude != "" {
-		t.Errorf("Claude = %q, want empty default", cfg.Claude)
-	}
 	if cfg.Width != 220 {
 		t.Errorf("Width = %d, want 220", cfg.Width)
 	}
