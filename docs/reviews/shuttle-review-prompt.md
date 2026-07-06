@@ -224,19 +224,51 @@ genuinely unmet; no action needed for v1).
 - **R4-2 (round 4, NIT)**: the session id was the one argument still interpolated unquoted into the
   pwsh launch/resume lines (inconsistent with round 3's L3 `--model` quoting); safe today (always a
   UUID) but now quoted uniformly as defense-in-depth.
+- **R5-1 (round 5, MEDIUM)**: prompts over ~30000 bytes broke the pane launch against the Windows
+  command-line ceiling, surfacing as an opaque `died` ~90s later — now rejected instantly at
+  `Prepare` with a self-describing error steering to the file-pointer pattern.
+- **R5-2 (round 5, MEDIUM)**: `Interrupt`/`Send` against a strand whose provider crashed at launch
+  but whose pane's shell survived would play keys into that shell — proven live, sent text got
+  EXECUTED as a pwsh command. Now all four entry points require the engine to classify the pane
+  `StartupReady` (the actual provider TUI on screen) before playing any keys.
+- **R5-3 (round 5, LOW)**: `SANDBOX-SHUTTLE-SUITE.md`'s S3 scenario text oversold a deterministic
+  `done` outcome that round 2 already proved isn't guaranteed — recalibrated to accept `asking` with
+  the redirected file as the real pass criterion.
+- **R5-4 (round 5, LOW)**: `OutcomeDied`/`OutcomeTimeout` docs overclaimed "process ended" — a
+  mid-run crash behind a surviving shell is invisible to liveness checks and classifies `timeout`;
+  docs calibrated to the real pane-death boundary.
+- **R5-5 (round 5, LOW)**: `sendVerified` was vacuous when the sent text already pre-existed on
+  screen (a retry, or text quoting visible agent output) — now requires the occurrence COUNT to
+  rise, not mere presence.
+- **R5-6 (round 5, NIT)**: the trust-dismissal Enter keypress was hardcoded in the run loop instead
+  of living behind the Engine seam — moved to `Engine.TrustDismissSequence()`.
+- **R5-7 (round 5, NIT)**: `poll_interval_ms: 0` (or negative) silently busy-spun instead of failing
+  fast like the timeout keys — now floored to the template default.
+- **R5-8 (round 5, NIT)**: `run_dir` sharing across worktrees would let one worktree's orphan sweep
+  delete another's kept run dirs — documented as worktree-local-only.
+- **R5-9 (round 5, NIT)**: `--output-file`'s relative-path resolution base (the worktree root) was
+  undocumented in the CLI help — now stated.
+- **R6-1 (a dedicated targeted fix, not a full round)**: `TestSmokeInterruptSendContinues`'s
+  mid-turn detection (matching "≥3 visible numeric lines") could only ever match AFTER a turn had
+  already ended — the provider TUI renders no streamed text mid-turn, flushing the whole response in
+  ONE frame at turn end (proven live with 250ms-interval captures). Reproduced live: a hard 4/4-miss
+  failure (855s) and a 3rd-attempt near-miss pass (561s), minutes apart, in isolation (not resource
+  contention). Fixed by detecting the pane capture CHANGING 3 times across StartupReady-classified
+  polls (the spinner's own per-second repaint is a reliable turn-ongoing heartbeat, independent of
+  when the response content itself appears). Verified: 13/13 consecutive live passes across two
+  independent verification sessions.
 
-**Your job this round: a genuinely independent clean-room safety pass — this is explicitly a
-"clean-check" round.** Rounds 1-4 each found real defects, though severity has dropped sharply
-(round 3: 10 findings incl. 1 BLOCKING → round 4: 2 findings, both LOW/NIT, zero BLOCKING/MEDIUM).
-The operator wants to know: does a genuinely independent, adversarial pass find NOTHING at this
-point, or is there still real substance left to find? Do not assume there is nothing left just
-because severity has been trending down — round 3 found a BLOCKING regression in a fix that had
-already been verified clean two rounds prior, so a quiet recent history is not proof of safety.
-Equally, do not invent work to justify the round: "no new defects, ship it" is the expected,
-valuable outcome of a genuine clean-check, but only if it is actually true after a genuinely
-adversarial look, not a rubber stamp. Fix EVERY finding you record, all severities including NIT —
-severity affects how you report a finding, not whether you fix it (see "How to judge each finding"
-below). Read the full prior findings above and the deferred list below only AFTER forming your own
+**Your job this round: a genuinely independent clean-room safety pass — this is explicitly ANOTHER
+"clean-check" round**, after round 5's clean-check itself turned up 9 real findings (2 MEDIUM) —
+proof that "severity trending down" is not evidence of safety. Do not assume there is nothing left
+just because a lot has already been fixed — round 3 found a BLOCKING regression in a fix that had
+already been verified clean two rounds prior, and round 5 (itself seeded as a clean-check) found
+MORE and WORSE than round 4 did. Equally, do not invent work to justify the round: "no new defects,
+ship it" is the expected, valuable outcome of a genuine clean-check, but only if it is actually true
+after a genuinely adversarial look, not a rubber stamp. Fix EVERY finding you record, all severities
+including NIT — severity affects how you report a finding, not whether you fix it (see "How to
+judge each finding" below). Read the full prior findings above and the deferred list below only
+AFTER forming your own
 independent judgment (per the Clean-room review constraint above).
 
 State the **merge bar** so you calibrate: correctness in the NORMAL single-instance flow (one
