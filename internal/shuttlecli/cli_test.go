@@ -9,8 +9,13 @@ package shuttlecli
 
 import (
 	"bytes"
+	"errors"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/muxengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 // TestRunCLI_NoArgs verifies that "lyx shuttle" with no subcommand lists the
@@ -137,6 +142,109 @@ func TestRunCLI_Interrupt_ArgValidation(t *testing.T) {
 // TestRunCLI_Send_ArgValidation verifies that "lyx shuttle send" enforces
 // exactly two positional arguments (<guid> <text>) via cobra's Args
 // validation, for the same reason as TestRunCLI_Interrupt_ArgValidation.
+// specCapturingEngine is a hermetic shuttleengine.Engine double whose only
+// job is to record the Spec it was handed and then fail Prepare — the test
+// only needs to inspect the flag-to-Spec mapping run.go's RunE builds, never
+// a live pane launch, so failing fast at Prepare (before Runner.Start ever
+// touches mux.AddStrand) keeps the test hermetic without needing a working
+// fakeMux beyond satisfying the interface.
+type specCapturingEngine struct {
+	gotSpec shuttleengine.Spec
+}
+
+func (e *specCapturingEngine) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengine.Config) (shuttleengine.Launch, error) {
+	e.gotSpec = spec
+	return shuttleengine.Launch{}, errSpecCaptured
+}
+func (e *specCapturingEngine) ParseEvents(data []byte) ([]shuttleengine.Event, error) {
+	return nil, nil
+}
+func (e *specCapturingEngine) Startup(capture string) shuttleengine.StartupState {
+	return shuttleengine.StartupPending
+}
+func (e *specCapturingEngine) InterruptSequence() []shuttleengine.PaneInput      { return nil }
+func (e *specCapturingEngine) TrustDismissSequence() []shuttleengine.PaneInput   { return nil }
+func (e *specCapturingEngine) ComposeSend(text string) []shuttleengine.PaneInput { return nil }
+
+var _ shuttleengine.Engine = (*specCapturingEngine)(nil)
+
+// errSpecCaptured is the sentinel specCapturingEngine.Prepare always
+// returns, so the test can tell "Prepare ran and recorded the spec" apart
+// from any other failure mode.
+var errSpecCaptured = errors.New("specCapturingEngine: spec captured")
+
+// noopMux is a hermetic shuttleengine.MuxOps double whose methods are never
+// actually reached in TestRunCmd_EffortFlag (specCapturingEngine.Prepare
+// fails before Runner.Start ever calls AddStrand) — it exists only to
+// satisfy the MuxOps interface Runner requires.
+type noopMux struct{}
+
+func (noopMux) AddStrand(spec muxengine.AddSpec) (muxengine.Strand, error) {
+	return muxengine.Strand{}, nil
+}
+func (noopMux) RemoveStrand(guid string, recursive bool) (muxengine.Removed, error) {
+	return muxengine.Removed{}, nil
+}
+func (noopMux) Status() (muxengine.StatusResult, error)       { return muxengine.StatusResult{}, nil }
+func (noopMux) SendText(guid, text string, submit bool) error { return nil }
+func (noopMux) SendKey(guid, key string) error                { return nil }
+func (noopMux) CapturePane(guid string) (string, error)       { return "", nil }
+
+var _ shuttleengine.MuxOps = noopMux{}
+
+// TestRunCmd_EffortFlag proves --effort lands in the shuttleengine.Spec run
+// builds, mirroring how --model is wired: a fake Runner (a real
+// *shuttleengine.Runner over a spec-capturing Engine fake and a no-op mux
+// fake) lets the test drive runCmd()'s RunE directly and inspect the Spec
+// the engine's Prepare was actually called with, without a live psmux/claude
+// session.
+func TestRunCmd_EffortFlag(t *testing.T) {
+	tests := []struct {
+		name       string
+		args       []string
+		wantEffort string
+	}{
+		{
+			name:       "EffortFlagSet",
+			args:       []string{"--prompt", "do the thing", "--output-file", "out.md", "--effort", "high"},
+			wantEffort: "high",
+		},
+		{
+			name:       "EffortFlagOmitted",
+			args:       []string{"--prompt", "do the thing", "--output-file", "out.md"},
+			wantEffort: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			engine := &specCapturingEngine{}
+			layout := &hubgeometry.Layout{WorktreeRoot: t.TempDir()}
+			runner := shuttleengine.NewRunner(noopMux{}, engine, layout, shuttleengine.Config{RunTimeoutMin: 30})
+
+			c := &shuttleCLI{runner: runner}
+			cmd := c.runCmd()
+			var out bytes.Buffer
+			cmd.SetOut(&out)
+			cmd.SetArgs(tt.args)
+
+			// The command's own RunE always returns nil (errors go through
+			// output.Err), so Execute()'s error is only ever a flag-parse
+			// failure — not a signal about the spec-capture path below.
+			if err := cmd.Execute(); err != nil {
+				t.Fatalf("cmd.Execute() error: %v; output: %s", err, out.String())
+			}
+
+			if engine.gotSpec.Prompt == "" {
+				t.Fatalf("specCapturingEngine.Prepare was never called; want it invoked with the built Spec; output: %s", out.String())
+			}
+			if engine.gotSpec.Effort != tt.wantEffort {
+				t.Errorf("Spec.Effort = %q; want %q", engine.gotSpec.Effort, tt.wantEffort)
+			}
+		})
+	}
+}
+
 func TestRunCLI_Send_ArgValidation(t *testing.T) {
 	tests := []struct {
 		name string

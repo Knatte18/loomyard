@@ -221,6 +221,88 @@ func TestRun_Wait_Asking_CarriesMessageKeepsStrand(t *testing.T) {
 	}
 }
 
+// TestRun_Wait_LiveAsk_ClassifiesRealTimeAsking verifies a live ask (an
+// EventAsk with no output files present) classifies OutcomeAsking carrying
+// the question as the message, keeping the pane and run dir just like the
+// existing turn-end asking case — proving the unchanged pollEventsTick
+// branch also covers the live-ask signal ParseEvents now emits.
+func TestRun_Wait_LiveAsk_ClassifiesRealTimeAsking(t *testing.T) {
+	runDir := t.TempDir()
+	eventsPath := filepath.Join(runDir, "events.jsonl")
+	outputFile := filepath.Join(runDir, "out.md") // never created
+
+	if err := os.WriteFile(eventsPath, []byte("ASK:which approach?\n"), 0o644); err != nil {
+		t.Fatalf("seed events: %v", err)
+	}
+
+	mux := &fakeMux{StatusQueue: []muxengine.StatusResult{{Strands: []muxengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
+	engine := &fakeEngine{StartupScript: []StartupState{StartupReady}}
+	runner := newWaitTestRunner(t, mux, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+	fc := newFakeClock(time.Now())
+	run := &Run{
+		runner:   runner,
+		spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
+		runDir:   runDir,
+		state:    RunState{StrandGUID: "strand-1", EventsPath: eventsPath},
+		clock:    fc,
+		deadline: fc.Now().Add(time.Minute),
+	}
+
+	result, err := run.Wait()
+	if err != nil {
+		t.Fatalf("Wait() error: %v", err)
+	}
+	if result.Outcome != OutcomeAsking {
+		t.Errorf("Outcome = %q, want %q", result.Outcome, OutcomeAsking)
+	}
+	if result.LastAssistantMessage != "which approach?" {
+		t.Errorf("LastAssistantMessage = %q, want %q", result.LastAssistantMessage, "which approach?")
+	}
+	if len(mux.RemoveStrandCalls) != 0 {
+		t.Errorf("RemoveStrand calls = %+v, want none (asking keeps the strand)", mux.RemoveStrandCalls)
+	}
+	if _, err := os.Stat(runDir); err != nil {
+		t.Errorf("run dir removed for asking outcome: %v", err)
+	}
+}
+
+// TestRun_Wait_LiveAsk_DoneFirstStillWins verifies that when a live ask
+// arrives but the output files already exist, done-first classification
+// still wins — an EventAsk never overrides an already-satisfied file
+// contract.
+func TestRun_Wait_LiveAsk_DoneFirstStillWins(t *testing.T) {
+	runDir := t.TempDir()
+	eventsPath := filepath.Join(runDir, "events.jsonl")
+	outputFile := filepath.Join(runDir, "out.md")
+	if err := os.WriteFile(outputFile, []byte("result"), 0o644); err != nil {
+		t.Fatalf("seed output file: %v", err)
+	}
+	if err := os.WriteFile(eventsPath, []byte("ASK:which approach?\n"), 0o644); err != nil {
+		t.Fatalf("seed events: %v", err)
+	}
+
+	mux := &fakeMux{StatusQueue: []muxengine.StatusResult{{Strands: []muxengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
+	engine := &fakeEngine{StartupScript: []StartupState{StartupReady}}
+	runner := newWaitTestRunner(t, mux, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+	fc := newFakeClock(time.Now())
+	run := &Run{
+		runner:   runner,
+		spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
+		runDir:   runDir,
+		state:    RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath},
+		clock:    fc,
+		deadline: fc.Now().Add(time.Minute),
+	}
+
+	result, err := run.Wait()
+	if err != nil {
+		t.Fatalf("Wait() error: %v", err)
+	}
+	if result.Outcome != OutcomeDone {
+		t.Errorf("Outcome = %q, want %q (done-first over a live ask when output files exist)", result.Outcome, OutcomeDone)
+	}
+}
+
 func TestRun_Wait_Died_ViaStatusNotLive(t *testing.T) {
 	runDir := t.TempDir()
 	eventsPath := filepath.Join(runDir, "events.jsonl") // never created
