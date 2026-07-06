@@ -143,9 +143,11 @@ func (run *Run) Wait() (Result, error) {
 // output files and an EventAsk with no output files both classify
 // OutcomeAsking identically — Kind only selects Message's source, inside
 // ParseEvents, not this branch (a Kind switch here would be dead code,
-// since both non-done kinds behave the same way). This is what makes a live
-// AskUserQuestion tool call classify as a real-time asking the instant the
-// tool call opens, exactly like today's turn-end asking case. Returns
+// since both non-done kinds behave the same way). This is what makes a live,
+// in-progress tool-call signal the engine surfaces (see claudeengine's
+// ParseEvents for the concrete provider mapping) classify as a real-time
+// asking the instant the tool call opens, exactly like today's turn-end
+// asking case. Returns
 // outcome == "" when there is nothing new to classify yet.
 func (run *Run) pollEventsTick() (Outcome, string, error) {
 	data, newOffset, err := readEventsFrom(run.state.EventsPath, run.offset)

@@ -93,9 +93,10 @@ const (
 	// EventStop is the provider's turn-end signal: the agent ended its turn
 	// without writing the run's output files.
 	EventStop EventKind = iota
-	// EventAsk is a live, in-progress signal that the agent is asking a
-	// question via a provider tool call (e.g. Claude's AskUserQuestion),
-	// observed the instant the tool call opens rather than at turn end.
+	// EventAsk is a live, in-progress tool-call signal the engine surfaces
+	// when the agent is asking a question (see claudeengine's ParseEvents
+	// for the concrete provider mapping), observed the instant the tool
+	// call opens rather than at turn end.
 	EventAsk
 )
 
