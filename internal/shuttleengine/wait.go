@@ -131,15 +131,22 @@ func (run *Run) Wait() (Result, error) {
 // AFTER ParseEvents succeeds: if ParseEvents errors, the bytes stay
 // unconsumed so Wait's events-failure retry actually re-reads and
 // re-classifies them on the next tick, rather than silently discarding a
-// batch that may contain the run's only qualifying Stop event (the Engine
-// seam permits an erroring parser; the retry counter Wait maintains implies
-// this re-read guarantee). It classifies OutcomeDone/OutcomeAsking from the
-// LAST StopEvent among the newly parsed ones (a batch containing more than
-// one Stop — e.g. an interrupted turn immediately followed by a resumed
-// one — is classified by its most recent turn-end, and every consumed byte
-// still counts once parsing succeeds, so none of the earlier events in the
-// same batch is ever reprocessed). Returns outcome == "" when there is
-// nothing new to classify yet.
+// batch that may contain the run's only qualifying event (the Engine seam
+// permits an erroring parser; the retry counter Wait maintains implies this
+// re-read guarantee). It classifies OutcomeDone/OutcomeAsking from the LAST
+// Event among the newly parsed ones (a batch containing more than one
+// event — e.g. an interrupted turn immediately followed by a resumed one —
+// is classified by its most recent one, and every consumed byte still
+// counts once parsing succeeds, so none of the earlier events in the same
+// batch is ever reprocessed). The done/asking branch below is the SAME
+// two-way check regardless of the last event's Kind: an EventStop with no
+// output files and an EventAsk with no output files both classify
+// OutcomeAsking identically — Kind only selects Message's source, inside
+// ParseEvents, not this branch (a Kind switch here would be dead code,
+// since both non-done kinds behave the same way). This is what makes a live
+// AskUserQuestion tool call classify as a real-time asking the instant the
+// tool call opens, exactly like today's turn-end asking case. Returns
+// outcome == "" when there is nothing new to classify yet.
 func (run *Run) pollEventsTick() (Outcome, string, error) {
 	data, newOffset, err := readEventsFrom(run.state.EventsPath, run.offset)
 	if err != nil {
@@ -165,7 +172,7 @@ func (run *Run) pollEventsTick() (Outcome, string, error) {
 	if allOutputFilesExist(run.spec.OutputFiles) {
 		return OutcomeDone, "", nil
 	}
-	return OutcomeAsking, last.LastAssistantMessage, nil
+	return OutcomeAsking, last.Message, nil
 }
 
 // readEventsFrom reads path from byte offset onward and returns only the
