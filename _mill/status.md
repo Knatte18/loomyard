@@ -34,5 +34,7 @@ batches:
     start_sha: ce929cc1006f9d596ad5c7043833683fba49a681
     commit_sha: fbc7e7c75b2f806cab1dc94ea5d86d65a615895e
   - name: ask-signal
-    state: pending
+    state: running
+    implementer_session: 19abe59e-ebfd-4d5a-931c-c32d2b72a6fa
+    start_sha: 5e8dc04e557edf83935b8086202d1b2f56ac0013
 ```
