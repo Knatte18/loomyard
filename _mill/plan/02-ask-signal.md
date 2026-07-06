@@ -115,14 +115,18 @@ after batch 1's. Batch-local decisions: all in the overview's Shared Decisions
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** In `pollEventsTick` (`wait.go`), update it for `[]Event` and branch
-  on the last event's `Kind`, preserving done-first semantics: if
-  `allOutputFilesExist` → `OutcomeDone` (unchanged, wins regardless of kind);
-  otherwise return `OutcomeAsking` with `last.Message` as the message — this now
-  covers BOTH an `EventStop` with no output files (today's behavior) and an `EventAsk`
-  (the new real-time live-ask, classified the instant the tool call opens). Wire
-  `last.Message` (renamed from `LastAssistantMessage`) into the returned message so it
-  flows to `Result.LastAssistantMessage`. Do not add a new `Outcome` value.
+- **Requirements:** In `pollEventsTick` (`wait.go`), update it for `[]Event`,
+  preserving done-first semantics with the SAME two-way branch as today — NOT a
+  `Kind` switch (both non-done kinds classify identically, so a `Kind` branch here
+  would be dead): if `allOutputFilesExist` → `OutcomeDone`; otherwise →
+  `OutcomeAsking` with `last.Message` as the message. Because `ParseEvents` now also
+  emits `EventAsk`, this unchanged branch now additionally covers the real-time
+  live-ask (an `EventAsk` with no output files, classified the instant the tool call
+  opens) in addition to today's `EventStop`-with-no-files case — `Kind` stays a
+  parse-time discriminator (it selects the message source in `events.go`), not a
+  classification input here. Wire `last.Message` (renamed from
+  `LastAssistantMessage`) into the returned message so it flows to
+  `Result.LastAssistantMessage`. Do not add a new `Outcome` value.
 - **Commit:** `feat(shuttleengine): classify live asks as real-time asking`
 
 ### Card 10: Test fake emits both kinds; real-time asking test

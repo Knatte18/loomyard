@@ -3,7 +3,7 @@
 ```yaml
 task: Add Effort to shuttle's run Spec
 slug: shuttle-spec-effort
-approved: false
+approved: true
 started: 20260706-163844
 parent: main
 root: ""

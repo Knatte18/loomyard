@@ -17,7 +17,11 @@ field, its engine-side validation and `--effort` launch-flag realization in
 line. It is one batch because these are the entire effort feature and share the
 same small file set (`spec.go`, `claudeengine`'s `command.go`/`claudeengine.go`,
 and `shuttlecli`'s `run.go`). The next batch (ask-signal) consumes nothing from
-this batch except serialized access to `docs/overview.md`. Batch-local decision:
+this batch except serialized access to `docs/overview.md`. Note: card 2 widens
+`buildLaunchCmd`'s arity but leaves its `Prepare` call site alone, so the
+`claudeengine` package does not compile until card 3 threads `spec.Effort` into
+that call — intermediate cards do not compile in isolation and the batch verifies
+only at the end (same as batch 2). Batch-local decision:
 effort validation lives in `claudeengine` (vocabulary-only, exact-lowercase,
 hard-error in `Prepare`); `Spec.validate` is never touched — see the overview's
 Shared Decisions.
