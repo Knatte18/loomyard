@@ -375,7 +375,11 @@ const (
 // that failed at launch (or was killed while its shell survived) leaves a
 // live pane where played keys land at the shell prompt — proven live, a
 // send against a kept "died" run reported ok while its text was executed as
-// a pwsh command in the diagnosis pane. Known residual limitations,
+// a pwsh command in the diagnosis pane. The same refusal also fires for a
+// provider that is merely STILL BOOTING (an interrupt/send issued seconds
+// after Start — the probe window is much shorter than a normal provider
+// startup), which is equally correct to refuse but a different diagnosis;
+// the error text names both readings. Known residual limitations,
 // inherited from the same startup-marker heuristic (see claudeengine's
 // Startup): a shell prompt styled with the provider's ready marker, or a
 // dead provider whose final TUI frame is still rendered in the pane, can
@@ -407,7 +411,13 @@ func requireReadyAgentPane(mux MuxOps, engine Engine, guid string) error {
 	if lastCaptureErr != nil {
 		return fmt.Errorf("shuttle: capture strand %q's pane to confirm the provider TUI: %w", guid, lastCaptureErr)
 	}
-	return fmt.Errorf("shuttle: strand %q's pane shows no input-ready provider TUI — the agent process likely exited (launch failure or crash) while its pane's shell stayed alive, so keys would be executed by the shell instead of reaching an agent", guid)
+	// A non-Ready capture cannot distinguish a provider that never came up
+	// (or crashed behind a surviving shell) from one that is simply still
+	// booting — the probe window is far shorter than a normal provider
+	// startup, so an interrupt/send issued seconds after Start lands here on
+	// a perfectly healthy run. The message must own both readings rather
+	// than misdiagnose a booting pane as a dead agent.
+	return fmt.Errorf("shuttle: strand %q's pane shows no input-ready provider TUI — either the provider is still starting up (retry once it is ready), or its process exited (launch failure or crash) while the pane's shell stayed alive, in which case keys would be executed by the shell instead of reaching an agent", guid)
 }
 
 // requireLiveStrand fails unless guid's strand is currently tracked by mux

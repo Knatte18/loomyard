@@ -496,6 +496,13 @@ func TestRun_InterruptAndSend_RefuseAgentlessShellPane(t *testing.T) {
 	if err := run.Send("echo poked"); err == nil || !strings.Contains(err.Error(), "no input-ready provider TUI") {
 		t.Errorf("Send() error = %v, want the no-ready-TUI refusal", err)
 	}
+	// The refusal must own BOTH readings of a non-Ready capture — a provider
+	// still starting up and one that exited behind a surviving shell — since
+	// the probe cannot distinguish them and misdiagnosing a booting pane as a
+	// dead agent steers an operator toward tearing down a healthy run.
+	if err := run.Interrupt(); err == nil || !strings.Contains(err.Error(), "still starting up") || !strings.Contains(err.Error(), "exited") {
+		t.Errorf("Interrupt() error = %v, want it to name both the still-starting and exited readings", err)
+	}
 	if len(mux.SendKeyCalls) != 0 || len(mux.SendTextCalls) != 0 {
 		t.Errorf("keys reached the agent-less shell despite refusal: SendKey=%+v SendText=%+v", mux.SendKeyCalls, mux.SendTextCalls)
 	}
