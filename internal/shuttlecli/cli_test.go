@@ -156,7 +156,7 @@ func (e *specCapturingEngine) Prepare(runDir string, spec shuttleengine.Spec, cf
 	e.gotSpec = spec
 	return shuttleengine.Launch{}, errSpecCaptured
 }
-func (e *specCapturingEngine) ParseEvents(data []byte) ([]shuttleengine.StopEvent, error) {
+func (e *specCapturingEngine) ParseEvents(data []byte) ([]shuttleengine.Event, error) {
 	return nil, nil
 }
 func (e *specCapturingEngine) Startup(capture string) shuttleengine.StartupState {
