@@ -460,20 +460,34 @@ func playInputs(mux MuxOps, guid string, inputs []PaneInput) error {
 }
 
 // sendVerified plays engine.ComposeSend(text) into guid's pane and then
-// CONFIRMS delivery by polling the pane capture until the sent text is
-// visible, replaying the choreography up to sendReplays more times before
-// failing. The confirmation is not optional politeness: the provider TUI
-// can swallow the entire Escape+text chunk with no error anywhere (observed
-// live — `lyx shuttle send` reported ok while nothing reached the agent),
-// so "the text is on screen" is the only honest definition of a delivered
-// send. Matching is whitespace-stripped and lowercased (normalizePaneText)
-// because pane captures can drop spaces entirely and wrap long lines, and
-// only a bounded prefix of the text is required so a line-wrapped tail
-// cannot defeat the match.
+// CONFIRMS delivery by polling the pane capture until the sent text appears
+// MORE times than it did before the send, replaying the choreography up to
+// sendReplays more times before failing. The confirmation is not optional
+// politeness: the provider TUI can swallow the entire Escape+text chunk
+// with no error anywhere (observed live — `lyx shuttle send` reported ok
+// while nothing reached the agent), so "the text newly appeared on screen"
+// is the only honest definition of a delivered send. It is the occurrence
+// COUNT that must rise, not mere presence, because the text can already be
+// on screen before the send — an operator retrying the same instruction
+// after an uncertain first attempt (the natural reaction to exactly the
+// swallow this check guards against), or text quoting the agent's own
+// visible output — and a presence check would then verify a swallowed send
+// vacuously. Matching is whitespace-stripped and lowercased
+// (normalizePaneText) because pane captures can drop spaces entirely and
+// wrap long lines, and only a bounded prefix of the text is required so a
+// line-wrapped tail cannot defeat the match.
 func sendVerified(mux MuxOps, engine Engine, guid, text string) error {
 	needle := normalizePaneText(text)
 	if runes := []rune(needle); len(runes) > 48 {
 		needle = string(runes[:48])
+	}
+
+	// Snapshot how often the needle is already on screen; delivery is a NEW
+	// occurrence on top of this. A failed baseline capture degrades to 0 —
+	// the presence-only semantics this check strengthens, never weaker.
+	baseline := 0
+	if capture, err := mux.CapturePane(guid); err == nil {
+		baseline = strings.Count(normalizePaneText(capture), needle)
 	}
 
 	for try := 0; try <= sendReplays; try++ {
@@ -482,7 +496,7 @@ func sendVerified(mux MuxOps, engine Engine, guid, text string) error {
 		}
 		for attempt := 0; attempt < sendVerifyAttempts; attempt++ {
 			capture, err := mux.CapturePane(guid)
-			if err == nil && strings.Contains(normalizePaneText(capture), needle) {
+			if err == nil && strings.Count(normalizePaneText(capture), needle) > baseline {
 				return nil
 			}
 			// A capture error here is transient noise, not fatal: the next

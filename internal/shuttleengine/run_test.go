@@ -320,10 +320,11 @@ func stubInputSleep(t *testing.T) {
 
 func TestRun_Send_PlaysEscThenTextWithSubmit(t *testing.T) {
 	stubInputSleep(t)
-	// The first capture answers requireReadyAgentPane's TUI probe (a ready
-	// pane without the text yet); the later ones must report the sent text
-	// back for sendVerified's delivery check to succeed without a replay.
-	mux := &fakeMux{StatusQueue: liveStrandStatus(true), CaptureQueue: []string{"❯ ", "❯ updated instructions"}}
+	// The first capture answers requireReadyAgentPane's TUI probe, the
+	// second is sendVerified's pre-send baseline (both a ready pane without
+	// the text yet); the later ones must report the sent text back for the
+	// delivery check to succeed without a replay.
+	mux := &fakeMux{StatusQueue: liveStrandStatus(true), CaptureQueue: []string{"❯ ", "❯ ", "❯ updated instructions"}}
 	engine := readyAgentEngine()
 	run := newInterruptTestRun(t, mux, engine)
 
@@ -332,10 +333,11 @@ func TestRun_Send_PlaysEscThenTextWithSubmit(t *testing.T) {
 	}
 
 	// Status then CapturePane lead the log: the liveness guard and the
-	// ready-TUI probe must both run before any key reaches the pane. The
-	// final CapturePane follows the text step: that is the
-	// delivery-verification poll.
-	wantLog := []string{"Status", "CapturePane", "SendKey:Escape", "SendText:updated instructions", "CapturePane"}
+	// ready-TUI probe must both run before any key reaches the pane; the
+	// second CapturePane is the pre-send baseline snapshot. The final
+	// CapturePane follows the text step: that is the delivery-verification
+	// poll.
+	wantLog := []string{"Status", "CapturePane", "CapturePane", "SendKey:Escape", "SendText:updated instructions", "CapturePane"}
 	if !reflect.DeepEqual(mux.CallLog, wantLog) {
 		t.Errorf("call order = %v, want %v", mux.CallLog, wantLog)
 	}
@@ -352,11 +354,12 @@ func TestRun_Send_SwallowedFirstAttempt_ReplaySucceeds(t *testing.T) {
 	stubInputSleep(t)
 	mux := &fakeMux{
 		StatusQueue: liveStrandStatus(true),
-		// The leading capture answers the ready-TUI probe; every poll of the
-		// first attempt then sees no trace of the text (still showing the
-		// prompt); the replay's polls see it delivered.
+		// The two leading captures answer the ready-TUI probe and the
+		// pre-send baseline; every poll of the first attempt then sees no
+		// trace of the text (still showing the prompt); the replay's polls
+		// see it delivered.
 		CaptureQueue: append(
-			repeatCapture("❯ ", 1+sendVerifyAttempts),
+			repeatCapture("❯ ", 2+sendVerifyAttempts),
 			repeatCapture("❯ updated instructions", sendVerifyAttempts)...,
 		),
 	}
@@ -393,6 +396,44 @@ func TestRun_Send_NeverDelivered_ReportsHonestFailure(t *testing.T) {
 	if len(mux.SendTextCalls) != 1+sendReplays {
 		t.Errorf("SendText calls = %d, want %d (initial attempt + all replays exhausted)", len(mux.SendTextCalls), 1+sendReplays)
 	}
+}
+
+func TestRun_Send_PreexistingText_RequiresNewOccurrence(t *testing.T) {
+	// The sent text can already be on screen before the send — an operator
+	// retrying the same instruction after an uncertain first attempt, or
+	// text quoting the agent's own visible output. Presence alone would then
+	// "verify" even a swallowed send; delivery must be judged by the
+	// occurrence count RISING above the pre-send baseline.
+	stubInputSleep(t)
+
+	t.Run("SwallowedSend_ReportsFailure", func(t *testing.T) {
+		// Every capture — probe, baseline, and all verification polls —
+		// shows the text exactly once: it was already there, and the send
+		// never lands. A presence check would falsely verify this.
+		mux := &fakeMux{
+			StatusQueue:  liveStrandStatus(true),
+			CaptureQueue: []string{"❯ do it again"},
+		}
+		run := newInterruptTestRun(t, mux, readyAgentEngine())
+
+		if err := run.Send("do it again"); err == nil {
+			t.Fatal("Send() = nil error, want a delivery failure when the occurrence count never rises")
+		}
+	})
+
+	t.Run("DeliveredSend_CountRises", func(t *testing.T) {
+		// Probe and baseline see one pre-existing occurrence; the
+		// verification polls see a second one appear — a genuine delivery.
+		mux := &fakeMux{
+			StatusQueue:  liveStrandStatus(true),
+			CaptureQueue: []string{"❯ do it again", "❯ do it again", "do it again …\n❯ do it again"},
+		}
+		run := newInterruptTestRun(t, mux, readyAgentEngine())
+
+		if err := run.Send("do it again"); err != nil {
+			t.Fatalf("Send() error: %v, want the risen occurrence count to verify delivery", err)
+		}
+	})
 }
 
 // repeatCapture returns n copies of capture, the fixture shape fakeMux's
