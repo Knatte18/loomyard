@@ -276,10 +276,13 @@ func (run *Run) Send(text string) error {
 // guid via FindRun to confirm it actually names a shuttle run, confirms the
 // strand still has a live pane (requireLiveStrand), then plays the engine's
 // InterruptSequence through the mux seam via the same playInputs helper
-// (*Run).Interrupt uses.
+// (*Run).Interrupt uses. FindRun's underlying error is wrapped (%w) into the
+// "not a shuttle strand" message rather than discarded, so an operator
+// debugging a genuine I/O error against the run-dir root (as opposed to a
+// simple wrong guid) is not told the guid is the problem.
 func (r *Runner) Interrupt(guid string) error {
 	if _, _, err := FindRun(r.cfg, r.layout, guid); err != nil {
-		return fmt.Errorf("shuttle: %q is not a shuttle strand", guid)
+		return fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
 	}
 	if err := requireLiveStrand(r.mux, guid); err != nil {
 		return err
@@ -295,12 +298,15 @@ func (r *Runner) Interrupt(guid string) error {
 // live pane (requireLiveStrand), then plays and delivery-verifies the
 // engine's ComposeSend choreography via the same sendVerified helper
 // (*Run).Send uses — a nil return means the text was observed in the pane.
+// FindRun's underlying error is wrapped (%w) into the "not a shuttle
+// strand" message rather than discarded, for the same reason as
+// (*Runner).Interrupt.
 func (r *Runner) Send(guid, text string) error {
 	if strings.ContainsAny(text, "\n\r") {
 		return fmt.Errorf("shuttle: Send: text must be a single line; multiline updates ride the file contract (write a file, Send a one-line pointer to it)")
 	}
 	if _, _, err := FindRun(r.cfg, r.layout, guid); err != nil {
-		return fmt.Errorf("shuttle: %q is not a shuttle strand", guid)
+		return fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
 	}
 	if err := requireLiveStrand(r.mux, guid); err != nil {
 		return err
