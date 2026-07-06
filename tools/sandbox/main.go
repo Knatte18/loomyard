@@ -1,10 +1,11 @@
 // main.go implements the sandbox tool entry point, flag parsing, and subcommand
-// dispatch. It supports four subcommands: "build" (default, clones the Hub),
+// dispatch. It supports five subcommands: "build" (default, clones the Hub),
 // "suite" (runs the embedded SANDBOX-CORE-SUITE agent), "mux-suite" (runs the
-// embedded SANDBOX-MUX-SUITE agent), and "fetch" (collects the agent-written
+// embedded SANDBOX-MUX-SUITE agent), "shuttle-suite" (runs the embedded
+// SANDBOX-SHUTTLE-SUITE agent), and "fetch" (collects the agent-written
 // report into .scratch). Only -parent and -loomyard live at the top level;
 // -reset is a build-subcommand flag, parsed after the "build" token like
-// suite/mux-suite parse their -claude/-prompt flags.
+// suite/mux-suite/shuttle-suite parse their -claude/-prompt flags.
 
 package main
 
@@ -169,6 +170,29 @@ func run(argv []string) int {
 		}
 
 		if err := runSuite(absParent, *claudeFlag, *promptFlag, muxSuite); err != nil {
+			fmt.Fprintf(os.Stderr, "sandbox: %v\n", err)
+			return 1
+		}
+
+	case "shuttle-suite":
+		// The shuttle-suite subcommand mirrors "suite"/"mux-suite" exactly, but
+		// runs the dedicated SANDBOX-SHUTTLE-SUITE scheme via the shuttleSuite
+		// spec; fetching the report is the same shared fetch subcommand, so
+		// -loomyard is not required here either.
+
+		// Parse shuttle-suite-specific flags from the remaining positionals
+		// after "shuttle-suite".
+		ssf := flag.NewFlagSet("sandbox shuttle-suite", flag.ContinueOnError)
+		ssf.SetOutput(os.Stderr)
+		claudeFlag := ssf.String("claude", "", "path to the claude binary (default: resolve from PATH)")
+		promptFlag := ssf.String("prompt", "", "instruction string passed to the agent (default: built-in)")
+
+		remaining := fs.Args()[1:]
+		if err := ssf.Parse(remaining); err != nil {
+			return 1
+		}
+
+		if err := runSuite(absParent, *claudeFlag, *promptFlag, shuttleSuite); err != nil {
 			fmt.Fprintf(os.Stderr, "sandbox: %v\n", err)
 			return 1
 		}

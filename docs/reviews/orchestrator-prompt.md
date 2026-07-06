@@ -37,6 +37,21 @@ converged. The single discipline that makes this work: **you never trust a round
 4. **One concern per round.** The review prompt is a full review+fix. A narrow follow-up (e.g. "close
    this one coverage gap", "split this file") is a *separate* targeted agent with its own tight
    brief — do not fold it into a review round.
+5. **The operator may pause and steer a live round at will — this is normal, not a failure.** The
+   human operator can stop a running round agent mid-task to ask it a question or redirect it, then
+   resume it themselves, as many times as they like within one round. A `killed`/`stopped by user`
+   completion notification produced this way is NOT a crash, NOT a stuck state, and NOT something
+   for you to recover from. Concretely, when you see such a notification:
+   - Do **not** stash, revert, or otherwise touch the round's in-progress working-tree changes.
+   - Do **not** respawn, re-seed, or restart the round yourself.
+   - Do **not** report it to the operator as a problem or ask whether to intervene — they already
+     know, they did it.
+   - Just note the state (e.g., "round N is paused, working tree has uncommitted in-progress
+     changes") and go back to waiting. The same `agentId` will notify again, potentially several
+     more times, before the round actually finishes for real.
+   Only step in on your own initiative if the round agent's own OUTPUT (not the stop/resume
+   mechanics) shows an actual problem — e.g., it reports being stuck, or its own text shows it
+   misunderstood the brief. Stopping-and-resuming by the operator, by itself, is never that signal.
 
 ## The loop (repeat until converged)
 1. **Seed.** Rewrite the review prompt's *"round context seeded from prior-round verification"*
@@ -48,8 +63,10 @@ converged. The single discipline that makes this work: **you never trust a round
    re-litigated. Commit the re-seed.
 2. **Spawn.** `Agent` tool → `subagent_type: general-purpose`, `model: <the operator's pick this
    round>`, prompt = *"Read `docs/reviews/<module>-review-prompt.md` and do exactly what it says."*
-   Give it a tag `<model>-r<N>`, tell it **not to commit or push**, and ask it to reply with only a
-   concise executive summary + counts by severity + an explicit merge-readiness verdict.
+   Give it a tag `<model>-r<N>`, tell it to **commit each individual fix as it lands** (message
+   identifying the finding it closes — the prompt template's "Commit per fix" section has the exact
+   format) but **never push**, and ask it to reply with only a concise executive summary + counts by
+   severity + an explicit merge-readiness verdict.
 3. **Notify + wait.** When it completes, `PushNotification` the operator if they are away from the
    terminal. Do **not** read the agent's raw transcript file (it will overflow your context) — its
    final message and the `.scratch/` deliverables are enough.
@@ -59,9 +76,14 @@ converged. The single discipline that makes this work: **you never trust a round
    claims to catch, confirm the test FAILS at the right assertion, then revert (confirm an empty
    diff). A test you did not watch fail is not yet proven.
 5. **Decide.**
-   - **Residual found** → commit the round's partial work (honestly labeled if incomplete — it is the
-     clean base for the next round), re-seed the prompt (step 1) with the new finding, and spawn the
-     next round with a **different** model.
+   - **Residual found** → the round's fixes should already be committed one-by-one as they landed
+     (per-fix commits — see the spawn step). If the round left anything genuinely uncommitted (e.g.
+     it was killed mid-fix with no self-report at all), that is exactly the failure mode per-fix
+     commits are meant to make cheap to recover from: read `git log` to see precisely which findings
+     already landed clean, then either finish the remainder yourself or spawn a narrow, targeted
+     fixer agent (rule 4 above) scoped to "read the existing review report + the current diff/log,
+     finish and commit whatever is left" — not a fresh full review round. Re-seed the prompt (step 1)
+     with the new finding, and spawn the next full round with a **different** model.
    - **Clean** → a further safety pass with a *different* model is cheap insurance. Convergence is
      when a safety pass **and** your gates **and** (for a live-substrate module) an operator-assisted
      visual check all agree.
@@ -102,5 +124,18 @@ one. Use the more capable model for the final safety pass and for correctness-cr
   never get committed; commit code + docs + suite + tests explicitly.
 - Every task that changes behaviour must update the module doc / `overview.md` / `CONSTRAINTS.md` in
   the **same** commit (per `CLAUDE.md`). Do not add bugfix notes to `docs/roadmap.md`.
-- Keep a short handoff note (e.g. `.scratch/<module>-review-HANDOFF.md`) so the loop survives a
-  context compaction: what round is running, what is closed-and-verified, what is next.
+- Keep ONE handoff note (e.g. `.scratch/<module>-review-HANDOFF.md`) so the loop survives a context
+  compaction, or briefs a genuinely fresh orchestrator that never saw this session. Refresh it after
+  every round's verification. Size its detail to what actually happened, not to a fixed template —
+  a quiet round that closed clean might only need a few lines; an eventful round (a process defect
+  caught and fixed, a confusing model-attribution question, several operator steering interruptions)
+  earns a fuller write-up so none of that has to be rediscovered. At minimum always cover: what round
+  is running/paused right now (identify it by round tag + git state, never by internal agent/task
+  ID — those are ephemeral and mean nothing in a new session), what is CLOSED-AND-VERIFIED (with the
+  commit sha, so it's never re-litigated), what RESIDUAL is currently seeded in the per-module review
+  prompt, what is on the DEFERRED list, and the exact next action to take (as an instruction, not a
+  description). When something noteworthy happens — a method gap found and fixed, an operator
+  norm worth remembering, a caveat like "the round-agent's model may not be what the UI appears to
+  show" — fold it into this same file rather than starting a second one; a single up-to-date file
+  beats two that can silently drift out of sync. The operator can ask for it to be refreshed or
+  expanded at any point, not just after a round.

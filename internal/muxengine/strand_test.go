@@ -52,6 +52,40 @@ func TestAddStrandLocked_HiddenAdd_GuidUniqueRecordStoredNoLaunch(t *testing.T) 
 	}
 }
 
+// TestAddStrandLocked_SessionIDRoundTripsThroughSaveLoad pins AddSpec.SessionID
+// as opaque caller metadata: addStrandLocked stamps it verbatim into the
+// appended Strand, and it survives a SaveState/LoadState round trip on disk
+// exactly like every other carrier field (Cmd, ResumeCmd, Name).
+func TestAddStrandLocked_SessionIDRoundTripsThroughSaveLoad(t *testing.T) {
+	e := newTestEngine(t)
+	st := &MuxState{}
+
+	spec := AddSpec{SessionID: "caller-session-abc", Display: render.Display{Anchor: render.AnchorHidden}}
+	strand, err := e.addStrandLocked(st, spec)
+	if err != nil {
+		t.Fatalf("addStrandLocked: %v", err)
+	}
+	if strand.SessionID != spec.SessionID {
+		t.Fatalf("strand.SessionID = %q, want %q", strand.SessionID, spec.SessionID)
+	}
+
+	dotLyxDir := e.layout.DotLyxDir()
+	if err := SaveState(dotLyxDir, st); err != nil {
+		t.Fatalf("SaveState: %v", err)
+	}
+	loaded, err := LoadState(dotLyxDir)
+	if err != nil {
+		t.Fatalf("LoadState: %v", err)
+	}
+	got, ok := strandByGUID(loaded.Strands, strand.GUID)
+	if !ok {
+		t.Fatalf("LoadState result missing strand %q", strand.GUID)
+	}
+	if got.SessionID != spec.SessionID {
+		t.Errorf("loaded strand.SessionID = %q, want %q to survive SaveState/LoadState", got.SessionID, spec.SessionID)
+	}
+}
+
 func TestAddStrandLocked_UnknownParentRejected(t *testing.T) {
 	e := newTestEngine(t)
 	st := &MuxState{}

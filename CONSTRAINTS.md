@@ -62,9 +62,9 @@ Every lyx CLI module is a cobra subtree assembled under one root in `cmd/lyx/mai
   picker; `mux attach`'s `psmux attach`) cannot emit the JSON envelope on that terminal-handover
   tail. The exception is scoped tightly: everything that can fail runs **pre-flight and stays
   on the envelope** (`output.Err`, non-zero exit); only the post-handoff tail is exempt, and on
-  success it emits no JSON. `mux attach` follows the pre-existing `ide menu` precedent; see
-  [docs/modules/mux.md](docs/modules/mux.md#attach-is-a-documented-envelope-exception) for the
-  full rationale.
+  success it emits no JSON. `mux attach` follows the pre-existing `ide menu` precedent; see the
+  `internal/muxcli` attach command's godoc/`Long` and
+  [docs/overview.md#modules](docs/overview.md#modules) for the full rationale.
 - **Package naming.** A Cobra-registered package is `<module>cli`; its extracted domain
   kernel is `<module>engine`. cli imports engine; engine never imports cli or cobra.
   Litmus: returns `(T, error)` with no cobra/`io.Writer`/exit codes ⇒ engine. Skip the
@@ -76,6 +76,23 @@ Every lyx CLI module is a cobra subtree assembled under one root in `cmd/lyx/mai
   `helptree_test.go` (root names every module, module names every subcommand),
   `registration_test.go` (exists ⇒ registered), `longlist_test.go` (registered ⇒ in
   `root.Long`). Update the pinned sets in the same commit when adding a module/subcommand.
+
+## Shuttle Provider-Seam Invariant
+
+Provider specifics live ONLY under `internal/shuttleengine/claudeengine`.
+
+- CLI flags, the `settings.json` hook schema, TUI startup/trust markers, and pane key
+  choreography are all Claude-specific and stay inside `internal/shuttleengine/claudeengine`.
+  `internal/shuttleengine` and `internal/muxengine` stay provider-invariant: they define the
+  `Engine` interface (and, for mux, the opaque `cmd`/`resumeCmd`/strand contract) and never import
+  or reference Claude specifics.
+- `internal/shuttleengine` never imports `internal/shuttleengine/claudeengine` — the reverse
+  import only. Wiring a concrete engine into the run loop happens in `internal/shuttlecli`, which
+  imports both.
+- **Enforced by** `internal/shuttleengine/seam_enforcement_test.go` (`TestProviderSeamImportRule`)
+  on every `go test`, for the import-graph half of the rule. The semantic half — no Claude marker
+  strings, hook payload shapes, or TUI grammar leaking outside `claudeengine` — is a review
+  obligation, not machine-checked.
 
 ## Sandbox Suite Coverage
 

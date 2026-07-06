@@ -25,7 +25,11 @@ type AddSpec struct {
 	Role, Round, NameOverride string
 	Parent                    string
 	Cmd, ResumeCmd            string
-	Display                   render.Display
+	// SessionID is opaque caller metadata mux never reads — mirroring
+	// Strand.SessionID in state.go, it is stamped verbatim into the
+	// appended Strand and never interpreted or branched on by mux.
+	SessionID string
+	Display   render.Display
 }
 
 // Removed reports every strand RemoveStrand actually deleted: the target
@@ -208,6 +212,7 @@ func (e *Engine) addStrandLocked(st *MuxState, spec AddSpec) (Strand, error) {
 		Parent:    spec.Parent,
 		Cmd:       spec.Cmd,
 		ResumeCmd: spec.ResumeCmd,
+		SessionID: spec.SessionID,
 		Display:   spec.Display,
 	})
 	strand := &st.Strands[len(st.Strands)-1]

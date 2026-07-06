@@ -16,7 +16,7 @@ is what [`loom`](loom.md) puts between every phase, and it also runs standalone
 (`lyx review <profile>`). One engine serves **all** review — discussion-review, plan-review,
 builder-review, and ad-hoc "review anything" are just different call-sites with different
 profiles. It spawns its handlers, cluster reviewers, and progress-judge through
-[`shuttle`](shuttle.md).
+`shuttle` (see the `internal/shuttleengine` package documentation).
 
 ## The X-review block — the gate
 
@@ -25,7 +25,8 @@ What happens inside is not the caller's concern; the block is not finished until
 approved or it is definitively stuck. Inside, **Go drives a round-loop** (no standing
 orchestrator agent — that was only an LLM in mill because orchestration was LLM-driven):
 
-1. Go spawns a fresh, **tool-based Handler** for the round (one [`shuttle`](shuttle.md) run).
+1. Go spawns a fresh, **tool-based Handler** for the round (one `shuttle` run — see the
+   `internal/shuttleengine` package documentation).
 2. **A — Review.** The Handler reviews the artifact like a normal reviewer, not yet knowing it
    will also fix. It writes a review to file with a verdict: `BLOCKING` or `APPROVED`. In step A
    it **may** spawn N extra **cluster reviewers**, wait for them (or time out), and write a
@@ -63,7 +64,7 @@ set-diff is fooled by rewording), and it must be **independent of the Handler** 
 self-grading — a Handler is motivated to claim progress to avoid being declared stuck). It does
 **not** need a standing orchestrator: it is a thin, ephemeral **progress-judge** (a Haiku is
 enough — bounded compare-and-classify over short, already-articulated findings) that Go spawns
-via [`shuttle`](shuttle.md) on demand.
+via `shuttle` (see the `internal/shuttleengine` package documentation) on demand.
 
 - It spawns **conditionally**: only after a `BLOCKING` round *and* when there is a prior round to
   compare against (not round 1; not after `APPROVED`).
@@ -108,7 +109,8 @@ The module **must be configurable on what it reviews**. The per-target configura
    Forking the Handler per phase loses the point.
 2. **The verdict contract is invariant** — `APPROVED | BLOCKING` + structured findings +
    fixer-report, regardless of what was reviewed. That invariance is exactly what lets `loom`
-   drive all phases identically, and what lets [`shuttle`](shuttle.md)'s engine swap the provider
+   drive all phases identically, and what lets `shuttle`'s engine (see the
+   `internal/shuttleengine` package documentation) swap the provider
    without touching review. Vary the payload, never the control surface.
 3. **Rubric and fasit are data.** Tighten "what is a blocking plan flaw" by editing a rubric file
    and every plan-review picks it up — without touching the engine. The bar is versionable and
@@ -123,9 +125,10 @@ The module **must be configurable on what it reviews**. The per-target configura
 
 ## Dependencies
 
-- [`shuttle`](shuttle.md) — spawns the Handler, the N cluster reviewers, and the progress-judge
-  (each is one shuttle run through an engine). Cluster reviewers ask for `display:{anchor:own-window}`
-  so the N of them land in a separate, switchable psmux window rather than crowding the column.
+- `shuttle` (see the `internal/shuttleengine` package documentation) — spawns the Handler, the N
+  cluster reviewers, and the progress-judge (each is one shuttle run through an engine). Cluster
+  reviewers ask for `display:{anchor:own-window}` so the N of them land in a separate, switchable
+  psmux window rather than crowding the column.
 - `internal/state` — the block's round state (reviews, fixer-reports, verdict history) on disk,
   so a review can resume mid-block at the current round
-- [`mux`](mux.md) transitively, via shuttle
+- `mux` (see [overview.md#modules](../overview.md#modules)) transitively, via shuttle

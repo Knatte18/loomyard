@@ -1,10 +1,11 @@
-// suite.go implements the "sandbox suite" and "sandbox mux-suite" subcommands:
-// copies one of the embedded suite templates (main or mux) into the Hub host
-// repo, stamps a lyx binary fingerprint, registers the file as a git exclude
-// entry, and launches an interactive Claude session to execute it. The two
-// suites share every mechanic (fingerprinting, git-exclude, stale-report
-// cleanup, agent launch) via the suiteSpec parameterization of runSuite; only
-// the file name, embedded doc body, and default instruction differ.
+// suite.go implements the "sandbox suite", "sandbox mux-suite", and "sandbox
+// shuttle-suite" subcommands: copies one of the embedded suite templates
+// (main, mux, or shuttle) into the Hub host repo, stamps a lyx binary
+// fingerprint, registers the file as a git exclude entry, and launches an
+// interactive Claude session to execute it. The three suites share every
+// mechanic (fingerprinting, git-exclude, stale-report cleanup, agent launch)
+// via the suiteSpec parameterization of runSuite; only the file name,
+// embedded doc body, and default instruction differ.
 
 package main
 
@@ -34,10 +35,13 @@ var sandboxSuiteMD string
 //go:embed SANDBOX-MUX-SUITE.md
 var muxSandboxSuiteMD string
 
-// suiteSpec parameterizes runSuite over the two supported suites (main and
-// mux): the file written into the Hub host repo, the embedded doc body
-// rendered into it, and the default prompt handed to claude when the operator
-// supplies no -prompt override. Every other mechanic (fingerprinting,
+//go:embed SANDBOX-SHUTTLE-SUITE.md
+var shuttleSandboxSuiteMD string
+
+// suiteSpec parameterizes runSuite over the three supported suites (main,
+// mux, and shuttle): the file written into the Hub host repo, the embedded
+// doc body rendered into it, and the default prompt handed to claude when the
+// operator supplies no -prompt override. Every other mechanic (fingerprinting,
 // git-exclude, stale-report cleanup, agent launch) is shared across specs.
 type suiteSpec struct {
 	// fileName is the name of the suite scheme file written into the Hub host
@@ -66,6 +70,14 @@ var muxSuite = suiteSpec{
 	fileName:    "SANDBOX-MUX-SUITE.md",
 	doc:         muxSandboxSuiteMD,
 	instruction: "Read ./SANDBOX-MUX-SUITE.md and follow the instructions in it exactly.",
+}
+
+// shuttleSuite is the SANDBOX-SHUTTLE-SUITE spec: the dedicated scheme
+// exercising the lyx shuttle black-box agent scenarios.
+var shuttleSuite = suiteSpec{
+	fileName:    "SANDBOX-SHUTTLE-SUITE.md",
+	doc:         shuttleSandboxSuiteMD,
+	instruction: "Read ./SANDBOX-SHUTTLE-SUITE.md and follow the instructions in it exactly.",
 }
 
 // lookPath is a testability seam over exec.LookPath so tests can inject fake
@@ -216,16 +228,17 @@ func ensureGitExclude(repoDir, entry string) error {
 	return nil
 }
 
-// runSuite executes the "sandbox suite" / "sandbox mux-suite" subcommands. It
-// locates the Hub host repo under parentDir, fingerprints the deployed lyx
-// binary, writes a fresh spec.fileName into the host repo (overwriting any
-// prior copy), registers it in .git/info/exclude, clears any stale
-// sandbox-report.json from a prior run, and starts an interactive Claude
-// session with the given instruction string. It does not fetch the agent's
-// report -- that is the separate fetch subcommand (runFetch), run by the
-// operator after the session. claudeOverride and promptOverride are optional:
-// when empty the function resolves "claude" from PATH and uses
-// spec.instruction. spec selects which suite (mainSuite or muxSuite) is run.
+// runSuite executes the "sandbox suite" / "sandbox mux-suite" / "sandbox
+// shuttle-suite" subcommands. It locates the Hub host repo under parentDir,
+// fingerprints the deployed lyx binary, writes a fresh spec.fileName into the
+// host repo (overwriting any prior copy), registers it in .git/info/exclude,
+// clears any stale sandbox-report.json from a prior run, and starts an
+// interactive Claude session with the given instruction string. It does not
+// fetch the agent's report -- that is the separate fetch subcommand
+// (runFetch), run by the operator after the session. claudeOverride and
+// promptOverride are optional: when empty the function resolves "claude" from
+// PATH and uses spec.instruction. spec selects which suite (mainSuite,
+// muxSuite, or shuttleSuite) is run.
 func runSuite(parentDir, claudeOverride, promptOverride string, spec suiteSpec) error {
 	// Derive the host repo path from the shared hubName const (main.go) and the
 	// suite-local hostDirName const; the function relies on those consts rather than

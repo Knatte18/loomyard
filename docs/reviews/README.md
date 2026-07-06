@@ -3,7 +3,8 @@
 This directory holds the **manual, human-in-the-loop review method** we used to harden `mux`
 before merging it to `main`, plus the two prompts that drove it. The method is
 **module-agnostic** — it is written down here so the modules built *on top of* mux
-([`shuttle`](../modules/shuttle.md), [`review`](../modules/review.md), [`loom`](../modules/loom.md))
+(`shuttle` — see the `internal/shuttleengine` package documentation, [`review`](../modules/review.md),
+[`loom`](../modules/loom.md))
 can reuse it instead of re-inventing it each time.
 
 **The files here:**
@@ -39,7 +40,13 @@ tests pass but I don't trust it under load / crash / concurrency."*
   *not* a fork — a fork would inherit the orchestrator's context and destroy independence). It does
   two jobs in order: **A — review** (form its own findings by reading the code *and* driving the
   real substrate), then **B — fix** (implement, test, update docs). One agent does both because the
-  review context is already loaded, so the fix is cheap.
+  review context is already loaded, so the fix is cheap. **The order is not advisory — it is a hard
+  gate.** Job A must be fully written to its review-report file on disk before the agent touches any
+  production or test file; fixing findings as it spots them (instead of after the report is saved)
+  turns the "review" into a post-hoc rationalization of edits already made, which defeats the whole
+  point of an independent judgment. Every per-module review prompt must state this explicitly (see
+  the "Sequencing rule" in [`review-prompt-template.md`](review-prompt-template.md)) — this was
+  missing from the template until shuttle's round 1 interleaved the two jobs.
 
 ## The loop
 
@@ -62,15 +69,30 @@ tests pass but I don't trust it under load / crash / concurrency."*
    verification found — or, once clean, flips it to a **safety pass** ("no known residual; confirm
    merge-readiness or find what every prior round missed").
 2. **Spawn.** One fresh `general-purpose` Agent with a `model:` override, told **only** to read the
-   prompt file and do exactly what it says, tagged `<model>-r<N>`, told **not** to commit. It writes
-   two deliverables under `.scratch/` (gitignored): `<module>-review-<tag>.md` and
+   prompt file and do exactly what it says, tagged `<model>-r<N>`, told to **commit each individual
+   fix as it lands** (message identifying the finding it closes — see "Commit per fix" in
+   [`review-prompt-template.md`](review-prompt-template.md)) but **never push**. It writes two
+   deliverables under `.scratch/` (gitignored): `<module>-review-<tag>.md` and
    `<module>-review-<tag>-fixer-report.md`.
 3. **Verify — the part that actually catches residuals.** See the protocol below. The round's own
    verdict is **never** the gate: in the mux campaign rounds 3, 4, and 5 each self-reported
    "merge-ready" and each left a residual the orchestrator's independent verification caught.
-4. **Commit + re-seed + rotate.** Commit the round's partial fix (a clean base for the next round),
-   honestly labeled if incomplete. Re-seed the prompt with the new finding. Spawn the next round
-   with a **different** model.
+4. **Re-seed + rotate.** The round's fixes are already committed one-by-one (per-fix commits, not
+   a single wrap-up commit from the orchestrator — see below). Re-seed the prompt with whatever
+   verification found. Spawn the next round with a **different** model.
+
+### Why commit per fix, not one commit for the whole round
+
+A round agent's session can be killed by something entirely outside the method's control — a
+corrupted terminal, a lost connection — mid-fix, with no self-report at all. If its fixes sit as
+one uncommitted working-tree diff, the orchestrator has to reverse-engineer, finding by finding,
+which ones actually landed clean. Committing after each individual fix (green build/vet/test, plus
+the live check if the finding needed one) turns that same crash into something the orchestrator can
+just read: `git log` on the branch shows exactly which findings are done, and anything with no
+commit is unambiguously not done — no guesswork. This happened for real on shuttle's round 2: the
+operator's terminal broke mid-fix, the round had produced a review and several real fixes, but with
+no commits and no fixer report, the orchestrator had to independently re-derive which fixes were
+actually complete from a raw diff before it could safely continue.
 
 ### Why rotate the model
 
@@ -171,3 +193,15 @@ verification is what caught every residual. R6 was the first round to survive ve
 belt-and-suspenders safety pass) and the orchestrator's gates *and* a live operator-assisted `attach`
 test all agreed: clean. That convergence — round verdict + independent gates + live operator sign-off,
 across rotated models — is the bar this method is built to reach.
+
+### Why fix every finding, including NITs — not just BLOCKING/MEDIUM
+
+The mux campaign above took seven rounds to converge. In retrospect, the operator's experience with
+an earlier review setup (millhouse's own) points at a likely contributor: when a round's prompt only
+required fixing higher-severity findings and let NIT/LOW findings sit as "reported but not fixed,"
+round count went up — unfixed NITs don't just stay static, they re-surface (or silently vanish)
+across subsequent rounds instead of ever closing, adding rounds that should not have been needed.
+Round count dropped sharply once the instruction changed to fix everything a round finds, all
+severities, in the same round. This is why the shuttle instance of this method (and the template,
+going forward) requires fixing every recorded finding — including NITs — not just the
+BLOCKING/MEDIUM ones; severity affects how a finding is reported, not whether it gets fixed.

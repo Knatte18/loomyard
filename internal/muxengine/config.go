@@ -16,12 +16,11 @@ import (
 )
 
 // Config represents the resolved mux.yaml configuration: the machine tool
-// paths psmux/pwsh/claude spawn, the window dimensions, the height-policy
-// knobs render.Params carries, and the strand-name template.
+// paths psmux/pwsh spawn, the window dimensions, the height-policy knobs
+// render.Params carries, and the strand-name template.
 type Config struct {
 	Psmux              string `yaml:"psmux"`
 	Pwsh               string `yaml:"pwsh"`
-	Claude             string `yaml:"claude"`
 	Width              int    `yaml:"width"`
 	Height             int    `yaml:"height"`
 	CollapsedStripRows int    `yaml:"collapsed_strip_rows"`

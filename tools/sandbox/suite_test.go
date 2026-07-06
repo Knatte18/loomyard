@@ -575,3 +575,150 @@ func TestRunSuite_MuxSpec_PromptOverride(t *testing.T) {
 		t.Errorf("launchAgent instruction = %q; want override %q", gotInstruction, customPrompt)
 	}
 }
+
+// TestRunSuite_ShuttleSpec_WritesShuttleFile verifies that
+// runSuite(..., shuttleSuite) writes SANDBOX-SHUTTLE-SUITE.md (not
+// SANDBOX-CORE-SUITE.md or SANDBOX-MUX-SUITE.md) into the host repo, with the
+// fingerprint header prepended to the embedded shuttle doc body.
+func TestRunSuite_ShuttleSpec_WritesShuttleFile(t *testing.T) {
+	parentDir, hostRepoDir := makeHostRepo(t)
+	fakeLyx := makeFakeLyx(t, parentDir)
+	fakeClaude := filepath.Join(parentDir, "claude.exe")
+
+	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction string) int {
+		return 0
+	})
+	defer restore()
+
+	if err := runSuite(parentDir, "", "", shuttleSuite); err != nil {
+		t.Fatalf("runSuite error: %v", err)
+	}
+
+	shuttlePath := filepath.Join(hostRepoDir, shuttleSuite.fileName)
+	content, err := os.ReadFile(shuttlePath)
+	if err != nil {
+		t.Fatalf("read %s: %v", shuttleSuite.fileName, err)
+	}
+	if !strings.Contains(string(content), "Binary under test") {
+		t.Errorf("%s missing fingerprint header; got %q", shuttleSuite.fileName, string(content))
+	}
+	if !strings.Contains(string(content), shuttleSandboxSuiteMD) {
+		t.Errorf("%s does not contain the embedded shuttle doc body", shuttleSuite.fileName)
+	}
+
+	// Neither other suite's file must be written by a shuttle-spec run.
+	if _, err := os.Stat(filepath.Join(hostRepoDir, mainSuite.fileName)); !os.IsNotExist(err) {
+		t.Errorf("%s should not be written by a shuttleSuite run; stat err = %v", mainSuite.fileName, err)
+	}
+	if _, err := os.Stat(filepath.Join(hostRepoDir, muxSuite.fileName)); !os.IsNotExist(err) {
+		t.Errorf("%s should not be written by a shuttleSuite run; stat err = %v", muxSuite.fileName, err)
+	}
+}
+
+// TestRunSuite_ShuttleSpec_ExcludesFiles verifies that a shuttleSuite run
+// registers SANDBOX-SHUTTLE-SUITE.md and sandbox-report.json in
+// .git/info/exclude.
+func TestRunSuite_ShuttleSpec_ExcludesFiles(t *testing.T) {
+	parentDir, hostRepoDir := makeHostRepo(t)
+	fakeLyx := makeFakeLyx(t, parentDir)
+	fakeClaude := filepath.Join(parentDir, "claude.exe")
+
+	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction string) int {
+		return 0
+	})
+	defer restore()
+
+	if err := runSuite(parentDir, "", "", shuttleSuite); err != nil {
+		t.Fatalf("runSuite error: %v", err)
+	}
+
+	excludePath := filepath.Join(hostRepoDir, ".git", "info", "exclude")
+	content, err := os.ReadFile(excludePath)
+	if err != nil {
+		t.Fatalf("read .git/info/exclude: %v", err)
+	}
+	for _, entry := range []string{shuttleSuite.fileName, reportFileName} {
+		if !strings.Contains(string(content), entry) {
+			t.Errorf(".git/info/exclude missing entry %q; got %q", entry, string(content))
+		}
+	}
+}
+
+// TestRunSuite_ShuttleSpec_DeletesStaleReport verifies that a shuttleSuite run
+// deletes a pre-seeded stale sandbox-report.json before launching the agent,
+// mirroring the main and mux suites' stale-report cleanup.
+func TestRunSuite_ShuttleSpec_DeletesStaleReport(t *testing.T) {
+	parentDir, hostRepoDir := makeHostRepo(t)
+	fakeLyx := makeFakeLyx(t, parentDir)
+	fakeClaude := filepath.Join(parentDir, "claude.exe")
+
+	stalePath := filepath.Join(hostRepoDir, reportFileName)
+	if err := os.WriteFile(stalePath, []byte(`{"source": "sandbox-report", "items": [{"ref": "SH0", "title": "stale", "body": "stale"}]}`), 0o644); err != nil {
+		t.Fatalf("write stale report: %v", err)
+	}
+
+	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction string) int {
+		if _, statErr := os.Stat(stalePath); !os.IsNotExist(statErr) {
+			t.Errorf("stale report should be removed before launch; stat err = %v", statErr)
+		}
+		return 0
+	})
+	defer restore()
+
+	if err := runSuite(parentDir, "", "", shuttleSuite); err != nil {
+		t.Fatalf("runSuite should return nil; got error: %v", err)
+	}
+	if _, statErr := os.Stat(stalePath); !os.IsNotExist(statErr) {
+		t.Errorf("stale report should have been removed before launch; stat err = %v", statErr)
+	}
+}
+
+// TestRunSuite_ShuttleSpec_DefaultInstruction verifies that a shuttleSuite run
+// with no -prompt override passes the shuttle default instruction to
+// launchAgent.
+func TestRunSuite_ShuttleSpec_DefaultInstruction(t *testing.T) {
+	parentDir, _ := makeHostRepo(t)
+	fakeLyx := makeFakeLyx(t, parentDir)
+	fakeClaude := filepath.Join(parentDir, "claude.exe")
+
+	var gotInstruction string
+	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction string) int {
+		gotInstruction = instruction
+		return 0
+	})
+	defer restore()
+
+	if err := runSuite(parentDir, "", "", shuttleSuite); err != nil {
+		t.Fatalf("runSuite error: %v", err)
+	}
+	if gotInstruction != shuttleSuite.instruction {
+		t.Errorf("launchAgent instruction = %q; want %q", gotInstruction, shuttleSuite.instruction)
+	}
+	if gotInstruction != "Read ./SANDBOX-SHUTTLE-SUITE.md and follow the instructions in it exactly." {
+		t.Errorf("launchAgent instruction = %q; want the literal shuttle default", gotInstruction)
+	}
+}
+
+// TestRunSuite_ShuttleSpec_PromptOverride verifies that a -prompt override
+// passed to a shuttleSuite run reaches launchAgent verbatim, bypassing the
+// shuttle default.
+func TestRunSuite_ShuttleSpec_PromptOverride(t *testing.T) {
+	parentDir, _ := makeHostRepo(t)
+	fakeLyx := makeFakeLyx(t, parentDir)
+	fakeClaude := filepath.Join(parentDir, "claude.exe")
+	customPrompt := "Do the shuttle thing entirely differently."
+
+	var gotInstruction string
+	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction string) int {
+		gotInstruction = instruction
+		return 0
+	})
+	defer restore()
+
+	if err := runSuite(parentDir, "", customPrompt, shuttleSuite); err != nil {
+		t.Fatalf("runSuite error: %v", err)
+	}
+	if gotInstruction != customPrompt {
+		t.Errorf("launchAgent instruction = %q; want override %q", gotInstruction, customPrompt)
+	}
+}
