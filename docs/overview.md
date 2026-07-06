@@ -236,7 +236,9 @@ User-facing modules each get one `lyx <module>` namespace:
   (`internal/shuttleengine` + `internal/shuttleengine/claudeengine` + `internal/shuttlecli`;
   `lyx shuttle run|interrupt|send`). `Stop`-hook completion is read off an events file and
   classified into four outcomes — `done`/`asking`/`died`/`timeout` — with `asking` as the
-  escalation channel back to a human or a higher-capability model. `PreToolUse` guardrails deny
+  escalation channel back to a human or a higher-capability model; an interactive run also detects
+  a live `AskUserQuestion` tool call in real time via a non-denying marker hook, classified as the
+  same `asking` outcome instead of waiting for the timeout. `PreToolUse` guardrails deny
   the in-process `Agent` tool always, and `AskUserQuestion` too when the run is autonomous
   (`Interactive: false`, the default). The provider is swappable behind an **engine** seam; Claude
   is the only v1 engine (Gemini etc. later, not a current priority). Per-run `Model` and `Effort`
