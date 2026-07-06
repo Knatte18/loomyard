@@ -57,7 +57,9 @@ func newSessionID() (string, error) {
 // inputs: the session id it mints here, the POSIX form of the run's events
 // path (hook commands run under git-bash, which cannot parse a Windows
 // backslash path), and the claude binary/flags cfg and spec.Interactive
-// select.
+// select. spec.Effort is hard-error-validated (validateEffort) before any
+// artifact is written; a valid value is threaded through to buildLaunchCmd
+// unchanged.
 func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengine.Config) (shuttleengine.Launch, error) {
 	// Reject an over-ceiling prompt before any artifact is written: past
 	// maxLaunchPromptBytes the pane launch is guaranteed to fail against the
@@ -69,6 +71,16 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 			"prompt is %d bytes, over the %d-byte launch limit: the pane launch expands the whole prompt into one command-line argument and Windows caps a process command line at 32,767 characters — move the long content into a file and make the prompt a short pointer to it",
 			len(spec.Prompt), maxLaunchPromptBytes,
 		)
+	}
+
+	// Reject an unrealizable effort before any artifact is written, for the
+	// same reason as the prompt-size guard above: claude only
+	// warns-and-ignores a bad --effort value rather than failing the launch,
+	// so failing here is the only way to surface the mistake at all, and
+	// failing before prompt.md/settings.json exist keeps a rejected Prepare
+	// call from leaving a half-written run directory behind.
+	if err := validateEffort(spec.Effort); err != nil {
+		return shuttleengine.Launch{}, err
 	}
 
 	sessionID, err := newSessionID()
@@ -98,7 +110,7 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 
 	bin := claudeBinary(cfg)
 	return shuttleengine.Launch{
-		Cmd:       buildLaunchCmd(bin, promptPath, settingsPath, sessionID, spec.Model, spec.Interactive),
+		Cmd:       buildLaunchCmd(bin, promptPath, settingsPath, sessionID, spec.Model, spec.Effort, spec.Interactive),
 		ResumeCmd: buildResumeCmd(bin, settingsPath, sessionID),
 		SessionID: sessionID,
 	}, nil

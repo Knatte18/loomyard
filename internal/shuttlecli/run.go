@@ -33,6 +33,7 @@ func (c *shuttleCLI) runCmd() *cobra.Command {
 		promptFile  string
 		outputFiles []string
 		model       string
+		effort      string
 		interactive bool
 		role        string
 		round       string
@@ -60,7 +61,10 @@ Example (autonomous, two output files):
   lyx shuttle run --prompt "review this diff" --output-file review.md --output-file findings.json
 
 Example (interactive, agent may ask clarifying questions):
-  lyx shuttle run --prompt-file task.md --output-file result.md --interactive`,
+  lyx shuttle run --prompt-file task.md --output-file result.md --interactive
+
+--effort overrides the provider's reasoning-effort level; empty defers to
+the provider default.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out := cmd.OutOrStdout()
 
@@ -102,6 +106,7 @@ Example (interactive, agent may ask clarifying questions):
 				Prompt:      promptText,
 				OutputFiles: outputFiles,
 				Model:       model,
+				Effort:      effort,
 				Interactive: interactive,
 				Role:        role,
 				Round:       round,
@@ -136,6 +141,7 @@ Example (interactive, agent may ask clarifying questions):
 	cmd.Flags().StringVar(&promptFile, "prompt-file", "", "path to a file whose contents become the task prompt")
 	cmd.Flags().StringArrayVar(&outputFiles, "output-file", nil, "output file the agent must write (repeatable; required at least once; must not already exist; relative paths resolve against the worktree root)")
 	cmd.Flags().StringVar(&model, "model", "", "provider model override; empty defers to the engine/provider default")
+	cmd.Flags().StringVar(&effort, "effort", "", "reasoning-effort override; empty defers to the provider default")
 	cmd.Flags().BoolVar(&interactive, "interactive", false, "run interactively (the agent may ask questions); default is autonomous")
 	cmd.Flags().StringVar(&role, "role", "", "role token used to fill the strand-name template")
 	cmd.Flags().StringVar(&round, "round", "", "round token used to fill the strand-name template")

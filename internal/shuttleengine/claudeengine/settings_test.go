@@ -102,12 +102,16 @@ func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 		wantAgentEntry   bool
 		wantAskUserEntry bool
 	}{
-		{"both_off", false, false, false, false, false},
+		{"both_off_autonomous", false, false, false, false, false},
 		{"agent_only_autonomous", true, false, false, true, false},
 		{"askuser_only_autonomous", false, true, false, false, true},
 		{"both_on_autonomous", true, true, false, true, true},
-		{"both_on_interactive_suppresses_askuser", true, true, true, true, false},
-		{"askuser_only_interactive_suppressed", false, true, true, false, false},
+		// Interactive runs always carry the non-denying AskUserQuestion
+		// marker entry, regardless of ClaudeDenyAskUserQuestion — the deny
+		// is autonomous-only and the two are mutually exclusive.
+		{"both_on_interactive_marker_not_deny", true, true, true, true, true},
+		{"askuser_only_interactive_marker_not_deny", false, true, true, false, true},
+		{"both_off_interactive_marker_still_present", false, false, true, false, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -119,6 +123,22 @@ func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 			doc := parseSettings(t, data)
 			preToolUse := hooksFor(doc, "PreToolUse")
 
+			askUserCommand := func() (string, bool) {
+				for _, e := range preToolUse {
+					entry, _ := e.(map[string]any)
+					if entry["matcher"] != "AskUserQuestion" {
+						continue
+					}
+					hooks, _ := entry["hooks"].([]any)
+					if len(hooks) == 0 {
+						return "", true
+					}
+					cmd, _ := hooks[0].(map[string]any)
+					command, _ := cmd["command"].(string)
+					return command, true
+				}
+				return "", false
+			}
 			hasMatcher := func(matcher string) bool {
 				for _, e := range preToolUse {
 					entry, _ := e.(map[string]any)
@@ -132,13 +152,35 @@ func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 			if got := hasMatcher("Agent"); got != tt.wantAgentEntry {
 				t.Errorf("Agent PreToolUse entry present = %v; want %v (preToolUse: %v)", got, tt.wantAgentEntry, preToolUse)
 			}
-			if got := hasMatcher("AskUserQuestion"); got != tt.wantAskUserEntry {
-				t.Errorf("AskUserQuestion PreToolUse entry present = %v; want %v (preToolUse: %v)", got, tt.wantAskUserEntry, preToolUse)
+			command, present := askUserCommand()
+			if present != tt.wantAskUserEntry {
+				t.Errorf("AskUserQuestion PreToolUse entry present = %v; want %v (preToolUse: %v)", present, tt.wantAskUserEntry, preToolUse)
+			}
+			if present && tt.interactive {
+				// The interactive marker must be non-denying (no deny JSON)
+				// and must reuse the Stop hook's exact append command.
+				if strings.Contains(command, "permissionDecision") {
+					t.Errorf("interactive AskUserQuestion command = %q; want no deny JSON", command)
+				}
+				stop := hooksFor(doc, "Stop")
+				stopEntry, _ := stop[0].(map[string]any)
+				stopHooks, _ := stopEntry["hooks"].([]any)
+				stopCmd, _ := stopHooks[0].(map[string]any)
+				wantCommand, _ := stopCmd["command"].(string)
+				if command != wantCommand {
+					t.Errorf("interactive AskUserQuestion command = %q; want it to equal the Stop hook command %q", command, wantCommand)
+				}
+			}
+			if present && !tt.interactive {
+				// The autonomous deny must carry the deny JSON payload.
+				if !strings.Contains(command, "permissionDecision") {
+					t.Errorf("autonomous AskUserQuestion command = %q; want the deny JSON payload", command)
+				}
 			}
 			if !tt.wantAgentEntry && !tt.wantAskUserEntry {
 				hooks, _ := doc["hooks"].(map[string]any)
 				if _, present := hooks["PreToolUse"]; present {
-					t.Errorf("PreToolUse key present with no denies configured; want the key omitted entirely: %v", hooks)
+					t.Errorf("PreToolUse key present with no denies/marker configured; want the key omitted entirely: %v", hooks)
 				}
 			}
 		})

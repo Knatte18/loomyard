@@ -2,8 +2,11 @@
 // writes for each run: a Stop hook that appends every turn-end event to the
 // run's events.jsonl (the only channel ParseEvents reads), and the
 // PreToolUse guardrails that keep a run's work visible in its own pane —
-// denying the in-process Agent tool always, and denying AskUserQuestion in
-// autonomous runs, where there is no operator present to answer it.
+// denying the in-process Agent tool always, denying AskUserQuestion in
+// autonomous runs (where there is no operator present to answer it), and
+// recording — never denying — a live AskUserQuestion call in interactive
+// runs so the run loop can classify it as a real-time asking signal instead
+// of waiting for the timeout.
 
 package claudeengine
 
@@ -44,8 +47,9 @@ type hookEntry struct {
 
 // settingsHooks is the "hooks" object of a Claude Code settings.json
 // document. PreToolUse is omitted entirely (via omitempty on a nil slice)
-// when neither guardrail is configured on, so a run with both denies off
-// emits no PreToolUse key at all.
+// when an autonomous run has both denies off, so that case emits no
+// PreToolUse key at all; an interactive run always carries at least the
+// non-denying AskUserQuestion marker entry.
 type settingsHooks struct {
 	Stop       []hookEntry `json:"Stop"`
 	PreToolUse []hookEntry `json:"PreToolUse,omitempty"`
@@ -91,12 +95,16 @@ func denyJSON(steer string) string {
 // The Agent-tool deny is included whenever cfg.ClaudeDenyAgentTool is set,
 // in both interactive and autonomous runs — Claude Code's in-process Agent
 // tool must never be allowed to run work invisibly, regardless of who is
-// watching the pane. The AskUserQuestion deny is included only when
-// cfg.ClaudeDenyAskUserQuestion is set AND the run is autonomous
-// (!interactive): an interactive run has an operator who can actually
-// answer the dialog, so the deny would only get in the way there (Shared
-// Decision "Interactive bool encodes the discussion's Autonomous default
-// true").
+// watching the pane. AskUserQuestion's PreToolUse entry is mutually
+// exclusive on the interactive/autonomous split: an interactive run gets a
+// non-denying marker hook — reusing the SAME append command as the Stop
+// hook — so the live tool call is recorded into events.jsonl (and thus
+// classifiable by ParseEvents/pollEventsTick) while the tool call itself
+// proceeds unhindered, since an operator is present to actually answer it;
+// an autonomous run instead gets the existing deny, gated on
+// cfg.ClaudeDenyAskUserQuestion, since there is no operator to answer a
+// dialog there (Shared Decision "Interactive bool encodes the discussion's
+// Autonomous default true", and the live-ask-signal decision).
 func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.Config) ([]byte, error) {
 	quotedEventsPath := shQuote(eventsPathPosix)
 	stopCmd := fmt.Sprintf("cat >> %s && printf '\\n' >> %s", quotedEventsPath, quotedEventsPath)
@@ -115,7 +123,19 @@ func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.C
 			Hooks:   []hookCommand{{Type: "command", Command: "echo '" + denyJSON(steerAgentDeny) + "'"}},
 		})
 	}
-	if cfg.ClaudeDenyAskUserQuestion && !interactive {
+	if interactive {
+		// Record the live ask instead of denying it: the marker hook reuses
+		// the Stop hook's append command verbatim (same events.jsonl, same
+		// JSONL contract) and emits no deny JSON, so the tool call proceeds
+		// normally while ParseEvents gets a classifiable line the instant it
+		// opens. This marker is always on for interactive runs — there is no
+		// config key to disable it, since recording a live ask is never
+		// harmful to an operator who is present to answer it.
+		doc.Hooks.PreToolUse = append(doc.Hooks.PreToolUse, hookEntry{
+			Matcher: "AskUserQuestion",
+			Hooks:   []hookCommand{{Type: "command", Command: stopCmd}},
+		})
+	} else if cfg.ClaudeDenyAskUserQuestion {
 		doc.Hooks.PreToolUse = append(doc.Hooks.PreToolUse, hookEntry{
 			Matcher: "AskUserQuestion",
 			Hooks:   []hookCommand{{Type: "command", Command: "echo '" + denyJSON(steerAskUserQuestionDeny) + "'"}},

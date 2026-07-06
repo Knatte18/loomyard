@@ -151,9 +151,10 @@ var _ MuxOps = (*fakeMux)(nil)
 // without writing any real files — tests that need pollEventsTick to see
 // something seed events.jsonl directly. ParseEvents splits a trivial
 // newline-delimited fixture format: a line of the form "STOP:<message>"
-// becomes a StopEvent carrying <message> as LastAssistantMessage, any other
-// line (blank, or missing the prefix) is skipped — mirroring the leniency a
-// real engine's parser must have for partial appends. Startup replays
+// becomes an EventStop carrying <message> as Message, a line of the form
+// "ASK:<question>" becomes an EventAsk carrying <question> as Message, and
+// any other line (blank, or missing either prefix) is skipped — mirroring
+// the leniency a real engine's parser must have for partial appends. Startup replays
 // StartupScript in FIFO order (the last entry stays once the script drains,
 // same rule as fakeMux's queues; an empty script always reports
 // StartupPending). InterruptSequence/ComposeSend return fixed, inspectable
@@ -206,7 +207,7 @@ func (e *fakeEngine) Prepare(runDir string, spec Spec, cfg Config) (Launch, erro
 	return e.PrepareLaunch, nil
 }
 
-func (e *fakeEngine) ParseEvents(data []byte) ([]StopEvent, error) {
+func (e *fakeEngine) ParseEvents(data []byte) ([]Event, error) {
 	e.mu.Lock()
 	e.parseEventsCallsSeen++
 	callNum := e.parseEventsCallsSeen
@@ -222,17 +223,20 @@ func (e *fakeEngine) ParseEvents(data []byte) ([]StopEvent, error) {
 		return nil, e.ParseEventsErr
 	}
 
-	var events []StopEvent
+	var events []Event
 	for _, line := range strings.Split(string(data), "\n") {
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" {
 			continue
 		}
-		msg, ok := strings.CutPrefix(trimmed, "STOP:")
-		if !ok {
+		if msg, ok := strings.CutPrefix(trimmed, "STOP:"); ok {
+			events = append(events, Event{Kind: EventStop, Message: msg, Raw: []byte(trimmed)})
 			continue
 		}
-		events = append(events, StopEvent{LastAssistantMessage: msg, Raw: []byte(trimmed)})
+		if msg, ok := strings.CutPrefix(trimmed, "ASK:"); ok {
+			events = append(events, Event{Kind: EventAsk, Message: msg, Raw: []byte(trimmed)})
+			continue
+		}
 	}
 	return events, nil
 }
