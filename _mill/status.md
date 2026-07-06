@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-effort
 slug: shuttle-spec-effort
 branch: shuttle-spec-effort
 plan: _mill/plan
@@ -21,6 +21,7 @@ planning  '2026-07-06T16:41:45Z'
 plan-fix-r1  '2026-07-06T16:47:23Z'
 planned  '2026-07-06T16:47:36Z'
 implementing  '2026-07-06T16:48:32Z'
+approved-effort  '2026-07-06T16:59:47Z'
 ```
 
 ## Batches
@@ -28,9 +29,10 @@ implementing  '2026-07-06T16:48:32Z'
 ```yaml
 batches:
   - name: effort
-    state: running
+    state: approved
     implementer_session: 670cbf67-38d4-47bf-9b3d-0eec9126ba34
     start_sha: ce929cc1006f9d596ad5c7043833683fba49a681
+    commit_sha: fbc7e7c75b2f806cab1dc94ea5d86d65a615895e
   - name: ask-signal
     state: pending
 ```
