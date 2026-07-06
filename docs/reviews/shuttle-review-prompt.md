@@ -161,40 +161,43 @@ explicitly future work per `docs/roadmap.md` milestone 10's notes — shuttle on
 agent well.
 
 ## Round context seeded from prior-round verification
-**Residual to close (round 2).** Round 1 (opus-r1) found and fixed 3 real bugs plus a docs fix,
-all independently verified via revert-and-fail proofs — do NOT re-open or re-litigate these,
-they are CLOSED AND VERIFIED:
-- F1: a `saveRunState` failure during `Start` left a live, untracked strand with no recovery path
-  (`internal/shuttleengine/run.go`) — fixed by removing the strand and run dir on that failure path.
-- F2: a pane dying right after satisfying the file contract but before its Stop hook fired was
-  misclassified as `died` instead of `done` (`internal/shuttleengine/wait.go`) — fixed by checking
-  output files first.
-- F4: the Stop hook's shell command did not escape single quotes in the run's events path
-  (`internal/shuttleengine/claudeengine/settings.go`) — fixed with the standard POSIX quote idiom.
-- docs: `docs/overview.md` self-contradicted its own module table, claiming shuttle has no CLI —
-  fixed.
+**Safety pass (round 3).** There is NO known residual. Rounds 1 and 2 each found real bugs, fixed
+them, and every fix was independently verified by the orchestrator (hermetic gates + live smoke
+reruns, not the round's own self-report) — do NOT re-open or re-litigate any of these, they are
+CLOSED AND VERIFIED:
+- F1 (round 1): a `saveRunState` failure during `Start` left a live, untracked strand with no
+  recovery path (`internal/shuttleengine/run.go`) — fixed by removing the strand and run dir on
+  that failure path.
+- F2 (round 1): a pane dying right after satisfying the file contract but before its Stop hook
+  fired was misclassified as `died` instead of `done` (`internal/shuttleengine/wait.go`) — fixed by
+  checking output files first.
+- F4 (round 1): the Stop hook's shell command did not escape single quotes in the run's events
+  path (`internal/shuttleengine/claudeengine/settings.go`) — fixed with the standard POSIX quote
+  idiom.
+- docs (round 1): `docs/overview.md` self-contradicted its own module table, claiming shuttle has
+  no CLI — fixed.
+- M1 (round 2): `TestSmokeInterruptSendContinues` asserted the racy `Wait == done` property, which
+  live probing showed is not deterministic against a real claude (its Stop hook fires on ANY turn
+  end, including one Interrupt itself caused). Rewritten to assert the deterministic property
+  instead — the redirected output file's content — proven clean over 3 consecutive live reruns
+  after the fix (following one reproduced pre-fix failure).
+- M2 (round 2): the `Interrupt` doc comment overpromised a deterministic `done` after interrupt+send;
+  calibrated to describe what live probing actually established.
+- L1 (round 2): `Startup`'s trust-prompt heuristic was checked before the ready markers, which could
+  in principle mask an already-ready pane; reordered so ready markers win, with a regression test.
+- N1 (round 2): `run_timeout_min: 0` silently means "times out immediately," not "unlimited";
+  documented in `config.go`, `spec.go`, `template.yaml`.
 
-**One residual remains — this is YOUR job this round.** F3, round 1's rewrite of
-`internal/shuttlecli/smoke_interrupt_test.go`'s `TestSmokeInterruptSendContinues`, is NOT reliable.
-The old test used a fixed sleep (flaky in one direction: could pass without ever exercising
-interrupt/send). Round 1 replaced it with an open-ended "count slowly to a very large number"
-prompt plus pane-polling to catch the agent mid-turn before interrupting — but on independent
-rerun (twice, two different ways) this new version is ALSO flaky, in a different direction: real
-claude sometimes responds to that prompt by stopping to ask a clarifying question instead of
-counting indefinitely, so the run lands in `"asking"` before the test ever gets to interrupt it.
-Round 1's own "reran twice, both passed" claim did not hold under independent verification.
-Fix the right layer, not just the symptom — candidate directions (pick what actually works, don't
-assume one is sufficient without proving it via multiple independent reruns, not just one or two):
-- Reword the prompt to explicitly foreclose ANY question or confirmation ("do not ask, do not
-  confirm anything, start counting immediately and do not stop until told to").
-- And/or have the test treat an early `"asking"` outcome as a retry signal (re-launch, or
-  interrupt-and-redirect) rather than a hard test failure, since no prompt wording can be 100%
-  deterministic against a live LLM's behavior.
-- And/or pick a different mid-turn-inducing task that is less prone to eliciting a clarifying
-  question in the first place.
-Add a regression test/rerun-proof for whatever you land on — prove determinism by running it
-several times in a row (not just once or twice), the same discipline the method's Fixing section
-already requires for any smoke test.
+Round 2 also **deliberately deferred as low-priority, do NOT treat as new work**: L2 (`Interrupt`/
+`Send` on a terminal-but-kept `died`/`timeout` run has no liveness guard before poking a possibly-
+dead pane — plausible, unverified end-to-end, low priority) and L3 (a turn-end `Stop` with
+`background_tasks` still running classifies `asking`, which is defensible, not a bug).
+
+**Your job this round: a genuinely independent clean-room safety pass.** Find what every prior
+round missed, or honestly confirm merge-readiness — "no new defects, ship it" is the expected,
+valuable outcome of a safety pass, do not invent work to justify the round. Read the full prior
+findings above and the deferred list below only AFTER forming your own independent judgment (per
+the Clean-room review constraint above).
 
 State the **merge bar** so you calibrate: correctness in the NORMAL single-instance flow (one
 shuttle run, one strand, one claude session) is the gate; an N×-concurrent stress suite (if you
@@ -247,13 +250,20 @@ behavior), severity (BLOCKING / MEDIUM / LOW / NIT), suggested fix, and CONFIRME
 flag deferred-that-should-be-v1 and shipped-beyond-scope.
 
 ## Deferred items from the prior round — RE-EVALUATE these (after your own pass)
-Round 1 (opus-r1) honestly flagged these as consciously-deferred verification limits, not new
-risk — decide whether any now warrants action:
-- S2's operator-assisted attach step (needs a real TTY in a second terminal) was not driven live.
-- A live concurrent-run orphan-sweep race (two shuttle runs racing `sweepOrphans`'s age guard) was
-  not driven live under real concurrency, only reasoned about.
-- A manual second-process CLI invocation of `interrupt`/`send` (as opposed to the in-process Go
-  test harness) was not fully exercised end-to-end.
+- **S2's operator-assisted attach step** (needs a real TTY in a second terminal): still not driven
+  live by either round 1 or round 2 — both honestly flagged it as not-headlessly-verifiable. Still
+  open; drive it yourself if you can get a real second terminal, otherwise flag it again.
+- **Concurrent-run orphan-sweep race**: round 1 only reasoned about this; round 2 went further and
+  **traced it to safe** (not live-driven, but by code inspection): mux never deletes a strand record
+  on pane death (`reconcile.go` clears `PaneID` only — "only RemoveStrand deletes one"), so a
+  `died`/`asking`/`timeout` run's GUID persists in `mux.json` and `sweepOrphans` skips it; the
+  `minAge = 2×startup_timeout` guard covers the pre-`AddStrand` window. Re-evaluate whether this
+  tracing is convincing enough, or whether it's worth actually driving live for extra confidence in
+  a safety pass.
+- **Manual second-process CLI invocation of `interrupt`/`send`**: round 1 hadn't exercised this;
+  round 2 **verified it live** (cross-process CLI interrupt/send against a blocking run in the
+  sandbox hub — keys reached the pane, the agent rewrote the output file). Consider this CLOSED
+  unless your own pass finds a reason to doubt it.
 
 ## Fixing — after the review
 - Load the code-quality guidance (`/code-quality` skill or `mill:code-quality`) AND the
