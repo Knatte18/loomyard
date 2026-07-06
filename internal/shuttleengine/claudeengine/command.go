@@ -28,6 +28,36 @@ import (
 // wrapper function on the same line.
 const maxLaunchPromptBytes = 30000
 
+// validEfforts is the exact-lowercase set of --effort values claude accepts,
+// verified live against `claude --effort`: per-model support is NOT policed
+// here (it is invisible from the CLI — a mismatched model/effort pair
+// returns success with no signal, proven live), so this set is the entire
+// vocabulary validateEffort ever checks against.
+var validEfforts = map[string]bool{
+	"low":    true,
+	"medium": true,
+	"high":   true,
+	"xhigh":  true,
+	"max":    true,
+}
+
+// validateEffort reports an error unless effort is either empty (defers to
+// claude's own default) or an exact-lowercase member of validEfforts — a
+// case-sensitive check, so "High"/"HIGH" are rejected exactly like any other
+// unrecognized value. claude itself only warns-and-ignores an unrecognized
+// --effort value rather than failing the launch, so shuttle must hard-error
+// here instead: silently dropping an operator's effort override would be a
+// worse failure mode than refusing to start the run.
+func validateEffort(effort string) error {
+	if effort == "" {
+		return nil
+	}
+	if validEfforts[effort] {
+		return nil
+	}
+	return fmt.Errorf("claudeengine: invalid effort %q; valid values are low, medium, high, xhigh, max (case-sensitive, exact-lowercase)", effort)
+}
+
 // pwshSingleQuote wraps s in pwsh single quotes, doubling any embedded
 // single quote (pwsh's own escape for a literal `'` inside a single-quoted
 // string) so a path containing a quote or a space still round-trips as one
@@ -60,18 +90,27 @@ func claudeBinary(cfg shuttleengine.Config) string {
 // ([0-9a-f-]) needs no escaping today, but quoting every interpolated
 // argument uniformly is the invariant that stops a future change to how the
 // id is sourced from silently reintroducing an injection.
+// --effort is appended only when effort is non-empty (an empty value defers
+// to claude's own default), single-quoted for the same injection-hardening
+// reason as --model, and positioned immediately after --model — Prepare has
+// already hard-errored on any effort value validateEffort cannot realize
+// before this function is ever called, so buildLaunchCmd itself never
+// re-validates.
 // --dangerously-skip-permissions is appended only when interactive is
 // false — the autonomous default (Shared Decision "Interactive bool encodes
 // the discussion's Autonomous default true"). The result is exactly one
 // line with no embedded newlines, since it is typed into a pane via a
 // single send-keys call.
-func buildLaunchCmd(bin, promptPath, settingsPath, sessionID, model string, interactive bool) string {
+func buildLaunchCmd(bin, promptPath, settingsPath, sessionID, model, effort string, interactive bool) string {
 	cmd := fmt.Sprintf(
 		"& %s (Get-Content -Raw %s) --session-id %s --settings %s",
 		pwshSingleQuote(bin), pwshSingleQuote(promptPath), pwshSingleQuote(sessionID), pwshSingleQuote(settingsPath),
 	)
 	if model != "" {
 		cmd += " --model " + pwshSingleQuote(model)
+	}
+	if effort != "" {
+		cmd += " --effort " + pwshSingleQuote(effort)
 	}
 	if !interactive {
 		cmd += " --dangerously-skip-permissions"
