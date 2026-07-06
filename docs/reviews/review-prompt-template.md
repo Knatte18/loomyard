@@ -136,11 +136,26 @@ severity (BLOCKING / MEDIUM / LOW / NIT), suggested fix, and CONFIRMED (reproduc
 PLAUSIBLE (looks wrong, unverified). For scope: plan-promised vs shipped; flag
 deferred-that-should-be-v1 and shipped-beyond-scope.
 
+**Severity affects how you REPORT a finding, not whether you fix it.** ALL findings you record get
+fixed in Job 2 — including every NIT — not just BLOCKING/MEDIUM ones. A finding you write down but
+leave unfixed as "low priority" is not actually a reported finding; it is a dropped one that will
+either silently vanish or re-surface and loop across future rounds instead of closing (this is a
+known failure mode from an earlier review setup this method is descended from: NITs left unfixed
+"because they're just NITs" kept escalating and going in circles instead of ever getting closed).
+The only legitimate reason to leave a finding unfixed is that fixing it genuinely requires
+something you cannot do alone this round — an operator decision on a real design tradeoff, or a
+live capability you don't have (e.g. a second real TTY). Even then you must say so explicitly, with
+the specific reason, in the fixer report's deferred section — never bucket something as "deferred,
+low priority" just because it felt small. Small and low-severity findings are usually the CHEAPEST
+to fix, not a reason to skip them.
+
 ## Deferred items from the prior round — RE-EVALUATE these (after your own pass)
 `<Bulleted list the orchestrator carries forward — consciously-deferred items to decide on each
 round. Empty on the first round.>`
 
 ## Fixing — after the review
+- Fix EVERY finding from your review, all severities including NIT (see "How to judge each
+  finding" above for the full rationale) — not just BLOCKING/MEDIUM ones.
 - Load the code-quality guidance (`/code-quality` skill) AND the language-specific skill(s) for this
   codebase (e.g. `mill:golang-build`/`mill:golang-testing`/`mill:golang-comments` for a Go module —
   substitute the matching set for whatever language this module is written in) before editing — ALL

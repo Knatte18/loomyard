@@ -249,6 +249,19 @@ behavior), severity (BLOCKING / MEDIUM / LOW / NIT), suggested fix, and CONFIRME
 (reproduced/traced) vs PLAUSIBLE (looks wrong, unverified). For scope: plan-promised vs shipped;
 flag deferred-that-should-be-v1 and shipped-beyond-scope.
 
+**Severity affects how you REPORT a finding, not whether you fix it.** ALL findings you record get
+fixed in Job 2 — including every NIT — not just BLOCKING/MEDIUM ones. A finding you write down but
+leave unfixed as "low priority" is not actually a reported finding; it is a dropped one that will
+either silently vanish or re-surface and loop across future rounds instead of closing (this is a
+known failure mode from an earlier review setup this method is descended from: NITs left unfixed
+"because they're just NITs" kept escalating and going in circles instead of ever getting closed).
+The only legitimate reason to leave a finding unfixed is that fixing it genuinely requires
+something you cannot do alone this round — an operator decision on a real design tradeoff, or a
+live capability you don't have (e.g. a second real TTY). Even then you must say so explicitly, with
+the specific reason, in the fixer report's deferred section — never bucket something as "deferred,
+low priority" just because it felt small. Small and low-severity findings are usually the CHEAPEST
+to fix, not a reason to skip them.
+
 ## Deferred items from the prior round — RE-EVALUATE these (after your own pass)
 - **S2's operator-assisted attach step** (needs a real TTY in a second terminal): still not driven
   live by either round 1 or round 2 — both honestly flagged it as not-headlessly-verifiable. Still
@@ -266,6 +279,8 @@ flag deferred-that-should-be-v1 and shipped-beyond-scope.
   unless your own pass finds a reason to doubt it.
 
 ## Fixing — after the review
+- Fix EVERY finding from your review, all severities including NIT (see "How to judge each
+  finding" above for the full rationale) — not just BLOCKING/MEDIUM ones.
 - Load the code-quality guidance (`/code-quality` skill or `mill:code-quality`) AND the
   language-specific skills for this codebase (`mill:golang-build`, `mill:golang-testing`,
   `mill:golang-comments`) before editing — all of them, not just code-quality. (This is called out
