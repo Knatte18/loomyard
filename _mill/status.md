@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: shuttle-spec-effort
 branch: shuttle-spec-effort
-plan: null
+plan: _mill/plan
 parent: main
 task: Add Effort to shuttle's run Spec
 task_description: |
@@ -17,4 +17,5 @@ task_description: |
 discussing  '2026-07-06T16:06:32Z'
 discussion-fix-r1  '2026-07-06T16:33:39Z'
 discussed  '2026-07-06T16:33:58Z'
+planning  '2026-07-06T16:41:45Z'
 ```
