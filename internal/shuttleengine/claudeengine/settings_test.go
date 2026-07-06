@@ -145,12 +145,15 @@ func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 	}
 }
 
-func TestBuildSettings_NoSingleQuoteInSteerText(t *testing.T) {
-	if strings.Contains(steerAgentDeny, "'") {
-		t.Errorf("steerAgentDeny contains a single quote: %q", steerAgentDeny)
-	}
-	if strings.Contains(steerAskUserQuestionDeny, "'") {
-		t.Errorf("steerAskUserQuestionDeny contains a single quote: %q", steerAskUserQuestionDeny)
+func TestBuildSettings_NoForbiddenCharsInSteerText(t *testing.T) {
+	// Each steer constant rides inside a JSON string literal (so a literal
+	// `"` or `\` would corrupt the payload) nested inside a single-quoted
+	// echo argument under git-bash (so a literal `'` would corrupt the
+	// hook command) — all three characters must stay absent.
+	for _, steer := range []string{steerAgentDeny, steerAskUserQuestionDeny} {
+		if strings.ContainsAny(steer, steerTextForbiddenChars) {
+			t.Errorf("steer text contains a forbidden character (one of %q): %q", steerTextForbiddenChars, steer)
+		}
 	}
 }
 

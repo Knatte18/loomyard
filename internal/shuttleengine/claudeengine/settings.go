@@ -129,16 +129,24 @@ func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.C
 	return data, nil
 }
 
-// mustContainNoSingleQuote is a compile-time-adjacent guard: both steer
-// constants ride inside a single-quoted echo argument under git-bash, so
-// either one containing a `'` would corrupt the hook command. Panicking at
-// package init turns a future edit that reintroduces a quote into an
-// immediate, unmissable failure rather than a subtle hook-command bug
-// discovered only via a live smoke test.
+// steerTextForbiddenChars are the characters a steer constant must never
+// contain, checked at package init (see the init func below). Each rides
+// inside TWO nested quoting layers: denyJSON substitutes it raw into a JSON
+// string literal (so a literal `"` closes that string early and a literal
+// `\` starts a JSON escape sequence, either corrupting the payload), and the
+// whole JSON payload then rides inside a single-quoted echo argument under
+// git-bash (so a literal `'` closes that shell argument early). All three
+// must stay absent, not just the `'` a narrower guard would catch.
+const steerTextForbiddenChars = `'"\`
+
+// init panics at package load if either steer constant contains a character
+// from steerTextForbiddenChars — turning a future edit that reintroduces one
+// into an immediate, unmissable failure rather than a subtle hook-command or
+// JSON-payload corruption discovered only via a live smoke test.
 func init() {
 	for _, steer := range []string{steerAgentDeny, steerAskUserQuestionDeny} {
-		if strings.Contains(steer, "'") {
-			panic(fmt.Sprintf("claudeengine: steer text contains a single quote, which would break the echo hook command: %q", steer))
+		if strings.ContainsAny(steer, steerTextForbiddenChars) {
+			panic(fmt.Sprintf("claudeengine: steer text contains a forbidden character (one of %q), which would break the JSON payload or the echo hook command: %q", steerTextForbiddenChars, steer))
 		}
 	}
 }
