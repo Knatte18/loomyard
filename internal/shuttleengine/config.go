@@ -20,9 +20,13 @@ import (
 // claude executable path, and which PreToolUse denies the claude engine
 // emits.
 type Config struct {
-	RunDir              string `yaml:"run_dir"`
-	PollIntervalMS      int    `yaml:"poll_interval_ms"`
-	LivenessEveryNPolls int    `yaml:"liveness_every_n_polls"`
+	RunDir string `yaml:"run_dir"`
+	// PollIntervalMS is the wait loop's tick interval. A non-positive value
+	// is floored to the template default (see wait.go's pollInterval): 0
+	// would otherwise busy-spin the loop silently rather than fail visibly
+	// like the two timeout keys' 0 values do.
+	PollIntervalMS      int `yaml:"poll_interval_ms"`
+	LivenessEveryNPolls int `yaml:"liveness_every_n_polls"`
 	// RunTimeoutMin is the fallback run deadline in minutes, used whenever a
 	// Spec's own Timeout is zero (see Spec.Timeout's doc comment). It has no
 	// "unlimited" value: setting this to 0 does not mean "no timeout" — it

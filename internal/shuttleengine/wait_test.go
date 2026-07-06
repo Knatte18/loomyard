@@ -73,6 +73,29 @@ func newWaitTestRunner(t *testing.T, mux MuxOps, engine Engine, cfg Config) *Run
 	return NewRunner(mux, engine, layout, cfg)
 }
 
+// TestPollInterval_FloorsNonPositive pins the busy-spin guard: a configured
+// poll_interval_ms of 0 or below must fall back to the template default
+// rather than making Wait tick with a zero sleep.
+func TestPollInterval_FloorsNonPositive(t *testing.T) {
+	tests := []struct {
+		name       string
+		intervalMS int
+		want       time.Duration
+	}{
+		{"zero_floored", 0, defaultPollIntervalMS * time.Millisecond},
+		{"negative_floored", -100, defaultPollIntervalMS * time.Millisecond},
+		{"positive_passthrough", 250, 250 * time.Millisecond},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := pollInterval(Config{PollIntervalMS: tt.intervalMS})
+			if got != tt.want {
+				t.Errorf("pollInterval({PollIntervalMS: %d}) = %v; want %v", tt.intervalMS, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestRun_Wait_DoneHappyPath_CleansUp(t *testing.T) {
 	runDir := t.TempDir()
 	eventsPath := filepath.Join(runDir, "events.jsonl")

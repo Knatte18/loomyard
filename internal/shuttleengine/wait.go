@@ -35,6 +35,23 @@ type realClock struct{}
 func (realClock) Now() time.Time        { return time.Now() }
 func (realClock) Sleep(d time.Duration) { time.Sleep(d) }
 
+// defaultPollIntervalMS mirrors template.yaml's poll_interval_ms default:
+// the floor pollInterval falls back to for a non-positive configured value.
+const defaultPollIntervalMS = 500
+
+// pollInterval returns Wait's tick interval from cfg, flooring a
+// non-positive poll_interval_ms to the template default. Unlike the two
+// timeout keys — whose 0 values fail fast and visibly, and are documented
+// footguns — a 0 (or negative) poll interval would SILENTLY busy-spin the
+// loop, re-reading the events file every iteration and hammering mux.Status
+// every Nth, burning a core for the whole run with nothing ever failing.
+func pollInterval(cfg Config) time.Duration {
+	if cfg.PollIntervalMS <= 0 {
+		return defaultPollIntervalMS * time.Millisecond
+	}
+	return time.Duration(cfg.PollIntervalMS) * time.Millisecond
+}
+
 // maxEventsReadRetries bounds how many consecutive tick failures to read
 // events.jsonl Wait tolerates before reporting a mechanism failure — a
 // transient share-violation or a file mid-rename should not abort a run
@@ -60,7 +77,7 @@ const maxStatusRetries = 2
 // outcome at all.
 func (run *Run) Wait() (Result, error) {
 	cfg := run.runner.cfg
-	interval := time.Duration(cfg.PollIntervalMS) * time.Millisecond
+	interval := pollInterval(cfg)
 	livenessEvery := cfg.LivenessEveryNPolls
 	if livenessEvery <= 0 {
 		livenessEvery = 1
