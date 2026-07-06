@@ -202,7 +202,8 @@ func allOutputFilesExist(files []string) bool {
 // checkLivenessTick checks the strand's liveness via mux.Status and, while
 // still in the startup window (*started is false and startupDeadline has
 // not passed), probes the pane for the engine's Startup classification: a
-// trust prompt is dismissed with an Enter key press, a ready pane flips
+// trust prompt is dismissed by playing the engine's TrustDismissSequence
+// choreography, a ready pane flips
 // *started to true (ending the probe for the rest of this Wait call), and
 // a still-booting pane is left pending unless startupDeadline has passed,
 // which fast-fails the run as died rather than waiting out the full
@@ -218,7 +219,7 @@ func allOutputFilesExist(files []string) bool {
 // doc for why no capture heuristic can do better). Returns a non-nil error only for
 // mux.Status itself failing — a mechanism failure Wait's caller tracks
 // across consecutive ticks; every other failure along this path (a
-// CapturePane error, a SendKey error dismissing the trust prompt) is logged
+// CapturePane error, a key error playing the trust dismissal) is logged
 // and treated as "still pending" rather than propagated, since none of
 // them is fatal to the run on its own.
 func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time) (Outcome, error) {
@@ -259,7 +260,10 @@ func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time) (Out
 	case StartupReady:
 		*started = true
 	case StartupTrustPrompt:
-		if err := run.runner.mux.SendKey(run.state.StrandGUID, "Enter"); err != nil {
+		// The dismissal keys are the engine's choreography, not the run
+		// loop's: which keys clear a provider's trust gate is provider
+		// grammar, same as InterruptSequence/ComposeSend.
+		if err := playInputs(run.runner.mux, run.state.StrandGUID, run.runner.engine.TrustDismissSequence()); err != nil {
 			log.Printf("shuttle: dismiss trust prompt (non-fatal): %v", err)
 		}
 	case StartupPending:

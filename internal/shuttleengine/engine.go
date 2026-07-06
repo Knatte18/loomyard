@@ -138,6 +138,14 @@ type Engine interface {
 	// InterruptSequence returns the provider-specific key choreography that
 	// interrupts an in-progress turn (e.g. an Escape key press).
 	InterruptSequence() []PaneInput
+	// TrustDismissSequence returns the provider-specific key choreography
+	// that dismisses the trust gate Startup classifies as
+	// StartupTrustPrompt (e.g. a single Enter key press). It lives on the
+	// seam — not hardcoded in the run loop — because which keys dismiss a
+	// provider's gate is pane key choreography, exactly like
+	// InterruptSequence/ComposeSend (the Shuttle Provider-Seam Invariant's
+	// semantic half).
+	TrustDismissSequence() []PaneInput
 	// ComposeSend returns the provider-specific key choreography that
 	// submits text as a new turn (e.g. clearing a leaked auto-suggest
 	// before typing text and submitting it).

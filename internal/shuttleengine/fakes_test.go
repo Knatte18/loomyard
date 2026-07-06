@@ -257,6 +257,12 @@ func (e *fakeEngine) InterruptSequence() []PaneInput {
 	return []PaneInput{{Key: "Escape"}}
 }
 
+// TrustDismissSequence returns the canonical single-Enter trust dismissal —
+// fixed, not scripted, so tests assert against it directly.
+func (e *fakeEngine) TrustDismissSequence() []PaneInput {
+	return []PaneInput{{Key: "Enter"}}
+}
+
 // ComposeSend returns the canonical Escape-then-submit-text choreography —
 // fixed, not scripted, so tests assert against it directly.
 func (e *fakeEngine) ComposeSend(text string) []PaneInput {

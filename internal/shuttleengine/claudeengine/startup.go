@@ -81,6 +81,14 @@ func (c *Claude) InterruptSequence() []shuttleengine.PaneInput {
 	return []shuttleengine.PaneInput{{Key: "Escape"}}
 }
 
+// TrustDismissSequence returns the key choreography that dismisses claude's
+// "do you trust this folder?" gate: a single Enter key press confirming the
+// pre-selected "Yes, I trust this folder" option (the proven pattern from
+// muxcli's dismissTrust).
+func (c *Claude) TrustDismissSequence() []shuttleengine.PaneInput {
+	return []shuttleengine.PaneInput{{Key: "Enter"}}
+}
+
 // composeSendSettleMS is the pause after ComposeSend's leading Escape before
 // its text step follows. Proven necessary live: without a settle gap, the
 // Escape byte and the first text bytes can reach the TUI's input parser in

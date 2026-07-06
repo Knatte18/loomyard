@@ -107,6 +107,15 @@ func TestInterruptSequence(t *testing.T) {
 	}
 }
 
+func TestTrustDismissSequence(t *testing.T) {
+	c := New()
+	got := c.TrustDismissSequence()
+	want := []shuttleengine.PaneInput{{Key: "Enter"}}
+	if len(got) != len(want) || got[0] != want[0] {
+		t.Errorf("TrustDismissSequence() = %+v; want %+v", got, want)
+	}
+}
+
 func TestComposeSend(t *testing.T) {
 	c := New()
 	got := c.ComposeSend("hello")
