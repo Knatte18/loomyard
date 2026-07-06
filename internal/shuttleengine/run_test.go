@@ -240,9 +240,17 @@ func liveStrandStatus(live bool) []muxengine.StatusResult {
 	}
 }
 
+// readyAgentEngine returns a fakeEngine whose Startup classification sticks
+// at StartupReady — the pane state requireReadyAgentPane demands before any
+// Interrupt/Send key is played, so tests of the key choreography itself pass
+// the guard without scripting captures per call.
+func readyAgentEngine() *fakeEngine {
+	return &fakeEngine{StartupScript: []StartupState{StartupReady}}
+}
+
 func TestRun_Interrupt_PlaysEscape(t *testing.T) {
 	mux := &fakeMux{StatusQueue: liveStrandStatus(true)}
-	engine := &fakeEngine{}
+	engine := readyAgentEngine()
 	run := newInterruptTestRun(t, mux, engine)
 
 	if err := run.Interrupt(); err != nil {
@@ -312,20 +320,22 @@ func stubInputSleep(t *testing.T) {
 
 func TestRun_Send_PlaysEscThenTextWithSubmit(t *testing.T) {
 	stubInputSleep(t)
-	// CapturePane must report the sent text back for sendVerified's
-	// delivery check to succeed without a replay.
-	mux := &fakeMux{StatusQueue: liveStrandStatus(true), CaptureQueue: []string{"❯ updated instructions"}}
-	engine := &fakeEngine{}
+	// The first capture answers requireReadyAgentPane's TUI probe (a ready
+	// pane without the text yet); the later ones must report the sent text
+	// back for sendVerified's delivery check to succeed without a replay.
+	mux := &fakeMux{StatusQueue: liveStrandStatus(true), CaptureQueue: []string{"❯ ", "❯ updated instructions"}}
+	engine := readyAgentEngine()
 	run := newInterruptTestRun(t, mux, engine)
 
 	if err := run.Send("updated instructions"); err != nil {
 		t.Fatalf("Send() error: %v", err)
 	}
 
-	// Status leads the log: the liveness guard must run before any key
-	// reaches the pane. CapturePane follows the text step: that is the
+	// Status then CapturePane lead the log: the liveness guard and the
+	// ready-TUI probe must both run before any key reaches the pane. The
+	// final CapturePane follows the text step: that is the
 	// delivery-verification poll.
-	wantLog := []string{"Status", "SendKey:Escape", "SendText:updated instructions", "CapturePane"}
+	wantLog := []string{"Status", "CapturePane", "SendKey:Escape", "SendText:updated instructions", "CapturePane"}
 	if !reflect.DeepEqual(mux.CallLog, wantLog) {
 		t.Errorf("call order = %v, want %v", mux.CallLog, wantLog)
 	}
@@ -342,14 +352,15 @@ func TestRun_Send_SwallowedFirstAttempt_ReplaySucceeds(t *testing.T) {
 	stubInputSleep(t)
 	mux := &fakeMux{
 		StatusQueue: liveStrandStatus(true),
-		// Every poll of the first attempt sees no trace of the text (still
-		// showing the prompt); the replay's polls see it delivered.
+		// The leading capture answers the ready-TUI probe; every poll of the
+		// first attempt then sees no trace of the text (still showing the
+		// prompt); the replay's polls see it delivered.
 		CaptureQueue: append(
-			repeatCapture("❯ ", sendVerifyAttempts),
+			repeatCapture("❯ ", 1+sendVerifyAttempts),
 			repeatCapture("❯ updated instructions", sendVerifyAttempts)...,
 		),
 	}
-	engine := &fakeEngine{}
+	engine := readyAgentEngine()
 	run := newInterruptTestRun(t, mux, engine)
 
 	if err := run.Send("updated instructions"); err != nil {
@@ -369,7 +380,7 @@ func TestRun_Send_NeverDelivered_ReportsHonestFailure(t *testing.T) {
 		StatusQueue:  liveStrandStatus(true),
 		CaptureQueue: repeatCapture("❯ ", 2*sendVerifyAttempts+2),
 	}
-	engine := &fakeEngine{}
+	engine := readyAgentEngine()
 	run := newInterruptTestRun(t, mux, engine)
 
 	err := run.Send("updated instructions")
@@ -420,5 +431,49 @@ func TestRun_InterruptAndSend_RefuseDeadOrUntrackedStrand(t *testing.T) {
 				t.Errorf("keys reached the pane despite refusal: SendKey=%+v SendText=%+v", mux.SendKeyCalls, mux.SendTextCalls)
 			}
 		})
+	}
+}
+
+func TestRun_InterruptAndSend_RefuseAgentlessShellPane(t *testing.T) {
+	// A live pane is not enough: a provider that failed at launch (or was
+	// killed while its shell survived) leaves a live pane whose keys land at
+	// the shell prompt — proven live, a send against a kept "died" run
+	// reported ok while its text was EXECUTED as a pwsh command. The engine
+	// classifying every probe capture as still-booting (a bare shell prompt
+	// shows no ready marker) must therefore refuse before any key is played.
+	stubInputSleep(t)
+	mux := &fakeMux{
+		StatusQueue:  liveStrandStatus(true),
+		CaptureQueue: []string{"PS C:\\Code\\hub> "},
+	}
+	engine := &fakeEngine{StartupScript: []StartupState{StartupPending}}
+	run := newInterruptTestRun(t, mux, engine)
+
+	if err := run.Interrupt(); err == nil || !strings.Contains(err.Error(), "no input-ready provider TUI") {
+		t.Errorf("Interrupt() error = %v, want the no-ready-TUI refusal", err)
+	}
+	if err := run.Send("echo poked"); err == nil || !strings.Contains(err.Error(), "no input-ready provider TUI") {
+		t.Errorf("Send() error = %v, want the no-ready-TUI refusal", err)
+	}
+	if len(mux.SendKeyCalls) != 0 || len(mux.SendTextCalls) != 0 {
+		t.Errorf("keys reached the agent-less shell despite refusal: SendKey=%+v SendText=%+v", mux.SendKeyCalls, mux.SendTextCalls)
+	}
+}
+
+func TestRun_Interrupt_ReadyProbeRetriesTransientBoot(t *testing.T) {
+	// One capture can land mid-redraw and classify a healthy TUI as still
+	// booting; the guard must retry within agentPaneProbeAttempts and pass
+	// once a later capture classifies Ready, rather than refusing on the
+	// first inconclusive frame.
+	stubInputSleep(t)
+	mux := &fakeMux{StatusQueue: liveStrandStatus(true)}
+	engine := &fakeEngine{StartupScript: []StartupState{StartupPending, StartupReady}}
+	run := newInterruptTestRun(t, mux, engine)
+
+	if err := run.Interrupt(); err != nil {
+		t.Fatalf("Interrupt() error: %v, want the retried probe to pass", err)
+	}
+	if len(mux.SendKeyCalls) != 1 || mux.SendKeyCalls[0].Key != "Escape" {
+		t.Errorf("SendKey calls = %+v, want exactly one Escape after the probe passes", mux.SendKeyCalls)
 	}
 }

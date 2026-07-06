@@ -224,8 +224,9 @@ func (r *Runner) sweepOrphansOpportunistic() {
 }
 
 // Interrupt stops run's in-progress turn without killing its pane or
-// session: after confirming the strand still has a live pane (see
-// requireLiveStrand), it plays the engine's InterruptSequence (e.g. a single
+// session: after confirming the strand still has a live pane showing the
+// provider's input-ready TUI (see requireReadyAgentPane), it plays the
+// engine's InterruptSequence (e.g. a single
 // Escape key press) through the mux seam. The pane stays warm and idle afterward —
 // the caller typically follows with Send to give the agent updated
 // instructions and let it continue, or lets the operator attach directly.
@@ -244,7 +245,7 @@ func (r *Runner) sweepOrphansOpportunistic() {
 // Wait call will observe the redirect's own eventual outcome — this is the
 // documented v1 limitation that there is no re-wait path once Wait returns.
 func (run *Run) Interrupt() error {
-	if err := requireLiveStrand(run.runner.mux, run.state.StrandGUID); err != nil {
+	if err := requireReadyAgentPane(run.runner.mux, run.runner.engine, run.state.StrandGUID); err != nil {
 		return err
 	}
 	return playInputs(run.runner.mux, run.state.StrandGUID, run.runner.engine.InterruptSequence())
@@ -266,7 +267,7 @@ func (run *Run) Send(text string) error {
 	if err := validateSendText(text); err != nil {
 		return err
 	}
-	if err := requireLiveStrand(run.runner.mux, run.state.StrandGUID); err != nil {
+	if err := requireReadyAgentPane(run.runner.mux, run.runner.engine, run.state.StrandGUID); err != nil {
 		return err
 	}
 	return sendVerified(run.runner.mux, run.runner.engine, run.state.StrandGUID, text)
@@ -295,7 +296,8 @@ func validateSendText(text string) error {
 // by guid, without needing an in-process Run handle — this is how the CLI's
 // interrupt verb reaches a run started by a separate process. It resolves
 // guid via FindRun to confirm it actually names a shuttle run, confirms the
-// strand still has a live pane (requireLiveStrand), then plays the engine's
+// strand still has a live pane showing the provider's input-ready TUI
+// (requireReadyAgentPane), then plays the engine's
 // InterruptSequence through the mux seam via the same playInputs helper
 // (*Run).Interrupt uses. FindRun's underlying error is wrapped (%w) into the
 // "not a shuttle strand" message rather than discarded, so an operator
@@ -305,7 +307,7 @@ func (r *Runner) Interrupt(guid string) error {
 	if _, _, err := FindRun(r.cfg, r.layout, guid); err != nil {
 		return fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
 	}
-	if err := requireLiveStrand(r.mux, guid); err != nil {
+	if err := requireReadyAgentPane(r.mux, r.engine, guid); err != nil {
 		return err
 	}
 	return playInputs(r.mux, guid, r.engine.InterruptSequence())
@@ -317,7 +319,8 @@ func (r *Runner) Interrupt(guid string) error {
 // same single-line, non-empty rule as (*Run).Send (validateSendText),
 // resolves guid via FindRun to
 // confirm it actually names a shuttle run, confirms the strand still has a
-// live pane (requireLiveStrand), then plays and delivery-verifies the
+// live pane showing the provider's input-ready TUI (requireReadyAgentPane),
+// then plays and delivery-verifies the
 // engine's ComposeSend choreography via the same sendVerified helper
 // (*Run).Send uses — a nil return means the text was observed in the pane.
 // FindRun's underlying error is wrapped (%w) into the "not a shuttle
@@ -330,7 +333,7 @@ func (r *Runner) Send(guid, text string) error {
 	if _, _, err := FindRun(r.cfg, r.layout, guid); err != nil {
 		return fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
 	}
-	if err := requireLiveStrand(r.mux, guid); err != nil {
+	if err := requireReadyAgentPane(r.mux, r.engine, guid); err != nil {
 		return err
 	}
 	return sendVerified(r.mux, r.engine, guid, text)
@@ -355,13 +358,66 @@ const (
 // and drive the retry/verify loops instantly.
 var inputSleep = time.Sleep
 
+// Agent-pane probe tuning: requireReadyAgentPane classifies up to
+// agentPaneProbeAttempts pane captures, agentPaneProbeInterval apart, before
+// refusing — one capture could land mid-redraw and transiently classify a
+// perfectly healthy provider TUI as still booting.
+const (
+	agentPaneProbeAttempts = 3
+	agentPaneProbeInterval = 250 * time.Millisecond
+)
+
+// requireReadyAgentPane fails unless guid's strand has a live pane
+// (requireLiveStrand) whose current capture the engine classifies as
+// StartupReady — the provider's input-ready TUI actually on screen. Every
+// Interrupt/Send entry point runs this guard before playing keys, because
+// pane liveness alone only proves the pane's SHELL is alive: a provider
+// that failed at launch (or was killed while its shell survived) leaves a
+// live pane where played keys land at the shell prompt — proven live, a
+// send against a kept "died" run reported ok while its text was executed as
+// a pwsh command in the diagnosis pane. Known residual limitations,
+// inherited from the same startup-marker heuristic (see claudeengine's
+// Startup): a shell prompt styled with the provider's ready marker, or a
+// dead provider whose final TUI frame is still rendered in the pane, can
+// still false-pass — the guard narrows the hole to the states a capture can
+// distinguish, it cannot close it.
+func requireReadyAgentPane(mux MuxOps, engine Engine, guid string) error {
+	if err := requireLiveStrand(mux, guid); err != nil {
+		return err
+	}
+
+	var lastCaptureErr error
+	for attempt := 0; attempt < agentPaneProbeAttempts; attempt++ {
+		if attempt > 0 {
+			inputSleep(agentPaneProbeInterval)
+		}
+		capture, err := mux.CapturePane(guid)
+		if err != nil {
+			// A capture error may be transient noise (like sendVerified's
+			// polls treat it); only after every attempt fails does it become
+			// the reported reason.
+			lastCaptureErr = err
+			continue
+		}
+		lastCaptureErr = nil
+		if engine.Startup(capture) == StartupReady {
+			return nil
+		}
+	}
+	if lastCaptureErr != nil {
+		return fmt.Errorf("shuttle: capture strand %q's pane to confirm the provider TUI: %w", guid, lastCaptureErr)
+	}
+	return fmt.Errorf("shuttle: strand %q's pane shows no input-ready provider TUI — the agent process likely exited (launch failure or crash) while its pane's shell stayed alive, so keys would be executed by the shell instead of reaching an agent", guid)
+}
+
 // requireLiveStrand fails unless guid's strand is currently tracked by mux
-// AND bound to a live pane. Interrupt and Send run this guard before playing
-// any keys, because psmux's send-keys against a dead or missing pane exits 0
-// while delivering nothing (proven live: interrupt/send against a run that
-// had classified "died" both reported success as silent no-ops) — without
-// the guard, the exact verbs the kept died/timeout state exists to support
-// would lie to the operator.
+// AND bound to a live pane. It is the first half of requireReadyAgentPane's
+// guard (and separately keeps the cheap failure modes cheap): psmux's
+// send-keys against a dead or missing pane exits 0 while delivering nothing
+// (proven live: interrupt/send against a run that had classified "died"
+// both reported success as silent no-ops) — without the guard, the exact
+// verbs the kept died/timeout state exists to support would lie to the
+// operator.
 func requireLiveStrand(mux MuxOps, guid string) error {
 	status, err := mux.Status()
 	if err != nil {

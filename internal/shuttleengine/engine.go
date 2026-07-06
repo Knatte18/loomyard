@@ -121,7 +121,10 @@ type Engine interface {
 	ParseEvents(data []byte) ([]StopEvent, error)
 	// Startup classifies a pane capture taken during the startup window,
 	// distinguishing a still-booting pane from one showing a trust prompt
-	// from one that has reached its input-ready state.
+	// from one that has reached its input-ready state. The same
+	// classification doubles as the Interrupt/Send pre-key probe
+	// (requireReadyAgentPane): StartupReady is the seam's answer to "is the
+	// provider's TUI on screen right now", at any point in a run's life.
 	Startup(capture string) StartupState
 	// InterruptSequence returns the provider-specific key choreography that
 	// interrupts an in-progress turn (e.g. an Escape key press).
