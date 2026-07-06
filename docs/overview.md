@@ -239,7 +239,9 @@ User-facing modules each get one `lyx <module>` namespace:
   escalation channel back to a human or a higher-capability model. `PreToolUse` guardrails deny
   the in-process `Agent` tool always, and `AskUserQuestion` too when the run is autonomous
   (`Interactive: false`, the default). The provider is swappable behind an **engine** seam; Claude
-  is the only v1 engine (Gemini etc. later, not a current priority). ✅ Implemented. See the
+  is the only v1 engine (Gemini etc. later, not a current priority). Per-run `Model` and `Effort`
+  knobs (`lyx shuttle run --model`/`--effort`; effort values `low|medium|high|xhigh|max`, empty =
+  provider default) are engine-validated, not policed by `Spec.validate`. ✅ Implemented. See the
   `internal/shuttleengine` package documentation.
 - **loom** — phased orchestrator: drives Setup → Discussion → Plan → Builder → Finalize, each
   gated by a review (`lyx loom run`, alias `lyx run`). 🚧 Design — not built. See
