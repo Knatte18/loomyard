@@ -158,8 +158,13 @@ done.md" --output-file done.md`. From a second terminal, note the `guid` (via
 `lyx mux status`) and run `lyx shuttle interrupt <guid>` -- the agent's current turn
 stops without killing its pane or session (`lyx mux status` still shows it `live:
 true`). Then run `lyx shuttle send <guid> "stop counting and write done.md right
-away"` -- a single-line update only; the first terminal's run continues and
-eventually reports `"outcome":"done"` with `done.md` present. Sending multiline text
+away"` -- a single-line update only. The deterministic property to verify is that
+`done.md` eventually appears with the redirected content: the first terminal's
+envelope may report either `"outcome":"done"` or `"outcome":"asking"`, because the
+interrupted turn's own Stop event can resolve the blocking run before the redirect
+turn starts (the documented v1 no-re-wait limitation) -- an `asking` envelope with
+`done.md` correctly written is a PASS, not a failure. Only `died`/`timeout` (or a
+missing/wrong `done.md`) is a real failure here. Sending multiline text
 must be rejected outright (a "must be a single line" error), not silently truncated
 or mis-submitted.
 
