@@ -37,6 +37,14 @@ type Spec struct {
 	// Model, when non-empty, selects a specific provider model; empty
 	// defers to the engine/provider default.
 	Model string
+	// Effort, when non-empty, selects a reasoning-effort override; empty
+	// defers to the engine/provider default. Effort values are provider
+	// vocabulary — validate does NOT inspect this field at all (neither
+	// defaulting nor rejecting it); the engine is the sole validator, since
+	// only it knows which values its provider realizes. A non-empty value
+	// the engine cannot realize is a hard error from the engine (see
+	// claudeengine's validateEffort), not from Spec.validate.
+	Effort string
 	// Interactive encodes !Autonomous: the Go zero value (false) means
 	// autonomous, the default. Autonomous runs add
 	// --dangerously-skip-permissions and the AskUserQuestion PreToolUse

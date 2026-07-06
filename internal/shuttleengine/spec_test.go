@@ -122,6 +122,29 @@ func TestSpec_Validate_AnchorDefaultsToBelowParent(t *testing.T) {
 	}
 }
 
+// TestSpec_Validate_EffortUntouched proves validate neither defaults nor
+// rejects Effort in any way — it is provider vocabulary the engine alone
+// validates (see claudeengine's validateEffort), so Spec.validate must leave
+// an empty Effort empty and a non-empty Effort (even a nonsense value)
+// unchanged and error-free.
+func TestSpec_Validate_EffortUntouched(t *testing.T) {
+	s := &Spec{Prompt: "do the thing", OutputFiles: []string{"out.md"}}
+	if err := s.validate(`C:\worktree`, Config{RunTimeoutMin: 30}); err != nil {
+		t.Fatalf("validate() error: %v", err)
+	}
+	if s.Effort != "" {
+		t.Errorf("Effort = %q, want unchanged empty string", s.Effort)
+	}
+
+	s2 := &Spec{Prompt: "do the thing", OutputFiles: []string{"other.md"}, Effort: "not-a-real-effort-value"}
+	if err := s2.validate(`C:\worktree`, Config{RunTimeoutMin: 30}); err != nil {
+		t.Fatalf("validate() error: %v, want validate to never reject or inspect Effort", err)
+	}
+	if s2.Effort != "not-a-real-effort-value" {
+		t.Errorf("Effort = %q, want unchanged %q", s2.Effort, "not-a-real-effort-value")
+	}
+}
+
 func TestSpec_Validate_AnchorPassThroughWhenSet(t *testing.T) {
 	s := &Spec{Prompt: "do the thing", OutputFiles: []string{"out.md"}, Display: render.Display{Anchor: render.AnchorTop}}
 	if err := s.validate(`C:\worktree`, Config{RunTimeoutMin: 30}); err != nil {
