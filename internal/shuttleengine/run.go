@@ -250,9 +250,11 @@ func (run *Run) Interrupt() error {
 	return playInputs(run.runner.mux, run.state.StrandGUID, run.runner.engine.InterruptSequence())
 }
 
-// Send types text as run's next turn: text must be a single line — the file
-// contract carries multiline updates (write a file and Send a one-line
-// pointer to it, e.g. "read <file> — updated instructions — and continue").
+// Send types text as run's next turn: text must be a single, non-empty line
+// — the file contract carries multiline updates (write a file and Send a
+// one-line pointer to it, e.g. "read <file> — updated instructions — and
+// continue"), and an empty or whitespace-only send has nothing to deliver
+// (see validateSendText).
 // It plays the engine's ComposeSend choreography (typically clearing a
 // leaked auto-suggest before typing text and submitting it) through the mux
 // seam and then VERIFIES delivery by observing the text in the pane capture,
@@ -261,13 +263,32 @@ func (run *Run) Interrupt() error {
 // text was observed on screen, not merely that keys were emitted. Safe to
 // call concurrently with a blocked Wait, for the same reason as Interrupt.
 func (run *Run) Send(text string) error {
-	if strings.ContainsAny(text, "\n\r") {
-		return fmt.Errorf("shuttle: Send: text must be a single line; multiline updates ride the file contract (write a file, Send a one-line pointer to it)")
+	if err := validateSendText(text); err != nil {
+		return err
 	}
 	if err := requireLiveStrand(run.runner.mux, run.state.StrandGUID); err != nil {
 		return err
 	}
 	return sendVerified(run.runner.mux, run.runner.engine, run.state.StrandGUID, text)
+}
+
+// validateSendText rejects text that cannot be delivered as a single agent
+// turn, the shared guard both (*Run).Send and (*Runner).Send run before
+// touching the pane. Multiline text is rejected because the file contract —
+// not the input line — carries multiline updates (write a file and Send a
+// one-line pointer to it). Empty or whitespace-only text is rejected because
+// there is nothing to deliver: it would still play the Escape+submit
+// choreography (a stray empty turn) yet make sendVerified's delivery check
+// vacuous — the normalized needle would be "", which every pane capture
+// trivially "contains", so a nil return would falsely claim a verified send.
+func validateSendText(text string) error {
+	if strings.ContainsAny(text, "\n\r") {
+		return fmt.Errorf("shuttle: Send: text must be a single line; multiline updates ride the file contract (write a file, Send a one-line pointer to it)")
+	}
+	if strings.TrimSpace(text) == "" {
+		return fmt.Errorf("shuttle: Send: text must not be empty or whitespace-only; there is nothing to deliver as the agent's next turn")
+	}
+	return nil
 }
 
 // Interrupt stops the in-progress turn of the run whose strand is identified
@@ -293,7 +314,8 @@ func (r *Runner) Interrupt(guid string) error {
 // Send types text as the next turn of the run whose strand is identified by
 // guid, without needing an in-process Run handle — this is how the CLI's
 // send verb reaches a run started by a separate process. It enforces the
-// same single-line rule as (*Run).Send, resolves guid via FindRun to
+// same single-line, non-empty rule as (*Run).Send (validateSendText),
+// resolves guid via FindRun to
 // confirm it actually names a shuttle run, confirms the strand still has a
 // live pane (requireLiveStrand), then plays and delivery-verifies the
 // engine's ComposeSend choreography via the same sendVerified helper
@@ -302,8 +324,8 @@ func (r *Runner) Interrupt(guid string) error {
 // strand" message rather than discarded, for the same reason as
 // (*Runner).Interrupt.
 func (r *Runner) Send(guid, text string) error {
-	if strings.ContainsAny(text, "\n\r") {
-		return fmt.Errorf("shuttle: Send: text must be a single line; multiline updates ride the file contract (write a file, Send a one-line pointer to it)")
+	if err := validateSendText(text); err != nil {
+		return err
 	}
 	if _, _, err := FindRun(r.cfg, r.layout, guid); err != nil {
 		return fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)

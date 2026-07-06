@@ -270,6 +270,35 @@ func TestRun_Send_RejectsNewlines(t *testing.T) {
 	}
 }
 
+func TestRun_Send_RejectsEmptyOrWhitespace(t *testing.T) {
+	// An empty or whitespace-only send has nothing to deliver: it would still
+	// play the Escape+submit choreography (a stray empty turn) while making
+	// sendVerified's delivery check vacuous (an empty needle every capture
+	// "contains"), so Send must refuse before touching the pane rather than
+	// report a falsely-verified success.
+	tests := []struct {
+		name string
+		text string
+	}{
+		{"empty", ""},
+		{"spaces", "   "},
+		{"tab", "\t"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mux := &fakeMux{StatusQueue: liveStrandStatus(true)}
+			run := newInterruptTestRun(t, mux, &fakeEngine{})
+
+			if err := run.Send(tt.text); err == nil {
+				t.Fatalf("Send(%q) = nil error, want rejection for empty/whitespace text", tt.text)
+			}
+			if len(mux.CallLog) != 0 {
+				t.Errorf("mux calls = %v, want none (rejected before any mux call)", mux.CallLog)
+			}
+		})
+	}
+}
+
 // stubInputSleep replaces the package-level inputSleep seam with a no-op for
 // the duration of the calling test, restoring the real implementation via
 // t.Cleanup — so sendVerified's poll/replay loops (and playInputs' SettleMS
