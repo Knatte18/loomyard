@@ -72,7 +72,7 @@ func TestBuildLaunchCmd(t *testing.T) {
 			sessionID:    "abc-123",
 			model:        "",
 			interactive:  false,
-			want:         `& 'claude' (Get-Content -Raw 'C:\run\prompt.md') --session-id abc-123 --settings 'C:\run\settings.json' --dangerously-skip-permissions`,
+			want:         `& 'claude' (Get-Content -Raw 'C:\run\prompt.md') --session-id 'abc-123' --settings 'C:\run\settings.json' --dangerously-skip-permissions`,
 		},
 		{
 			name:         "interactive_no_model",
@@ -82,7 +82,7 @@ func TestBuildLaunchCmd(t *testing.T) {
 			sessionID:    "abc-123",
 			model:        "",
 			interactive:  true,
-			want:         `& 'claude' (Get-Content -Raw 'C:\run\prompt.md') --session-id abc-123 --settings 'C:\run\settings.json'`,
+			want:         `& 'claude' (Get-Content -Raw 'C:\run\prompt.md') --session-id 'abc-123' --settings 'C:\run\settings.json'`,
 		},
 		{
 			name:         "autonomous_with_model",
@@ -92,7 +92,7 @@ func TestBuildLaunchCmd(t *testing.T) {
 			sessionID:    "abc-123",
 			model:        "claude-opus-4",
 			interactive:  false,
-			want:         `& 'claude' (Get-Content -Raw 'C:\run\prompt.md') --session-id abc-123 --settings 'C:\run\settings.json' --model 'claude-opus-4' --dangerously-skip-permissions`,
+			want:         `& 'claude' (Get-Content -Raw 'C:\run\prompt.md') --session-id 'abc-123' --settings 'C:\run\settings.json' --model 'claude-opus-4' --dangerously-skip-permissions`,
 		},
 		{
 			name:         "interactive_with_model",
@@ -102,7 +102,7 @@ func TestBuildLaunchCmd(t *testing.T) {
 			sessionID:    "abc-123",
 			model:        "claude-opus-4",
 			interactive:  true,
-			want:         `& 'claude' (Get-Content -Raw 'C:\run\prompt.md') --session-id abc-123 --settings 'C:\run\settings.json' --model 'claude-opus-4'`,
+			want:         `& 'claude' (Get-Content -Raw 'C:\run\prompt.md') --session-id 'abc-123' --settings 'C:\run\settings.json' --model 'claude-opus-4'`,
 		},
 		{
 			// A model value with a space or embedded quote must not corrupt
@@ -115,7 +115,7 @@ func TestBuildLaunchCmd(t *testing.T) {
 			sessionID:    "abc-123",
 			model:        "my model's name",
 			interactive:  false,
-			want:         `& 'claude' (Get-Content -Raw 'C:\run\prompt.md') --session-id abc-123 --settings 'C:\run\settings.json' --model 'my model''s name' --dangerously-skip-permissions`,
+			want:         `& 'claude' (Get-Content -Raw 'C:\run\prompt.md') --session-id 'abc-123' --settings 'C:\run\settings.json' --model 'my model''s name' --dangerously-skip-permissions`,
 		},
 		{
 			name:         "paths_with_spaces_and_quotes",
@@ -125,7 +125,7 @@ func TestBuildLaunchCmd(t *testing.T) {
 			sessionID:    "abc-123",
 			model:        "",
 			interactive:  false,
-			want:         `& 'C:\tools\it''s claude.exe' (Get-Content -Raw 'C:\run dir\prompt.md') --session-id abc-123 --settings 'C:\run dir\settings.json' --dangerously-skip-permissions`,
+			want:         `& 'C:\tools\it''s claude.exe' (Get-Content -Raw 'C:\run dir\prompt.md') --session-id 'abc-123' --settings 'C:\run dir\settings.json' --dangerously-skip-permissions`,
 		},
 	}
 	for _, tt := range tests {
@@ -143,7 +143,7 @@ func TestBuildLaunchCmd(t *testing.T) {
 
 func TestBuildResumeCmd(t *testing.T) {
 	got := buildResumeCmd("claude", `C:\run\settings.json`, "abc-123")
-	want := `& 'claude' --resume abc-123 --settings 'C:\run\settings.json'`
+	want := `& 'claude' --resume 'abc-123' --settings 'C:\run\settings.json'`
 	if got != want {
 		t.Errorf("buildResumeCmd(...) = %q; want %q", got, want)
 	}

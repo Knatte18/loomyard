@@ -39,7 +39,11 @@ func claudeBinary(cfg shuttleengine.Config) string {
 // non-empty (an empty value defers to claude's own default) and, like every
 // other argument on this line, single-quoted: a raw interpolation would let
 // a model value containing a space, quote, or pwsh metacharacter (`;`, `|`,
-// `$`) corrupt the single line typed into the pane.
+// `$`) corrupt the single line typed into the pane. The session id is
+// single-quoted for the same reason: its locally-minted UUID shape
+// ([0-9a-f-]) needs no escaping today, but quoting every interpolated
+// argument uniformly is the invariant that stops a future change to how the
+// id is sourced from silently reintroducing an injection.
 // --dangerously-skip-permissions is appended only when interactive is
 // false — the autonomous default (Shared Decision "Interactive bool encodes
 // the discussion's Autonomous default true"). The result is exactly one
@@ -48,7 +52,7 @@ func claudeBinary(cfg shuttleengine.Config) string {
 func buildLaunchCmd(bin, promptPath, settingsPath, sessionID, model string, interactive bool) string {
 	cmd := fmt.Sprintf(
 		"& %s (Get-Content -Raw %s) --session-id %s --settings %s",
-		pwshSingleQuote(bin), pwshSingleQuote(promptPath), sessionID, pwshSingleQuote(settingsPath),
+		pwshSingleQuote(bin), pwshSingleQuote(promptPath), pwshSingleQuote(sessionID), pwshSingleQuote(settingsPath),
 	)
 	if model != "" {
 		cmd += " --model " + pwshSingleQuote(model)
@@ -68,6 +72,6 @@ func buildLaunchCmd(bin, promptPath, settingsPath, sessionID, model string, inte
 func buildResumeCmd(bin, settingsPath, sessionID string) string {
 	return fmt.Sprintf(
 		"& %s --resume %s --settings %s",
-		pwshSingleQuote(bin), sessionID, pwshSingleQuote(settingsPath),
+		pwshSingleQuote(bin), pwshSingleQuote(sessionID), pwshSingleQuote(settingsPath),
 	)
 }
