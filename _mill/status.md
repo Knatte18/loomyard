@@ -28,7 +28,9 @@ implementing  '2026-07-06T16:48:32Z'
 ```yaml
 batches:
   - name: effort
-    state: pending
+    state: running
+    implementer_session: 670cbf67-38d4-47bf-9b3d-0eec9126ba34
+    start_sha: ce929cc1006f9d596ad5c7043833683fba49a681
   - name: ask-signal
     state: pending
 ```
