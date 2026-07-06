@@ -164,6 +164,15 @@ instead of waiting out the timeout.
   the pane lets the operator/orchestrator attach and answer (the S2 scenario
   that surfaced this). A distinct new `Outcome` value has no consumer that
   branches on *how* the ask was detected, so it would be dead surface (YAGNI).
+- **Intended behavior change (not a regression):** with the marker in place,
+  *every* interactive run now returns `OutcomeAsking` at the first
+  `AskUserQuestion` and does not continue within that same `Wait` call. Before
+  this task the ask was invisible until the timeout, so "ask, get answered live
+  in-pane, continue within one `Wait`" simply never worked; it is not being
+  removed. Answering the question and continuing the run is an
+  orchestration-layer concern (attach → answer → re-`Wait`/resume the kept
+  session) and is out of scope here. A plan writer must treat the single-`Wait`
+  termination as the designed contract, not a behavior to preserve.
 - Rejected: a new `Outcome` (e.g. `asking-live`) — no consumer; non-terminal
   observability-only — `Wait` only returns a terminal `Result`, so its caller
   still couldn't see the signal live.
@@ -220,6 +229,12 @@ Files that change (all Claude specifics stay under `claudeengine`):
 - `internal/shuttleengine/wait.go` — `pollEventsTick` branches on `Event.Kind`;
   a live-ask event → `OutcomeAsking` in real time (done-first preserved). The
   message wired into `Result.LastAssistantMessage` comes from `Event.Message`.
+- `internal/shuttleengine/fakes_test.go` — the `fakeEngine.ParseEvents` double
+  (today returns `[]StopEvent`, synthesizing only turn-end events) must move to
+  `[]Event` and be able to synthesize **both** `Kind`s, so the `wait_test.go`
+  real-time-asking case has a source to drive an `EventAsk` from. The rename
+  also ripples into `wait_test.go` and `events_test.go` (any `StopEvent`
+  literal/field reference).
 - `internal/shuttleengine/claudeengine/claudeengine.go` — `Prepare` validates
   `spec.Effort` (before writing artifacts) and threads it into
   `buildLaunchCmd`.
@@ -314,9 +329,23 @@ or real claude needed):
 - **Real-time asking classification** (`wait_test.go`): a batch whose last event
   is an `EventAsk` (no output files present) → `OutcomeAsking` with the question
   as the message, pane kept; done-first still wins when output files exist.
+- **Test fake** (`fakes_test.go`): extend `fakeEngine.ParseEvents` to the
+  `[]Event` shape and give its scripted format a way to emit an `EventAsk` (not
+  just turn-end), so `wait_test.go`'s real-time-asking case is driven by the
+  fake rather than by hand-rolled `Event` literals.
 - **Seam enforcement** (`seam_enforcement_test.go`): unchanged rule still passes
   after the `Event` rename (no `claudeengine` import leaks into
   `shuttleengine`).
+- **Live smoke-test checkpoint (implementation, not an automated test):** the
+  hermetic tests above cover the *shape* of the marker hook, but the one novel
+  runtime claim — a *non-denying* `PreToolUse(AskUserQuestion)` hook that
+  `cat >>`-appends its payload to `events.jsonl` **and still lets the tool
+  proceed**, emitting a real-time line the instant the tool call opens (before
+  it blocks) — is asserted by analogy to the `Stop` hook, not yet confirmed
+  live. Implementation must include a manual smoke test against a real
+  interactive `claude` run (the same bar the effort/deny/payload facts were held
+  to): confirm the marker line lands in `events.jsonl` while the question dialog
+  is still open, and that the `AskUserQuestion` tool is not denied.
 
 ## Q&A log
 
