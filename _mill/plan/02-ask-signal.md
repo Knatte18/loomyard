@@ -35,6 +35,7 @@ after batch 1's. Batch-local decisions: all in the overview's Shared Decisions
   - `internal/shuttleengine/fakes_test.go`
 - **Edits:**
   - `internal/shuttleengine/engine.go`
+  - `internal/shuttlecli/cli_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -50,6 +51,13 @@ after batch 1's. Batch-local decisions: all in the overview's Shared Decisions
   strings leak into this provider-invariant file beyond the established `EventStop`
   turn-end concept. Note: this file alone will not compile until cards 7, 9, and 10
   migrate the other references — that is expected; the batch verifies at the end.
+  Correction discovered mid-implementation: `internal/shuttlecli/cli_test.go`'s
+  `specCapturingEngine` (a hermetic `shuttleengine.Engine` double added by batch 1)
+  also implements `ParseEvents(data []byte) ([]shuttleengine.StopEvent, error)` —
+  contrary to the Shared Decision's grep claim that only the two shuttleengine
+  packages reference `StopEvent`. Update its signature to
+  `([]shuttleengine.Event, error)` in this same card so `internal/shuttlecli` keeps
+  compiling; this is a mechanical signature migration only, no behavior change.
 - **Commit:** `refactor(shuttleengine): rename StopEvent to Event with a Kind field`
 
 ### Card 7: Parse both turn-end and live-ask events
@@ -174,7 +182,11 @@ after batch 1's. Batch-local decisions: all in the overview's Shared Decisions
 `verify: go test ./internal/shuttleengine/...` covers both packages this batch
 touches — `shuttleengine` (`wait_test.go`, plus the `engine.go`/`wait.go`/
 `fakes_test.go` compile) and its `claudeengine` subpackage (`events_test.go`,
-`settings_test.go`). Native Go runner, no `PYTHONPATH=` prefix (Go repo). The
-`StopEvent → Event` rename is grep-verified to have no references outside these two
-packages, so this scope is complete; the package compiles (and thus the suite
-runs) only after every card in the batch is implemented.
+`settings_test.go`). Native Go runner, no `PYTHONPATH=` prefix (Go repo).
+Correction discovered mid-implementation: the `StopEvent → Event` rename actually
+has one reference outside these two packages —
+`internal/shuttlecli/cli_test.go`'s `specCapturingEngine` double (added by batch
+1) — migrated in card 6 alongside `engine.go` so `internal/shuttlecli` keeps
+compiling even though this batch's `verify:` does not itself re-run its suite.
+The package compiles (and thus the suite runs) only after every card in the
+batch is implemented.
