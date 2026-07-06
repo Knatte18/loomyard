@@ -215,8 +215,9 @@ func (r *Runner) sweepOrphansOpportunistic() {
 }
 
 // Interrupt stops run's in-progress turn without killing its pane or
-// session: it plays the engine's InterruptSequence (e.g. a single Escape
-// key press) through the mux seam. The pane stays warm and idle afterward —
+// session: after confirming the strand still has a live pane (see
+// requireLiveStrand), it plays the engine's InterruptSequence (e.g. a single
+// Escape key press) through the mux seam. The pane stays warm and idle afterward —
 // the caller typically follows with Send to give the agent updated
 // instructions and let it continue, or lets the operator attach directly.
 // Safe to call concurrently with a blocked Wait: mux's op lock serializes
@@ -234,6 +235,9 @@ func (r *Runner) sweepOrphansOpportunistic() {
 // Wait call will observe the redirect's own eventual outcome — this is the
 // documented v1 limitation that there is no re-wait path once Wait returns.
 func (run *Run) Interrupt() error {
+	if err := requireLiveStrand(run.runner.mux, run.state.StrandGUID); err != nil {
+		return err
+	}
 	return playInputs(run.runner.mux, run.state.StrandGUID, run.runner.engine.InterruptSequence())
 }
 
@@ -248,18 +252,25 @@ func (run *Run) Send(text string) error {
 	if strings.ContainsAny(text, "\n\r") {
 		return fmt.Errorf("shuttle: Send: text must be a single line; multiline updates ride the file contract (write a file, Send a one-line pointer to it)")
 	}
+	if err := requireLiveStrand(run.runner.mux, run.state.StrandGUID); err != nil {
+		return err
+	}
 	return playInputs(run.runner.mux, run.state.StrandGUID, run.runner.engine.ComposeSend(text))
 }
 
 // Interrupt stops the in-progress turn of the run whose strand is identified
 // by guid, without needing an in-process Run handle — this is how the CLI's
 // interrupt verb reaches a run started by a separate process. It resolves
-// guid via FindRun to confirm it actually names a shuttle run, then plays
-// the engine's InterruptSequence through the mux seam via the same
-// playInputs helper (*Run).Interrupt uses.
+// guid via FindRun to confirm it actually names a shuttle run, confirms the
+// strand still has a live pane (requireLiveStrand), then plays the engine's
+// InterruptSequence through the mux seam via the same playInputs helper
+// (*Run).Interrupt uses.
 func (r *Runner) Interrupt(guid string) error {
 	if _, _, err := FindRun(r.cfg, r.layout, guid); err != nil {
 		return fmt.Errorf("shuttle: %q is not a shuttle strand", guid)
+	}
+	if err := requireLiveStrand(r.mux, guid); err != nil {
+		return err
 	}
 	return playInputs(r.mux, guid, r.engine.InterruptSequence())
 }
@@ -268,9 +279,10 @@ func (r *Runner) Interrupt(guid string) error {
 // guid, without needing an in-process Run handle — this is how the CLI's
 // send verb reaches a run started by a separate process. It enforces the
 // same single-line rule as (*Run).Send, resolves guid via FindRun to
-// confirm it actually names a shuttle run, then plays the engine's
-// ComposeSend choreography through the mux seam via the same playInputs
-// helper (*Run).Send uses.
+// confirm it actually names a shuttle run, confirms the strand still has a
+// live pane (requireLiveStrand), then plays the engine's ComposeSend
+// choreography through the mux seam via the same playInputs helper
+// (*Run).Send uses.
 func (r *Runner) Send(guid, text string) error {
 	if strings.ContainsAny(text, "\n\r") {
 		return fmt.Errorf("shuttle: Send: text must be a single line; multiline updates ride the file contract (write a file, Send a one-line pointer to it)")
@@ -278,7 +290,34 @@ func (r *Runner) Send(guid, text string) error {
 	if _, _, err := FindRun(r.cfg, r.layout, guid); err != nil {
 		return fmt.Errorf("shuttle: %q is not a shuttle strand", guid)
 	}
+	if err := requireLiveStrand(r.mux, guid); err != nil {
+		return err
+	}
 	return playInputs(r.mux, guid, r.engine.ComposeSend(text))
+}
+
+// requireLiveStrand fails unless guid's strand is currently tracked by mux
+// AND bound to a live pane. Interrupt and Send run this guard before playing
+// any keys, because psmux's send-keys against a dead or missing pane exits 0
+// while delivering nothing (proven live: interrupt/send against a run that
+// had classified "died" both reported success as silent no-ops) — without
+// the guard, the exact verbs the kept died/timeout state exists to support
+// would lie to the operator.
+func requireLiveStrand(mux MuxOps, guid string) error {
+	status, err := mux.Status()
+	if err != nil {
+		return fmt.Errorf("shuttle: check strand liveness: %w", err)
+	}
+	for _, s := range status.Strands {
+		if s.GUID != guid {
+			continue
+		}
+		if !s.Live {
+			return fmt.Errorf("shuttle: strand %q has no live pane — its run already reached a terminal outcome or its pane died; keys would be silently dropped", guid)
+		}
+		return nil
+	}
+	return fmt.Errorf("shuttle: strand %q is not tracked by mux — its run has completed and been cleaned up", guid)
 }
 
 // playInputs plays inputs into guid's pane through mux, in order: a Key

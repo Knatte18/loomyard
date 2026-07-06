@@ -194,8 +194,16 @@ func newInterruptTestRun(t *testing.T, mux MuxOps, engine Engine) *Run {
 	}
 }
 
+// liveStrandStatus scripts a fakeMux Status answer reporting strand-1 with
+// the given liveness — what the Interrupt/Send liveness guard consumes.
+func liveStrandStatus(live bool) []muxengine.StatusResult {
+	return []muxengine.StatusResult{
+		{Strands: []muxengine.StrandStatus{{GUID: "strand-1", Live: live}}},
+	}
+}
+
 func TestRun_Interrupt_PlaysEscape(t *testing.T) {
-	mux := &fakeMux{}
+	mux := &fakeMux{StatusQueue: liveStrandStatus(true)}
 	engine := &fakeEngine{}
 	run := newInterruptTestRun(t, mux, engine)
 
@@ -212,7 +220,7 @@ func TestRun_Interrupt_PlaysEscape(t *testing.T) {
 }
 
 func TestRun_Send_RejectsNewlines(t *testing.T) {
-	mux := &fakeMux{}
+	mux := &fakeMux{StatusQueue: liveStrandStatus(true)}
 	engine := &fakeEngine{}
 	run := newInterruptTestRun(t, mux, engine)
 
@@ -225,7 +233,7 @@ func TestRun_Send_RejectsNewlines(t *testing.T) {
 }
 
 func TestRun_Send_PlaysEscThenTextWithSubmit(t *testing.T) {
-	mux := &fakeMux{}
+	mux := &fakeMux{StatusQueue: liveStrandStatus(true)}
 	engine := &fakeEngine{}
 	run := newInterruptTestRun(t, mux, engine)
 
@@ -233,11 +241,42 @@ func TestRun_Send_PlaysEscThenTextWithSubmit(t *testing.T) {
 		t.Fatalf("Send() error: %v", err)
 	}
 
-	wantLog := []string{"SendKey:Escape", "SendText:updated instructions"}
+	// Status leads the log: the liveness guard must run before any key
+	// reaches the pane.
+	wantLog := []string{"Status", "SendKey:Escape", "SendText:updated instructions"}
 	if !reflect.DeepEqual(mux.CallLog, wantLog) {
 		t.Errorf("call order = %v, want %v", mux.CallLog, wantLog)
 	}
 	if len(mux.SendTextCalls) != 1 || !mux.SendTextCalls[0].Submit {
 		t.Errorf("SendText calls = %+v, want one call with Submit=true", mux.SendTextCalls)
+	}
+}
+
+func TestRun_InterruptAndSend_RefuseDeadOrUntrackedStrand(t *testing.T) {
+	// psmux send-keys against a dead or missing pane exits 0 while
+	// delivering nothing (proven live), so Interrupt/Send must refuse
+	// before touching the pane rather than report a silent-no-op success.
+	tests := []struct {
+		name   string
+		status []muxengine.StatusResult
+	}{
+		{"dead_pane", liveStrandStatus(false)},
+		{"untracked_strand", []muxengine.StatusResult{{}}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mux := &fakeMux{StatusQueue: tt.status}
+			run := newInterruptTestRun(t, mux, &fakeEngine{})
+
+			if err := run.Interrupt(); err == nil {
+				t.Error("Interrupt() = nil error, want liveness refusal")
+			}
+			if err := run.Send("still there?"); err == nil {
+				t.Error("Send() = nil error, want liveness refusal")
+			}
+			if len(mux.SendKeyCalls) != 0 || len(mux.SendTextCalls) != 0 {
+				t.Errorf("keys reached the pane despite refusal: SendKey=%+v SendText=%+v", mux.SendKeyCalls, mux.SendTextCalls)
+			}
+		})
 	}
 }
