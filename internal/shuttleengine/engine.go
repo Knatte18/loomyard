@@ -62,6 +62,13 @@ type PaneInput struct {
 	// Submit, when true and Text is set, appends an Enter key press after
 	// Text so the pane's input line is submitted.
 	Submit bool
+	// SettleMS pauses this many milliseconds after the step lands before
+	// the next step is sent. An engine sets it when the provider's input
+	// parser needs the step delivered in its own read: an Escape byte
+	// immediately followed by text can coalesce into an Alt-/escape-
+	// sequence read and be discarded wholesale (observed live — a Send's
+	// entire text silently swallowed).
+	SettleMS int
 }
 
 // StopEvent is one parsed Stop-hook line from a run's events.jsonl: the

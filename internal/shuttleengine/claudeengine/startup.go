@@ -81,14 +81,23 @@ func (c *Claude) InterruptSequence() []shuttleengine.PaneInput {
 	return []shuttleengine.PaneInput{{Key: "Escape"}}
 }
 
+// composeSendSettleMS is the pause after ComposeSend's leading Escape before
+// its text step follows. Proven necessary live: without a settle gap, the
+// Escape byte and the first text bytes can reach the TUI's input parser in
+// one chunk and coalesce into an Alt-/escape-sequence read, discarding the
+// entire chunk silently — the exact failure sendVerified's delivery check
+// exists to catch, and this gap is the cheaper fix that avoids needing a
+// replay on the common path.
+const composeSendSettleMS = 300
+
 // ComposeSend returns the key choreography that submits text as claude's
 // next turn. Escape is sent first to clear any leaked auto-suggest
-// remaining in the input line (an empirical rule from the mux research)
-// before text is typed and submitted — reuse turns are single-line, so no
-// further choreography is needed.
+// remaining in the input line (an empirical rule from the mux research),
+// with a settle pause before text is typed and submitted — reuse turns are
+// single-line, so no further choreography is needed.
 func (c *Claude) ComposeSend(text string) []shuttleengine.PaneInput {
 	return []shuttleengine.PaneInput{
-		{Key: "Escape"},
+		{Key: "Escape", SettleMS: composeSendSettleMS},
 		{Text: text, Submit: true},
 	}
 }

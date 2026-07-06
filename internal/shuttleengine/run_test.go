@@ -10,7 +10,9 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/muxengine"
@@ -232,8 +234,22 @@ func TestRun_Send_RejectsNewlines(t *testing.T) {
 	}
 }
 
+// stubInputSleep replaces the package-level inputSleep seam with a no-op for
+// the duration of the calling test, restoring the real implementation via
+// t.Cleanup — so sendVerified's poll/replay loops (and playInputs' SettleMS
+// pause) run at test speed instead of real wall-clock time.
+func stubInputSleep(t *testing.T) {
+	t.Helper()
+	orig := inputSleep
+	inputSleep = func(time.Duration) {}
+	t.Cleanup(func() { inputSleep = orig })
+}
+
 func TestRun_Send_PlaysEscThenTextWithSubmit(t *testing.T) {
-	mux := &fakeMux{StatusQueue: liveStrandStatus(true)}
+	stubInputSleep(t)
+	// CapturePane must report the sent text back for sendVerified's
+	// delivery check to succeed without a replay.
+	mux := &fakeMux{StatusQueue: liveStrandStatus(true), CaptureQueue: []string{"❯ updated instructions"}}
 	engine := &fakeEngine{}
 	run := newInterruptTestRun(t, mux, engine)
 
@@ -242,14 +258,75 @@ func TestRun_Send_PlaysEscThenTextWithSubmit(t *testing.T) {
 	}
 
 	// Status leads the log: the liveness guard must run before any key
-	// reaches the pane.
-	wantLog := []string{"Status", "SendKey:Escape", "SendText:updated instructions"}
+	// reaches the pane. CapturePane follows the text step: that is the
+	// delivery-verification poll.
+	wantLog := []string{"Status", "SendKey:Escape", "SendText:updated instructions", "CapturePane"}
 	if !reflect.DeepEqual(mux.CallLog, wantLog) {
 		t.Errorf("call order = %v, want %v", mux.CallLog, wantLog)
 	}
 	if len(mux.SendTextCalls) != 1 || !mux.SendTextCalls[0].Submit {
 		t.Errorf("SendText calls = %+v, want one call with Submit=true", mux.SendTextCalls)
 	}
+}
+
+func TestRun_Send_SwallowedFirstAttempt_ReplaySucceeds(t *testing.T) {
+	// The provider TUI can swallow the whole Escape+text chunk with no
+	// error anywhere (observed live): the pane capture never shows the text
+	// after the first attempt, but does after the replay. sendVerified must
+	// replay once and succeed, rather than trusting the first attempt.
+	stubInputSleep(t)
+	mux := &fakeMux{
+		StatusQueue: liveStrandStatus(true),
+		// Every poll of the first attempt sees no trace of the text (still
+		// showing the prompt); the replay's polls see it delivered.
+		CaptureQueue: append(
+			repeatCapture("❯ ", sendVerifyAttempts),
+			repeatCapture("❯ updated instructions", sendVerifyAttempts)...,
+		),
+	}
+	engine := &fakeEngine{}
+	run := newInterruptTestRun(t, mux, engine)
+
+	if err := run.Send("updated instructions"); err != nil {
+		t.Fatalf("Send() error: %v, want the replay to succeed", err)
+	}
+	if len(mux.SendTextCalls) != 2 {
+		t.Errorf("SendText calls = %d, want 2 (initial attempt + one replay)", len(mux.SendTextCalls))
+	}
+}
+
+func TestRun_Send_NeverDelivered_ReportsHonestFailure(t *testing.T) {
+	// If the text never appears even after the replay, Send must report a
+	// delivery failure rather than the "keys were emitted" false ok:true
+	// observed live.
+	stubInputSleep(t)
+	mux := &fakeMux{
+		StatusQueue:  liveStrandStatus(true),
+		CaptureQueue: repeatCapture("❯ ", 2*sendVerifyAttempts+2),
+	}
+	engine := &fakeEngine{}
+	run := newInterruptTestRun(t, mux, engine)
+
+	err := run.Send("updated instructions")
+	if err == nil {
+		t.Fatal("Send() = nil error, want a delivery-failure error")
+	}
+	if !strings.Contains(err.Error(), "never appeared") {
+		t.Errorf("Send() error = %q, want it to name the delivery failure", err)
+	}
+	if len(mux.SendTextCalls) != 1+sendReplays {
+		t.Errorf("SendText calls = %d, want %d (initial attempt + all replays exhausted)", len(mux.SendTextCalls), 1+sendReplays)
+	}
+}
+
+// repeatCapture returns n copies of capture, the fixture shape fakeMux's
+// CaptureQueue consumes one-per-call.
+func repeatCapture(capture string, n int) []string {
+	out := make([]string, n)
+	for i := range out {
+		out[i] = capture
+	}
+	return out
 }
 
 func TestRun_InterruptAndSend_RefuseDeadOrUntrackedStrand(t *testing.T) {

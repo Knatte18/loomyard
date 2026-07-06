@@ -111,7 +111,7 @@ func TestComposeSend(t *testing.T) {
 	c := New()
 	got := c.ComposeSend("hello")
 	want := []shuttleengine.PaneInput{
-		{Key: "Escape"},
+		{Key: "Escape", SettleMS: composeSendSettleMS},
 		{Text: "hello", Submit: true},
 	}
 	if len(got) != len(want) {

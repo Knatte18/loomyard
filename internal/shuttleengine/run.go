@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/muxengine"
@@ -246,8 +247,11 @@ func (run *Run) Interrupt() error {
 // pointer to it, e.g. "read <file> — updated instructions — and continue").
 // It plays the engine's ComposeSend choreography (typically clearing a
 // leaked auto-suggest before typing text and submitting it) through the mux
-// seam. Safe to call concurrently with a blocked Wait, for the same reason
-// as Interrupt.
+// seam and then VERIFIES delivery by observing the text in the pane capture,
+// replaying once if it never appears (see sendVerified — the provider TUI
+// can silently swallow the whole input). A nil return therefore means the
+// text was observed on screen, not merely that keys were emitted. Safe to
+// call concurrently with a blocked Wait, for the same reason as Interrupt.
 func (run *Run) Send(text string) error {
 	if strings.ContainsAny(text, "\n\r") {
 		return fmt.Errorf("shuttle: Send: text must be a single line; multiline updates ride the file contract (write a file, Send a one-line pointer to it)")
@@ -255,7 +259,7 @@ func (run *Run) Send(text string) error {
 	if err := requireLiveStrand(run.runner.mux, run.state.StrandGUID); err != nil {
 		return err
 	}
-	return playInputs(run.runner.mux, run.state.StrandGUID, run.runner.engine.ComposeSend(text))
+	return sendVerified(run.runner.mux, run.runner.engine, run.state.StrandGUID, text)
 }
 
 // Interrupt stops the in-progress turn of the run whose strand is identified
@@ -280,9 +284,9 @@ func (r *Runner) Interrupt(guid string) error {
 // send verb reaches a run started by a separate process. It enforces the
 // same single-line rule as (*Run).Send, resolves guid via FindRun to
 // confirm it actually names a shuttle run, confirms the strand still has a
-// live pane (requireLiveStrand), then plays the engine's ComposeSend
-// choreography through the mux seam via the same playInputs helper
-// (*Run).Send uses.
+// live pane (requireLiveStrand), then plays and delivery-verifies the
+// engine's ComposeSend choreography via the same sendVerified helper
+// (*Run).Send uses — a nil return means the text was observed in the pane.
 func (r *Runner) Send(guid, text string) error {
 	if strings.ContainsAny(text, "\n\r") {
 		return fmt.Errorf("shuttle: Send: text must be a single line; multiline updates ride the file contract (write a file, Send a one-line pointer to it)")
@@ -293,8 +297,27 @@ func (r *Runner) Send(guid, text string) error {
 	if err := requireLiveStrand(r.mux, guid); err != nil {
 		return err
 	}
-	return playInputs(r.mux, guid, r.engine.ComposeSend(text))
+	return sendVerified(r.mux, r.engine, guid, text)
 }
+
+// Send delivery-verification tuning: after playing the ComposeSend
+// choreography, the send path polls the pane capture for the sent text —
+// up to sendVerifyAttempts polls, sendVerifyInterval apart — and replays
+// the whole choreography up to sendReplays more times before reporting an
+// honest delivery failure. The polling exists because the swallow it
+// guards against (see PaneInput.SettleMS) produces NO error anywhere:
+// without observing the text in the pane, "ok" would be a guess.
+const (
+	sendVerifyAttempts = 20
+	sendVerifyInterval = 250 * time.Millisecond
+	sendReplays        = 1
+)
+
+// inputSleep is the real-time pause seam for pane-input pacing
+// (PaneInput.SettleMS) and send-delivery polling. A package-level variable
+// rather than a direct time.Sleep call so same-package tests can replace it
+// and drive the retry/verify loops instantly.
+var inputSleep = time.Sleep
 
 // requireLiveStrand fails unless guid's strand is currently tracked by mux
 // AND bound to a live pane. Interrupt and Send run this guard before playing
@@ -325,18 +348,69 @@ func requireLiveStrand(mux MuxOps, guid string) error {
 // when Submit is set, follows it with Enter (SendText's submit flag) — the
 // shared choreography both Interrupt and Send drive, and the same one
 // batch 5's CLI interrupt/send verbs reuse through the engine so every
-// caller plays a PaneInput sequence identically.
+// caller plays a PaneInput sequence identically. A step's SettleMS is
+// honored after the step lands, so an engine can force a pause between an
+// Escape and the text that follows it (see PaneInput.SettleMS for why).
 func playInputs(mux MuxOps, guid string, inputs []PaneInput) error {
 	for _, in := range inputs {
 		if in.Key != "" {
 			if err := mux.SendKey(guid, in.Key); err != nil {
 				return fmt.Errorf("shuttle: send key %q: %w", in.Key, err)
 			}
-			continue
-		}
-		if err := mux.SendText(guid, in.Text, in.Submit); err != nil {
+		} else if err := mux.SendText(guid, in.Text, in.Submit); err != nil {
 			return fmt.Errorf("shuttle: send text: %w", err)
+		}
+		if in.SettleMS > 0 {
+			inputSleep(time.Duration(in.SettleMS) * time.Millisecond)
 		}
 	}
 	return nil
+}
+
+// sendVerified plays engine.ComposeSend(text) into guid's pane and then
+// CONFIRMS delivery by polling the pane capture until the sent text is
+// visible, replaying the choreography up to sendReplays more times before
+// failing. The confirmation is not optional politeness: the provider TUI
+// can swallow the entire Escape+text chunk with no error anywhere (observed
+// live — `lyx shuttle send` reported ok while nothing reached the agent),
+// so "the text is on screen" is the only honest definition of a delivered
+// send. Matching is whitespace-stripped and lowercased (normalizePaneText)
+// because pane captures can drop spaces entirely and wrap long lines, and
+// only a bounded prefix of the text is required so a line-wrapped tail
+// cannot defeat the match.
+func sendVerified(mux MuxOps, engine Engine, guid, text string) error {
+	needle := normalizePaneText(text)
+	if runes := []rune(needle); len(runes) > 48 {
+		needle = string(runes[:48])
+	}
+
+	for try := 0; try <= sendReplays; try++ {
+		if err := playInputs(mux, guid, engine.ComposeSend(text)); err != nil {
+			return err
+		}
+		for attempt := 0; attempt < sendVerifyAttempts; attempt++ {
+			capture, err := mux.CapturePane(guid)
+			if err == nil && strings.Contains(normalizePaneText(capture), needle) {
+				return nil
+			}
+			// A capture error here is transient noise, not fatal: the next
+			// poll (or the replay) either observes the text or the loop
+			// reports the delivery failure honestly at the end.
+			inputSleep(sendVerifyInterval)
+		}
+	}
+	return fmt.Errorf("shuttle: Send: sent text never appeared in the pane after %d attempt(s) — the provider TUI likely swallowed the input; the send was NOT delivered", 1+sendReplays)
+}
+
+// normalizePaneText lowercases s and strips every whitespace rune — the
+// canonical form sendVerified matches pane captures against, since a pane
+// capture can drop spaces entirely (an observed TUI rendering quirk) and
+// wraps long lines with newlines.
+func normalizePaneText(s string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsSpace(r) {
+			return -1
+		}
+		return unicode.ToLower(r)
+	}, s)
 }
