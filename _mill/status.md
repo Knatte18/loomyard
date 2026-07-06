@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: shuttle-spec-effort
 branch: shuttle-spec-effort
 plan: _mill/plan
@@ -20,4 +20,15 @@ discussed  '2026-07-06T16:33:58Z'
 planning  '2026-07-06T16:41:45Z'
 plan-fix-r1  '2026-07-06T16:47:23Z'
 planned  '2026-07-06T16:47:36Z'
+implementing  '2026-07-06T16:48:32Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: effort
+    state: pending
+  - name: ask-signal
+    state: pending
 ```
