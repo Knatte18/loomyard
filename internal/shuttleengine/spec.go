@@ -59,7 +59,13 @@ type Spec struct {
 	// note that this means cfg.RunTimeoutMin itself has no "unlimited"
 	// value: a configured RunTimeoutMin of 0 makes every run's deadline equal
 	// to its start time, so it is classified OutcomeTimeout on the very
-	// first poll tick, not "no timeout".
+	// first poll tick, not "no timeout". A NEGATIVE value (a sign typo, or a
+	// caller's broken duration arithmetic) is rejected at validate: unlike
+	// the documented 0 footgun it can only ever be a mistake, and letting it
+	// through would launch a full run only to classify it OutcomeTimeout on
+	// the first tick — leaving a live stray agent pane and a kept run dir
+	// behind a run the caller never meant to start with that deadline
+	// (proven live).
 	Timeout time.Duration
 	// KeepPane, when true, leaves the strand and its pane alive after a
 	// "done" outcome instead of the default RemoveStrand + run-dir cleanup.
@@ -78,9 +84,12 @@ type Spec struct {
 // tests bare existence, so a stale file would classify the run done on its
 // very first turn end — a misconfigured spec must fail loudly here, never
 // become silent success (proven live: an asking run against a pre-existing
-// output file returned "done" with the question discarded). A zero Timeout
-// is replaced with cfg.RunTimeoutMin minutes, and an empty Display.Anchor
-// defaults to render.AnchorBelowParent.
+// output file returned "done" with the question discarded). A negative
+// Timeout is rejected (see the Timeout field's doc comment: it would launch
+// a run whose deadline is already in the past, leaving stray live state
+// behind an instant OutcomeTimeout); a zero Timeout is replaced with
+// cfg.RunTimeoutMin minutes, and an empty Display.Anchor defaults to
+// render.AnchorBelowParent.
 func (s *Spec) validate(worktreeRoot string, cfg Config) error {
 	if s.Prompt == "" {
 		return fmt.Errorf("shuttle: spec.Prompt must not be empty")
@@ -111,6 +120,14 @@ func (s *Spec) validate(worktreeRoot string, cfg Config) error {
 		}
 	}
 
+	// A negative deadline can only be a caller mistake (0 is the documented
+	// "defer to config" value; there is no "unlimited" spelling): fail here,
+	// before any run dir or strand exists, rather than launching a run whose
+	// first poll tick classifies OutcomeTimeout and keeps its live pane and
+	// run dir around as stray state.
+	if s.Timeout < 0 {
+		return fmt.Errorf("shuttle: spec.Timeout must not be negative (got %s); use 0 for the config default run_timeout_min", s.Timeout)
+	}
 	if s.Timeout == 0 {
 		s.Timeout = time.Duration(cfg.RunTimeoutMin) * time.Minute
 	}

@@ -1,6 +1,7 @@
 // spec_test.go verifies Spec.validate's normalization and error paths:
 // mandatory Prompt/OutputFiles, relative-to-absolute resolution for output
-// files, and the Timeout/Display.Anchor defaulting rules.
+// files, the Timeout defaulting/negative-rejection rules, and the
+// Display.Anchor default.
 
 package shuttleengine
 
@@ -97,6 +98,17 @@ func TestSpec_Validate_TimeoutPassThroughWhenSet(t *testing.T) {
 	}
 	if s.Timeout != 5*time.Minute {
 		t.Errorf("Timeout = %v, want unchanged 5m", s.Timeout)
+	}
+}
+
+func TestSpec_Validate_NegativeTimeoutRejected(t *testing.T) {
+	s := &Spec{Prompt: "do the thing", OutputFiles: []string{"out.md"}, Timeout: -5 * time.Second}
+	err := s.validate(`C:\worktree`, Config{RunTimeoutMin: 30})
+	if err == nil {
+		t.Fatal("validate() = nil, want error for negative Timeout (an instant-timeout run would leave stray live state)")
+	}
+	if !strings.Contains(err.Error(), "must not be negative") {
+		t.Errorf("validate() error = %q, want it to name the negative-Timeout rule", err)
 	}
 }
 
