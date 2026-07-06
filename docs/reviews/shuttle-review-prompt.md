@@ -161,10 +161,11 @@ explicitly future work per `docs/roadmap.md` milestone 10's notes — shuttle on
 agent well.
 
 ## Round context seeded from prior-round verification
-**Safety pass (round 4).** There is NO known residual. Rounds 1, 2, and 3 each found real bugs,
-fixed them, and every fix was independently verified by the orchestrator (hermetic gates + live
-smoke reruns, not the round's own self-report) — do NOT re-open or re-litigate any of these, they
-are CLOSED AND VERIFIED:
+**Safety pass (round 5 — a clean-check).** There is NO known residual. Rounds 1-4 each found real
+bugs (though round 4's were much smaller: 1 LOW + 1 NIT, zero BLOCKING/MEDIUM — a sharp drop from
+round 3's 10 findings including a BLOCKING regression), fixed them, and every fix was independently
+verified by the orchestrator (hermetic gates + live smoke reruns, not the round's own self-report)
+— do NOT re-open or re-litigate any of these, they are CLOSED AND VERIFIED:
 - F1 (round 1): a `saveRunState` failure during `Start` left a live, untracked strand with no
   recovery path (`internal/shuttleengine/run.go`) — fixed by removing the strand and run dir on
   that failure path.
@@ -216,11 +217,23 @@ Round 3 also **examined and judged genuinely defensible, not a bug — do NOT tr
 turn-end `Stop` with `background_tasks` still running classifies `asking` (the file contract is
 genuinely unmet; no action needed for v1).
 
-**Your job this round: a genuinely independent clean-room safety pass.** Rounds 1-3 each found real
-defects — round 3 even found a BLOCKING regression in a fix two rounds ago had already verified
-clean, so do not assume there is nothing left just because this is titled a "safety pass." Find what
-every prior round missed, or honestly confirm merge-readiness — "no new defects, ship it" is the
-expected, valuable outcome of a safety pass, but only if it is actually true after a genuinely
+- **R4-1 (round 4, LOW)**: `Send` accepted empty/whitespace-only text, which made `sendVerified`'s
+  pane-capture check vacuous (an empty needle matches any capture), falsely claiming a verified
+  delivery while still playing a stray empty turn — fixed by rejecting empty/whitespace text in a
+  shared `validateSendText` guard.
+- **R4-2 (round 4, NIT)**: the session id was the one argument still interpolated unquoted into the
+  pwsh launch/resume lines (inconsistent with round 3's L3 `--model` quoting); safe today (always a
+  UUID) but now quoted uniformly as defense-in-depth.
+
+**Your job this round: a genuinely independent clean-room safety pass — this is explicitly a
+"clean-check" round.** Rounds 1-4 each found real defects, though severity has dropped sharply
+(round 3: 10 findings incl. 1 BLOCKING → round 4: 2 findings, both LOW/NIT, zero BLOCKING/MEDIUM).
+The operator wants to know: does a genuinely independent, adversarial pass find NOTHING at this
+point, or is there still real substance left to find? Do not assume there is nothing left just
+because severity has been trending down — round 3 found a BLOCKING regression in a fix that had
+already been verified clean two rounds prior, so a quiet recent history is not proof of safety.
+Equally, do not invent work to justify the round: "no new defects, ship it" is the expected,
+valuable outcome of a genuine clean-check, but only if it is actually true after a genuinely
 adversarial look, not a rubber stamp. Fix EVERY finding you record, all severities including NIT —
 severity affects how you report a finding, not whether you fix it (see "How to judge each finding"
 below). Read the full prior findings above and the deferred list below only AFTER forming your own
