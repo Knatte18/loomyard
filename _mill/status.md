@@ -28,5 +28,7 @@ implementing  '2026-07-07T11:31:10Z'
 ```yaml
 batches:
   - name: stencil-leaf
-    state: pending
+    state: running
+    implementer_session: 22288423-8acf-415c-8035-3b3911356b8d
+    start_sha: 167c84ccb7dc0a3ceda77a1fe01589e11c95b76d
 ```
