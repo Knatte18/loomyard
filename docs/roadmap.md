@@ -13,7 +13,7 @@ done. What remains splits into two tracks:
   `doctor`. (`warp clone` handles the clone step — no standalone `ly-git-clone`.)
 - **Orchestration stack** — the part that ties worktrees, the board, and psmux
   into a spawn→review→merge lifecycle. This used to be a single distant "endgame";
-  it is now a **designed, layered path**: `proc → mux → shuttle → review → loom`
+  it is now a **designed, layered path**: `proc → mux → shuttle → burler → perch → loom`
   (see the [execution stack](overview.md#execution-stack-orchestration-layers)
   and [modules/loom.md](modules/loom.md)). Each layer is its own shippable
   milestone; mill's existing Agent Dispatch handles orchestration until `loom`
@@ -187,6 +187,9 @@ Layer in once the core stack works; not required for `loom` v1.
 
 15. **Slack relay.** Bidirectional, one channel per worktree, riding on the daemon.
 
+    **See also milestone 24 (own-window strand anchoring)** — another deferred mux enhancement,
+    numbered at the end to avoid renumbering the list; it is what unlocks `burler`'s `cluster-N > 0`.
+
 ### Setup & supporting milestones
 
 Independent of the orchestration stack; interleave as needed.
@@ -240,6 +243,18 @@ Independent of the orchestration stack; interleave as needed.
     weekend), but it hardened `mux` where text-review could not. **Off the `burler → perch → loom`
     spine** — it blocks nothing and is picked up only after `loom` works. Concept still being figured
     out; see [modules/hardener.md](modules/hardener.md) (a DRAFT doc, do not implement from it yet).
+
+24. **Own-window strand anchoring** *(deferred mux enhancement — grouped with 13–15 thematically,
+    numbered here to avoid renumbering the list).* A new `display` anchor that spawns a strand into
+    its **own switchable psmux window** rather than a pane in the worktree column — the piece mux is
+    missing today (windows are not yet a display target; mux runs one window of panes per worktree).
+    This is what **unlocks `burler`'s `cluster-N > 0`**: N parallel cluster reviewers land in their
+    own window the operator can switch to and watch, instead of a pane explosion in the worktree
+    column ([modules/burler.md](modules/burler.md#cluster-support)). Purely additive to mux's closed
+    display vocabulary + render rules. **Independent of the spine** — `burler` / `perch` / `loom` all
+    ship on `cluster-N = 0` without it, so this is picked up only when someone wants live cluster
+    review. Distinct from milestone 13 (cross-worktree *columns*): that groups worktrees into columns
+    of one window; this adds *windows* as a spawn target.
 
 ## Explicitly out of scope
 

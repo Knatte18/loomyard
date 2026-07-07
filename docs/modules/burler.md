@@ -79,6 +79,15 @@ Cluster belongs to the *round* (hence to burler), not to the loop. The N reviewe
 `display:{anchor:own-window}` (see the `internal/muxengine` package documentation) so they land in a
 separate, switchable psmux window rather than crowding the worktree column.
 
+**`cluster-N > 0` is gated on mux window support, which does not exist yet.** Own-window anchoring —
+spawning a strand into its own switchable psmux *window* rather than a pane in the worktree column —
+is an unbuilt mux capability (a deferred mux enhancement; see
+[roadmap milestone](../roadmap.md#deferred-mux-enhancements)). Until it lands, `cluster-N = 0` (the
+default) is the only supported mode: the `display:{anchor:own-window}` field above is a forward
+reference, and burler must fail loudly rather than silently crowd the worktree column if asked for
+`N > 0` before mux can place the windows. This gates only the cluster feature — **burler itself, and
+the whole `shuttle → burler → perch → loom` spine, ship on `N = 0` without waiting on mux windows.**
+
 ## The profile burler consumes
 
 A burler is driven entirely by a **profile** handed to it at spawn — it stores no phase knowledge of
