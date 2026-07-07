@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-approved
+phase: done
 slug: internal-stencil
 branch: internal-stencil
 plan: _mill/plan
@@ -24,6 +24,7 @@ implementing  '2026-07-07T11:31:10Z'
 approved-stencil-leaf  '2026-07-07T11:37:25Z'
 holistic-reviewing  '2026-07-07T11:37:43Z'
 holistic-approved  '2026-07-07T11:40:36Z'
+done  '2026-07-07T11:41:01Z'
 ```
 
 ## Batches
