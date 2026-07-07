@@ -19,10 +19,10 @@ func TestConfigDirs(t *testing.T) {
 		want     []string
 	}{
 		{"single", "_lyx", []string{"_lyx"}},
-		{"multiple", "_lyx _codeguide", []string{"_lyx", "_codeguide"}},
+		{"multiple", "_lyx _raddle", []string{"_lyx", "_raddle"}},
 		{"trailing_space", "_lyx ", []string{"_lyx"}},
 		{"leading_space", " _lyx", []string{"_lyx"}},
-		{"many_spaces", "_lyx  _codeguide", []string{"_lyx", "_codeguide"}},
+		{"many_spaces", "_lyx  _raddle", []string{"_lyx", "_raddle"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -58,7 +58,7 @@ func TestLoadConfig_HappyPath(t *testing.T) {
 
 	// Write a config file with pathspec
 	configFile := hubgeometry.ConfigFile(tmpDir, "weft")
-	content := `pathspec: _lyx _codeguide
+	content := `pathspec: _lyx _raddle
 `
 	if err := os.WriteFile(configFile, []byte(content), 0644); err != nil {
 		t.Fatalf("failed to write config: %v", err)
@@ -69,14 +69,14 @@ func TestLoadConfig_HappyPath(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if cfg.Pathspec != "_lyx _codeguide" {
-		t.Errorf("expected Pathspec %q, got %q", "_lyx _codeguide", cfg.Pathspec)
+	if cfg.Pathspec != "_lyx _raddle" {
+		t.Errorf("expected Pathspec %q, got %q", "_lyx _raddle", cfg.Pathspec)
 	}
 
 	// Verify Dirs() works
 	dirs := cfg.Dirs()
-	if len(dirs) != 2 || dirs[0] != "_lyx" || dirs[1] != "_codeguide" {
-		t.Errorf("expected Dirs() to split into [_lyx, _codeguide], got %v", dirs)
+	if len(dirs) != 2 || dirs[0] != "_lyx" || dirs[1] != "_raddle" {
+		t.Errorf("expected Dirs() to split into [_lyx, _raddle], got %v", dirs)
 	}
 }
 

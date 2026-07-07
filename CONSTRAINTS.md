@@ -11,7 +11,7 @@ Fuller design/how-to lives in godoc and `docs/`, not here — this file is the i
 - All cwd / worktree-root queries go through `hubgeometry.Getwd()` / `Resolve()`. Raw
   `os.Getwd` and `git rev-parse --show-toplevel` are banned outside `internal/hubgeometry`
   and `cmd/lyx/main.go`.
-- Geometry tokens — `_board`, `-weft`, `-HUB`, `_portals`, `_launchers`, `_codeguide`,
+- Geometry tokens — `_board`, `-weft`, `-HUB`, `_portals`, `_launchers`, `_raddle`,
   `_lyx` — are owned solely by `internal/hubgeometry`. No other package may use them in a
   path-construction context (a `filepath.Join` arg, a `+` operand, or a string `const`).
   Whole-token match; production files only; comparisons and git-pathspec slice literals

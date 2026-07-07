@@ -129,7 +129,7 @@ func TestCleanup_ReportOnlyModes(t *testing.T) {
 // TestCleanup_ApplySkipsProtectedBranch asserts that Cleanup with apply=true (no force)
 // does not delete a branch that the gate marks as protected.
 //
-// codeguideFoldedBack returns false for all branches (conservative), so every orphan
+// raddleFoldedBack returns false for all branches (conservative), so every orphan
 // branch is gate-protected even when apply=true. The test verifies that Protected=true
 // and Deleted=false for an orphaned weft branch, and that the branch still exists
 // after Cleanup returns.
@@ -145,7 +145,7 @@ func TestCleanup_ApplySkipsProtectedBranch(t *testing.T) {
 		t.Fatalf("Cleanup(apply=true, force=false) error = %v; want nil", err)
 	}
 
-	// The orphaned branch must appear as protected (codeguideFoldedBack returns false).
+	// The orphaned branch must appear as protected (raddleFoldedBack returns false).
 	var found *CleanupBranchEntry
 	for i := range r.Entries {
 		if r.Entries[i].Branch == orphanBranch {
@@ -159,7 +159,7 @@ func TestCleanup_ApplySkipsProtectedBranch(t *testing.T) {
 
 	// Must be protected (gate not passed) and not deleted.
 	if !found.Protected {
-		t.Errorf("CleanupBranchEntry.Protected = false; want true (codeguideFoldedBack returns false)")
+		t.Errorf("CleanupBranchEntry.Protected = false; want true (raddleFoldedBack returns false)")
 	}
 	if found.Deleted {
 		t.Errorf("CleanupBranchEntry.Deleted = true for protected branch; want false")

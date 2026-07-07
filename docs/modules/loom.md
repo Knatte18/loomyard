@@ -52,7 +52,7 @@ Setup
 Discussion → [Discussion-review] ─ approved ↓   stuck ─┐
 Plan       → [Plan-review]       ─ approved ↓   stuck ─┤
 Builder    → [Builder-review]    ─ approved ↓   stuck ─┤
-Codeguide  (git-diff-targeted docs)                    │
+Raddle     (git-diff-targeted docs)                    │
 Finalize                                               │
                                        (stuck handler)─┘
 ```
@@ -64,18 +64,18 @@ a draft artifact and is followed by a review gate. `approved` advances to the ne
 phase; `stuck` routes to the stuck handler (bounce back to an earlier phase, or escalate
 to a human) — never "keep fixing symptoms."
 
-**Codeguide** is a dedicated step after Builder — deliberately *not* the implementer's job.
+**Raddle** is a dedicated step after Builder — deliberately *not* the implementer's job.
 Experience (millhouse) is that implementers, busy with code, forget the docs; a dedicated
 always-run step removes the dependency on anyone remembering, and a fresh-context agent
 reading only the diff often writes better docs than the implementer who is "done in their
 head." Mechanism: loom stamps a **start-SHA** (host `HEAD`) into the status file when Builder
 begins; the Builder agent **commits its own work** (required anyway — for backtracking, and
-so there is a diff to read). The Codeguide step then runs the `codeguide-update` module over
-`git diff <start-SHA>..HEAD` on the host (excluding `_lyx`/`_codeguide`) for a targeted
-update, and commits the docs into the weft via `lyx weft sync` (never raw git — see the
+so there is a diff to read). The Raddle step then generates docs over
+`git diff <start-SHA>..HEAD` on the host (excluding `_lyx`/`_raddle`) for a targeted
+update — **building heavily on millhouse's `codeguide-update`** — and commits the docs into the weft via `lyx weft sync` (never raw git — see the
 [warp responsibility boundary](warp.md#responsibility-boundary--warp-vs-weft-vs-host)). The
-`_codeguide` merge-back at Finalize is exactly what `warp cleanup` gates on. (Whether the
-Codeguide step is itself review-gated is an open choice; shown ungated above.)
+`_raddle` merge-back at Finalize is exactly what `warp cleanup` gates on. (Whether the
+Raddle step is itself review-gated is an open choice; shown ungated above.)
 
 ## The gate
 

@@ -153,7 +153,7 @@ lets `board init` (pre-init, no `_lyx/`) and other early-stage commands call int
 
 **Mirrored system dirs never enumerate the worktree.** `hubgeometry` only derives Loomyard's
 own system directories (`_lyx`, `_portals`, `_launchers`) from `RelPath` and never
-enumerates or mirrors user content. A nested or git-ignored `_codeguide` sibling
+enumerates or mirrors user content. A nested or git-ignored `_raddle` sibling
 (or any other sibling repo) is never mirrored as a subpath-specific copy.
 
 ## The enforcement wall
@@ -169,7 +169,7 @@ file outside the allowlist.
 
 **`TestEnforcement_GeometryLiterals` (geometry-literal construction ban):**
 The geometry path tokens `_board`, `-weft`, `-HUB`, `_portals`, `_launchers`,
-`_codeguide`, and `_lyx` may not appear as string literals in a
+`_raddle`, and `_lyx` may not appear as string literals in a
 **path-construction context** in any production file outside `internal/hubgeometry`.
 Path-construction contexts are:
 

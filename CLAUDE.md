@@ -21,7 +21,7 @@ This project is worked in short-lived mill **worktrees** that get torn down once
 merges. The file-based `memory/` store is per-worktree, so anything written there
 vanishes with the worktree — don't bother saving project facts as memory. Put durable
 notes where they get versioned and merged into `main` instead: this `CLAUDE.md`,
-`_codeguide/`, or code comments.
+`_raddle/`, or code comments.
 
 ## Pushing to main is OK
 

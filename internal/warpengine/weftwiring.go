@@ -6,7 +6,7 @@
 // cwd (WeftRepoRoot or WeftWorktreePath).
 //
 // Weft branch model: each weft branch forks from its parent's weft branch (non-orphan,
-// shared merge-base), preserving history for future _codeguide squash-merge-back.
+// shared merge-base), preserving history for future _raddle squash-merge-back.
 // _lyx is isolated by pathspec (never merges back), not by orphan topology. A detached
 // or unborn host HEAD aborts the spawn before any creation, ensuring no partial state.
 
