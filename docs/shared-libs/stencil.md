@@ -1,9 +1,12 @@
 # stencil (design)
 
-> **Status: Design — not built.** A shared infrastructure leaf. Per the
-> [documentation lifecycle](../overview.md#documentation-lifecycle), once built its mechanics may
-> fold into the package header (like the other implementation-only libs) — this doc pins the contract
-> agreed during the review-engine design.
+> **Status: 🚧 In progress — build started.** A shared infrastructure leaf, now under construction.
+> It is **fully independent**: a self-contained `text/template`-style leaf that depends on nothing in
+> the review-engine design (or the mux-window sequencing) and blocks nothing — it lands on its own
+> timeline, in parallel, and its consumers (`burler` / `perch` / `loom` / `hardener`) simply pick it
+> up when they need it. Per the [documentation lifecycle](../overview.md#documentation-lifecycle),
+> once landed its mechanics may fold into the package header (like the other implementation-only
+> libs) — this doc pins the contract agreed during the review-engine design.
 
 `internal/stencil` fills **marker fields** in a markdown template and returns the rendered markdown.
 It is the one mechanical thing every prompt-building call-site needs: *template + values → prompt*.
