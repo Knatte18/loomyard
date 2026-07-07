@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: internal-stencil
 branch: internal-stencil
 plan: _mill/plan
@@ -20,4 +20,13 @@ discussed  '2026-07-07T11:16:34Z'
 planning  '2026-07-07T11:24:52Z'
 plan-fix-r1  '2026-07-07T11:28:28Z'
 planned  '2026-07-07T11:28:42Z'
+implementing  '2026-07-07T11:31:10Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: stencil-leaf
+    state: pending
 ```
