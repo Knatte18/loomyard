@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r1
+phase: planned
 slug: internal-stencil
 branch: internal-stencil
 plan: _mill/plan
@@ -19,4 +19,5 @@ discussion-fix-r1  '2026-07-07T11:15:57Z'
 discussed  '2026-07-07T11:16:34Z'
 planning  '2026-07-07T11:24:52Z'
 plan-fix-r1  '2026-07-07T11:28:28Z'
+planned  '2026-07-07T11:28:42Z'
 ```
