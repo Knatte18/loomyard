@@ -2,7 +2,7 @@
 //
 // Status enumerates all host worktrees via hubgeometry.List, pairs each with its weft sibling,
 // reports branch, in-sync verdict, junction health, and scans the host index for any
-// _lyx or _codeguide paths that have been accidentally git-tracked (host pollution).
+// _lyx or _raddle paths that have been accidentally git-tracked (host pollution).
 
 package warpengine
 
@@ -18,13 +18,13 @@ import (
 )
 
 // PollutionEntry describes a single tracked path in the host index that should never
-// be committed there (e.g. _lyx or _codeguide, which belong exclusively in the weft).
+// be committed there (e.g. _lyx or _raddle, which belong exclusively in the weft).
 type PollutionEntry struct {
 	// Path is the relative path reported by git ls-files.
 	Path string `json:"path"`
 	// Remedy is the suggested remediation command. Empty when the entry is report-only.
 	Remedy string `json:"remedy,omitempty"`
-	// ReportOnly is true when no automated remedy is available (e.g. _codeguide).
+	// ReportOnly is true when no automated remedy is available (e.g. _raddle).
 	ReportOnly bool `json:"report_only"`
 }
 
@@ -65,9 +65,9 @@ type StatusResult struct {
 //   - Reads the host branch and weft branch (if the weft exists)
 //   - Reports in-sync status via PairInSync from the host's layout
 //   - Reports junction health (separate from the drift check) using checkJunctionHealth
-//   - Scans the host index for any _lyx or _codeguide paths via git ls-files; marks
+//   - Scans the host index for any _lyx or _raddle paths via git ls-files; marks
 //     _lyx entries as remediable (git rm --cached + restore junction/exclude) and
-//     _codeguide entries as report-only (no junction to restore in this task)
+//     _raddle entries as report-only (no junction to restore in this task)
 //
 // Layout l is the resolved layout for the current working directory; it provides Hub
 // and Prime fields for deriving the weft repo root and weft worktree names.
@@ -150,7 +150,7 @@ func (w *Worktree) Status(l *hubgeometry.Layout) (StatusResult, error) {
 		pair.JunctionHealthy = junctionHealthy
 		pair.JunctionReason = junctionReason
 
-		// Scan the host index for _lyx and _codeguide paths that must never be tracked there.
+		// Scan the host index for _lyx and _raddle paths that must never be tracked there.
 		pollution, pollErr := detectHostPollution(hostPath)
 		if pollErr != nil {
 			// Non-fatal: record the error inline and continue.
@@ -223,18 +223,18 @@ func checkJunctionHealth(hostLink, weftLyxDir string) (bool, string) {
 	return true, ""
 }
 
-// detectHostPollution scans the host worktree index for _lyx and _codeguide paths
+// detectHostPollution scans the host worktree index for _lyx and _raddle paths
 // that should never be tracked in the host repo.
 //
 // For each match under _lyx, the remedy is the git rm --cached command that removes
 // the file from the index without deleting it from disk, plus a reminder to restore
-// the junction/exclude entry. _codeguide matches are report-only: no junction is wired
-// for _codeguide in this release so no automated restore step is offered.
+// the junction/exclude entry. _raddle matches are report-only: no junction is wired
+// for _raddle in this release so no automated restore step is offered.
 func detectHostPollution(hostPath string) ([]PollutionEntry, error) {
 	// git ls-files lists only tracked (index) files matching the given pathspecs.
 	// Using -- prevents ambiguity when the pathspec looks like a branch name.
 	out, _, exitCode, err := gitexec.RunGit(
-		[]string{"ls-files", "--", "_lyx", "_codeguide"},
+		[]string{"ls-files", "--", "_lyx", "_raddle"},
 		hostPath,
 	)
 	if err != nil {
@@ -258,7 +258,7 @@ func detectHostPollution(hostPath string) ([]PollutionEntry, error) {
 			continue
 		}
 
-		// Determine whether the path is under _lyx or _codeguide.
+		// Determine whether the path is under _lyx or _raddle.
 		if strings.HasPrefix(tracked, "_lyx") || tracked == "_lyx" {
 			// Offer git rm --cached as the remedy, plus a reminder to restore the
 			// junction and exclude entry so lyx topology is intact afterwards.
@@ -270,8 +270,8 @@ func detectHostPollution(hostPath string) ([]PollutionEntry, error) {
 				Path:   tracked,
 				Remedy: remedy,
 			})
-		} else if strings.HasPrefix(tracked, "_codeguide") || tracked == "_codeguide" {
-			// _codeguide pollution is report-only: no junction is wired for _codeguide yet.
+		} else if strings.HasPrefix(tracked, "_raddle") || tracked == "_raddle" {
+			// _raddle pollution is report-only: no junction is wired for _raddle yet.
 			entries = append(entries, PollutionEntry{
 				Path:       tracked,
 				ReportOnly: true,

@@ -382,11 +382,11 @@ func (l *Layout) WeftLyxDirFor(slug string) string {
 	return filepath.Join(l.WeftWorktreePath(slug), l.RelPath, LyxDirName)
 }
 
-// WeftCodeguideDir returns the path to the _codeguide directory in the current worktree's weft sibling.
+// WeftRaddleDir returns the path to the _raddle directory in the current worktree's weft sibling.
 //
-// Returns filepath.Join(WeftWorktree(), RelPath, "_codeguide").
-func (l *Layout) WeftCodeguideDir() string {
-	return filepath.Join(l.WeftWorktree(), l.RelPath, "_codeguide")
+// Returns filepath.Join(WeftWorktree(), RelPath, "_raddle").
+func (l *Layout) WeftRaddleDir() string {
+	return filepath.Join(l.WeftWorktree(), l.RelPath, "_raddle")
 }
 
 // HostLyxLink returns the path to the _lyx junction link in a named slug's host worktree.

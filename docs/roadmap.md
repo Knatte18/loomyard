@@ -98,7 +98,7 @@ observable changes until the new module that needs the extracted lib arrives.
 
 7. **Task 008 — configuration TUI.** 🚧 Mostly shipped / in progress. `lyx config` and
    `lyx config <module>` — an interactive menu over the `_lyx/config/` YAML schema.
-   **`_codeguide` junction activation is split out and deferred** to a separate later task
+   **`_raddle` junction activation is split out and deferred** to a separate later task
    (tracked on the board) — it is no longer part of this milestone.
 
 ### Orchestration stack

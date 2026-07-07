@@ -111,8 +111,8 @@ func TestCloneHub_HappyPath(t *testing.T) {
 		t.Fatalf("Hub root should not be a git repo, but .git exists")
 	}
 
-	// Assert no _lyx or _codeguide were created
-	for _, dirName := range []string{"_lyx", "_codeguide"} {
+	// Assert no _lyx or _raddle were created
+	for _, dirName := range []string{"_lyx", "_raddle"} {
 		dirPath := filepath.Join(hubPath, dirName)
 		if _, err := os.Stat(dirPath); err == nil {
 			t.Fatalf("%s should not have been created", dirName)

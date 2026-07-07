@@ -4,7 +4,7 @@
 // Flag matrix:
 //   - apply == false                → dry-run/report only; nothing is deleted.
 //   - apply == true && !force       → delete non-gate-protected orphan branches;
-//     task branches where codeguideFoldedBack returns false are skipped (protected).
+//     task branches where raddleFoldedBack returns false are skipped (protected).
 //   - apply == true && force == true → also delete gate-protected task branches.
 //   - force == true && !apply       → report only (force does not imply apply).
 //
@@ -30,7 +30,7 @@ type CleanupBranchEntry struct {
 	// It is false on a dry run, when the entry was skipped due to gate protection,
 	// and when deletion itself failed.
 	Deleted bool `json:"deleted"`
-	// Protected reports whether the branch was skipped because codeguideFoldedBack
+	// Protected reports whether the branch was skipped because raddleFoldedBack
 	// returned false and force was not set.
 	Protected bool `json:"protected,omitempty"`
 	// Error is non-empty when apply is true and branch deletion failed.
@@ -44,18 +44,18 @@ type CleanupResult struct {
 	Entries []CleanupBranchEntry `json:"entries"`
 }
 
-// codeguideFoldedBack reports whether the weft branch's _codeguide content has
+// raddleFoldedBack reports whether the weft branch's _raddle content has
 // been squash-merged back into the host branch and is therefore safe to delete.
 //
-// This is the extension point for the real _codeguide merge-back check.
+// This is the extension point for the real _raddle merge-back check.
 // Until that check exists, this function conservatively returns false for any
 // branch that looks like a task branch (i.e. all branches), so they are protected
 // from deletion unless --force is specified.
 //
 // When the real merge-back check is implemented, replace the body of this function
-// with the actual verification logic (e.g. check whether the branch's _codeguide
+// with the actual verification logic (e.g. check whether the branch's _raddle
 // commit tree has been merged into the host branch's history).
-func codeguideFoldedBack(_ string) bool {
+func raddleFoldedBack(_ string) bool {
 	// Conservative: always return false until the real check is implemented.
 	// Task branches are therefore always gate-protected unless --force is set.
 	return false
@@ -70,7 +70,7 @@ func codeguideFoldedBack(_ string) bool {
 //
 // The flag matrix governs deletion:
 //   - apply == false             → report all orphaned branches; delete nothing.
-//   - apply && !force            → delete orphans where codeguideFoldedBack returns true;
+//   - apply && !force            → delete orphans where raddleFoldedBack returns true;
 //     skip (mark protected) those where it returns false.
 //   - apply && force             → delete all orphaned branches regardless of the gate.
 //   - force && !apply            → report only; force does not imply apply.
@@ -125,10 +125,10 @@ func (w *Worktree) Cleanup(l *hubgeometry.Layout, apply, force bool) (CleanupRes
 		}
 
 		// apply is true: decide whether to delete based on gate and force flag.
-		folded := codeguideFoldedBack(branch)
+		folded := raddleFoldedBack(branch)
 
 		if !folded && !force {
-			// Gate-protected: _codeguide has not been folded back and --force was not set.
+			// Gate-protected: _raddle has not been folded back and --force was not set.
 			// Skip deletion and mark as protected.
 			entry.Protected = true
 			result.Entries = append(result.Entries, entry)

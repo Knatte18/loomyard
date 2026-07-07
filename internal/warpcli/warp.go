@@ -2,7 +2,7 @@
 //
 // warp is the structural counterpart to the content-focused weft module — named
 // for the weaving warp threads, the load-bearing skeleton the weft passes through.
-// Where weft owns every git write into the weft repo (config sync, codeguide
+// Where weft owns every git write into the weft repo (config sync, raddle
 // commit/push/pull), warp owns everything that governs which worktrees and branches
 // exist and how they pair:
 //
@@ -14,8 +14,8 @@
 //   - pairs: paired view of every host↔weft worktree with branch, drift, and
 //     junction-health fields.
 //   - prune: identify and optionally remove stale or orphaned pairs.
-//   - cleanup: delete weft branches whose host sibling is gone, gated on codeguide
-//     merge-back (never destroy a weft branch with un-merged codeguide content).
+//   - cleanup: delete weft branches whose host sibling is gone, gated on raddle
+//     merge-back (never destroy a weft branch with un-merged raddle content).
 //
 // # Topology model
 //
@@ -86,7 +86,7 @@ It owns worktree pairing, coordinated branch switching, and cleanup.`,
 		Long: `Clone three repositories into a new hub directory (<parent>/<host-name>-HUB):
 
   <host-name>      — host prime (the main working repo)
-  <host-name>-weft — weft prime (lyx artefacts: config, codeguide, weft commits)
+  <host-name>-weft — weft prime (lyx artefacts: config, raddle, weft commits)
   _board           — board passenger (task-tracker wiki)
 
 The board URL defaults to <weft-url>.wiki.git when omitted.

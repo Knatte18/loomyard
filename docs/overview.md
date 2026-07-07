@@ -73,7 +73,7 @@ exposes two entry points:
   --show-toplevel`), Hub, relative path, and Prime worktree.
 
 The `Layout` type provides geometry methods: `LyxDir()`, `WorktreePath(slug)`,
-`PortalsDir()`, `PortalLink(slug)`, `PortalTarget(slug)`, `LaunchersDir()`, `LauncherDir(slug)`, `MenuLauncherPath()`, `LauncherSpawnRel(slug)`, `MenuLauncherRel()`, `PrimeName()`, `WeftRepoRoot()`, `WeftWorktreePath(slug)`, `WeftWorktree()`, `WeftLyxDir()`, `WeftLyxDirFor(slug)`, `WeftCodeguideDir()`, `HostLyxLink(slug)`, `HostLyxLinkHere()`, `HostJunctions(slug)`.
+`PortalsDir()`, `PortalLink(slug)`, `PortalTarget(slug)`, `LaunchersDir()`, `LauncherDir(slug)`, `MenuLauncherPath()`, `LauncherSpawnRel(slug)`, `MenuLauncherRel()`, `PrimeName()`, `WeftRepoRoot()`, `WeftWorktreePath(slug)`, `WeftWorktree()`, `WeftLyxDir()`, `WeftLyxDirFor(slug)`, `WeftRaddleDir()`, `HostLyxLink(slug)`, `HostLyxLinkHere()`, `HostJunctions(slug)`.
 
 **Raw `os.Getwd` and `git rev-parse --show-toplevel` are banned** outside `internal/hubgeometry`
 and `cmd/lyx/main.go`. The ban is enforced at `go test` / CI time by
@@ -88,7 +88,7 @@ Mechanical per-module design docs (`docs/modules/<module>.md`) are deleted when 
 
 ## Weft overlay model
 
-lyx organizes overlay artifacts (configuration, task state, codeguide docs, and the board) into a **weft repo** — a companion git repository that stays separate from the host repo, keeping the host pristine.
+lyx organizes overlay artifacts (configuration, task state, raddle docs, and the board) into a **weft repo** — a companion git repository that stays separate from the host repo, keeping the host pristine.
 
 ### Topology
 
@@ -111,7 +111,7 @@ The **host repo** is the project's source of truth, maintained by developers. Al
 |----------|----------|------|---------|
 | `_lyx/config/` | Weft worktree | Weft | Live YAML configuration files for all modules (board, warp, weft); reconciled via `lyx config reconcile` |
 | `.env` | Weft worktree | Weft | Git-ignored per-machine environment variable overrides (KEY=value format) |
-| `_codeguide/` | Weft worktree | Weft | Codeguide documentation (task 008) |
+| `_raddle/` | Weft worktree | Weft | Raddle documentation (task 008) |
 | `_board/` | Hub | Board | Task board at a **configured** board-repo URL — `lyx board` accepts any URL; `ly-git-clone` defaults it to the weft repo's GitHub wiki (`<weft>.wiki.git`) |
 | Host source | Host worktree | Host | Project source code |
 
@@ -120,7 +120,7 @@ The **host repo** is the project's source of truth, maintained by developers. Al
 Two state roots with opposite lifecycles:
 
 - **`_lyx/`** — **durable, synced, portable.** Lives in the weft repo (git-synced), so it
-  survives a machine and transfers to another. Config, codeguide, the board, and loom's
+  survives a machine and transfers to another. Config, raddle, the board, and loom's
   orchestration **status** (current phase, review round, verdict history) go here — loom
   resume works across machines *because* its status is weft-synced.
 - **`.lyx/`** — **ephemeral, local, machine-bound.** Untracked (listed in
@@ -138,13 +138,13 @@ yes → `_lyx/`. A pane handle no → `.lyx/`.
 
 Each host worktree has a sibling weft worktree. Host worktrees use **junctions** (Windows) or symlinks to route writes into the sibling weft worktree:
 - `<host>/_lyx` → `<hub>/<slug>-weft/_lyx` (config junction)
-- `<host>/_codeguide` → `<hub>/<slug>-weft/_codeguide` (codeguide junction, task 008)
+- `<host>/_raddle` → `<hub>/<slug>-weft/_raddle` (raddle junction, task 008)
 
 Junctions are listed in `.git/info/exclude` per worktree and are never committed to `.gitignore`. From the CLI's perspective, reads and writes happen transparently — code that writes to `_lyx/config/board.yaml` writes through the junction into the weft repo without awareness of the indirection.
 
 ### Branch model
 
-Weft branches mirror host-repo branching. When a new weft worktree is spawned, the new weft branch forks from the weft branch whose name equals the host worktree's current branch at spawn time, preserving a shared merge-base for future squash-merge-back operations (`_codeguide` — see below). This guarantees that subtasks (spawned from non-main branches) inherit the correct fork point: branch isolation is **not** orphan-based (each isolated from history) but **merge-base-preserving** (each on its parent's timeline). `_lyx` is isolated by pathspec (junctions route it into weft; host `.git/info/exclude` hides it) rather than by orphan topology, so no merge-back state is lost.
+Weft branches mirror host-repo branching. When a new weft worktree is spawned, the new weft branch forks from the weft branch whose name equals the host worktree's current branch at spawn time, preserving a shared merge-base for future squash-merge-back operations (`_raddle` — see below). This guarantees that subtasks (spawned from non-main branches) inherit the correct fork point: branch isolation is **not** orphan-based (each isolated from history) but **merge-base-preserving** (each on its parent's timeline). `_lyx` is isolated by pathspec (junctions route it into weft; host `.git/info/exclude` hides it) rather than by orphan topology, so no merge-back state is lost.
 
 ### Weft suffix convention
 
@@ -157,8 +157,8 @@ The `-weft` suffix is fixed and non-configurable. Weft paths are computed on dem
 ### Status
 
 - **Go implementation** (paths geometry, paired spawn, `lyx weft` command): ✅ task 006 complete. The weft engine (paths geometry, paired `lyx warp add` spawn, and `lyx weft status|commit|push|pull|sync`) now exists in Go. Paired `lyx warp add` hard-requires a weft repo built by the downstream hub-creator.
-- **`lyx config` command**: ✅ task 008 partial complete. The interactive menu interface (`lyx config` and `lyx config <module>`) shipped. `_codeguide` junction activation and codeguide config schema remain deferred.
-- **Portals**: on hold pending `_codeguide` junction activation. Portals (symlink-based overlay sharing) remain unimplemented; the weft junction model is the live mechanism.
+- **`lyx config` command**: ✅ task 008 partial complete. The interactive menu interface (`lyx config` and `lyx config <module>`) shipped. `_raddle` junction activation and raddle config schema remain deferred.
+- **Portals**: on hold pending `_raddle` junction activation. Portals (symlink-based overlay sharing) remain unimplemented; the weft junction model is the live mechanism.
 
 ```
 github.com/Knatte18/loomyard/

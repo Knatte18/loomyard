@@ -1,7 +1,7 @@
-// codeguide_guard_test.go is a guard to ensure that internal/hubgeometry never
-// discovers or enumerates the _codeguide directory. This documents that hubgeometry
-// never scans the worktree to mirror dirs — a future nested/ignored _codeguide
-// can never be treated as a sibling. Geometry methods like WeftCodeguideDir() are
+// raddle_guard_test.go is a guard to ensure that internal/hubgeometry never
+// discovers or enumerates the _raddle directory. This documents that hubgeometry
+// never scans the worktree to mirror dirs — a future nested/ignored _raddle
+// can never be treated as a sibling. Geometry methods like WeftRaddleDir() are
 // exceptions: they compute paths purely via filepath.Join with no discovery logic.
 
 package hubgeometry
@@ -15,21 +15,21 @@ import (
 	"testing"
 )
 
-// TestCodeguideGuard verifies that no production source file in internal/hubgeometry
-// contains the literal substring _codeguide.
-func TestCodeguideGuard(t *testing.T) {
+// TestRaddleGuard verifies that no production source file in internal/hubgeometry
+// contains the literal substring _raddle.
+func TestRaddleGuard(t *testing.T) {
 	t.Run("tree-scan", func(t *testing.T) {
 		// Resolve package directory relative to this test file.
 		_, file, _, ok := runtime.Caller(0)
 		if !ok {
 			t.Fatal("could not determine test file location")
 		}
-		// One level up from internal/hubgeometry/codeguide_guard_test.go → package dir
+		// One level up from internal/hubgeometry/raddle_guard_test.go → package dir
 		pkgDir := filepath.Dir(file)
 
-		// Predicate: returns true if the bytes contain _codeguide.
-		containsCodeguide := func(data []byte) bool {
-			return strings.Contains(string(data), "_codeguide")
+		// Predicate: returns true if the bytes contain _raddle.
+		containsRaddle := func(data []byte) bool {
+			return strings.Contains(string(data), "_raddle")
 		}
 
 		var failures []string
@@ -42,7 +42,7 @@ func TestCodeguideGuard(t *testing.T) {
 
 			// Only check .go files that are not _test.go files.
 			if !d.IsDir() && strings.HasSuffix(d.Name(), ".go") && !strings.HasSuffix(d.Name(), "_test.go") {
-				// Skip hubgeometry.go: it contains geometry methods like WeftCodeguideDir() that compute
+				// Skip hubgeometry.go: it contains geometry methods like WeftRaddleDir() that compute
 				// paths purely via filepath.Join, which is allowed. The guard applies only to
 				// discovery/enumeration logic, not to geometry computation.
 				if d.Name() == "hubgeometry.go" {
@@ -52,7 +52,7 @@ func TestCodeguideGuard(t *testing.T) {
 				if err != nil {
 					return err
 				}
-				if containsCodeguide(data) {
+				if containsRaddle(data) {
 					failures = append(failures, d.Name())
 				}
 			}
@@ -65,7 +65,7 @@ func TestCodeguideGuard(t *testing.T) {
 		}
 
 		if len(failures) > 0 {
-			t.Errorf("found _codeguide reference in production files: %v", failures)
+			t.Errorf("found _raddle reference in production files: %v", failures)
 		}
 	})
 
@@ -77,8 +77,8 @@ func TestCodeguideGuard(t *testing.T) {
 			want    bool
 		}{
 			{
-				name:    "contains _codeguide",
-				content: "path := filepath.Join(dir, _codeguide, slug)",
+				name:    "contains _raddle",
+				content: "path := filepath.Join(dir, _raddle, slug)",
 				want:    true,
 			},
 			{
@@ -88,15 +88,15 @@ func TestCodeguideGuard(t *testing.T) {
 			},
 		}
 
-		containsCodeguide := func(content string) bool {
-			return strings.Contains(content, "_codeguide")
+		containsRaddle := func(content string) bool {
+			return strings.Contains(content, "_raddle")
 		}
 
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
-				got := containsCodeguide(tt.content)
+				got := containsRaddle(tt.content)
 				if got != tt.want {
-					t.Errorf("containsCodeguide(%q) = %v, want %v", tt.content, got, tt.want)
+					t.Errorf("containsRaddle(%q) = %v, want %v", tt.content, got, tt.want)
 				}
 			})
 		}

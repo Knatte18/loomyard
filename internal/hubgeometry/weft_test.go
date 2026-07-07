@@ -25,7 +25,7 @@ func TestWeftGeometryMethods(t *testing.T) {
 		wantWeftWorktreePath string
 		wantWeftLyxDir       string
 		wantWeftLyxDirFor    string
-		wantWeftCodeguideDir string
+		wantWeftRaddleDir    string
 		wantHostLyxLink      string
 		wantHostLyxLinkHere  string
 	}{
@@ -38,11 +38,11 @@ func TestWeftGeometryMethods(t *testing.T) {
 			wantWeftRepoRoot:     filepath.Join("/h", "main-weft"),
 			wantWeftWorktree:     filepath.Join("/h", "feat-weft"),
 			wantWeftWorktreePath: filepath.Join("/h", "x-weft"),
-			wantWeftLyxDir:       filepath.Join("/h", "feat-weft", "_lyx"),
-			wantWeftLyxDirFor:    filepath.Join("/h", "x-weft", "_lyx"),
-			wantWeftCodeguideDir: filepath.Join("/h", "feat-weft", "_codeguide"),
-			wantHostLyxLink:      filepath.Join("/h", "x", "_lyx"),
-			wantHostLyxLinkHere:  filepath.Join("/h", "feat", "_lyx"),
+			wantWeftLyxDir:    filepath.Join("/h", "feat-weft", "_lyx"),
+			wantWeftLyxDirFor: filepath.Join("/h", "x-weft", "_lyx"),
+			wantWeftRaddleDir: filepath.Join("/h", "feat-weft", "_raddle"),
+			wantHostLyxLink:   filepath.Join("/h", "x", "_lyx"),
+			wantHostLyxLinkHere: filepath.Join("/h", "feat", "_lyx"),
 		},
 		{
 			name:                 "/h /h/main feat sub case",
@@ -53,11 +53,11 @@ func TestWeftGeometryMethods(t *testing.T) {
 			wantWeftRepoRoot:     filepath.Join("/h", "main-weft"),
 			wantWeftWorktree:     filepath.Join("/h", "feat-weft"),
 			wantWeftWorktreePath: filepath.Join("/h", "x-weft"),
-			wantWeftLyxDir:       filepath.Join("/h", "feat-weft", "sub", "_lyx"),
-			wantWeftLyxDirFor:    filepath.Join("/h", "x-weft", "sub", "_lyx"),
-			wantWeftCodeguideDir: filepath.Join("/h", "feat-weft", "sub", "_codeguide"),
-			wantHostLyxLink:      filepath.Join("/h", "x", "sub", "_lyx"),
-			wantHostLyxLinkHere:  filepath.Join("/h", "feat", "sub", "_lyx"),
+			wantWeftLyxDir:    filepath.Join("/h", "feat-weft", "sub", "_lyx"),
+			wantWeftLyxDirFor: filepath.Join("/h", "x-weft", "sub", "_lyx"),
+			wantWeftRaddleDir: filepath.Join("/h", "feat-weft", "sub", "_raddle"),
+			wantHostLyxLink:   filepath.Join("/h", "x", "sub", "_lyx"),
+			wantHostLyxLinkHere: filepath.Join("/h", "feat", "sub", "_lyx"),
 		},
 		{
 			name:                 "/h /h/main feat sub/dir case",
@@ -68,11 +68,11 @@ func TestWeftGeometryMethods(t *testing.T) {
 			wantWeftRepoRoot:     filepath.Join("/h", "main-weft"),
 			wantWeftWorktree:     filepath.Join("/h", "feat-weft"),
 			wantWeftWorktreePath: filepath.Join("/h", "y-weft"),
-			wantWeftLyxDir:       filepath.Join("/h", "feat-weft", "sub/dir", "_lyx"),
-			wantWeftLyxDirFor:    filepath.Join("/h", "y-weft", "sub/dir", "_lyx"),
-			wantWeftCodeguideDir: filepath.Join("/h", "feat-weft", "sub/dir", "_codeguide"),
-			wantHostLyxLink:      filepath.Join("/h", "y", "sub/dir", "_lyx"),
-			wantHostLyxLinkHere:  filepath.Join("/h", "feat", "sub/dir", "_lyx"),
+			wantWeftLyxDir:    filepath.Join("/h", "feat-weft", "sub/dir", "_lyx"),
+			wantWeftLyxDirFor: filepath.Join("/h", "y-weft", "sub/dir", "_lyx"),
+			wantWeftRaddleDir: filepath.Join("/h", "feat-weft", "sub/dir", "_raddle"),
+			wantHostLyxLink:   filepath.Join("/h", "y", "sub/dir", "_lyx"),
+			wantHostLyxLinkHere: filepath.Join("/h", "feat", "sub/dir", "_lyx"),
 		},
 	}
 
@@ -111,9 +111,9 @@ func TestWeftGeometryMethods(t *testing.T) {
 				t.Errorf("WeftLyxDirFor(%q) = %q; want %q", tt.slug, got, tt.wantWeftLyxDirFor)
 			}
 
-			// Test WeftCodeguideDir()
-			if got := layout.WeftCodeguideDir(); got != tt.wantWeftCodeguideDir {
-				t.Errorf("WeftCodeguideDir() = %q; want %q", got, tt.wantWeftCodeguideDir)
+			// Test WeftRaddleDir()
+			if got := layout.WeftRaddleDir(); got != tt.wantWeftRaddleDir {
+				t.Errorf("WeftRaddleDir() = %q; want %q", got, tt.wantWeftRaddleDir)
 			}
 
 			// Test HostLyxLink(slug)
@@ -208,7 +208,7 @@ func TestWeftGeometryAtMainWorktree(t *testing.T) {
 }
 
 // TestHostJunctions verifies that HostJunctions(slug) returns exactly one entry with
-// the correct Name, Link, and Target fields, and that no entry's Name equals _codeguide.
+// the correct Name, Link, and Target fields, and that no entry's Name equals _raddle.
 func TestHostJunctions(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -289,8 +289,8 @@ func TestHostJunctions(t *testing.T) {
 		})
 	}
 
-	// Sub-test: scope guard — verify no junction name is _codeguide
-	t.Run("no_codeguide_names", func(t *testing.T) {
+	// Sub-test: scope guard — verify no junction name is _raddle
+	t.Run("no_raddle_names", func(t *testing.T) {
 		layout := &hubgeometry.Layout{
 			Cwd:          filepath.Join("/h", "main"),
 			WorktreeRoot: filepath.Join("/h", "main"),
@@ -301,8 +301,8 @@ func TestHostJunctions(t *testing.T) {
 
 		junctions := layout.HostJunctions("slug")
 		for _, j := range junctions {
-			if j.Name == "_codeguide" {
-				t.Errorf("HostJunctions found _codeguide entry (forbidden by design)")
+			if j.Name == "_raddle" {
+				t.Errorf("HostJunctions found _raddle entry (forbidden by design)")
 			}
 		}
 	})

@@ -2,7 +2,7 @@
 
 // status_test.go covers the warp paired-view Status: pair fields populated, in-sync vs
 // drifted detection, junction health reflected, and host-pollution flagging for both
-// _lyx (remediable) and _codeguide (report-only).
+// _lyx (remediable) and _raddle (report-only).
 
 package warpengine
 
@@ -263,27 +263,27 @@ func TestStatus_LyxPollutionDetected(t *testing.T) {
 		t.Errorf("no pollution entry with _lyx prefix found; Pollution = %+v", pair.Pollution)
 	}
 
-	// Phase 2: Test _codeguide pollution (report-only, no remedy in this release).
-	// Create and force-add a file under _codeguide in the host worktree.
-	codeguideDir := filepath.Join(f.Hub, "_codeguide")
-	if err := os.MkdirAll(codeguideDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll _codeguide: %v", err)
+	// Phase 2: Test _raddle pollution (report-only, no remedy in this release).
+	// Create and force-add a file under _raddle in the host worktree.
+	raddleDir := filepath.Join(f.Hub, "_raddle")
+	if err := os.MkdirAll(raddleDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll _raddle: %v", err)
 	}
-	codeguidePath := filepath.Join(codeguideDir, "overview.md")
-	if err := os.WriteFile(codeguidePath, []byte("codeguide polluted"), 0o644); err != nil {
-		t.Fatalf("WriteFile _codeguide/overview.md: %v", err)
+	raddlePath := filepath.Join(raddleDir, "overview.md")
+	if err := os.WriteFile(raddlePath, []byte("raddle polluted"), 0o644); err != nil {
+		t.Fatalf("WriteFile _raddle/overview.md: %v", err)
 	}
 
-	// Force-add to bypass any exclusion; _codeguide may not be excluded yet.
-	lyxtest.MustRun(t, f.Hub, "git", "add", "-f", codeguidePath)
+	// Force-add to bypass any exclusion; _raddle may not be excluded yet.
+	lyxtest.MustRun(t, f.Hub, "git", "add", "-f", raddlePath)
 
 	// Commit so git ls-files picks it up as tracked (ls-files shows staged and committed files).
-	lyxtest.MustRun(t, f.Hub, "git", "commit", "-m", "test: force-add codeguide pollution")
+	lyxtest.MustRun(t, f.Hub, "git", "commit", "-m", "test: force-add raddle pollution")
 
-	// Re-invoke Status() for the _codeguide pollution check.
+	// Re-invoke Status() for the _raddle pollution check.
 	result2, err := w.Status(f.Layout)
 	if err != nil {
-		t.Fatalf("Status() (codeguide phase) error = %v; want nil", err)
+		t.Fatalf("Status() (raddle phase) error = %v; want nil", err)
 	}
 
 	var pair2 *PairStatus
@@ -294,19 +294,19 @@ func TestStatus_LyxPollutionDetected(t *testing.T) {
 		}
 	}
 	if pair2 == nil {
-		t.Fatalf("Status() (codeguide phase): no pair found for hub worktree %s", f.Hub)
+		t.Fatalf("Status() (raddle phase): no pair found for hub worktree %s", f.Hub)
 	}
 
 	if len(pair2.Pollution) == 0 {
-		t.Fatalf("Pollution is empty after force-add of _codeguide file; want at least one entry")
+		t.Fatalf("Pollution is empty after force-add of _raddle file; want at least one entry")
 	}
 
 	found2 := false
 	for _, pe := range pair2.Pollution {
-		if strings.HasPrefix(pe.Path, "_codeguide") {
+		if strings.HasPrefix(pe.Path, "_raddle") {
 			found2 = true
 			if !pe.ReportOnly {
-				t.Errorf("Pollution entry for %q has ReportOnly=false; want true (_codeguide is report-only)", pe.Path)
+				t.Errorf("Pollution entry for %q has ReportOnly=false; want true (_raddle is report-only)", pe.Path)
 			}
 			if pe.Remedy != "" {
 				t.Errorf("Pollution entry for %q has Remedy=%q; want empty (report-only)", pe.Path, pe.Remedy)
@@ -315,6 +315,6 @@ func TestStatus_LyxPollutionDetected(t *testing.T) {
 		}
 	}
 	if !found2 {
-		t.Errorf("no pollution entry with _codeguide prefix found; Pollution = %+v", pair2.Pollution)
+		t.Errorf("no pollution entry with _raddle prefix found; Pollution = %+v", pair2.Pollution)
 	}
 }

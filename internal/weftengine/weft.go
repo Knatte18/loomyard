@@ -1,7 +1,7 @@
 // Package weftengine owns all git operations into the paired weft worktree (`git -C <weft>`).
 // It is one-shot and daemonless, mirroring the board's git-ownership contract.
 // Weft provides commit, push, pull, and sync operations scoped to a configurable
-// pathspec of directories (e.g., ["_lyx", "_codeguide"]), and manages locks to
+// pathspec of directories (e.g., ["_lyx", "_raddle"]), and manages locks to
 // serialize writes and pushes.
 package weftengine
 
