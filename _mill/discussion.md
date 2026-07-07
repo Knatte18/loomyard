@@ -80,6 +80,15 @@ dependency on any of them, so it can and should be built first, ahead of its con
 
 - Decision: conditional sections switch on a single string discriminator via the built-in
   `eq`: `{{if eq .Type "Cluster"}}…{{end}}`. Values remain `map[string]string`.
+- Expressiveness: because stencil exposes plain `text/template` (no restricted sub-grammar
+  of its own), the caller inherits **all** of stdlib's built-in boolean/comparison
+  functions for free — stencil adds none. `eq` is **variadic**, so `{{if eq .Type "A"
+  "B"}}` means "Type is A or B" (finite-set membership); `and`/`or`/`not` and
+  `eq`/`ne`/`lt`/`le`/`gt`/`ge` are all available (`{{if and (eq .Type "Cluster") (ne
+  .Phase "safety")}}`). There is **no `in` keyword**; the fixed-known-set case is covered
+  by variadic `eq`. A general `in` over a *dynamic* list would need a custom template func
+  — deliberately out of scope (it would also reopen `map[string]string` vs `any`); revisit
+  only if a real consumer needs dynamic membership.
 - Rationale: a template is always *for* a known kind of prompt. Driving conditionals off
   one string `Type` field (rather than a scatter of independent boolean flags) is the
   clean idiom **and** keeps the value bag `map[string]string`: a string discriminator
@@ -108,24 +117,44 @@ dependency on any of them, so it can and should be built first, ahead of its con
 ### the load-bearing guard — reached-but-absent OR top-level-empty → hard error
 
 - Decision: `Fill` returns an error if any marker is unfilled. "Unfilled" means either:
-  1. **reached-but-absent** — a field the executed template actually references is not
-     present in `values`; enforced by `text/template`'s `Option("missingkey=error")`,
-     which naturally scopes to *taken* branches (a `{{.ClusterName}}` inside an untaken
-     `{{if eq .Type "Cluster"}}` branch is never reached, so it is not required when not
-     clustering); **and**
-  2. **top-level-empty** — a substitution `{{.X}}` at the top level of the template (not
-     nested inside any `{{if}}/{{with}}/{{range}}`) resolves to an empty or
-     whitespace-only value. Enforced by a parse-tree walk over depth-0 action nodes,
-     checking `strings.TrimSpace(values[X]) != ""`.
-- Rationale: (2) is the empty-`fasit` guard — the whole reason the leaf exists. `fasit`
-  and `target` are always top-level substitutions, so they are fully guarded. Optional
-  content lives inside conditional branches and is caller-owned (that is the point of the
-  branch). (1) catches typo'd markers and a forgotten `Type` discriminator (the `{{if eq
-  .Type …}}` is always reached, so an absent `Type` errors).
-- Error shape: **collect all offenders, fail once, sorted alphabetically** (mill's
-  collect-then-raise pattern), so one `Fill` call reports every hole deterministically
-  rather than failing one-at-a-time. Plain `fmt.Errorf` — no sentinel/typed error (leaf
-  convention: `yamlengine`/`output` use plain errors; no consumer needs to branch on it).
+  1. **top-level absent-or-empty** — a substitution `{{.X}}` at the top level of the
+     template (not nested inside any `{{if}}/{{with}}/{{range}}`) is absent from `values`
+     or resolves to an empty/whitespace-only value. Enforced by a parse-tree walk over
+     depth-0 action nodes, checking `strings.TrimSpace(values[X]) == ""` (an absent key
+     reads as the zero value `""`, so this one check covers both absent and empty); **and**
+  2. **reached-but-absent (non-top-level)** — any other field the template actually
+     evaluates at execution — inside a taken branch, or in a condition pipeline such as
+     `{{if eq .Type "Cluster"}}` — is not present in `values`; enforced by
+     `text/template`'s `Option("missingkey=error")`, which naturally scopes to what is
+     reached (a `{{.ClusterName}}` inside an untaken `{{if eq .Type "Cluster"}}` branch is
+     never evaluated, so it is not required when not clustering; but the `{{if eq .Type …}}`
+     condition itself is always evaluated, so an absent `Type` errors).
+- Rationale: (1) is the empty-`fasit` guard — the whole reason the leaf exists. `fasit`
+  and `target` are always top-level substitutions, so they are fully guarded, and a typo'd
+  top-level marker surfaces as an absent key the same way. Optional content lives inside
+  conditional branches and is caller-owned (that is the point of the branch). (2) catches a
+  forgotten `Type` discriminator (the `{{if eq .Type …}}` condition is always evaluated, so
+  an absent `Type` errors) and any branch-internal marker that a taken branch actually
+  reaches.
+- Error shape: **all top-level offenders are collected, sorted alphabetically, and
+  reported in one error** (mill's collect-then-raise pattern), so a `Fill` call names every
+  top-level hole at once rather than failing one-at-a-time. Plain `fmt.Errorf` — no
+  sentinel/typed error (leaf convention: `yamlengine`/`output` use plain errors; no
+  consumer needs to branch on it).
+- Sequencing (pins precedence between the two mechanisms, avoids a double-report): the
+  parse-tree walk runs **first** and collects every top-level offender — a top-level field
+  that is absent from `values` *or* whose value is empty/whitespace-only (an absent key
+  reads as the zero value `""`, so the same non-empty check catches both). If the walk
+  finds any offender, `Fill` returns the single sorted error **without executing the
+  template** — so `missingkey=error` never fires for a top-level key and there is no
+  duplicate report. Only when the top level is fully satisfied does execution proceed, and
+  `missingkey=error` then catches **branch-internal** reached-but-absent markers.
+- Scope of the "collect all" guarantee (do not over-promise in godoc/tests): batching is
+  **top-level only**. Because `missingkey=error` halts execution at the first miss,
+  branch-internal reached-but-absent markers are caught **incrementally** (one per `Fill`
+  call), not collected. A mix — e.g. absent top-level `Fasit` plus an absent in-branch
+  `Index` — reports the top-level offender(s) and never reaches the in-branch miss (the
+  walk returns early). This is acceptable: the load-bearing fields are top-level.
 - Rejected: **`missingkey=error` alone** — does not catch a present-but-empty value, so an
   empty `fasit` would still render blank. Fails the stated guarantee.
 - Rejected: **post-render scan for `<no value>`** — fragile (real content could contain
@@ -164,15 +193,20 @@ dependency on any of them, so it can and should be built first, ahead of its con
   stencil must reject the empty value too).
 - **`text/template` mechanics the plan will use:**
   - Parse: `template.New("stencil").Option("missingkey=error").Parse(string(body))`.
-  - The parse-tree walk for the top-level-empty check reads `tmpl.Tree.Root.Nodes` and
-    inspects `*parse.ActionNode` whose pipe is a bare `*parse.FieldNode` (a `{{.X}}`
-    substitution). Only depth-0 nodes are checked; nodes inside `*parse.IfNode`/`WithNode`
-    /`RangeNode` bodies are skipped (caller-owned). The field name is
-    `FieldNode.Ident[0]`.
-  - Execute into a `bytes.Buffer`; a `missingkey=error` miss surfaces as an execution
-    error whose message names the missing key — parse it (or pre-check presence against
-    the collected reached-field set) to fold into the collected-offenders list so the
-    single sorted error covers both absent and empty causes.
+  - The parse-tree walk for the top-level check reads `tmpl.Tree.Root.Nodes` and inspects
+    `*parse.ActionNode` whose pipe is a bare `*parse.FieldNode` (a `{{.X}}` substitution).
+    Only depth-0 nodes are checked; nodes inside `*parse.IfNode`/`WithNode`/`RangeNode`
+    bodies are skipped (caller-owned). The field name is `FieldNode.Ident[0]`.
+  - **Ordering (pinned):** (1) parse the template; a parse error → `fmt.Errorf("parse
+    template: %w", err)`. (2) Run the top-level walk; for each depth-0 `{{.X}}`, flag it
+    when `strings.TrimSpace(values[X]) == ""` — this single check covers both the
+    absent-key case (zero value `""`) and the empty-value case, so there is no separate
+    missingkey path for top-level keys and no double-report. (3) If the walk collected any
+    offenders, `sort.Strings` them and return one `fmt.Errorf` **without executing**. (4)
+    Only if the top level is clean, execute into a `bytes.Buffer` with
+    `Option("missingkey=error")`; a branch-internal reached-but-absent marker surfaces as
+    an execution error (halts at the first miss) → wrap as `fmt.Errorf("execute template:
+    %w", err)`. This is why the "collect all" batching is top-level-only.
 - **Consumers (not built here, for context only):** `burler` (handler + cluster-reviewer
   prompts; bulk blob passed as a *value*, Go-assembled, not read via tools), `perch`
   (progress-judge prompt), `loom` (discussion/plan producer prompts), `hardener` (DRAFT;
@@ -214,8 +248,16 @@ Scenarios that must be covered:
   `values` → error naming that marker.
 - **Empty-value (the load-bearing case)** — a top-level marker present but `""` → error;
   and present but whitespace-only (`"   "`) → error. This is the empty-`fasit` guard.
-- **Multiple offenders collected & sorted** — two+ unfilled markers → single error listing
-  all of them in deterministic sorted order.
+- **Multiple top-level offenders collected & sorted** — two+ unfilled *top-level* markers
+  → single error listing all of them in deterministic sorted order. (Batching is
+  top-level-only; see the next case for branch-internal.)
+- **Branch-internal miss caught incrementally** — a taken branch references an absent
+  marker → error naming it; and a mix (absent top-level `Fasit` + absent in-branch `Index`)
+  reports the top-level offender and returns before execution, so the in-branch miss is not
+  in the same error (documents the top-level-only batching, so godoc/tests don't
+  over-promise).
+- **Malformed template → wrapped error** — an unparseable template (e.g. unclosed
+  `{{if}}`) → a `fmt.Errorf("parse template: %w", …)`-wrapped error, not a panic.
 - **Conditional taken** — `{{if eq .Type "Cluster"}}…{{end}}` with `Type: "Cluster"` →
   section present; markers inside it (`Index`, `Total`) substituted.
 - **Conditional not taken** — same template with `Type: "Single"` (or `Type` any
@@ -245,3 +287,4 @@ Scenarios that must be covered:
 - **Q:** Input — `[]byte` or read from a path like mill? **A:** `[]byte`, I/O-free, per the Go leaf convention (`yamlengine.Resolve`).
 - **Q:** Port mill's leading-comment strip? **A:** Yes — strip a leading `<!-- … -->` before parsing so annotations with `{{…}}` aren't executed or checked.
 - **Q:** Error type — sentinel/typed or plain? **A:** Plain `fmt.Errorf`, per leaf convention; no consumer needs to branch on it.
+- **Q:** Will conditionals support `.Type == A or B`, "or", "in", etc.? **A:** stencil exposes plain `text/template`, so all stdlib operators are free: variadic `eq` (`{{if eq .Type "A" "B"}}` = A-or-B / finite-set), plus `and`/`or`/`not` and `eq`/`ne`/`lt`/`le`/`gt`/`ge`. No `in` keyword — variadic `eq` covers the fixed-set case; a dynamic `in` would need a custom func (out of scope).
