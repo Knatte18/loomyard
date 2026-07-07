@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-fix-r1
+phase: discussed
 slug: internal-stencil
 branch: internal-stencil
 plan: null
@@ -16,4 +16,5 @@ task_description: |
 ```text
 discussing  '2026-07-07T10:45:42Z'
 discussion-fix-r1  '2026-07-07T11:15:57Z'
+discussed  '2026-07-07T11:16:34Z'
 ```
