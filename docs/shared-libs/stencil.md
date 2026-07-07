@@ -1,6 +1,6 @@
-# stencil (design)
+# stencil
 
-> **Status: Design — not built.** A shared infrastructure leaf. Per the
+> **Status: Built.** A shared infrastructure leaf. Per the
 > [documentation lifecycle](../overview.md#documentation-lifecycle), once built its mechanics may
 > fold into the package header (like the other implementation-only libs) — this doc pins the contract
 > agreed during the review-engine design.
@@ -28,15 +28,17 @@ with marker fields that get filled." The name deliberately avoids two collisions
 // Fill renders a markdown template by substituting marker fields from values.
 // It returns an error if any marker in the template has no value — an unfilled
 // marker is never silently left blank.
-func Fill(template []byte, values map[string]any) ([]byte, error)
+func Fill(template []byte, values map[string]string) ([]byte, error)
 ```
 
 - **Input:** a markdown template (bytes / an asset file's contents) and a set of named values.
 - **Output:** the filled markdown, ready to hand to `shuttle.Run` as a prompt.
-- **Marker syntax:** an implementation choice — Go stdlib `text/template` (`{{.X}}`, and it gives
-  conditional sections for free: `{{if .Cluster}}…{{end}}` for bulk-vs-tool-use / cluster-present /
-  seeded-context-vs-safety-pass) is the likely backing; simple `<PLACEHOLDER>` substitution (mill's
-  convention) is the alternative. Either way, the load-bearing guarantee below holds.
+- **Marker syntax:** the pinned grammar is Go stdlib `text/template` (`text/`, never
+  `html/template` — output must not be HTML-escaped): `{{.X}}` substitution, plus
+  `{{if eq .Type "…"}}` equality conditionals for bulk-vs-tool-use / cluster-present /
+  seeded-context-vs-safety-pass sections. Variadic `eq`, and the `and`/`or`/`not`/comparison
+  operators, come free with `text/template`. A leading `<!-- … -->` comment on the template
+  asset is stripped before parsing.
 
 ## The one load-bearing guarantee — fail on an unfilled marker
 
@@ -46,6 +48,12 @@ the load-bearing field of a review profile* (`{fasit, target} → verdict`, not 
 shared renderer that refuses to emit a prompt with a hole in it turns that whole class of bug into a
 loud, early failure instead of a silently-degraded review. Centralizing this guard is worth more than
 the substitution itself, which is trivial.
+
+The built scoping: every **top-level** absent-or-empty marker is collected and reported together,
+sorted, in one error, and the template is never executed. A **branch-internal** reached-but-absent
+marker is instead caught incrementally, one per call, via `missingkey=error` — this is not "every hole
+in one error" for branch-internal markers, only for top-level ones. A caller-required marker (like
+`fasit`/`target`) must therefore live at the template's top level, never inside a conditional branch.
 
 ## Consumers
 
