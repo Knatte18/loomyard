@@ -14,11 +14,11 @@ flow — phase order, the review round-loop, gate decisions, resume — lives in
 lives in agents spawned one-shot per step. Go owns the machine; the LLM owns the thinking.
 
 The orchestrator is the **`loom`** module (`lyx loom run`); the gate engine is the separate,
-generic **`review`** module ([`lyx review`](review.md)) — independent of loom but used by it
-between every phase. The `/ly-*` skill layer shrinks to thin human-facing
-wrappers over these. The everyday call has a convenience alias: **`lyx run` → `lyx loom run`**.
-(Naming: `lyx` is the binary, `loom`/`review` are modules, `ly-*` are the skills — see
-[overview.md](../overview.md).)
+generic **`perch`** module ([`lyx perch`](perch.md)) — the iterative review loop, independent of loom
+but used by it between every phase. `perch` composes [`burler`](burler.md), the review+fix round
+worker. The `/ly-*` skill layer shrinks to thin human-facing wrappers over these. The everyday call
+has a convenience alias: **`lyx run` → `lyx loom run`**. (Naming: `lyx` is the binary,
+`loom`/`perch`/`burler` are modules, `ly-*` are the skills — see [overview.md](../overview.md).)
 
 ## Why — the inversion
 
@@ -85,22 +85,22 @@ advances to the next phase; on `stuck` it routes to the stuck handler (bounce ba
 earlier phase, or escalate to a human) — never "keep fixing symptoms." loom does not see the
 rounds, the handler/fixer, the cluster reviewers, or the progress-judge inside.
 
-That black box is its **own module — [`review`](review.md)** (`lyx review`), a generic
-profile-driven gate engine reused for every phase (discussion / plan / builder) and standalone.
-The whole point of the black-box boundary is that loom drives all phases **identically** because
-the verdict contract is invariant; only the review *profile* (rubric + fasit) differs per phase.
-See [review.md](review.md) for the round-loop, the combined handler/fixer, stuck detection, and
-the profile schema.
+That black box is its **own module — [`perch`](perch.md)** (`lyx perch`), a generic profile-driven
+gate engine reused for every phase (discussion / plan / builder) and standalone. The whole point of
+the black-box boundary is that loom drives all phases **identically** because the verdict contract is
+invariant; only the review *profile* (rubric + fasit) differs per phase. See [perch.md](perch.md) for
+the round-loop and stuck detection, and [burler.md](burler.md) for the combined handler/fixer round
+and the profile schema.
 
-## Builder — a Go loop (advance), the sibling of review (converge)
+## Builder — a Go loop (advance), the sibling of perch (converge)
 
 Unlike the discussion and plan producers (each one `shuttle.Run` → one artifact), **Builder is a
-Go loop**, in the same spirit as [`review`](review.md): Go owns the control flow; LLMs are spawned
+Go loop**, in the same spirit as [`perch`](perch.md): Go owns the control flow; LLMs are spawned
 on demand for judgment.
 
 - **Advance per batch.** Go drives the plan's batches in dependency order, spawning one implementer
   worker per batch (a cheaper model by default — e.g. Haiku), and runs a **holistic builder-review
-  at the end** (a full [`review`](review.md) converge-loop over the whole diff).
+  at the end** (a full [`perch`](perch.md) converge-loop over the whole diff).
 - **On-demand evaluation.** Between batches, when Go needs a judgment — "progressing? stuck?
   escalate?" — it spawns a short evaluator that reads the durable reports/artifacts, decides, and
   exits. Not a standing supervisor (LLM-watches-LLM in real time was mill's model; here Go
@@ -111,7 +111,7 @@ on demand for judgment.
   `internal/shuttleengine` package documentation for the escalation rationale).
 
 **Same substrate, different loop semantics:** Builder **advances** (batch → batch → holistic
-review); review **converges** (iterate review+fix on one artifact until `APPROVED`/`stuck`). Both
+review); perch **converges** (iterate review+fix on one artifact until `APPROVED`/`stuck`). Both
 are Go loops spawning on-demand judges — which is exactly what makes [pause](#graceful-pause)
 uniform across them.
 
@@ -156,8 +156,8 @@ looking.
   status strand reads and prints it — mux never parses it, it just hosts the pane.
 - **Round-level resume.** Handler/fixer artifacts are already on disk, so resuming inside
   a review block continues at the current round rather than restarting the phase.
-- **Separation of state.** `lyx review` owns its block's round state in the block's files;
-  `lyx run`'s status only needs phase + the block's outcome. When `lyx review` returns
+- **Separation of state.** `lyx perch` owns its block's round state in the block's files;
+  `lyx run`'s status only needs phase + the block's outcome. When `lyx perch` returns
   `APPROVED | stuck`, `lyx run` advances.
 
 ### Crash recovery — resume on output files, not live processes
@@ -189,7 +189,7 @@ files. A dead claude with a finished output file is, to loom, a **done step** �
 boundary**, never mid-operation — `mill-pause`'s natural-stopping-point property, made systematic.
 
 - **A property of the loop pattern, not loom alone.** Every Go loop — loom (phases),
-  [`review`](review.md) (rounds), [Builder](#builder--a-go-loop-advance-the-sibling-of-review-converge)
+  [`perch`](perch.md) (rounds), [Builder](#builder--a-go-loop-advance-the-sibling-of-perch-converge)
   (batches) — checks a `pause_requested` flag in the [status file](#state--contracts) at its step
   boundary and stops before spawning the next unit. The **innermost active loop** honours it first,
   so pause lands at the finest active boundary (next batch / round / phase). The Go code is almost
@@ -215,16 +215,17 @@ boundary**, never mid-operation — `mill-pause`'s natural-stopping-point proper
 | Piece | Form | Notes |
 |-------|------|-------|
 | `loom` (`lyx loom run`) | new Go module | the phase machine / autonomous driver |
-| `review` (`lyx review`) | new Go module | the gate engine: Handler+fixer + optional cluster + progress-judge loop |
-| builder | Go loop (like `review`) | advance per batch + on-demand evaluator + Haiku→Sonnet escalation + terminal holistic review — **not** a single producer spawn |
+| `perch` (`lyx perch`) | new Go module | the gate loop: run `burler` rounds → `APPROVED`/`stuck` + progress-judge + cap |
+| `burler` | new Go module | one review+fix round: A-review (+ optional cluster) → B-fix; composed by `perch` |
+| builder | Go loop (like `perch`) | advance per batch + on-demand evaluator + Haiku→Sonnet escalation + terminal holistic review — **not** a single producer spawn |
 | producers (discussion / plan) | prompt/profile files | **not** modules — just a prompt + profile fed to `shuttle.Run` |
 | `lyx loom status` | a loom subcommand | the 1-line status view; runs as a strand (see `internal/muxengine`; `anchor:top`), not a separate module |
 | execution stack | existing/new infra | [`proc`](README.md) → mux → shuttle — see [overview.md#execution-stack](../overview.md#execution-stack-orchestration-layers) — built once, used by both modules above |
 | Setup | uses existing modules | `warp` (topology owner), `weft`, `board` |
 | `/ly-*` skills | thin wrappers | over `lyx loom run` |
 
-The new Go specific to loom is the **two modules** (`loom`, `review`) plus the **Builder loop**
-(Go, like `review` — its own module or a loom sub-loop) and the `lyx loom status`
+The new Go specific to loom is the **three modules** (`loom`, `perch`, `burler`) plus the **Builder loop**
+(Go, like `perch` — its own module or a loom sub-loop) and the `lyx loom status`
 subcommand; beneath them is the shared [execution stack](README.md) (`proc`, `mux`, `shuttle`); and
 everything else is prompt files, profiles, and the existing lyx modules. The display is **not** a
 module — it is `lyx loom status` running in a strand that `mux` (see
@@ -274,8 +275,8 @@ file-contract design above is unchanged; only the *spawn + completion-detection*
 differs from a headless model.
 
 The consequence for loom: it sits on top of the [`proc → mux → shuttle`](README.md) stack, so that
-stack is on loom's critical path. loom (via [`review`](review.md)) calls `shuttle.Run` per spawn and
-stays ignorant of strands, layout, and engines — those belong to `mux` (see
+stack is on loom's critical path. loom (via [`perch`](perch.md) → [`burler`](burler.md)) calls
+`shuttle.Run` per spawn and stays ignorant of strands, layout, and engines — those belong to `mux` (see
 [overview.md#modules](../overview.md#modules); the strand
 bookkeeping + render: which pane is which, layout, focus, the cluster window where N reviewers go)
 and `shuttle` (see the `internal/shuttleengine` package documentation; the swappable provider engine). What loom owns is everything in this
@@ -284,7 +285,7 @@ document: the phase machine, the gate wiring, and the status contract.
 ## Principle alignment
 
 - **One-shot, daemonless, file-coordinated** ([Principle 3](../overview.md#principles)) — `lyx run`
-  and `lyx review` are processes that read state, act, and exit; they cooperate through
+  and `lyx perch` are processes that read state, act, and exit; they cooperate through
   files and the status file, not a server.
 - **cwd-authoritative** ([Principle 4](../overview.md#principles)) — `lyx run` operates on the
   current worktree's task.

@@ -11,8 +11,10 @@
 |-----|--------|---------------|------|
 | — | `internal/muxengine` | the window to the world: psmux overlay + **strand** bookkeeping + render (✅ built — see [overview.md#modules](../overview.md#modules) and the package documentation) | `lyx mux` |
 | — | `internal/shuttleengine` + `internal/shuttleengine/claudeengine` + `internal/shuttlecli` | run **one** LLM agent via a swappable engine over the file contract (✅ built — see [overview.md#modules](../overview.md#modules) and the package documentation) | `lyx shuttle` |
-| [review.md](review.md) | `review` | the gate engine: handler/fixer + cluster + stuck judge | `lyx review` |
-| [loom.md](loom.md) | `loom` | the phase machine: drive each phase through a review gate | `lyx loom` |
+| [burler.md](burler.md) | `burler` | one review+fix round: A-review (+ optional cluster) → B-fix | (composed by `perch`) |
+| [perch.md](perch.md) | `perch` | the gate loop: run `burler` rounds → `APPROVED`/`stuck` + progress-judge | `lyx perch` |
+| [loom.md](loom.md) | `loom` | the phase machine: drive each phase through a perch gate | `lyx loom` |
+| [hardener.md](hardener.md) | `hardener` | **DRAFT** — behavior-based hardening of live-substrate modules (post-loom, off-spine) | `lyx hardener`? |
 
 `internal/proc` (cross-OS process spawn) is the OS base under `mux`; it has no doc of its own —
 see the stack below and [shared-libs](../shared-libs/README.md).
@@ -37,9 +39,13 @@ internal/proc      start an OS process (windowless / detached, cross-OS)   [know
 internal/mux       the window to the world — overlay + strands + render    [knows: psmux]
 internal/shuttle   run one LLM agent in a strand, get a result file        [knows: prompts & engines]
 ─────
-review             gate one artifact: handler/fixer rounds → APPROVED|stuck [knows: rubrics & verdicts]
-loom               drive phases, each through a review gate                 [knows: phases]
+burler             one review+fix round: A-review (+cluster) → B-fix        [knows: rubrics & a round]
+perch              run burler rounds on one artifact → APPROVED|stuck       [knows: convergence & stuck]
+loom               drive phases, each through a perch gate                  [knows: phases]
 ```
+
+`hardener` (**DRAFT**, [hardener.md](hardener.md)) is **off this spine** — a separate, on-demand,
+post-loom behavior-based reviewer that shares only the `burler` round discipline.
 
 The control stack runs **headless** (auto mode): panes exist (the interactive-session
 requirement), agents run, output files are read, and nobody need watch.
@@ -66,18 +72,22 @@ caller maps its domain to the generic vocabulary (the CSS model: `position: stic
 
 loom wants a plan-reviewer for worktree `feature-x`:
 
-1. `loom` → `review.Run(profile, "feature-x")` — "review this plan against the discussion."
-2. `review` → `shuttle.Run(prompt, engine)` — "run one handler agent."
-3. `shuttle` → `mux.AddStrand{ cmd:"claude …", worktree:"feature-x", display:{anchor:below-parent, focus:true} }`.
-4. `mux` records the strand in `.lyx/mux.json`, runs the command via `proc` in a pane, re-renders
+1. `loom` → `perch.Run(profile, "feature-x")` — "review this plan against the discussion until clean."
+2. `perch` → `burler.Run(profile, priorFiles)` — "run one review+fix round."
+3. `burler` → `shuttle.Run(prompt, engine)` — "run one handler agent."
+4. `shuttle` → `mux.AddStrand{ cmd:"claude …", worktree:"feature-x", display:{anchor:below-parent, focus:true} }`.
+5. `mux` records the strand in `.lyx/mux.json`, runs the command via `proc` in a pane, re-renders
    the layout (`layout = rules(strands)`), and applies it.
-5. The `Stop` hook fires → mux notes the edge → shuttle reads the output file → returns to review →
-   review decides `APPROVED | BLOCKING` → loom advances.
+6. The `Stop` hook fires → mux notes the edge → shuttle reads the output file → returns to burler →
+   burler writes review/fixer-report + verdict → perch reads it, decides loop or exit → on a clean
+   round returns `APPROVED | stuck` → loom advances.
 
 ## The disambiguating test
 
 - About **the OS**? → `proc`.
 - About **a psmux mechanic, a strand, or how it's laid out**? → `mux`.
 - About **running an LLM and getting its answer**? → `shuttle`.
-- About **whether a result passes**? → `review`.
+- About **one review+fix round**? → `burler`.
+- About **whether an artifact passes (loop rounds until clean/stuck)**? → `perch`.
+- About **hardening a live-substrate module by running it** (post-loom, off-spine)? → `hardener` (DRAFT).
 - About **what to run next**? → `loom`.
