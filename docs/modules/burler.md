@@ -108,13 +108,38 @@ its own. (Who supplies the profile: [`loom`](loom.md) per phase, or the caller f
 An invariant contract, regardless of what was reviewed:
 
 - a **verdict** — `APPROVED | BLOCKING`,
-- a **review file** — structured findings (with canonical-ish identity, so [`perch`](perch.md) can
-  track recurrence across rounds),
+- a **review file** — a small machine-readable header (YAML frontmatter: `verdict`, plus a `findings`
+  list where each finding carries a stable `id`, `severity`, `location`, `summary`) over the prose
+  review. Structured from birth on purpose: [`perch`](perch.md)'s cycle detection is **pure Go over
+  stable keys**, not a freeform blob a judge must canonicalize each round. (A fresh burler per round
+  may key the *same* underlying issue differently, so perch's progress-judge still canonicalizes
+  *across* rounds — burler's `id` is a strong starting key, not the final one.) burler parses the
+  verdict from this header and **fails loudly if it is missing or unparseable** — a defaulted verdict
+  could terminate perch's loop on a malformed round,
 - a **fixer-report** — what B changed.
 
 That invariance is what lets `perch` drive round after round identically, and what lets `shuttle`'s
 engine swap the provider without touching burler. Vary the payload (profile), never the control
 surface (verdict contract).
+
+## Where the artifacts land — and who commits them
+
+The review file and fixer-report are **overlay/orchestration state**: they live in the weft
+(`_lyx/…`), durable and weft-synced so a review resumes across a crash or a machine. That splits
+*writing* from *committing* along the stack's file-contract seam:
+
+- **The agent writes** the review file and fixer-report to `_lyx/…` — through the junction, so the
+  write lands transparently in the weft worktree — as the shuttle file contract. It does **not**
+  commit them.
+- **Go commits them to the weft**, via the weft engine in-process, at a round/phase boundary the loop
+  owner controls: [`loom`](loom.md) (`weft sync`) when composed, `lyx perch`'s command when
+  standalone. Never raw git, never the agent — see the **Weft Git Invariant** in
+  [CONSTRAINTS.md](../../CONSTRAINTS.md).
+
+This is the asymmetry with commit-per-fix: an agent **does** commit its own *code* to the **host**
+repo (normal dev git); it never touches the **weft**. So **burler does not depend on the weft
+module** — it returns the artifact paths and stays weft-blind; the weft commit belongs to whoever owns
+the overlay lifecycle (loom, or perch's CLI standalone), not to the round worker.
 
 ## Why a separate module (from perch)
 
@@ -158,3 +183,7 @@ built; the *contract* (A→B, no self-grade) is shared either way.
   templates (markdown + marker fields → prompt); the bulk blob is Go-assembled in burler and passed
   as a value. Fails loudly on an unfilled marker (e.g. an empty `fasit`).
 - `mux` transitively, via shuttle (the cluster window; the worktree column).
+- **Not weft.** burler returns the review/fixer-report paths and never commits them; the weft commit
+  is the loop owner's job (loom / perch's CLI), so burler does not import the weft module — see
+  [Where the artifacts land](#where-the-artifacts-land--and-who-commits-them) and the Weft Git
+  Invariant in [CONSTRAINTS.md](../../CONSTRAINTS.md).

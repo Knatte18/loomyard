@@ -94,6 +94,30 @@ Provider specifics live ONLY under `internal/shuttleengine/claudeengine`.
   strings, hook payload shapes, or TUI grammar leaking outside `claudeengine` — is a review
   obligation, not machine-checked.
 
+## Weft Git Invariant
+
+Every git operation on the weft repo goes through the weft/warp engines in Go, driven by the
+orchestration layer in-process — never raw git, and never an LLM agent.
+
+- **Module ownership.** Weft-internal git (`commit`/`push`/`pull`/`sync`) goes through
+  `internal/weftengine`; coordinated host↔weft topology (a checkout that moves both and re-points
+  junctions, dual-worktree add/remove/clone) goes through `internal/warpengine`. No other package
+  runs raw git against a weft worktree. The **host** repo is unrestricted — it is an ordinary project
+  repo.
+- **Orchestration, not agent.** The weft commit is Go calling the engine in-process
+  (`weftengine.Sync`/`Commit`) at a round/phase boundary the loop owner (loom, or perch's CLI
+  standalone) controls. An LLM agent never drives weft git — not raw git, not by shelling `lyx weft`.
+  Agents ride the file contract: they **write** overlay files (reviews, fixer-reports, status, raddle
+  docs) into `_lyx`/`_raddle` via the junction; Go **reads and commits** them. Asymmetry: an agent
+  **does** commit its own code to the **host** repo (commit-per-fix, normal dev git) — the weft, never.
+- **Why.** A weft commit is an orchestration act (persist round/phase state at the right boundary,
+  coordinate host↔weft) — the deterministic Go responsibility that is the whole lyx thesis. An
+  agent-run weft commit reintroduces the non-deterministic, untestable, mis-ordered LLM orchestration
+  lyx exists to remove.
+- **Enforced by** review obligation: agent prompt templates never instruct a weft git op, and weft
+  git stays inside `weftengine`/`warpengine`. The module-ownership half is a candidate for a future
+  import/grep guard; not machine-checked today.
+
 ## Sandbox Suite Coverage
 
 Every registered lyx module must be exercised by the black-box sandbox suite or be
