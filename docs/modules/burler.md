@@ -88,6 +88,16 @@ reference, and burler must fail loudly rather than silently crowd the worktree c
 `N > 0` before mux can place the windows. This gates only the cluster feature — **burler itself, and
 the whole `shuttle → burler → perch → loom` spine, ship on `N = 0` without waiting on mux windows.**
 
+**Far-future (low priority): bulk + provider caching.** A cluster can run in two shapes — *tool-use*
+(each reviewer explores independently) or *bulk* (Go concatenates target + fasit + rubric into one
+blob passed as a value, no exploration). Bulk is what makes provider-side **context caching** (e.g.
+Gemini's explicit cache) pay off: the blob is a *shared prefix* identical across all N reviewers, so
+the structure is **one shared prefix + N distinct suffixes**, never N full prompts. The caching itself
+is an engine *mechanic* behind the provider seam; burler only assembles the blob and marks it shared.
+None of this is near-term — bulk, cluster (needs mux windows), and non-Claude engines are all well
+down the list — but modelling a bulk cluster as shared-prefix-plus-suffixes *when* it is built is what
+keeps provider caching possible instead of permanently foreclosed.
+
 ## The profile burler consumes
 
 A burler is driven entirely by a **profile** handed to it at spawn — it stores no phase knowledge of
@@ -102,6 +112,15 @@ its own. (Who supplies the profile: [`loom`](loom.md) per phase, or the caller f
 | **fix-scope** | What the burler may write — a markdown file vs the source tree (also gates commit-per-fix). |
 | **tool-use** | Whether the burler (and its cluster reviewers) drive the real substrate or read only. A text round reads; a code round runs. |
 | **cluster-N** | How many cross-checkers to spawn in step A. Default 0. |
+
+**Run-tuning is not in this table.** *Which* provider, model, and effort a round runs with is a
+separate, **config-driven selection** — resolved by the caller from [`loom`](loom.md)'s per-phase
+config (perch.yaml defaults + loom override, the same [config split](perch.md#configuration--where-profiles-live))
+and passed into the shuttle `Spec` alongside the profile, not carried on the content profile above.
+burler/perch **select** provider/model/effort; they stay blind only to the provider *mechanics* (how
+it is launched, driven, cached — that lives in shuttle's engine adapter). shuttle's `Spec` already
+carries `Model`/`Effort`; a per-round **provider** selector is the one piece still to add when a
+second engine lands (today provider = which engine is wired into the `Runner`).
 
 ## What a burler returns
 
