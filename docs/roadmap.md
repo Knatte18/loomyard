@@ -34,7 +34,7 @@ weft engine + producers → **`proc`** (cross-OS spawn). ✅
 **Orchestration spine** — a strict chain, each layer needs the one before it:
 
 ```
-proc ✅ ──▶ mux ✅ ──▶ shuttle ✅ ──▶ review ──▶ loom
+proc ✅ ──▶ mux ✅ ──▶ shuttle ✅ ──▶ burler ──▶ perch ──▶ loom
 ```
 
 - **`mux`** is done — psmux overlay + **strand** bookkeeping + render sub-package
@@ -44,9 +44,12 @@ proc ✅ ──▶ mux ✅ ──▶ shuttle ✅ ──▶ review ──▶ loom
 - **`shuttle`** is done — one LLM agent as an interactive psmux strand over the file contract,
   behind a swappable engine. See [milestone 10](#orchestration-stack) / the
   [overview module entry](overview.md#modules).
-- **`review`** needs `shuttle` and is next — its only dependency is done. **`loom`** needs
-  `review`. That is the critical path to the orchestrator. `lyx loom
-  status` (the 1-line view) ships as a loom subcommand, not a module.
+- **`burler` + `perch`** need `shuttle` and are next — the former gate module `review` split into
+  two: **`burler`** is one review+fix round (A-review + optional cluster → B-fix, no self-grading),
+  and **`perch`** is the Go loop that runs burler rounds until `APPROVED`/`stuck` (progress-judge +
+  cap). Build `burler` first (LLM-heavy, standalone, smoke-tested), then `perch` (deterministic Go,
+  fake-burler-tested). **`loom`** needs `perch`. That is the critical path to the orchestrator.
+  `lyx loom status` (the 1-line view) ships as a loom subcommand, not a module.
 
 **Setup track** — independent of the spine, interleave at any time: config TUI (in progress) ·
 `init`/board-repo creation · `doctor`.
@@ -54,8 +57,8 @@ proc ✅ ──▶ mux ✅ ──▶ shuttle ✅ ──▶ review ──▶ loom
 **Deferred** — after `loom` works and only if wanted: mux daemon → Slack relay; session sync;
 plugin packaging.
 
-So the immediate front: **`review`** (unblocks the rest of the spine) in parallel with finishing
-the **config TUI** — none of which block each other.
+So the immediate front: **`burler` → `perch`** (unblocks the rest of the spine) in parallel with
+finishing the **config TUI** — none of which block each other.
 
 ## Milestones
 
@@ -134,12 +137,17 @@ Each layer knows only the one below it; built bottom-up. See the
     was deleted on landing per the documentation lifecycle; durable parts live in the
     `internal/shuttleengine` package header and the [overview module entry](overview.md#modules).
 
-11. **`review` (`lyx review`) — the gate engine.** Generic profile-driven reviewer: handler+fixer
-    in one agent, optional cluster reviewers (own-window strands), a progress/circularity judge, and
-    N-round stuck detection. One engine serves discussion / plan / builder / ad-hoc review — the
-    per-type difference is the profile (rubric + fasit), not the code. **Independent of `loom`**
-    (builds on `shuttle`, runs standalone); loom just uses it between every phase.
-    ([modules/review.md](modules/review.md))
+11. **`burler` + `perch` — the review+fix round and the gate loop.** The former single `review`
+    module, split in two. **`burler` (round worker):** one review+fix round — A-review (+ optional
+    cluster reviewers as own-window strands) → B-fix, no self-grading, commit-per-fix, fix-everything;
+    LLM-heavy, standalone, smoke-tested; builds on `shuttle`. **`perch` (`lyx perch`, gate loop):**
+    Go loop that runs `burler` rounds until `APPROVED`/`stuck` — loop-until-dry convergence,
+    round-cap + cap-escalation, a progress/circularity judge (canonical keys in the judge, cycle
+    logic in Go), and a pluggable gate (`llm-verdict` | `command` | `both`); deterministic,
+    fake-burler-tested. One engine serves discussion / plan / builder / ad-hoc review — the per-type
+    difference is the profile (rubric + fasit), not the code; per-phase profiles live in `loom`, not
+    in `perch.yaml`. **Independent of `loom`** (runs standalone); loom just uses perch between every
+    phase. ([modules/burler.md](modules/burler.md), [modules/perch.md](modules/perch.md))
 
 12. **`loom` (`lyx loom run`, alias `lyx run`) — the phase machine.** The autonomous driver:
     Setup → Discussion → Plan → Builder → Finalize, each gated by a review, resume-from-disk via
@@ -221,6 +229,17 @@ Independent of the orchestration stack; interleave as needed.
     is hardcoded (no config required), making the command trivially callable from any sandbox agent
     context. Supports `--body` (or `-` to read from stdin) and `--label`; defaults to the `bug`
     label when no label is supplied. Durable design lives in the `internal/selfreportengine` package header.
+
+23. **`hardener` — behavior-based hardening of live-substrate modules.** 🧪 **DRAFT / concept — not
+    settled.** A separate, **on-demand, post-loom** reviewer that *runs* a live-substrate module (the
+    archetype: `mux` driving real psmux) in a **sandbox repo** and reacts to what it observes, rather
+    than reading an artifact as [`perch`](modules/perch.md) does. Orchestrated by an accumulating
+    (per-round-respawn + handoff) orchestrator that targets each round and verifies via a
+    **deterministic gate** (N× concurrent smoke, zero stray state); shares only the
+    [`burler`](modules/burler.md) round discipline. Token- and wall-clock-heavy (a campaign ran a
+    weekend), but it hardened `mux` where text-review could not. **Off the `burler → perch → loom`
+    spine** — it blocks nothing and is picked up only after `loom` works. Concept still being figured
+    out; see [modules/hardener.md](modules/hardener.md) (a DRAFT doc, do not implement from it yet).
 
 ## Explicitly out of scope
 

@@ -19,6 +19,7 @@ See [roadmap.md](../roadmap.md) milestones 2–3 for the extraction order.
 - [yamlengine.md](yamlengine.md) — `internal/yamlengine`: pure YAML engine for env expansion and config reconciliation
 - [envsource.md](envsource.md) — `internal/envsource`: single source of truth for environment variable sourcing (`.env` + OS overlay)
 - [configengine.md](configengine.md) — `internal/configengine`: strict YAML config loading backed by yamlengine and envsource
+- [stencil.md](stencil.md) — `internal/stencil`: fill marker fields in a markdown template → prompt (fails on an unfilled marker); 🚧 design — not built
 
 ## Implementation-only libraries
 

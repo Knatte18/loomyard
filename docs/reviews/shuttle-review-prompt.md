@@ -153,10 +153,10 @@ proves nothing here:
 
 ## Explicitly OUT of scope for shuttle v1
 Non-Claude engines (Gemini etc.) — the whole point of the Engine seam is that they are *possible*,
-not that one exists; their absence is correct, do not flag it. The `review` module (the generic
-gate engine that will drive Handler/fixer/cluster-reviewer loops on top of shuttle) and `loom` are
-separate, not-yet-built modules — do not review them or expect shuttle to already behave like their
-future caller. Multi-agent cluster reviews (N parallel shuttle strands under one review round) are
+not that one exists; their absence is correct, do not flag it. The `perch` + `burler` modules (the
+generic gate loop and its review+fix round worker that will drive handler/fixer/cluster-reviewer loops
+on top of shuttle) and `loom` are separate, not-yet-built modules — do not review them or expect
+shuttle to already behave like their future caller. Multi-agent cluster reviews (N parallel shuttle strands under one review round) are
 explicitly future work per `docs/roadmap.md` milestone 10's notes — shuttle only needs to run ONE
 agent well.
 

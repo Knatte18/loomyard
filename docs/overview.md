@@ -28,7 +28,7 @@ Three distinct names for three layers, deliberately non-overlapping to avoid the
 - **`ly`** — the skill / orchestration plugin (the analog of `mill`); skills are `/ly-*`.
 
 **Never name skills `lyx-*` or `loom-*`** — skills are `ly-*`, distinct from both the binary
-(`lyx`) and every module (`loom`, `review`, …), so no name is shared between a skill and a
+(`lyx`) and every module (`loom`, `perch`, …), so no name is shared between a skill and a
 script/module (the ambiguity that forced the millhouse `mill` → `millpy` rename). Internal Go feature packages follow the `<module>cli` / `<module>engine` split
 (e.g. `internal/boardcli` + `internal/boardengine`, `internal/warpcli` + `internal/warpengine`) —
 see the Package naming rule in [CONSTRAINTS.md](../CONSTRAINTS.md#package-naming).
@@ -246,11 +246,16 @@ User-facing modules each get one `lyx <module>` namespace:
   provider default) are engine-validated, not policed by `Spec.validate`. ✅ Implemented. See the
   `internal/shuttleengine` package documentation.
 - **loom** — phased orchestrator: drives Setup → Discussion → Plan → Builder → Finalize, each
-  gated by a review (`lyx loom run`, alias `lyx run`). 🚧 Design — not built. See
+  gated by a perch review (`lyx loom run`, alias `lyx run`). 🚧 Design — not built. See
   [modules/loom.md](modules/loom.md).
-- **review** — generic profile-driven gate engine (handler+fixer, optional cluster, stuck judge);
-  independent of `loom` but used by it between every phase, and standalone (`lyx review`). 🚧
-  Design — not built. See [modules/review.md](modules/review.md).
+- **perch** — generic profile-driven gate loop: runs `burler` rounds on one artifact until
+  `APPROVED`/`stuck` (progress-judge + round cap); independent of `loom` but used by it between every
+  phase, and standalone (`lyx perch`). 🚧 Design — not built. See [modules/perch.md](modules/perch.md).
+- **burler** — one review+fix round: A-review (+ optional cluster reviewers) → B-fix, no self-grading;
+  the LLM-heavy worker `perch` composes. 🚧 Design — not built. See [modules/burler.md](modules/burler.md).
+- **hardener** — **DRAFT / concept.** Behavior-based reviewer that *runs* a live-substrate module
+  (needs a sandbox repo) to harden it before merge; on-demand, post-loom, **off the spine**, shares
+  only the `burler` round discipline. See [modules/hardener.md](modules/hardener.md).
 
 The cross-OS spawn primitive **proc** is the one remaining internal (non-CLI) layer — the base of
 the stack. The [module map](modules/README.md) explains how proc / mux / shuttle fit together.
@@ -280,8 +285,9 @@ internal/mux      the window to the world — overlay + strand bookkeeping +    
                   them, persists to .lyx/mux.json
 internal/shuttle  run ONE LLM agent in a strand via a swappable engine over    [builds on mux]    ✅
                   the file contract; Stop-hook completion
-review            generic gate engine: handler/fixer + cluster + stuck judge   [builds on shuttle]
-loom              phase machine: drive each phase through a review gate         [builds on review]
+burler            one review+fix round: A-review (+cluster) → B-fix           [builds on shuttle]
+perch             run burler rounds on one artifact → APPROVED|stuck          [builds on burler]
+loom              phase machine: drive each phase through a perch gate         [builds on perch]
 ```
 
 The whole stack runs **headless** (auto mode): strands exist (the interactive-session
@@ -299,16 +305,17 @@ requirement), agents run, output files are read, nobody need watch.
 - **provider-invariant** — `shuttle` runs Claude today through an **engine**; the verdict/output
   contract is provider-invariant, so a different model can be swapped in without touching the
   review machinery. Non-Claude is not a current priority.
-- **review is independent of loom** — it is a standalone gate engine (`lyx review`); loom just
-  uses it heavily (a review between every phase). review builds on `shuttle`, not on `loom`.
+- **perch is independent of loom** — it is a standalone gate loop (`lyx perch`) over `burler` rounds;
+  loom just uses it heavily (a perch review between every phase). perch builds on `burler` → `shuttle`,
+  not on `loom`.
 - **the bootstrap** — `lyx loom run` (alias `lyx run`) brings up the worktree's psmux session, adds
   the `lyx loom status` strand (a 1-line top pane), spawns the loom driver **detached** (via `proc`,
   no TTY), and attaches the terminal to the session. loom runs in the background; the mux view takes
   the foreground. A `.lyx/lyxrun.cmd` launcher makes it one click.
-- `mux`, `shuttle`, `loom`, and `review` each get a user-facing `lyx <module>` CLI
+- `mux`, `shuttle`, `perch`, and `loom` each get a user-facing `lyx <module>` CLI
   (`lyx shuttle run|interrupt|send` lets an operator or another process drive one agent
-  standalone, before loom/review exist); `proc` alone stays an internal library with no CLI
-  of its own. See the [module map](modules/README.md).
+  standalone, before loom/perch exist); `burler` is composed by `perch` (no product CLI), and
+  `proc` alone stays an internal library with no CLI of its own. See the [module map](modules/README.md).
 
 ## Tests
 
@@ -323,10 +330,11 @@ The **sandbox Hub** is a dedicated bench for manual testing of lyx's core workfl
 ## Other docs
 
 - [modules/README.md](modules/README.md) — **the module map**: index of every module doc + how the layers stack (design).
-- [modules/loom.md](modules/loom.md) — the phased orchestrator (`lyx loom` + `lyx review`); design.
+- [modules/loom.md](modules/loom.md) — the phased orchestrator (`lyx loom` + `lyx perch`); design.
 - `internal/muxengine` package documentation — the window to the world: psmux overlay + strand bookkeeping + render (as-built; module doc deleted per the documentation lifecycle).
 - `internal/shuttleengine` package documentation — run one LLM agent via a swappable engine over the file contract (as-built; module doc deleted per the documentation lifecycle).
-- [modules/review.md](modules/review.md) — the generic gate engine (handler/fixer + cluster + stuck judge); design.
+- [modules/perch.md](modules/perch.md) — the gate loop: run `burler` rounds → `APPROVED`/`stuck` (design); and [modules/burler.md](modules/burler.md) — one review+fix round (design).
+- [modules/hardener.md](modules/hardener.md) — **DRAFT/concept**: behavior-based hardening of a live-substrate module (post-loom, off-spine).
 - [benchmarks/](benchmarks/board-performance.md) — board performance, tracked across revisions.
 - [shared-libs/](shared-libs/README.md) — the shared infrastructure plumbing.
 - [research/](research/) — design exploration (mux research logs).
@@ -334,4 +342,4 @@ The **sandbox Hub** is a dedicated bench for manual testing of lyx's core workfl
 - [roadmap.md](roadmap.md) — numbered milestones and long-term direction.
 - [sandbox-howto.md](sandbox-howto.md) — operator runbook: deploy `lyx`, build the Hub, run the suite agent (procedure).
 - [sandbox-hub.md](sandbox-hub.md) — the sandbox Hub: a dedicated bench for manual (dogfooding) testing.
-- [reviews/README.md](reviews/README.md) — the **serial review+fix loop**: a reusable method for hardening a live-substrate module before merge (orchestrator-driven, model-rotating, clean-room self-fixing rounds + independent verification). The hand-executed prototype of the [`review`](modules/review.md) module; ships two paste-ready prompts — an [orchestrator prompt](reviews/orchestrator-prompt.md) (drives the loop + verifies) and a [round-agent prompt template](reviews/review-prompt-template.md) (the reviewer-fixer), to instantiate per module.
+- [reviews/README.md](reviews/README.md) — the **serial review+fix loop**: a reusable method for hardening a live-substrate module before merge (orchestrator-driven, model-rotating, clean-room self-fixing rounds + independent verification). The hand-executed prototype of the [`perch`](modules/perch.md) + [`burler`](modules/burler.md) round loop (and the origin of the [`hardener`](modules/hardener.md) concept); ships two paste-ready prompts — an [orchestrator prompt](reviews/orchestrator-prompt.md) (drives the loop + verifies) and a [round-agent prompt template](reviews/review-prompt-template.md) (the reviewer-fixer), to instantiate per module.
