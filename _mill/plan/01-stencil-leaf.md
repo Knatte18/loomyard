@@ -55,8 +55,9 @@ of scope here. No batch-local decisions differ from `## Shared Decisions`.
        substitution), take the field name `FieldNode.Ident[0]`. Collect it as an offender
        when `strings.TrimSpace(values[name]) == ""` (an absent key reads as the zero value
        `""`, so this one check covers both the absent-key and the empty/whitespace-only
-       cases). Guard against a nil `tmpl.Tree` (a template that is empty or comment-only
-       parses to a tree with no action nodes → no offenders).
+       cases). Guard defensively against both a nil `tmpl.Tree` and a nil `tmpl.Tree.Root`
+       before ranging `.Nodes` (a template that is empty or comment-only parses to a tree
+       with no action nodes → no offenders); skip the walk cleanly in that case.
     4. **Fail before executing.** If any offenders were collected, dedup them, `sort.Strings`
        the unique names, and return a plain `fmt.Errorf` naming every offender in the sorted,
        joined list (e.g. `stencil: unfilled top-level marker(s): Fasit, Target`) — do NOT
@@ -70,6 +71,11 @@ of scope here. No batch-local decisions differ from `## Shared Decisions`.
     are absent-or-empty are all collected and reported sorted in one error; branch-internal
     reached-but-absent markers are caught incrementally (one per call) via `missingkey=error`;
     the leading `<!-- … -->` comment is stripped before parsing.
+  - Godoc must also state the caller contract that follows from top-level-only
+    empty-checking: because a present-but-empty value is guarded only at depth-0, a required
+    marker (like `fasit`/`target`) must be placed at the template top level, never inside a
+    conditional branch — a branch-internal present-but-empty value would render a silent
+    blank (only branch-internal *absent* keys are caught, via `missingkey=error`).
 - **Commit:** `feat(stencil): add Fill renderer with unfilled-marker guard`
 
 ### Card 2: Table-driven tests for the contract and the guard

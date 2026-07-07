@@ -3,7 +3,7 @@
 ```yaml
 task: 'Build internal/stencil: fill markdown prompt templates'
 slug: 'internal-stencil'
-approved: false
+approved: true
 started: '20260707-112325'
 parent: 'main'
 root: ""
