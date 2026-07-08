@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-fixing
 slug: internal-perch
 branch: internal-perch
 plan: _mill/plan
@@ -30,6 +30,7 @@ approved-judge-triage  '2026-07-08T16:24:24Z'
 approved-gate-loop  '2026-07-08T16:39:56Z'
 approved-cli-docs  '2026-07-08T16:59:21Z'
 holistic-reviewing  '2026-07-08T16:59:43Z'
+holistic-fixing  '2026-07-08T17:04:55Z'
 ```
 
 ## Batches
