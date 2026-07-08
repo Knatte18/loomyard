@@ -228,6 +228,13 @@ func TestProfile_Validate(t *testing.T) {
 				if !strings.HasPrefix(err.Error(), "burler: ") {
 					t.Errorf("validate() error = %q; want burler: -prefixed message", err.Error())
 				}
+				// Every validate error carries exactly one "burler: " prefix.
+				// A wrapped sentinel (like ErrClusterUnsupported) that also
+				// spells its own "burler: " would double it in the final
+				// message — this caught exactly that bug once (N1).
+				if n := strings.Count(err.Error(), "burler: "); n != 1 {
+					t.Errorf("validate() error = %q; want exactly one %q prefix, found %d", err.Error(), "burler: ", n)
+				}
 				if tt.wantErrIs != nil && !errors.Is(err, tt.wantErrIs) {
 					t.Errorf("errors.Is(validate() error, %v) = false; want true", tt.wantErrIs)
 				}

@@ -49,7 +49,11 @@ const (
 // a Profile requests ClusterN > 0. Cluster fan-out is gated on mux own-window
 // anchoring (roadmap milestone 24) and is not implemented in v1; callers can
 // test for this specific rejection with errors.Is.
-var ErrClusterUnsupported = errors.New("burler: cluster-N > 0 is not supported — cluster reviewers are gated on mux own-window anchoring (roadmap milestone 24); use cluster-N = 0")
+// ErrClusterUnsupported carries no "burler: " prefix of its own: every call
+// site that surfaces it (validate, below) already wraps it inside its own
+// burler-prefixed message, and prefixing it here too would double that
+// prefix in the final error text.
+var ErrClusterUnsupported = errors.New("cluster-N > 0 is not supported — cluster reviewers are gated on mux own-window anchoring (roadmap milestone 24); use cluster-N = 0")
 
 // Profile is the content contract for one burler round: what to review
 // (Target), what to judge it against (Fasit), the criteria (Rubric), the
