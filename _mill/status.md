@@ -6,6 +6,7 @@ slug: internal-perch
 branch: internal-perch
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: Build perch - the review gate loop
 task_description: |
   Build perch - the review gate loop
@@ -30,7 +31,9 @@ implementing  '2026-07-08T15:51:10Z'
 ```yaml
 batches:
   - name: foundations
-    state: pending
+    state: running
+    implementer_session: 45dee6e0-5c52-4d9d-b371-32b344110835
+    start_sha: 77c9313a0a2d0eaf2e071c8006a55acd05b5608e
   - name: profile-state
     state: pending
   - name: judge-triage
