@@ -102,7 +102,9 @@ and the target-vs-fasit split.
   - `ReviewPath string`, `FixerReportPath string` — caller-supplied output paths (see
     artifact-paths).
   - `PriorReviews []string`, `PriorFixerReports []string` — optional hydration from earlier
-    rounds (see prior-round-hydration).
+    rounds (see prior-round-hydration). When present, every listed path must exist at `Run`
+    (fail loud, same rule as Target/Fasit paths) — a missing prior-round file is a caller bug,
+    never silently omitted from the prompt.
 - Rationale: "review anything: a file, a folder, a collection of files" while keeping burler a
   dumb transport (shuttle-style); structured enough to validate loudly.
 - Rejected: paths-only (loses diff/free-text targets); free-strings-only (loses existence
@@ -166,7 +168,10 @@ and the target-vs-fasit split.
     `BLOCKING | MEDIUM | LOW | NIT` (the hand-run method's vocabulary);
   - duplicate finding `id`s → error (perch keys on them);
   - `verdict: BLOCKING` with zero BLOCKING-severity findings → error;
-  - `APPROVED` with findings is legal (non-blocking polish).
+  - `verdict: APPROVED` with ANY BLOCKING-severity finding → error (the symmetric rule: a
+    self-contradictory file is a reviewer-agent defect and a malformed round — it must never
+    happen, and must never look approved; no silent demotion);
+  - `APPROVED` with non-BLOCKING findings (MEDIUM/LOW/NIT) is legal (non-blocking polish).
   Go types: `Verdict` string type with two constants; `Finding{ID, Severity, Location,
   Summary}`. Prose below the frontmatter is unconstrained (the template shapes it with mill's
   Location/Issue/Fix finding blocks).
@@ -195,6 +200,9 @@ and the target-vs-fasit split.
     per-finding prose block (Location/Issue/Fix), "omit findings if none, never invent
     findings to pad", and source-grounding ("never fabricate file contents — read them").
   - **Fixer-report:** what B changed, plus a deferred-with-reason section. Prose, no schema.
+    **Written unconditionally, every round** — also on an APPROVED round with nothing to fix
+    (then it states "nothing fixed"): both output files are the shuttle file contract, and a
+    skipped fixer-report means the run never reaches `done` and dies on `timeout`.
   - **Clean-room hydration:** when prior-round files are listed — form your OWN findings
     first, consult prior reviews/fixer-reports only AFTER, for regression checks and deferred
     items.
@@ -405,7 +413,7 @@ From `CONSTRAINTS.md` (read it in full before planning):
     Model/Effort/Timeout/Round mapped; Interactive false.
   - Verdict parse: happy APPROVED/BLOCKING; missing frontmatter; bad YAML; unknown verdict;
     missing/empty finding keys; unknown severity; duplicate ids; BLOCKING-without-blocking-
-    finding; APPROVED-with-findings OK.
+    finding; APPROVED-with-BLOCKING-finding → error; APPROVED-with-non-blocking-findings OK.
   - Outcome mapping: fake shuttle returns each of done/asking/died/timeout → Result contents
     per the result-and-outcome-mapping decision; verdict parse error on done → error.
 - **`internal/burlercli` unit** — profile YAML → Profile decode (full/partial/invalid), flag →
@@ -451,6 +459,12 @@ From `CONSTRAINTS.md` (read it in full before planning):
 - **Q:** CONSTRAINTS.md entry? **A:** Yes — one **Review Round Invariant** covering the round
   discipline with fix-everything at its core; **keep the entry short** (existing entries tend
   to be too long).
+- **Q:** (review r1 GAP) `verdict: APPROVED` carrying a BLOCKING-severity finding — reject or
+  allow? **A:** Reject, parse error. A BLOCKING finding means the round is not approved; the
+  combination is a reviewer-agent defect that must never happen and never look approved. No
+  silent demotion. (r1 NOTEs, applied: fixer-report is written unconditionally every round —
+  else the file contract never reaches `done`; PriorReviews/PriorFixerReports paths are
+  existence-validated fail loud like Target/Fasit.)
 - **Q:** Sandbox suite for burler? **A:** Required, part of this task. Burler is a vital
   standalone part of lyx and must be testable on its own → un-defer the debug CLI
   (`lyx burler run`), a thin wrapper that unpacks the profile YAML into `Profile` and flags
