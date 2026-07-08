@@ -28,7 +28,9 @@ implementing  '2026-07-08T06:32:27Z'
 ```yaml
 batches:
   - name: engine-core
-    state: pending
+    state: running
+    implementer_session: 7d210445-b6ea-4212-a3e0-b3f1563e00d9
+    start_sha: be915e894b9e858f34bfd2aa37ab289719303e55
   - name: engine-round
     state: pending
   - name: burler-cli
