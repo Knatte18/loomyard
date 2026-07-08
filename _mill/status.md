@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-profile-state
+phase: approved-judge-triage
 slug: internal-perch
 branch: internal-perch
 plan: _mill/plan
@@ -26,6 +26,7 @@ planned  '2026-07-08T15:48:09Z'
 implementing  '2026-07-08T15:51:10Z'
 approved-foundations  '2026-07-08T15:58:08Z'
 approved-profile-state  '2026-07-08T16:06:09Z'
+approved-judge-triage  '2026-07-08T16:24:24Z'
 ```
 
 ## Batches
@@ -43,9 +44,10 @@ batches:
     start_sha: 70066453f02e9f187ff74014b3fb76daeb62632e
     commit_sha: 43db6457f97d9f9786cfa6ee29aa82c4c1759bb6
   - name: judge-triage
-    state: running
+    state: approved
     implementer_session: 4ff28e44-69b5-45b0-b3f7-7bac5d91666a
     start_sha: 022fd7a66cdf8dca9a92687875295bd1ae3bb77d
+    commit_sha: a631b9ba5450a11cb68168ce7308d8a8ed754d35
   - name: gate-loop
     state: pending
   - name: cli-docs
