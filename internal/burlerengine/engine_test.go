@@ -159,8 +159,9 @@ func TestEngine_Run_ClusterUnsupported(t *testing.T) {
 
 // TestEngine_Run_NonDoneOutcomes proves every non-done shuttleengine
 // outcome carries through to Result.Outcome with an empty Verdict and a
-// nil error, and that LastAssistantMessage is carried for an asking
-// outcome.
+// nil error, and that LastAssistantMessage and the kept shuttle RunDir are
+// carried for a non-done outcome — the RunDir passthrough is what lets a
+// caller point at the kept shuttle run dir for a died/timeout round.
 func TestEngine_Run_NonDoneOutcomes(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -181,6 +182,7 @@ func TestEngine_Run_NonDoneOutcomes(t *testing.T) {
 					LastAssistantMessage: tt.message,
 					SessionID:            "sess-1",
 					StrandGUID:           "guid-1",
+					RunDir:               "/kept/run/dir",
 				},
 			}
 			e := newEngineForTest(root, shuttle)
@@ -201,19 +203,23 @@ func TestEngine_Run_NonDoneOutcomes(t *testing.T) {
 			if got.SessionID != "sess-1" || got.StrandGUID != "guid-1" {
 				t.Errorf("Result identities = (%q, %q); want (\"sess-1\", \"guid-1\")", got.SessionID, got.StrandGUID)
 			}
+			if got.RunDir != "/kept/run/dir" {
+				t.Errorf("Result.RunDir = %q; want %q", got.RunDir, "/kept/run/dir")
+			}
 		})
 	}
 }
 
 // TestEngine_Run_DoneBlockingVerdict proves a done run whose review file
 // carries a valid BLOCKING verdict parses into VerdictBlocking with its
-// findings.
+// findings, and that the shuttle RunDir passes through even on a done
+// outcome.
 func TestEngine_Run_DoneBlockingVerdict(t *testing.T) {
 	root, p := newEngineTestProfile(t)
 	shuttle := &fakeShuttle{
 		reviewContent: blockingReview,
 		fixerContent:  "fixed the mismatch",
-		result:        shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
+		result:        shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, RunDir: "/kept/run/dir"},
 	}
 	e := newEngineForTest(root, shuttle)
 
@@ -226,6 +232,9 @@ func TestEngine_Run_DoneBlockingVerdict(t *testing.T) {
 	}
 	if len(got.Findings) != 1 || got.Findings[0].ID != "F1" {
 		t.Errorf("Result.Findings = %+v; want one finding with id F1", got.Findings)
+	}
+	if got.RunDir != "/kept/run/dir" {
+		t.Errorf("Result.RunDir = %q; want %q", got.RunDir, "/kept/run/dir")
 	}
 }
 
