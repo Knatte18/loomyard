@@ -176,11 +176,12 @@ it should say so).
 
 **Covers:** burler
 
-**Goal:** "Confirm three profile-level mistakes are each rejected with a distinct,
-sane error in the JSON envelope: an unsupported cluster count, an empty fasit, and
-a re-run against an already-existing review-path."
+**Goal:** "Confirm four profile-level mistakes are each rejected with a distinct,
+sane error in the JSON envelope: an unsupported cluster count, an empty fasit, a
+re-run against an already-existing review-path, and a review-path identical to
+the fixer-report-path."
 
-**Watch:** Three separate `lyx burler run` invocations, each expected to exit
+**Watch:** Four separate `lyx burler run` invocations, each expected to exit
 non-zero with an error in the JSON envelope (not a panic, not a silent
 zero-exit):
 
@@ -192,6 +193,11 @@ zero-exit):
 3. Re-run S1's exact profile file unmodified (same `review-path` that S1 already
    wrote). The run must fail with shuttle's pre-existing-output-file rejection
    -- burler never silently overwrites a prior round's artifact.
+4. Take a valid profile and set `fixer-report-path` to the SAME value as
+   `review-path` (a plausible copy-paste mistake). The run must fail with a
+   validation error naming the two fields and stating they must not be the same
+   path -- burler must never let the two-artifact file contract collapse into
+   one file wearing both hats.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 

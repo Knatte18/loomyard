@@ -209,6 +209,32 @@ func TestProfile_Validate(t *testing.T) {
 			wantErr:   true,
 			errSubstr: "profile.FixerReportPath must not be empty",
 		},
+		{
+			// B1: a same-path pair must be rejected — the shuttle file
+			// contract's two output-file entries would both be satisfied by
+			// one write, silently collapsing the two-artifact contract into
+			// one file (proven live).
+			name: "reviewpath and fixerreportpath identical (literal)",
+			mutate: func(root string, p *Profile) {
+				p.FixerReportPath = p.ReviewPath
+			},
+			wantErr:   true,
+			errSubstr: "must not be the same path",
+		},
+		{
+			// The distinctness check must run on the RESOLVED absolute
+			// paths, not the pre-resolution literal strings — an
+			// already-absolute FixerReportPath that happens to resolve to
+			// the same file as a relative ReviewPath is just as degenerate
+			// and must be caught the same way.
+			name: "reviewpath and fixerreportpath identical (post-resolution)",
+			mutate: func(root string, p *Profile) {
+				p.ReviewPath = "review.md"
+				p.FixerReportPath = filepath.Join(root, "review.md")
+			},
+			wantErr:   true,
+			errSubstr: "must not be the same path",
+		},
 	}
 
 	for _, tt := range tests {

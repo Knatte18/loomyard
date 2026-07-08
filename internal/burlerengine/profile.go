@@ -180,6 +180,18 @@ func (p *Profile) validate(worktreeRoot string) error {
 	if p.FixerReportPath == "" {
 		return fmt.Errorf("burler: profile.FixerReportPath must not be empty")
 	}
+	// A same-path pair would let shuttle's file contract (OutputFiles =
+	// [ReviewPath, FixerReportPath]) be satisfied by a single write: the
+	// round classifies done the instant ONE file exists, and burler's
+	// ParseReview would then read only that file's leading frontmatter,
+	// silently discarding the distinct fixer-report artifact the contract
+	// promises. Proven live: an operator copy-paste mistake (the same value
+	// for both fields) produced a "done"/"APPROVED" round after the agent
+	// wrote exactly one file wearing both hats — fail loud instead, like
+	// every other safety-critical field on this Profile.
+	if p.ReviewPath == p.FixerReportPath {
+		return fmt.Errorf("burler: profile.ReviewPath and profile.FixerReportPath must not be the same path (got %q for both)", p.ReviewPath)
+	}
 
 	return nil
 }
