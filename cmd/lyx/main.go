@@ -27,6 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/initcli"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/muxcli"
+	"github.com/Knatte18/loomyard/internal/perchcli"
 	"github.com/Knatte18/loomyard/internal/selfreportcli"
 	"github.com/Knatte18/loomyard/internal/shuttlecli"
 	"github.com/Knatte18/loomyard/internal/warpcli"
@@ -81,7 +82,7 @@ It assembles every module's cobra command tree under a single root so that
 all modules are discoverable via "lyx --help" and every subcommand carries
 its own --help and --json help output.
 
-Available modules: init, board, config, ide, mux, weft, warp, selfreport, shuttle, burler.`,
+Available modules: init, board, config, ide, mux, weft, warp, selfreport, shuttle, burler, perch.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		// Several module groups (board, ide, mux, weft) install their own
@@ -121,6 +122,7 @@ Available modules: init, board, config, ide, mux, weft, warp, selfreport, shuttl
 		selfreportcli.Command(),
 		shuttlecli.Command(),
 		burlercli.Command(),
+		perchcli.Command(),
 	)
 
 	return root
