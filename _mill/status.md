@@ -43,7 +43,9 @@ batches:
     start_sha: 70066453f02e9f187ff74014b3fb76daeb62632e
     commit_sha: 43db6457f97d9f9786cfa6ee29aa82c4c1759bb6
   - name: judge-triage
-    state: pending
+    state: running
+    implementer_session: 5415e111-db8b-4a4b-af8e-385b8e0ddcec
+    start_sha: f27d079b0024992ad25bbb8598b68966893d4778
   - name: gate-loop
     state: pending
   - name: cli-docs
