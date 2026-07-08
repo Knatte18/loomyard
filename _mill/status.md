@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: internal-burler
 branch: internal-burler
 plan: _mill/plan
@@ -20,4 +20,21 @@ discussed  '2026-07-08T06:00:59Z'
 planning  '2026-07-08T06:10:44Z'
 plan-fix-r1  '2026-07-08T06:17:31Z'
 planned  '2026-07-08T06:17:55Z'
+implementing  '2026-07-08T06:32:27Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: engine-core
+    state: pending
+  - name: engine-round
+    state: pending
+  - name: burler-cli
+    state: pending
+  - name: registration-and-suite
+    state: pending
+  - name: docs-lifecycle
+    state: pending
 ```
