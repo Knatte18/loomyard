@@ -46,7 +46,9 @@ batches:
     start_sha: 0fb7d824ab638e1ea211bf4675bebe6dd52fd2b1
     commit_sha: 6338bfccea2ac72cc91d2e633267d57e4e3e96b2
   - name: registration-and-suite
-    state: pending
+    state: running
+    implementer_session: 25084724-45ee-4d96-a2ec-678392a23183
+    start_sha: 46a63c266ae9a54b37c8d27e6631341bc0f37040
   - name: docs-lifecycle
     state: pending
 ```
