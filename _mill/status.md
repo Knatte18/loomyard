@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-cli-docs
+phase: holistic-reviewing
 slug: internal-perch
 branch: internal-perch
 plan: _mill/plan
@@ -29,6 +29,7 @@ approved-profile-state  '2026-07-08T16:06:09Z'
 approved-judge-triage  '2026-07-08T16:24:24Z'
 approved-gate-loop  '2026-07-08T16:39:56Z'
 approved-cli-docs  '2026-07-08T16:59:21Z'
+holistic-reviewing  '2026-07-08T16:59:43Z'
 ```
 
 ## Batches
