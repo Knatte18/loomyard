@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-fix-r3
+phase: discussed
 slug: internal-burler
 branch: internal-burler
 plan: null
@@ -16,4 +16,5 @@ task_description: |
 ```text
 discussing  '2026-07-08T05:01:43Z'
 discussion-fix-r3  '2026-07-08T06:00:37Z'
+discussed  '2026-07-08T06:00:59Z'
 ```
