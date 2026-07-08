@@ -40,12 +40,16 @@ the per-profile difference is data (rubric, fasit, gate mode, caps), never code.
   perch never builds `_lyx` paths itself).
 - Progress-judge and asking-triage prompt templates (embedded, stencil-filled) + strict
   fail-loud parsers for their output files.
+- Small burlerengine touch-ups: a `Result.RunDir` passthrough (from
+  `shuttleengine.Result`) and correcting the stale "perch's future cycle-detection keys"
+  comments (see Technical context).
 - Deterministic loop tests (fake burler, fake judge), opt-in judge smoke test, sandbox
   scenario tagged `**Covers:** perch`.
 - Docs: package headers carry the design; `docs/modules/perch.md` is deleted on landing
   per the Documentation Lifecycle; `docs/overview.md` module table + roadmap milestone
-  updated; `CONSTRAINTS.md` pinned test sets updated (helptree/registration/longlist,
-  sandbox coverage).
+  updated; pinned test sets updated in the same commit (helptree/registration/longlist,
+  sandbox coverage, and `internal/configreg/configreg_test.go`'s pinned `Names()` list,
+  which the perch registration extends).
 
 **Out:**
 
@@ -104,6 +108,11 @@ the per-profile difference is data (rubric, fasit, gate mode, caps), never code.
     `CONTINUE | STOP | UNCERTAIN` ("round 5 of soft cap — does the trajectory justify
     continuing?"). `STOP` → `STUCK` (reason `milestone-stop`). `UNCERTAIN` → continue.
     The milestone gate replaces (not stacks on) that round's circling check.
+  - Both triggers are **burler-verdict-based, not convergence-based** — deliberate, in
+    every gate mode: a `command`/`both`-mode round whose review is `APPROVED` but whose
+    command failed skips the circling check and any rung gate for that round. The judge's
+    material is blocking findings, and an APPROVED round has none to compare; a
+    command-only stall is bounded by the hard cap and fed forward via `round-N-gate.md`.
 - Fail-safe: `UNCERTAIN` or any judge infrastructure failure (spawn error, non-done
   outcome, unparseable verdict file) → treat as progressing, `logger.Warn` with round,
   rung, and cause, continue. The hard cap bounds the damage. A judge failure is never a
@@ -147,7 +156,10 @@ the per-profile difference is data (rubric, fasit, gate mode, caps), never code.
     number NOT advanced — no review was produced). A second consecutive non-done →
     perch returns an **error** (not `STUCK`), its message carrying run-id, `SessionID`,
     and the kept shuttle run-dir path (shuttle deliberately keeps died/timeout run dirs
-    and strands for inspection).
+    and strands for inspection). Mechanism: `burlerengine.Result` today drops the
+    `RunDir` that `shuttleengine.Result` carries (run.go:50) — this task extends
+    `burlerengine.Result` with a `RunDir` passthrough field (1:1, exactly like
+    `SessionID`/`StrandGUID`), a small in-scope burlerengine change.
   - `asking`: spawn an ephemeral triage call (judge-model config) that reads
     `LastAssistantMessage` and returns `RETRY | GIVE_UP` + reason (strict file contract
     like the judge). `RETRY` → retry once (then the second-consecutive rule applies).
@@ -180,7 +192,11 @@ the per-profile difference is data (rubric, fasit, gate mode, caps), never code.
   block already finished"). The engine is re-entrant — exactly the contract `lyx loom run`
   needs (loom knows the block identity and calls Run on that block's dir). Standalone:
   default run-id = stable slug derived from the profile (path + content hash);
-  `--run-id <name>` overrides for parallel or deliberately-fresh runs.
+  `--run-id <name>` overrides for parallel or deliberately-fresh runs. On resume,
+  perch validates the profile hash recorded in `state.json` against the incoming
+  profile and fails loud on mismatch ("run <id> was started with a different profile;
+  use a fresh --run-id") — an edited profile must never silently continue rounds
+  recorded under the old one.
 - Rationale: user requirement — perch must figure out where it stopped from what is on
   disk (delivered reviews, state), same model loom will use.
 - Rejected: mandatory `--run-id` flag (typo forks a block); fuzzy profile-matching

@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussion-fix-r1
 slug: internal-perch
 branch: internal-perch
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-07-08T14:17:55Z'
+discussion-fix-r1  '2026-07-08T15:16:42Z'
 ```
