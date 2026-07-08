@@ -1,0 +1,324 @@
+// run.go implements the `run` perch verb: the profile-YAML-and-flags-to-Run
+// mapper that turns a "lyx perch run" invocation into a blocking
+// perchengine.Engine.Run call, commits+pushes the resulting block artifacts
+// through weft once at block exit, and prints the Result as a single JSON
+// envelope. It also owns decodeProfile, the strict YAML decode that maps a
+// profile file 1:1 onto perchengine.Profile.
+
+package perchcli
+
+import (
+	"bytes"
+	"fmt"
+	"os"
+	"path/filepath"
+	"time"
+
+	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/perchengine"
+	"github.com/Knatte18/loomyard/internal/weftengine"
+	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
+)
+
+// fileSetYAML mirrors burlerengine.FileSet's YAML shape (the target/fasit
+// key of a profile file): a list of paths and/or free-form instructions.
+// It is identical to burlercli's own fileSetYAML, kept as a separate type
+// here (rather than a shared export) so perchcli and burlercli stay
+// decoupled — the same rationale that keeps their Profile seams package-local.
+type fileSetYAML struct {
+	Paths        []string `yaml:"paths"`
+	Instructions string   `yaml:"instructions"`
+}
+
+// gateYAML mirrors a profile file's "gate" key: which signal(s) decide
+// convergence (Mode), the argv a command-mode gate runs (Command), and how
+// long that command may run (Timeout, a Go duration string such as "10m";
+// empty defers to perchengine's built-in default).
+type gateYAML struct {
+	Mode    string   `yaml:"mode"`
+	Command []string `yaml:"command"`
+	Timeout string   `yaml:"timeout"`
+}
+
+// profileYAML mirrors a profile file's top-level shape 1:1 onto
+// perchengine.Profile's fields: the embedded burler content keys (Target,
+// Fasit, Rubric, FixScope, ToolUse, ClusterN — burler's own kebab-case
+// vocabulary) plus the perch-owned loop keys (Gate, RoundCaps, JudgeModel,
+// JudgeEffort, Model, Effort, Timeout). It exists as a separate type (rather
+// than decoding straight into Profile) so the YAML key vocabulary stays
+// decoupled from Profile's Go field names, exactly like burlercli's
+// profileYAML.
+type profileYAML struct {
+	Target      fileSetYAML `yaml:"target"`
+	Fasit       fileSetYAML `yaml:"fasit"`
+	Rubric      string      `yaml:"rubric"`
+	FixScope    string      `yaml:"fix-scope"`
+	ToolUse     bool        `yaml:"tool-use"`
+	ClusterN    int         `yaml:"cluster-n"`
+	Gate        gateYAML    `yaml:"gate"`
+	RoundCaps   []int       `yaml:"round-caps"`
+	JudgeModel  string      `yaml:"judge-model"`
+	JudgeEffort string      `yaml:"judge-effort"`
+	Model       string      `yaml:"model"`
+	Effort      string      `yaml:"effort"`
+	Timeout     string      `yaml:"timeout"`
+}
+
+// decodeProfile strictly decodes a profile file's raw bytes into a
+// perchengine.Profile. Decoding uses yaml.v3's Decoder.KnownFields(true) per
+// the yaml-strictness-split decision: an operator typo in a profile key
+// (e.g. "fixscope:" for "fix-scope:") must fail loudly here rather than
+// silently zeroing a safety-critical field. The two Go-duration-string
+// fields (gate.timeout, timeout) are parsed via time.ParseDuration, also
+// fail-loud on a malformed value. decodeProfile performs no further content
+// validation itself (RoundCaps shape, Gate.Mode legality, and so on) — that
+// stays perchengine.Profile's job via its own validate step inside
+// Engine.Run, so this function's only responsibility is the YAML-to-struct
+// mapping.
+func decodeProfile(data []byte) (perchengine.Profile, error) {
+	var parsed profileYAML
+
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	dec.KnownFields(true)
+	if err := dec.Decode(&parsed); err != nil {
+		return perchengine.Profile{}, fmt.Errorf("perch: profile YAML: %w", err)
+	}
+
+	var gateTimeout time.Duration
+	if parsed.Gate.Timeout != "" {
+		d, err := time.ParseDuration(parsed.Gate.Timeout)
+		if err != nil {
+			return perchengine.Profile{}, fmt.Errorf("perch: profile gate.timeout: %w", err)
+		}
+		gateTimeout = d
+	}
+
+	var timeout time.Duration
+	if parsed.Timeout != "" {
+		d, err := time.ParseDuration(parsed.Timeout)
+		if err != nil {
+			return perchengine.Profile{}, fmt.Errorf("perch: profile timeout: %w", err)
+		}
+		timeout = d
+	}
+
+	return perchengine.Profile{
+		Target: burlerengine.FileSet{
+			Paths:        parsed.Target.Paths,
+			Instructions: parsed.Target.Instructions,
+		},
+		Fasit: burlerengine.FileSet{
+			Paths:        parsed.Fasit.Paths,
+			Instructions: parsed.Fasit.Instructions,
+		},
+		Rubric:   parsed.Rubric,
+		FixScope: burlerengine.FixScope(parsed.FixScope),
+		ToolUse:  parsed.ToolUse,
+		ClusterN: parsed.ClusterN,
+		Gate: perchengine.Gate{
+			Mode:    perchengine.GateMode(parsed.Gate.Mode),
+			Command: parsed.Gate.Command,
+			Timeout: gateTimeout,
+		},
+		RoundCaps:   parsed.RoundCaps,
+		JudgeModel:  parsed.JudgeModel,
+		JudgeEffort: parsed.JudgeEffort,
+		Model:       parsed.Model,
+		Effort:      parsed.Effort,
+		Timeout:     timeout,
+	}, nil
+}
+
+// runCmd builds the `run` subcommand: validates that --profile was supplied
+// before ever touching c's PersistentPreRunE-populated state (matching
+// burlercli's run.go flag-shape pattern, so the flag error surfaces in its
+// own JSON line rather than racing a failing PersistentPreRunE's already-
+// recorded exit code), reads and strictly decodes the --profile file,
+// overlays the three run-tuning flags, derives the block's run identity,
+// constructs a fresh *perchengine.Engine per invocation (its pause seam
+// closes over the concrete runDir this call resolves), and blocks on
+// Engine.Run until the block reaches a terminal outcome. On success the
+// block's artifacts are committed and pushed through weft exactly once,
+// per the Weft Git Invariant, before the JSON envelope is printed.
+//
+// --profile is validated manually here rather than via cobra's
+// MarkFlagRequired, for the same reason burlercli's run verb does: cobra's
+// own flag-required error bypasses SetExit/ShouldAbort and is wrapped by
+// clihelp.RunRoot's generic cobra-error path instead.
+func (c *perchCLI) runCmd() *cobra.Command {
+	var (
+		profilePath string
+		runID       string
+		model       string
+		effort      string
+		timeout     time.Duration
+	)
+
+	cmd := &cobra.Command{
+		Use:   "run",
+		Short: "run a profile-driven gate loop over burler rounds from a profile YAML file",
+		Long: `run reads a profile YAML file describing one perch block — what to review,
+what to judge it against, the convergence gate, and the round-cap ladder —
+drives burler rounds through the real shuttle substrate until the block is
+APPROVED or STUCK (or PAUSED, if "lyx perch pause" was called against this
+run), and prints its Result as a single JSON envelope. Re-running with the
+same profile (and the same derived or supplied --run-id) resumes exactly
+where the block left off.
+
+Example profile YAML (llm-verdict gate — the default for text review):
+  target:
+    paths: ["docs/overview.md"]
+    instructions: ""
+  fasit:
+    paths: ["_mill/discussion.md"]
+    instructions: ""
+  rubric: |
+    BLOCKING: the doc contradicts the discussion's pinned decisions.
+    MEDIUM: a decision is described but its rationale is missing.
+    LOW: wording is unclear but not misleading.
+    NIT: minor formatting.
+  fix-scope: overlay
+  tool-use: false
+  cluster-n: 0
+  gate:
+    mode: llm-verdict
+  round-caps: [5, 8, 10]
+  judge-model: haiku
+  judge-effort: ""
+  model: ""
+  effort: ""
+  timeout: 0s
+
+Example command-gate variant (convergence decided by a real command, not
+the burler verdict):
+  # gate:
+  #   mode: command
+  #   command: ["go", "test", "./..."]
+  #   timeout: 10m
+
+Example invocation:
+  lyx perch run --profile profile.yaml
+
+--model/--effort/--timeout override the profile's model/effort/timeout for
+every round of this block; empty/zero defers to the profile's own values.`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			out := cmd.OutOrStdout()
+
+			// Validate flag shape before ever touching c's PersistentPreRunE-
+			// populated state (unpopulated when config resolution aborted),
+			// so a missing --profile is reported as its own flag error
+			// rather than being swallowed by, or racing with, the
+			// PersistentPreRunE abort's already-recorded exit code.
+			if profilePath == "" {
+				clihelp.SetExit(cmd.Context(), output.Err(out, "perch: --profile is required"))
+				return nil
+			}
+
+			// A failing PersistentPreRunE has already written an error
+			// response and recorded the exit code; short-circuit rather
+			// than touch c's fields, which are unpopulated on that path.
+			if clihelp.ShouldAbort(cmd.Context()) {
+				return nil
+			}
+
+			data, err := os.ReadFile(profilePath)
+			if err != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("perch: read --profile: %v", err)))
+				return nil
+			}
+
+			profile, err := decodeProfile(data)
+			if err != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+				return nil
+			}
+
+			// Run-tuning flags override the profile's values only when
+			// supplied (non-zero/non-empty) — burlercli's flag semantics —
+			// applied before ProfileHash so a flag override and the
+			// profile's own resume identity always agree on what was
+			// actually run.
+			if model != "" {
+				profile.Model = model
+			}
+			if effort != "" {
+				profile.Effort = effort
+			}
+			if timeout != 0 {
+				profile.Timeout = timeout
+			}
+
+			hash, err := perchengine.ProfileHash(profile)
+			if err != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+				return nil
+			}
+
+			id := runID
+			if id == "" {
+				id = perchengine.DeriveRunID(profilePath, hash)
+			}
+			runDir := filepath.Join(c.runDirBase, id)
+
+			// The engine is constructed per-invocation, never in
+			// PersistentPreRunE: its pause seam closes over this call's
+			// concrete runDir, which is only known once --profile/--run-id
+			// have been resolved above.
+			engine := perchengine.New(c.burlerEngine, c.runner, c.perchCfg, c.layout, perchengine.Options{
+				PauseRequested: func() bool {
+					_, err := os.Stat(perchengine.PauseFlagPath(runDir))
+					return err == nil
+				},
+			})
+
+			result, err := engine.Run(profile, runDir)
+			if err != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+				return nil
+			}
+
+			// The weft sync runs once at block exit regardless of outcome
+			// (APPROVED/STUCK/PAUSED), per the Weft Git Invariant: perchcli
+			// is the loop owner, perchengine itself is weft-blind.
+			weftWorktree := c.layout.WeftWorktree()
+			opts := weftengine.EnvSyncOptions()
+			committed, weftErr := weftengine.Commit(
+				weftWorktree,
+				weftengine.ScopedPathspec(c.layout.RelPath, []string{hubgeometry.LyxDirName}),
+				fmt.Sprintf("perch: %s %s", id, string(result.Outcome)),
+				opts,
+			)
+			if weftErr == nil {
+				weftErr = weftengine.Push(weftWorktree, opts)
+			}
+			if weftErr != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf(
+					"perch: block %s finished (%s) but the weft sync failed: %v", id, result.Outcome, weftErr,
+				)))
+				return nil
+			}
+
+			clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{
+				"outcome":       string(result.Outcome),
+				"stuckReason":   string(result.StuckReason),
+				"roundsRun":     result.RoundsRun,
+				"runId":         id,
+				"runDir":        runDir,
+				"weftCommitted": committed,
+			}))
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&profilePath, "profile", "", "path to the profile YAML file describing this block (required)")
+	cmd.Flags().StringVar(&runID, "run-id", "", "run identity override; empty derives a stable id from the profile path and content")
+	cmd.Flags().StringVar(&model, "model", "", "provider model override for every round; empty defers to the profile's model")
+	cmd.Flags().StringVar(&effort, "effort", "", "reasoning-effort override for every round; empty defers to the profile's effort")
+	cmd.Flags().DurationVar(&timeout, "timeout", 0, "per-round wall-clock deadline override; 0 defers to the profile's timeout")
+
+	return cmd
+}

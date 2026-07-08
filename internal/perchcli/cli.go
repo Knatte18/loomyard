@@ -135,6 +135,8 @@ Example:
 		},
 	}
 
+	parent.AddCommand(c.runCmd())
+
 	return parent
 }
 
