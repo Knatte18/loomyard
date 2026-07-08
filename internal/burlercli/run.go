@@ -109,7 +109,7 @@ Result as a single JSON envelope.
 
 Example profile YAML:
   target:
-    paths: ["docs/modules/burler.md"]
+    paths: ["docs/overview.md"]
     instructions: ""
   fasit:
     paths: ["_mill/discussion.md"]

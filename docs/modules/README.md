@@ -11,7 +11,7 @@
 |-----|--------|---------------|------|
 | — | `internal/muxengine` | the window to the world: psmux overlay + **strand** bookkeeping + render (✅ built — see [overview.md#modules](../overview.md#modules) and the package documentation) | `lyx mux` |
 | — | `internal/shuttleengine` + `internal/shuttleengine/claudeengine` + `internal/shuttlecli` | run **one** LLM agent via a swappable engine over the file contract (✅ built — see [overview.md#modules](../overview.md#modules) and the package documentation) | `lyx shuttle` |
-| [burler.md](burler.md) | `burler` | one review+fix round: A-review (+ optional cluster) → B-fix | (composed by `perch`) |
+| — | `internal/burlerengine` + `internal/burlercli` | one review+fix round: A-review → B-fix, no self-grading (✅ built — see [overview.md#modules](../overview.md#modules) and the package documentation) | `lyx burler run` (debug only, composed by `perch`) |
 | [perch.md](perch.md) | `perch` | the gate loop: run `burler` rounds → `APPROVED`/`stuck` + progress-judge | `lyx perch` |
 | [loom.md](loom.md) | `loom` | the phase machine: drive each phase through a perch gate | `lyx loom` |
 | [hardener.md](hardener.md) | `hardener` | **DRAFT** — behavior-based hardening of live-substrate modules (post-loom, off-spine) | `lyx hardener`? |
