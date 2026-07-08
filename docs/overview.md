@@ -111,7 +111,7 @@ The **host repo** is the project's source of truth, maintained by developers. Al
 |----------|----------|------|---------|
 | `_lyx/config/` | Weft worktree | Weft | Live YAML configuration files for all modules (board, warp, weft); reconciled via `lyx config reconcile` |
 | `.env` | Weft worktree | Weft | Git-ignored per-machine environment variable overrides (KEY=value format) |
-| `_raddle/` | Weft worktree | Weft | Raddle documentation (task 008) |
+| `_raddle/` | Weft worktree | Weft | Raddle documentation (the raddle nav-doc overlay) |
 | `_board/` | Hub | Board | Task board at a **configured** board-repo URL — `lyx board` accepts any URL; `ly-git-clone` defaults it to the weft repo's GitHub wiki (`<weft>.wiki.git`) |
 | Host source | Host worktree | Host | Project source code |
 
@@ -138,7 +138,7 @@ yes → `_lyx/`. A pane handle no → `.lyx/`.
 
 Each host worktree has a sibling weft worktree. Host worktrees use **junctions** (Windows) or symlinks to route writes into the sibling weft worktree:
 - `<host>/_lyx` → `<hub>/<slug>-weft/_lyx` (config junction)
-- `<host>/_raddle` → `<hub>/<slug>-weft/_raddle` (raddle junction, task 008)
+- `<host>/_raddle` → `<hub>/<slug>-weft/_raddle` (raddle junction)
 
 Junctions are listed in `.git/info/exclude` per worktree and are never committed to `.gitignore`. From the CLI's perspective, reads and writes happen transparently — code that writes to `_lyx/config/board.yaml` writes through the junction into the weft repo without awareness of the indirection.
 
@@ -157,8 +157,8 @@ The `-weft` suffix is fixed and non-configurable. Weft paths are computed on dem
 ### Status
 
 - **Go implementation** (paths geometry, paired spawn, `lyx weft` command): ✅ task 006 complete. The weft engine (paths geometry, paired `lyx warp add` spawn, and `lyx weft status|commit|push|pull|sync`) now exists in Go. Paired `lyx warp add` hard-requires a weft repo built by the downstream hub-creator.
-- **`lyx config` command**: ✅ task 008 partial complete. The interactive menu interface (`lyx config` and `lyx config <module>`) shipped. `_raddle` junction activation and raddle config schema remain deferred.
-- **Portals**: on hold pending `_raddle` junction activation. Portals (symlink-based overlay sharing) remain unimplemented; the weft junction model is the live mechanism.
+- **`lyx config` command**: ✅ task 008 complete. The interactive menu (`lyx config`, `lyx config <module>`) and `lyx config reconcile` shipped. (`_raddle` junction activation and a raddle config schema are **raddle** nav-doc work, not part of this task — they were only historically mis-bundled here.)
+- **Portals**: unimplemented; the weft junction model is the live mechanism. (Symlink-based overlay sharing is not on the critical path.)
 
 ```
 github.com/Knatte18/loomyard/
