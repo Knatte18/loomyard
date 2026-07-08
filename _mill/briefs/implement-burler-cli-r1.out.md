@@ -1,0 +1,9 @@
+{"status":"success","commit_sha":"6338bfccea2ac72cc91d2e633267d57e4e3e96b2","session_id":"7d342d55-8ed7-44d2-a7db-ee6861d04253"}
+
+Summary of work completed for batch `03-burler-cli` (Card 7):
+
+- `C:\Code\loomyard\wts\internal-burler\internal\burlercli\cli.go` — new `burler` cobra group with `PersistentPreRunE` wiring cwd -> layout -> shuttle/mux config -> mux engine -> claude engine -> `shuttleengine.Runner` -> `burlerengine.Engine`, mirroring `internal/shuttlecli/cli.go` exactly (group guard skips resolution for the bare `burler` command).
+- `C:\Code\loomyard\wts\internal-burler\internal\burlercli\run.go` — the `run` verb: strict profile-YAML decode (`decodeProfile`, `yaml.v3` `KnownFields(true)`) onto `burlerengine.Profile`, `--profile` (required)/`--model`/`--effort`/`--round`/`--timeout` flags mapped onto `burlerengine.RunOpts`, and `output.Ok`/`output.Err` envelope handling matching `shuttlecli/run.go`'s pattern.
+- `C:\Code\loomyard\wts\internal-burler\internal\burlercli\cli_test.go` — covers bare-group listing, unknown-subcommand JSON error, group guard outside a git repo, `run` missing `--profile`, full command-tree `Short` non-emptiness, and `decodeProfile`'s strict-decode table (full valid incl. `tool-use: true`/`cluster-n: 0`, minimal valid, unknown key, malformed YAML) plus a full-field-mapping assertion.
+
+Verify command `go build ./... && go test ./internal/burlercli/...` passed. Commit `6338bfccea2ac72cc91d2e633267d57e4e3e96b2` ("burler: add lyx burler CLI wrapper (profile YAML -> engine run)") pushed to `internal-burler`. Working tree has no uncommitted tracked in-scope changes (only the pre-existing untracked `_mill/briefs/implement-burler-cli-r1.md` brief file, outside this batch's scope).
