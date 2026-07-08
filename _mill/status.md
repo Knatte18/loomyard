@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-foundations
 slug: internal-perch
 branch: internal-perch
 plan: _mill/plan
@@ -24,6 +24,7 @@ plan-fix-r1  '2026-07-08T15:41:21Z'
 plan-fix-r2  '2026-07-08T15:47:52Z'
 planned  '2026-07-08T15:48:09Z'
 implementing  '2026-07-08T15:51:10Z'
+approved-foundations  '2026-07-08T15:58:08Z'
 ```
 
 ## Batches
@@ -31,9 +32,10 @@ implementing  '2026-07-08T15:51:10Z'
 ```yaml
 batches:
   - name: foundations
-    state: running
+    state: approved
     implementer_session: 45dee6e0-5c52-4d9d-b371-32b344110835
     start_sha: 77c9313a0a2d0eaf2e071c8006a55acd05b5608e
+    commit_sha: ee7e603e566f001ad612d06e60175cdcf28ff3a6
   - name: profile-state
     state: pending
   - name: judge-triage
