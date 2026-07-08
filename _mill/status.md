@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r2
+phase: planned
 slug: internal-perch
 branch: internal-perch
 plan: _mill/plan
@@ -21,4 +21,5 @@ planning  '2026-07-08T15:32:18Z'
 plan-review-r1  '2026-07-08T15:41:21Z'
 plan-fix-r1  '2026-07-08T15:41:21Z'
 plan-fix-r2  '2026-07-08T15:47:52Z'
+planned  '2026-07-08T15:48:09Z'
 ```
