@@ -55,5 +55,7 @@ batches:
     start_sha: 6c355ccfcbd25e41c09772a231cca6ca74f1709e
     commit_sha: 859fafde041e6e8d0668a33793dc89d449ffec4b
   - name: cli-docs
-    state: pending
+    state: running
+    implementer_session: bd81d30d-931c-40fb-8ba0-6c8ef52bc435
+    start_sha: 75a45cda1afae8e21f1889238cc71684422b120f
 ```
