@@ -3,7 +3,8 @@
 > **Status: Design — not built.** Per the [documentation lifecycle](../overview.md#documentation-lifecycle),
 > this file is deleted when the module lands and its durable parts fold into the package header
 > and `overview.md`. It replaces the former `review.md`, split into two modules:
-> **`perch` owns the iterative gate loop; [`burler`](burler.md) owns one review+fix round.**
+> **`perch` owns the iterative gate loop; `burler` (see the `internal/burlerengine` package
+> documentation) owns one review+fix round.**
 >
 > **Hand-executed prototype:** [`docs/reviews/`](../reviews/README.md) documents the manual,
 > human-in-the-loop form of this loop (orchestrator drives rounds, spawns a fresh round agent,
@@ -13,7 +14,8 @@
 artifact and a *fasit* and returns one of two verdicts: **`APPROVED`** or **`stuck`**. It is named
 for *perching*: the cloth-finishing station where woven fabric is draped over a frame under light and
 **judged** pass or fail. That is perch's role — it does not do the mending itself (that is
-[`burler`](burler.md)); it runs burler rounds and **decides when the cloth passes.**
+`burler` — see the `internal/burlerengine` package documentation); it runs burler rounds and
+**decides when the cloth passes.**
 
 perch is what [`loom`](loom.md) puts between every phase, and it also runs standalone
 (`lyx perch <profile>`). One engine serves **all** text-based review — discussion-review,
@@ -28,8 +30,8 @@ inside is not the caller's concern; the block is not finished until the artifact
 definitively stuck. Inside, **Go drives a round-loop** — no standing orchestrator agent (that was
 only an LLM in mill because orchestration was LLM-driven):
 
-1. Go spawns a fresh [`burler`](burler.md) for the round (one round: A-review, optional cluster, then
-   B-fix — see [burler.md](burler.md)).
+1. Go spawns a fresh `burler` (see the `internal/burlerengine` package documentation) for the
+   round (one round: A-review, optional cluster, then B-fix).
 2. Control returns to Go, which reads the round's verdict and review file.
 3. If not `APPROVED`, Go spawns a **new** burler for the next round, hydrated from the prior round's
    review/fixer-report files.
@@ -159,14 +161,15 @@ the config template validation (which assumes a fixed schema) works with no chan
 [`hardener`](hardener.md) is a **behavior-based** reviewer and a **separate module**: it drives a
 live sandbox repo, runs slow real substrate operations, builds bespoke adversarial scenarios, and is
 orchestrated by an accumulating (per-round-respawn + handoff) LLM orchestrator, not a stateless Go
-loop. It shares only the [`burler`](burler.md) *round discipline*. perch is on the
-`shuttle → burler → perch → loom` spine and runs between every phase; hardener is an on-demand,
+loop. It shares only the `burler` *round discipline* (see the `internal/burlerengine` package
+documentation). perch is on the `shuttle → burler → perch → loom` spine and runs between every
+phase; hardener is an on-demand,
 token- and wall-clock-heavy campaign run **after** loom, not on the spine. Do not conflate them.
 
 ## Dependencies
 
-- [`burler`](burler.md) — perch spawns a fresh burler each round; burler is the LLM-heavy worker,
-  perch the deterministic loop around it.
+- `burler` (see the `internal/burlerengine` package documentation) — perch spawns a fresh burler
+  each round; burler is the LLM-heavy worker, perch the deterministic loop around it.
 - `shuttle` (see the `internal/shuttleengine` package documentation) — spawns the progress-judge (one
   shuttle run, on demand); burler reaches shuttle itself.
 - [`internal/stencil`](../shared-libs/stencil.md) — fills the progress-judge prompt template.

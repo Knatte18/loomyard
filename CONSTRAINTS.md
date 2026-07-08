@@ -118,6 +118,17 @@ orchestration layer in-process — never raw git, and never an LLM agent.
   git stays inside `weftengine`/`warpengine`. The module-ownership half is a candidate for a future
   import/grep guard; not machine-checked today.
 
+## Review Round Invariant
+
+One review+fix round (burler now, hardener later) follows the round discipline: A-before-B
+(the review is fully written to disk before any target file is touched); every recorded
+finding is fixed in B, all severities including LOW/NIT; no self-grading (round N's fix is
+judged by round N+1's fresh review, never its own); commit-per-fix on host source, never push.
+
+- **Enforced by** `internal/burlerengine/template_test.go` (`TestTemplate_StatesRoundDiscipline`)
+  for the template's sequencing and fix-everything statements. The rest — no self-grading,
+  commit-per-fix discipline — is a review obligation on prompt templates, not machine-checked.
+
 ## Sandbox Suite Coverage
 
 Every registered lyx module must be exercised by the black-box sandbox suite or be

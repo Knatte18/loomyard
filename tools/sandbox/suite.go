@@ -1,11 +1,12 @@
-// suite.go implements the "sandbox suite", "sandbox mux-suite", and "sandbox
-// shuttle-suite" subcommands: copies one of the embedded suite templates
-// (main, mux, or shuttle) into the Hub host repo, stamps a lyx binary
-// fingerprint, registers the file as a git exclude entry, and launches an
-// interactive Claude session to execute it. The three suites share every
-// mechanic (fingerprinting, git-exclude, stale-report cleanup, agent launch)
-// via the suiteSpec parameterization of runSuite; only the file name,
-// embedded doc body, and default instruction differ.
+// suite.go implements the "sandbox suite", "sandbox mux-suite", "sandbox
+// shuttle-suite", and "sandbox burler-suite" subcommands: copies one of the
+// embedded suite templates (main, mux, shuttle, or burler) into the Hub host
+// repo, stamps a lyx binary fingerprint, registers the file as a git exclude
+// entry, and launches an interactive Claude session to execute it. The four
+// suites share every mechanic (fingerprinting, git-exclude, stale-report
+// cleanup, agent launch, post-session mux teardown) via the suiteSpec
+// parameterization of runSuite; only the file name, embedded doc body,
+// default instruction, and mux-teardown flag differ.
 
 package main
 
@@ -38,11 +39,16 @@ var muxSandboxSuiteMD string
 //go:embed SANDBOX-SHUTTLE-SUITE.md
 var shuttleSandboxSuiteMD string
 
-// suiteSpec parameterizes runSuite over the three supported suites (main,
-// mux, and shuttle): the file written into the Hub host repo, the embedded
-// doc body rendered into it, and the default prompt handed to claude when the
-// operator supplies no -prompt override. Every other mechanic (fingerprinting,
-// git-exclude, stale-report cleanup, agent launch) is shared across specs.
+//go:embed SANDBOX-BURLER-SUITE.md
+var burlerSandboxSuiteMD string
+
+// suiteSpec parameterizes runSuite over the four supported suites (main,
+// mux, shuttle, and burler): the file written into the Hub host repo, the
+// embedded doc body rendered into it, the default prompt handed to claude
+// when the operator supplies no -prompt override, and whether the suite
+// boots a live mux substrate that must be torn down after the session.
+// Every other mechanic (fingerprinting, git-exclude, stale-report cleanup,
+// agent launch) is shared across specs.
 type suiteSpec struct {
 	// fileName is the name of the suite scheme file written into the Hub host
 	// repo at each suite run. It is intentionally kept out of git via
@@ -54,6 +60,12 @@ type suiteSpec struct {
 	// instruction is the literal prompt string handed to the claude binary as
 	// its sole argument when no -prompt override is supplied.
 	instruction string
+	// muxTeardown marks suites whose scenarios boot a live psmux substrate
+	// (lyx mux up). For those, runSuite runs `lyx mux down` in the host repo
+	// after the agent session ends, whatever the agent did: an orphaned psmux
+	// server holds open handles inside the Hub and blocks the next
+	// sandbox-build.cmd -reset.
+	muxTeardown bool
 }
 
 // mainSuite is the original SANDBOX-CORE-SUITE spec: the general black-box scheme
@@ -70,6 +82,7 @@ var muxSuite = suiteSpec{
 	fileName:    "SANDBOX-MUX-SUITE.md",
 	doc:         muxSandboxSuiteMD,
 	instruction: "Read ./SANDBOX-MUX-SUITE.md and follow the instructions in it exactly.",
+	muxTeardown: true,
 }
 
 // shuttleSuite is the SANDBOX-SHUTTLE-SUITE spec: the dedicated scheme
@@ -78,11 +91,47 @@ var shuttleSuite = suiteSpec{
 	fileName:    "SANDBOX-SHUTTLE-SUITE.md",
 	doc:         shuttleSandboxSuiteMD,
 	instruction: "Read ./SANDBOX-SHUTTLE-SUITE.md and follow the instructions in it exactly.",
+	muxTeardown: true,
+}
+
+// burlerSuite is the SANDBOX-BURLER-SUITE spec: the dedicated scheme
+// exercising the lyx burler round-worker black-box agent scenarios.
+var burlerSuite = suiteSpec{
+	fileName:    "SANDBOX-BURLER-SUITE.md",
+	doc:         burlerSandboxSuiteMD,
+	instruction: "Read ./SANDBOX-BURLER-SUITE.md and follow the instructions in it exactly.",
+	muxTeardown: true,
 }
 
 // lookPath is a testability seam over exec.LookPath so tests can inject fake
 // PATH resolution without modifying the real environment.
 var lookPath = exec.LookPath
+
+// isCharDevice reports whether f is attached to a console character device.
+// A false result means f is a pipe, regular file, or closed handle -- i.e.
+// the launcher was redirected, backgrounded, or detached.
+func isCharDevice(f *os.File) bool {
+	fi, err := f.Stat()
+	if err != nil {
+		return false
+	}
+	return fi.Mode()&os.ModeCharDevice != 0
+}
+
+// interactiveStdio is a testability seam reporting whether the launcher runs
+// with both stdin and stdout attached to a console.
+var interactiveStdio = func() bool {
+	return isCharDevice(os.Stdin) && isCharDevice(os.Stdout)
+}
+
+// nonInteractiveWarning is printed before launching the agent when the
+// launcher's stdio is not an attached console. An interactive claude session
+// without a TTY cannot idle between turns: the process ends as soon as the
+// model ends a turn, so a backgrounded command's completion notification is
+// never delivered and the agent may abandon the remaining scenarios.
+const nonInteractiveWarning = "sandbox: warning: stdin/stdout is not an attached console; " +
+	"the agent session cannot idle for notifications and may end early, abandoning scenarios. " +
+	"Run the suite launcher in a real interactive terminal (do not redirect or background it).\n"
 
 // launchAgent is a testability seam that runs an interactive claude session
 // inside hostRepoDir. It passes instruction as the sole positional argument and
@@ -91,6 +140,11 @@ var lookPath = exec.LookPath
 // waits for the child to exit, and returns its exit code. A non-zero exit code
 // from *exec.ExitError is returned as-is; any other error returns 1.
 var launchAgent = func(hostRepoDir, claudePath, instruction string) int {
+	// An interactive claude session is only reliable on an attached console;
+	// warn (not fail) so a knowingly-detached run can still proceed.
+	if !interactiveStdio() {
+		fmt.Fprint(os.Stderr, nonInteractiveWarning)
+	}
 	cmd := exec.Command(claudePath, "--dangerously-skip-permissions", instruction)
 	cmd.Dir = hostRepoDir
 	cmd.Stdin = os.Stdin
@@ -107,6 +161,19 @@ var launchAgent = func(hostRepoDir, claudePath, instruction string) int {
 		return 1
 	}
 	return 0
+}
+
+// muxDown is a testability seam that tears down the Hub-scoped mux substrate
+// after an agent session: it runs `lyx mux down` inside hostRepoDir using the
+// already-fingerprinted lyx binary. `mux down` is idempotent (success with no
+// session up), so the call is safe regardless of what the agent left behind.
+var muxDown = func(hostRepoDir, lyxPath string) error {
+	cmd := exec.Command(lyxPath, "mux", "down")
+	cmd.Dir = hostRepoDir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("lyx mux down: %w (output: %s)", err, strings.TrimSpace(string(out)))
+	}
+	return nil
 }
 
 // binaryInfo holds a snapshot of a binary file's identity at a point in time.
@@ -229,16 +296,19 @@ func ensureGitExclude(repoDir, entry string) error {
 }
 
 // runSuite executes the "sandbox suite" / "sandbox mux-suite" / "sandbox
-// shuttle-suite" subcommands. It locates the Hub host repo under parentDir,
-// fingerprints the deployed lyx binary, writes a fresh spec.fileName into the
-// host repo (overwriting any prior copy), registers it in .git/info/exclude,
-// clears any stale sandbox-report.json from a prior run, and starts an
-// interactive Claude session with the given instruction string. It does not
-// fetch the agent's report -- that is the separate fetch subcommand
-// (runFetch), run by the operator after the session. claudeOverride and
-// promptOverride are optional: when empty the function resolves "claude" from
-// PATH and uses spec.instruction. spec selects which suite (mainSuite,
-// muxSuite, or shuttleSuite) is run.
+// shuttle-suite" / "sandbox burler-suite" subcommands. It locates the Hub
+// host repo under parentDir, fingerprints the deployed lyx binary, writes a
+// fresh spec.fileName into the host repo (overwriting any prior copy),
+// registers it in .git/info/exclude, clears any stale sandbox-report.json
+// from a prior run, and starts an interactive Claude session with the given
+// instruction string. After the session ends, specs flagged muxTeardown get
+// a best-effort `lyx mux down` in the host repo so no psmux server outlives
+// the run. It does not fetch the agent's report -- that is the
+// separate fetch subcommand (runFetch), run by the operator after the
+// session. claudeOverride and promptOverride are optional: when empty the
+// function resolves "claude" from PATH and uses spec.instruction. spec
+// selects which suite (mainSuite, muxSuite, shuttleSuite, or burlerSuite) is
+// run.
 func runSuite(parentDir, claudeOverride, promptOverride string, spec suiteSpec) error {
 	// Derive the host repo path from the shared hubName const (main.go) and the
 	// suite-local hostDirName const; the function relies on those consts rather than
@@ -316,5 +386,18 @@ func runSuite(parentDir, claudeOverride, promptOverride string, spec suiteSpec) 
 	fmt.Fprintf(os.Stderr,
 		"sandbox: agent session ended (exit code %d). Run sandbox-fetch.cmd to collect findings into .scratch.\n",
 		code)
+
+	// For suites whose scenarios boot a live mux substrate, tear it down now,
+	// regardless of how the agent session ended: an orphaned psmux server holds
+	// open handles inside the Hub host repo and blocks the next
+	// sandbox-build.cmd -reset. Best-effort -- a teardown failure must not turn
+	// a completed session into a launcher error.
+	if spec.muxTeardown {
+		if err := muxDown(hostRepoDir, lyxPath); err != nil {
+			fmt.Fprintf(os.Stderr, "sandbox: mux teardown: %v\n", err)
+		} else {
+			fmt.Fprintln(os.Stderr, "sandbox: mux substrate torn down (lyx mux down).")
+		}
+	}
 	return nil
 }

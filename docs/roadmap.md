@@ -138,16 +138,18 @@ Each layer knows only the one below it; built bottom-up. See the
     `internal/shuttleengine` package header and the [overview module entry](overview.md#modules).
 
 11. **`burler` + `perch` — the review+fix round and the gate loop.** The former single `review`
-    module, split in two. **`burler` (round worker):** one review+fix round — A-review (+ optional
-    cluster reviewers as own-window strands) → B-fix, no self-grading, commit-per-fix, fix-everything;
-    LLM-heavy, standalone, smoke-tested; builds on `shuttle`. **`perch` (`lyx perch`, gate loop):**
-    Go loop that runs `burler` rounds until `APPROVED`/`stuck` — loop-until-dry convergence,
-    round-cap + cap-escalation, a progress/circularity judge (canonical keys in the judge, cycle
-    logic in Go), and a pluggable gate (`llm-verdict` | `command` | `both`); deterministic,
-    fake-burler-tested. One engine serves discussion / plan / builder / ad-hoc review — the per-type
-    difference is the profile (rubric + fasit), not the code; per-phase profiles live in `loom`, not
-    in `perch.yaml`. **Independent of `loom`** (runs standalone); loom just uses perch between every
-    phase. ([modules/burler.md](modules/burler.md), [modules/perch.md](modules/perch.md))
+    module, split in two. **`burler` (round worker):** ✅ **Done** — one review+fix round: A-review →
+    B-fix, one agent, no self-grading, over the shuttle file contract; LLM-heavy, standalone,
+    smoke-tested; builds on `shuttle`. See the `internal/burlerengine` package documentation. Cluster
+    reviewers as own-window strands are deferred (see
+    [Deferred burler enhancements](#deferred-burler-enhancements)). **`perch` (`lyx perch`, gate
+    loop):** 🚧 not yet built — the Go loop that runs `burler` rounds until `APPROVED`/`stuck` —
+    loop-until-dry convergence, round-cap + cap-escalation, a progress/circularity judge (canonical
+    keys in the judge, cycle logic in Go), and a pluggable gate (`llm-verdict` | `command` | `both`);
+    deterministic, fake-burler-tested. One engine serves discussion / plan / builder / ad-hoc review —
+    the per-type difference is the profile (rubric + fasit), not the code; per-phase profiles live in
+    `loom`, not in `perch.yaml`. **Independent of `loom`** (runs standalone); loom just uses perch
+    between every phase. ([modules/perch.md](modules/perch.md))
 
 12. **`loom` (`lyx loom run`, alias `lyx run`) — the phase machine.** The autonomous driver:
     Setup → Discussion → Plan → Builder → Finalize, each gated by a review, resume-from-disk via
@@ -238,10 +240,11 @@ Independent of the orchestration stack; interleave as needed.
     archetype: `mux` driving real psmux) in a **sandbox repo** and reacts to what it observes, rather
     than reading an artifact as [`perch`](modules/perch.md) does. Orchestrated by an accumulating
     (per-round-respawn + handoff) orchestrator that targets each round and verifies via a
-    **deterministic gate** (N× concurrent smoke, zero stray state); shares only the
-    [`burler`](modules/burler.md) round discipline. Token- and wall-clock-heavy (a campaign ran a
-    weekend), but it hardened `mux` where text-review could not. **Off the `burler → perch → loom`
-    spine** — it blocks nothing and is picked up only after `loom` works. Concept still being figured
+    **deterministic gate** (N× concurrent smoke, zero stray state); shares only the `burler` round
+    discipline (see the `internal/burlerengine` package documentation). Token- and wall-clock-heavy
+    (a campaign ran a weekend), but it hardened `mux` where text-review could not. **Off the
+    `burler → perch → loom` spine** — it blocks nothing and is picked up only after `loom` works.
+    Concept still being figured
     out; see [modules/hardener.md](modules/hardener.md) (a DRAFT doc, do not implement from it yet).
 
 24. **Own-window strand anchoring** *(deferred mux enhancement — grouped with 13–15 thematically,
@@ -250,11 +253,34 @@ Independent of the orchestration stack; interleave as needed.
     missing today (windows are not yet a display target; mux runs one window of panes per worktree).
     This is what **unlocks `burler`'s `cluster-N > 0`**: N parallel cluster reviewers land in their
     own window the operator can switch to and watch, instead of a pane explosion in the worktree
-    column ([modules/burler.md](modules/burler.md#cluster-support)). Purely additive to mux's closed
+    column (see [Deferred burler enhancements](#deferred-burler-enhancements) and the
+    `internal/burlerengine` package documentation). Purely additive to mux's closed
     display vocabulary + render rules. **Independent of the spine** — `burler` / `perch` / `loom` all
     ship on `cluster-N = 0` without it, so this is picked up only when someone wants live cluster
     review. Distinct from milestone 13 (cross-worktree *columns*): that groups worktrees into columns
     of one window; this adds *windows* as a spawn target.
+
+### Deferred burler enhancements
+
+Ideas from `burler`'s design that did not ship with the module (milestone 11's burler half); not
+required for `perch` or `loom` v1. See the `internal/burlerengine` package documentation for the
+as-built shape.
+
+- **Cluster fan-out (`cluster-N > 0`).** N extra cross-checking reviewers spawned inside step A.
+  Blocked on milestone 24 (own-window strand anchoring) — burler today rejects `cluster-N > 0` with
+  a typed validation error rather than crowd the worktree column.
+- **A generic tools-restriction on the shuttle `Spec`.** Meaningless for today's single-session A→B
+  agent (B must always write, and `claudeengine` writes `settings.json` once at launch for the whole
+  session); only meaningful for cluster reviewers, which are separate, pure-review sessions and are
+  themselves gated on milestone 24.
+- **Bulk-mode clusters + provider-side context caching.** A cluster round can run *tool-use* (each
+  reviewer explores independently) or *bulk* (Go concatenates target + fasit + rubric into one blob
+  passed as a value). Bulk is what makes provider-side context caching (e.g. Gemini's explicit cache)
+  pay off, and only if it is modelled as **one shared prefix + N distinct suffixes**, never N full
+  prompts — that modelling constraint is what keeps caching possible instead of foreclosed once bulk
+  is eventually built.
+- **A per-round provider selector on the shuttle `Spec`.** Today "provider" means whichever engine is
+  wired into the `Runner`; a selector field is only needed once a second engine lands.
 
 ## Explicitly out of scope
 
