@@ -6,10 +6,17 @@ rationale see [sandbox-hub.md](sandbox-hub.md).
 
 All commands run from the lyx repo root (`C:\Code\loomyard\wts\loomyard`) unless
 stated otherwise. The launchers (`deploy.cmd`, `sandbox-build.cmd`,
-`sandbox-core-suite.cmd`, `sandbox-mux-suite.cmd`, `sandbox-fetch.cmd`) hardcode the
-machine-specific paths for this machine: deploy target `C:\Code\tools\bin`, Hub
-parent `C:\Code`. Each sandbox launcher does exactly one thing (build / suite /
-mux-suite / fetch).
+`sandbox-core-suite.cmd`, `sandbox-mux-suite.cmd`, `sandbox-shuttle-suite.cmd`,
+`sandbox-burler-suite.cmd`, `sandbox-fetch.cmd`) hardcode the machine-specific
+paths for this machine: deploy target `C:\Code\tools\bin`, Hub parent `C:\Code`.
+Each sandbox launcher does exactly one thing (build / one suite / fetch).
+
+**Run every suite launcher in a real, attached interactive terminal** — never
+backgrounded, detached, or with stdout/stderr redirected. The agent session is
+an interactive `claude` process; without a TTY it cannot idle between turns
+waiting for notifications, so it may end early and silently abandon the
+remaining scenarios. The launcher prints a warning when it detects
+non-console stdio.
 
 ## What the suite does
 
@@ -120,6 +127,21 @@ sandbox-mux-suite.cmd -claude <path>   # override the claude binary (default: fr
 sandbox-mux-suite.cmd -prompt <text>   # override the instruction string
 ```
 
+### 4c. Run the shuttle or burler suite (optional, needs live psmux + logged-in claude)
+
+```cmd
+sandbox-shuttle-suite.cmd
+sandbox-burler-suite.cmd
+```
+
+Same operating model as 4b, for `lyx shuttle`'s and `lyx burler`'s scenarios
+respectively; both need a live psmux, PowerShell 7, a logged-in `claude`, and
+an `lyx init`-ed host repo. Same `-claude`/`-prompt` overrides. After the
+session ends, the launcher runs `lyx mux down` in the host repo (for the mux,
+shuttle, and burler suites) so no psmux server outlives the run — an orphaned
+server holds handles inside the Hub and blocks the next
+`sandbox-build.cmd -reset`.
+
 ### 5. Fetch the report
 
 ```cmd
@@ -153,6 +175,8 @@ nothing is written until you approve. Then groom/spawn as usual.
 | `lyx` not found / old behaviour | binary on PATH is stale or `C:\Code\tools\bin` not on PATH | rerun `deploy.cmd`; check PATH |
 | `warp clone` fails during build | sandbox wiki not initialized | enable Wikis + add a page on `lyx-test-weft`, then `sandbox-build.cmd -reset` |
 | Hub looks corrupt / half-cloned | interrupted earlier run | `sandbox-build.cmd -reset` |
+| `sandbox-build.cmd -reset` fails: "being used by another process" | orphaned `psmux.exe` from an earlier suite session still holds Hub handles | the launcher now runs `lyx mux down` after mux-backed suites; if hit anyway, find the Hub-scoped `psmux.exe` PIDs by `StartTime` (`Get-Process -Name psmux \| Select Id,StartTime`) and kill only those — never blanket-kill by image name |
+| agent session ends early, scenarios abandoned, no report | launcher was backgrounded/redirected (no TTY) | rerun in a real attached terminal; heed the launcher's non-console stdio warning |
 | exit code always 0/1, not claude's | launcher collapses claude's code | build and run `go build -o sandbox.exe ./tools/sandbox` for precise codes |
 
 ## See also

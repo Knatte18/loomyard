@@ -373,6 +373,7 @@ func TestRun_SuiteRoutesSuiteToLaunch(t *testing.T) {
 	}
 
 	launchAgentCalled := false
+	stubMuxDownNoop(t)
 	oldLaunchAgent := launchAgent
 	defer func() { launchAgent = oldLaunchAgent }()
 	launchAgent = func(dir, claude, instruction string) int {
@@ -427,6 +428,7 @@ func TestRun_MuxSuiteRoutesToLaunch(t *testing.T) {
 
 	launchAgentCalled := false
 	var gotInstruction string
+	stubMuxDownNoop(t)
 	oldLaunchAgent := launchAgent
 	defer func() { launchAgent = oldLaunchAgent }()
 	launchAgent = func(dir, claude, instruction string) int {
@@ -479,6 +481,7 @@ func TestRun_MuxSuiteFlagsRoutedAfterToken(t *testing.T) {
 	}
 
 	var gotClaude, gotInstruction string
+	stubMuxDownNoop(t)
 	oldLaunchAgent := launchAgent
 	defer func() { launchAgent = oldLaunchAgent }()
 	launchAgent = func(dir, claude, instruction string) int {
@@ -547,6 +550,7 @@ func TestRun_ShuttleSuiteRoutesToLaunch(t *testing.T) {
 
 	launchAgentCalled := false
 	var gotInstruction string
+	stubMuxDownNoop(t)
 	oldLaunchAgent := launchAgent
 	defer func() { launchAgent = oldLaunchAgent }()
 	launchAgent = func(dir, claude, instruction string) int {
@@ -599,6 +603,7 @@ func TestRun_ShuttleSuiteFlagsRoutedAfterToken(t *testing.T) {
 	}
 
 	var gotClaude, gotInstruction string
+	stubMuxDownNoop(t)
 	oldLaunchAgent := launchAgent
 	defer func() { launchAgent = oldLaunchAgent }()
 	launchAgent = func(dir, claude, instruction string) int {
@@ -666,6 +671,7 @@ func TestRun_BurlerSuiteRoutesToLaunch(t *testing.T) {
 
 	launchAgentCalled := false
 	var gotInstruction string
+	stubMuxDownNoop(t)
 	oldLaunchAgent := launchAgent
 	defer func() { launchAgent = oldLaunchAgent }()
 	launchAgent = func(dir, claude, instruction string) int {

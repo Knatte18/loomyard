@@ -37,6 +37,13 @@ Before starting a session:
    `lyx mux` do -- burler wires the real shuttle substrate (mux + claude) on
    every invocation and has no config file of its own; the profile YAML is the
    only burler-specific input.
+5. **Attached interactive terminal.** Launch `sandbox-burler-suite.cmd` from a
+   real, attached console -- never redirected, backgrounded, or detached.
+   Without a TTY the driving claude session cannot idle between turns waiting
+   for notifications, so the process ends as soon as a turn ends and the
+   remaining scenarios are silently abandoned (observed live: S1 completed,
+   S2/S3 never ran, no `sandbox-report.json`). The launcher prints a warning
+   when it detects non-console stdio.
 
 ## Black-box rule
 
@@ -69,6 +76,11 @@ For each scenario below:
 
 - Read the **Goal** -- it names the task, not the commands. Discover the commands via
   `lyx burler --help` and `lyx burler run --help` (S0 ethos).
+- Run every scenario-driving command in the **foreground** and wait for it to
+  return before moving on. **Never background or detach a command** -- `lyx
+  burler run` blocks until the round finishes by design, so there is nothing to
+  wait for asynchronously, and no completion notification will ever be
+  delivered back into this session. Assume no async signal arrives, ever.
 - **Watch** what lyx does. Note where it stalls, guesses wrong, or hits an error.
 - Record the outcome per the verdict buckets: `OK` (worked) / `WARN` (rough edge) /
   `FAIL` (broke).
@@ -200,6 +212,16 @@ sandbox-report.json written: <count of WARN/FAIL items>
 
 `./sandbox-report.json` must be written before the session ends, per the Capturing
 findings section above -- with `items: []` when every scenario was `OK`.
+
+## Teardown
+
+After the session summary is recorded and `./sandbox-report.json` is written, run
+`lyx mux down` to tear down the psmux session/server the scenarios booted with
+`lyx mux up`. An orphaned psmux server holds open handles inside the Hub host
+repo and blocks the next `sandbox-build.cmd -reset`. The launcher also runs
+`lyx mux down` itself after the session ends (deterministic backstop), but run
+it here anyway -- defense-in-depth, and it keeps the Hub clean while the session
+is still open for inspection.
 
 ## Notes
 
