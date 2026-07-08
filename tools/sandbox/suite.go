@@ -1,11 +1,11 @@
-// suite.go implements the "sandbox suite", "sandbox mux-suite", and "sandbox
-// shuttle-suite" subcommands: copies one of the embedded suite templates
-// (main, mux, or shuttle) into the Hub host repo, stamps a lyx binary
-// fingerprint, registers the file as a git exclude entry, and launches an
-// interactive Claude session to execute it. The three suites share every
-// mechanic (fingerprinting, git-exclude, stale-report cleanup, agent launch)
-// via the suiteSpec parameterization of runSuite; only the file name,
-// embedded doc body, and default instruction differ.
+// suite.go implements the "sandbox suite", "sandbox mux-suite", "sandbox
+// shuttle-suite", and "sandbox burler-suite" subcommands: copies one of the
+// embedded suite templates (main, mux, shuttle, or burler) into the Hub host
+// repo, stamps a lyx binary fingerprint, registers the file as a git exclude
+// entry, and launches an interactive Claude session to execute it. The four
+// suites share every mechanic (fingerprinting, git-exclude, stale-report
+// cleanup, agent launch) via the suiteSpec parameterization of runSuite;
+// only the file name, embedded doc body, and default instruction differ.
 
 package main
 
@@ -38,11 +38,15 @@ var muxSandboxSuiteMD string
 //go:embed SANDBOX-SHUTTLE-SUITE.md
 var shuttleSandboxSuiteMD string
 
-// suiteSpec parameterizes runSuite over the three supported suites (main,
-// mux, and shuttle): the file written into the Hub host repo, the embedded
-// doc body rendered into it, and the default prompt handed to claude when the
-// operator supplies no -prompt override. Every other mechanic (fingerprinting,
-// git-exclude, stale-report cleanup, agent launch) is shared across specs.
+//go:embed SANDBOX-BURLER-SUITE.md
+var burlerSandboxSuiteMD string
+
+// suiteSpec parameterizes runSuite over the four supported suites (main,
+// mux, shuttle, and burler): the file written into the Hub host repo, the
+// embedded doc body rendered into it, and the default prompt handed to
+// claude when the operator supplies no -prompt override. Every other
+// mechanic (fingerprinting, git-exclude, stale-report cleanup, agent launch)
+// is shared across specs.
 type suiteSpec struct {
 	// fileName is the name of the suite scheme file written into the Hub host
 	// repo at each suite run. It is intentionally kept out of git via
@@ -78,6 +82,14 @@ var shuttleSuite = suiteSpec{
 	fileName:    "SANDBOX-SHUTTLE-SUITE.md",
 	doc:         shuttleSandboxSuiteMD,
 	instruction: "Read ./SANDBOX-SHUTTLE-SUITE.md and follow the instructions in it exactly.",
+}
+
+// burlerSuite is the SANDBOX-BURLER-SUITE spec: the dedicated scheme
+// exercising the lyx burler round-worker black-box agent scenarios.
+var burlerSuite = suiteSpec{
+	fileName:    "SANDBOX-BURLER-SUITE.md",
+	doc:         burlerSandboxSuiteMD,
+	instruction: "Read ./SANDBOX-BURLER-SUITE.md and follow the instructions in it exactly.",
 }
 
 // lookPath is a testability seam over exec.LookPath so tests can inject fake
@@ -229,16 +241,17 @@ func ensureGitExclude(repoDir, entry string) error {
 }
 
 // runSuite executes the "sandbox suite" / "sandbox mux-suite" / "sandbox
-// shuttle-suite" subcommands. It locates the Hub host repo under parentDir,
-// fingerprints the deployed lyx binary, writes a fresh spec.fileName into the
-// host repo (overwriting any prior copy), registers it in .git/info/exclude,
-// clears any stale sandbox-report.json from a prior run, and starts an
-// interactive Claude session with the given instruction string. It does not
-// fetch the agent's report -- that is the separate fetch subcommand
-// (runFetch), run by the operator after the session. claudeOverride and
-// promptOverride are optional: when empty the function resolves "claude" from
-// PATH and uses spec.instruction. spec selects which suite (mainSuite,
-// muxSuite, or shuttleSuite) is run.
+// shuttle-suite" / "sandbox burler-suite" subcommands. It locates the Hub
+// host repo under parentDir, fingerprints the deployed lyx binary, writes a
+// fresh spec.fileName into the host repo (overwriting any prior copy),
+// registers it in .git/info/exclude, clears any stale sandbox-report.json
+// from a prior run, and starts an interactive Claude session with the given
+// instruction string. It does not fetch the agent's report -- that is the
+// separate fetch subcommand (runFetch), run by the operator after the
+// session. claudeOverride and promptOverride are optional: when empty the
+// function resolves "claude" from PATH and uses spec.instruction. spec
+// selects which suite (mainSuite, muxSuite, shuttleSuite, or burlerSuite) is
+// run.
 func runSuite(parentDir, claudeOverride, promptOverride string, spec suiteSpec) error {
 	// Derive the host repo path from the shared hubName const (main.go) and the
 	// suite-local hostDirName const; the function relies on those consts rather than

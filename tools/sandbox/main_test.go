@@ -631,6 +631,64 @@ func TestRun_ShuttleSuiteErrorPropagation(t *testing.T) {
 	}
 }
 
+// TestRun_BurlerSuiteRoutesToLaunch tests that the "burler-suite" positional
+// routes to the burler-suite path and ultimately invokes launchAgent with the
+// correct host repo directory and the burler default instruction, mirroring
+// TestRun_MuxSuiteRoutesToLaunch for the "burler-suite" dispatch.
+func TestRun_BurlerSuiteRoutesToLaunch(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create the Hub host repo directory that runSuite requires.
+	hostRepoDir := filepath.Join(tmpDir, hubName, hostDirName)
+	if err := os.MkdirAll(filepath.Join(hostRepoDir, ".git", "info"), 0o755); err != nil {
+		t.Fatalf("create host repo dir: %v", err)
+	}
+
+	// Provide a real file so binaryFingerprint can stat and hash it.
+	fakeLyx := filepath.Join(tmpDir, "lyx.exe")
+	if err := os.WriteFile(fakeLyx, []byte("fake lyx binary"), 0o755); err != nil {
+		t.Fatalf("write fake lyx: %v", err)
+	}
+	fakeClaude := filepath.Join(tmpDir, "claude.exe")
+
+	oldLookPath := lookPath
+	defer func() { lookPath = oldLookPath }()
+	lookPath = func(name string) (string, error) {
+		switch name {
+		case "lyx":
+			return fakeLyx, nil
+		case "claude":
+			return fakeClaude, nil
+		default:
+			return "", fmt.Errorf("not found: %s", name)
+		}
+	}
+
+	launchAgentCalled := false
+	var gotInstruction string
+	oldLaunchAgent := launchAgent
+	defer func() { launchAgent = oldLaunchAgent }()
+	launchAgent = func(dir, claude, instruction string) int {
+		launchAgentCalled = true
+		gotInstruction = instruction
+		if dir != hostRepoDir {
+			t.Errorf("launchAgent dir = %q; want %q", dir, hostRepoDir)
+		}
+		return 0
+	}
+
+	code := run([]string{"-parent", tmpDir, "burler-suite"})
+	if code != 0 {
+		t.Errorf("run() = %d; want 0", code)
+	}
+	if !launchAgentCalled {
+		t.Error("launchAgent was not called for burler-suite subcommand")
+	}
+	if gotInstruction != burlerSuite.instruction {
+		t.Errorf("launchAgent instruction = %q; want %q", gotInstruction, burlerSuite.instruction)
+	}
+}
+
 // TestRun_FetchReportRoutesToFetch verifies that the "fetch" positional
 // routes to runFetch: with a built Hub, an on-PATH lyx, and a host report, the
 // dispatch reaches fetchReport and run returns 0.
