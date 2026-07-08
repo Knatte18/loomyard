@@ -74,6 +74,7 @@ exist before the registration commit (card 9) for every intermediate commit to k
 - **Edits:**
   - `cmd/lyx/main.go`
   - `cmd/lyx/helptree_test.go`
+- **Creates:** none
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** In `cmd/lyx/main.go`: import
