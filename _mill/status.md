@@ -34,7 +34,9 @@ batches:
     start_sha: be915e894b9e858f34bfd2aa37ab289719303e55
     commit_sha: 782c16443ada5bb8408fc7bd78a169efbfd4158f
   - name: engine-round
-    state: pending
+    state: running
+    implementer_session: e5cfd6ba-919e-47aa-a449-52fad74b9e18
+    start_sha: ea19c3e9fba12c2dc6515ac1a8a49bb0fe6126eb
   - name: burler-cli
     state: pending
   - name: registration-and-suite
