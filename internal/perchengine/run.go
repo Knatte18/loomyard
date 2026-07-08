@@ -229,6 +229,12 @@ func (e *Engine) Run(p Profile, runDir string) (Result, error) {
 // infrastructure error, deliberately NOT modeled as OutcomeStuck — it means
 // the machinery failed twice, not that the artifact will not converge.
 func (e *Engine) runRound(runDir string, round int, p Profile, priorReviews, priorFixerReports []string) (roundOutcome, error) {
+	// triagePath accumulates across the retry loop: it is set only when an
+	// asking attempt actually spawns a triage call, and is threaded into
+	// the eventual done-outcome's roundOutcome so state.json records that a
+	// triage call ran, even though the retry that follows it produces the
+	// round's final (done) attempt.
+	var triagePath string
 	for attempt := 1; attempt <= 2; attempt++ {
 		// A round that started but never reached done on a prior resume
 		// left partial artifacts behind; move them aside before this
@@ -257,23 +263,30 @@ func (e *Engine) runRound(runDir string, round int, p Profile, priorReviews, pri
 				Findings:        result.Findings,
 				ReviewPath:      result.ReviewPath,
 				FixerReportPath: result.FixerReportPath,
+				TriagePath:      triagePath,
 				SessionID:       result.SessionID,
 				Paths:           paths,
 			}, nil
 		}
 
 		if result.Outcome == shuttleengine.OutcomeAsking {
+			// A second consecutive asking outcome fails the same generic
+			// "failed twice" way a died/timeout round does, WITHOUT a
+			// second triage spawn: the round is already failing regardless
+			// of this attempt's triage verdict, so there is nothing left
+			// for triage to usefully classify.
+			if attempt == 2 {
+				return roundOutcome{}, fmt.Errorf("perch: round %d failed twice (%s); session %s, kept shuttle run dir %s", round, result.Outcome, result.SessionID, result.RunDir)
+			}
 			// The agent stopped mid-round asking a question rather than
 			// finishing; triage classifies whether a fresh retry can
 			// plausibly proceed. Triage itself is fail-safe (never an
 			// error) and defaults to RETRY on any of its own
 			// infrastructure failures.
 			triageVerdict, rationale := runTriage(e.shuttle, round, result.LastAssistantMessage, paths.Triage, p.JudgeModel, p.JudgeEffort)
+			triagePath = paths.Triage
 			if triageVerdict == TriageGiveUp {
 				return roundOutcome{}, fmt.Errorf("perch: round %d agent gave up asking: %s (session %s, run dir %s)", round, rationale, result.SessionID, result.RunDir)
-			}
-			if attempt == 2 {
-				return roundOutcome{}, fmt.Errorf("perch: round %d failed twice (%s); session %s, kept shuttle run dir %s", round, result.Outcome, result.SessionID, result.RunDir)
 			}
 			continue
 		}

@@ -21,7 +21,26 @@ import (
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/state"
 )
+
+// readRunState reads runDir's persisted state.json, failing the test loudly
+// if it is missing or unreadable — a test-only shortcut for asserting on
+// roundRecord fields (like TriagePath) that Result/RoundSummary does not
+// surface.
+func readRunState(t *testing.T, runDir string) runState {
+	t.Helper()
+	path := filepath.Join(runDir, stateFileName)
+	lockPath := path + ".lock"
+	got, found, err := state.ReadJSON[runState](path, lockPath)
+	if err != nil {
+		t.Fatalf("state.ReadJSON(%q) = %v; want nil", path, err)
+	}
+	if !found {
+		t.Fatalf("state.ReadJSON(%q) found = false; want true", path)
+	}
+	return got
+}
 
 // scriptedBurlerCall records one burlerengine.Profile/RunOpts pair fakeBurler
 // received, in call order.
@@ -753,6 +772,56 @@ func TestRun_NonDoneOutcomes(t *testing.T) {
 		}
 		if len(qs.specs) != 1 || qs.specs[0].Role != "triage" {
 			t.Errorf("queuedShuttle specs = %+v; want exactly one triage spec", qs.specs)
+		}
+
+		// The attempt-1 triage call's path must survive into the round's
+		// persisted state.json record — the round itself reaches done only
+		// on attempt 2, so TriagePath is not something the done attempt
+		// produces on its own.
+		persisted := readRunState(t, runDir)
+		if len(persisted.Rounds) != 1 {
+			t.Fatalf("persisted Rounds = %+v; want exactly 1", persisted.Rounds)
+		}
+		if persisted.Rounds[0].TriagePath == "" {
+			t.Error("persisted Rounds[0].TriagePath is empty; want the attempt-1 triage verdict path recorded")
+		}
+		if persisted.Rounds[0].TriagePath != qs.specs[0].OutputFiles[0] {
+			t.Errorf("persisted Rounds[0].TriagePath = %q; want %q (the triage spec's verdict path)", persisted.Rounds[0].TriagePath, qs.specs[0].OutputFiles[0])
+		}
+	})
+
+	t.Run("a second consecutive asking outcome fails without a second triage spawn", func(t *testing.T) {
+		layout := newTestLayout(t)
+		runDir := filepath.Join(t.TempDir(), "run")
+
+		fb := &fakeBurler{}
+		fb.queue = []struct {
+			result burlerengine.Result
+			err    error
+		}{
+			{result: burlerengine.Result{Outcome: shuttleengine.OutcomeAsking, SessionID: "ask-1", RunDir: "/kept/ask-1", LastAssistantMessage: "should I proceed?"}},
+			{result: burlerengine.Result{Outcome: shuttleengine.OutcomeAsking, SessionID: "ask-2", RunDir: "/kept/ask-2", LastAssistantMessage: "still unsure"}},
+		}
+		qs := &queuedShuttle{}
+		qs.queue = []struct {
+			verdictContent string
+			err            error
+		}{
+			{verdictContent: verdictFileContent(string(TriageRetry), "plausibly proceeds")},
+		}
+
+		e := New(fb, qs, Config{}, layout, Options{})
+		p := testProfile(GateLLMVerdict, nil, []int{10})
+
+		_, err := e.Run(p, runDir)
+		if err == nil {
+			t.Fatalf("Run() error = nil; want an error for two consecutive asking attempts")
+		}
+		if !strings.Contains(err.Error(), "ask-2") || !strings.Contains(err.Error(), "/kept/ask-2") {
+			t.Errorf("Run() error = %q; want it to carry the second attempt's session id and kept run dir", err.Error())
+		}
+		if len(qs.specs) != 1 {
+			t.Errorf("queuedShuttle called %d times; want exactly 1 (no triage spawn for the second consecutive asking attempt)", len(qs.specs))
 		}
 	})
 
