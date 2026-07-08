@@ -93,9 +93,14 @@ and the target-vs-fasit split.
     judged AGAINST (mill parallel: code↔plan, plan↔discussion, discussion↔brief). Same
     non-empty + existence validation — an empty fasit degenerates the review to an
     internal-consistency check and must be rejected.
-  - `Rubric string` — markdown criteria + severity rules for this artifact type. Data, not
-    code; caller owns the asset. Non-empty required.
-  - `FixScope` — enum `{markdown, source}` (see fix-scope-commit-rules).
+  - `Rubric string` — markdown criteria for this artifact type: what counts as
+    BLOCKING/MEDIUM/LOW/NIT for THIS target. A rubric maps its criteria ONTO the fixed
+    four-value severity vocabulary and the `APPROVED|BLOCKING` verdict pair — it never defines
+    new severity names (the parser rejects unknown severities). Data, not code; caller owns
+    the asset. Non-empty required.
+  - `FixScope` — enum `{overlay, source}` (see fix-scope-commit-rules). Any other value —
+    empty included — is rejected at `Run` with a validation error (fail loud): the field
+    selects safety-critical behavior (git vs no git) and gets no silent default.
   - `ToolUse bool` — see tool-use-prompt-level.
   - `ClusterN int` — must be 0 in v1; `> 0` → typed validation error (e.g.
     `ErrClusterUnsupported`-style sentinel or typed error naming milestone 24).
@@ -220,7 +225,7 @@ and the target-vs-fasit split.
   claudeengine writes `settings.json` once at launch, so a launch-time restriction applies to
   the whole session — and B always needs Edit/Write (+ git for source scope), so the session
   can never be launch-restricted read-only. Even a text round writes (review file,
-  fixer-report, the markdown target). Enforcement is only meaningful for cluster reviewers
+  fixer-report, the overlay target). Enforcement is only meaningful for cluster reviewers
   (separate, pure-review sessions — mill's READ-ONLY reviewer header), which are mux-gated and
   deferred; a generic `Spec` tools-restriction belongs to that task (recorded in deferred
   enhancements).
@@ -228,18 +233,33 @@ and the target-vs-fasit split.
 
 ### fix-scope-commit-rules
 
-- Decision: `FixScope` enum `{markdown, source}` selects the commit rules Go splices into the
-  prompt:
-  - `source` → **commit-per-fix on the host repo**, message format
+- Decision: `FixScope` enum `{overlay, source}`. The distinction is **write-surface +
+  git discipline, never content type** — burler improves anything (code, text documents,
+  whatever), so both scopes are content-agnostic:
+  - `source` → the target is the **host repo's own files**. B's write surface is the host
+    working tree in the task worktree: the files the findings point at, plus what the
+    discipline requires in the same change (a test that would have caught the bug, the module
+    doc). **Commit-per-fix on the host repo**, message format
     `<module-or-target>: fix <finding-id> — <one-line what/why>`, green build/vet/test before
-    each commit, **never push**.
-  - `markdown` → fix the target file(s), **no git at all** from the agent: markdown targets
-    will typically live in `_lyx`/weft where the Weft Git Invariant bans agent commits, and
-    asking the agent to reason about host-vs-weft geometry is fragile. The loop owner commits.
+    each commit where the repo has such checks (vacuous for pure-text targets), **never
+    push**. There is no file-allowlist enforcement (a fix can require a neighboring test/doc
+    — same trust level as a hand-run round agent); containment is the worktree sandbox, the
+    inspectable local commit trail, and the next round's fresh A judging overreach.
+  - `overlay` → the target is **lyx system/orchestration state** (plan, discussion, review
+    artifacts — the design doc's "overlay/orchestration state", typically weft-side through
+    the `_lyx` junction and therefore invisible to host git). B's write surface is EXACTLY
+    `Target.Paths` plus the two output files — nothing else, and **no git at all** from the
+    agent: the Weft Git Invariant bans agent commits there, and the loop owner (Go) commits
+    the weft at the round boundary.
+  - Invalid/empty `FixScope` → validation error at `Run` (see profile-shape).
 - Rationale: hand-run discipline (crash-legible progress via `git log`) for source; Weft Git
-  Invariant safety for markdown.
-- Rejected: "commit once if the file is in the host repo, never under `_lyx`" (the design
-  doc's literal line) — requires geometry reasoning inside the agent prompt.
+  Invariant safety for overlay; "overlay" is established lyx terminology for exactly this
+  file class. Note the git-visibility split: host writes are locally committed and
+  inspectable; overlay/weft writes are host-gitignored and only become durable when Go
+  commits the weft.
+- Rejected: `markdown` as the name (the scope is not about file type); "commit once if the
+  file is in the host repo, never under `_lyx`" (the design doc's literal line — requires
+  geometry reasoning inside the agent prompt); silent default for an empty FixScope.
 
 ### debug-cli
 
@@ -391,7 +411,7 @@ From `CONSTRAINTS.md` (read it in full before planning):
 - **Shuttle Provider-Seam Invariant** — burlerengine never imports claudeengine; burlercli is
   the wiring point (like shuttlecli). No Claude marker strings outside claudeengine.
 - **Weft Git Invariant** — burler is weft-blind: writes ride the file contract; the prompt
-  never instructs a weft git op; `markdown` fix-scope does no git at all.
+  never instructs a weft git op; `overlay` fix-scope does no git at all.
 - **Sandbox Suite Coverage** — registering `lyx burler` requires the `**Covers:** burler`
   suite tag (this task ships the suite) — keep `sandbox_coverage_test.go` green in the same
   commit.
@@ -403,8 +423,9 @@ From `CONSTRAINTS.md` (read it in full before planning):
 ## Testing
 
 - **`internal/burlerengine` unit (fake Shuttle)** — TDD candidates, table-driven where natural:
-  - Profile validation: empty target/fasit/rubric, nonexistent paths, relative-path resolution
-    via layout, empty review/fixer paths, `ClusterN > 0` typed error.
+  - Profile validation: empty target/fasit/rubric, nonexistent paths (Target/Fasit/Prior*),
+    relative-path resolution via layout, empty review/fixer paths, invalid/empty `FixScope`
+    → validation error, `ClusterN > 0` typed error.
   - Prompt composition: all stencil markers filled; fix-scope/tool-use/prior-rounds blocks
     switch correctly; template asset parses; the enforcement test asserting the embedded
     template contains the sequencing + fix-everything rules (the Review Round Invariant's
@@ -448,7 +469,9 @@ From `CONSTRAINTS.md` (read it in full before planning):
   meaningless for a one-session A→B agent (B must write; settings are launch-time); prompt-level
   only; enforcement belongs to cluster reviewers (deferred, recorded in roadmap).
 - **Q:** fix-scope commit rules? **A:** `source` → commit-per-fix on host, never push;
-  `markdown` → no agent git at all (weft safety beats the doc's literal "commit once" line).
+  `overlay` (renamed from `markdown` in review r2 — the scope is lyx system/overlay files,
+  not a file type) → no agent git at all (weft safety beats the doc's literal "commit once"
+  line).
 - **Q:** Prior-round hydration in v1? **A:** Yes — optional `PriorReviews`/`PriorFixerReports`
   paths with the clean-room rule (own findings first, consult priors after).
 - **Q:** Smoke placement? **A:** `internal/burlerengine` external test package, `-tags smoke`,
@@ -459,6 +482,13 @@ From `CONSTRAINTS.md` (read it in full before planning):
 - **Q:** CONSTRAINTS.md entry? **A:** Yes — one **Review Round Invariant** covering the round
   discipline with fix-everything at its core; **keep the entry short** (existing entries tend
   to be too long).
+- **Q:** (review r2 GAP) What does `Run` do with a `FixScope` that is not one of the two
+  values? **A:** Reject — validation error, fail loud; no silent default. And the scope pair
+  was renamed `{overlay, source}`: `source` = host-repo files (content-agnostic — code OR
+  text; commit-per-fix, never push); `overlay` = lyx system/orchestration files (write exactly
+  Target.Paths + outputs, no git; typically weft-side and host-gitignored, Go commits).
+  (r2 NOTE, applied: a rubric maps onto the fixed severity vocabulary, never defines new
+  severity names.)
 - **Q:** (review r1 GAP) `verdict: APPROVED` carrying a BLOCKING-severity finding — reject or
   allow? **A:** Reject, parse error. A BLOCKING finding means the round is not approved; the
   combination is a reviewer-agent defect that must never happen and never look approved. No
