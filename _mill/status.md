@@ -49,7 +49,9 @@ batches:
     start_sha: 022fd7a66cdf8dca9a92687875295bd1ae3bb77d
     commit_sha: a631b9ba5450a11cb68168ce7308d8a8ed754d35
   - name: gate-loop
-    state: pending
+    state: running
+    implementer_session: c378e0a3-6282-48d4-8036-558409208f61
+    start_sha: 6c355ccfcbd25e41c09772a231cca6ca74f1709e
   - name: cli-docs
     state: pending
 ```
