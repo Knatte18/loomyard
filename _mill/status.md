@@ -40,7 +40,9 @@ batches:
     start_sha: ea19c3e9fba12c2dc6515ac1a8a49bb0fe6126eb
     commit_sha: 4fe31a7e01d0f3ca023ed6ec274c35bc9b10a636
   - name: burler-cli
-    state: pending
+    state: running
+    implementer_session: 7d342d55-8ed7-44d2-a7db-ee6861d04253
+    start_sha: 0fb7d824ab638e1ea211bf4675bebe6dd52fd2b1
   - name: registration-and-suite
     state: pending
   - name: docs-lifecycle
