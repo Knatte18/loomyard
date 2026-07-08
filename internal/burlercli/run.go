@@ -81,15 +81,26 @@ func decodeProfile(data []byte) (burlerengine.Profile, error) {
 	}, nil
 }
 
-// runCmd builds the `run` subcommand: reads and strictly decodes the
-// --profile file into a burlerengine.Profile, maps the four run-tuning flags
-// onto a burlerengine.RunOpts, and blocks on c.engine.Run(profile, opts)
-// until the round reaches a classified outcome. Every error path (profile
-// read, strict decode, or a Run failure — validation, ErrClusterUnsupported,
-// shuttle, verdict parse) goes through output.Err; a successful Run — for
-// any outcome, not only done — is reported via output.Ok, mirroring
-// shuttlecli's run.go pattern where a classified outcome is data, not an
-// error.
+// runCmd builds the `run` subcommand: validates that --profile was supplied
+// before ever touching c.engine (matching shuttlecli's run.go flag-shape
+// pattern, so the flag error surfaces in its own JSON line rather than being
+// swallowed by, or racing with, a failing PersistentPreRunE's already-
+// recorded exit code — see cli_test.go's TestRunCLI_Run_MissingProfile),
+// reads and strictly decodes the --profile file into a burlerengine.Profile,
+// maps the four run-tuning flags onto a burlerengine.RunOpts, and blocks on
+// c.engine.Run(profile, opts) until the round reaches a classified outcome.
+// Every error path (missing --profile, profile read, strict decode, or a Run
+// failure — validation, ErrClusterUnsupported, shuttle, verdict parse) goes
+// through output.Err; a successful Run — for any outcome, not only done — is
+// reported via output.Ok, mirroring shuttlecli's run.go pattern where a
+// classified outcome is data, not an error.
+//
+// --profile is validated manually here rather than via cobra's
+// MarkFlagRequired: MarkFlagRequired's error is raised by cobra itself,
+// after PersistentPreRunE returns but before RunE (and ShouldAbort) is ever
+// consulted, which routes it through clihelp.RunRoot's generic
+// cobra-error-wrapping path instead of through SetExit like every other
+// error this command reports.
 func (c *burlerCLI) runCmd() *cobra.Command {
 	var (
 		profilePath string
@@ -135,6 +146,16 @@ defers to the provider default. --timeout overrides the shuttle config's
 run-timeout; zero defers to the config default.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out := cmd.OutOrStdout()
+
+			// Validate flag shape before ever touching c.engine (still
+			// unpopulated when config resolution aborted), so a missing
+			// --profile is reported as its own flag error rather than being
+			// swallowed by the PersistentPreRunE abort's already-recorded
+			// exit code.
+			if profilePath == "" {
+				clihelp.SetExit(cmd.Context(), output.Err(out, "burler: --profile is required"))
+				return nil
+			}
 
 			// A failing PersistentPreRunE has already written an error
 			// response and recorded the exit code; short-circuit rather
@@ -186,7 +207,6 @@ run-timeout; zero defers to the config default.`,
 	cmd.Flags().StringVar(&effort, "effort", "", "reasoning-effort override; empty defers to the provider default")
 	cmd.Flags().StringVar(&round, "round", "", "round token used to fill the strand-name template")
 	cmd.Flags().DurationVar(&timeout, "timeout", 0, "wall-clock deadline before an in-progress run is classified as timed out (0 = config default)")
-	_ = cmd.MarkFlagRequired("profile")
 
 	return cmd
 }

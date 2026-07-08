@@ -56,7 +56,11 @@ without a `**Covers:**` tag. This batch's tests drive the module through its own
   Provider-Seam Invariant). `RunCLI(out io.Writer, args []string) int` delegates to
   `clihelp.Execute(Command(), out, args)`. `run.go`: the `run` subcommand with non-empty
   `Short` and a `Long` holding a full example profile-YAML body; flags `--profile <path>`
-  (required via `MarkFlagRequired`), `--model`, `--effort`, `--round` (strings), and
+  (required — validated manually inside `RunE`, matching shuttlecli's `run.go` flag-shape
+  pattern, so the error surfaces via `output.Err`/`clihelp.SetExit` rather than through
+  cobra's `MarkFlagRequired`, which would route the error through `clihelp.RunRoot`'s
+  generic cobra-error-wrapping path instead — see holistic review round 1), `--model`,
+  `--effort`, `--round` (strings), and
   `--timeout` (`time.Duration` via cobra's `DurationVar`; zero defers to the shuttle
   config default). Implement `func decodeProfile(data []byte) (burlerengine.Profile,
   error)` (exported only if the test package is external — keep the test same-package and

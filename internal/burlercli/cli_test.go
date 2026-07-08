@@ -73,8 +73,12 @@ func TestRunCLI_GroupGuard_OutsideGitRepo(t *testing.T) {
 }
 
 // TestRunCLI_Run_MissingProfile verifies that "lyx burler run" without
-// --profile fails with cobra's required-flag error before ever touching
-// PersistentPreRunE's engine wiring.
+// --profile fails with run's own manual flag-shape error (not cobra's
+// MarkFlagRequired) before ever touching PersistentPreRunE's engine wiring.
+// This case runs against an uninitialized (non-git) directory, so
+// PersistentPreRunE's own abort error is also present in the captured
+// output alongside the flag-specific error line — the same documented
+// double-failure shape as shuttlecli's TestRunCLI_Run_FlagValidation.
 func TestRunCLI_Run_MissingProfile(t *testing.T) {
 	t.Chdir(t.TempDir())
 
@@ -84,8 +88,8 @@ func TestRunCLI_Run_MissingProfile(t *testing.T) {
 	if exitCode != 1 {
 		t.Errorf(`RunCLI([run]) = %d; want 1`, exitCode)
 	}
-	if !strings.Contains(out.String(), "profile") {
-		t.Errorf(`RunCLI([run]) output missing "profile"; got: %q`, out.String())
+	if !strings.Contains(out.String(), "--profile is required") {
+		t.Errorf(`RunCLI([run]) output missing "--profile is required"; got: %q`, out.String())
 	}
 }
 
