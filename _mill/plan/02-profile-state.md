@@ -42,8 +42,10 @@ stale-partial handling, and the pause flag file. External interface for batch 3/
   burlerengine.FileSet`, `Fasit burlerengine.FileSet`, `Rubric string`, `FixScope
   burlerengine.FixScope`, `ToolUse bool`, `ClusterN int` — plus perch-owned fields: `Gate
   Gate`, `RoundCaps []int`, `JudgeModel string`, `JudgeEffort string`, `Model string`,
-  `Effort string` (burler round tuning, uniform across rounds per the discussion Decision
-  "Run-tuning v1"). Method `func (p *Profile) validate(cfg Config) error`, fail-loud with
+  `Effort string`, `Timeout time.Duration` (burler round tuning, uniform across rounds per
+  the discussion Decision "Run-tuning v1"; `Timeout` maps onto each round's
+  `burlerengine.RunOpts.Timeout`, zero defers to the shuttle config default). Method `func
+  (p *Profile) validate(cfg Config) error`, fail-loud with
   `"perch: "` prefixes, checking ONLY perch-owned fields (the burler content fields are
   validated by `burlerengine.Profile.validate` inside the first round's `Engine.Run` — state
   this in a comment): resolve defaults first — empty `RoundCaps` takes `cfg.RoundCaps`, still
@@ -53,7 +55,8 @@ stale-partial handling, and the pause flag file. External interface for batch 3/
   time.Minute`. Then validate: `RoundCaps` entries all >= 1 and strictly increasing;
   `Gate.Mode` must be one of the three constants (no silent default, mirroring FixScope's
   posture in burlerengine); `GateCommand`/`GateBoth` require non-empty `Gate.Command`;
-  `GateLLMVerdict` requires empty `Gate.Command`; negative `Gate.Timeout` rejected.
+  `GateLLMVerdict` requires empty `Gate.Command`; negative `Gate.Timeout` rejected;
+  negative `Timeout` rejected.
   profile_test.go: table-driven validate tests covering every rule, the three-level default
   resolution chains (profile > Config > built-in) for RoundCaps and JudgeModel, and the
   one-element-array (plain hard cap) acceptance.
@@ -101,6 +104,7 @@ stale-partial handling, and the pause flag file. External interface for batch 3/
 - **Context:**
   - `internal/state/state.go`
   - `internal/perchengine/result.go`
+  - `internal/perchengine/profile.go`
   - `_mill/discussion.md`
 - **Edits:** none
 - **Creates:**

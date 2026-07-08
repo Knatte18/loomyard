@@ -78,13 +78,15 @@ documented — the repo's guards (`registration_test`, `longlist_test`, `sandbox
 - **Requirements:** run.go implements `func (c *perchCLI) runCmd() *cobra.Command` following
   burlercli/run.go's structure. Flags: `--profile` (required, validated manually before
   touching c.engine — never `MarkFlagRequired`), `--run-id` (optional override), `--model`,
-  `--effort` (burler-round tuning overrides applied over the profile's values), `--timeout`
-  is NOT a perch flag in v1 (round timeouts ride the shuttle config; state this in the Long).
+  `--effort`, `--timeout` (a `time.Duration` flag; the three tuning flags override the
+  profile's `model`/`effort`/`timeout` values when non-zero/non-empty — burlercli's flag
+  semantics, per the discussion Decisions "Run-tuning v1" and "Command tree v1").
   Strict profile decode: `profileYAML` struct with `KnownFields(true)`, kebab-case keys —
   `target`/`fasit` (paths+instructions, burler's fileSetYAML shape), `rubric`, `fix-scope`,
   `tool-use`, `cluster-n`, `gate` (nested: `mode`, `command` (string list), `timeout` (Go
   duration string parsed via `time.ParseDuration`)), `round-caps`, `judge-model`,
-  `judge-effort`, `model`, `effort` — mapped 1:1 onto `perchengine.Profile`. The Long
+  `judge-effort`, `model`, `effort`, `timeout` (top-level: the burler-round timeout, Go
+  duration string) — mapped 1:1 onto `perchengine.Profile`. The Long
   documents a complete example profile (llm-verdict prose review AND a commented command-gate
   variant). Run identity: resolve the profile, `perchengine.ProfileHash`, run-id =
   `--run-id` if set else `perchengine.DeriveRunID(profilePath, hash)`; `runDir =

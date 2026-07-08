@@ -44,8 +44,12 @@ encodes the discussion's Testing section. External interface for batch 5:
   from card 11". `type Engine struct` holding `burler Burler`, `shuttle Shuttle`, `cfg
   Config`, `layout *hubgeometry.Layout`, `pauseRequested func() bool`, `runCommand
   CommandRunner`; `func New(burler Burler, shuttle Shuttle, cfg Config, layout
-  *hubgeometry.Layout, opts Options) *Engine` filling nil Options fields with the defaults
-  (a func returning false; `execGateCommand` from card 11). Doc comments state the
+  *hubgeometry.Layout, opts Options) *Engine` stores the Options fields VERBATIM (nil
+  allowed) — engine.go never names `execGateCommand` or any other gate.go symbol; the nil
+  defaults are substituted at the use sites in card 12's run.go (nil `pauseRequested` →
+  never paused; nil `runCommand` → `execGateCommand`). This keeps cards 10 and 11 free of a
+  mutual compile dependency: card 10 compiles alone, and card 11 references only card 10's
+  `CommandRunner` type. Doc comments state the
   layering: perch -> burler -> shuttle is a strict chain; the engine is weft-blind and
   geometry-blind (operates on a caller-supplied absolute runDir); the shuttle seam exists
   solely for the judge/triage utility calls (burler reaches shuttle itself). Compile-only
@@ -108,13 +112,16 @@ encodes the discussion's Testing section. External interface for batch 5:
   `clearPauseFlag(runDir)`; `loadOrInitState(runDir, hash, p.RoundCaps)` (its fresh /
   resume / hash-mismatch / already-finished classification is card 6's; hard errors
   propagate). Then loop, one iteration per round N starting at `len(state.Rounds)+1`:
-  1. **Pause boundary:** if `e.pauseRequested()` → persist state, return
+  Seam defaulting happens here, once, at Run entry: `pause := e.pauseRequested` (nil → a
+  func returning false), `runCmd := e.runCommand` (nil → `execGateCommand`) — card 10's New
+  stores Options verbatim precisely so this file owns the defaults.
+  1. **Pause boundary:** if `pause()` → persist state, return
      `Result{Outcome: OutcomePaused, ...}`. Checked ONLY here — never mid-round.
   2. **Round with retry:** for attempt = 1, 2: `moveStaleArtifacts`; `artifactPaths(runDir,
      N, attempt)`; assemble hydration from all completed rounds' records (ReviewPath +
      GatePath-when-set into priorReviews, FixerReportPath into priorFixerReports);
      `buildRoundProfile`; `e.burler.Run(roundProfile, burlerengine.RunOpts{Model: p.Model,
-     Effort: p.Effort, Round: roundToken(N, attempt)})`. Hard error from burler →
+     Effort: p.Effort, Timeout: p.Timeout, Round: roundToken(N, attempt)})`. Hard error from burler →
      propagate. Branch on `Result.Outcome`: `OutcomeDone` → proceed to step 3.
      `OutcomeAsking` → `runTriage` (fail-safe): `TriageRetry` → count as this round's one
      retry and re-attempt (attempt 2), recording TriagePath; `TriageGiveUp` → return error
@@ -153,6 +160,8 @@ encodes the discussion's Testing section. External interface for batch 5:
   - `internal/perchengine/engine.go`
   - `internal/perchengine/state.go`
   - `internal/perchengine/result.go`
+  - `internal/perchengine/profile.go`
+  - `internal/perchengine/roundfiles.go`
   - `internal/burlerengine/engine.go`
   - `internal/burlerengine/verdict.go`
   - `internal/shuttleengine/engine.go`

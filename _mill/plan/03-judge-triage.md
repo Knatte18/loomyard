@@ -108,6 +108,8 @@ CRLF-tolerant) rather than exporting burler's — the two parsers evolve indepen
   - `internal/shuttleengine/run.go`
   - `internal/logger/logger.go`
   - `internal/stencil/stencil.go`
+  - `internal/perchengine/judgeverdict.go`
+  - `internal/perchengine/template.go`
   - `_mill/discussion.md`
 - **Edits:** none
 - **Creates:**
