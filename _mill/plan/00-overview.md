@@ -164,6 +164,7 @@ batches:
 - `internal/perchengine/state.go`
 - `internal/perchengine/state_test.go`
 - `internal/perchengine/template.go`
+- `internal/perchengine/template.yaml`
 - `internal/perchengine/template_test.go`
 - `internal/perchengine/triage-template.md`
 - `tools/sandbox/SANDBOX-BURLER-SUITE.md`
