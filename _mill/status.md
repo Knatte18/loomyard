@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-registration-and-suite
+phase: approved-docs-lifecycle
 slug: internal-burler
 branch: internal-burler
 plan: _mill/plan
@@ -25,6 +25,7 @@ approved-engine-core  '2026-07-08T06:37:54Z'
 approved-engine-round  '2026-07-08T06:47:12Z'
 approved-burler-cli  '2026-07-08T06:51:35Z'
 approved-registration-and-suite  '2026-07-08T07:00:11Z'
+approved-docs-lifecycle  '2026-07-08T07:10:41Z'
 ```
 
 ## Batches
@@ -52,7 +53,8 @@ batches:
     start_sha: 46a63c266ae9a54b37c8d27e6631341bc0f37040
     commit_sha: 2055ffaf0414180e46befc9d700435b839061c3b
   - name: docs-lifecycle
-    state: running
+    state: approved
     implementer_session: 779e2984-c2d2-4321-a645-f707dfd2ffe4
     start_sha: 4c735c996084d988afc022a0c314bec63c268f9f
+    commit_sha: c8b11b839ea4ab8273021dfd6618450eddc33bca
 ```
