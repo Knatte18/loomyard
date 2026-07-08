@@ -34,6 +34,10 @@ design; this batch only touches markdown.
   - `docs/modules/hardener.md`
   - `docs/reviews/README.md`
   - `docs/shared-libs/stencil.md`
+  - `internal/burlercli/run.go` (discovered during implementation: the `run` subcommand's `Long`
+    help text has an example profile whose `target.paths` example was
+    `docs/modules/burler.md` — the file this card deletes; repointed to a still-existing example
+    path)
 - **Creates:** none
 - **Deletes:**
   - `docs/modules/burler.md`
