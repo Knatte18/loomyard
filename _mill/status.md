@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-docs-lifecycle
+phase: holistic-reviewing
 slug: internal-burler
 branch: internal-burler
 plan: _mill/plan
@@ -26,6 +26,7 @@ approved-engine-round  '2026-07-08T06:47:12Z'
 approved-burler-cli  '2026-07-08T06:51:35Z'
 approved-registration-and-suite  '2026-07-08T07:00:11Z'
 approved-docs-lifecycle  '2026-07-08T07:10:41Z'
+holistic-reviewing  '2026-07-08T07:10:57Z'
 ```
 
 ## Batches
