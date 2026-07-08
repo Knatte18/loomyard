@@ -96,10 +96,11 @@ observable changes until the new module that needs the extracted lib arrives.
 
 6. **Hub-creator / clone.** ✅ **Done — absorbed by `warp` (milestone 20).** `lyx warp clone <host> <weft>` creates the Hub and clones host, weft, and board. The standalone `lyx git-clone` subcommand was never built; warp made it redundant.
 
-7. **Task 008 — configuration TUI.** 🚧 Mostly shipped / in progress. `lyx config` and
-   `lyx config <module>` — an interactive menu over the `_lyx/config/` YAML schema.
-   **`_raddle` junction activation is split out and deferred** to a separate later task
-   (tracked on the board) — it is no longer part of this milestone.
+7. **Task 008 — configuration TUI.** ✅ **Done.** `lyx config` and `lyx config <module>` — an
+   interactive menu over the `_lyx/config/` YAML schema — plus `lyx config reconcile`
+   (`internal/configcli` + `configengine` + `configreg` + `configsync`). Overlay-directory junction
+   activation (`_raddle`), once mis-bundled into this task, is a **geometry** concern that belongs to
+   the raddle nav-doc work — never part of the config TUI.
 
 ### Orchestration stack
 
