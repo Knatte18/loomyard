@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: internal-burler
 branch: internal-burler
 plan: _mill/plan
@@ -31,6 +31,7 @@ holistic-fixing  '2026-07-08T07:16:10Z'
 nits-fixed-holistic  '2026-07-08T07:21:49Z'
 holistic-approved  '2026-07-08T07:21:55Z'
 done  '2026-07-08T07:22:16Z'
+pr-pending  '2026-07-08T07:22:57Z'
 ```
 
 ## Batches
