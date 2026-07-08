@@ -93,15 +93,17 @@
 // not converge the block (see Pluggable gate below) — the judge's material
 // is blocking findings, and an APPROVED round has none to compare.
 //
-// Fail-safe posture: UNCERTAIN, or ANY judge infrastructure failure (spawn
-// error, a non-done shuttle outcome, an unparseable verdict file), degrades
-// to "progressing" — logged via internal/logger's Warn with round, rung,
-// and cause — and the loop simply continues. A judge failure is NEVER a
-// perchengine error and NEVER STUCK; the hard cap is what bounds the damage
-// of a wrong or missing verdict. This mirrors the same fail-safe posture
-// asking-triage uses below — the two ephemeral LLM utility calls are the
-// ONLY fail-safe surface in the engine; every machine-read parse elsewhere
-// is fail-loud.
+// Fail-safe posture: a validly-parsed UNCERTAIN verdict is a normal
+// outcome of the judge call — the loop simply continues, with no Warn
+// logged. ANY judge infrastructure failure (spawn error, a non-done
+// shuttle outcome, an unparseable verdict file) ALSO degrades to
+// "progressing"/CONTINUE, but is additionally logged via internal/logger's
+// Warn, carrying the round and cause (plus a human-facing label naming
+// which call failed). A judge failure is NEVER a perchengine error and
+// NEVER STUCK; the hard cap is what bounds the damage of a wrong or
+// missing verdict. This mirrors the same fail-safe posture asking-triage
+// uses below — the two ephemeral LLM utility calls are the ONLY fail-safe
+// surface in the engine; every machine-read parse elsewhere is fail-loud.
 //
 // # Pluggable gate — verdict vs. command, and why it runs in perch
 //
