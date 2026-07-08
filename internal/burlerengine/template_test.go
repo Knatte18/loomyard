@@ -28,12 +28,13 @@ func TestTemplate_StatesRoundDiscipline(t *testing.T) {
 	requireContains(t, text, "nothing fixed")
 }
 
-// requireContains fails the test with both the needle and a reminder of
-// what file failed to carry it, if text does not contain needle.
+// requireContains fails the test, naming the missing needle, if text does
+// not contain it. Shared across this package's tests (prompt_test.go
+// reuses it for composePrompt's rendered output).
 func requireContains(t *testing.T, text, needle string) {
 	t.Helper()
 	if !strings.Contains(text, needle) {
-		t.Errorf("reviewPromptTemplate does not contain %q", needle)
+		t.Errorf("output does not contain %q", needle)
 	}
 }
 
