@@ -162,28 +162,54 @@ weft imports and `_lyx` path construction is the invariant (verify the absence h
 it as missing functionality). `ToolUse` having no shuttle-Spec effect is a documented v1 decision.
 
 ## Round context seeded from prior-round verification
-**Round 1 — full independent first pass.** There are NO prior campaign rounds and NO known open
-residuals in the burler module itself. What has already happened, so you neither re-litigate it
-nor mistake it for campaign coverage:
+**Round 2 — independent safety pass.** Round 1 (`fable-r1`, Fable) ran a full independent
+first pass and found 2 findings (0 BLOCKING, 1 MEDIUM, 0 LOW, 1 NIT), fixed both, and the
+orchestrator INDEPENDENTLY VERIFIED the round clean. There is NO known open residual right
+now. What is CLOSED-AND-VERIFIED, so you neither re-litigate it nor mistake it for something
+still open:
 
 - mill-go's own design-time holistic review ran during implementation and approved (`6ef3987`);
-  it was a code review, not an adversarial live-substrate campaign. This loop starts at zero.
-- The live suite was driven twice on 2026-07-08 (pre-campaign). Run A (Fable, launcher detached
-  with redirected stdio): S1 completed correctly — real BLOCKING verdict, real fix applied — then
-  the driver session exited before S2/S3. Root-caused to launching the interactive driver without
-  a TTY (a claude CLI constraint, upstream issues #5925/#9026/#21048), NOT to burler. Run B
-  (Sonnet, same launch): S1–S3 all OK, `items: []`.
-- Two launcher-level fixes landed at `c86dcd3` and are CLOSED AND VERIFIED — do not re-open: the
-  suite launcher now runs `lyx mux down` after mux-backed suite sessions (orphaned psmux servers
-  were blocking `sandbox-build.cmd -reset`), and it warns when launched without console stdio;
-  `SANDBOX-BURLER-SUITE.md` gained the attached-terminal pre-condition, a never-background rule,
-  and a Teardown section.
+  it was a code review, not an adversarial live-substrate campaign.
+- Two sandbox-suite launcher fixes at `c86dcd3`: `lyx mux down` after mux-backed suite sessions;
+  non-TTY launch warning. `SANDBOX-BURLER-SUITE.md` gained the attached-terminal pre-condition,
+  never-background rule, Teardown section.
+- **Round `fable-r1`** (commits `c72cbd9`, `5810d0d`), independently verified by the orchestrator
+  on the committed tree:
+  - **N1 (NIT, `c72cbd9`):** `ErrClusterUnsupported`'s error text carried a doubled `"burler: "`
+    prefix (every call site already wraps it in its own burler-prefixed message). Fixed by
+    dropping the sentinel's own prefix; `TestProfile_Validate` now asserts exactly one
+    `"burler: "` prefix on every validate error. Orchestrator reintroduced the doubled prefix,
+    confirmed the new assertion fails at the right line, reverted to an empty diff.
+  - **B1 (MEDIUM, `5810d0d`):** `Profile.validate` didn't reject `ReviewPath == FixerReportPath`
+    (checked on the RESOLVED absolute paths, after `resolvePath`), letting an operator
+    copy-paste mistake collapse the two-artifact file contract into one file that still
+    silently classified `done`/`APPROVED` — reproduced live. Fixed with a new validate check +
+    two `TestProfile_Validate` subtests (literal and post-resolution identical-path cases).
+    `tools/sandbox/SANDBOX-BURLER-SUITE.md` S3 gained a 4th case for this exact mistake.
+    Orchestrator reintroduced the bug, confirmed both new subtests fail at the right assertion,
+    reverted to an empty diff.
+  - Orchestrator's own independent gates, run cold on the committed tree AFTER `fable-r1`
+    finished: `go build ./...` clean; `go vet` clean; `go test -count=5` on
+    burlerengine/burlercli/cmd/lyx all green; one live serial smoke round green (39s); 3×
+    CONCURRENT full smoke suites all green (51-58s each), zero corruption markers
+    (`being used by another process` / `TempDir RemoveAll` / `did not start` / `FAIL`); zero
+    stray psmux processes after both the serial and the concurrent runs.
+  - The round's own live-substrate work: 10+ real psmux+claude rounds including S1/S2/S3 from
+    the sandbox suite plus hand-driven adversarial probes (prompt-injection into composed
+    prompts, `--timeout`, killed-mid-round `died`, FixScopeSource commit-per-fix audit,
+    directory targets, foreign severity vocabulary). All held up — A-before-B sequencing
+    verified via file-mtime ordering (not just template prose), FixScope discipline held for
+    both `overlay` and `source`, non-done outcomes classified correctly, prompt composition
+    proved injection-safe. No scope gaps found against the recovered design discussion.
 
-So: no residual to chase — this is a genuinely independent, adversarial first pass over the whole
-module. The burler ENGINE and CLI have never had a campaign round; assume nothing is proven beyond
-what the hermetic suite actually pins. One carried question worth answering en route: confirm a
-full attached-terminal suite run under Fable completes all three scenarios (Run A never got a
-fair retry under the fixed launcher).
+**This is a safety pass, not a residual-chase.** There is no known open defect to hand you.
+Your job: an independent, adversarial, clean-room pass over the WHOLE module (not just the two
+areas `fable-r1` touched) to find what a first round, working alone, might have missed — or
+honestly confirm merge-readiness if you find nothing. Do not assume `fable-r1`'s two fixes are
+the only defects burler has; treat the module as if you are seeing it for the first time,
+same as round 1 was instructed to. Pay particular attention to areas `fable-r1`'s report says
+it verified only via the toy fixture / S1-S3, since the "High-yield focus" list below is a
+floor, not a ceiling, and a differently-modeled agent (you) may probe differently.
 
 State the **merge bar** so you calibrate: correctness in the NORMAL single-round flow (one
 profile, one round, one agent, cluster-n 0) is the gate; concurrent/stress rounds (if you choose
@@ -251,7 +277,7 @@ felt small. Small and low-severity findings are usually the CHEAPEST to fix, not
 them.
 
 ## Deferred items from the prior round — RE-EVALUATE these (after your own pass)
-(Empty — this is round 1. The orchestrator fills this from round to round.)
+(Empty — `fable-r1` deferred nothing; both its findings were fixed in full.)
 
 ## Fixing — after the review
 - Fix EVERY finding from your review, all severities including NIT (see "How to judge each
