@@ -140,7 +140,10 @@ and the target-vs-fasit split.
 
 - Decision: the caller supplies `ReviewPath` and `FixerReportPath` in the Profile. burler
   validates them non-empty, passes them into `Spec.OutputFiles` (order: review, fixer-report)
-  and into the prompt, and returns them in `Result`. burler never constructs `_lyx/...` paths.
+  and into the prompt, and returns them in `Result` **as resolved absolute paths** (relative
+  input is resolved against the worktree root, the same normalization `Spec.validate`
+  performs) — a caller opens `Result.ReviewPath`/`Result.FixerReportPath` directly, no
+  re-resolving. burler never constructs `_lyx/...` paths.
   Note: `Spec.validate` REJECTS pre-existing output files — the caller must mint fresh paths
   per round; the CLI surfaces that error as-is.
 - Rationale: Hub Geometry Invariant (geometry tokens are hubgeometry-only); perch owns round
