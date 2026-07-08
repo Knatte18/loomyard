@@ -14,8 +14,9 @@ flow — phase order, the review round-loop, gate decisions, resume — lives in
 lives in agents spawned one-shot per step. Go owns the machine; the LLM owns the thinking.
 
 The orchestrator is the **`loom`** module (`lyx loom run`); the gate engine is the separate,
-generic **`perch`** module ([`lyx perch`](perch.md)) — the iterative review loop, independent of loom
-but used by it between every phase. `perch` composes `burler` (see the `internal/burlerengine`
+generic **`perch`** module (`lyx perch run|pause` — see the `internal/perchengine` package
+documentation) — the iterative review loop, independent of loom but used by it between every
+phase. `perch` composes `burler` (see the `internal/burlerengine`
 package documentation), the review+fix round worker. The `/ly-*` skill layer shrinks to thin
 human-facing wrappers over these. The everyday call has a convenience alias:
 **`lyx run` → `lyx loom run`**. (Naming: `lyx` is the binary,
@@ -86,22 +87,22 @@ advances to the next phase; on `stuck` it routes to the stuck handler (bounce ba
 earlier phase, or escalate to a human) — never "keep fixing symptoms." loom does not see the
 rounds, the handler/fixer, the cluster reviewers, or the progress-judge inside.
 
-That black box is its **own module — [`perch`](perch.md)** (`lyx perch`), a generic profile-driven
+That black box is its **own module — `perch`** (`lyx perch run|pause`), a generic profile-driven
 gate engine reused for every phase (discussion / plan / builder) and standalone. The whole point of
 the black-box boundary is that loom drives all phases **identically** because the verdict contract is
-invariant; only the review *profile* (rubric + fasit) differs per phase. See [perch.md](perch.md) for
-the round-loop and stuck detection, and the `internal/burlerengine` package documentation for the
-combined handler/fixer round and the profile schema.
+invariant; only the review *profile* (rubric + fasit) differs per phase. See the `internal/perchengine`
+package documentation for the round-loop and stuck detection, and the `internal/burlerengine` package
+documentation for the combined handler/fixer round and the profile schema.
 
 ## Builder — a Go loop (advance), the sibling of perch (converge)
 
 Unlike the discussion and plan producers (each one `shuttle.Run` → one artifact), **Builder is a
-Go loop**, in the same spirit as [`perch`](perch.md): Go owns the control flow; LLMs are spawned
+Go loop**, in the same spirit as `perch`: Go owns the control flow; LLMs are spawned
 on demand for judgment.
 
 - **Advance per batch.** Go drives the plan's batches in dependency order, spawning one implementer
   worker per batch (a cheaper model by default — e.g. Haiku), and runs a **holistic builder-review
-  at the end** (a full [`perch`](perch.md) converge-loop over the whole diff).
+  at the end** (a full `perch` converge-loop over the whole diff).
 - **On-demand evaluation.** Between batches, when Go needs a judgment — "progressing? stuck?
   escalate?" — it spawns a short evaluator that reads the durable reports/artifacts, decides, and
   exits. Not a standing supervisor (LLM-watches-LLM in real time was mill's model; here Go
@@ -190,7 +191,7 @@ files. A dead claude with a finished output file is, to loom, a **done step** �
 boundary**, never mid-operation — `mill-pause`'s natural-stopping-point property, made systematic.
 
 - **A property of the loop pattern, not loom alone.** Every Go loop — loom (phases),
-  [`perch`](perch.md) (rounds), [Builder](#builder--a-go-loop-advance-the-sibling-of-perch-converge)
+  `perch` (rounds), [Builder](#builder--a-go-loop-advance-the-sibling-of-perch-converge)
   (batches) — checks a `pause_requested` flag in the [status file](#state--contracts) at its step
   boundary and stops before spawning the next unit. The **innermost active loop** honours it first,
   so pause lands at the finest active boundary (next batch / round / phase). The Go code is almost
@@ -276,8 +277,8 @@ file-contract design above is unchanged; only the *spawn + completion-detection*
 differs from a headless model.
 
 The consequence for loom: it sits on top of the [`proc → mux → shuttle`](README.md) stack, so that
-stack is on loom's critical path. loom (via [`perch`](perch.md) → `burler`, see the
-`internal/burlerengine` package documentation) calls
+stack is on loom's critical path. loom (via `perch` — see the `internal/perchengine` package
+documentation — → `burler`, see the `internal/burlerengine` package documentation) calls
 `shuttle.Run` per spawn and stays ignorant of strands, layout, and engines — those belong to `mux` (see
 [overview.md#modules](../overview.md#modules); the strand
 bookkeeping + render: which pane is which, layout, focus, the cluster window where N reviewers go)

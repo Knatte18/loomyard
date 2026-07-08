@@ -13,7 +13,8 @@
 > `mux` code hard enough to surface defects a green `go test` never proves. Six hand-orchestrated
 > rounds fixed what many rounds of text-based review could not — it was genuinely *hardening*.
 
-`hardener` is a **behavior-based reviewer**: where [`perch`](perch.md) reads an artifact, hardener
+`hardener` is a **behavior-based reviewer**: where `perch` (see the `internal/perchengine` package
+documentation) reads an artifact, hardener
 **runs** a live-substrate module, reacts to what it observes, and builds bespoke adversarial
 scenarios to break it. It is a separate, on-demand, **post-loom** module — not on the
 `shuttle → burler → perch → loom` spine — meant to harden a live-substrate module (the archetype:
@@ -25,7 +26,7 @@ scenarios to break it. It is a separate, on-demand, **post-loom** module — not
 package documentation) — A-review → B-fix, no self-grading, commit-per-fix, fix-everything — but
 they are different reviewers along two axes:
 
-| | [`perch`](perch.md) | `hardener` |
+| | `perch` | `hardener` |
 |---|---|---|
 | Mode | **text** — read the artifact | **behavior** — run the module, react, build scenarios |
 | Substrate | in-worktree, fast | a **live sandbox repo**; slow, heavy git/go operations |

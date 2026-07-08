@@ -3,9 +3,10 @@
 This directory holds the **manual, human-in-the-loop review method** we used to harden `mux`
 before merging it to `main`, plus the two prompts that drove it. The method is
 **module-agnostic** — it is written down here so the modules built *on top of* mux
-(`shuttle` — see the `internal/shuttleengine` package documentation, [`perch`](../modules/perch.md) +
-`burler` (see the `internal/burlerengine` package documentation), [`hardener`](../modules/hardener.md),
-[`loom`](../modules/loom.md)) can reuse it instead of re-inventing it each time.
+(`shuttle` — see the `internal/shuttleengine` package documentation, `perch` (see the
+`internal/perchengine` package documentation) + `burler` (see the `internal/burlerengine` package
+documentation), [`hardener`](../modules/hardener.md), [`loom`](../modules/loom.md)) can reuse it
+instead of re-inventing it each time.
 
 **The files here:**
 - [`orchestrator-prompt.md`](orchestrator-prompt.md) — paste-ready prompt that bootstraps a thread
@@ -15,15 +16,15 @@ before merging it to `main`, plus the two prompts that drove it. The method is
 - [`mux-review-prompt.md`](mux-review-prompt.md) — the fully-worked `mux` instance of that template.
 - This README — the method itself (roles, loop, verification protocol) explained in prose.
 
-> **This is the hand-executed prototype of the [`perch`](../modules/perch.md) +
-> `burler` (see the `internal/burlerengine` package documentation) round loop** (and the origin
-> of the behavior-based [`hardener`](../modules/hardener.md) concept). The automated engine — a
-> fresh `burler` per round that does **A: review** then **B: fix**, with **no self-grading**,
-> looped by [`perch`](../modules/perch.md) with an **independent** progress check — is exactly
-> this loop with the orchestrator role moved from a human+Claude pair into Go. Until they land,
-> this is how we run it by hand; when they land, this doc is the reference the engines were
-> modeled on. If you change the method here, reconcile it with `modules/perch.md` and the
-> `internal/burlerengine` package documentation.
+> **This is the hand-executed prototype of the `perch` (see the `internal/perchengine` package
+> documentation) + `burler` (see the `internal/burlerengine` package documentation) round loop**
+> (and the origin of the behavior-based [`hardener`](../modules/hardener.md) concept). The
+> automated engine — a fresh `burler` per round that does **A: review** then **B: fix**, with
+> **no self-grading**, looped by `perch` with an **independent** progress check — is exactly this
+> loop with the orchestrator role moved from a human+Claude pair into Go. This is how the method
+> was originally run by hand; this doc remains the reference the engines were modeled on. If you
+> change the method here, reconcile it with the `internal/perchengine` and `internal/burlerengine`
+> package documentation.
 >
 > **Text vs. behavior:** `perch`/`burler` automate the **text-based** form (read the artifact).
 > [`hardener`](../modules/hardener.md) (DRAFT) is the **behavior-based** form — *run* a live-substrate
@@ -110,8 +111,9 @@ across *different* models is far stronger evidence than N passes from one.
 ### Why independent verification is non-negotiable
 
 A round agent that just fixed something is motivated to declare it fixed — the same self-grading
-hazard the [`perch`](../modules/perch.md) module and `burler` (see the `internal/burlerengine`
-package documentation) design against (A-before-B in burler; fresh burler per round in perch). The
+hazard the `perch` (see the `internal/perchengine` package documentation) module and `burler` (see
+the `internal/burlerengine` package documentation) design against (A-before-B in burler; fresh
+burler per round in perch). The
 orchestrator re-runs the gates from a cold state, on the committed tree, and believes only what it
 observes. "No self-grading"
 is the load-bearing discipline of the whole method.
