@@ -3,7 +3,7 @@
 ```yaml
 task: "Build burler - the review+fix round worker"
 slug: "internal-burler"
-approved: false
+approved: true
 started: "20260708-060559"
 parent: "main"
 root: ""

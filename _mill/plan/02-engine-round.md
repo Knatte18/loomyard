@@ -88,6 +88,8 @@ CLI. External interface for later batches: `Shuttle`, `Engine`, `New`, `Result`,
 - **Context:**
   - `_mill/discussion.md`
   - `internal/stencil/stencil.go`
+  - `internal/burlerengine/profile.go`
+  - `internal/burlerengine/template.go`
 - **Edits:** none
 - **Creates:**
   - `internal/burlerengine/prompt.go`
@@ -126,6 +128,9 @@ CLI. External interface for later batches: `Shuttle`, `Engine`, `New`, `Result`,
 
 - **Context:**
   - `_mill/discussion.md`
+  - `internal/burlerengine/profile.go`
+  - `internal/burlerengine/verdict.go`
+  - `internal/burlerengine/prompt.go`
   - `internal/shuttleengine/spec.go`
   - `internal/shuttleengine/run.go`
   - `internal/shuttleengine/engine.go`

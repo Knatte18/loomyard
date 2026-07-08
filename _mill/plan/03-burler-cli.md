@@ -68,10 +68,12 @@ without a `**Covers:**` tag. This batch's tests drive the module through its own
   (`fix-scope` string cast to `burlerengine.FixScope` verbatim — validation stays in the
   engine). The RunE reads the profile file (read error → `output.Err`), decodes, builds
   `burlerengine.RunOpts` from the four flags, calls `Engine.Run`, and on success emits
-  `output.Ok` with fields `outcome`, `verdict`, `review_path`, `fixer_report_path`,
-  `session_id`, `strand_guid`, `last_assistant_message`; any error (validation,
-  `ErrClusterUnsupported`, shuttle, parse) goes through `output.Err` + non-zero exit via
-  the `clihelp.Abort` pattern. `cli_test.go` (same package): bare `RunCLI(out,
+  `output.Ok` with fields `outcome`, `verdict`, `reviewPath`, `fixerReportPath`,
+  `sessionId`, `strandGuid`, `lastAssistantMessage` (camelCase, matching shuttlecli's
+  existing Ok-envelope key convention); any error (validation, `ErrClusterUnsupported`,
+  shuttle, parse) goes through `output.Err` + `clihelp.SetExit(ctx, ...)` in the RunE
+  (the shuttlecli run.go pattern — `clihelp.Abort` is only for the PersistentPreRunE
+  failures described above). `cli_test.go` (same package): bare `RunCLI(out,
   []string{})` lists subcommands exit 0; unknown subcommand → JSON error envelope +
   exit 1 (GroupRunE behavior); `run` without `--profile` → required-flag error; every
   command in the tree has a non-empty `Short`; `decodeProfile` table — full valid YAML

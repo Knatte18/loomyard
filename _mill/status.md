@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planning
+phase: plan-fix-r1
 slug: internal-burler
 branch: internal-burler
 plan: _mill/plan
@@ -18,4 +18,5 @@ discussing  '2026-07-08T05:01:43Z'
 discussion-fix-r3  '2026-07-08T06:00:37Z'
 discussed  '2026-07-08T06:00:59Z'
 planning  '2026-07-08T06:10:44Z'
+plan-fix-r1  '2026-07-08T06:17:31Z'
 ```
