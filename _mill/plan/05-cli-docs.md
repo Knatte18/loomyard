@@ -30,6 +30,7 @@ documented — the repo's guards (`registration_test`, `longlist_test`, `sandbox
   - `internal/output/output.go`
   - `internal/perchengine/engine.go`
   - `internal/perchengine/config.go`
+  - `internal/hubgeometry/hubgeometry.go`
 - **Edits:** none
 - **Creates:**
   - `internal/perchcli/cli.go`

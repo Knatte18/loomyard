@@ -118,8 +118,9 @@ encodes the discussion's Testing section. External interface for batch 5:
   1. **Pause boundary:** if `pause()` → persist state, return
      `Result{Outcome: OutcomePaused, ...}`. Checked ONLY here — never mid-round.
   2. **Round with retry:** for attempt = 1, 2: `moveStaleArtifacts`; `artifactPaths(runDir,
-     N, attempt)`; assemble hydration from all completed rounds' records (ReviewPath +
-     GatePath-when-set into priorReviews, FixerReportPath into priorFixerReports);
+     N, attempt)`; assemble hydration from all completed rounds' records (ReviewPath into
+     priorReviews — plus GatePath ONLY for rounds whose GatePassed is false, so
+     passing-gate output is never fed forward; FixerReportPath into priorFixerReports);
      `buildRoundProfile`; `e.burler.Run(roundProfile, burlerengine.RunOpts{Model: p.Model,
      Effort: p.Effort, Timeout: p.Timeout, Round: roundToken(N, attempt)})`. Hard error from burler →
      propagate. Branch on `Result.Outcome`: `OutcomeDone` → proceed to step 3.

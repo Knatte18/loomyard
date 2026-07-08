@@ -44,7 +44,8 @@ perch config module (`perch.yaml`: `judge_model`, `judge_effort`, `round_caps`) 
   "perch's future cycle-detection keys" — reword to say IDs stay unique/fail-loud for
   cross-round hydration and audit, and that perch judges progress holistically via a verdict
   judge, not key-based cycle detection; in doc.go, the same claim inside "# What a round
-  returns". Extend the existing fake-shuttle `Engine.Run` test(s) in engine_test.go to assert
+  returns" AND the package-intro paragraph's "the loop, the cap, cycle detection" description
+  of perch (reword to name the loop, the milestone cap ladder, and the progress judge). Extend the existing fake-shuttle `Engine.Run` test(s) in engine_test.go to assert
   the `RunDir` passthrough for both a done and a non-done outcome.
 - **Commit:** `burler: surface shuttle RunDir on Result; retire stale cycle-key comments`
 

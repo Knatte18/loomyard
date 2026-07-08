@@ -3,7 +3,7 @@
 ```yaml
 task: "Build perch - the review gate loop"
 slug: "internal-perch"
-approved: false
+approved: true
 started: "20260708-152618"
 parent: "main"
 root: ""
