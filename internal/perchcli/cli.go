@@ -136,6 +136,7 @@ Example:
 	}
 
 	parent.AddCommand(c.runCmd())
+	parent.AddCommand(c.pauseCmd())
 
 	return parent
 }

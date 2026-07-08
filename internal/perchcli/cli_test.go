@@ -11,9 +11,16 @@ package perchcli
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/muxengine"
+	"github.com/Knatte18/loomyard/internal/perchengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/spf13/cobra"
 )
 
@@ -91,4 +98,99 @@ func TestCommand_EveryCommandHasShort(t *testing.T) {
 		}
 	}
 	walk(Command())
+}
+
+// TestRunCLI_Pause_MissingRunID verifies that "lyx perch pause" without
+// --run-id fails with pause's own manual flag-shape error (not cobra's
+// MarkFlagRequired) before ever touching c.runDirBase. This case runs
+// against an uninitialized (non-git) directory, so PersistentPreRunE's own
+// abort error is also present in the captured output alongside the
+// flag-specific error line — the same documented double-failure shape as
+// run_test.go's TestRunCLI_Run_MissingProfile.
+func TestRunCLI_Pause_MissingRunID(t *testing.T) {
+	t.Chdir(t.TempDir())
+
+	var out bytes.Buffer
+	exitCode := RunCLI(&out, []string{"pause"})
+
+	if exitCode != 1 {
+		t.Errorf(`RunCLI([pause]) = %d; want 1`, exitCode)
+	}
+	if !strings.Contains(out.String(), "--run-id is required") {
+		t.Errorf(`RunCLI([pause]) output missing "--run-id is required"; got: %q`, out.String())
+	}
+}
+
+// seedPerchFixture returns a paired git-repo fixture with real shuttle/mux/
+// perch config seeded, chdir'd into the host hub, ready for a "lyx perch
+// pause" invocation. It never boots psmux or spawns a burler round — pause
+// only stats/writes a flag file and never touches the resolved engine
+// ingredients PersistentPreRunE stores.
+func seedPerchFixture(t *testing.T) lyxtest.PairedFixture {
+	t.Helper()
+
+	fixture := lyxtest.CopyPaired(t)
+	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
+		"shuttle": shuttleengine.ConfigTemplate(),
+		"mux":     muxengine.ConfigTemplate(),
+		"perch":   perchengine.ConfigTemplate(),
+	})
+	t.Chdir(fixture.Hub)
+	return fixture
+}
+
+// TestRunCLI_Pause_NoSuchRun verifies that pausing a run-id whose run dir
+// does not exist fails loud with a "no such run" error, rather than
+// silently fabricating an empty run dir for a pause flag with nothing to
+// pause.
+func TestRunCLI_Pause_NoSuchRun(t *testing.T) {
+	seedPerchFixture(t)
+
+	var out bytes.Buffer
+	exitCode := RunCLI(&out, []string{"pause", "--run-id", "does-not-exist"})
+
+	if exitCode != 1 {
+		t.Errorf(`RunCLI([pause --run-id does-not-exist]) = %d; want 1`, exitCode)
+	}
+	if !strings.Contains(out.String(), "no such run") {
+		t.Errorf(`RunCLI([pause --run-id does-not-exist]) output missing "no such run"; got: %q`, out.String())
+	}
+}
+
+// TestRunCLI_Pause_WritesFlagAndIsIdempotent verifies that pausing an
+// existing run dir writes the pause flag file at
+// perchengine.PauseFlagPath(runDir), succeeds, and that a second pause call
+// against the same run-id is a no-op success (idempotent re-pause).
+func TestRunCLI_Pause_WritesFlagAndIsIdempotent(t *testing.T) {
+	fixture := seedPerchFixture(t)
+
+	runDir := filepath.Join(hubgeometry.PerchRunsDir(fixture.Hub), "myrun")
+	if err := os.MkdirAll(runDir, 0o755); err != nil {
+		t.Fatalf("mkdir run dir: %v", err)
+	}
+
+	var out bytes.Buffer
+	exitCode := RunCLI(&out, []string{"pause", "--run-id", "myrun"})
+	if exitCode != 0 {
+		t.Fatalf(`RunCLI([pause --run-id myrun]) = %d; want 0, output: %s`, exitCode, out.String())
+	}
+	if !strings.Contains(out.String(), `"ok":true`) {
+		t.Errorf(`RunCLI([pause --run-id myrun]) output missing ok:true envelope; got: %q`, out.String())
+	}
+
+	pauseFile := perchengine.PauseFlagPath(runDir)
+	if _, err := os.Stat(pauseFile); err != nil {
+		t.Fatalf("pause flag file %q not written: %v", pauseFile, err)
+	}
+
+	// Idempotent re-pause: calling pause again while the flag already
+	// exists is a no-op success, not an error.
+	var out2 bytes.Buffer
+	exitCode2 := RunCLI(&out2, []string{"pause", "--run-id", "myrun"})
+	if exitCode2 != 0 {
+		t.Fatalf(`second RunCLI([pause --run-id myrun]) = %d; want 0, output: %s`, exitCode2, out2.String())
+	}
+	if !strings.Contains(out2.String(), `"ok":true`) {
+		t.Errorf(`second RunCLI([pause --run-id myrun]) output missing ok:true envelope; got: %q`, out2.String())
+	}
 }
