@@ -37,7 +37,9 @@ batches:
     start_sha: 77c9313a0a2d0eaf2e071c8006a55acd05b5608e
     commit_sha: ee7e603e566f001ad612d06e60175cdcf28ff3a6
   - name: profile-state
-    state: pending
+    state: running
+    implementer_session: c32cc78f-69ee-4da9-8e5a-5789b276ed64
+    start_sha: 70066453f02e9f187ff74014b3fb76daeb62632e
   - name: judge-triage
     state: pending
   - name: gate-loop
