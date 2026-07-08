@@ -21,8 +21,9 @@ scenarios to break it. It is a separate, on-demand, **post-loom** module — not
 
 ## Why it is not `perch`
 
-`perch` and `hardener` share the [`burler`](burler.md) *round discipline* (A-review → B-fix, no
-self-grading, commit-per-fix, fix-everything), but they are different reviewers along two axes:
+`perch` and `hardener` share the `burler` *round discipline* (see the `internal/burlerengine`
+package documentation) — A-review → B-fix, no self-grading, commit-per-fix, fix-everything — but
+they are different reviewers along two axes:
 
 | | [`perch`](perch.md) | `hardener` |
 |---|---|---|
@@ -112,8 +113,8 @@ brain stays an LLM** —
   per-round respawn loop, teardown.
 - **LLM orch-brain owns:** read results, accumulate understanding, decide what to target next, write
   the next round's focused prompt.
-- **[`burler`](burler.md)-shaped round agent:** the A→B worker, spawned per round (drives the sandbox;
-  `fix-scope: source`; commit-per-fix).
+- **`burler`-shaped round agent** (see the `internal/burlerengine` package documentation): the A→B
+  worker, spawned per round (drives the sandbox; `fix-scope: source`; commit-per-fix).
 
 Whether the round agent literally imports the `burler` package or only follows the same
 `review-prompt-template.md` discipline is an implementation choice for when this is built.

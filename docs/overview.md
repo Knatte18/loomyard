@@ -251,8 +251,11 @@ User-facing modules each get one `lyx <module>` namespace:
 - **perch** — generic profile-driven gate loop: runs `burler` rounds on one artifact until
   `APPROVED`/`stuck` (progress-judge + round cap); independent of `loom` but used by it between every
   phase, and standalone (`lyx perch`). 🚧 Design — not built. See [modules/perch.md](modules/perch.md).
-- **burler** — one review+fix round: A-review (+ optional cluster reviewers) → B-fix, no self-grading;
-  the LLM-heavy worker `perch` composes. 🚧 Design — not built. See [modules/burler.md](modules/burler.md).
+- **burler** — one review+fix round: A-review → B-fix, one agent, no self-grading, over the shuttle
+  file contract (`internal/burlerengine` + `internal/burlercli`). Profile-driven: `{overlay, source}`
+  fix-scope, tool-use, cluster-N rejected with a typed error until mux own-window anchoring lands.
+  Strict frontmatter verdict parse; debug CLI `lyx burler run`. ✅ Implemented. See the
+  `internal/burlerengine` package documentation.
 - **hardener** — **DRAFT / concept.** Behavior-based reviewer that *runs* a live-substrate module
   (needs a sandbox repo) to harden it before merge; on-demand, post-loom, **off the spine**, shares
   only the `burler` round discipline. See [modules/hardener.md](modules/hardener.md).
@@ -285,7 +288,7 @@ internal/mux      the window to the world — overlay + strand bookkeeping +    
                   them, persists to .lyx/mux.json
 internal/shuttle  run ONE LLM agent in a strand via a swappable engine over    [builds on mux]    ✅
                   the file contract; Stop-hook completion
-burler            one review+fix round: A-review (+cluster) → B-fix           [builds on shuttle]
+burler            one review+fix round: A-review (+cluster) → B-fix           [builds on shuttle] ✅
 perch             run burler rounds on one artifact → APPROVED|stuck          [builds on burler]
 loom              phase machine: drive each phase through a perch gate         [builds on perch]
 ```
@@ -314,7 +317,8 @@ requirement), agents run, output files are read, nobody need watch.
   the foreground. A `.lyx/lyxrun.cmd` launcher makes it one click.
 - `mux`, `shuttle`, `perch`, and `loom` each get a user-facing `lyx <module>` CLI
   (`lyx shuttle run|interrupt|send` lets an operator or another process drive one agent
-  standalone, before loom/perch exist); `burler` is composed by `perch` (no product CLI), and
+  standalone, before loom/perch exist); `burler` is composed by `perch` (`lyx burler run` is a
+  debug-only wrapper, not a product verb), and
   `proc` alone stays an internal library with no CLI of its own. See the [module map](modules/README.md).
 
 ## Tests
@@ -333,7 +337,8 @@ The **sandbox Hub** is a dedicated bench for manual testing of lyx's core workfl
 - [modules/loom.md](modules/loom.md) — the phased orchestrator (`lyx loom` + `lyx perch`); design.
 - `internal/muxengine` package documentation — the window to the world: psmux overlay + strand bookkeeping + render (as-built; module doc deleted per the documentation lifecycle).
 - `internal/shuttleengine` package documentation — run one LLM agent via a swappable engine over the file contract (as-built; module doc deleted per the documentation lifecycle).
-- [modules/perch.md](modules/perch.md) — the gate loop: run `burler` rounds → `APPROVED`/`stuck` (design); and [modules/burler.md](modules/burler.md) — one review+fix round (design).
+- `internal/burlerengine` package documentation — one review+fix round: A-review → B-fix, no self-grading (as-built; module doc deleted per the documentation lifecycle).
+- [modules/perch.md](modules/perch.md) — the gate loop: run `burler` rounds → `APPROVED`/`stuck` (design).
 - [modules/hardener.md](modules/hardener.md) — **DRAFT/concept**: behavior-based hardening of a live-substrate module (post-loom, off-spine).
 - [benchmarks/](benchmarks/board-performance.md) — board performance, tracked across revisions.
 - [shared-libs/](shared-libs/README.md) — the shared infrastructure plumbing.
@@ -342,4 +347,4 @@ The **sandbox Hub** is a dedicated bench for manual testing of lyx's core workfl
 - [roadmap.md](roadmap.md) — numbered milestones and long-term direction.
 - [sandbox-howto.md](sandbox-howto.md) — operator runbook: deploy `lyx`, build the Hub, run the suite agent (procedure).
 - [sandbox-hub.md](sandbox-hub.md) — the sandbox Hub: a dedicated bench for manual (dogfooding) testing.
-- [reviews/README.md](reviews/README.md) — the **serial review+fix loop**: a reusable method for hardening a live-substrate module before merge (orchestrator-driven, model-rotating, clean-room self-fixing rounds + independent verification). The hand-executed prototype of the [`perch`](modules/perch.md) + [`burler`](modules/burler.md) round loop (and the origin of the [`hardener`](modules/hardener.md) concept); ships two paste-ready prompts — an [orchestrator prompt](reviews/orchestrator-prompt.md) (drives the loop + verifies) and a [round-agent prompt template](reviews/review-prompt-template.md) (the reviewer-fixer), to instantiate per module.
+- [reviews/README.md](reviews/README.md) — the **serial review+fix loop**: a reusable method for hardening a live-substrate module before merge (orchestrator-driven, model-rotating, clean-room self-fixing rounds + independent verification). The hand-executed prototype of the [`perch`](modules/perch.md) + `burler` (see the `internal/burlerengine` package documentation) round loop (and the origin of the [`hardener`](modules/hardener.md) concept); ships two paste-ready prompts — an [orchestrator prompt](reviews/orchestrator-prompt.md) (drives the loop + verifies) and a [round-agent prompt template](reviews/review-prompt-template.md) (the reviewer-fixer), to instantiate per module.

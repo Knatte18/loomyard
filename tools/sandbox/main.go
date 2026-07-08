@@ -1,11 +1,12 @@
 // main.go implements the sandbox tool entry point, flag parsing, and subcommand
-// dispatch. It supports five subcommands: "build" (default, clones the Hub),
+// dispatch. It supports six subcommands: "build" (default, clones the Hub),
 // "suite" (runs the embedded SANDBOX-CORE-SUITE agent), "mux-suite" (runs the
 // embedded SANDBOX-MUX-SUITE agent), "shuttle-suite" (runs the embedded
-// SANDBOX-SHUTTLE-SUITE agent), and "fetch" (collects the agent-written
+// SANDBOX-SHUTTLE-SUITE agent), "burler-suite" (runs the embedded
+// SANDBOX-BURLER-SUITE agent), and "fetch" (collects the agent-written
 // report into .scratch). Only -parent and -loomyard live at the top level;
 // -reset is a build-subcommand flag, parsed after the "build" token like
-// suite/mux-suite/shuttle-suite parse their -claude/-prompt flags.
+// suite/mux-suite/shuttle-suite/burler-suite parse their -claude/-prompt flags.
 
 package main
 
@@ -193,6 +194,30 @@ func run(argv []string) int {
 		}
 
 		if err := runSuite(absParent, *claudeFlag, *promptFlag, shuttleSuite); err != nil {
+			fmt.Fprintf(os.Stderr, "sandbox: %v\n", err)
+			return 1
+		}
+
+	case "burler-suite":
+		// The burler-suite subcommand mirrors "suite"/"mux-suite"/
+		// "shuttle-suite" exactly, but runs the dedicated
+		// SANDBOX-BURLER-SUITE scheme via the burlerSuite spec; fetching the
+		// report is the same shared fetch subcommand, so -loomyard is not
+		// required here either.
+
+		// Parse burler-suite-specific flags from the remaining positionals
+		// after "burler-suite".
+		bsf := flag.NewFlagSet("sandbox burler-suite", flag.ContinueOnError)
+		bsf.SetOutput(os.Stderr)
+		claudeFlag := bsf.String("claude", "", "path to the claude binary (default: resolve from PATH)")
+		promptFlag := bsf.String("prompt", "", "instruction string passed to the agent (default: built-in)")
+
+		remaining := fs.Args()[1:]
+		if err := bsf.Parse(remaining); err != nil {
+			return 1
+		}
+
+		if err := runSuite(absParent, *claudeFlag, *promptFlag, burlerSuite); err != nil {
 			fmt.Fprintf(os.Stderr, "sandbox: %v\n", err)
 			return 1
 		}

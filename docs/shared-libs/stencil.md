@@ -58,7 +58,7 @@ in one error" for branch-internal markers, only for top-level ones. A caller-req
 ## Consumers
 
 - **`burler`** — the handler prompt and each cluster-reviewer prompt (the pre-assembled bulk blob is
-  passed *as a value*, not read via tools — see [burler.md](../modules/burler.md)).
+  passed *as a value*, not read via tools — see the `internal/burlerengine` package documentation).
 - **`perch`** — the progress-judge prompt.
 - **`loom`** — the discussion / plan producer prompts (producers are prompts + profiles, not modules).
 - **`hardener`** (DRAFT) — the round-agent prompt (`review-prompt-template.md`).

@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -180,13 +181,16 @@ func TestEnsureGitExclude(t *testing.T) {
 	})
 }
 
-// stubSuiteSeams replaces lookPath and launchAgent with test stubs and returns
-// a restore function. fakeLyx must be a real file path so binaryFingerprint
-// can stat and hash it. fakeClaude is returned as the "claude" resolution.
+// stubSuiteSeams replaces lookPath, launchAgent, and muxDown with test stubs
+// and returns a restore function. fakeLyx must be a real file path so
+// binaryFingerprint can stat and hash it. fakeClaude is returned as the
+// "claude" resolution. muxDown is stubbed to a no-op so no test ever spawns a
+// real subprocess; teardown-behaviour tests re-stub it after this call.
 func stubSuiteSeams(t *testing.T, fakeLyx, fakeClaude string, launchFn func(dir, claude, instruction string) int) func() {
 	t.Helper()
 	oldLookPath := lookPath
 	oldLaunchAgent := launchAgent
+	oldMuxDown := muxDown
 	lookPath = func(name string) (string, error) {
 		switch name {
 		case "lyx":
@@ -198,10 +202,44 @@ func stubSuiteSeams(t *testing.T, fakeLyx, fakeClaude string, launchFn func(dir,
 		}
 	}
 	launchAgent = launchFn
+	muxDown = func(hostRepoDir, lyxPath string) error { return nil }
 	return func() {
 		lookPath = oldLookPath
 		launchAgent = oldLaunchAgent
+		muxDown = oldMuxDown
 	}
+}
+
+// stubMuxDownNoop replaces the muxDown seam with a no-op for the duration of
+// the test, for dispatch tests that stub launchAgent directly instead of
+// going through stubSuiteSeams.
+func stubMuxDownNoop(t *testing.T) {
+	t.Helper()
+	old := muxDown
+	muxDown = func(hostRepoDir, lyxPath string) error { return nil }
+	t.Cleanup(func() { muxDown = old })
+}
+
+// captureStderr redirects os.Stderr to a pipe for the duration of fn and
+// returns everything written to it.
+func captureStderr(t *testing.T, fn func()) string {
+	t.Helper()
+	old := os.Stderr
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	os.Stderr = w
+	defer func() { os.Stderr = old }()
+	fn()
+	if err := w.Close(); err != nil {
+		t.Fatalf("close stderr pipe: %v", err)
+	}
+	data, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatalf("read captured stderr: %v", err)
+	}
+	return string(data)
 }
 
 // makeHostRepo creates the full Hub/host-repo directory structure under a temp
@@ -721,4 +759,178 @@ func TestRunSuite_ShuttleSpec_PromptOverride(t *testing.T) {
 	if gotInstruction != customPrompt {
 		t.Errorf("launchAgent instruction = %q; want override %q", gotInstruction, customPrompt)
 	}
+}
+
+// TestSuiteSpecs_MuxTeardownFlag pins which suites get the post-session mux
+// teardown: every suite whose scenarios boot a live psmux substrate (mux,
+// shuttle, burler), and not the main suite, whose scenarios never run mux up.
+func TestSuiteSpecs_MuxTeardownFlag(t *testing.T) {
+	if mainSuite.muxTeardown {
+		t.Error("mainSuite.muxTeardown = true; the core suite boots no mux substrate")
+	}
+	for _, spec := range []suiteSpec{muxSuite, shuttleSuite, burlerSuite} {
+		if !spec.muxTeardown {
+			t.Errorf("%s: muxTeardown = false; live-mux suites must tear their substrate down", spec.fileName)
+		}
+	}
+}
+
+// TestRunSuite_BurlerSpec_MuxTeardownAfterAgent verifies that a burlerSuite
+// run calls muxDown exactly once, with the host repo dir and the
+// fingerprinted lyx path, strictly after the agent session has ended.
+func TestRunSuite_BurlerSpec_MuxTeardownAfterAgent(t *testing.T) {
+	parentDir, hostRepoDir := makeHostRepo(t)
+	fakeLyx := makeFakeLyx(t, parentDir)
+	fakeClaude := filepath.Join(parentDir, "claude.exe")
+
+	agentDone := false
+	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction string) int {
+		agentDone = true
+		return 0
+	})
+	defer restore()
+
+	var gotDir, gotLyx string
+	teardownCalls := 0
+	muxDown = func(dir, lyx string) error {
+		if !agentDone {
+			t.Error("muxDown called before launchAgent returned")
+		}
+		teardownCalls++
+		gotDir, gotLyx = dir, lyx
+		return nil
+	}
+
+	if err := runSuite(parentDir, "", "", burlerSuite); err != nil {
+		t.Fatalf("runSuite error: %v", err)
+	}
+	if teardownCalls != 1 {
+		t.Fatalf("muxDown called %d times; want exactly 1", teardownCalls)
+	}
+	if gotDir != hostRepoDir {
+		t.Errorf("muxDown dir = %q; want %q", gotDir, hostRepoDir)
+	}
+	if gotLyx != fakeLyx {
+		t.Errorf("muxDown lyx = %q; want %q", gotLyx, fakeLyx)
+	}
+}
+
+// TestRunSuite_MainSpec_NoMuxTeardown verifies that a mainSuite run never
+// calls muxDown: the core suite boots no mux substrate, so a teardown would
+// only add noise (and a config error in an uninitialized host repo).
+func TestRunSuite_MainSpec_NoMuxTeardown(t *testing.T) {
+	parentDir, _ := makeHostRepo(t)
+	fakeLyx := makeFakeLyx(t, parentDir)
+	fakeClaude := filepath.Join(parentDir, "claude.exe")
+
+	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction string) int {
+		return 0
+	})
+	defer restore()
+
+	muxDown = func(dir, lyx string) error {
+		t.Error("muxDown should not be called for mainSuite")
+		return nil
+	}
+
+	if err := runSuite(parentDir, "", "", mainSuite); err != nil {
+		t.Fatalf("runSuite error: %v", err)
+	}
+}
+
+// TestRunSuite_MuxTeardownFailureTolerated verifies the teardown is
+// best-effort: a muxDown error must not turn a completed agent session into
+// a launcher failure, so runSuite still returns nil.
+func TestRunSuite_MuxTeardownFailureTolerated(t *testing.T) {
+	parentDir, _ := makeHostRepo(t)
+	fakeLyx := makeFakeLyx(t, parentDir)
+	fakeClaude := filepath.Join(parentDir, "claude.exe")
+
+	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction string) int {
+		return 0
+	})
+	defer restore()
+
+	muxDown = func(dir, lyx string) error {
+		return fmt.Errorf("lyx mux down: exit status 1")
+	}
+
+	if err := runSuite(parentDir, "", "", burlerSuite); err != nil {
+		t.Fatalf("runSuite should tolerate a muxDown failure; got error: %v", err)
+	}
+}
+
+// TestRunSuite_MuxTeardownRunsOnNonZeroAgentExit verifies the teardown is
+// unconditional on the agent's exit path: a non-zero (manual or errored)
+// session exit still tears the substrate down.
+func TestRunSuite_MuxTeardownRunsOnNonZeroAgentExit(t *testing.T) {
+	parentDir, _ := makeHostRepo(t)
+	fakeLyx := makeFakeLyx(t, parentDir)
+	fakeClaude := filepath.Join(parentDir, "claude.exe")
+
+	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction string) int {
+		return 2
+	})
+	defer restore()
+
+	teardownCalls := 0
+	muxDown = func(dir, lyx string) error {
+		teardownCalls++
+		return nil
+	}
+
+	if err := runSuite(parentDir, "", "", burlerSuite); err != nil {
+		t.Fatalf("runSuite error: %v", err)
+	}
+	if teardownCalls != 1 {
+		t.Errorf("muxDown called %d times after non-zero agent exit; want exactly 1", teardownCalls)
+	}
+}
+
+// TestIsCharDevice_RegularFile verifies isCharDevice reports false for a
+// regular file -- the redirected-launcher case. The true branch needs a real
+// attached console, which a test process does not have; it is exercised by
+// every interactive suite run.
+func TestIsCharDevice_RegularFile(t *testing.T) {
+	f, err := os.Open(makeFakeLyx(t, t.TempDir()))
+	if err != nil {
+		t.Fatalf("open temp file: %v", err)
+	}
+	defer f.Close()
+	if isCharDevice(f) {
+		t.Error("isCharDevice(regular file) = true; want false")
+	}
+}
+
+// TestLaunchAgent_NonInteractiveWarning verifies the real launchAgent prints
+// nonInteractiveWarning when stdio is not an attached console and stays
+// silent about it when it is. The claude path points at a nonexistent binary
+// so the launch itself fails fast right after the warning check.
+func TestLaunchAgent_NonInteractiveWarning(t *testing.T) {
+	missingClaude := filepath.Join(t.TempDir(), "claude.exe")
+
+	oldInteractive := interactiveStdio
+	defer func() { interactiveStdio = oldInteractive }()
+
+	t.Run("warns_when_detached", func(t *testing.T) {
+		interactiveStdio = func() bool { return false }
+		got := captureStderr(t, func() {
+			if code := launchAgent(t.TempDir(), missingClaude, "instr"); code != 1 {
+				t.Errorf("launchAgent = %d; want 1 for a missing binary", code)
+			}
+		})
+		if !strings.Contains(got, "not an attached console") {
+			t.Errorf("stderr missing the non-interactive warning; got %q", got)
+		}
+	})
+
+	t.Run("silent_when_attached", func(t *testing.T) {
+		interactiveStdio = func() bool { return true }
+		got := captureStderr(t, func() {
+			launchAgent(t.TempDir(), missingClaude, "instr")
+		})
+		if strings.Contains(got, "not an attached console") {
+			t.Errorf("stderr should not carry the warning when stdio is attached; got %q", got)
+		}
+	})
 }
