@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: internal-perch
 branch: internal-perch
 plan: _mill/plan
@@ -22,4 +22,21 @@ plan-review-r1  '2026-07-08T15:41:21Z'
 plan-fix-r1  '2026-07-08T15:41:21Z'
 plan-fix-r2  '2026-07-08T15:47:52Z'
 planned  '2026-07-08T15:48:09Z'
+implementing  '2026-07-08T15:51:10Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: foundations
+    state: pending
+  - name: profile-state
+    state: pending
+  - name: judge-triage
+    state: pending
+  - name: gate-loop
+    state: pending
+  - name: cli-docs
+    state: pending
 ```
