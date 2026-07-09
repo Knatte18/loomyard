@@ -123,7 +123,12 @@
 //     command is an ordinary FAILING gate (its partial output plus a timeout
 //     note are recorded and fed forward — a hang is most plausibly the
 //     round's own fix deadlocking the command, an artifact signal, not
-//     machinery); only a command that cannot START at all is a hard error,
+//     machinery). The gate CALL itself is bounded even when the command
+//     leaves a child holding its output pipe (test binaries, build workers,
+//     a server the fix started): a short grace after exit or kill, the pipe
+//     is abandoned and the recorded exit status decides pass/fail — an
+//     orphaned grandchild may outlive the gate, but can never hang the
+//     loop. Only a command that cannot START at all is a hard error,
 //     and even then the completed round's record is persisted first so a
 //     resume does not re-buy the round — and if that round was the hard cap
 //     itself, the resume finalizes the block STUCK (StuckHardCap) rather than

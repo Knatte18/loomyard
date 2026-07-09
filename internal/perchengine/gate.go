@@ -18,6 +18,17 @@ import (
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 )
 
+// gateWaitDelay is how long execGateCommand's Wait may keep reading the
+// combined-output pipe AFTER the gate command itself has exited (or been
+// killed at the deadline). Without it, Wait blocks until EVERY process
+// holding the pipe exits — and real gate commands routinely leave one
+// behind (go test's test binaries, build workers, a server the round's own
+// fix started), which would stall the gate long past Gate.Timeout, or
+// forever, defeating the timeout's bound on the loop (proven by
+// experiment: a 2-second timeout observed returning after 29 seconds while
+// a spawned child held the pipe).
+const gateWaitDelay = 10 * time.Second
+
 // execGateCommand is the production CommandRunner: it runs argv[0] with
 // argv[1:] as arguments inside dir, killing the command if it runs longer
 // than timeout, and returns its combined stdout+stderr output plus whether
@@ -32,12 +43,20 @@ import (
 // is returned so the failure feeds forward like any other. err is reserved
 // for could-not-start failures only (binary not found, permission denied):
 // there the gate could never observe the artifact at all.
+//
+// The command's own lifetime is bounded by timeout; the CALL's lifetime is
+// bounded by timeout plus gateWaitDelay, after which any output pipe still
+// held open by a child the command spawned is abandoned (the exit status
+// is already known by then). A killed command's orphaned grandchildren may
+// outlive the gate — Windows offers no process-group kill here — but they
+// can no longer hang the loop.
 func execGateCommand(argv []string, dir string, timeout time.Duration) ([]byte, bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	cmd.Dir = dir
+	cmd.WaitDelay = gateWaitDelay
 
 	output, err := cmd.CombinedOutput()
 	if err == nil {
@@ -51,6 +70,16 @@ func execGateCommand(argv []string, dir string, timeout time.Duration) ([]byte, 
 	if ctx.Err() == context.DeadlineExceeded {
 		note := fmt.Sprintf("\n(gate command timed out after %s and was killed)\n", timeout)
 		return append(output, []byte(note)...), false, nil
+	}
+
+	// Wait abandoned the output pipe gateWaitDelay after the command
+	// exited, because a child the command spawned still holds it open.
+	// ErrWaitDelay is only returned when the command itself otherwise
+	// looked successful (a failure exit surfaces as ExitError below even
+	// with held pipes), so classify pass/fail from the recorded exit
+	// status exactly as if the pipe had closed normally.
+	if errors.Is(err, exec.ErrWaitDelay) {
+		return output, cmd.ProcessState.Success(), nil
 	}
 
 	// exec.ExitError means the process started and ran to completion, just
