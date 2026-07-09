@@ -118,7 +118,7 @@ Each layer knows only the one below it; built bottom-up. See the
 [execution stack](overview.md#execution-stack-orchestration-layers).
 
 8. **`internal/proc`.** ✅ **Done.** Cross-OS windowless/detached process spawn — the OS
-   base every higher layer launches through (build-tagged `proc_windows.go` / `proc_other.go`;
+   base every higher layer launches through (build-tagged `proc_windows.go` / `proc_linux.go`;
    third member of the portability family after `fsx` and `fslink`).
 
 9. **`internal/mux` — the window to the world.** ✅ **Done.** Three things in one, split across

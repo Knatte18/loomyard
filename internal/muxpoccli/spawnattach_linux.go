@@ -1,6 +1,4 @@
-//go:build !windows
-
-// spawnattach_other.go — psmux attach for non-Windows.
+// spawnattach_linux.go — psmux attach for Linux.
 
 package muxpoccli
 
@@ -11,7 +9,7 @@ import (
 )
 
 // spawnAttach runs psmux attached to the session with inherited stdin/stdout/stderr.
-// Blocks until the user detaches (normal for non-Windows interactive use).
+// Blocks until the user detaches (normal for Linux interactive use).
 func spawnAttach(psmuxPath, socket, session string) error {
 	cmd := exec.Command(psmuxPath, "-L", socket, "attach-session", "-t", session)
 	cmd.Stdin = os.Stdin
