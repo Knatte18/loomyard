@@ -351,9 +351,24 @@ pass a fresh --run-id to run the same profile under different tuning.`,
 			}
 			weftWorktree := c.layout.WeftWorktree()
 			opts := weftengine.EnvSyncOptions()
+			// Lock files (run.lock, state.json.lock) are machine-local
+			// advisory-lock artifacts, not block state: committing them
+			// would leak runtime noise into durable weft history and
+			// materialize stale lock files on every other machine's weft
+			// pull. mux and shuttle keep this class of file in the
+			// non-synced .lyx for exactly that reason; perch's locks must
+			// live beside state.json inside the run dir (the engine is
+			// geometry-blind), so they are excluded at the commit pathspec
+			// instead. A git exclude pathspec's wildcard matches across
+			// directory separators, covering every lock file under the
+			// scoped _lyx.
+			pathspec := append(
+				weftengine.ScopedPathspec(c.layout.RelPath, []string{hubgeometry.LyxDirName}),
+				":(exclude)*.lock",
+			)
 			committed, weftErr := weftengine.Commit(
 				weftWorktree,
-				weftengine.ScopedPathspec(c.layout.RelPath, []string{hubgeometry.LyxDirName}),
+				pathspec,
 				fmt.Sprintf("perch: %s %s", id, outcomeLabel),
 				opts,
 			)

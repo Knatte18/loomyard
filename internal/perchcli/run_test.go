@@ -132,6 +132,75 @@ func TestRunCLI_Run_WeftSyncRunsOnEngineError(t *testing.T) {
 	}
 }
 
+// TestRunCLI_Run_WeftCommitExcludesLockFiles verifies the block-exit weft
+// commit stages a run dir's real block state (state.json, round artifacts)
+// but never its machine-local advisory-lock files (run.lock,
+// state.json.lock): committing those would leak runtime noise into durable
+// weft history and materialize stale lock files on every other machine's
+// weft pull. Uses the same deterministic engine-error skeleton as
+// TestRunCLI_Run_WeftSyncRunsOnEngineError — the sync path is identical for
+// every outcome, so the cheapest deterministic exit exercises the pathspec.
+func TestRunCLI_Run_WeftCommitExcludesLockFiles(t *testing.T) {
+	t.Setenv("WEFT_SKIP_PUSH", "1")
+	fixture := lyxtest.CopyPairedLocal(t)
+	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
+		"shuttle": shuttleengine.ConfigTemplate(),
+		"mux":     muxengine.ConfigTemplate(),
+		"perch":   perchengine.ConfigTemplate(),
+	})
+	t.Chdir(fixture.Hub)
+
+	profilePath := filepath.Join(fixture.Hub, "profile.yaml")
+	profileContent := "target:\n  instructions: x\nfasit:\n  instructions: y\nrubric: r\nfix-scope: overlay\ngate:\n  mode: llm-verdict\nround-caps: [5, 3]\n"
+	if err := os.WriteFile(profilePath, []byte(profileContent), 0o644); err != nil {
+		t.Fatalf("write profile fixture: %v", err)
+	}
+
+	// Stand in for a real block's run dir: state alongside the two lock
+	// files a real Engine.Run leaves behind (see the WeftSyncRunsOnEngineError
+	// test above for why this is planted straight into WeftPrime).
+	runDir := filepath.Join(fixture.WeftPrime, hubgeometry.LyxDirName, "perch", "lock-exclusion")
+	if err := os.MkdirAll(runDir, 0o755); err != nil {
+		t.Fatalf("mkdir placeholder run dir: %v", err)
+	}
+	for name, content := range map[string]string{
+		"state.json":        "{}",
+		"round-1-review.md": "placeholder",
+		"run.lock":          "",
+		"state.json.lock":   "",
+	} {
+		if err := os.WriteFile(filepath.Join(runDir, name), []byte(content), 0o644); err != nil {
+			t.Fatalf("write placeholder %s: %v", name, err)
+		}
+	}
+
+	var out bytes.Buffer
+	if exitCode := RunCLI(&out, []string{"run", "--profile", profilePath, "--run-id", "lock-exclusion"}); exitCode != 1 {
+		t.Fatalf(`RunCLI([run]) = %d; want 1 (a bad round-caps ladder must fail Profile.validate), output: %s`, exitCode, out.String())
+	}
+
+	// The commit must carry the block state and nothing lock-shaped.
+	tracked := gitLsFiles(t, fixture.WeftPrime)
+	if !strings.Contains(tracked, "lock-exclusion/state.json\n") || !strings.Contains(tracked, "lock-exclusion/round-1-review.md") {
+		t.Errorf("weft tracked files = %q; want state.json and round-1-review.md committed", tracked)
+	}
+	if strings.Contains(tracked, ".lock") {
+		t.Errorf("weft tracked files = %q; want no *.lock file ever committed", tracked)
+	}
+}
+
+// gitLsFiles runs `git ls-files` inside dir and returns its output, failing
+// the test loudly if git cannot be invoked.
+func gitLsFiles(t *testing.T, dir string) string {
+	t.Helper()
+	cmd := exec.Command("git", "-C", dir, "ls-files")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git ls-files in %q: %v (output: %s)", dir, err, output)
+	}
+	return string(output)
+}
+
 // gitLogOneline runs `git log --oneline` inside dir and returns its output,
 // failing the test loudly if git cannot be invoked.
 func gitLogOneline(t *testing.T, dir string) string {
