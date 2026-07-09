@@ -270,6 +270,71 @@ gate:
 	}
 }
 
+// TestDeriveBlockRunID_StableAcrossTuningOverlay proves the run identity is
+// derived from the profile as decoded from the FILE: overlaying the tuning
+// flags afterwards (as runCmd does) cannot change the id, so a re-run with
+// different --model/--effort/--timeout resolves to the same run dir and hits
+// the engine's loud identity check instead of silently forking a new block.
+func TestDeriveBlockRunID_StableAcrossTuningOverlay(t *testing.T) {
+	profile, err := decodeProfile([]byte(`
+target:
+  instructions: "diff against main"
+fasit:
+  instructions: "the discussion"
+rubric: "BLOCKING: x."
+fix-scope: overlay
+gate:
+  mode: llm-verdict
+`))
+	if err != nil {
+		t.Fatalf("decodeProfile() unexpected error: %v", err)
+	}
+
+	idBefore, err := deriveBlockRunID("profiles/p.yaml", profile, "")
+	if err != nil {
+		t.Fatalf("deriveBlockRunID() unexpected error: %v", err)
+	}
+
+	// The overlay runCmd applies AFTER derivation must not affect the id:
+	// derive again from the same file-decoded profile while a copy carries
+	// the overlaid tuning, exactly mirroring runCmd's ordering.
+	overlaid := profile
+	overlaid.Model = "sonnet"
+	overlaid.Effort = "high"
+	overlaid.Timeout = 5 * time.Minute
+
+	idAfter, err := deriveBlockRunID("profiles/p.yaml", profile, "")
+	if err != nil {
+		t.Fatalf("deriveBlockRunID() unexpected error: %v", err)
+	}
+	if idBefore != idAfter {
+		t.Errorf("deriveBlockRunID() = %q then %q; want identical for the same profile file", idBefore, idAfter)
+	}
+
+	// An OVERLAID profile hashes differently — which is exactly what makes
+	// the engine's identity check refuse a re-run with different flags.
+	overlaidHash, err := perchengine.ProfileHash(overlaid)
+	if err != nil {
+		t.Fatalf("ProfileHash(overlaid) unexpected error: %v", err)
+	}
+	fileHash, err := perchengine.ProfileHash(profile)
+	if err != nil {
+		t.Fatalf("ProfileHash(file) unexpected error: %v", err)
+	}
+	if overlaidHash == fileHash {
+		t.Error("ProfileHash(overlaid) == ProfileHash(file); want the tuning overlay to change the engine identity hash")
+	}
+
+	// An explicit --run-id always wins, untouched.
+	explicit, err := deriveBlockRunID("profiles/p.yaml", profile, "my-explicit-id")
+	if err != nil {
+		t.Fatalf("deriveBlockRunID(explicit) unexpected error: %v", err)
+	}
+	if explicit != "my-explicit-id" {
+		t.Errorf("deriveBlockRunID(explicit) = %q; want %q", explicit, "my-explicit-id")
+	}
+}
+
 // equalStrings reports whether got and want hold the same strings in the
 // same order.
 func equalStrings(got, want []string) bool {

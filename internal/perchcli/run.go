@@ -133,15 +133,37 @@ func decodeProfile(data []byte) (perchengine.Profile, error) {
 	}, nil
 }
 
+// deriveBlockRunID returns the run identity for one `perch run` invocation:
+// the explicit --run-id when supplied, otherwise the stable id derived from
+// the profile path and fileProfile — the profile exactly as decoded from the
+// file, BEFORE any --model/--effort/--timeout overlay. Deriving from the
+// pre-overlay profile is load-bearing: it keeps the id stable across
+// invocations of the same file, so re-running with different tuning flags
+// resolves to the SAME run dir and is refused loud by the engine's identity
+// check (which covers the overlaid values) instead of silently forking a
+// fresh block in a new dir.
+func deriveBlockRunID(profilePath string, fileProfile perchengine.Profile, explicit string) (string, error) {
+	if explicit != "" {
+		return explicit, nil
+	}
+	hash, err := perchengine.ProfileHash(fileProfile)
+	if err != nil {
+		return "", err
+	}
+	return perchengine.DeriveRunID(profilePath, hash), nil
+}
+
 // runCmd builds the `run` subcommand: validates that --profile was supplied
 // before ever touching c's PersistentPreRunE-populated state (matching
 // burlercli's run.go flag-shape pattern, so the flag error surfaces in its
 // own JSON line rather than racing a failing PersistentPreRunE's already-
 // recorded exit code), reads and strictly decodes the --profile file,
-// overlays the three run-tuning flags, derives the block's run identity,
-// constructs a fresh *perchengine.Engine per invocation (its pause seam
-// closes over the concrete runDir this call resolves), and blocks on
-// Engine.Run until the block reaches a terminal outcome. On success the
+// derives the block's run identity from the decoded file content (before
+// any flag overlay — see the identity comment in the body), overlays the
+// three run-tuning flags, constructs a fresh *perchengine.Engine per
+// invocation (its pause seam closes over the concrete runDir this call
+// resolves), and blocks on Engine.Run until the block reaches a terminal
+// outcome. On success the
 // block's artifacts are committed and pushed through weft exactly once,
 // per the Weft Git Invariant, before the JSON envelope is printed.
 //
@@ -204,7 +226,10 @@ Example invocation:
   lyx perch run --profile profile.yaml
 
 --model/--effort/--timeout override the profile's model/effort/timeout for
-every round of this block; empty/zero defers to the profile's own values.`,
+every round of this block; empty/zero defers to the profile's own values.
+The overrides are part of the block's identity: re-running an existing block
+with different tuning flags is refused ("started with a different profile") —
+pass a fresh --run-id to run the same profile under different tuning.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out := cmd.OutOrStdout()
 
@@ -237,11 +262,21 @@ every round of this block; empty/zero defers to the profile's own values.`,
 				return nil
 			}
 
+			// The run identity derives from the profile FILE's decoded
+			// content alone — this call sits BEFORE the tuning-flag overlay
+			// below, which is load-bearing (see deriveBlockRunID).
+			id, err := deriveBlockRunID(profilePath, profile, runID)
+			if err != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+				return nil
+			}
+			runDir := filepath.Join(c.runDirBase, id)
+
 			// Run-tuning flags override the profile's values only when
-			// supplied (non-zero/non-empty) — burlercli's flag semantics —
-			// applied before ProfileHash so a flag override and the
-			// profile's own resume identity always agree on what was
-			// actually run.
+			// supplied (non-zero/non-empty) — burlercli's flag semantics.
+			// They overlay AFTER the id derivation above but BEFORE the
+			// engine call, so they are part of what the block actually ran
+			// (and of its persisted identity hash) without minting a new id.
 			if model != "" {
 				profile.Model = model
 			}
@@ -251,18 +286,6 @@ every round of this block; empty/zero defers to the profile's own values.`,
 			if timeout != 0 {
 				profile.Timeout = timeout
 			}
-
-			hash, err := perchengine.ProfileHash(profile)
-			if err != nil {
-				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
-				return nil
-			}
-
-			id := runID
-			if id == "" {
-				id = perchengine.DeriveRunID(profilePath, hash)
-			}
-			runDir := filepath.Join(c.runDirBase, id)
 
 			// The engine is constructed per-invocation, never in
 			// PersistentPreRunE: its pause seam closes over this call's
