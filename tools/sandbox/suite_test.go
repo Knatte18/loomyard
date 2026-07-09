@@ -768,7 +768,7 @@ func TestSuiteSpecs_MuxTeardownFlag(t *testing.T) {
 	if mainSuite.muxTeardown {
 		t.Error("mainSuite.muxTeardown = true; the core suite boots no mux substrate")
 	}
-	for _, spec := range []suiteSpec{muxSuite, shuttleSuite, burlerSuite} {
+	for _, spec := range []suiteSpec{muxSuite, shuttleSuite, burlerSuite, perchSuite} {
 		if !spec.muxTeardown {
 			t.Errorf("%s: muxTeardown = false; live-mux suites must tear their substrate down", spec.fileName)
 		}
@@ -933,4 +933,191 @@ func TestLaunchAgent_NonInteractiveWarning(t *testing.T) {
 			t.Errorf("stderr should not carry the warning when stdio is attached; got %q", got)
 		}
 	})
+}
+
+// TestRunSuite_PerchSpec_WritesPerchFile verifies that
+// runSuite(..., perchSuite) writes SANDBOX-PERCH-SUITE.md (not any other
+// suite's file) into the host repo, with the fingerprint header prepended to
+// the embedded perch doc body.
+func TestRunSuite_PerchSpec_WritesPerchFile(t *testing.T) {
+	parentDir, hostRepoDir := makeHostRepo(t)
+	fakeLyx := makeFakeLyx(t, parentDir)
+	fakeClaude := filepath.Join(parentDir, "claude.exe")
+
+	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction string) int {
+		return 0
+	})
+	defer restore()
+
+	if err := runSuite(parentDir, "", "", perchSuite); err != nil {
+		t.Fatalf("runSuite error: %v", err)
+	}
+
+	perchPath := filepath.Join(hostRepoDir, perchSuite.fileName)
+	content, err := os.ReadFile(perchPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", perchSuite.fileName, err)
+	}
+	if !strings.Contains(string(content), "Binary under test") {
+		t.Errorf("%s missing fingerprint header; got %q", perchSuite.fileName, string(content))
+	}
+	if !strings.Contains(string(content), perchSandboxSuiteMD) {
+		t.Errorf("%s does not contain the embedded perch doc body", perchSuite.fileName)
+	}
+
+	// Neither other suite's file must be written by a perch-spec run.
+	if _, err := os.Stat(filepath.Join(hostRepoDir, mainSuite.fileName)); !os.IsNotExist(err) {
+		t.Errorf("%s should not be written by a perchSuite run; stat err = %v", mainSuite.fileName, err)
+	}
+	if _, err := os.Stat(filepath.Join(hostRepoDir, burlerSuite.fileName)); !os.IsNotExist(err) {
+		t.Errorf("%s should not be written by a perchSuite run; stat err = %v", burlerSuite.fileName, err)
+	}
+}
+
+// TestRunSuite_PerchSpec_ExcludesFiles verifies that a perchSuite run
+// registers SANDBOX-PERCH-SUITE.md and sandbox-report.json in
+// .git/info/exclude.
+func TestRunSuite_PerchSpec_ExcludesFiles(t *testing.T) {
+	parentDir, hostRepoDir := makeHostRepo(t)
+	fakeLyx := makeFakeLyx(t, parentDir)
+	fakeClaude := filepath.Join(parentDir, "claude.exe")
+
+	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction string) int {
+		return 0
+	})
+	defer restore()
+
+	if err := runSuite(parentDir, "", "", perchSuite); err != nil {
+		t.Fatalf("runSuite error: %v", err)
+	}
+
+	excludePath := filepath.Join(hostRepoDir, ".git", "info", "exclude")
+	content, err := os.ReadFile(excludePath)
+	if err != nil {
+		t.Fatalf("read .git/info/exclude: %v", err)
+	}
+	for _, entry := range []string{perchSuite.fileName, reportFileName} {
+		if !strings.Contains(string(content), entry) {
+			t.Errorf(".git/info/exclude missing entry %q; got %q", entry, string(content))
+		}
+	}
+}
+
+// TestRunSuite_PerchSpec_DeletesStaleReport verifies that a perchSuite run
+// deletes a pre-seeded stale sandbox-report.json before launching the agent,
+// mirroring the other suites' stale-report cleanup.
+func TestRunSuite_PerchSpec_DeletesStaleReport(t *testing.T) {
+	parentDir, hostRepoDir := makeHostRepo(t)
+	fakeLyx := makeFakeLyx(t, parentDir)
+	fakeClaude := filepath.Join(parentDir, "claude.exe")
+
+	stalePath := filepath.Join(hostRepoDir, reportFileName)
+	if err := os.WriteFile(stalePath, []byte(`{"source": "sandbox-report", "items": [{"ref": "SP0", "title": "stale", "body": "stale"}]}`), 0o644); err != nil {
+		t.Fatalf("write stale report: %v", err)
+	}
+
+	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction string) int {
+		if _, statErr := os.Stat(stalePath); !os.IsNotExist(statErr) {
+			t.Errorf("stale report should be removed before launch; stat err = %v", statErr)
+		}
+		return 0
+	})
+	defer restore()
+
+	if err := runSuite(parentDir, "", "", perchSuite); err != nil {
+		t.Fatalf("runSuite should return nil; got error: %v", err)
+	}
+	if _, statErr := os.Stat(stalePath); !os.IsNotExist(statErr) {
+		t.Errorf("stale report should have been removed before launch; stat err = %v", statErr)
+	}
+}
+
+// TestRunSuite_PerchSpec_DefaultInstruction verifies that a perchSuite run
+// with no -prompt override passes the perch default instruction to
+// launchAgent.
+func TestRunSuite_PerchSpec_DefaultInstruction(t *testing.T) {
+	parentDir, _ := makeHostRepo(t)
+	fakeLyx := makeFakeLyx(t, parentDir)
+	fakeClaude := filepath.Join(parentDir, "claude.exe")
+
+	var gotInstruction string
+	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction string) int {
+		gotInstruction = instruction
+		return 0
+	})
+	defer restore()
+
+	if err := runSuite(parentDir, "", "", perchSuite); err != nil {
+		t.Fatalf("runSuite error: %v", err)
+	}
+	if gotInstruction != perchSuite.instruction {
+		t.Errorf("launchAgent instruction = %q; want %q", gotInstruction, perchSuite.instruction)
+	}
+	if gotInstruction != "Read ./SANDBOX-PERCH-SUITE.md and follow the instructions in it exactly." {
+		t.Errorf("launchAgent instruction = %q; want the literal perch default", gotInstruction)
+	}
+}
+
+// TestRunSuite_PerchSpec_PromptOverride verifies that a -prompt override
+// passed to a perchSuite run reaches launchAgent verbatim, bypassing the
+// perch default.
+func TestRunSuite_PerchSpec_PromptOverride(t *testing.T) {
+	parentDir, _ := makeHostRepo(t)
+	fakeLyx := makeFakeLyx(t, parentDir)
+	fakeClaude := filepath.Join(parentDir, "claude.exe")
+	customPrompt := "Do the perch thing entirely differently."
+
+	var gotInstruction string
+	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction string) int {
+		gotInstruction = instruction
+		return 0
+	})
+	defer restore()
+
+	if err := runSuite(parentDir, "", customPrompt, perchSuite); err != nil {
+		t.Fatalf("runSuite error: %v", err)
+	}
+	if gotInstruction != customPrompt {
+		t.Errorf("launchAgent instruction = %q; want override %q", gotInstruction, customPrompt)
+	}
+}
+
+// TestRunSuite_PerchSpec_MuxTeardownAfterAgent verifies that a perchSuite
+// run calls muxDown exactly once, with the host repo dir and the
+// fingerprinted lyx path, strictly after the agent session has ended.
+func TestRunSuite_PerchSpec_MuxTeardownAfterAgent(t *testing.T) {
+	parentDir, hostRepoDir := makeHostRepo(t)
+	fakeLyx := makeFakeLyx(t, parentDir)
+	fakeClaude := filepath.Join(parentDir, "claude.exe")
+
+	agentDone := false
+	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction string) int {
+		agentDone = true
+		return 0
+	})
+	defer restore()
+
+	var gotDir, gotLyx string
+	teardownCalls := 0
+	muxDown = func(dir, lyx string) error {
+		if !agentDone {
+			t.Error("muxDown called before launchAgent returned")
+		}
+		teardownCalls++
+		gotDir, gotLyx = dir, lyx
+		return nil
+	}
+
+	if err := runSuite(parentDir, "", "", perchSuite); err != nil {
+		t.Fatalf("runSuite error: %v", err)
+	}
+	if teardownCalls != 1 {
+		t.Fatalf("muxDown called %d times; want exactly 1", teardownCalls)
+	}
+	if gotDir != hostRepoDir {
+		t.Errorf("muxDown dir = %q; want %q", gotDir, hostRepoDir)
+	}
+	if gotLyx != fakeLyx {
+		t.Errorf("muxDown lyx = %q; want %q", gotLyx, fakeLyx)
+	}
 }

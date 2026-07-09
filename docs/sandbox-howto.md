@@ -7,9 +7,10 @@ rationale see [sandbox-hub.md](sandbox-hub.md).
 All commands run from the lyx repo root (`C:\Code\loomyard\wts\loomyard`) unless
 stated otherwise. The launchers (`deploy.cmd`, `sandbox-build.cmd`,
 `sandbox-core-suite.cmd`, `sandbox-mux-suite.cmd`, `sandbox-shuttle-suite.cmd`,
-`sandbox-burler-suite.cmd`, `sandbox-fetch.cmd`) hardcode the machine-specific
-paths for this machine: deploy target `C:\Code\tools\bin`, Hub parent `C:\Code`.
-Each sandbox launcher does exactly one thing (build / one suite / fetch).
+`sandbox-burler-suite.cmd`, `sandbox-perch-suite.cmd`, `sandbox-fetch.cmd`)
+hardcode the machine-specific paths for this machine: deploy target
+`C:\Code\tools\bin`, Hub parent `C:\Code`. Each sandbox launcher does exactly
+one thing (build / one suite / fetch).
 
 **Run every suite launcher in a real, attached interactive terminal** — never
 backgrounded, detached, or with stdout/stderr redirected. The agent session is
@@ -138,9 +139,21 @@ Same operating model as 4b, for `lyx shuttle`'s and `lyx burler`'s scenarios
 respectively; both need a live psmux, PowerShell 7, a logged-in `claude`, and
 an `lyx init`-ed host repo. Same `-claude`/`-prompt` overrides. After the
 session ends, the launcher runs `lyx mux down` in the host repo (for the mux,
-shuttle, and burler suites) so no psmux server outlives the run — an orphaned
-server holds handles inside the Hub and blocks the next
+shuttle, burler, and perch suites) so no psmux server outlives the run — an
+orphaned server holds handles inside the Hub and blocks the next
 `sandbox-build.cmd -reset`.
+
+### 4d. Run the perch suite (optional, needs live psmux + logged-in claude)
+
+```cmd
+sandbox-perch-suite.cmd
+```
+
+Same operating model as 4c, for `lyx perch`'s gate-loop scenarios (convergence,
+pause/resume, the command gate) — perch wires the real burler substrate (which
+in turn wires shuttle) on every invocation, so the same live-psmux,
+PowerShell 7, logged-in-`claude`, and `lyx init`-ed prerequisites apply. Same
+`-claude`/`-prompt` overrides.
 
 ### 5. Fetch the report
 

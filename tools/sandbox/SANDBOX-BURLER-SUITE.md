@@ -1,8 +1,8 @@
-# SANDBOX-BURLER-SUITE -- lyx burler + perch black-box suite
+# SANDBOX-BURLER-SUITE -- lyx burler black-box suite
 
 ## What this is
 
-A structured test-loop for exercising `lyx burler` and `lyx perch` against a **live psmux
+A structured test-loop for exercising `lyx burler` against a **live psmux
 server and a logged-in claude** in the sandbox Hub host repo. Like `SANDBOX-SHUTTLE-SUITE.md`,
 the value here is partly **visual**: a burler round doing real review+fix work in a
 pane, a verdict coming back. Not an automated suite -- an agent drives it, an
@@ -11,15 +11,13 @@ operator watches.
 burler drives one review+fix round over an artifact: an A phase reviews the
 target against a fasit (a source of truth) and writes a structured review file
 (verdict + findings), then a B phase fixes what A found and writes a fixer
-report. `perch` is the gate loop built on top: it spawns fresh burler rounds
-until the artifact is `APPROVED` or definitively `STUCK`, with an operational
-`PAUSED` exit in between. Scenarios S1-S3 prove one burler round end-to-end
-through the debug CLI (`lyx burler run`), never review quality -- they are
-deliberately trivial (a toy chair/table color mismatch) so the assertions are
-about the mechanics (verdict parse, file contract, fix actually applied), not
-about whether the review is insightful. S4 proves the perch gate loop
-end-to-end (`lyx perch run`/`pause`) the same way -- convergence, run-dir
-contents, weft commit, and pause/resume -- never judge quality.
+report. Scenarios S1-S3 prove one burler round end-to-end through the debug
+CLI (`lyx burler run`), never review quality -- they are deliberately trivial
+(a toy chair/table color mismatch) so the assertions are about the mechanics
+(verdict parse, file contract, fix actually applied), not about whether the
+review is insightful. `perch`, the gate loop built on top of burler (it spawns
+fresh burler rounds until an artifact is `APPROVED` or definitively `STUCK`),
+has its own scenarios in `SANDBOX-PERCH-SUITE.md` -- not tested here.
 
 ## Pre-conditions
 
@@ -33,17 +31,14 @@ Before starting a session:
 3. **Live-psmux and claude requirement.** `psmux.exe` on PATH (installed at
    `C:\Code\tools\bin\psmux.exe`), PowerShell 7, and a logged-in `claude` on PATH.
    If any of these is unavailable in the session, **note that as the session outcome
-   rather than treating it as a burler/perch defect** -- the `**Covers:** burler` tag on
-   S1 and the `**Covers:** perch` tag on S4 satisfy the sandbox coverage guard
-   (`sandbox_coverage_test.go`) regardless of runtime availability.
+   rather than treating it as a burler defect** -- the `**Covers:** burler` tag on
+   S1 satisfies the sandbox coverage guard (`sandbox_coverage_test.go`) regardless
+   of runtime availability.
 4. **`lyx init` first.** `lyx burler run` requires an initialized worktree
    (`_lyx/config/shuttle.yaml` and `mux.yaml`) exactly like `lyx shuttle` and
    `lyx mux` do -- burler wires the real shuttle substrate (mux + claude) on
    every invocation and has no config file of its own; the profile YAML is the
-   only burler-specific input. `lyx perch run`/`pause` additionally need
-   `_lyx/config/perch.yaml` (also created by `lyx init`) -- perch's own config
-   holds only the judge model/effort and the default round-cap ladder, all of
-   which the sandbox-build default template already sets sanely.
+   only burler-specific input.
 5. **Attached interactive terminal.** Launch `sandbox-burler-suite.cmd` from a
    real, attached console -- never redirected, backgrounded, or detached.
    Without a TTY the driving claude session cannot idle between turns waiting
@@ -60,11 +55,10 @@ It must not look for, read, or reason about the lyx source tree. No peeking at
 `C:\Code\loomyard\` or any other path outside the Hub.**
 
 Discovering the command surface is done via `lyx burler --help`/`lyx burler run --help`
-(S1-S3) and `lyx perch --help`/`lyx perch run --help`/`lyx perch pause --help` (S4) alone
--- not from documentation outside the Hub. The profile YAML file is the one artifact the
-agent must construct itself (paths, rubric, fix-scope, output paths, and for S4 the gate/
-round-caps keys) per the scenario's Goal below; each command's `--help` example profile is
-the reference for the file's shape.
+alone -- not from documentation outside the Hub. The profile YAML file is the one
+artifact the agent must construct itself (paths, rubric, fix-scope, output paths) per
+the scenario's Goal below; each command's `--help` example profile is the reference for
+the file's shape.
 
 ## Fingerprint header
 
@@ -83,15 +77,13 @@ anywhere itself.
 For each scenario below:
 
 - Read the **Goal** -- it names the task, not the commands. Discover the commands via
-  each module's own `--help` (S0 ethos).
+  `lyx burler`'s own `--help` (S0 ethos).
 - Run every scenario-driving command in the **foreground** and wait for it to
   return before moving on. **Never background or detach a command** -- `lyx
-  burler run` and `lyx perch run` both block until they reach a terminal outcome
-  by design, so there is nothing to wait for asynchronously, and no completion
-  notification will ever be delivered back into this session. Assume no async
-  signal arrives, ever. (The one exception is S4's pause step, which deliberately
-  runs `lyx perch pause` from a SECOND terminal while the first `lyx perch run`
-  invocation is still blocking in its own terminal.)
+  burler run` blocks until it reaches a terminal outcome by design, so there
+  is nothing to wait for asynchronously, and no completion notification will
+  ever be delivered back into this session. Assume no async signal arrives,
+  ever.
 - **Watch** what lyx does. Note where it stalls, guesses wrong, or hits an error.
 - Record the outcome per the verdict buckets: `OK` (worked) / `WARN` (rough edge) /
   `FAIL` (broke).
@@ -123,7 +115,7 @@ zero `WARN`/`FAIL` findings** -- in that case `items` is an empty array.
 
 - `source` is the literal string `"sandbox-report"`.
 - `items[]` holds only `WARN`/`FAIL` findings -- do not record `OK` scenarios here.
-- `ref` is the scenario id (`S1`-`S5`).
+- `ref` is the scenario id (`S1`-`S3`).
 - `title` is a short one-line summary.
 - `body` folds the detail, repro steps, and verdict into one markdown string.
 
@@ -212,70 +204,6 @@ zero-exit):
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
----
-
-### S4 -- The perch gate loop (convergence, then pause/resume)
-
-**Covers:** perch
-
-**Goal:** "Write a small fixture doc with a couple of deliberate flaws and a perch profile
-(`gate.mode: llm-verdict`, `round-caps: [2, 3]`) reviewing it against a short fasit rule, run
-`lyx perch run --profile <file>` to convergence, and inspect the run dir and the weft commit.
-Then start a second, longer-running block, pause it mid-flight with `lyx perch pause --run-id
-<id>`, and confirm it exits `PAUSED` and that re-running `lyx perch run` resumes at the recorded
-round instead of starting over."
-
-**Watch:** Discover the command surface via `lyx perch --help` and `lyx perch run --help` alone
-(S0 ethos) -- `--help`'s example profile is the reference for the profile file's shape. Create a
-small fixture file (e.g. `essay.txt`) with two or three sentences carrying a couple of clear,
-easy-to-fix flaws (a factual contradiction, a typo repeated twice). Write a profile YAML naming
-that file as `target`, an inline `fasit.instructions` stating the correctness rule, a short
-`rubric` mapping each flaw to a BLOCKING finding, `fix-scope: overlay`, `gate: {mode:
-llm-verdict}`, `round-caps: [2, 3]`. Run `lyx perch run --profile <file>`. The command blocks
-until the block reaches a terminal outcome; the printed JSON envelope reports
-`"outcome":"APPROVED"` within the 3-round cap, plus `roundsRun`, `runId`, `runDir`, and
-`weftCommitted`. Inspect `runDir` (the path from the envelope): it holds `state.json` and one
-`round-<N>-review.md` / `round-<N>-fixer-report.md` pair per round actually run, numbered from 1;
-the fixture file's content has actually changed and no longer carries the seeded flaws. Confirm
-the weft commit landed (`git -C <weft worktree> log -1` on the host's weft sibling shows a
-`perch: <runId> APPROVED` commit, or use `lyx weft status`).
-
-For the pause/resume step, write a SECOND fixture + profile pair whose flaws are subtler (so the
-block is likely to still be running after round 1) with a fresh `run-id` implied by the new
-profile's filename (or pass an explicit `--run-id`). Start `lyx perch run --profile <file2>` and,
-while it is still running its later rounds, run `lyx perch pause --run-id <id>` from a second
-terminal against the same worktree. The pause command's own JSON envelope reports `runId` and
-`pauseFile`. The running block's own envelope (once it returns) reports `"outcome":"PAUSED"` --
-never mid-round, always at the next round boundary. Re-run `lyx perch run --profile <file2>
---run-id <id>` (same run-id): the envelope confirms the block resumed rather than restarting
-(`roundsRun` continues climbing from where it paused, not from 0) and eventually reaches a
-terminal `APPROVED`/`STUCK` outcome.
-
-**Verdict:** `OK` / `WARN` / `FAIL`
-
-### S5 -- The perch command gate (convergence decided by a real command)
-
-**Covers:** perch
-
-**Goal:** "Run one perch block whose convergence is decided by a real command instead of the
-review verdict (`gate.mode: command`), watch a failing command block convergence and feed its
-output forward, then watch a passing command converge the block regardless of the verdict."
-
-**Watch:** Write a tiny fixture file plus a profile with `gate: {mode: command, command:
-[<argv>], timeout: "1m"}` and `round-caps: [2]`, where `<argv>` is a command that FAILS in the
-host repo (e.g. an unknown `git` verb). Run `lyx perch run --profile <file>`: each round's
-review may even come back APPROVED, but the block must NOT converge while the command fails --
-it runs to the hard cap and exits `STUCK`/`hard-cap`. Inspect the run dir: every round has a
-`round-<N>-gate.md` carrying the command's real combined output with a FAIL header, and (from
-round 2 on) the previous round's gate file is part of what the next round's agent was told
-about. Then edit the profile to a command that PASSES (e.g. `["git", "status"]`), re-run with
-a fresh `--run-id`: the block converges `APPROVED` in round 1 even if the review found
-BLOCKING findings -- in command mode only the command decides. A command that exceeds
-`gate.timeout` counts as a FAILING gate (its `round-<N>-gate.md` notes the timeout), never as
-a crash of the block.
-
-**Verdict:** `OK` / `WARN` / `FAIL`
-
 ## Session log format
 
 After running all scenarios, record a short session summary:
@@ -287,8 +215,6 @@ Binary fingerprint: <copy from the header above>
 S1: <OK|WARN|FAIL> -- <one-line note if not OK>
 S2: <OK|WARN|FAIL> -- <one-line note if not OK>
 S3: <OK|WARN|FAIL> -- <one-line note if not OK>
-S4: <OK|WARN|FAIL> -- <one-line note if not OK>
-S5: <OK|WARN|FAIL> -- <one-line note if not OK>
 
 sandbox-report.json written: <count of WARN/FAIL items>
 ```
@@ -310,6 +236,6 @@ is still open for inspection.
 
 - Host/weft scenarios stay in `SANDBOX-CORE-SUITE.md`, mux/psmux scenarios stay in
   `SANDBOX-MUX-SUITE.md`, shuttle black-box agent scenarios stay in
-  `SANDBOX-SHUTTLE-SUITE.md`; this suite holds both burler (review+fix round
-  scenarios) and perch (the round-loop gate built on top of burler) -- add `S`
-  scenarios here, not in any other suite.
+  `SANDBOX-SHUTTLE-SUITE.md`, perch gate-loop scenarios stay in
+  `SANDBOX-PERCH-SUITE.md`; this suite holds only burler's own review+fix round
+  scenarios -- add `S` scenarios here, not in any other suite.
