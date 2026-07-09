@@ -46,8 +46,9 @@ const (
 // whose gate mode is GateLLMVerdict, which never runs a command).
 type RoundSummary struct {
 	// Round is the round number (1-based); Attempts is how many burler
-	// attempts it took to reach a done outcome (>1 means a died/timeout
-	// retry occurred before this round completed).
+	// attempts it took to reach a done outcome (>1 means one retry occurred
+	// before this round completed — either a died/timeout outcome or an
+	// asking-triage RETRY verdict, the two causes runRound retries on).
 	Round    int
 	Attempts int
 	// Verdict and BlockingCount are the fresh round's burler review
