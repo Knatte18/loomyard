@@ -162,6 +162,17 @@ func (e *Engine) Run(p Profile, runDir string) (Result, error) {
 			// still wants every review written so far.
 			judgeReviews := append(append([]string(nil), priorReviews...), outcome.ReviewPath)
 
+			// The circling check never runs on the round immediately after an
+			// APPROVED round (reachable in command/both gate modes, where an
+			// APPROVED round with a failing command does not converge): the
+			// immediately-prior review has zero blocking findings, so fresh
+			// findings here are new work surfacing, not evidence of circling —
+			// and a false CIRCLING verdict is a permanent, wrong STUCK. The
+			// milestone gate is deliberately NOT exempted: a rung asks about
+			// the whole trajectory, not recurrence against the prior round.
+			prevRoundApproved := len(st.Rounds) > 0 &&
+				st.Rounds[len(st.Rounds)-1].Verdict == string(burlerengine.VerdictApproved)
+
 			switch {
 			case isMilestoneRung(caps, round):
 				// The milestone gate REPLACES the circling check for this
@@ -186,7 +197,7 @@ func (e *Engine) Run(p Profile, runDir string) (Result, error) {
 					return resultFromState(st, OutcomeStuck, StuckMilestoneStop), nil
 				}
 				// JudgeContinue / JudgeUncertain: fall through and loop.
-			case round >= 2:
+			case round >= 2 && !prevRoundApproved:
 				jv, _ := runCircling(e.shuttle, judgeInputs{
 					Round:        round,
 					PriorReviews: judgeReviews,
@@ -206,8 +217,10 @@ func (e *Engine) Run(p Profile, runDir string) (Result, error) {
 					return resultFromState(st, OutcomeStuck, StuckCircling), nil
 				}
 			}
-			// round 1 with a blocking verdict runs no judge: there is no
-			// prior round to compare it against yet.
+			// round 1 with a blocking verdict runs no judge (there is no
+			// prior round to compare it against yet), and neither does a
+			// blocking round immediately after an APPROVED round (see
+			// prevRoundApproved above).
 		}
 		// A VerdictApproved non-converged round (command mode only) runs no
 		// judge at all and simply continues to the next round.

@@ -396,6 +396,69 @@ func TestRun_PerRoundCircling(t *testing.T) {
 		}
 	})
 
+	t.Run("no circling judge on the round immediately after an approved round", func(t *testing.T) {
+		layout := newTestLayout(t)
+		runDir := filepath.Join(t.TempDir(), "run")
+
+		// Command mode is what makes "a round after an APPROVED round"
+		// reachable at all: round 1's APPROVED verdict does not converge
+		// while its command fails, so round 2 runs — and a BLOCKING round 2
+		// must NOT be judged for circling against an approved predecessor.
+		// Round 3 (after a BLOCKING round 2) then IS judged, proving the
+		// exemption is scoped to the immediately-prior round's verdict.
+		fb := &fakeBurler{}
+		fb.queue = []struct {
+			result burlerengine.Result
+			err    error
+		}{
+			{result: burlerengine.Result{Outcome: shuttleengine.OutcomeDone, Verdict: burlerengine.VerdictApproved, SessionID: "s1"}},
+			{result: burlerengine.Result{Outcome: shuttleengine.OutcomeDone, Verdict: burlerengine.VerdictBlocking, Findings: oneBlockingFinding(), SessionID: "s2"}},
+			{result: burlerengine.Result{Outcome: shuttleengine.OutcomeDone, Verdict: burlerengine.VerdictBlocking, Findings: oneBlockingFinding(), SessionID: "s3"}},
+			{result: burlerengine.Result{Outcome: shuttleengine.OutcomeDone, Verdict: burlerengine.VerdictBlocking, Findings: oneBlockingFinding(), SessionID: "s4"}},
+		}
+		fcr := &fakeCommandRunner{}
+		fcr.queue = []struct {
+			output   []byte
+			exitZero bool
+			err      error
+		}{
+			{output: []byte("fail"), exitZero: false},
+			{output: []byte("fail"), exitZero: false},
+			{output: []byte("fail"), exitZero: false},
+			{output: []byte("ok"), exitZero: true},
+		}
+		qs := &queuedShuttle{}
+		qs.queue = []struct {
+			verdictContent string
+			err            error
+		}{
+			// Exactly ONE scripted judge response: round 3's circling check.
+			// If round 2 wrongly spawned a judge too, the queue would drain
+			// early and the round-3 call would fail loudly.
+			{verdictContent: verdictFileContent(string(JudgeProgressing), "new findings after the approved round")},
+		}
+
+		e := New(fb, qs, Config{}, layout, Options{RunCommand: fcr.run})
+		p := testProfile(GateCommand, []string{"make", "test"}, []int{10})
+
+		got, err := e.Run(p, runDir)
+		if err != nil {
+			t.Fatalf("Run() error = %v; want nil", err)
+		}
+		if got.Outcome != OutcomeApproved {
+			t.Fatalf("Run() Outcome = %q; want %q", got.Outcome, OutcomeApproved)
+		}
+		if got.RoundsRun != 4 {
+			t.Fatalf("Run() RoundsRun = %d; want 4", got.RoundsRun)
+		}
+		if len(qs.specs) != 1 {
+			t.Errorf("queuedShuttle called %d times; want exactly 1 (no circling judge for the round following an APPROVED round)", len(qs.specs))
+		}
+		if got.Rounds[1].JudgeVerdict != "" {
+			t.Errorf("Rounds[1].JudgeVerdict = %q; want empty (round 2 follows an approved round)", got.Rounds[1].JudgeVerdict)
+		}
+	})
+
 	t.Run("no judge call on an approved-verdict round", func(t *testing.T) {
 		layout := newTestLayout(t)
 		runDir := filepath.Join(t.TempDir(), "run")
