@@ -3,7 +3,7 @@
 ```yaml
 task: Rename _other.go platform files to _linux.go
 slug: rename-other-to-linux
-approved: false
+approved: true
 started: 20260709-171900
 parent: main
 root: ""

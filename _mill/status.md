@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planning
+phase: plan-review-r1
 slug: rename-other-to-linux
 branch: rename-other-to-linux
 plan: _mill/plan
@@ -17,4 +17,5 @@ task_description: |
 discussing  '2026-07-09T14:58:59Z'
 discussed  '2026-07-09T17:08:55Z'
 planning  '2026-07-09T17:20:48Z'
+plan-review-r1  '2026-07-09T17:23:16Z'
 ```
