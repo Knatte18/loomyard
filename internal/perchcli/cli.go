@@ -8,7 +8,7 @@
 // (perchengine.Options.
 // PauseRequested) closes over a per-run runDir that is only known once the
 // run verb has resolved --profile and --run-id, so the run verb calls
-// perchengine.New itself, per invocation (card 15). perchcli is the
+// perchengine.New itself, per invocation. perchcli is the
 // module's claudeengine wiring point, mirroring the Provider-Seam Invariant.
 
 package perchcli
@@ -31,7 +31,7 @@ import (
 // RunE bodies read the same PersistentPreRunE-populated state. Unlike
 // burlerCLI (which stores a constructed engine), perchCLI stores the
 // resolved ingredients a fresh *perchengine.Engine is built from: the run
-// verb (card 15) calls perchengine.New per invocation, closing its pause
+// verb calls perchengine.New per invocation, closing its pause
 // seam over the concrete runDir it resolves from --profile/--run-id. The
 // zero perchCLI is not valid until PersistentPreRunE has populated it.
 type perchCLI struct {

@@ -1,6 +1,7 @@
 // gate.go implements the command-gate execution seam and the convergence
 // check the round loop evaluates every round: execGateCommand is the
-// production CommandRunner (card 10's type), writeGateOutput records a
+// production CommandRunner (the seam type defined in engine.go),
+// writeGateOutput records a
 // command gate's raw output for the operator and the next round's
 // hydration, and converged evaluates GateMode against a round's burler
 // verdict and (when the mode runs a command) its pass/fail result.

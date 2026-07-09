@@ -119,7 +119,7 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 		return Result{}, err
 	}
 
-	// Seam defaulting happens here, once, at Run's entry: card 10's New
+	// Seam defaulting happens here, once, at Run's entry: New (engine.go)
 	// stores Options' fields verbatim (nils included) precisely so this
 	// file — and only this file — owns the fallback behavior.
 	pause := e.pauseRequested

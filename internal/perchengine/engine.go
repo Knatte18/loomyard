@@ -49,8 +49,8 @@ type CommandRunner func(argv []string, dir string, timeout time.Duration) (outpu
 // Options carries the two seams a caller may override; both fields default
 // when left zero-valued. A nil PauseRequested means "no pause source
 // wired" (the loop is never paused). A nil RunCommand means "use the real
-// exec runner", execGateCommand (card 11). New stores both fields verbatim,
-// nils included — run.go (card 12) is the single place that substitutes
+// exec runner", execGateCommand (gate.go). New stores both fields verbatim,
+// nils included — run.go is the single place that substitutes
 // these defaults, at the top of Run, which is what keeps this file free of
 // any compile dependency on gate.go's execGateCommand.
 type Options struct {
