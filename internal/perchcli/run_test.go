@@ -362,3 +362,26 @@ func equalInts(got, want []int) bool {
 	}
 	return true
 }
+
+// TestDecodeProfile_EmptyRoundCapsStaysNonNil proves an explicit
+// `round-caps: []` decodes to a non-nil empty slice — the value
+// perchengine.Profile.validate rejects loud — while an absent key stays nil
+// (the "unset, use the default chain" spelling). The decode layer must
+// preserve that distinction or the engine cannot tell the two apart.
+func TestDecodeProfile_EmptyRoundCapsStaysNonNil(t *testing.T) {
+	explicit, err := decodeProfile([]byte("target:\n  instructions: x\nfasit:\n  instructions: y\nrubric: r\nfix-scope: overlay\ngate:\n  mode: llm-verdict\nround-caps: []\n"))
+	if err != nil {
+		t.Fatalf("decodeProfile(round-caps: []) unexpected error: %v", err)
+	}
+	if explicit.RoundCaps == nil || len(explicit.RoundCaps) != 0 {
+		t.Errorf("decodeProfile(round-caps: []).RoundCaps = %v; want a non-nil empty slice", explicit.RoundCaps)
+	}
+
+	absent, err := decodeProfile([]byte("target:\n  instructions: x\nfasit:\n  instructions: y\nrubric: r\nfix-scope: overlay\ngate:\n  mode: llm-verdict\n"))
+	if err != nil {
+		t.Fatalf("decodeProfile(no round-caps) unexpected error: %v", err)
+	}
+	if absent.RoundCaps != nil {
+		t.Errorf("decodeProfile(no round-caps).RoundCaps = %v; want nil", absent.RoundCaps)
+	}
+}

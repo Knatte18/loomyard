@@ -55,6 +55,14 @@ func TestProfile_Validate(t *testing.T) {
 			},
 		},
 		{
+			name: "round-caps explicit empty list fails loud rather than defaulting",
+			mutate: func(p *Profile) {
+				p.RoundCaps = []int{}
+			},
+			wantErr:   true,
+			errSubstr: "must not be an explicit empty list",
+		},
+		{
 			name: "round-caps non-positive entry",
 			mutate: func(p *Profile) {
 				p.RoundCaps = []int{0, 5}

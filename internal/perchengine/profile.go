@@ -84,8 +84,9 @@ type Profile struct {
 	// Gate selects and configures the block's convergence check.
 	Gate Gate
 	// RoundCaps is the milestone ladder: strictly increasing round numbers,
-	// the last of which is the hard cap. Empty resolves through Config then
-	// defaultRoundCaps.
+	// the last of which is the hard cap. Nil (unset) resolves through Config
+	// then defaultRoundCaps; a non-nil EMPTY ladder is an explicit operator
+	// mistake and fails validation loud rather than silently defaulting.
 	RoundCaps []int
 	// JudgeModel and JudgeEffort tune the ephemeral progress-judge and
 	// asking-triage calls. Empty JudgeModel resolves through Config then
@@ -114,6 +115,14 @@ type Profile struct {
 // legality and its Command-emptiness pairing, Gate.Timeout sign, and Timeout
 // sign.
 func (p *Profile) validate(cfg Config) error {
+	// A nil RoundCaps means "unset — resolve through the default chain"; a
+	// non-nil EMPTY ladder is an explicit `round-caps: []` the operator
+	// wrote, and silently substituting the default for it would hide a
+	// mangled profile — fail loud instead (the discussion pins empty as a
+	// profile error, distinct from absent).
+	if p.RoundCaps != nil && len(p.RoundCaps) == 0 {
+		return fmt.Errorf("perch: profile.RoundCaps must not be an explicit empty list; omit the key to use the default ladder")
+	}
 	if len(p.RoundCaps) == 0 {
 		p.RoundCaps = cfg.RoundCaps
 	}
