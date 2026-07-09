@@ -199,7 +199,11 @@
 // run dir — a duplicate invocation from two terminals, or a re-entrant loom
 // caller — fails FAST with a named "already running" error rather than
 // blocking until the first call finishes or, worse, silently interleaving
-// rounds into the same state.json and artifact paths. The lock is an OS
+// rounds into the same state.json and artifact paths. That refusal wraps the
+// ErrBlockBusy sentinel so a loop owner can errors.Is-match it and skip its
+// block-exit bookkeeping — the losing call touched nothing on disk, and e.g.
+// perchcli's weft sync must not commit the winner's in-flight state under
+// the loser's name. The lock is an OS
 // advisory lock, released automatically if the holding process dies, so a
 // crashed run never bricks the run dir for a later resume.
 //
