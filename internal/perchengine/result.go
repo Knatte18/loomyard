@@ -56,12 +56,20 @@ type RoundSummary struct {
 	Verdict       burlerengine.Verdict
 	BlockingCount int
 	// ReviewPath and FixerReportPath are always set for a completed round;
-	// JudgePath and GatePath are set only when the judge or the command
-	// gate actually ran that round.
+	// JudgePath, GatePath, and TriagePath are set only when the judge, the
+	// command gate, or asking-triage actually ran that round.
 	ReviewPath      string
 	FixerReportPath string
 	JudgePath       string
 	GatePath        string
+	// TriagePath is set when this round's burler attempt(s) included an
+	// asking-triage call (an attempt stopped mid-round asking a question);
+	// empty otherwise. There is no TriageVerdict field alongside it — a
+	// GIVE_UP triage verdict never reaches this record at all, since it
+	// surfaces as a hard ERROR from Engine.Run before any round record is
+	// appended (see doc.go's non-done-outcomes section), so a persisted
+	// TriagePath always implies the triage verdict was RETRY.
+	TriagePath string
 	// JudgeVerdict is the raw progress-judge verdict string (one of the
 	// circling-check or milestone-gate vocabularies) when the judge ran
 	// this round, empty otherwise.

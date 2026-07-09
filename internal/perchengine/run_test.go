@@ -997,16 +997,23 @@ func TestRun_NonDoneOutcomes(t *testing.T) {
 		// The attempt-1 triage call's path must survive into the round's
 		// persisted state.json record — the round itself reaches done only
 		// on attempt 2, so TriagePath is not something the done attempt
-		// produces on its own.
+		// produces on its own. It must also be mirrored onto the returned
+		// Result's RoundSummary (not just state.json): a caller holding only
+		// the in-process Result should not need to re-parse state.json to
+		// learn a round triaged.
+		if got.Rounds[0].TriagePath == "" {
+			t.Error("Rounds[0].TriagePath is empty; want the attempt-1 triage verdict path mirrored onto the Result")
+		}
+		if got.Rounds[0].TriagePath != qs.specs[0].OutputFiles[0] {
+			t.Errorf("Rounds[0].TriagePath = %q; want %q (the triage spec's verdict path)", got.Rounds[0].TriagePath, qs.specs[0].OutputFiles[0])
+		}
+
 		persisted := readRunState(t, runDir)
 		if len(persisted.Rounds) != 1 {
 			t.Fatalf("persisted Rounds = %+v; want exactly 1", persisted.Rounds)
 		}
-		if persisted.Rounds[0].TriagePath == "" {
-			t.Error("persisted Rounds[0].TriagePath is empty; want the attempt-1 triage verdict path recorded")
-		}
-		if persisted.Rounds[0].TriagePath != qs.specs[0].OutputFiles[0] {
-			t.Errorf("persisted Rounds[0].TriagePath = %q; want %q (the triage spec's verdict path)", persisted.Rounds[0].TriagePath, qs.specs[0].OutputFiles[0])
+		if persisted.Rounds[0].TriagePath != got.Rounds[0].TriagePath {
+			t.Errorf("persisted Rounds[0].TriagePath = %q; want it to match the Result's %q", persisted.Rounds[0].TriagePath, got.Rounds[0].TriagePath)
 		}
 	})
 

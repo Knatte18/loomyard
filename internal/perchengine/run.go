@@ -458,6 +458,7 @@ func resultFromState(st runState, outcome Outcome, stuckReason StuckReason) Resu
 			FixerReportPath: r.FixerReportPath,
 			JudgePath:       r.JudgePath,
 			GatePath:        r.GatePath,
+			TriagePath:      r.TriagePath,
 			JudgeVerdict:    r.JudgeVerdict,
 			GatePassed:      r.GatePassed,
 		})
