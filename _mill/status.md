@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: rename-other-to-linux
 branch: rename-other-to-linux
 plan: _mill/plan
@@ -24,6 +24,7 @@ approved-linux-suffix-rename  '2026-07-09T17:33:30Z'
 holistic-reviewing  '2026-07-09T17:34:07Z'
 holistic-approved  '2026-07-09T17:35:44Z'
 done  '2026-07-09T17:36:14Z'
+pr-pending  '2026-07-09T17:37:06Z'
 ```
 
 ## Batches
