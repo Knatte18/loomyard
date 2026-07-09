@@ -93,14 +93,31 @@ Linux-validated binary.
   worktree-busy" guarantees that `Down`/boot depend on — a landmine, not a
   seam. `/proc` parenthood is deterministic and unit-testable from fixtures
   without a Linux box, so the logic can ship now honestly.
-- **Semantics:** Use the `/proc/<pid>/stat` **PPID chain** (field 4) to compute
-  the descendant closure — the direct analog of the WMI parent-walk, preserving
-  current Windows semantics. Rejected: grouping by session/process-group id
-  (`Setsid` gives each detached child a new session) — more robust to
-  re-parenting but diverges from the established WMI subtree semantics.
+- **`descendantClosurePIDs` semantics:** Use the `/proc/<pid>/stat` **PPID
+  chain** (field 4) to compute the descendant closure — the direct analog of the
+  WMI parent-walk, preserving current Windows semantics. Rejected: grouping by
+  session/process-group id (`Setsid` gives each detached child a new session) —
+  more robust to re-parenting but diverges from the established WMI subtree
+  semantics.
+- **`serverProcessesOnSocket` semantics (Linux):** The Windows rationale — every
+  psmux CLI probe exits 0/1 identically, so the OS process table is the *only*
+  trustworthy liveness signal — does **not** hold for tmux, whose
+  `has-session`/`list-sessions` honestly return non-zero when no server runs, and
+  the hardcoded `"psmux.exe"`/`__warm__` names have no tmux analog. So on Linux:
+  (a) use tmux's **real CLI absence signal** (non-zero `has-session` exit) for
+  liveness, and (b) scan `/proc/*/cmdline` for processes whose argv contains the
+  configured tmux binary **and** the `-L <socket>` token *only* to satisfy the
+  "no stray process / worktree-busy" guarantee — replacing the hardcoded
+  `psmux.exe`/`__warm__` match. The `/proc/cmdline` scan is the stray-process
+  backstop; the CLI signal is authoritative for liveness where tmux provides it.
+  This split is the platform seam's Linux side (`_linux.go`); Windows keeps the
+  WMI process-table hunt unchanged.
 - **Rejected:** (a) leaving the silent-`nil` degrade as a pure audit note —
   leaves the landmine; (b) a typed "not-implemented on Linux" stub — makes the
-  gap loud but ships no working logic when the logic is cheap and testable.
+  gap loud but ships no working logic when the logic is cheap and testable;
+  (c) a literal `/proc/*/cmdline`-only scan that ignores tmux's honest CLI
+  absence signal — uniform with Windows but redundant when tmux reports absence
+  directly.
 
 ### shell-abstraction — new `internal/shell` leaf
 
@@ -122,6 +139,16 @@ Linux-validated binary.
   `--session-id`, `--settings`, prompt-file handling) stays inside
   `claudeengine`, honoring the **Shuttle Provider-Seam Invariant**. `shell`
   provides only shell *mechanics* (quoting, chaining, file-read idiom).
+- **Shell-family selection assumption:** the shell family (pwsh vs posix) is
+  chosen by `runtime.GOOS`, but the pane's actual shell is the configured
+  `cfg.Pwsh` binary (env-overridable via `LYX_MUX_PWSH`). This task assumes
+  **GOOS determines the shell family and the configured pane-shell binary matches
+  that family** — a deliberate cross-family override (e.g. pointing
+  `LYX_MUX_PWSH` at pwsh on Linux) would make `internal/shell` emit posix syntax
+  into a pwsh pane and is **unsupported / out of scope**. Record this as a
+  documented constraint; keying the selector off the configured binary's family
+  (basename detection) is the more-robust alternative the plan may adopt if it is
+  cheap, but the GOOS default is the baseline.
 - **Rejected:** (a) bare `runtime.GOOS` branches inline in `claudeengine` —
   duplicated builder paths, weaker seam; (b) staying pwsh-only — contradicts the
   brief.
@@ -143,31 +170,53 @@ Linux-validated binary.
 - **Decision:** Add a non-Windows branch to `warpengine/launchers.go`'s
   `writeLaunchers` that generates `ide.sh`, `warp-checkout.sh`, and `ide-menu.sh`
   (shebang `#!/usr/bin/env bash`, body `cd "$(dirname "$0")/<climb>" && lyx …`,
-  `chmod 0755`, LF line endings, forward-slash paths). Make the launcher-filename
-  extension GOOS-aware in `internal/hubgeometry` (the `MenuLauncherPath()` at
-  `hubgeometry.go:309` hardcodes `ide-menu.cmd`).
+  `chmod 0755`, LF line endings, forward-slash paths). Make the *menu*
+  launcher-filename extension GOOS-aware in `internal/hubgeometry` (the
+  `MenuLauncherPath()` at `hubgeometry.go:309` hardcodes `ide-menu.cmd`); the
+  `ide`/`warp-checkout` extensions stay in `warpengine` (see the geometry note
+  below).
+- **Testability seam:** `writeLaunchers` branches on `runtime.GOOS` inline, so
+  its Linux branch cannot be exercised by TDD on a Windows dev/CI box as-is.
+  Extract a **pure, GOOS-parameterized content builder** (takes the target OS +
+  climb path, returns the launcher-file bytes) that both branches call, so both
+  the `.cmd` and `.sh` outputs are fixture-testable regardless of host OS. The
+  thin `runtime.GOOS`-selecting + file-writing wrapper stays untested-by-unit.
 - **Rationale:** Launchers are wanted on Linux; the current early-return no-op
   leaves the worktree without them.
 - **Rejected:** deferring launchers — audit-only leaves a functional gap the
   brief explicitly names.
-- **Geometry-invariant note:** the launcher tokens (`_launchers`, etc.) and
-  filename must remain owned by `internal/hubgeometry` per the **Hub Geometry
-  Invariant** — the GOOS-aware extension logic lives there, not in `warpengine`.
+- **Geometry-invariant note (scoped):** only the **menu launcher** filename
+  lives in `internal/hubgeometry` (`MenuLauncherPath()` at `hubgeometry.go:309`,
+  hardcoded `ide-menu.cmd`), so *its* GOOS-aware extension logic moves into
+  `hubgeometry` per the **Hub Geometry Invariant**. The other two launcher
+  filenames (`ide.cmd`, `warp-checkout.cmd`) are built inside
+  `warpengine/launchers.go` and are **not** geometry tokens — their `.cmd`/`.sh`
+  extension logic stays in `warpengine`. Do not over-migrate them into
+  `hubgeometry`.
 
 ### config-defaults-and-version-pin
 
-- **Decision:** Make the `muxengine` (and shuttle, where it ships pwsh) template
-  defaults GOOS-aware: Windows keeps `…/psmux.exe` / `…/pwsh.exe`; Linux defaults
-  to `tmux` / `bash` (PATH-resolved). Env overrides (`LYX_MUX_PSMUX`,
-  `LYX_MUX_PWSH`, …) still win. Add a **pinned multiplexer min-version constant**
-  enforced by the capability probe (below). The pin applies to the **multiplexer
-  only** (psmux/tmux) — pwsh/bash are not version-pinned.
+- **Decision:** Make the `muxengine` template defaults GOOS-aware: Windows keeps
+  `…/psmux.exe` / `…/pwsh.exe`; Linux defaults to `tmux` / `bash` (PATH-resolved).
+  Env overrides (`LYX_MUX_PSMUX`, `LYX_MUX_PWSH`, …) still win. (Only
+  `internal/muxengine/template.yaml` ships the `psmux`/`pwsh` keys;
+  `internal/shuttleengine/template.yaml` ships `claude` and has no pwsh/psmux
+  binary of its own — the pwsh binary is muxengine's `cfg.Pwsh`.)
+- **Version pin — per-binary, GOOS-selected:** psmux and tmux are distinct
+  binaries with independent `-V` output and version numbering, so a single min
+  constant cannot compare against both. Ship **two pinned min-version constants**
+  — one for psmux, one for tmux — each with its own `-V` parse (psmux's `-V`
+  shape vs. tmux's `tmux X.Y`), selected by `runtime.GOOS` at probe time. The pin
+  applies to the **multiplexer only** — pwsh/bash are not version-pinned.
 - **Rationale:** The binary swap is genuinely config-driven (`Config.Psmux`,
   `Config.Pwsh` are both `yaml`-backed string paths), so a Linux default + a
-  version floor is the whole "config-swap plumbing" deliverable. Pinning catches
-  version-drift that would break the tuned edge-case assumptions.
+  per-binary version floor is the whole "config-swap plumbing" deliverable.
+  Pinning catches version-drift that would break the tuned edge-case assumptions.
 - **Rejected:** single Windows-defaulted template relying on env overrides (worse
-  out-of-box Linux UX); no version pin (loses the drift canary).
+  out-of-box Linux UX); one generic min constant across both binaries
+  (meaningless across two `-V` schemes); dropping the numeric pin entirely
+  (loses the drift canary); pinning only psmux now (leaves tmux drift uncaught
+  when the swap lands).
 
 ### mux-contract-test — Go integration test
 
@@ -193,10 +242,12 @@ Linux-validated binary.
 ### capability-probe — fail loud at server-ensure
 
 - **Decision:** A probe run at server-ensure / `mux up` time (once per server
-  boot) that queries `<binary> -V` (version) and verifies the required
-  subcommands and `#{pane_*}` format vars are supported; on a missing surface or
-  a version below the pin it returns a **typed error** through the
-  `internal/output` envelope (`output.Err`), failing loud rather than
+  boot) that queries `<binary> -V` (version), parses it with the
+  **GOOS-selected per-binary `-V` parser** (psmux vs tmux shape) and compares
+  against that binary's pinned min (see config-defaults decision), and verifies
+  the required subcommands and `#{pane_*}` format vars are supported; on a
+  missing surface or a version below the pin it returns a **typed error** through
+  the `internal/output` envelope (`output.Err`), failing loud rather than
   half-working.
 - **Rationale:** The brief wants "fail loud on an unknown multiplexer surface."
   Boot-time is the earliest honest failure point.
@@ -339,14 +390,23 @@ Per-module approach (TDD candidates named; assertion shapes left to mill-plan):
   fixtures (including edge cases: missing pid mid-walk, a pid re-parented to 1,
   a cycle-guard, the target pid itself) and drive the descendant-set logic. The
   thin `/proc` filesystem-read layer is kept minimal behind the pure function.
+- **`serverProcessesOnSocket` `/proc/*/cmdline` scan (`muxengine`, TDD):** the
+  pure matcher — given a set of `(pid, argv)` pairs, return the pids whose argv
+  contains both the tmux binary and the `-L <socket>` token — is fixture-driven
+  (matches, near-misses like a different socket, the binary-without-`-L` case).
+  The tmux CLI-absence liveness path is exercised by the integration/contract
+  test, not the unit test.
 - **`internal/shell` quoting/chaining (TDD):** both the pwsh impl (single-quote
   doubling, `& <bin>`, `Get-Content -Raw`) and the posix impl (single-quote
   escaping, direct exec / `$(cat …)`), plus path-shape handling — pure string
   transforms, fixture-driven, no OS calls.
-- **`.sh` launcher generation (`warpengine`, TDD):** assert generated shebang,
-  body, `cd` path (forward slashes), mode bits, and LF endings for the Linux
-  branch; keep the existing `.cmd` tests green. Cross-check the GOOS-aware
-  filename against `hubgeometry`.
+- **`.sh` launcher generation (`warpengine`, TDD):** drive the **pure,
+  GOOS-parameterized content builder** (target OS + climb → bytes) so both the
+  `.cmd` and `.sh` outputs are asserted on a Windows box — shebang, body, `cd`
+  path (forward slashes for `.sh`), mode bits, and line endings (LF for `.sh`,
+  CRLF for `.cmd`); keep the existing `.cmd` tests green. Cross-check the
+  GOOS-aware **menu** filename against `hubgeometry` (only the menu launcher's
+  extension lives there).
 - **Capability probe (unit, faked):** unit-test the surface check with a fake
   multiplexer responder — version below pin → typed error; missing subcommand /
   format var → typed error; healthy → ok. No live binary in the unit test.
@@ -395,3 +455,15 @@ Per-module approach (TDD candidates named; assertion shapes left to mill-plan):
 - **Q:** Testing strategy? **A:** TDD the pure logic (`/proc` closure, shell
   quoting, `.sh` generation), fake-unit-test the probe, integration-test the live
   multiplexer, add a `GOOS=linux go build` cross-compile CI gate.
+- **Q:** [review r1 gap] How does the Linux `serverProcessesOnSocket` discover
+  server processes on a `-L` socket, given tmux (unlike psmux) reports absence
+  honestly and has no `psmux.exe`/`__warm__` analog? **A:** Use tmux's real CLI
+  absence signal (non-zero `has-session`) for liveness, plus a `/proc/*/cmdline`
+  scan (argv contains tmux binary + `-L <socket>`) only for the stray-process /
+  worktree-busy guarantee. Not a literal WMI-style scan (redundant vs tmux's
+  honest signal), not deferred.
+- **Q:** [review r1 gap] One version pin can't compare psmux and tmux (different
+  `-V` schemes) — how to pin? **A:** Two per-binary pinned min-version constants,
+  each with its own `-V` parser, GOOS-selected at probe time. Not a single
+  generic constant, not capability-only (keep the numeric floor), not
+  psmux-only.
