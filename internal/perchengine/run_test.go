@@ -1094,6 +1094,61 @@ func TestRun_Resume(t *testing.T) {
 		}
 	})
 
+	t.Run("a perch.yaml default change neither invalidates resume nor alters the stamped ladder", func(t *testing.T) {
+		layout := newTestLayout(t)
+		runDir := filepath.Join(t.TempDir(), "run")
+
+		// The profile leaves RoundCaps unset, so the block's ladder comes
+		// from the engine Config — and its identity hash must NOT cover that
+		// resolved value: the operator never edited the profile.
+		p := testProfile(GateLLMVerdict, nil, nil)
+
+		calls := 0
+		pauseAfterOne := func() bool {
+			calls++
+			return calls > 1
+		}
+		fb1 := &fakeBurler{}
+		fb1.queue = []struct {
+			result burlerengine.Result
+			err    error
+		}{
+			{result: burlerengine.Result{Outcome: shuttleengine.OutcomeDone, Verdict: burlerengine.VerdictBlocking, Findings: oneBlockingFinding(), SessionID: "s1"}},
+		}
+		e1 := New(fb1, &queuedShuttle{}, Config{RoundCaps: []int{2}}, layout, Options{PauseRequested: pauseAfterOne})
+		first, err := e1.Run(p, runDir)
+		if err != nil {
+			t.Fatalf("first Run() error = %v; want nil", err)
+		}
+		if first.Outcome != OutcomePaused {
+			t.Fatalf("first Run() Outcome = %q; want %q", first.Outcome, OutcomePaused)
+		}
+
+		// Resume under a CHANGED perch.yaml default. The resume must be
+		// accepted (identity covers the as-supplied profile only) and the
+		// block must still stop at the STAMPED hard cap of 2 — not run on
+		// to the new default of 5.
+		p2 := testProfile(GateLLMVerdict, nil, nil)
+		fb2 := &fakeBurler{}
+		fb2.queue = []struct {
+			result burlerengine.Result
+			err    error
+		}{
+			{result: burlerengine.Result{Outcome: shuttleengine.OutcomeDone, Verdict: burlerengine.VerdictBlocking, Findings: oneBlockingFinding(), SessionID: "s2"}},
+		}
+		e2 := New(fb2, &queuedShuttle{}, Config{RoundCaps: []int{5}}, layout, Options{})
+		second, err := e2.Run(p2, runDir)
+		if err != nil {
+			t.Fatalf("second Run() error = %v; want nil — a config default change must not invalidate resume", err)
+		}
+		if second.Outcome != OutcomeStuck || second.StuckReason != StuckHardCap {
+			t.Fatalf("second Run() = (%q, %q); want (%q, %q) at the STAMPED hard cap of 2", second.Outcome, second.StuckReason, OutcomeStuck, StuckHardCap)
+		}
+		if second.RoundsRun != 2 {
+			t.Fatalf("second Run() RoundsRun = %d; want 2 (the stamped ladder, not the new config default)", second.RoundsRun)
+		}
+	})
+
 	t.Run("a terminal state refuses to resume", func(t *testing.T) {
 		layout := newTestLayout(t)
 		runDir := filepath.Join(t.TempDir(), "run")

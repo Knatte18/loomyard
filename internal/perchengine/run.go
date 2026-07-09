@@ -41,17 +41,21 @@ type roundOutcome struct {
 // "perch: "-prefixed; the returned Result mirrors the persisted state's
 // rounds as RoundSummary values.
 func (e *Engine) Run(p Profile, runDir string) (Result, error) {
+	// Identity is the profile AS SUPPLIED by the caller, hashed before
+	// default resolution mutates it: a perch.yaml default change (judge
+	// model, cap ladder) must never silently change — or invalidate the
+	// resume of — a block whose profile file the operator never touched.
+	hash, err := ProfileHash(p)
+	if err != nil {
+		return Result{}, err
+	}
+
 	if err := p.validate(e.cfg); err != nil {
 		return Result{}, err
 	}
 
 	if err := os.MkdirAll(runDir, 0o755); err != nil {
 		return Result{}, fmt.Errorf("perch: create run dir %q: %w", runDir, err)
-	}
-
-	hash, err := ProfileHash(p)
-	if err != nil {
-		return Result{}, err
 	}
 
 	// A resumed block must never instantly re-pause on a flag left over
@@ -77,10 +81,15 @@ func (e *Engine) Run(p Profile, runDir string) (Result, error) {
 		runCommand = execGateCommand
 	}
 
-	// p.validate has already resolved RoundCaps to a non-empty, strictly
-	// increasing ladder; its last entry is the hard cap every block is
-	// unconditionally bounded by.
-	caps := p.RoundCaps
+	// The ladder that governs this block is the one STAMPED into state.json
+	// at block creation (a fresh block stamps p's just-resolved RoundCaps, so
+	// the two agree there) — a resumed block re-applies the ladder it
+	// actually started with even if perch.yaml's default changed in between,
+	// which the identity hash above deliberately does not cover.
+	caps := st.RoundCaps
+	if len(caps) == 0 {
+		return Result{}, fmt.Errorf("perch: state.json in %q records no round-caps ladder; the state file is corrupt", runDir)
+	}
 	hardCap := caps[len(caps)-1]
 
 	for round := resume.NextRound; ; round++ {

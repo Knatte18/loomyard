@@ -190,5 +190,9 @@
 // perch.yaml. This is a recurring design rule worth stating once:
 // knowledge of phases and lifecycle collects in loom; the engines beneath
 // it (perch, burler) stay phase-agnostic. Resolution order for every
-// perch-owned tunable is uniformly profile > perch.yaml > built-in default.
+// perch-owned tunable is uniformly profile > perch.yaml > built-in default,
+// applied once at block CREATION: a block's identity hash covers the profile
+// as supplied (not the resolved values), and its resolved round-caps ladder
+// is stamped into state.json, so a later perch.yaml change neither alters
+// nor invalidates the resume of an in-flight block.
 package perchengine

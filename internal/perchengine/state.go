@@ -85,11 +85,13 @@ type resumeInfo struct {
 }
 
 // ProfileHash returns the sha256 hex digest of p's canonical JSON encoding.
-// p must already be default-resolved (i.e. passed through Profile.validate)
-// so that two profiles which differ only in which layer supplied a default
-// still hash identically — the same guarantee holds whether p came from a
-// strict-decoded CLI profile file or a loom-supplied Go struct, since both
-// converge on the same resolved field values before this is called.
+// Engine.Run hashes the profile AS SUPPLIED by the caller — before default
+// resolution — so a block's identity is the caller's own content contract:
+// editing the profile (or changing a CLI tuning flag folded into it) changes
+// the hash and fails a resume loud, while a perch.yaml default change never
+// silently alters or invalidates an in-flight block (its resolved ladder is
+// stamped into state.json instead — see runState.RoundCaps). The same rule
+// holds for a loom-supplied Go struct: identity is what the caller passed in.
 func ProfileHash(p Profile) (string, error) {
 	data, err := json.Marshal(p)
 	if err != nil {
