@@ -68,7 +68,10 @@ Linux-validated binary.
   is the follow-up.
 - **Real `/proc` execution validation** — the `/proc` reaping logic is written
   and unit-tested here against fixtures, but running it against a live Linux
-  process tree is the follow-up.
+  process tree is the follow-up. **Includes confirming** the
+  `serverProcessesOnSocket` `/proc/*/cmdline` match shape holds against a real
+  tmux server (which may rewrite its title to `tmux: server` and drop the `-L`
+  token from argv).
 - **Non-Claude engines** — the shell abstraction is provider-invariant by
   design, but no second engine is built here.
 - **muxpoc / muxpoccli** — POC code, already seamed (`spawnattach_{windows,linux}.go`);
@@ -99,6 +102,13 @@ Linux-validated binary.
   session/process-group id (`Setsid` gives each detached child a new session) —
   more robust to re-parenting but diverges from the established WMI subtree
   semantics.
+- **`/proc/<pid>/stat` parsing pitfall (must-handle):** field 2 (`comm`) is
+  wrapped in parentheses and **may itself contain spaces and parentheses**
+  (e.g. `(a) b`), so a naive whitespace split reads the wrong PPID and silently
+  corrupts the closure — the exact "no stray process" guarantee at stake. Parse
+  PPID by taking everything **after the last `)`** in the line, then splitting on
+  whitespace (PPID is the 2nd field of that remainder). A fixture with a
+  space-and-paren `comm` is mandatory.
 - **`serverProcessesOnSocket` semantics (Linux):** The Windows rationale — every
   psmux CLI probe exits 0/1 identically, so the OS process table is the *only*
   trustworthy liveness signal — does **not** hold for tmux, whose
@@ -112,6 +122,14 @@ Linux-validated binary.
   backstop; the CLI signal is authoritative for liveness where tmux provides it.
   This split is the platform seam's Linux side (`_linux.go`); Windows keeps the
   WMI process-table hunt unchanged.
+  - **Assumption to confirm in the follow-up:** the `/proc/*/cmdline` match
+    assumes the tmux server process **retains `-L <socket>` in its argv**. Real
+    tmux often rewrites its process title (e.g. to `tmux: server`) and may not
+    keep the `-L` token, so the stray-process backstop could miss the real
+    server. This is a deferred real-Linux validation item; **liveness does not
+    depend on it** (the CLI absence signal is authoritative) — the backstop is a
+    belt-and-suspenders guarantee whose match shape must be verified against a
+    live tmux before it is trusted.
 - **Rejected:** (a) leaving the silent-`nil` degrade as a pure audit note —
   leaves the landmine; (b) a typed "not-implemented on Linux" stub — makes the
   gap loud but ships no working logic when the logic is cheap and testable;
@@ -128,9 +146,20 @@ Linux-validated binary.
   building (the pwsh call-operator `& <bin>` + `Get-Content -Raw <file>` idiom
   vs. the posix `<bin> "$(cat <file>)"` / direct-exec form), and any
   path-shape conversion. `internal/shuttleengine/claudeengine/command.go` builds
-  its launch/resume commands through `internal/shell`; the git-bash path
-  conversion in `internal/shuttleengine/posix.go` folds into the posix shell
-  (a no-op where paths are already POSIX).
+  its launch/resume commands through `internal/shell`.
+- **Two distinct shell axes — do not conflate them:** (1) the **pane-shell
+  family** (what claudeengine builds and types into the pane) is GOOS-keyed —
+  pwsh on Windows, posix/bash on Linux; this is what `internal/shell` selects.
+  (2) The **hook interpreter** is a *separate* axis: Claude Code runs the
+  `settings.json` hook commands under **git-bash on Windows** (POSIX) and under
+  native `sh` on Linux — so the git-bash path conversion (`PosixPath`,
+  `shuttleengine/posix.go`, called from `claudeengine.Prepare` at
+  `claudeengine.go:97`) must stay **active on Windows** (`C:\ → /c/`) *even
+  though the pane shell is pwsh*, and becomes a no-op on Linux (paths already
+  POSIX). It is therefore **not** folded into the GOOS-selected posix pane-shell
+  impl (that impl is unreachable on Windows and would regress the hook path). It
+  stays in the hook-generation path, GOOS-seamed independently of the pane-shell
+  family. `internal/shell` owns pane-shell mechanics only.
 - **Rationale:** The brief explicitly calls for "the pwsh/shell abstraction," and
   a real abstraction (not inline `GOOS` branches) removes the duplication and is
   the seam a future non-Claude engine would also use.
@@ -319,7 +348,10 @@ Key files and findings from the audit (for mill-plan):
 - **`internal/shuttleengine/posix.go`** — `PosixPath` (`:22-37`) converts
   `C:\a b\c` → `/c/a b/c` for git-bash hook commands; **Windows-input-only**
   (rejects non-drive-rooted paths). Consumer: `claudeengine.go:97` (`Prepare`).
-  This folds into the posix shell impl.
+  This is the **hook-interpreter** axis (git-bash on Windows), NOT the pane-shell
+  family — it stays Windows-active and GOOS-seamed independently; do not fold it
+  into `internal/shell`'s posix pane-shell impl (see the shell-abstraction
+  decision's "two shell axes" note).
 - **`internal/clihelp/exec.go`** — despite the name, **no exec code**; it is
   cobra exit-state plumbing. Nothing to port.
 - **`internal/warpengine/launchers.go`** — `writeLaunchers` (`:31`) early-returns
@@ -388,8 +420,10 @@ Per-module approach (TDD candidates named; assertion shapes left to mill-plan):
 - **`/proc` descendant-closure (`muxengine`, TDD):** the pure closure computation
   over a PID→PPID map is the primary TDD candidate — author `/proc/<pid>/stat`
   fixtures (including edge cases: missing pid mid-walk, a pid re-parented to 1,
-  a cycle-guard, the target pid itself) and drive the descendant-set logic. The
-  thin `/proc` filesystem-read layer is kept minimal behind the pure function.
+  a cycle-guard, the target pid itself, **and a `comm` containing spaces and
+  parens like `(a) b`** to prove PPID is parsed from after the last `)`) and
+  drive the descendant-set logic. The thin `/proc` filesystem-read layer is kept
+  minimal behind the pure function.
 - **`serverProcessesOnSocket` `/proc/*/cmdline` scan (`muxengine`, TDD):** the
   pure matcher — given a set of `(pid, argv)` pairs, return the pids whose argv
   contains both the tmux binary and the `-L <socket>` token — is fixture-driven
@@ -467,3 +501,12 @@ Per-module approach (TDD candidates named; assertion shapes left to mill-plan):
   each with its own `-V` parser, GOOS-selected at probe time. Not a single
   generic constant, not capability-only (keep the numeric floor), not
   psmux-only.
+- **Q:** [review r2 gap] Where does the Windows-active git-bash hook-path
+  conversion (`PosixPath`) live once `internal/shell` is GOOS-selected — folding
+  it into the posix pane-shell impl makes it unreachable on Windows (pane shell =
+  pwsh) and regresses the hook path. **A:** Treat pane-shell family and hook
+  interpreter as two separate axes. `internal/shell` owns pane-shell mechanics
+  only (GOOS pwsh/posix); the hook-path conversion stays in the hook-generation
+  path (`claudeengine.Prepare`), GOOS-seamed independently — Windows-active
+  (git-bash), Linux no-op. Not a unified "hook shell" type inside
+  `internal/shell`.
