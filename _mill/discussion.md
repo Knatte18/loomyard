@@ -156,12 +156,26 @@ Linux-validated binary.
   `runtime.GOOS`. It owns: argument quoting (`pwshSingleQuote` becomes the pwsh
   impl; a posix single-quote-escaping variant is the other), command-chain
   building (the pwsh call-operator `& <bin>` + `Get-Content -Raw <file>` idiom
-  vs. the **pinned** posix form `<bin> "$(cat <promptPath>)" --session-id … \
-  --settings …` — the command-substitution is **double-quoted** so the whole
-  prompt file becomes a single argument, reproducing pwsh's `Get-Content -Raw`
-  single-argument-prompt semantics with no word-splitting; an unquoted `$(…)` or
-  a direct-exec-with-args variant is rejected because it changes prompt
-  word-splitting), and any path-shape conversion. `internal/shuttleengine/claudeengine/command.go` builds
+  vs. the **pinned** posix form `<bin> "$(cat <promptPath>)"` — the
+  command-substitution is **double-quoted** so the whole prompt file becomes a
+  single argument, reproducing pwsh's `Get-Content -Raw` single-argument-prompt
+  semantics with no word-splitting; an unquoted `$(…)` or a direct-exec-with-args
+  variant is rejected because it changes prompt word-splitting), and any
+  path-shape conversion.
+- **Seam boundary — `internal/shell` builds `bin + prompt-read` only, not the
+  flags:** the pinned forms above are the **mechanics** `internal/shell` produces
+  (`& <bin> (Get-Content -Raw <path>)` / `<bin> "$(cat <path>)"`).
+  `claudeengine` appends **all** `--` flags (`--session-id`, `--settings`,
+  `--resume`, …) itself — those are Claude *content* and stay out of the
+  invariant-bound leaf per the **Shuttle Provider-Seam Invariant**. Do not let the
+  illustrative flag list leak into `internal/shell`.
+- **Benign newline divergence (record, don't over-claim):** `"$(cat <path>)"`
+  strips *all* trailing newlines, whereas `Get-Content -Raw` preserves the file
+  bytes exactly. For prompt text this trailing-newline difference is **benign**
+  (the prompt is whitespace-insensitive at its tail), so the posix form
+  "reproduces" the *single-argument* semantics that matter — it is not a
+  byte-exact reproduction, and the plan should state this rather than imply
+  byte-equality. `internal/shuttleengine/claudeengine/command.go` builds
   its launch/resume commands through `internal/shell`.
 - **Two distinct shell axes — do not conflate them:** (1) the **pane-shell
   family** (what claudeengine builds and types into the pane) is GOOS-keyed —
