@@ -28,6 +28,7 @@ func TestJudgeCirclingTemplate_StatesLoadBearingRules(t *testing.T) {
 	requireContains(t, text, "when in doubt")
 	requireContains(t, text, "## Themes")
 	requireContains(t, text, "EXACTLY ONE")
+	requireQuotedRationaleRule(t, text)
 }
 
 // TestJudgeMilestoneTemplate_StatesLoadBearingRules is the milestone
@@ -42,6 +43,7 @@ func TestJudgeMilestoneTemplate_StatesLoadBearingRules(t *testing.T) {
 	requireContains(t, text, "when in doubt")
 	requireContains(t, text, "## Themes")
 	requireContains(t, text, "EXACTLY ONE")
+	requireQuotedRationaleRule(t, text)
 }
 
 // TestTriageTemplate_StatesLoadBearingRules is the asking-triage template's
@@ -54,6 +56,19 @@ func TestTriageTemplate_StatesLoadBearingRules(t *testing.T) {
 	requireContains(t, text, "GIVE_UP")
 	requireContains(t, text, "restate")
 	requireContains(t, text, "EXACTLY ONE")
+	requireQuotedRationaleRule(t, text)
+}
+
+// requireQuotedRationaleRule asserts a template both SHOWS a double-quoted
+// rationale in its example frontmatter and STATES the quoting rule in prose.
+// This is load-bearing against a live-observed failure: a real judge writing
+// an unquoted rationale containing ": " produces invalid YAML, the strict
+// parser rejects the file, and the genuine verdict is discarded by the
+// fail-safe — so the templates must actively steer agents to quote it.
+func requireQuotedRationaleRule(t *testing.T, text string) {
+	t.Helper()
+	requireContains(t, text, `rationale: "`)
+	requireContains(t, text, "double-quoted, single-line YAML string")
 }
 
 // requireContains fails the test, naming the missing needle, if text does

@@ -48,13 +48,17 @@ Write `{{.verdict_path}}` as `---`-delimited YAML frontmatter over unconstrained
 ```
 ---
 verdict: CONTINUE
-rationale: one-line summary of why, citing concrete round/finding evidence
+rationale: "one-line summary of why, citing concrete round/finding evidence"
 ---
 ```
 
 Frontmatter rules, all strict:
 
 - `verdict` is exactly `CONTINUE`, `STOP`, or `UNCERTAIN` — no other spelling.
+- `rationale` MUST be a double-quoted, single-line YAML string, exactly as in the example
+  above. This is load-bearing: an unquoted rationale containing a colon (`: `) is invalid
+  YAML, the whole verdict file is rejected, and your verdict is DISCARDED as if you never
+  answered. Escape any double quote inside the rationale as `\"`.
 - `rationale` is non-empty and cites the concrete evidence (or absence of it) behind the
   verdict — a `STOP` verdict's rationale must name the specific stall or circularity.
 
