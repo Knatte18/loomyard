@@ -158,6 +158,18 @@ func ConfigFile(baseDir, module string) string {
 	return filepath.Join(ConfigDir(baseDir), module+".yaml")
 }
 
+// PerchRunsDir returns the path to the base directory for perch block run
+// dirs within a baseDir: the parent of every <PerchRunsDir>/<run-id>/
+// directory a perch run writes its round artifacts into. It lives under
+// _lyx so run artifacts are weft-synced via the host _lyx junction, like
+// every other durable lyx state. Per the Hub Geometry Invariant, no other
+// package may construct this path.
+//
+// Returns filepath.Join(baseDir, LyxDirName, "perch").
+func PerchRunsDir(baseDir string) string {
+	return filepath.Join(baseDir, LyxDirName, "perch")
+}
+
 // DotEnv returns the path to the .env file within a baseDir.
 //
 // The .env file provides environment variable overrides for the worktree.
