@@ -130,6 +130,18 @@ Linux-validated binary.
     depend on it** (the CLI absence signal is authoritative) — the backstop is a
     belt-and-suspenders guarantee whose match shape must be verified against a
     live tmux before it is trusted.
+- **Linux confirm-gone rests solely on the `/proc` drain (load-bearing):**
+  `waitProcessExit` (`lifecycle.go:726-729`) returns immediately for a **non-child
+  pid on non-Windows**, so on Linux `ensureServerGoneLocked`'s pid-wait is inert
+  and the entire "server fully gone after `kill-server`" guarantee falls on the
+  `/proc`-polling `waitServerProcessesGone` (which uses `serverProcessesOnSocket`).
+  This means on Linux the `/proc` drain is **not** belt-and-suspenders — it is the
+  **sole** confirm-gone mechanism, so it must be complete *and* its
+  `/proc/*/cmdline` match shape must be correct: if the tmux-argv assumption above
+  is wrong, the drain returns a false "already gone" and confirm-gone passes
+  prematurely. The correctness of that match shape is therefore load-bearing for
+  the Linux reap flow (elevated from the "assumption to confirm" caveat above),
+  and the deferred follow-up must validate it against a live tmux.
 - **Rejected:** (a) leaving the silent-`nil` degrade as a pure audit note —
   leaves the landmine; (b) a typed "not-implemented on Linux" stub — makes the
   gap loud but ships no working logic when the logic is cheap and testable;
@@ -144,8 +156,12 @@ Linux-validated binary.
   `runtime.GOOS`. It owns: argument quoting (`pwshSingleQuote` becomes the pwsh
   impl; a posix single-quote-escaping variant is the other), command-chain
   building (the pwsh call-operator `& <bin>` + `Get-Content -Raw <file>` idiom
-  vs. the posix `<bin> "$(cat <file>)"` / direct-exec form), and any
-  path-shape conversion. `internal/shuttleengine/claudeengine/command.go` builds
+  vs. the **pinned** posix form `<bin> "$(cat <promptPath>)" --session-id … \
+  --settings …` — the command-substitution is **double-quoted** so the whole
+  prompt file becomes a single argument, reproducing pwsh's `Get-Content -Raw`
+  single-argument-prompt semantics with no word-splitting; an unquoted `$(…)` or
+  a direct-exec-with-args variant is rejected because it changes prompt
+  word-splitting), and any path-shape conversion. `internal/shuttleengine/claudeengine/command.go` builds
   its launch/resume commands through `internal/shell`.
 - **Two distinct shell axes — do not conflate them:** (1) the **pane-shell
   family** (what claudeengine builds and types into the pane) is GOOS-keyed —
@@ -271,13 +287,20 @@ Linux-validated binary.
 ### capability-probe — fail loud at server-ensure
 
 - **Decision:** A probe run at server-ensure / `mux up` time (once per server
-  boot) that queries `<binary> -V` (version), parses it with the
-  **GOOS-selected per-binary `-V` parser** (psmux vs tmux shape) and compares
-  against that binary's pinned min (see config-defaults decision), and verifies
-  the required subcommands and `#{pane_*}` format vars are supported; on a
-  missing surface or a version below the pin it returns a **typed error** through
-  the `internal/output` envelope (`output.Err`), failing loud rather than
-  half-working.
+  boot) that performs **two cheap, pane-free checks**: (1) `<binary> -V`
+  (version), parsed with the **GOOS-selected per-binary `-V` parser** (psmux vs
+  tmux shape) and compared against that binary's pinned min (see config-defaults
+  decision); and (2) `<binary> list-commands` to assert the **required
+  subcommand set** is present. On a missing subcommand or a version below the pin
+  it returns a **typed error** through the `internal/output` envelope
+  (`output.Err`), failing loud rather than half-working.
+- **Format-var verification is delegated, not done at boot:** verifying the exact
+  `#{pane_*}` format vars requires a live pane, which is exactly what the
+  `//go:build integration` contract test already spins up. So the boot probe does
+  **not** live-query format vars (that would cost a pane at every boot); the
+  `#{pane_*}` contract is asserted by the contract test (Q5). The boot probe's
+  job is the cheap wrong/old-binary gate; the contract test is the authoritative
+  full-surface check.
 - **Rationale:** The brief wants "fail loud on an unknown multiplexer surface."
   Boot-time is the earliest honest failure point.
 - **Rejected:** lazy first-call probe (later, murkier failure); config/compile-time
@@ -450,9 +473,15 @@ Per-module approach (TDD candidates named; assertion shapes left to mill-plan):
   binary is absent. Runs against psmux now (Windows); against tmux in the
   follow-up.
 - **Seamed-package verification:** confirm `proc`/`fslink`/`vscode` Linux
-  build-tag files compile and their logic is correct by reading + existing tests;
-  add a `GOOS=linux go build ./...` **cross-compile CI gate** as the mechanical
-  proof the whole tree builds for Linux.
+  build-tag files compile and their logic is correct by reading + existing tests.
+- **Cross-compile gate (its in-repo home):** the repo has **no CI workflow,
+  Makefile, or build script** (`.github/`, Makefile all absent) and enforces
+  every invariant via `go test`, so the cross-compile proof must live the same
+  way: a **`go test`** (e.g. `TestCrossCompileLinux`) that shells `GOOS=linux go
+  build -o <os.DevNull> ./...` and fails on a non-zero exit. It skips cleanly
+  (`t.Skip`) when the `go` toolchain is not on `PATH`. This task introduces **no**
+  CI workflow — the test *is* the gate, consistent with the enforcement pattern
+  the other invariants use.
 - **Deferred (follow-up, not here):** running any of the above against a live
   Linux process tree / real tmux / the green sandbox smoke suite.
 
@@ -510,3 +539,9 @@ Per-module approach (TDD candidates named; assertion shapes left to mill-plan):
   path (`claudeengine.Prepare`), GOOS-seamed independently — Windows-active
   (git-bash), Linux no-op. Not a unified "hook shell" type inside
   `internal/shell`.
+- **Q:** [review r3 gap] What does the boot capability probe actually check,
+  given format-var support needs a live pane? **A:** Two cheap pane-free checks —
+  `<binary> -V` (per-binary version pin) + `<binary> list-commands` (required
+  subcommand set); the exact `#{pane_*}` format-var contract is delegated to the
+  `//go:build integration` contract test. Not a version-only probe, not a
+  full live-pane check at every boot.
