@@ -153,6 +153,44 @@ func deriveBlockRunID(profilePath string, fileProfile perchengine.Profile, expli
 	return perchengine.DeriveRunID(profilePath, hash), nil
 }
 
+// resolveRunTarget maps a file-decoded profile and the run-tuning flags onto
+// the concrete block one `perch run` invocation drives: the stable run
+// identity id, its run dir under c.runDirBase, and the profile with the
+// tuning flags overlaid. The load-bearing ordering lives HERE, in one tested
+// function, rather than inlined in runCmd's RunE: the id is derived from
+// fileProfile — the profile exactly as the file decoded it, BEFORE the
+// --model/--effort/--timeout overlay — so the id is stable across tuning-flag
+// changes and a re-run with different flags resolves to the SAME run dir,
+// where the engine's identity check (which covers the overlaid values) refuses
+// it loud instead of silently forking a fresh block. Overlaying before
+// deriving would fold the flags into the id and defeat that; keeping the whole
+// sequence in one function lets a test pin the ordering so a later reorder
+// cannot slip through unnoticed (which an isolated deriveBlockRunID test
+// cannot catch, since it never exercises RunE's call ordering).
+func (c *perchCLI) resolveRunTarget(profilePath, explicitRunID string, fileProfile perchengine.Profile, model, effort string, timeout time.Duration) (id, runDir string, profile perchengine.Profile, err error) {
+	id, err = deriveBlockRunID(profilePath, fileProfile, explicitRunID)
+	if err != nil {
+		return "", "", perchengine.Profile{}, err
+	}
+	runDir = filepath.Join(c.runDirBase, id)
+
+	// Overlay the tuning flags AFTER deriving the id above: they are part of
+	// what the block actually ran (and of its persisted identity hash) but must
+	// not mint a new id. Each flag overrides only when supplied (non-empty /
+	// non-zero), mirroring burlercli's flag semantics.
+	profile = fileProfile
+	if model != "" {
+		profile.Model = model
+	}
+	if effort != "" {
+		profile.Effort = effort
+	}
+	if timeout != 0 {
+		profile.Timeout = timeout
+	}
+	return id, runDir, profile, nil
+}
+
 // runCmd builds the `run` subcommand: validates that --profile was supplied
 // before ever touching c's PersistentPreRunE-populated state (matching
 // burlercli's run.go flag-shape pattern, so the flag error surfaces in its
@@ -267,35 +305,22 @@ pass a fresh --run-id to run the same profile under different tuning.`,
 				return nil
 			}
 
-			profile, err := decodeProfile(data)
+			fileProfile, err := decodeProfile(data)
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
 
-			// The run identity derives from the profile FILE's decoded
-			// content alone — this call sits BEFORE the tuning-flag overlay
-			// below, which is load-bearing (see deriveBlockRunID).
-			id, err := deriveBlockRunID(profilePath, profile, runID)
+			// Map the file-decoded profile and the tuning flags onto this
+			// invocation's concrete block. resolveRunTarget derives the run
+			// identity from the FILE content BEFORE overlaying the tuning
+			// flags — a load-bearing ordering it keeps in one tested place
+			// (see its doc) rather than inlined here, where a later reorder
+			// could silently fold the flags into the derived id.
+			id, runDir, profile, err := c.resolveRunTarget(profilePath, runID, fileProfile, model, effort, timeout)
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
-			}
-			runDir := filepath.Join(c.runDirBase, id)
-
-			// Run-tuning flags override the profile's values only when
-			// supplied (non-zero/non-empty) — burlercli's flag semantics.
-			// They overlay AFTER the id derivation above but BEFORE the
-			// engine call, so they are part of what the block actually ran
-			// (and of its persisted identity hash) without minting a new id.
-			if model != "" {
-				profile.Model = model
-			}
-			if effort != "" {
-				profile.Effort = effort
-			}
-			if timeout != 0 {
-				profile.Timeout = timeout
 			}
 
 			// The engine is constructed per-invocation, never in

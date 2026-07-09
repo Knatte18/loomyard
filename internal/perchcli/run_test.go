@@ -489,3 +489,88 @@ func TestDecodeProfile_EmptyRoundCapsStaysNonNil(t *testing.T) {
 		t.Errorf("decodeProfile(no round-caps).RoundCaps = %v; want nil", absent.RoundCaps)
 	}
 }
+
+// TestResolveRunTarget_DerivesIDBeforeOverlay pins runCmd's load-bearing
+// ordering at the call site RunE actually uses (resolveRunTarget), not just
+// the isolated deriveBlockRunID helper: the run id — and thus the run dir —
+// derives from the FILE-decoded profile BEFORE the tuning flags overlay, so
+// two invocations of the same profile file with DIFFERENT
+// --model/--effort/--timeout resolve to the SAME id and run dir. That
+// stability is what makes the engine's identity check refuse a re-run with
+// changed flags instead of silently forking a fresh block. A reorder that
+// overlaid the flags before deriving the id would make the id depend on
+// --model and diverge here — the exact regression an isolated helper test
+// (TestDeriveBlockRunID_StableAcrossTuningOverlay) cannot catch, because it
+// never exercises resolveRunTarget's ordering.
+func TestResolveRunTarget_DerivesIDBeforeOverlay(t *testing.T) {
+	fileProfile, err := decodeProfile([]byte(`
+target:
+  instructions: "diff against main"
+fasit:
+  instructions: "the discussion"
+rubric: "BLOCKING: x."
+fix-scope: overlay
+gate:
+  mode: llm-verdict
+`))
+	if err != nil {
+		t.Fatalf("decodeProfile() unexpected error: %v", err)
+	}
+
+	c := &perchCLI{runDirBase: t.TempDir()}
+
+	// First invocation: no tuning flags.
+	idPlain, dirPlain, profPlain, err := c.resolveRunTarget("profiles/p.yaml", "", fileProfile, "", "", 0)
+	if err != nil {
+		t.Fatalf("resolveRunTarget(plain) unexpected error: %v", err)
+	}
+
+	// Second invocation: the SAME profile file, different tuning flags. Because
+	// the id derives from the pre-overlay file content, both id and run dir must
+	// be identical — a reorder deriving from the overlaid profile would make
+	// idTuned depend on --model and diverge from idPlain.
+	idTuned, dirTuned, profTuned, err := c.resolveRunTarget("profiles/p.yaml", "", fileProfile, "sonnet", "high", 5*time.Minute)
+	if err != nil {
+		t.Fatalf("resolveRunTarget(tuned) unexpected error: %v", err)
+	}
+	if idTuned != idPlain {
+		t.Errorf("resolveRunTarget id = %q with tuning, %q without; want identical (id must ignore the tuning overlay)", idTuned, idPlain)
+	}
+	if dirTuned != dirPlain {
+		t.Errorf("resolveRunTarget runDir = %q with tuning, %q without; want identical", dirTuned, dirPlain)
+	}
+	if !strings.HasPrefix(dirTuned, c.runDirBase) {
+		t.Errorf("resolveRunTarget runDir = %q; want it under runDirBase %q", dirTuned, c.runDirBase)
+	}
+
+	// The overlay DID land on the returned profile (so the block runs with the
+	// flags), and it changed the engine identity hash — which is what makes a
+	// resume with different flags fail loud rather than fork.
+	if profTuned.Model != "sonnet" || profTuned.Effort != "high" || profTuned.Timeout != 5*time.Minute {
+		t.Errorf("resolveRunTarget profile = {Model:%q Effort:%q Timeout:%s}; want the tuning overlay applied", profTuned.Model, profTuned.Effort, profTuned.Timeout)
+	}
+	if profPlain.Model != "" || profPlain.Effort != "" || profPlain.Timeout != 0 {
+		t.Errorf("resolveRunTarget(plain) profile = {Model:%q Effort:%q Timeout:%s}; want no overlay", profPlain.Model, profPlain.Effort, profPlain.Timeout)
+	}
+
+	plainHash, err := perchengine.ProfileHash(profPlain)
+	if err != nil {
+		t.Fatalf("ProfileHash(plain) unexpected error: %v", err)
+	}
+	tunedHash, err := perchengine.ProfileHash(profTuned)
+	if err != nil {
+		t.Fatalf("ProfileHash(tuned) unexpected error: %v", err)
+	}
+	if plainHash == tunedHash {
+		t.Error("ProfileHash(plain) == ProfileHash(tuned); want the tuning overlay to change the engine identity hash")
+	}
+
+	// An explicit --run-id still wins, untouched by the overlay.
+	idExplicit, _, _, err := c.resolveRunTarget("profiles/p.yaml", "my-explicit-id", fileProfile, "sonnet", "", 0)
+	if err != nil {
+		t.Fatalf("resolveRunTarget(explicit) unexpected error: %v", err)
+	}
+	if idExplicit != "my-explicit-id" {
+		t.Errorf("resolveRunTarget(explicit) id = %q; want %q", idExplicit, "my-explicit-id")
+	}
+}
