@@ -1,5 +1,5 @@
-<!-- This is the per-round circling-check judge prompt. It is filled by a small
-     local fill helper around internal/stencil (judge.go's composeJudgePrompt)
+<!-- This is the per-round circling-check judge prompt. It is filled via
+     internal/stencil.Fill (judge.go's runJudgeCall, reached from runCircling)
      and handed to the shuttle as the agent's entire instruction set — the
      call runs as a single clean-room agent told only "read this file and do
      exactly what it says". Every marker below is a top-level {{.X}}

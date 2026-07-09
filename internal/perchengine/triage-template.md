@@ -1,6 +1,6 @@
-<!-- This is the asking-triage prompt. It is filled by a small local fill
-     helper around internal/stencil (judge.go's composeJudgePrompt) and
-     handed to the shuttle as the agent's entire instruction set — the call
+<!-- This is the asking-triage prompt. It is filled via internal/stencil.Fill
+     (judge.go's runTriage) and handed to the shuttle as the agent's entire
+     instruction set — the call
      runs as a single clean-room agent told only "read this file and do
      exactly what it says". Every marker below is a top-level {{.X}}
      substitution; stencil.Fill requires all three non-empty and there are no
