@@ -1434,6 +1434,60 @@ func TestRun_Resume(t *testing.T) {
 			t.Errorf("fb2 called %d times; want 0 (a past-cap resume must not spawn a burler round beyond the ladder)", len(fb2.calls))
 		}
 	})
+
+	t.Run("a past-cap resume finalizes STUCK even with a pending pause request, and clears the flag", func(t *testing.T) {
+		layout := newTestLayout(t)
+		runDir := filepath.Join(t.TempDir(), "run")
+		p := testProfile(GateCommand, []string{"nope"}, []int{1})
+
+		// Same persist-then-error setup as the subtest above: round 1 (the
+		// hard cap) completes, the gate cannot start, the block is left
+		// resumable one PAST the cap.
+		fb1 := &fakeBurler{}
+		fb1.queue = []struct {
+			result burlerengine.Result
+			err    error
+		}{
+			{result: burlerengine.Result{Outcome: shuttleengine.OutcomeDone, Verdict: burlerengine.VerdictBlocking, Findings: oneBlockingFinding(), SessionID: "s1"}},
+		}
+		fcr := &fakeCommandRunner{}
+		fcr.queue = []struct {
+			output   []byte
+			exitZero bool
+			err      error
+		}{
+			{err: errors.New("gate command [nope] failed to start: not found")},
+		}
+		e1 := New(fb1, &queuedShuttle{}, Config{}, layout, Options{RunCommand: fcr.run})
+		if _, err := e1.Run(p, runDir); err == nil {
+			t.Fatalf("first Run() error = nil; want a could-not-start gate error at the hard-cap round")
+		}
+
+		// Resume with BOTH a pause flag file on disk and a constant-true
+		// pause seam. The past-cap guard must win: the block is already
+		// terminal in substance, so it finalizes STUCK/hard-cap rather than
+		// exiting PAUSED (which would strand it un-finalized, to re-run this
+		// same race on every subsequent resume) — the guard deliberately
+		// precedes the loop's pause check. The early return must also flow
+		// through the central deferred flag-clear, exactly like every other
+		// terminal return site.
+		writeFile(t, PauseFlagPath(runDir), "")
+		fb2 := &fakeBurler{}
+		e2 := New(fb2, &queuedShuttle{}, Config{}, layout, Options{
+			PauseRequested: func() bool { return true },
+			RunCommand:     fcr.run,
+		})
+		got, err := e2.Run(p, runDir)
+		if err != nil {
+			t.Fatalf("resume Run() error = %v; want nil", err)
+		}
+		if got.Outcome != OutcomeStuck || got.StuckReason != StuckHardCap {
+			t.Fatalf("resume Run() = (%q, %q); want (%q, %q) — the past-cap finalize must beat the pause check", got.Outcome, got.StuckReason, OutcomeStuck, StuckHardCap)
+		}
+		if _, statErr := os.Stat(PauseFlagPath(runDir)); statErr == nil {
+			t.Error("pause flag file still exists after the past-cap STUCK finalize; want it cleared like every terminal return")
+		}
+	})
 }
 
 // TestRun_ConcurrentSameRunDir proves a second Engine.Run against the SAME
