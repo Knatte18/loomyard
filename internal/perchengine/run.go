@@ -156,11 +156,13 @@ func (e *Engine) Run(p Profile, runDir string) (Result, error) {
 		}
 
 		if outcome.Verdict == burlerengine.VerdictBlocking {
-			// The judge reasons over the full review history including this
-			// round's own fresh review — round 1 never reaches here with
-			// enough history to matter, but a milestone rung's judge call
-			// still wants every review written so far.
-			judgeReviews := append(append([]string(nil), priorReviews...), outcome.ReviewPath)
+			// The judge reasons over the full REVIEW history including this
+			// round's own fresh review — and only reviews: unlike the burler
+			// hydration in priorReviews, failed gate-command output files are
+			// deliberately excluded, since the judge's material is blocking
+			// findings recurring across review files (doc.go's verdict-judge
+			// contract), and a gate transcript has no findings to compare.
+			judgeReviews := collectJudgeReviews(st.Rounds, outcome.ReviewPath)
 
 			// The circling check never runs on the round immediately after an
 			// APPROVED round (reachable in command/both gate modes, where an
@@ -331,6 +333,20 @@ func collectPriorHydration(rounds []roundRecord) (priorReviews, priorFixerReport
 		priorFixerReports = append(priorFixerReports, r.FixerReportPath)
 	}
 	return priorReviews, priorFixerReports
+}
+
+// collectJudgeReviews builds the review-file list a progress-judge call reads:
+// every completed round's ReviewPath in order, plus the current round's fresh
+// review. Gate-command output files are deliberately NOT included here even
+// though collectPriorHydration feeds them to the next BURLER round — the judge
+// compares blocking findings across reviews, and a gate transcript is not a
+// review (see the verdict-judge contract in doc.go).
+func collectJudgeReviews(rounds []roundRecord, currentReviewPath string) []string {
+	reviews := make([]string, 0, len(rounds)+1)
+	for _, r := range rounds {
+		reviews = append(reviews, r.ReviewPath)
+	}
+	return append(reviews, currentReviewPath)
 }
 
 // isMilestoneRung reports whether round is one of caps' milestone rungs —

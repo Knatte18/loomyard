@@ -665,6 +665,76 @@ func TestRun_GateModes(t *testing.T) {
 		}
 	})
 
+	t.Run("judge reads reviews only, never gate output files", func(t *testing.T) {
+		layout := newTestLayout(t)
+		runDir := filepath.Join(t.TempDir(), "run")
+
+		// Round 1 fails its gate, so round 2's BURLER hydration carries the
+		// round-1 gate file — but round 2's circling judge must read reviews
+		// only: a gate transcript has no findings for it to compare.
+		fb := &fakeBurler{}
+		fb.queue = []struct {
+			result burlerengine.Result
+			err    error
+		}{
+			{result: burlerengine.Result{Outcome: shuttleengine.OutcomeDone, Verdict: burlerengine.VerdictBlocking, Findings: oneBlockingFinding(), SessionID: "s1"}},
+			{result: burlerengine.Result{Outcome: shuttleengine.OutcomeDone, Verdict: burlerengine.VerdictBlocking, Findings: oneBlockingFinding(), SessionID: "s2"}},
+			{result: burlerengine.Result{Outcome: shuttleengine.OutcomeDone, Verdict: burlerengine.VerdictBlocking, Findings: oneBlockingFinding(), SessionID: "s3"}},
+		}
+		fcr := &fakeCommandRunner{}
+		fcr.queue = []struct {
+			output   []byte
+			exitZero bool
+			err      error
+		}{
+			{output: []byte("fail"), exitZero: false},
+			{output: []byte("fail"), exitZero: false},
+			{output: []byte("ok"), exitZero: true},
+		}
+		qs := &queuedShuttle{}
+		qs.queue = []struct {
+			verdictContent string
+			err            error
+		}{
+			{verdictContent: verdictFileContent(string(JudgeProgressing), "still moving")},
+			{verdictContent: verdictFileContent(string(JudgeProgressing), "still moving")},
+		}
+
+		e := New(fb, qs, Config{}, layout, Options{RunCommand: fcr.run})
+		p := testProfile(GateCommand, []string{"make", "test"}, []int{10})
+
+		got, err := e.Run(p, runDir)
+		if err != nil {
+			t.Fatalf("Run() error = %v; want nil", err)
+		}
+		if got.Outcome != OutcomeApproved {
+			t.Fatalf("Run() Outcome = %q; want %q", got.Outcome, OutcomeApproved)
+		}
+		if len(qs.specs) != 2 {
+			t.Fatalf("queuedShuttle called %d times; want 2 (circling checks for rounds 2 and 3)", len(qs.specs))
+		}
+		// The burler hydration DOES carry the failed gate file forward…
+		round2Burler := fb.calls[1].profile
+		gateHydrated := false
+		for _, r := range round2Burler.PriorReviews {
+			if strings.Contains(r, "gate.md") {
+				gateHydrated = true
+			}
+		}
+		if !gateHydrated {
+			t.Errorf("round 2 burler PriorReviews = %v; want it to include the round-1 gate file", round2Burler.PriorReviews)
+		}
+		// …but the judge prompt must list review files only.
+		for i, spec := range qs.specs {
+			if strings.Contains(spec.Prompt, "gate.md") {
+				t.Errorf("judge call %d prompt lists a gate output file; want reviews only", i+1)
+			}
+			if !strings.Contains(spec.Prompt, "round-1-review.md") {
+				t.Errorf("judge call %d prompt is missing the round-1 review", i+1)
+			}
+		}
+	})
+
 	t.Run("both fails when the command fails despite an approved verdict", func(t *testing.T) {
 		layout := newTestLayout(t)
 		runDir := filepath.Join(t.TempDir(), "run")
