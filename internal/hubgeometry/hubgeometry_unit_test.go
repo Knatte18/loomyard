@@ -39,6 +39,18 @@ func TestConfigHelpers(t *testing.T) {
 		}
 	})
 
+	t.Run("PerchRunsDir", func(t *testing.T) {
+		t.Parallel()
+
+		baseDir := "/home/user/project"
+		got := hubgeometry.PerchRunsDir(baseDir)
+		want := filepath.Join(baseDir, hubgeometry.LyxDirName, "perch")
+
+		if got != want {
+			t.Errorf("PerchRunsDir(%q) = %q; want %q", baseDir, got, want)
+		}
+	})
+
 	t.Run("DotEnv", func(t *testing.T) {
 		t.Parallel()
 

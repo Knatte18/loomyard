@@ -30,6 +30,25 @@ func AcquireWriteLock(lockPath string) (*FileLock, error) {
 	return &FileLock{fl}, nil
 }
 
+// TryAcquireWriteLock attempts to acquire an exclusive lock on lockPath
+// without blocking: it returns (lock, true, nil) on success, and (nil,
+// false, nil) — not an error — when the lock is already held by someone
+// else, so a caller can fail fast with its own descriptive message ("this
+// resource is already in use") instead of hanging until a possibly
+// long-running holder releases it. A non-nil error is reserved for an
+// actual OS-level failure to even attempt the lock.
+func TryAcquireWriteLock(lockPath string) (*FileLock, bool, error) {
+	fl := flock.New(lockPath)
+	locked, err := fl.TryLock()
+	if err != nil {
+		return nil, false, fmt.Errorf("try acquire write lock: %w", err)
+	}
+	if !locked {
+		return nil, false, nil
+	}
+	return &FileLock{fl}, true, nil
+}
+
 // AcquireReadLock acquires a shared lock on lockPath, blocking until it is
 // available. Multiple readers may hold it at once; it blocks only while a writer
 // holds the exclusive lock. Used to fence reads of tasks.json against the brief

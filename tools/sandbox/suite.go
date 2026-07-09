@@ -1,12 +1,13 @@
 // suite.go implements the "sandbox suite", "sandbox mux-suite", "sandbox
-// shuttle-suite", and "sandbox burler-suite" subcommands: copies one of the
-// embedded suite templates (main, mux, shuttle, or burler) into the Hub host
-// repo, stamps a lyx binary fingerprint, registers the file as a git exclude
-// entry, and launches an interactive Claude session to execute it. The four
-// suites share every mechanic (fingerprinting, git-exclude, stale-report
-// cleanup, agent launch, post-session mux teardown) via the suiteSpec
-// parameterization of runSuite; only the file name, embedded doc body,
-// default instruction, and mux-teardown flag differ.
+// shuttle-suite", "sandbox burler-suite", and "sandbox perch-suite"
+// subcommands: copies one of the embedded suite templates (main, mux,
+// shuttle, burler, or perch) into the Hub host repo, stamps a lyx binary
+// fingerprint, registers the file as a git exclude entry, and launches an
+// interactive Claude session to execute it. The five suites share every
+// mechanic (fingerprinting, git-exclude, stale-report cleanup, agent launch,
+// post-session mux teardown) via the suiteSpec parameterization of runSuite;
+// only the file name, embedded doc body, default instruction, and
+// mux-teardown flag differ.
 
 package main
 
@@ -42,11 +43,14 @@ var shuttleSandboxSuiteMD string
 //go:embed SANDBOX-BURLER-SUITE.md
 var burlerSandboxSuiteMD string
 
-// suiteSpec parameterizes runSuite over the four supported suites (main,
-// mux, shuttle, and burler): the file written into the Hub host repo, the
-// embedded doc body rendered into it, the default prompt handed to claude
-// when the operator supplies no -prompt override, and whether the suite
-// boots a live mux substrate that must be torn down after the session.
+//go:embed SANDBOX-PERCH-SUITE.md
+var perchSandboxSuiteMD string
+
+// suiteSpec parameterizes runSuite over the five supported suites (main,
+// mux, shuttle, burler, and perch): the file written into the Hub host repo,
+// the embedded doc body rendered into it, the default prompt handed to
+// claude when the operator supplies no -prompt override, and whether the
+// suite boots a live mux substrate that must be torn down after the session.
 // Every other mechanic (fingerprinting, git-exclude, stale-report cleanup,
 // agent launch) is shared across specs.
 type suiteSpec struct {
@@ -100,6 +104,15 @@ var burlerSuite = suiteSpec{
 	fileName:    "SANDBOX-BURLER-SUITE.md",
 	doc:         burlerSandboxSuiteMD,
 	instruction: "Read ./SANDBOX-BURLER-SUITE.md and follow the instructions in it exactly.",
+	muxTeardown: true,
+}
+
+// perchSuite is the SANDBOX-PERCH-SUITE spec: the dedicated scheme
+// exercising the lyx perch gate-loop black-box agent scenarios.
+var perchSuite = suiteSpec{
+	fileName:    "SANDBOX-PERCH-SUITE.md",
+	doc:         perchSandboxSuiteMD,
+	instruction: "Read ./SANDBOX-PERCH-SUITE.md and follow the instructions in it exactly.",
 	muxTeardown: true,
 }
 
@@ -296,19 +309,19 @@ func ensureGitExclude(repoDir, entry string) error {
 }
 
 // runSuite executes the "sandbox suite" / "sandbox mux-suite" / "sandbox
-// shuttle-suite" / "sandbox burler-suite" subcommands. It locates the Hub
-// host repo under parentDir, fingerprints the deployed lyx binary, writes a
-// fresh spec.fileName into the host repo (overwriting any prior copy),
-// registers it in .git/info/exclude, clears any stale sandbox-report.json
-// from a prior run, and starts an interactive Claude session with the given
-// instruction string. After the session ends, specs flagged muxTeardown get
-// a best-effort `lyx mux down` in the host repo so no psmux server outlives
-// the run. It does not fetch the agent's report -- that is the
-// separate fetch subcommand (runFetch), run by the operator after the
-// session. claudeOverride and promptOverride are optional: when empty the
-// function resolves "claude" from PATH and uses spec.instruction. spec
-// selects which suite (mainSuite, muxSuite, shuttleSuite, or burlerSuite) is
-// run.
+// shuttle-suite" / "sandbox burler-suite" / "sandbox perch-suite"
+// subcommands. It locates the Hub host repo under parentDir, fingerprints
+// the deployed lyx binary, writes a fresh spec.fileName into the host repo
+// (overwriting any prior copy), registers it in .git/info/exclude, clears
+// any stale sandbox-report.json from a prior run, and starts an interactive
+// Claude session with the given instruction string. After the session ends,
+// specs flagged muxTeardown get a best-effort `lyx mux down` in the host repo
+// so no psmux server outlives the run. It does not fetch the agent's report
+// -- that is the separate fetch subcommand (runFetch), run by the operator
+// after the session. claudeOverride and promptOverride are optional: when
+// empty the function resolves "claude" from PATH and uses spec.instruction.
+// spec selects which suite (mainSuite, muxSuite, shuttleSuite, burlerSuite,
+// or perchSuite) is run.
 func runSuite(parentDir, claudeOverride, promptOverride string, spec suiteSpec) error {
 	// Derive the host repo path from the shared hubName const (main.go) and the
 	// suite-local hostDirName const; the function relies on those consts rather than

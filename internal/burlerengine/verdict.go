@@ -36,9 +36,12 @@ const (
 	SeverityNit      Severity = "NIT"
 )
 
-// Finding is one recorded review-file finding: a stable ID (perch's future
-// cycle-detection key), a Severity from the fixed vocabulary, a Location
-// pointing at the offending content, and a prose Summary.
+// Finding is one recorded review-file finding: a stable ID (kept unique and
+// fail-loud across rounds so cross-round hydration and audit can cite it
+// unambiguously — perch judges progress across rounds holistically via a
+// verdict judge, not by tracking finding-key identity), a Severity from the
+// fixed vocabulary, a Location pointing at the offending content, and a
+// prose Summary.
 type Finding struct {
 	ID       string   `yaml:"id"`
 	Severity Severity `yaml:"severity"`
@@ -67,7 +70,9 @@ type reviewHeader struct {
 //   - verdict must be exactly "APPROVED" or "BLOCKING" (case-sensitive);
 //   - every finding must have a non-empty id, severity, location, summary;
 //   - severity must be one of the four Severity constants;
-//   - finding ids must be unique (perch keys cycle detection on them);
+//   - finding ids must be unique (kept fail-loud for cross-round hydration
+//     and audit, not for Go-side cycle detection — perch judges progress
+//     holistically via a verdict judge);
 //   - a BLOCKING verdict must carry at least one BLOCKING-severity finding;
 //   - an APPROVED verdict must carry zero BLOCKING-severity findings.
 func ParseReview(content []byte) (Verdict, []Finding, error) {

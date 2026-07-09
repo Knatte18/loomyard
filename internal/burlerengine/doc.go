@@ -13,9 +13,9 @@
 // module from perch rather than folded into it: burler is LLM-heavy (one
 // round is a shuttle run; its tests are a fake-shuttle unit suite plus a
 // handful of opt-in real-engine smoke tests), while perch is deterministic
-// Go (the loop, the cap, cycle detection; its tests use a fake burler
-// returning scripted verdicts, no LLM at all). Keeping them one module
-// would blend those two test regimes.
+// Go (the loop, the milestone cap ladder, and the progress judge; its
+// tests use a fake burler returning scripted verdicts, no LLM at all).
+// Keeping them one module would blend those two test regimes.
 //
 // # The A/B round
 //
@@ -111,9 +111,11 @@
 //
 // Result is an invariant contract regardless of what was reviewed: a
 // Verdict (VerdictApproved or VerdictBlocking), the parsed Findings
-// (perch's future cycle-detection keys — ParseReview enforces unique,
-// non-empty ids fail-loud), the resolved ReviewPath/FixerReportPath, and
-// the shuttle run's SessionID/StrandGUID/LastAssistantMessage. Run returns
+// (ParseReview enforces unique, non-empty ids fail-loud, so cross-round
+// hydration and audit can cite a finding unambiguously — perch judges
+// progress across rounds holistically via a verdict judge, not by tracking
+// finding-key identity), the resolved ReviewPath/FixerReportPath, and the
+// shuttle run's SessionID/StrandGUID/LastAssistantMessage/RunDir. Run returns
 // a nil error for every shuttleengine outcome except a hard failure
 // (invalid profile, shuttle start/run failure, or — deliberately loud — a
 // verdict parse failure on a done run, since a defaulted verdict could

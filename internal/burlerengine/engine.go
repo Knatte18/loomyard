@@ -45,8 +45,8 @@ func New(shuttle Shuttle, layout *hubgeometry.Layout) *Engine {
 // Result is one round's outcome: how the shuttle run classified (Outcome),
 // the parsed verdict and findings (set only when Outcome is
 // shuttleengine.OutcomeDone and the review file parses cleanly), the
-// resolved output paths, and the identities/last-message a caller needs to
-// act on a non-done outcome further.
+// resolved output paths, and the identities/last-message/run-dir a caller
+// needs to act on a non-done outcome further.
 type Result struct {
 	Outcome              shuttleengine.Outcome
 	Verdict              Verdict
@@ -56,6 +56,11 @@ type Result struct {
 	SessionID            string
 	StrandGUID           string
 	LastAssistantMessage string
+	// RunDir is a 1:1 passthrough of shuttleengine.Result.RunDir: the kept
+	// shuttle run directory a caller surfaces when a round dies or times
+	// out, so it can point an operator (or perch's own error message) at
+	// the run's SessionID/StrandGUID and artifacts for inspection.
+	RunDir string
 }
 
 // Run drives one burler round for p, tuned by opts. Sequence: validate p
@@ -104,6 +109,7 @@ func (e *Engine) Run(p Profile, opts RunOpts) (Result, error) {
 		SessionID:            shuttleResult.SessionID,
 		StrandGUID:           shuttleResult.StrandGUID,
 		LastAssistantMessage: shuttleResult.LastAssistantMessage,
+		RunDir:               shuttleResult.RunDir,
 	}
 
 	if result.Outcome != shuttleengine.OutcomeDone {

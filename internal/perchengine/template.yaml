@@ -1,0 +1,3 @@
+judge_model: haiku  # model the ephemeral progress judge and the asking-triage call both default to; provider-vocabulary, not a fixed enum — a Gemini engine behind shuttle would take e.g. "flash" here with no perch change
+judge_effort: ""  # effort knob for the judge/triage calls; empty means "use the provider's own default effort", not a fixed value
+round_caps: [5, 8, 10]  # engine-wide default milestone cap ladder: strictly increasing, the last entry is the hard cap a round loop can never exceed; a profile's own round-caps key overrides this per phase

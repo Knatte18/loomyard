@@ -1,9 +1,9 @@
-# SANDBOX-BURLER-SUITE -- lyx burler black-box round-worker suite
+# SANDBOX-BURLER-SUITE -- lyx burler black-box suite
 
 ## What this is
 
-A structured test-loop for exercising `lyx burler` against a **live psmux server
-and a logged-in claude** in the sandbox Hub host repo. Like `SANDBOX-SHUTTLE-SUITE.md`,
+A structured test-loop for exercising `lyx burler` against a **live psmux
+server and a logged-in claude** in the sandbox Hub host repo. Like `SANDBOX-SHUTTLE-SUITE.md`,
 the value here is partly **visual**: a burler round doing real review+fix work in a
 pane, a verdict coming back. Not an automated suite -- an agent drives it, an
 operator watches.
@@ -11,11 +11,13 @@ operator watches.
 burler drives one review+fix round over an artifact: an A phase reviews the
 target against a fasit (a source of truth) and writes a structured review file
 (verdict + findings), then a B phase fixes what A found and writes a fixer
-report. This suite proves that round end-to-end through the debug CLI
-(`lyx burler run`), never review quality -- the scenarios are deliberately
-trivial (a toy chair/table color mismatch) so the assertions are about the
-mechanics (verdict parse, file contract, fix actually applied), not about
-whether the review is insightful.
+report. Scenarios S1-S3 prove one burler round end-to-end through the debug
+CLI (`lyx burler run`), never review quality -- they are deliberately trivial
+(a toy chair/table color mismatch) so the assertions are about the mechanics
+(verdict parse, file contract, fix actually applied), not about whether the
+review is insightful. `perch`, the gate loop built on top of burler (it spawns
+fresh burler rounds until an artifact is `APPROVED` or definitively `STUCK`),
+has its own scenarios in `SANDBOX-PERCH-SUITE.md` -- not tested here.
 
 ## Pre-conditions
 
@@ -29,9 +31,9 @@ Before starting a session:
 3. **Live-psmux and claude requirement.** `psmux.exe` on PATH (installed at
    `C:\Code\tools\bin\psmux.exe`), PowerShell 7, and a logged-in `claude` on PATH.
    If any of these is unavailable in the session, **note that as the session outcome
-   rather than treating it as a burler defect** -- the `**Covers:** burler` tag on S1
-   satisfies the sandbox coverage guard (`sandbox_coverage_test.go`) regardless of
-   runtime availability.
+   rather than treating it as a burler defect** -- the `**Covers:** burler` tag on
+   S1 satisfies the sandbox coverage guard (`sandbox_coverage_test.go`) regardless
+   of runtime availability.
 4. **`lyx init` first.** `lyx burler run` requires an initialized worktree
    (`_lyx/config/shuttle.yaml` and `mux.yaml`) exactly like `lyx shuttle` and
    `lyx mux` do -- burler wires the real shuttle substrate (mux + claude) on
@@ -52,11 +54,11 @@ It tests `lyx.exe` as a black box -- exactly as a real user with only the binary
 It must not look for, read, or reason about the lyx source tree. No peeking at
 `C:\Code\loomyard\` or any other path outside the Hub.**
 
-Discovering the command surface is done via `lyx burler --help` and
-`lyx burler run --help` alone -- not from documentation outside the Hub. The
-profile YAML file is the one artifact the agent must construct itself (paths,
-rubric, fix-scope, output paths) per the scenario's Goal below; `--help`'s
-example profile is the reference for the file's shape.
+Discovering the command surface is done via `lyx burler --help`/`lyx burler run --help`
+alone -- not from documentation outside the Hub. The profile YAML file is the one
+artifact the agent must construct itself (paths, rubric, fix-scope, output paths) per
+the scenario's Goal below; each command's `--help` example profile is the reference for
+the file's shape.
 
 ## Fingerprint header
 
@@ -75,12 +77,13 @@ anywhere itself.
 For each scenario below:
 
 - Read the **Goal** -- it names the task, not the commands. Discover the commands via
-  `lyx burler --help` and `lyx burler run --help` (S0 ethos).
+  `lyx burler`'s own `--help` (S0 ethos).
 - Run every scenario-driving command in the **foreground** and wait for it to
   return before moving on. **Never background or detach a command** -- `lyx
-  burler run` blocks until the round finishes by design, so there is nothing to
-  wait for asynchronously, and no completion notification will ever be
-  delivered back into this session. Assume no async signal arrives, ever.
+  burler run` blocks until it reaches a terminal outcome by design, so there
+  is nothing to wait for asynchronously, and no completion notification will
+  ever be delivered back into this session. Assume no async signal arrives,
+  ever.
 - **Watch** what lyx does. Note where it stalls, guesses wrong, or hits an error.
 - Record the outcome per the verdict buckets: `OK` (worked) / `WARN` (rough edge) /
   `FAIL` (broke).
@@ -233,6 +236,6 @@ is still open for inspection.
 
 - Host/weft scenarios stay in `SANDBOX-CORE-SUITE.md`, mux/psmux scenarios stay in
   `SANDBOX-MUX-SUITE.md`, shuttle black-box agent scenarios stay in
-  `SANDBOX-SHUTTLE-SUITE.md`; this suite grows with burler (review+fix round
-  scenarios, and later perch's round-loop once it exists) -- add `S` scenarios
-  here, not in any other suite.
+  `SANDBOX-SHUTTLE-SUITE.md`, perch gate-loop scenarios stay in
+  `SANDBOX-PERCH-SUITE.md`; this suite holds only burler's own review+fix round
+  scenarios -- add `S` scenarios here, not in any other suite.
