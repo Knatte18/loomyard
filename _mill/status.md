@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussed
 slug: rename-other-to-linux
 branch: rename-other-to-linux
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-07-09T14:58:59Z'
+discussed  '2026-07-09T17:08:55Z'
 ```
