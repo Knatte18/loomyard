@@ -1381,6 +1381,59 @@ func TestRun_Resume(t *testing.T) {
 			t.Errorf("stale file content = %q; want the original partial content preserved", staleContent)
 		}
 	})
+
+	t.Run("a gate error at the hard-cap round finalizes STUCK on resume rather than running past the ladder", func(t *testing.T) {
+		layout := newTestLayout(t)
+		runDir := filepath.Join(t.TempDir(), "run")
+		// A single-element ladder makes round 1 the hard cap, so a gate error
+		// there is a gate error AT the hard cap — the case a multi-round ladder
+		// with an error on an early round never exercises.
+		p := testProfile(GateCommand, []string{"nope"}, []int{1})
+
+		// First Run: round 1 (the hard-cap round) completes its burler attempt,
+		// then the gate command cannot start — a hard error that persists round
+		// 1's record (GatePassed nil, non-terminal) before returning, exactly
+		// the persist-then-error path. state.json now records round 1 with an
+		// empty Outcome, so the block reads as resumable at round 2 — one past
+		// the hard cap.
+		fb1 := &fakeBurler{}
+		fb1.queue = []struct {
+			result burlerengine.Result
+			err    error
+		}{
+			{result: burlerengine.Result{Outcome: shuttleengine.OutcomeDone, Verdict: burlerengine.VerdictBlocking, Findings: oneBlockingFinding(), SessionID: "s1"}},
+		}
+		fcr := &fakeCommandRunner{}
+		fcr.queue = []struct {
+			output   []byte
+			exitZero bool
+			err      error
+		}{
+			{err: errors.New("gate command [nope] failed to start: not found")},
+		}
+		e1 := New(fb1, &queuedShuttle{}, Config{}, layout, Options{RunCommand: fcr.run})
+		if _, err := e1.Run(p, runDir); err == nil {
+			t.Fatalf("first Run() error = nil; want a could-not-start gate error at the hard-cap round")
+		}
+
+		// Resume: NextRound is 2, one past the hard cap of 1. The block must
+		// finalize STUCK/hard-cap WITHOUT spawning any further burler round.
+		// Without the past-cap guard, round == hardCap never matches again and
+		// the loop runs round 2 (and onward) beyond the ladder — defeating the
+		// hard cap's guaranteed termination.
+		fb2 := &fakeBurler{}
+		e2 := New(fb2, &queuedShuttle{}, Config{}, layout, Options{RunCommand: fcr.run})
+		got, err := e2.Run(p, runDir)
+		if err != nil {
+			t.Fatalf("resume Run() error = %v; want nil (a past-cap resume finalizes STUCK)", err)
+		}
+		if got.Outcome != OutcomeStuck || got.StuckReason != StuckHardCap {
+			t.Fatalf("resume Run() = (%q, %q); want (%q, %q)", got.Outcome, got.StuckReason, OutcomeStuck, StuckHardCap)
+		}
+		if len(fb2.calls) != 0 {
+			t.Errorf("fb2 called %d times; want 0 (a past-cap resume must not spawn a burler round beyond the ladder)", len(fb2.calls))
+		}
+	})
 }
 
 // TestRun_ConcurrentSameRunDir proves a second Engine.Run against the SAME

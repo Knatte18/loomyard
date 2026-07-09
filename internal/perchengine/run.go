@@ -132,6 +132,25 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 	hardCap := caps[len(caps)-1]
 
 	for round := resume.NextRound; ; round++ {
+		// A resume can land one PAST the hard cap: the hard-cap round already
+		// ran and its record is persisted, but a hard error (a could-not-start
+		// gate command — see the persist-then-error path below) interrupted its
+		// stuck classification before the block was marked terminal. Finalize it
+		// as STUCK/hard-cap from the already-persisted state rather than spawning
+		// rounds beyond the ladder: the last recorded round IS the hard-cap round
+		// and it did not converge, so hard-cap is the correct terminal reason,
+		// and stopping here preserves the ladder's guaranteed-termination
+		// invariant across a resume (without this, round == hardCap never matches
+		// again and the loop runs unbounded rounds past the ladder).
+		if round > hardCap {
+			st.Outcome = string(OutcomeStuck)
+			st.StuckReason = string(StuckHardCap)
+			if err := saveState(runDir, st); err != nil {
+				return Result{}, err
+			}
+			return resultFromState(st, OutcomeStuck, StuckHardCap), nil
+		}
+
 		// Pause is checked ONLY here, at the round boundary — never
 		// mid-round — so a paused block always resumes at a clean round
 		// start rather than an in-progress one.

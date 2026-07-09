@@ -125,7 +125,10 @@
 //     round's own fix deadlocking the command, an artifact signal, not
 //     machinery); only a command that cannot START at all is a hard error,
 //     and even then the completed round's record is persisted first so a
-//     resume does not re-buy the round. The burler verdict does NOT decide
+//     resume does not re-buy the round — and if that round was the hard cap
+//     itself, the resume finalizes the block STUCK (StuckHardCap) rather than
+//     running rounds past the ladder, so the guaranteed-termination invariant
+//     survives the persist-then-error path. The burler verdict does NOT decide
 //     convergence in this mode — the review still drives what B fixes, but
 //     only the observed command result decides whether the block is done.
 //   - both: both signals must agree (VerdictApproved AND a zero exit).
