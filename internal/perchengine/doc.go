@@ -176,7 +176,13 @@
 // writes a flag file (PauseFlagPath) inside the run dir; Engine.Run clears
 // that flag at its own entry, so resuming a paused block never instantly
 // re-pauses on the flag that requested the very pause being resumed from.
-// Loom will wire its own status-file check into the same seam later.
+// The same flag is also cleared whenever Run reaches any TERMINAL,
+// non-PAUSED outcome (APPROVED or STUCK): a pause requested while the last
+// round was still in flight can lose the race — that round settles on its
+// own before the next round boundary (where the flag would have been
+// observed) ever arrives — and the flag must not linger in a finished
+// block's run dir. Loom will wire its own status-file check into the same
+// seam later.
 //
 // # Run-dir mutual exclusion
 //

@@ -52,7 +52,20 @@ type roundOutcome struct {
 // milestone-laddered stuck ladder. Every returned error is
 // "perch: "-prefixed; the returned Result mirrors the persisted state's
 // rounds as RoundSummary values.
-func (e *Engine) Run(p Profile, runDir string) (Result, error) {
+func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
+	// A pause requested while the final round was still in flight can
+	// observe a terminal, non-PAUSED outcome once that round settles on its
+	// own (the pause flag is checked only at the NEXT round boundary, which
+	// never arrives). The stale flag must not linger in the run dir (and get
+	// weft-committed alongside a finished block) once the block is done
+	// judging — clearing it centrally here, once, covers every terminal
+	// return site without duplicating the call at each one.
+	defer func() {
+		if err == nil && result.Outcome != OutcomePaused {
+			_ = clearPauseFlag(runDir)
+		}
+	}()
+
 	// Identity is the profile AS SUPPLIED by the caller, hashed before
 	// default resolution mutates it: a perch.yaml default change (judge
 	// model, cap ladder) must never silently change — or invalidate the

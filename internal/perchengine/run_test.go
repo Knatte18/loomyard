@@ -1519,4 +1519,60 @@ func TestRun_Pause(t *testing.T) {
 			t.Fatalf("Run() RoundsRun = %d; want 2", got.RoundsRun)
 		}
 	})
+
+	t.Run("a pause requested during the final in-flight round is cleared once the block reaches a terminal outcome", func(t *testing.T) {
+		layout := newTestLayout(t)
+		runDir := filepath.Join(t.TempDir(), "run")
+		p := testProfile(GateLLMVerdict, nil, []int{10})
+
+		// pauseDuringRoundBurler writes the pause flag file AS A SIDE EFFECT
+		// of its single burler call, standing in for "lyx perch pause"
+		// landing from a second terminal while round 1 is actually
+		// in-flight — after Engine.Run's entry-clear already ran, but before
+		// the round produces its (APPROVED) verdict. Because round 1
+		// converges, the loop never reaches a round-2 boundary to observe
+		// the flag as a pause request; without the fix, the flag would be
+		// left behind on this terminal, non-PAUSED outcome.
+		fb := &pauseDuringRoundBurler{
+			flagPath: PauseFlagPath(runDir),
+			result:   burlerengine.Result{Outcome: shuttleengine.OutcomeDone, Verdict: burlerengine.VerdictApproved, SessionID: "s1"},
+		}
+		e := New(fb, &queuedShuttle{}, Config{}, layout, Options{})
+
+		got, err := e.Run(p, runDir)
+		if err != nil {
+			t.Fatalf("Run() error = %v; want nil", err)
+		}
+		if got.Outcome != OutcomeApproved {
+			t.Fatalf("Run() Outcome = %q; want %q", got.Outcome, OutcomeApproved)
+		}
+		if _, statErr := os.Stat(PauseFlagPath(runDir)); statErr == nil {
+			t.Error("pause flag file still exists after a terminal APPROVED outcome; want it cleared")
+		}
+	})
+}
+
+// pauseDuringRoundBurler is a same-package Burler double whose single Run
+// call writes a pause flag file at flagPath before returning its scripted
+// result, simulating an operator's "lyx perch pause" landing from a second
+// terminal while this round is actually in flight.
+type pauseDuringRoundBurler struct {
+	flagPath string
+	result   burlerengine.Result
+}
+
+func (b *pauseDuringRoundBurler) Run(p burlerengine.Profile, _ burlerengine.RunOpts) (burlerengine.Result, error) {
+	if err := os.WriteFile(b.flagPath, nil, 0o644); err != nil {
+		return burlerengine.Result{}, err
+	}
+	result := b.result
+	result.ReviewPath = p.ReviewPath
+	result.FixerReportPath = p.FixerReportPath
+	if err := os.WriteFile(p.ReviewPath, []byte(fmt.Sprintf("verdict: %s\n", result.Verdict)), 0o644); err != nil {
+		return burlerengine.Result{}, err
+	}
+	if err := os.WriteFile(p.FixerReportPath, []byte("fixed something"), 0o644); err != nil {
+		return burlerengine.Result{}, err
+	}
+	return result, nil
 }
