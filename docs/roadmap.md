@@ -34,7 +34,7 @@ weft engine + producers → **`proc`** (cross-OS spawn). ✅
 **Orchestration spine** — a strict chain, each layer needs the one before it:
 
 ```
-proc ✅ ──▶ mux ✅ ──▶ shuttle ✅ ──▶ burler ──▶ perch ✅ ──▶ loom
+proc ✅ ──▶ mux ✅ ──▶ shuttle ✅ ──▶ burler ✅ ──▶ perch ✅ ──▶ loom
 ```
 
 - **`mux`** is done — psmux overlay + **strand** bookkeeping + render sub-package
@@ -44,11 +44,12 @@ proc ✅ ──▶ mux ✅ ──▶ shuttle ✅ ──▶ burler ──▶ perc
 - **`shuttle`** is done — one LLM agent as an interactive psmux strand over the file contract,
   behind a swappable engine. See [milestone 10](#orchestration-stack) / the
   [overview module entry](overview.md#modules).
-- **`burler` + `perch`** need `shuttle` and are next — the former gate module `review` split into
-  two: **`burler`** is one review+fix round (A-review + optional cluster → B-fix, no self-grading),
-  and **`perch`** is the Go loop that runs burler rounds until `APPROVED`/`stuck` (progress-judge +
-  cap). Build `burler` first (LLM-heavy, standalone, smoke-tested), then `perch` (deterministic Go,
-  fake-burler-tested). **`loom`** needs `perch`. That is the critical path to the orchestrator.
+- **`burler` + `perch`** are both done — the former gate module `review` split into two:
+  **`burler`** is one review+fix round (A-review + optional cluster → B-fix, no self-grading),
+  and **`perch`** is the Go loop that runs burler rounds until `APPROVED`/`STUCK`
+  (progress-judge + cap). See [milestone 11](#orchestration-stack) / the `internal/burlerengine`
+  and `internal/perchengine` package documentation. **`loom`** needs `perch` and is the next,
+  and last, spine layer — the critical path to the orchestrator.
   `lyx loom status` (the 1-line view) ships as a loom subcommand, not a module.
 
 **Setup track** — independent of the spine, interleave at any time: config TUI (in progress) ·
@@ -57,8 +58,8 @@ proc ✅ ──▶ mux ✅ ──▶ shuttle ✅ ──▶ burler ──▶ perc
 **Deferred** — after `loom` works and only if wanted: mux daemon → Slack relay; session sync;
 plugin packaging.
 
-So the immediate front: **`burler` → `perch`** (unblocks the rest of the spine) in parallel with
-finishing the **config TUI** — none of which block each other.
+So the immediate front: **`loom`** (the last spine layer, unblocks the orchestrator) in parallel
+with finishing the **config TUI** — none of which block each other.
 
 ## Milestones
 
