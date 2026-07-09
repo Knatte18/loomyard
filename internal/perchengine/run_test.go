@@ -1593,6 +1593,13 @@ func TestRun_Pause(t *testing.T) {
 		if got.Outcome != OutcomePaused {
 			t.Fatalf("Run() Outcome = %q; want %q", got.Outcome, OutcomePaused)
 		}
+		// PAUSED is an operational exit, never judged: StuckReason is set only
+		// alongside OutcomeStuck, so a PAUSED Result must carry an empty one.
+		// Callers branch on Outcome before reading StuckReason (see doc.go and
+		// result.go); this pins that contract on the Go value, not just the doc.
+		if got.StuckReason != "" {
+			t.Errorf("Run() StuckReason = %q on a PAUSED result; want empty", got.StuckReason)
+		}
 		if got.RoundsRun != 1 {
 			t.Fatalf("Run() RoundsRun = %d; want 1", got.RoundsRun)
 		}
