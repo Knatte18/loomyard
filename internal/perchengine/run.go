@@ -129,6 +129,16 @@ func (e *Engine) Run(p Profile, runDir string) (Result, error) {
 		if p.Gate.Mode == GateCommand || p.Gate.Mode == GateBoth {
 			output, exitZero, err := runCommand(p.Gate.Command, e.layout.WorktreeRoot, p.Gate.Timeout)
 			if err != nil {
+				// A could-not-start gate failure is a hard error, but the
+				// burler round it follows COMPLETED — persist its record
+				// first so a resume continues at the next round instead of
+				// re-buying this one. The record carries no gate result (nil
+				// GatePassed), which the loop reads as non-converged: the
+				// safe direction.
+				st.Rounds = append(st.Rounds, record)
+				if saveErr := saveState(runDir, st); saveErr != nil {
+					return Result{}, saveErr
+				}
 				return Result{}, fmt.Errorf("perch: round %d gate command: %w", round, err)
 			}
 			// Written on pass AND fail — the record is cheap — even though

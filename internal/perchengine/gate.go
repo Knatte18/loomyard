@@ -25,9 +25,13 @@ import (
 // exec.CommandContext, which is portable (no per-OS shell to pick) and
 // quoting-safe (no shell metacharacter interpretation). A non-zero exit is
 // reported as (output, false, nil): an ordinary gate failure the loop
-// branches on, never an error. err is reserved for could-not-run failures:
-// the timeout killing the command before it exited, or the command failing
-// to even start (not found, permission denied, ...).
+// branches on, never an error. A TIMEOUT is a failing gate too, not an
+// error — a command that hangs is most plausibly hung BECAUSE of the
+// round's own fix (a deadlocked test suite), which is exactly the artifact
+// signal the gate exists to report; the partial output plus a timeout note
+// is returned so the failure feeds forward like any other. err is reserved
+// for could-not-start failures only (binary not found, permission denied):
+// there the gate could never observe the artifact at all.
 func execGateCommand(argv []string, dir string, timeout time.Duration) ([]byte, bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
@@ -40,11 +44,13 @@ func execGateCommand(argv []string, dir string, timeout time.Duration) ([]byte, 
 		return output, true, nil
 	}
 
-	// A context deadline killed the process before it could exit; this is a
-	// could-not-run failure (the gate never got to report pass/fail), not an
-	// ordinary non-zero exit.
+	// The deadline killed the process before it could exit: report it as an
+	// ordinary FAILING gate carrying whatever output the command produced
+	// plus a note naming the timeout, so the next round's hydration starts
+	// knowing the command hung rather than what exit code it never reached.
 	if ctx.Err() == context.DeadlineExceeded {
-		return nil, false, fmt.Errorf("perch: gate command %v timed out after %s", argv, timeout)
+		note := fmt.Sprintf("\n(gate command timed out after %s and was killed)\n", timeout)
+		return append(output, []byte(note)...), false, nil
 	}
 
 	// exec.ExitError means the process started and ran to completion, just
@@ -55,9 +61,11 @@ func execGateCommand(argv []string, dir string, timeout time.Duration) ([]byte, 
 	}
 
 	// Any other error means the process never started at all (binary not
-	// found, permission denied, ...) — a could-not-run failure the caller
-	// must treat as a hard error, since there is no gate result to report.
-	return nil, false, fmt.Errorf("perch: gate command %v failed to start: %w", argv, err)
+	// found, permission denied, ...) — a could-not-start failure the caller
+	// must treat as a hard error, since the gate never observed the
+	// artifact. Un-prefixed: the loop wraps it with its own "perch: " round
+	// context.
+	return nil, false, fmt.Errorf("gate command %v failed to start: %w", argv, err)
 }
 
 // writeGateOutput writes path with a small header naming argv and whether

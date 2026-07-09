@@ -123,7 +123,7 @@ zero `WARN`/`FAIL` findings** -- in that case `items` is an empty array.
 
 - `source` is the literal string `"sandbox-report"`.
 - `items[]` holds only `WARN`/`FAIL` findings -- do not record `OK` scenarios here.
-- `ref` is the scenario id (`S1`-`S4`).
+- `ref` is the scenario id (`S1`-`S5`).
 - `title` is a short one-line summary.
 - `body` folds the detail, repro steps, and verdict into one markdown string.
 
@@ -253,6 +253,29 @@ terminal `APPROVED`/`STUCK` outcome.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
+### S5 -- The perch command gate (convergence decided by a real command)
+
+**Covers:** perch
+
+**Goal:** "Run one perch block whose convergence is decided by a real command instead of the
+review verdict (`gate.mode: command`), watch a failing command block convergence and feed its
+output forward, then watch a passing command converge the block regardless of the verdict."
+
+**Watch:** Write a tiny fixture file plus a profile with `gate: {mode: command, command:
+[<argv>], timeout: "1m"}` and `round-caps: [2]`, where `<argv>` is a command that FAILS in the
+host repo (e.g. an unknown `git` verb). Run `lyx perch run --profile <file>`: each round's
+review may even come back APPROVED, but the block must NOT converge while the command fails --
+it runs to the hard cap and exits `STUCK`/`hard-cap`. Inspect the run dir: every round has a
+`round-<N>-gate.md` carrying the command's real combined output with a FAIL header, and (from
+round 2 on) the previous round's gate file is part of what the next round's agent was told
+about. Then edit the profile to a command that PASSES (e.g. `["git", "status"]`), re-run with
+a fresh `--run-id`: the block converges `APPROVED` in round 1 even if the review found
+BLOCKING findings -- in command mode only the command decides. A command that exceeds
+`gate.timeout` counts as a FAILING gate (its `round-<N>-gate.md` notes the timeout), never as
+a crash of the block.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
 ## Session log format
 
 After running all scenarios, record a short session summary:
@@ -265,6 +288,7 @@ S1: <OK|WARN|FAIL> -- <one-line note if not OK>
 S2: <OK|WARN|FAIL> -- <one-line note if not OK>
 S3: <OK|WARN|FAIL> -- <one-line note if not OK>
 S4: <OK|WARN|FAIL> -- <one-line note if not OK>
+S5: <OK|WARN|FAIL> -- <one-line note if not OK>
 
 sandbox-report.json written: <count of WARN/FAIL items>
 ```

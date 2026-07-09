@@ -99,18 +99,23 @@ func TestExecGateCommand_NotFound(t *testing.T) {
 }
 
 // TestExecGateCommand_Timeout proves a command that outlives timeout is
-// killed and reports a could-not-run error naming the timeout.
+// killed and reported as an ORDINARY failing gate — never an error — whose
+// output carries a note naming the timeout, so the failure feeds forward
+// into the next round's hydration like any other failing gate.
 func TestExecGateCommand_Timeout(t *testing.T) {
 	dir := t.TempDir()
 	// "go version" reliably finishes well inside 30s but a 1-nanosecond
 	// timeout guarantees the deadline fires before the process can even be
 	// scheduled, without a platform-specific long-running command.
-	_, _, err := execGateCommand([]string{"go", "version"}, dir, 1*time.Nanosecond)
-	if err == nil {
-		t.Fatalf("execGateCommand() error = nil; want a timeout error")
+	output, exitZero, err := execGateCommand([]string{"go", "version"}, dir, 1*time.Nanosecond)
+	if err != nil {
+		t.Fatalf("execGateCommand() error = %v; want nil — a timeout is a failing gate, not an infrastructure error", err)
 	}
-	if !strings.Contains(err.Error(), "timed out") {
-		t.Errorf("execGateCommand() error = %q; want it to name the timeout", err.Error())
+	if exitZero {
+		t.Errorf("execGateCommand() exitZero = true; want false")
+	}
+	if !strings.Contains(string(output), "timed out after") {
+		t.Errorf("execGateCommand() output = %q; want it to carry the timeout note", output)
 	}
 }
 

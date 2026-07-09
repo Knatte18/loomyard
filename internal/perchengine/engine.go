@@ -37,11 +37,13 @@ var _ Burler = (*burlerengine.Engine)(nil)
 
 // CommandRunner is the gate-command execution seam: it runs argv inside dir,
 // killing the command after timeout, and reports the raw combined
-// stdout+stderr output plus whether the command exited zero. err is reserved
-// for could-not-run failures — the command was not found, or the timeout
-// killed it before it could exit — never for a normal non-zero exit, which
-// is reported as (output, false, nil): an ordinary gate failure the loop
-// branches on, not an infrastructure failure.
+// stdout+stderr output plus whether the command exited zero. A non-zero
+// exit AND a timeout are both reported as (output, false, nil): ordinary
+// gate failures the loop branches on (a hung command is an artifact signal
+// — most plausibly the round's own fix deadlocked it — and its partial
+// output feeds forward like any other failing gate). err is reserved for
+// could-not-start failures only (binary not found, permission denied),
+// where the gate never observed the artifact at all.
 type CommandRunner func(argv []string, dir string, timeout time.Duration) (output []byte, exitZero bool, err error)
 
 // Options carries the two seams a caller may override; both fields default

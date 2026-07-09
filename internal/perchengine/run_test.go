@@ -665,6 +665,52 @@ func TestRun_GateModes(t *testing.T) {
 		}
 	})
 
+	t.Run("a could-not-start gate error persists the completed round before failing", func(t *testing.T) {
+		layout := newTestLayout(t)
+		runDir := filepath.Join(t.TempDir(), "run")
+
+		fb := &fakeBurler{}
+		fb.queue = []struct {
+			result burlerengine.Result
+			err    error
+		}{
+			{result: burlerengine.Result{Outcome: shuttleengine.OutcomeDone, Verdict: burlerengine.VerdictApproved, SessionID: "s1"}},
+		}
+		fcr := &fakeCommandRunner{}
+		fcr.queue = []struct {
+			output   []byte
+			exitZero bool
+			err      error
+		}{
+			{err: errors.New("gate command [nope] failed to start: not found")},
+		}
+
+		e := New(fb, &queuedShuttle{}, Config{}, layout, Options{RunCommand: fcr.run})
+		p := testProfile(GateCommand, []string{"nope"}, []int{10})
+
+		_, err := e.Run(p, runDir)
+		if err == nil {
+			t.Fatalf("Run() error = nil; want a could-not-start gate error")
+		}
+		if !strings.Contains(err.Error(), "failed to start") {
+			t.Errorf("Run() error = %q; want it to carry the could-not-start cause", err.Error())
+		}
+
+		// The completed burler round must have been persisted before the
+		// error surfaced, so a resume continues at round 2 instead of
+		// re-buying round 1.
+		persisted := readRunState(t, runDir)
+		if len(persisted.Rounds) != 1 {
+			t.Fatalf("persisted Rounds = %d; want 1 (the completed round survives the gate error)", len(persisted.Rounds))
+		}
+		if persisted.Rounds[0].GatePassed != nil {
+			t.Errorf("persisted Rounds[0].GatePassed = %v; want nil (the gate never observed the artifact)", *persisted.Rounds[0].GatePassed)
+		}
+		if persisted.Outcome != "" {
+			t.Errorf("persisted Outcome = %q; want empty (the block is not terminal — it resumes)", persisted.Outcome)
+		}
+	})
+
 	t.Run("judge reads reviews only, never gate output files", func(t *testing.T) {
 		layout := newTestLayout(t)
 		runDir := filepath.Join(t.TempDir(), "run")

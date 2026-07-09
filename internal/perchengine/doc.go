@@ -114,10 +114,15 @@
 //     burler A returned VerdictApproved. No command runs.
 //   - command: after each round's B-fix, Run itself executes Gate.Command
 //     (argv, no shell — portable, quoting-safe) with cwd = the WORKTREE
-//     ROOT, killing it after Gate.Timeout; a zero exit is clean. The burler
-//     verdict does NOT decide convergence in this mode — the review still
-//     drives what B fixes, but only the observed command result decides
-//     whether the block is done.
+//     ROOT, killing it after Gate.Timeout; a zero exit is clean. A timed-out
+//     command is an ordinary FAILING gate (its partial output plus a timeout
+//     note are recorded and fed forward — a hang is most plausibly the
+//     round's own fix deadlocking the command, an artifact signal, not
+//     machinery); only a command that cannot START at all is a hard error,
+//     and even then the completed round's record is persisted first so a
+//     resume does not re-buy the round. The burler verdict does NOT decide
+//     convergence in this mode — the review still drives what B fixes, but
+//     only the observed command result decides whether the block is done.
 //   - both: both signals must agree (VerdictApproved AND a zero exit).
 //
 // The gate command runs in PERCH, never inside the burler's own A phase —
