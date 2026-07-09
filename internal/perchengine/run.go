@@ -180,10 +180,11 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 			SessionID:       outcome.SessionID,
 		}
 
-		// The gate command runs after this round's fix phase, in
-		// llm-verdict-ignoring modes only; its cwd is always the worktree
-		// root, not the run dir, since the command exercises the host
-		// repo's own build/test surface.
+		// The gate command runs after this round's fix phase, in the command
+		// and both gate modes only (llm-verdict never runs a command; both
+		// still requires the burler verdict too, so it does not "ignore" it);
+		// its cwd is always the worktree root, not the run dir, since the
+		// command exercises the host repo's own build/test surface.
 		if p.Gate.Mode == GateCommand || p.Gate.Mode == GateBoth {
 			output, exitZero, err := runCommand(p.Gate.Command, e.layout.WorktreeRoot, p.Gate.Timeout)
 			if err != nil {
