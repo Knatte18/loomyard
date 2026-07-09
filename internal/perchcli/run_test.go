@@ -13,12 +13,17 @@ package perchcli
 import (
 	"bytes"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/muxengine"
 	"github.com/Knatte18/loomyard/internal/perchengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 // TestRunCLI_Run_MissingProfile verifies that "lyx perch run" without
@@ -66,6 +71,77 @@ func TestRunCLI_Run_InvalidRunID(t *testing.T) {
 	if !strings.Contains(out.String(), "lowercase alphanumerics and dashes only") {
 		t.Errorf(`RunCLI([run --run-id ../../escaped]) output missing the run-id shape error; got: %q`, out.String())
 	}
+}
+
+// TestRunCLI_Run_WeftSyncRunsOnEngineError verifies that Engine.Run
+// returning a hard error still gets the SAME weft commit+push treatment a
+// successful terminal outcome does, per the Weft Git Invariant: perchcli is
+// the loop owner regardless of how the block ended. A profile whose
+// round-caps ladder fails Profile.validate (non-increasing entries) makes
+// Engine.Run return an error deterministically, with no live mux/claude
+// substrate needed — validate runs before the first round would ever spawn,
+// so this test pre-seeds the run dir with a placeholder artifact (standing
+// in for what a real partially-completed block, e.g. a completed round
+// before a later could-not-start gate error, would have left behind) to
+// prove the sync call actually runs and actually commits it on this path.
+func TestRunCLI_Run_WeftSyncRunsOnEngineError(t *testing.T) {
+	t.Setenv("WEFT_SKIP_PUSH", "1")
+	fixture := lyxtest.CopyPairedLocal(t)
+	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
+		"shuttle": shuttleengine.ConfigTemplate(),
+		"mux":     muxengine.ConfigTemplate(),
+		"perch":   perchengine.ConfigTemplate(),
+	})
+	t.Chdir(fixture.Hub)
+
+	profilePath := filepath.Join(fixture.Hub, "profile.yaml")
+	profileContent := "target:\n  instructions: x\nfasit:\n  instructions: y\nrubric: r\nfix-scope: overlay\ngate:\n  mode: llm-verdict\nround-caps: [5, 3]\n"
+	if err := os.WriteFile(profilePath, []byte(profileContent), 0o644); err != nil {
+		t.Fatalf("write profile fixture: %v", err)
+	}
+
+	// Stand in for a real partially-completed block's leftover artifact:
+	// Profile.validate fails before Engine.Run ever creates the run dir
+	// itself, so a placeholder file is planted directly inside the
+	// weft-prime worktree at the path the host's "_lyx" junction would
+	// otherwise transparently resolve to (this fixture predates "lyx init",
+	// so no junction exists yet — writing straight into WeftPrime is the
+	// established pattern other cli test suites use, e.g. weftcli's
+	// TestRunCLI_EnvMapToOption).
+	placeholderDir := filepath.Join(fixture.WeftPrime, hubgeometry.LyxDirName, "perch", "weft-on-error")
+	if err := os.MkdirAll(placeholderDir, 0o755); err != nil {
+		t.Fatalf("mkdir placeholder run dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(placeholderDir, "round-1-review.md"), []byte("placeholder"), 0o644); err != nil {
+		t.Fatalf("write placeholder artifact: %v", err)
+	}
+
+	var out bytes.Buffer
+	exitCode := RunCLI(&out, []string{"run", "--profile", profilePath, "--run-id", "weft-on-error"})
+
+	if exitCode != 1 {
+		t.Fatalf(`RunCLI([run]) = %d; want 1 (a bad round-caps ladder must fail Profile.validate)`, exitCode)
+	}
+	if !strings.Contains(out.String(), "strictly increasing") {
+		t.Fatalf(`RunCLI([run]) output missing the round-caps validation error; got: %q`, out.String())
+	}
+
+	weftLog := gitLogOneline(t, fixture.WeftPrime)
+	if !strings.Contains(weftLog, "weft-on-error ERROR") {
+		t.Errorf("weft log = %q; want a %q commit even though Engine.Run returned an error", weftLog, "perch: weft-on-error ERROR")
+	}
+}
+
+// gitLogOneline runs `git log --oneline` inside dir and returns its output,
+// failing the test loudly if git cannot be invoked.
+func gitLogOneline(t *testing.T, dir string) string {
+	t.Helper()
+	cmd := exec.Command("git", "-C", dir, "log", "--oneline")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git log --oneline in %q: %v (output: %s)", dir, err, output)
+	}
+	return string(output)
 }
 
 // TestDecodeProfile covers decodeProfile's strict YAML decode: a full valid

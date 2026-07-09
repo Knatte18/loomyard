@@ -163,9 +163,11 @@ func deriveBlockRunID(profilePath string, fileProfile perchengine.Profile, expli
 // three run-tuning flags, constructs a fresh *perchengine.Engine per
 // invocation (its pause seam closes over the concrete runDir this call
 // resolves), and blocks on Engine.Run until the block reaches a terminal
-// outcome. On success the
-// block's artifacts are committed and pushed through weft exactly once,
-// per the Weft Git Invariant, before the JSON envelope is printed.
+// outcome OR a hard engine error. Either way, the run dir's artifacts are
+// committed and pushed through weft exactly once, per the Weft Git
+// Invariant, before the JSON envelope is printed — an engine error can
+// still follow a completed round or two whose artifacts are already on
+// disk, and those must not be stranded uncommitted.
 //
 // --profile is validated manually here rather than via cobra's
 // MarkFlagRequired, for the same reason burlercli's run verb does: cobra's
@@ -307,25 +309,40 @@ pass a fresh --run-id to run the same profile under different tuning.`,
 				},
 			})
 
-			result, err := engine.Run(profile, runDir)
-			if err != nil {
-				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
-				return nil
-			}
+			result, runErr := engine.Run(profile, runDir)
 
-			// The weft sync runs once at block exit regardless of outcome
-			// (APPROVED/STUCK/PAUSED), per the Weft Git Invariant: perchcli
-			// is the loop owner, perchengine itself is weft-blind.
+			// The weft sync runs once at block exit regardless of outcome —
+			// including a hard engine error — per the Weft Git Invariant:
+			// perchcli is the loop owner, perchengine itself is weft-blind.
+			// A hard error can still follow a completed round or two (e.g. a
+			// could-not-start gate error, or a second-consecutive non-done
+			// attempt) whose artifacts are already on disk; skipping the
+			// sync on that path would strand them uncommitted indefinitely
+			// if this is the last invocation to touch the worktree before
+			// the next resume (which may be a long time, or never).
+			outcomeLabel := "ERROR"
+			if runErr == nil {
+				outcomeLabel = string(result.Outcome)
+			}
 			weftWorktree := c.layout.WeftWorktree()
 			opts := weftengine.EnvSyncOptions()
 			committed, weftErr := weftengine.Commit(
 				weftWorktree,
 				weftengine.ScopedPathspec(c.layout.RelPath, []string{hubgeometry.LyxDirName}),
-				fmt.Sprintf("perch: %s %s", id, string(result.Outcome)),
+				fmt.Sprintf("perch: %s %s", id, outcomeLabel),
 				opts,
 			)
 			if weftErr == nil {
 				weftErr = weftengine.Push(weftWorktree, opts)
+			}
+
+			if runErr != nil {
+				msg := runErr.Error()
+				if weftErr != nil {
+					msg = fmt.Sprintf("%s (additionally, the weft sync failed: %v)", msg, weftErr)
+				}
+				clihelp.SetExit(cmd.Context(), output.Err(out, msg))
+				return nil
 			}
 			if weftErr != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf(
