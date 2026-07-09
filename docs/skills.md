@@ -34,31 +34,64 @@ Applied in order to each mill skill:
 
 - **Name reflects scope.** `ly-*` = loomyard/lyx-specific. Language plugins (`golang-*`, `csharp-*`)
   = language-specific, reusable, unchanged. `raddle-*` = the standalone nav-doc generator. Truly
-  generic behavioural guidance is *not* loomyard-specific — see [plugin taxonomy](#plugin-taxonomy).
+  generic behavioural guidance is *not* loomyard-specific — see [Ecosystem & naming](#ecosystem--naming).
 - **Explicit commands by default; `--help --json` as self-healing fallback.** A skill that needs a
   specific `lyx` command writes it **explicitly** (zero discovery latency). Only if that command
   *fails* (the CLI drifted — a flag renamed) does the LLM fall back to
   `lyx <module> <cmd> --help --json` and self-heal. `ly-workflow` carries only the general mechanism
   + module map, not a per-command catalogue.
 
-## Plugin taxonomy
+## Ecosystem & naming
 
-| Layer | Scope | Naming | Contents |
+LoomYard is an *ecosystem of several plugins*, not one — so the names split three ways, mirroring
+millhouse's `millhouse` / `mill` / `millpy` exactly:
+
+| Name | Kind | millhouse mirror | Notes |
 |---|---|---|---|
-| **`ly`** | loomyard/lyx-specific | `ly-*` | `ly-workflow`, `ly-triage`, `ly-git-resolve`, `ly-selfreport` (optional) |
-| **Language** | language-specific, reusable | `golang-*`, `csharp-*`, `python-*` | build / test / comments per language (unchanged from millhouse; LY uses `golang-*`) |
-| **Generic behavioural** | project-agnostic | *(placement open — see below)* | conversation, code-quality, testing, linting, markdown, cli |
-| **raddle** | standalone tool | `raddle-*` | nav-doc generation; **`loom` is a consumer** that drives it diff-scoped (`git diff <start-SHA>..HEAD`). One-way coupling: raddle knows nothing about lyx. |
+| **LoomYard** | the repo / ecosystem | `millhouse` | the whole |
+| **`lyx`** | the executable | `millpy` | `ly` + `x` — **the `x` *is* "executable"**; reserved for the Go binary |
+| **`ly`** | the core plugin | `mill` | the operator skill layer (`ly-*`) — the clean root |
+| **`raddle`** | standalone plugin | `codeguide` | nav-doc generator; `loom` is a diff-scoped consumer (`git diff <start-SHA>..HEAD`); raddle knows nothing about lyx |
+| **`golang` / `csharp`** | language plugins | same | per-language build / test / comments; LY uses `golang-*` |
+| *(generic behavioural)* | plugin, name open | *(mill:\*)* | conversation / code-quality / testing / linting / markdown / cli |
 
-**Open decision — generic behavioural placement.** testing / linting / markdown / code-quality /
-conversation / cli are *not* loomyard-specific; naming them `ly-testing` overstates scope. Two options:
-1. **A separate generic plugin** (neutral name — `craft` / `dev` / `core`?): keeps `ly-*` tight and
-   honest, reusable across projects. *(Recommended — scope-honest.)*
-2. **Fold into `ly`** (as mill folds them into `mill:*`): simpler, more self-contained, but the name
-   overstates loomyard-tie.
+**Why `ly` for the plugin (not `lyx`, not `weaver`):** `lyx` is reserved for the executable (the `x`
+*is* "executable"), so the plugin cannot take it. `ly`/`lyx` is *exactly* the `mill`/`millpy` split —
+the plugin takes the clean root, the impl takes a suffix. `ly` being LoomYard's short form is no more
+a conflation than `mill` being millhouse's root: sibling plugins (`raddle`, `csharp`) carry their own
+domain names and never contest `ly`-ness. Short is deliberate — it reads clean as a prefix
+(`ly-workflow`), and a longer weaving name (`weaver-*`) loses exactly the brevity that made `ly` right.
 
-Nuance: testing/linting have a *language* dimension (generic principles + `golang-testing` specifics);
-conversation/markdown/code-quality are purely generic.
+**Open decision — generic-behavioural placement.** testing / linting / markdown / code-quality /
+conversation / cli are *not* loomyard-specific; naming them `ly-testing` would overstate scope. Two
+options: (1) a **separate generic plugin** (neutral name — `craft` / `dev` / `core`?), scope-honest
+and reusable *(recommended)*; or (2) **fold into `ly`** (as mill folds them into `mill:*`), simpler
+but the name overstates the loomyard tie. Nuance: testing/linting have a *language* dimension (generic
+principles + `golang-testing` specifics); conversation/markdown/code-quality are purely generic.
+
+## The LoomYard skill set — what we will build
+
+The concrete target, by plugin. Everything not listed here is a `lyx` verb, a CLAUDE.md rule, or
+dropped (see the [fate table](#fate-of-every-mill-skill)).
+
+| Plugin | Skill | Purpose |
+|---|---|---|
+| **`ly`** (core) | `ly-workflow` | The map: module catalogue + common flows + mental model + `--help --json` fallback |
+| **`ly`** | `ly-triage` | Board intake: GH issues / JSON reports → judge vs board → fold / new / skip → `lyx board` |
+| **`ly`** | `ly-git-resolve` | Merge / rebase / cherry-pick conflict resolution (skill now; prompt template later for `--auto`) |
+| **`ly`** | `ly-selfreport` *(optional)* | Reflect on a session, file bugs via `lyx selfreport` |
+| **generic** *(name pending)* | `conversation` | Response style |
+| **generic** | `code-quality` | Clean-code guidance |
+| **generic** | `testing` | Testing principles (+ `golang-testing` for Go specifics) |
+| **generic** | `linting` | Style rules (+ language specifics) |
+| **generic** | `markdown` | Markdown formatting for generated files |
+| **generic** | `cli` | Shell-command guidance |
+| **`golang`** | `golang-build` / `-test` / `-comments` | Go build / test / comment conventions (LY is Go) |
+| **`raddle`** | `raddle-generate` / `-update` / `-maintain` | Nav-docs for any repo; `loom` drives it diff-scoped |
+
+**~10 skills total** (a couple optional), none a CLI wrapper or orchestration. The rest of the
+"manual" is the `lyx` binary + its self-documenting CLI + `ly-workflow`'s map. The review-interpretation
+discipline (from mill's `mill-receiving-review`) lives in **burler's prompt**, not a skill.
 
 ## `ly-workflow` — the map, not the manual
 
@@ -143,6 +176,12 @@ to the operator** (stuck/pause), not silently auto-resolve, which can corrupt in
 | mill:git-commit | CLAUDE.md hygiene (stage individually, never `--no-verify`/force-push) + burler prompts own commit-per-fix |
 | mill:git-workflow | CLAUDE.md — always-on git rules belong in the per-session instructions, not an on-demand skill |
 
+### Folds into a prompt template (lyx-spawned judgment, not a skill)
+
+| mill skill | Folds to |
+|---|---|
+| mill:mill-receiving-review | **burler's prompt template** (`review-prompt-template.md`). burler interprets its own A-review and acts on it in the B-step (and reconciles cluster findings in A) — that review-interpretation discipline was genuinely valuable in mill and is **preserved**, not discarded. It lives in burler's prompt because burler is lyx-spawned / autonomous (rule 4, the *prompt-only* case; contrast `ly-git-resolve`, which is skill *and* prompt). |
+
 ### Discard (low value or obsolete)
 
 | mill skill | Why |
@@ -151,7 +190,6 @@ to the operator** (stuck/pause), not silently auto-resolve, which can corrupt in
 | mill:mill-wiki-push | Board is one-shot & daemonless — no wiki repo to push. |
 | mill:mill-skills-from-scripts | LY has few, non-script-backed skills. |
 | mill:mill-skills-index | Same; a skills index is trivial if ever wanted. |
-| mill:mill-receiving-review | `perch` automates evaluation of review findings. |
 | mill:git-log | Work-journal-from-commits; low value, git history suffices. |
 | mill:git-pr | Push-to-main is OK in LY → a PR is the exception; use `gh` ad-hoc. |
 
@@ -161,7 +199,7 @@ to the operator** (stuck/pause), not silently auto-resolve, which can corrupt in
 
 - **~4 loomyard-specific** `ly-*`: `ly-workflow`, `ly-triage`, `ly-git-resolve`, `ly-selfreport` (optional)
 - **~6 generic behavioural** (placement pending): conversation, code-quality, testing, linting, markdown, cli
-- **4 merged** into the above · **22 → CLI** · **2 → CLAUDE.md** · **7 discarded**
+- **4 merged** · **22 → CLI** · **2 → CLAUDE.md** · **1 → burler prompt** · **6 discarded**
 - Language plugins (`golang-*`) and the `raddle` plugin sit alongside, unchanged / standalone.
 
 **~10 real skills, none a CLI wrapper or orchestration.** The `lyx` binary + a self-documenting CLI +
