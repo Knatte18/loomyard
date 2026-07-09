@@ -11,10 +11,22 @@ package perchengine
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
+
+// runLockName is the exclusive-lease file name inside a block's run dir,
+// held for the ENTIRE duration of one Engine.Run call — distinct from
+// state.json.lock, which internal/state only holds for the instant of one
+// read or write. Without this, two concurrent `lyx perch run` invocations
+// against the same run dir would each classify resume/fresh from state.json
+// and then both drive rounds into the same dir: colliding artifact paths,
+// clobbered state.json appends, and two burler agents editing the worktree
+// at once.
+const runLockName = "run.lock"
 
 // roundOutcome captures what a round's retry loop produced once burler
 // finally reached a done outcome: everything the round-loop body needs to
@@ -57,6 +69,20 @@ func (e *Engine) Run(p Profile, runDir string) (Result, error) {
 	if err := os.MkdirAll(runDir, 0o755); err != nil {
 		return Result{}, fmt.Errorf("perch: create run dir %q: %w", runDir, err)
 	}
+
+	// Held for this entire call: a second concurrent `lyx perch run` (or a
+	// loom re-entry) against the SAME run dir must fail fast rather than
+	// silently interleave rounds with this one. Released by the OS on
+	// process exit/crash even if this call never reaches Release, so a
+	// killed process never bricks the run dir for a later resume.
+	runLock, locked, err := lock.TryAcquireWriteLock(filepath.Join(runDir, runLockName))
+	if err != nil {
+		return Result{}, fmt.Errorf("perch: acquire run lock for %q: %w", runDir, err)
+	}
+	if !locked {
+		return Result{}, fmt.Errorf("perch: block %q is already running (run.lock held); wait for it to finish or use a different --run-id", runDir)
+	}
+	defer runLock.Release()
 
 	// A resumed block must never instantly re-pause on a flag left over
 	// from the run that requested the pause it is now resuming from.

@@ -178,6 +178,17 @@
 // re-pauses on the flag that requested the very pause being resumed from.
 // Loom will wire its own status-file check into the same seam later.
 //
+// # Run-dir mutual exclusion
+//
+// Engine.Run holds an exclusive, non-blocking OS file lock (run.lock, inside
+// runDir) for its entire call duration. A second Run call against the SAME
+// run dir — a duplicate invocation from two terminals, or a re-entrant loom
+// caller — fails FAST with a named "already running" error rather than
+// blocking until the first call finishes or, worse, silently interleaving
+// rounds into the same state.json and artifact paths. The lock is an OS
+// advisory lock, released automatically if the holding process dies, so a
+// crashed run never bricks the run dir for a later resume.
+//
 // # Weft-blindness and geometry-blindness
 //
 // perchengine never imports weftengine or warpengine and never constructs a

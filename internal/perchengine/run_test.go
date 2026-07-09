@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1373,6 +1374,71 @@ func TestRun_Resume(t *testing.T) {
 			t.Errorf("stale file content = %q; want the original partial content preserved", staleContent)
 		}
 	})
+}
+
+// TestRun_ConcurrentSameRunDir proves a second Engine.Run against the SAME
+// run dir, started while the first is still holding it open (blocked mid-
+// round on a burler call that never returns until released), fails fast
+// with a named "already running" error rather than silently interleaving
+// rounds into the same state.json/artifact paths.
+func TestRun_ConcurrentSameRunDir(t *testing.T) {
+	layout := newTestLayout(t)
+	runDir := filepath.Join(t.TempDir(), "run")
+
+	// blockingBurler.Run blocks on a channel until the test releases it,
+	// standing in for a long-running real burler round still in flight when
+	// the second Run call arrives.
+	release := make(chan struct{})
+	fb1 := &blockingBurler{entered: make(chan struct{}), release: release}
+
+	e1 := New(fb1, &queuedShuttle{}, Config{}, layout, Options{})
+	p := testProfile(GateLLMVerdict, nil, []int{10})
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _ = e1.Run(p, runDir)
+	}()
+
+	// Wait for the first call to actually enter its (blocked) burler round,
+	// so the run.lock is provably held before the second call attempts it.
+	select {
+	case <-fb1.entered:
+	case <-time.After(10 * time.Second):
+		t.Fatal("first Run() never entered its burler call")
+	}
+
+	fb2 := &fakeBurler{}
+	e2 := New(fb2, &queuedShuttle{}, Config{}, layout, Options{})
+	_, err := e2.Run(p, runDir)
+	if err == nil {
+		t.Fatal("second Run() error = nil; want an already-running error while the first Run holds the run dir")
+	}
+	if !strings.Contains(err.Error(), "already running") {
+		t.Errorf("second Run() error = %q; want it to name the block as already running", err.Error())
+	}
+	if len(fb2.calls) != 0 {
+		t.Errorf("fb2 called %d times; want 0 (the second Run must never touch burler)", len(fb2.calls))
+	}
+
+	close(release)
+	<-done
+}
+
+// blockingBurler is a same-package Burler double whose single Run call
+// signals entered, then blocks until release is closed — standing in for a
+// real burler round still in flight, so a concurrency test can deterministically
+// observe "the first Run call holds the lock" without a timing-based sleep.
+type blockingBurler struct {
+	entered chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func (b *blockingBurler) Run(burlerengine.Profile, burlerengine.RunOpts) (burlerengine.Result, error) {
+	b.once.Do(func() { close(b.entered) })
+	<-b.release
+	return burlerengine.Result{}, errors.New("blockingBurler: released without a scripted result")
 }
 
 // TestRun_Pause proves the pause boundary is checked only between rounds
