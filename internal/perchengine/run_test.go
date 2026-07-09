@@ -1477,6 +1477,12 @@ func TestRun_ConcurrentSameRunDir(t *testing.T) {
 	if !strings.Contains(err.Error(), "already running") {
 		t.Errorf("second Run() error = %q; want it to name the block as already running", err.Error())
 	}
+	// The refusal must be errors.Is-matchable: perchcli branches on
+	// ErrBlockBusy to skip the block-exit weft sync for the losing
+	// invocation (which changed nothing; the winner owns the block).
+	if !errors.Is(err, ErrBlockBusy) {
+		t.Errorf("second Run() error = %v; want errors.Is(err, ErrBlockBusy)", err)
+	}
 	if len(fb2.calls) != 0 {
 		t.Errorf("fb2 called %d times; want 0 (the second Run must never touch burler)", len(fb2.calls))
 	}

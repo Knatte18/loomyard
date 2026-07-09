@@ -9,6 +9,7 @@ package perchcli
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -205,7 +206,10 @@ func (c *perchCLI) resolveRunTarget(profilePath, explicitRunID string, fileProfi
 // committed and pushed through weft exactly once, per the Weft Git
 // Invariant, before the JSON envelope is printed — an engine error can
 // still follow a completed round or two whose artifacts are already on
-// disk, and those must not be stranded uncommitted.
+// disk, and those must not be stranded uncommitted. The one exception is
+// perchengine.ErrBlockBusy: another invocation owns the block mid-round,
+// this one changed nothing, and syncing here would commit the winner's
+// in-flight state under a misleading ERROR label.
 //
 // --profile is validated manually here rather than via cobra's
 // MarkFlagRequired, for the same reason burlercli's run verb does: cobra's
@@ -335,6 +339,17 @@ pass a fresh --run-id to run the same profile under different tuning.`,
 			})
 
 			result, runErr := engine.Run(profile, runDir)
+
+			// A busy fail-fast means ANOTHER invocation owns this block and
+			// is mid-round right now; this invocation changed nothing on
+			// disk. Running the weft sync below would commit and push the
+			// winner's in-flight partial state under a misleading
+			// "perch: <id> ERROR" message — skip it; the winner runs the
+			// sync at its own block exit.
+			if errors.Is(runErr, perchengine.ErrBlockBusy) {
+				clihelp.SetExit(cmd.Context(), output.Err(out, runErr.Error()))
+				return nil
+			}
 
 			// The weft sync runs once at block exit regardless of outcome —
 			// including a hard engine error — per the Weft Git Invariant:

@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 	"github.com/Knatte18/loomyard/internal/muxengine"
 	"github.com/Knatte18/loomyard/internal/perchengine"
@@ -186,6 +187,69 @@ func TestRunCLI_Run_WeftCommitExcludesLockFiles(t *testing.T) {
 	}
 	if strings.Contains(tracked, ".lock") {
 		t.Errorf("weft tracked files = %q; want no *.lock file ever committed", tracked)
+	}
+}
+
+// TestRunCLI_Run_BusyBlockSkipsWeftSync verifies that a run refused because
+// another invocation holds the block's run.lock does NOT run the block-exit
+// weft sync: the loser changed nothing on disk, and syncing would commit
+// (and push) the WINNER's in-flight partial state under a misleading
+// "perch: <id> ERROR" message. A dirty file is planted in the weft-side
+// _lyx (standing in for the winner's mid-round state) to prove the sync
+// would have had something to commit and still did not run.
+func TestRunCLI_Run_BusyBlockSkipsWeftSync(t *testing.T) {
+	t.Setenv("WEFT_SKIP_PUSH", "1")
+	fixture := lyxtest.CopyPairedLocal(t)
+	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
+		"shuttle": shuttleengine.ConfigTemplate(),
+		"mux":     muxengine.ConfigTemplate(),
+		"perch":   perchengine.ConfigTemplate(),
+	})
+	t.Chdir(fixture.Hub)
+
+	profilePath := filepath.Join(fixture.Hub, "profile.yaml")
+	profileContent := "target:\n  instructions: x\nfasit:\n  instructions: y\nrubric: r\nfix-scope: overlay\ngate:\n  mode: llm-verdict\nround-caps: [3]\n"
+	if err := os.WriteFile(profilePath, []byte(profileContent), 0o644); err != nil {
+		t.Fatalf("write profile fixture: %v", err)
+	}
+
+	// The winner's in-flight state, planted straight into WeftPrime (this
+	// fixture predates "lyx init", so no junction exists — same pattern as
+	// the weft tests above). runDirBase resolves against the HOST cwd, so
+	// hold the run.lock there; the dirty weft file proves the skipped sync
+	// had real material.
+	hostRunDir := filepath.Join(hubgeometry.PerchRunsDir(fixture.Hub), "busyblock")
+	if err := os.MkdirAll(hostRunDir, 0o755); err != nil {
+		t.Fatalf("mkdir host run dir: %v", err)
+	}
+	weftDirty := filepath.Join(fixture.WeftPrime, hubgeometry.LyxDirName, "perch", "busyblock")
+	if err := os.MkdirAll(weftDirty, 0o755); err != nil {
+		t.Fatalf("mkdir weft dirty dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(weftDirty, "round-1-review.md"), []byte("winner's in-flight partial"), 0o644); err != nil {
+		t.Fatalf("write weft dirty file: %v", err)
+	}
+
+	// Stand in for the winning invocation: hold the run.lock for the whole
+	// losing call, exactly as a mid-round Engine.Run does.
+	runLock, locked, err := lock.TryAcquireWriteLock(filepath.Join(hostRunDir, "run.lock"))
+	if err != nil || !locked {
+		t.Fatalf("TryAcquireWriteLock() = (%v, %v); want a held lock", locked, err)
+	}
+	defer runLock.Release()
+
+	var out bytes.Buffer
+	exitCode := RunCLI(&out, []string{"run", "--profile", profilePath, "--run-id", "busyblock"})
+	if exitCode != 1 {
+		t.Fatalf(`RunCLI([run --run-id busyblock]) = %d; want 1, output: %s`, exitCode, out.String())
+	}
+	if !strings.Contains(out.String(), "already running") {
+		t.Errorf(`RunCLI([run --run-id busyblock]) output missing "already running"; got: %q`, out.String())
+	}
+
+	weftLog := gitLogOneline(t, fixture.WeftPrime)
+	if strings.Contains(weftLog, "busyblock") {
+		t.Errorf("weft log = %q; want NO commit from the losing invocation (the winner syncs at its own exit)", weftLog)
 	}
 }
 

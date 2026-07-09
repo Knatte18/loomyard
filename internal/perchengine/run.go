@@ -9,6 +9,7 @@
 package perchengine
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -17,6 +18,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
+
+// ErrBlockBusy marks Run's fail-fast refusal when another invocation
+// already holds the run dir's run.lock. It is a sentinel (matched via
+// errors.Is) because the caller must treat this refusal differently from
+// every other hard error: the losing invocation touched NOTHING on disk —
+// the winner is mid-round and owns the block's state — so a loop owner
+// must not run its block-exit bookkeeping (perchcli's weft sync) for it.
+var ErrBlockBusy = errors.New("perch: block is already running")
 
 // runLockName is the exclusive-lease file name inside a block's run dir,
 // held for the ENTIRE duration of one Engine.Run call — distinct from
@@ -93,7 +102,9 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 		return Result{}, fmt.Errorf("perch: acquire run lock for %q: %w", runDir, err)
 	}
 	if !locked {
-		return Result{}, fmt.Errorf("perch: block %q is already running (run.lock held); wait for it to finish or use a different --run-id", runDir)
+		// Wrapped with %w so the caller can errors.Is-match ErrBlockBusy and
+		// skip its block-exit bookkeeping — see the sentinel's doc.
+		return Result{}, fmt.Errorf("%w: %q (run.lock held); wait for it to finish or use a different --run-id", ErrBlockBusy, runDir)
 	}
 	defer runLock.Release()
 
