@@ -286,7 +286,7 @@ The chair is red and the table is blue; they must match.
 	muxEngine := muxengine.New(muxCfg, fixture.Layout)
 	runner := shuttleengine.NewRunner(muxEngine, claudeengine.New(), fixture.Layout, shuttleCfg)
 
-	verdict, rationale := runCircling(runner, judgeInputs{
+	verdict, rationale, ok := runCircling(runner, judgeInputs{
 		Round:        2,
 		PriorReviews: []string{round1Path, round2Path},
 		VerdictPath:  verdictPath,
@@ -294,11 +294,15 @@ The chair is red and the table is blue; they must match.
 	})
 
 	// runCircling never errors — a spawn/parse failure would silently
-	// degrade to JudgeProgressing with an empty rationale. Assert the
-	// verdict file was actually written and parses, so this test catches a
-	// silent fail-safe degrade (which would otherwise look identical to a
-	// judge that genuinely read the case as progressing) rather than
-	// asserting a specific verdict, which a real LLM call cannot guarantee.
+	// degrade to (JudgeProgressing, "", false). Assert ok is true (a real
+	// verdict was parsed, not the fail-safe fallback) and that the verdict
+	// file was actually written and parses, so this test catches a silent
+	// fail-safe degrade (which would otherwise look identical to a judge
+	// that genuinely read the case as progressing) rather than asserting a
+	// specific verdict, which a real LLM call cannot guarantee.
+	if !ok {
+		t.Fatalf("runCircling() ok = false; want true — a real judge call should not fall back to the fail-safe default (verdict=%q rationale=%q)", verdict, rationale)
+	}
 	content, err := os.ReadFile(verdictPath)
 	if err != nil {
 		t.Fatalf("read judge verdict file: %v (runCircling returned verdict=%q rationale=%q)", err, verdict, rationale)

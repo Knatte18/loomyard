@@ -71,13 +71,16 @@ rationale: the same nil-check finding recurs in rounds 2 and 4
 			Model:        "haiku",
 			Effort:       "low",
 		}
-		verdict, rationale := runCircling(sh, in)
+		verdict, rationale, ok := runCircling(sh, in)
 
 		if verdict != JudgeCircling {
 			t.Errorf("runCircling() verdict = %q; want %q", verdict, JudgeCircling)
 		}
 		if rationale == "" {
 			t.Error("runCircling() rationale is empty; want the scripted rationale")
+		}
+		if !ok {
+			t.Error("runCircling() ok = false; want true on the success path")
 		}
 		if !sh.called {
 			t.Fatal("runCircling() never called the shuttle")
@@ -98,34 +101,43 @@ rationale: the same nil-check finding recurs in rounds 2 and 4
 
 	t.Run("shuttle run error defaults to progressing", func(t *testing.T) {
 		sh := &fakeJudgeShuttle{err: errTestShuttle}
-		verdict, rationale := runCircling(sh, judgeInputs{Round: 1, VerdictPath: filepath.Join(t.TempDir(), "v.md")})
+		verdict, rationale, ok := runCircling(sh, judgeInputs{Round: 1, VerdictPath: filepath.Join(t.TempDir(), "v.md")})
 		if verdict != JudgeProgressing {
 			t.Errorf("verdict = %q; want %q", verdict, JudgeProgressing)
 		}
 		if rationale != "" {
 			t.Errorf("rationale = %q; want empty", rationale)
+		}
+		if ok {
+			t.Error("ok = true; want false on a fail-safe path")
 		}
 	})
 
 	t.Run("non-done outcome defaults to progressing", func(t *testing.T) {
 		sh := &fakeJudgeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking}}
-		verdict, rationale := runCircling(sh, judgeInputs{Round: 1, VerdictPath: filepath.Join(t.TempDir(), "v.md")})
+		verdict, rationale, ok := runCircling(sh, judgeInputs{Round: 1, VerdictPath: filepath.Join(t.TempDir(), "v.md")})
 		if verdict != JudgeProgressing {
 			t.Errorf("verdict = %q; want %q", verdict, JudgeProgressing)
 		}
 		if rationale != "" {
 			t.Errorf("rationale = %q; want empty", rationale)
+		}
+		if ok {
+			t.Error("ok = true; want false on a fail-safe path")
 		}
 	})
 
 	t.Run("missing verdict file defaults to progressing", func(t *testing.T) {
 		sh := &fakeJudgeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-		verdict, rationale := runCircling(sh, judgeInputs{Round: 1, VerdictPath: filepath.Join(t.TempDir(), "never-written.md")})
+		verdict, rationale, ok := runCircling(sh, judgeInputs{Round: 1, VerdictPath: filepath.Join(t.TempDir(), "never-written.md")})
 		if verdict != JudgeProgressing {
 			t.Errorf("verdict = %q; want %q", verdict, JudgeProgressing)
 		}
 		if rationale != "" {
 			t.Errorf("rationale = %q; want empty", rationale)
+		}
+		if ok {
+			t.Error("ok = true; want false on a fail-safe path")
 		}
 	})
 
@@ -134,12 +146,15 @@ rationale: the same nil-check finding recurs in rounds 2 and 4
 			verdictContent: "not a valid verdict file at all",
 			result:         shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
 		}
-		verdict, rationale := runCircling(sh, judgeInputs{Round: 1, VerdictPath: filepath.Join(t.TempDir(), "v.md")})
+		verdict, rationale, ok := runCircling(sh, judgeInputs{Round: 1, VerdictPath: filepath.Join(t.TempDir(), "v.md")})
 		if verdict != JudgeProgressing {
 			t.Errorf("verdict = %q; want %q", verdict, JudgeProgressing)
 		}
 		if rationale != "" {
 			t.Errorf("rationale = %q; want empty", rationale)
+		}
+		if ok {
+			t.Error("ok = true; want false on a fail-safe path")
 		}
 	})
 }
@@ -167,13 +182,16 @@ rationale: the same two findings oscillate every round
 			Model:        "haiku",
 			Effort:       "low",
 		}
-		verdict, rationale := runMilestone(sh, in)
+		verdict, rationale, ok := runMilestone(sh, in)
 
 		if verdict != JudgeStop {
 			t.Errorf("runMilestone() verdict = %q; want %q", verdict, JudgeStop)
 		}
 		if rationale == "" {
 			t.Error("runMilestone() rationale is empty; want the scripted rationale")
+		}
+		if !ok {
+			t.Error("runMilestone() ok = false; want true on the success path")
 		}
 		if sh.spec.Role != "judge" {
 			t.Errorf("runMilestone() spec.Role = %q; want %q", sh.spec.Role, "judge")
@@ -191,34 +209,43 @@ rationale: the same two findings oscillate every round
 
 	t.Run("shuttle run error defaults to continue", func(t *testing.T) {
 		sh := &fakeJudgeShuttle{err: errTestShuttle}
-		verdict, rationale := runMilestone(sh, judgeInputs{Round: 5, HardCap: 10, VerdictPath: filepath.Join(t.TempDir(), "v.md")})
+		verdict, rationale, ok := runMilestone(sh, judgeInputs{Round: 5, HardCap: 10, VerdictPath: filepath.Join(t.TempDir(), "v.md")})
 		if verdict != JudgeContinue {
 			t.Errorf("verdict = %q; want %q", verdict, JudgeContinue)
 		}
 		if rationale != "" {
 			t.Errorf("rationale = %q; want empty", rationale)
+		}
+		if ok {
+			t.Error("ok = true; want false on a fail-safe path")
 		}
 	})
 
 	t.Run("non-done outcome defaults to continue", func(t *testing.T) {
 		sh := &fakeJudgeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeTimeout}}
-		verdict, rationale := runMilestone(sh, judgeInputs{Round: 5, HardCap: 10, VerdictPath: filepath.Join(t.TempDir(), "v.md")})
+		verdict, rationale, ok := runMilestone(sh, judgeInputs{Round: 5, HardCap: 10, VerdictPath: filepath.Join(t.TempDir(), "v.md")})
 		if verdict != JudgeContinue {
 			t.Errorf("verdict = %q; want %q", verdict, JudgeContinue)
 		}
 		if rationale != "" {
 			t.Errorf("rationale = %q; want empty", rationale)
+		}
+		if ok {
+			t.Error("ok = true; want false on a fail-safe path")
 		}
 	})
 
 	t.Run("missing verdict file defaults to continue", func(t *testing.T) {
 		sh := &fakeJudgeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-		verdict, rationale := runMilestone(sh, judgeInputs{Round: 5, HardCap: 10, VerdictPath: filepath.Join(t.TempDir(), "never-written.md")})
+		verdict, rationale, ok := runMilestone(sh, judgeInputs{Round: 5, HardCap: 10, VerdictPath: filepath.Join(t.TempDir(), "never-written.md")})
 		if verdict != JudgeContinue {
 			t.Errorf("verdict = %q; want %q", verdict, JudgeContinue)
 		}
 		if rationale != "" {
 			t.Errorf("rationale = %q; want empty", rationale)
+		}
+		if ok {
+			t.Error("ok = true; want false on a fail-safe path")
 		}
 	})
 
@@ -227,12 +254,15 @@ rationale: the same two findings oscillate every round
 			verdictContent: "garbled, not a verdict file",
 			result:         shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
 		}
-		verdict, rationale := runMilestone(sh, judgeInputs{Round: 5, HardCap: 10, VerdictPath: filepath.Join(t.TempDir(), "v.md")})
+		verdict, rationale, ok := runMilestone(sh, judgeInputs{Round: 5, HardCap: 10, VerdictPath: filepath.Join(t.TempDir(), "v.md")})
 		if verdict != JudgeContinue {
 			t.Errorf("verdict = %q; want %q", verdict, JudgeContinue)
 		}
 		if rationale != "" {
 			t.Errorf("rationale = %q; want empty", rationale)
+		}
+		if ok {
+			t.Error("ok = true; want false on a fail-safe path")
 		}
 	})
 }

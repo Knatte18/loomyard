@@ -491,7 +491,10 @@ func TestRun_PerRoundCircling(t *testing.T) {
 // TestRun_JudgeFailSafe proves every judge infrastructure failure (a
 // shuttle Run error, a non-done outcome, and an unparseable verdict file)
 // degrades to the safe default inside the judge call itself, so the loop
-// continues rather than erroring or reporting STUCK.
+// continues rather than erroring or reporting STUCK — and that the
+// fail-safe fallback is NEVER recorded in the round as if it were a real
+// judge verdict: an operator reading state.json must be able to tell a
+// genuine PROGRESSING from a judge that never actually answered.
 func TestRun_JudgeFailSafe(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -499,6 +502,7 @@ func TestRun_JudgeFailSafe(t *testing.T) {
 			verdictContent string
 			err            error
 		}
+		nonDone bool // when true, a nonDoneJudgeShuttle drives the case instead of entry
 	}{
 		{
 			name: "shuttle run error",
@@ -506,6 +510,17 @@ func TestRun_JudgeFailSafe(t *testing.T) {
 				verdictContent string
 				err            error
 			}{err: errors.New("fake shuttle run error")},
+		},
+		{
+			name:    "non-done outcome",
+			nonDone: true,
+		},
+		{
+			name: "unparseable verdict file",
+			entry: struct {
+				verdictContent string
+				err            error
+			}{verdictContent: "not a valid verdict file at all"},
 		},
 	}
 
@@ -523,11 +538,17 @@ func TestRun_JudgeFailSafe(t *testing.T) {
 				{result: burlerengine.Result{Outcome: shuttleengine.OutcomeDone, Verdict: burlerengine.VerdictBlocking, Findings: oneBlockingFinding(), SessionID: "s2"}},
 				{result: burlerengine.Result{Outcome: shuttleengine.OutcomeDone, Verdict: burlerengine.VerdictApproved, SessionID: "s3"}},
 			}
-			qs := &queuedShuttle{}
-			qs.queue = []struct {
-				verdictContent string
-				err            error
-			}{tt.entry}
+			var qs Shuttle
+			if tt.nonDone {
+				qs = &nonDoneJudgeShuttle{}
+			} else {
+				scripted := &queuedShuttle{}
+				scripted.queue = []struct {
+					verdictContent string
+					err            error
+				}{tt.entry}
+				qs = scripted
+			}
 
 			e := New(fb, qs, Config{}, layout, Options{})
 			p := testProfile(GateLLMVerdict, nil, []int{10})
@@ -542,8 +563,26 @@ func TestRun_JudgeFailSafe(t *testing.T) {
 			if got.RoundsRun != 3 {
 				t.Fatalf("Run() RoundsRun = %d; want 3", got.RoundsRun)
 			}
+
+			// Round 2 is the one that ran the (failed) circling judge; its
+			// record must carry NO judge fields, since the judge never
+			// actually produced a verdict.
+			if got.Rounds[1].JudgeVerdict != "" || got.Rounds[1].JudgePath != "" {
+				t.Errorf("Rounds[1] = {JudgeVerdict: %q, JudgePath: %q}; want both empty on a judge fail-safe", got.Rounds[1].JudgeVerdict, got.Rounds[1].JudgePath)
+			}
 		})
 	}
+}
+
+// nonDoneJudgeShuttle is a same-package Shuttle double that always reports a
+// non-done outcome (Asking) without writing a verdict file, used to drive
+// TestRun_JudgeFailSafe's "non-done outcome" case, which queuedShuttle
+// cannot script directly (its scripted entries only vary content/err, not
+// the shuttle Outcome).
+type nonDoneJudgeShuttle struct{}
+
+func (nonDoneJudgeShuttle) Run(shuttleengine.Spec) (shuttleengine.Result, error) {
+	return shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking}, nil
 }
 
 // TestRun_GateModes tables the pluggable convergence gate: GateLLMVerdict

@@ -104,6 +104,11 @@
 // missing verdict. This mirrors the same fail-safe posture asking-triage
 // uses below — the two ephemeral LLM utility calls are the ONLY fail-safe
 // surface in the engine; every machine-read parse elsewhere is fail-loud.
+// The fail-safe default is never persisted as if it were a genuine verdict:
+// a round's state.json record carries JudgePath/JudgeVerdict only when the
+// judge actually produced a parsed verdict, so an operator can always tell
+// a real PROGRESSING/CONTINUE apart from a judge that never answered (the
+// Warn log is the only trace of the latter).
 //
 // # Pluggable gate — verdict vs. command, and why it runs in perch
 //

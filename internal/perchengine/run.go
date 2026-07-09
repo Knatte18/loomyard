@@ -198,7 +198,7 @@ func (e *Engine) Run(p Profile, runDir string) (Result, error) {
 			case isMilestoneRung(caps, round):
 				// The milestone gate REPLACES the circling check for this
 				// round — a rung round issues exactly one judge call.
-				jv, _ := runMilestone(e.shuttle, judgeInputs{
+				jv, _, judgeOK := runMilestone(e.shuttle, judgeInputs{
 					Round:        round,
 					HardCap:      hardCap,
 					PriorReviews: judgeReviews,
@@ -206,8 +206,16 @@ func (e *Engine) Run(p Profile, runDir string) (Result, error) {
 					Model:        p.JudgeModel,
 					Effort:       p.JudgeEffort,
 				})
-				record.JudgePath = outcome.Paths.Judge
-				record.JudgeVerdict = string(jv)
+				// Only a REAL verdict is recorded — a fail-safe fallback
+				// (judgeOK false) leaves the record's judge fields empty, so
+				// an operator reading state.json can tell a genuine CONTINUE
+				// apart from a judge infrastructure failure that never
+				// actually answered (the Warn logged inside the call above
+				// is the only trace of the failure).
+				if judgeOK {
+					record.JudgePath = outcome.Paths.Judge
+					record.JudgeVerdict = string(jv)
+				}
 				if jv == JudgeStop {
 					st.Rounds = append(st.Rounds, record)
 					st.Outcome = string(OutcomeStuck)
@@ -219,15 +227,19 @@ func (e *Engine) Run(p Profile, runDir string) (Result, error) {
 				}
 				// JudgeContinue / JudgeUncertain: fall through and loop.
 			case round >= 2 && !prevRoundApproved:
-				jv, _ := runCircling(e.shuttle, judgeInputs{
+				jv, _, judgeOK := runCircling(e.shuttle, judgeInputs{
 					Round:        round,
 					PriorReviews: judgeReviews,
 					VerdictPath:  outcome.Paths.Judge,
 					Model:        p.JudgeModel,
 					Effort:       p.JudgeEffort,
 				})
-				record.JudgePath = outcome.Paths.Judge
-				record.JudgeVerdict = string(jv)
+				// See the milestone-rung branch above: only a REAL verdict
+				// is recorded, never the fail-safe fallback.
+				if judgeOK {
+					record.JudgePath = outcome.Paths.Judge
+					record.JudgeVerdict = string(jv)
+				}
 				if jv == JudgeCircling {
 					st.Rounds = append(st.Rounds, record)
 					st.Outcome = string(OutcomeStuck)

@@ -54,11 +54,13 @@ type judgeInputs struct {
 // newest BLOCKING round's findings recur across prior rounds, or is the
 // block still moving forward? Fail-safe: any failure — stencil fill,
 // shuttle Run error, non-done Outcome, verdict file read, or parse — logs a
-// logger.Warn naming the round and cause, and returns (JudgeProgressing,
-// "") rather than an error, since a false CIRCLING permanently kills a
+// logger.Warn naming the round and cause, and returns (JudgeProgressing, "",
+// false) rather than an error, since a false CIRCLING permanently kills a
 // converging block while a false PROGRESSING only costs a few more bounded
-// rounds.
-func runCircling(sh Shuttle, in judgeInputs) (JudgeVerdict, string) {
+// rounds. The third return, ok, is false on every fail-safe path and true
+// only when a real verdict was parsed — callers use it to avoid recording a
+// fail-safe default as if the judge had actually answered.
+func runCircling(sh Shuttle, in judgeInputs) (JudgeVerdict, string, bool) {
 	values := map[string]string{
 		"round":         strconv.Itoa(in.Round),
 		"prior_reviews": strings.Join(in.PriorReviews, "\n"),
@@ -70,10 +72,11 @@ func runCircling(sh Shuttle, in judgeInputs) (JudgeVerdict, string) {
 // runMilestone spawns the milestone continuation-gate progress judge: has a
 // block reached a soft cap whose trajectory still justifies continuing
 // toward HardCap? Fail-safe posture mirrors runCircling exactly, defaulting
-// to (JudgeContinue, "") on any failure — a false STOP permanently kills a
-// converging block while a false CONTINUE only spends the remaining rounds
-// up to the hard cap, which still catches a genuinely stuck block.
-func runMilestone(sh Shuttle, in judgeInputs) (JudgeVerdict, string) {
+// to (JudgeContinue, "", false) on any failure — a false STOP permanently
+// kills a converging block while a false CONTINUE only spends the remaining
+// rounds up to the hard cap, which still catches a genuinely stuck block.
+// See runCircling's doc for the ok return's meaning.
+func runMilestone(sh Shuttle, in judgeInputs) (JudgeVerdict, string, bool) {
 	values := map[string]string{
 		"round":         strconv.Itoa(in.Round),
 		"hard_cap":      strconv.Itoa(in.HardCap),
@@ -87,14 +90,16 @@ func runMilestone(sh Shuttle, in judgeInputs) (JudgeVerdict, string) {
 // through their respective template/framing/default: compose the prompt,
 // build and run the shuttle spec (Role "judge" for both framings), then
 // read and parse the verdict file. Every failure point degrades to
-// fallback with an empty rationale rather than an error, logging label
-// (the call's human-facing name, e.g. "circling judge") alongside round and
-// cause so an operator can tell which of the two framings failed.
-func runJudgeCall(sh Shuttle, template []byte, values map[string]string, framing judgeFraming, round int, model, effort string, fallback JudgeVerdict, label string) (JudgeVerdict, string) {
+// (fallback, "", false) rather than an error, logging label (the call's
+// human-facing name, e.g. "circling judge") alongside round and cause so an
+// operator can tell which of the two framings failed. ok is true only on
+// the success path, so a caller can distinguish a genuine verdict from the
+// fail-safe default without inspecting the verdict value itself.
+func runJudgeCall(sh Shuttle, template []byte, values map[string]string, framing judgeFraming, round int, model, effort string, fallback JudgeVerdict, label string) (JudgeVerdict, string, bool) {
 	prompt, err := stencil.Fill(template, values)
 	if err != nil {
 		logger.Warn("perch: "+label+" failed, defaulting to "+string(fallback), "round", round, "cause", err)
-		return fallback, ""
+		return fallback, "", false
 	}
 
 	spec := shuttleengine.Spec{
@@ -109,25 +114,25 @@ func runJudgeCall(sh Shuttle, template []byte, values map[string]string, framing
 	result, err := sh.Run(spec)
 	if err != nil {
 		logger.Warn("perch: "+label+" shuttle run failed, defaulting to "+string(fallback), "round", round, "cause", err)
-		return fallback, ""
+		return fallback, "", false
 	}
 	if result.Outcome != shuttleengine.OutcomeDone {
 		logger.Warn("perch: "+label+" did not complete, defaulting to "+string(fallback), "round", round, "outcome", result.Outcome)
-		return fallback, ""
+		return fallback, "", false
 	}
 
 	content, err := os.ReadFile(values["verdict_path"])
 	if err != nil {
 		logger.Warn("perch: "+label+" verdict file unreadable, defaulting to "+string(fallback), "round", round, "cause", err)
-		return fallback, ""
+		return fallback, "", false
 	}
 
 	verdict, rationale, err := ParseJudgeVerdict(content, framing)
 	if err != nil {
 		logger.Warn("perch: "+label+" verdict file unparseable, defaulting to "+string(fallback), "round", round, "cause", err)
-		return fallback, ""
+		return fallback, "", false
 	}
-	return verdict, rationale
+	return verdict, rationale, true
 }
 
 // runTriage spawns the asking-triage call: a review agent stopped mid-round
