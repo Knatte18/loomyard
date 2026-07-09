@@ -130,7 +130,15 @@ Example:
 			c.runner = runner
 			c.perchCfg = perchCfg
 			c.layout = layout
-			c.runDirBase = hubgeometry.PerchRunsDir(layout.WorktreeRoot)
+			// Anchored at layout.Cwd, like the config loads above and like
+			// Layout.LyxDir itself: the initialized _lyx (the weft junction,
+			// mirrored at <weft>/<RelPath>/_lyx) lives at the directory lyx
+			// init ran in, which is Cwd — not necessarily the git worktree
+			// root. Anchoring at WorktreeRoot would, in a nested-initialized
+			// repo, write run dirs into an un-junctioned _lyx the weft
+			// commit's RelPath-scoped pathspec never includes, silently
+			// stranding every artifact outside the weft.
+			c.runDirBase = hubgeometry.PerchRunsDir(layout.Cwd)
 			return nil
 		},
 	}

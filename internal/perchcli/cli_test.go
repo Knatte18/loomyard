@@ -161,6 +161,46 @@ func seedPerchFixture(t *testing.T) lyxtest.PairedFixture {
 	return fixture
 }
 
+// TestRunCLI_Pause_NestedInitAnchorsRunDirsAtCwd verifies the run-dir base
+// is anchored at the INITIALIZED directory (layout.Cwd — where _lyx and the
+// config dir live), not the git worktree root. lyx init is user-driven from
+// any directory, so a repo may be initialized in a subdirectory of its git
+// worktree (RelPath != "."); anchoring at WorktreeRoot there would resolve
+// run dirs into an un-junctioned <gitroot>/_lyx that the weft commit's
+// RelPath-scoped pathspec never includes, silently stranding every block
+// artifact outside the weft. The pause verb's run-dir lookup exposes the
+// resolved base: a run dir created under <cwd>/_lyx/perch must be found.
+func TestRunCLI_Pause_NestedInitAnchorsRunDirsAtCwd(t *testing.T) {
+	fixture := lyxtest.CopyPaired(t)
+
+	// Initialize a NESTED directory of the host repo, exactly as lyx init
+	// run from <hub>/nested would: configs and _lyx live under nested/.
+	nested := filepath.Join(fixture.Hub, "nested")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatalf("mkdir nested dir: %v", err)
+	}
+	lyxtest.SeedConfig(t, nested, map[string]string{
+		"shuttle": shuttleengine.ConfigTemplate(),
+		"mux":     muxengine.ConfigTemplate(),
+		"perch":   perchengine.ConfigTemplate(),
+	})
+	t.Chdir(nested)
+
+	runDir := filepath.Join(hubgeometry.PerchRunsDir(nested), "nestedrun")
+	if err := os.MkdirAll(runDir, 0o755); err != nil {
+		t.Fatalf("mkdir run dir: %v", err)
+	}
+
+	var out bytes.Buffer
+	exitCode := RunCLI(&out, []string{"pause", "--run-id", "nestedrun"})
+	if exitCode != 0 {
+		t.Fatalf(`RunCLI([pause --run-id nestedrun]) = %d; want 0 — the run dir under <cwd>/_lyx/perch must be found, output: %s`, exitCode, out.String())
+	}
+	if _, err := os.Stat(perchengine.PauseFlagPath(runDir)); err != nil {
+		t.Errorf("pause flag not written under the nested _lyx run dir %q: %v", runDir, err)
+	}
+}
+
 // TestRunCLI_Pause_NoSuchRun verifies that pausing a run-id whose run dir
 // does not exist fails loud with a "no such run" error, rather than
 // silently fabricating an empty run dir for a pause flag with nothing to
