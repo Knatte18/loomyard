@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: rename-other-to-linux
 branch: rename-other-to-linux
 plan: _mill/plan
@@ -19,4 +19,13 @@ discussed  '2026-07-09T17:08:55Z'
 planning  '2026-07-09T17:20:48Z'
 plan-review-r1  '2026-07-09T17:23:16Z'
 planned  '2026-07-09T17:23:29Z'
+implementing  '2026-07-09T17:27:20Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: linux-suffix-rename
+    state: pending
 ```
