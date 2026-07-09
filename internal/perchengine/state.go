@@ -113,6 +113,30 @@ func DeriveRunID(profilePath string, hash string) string {
 	return fmt.Sprintf("%s-%s", sanitizeSlug(base), hash[:8])
 }
 
+// ValidRunID reports whether id is a legal explicit --run-id: the exact
+// shape sanitizeSlug produces for a derived id (lowercase alphanumerics and
+// single dashes, no leading/trailing dash), non-empty. This is deliberately
+// stricter than "anything filepath.Join tolerates" — an operator-supplied
+// --run-id is joined directly into a directory path under
+// hubgeometry.PerchRunsDir, so anything containing a path separator or a
+// "." component could escape that directory (e.g. "../elsewhere") or land
+// on a Windows-illegal name; both perch verbs reject the flag outright
+// rather than let MkdirAll or a later git operation fail confusingly deep
+// inside the run.
+func ValidRunID(id string) bool {
+	if id == "" {
+		return false
+	}
+	for _, r := range id {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '-':
+		default:
+			return false
+		}
+	}
+	return id[0] != '-' && id[len(id)-1] != '-'
+}
+
 // sanitizeSlug lowercases s and replaces every run of non-alphanumeric
 // characters with a single dash, trimming leading/trailing dashes.
 func sanitizeSlug(s string) string {

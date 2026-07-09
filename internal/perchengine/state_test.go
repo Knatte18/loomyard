@@ -314,6 +314,40 @@ func TestDeriveRunID(t *testing.T) {
 	}
 }
 
+// TestValidRunID proves the exact shape both perch CLI verbs must enforce on
+// an explicit --run-id before joining it into a run-dir path: every id
+// DeriveRunID could plausibly produce passes, while anything carrying a
+// path separator, a leading/trailing dash, or other punctuation — the class
+// of value that would escape hubgeometry.PerchRunsDir via filepath.Join —
+// fails.
+func TestValidRunID(t *testing.T) {
+	tests := []struct {
+		name string
+		id   string
+		want bool
+	}{
+		{"derived-shape id", "code-review-abcdef01", true},
+		{"single word", "myrun", true},
+		{"empty", "", false},
+		{"parent-dir traversal", "../elsewhere", false},
+		{"nested parent-dir traversal", "../../perchwork", false},
+		{"absolute path", "/etc/passwd", false},
+		{"windows path separator", `a\b`, false},
+		{"leading dash", "-abc", false},
+		{"trailing dash", "abc-", false},
+		{"uppercase", "MyRun", false},
+		{"space", "my run", false},
+		{"dot", "my.run", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := ValidRunID(tt.id); got != tt.want {
+				t.Errorf("ValidRunID(%q) = %v; want %v", tt.id, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestPauseFlag(t *testing.T) {
 	runDir := t.TempDir()
 	flagPath := PauseFlagPath(runDir)

@@ -121,6 +121,28 @@ func TestRunCLI_Pause_MissingRunID(t *testing.T) {
 	}
 }
 
+// TestRunCLI_Pause_InvalidRunID verifies that a --run-id carrying a path
+// separator (the class of value that would escape the perch runs directory
+// via filepath.Join, e.g. "../elsewhere") is rejected loud before pause
+// ever stats or writes anything, rather than resolving outside the perch
+// runs area.
+func TestRunCLI_Pause_InvalidRunID(t *testing.T) {
+	seedPerchFixture(t)
+
+	var out bytes.Buffer
+	exitCode := RunCLI(&out, []string{"pause", "--run-id", "../../escaped"})
+
+	if exitCode != 1 {
+		t.Errorf(`RunCLI([pause --run-id ../../escaped]) = %d; want 1`, exitCode)
+	}
+	if !strings.Contains(out.String(), "lowercase alphanumerics and dashes only") {
+		t.Errorf(`RunCLI([pause --run-id ../../escaped]) output missing the run-id shape error; got: %q`, out.String())
+	}
+	if _, err := os.Stat(filepath.Join("..", "..", "escaped")); err == nil {
+		t.Error("a directory was created outside the perch runs area; --run-id validation did not prevent the escape")
+	}
+}
+
 // seedPerchFixture returns a paired git-repo fixture with real shuttle/mux/
 // perch config seeded, chdir'd into the host hub, ready for a "lyx perch
 // pause" invocation. It never boots psmux or spawns a burler round — pause

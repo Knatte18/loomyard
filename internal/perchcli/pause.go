@@ -58,6 +58,16 @@ Example:
 				clihelp.SetExit(cmd.Context(), output.Err(out, "perch: --run-id is required"))
 				return nil
 			}
+			// --run-id is joined directly into a directory path under the
+			// perch runs area; reject anything that is not the same safe
+			// shape a derived id has, before it can resolve OUTSIDE that
+			// directory (e.g. "../elsewhere") — pause writes a real file, so
+			// an unvalidated id is a real path escape, not just a cosmetic
+			// one.
+			if !perchengine.ValidRunID(runID) {
+				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("perch: --run-id %q must be lowercase alphanumerics and dashes only (no path separators)", runID)))
+				return nil
+			}
 
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil

@@ -12,6 +12,8 @@ package perchcli
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -37,6 +39,32 @@ func TestRunCLI_Run_MissingProfile(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "--profile is required") {
 		t.Errorf(`RunCLI([run]) output missing "--profile is required"; got: %q`, out.String())
+	}
+}
+
+// TestRunCLI_Run_InvalidRunID verifies that an explicit --run-id carrying a
+// path separator (the class of value that would escape the perch runs
+// directory via filepath.Join, e.g. "../elsewhere") is rejected loud before
+// run ever reads --profile's decoded content or touches PersistentPreRunE's
+// engine wiring — this case, like MissingProfile above, runs against an
+// uninitialized directory and needs only a --profile flag value that reads
+// as a file path (its content is never reached).
+func TestRunCLI_Run_InvalidRunID(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	profilePath := filepath.Join(dir, "profile.yaml")
+	if err := os.WriteFile(profilePath, []byte("target:\n  instructions: x\n"), 0o644); err != nil {
+		t.Fatalf("write profile fixture: %v", err)
+	}
+
+	var out bytes.Buffer
+	exitCode := RunCLI(&out, []string{"run", "--profile", profilePath, "--run-id", "../../escaped"})
+
+	if exitCode != 1 {
+		t.Errorf(`RunCLI([run --run-id ../../escaped]) = %d; want 1`, exitCode)
+	}
+	if !strings.Contains(out.String(), "lowercase alphanumerics and dashes only") {
+		t.Errorf(`RunCLI([run --run-id ../../escaped]) output missing the run-id shape error; got: %q`, out.String())
 	}
 }
 

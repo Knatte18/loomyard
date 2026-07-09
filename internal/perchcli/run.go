@@ -242,6 +242,15 @@ pass a fresh --run-id to run the same profile under different tuning.`,
 				clihelp.SetExit(cmd.Context(), output.Err(out, "perch: --profile is required"))
 				return nil
 			}
+			// An explicit --run-id is joined directly into a directory path
+			// under the perch runs area; reject anything that is not the
+			// same safe shape a derived id has, before it can escape that
+			// directory (e.g. "../elsewhere") or trip a confusing MkdirAll
+			// failure deep inside the run.
+			if runID != "" && !perchengine.ValidRunID(runID) {
+				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("perch: --run-id %q must be lowercase alphanumerics and dashes only (no path separators)", runID)))
+				return nil
+			}
 
 			// A failing PersistentPreRunE has already written an error
 			// response and recorded the exit code; short-circuit rather
