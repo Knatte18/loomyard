@@ -199,6 +199,28 @@ func loadOrInitState(runDir string, hash string, caps []int) (runState, resumeIn
 	return existing, resumeInfo{Fresh: false, NextRound: len(existing.Rounds) + 1}, nil
 }
 
+// TerminalOutcome reports the terminal Outcome recorded in runDir's
+// state.json: ok is true only when a state file exists AND records a
+// finished block (APPROVED or STUCK). A missing state file or an in-flight
+// block (empty Outcome) returns ok false with no error. It exists for
+// perchcli's pause verb, which must refuse to write a pause flag against a
+// block that already finished — no run loop will ever observe that flag,
+// so reporting the pause as accepted would mislead the operator. Reads
+// under the same state.json.lock discipline as loadOrInitState.
+func TerminalOutcome(runDir string) (Outcome, bool, error) {
+	path := filepath.Join(runDir, stateFileName)
+	lockPath := path + ".lock"
+
+	existing, found, err := state.ReadJSON[runState](path, lockPath)
+	if err != nil {
+		return "", false, err
+	}
+	if !found || existing.Outcome == "" {
+		return "", false, nil
+	}
+	return Outcome(existing.Outcome), true, nil
+}
+
 // saveState writes s to <runDir>/state.json atomically under an exclusive
 // lock at <runDir>/state.json.lock, the same file loadOrInitState reads.
 func saveState(runDir string, s runState) error {

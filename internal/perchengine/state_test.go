@@ -192,6 +192,50 @@ func TestSaveState_ReadJSONRoundTrip(t *testing.T) {
 	}
 }
 
+// TestTerminalOutcome covers the three states perchcli's pause verb must
+// distinguish before writing a pause flag: no state file at all (a run dir
+// that never started a block), an in-flight block (empty Outcome), and a
+// finished block, whose recorded Outcome is reported with ok true.
+func TestTerminalOutcome(t *testing.T) {
+	t.Run("no state file reports not terminal", func(t *testing.T) {
+		outcome, ok, err := TerminalOutcome(t.TempDir())
+		if err != nil {
+			t.Fatalf("TerminalOutcome() error = %v; want nil", err)
+		}
+		if ok || outcome != "" {
+			t.Errorf("TerminalOutcome() = (%q, %v); want (\"\", false) for a missing state file", outcome, ok)
+		}
+	})
+
+	t.Run("in-flight block reports not terminal", func(t *testing.T) {
+		runDir := t.TempDir()
+		if err := saveState(runDir, runState{ProfileHash: "h", RoundCaps: []int{3}}); err != nil {
+			t.Fatalf("saveState() = %v; want nil", err)
+		}
+		outcome, ok, err := TerminalOutcome(runDir)
+		if err != nil {
+			t.Fatalf("TerminalOutcome() error = %v; want nil", err)
+		}
+		if ok || outcome != "" {
+			t.Errorf("TerminalOutcome() = (%q, %v); want (\"\", false) for an in-flight block", outcome, ok)
+		}
+	})
+
+	t.Run("finished block reports its recorded outcome", func(t *testing.T) {
+		runDir := t.TempDir()
+		if err := saveState(runDir, runState{ProfileHash: "h", RoundCaps: []int{3}, Outcome: string(OutcomeStuck), StuckReason: string(StuckHardCap)}); err != nil {
+			t.Fatalf("saveState() = %v; want nil", err)
+		}
+		outcome, ok, err := TerminalOutcome(runDir)
+		if err != nil {
+			t.Fatalf("TerminalOutcome() error = %v; want nil", err)
+		}
+		if !ok || outcome != OutcomeStuck {
+			t.Errorf("TerminalOutcome() = (%q, %v); want (%q, true)", outcome, ok, OutcomeStuck)
+		}
+	})
+}
+
 func TestMoveStaleArtifacts(t *testing.T) {
 	t.Run("moves every existing artifact aside with .stale", func(t *testing.T) {
 		runDir := t.TempDir()

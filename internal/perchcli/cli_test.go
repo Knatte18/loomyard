@@ -161,6 +161,37 @@ func seedPerchFixture(t *testing.T) lyxtest.PairedFixture {
 	return fixture
 }
 
+// TestRunCLI_Pause_FinishedBlockRefused verifies that pausing a block whose
+// state.json already records a terminal outcome fails loud naming that
+// outcome, instead of reporting ok for a pause flag no run loop will ever
+// observe (proven misleading live: a finished-STUCK block accepted a pause
+// and the operator had no signal it could never be honored).
+func TestRunCLI_Pause_FinishedBlockRefused(t *testing.T) {
+	fixture := seedPerchFixture(t)
+
+	runDir := filepath.Join(hubgeometry.PerchRunsDir(fixture.Hub), "finishedrun")
+	if err := os.MkdirAll(runDir, 0o755); err != nil {
+		t.Fatalf("mkdir run dir: %v", err)
+	}
+	// A terminal state.json exactly as a STUCK block exit persists it.
+	stateContent := `{"profileHash":"h","roundCaps":[1],"rounds":[],"outcome":"STUCK","stuckReason":"hard-cap"}`
+	if err := os.WriteFile(filepath.Join(runDir, "state.json"), []byte(stateContent), 0o644); err != nil {
+		t.Fatalf("write terminal state.json: %v", err)
+	}
+
+	var out bytes.Buffer
+	exitCode := RunCLI(&out, []string{"pause", "--run-id", "finishedrun"})
+	if exitCode != 1 {
+		t.Fatalf(`RunCLI([pause --run-id finishedrun]) = %d; want 1, output: %s`, exitCode, out.String())
+	}
+	if !strings.Contains(out.String(), "already finished (STUCK)") {
+		t.Errorf(`RunCLI([pause --run-id finishedrun]) output missing "already finished (STUCK)"; got: %q`, out.String())
+	}
+	if _, err := os.Stat(perchengine.PauseFlagPath(runDir)); err == nil {
+		t.Error("pause flag was written for a finished block; want no flag")
+	}
+}
+
 // TestRunCLI_Pause_NestedInitAnchorsRunDirsAtCwd verifies the run-dir base
 // is anchored at the INITIALIZED directory (layout.Cwd — where _lyx and the
 // config dir live), not the git worktree root. lyx init is user-driven from

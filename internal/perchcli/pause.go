@@ -28,8 +28,11 @@ import (
 // pause never creates the run dir: if it does not already exist (the run-id
 // names a block that never started, or a typo), that is reported as its own
 // error rather than silently fabricating an empty run dir for a pause flag
-// with nothing to pause. Writing the flag when it already exists is a no-op
-// success (idempotent re-pause).
+// with nothing to pause. A run dir whose state.json already records a
+// terminal outcome is refused the same loud way ("already finished") — a
+// finished block has no run loop left to honor the flag, so accepting the
+// pause would mislead the operator. Writing the flag when it already exists
+// is a no-op success (idempotent re-pause).
 func (c *perchCLI) pauseCmd() *cobra.Command {
 	var runID string
 
@@ -43,8 +46,9 @@ finishes its current round, persists state, and exits PAUSED. Re-running
 clears the flag automatically.
 
 pause requires the run dir to already exist (the block must have started at
-least once); it never creates one. Calling pause again while the flag is
-already set is a no-op success.
+least once); it never creates one. Pausing a block that already finished
+(APPROVED or STUCK) is refused — there is no run loop left to honor it.
+Calling pause again while the flag is already set is a no-op success.
 
 Example:
   lyx perch pause --run-id my-plan-review-a1b2c3d4`,
@@ -80,6 +84,21 @@ Example:
 					return nil
 				}
 				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("perch: stat run dir %q: %v", runDir, err)))
+				return nil
+			}
+
+			// A finished block has no run loop left to observe a pause flag —
+			// accepting the pause would tell the operator a pause is pending
+			// that can never be honored. Refuse loud instead, naming the
+			// recorded outcome, mirroring the run verb's own
+			// "already finished" resume refusal.
+			outcome, terminal, err := perchengine.TerminalOutcome(runDir)
+			if err != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+				return nil
+			}
+			if terminal {
+				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("perch: this block already finished (%s); nothing to pause", outcome)))
 				return nil
 			}
 
