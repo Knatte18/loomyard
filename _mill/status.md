@@ -27,5 +27,7 @@ implementing  '2026-07-09T17:27:20Z'
 ```yaml
 batches:
   - name: linux-suffix-rename
-    state: pending
+    state: running
+    implementer_session: 6381759d-7107-4a57-b64d-2e46e5839d57
+    start_sha: 0114a78c2ed1e12d1a4393c273a78c44b5ad9891
 ```
