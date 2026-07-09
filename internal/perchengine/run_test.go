@@ -696,7 +696,8 @@ func TestRun_GateModes(t *testing.T) {
 			verdictContent string
 			err            error
 		}{
-			{verdictContent: verdictFileContent(string(JudgeProgressing), "still moving")},
+			// Round 2's circling check only: round 3 converges on its passing
+			// command before the stuck ladder is ever reached.
 			{verdictContent: verdictFileContent(string(JudgeProgressing), "still moving")},
 		}
 
@@ -710,8 +711,8 @@ func TestRun_GateModes(t *testing.T) {
 		if got.Outcome != OutcomeApproved {
 			t.Fatalf("Run() Outcome = %q; want %q", got.Outcome, OutcomeApproved)
 		}
-		if len(qs.specs) != 2 {
-			t.Fatalf("queuedShuttle called %d times; want 2 (circling checks for rounds 2 and 3)", len(qs.specs))
+		if len(qs.specs) != 1 {
+			t.Fatalf("queuedShuttle called %d times; want 1 (round 2's circling check)", len(qs.specs))
 		}
 		// The burler hydration DOES carry the failed gate file forward…
 		round2Burler := fb.calls[1].profile
