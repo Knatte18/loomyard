@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: rename-other-to-linux
 branch: rename-other-to-linux
-plan: null
+plan: _mill/plan
 parent: main
 task: Rename _other.go platform files to _linux.go
 task_description: |
@@ -16,4 +16,5 @@ task_description: |
 ```text
 discussing  '2026-07-09T14:58:59Z'
 discussed  '2026-07-09T17:08:55Z'
+planning  '2026-07-09T17:20:48Z'
 ```
