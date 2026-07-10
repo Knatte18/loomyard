@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-proc-tree-reaping
+phase: approved-mux-contract-and-godoc
 slug: facilitate-linux
 branch: facilitate-linux
 plan: _mill/plan
@@ -26,6 +26,7 @@ plan-fix-r3  '2026-07-10T07:40:55Z'
 planned  '2026-07-10T07:41:31Z'
 implementing  '2026-07-10T09:10:48Z'
 approved-proc-tree-reaping  '2026-07-10T09:25:35Z'
+approved-mux-contract-and-godoc  '2026-07-10T09:37:13Z'
 ```
 
 ## Batches
@@ -38,9 +39,10 @@ batches:
     start_sha: a491027b7e2582bc2a8d686a3194568365334fa6
     commit_sha: 15d868b4fc4015a84b7a53fa6c159c460d5d691b
   - name: mux-contract-and-godoc
-    state: running
+    state: approved
     implementer_session: c047ce6f-2be5-41e1-9250-cfef5999f67d
     start_sha: a1fa42003b54fa1c7f9dea53dfd226c42f8eb402
+    commit_sha: 3835a85f47efd48563eb1ac73703cd1c6c502514
   - name: shell-abstraction
     state: pending
   - name: linux-launch-surface
