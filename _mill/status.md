@@ -32,7 +32,9 @@ implementing  '2026-07-10T09:10:48Z'
 ```yaml
 batches:
   - name: proc-tree-reaping
-    state: pending
+    state: running
+    implementer_session: bc7f195c-0b3c-4a70-9cd5-7964c0a420ed
+    start_sha: a491027b7e2582bc2a8d686a3194568365334fa6
   - name: mux-contract-and-godoc
     state: pending
   - name: shell-abstraction
