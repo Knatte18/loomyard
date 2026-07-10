@@ -38,7 +38,9 @@ batches:
     start_sha: a491027b7e2582bc2a8d686a3194568365334fa6
     commit_sha: 15d868b4fc4015a84b7a53fa6c159c460d5d691b
   - name: mux-contract-and-godoc
-    state: pending
+    state: running
+    implementer_session: c047ce6f-2be5-41e1-9250-cfef5999f67d
+    start_sha: a1fa42003b54fa1c7f9dea53dfd226c42f8eb402
   - name: shell-abstraction
     state: pending
   - name: linux-launch-surface
