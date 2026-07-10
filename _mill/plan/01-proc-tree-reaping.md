@@ -104,6 +104,7 @@ therefore depends on this batch to serialize `lifecycle.go` writes.
 - **Context:**
   - `internal/muxengine/lock.go`
   - `internal/muxengine/overlay.go`
+  - `internal/muxengine/config.go`
   - `internal/muxengine/proctree.go`
 - **Edits:** none
 - **Creates:**

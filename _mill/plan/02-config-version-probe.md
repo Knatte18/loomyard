@@ -94,8 +94,13 @@ is delegated to batch 3's integration test, not checked here (that needs a live 
   `parsePsmuxVersion(out string) ([3]int, error)`: parse psmux's `-V` output — the implementer
   MUST run the psmux binary currently on PATH (`psmux -V`) to determine its exact output shape
   and set `minPsmuxVersion` to the version that binary reports (or one patch below), so the pin
-  is a drift canary that does not break `mux up` on the current dev box. Set `minTmuxVersion` to
-  `3.3`. Add `versionAtLeast(got, min [3]int) bool` doing lexicographic `[3]int` comparison, and
+  is a drift canary that does not break `mux up` on the current dev box. While at it, the
+  implementer MUST also run `psmux list-commands` against the same on-box binary and confirm it
+  succeeds and emits the required subcommand names (see card 6's `requiredSubcommands`) — if the
+  on-box psmux does **not** support `list-commands`, card 7's boot probe would fail every
+  `mux up` on Windows and batch 2's verify (which never boots a server) would not catch it. If
+  `list-commands` is unsupported by the installed psmux, halt and surface it rather than shipping
+  a probe that bricks `mux up`. Set `minTmuxVersion` to `3.3`. Add `versionAtLeast(got, min [3]int) bool` doing lexicographic `[3]int` comparison, and
   GOOS-selected accessors `minMultiplexerVersion() [3]int` and
   `parseMultiplexerVersion(out string) ([3]int, error)` that switch on `runtime.GOOS`
   (Windows → psmux; else → tmux). In `version_test.go` drive the pure parsers and comparator

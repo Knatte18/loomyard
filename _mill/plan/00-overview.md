@@ -3,7 +3,7 @@
 ```yaml
 task: "Facilitate Linux support (Win11-side prep)"
 slug: facilitate-linux
-approved: false
+approved: true
 started: "20260710-071135"
 parent: main
 root: ""
