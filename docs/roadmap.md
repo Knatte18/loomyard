@@ -54,8 +54,10 @@ proc ✅ ──▶ mux ✅ ──▶ shuttle ✅ ──┬▶ burler ✅ ──�
   (progress-judge + cap). See [milestone 11](#orchestration-stack) / the `internal/burlerengine`
   and `internal/perchengine` package documentation.
 - **`builder`** (the batch-implementation module, carved out of loom's Builder phase) is the
-  **next** spine milestone. It needs a pinned **plan format** first (ordered
-  batch list, **no DAG** — task-level parallelism via separate worktrees + `lyx run`, not intra-plan);
+  **next** spine milestone. Its **plan format** is pinned ✅ — see
+  [modules/plan-format.md](modules/plan-format.md) (ordered batch list, **no DAG** — task-level
+  parallelism via separate worktrees + `lyx run`, not intra-plan) and the accompanying
+  [model-spec notation](reference/model-spec.md);
   it branches off `shuttle` and does not need `perch`. **`loom`** needs both `perch` and `builder`
   and is the **last** spine layer — the critical path to the orchestrator.
   `lyx loom status` (the 1-line view) ships as a loom subcommand, not a module.
@@ -66,8 +68,9 @@ proc ✅ ──▶ mux ✅ ──▶ shuttle ✅ ──┬▶ burler ✅ ──�
 **Deferred** — after `loom` works and only if wanted: mux daemon → Slack relay; session sync;
 plugin packaging.
 
-So the immediate front: the **plan format + `builder`** (the Builder module, the next spine
-milestone before `loom`) in parallel with finishing the **config TUI** — none of which block each other.
+So the immediate front: **`builder`** (the Builder module, the next spine milestone before
+`loom`; its plan format is pinned ✅ — [modules/plan-format.md](modules/plan-format.md)) in
+parallel with finishing the **config TUI** — neither blocks the other.
 
 ## Milestones
 
@@ -178,7 +181,7 @@ Each layer knows only the one below it; built bottom-up. See the
     batch-reports (never raw sub-agent prose — the mill-go bloat lesson). **Batches are bounded to
     fit an implementer's context window** (mill's 200k-Haiku/Sonnet pain; eased by Sonnet's 1M but
     not to be relied on): prefer many small batches over few large. Its plan-format contract is
-    pinned in the module doc. ([modules/loom.md](modules/loom.md))
+    pinned in [modules/plan-format.md](modules/plan-format.md). ([modules/loom.md](modules/loom.md))
 
 ### Deferred mux enhancements
 

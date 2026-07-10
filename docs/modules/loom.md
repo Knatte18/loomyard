@@ -32,8 +32,9 @@ length is structural, not poor writing, as long as control flow lives in a promp
 Move the machine into Go and orchestration leaves *every* prompt. Each agent collapses
 to one job over a file contract:
 
-- Plan producer: "read `discussion.md`, write `plan.md`." Nothing else.
-- Review handler: "read `plan.md` (against `discussion.md`), write review + fixer-report."
+- Plan producer: "read `discussion.md`, write the `plan/` directory
+  ([plan format](plan-format.md))." Nothing else.
+- Review handler: "read the plan (against `discussion.md`), write review + fixer-report."
 
 No agent knows about rounds, gates, N-caps, finalize, or the others. Each phase becomes
 a **pure function over files** — input file in, output file out — runnable and testable
@@ -45,7 +46,7 @@ window to reconstruct.
 *only* channel between phases. The moment a phase needs "something from the conversation"
 that is not in its input file, the independence is gone and the prompts grow back. So
 the design effort moves from writing long skills to pinning the contracts
-(`discussion.md` → `plan.md` → diff/report).
+(`discussion.md` → `plan/` → diff/report).
 
 ## The phase machine
 
@@ -94,28 +95,34 @@ invariant; only the review *profile* (rubric + fasit) differs per phase. See the
 package documentation for the round-loop and stuck detection, and the `internal/burlerengine` package
 documentation for the combined handler/fixer round and the profile schema.
 
-## Builder — a Go loop (advance), the sibling of perch (converge)
+## Builder — an LLM orchestrator over Go verbs (advance), the sibling of perch (converge)
 
 Unlike the discussion and plan producers (each one `shuttle.Run` → one artifact), **Builder is a
-Go loop**, in the same spirit as `perch`: Go owns the control flow; LLMs are spawned
-on demand for judgment.
+batch loop held by a long-lived LLM orchestrator session** (model config-chosen; Sonnet default)
+that drives fat **`lyx builder` verbs** — `spawn-batch`, `poll`, `status` — provided by Go
+(`internal/builderengine`). Go supplies **only the verbs plus the distillation behind them**: it
+does not hold the loop, iterate batches, or make orchestration decisions. This is the one
+deliberate exception to "Go owns the machine": a pure Go-driven batch loop was explicitly
+rejected — mill-go's context bloat came from the LLM orchestrator swallowing verbose sub-agent
+output, not from the loop being LLM-held.
 
-- **Advance per batch.** Go drives the plan's batches in dependency order, spawning one implementer
-  worker per batch (a cheaper model by default — e.g. Haiku), and runs a **holistic builder-review
-  at the end** (a full `perch` converge-loop over the whole diff).
-- **On-demand evaluation.** Between batches, when Go needs a judgment — "progressing? stuck?
-  escalate?" — it spawns a short evaluator that reads the durable reports/artifacts, decides, and
-  exits. Not a standing supervisor (LLM-watches-LLM in real time was mill's model; here Go
-  sequences and the LLM is consulted on demand).
-- **Escalation by fresh spawn.** A stuck worker is escalated by spawning a **fresh
-  higher-capability model** (Haiku → Sonnet) that reads the durable reports — not a `/model` switch
+- **Advance per batch.** The orchestrator drives the plan's batches strictly in order (ordered
+  list, **no DAG** — the plan contract is pinned in [plan-format.md](plan-format.md)), spawning
+  one implementer worker per batch (config-chosen model; Sonnet default — see
+  [model-spec](../reference/model-spec.md)), and runs a **holistic builder-review at the end**
+  (a full `perch` converge-loop over the whole diff; no per-batch design review in v1).
+- **Digest-only consumption.** The `poll` verb reads the implementer's on-disk batch-report,
+  distills it in Go, and returns a terse digest; the orchestrator never ingests raw session
+  prose. That is what keeps a persistent LLM orchestrator lean.
+- **Escalation by fresh spawn.** A stuck worker is escalated by the orchestrator spawning a
+  **fresh higher-capability model** that reads the durable reports — not a `/model` switch
   inside the stuck session (which would inherit the polluted context; see the
   `internal/shuttleengine` package documentation for the escalation rationale).
 
 **Same substrate, different loop semantics:** Builder **advances** (batch → batch → holistic
-review); perch **converges** (iterate review+fix on one artifact until `APPROVED`/`stuck`). Both
-are Go loops spawning on-demand judges — which is exactly what makes [pause](#graceful-pause)
-uniform across them.
+review); perch **converges** (iterate review+fix on one artifact until `APPROVED`/`stuck`).
+Pause stays uniform across them (see [pause](#graceful-pause)): builder's verbs check the pause
+flag at the batch boundary even though its loop is LLM-held.
 
 ## `loom` — the autonomous driver
 
@@ -190,9 +197,10 @@ files. A dead claude with a finished output file is, to loom, a **done step** �
 `lyx loom pause` requests a pause; the running orchestration honours it at the next **step
 boundary**, never mid-operation — `mill-pause`'s natural-stopping-point property, made systematic.
 
-- **A property of the loop pattern, not loom alone.** Every Go loop — loom (phases),
-  `perch` (rounds), [Builder](#builder--a-go-loop-advance-the-sibling-of-perch-converge)
-  (batches) — checks a `pause_requested` flag in the [status file](#state--contracts) at its step
+- **A property of the loop pattern, not loom alone.** Every loop — loom (phases),
+  `perch` (rounds), [Builder](#builder--an-llm-orchestrator-over-go-verbs-advance-the-sibling-of-perch-converge)
+  (batches; its loop is LLM-held, but the `spawn-batch` verb checks the flag in Go before
+  spawning) — checks a `pause_requested` flag in the [status file](#state--contracts) at its step
   boundary and stops before spawning the next unit. The **innermost active loop** honours it first,
   so pause lands at the finest active boundary (next batch / round / phase). The Go code is almost
   always *between* steps (it spawns and waits), so catching it there is trivial.
@@ -219,16 +227,16 @@ boundary**, never mid-operation — `mill-pause`'s natural-stopping-point proper
 | `loom` (`lyx loom run`) | new Go module | the phase machine / autonomous driver |
 | `perch` (`lyx perch`) | new Go module | the gate loop: run `burler` rounds → `APPROVED`/`stuck` + progress-judge + cap |
 | `burler` | new Go module | one review+fix round: A-review (+ optional cluster) → B-fix; composed by `perch` |
-| builder | Go loop (like `perch`) | advance per batch + on-demand evaluator + Haiku→Sonnet escalation + terminal holistic review — **not** a single producer spawn |
+| builder | LLM orchestrator + Go verbs (`internal/builderengine`) | long-lived orchestrator session holds the batch loop over fat verbs (`spawn-batch`/`poll`/`status`); Go = verbs + distillation; fresh-spawn escalation + terminal holistic review — **not** a single producer spawn; input contract: [plan-format.md](plan-format.md) |
 | producers (discussion / plan) | prompt/profile files | **not** modules — just a prompt + profile fed to `shuttle.Run` |
 | `lyx loom status` | a loom subcommand | the 1-line status view; runs as a strand (see `internal/muxengine`; `anchor:top`), not a separate module |
 | execution stack | existing/new infra | [`proc`](README.md) → mux → shuttle — see [overview.md#execution-stack](../overview.md#execution-stack-orchestration-layers) — built once, used by both modules above |
 | Setup | uses existing modules | `warp` (topology owner), `weft`, `board` |
 | `/ly-*` skills | thin wrappers | over `lyx loom run` |
 
-The new Go specific to loom is the **three modules** (`loom`, `perch`, `burler`) plus the **Builder loop**
-(Go, like `perch` — its own module or a loom sub-loop) and the `lyx loom status`
-subcommand; beneath them is the shared [execution stack](README.md) (`proc`, `mux`, `shuttle`); and
+The new Go specific to loom is the **three modules** (`loom`, `perch`, `burler`) plus the
+**builder module** (`internal/builderengine` — the fat verbs + distillation the Builder
+orchestrator drives) and the `lyx loom status` subcommand; beneath them is the shared [execution stack](README.md) (`proc`, `mux`, `shuttle`); and
 everything else is prompt files, profiles, and the existing lyx modules. The display is **not** a
 module — it is `lyx loom status` running in a strand that `mux` (see
 [overview.md#modules](../overview.md#modules)) hosts and arranges.
