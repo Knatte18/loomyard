@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-proc-tree-reaping
 slug: facilitate-linux
 branch: facilitate-linux
 plan: _mill/plan
@@ -25,6 +25,7 @@ plan-fix-r2  '2026-07-10T07:35:42Z'
 plan-fix-r3  '2026-07-10T07:40:55Z'
 planned  '2026-07-10T07:41:31Z'
 implementing  '2026-07-10T09:10:48Z'
+approved-proc-tree-reaping  '2026-07-10T09:25:35Z'
 ```
 
 ## Batches
@@ -32,9 +33,10 @@ implementing  '2026-07-10T09:10:48Z'
 ```yaml
 batches:
   - name: proc-tree-reaping
-    state: running
+    state: approved
     implementer_session: bc7f195c-0b3c-4a70-9cd5-7964c0a420ed
     start_sha: a491027b7e2582bc2a8d686a3194568365334fa6
+    commit_sha: 15d868b4fc4015a84b7a53fa6c159c460d5d691b
   - name: mux-contract-and-godoc
     state: pending
   - name: shell-abstraction
