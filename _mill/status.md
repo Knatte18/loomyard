@@ -62,5 +62,7 @@ batches:
     start_sha: ccb519ee0e7e3e5c1365c072a97439aef4a18a43
     commit_sha: a5d2868eeddd3e339209b55eb5186dde0bf7ede7
   - name: crosscompile-gate-and-roadmap
-    state: pending
+    state: running
+    implementer_session: a8a15d5e-3393-49e2-8f42-fab32068cf7b
+    start_sha: a75369bff6bdc4cb275d367bbc4c5ea9882b2991
 ```
