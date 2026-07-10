@@ -117,7 +117,19 @@ func planResumeLaunches(strands []Strand, liveIDs map[string]bool) []Strand {
 // all stale) from a normal no-op bring-up; strippedKeys names the env keys
 // CleanClaudeEnv removed from the spawn env (nil when nothing was booted),
 // so the caller can stamp them into MuxState.StrippedEnv for diagnosis.
+// Before any of that, it runs the capability probe (probe.go) once and
+// returns a *CapabilityError immediately if the configured multiplexer
+// binary is below the pinned version floor or missing a required
+// subcommand.
 func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []string, err error) {
+	// Fail loud, once per ensure/boot, if the configured multiplexer binary
+	// is below the pinned version floor or missing a required subcommand —
+	// far better than letting an unknown surface surface later as a cryptic
+	// psmux/tmux error deep inside the boot loop below.
+	if err := e.probeCapabilityLocked(); err != nil {
+		return false, nil, err
+	}
+
 	session := e.SessionName()
 	up, err := e.psmux.hasSession(session)
 	if err != nil {
