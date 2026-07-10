@@ -1,16 +1,20 @@
-// command.go composes the opaque pwsh command lines Prepare (settings.go)
+// command.go composes the opaque pane-shell command lines Prepare (settings.go)
 // hands back as a Launch: the launch line that starts a fresh session and
 // the resume line that reattaches an existing one. Both are single-line
 // strings typed verbatim into a pane via psmux send-keys (see
 // muxengine/spawn.go's launchStrandLocked) — no newline may appear in
-// either, since send-keys submits a line at a time.
+// either, since send-keys submits a line at a time. Argument quoting, the
+// call operator, and the prompt-file read idiom are pane-shell mechanics
+// owned entirely by internal/shell (the Shell Mechanics Seam invariant);
+// this file only ever calls into that seam and never emits raw pwsh/posix
+// syntax of its own.
 
 package claudeengine
 
 import (
 	"fmt"
-	"strings"
 
+	"github.com/Knatte18/loomyard/internal/shell"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -58,14 +62,6 @@ func validateEffort(effort string) error {
 	return fmt.Errorf("claudeengine: invalid effort %q; valid values are low, medium, high, xhigh, max (case-sensitive, exact-lowercase)", effort)
 }
 
-// pwshSingleQuote wraps s in pwsh single quotes, doubling any embedded
-// single quote (pwsh's own escape for a literal `'` inside a single-quoted
-// string) so a path containing a quote or a space still round-trips as one
-// argument.
-func pwshSingleQuote(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", "''") + "'"
-}
-
 // claudeBinary resolves which claude executable a launch/resume command
 // invokes: cfg.Claude when the operator has configured an explicit path,
 // otherwise the bare literal "claude" resolved off PATH.
@@ -76,23 +72,23 @@ func claudeBinary(cfg shuttleengine.Config) string {
 	return "claude"
 }
 
-// buildLaunchCmd composes the pwsh line that starts a fresh claude session:
-// the prompt is read from promptPath via Get-Content rather than typed
-// inline, so a large or quote-laden prompt never has to survive psmux
-// send-keys or pwsh string escaping — though it still becomes one argument
+// buildLaunchCmd composes the pane-shell line that starts a fresh claude
+// session: the prompt is read from promptPath via sh.ReadFile rather than
+// typed inline, so a large or quote-laden prompt never has to survive psmux
+// send-keys or shell string escaping — though it still becomes one argument
 // of the claude process's command line, which is why Prepare bounds it at
 // maxLaunchPromptBytes. --model is appended only when model is
 // non-empty (an empty value defers to claude's own default) and, like every
-// other argument on this line, single-quoted: a raw interpolation would let
-// a model value containing a space, quote, or pwsh metacharacter (`;`, `|`,
-// `$`) corrupt the single line typed into the pane. The session id is
-// single-quoted for the same reason: its locally-minted UUID shape
-// ([0-9a-f-]) needs no escaping today, but quoting every interpolated
+// other interpolated value on this line, quoted via sh.Quote: a raw
+// interpolation would let a model value containing a space, quote, or shell
+// metacharacter (`;`, `|`, `$`) corrupt the single line typed into the pane.
+// The session id is quoted for the same reason: its locally-minted UUID
+// shape ([0-9a-f-]) needs no escaping today, but quoting every interpolated
 // argument uniformly is the invariant that stops a future change to how the
 // id is sourced from silently reintroducing an injection.
 // --effort is appended only when effort is non-empty (an empty value defers
-// to claude's own default), single-quoted for the same injection-hardening
-// reason as --model, and positioned immediately after --model — Prepare has
+// to claude's own default), quoted for the same injection-hardening reason
+// as --model, and positioned immediately after --model — Prepare has
 // already hard-errored on any effort value validateEffort cannot realize
 // before this function is ever called, so buildLaunchCmd itself never
 // re-validates.
@@ -100,17 +96,17 @@ func claudeBinary(cfg shuttleengine.Config) string {
 // false — the autonomous default (Shared Decision "Interactive bool encodes
 // the discussion's Autonomous default true"). The result is exactly one
 // line with no embedded newlines, since it is typed into a pane via a
-// single send-keys call.
-func buildLaunchCmd(bin, promptPath, settingsPath, sessionID, model, effort string, interactive bool) string {
-	cmd := fmt.Sprintf(
-		"& %s (Get-Content -Raw %s) --session-id %s --settings %s",
-		pwshSingleQuote(bin), pwshSingleQuote(promptPath), pwshSingleQuote(sessionID), pwshSingleQuote(settingsPath),
-	)
+// single send-keys call. sh supplies every bit of shell syntax (the call
+// operator, quoting, and the prompt-file read idiom) so this function never
+// hardcodes a pwsh- or posix-specific token.
+func buildLaunchCmd(sh shell.Shell, bin, promptPath, settingsPath, sessionID, model, effort string, interactive bool) string {
+	cmd := sh.Invoke(bin) + " " + sh.ReadFile(promptPath) +
+		" --session-id " + sh.Quote(sessionID) + " --settings " + sh.Quote(settingsPath)
 	if model != "" {
-		cmd += " --model " + pwshSingleQuote(model)
+		cmd += " --model " + sh.Quote(model)
 	}
 	if effort != "" {
-		cmd += " --effort " + pwshSingleQuote(effort)
+		cmd += " --effort " + sh.Quote(effort)
 	}
 	if !interactive {
 		cmd += " --dangerously-skip-permissions"
@@ -118,15 +114,13 @@ func buildLaunchCmd(bin, promptPath, settingsPath, sessionID, model, effort stri
 	return cmd
 }
 
-// buildResumeCmd composes the pwsh line that reattaches an existing claude
-// session by its session id. It always uses --resume <id>, never
+// buildResumeCmd composes the pane-shell line that reattaches an existing
+// claude session by its session id. It always uses --resume <id>, never
 // --continue: --continue resumes "the most recent conversation in this
 // directory", which is ambiguous the moment two runs share a worktree
 // concurrently, whereas --resume <id> names the exact session (discussion
-// "Session identity").
-func buildResumeCmd(bin, settingsPath, sessionID string) string {
-	return fmt.Sprintf(
-		"& %s --resume %s --settings %s",
-		pwshSingleQuote(bin), pwshSingleQuote(sessionID), pwshSingleQuote(settingsPath),
-	)
+// "Session identity"). sh supplies the call operator and quoting exactly as
+// buildLaunchCmd does, so the two builders never diverge on shell syntax.
+func buildResumeCmd(sh shell.Shell, bin, settingsPath, sessionID string) string {
+	return sh.Invoke(bin) + " --resume " + sh.Quote(sessionID) + " --settings " + sh.Quote(settingsPath)
 }

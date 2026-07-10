@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
@@ -301,12 +302,24 @@ func (l *Layout) LauncherDir(slug string) string {
 // MenuLauncherPath returns the path to the per-subpath menu launcher script.
 //
 // The menu launcher is mirrored into the repo subpath structure. At RelPath == ".",
-// this collapses to <Hub>/_launchers/ide-menu.cmd. For subpaths, it includes
-// the RelPath segments: <Hub>/_launchers/<RelPath>/ide-menu.cmd.
+// this collapses to <Hub>/_launchers/ide-menu<ext>. For subpaths, it includes
+// the RelPath segments: <Hub>/_launchers/<RelPath>/ide-menu<ext>. The extension is
+// GOOS-selected: ".cmd" on Windows, ".sh" everywhere else.
 //
-// Returns filepath.Join(Hub, "_launchers", RelPath, "ide-menu.cmd").
+// Returns filepath.Join(Hub, "_launchers", RelPath, menuLauncherName()).
 func (l *Layout) MenuLauncherPath() string {
-	return filepath.Join(l.Hub, "_launchers", l.RelPath, "ide-menu.cmd")
+	return filepath.Join(l.Hub, "_launchers", l.RelPath, menuLauncherName())
+}
+
+// menuLauncherName returns the OS-appropriate filename for the menu launcher
+// script: "ide-menu.cmd" on Windows, "ide-menu.sh" everywhere else. It is the
+// only geometry token that varies by GOOS; the "ide" and "warp-checkout"
+// launcher filenames are built (and extension-selected) inside warpengine.
+func menuLauncherName() string {
+	if runtime.GOOS == "windows" {
+		return "ide-menu.cmd"
+	}
+	return "ide-menu.sh"
 }
 
 // LauncherSpawnRel returns the relative path from a launcher directory to the
