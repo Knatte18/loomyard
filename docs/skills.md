@@ -1,148 +1,141 @@
 # LoomYard skills — plan & fate of the mill skill set
 
-> **Status: Design / plan — not built.** The `ly-*` skill layer is authored once the `lyx` spine
-> (`shuttle → burler → perch → loom`) is far enough along to consume it. This doc is the reference
-> for *which* skills LoomYard needs and why — derived by walking millhouse's `mill` skill set and
-> assigning each a fate.
+> **Status: Design / plan — not built.** Authored once the `lyx` spine (`shuttle → burler → perch → loom`) can consume it.
 
-## Why LoomYard needs *far fewer* skills than mill
-
-In mill, **the skills *were* the orchestrator.** Orchestration was LLM-driven, so every lifecycle
-action (spawn, plan, go, merge, cleanup, status) had to be a skill. In lyx, orchestration is **Go**
-(`loom`). So the entire `mill-*` lifecycle family does not get *ported* — it is *replaced by a
-binary*. What survives as a skill is only (a) behavioural/style guidance a binary cannot encode, and
-(b) a thin layer of judgment-heavy entry points. Net: **~44 mill skills → ~10 real LY skills**, none
-of them CLI wrappers or orchestration.
+In mill the skills *were* the orchestrator (LLM-driven). In lyx, orchestration is Go (`loom`), so the `mill-*` lifecycle family becomes `lyx` verbs, not skills. **~44 mill skills → ~10 real LY skills.**
 
 ## Decision rules
 
-Applied in order to each mill skill:
+| Condition | Fate |
+|---|---|
+| One `lyx` verb / deterministic | **`lyx` verb** (no skill) |
+| Low value even in mill | **Discard** |
+| Git mechanics at commit time | **loom commit path** — Go-deterministic (weft) + builder/fixer prompt template (host code). *Not* CLAUDE.md: always-on text gets forgotten |
+| Session-coloring fact, unenforceable at a point-of-use | **CLAUDE.md** (loads every session; no mill skill lands here) |
+| Judgment, operator-invoked | **skill** |
+| Judgment, lyx-spawned / autonomous | **prompt template** (stencil + shuttle) — Go can't call a skill |
+| Judgment in both | one instruction set → **skill + prompt** |
 
-1. **One `lyx` verb / deterministic?** → **`lyx` verb, no skill.** The command is self-documenting;
-   the caller writes it explicitly.
-2. **Low-value even in mill?** → **Discard.** (e.g. `mill-groom` was ~never used standalone.)
-3. **Always-on rule** (git hygiene, invariants)? → **CLAUDE.md**, not a skill — CLAUDE.md loads every
-   session, a skill only on demand, so guarantees belong there.
-4. **Substantial judgment, not CLI-discoverable?** → **skill**, and the surface depends on the
-   call-site:
-   - **operator-invoked** (a human in a Claude session) → a **skill**.
-   - **lyx-spawned / autonomous** → a **prompt template** (stencil-filled, spawned via shuttle),
-     because Go cannot invoke a skill.
-   - **both** → author the instructions **once**, expose them as *both* a skill and a prompt template.
-
-### Two cross-cutting conventions
-
-- **Name reflects scope.** `ly-*` = loomyard/lyx-specific. Language plugins (`golang-*`, `csharp-*`)
-  = language-specific, reusable, unchanged. `raddle-*` = the standalone nav-doc generator. Truly
-  generic behavioural guidance is *not* loomyard-specific — see [Ecosystem & naming](#ecosystem--naming).
-- **Explicit commands by default; `--help --json` as self-healing fallback.** A skill that needs a
-  specific `lyx` command writes it **explicitly** (zero discovery latency). Only if that command
-  *fails* (the CLI drifted — a flag renamed) does the LLM fall back to
-  `lyx <module> <cmd> --help --json` and self-heal. `ly-workflow` carries only the general mechanism
-  + module map, not a per-command catalogue.
+- **Name reflects scope:** `ly-*` loomyard · `craft` generic authoring · `golang-*`/`csharp-*` language · `raddle-*` nav-docs.
+- **Explicit `lyx` commands by default;** `--help --json` is the self-healing fallback when the CLI drifts.
 
 ## Ecosystem & naming
 
-LoomYard is an *ecosystem of several plugins*, not one — so the names split three ways, mirroring
-millhouse's `millhouse` / `mill` / `millpy` exactly:
+Mirrors millhouse's `millhouse` / `mill` / `millpy` split — the plugin takes the clean root, the executable the suffix.
 
-| Name | Kind | millhouse mirror | Notes |
-|---|---|---|---|
-| **LoomYard** | the repo / ecosystem | `millhouse` | the whole |
-| **`lyx`** | the executable | `millpy` | `ly` + `x` — **the `x` *is* "executable"**; reserved for the Go binary |
-| **`ly`** | the core plugin | `mill` | the operator skill layer (`ly-*`) — the clean root |
-| **`raddle`** | standalone plugin | `codeguide` | nav-doc generator; `loom` is a diff-scoped consumer (`git diff <start-SHA>..HEAD`); raddle knows nothing about lyx |
-| **`golang` / `csharp`** | language plugins | same | per-language build / test / comments; LY uses `golang-*` |
-| *(generic behavioural)* | plugin, name open | *(mill:\*)* | conversation / code-quality / testing / linting / markdown / cli |
-
-**Why `ly` for the plugin (not `lyx`, not `weaver`):** `lyx` is reserved for the executable (the `x`
-*is* "executable"), so the plugin cannot take it. `ly`/`lyx` is *exactly* the `mill`/`millpy` split —
-the plugin takes the clean root, the impl takes a suffix. `ly` being LoomYard's short form is no more
-a conflation than `mill` being millhouse's root: sibling plugins (`raddle`, `csharp`) carry their own
-domain names and never contest `ly`-ness. Short is deliberate — it reads clean as a prefix
-(`ly-workflow`), and a longer weaving name (`weaver-*`) loses exactly the brevity that made `ly` right.
-
-**Open decision — generic-behavioural placement.** testing / linting / markdown / code-quality /
-conversation / cli are *not* loomyard-specific; naming them `ly-testing` would overstate scope. Two
-options: (1) a **separate generic plugin** (neutral name — `craft` / `dev` / `core`?), scope-honest
-and reusable *(recommended)*; or (2) **fold into `ly`** (as mill folds them into `mill:*`), simpler
-but the name overstates the loomyard tie. Nuance: testing/linting have a *language* dimension (generic
-principles + `golang-testing` specifics); conversation/markdown/code-quality are purely generic.
-
-## The LoomYard skill set — what we will build
-
-The concrete target, by plugin. Everything not listed here is a `lyx` verb, a CLAUDE.md rule, or
-dropped (see the [fate table](#fate-of-every-mill-skill)).
-
-| Plugin | Skill | Purpose |
+| Name | Kind | millhouse mirror |
 |---|---|---|
-| **`ly`** (core) | `ly-workflow` | The map: module catalogue + common flows + mental model + `--help --json` fallback |
-| **`ly`** | `ly-triage` | Board intake: GH issues / JSON reports → judge vs board → fold / new / skip → `lyx board` |
-| **`ly`** | `ly-git-resolve` | Merge / rebase / cherry-pick conflict resolution (skill now; prompt template later for `--auto`) |
-| **`ly`** | `ly-selfreport` *(optional)* | Reflect on a session, file bugs via `lyx selfreport` |
-| **generic** *(name pending)* | `conversation` | Response style |
-| **generic** | `code-quality` | Clean-code guidance |
-| **generic** | `testing` | Testing principles (+ `golang-testing` for Go specifics) |
-| **generic** | `linting` | Style rules (+ language specifics) |
-| **generic** | `markdown` | Markdown formatting for generated files |
-| **generic** | `cli` | Shell-command guidance |
-| **`golang`** | `golang-build` / `-test` / `-comments` | Go build / test / comment conventions (LY is Go) |
-| **`raddle`** | `raddle-generate` / `-update` / `-maintain` | Nav-docs for any repo; `loom` drives it diff-scoped |
+| **LoomYard** | repo / ecosystem | `millhouse` |
+| **`lyx`** | executable (`ly` + `x`, **x = executable**) | `millpy` |
+| **`ly`** | core plugin (`ly-*`) | `mill` |
+| **`craft`** | generic authoring plugin (language-agnostic, reusable) | *(mill:testing/linting/…)* |
+| **`golang` / `csharp` / `python`** | language plugins (install per language) | same |
+| **`raddle`** | standalone nav-doc plugin; `loom` is a diff-scoped consumer | `codeguide` |
 
-**~10 skills total** (a couple optional), none a CLI wrapper or orchestration. The rest of the
-"manual" is the `lyx` binary + its self-documenting CLI + `ly-workflow`'s map. The review-interpretation
-discipline (from mill's `mill-receiving-review`) lives in **burler's prompt**, not a skill.
+## The LoomYard skill set
 
-## `ly-workflow` — the map, not the manual
+One table per plugin, one row per skill. Installed set for LoomYard: **`ly + craft + golang + raddle`**.
 
-`ly-workflow` is the one orientation skill: a **general wayfinding catalogue** of how to use the
-loomyard repo — which modules exist, the common flows (`lyx warp add` to spawn, `lyx loom run` to
-drive, `lyx board upsert` to add a task), the mental model (host + weft + board), and the
-`--help --json` fallback rule. It is an *overview*, never a per-flag catalogue and never a replacement
-for the explicit command an individual skill writes.
+### `ly` — core plugin (loomyard-specific)
 
-## `ly-git-resolve` — the one genuinely-new git skill
+| Skill | Purpose |
+|---|---|
+| `ly-workflow` | Map: module catalogue + common flows + mental model + `--help --json` fallback |
+| `ly-triage` | **Pure judgment, zero board relation.** Go supplies both inputs (fetched items + a board snapshot); the skill emits a decisions artifact (per item: new / fold-into-slug / skip). Go does *all* board I/O (upsert/merge) and the fetch/close. The skill never reads or writes the board |
+| `ly-git-resolve` | Merge/rebase/cherry-pick conflict resolution — skill now; prompt template (`git-conflict-resolve-template.md`) later for `--auto` |
+| `ly-selfreport` *(opt.)* | Reflect on a session → file bugs via `lyx selfreport` |
 
-Mechanical git is `lyx` (warp/weft) or the agent's normal host git. The single exception needing
-judgment is **merge/rebase/cherry-pick conflict resolution**. Named `ly-git-resolve` (git explicit;
-"resolve" is git's verb for conflicts; *not* `merge-resolve` since conflicts also arise from rebase /
-cherry-pick / stash). It is the rule-4-"both" case: a **skill** now (operator resolving a manual
-merge), and later a **prompt template** (`git-conflict-resolve-template.md`, stencil + shuttle) for
-autonomous `--auto` runs — same instructions behind both. loom's default on conflict is to **escalate
-to the operator** (stuck/pause), not silently auto-resolve, which can corrupt intent.
+#### `ly-triage` contract — whole board in, delta out
+
+File contract (same shape as burler): **Go writes the input, the skill writes the output, Go executes.** The skill is source-agnostic — `ref` is an opaque identity string Go minted (gh-issue number, report id, …); the skill echoes it back and Go maps `ref` → real action (close issue N, etc.).
+
+**In — `triage-in.json` (Go writes, skill reads).** The board goes in *whole* — the skill needs it to judge fold-vs-new (find overlap) and avoid slug collision:
+
+```json
+{
+  "items": [ { "ref": "gh#42", "title": "…", "body": "…" } ],
+  "board": [ { "slug": "reviewers-cache", "title": "…", "brief": "…",
+               "status": null, "deferred": false } ],
+  "hint": { "group_target": 3 }
+}
+```
+
+**Out — `triage-out.json` (skill writes, Go reads).** A *delta* (decisions), never a rewritten board — the skill can only add / fold / skip, so it physically cannot drop or mangle an existing task:
+
+```json
+{
+  "new_tasks": [ { "slug": "…", "title": "…", "brief": "…", "item_refs": ["gh#42","gh#7"] } ],
+  "fold_ins":  [ { "target_slug": "reviewers-cache", "item_refs": ["gh#13"] } ],
+  "skips":     [ { "ref": "gh#99", "reason": "not actionable" } ]
+}
+```
+
+**"Delta" is not a board operation** — it is the shape of the output artifact. Go is the translator; the board stays dumb CRUD (`internal/boardengine`):
+
+| out entry | Go call (existing board primitive) |
+|---|---|
+| `new_tasks[]` | one `UpsertTasksBatch` (atomic, all-or-none) |
+| `fold_ins[]` | per fold: `GetTask(slug)` → append to body → `UpsertTask` (bounded, additive) |
+| `skips[]` | no board call — Go just closes/labels the source item |
+
+**Go-enforced invariants (fail-loud):** (1) every input `ref` appears exactly once across `new_tasks`∪`fold_ins`∪`skips`; (2) slug matches `[a-z][a-z0-9-]*`, no board collision; (3) fold target exists *and* is unclaimed (`status==null && !deferred`) — re-checked at apply time against the snapshot race. The asymmetry mirrors burler: rich read-input, narrow validatable write.
+
+### `craft` — generic authoring (language-agnostic)
+
+| Skill | Writes | Purpose |
+|---|---|---|
+| `conversation` | prose → operator | response style |
+| `markdown` | `.md` | markdown formatting |
+| `code-quality` | code | clean-code guidance |
+| `testing` | code | testing principles |
+| `linting` | code | style rules |
+| `cli` | shell | shell-command usage |
+
+### `golang` — language plugin (LY is Go; `csharp`/`python` are siblings, per language)
+
+| Skill | Purpose |
+|---|---|
+| `golang-build` | Go build / test commands |
+| `golang-testing` | Go testing conventions |
+| `golang-comments` | godoc / comment rules |
+
+### `raddle` — standalone nav-doc plugin (`loom` drives it diff-scoped)
+
+| Skill | Purpose |
+|---|---|
+| `raddle-generate` | Generate nav-docs for undocumented files |
+| `raddle-update` | Update docs for changed files (loom: `git diff <start-SHA>..HEAD`) |
+| `raddle-maintain` | Fix / repair existing docs |
+| `raddle-setup` | Initialise / activate raddle in a repo |
+
+The review-interpretation discipline (mill's `mill-receiving-review`) lives in the shared **review→fix prompt template**, not a skill — used by **both** consumers of that two-step pattern: `burler` (interprets its own A-review in B) and `hardener` (roadmap #23; shares the burler round discipline).
 
 ## Fate of every mill skill
 
-### Survives as an `ly-*` skill
+### → an LY skill
 
-| mill skill | Becomes | Why |
-|---|---|---|
-| mill:workflow | **`ly-workflow`** | Entry/catalogue: mental model + module map + `--help --json` fallback. |
-| mill:mill-triage-to-tasks | **`ly-triage`** | The one judgment-heavy board skill: intake → compare-vs-board → fold/new/skip → `lyx board`. |
-| mill:mill-self-report | **`ly-selfreport`** (optional) | Reflection judgment (detect bugs from a session); files via `lyx selfreport`. |
-| *(new)* | **`ly-git-resolve`** | Conflict resolution — judgment, not mechanical, not CLI. mill had no standalone equivalent. |
+| mill skill | Becomes |
+|---|---|
+| mill:workflow | `ly-workflow` |
+| mill:mill-triage-to-tasks | `ly-triage` (pure judgment; Go supplies board snapshot + does all board writes) |
+| mill:mill-self-report | `ly-selfreport` *(optional)* |
+| mill:conversation | `craft` · `conversation` |
+| mill:markdown | `craft` · `markdown` |
+| mill:code-quality | `craft` · `code-quality` |
+| mill:testing | `craft` · `testing` |
+| mill:linting | `craft` · `linting` |
+| mill:cli | `craft` · `cli` |
 
-### Generic behavioural — kept, placement pending
+### Merge into an LY skill
 
-| mill skill | Becomes | Why |
-|---|---|---|
-| mill:conversation | Keep (generic) | Response-style guidance; not CLI-discoverable. |
-| mill:code-quality | Keep (generic) | Clean-code guidance. |
-| mill:testing | Keep (generic) | Testing principles (+ `golang-testing` for Go specifics). |
-| mill:linting | Keep (generic) | Style rules (+ language specifics). |
-| mill:markdown | Keep (generic) | Markdown formatting for generated files. |
-| mill:cli | Keep (generic) | Shell-command guidance (could fold into `ly-workflow`). |
+| mill skill | Merges into |
+|---|---|
+| mill:mill-ghissues-to-tasks | **splits**: fetch + close + board writes → `lyx` verb / Go; analysis → `ly-triage` |
+| mill:mill-report-to-tasks | `ly-triage` (source is already a JSON file — no fetch; Go still owns board writes) |
+| mill:mill-fold | `ly-triage` (fold *judgment* only; Go executes the merge/upsert) |
+| mill:mill-autofix | `loom --auto` + `ly-triage` (thin driver at most) |
 
-### Folds into another skill (Merge)
-
-| mill skill | Merges into | Why |
-|---|---|---|
-| mill:mill-ghissues-to-tasks | `ly-triage` | GitHub-issue source adapter. |
-| mill:mill-report-to-tasks | `ly-triage` | JSON-report source adapter. |
-| mill:mill-fold | `ly-triage` | Fold-in *is* ly-triage's core judgment; execution via `lyx board merge/upsert`. |
-| mill:mill-autofix | `loom` (autonomous) + `ly-triage` | "loop loom over open bugs" = loom `--auto` + ly-triage; a thin driver at most. |
-
-### Absorbed by a `lyx` verb (→ CLI, no skill)
+### → a `lyx` verb (no skill)
 
 | mill skill | Replaced by |
 |---|---|
@@ -150,12 +143,12 @@ to the operator** (stuck/pause), not silently auto-resolve, which can corrupt in
 | mill:git-clone | `lyx warp clone` |
 | mill:mill-spawn | `lyx warp add` (+ loom) |
 | mill:mill-claim | `lyx warp add` / loom |
-| mill:mill-start | loom Discussion phase (a producer prompt, not a skill) |
+| mill:mill-start | loom Discussion phase (a producer prompt) |
 | mill:mill-plan | loom Plan phase |
 | mill:mill-go | loom Builder phase |
 | mill:mill-finalize | loom Finalize |
 | mill:mill-merge | loom Finalize + `lyx warp cleanup` (conflict → `ly-git-resolve`) |
-| mill:mill-merge-in | loom / warp merge logic (conflict → `ly-git-resolve`) |
+| mill:mill-merge-in | loom / warp merge (conflict → `ly-git-resolve`) |
 | mill:mill-cleanup | `lyx warp cleanup` |
 | mill:mill-abandon | `lyx loom abandon` |
 | mill:mill-pause | `lyx loom pause` |
@@ -169,46 +162,36 @@ to the operator** (stuck/pause), not silently auto-resolve, which can corrupt in
 | mill:millhouse-issue | `lyx selfreport` |
 | mill:git-issue | `lyx selfreport` / `gh` |
 
-### Folds into CLAUDE.md (always-on rules, not a skill)
+### → loom commit path (Go-deterministic + prompt template)
 
-| mill skill | Folds to |
-|---|---|
-| mill:git-commit | CLAUDE.md hygiene (stage individually, never `--no-verify`/force-push) + burler prompts own commit-per-fix |
-| mill:git-workflow | CLAUDE.md — always-on git rules belong in the per-session instructions, not an on-demand skill |
-
-### Folds into a prompt template (lyx-spawned judgment, not a skill)
-
-| mill skill | Folds to |
-|---|---|
-| mill:mill-receiving-review | **burler's prompt template** (`review-prompt-template.md`). burler interprets its own A-review and acts on it in the B-step (and reconciles cluster findings in A) — that review-interpretation discipline was genuinely valuable in mill and is **preserved**, not discarded. It lives in burler's prompt because burler is lyx-spawned / autonomous (rule 4, the *prompt-only* case; contrast `ly-git-resolve`, which is skill *and* prompt). |
-
-### Discard (low value or obsolete)
+Nothing new to CLAUDE.md — always-on text is forgotten. The rules live where commits actually happen.
 
 | mill skill | Why |
 |---|---|
-| mill:mill-groom | ~never used standalone; its fold-value lives in `ly-triage`. |
-| mill:mill-wiki-push | Board is one-shot & daemonless — no wiki repo to push. |
-| mill:mill-skills-from-scripts | LY has few, non-script-backed skills. |
-| mill:mill-skills-index | Same; a skills index is trivial if ever wanted. |
-| mill:git-log | Work-journal-from-commits; low value, git history suffices. |
-| mill:git-pr | Push-to-main is OK in LY → a PR is the exception; use `gh` ad-hoc. |
+| mill:git-commit | Mechanics (stage-by-name, no `-A`, no force-push, no `--no-verify`, set upstream) enforced **in Go** where lyx commits weft; message format + commit-per-fix ride the **builder/fixer prompt template** for host code. Lint / raddle-sync / main-gate are loom's job, not per-commit |
+| mill:git-workflow | Branch / PR / rebase / main-gate are **loom-enforced** (breaking them is clumsiness, not a rule to restate); message + staging discipline ride the builder/fixer prompt template |
 
-## Tally
+### → burler's prompt template (lyx-spawned judgment)
 
-44 mill skills →
+| mill skill | Why |
+|---|---|
+| mill:mill-receiving-review | shared review→fix prompt discipline (rule-4 prompt-only); two consumers — `burler` (its own A-review in B) **and** `hardener` (same two-step). Value preserved, not discarded |
 
-- **~4 loomyard-specific** `ly-*`: `ly-workflow`, `ly-triage`, `ly-git-resolve`, `ly-selfreport` (optional)
-- **~6 generic behavioural** (placement pending): conversation, code-quality, testing, linting, markdown, cli
-- **4 merged** · **22 → CLI** · **2 → CLAUDE.md** · **1 → burler prompt** · **6 discarded**
-- Language plugins (`golang-*`) and the `raddle` plugin sit alongside, unchanged / standalone.
+### Discard
 
-**~10 real skills, none a CLI wrapper or orchestration.** The `lyx` binary + a self-documenting CLI +
-`ly-workflow`'s map is the rest of the "manual".
+| mill skill | Why |
+|---|---|
+| mill:mill-groom | ~never used standalone; fold-value → `ly-triage` |
+| mill:mill-wiki-push | board is one-shot & daemonless — no wiki repo |
+| mill:mill-skills-from-scripts | LY has few, non-script-backed skills |
+| mill:mill-skills-index | trivial if ever wanted |
+| mill:git-log | low value; git history suffices |
+| mill:git-pr | push-to-main is OK → PR is the exception; use `gh` ad-hoc |
+
+**Tally:** 9 → LY skill · 4 merged · 22 → `lyx` verb · 2 → loom commit path · 1 → burler prompt · 6 discarded = 44.
 
 ## Open decisions
 
-- **Generic-behavioural placement** — separate generic plugin (and its name) vs. fold into `ly`.
-- **`ly-selfreport` / `ly-autofix`** — keep as thin skills, or lean entirely on `lyx selfreport` +
-  loom `--auto`.
-- **raddle-native generator** — timing of a lyx-native replacement for the millhouse-codeguide
-  stopgap (the plugin boundary — standalone, diff-driven by loom — is the same either way).
+- **`craft` name** — vs `authoring` / `core` (the language-agnostic authoring plugin).
+- **`ly-selfreport` / `ly-autofix`** — thin skills, or lean on `lyx selfreport` + `loom --auto`.
+- **`raddle`-native generator timing** — millhouse-codeguide is the stopgap; the plugin boundary is the same either way.
