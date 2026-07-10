@@ -112,8 +112,9 @@ Decisions).
 - Decision: `NN-<batch-slug>.md` = title + **intent** (what this batch delivers as a
   stand-alone unit), **Scope** (see scope decision), **Cards** (ordered), per-batch
   **`verify:`** (mandatory; may be `deferred` — see oversized/exceptions decision), and
-  optional frontmatter `oversized: true`. An oversized batch MUST justify the flag in its
-  intent section.
+  optional frontmatter: `oversized: true`, and for deferred-chain intermediates
+  `chain-end: NN` (required alongside `verify: deferred`). An oversized batch MUST justify
+  the flag in its intent section.
 - Rationale: One batch = one implementer session = one stand-alone unit: read the batch +
   relevant code + implement + verify + commit, within budget.
 - Rejected: nothing beyond the proposal here; fields were confirmed as proposed.
@@ -131,6 +132,20 @@ Decisions).
      batches where intermediates declare `verify: deferred` (their batch-reports say
      `tests: skipped`); the final batch of the chain runs the full `verify:`. The green
      invariant holds at chain level: the last batch must be green.
+
+  **Chains are explicit, and the chain is the recovery unit.** An intermediate batch
+  declares its chain in frontmatter: `verify: deferred` + `chain-end: NN` (pointing at the
+  batch that runs the real `verify:`) — mechanically validatable, robust against
+  batch edits/reordering; an implicit "consecutive deferred flags" chain was rejected as
+  fragile. Mid-chain recovery: intermediates deliberately commit non-green (possibly
+  non-compiling) code, so normal one-batch recovery does not apply. If any chain batch goes
+  `stuck`, the orchestrator rolls the host repo back to the **chain-start SHA** (the commit
+  before the chain's first batch — known from git) and re-runs the whole chain, possibly
+  escalated. No recovery session ever operates inside a deliberately broken intermediate
+  state without a green anchor.
+
+  **Floor:** a batch that cannot fit even the large-window variant has no third escalation —
+  the plan is invalid and MUST be decomposed differently (oversized and/or chained).
 - Rationale: mill's 200k-overflow pain made sizing principle #0; but real refactors
   sometimes cannot pass through compiling intermediate states, so the format needs a
   declared escape rather than ad-hoc violation. Both mechanisms are cheap to express;
@@ -150,6 +165,10 @@ Decisions).
   **without** `oversized: true` fails validation loudly, forcing the Planner to split or
   flag. The flag is therefore never a silent default. (Precedent: millhouse
   `_plan_validate.py` `batch-oversized` checks — bytes//4 estimate and max-cards cap.)
+  The estimate is a **coarse safety net, not a bound**: it ignores conversation overhead,
+  card text, tool output, and files the implementer reads that are not listed in
+  Scope/Where (imports, neighbouring code, the tests being made green). A passing batch is
+  not guaranteed to fit; the doc must present the check as catching egregious cases only.
 - Format implication: a batch's read surface must be mechanically derivable — the Scope
   path list and each card's Where files serve as the estimator's input.
 - Rejected: author-only (loses the proven cheap mechanical catch); mechanics-only (the
@@ -168,7 +187,10 @@ Decisions).
 - Rationale: Commit-per-card is the **resume mechanism**: a fresh session sees from git log
   exactly which card the previous session reached; a half-done card is resumed by
   discarding uncommitted changes and restarting that card. (Host-repo commits by the agent
-  itself — Weft Git Invariant asymmetry.)
+  itself — Weft Git Invariant asymmetry.) A card that is *committed but incomplete* (the
+  mill #574 failure mode) is not detected at commit time; it surfaces late, at the batch
+  `verify:`. Accepted — the batch gate is the backstop, and per-card verify (where present)
+  narrows the window.
 - Rejected: hard "exactly one commit" both ways (collides with self-fix commits; false
   stucks); no commit linkage (loses backtracking granularity and resumability).
 
@@ -185,14 +207,26 @@ Decisions).
 
 - Decision: The implementer gets a small bounded number of in-session fix attempts (e.g. 2)
   after a red `verify:`; still red → batch-report `status: stuck`, `tests: red`. The
-  orchestrator then spawns a **fresh** escalated fixer that reads the durable reports —
-  never a `/model` switch inside the polluted session. The holistic perch/burler review
-  runs only after the final batch, so it sees green-by-construction code: review is a
-  quality/design gate, never a test-fixing mechanism. Deferred-verify chains keep the
-  invariant at chain level.
+  orchestrator then spawns a **fresh** escalated recovery session that reads the durable
+  artifacts (batch file, code, git log of card commits, batch-report) — never a `/model`
+  switch inside the polluted session. This is an **exception path**, entered only on
+  `stuck`; to keep it from repeating failed approaches, the `stuck_reason` guidance
+  requires one short line naming both the blocker and what was attempted
+  (e.g. `"TestFoo red; tried nil-guard in parser.go and regenerating fixture"`).
+  The holistic perch/burler review runs only after the final batch, so it sees
+  green-by-construction code: review is a quality/design gate, never a test-fixing
+  mechanism. Deferred-verify chains keep the invariant at chain level.
+- **Review cadence — holistic only, signed off explicitly:** there is no per-batch design
+  review in v1. `verify:` gates correctness per batch; perch/burler design review runs once,
+  after the last batch. The trade-off (a bad design choice in batch 1 that compiles and
+  passes verify is caught only after later batches build on it) is accepted deliberately:
+  batches are small, the plan is detailed and itself plan-reviewed, and per-batch review was
+  a main cost/latency driver in mill. A per-batch review knob is a possible v-later config
+  option, not v1.
 - Rationale: Unbounded self-fix is the Haiku/Go thrashing mode observed in practice;
   zero self-fix wastes the one-line-fix cases.
-- Rejected: self-fix until context exhaustion; immediate stuck on first red.
+- Rejected: self-fix until context exhaustion; immediate stuck on first red; per-batch
+  design review (N× cost).
 
 ### Batch-report — terse YAML, decision fields only
 
@@ -203,14 +237,16 @@ Decisions).
   batch: 02-<batch-slug>
   status: done | stuck
   tests: green | red | skipped   # skipped = deferred-verify intermediate
-  stuck_reason: null | "<short>"
+  stuck_reason: null | "<short>" # on stuck: one line naming blocker AND what was attempted
   out_of_scope:                  # optional; present only when needed
     - path: <path>
       why: "<one line>"
   ```
 
   Principle: the report carries only decision fields plus what Go cannot cheaply compute
-  itself. `commits` is dropped (git log with card-referencing messages is the authoritative
+  itself. The plan-format doc pins **only this on-disk schema**; the digest shape the
+  `poll` verb returns to the orchestrator is builder-design territory and stays out of the
+  contract doc. `commits` is dropped (git log with card-referencing messages is the authoritative
   source; count is never a check). `files_changed` is dropped (the `poll` verb computes it
   from `git diff` against the start-SHA — authoritative, not agent-claimed). `duration` is
   dropped (Go owns spawn/exit times).
@@ -225,7 +261,11 @@ Decisions).
   batch-report's `out_of_scope` field. The `poll` verb (Go) computes changed files from git,
   compares against declared scope, and flags drift in the digest; the **orchestrator
   judges** — accept as legitimate fix or demand revert. Unreported drift (changes outside
-  scope with no `out_of_scope` entry) is the rot signal.
+  scope with no `out_of_scope` entry) is the rot signal. Honest limitation, stated in the
+  doc: the lean digest-only orchestrator judges the **stated one-line reason**, not the
+  diff — a plausible-but-wrong justification passes this tier. That is accepted
+  defense-in-depth: the mechanical catch handles *unreported* drift, and the holistic
+  review at the end audits the actual changes.
 - Rejected: glob lists (must pin a glob dialect; Planner must write globs flawlessly —
   YAGNI until a real need); prose scope (not mechanically checkable); hard gate with
   `scope: open` escape (the Planner cannot foresee exactly what an incomplete plan missed);
@@ -252,7 +292,10 @@ Decisions).
     fresh release back to `claude-sonnet-5`), or per-spec via `version=4.5`, which the
     provider engine translates to its id scheme (claudeengine: `sonnet` + `4.5` →
     `claude-sonnet-4-5` — provider naming lives in claudeengine per the Shuttle
-    Provider-Seam Invariant).
+    Provider-Seam Invariant). The reproducibility cost (the same plan run a month apart may
+    hit different models) is **signed off**, with one mitigation: engines record the
+    **resolved model id** in the run artifacts (RunDir), so any historical run can be
+    reconstructed and, if needed, re-pinned.
   - **Precedence — whole-spec replacement:** the most specific config layer that sets a
     role wins **as a unit**: loom's config section (when loom drives builder) > builder.yaml
     default > nothing. No cross-layer param merging — a losing spec contributes nothing.
@@ -344,8 +387,8 @@ Doc-only task — no code, no `go test` surface. Quality gates:
 
 - **Plan review of this task's plan** (mill pipeline) and **review of the docs themselves**
   against this discussion: every Decision above must appear in the rendered docs; the
-  worked example in `plan-format.md` must be internally consistent (index ↔ files ↔
-  batch-report fields ↔ schema).
+  worked example in `plan-format.md` must be byte-consistent across index ↔ batch
+  filenames ↔ report filenames (`NN-<batch-slug>` convention everywhere) ↔ schema fields.
 - The worked example doubles as the template for builder's future fixture — it must be
   complete enough that copying it into `testdata/` yields a runnable v1 plan.
 - Future machine enforcement (explicitly not this task): the plan validator
@@ -395,3 +438,16 @@ Doc-only task — no code, no `go test` surface. Quality gates:
   is the template.
 - **Q:** Where do docs land? **A:** `docs/modules/plan-format.md` +
   `docs/reference/model-spec.md`; surgical loom.md/roadmap fixes in the same commit.
+- **Q:** (orch review) Mid-chain recovery for deferred chains? **A:** Chains are explicit
+  (`chain-end: NN` frontmatter); the chain is the recovery unit — on mid-chain stuck, roll
+  back to chain-start SHA and re-run the whole chain, possibly escalated.
+- **Q:** (orch review) Newest-default reproducibility cost? **A:** Signed off; mitigation:
+  engines record the resolved model id in run artifacts.
+- **Q:** (orch review) Holistic-only review (no per-batch design review)? **A:** Signed
+  off for v1; per-batch review is a possible v-later config knob.
+- **Q:** (orch review) Cold recovery session repeating failed approaches? **A:** Recovery
+  is an exception path (stuck-only, fresh spawn by design); `stuck_reason` must name
+  blocker + attempted approaches so the recovery session inherits the failure trail.
+- **Q:** (orch review) bytes//4 estimate a real bound? **A:** No — documented as a coarse
+  safety net catching egregious cases; oversized beyond even the 1M variant has no third
+  escalation: the plan must be decomposed differently.
