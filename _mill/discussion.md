@@ -36,7 +36,8 @@ Decisions).
 - Surgical same-commit fixes to existing docs that contradict the pinned contract:
   `docs/modules/loom.md` (Builder described as a Go loop; "dependency order"; "Haiku by
   default") and a `docs/roadmap.md` pointer/milestone update per the roadmap rules in
-  CLAUDE.md.
+  CLAUDE.md — including redirecting `docs/roadmap.md:180-181` ("Its plan-format contract is
+  pinned in the module doc ([modules/loom.md])") to `modules/plan-format.md`.
 
 **Out:**
 
@@ -135,12 +136,16 @@ Decisions).
 
   **Chains are explicit, and the chain is the recovery unit.** An intermediate batch
   declares its chain in frontmatter: `verify: deferred` + `chain-end: NN` (pointing at the
-  batch that runs the real `verify:`) — mechanically validatable, robust against
-  batch edits/reordering; an implicit "consecutive deferred flags" chain was rejected as
-  fragile. Mid-chain recovery: intermediates deliberately commit non-green (possibly
-  non-compiling) code, so normal one-batch recovery does not apply. If any chain batch goes
-  `stuck`, the orchestrator rolls the host repo back to the **chain-start SHA** (the commit
-  before the chain's first batch — known from git) and re-runs the whole chain, possibly
+  batch that runs the real `verify:`); an implicit "consecutive deferred flags" chain was
+  rejected as fragile. Derivation rules (pinned in the doc): **chain membership** = every
+  batch whose `chain-end` names the same `NN`, plus batch `NN` itself; **chain-start SHA** =
+  the host commit immediately before the lowest-numbered member's first card commit.
+  Explicitness makes renumbering breakage *detectable*, not impossible: renumbering batches
+  MUST update `chain-end` in the same edit, and plan validation fails loudly on a dangling
+  `chain-end` (target missing, or itself declaring `verify: deferred`). Mid-chain recovery:
+  intermediates deliberately commit non-green (possibly non-compiling) code, so normal
+  one-batch recovery does not apply. If any chain batch goes `stuck`, the orchestrator
+  rolls the host repo back to the chain-start SHA and re-runs the whole chain, possibly
   escalated. No recovery session ever operates inside a deliberately broken intermediate
   state without a green anchor.
 
@@ -274,9 +279,13 @@ Decisions).
 ### Model-spec notation (`docs/reference/model-spec.md`)
 
 - Decision: The plan is **model-agnostic** — it carries no model fields (only the
-  `oversized` flag, which selects a *role*, not a model). All roles (orchestrator,
-  implementer, implementer_oversized, fixer/escalation, evaluator) are configured as
-  **model-specs**:
+  `oversized` flag, which selects a *role*, not a model). Every role is configured as a
+  **model-spec**. The doc must keep two role sets apart: **builder.yaml's roles** are
+  `orchestrator`, `implementer`, `implementer_oversized`, `fixer` (there is no builder
+  `evaluator` — the LLM orchestrator itself judges digests; the on-demand Go evaluator
+  belonged to the rejected Go-loop model); **stack-wide roles elsewhere** (perch/burler
+  reviewers, judges, the loom producers) use the same model-spec notation in their own
+  config sections. Notation:
   - **Grammar:** `<alias>[key=value,key=value,...]` — e.g. `implementer: sonnet[effort=high]`.
     Bracket part optional. Escape form `provider:model-id[...]`
     (e.g. `claude:claude-sonnet-4-5[effort=high]`) for models not (yet) in the registry.
@@ -316,8 +325,9 @@ Decisions).
 - Decision: Sonnet is the default implementer (builder.yaml `implementer: sonnet`); Haiku
   becomes an opt-in per-repo optimization where it is proven (it coped with C# but failed
   at Go self-fixing — red-test diagnosis needs more capability, independent of plan
-  detail). No hardcoded models anywhere; builder.yaml holds defaults for every role and
-  loom's config section overrides per role.
+  detail). No hardcoded models anywhere; builder.yaml holds defaults for its four roles
+  (orchestrator, implementer, implementer_oversized, fixer) and loom's config section
+  overrides per role.
 - Rejected: Haiku default + escalation (first attempt burns a batch on Go-class work);
   per-language model map.
 
