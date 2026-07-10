@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-shell-abstraction
+phase: approved-linux-launch-surface
 slug: facilitate-linux
 branch: facilitate-linux
 plan: _mill/plan
@@ -28,6 +28,7 @@ implementing  '2026-07-10T09:10:48Z'
 approved-proc-tree-reaping  '2026-07-10T09:25:35Z'
 approved-mux-contract-and-godoc  '2026-07-10T09:37:13Z'
 approved-shell-abstraction  '2026-07-10T09:51:55Z'
+approved-linux-launch-surface  '2026-07-10T09:59:49Z'
 ```
 
 ## Batches
@@ -50,9 +51,10 @@ batches:
     start_sha: f16dbc67f6d6261d9bc5e7a0ea99eb8705dc450b
     commit_sha: 9dda7fb7a2c89314cae1bf8f3d079c49e59f3ed4
   - name: linux-launch-surface
-    state: running
+    state: approved
     implementer_session: 811aa8e4-5272-4012-9018-99cf9a5a676f
     start_sha: 5e2fa4eb0ecdea5be4628fae677d6025bf5f5597
+    commit_sha: cbf1862e1590e50bebc6187f500df3078e87449f
   - name: config-version-probe
     state: pending
   - name: crosscompile-gate-and-roadmap
