@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-mux-contract-and-godoc
+phase: approved-shell-abstraction
 slug: facilitate-linux
 branch: facilitate-linux
 plan: _mill/plan
@@ -27,6 +27,7 @@ planned  '2026-07-10T07:41:31Z'
 implementing  '2026-07-10T09:10:48Z'
 approved-proc-tree-reaping  '2026-07-10T09:25:35Z'
 approved-mux-contract-and-godoc  '2026-07-10T09:37:13Z'
+approved-shell-abstraction  '2026-07-10T09:51:55Z'
 ```
 
 ## Batches
@@ -44,9 +45,10 @@ batches:
     start_sha: a1fa42003b54fa1c7f9dea53dfd226c42f8eb402
     commit_sha: 3835a85f47efd48563eb1ac73703cd1c6c502514
   - name: shell-abstraction
-    state: running
+    state: approved
     implementer_session: 1945e3c1-3b01-4f3c-a409-9aa518811a83
     start_sha: f16dbc67f6d6261d9bc5e7a0ea99eb8705dc450b
+    commit_sha: 9dda7fb7a2c89314cae1bf8f3d079c49e59f3ed4
   - name: linux-launch-surface
     state: pending
   - name: config-version-probe
