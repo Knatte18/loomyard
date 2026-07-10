@@ -45,8 +45,8 @@ batches:
     commit_sha: 3835a85f47efd48563eb1ac73703cd1c6c502514
   - name: shell-abstraction
     state: running
-    implementer_session: b8f6a78d-5d87-4bfc-bb07-c619736a3d2a
-    start_sha: 30f64faa7273b1ab80ef64317f9762bf4dbd9c4f
+    implementer_session: 1945e3c1-3b01-4f3c-a409-9aa518811a83
+    start_sha: f16dbc67f6d6261d9bc5e7a0ea99eb8705dc450b
   - name: linux-launch-surface
     state: pending
   - name: config-version-probe
