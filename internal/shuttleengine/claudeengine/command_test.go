@@ -1,8 +1,10 @@
-// command_test.go table-tests the pwsh command composition helpers:
+// command_test.go table-tests the pane-shell command composition helpers:
 // quoting of paths with spaces and embedded single quotes, model/flag
 // presence per the interactive toggle, the exact resume-command shape, and
 // a no-newline invariant every produced command must hold (they are typed
-// into a pane via a single send-keys call).
+// into a pane via a single send-keys call). The pwsh-quote cases formerly
+// asserted here now live in internal/shell's shell_test.go, since quoting
+// itself moved there.
 
 package claudeengine
 
@@ -10,29 +12,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/shell"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
-
-func TestPwshSingleQuote(t *testing.T) {
-	tests := []struct {
-		name string
-		in   string
-		want string
-	}{
-		{"plain", "claude", "'claude'"},
-		{"space", "C:\\a b\\c", "'C:\\a b\\c'"},
-		{"single_quote", "it's", "'it''s'"},
-		{"multiple_quotes", "'a'b'", "'''a''b'''"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := pwshSingleQuote(tt.in)
-			if got != tt.want {
-				t.Errorf("pwshSingleQuote(%q) = %q; want %q", tt.in, got, tt.want)
-			}
-		})
-	}
-}
 
 func TestClaudeBinary(t *testing.T) {
 	tests := []struct {
@@ -56,6 +38,7 @@ func TestClaudeBinary(t *testing.T) {
 func TestBuildLaunchCmd(t *testing.T) {
 	tests := []struct {
 		name         string
+		sh           shell.Shell // nil defaults to shell.Pwsh(), the pre-existing coverage's shell
 		bin          string
 		promptPath   string
 		settingsPath string
@@ -215,10 +198,27 @@ func TestBuildLaunchCmd(t *testing.T) {
 			interactive:  false,
 			want:         `& 'claude' (Get-Content -Raw 'C:\run\prompt.md') --session-id 'abc-123' --settings 'C:\run\settings.json' --effort 'my effort''s name' --dangerously-skip-permissions`,
 		},
+		{
+			// Proves the seam is shell-agnostic: the same builder produces the
+			// posix form when handed shell.Posix() instead of the default
+			// shell.Pwsh() every other row above exercises.
+			name:         "posix_shell",
+			sh:           shell.Posix(),
+			bin:          "claude",
+			promptPath:   "/run/prompt.md",
+			settingsPath: "/run/settings.json",
+			sessionID:    "abc-123",
+			interactive:  false,
+			want:         `'claude' "$(cat '/run/prompt.md')" --session-id 'abc-123' --settings '/run/settings.json' --dangerously-skip-permissions`,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := buildLaunchCmd(tt.bin, tt.promptPath, tt.settingsPath, tt.sessionID, tt.model, tt.effort, tt.interactive)
+			sh := tt.sh
+			if sh == nil {
+				sh = shell.Pwsh()
+			}
+			got := buildLaunchCmd(sh, tt.bin, tt.promptPath, tt.settingsPath, tt.sessionID, tt.model, tt.effort, tt.interactive)
 			if got != tt.want {
 				t.Errorf("buildLaunchCmd(...) = %q; want %q", got, tt.want)
 			}
@@ -264,7 +264,7 @@ func TestValidateEffort(t *testing.T) {
 }
 
 func TestBuildResumeCmd(t *testing.T) {
-	got := buildResumeCmd("claude", `C:\run\settings.json`, "abc-123")
+	got := buildResumeCmd(shell.Pwsh(), "claude", `C:\run\settings.json`, "abc-123")
 	want := `& 'claude' --resume 'abc-123' --settings 'C:\run\settings.json'`
 	if got != want {
 		t.Errorf("buildResumeCmd(...) = %q; want %q", got, want)
