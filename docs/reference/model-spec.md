@@ -103,6 +103,10 @@ the registry default → **medium**. builder.yaml's `effort=high` is irrelevant 
 entire spec lost. (Per-param merge was rejected: you'd read three files to know one
 param's value, and a stale bracket in an old layer leaks in invisibly.)
 
+Sharp edge, deliberate: overriding a role in a higher layer **silently discards** the
+lower layer's bracket params — as above, where builder.yaml's `effort=high` vanished. If
+a param must survive your override, restate it in the winning spec.
+
 ## Fail loud
 
 Unknown alias, unknown param key, unrecognized provider → loud rejection, never silent

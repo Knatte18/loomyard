@@ -157,6 +157,9 @@ is the backstop, and per-card verify (where present) narrows the window.
   (chain intermediates only — see below).
 - **Per-card `verify:` is optional** — finer signal where it is cheap, without forcing N
   test runs per batch.
+- Note the two spellings: the frontmatter `verify: deferred` is a **sentinel** (this
+  batch defers to its chain's end); the `## verify:` section in the body carries the
+  actual **command**. A batch has one or the other, never both.
 - `verify:` output must be **filtered to pass/fail + failures** — never raw build/test
   noise (the dotnet-warning lesson; language plugins own the filtering).
 
@@ -342,6 +345,39 @@ table writer; keep the table path unchanged.
 ## verify:
 
 go test ./internal/boardcli/... ./internal/boardengine/...
+```
+
+`_lyx/plan/02-list-tests.md`:
+
+```markdown
+# 02 — list-tests: cover --json in tests and help pins
+
+## Intent
+
+Tests prove the `--json` path end-to-end; help-tree pins reflect the new flag.
+Stand-alone: assumes batch 01 is committed.
+
+## Scope
+
+- internal/boardcli/list_test.go
+- cmd/lyx/helptree_test.go
+
+## Cards
+
+### Card 1 — list --json tests
+
+**What:** Add table-driven tests asserting one `output.Ok` envelope per row for
+`list --json`, and that the table path is unchanged without the flag.
+**Where:** internal/boardcli/list_test.go
+
+### Card 2 — help-tree pin
+
+**What:** Update the pinned help-tree set with the new `--json` flag help text.
+**Where:** cmd/lyx/helptree_test.go
+
+## verify:
+
+go test ./internal/boardcli/... ./cmd/lyx/...
 ```
 
 `_lyx/builder/reports/01-json-flag.yaml` (written by the implementer):
