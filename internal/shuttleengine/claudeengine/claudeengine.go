@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/Knatte18/loomyard/internal/shell"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -109,9 +110,13 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 	}
 
 	bin := claudeBinary(cfg)
+	// sh selects the pane-shell mechanics (quoting, call operator, prompt-file
+	// read idiom) for the current host OS — pwsh on Windows, posix elsewhere —
+	// so buildLaunchCmd/buildResumeCmd never hardcode either shell's syntax.
+	sh := shell.ForGOOS()
 	return shuttleengine.Launch{
-		Cmd:       buildLaunchCmd(bin, promptPath, settingsPath, sessionID, spec.Model, spec.Effort, spec.Interactive),
-		ResumeCmd: buildResumeCmd(bin, settingsPath, sessionID),
+		Cmd:       buildLaunchCmd(sh, bin, promptPath, settingsPath, sessionID, spec.Model, spec.Effort, spec.Interactive),
+		ResumeCmd: buildResumeCmd(sh, bin, settingsPath, sessionID),
 		SessionID: sessionID,
 	}, nil
 }

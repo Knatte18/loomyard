@@ -9,12 +9,23 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
+
+// wantMenuLauncherName returns the expected menu launcher filename for the
+// current runtime.GOOS, mirroring the GOOS-aware selection in hubgeometry.go
+// so these tests are green on the Windows host now and on Linux later.
+func wantMenuLauncherName() string {
+	if runtime.GOOS == "windows" {
+		return "ide-menu.cmd"
+	}
+	return "ide-menu.sh"
+}
 
 // TestResolve_FromWorktreeRoot verifies that Resolve from the worktree root
 // yields empty RelPath (or ".") and correct other fields.
@@ -361,7 +372,7 @@ func TestMirroredMethods(t *testing.T) {
 			}
 
 			got := layout.MenuLauncherPath()
-			want := filepath.Join(layout.Hub, "_launchers", "ide-menu.cmd")
+			want := filepath.Join(layout.Hub, "_launchers", wantMenuLauncherName())
 			if got != want {
 				t.Errorf("MenuLauncherPath() = %q; want %q", got, want)
 			}
@@ -381,7 +392,7 @@ func TestMirroredMethods(t *testing.T) {
 			}
 
 			got := layout.MenuLauncherPath()
-			want := filepath.Join(layout.Hub, "_launchers", "services", "api", "ide-menu.cmd")
+			want := filepath.Join(layout.Hub, "_launchers", "services", "api", wantMenuLauncherName())
 			if got != want {
 				t.Errorf("MenuLauncherPath() = %q; want %q", got, want)
 			}

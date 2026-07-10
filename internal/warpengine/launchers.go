@@ -1,5 +1,7 @@
 // launchers.go writes and tears down the per-worktree launcher scripts and the
-// container-root ide-menu.cmd. Launchers are Windows-only; elsewhere it is a no-op.
+// container-root menu launcher. Launchers are cross-platform: a .cmd script on
+// Windows, an executable .sh script everywhere else, both built from the pure
+// content builder in launcher_content.go.
 
 package warpengine
 
@@ -8,30 +10,25 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
 // writeLaunchers writes per-worktree launchers for the given slug.
 //
-// On Windows: creates l.LauncherDir(slug) and writes ide.cmd with content built
-// from l.LauncherSpawnRel(slug), which climbs from _launchers/<RelPath>/<slug> to
-// the target worktree's subpath:
+// Creates l.LauncherDir(slug) and writes ide<ext> with content built from
+// l.LauncherSpawnRel(slug), which climbs from _launchers/<RelPath>/<slug> to
+// the target worktree's subpath, and warp-checkout<ext> with the same climb
+// but invoking "lyx warp checkout". The extension is ".cmd" on Windows and
+// ".sh" elsewhere (see launcherExt); the .sh files are written executable.
 //
-//	@cd /d "%~dp0<climb-backslash>" && lyx ide spawn <slug>
-//
-// Also ensures l.MenuLauncherPath() exists: create it only if absent (never clobber)
-// with static content built from l.MenuLauncherRel(), which climbs from
-// _launchers/<RelPath> to the main worktree's subpath:
-//
-//	@cd /d "%~dp0<climb-backslash>" && lyx ide menu
-//
-// On non-Windows: returns nil (no-op).
+// Also ensures l.MenuLauncherPath() exists: create it only if absent (never
+// clobber) with content built from l.MenuLauncherRel(), which climbs from
+// _launchers/<RelPath> to the main worktree's subpath and invokes
+// "lyx ide menu". MenuLauncherPath is itself GOOS-aware (hubgeometry), so its
+// extension already matches launcherExt(runtime.GOOS).
 func writeLaunchers(l *hubgeometry.Layout, slug string) error {
-	if runtime.GOOS != "windows" {
-		return nil // No-op on non-Windows
-	}
+	ext := launcherExt(runtime.GOOS)
 
 	// Create the mirrored launcher directory
 	launcherDir := l.LauncherDir(slug)
@@ -39,45 +36,42 @@ func writeLaunchers(l *hubgeometry.Layout, slug string) error {
 		return fmt.Errorf("mkdir launcher dir %s: %w", launcherDir, err)
 	}
 
-	// Build the ide.cmd content from LauncherSpawnRel
-	spawnRelBackslash := strings.ReplaceAll(l.LauncherSpawnRel(slug), "/", "\\")
-	ideCmdContent := fmt.Sprintf("@cd /d \"%%~dp0%s\" && lyx ide spawn %s\r\n", spawnRelBackslash, slug)
-
-	// Write ide.cmd
-	ideCmdPath := filepath.Join(launcherDir, "ide.cmd")
-	if err := os.WriteFile(ideCmdPath, []byte(ideCmdContent), 0o644); err != nil {
-		return fmt.Errorf("write ide.cmd: %w", err)
+	// Build and write the ide launcher from LauncherSpawnRel
+	spawnRel := l.LauncherSpawnRel(slug)
+	ideContent, ideMode := launcherScript(runtime.GOOS, spawnRel, "ide spawn "+slug)
+	idePath := filepath.Join(launcherDir, "ide"+ext)
+	if err := os.WriteFile(idePath, ideContent, ideMode); err != nil {
+		return fmt.Errorf("write ide%s: %w", ext, err)
 	}
 
-	// Write warp-checkout.cmd — a shortcut that runs coordinated checkout for
-	// this worktree. It climbs to the worktree subpath the same way ide.cmd does
-	// so the user can double-click it from the _launchers directory.
-	warpCheckoutContent := fmt.Sprintf("@cd /d \"%%~dp0%s\" && lyx warp checkout\r\n", spawnRelBackslash)
-	warpCheckoutPath := filepath.Join(launcherDir, "warp-checkout.cmd")
-	if err := os.WriteFile(warpCheckoutPath, []byte(warpCheckoutContent), 0o644); err != nil {
-		return fmt.Errorf("write warp-checkout.cmd: %w", err)
+	// Write the warp-checkout launcher — a shortcut that runs coordinated
+	// checkout for this worktree. It climbs to the worktree subpath the same
+	// way the ide launcher does so the user can run it from the _launchers
+	// directory.
+	warpCheckoutContent, warpCheckoutMode := launcherScript(runtime.GOOS, spawnRel, "warp checkout")
+	warpCheckoutPath := filepath.Join(launcherDir, "warp-checkout"+ext)
+	if err := os.WriteFile(warpCheckoutPath, warpCheckoutContent, warpCheckoutMode); err != nil {
+		return fmt.Errorf("write warp-checkout%s: %w", ext, err)
 	}
 
 	// Ensure per-subpath menu launcher exists (never clobber)
-	menuCmdPath := l.MenuLauncherPath()
-	if _, err := os.Stat(menuCmdPath); err == nil {
+	menuPath := l.MenuLauncherPath()
+	if _, err := os.Stat(menuPath); err == nil {
 		// File exists, don't clobber it
 		return nil
 	} else if !os.IsNotExist(err) {
-		return fmt.Errorf("stat ide-menu.cmd: %w", err)
+		return fmt.Errorf("stat menu launcher: %w", err)
 	}
 
 	// File does not exist; create parent directory
-	if err := os.MkdirAll(filepath.Dir(menuCmdPath), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(menuPath), 0o755); err != nil {
 		return fmt.Errorf("mkdir menu launcher dir: %w", err)
 	}
 
 	// Build menu content from MenuLauncherRel
-	menuRelBackslash := strings.ReplaceAll(l.MenuLauncherRel(), "/", "\\")
-	menuCmdContent := fmt.Sprintf("@cd /d \"%%~dp0%s\" && lyx ide menu\r\n", menuRelBackslash)
-
-	if err := os.WriteFile(menuCmdPath, []byte(menuCmdContent), 0o644); err != nil {
-		return fmt.Errorf("write ide-menu.cmd: %w", err)
+	menuContent, menuMode := launcherScript(runtime.GOOS, l.MenuLauncherRel(), "ide menu")
+	if err := os.WriteFile(menuPath, menuContent, menuMode); err != nil {
+		return fmt.Errorf("write menu launcher: %w", err)
 	}
 
 	return nil

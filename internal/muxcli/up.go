@@ -24,6 +24,10 @@ func (c *muxCLI) upCmd() *cobra.Command {
 exist (booting them if absent, a no-op if already up), then reconciles dead
 panes and re-applies the current strand layout.
 
+Before booting, up verifies the configured multiplexer binary meets the
+pinned minimum version and exposes the required command surface, failing
+loud with a JSON error ({"ok":false,"error":...}) if it does not.
+
 up is substrate-only: it never launches or relaunches a strand command.
 Bringing strand content back after a server restart is "lyx mux resume"'s
 job, not up's.

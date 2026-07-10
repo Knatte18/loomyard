@@ -94,6 +94,24 @@ Provider specifics live ONLY under `internal/shuttleengine/claudeengine`.
   strings, hook payload shapes, or TUI grammar leaking outside `claudeengine` — is a review
   obligation, not machine-checked.
 
+## Shell Mechanics Seam
+
+Pane-shell command strings — argument quoting, the call operator, and the
+prompt-file read idiom — are built ONLY via `internal/shell`.
+
+- `internal/shell` defines the provider-invariant `Shell` interface (`Quote`/`Invoke`/
+  `ReadFile`) with a `pwsh` and a `posix` implementation, selected at runtime by
+  `shell.ForGOOS()` (or exercised directly via `shell.Pwsh()`/`shell.Posix()`).
+  `internal/shell` stays stdlib-only and provider-invariant: no Claude flags, marker
+  strings, or hook shapes may appear in it, complementing the Shuttle Provider-Seam
+  Invariant above (which keeps those Claude specifics confined to `claudeengine`).
+- `internal/shuttleengine/claudeengine` (and any future provider engine) never emits raw
+  pwsh/posix shell syntax directly — it composes its launch/resume command lines only by
+  calling into `internal/shell`.
+- **Enforced by** review obligation today: a grep-guard test — e.g. asserting the
+  `Get-Content -Raw` idiom appears only under `internal/shell` — is a cheap future
+  machine-check, deferred per YAGNI.
+
 ## Weft Git Invariant
 
 Every git operation on the weft repo goes through the weft/warp engines in Go, driven by the

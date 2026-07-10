@@ -279,6 +279,20 @@ Independent of the orchestration stack; interleave as needed.
     review. Distinct from milestone 13 (cross-worktree *columns*): that groups worktrees into columns
     of one window; this adds *windows* as a spawn target.
 
+25. **Real-Linux validation for `lyx` on Linux.** 🚧 **Planned.** This task (Facilitate Linux
+    support) built and cross-compiled the Linux seam from a Win11-only box with no Linux machine
+    to execute against; batch 6's `TestCrossCompileLinux` gate proves the module compiles for
+    Linux but nothing here has actually *run* on Linux. This milestone is that deferred execution
+    pass, carried verbatim from the discussion's "Out" section:
+    1. Run the sandbox smoke suite green on real Linux.
+    2. Real tmux behavioral validation of every psmux edge-case assumption — silent split
+       failure, dead-pane adoption, the `-l` leading-dash bug, empty-layout destruction, and
+       async kill-server.
+    3. Real `/proc` execution validation, including confirming the `serverProcessesOnSocket`
+       `/proc/*/cmdline` match shape holds against a live tmux server (which may rewrite its
+       title to `tmux: server` and drop the `-L` token from argv — load-bearing for Linux
+       confirm-gone).
+
 ### Deferred burler enhancements
 
 Ideas from `burler`'s design that did not ship with the module (milestone 11's burler half); not
