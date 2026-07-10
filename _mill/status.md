@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: facilitate-linux
 branch: facilitate-linux
 plan: _mill/plan
@@ -24,4 +24,23 @@ plan-review-r2  '2026-07-10T07:35:42Z'
 plan-fix-r2  '2026-07-10T07:35:42Z'
 plan-fix-r3  '2026-07-10T07:40:55Z'
 planned  '2026-07-10T07:41:31Z'
+implementing  '2026-07-10T09:10:48Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: proc-tree-reaping
+    state: pending
+  - name: mux-contract-and-godoc
+    state: pending
+  - name: shell-abstraction
+    state: pending
+  - name: linux-launch-surface
+    state: pending
+  - name: config-version-probe
+    state: pending
+  - name: crosscompile-gate-and-roadmap
+    state: pending
 ```
