@@ -60,6 +60,7 @@ batch shares no file with any other batch (root, parallel).
 - **Edits:**
   - `internal/hubgeometry/hubgeometry.go`
   - `internal/hubgeometry/hubgeometry_test.go`
+- **Creates:** none
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** In `hubgeometry.go`, make `MenuLauncherPath()` (`hubgeometry.go:308-310`)
@@ -81,6 +82,7 @@ batch shares no file with any other batch (root, parallel).
   - `internal/hubgeometry/hubgeometry.go`
 - **Edits:**
   - `internal/warpengine/launchers.go`
+- **Creates:** none
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** In `launchers.go`, replace the non-Windows early return
@@ -106,6 +108,7 @@ batch shares no file with any other batch (root, parallel).
   - `internal/vscode/color.go`
 - **Edits:**
   - `internal/vscode/launch_linux.go`
+- **Creates:** none
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Replace the `ErrUnsupported` stub in `launch_linux.go` with a working

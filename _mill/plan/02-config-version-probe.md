@@ -138,6 +138,7 @@ is delegated to batch 3's integration test, not checked here (that needs a live 
   - `internal/muxengine/overlay.go`
 - **Edits:**
   - `internal/muxengine/lifecycle.go`
+- **Creates:** none
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** In `lifecycle.go`, call `e.probeCapabilityLocked()` (from `probe.go`) near
@@ -154,6 +155,7 @@ is delegated to batch 3's integration test, not checked here (that needs a live 
   - `internal/muxengine/lifecycle.go`
 - **Edits:**
   - `internal/muxcli/up.go`
+- **Creates:** none
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Per the CLI/Cobra Invariant's help-accuracy obligation, extend the `up`

@@ -38,6 +38,7 @@ batch asserts the full surface).
   - `internal/muxengine/lifecycle.go`
 - **Edits:**
   - `internal/muxengine/doc.go`
+- **Creates:** none
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Append a "Multiplexer contract surface" section to the package godoc in

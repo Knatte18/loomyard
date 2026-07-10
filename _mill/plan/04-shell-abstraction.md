@@ -71,6 +71,7 @@ posix pane-shell impl would make it unreachable on Windows and regress the hook 
   - `internal/shuttleengine/claudeengine/claudeengine.go`
 - **Edits:**
   - `internal/shuttleengine/claudeengine/command.go`
+- **Creates:** none
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** In `command.go`, remove `pwshSingleQuote` (`command.go:65-67`) and rebuild
@@ -93,6 +94,7 @@ posix pane-shell impl would make it unreachable on Windows and regress the hook 
 - **Edits:**
   - `internal/shuttleengine/claudeengine/claudeengine.go`
   - `internal/shuttleengine/claudeengine/command_test.go`
+- **Creates:** none
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** In `claudeengine.go`'s `Prepare` (`claudeengine.go:63-117`), obtain
@@ -113,6 +115,7 @@ posix pane-shell impl would make it unreachable on Windows and regress the hook 
   - `internal/shell/shell.go`
 - **Edits:**
   - `CONSTRAINTS.md`
+- **Creates:** none
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Add a short "Shell Mechanics Seam" invariant to `CONSTRAINTS.md` (same
@@ -132,6 +135,7 @@ posix pane-shell impl would make it unreachable on Windows and regress the hook 
   - `internal/shell/shell.go`
 - **Edits:**
   - `docs/overview.md`
+- **Creates:** none
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Per the Documentation Lifecycle (cross-cutting infra ships its doc in the
