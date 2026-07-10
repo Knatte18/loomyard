@@ -56,7 +56,9 @@ batches:
     start_sha: 5e2fa4eb0ecdea5be4628fae677d6025bf5f5597
     commit_sha: cbf1862e1590e50bebc6187f500df3078e87449f
   - name: config-version-probe
-    state: pending
+    state: running
+    implementer_session: 9262a5a1-f7e1-491c-a1f3-66b7aac33d9a
+    start_sha: ccb519ee0e7e3e5c1365c072a97439aef4a18a43
   - name: crosscompile-gate-and-roadmap
     state: pending
 ```
