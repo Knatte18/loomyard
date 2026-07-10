@@ -50,7 +50,9 @@ batches:
     start_sha: f16dbc67f6d6261d9bc5e7a0ea99eb8705dc450b
     commit_sha: 9dda7fb7a2c89314cae1bf8f3d079c49e59f3ed4
   - name: linux-launch-surface
-    state: pending
+    state: running
+    implementer_session: 811aa8e4-5272-4012-9018-99cf9a5a676f
+    start_sha: 5e2fa4eb0ecdea5be4628fae677d6025bf5f5597
   - name: config-version-probe
     state: pending
   - name: crosscompile-gate-and-roadmap
