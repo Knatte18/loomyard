@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-approved
+phase: done
 slug: facilitate-linux
 branch: facilitate-linux
 plan: _mill/plan
@@ -33,6 +33,7 @@ approved-config-version-probe  '2026-07-10T10:08:10Z'
 approved-crosscompile-gate-and-roadmap  '2026-07-10T10:12:09Z'
 holistic-reviewing  '2026-07-10T12:00:22Z'
 holistic-approved  '2026-07-10T12:06:12Z'
+done  '2026-07-10T12:08:01Z'
 ```
 
 ## Batches
