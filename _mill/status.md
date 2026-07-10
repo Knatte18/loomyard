@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: facilitate-linux
 branch: facilitate-linux
 plan: _mill/plan
@@ -34,6 +34,7 @@ approved-crosscompile-gate-and-roadmap  '2026-07-10T10:12:09Z'
 holistic-reviewing  '2026-07-10T12:00:22Z'
 holistic-approved  '2026-07-10T12:06:12Z'
 done  '2026-07-10T12:08:01Z'
+pr-pending  '2026-07-10T12:10:52Z'
 ```
 
 ## Batches
