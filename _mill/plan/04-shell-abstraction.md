@@ -68,10 +68,10 @@ posix pane-shell impl would make it unreachable on Windows and regress the hook 
 ### Card 12: Route claudeengine command building through shell
 
 - **Context:**
-  - `internal/shuttleengine/claudeengine/claudeengine.go`
   - `internal/shell/shell.go`
 - **Edits:**
   - `internal/shuttleengine/claudeengine/command.go`
+  - `internal/shuttleengine/claudeengine/claudeengine.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -85,30 +85,33 @@ posix pane-shell impl would make it unreachable on Windows and regress the hook 
   through `sh.Quote`, no raw pwsh idiom remains. `buildResumeCmd` composes
   `sh.Invoke(bin) + " --resume " + sh.Quote(sessionID) + " --settings " + sh.Quote(settingsPath)`.
   Keep both single-line (no `\r`/`\n`) and keep `claudeBinary`/`maxLaunchPromptBytes`/effort
-  validation as-is. Add the `internal/shell` import.
-- **Commit:** `refactor(claudeengine): build launch/resume commands via internal/shell`
+  validation as-is. Add the `internal/shell` import, and remove any import left unused by dropping
+  `pwshSingleQuote` — in particular remove `strings` from `command.go` if it was its only user
+  (confirm with `go build`). In the **same card**, update the sole production caller so the package
+  compiles atomically: in `claudeengine.go`'s `Prepare` (`claudeengine.go:63-117`) obtain
+  `sh := shell.ForGOOS()` and pass it as the new leading argument to the `buildLaunchCmd(...)` and
+  `buildResumeCmd(...)` calls that populate the returned `Launch`, adding the `internal/shell`
+  import there too. Do **not** touch the `PosixPath` call at `claudeengine.go:96-100` — that
+  git-bash hook-path conversion is a separate axis and stays exactly as-is.
+- **Commit:** `refactor(claudeengine): route launch/resume command building through internal/shell`
 
-### Card 13: Select shell in Prepare + update command tests
+### Card 13: Update claudeengine command tests
 
 - **Context:**
   - `internal/shell/shell.go`
 - **Edits:**
-  - `internal/shuttleengine/claudeengine/claudeengine.go`
   - `internal/shuttleengine/claudeengine/command_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** In `claudeengine.go`'s `Prepare` (`claudeengine.go:63-117`), obtain
-  `sh := shell.ForGOOS()` and pass it into the `buildLaunchCmd(...)` and `buildResumeCmd(...)`
-  calls that populate the returned `Launch`. Do not touch the `PosixPath` call at
-  `claudeengine.go:96-100` — that git-bash hook-path conversion stays exactly as-is (separate
-  axis). Add the `internal/shell` import. In `command_test.go`, delete `TestPwshSingleQuote`
-  (its assertions now live in `internal/shell`'s `shell_test.go`), and update `TestBuildLaunchCmd`
-  and `TestBuildResumeCmd` to pass `shell.Pwsh()` as the new first argument — the existing exact
-  pwsh expected strings remain valid under the pwsh impl. Optionally add one `shell.Posix()` row
-  to `TestBuildLaunchCmd` asserting the posix form (`'claude' "$(cat '/run/prompt.md')"
-  --session-id 'abc-123' ...`) to prove the seam is shell-agnostic.
-- **Commit:** `refactor(claudeengine): select shell family in Prepare; move pwsh-quote tests`
+- **Requirements:** In `command_test.go`, delete `TestPwshSingleQuote` (its assertions now live in
+  `internal/shell`'s `shell_test.go`), and update `TestBuildLaunchCmd` and `TestBuildResumeCmd` to
+  pass `shell.Pwsh()` as the new leading argument — the existing exact pwsh expected strings remain
+  valid under the pwsh impl. Optionally add one `shell.Posix()` row to `TestBuildLaunchCmd`
+  asserting the posix form (`'claude' "$(cat '/run/prompt.md')" --session-id 'abc-123' ...`) to
+  prove the seam is shell-agnostic. Add the `internal/shell` import. This card is tests-only and
+  compiles on top of card 12's already-building package.
+- **Commit:** `test(claudeengine): move pwsh-quote tests to shell; thread shell into command tests`
 
 ### Card 14: Record the shell-mechanics seam invariant
 

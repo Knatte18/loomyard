@@ -120,8 +120,9 @@ is delegated to batch 3's integration test, not checked here (that needs a live 
 - **Requirements:** In `probe.go` (package `muxengine`) define a typed error
   `type CapabilityError struct { Reason string }` implementing `error` (so callers/tests can
   `errors.As` it), a `requiredSubcommands` slice covering the engine's dependency set
-  (`new-session`, `split-window`, `select-layout`, `select-pane`, `send-keys`, `capture-pane`,
-  `list-panes`, `list-sessions`, `display-message`, `set-option`, `kill-pane`, `kill-server`),
+  (`new-session`, `has-session`, `split-window`, `select-layout`, `select-pane`, `send-keys`,
+  `capture-pane`, `list-panes`, `list-sessions`, `display-message`, `set-option`, `kill-pane`,
+  `kill-session`, `kill-server`),
   and a pure-core `probeCapability(run func(args ...string) (string, error)) error`. It runs
   `run("-V")`, parses via `parseMultiplexerVersion`, and returns a `*CapabilityError` if below
   `minMultiplexerVersion()`; then runs `run("list-commands")`, parses the emitted command names

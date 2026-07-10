@@ -101,7 +101,10 @@ batch shares no file with any other batch (root, parallel).
   keeps asserting the `.cmd` output on Windows; the `.sh` output is covered by card 16's
   untagged builder test. Also update the file's package/leading doc comment (`launchers.go:1-2`,
   currently stating launchers are Windows-only / a no-op elsewhere) to describe the new
-  cross-platform behavior — `.cmd` on Windows, executable `.sh` on other platforms.
+  cross-platform behavior — `.cmd` on Windows, executable `.sh` on other platforms. Because the
+  inline `strings.ReplaceAll` backslash conversion (`launchers.go:43,76`) moves into
+  `launcher_content.go` (card 16), remove the now-unused `strings` import from `launchers.go` if
+  nothing else in the file references it (confirm with `go build`).
 - **Commit:** `feat(warpengine): emit .sh launchers on Linux`
 
 ### Card 19: Implement vscode Linux launch

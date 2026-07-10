@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r1
+phase: plan-fix-r2
 slug: facilitate-linux
 branch: facilitate-linux
 plan: _mill/plan
@@ -20,4 +20,6 @@ discussed  '2026-07-09T19:54:45Z'
 planning  '2026-07-10T07:16:34Z'
 plan-review-r1  '2026-07-10T07:27:03Z'
 plan-fix-r1  '2026-07-10T07:27:03Z'
+plan-review-r2  '2026-07-10T07:35:42Z'
+plan-fix-r2  '2026-07-10T07:35:42Z'
 ```

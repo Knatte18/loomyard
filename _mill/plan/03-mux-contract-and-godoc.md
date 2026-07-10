@@ -47,9 +47,9 @@ batch asserts the full surface).
   `#{pane_id} #{pane_dead} #{pane_top} #{pane_width} #{pane_height} #{pane_pid}` (the exact
   `list-panes -F` string at `overlay.go:110`, parsed by `parsePaneList` in `parse.go`, with
   `pane_dead == "1"` keying a dead pane); (2) the subcommand set the engine depends on
-  (`new-session`, `split-window`, `select-layout`, `select-pane`, `send-keys`, `capture-pane`,
-  `list-panes`, `list-sessions`, `display-message`, `set-option -g remain-on-exit`, `kill-pane`,
-  `kill-server`); and (3) each load-bearing behavioral assumption with a one-line rationale —
+  (`new-session`, `has-session`, `split-window`, `select-layout`, `select-pane`, `send-keys`,
+  `capture-pane`, `list-panes`, `list-sessions`, `display-message`, `set-option -g remain-on-exit`,
+  `kill-pane`, `kill-session`, `kill-server`); and (3) each load-bearing behavioral assumption with a one-line rationale —
   silent split failure (`spawn.go`), dead-pane adoption via `remain-on-exit` (`spawn.go`),
   the `-l` leading-dash send-keys bug handled by `sendKeysLiteralArg` (`spawn.go`), empty-layout
   session destruction guarded by `anyPlacedStrand` (`apply.go`), and async kill-server /
@@ -78,9 +78,9 @@ batch asserts the full surface).
   spawns a real server on a scratch `-L` socket and asserts: (a) the exact
   `list-panes -F "#{pane_id} #{pane_dead} #{pane_top} #{pane_width} #{pane_height} #{pane_pid}"`
   output shape and its `parsePaneList` parse; (b) the required subcommand set is exercised
-  (`new-session`, `split-window`, `select-layout`, `select-pane`, `send-keys -l`, `capture-pane`,
-  `list-panes`, `list-sessions`, `display-message`, `set-option -g remain-on-exit`, `kill-pane`,
-  `kill-server`); and (c) each behavioral assumption — `remain-on-exit` keeps a dead pane
+  (`new-session`, `has-session`, `split-window`, `select-layout`, `select-pane`, `send-keys -l`,
+  `capture-pane`, `list-panes`, `list-sessions`, `display-message`, `set-option -g remain-on-exit`,
+  `kill-pane`, `kill-session`, `kill-server`); and (c) each behavioral assumption — `remain-on-exit` keeps a dead pane
   visible with `pane_dead=1`, `send-keys -l` handles a leading-dash literal, and `select-layout`
   succeeds against the live pane set. Always tear the scratch server down (`kill-server`) in a
   `t.Cleanup`. Keep the test hermetic to its own socket so it cannot collide with a real hub
