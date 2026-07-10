@@ -66,10 +66,13 @@ is delegated to batch 3's integration test, not checked here (that needs a live 
   `func ConfigTemplate() string { return configTemplate }` accessor (now untagged, referencing
   the tag-selected var). Create `template_windows.go` (`//go:build windows`, package `muxengine`)
   with `//go:embed template_windows.yaml` above `var configTemplate string`, plus the
-  `import _ "embed"`. Create `template_posix.go` (`//go:build !windows`, package `muxengine`)
-  with `//go:embed template_posix.yaml` above `var configTemplate string`, plus `import _ "embed"`.
-  Do not use a `_windows.go`/`_linux.go` filename suffix here — use explicit build tags so the
-  POSIX variant covers all non-Windows GOOS.
+  `import _ "embed"` — the `_windows` filename suffix and the explicit tag agree (matches the
+  `proc_windows.go` convention). Create `template_posix.go` (package `muxengine`) with an explicit
+  `//go:build !windows` tag, `//go:embed template_posix.yaml` above `var configTemplate string`,
+  and `import _ "embed"`. The POSIX file must **not** use a `_linux.go` filename suffix: a
+  `_linux` suffix would constrain it to linux only, whereas the explicit `//go:build !windows`
+  tag on a non-suffixed name makes it cover every non-Windows GOOS. This "no `_linux` suffix"
+  rule is scoped to the POSIX file.
 - **Commit:** `feat(muxengine): GOOS-aware template defaults (tmux/bash on Linux)`
 
 ### Card 5: Per-binary min-version constants + pure parsers
@@ -106,6 +109,7 @@ is delegated to batch 3's integration test, not checked here (that needs a live 
   - `internal/muxengine/overlay.go`
   - `internal/muxengine/config.go`
   - `internal/muxengine/lock.go`
+  - `internal/muxengine/version.go`
   - `internal/output/output.go`
 - **Edits:** none
 - **Creates:**
@@ -136,6 +140,7 @@ is delegated to batch 3's integration test, not checked here (that needs a live 
 - **Context:**
   - `internal/muxengine/lock.go`
   - `internal/muxengine/overlay.go`
+  - `internal/muxengine/probe.go`
 - **Edits:**
   - `internal/muxengine/lifecycle.go`
 - **Creates:** none

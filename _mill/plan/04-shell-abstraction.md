@@ -69,6 +69,7 @@ posix pane-shell impl would make it unreachable on Windows and regress the hook 
 
 - **Context:**
   - `internal/shuttleengine/claudeengine/claudeengine.go`
+  - `internal/shell/shell.go`
 - **Edits:**
   - `internal/shuttleengine/claudeengine/command.go`
 - **Creates:** none
@@ -139,10 +140,14 @@ posix pane-shell impl would make it unreachable on Windows and regress the hook 
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Per the Documentation Lifecycle (cross-cutting infra ships its doc in the
-  same task), add `internal/shell` to `docs/overview.md`: include it in the `internal/`
-  directory tree and in the shared-infrastructure / portability-family sentence alongside
-  `internal/proc`, `internal/fslink`, and `internal/fsx`, described as the provider-invariant
-  pane-shell mechanics leaf (pwsh + posix). Do not restructure the doc; a minimal additive edit.
+  same task), add `internal/shell` to `docs/overview.md`: append it to the actual
+  shared-infrastructure sentence (the one near `overview.md:272-274` listing
+  `internal/configengine`, `internal/gitexec`, `internal/lock`, `internal/output`,
+  `internal/hubgeometry`, `internal/state`) and to the `internal/` directory tree, described as
+  the provider-invariant pane-shell mechanics leaf (pwsh + posix). Do **not** reference a
+  `proc`/`fslink`/`fsx` "portability family" — that phrasing lives in `docs/roadmap.md`, not in
+  overview's shared-infra sentence; grep overview.md for the real anchor before editing. Do not
+  restructure the doc; a minimal additive edit.
 - **Commit:** `docs(overview): list internal/shell in the module map`
 
 ## Batch Tests

@@ -5,7 +5,7 @@ task: "Facilitate Linux support (Win11-side prep)"
 batch: "mux-contract-and-godoc"
 number: 3
 cards: 2
-verify: go vet -tags integration ./internal/muxengine/... && go test ./internal/muxengine/...
+verify: go test ./internal/muxengine/... && go test -tags integration -run TestMultiplexerContract ./internal/muxengine/...
 depends-on: []
 ```
 
@@ -89,9 +89,10 @@ batch asserts the full surface).
 
 ## Batch Tests
 
-`verify` runs `go vet -tags integration ./internal/muxengine/...` — which **compiles** the new
-`//go:build integration` contract test (catching any API-drift compile error) without executing
-its live-server body — then `go test ./internal/muxengine/...` for the normal (untagged) suite.
-The live contract assertions run only under `-tags integration` with a real binary present and
-are the canary for the tmux swap; executing them against real tmux is the deferred follow-up.
-The godoc edit is compile-trivial. Scope is the single `muxengine` package.
+`verify` first runs the normal (untagged) suite `go test ./internal/muxengine/...`, then
+**executes** the contract test against the on-box binary via
+`go test -tags integration -run TestMultiplexerContract ./internal/muxengine/...` — psmux is
+present on the Windows dev box, so this validates the psmux contract the card 9 godoc claims
+(and the test self-skips cleanly if the binary is ever absent). Only running these same
+assertions against **real tmux** is the deferred follow-up; the psmux contract is verified here
+and now. The godoc edit is compile-trivial. Scope is the single `muxengine` package.

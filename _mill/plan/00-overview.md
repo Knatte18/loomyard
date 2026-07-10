@@ -32,7 +32,7 @@ batches:
     name: mux-contract-and-godoc
     file: 03-mux-contract-and-godoc.md
     depends-on: []
-    verify: go vet -tags integration ./internal/muxengine/... && go test ./internal/muxengine/...
+    verify: go test ./internal/muxengine/... && go test -tags integration -run TestMultiplexerContract ./internal/muxengine/...
   - number: 4
     name: shell-abstraction
     file: 04-shell-abstraction.md
