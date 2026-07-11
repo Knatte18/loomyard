@@ -71,7 +71,9 @@ batches:
     start_sha: cf8de9675813c90fe855518a89157716b49c774e
     commit_sha: 44b03302f824b5a1fba659b0e655fdae399cae94
   - name: buildercli
-    state: pending
+    state: running
+    implementer_session: 7892aab8-d88d-4950-8a55-a84e236efec3
+    start_sha: 1b5ba2fbe02d68e09661ba6cbe0ab8b4e25180f5
   - name: registration-docs
     state: pending
 ```
