@@ -47,7 +47,9 @@ batches:
     start_sha: fc9a8dc302acc50a702cc0d0aec22f5201375b66
     commit_sha: 29190996a2c54e2bb68b4d69c406f474257f7a47
   - name: state-report-digest
-    state: pending
+    state: running
+    implementer_session: 0f176228-6438-475d-9d76-9898bcc3b9eb
+    start_sha: 938e26f31828ebc18e434ca5e1b93ce951815334
   - name: poll-pause
     state: pending
   - name: spawn
