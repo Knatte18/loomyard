@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-modelspec-core
 slug: modelspec
 branch: modelspec
 plan: _mill/plan
@@ -24,6 +24,7 @@ plan-fix-r1  '2026-07-11T06:39:59Z'
 plan-fix-r2  '2026-07-11T06:44:55Z'
 planned  '2026-07-11T06:45:10Z'
 implementing  '2026-07-11T06:52:36Z'
+approved-modelspec-core  '2026-07-11T07:01:37Z'
 ```
 
 ## Batches
@@ -31,9 +32,10 @@ implementing  '2026-07-11T06:52:36Z'
 ```yaml
 batches:
   - name: modelspec-core
-    state: running
+    state: approved
     implementer_session: f88e6c14-995c-4e00-8d8d-2f657f822bf4
     start_sha: c7ee5df35e5bc4d0f31b6f65f7cd12242e4b0819
+    commit_sha: 4e1d54e9f2d7ad03a0367056b121cdd9578731a4
   - name: models-registration
     state: pending
   - name: shuttle-version
