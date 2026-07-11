@@ -23,7 +23,7 @@ External interface: `buildercli.Command()` / `RunCLI`.
 
 - **Context:**
   - `internal/perchcli/cli.go`
-  - `internal/clihelp/clihelp.go`
+  - `internal/clihelp/exec.go`
   - `internal/modelspec/load.go`
   - `_mill/discussion.md`
 - **Creates:**

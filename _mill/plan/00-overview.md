@@ -173,6 +173,7 @@ batches:
 - `internal/buildercli/cli.go`
 - `internal/buildercli/cli_test.go`
 - `internal/buildercli/pause.go`
+- `internal/buildercli/pause_test.go`
 - `internal/buildercli/poll.go`
 - `internal/buildercli/poll_test.go`
 - `internal/buildercli/run.go`
@@ -229,6 +230,8 @@ batches:
 - `internal/builderengine/testdata/plan-valid/03-refactor-a.md`
 - `internal/builderengine/testdata/plan-valid/04-refactor-b.md`
 - `internal/builderengine/testdata/plan-valid/05-oversized.md`
+- `internal/builderengine/validate.go`
+- `internal/builderengine/validate_test.go`
 - `internal/configreg/configreg.go`
 - `internal/configreg/configreg_test.go`
 - `internal/hubgeometry/hubgeometry.go`
