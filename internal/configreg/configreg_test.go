@@ -10,7 +10,7 @@ import (
 
 func TestNames(t *testing.T) {
 	got := Names()
-	want := []string{"board", "models", "mux", "perch", "shuttle", "warp", "weft"}
+	want := []string{"board", "builder", "models", "mux", "perch", "shuttle", "warp", "weft"}
 	if len(got) != len(want) {
 		t.Errorf("Names() = %v; want %v", got, want)
 		return
