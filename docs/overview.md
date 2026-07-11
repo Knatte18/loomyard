@@ -245,8 +245,10 @@ User-facing modules each get one `lyx <module>` namespace:
   (`Interactive: false`, the default). The provider is swappable behind an **engine** seam; Claude
   is the only v1 engine (Gemini etc. later, not a current priority). Per-run `Model` and `Effort`
   knobs (`lyx shuttle run --model`/`--effort`; effort values `low|medium|high|xhigh|max`, empty =
-  provider default) are engine-validated, not policed by `Spec.validate`. ✅ Implemented. See the
-  `internal/shuttleengine` package documentation.
+  provider default) are engine-validated, not policed by `Spec.validate`. `Spec.Version` is a
+  programmatic engine-validated version pin (claudeengine composes the pinned model id; no CLI
+  flag — consumers drive it via the model-spec notation's `version=` param). ✅ Implemented. See
+  the `internal/shuttleengine` package documentation.
 - **loom** — phased orchestrator: drives Setup → Discussion → Plan → Builder → Finalize, each
   gated by a perch review (`lyx loom run`, alias `lyx run`). 🚧 Design — not built. See
   [modules/loom.md](modules/loom.md).
