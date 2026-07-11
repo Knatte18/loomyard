@@ -132,7 +132,13 @@ Two operator requirements sharpened during discussion:
   provider default sticks) — re-adding it would be exactly the silent config change the
   operator rejects. Trade-off accepted: new template aliases in a future lyx do not
   auto-propagate into an existing file; the operator adds them by hand or deletes the
-  file and re-reconciles.
+  file and re-reconciles. Config-CLI interaction: operator alias ADDITIONS go through
+  `lyx config models --edit` or a direct file edit (the file is operator-owned after
+  materialization); `lyx config models --set` cannot add a new alias by design —
+  `configengine.Set` validates keys against the template (`yamlengine.SetValues`), so
+  `--set zephyr.engine=claude` is rejected while template-known keys (e.g.
+  `sonnet.defaults.effort`) remain settable. Consistent with
+  new-model-without-recompile: "config alone" means the file, not every CLI verb.
 - Rejected: comments-only template (determinism only after a manual uncomment on each hub
   — forgetting silently falls back to Claude's floating default, the exact failure mode
   the operator rejects); no registration (invisible to `lyx config`, and no
@@ -267,8 +273,12 @@ Two operator requirements sharpened during discussion:
 
 - Decision: `internal/modelspec` production code imports ONLY stdlib +
   `internal/hubgeometry` + `gopkg.in/yaml.v3`. Enforced by a
-  `leaf_enforcement_test.go` in the package, mirroring
-  `internal/lyxtest/leaf_enforcement_test.go`. Recorded as a new "Modelspec Leaf
+  `leaf_enforcement_test.go` in the package. Check shape differs from
+  `internal/lyxtest/leaf_enforcement_test.go` (which scans a fixed BANNED-import list):
+  modelspec's invariant is an ALLOWLIST — the test parses imports (same
+  `go/parser` ImportsOnly technique) and rejects any import outside the allowed set
+  (stdlib + `internal/hubgeometry` + `gopkg.in/yaml.v3`), so a future stray dependency
+  fails without the list needing maintenance. Recorded as a new "Modelspec Leaf
   Invariant" entry in `CONSTRAINTS.md` in the same commit (per the CONSTRAINTS.md
   update rule). `configreg` imports modelspec (for `ConfigTemplate`) — that direction is
   fine; modelspec never imports configreg or any feature package.
