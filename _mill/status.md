@@ -37,7 +37,9 @@ batches:
     start_sha: c7ee5df35e5bc4d0f31b6f65f7cd12242e4b0819
     commit_sha: 4e1d54e9f2d7ad03a0367056b121cdd9578731a4
   - name: models-registration
-    state: pending
+    state: running
+    implementer_session: baff33d6-1804-40bd-ba66-1f63edbb4e55
+    start_sha: ff739b773087098b57b91ac779c401369a98a4c4
   - name: shuttle-version
     state: pending
 ```
