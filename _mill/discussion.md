@@ -78,10 +78,11 @@ Planner exists.
 
 ### Verb surface
 
-- Decision: `lyx builder` has six subcommands. `run` — the product verb: validates the
-  plan, ensures the mux session, spawns the orchestrator via shuttle (stencil-filled
-  prompt, OutputFiles = the outcome file), blocks until done/stuck/paused, backstop
-  weft-commit at exit. `spawn-batch <NN>` — validates the plan (gate), checks the pause
+- Decision: `lyx builder` has six subcommands. `run` — the product verb: takes the
+  builder-dir run lock, checks the plan fingerprint (`--fresh` to explicitly reset
+  stale state — see Builder run state), validates the plan, ensures the mux session,
+  spawns the orchestrator via shuttle (stencil-filled prompt, OutputFiles = the outcome
+  file), blocks until done/stuck/paused, backstop weft-commit at exit. `spawn-batch <NN>` — validates the plan (gate), checks the pause
   flag, records the batch start-SHA in `state.json`, spawns one implementer via shuttle.
   `poll` — long-poll for the in-flight batch's terminal state; distills the batch-report
   into the digest; weft-commits report + state on terminal classification. `status` —
@@ -204,8 +205,13 @@ Planner exists.
 ### Builder run state: durable `_lyx/builder/state.json` + hubgeometry helpers
 
 - Decision: run state — run GUID, current batch, per-batch start-SHAs, chain anchors
-  (chain-start SHA per chain), in-flight shuttle run identity, pause flag path — lives
-  in `_lyx/builder/state.json`. New hubgeometry helpers `PlanDir(baseDir)` →
+  (chain-start SHA per chain), in-flight shuttle run identity, pause flag path, and a
+  **plan fingerprint** (hash over the plan files' contents, recorded at first init) —
+  lives in `_lyx/builder/state.json`. At `run`/`spawn-batch` entry the fingerprint is
+  re-computed and compared: a mismatch against existing state/reports is a hard error
+  naming the mismatch and requiring an explicit `run --fresh` (which archives the stale
+  state + reports and re-inits) — never silent reuse of stale progress, never a silent
+  wipe. Same fail-loud discipline as the `approved:`/`format:` plan checks. New hubgeometry helpers `PlanDir(baseDir)` →
   `_lyx/plan`, `BuilderDir(baseDir)` → `_lyx/builder`, `BuilderReportsDir(baseDir)` →
   `_lyx/builder/reports`, mirroring `PerchRunsDir`; no other package constructs these
   paths (Hub Geometry Invariant — enforcement test's token ownership applies).
@@ -292,7 +298,13 @@ Planner exists.
 - Decision: re-running `lyx builder run` cold-starts from `state.json` + reports: batch
   report present → batch done, advance; no report but the implementer's mux strand live
   → the fresh orchestrator simply `poll`s it; dead + no report → the orchestrator
-  respawns that batch fresh. The orchestrator session itself is always spawned fresh on
+  respawns that batch fresh. Two guards frame this: the plan-fingerprint check (see
+  Builder run state — stale reports from a superseded plan can never be misread as
+  progress) and a run-level mutex — `run` holds an exclusive, non-blocking OS file lock
+  (`run.lock` in the builder dir, perchengine's `ErrBlockBusy` pattern via
+  `internal/lock`) for its whole duration, so a resume attempted while the prior `run`
+  is in fact still alive fails fast with "already running" instead of two orchestrators
+  driving the same state.json. The orchestrator session itself is always spawned fresh on
   resume (never `claude --resume`), hydrated by the stencil from on-disk state — the
   prompt template includes current progress so a resumed orchestrator knows where it is.
 - Rationale: loom.md's crash-recovery discipline ("loom never depends on `claude
@@ -491,3 +503,9 @@ From `CONSTRAINTS.md`, all binding on this task:
   report → `dead` with `dead_reason: asking`; elapsed > `batch_timeout_min` → `dead`
   with `dead_reason: timeout` (plus pane-gone → `dead_reason: died`). Digest gains the
   `dead_reason` field; panes/run dirs kept for diagnosis.
+- **Q:** (review r2 gap) How does resume avoid misreading a superseded plan's stale
+  reports as progress? **A:** state.json records a plan fingerprint (hash over plan
+  file contents) at init; `run`/`spawn-batch` re-compute and compare at entry —
+  mismatch is a hard error requiring explicit `run --fresh` (archives stale
+  state/reports, re-inits). Plus a `run.lock` OS file lock (perch's ErrBlockBusy
+  pattern) so a duplicate `run` fails fast while the prior one is alive.
