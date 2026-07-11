@@ -71,6 +71,13 @@ Planner exists.
   implementer context. The orchestrator reads only distilled digests, never raw session
   prose. Recovery is orchestrator judgment. These were settled in the proposal and the
   authoritative docs; the discussion treated them as fixed.
+- Navigation source: the orchestrator learns the ordered batch list, chain groupings,
+  and per-batch `oversized` flags from its **stencil-filled prompt** — Go renders them
+  from the validated plan at spawn (and on resume, together with current progress).
+  `status` surfaces the same list for a mid-run refresher. The "digest-only" rule
+  constrains ingestion of *implementer output* (raw session prose); the plan's
+  structured artifacts (Batch Index) are input contract, not prose, and reading
+  `00-overview.md` directly is permitted though normally unnecessary.
 - Rationale: mill-go's context bloat came from an LLM orchestrator swallowing verbose
   sub-agent output, not from the loop being LLM-held; a pure-Go loop is dumb at spotting
   an in-flight implementer circling.
