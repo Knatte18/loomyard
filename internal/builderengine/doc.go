@@ -42,14 +42,19 @@
 //
 // # engine/cli split, and the weft-ownership asymmetry
 //
-// builderengine is geometry-AWARE: it resolves `_lyx/plan` and
-// `_lyx/builder` paths itself via the internal/hubgeometry helpers
-// (PlanDir/BuilderDir/BuilderReportsDir), because those paths are part of
-// the pinned plan-format contract, not caller-supplied. This is the one
-// documented difference from perchengine's pattern (which is fully
-// geometry-blind). builderengine is nonetheless weft-BLIND: every weft
-// commit of a builder artifact (a batch report, state.json, outcome.yaml)
-// happens in internal/buildercli, never here — mirroring perchcli's
+// builderengine is geometry-AWARE: its data model treats the plan and
+// builder directories as first-class parameters whose paths are part of
+// the pinned plan-format contract, not incidental caller choices — even
+// though every entry point (ParsePlan, LoadState, SpawnDeps.BuilderDir/
+// ReportsDir, etc.) takes an already-resolved directory string. Resolving
+// `_lyx/plan` and `_lyx/builder` via the internal/hubgeometry helpers
+// (PlanDir/BuilderDir/BuilderReportsDir) is internal/buildercli's job, done
+// once in its PersistentPreRunE, per the Hub Geometry Invariant. This is
+// the one documented difference from perchengine's pattern (which treats
+// its working directory as fully incidental). builderengine is nonetheless
+// weft-BLIND: every weft commit of a builder artifact (a batch report,
+// state.json, outcome.yaml) happens in internal/buildercli, never here —
+// mirroring perchcli's
 // block-exit weft Commit+Push discipline. The orchestrator and implementer
 // agents never run weft git themselves (the Weft Git Invariant); an
 // implementer DOES commit its own code to the host repo, once per card — the
