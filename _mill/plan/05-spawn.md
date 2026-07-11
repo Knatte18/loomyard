@@ -61,6 +61,7 @@ consumed later: `SpawnBatch`, `SpawnBatchOptions`.
   - `internal/shuttleengine/spec.go`
   - `internal/shuttleengine/run.go`
   - `internal/shuttleengine/rundir.go`
+  - `internal/stencil/stencil.go`
   - `internal/modelspec/modelspec.go`
   - `_mill/discussion.md`
   - `docs/modules/plan-format.md`

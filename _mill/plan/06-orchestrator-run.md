@@ -93,6 +93,7 @@ consumed later: `Run`, `RunResult`, `ParseOutcome`, `ArchiveStaleOutcome`,
   - `internal/lock/lock.go`
   - `internal/shuttleengine/run.go`
   - `internal/shuttleengine/spec.go`
+  - `internal/shuttleengine/engine.go`
   - `internal/perchengine/run.go`
   - `_mill/discussion.md`
 - **Creates:**

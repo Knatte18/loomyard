@@ -96,10 +96,11 @@ batch tests against. External interface consumed by later batches: `ParsePlan`,
   `**Where:**` line's comma-separated paths accumulate into `WhereFiles`; a
   `## verify:` section whose first non-empty line is `VerifyCommand`. A batch with
   frontmatter `verify: deferred` must have NO `## verify:` body section and vice versa
-  ("one or the other, never both" — plan-format.md); violation is a parse error. Titles
-  (`# NN — <slug>: …` H1) supply `Intent` from the first paragraph under `## Intent`.
-  Keep the parser line-oriented and tolerant of surrounding prose everywhere except the
-  machine fields above.
+  ("one or the other, never both" — plan-format.md); violation is a parse error.
+  `PlanBatch.Intent` has exactly ONE source: the Batch Index one-liner card 2 already
+  parsed — the batch file's `## Intent` section is prose for the implementer and is
+  NOT stored on `PlanBatch`. Keep the parser line-oriented and tolerant of
+  surrounding prose everywhere except the machine fields above.
 - **Commit:** `feat(builder): parse per-batch plan files`
 
 ### Card 4: plan fixtures

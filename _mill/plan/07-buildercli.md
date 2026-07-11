@@ -23,6 +23,10 @@ External interface: `buildercli.Command()` / `RunCLI`.
 
 - **Context:**
   - `internal/perchcli/cli.go`
+  - `internal/perchcli/run.go`
+  - `internal/weftengine/sync.go`
+  - `internal/weftengine/weft.go`
+  - `internal/hubgeometry/hubgeometry.go`
   - `internal/clihelp/exec.go`
   - `internal/modelspec/load.go`
   - `_mill/discussion.md`
@@ -35,7 +39,11 @@ External interface: `buildercli.Command()` / `RunCLI`.
 - **Moves:** none
 - **Requirements:** Mirror `perchcli/cli.go` exactly in shape: `builderCLI` struct
   holding resolved ingredients (`runner *shuttleengine.Runner`,
-  `layout *hubgeometry.Layout`, `cfg builderengine.Config`,
+  `engine shuttleengine.Engine` (the constructed claude engine — card 28's
+  `turnEnded` needs it; `Runner`'s own engine field is unexported),
+  `mux shuttleengine.MuxOps` (the constructed mux engine — card 28's `strandLive`
+  needs it, same unexported-field reason), `layout *hubgeometry.Layout`,
+  `cfg builderengine.Config`,
   `roles map[builderengine.Role]modelspec.Resolved`, and the derived dirs `planDir`,
   `builderDir`, `reportsDir` — all anchored at `layout.Cwd` via
   `hubgeometry.PlanDir/BuilderDir/BuilderReportsDir`, matching perchcli's
