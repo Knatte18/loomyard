@@ -12,6 +12,7 @@ package builderengine_test
 
 import (
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -155,6 +156,178 @@ func requireContains(t *testing.T, text, needle string) {
 	if !strings.Contains(text, needle) {
 		t.Errorf("output does not contain %q", needle)
 	}
+}
+
+// orchestratorTemplateMarkerValues returns a values map with every one of
+// OrchestratorTemplate's five required top-level markers set to a
+// non-empty placeholder, so a test can fill the template cleanly or delete
+// one key at a time to prove stencil.Fill's per-marker error.
+func orchestratorTemplateMarkerValues() map[string]string {
+	return map[string]string{
+		"batch_index":  "01 — json-flag — add the --json flag",
+		"progress":     "none",
+		"outcome_path": "/lyx/builder/outcome.yaml",
+		"self_fix_cap": "2",
+		"poll_wait_s":  "480",
+	}
+}
+
+// TestOrchestratorTemplate_FillsWithAllMarkers asserts stencil.Fill succeeds
+// when every one of OrchestratorTemplate's five required markers is
+// supplied, and fails — naming the marker — when any single one is absent.
+func TestOrchestratorTemplate_FillsWithAllMarkers(t *testing.T) {
+	t.Run("all markers supplied", func(t *testing.T) {
+		if _, err := stencil.Fill(builderengine.OrchestratorTemplate(), orchestratorTemplateMarkerValues()); err != nil {
+			t.Fatalf("stencil.Fill() = %v; want nil", err)
+		}
+	})
+
+	for _, marker := range []string{"batch_index", "progress", "outcome_path", "self_fix_cap", "poll_wait_s"} {
+		t.Run("missing "+marker, func(t *testing.T) {
+			values := orchestratorTemplateMarkerValues()
+			delete(values, marker)
+			_, err := stencil.Fill(builderengine.OrchestratorTemplate(), values)
+			if err == nil {
+				t.Fatalf("stencil.Fill() with %q missing = nil error; want error naming the marker", marker)
+			}
+			if !strings.Contains(err.Error(), marker) {
+				t.Errorf("stencil.Fill() error = %q; want it to name marker %q", err.Error(), marker)
+			}
+		})
+	}
+}
+
+// TestOrchestratorTemplate_NamesTheThreeVerbsItDrives asserts the embedded
+// orchestrator template names every one of the three `lyx builder` verbs its
+// loop touches: spawn-batch and poll drive the blocking loop itself, and
+// status is named even though the template explicitly forbids using it as a
+// substitute for that loop.
+func TestOrchestratorTemplate_NamesTheThreeVerbsItDrives(t *testing.T) {
+	text := string(builderengine.OrchestratorTemplate())
+
+	requireContains(t, text, "lyx builder spawn-batch <NN>")
+	requireContains(t, text, "lyx builder poll")
+	requireContains(t, text, "lyx builder status")
+}
+
+// digestSectionHeading and outcomeKeysHeading name the two headings whose
+// bullet lists TestOrchestratorTemplate_QuotesDigestFieldsAndNoOthers and
+// TestOrchestratorTemplate_QuotesOutcomeSchemaKeys scope their extraction
+// to — never the whole template body, since prose elsewhere legitimately
+// backtick-quotes a subset of the same field names (e.g. `stuck_reason`
+// names both a digest field and an outcome-file key) without that being an
+// "other" field leaking into either pinned set.
+const (
+	digestSectionHeading  = "## Read ONLY the digest fields — quoted here, exactly"
+	outcomeKeysHeadingSub = "It carries exactly these three keys, quoted here, exactly:"
+)
+
+// extractBacktickBullets returns, in order, the single backtick-quoted token
+// from every "- `token`" bullet line appearing strictly between heading
+// (matched by trimmed equality) and the next "## " heading or EOF — the
+// shape both the digest-field and outcome-key bullet lists take in
+// orchestrator-template.md.
+func extractBacktickBullets(text, heading string) []string {
+	lines := strings.Split(text, "\n")
+
+	start := -1
+	for i, l := range lines {
+		if strings.TrimSpace(l) == heading {
+			start = i + 1
+			break
+		}
+	}
+	if start == -1 {
+		return nil
+	}
+
+	bulletRe := regexp.MustCompile("^-\\s+`([^`]+)`$")
+	var tokens []string
+	for i := start; i < len(lines); i++ {
+		line := strings.TrimSpace(lines[i])
+		if strings.HasPrefix(line, "## ") {
+			break
+		}
+		if m := bulletRe.FindStringSubmatch(line); m != nil {
+			tokens = append(tokens, m[1])
+		}
+	}
+	return tokens
+}
+
+// TestOrchestratorTemplate_QuotesDigestFieldsAndNoOthers asserts the
+// template's digest-field bullet list names exactly the ten pinned digest
+// field names (docs/modules/plan-format.md's poll digest contract) — no
+// fewer, no extras — the mechanical half of the discussion's "the
+// orchestrator reads only distilled digests" decision.
+func TestOrchestratorTemplate_QuotesDigestFieldsAndNoOthers(t *testing.T) {
+	text := string(builderengine.OrchestratorTemplate())
+
+	want := []string{
+		"batch", "status", "tests", "stuck_reason", "out_of_scope",
+		"drift_unreported", "files_changed", "dirty", "dead_reason", "elapsed_s",
+	}
+	got := extractBacktickBullets(text, digestSectionHeading)
+
+	if len(got) != len(want) {
+		t.Fatalf("digest field bullets = %v (%d); want %v (%d)", got, len(got), want, len(want))
+	}
+	for i, field := range want {
+		if got[i] != field {
+			t.Errorf("digest field bullet %d = %q; want %q", i, got[i], field)
+		}
+	}
+}
+
+// TestOrchestratorTemplate_QuotesOutcomeSchemaKeys asserts the template's
+// outcome-file bullet list names exactly the three outcome.yaml schema keys
+// the discussion's outcome-contract decision pins, immediately followed by
+// the literal yaml block spelling out their values.
+func TestOrchestratorTemplate_QuotesOutcomeSchemaKeys(t *testing.T) {
+	text := string(builderengine.OrchestratorTemplate())
+
+	requireContains(t, text, outcomeKeysHeadingSub)
+
+	want := []string{"outcome", "stuck_reason", "batches_done"}
+	got := extractBacktickBullets(text, outcomeKeysHeadingSub)
+	if len(got) != len(want) {
+		t.Fatalf("outcome schema key bullets = %v (%d); want %v (%d)", got, len(got), want, len(want))
+	}
+	for i, key := range want {
+		if got[i] != key {
+			t.Errorf("outcome schema key bullet %d = %q; want %q", i, got[i], key)
+		}
+	}
+
+	requireContains(t, text, "outcome: done | stuck | paused")
+	requireContains(t, text, `stuck_reason: null | "<one line>"`)
+	requireContains(t, text, "batches_done: <int>")
+}
+
+// TestOrchestratorTemplate_ForbidsWeftGitAndSelfEditing asserts the embedded
+// template's bytes carry the load-bearing never-touch-the-weft and
+// never-edit-code-yourself statements in prose, so an edit that silently
+// waters down either rule fails this test rather than only a human review —
+// the Weft Git Invariant's prompt-template half.
+func TestOrchestratorTemplate_ForbidsWeftGitAndSelfEditing(t *testing.T) {
+	text := string(builderengine.OrchestratorTemplate())
+
+	requireContains(t, text, "NEVER run any git command against the weft")
+	requireContains(t, text, "NEVER edit, create, or delete a target file yourself")
+	requireContains(t, text, "NEVER use a `/model` switch")
+}
+
+// TestOrchestratorTemplate_StatesBatchOrderAndRecoveryLadder asserts the
+// embedded template's bytes carry the strict-ordering rule and every rung of
+// the discussion's recovery ladder (dead -> fresh respawn; stuck -> recovery
+// role; stuck chain member -> whole-chain restart) in prose.
+func TestOrchestratorTemplate_StatesBatchOrderAndRecoveryLadder(t *testing.T) {
+	text := string(builderengine.OrchestratorTemplate())
+
+	requireContains(t, text, "Drive it STRICTLY in order")
+	requireContains(t, text, "respawn the SAME batch fresh, once")
+	requireContains(t, text, "--role recovery")
+	requireContains(t, text, "--restart-chain")
 }
 
 // TestImplementerTemplate_FillsWithAllMarkers asserts stencil.Fill succeeds
