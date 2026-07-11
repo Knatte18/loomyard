@@ -207,6 +207,8 @@ Verbs:
 
 	parent.AddCommand(c.validateCmd())
 	parent.AddCommand(c.statusCmd())
+	parent.AddCommand(c.spawnBatchCmd())
+	parent.AddCommand(c.pollCmd())
 
 	return parent
 }
