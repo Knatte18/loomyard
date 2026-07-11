@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-registration-docs
+phase: holistic-reviewing
 slug: internal-builder
 branch: internal-builder
 plan: _mill/plan
@@ -36,6 +36,7 @@ approved-spawn  '2026-07-11T16:06:29Z'
 approved-orchestrator-run  '2026-07-11T16:32:22Z'
 approved-buildercli  '2026-07-11T16:56:58Z'
 approved-registration-docs  '2026-07-11T17:09:21Z'
+holistic-reviewing  '2026-07-11T17:09:49Z'
 ```
 
 ## Batches
