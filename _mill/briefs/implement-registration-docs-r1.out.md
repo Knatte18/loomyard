@@ -1,9 +1,0 @@
-{"status":"success","commit_sha":"ae4c1f50c91d5bb13de32a4ea0c987a876a2bbd4","session_id":"6f2b982a-313e-4ec7-973b-7169e7cd84e7"}
-
-All 3 of 3 cards in batch `registration-docs` were committed and pushed:
-
-1. `0d7cb90` — `feat(builder): register builder module in cmd/lyx` — wired `buildercli.Command()` into `newRoot()` in `cmd/lyx/main.go`, appended `builder` to the root `Long` module list, and extended the pinned subcommand set in `cmd/lyx/helptree_test.go`.
-2. `9f42f74` — `test(builder): sandbox scenario covering the builder module` — added scenario S9 to `tools/sandbox/SANDBOX-CORE-SUITE.md` (hand-written plan-format v1 fixture exercising `builder status`/`validate`, including the `plan-unapproved` findings path), satisfying the Sandbox Suite Coverage invariant for the `builder` module.
-3. `ae4c1f5` — `docs(builder): module doc, overview row, loom correction, roadmap` — created `docs/modules/builder.md` (the as-built durable design doc: verb surface, digest contract, poll's four-branch classification, role/recovery ladder, chain rollback, pause, outcome contract, fingerprint/`--fresh`, `run.lock`, the three weft-commit boundaries, template/parser co-versioning), updated `docs/overview.md` (module list + Other docs), corrected `docs/modules/loom.md`'s Builder-section framing (holistic review is perch's gate, not builder's own job) and its module-decomposition table row, and updated `docs/roadmap.md` (Build order diagram/prose + milestone 12 pointer) to mark builder done.
-
-Verify command `go test ./cmd/lyx/... ./internal/buildercli/...` passed after every commit. Pre-report self-check confirmed no dirty tracked files remain (`git status --porcelain --untracked-files=no` empty). Card-count self-check confirmed 3 of 3 declared `## Cards` commits are present between the batch-start commit and `HEAD`.
