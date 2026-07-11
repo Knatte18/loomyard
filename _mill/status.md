@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-plan-model
 slug: internal-builder
 branch: internal-builder
 plan: _mill/plan
@@ -28,6 +28,7 @@ plan-fix-r3  '2026-07-11T12:46:21Z'
 plan-fix-r4  '2026-07-11T12:53:38Z'
 planned  '2026-07-11T12:53:55Z'
 implementing  '2026-07-11T12:54:35Z'
+approved-plan-model  '2026-07-11T13:25:32Z'
 ```
 
 ## Batches
@@ -35,9 +36,10 @@ implementing  '2026-07-11T12:54:35Z'
 ```yaml
 batches:
   - name: plan-model
-    state: running
+    state: approved
     implementer_session: 3f027585-65f2-478d-b0c1-4789eff43d74
     start_sha: f4ab7950568033fbd42dfd608b7a140bb003c6ba
+    commit_sha: 1d2ad596d8d6054173cc65797fb6de8506c92e70
   - name: config-roles
     state: pending
   - name: state-report-digest
