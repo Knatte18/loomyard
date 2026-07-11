@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-buildercli
+phase: approved-registration-docs
 slug: internal-builder
 branch: internal-builder
 plan: _mill/plan
@@ -35,6 +35,7 @@ approved-poll-pause  '2026-07-11T13:58:26Z'
 approved-spawn  '2026-07-11T16:06:29Z'
 approved-orchestrator-run  '2026-07-11T16:32:22Z'
 approved-buildercli  '2026-07-11T16:56:58Z'
+approved-registration-docs  '2026-07-11T17:09:21Z'
 ```
 
 ## Batches
@@ -77,7 +78,8 @@ batches:
     start_sha: 1b5ba2fbe02d68e09661ba6cbe0ab8b4e25180f5
     commit_sha: b9316b5d09fa527fe9fd8205f88bf3bc6c6ec6f0
   - name: registration-docs
-    state: running
+    state: approved
     implementer_session: 6f2b982a-313e-4ec7-973b-7169e7cd84e7
     start_sha: 3449a8482948129a568c4c4eea006a0ba2568f02
+    commit_sha: ae4c1f50c91d5bb13de32a4ea0c987a876a2bbd4
 ```
