@@ -59,7 +59,9 @@ batches:
     start_sha: 288beb68f75cc29396414dd5c6ac82471a2ffb3b
     commit_sha: 55a3c73ec225d7cf9226b34e9846645ca882f192
   - name: spawn
-    state: pending
+    state: running
+    implementer_session: c148fffe-e945-41aa-a9d0-d7f7fc2d8a19
+    start_sha: b29271762b4fbd82a785389067574fd5acbb4f27
   - name: orchestrator-run
     state: pending
   - name: buildercli
