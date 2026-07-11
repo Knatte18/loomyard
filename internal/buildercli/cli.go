@@ -209,6 +209,8 @@ Verbs:
 	parent.AddCommand(c.statusCmd())
 	parent.AddCommand(c.spawnBatchCmd())
 	parent.AddCommand(c.pollCmd())
+	parent.AddCommand(c.runCmd())
+	parent.AddCommand(c.pauseCmd())
 
 	return parent
 }
