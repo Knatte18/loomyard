@@ -6,6 +6,7 @@ slug: internal-builder
 branch: internal-builder
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: Build builder - the batch-implementation loop
 task_description: |
   Build builder - the batch-implementation loop
@@ -34,7 +35,9 @@ implementing  '2026-07-11T12:54:35Z'
 ```yaml
 batches:
   - name: plan-model
-    state: pending
+    state: running
+    implementer_session: 3f027585-65f2-478d-b0c1-4789eff43d74
+    start_sha: f4ab7950568033fbd42dfd608b7a140bb003c6ba
   - name: config-roles
     state: pending
   - name: state-report-digest
