@@ -210,6 +210,9 @@ func TestPollCmd_ReportPresentClassifiesDoneAndCommits(t *testing.T) {
 	if !loaded.Batches[1].Terminal || loaded.Batches[1].Status != "done" {
 		t.Errorf("Batches[1] = %+v; want Terminal=true Status=done", loaded.Batches[1])
 	}
+	if loaded.CurrentBatch != 0 {
+		t.Errorf("CurrentBatch = %d after a terminal classification; want 0 (state.go: 0 means none in flight)", loaded.CurrentBatch)
+	}
 }
 
 func TestPollCmd_NoReportTurnEndedClassifiesDeadAsking(t *testing.T) {
@@ -241,5 +244,8 @@ func TestPollCmd_NoReportTurnEndedClassifiesDeadAsking(t *testing.T) {
 	}
 	if !loaded.Batches[1].Terminal || loaded.Batches[1].Status != "dead" {
 		t.Errorf("Batches[1] = %+v; want Terminal=true Status=dead", loaded.Batches[1])
+	}
+	if loaded.CurrentBatch != 0 {
+		t.Errorf("CurrentBatch = %d after a terminal classification; want 0 (state.go: 0 means none in flight)", loaded.CurrentBatch)
 	}
 }

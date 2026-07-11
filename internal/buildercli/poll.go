@@ -180,6 +180,11 @@ Example:
 			bs.Terminal = true
 			bs.Status = digest.Status
 			st.Batches[batchNumber] = bs
+			// CurrentBatch's own doc says it is 0 when no batch is in
+			// flight; a terminal classification ends this batch's flight,
+			// so it must clear back to 0 here rather than keep pointing at
+			// the batch "status" just made terminal.
+			st.CurrentBatch = 0
 			if err := builderengine.SaveState(c.builderDir, st); err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
