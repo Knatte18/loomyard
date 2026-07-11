@@ -1,9 +1,8 @@
 // plan_test.go covers ParsePlan's overview-parsing behavior (frontmatter
-// decoding, Batch Index parsing, framing extraction) and its per-batch
+// decoding, Batch Index parsing, framing extraction), its per-batch
 // file-parsing behavior (frontmatter, Scope, Cards, verify: sections, and
-// the "one or the other, never both" verify rule). Round-trip coverage
-// against the hand-written plan-valid/plan-unapproved/plan-broken-chain
-// fixtures lands separately once those fixtures exist.
+// the "one or the other, never both" verify rule), and a full round-trip
+// over the hand-written testdata/plan-valid fixture.
 
 package builderengine_test
 
@@ -435,5 +434,130 @@ func TestParsePlan_BatchFile_NotFound(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "batch file not found") {
 		t.Errorf("ParsePlan() error = %q; want batch-file-not-found substring", err.Error())
+	}
+}
+
+// TestParsePlan_PlanValidFixture round-trips the hand-written
+// testdata/plan-valid fixture exactly: every batch's number, slug, flags,
+// chain-end, scope list, card count, and verify command must match the
+// fixture's own byte-consistent content (see plan-format.md's worked
+// example, extended with a deferred-verify chain and an oversized batch).
+func TestParsePlan_PlanValidFixture(t *testing.T) {
+	t.Parallel()
+
+	plan, err := builderengine.ParsePlan(filepath.Join("testdata", "plan-valid"))
+	if err != nil {
+		t.Fatalf("ParsePlan(testdata/plan-valid) error = %v; want nil", err)
+	}
+
+	if plan.Format != 1 {
+		t.Errorf("plan.Format = %d; want 1", plan.Format)
+	}
+	if !plan.Approved {
+		t.Errorf("plan.Approved = false; want true")
+	}
+
+	want := []builderengine.PlanBatch{
+		{
+			Number: 1, Slug: "json-flag", File: "01-json-flag.md",
+			Intent:        "add the --json flag and envelope emission to boardcli list",
+			Scope:         []string{"01-json-flag.md"},
+			WhereFiles:    []string{"01-json-flag.md", "01-json-flag.md"},
+			CardCount:     2,
+			VerifyCommand: "go test ./internal/boardcli/... ./internal/boardengine/...",
+		},
+		{
+			Number: 2, Slug: "list-tests", File: "02-list-tests.md",
+			Intent:        "cover --json in boardcli list tests and update help-tree pins",
+			Scope:         []string{"02-list-tests.md"},
+			WhereFiles:    []string{"02-list-tests.md", "02-list-tests.md"},
+			CardCount:     2,
+			VerifyCommand: "go test ./internal/boardcli/... ./cmd/lyx/...",
+		},
+		{
+			Number: 3, Slug: "refactor-a", File: "03-refactor-a.md",
+			Intent:         "start splitting the row-envelope mapper out of boardcli list",
+			Scope:          []string{"03-refactor-a.md"},
+			WhereFiles:     []string{"03-refactor-a.md"},
+			CardCount:      1,
+			VerifyDeferred: true,
+			ChainEnd:       4,
+		},
+		{
+			Number: 4, Slug: "refactor-b", File: "04-refactor-b.md",
+			Intent:        "finish the mapper extraction and run the chain's real verify",
+			Scope:         []string{"04-refactor-b.md"},
+			WhereFiles:    []string{"04-refactor-b.md"},
+			CardCount:     1,
+			VerifyCommand: "go build ./...",
+		},
+		{
+			Number: 5, Slug: "oversized", File: "05-oversized.md",
+			Intent:        "rewrite boardengine's row pipeline in one atomic pass",
+			Scope:         []string{"05-oversized.md"},
+			WhereFiles:    []string{"05-oversized.md"},
+			CardCount:     1,
+			Oversized:     true,
+			VerifyCommand: "go build ./... && go test ./...",
+		},
+	}
+
+	if len(plan.Batches) != len(want) {
+		t.Fatalf("len(plan.Batches) = %d; want %d", len(plan.Batches), len(want))
+	}
+	for i, w := range want {
+		got := plan.Batches[i]
+		if got.Number != w.Number {
+			t.Errorf("plan.Batches[%d].Number = %d; want %d", i, got.Number, w.Number)
+		}
+		if got.Slug != w.Slug {
+			t.Errorf("plan.Batches[%d].Slug = %q; want %q", i, got.Slug, w.Slug)
+		}
+		if got.File != w.File {
+			t.Errorf("plan.Batches[%d].File = %q; want %q", i, got.File, w.File)
+		}
+		if got.Intent != w.Intent {
+			t.Errorf("plan.Batches[%d].Intent = %q; want %q", i, got.Intent, w.Intent)
+		}
+		if got.Oversized != w.Oversized {
+			t.Errorf("plan.Batches[%d].Oversized = %v; want %v", i, got.Oversized, w.Oversized)
+		}
+		if got.VerifyDeferred != w.VerifyDeferred {
+			t.Errorf("plan.Batches[%d].VerifyDeferred = %v; want %v", i, got.VerifyDeferred, w.VerifyDeferred)
+		}
+		if got.ChainEnd != w.ChainEnd {
+			t.Errorf("plan.Batches[%d].ChainEnd = %d; want %d", i, got.ChainEnd, w.ChainEnd)
+		}
+		if got.VerifyCommand != w.VerifyCommand {
+			t.Errorf("plan.Batches[%d].VerifyCommand = %q; want %q", i, got.VerifyCommand, w.VerifyCommand)
+		}
+		if !slices.Equal(got.Scope, w.Scope) {
+			t.Errorf("plan.Batches[%d].Scope = %v; want %v", i, got.Scope, w.Scope)
+		}
+		if !slices.Equal(got.WhereFiles, w.WhereFiles) {
+			t.Errorf("plan.Batches[%d].WhereFiles = %v; want %v", i, got.WhereFiles, w.WhereFiles)
+		}
+		if got.CardCount != w.CardCount {
+			t.Errorf("plan.Batches[%d].CardCount = %d; want %d", i, got.CardCount, w.CardCount)
+		}
+	}
+}
+
+// TestParsePlan_OtherFixturesParseCleanly confirms the plan-unapproved and
+// plan-broken-chain fixtures are each well-formed at the ParsePlan level —
+// they are designed to trip Validate's checks (a design-level gate), never
+// ParsePlan's fail-loud parse errors.
+func TestParsePlan_OtherFixturesParseCleanly(t *testing.T) {
+	t.Parallel()
+
+	for _, name := range []string{"plan-unapproved", "plan-broken-chain"} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := builderengine.ParsePlan(filepath.Join("testdata", name))
+			if err != nil {
+				t.Fatalf("ParsePlan(testdata/%s) error = %v; want nil", name, err)
+			}
+		})
 	}
 }
