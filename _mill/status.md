@@ -41,7 +41,9 @@ batches:
     start_sha: f4ab7950568033fbd42dfd608b7a140bb003c6ba
     commit_sha: 1d2ad596d8d6054173cc65797fb6de8506c92e70
   - name: config-roles
-    state: pending
+    state: running
+    implementer_session: 13d0a84a-6dbe-48ee-b98c-781ed62e052e
+    start_sha: fc9a8dc302acc50a702cc0d0aec22f5201375b66
   - name: state-report-digest
     state: pending
   - name: poll-pause
