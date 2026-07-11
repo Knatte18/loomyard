@@ -37,6 +37,18 @@ type Result struct {
 //     writes merged via fsx.AtomicWriteBytes and sets Applied=true
 //   - Returns a Result for each module
 //
+// Seed-only modules (m.SeedOnly, e.g. "models") take a different branch: they
+// have an open-ended key set the operator owns, so they never route through
+// yamlengine.Reconcile (whose merged output is only *equivalent* to the
+// template — not byte-identical — which would degrade an annotated seed's
+// comments/formatting). When the file is present, it is reported untouched
+// (Applied: false, no Added/Removed — the file is never parsed, diffed, or
+// written). When the file is absent, the template is written VERBATIM via
+// fsx.AtomicWriteBytes (when apply) and every template leaf key-path is
+// reported as Added via yamlengine.MissingKeys, so initengine's
+// Applied && len(Added) > 0 && len(Removed) == 0 "created" heuristic still
+// fires correctly.
+//
 // When apply is false, files are never written and Applied is always false.
 // The function returns the slice of results and any error encountered during
 // reconciliation (I/O or YAML parsing).
@@ -54,6 +66,35 @@ func ReconcileAll(baseDir string, apply bool) ([]Result, error) {
 		}
 		if fileAbsent {
 			existing = []byte{}
+		}
+
+		if m.SeedOnly {
+			if !fileAbsent {
+				// Present seed-only file is operator-owned: never parsed,
+				// diffed, or written.
+				results = append(results, Result{Module: m.Name, Applied: false})
+				continue
+			}
+
+			// Absent seed-only file: materialize the template verbatim
+			// rather than routing through yamlengine.Reconcile, whose
+			// marshalled output normalizes indentation/blank
+			// lines/comment placement and would degrade the annotated
+			// seed.
+			added, err := yamlengine.MissingKeys([]byte(m.Template()), nil)
+			if err != nil {
+				return nil, fmt.Errorf("reconcile %s: %w", m.Name, err)
+			}
+
+			result := Result{Module: m.Name, Added: added, Applied: false}
+			if apply {
+				if err := fsx.AtomicWriteBytes(cfgPath, []byte(m.Template())); err != nil {
+					return nil, fmt.Errorf("write config for %s: %w", m.Name, err)
+				}
+				result.Applied = true
+			}
+			results = append(results, result)
+			continue
 		}
 
 		// Reconcile template against existing
