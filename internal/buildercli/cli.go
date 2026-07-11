@@ -205,6 +205,9 @@ Verbs:
 		},
 	}
 
+	parent.AddCommand(c.validateCmd())
+	parent.AddCommand(c.statusCmd())
+
 	return parent
 }
 
