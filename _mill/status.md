@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r1
+phase: plan-fix-r2
 slug: modelspec
 branch: modelspec
 plan: _mill/plan
@@ -20,4 +20,5 @@ discussed  '2026-07-11T06:25:31Z'
 planning  '2026-07-11T06:34:06Z'
 plan-review-r1  '2026-07-11T06:39:59Z'
 plan-fix-r1  '2026-07-11T06:39:59Z'
+plan-fix-r2  '2026-07-11T06:44:55Z'
 ```

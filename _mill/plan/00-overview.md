@@ -3,7 +3,7 @@
 ```yaml
 task: Build modelspec - the model-spec parser + registry
 slug: modelspec
-approved: false
+approved: true
 started: 20260711-063050
 parent: main
 root: ""

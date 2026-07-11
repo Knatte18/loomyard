@@ -75,8 +75,9 @@ no pinned-list edits; the one pinned list is `configreg_test.go` (card 8).
   marshalled from the node tree and is only *equivalent* to the template, not
   byte-identical (indentation, blank lines, and comment placement get normalized, which
   would degrade the operator-facing annotated seed). Instead: compute
-  `added := yamlengine.MissingKeys([]byte(m.Template()), nil)` (empty existing → every
-  template leaf key-path), and when `apply` write `[]byte(m.Template())` VERBATIM via
+  `added, err := yamlengine.MissingKeys([]byte(m.Template()), nil)` (empty existing →
+  every template leaf key-path; the error return is checked and wrapped like the
+  existing `reconcile %s` error path), and when `apply` write `[]byte(m.Template())` VERBATIM via
   `fsx.AtomicWriteBytes`, reporting `Result{Module: m.Name, Added: added, Applied: true}`
   (`Applied: false` and no write on a dry run, same `Added` report). `Removed` stays
   empty, so initengine's existing `status == "created"` heuristic

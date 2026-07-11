@@ -40,9 +40,9 @@ edits `docs/overview.md`) — there is no code dependency.
   comment: non-empty selects a version pin the provider engine realizes by translating
   (model, version) into a provider-specific model id; empty means no pin; version values
   are provider vocabulary — `validate` does NOT inspect this field at all (neither
-  defaulting nor rejecting); the engine is the sole validator (see claudeengine's
-  `resolveModelID`), and a (model, version) pair the engine cannot realize is a hard
-  error from the engine, not from `Spec.validate`. Do not modify `validate`'s body.
+  defaulting nor rejecting); the engine is the sole validator (the provider engine's
+  translation step — claudeengine's, added in card 12), and a (model, version) pair the
+  engine cannot realize is a hard error from the engine, not from `Spec.validate`. Do not modify `validate`'s body.
   Extend `spec_test.go` with a test proving `validate` leaves an arbitrary non-empty
   `Version` (e.g. `"4.5"`, and also a nonsense value like `"weird"`) exactly as set and
   returns no error for an otherwise-valid Spec — mirroring how Effort's
