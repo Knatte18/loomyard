@@ -77,5 +77,7 @@ batches:
     start_sha: 1b5ba2fbe02d68e09661ba6cbe0ab8b4e25180f5
     commit_sha: b9316b5d09fa527fe9fd8205f88bf3bc6c6ec6f0
   - name: registration-docs
-    state: pending
+    state: running
+    implementer_session: 6f2b982a-313e-4ec7-973b-7169e7cd84e7
+    start_sha: 3449a8482948129a568c4c4eea006a0ba2568f02
 ```
