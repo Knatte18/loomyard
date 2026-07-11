@@ -2,10 +2,10 @@
 // no-batch-in-flight refusal, a running snapshot at the wait deadline (no
 // weft commit, no git diff), a done classification from an on-disk report
 // (with a real diff/dirty computation against a scratch git repo), and a
-// dead/asking classification derived purely from pollTurnEnded/
-// pollStrandLive when no report has landed. Fakes for shuttleengine.Engine/
-// MuxOps are package-local doubles mirroring builderengine's own
-// poll_test.go fakeEngine/fakeMux.
+// dead/asking classification derived purely from builderengine.TurnEnded/
+// builderengine.StrandLive when no report has landed. Fakes for
+// shuttleengine.Engine/MuxOps are package-local doubles mirroring
+// builderengine's own poll_test.go fakeEngine/fakeMux.
 
 package buildercli
 
@@ -24,9 +24,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// pollFakeEngine is a minimal shuttleengine.Engine double for pollTurnEnded:
-// only ParseEvents is scripted, mirroring builderengine's own poll_test.go
-// fakeEngine.
+// pollFakeEngine is a minimal shuttleengine.Engine double for
+// builderengine.TurnEnded: only ParseEvents is scripted, mirroring
+// builderengine's own poll_test.go fakeEngine.
 type pollFakeEngine struct {
 	events []shuttleengine.Event
 }
@@ -46,9 +46,9 @@ func (e *pollFakeEngine) ComposeSend(text string) []shuttleengine.PaneInput { re
 
 var _ shuttleengine.Engine = (*pollFakeEngine)(nil)
 
-// pollFakeMux is a minimal shuttleengine.MuxOps double for pollStrandLive:
-// only Status is scripted, mirroring builderengine's own poll_test.go
-// fakeMux.
+// pollFakeMux is a minimal shuttleengine.MuxOps double for
+// builderengine.StrandLive: only Status is scripted, mirroring
+// builderengine's own poll_test.go fakeMux.
 type pollFakeMux struct {
 	status muxengine.StatusResult
 }
@@ -98,8 +98,8 @@ func newPollFixture(t *testing.T, engine shuttleengine.Engine, mux shuttleengine
 
 // seedInFlightBatch1 persists a state.json recording batch 1 as currently
 // in flight, spawned startSHA at the given moment, with eventsPath and
-// strandGuid pointing at fx's own hub tree so pollTurnEnded/pollStrandLive
-// have somewhere real to look.
+// strandGuid pointing at fx's own hub tree so builderengine.TurnEnded/
+// builderengine.StrandLive have somewhere real to look.
 func (fx *pollFixture) seedInFlightBatch1(t *testing.T, startSHA string, spawnedAt time.Time, eventsPath string) {
 	t.Helper()
 

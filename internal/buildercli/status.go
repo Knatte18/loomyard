@@ -10,7 +10,6 @@
 package buildercli
 
 import (
-	"fmt"
 	"path/filepath"
 	"sort"
 
@@ -19,14 +18,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/spf13/cobra"
 )
-
-// batchReportFileName returns the batch-report filename plan-format.md
-// pins for a batch numbered number with slug slug: "NN-<slug>.yaml" --
-// matching builderengine's own batchReportFileName/RestartChain naming,
-// reimplemented here since that helper is package-private to builderengine.
-func batchReportFileName(number int, slug string) string {
-	return fmt.Sprintf("%02d-%s.yaml", number, slug)
-}
 
 // statusCmd builds the `status` subcommand: LoadState, then for each
 // persisted BatchState (sorted by number) an on-disk report scan that can
@@ -86,7 +77,7 @@ Example:
 				terminal := bs.Terminal
 
 				if !terminal {
-					reportPath := filepath.Join(c.reportsDir, batchReportFileName(n, bs.Slug))
+					reportPath := filepath.Join(c.reportsDir, builderengine.BatchReportFileName(n, bs.Slug))
 					if report, rerr := builderengine.ParseReport(reportPath); rerr == nil {
 						status = report.Status
 						terminal = true

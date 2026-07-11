@@ -3,10 +3,12 @@
 // process terminal state (nobody in poll's process holds the shuttle Run
 // handle — spawn-batch exits right after Start — so this is re-derived from
 // files and a live mux query every tick, never from an in-process handle);
-// the two impure gatherers Classify's caller feeds from (turnEnded,
-// strandLive), both riding shuttle's provider-invariant seams per the
+// the two impure gatherers Classify's caller feeds from (TurnEnded,
+// StrandLive), both riding shuttle's provider-invariant seams per the
 // Shuttle Provider-Seam Invariant — builderengine never parses event
-// grammar or pane state itself; and PollUntilTerminal, the blocking
+// grammar or pane state itself; exported so buildercli's own `poll` verb
+// calls them directly rather than carrying a byte-for-byte copy; and
+// PollUntilTerminal, the blocking
 // long-poll loop that re-runs a caller-supplied gather function on a fixed
 // tick until a batch reaches a terminal classification or the wait budget
 // elapses. The long-poll IS the notification (the discussion's `poll`
@@ -50,10 +52,10 @@ type ClassifyInputs struct {
 	Report *Report
 
 	// TurnEnded reports whether the implementer's turn has ended (a Stop
-	// event was observed) — see the package-level turnEnded gatherer.
+	// event was observed) — see the package-level TurnEnded gatherer.
 	TurnEnded bool
 	// StrandLive reports whether the implementer's mux strand is still
-	// live — see the package-level strandLive gatherer.
+	// live — see the package-level StrandLive gatherer.
 	StrandLive bool
 
 	// Elapsed is the wall-clock duration since this batch's implementer
@@ -107,7 +109,7 @@ func Classify(in ClassifyInputs) (Digest, bool) {
 	return Digest{Batch: batch, Status: DigestStatusRunning, ElapsedS: int(in.Elapsed.Seconds())}, false
 }
 
-// turnEnded reports whether the implementer's turn has already ended
+// TurnEnded reports whether the implementer's turn has already ended
 // without ever satisfying the file contract: it reads eventsPath's raw
 // bytes and delegates all event-grammar parsing to engine.ParseEvents (the
 // Shuttle Provider-Seam Invariant — builderengine never parses event
@@ -117,8 +119,12 @@ func Classify(in ClassifyInputs) (Digest, bool) {
 // it reports (false, nil) unchanged. A ParseEvents error propagates — an
 // unreadable event grammar leaves no classifiable turn-end signal at all,
 // which the caller must treat as a poll-tick failure, never a silently
-// assumed "still running".
-func turnEnded(eventsPath string, engine shuttleengine.Engine) (bool, error) {
+// assumed "still running". Exported so buildercli's own `poll` verb — the
+// only caller of these gatherers, since Classify's inputs are always
+// assembled by poll's caller, never by builderengine itself — builds
+// ClassifyInputs from this exact implementation rather than a
+// byte-for-byte reimplementation of it.
+func TurnEnded(eventsPath string, engine shuttleengine.Engine) (bool, error) {
 	data, err := os.ReadFile(eventsPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -140,14 +146,16 @@ func turnEnded(eventsPath string, engine shuttleengine.Engine) (bool, error) {
 	return false, nil
 }
 
-// strandLive reports whether guid names a strand mux currently tracks as
+// StrandLive reports whether guid names a strand mux currently tracks as
 // live: it calls mux.Status() and scans the returned Strands for guid's
 // Live field. guid absent from the result reports (false, nil) — mux no
 // longer tracks it, which the caller treats identically to a pane that
 // died. Liveness is NEVER read from persisted mux state
 // (muxengine.LoadState carries no liveness field at all); only this live
 // Status() query can answer "is the pane actually there right now".
-func strandLive(mux shuttleengine.MuxOps, guid string) (bool, error) {
+// Exported for the same reason as TurnEnded above: buildercli's `poll`
+// verb calls this directly instead of carrying its own copy.
+func StrandLive(mux shuttleengine.MuxOps, guid string) (bool, error) {
 	status, err := mux.Status()
 	if err != nil {
 		return false, fmt.Errorf("builder: mux status: %w", err)

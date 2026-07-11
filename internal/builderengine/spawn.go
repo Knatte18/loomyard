@@ -118,11 +118,15 @@ type SpawnResult struct {
 	ReportPath string
 }
 
-// batchReportFileName returns the batch-report filename plan-format.md pins
-// for batch: "NN-<batch-slug>.yaml", matching chain.go's RestartChain and
-// validate.go's batchID naming.
-func batchReportFileName(b PlanBatch) string {
-	return fmt.Sprintf("%02d-%s.yaml", b.Number, b.Slug)
+// BatchReportFileName returns the batch-report filename plan-format.md pins
+// for a batch numbered number with slug slug: "NN-<slug>.yaml", matching
+// validate.go's batchID naming (batchID omits the extension; this adds it).
+// Exported and reused by every builderengine call site that names a batch
+// report file (this file, chain.go's RestartChain, runlevel.go's
+// renderProgress) plus buildercli's status/poll verbs, so the filename
+// convention lives in exactly one place.
+func BatchReportFileName(number int, slug string) string {
+	return fmt.Sprintf("%02d-%s.yaml", number, slug)
 }
 
 // findBatch returns the PlanBatch in plan whose Number matches number, or
@@ -202,7 +206,7 @@ func SpawnBatch(deps SpawnDeps, opts SpawnBatchOptions) (*SpawnResult, error) {
 	}
 
 	batchName := fmt.Sprintf("%02d-%s", batch.Number, batch.Slug)
-	reportPath, err := filepath.Abs(filepath.Join(deps.ReportsDir, batchReportFileName(batch)))
+	reportPath, err := filepath.Abs(filepath.Join(deps.ReportsDir, BatchReportFileName(batch.Number, batch.Slug)))
 	if err != nil {
 		return nil, fmt.Errorf("builder: resolve report path: %w", err)
 	}

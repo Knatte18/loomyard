@@ -88,7 +88,7 @@ func RestartChain(worktree string, st *State, plan *Plan, chainEnd int, reportsD
 			continue
 		}
 
-		reportPath := filepath.Join(reportsDir, fmt.Sprintf("%02d-%s.yaml", b.Number, b.Slug))
+		reportPath := filepath.Join(reportsDir, BatchReportFileName(b.Number, b.Slug))
 		if err := os.Remove(reportPath); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("builder: remove stale chain report %s: %w", reportPath, err)
 		}

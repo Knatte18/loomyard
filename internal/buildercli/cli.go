@@ -49,9 +49,10 @@ type builderCLI struct {
 	blockingRunner builderengine.BlockingRunner
 
 	// engine and mux are the constructed claude and mux engines Runner
-	// itself holds unexported: poll's turnEnded/strandLive-equivalent
-	// gatherers need to call them directly (ParseEvents, Status), which
-	// Runner's own surface does not expose.
+	// itself holds unexported: poll calls builderengine.TurnEnded/
+	// builderengine.StrandLive directly with these, and both gatherers need
+	// to call ParseEvents/Status on them, which Runner's own surface does
+	// not expose.
 	engine shuttleengine.Engine
 	mux    shuttleengine.MuxOps
 

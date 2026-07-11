@@ -298,7 +298,7 @@ func renderBatchIndex(plan *Plan) string {
 func renderProgress(plan *Plan, reportsDir string) (string, error) {
 	var lines []string
 	for _, b := range plan.Batches {
-		reportPath := filepath.Join(reportsDir, batchReportFileName(b))
+		reportPath := filepath.Join(reportsDir, BatchReportFileName(b.Number, b.Slug))
 		if _, err := os.Stat(reportPath); err != nil {
 			if os.IsNotExist(err) {
 				continue

@@ -23,7 +23,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/builderengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/output"
-	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/spf13/cobra"
 )
 
@@ -36,51 +35,6 @@ type pollRealClock struct{}
 
 func (pollRealClock) Now() time.Time        { return time.Now() }
 func (pollRealClock) Sleep(d time.Duration) { time.Sleep(d) }
-
-// pollTurnEnded reports whether the implementer's turn has already ended
-// without ever satisfying the file contract. It mirrors builderengine's own
-// package-private turnEnded helper exactly -- the same EventsPath read, the
-// same delegation to the claude engine's ParseEvents (the Shuttle
-// Provider-Seam Invariant: buildercli never parses event grammar itself),
-// the same EventStop scan -- reimplemented at the CLI layer because
-// builderengine's version is private to its own Classify wiring and this
-// package has no way to call it directly.
-func pollTurnEnded(eventsPath string, engine shuttleengine.Engine) (bool, error) {
-	data, err := os.ReadFile(eventsPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return false, nil
-		}
-		return false, fmt.Errorf("builder: read events file %s: %w", eventsPath, err)
-	}
-
-	events, err := engine.ParseEvents(data)
-	if err != nil {
-		return false, fmt.Errorf("builder: parse events %s: %w", eventsPath, err)
-	}
-	for _, e := range events {
-		if e.Kind == shuttleengine.EventStop {
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
-// pollStrandLive mirrors builderengine's own package-private strandLive
-// helper: liveness is read from a live mux.Status() query, never from
-// persisted mux state.
-func pollStrandLive(mux shuttleengine.MuxOps, guid string) (bool, error) {
-	status, err := mux.Status()
-	if err != nil {
-		return false, fmt.Errorf("builder: mux status: %w", err)
-	}
-	for _, s := range status.Strands {
-		if s.GUID == guid {
-			return s.Live, nil
-		}
-	}
-	return false, nil
-}
 
 // digestFields converts a Digest into the map output.Ok expects: Digest's
 // own json tags already spell the pinned snake_case field names, so a
@@ -155,7 +109,7 @@ Example:
 				return nil
 			}
 
-			reportPath := filepath.Join(c.reportsDir, batchReportFileName(batchNumber, bs.Slug))
+			reportPath := filepath.Join(c.reportsDir, builderengine.BatchReportFileName(batchNumber, bs.Slug))
 			batchTimeout := time.Duration(c.cfg.BatchTimeoutMin) * time.Minute
 
 			// gather is Classify's per-tick input assembler: it always
@@ -191,11 +145,11 @@ Example:
 				} else if !os.IsNotExist(statErr) {
 					return builderengine.Digest{}, false, statErr
 				} else {
-					turnEnded, terr := pollTurnEnded(bs.EventsPath, c.engine)
+					turnEnded, terr := builderengine.TurnEnded(bs.EventsPath, c.engine)
 					if terr != nil {
 						return builderengine.Digest{}, false, terr
 					}
-					strandLive, serr := pollStrandLive(c.mux, bs.StrandGUID)
+					strandLive, serr := builderengine.StrandLive(c.mux, bs.StrandGUID)
 					if serr != nil {
 						return builderengine.Digest{}, false, serr
 					}

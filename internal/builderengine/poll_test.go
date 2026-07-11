@@ -1,12 +1,13 @@
 // poll_test.go covers Classify's decision table (all five classification
 // outcomes: report-present terminal, dead/asking, dead/timeout, dead/died,
-// and non-terminal running), turnEnded against a fake shuttleengine.Engine
-// double, strandLive against a fake shuttleengine.MuxOps double, and
+// and non-terminal running), TurnEnded against a fake shuttleengine.Engine
+// double, StrandLive against a fake shuttleengine.MuxOps double, and
 // PollUntilTerminal's long-poll loop against a fake clock — a terminal
 // mid-wait result short-circuits, a deadline returns the last running
 // digest, and a gather error propagates. This file lives in package
-// builderengine (not builderengine_test) because turnEnded, strandLive, and
-// the clock/realClock seam are unexported.
+// builderengine (not builderengine_test) because the clock/realClock seam
+// is unexported (TurnEnded and StrandLive are themselves exported, so
+// buildercli's own `poll` verb calls them directly).
 
 package builderengine
 
@@ -111,9 +112,9 @@ func TestClassify_RunningSnapshotCarriesOnlyBatchStatusElapsed(t *testing.T) {
 	}
 }
 
-// fakeEngine is a minimal shuttleengine.Engine double for turnEnded: only
+// fakeEngine is a minimal shuttleengine.Engine double for TurnEnded: only
 // ParseEvents is scripted (a canned Events slice or a canned error), since
-// turnEnded never calls any other method.
+// TurnEnded never calls any other method.
 type fakeEngine struct {
 	events []shuttleengine.Event
 	err    error
@@ -144,12 +145,12 @@ func TestTurnEnded(t *testing.T) {
 	eventsPath := dir + "/events.jsonl"
 
 	t.Run("missing events file is false, nil", func(t *testing.T) {
-		ended, err := turnEnded(eventsPath, &fakeEngine{})
+		ended, err := TurnEnded(eventsPath, &fakeEngine{})
 		if err != nil {
-			t.Fatalf("turnEnded() error = %v; want nil", err)
+			t.Fatalf("TurnEnded() error = %v; want nil", err)
 		}
 		if ended {
-			t.Errorf("turnEnded() = true for a missing events file; want false")
+			t.Errorf("TurnEnded() = true for a missing events file; want false")
 		}
 	})
 
@@ -158,43 +159,43 @@ func TestTurnEnded(t *testing.T) {
 	}
 
 	t.Run("no Stop event is false", func(t *testing.T) {
-		ended, err := turnEnded(eventsPath, &fakeEngine{events: []shuttleengine.Event{{Kind: shuttleengine.EventAsk, Message: "still working"}}})
+		ended, err := TurnEnded(eventsPath, &fakeEngine{events: []shuttleengine.Event{{Kind: shuttleengine.EventAsk, Message: "still working"}}})
 		if err != nil {
-			t.Fatalf("turnEnded() error = %v; want nil", err)
+			t.Fatalf("TurnEnded() error = %v; want nil", err)
 		}
 		if ended {
-			t.Errorf("turnEnded() = true with only an EventAsk; want false")
+			t.Errorf("TurnEnded() = true with only an EventAsk; want false")
 		}
 	})
 
 	t.Run("a Stop event anywhere in the batch is true", func(t *testing.T) {
-		ended, err := turnEnded(eventsPath, &fakeEngine{events: []shuttleengine.Event{
+		ended, err := TurnEnded(eventsPath, &fakeEngine{events: []shuttleengine.Event{
 			{Kind: shuttleengine.EventAsk, Message: "mid-turn probe"},
 			{Kind: shuttleengine.EventStop, Message: "final message"},
 		}})
 		if err != nil {
-			t.Fatalf("turnEnded() error = %v; want nil", err)
+			t.Fatalf("TurnEnded() error = %v; want nil", err)
 		}
 		if !ended {
-			t.Errorf("turnEnded() = false with a Stop event present; want true")
+			t.Errorf("TurnEnded() = false with a Stop event present; want true")
 		}
 	})
 
 	t.Run("a ParseEvents error propagates", func(t *testing.T) {
 		wantErr := errors.New("boom")
-		_, err := turnEnded(eventsPath, &fakeEngine{err: wantErr})
+		_, err := TurnEnded(eventsPath, &fakeEngine{err: wantErr})
 		if err == nil {
-			t.Fatalf("turnEnded() error = nil; want a wrapped error")
+			t.Fatalf("TurnEnded() error = nil; want a wrapped error")
 		}
 		if !errors.Is(err, wantErr) {
-			t.Errorf("turnEnded() error = %v; want it to wrap %v", err, wantErr)
+			t.Errorf("TurnEnded() error = %v; want it to wrap %v", err, wantErr)
 		}
 	})
 }
 
-// fakeMux is a minimal shuttleengine.MuxOps double for strandLive: only
+// fakeMux is a minimal shuttleengine.MuxOps double for StrandLive: only
 // Status is scripted (a canned StatusResult or a canned error), since
-// strandLive never calls any other method.
+// StrandLive never calls any other method.
 type fakeMux struct {
 	status muxengine.StatusResult
 	err    error
@@ -226,45 +227,45 @@ func TestStrandLive(t *testing.T) {
 			{GUID: "other", Live: false},
 			{GUID: "target", Live: true},
 		}}}
-		live, err := strandLive(mux, "target")
+		live, err := StrandLive(mux, "target")
 		if err != nil {
-			t.Fatalf("strandLive() error = %v; want nil", err)
+			t.Fatalf("StrandLive() error = %v; want nil", err)
 		}
 		if !live {
-			t.Errorf("strandLive() = false; want true")
+			t.Errorf("StrandLive() = false; want true")
 		}
 	})
 
 	t.Run("guid present and not live", func(t *testing.T) {
 		mux := &fakeMux{status: muxengine.StatusResult{Strands: []muxengine.StrandStatus{{GUID: "target", Live: false}}}}
-		live, err := strandLive(mux, "target")
+		live, err := StrandLive(mux, "target")
 		if err != nil {
-			t.Fatalf("strandLive() error = %v; want nil", err)
+			t.Fatalf("StrandLive() error = %v; want nil", err)
 		}
 		if live {
-			t.Errorf("strandLive() = true; want false")
+			t.Errorf("StrandLive() = true; want false")
 		}
 	})
 
 	t.Run("guid absent from Status is false, nil", func(t *testing.T) {
 		mux := &fakeMux{status: muxengine.StatusResult{Strands: []muxengine.StrandStatus{{GUID: "someone-else", Live: true}}}}
-		live, err := strandLive(mux, "target")
+		live, err := StrandLive(mux, "target")
 		if err != nil {
-			t.Fatalf("strandLive() error = %v; want nil", err)
+			t.Fatalf("StrandLive() error = %v; want nil", err)
 		}
 		if live {
-			t.Errorf("strandLive() = true for an absent guid; want false")
+			t.Errorf("StrandLive() = true for an absent guid; want false")
 		}
 	})
 
 	t.Run("mux Status error propagates", func(t *testing.T) {
 		wantErr := errors.New("mux unreachable")
-		_, err := strandLive(&fakeMux{err: wantErr}, "target")
+		_, err := StrandLive(&fakeMux{err: wantErr}, "target")
 		if err == nil {
-			t.Fatalf("strandLive() error = nil; want a wrapped error")
+			t.Fatalf("StrandLive() error = nil; want a wrapped error")
 		}
 		if !errors.Is(err, wantErr) {
-			t.Errorf("strandLive() error = %v; want it to wrap %v", err, wantErr)
+			t.Errorf("StrandLive() error = %v; want it to wrap %v", err, wantErr)
 		}
 	})
 }
