@@ -35,6 +35,7 @@ no pinned-list edits; the one pinned list is `configreg_test.go` (card 8).
 - **Context:**
   - `internal/configsync/configsync.go`
   - `internal/configcli/configcli.go`
+  - `internal/modelspec/template.go`
 - **Edits:**
   - `internal/configreg/configreg.go`
   - `internal/configreg/configreg_test.go`
@@ -59,6 +60,7 @@ no pinned-list edits; the one pinned list is `configreg_test.go` (card 8).
 - **Context:**
   - `internal/configreg/configreg.go`
   - `internal/yamlengine/reconcile.go`
+  - `internal/modelspec/template.go`
 - **Edits:**
   - `internal/configsync/configsync.go`
   - `internal/configsync/configsync_test.go`
@@ -69,12 +71,18 @@ no pinned-list edits; the one pinned list is `configreg_test.go` (card 8).
   module: when `m.SeedOnly` and the file EXISTS, append
   `Result{Module: m.Name, Applied: false}` (no Added, no Removed — the file is never
   parsed, diffed, or written) and continue to the next module. When `m.SeedOnly` and the
-  file is ABSENT, fall through to the existing path unchanged — reconciling the template
-  against empty bytes yields the template verbatim with every key reported in `Added`,
-  so materialization, `Applied`, and initengine's existing `status == "created"`
-  heuristic (`Applied && len(Added) > 0 && len(Removed) == 0`) all behave correctly with
-  zero initengine changes. Update the `ReconcileAll` doc comment to document the
-  seed-only branch. Tests (extend `configsync_test.go`, `t.TempDir()` +
+  file is ABSENT, do NOT route through `yamlengine.Reconcile` — its merged output is
+  marshalled from the node tree and is only *equivalent* to the template, not
+  byte-identical (indentation, blank lines, and comment placement get normalized, which
+  would degrade the operator-facing annotated seed). Instead: compute
+  `added := yamlengine.MissingKeys([]byte(m.Template()), nil)` (empty existing → every
+  template leaf key-path), and when `apply` write `[]byte(m.Template())` VERBATIM via
+  `fsx.AtomicWriteBytes`, reporting `Result{Module: m.Name, Added: added, Applied: true}`
+  (`Applied: false` and no write on a dry run, same `Added` report). `Removed` stays
+  empty, so initengine's existing `status == "created"` heuristic
+  (`Applied && len(Added) > 0 && len(Removed) == 0`) behaves correctly with zero
+  initengine changes. Update the `ReconcileAll` doc comment to document the seed-only
+  branch (verbatim-materialize when absent, untouched when present). Tests (extend `configsync_test.go`, `t.TempDir()` +
   `hubgeometry.ConfigFile` paths, table/subtest style matching the file): (a) absent
   models.yaml + `apply=true` → file materialized byte-identical to
   `modelspec.ConfigTemplate()`, `Applied=true`; (b) present models.yaml containing an
