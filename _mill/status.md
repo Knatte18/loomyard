@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-approved
 slug: modelspec
 branch: modelspec
 plan: _mill/plan
@@ -28,6 +28,7 @@ approved-modelspec-core  '2026-07-11T07:01:37Z'
 approved-models-registration  '2026-07-11T07:07:31Z'
 approved-shuttle-version  '2026-07-11T07:13:03Z'
 holistic-reviewing  '2026-07-11T07:13:32Z'
+holistic-approved  '2026-07-11T07:15:27Z'
 ```
 
 ## Batches
