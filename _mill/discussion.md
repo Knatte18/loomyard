@@ -132,6 +132,15 @@ Planner exists.
   (default wait from `builder.yaml` `poll_wait`, ~8 minutes — safely under the ~10-minute
   tool-call cap). Returns the instant the batch reaches a terminal state; at the deadline
   it returns a `running` snapshot and the orchestrator re-polls.
+- Terminal classification (nobody holds the shuttle `Run` handle — `spawn-batch` exits
+  after `Start` — so `poll` re-derives cross-process): (1) batch-report present →
+  `done`/`stuck` per the report; (2) no report but the implementer's turn has ended
+  (Stop event observed in the run dir's `events.jsonl`, path via `run.json`) → `dead`
+  with `dead_reason: asking` — an implementer that stopped without fulfilling the file
+  contract is respawn/recover material, same as a crash; (3) no report and elapsed since
+  spawn > `batch_timeout_min` → `dead` with `dead_reason: timeout`; (4) no report, turn
+  in progress, strand pane gone → `dead` with `dead_reason: died`. On any `dead`, the
+  pane/run dir is kept for diagnosis (shuttle's died/timeout discipline).
 - Rationale: a true push notification cannot reach the orchestrator — it is a Claude
   session that is either mid-turn (only a tool-call result reaches it) or has ended its
   turn, and turn-end without the outcome file classifies the run `asking` under
@@ -150,9 +159,10 @@ Planner exists.
   why, verbatim), `drift_unreported` (paths only — changed files outside declared scope
   with no `out_of_scope` entry; the rot signal), `files_changed` (count, not list), and
   `dirty` (bool — uncommitted/untracked changes left in the worktree at terminal state,
-  a half-done-work signal). A `running` snapshot carries only `{batch, status,
-  elapsed}`. The field set is pinned in the module doc as the digest contract the
-  orchestrator template co-versions with. `dead` maps shuttle's died/timeout outcomes.
+  a half-done-work signal), and `dead_reason` (`asking | timeout | died` — set only
+  when `status: dead`; see the poll terminal-classification rule). A `running` snapshot
+  carries only `{batch, status, elapsed}`. The field set is pinned in the module doc as
+  the digest contract the orchestrator template co-versions with.
 - Rationale: the orchestrator must stay lean (mill-go bloat lesson); the user explicitly
   capped clutter. Count-not-list for `files_changed` because the list scales with batch
   size — the exact bloat vector.
@@ -260,11 +270,22 @@ Planner exists.
   `outcome: done | stuck | paused`, `stuck_reason` (null or one line), `batches_done`
   (int). `run`'s shuttle Spec lists it as the OutputFile; Go parses it fail-loud
   (burler-verdict discipline: unparseable → hard error, never guessed) and renders
-  `run`'s own JSON envelope from it. Note shuttle's pre-existing-OutputFile rule: `run`
-  must refuse (or archive) a stale outcome.yaml before spawning.
+  `run`'s own JSON envelope from it.
+- Stale file: shuttle's Spec.validate rejects a pre-existing OutputFile, and resume is
+  re-running `lyx builder run` — so `run` **archives** (never refuses) a stale
+  `outcome.yaml` before spawning, renaming it to
+  `_lyx/builder/outcome-<UTC-compact-timestamp>.yaml` in place. Refusing would block
+  the decided crash/resume path; archiving keeps the prior run's judgment auditable.
+- Non-done shuttle outcomes: when `run`'s shuttle Result is `asking`, `died`, or
+  `timeout`, no outcome.yaml exists — `run` maps each to its own distinct `output.Err`
+  envelope (outcome + SessionID + kept run dir; for `asking`, the
+  LastAssistantMessage), never entering the outcome-file parse. The fail-loud parse
+  error is reserved for a `done` outcome whose file is present but malformed — the two
+  failure classes are never conflated.
 - Rationale: shuttle needs an output file anyway (the file contract is the only done
   signal); the orchestrator's own judgment ("why I stopped") needs a durable home.
-- Rejected: deriving terminal state from state.json + reports alone.
+- Rejected: deriving terminal state from state.json + reports alone; refusing on a
+  stale outcome.yaml (blocks resume).
 
 ### Crash/resume: resume-on-files, always a fresh orchestrator
 
@@ -287,7 +308,10 @@ Planner exists.
   implementer/recovery spawns; `orchestrator_timeout_min` (default 480) for the `run`
   spawn; `batch_context_cap_tokens` (default 100000) and `batch_card_cap` (default 10)
   for validation check 5. Role strings are validated at load via `modelspec.Parse`
-  (fail-loud on grammar), resolved at spawn via the registry.
+  (fail-loud on grammar) **and all four roles are resolved against the registry
+  (`Registry.Resolve`) at `run`/`spawn-batch` entry as a pre-flight** — a well-formed
+  but unknown alias (a typo'd role spec) fails before any agent spawns, never hours
+  into a run when that role first spawns. Spawn-time resolution reuses the same values.
 - Rationale: builder's run units are far longer than review-sized shuttle runs, so it
   sets `Spec.Timeout` explicitly and never inherits shuttle's `run_timeout_min`. Cap
   values are operational-experience tunables. Scope-drift is deliberately
@@ -306,8 +330,12 @@ Planner exists.
   (strand display), `Display`, `Timeout` (0 → cfg default; builder always sets it),
   `KeepPane`. `Result.Outcome`: done/asking/died/timeout. Cross-process resolution via
   `FindRun` + `run.json`; `builder poll` classifies the in-flight implementer from the
-  batch-report file + mux strand liveness (loom.md crash-recovery pattern), not by
-  holding the in-process `Run` handle — `spawn-batch` exits after `Start`.
+  batch-report file + the run dir's `events.jsonl` (Stop-event detection for the
+  `asking` branch; `run.json` carries `EventsPath`) + mux strand liveness +
+  elapsed-vs-`batch_timeout_min` (loom.md crash-recovery pattern), not by holding the
+  in-process `Run` handle — `spawn-batch` exits after `Start`. Whether poll parses
+  events directly or reconstructs a handle via `FindRun` and reuses shuttle's
+  classification is a plan-level choice.
 - **modelspec** (`internal/modelspec`): `Parse(s) → Spec` (grammar only),
   `LoadRegistry(baseDir)` (absent file → built-ins; `hubgeometry.ConfigFile(baseDir,
   "models")`), `Registry.Resolve(spec) → Resolved{Engine, Model, Params}`. Documented
@@ -458,3 +486,8 @@ From `CONSTRAINTS.md`, all binding on this task:
   snapshots are just {batch, status, elapsed}.
 - **Q:** Testing depth? **A:** Unit tests with fakes + fixture plan; sandbox scenario
   drives validate/status (**Covers:** builder); real end-to-end run is manual, not CI.
+- **Q:** (review r1 gap) How does poll terminate for an idle implementer — turn ended,
+  no report, pane still alive? **A:** Two extra terminal branches: Stop-event-without-
+  report → `dead` with `dead_reason: asking`; elapsed > `batch_timeout_min` → `dead`
+  with `dead_reason: timeout` (plus pane-gone → `dead_reason: died`). Digest gains the
+  `dead_reason` field; panes/run dirs kept for diagnosis.
