@@ -185,6 +185,7 @@ github.com/Knatte18/loomyard/
 ├── internal/gitexec/             shared git operations
 ├── internal/lock/                shared file locking
 ├── internal/output/              shared JSON output
+├── internal/modelspec/           model-spec parser + models.yaml registry leaf
 └── internal/shell/               provider-invariant pane-shell mechanics leaf (pwsh + posix)
 ```
 
@@ -271,7 +272,7 @@ the `internal/muxengine` package documentation.)
 scaffolds the shared `_lyx/` config dir for every module.
 
 The user-facing modules sit on a thin layer of shared infrastructure
-(`internal/configengine`, `internal/gitexec`, `internal/lock`, `internal/output`, `internal/hubgeometry`, `internal/state`, `internal/shell`) — defined in
+(`internal/configengine`, `internal/gitexec`, `internal/lock`, `internal/output`, `internal/hubgeometry`, `internal/state`, `internal/shell`, `internal/modelspec`) — defined in
 [shared-libs/README.md](shared-libs/README.md).
 
 ## Execution stack (orchestration layers)

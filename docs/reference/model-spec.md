@@ -59,8 +59,10 @@ opus:
 ```
 
 **Built-in fallback:** Go ships a small built-in default set (`sonnet` / `opus` /
-`haiku` → claude engine) so everything works with **no file present**; `models.yaml`
-overrides and extends when it exists.
+`haiku` / `fable` → claude engine) so everything works with **no file present**;
+built-ins carry **no parameter defaults** — operator defaults (e.g. `effort`) live only
+in the seeded `models.yaml`, never baked into Go. `models.yaml` overrides and extends
+the built-in set when it exists.
 
 ## Newest by default; pinning is deliberate
 

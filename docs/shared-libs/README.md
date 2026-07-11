@@ -31,3 +31,5 @@ The following libraries ship in code and tests; their mechanics are documented t
 - `internal/lock` — cross-process file locking
 - `internal/proc` — cross-OS child-process window-hide (`HideWindow`) and detached-spawn (`Detach`) primitives
 - `internal/state` — generic locked typed JSON I/O
+- `internal/modelspec` — model-spec parser + models.yaml registry loader; the pinned
+  contract is `docs/reference/model-spec.md`, the as-built API lives in the package doc
