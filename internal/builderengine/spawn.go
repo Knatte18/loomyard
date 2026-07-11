@@ -6,10 +6,20 @@
 // shuttle mapping the discussion pins), the non-blocking spawn itself, and
 // the cross-process run-identity resolution (FindRun) that lets a caller
 // record durable state without ever holding an in-process shuttle Run
-// handle. SpawnBatch never touches weft: recording SpawnResult's fields is
-// enough for the caller (internal/buildercli) to perform the weft commit at
-// the batch boundary — see doc.go's weft-ownership section and SpawnResult's
-// own doc comment for the exact commit-boundary sequence.
+// handle.
+//
+// SpawnBatch itself never touches weft (see doc.go's package-level weft
+// section): it only mutates and SaveState's the CALLER-owned deps.State on
+// the plain host filesystem. The discussion pins three distinct weft-commit
+// points across the whole builder loop, and this is the first of them:
+// internal/buildercli's spawn-batch verb weft-commits state.json
+// immediately after a successful SpawnBatch call (the just-recorded
+// start-SHA and BatchState entry); the poll verb weft-commits the batch
+// report + state.json once a batch reaches a terminal classification; and
+// the run verb performs one backstop weft-commit at its own exit. Every one
+// of those three commits belongs to buildercli, never to this function or
+// this package — the perchcli precedent (block-exit weft Commit+Push,
+// engine stays weft-blind) applied to builder's own batch boundary.
 
 package builderengine
 
@@ -158,11 +168,19 @@ func selectRole(oversized bool, override Role) (Role, error) {
 // itself, and the cross-process FindRun resolution that lets it record
 // durable BatchState without ever holding an in-process shuttle Run handle
 // (spawn-batch exits right after Start; poll re-derives everything else
-// later). On success it persists deps.State via SaveState and returns a
-// SpawnResult; on any failure deps.State is left exactly as SpawnBatch found
-// it except where a step's own doc says otherwise (RestartChain mutates
-// deps.State in place before SpawnBatch's own SaveState call, per its own
-// contract).
+// later). On success it persists deps.State via SaveState — to the plain
+// host filesystem only, never through weft — and returns a SpawnResult; on
+// any failure deps.State is left exactly as SpawnBatch found it except
+// where a step's own doc says otherwise (RestartChain mutates deps.State in
+// place before SpawnBatch's own SaveState call, per its own contract).
+//
+// Weft commit boundary: SpawnBatch performs NO weft commit itself. Its
+// caller (internal/buildercli's spawn-batch verb) is responsible for
+// weft-committing the state.json SpawnBatch just wrote — using SpawnResult's
+// fields plus deps.BuilderDir, with no need to re-derive anything — as soon
+// as SpawnBatch returns successfully. That is the first of the loop's three
+// weft-commit points (see this file's package doc above for the other two:
+// poll at terminal classification, run as an exit-time backstop).
 func SpawnBatch(deps SpawnDeps, opts SpawnBatchOptions) (*SpawnResult, error) {
 	if PauseRequested(deps.BuilderDir) {
 		return nil, ErrPaused

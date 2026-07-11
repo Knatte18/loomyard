@@ -54,4 +54,15 @@
 // agents never run weft git themselves (the Weft Git Invariant); an
 // implementer DOES commit its own code to the host repo, once per card — the
 // documented asymmetry.
+//
+// The commit boundary itself lands at three distinct points across the
+// batch loop, each owned by its own buildercli verb, never by builderengine:
+// spawn-batch weft-commits state.json immediately after a successful
+// SpawnBatch call (see spawn.go's SpawnBatch doc), recording the just-
+// started batch's start-SHA; poll weft-commits the batch report plus
+// state.json once a batch reaches a terminal classification; and run
+// performs one backstop weft-commit at its own exit, regardless of outcome.
+// "When it makes sense" (the discussion's own phrasing) resolved to exactly
+// these three batch-boundary points — never a single end-of-run commit,
+// which would lose every weft-synced batch on a crash mid-run.
 package builderengine
