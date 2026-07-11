@@ -45,6 +45,15 @@ type Spec struct {
 	// the engine cannot realize is a hard error from the engine (see
 	// claudeengine's validateEffort), not from Spec.validate.
 	Effort string
+	// Version, when non-empty, selects a version pin the provider engine
+	// realizes by translating (Model, Version) into a provider-specific
+	// model id; empty means no pin. Version values are provider
+	// vocabulary — validate does NOT inspect this field at all (neither
+	// defaulting nor rejecting it); the engine is the sole validator, since
+	// only it knows which values its provider realizes. A (Model, Version)
+	// pair the engine cannot realize is a hard error from the engine (see
+	// claudeengine's resolveModelID), not from Spec.validate.
+	Version string
 	// Interactive encodes !Autonomous: the Go zero value (false) means
 	// autonomous, the default. Autonomous runs add
 	// --dangerously-skip-permissions and the AskUserQuestion PreToolUse

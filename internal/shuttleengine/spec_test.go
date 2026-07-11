@@ -145,6 +145,37 @@ func TestSpec_Validate_EffortUntouched(t *testing.T) {
 	}
 }
 
+// TestSpec_Validate_VersionUntouched proves validate neither defaults nor
+// rejects Version in any way — it is provider vocabulary the engine alone
+// validates (see claudeengine's resolveModelID), so Spec.validate must leave
+// an empty Version empty and a non-empty Version (even a nonsense value)
+// unchanged and error-free.
+func TestSpec_Validate_VersionUntouched(t *testing.T) {
+	s := &Spec{Prompt: "do the thing", OutputFiles: []string{"out.md"}}
+	if err := s.validate(`C:\worktree`, Config{RunTimeoutMin: 30}); err != nil {
+		t.Fatalf("validate() error: %v", err)
+	}
+	if s.Version != "" {
+		t.Errorf("Version = %q, want unchanged empty string", s.Version)
+	}
+
+	s2 := &Spec{Prompt: "do the thing", OutputFiles: []string{"other.md"}, Version: "4.5"}
+	if err := s2.validate(`C:\worktree`, Config{RunTimeoutMin: 30}); err != nil {
+		t.Fatalf("validate() error: %v, want validate to never reject or inspect Version", err)
+	}
+	if s2.Version != "4.5" {
+		t.Errorf("Version = %q, want unchanged %q", s2.Version, "4.5")
+	}
+
+	s3 := &Spec{Prompt: "do the thing", OutputFiles: []string{"third.md"}, Version: "weird"}
+	if err := s3.validate(`C:\worktree`, Config{RunTimeoutMin: 30}); err != nil {
+		t.Fatalf("validate() error: %v, want validate to never reject or inspect Version", err)
+	}
+	if s3.Version != "weird" {
+		t.Errorf("Version = %q, want unchanged %q", s3.Version, "weird")
+	}
+}
+
 func TestSpec_Validate_AnchorPassThroughWhenSet(t *testing.T) {
 	s := &Spec{Prompt: "do the thing", OutputFiles: []string{"out.md"}, Display: render.Display{Anchor: render.AnchorTop}}
 	if err := s.validate(`C:\worktree`, Config{RunTimeoutMin: 30}); err != nil {

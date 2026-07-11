@@ -59,8 +59,10 @@ opus:
 ```
 
 **Built-in fallback:** Go ships a small built-in default set (`sonnet` / `opus` /
-`haiku` → claude engine) so everything works with **no file present**; `models.yaml`
-overrides and extends when it exists.
+`haiku` / `fable` → claude engine) so everything works with **no file present**;
+built-ins carry **no parameter defaults** — operator defaults (e.g. `effort`) live only
+in the seeded `models.yaml`, never baked into Go. `models.yaml` overrides and extends
+the built-in set when it exists.
 
 ## Newest by default; pinning is deliberate
 
@@ -71,9 +73,13 @@ is no version-number maintenance treadmill. Pinning is always an active choice:
 - **In the registry** — set an explicit model id (e.g. steer away from a fresh release
   you don't trust yet: `model: claude-sonnet-5`). One line in one file.
 - **Per spec** — `sonnet[version=4.5]`. The provider engine translates the generic
-  `version` param to its own id scheme (claudeengine: `sonnet` + `4.5` →
-  `claude-sonnet-4-5`). Provider naming conventions live in the provider engine only —
-  see [Provider seam](#provider-seam).
+  `version` param to its own id scheme. claudeengine's rule is generic over any
+  bare single-word model value — not a closed alias list, so an operator-added alias
+  translates on an old binary with no recompile (`sonnet` + `4.5` → `claude-sonnet-4-5`,
+  `fable` + `5` → `claude-fable-5`). Combining `version=` with a full model id (one
+  containing a dash, e.g. the escape form) is a hard error: the id already pins its own
+  version, so a second pin is a contradiction. Provider naming conventions live in the
+  provider engine only — see [Provider seam](#provider-seam).
 
 **Reproducibility trade-off, signed off:** the same plan run a month apart may hit
 different models. Mitigation: engines record the **resolved model id** in the run

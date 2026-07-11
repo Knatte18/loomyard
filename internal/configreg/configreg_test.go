@@ -10,7 +10,7 @@ import (
 
 func TestNames(t *testing.T) {
 	got := Names()
-	want := []string{"board", "mux", "perch", "shuttle", "warp", "weft"}
+	want := []string{"board", "models", "mux", "perch", "shuttle", "warp", "weft"}
 	if len(got) != len(want) {
 		t.Errorf("Names() = %v; want %v", got, want)
 		return
@@ -18,6 +18,18 @@ func TestNames(t *testing.T) {
 	for i, name := range got {
 		if name != want[i] {
 			t.Errorf("Names()[%d] = %q; want %q", i, name, want[i])
+		}
+	}
+}
+
+// TestModules_SeedOnly pins the seed-only flag: today only the "models"
+// module carries an open-ended, operator-owned key set, so it is the only
+// entry with SeedOnly == true.
+func TestModules_SeedOnly(t *testing.T) {
+	for _, m := range Modules() {
+		want := m.Name == "models"
+		if m.SeedOnly != want {
+			t.Errorf("Modules(): module %q SeedOnly = %v; want %v", m.Name, m.SeedOnly, want)
 		}
 	}
 }

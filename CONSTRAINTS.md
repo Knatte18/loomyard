@@ -36,6 +36,17 @@ Fuller design/how-to lives in godoc and `docs/`, not here — this file is the i
   package that may legally import `configreg`.
 - **Enforced by** `internal/lyxtest/leaf_enforcement_test.go` on every `go test`.
 
+## Modelspec Leaf Invariant
+
+`internal/modelspec` production code imports only stdlib, `internal/hubgeometry`, and
+`gopkg.in/yaml.v3` — so every future consumer (builder, perch/burler/loom configs) can
+import it without cycles.
+
+- `configreg` → `modelspec` is the allowed direction (for `modelspec.ConfigTemplate`);
+  the reverse import (`modelspec` → `configreg` or any feature package) is never allowed.
+- **Enforced by** `internal/modelspec/leaf_enforcement_test.go`
+  (`TestLeafInvariant_AllowlistOnly`) on every `go test`.
+
 ## CLI / Cobra Invariant
 
 Every lyx CLI module is a cobra subtree assembled under one root in `cmd/lyx/main.go`.
