@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: modelspec
 branch: modelspec
-plan: null
+plan: _mill/plan
 parent: main
 task: Build modelspec - the model-spec parser + registry
 task_description: |
@@ -17,4 +17,5 @@ task_description: |
 discussing  '2026-07-11T05:53:07Z'
 discussion-fix-r2  '2026-07-11T06:25:20Z'
 discussed  '2026-07-11T06:25:31Z'
+planning  '2026-07-11T06:34:06Z'
 ```
