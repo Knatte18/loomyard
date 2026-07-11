@@ -1,0 +1,106 @@
+# Batch: poll-pause
+
+```yaml
+task: "Build builder - the batch-implementation loop"
+batch: "poll-pause"
+number: 4
+cards: 3
+verify: go test ./internal/builderengine/...
+depends-on: [3]
+```
+
+## Batch Scope
+
+The long-poll verb's engine core: pause flag mechanics (perch's discipline), the
+cross-process terminal classification of an in-flight implementer (report / asking /
+timeout / died), and the blocking wait loop with a clock seam. External interface
+consumed later: `PauseFlagPath`/`PauseRequested`/`ClearPause`, `Classify`,
+`PollUntilTerminal`.
+
+## Cards
+
+### Card 17: pause flag
+
+- **Context:**
+  - `internal/perchengine/state.go`
+  - `internal/perchengine/doc.go`
+  - `_mill/discussion.md`
+- **Creates:**
+  - `internal/builderengine/pause.go`
+  - `internal/builderengine/pause_test.go`
+- **Edits:** none
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:** Mirror perchengine's pause-flag discipline against the builder
+  dir: `PauseFlagPath(builderDir string) string` (a `pause` flag file inside
+  builderDir), `RequestPause(builderDir string) error` (create the flag, MkdirAll
+  first), `PauseRequested(builderDir string) bool` (Stat), `ClearPause(builderDir
+  string) error` (remove, ignore not-exist). Godoc records the clearing rules the
+  discussion pinned: cleared at `run` entry (never instantly re-pause on the flag that
+  requested the pause being resumed from) and at terminal outcomes. Tests cover the
+  request/observe/clear cycle and idempotent clear.
+- **Commit:** `feat(builder): pause flag mechanics`
+
+### Card 18: cross-process terminal classification
+
+- **Context:**
+  - `_mill/discussion.md`
+  - `internal/shuttleengine/rundir.go`
+  - `internal/shuttleengine/wait.go`
+  - `internal/muxengine/state.go`
+- **Creates:**
+  - `internal/builderengine/poll.go`
+  - `internal/builderengine/poll_test.go`
+- **Edits:** none
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:** `Classify(in ClassifyInputs) (Digest, bool)` — pure decision
+  function; the bool is "terminal". `ClassifyInputs` carries: `BatchNumber int`,
+  `BatchSlug string`, `ReportPath string`, `Report *Report` (nil when absent),
+  `TurnEnded bool`, `StrandLive bool`, `Elapsed time.Duration`,
+  `BatchTimeout time.Duration`, plus the distillation inputs (`Changed []string`,
+  `Scope []string`, `Dirty bool`). Decision order, exactly as the discussion pins:
+  (1) report present → `done`/`stuck` digest via `Distill`; (2) no report, turn ended
+  → `dead`/`dead_reason: asking`; (3) no report, elapsed > timeout → `dead`/
+  `dead_reason: timeout`; (4) no report, turn in progress, strand pane gone → `dead`/
+  `dead_reason: died`; else non-terminal `running` snapshot carrying only batch,
+  status, `elapsed_s`. Alongside it, the impure gatherers: `turnEnded(eventsPath
+  string, sessionID string) (bool, error)` reads the shuttle run dir's `events.jsonl`
+  and reports whether a Stop-hook event line is present (mirror how
+  `shuttleengine/wait.go` recognizes its Stop event line — read that file and match
+  its parsing, do not invent a new heuristic; a missing events file is `false, nil`);
+  `strandLive(dotLyxDir, guid string) (bool, error)` via `muxengine.LoadState` +
+  scanning `st.Strands` for the guid's `Live` field (absent state file → false).
+  Digest computation (diff, drift) runs ONLY on terminal classification — a `running`
+  snapshot never touches git (discussion: drift on a half-done batch is noise). Tests:
+  a decision table over Classify covering all five outcomes; `turnEnded` against
+  fixture events.jsonl content copied from the real Stop-event shape.
+- **Commit:** `feat(builder): cross-process poll classification`
+
+### Card 19: long-poll wait loop
+
+- **Context:**
+  - `internal/shuttleengine/wait.go`
+  - `_mill/discussion.md`
+- **Edits:**
+  - `internal/builderengine/poll.go`
+  - `internal/builderengine/poll_test.go`
+- **Creates:** none
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:** `PollUntilTerminal(gather func() (Digest, bool, error), wait
+  time.Duration, clk clock) (Digest, error)`: re-run gather on a fixed tick (1s)
+  until it reports terminal or `wait` elapses; on deadline return the last
+  non-terminal digest (the `running` snapshot the orchestrator re-polls on). Define a
+  package-local `clock` seam (`Now()`, `Sleep(d)`) with a `realClock`, mirroring
+  `shuttleengine`'s wait.go seam, so tests replay a whole poll sequence instantly.
+  The long-poll IS the notification: the loop blocks inside Go, costing the
+  orchestrator nothing (discussion Q3). Tests with a fake clock: terminal mid-wait
+  returns early with the terminal digest; deadline returns running; gather error
+  propagates.
+- **Commit:** `feat(builder): long-poll wait loop with clock seam`
+
+## Batch Tests
+
+`verify:` runs the builderengine suite; this batch adds the Classify decision table,
+the events.jsonl Stop detection fixture tests, and the fake-clock long-poll tests.
