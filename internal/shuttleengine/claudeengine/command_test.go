@@ -1,10 +1,10 @@
 // command_test.go table-tests the pane-shell command composition helpers:
 // quoting of paths with spaces and embedded single quotes, model/flag
-// presence per the interactive toggle, the exact resume-command shape, and
-// a no-newline invariant every produced command must hold (they are typed
-// into a pane via a single send-keys call). The pwsh-quote cases formerly
-// asserted here now live in internal/shell's shell_test.go, since quoting
-// itself moved there.
+// presence per the interactive toggle, the exact resume-command shape, the
+// resolveModelID bare-word-plus-version composition rule, and a no-newline
+// invariant every produced command must hold (they are typed into a pane via
+// a single send-keys call). The pwsh-quote cases formerly asserted here now
+// live in internal/shell's shell_test.go, since quoting itself moved there.
 
 package claudeengine
 
@@ -258,6 +258,46 @@ func TestValidateEffort(t *testing.T) {
 			}
 			if !tt.wantErr && err != nil {
 				t.Errorf("validateEffort(%q) = %v; want nil", tt.effort, err)
+			}
+		})
+	}
+}
+
+// TestResolveModelID covers resolveModelID's full input space: an empty
+// version passes the model through unchanged (including an empty model), a
+// dotted and a dotless version both compose against a bare model, an empty
+// model with a non-empty version errors (nothing to compose against), and a
+// dashed (full id) model with a non-empty version errors (the id already
+// pins its own version — combining it with version is a contradiction).
+func TestResolveModelID(t *testing.T) {
+	tests := []struct {
+		name    string
+		model   string
+		version string
+		want    string
+		wantErr bool
+	}{
+		{"empty_version_passthrough_with_model", "sonnet", "", "sonnet", false},
+		{"empty_version_passthrough_empty_model", "", "", "", false},
+		{"dotted_version", "sonnet", "4.5", "claude-sonnet-4-5", false},
+		{"dotless_version", "fable", "5", "claude-fable-5", false},
+		{"empty_model_with_version_errors", "", "4.5", "", true},
+		{"dashed_model_with_version_errors", "claude-sonnet-4-5", "4.5", "", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := resolveModelID(tt.model, tt.version)
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("resolveModelID(%q, %q) = nil error; want an error", tt.model, tt.version)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("resolveModelID(%q, %q) error: %v; want nil", tt.model, tt.version, err)
+			}
+			if got != tt.want {
+				t.Errorf("resolveModelID(%q, %q) = %q; want %q", tt.model, tt.version, got, tt.want)
 			}
 		})
 	}

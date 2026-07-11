@@ -1,0 +1,31 @@
+# models.yaml — the model-spec registry. Materialized once (lyx init / lyx
+# config reconcile) when this file is absent; after that, this file is
+# OPERATOR-OWNED: reconcile is seed-only for models.yaml and never rewrites or
+# prunes it again, so any alias you add or default you change or remove here
+# survives every future reconcile untouched.
+#
+# Add a new alias by adding a block like this (freely — no code change or
+# recompile is needed to adopt a brand-new model):
+# zephyr: {engine: claude, model: claude-zephyr-1}
+#
+# See docs/reference/model-spec.md for the full grammar, precedence rules, and
+# the built-in fallback set this file overrides/extends.
+
+sonnet:
+  engine: claude
+  model: sonnet
+  defaults:
+    effort: medium
+opus:
+  engine: claude
+  model: opus
+  defaults:
+    effort: high
+haiku:
+  engine: claude
+  model: haiku
+fable:
+  engine: claude
+  model: fable
+  defaults:
+    effort: high

@@ -185,6 +185,7 @@ github.com/Knatte18/loomyard/
 ├── internal/gitexec/             shared git operations
 ├── internal/lock/                shared file locking
 ├── internal/output/              shared JSON output
+├── internal/modelspec/           model-spec parser + models.yaml registry leaf
 └── internal/shell/               provider-invariant pane-shell mechanics leaf (pwsh + posix)
 ```
 
@@ -216,7 +217,7 @@ User-facing modules each get one `lyx <module>` namespace:
 
 - **init** — scaffolds the `_lyx/` directory structure and creates all module config files via reconciliation against templates (`internal/initcli` + `internal/initengine`). Idempotent: does not clobber existing config files. `lyx init --undo` reverses that scaffolding (junction, weft-side content, `.gitignore` block, `.git/info/exclude` entry) for test/sandbox cleanup. ✅ Implemented.
 - **board** — the task-tracker board (`internal/boardcli` + `internal/boardengine`). ✅ Implemented.
-- **config** — interactive menu for viewing and editing module configs; `lyx config reconcile` reconciles all module config files against their live templates (dry-run by default, `--apply` writes atomically); `lyx config <module> --set key=value` (repeatable) writes one or more config values directly with no editor invocation, for scripts/agents that need a non-interactive path. ✅ Implemented.
+- **config** — interactive menu for viewing and editing module configs; `lyx config reconcile` reconciles all module config files against their live templates (dry-run by default, `--apply` writes atomically) except seed-only modules (today: `models`), which are materialized once when absent and never rewritten again since the file is operator-owned; `lyx config <module> --set key=value` (repeatable) writes one or more config values directly with no editor invocation, for scripts/agents that need a non-interactive path. ✅ Implemented.
 - **weft** — owns all git into the paired weft repo (`lyx weft status|commit|push|pull|sync`). ✅ Implemented.
 - **warp** — **host↔weft-coordinated git topology**: clone (hub-creator), dual-worktree add/remove, coordinated checkout (switches host+weft together + re-points junctions), reconcile, status, prune, cleanup. The single owner of the mirror invariant — consolidates the former `worktree` / `git-clone` modules and `internal/git`; its CLI surface is `lyx warp clone|add|list|remove|checkout|status|reconcile|prune|cleanup`. ✅ Implemented.
 - **ide** — one-shot VS Code launcher with interactive menu. ✅ Implemented.
@@ -244,8 +245,10 @@ User-facing modules each get one `lyx <module>` namespace:
   (`Interactive: false`, the default). The provider is swappable behind an **engine** seam; Claude
   is the only v1 engine (Gemini etc. later, not a current priority). Per-run `Model` and `Effort`
   knobs (`lyx shuttle run --model`/`--effort`; effort values `low|medium|high|xhigh|max`, empty =
-  provider default) are engine-validated, not policed by `Spec.validate`. ✅ Implemented. See the
-  `internal/shuttleengine` package documentation.
+  provider default) are engine-validated, not policed by `Spec.validate`. `Spec.Version` is a
+  programmatic engine-validated version pin (claudeengine composes the pinned model id; no CLI
+  flag — consumers drive it via the model-spec notation's `version=` param). ✅ Implemented. See
+  the `internal/shuttleengine` package documentation.
 - **loom** — phased orchestrator: drives Setup → Discussion → Plan → Builder → Finalize, each
   gated by a perch review (`lyx loom run`, alias `lyx run`). 🚧 Design — not built. See
   [modules/loom.md](modules/loom.md).
@@ -271,7 +274,7 @@ the `internal/muxengine` package documentation.)
 scaffolds the shared `_lyx/` config dir for every module.
 
 The user-facing modules sit on a thin layer of shared infrastructure
-(`internal/configengine`, `internal/gitexec`, `internal/lock`, `internal/output`, `internal/hubgeometry`, `internal/state`, `internal/shell`) — defined in
+(`internal/configengine`, `internal/gitexec`, `internal/lock`, `internal/output`, `internal/hubgeometry`, `internal/state`, `internal/shell`, `internal/modelspec`) — defined in
 [shared-libs/README.md](shared-libs/README.md).
 
 ## Execution stack (orchestration layers)
