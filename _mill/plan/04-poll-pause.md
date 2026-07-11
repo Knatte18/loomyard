@@ -49,6 +49,7 @@ consumed later: `PauseFlagPath`/`PauseRequested`/`ClearPause`, `Classify`,
   - `internal/shuttleengine/wait.go`
   - `internal/shuttleengine/engine.go`
   - `internal/shuttleengine/mux.go`
+  - `internal/muxengine/lifecycle.go`
 - **Creates:**
   - `internal/builderengine/poll.go`
   - `internal/builderengine/poll_test.go`

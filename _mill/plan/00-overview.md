@@ -3,7 +3,7 @@
 ```yaml
 task: "Build builder - the batch-implementation loop"
 slug: "internal-builder"
-approved: false
+approved: true
 started: "20260711-121453"
 parent: "main"
 root: ""

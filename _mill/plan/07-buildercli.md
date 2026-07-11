@@ -53,7 +53,9 @@ External interface: `buildercli.Command()` / `RunCLI`.
   `PersistentPreRunE` resolving cwd → layout → shuttle cfg → mux cfg → builder cfg
   (`builderengine.LoadConfig(layout.Cwd, "builder")`) → `modelspec.LoadRegistry
   (layout.Cwd)` → `builderengine.ResolveRoles` (the fail-pre-flight surface: a typo'd
-  role alias aborts every verb here) → mux engine → claude engine → Runner.
+  role alias aborts every verb here — deliberately uniform across all six verbs,
+  matching perchcli's single PersistentPreRunE; the discussion's run/spawn-batch
+  scoping is the minimum, not a ceiling) → mux engine → claude engine → Runner.
   `RunCLI(out io.Writer, args []string) int` = `clihelp.Execute(Command(), out,
   args)`. `weft.go`: one package-local helper `weftCommit(layout, label string)
   (bool, error)` wrapping `weftengine.Commit` + `Push` with
