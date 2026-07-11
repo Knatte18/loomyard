@@ -207,17 +207,15 @@ func SpawnBatch(deps SpawnDeps, opts SpawnBatchOptions) (*SpawnResult, error) {
 		return nil, fmt.Errorf("builder: resolve report path: %w", err)
 	}
 
-	// A pre-existing report file is refused here, as builder's own named
-	// error, BEFORE any spawn — shuttle's own Spec.validate would reject a
-	// pre-existing OutputFiles entry too, but surfacing it under builder's
-	// own wording first keeps the caller from ever reaching a shuttle-side
-	// message about a file it never named itself.
-	if _, statErr := os.Stat(reportPath); statErr == nil {
-		return nil, fmt.Errorf("builder: batch report already exists: %s; remove it (or let --restart-chain clear it) before spawning again", reportPath)
-	}
-
 	chainEnd := ChainEndFor(deps.Plan, batch.Number)
 
+	// --restart-chain's reset (which deletes every chain member's stale
+	// report, including this batch's own reportPath when it is itself a
+	// chain member) runs BEFORE the pre-existing-report check below, so the
+	// very report that motivated --restart-chain never trips that check.
+	// Reordering these two any other way makes --restart-chain unreachable
+	// on the exact invocation ("re-spawn the batch whose stale report is
+	// still on disk") it exists to recover.
 	if opts.RestartChain {
 		if chainEnd == 0 {
 			return nil, fmt.Errorf("builder: batch %d is chainless; --restart-chain requires a deferred-verify chain member", batch.Number)
@@ -225,6 +223,15 @@ func SpawnBatch(deps SpawnDeps, opts SpawnBatchOptions) (*SpawnResult, error) {
 		if err := RestartChain(deps.WorktreeRoot, deps.State, deps.Plan, chainEnd, deps.ReportsDir); err != nil {
 			return nil, err
 		}
+	}
+
+	// A pre-existing report file is refused here, as builder's own named
+	// error, BEFORE any spawn — shuttle's own Spec.validate would reject a
+	// pre-existing OutputFiles entry too, but surfacing it under builder's
+	// own wording first keeps the caller from ever reaching a shuttle-side
+	// message about a file it never named itself.
+	if _, statErr := os.Stat(reportPath); statErr == nil {
+		return nil, fmt.Errorf("builder: batch report already exists: %s; remove it (or let --restart-chain clear it) before spawning again", reportPath)
 	}
 
 	head, err := HeadSHA(deps.WorktreeRoot)

@@ -404,3 +404,41 @@ func TestSpawnBatch_RestartChainOnChainlessBatchErrors(t *testing.T) {
 		t.Errorf("Starter was reached (%d Prepare calls) for a chainless --restart-chain; want zero", len(fx.Engine.PrepareCalls))
 	}
 }
+
+// TestSpawnBatch_RestartChainClearsStaleReportBeforeRefusal proves
+// --restart-chain's own reset reaches and deletes a chain member's stale
+// report BEFORE SpawnBatch's pre-existing-report check ever runs — the exact
+// real-world invocation ("re-spawn the batch whose stale report is still on
+// disk") --restart-chain exists to recover. Reviewing this any other
+// ordering (stale-report check before the reset) makes --restart-chain
+// unreachable on every real call, since the report the caller is trying to
+// clear is the same one that would trip the check first.
+func TestSpawnBatch_RestartChainClearsStaleReportBeforeRefusal(t *testing.T) {
+	fx := newSpawnFixture(t)
+
+	// First spawn records the chain's start-SHA anchor, mirroring the real
+	// sequence: a chain member must spawn once before --restart-chain has
+	// any recorded anchor to reset to.
+	if _, err := builderengine.SpawnBatch(fx.Deps, builderengine.SpawnBatchOptions{BatchNumber: 3}); err != nil {
+		t.Fatalf("SpawnBatch(batch 3) error = %v; want nil", err)
+	}
+
+	// Simulate the implementer having written its batch report and gone
+	// stuck: the report is now present on disk, exactly the state a
+	// stuck-chain-member recovery finds.
+	stalePath := filepath.Join(fx.ReportsDir, "03-refactor-a.yaml")
+	if err := os.WriteFile(stalePath, []byte("batch: 03-refactor-a\nstatus: stuck\n"), 0o644); err != nil {
+		t.Fatalf("seed stale report: %v", err)
+	}
+
+	result, err := builderengine.SpawnBatch(fx.Deps, builderengine.SpawnBatchOptions{BatchNumber: 3, RestartChain: true})
+	if err != nil {
+		t.Fatalf("SpawnBatch(--restart-chain) with a pre-existing report error = %v; want nil", err)
+	}
+	if result.BatchName != "03-refactor-a" {
+		t.Errorf("SpawnResult.BatchName = %q; want %q", result.BatchName, "03-refactor-a")
+	}
+	if len(fx.Engine.PrepareCalls) != 2 {
+		t.Errorf("Engine.PrepareCalls = %d; want exactly 2 (one per spawn)", len(fx.Engine.PrepareCalls))
+	}
+}
