@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: modelspec
 branch: modelspec
 plan: _mill/plan
@@ -22,4 +22,17 @@ plan-review-r1  '2026-07-11T06:39:59Z'
 plan-fix-r1  '2026-07-11T06:39:59Z'
 plan-fix-r2  '2026-07-11T06:44:55Z'
 planned  '2026-07-11T06:45:10Z'
+implementing  '2026-07-11T06:52:36Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: modelspec-core
+    state: pending
+  - name: models-registration
+    state: pending
+  - name: shuttle-version
+    state: pending
 ```
