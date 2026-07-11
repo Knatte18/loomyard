@@ -106,11 +106,15 @@ deliberate exception to "Go owns the machine": a pure Go-driven batch loop was e
 rejected — mill-go's context bloat came from the LLM orchestrator swallowing verbose sub-agent
 output, not from the loop being LLM-held.
 
-- **Advance per batch.** The orchestrator drives the plan's batches strictly in order (ordered
-  list, **no DAG** — the plan contract is pinned in [plan-format.md](plan-format.md)), spawning
-  one implementer worker per batch (config-chosen model; Sonnet default — see
-  [model-spec](../reference/model-spec.md)), and runs a **holistic builder-review at the end**
-  (a full `perch` converge-loop over the whole diff; no per-batch design review in v1).
+- **Advance per batch, end at batches-built.** The orchestrator drives the plan's batches
+  strictly in order (ordered list, **no DAG** — the plan contract is pinned in
+  [plan-format.md](plan-format.md)), spawning one implementer worker per batch (config-chosen
+  model; Sonnet default — see [model-spec](../reference/model-spec.md)). `builder run` itself
+  ends the moment the last batch is green (or the run reports stuck/paused) — it runs **no**
+  review of its own. The terminal holistic review is the separate **Builder-review gate**: a
+  full `perch` converge-loop over the whole diff, driven by `loom` (or the operator running
+  `lyx perch run` directly) *after* `builder run` returns `done`; no per-batch design review in
+  v1. See [modules/builder.md](builder.md) for the as-built verb surface and digest contract.
 - **Digest-only consumption.** The `poll` verb reads the implementer's on-disk batch-report,
   distills it in Go, and returns a terse digest; the orchestrator never ingests raw session
   prose. That is what keeps a persistent LLM orchestrator lean.
@@ -119,8 +123,9 @@ output, not from the loop being LLM-held.
   inside the stuck session (which would inherit the polluted context; see the
   `internal/shuttleengine` package documentation for the escalation rationale).
 
-**Same substrate, different loop semantics:** Builder **advances** (batch → batch → holistic
-review); perch **converges** (iterate review+fix on one artifact until `APPROVED`/`stuck`).
+**Same substrate, different loop semantics:** Builder **advances** (batch → batch → done);
+perch **converges** (iterate review+fix on one artifact until `APPROVED`/`stuck`) — the
+Builder-review gate is perch running *after* builder, never a phase inside builder's own loop.
 Pause stays uniform across them (see [pause](#graceful-pause)): builder's verbs check the pause
 flag at the batch boundary even though its loop is LLM-held.
 
@@ -227,7 +232,7 @@ boundary**, never mid-operation — `mill-pause`'s natural-stopping-point proper
 | `loom` (`lyx loom run`) | new Go module | the phase machine / autonomous driver |
 | `perch` (`lyx perch`) | new Go module | the gate loop: run `burler` rounds → `APPROVED`/`stuck` + progress-judge + cap |
 | `burler` | new Go module | one review+fix round: A-review (+ optional cluster) → B-fix; composed by `perch` |
-| builder | LLM orchestrator + Go verbs (`internal/builderengine`) | long-lived orchestrator session holds the batch loop over fat verbs (`spawn-batch`/`poll`/`status`); Go = verbs + distillation; fresh-spawn escalation + terminal holistic review — **not** a single producer spawn; input contract: [plan-format.md](plan-format.md) |
+| builder | LLM orchestrator + Go verbs (`internal/builderengine`) | long-lived orchestrator session holds the batch loop over the six as-built verbs (`validate`/`run`/`spawn-batch`/`poll`/`status`/`pause`); Go = verbs + distillation; fresh-spawn escalation; ends at batches-built — the holistic review is perch's separate Builder-review gate, not builder's own job — **not** a single producer spawn; input contract: [plan-format.md](plan-format.md); as-built doc: [builder.md](builder.md) |
 | producers (discussion / plan) | prompt/profile files | **not** modules — just a prompt + profile fed to `shuttle.Run` |
 | `lyx loom status` | a loom subcommand | the 1-line status view; runs as a strand (see `internal/muxengine`; `anchor:top`), not a separate module |
 | execution stack | existing/new infra | [`proc`](README.md) → mux → shuttle — see [overview.md#execution-stack](../overview.md#execution-stack-orchestration-layers) — built once, used by both modules above |

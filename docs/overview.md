@@ -249,6 +249,16 @@ User-facing modules each get one `lyx <module>` namespace:
   programmatic engine-validated version pin (claudeengine composes the pinned model id; no CLI
   flag — consumers drive it via the model-spec notation's `version=` param). ✅ Implemented. See
   the `internal/shuttleengine` package documentation.
+- **builder** — LLM orchestrator + Go verbs: a long-lived orchestrator session (model
+  config-chosen; Sonnet default) drives fat `lyx builder validate|run|spawn-batch|poll|
+  status|pause` verbs (`internal/builderengine` + `internal/buildercli`) through a
+  pinned plan-format v1 plan, batch by batch, until the plan is built; Go supplies only
+  the verbs plus the distillation behind them (digest, chain rollback, pause, outcome
+  parsing), never the loop itself. Input contract:
+  [plan-format.md](modules/plan-format.md). Branches off `shuttle` directly; does not
+  need `perch`. Ends at batches-built — the terminal holistic review is the separate
+  Builder-review gate (`perch`), driven by `loom` or the operator. ✅ Implemented. See
+  [modules/builder.md](modules/builder.md).
 - **loom** — phased orchestrator: drives Setup → Discussion → Plan → Builder → Finalize, each
   gated by a perch review (`lyx loom run`, alias `lyx run`). 🚧 Design — not built. See
   [modules/loom.md](modules/loom.md).
@@ -340,6 +350,7 @@ The **sandbox Hub** is a dedicated bench for manual testing of lyx's core workfl
 
 - [modules/README.md](modules/README.md) — **the module map**: index of every module doc + how the layers stack (design).
 - [modules/loom.md](modules/loom.md) — the phased orchestrator (`lyx loom` + `lyx perch`); design.
+- [modules/builder.md](modules/builder.md) — the batch-implementation loop (`lyx builder`): verb surface, digest contract, poll classification, chain rollback, pause, outcome contract (as-built; kept as a durable contract doc, not deleted on landing).
 - `internal/muxengine` package documentation — the window to the world: psmux overlay + strand bookkeeping + render (as-built; module doc deleted per the documentation lifecycle).
 - `internal/shuttleengine` package documentation — run one LLM agent via a swappable engine over the file contract (as-built; module doc deleted per the documentation lifecycle).
 - `internal/burlerengine` package documentation — one review+fix round: A-review → B-fix, no self-grading (as-built; module doc deleted per the documentation lifecycle).
