@@ -6,6 +6,7 @@ slug: modelspec
 branch: modelspec
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: Build modelspec - the model-spec parser + registry
 task_description: |
   Build modelspec - the model-spec parser + registry
@@ -30,7 +31,9 @@ implementing  '2026-07-11T06:52:36Z'
 ```yaml
 batches:
   - name: modelspec-core
-    state: pending
+    state: running
+    implementer_session: f88e6c14-995c-4e00-8d8d-2f657f822bf4
+    start_sha: c7ee5df35e5bc4d0f31b6f65f7cd12242e4b0819
   - name: models-registration
     state: pending
   - name: shuttle-version
