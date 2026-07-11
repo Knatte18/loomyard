@@ -137,7 +137,7 @@ large-window variant realization — lives in the provider engine
 ## Roles that use this notation
 
 builder.yaml holds four roles, each a model-spec: `orchestrator`, `implementer` (Sonnet
-default), `implementer_oversized`, `fixer`. There is no builder `evaluator` — the LLM
+default), `implementer_oversized`, `recovery`. There is no builder `evaluator` — the LLM
 orchestrator judges digests itself. Stack-wide roles elsewhere (perch/burler reviewers
 and judges, loom producers) use the same notation in their own config sections; loom's
 config section overrides per role when loom drives the module.

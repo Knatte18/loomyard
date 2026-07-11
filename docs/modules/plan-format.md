@@ -269,7 +269,7 @@ model-adjacent thing a plan can say is `oversized: true`, which selects a *role*
 model. Models are configuration:
 
 - builder.yaml holds a model-spec per builder role — `orchestrator`, `implementer`
-  (Sonnet default), `implementer_oversized`, `fixer`. There is no builder `evaluator`:
+  (Sonnet default), `implementer_oversized`, `recovery`. There is no builder `evaluator`:
   the LLM orchestrator itself judges digests.
 - loom's config section overrides per role when loom drives builder.
 - The notation, registry, and precedence rules are pinned in
