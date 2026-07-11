@@ -53,7 +53,9 @@ batches:
     start_sha: 938e26f31828ebc18e434ca5e1b93ce951815334
     commit_sha: dabd1f895d442e5635e99e6470791787965295e4
   - name: poll-pause
-    state: pending
+    state: running
+    implementer_session: ec55cbbf-09b0-412d-ad08-c0a60737b963
+    start_sha: 288beb68f75cc29396414dd5c6ac82471a2ffb3b
   - name: spawn
     state: pending
   - name: orchestrator-run
