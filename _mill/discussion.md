@@ -36,6 +36,10 @@ Two operator requirements sharpened during discussion:
   `{engine, model, params}`.
 - Register `models` in `internal/configreg` with a live-keys template (so `lyx config` /
   `lyx config reconcile` see it); update the pinned name list in `configreg_test.go`.
+- Seed-only reconcile semantics for open-ended config files: a per-module flag in
+  `configreg` (e.g. `Module.SeedOnly`) consumed by `internal/configsync` (and thereby
+  `lyx init`, which reconciles via the same machinery): materialize the template when the
+  file is absent; never rewrite when present.
 - `version=` param realization in `internal/shuttleengine/claudeengine`: new
   `shuttleengine.Spec.Version` field (parallel to `Effort`), translation
   `sonnet`+`4.5` → `claude-sonnet-4-5` inside claudeengine only.
@@ -96,24 +100,47 @@ Two operator requirements sharpened during discussion:
 - Rationale: `configengine.Load` hard-errors on an absent file and validates against a
   fixed template key set — both wrong for models.yaml, which is optional and has
   open-ended alias keys. Direct read also keeps the leaf import set (no
-  configengine/envsource/yamlengine deps).
+  configengine/envsource/yamlengine deps). The same open-ended-keys objection would apply
+  to configreg's default reconcile semantics too (template-as-schema pruning) — which is
+  precisely why the registration decision below carries seed-only semantics: there the
+  template is a one-time SEED, never a schema; no code path ever validates or prunes a
+  present models.yaml against the template.
 - Rejected: bending configengine.Load — heavier, breaks leaf discipline.
 
-### configreg registration with a live-keys template
+### configreg registration with a live-keys template, seed-only reconcile
 
 - Decision: Register `models` in `configreg.Modules()` with `modelspec.ConfigTemplate`.
   The template ships LIVE entries carrying the operator-owned effort defaults (see
   built-ins decision below for values). Update the pinned list in
   `configreg_test.go:13` in the same commit (configcli's `Known modules:` help is
   generated from `Names()`, so it follows mechanically — verify help-tree tests).
+  Registration carries **seed-only reconcile semantics** (new per-module flag in
+  `configreg.Module`, consumed by `configsync.ReconcileAll` and thus by `lyx init`):
+  reconcile **materializes the template when models.yaml is absent and never rewrites it
+  when present**. After first materialization the file is operator-owned outright.
+  Dry-run reporting for a present seed-only file shows it as in-sync/skipped (exact
+  presentation is mill-plan's call).
 - Rationale: Operator explicitly wants (a) discoverability via `lyx config` now and
   (b) deterministic, operator-owned effort defaults on every reconciled hub. A live-keys
-  template delivers both; drift risk vs built-ins is negligible because `engine`/`model`
-  fields are stable aliases, and "pinned by the operator" is the point.
+  template delivers both. Seed-only is forced by reconcile's actual behaviour:
+  `yamlengine.Reconcile` prunes every key absent from the template and
+  `configsync.ReconcileAll` writes the pruned tree (pinned by
+  `TestReconcileAll_DropsStaleMuxClaudeKey`) — under default semantics an operator-added
+  alias (`zephyr:`) would be silently deleted by `lyx config reconcile --apply`, breaking
+  the pinned new-model-without-recompile requirement. Seed-only also never resurrects a
+  deliberately-deleted nested default (removing `sonnet.defaults.effort` to get the
+  provider default sticks) — re-adding it would be exactly the silent config change the
+  operator rejects. Trade-off accepted: new template aliases in a future lyx do not
+  auto-propagate into an existing file; the operator adds them by hand or deletes the
+  file and re-reconciles.
 - Rejected: comments-only template (determinism only after a manual uncomment on each hub
   — forgetting silently falls back to Claude's floating default, the exact failure mode
-  the operator rejects); no registration (invisible to `lyx config`); baking operator
-  defaults into Go (recompile to change a default).
+  the operator rejects); no registration (invisible to `lyx config`, and no
+  materialization on fresh hubs — the deterministic-effort file would need hand-creation
+  everywhere); baking operator defaults into Go (recompile to change a default);
+  default reconcile semantics (prunes operator-added aliases, see above);
+  add-missing-never-remove semantics (keeps added aliases and propagates new template
+  keys, but `MissingKeys`-based adding resurrects deliberately-deleted nested defaults).
 
 ### Built-in fallback set and template values
 
@@ -167,7 +194,9 @@ Two operator requirements sharpened during discussion:
   model strings through unvalidated; (2) the escape form
   (`claude:claude-zephyr-1[effort=high]`) needs zero config edits; (3) the closed
   vocabularies never gate model names (previous decision); (4) the version-translation
-  rule is generic, not a closed alias list (next decision).
+  rule is generic, not a closed alias list (next decision); (5) `lyx config reconcile`
+  never prunes an operator-added alias — models.yaml is seed-only for reconcile (see
+  configreg decision).
 - Rationale: Operator requirement, stated explicitly. Known residual: a brand-new EFFORT
   tier would still require a new exe (claudeengine's `validEfforts` value set is
   hardcoded, pre-existing deliberate behavior) — accepted, out of scope.
@@ -277,11 +306,14 @@ Two operator requirements sharpened during discussion:
   modelspec loads directly. modelspec does NOT use envsource resolution (no env
   interpolation in models.yaml — keep it dumb data; if someone needs it later that is a
   deliberate extension).
-- **Reconcile behaviour to verify in plan**: `lyx config reconcile` materializes absent
-  files from templates and adds missing keys. With live-keys template, reconcile on an
-  existing hand-edited models.yaml must not clobber operator edits (reconcile's
-  documented behaviour is add-missing/idempotent — verify with a test that a hand-edited
-  value survives; `yamlengine.MissingKeys` semantics on map-valued keys matter here).
+- **Reconcile behaviour (verified)**: default reconcile is NOT add-missing-only —
+  `yamlengine.Reconcile` marshals the template tree with existing values and reports
+  every existing leaf-path absent from the template as `removed`;
+  `configsync.ReconcileAll` writes that pruned result when applying
+  (`TestReconcileAll_DropsStaleMuxClaudeKey` pins the drop). This is why `models` gets
+  the seed-only flag: `ReconcileAll` must skip the reconcile/prune pass entirely for a
+  present seed-only file and only materialize when absent. `lyx init` reconciles via the
+  same machinery, so the flag covers both entry points.
 - **perchengine** (`internal/perchengine/config.go`): `judge_model`/`judge_effort` raw
   keys — the shape of the future adopter; unchanged in this task.
 - **yaml dependency**: `gopkg.in/yaml.v3` already in go.mod. Strict decode via
@@ -343,8 +375,11 @@ TDD candidates, table-driven throughout (Q11 → option 1):
   (mirrors existing Effort-ignored test in `spec_test.go`).
 - **Leaf enforcement** — `leaf_enforcement_test.go` fails on any import outside
   stdlib/hubgeometry/yaml.v3.
-- **configreg** — pinned `TestNames` updated; template function returns the live-keys
-  template; reconcile idempotency: hand-edited value survives a re-reconcile.
+- **configreg/configsync** — pinned `TestNames` updated; template function returns the
+  live-keys template; seed-only semantics: reconcile `--apply` materializes models.yaml
+  when absent; on a present file, an operator-ADDED alias entry (`zephyr:`) AND an
+  operator-REMOVED nested default (`sonnet.defaults.effort` deleted) both survive a
+  re-reconcile untouched.
 - **No sandbox scenario** — library package, no cobra surface.
 
 ## Q&A log
@@ -380,3 +415,10 @@ TDD candidates, table-driven throughout (Q11 → option 1):
   top-level module.
 - **Q:** Confirmation of final package (incl. fable effort=high template default)?
   **A:** Confirmed (option 1).
+- **Q:** (Review r1 GAP) Default reconcile prunes keys absent from the template — an
+  operator-added alias would be deleted, breaking new-model-without-recompile. How do
+  operator entries survive? **A:** Seed-only reconcile semantics for `models`
+  (per-module flag in configreg, honored by configsync/init): materialize when absent,
+  never rewrite when present; tests assert added alias and removed default survive.
+  Rejected: add-missing-never-remove (resurrects deliberately-deleted defaults);
+  dropping registration (no materialization on fresh hubs).
