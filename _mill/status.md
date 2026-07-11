@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-spawn
+phase: approved-orchestrator-run
 slug: internal-builder
 branch: internal-builder
 plan: _mill/plan
@@ -33,6 +33,7 @@ approved-config-roles  '2026-07-11T13:35:57Z'
 approved-state-report-digest  '2026-07-11T13:49:38Z'
 approved-poll-pause  '2026-07-11T13:58:26Z'
 approved-spawn  '2026-07-11T16:06:29Z'
+approved-orchestrator-run  '2026-07-11T16:32:22Z'
 ```
 
 ## Batches
@@ -65,9 +66,10 @@ batches:
     start_sha: cd5245ebcf9b934d731c8097f6b92597c7ffac63
     commit_sha: 81b207de77d216465e10d86c6b700029397bc9c3
   - name: orchestrator-run
-    state: running
+    state: approved
     implementer_session: 0f724765-520e-4743-b30f-2ae63153d798
     start_sha: cf8de9675813c90fe855518a89157716b49c774e
+    commit_sha: 44b03302f824b5a1fba659b0e655fdae399cae94
   - name: buildercli
     state: pending
   - name: registration-docs
