@@ -29,6 +29,7 @@ batch tests against. External interface consumed by later batches: `ParsePlan`,
 - **Edits:**
   - `internal/hubgeometry/hubgeometry.go`
   - `internal/hubgeometry/hubgeometry_test.go`
+  - `internal/hubgeometry/hubgeometry_unit_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
