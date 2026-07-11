@@ -1,0 +1,2 @@
+- state.CurrentBatch not reset to 0 after poll's terminal classification: Location: internal/buildercli/poll.go:226-232 (fixed in round 1 fix pass, commit 240e2b3)
+- Sandbox scenario hand-writes a plan instead of copying the plan-valid fixture: Location: tools/sandbox/SANDBOX-CORE-SUITE.md:297-362 (pushed back in round 1 fix pass -- conflicts with the sandbox Black-box rule; no code change)

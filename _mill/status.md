@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-fixing
+phase: holistic-approved
 slug: internal-builder
 branch: internal-builder
 plan: _mill/plan
@@ -40,6 +40,8 @@ holistic-reviewing  '2026-07-11T17:09:49Z'
 holistic-fixing  '2026-07-11T17:16:42Z'
 holistic-reviewing  '2026-07-11T17:33:09Z'
 holistic-fixing  '2026-07-11T17:40:13Z'
+nits-fixed-holistic  '2026-07-11T17:44:19Z'
+holistic-approved  '2026-07-11T17:44:35Z'
 ```
 
 ## Batches
