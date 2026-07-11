@@ -60,6 +60,15 @@ Convenience alias: **`lyx run` → `lyx loom run`** (the everyday autonomous cal
    are brittle and out of scope. Example: `lyx weft` owns the overlay's git so raw `git -C` is
    never *needed* (it would be strictly more work), and `lyx weft status` flags drift — but it is a
    friction asymmetry, not a wall.
+7. **Go where it can be; LLM only for judgment.** Everything deterministic — verbs,
+   control-flow, parsing, distillation, geometry, git — is Go. An LLM is reserved for the
+   irreducible judgment a program cannot do: review verdicts, triage, batch implementation,
+   an orchestrator's recovery decisions. The seam is consistent everywhere: **fat Go verbs**
+   (`lyx <module> <verb>`) are the callable surface; an LLM session *drives* them and consumes
+   **Go-distilled digests, never raw prose**; and any **skill is a thin human wrapper** over
+   those verbs, never where logic lives. Consequences already on the ground: `perch` is a Go
+   loop with an LLM judge; triage is LLM judgment with Go doing the board writes; `builder` is
+   an LLM orchestrator over Go verbs with an embedded, co-versioned prompt.
 
 ## Hub Geometry Invariants
 
