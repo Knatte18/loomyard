@@ -166,19 +166,20 @@ batch tests against. External interface consumed by later batches: `ParsePlan`,
   - `internal/builderengine/testdata/plan-valid/00-overview.md`
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** `Validate(plan *Plan, caps ValidateCaps) []ValidationError` where
-  `ValidateCaps` carries `ContextCapTokens int` and `CardCap int` (config wiring lands
-  in batch 2; the engine type keeps validation config-free), and `ValidationError` has
-  `Check string` (a stable kebab-case name), `Batch string` (empty for plan-level), and
-  `Detail string`. Implement plan-format.md's checks: (1) `format-unrecognized` (only
+- **Requirements:** `Validate(plan *Plan, worktreeRoot string, caps ValidateCaps)
+  []ValidationError` where `worktreeRoot` is the base check 5 resolves Scope/Where
+  file paths against, `ValidateCaps` carries `ContextCapTokens int` and `CardCap int`
+  (config wiring lands in batch 2; the engine type keeps validation config-free), and
+  `ValidationError` has `Check string` (a stable kebab-case name), `Batch string`
+  (empty for plan-level), and `Detail string`. Implement plan-format.md's checks: (1) `format-unrecognized` (only
   `1` is known) and `plan-unapproved`; (2) `index-file-mismatch` — index ↔ files
   consistent both directions, numbering has no gaps, slugs match filenames;
   (3) `verify-missing` — every batch has `VerifyCommand` or `VerifyDeferred` with a
   `ChainEnd`; (4) `chain-end-dangling` — every `ChainEnd` names an existing batch
   number that is not itself `VerifyDeferred` (and is greater than the declaring batch's
   number); (5) `batch-oversized` — context estimate (sum of byte sizes of each batch's
-  `Scope` + `WhereFiles` entries that exist on disk, resolved against a caller-supplied
-  `worktreeRoot string` argument, divided by 4) over `ContextCapTokens`, or `CardCount`
+  `Scope` + `WhereFiles` entries that exist on disk, resolved against the
+  `worktreeRoot` parameter, divided by 4) over `ContextCapTokens`, or `CardCount`
   over `CardCap`, without `Oversized: true`; (6) `scope-malformed` — scope entry list
   well-formed (non-empty, relative, clean, no `..` escapes; existence is NOT required —
   "exist or are creatable"). Order findings deterministically (check number, then batch

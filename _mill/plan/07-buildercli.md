@@ -72,7 +72,9 @@ External interface: `buildercli.Command()` / `RunCLI`.
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** `validate` (the standalone pre-flight half of the
-  validate-both decision): `ParsePlan` + `Validate` with caps from cfg; zero findings
+  validate-both decision): `ParsePlan` + `Validate(plan, layout.Cwd, caps)` with caps
+  from cfg (`layout.Cwd` is the worktree base check 5 resolves file sizes against —
+  the same anchoring as every other builderCLI dir); zero findings
   → `output.Ok` with `{"valid": true, "batches": <n>}`; findings → `output.Err`
   carrying the findings array (check, batch, detail per entry) — exit non-zero, one
   JSON object, never plain text. `status` (instant snapshot, human- and loom-facing —
@@ -111,8 +113,9 @@ External interface: `buildercli.Command()` / `RunCLI`.
   report_path). `poll`: flag `--wait <duration>` (default from
   `cfg.PollWaitS` seconds); assembles the gather closure from state's current batch
   (error envelope when nothing is in flight), wiring `Classify`'s inputs —
-  report parse, `turnEnded`, `strandLive`, elapsed from `SpawnedAt`, diff/dirty via
-  the gitquery helpers —
+  report parse, `turnEnded`, `strandLive`, elapsed from `SpawnedAt`; diff/dirty via
+  the gitquery helpers LAZILY, only inside the report-present branch per card 18's
+  rule (a running tick never runs git) —
   and calls `PollUntilTerminal`. Wiring detail per batch 4's seams: `turnEnded` reads
   the `EventsPath` recorded in `BatchState` and delegates to the claude engine
   instance (a `shuttleengine.Engine`) the PreRunE already constructed; `strandLive`

@@ -25,16 +25,15 @@ loom.md's holistic-review correction, and the roadmap milestone flip.
 - **Edits:**
   - `cmd/lyx/main.go`
   - `cmd/lyx/helptree_test.go`
-  - `cmd/lyx/registration_test.go`
-  - `cmd/lyx/longlist_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Wire `buildercli` into `newRoot()` per the CLI/Cobra Invariant:
   import, `root.AddCommand(buildercli.Command())`, append `builder` to the root
-  `Long` module list. Update the pinned sets in the same commit: `helptree_test.go`
-  (builder's six subcommands), `registration_test.go` (exists ⇒ registered),
-  `longlist_test.go` (registered ⇒ in root.Long). Run the full `go test ./cmd/lyx/...`
+  `Long` module list. `helptree_test.go` is the one guard with a hardcoded pin —
+  extend it with builder's six subcommands; `registration_test.go` (AST-based) and
+  `longlist_test.go` (derived from `newRoot().Commands()`) are dynamic and need no
+  edit — they simply must pass. Run the full `go test ./cmd/lyx/...`
   and fix any drift the guards name — including `drift_test.go`'s Short check and
   `sandbox_coverage_test.go`, which will fail until card 31 lands (cards 30 and 31
   are one commit-pair within the batch; order the commits so the suite is green at

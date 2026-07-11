@@ -109,9 +109,10 @@ consumed later: `Run`, `RunResult`, `ParseOutcome`, `ArchiveStaleOutcome`,
   named, testable failure: (1) acquire `lock.TryAcquireWriteLock` on `run.lock` in
   builderDir — busy → exported sentinel `ErrRunBusy` (fail fast, perch's
   ErrBlockBusy pattern; the losing call must not touch state); release via defer;
-  (2) `ClearPause` (the never-instantly-re-pause rule); (3) `ParsePlan` + `Validate`
-  with caps from Config — any finding refuses the run (the automatic gate half of the
-  discussion's validate-both decision); (4) `Fingerprint` vs `LoadState`: state
+  (2) `ClearPause` (the never-instantly-re-pause rule); (3) `ParsePlan` +
+  `Validate(plan, worktreeRoot, caps)` with caps from Config and the deps' worktree
+  root — any finding refuses the run (the automatic gate half of the discussion's
+  validate-both decision); (4) `Fingerprint` vs `LoadState`: state
   exists and fingerprints differ → `ErrFingerprintMismatch` (exported sentinel; the
   error text names both fingerprints and instructs `run --fresh`) UNLESS
   `opts.Fresh`, which archives the stale state (rename `state.json` →

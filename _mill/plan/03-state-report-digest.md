@@ -110,7 +110,8 @@ terse field set), and chain membership + rollback. External interface consumed l
   omitempty: `asking|timeout|died`), `ElapsedS int` (`elapsed_s`, omitempty — running
   snapshots only). No prose fields, no file lists beyond the drift paths — the
   mill-go-bloat lesson is the contract. `Distill(report *Report, changed []string,
-  scope []string, outOfScope []OutOfScopeEntry, dirty bool) Digest`: scope comparison
+  scope []string, dirty bool) Digest` (`out_of_scope` is read from
+  `report.OutOfScope` — never passed separately): scope comparison
   uses prefix semantics (a scope entry that is a directory covers everything under it;
   match on `/`-separated path boundaries, not raw string prefixes); a changed file
   outside every scope entry and not named by any `out_of_scope` entry lands in

@@ -161,9 +161,7 @@ batches:
 
 - `CONSTRAINTS.md`
 - `cmd/lyx/helptree_test.go`
-- `cmd/lyx/longlist_test.go`
 - `cmd/lyx/main.go`
-- `cmd/lyx/registration_test.go`
 - `docs/modules/builder.md`
 - `docs/modules/loom.md`
 - `docs/modules/plan-format.md`

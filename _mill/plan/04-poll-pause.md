@@ -77,7 +77,13 @@ consumed later: `PauseFlagPath`/`PauseRequested`/`ClearPause`, `Classify`,
   NEVER read from persisted mux state (`muxengine.LoadState` carries no liveness;
   only a live `Status()` query does).
   Digest computation (diff, drift) runs ONLY on terminal classification — a `running`
-  snapshot never touches git (discussion: drift on a half-done batch is noise). Tests:
+  snapshot never touches git (discussion: drift on a half-done batch is noise).
+  Concretely: `ClassifyInputs.Changed`/`Dirty` are filled ONLY when `Report != nil`
+  — every gather implementation checks for the report FIRST and runs the gitquery
+  helpers exclusively inside that report-present branch; a tick without a report
+  passes zero values (they are unread on the non-report paths). A literal
+  every-tick diff (hundreds of `git diff` runs per poll at the 1s tick) is a defect.
+  Tests:
   a decision table over Classify covering all five outcomes; `turnEnded` against a
   fake `shuttleengine.Engine` whose `ParseEvents` returns a scripted Event sequence;
   `strandLive` against a fake `MuxOps`.
