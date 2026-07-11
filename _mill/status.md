@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-poll-pause
+phase: approved-spawn
 slug: internal-builder
 branch: internal-builder
 plan: _mill/plan
@@ -32,6 +32,7 @@ approved-plan-model  '2026-07-11T13:25:32Z'
 approved-config-roles  '2026-07-11T13:35:57Z'
 approved-state-report-digest  '2026-07-11T13:49:38Z'
 approved-poll-pause  '2026-07-11T13:58:26Z'
+approved-spawn  '2026-07-11T16:06:29Z'
 ```
 
 ## Batches
@@ -59,9 +60,10 @@ batches:
     start_sha: 288beb68f75cc29396414dd5c6ac82471a2ffb3b
     commit_sha: 55a3c73ec225d7cf9226b34e9846645ca882f192
   - name: spawn
-    state: running
+    state: approved
     implementer_session: 32c2b427-b437-4883-a6be-d70ea2839623
     start_sha: cd5245ebcf9b934d731c8097f6b92597c7ffac63
+    commit_sha: 81b207de77d216465e10d86c6b700029397bc9c3
   - name: orchestrator-run
     state: pending
   - name: buildercli
