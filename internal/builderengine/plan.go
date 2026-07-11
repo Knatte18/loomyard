@@ -328,17 +328,225 @@ func normalizeWhitespace(s string) string {
 	return strings.Join(strings.Fields(s), " ")
 }
 
-// parseBatchFile seeds a PlanBatch from its Batch Index entry. This is a
-// stub: per-batch file parsing (frontmatter, Scope, Cards, verify:) is not
-// implemented yet, so the batch file named by entry.File is never opened
-// here. ParsePlan already calls this exact signature; per-batch parsing
-// extends this function's body in place rather than restructuring
-// ParsePlan's call site.
+// batchFrontmatter mirrors a batch file's optional frontmatter shape 1:1.
+// Fields are pointers so an absent key is distinguishable from its
+// zero/empty value: oversized: defaults to false, chain-end: defaults to
+// zero, and verify: (when present) must equal the literal sentinel
+// "deferred" — any other value is a fail-loud error, never silently
+// ignored.
+type batchFrontmatter struct {
+	Oversized *bool   `yaml:"oversized"`
+	Verify    *string `yaml:"verify"`
+	ChainEnd  *int    `yaml:"chain-end"`
+}
+
+// verifyDeferredSentinel is the only value plan-format.md permits for a
+// batch file's frontmatter verify: key.
+const verifyDeferredSentinel = "deferred"
+
+// cardsHeading and scopeHeading are the exact "## " headings plan-format.md
+// pins for a batch file's Scope and Cards sections.
+const (
+	scopeHeading = "## Scope"
+	cardsHeading = "## Cards"
+)
+
+// cardHeadingRe matches a "### Card N" sub-heading inside a batch file's
+// "## Cards" section; each match increments PlanBatch.CardCount.
+var cardHeadingRe = regexp.MustCompile(`^###\s+Card\s+\d+`)
+
+// whereLinePrefix is the exact bold-label prefix a card's file-list line
+// carries, per plan-format.md's worked example ("**Where:** path, path").
+const whereLinePrefix = "**Where:**"
+
+// parseBatchFile reads planDir's entry.File and parses it into a complete
+// PlanBatch, seeded with the Batch Index fields ParsePlan already knows
+// (Number, Slug, Intent, File). It decodes the file's optional frontmatter,
+// then its "## Scope" bullet list, its "## Cards" section's card count and
+// accumulated "**Where:**" paths, and finally its "## verify:" section's
+// command — enforcing plan-format.md's "one or the other, never both" rule
+// between frontmatter verify: deferred and a "## verify:" body section.
 func parseBatchFile(planDir string, entry indexEntry) (PlanBatch, error) {
-	return PlanBatch{
+	batch := PlanBatch{
 		Number: entry.Number,
 		Slug:   entry.Slug,
 		Intent: entry.Intent,
 		File:   entry.File,
-	}, nil
+	}
+
+	path := filepath.Join(planDir, entry.File)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return PlanBatch{}, fmt.Errorf("batch file not found: %s", path)
+		}
+		return PlanBatch{}, fmt.Errorf("read batch file %s: %w", path, err)
+	}
+	content := string(data)
+
+	fmBlock, body, found, err := splitFrontmatter(content)
+	if err != nil {
+		return PlanBatch{}, fmt.Errorf("%s: %w", path, err)
+	}
+	if !found {
+		// A batch file's frontmatter is entirely optional; splitFrontmatter
+		// returns the whole document as body when there is none.
+		body = content
+	} else {
+		if err := decodeBatchFrontmatter(fmBlock, path, &batch); err != nil {
+			return PlanBatch{}, err
+		}
+	}
+
+	scope, err := parseScopeSection(body)
+	if err != nil {
+		return PlanBatch{}, fmt.Errorf("%s: %w", path, err)
+	}
+	batch.Scope = scope
+
+	whereFiles, cardCount := parseCardsSection(body)
+	batch.WhereFiles = whereFiles
+	batch.CardCount = cardCount
+
+	verifyCommand, hasVerifySection := parseVerifySection(body)
+	if batch.VerifyDeferred && hasVerifySection {
+		return PlanBatch{}, fmt.Errorf(`%s: batch has both frontmatter "verify: deferred" and a "## verify:" section; plan-format.md allows only one`, path)
+	}
+	batch.VerifyCommand = verifyCommand
+
+	return batch, nil
+}
+
+// decodeBatchFrontmatter strict-decodes a batch file's frontmatter block
+// into batch's frontmatter-sourced fields (Oversized, VerifyDeferred,
+// ChainEnd), rejecting any verify: value other than the "deferred"
+// sentinel.
+func decodeBatchFrontmatter(fmBlock, path string, batch *PlanBatch) error {
+	var fm batchFrontmatter
+	dec := yaml.NewDecoder(strings.NewReader(fmBlock))
+	dec.KnownFields(true)
+	if err := dec.Decode(&fm); err != nil {
+		return fmt.Errorf("%s: frontmatter: %w", path, err)
+	}
+
+	if fm.Oversized != nil {
+		batch.Oversized = *fm.Oversized
+	}
+	if fm.Verify != nil {
+		if *fm.Verify != verifyDeferredSentinel {
+			return fmt.Errorf("%s: frontmatter verify: %q is not a recognized sentinel (only %q)", path, *fm.Verify, verifyDeferredSentinel)
+		}
+		batch.VerifyDeferred = true
+	}
+	if fm.ChainEnd != nil {
+		batch.ChainEnd = *fm.ChainEnd
+	}
+	return nil
+}
+
+// extractSection returns the lines strictly between an exact heading match
+// (trimmed equality) and the next "## " heading or EOF, or nil when heading
+// is not present at all. Because the match requires a two-hash prefix, a
+// "### Card N" sub-heading inside "## Cards" never terminates that section.
+func extractSection(body, heading string) []string {
+	lines := strings.Split(body, "\n")
+
+	start := -1
+	for i, l := range lines {
+		if strings.TrimSpace(l) == heading {
+			start = i + 1
+			break
+		}
+	}
+	if start == -1 {
+		return nil
+	}
+
+	end := len(lines)
+	for i := start; i < len(lines); i++ {
+		if strings.HasPrefix(strings.TrimSpace(lines[i]), "## ") {
+			end = i
+			break
+		}
+	}
+	return lines[start:end]
+}
+
+// parseScopeSection parses a batch file's "## Scope" bullet list into a
+// plain path list, per plan-format.md's "prefix semantics, no globs" rule:
+// any entry containing "*" is a fail-loud error rather than a silently
+// accepted glob the rest of builder cannot mechanically check. A batch
+// file with no "## Scope" section yields a nil slice, not an error — scope
+// well-formedness (empty, absolute, or ".."-escaping entries) is
+// Validate's scope-malformed check, not a parse-time rejection.
+func parseScopeSection(body string) ([]string, error) {
+	section := extractSection(body, scopeHeading)
+	if section == nil {
+		return nil, nil
+	}
+
+	var scope []string
+	for _, raw := range section {
+		line := strings.TrimSpace(raw)
+		if line == "" {
+			continue
+		}
+		line = strings.TrimSpace(strings.TrimPrefix(line, "- "))
+		if line == "" {
+			continue
+		}
+		if strings.Contains(line, "*") {
+			return nil, fmt.Errorf("scope entry %q contains a glob character; plan-format scope is a plain path list", line)
+		}
+		scope = append(scope, line)
+	}
+	return scope, nil
+}
+
+// parseCardsSection scans a batch file's "## Cards" section for "### Card
+// N" headings (counted into cardCount) and "**Where:**" lines (whose
+// comma-separated paths accumulate, in file order, into whereFiles). A
+// batch file with no "## Cards" section yields a nil slice and zero count,
+// not an error.
+func parseCardsSection(body string) (whereFiles []string, cardCount int) {
+	section := extractSection(body, cardsHeading)
+	if section == nil {
+		return nil, 0
+	}
+
+	for _, raw := range section {
+		line := strings.TrimSpace(raw)
+		switch {
+		case cardHeadingRe.MatchString(line):
+			cardCount++
+		case strings.HasPrefix(line, whereLinePrefix):
+			rest := strings.TrimSpace(strings.TrimPrefix(line, whereLinePrefix))
+			for _, p := range strings.Split(rest, ",") {
+				p = strings.TrimSpace(p)
+				if p != "" {
+					whereFiles = append(whereFiles, p)
+				}
+			}
+		}
+	}
+	return whereFiles, cardCount
+}
+
+// parseVerifySection parses a batch file's "## verify:" section, returning
+// its first non-empty line as the command. hasSection reports whether the
+// heading itself was present at all, distinct from an empty command — that
+// distinction is what lets parseBatchFile enforce plan-format.md's "one or
+// the other, never both" rule against VerifyDeferred.
+func parseVerifySection(body string) (command string, hasSection bool) {
+	section := extractSection(body, "## verify:")
+	if section == nil {
+		return "", false
+	}
+	for _, raw := range section {
+		line := strings.TrimSpace(raw)
+		if line != "" {
+			return line, true
+		}
+	}
+	return "", true
 }
