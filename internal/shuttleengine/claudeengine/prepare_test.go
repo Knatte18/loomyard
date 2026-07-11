@@ -1,8 +1,10 @@
-// prepare_test.go covers Prepare's effort handling: an unrealizable effort
-// is rejected before any artifact is written (mirroring
+// prepare_test.go covers Prepare's effort and model/version handling: an
+// unrealizable effort is rejected before any artifact is written (mirroring
 // TestPrepare_PromptLaunchLimit's before-artifacts guarantee), a valid
-// effort ends up in the returned Launch.Cmd, and an empty effort emits no
-// --effort flag at all.
+// effort ends up in the returned Launch.Cmd, an empty effort emits no
+// --effort flag at all, a bare-word model plus version composes into the
+// pinned model id in Launch.Cmd, and a dashed model plus version is rejected
+// before any artifact is written.
 
 package claudeengine
 
@@ -75,5 +77,50 @@ func TestPrepare_EmptyEffortEmitsNoFlag(t *testing.T) {
 	}
 	if strings.Contains(launch.Cmd, "--effort") {
 		t.Errorf("Launch.Cmd = %q; want no --effort flag for an empty Spec.Effort", launch.Cmd)
+	}
+}
+
+// TestPrepare_ModelAndVersionComposePinnedID proves Prepare threads
+// spec.Model and spec.Version through resolveModelID, so a Spec naming a
+// bare-word model plus a dotted version produces a launch Cmd containing
+// the pinned model id ("sonnet" + "4.5" -> "claude-sonnet-4-5"), not the
+// bare-word model.
+func TestPrepare_ModelAndVersionComposePinnedID(t *testing.T) {
+	runDir := t.TempDir()
+	spec := shuttleengine.Spec{Prompt: "do the thing", Model: "sonnet", Version: "4.5"}
+	cfg := shuttleengine.Config{}
+
+	c := New()
+	launch, err := c.Prepare(runDir, spec, cfg)
+	if err != nil {
+		t.Fatalf("Prepare() with model+version error: %v; want nil", err)
+	}
+	if !strings.Contains(launch.Cmd, "--model 'claude-sonnet-4-5'") {
+		t.Errorf("Launch.Cmd = %q; want it to contain --model 'claude-sonnet-4-5'", launch.Cmd)
+	}
+}
+
+// TestPrepare_DashedModelWithVersionRejectedBeforeArtifacts proves a full
+// model id (already containing a dash) combined with a non-empty Version
+// fails Prepare — the id already pins its own version, so a second pin is a
+// contradiction — and that the rejection happens before any run artifact is
+// written, mirroring TestPrepare_BadEffortRejectedBeforeArtifacts's
+// before-artifacts guarantee.
+func TestPrepare_DashedModelWithVersionRejectedBeforeArtifacts(t *testing.T) {
+	runDir := t.TempDir()
+	spec := shuttleengine.Spec{Prompt: "do the thing", Model: "claude-sonnet-4-5", Version: "4.5"}
+	cfg := shuttleengine.Config{}
+
+	c := New()
+	_, err := c.Prepare(runDir, spec, cfg)
+	if err == nil {
+		t.Fatal("Prepare() with a dashed model + version = nil error; want the resolveModelID rejection")
+	}
+
+	if _, statErr := os.Stat(filepath.Join(runDir, "prompt.md")); !os.IsNotExist(statErr) {
+		t.Errorf("prompt.md exists after a rejected Prepare (stat err=%v); want no artifacts written", statErr)
+	}
+	if _, statErr := os.Stat(filepath.Join(runDir, "settings.json")); !os.IsNotExist(statErr) {
+		t.Errorf("settings.json exists after a rejected Prepare (stat err=%v); want no artifacts written", statErr)
 	}
 }

@@ -13,6 +13,7 @@ package claudeengine
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/shell"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -60,6 +61,36 @@ func validateEffort(effort string) error {
 		return nil
 	}
 	return fmt.Errorf("claudeengine: invalid effort %q; valid values are low, medium, high, xhigh, max (case-sensitive, exact-lowercase)", effort)
+}
+
+// resolveModelID translates a bare-word model plus an optional version pin
+// into the model id claudeengine actually launches, implementing the generic
+// bare-word rule (discussion decision "claudeengine translation rule"):
+// (1) an empty version defers entirely to the caller's model value, unchanged
+// (including an empty model — claude's own default); (2) a non-empty version
+// with no model has nothing to compose against, so it is a hard error; (3) a
+// model already containing a dash is a full model id (e.g. the escape form),
+// which already pins its own version — combining it with version is a
+// contradiction and a hard error; (4) otherwise model and version compose
+// into "claude-<model>-<version, dots as dashes>" (e.g. "sonnet" + "4.5" →
+// "claude-sonnet-4-5", "fable" + "5" → "claude-fable-5"). Deliberately NO
+// closed alias list: a brand-new provider alias composes correctly on an old
+// binary with no recompile, since the rule is purely mechanical string
+// composition. A nonsense composition is not caught here — it fails loudly
+// downstream at the claude CLI launch itself (fail-loud is preserved; quoting
+// in buildLaunchCmd already prevents the composed id from ever being an
+// injection vector).
+func resolveModelID(model, version string) (string, error) {
+	if version == "" {
+		return model, nil
+	}
+	if model == "" {
+		return "", fmt.Errorf("claudeengine: version %q given with no model to compose against", version)
+	}
+	if strings.Contains(model, "-") {
+		return "", fmt.Errorf("claudeengine: model %q already contains a dash and pins its own version; combining it with version %q is a contradiction", model, version)
+	}
+	return "claude-" + model + "-" + strings.ReplaceAll(version, ".", "-"), nil
 }
 
 // claudeBinary resolves which claude executable a launch/resume command

@@ -60,7 +60,9 @@ func newSessionID() (string, error) {
 // backslash path), and the claude binary/flags cfg and spec.Interactive
 // select. spec.Effort is hard-error-validated (validateEffort) before any
 // artifact is written; a valid value is threaded through to buildLaunchCmd
-// unchanged.
+// unchanged. spec.Model and spec.Version are likewise resolved
+// (resolveModelID) before any artifact is written; the resolved model id —
+// not spec.Model — is what buildLaunchCmd receives.
 func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengine.Config) (shuttleengine.Launch, error) {
 	// Reject an over-ceiling prompt before any artifact is written: past
 	// maxLaunchPromptBytes the pane launch is guaranteed to fail against the
@@ -81,6 +83,15 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 	// failing before prompt.md/settings.json exist keeps a rejected Prepare
 	// call from leaving a half-written run directory behind.
 	if err := validateEffort(spec.Effort); err != nil {
+		return shuttleengine.Launch{}, err
+	}
+
+	// Resolve the bare-word model + version pin into the final model id
+	// before any artifact is written, for the same reason as the effort
+	// guard above: a (model, version) pair the engine cannot realize must
+	// fail here, not leave a half-written run directory behind.
+	resolvedModel, err := resolveModelID(spec.Model, spec.Version)
+	if err != nil {
 		return shuttleengine.Launch{}, err
 	}
 
@@ -115,7 +126,7 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 	// so buildLaunchCmd/buildResumeCmd never hardcode either shell's syntax.
 	sh := shell.ForGOOS()
 	return shuttleengine.Launch{
-		Cmd:       buildLaunchCmd(sh, bin, promptPath, settingsPath, sessionID, spec.Model, spec.Effort, spec.Interactive),
+		Cmd:       buildLaunchCmd(sh, bin, promptPath, settingsPath, sessionID, resolvedModel, spec.Effort, spec.Interactive),
 		ResumeCmd: buildResumeCmd(sh, bin, settingsPath, sessionID),
 		SessionID: sessionID,
 	}, nil
