@@ -102,7 +102,8 @@ land together. External interface consumed later: `Config`, `LoadConfig`,
 
 ### Card 10: configreg registration
 
-- **Context:** none
+- **Context:**
+  - `internal/builderengine/template.go`
 - **Edits:**
   - `internal/configreg/configreg.go`
   - `internal/configreg/configreg_test.go`

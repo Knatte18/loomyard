@@ -36,8 +36,8 @@ terse field set), and chain membership + rollback. External interface consumed l
   number, `ChainStartSHAs map[int]string` keyed by chain-end batch number (the anchor =
   host HEAD immediately before the lowest member's first spawn). `BatchState`:
   `Slug string`, `StartSHA string`, `Role string`, `StrandGUID string`,
-  `ShuttleRunDir string`, `SpawnedAt string` (RFC3339 UTC), `Terminal bool`,
-  `Status string`. `LoadState(builderDir string) (*State, error)` — absent file returns
+  `ShuttleRunDir string`, `EventsPath string`, `SpawnedAt string` (RFC3339 UTC),
+  `Terminal bool`, `Status string`. `LoadState(builderDir string) (*State, error)` — absent file returns
   `(nil, nil)`, unreadable/malformed JSON is a wrapped error (fail loud, never
   guessed); `SaveState(builderDir string, st *State) error` — MkdirAll + atomic write
   (temp file + rename) of `state.json` inside builderDir. Callers pass

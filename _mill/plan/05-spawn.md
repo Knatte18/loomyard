@@ -60,6 +60,7 @@ consumed later: `SpawnBatch`, `SpawnBatchOptions`.
 - **Context:**
   - `internal/shuttleengine/spec.go`
   - `internal/shuttleengine/run.go`
+  - `internal/shuttleengine/rundir.go`
   - `internal/modelspec/modelspec.go`
   - `_mill/discussion.md`
   - `docs/modules/plan-format.md`
@@ -73,7 +74,11 @@ consumed later: `SpawnBatch`, `SpawnBatchOptions`.
   error)`. `SpawnDeps` carries the seams so tests fake them: `Starter` (interface with
   `Start(shuttleengine.Spec) (*shuttleengine.Run, error)` satisfied by
   `*shuttleengine.Runner`), the parsed `*Plan`, `*State`, resolved roles
-  `map[Role]modelspec.Resolved`, `Config`, `worktreeRoot`, `builderDir`, `reportsDir`.
+  `map[Role]modelspec.Resolved`, `Config`, `worktreeRoot`, `builderDir`, `reportsDir`,
+  plus `ShuttleCfg shuttleengine.Config` and `Layout *hubgeometry.Layout` — the pair
+  `shuttleengine.FindRun(cfg, layout, guid) (RunState, string, error)` needs to
+  resolve the just-started run's identity cross-process (`*shuttleengine.Run` exposes
+  only `StrandGUID()`; there is no run-dir accessor).
   `SpawnBatchOptions`: `BatchNumber int`, `RoleOverride Role` (empty or
   `RoleRecovery` only — any other override is an error), `RestartChain bool`.
   Sequence, per the discussion: (1) pause gate — `PauseRequested(builderDir)` →
@@ -92,8 +97,10 @@ consumed later: `SpawnBatch`, `SpawnBatchOptions`.
   cfg.BatchTimeoutMin` minutes, `KeepPane = true` (poll owns cleanup semantics;
   panes/run dirs are kept for diagnosis on dead outcomes); (7) `deps.Starter.Start` —
   NOT `Run`: spawn-batch returns immediately (the tool-call cap is poll's problem);
-  (8) record `BatchState` (slug, start-SHA, role, `StrandGUID()` from the handle,
-  run dir, SpawnedAt) + `CurrentBatch`, `SaveState`. A pre-existing report file for
+  (8) resolve the run via `shuttleengine.FindRun(deps.ShuttleCfg, deps.Layout,
+  run.StrandGUID())` — the returned `(RunState, runDir)` supply the run dir and
+  `RunState.EventsPath`; record `BatchState` (slug, start-SHA, role, the strand guid,
+  run dir, events path, SpawnedAt) + `CurrentBatch`, `SaveState`. A pre-existing report file for
   the batch is an error before any spawn (shuttle's OutputFiles rule would reject it
   anyway — surface it as builder's own named error first). Tests with a fake Starter:
   role selection matrix (plain, oversized, recovery override, invalid override),

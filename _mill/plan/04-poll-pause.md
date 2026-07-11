@@ -47,7 +47,8 @@ consumed later: `PauseFlagPath`/`PauseRequested`/`ClearPause`, `Classify`,
   - `_mill/discussion.md`
   - `internal/shuttleengine/rundir.go`
   - `internal/shuttleengine/wait.go`
-  - `internal/muxengine/state.go`
+  - `internal/shuttleengine/engine.go`
+  - `internal/shuttleengine/mux.go`
 - **Creates:**
   - `internal/builderengine/poll.go`
   - `internal/builderengine/poll_test.go`
@@ -64,17 +65,22 @@ consumed later: `PauseFlagPath`/`PauseRequested`/`ClearPause`, `Classify`,
   → `dead`/`dead_reason: asking`; (3) no report, elapsed > timeout → `dead`/
   `dead_reason: timeout`; (4) no report, turn in progress, strand pane gone → `dead`/
   `dead_reason: died`; else non-terminal `running` snapshot carrying only batch,
-  status, `elapsed_s`. Alongside it, the impure gatherers: `turnEnded(eventsPath
-  string, sessionID string) (bool, error)` reads the shuttle run dir's `events.jsonl`
-  and reports whether a Stop-hook event line is present (mirror how
-  `shuttleengine/wait.go` recognizes its Stop event line — read that file and match
-  its parsing, do not invent a new heuristic; a missing events file is `false, nil`);
-  `strandLive(dotLyxDir, guid string) (bool, error)` via `muxengine.LoadState` +
-  scanning `st.Strands` for the guid's `Live` field (absent state file → false).
+  status, `elapsed_s`. Alongside it, the impure gatherers, both riding
+  provider-invariant seams (Shuttle Provider-Seam Invariant — builderengine never
+  parses event grammar or pane state itself): `turnEnded(eventsPath string, engine
+  shuttleengine.Engine) (bool, error)` reads the events file's bytes and delegates to
+  `engine.ParseEvents(data)`, reporting whether any returned `Event` has
+  `Kind == shuttleengine.EventStop` (a missing events file is `false, nil`; a
+  ParseEvents error propagates); `strandLive(mux shuttleengine.MuxOps, guid string)
+  (bool, error)` calls `mux.Status()` and scans the returned `Strands` for the guid's
+  `Live` field (guid absent → `false, nil` — mux no longer tracks it). Liveness is
+  NEVER read from persisted mux state (`muxengine.LoadState` carries no liveness;
+  only a live `Status()` query does).
   Digest computation (diff, drift) runs ONLY on terminal classification — a `running`
   snapshot never touches git (discussion: drift on a half-done batch is noise). Tests:
-  a decision table over Classify covering all five outcomes; `turnEnded` against
-  fixture events.jsonl content copied from the real Stop-event shape.
+  a decision table over Classify covering all five outcomes; `turnEnded` against a
+  fake `shuttleengine.Engine` whose `ParseEvents` returns a scripted Event sequence;
+  `strandLive` against a fake `MuxOps`.
 - **Commit:** `feat(builder): cross-process poll classification`
 
 ### Card 19: long-poll wait loop

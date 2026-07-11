@@ -111,9 +111,13 @@ External interface: `buildercli.Command()` / `RunCLI`.
   report_path). `poll`: flag `--wait <duration>` (default from
   `cfg.PollWaitS` seconds); assembles the gather closure from state's current batch
   (error envelope when nothing is in flight), wiring `Classify`'s inputs —
-  report parse, `turnEnded` from the recorded shuttle run dir, `strandLive` from
-  `layout` state, elapsed from `SpawnedAt`, diff/dirty via the gitquery helpers —
-  and calls `PollUntilTerminal`. Terminal digest → mark the batch terminal in state,
+  report parse, `turnEnded`, `strandLive`, elapsed from `SpawnedAt`, diff/dirty via
+  the gitquery helpers —
+  and calls `PollUntilTerminal`. Wiring detail per batch 4's seams: `turnEnded` reads
+  the `EventsPath` recorded in `BatchState` and delegates to the claude engine
+  instance (a `shuttleengine.Engine`) the PreRunE already constructed; `strandLive`
+  uses the mux engine (`shuttleengine.MuxOps.Status`) — liveness is never read from
+  persisted mux state. Terminal digest → mark the batch terminal in state,
   `SaveState`, weft-commit report + state (`weftCommit(layout, "poll <batch>
   <status>")`), envelope the digest via `output.Ok`; deadline `running` snapshot →
   `output.Ok` with the snapshot (no weft commit, no git diff — terminal-only
