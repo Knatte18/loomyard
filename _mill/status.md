@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-config-roles
+phase: approved-state-report-digest
 slug: internal-builder
 branch: internal-builder
 plan: _mill/plan
@@ -30,6 +30,7 @@ planned  '2026-07-11T12:53:55Z'
 implementing  '2026-07-11T12:54:35Z'
 approved-plan-model  '2026-07-11T13:25:32Z'
 approved-config-roles  '2026-07-11T13:35:57Z'
+approved-state-report-digest  '2026-07-11T13:49:38Z'
 ```
 
 ## Batches
@@ -47,9 +48,10 @@ batches:
     start_sha: fc9a8dc302acc50a702cc0d0aec22f5201375b66
     commit_sha: 29190996a2c54e2bb68b4d69c406f474257f7a47
   - name: state-report-digest
-    state: running
+    state: approved
     implementer_session: 0f176228-6438-475d-9d76-9898bcc3b9eb
     start_sha: 938e26f31828ebc18e434ca5e1b93ce951815334
+    commit_sha: dabd1f895d442e5635e99e6470791787965295e4
   - name: poll-pause
     state: pending
   - name: spawn
