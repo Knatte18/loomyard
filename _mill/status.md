@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: internal-builder
 branch: internal-builder
 plan: _mill/plan
@@ -26,4 +26,27 @@ plan-review-r3  '2026-07-11T12:46:21Z'
 plan-fix-r3  '2026-07-11T12:46:21Z'
 plan-fix-r4  '2026-07-11T12:53:38Z'
 planned  '2026-07-11T12:53:55Z'
+implementing  '2026-07-11T12:54:35Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: plan-model
+    state: pending
+  - name: config-roles
+    state: pending
+  - name: state-report-digest
+    state: pending
+  - name: poll-pause
+    state: pending
+  - name: spawn
+    state: pending
+  - name: orchestrator-run
+    state: pending
+  - name: buildercli
+    state: pending
+  - name: registration-docs
+    state: pending
 ```
