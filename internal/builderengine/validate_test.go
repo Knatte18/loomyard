@@ -1,8 +1,10 @@
-// validate_test.go covers Validate's six checks: the plan-valid fixture
-// must yield zero findings, plan-unapproved and plan-broken-chain must trip
-// their designed checks, and synthetic in-memory plans exercise checks 2,
-// 3, 5, and 6 directly (each needs disk state or cap values the
-// hand-written fixtures do not exercise).
+// validate_test.go covers Validate's six checks against plan-format v2: the
+// plan-valid fixture must yield zero findings, plan-unapproved and
+// plan-broken-chain must trip their designed checks, and synthetic
+// in-memory plans exercise checks 2, 3, 5, and 6 directly (each needs disk
+// state or cap values the hand-written fixtures do not exercise). Check 5
+// (batch-oversized) now sums Scope plus every card's typed file-op paths
+// and compares len(PlanBatch.Cards) against the card cap.
 
 package builderengine_test
 
@@ -94,10 +96,17 @@ func TestValidate_PlanBrokenChain_TripsCheck4Twice(t *testing.T) {
 func syntheticPlan(dir string, batches ...builderengine.PlanBatch) *builderengine.Plan {
 	return &builderengine.Plan{
 		Dir:      dir,
-		Format:   1,
+		Format:   2,
 		Approved: true,
 		Batches:  batches,
 	}
+}
+
+// nCards returns a Cards slice of length n (values are irrelevant — the
+// synthetic-plan tests below only care about len(b.Cards) for the
+// batch-oversized card-count cap).
+func nCards(n int) []builderengine.PlanCard {
+	return make([]builderengine.PlanCard, n)
 }
 
 func TestValidate_IndexFileMismatch(t *testing.T) {
@@ -221,7 +230,7 @@ func TestValidate_BatchOversized(t *testing.T) {
 		plan := syntheticPlan(dir, builderengine.PlanBatch{
 			Number: 1, Slug: "first", File: "01-first.md",
 			VerifyCommand: "go build ./...",
-			CardCount:     999,
+			Cards:         nCards(999),
 		})
 
 		findings := builderengine.Validate(plan, dir, builderengine.ValidateCaps{ContextCapTokens: 100_000, CardCap: 10})
@@ -255,7 +264,7 @@ func TestValidate_BatchOversized(t *testing.T) {
 		plan := syntheticPlan(dir, builderengine.PlanBatch{
 			Number: 1, Slug: "first", File: "01-first.md",
 			VerifyCommand: "go build ./...",
-			CardCount:     999,
+			Cards:         nCards(999),
 			Oversized:     true,
 		})
 
@@ -278,6 +287,47 @@ func TestValidate_BatchOversized(t *testing.T) {
 		findings := builderengine.Validate(plan, dir, builderengine.ValidateCaps{ContextCapTokens: 0, CardCap: 10})
 		if hasFinding(findings, "batch-oversized", "01-first") {
 			t.Errorf("Validate() = %+v; want no batch-oversized finding for a non-existent scope entry", findings)
+		}
+	})
+
+	t.Run("estimate sums every card's typed file-op paths", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		writeFiles(t, dir, map[string]string{"card-context.go": strings.Repeat("x", 4000)})
+		plan := syntheticPlan(dir, builderengine.PlanBatch{
+			Number: 1, Slug: "first", File: "01-first.md",
+			VerifyCommand: "go build ./...",
+			Cards: []builderengine.PlanCard{
+				{ContextFiles: []string{"card-context.go"}},
+			},
+		})
+
+		// 4000 bytes / 4 = 1000 estimated tokens, over a cap of 10.
+		findings := builderengine.Validate(plan, dir, builderengine.ValidateCaps{ContextCapTokens: 10, CardCap: 10})
+		if !hasFinding(findings, "batch-oversized", "01-first") {
+			t.Errorf("Validate() = %+v; want a batch-oversized finding driven by a card's Context: path", findings)
+		}
+	})
+
+	t.Run("nonexistent Creates target and Moves destination contribute zero bytes", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		plan := syntheticPlan(dir, builderengine.PlanBatch{
+			Number: 1, Slug: "first", File: "01-first.md",
+			VerifyCommand: "go build ./...",
+			Cards: []builderengine.PlanCard{
+				{
+					CreatesFiles: []string{"does/not/exist-yet.go"},
+					Moves:        []builderengine.MovePair{{Old: "does/not/exist.go", New: "does/not/exist-either.go"}},
+				},
+			},
+		})
+
+		findings := builderengine.Validate(plan, dir, builderengine.ValidateCaps{ContextCapTokens: 0, CardCap: 10})
+		if hasFinding(findings, "batch-oversized", "01-first") {
+			t.Errorf("Validate() = %+v; want no batch-oversized finding for nonexistent Creates:/Moves: paths", findings)
 		}
 	})
 }
@@ -321,7 +371,7 @@ func TestValidate_FormatUnrecognized(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	plan := &builderengine.Plan{Dir: dir, Format: 2, Approved: true}
+	plan := &builderengine.Plan{Dir: dir, Format: 1, Approved: true}
 
 	findings := builderengine.Validate(plan, dir, generousCaps)
 	if !hasFinding(findings, "format-unrecognized", "") {
