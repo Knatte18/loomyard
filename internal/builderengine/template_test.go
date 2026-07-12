@@ -351,6 +351,10 @@ func TestOrchestratorTemplate_StatesBatchOrderAndRecoveryLadder(t *testing.T) {
 	requireContains(t, text, "respawn the SAME batch fresh, once")
 	requireContains(t, text, "--role recovery")
 	requireContains(t, text, "--restart-chain")
+	// The in-flight refusal is Go-emitted (ErrBatchInFlight) and the template
+	// must keep telling a resumed orchestrator to poll through it, not treat
+	// it as a hard error — the co-versioning rule's template half.
+	requireContains(t, text, "already in flight")
 }
 
 // TestImplementerTemplate_FillsWithAllMarkers asserts stencil.Fill succeeds

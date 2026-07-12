@@ -31,12 +31,15 @@ import (
 
 // spawnFakeMux is a hermetic shuttleengine.MuxOps double: AddStrand mints a
 // distinct GUID per call so multiple spawns in one test never collide;
-// every other method returns an inert zero value, since SpawnBatch's own
-// path through Runner.Start never exercises them (Status is consulted only
-// by poll's classification, out of this batch's scope).
+// Status and RemoveStrand are scriptable/recorded so the in-flight guard and
+// dead-respawn cleanup tests can drive and observe them; the send/capture
+// methods stay inert, since SpawnBatch's path never exercises them.
 type spawnFakeMux struct {
-	mu      sync.Mutex
-	counter int
+	mu             sync.Mutex
+	counter        int
+	status         muxengine.StatusResult
+	statusErr      error
+	removedStrands []string
 }
 
 func (m *spawnFakeMux) AddStrand(spec muxengine.AddSpec) (muxengine.Strand, error) {
@@ -47,11 +50,19 @@ func (m *spawnFakeMux) AddStrand(spec muxengine.AddSpec) (muxengine.Strand, erro
 }
 
 func (m *spawnFakeMux) RemoveStrand(guid string, recursive bool) (muxengine.Removed, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.removedStrands = append(m.removedStrands, guid)
 	return muxengine.Removed{}, nil
 }
 
 func (m *spawnFakeMux) Status() (muxengine.StatusResult, error) {
-	return muxengine.StatusResult{}, nil
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.statusErr != nil {
+		return muxengine.StatusResult{}, m.statusErr
+	}
+	return m.status, nil
 }
 
 func (m *spawnFakeMux) SendText(guid, text string, submit bool) error { return nil }
@@ -108,6 +119,7 @@ var _ shuttleengine.Engine = (*spawnFakeEngine)(nil)
 type spawnFixture struct {
 	Deps       builderengine.SpawnDeps
 	Engine     *spawnFakeEngine
+	Mux        *spawnFakeMux
 	Worktree   string
 	ReportsDir string
 }
@@ -181,9 +193,10 @@ func newSpawnFixture(t *testing.T) *spawnFixture {
 		ReportsDir:   reportsDir,
 		ShuttleCfg:   shuttleCfg,
 		Layout:       layout,
+		Mux:          mux,
 	}
 
-	return &spawnFixture{Deps: deps, Engine: engine, Worktree: worktree, ReportsDir: reportsDir}
+	return &spawnFixture{Deps: deps, Engine: engine, Mux: mux, Worktree: worktree, ReportsDir: reportsDir}
 }
 
 // TestSpawnBatch_RoleSelectionMatrix proves the discussion's role-selection
@@ -358,6 +371,62 @@ func TestSpawnBatch_FingerprintMismatchRefused(t *testing.T) {
 	}
 	if len(fx.Engine.PrepareCalls) != 0 {
 		t.Errorf("Starter was reached (%d Prepare calls) on a fingerprint mismatch; want zero", len(fx.Engine.PrepareCalls))
+	}
+}
+
+// TestSpawnBatch_InFlightGuardMatrix proves the ErrBatchInFlight guard
+// refuses a spawn exactly when a recorded non-terminal batch's strand is
+// still live, and never on the intended respawn ladders (terminal batch,
+// dead strand, no cursor) nor when the mux status query itself fails (a
+// downed mux hosts no live strand; Start surfaces real substrate errors).
+func TestSpawnBatch_InFlightGuardMatrix(t *testing.T) {
+	tests := []struct {
+		name         string
+		currentBatch int
+		terminal     bool
+		strandLive   bool
+		statusErr    error
+		wantRefused  bool
+	}{
+		{name: "non-terminal live strand refuses", currentBatch: 2, strandLive: true, wantRefused: true},
+		{name: "non-terminal dead strand proceeds", currentBatch: 2, strandLive: false},
+		{name: "terminal batch proceeds (respawn ladder)", currentBatch: 2, terminal: true, strandLive: true},
+		{name: "no cursor proceeds", currentBatch: 0, strandLive: true},
+		{name: "mux status error proceeds", currentBatch: 2, strandLive: true, statusErr: errors.New("no mux session")},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fx := newSpawnFixture(t)
+			fx.Mux.statusErr = tt.statusErr
+			if tt.strandLive {
+				fx.Mux.status = muxengine.StatusResult{Strands: []muxengine.StrandStatus{{GUID: "in-flight-strand", Live: true}}}
+			}
+			if tt.currentBatch != 0 {
+				fx.Deps.State.CurrentBatch = tt.currentBatch
+				fx.Deps.State.Batches = map[int]*builderengine.BatchState{
+					tt.currentBatch: {Slug: "list-tests", StrandGUID: "in-flight-strand", Terminal: tt.terminal},
+				}
+			}
+
+			_, err := builderengine.SpawnBatch(fx.Deps, builderengine.SpawnBatchOptions{BatchNumber: 1})
+
+			if tt.wantRefused {
+				if !errors.Is(err, builderengine.ErrBatchInFlight) {
+					t.Fatalf("SpawnBatch() error = %v; want errors.Is(err, ErrBatchInFlight)", err)
+				}
+				if len(fx.Engine.PrepareCalls) != 0 {
+					t.Errorf("Starter was reached (%d Prepare calls) despite a live in-flight batch; want zero", len(fx.Engine.PrepareCalls))
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("SpawnBatch() error = %v; want nil", err)
+			}
+			if len(fx.Engine.PrepareCalls) != 1 {
+				t.Errorf("Engine.PrepareCalls = %d; want exactly 1", len(fx.Engine.PrepareCalls))
+			}
+		})
 	}
 }
 

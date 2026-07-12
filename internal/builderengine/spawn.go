@@ -45,6 +45,19 @@ import (
 // file with outcome: paused, rather than treating it as a hard error.
 var ErrPaused = errors.New("builder: paused")
 
+// ErrBatchInFlight is the sentinel SpawnBatch returns when state records a
+// non-terminal in-flight batch whose implementer strand the mux still
+// reports live. The batch loop is strictly sequential, so spawning anything
+// while a live implementer is mid-flight is always wrong — it silently
+// clobbers the in-flight batch's BatchState and races two agents on the
+// same host repo. The refusal never fires on the intended
+// respawn-on-top-of-a-kept-pane ladder (dead respawn, recovery after
+// stuck): every one of those passes through a terminal poll first, which
+// sets BatchState.Terminal and clears CurrentBatch. A caller resolves the
+// refusal by long-polling (`lyx builder poll`) until the in-flight batch
+// classifies terminal.
+var ErrBatchInFlight = errors.New("builder: a batch is already in flight")
+
 // Starter is the seam SpawnBatch spawns an implementer through: exactly
 // (*shuttleengine.Runner).Start's signature, so production code passes a
 // real *shuttleengine.Runner directly and tests pass one built over local
@@ -79,6 +92,11 @@ type SpawnDeps struct {
 	ReportsDir   string
 	ShuttleCfg   shuttleengine.Config
 	Layout       *hubgeometry.Layout
+	// Mux is the live mux query surface the in-flight guard (ErrBatchInFlight)
+	// and the dead-respawn orphan cleanup consult via StrandLive/RemoveStrand —
+	// the same handle buildercli's poll verb already holds for its own
+	// classification gathers.
+	Mux shuttleengine.MuxOps
 }
 
 // SpawnBatchOptions carries one `spawn-batch` invocation's caller-supplied
@@ -248,6 +266,24 @@ func SpawnBatch(deps SpawnDeps, opts SpawnBatchOptions) (*SpawnResult, error) {
 	}
 	if deps.State.PlanFingerprint != fingerprint {
 		return nil, fmt.Errorf("%w: on-disk plan fingerprint %s does not match this run's recorded fingerprint %s; the plan changed since state.json was created — re-run `lyx builder run --fresh` to archive the stale state and reports and start over", ErrFingerprintMismatch, fingerprint, deps.State.PlanFingerprint)
+	}
+
+	// The in-flight guard: the loop is strictly sequential, so a recorded
+	// non-terminal batch whose strand the mux still reports live means an
+	// implementer is mid-flight RIGHT NOW — spawning anything on top of it
+	// double-drives the host repo and clobbers its BatchState (an orphaned
+	// live implementer after an orchestrator crash, or a stray manual
+	// spawn-batch during a run). The intended respawn ladders never trip
+	// this: they always pass through a terminal poll first (Terminal set,
+	// CurrentBatch cleared). A Status error is deliberately non-fatal — a
+	// downed mux session cannot host a live strand, and if the substrate is
+	// genuinely unavailable the spawn's own Start surfaces that error.
+	if cur := deps.State.CurrentBatch; cur != 0 {
+		if inFlight := deps.State.Batches[cur]; inFlight != nil && !inFlight.Terminal {
+			if live, liveErr := StrandLive(deps.Mux, inFlight.StrandGUID); liveErr == nil && live {
+				return nil, fmt.Errorf("%w: batch %02d-%s's implementer strand %s is still live; long-poll it with `lyx builder poll` until it classifies terminal before spawning another batch", ErrBatchInFlight, cur, inFlight.Slug, inFlight.StrandGUID)
+			}
+		}
 	}
 
 	batch, err := findBatch(deps.Plan, opts.BatchNumber)

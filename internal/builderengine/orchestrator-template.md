@@ -51,6 +51,11 @@ Never call `lyx builder status` as a substitute for step 2 — `status` is an in
 snapshot for a human or a mid-run refresher, never the batch-completion signal your loop
 waits on.
 
+If `spawn-batch` refuses because a batch is already in flight (its implementer strand is
+still live — typically a resumed run whose previous orchestrator died mid-batch), that is
+not a hard error and not a retry-the-spawn situation: run `lyx builder poll` and continue
+from the digest it returns.
+
 ## Read ONLY the digest fields — quoted here, exactly
 
 `poll`'s terminal return is one JSON envelope carrying exactly these field names, and

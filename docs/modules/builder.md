@@ -253,14 +253,19 @@ recorded in-flight strand. No progress is lost — every completed card is a hos
 so a re-driven batch continues on top of its own prior card commits, and the per-batch
 weft commits above keep `state.json`/reports durable across the crash.
 
-The one edge this leaves open: if the **orchestrator** died while a batch's implementer
-strand was still genuinely live (not killed, not timed out), the fresh re-spawn produces
-a second live implementer for that batch. A blanket "refuse to spawn if a live strand
-already exists" guard would break the intended `dead: timeout`/`dead: asking` respawn
-ladder — those deliberately keep the pane live for diagnosis (`KeepPane`) and are
-respawned on purpose — so distinguishing a kept-for-diagnosis dead pane from a genuinely
-orphaned live implementer on resume is a real design tradeoff, deferred pending that
-decision rather than papered over with a guard that regresses the recovery ladder.
+The orphaned-live-implementer edge is closed by the **in-flight guard**
+(`ErrBatchInFlight`): `spawn-batch` refuses when `state.json` records a non-terminal
+in-flight batch whose strand the mux still reports live — the strictly-sequential loop
+never legitimately spawns over a live implementer. The guard distinguishes the two cases
+a blanket live-strand check could not: every intended respawn-on-top-of-a-kept-pane
+(the `dead: timeout`/`dead: asking` ladder, recovery after `stuck`) passes through a
+terminal `poll` first, which sets `BatchState.Terminal` and clears `CurrentBatch`, so
+the ladder never trips it; only a genuinely orphaned live implementer (orchestrator died
+mid-batch, or a stray manual `spawn-batch` during a run) is refused, with the resolution
+spelled out — long-poll (`lyx builder poll`) until the in-flight batch classifies
+terminal. A mux-status error skips the guard (a downed mux hosts no live strand; the
+spawn's own `Start` surfaces real substrate failures), so resume on a cold machine is
+unaffected.
 
 ## Holistic review is perch's job, not builder's
 
