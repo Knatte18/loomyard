@@ -2,7 +2,7 @@
 //
 // Drives run() directly: argument routing, unknown-module handling, and that a
 // dispatched module's exit code and output propagate unchanged. The three
-// tests that spawn gitexec.RunGit(["init"], …) to seed a real git repo live
+// tests that spawn gitexec's RunGit(["init"], …) to seed a real git repo live
 // in main_integration_test.go per the Test Tier Purity Invariant.
 
 package main

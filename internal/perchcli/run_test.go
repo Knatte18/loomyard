@@ -6,7 +6,7 @@
 // helpers (ProfileHash, DeriveRunID) without error, in the shape run.go's
 // RunE itself relies on. Engine.Run itself is NOT exercised here — it needs
 // a live mux/claude session; that coverage lives in the smoke test and the
-// sandbox suite. The weft-sync run tests (lyxtest.CopyPairedLocal, real git
+// sandbox suite. The weft-sync run tests (lyxtest's CopyPairedLocal, real git
 // assertions) live in run_integration_test.go per the Test Tier Purity
 // Invariant.
 
