@@ -66,7 +66,10 @@ right after `Start` — so `poll` re-derives the in-flight implementer's state f
 files and a live mux query on every tick, in this pinned decision order:
 
 1. **Report present** → terminal, `done` or `stuck` per the report itself (via
-   `Distill`).
+   `Distill`). The report's `batch:` field must equal the polled batch's own
+   `NN-<batch-slug>` identifier (plan-format.md pins it to the report filename's stem);
+   a mismatch is a fail-loud malformed-report error, never a silently mislabeled
+   digest — `batch` is the one digest field the orchestrator navigates by.
 2. **No report, the implementer's turn has ended** (a `Stop` event observed in the
    run dir's `events.jsonl`) → terminal `dead`, `dead_reason: asking` — an
    implementer that stopped without ever satisfying the file contract is

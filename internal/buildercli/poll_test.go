@@ -558,3 +558,48 @@ func TestPollCmd_TerminalPersistMergesConcurrentSpawn(t *testing.T) {
 		t.Errorf("CurrentBatch = %d; want 2 (the concurrently spawned batch's cursor, not this poll's to reset)", loaded.CurrentBatch)
 	}
 }
+
+// TestPollCmd_ReportBatchFieldMismatchFailsLoud proves a report whose
+// batch: field names a different batch than the one being polled is a
+// fail-loud error, never a silently mislabeled digest: Distill passes the
+// field verbatim into the digest's batch identifier — the one field the
+// orchestrator navigates by — so a typo'd or copy-pasted stem must surface
+// as the same malformed-report error class every other field gets.
+func TestPollCmd_ReportBatchFieldMismatchFailsLoud(t *testing.T) {
+	t.Setenv("WEFT_SKIP_GIT", "1")
+	fx := newPollFixture(t, &pollFakeEngine{}, &pollFakeMux{})
+
+	startSHA := strings.TrimSpace(mustGit(t, fx.Hub, "rev-parse", "HEAD"))
+	fx.seedInFlightBatch1(t, startSHA, time.Now(), filepath.Join(t.TempDir(), "events.jsonl"))
+
+	if err := os.MkdirAll(fx.CLI.reportsDir, 0o755); err != nil {
+		t.Fatalf("mkdir reports dir: %v", err)
+	}
+	reportPath := filepath.Join(fx.CLI.reportsDir, "01-json-flag.yaml")
+	if err := os.WriteFile(reportPath, []byte("batch: 02-list-tests\nstatus: done\ntests: green\nstuck_reason: null\n"), 0o644); err != nil {
+		t.Fatalf("write report: %v", err)
+	}
+
+	var out bytes.Buffer
+	exitCode := clihelp.Execute(fx.CLI.pollCmd(), &out, nil)
+
+	if exitCode != 1 {
+		t.Fatalf("poll (mismatched batch field) = %d; want 1, output: %s", exitCode, out.String())
+	}
+	got := out.String()
+	if !strings.Contains(got, "does not match this batch's own identifier") {
+		t.Errorf("output missing the batch-field mismatch error; got %q", got)
+	}
+	if !strings.Contains(got, "01-json-flag") || !strings.Contains(got, "02-list-tests") {
+		t.Errorf("output should name both the expected and the reported batch; got %q", got)
+	}
+
+	// The classification never stood: state must not record a terminal.
+	loaded, err := builderengine.LoadState(fx.CLI.builderDir)
+	if err != nil || loaded == nil {
+		t.Fatalf("LoadState() error = %v, %v", loaded, err)
+	}
+	if loaded.Batches[1].Terminal {
+		t.Errorf("Batches[1].Terminal = true after a mismatched report; want false")
+	}
+}

@@ -145,6 +145,17 @@ Example:
 				if err != nil {
 					return err
 				}
+				// plan-format.md pins the report's batch: field to the
+				// NN-<batch-slug> stem of its own filename, and Distill
+				// passes it verbatim into the digest's batch field — the one
+				// field the orchestrator navigates by. A mismatch (a typo'd
+				// or copy-pasted stem) is a malformed report and fails loud
+				// here, the same discipline ParseReport applies to every
+				// other field, never a silently mislabeled digest.
+				expectedBatch := fmt.Sprintf("%02d-%s", batchNumber, bs.Slug)
+				if report.Batch != expectedBatch {
+					return fmt.Errorf("builder: batch report %s: batch field %q does not match this batch's own identifier %q", reportPath, report.Batch, expectedBatch)
+				}
 				changed, err := builderengine.ChangedFiles(c.layout.Cwd, bs.StartSHA)
 				if err != nil {
 					return err
