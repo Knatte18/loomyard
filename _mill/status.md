@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-approved
+phase: done
 slug: test-suite-regression
 branch: test-suite-regression
 plan: _mill/plan
@@ -28,6 +28,7 @@ approved-tier-purity-guard  '2026-07-12T07:54:59Z'
 approved-rebaseline-docs  '2026-07-12T08:18:47Z'
 holistic-reviewing  '2026-07-12T08:19:03Z'
 holistic-approved  '2026-07-12T08:22:06Z'
+done  '2026-07-12T08:22:26Z'
 ```
 
 ## Batches
