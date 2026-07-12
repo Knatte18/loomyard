@@ -235,6 +235,27 @@ mid-run):
 3. **`run`** performs one backstop commit at its own exit, regardless of outcome
    (success or error) — except on `ErrRunBusy` (see [`run.lock`](#runlock) above).
 
+## Crash/resume semantics — re-drive the first unreported batch
+
+Resume is just re-running `lyx builder run`: it always spawns a **fresh** orchestrator
+(never `claude --resume`), hydrated from on-disk state. That orchestrator's `{{.progress}}`
+lists only the batches whose reports already landed (each by its own `done`/`stuck`
+status — see [poll](#polls-four-branch-terminal-classification) and the progress rule),
+so it re-drives the **first unreported batch** from scratch: a fresh `spawn-batch` that
+captures a new start-SHA and overwrites that batch's `BatchState`, not a resume of the
+recorded in-flight strand. No progress is lost — every completed card is a host commit,
+so a re-driven batch continues on top of its own prior card commits, and the per-batch
+weft commits above keep `state.json`/reports durable across the crash.
+
+The one edge this leaves open: if the **orchestrator** died while a batch's implementer
+strand was still genuinely live (not killed, not timed out), the fresh re-spawn produces
+a second live implementer for that batch. A blanket "refuse to spawn if a live strand
+already exists" guard would break the intended `dead: timeout`/`dead: asking` respawn
+ladder — those deliberately keep the pane live for diagnosis (`KeepPane`) and are
+respawned on purpose — so distinguishing a kept-for-diagnosis dead pane from a genuinely
+orphaned live implementer on resume is a real design tradeoff, deferred pending that
+decision rather than papered over with a guard that regresses the recovery ladder.
+
 ## Holistic review is perch's job, not builder's
 
 `builder run` terminates `done` when the last batch is green (or `stuck`/`paused`) —
