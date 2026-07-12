@@ -1,9 +1,10 @@
 // run_test.go covers the run verb's envelope shapes and weft-boundary
-// behavior through a fake builderengine.BlockingRunner injected directly on
-// a *builderCLI literal (bypassing Command()'s PersistentPreRunE, the same
-// package-local injection pattern as spawnbatch_test.go): ErrRunBusy skips
-// the weft sync; every other outcome runs the backstop commit before its
-// envelope; --fresh is threaded through to builderengine.Run.
+// behavior through a fake builderengine.OrchestratorStarter injected
+// directly on a *builderCLI literal (bypassing Command()'s
+// PersistentPreRunE, the same package-local injection pattern as
+// spawnbatch_test.go): ErrRunBusy skips the weft sync; every other outcome
+// runs the backstop commit before its envelope; --fresh is threaded through
+// to builderengine.Run.
 
 package buildercli
 
@@ -22,37 +23,51 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// fakeBlockingRunner is a hermetic builderengine.BlockingRunner double:
-// Run records every Spec it was handed and returns the canned Result/error
-// a test configured, optionally writing WriteOutcome's content to the
-// spec's sole OutputFiles entry first -- mirroring builderengine's own
-// runlevel_test.go fakeBlockingRunner.
-type fakeBlockingRunner struct {
+// fakeOrchestratorStarter is a hermetic builderengine.OrchestratorStarter
+// double: StartOrchestrator records every Spec it was handed and returns a
+// handle whose Wait writes WriteOutcome's content to the spec's sole
+// OutputFiles entry and then returns the canned Result/error a test
+// configured -- mirroring builderengine's own runlevel_test.go fake.
+type fakeOrchestratorStarter struct {
 	Result       shuttleengine.Result
 	Err          error
 	WriteOutcome string
 	Calls        []shuttleengine.Spec
 }
 
-func (f *fakeBlockingRunner) Run(spec shuttleengine.Spec) (shuttleengine.Result, error) {
+func (f *fakeOrchestratorStarter) StartOrchestrator(spec shuttleengine.Spec) (builderengine.OrchestratorHandle, error) {
 	f.Calls = append(f.Calls, spec)
-	if f.WriteOutcome != "" {
-		if err := os.WriteFile(spec.OutputFiles[0], []byte(f.WriteOutcome), 0o644); err != nil {
+	return &fakeOrchestratorHandle{starter: f, spec: spec}, nil
+}
+
+var _ builderengine.OrchestratorStarter = (*fakeOrchestratorStarter)(nil)
+
+// fakeOrchestratorHandle is the handle fakeOrchestratorStarter returns: a
+// fixed strand identity plus a Wait that replays the starter's canned
+// outcome-file write and Result/error.
+type fakeOrchestratorHandle struct {
+	starter *fakeOrchestratorStarter
+	spec    shuttleengine.Spec
+}
+
+func (h *fakeOrchestratorHandle) StrandGUID() string { return "fake-orchestrator-strand" }
+
+func (h *fakeOrchestratorHandle) Wait() (shuttleengine.Result, error) {
+	if h.starter.WriteOutcome != "" {
+		if err := os.WriteFile(h.spec.OutputFiles[0], []byte(h.starter.WriteOutcome), 0o644); err != nil {
 			return shuttleengine.Result{}, err
 		}
 	}
-	if f.Err != nil {
-		return shuttleengine.Result{}, f.Err
+	if h.starter.Err != nil {
+		return shuttleengine.Result{}, h.starter.Err
 	}
-	return f.Result, nil
+	return h.starter.Result, nil
 }
 
-var _ builderengine.BlockingRunner = (*fakeBlockingRunner)(nil)
-
-// runFixture is a fully-wired *builderCLI plus the fake runner it drives.
+// runFixture is a fully-wired *builderCLI plus the fake starter it drives.
 type runFixture struct {
 	CLI    *builderCLI
-	Runner *fakeBlockingRunner
+	Runner *fakeOrchestratorStarter
 	Hub    string
 }
 
@@ -63,14 +78,15 @@ func newRunFixture(t *testing.T) *runFixture {
 	seedPlanFixture(t, hub, builderengineTestdataDir("plan-valid"))
 
 	layout := &hubgeometry.Layout{WorktreeRoot: hub, Cwd: hub, RelPath: "."}
-	runner := &fakeBlockingRunner{}
+	runner := &fakeOrchestratorStarter{}
 
 	roles := map[builderengine.Role]modelspec.Resolved{
 		builderengine.RoleOrchestrator: {Engine: "claude", Model: "orchestrator-model"},
 	}
 	c := &builderCLI{
-		blockingRunner: runner,
-		layout:         layout,
+		orchestratorStarter: runner,
+		mux:                 &pollFakeMux{},
+		layout:              layout,
 		cfg: builderengine.Config{
 			SelfFixCap:             2,
 			PollWaitS:              480,

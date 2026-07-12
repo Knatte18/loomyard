@@ -1,13 +1,14 @@
 // runlevel_test.go exercises Run's whole sequence against a fake
-// BlockingRunner and the plan-valid/plan-unapproved testdata fixtures: the
-// run-lock busy refusal, the automatic validation gate, the plan-
+// OrchestratorStarter and the plan-valid/plan-unapproved testdata fixtures:
+// the run-lock busy refusal, the automatic validation gate, the plan-
 // fingerprint mismatch guard and its --fresh archive/re-init escape, a
-// from-scratch fresh init, the shuttle-outcome-to-RunResult mapping for all
-// four shuttle outcomes, the pause-clearing rule's done/stuck/paused split,
-// and progress rendering for a partially-reported state. No real agent
-// spawns and no real git subprocess — Run's own logic never shells out to
-// git itself (that is spawn-batch's and poll's job), so this file carries no
-// //go:build integration tag and runs in Tier 1.
+// from-scratch fresh init, the entry-time orphan-orchestrator reclaim and
+// the persist-strand-before-wait rule, the shuttle-outcome-to-RunResult
+// mapping for all four shuttle outcomes, the pause-clearing rule's
+// done/stuck/paused split, and progress rendering for a partially-reported
+// state. No real agent spawns and no real git subprocess — Run's own logic
+// never shells out to git itself (that is spawn-batch's and poll's job), so
+// this file carries no //go:build integration tag and runs in Tier 1.
 
 package builderengine_test
 
@@ -21,57 +22,114 @@ import (
 	"github.com/Knatte18/loomyard/internal/builderengine"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/muxengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// fakeBlockingRunner is a hermetic builderengine.BlockingRunner double: Run
-// records every Spec it was handed and returns the canned Result/error a
-// test configured, optionally writing WriteOutcome's content to the spec's
-// sole OutputFiles entry first — mirroring the real shuttle file contract's
-// guarantee that an OutcomeDone result means the agent already wrote every
-// output file.
-type fakeBlockingRunner struct {
+// fakeOrchestratorStarter is a hermetic builderengine.OrchestratorStarter
+// double: StartOrchestrator records every Spec it was handed and returns a
+// handle whose Wait writes WriteOutcome's content to the spec's sole
+// OutputFiles entry (mirroring the real shuttle file contract's guarantee
+// that an OutcomeDone result means the agent already wrote every output
+// file) and then returns the canned Result/error a test configured.
+type fakeOrchestratorStarter struct {
 	Result       shuttleengine.Result
 	Err          error
 	WriteOutcome string
 
+	// StrandGUID is what the returned handle reports as its strand
+	// identity; a test asserting the persist-before-wait rule reads it back
+	// from state.json.
+	StrandGUID string
+
 	// RequestPauseIn, when non-empty, has RequestPause called against it
-	// just before Run returns — simulating a `lyx builder pause` call that
+	// just before Wait returns — simulating a `lyx builder pause` call that
 	// landed WHILE the orchestrator's blocking spawn was in flight, i.e.
 	// strictly after Run's own entry-time ClearPause already ran.
 	RequestPauseIn string
 
+	// OnWait, when non-nil, runs at the start of the handle's Wait — the
+	// hook the persist-before-wait test uses to observe state.json at
+	// exactly the moment the real orchestrator would start working.
+	OnWait func()
+
 	Calls []shuttleengine.Spec
 }
 
-func (f *fakeBlockingRunner) Run(spec shuttleengine.Spec) (shuttleengine.Result, error) {
+func (f *fakeOrchestratorStarter) StartOrchestrator(spec shuttleengine.Spec) (builderengine.OrchestratorHandle, error) {
 	f.Calls = append(f.Calls, spec)
-	if f.WriteOutcome != "" {
-		if err := os.WriteFile(spec.OutputFiles[0], []byte(f.WriteOutcome), 0o644); err != nil {
-			return shuttleengine.Result{}, err
-		}
-	}
-	if f.RequestPauseIn != "" {
-		if err := builderengine.RequestPause(f.RequestPauseIn); err != nil {
-			return shuttleengine.Result{}, err
-		}
-	}
-	if f.Err != nil {
-		return shuttleengine.Result{}, f.Err
-	}
-	return f.Result, nil
+	return &fakeOrchestratorHandle{starter: f, spec: spec}, nil
 }
 
-var _ builderengine.BlockingRunner = (*fakeBlockingRunner)(nil)
+var _ builderengine.OrchestratorStarter = (*fakeOrchestratorStarter)(nil)
+
+// fakeOrchestratorHandle is the handle fakeOrchestratorStarter returns: its
+// StrandGUID is the starter's configured one, and Wait replays the starter's
+// canned outcome-file write, pause injection, and Result/error.
+type fakeOrchestratorHandle struct {
+	starter *fakeOrchestratorStarter
+	spec    shuttleengine.Spec
+}
+
+func (h *fakeOrchestratorHandle) StrandGUID() string {
+	if h.starter.StrandGUID == "" {
+		return "fake-orchestrator-strand"
+	}
+	return h.starter.StrandGUID
+}
+
+func (h *fakeOrchestratorHandle) Wait() (shuttleengine.Result, error) {
+	if h.starter.OnWait != nil {
+		h.starter.OnWait()
+	}
+	if h.starter.WriteOutcome != "" {
+		if err := os.WriteFile(h.spec.OutputFiles[0], []byte(h.starter.WriteOutcome), 0o644); err != nil {
+			return shuttleengine.Result{}, err
+		}
+	}
+	if h.starter.RequestPauseIn != "" {
+		if err := builderengine.RequestPause(h.starter.RequestPauseIn); err != nil {
+			return shuttleengine.Result{}, err
+		}
+	}
+	if h.starter.Err != nil {
+		return shuttleengine.Result{}, h.starter.Err
+	}
+	return h.starter.Result, nil
+}
+
+// runFakeMux is a minimal shuttleengine.MuxOps double for Run's entry-time
+// orphan-orchestrator reclaim: Status returns the scripted result and
+// RemoveStrand records what was stopped.
+type runFakeMux struct {
+	status         muxengine.StatusResult
+	removedStrands []string
+}
+
+func (m *runFakeMux) AddStrand(spec muxengine.AddSpec) (muxengine.Strand, error) {
+	return muxengine.Strand{}, nil
+}
+
+func (m *runFakeMux) RemoveStrand(guid string, recursive bool) (muxengine.Removed, error) {
+	m.removedStrands = append(m.removedStrands, guid)
+	return muxengine.Removed{}, nil
+}
+
+func (m *runFakeMux) Status() (muxengine.StatusResult, error)       { return m.status, nil }
+func (m *runFakeMux) SendText(guid, text string, submit bool) error { return nil }
+func (m *runFakeMux) SendKey(guid, key string) error                { return nil }
+func (m *runFakeMux) CapturePane(guid string) (string, error)       { return "", nil }
+
+var _ shuttleengine.MuxOps = (*runFakeMux)(nil)
 
 // runFixture is a fully-wired, fresh-per-call set of Run dependencies: a
 // copy of the plan-valid fixture (so a test may mutate its content without
 // touching the checked-in testdata), fresh temp builder/reports dirs, every
-// one of builderengine's four roles pre-resolved, and a fakeBlockingRunner
+// one of builderengine's four roles pre-resolved, and a fakeOrchestratorStarter
 // a test configures per case.
 type runFixture struct {
 	Deps   builderengine.RunDeps
-	Runner *fakeBlockingRunner
+	Runner *fakeOrchestratorStarter
 }
 
 // copyPlanFixture copies every top-level file under srcDir into a fresh temp
@@ -130,11 +188,12 @@ func newRunFixture(t *testing.T) *runFixture {
 		BatchCardCap:           10,
 	}
 
-	runner := &fakeBlockingRunner{}
+	runner := &fakeOrchestratorStarter{}
 
 	return &runFixture{
 		Deps: builderengine.RunDeps{
 			Runner:     runner,
+			Mux:        &runFakeMux{},
 			PlanDir:    planDir,
 			BuilderDir: builderDir,
 			ReportsDir: reportsDir,
@@ -151,7 +210,7 @@ func newRunFixture(t *testing.T) *runFixture {
 	}
 }
 
-// doneOutcomeYAML is a well-formed outcome.yaml body a fakeBlockingRunner
+// doneOutcomeYAML is a well-formed outcome.yaml body a fakeOrchestratorStarter
 // writes to simulate the orchestrator's own final action on a clean finish.
 const doneOutcomeYAML = "outcome: done\nstuck_reason: null\nbatches_done: 5\n"
 
@@ -573,5 +632,104 @@ func TestRun_SpecFieldsMapped(t *testing.T) {
 	}
 	if strings.TrimSpace(spec.Prompt) == "" {
 		t.Errorf("spec.Prompt is empty; want the filled orchestrator template")
+	}
+}
+
+// TestRun_ReclaimsLiveOrphanedOrchestratorAtEntry proves Run's entry-time
+// orphan reclaim: a state.json recording a prior run's orchestrator strand
+// that the mux still reports LIVE (a killed `run` process, or a timed-out
+// orchestrator whose kept pane is still working) is stopped BEFORE the fresh
+// orchestrator ever starts — otherwise two orchestrators double-drive the
+// same run (found live in round fable-r4). A recorded strand the mux reports
+// not-live (or does not track at all) is left alone.
+func TestRun_ReclaimsLiveOrphanedOrchestratorAtEntry(t *testing.T) {
+	tests := []struct {
+		name        string
+		strandLive  bool
+		wantRemoved bool
+	}{
+		{name: "live orphan is stopped before the fresh spawn", strandLive: true, wantRemoved: true},
+		{name: "dead recorded strand is left alone", strandLive: false, wantRemoved: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fx := newRunFixture(t)
+			fx.Runner.Result = shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}
+			fx.Runner.WriteOutcome = doneOutcomeYAML
+
+			const orphanGUID = "orphan-orchestrator-strand"
+			mux := &runFakeMux{status: muxengine.StatusResult{
+				Strands: []muxengine.StrandStatus{{GUID: orphanGUID, Live: tt.strandLive}},
+			}}
+			fx.Deps.Mux = mux
+
+			// Seed the prior run's state: the plan's own fingerprint (so the
+			// resume path, not init or --fresh, is what runs) plus the
+			// recorded orchestrator strand under reclaim.
+			fingerprint, err := builderengine.Fingerprint(fx.Deps.PlanDir)
+			if err != nil {
+				t.Fatalf("Fingerprint() error = %v", err)
+			}
+			seeded := &builderengine.State{
+				RunGUID:            "prior-run",
+				PlanFingerprint:    fingerprint,
+				OrchestratorStrand: orphanGUID,
+				Batches:            map[int]*builderengine.BatchState{},
+				ChainStartSHAs:     map[int]string{},
+			}
+			if err := builderengine.SaveState(fx.Deps.BuilderDir, seeded); err != nil {
+				t.Fatalf("SaveState(seed) error = %v", err)
+			}
+
+			// The orphan must be gone before the fresh orchestrator starts:
+			// observe the removal record at the moment StartOrchestrator's
+			// handle begins waiting.
+			var removedAtWait []string
+			fx.Runner.OnWait = func() { removedAtWait = append([]string(nil), mux.removedStrands...) }
+
+			if _, err := builderengine.Run(fx.Deps, builderengine.RunOptions{}); err != nil {
+				t.Fatalf("Run() error = %v; want nil", err)
+			}
+
+			if tt.wantRemoved {
+				if len(removedAtWait) != 1 || removedAtWait[0] != orphanGUID {
+					t.Errorf("strands removed before the fresh orchestrator's wait = %v; want exactly [%q]", removedAtWait, orphanGUID)
+				}
+			} else if len(mux.removedStrands) != 0 {
+				t.Errorf("RemoveStrand called %v for a not-live recorded strand; want no removals", mux.removedStrands)
+			}
+		})
+	}
+}
+
+// TestRun_PersistsOrchestratorStrandBeforeWait proves the two-phase spawn's
+// point: the fresh orchestrator's strand identity is already durable in
+// state.json at the moment Run starts blocking on the spawn, so a `run`
+// process that dies mid-wait leaves the record the next run's entry-time
+// reclaim needs — recording it only after Wait returned would miss exactly
+// the crash case the record exists for.
+func TestRun_PersistsOrchestratorStrandBeforeWait(t *testing.T) {
+	fx := newRunFixture(t)
+	fx.Runner.Result = shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}
+	fx.Runner.WriteOutcome = doneOutcomeYAML
+	fx.Runner.StrandGUID = "fresh-orchestrator-strand"
+
+	var strandAtWait string
+	fx.Runner.OnWait = func() {
+		st, err := builderengine.LoadState(fx.Deps.BuilderDir)
+		if err != nil || st == nil {
+			t.Errorf("LoadState() during Wait = %v, %v; want a persisted state", st, err)
+			return
+		}
+		strandAtWait = st.OrchestratorStrand
+	}
+
+	if _, err := builderengine.Run(fx.Deps, builderengine.RunOptions{}); err != nil {
+		t.Fatalf("Run() error = %v; want nil", err)
+	}
+
+	if strandAtWait != "fresh-orchestrator-strand" {
+		t.Errorf("state.json's OrchestratorStrand during Wait = %q; want %q", strandAtWait, "fresh-orchestrator-strand")
 	}
 }

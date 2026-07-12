@@ -106,26 +106,45 @@ func (e *OrchestratorTimeoutError) Unwrap() error { return ErrOrchestratorTimeou
 // ErrOrchestratorTimeout is the sentinel OrchestratorTimeoutError wraps.
 var ErrOrchestratorTimeout = errors.New("builder: orchestrator timed out")
 
-// BlockingRunner is the seam Run spawns the orchestrator through: exactly
-// (*shuttleengine.Runner).Run's signature (Start+Wait combined — Run's own
-// caller, `lyx builder run`, blocks for the whole plan run anyway, so there
-// is no reason to hold a non-blocking handle the way SpawnBatch's Starter
-// does). Production code passes a real *shuttleengine.Runner directly; tests
-// pass a local fake (builderengine's own fakes are test-file-local, per the
-// discussion's test-conventions decision).
-type BlockingRunner interface {
-	Run(shuttleengine.Spec) (shuttleengine.Result, error)
+// OrchestratorHandle is the started-but-not-yet-finished orchestrator spawn
+// Run blocks on: StrandGUID identifies the mux strand the orchestrator runs
+// in (available immediately after the start, so Run can persist it to
+// state.json BEFORE blocking — the record the next run's entry-time orphan
+// reclaim reads), and Wait blocks until the spawn reaches a terminal shuttle
+// outcome. *shuttleengine.Run satisfies this structurally.
+type OrchestratorHandle interface {
+	StrandGUID() string
+	Wait() (shuttleengine.Result, error)
+}
+
+// OrchestratorStarter is the seam Run spawns the orchestrator through. It is
+// deliberately two-phase (start, then wait on the returned handle) rather
+// than one blocking call: Run must learn the orchestrator's strand identity
+// and persist it to state.json BEFORE blocking, or a `run` process that dies
+// mid-wait leaves a live orchestrator pane nothing can ever find again —
+// found live in round fable-r4: a killed `run` (or a timed-out orchestrator
+// whose kept pane was still working) kept driving the batch loop while a
+// resumed `run` spawned a second orchestrator over it. Production code
+// passes an adapter over *shuttleengine.Runner (buildercli's
+// runnerOrchestratorStarter); tests pass a local fake (builderengine's own
+// fakes are test-file-local, per the discussion's test-conventions decision).
+type OrchestratorStarter interface {
+	StartOrchestrator(shuttleengine.Spec) (OrchestratorHandle, error)
 }
 
 // RunDeps carries every seam Run needs, so a test can fake each one
-// independently: Runner spawns and blocks on the orchestrator; PlanDir,
-// BuilderDir, and ReportsDir are the hubgeometry-resolved _lyx/plan,
-// _lyx/builder, and _lyx/builder/reports directories; WorktreeRoot is the
-// host repo checkout Validate's context estimate resolves Scope/Where
-// entries against; Config is the loaded builder.yaml; Roles is the
-// pre-flight-resolved role->model-spec map (see ResolveRoles).
+// independently: Runner starts the orchestrator and hands back the handle
+// Run blocks on; Mux is the live mux query surface the entry-time orphan
+// reclaim consults via StrandLive/RemoveStrand (the same handle SpawnBatch's
+// in-flight guard already holds); PlanDir, BuilderDir, and ReportsDir are
+// the hubgeometry-resolved _lyx/plan, _lyx/builder, and _lyx/builder/reports
+// directories; WorktreeRoot is the host repo checkout Validate's context
+// estimate resolves Scope/Where entries against; Config is the loaded
+// builder.yaml; Roles is the pre-flight-resolved role->model-spec map (see
+// ResolveRoles).
 type RunDeps struct {
-	Runner       BlockingRunner
+	Runner       OrchestratorStarter
+	Mux          shuttleengine.MuxOps
 	PlanDir      string
 	BuilderDir   string
 	ReportsDir   string
@@ -384,6 +403,24 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		return RunResult{}, err
 	}
 
+	// Reclaim an orphaned live orchestrator BEFORE anything else acts on the
+	// loaded state (including the --fresh archive below, which would discard
+	// the only record of that strand): a prior run whose process died mid-wait
+	// (killed `run`, closed terminal) or whose orchestrator timed out while
+	// still working leaves a live pane that keeps driving spawn-batch/poll on
+	// its own — found live in round fable-r4 as two orchestrators driving the
+	// same state.json at once, both writing the same outcome.yaml. Resume's
+	// contract is "always spawns a fresh orchestrator, hydrated from on-disk
+	// state"; stopping the recorded strand when the mux still reports it live
+	// makes that true by construction, mirroring the dead-respawn ladder's
+	// substrate reclaim. A strand that already finished (shuttle removed it on
+	// done) or died on its own reports not-live and is left alone.
+	if st != nil && st.OrchestratorStrand != "" {
+		if err := removeStrandIfLive(deps.Mux, st.OrchestratorStrand); err != nil {
+			return RunResult{}, err
+		}
+	}
+
 	switch {
 	case st == nil:
 		guid, err := newRunGUID()
@@ -469,7 +506,23 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		Timeout:     time.Duration(deps.Config.OrchestratorTimeoutMin) * time.Minute,
 	}
 
-	result, err := deps.Runner.Run(spec)
+	handle, err := deps.Runner.StartOrchestrator(spec)
+	if err != nil {
+		return RunResult{}, fmt.Errorf("builder: start orchestrator: %w", err)
+	}
+
+	// Persist the orchestrator's strand identity BEFORE blocking on the
+	// spawn: if this process dies mid-wait, the next run's entry-time reclaim
+	// above is the only thing that can ever find and stop the still-live
+	// orchestrator, and this record is what it reads. Never cleared — the
+	// reclaim is liveness-gated, so a strand shuttle already removed (a clean
+	// done) is simply reported not-live next time.
+	st.OrchestratorStrand = handle.StrandGUID()
+	if err := SaveState(deps.BuilderDir, st); err != nil {
+		return RunResult{}, err
+	}
+
+	result, err := handle.Wait()
 	if err != nil {
 		return RunResult{}, fmt.Errorf("builder: run orchestrator: %w", err)
 	}

@@ -32,6 +32,15 @@ type State struct {
 	// is (the run has not started yet, or the last batch reached a
 	// terminal classification).
 	CurrentBatch int `json:"currentBatch"`
+	// OrchestratorStrand identifies the mux strand the most recent `run`'s
+	// orchestrator spawned into, recorded before that run ever blocks on the
+	// spawn. Run's entry-time orphan reclaim stops this strand when the mux
+	// still reports it live (a killed `run` process, or a timed-out
+	// orchestrator whose kept pane is still working), so a resume never
+	// double-drives the loop with two live orchestrators. Never cleared —
+	// the reclaim is liveness-gated. Empty until the first orchestrator
+	// spawn.
+	OrchestratorStrand string `json:"orchestratorStrand,omitempty"`
 	// Batches holds every batch's own persisted record, keyed by batch
 	// number.
 	Batches map[int]*BatchState `json:"batches"`

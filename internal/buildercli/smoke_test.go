@@ -232,3 +232,72 @@ func TestSmoke_SpawnRefusedWhileStrandLive(t *testing.T) {
 		t.Fatalf("SpawnBatch() error = %v; want errors.Is(err, ErrBatchInFlight)", err)
 	}
 }
+
+// TestSmoke_RunEntryReclaimsOrphanedOrchestrator proves against a real psmux
+// server that Run's entry-time reclaim stops a recorded orchestrator strand
+// the mux still reports live (the fable-r4 double-orchestrator: a killed
+// `run` process, or a timed-out orchestrator whose kept pane kept working)
+// before the fresh orchestrator spawn ever starts.
+func TestSmoke_RunEntryReclaimsOrphanedOrchestrator(t *testing.T) {
+	eng, _, hub := bootRealMux(t)
+	orphanGUID := addLivePane(t, eng, "orchestrator", "")
+
+	planDir := hubgeometry.PlanDir(hub)
+	fingerprint, err := builderengine.Fingerprint(planDir)
+	if err != nil {
+		t.Fatalf("Fingerprint: %v", err)
+	}
+	builderDir := hubgeometry.BuilderDir(hub)
+	seeded := &builderengine.State{
+		RunGUID:            "smoke-orphan-run",
+		PlanFingerprint:    fingerprint,
+		OrchestratorStrand: orphanGUID,
+		Batches:            map[int]*builderengine.BatchState{},
+		ChainStartSHAs:     map[int]string{},
+	}
+	if err := builderengine.SaveState(builderDir, seeded); err != nil {
+		t.Fatalf("SaveState: %v", err)
+	}
+
+	starter := &fakeOrchestratorStarter{
+		Result:       shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
+		WriteOutcome: "outcome: done\nstuck_reason: null\nbatches_done: 0\n",
+	}
+	deps := builderengine.RunDeps{
+		Runner: starter,
+		Mux:    eng,
+		Roles: map[builderengine.Role]modelspec.Resolved{
+			builderengine.RoleOrchestrator: {Engine: "claude", Model: "orchestrator-model"},
+		},
+		Config: builderengine.Config{
+			SelfFixCap: 2, PollWaitS: 5, BatchTimeoutMin: 45,
+			OrchestratorTimeoutMin: 5, BatchContextCapTokens: 100000, BatchCardCap: 10,
+		},
+		PlanDir:      planDir,
+		BuilderDir:   builderDir,
+		ReportsDir:   hubgeometry.BuilderReportsDir(hub),
+		WorktreeRoot: hub,
+	}
+
+	if _, err := builderengine.Run(deps, builderengine.RunOptions{}); err != nil {
+		t.Fatalf("Run() error = %v; want nil", err)
+	}
+
+	// RemoveStrand waits for the destroyed pane's subtree, so the reclaim is
+	// observable immediately -- but poll on a deadline anyway: substrate
+	// state transitions are asynchronous by contract.
+	deadline := time.Now().Add(15 * time.Second)
+	for {
+		live, err := builderengine.StrandLive(eng, orphanGUID)
+		if err != nil {
+			t.Fatalf("StrandLive after Run: %v", err)
+		}
+		if !live {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("orphaned orchestrator strand %s still live 15s after Run returned; want it reclaimed at run entry", orphanGUID)
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+}

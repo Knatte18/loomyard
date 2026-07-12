@@ -39,14 +39,15 @@ import (
 // test has populated the same fields directly -- see each verb's own
 // _test.go file for the package-local fake-injection pattern this enables).
 type builderCLI struct {
-	// starter and blockingRunner default to runner in production. A test
-	// overrides one or the other with a fake to exercise spawn-batch/run
-	// without a live psmux/claude substrate, mirroring how builderengine's
-	// own spawn/run tests fake these same seams (spawn_test.go,
+	// starter and orchestratorStarter default to runner (the latter through
+	// the runnerOrchestratorStarter adapter) in production. A test overrides
+	// one or the other with a fake to exercise spawn-batch/run without a
+	// live psmux/claude substrate, mirroring how builderengine's own
+	// spawn/run tests fake these same seams (spawn_test.go,
 	// runlevel_test.go).
-	runner         *shuttleengine.Runner
-	starter        builderengine.Starter
-	blockingRunner builderengine.BlockingRunner
+	runner              *shuttleengine.Runner
+	starter             builderengine.Starter
+	orchestratorStarter builderengine.OrchestratorStarter
 
 	// engine and mux are the constructed claude and mux engines Runner
 	// itself holds unexported: poll calls builderengine.TurnEnded/
@@ -69,6 +70,27 @@ type builderCLI struct {
 	planDir    string
 	builderDir string
 	reportsDir string
+}
+
+// runnerOrchestratorStarter adapts *shuttleengine.Runner to
+// builderengine.OrchestratorStarter: Runner.Start returns the concrete
+// *shuttleengine.Run, which satisfies builderengine.OrchestratorHandle
+// structurally (StrandGUID + Wait), but Go's typed method sets keep Runner
+// itself from satisfying the interface directly — this thin adapter bridges
+// that, so builderengine.Run can persist the orchestrator's strand identity
+// between the start and the blocking wait.
+type runnerOrchestratorStarter struct {
+	runner *shuttleengine.Runner
+}
+
+// StartOrchestrator implements builderengine.OrchestratorStarter by
+// delegating to the shuttle Runner's non-blocking Start.
+func (s runnerOrchestratorStarter) StartOrchestrator(spec shuttleengine.Spec) (builderengine.OrchestratorHandle, error) {
+	run, err := s.runner.Start(spec)
+	if err != nil {
+		return nil, err
+	}
+	return run, nil
 }
 
 // Command returns the cobra command tree for the builder module.
@@ -184,7 +206,7 @@ Verbs:
 
 			c.runner = runner
 			c.starter = runner
-			c.blockingRunner = runner
+			c.orchestratorStarter = runnerOrchestratorStarter{runner: runner}
 			c.engine = claudeEngine
 			c.mux = muxEngine
 			c.layout = layout

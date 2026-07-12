@@ -31,7 +31,7 @@ built) needs both `perch` and `builder`.
 | Verb | Job |
 |------|-----|
 | `validate` | Lints the plan at `_lyx/plan` against the plan-format machine checks without running anything — the standalone pre-flight for a Planner or human. |
-| `run [--fresh]` | The product verb: takes the run-level lock, clears any leftover pause flag, runs the automatic validation gate, checks the plan fingerprint against `state.json` (`--fresh` archives stale state/reports and re-inits on a mismatch), archives any stale `outcome.yaml`, spawns a fresh orchestrator session via shuttle, and blocks until the run reaches a terminal outcome (`done`/`stuck`/`paused`) or the orchestrator spawn itself ends asking/died/timed-out. Performs the loop's exit-time backstop weft commit. |
+| `run [--fresh]` | The product verb: takes the run-level lock, clears any leftover pause flag, runs the automatic validation gate, reclaims a prior run's orphaned orchestrator (stops the recorded strand if the mux still reports it live — see [Crash/resume](#crashresume-semantics--re-drive-the-first-unreported-batch)), checks the plan fingerprint against `state.json` (`--fresh` archives stale state/reports and re-inits on a mismatch), archives any stale `outcome.yaml`, spawns a fresh orchestrator session via shuttle — recording its strand in `state.json` *before* blocking — and blocks until the run reaches a terminal outcome (`done`/`stuck`/`paused`) or the orchestrator spawn itself ends asking/died/timed-out. Performs the loop's exit-time backstop weft commit. Requires a live mux session (`lyx mux up` first). |
 | `spawn-batch <NN> [--role recovery] [--restart-chain]` | Runs the same automatic validation gate, checks the pause flag, recomputes the plan fingerprint against `state.json`'s recorded one (a mid-run plan edit refuses loud, pointing at `run --fresh` — no `--fresh` escape exists here, re-initializing is `run`'s job), resolves the batch's role (oversized-driven, or `--role recovery` for the escalation path), optionally performs the `--restart-chain` reset, records the batch's start-SHA in `state.json`, and spawns one implementer via shuttle (non-blocking — returns as soon as the strand is registered). Weft-commits `state.json` on success. |
 | `poll [--wait DURATION]` | Long-polls the in-flight batch for its terminal digest (see [poll's four-branch terminal classification](#polls-four-branch-terminal-classification)) and distills a terminal batch-report into the pinned [digest contract](#digest-contract). Weft-commits the batch report plus `state.json` on a terminal classification; a running snapshot touches neither git nor weft. |
 | `status` | An instant, side-effect-free snapshot of `state.json` plus the reports dir — human- and loom-facing navigation. Never spawns, never weft-commits, never mutates `state.json`. A run that has never started prints `{"initialized": false}`. |
@@ -270,6 +270,19 @@ captures a new start-SHA and overwrites that batch's `BatchState`, not a resume 
 recorded in-flight strand. No progress is lost — every completed card is a host commit,
 so a re-driven batch continues on top of its own prior card commits, and the per-batch
 weft commits above keep `state.json`/reports durable across the crash.
+
+The orphaned-live-ORCHESTRATOR edge is closed by the **entry-time reclaim**:
+`run` records the orchestrator's strand GUID in `state.json` (`OrchestratorStrand`)
+immediately after the spawn starts, *before* blocking on it — so a `run` process that
+dies mid-wait (a killed process, a closed terminal) or an orchestrator that outlives its
+own `orchestrator_timeout_min` while still working leaves a durable record of the pane
+that may still be live and driving. The next `run`'s entry stops that strand if the mux
+still reports it live (liveness-gated, never cleared — a cleanly-finished orchestrator's
+strand was already removed by shuttle and reports not-live), so "always spawns a fresh
+orchestrator" is true by construction rather than an assumption that the old one died.
+Without this, a resume spawns a second live orchestrator over the first and the two
+double-drive the same `state.json` — both writing the same `outcome.yaml`, with no way
+to attribute the result (found live in round fable-r4).
 
 The orphaned-live-implementer edge is closed by the **in-flight guard**
 (`ErrBatchInFlight`): `spawn-batch` refuses when `state.json` records a non-terminal
