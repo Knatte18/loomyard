@@ -297,7 +297,7 @@ error there is the expected `OK` outcome, not a finding.
 ### S9 -- Builder plan validate/status
 
 **Goal:** "Exercise `lyx builder validate` and `lyx builder status` against a trivial,
-hand-written plan-format v1 plan: confirm status reports uninitialized, a valid plan
+hand-written plan-format v2 plan: confirm status reports uninitialized, a valid plan
 passes clean, and a broken plan reports findings instead of a bare error."
 
 **Covers:** builder
@@ -312,7 +312,7 @@ fail-loud validate/status file-contract primitives.
 
 ```
 ---
-format: 1
+format: 2
 approved: true
 ---
 
@@ -323,7 +323,7 @@ One trivial batch, written by hand, whose only purpose is to exercise
 
 ## Batch Index
 
-- 01 — smoke — a placeholder batch
+- 01 — smoke (1 card) — a placeholder batch
 ```
 
 and `_lyx/plan/01-smoke.md` with:
@@ -341,10 +341,14 @@ Exists only so the plan has one well-formed batch.
 
 ## Cards
 
-### Card 1 — placeholder
+### Card 01.1 — placeholder
 
 **What:** Nothing; this card exists only so the batch has content.
-**Where:** 01-smoke.md
+**Context:** none
+**Edits:** none
+**Creates:** none
+**Deletes:** none
+**Moves:** none
 
 ## verify:
 
