@@ -10,6 +10,7 @@
 package buildercli
 
 import (
+	"os"
 	"path/filepath"
 	"sort"
 
@@ -75,23 +76,36 @@ Example:
 				bs := st.Batches[n]
 				status := bs.Status
 				terminal := bs.Terminal
+				reportError := ""
 
 				if !terminal {
 					reportPath := filepath.Join(c.reportsDir, builderengine.BatchReportFileName(n, bs.Slug))
-					if report, rerr := builderengine.ParseReport(reportPath); rerr == nil {
-						status = report.Status
-						terminal = true
+					// A missing report just means the batch has not landed —
+					// but a present-yet-unparseable one is corruption a pure
+					// read must still surface, not silently render as
+					// non-terminal (poll would fail loud on the same file).
+					if _, statErr := os.Stat(reportPath); statErr == nil {
+						if report, rerr := builderengine.ParseReport(reportPath); rerr == nil {
+							status = report.Status
+							terminal = true
+						} else {
+							reportError = rerr.Error()
+						}
 					}
 				}
 
-				batches = append(batches, map[string]any{
+				entry := map[string]any{
 					"number":    n,
 					"slug":      bs.Slug,
 					"status":    status,
 					"role":      bs.Role,
 					"start_sha": bs.StartSHA,
 					"terminal":  terminal,
-				})
+				}
+				if reportError != "" {
+					entry["report_error"] = reportError
+				}
+				batches = append(batches, entry)
 			}
 
 			clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{

@@ -96,6 +96,46 @@ func TestRunCLI_Status_ReportOverridesStaleState(t *testing.T) {
 	}
 }
 
+// TestRunCLI_Status_MalformedReportSurfacesReportError proves status never
+// silently masks a present-but-unparseable report as "no report yet": the
+// batch stays non-terminal (status is a pure read, never a gate) but the
+// entry carries a report_error naming the corruption poll would fail loud on.
+func TestRunCLI_Status_MalformedReportSurfacesReportError(t *testing.T) {
+	fixture := seedBuilderFixture(t)
+
+	st := &builderengine.State{
+		Batches: map[int]*builderengine.BatchState{
+			1: {Slug: "json-flag", StartSHA: "sha1", Role: "implementer", Terminal: false},
+		},
+	}
+	builderDir := hubgeometry.BuilderDir(fixture.Hub)
+	if err := builderengine.SaveState(builderDir, st); err != nil {
+		t.Fatalf("SaveState() error = %v", err)
+	}
+
+	reportsDir := hubgeometry.BuilderReportsDir(fixture.Hub)
+	if err := os.MkdirAll(reportsDir, 0o755); err != nil {
+		t.Fatalf("mkdir reports dir: %v", err)
+	}
+	reportPath := filepath.Join(reportsDir, "01-json-flag.yaml")
+	if err := os.WriteFile(reportPath, []byte("batch: 01-json-flag\nstatus: not-a-real-status\ntests: green\n"), 0o644); err != nil {
+		t.Fatalf("write malformed report: %v", err)
+	}
+
+	var out bytes.Buffer
+	exitCode := RunCLI(&out, []string{"status"})
+	if exitCode != 0 {
+		t.Fatalf("RunCLI([status]) = %d; want 0, output: %s", exitCode, out.String())
+	}
+	got := out.String()
+	if !strings.Contains(got, `"report_error"`) {
+		t.Errorf("output missing report_error for a malformed report; got %q", got)
+	}
+	if !strings.Contains(got, `"terminal":false`) {
+		t.Errorf("output should keep the batch non-terminal on a malformed report; got %q", got)
+	}
+}
+
 func TestRunCLI_Status_PausedTrue(t *testing.T) {
 	fixture := seedBuilderFixture(t)
 
