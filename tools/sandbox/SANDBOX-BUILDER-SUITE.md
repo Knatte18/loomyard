@@ -12,9 +12,9 @@ an automated suite -- an agent drives it, an operator watches.
 until the plan is built (see `docs/modules/builder.md`). `lyx builder run` spawns its own
 **long-lived LLM orchestrator session** that autonomously calls `spawn-batch`/`poll`/`pause`
 itself; `spawn-batch`, `poll`, and `pause` are also directly invocable `lyx builder`
-subcommands, which is how scenarios B2-B6 below isolate the Go-level state-machine mechanics
+subcommands, which is how scenarios B2-B7 below isolate the Go-level state-machine mechanics
 (timeout classification, lock contention, pause discipline, fingerprint archiving,
-stuck->recovery report archiving) without
+stuck->recovery report archiving, the in-flight guard and dead-respawn reclaim) without
 depending on the orchestrator LLM's own cooperation with adversarial timing. Scenarios are
 deliberately trivial (a plan whose cards just write a fixed-content file) so the assertions
 are about the mechanics, not about whether an implementer's actual coding judgment is good --
@@ -118,7 +118,7 @@ zero `WARN`/`FAIL` findings** -- in that case `items` is an empty array.
 
 - `source` is the literal string `"sandbox-report"`.
 - `items[]` holds only `WARN`/`FAIL` findings -- do not record `OK` scenarios here.
-- `ref` is the scenario id (`B1`-`B6`).
+- `ref` is the scenario id (`B1`-`B7`).
 - `title` is a short one-line summary.
 - `body` folds the detail, repro steps, and verdict into one markdown string.
 
@@ -199,17 +199,21 @@ confirm it clears the pause flag at entry and batch 02 proceeds normally to comp
 **Covers:** builder
 
 **Goal:** "Start `lyx builder run` in one terminal against a plan with at least two batches;
-while it is still holding the run-level lock, attempt a second `lyx builder run` (or
-`spawn-batch`) against the SAME worktree from a second terminal. Confirm the loser fails fast
-with a run-busy error and that `state.json` is never corrupted or double-written."
+while it is still holding the run-level lock, attempt a second `lyx builder run` against the
+SAME worktree from a second terminal. Confirm the loser fails fast with a run-busy error and
+that `state.json` is never corrupted or double-written."
 
 **Watch:** Terminal A: `lyx builder run` (blocks). Terminal B, while A is still running:
-`lyx builder run` again (or `lyx builder spawn-batch <NN>` for whichever batch A hasn't
-reached yet). Confirm B's command exits immediately with a clear run-busy error and touches
-no state -- inspect `state.json`'s mtime/content immediately before and after B's failed
-attempt to confirm it is byte-for-byte unchanged. Let A finish normally to a terminal
-outcome; confirm A's own exit-time backstop weft-commit still fired (the doc's claim is that
-the LOSER skips its own backstop commit, not the winner).
+`lyx builder run` again. Confirm B's command exits immediately with a clear run-busy error
+and touches no state -- inspect `state.json`'s mtime/content immediately before and after
+B's failed attempt to confirm it is byte-for-byte unchanged. Let A finish normally to a
+terminal outcome; confirm A's own exit-time backstop weft-commit still fired (the doc's
+claim is that the LOSER skips its own backstop commit, not the winner). Note: a manual
+`spawn-batch` from terminal B is deliberately NOT run-lock-refused -- the orchestrator's own
+`spawn-batch` calls run under the winner's lock, so a lock check there would deadlock every
+normal run. A `spawn-batch` fired while A's current batch is mid-flight is instead refused
+by the in-flight guard (B7); one fired between A's batches is structurally indistinguishable
+from the orchestrator's own call and is not refused.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -268,6 +272,32 @@ mechanics, not here.)
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
+### B7 -- In-flight guard and dead-respawn substrate reclaim
+
+**Covers:** builder
+
+**Goal:** "With a batch's implementer genuinely mid-flight, confirm `lyx builder spawn-batch`
+of ANY batch is refused with a batch-already-in-flight error (never a silent double-spawn).
+Then let a batch classify `dead` (timeout or died) with its pane kept alive, and confirm the
+respawn of that SAME batch succeeds by re-claiming the kept substrate: the kept strand is
+stopped and any late report the orphan wrote after its classification is ARCHIVED (never
+deleted, never refused on)."
+
+**Watch:** `lyx builder spawn-batch 01` (a slow batch -- e.g. a card instructing one long
+blocking `sleep`), then immediately `lyx builder spawn-batch 02` from a second terminal:
+confirm it refuses naming the in-flight batch and its strand, pointing at `lyx builder poll`,
+and spawns nothing (`lyx mux status` still lists exactly one implementer strand). Poll batch
+01 past a short `batch_timeout_min` to its `dead`/`timeout` classification (pane kept live,
+per B2). If the orphan then finishes and writes its report late, confirm
+`lyx builder spawn-batch 01` is still NOT refused: the late report is renamed with the
+UTC-compact archive suffix and the kept strand is gone from `lyx mux status` before the
+fresh implementer spawns. Also confirm the B1 happy path's cleanup half: after every
+`done`/`stuck` classification the batch's pane is released (no leftover implementer strands
+accumulate across a run), while every `dead` classification keeps its pane for diagnosis
+until a respawn re-claims it.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
 ## Session log format
 
 After running all scenarios, record a short session summary:
@@ -282,6 +312,7 @@ B3: <OK|WARN|FAIL> -- <one-line note if not OK>
 B4: <OK|WARN|FAIL> -- <one-line note if not OK>
 B5: <OK|WARN|FAIL> -- <one-line note if not OK>
 B6: <OK|WARN|FAIL> -- <one-line note if not OK>
+B7: <OK|WARN|FAIL> -- <one-line note if not OK>
 
 sandbox-report.json written: <count of WARN/FAIL items>
 ```
