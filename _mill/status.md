@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: plan-format-file-ops
 branch: plan-format-file-ops
 plan: _mill/plan
@@ -20,4 +20,21 @@ discussed  '2026-07-12T06:21:50Z'
 planning  '2026-07-12T06:46:04Z'
 plan-fix-r1  '2026-07-12T06:53:51Z'
 planned  '2026-07-12T06:54:08Z'
+implementing  '2026-07-12T06:55:53Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: parser-v2
+    state: pending
+  - name: move-checks
+    state: pending
+  - name: templates-help
+    state: pending
+  - name: card-checks
+    state: pending
+  - name: docs
+    state: pending
 ```
