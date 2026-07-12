@@ -38,7 +38,11 @@ Before starting a session:
 4. **`lyx init` first.** `lyx builder` requires an initialized worktree
    (`_lyx/config/builder.yaml`, plus `shuttle.yaml`/`mux.yaml` since builder branches off
    shuttle directly) exactly like `lyx shuttle`/`lyx burler` do.
-5. **Attached interactive terminal.** Launch `sandbox-builder-suite.cmd` from a real,
+5. **`lyx mux up` before any spawn.** `run` and `spawn-batch` spawn through shuttle
+   into an existing mux session and do not boot one themselves; without it the spawn
+   fails loud with `no mux session; run "lyx mux up"` (after `run` has already taken
+   the lock and initialized `state.json`, so its error-exit backstop weft commit fires).
+6. **Attached interactive terminal.** Launch `sandbox-builder-suite.cmd` from a real,
    attached console -- never redirected, backgrounded, or detached. Without a TTY the
    driving claude session cannot idle between turns waiting for notifications, so the
    process ends as soon as a turn ends and the remaining scenarios are silently abandoned.
