@@ -27,11 +27,12 @@ func (c *builderCLI) runCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "run",
 		Short: "spawn or resume the orchestrator and block until the plan reaches a terminal outcome",
-		Long: `run takes the builder run-level lock, clears any leftover pause flag, runs
-the automatic plan-validation gate, checks the on-disk plan's fingerprint
-against state.json's recorded one (refusing with a message naming
-"run --fresh" on a mismatch -- --fresh archives the stale state and
-reports and starts over), archives any stale outcome.yaml, spawns a fresh
+		Long: `run takes the builder run-level lock, runs the automatic plan-validation
+gate, checks the on-disk plan's fingerprint against state.json's recorded
+one (refusing with a message naming "run --fresh" on a mismatch -- --fresh
+archives the stale state and reports and starts over), clears any leftover
+pause flag once those refusal gates pass (a run that refuses leaves a
+pending pause intact), archives any stale outcome.yaml, spawns a fresh
 orchestrator session via shuttle (never "claude --resume" -- the
 orchestrator is always spawned fresh, hydrated from on-disk state), and
 blocks until the orchestrator writes its own outcome.yaml (done/stuck) or

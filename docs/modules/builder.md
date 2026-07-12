@@ -31,7 +31,7 @@ built) needs both `perch` and `builder`.
 | Verb | Job |
 |------|-----|
 | `validate` | Lints the plan at `_lyx/plan` against the plan-format machine checks without running anything — the standalone pre-flight for a Planner or human. |
-| `run [--fresh]` | The product verb: takes the run-level lock, clears any leftover pause flag, runs the automatic validation gate, reclaims a prior run's orphaned orchestrator (stops the recorded strand if the mux still reports it live — see [Crash/resume](#crashresume-semantics--re-drive-the-first-unreported-batch)), checks the plan fingerprint against `state.json` (`--fresh` archives stale state/reports and re-inits on a mismatch), archives any stale `outcome.yaml`, spawns a fresh orchestrator session via shuttle — recording its strand in `state.json` *before* blocking — and blocks until the run reaches a terminal outcome (`done`/`stuck`/`paused`) or the orchestrator spawn itself ends asking/died/timed-out. Performs the loop's exit-time backstop weft commit. Requires a live mux session (`lyx mux up` first). |
+| `run [--fresh]` | The product verb: takes the run-level lock, runs the automatic validation gate, reclaims a prior run's orphaned orchestrator (stops the recorded strand if the mux still reports it live — see [Crash/resume](#crashresume-semantics--re-drive-the-first-unreported-batch)), checks the plan fingerprint against `state.json` (`--fresh` archives stale state/reports and re-inits on a mismatch), clears any leftover pause flag (only once those refusal gates pass — a refused run leaves a pending pause intact), archives any stale `outcome.yaml`, spawns a fresh orchestrator session via shuttle — recording its strand in `state.json` *before* blocking — and blocks until the run reaches a terminal outcome (`done`/`stuck`/`paused`) or the orchestrator spawn itself ends asking/died/timed-out. Performs the loop's exit-time backstop weft commit. Requires a live mux session (`lyx mux up` first). |
 | `spawn-batch <NN> [--role recovery] [--restart-chain]` | Runs the same automatic validation gate, checks the pause flag, recomputes the plan fingerprint against `state.json`'s recorded one (a mid-run plan edit refuses loud, pointing at `run --fresh` — no `--fresh` escape exists here, re-initializing is `run`'s job), resolves the batch's role (oversized-driven, or `--role recovery` for the escalation path), optionally performs the `--restart-chain` reset, records the batch's start-SHA in `state.json`, and spawns one implementer via shuttle (non-blocking — returns as soon as the strand is registered). Weft-commits `state.json` on success. |
 | `poll [--wait DURATION]` | Long-polls the in-flight batch for its terminal digest (see [poll's four-branch terminal classification](#polls-four-branch-terminal-classification)) and distills a terminal batch-report into the pinned [digest contract](#digest-contract). Weft-commits the batch report plus `state.json` on a terminal classification; a running snapshot touches neither git nor weft. |
 | `status` | An instant, side-effect-free snapshot of `state.json` plus the reports dir — human- and loom-facing navigation. Never spawns, never weft-commits, never mutates `state.json`. A run that has never started prints `{"initialized": false}`. |
@@ -184,11 +184,14 @@ instead of a perch run dir:
 - The orchestrator reads that refusal as an operational signal (`ErrPaused`), never a
   hard error: it writes its own `outcome.yaml` with `outcome: paused` and exits
   cleanly; `run` sees `paused` and exits `RunResult{Outcome: "paused"}`.
-- The flag is cleared (`ClearPause`) at two points: `run`'s own entry (so a resumed
-  run never instantly re-pauses on the flag that requested the very pause it is now
-  resuming from) and at every non-`paused` terminal outcome (so a pause request that
-  lost the race against the last batch settling on its own never lingers in a
-  finished run's builder dir).
+- The flag is cleared (`ClearPause`) at two points: once `run` has passed its
+  validation and plan-fingerprint refusal gates and is committed to spawning a fresh
+  orchestrator (so a resumed run never instantly re-pauses on the flag that requested
+  the very pause it is now resuming from — while a `run` that *refuses* on a validation
+  finding or a fingerprint mismatch leaves the operator's pending pause intact rather
+  than silently discarding a request it never acted on), and at every non-`paused`
+  terminal outcome (so a pause request that lost the race against the last batch
+  settling on its own never lingers in a finished run's builder dir).
 
 ## Outcome contract + archiving
 

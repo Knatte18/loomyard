@@ -4,8 +4,10 @@
 // RequestPause writes a flag file that spawn-batch's batch-boundary check
 // refuses against, PauseRequested observes it, and ClearPause removes it.
 // The clearing rules the discussion pins mirror perch's exactly: ClearPause
-// must be called at run's own entry (never instantly re-pause on the flag
-// that requested the pause a resumed run is now resuming from) and again at
+// must be called once run has passed its refusal gates and is committed to
+// spawning (never instantly re-pause on the flag that requested the pause a
+// resumed run is now resuming from — while a run that refuses on validation
+// or a fingerprint mismatch leaves a pending pause intact) and again at
 // every terminal outcome (a pause requested while the last batch was still
 // in flight can lose the race against the boundary check settling on its
 // own — the flag must not linger in a finished run's builder dir).
@@ -58,9 +60,12 @@ func PauseRequested(builderDir string) bool {
 
 // ClearPause removes builderDir's pause flag file, doing nothing if it is
 // already absent — clearing an already-clear flag is not an error. Callers
-// MUST invoke this at run's own entry (so a resumed run never instantly
-// re-pauses on the flag that requested the very pause it is now resuming
-// from) and again at every terminal outcome (so a pause request that lost
+// MUST invoke this once run has passed its refusal gates and is committed to
+// spawning a fresh orchestrator (so a resumed run never instantly re-pauses on
+// the flag that requested the very pause it is now resuming from — while a run
+// that refuses on a validation finding or a fingerprint mismatch leaves the
+// operator's pending pause intact rather than discarding a request it never
+// acted on) and again at every terminal outcome (so a pause request that lost
 // the race against the last batch settling on its own never lingers in a
 // finished run's builder dir).
 func ClearPause(builderDir string) error {

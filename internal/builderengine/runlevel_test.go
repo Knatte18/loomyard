@@ -515,6 +515,79 @@ func TestRun_ClearsPauseOnDoneAndStuckButNotOnPaused(t *testing.T) {
 	}
 }
 
+// TestRun_RefusedRunLeavesPauseIntactButProceedingRunClearsIt proves the
+// entry-time pause clear runs only once Run has passed its refusal gates: a
+// run that REFUSES on a validation finding or a plan-fingerprint mismatch
+// leaves a pending pause flag intact (the operator's request must not be
+// silently discarded by a run that resumed nothing), while a run that
+// PROCEEDS past those gates clears a pre-existing pause before ever spawning
+// its orchestrator (the never-instantly-re-pause property).
+func TestRun_RefusedRunLeavesPauseIntactButProceedingRunClearsIt(t *testing.T) {
+	t.Run("validation refusal leaves a pending pause intact", func(t *testing.T) {
+		fx := newRunFixture(t)
+		fx.Deps.PlanDir = copyPlanFixture(t, filepath.Join("testdata", "plan-unapproved"))
+		if err := builderengine.RequestPause(fx.Deps.BuilderDir); err != nil {
+			t.Fatalf("RequestPause: %v", err)
+		}
+
+		_, err := builderengine.Run(fx.Deps, builderengine.RunOptions{})
+		if err == nil || !strings.Contains(err.Error(), "plan-unapproved") {
+			t.Fatalf("Run() error = %v; want a plan-unapproved validation refusal", err)
+		}
+		if !builderengine.PauseRequested(fx.Deps.BuilderDir) {
+			t.Error("PauseRequested() = false after a refused run; want the pending pause left intact")
+		}
+	})
+
+	t.Run("fingerprint-mismatch refusal leaves a pending pause intact", func(t *testing.T) {
+		fx := newRunFixture(t)
+		fx.Runner.Result = shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}
+		fx.Runner.WriteOutcome = doneOutcomeYAML
+
+		// First run: fresh init records the plan's original fingerprint.
+		if _, err := builderengine.Run(fx.Deps, builderengine.RunOptions{}); err != nil {
+			t.Fatalf("first Run() error = %v; want nil", err)
+		}
+
+		// Shift the fingerprint by an inert trailing comment (parseVerifySection
+		// only reads its section's first non-empty line), then request a pause.
+		batchPath := filepath.Join(fx.Deps.PlanDir, "01-json-flag.md")
+		original, err := os.ReadFile(batchPath)
+		if err != nil {
+			t.Fatalf("ReadFile(batch 01): %v", err)
+		}
+		if err := os.WriteFile(batchPath, append(original, []byte("\n<!-- mutated -->\n")...), 0o644); err != nil {
+			t.Fatalf("mutate batch 01: %v", err)
+		}
+		if err := builderengine.RequestPause(fx.Deps.BuilderDir); err != nil {
+			t.Fatalf("RequestPause: %v", err)
+		}
+
+		if _, err := builderengine.Run(fx.Deps, builderengine.RunOptions{}); !errors.Is(err, builderengine.ErrFingerprintMismatch) {
+			t.Fatalf("Run() error = %v; want errors.Is(err, ErrFingerprintMismatch)", err)
+		}
+		if !builderengine.PauseRequested(fx.Deps.BuilderDir) {
+			t.Error("PauseRequested() = false after a fingerprint-mismatch refusal; want the pending pause left intact")
+		}
+	})
+
+	t.Run("a proceeding run clears a pre-existing pause before spawning", func(t *testing.T) {
+		fx := newRunFixture(t)
+		fx.Runner.Result = shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}
+		fx.Runner.WriteOutcome = doneOutcomeYAML
+		if err := builderengine.RequestPause(fx.Deps.BuilderDir); err != nil {
+			t.Fatalf("RequestPause: %v", err)
+		}
+
+		if _, err := builderengine.Run(fx.Deps, builderengine.RunOptions{}); err != nil {
+			t.Fatalf("Run() error = %v; want nil", err)
+		}
+		if builderengine.PauseRequested(fx.Deps.BuilderDir) {
+			t.Error("PauseRequested() = true after a proceeding run; want the pre-existing pause cleared")
+		}
+	})
+}
+
 // TestRun_ProgressRenderingPartiallyReported proves {{.progress}} renders a
 // "done" line for exactly the batches that already have a report on disk
 // (a partially-reported resume state), and the literal word "none" would

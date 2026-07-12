@@ -1,7 +1,9 @@
 // runlevel.go implements Run, the `run` verb's engine core: the run-lock,
-// the never-instantly-re-pause clear, the automatic validation gate, the
-// plan-fingerprint crash/resume guard (with its --fresh archive/re-init
-// escape), the always-fresh orchestrator spawn (stencil-filled prompt,
+// the automatic validation gate, the plan-fingerprint crash/resume guard
+// (with its --fresh archive/re-init escape), the never-instantly-re-pause
+// clear (performed only once those refusal gates pass, so a refused run
+// leaves a pending pause intact), the always-fresh orchestrator spawn
+// (stencil-filled prompt,
 // rendered batch index + progress), and the shuttle-outcome-to-RunResult
 // mapping the discussion's distinct-envelope decision pins. Named runlevel.go
 // (not run.go) to avoid colliding with the poll/spawn files' own naming, per
@@ -346,9 +348,11 @@ func renderProgress(plan *Plan, reportsDir string) (string, error) {
 }
 
 // Run drives one `lyx builder run` invocation to completion: the run-level
-// mutex, the never-instantly-re-pause clear, the automatic validation gate,
-// the plan-fingerprint crash/resume guard (with its --fresh escape), the
-// stale-outcome-file archive, the always-fresh orchestrator spawn, and the
+// mutex, the automatic validation gate, the plan-fingerprint crash/resume
+// guard (with its --fresh escape), the never-instantly-re-pause clear (run
+// only after those refusal gates pass, so a refused run leaves a pending
+// pause intact), the stale-outcome-file archive, the always-fresh
+// orchestrator spawn, and the
 // shuttle-outcome-to-RunResult mapping. Every returned error is
 // "builder: "-prefixed (via the helpers it calls); ErrRunBusy and
 // ErrFingerprintMismatch are exported sentinels a caller matches via
@@ -368,13 +372,6 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		return RunResult{}, fmt.Errorf("%w: %q (run.lock held); wait for it to finish, or check `lyx builder status`", ErrRunBusy, deps.BuilderDir)
 	}
 	defer runLock.Release()
-
-	// Never-instantly-re-pause: a resumed run must not immediately refuse
-	// its own first spawn-batch call on a flag left over from the pause
-	// this very invocation is resuming from.
-	if err := ClearPause(deps.BuilderDir); err != nil {
-		return RunResult{}, err
-	}
 
 	plan, err := ParsePlan(deps.PlanDir)
 	if err != nil {
@@ -495,6 +492,21 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		if err := SaveState(deps.BuilderDir, st); err != nil {
 			return RunResult{}, err
 		}
+	}
+
+	// Clear any leftover pause flag now that the run has passed every refusal
+	// gate (validation, the plan-fingerprint check) and is committed to
+	// spawning a fresh orchestrator: a resumed run must not instantly re-pause
+	// its own first spawn-batch on the flag that requested the very pause it is
+	// now resuming from. Placing the clear HERE — not at the bare entry —
+	// means a run that REFUSED above (a validation finding, or a fingerprint
+	// mismatch with no --fresh) returned before reaching it, so it leaves the
+	// operator's pending pause intact rather than silently discarding a pause
+	// request it never acted on. The never-instantly-re-pause property still
+	// holds: the orchestrator's first spawn-batch runs during handle.Wait()
+	// below, far after this clear.
+	if err := ClearPause(deps.BuilderDir); err != nil {
+		return RunResult{}, err
 	}
 
 	if _, err := ArchiveStaleOutcome(deps.BuilderDir, time.Now); err != nil {
