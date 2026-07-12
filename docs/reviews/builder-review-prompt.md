@@ -50,9 +50,9 @@ the bottom.
   implementer templates and their Go parsers), `docs/modules/plan-format.md` (builder's pinned
   input contract), `docs/overview.md`, `docs/roadmap.md`, `CONSTRAINTS.md`, `README.md`.
 - The dedicated live-driving suite you will RUN: `tools/sandbox/SANDBOX-BUILDER-SUITE.md`
-  (scenarios B1–B5) plus [`docs/sandbox-howto.md`](../sandbox-howto.md) for how the harness works.
-  This suite is brand-new (this is the first hardening round for builder) — treat it as a FLOOR,
-  not a spec: extend it the moment you find a live behavior it doesn't cover.
+  (scenarios B1–B7) plus [`docs/sandbox-howto.md`](../sandbox-howto.md) for how the harness works.
+  Two rounds have already extended it (B6, B7) — treat it as a FLOOR, not a spec: extend it the
+  moment you find a live behavior it doesn't cover.
 - Repo rules you MUST follow: `CLAUDE.md` (root + `~/.claude/CLAUDE.md`) and `CONSTRAINTS.md`
   (Hub Geometry Invariant, CLI/Cobra Invariant, lyxtest Leaf Invariant, Sandbox Suite Coverage,
   Documentation Lifecycle). A change that ships behaviour without updating the module doc /
@@ -153,46 +153,93 @@ substrate — a green `go test` proves nothing here:
   flag the absence of a Gemini/other-provider path.
 
 ## Round context seeded from prior-round verification
-You are round tag `fable-r2`. Round 1 (`opus-r1`) found and fixed five real defects — CLOSED AND
-VERIFIED by the orchestrator's own independent, cold-tree re-check (do not re-litigate these):
+You are round tag `opus-r3`. Two rounds have run: `opus-r1` (code-only, no live driving — a
+process gap fixed in this doc since) and `fable-r2` (the first round to actually drive the real
+substrate). Together they found and fixed sixteen real defects — CLOSED AND VERIFIED by the
+orchestrator's own independent, cold-tree re-check (do not re-litigate these):
 
+Round 1 (`opus-r1`):
 - **B1 (BLOCKING)** — `spawn-batch --role recovery` was unconditionally refused by the stale
-  stuck-report guard. Fixed at `57006db` (archive-never-refuse before the guard). Orchestrator
-  reverted the fix and confirmed `TestSpawnBatch_RecoveryArchivesStaleReport` fails at exactly the
-  pre-existing-report refusal, then restored (clean diff) — the test is real, not vacuous.
-- **B2 (MEDIUM)** — `renderProgress` labeled any reported batch "done" regardless of real status,
-  letting a resume silently treat `stuck` as done. Fixed at `eff5f1e`. Orchestrator reverted and
-  confirmed `TestRun_ProgressRenderingStuckBatchIsNotDone` fails, then restored.
-- **B3 (LOW)** — pause flag leaked into weft history. Fixed at `8e76968`. Orchestrator reverted and
-  confirmed `TestBuilderWeftPathspec_ExcludesRuntimeArtifacts` fails to compile without it, then
-  restored.
-- **B5 (NIT)** — duplicated archive-collision loop. Fixed at `b6ce13d`. DRY refactor, existing
-  tests cover it.
-- **B6 (suite)** — a new stuck→recovery sandbox scenario was added at `62a8429`, closing the gap
-  that hid B1 for the next live pass.
-- Cold `go build`/`vet`/`go test -count=5 ./internal/builderengine/... ./internal/buildercli/...
-  ./cmd/lyx/...` all green, independently re-run by the orchestrator (not just trusted from the
-  round's own report).
+  stuck-report guard. Fixed at `57006db`. Revert-proof done: `TestSpawnBatch_RecoveryArchivesStaleReport`
+  fails at exactly the pre-existing-report refusal, then restored.
+- **B2 (MEDIUM)** — `renderProgress` labeled any reported batch "done" regardless of real status.
+  Fixed at `eff5f1e`. Revert-proof done.
+- **B3 (LOW)** — pause flag leaked into weft history. Fixed at `8e76968`. Revert-proof done
+  (fails to compile without the extracted helper).
+- **B5 (NIT)** — duplicated archive-collision loop, DRY'd. Fixed at `b6ce13d`.
+- **B6 (suite)** — stuck→recovery sandbox scenario added at `62a8429`.
 
-**RESIDUAL — this is your real job this round, not a formality:** ZERO live substrate driving has
-happened in this campaign yet. `opus-r1` skipped ALL of B1–B6 (see "What to TEST" below — read
-that section's warnings carefully, they exist because of exactly what happened last round), and
-the orchestrator's own fixes-proof above used hermetic/integration tests with fixtures (a
-hand-seeded fake stuck-report YAML, a fake Starter), never the real `lyx.exe` binary against real
-psmux + a real Claude session. **You must actually run the live suite for real this round** — at
-an absolute minimum B4 (cheap, seconds) and B6 (the scenario that proves the actual BLOCKING bug
-stays fixed with a genuinely-stuck report a real Claude session produced on its own, not a
-hand-written fixture) — and as many of B1/B2/B3/B5 as you can fit. This is not optional busywork;
-it is the one thing this entire campaign has not yet proven.
+Round 2 (`fable-r2`) — drove the REAL substrate for the first time this campaign (real psmux, real
+logged-in `claude` sessions, deployed binary, sandbox Hub `C:\Code\lyx-test-HUB`) and found eleven
+MORE defects the code-only round completely missed, all fixed, none deferred:
+- **F1 (MEDIUM)** — `poll` never released a `done`/`stuck` batch's strand — every finished batch
+  leaked a live implementer pane forever (confirmed live: four leaked panes after two runs). Fixed
+  `af42f8b`. Revert-proof done: `TestPollCmd_TerminalCleanupMatrix`'s done/stuck subtests fail at
+  exactly the missing `RemoveStrand` call, dead-asking subtest correctly still passes.
+- **F2 (MEDIUM)** — `poll`'s dead classification didn't re-check the report if one landed mid-gather
+  (a Stop event racing a just-written report). Fixed `8801ad9`. Revert-proof done:
+  `TestPollCmd_ReportLandingDuringGatherBeatsStopEvent` fails with `dead:asking` instead of `done`.
+- **F3 (MEDIUM)** — `spawn-batch` never re-checked the plan fingerprint, contradicting `state.go`'s
+  documented contract; a mid-run plan edit spawned silently against stale state (confirmed live).
+  Fixed `3938620`. Revert-proof done (temporarily disabled the check block; test fails exactly on
+  the missing refusal).
+- **F4 (MEDIUM)** — round 1's deferred orphaned-live-implementer guard, now resolved: no guard
+  existed against spawning while a non-terminal batch's strand was still live (confirmed live: two
+  `spawn-batch 2` calls both succeeded, clobbering `BatchState`). Fixed `96a2d93` — the
+  distinguisher is `BatchState.Terminal` + a live mux query; every intended respawn ladder passes
+  through a terminal poll first, so it never trips. Revert-proof done: `TestSpawnBatch_InFlightGuardMatrix`'s
+  refuse-case fails, all four allow-cases correctly still pass.
+- **F11 (MEDIUM)** — a `dead: timeout`/`asking` implementer kept alive for diagnosis can finish its
+  work AFTER classification and write a late report, wedging the documented respawn ladder with
+  "batch report already exists" (confirmed live, unprompted, during the B2 scenario). Fixed
+  `d7d32f5` — a dead-batch respawn now stops the kept strand if still live and archives
+  (never deletes) any late report; `--restart-chain` stops every member's live strand before the
+  hard reset. Revert-proof done: both dead-orphan subtests of
+  `TestSpawnBatch_DeadRespawnReclaimsKeptSubstrate` fail at "batch report already exists", the
+  done-respawn subtest correctly still passes, and `TestSpawnBatch_RestartChainStopsLiveMemberStrands`
+  fails on the missing `RemoveStrand` call.
+- **F5 (LOW)** — `--restart-chain`'s destructive disk reset preceded any state persist. Fixed `37711da`.
+- **F6 (LOW)** — running/dead digests carried unmeasured `files_changed`/`dirty`, violating the
+  pinned digest contract. Fixed `cf74d2e`.
+- **F7 (LOW)** — an inline (non-`none`) value on a card file-op label line silently parsed as
+  present-but-empty. Fixed `153d6f2`.
+- **F8 (NIT)** — `status` silently swallowed a malformed report. Fixed `56bc79f`.
+- **F9 (NIT)** — `chain-end:` without `verify: deferred` passed validation. Fixed `4485f99`.
+- **F10 (NIT/docs)** — sandbox suite B4 promised a run-busy refusal `spawn-batch` structurally
+  cannot give; reworded, new B7 scenario added. Fixed `f1122ab`.
+- New `internal/buildercli/smoke_test.go` (`//go:build smoke`) boots a REAL psmux server and
+  exercises F1's strand release + F4's in-flight guard against it — independently re-run by the
+  orchestrator, green (`go test -tags smoke -run TestSmoke_ ./internal/buildercli/...`, 2 tests,
+  ~36s).
+- Cold `go build`/`vet`/`go test -count=5 (+ -tags integration) ./internal/builderengine/...
+  ./internal/buildercli/... ./cmd/lyx/...` all green, independently re-run by the orchestrator.
+  All five MEDIUM findings' revert-proofs independently reproduced by the orchestrator (not just
+  trusted from the round's own report) — every one failed at exactly the right assertion, then was
+  cleanly restored to a byte-identical tree.
 
-Also DEFERRED from round 1 (see "Deferred items" below): **B4's code-guard** (orphaned-live-
-implementer-on-resume). Re-evaluate it — don't just carry it forward silently.
+**RESIDUAL — this is your real job this round:** `fable-r2` itself flagged that **chain rollback
+(`--restart-chain`) was never exercised live** — "not reached this session (time went to the six
+suite scenarios + extras)". This is the one High-yield-focus invariant with zero live proof so
+far, and it is a destructive, SHA-targeted, multi-batch operation — exactly the kind of composed,
+timing-sensitive behavior this method exists to catch. **You must drive `--restart-chain` live
+this round**, against a real deferred-verify chain with a real Claude implementer, verifying: the
+recorded start SHA is right, member reports are deleted, `state.CurrentBatch` resets to the
+chain's lowest member, an unrecorded chain refuses rather than resetting to a hallucinated SHA, and
+F11's new chain-member-strand-stop behavior actually stops a live member's strand before the reset
+(not just hermetically, live). Beyond that: do your own genuinely independent clean-room pass —
+read the code yourself, drive the substrate against every High-yield-focus invariant, and don't
+assume two rounds of fixes means the well is dry. Fresh eyes at Opus tier, now that live driving is
+mandatory and has proven to surface real bugs twice in a row, is exactly the check this method is
+designed to run. An honest "no NEW defects" is a legitimate outcome, but only after you've actually
+driven `--restart-chain` for real and can say so with a transcript, not a claim.
+
+There is currently nothing carried forward on the "Deferred items" list — `fable-r2` resolved
+round 1's only deferred item (F4). If you cannot resolve something this round, defer it explicitly
+with a reason, per the fixing discipline below; do not leave a finding unfixed silently.
 
 Do a genuinely independent clean-room pass on top of this: read the code yourself, drive the real
 substrate against every "High-yield focus" invariant, and form your own findings before consulting
-`opus-r1`'s `.scratch/` material. An honest "no NEW defects beyond what round 1 already found and
-fixed" is a legitimate outcome for the CODE side — but that verdict is worthless without the live
-proof above, which is squarely your job this round regardless of what your own code review finds.
+prior rounds' `.scratch/` material.
 
 State the merge bar so you calibrate: correctness in the NORMAL single-instance flow (one `lyx
 builder run` at a time, no artificial concurrency stress) is the gate. If you run N× concurrent
@@ -219,7 +266,7 @@ Live driving via the SANDBOX SUITE (PRIMARY — where the bugs surface):
   source) attached to a real console — meaningless for you to invoke, since you (the round agent)
   have no real attached console of your own to hand it, and you already have full source
   knowledge, so a second blind reviewer duplicating your own work end-to-end adds nothing. Instead,
-  treat `SANDBOX-BUILDER-SUITE.md`'s scenarios (B1–B5) as a checklist YOU execute directly, with
+  treat `SANDBOX-BUILDER-SUITE.md`'s scenarios (B1–B7) as a checklist YOU execute directly, with
   your own tool calls: materialize the Hub yourself (`sandbox-build.cmd`, then `lyx init` in the
   host repo), then run the real `lyx builder run` / `spawn-batch` / `poll` / `pause` commands the
   scenarios describe, foreground, waiting for each to return. This DOES spawn real psmux panes and
@@ -249,12 +296,14 @@ Live driving via the SANDBOX SUITE (PRIMARY — where the bugs surface):
   hand-seeded YAML fixture), you must run the real CLI end-to-end and report the actual terminal
   output with timestamps as evidence, not a summary claim. Extend to B1/B2/B3/B5 as time allows —
   more live coverage is always better, never optional busywork.
-- Walk every scenario (B1–B6) this way and record OK/WARN/FAIL. The suite is a FLOOR — devise and
-  run MORE adversarial scenarios of your own beyond it, especially combinations the suite doesn't
-  try (e.g. pause racing a batch that is *just about* to write its report; a chain restart while a
-  sibling batch's implementer is still technically live from a stale strand).
+- Walk every scenario (B1–B7) this way and record OK/WARN/FAIL. **B7 in particular exercises
+  chain-restart/strand liveness — but drive `--restart-chain` itself directly too (see "Round
+  context" above), not only through B7's framing.** The suite is a FLOOR — devise and run MORE
+  adversarial scenarios of your own beyond it, especially combinations the suite doesn't try (e.g.
+  pause racing a batch that is *just about* to write its report; a chain restart while a sibling
+  batch's implementer is still technically live from a stale strand).
 - The only legitimate "cannot verify" cases are: (a) a scenario that structurally requires a human
-  to visually confirm something (there are none in B1-B6 today — flag it if you add one that does),
+  to visually confirm something (there are none in B1-B7 today — flag it if you add one that does),
   or (b) a genuine environment gap (`claude` not logged in, `psmux.exe` missing — check for this
   FIRST, before doing anything else, so you know up front whether it applies). Flag those as
   not-headlessly-verifiable with the specific missing precondition — never as a blanket
@@ -279,16 +328,13 @@ cannot do alone this round (an operator decision on a real design tradeoff, or a
 you don't have). Even then say so explicitly in the fixer report's deferred section.
 
 ## Deferred items from the prior round — RE-EVALUATE these (after your own pass)
-- **B4's code guard** — a "refuse/redirect a spawn when a live strand already exists for the
-  batch" guard was deliberately NOT built in round 1. Reason given: it would regress the
-  intentional `dead: timeout`/`dead: asking` respawn ladder, where a pane is deliberately kept
-  live for diagnosis (`KeepPane`) and is meant to be respawned on top of — a naive guard can't
-  tell that apart from a genuinely orphaned live implementer left over from an orchestrator that
-  died mid-run. Re-evaluate: is this still a genuine unresolved design tradeoff (in which case
-  keep it deferred and say so, do NOT silently drop it or silently build a guard that breaks the
-  respawn ladder), or is there a way to distinguish the two cases you can implement now? If you
-  still can't resolve it, keep it deferred with the reason restated — the orchestrator will
-  surface it to the human operator for a design decision.
+Nothing is currently on this list. Round 1's only deferred item (the orphaned-live-implementer
+spawn guard) was re-evaluated and resolved by round 2 as F4 (`96a2d93`) — the distinguisher
+(`BatchState.Terminal` + a live mux query) preserves the intentional dead-respawn ladder by
+construction, proven by both a hermetic guard-matrix test and a live re-verification. If your own
+pass surfaces something you genuinely cannot resolve alone this round (a real design tradeoff, or
+a live capability you don't have), defer it here explicitly with the reason — do not silently drop
+a finding.
 
 ## Fixing — after the review
 - Fix EVERY finding from your review, all severities including NIT.
