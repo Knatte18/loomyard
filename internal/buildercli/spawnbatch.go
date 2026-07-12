@@ -105,6 +105,25 @@ Example:
 				return nil
 			}
 
+			// Hold the state-mutation lease across the whole load ->
+			// SpawnBatch (guards + spawn + SaveState) sequence: without it,
+			// two concurrent spawn-batch invocations both pass the in-flight
+			// guard before either registers a strand, and the loser's
+			// SaveState erases the winner's just-recorded BatchState — a
+			// live implementer with no state record. Every holder's section
+			// is bounded, so the blocking acquire is always short.
+			mutateLock, err := builderengine.AcquireStateMutation(c.builderDir)
+			if err != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+				return nil
+			}
+			mutateHeld := true
+			defer func() {
+				if mutateHeld {
+					_ = mutateLock.Release()
+				}
+			}()
+
 			st, err := builderengine.LoadState(c.builderDir)
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
@@ -134,6 +153,11 @@ Example:
 				RoleOverride: role,
 				RestartChain: restartChain,
 			})
+			// SpawnBatch's SaveState has landed (or the spawn failed);
+			// release the lease before the weft push below so a network-slow
+			// push never serializes another verb's state mutation behind it.
+			_ = mutateLock.Release()
+			mutateHeld = false
 			if err != nil {
 				// ErrPaused is the orchestrator's own operational signal,
 				// never a hard error: it writes its own outcome.yaml with

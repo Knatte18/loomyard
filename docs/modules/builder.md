@@ -242,6 +242,23 @@ at the CLI layer: the losing call touched **nothing** on disk, so `run` skips it
 exit-time weft-commit backstop entirely rather than committing the winner's in-flight
 partial state under a misleading label.
 
+## The state-mutation lease (`mutate.lock`)
+
+`state.json`'s own advisory lock guards only the individual read or write; every
+**read-modify-write sequence** additionally holds a second exclusive lease,
+`mutate.lock`, for exactly its bounded critical section: `spawn-batch` across its whole
+load → guards → spawn → save, `poll` across its terminal-classification persist (which
+re-loads a FRESH `state.json` under the lease and merges the classification into it —
+the entry-time copy may be minutes stale after a long poll, and saving it would erase a
+concurrently-spawned batch's record), and `run` across its state phase (load, orphan
+reclaim, `--fresh` archive, init, and the post-start orchestrator-strand record —
+released before the orchestrator wait, which the orchestrator's own verb calls need it
+free for). Without the lease, two concurrent verb invocations each save their own stale
+copy and the last write silently erases the other's mutation — a live implementer with
+no state record, or a lost terminal classification. Acquisition blocks (never
+fail-fast): every holder's section is bounded, unlike `run.lock`'s whole-run tenure.
+Like every `*.lock`, it is excluded from weft commits.
+
 ## The three weft-commit points
 
 `internal/builderengine` is weft-BLIND: every weft commit of a builder artifact

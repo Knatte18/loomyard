@@ -237,18 +237,42 @@ Example:
 				return nil
 			}
 
-			bs.Terminal = true
-			bs.Status = digest.Status
-			st.Batches[batchNumber] = bs
-			// CurrentBatch's own doc says it is 0 when no batch is in
-			// flight; a terminal classification ends this batch's flight,
-			// so it must clear back to 0 here rather than keep pointing at
-			// the batch "status" just made terminal.
-			st.CurrentBatch = 0
-			if err := builderengine.SaveState(c.builderDir, st); err != nil {
+			// Persist the terminal classification onto a FRESH state loaded
+			// under the state-mutation lease, never onto the copy loaded at
+			// poll entry: the long-poll can block for minutes, and a
+			// spawn-batch that landed inside that window (its own SaveState
+			// recording a new batch) would be silently erased by saving the
+			// stale entry-time copy — the lost-update this lease exists to
+			// prevent. CurrentBatch clears to 0 only if it still points at
+			// the batch this poll classified; a concurrently-spawned batch's
+			// cursor is not this poll's to reset.
+			mutateLock, err := builderengine.AcquireStateMutation(c.builderDir)
+			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
+			freshState, err := builderengine.LoadState(c.builderDir)
+			if err != nil || freshState == nil {
+				_ = mutateLock.Release()
+				if err == nil {
+					err = fmt.Errorf("builder: state.json vanished while poll was classifying batch %02d-%s", batchNumber, bs.Slug)
+				}
+				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+				return nil
+			}
+			if freshBatch, ok := freshState.Batches[batchNumber]; ok {
+				freshBatch.Terminal = true
+				freshBatch.Status = digest.Status
+			}
+			if freshState.CurrentBatch == batchNumber {
+				freshState.CurrentBatch = 0
+			}
+			if err := builderengine.SaveState(c.builderDir, freshState); err != nil {
+				_ = mutateLock.Release()
+				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+				return nil
+			}
+			_ = mutateLock.Release()
 
 			// Cleanup on the report-backed terminals, mirroring shuttle's own
 			// finalize (wait.go): nobody holds the shuttle Run handle across a

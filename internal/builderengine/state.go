@@ -12,13 +12,44 @@ package builderengine
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 
+	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
 // stateFileName is state.json's fixed filename inside a builder dir.
 const stateFileName = "state.json"
+
+// stateMutateLockName is the exclusive lease serializing every state.json
+// read-modify-write sequence inside one builder dir. state.json's own
+// .lock only guards the individual read or write; without this lease two
+// concurrent verb invocations (a manual spawn-batch racing another, or a
+// spawn-batch landing inside poll's classify-then-persist window) each
+// load, mutate, and save their own copy, and the last save silently erases
+// the other's mutation — a live implementer with no state record, or a
+// terminal classification lost. Excluded from weft commits like every
+// other *.lock (see buildercli's builderWeftPathspec).
+const stateMutateLockName = "mutate.lock"
+
+// AcquireStateMutation acquires builderDir's exclusive state-mutation
+// lease, blocking until it is free — every holder's critical section is
+// bounded (a spawn, a terminal-classification persist, run's own state
+// init), so blocking is always short and never a deadlock risk. Callers
+// hold it across their WHOLE load-mutate-save sequence and Release it as
+// soon as the save lands, never across a long block (poll's wait loop,
+// run's orchestrator wait).
+func AcquireStateMutation(builderDir string) (*lock.FileLock, error) {
+	if err := os.MkdirAll(builderDir, 0o755); err != nil {
+		return nil, fmt.Errorf("builder: create builder dir %s: %w", builderDir, err)
+	}
+	l, err := lock.AcquireWriteLock(filepath.Join(builderDir, stateMutateLockName))
+	if err != nil {
+		return nil, fmt.Errorf("builder: acquire state-mutation lease in %s: %w", builderDir, err)
+	}
+	return l, nil
+}
 
 // State is the durable run state persisted at <builderDir>/state.json.
 type State struct {

@@ -482,3 +482,79 @@ func TestPollCmd_NoReportTurnEndedClassifiesDeadAsking(t *testing.T) {
 		t.Errorf("CurrentBatch = %d after a terminal classification; want 0 (state.go: 0 means none in flight)", loaded.CurrentBatch)
 	}
 }
+
+// TestPollCmd_TerminalPersistMergesConcurrentSpawn proves the terminal
+// persist writes onto a FRESH state loaded under the state-mutation lease,
+// never the copy loaded at poll entry: a spawn-batch landing inside the
+// long-poll's window (here scripted via the statReportPath seam, firing
+// between poll's entry-time LoadState and its terminal write) records a new
+// batch and moves CurrentBatch, and saving poll's stale entry-time copy
+// would erase both — a live implementer with no state record. The
+// classified batch must still be marked terminal, and the concurrently
+// spawned batch's record and cursor must survive.
+func TestPollCmd_TerminalPersistMergesConcurrentSpawn(t *testing.T) {
+	t.Setenv("WEFT_SKIP_GIT", "1")
+	fx := newPollFixture(t, &pollFakeEngine{}, &pollFakeMux{})
+
+	startSHA := strings.TrimSpace(mustGit(t, fx.Hub, "rev-parse", "HEAD"))
+	commitFile(t, fx.Hub, "extra.txt", "extra", "extra commit")
+
+	fx.seedInFlightBatch1(t, startSHA, time.Now(), filepath.Join(t.TempDir(), "events.jsonl"))
+
+	if err := os.MkdirAll(fx.CLI.reportsDir, 0o755); err != nil {
+		t.Fatalf("mkdir reports dir: %v", err)
+	}
+	reportPath := filepath.Join(fx.CLI.reportsDir, "01-json-flag.yaml")
+	if err := os.WriteFile(reportPath, []byte("batch: 01-json-flag\nstatus: done\ntests: green\nstuck_reason: null\n"), 0o644); err != nil {
+		t.Fatalf("write report: %v", err)
+	}
+
+	// Script the concurrent spawn: on gather's FIRST report stat — strictly
+	// after poll's entry-time LoadState, strictly before its terminal write —
+	// record batch 2 as freshly in flight, exactly as a concurrent
+	// spawn-batch's own SaveState would.
+	injected := false
+	origStat := statReportPath
+	statReportPath = func(name string) (os.FileInfo, error) {
+		if !injected {
+			injected = true
+			st, err := builderengine.LoadState(fx.CLI.builderDir)
+			if err != nil || st == nil {
+				t.Errorf("LoadState() inside gather = %v, %v; want the seeded state", st, err)
+			} else {
+				st.Batches[2] = &builderengine.BatchState{
+					Slug:       "list-tests",
+					StrandGUID: "concurrent-strand-2",
+					SpawnedAt:  time.Now().UTC().Format(time.RFC3339),
+				}
+				st.CurrentBatch = 2
+				if err := builderengine.SaveState(fx.CLI.builderDir, st); err != nil {
+					t.Errorf("SaveState() inside gather = %v", err)
+				}
+			}
+		}
+		return origStat(name)
+	}
+	t.Cleanup(func() { statReportPath = origStat })
+
+	var out bytes.Buffer
+	exitCode := clihelp.Execute(fx.CLI.pollCmd(), &out, nil)
+
+	if exitCode != 0 {
+		t.Fatalf("poll (report present) = %d; want 0, output: %s", exitCode, out.String())
+	}
+
+	loaded, err := builderengine.LoadState(fx.CLI.builderDir)
+	if err != nil || loaded == nil {
+		t.Fatalf("LoadState() error = %v, %v", loaded, err)
+	}
+	if !loaded.Batches[1].Terminal || loaded.Batches[1].Status != "done" {
+		t.Errorf("Batches[1] = %+v; want Terminal=true Status=done", loaded.Batches[1])
+	}
+	if loaded.Batches[2] == nil || loaded.Batches[2].StrandGUID != "concurrent-strand-2" {
+		t.Errorf("Batches[2] = %+v; want the concurrently spawned record to survive poll's terminal persist", loaded.Batches[2])
+	}
+	if loaded.CurrentBatch != 2 {
+		t.Errorf("CurrentBatch = %d; want 2 (the concurrently spawned batch's cursor, not this poll's to reset)", loaded.CurrentBatch)
+	}
+}

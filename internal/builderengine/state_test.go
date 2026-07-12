@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/builderengine"
+	"github.com/Knatte18/loomyard/internal/lock"
 )
 
 func TestState_RoundTrip(t *testing.T) {
@@ -112,4 +113,34 @@ func TestState_CorruptFileErrors(t *testing.T) {
 	if got != nil {
 		t.Errorf("LoadState(corrupt) = %+v; want nil on error", got)
 	}
+}
+
+// TestAcquireStateMutation_ExcludesSecondHolder proves the state-mutation
+// lease is a real cross-holder exclusive lock: while held, a second
+// non-blocking acquire of the same lease file fails, and after Release it
+// succeeds — the property every verb's load-mutate-save section relies on.
+func TestAcquireStateMutation_ExcludesSecondHolder(t *testing.T) {
+	builderDir := t.TempDir()
+
+	held, err := builderengine.AcquireStateMutation(builderDir)
+	if err != nil {
+		t.Fatalf("AcquireStateMutation() error = %v; want nil", err)
+	}
+
+	_, locked, err := lock.TryAcquireWriteLock(filepath.Join(builderDir, "mutate.lock"))
+	if err != nil {
+		t.Fatalf("TryAcquireWriteLock() error = %v; want nil", err)
+	}
+	if locked {
+		t.Fatal("TryAcquireWriteLock() = locked while AcquireStateMutation held the lease; want excluded")
+	}
+
+	if err := held.Release(); err != nil {
+		t.Fatalf("Release() error = %v; want nil", err)
+	}
+	second, locked, err := lock.TryAcquireWriteLock(filepath.Join(builderDir, "mutate.lock"))
+	if err != nil || !locked {
+		t.Fatalf("TryAcquireWriteLock() after Release = locked=%v err=%v; want locked=true, err=nil", locked, err)
+	}
+	_ = second.Release()
 }

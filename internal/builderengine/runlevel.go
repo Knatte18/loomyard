@@ -398,6 +398,22 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		return RunResult{}, err
 	}
 
+	// Serialize the whole state phase — load, orphan reclaim, fresh archive,
+	// init, and the post-start strand record — against every other verb's
+	// own state read-modify-write (AcquireStateMutation's doc names the lost
+	// updates this prevents). Released explicitly right after the strand
+	// record lands, never held across the orchestrator wait.
+	mutateLock, err := AcquireStateMutation(deps.BuilderDir)
+	if err != nil {
+		return RunResult{}, err
+	}
+	mutateHeld := true
+	defer func() {
+		if mutateHeld {
+			_ = mutateLock.Release()
+		}
+	}()
+
 	st, err := LoadState(deps.BuilderDir)
 	if err != nil {
 		return RunResult{}, err
@@ -538,6 +554,11 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	if err := SaveState(deps.BuilderDir, st); err != nil {
 		return RunResult{}, err
 	}
+
+	// The state phase is over; release the mutation lease before blocking on
+	// the orchestrator — its own spawn-batch/poll calls need it.
+	_ = mutateLock.Release()
+	mutateHeld = false
 
 	result, err := handle.Wait()
 	if err != nil {
