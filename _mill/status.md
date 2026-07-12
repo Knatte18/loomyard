@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-parser-v2
+phase: approved-move-checks
 slug: plan-format-file-ops
 branch: plan-format-file-ops
 plan: _mill/plan
@@ -22,6 +22,7 @@ plan-fix-r1  '2026-07-12T06:53:51Z'
 planned  '2026-07-12T06:54:08Z'
 implementing  '2026-07-12T06:55:53Z'
 approved-parser-v2  '2026-07-12T07:15:13Z'
+approved-move-checks  '2026-07-12T07:26:41Z'
 ```
 
 ## Batches
@@ -34,9 +35,10 @@ batches:
     start_sha: cada8c10e22157667f3475ddff691d219390d4be
     commit_sha: 127948f8ef226cf61e0ceefe84e60986a6df1eb9
   - name: move-checks
-    state: running
+    state: approved
     implementer_session: 8751b115-3bcf-4998-9396-de181414072a
     start_sha: 7e682ede10d4aa5eef901c1c9fb74edae7ce4fdc
+    commit_sha: 71b62425124a15ab5f10380ed2fcf7e95f7133cb
   - name: templates-help
     state: pending
   - name: card-checks
