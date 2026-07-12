@@ -153,12 +153,46 @@ substrate — a green `go test` proves nothing here:
   flag the absence of a Gemini/other-provider path.
 
 ## Round context seeded from prior-round verification
-There is NO known open residual — this is round 1, the first hardening pass builder has ever had.
-Do a genuinely independent clean-room pass: read the code, drive the real substrate against every
-"High-yield focus" invariant above, and produce your own findings before consulting anything else.
-An honest "no defects, the design holds up" is a legitimate (if surprising, for a round 1) outcome
-— but given this is the FIRST pass, expect to find real issues; do not under-report out of a sense
-that the module "should" already be clean.
+You are round tag `fable-r2`. Round 1 (`opus-r1`) found and fixed five real defects — CLOSED AND
+VERIFIED by the orchestrator's own independent, cold-tree re-check (do not re-litigate these):
+
+- **B1 (BLOCKING)** — `spawn-batch --role recovery` was unconditionally refused by the stale
+  stuck-report guard. Fixed at `57006db` (archive-never-refuse before the guard). Orchestrator
+  reverted the fix and confirmed `TestSpawnBatch_RecoveryArchivesStaleReport` fails at exactly the
+  pre-existing-report refusal, then restored (clean diff) — the test is real, not vacuous.
+- **B2 (MEDIUM)** — `renderProgress` labeled any reported batch "done" regardless of real status,
+  letting a resume silently treat `stuck` as done. Fixed at `eff5f1e`. Orchestrator reverted and
+  confirmed `TestRun_ProgressRenderingStuckBatchIsNotDone` fails, then restored.
+- **B3 (LOW)** — pause flag leaked into weft history. Fixed at `8e76968`. Orchestrator reverted and
+  confirmed `TestBuilderWeftPathspec_ExcludesRuntimeArtifacts` fails to compile without it, then
+  restored.
+- **B5 (NIT)** — duplicated archive-collision loop. Fixed at `b6ce13d`. DRY refactor, existing
+  tests cover it.
+- **B6 (suite)** — a new stuck→recovery sandbox scenario was added at `62a8429`, closing the gap
+  that hid B1 for the next live pass.
+- Cold `go build`/`vet`/`go test -count=5 ./internal/builderengine/... ./internal/buildercli/...
+  ./cmd/lyx/...` all green, independently re-run by the orchestrator (not just trusted from the
+  round's own report).
+
+**RESIDUAL — this is your real job this round, not a formality:** ZERO live substrate driving has
+happened in this campaign yet. `opus-r1` skipped ALL of B1–B6 (see "What to TEST" below — read
+that section's warnings carefully, they exist because of exactly what happened last round), and
+the orchestrator's own fixes-proof above used hermetic/integration tests with fixtures (a
+hand-seeded fake stuck-report YAML, a fake Starter), never the real `lyx.exe` binary against real
+psmux + a real Claude session. **You must actually run the live suite for real this round** — at
+an absolute minimum B4 (cheap, seconds) and B6 (the scenario that proves the actual BLOCKING bug
+stays fixed with a genuinely-stuck report a real Claude session produced on its own, not a
+hand-written fixture) — and as many of B1/B2/B3/B5 as you can fit. This is not optional busywork;
+it is the one thing this entire campaign has not yet proven.
+
+Also DEFERRED from round 1 (see "Deferred items" below): **B4's code-guard** (orphaned-live-
+implementer-on-resume). Re-evaluate it — don't just carry it forward silently.
+
+Do a genuinely independent clean-room pass on top of this: read the code yourself, drive the real
+substrate against every "High-yield focus" invariant, and form your own findings before consulting
+`opus-r1`'s `.scratch/` material. An honest "no NEW defects beyond what round 1 already found and
+fixed" is a legitimate outcome for the CODE side — but that verdict is worthless without the live
+proof above, which is squarely your job this round regardless of what your own code review finds.
 
 State the merge bar so you calibrate: correctness in the NORMAL single-instance flow (one `lyx
 builder run` at a time, no artificial concurrency stress) is the gate. If you run N× concurrent
@@ -194,22 +228,35 @@ Live driving via the SANDBOX SUITE (PRIMARY — where the bugs surface):
   is a real pty regardless of whether anyone is watching it, so `lyx builder run` blocking in your
   own foreground Bash call is a normal, fully headless-capable action for you to take, not an
   operator-assisted one.
-- Budget real wall-clock time for this: a real implementer session doing real work (even a
-  trivial one-card batch) takes minutes, not seconds. That cost is not a reason to skip B1–B5 and
-  fall back to pure code-tracing — round 1 did exactly that ("operator-assisted / long-running /
-  cost-bearing... impractical in this automated context") and as a result NONE of B1–B5 were
-  actually exercised live. Reserve "operator-assisted, not headlessly verifiable" strictly for
-  something that genuinely needs a human eyeball (e.g. a visual `lyx mux attach` confirmation) —
-  none of B1–B5 need that; they are all observable via `lyx builder status`/`poll`'s JSON output,
-  `lyx mux status`, and `psmux list-panes`. If you still cannot complete a scenario, say exactly
-  what blocked you (a real environment gap, not merely "this costs agent turns/time").
-- Walk every scenario (B1–B5) this way and record OK/WARN/FAIL. The suite is a FLOOR — devise and
+- **"Headless" means "no human required" — NOT "no time/token cost to me."** A real implementer
+  session doing real work (even a trivial one-card batch) takes real wall-clock MINUTES, not
+  seconds, because it spawns a genuine Claude session that does genuine work. That cost is
+  EXPECTED and BUDGETED FOR — it is never a reason to skip a scenario. Round 1 of this exact
+  campaign skipped ALL of B1–B6 anyway, writing "operator-assisted / long-running /
+  cost-bearing... impractical in this automated context" — every one of those phrases was a
+  rationalization for avoiding its OWN time cost, not a real blocker; NONE of B1–B6 need a human
+  present. **You are explicitly forbidden from writing "operator-assisted", "cost-bearing",
+  "long-running", "impractical", or "automated context" as a reason to skip a scenario.** Those
+  words describe a cost to YOU, never a reason a human is required.
+- **Before writing "could not verify", ask yourself literally: "would a human's physical eyes be
+  required here, or am I just trying to avoid spending my own time/turns?"** Only the first is a
+  real reason. If a scenario just takes several minutes of you waiting on a real `lyx builder run`
+  / `spawn-batch` / `poll` call to return, that is not a reason — wait for it.
+- **You MUST actually invoke the real commands and wait for them to return — not describe what
+  you would do.** For at least B4 (run.lock contention — cheap, seconds, no LLM wait) and B6
+  (stuck→recovery ladder — this is the scenario that directly proves the BLOCKING bug you are
+  fixing is really fixed, with a genuinely-stuck report produced by a real Claude session, not a
+  hand-seeded YAML fixture), you must run the real CLI end-to-end and report the actual terminal
+  output with timestamps as evidence, not a summary claim. Extend to B1/B2/B3/B5 as time allows —
+  more live coverage is always better, never optional busywork.
+- Walk every scenario (B1–B6) this way and record OK/WARN/FAIL. The suite is a FLOOR — devise and
   run MORE adversarial scenarios of your own beyond it, especially combinations the suite doesn't
   try (e.g. pause racing a batch that is *just about* to write its report; a chain restart while a
   sibling batch's implementer is still technically live from a stale strand).
 - The only legitimate "cannot verify" cases are: (a) a scenario that structurally requires a human
-  to visually confirm something (there are none in B1-B5 today — flag it if you add one that does),
-  or (b) a genuine environment gap (`claude` not logged in, `psmux.exe` missing). Flag those as
+  to visually confirm something (there are none in B1-B6 today — flag it if you add one that does),
+  or (b) a genuine environment gap (`claude` not logged in, `psmux.exe` missing — check for this
+  FIRST, before doing anything else, so you know up front whether it applies). Flag those as
   not-headlessly-verifiable with the specific missing precondition — never as a blanket
   cost/time/turn-budget excuse.
 
@@ -232,7 +279,16 @@ cannot do alone this round (an operator decision on a real design tradeoff, or a
 you don't have). Even then say so explicitly in the fixer report's deferred section.
 
 ## Deferred items from the prior round — RE-EVALUATE these (after your own pass)
-None yet — this is round 1.
+- **B4's code guard** — a "refuse/redirect a spawn when a live strand already exists for the
+  batch" guard was deliberately NOT built in round 1. Reason given: it would regress the
+  intentional `dead: timeout`/`dead: asking` respawn ladder, where a pane is deliberately kept
+  live for diagnosis (`KeepPane`) and is meant to be respawned on top of — a naive guard can't
+  tell that apart from a genuinely orphaned live implementer left over from an orchestrator that
+  died mid-run. Re-evaluate: is this still a genuine unresolved design tradeoff (in which case
+  keep it deferred and say so, do NOT silently drop it or silently build a guard that breaks the
+  respawn ladder), or is there a way to distinguish the two cases you can implement now? If you
+  still can't resolve it, keep it deferred with the reason restated — the orchestrator will
+  surface it to the human operator for a design decision.
 
 ## Fixing — after the review
 - Fix EVERY finding from your review, all severities including NIT.

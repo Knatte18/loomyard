@@ -134,11 +134,24 @@ Live driving — YOU drive it directly, no launcher (PRIMARY — where the bugs 
 - The suite/list is a FLOOR — devise and run MANY more adversarial scenarios of your own beyond it
   (combine verbs in orders nothing has tried; chase anything the code makes you suspicious of).
   Report exact commands + observations.
-- **Cost/time is not a reason to skip this.** A real substrate session takes real wall-clock
-  minutes, not seconds — budget for it. Reserve "cannot verify headlessly" strictly for a genuine
-  environment gap (a missing binary/login) or an actual human-eyeball need (e.g. a visual `lyx mux
-  attach` confirmation) — never a blanket cost/turn-budget excuse. Flag those specific cases as
-  not-headlessly-verifiable rather than skipping silently, and say exactly what blocked you.
+- **"Headless" means "no human required" — NOT "no time/token cost to me."** A real substrate
+  session (a real implementer/agent doing real work) takes real wall-clock MINUTES, not seconds.
+  That cost is EXPECTED and BUDGETED FOR, never a reason to skip a scenario. **You are explicitly
+  forbidden from writing "operator-assisted", "cost-bearing", "long-running", "impractical", or
+  "automated context" as a reason to skip live driving** — those words describe a cost to YOU,
+  never a reason a human is required. Builder's first hardening round did exactly this (skipped
+  its ENTIRE live suite citing those words) and it was a rationalization, not a real blocker: not
+  one of that module's scenarios structurally needed a human.
+- **Before writing "could not verify", ask yourself literally: "would a human's physical eyes be
+  required here, or am I just trying to avoid spending my own time/turns?"** Only the first is a
+  real reason. If a scenario just takes several minutes of you waiting on a real command to
+  return, that is not a reason — wait for it, and report the actual output (with the commands you
+  ran) as evidence, not a summary claim that you "verified" it.
+- The only legitimate "cannot verify" cases are: (a) a scenario that structurally requires a human
+  to visually confirm something, or (b) a genuine environment gap (a missing binary, no login —
+  check for this FIRST, before anything else, so you know up front whether it applies). Flag those
+  specific cases as not-headlessly-verifiable rather than skipping silently, and say exactly what
+  blocked you.
 
 TEARDOWN DISCIPLINE (critical): if you start any substrate server/session, tear it down. At the end,
 confirm ZERO stray substrate processes (`<the exact check — e.g. tasklist | grep -i psmux>`). Leave
