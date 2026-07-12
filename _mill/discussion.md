@@ -72,13 +72,20 @@ the validator (`internal/builderengine/validate.go`).
 
 ### typed-card-fields
 
-- Decision: Each card carries five typed, mutually exclusive file-op fields, all five
-  **required** on every card, with the literal `none` on the label line when a field is
-  empty: `Context:` (files read but not changed), `Edits:` (existing files that change),
-  `Creates:` (new files), `Deletes:` (files removed), `Moves:` (rename pairs). Field
-  values are backtick-wrapped paths, one per indented sub-bullet (mill's grammar): no
-  inline commentary, no line-range suffixes, no comma-separated inline lists. Files in
-  `Edits:` are implicitly read and are not repeated in `Context:`.
+- Decision: Each card carries five typed file-op fields, all five **required** on every
+  card, with the literal `none` on the label line when a field is empty: `Context:`
+  (files read but not changed), `Edits:` (existing files that change), `Creates:` (new
+  files), `Deletes:` (files removed), `Moves:` (rename pairs). Field values are
+  backtick-wrapped paths, one per indented sub-bullet (mill's grammar): no inline
+  commentary, no line-range suffixes, no comma-separated inline lists. Files in
+  `Edits:` are implicitly read and are not repeated in `Context:`. The fields are
+  mutually exclusive **within a card**: the same path in two fields of one card is a
+  contradiction, enforced by the `card-field-overlap` check (see validator-check-set).
+  Across cards of the same batch, `Creates:` in one card followed by `Edits:` of the
+  same path in a later card is legitimate planning (the `path-missing` suppression
+  sets are built on exactly that), and the same path in two cards' `Edits:` is normal.
+  `Moves:` endpoints additionally must not collide with `Creates:`/`Deletes:` anywhere
+  in the same batch — that is `move-redundant`'s batch-level rule, ported from mill.
 - Rationale: mill's `card-missing-field` experience — a forgotten field must be
   mechanically detectable; an absent-means-none convention silently degrades a forgotten
   `Moves:` into create+delete drift, the exact failure this task exists to kill.
@@ -253,6 +260,12 @@ the validator (`internal/builderengine/validate.go`).
       exempt (reading outside scope is legitimate).
   11. `commit-subject-mismatch` — a present `Commit:` value that does not start with
       the card's `NN.C: ` prefix.
+  12. `card-field-overlap` — the same path appears in more than one of a single card's
+      `Context:`/`Edits:`/`Creates:`/`Deletes:` fields or `Moves:` endpoints
+      (per-card mutual exclusivity; also formalizes the "`Edits:` files are not
+      repeated in `Context:`" rule). Cross-card overlap within a batch is NOT flagged
+      here — `Creates:` then `Edits:` across cards is legitimate; only `Moves:`
+      endpoints are batch-level-checked, by `move-redundant`.
   Existing checks adapt: `recognizedFormat` becomes 2 (`format: 1` plans are rejected
   by the existing `format-unrecognized` check — no dual-version support; no production
   v1 plans exist); `batch-oversized`'s estimate reads Scope + the typed per-card paths
@@ -338,11 +351,15 @@ the validator (`internal/builderengine/validate.go`).
   fields, `NN.C` headings, `Commit:` fallback rule, read-the-overview instruction,
   Rename-mechanic compliance (run `git mv` first). Check
   `orchestrator-template.md` for v1 format references during planning.
-- **Mill reference points** (read firsthand; useful when writing canonical text):
+- **Mill reference points** (read firsthand during discussion; note: these live in the
+  **millhouse repo**, not this worktree — e.g.
+  `C:\Code\millhouse\wts\millhouse\plugins\mill\...`):
   `plugins/mill/templates/plan-batch.md` (field grammar + Rename mechanic text),
   `plugins/mill/scripts/_plan_validate.py` (move-check semantics incl. suppression
   sets), `plugins/mill/skills/mill-plan/SKILL.md` (fix-table semantics). Mill is
-  precedent, not dependency — nothing in lyx imports mill.
+  precedent, not dependency — nothing in lyx imports mill, and this discussion's own
+  Decisions carry the canonical grammar and Rename-mechanic text; the plan must be
+  writable without consulting the mill repo at all.
 - **Consumers to keep honest**: `digest.go`'s `Distill` (Scope-based drift — unchanged),
   `poll.go` (unchanged), `spawn.go` (template fill — prose changes only),
   `fingerprint.go`/`state.go` (check during planning whether they hash or echo plan
@@ -386,8 +403,10 @@ the validator (`internal/builderengine/validate.go`).
   prefix; gap; duplicate), `card-count-mismatch`, `path-missing` (suppressed by
   earlier `Creates:`/`Moves:` target), `card-outside-scope` (boundary semantics:
   `internal/foo` must not cover `internal/foobar`; `Context:` exempt),
-  `commit-subject-mismatch`; `format: 1` now failing `format-unrecognized`; adapted
-  `batch-oversized` estimate over typed fields.
+  `commit-subject-mismatch`; `card-field-overlap` (same path twice within one card
+  flagged; `Creates:` then `Edits:` across cards of the same batch NOT flagged);
+  `format: 1` now failing `format-unrecognized`; adapted `batch-oversized` estimate
+  over typed fields.
 - **Worked example as fixture**: keep the plan-format.md worked example and a testdata
   fixture byte-consistent (v1 discipline) — the example must demonstrate all five
   fields, `NN.C` numbering, a `Commit:` field, `root:` usage, and one `Moves:` card
