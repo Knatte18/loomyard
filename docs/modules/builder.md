@@ -10,7 +10,7 @@
 ## What it is
 
 Builder is Loom's Builder phase, carved into its own standalone module: it drives a
-pinned [plan-format v1](plan-format.md) plan through implementer sessions, batch by
+pinned [plan-format v2](plan-format.md) plan through implementer sessions, batch by
 batch, until the plan is built. The loop itself is held by a **long-lived LLM
 orchestrator session** (model config-chosen, Sonnet default), spawned by `lyx builder
 run`; Go (`internal/builderengine` + `internal/buildercli`) provides only the fat
@@ -30,7 +30,7 @@ built) needs both `perch` and `builder`.
 
 | Verb | Job |
 |------|-----|
-| `validate` | Lints the plan at `_lyx/plan` against the six plan-format v1 machine checks without running anything — the standalone pre-flight for a Planner or human. |
+| `validate` | Lints the plan at `_lyx/plan` against the plan-format machine checks without running anything — the standalone pre-flight for a Planner or human. |
 | `run [--fresh]` | The product verb: takes the run-level lock, clears any leftover pause flag, runs the automatic validation gate, checks the plan fingerprint against `state.json` (`--fresh` archives stale state/reports and re-inits on a mismatch), archives any stale `outcome.yaml`, spawns a fresh orchestrator session via shuttle, and blocks until the run reaches a terminal outcome (`done`/`stuck`/`paused`) or the orchestrator spawn itself ends asking/died/timed-out. Performs the loop's exit-time backstop weft commit. |
 | `spawn-batch <NN> [--role recovery] [--restart-chain]` | Runs the same automatic validation gate, checks the pause flag, resolves the batch's role (oversized-driven, or `--role recovery` for the escalation path), optionally performs the `--restart-chain` reset, records the batch's start-SHA in `state.json`, and spawns one implementer via shuttle (non-blocking — returns as soon as the strand is registered). Weft-commits `state.json` on success. |
 | `poll [--wait DURATION]` | Long-polls the in-flight batch for its terminal digest (see [poll's four-branch terminal classification](#polls-four-branch-terminal-classification)) and distills a terminal batch-report into the pinned [digest contract](#digest-contract). Weft-commits the batch report plus `state.json` on a terminal classification; a running snapshot touches neither git nor weft. |

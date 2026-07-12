@@ -2,7 +2,7 @@
 // pre-flight half of the discussion's validate-both decision (the other
 // half is the automatic gate builderengine.Run and builderengine.SpawnBatch
 // run themselves before ever spawning an agent). It parses the plan and
-// runs every plan-format v1 machine check against it, printing exactly one
+// runs every plan-format v2 machine check against it, printing exactly one
 // JSON envelope: ok with {"valid": true, "batches": <n>} for a clean plan,
 // or an error envelope carrying every finding for a plan with findings --
 // exit non-zero either way a finding exists, never plain text.
@@ -44,17 +44,20 @@ func findingsEnvelope(out io.Writer, findings []builderengine.ValidationError) i
 
 // validateCmd builds the `validate` subcommand: ParsePlan followed by
 // Validate against the resolved caps (builder.yaml's
-// batch_context_cap_tokens/batch_card_cap), resolving Scope/Where file
-// sizes against layout.Cwd -- the same worktree-base anchoring every other
-// builderCLI dir uses.
+// batch_context_cap_tokens/batch_card_cap), resolving Scope and every
+// card's typed file-op paths (Context/Edits/Creates/Deletes/Moves) against
+// layout.Cwd -- the same worktree-base anchoring every other builderCLI dir
+// uses.
 func (c *builderCLI) validateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "validate",
-		Short: "lint the plan against the six plan-format machine checks without running anything",
-		Long: `validate parses the plan at _lyx/plan and runs every plan-format v1 machine
-check against it (format/approval, Batch Index <-> file consistency,
+		Short: "lint the plan against the plan-format machine checks without running anything",
+		Long: `validate parses the plan at _lyx/plan and runs every plan-format v2 machine
+check against it (e.g. format/approval, Batch Index <-> file consistency,
 verify: presence, chain-end soundness, the oversized-batch context/card-
-count cap, and scope well-formedness). A clean plan prints
+count cap, scope well-formedness, and the move-*/card-*/path-missing
+file-op structural checks -- the full set evolves with plan-format, so
+this list is illustrative, not exhaustive). A clean plan prints
 {"valid": true, "batches": N}. A plan with findings prints an error
 envelope carrying every finding (check, batch, detail) and exits non-zero
 -- this is the SAME gate "lyx builder run" and "lyx builder spawn-batch"

@@ -1,5 +1,5 @@
 // Package builderengine is the domain kernel behind Loom's Builder phase: the
-// batch-implementation loop that drives a pinned plan-format v1 plan (see
+// batch-implementation loop that drives a pinned plan-format v2 plan (see
 // docs/modules/plan-format.md) through implementer sessions, batch by batch,
 // until the plan is built. builderengine holds no loop itself — the loop is
 // an LLM orchestrator session driving fat `lyx builder` verbs

@@ -11,11 +11,16 @@ extracted mapper and restores a green build. This batch runs the chain's real ve
 
 ## Cards
 
-### Card 1 — rewire call sites
+### Card 04.1 — rewire call sites
 
 **What:** Point every caller at the extracted mapper; delete the old inline
 implementation.
-**Where:** 04-refactor-b.md
+**Context:** none
+**Edits:**
+- `04-refactor-b.md`
+**Creates:** none
+**Deletes:** none
+**Moves:** none
 
 ## verify:
 
