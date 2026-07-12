@@ -127,6 +127,8 @@ retaining any v1 body text.
 - **Edits:**
   - `docs/modules/builder.md`
   - `docs/overview.md`
+  - `docs/reference/model-spec.md`
+  - `tools/sandbox/SANDBOX-CORE-SUITE.md`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -137,7 +139,14 @@ retaining any v1 body text.
     of the file for `Where`/v1 card wording and update in place.
   - `docs/overview.md`: line ~264 "pinned plan-format v1 plan" -> v2; no module
     table changes (no module added or renamed).
-- **Commit:** `05.3: builder.md and overview.md reference plan-format v2`
+  - `docs/reference/model-spec.md`: line ~5 "pinned alongside plan-format v1" ->
+    v2 (the doc it links to is now v2; missed in the original touched-file scan).
+  - `tools/sandbox/SANDBOX-CORE-SUITE.md`: Scenario S9's hand-written example plan
+    (format frontmatter, Batch Index entry, card heading, and fields) rewritten to
+    valid plan-format v2 so its documented `{"ok":true,"valid":true,"batches":1}`
+    walkthrough still holds under the new mandatory grammar; added to scope here
+    per holistic review round 2 (file wasn't in the original touched-file scan).
+- **Commit:** `05.3: builder.md, overview.md, model-spec.md, and sandbox suite reference plan-format v2`
 
 ## Batch Tests
 
