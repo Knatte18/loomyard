@@ -42,6 +42,11 @@ func Menu(l *hubgeometry.Layout, in io.Reader, out io.Writer) error {
 		return fmt.Errorf("load board config: %w", err)
 	}
 
+	// LoadConfig never sets Path (yaml:"-"); the board data dir is geometry
+	// owned by hubgeometry.BoardDir, not the config file. Mirrors the
+	// reference pattern in boardcli's PersistentPreRunE.
+	cfg.Path = hubgeometry.BoardDir(l.Hub)
+
 	b := boardengine.New(cfg)
 
 	// HARD error if board is absent/unhealthy
