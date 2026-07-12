@@ -98,10 +98,10 @@ plan-format machine checks") so batch 3's additions never stale it again.
   - `_mill/discussion.md`
   - `internal/builderengine/validate.go`
   - `internal/buildercli/cli_test.go`
-  - `internal/buildercli/validate_test.go`
 - **Edits:**
   - `internal/buildercli/cli.go`
   - `internal/buildercli/validate.go`
+  - `internal/buildercli/validate_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -115,9 +115,26 @@ plan-format machine checks") so batch 3's additions never stale it again.
     "Scope/Where file" resolution updates to the typed-fields wording.
   - Re-read every remaining `Short`/`Long` in `internal/buildercli` for v1/Where
     staleness and fix in place (help accuracy is a review obligation —
-    CONSTRAINTS.md CLI/Cobra Invariant). `cli_test.go` / `validate_test.go` are
-    Context because grep shows no pinned help strings — confirm on read and leave
-    them untouched if so.
+    CONSTRAINTS.md CLI/Cobra Invariant). `cli_test.go` is Context because grep
+    shows no pinned help strings — confirm on read and leave it untouched if so.
+  - `validate_test.go` moved from Context to Edits: batch 2's
+    `move-source-missing`/`move-target-collision` on-disk checks (commit
+    `71b6242`) resolve every card file-op path against `worktreeRoot`, but
+    `seedPlanFixture` here only copies the `plan-valid`/`plan-unapproved`
+    fixture files into the seeded hub's `_lyx/plan` dir, never into the hub
+    root that `c.layout.Cwd` (this package's `worktreeRoot`) resolves against —
+    unlike `builderengine`'s own tests, which pass the fixture directory
+    itself as `worktreeRoot` per the `fixture-self-reference` decision. This
+    regressed `TestRunCLI_Validate_CleanPlan` and every other `plan-valid`-
+    seeded buildercli test the moment batch 2 landed
+    `move-source-missing` (confirmed via `git worktree` bisection: green at
+    `f94dd01`/`c3e844a`, red starting at `71b6242`) — a same-task regression
+    in this batch's own `verify:` dependency chain, not a pre-existing
+    failure, so it is fixed here rather than reported as pre-existing.
+    `seedPlanFixture` additionally copies the same fixture entries to `hub`
+    itself (the worktree root), alongside the existing `_lyx/plan` copy, so
+    on-disk card-path resolution succeeds the same way it does for
+    `builderengine`'s own fixture-self-reference tests.
 - **Commit:** `04.3: buildercli help text for plan-format v2`
 
 ## Batch Tests
