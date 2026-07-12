@@ -3,7 +3,7 @@
 ```yaml
 task: "Add typed file-ops to lyx's plan-format"
 slug: "plan-format-file-ops"
-approved: false
+approved: true
 started: "20260712-064118"
 parent: "internal-builder"
 root: ""
@@ -151,6 +151,8 @@ batches:
 - `docs/overview.md`
 - `internal/buildercli/cli.go`
 - `internal/buildercli/validate.go`
+- `internal/builderengine/doc.go`
+- `internal/builderengine/fingerprint.go`
 - `internal/builderengine/implementer-template.md`
 - `internal/builderengine/orchestrator-template.md`
 - `internal/builderengine/plan.go`

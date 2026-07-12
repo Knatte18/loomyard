@@ -41,6 +41,8 @@ mid-batch — the batch `verify:` at the end is the gate (card 5 fixes all tests
 - **Edits:**
   - `internal/builderengine/plan.go`
   - `internal/builderengine/validate.go`
+  - `internal/builderengine/doc.go`
+  - `internal/builderengine/fingerprint.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -87,8 +89,10 @@ mid-batch — the batch `verify:` at the end is the gate (card 5 fixes all tests
     `DeletesFiles` and both sides of every `Moves` pair (nonexistent paths
     contribute 0, so Creates/Move-targets naturally add nothing — discussion
     `context-estimate-inputs`); the card cap compares `len(b.Cards)` instead of
-    `b.CardCount`. Update the two file-banner comments (`plan.go`, `validate.go`)
-    from "plan-format v1" wording to v2.
+    `b.CardCount`. Update the in-package "plan-format v1" godoc wording to v2:
+    the file-banner comments of `plan.go` and `validate.go`, the package godoc in
+    `doc.go` ("drives a pinned plan-format v1 plan"), and the `Fingerprint` godoc
+    in `fingerprint.go` ("carry plan-format v1 content").
 - **verify:** go build ./internal/builderengine/...
 - **Commit:** `01.1: plan.go typed card model; drop WhereFiles/CardCount`
 
@@ -185,7 +189,12 @@ mid-batch — the batch `verify:` at the end is the gate (card 5 fixes all tests
     every batch-2/3 check.
   - `plan-unapproved` and `plan-broken-chain` change minimally: v2 syntax, same
     designed single-purpose failures (`approved: false`; dangling/deferred
-    `chain-end`).
+    `chain-end`). Both must otherwise be FULLY v2-valid — all five fields present
+    (`none` where empty), correct `NN.C` headings, `(C cards)` matching the actual
+    card count, no move/path/scope defects — because `validate_test.go` asserts
+    exact finding counts (`TestValidate_PlanUnapproved_TripsCheck1` requires
+    `len(findings) == 1`): only each fixture's DESIGNED finding may fire, through
+    every check batches 2-3 add later.
 - **verify:** go build ./internal/builderengine/...
 - **Commit:** `01.4: recognizedFormat=2; rewrite testdata fixtures to v2`
 
