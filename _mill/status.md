@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-tier-purity-guard
+phase: approved-rebaseline-docs
 slug: test-suite-regression
 branch: test-suite-regression
 plan: _mill/plan
@@ -25,6 +25,7 @@ implementing  '2026-07-12T07:17:48Z'
 approved-fix-red-packages  '2026-07-12T07:24:10Z'
 approved-retier-offline-loop  '2026-07-12T07:43:47Z'
 approved-tier-purity-guard  '2026-07-12T07:54:59Z'
+approved-rebaseline-docs  '2026-07-12T08:18:47Z'
 ```
 
 ## Batches
@@ -47,7 +48,8 @@ batches:
     start_sha: c2df0d1a457641719e1dd0c1af050083b8012cc8
     commit_sha: 4e03204
   - name: rebaseline-docs
-    state: running
+    state: approved
     implementer_session: 75428762-e83f-4064-86c6-853eb063a356
     start_sha: fdd0b40a501b8b89adc3651e0833ffaa2878eedf
+    commit_sha: d4716bd
 ```
