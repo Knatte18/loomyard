@@ -145,14 +145,23 @@ recovery unit. `spawn-batch <NN> --restart-chain`:
    never be rolled back to a hallucinated one.
 3. Resets the host repo hard to that SHA (`ResetHard`).
 4. Deletes every chain member's stale batch-report file and clears their in-memory
-   `BatchState` entries, then resets `state.CurrentBatch` to `0` (the chain always
-   restarts from its lowest member).
+   `BatchState` entries, then resets `state.CurrentBatch` to `0`.
+5. **Re-points the spawn to the chain's lowest-numbered member**, regardless of which
+   member `NN` named. The chain always restarts from its lowest member — the reset just
+   rolled the tree back to before that member's first card commit — so Go spawns the
+   lowest member itself rather than trusting the caller to name it. Naming the chain's
+   **end** (the batch that runs the chain's real `verify:`, and thus the member most
+   likely to go `stuck` and trigger a restart) therefore re-runs the chain from the
+   bottom instead of spawning the end on a tree missing every earlier member's
+   just-discarded work.
 
 The chain-start SHA itself is recorded once, at whichever member spawns first — the
 host `HEAD` immediately before that member's first card commit — and is never
 overwritten by a later member's own spawn. The orchestrator decides **when** to
 restart a chain (its pinned recovery judgment); Go performs the destructive act only
-against the one SHA it recorded itself.
+against the one SHA it recorded itself, and always re-runs from the chain's lowest
+member — the orchestrator never has to identify that member, and can name any member of
+the chain it wants restarted.
 
 ## Pause
 

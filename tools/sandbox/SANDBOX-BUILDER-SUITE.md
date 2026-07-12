@@ -118,7 +118,7 @@ zero `WARN`/`FAIL` findings** -- in that case `items` is an empty array.
 
 - `source` is the literal string `"sandbox-report"`.
 - `items[]` holds only `WARN`/`FAIL` findings -- do not record `OK` scenarios here.
-- `ref` is the scenario id (`B1`-`B7`).
+- `ref` is the scenario id (`B1`-`B8`).
 - `title` is a short one-line summary.
 - `body` folds the detail, repro steps, and verdict into one markdown string.
 
@@ -298,6 +298,32 @@ until a respawn re-claims it.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
+### B8 -- Chain restart from a non-lowest member restarts from the bottom
+
+**Covers:** builder
+
+**Goal:** "Pin a small deferred-verify chain (e.g. batch 01 `verify: deferred`
+`chain-end: 02`, batch 02 the chain end that runs the real `verify:`). Drive batch 01 to
+`done` so the chain-start SHA is recorded and batch 01's card commit lands, then invoke
+`lyx builder spawn-batch 02 --restart-chain` -- naming the chain END, not the lowest
+member. Confirm the reset rolls the host repo back to the recorded chain-start SHA AND
+that the batch actually spawned is the chain's LOWEST member (01), never the named end
+(02) on a tree missing batch 01's just-discarded work."
+
+**Watch:** `lyx builder spawn-batch 01` then `lyx builder poll --wait <duration>` until it
+returns `status: "done"` `tests: "skipped"` (a deferred-verify intermediate reports
+skipped); confirm batch 01's card commit is on `HEAD` and `state.json`'s
+`chainStartShas` records the pre-01 SHA. Now run `lyx builder spawn-batch 02
+--restart-chain`: confirm the returned `batch_name` is the LOWEST member (`01-...`), not
+`02-...`; confirm `git rev-parse HEAD` equals the recorded chain-start SHA (batch 01's
+commit and its files rolled back); and confirm `state.json`'s `currentBatch` is the lowest
+member and every chain member's stale `BatchState`/report was cleared. Spawning the named
+end (02) directly on the rolled-back tree -- silently skipping batch 01 -- is a `FAIL`
+(the round opus-r3 defect this scenario pins): the chain-recovery mechanism must re-run
+from the bottom regardless of which member the caller names.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
 ## Session log format
 
 After running all scenarios, record a short session summary:
@@ -313,6 +339,7 @@ B4: <OK|WARN|FAIL> -- <one-line note if not OK>
 B5: <OK|WARN|FAIL> -- <one-line note if not OK>
 B6: <OK|WARN|FAIL> -- <one-line note if not OK>
 B7: <OK|WARN|FAIL> -- <one-line note if not OK>
+B8: <OK|WARN|FAIL> -- <one-line note if not OK>
 
 sandbox-report.json written: <count of WARN/FAIL items>
 ```

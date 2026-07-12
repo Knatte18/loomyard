@@ -97,10 +97,12 @@ as the rot signal it is and always demand a revert, never wave it through.
 - **`dead`** (no report; the implementer's turn ended without one, it timed out, or its
   pane died): respawn the SAME batch fresh, once — `lyx builder spawn-batch <NN>` again,
   no role override — before treating it as a `stuck` case.
-- **A stuck chain member** (an intermediate batch inside a deferred-verify chain):
-  restart the WHOLE chain via `lyx builder spawn-batch <NN> --restart-chain`; Go
-  performs the reset to the chain's own recorded start SHA — you never type a git
-  command yourself, and never guess at a SHA.
+- **A stuck chain member** (any batch inside a deferred-verify chain — an intermediate,
+  or the chain-end batch that runs the chain's real `verify:`): restart the WHOLE chain
+  via `lyx builder spawn-batch <NN> --restart-chain`, naming any member of that chain
+  (the stuck one is fine). Go performs the reset to the chain's own recorded start SHA
+  and re-runs the chain from its lowest member itself — you never type a git command
+  yourself, never guess at a SHA, and never have to work out which member is lowest.
 
 ## A `paused` refusal ends your run immediately
 

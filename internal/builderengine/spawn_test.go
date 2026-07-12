@@ -526,6 +526,45 @@ func TestSpawnBatch_RestartChainStopsLiveMemberStrands(t *testing.T) {
 	}
 }
 
+// TestSpawnBatch_RestartChainFromNonLowestMemberSpawnsLowest proves
+// --restart-chain re-points the spawn to the chain's LOWEST member even when
+// the caller names a higher member. The chain-end batch runs the chain's real
+// verify:, so it is the member most likely to go stuck and thus the most likely
+// --restart-chain target; spawning it directly on the rolled-back tree would
+// skip every earlier member's just-discarded work — the round opus-r3 live
+// defect this guards against. The fixture chain is {3,4} (chain-end 4), so the
+// lowest member is 3.
+func TestSpawnBatch_RestartChainFromNonLowestMemberSpawnsLowest(t *testing.T) {
+	fx := newSpawnFixture(t)
+
+	// Spawn the lowest member first so the chain anchor is recorded, then
+	// advance HEAD so the reset has real work to roll back and clear the cursor
+	// exactly as a terminal poll would.
+	if _, err := builderengine.SpawnBatch(fx.Deps, builderengine.SpawnBatchOptions{BatchNumber: 3}); err != nil {
+		t.Fatalf("SpawnBatch(batch 3) error = %v; want nil", err)
+	}
+	commitFile(t, fx.Worktree, "chainwork.txt", "wip", "chain member wip commit")
+	fx.Deps.State.Batches[3].Terminal = true
+	fx.Deps.State.Batches[3].Status = "done"
+	fx.Deps.State.CurrentBatch = 0
+
+	// Restart the chain naming the chain-END (batch 4), NOT the lowest member.
+	result, err := builderengine.SpawnBatch(fx.Deps, builderengine.SpawnBatchOptions{BatchNumber: 4, RestartChain: true})
+	if err != nil {
+		t.Fatalf("SpawnBatch(4 --restart-chain) error = %v; want nil", err)
+	}
+
+	if result.BatchName != "03-refactor-a" {
+		t.Errorf("restart-chain naming batch 4 spawned %q; want the lowest member %q", result.BatchName, "03-refactor-a")
+	}
+	if fx.Deps.State.CurrentBatch != 3 {
+		t.Errorf("CurrentBatch = %d; want 3 (the lowest member, freshly re-spawned)", fx.Deps.State.CurrentBatch)
+	}
+	if _, recorded := fx.Deps.State.Batches[4]; recorded {
+		t.Errorf("state.Batches[4] still recorded after the reset; want every chain member cleared")
+	}
+}
+
 // TestSpawnBatch_InFlightGuardMatrix proves the ErrBatchInFlight guard
 // refuses a spawn exactly when a recorded non-terminal batch's strand is
 // still live, and never on the intended respawn ladders (terminal batch,

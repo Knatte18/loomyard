@@ -146,7 +146,12 @@ Example:
 				return nil
 			}
 
-			if _, weftErr := weftCommit(c.layout, fmt.Sprintf("spawn-batch %02d", batchNumber)); weftErr != nil {
+			// Label the weft commit with the batch actually spawned
+			// (result.BatchName), not the raw argument: --restart-chain
+			// re-points the spawn to the chain's lowest member, so the argument
+			// and the spawned batch can differ, and the audit trail must record
+			// what really spawned.
+			if _, weftErr := weftCommit(c.layout, fmt.Sprintf("spawn-batch %s", result.BatchName)); weftErr != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("builder: batch %s spawned but the weft sync failed: %v", result.BatchName, weftErr)))
 				return nil
 			}

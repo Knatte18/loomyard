@@ -312,6 +312,37 @@ func SpawnBatch(deps SpawnDeps, opts SpawnBatchOptions) (*SpawnResult, error) {
 		return nil, err
 	}
 
+	// --restart-chain rolls the host repo back to the chain's recorded start
+	// SHA and re-runs the WHOLE chain from the bottom, so the batch that must
+	// spawn next is always the chain's lowest-numbered member — never
+	// necessarily the member the caller named. The chain-END batch runs the
+	// chain's real verify:, so it is the member most likely to go stuck and
+	// thus the most likely --restart-chain target; spawning it directly on the
+	// rolled-back tree would skip every earlier member's just-discarded work
+	// (found live in round opus-r3: `spawn-batch <chain-end> --restart-chain`
+	// reset to the anchor but then spawned the chain-end, silently dropping the
+	// lower members). Re-point the spawn to the lowest member HERE, before role,
+	// report-path, and chain-anchor resolution all key off batch, so Go owns
+	// "restart from the bottom" rather than trusting the caller to name it —
+	// matching builder.md's chain-rollback contract ("the chain always restarts
+	// from its lowest member"). The chainless refusal moves here too, so it
+	// fires before any later work rather than mid-way through the reset block.
+	if opts.RestartChain {
+		chainEnd := ChainEndFor(deps.Plan, batch.Number)
+		if chainEnd == 0 {
+			return nil, fmt.Errorf("builder: batch %d is chainless; --restart-chain requires a deferred-verify chain member", batch.Number)
+		}
+		// ChainMembers is sorted ascending and non-empty whenever chainEnd is
+		// non-zero (the chain always contains at least its declaring member and
+		// its end), so [0] is the lowest member.
+		if lowest := ChainMembers(deps.Plan, chainEnd)[0]; lowest != batch.Number {
+			batch, err = findBatch(deps.Plan, lowest)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
 	role, err := selectRole(batch.Oversized, opts.RoleOverride)
 	if err != nil {
 		return nil, err
@@ -338,9 +369,9 @@ func SpawnBatch(deps SpawnDeps, opts SpawnBatchOptions) (*SpawnResult, error) {
 	// on the exact invocation ("re-spawn the batch whose stale report is
 	// still on disk") it exists to recover.
 	if opts.RestartChain {
-		if chainEnd == 0 {
-			return nil, fmt.Errorf("builder: batch %d is chainless; --restart-chain requires a deferred-verify chain member", batch.Number)
-		}
+		// chainEnd is guaranteed non-zero here: the early re-point block above
+		// already refused a chainless --restart-chain, and batch is now a
+		// resolved chain member, so ChainEndFor above returned the chain's end.
 		// A chain member's dead-classified implementer may still be live in
 		// its kept pane; the hard reset below yanks the repo out from under
 		// it, so any late commit it makes lands on top of the rolled-back
