@@ -1,13 +1,20 @@
-// validate.go implements Validate, plan-format v2's machine checks
-// (docs/modules/plan-format.md's "Validation checks" section): format/
-// approval, Batch Index <-> file consistency, verify: presence, chain-end
-// soundness, the oversized-batch context/card-count cap, scope
-// well-formedness, and the five move-* checks that police a card's
-// Moves: field and its "## Rename mechanic" companion section
+// validate.go implements Validate, plan-format v2's complete machine check
+// set (docs/modules/plan-format.md's "Validation checks" section), run in
+// this fixed order: format/approval (format-unrecognized, plan-unapproved),
+// Batch Index <-> file consistency (index-file-mismatch), verify: presence
+// (verify-missing), chain-end soundness (chain-end-dangling), the
+// oversized-batch context/card-count cap (batch-oversized), scope
+// well-formedness for both "## Scope" entries and every card's typed
+// file-op paths (scope-malformed), the five move-* checks that police a
+// card's Moves: field and its "## Rename mechanic" companion section
 // (move-format, move-redundant, move-source-missing, move-target-collision,
-// move-mechanic-missing). Validate runs both as the standalone `lyx builder
-// validate` verb and as builder's hard automatic gate inside `run` and
-// `spawn-batch` — the fail-loud-refusal half of plan-format.md's contract.
+// move-mechanic-missing), the per-card structural checks (card-missing-field,
+// card-field-overlap), the numbering checks (card-numbering,
+// card-count-mismatch), and the cross-referencing checks (path-missing,
+// card-outside-scope, commit-subject-mismatch). Validate runs both as the
+// standalone `lyx builder validate` verb and as builder's hard automatic
+// gate inside `run` and `spawn-batch` — the fail-loud-refusal half of
+// plan-format.md's contract.
 
 package builderengine
 
@@ -92,6 +99,9 @@ func Validate(plan *Plan, worktreeRoot string, caps ValidateCaps) []ValidationEr
 	findings = append(findings, checkCardFieldOverlap(plan)...)
 	findings = append(findings, checkCardNumbering(plan)...)
 	findings = append(findings, checkCardCountMismatch(plan)...)
+	findings = append(findings, checkPathMissing(plan, worktreeRoot)...)
+	findings = append(findings, checkCardOutsideScope(plan)...)
+	findings = append(findings, checkCommitSubjectMismatch(plan)...)
 
 	return findings
 }
@@ -367,112 +377,6 @@ func checkScopeMalformed(plan *Plan) []ValidationError {
 	return findings
 }
 
-// cardFieldLabel pairs a card field's Has-presence bool with the bold label
-// plan-format.md pins for it, in field order — checkCardMissingField's only
-// data shape, kept next to the check so the field order stays visibly tied
-// to the check that walks it.
-type cardFieldLabel struct {
-	present bool
-	label   string
-}
-
-// checkCardMissingField implements card-missing-field: every card must
-// carry all six of What:/Context:/Edits:/Creates:/Deletes:/Moves: — a
-// missing label yields one finding per absent field, Detail naming the card
-// and the missing label. Commit: and verify: are optional and never
-// flagged.
-func checkCardMissingField(plan *Plan) []ValidationError {
-	var findings []ValidationError
-
-	for _, b := range plan.Batches {
-		for _, c := range b.Cards {
-			fields := []cardFieldLabel{
-				{c.HasWhat, "What:"},
-				{c.HasContext, "Context:"},
-				{c.HasEdits, "Edits:"},
-				{c.HasCreates, "Creates:"},
-				{c.HasDeletes, "Deletes:"},
-				{c.HasMoves, "Moves:"},
-			}
-			for _, f := range fields {
-				if f.present {
-					continue
-				}
-				findings = append(findings, ValidationError{
-					Check:  "card-missing-field",
-					Batch:  batchID(b),
-					Detail: fmt.Sprintf("card %02d.%d is missing its %s field", c.BatchPrefix, c.Number, f.label),
-				})
-			}
-		}
-	}
-
-	return findings
-}
-
-// checkCardFieldOverlap implements card-field-overlap: within a single card,
-// a path appearing in more than one of ContextFiles/EditsFiles/CreatesFiles/
-// DeletesFiles, or as either side of a Moves: pair, is a conflicting
-// instruction — one finding per duplicated path, Detail naming the card and
-// every field the path appears in. Overlap is deliberately per-card only:
-// the same path in one card's Creates: and another card's Edits: (in the
-// same batch) is legitimate typed-field sequencing, not a defect.
-func checkCardFieldOverlap(plan *Plan) []ValidationError {
-	var findings []ValidationError
-
-	for _, b := range plan.Batches {
-		for _, c := range b.Cards {
-			fieldsOf := make(map[string][]string)
-			add := func(p, field string) {
-				for _, seen := range fieldsOf[p] {
-					if seen == field {
-						return
-					}
-				}
-				fieldsOf[p] = append(fieldsOf[p], field)
-			}
-
-			for _, p := range c.ContextFiles {
-				add(p, "Context:")
-			}
-			for _, p := range c.EditsFiles {
-				add(p, "Edits:")
-			}
-			for _, p := range c.CreatesFiles {
-				add(p, "Creates:")
-			}
-			for _, p := range c.DeletesFiles {
-				add(p, "Deletes:")
-			}
-			for _, mv := range c.Moves {
-				add(mv.Old, "Moves:")
-				add(mv.New, "Moves:")
-			}
-
-			var duplicated []string
-			for p, fields := range fieldsOf {
-				if len(fields) > 1 {
-					duplicated = append(duplicated, p)
-				}
-			}
-			sort.Strings(duplicated)
-
-			for _, p := range duplicated {
-				findings = append(findings, ValidationError{
-					Check: "card-field-overlap",
-					Batch: batchID(b),
-					Detail: fmt.Sprintf(
-						"card %02d.%d path %q appears in more than one field: %s",
-						c.BatchPrefix, c.Number, p, strings.Join(fieldsOf[p], ", "),
-					),
-				})
-			}
-		}
-	}
-
-	return findings
-}
-
 // scopeEntryMalformedReason reports why p is not a well-formed
 // plan-format.md scope entry, or "" when p is well-formed. p is treated as
 // a POSIX-style path (plan files are authored with forward slashes) so the
@@ -515,68 +419,6 @@ func cleanPosixPath(posix string) string {
 		return "."
 	}
 	return strings.Join(cleaned, "/")
-}
-
-// checkCardNumbering implements card-numbering: per batch, (a) every card's
-// heading-carried BatchPrefix must equal the batch's own Number, and (b)
-// card Numbers must run 1..M sequentially in file order — a gap, a
-// duplicate, or a wrong start each yield their own finding, mirroring
-// checkIndexFileConsistency's sequence-check style.
-func checkCardNumbering(plan *Plan) []ValidationError {
-	var findings []ValidationError
-
-	for _, b := range plan.Batches {
-		for _, c := range b.Cards {
-			if c.BatchPrefix != b.Number {
-				findings = append(findings, ValidationError{
-					Check: "card-numbering",
-					Batch: batchID(b),
-					Detail: fmt.Sprintf(
-						"card heading %02d.%d carries batch prefix %02d, but this batch's own number is %02d",
-						c.BatchPrefix, c.Number, c.BatchPrefix, b.Number,
-					),
-				})
-			}
-		}
-
-		for i, c := range b.Cards {
-			want := i + 1
-			if c.Number != want {
-				findings = append(findings, ValidationError{
-					Check: "card-numbering",
-					Batch: batchID(b),
-					Detail: fmt.Sprintf(
-						"card numbering has a gap, duplicate, or wrong start: expected card number %d at position %d, got %d",
-						want, i+1, c.Number,
-					),
-				})
-			}
-		}
-	}
-
-	return findings
-}
-
-// checkCardCountMismatch implements card-count-mismatch: per batch, the
-// Batch Index entry's "(C cards)" segment (PlanBatch.IndexCardCount) must
-// equal the number of "### Card" headings the batch file actually parsed.
-func checkCardCountMismatch(plan *Plan) []ValidationError {
-	var findings []ValidationError
-
-	for _, b := range plan.Batches {
-		if b.IndexCardCount != len(b.Cards) {
-			findings = append(findings, ValidationError{
-				Check: "card-count-mismatch",
-				Batch: batchID(b),
-				Detail: fmt.Sprintf(
-					"Batch Index declares %d card(s) but the batch file has %d",
-					b.IndexCardCount, len(b.Cards),
-				),
-			})
-		}
-	}
-
-	return findings
 }
 
 // checkMoveFormat implements move-format: every card's non-well-formed
@@ -819,6 +661,293 @@ func checkMoveMechanicMissing(plan *Plan) []ValidationError {
 				Batch:  batchID(b),
 				Detail: `batch declares at least one Moves: pair but has no "## Rename mechanic" section`,
 			})
+		}
+	}
+
+	return findings
+}
+
+// cardFieldLabel pairs a card field's Has-presence bool with the bold label
+// plan-format.md pins for it, in field order — checkCardMissingField's only
+// data shape, kept next to the check so the field order stays visibly tied
+// to the check that walks it.
+type cardFieldLabel struct {
+	present bool
+	label   string
+}
+
+// checkCardMissingField implements card-missing-field: every card must
+// carry all six of What:/Context:/Edits:/Creates:/Deletes:/Moves: — a
+// missing label yields one finding per absent field, Detail naming the card
+// and the missing label. Commit: and verify: are optional and never
+// flagged.
+func checkCardMissingField(plan *Plan) []ValidationError {
+	var findings []ValidationError
+
+	for _, b := range plan.Batches {
+		for _, c := range b.Cards {
+			fields := []cardFieldLabel{
+				{c.HasWhat, "What:"},
+				{c.HasContext, "Context:"},
+				{c.HasEdits, "Edits:"},
+				{c.HasCreates, "Creates:"},
+				{c.HasDeletes, "Deletes:"},
+				{c.HasMoves, "Moves:"},
+			}
+			for _, f := range fields {
+				if f.present {
+					continue
+				}
+				findings = append(findings, ValidationError{
+					Check:  "card-missing-field",
+					Batch:  batchID(b),
+					Detail: fmt.Sprintf("card %02d.%d is missing its %s field", c.BatchPrefix, c.Number, f.label),
+				})
+			}
+		}
+	}
+
+	return findings
+}
+
+// checkCardFieldOverlap implements card-field-overlap: within a single card,
+// a path appearing in more than one of ContextFiles/EditsFiles/CreatesFiles/
+// DeletesFiles, or as either side of a Moves: pair, is a conflicting
+// instruction — one finding per duplicated path, Detail naming the card and
+// every field the path appears in. Overlap is deliberately per-card only:
+// the same path in one card's Creates: and another card's Edits: (in the
+// same batch) is legitimate typed-field sequencing, not a defect.
+func checkCardFieldOverlap(plan *Plan) []ValidationError {
+	var findings []ValidationError
+
+	for _, b := range plan.Batches {
+		for _, c := range b.Cards {
+			fieldsOf := make(map[string][]string)
+			add := func(p, field string) {
+				for _, seen := range fieldsOf[p] {
+					if seen == field {
+						return
+					}
+				}
+				fieldsOf[p] = append(fieldsOf[p], field)
+			}
+
+			for _, p := range c.ContextFiles {
+				add(p, "Context:")
+			}
+			for _, p := range c.EditsFiles {
+				add(p, "Edits:")
+			}
+			for _, p := range c.CreatesFiles {
+				add(p, "Creates:")
+			}
+			for _, p := range c.DeletesFiles {
+				add(p, "Deletes:")
+			}
+			for _, mv := range c.Moves {
+				add(mv.Old, "Moves:")
+				add(mv.New, "Moves:")
+			}
+
+			var duplicated []string
+			for p, fields := range fieldsOf {
+				if len(fields) > 1 {
+					duplicated = append(duplicated, p)
+				}
+			}
+			sort.Strings(duplicated)
+
+			for _, p := range duplicated {
+				findings = append(findings, ValidationError{
+					Check: "card-field-overlap",
+					Batch: batchID(b),
+					Detail: fmt.Sprintf(
+						"card %02d.%d path %q appears in more than one field: %s",
+						c.BatchPrefix, c.Number, p, strings.Join(fieldsOf[p], ", "),
+					),
+				})
+			}
+		}
+	}
+
+	return findings
+}
+
+// checkCardNumbering implements card-numbering: per batch, (a) every card's
+// heading-carried BatchPrefix must equal the batch's own Number, and (b)
+// card Numbers must run 1..M sequentially in file order — a gap, a
+// duplicate, or a wrong start each yield their own finding, mirroring
+// checkIndexFileConsistency's sequence-check style.
+func checkCardNumbering(plan *Plan) []ValidationError {
+	var findings []ValidationError
+
+	for _, b := range plan.Batches {
+		for _, c := range b.Cards {
+			if c.BatchPrefix != b.Number {
+				findings = append(findings, ValidationError{
+					Check: "card-numbering",
+					Batch: batchID(b),
+					Detail: fmt.Sprintf(
+						"card heading %02d.%d carries batch prefix %02d, but this batch's own number is %02d",
+						c.BatchPrefix, c.Number, c.BatchPrefix, b.Number,
+					),
+				})
+			}
+		}
+
+		for i, c := range b.Cards {
+			want := i + 1
+			if c.Number != want {
+				findings = append(findings, ValidationError{
+					Check: "card-numbering",
+					Batch: batchID(b),
+					Detail: fmt.Sprintf(
+						"card numbering has a gap, duplicate, or wrong start: expected card number %d at position %d, got %d",
+						want, i+1, c.Number,
+					),
+				})
+			}
+		}
+	}
+
+	return findings
+}
+
+// checkCardCountMismatch implements card-count-mismatch: per batch, the
+// Batch Index entry's "(C cards)" segment (PlanBatch.IndexCardCount) must
+// equal the number of "### Card" headings the batch file actually parsed.
+func checkCardCountMismatch(plan *Plan) []ValidationError {
+	var findings []ValidationError
+
+	for _, b := range plan.Batches {
+		if b.IndexCardCount != len(b.Cards) {
+			findings = append(findings, ValidationError{
+				Check: "card-count-mismatch",
+				Batch: batchID(b),
+				Detail: fmt.Sprintf(
+					"Batch Index declares %d card(s) but the batch file has %d",
+					b.IndexCardCount, len(b.Cards),
+				),
+			})
+		}
+	}
+
+	return findings
+}
+
+// checkPathMissing implements path-missing: every card path in
+// ContextFiles, EditsFiles, and DeletesFiles must exist on disk under
+// worktreeRoot, unless it is satisfied by some batch's Creates: or some
+// Moves: pair's target (the same plan-wide createsUnion/movesTargetsUnion
+// suppression sets move-source-missing consults). CreatesFiles is
+// deliberately excluded — those paths are new by definition — and a
+// card's own Moves: sources are move-source-missing's job, not this
+// check's.
+func checkPathMissing(plan *Plan, worktreeRoot string) []ValidationError {
+	var findings []ValidationError
+
+	creates := createsUnion(plan)
+	movesTargets := movesTargetsUnion(plan)
+
+	for _, b := range plan.Batches {
+		for _, c := range b.Cards {
+			for _, fields := range [][]string{c.ContextFiles, c.EditsFiles, c.DeletesFiles} {
+				for _, p := range fields {
+					if pathExistsOnDisk(worktreeRoot, p) {
+						continue
+					}
+					if creates[p] || movesTargets[p] {
+						continue
+					}
+					findings = append(findings, ValidationError{
+						Check: "path-missing",
+						Batch: batchID(b),
+						Detail: fmt.Sprintf(
+							"card %02d.%d path %q does not exist on disk and is not created or relocated by any batch",
+							c.BatchPrefix, c.Number, p,
+						),
+					})
+				}
+			}
+		}
+	}
+
+	return findings
+}
+
+// checkCardOutsideScope implements card-outside-scope: every card path in
+// EditsFiles/CreatesFiles/DeletesFiles, and both endpoints of every Moves:
+// pair, must be covered by one of the batch's own "## Scope" entries
+// (pathCovers's boundary-aware prefix semantics, reused from digest.go via
+// inScope — batch-local decision). ContextFiles is exempt: reading a file
+// outside the batch's own scope is legitimate. A batch with an empty Scope
+// declares nothing, so this check yields no findings for it.
+func checkCardOutsideScope(plan *Plan) []ValidationError {
+	var findings []ValidationError
+
+	for _, b := range plan.Batches {
+		if len(b.Scope) == 0 {
+			continue
+		}
+
+		for _, c := range b.Cards {
+			for _, fields := range [][]string{c.EditsFiles, c.CreatesFiles, c.DeletesFiles} {
+				for _, p := range fields {
+					if !inScope(p, b.Scope) {
+						findings = append(findings, ValidationError{
+							Check: "card-outside-scope",
+							Batch: batchID(b),
+							Detail: fmt.Sprintf(
+								"card %02d.%d path %q is not covered by any Scope entry",
+								c.BatchPrefix, c.Number, p,
+							),
+						})
+					}
+				}
+			}
+			for _, mv := range c.Moves {
+				for _, p := range []string{mv.Old, mv.New} {
+					if !inScope(p, b.Scope) {
+						findings = append(findings, ValidationError{
+							Check: "card-outside-scope",
+							Batch: batchID(b),
+							Detail: fmt.Sprintf(
+								"card %02d.%d Moves: endpoint %q is not covered by any Scope entry",
+								c.BatchPrefix, c.Number, p,
+							),
+						})
+					}
+				}
+			}
+		}
+	}
+
+	return findings
+}
+
+// checkCommitSubjectMismatch implements commit-subject-mismatch: a card's
+// non-empty Commit value must start with the exact "NN.C: " prefix its own
+// batch number and card number pin, per-card-commit-field's resume-trail
+// discipline.
+func checkCommitSubjectMismatch(plan *Plan) []ValidationError {
+	var findings []ValidationError
+
+	for _, b := range plan.Batches {
+		for _, c := range b.Cards {
+			if c.Commit == "" {
+				continue
+			}
+			prefix := fmt.Sprintf("%02d.%d: ", b.Number, c.Number)
+			if !strings.HasPrefix(c.Commit, prefix) {
+				findings = append(findings, ValidationError{
+					Check: "commit-subject-mismatch",
+					Batch: batchID(b),
+					Detail: fmt.Sprintf(
+						"card %02d.%d Commit: %q does not start with the expected prefix %q",
+						c.BatchPrefix, c.Number, c.Commit, prefix,
+					),
+				})
+			}
 		}
 	}
 

@@ -990,6 +990,195 @@ func TestValidate_CardCountMismatch(t *testing.T) {
 	}
 }
 
+// TestValidate_PathMissing covers path-missing: a card's Edits: path that
+// does not exist on disk is flagged, but the same defect is suppressed when
+// another batch's Creates: satisfies it (the plan-wide suppression set
+// move-source-missing also consults).
+func TestValidate_PathMissing(t *testing.T) {
+	t.Parallel()
+
+	t.Run("missing Edits path is flagged", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		plan := syntheticPlan(dir, builderengine.PlanBatch{
+			Number: 1, Slug: "first", File: "01-first.md",
+			VerifyCommand: "go build ./...",
+			Cards: []builderengine.PlanCard{
+				{BatchPrefix: 1, Number: 1, EditsFiles: []string{"missing.go"}},
+			},
+		})
+
+		findings := builderengine.Validate(plan, dir, generousCaps)
+		found := false
+		for _, f := range findings {
+			if f.Check == "path-missing" && f.Batch == "01-first" && strings.Contains(f.Detail, "01.1") && strings.Contains(f.Detail, "missing.go") {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("Validate() = %+v; want a path-missing finding citing card 01.1 and missing.go", findings)
+		}
+	})
+
+	t.Run("Edits path satisfied by another batch's Creates is suppressed", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		plan := syntheticPlan(dir,
+			builderengine.PlanBatch{
+				Number: 1, Slug: "creator", File: "01-creator.md",
+				VerifyCommand: "go build ./...",
+				Cards: []builderengine.PlanCard{
+					{BatchPrefix: 1, Number: 1, CreatesFiles: []string{"generated.go"}},
+				},
+			},
+			builderengine.PlanBatch{
+				Number: 2, Slug: "editor", File: "02-editor.md",
+				VerifyCommand: "go build ./...",
+				Cards: []builderengine.PlanCard{
+					{BatchPrefix: 2, Number: 1, EditsFiles: []string{"generated.go"}},
+				},
+			},
+		)
+
+		findings := builderengine.Validate(plan, dir, generousCaps)
+		if hasFinding(findings, "path-missing", "02-editor") {
+			t.Errorf("Validate() = %+v; want no path-missing finding (path is created by another batch)", findings)
+		}
+	})
+}
+
+// TestValidate_CardOutsideScope covers card-outside-scope: an Edits: path
+// not covered by any Scope entry is flagged, but the same path in Context:
+// (exempt) is not; and Scope's boundary semantics apply ("internal/foo"
+// must not cover "internal/foobar").
+func TestValidate_CardOutsideScope(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Edits outside Scope is flagged, Context outside Scope is not", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		plan := syntheticPlan(dir, builderengine.PlanBatch{
+			Number: 1, Slug: "first", File: "01-first.md",
+			VerifyCommand: "go build ./...",
+			Scope:         []string{"01-first.md"},
+			Cards: []builderengine.PlanCard{
+				{
+					BatchPrefix: 1, Number: 1,
+					ContextFiles: []string{"outside/context.go"},
+					EditsFiles:   []string{"outside/edits.go"},
+				},
+			},
+		})
+
+		findings := builderengine.Validate(plan, dir, generousCaps)
+		found := false
+		for _, f := range findings {
+			if f.Check == "card-outside-scope" && f.Batch == "01-first" && strings.Contains(f.Detail, "outside/edits.go") {
+				found = true
+			}
+			if f.Check == "card-outside-scope" && strings.Contains(f.Detail, "outside/context.go") {
+				t.Errorf("Validate() = %+v; want no card-outside-scope finding for a Context: path (exempt)", findings)
+			}
+		}
+		if !found {
+			t.Errorf("Validate() = %+v; want a card-outside-scope finding for the Edits: path", findings)
+		}
+	})
+
+	t.Run(`"internal/foo" scope does not cover "internal/foobar"`, func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		plan := syntheticPlan(dir, builderengine.PlanBatch{
+			Number: 1, Slug: "first", File: "01-first.md",
+			VerifyCommand: "go build ./...",
+			Scope:         []string{"internal/foo"},
+			Cards: []builderengine.PlanCard{
+				{BatchPrefix: 1, Number: 1, EditsFiles: []string{"internal/foobar/x.go"}},
+			},
+		})
+
+		findings := builderengine.Validate(plan, dir, generousCaps)
+		if !hasFinding(findings, "card-outside-scope", "01-first") {
+			t.Errorf(`Validate() = %+v; want a card-outside-scope finding ("internal/foo" must not cover "internal/foobar")`, findings)
+		}
+	})
+
+	t.Run("empty Scope yields no card-outside-scope findings", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		plan := syntheticPlan(dir, builderengine.PlanBatch{
+			Number: 1, Slug: "first", File: "01-first.md",
+			VerifyCommand: "go build ./...",
+			Cards: []builderengine.PlanCard{
+				{BatchPrefix: 1, Number: 1, EditsFiles: []string{"anywhere/x.go"}},
+			},
+		})
+
+		findings := builderengine.Validate(plan, dir, generousCaps)
+		if hasFinding(findings, "card-outside-scope", "01-first") {
+			t.Errorf("Validate() = %+v; want no card-outside-scope finding when Scope is empty", findings)
+		}
+	})
+}
+
+// TestValidate_CommitSubjectMismatch covers commit-subject-mismatch: a
+// Commit: value matching its own card's "NN.C: " prefix is clean; a value
+// with the wrong prefix is flagged.
+func TestValidate_CommitSubjectMismatch(t *testing.T) {
+	t.Parallel()
+
+	t.Run("matching NN.C prefix is clean", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		plan := syntheticPlan(dir,
+			builderengine.PlanBatch{Number: 1, Slug: "first", File: "01-first.md", VerifyCommand: "go build ./..."},
+			builderengine.PlanBatch{
+				Number: 2, Slug: "second", File: "02-second.md",
+				VerifyCommand: "go build ./...",
+				Cards: []builderengine.PlanCard{
+					{}, {}, {BatchPrefix: 2, Number: 3, Commit: "02.3: x"},
+				},
+			},
+		)
+
+		findings := builderengine.Validate(plan, dir, generousCaps)
+		if hasFinding(findings, "commit-subject-mismatch", "02-second") {
+			t.Errorf("Validate() = %+v; want no commit-subject-mismatch finding for a matching prefix", findings)
+		}
+	})
+
+	t.Run("wrong prefix is flagged", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		plan := syntheticPlan(dir, builderengine.PlanBatch{
+			Number: 1, Slug: "first", File: "01-first.md",
+			VerifyCommand: "go build ./...",
+			Cards: []builderengine.PlanCard{
+				{BatchPrefix: 1, Number: 1, Commit: "02.3: x"},
+			},
+		})
+
+		findings := builderengine.Validate(plan, dir, generousCaps)
+		found := false
+		for _, f := range findings {
+			if f.Check == "commit-subject-mismatch" && f.Batch == "01-first" &&
+				strings.Contains(f.Detail, "02.3: x") && strings.Contains(f.Detail, "01.1: ") {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("Validate() = %+v; want a commit-subject-mismatch finding quoting both the value and the expected prefix", findings)
+		}
+	})
+}
+
 // hasFinding reports whether findings contains an entry matching both check
 // and batch (an empty batch matches a plan-level finding).
 func hasFinding(findings []builderengine.ValidationError, check, batch string) bool {
