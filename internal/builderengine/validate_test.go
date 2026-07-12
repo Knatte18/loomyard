@@ -893,6 +893,103 @@ func TestValidate_ScopeMalformed_CardPaths(t *testing.T) {
 	})
 }
 
+// TestValidate_CardNumbering covers card-numbering's two independent
+// violations: a card heading whose batch prefix disagrees with the batch's
+// own number, and a card Number sequence with a duplicate or a gap.
+func TestValidate_CardNumbering(t *testing.T) {
+	t.Parallel()
+
+	t.Run("wrong batch prefix is flagged", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		plan := syntheticPlan(dir, builderengine.PlanBatch{
+			Number: 2, Slug: "second", File: "02-second.md",
+			VerifyCommand: "go build ./...",
+			Cards: []builderengine.PlanCard{
+				{BatchPrefix: 1, Number: 1, HasWhat: true, HasContext: true, HasEdits: true, HasCreates: true, HasDeletes: true, HasMoves: true},
+			},
+		})
+
+		findings := builderengine.Validate(plan, dir, generousCaps)
+		found := false
+		for _, f := range findings {
+			if f.Check == "card-numbering" && f.Batch == "02-second" && strings.Contains(f.Detail, "01") && strings.Contains(f.Detail, "02") {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("Validate() = %+v; want a card-numbering finding for the wrong batch prefix", findings)
+		}
+	})
+
+	t.Run("duplicate card number is flagged", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		plan := syntheticPlan(dir, builderengine.PlanBatch{
+			Number: 1, Slug: "first", File: "01-first.md",
+			VerifyCommand: "go build ./...",
+			Cards: []builderengine.PlanCard{
+				{BatchPrefix: 1, Number: 1, HasWhat: true, HasContext: true, HasEdits: true, HasCreates: true, HasDeletes: true, HasMoves: true},
+				{BatchPrefix: 1, Number: 1, HasWhat: true, HasContext: true, HasEdits: true, HasCreates: true, HasDeletes: true, HasMoves: true},
+			},
+		})
+
+		findings := builderengine.Validate(plan, dir, generousCaps)
+		if !hasFinding(findings, "card-numbering", "01-first") {
+			t.Errorf("Validate() = %+v; want a card-numbering finding for the duplicate card number", findings)
+		}
+	})
+
+	t.Run("gap in card numbering is flagged", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		plan := syntheticPlan(dir, builderengine.PlanBatch{
+			Number: 1, Slug: "first", File: "01-first.md",
+			VerifyCommand: "go build ./...",
+			Cards: []builderengine.PlanCard{
+				{BatchPrefix: 1, Number: 1, HasWhat: true, HasContext: true, HasEdits: true, HasCreates: true, HasDeletes: true, HasMoves: true},
+				{BatchPrefix: 1, Number: 3, HasWhat: true, HasContext: true, HasEdits: true, HasCreates: true, HasDeletes: true, HasMoves: true},
+			},
+		})
+
+		findings := builderengine.Validate(plan, dir, generousCaps)
+		if !hasFinding(findings, "card-numbering", "01-first") {
+			t.Errorf("Validate() = %+v; want a card-numbering finding for the gap", findings)
+		}
+	})
+}
+
+// TestValidate_CardCountMismatch covers card-count-mismatch: the Batch
+// Index's IndexCardCount must equal len(PlanBatch.Cards).
+func TestValidate_CardCountMismatch(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	plan := syntheticPlan(dir, builderengine.PlanBatch{
+		Number: 1, Slug: "first", File: "01-first.md",
+		VerifyCommand:  "go build ./...",
+		IndexCardCount: 3,
+		Cards: []builderengine.PlanCard{
+			{BatchPrefix: 1, Number: 1, HasWhat: true, HasContext: true, HasEdits: true, HasCreates: true, HasDeletes: true, HasMoves: true},
+			{BatchPrefix: 1, Number: 2, HasWhat: true, HasContext: true, HasEdits: true, HasCreates: true, HasDeletes: true, HasMoves: true},
+		},
+	})
+
+	findings := builderengine.Validate(plan, dir, generousCaps)
+	found := false
+	for _, f := range findings {
+		if f.Check == "card-count-mismatch" && f.Batch == "01-first" && strings.Contains(f.Detail, "3") && strings.Contains(f.Detail, "2") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("Validate() = %+v; want a card-count-mismatch finding naming both 3 and 2", findings)
+	}
+}
+
 // hasFinding reports whether findings contains an entry matching both check
 // and batch (an empty batch matches a plan-level finding).
 func hasFinding(findings []builderengine.ValidationError, check, batch string) bool {

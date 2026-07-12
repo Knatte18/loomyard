@@ -90,6 +90,8 @@ func Validate(plan *Plan, worktreeRoot string, caps ValidateCaps) []ValidationEr
 	findings = append(findings, checkMoveMechanicMissing(plan)...)
 	findings = append(findings, checkCardMissingField(plan)...)
 	findings = append(findings, checkCardFieldOverlap(plan)...)
+	findings = append(findings, checkCardNumbering(plan)...)
+	findings = append(findings, checkCardCountMismatch(plan)...)
 
 	return findings
 }
@@ -513,6 +515,68 @@ func cleanPosixPath(posix string) string {
 		return "."
 	}
 	return strings.Join(cleaned, "/")
+}
+
+// checkCardNumbering implements card-numbering: per batch, (a) every card's
+// heading-carried BatchPrefix must equal the batch's own Number, and (b)
+// card Numbers must run 1..M sequentially in file order — a gap, a
+// duplicate, or a wrong start each yield their own finding, mirroring
+// checkIndexFileConsistency's sequence-check style.
+func checkCardNumbering(plan *Plan) []ValidationError {
+	var findings []ValidationError
+
+	for _, b := range plan.Batches {
+		for _, c := range b.Cards {
+			if c.BatchPrefix != b.Number {
+				findings = append(findings, ValidationError{
+					Check: "card-numbering",
+					Batch: batchID(b),
+					Detail: fmt.Sprintf(
+						"card heading %02d.%d carries batch prefix %02d, but this batch's own number is %02d",
+						c.BatchPrefix, c.Number, c.BatchPrefix, b.Number,
+					),
+				})
+			}
+		}
+
+		for i, c := range b.Cards {
+			want := i + 1
+			if c.Number != want {
+				findings = append(findings, ValidationError{
+					Check: "card-numbering",
+					Batch: batchID(b),
+					Detail: fmt.Sprintf(
+						"card numbering has a gap, duplicate, or wrong start: expected card number %d at position %d, got %d",
+						want, i+1, c.Number,
+					),
+				})
+			}
+		}
+	}
+
+	return findings
+}
+
+// checkCardCountMismatch implements card-count-mismatch: per batch, the
+// Batch Index entry's "(C cards)" segment (PlanBatch.IndexCardCount) must
+// equal the number of "### Card" headings the batch file actually parsed.
+func checkCardCountMismatch(plan *Plan) []ValidationError {
+	var findings []ValidationError
+
+	for _, b := range plan.Batches {
+		if b.IndexCardCount != len(b.Cards) {
+			findings = append(findings, ValidationError{
+				Check: "card-count-mismatch",
+				Batch: batchID(b),
+				Detail: fmt.Sprintf(
+					"Batch Index declares %d card(s) but the batch file has %d",
+					b.IndexCardCount, len(b.Cards),
+				),
+			})
+		}
+	}
+
+	return findings
 }
 
 // checkMoveFormat implements move-format: every card's non-well-formed
