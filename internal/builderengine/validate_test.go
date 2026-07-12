@@ -1,10 +1,13 @@
-// validate_test.go covers Validate's six checks against plan-format v2: the
+// validate_test.go covers Validate's checks against plan-format v2: the
 // plan-valid fixture must yield zero findings, plan-unapproved and
 // plan-broken-chain must trip their designed checks, and synthetic
-// in-memory plans exercise checks 2, 3, 5, and 6 directly (each needs disk
-// state or cap values the hand-written fixtures do not exercise). Check 5
-// (batch-oversized) now sums Scope plus every card's typed file-op paths
-// and compares len(PlanBatch.Cards) against the card cap.
+// in-memory plans exercise the checks that need disk state or cap values
+// the hand-written fixtures do not exercise (index-file-mismatch,
+// verify-missing, batch-oversized, scope-malformed) plus the five move-*
+// checks (move-format, move-redundant, move-source-missing,
+// move-target-collision, move-mechanic-missing). batch-oversized sums Scope
+// plus every card's typed file-op paths and compares len(PlanBatch.Cards)
+// against the card cap.
 
 package builderengine_test
 
@@ -377,6 +380,347 @@ func TestValidate_FormatUnrecognized(t *testing.T) {
 	if !hasFinding(findings, "format-unrecognized", "") {
 		t.Errorf("Validate() = %+v; want a format-unrecognized finding", findings)
 	}
+}
+
+// TestValidate_MoveFormat covers move-format: a malformed Moves: bullet
+// (retained verbatim in PlanCard.MovesRaw by the parser) yields one finding
+// citing the card and quoting the raw entry; a well-formed pair produces
+// none.
+func TestValidate_MoveFormat(t *testing.T) {
+	t.Parallel()
+
+	t.Run("malformed raw entry flags the citing card", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		plan := syntheticPlan(dir, builderengine.PlanBatch{
+			Number: 1, Slug: "first", File: "01-first.md",
+			VerifyCommand: "go build ./...",
+			Cards: []builderengine.PlanCard{
+				{BatchPrefix: 1, Number: 1, MovesRaw: []string{"no arrow here"}},
+			},
+		})
+
+		findings := builderengine.Validate(plan, dir, generousCaps)
+		found := false
+		for _, f := range findings {
+			if f.Check == "move-format" && f.Batch == "01-first" &&
+				strings.Contains(f.Detail, "01.1") && strings.Contains(f.Detail, "no arrow here") {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("Validate() = %+v; want a move-format finding citing card 01.1 and quoting the raw entry", findings)
+		}
+	})
+
+	t.Run("well-formed moves produce no finding", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		writeFiles(t, dir, map[string]string{"a.go": "content"})
+		plan := syntheticPlan(dir, builderengine.PlanBatch{
+			Number: 1, Slug: "first", File: "01-first.md",
+			VerifyCommand:     "go build ./...",
+			HasRenameMechanic: true,
+			Cards: []builderengine.PlanCard{
+				{Moves: []builderengine.MovePair{{Old: "a.go", New: "b.go"}}},
+			},
+		})
+
+		findings := builderengine.Validate(plan, dir, generousCaps)
+		if hasFinding(findings, "move-format", "01-first") {
+			t.Errorf("Validate() = %+v; want no move-format finding for a well-formed pair", findings)
+		}
+	})
+}
+
+// TestValidate_MoveRedundant covers move-redundant: an endpoint duplicated
+// into the same batch's Creates: is flagged, but a rename plus a DIFFERENT
+// Creates: path (extraction alongside a rename) is not.
+func TestValidate_MoveRedundant(t *testing.T) {
+	t.Parallel()
+
+	t.Run("endpoint duplicated into Creates flags move-redundant", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		writeFiles(t, dir, map[string]string{"old.go": "content"})
+		plan := syntheticPlan(dir, builderengine.PlanBatch{
+			Number: 1, Slug: "first", File: "01-first.md",
+			VerifyCommand:     "go build ./...",
+			HasRenameMechanic: true,
+			Cards: []builderengine.PlanCard{
+				{
+					Moves:        []builderengine.MovePair{{Old: "old.go", New: "new.go"}},
+					CreatesFiles: []string{"new.go"},
+				},
+			},
+		})
+
+		findings := builderengine.Validate(plan, dir, generousCaps)
+		if !hasFinding(findings, "move-redundant", "01-first") {
+			t.Errorf("Validate() = %+v; want a move-redundant finding", findings)
+		}
+	})
+
+	t.Run("rename plus a different Creates path is not redundant", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		writeFiles(t, dir, map[string]string{"old.go": "content"})
+		plan := syntheticPlan(dir, builderengine.PlanBatch{
+			Number: 1, Slug: "first", File: "01-first.md",
+			VerifyCommand:     "go build ./...",
+			HasRenameMechanic: true,
+			Cards: []builderengine.PlanCard{
+				{
+					Moves:        []builderengine.MovePair{{Old: "old.go", New: "new.go"}},
+					CreatesFiles: []string{"other.go"},
+				},
+			},
+		})
+
+		findings := builderengine.Validate(plan, dir, generousCaps)
+		if hasFinding(findings, "move-redundant", "01-first") {
+			t.Errorf("Validate() = %+v; want no move-redundant finding for a different Creates path", findings)
+		}
+	})
+}
+
+// TestValidate_MoveSourceMissing covers move-source-missing: a source path
+// with no on-disk file and no plan-wide Creates:/Moves-target suppression is
+// flagged; a source satisfied by another batch's Creates: is suppressed; and
+// a chained rename across two batches (A: x -> y, B: y -> z) is suppressed
+// regardless of batch order.
+func TestValidate_MoveSourceMissing(t *testing.T) {
+	t.Parallel()
+
+	t.Run("missing source is flagged", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		plan := syntheticPlan(dir, builderengine.PlanBatch{
+			Number: 1, Slug: "first", File: "01-first.md",
+			VerifyCommand:     "go build ./...",
+			HasRenameMechanic: true,
+			Cards: []builderengine.PlanCard{
+				{Moves: []builderengine.MovePair{{Old: "missing.go", New: "renamed.go"}}},
+			},
+		})
+
+		findings := builderengine.Validate(plan, dir, generousCaps)
+		if !hasFinding(findings, "move-source-missing", "01-first") {
+			t.Errorf("Validate() = %+v; want a move-source-missing finding", findings)
+		}
+	})
+
+	t.Run("source satisfied by another batch's Creates is suppressed", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		plan := syntheticPlan(dir,
+			builderengine.PlanBatch{
+				Number: 1, Slug: "creator", File: "01-creator.md",
+				VerifyCommand: "go build ./...",
+				Cards: []builderengine.PlanCard{
+					{CreatesFiles: []string{"generated.go"}},
+				},
+			},
+			builderengine.PlanBatch{
+				Number: 2, Slug: "renamer", File: "02-renamer.md",
+				VerifyCommand:     "go build ./...",
+				HasRenameMechanic: true,
+				Cards: []builderengine.PlanCard{
+					{Moves: []builderengine.MovePair{{Old: "generated.go", New: "renamed.go"}}},
+				},
+			},
+		)
+
+		findings := builderengine.Validate(plan, dir, generousCaps)
+		if hasFinding(findings, "move-source-missing", "02-renamer") {
+			t.Errorf("Validate() = %+v; want no move-source-missing finding (source is created by another batch)", findings)
+		}
+	})
+
+	t.Run("chained rename across batches is suppressed", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		writeFiles(t, dir, map[string]string{"x.go": "content"})
+		plan := syntheticPlan(dir,
+			builderengine.PlanBatch{
+				Number: 1, Slug: "first", File: "01-first.md",
+				VerifyCommand:     "go build ./...",
+				HasRenameMechanic: true,
+				Cards: []builderengine.PlanCard{
+					{Moves: []builderengine.MovePair{{Old: "x.go", New: "y.go"}}},
+				},
+			},
+			builderengine.PlanBatch{
+				Number: 2, Slug: "second", File: "02-second.md",
+				VerifyCommand:     "go build ./...",
+				HasRenameMechanic: true,
+				Cards: []builderengine.PlanCard{
+					{Moves: []builderengine.MovePair{{Old: "y.go", New: "z.go"}}},
+				},
+			},
+		)
+
+		findings := builderengine.Validate(plan, dir, generousCaps)
+		if hasFinding(findings, "move-source-missing", "02-second") {
+			t.Errorf("Validate() = %+v; want no move-source-missing finding for a chained rename (batch A: x->y, batch B: y->z)", findings)
+		}
+	})
+}
+
+// TestValidate_MoveTargetCollision covers move-target-collision's three
+// OR'd conditions: an existing on-disk target, two batches targeting the
+// same path, and a cross-batch Creates: collision (same-batch overlap is
+// move-redundant's job, deliberately not re-flagged here).
+func TestValidate_MoveTargetCollision(t *testing.T) {
+	t.Parallel()
+
+	t.Run("existing target on disk is flagged", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		writeFiles(t, dir, map[string]string{"already-there.go": "content"})
+		plan := syntheticPlan(dir, builderengine.PlanBatch{
+			Number: 1, Slug: "first", File: "01-first.md",
+			VerifyCommand:     "go build ./...",
+			HasRenameMechanic: true,
+			Cards: []builderengine.PlanCard{
+				{Moves: []builderengine.MovePair{{Old: "src.go", New: "already-there.go"}}},
+			},
+		})
+
+		findings := builderengine.Validate(plan, dir, generousCaps)
+		if !hasFinding(findings, "move-target-collision", "01-first") {
+			t.Errorf("Validate() = %+v; want a move-target-collision finding for an existing on-disk target", findings)
+		}
+	})
+
+	t.Run("two batches targeting the same path are both flagged", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		plan := syntheticPlan(dir,
+			builderengine.PlanBatch{
+				Number: 1, Slug: "first", File: "01-first.md",
+				VerifyCommand:     "go build ./...",
+				HasRenameMechanic: true,
+				Cards: []builderengine.PlanCard{
+					{Moves: []builderengine.MovePair{{Old: "a.go", New: "shared.go"}}},
+				},
+			},
+			builderengine.PlanBatch{
+				Number: 2, Slug: "second", File: "02-second.md",
+				VerifyCommand:     "go build ./...",
+				HasRenameMechanic: true,
+				Cards: []builderengine.PlanCard{
+					{Moves: []builderengine.MovePair{{Old: "b.go", New: "shared.go"}}},
+				},
+			},
+		)
+
+		findings := builderengine.Validate(plan, dir, generousCaps)
+		if !hasFinding(findings, "move-target-collision", "01-first") || !hasFinding(findings, "move-target-collision", "02-second") {
+			t.Errorf("Validate() = %+v; want a move-target-collision finding for both batches targeting shared.go", findings)
+		}
+	})
+
+	t.Run("cross-batch Creates collision is flagged", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		plan := syntheticPlan(dir,
+			builderengine.PlanBatch{
+				Number: 1, Slug: "first", File: "01-first.md",
+				VerifyCommand:     "go build ./...",
+				HasRenameMechanic: true,
+				Cards: []builderengine.PlanCard{
+					{Moves: []builderengine.MovePair{{Old: "a.go", New: "target.go"}}},
+				},
+			},
+			builderengine.PlanBatch{
+				Number: 2, Slug: "second", File: "02-second.md",
+				VerifyCommand: "go build ./...",
+				Cards: []builderengine.PlanCard{
+					{CreatesFiles: []string{"target.go"}},
+				},
+			},
+		)
+
+		findings := builderengine.Validate(plan, dir, generousCaps)
+		if !hasFinding(findings, "move-target-collision", "01-first") {
+			t.Errorf("Validate() = %+v; want a move-target-collision finding for the cross-batch Creates: collision", findings)
+		}
+	})
+}
+
+// TestValidate_MoveMechanicMissing covers move-mechanic-missing: a batch
+// with a Moves: pair but no "## Rename mechanic" section is flagged; the
+// same batch with the section is clean; and a batch whose every Moves:
+// field is "none" (zero pairs) is clean even without the section.
+func TestValidate_MoveMechanicMissing(t *testing.T) {
+	t.Parallel()
+
+	t.Run("moves without the section is flagged", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		plan := syntheticPlan(dir, builderengine.PlanBatch{
+			Number: 1, Slug: "first", File: "01-first.md",
+			VerifyCommand: "go build ./...",
+			Cards: []builderengine.PlanCard{
+				{Moves: []builderengine.MovePair{{Old: "a.go", New: "b.go"}}},
+			},
+		})
+
+		findings := builderengine.Validate(plan, dir, generousCaps)
+		if !hasFinding(findings, "move-mechanic-missing", "01-first") {
+			t.Errorf("Validate() = %+v; want a move-mechanic-missing finding", findings)
+		}
+	})
+
+	t.Run("moves with the section is clean", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		writeFiles(t, dir, map[string]string{"a.go": "content"})
+		plan := syntheticPlan(dir, builderengine.PlanBatch{
+			Number: 1, Slug: "first", File: "01-first.md",
+			VerifyCommand:     "go build ./...",
+			HasRenameMechanic: true,
+			Cards: []builderengine.PlanCard{
+				{Moves: []builderengine.MovePair{{Old: "a.go", New: "b.go"}}},
+			},
+		})
+
+		findings := builderengine.Validate(plan, dir, generousCaps)
+		if hasFinding(findings, "move-mechanic-missing", "01-first") {
+			t.Errorf("Validate() = %+v; want no move-mechanic-missing finding when the section is present", findings)
+		}
+	})
+
+	t.Run("none-only batch without the section is clean", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		plan := syntheticPlan(dir, builderengine.PlanBatch{
+			Number: 1, Slug: "first", File: "01-first.md",
+			VerifyCommand: "go build ./...",
+			Cards: []builderengine.PlanCard{
+				{Moves: []builderengine.MovePair{}},
+			},
+		})
+
+		findings := builderengine.Validate(plan, dir, generousCaps)
+		if hasFinding(findings, "move-mechanic-missing", "01-first") {
+			t.Errorf("Validate() = %+v; want no move-mechanic-missing finding for a none-only Moves: field", findings)
+		}
+	})
 }
 
 // hasFinding reports whether findings contains an entry matching both check

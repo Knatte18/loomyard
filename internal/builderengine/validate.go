@@ -1,8 +1,11 @@
-// validate.go implements Validate, the six plan-format v2 machine checks
+// validate.go implements Validate, plan-format v2's machine checks
 // (docs/modules/plan-format.md's "Validation checks" section): format/
 // approval, Batch Index <-> file consistency, verify: presence, chain-end
-// soundness, the oversized-batch context/card-count cap, and scope
-// well-formedness. Validate runs both as the standalone `lyx builder
+// soundness, the oversized-batch context/card-count cap, scope
+// well-formedness, and the five move-* checks that police a card's
+// Moves: field and its "## Rename mechanic" companion section
+// (move-format, move-redundant, move-source-missing, move-target-collision,
+// move-mechanic-missing). Validate runs both as the standalone `lyx builder
 // validate` verb and as builder's hard automatic gate inside `run` and
 // `spawn-batch` — the fail-loud-refusal half of plan-format.md's contract.
 
@@ -80,6 +83,11 @@ func Validate(plan *Plan, worktreeRoot string, caps ValidateCaps) []ValidationEr
 	findings = append(findings, checkChainEndSoundness(plan)...)
 	findings = append(findings, checkBatchOversized(plan, worktreeRoot, caps)...)
 	findings = append(findings, checkScopeMalformed(plan)...)
+	findings = append(findings, checkMoveFormat(plan)...)
+	findings = append(findings, checkMoveRedundant(plan)...)
+	findings = append(findings, checkMoveSourceMissing(plan, worktreeRoot)...)
+	findings = append(findings, checkMoveTargetCollision(plan, worktreeRoot)...)
+	findings = append(findings, checkMoveMechanicMissing(plan)...)
 
 	return findings
 }
@@ -368,4 +376,250 @@ func cleanPosixPath(posix string) string {
 		return "."
 	}
 	return strings.Join(cleaned, "/")
+}
+
+// checkMoveFormat implements move-format: every card's non-well-formed
+// "Moves:" sub-bullet (retained verbatim in PlanCard.MovesRaw by the
+// lenient-card-parse parser) yields one finding, quoting the raw bullet and
+// naming the offending card so a Planner can find and fix it.
+func checkMoveFormat(plan *Plan) []ValidationError {
+	var findings []ValidationError
+
+	for _, b := range plan.Batches {
+		for _, c := range b.Cards {
+			for _, raw := range c.MovesRaw {
+				findings = append(findings, ValidationError{
+					Check: "move-format",
+					Batch: batchID(b),
+					Detail: fmt.Sprintf(
+						"card %02d.%d Moves: entry %q does not match the required `src` -> `dst` grammar",
+						c.BatchPrefix, c.Number, raw,
+					),
+				})
+			}
+		}
+	}
+
+	return findings
+}
+
+// checkMoveRedundant implements move-redundant: a batch-level check, mill's
+// own semantics — a path that is both a Moves: endpoint (either side of any
+// card's pair) and named in the same batch's Creates:/Deletes: (across all
+// its cards) is a conflicting instruction: the Planner must pick one
+// mechanism, not both. Findings are sorted by path within a batch.
+func checkMoveRedundant(plan *Plan) []ValidationError {
+	var findings []ValidationError
+
+	for _, b := range plan.Batches {
+		endpoints := make(map[string]bool)
+		createsDeletes := make(map[string]bool)
+		for _, c := range b.Cards {
+			for _, mv := range c.Moves {
+				endpoints[mv.Old] = true
+				endpoints[mv.New] = true
+			}
+			for _, p := range c.CreatesFiles {
+				createsDeletes[p] = true
+			}
+			for _, p := range c.DeletesFiles {
+				createsDeletes[p] = true
+			}
+		}
+
+		var conflicts []string
+		for p := range endpoints {
+			if createsDeletes[p] {
+				conflicts = append(conflicts, p)
+			}
+		}
+		sort.Strings(conflicts)
+
+		for _, p := range conflicts {
+			findings = append(findings, ValidationError{
+				Check: "move-redundant",
+				Batch: batchID(b),
+				Detail: fmt.Sprintf(
+					"%q is both a Moves: endpoint and in Creates:/Deletes: in the same batch; use Moves: or Creates:/Deletes:, not both",
+					p,
+				),
+			})
+		}
+	}
+
+	return findings
+}
+
+// createsUnion returns the union, across every batch and card in plan, of
+// every CreatesFiles entry: mill's plan-wide suppression semantics —
+// order-independent, so a Moves: source or target satisfied by ANY batch's
+// Creates: (earlier or later in the index) is not flagged. Consulted by both
+// checkMoveSourceMissing and checkMoveTargetCollision.
+func createsUnion(plan *Plan) map[string]bool {
+	union := make(map[string]bool)
+	for _, b := range plan.Batches {
+		for _, c := range b.Cards {
+			for _, p := range c.CreatesFiles {
+				union[p] = true
+			}
+		}
+	}
+	return union
+}
+
+// movesTargetsUnion returns the union, across every batch and card in plan,
+// of every MovePair.New: the second plan-wide suppression set, letting a
+// chained rename (batch A: X -> Y, batch B: Y -> Z) pass move-source-missing
+// regardless of batch order.
+func movesTargetsUnion(plan *Plan) map[string]bool {
+	union := make(map[string]bool)
+	for _, b := range plan.Batches {
+		for _, c := range b.Cards {
+			for _, mv := range c.Moves {
+				union[mv.New] = true
+			}
+		}
+	}
+	return union
+}
+
+// pathExistsOnDisk reports whether worktreeRoot-joined path exists on disk —
+// shared by move-source-missing's absence check and
+// move-target-collision's existence check.
+func pathExistsOnDisk(worktreeRoot, path string) bool {
+	_, err := os.Stat(filepath.Join(worktreeRoot, path))
+	return err == nil
+}
+
+// checkMoveSourceMissing implements move-source-missing: a Moves: source
+// that neither exists on disk nor is created or relocated by another batch
+// (plan-wide createsUnion/movesTargetsUnion suppression, per mill's
+// semantics) is a dangling rename instruction.
+func checkMoveSourceMissing(plan *Plan, worktreeRoot string) []ValidationError {
+	var findings []ValidationError
+
+	creates := createsUnion(plan)
+	movesTargets := movesTargetsUnion(plan)
+
+	for _, b := range plan.Batches {
+		for _, c := range b.Cards {
+			for _, mv := range c.Moves {
+				if pathExistsOnDisk(worktreeRoot, mv.Old) {
+					continue
+				}
+				if creates[mv.Old] || movesTargets[mv.Old] {
+					continue
+				}
+				findings = append(findings, ValidationError{
+					Check: "move-source-missing",
+					Batch: batchID(b),
+					Detail: fmt.Sprintf(
+						"Moves: source %q does not exist on disk and is not created or relocated by another batch",
+						mv.Old,
+					),
+				})
+			}
+		}
+	}
+
+	return findings
+}
+
+// checkMoveTargetCollision implements move-target-collision: three OR'd
+// conditions per Moves: target, first match wins per occurrence: the target
+// already exists on disk; more than one batch names it as a Moves: target;
+// or it collides with a DIFFERENT batch's Creates: entry (same-batch overlap
+// is move-redundant's job, mirroring mill, so it is deliberately skipped
+// here).
+func checkMoveTargetCollision(plan *Plan, worktreeRoot string) []ValidationError {
+	var findings []ValidationError
+
+	// targetBatches counts, per target path, the distinct batches that name
+	// it as a Moves: target — a size over 1 is condition (2).
+	targetBatches := make(map[string]map[string]bool)
+	// targetCreatesBatches records, per target path, the distinct batches
+	// whose Creates: field names it — used by condition (3) to detect a
+	// DIFFERENT batch's Creates: collision.
+	targetCreatesBatches := make(map[string]map[string]bool)
+	for _, b := range plan.Batches {
+		id := batchID(b)
+		for _, c := range b.Cards {
+			for _, mv := range c.Moves {
+				if targetBatches[mv.New] == nil {
+					targetBatches[mv.New] = make(map[string]bool)
+				}
+				targetBatches[mv.New][id] = true
+			}
+			for _, p := range c.CreatesFiles {
+				if targetCreatesBatches[p] == nil {
+					targetCreatesBatches[p] = make(map[string]bool)
+				}
+				targetCreatesBatches[p][id] = true
+			}
+		}
+	}
+
+	for _, b := range plan.Batches {
+		id := batchID(b)
+		for _, c := range b.Cards {
+			for _, mv := range c.Moves {
+				target := mv.New
+
+				var detail string
+				switch {
+				case pathExistsOnDisk(worktreeRoot, target):
+					detail = fmt.Sprintf("Moves: target %q already exists on disk", target)
+				case len(targetBatches[target]) > 1:
+					detail = fmt.Sprintf("Moves: target %q is targeted by more than one batch", target)
+				default:
+					for owner := range targetCreatesBatches[target] {
+						if owner != id {
+							detail = fmt.Sprintf("Moves: target %q collides with another batch's Creates: entry", target)
+							break
+						}
+					}
+				}
+
+				if detail != "" {
+					findings = append(findings, ValidationError{
+						Check:  "move-target-collision",
+						Batch:  id,
+						Detail: detail,
+					})
+				}
+			}
+		}
+	}
+
+	return findings
+}
+
+// checkMoveMechanicMissing implements move-mechanic-missing: a batch with at
+// least one parsed Moves: pair (across any of its cards) but no "##
+// Rename mechanic" section is missing the mechanical instruction that pins
+// how the rename must be carried out. A batch whose every Moves: field is
+// "none" (zero pairs) is skipped — a MovesRaw-only defect is
+// move-format's finding, and requiring the section too would double-report
+// the same underlying mistake.
+func checkMoveMechanicMissing(plan *Plan) []ValidationError {
+	var findings []ValidationError
+
+	for _, b := range plan.Batches {
+		hasPair := false
+		for _, c := range b.Cards {
+			if len(c.Moves) > 0 {
+				hasPair = true
+				break
+			}
+		}
+		if hasPair && !b.HasRenameMechanic {
+			findings = append(findings, ValidationError{
+				Check:  "move-mechanic-missing",
+				Batch:  batchID(b),
+				Detail: `batch declares at least one Moves: pair but has no "## Rename mechanic" section`,
+			})
+		}
+	}
+
+	return findings
 }

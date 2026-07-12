@@ -134,11 +134,16 @@ func newRunFixture(t *testing.T) *runFixture {
 
 	return &runFixture{
 		Deps: builderengine.RunDeps{
-			Runner:       runner,
-			PlanDir:      planDir,
-			BuilderDir:   builderDir,
-			ReportsDir:   reportsDir,
-			WorktreeRoot: t.TempDir(),
+			Runner:     runner,
+			PlanDir:    planDir,
+			BuilderDir: builderDir,
+			ReportsDir: reportsDir,
+			// WorktreeRoot must be the same copied planDir the fixture's
+			// self-referencing card paths resolve against (per the
+			// fixture-self-reference decision) — an unrelated temp dir
+			// would make plan-valid's Moves: source (03-refactor-a.md)
+			// look missing to Validate's move-source-missing check.
+			WorktreeRoot: planDir,
 			Config:       cfg,
 			Roles:        roles,
 		},
