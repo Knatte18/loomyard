@@ -261,7 +261,7 @@ User-facing modules each get one `lyx <module>` namespace:
 - **builder** — LLM orchestrator + Go verbs: a long-lived orchestrator session (model
   config-chosen; Sonnet default) drives fat `lyx builder validate|run|spawn-batch|poll|
   status|pause` verbs (`internal/builderengine` + `internal/buildercli`) through a
-  pinned plan-format v1 plan, batch by batch, until the plan is built; Go supplies only
+  pinned plan-format v2 plan, batch by batch, until the plan is built; Go supplies only
   the verbs plus the distillation behind them (digest, chain rollback, pause, outcome
   parsing), never the loop itself. Input contract:
   [plan-format.md](modules/plan-format.md). Branches off `shuttle` directly; does not
