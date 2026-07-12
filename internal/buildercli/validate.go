@@ -53,9 +53,11 @@ func (c *builderCLI) validateCmd() *cobra.Command {
 		Use:   "validate",
 		Short: "lint the plan against the plan-format machine checks without running anything",
 		Long: `validate parses the plan at _lyx/plan and runs every plan-format v2 machine
-check against it (format/approval, Batch Index <-> file consistency,
+check against it (e.g. format/approval, Batch Index <-> file consistency,
 verify: presence, chain-end soundness, the oversized-batch context/card-
-count cap, and scope well-formedness). A clean plan prints
+count cap, scope well-formedness, and the move-*/card-*/path-missing
+file-op structural checks -- the full set evolves with plan-format, so
+this list is illustrative, not exhaustive). A clean plan prints
 {"valid": true, "batches": N}. A plan with findings prints an error
 envelope carrying every finding (check, batch, detail) and exits non-zero
 -- this is the SAME gate "lyx builder run" and "lyx builder spawn-batch"
