@@ -11,12 +11,18 @@ The suite is split into two tiers. **They are different test sets, not the same
 tests run twice.**
 
 - **Tier 1 — the default offline loop** (`go test ./...`): pure-unit and
-  static-guard tests only. Zero `git` subprocesses, no network. This is what you
-  run constantly and what must stay fast (~3.5 s).
+  static-guard tests only. No `git init` / `git worktree add` / fixture-tree
+  copies anywhere in an untagged test — that is the tier's **premise**
+  (a cheap, expected-to-fail `git rev-parse` on an error path, e.g. via
+  `hubgeometry.Resolve`, is still allowed and does not violate it). Machine-
+  enforced by `cmd/lyx/tierpurity_test.go`
+  (`TestTierPurity_UntaggedTestsSpawnNothing`). Fast again: measured median
+  ~36 s. This is what you run constantly and what must stay fast.
 - **Tier 2 — the opt-in integration loop** (`go test -tags integration ./...`):
   Tier 1 **plus** the gated tests that spawn real `git` (worktrees, commits,
-  pushes, junctions). It is slow **by design** — it does far more work
-  (~a minute).
+  pushes, junctions). It is slow **by design** — it does far more work.
+  Measured median ~208 s. Numbers and the full where-the-time-goes analysis:
+  [test-suite-timing.md](test-suite-timing.md#current-best-times).
 
 > **Tier 2 is not a regression of Tier 1.** The heavy git work used to run inside
 > the default loop and made it slow (~82 s historically); the two-tier split moved
@@ -28,7 +34,8 @@ tests run twice.**
 ## Commands
 
 ```sh
-# Tier 1 — default / offline loop. No build tag. Spawns zero git subprocesses.
+# Tier 1 — default / offline loop. No build tag. (Premise: no `git init` /
+# `git worktree add` / fixture-tree copies — see test-suite-timing.md.)
 go test ./... -count=1
 
 # Tier 2 — gated integration loop. Real worktrees, commits, pushes, junctions.
@@ -51,10 +58,10 @@ suite and prints per-package times, the measured wall-clock, and the slowest
 top-level tests. No arguments needed; it works the same outside any editor.
 
 ```sh
-# Fast: Tier 1 (offline). Takes a few seconds.
+# Fast: Tier 1 (offline). ~36 s as of 2026-07-12 (post-fix; median of 3 runs).
 go run ./cmd/testtiming
 
-# Full: Tier 2 (integration, real git). Takes ~a minute.
+# Full: Tier 2 (integration, real git). ~208 s as of 2026-07-12 (post-fix; median of 3 runs).
 go run ./cmd/testtiming -full
 
 # Show more (or fewer) of the slowest tests (default 15).
@@ -93,7 +100,8 @@ If the suite feels slow locally, the highest-leverage levers, in order:
    packages re-run, so a no-op `go test ./...` returns in ~1 s.
 2. **Scope to the package you're editing** — `go test ./internal/weftengine` beats the
    whole repo.
-3. **Stay in the offline tier.** Tier 1 (`go test ./...`) spawns zero git
-   subprocesses repo-wide. Only reach for `-tags integration` when you are
-   changing worktree / weft / paths / board / ide git behaviour — and budget
-   ~a minute for that tier.
+3. **Stay in the offline tier.** Tier 1 (`go test ./...`) spawns no `git init` /
+   `git worktree add` / fixture-tree copies repo-wide (see
+   [test-suite-timing.md](test-suite-timing.md#current-best-times)). Only reach
+   for `-tags integration` when you are changing warp / weft / hubgeometry /
+   board / ide git behaviour — and budget ~208 s (~3.5 min) for that tier.

@@ -28,12 +28,201 @@ treat them as order-of-magnitude.
 
 ## Current best times
 
-As of **2026-06-23** (after `optimize-integration-tier`).
+As of **2026-07-12** (post-fix baseline — both Tier 2 reds fixed, Tier 1 offline
+again).
+
+- Machine: Intel Core Ultra 7 155U, `windows/amd64`, 14 logical CPUs
+- Go 1.26.4, default GC, `GOMAXPROCS` = NumCPU (14)
+- Method: median of 3 warm runs per tier via `go run ./cmd/testtiming[ -full]`
+  (`-count=1` set by the harness; `go build ./...` run first to warm the build
+  cache)
+
+### Headline
+
+| Loop | Command | Wall-clock | vs. 2026-07-12 regression |
+|------|---------|-----------|----------------------------|
+| **Tier 1** — offline, default | `go test ./... -count=1` | **~36 s** (spread 29–38 s) | was ~44 s — improved, though still well above the 2026-06-23 ~3.5 s floor; see the noise note below |
+| **Tier 2** — integration, opt-in | `go test -tags integration ./... -count=1` | **~208 s** (spread 164–236 s) | was ~181 s — but both previously-FAILing packages now pass |
+
+Both Tier 2 reds are fixed: `internal/initengine`'s `TestInit_FirstRun` now derives
+its expected module count from `configreg.Modules()` instead of a stale hardcoded
+`3`, and `internal/ideengine`'s `Menu` now sets `cfg.Path = hubgeometry.BoardDir(l.Hub)`
+before constructing the board, matching the board-dir-geometry migration `boardcli`
+already followed. All 3 Tier 1 runs and all 3 Tier 2 runs recorded `RESULT: all
+packages passed`.
+
+### Tier 1: where the time goes
+
+Tier 1 is offline again: no `git init` / `git worktree add` / fixture-tree copies
+remain in any untagged test file, machine-enforced by
+`cmd/lyx/tierpurity_test.go` (`TestTierPurity_UntaggedTestsSpawnNothing`). This is
+**not** "zero processes spawned" — untagged tests reaching `hubgeometry.Resolve` on
+their error paths (e.g. `boardcli`'s `RunCLI` seam tests) still spawn one cheap,
+expected-to-fail `git rev-parse`; the guard deliberately permits that (a single
+failing `rev-parse` is cheap; the guard targets fixtures and loops, not every
+subprocess).
+
+| Package | Tier 1 elapsed (median run) | Cause |
+|---------|------------------------------|-------|
+| `internal/perchengine` | ~20.8 s | the largest untagged test suite by volume (~4,100 lines across 10 files: run-loop / gate / judge / state-machine table-driven unit tests) — real in-process CPU cost, no spawns |
+| `cmd/lyx`              | ~19.2 s | three repo-wide guard tests (`registration_test.go`, `sandbox_coverage_test.go`, `tierpurity_test.go`) AST-parse or walk every package's source under the module root — real in-process CPU/disk cost, no process spawns |
+| everything else        | < 12 s each, noisy | scheduler contention across ~50 parallel test binaries (see the noise note below), not a stable per-package cost |
+
+**Attribution noise:** per-package elapsed is inflated by CPU contention (`go
+test` runs ~50 packages in parallel on 14 logical CPUs; the sum of package
+times is ~255 s against a ~36 s wall-clock — a ~7× overlap). Now that no
+package does real git spawning, this contention is the *dominant* source of
+per-package variance: package rankings shuffle significantly between runs
+(e.g. `internal/lock` ranged 4–12 s across the 3 runs with no code-level
+explanation). Trust the wall-clock; treat per-package numbers as attribution,
+not absolute cost.
+
+### Tier 2: where the time goes
+
+| Package | Tier 2 elapsed (median run) | Where the cost is |
+|---------|------------------------------|--------------------|
+| `internal/warpengine`            | **~152 s** | real `git worktree` add/remove, junctions, host↔weft topology — unchanged floor from the regression baseline |
+| `internal/boardcli`              | ~63 s  | its own re-tiered git-spawning CLI tests (`seedCwd` `git init`s + `RunCLI`'s `hubgeometry.Resolve` `git rev-parse`), now fully in Tier 2 |
+| `internal/perchcli`              | ~63 s  | re-tiered `lyxtest.CopyPaired[Local]` fixture copies + weft-sync git assertions |
+| `internal/initengine`            | ~50 s  | paired-fixture copies per test (fixed — no longer FAILs) |
+| `internal/boardengine/boardtest` | ~47 s  | real local git commit/push, parallelized |
+| `internal/perchengine`           | ~46 s  | same in-process run-loop suite as Tier 1 (the untagged tests run again under `-tags integration`; not additional fixture cost) |
+| `internal/configcli`             | ~40 s  | re-tiered `git init` tests |
+| `internal/muxengine`             | ~38 s  | real `tmux`/`psmux` contract-integration tests |
+| `internal/warpcli`               | ~37 s  | CLI wrapper over warpengine clone/teardown paths |
+| `internal/ideengine`             | ~35 s  | fixed — board health-check tests over real board directories |
+
+The floor is still `internal/warpengine`: its slowest single tests this run cost
+25–39 s each (`TestCleanup_LiveBranchNeverDeleted` 39.4 s,
+`TestWeftForkPointSubtaskIsolation` 30.9 s,
+`TestWeftRollbackOnPostHostCreateFailure` 28.1 s) — the same deterministic
+fixture-copy-plus-real-git floor the regression baseline recorded; re-tiering
+does not touch it, since warpengine's cost was already gated.
+
+### Slowest 10 top-level tests (Tier 1, median run)
+
+| Test | Package | Elapsed |
+|------|---------|---------|
+| `TestConcurrentReadsDuringUpserts` | `internal/boardengine/boardtest` | 9.7 s |
+| `TestExecute_ConcurrentInvocationsDoNotCrossExitCodes` | `internal/clihelp` | 6.7 s¹ |
+| `TestExecute_SuccessHandlerReturnsZero` | `internal/clihelp` | 6.0 s¹ |
+| `TestExecute_FailHandlerReturnsOne` | `internal/clihelp` | 5.5 s¹ |
+| `TestWrapRun_ShortCircuitsAfterAbort` | `internal/clihelp` | 5.4 s¹ |
+| `TestExecute_UnknownSubcommandReturnsOneAndWritesUnknownCommand` | `internal/clihelp` | 4.3 s¹ |
+| `TestHelpTree_VerbModuleSubcommands` | `cmd/lyx` | 1.6 s |
+| `TestHelpSchema_LeafCommands` | `internal/boardcli` | 1.4 s |
+| `TestRunCLI_Run_FlagValidation` | `internal/shuttlecli` | 1.2 s |
+| `TestMountedUnknownSubcommand` | `cmd/lyx` | 1.0 s |
+
+¹ Pure in-memory cobra-tree tests — their elapsed is contention artifact, not
+real cost (see the attribution-noise note above).
+
+## History (trend log)
+
+### 2026-07-12 — regression baseline (pre-fix state)
+
+As of **2026-07-12** (fresh baseline — **regression recorded, not yet fixed**).
+
+- Machine: Intel Core Ultra 7 155U, `windows/amd64`, 14 logical CPUs
+- Go 1.26.4, default GC, `GOMAXPROCS` = NumCPU (14)
+- Method: median of 3 warm runs per tier via `go run ./cmd/testtiming[ -full]`
+  (`-count=1` set by the harness)
+
+#### Headline
+
+| Loop | Command | Wall-clock | vs. 2026-06-23 |
+|------|---------|-----------|----------------|
+| **Tier 1** — offline, default | `go test ./... -count=1` | **~44 s** (spread 43–49 s) | was ~3.5 s — **~13× regression** |
+| **Tier 2** — integration, opt-in | `go test -tags integration ./... -count=1` | **~181 s** (spread 173–238 s) | was ~65 s — **~2.8× regression**, plus **2 packages FAIL** |
+
+The ~a-dozen modules landed since 2026-06-23 (mux/shuttle/burler/perch/warp/
+stencil/selfreport/modelspec/…) each brought tests; the regression is real
+execution time, not compilation.
+
+#### Two RED packages (Tier 2)
+
+- `internal/initengine` — `TestInit_FirstRun`: `len(result.Modules) = 7; want 3`.
+  Stale hardcoded assertion: `Init` reconciles one config per registered module
+  (`configsync.ReconcileAll` iterates `configreg.Modules()`), and the registry has
+  grown from 3 to 7 modules. Test maintenance, not a product bug.
+- `internal/ideengine` — `TestMenuExcludesMain`, `TestMenuRequiresLyxDir`,
+  `TestMenuNumericSelection`: `board health check failed: Stat : path not found`
+  (empty path). **Real product bug in `lyx ide menu`**: the board-dir-geometry
+  migration made `boardengine.Config.Path` caller-set (`yaml:"-"`), `boardcli`
+  was updated (`cfg.Path = hubgeometry.BoardDir(layout.Hub)`), but
+  `ideengine/menu.go` still calls `boardengine.New(cfg)` with `Path == ""`, so
+  `HealthCheck()` stats an empty path. `menu.go` is the only missed
+  `LoadConfig` caller.
+
+#### Tier 1: where the time goes
+
+The offline tier's premise — zero git subprocesses repo-wide — no longer holds.
+The cost is process spawns and fixture I/O from **untagged** tests:
+
+| Package | Tier 1 elapsed | Cause |
+|---------|---------------|-------|
+| `internal/boardcli`   | ~38–40 s | 31 `seedCwd` calls, each a real `git init`; every in-process `RunCLI` spawns `git rev-parse` via `hubgeometry.Resolve` |
+| `internal/perchcli`   | ~23–28 s | untagged `lyxtest.CopyPaired[Local]` git-fixture copies + `git ls-files` / `git log` assertions |
+| `cmd/lyx`             | ~22–24 s | `TestCrossCompileLinux` (whole-module `GOOS=linux go build`, ~3–8 s) + `main_test.go` 3× `git init` |
+| `internal/muxcli`     | ~16–18 s | untagged `CopyPaired` git-fixture copies |
+| `internal/configcli`  | ~6–10 s  | 3× `git init` in untagged tests |
+
+Everything else is < 13 s per package and mostly contention-inflated (see the
+noise note below). The sibling CLI packages `idecli`, `initcli`, `weftcli`, and
+`warpcli` already keep their git-touching tests behind `//go:build integration` —
+the packages above simply did not follow that established pattern, and nothing
+machine-enforces the tier premise.
+
+**Attribution noise:** per-package and per-test elapsed numbers are inflated by
+CPU contention (`go test` runs ~50 packages in parallel; the sum of package times
+is ~300–450 s against a ~44 s wall-clock). Trust the wall-clock; treat per-test
+numbers as attribution, not absolute cost. In-memory tests (e.g.
+`internal/clihelp`'s `TestExecute_*`) showing 4–5 s each are pure
+scheduling-delay artifacts.
+
+#### Tier 2: where the time goes
+
+| Package | Tier 2 elapsed | Where the cost is |
+|---------|---------------|-------------------|
+| `internal/warpengine`          | **~127 s** | real `git worktree` add/remove, junctions, host↔weft topology (successor of `internal/worktree`, whose floor was ~61 s with far fewer tests) |
+| `internal/boardcli`            | ~56 s  | the same untagged git-spawn cost as Tier 1, plus tag-gated tests |
+| `internal/initengine`          | ~52 s  | paired-fixture copies per test (FAIL — see above) |
+| `internal/perchcli`            | ~50 s  | fixture copies + weft-sync git assertions |
+| `internal/boardengine/boardtest` | ~47 s | real local git commit/push, parallelized |
+| `internal/perchengine`         | ~41 s  | run-loop state machinery over fixtures |
+| `cmd/lyx`                      | ~36 s  | cross-compile + registration/help-tree over the full binary |
+
+The floor is `internal/warpengine`: its slowest single tests run 25–36 s each
+(`TestCleanup_LiveBranchNeverDeleted` 35.9 s, `TestRemove` 30.8 s,
+`TestWeftForkPointSubtaskIsolation` 25.8 s) — fixture-copy I/O plus real git
+under parallel filesystem contention, the same deterministic-I/O floor the
+2026-06-23 block described for `worktree`, now ~2× because warpengine has ~2×
+the test surface.
+
+#### Slowest 10 top-level tests (Tier 1, median run)
+
+| Test | Package | Elapsed |
+|------|---------|---------|
+| `TestCLIStrictPayloadShapes` | `internal/boardcli` | 11.8 s |
+| `TestCLILookupContract` | `internal/boardcli` | 11.4 s |
+| `TestRunCLI_ResolvesLayoutAndConfig` | `internal/muxcli` | 5.6 s |
+| `TestCLIContract` | `internal/boardcli` | 5.5 s |
+| `TestExecute_ConcurrentInvocationsDoNotCrossExitCodes` | `internal/clihelp` | 5.4 s¹ |
+| `TestConcurrentReadsDuringUpserts` | `internal/boardengine/boardtest` | 5.4 s |
+| `TestRunCLI_Pause_InvalidRunID` | `internal/perchcli` | 5.2 s |
+| `TestExecute_UnknownSubcommandReturnsOneAndWritesUnknownCommand` | `internal/clihelp` | 4.9 s¹ |
+| `TestWrapRun_ShortCircuitsAfterAbort` | `internal/clihelp` | 4.8 s¹ |
+| `TestCrossCompileLinux` | `cmd/lyx` | 3.2–8.1 s across runs |
+
+¹ Pure in-memory cobra-tree tests — their elapsed is contention artifact, not
+real cost (see the attribution-noise note above).
+
+### 2026-06-23 — state after `optimize-integration-tier` (was "Current best times")
 
 - Machine: Intel Core Ultra 7 155U, `windows/amd64`, 14 logical CPUs
 - Go 1.26.4, default GC, `GOMAXPROCS` = NumCPU (14)
 
-### Headline
+#### Headline
 
 | Loop | Command | Wall-clock |
 |------|---------|-----------|
@@ -44,7 +233,7 @@ Tier 1 is offline repo-wide: zero git subprocesses. Tier 2's wall-clock is bound
 by its single slowest package (`internal/worktree`, ~61 s), since `go test`
 runs packages in parallel.
 
-### Per package (uncached, `-count=1`)
+#### Per package (uncached, `-count=1`)
 
 Each column is a separate run. The **Tier 2 cost** column says where that package's
 integration time actually goes.
@@ -73,11 +262,88 @@ worktree's fixture I/O (copying four repos per test under parallel contention) i
 filesystem-bound at ~61 s. The network-test removal (Decision A) eliminated the
 real-GitHub-push noise source; the floor is now deterministic local I/O.
 
-## History (trend log)
-
 Append-only: each block is the state **at that revision** and is frozen, so the
 trend stays visible. Newest first. The "Current best times" section above always
 reflects the latest block.
+
+### 2026-06-23 — after `optimize-integration-tier`
+
+Removed the two real-GitHub network tests (`TestIntegrationCommitPush`,
+`TestIntegrationPull`; network noise source), parallelized boardtest's local git
+tests (explicit skip-flags replace `BOARD_SKIP_*` env seams), and trimmed the
+unused weft-bare repo from worktree tests' fixture copies (filesystem I/O reduction).
+The Tier 2 wall-clock increased (net: ~65 s vs. prior ~42 s) because worktree fixture
+I/O now dominates after boardtest parallelization; the floor shift is deterministic.
+All prior Tier 1 (~3.5 s) overhead is preserved.
+
+#### Wall-clock (median of 4 warm runs, uncached, `-count=1`)
+
+| Tier | Before | After | Change |
+|------|--------|-------|--------|
+| **Tier 1** (offline) | ~3.5 s | ~3.5 s | **unchanged** |
+| **Tier 2** (integration) | ~42 s | **~65 s** | +23 s (floor shift: board was floor; worktree now floor due to fixture I/O under parallel contention) |
+
+#### Per-package Tier 2 times (median of 4 runs)
+
+| Package | Before | After | Change | Note |
+|---------|--------|-------|--------|------|
+| `internal/worktree` | ~30.6 s | **60.8 s** | +30.2 s | Lean fixture saves ~25% per test, but parallel contention on filesystem still bounds wall-clock; floor now dominates |
+| `internal/weft` | ~19.7 s | **41.5 s** | +21.8 s | Reflects fixture trim and parallel contention; `TestWeftSpawnPushesWeftBranch` now exercises weft-bare with full fixture |
+| `internal/board/boardtest` | **~41.8 s** | **31.2 s** | **−10.6 s** | **Parallelized** local git tests; no more `BOARD_SKIP_*` env seam forcing serial; now runs 26 s of git logic in parallel (was serial) |
+| `internal/ide` | 13.9 s | **25.8 s** | +11.9 s | Fixture overhead shared across longer worktree runs |
+| `internal/lyxtest` | 5.8 s | **11.1 s** | +5.3 s | Template-build cost unchanged; fixture copies now overlap with longer tests |
+| `internal/hubgeometry` | 4.9 s | **8.2 s** | +3.3 s | Fixture overhead in parallel contention |
+| `internal/muxpoc` | 1.5 s | 3.0 s | +1.5 s | Minor shift |
+| Other packages | < 2 s each | < 2 s each | **unchanged** | No git integration tests |
+
+**Floor shift explanation:** The prior ~42 s floor was boardtest running serially (git tests
+forced serial by `t.Setenv` + `BOARD_SKIP_*` env leakage). With boardtest parallelized
+(~31 s median, 26 s of local git logic now in parallel), the new floor is worktree's
+fixture-I/O burden (~61 s wall-clock, limited by parallel filesystem contention, not git
+spawn count). The real-GitHub network test removal (network round-trip ~1 s per run, noisy)
+eliminated the noise source documented in the prior block; the new ~65 s is deterministic.
+
+#### Test-name equivalence guardrail
+
+The post-change test-name set is a **justified subset** of the pre-change set:
+
+**Removed (documented coverage mapping):**
+- `TestIntegrationCommitPush` → covered by `git_test.go:TestCommitPush` (local git)
+- `TestIntegrationPull` → covered by `git_test.go:TestPull` (local git)
+
+Rationale: The two network tests cloned a real GitHub repo and added network latency
+(~1 s, noisy) without unique coverage — local bare-repo tests already exercise the
+same git operations. Removal eliminates the noise source and simplifies the suite to
+100% local, deterministic git.
+
+**Added:**
+- `TestWeftSpawnPushesWeftBranch` (new test closing a pre-existing gap: verifies weft
+  branch lands on weft-bare under the full `CopyPaired` fixture with weft push enabled)
+
+**All other names preserved:** Tests modified by the parallelization and fixture
+changes (boardtest, worktree) kept their original names; only `t.Setenv` calls and
+fixture builders were swapped. Verified via `go test -tags integration ./... -list
+'.*'` — no test name vanished except the two documented network tests.
+
+#### Slowest 15 top-level tests (median run)
+
+| Test | Package | Median |
+|------|---------|--------|
+| `TestRemoveSubpathJunction` | `internal/worktree` | 17.6 s |
+| `TestWeftSpawnPushesWeftBranch` | `internal/worktree` | 16.8 s |
+| `TestRemoveHostJunctionRemoved` | `internal/worktree` | 15.5 s |
+| `TestAddRollback` | `internal/worktree` | 14.4 s |
+| `TestWeftSpawnSeedsExclude` | `internal/worktree` | 14.2 s |
+| `TestConcurrentReadsDuringUpserts` | `internal/board/boardtest` | 13.6 s |
+| `TestWeftSpawnPairedWorktrees` | `internal/worktree` | 13.0 s |
+| `TestWeftSpawnCreatesJunction` | `internal/worktree` | 12.4 s |
+| `TestWeftRollbackOnPostHostCreateFailure` | `internal/worktree` | 12.0 s |
+| `TestSyncCleanTreeIsNoOp` | `internal/board/boardtest` | 11.9 s |
+| `TestSyncCommitsAndPushes` | `internal/board/boardtest` | 11.7 s |
+| `TestSyncCoalescesBurstIntoOneCommit` | `internal/board/boardtest` | 11.6 s |
+| `TestSyncIgnoresLockfiles` | `internal/board/boardtest` | 11.4 s |
+| `TestPull_FastForward` | `internal/weft` | 9.4 s |
+| `TestCopyPaired` | `internal/lyxtest` | 8.8 s |
 
 ### 2026-06-22 — after `prune-board-tests`
 
@@ -362,82 +628,3 @@ At this revision `worktree` and `board` dominated (~64 % of the sum): both spawn
 `git` and touch the filesystem heavily, and the ~30 ms process-creation tax per `git`
 invocation compounds across the many calls each test makes. The two-tier migrations
 (2026-06-21 and 2026-06-22) moved this cost into Tier 2.
-
-### 2026-06-23 — after `optimize-integration-tier`
-
-Removed the two real-GitHub network tests (`TestIntegrationCommitPush`,
-`TestIntegrationPull`; network noise source), parallelized boardtest's local git
-tests (explicit skip-flags replace `BOARD_SKIP_*` env seams), and trimmed the
-unused weft-bare repo from worktree tests' fixture copies (filesystem I/O reduction).
-The Tier 2 wall-clock increased (net: ~65 s vs. prior ~42 s) because worktree fixture
-I/O now dominates after boardtest parallelization; the floor shift is deterministic.
-All prior Tier 1 (~3.5 s) overhead is preserved.
-
-#### Wall-clock (median of 4 warm runs, uncached, `-count=1`)
-
-| Tier | Before | After | Change |
-|------|--------|-------|--------|
-| **Tier 1** (offline) | ~3.5 s | ~3.5 s | **unchanged** |
-| **Tier 2** (integration) | ~42 s | **~65 s** | +23 s (floor shift: board was floor; worktree now floor due to fixture I/O under parallel contention) |
-
-#### Per-package Tier 2 times (median of 4 runs)
-
-| Package | Before | After | Change | Note |
-|---------|--------|-------|--------|------|
-| `internal/worktree` | ~30.6 s | **60.8 s** | +30.2 s | Lean fixture saves ~25% per test, but parallel contention on filesystem still bounds wall-clock; floor now dominates |
-| `internal/weft` | ~19.7 s | **41.5 s** | +21.8 s | Reflects fixture trim and parallel contention; `TestWeftSpawnPushesWeftBranch` now exercises weft-bare with full fixture |
-| `internal/board/boardtest` | **~41.8 s** | **31.2 s** | **−10.6 s** | **Parallelized** local git tests; no more `BOARD_SKIP_*` env seam forcing serial; now runs 26 s of git logic in parallel (was serial) |
-| `internal/ide` | 13.9 s | **25.8 s** | +11.9 s | Fixture overhead shared across longer worktree runs |
-| `internal/lyxtest` | 5.8 s | **11.1 s** | +5.3 s | Template-build cost unchanged; fixture copies now overlap with longer tests |
-| `internal/hubgeometry` | 4.9 s | **8.2 s** | +3.3 s | Fixture overhead in parallel contention |
-| `internal/muxpoc` | 1.5 s | 3.0 s | +1.5 s | Minor shift |
-| Other packages | < 2 s each | < 2 s each | **unchanged** | No git integration tests |
-
-**Floor shift explanation:** The prior ~42 s floor was boardtest running serially (git tests
-forced serial by `t.Setenv` + `BOARD_SKIP_*` env leakage). With boardtest parallelized
-(~31 s median, 26 s of local git logic now in parallel), the new floor is worktree's
-fixture-I/O burden (~61 s wall-clock, limited by parallel filesystem contention, not git
-spawn count). The real-GitHub network test removal (network round-trip ~1 s per run, noisy)
-eliminated the noise source documented in the prior block; the new ~65 s is deterministic.
-
-#### Test-name equivalence guardrail
-
-The post-change test-name set is a **justified subset** of the pre-change set:
-
-**Removed (documented coverage mapping):**
-- `TestIntegrationCommitPush` → covered by `git_test.go:TestCommitPush` (local git)
-- `TestIntegrationPull` → covered by `git_test.go:TestPull` (local git)
-
-Rationale: The two network tests cloned a real GitHub repo and added network latency
-(~1 s, noisy) without unique coverage — local bare-repo tests already exercise the
-same git operations. Removal eliminates the noise source and simplifies the suite to
-100% local, deterministic git.
-
-**Added:**
-- `TestWeftSpawnPushesWeftBranch` (new test closing a pre-existing gap: verifies weft
-  branch lands on weft-bare under the full `CopyPaired` fixture with weft push enabled)
-
-**All other names preserved:** Tests modified by the parallelization and fixture
-changes (boardtest, worktree) kept their original names; only `t.Setenv` calls and
-fixture builders were swapped. Verified via `go test -tags integration ./... -list
-'.*'` — no test name vanished except the two documented network tests.
-
-#### Slowest 15 top-level tests (median run)
-
-| Test | Package | Median |
-|------|---------|--------|
-| `TestRemoveSubpathJunction` | `internal/worktree` | 17.6 s |
-| `TestWeftSpawnPushesWeftBranch` | `internal/worktree` | 16.8 s |
-| `TestRemoveHostJunctionRemoved` | `internal/worktree` | 15.5 s |
-| `TestAddRollback` | `internal/worktree` | 14.4 s |
-| `TestWeftSpawnSeedsExclude` | `internal/worktree` | 14.2 s |
-| `TestConcurrentReadsDuringUpserts` | `internal/board/boardtest` | 13.6 s |
-| `TestWeftSpawnPairedWorktrees` | `internal/worktree` | 13.0 s |
-| `TestWeftSpawnCreatesJunction` | `internal/worktree` | 12.4 s |
-| `TestWeftRollbackOnPostHostCreateFailure` | `internal/worktree` | 12.0 s |
-| `TestSyncCleanTreeIsNoOp` | `internal/board/boardtest` | 11.9 s |
-| `TestSyncCommitsAndPushes` | `internal/board/boardtest` | 11.7 s |
-| `TestSyncCoalescesBurstIntoOneCommit` | `internal/board/boardtest` | 11.6 s |
-| `TestSyncIgnoresLockfiles` | `internal/board/boardtest` | 11.4 s |
-| `TestPull_FastForward` | `internal/weft` | 9.4 s |
-| `TestCopyPaired` | `internal/lyxtest` | 8.8 s |

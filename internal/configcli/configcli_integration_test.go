@@ -1,7 +1,8 @@
 //go:build integration
 
 // configcli_integration_test.go — e2e integration tests for configcli.
-// Tests real weft.RunCLI over CopyPaired fixtures.
+// Tests real weft.RunCLI over CopyPaired fixtures, plus the --set/reconcile
+// chain that spawns gitexec.RunGit(["init"], …).
 
 package configcli
 
@@ -16,6 +17,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configreg"
+	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 	"github.com/Knatte18/loomyard/internal/warpengine"
@@ -146,5 +148,88 @@ func TestE2ESyncIntegration(t *testing.T) {
 	}
 	if module, _ := env["module"].(string); module != "warp" {
 		t.Errorf("dispatch output envelope module = %q; want \"warp\"; got %q", module, outStr)
+	}
+}
+
+// TestDispatchSet_PreservedKeyDetectedByReconcile is the end-to-end test that
+// closes the loop on the task's second symptom: reconcile "not detecting
+// drift". It chains --set into reconcile so that a preserved orphan key
+// planted by --set is then correctly reported by reconcile's own
+// drift-detection, proving reconcile never gets a chance to look once --set
+// stops silently destroying the key first.
+func TestDispatchSet_PreservedKeyDetectedByReconcile(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Initialize a minimal git repo so hubgeometry.Resolve works for the
+	// reconcile call below (RunCLI resolves its layout from cwd).
+	_, _, exitCode, err := gitexec.RunGit([]string{"init"}, tmpDir)
+	if err != nil || exitCode != 0 {
+		t.Fatalf("git init failed: %v (exit code %d)", err, exitCode)
+	}
+
+	seedModuleConfig(t, tmpDir, "warp", "branch_prefix: old-\nlegacy_key: keepme\n")
+
+	// Run --set via dispatch, exactly as
+	// TestDispatchSet_PreservesUnrecognizedKeyReportsWarning does, using an
+	// explicit *hubgeometry.Layout (dispatch takes one directly, unlike
+	// RunCLI which resolves it from cwd).
+	var setOut bytes.Buffer
+	setCode := dispatch(makeLayoutAt(tmpDir), nil, &setOut, []string{"warp"}, makeNeverCalledEditor(t), (&fakeSyncTracker{exitCode: 0}).syncFunc(), false, []string{"branch_prefix=new-"})
+	if setCode != 0 {
+		t.Fatalf("dispatch(--set) = %d; want 0; output: %q", setCode, setOut.String())
+	}
+
+	// Chdir into the temp repo so hubgeometry.Getwd inside RunCLI resolves
+	// there, then run reconcile.
+	oldCwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	defer os.Chdir(oldCwd) //nolint:errcheck
+
+	var reconcileOut bytes.Buffer
+	reconcileCode := RunCLI(&reconcileOut, []string{"reconcile"})
+	if reconcileCode != 0 {
+		t.Fatalf("RunCLI(reconcile) = %d; want 0; output: %q", reconcileCode, reconcileOut.String())
+	}
+
+	var result map[string]any
+	if err := json.Unmarshal(reconcileOut.Bytes(), &result); err != nil {
+		t.Fatalf("parse JSON: %v, output: %s", err, reconcileOut.String())
+	}
+	modules, ok := result["modules"].([]any)
+	if !ok {
+		t.Fatalf("modules is not an array; got %v", result)
+	}
+	var warpMod map[string]any
+	for _, m := range modules {
+		mod, ok := m.(map[string]any)
+		if !ok {
+			continue
+		}
+		if mod["module"] == "warp" {
+			warpMod = mod
+			break
+		}
+	}
+	if warpMod == nil {
+		t.Fatalf("no modules entry for \"warp\"; got %v", modules)
+	}
+	removed, ok := warpMod["removed"].([]any)
+	if !ok {
+		t.Fatalf("warp module entry missing \"removed\" field or wrong type; got %v", warpMod)
+	}
+	found := false
+	for _, r := range removed {
+		if r == "legacy_key" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("warp module's removed = %v; want it to contain \"legacy_key\"", removed)
 	}
 }

@@ -184,6 +184,35 @@ explicitly excluded with a reason.
 - **Enforced by** `cmd/lyx/sandbox_coverage_test.go`
   (`TestSandboxCoverage_AllModulesCoveredOrExcluded`) on every `go test`.
 
+## Test Tier Purity Invariant
+
+Untagged test files perform no expensive spawns — no `git init` / `git worktree add` /
+fixture-tree copies; Tier 1 stays offline and fast.
+
+- **Statement.** A test file whose first non-empty line is not a `//go:build`
+  constraint mentioning `integration` or `smoke` is "untagged" and runs on every plain
+  `go test`. Untagged files must not spawn: no `gitexec.RunGit`, no
+  `exec.Command`/`exec.CommandContext`, no `lyxtest.Copy*` fixture-tree copy. A
+  platform-only constraint (e.g. `//go:build windows`) still counts as untagged — it
+  still runs in Tier 1 on that platform, so its spawns still count. This is deliberately
+  narrower than "spawn no processes": an untagged test that reaches
+  `hubgeometry.Resolve` on an error path still spawns one cheap failing `git rev-parse`,
+  which the guard does not ban.
+- **Mechanics.** The guard walks every `*_test.go` file under the module root (resolved
+  via `go env GOMOD`, cwd-independent) and checks each untagged file's source for a
+  banned token as a **raw substring** — `gitexec.RunGit`, `exec.Command` (which also
+  matches `exec.CommandContext`), or `lyxtest.Copy` (prefix-matches `CopyPaired`,
+  `CopyPairedLocal`, `CopyHostHub`, `CopyWeft`, and any future `Copy*` fixture). Raw
+  substring matching is deliberate: a comment or string-literal mention in an untagged
+  file trips the guard too (rename the mention or tag the file).
+- **Allowlist.** Exists ⇒ tagged or allowlisted with a reason. A file or directory-path
+  prefix that must legitimately spawn in an untagged file is named on the guard's
+  `allowedSpawners` map with a one-line reason: `internal/proc` (process control is the
+  package's subject — its tests must spawn) and `cmd/lyx/tierpurity_test.go` itself
+  (contains the banned token strings as its own test data).
+- **Enforced by** `cmd/lyx/tierpurity_test.go`
+  (`TestTierPurity_UntaggedTestsSpawnNothing`) on every `go test`.
+
 ## Documentation Lifecycle
 
 Which docs are kept vs deleted (mechanical per-module docs vs durable design docs):
