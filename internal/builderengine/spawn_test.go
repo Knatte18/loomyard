@@ -374,6 +374,116 @@ func TestSpawnBatch_FingerprintMismatchRefused(t *testing.T) {
 	}
 }
 
+// TestSpawnBatch_DeadRespawnReclaimsKeptSubstrate proves a respawn of a
+// dead-classified batch (the orchestrator's "respawn the SAME batch fresh"
+// ladder) is never wedged by the batch's own kept-alive orphan: the late
+// report the orphan wrote after its classification is archived (never
+// refused, never deleted), and a still-live orphan strand is removed before
+// the fresh spawn so it cannot race the new session. A done batch's report
+// keeps the loud refusal — an accidental respawn of finished work must not
+// silently archive it away.
+func TestSpawnBatch_DeadRespawnReclaimsKeptSubstrate(t *testing.T) {
+	tests := []struct {
+		name        string
+		priorStatus string
+		orphanLive  bool
+		wantErr     bool
+		wantRemoved bool
+	}{
+		{name: "dead respawn with live orphan archives and kills", priorStatus: "dead", orphanLive: true, wantRemoved: true},
+		{name: "dead respawn with dead orphan archives only", priorStatus: "dead"},
+		{name: "done respawn keeps the loud refusal", priorStatus: "done", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fx := newSpawnFixture(t)
+			fx.Deps.State.Batches = map[int]*builderengine.BatchState{
+				1: {Slug: "json-flag", StrandGUID: "orphan-1", Terminal: true, Status: tt.priorStatus},
+			}
+			if tt.orphanLive {
+				fx.Mux.status = muxengine.StatusResult{Strands: []muxengine.StrandStatus{{GUID: "orphan-1", Live: true}}}
+			}
+
+			// The late report the orphan wrote after its dead classification
+			// (or, in the done case, the finished batch's real report).
+			stalePath := filepath.Join(fx.ReportsDir, "01-json-flag.yaml")
+			if err := os.WriteFile(stalePath, []byte("batch: 01-json-flag\nstatus: done\ntests: green\n"), 0o644); err != nil {
+				t.Fatalf("seed late report: %v", err)
+			}
+
+			_, err := builderengine.SpawnBatch(fx.Deps, builderengine.SpawnBatchOptions{BatchNumber: 1})
+
+			if tt.wantErr {
+				if err == nil || !strings.Contains(err.Error(), "already exists") {
+					t.Fatalf("SpawnBatch() error = %v; want the pre-existing-report refusal", err)
+				}
+				if len(fx.Mux.removedStrands) != 0 {
+					t.Errorf("RemoveStrand calls = %v; want none on a refused done respawn", fx.Mux.removedStrands)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("SpawnBatch() error = %v; want nil", err)
+			}
+
+			if _, statErr := os.Stat(stalePath); !os.IsNotExist(statErr) {
+				t.Errorf("stat(%s) = %v; want the live report path freed (archived away)", stalePath, statErr)
+			}
+			archived, globErr := filepath.Glob(filepath.Join(fx.ReportsDir, "01-json-flag-*.yaml"))
+			if globErr != nil || len(archived) != 1 {
+				t.Errorf("archived report glob = %v, %v; want exactly 1 archive", archived, globErr)
+			}
+
+			removed := len(fx.Mux.removedStrands) > 0
+			if removed != tt.wantRemoved {
+				t.Errorf("RemoveStrand calls = %v; wantRemoved = %v", fx.Mux.removedStrands, tt.wantRemoved)
+			}
+			if removed && fx.Mux.removedStrands[0] != "orphan-1" {
+				t.Errorf("RemoveStrand guid = %q; want orphan-1", fx.Mux.removedStrands[0])
+			}
+		})
+	}
+}
+
+// TestSpawnBatch_RestartChainStopsLiveMemberStrands proves --restart-chain
+// stops every chain member's still-live strand before the hard reset — a
+// kept-alive member left running would commit on top of the rolled-back
+// tree.
+func TestSpawnBatch_RestartChainStopsLiveMemberStrands(t *testing.T) {
+	fx := newSpawnFixture(t)
+
+	// Record the chain anchor the reset needs, then advance HEAD so the
+	// reset has something real to roll back.
+	if _, err := builderengine.SpawnBatch(fx.Deps, builderengine.SpawnBatchOptions{BatchNumber: 3}); err != nil {
+		t.Fatalf("SpawnBatch(batch 3) error = %v; want nil", err)
+	}
+	commitFile(t, fx.Worktree, "chainwork.txt", "wip", "chain member wip commit")
+
+	// The recorded member strand is still live in its kept pane.
+	memberGUID := fx.Deps.State.Batches[3].StrandGUID
+	fx.Mux.status = muxengine.StatusResult{Strands: []muxengine.StrandStatus{{GUID: memberGUID, Live: true}}}
+	// The member classified dead (pane kept); the cursor is clear, as after
+	// any terminal poll.
+	fx.Deps.State.Batches[3].Terminal = true
+	fx.Deps.State.Batches[3].Status = "dead"
+	fx.Deps.State.CurrentBatch = 0
+
+	if _, err := builderengine.SpawnBatch(fx.Deps, builderengine.SpawnBatchOptions{BatchNumber: 3, RestartChain: true}); err != nil {
+		t.Fatalf("SpawnBatch(--restart-chain) error = %v; want nil", err)
+	}
+
+	found := false
+	for _, guid := range fx.Mux.removedStrands {
+		if guid == memberGUID {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("RemoveStrand calls = %v; want the live member strand %q stopped before the reset", fx.Mux.removedStrands, memberGUID)
+	}
+}
+
 // TestSpawnBatch_InFlightGuardMatrix proves the ErrBatchInFlight guard
 // refuses a spawn exactly when a recorded non-terminal batch's strand is
 // still live, and never on the intended respawn ladders (terminal batch,

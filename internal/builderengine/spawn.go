@@ -191,6 +191,27 @@ func archiveStaleReport(reportsDir string, number int, slug string, now func() t
 	return target, nil
 }
 
+// removeStrandIfLive removes guid's mux strand when the mux still reports
+// it live, and is a no-op otherwise. It exists for the respawn paths that
+// re-claim a dead-classified batch's deliberately-kept pane: a timed-out
+// implementer may still be WORKING, not hung, and left alive it races the
+// fresh session (late commits to the host repo, a late report landing on
+// the very path the new spawn names as its output file). A StrandLive error
+// is treated as not-live — a downed mux session hosts no live strand. A
+// failed removal of a genuinely live strand propagates: spawning while the
+// orphan cannot be stopped is exactly the double-drive this helper exists
+// to prevent.
+func removeStrandIfLive(mux shuttleengine.MuxOps, guid string) error {
+	live, err := StrandLive(mux, guid)
+	if err != nil || !live {
+		return nil
+	}
+	if _, err := mux.RemoveStrand(guid, false); err != nil {
+		return fmt.Errorf("builder: remove kept strand %s before respawn: %w", guid, err)
+	}
+	return nil
+}
+
 // findBatch returns the PlanBatch in plan whose Number matches number, or
 // an error naming the missing number — SpawnBatch's first lookup, since
 // every later step needs the batch's own fields (Slug, Oversized, File).
@@ -320,7 +341,33 @@ func SpawnBatch(deps SpawnDeps, opts SpawnBatchOptions) (*SpawnResult, error) {
 		if chainEnd == 0 {
 			return nil, fmt.Errorf("builder: batch %d is chainless; --restart-chain requires a deferred-verify chain member", batch.Number)
 		}
+		// A chain member's dead-classified implementer may still be live in
+		// its kept pane; the hard reset below yanks the repo out from under
+		// it, so any late commit it makes lands on top of the rolled-back
+		// tree. Stop every member's recorded strand before the reset.
+		for _, member := range ChainMembers(deps.Plan, chainEnd) {
+			if memberState := deps.State.Batches[member]; memberState != nil {
+				if err := removeStrandIfLive(deps.Mux, memberState.StrandGUID); err != nil {
+					return nil, err
+				}
+			}
+		}
 		if err := RestartChain(deps.WorktreeRoot, deps.State, deps.Plan, chainEnd, deps.ReportsDir); err != nil {
+			return nil, err
+		}
+	}
+
+	// A respawn of a dead-classified batch (the orchestrator's documented
+	// "respawn the SAME batch fresh" ladder) re-claims the kept substrate:
+	// the pane was deliberately left alive at classification for diagnosis,
+	// but a timed-out implementer may still be WORKING — its late report
+	// would refuse this very spawn (found live in round fable-r2: the report
+	// landed a minute after the dead/timeout classification), and left alive
+	// it races the fresh session on the host repo and the report path.
+	priorState := deps.State.Batches[batch.Number]
+	respawnOfDead := priorState != nil && priorState.Terminal && priorState.Status == DigestStatusDead
+	if respawnOfDead {
+		if err := removeStrandIfLive(deps.Mux, priorState.StrandGUID); err != nil {
 			return nil, err
 		}
 	}
@@ -336,7 +383,12 @@ func SpawnBatch(deps SpawnDeps, opts SpawnBatchOptions) (*SpawnResult, error) {
 	// recovery is retrying past would trip that check first. --restart-chain
 	// (which deletes chain members' reports above) already cleared this batch's
 	// report when both flags are set, so archiveStaleReport then finds nothing.
-	if role == RoleRecovery {
+	// The dead-respawn case archives too: a kept-alive orphan that finished
+	// AFTER its dead classification leaves a late report on the live path,
+	// and refusing on it would wedge the respawn ladder on a report nobody
+	// distilled. A done batch's report is deliberately NOT archived — an
+	// accidental respawn of finished work must stay a loud refusal below.
+	if role == RoleRecovery || respawnOfDead {
 		if _, err := archiveStaleReport(deps.ReportsDir, batch.Number, batch.Slug, time.Now); err != nil {
 			return nil, err
 		}

@@ -85,7 +85,14 @@ after `Start`), so without this every finished batch would leak a live pane host
 an idle agent process: `done` removes the strand and the run dir (shuttle-finalize
 parity); `stuck` removes the strand but keeps the run dir (the raw session output is
 the stuck trail a human may still inspect). Cleanup failures are logged, never
-fatal — the classification already stands. `poll --wait DURATION` blocks inside Go on this loop —
+fatal — the classification already stands. A later **respawn of a dead-classified
+batch re-claims that kept substrate**: `spawn-batch` stops the kept strand if the mux
+still reports it live (a timed-out implementer may still be *working*, and left alive
+it races the fresh session on the host repo and the report path) and archives — never
+deletes, never refuses on — any late report the orphan managed to write after the
+classification. A `done` batch's report keeps the loud pre-existing-report refusal: an
+accidental respawn of finished work must never silently archive it away. `poll --wait
+DURATION` blocks inside Go on this loop —
 **the long-poll IS the notification**: a true push cannot reach a Claude session
 (mid-turn only tool results arrive; turn-end without the outcome file is `asking`
 under the file contract), so file-watching inside Go costs no orchestrator tokens and
@@ -130,7 +137,9 @@ code, so normal one-batch recovery does not apply to them — the whole chain is
 recovery unit. `spawn-batch <NN> --restart-chain`:
 
 1. Resolves `NN`'s chain-end batch (`ChainEndFor`) and every chain member
-   (`ChainMembers`) — the recorded `verify: deferred` + `chain-end:` group.
+   (`ChainMembers`) — the recorded `verify: deferred` + `chain-end:` group — and stops
+   every member's recorded strand the mux still reports live (a kept-alive member left
+   running would commit on top of the rolled-back tree).
 2. Requires a **recorded** chain-start SHA in `state.json`'s `ChainStartSHAs` map —
    there is no caller-supplied SHA anywhere in this path; an unrecorded chain can
    never be rolled back to a hallucinated one.
