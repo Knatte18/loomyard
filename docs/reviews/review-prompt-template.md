@@ -60,8 +60,12 @@ previously-fixed behaviors have not regressed and (b) re-evaluate the deferred i
 - Code: `<CODE PATHS — e.g. internal/<module>engine/**, internal/<module>cli/**, cmd/lyx integration>`.
 - Docs: `<MODULE DOC — docs/modules/<module>.md>`, `docs/overview.md`, `docs/roadmap.md`,
   `CONSTRAINTS.md`, `README.md`, and any `docs/research/<module>-*.md`.
-- The dedicated live-driving suite you will RUN: `<tools/sandbox/SANDBOX-<MODULE>-SUITE.md>` plus
-  [`docs/sandbox-howto.md`](../sandbox-howto.md) for how the harness works.
+- If one already exists, `<tools/sandbox/SANDBOX-<MODULE>-SUITE.md>` — for SCENARIO IDEAS only.
+  You run every scenario yourself, directly, with your own tool calls; you do NOT invoke its
+  `sandbox-<module>-suite.cmd` launcher (that spawns a SEPARATE, context-free interactive `claude`
+  session for a human operator's own dogfooding — meaningless for you to spawn on top of yourself;
+  see "Live driving" in "What to TEST" below). No such file needs to exist for you to do this
+  module's live driving — the "High-yield focus" list above is your primary script.
 - Repo rules you MUST follow: `CLAUDE.md` (root + `~/.claude/CLAUDE.md`) and `CONSTRAINTS.md`
   (Hub Geometry, CLI/Cobra, lyxtest Leaf, Sandbox Suite Coverage, Documentation Lifecycle). A change
   that ships behaviour without updating the module doc / invariants in the SAME change is incomplete.
@@ -115,16 +119,26 @@ Live smoke (real substrate, behind the `smoke` build tag):
 - `go test -tags smoke <MODULE CLI PACKAGE> -run Smoke -v -count=1`
 - `<substrate binary/tool locations + any absolute-path footgun>`.
 
-Live driving via the SANDBOX SUITE (PRIMARY — where the bugs surface):
-- Deploy the current source as the binary under test: `deploy.cmd`. **FOOTGUN:** the suite runs the
-  DEPLOYED snapshot, not your working tree — re-run `deploy.cmd` after EVERY source change or you
-  validate a stale binary. Deploy first, always.
-- Launch the suite per `SANDBOX-<MODULE>-SUITE.md`'s own pre-conditions; walk every scenario and
-  record OK/WARN/FAIL. The suite is a FLOOR — devise and run MANY more adversarial scenarios of your
-  own beyond it (combine verbs in orders the suite never tries; chase anything the code makes you
-  suspicious of). Report exact commands + observations.
-- Some scenarios may be operator-assisted (need a real TTY / a live external dependency); flag those
-  as not-headlessly-verifiable rather than skipping silently.
+Live driving — YOU drive it directly, no launcher (PRIMARY — where the bugs surface):
+- Deploy the current source as the binary under test: `deploy.cmd`. **FOOTGUN:** live driving runs
+  the DEPLOYED snapshot, not your working tree — re-run `deploy.cmd` after EVERY source change or
+  you validate a stale binary. Deploy first, always.
+- **Do NOT invoke `sandbox-<module>-suite.cmd`** (if one exists for this module). That launcher
+  spawns a SEPARATE, context-free interactive `claude` session — a naive black-box tester with no
+  source knowledge, meant for a human operator's own dogfooding, not for you to spawn on top of
+  yourself. Instead, run the real CLI commands yourself, directly, foreground, waiting for each to
+  return: walk the "High-yield focus" list above (and `<SANDBOX-<MODULE>-SUITE.md>`'s scenarios, if
+  one exists, for extra ideas) and record OK/WARN/FAIL for each. This spawns real substrate
+  underneath when the module rides mux/shuttle (real psmux panes, real `claude` sessions) — that is
+  expected and required. None of it needs an attached TTY of its own.
+- The suite/list is a FLOOR — devise and run MANY more adversarial scenarios of your own beyond it
+  (combine verbs in orders nothing has tried; chase anything the code makes you suspicious of).
+  Report exact commands + observations.
+- **Cost/time is not a reason to skip this.** A real substrate session takes real wall-clock
+  minutes, not seconds — budget for it. Reserve "cannot verify headlessly" strictly for a genuine
+  environment gap (a missing binary/login) or an actual human-eyeball need (e.g. a visual `lyx mux
+  attach` confirmation) — never a blanket cost/turn-budget excuse. Flag those specific cases as
+  not-headlessly-verifiable rather than skipping silently, and say exactly what blocked you.
 
 TEARDOWN DISCIPLINE (critical): if you start any substrate server/session, tear it down. At the end,
 confirm ZERO stray substrate processes (`<the exact check — e.g. tasklist | grep -i psmux>`). Leave
@@ -172,10 +186,13 @@ round. Empty on the first round.>`
   is synchronous passes on a quiet machine and FLAKES on a loaded one. Wait on the actual state
   transition (poll with a deadline), never sleep a fixed amount. Prove determinism by running the new
   test many times in parallel under load, not once.
-- EXTEND THE SANDBOX SUITE when a review surfaces a live/visual behavior it doesn't cover (match the
-  existing scenario shape; keep the coverage guard green in the SAME change).
-- Keep `go build`/`vet`/`test` green after every change. Then RE-DEPLOY (`deploy.cmd`) and re-run the
-  smoke + suite scenarios — re-deploying FIRST is mandatory (the suite tests the deployed binary).
+- If a maintained `<SANDBOX-<MODULE>-SUITE.md>` exists for this module, EXTEND IT when a review
+  surfaces a live/visual behavior it doesn't cover (match the existing scenario shape; keep the
+  coverage guard green in the SAME change). If none exists, note the new scenario in your fixer
+  report instead — creating a brand-new suite file/launcher is not required by this method.
+- Keep `go build`/`vet`/`test` green after every change. Then RE-DEPLOY (`deploy.cmd`) and re-run
+  every live scenario yourself, directly — re-deploying FIRST is mandatory (live driving tests the
+  deployed binary).
 - Update `<docs/modules/<module>.md>` (and `docs/overview.md` / `CONSTRAINTS.md` if invariants or the
   module table move) IN THE SAME change. Do NOT add bugfix/hardening notes to `docs/roadmap.md`
   (roadmap is planned milestones only, per CLAUDE.md).
