@@ -35,7 +35,9 @@ batches:
     start_sha: e82d98084e4a529c9ccaa5d2a1d46a41663adafc
     commit_sha: 8d9e9122693a9ba6e4e7093b9423e5854969a529
   - name: retier-offline-loop
-    state: pending
+    state: running
+    implementer_session: 9d14fbc4-2936-44fc-9ae1-85be3d059200
+    start_sha: e06400c124a16f5fdcac713971b062c7dea41306
   - name: tier-purity-guard
     state: pending
   - name: rebaseline-docs
