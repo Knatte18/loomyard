@@ -12,8 +12,9 @@ an automated suite -- an agent drives it, an operator watches.
 until the plan is built (see `docs/modules/builder.md`). `lyx builder run` spawns its own
 **long-lived LLM orchestrator session** that autonomously calls `spawn-batch`/`poll`/`pause`
 itself; `spawn-batch`, `poll`, and `pause` are also directly invocable `lyx builder`
-subcommands, which is how scenarios B2-B5 below isolate the Go-level state-machine mechanics
-(timeout classification, lock contention, pause discipline, fingerprint archiving) without
+subcommands, which is how scenarios B2-B6 below isolate the Go-level state-machine mechanics
+(timeout classification, lock contention, pause discipline, fingerprint archiving,
+stuck->recovery report archiving) without
 depending on the orchestrator LLM's own cooperation with adversarial timing. Scenarios are
 deliberately trivial (a plan whose cards just write a fixed-content file) so the assertions
 are about the mechanics, not about whether an implementer's actual coding judgment is good --
@@ -117,7 +118,7 @@ zero `WARN`/`FAIL` findings** -- in that case `items` is an empty array.
 
 - `source` is the literal string `"sandbox-report"`.
 - `items[]` holds only `WARN`/`FAIL` findings -- do not record `OK` scenarios here.
-- `ref` is the scenario id (`B1`-`B5`).
+- `ref` is the scenario id (`B1`-`B6`).
 - `title` is a short one-line summary.
 - `body` folds the detail, repro steps, and verdict into one markdown string.
 
@@ -239,6 +240,34 @@ ever written.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
+---
+
+### B6 -- Stuck -> recovery ladder (single-batch, non-chain)
+
+**Covers:** builder
+
+**Goal:** "Pin a plan whose batch 01 is guaranteed to report `stuck` (e.g. a `verify:`
+command that always fails, so the implementer exhausts `self_fix_cap` and reports
+`status: stuck`). Drive it to the stuck classification, then confirm
+`lyx builder spawn-batch 01 --role recovery` is NOT refused for the pre-existing stuck
+report -- it must ARCHIVE that report and spawn a fresh recovery implementer."
+
+**Watch:** `lyx builder spawn-batch 01` then `lyx builder poll --wait <duration>` until it
+returns `status: "stuck"` with a `stuck_reason`; confirm `reports/01-<slug>.yaml` (status:
+stuck) is on disk and was weft-committed. Now run `lyx builder spawn-batch 01 --role
+recovery`: confirm it succeeds (does NOT return `batch report already exists`), that the
+prior report was RENAMED to `01-<slug>-<UTC-compact-timestamp>.yaml` (archived, not deleted
+-- the prior stuck judgment stays on disk), that the live `01-<slug>.yaml` path is free, and
+that a real recovery-role implementer pane spawned (visible via `lyx mux status`, role
+`recovery`). Let the recovery session run and confirm it writes its own fresh
+`01-<slug>.yaml`, which the next `poll` distills normally. This is the exact stuck->recovery
+escalation the orchestrator drives autonomously in B1; B6 isolates it at the Go verb level so
+it is verifiable without depending on the orchestrator LLM choosing to escalate. (A stuck
+CHAIN member instead restarts the whole chain via `--restart-chain`, covered by the chain
+mechanics, not here.)
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
 ## Session log format
 
 After running all scenarios, record a short session summary:
@@ -252,6 +281,7 @@ B2: <OK|WARN|FAIL> -- <one-line note if not OK>
 B3: <OK|WARN|FAIL> -- <one-line note if not OK>
 B4: <OK|WARN|FAIL> -- <one-line note if not OK>
 B5: <OK|WARN|FAIL> -- <one-line note if not OK>
+B6: <OK|WARN|FAIL> -- <one-line note if not OK>
 
 sandbox-report.json written: <count of WARN/FAIL items>
 ```
