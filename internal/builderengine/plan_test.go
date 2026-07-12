@@ -542,6 +542,51 @@ func TestParsePlan_RootNormalization(t *testing.T) {
 	})
 }
 
+// TestParsePlan_HasRenameMechanic covers PlanBatch.HasRenameMechanic: it is
+// true exactly when the batch body contains a "## Rename mechanic" heading
+// at all (presence only, never the section's own prose), and the
+// testdata/plan-valid fixture's own Moves batch (02-list-tests.md) has it
+// set, since it is hand-written with the section already present.
+func TestParsePlan_HasRenameMechanic(t *testing.T) {
+	t.Parallel()
+
+	t.Run("batch with the section sets the flag", func(t *testing.T) {
+		t.Parallel()
+
+		body := "# Batch\n\n## Rename mechanic\n\nRun `git mv old.go new.go` first.\n\n" +
+			"## Cards\n\n### Card 01.1 — placeholder\n\n" +
+			"**Context:** none\n**Edits:** none\n**Creates:** none\n**Deletes:** none\n" +
+			"**Moves:**\n- `old.go` -> `new.go`\n"
+		batch := parseSingleBatch(t, body)
+		if !batch.HasRenameMechanic {
+			t.Errorf("batch.HasRenameMechanic = false; want true")
+		}
+	})
+
+	t.Run("batch without the section leaves the flag false", func(t *testing.T) {
+		t.Parallel()
+
+		body := "# Batch\n\n## Cards\n\n### Card 01.1 — placeholder\n\n" +
+			"**Context:** none\n**Edits:** none\n**Creates:** none\n**Deletes:** none\n**Moves:** none\n"
+		batch := parseSingleBatch(t, body)
+		if batch.HasRenameMechanic {
+			t.Errorf("batch.HasRenameMechanic = true; want false")
+		}
+	})
+
+	t.Run("plan-valid fixture's Moves batch has it set", func(t *testing.T) {
+		t.Parallel()
+
+		plan, err := builderengine.ParsePlan(filepath.Join("testdata", "plan-valid"))
+		if err != nil {
+			t.Fatalf("ParsePlan(testdata/plan-valid) error = %v; want nil", err)
+		}
+		if !plan.Batches[1].HasRenameMechanic {
+			t.Errorf("plan.Batches[1] (02-list-tests) HasRenameMechanic = false; want true")
+		}
+	})
+}
+
 // TestParsePlan_CardHeading covers the "### Card NN.C — <title>" heading
 // grammar: both em-dash and ASCII separators populate BatchPrefix/Number/
 // Title identically, and a "### " heading that does not match the shape at

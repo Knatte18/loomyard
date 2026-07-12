@@ -123,6 +123,13 @@ type PlanBatch struct {
 	// len(Cards) by Validate's card-count-mismatch check (not this
 	// package's parse step).
 	IndexCardCount int
+
+	// HasRenameMechanic reports whether the batch file's body contains a
+	// "## Rename mechanic" heading at all — presence only, never the
+	// section's own prose (that text is for the implementer, not for
+	// builderengine). Validate's move-mechanic-missing check flags a batch
+	// with at least one parsed Moves: pair but HasRenameMechanic == false.
+	HasRenameMechanic bool
 }
 
 // MovePair is one well-formed "Moves:" sub-bullet: a card declaring that
@@ -445,11 +452,13 @@ type batchFrontmatter struct {
 // batch file's frontmatter verify: key.
 const verifyDeferredSentinel = "deferred"
 
-// cardsHeading and scopeHeading are the exact "## " headings plan-format.md
-// pins for a batch file's Scope and Cards sections.
+// cardsHeading, scopeHeading, and renameMechanicHeading are the exact "## "
+// headings plan-format.md pins for a batch file's Scope, Cards, and Rename
+// mechanic sections.
 const (
-	scopeHeading = "## Scope"
-	cardsHeading = "## Cards"
+	scopeHeading          = "## Scope"
+	cardsHeading          = "## Cards"
+	renameMechanicHeading = "## Rename mechanic"
 )
 
 // cardHeadingRe matches a "### Card NN.C — <title>" card heading inside a
@@ -588,6 +597,8 @@ func parseBatchFile(planDir string, entry indexEntry) (PlanBatch, error) {
 	}
 	batch.Scope = scope
 
+	batch.HasRenameMechanic = hasHeading(body, renameMechanicHeading)
+
 	cards, err := parseCardsSection(body, batch.Root)
 	if err != nil {
 		return PlanBatch{}, fmt.Errorf("%s: %w", path, err)
@@ -659,6 +670,19 @@ func extractSection(body, heading string) []string {
 		}
 	}
 	return lines[start:end]
+}
+
+// hasHeading reports whether body contains a line matching heading by the
+// same trimmed-line equality extractSection uses to find a heading's start —
+// consulted where only a heading's presence matters, not its section body
+// (PlanBatch.HasRenameMechanic).
+func hasHeading(body, heading string) bool {
+	for _, l := range strings.Split(body, "\n") {
+		if strings.TrimSpace(l) == heading {
+			return true
+		}
+	}
+	return false
 }
 
 // parseScopeSection parses a batch file's "## Scope" bullet list into a
