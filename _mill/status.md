@@ -34,7 +34,9 @@ batches:
     start_sha: cada8c10e22157667f3475ddff691d219390d4be
     commit_sha: 127948f8ef226cf61e0ceefe84e60986a6df1eb9
   - name: move-checks
-    state: pending
+    state: running
+    implementer_session: 8751b115-3bcf-4998-9396-de181414072a
+    start_sha: 7e682ede10d4aa5eef901c1c9fb74edae7ce4fdc
   - name: templates-help
     state: pending
   - name: card-checks
