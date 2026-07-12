@@ -47,5 +47,7 @@ batches:
     start_sha: c2df0d1a457641719e1dd0c1af050083b8012cc8
     commit_sha: 4e03204
   - name: rebaseline-docs
-    state: pending
+    state: running
+    implementer_session: 75428762-e83f-4064-86c6-853eb063a356
+    start_sha: fdd0b40a501b8b89adc3651e0833ffaa2878eedf
 ```
