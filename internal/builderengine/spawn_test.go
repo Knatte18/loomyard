@@ -277,6 +277,61 @@ func TestSpawnBatch_StaleReportRefusal(t *testing.T) {
 	}
 }
 
+// TestSpawnBatch_RecoveryArchivesStaleReport proves a --role recovery respawn
+// of a stuck batch archives the pre-existing report (rather than being refused
+// by the pre-existing-report guard) and reaches the Starter — the exact
+// stuck -> recovery escalation the orchestrator drives, which is unreachable if
+// the stale report is not cleared first (shuttle's own Spec.validate refuses a
+// pre-existing OutputFiles entry too). The stale report is archived, never
+// deleted, so the prior stuck judgment stays auditable.
+func TestSpawnBatch_RecoveryArchivesStaleReport(t *testing.T) {
+	fx := newSpawnFixture(t)
+
+	// The state a stuck non-chain batch leaves behind: its report is on disk
+	// (poll classified it stuck and weft-committed it), and CurrentBatch has
+	// reset. Batch 1 is a plain, chainless batch, so recovery is --role
+	// recovery, never --restart-chain.
+	stalePath := filepath.Join(fx.ReportsDir, "01-json-flag.yaml")
+	if err := os.WriteFile(stalePath, []byte("batch: 01-json-flag\nstatus: stuck\ntests: red\nstuck_reason: \"blocked\"\n"), 0o644); err != nil {
+		t.Fatalf("seed stale report: %v", err)
+	}
+
+	result, err := builderengine.SpawnBatch(fx.Deps, builderengine.SpawnBatchOptions{
+		BatchNumber:  1,
+		RoleOverride: builderengine.RoleRecovery,
+	})
+	if err != nil {
+		t.Fatalf("SpawnBatch(--role recovery) with a pre-existing stuck report error = %v; want nil", err)
+	}
+	if result.Role != builderengine.RoleRecovery {
+		t.Errorf("SpawnResult.Role = %q; want %q", result.Role, builderengine.RoleRecovery)
+	}
+	if len(fx.Engine.PrepareCalls) != 1 {
+		t.Errorf("Engine.PrepareCalls = %d; want exactly 1 (the recovery spawn was reached)", len(fx.Engine.PrepareCalls))
+	}
+
+	// The live report path is now free (the recovery session's own fresh
+	// report will land there), and the prior report survives under an
+	// archived name rather than having been deleted.
+	if _, statErr := os.Stat(stalePath); !os.IsNotExist(statErr) {
+		t.Errorf("stat(%s) after recovery spawn = %v; want the live report path to be freed (archived away)", stalePath, statErr)
+	}
+	archived, err := filepath.Glob(filepath.Join(fx.ReportsDir, "01-json-flag-*.yaml"))
+	if err != nil {
+		t.Fatalf("glob archived reports: %v", err)
+	}
+	if len(archived) != 1 {
+		t.Fatalf("archived report count = %d (%v); want exactly 1", len(archived), archived)
+	}
+	data, err := os.ReadFile(archived[0])
+	if err != nil {
+		t.Fatalf("read archived report %s: %v", archived[0], err)
+	}
+	if !strings.Contains(string(data), "status: stuck") {
+		t.Errorf("archived report content = %q; want the prior stuck report preserved verbatim", string(data))
+	}
+}
+
 // TestSpawnBatch_ChainAnchorRecordedOnce proves the chain-start SHA is
 // recorded at whichever chain member spawns first and never overwritten by
 // a later member's own spawn, per the discussion's chain-anchor decision.

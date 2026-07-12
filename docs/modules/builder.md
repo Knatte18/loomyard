@@ -100,8 +100,16 @@ forgotten flag cannot slip through:
 Recovery is an exception path, entered only after a batch reports `stuck`: the
 orchestrator's own judgment call (never a Go branch, never a `/model` switch inside
 the polluted session) to spawn a **fresh**, higher-capability `recovery`-role session
-that reads the durable artifacts (batch file, code, card-commit git log,
-batch-report) instead of continuing the stuck session's context.
+that reconstructs from the durable trail (batch file, code, the card-commit git log)
+instead of continuing the stuck session's context. Because the stuck batch's own
+report is the recovery spawn's sole shuttle output file, `spawn-batch --role recovery`
+**archives that stale report** (renaming it `NN-<slug>-<UTC-compact-timestamp>.yaml`,
+with the same `-1`/`-2` same-second collision suffix the other archivers use) before
+spawning — archive-never-refuse, so the prior stuck report stays auditable in the weft
+while its path is freed for the recovery session's own fresh report. Without this the
+respawn would be refused outright (both builder's own pre-existing-report guard and
+shuttle's `Spec.validate` reject a pre-existing output file), which would leave the
+whole stuck→recovery ladder unreachable for a non-chain batch.
 
 All four of builder.yaml's roles (`orchestrator`, `implementer`,
 `implementer_oversized`, `recovery`) are resolved against the model-spec registry as a

@@ -28,6 +28,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
@@ -129,6 +130,49 @@ func BatchReportFileName(number int, slug string) string {
 	return fmt.Sprintf("%02d-%s.yaml", number, slug)
 }
 
+// archiveStaleReport renames reportsDir's NN-<slug>.yaml, if present, to
+// NN-<slug>-<UTC-compact-timestamp>.yaml in place, mirroring
+// ArchiveStaleOutcome and Run's --fresh state/reports archiving: it is the
+// recovery path's archive-never-refuse escape. A --role recovery respawn
+// re-uses the batch's own report path as its sole shuttle OutputFiles entry,
+// which both SpawnBatch's pre-existing-report guard AND shuttle's own
+// Spec.validate refuse when a file is already there; the prior stuck report is
+// still on disk (poll weft-committed it when it classified the batch stuck), so
+// without this the orchestrator's documented stuck -> --role recovery
+// escalation could never spawn. Archiving frees the path while keeping the
+// stuck report auditable rather than deleting it. now is a seam so tests can
+// pin the timestamp; production callers pass time.Now. Absent file: ("", nil),
+// a no-op — a recovery spawn is legitimate even when no prior report exists.
+// Reuses runlevel.go's firstFreeArchivePath so the same-second "-1"/"-2"
+// collision rule lives in exactly one place.
+func archiveStaleReport(reportsDir string, number int, slug string, now func() time.Time) (string, error) {
+	path := filepath.Join(reportsDir, BatchReportFileName(number, slug))
+	if _, err := os.Stat(path); err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", fmt.Errorf("builder: stat batch report %s: %w", path, err)
+	}
+
+	// Split the ".yaml" extension off so the timestamp lands on the stem
+	// (NN-slug-<stamp>.yaml), matching the state file's archive shape
+	// (state-<stamp>.json) rather than appending after the extension.
+	const ext = ".yaml"
+	base := strings.TrimSuffix(BatchReportFileName(number, slug), ext)
+	stamp := now().UTC().Format(archiveTimestampFormat)
+	target, err := firstFreeArchivePath(func(suffix string) string {
+		return filepath.Join(reportsDir, fmt.Sprintf("%s-%s%s%s", base, stamp, suffix, ext))
+	})
+	if err != nil {
+		return "", fmt.Errorf("builder: find archive target for batch report %s: %w", path, err)
+	}
+
+	if err := os.Rename(path, target); err != nil {
+		return "", fmt.Errorf("builder: archive stale batch report %s: %w", path, err)
+	}
+	return target, nil
+}
+
 // findBatch returns the PlanBatch in plan whose Number matches number, or
 // an error naming the missing number — SpawnBatch's first lookup, since
 // every later step needs the batch's own fields (Slug, Oversized, File).
@@ -225,6 +269,23 @@ func SpawnBatch(deps SpawnDeps, opts SpawnBatchOptions) (*SpawnResult, error) {
 			return nil, fmt.Errorf("builder: batch %d is chainless; --restart-chain requires a deferred-verify chain member", batch.Number)
 		}
 		if err := RestartChain(deps.WorktreeRoot, deps.State, deps.Plan, chainEnd, deps.ReportsDir); err != nil {
+			return nil, err
+		}
+	}
+
+	// A --role recovery respawn re-uses the stuck batch's own report path as
+	// its sole shuttle OutputFiles entry, but that stuck report is still on
+	// disk (poll weft-committed it), so both the pre-existing-report check
+	// below and shuttle's own Spec.validate would refuse the spawn. Archive it
+	// here — archive-never-refuse, like ArchiveStaleOutcome — so the
+	// orchestrator's documented stuck -> --role recovery escalation actually
+	// spawns. This runs BEFORE the pre-existing-report check for the same
+	// reason --restart-chain's clear does: otherwise the very report the
+	// recovery is retrying past would trip that check first. --restart-chain
+	// (which deletes chain members' reports above) already cleared this batch's
+	// report when both flags are set, so archiveStaleReport then finds nothing.
+	if role == RoleRecovery {
+		if _, err := archiveStaleReport(deps.ReportsDir, batch.Number, batch.Slug, time.Now); err != nil {
 			return nil, err
 		}
 	}
