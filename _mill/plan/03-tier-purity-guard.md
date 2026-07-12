@@ -31,6 +31,9 @@ deliverable that turns the whole task from a one-off cleanup into an invariant.
   - `internal/lyxtest/leaf_enforcement_test.go`
 - **Edits:**
   - `CONSTRAINTS.md`
+  - `cmd/lyx/main_test.go`
+  - `internal/perchcli/cli_test.go`
+  - `internal/perchcli/run_test.go`
 - **Creates:**
   - `cmd/lyx/tierpurity_test.go`
 - **Deletes:** none
