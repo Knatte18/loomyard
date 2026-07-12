@@ -34,10 +34,11 @@ Batch-local decision: `card-outside-scope` reuses `pathCovers` from `digest.go`
 
 - **Context:**
   - `_mill/discussion.md`
-  - `internal/builderengine/plan.go`
 - **Edits:**
   - `internal/builderengine/validate.go`
   - `internal/builderengine/validate_test.go`
+  - `internal/builderengine/plan.go`
+  - `internal/builderengine/plan_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
