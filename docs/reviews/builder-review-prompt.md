@@ -180,14 +180,38 @@ Live driving via the SANDBOX SUITE (PRIMARY — where the bugs surface):
 - Deploy the current source as the binary under test: `deploy.cmd`. **FOOTGUN:** the suite runs
   the DEPLOYED snapshot, not your working tree — re-run `deploy.cmd` after EVERY source change or
   you validate a stale binary. Deploy first, always.
-- Launch the suite per `SANDBOX-BUILDER-SUITE.md`'s own pre-conditions (`sandbox-build.cmd`, live
-  psmux + logged-in `claude` on PATH, `lyx init` first); walk every scenario (B1–B5) and record
-  OK/WARN/FAIL. The suite is a FLOOR — devise and run MORE adversarial scenarios of your own beyond
-  it, especially combinations the suite doesn't try (e.g. pause racing a batch that is *just about*
-  to write its report; a chain restart while a sibling batch's implementer is still technically
-  live from a stale strand).
-- Some scenarios may be operator-assisted (need a real TTY / a live external dependency); flag
-  those as not-headlessly-verifiable rather than skipping silently.
+- **Do NOT invoke `sandbox-builder-suite.cmd`.** That launcher's job is to spawn a SEPARATE,
+  context-free interactive `claude` session (a naive black-box tester with no knowledge of the
+  source) attached to a real console — meaningless for you to invoke, since you (the round agent)
+  have no real attached console of your own to hand it, and you already have full source
+  knowledge, so a second blind reviewer duplicating your own work end-to-end adds nothing. Instead,
+  treat `SANDBOX-BUILDER-SUITE.md`'s scenarios (B1–B5) as a checklist YOU execute directly, with
+  your own tool calls: materialize the Hub yourself (`sandbox-build.cmd`, then `lyx init` in the
+  host repo), then run the real `lyx builder run` / `spawn-batch` / `poll` / `pause` commands the
+  scenarios describe, foreground, waiting for each to return. This DOES spawn real psmux panes and
+  real interactive `claude` sessions underneath (as builder's own substrate, via shuttle) — that is
+  expected and required, not something to avoid. It needs no attached TTY of ITS OWN: a psmux pane
+  is a real pty regardless of whether anyone is watching it, so `lyx builder run` blocking in your
+  own foreground Bash call is a normal, fully headless-capable action for you to take, not an
+  operator-assisted one.
+- Budget real wall-clock time for this: a real implementer session doing real work (even a
+  trivial one-card batch) takes minutes, not seconds. That cost is not a reason to skip B1–B5 and
+  fall back to pure code-tracing — round 1 did exactly that ("operator-assisted / long-running /
+  cost-bearing... impractical in this automated context") and as a result NONE of B1–B5 were
+  actually exercised live. Reserve "operator-assisted, not headlessly verifiable" strictly for
+  something that genuinely needs a human eyeball (e.g. a visual `lyx mux attach` confirmation) —
+  none of B1–B5 need that; they are all observable via `lyx builder status`/`poll`'s JSON output,
+  `lyx mux status`, and `psmux list-panes`. If you still cannot complete a scenario, say exactly
+  what blocked you (a real environment gap, not merely "this costs agent turns/time").
+- Walk every scenario (B1–B5) this way and record OK/WARN/FAIL. The suite is a FLOOR — devise and
+  run MORE adversarial scenarios of your own beyond it, especially combinations the suite doesn't
+  try (e.g. pause racing a batch that is *just about* to write its report; a chain restart while a
+  sibling batch's implementer is still technically live from a stale strand).
+- The only legitimate "cannot verify" cases are: (a) a scenario that structurally requires a human
+  to visually confirm something (there are none in B1-B5 today — flag it if you add one that does),
+  or (b) a genuine environment gap (`claude` not logged in, `psmux.exe` missing). Flag those as
+  not-headlessly-verifiable with the specific missing precondition — never as a blanket
+  cost/time/turn-budget excuse.
 
 TEARDOWN DISCIPLINE (critical): if you start any substrate server/session (builder's own
 orchestrator spawn, or any batch implementer spawn, both ride real psmux via shuttle), tear it
