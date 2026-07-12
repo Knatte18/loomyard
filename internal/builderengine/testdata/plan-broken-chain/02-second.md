@@ -16,7 +16,12 @@ Declares chain-end: 2 — itself — which also carries verify: deferred, so the
 
 ## Cards
 
-### Card 1 — placeholder
+### Card 02.1 — placeholder
 
 **What:** Nothing — this fixture exists only to trip chain-end-dangling.
-**Where:** 02-second.md
+**Context:** none
+**Edits:**
+- `02-second.md`
+**Creates:** none
+**Deletes:** none
+**Moves:** none

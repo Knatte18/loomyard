@@ -1,5 +1,5 @@
 ---
-format: 1
+format: 2
 approved: false
 ---
 
@@ -10,4 +10,4 @@ A single-batch plan whose frontmatter approved: is false, tripping validation ch
 
 ## Batch Index
 
-- 01 — only — the only batch
+- 01 — only (1 card) — the only batch

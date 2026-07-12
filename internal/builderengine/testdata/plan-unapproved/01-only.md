@@ -10,10 +10,15 @@ Placeholder batch; this fixture exists only to trip the plan-unapproved check.
 
 ## Cards
 
-### Card 1 — placeholder
+### Card 01.1 — placeholder
 
 **What:** Nothing — this fixture is never actually run.
-**Where:** 01-only.md
+**Context:** none
+**Edits:**
+- `01-only.md`
+**Creates:** none
+**Deletes:** none
+**Moves:** none
 
 ## verify:
 

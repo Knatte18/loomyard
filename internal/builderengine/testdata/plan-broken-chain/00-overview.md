@@ -1,5 +1,5 @@
 ---
-format: 1
+format: 2
 approved: true
 ---
 
@@ -11,5 +11,5 @@ itself verify: deferred.
 
 ## Batch Index
 
-- 01 — first — declares a dangling chain-end with no batch 03
-- 02 — second — declares a self-deferred chain-end target
+- 01 — first (1 card) — declares a dangling chain-end with no batch 03
+- 02 — second (1 card) — declares a self-deferred chain-end target

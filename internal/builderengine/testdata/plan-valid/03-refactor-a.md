@@ -17,8 +17,13 @@ deferred to batch 04, the chain end.
 
 ## Cards
 
-### Card 1 — extract mapper skeleton
+### Card 03.1 — extract mapper skeleton
 
 **What:** Move the row-to-envelope mapping function into its own file, leaving call
 sites pointing at the old location temporarily.
-**Where:** 03-refactor-a.md
+**Context:** none
+**Edits:**
+- `03-refactor-a.md`
+**Creates:** none
+**Deletes:** none
+**Moves:** none

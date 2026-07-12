@@ -1,3 +1,7 @@
+---
+root: .
+---
+
 # 01 — json-flag: add the --json flag and envelope emission
 
 ## Intent
@@ -11,18 +15,30 @@ Stand-alone: after this batch the flag works end-to-end; tests land in batch 02.
 
 ## Cards
 
-### Card 1 — flag + row struct
+### Card 01.1 — flag + row struct
 
 **What:** Add a `--json` bool flag to the list command; define `RowJSON` with the
 existing table's columns as fields.
-**Where:** 01-json-flag.md
+**Context:** none
+**Edits:**
+- `01-json-flag.md`
+**Creates:** none
+**Deletes:** none
+**Moves:** none
+**Commit:** `01.1: add the --json flag and row struct`
 **verify:** go build ./...
 
-### Card 2 — emission path
+### Card 01.2 — emission path
 
 **What:** When `--json` is set, marshal each row through `output.Ok` instead of the
 table writer; keep the table path unchanged.
-**Where:** 01-json-flag.md
+**Context:**
+- `//02-list-tests.md`
+**Edits:**
+- `01-json-flag.md`
+**Creates:** none
+**Deletes:** none
+**Moves:** none
 
 ## verify:
 

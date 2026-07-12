@@ -17,10 +17,15 @@ implementer role, per plan-format.md's oversized-batch escape mechanism.
 
 ## Cards
 
-### Card 1 — rewrite the pipeline
+### Card 05.1 — rewrite the pipeline
 
 **What:** Replace the row pipeline's data model and every consumer in one pass.
-**Where:** 05-oversized.md
+**Context:** none
+**Edits:**
+- `05-oversized.md`
+**Creates:** none
+**Deletes:** none
+**Moves:** none
 
 ## verify:
 
