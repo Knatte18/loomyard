@@ -733,3 +733,56 @@ func TestRun_PersistsOrchestratorStrandBeforeWait(t *testing.T) {
 		t.Errorf("state.json's OrchestratorStrand during Wait = %q; want %q", strandAtWait, "fresh-orchestrator-strand")
 	}
 }
+
+// TestRun_FreshStopsSupersededRunsLiveStrands proves --fresh's reclaim half:
+// archiving a superseded run's state must first stop every recorded batch
+// strand the mux still reports live, or the orphaned implementer keeps
+// working against the same host repo and its late report lands on the FRESH
+// run's report path (the recreated reports dir), where it is distilled as
+// the fresh batch's success — found live in round fable-r4 as a --fresh run
+// returning done on the superseded plan's work. A recorded strand the mux
+// reports not-live is left alone (nothing to stop).
+func TestRun_FreshStopsSupersededRunsLiveStrands(t *testing.T) {
+	fx := newRunFixture(t)
+	fx.Runner.Result = shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}
+	fx.Runner.WriteOutcome = doneOutcomeYAML
+
+	const liveGUID = "superseded-live-implementer"
+	const deadGUID = "superseded-dead-implementer"
+	mux := &runFakeMux{status: muxengine.StatusResult{
+		Strands: []muxengine.StrandStatus{
+			{GUID: liveGUID, Live: true},
+			{GUID: deadGUID, Live: false},
+		},
+	}}
+	fx.Deps.Mux = mux
+
+	// Seed a state whose fingerprint can never match the on-disk plan, so
+	// this Run takes exactly the --fresh archive/re-init path under test.
+	seeded := &builderengine.State{
+		RunGUID:         "superseded-run",
+		PlanFingerprint: "superseded-fingerprint",
+		CurrentBatch:    1,
+		Batches: map[int]*builderengine.BatchState{
+			1: {Slug: "live-batch", StrandGUID: liveGUID},
+			2: {Slug: "dead-batch", StrandGUID: deadGUID, Terminal: true, Status: builderengine.DigestStatusDead},
+		},
+		ChainStartSHAs: map[int]string{},
+	}
+	if err := builderengine.SaveState(fx.Deps.BuilderDir, seeded); err != nil {
+		t.Fatalf("SaveState(seed) error = %v", err)
+	}
+
+	// The superseded strands must be gone before the fresh orchestrator
+	// starts working: observe the removal record at the handle's Wait.
+	var removedAtWait []string
+	fx.Runner.OnWait = func() { removedAtWait = append([]string(nil), mux.removedStrands...) }
+
+	if _, err := builderengine.Run(fx.Deps, builderengine.RunOptions{Fresh: true}); err != nil {
+		t.Fatalf("Run(--fresh) error = %v; want nil", err)
+	}
+
+	if len(removedAtWait) != 1 || removedAtWait[0] != liveGUID {
+		t.Errorf("strands removed before the fresh orchestrator's wait = %v; want exactly [%q] (live stopped, dead left alone)", removedAtWait, liveGUID)
+	}
+}

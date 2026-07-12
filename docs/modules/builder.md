@@ -220,7 +220,12 @@ entry recomputes it and compares:
 - **Mismatch, no `--fresh`** → hard refusal (`ErrFingerprintMismatch`) naming both
   fingerprints and pointing at `run --fresh` — stale reports from a superseded plan
   must never be misread as progress.
-- **Mismatch, `--fresh`** → archives `state.json` (to `state-<timestamp>.json`) and
+- **Mismatch, `--fresh`** → first stops every batch strand the superseded state
+  records that the mux still reports live (the archived run can never be resumed, so
+  its substrate has no legitimate owner — left alive, a superseded implementer keeps
+  working against the same host repo and its late report lands on the fresh run's own
+  report path in the recreated reports dir, where it would be distilled as the fresh
+  batch's success), then archives `state.json` (to `state-<timestamp>.json`) and
   the whole reports dir (to `<reports-dir>-<timestamp>`, then recreates an empty
   reports dir), mints a fresh `RunGUID`, and re-inits `state.json` with the new
   fingerprint. Never a silent wipe — the prior run's artifacts are always archived,

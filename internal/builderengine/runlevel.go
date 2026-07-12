@@ -442,6 +442,23 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 			return RunResult{}, fmt.Errorf("%w: on-disk plan fingerprint %s does not match this run's recorded fingerprint %s; the plan changed since state.json was created — re-run with --fresh to archive the stale state and reports and start over", ErrFingerprintMismatch, fingerprint, st.PlanFingerprint)
 		}
 
+		// Stop every recorded batch strand the mux still reports live BEFORE
+		// archiving the only state that records them: the archived run can
+		// never be resumed, so its substrate has no legitimate owner, and a
+		// superseded implementer left alive keeps working against the same
+		// host repo while holding an absolute report path inside the
+		// recreated reports dir — its late report then lands on the FRESH
+		// run's report path and is distilled as the fresh batch's success
+		// (found live in round fable-r4: a --fresh run returned done on the
+		// superseded plan's work while poll's cleanup stopped the fresh
+		// run's own still-working implementer). Same reclaim discipline as
+		// the dead-respawn ladder and the entry-time orchestrator reclaim.
+		for _, bs := range st.Batches {
+			if err := removeStrandIfLive(deps.Mux, bs.StrandGUID); err != nil {
+				return RunResult{}, err
+			}
+		}
+
 		if _, err := archiveStateFile(deps.BuilderDir, time.Now); err != nil {
 			return RunResult{}, err
 		}

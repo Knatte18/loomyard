@@ -118,7 +118,7 @@ zero `WARN`/`FAIL` findings** -- in that case `items` is an empty array.
 
 - `source` is the literal string `"sandbox-report"`.
 - `items[]` holds only `WARN`/`FAIL` findings -- do not record `OK` scenarios here.
-- `ref` is the scenario id (`B1`-`B8`).
+- `ref` is the scenario id (`B1`-`B9`).
 - `title` is a short one-line summary.
 - `body` folds the detail, repro steps, and verdict into one markdown string.
 
@@ -324,6 +324,36 @@ from the bottom regardless of which member the caller names.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
+### B9 -- Run-entry substrate reclaim (orphaned orchestrator, --fresh with a live implementer)
+
+**Covers:** builder
+
+**Goal:** "Prove `run` reclaims a superseded run's live agents instead of double-driving.
+First: start `lyx builder run`, hard-kill the run PROCESS (not the panes) while a batch is
+mid-flight, confirm the orchestrator pane is still live and still driving, then re-run
+`lyx builder run` and confirm the OLD orchestrator strand is stopped before the fresh one
+spawns -- never two live orchestrators at once. Second: with a batch's implementer genuinely
+mid-flight, edit a plan `*.md` file and run `lyx builder run --fresh`; confirm the superseded
+implementer's strand is stopped before state/reports are archived -- its late report must
+never land in the fresh run's reports dir."
+
+**Watch:** Part 1: `lyx builder run` (terminal A), then kill that process (e.g. `taskkill
+/PID <pid> /F`) while `lyx mux status` shows the orchestrator and an implementer live.
+Confirm the orchestrator pane survives the kill (it is a detached psmux pane) and keeps
+calling builder verbs. Re-run `lyx builder run`: confirm `lyx mux status` never shows two
+live `orchestrator:` strands -- the recorded one is stopped at run entry (state.json's
+`orchestratorStrand`), then the fresh one spawns, and the resumed run completes normally.
+Part 2: spawn a slow batch (a card with one long blocking wait), edit any plan file while
+it is in flight, then `lyx builder run --fresh`: confirm the old implementer strand is gone
+from `lyx mux status` before the fresh orchestrator's first spawn-batch, that `state.json`/
+reports were archived with the timestamp suffix as in B5, and that the fresh run's batch is
+implemented by its OWN implementer (the fresh run's outcome reflects the EDITED plan's
+content, not the superseded card's). A second live orchestrator, a superseded implementer
+surviving the archive, or a fresh `done` whose file content matches the superseded plan is
+a `FAIL` (the round fable-r4 defects this scenario pins).
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
 ## Session log format
 
 After running all scenarios, record a short session summary:
@@ -340,6 +370,7 @@ B5: <OK|WARN|FAIL> -- <one-line note if not OK>
 B6: <OK|WARN|FAIL> -- <one-line note if not OK>
 B7: <OK|WARN|FAIL> -- <one-line note if not OK>
 B8: <OK|WARN|FAIL> -- <one-line note if not OK>
+B9: <OK|WARN|FAIL> -- <one-line note if not OK>
 
 sandbox-report.json written: <count of WARN/FAIL items>
 ```
