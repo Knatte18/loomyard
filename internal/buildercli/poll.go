@@ -136,26 +136,31 @@ Example:
 			reportPath := filepath.Join(c.reportsDir, builderengine.BatchReportFileName(batchNumber, bs.Slug))
 			batchTimeout := time.Duration(c.cfg.BatchTimeoutMin) * time.Minute
 
-			// gatherReport fills ins's report-present branch: parse the report
-			// and compute the digest's git-backed inputs. The gitquery helpers
-			// (ChangedFiles/Dirty) run ONLY here -- a running tick must never
-			// shell out to git.
-			gatherReport := func(ins *builderengine.ClassifyInputs) error {
+			batchIdentifier := fmt.Sprintf("%02d-%s", batchNumber, bs.Slug)
+
+			// parseCheckedReport parses the report and enforces the batch-
+			// field identity: plan-format.md pins the report's batch: field
+			// to the NN-<batch-slug> stem of its own filename, and Distill
+			// passes it verbatim into the digest's batch field — the one
+			// field the orchestrator navigates by. A mismatch (a typo'd or
+			// copy-pasted stem) is a malformed report, the same fail-loud
+			// class as every other field's violation.
+			parseCheckedReport := func() (*builderengine.Report, error) {
 				report, err := builderengine.ParseReport(reportPath)
 				if err != nil {
-					return err
+					return nil, err
 				}
-				// plan-format.md pins the report's batch: field to the
-				// NN-<batch-slug> stem of its own filename, and Distill
-				// passes it verbatim into the digest's batch field — the one
-				// field the orchestrator navigates by. A mismatch (a typo'd
-				// or copy-pasted stem) is a malformed report and fails loud
-				// here, the same discipline ParseReport applies to every
-				// other field, never a silently mislabeled digest.
-				expectedBatch := fmt.Sprintf("%02d-%s", batchNumber, bs.Slug)
-				if report.Batch != expectedBatch {
-					return fmt.Errorf("builder: batch report %s: batch field %q does not match this batch's own identifier %q", reportPath, report.Batch, expectedBatch)
+				if report.Batch != batchIdentifier {
+					return nil, fmt.Errorf("builder: batch report %s: batch field %q does not match this batch's own identifier %q", reportPath, report.Batch, batchIdentifier)
 				}
+				return report, nil
+			}
+
+			// fillReportInputs computes the digest's git-backed inputs for a
+			// successfully parsed report. The gitquery helpers
+			// (ChangedFiles/Dirty) run ONLY here -- a running tick must never
+			// shell out to git.
+			fillReportInputs := func(ins *builderengine.ClassifyInputs, report *builderengine.Report) error {
 				changed, err := builderengine.ChangedFiles(c.layout.Cwd, bs.StartSHA)
 				if err != nil {
 					return err
@@ -169,6 +174,38 @@ Example:
 				ins.Scope = scope
 				ins.Dirty = dirty
 				return nil
+			}
+
+			// consumeReport handles a report file the stat just found: parse
+			// it (with the one-tick half-write grace) and fill the git-backed
+			// inputs. The implementer's report write is not atomic, so the 1s
+			// poll tick can catch the file created-but-unfinished; a parse
+			// failure on a JUST-seen report is therefore inconclusive once —
+			// consumeReport hands back a running snapshot for that tick and
+			// the next tick re-parses. A parse failure on the SECOND
+			// consecutive tick is a genuinely malformed report and fails
+			// loud, one tick later than before — never a guessed digest, and
+			// never a hard error for a report one flush away from done.
+			reportParseFailures := 0
+			consumeReport := func(ins *builderengine.ClassifyInputs) (*builderengine.Digest, error) {
+				report, err := parseCheckedReport()
+				if err != nil {
+					reportParseFailures++
+					if reportParseFailures >= 2 {
+						return nil, err
+					}
+					grace := builderengine.Digest{
+						Batch:    batchIdentifier,
+						Status:   builderengine.DigestStatusRunning,
+						ElapsedS: int(ins.Elapsed.Seconds()),
+					}
+					return &grace, nil
+				}
+				reportParseFailures = 0
+				if err := fillReportInputs(ins, report); err != nil {
+					return nil, err
+				}
+				return nil, nil
 			}
 
 			// gather is Classify's per-tick input assembler: it always checks
@@ -188,8 +225,12 @@ Example:
 				}
 
 				if _, statErr := statReportPath(reportPath); statErr == nil {
-					if err := gatherReport(&ins); err != nil {
+					graceDigest, err := consumeReport(&ins)
+					if err != nil {
 						return builderengine.Digest{}, false, err
+					}
+					if graceDigest != nil {
+						return *graceDigest, false, nil
 					}
 				} else if !os.IsNotExist(statErr) {
 					return builderengine.Digest{}, false, statErr
@@ -220,8 +261,15 @@ Example:
 				// re-check exists to prevent.
 				if ins.Report == nil && digest.Status == builderengine.DigestStatusDead {
 					if _, statErr := statReportPath(reportPath); statErr == nil {
-						if err := gatherReport(&ins); err != nil {
+						graceDigest, err := consumeReport(&ins)
+						if err != nil {
 							return builderengine.Digest{}, false, err
+						}
+						if graceDigest != nil {
+							// A present-but-mid-write report still wins over
+							// the dead classification: report the grace
+							// snapshot and let the next tick re-parse.
+							return *graceDigest, false, nil
 						}
 						digest, terminal = builderengine.Classify(ins)
 					} else if !os.IsNotExist(statErr) {

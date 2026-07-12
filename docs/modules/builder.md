@@ -69,7 +69,13 @@ files and a live mux query on every tick, in this pinned decision order:
    `Distill`). The report's `batch:` field must equal the polled batch's own
    `NN-<batch-slug>` identifier (plan-format.md pins it to the report filename's stem);
    a mismatch is a fail-loud malformed-report error, never a silently mislabeled
-   digest — `batch` is the one digest field the orchestrator navigates by.
+   digest — `batch` is the one digest field the orchestrator navigates by. Because the
+   implementer's report write is not atomic, the 1s poll tick can catch the file
+   created-but-unfinished: the FIRST failed parse of a just-seen report is treated as
+   inconclusive (that tick reports a running snapshot and the next tick re-parses); a
+   parse failure on the second consecutive tick is a genuinely malformed report and
+   fails loud — one tick later than an immediate error, never a guessed digest, and
+   never a hard error for a report one flush away from `done`.
 2. **No report, the implementer's turn has ended** (a `Stop` event observed in the
    run dir's `events.jsonl`) → terminal `dead`, `dead_reason: asking` — an
    implementer that stopped without ever satisfying the file contract is

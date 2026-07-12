@@ -603,3 +603,82 @@ func TestPollCmd_ReportBatchFieldMismatchFailsLoud(t *testing.T) {
 		t.Errorf("Batches[1].Terminal = true after a mismatched report; want false")
 	}
 }
+
+// TestPollCmd_HalfWrittenReportGetsOneTickGrace proves the half-write
+// grace: the implementer's report write is not atomic, so poll's 1s tick
+// can catch the file created-but-unfinished; the first failed parse of a
+// just-seen report must be treated as inconclusive (keep polling), and the
+// next tick's successful parse classifies normally — never a hard error for
+// a report one flush away from done. Scripted via the statReportPath seam:
+// the first stat sees a truncated report, the second sees it completed.
+func TestPollCmd_HalfWrittenReportGetsOneTickGrace(t *testing.T) {
+	t.Setenv("WEFT_SKIP_GIT", "1")
+	fx := newPollFixture(t, &pollFakeEngine{}, &pollFakeMux{})
+
+	startSHA := strings.TrimSpace(mustGit(t, fx.Hub, "rev-parse", "HEAD"))
+	commitFile(t, fx.Hub, "extra.txt", "extra", "extra commit")
+	fx.seedInFlightBatch1(t, startSHA, time.Now(), filepath.Join(t.TempDir(), "events.jsonl"))
+
+	if err := os.MkdirAll(fx.CLI.reportsDir, 0o755); err != nil {
+		t.Fatalf("mkdir reports dir: %v", err)
+	}
+	reportPath := filepath.Join(fx.CLI.reportsDir, "01-json-flag.yaml")
+
+	// First stat: the file has just appeared, mid-write (truncated after the
+	// batch line — no status yet, so ParseReport fails). Second stat: the
+	// write finished.
+	statCalls := 0
+	origStat := statReportPath
+	statReportPath = func(name string) (os.FileInfo, error) {
+		statCalls++
+		content := "batch: 01-json-flag\n"
+		if statCalls > 1 {
+			content = "batch: 01-json-flag\nstatus: done\ntests: green\nstuck_reason: null\n"
+		}
+		if err := os.WriteFile(reportPath, []byte(content), 0o644); err != nil {
+			t.Errorf("write scripted report: %v", err)
+		}
+		return origStat(name)
+	}
+	t.Cleanup(func() { statReportPath = origStat })
+
+	var out bytes.Buffer
+	exitCode := clihelp.Execute(fx.CLI.pollCmd(), &out, nil)
+
+	if exitCode != 0 {
+		t.Fatalf("poll (half-written then completed report) = %d; want 0, output: %s", exitCode, out.String())
+	}
+	if !strings.Contains(out.String(), `"status":"done"`) {
+		t.Errorf("output missing status:done after the completed re-parse; got %q", out.String())
+	}
+}
+
+// TestPollCmd_PersistentlyMalformedReportFailsAfterGrace proves the grace
+// is exactly one tick: a report that is still unparseable on the second
+// consecutive tick is a genuinely malformed report and fails loud — the
+// grace must never let a broken report wedge the poll into polling forever.
+func TestPollCmd_PersistentlyMalformedReportFailsAfterGrace(t *testing.T) {
+	t.Setenv("WEFT_SKIP_GIT", "1")
+	fx := newPollFixture(t, &pollFakeEngine{}, &pollFakeMux{})
+
+	startSHA := strings.TrimSpace(mustGit(t, fx.Hub, "rev-parse", "HEAD"))
+	fx.seedInFlightBatch1(t, startSHA, time.Now(), filepath.Join(t.TempDir(), "events.jsonl"))
+
+	if err := os.MkdirAll(fx.CLI.reportsDir, 0o755); err != nil {
+		t.Fatalf("mkdir reports dir: %v", err)
+	}
+	reportPath := filepath.Join(fx.CLI.reportsDir, "01-json-flag.yaml")
+	if err := os.WriteFile(reportPath, []byte("batch: 01-json-flag\nstatus: not-a-status\n"), 0o644); err != nil {
+		t.Fatalf("write malformed report: %v", err)
+	}
+
+	var out bytes.Buffer
+	exitCode := clihelp.Execute(fx.CLI.pollCmd(), &out, nil)
+
+	if exitCode != 1 {
+		t.Fatalf("poll (persistently malformed report) = %d; want 1, output: %s", exitCode, out.String())
+	}
+	if !strings.Contains(out.String(), "unrecognized status") {
+		t.Errorf("output missing the parse error after the grace tick; got %q", out.String())
+	}
+}
