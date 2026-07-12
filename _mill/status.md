@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-docs
+phase: holistic-reviewing
 slug: plan-format-file-ops
 branch: plan-format-file-ops
 plan: _mill/plan
@@ -26,6 +26,7 @@ approved-move-checks  '2026-07-12T07:26:41Z'
 approved-templates-help  '2026-07-12T07:40:59Z'
 approved-card-checks  '2026-07-12T07:59:16Z'
 approved-docs  '2026-07-12T08:07:40Z'
+holistic-reviewing  '2026-07-12T08:08:01Z'
 ```
 
 ## Batches
