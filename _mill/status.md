@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-card-checks
+phase: approved-docs
 slug: plan-format-file-ops
 branch: plan-format-file-ops
 plan: _mill/plan
@@ -25,6 +25,7 @@ approved-parser-v2  '2026-07-12T07:15:13Z'
 approved-move-checks  '2026-07-12T07:26:41Z'
 approved-templates-help  '2026-07-12T07:40:59Z'
 approved-card-checks  '2026-07-12T07:59:16Z'
+approved-docs  '2026-07-12T08:07:40Z'
 ```
 
 ## Batches
@@ -52,7 +53,8 @@ batches:
     start_sha: 723b7ec4854ad249ec5f30986a8cc6a428a27616
     commit_sha: cf3fd7ae0a609f9347cfd92d88aabaf2f919f5a9
   - name: docs
-    state: running
+    state: approved
     implementer_session: 09d20695-b3f3-40ca-9f2d-9cab479096c8
     start_sha: 06a666820db6fe1622fb641c8fc3bacd6af08add
+    commit_sha: f6dd15f60248a28dc58efdcfb81041314d033dd0
 ```
