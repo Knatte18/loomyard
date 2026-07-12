@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-retier-offline-loop
+phase: approved-tier-purity-guard
 slug: test-suite-regression
 branch: test-suite-regression
 plan: _mill/plan
@@ -24,6 +24,7 @@ planned  '2026-07-12T07:16:49Z'
 implementing  '2026-07-12T07:17:48Z'
 approved-fix-red-packages  '2026-07-12T07:24:10Z'
 approved-retier-offline-loop  '2026-07-12T07:43:47Z'
+approved-tier-purity-guard  '2026-07-12T07:54:59Z'
 ```
 
 ## Batches
@@ -41,9 +42,10 @@ batches:
     start_sha: e06400c124a16f5fdcac713971b062c7dea41306
     commit_sha: db9543d953f144f758a36ecc806bf5980a2048f2
   - name: tier-purity-guard
-    state: running
+    state: approved
     implementer_session: a022da72-e4d2-4c9f-98ff-42a8732ed677
     start_sha: c2df0d1a457641719e1dd0c1af050083b8012cc8
+    commit_sha: 4e03204
   - name: rebaseline-docs
     state: pending
 ```
