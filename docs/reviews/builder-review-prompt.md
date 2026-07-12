@@ -50,7 +50,7 @@ the bottom.
   implementer templates and their Go parsers), `docs/modules/plan-format.md` (builder's pinned
   input contract), `docs/overview.md`, `docs/roadmap.md`, `CONSTRAINTS.md`, `README.md`.
 - The dedicated live-driving suite you will RUN: `tools/sandbox/SANDBOX-BUILDER-SUITE.md`
-  (scenarios B1–B7) plus [`docs/sandbox-howto.md`](../sandbox-howto.md) for how the harness works.
+  (scenarios B1–B8) plus [`docs/sandbox-howto.md`](../sandbox-howto.md) for how the harness works.
   Two rounds have already extended it (B6, B7) — treat it as a FLOOR, not a spec: extend it the
   moment you find a live behavior it doesn't cover.
 - Repo rules you MUST follow: `CLAUDE.md` (root + `~/.claude/CLAUDE.md`) and `CONSTRAINTS.md`
@@ -153,10 +153,13 @@ substrate — a green `go test` proves nothing here:
   flag the absence of a Gemini/other-provider path.
 
 ## Round context seeded from prior-round verification
-You are round tag `opus-r3`. Two rounds have run: `opus-r1` (code-only, no live driving — a
-process gap fixed in this doc since) and `fable-r2` (the first round to actually drive the real
-substrate). Together they found and fixed sixteen real defects — CLOSED AND VERIFIED by the
-orchestrator's own independent, cold-tree re-check (do not re-litigate these):
+You are round tag `fable-r4` — the LAST round in this campaign (operator cap: 4 rounds total,
+alternating Opus/Fable). Three rounds have run: `opus-r1` (code-only, no live driving — a process
+gap fixed in this doc since), `fable-r2` (the first round to actually drive the real substrate),
+and `opus-r3` (drove the one invariant fable-r2 had flagged as never live-exercised:
+`--restart-chain`). Together they found and fixed EIGHTEEN real defects — CLOSED AND VERIFIED by
+the orchestrator's own independent, cold-tree re-check, including revert-and-confirm-fail proofs
+for every MEDIUM+ finding (do not re-litigate these):
 
 Round 1 (`opus-r1`):
 - **B1 (BLOCKING)** — `spawn-batch --role recovery` was unconditionally refused by the stale
@@ -211,31 +214,60 @@ MORE defects the code-only round completely missed, all fixed, none deferred:
   exercises F1's strand release + F4's in-flight guard against it — independently re-run by the
   orchestrator, green (`go test -tags smoke -run TestSmoke_ ./internal/buildercli/...`, 2 tests,
   ~36s).
-- Cold `go build`/`vet`/`go test -count=5 (+ -tags integration) ./internal/builderengine/...
-  ./internal/buildercli/... ./cmd/lyx/...` all green, independently re-run by the orchestrator.
-  All five MEDIUM findings' revert-proofs independently reproduced by the orchestrator (not just
-  trusted from the round's own report) — every one failed at exactly the right assertion, then was
-  cleanly restored to a byte-identical tree.
+- Cold `go build`/`vet`/`go test -count=5 (+ -tags integration, + -tags smoke against a REAL psmux
+  server) ./internal/builderengine/... ./internal/buildercli/... ./cmd/lyx/... ./tools/sandbox/...`
+  all green, independently re-run by the orchestrator (not cached, not trusted from any round's
+  own report).
 
-**RESIDUAL — this is your real job this round:** `fable-r2` itself flagged that **chain rollback
-(`--restart-chain`) was never exercised live** — "not reached this session (time went to the six
-suite scenarios + extras)". This is the one High-yield-focus invariant with zero live proof so
-far, and it is a destructive, SHA-targeted, multi-batch operation — exactly the kind of composed,
-timing-sensitive behavior this method exists to catch. **You must drive `--restart-chain` live
-this round**, against a real deferred-verify chain with a real Claude implementer, verifying: the
-recorded start SHA is right, member reports are deleted, `state.CurrentBatch` resets to the
-chain's lowest member, an unrecorded chain refuses rather than resetting to a hallucinated SHA, and
-F11's new chain-member-strand-stop behavior actually stops a live member's strand before the reset
-(not just hermetically, live). Beyond that: do your own genuinely independent clean-room pass —
-read the code yourself, drive the substrate against every High-yield-focus invariant, and don't
-assume two rounds of fixes means the well is dry. Fresh eyes at Opus tier, now that live driving is
-mandatory and has proven to surface real bugs twice in a row, is exactly the check this method is
-designed to run. An honest "no NEW defects" is a legitimate outcome, but only after you've actually
-driven `--restart-chain` for real and can say so with a transcript, not a claim.
+Round 3 (`opus-r3`) — clean-room pass at Opus tier, mandated to drive the one invariant fable-r2
+had flagged as never live-exercised (`--restart-chain`); found two more real defects:
+- **R1 (BLOCKING)** — `spawn-batch <NN> --restart-chain` reset the host repo to the correct
+  chain-start SHA but then spawned the CALLER-NAMED batch instead of the chain's lowest member.
+  Since the chain-end batch (the one running the real `verify:`) is the most likely restart
+  trigger, this silently destroyed every earlier member's committed work and skipped them —
+  contradicting `builder.md`'s own "always restarts from its lowest member" contract, and making
+  the recovery mechanism unrecoverable on its primary trigger (re-invoking repeated the identical
+  corruption). Confirmed live: a real two-batch chain, `spawn-batch 02 --restart-chain` reset to
+  the anchor but spawned batch 02, dropping batch 01's commit. Fixed `16bedaf` — Go now re-points
+  the spawn to `ChainMembers(chainEnd)[0]` regardless of the named member. Revert-proof done by the
+  orchestrator: `TestSpawnBatch_RestartChainFromNonLowestMemberSpawnsLowest` fails exactly as
+  described (spawns the named batch 4 instead of lowest member 3, leaves batch 4's BatchState
+  recorded after the reset) without the fix, passes clean restored.
+- **R2 (NIT)** — `poll`'s dead-classification report re-check swallowed a non-`ENOENT` `os.Stat`
+  error, unlike the primary stat in the same function. Fixed `e1e181a` via a new `statReportPath`
+  seam so a test can script the interleave deterministically. Revert-proof done: removing the
+  re-check's error-propagation branch makes `TestPollCmd_DeadRecheckStatErrorPropagates` return a
+  false `dead:asking` instead of surfacing the stat error, exactly as described.
+- Both commits update `docs/modules/builder.md`; R1 also updates `orchestrator-template.md` (no
+  new template co-versioning needed for R2, which is poll-internal).
+- Merge-readiness opinion (round's own, independently corroborated): ready. All sixteen prior
+  fixes (opus-r1 B1/B2/B3/B5/B6; fable-r2 F1–F11) were spot-checked live during this round with no
+  regressions found.
 
-There is currently nothing carried forward on the "Deferred items" list — `fable-r2` resolved
-round 1's only deferred item (F4). If you cannot resolve something this round, defer it explicitly
-with a reason, per the fixing discipline below; do not leave a finding unfixed silently.
+**RESIDUAL:** none currently outstanding — `opus-r3`'s fixer report deferred nothing, and every
+finding across all three rounds (eighteen total: 5 from `opus-r1`, 11 from `fable-r2`, 2 from
+`opus-r3`) has a commit, a passing test, and (for every MEDIUM+ finding) an orchestrator-reproduced
+revert-proof. `--restart-chain` — the one invariant that had zero live proof going into round 3 —
+now does, including the chain-member-strand-stop half.
+
+**This is the LAST round (cap 4 of 4).** Do not assume the well is dry just because three rounds in
+a row each found real bugs the previous round's own live driving missed (`opus-r1`: 0 live scenarios
+run at all — a process gap, not a signal; `fable-r2`: 11 defects on first real live driving;
+`opus-r3`: 1 BLOCKING + 1 NIT on the one remaining unexercised invariant) — but also do not invent
+findings to justify the round. Do your own genuinely independent clean-room pass: read the code
+yourself, drive the substrate against every High-yield-focus invariant (not just `--restart-chain`
+— that one is now covered), and try combinations the suite doesn't script (pause racing a
+just-about-to-report batch; oversized-batch role selection under recovery; a second chain restart
+immediately after the first; `--fresh` combined with an in-flight guard refusal). **An honest "no
+NEW defects, here is what I drove and how" is a completely legitimate outcome for this round** —
+it is the convergence signal the whole campaign has been watching for — but only after you can
+show a real transcript of having driven the substrate, not a claim of having read the code
+carefully.
+
+There is currently nothing carried forward on the "Deferred items" list — every prior round's
+findings were fixed, none deferred. If you cannot resolve something this round, defer it
+explicitly with a reason, per the fixing discipline below; do not leave a finding unfixed
+silently.
 
 Do a genuinely independent clean-room pass on top of this: read the code yourself, drive the real
 substrate against every "High-yield focus" invariant, and form your own findings before consulting
@@ -266,7 +298,7 @@ Live driving via the SANDBOX SUITE (PRIMARY — where the bugs surface):
   source) attached to a real console — meaningless for you to invoke, since you (the round agent)
   have no real attached console of your own to hand it, and you already have full source
   knowledge, so a second blind reviewer duplicating your own work end-to-end adds nothing. Instead,
-  treat `SANDBOX-BUILDER-SUITE.md`'s scenarios (B1–B7) as a checklist YOU execute directly, with
+  treat `SANDBOX-BUILDER-SUITE.md`'s scenarios (B1–B8) as a checklist YOU execute directly, with
   your own tool calls: materialize the Hub yourself (`sandbox-build.cmd`, then `lyx init` in the
   host repo), then run the real `lyx builder run` / `spawn-batch` / `poll` / `pause` commands the
   scenarios describe, foreground, waiting for each to return. This DOES spawn real psmux panes and
@@ -296,14 +328,13 @@ Live driving via the SANDBOX SUITE (PRIMARY — where the bugs surface):
   hand-seeded YAML fixture), you must run the real CLI end-to-end and report the actual terminal
   output with timestamps as evidence, not a summary claim. Extend to B1/B2/B3/B5 as time allows —
   more live coverage is always better, never optional busywork.
-- Walk every scenario (B1–B7) this way and record OK/WARN/FAIL. **B7 in particular exercises
-  chain-restart/strand liveness — but drive `--restart-chain` itself directly too (see "Round
-  context" above), not only through B7's framing.** The suite is a FLOOR — devise and run MORE
+- Walk every scenario (B1–B8) this way and record OK/WARN/FAIL. **B7 exercises the in-flight guard and
+  dead-respawn reclaim; B8 exercises chain-restart-from-non-lowest-member directly.** The suite is a FLOOR — devise and run MORE
   adversarial scenarios of your own beyond it, especially combinations the suite doesn't try (e.g.
   pause racing a batch that is *just about* to write its report; a chain restart while a sibling
   batch's implementer is still technically live from a stale strand).
 - The only legitimate "cannot verify" cases are: (a) a scenario that structurally requires a human
-  to visually confirm something (there are none in B1-B7 today — flag it if you add one that does),
+  to visually confirm something (there are none in B1-B8 today — flag it if you add one that does),
   or (b) a genuine environment gap (`claude` not logged in, `psmux.exe` missing — check for this
   FIRST, before doing anything else, so you know up front whether it applies). Flag those as
   not-headlessly-verifiable with the specific missing precondition — never as a blanket
