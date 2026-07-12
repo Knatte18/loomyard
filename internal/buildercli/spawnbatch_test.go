@@ -179,7 +179,13 @@ func newSpawnBatchFixture(t *testing.T) *spawnBatchFixture {
 // orchestrator ever calls spawn-batch.
 func (fx *spawnBatchFixture) initState(t *testing.T) {
 	t.Helper()
-	st := &builderengine.State{RunGUID: "guid-1", Batches: map[int]*builderengine.BatchState{}}
+	// Record the real plan fingerprint, exactly as run's init would: SpawnBatch
+	// refuses a state whose fingerprint no longer matches the on-disk plan.
+	fingerprint, err := builderengine.Fingerprint(fx.CLI.planDir)
+	if err != nil {
+		t.Fatalf("Fingerprint(%q) error = %v", fx.CLI.planDir, err)
+	}
+	st := &builderengine.State{RunGUID: "guid-1", PlanFingerprint: fingerprint, Batches: map[int]*builderengine.BatchState{}}
 	if err := builderengine.SaveState(fx.CLI.builderDir, st); err != nil {
 		t.Fatalf("SaveState() error = %v", err)
 	}

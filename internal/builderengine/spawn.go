@@ -234,6 +234,22 @@ func SpawnBatch(deps SpawnDeps, opts SpawnBatchOptions) (*SpawnResult, error) {
 		return nil, ErrPaused
 	}
 
+	// Recompute the plan fingerprint and compare it against the one recorded
+	// at run init — the same crash/resume guard Run applies at its own entry
+	// (state.go's documented contract names BOTH entry points). A plan edited
+	// mid-run must fail loud here, before any spawn: state.json keys batches
+	// by number and records per-batch start-SHAs, so driving a mutated plan
+	// against the old state silently corrupts the run's semantics (a
+	// renumbered batch is the worst case). There is no --fresh escape on this
+	// path — re-initializing is run's job, so the refusal points there.
+	fingerprint, err := Fingerprint(deps.Plan.Dir)
+	if err != nil {
+		return nil, err
+	}
+	if deps.State.PlanFingerprint != fingerprint {
+		return nil, fmt.Errorf("%w: on-disk plan fingerprint %s does not match this run's recorded fingerprint %s; the plan changed since state.json was created — re-run `lyx builder run --fresh` to archive the stale state and reports and start over", ErrFingerprintMismatch, fingerprint, deps.State.PlanFingerprint)
+	}
+
 	batch, err := findBatch(deps.Plan, opts.BatchNumber)
 	if err != nil {
 		return nil, err

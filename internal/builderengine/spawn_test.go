@@ -126,6 +126,14 @@ func newSpawnFixture(t *testing.T) *spawnFixture {
 		t.Fatalf("ParsePlan(%q) error = %v; want nil", dir, err)
 	}
 
+	// SpawnBatch refuses when the recorded fingerprint no longer matches the
+	// on-disk plan, so the fixture's State must record the real fingerprint —
+	// the same value Run would have recorded at first init.
+	fingerprint, err := builderengine.Fingerprint(dir)
+	if err != nil {
+		t.Fatalf("Fingerprint(%q) error = %v; want nil", dir, err)
+	}
+
 	worktree := newScratchRepo(t)
 	commitFile(t, worktree, "base.txt", "base", "base commit")
 
@@ -165,7 +173,7 @@ func newSpawnFixture(t *testing.T) *spawnFixture {
 	deps := builderengine.SpawnDeps{
 		Starter:      runner,
 		Plan:         plan,
-		State:        &builderengine.State{},
+		State:        &builderengine.State{PlanFingerprint: fingerprint},
 		Roles:        roles,
 		Config:       cfg,
 		WorktreeRoot: worktree,
@@ -329,6 +337,27 @@ func TestSpawnBatch_RecoveryArchivesStaleReport(t *testing.T) {
 	}
 	if !strings.Contains(string(data), "status: stuck") {
 		t.Errorf("archived report content = %q; want the prior stuck report preserved verbatim", string(data))
+	}
+}
+
+// TestSpawnBatch_FingerprintMismatchRefused proves a plan edited after run
+// init is refused at spawn-batch entry — before the Starter is ever
+// reached — with the same ErrFingerprintMismatch sentinel Run uses, so a
+// mid-run plan mutation can never be driven against the stale state.json
+// (found live in round fable-r2: a mutated plan spawned silently).
+func TestSpawnBatch_FingerprintMismatchRefused(t *testing.T) {
+	fx := newSpawnFixture(t)
+	fx.Deps.State.PlanFingerprint = "0000000000000000000000000000000000000000000000000000000000000000"
+
+	_, err := builderengine.SpawnBatch(fx.Deps, builderengine.SpawnBatchOptions{BatchNumber: 1})
+	if !errors.Is(err, builderengine.ErrFingerprintMismatch) {
+		t.Fatalf("SpawnBatch() error = %v; want errors.Is(err, ErrFingerprintMismatch)", err)
+	}
+	if !strings.Contains(err.Error(), "--fresh") {
+		t.Errorf("SpawnBatch() error = %q; want it to point at run --fresh", err.Error())
+	}
+	if len(fx.Engine.PrepareCalls) != 0 {
+		t.Errorf("Starter was reached (%d Prepare calls) on a fingerprint mismatch; want zero", len(fx.Engine.PrepareCalls))
 	}
 }
 
