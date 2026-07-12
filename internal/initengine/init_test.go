@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
@@ -59,8 +60,13 @@ func TestInit_FirstRun(t *testing.T) {
 		t.Error(".gitignore missing .lyx/ entry")
 	}
 
-	if len(result.Modules) != 3 {
-		t.Errorf("len(result.Modules) = %d; want 3", len(result.Modules))
+	// Init -> configsync.ReconcileAll iterates configreg.Modules(), so the
+	// registry is the single source of truth for the expected module count;
+	// deriving it here means a newly registered module can never stale this
+	// assertion.
+	want := len(configreg.Modules())
+	if len(result.Modules) != want {
+		t.Errorf("len(result.Modules) = %d; want %d (from configreg.Modules())", len(result.Modules), want)
 	}
 
 	// Verify strict loads pass
