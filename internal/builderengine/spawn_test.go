@@ -89,12 +89,16 @@ type prepareCall struct {
 type spawnFakeEngine struct {
 	mu           sync.Mutex
 	PrepareCalls []prepareCall
+	PrepareErr   error
 }
 
 func (e *spawnFakeEngine) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengine.Config) (shuttleengine.Launch, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.PrepareCalls = append(e.PrepareCalls, prepareCall{RunDir: runDir, Spec: spec})
+	if e.PrepareErr != nil {
+		return shuttleengine.Launch{}, e.PrepareErr
+	}
 	return shuttleengine.Launch{Cmd: "fake-launch-cmd", SessionID: "fake-session"}, nil
 }
 
@@ -443,6 +447,44 @@ func TestSpawnBatch_DeadRespawnReclaimsKeptSubstrate(t *testing.T) {
 				t.Errorf("RemoveStrand guid = %q; want orphan-1", fx.Mux.removedStrands[0])
 			}
 		})
+	}
+}
+
+// TestSpawnBatch_RestartChainPersistsStateBeforeSpawn proves the chain
+// reset's state mutation reaches disk even when the spawn that follows it
+// fails: the reset already hard-reset the repo and deleted member reports,
+// so a state.json still recording the rolled-back members would disagree
+// with the repo it describes across the failure.
+func TestSpawnBatch_RestartChainPersistsStateBeforeSpawn(t *testing.T) {
+	fx := newSpawnFixture(t)
+
+	if _, err := builderengine.SpawnBatch(fx.Deps, builderengine.SpawnBatchOptions{BatchNumber: 3}); err != nil {
+		t.Fatalf("SpawnBatch(batch 3) error = %v; want nil", err)
+	}
+	fx.Deps.State.Batches[3].Terminal = true
+	fx.Deps.State.Batches[3].Status = "dead"
+	fx.Deps.State.CurrentBatch = 0
+	if err := builderengine.SaveState(fx.Deps.BuilderDir, fx.Deps.State); err != nil {
+		t.Fatalf("SaveState() error = %v", err)
+	}
+
+	// The respawn's own Start fails after the reset has already happened.
+	fx.Engine.PrepareErr = errors.New("boom: spawn substrate unavailable")
+
+	_, err := builderengine.SpawnBatch(fx.Deps, builderengine.SpawnBatchOptions{BatchNumber: 3, RestartChain: true})
+	if err == nil {
+		t.Fatal("SpawnBatch(--restart-chain) error = nil; want the injected spawn failure")
+	}
+
+	loaded, err := builderengine.LoadState(fx.Deps.BuilderDir)
+	if err != nil || loaded == nil {
+		t.Fatalf("LoadState() = %v, %v; want the persisted post-reset state", loaded, err)
+	}
+	if _, stale := loaded.Batches[3]; stale {
+		t.Errorf("loaded.Batches[3] still recorded after a failed post-reset spawn; want it cleared on disk")
+	}
+	if loaded.CurrentBatch != 0 {
+		t.Errorf("loaded.CurrentBatch = %d; want 0 after the reset", loaded.CurrentBatch)
 	}
 }
 

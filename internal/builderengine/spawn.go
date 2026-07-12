@@ -355,6 +355,14 @@ func SpawnBatch(deps SpawnDeps, opts SpawnBatchOptions) (*SpawnResult, error) {
 		if err := RestartChain(deps.WorktreeRoot, deps.State, deps.Plan, chainEnd, deps.ReportsDir); err != nil {
 			return nil, err
 		}
+		// The reset just hard-reset the host repo and deleted member reports
+		// on disk; persist the matching state NOW rather than only at the
+		// spawn's own SaveState below — if any later step fails (role spawn,
+		// FindRun), a state.json still recording the rolled-back members'
+		// BatchStates would disagree with the repo it describes.
+		if err := SaveState(deps.BuilderDir, deps.State); err != nil {
+			return nil, err
+		}
 	}
 
 	// A respawn of a dead-classified batch (the orchestrator's documented
