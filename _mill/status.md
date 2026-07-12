@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussion-fix-r1
 slug: test-suite-regression
 branch: test-suite-regression
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-07-12T06:15:33Z'
+discussion-fix-r1  '2026-07-12T07:00:45Z'
 ```

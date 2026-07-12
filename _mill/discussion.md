@@ -160,10 +160,19 @@ rot silently again, and re-baseline the docs once more after the fixes land.
   (untagged, so it runs on every `go test`) that walks the module's `*_test.go`
   files and **fails** if a file lacking a `//go:build integration` (or `smoke`)
   tag references any banned token: `gitexec.RunGit`, `exec.Command`,
-  `exec.CommandContext`, or `lyxtest.Copy`. Allowlist (with one-line reasons,
-  mirroring the sandbox-coverage test's `excludedModules` style):
-  `internal/proc` (process control is the package's subject — its tests must
-  spawn) and `cmd/lyx/tierpurity_test.go` itself (contains the token strings).
+  `exec.CommandContext`, or `lyxtest.Copy`. Matching is **raw substring over
+  the file's source text** (prefix semantics: `lyxtest.Copy` matches
+  `lyxtest.CopyPaired`, `lyxtest.CopyPairedLocal`, `lyxtest.CopyHostHub`, and
+  any future `Copy*` fixture; `exec.Command` matches `exec.CommandContext`) —
+  never whole-token or AST matching, so the guard cannot silently miss a new
+  fixture-copy variant. Because matching is raw substring, a banned token
+  appearing in a comment or string literal of an untagged test file also
+  trips the guard — that is accepted (rename the mention or tag the file),
+  and it is exactly why the guard file must allowlist itself. Allowlist (with
+  one-line reasons, mirroring the sandbox-coverage test's `excludedModules`
+  style): `internal/proc` (process control is the package's subject — its
+  tests must spawn) and `cmd/lyx/tierpurity_test.go` itself (contains the
+  banned token strings as its own test data).
   Record the invariant in CONSTRAINTS.md in the same commit, in the established
   format (statement, mechanics, **Enforced by** line).
 - Rationale: the regression happened silently across a dozen module landings
