@@ -139,8 +139,11 @@ batches_done: <int>
 `stuck` when you have exhausted every recovery option above for some batch;
 `paused` per the rule above. `stuck_reason` is `null` for `done` and `paused`, and a
 single line naming the batch and the blocker for `stuck`. `batches_done` counts every
-batch that reached `status: "done"` this run. Nothing you do after this file exists is
-read by anyone — write it last, and write it exactly once.
+batch in your batch list whose status is `done` when you write this file — including
+batches your Progress section already listed as `done` before a resume, so the count
+always describes the whole plan's progress, never just this one session's share of it.
+Nothing you do after this file exists is read by anyone — write it last, and write it
+exactly once.
 
 ## Tuning knobs
 

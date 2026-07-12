@@ -201,6 +201,11 @@ stuck_reason: null | "<one line>"   # required non-empty when outcome: stuck
 batches_done: <int>
 ```
 
+`batches_done` counts every batch in the plan whose status is `done` at outcome time —
+including batches already done before a resume — so the count always describes the whole
+plan's progress, never one session's share of it (the reading a future `loom` consumes;
+pinned in the orchestrator template, whose prompt half co-versions with this contract).
+
 `ParseOutcome` decodes it strictly (`yaml.Decoder.KnownFields(true)`) and enforces the
 vocabulary plus the stuck/`stuck_reason` cross-field rule — the burler verdict-parse
 discipline: an unparseable or malformed outcome file is a hard error, never guessed.
