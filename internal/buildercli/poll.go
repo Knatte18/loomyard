@@ -112,10 +112,37 @@ Example:
 			reportPath := filepath.Join(c.reportsDir, builderengine.BatchReportFileName(batchNumber, bs.Slug))
 			batchTimeout := time.Duration(c.cfg.BatchTimeoutMin) * time.Minute
 
-			// gather is Classify's per-tick input assembler: it always
-			// checks for the report FIRST and runs the gitquery helpers
-			// (ChangedFiles/Dirty) ONLY inside that report-present branch --
-			// a running tick must never shell out to git.
+			// gatherReport fills ins's report-present branch: parse the report
+			// and compute the digest's git-backed inputs. The gitquery helpers
+			// (ChangedFiles/Dirty) run ONLY here -- a running tick must never
+			// shell out to git.
+			gatherReport := func(ins *builderengine.ClassifyInputs) error {
+				report, err := builderengine.ParseReport(reportPath)
+				if err != nil {
+					return err
+				}
+				changed, err := builderengine.ChangedFiles(c.layout.Cwd, bs.StartSHA)
+				if err != nil {
+					return err
+				}
+				dirty, err := builderengine.Dirty(c.layout.Cwd)
+				if err != nil {
+					return err
+				}
+				ins.Report = report
+				ins.Changed = changed
+				ins.Scope = scope
+				ins.Dirty = dirty
+				return nil
+			}
+
+			// gather is Classify's per-tick input assembler: it always checks
+			// for the report FIRST, and re-checks it before ever returning a
+			// dead classification -- a report written between the first stat
+			// and the (slower) events/mux gathers must win over a
+			// simultaneously-true Stop/timeout/died condition, or the
+			// orchestrator's next respawn is refused on the very report this
+			// tick ignored.
 			gather := func() (builderengine.Digest, bool, error) {
 				ins := builderengine.ClassifyInputs{
 					BatchNumber:  batchNumber,
@@ -126,22 +153,9 @@ Example:
 				}
 
 				if _, statErr := os.Stat(reportPath); statErr == nil {
-					report, rerr := builderengine.ParseReport(reportPath)
-					if rerr != nil {
-						return builderengine.Digest{}, false, rerr
+					if err := gatherReport(&ins); err != nil {
+						return builderengine.Digest{}, false, err
 					}
-					changed, cerr := builderengine.ChangedFiles(c.layout.Cwd, bs.StartSHA)
-					if cerr != nil {
-						return builderengine.Digest{}, false, cerr
-					}
-					dirty, derr := builderengine.Dirty(c.layout.Cwd)
-					if derr != nil {
-						return builderengine.Digest{}, false, derr
-					}
-					ins.Report = report
-					ins.Changed = changed
-					ins.Scope = scope
-					ins.Dirty = dirty
 				} else if !os.IsNotExist(statErr) {
 					return builderengine.Digest{}, false, statErr
 				} else {
@@ -158,6 +172,21 @@ Example:
 				}
 
 				digest, terminal := builderengine.Classify(ins)
+
+				// Report-present must win for real, not just in decision
+				// order: the implementer writes its report BEFORE its turn
+				// ends, so a Stop event observed above can postdate a report
+				// that landed after the first stat. Re-stat before returning
+				// any dead classification and let the report re-classify.
+				if ins.Report == nil && digest.Status == builderengine.DigestStatusDead {
+					if _, statErr := os.Stat(reportPath); statErr == nil {
+						if err := gatherReport(&ins); err != nil {
+							return builderengine.Digest{}, false, err
+						}
+						digest, terminal = builderengine.Classify(ins)
+					}
+				}
+
 				return digest, terminal, nil
 			}
 

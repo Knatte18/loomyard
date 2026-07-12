@@ -215,6 +215,71 @@ func TestPollCmd_ReportPresentClassifiesDoneAndCommits(t *testing.T) {
 	}
 }
 
+// pollRaceEngine forces the report-vs-Stop interleave: its ParseEvents
+// writes the batch report to disk BEFORE returning a Stop event, modeling a
+// report that lands between gather's first report stat and the (slower)
+// events read. onParse runs once; later calls only return the Stop event.
+type pollRaceEngine struct {
+	pollFakeEngine
+	onParse func()
+	fired   bool
+}
+
+func (e *pollRaceEngine) ParseEvents(data []byte) ([]shuttleengine.Event, error) {
+	if !e.fired {
+		e.fired = true
+		e.onParse()
+	}
+	return []shuttleengine.Event{{Kind: shuttleengine.EventStop, Message: "final"}}, nil
+}
+
+// TestPollCmd_ReportLandingDuringGatherBeatsStopEvent proves the
+// report-present branch wins FOR REAL, not just in decision order: a report
+// written after gather's first stat but before its Stop-event read must
+// still classify done — never dead/asking, which would wedge the
+// orchestrator's next respawn on "batch report already exists" (found in
+// round fable-r2; the implementer always writes its report before its turn
+// ends, so this interleave is reachable on every stuck/done batch).
+func TestPollCmd_ReportLandingDuringGatherBeatsStopEvent(t *testing.T) {
+	t.Setenv("WEFT_SKIP_GIT", "1")
+
+	var fx *pollFixture
+	var reportPath string
+	engine := &pollRaceEngine{onParse: func() {
+		if err := os.MkdirAll(fx.CLI.reportsDir, 0o755); err != nil {
+			t.Errorf("mkdir reports dir: %v", err)
+		}
+		if err := os.WriteFile(reportPath, []byte("batch: 01-json-flag\nstatus: done\ntests: green\nstuck_reason: null\n"), 0o644); err != nil {
+			t.Errorf("write report mid-gather: %v", err)
+		}
+	}}
+	fx = newPollFixture(t, engine, &pollFakeMux{
+		status: muxengine.StatusResult{Strands: []muxengine.StrandStatus{{GUID: "strand-1", Live: true}}},
+	})
+	reportPath = filepath.Join(fx.CLI.reportsDir, "01-json-flag.yaml")
+
+	startSHA := strings.TrimSpace(mustGit(t, fx.Hub, "rev-parse", "HEAD"))
+	eventsPath := filepath.Join(t.TempDir(), "events.jsonl")
+	if err := os.WriteFile(eventsPath, []byte("irrelevant; pollRaceEngine ignores bytes"), 0o644); err != nil {
+		t.Fatalf("write events file: %v", err)
+	}
+	fx.seedInFlightBatch1(t, startSHA, time.Now(), eventsPath)
+
+	var out bytes.Buffer
+	exitCode := clihelp.Execute(fx.CLI.pollCmd(), &out, nil)
+
+	if exitCode != 0 {
+		t.Fatalf("poll (report landed mid-gather) = %d; want 0, output: %s", exitCode, out.String())
+	}
+	got := out.String()
+	if !strings.Contains(got, `"status":"done"`) {
+		t.Errorf("output = %q; want status:done — the mid-gather report must win over the Stop event", got)
+	}
+	if strings.Contains(got, `"dead_reason"`) {
+		t.Errorf("output = %q; want no dead_reason at all", got)
+	}
+}
+
 func TestPollCmd_NoReportTurnEndedClassifiesDeadAsking(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
 	fx := newPollFixture(t, &pollFakeEngine{events: []shuttleengine.Event{{Kind: shuttleengine.EventStop, Message: "final"}}}, &pollFakeMux{
