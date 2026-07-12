@@ -6,7 +6,7 @@ batch: "templates-help"
 number: 4
 cards: 3
 verify: go test ./internal/builderengine/... ./internal/buildercli/...
-depends-on: [1]
+depends-on: [1, 2, 3]
 ```
 
 ## Rename mechanic

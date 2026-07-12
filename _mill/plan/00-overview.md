@@ -32,7 +32,7 @@ batches:
   - number: 4
     name: templates-help
     file: 04-templates-help.md
-    depends-on: [1]
+    depends-on: [1, 2, 3]
     verify: go test ./internal/builderengine/... ./internal/buildercli/...
   - number: 5
     name: docs
