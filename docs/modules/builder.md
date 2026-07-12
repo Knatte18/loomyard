@@ -217,8 +217,13 @@ partial state under a misleading label.
 
 `internal/builderengine` is weft-BLIND: every weft commit of a builder artifact
 happens in `internal/buildercli`, mirroring `perchcli`'s block-exit
-`weftengine.Commit` + `Push` (with the `:(exclude)*.lock` pathspec — lock files are
-machine-local and never committed). "When it makes sense" (the discussion's own
+`weftengine.Commit` + `Push`. The commit pathspec excludes every machine-local
+runtime artifact — `:(exclude)*.lock` (advisory OS locks) **and**
+`:(exclude)*/builder/pause` (the pause flag, which is present on disk during
+`poll`'s terminal commit whenever a pause raced the last in-flight batch) — so neither
+leaks into durable weft history nor materializes on another machine's weft pull (a
+committed pause flag could read as a spurious pause request elsewhere). "When it makes
+sense" (the discussion's own
 phrasing) resolved to exactly three batch-boundary points across the loop, never a
 single end-of-run commit (which would lose every weft-synced batch on a crash
 mid-run):
