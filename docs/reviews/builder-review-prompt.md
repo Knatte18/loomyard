@@ -50,9 +50,9 @@ the bottom.
   implementer templates and their Go parsers), `docs/modules/plan-format.md` (builder's pinned
   input contract), `docs/overview.md`, `docs/roadmap.md`, `CONSTRAINTS.md`, `README.md`.
 - The dedicated live-driving suite you will RUN: `tools/sandbox/SANDBOX-BUILDER-SUITE.md`
-  (scenarios B1–B8) plus [`docs/sandbox-howto.md`](../sandbox-howto.md) for how the harness works.
-  Two rounds have already extended it (B6, B7) — treat it as a FLOOR, not a spec: extend it the
-  moment you find a live behavior it doesn't cover.
+  (scenarios B1–B9) plus [`docs/sandbox-howto.md`](../sandbox-howto.md) for how the harness works.
+  Four rounds have already extended it (B6, B7, B8, B9) — treat it as a FLOOR, not a spec: extend
+  it the moment you find a live behavior it doesn't cover.
 - Repo rules you MUST follow: `CLAUDE.md` (root + `~/.claude/CLAUDE.md`) and `CONSTRAINTS.md`
   (Hub Geometry Invariant, CLI/Cobra Invariant, lyxtest Leaf Invariant, Sandbox Suite Coverage,
   Documentation Lifecycle). A change that ships behaviour without updating the module doc /
@@ -153,13 +153,16 @@ substrate — a green `go test` proves nothing here:
   flag the absence of a Gemini/other-provider path.
 
 ## Round context seeded from prior-round verification
-You are round tag `fable-r4` — the LAST round in this campaign (operator cap: 4 rounds total,
-alternating Opus/Fable). Three rounds have run: `opus-r1` (code-only, no live driving — a process
-gap fixed in this doc since), `fable-r2` (the first round to actually drive the real substrate),
-and `opus-r3` (drove the one invariant fable-r2 had flagged as never live-exercised:
-`--restart-chain`). Together they found and fixed EIGHTEEN real defects — CLOSED AND VERIFIED by
-the orchestrator's own independent, cold-tree re-check, including revert-and-confirm-fail proofs
-for every MEDIUM+ finding (do not re-litigate these):
+You are round tag `opus-r5` — round 5 of an operator-extended cap of 6 rounds total, alternating
+Opus/Fable (the cap was originally 4; the operator extended it to 6 after round 4 turned up a
+BLOCKING defect, on the same "as long as real rounds keep finding real bugs, keep going" logic that
+carried rounds 1→4). Four rounds have run: `opus-r1` (code-only, no live driving — a process gap
+fixed in this doc since), `fable-r2` (the first round to actually drive the real substrate),
+`opus-r3` (drove the one invariant fable-r2 had flagged as never live-exercised: `--restart-chain`),
+and `fable-r4` (drove the run-ENTRY substrate-reclaim seam — one level up from every batch-level
+invariant the first three rounds exercised). Together they found and fixed TWENTY-FIVE real
+defects — CLOSED AND VERIFIED by the orchestrator's own independent, cold-tree re-check, including
+revert-and-confirm-fail proofs for every MEDIUM+ finding (do not re-litigate these):
 
 Round 1 (`opus-r1`):
 - **B1 (BLOCKING)** — `spawn-batch --role recovery` was unconditionally refused by the stale
@@ -244,25 +247,82 @@ had flagged as never live-exercised (`--restart-chain`); found two more real def
   fixes (opus-r1 B1/B2/B3/B5/B6; fable-r2 F1–F11) were spot-checked live during this round with no
   regressions found.
 
-**RESIDUAL:** none currently outstanding — `opus-r3`'s fixer report deferred nothing, and every
-finding across all three rounds (eighteen total: 5 from `opus-r1`, 11 from `fable-r2`, 2 from
-`opus-r3`) has a commit, a passing test, and (for every MEDIUM+ finding) an orchestrator-reproduced
-revert-proof. `--restart-chain` — the one invariant that had zero live proof going into round 3 —
-now does, including the chain-member-strand-stop half.
+Round 4 (`fable-r4`) — clean-room pass that drove every B1–B8 scenario against the real substrate
+with zero regressions in the eighteen prior fixes, then found the run-ENTRY substrate-reclaim seam
+none of the first three rounds had exercised (they all drove *batch*-level implementer reclaim;
+none had killed or superseded the *orchestrator's own* run):
+- **R4-1 (MEDIUM)** — an orphaned live orchestrator (a killed `run` process, or a timed-out
+  orchestrator whose kept pane kept working) was never reclaimed at `run` entry; a resumed `run`
+  spawned a SECOND live orchestrator over the first, both driving the same `state.json`/plan/host
+  repo at once. Confirmed live: two live `orchestrator:` strands observed simultaneously in `lyx mux
+  status` after killing run #1's process and starting run #2. Fixed `a7d9fa2` — `Run` is now a
+  two-phase start/wait (`OrchestratorStarter`/`OrchestratorHandle`) so the strand GUID persists to
+  `state.json` BEFORE the block; entry-time reclaim stops a recorded strand the mux still reports
+  live. Revert-proof done by the orchestrator: removing the entry-time reclaim block makes
+  `TestRun_ReclaimsLiveOrphanedOrchestratorAtEntry`'s live-orphan subtest fail exactly as described
+  (orphan strand not in the removed list), dead-recorded-strand subtest correctly still passes.
+- **R4-2 (BLOCKING)** — `run --fresh` archived the superseded run's `state.json`/reports without
+  ever stopping that run's still-live batch strands; the orphan's late report landed on the FRESH
+  run's report path and was distilled as the fresh batch's own success — a silent false `done`,
+  with poll's own cleanup then killing the fresh run's still-working implementer. Confirmed live
+  with a real two-implementer interleave (two live implementers for the same batch observed at
+  once; the fresh run finished `done` with the SUPERSEDED plan's file content, not the edited
+  plan's). Fixed `8d6cb33` — the `--fresh` branch now stops every recorded batch strand the mux
+  still reports live BEFORE archiving. Revert-proof done: removing the stop-loop makes
+  `TestRun_FreshStopsSupersededRunsLiveStrands` fail exactly as described (superseded live strand
+  not in the removed list).
+- **R4-3 (MEDIUM, concurrency-triggered)** — `state.json`'s read-modify-write was unserialized
+  across separate verb invocations (poll's long-block-then-persist vs. a concurrent spawn-batch);
+  concrete lost-update scenarios traced (a concurrent spawn landing inside poll's wait window loses
+  either the spawn's record or poll's terminal marking, depending on save order). Fixed `d8c9e09` —
+  a new `mutate.lock` builder-dir lease (`AcquireStateMutation`) serializes the WHOLE load-mutate-
+  save sequence for `run`'s state phase, `spawn-batch`, and poll's terminal persist (which now
+  RELOADS a fresh copy under the lease rather than saving its stale entry-time copy). Revert-proof
+  done by the orchestrator, both halves: renaming the lease's own lock file breaks
+  `TestAcquireStateMutation_ExcludesSecondHolder`'s exclusion assertion exactly as described;
+  separately, reverting poll's terminal-persist to save the stale entry-time state (no reload, no
+  lease) makes `TestPollCmd_TerminalPersistMergesConcurrentSpawn` fail exactly as described (the
+  concurrently-spawned batch's record and cursor are lost).
+- **R4-4 (LOW)** — a report whose `batch:` field named a different batch than the one being polled
+  was distilled verbatim into the digest, mislabeling the one field the orchestrator navigates by.
+  Fixed `ae691e0`. Diff spot-checked by the orchestrator: matches description, test asserts the
+  exact error text naming both identifiers and that no terminal classification stands.
+- **R4-5 (LOW)** — a half-written report racing poll's 1s tick (the implementer's write is not
+  atomic) surfaced as a hard `ok:false` error instead of one more tick of grace. Fixed `bc16a34`.
+  Diff spot-checked: matches description, tests cover both the one-tick grace and the still-fails-
+  loud-on-persistent-malformation case.
+- **R4-6 (NIT/docs)** — neither `builder.md` nor the sandbox suite's pre-conditions stated that
+  `lyx mux up` must precede `run`/`spawn-batch`. Fixed `b0c050b`.
+- **R4-7 (NIT/template)** — `batches_done`'s doc text was ambiguous across a resume (whole-plan vs.
+  this-session-only reading); pinned to the whole-plan reading, matching what a live resumed session
+  actually chose. Fixed `e720845`.
+- New sandbox scenario **B9** covers both R4-1 and R4-2 (orphaned-orchestrator reclaim +
+  `--fresh`-with-live-implementer reclaim) in one scenario.
+- Merge-readiness opinion (round's own, independently corroborated): ready — the run-entry
+  substrate-reclaim seam, the last unexercised layer, is now covered.
 
-**This is the LAST round (cap 4 of 4).** Do not assume the well is dry just because three rounds in
-a row each found real bugs the previous round's own live driving missed (`opus-r1`: 0 live scenarios
-run at all — a process gap, not a signal; `fable-r2`: 11 defects on first real live driving;
-`opus-r3`: 1 BLOCKING + 1 NIT on the one remaining unexercised invariant) — but also do not invent
-findings to justify the round. Do your own genuinely independent clean-room pass: read the code
-yourself, drive the substrate against every High-yield-focus invariant (not just `--restart-chain`
-— that one is now covered), and try combinations the suite doesn't script (pause racing a
-just-about-to-report batch; oversized-batch role selection under recovery; a second chain restart
-immediately after the first; `--fresh` combined with an in-flight guard refusal). **An honest "no
-NEW defects, here is what I drove and how" is a completely legitimate outcome for this round** —
-it is the convergence signal the whole campaign has been watching for — but only after you can
-show a real transcript of having driven the substrate, not a claim of having read the code
-carefully.
+**RESIDUAL:** none currently outstanding — `fable-r4`'s fixer report deferred nothing, and every
+finding across all four rounds (twenty-five total: 5 from `opus-r1`, 11 from `fable-r2`, 2 from
+`opus-r3`, 7 from `fable-r4`) has a commit, a passing test, and (for every MEDIUM+ finding) an
+orchestrator-reproduced revert-proof.
+
+**Operator-extended cap: round 5 of 6.** The cap was originally 4 rounds; the operator bumped it to
+6 immediately after seeing round 4's BLOCKING finding, on the standing logic that a round finding
+real bugs (especially BLOCKING ones) is itself the signal to keep going, not stop. Do not assume the
+well is dry just because four rounds in a row each found real bugs the previous rounds' own live
+driving missed (`opus-r1`: 0 live scenarios run at all — a process gap, not a signal; `fable-r2`: 11
+defects on first real live driving; `opus-r3`: 1 BLOCKING + 1 NIT on the one remaining unexercised
+batch-level invariant; `fable-r4`: 1 BLOCKING + 6 more on the run-entry layer no prior round had
+touched) — but also do not invent findings to justify the round. Do your own genuinely independent
+clean-room pass: read the code yourself, drive the substrate against every High-yield-focus
+invariant AND the run-entry reclaim seam (B9), and try combinations no prior round has scripted yet
+— e.g. `pause` racing a `run --fresh` invocation; killing an orchestrator's process while it holds
+the state-mutation lease; a third overlapping `run` process on top of an already-reclaimed one; the
+new `mutate.lock` lease itself deadlocking or leaking across a crash. **An honest "no NEW defects,
+here is what I drove and how" is a completely legitimate outcome for this round** — it remains the
+convergence signal the whole campaign has been watching for, subject to the operator's own judgment
+on whether to extend further — but only after you can show a real transcript of having driven the
+substrate, not a claim of having read the code carefully.
 
 There is currently nothing carried forward on the "Deferred items" list — every prior round's
 findings were fixed, none deferred. If you cannot resolve something this round, defer it
@@ -298,7 +358,7 @@ Live driving via the SANDBOX SUITE (PRIMARY — where the bugs surface):
   source) attached to a real console — meaningless for you to invoke, since you (the round agent)
   have no real attached console of your own to hand it, and you already have full source
   knowledge, so a second blind reviewer duplicating your own work end-to-end adds nothing. Instead,
-  treat `SANDBOX-BUILDER-SUITE.md`'s scenarios (B1–B8) as a checklist YOU execute directly, with
+  treat `SANDBOX-BUILDER-SUITE.md`'s scenarios (B1–B9) as a checklist YOU execute directly, with
   your own tool calls: materialize the Hub yourself (`sandbox-build.cmd`, then `lyx init` in the
   host repo), then run the real `lyx builder run` / `spawn-batch` / `poll` / `pause` commands the
   scenarios describe, foreground, waiting for each to return. This DOES spawn real psmux panes and
@@ -328,13 +388,15 @@ Live driving via the SANDBOX SUITE (PRIMARY — where the bugs surface):
   hand-seeded YAML fixture), you must run the real CLI end-to-end and report the actual terminal
   output with timestamps as evidence, not a summary claim. Extend to B1/B2/B3/B5 as time allows —
   more live coverage is always better, never optional busywork.
-- Walk every scenario (B1–B8) this way and record OK/WARN/FAIL. **B7 exercises the in-flight guard and
-  dead-respawn reclaim; B8 exercises chain-restart-from-non-lowest-member directly.** The suite is a FLOOR — devise and run MORE
-  adversarial scenarios of your own beyond it, especially combinations the suite doesn't try (e.g.
-  pause racing a batch that is *just about* to write its report; a chain restart while a sibling
-  batch's implementer is still technically live from a stale strand).
+- Walk every scenario (B1–B9) this way and record OK/WARN/FAIL. **B7 exercises the in-flight guard
+  and dead-respawn reclaim; B8 exercises chain-restart-from-non-lowest-member directly; B9 exercises
+  run-entry substrate reclaim (orphaned orchestrator + `--fresh`-with-live-implementer).** The suite
+  is a FLOOR — devise and run MORE adversarial scenarios of your own beyond it, especially
+  combinations the suite doesn't try (e.g. pause racing a batch that is *just about* to write its
+  report; a chain restart while a sibling batch's implementer is still technically live from a stale
+  strand; `pause` racing a `run --fresh` invocation; a third overlapping `run` process).
 - The only legitimate "cannot verify" cases are: (a) a scenario that structurally requires a human
-  to visually confirm something (there are none in B1-B8 today — flag it if you add one that does),
+  to visually confirm something (there are none in B1-B9 today — flag it if you add one that does),
   or (b) a genuine environment gap (`claude` not logged in, `psmux.exe` missing — check for this
   FIRST, before doing anything else, so you know up front whether it applies). Flag those as
   not-headlessly-verifiable with the specific missing precondition — never as a blanket
