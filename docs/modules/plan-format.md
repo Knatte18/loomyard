@@ -530,31 +530,50 @@ doc, in this fixed order:
 ## Worked example
 
 A complete minimal plan for a fictional task ("add a `--json` flag to `lyx board list`"),
-byte-consistent across index ↔ filenames ↔ report.
+byte-consistent across index ↔ filenames ↔ report. Across its three batch files this
+example demonstrates every plan-format v2 feature: all five typed file-op fields (with
+`none` sentinels), `NN.C` card headings, `(C cards)` Batch Index segments, a
+`## Shared Decisions` overview entry, a `root:` batch with a `//`-escaped path, a pinned
+`Commit:` field, and a `Moves:` card with its `## Rename mechanic` section.
 
 `_lyx/plan/00-overview.md`:
 
 ```markdown
 ---
-format: 1
+format: 2
 approved: true
 ---
 
 # Plan: add --json to `lyx board list`
 
 Add a `--json` output mode to `lyx board list`, emitting one JSON object per row via the
-`internal/output` envelope, with tests and help text updated.
+`internal/output` envelope, with tests and help text updated, and the row mapper
+relocated ahead of a later extraction.
 
 ## Batch Index
 
-- 01 — json-flag — add the `--json` flag and envelope emission to boardcli list
-- 02 — list-tests — cover `--json` in boardcli list tests and update help-tree pins
+- 01 — json-flag (2 cards) — add the `--json` flag and envelope emission to boardcli list
+- 02 — list-tests (2 cards) — cover `--json` in boardcli list tests, update help-tree pins, and rename the row mapper
+
+## Shared Decisions
+
+### Decision: json-envelope-reuse
+
+- **Decision:** `--json` marshals each row through the existing `internal/output.Ok`
+  envelope — no new envelope type is introduced.
+- **Rationale:** one JSON emission path for the whole CLI; a second envelope shape
+  would fork behavior for no gain.
+- **Applies to:** all batches
 ```
 
 `_lyx/plan/01-json-flag.md`:
 
 ```markdown
-# 01 — json-flag: add the `--json` flag and envelope emission
+---
+root: internal/boardcli
+---
+
+# 01 — json-flag: add the --json flag and envelope emission
 
 ## Intent
 
@@ -568,51 +587,95 @@ Stand-alone: after this batch the flag works end-to-end; tests land in batch 02.
 
 ## Cards
 
-### Card 1 — flag + row struct
+### Card 01.1 — flag + row struct
 
 **What:** Add a `--json` bool flag to the list command; define `RowJSON` with the
 existing table's columns as fields.
-**Where:** internal/boardcli/list.go, internal/boardengine/rows.go
+**Context:** none
+**Edits:**
+- `list.go`
+- `//internal/boardengine/rows.go`
+**Creates:** none
+**Deletes:** none
+**Moves:** none
+**Commit:** `01.1: add the --json flag and row struct`
 **verify:** go build ./...
 
-### Card 2 — emission path
+### Card 01.2 — emission path
 
 **What:** When `--json` is set, marshal each row through `output.Ok` instead of the
 table writer; keep the table path unchanged.
-**Where:** internal/boardcli/list.go
+**Context:**
+- `//internal/output/envelope.go`
+**Edits:**
+- `list.go`
+**Creates:** none
+**Deletes:** none
+**Moves:** none
 
 ## verify:
 
 go test ./internal/boardcli/... ./internal/boardengine/...
 ```
 
+`list.go` above resolves (per the batch's `root: internal/boardcli`) to
+`internal/boardcli/list.go`; the `//`-prefixed `rows.go` and `envelope.go` entries stay
+worktree-root-relative regardless of `root:`, escaping it for the one file each card
+needs outside the shared prefix.
+
 `_lyx/plan/02-list-tests.md`:
 
 ```markdown
-# 02 — list-tests: cover --json in tests and help pins
+# 02 — list-tests: cover --json in tests, update help pins, and rename the row mapper
 
 ## Intent
 
-Tests prove the `--json` path end-to-end; help-tree pins reflect the new flag.
+Tests prove the `--json` path end-to-end; help-tree pins reflect the new flag; the row
+mapper is relocated ahead of a later extraction (not shown in this example).
 Stand-alone: assumes batch 01 is committed.
 
 ## Scope
 
 - internal/boardcli/list_test.go
 - cmd/lyx/helptree_test.go
+- internal/boardengine/rows.go
+- internal/boardengine/rowsjson.go
+
+## Rename mechanic
+
+1. Run `git mv internal/boardengine/rows.go internal/boardengine/rowsjson.go` FIRST,
+   before any other change to the moved file.
+2. Then make ONLY surgical edits (package declaration, imports, identifier
+   retargeting) — no unrelated rewrites.
+3. Use `Creates:` only for genuinely new files, never for the relocated file itself.
+4. Never write the relocated file from scratch and delete the original — that loses
+   git history exactly as an unstructured create+delete pair would.
 
 ## Cards
 
-### Card 1 — list --json tests
+### Card 02.1 — list --json tests
 
 **What:** Add table-driven tests asserting one `output.Ok` envelope per row for
 `list --json`, and that the table path is unchanged without the flag.
-**Where:** internal/boardcli/list_test.go
+**Context:** none
+**Edits:**
+- `internal/boardcli/list_test.go`
+**Creates:** none
+**Deletes:** none
+**Moves:** none
 
-### Card 2 — help-tree pin
+### Card 02.2 — help-tree pin + row-mapper rename
 
-**What:** Update the pinned help-tree set with the new `--json` flag help text.
-**Where:** cmd/lyx/helptree_test.go
+**What:** Update the pinned help-tree set with the new `--json` flag help text, and
+relocate the row mapper via `git mv` per the Rename mechanic above (no behavior change
+in this card).
+**Context:** none
+**Edits:**
+- `cmd/lyx/helptree_test.go`
+**Creates:** none
+**Deletes:** none
+**Moves:**
+- `internal/boardengine/rows.go` -> `internal/boardengine/rowsjson.go`
 
 ## verify:
 
