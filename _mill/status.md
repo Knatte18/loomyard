@@ -41,7 +41,9 @@ batches:
     start_sha: e06400c124a16f5fdcac713971b062c7dea41306
     commit_sha: db9543d953f144f758a36ecc806bf5980a2048f2
   - name: tier-purity-guard
-    state: pending
+    state: running
+    implementer_session: a022da72-e4d2-4c9f-98ff-42a8732ed677
+    start_sha: c2df0d1a457641719e1dd0c1af050083b8012cc8
   - name: rebaseline-docs
     state: pending
 ```
