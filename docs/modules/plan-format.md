@@ -492,7 +492,10 @@ doc, in this fixed order:
 3. `verify-missing` — per-batch `verify:` present (or `deferred` with a valid
    `chain-end:`).
 4. `chain-end-dangling` — no dangling `chain-end` (target exists, is not itself
-   deferred, and is a later batch number).
+   deferred, and is a later batch number), and the declaring batch is itself
+   `verify: deferred` — chain membership keys on `chain-end:` alone, so a batch
+   declaring it next to a real `verify:` command would silently join the chain's
+   rollback set while never deferring anything.
 5. `batch-oversized` — the context estimate (bytes of Scope + every card's typed
    file-op paths, divided by 4) and the card-count cap — over either cap without
    `oversized: true` fails loudly.

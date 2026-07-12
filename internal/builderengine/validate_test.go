@@ -91,6 +91,32 @@ func TestValidate_PlanBrokenChain_TripsCheck4Twice(t *testing.T) {
 	}
 }
 
+// TestValidate_ChainEndWithoutDeferred proves a batch declaring chain-end:
+// next to a real verify: command trips chain-end-dangling: chain membership
+// keys on chain-end: alone, so such a batch silently joins the chain's
+// destructive rollback set while never deferring anything.
+func TestValidate_ChainEndWithoutDeferred(t *testing.T) {
+	t.Parallel()
+
+	plan := syntheticPlan(t.TempDir(),
+		builderengine.PlanBatch{Number: 1, Slug: "first", File: "01-first.md", ChainEnd: 2, VerifyCommand: "go build ./...", Cards: nCards(1), IndexCardCount: 1},
+		builderengine.PlanBatch{Number: 2, Slug: "second", File: "02-second.md", VerifyCommand: "go test ./...", Cards: nCards(1), IndexCardCount: 1},
+	)
+
+	var chainFindings []builderengine.ValidationError
+	for _, f := range builderengine.Validate(plan, plan.Dir, generousCaps) {
+		if f.Check == "chain-end-dangling" {
+			chainFindings = append(chainFindings, f)
+		}
+	}
+	if len(chainFindings) != 1 {
+		t.Fatalf("chain-end-dangling findings = %+v; want exactly 1", chainFindings)
+	}
+	if chainFindings[0].Batch != "01-first" || !strings.Contains(chainFindings[0].Detail, "not verify: deferred") {
+		t.Errorf("finding = %+v; want batch 01-first flagged for chain-end without verify: deferred", chainFindings[0])
+	}
+}
+
 // syntheticPlan builds a minimal in-memory Plan for the checks below that
 // need shapes the hand-written fixtures deliberately avoid (an unapproved
 // or dangling-chain plan cannot also carry a numbering gap, an oversized

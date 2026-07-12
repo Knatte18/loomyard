@@ -207,7 +207,11 @@ func checkVerifyPresence(plan *Plan) []ValidationError {
 
 // checkChainEndSoundness implements check 4: every ChainEnd must name an
 // existing batch that is not itself VerifyDeferred and whose number is
-// greater than the declaring batch's own number.
+// greater than the declaring batch's own number — and the declaring batch
+// must itself be VerifyDeferred, since chain membership is keyed on
+// chain-end: alone (ChainMembers/ChainEndFor), so a batch declaring
+// chain-end: next to a real verify: command silently joins the chain's
+// destructive rollback set while never deferring anything.
 func checkChainEndSoundness(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
@@ -219,6 +223,14 @@ func checkChainEndSoundness(plan *Plan) []ValidationError {
 	for _, b := range plan.Batches {
 		if b.ChainEnd == 0 {
 			continue
+		}
+
+		if !b.VerifyDeferred {
+			findings = append(findings, ValidationError{
+				Check:  "chain-end-dangling",
+				Batch:  batchID(b),
+				Detail: fmt.Sprintf("batch declares chain-end: %d but not verify: deferred; a chain intermediate must declare both", b.ChainEnd),
+			})
 		}
 
 		target, ok := byNumber[b.ChainEnd]
