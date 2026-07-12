@@ -295,7 +295,9 @@ is how a card names a file outside the shared root, e.g. `//cmd/lyx/main.go`. Th
 purely a token-economy shorthand for a batch whose cards repeat the same directory
 prefix over and over; it changes nothing about what gets validated or how a path
 compares against Scope — Scope entries themselves are never root-resolved (see
-[Scope](#scope--declared-ownership-not-a-cage) above).
+[Scope](#scope--declared-ownership-not-a-cage) above). The degenerate `root: "."` case
+(the worktree root itself) resolves a card path to the raw path unchanged, rather than
+the unclean `"./<raw>"` a literal string join would produce.
 
 The parser normalizes every card path to a plain worktree-relative, forward-slash path
 exactly once, at parse time — the validator, the context estimate, and any future
