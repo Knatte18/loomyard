@@ -1,4 +1,4 @@
-// validate.go implements Validate, the six plan-format v1 machine checks
+// validate.go implements Validate, the six plan-format v2 machine checks
 // (docs/modules/plan-format.md's "Validation checks" section): format/
 // approval, Batch Index <-> file consistency, verify: presence, chain-end
 // soundness, the oversized-batch context/card-count cap, and scope
@@ -19,8 +19,9 @@ import (
 
 // recognizedFormat is the only plan-format version ParsePlan/Validate
 // currently understand; a plan declaring any other format: value fails the
-// format-unrecognized check.
-const recognizedFormat = 1
+// format-unrecognized check. v2 supersedes v1 outright — there is no
+// dual-version support, and no production v1 plans exist to migrate.
+const recognizedFormat = 2
 
 // ValidateCaps carries the two operator-configured cap values Validate's
 // batch-oversized check (5) compares each batch's estimate against.
@@ -28,12 +29,12 @@ const recognizedFormat = 1
 // module's job) — callers resolve these from builder.yaml and pass them in.
 type ValidateCaps struct {
 	// ContextCapTokens is the maximum estimated context size (bytes of
-	// referenced Scope+Where files, divided by 4) a non-oversized batch may
-	// claim before batch-oversized fires.
+	// referenced Scope + card file-op paths, divided by 4) a non-oversized
+	// batch may claim before batch-oversized fires.
 	ContextCapTokens int
 
-	// CardCap is the maximum CardCount a non-oversized batch may claim
-	// before batch-oversized fires.
+	// CardCap is the maximum len(PlanBatch.Cards) a non-oversized batch may
+	// claim before batch-oversized fires.
 	CardCap int
 }
 
@@ -64,12 +65,12 @@ func batchID(b PlanBatch) string {
 	return fmt.Sprintf("%02d-%s", b.Number, b.Slug)
 }
 
-// Validate runs every plan-format v1 machine check against plan and returns
+// Validate runs every plan-format v2 machine check against plan and returns
 // every finding, ordered deterministically by check number and then by
 // batch number within a check. worktreeRoot is the base Validate resolves
-// each batch's Scope and WhereFiles entries against for the batch-oversized
-// context estimate (check 5); caps supplies that check's two cap values. A
-// nil/empty return means the plan passes every check.
+// each batch's Scope and card file-op path entries against for the
+// batch-oversized context estimate (check 5); caps supplies that check's
+// two cap values. A nil/empty return means the plan passes every check.
 func Validate(plan *Plan, worktreeRoot string, caps ValidateCaps) []ValidationError {
 	var findings []ValidationError
 
@@ -225,9 +226,13 @@ func checkChainEndSoundness(plan *Plan) []ValidationError {
 }
 
 // checkBatchOversized implements check 5: a batch's estimated context
-// (bytes of its existing Scope+WhereFiles entries, resolved against
-// worktreeRoot, divided by 4) over caps.ContextCapTokens, or its CardCount
-// over caps.CardCap, without Oversized: true, fails loudly.
+// (bytes of its existing Scope entries plus every card's five typed
+// file-op path fields and both sides of every Moves: pair, resolved
+// against worktreeRoot, divided by 4) over caps.ContextCapTokens, or its
+// card count over caps.CardCap, without Oversized: true, fails loudly. A
+// path that does not exist on disk (a Creates: target, or a Moves:
+// destination that has not landed yet) contributes zero bytes, per
+// pathSizeOnDisk's existing semantics (context-estimate-inputs decision).
 func checkBatchOversized(plan *Plan, worktreeRoot string, caps ValidateCaps) []ValidationError {
 	var findings []ValidationError
 
@@ -240,20 +245,29 @@ func checkBatchOversized(plan *Plan, worktreeRoot string, caps ValidateCaps) []V
 		for _, p := range b.Scope {
 			totalBytes += pathSizeOnDisk(filepath.Join(worktreeRoot, p))
 		}
-		for _, p := range b.WhereFiles {
-			totalBytes += pathSizeOnDisk(filepath.Join(worktreeRoot, p))
+		for _, c := range b.Cards {
+			for _, fields := range [][]string{c.ContextFiles, c.EditsFiles, c.CreatesFiles, c.DeletesFiles} {
+				for _, p := range fields {
+					totalBytes += pathSizeOnDisk(filepath.Join(worktreeRoot, p))
+				}
+			}
+			for _, mv := range c.Moves {
+				totalBytes += pathSizeOnDisk(filepath.Join(worktreeRoot, mv.Old))
+				totalBytes += pathSizeOnDisk(filepath.Join(worktreeRoot, mv.New))
+			}
 		}
 		estimateTokens := int(totalBytes / 4)
 
+		cardCount := len(b.Cards)
 		overContext := estimateTokens > caps.ContextCapTokens
-		overCards := b.CardCount > caps.CardCap
+		overCards := cardCount > caps.CardCap
 		if overContext || overCards {
 			findings = append(findings, ValidationError{
 				Check: "batch-oversized",
 				Batch: batchID(b),
 				Detail: fmt.Sprintf(
 					"estimated context %d tokens (cap %d) and card count %d (cap %d) without oversized: true",
-					estimateTokens, caps.ContextCapTokens, b.CardCount, caps.CardCap,
+					estimateTokens, caps.ContextCapTokens, cardCount, caps.CardCap,
 				),
 			})
 		}

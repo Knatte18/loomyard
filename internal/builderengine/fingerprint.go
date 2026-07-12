@@ -18,7 +18,7 @@ import (
 
 // Fingerprint computes a SHA-256 digest over every "*.md" file's name and
 // contents in planDir. Non-.md entries (including subdirectories) are
-// ignored, since only markdown plan files carry plan-format v1 content.
+// ignored, since only markdown plan files carry plan-format v2 content.
 // Filenames are sorted lexically before hashing so the result does not
 // depend on directory read order; each entry contributes
 // name + "\x00" + contents + "\x00" to the hash, so a rename (the name

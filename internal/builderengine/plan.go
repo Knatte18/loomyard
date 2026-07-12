@@ -1,4 +1,4 @@
-// plan.go implements the plan-format v1 parser: ParsePlan reads a plan
+// plan.go implements the plan-format v2 parser: ParsePlan reads a plan
 // directory's 00-overview.md (frontmatter + Batch Index + framing) and, for
 // each batch the index lists, its own NN-<batch-slug>.md file, producing the
 // in-memory Plan the rest of builderengine drives from. Every parse failure
@@ -24,7 +24,7 @@ import (
 // its plan directory, per plan-format.md's on-disk layout.
 const overviewFileName = "00-overview.md"
 
-// Plan is the in-memory form of a parsed plan-format v1 plan: the
+// Plan is the in-memory form of a parsed plan-format v2 plan: the
 // overview's frontmatter and task framing, plus every batch the Batch Index
 // lists, each itself parsed from its own NN-<batch-slug>.md file (see
 // PlanBatch).
@@ -99,15 +99,103 @@ type PlanBatch struct {
 
 	// Scope is the batch file's "## Scope" bullet list: plain paths
 	// (prefix semantics, no globs) declaring the batch's file ownership.
+	// Scope entries stay worktree-relative always — they are NOT
+	// root-resolved (see Root below); a batch's declared ownership is
+	// meant to read the same regardless of the root: shorthand its cards
+	// happen to use.
 	Scope []string
 
-	// WhereFiles accumulates every "## Cards" card's "**Where:**" line's
-	// comma-separated paths, across all cards, in file order.
-	WhereFiles []string
+	// Root mirrors the batch file's optional frontmatter "root:" key: a
+	// worktree-relative directory every card file-op path (all five
+	// fields, both sides of a Moves: pair) is resolved against, unless the
+	// path starts with "//" (always worktree-root-relative, root set or
+	// not). Empty when the frontmatter key is absent, in which case card
+	// paths are stored exactly as written (still worktree-relative). See
+	// normalizeCardPath for the three-case resolution rule.
+	Root string
 
-	// CardCount is the number of "### Card N" headings under the batch
-	// file's "## Cards" section.
-	CardCount int
+	// Cards is every "### Card NN.C — <title>" card parsed from the batch
+	// file's "## Cards" section, in document order.
+	Cards []PlanCard
+
+	// IndexCardCount is the Batch Index entry's mandatory "(C cards)"
+	// segment for this batch — the Planner's own count, compared against
+	// len(Cards) by Validate's card-count-mismatch check (not this
+	// package's parse step).
+	IndexCardCount int
+}
+
+// MovePair is one well-formed "Moves:" sub-bullet: a card declaring that
+// Old is renamed to New (both normalized worktree-relative paths, per
+// normalizeCardPath). The repo's own rename convention — "git mv" first,
+// then only surgical edits — is what a card's Moves: entry declares; see
+// plan-format.md's Rename mechanic text.
+type MovePair struct {
+	Old, New string
+}
+
+// PlanCard is one "### Card NN.C — <title>" card parsed from a batch
+// file's "## Cards" section. Card-level defects (a missing field, a
+// malformed Moves: bullet) are never parse errors — plan-format.md's
+// lenient-card-parse discipline records them leniently here so Validate can
+// turn them into enumerable findings instead of a single fail-loud error.
+type PlanCard struct {
+	// BatchPrefix is the "NN" the card's own heading carries — the
+	// batch's zero-padded number as written in "### Card NN.C — <title>".
+	// It is stored as written, not derived from the batch's own Number,
+	// so Validate's card-numbering check can compare the two and flag a
+	// mismatch.
+	BatchPrefix int
+
+	// Number is the "C" part of the card's heading — the card's ordinal
+	// within its batch, restarting at 1 per batch.
+	Number int
+
+	// Title is the card heading's trailing title text.
+	Title string
+
+	// ContextFiles, EditsFiles, CreatesFiles, and DeletesFiles are the
+	// card's four non-Moves typed file-op fields, each a normalized
+	// worktree-relative path list. nil means the field's bold label was
+	// never seen at all (see HasContext etc.); a present field whose
+	// label line carries the literal "none" parses to an empty non-nil
+	// slice — the two are deliberately distinguishable.
+	ContextFiles, EditsFiles, CreatesFiles, DeletesFiles []string
+
+	// Moves is every well-formed "- `old` -> `new`" sub-bullet under the
+	// card's "**Moves:**" field, both sides normalized. Present-but-none
+	// parses to an empty non-nil slice, matching the other four fields.
+	Moves []MovePair
+
+	// MovesRaw is every "**Moves:**" sub-bullet that failed the pair
+	// grammar, retained verbatim (not normalized) so Validate's
+	// move-format check can name the exact offending line.
+	MovesRaw []string
+
+	// HasContext, HasEdits, HasCreates, HasDeletes, and HasMoves report
+	// whether the card's body carried that field's bold label at all —
+	// distinct from the field being present-but-none. Validate's
+	// card-missing-field check flags a card missing any of the five.
+	HasContext, HasEdits, HasCreates, HasDeletes, HasMoves bool
+
+	// HasWhat reports whether the card carried a "**What:**" label. The
+	// prose itself is never stored: v1 precedent is that the Batch
+	// Index's Intent is the machine-read summary and a card's What: is
+	// for the implementer only, not for builderengine.
+	HasWhat bool
+
+	// Commit is the card's optional "**Commit:**" field value, with its
+	// surrounding backticks stripped. Empty when the field is absent; the
+	// implementer then derives the commit subject from the "NN.C: <short
+	// what>" convention itself. Validate's commit-subject-mismatch check
+	// flags a present value that does not start with the card's own
+	// "NN.C: " prefix.
+	Commit string
+
+	// VerifyCommand is the card's optional "**verify:**" field's value,
+	// taken verbatim (v1 per-card verify semantics unchanged). Empty when
+	// absent.
+	VerifyCommand string
 }
 
 // overviewFrontmatter mirrors 00-overview.md's frontmatter shape 1:1.
@@ -121,21 +209,28 @@ type overviewFrontmatter struct {
 }
 
 // indexEntry is one parsed "## Batch Index" line: the machine-readable
-// fields of "NN — <batch-slug> — <one-line intent>" before its named batch
-// file has been read.
+// fields of "NN — <batch-slug> (C cards) — <one-line intent>" before its
+// named batch file has been read.
 type indexEntry struct {
-	Number int
-	Slug   string
-	Intent string
-	File   string
+	Number    int
+	Slug      string
+	CardCount int
+	Intent    string
+	File      string
 }
 
-// indexLineRe matches a Batch Index entry's three fields, accepting either
-// the em dash "—" or one-or-two ASCII hyphens as the separator between them
-// (plan-format.md's worked example uses "—"; hand-written plans may use
-// ASCII). The separator is required to be surrounded by whitespace so it is
-// never confused with a hyphen inside the slug itself (e.g. "json-flag").
-var indexLineRe = regexp.MustCompile(`^(\d+)\s+(?:—|-{1,2})\s+(\S+)\s+(?:—|-{1,2})\s+(.+)$`)
+// indexLineRe matches a plan-format v2 Batch Index entry's four fields,
+// accepting either the em dash "—" or one-or-two ASCII hyphens as either
+// separator (plan-format.md's worked example uses "—"; hand-written plans
+// may use ASCII). Both separators are required to be surrounded by
+// whitespace so neither is ever confused with a hyphen inside the slug
+// itself (e.g. "json-flag"). The "(C cards)" segment is mandatory —
+// singular "(1 card)" is accepted — between the slug and the second
+// separator; a line without it does not match at all, so it falls through
+// to parseBatchIndex's fail-loud "unparseable batch index line" error, per
+// the lenient-card-parse decision (this is document structure, not a
+// card-level defect).
+var indexLineRe = regexp.MustCompile(`^(\d+)\s+(?:—|-{1,2})\s+(\S+)\s+\((\d+)\s+cards?\)\s+(?:—|-{1,2})\s+(.+)$`)
 
 // ParsePlan reads the plan directory planDir and returns the fully parsed
 // Plan: 00-overview.md's frontmatter, framing, and Batch Index, plus every
@@ -307,12 +402,17 @@ func parseBatchIndex(lines []string) ([]indexEntry, error) {
 			return nil, fmt.Errorf("unparseable batch index line %q: %w", raw, err)
 		}
 		slug := m[2]
+		cardCount, err := strconv.Atoi(m[3])
+		if err != nil {
+			return nil, fmt.Errorf("unparseable batch index line %q: %w", raw, err)
+		}
 
 		entries = append(entries, indexEntry{
-			Number: number,
-			Slug:   slug,
-			Intent: normalizeWhitespace(m[3]),
-			File:   fmt.Sprintf("%02d-%s.md", number, slug),
+			Number:    number,
+			Slug:      slug,
+			CardCount: cardCount,
+			Intent:    normalizeWhitespace(m[4]),
+			File:      fmt.Sprintf("%02d-%s.md", number, slug),
 		})
 	}
 	if len(entries) == 0 {
@@ -338,6 +438,7 @@ type batchFrontmatter struct {
 	Oversized *bool   `yaml:"oversized"`
 	Verify    *string `yaml:"verify"`
 	ChainEnd  *int    `yaml:"chain-end"`
+	Root      *string `yaml:"root"`
 }
 
 // verifyDeferredSentinel is the only value plan-format.md permits for a
@@ -351,27 +452,110 @@ const (
 	cardsHeading = "## Cards"
 )
 
-// cardHeadingRe matches a "### Card N" sub-heading inside a batch file's
-// "## Cards" section; each match increments PlanBatch.CardCount.
-var cardHeadingRe = regexp.MustCompile(`^###\s+Card\s+\d+`)
+// cardHeadingRe matches a "### Card NN.C — <title>" card heading inside a
+// batch file's "## Cards" section, capturing the batch prefix "NN", the
+// card number "C", and the trailing title. ASCII "-"/"--" is accepted
+// wherever the em dash "—" is, mirroring indexLineRe's tolerance. A
+// "### " line inside "## Cards" that does not match this shape is
+// document structure, not a card-level defect — parseCardsSection fails
+// loud rather than silently skipping it (lenient-card-parse decision).
+var cardHeadingRe = regexp.MustCompile(`^###\s+Card\s+(\d{2})\.(\d+)\s*(?:—|-{1,2})\s*(.*)$`)
 
-// whereLinePrefix is the exact bold-label prefix a card's file-list line
-// carries, per plan-format.md's worked example ("**Where:** path, path").
-const whereLinePrefix = "**Where:**"
+// moveLineRe matches a "Moves:" sub-bullet's well-formed two-path grammar,
+// after its leading "- " bullet marker has already been stripped:
+// "`old/path` -> `new/path`" (backtick-wrapped paths, ASCII " -> " arrow).
+// A bullet that does not match is retained verbatim in PlanCard.MovesRaw
+// for Validate's move-format check to flag, per lenient-card-parse.
+var moveLineRe = regexp.MustCompile("^`([^`]+)` -> `([^`]+)`$")
+
+// Bold-label prefixes for the fields plan-format v2 recognizes inside a
+// card, in the field order plan-format.md pins. Matched by exact string
+// prefix, mirroring v1's whereLinePrefix precedent.
+const (
+	whatLabel       = "**What:**"
+	contextLabel    = "**Context:**"
+	editsLabel      = "**Edits:**"
+	createsLabel    = "**Creates:**"
+	deletesLabel    = "**Deletes:**"
+	movesLabel      = "**Moves:**"
+	commitLabel     = "**Commit:**"
+	cardVerifyLabel = "**verify:**"
+)
+
+// cardLabels lists every bold-label prefix parseCardBody recognizes, used
+// by isCardLabelLine to detect where a "**What:**" prose block or a
+// file-op field's bullet list ends: at the next label line (or the end of
+// the card's own line range, which already stops at the next "### "
+// heading).
+var cardLabels = []string{
+	whatLabel, contextLabel, editsLabel, createsLabel, deletesLabel,
+	movesLabel, commitLabel, cardVerifyLabel,
+}
+
+// noneSentinel is the literal case-insensitive value a file-op field's
+// label line carries when the field is empty: an inline "none" (rather
+// than any "- `path`" bullets) yields the field's empty non-nil slice —
+// present-but-empty, distinct from the field being absent altogether
+// (nil slice, HasX == false).
+const noneSentinel = "none"
+
+// isCardLabelLine reports whether line (as found in a card's raw body,
+// pre-trim) begins one of the card's recognized bold-label fields.
+func isCardLabelLine(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	for _, label := range cardLabels {
+		if strings.HasPrefix(trimmed, label) {
+			return true
+		}
+	}
+	return false
+}
+
+// stripBackticks removes a single pair of surrounding backticks from s, if
+// present, or returns s unchanged otherwise — a bullet whose payload is not
+// backtick-wrapped is retained as-is, well-formedness being validator
+// territory (lenient-card-parse decision).
+func stripBackticks(s string) string {
+	if len(s) >= 2 && strings.HasPrefix(s, "`") && strings.HasSuffix(s, "`") {
+		return s[1 : len(s)-1]
+	}
+	return s
+}
+
+// normalizeCardPath resolves one card file-op path per the three-case rule
+// (per-batch-root-path-shorthand decision): a "//"-prefixed path always
+// strips exactly that prefix and is worktree-root-relative, whether or not
+// root is set; otherwise, a non-empty root joins as "<root>/<raw>";
+// otherwise raw is returned unchanged. Absolute paths, ".." segments, and
+// unclean paths are deliberately NOT rejected here — Validate's
+// scope-malformed check (extended to card paths) owns well-formedness, not
+// the parser (normalize-at-parse decision).
+func normalizeCardPath(root, raw string) string {
+	raw = strings.TrimSpace(raw)
+	if strings.HasPrefix(raw, "//") {
+		return strings.TrimPrefix(raw, "//")
+	}
+	if root != "" {
+		return root + "/" + raw
+	}
+	return raw
+}
 
 // parseBatchFile reads planDir's entry.File and parses it into a complete
 // PlanBatch, seeded with the Batch Index fields ParsePlan already knows
-// (Number, Slug, Intent, File). It decodes the file's optional frontmatter,
-// then its "## Scope" bullet list, its "## Cards" section's card count and
-// accumulated "**Where:**" paths, and finally its "## verify:" section's
-// command — enforcing plan-format.md's "one or the other, never both" rule
-// between frontmatter verify: deferred and a "## verify:" body section.
+// (Number, Slug, Intent, File, IndexCardCount). It decodes the file's
+// optional frontmatter (including root:, needed before card paths can be
+// normalized), then its "## Scope" bullet list, its "## Cards" section's
+// typed cards, and finally its "## verify:" section's command — enforcing
+// plan-format.md's "one or the other, never both" rule between frontmatter
+// verify: deferred and a "## verify:" body section.
 func parseBatchFile(planDir string, entry indexEntry) (PlanBatch, error) {
 	batch := PlanBatch{
-		Number: entry.Number,
-		Slug:   entry.Slug,
-		Intent: entry.Intent,
-		File:   entry.File,
+		Number:         entry.Number,
+		Slug:           entry.Slug,
+		Intent:         entry.Intent,
+		File:           entry.File,
+		IndexCardCount: entry.CardCount,
 	}
 
 	path := filepath.Join(planDir, entry.File)
@@ -404,9 +588,11 @@ func parseBatchFile(planDir string, entry indexEntry) (PlanBatch, error) {
 	}
 	batch.Scope = scope
 
-	whereFiles, cardCount := parseCardsSection(body)
-	batch.WhereFiles = whereFiles
-	batch.CardCount = cardCount
+	cards, err := parseCardsSection(body, batch.Root)
+	if err != nil {
+		return PlanBatch{}, fmt.Errorf("%s: %w", path, err)
+	}
+	batch.Cards = cards
 
 	verifyCommand, hasVerifySection := parseVerifySection(body)
 	if batch.VerifyDeferred && hasVerifySection {
@@ -419,7 +605,7 @@ func parseBatchFile(planDir string, entry indexEntry) (PlanBatch, error) {
 
 // decodeBatchFrontmatter strict-decodes a batch file's frontmatter block
 // into batch's frontmatter-sourced fields (Oversized, VerifyDeferred,
-// ChainEnd), rejecting any verify: value other than the "deferred"
+// ChainEnd, Root), rejecting any verify: value other than the "deferred"
 // sentinel.
 func decodeBatchFrontmatter(fmBlock, path string, batch *PlanBatch) error {
 	var fm batchFrontmatter
@@ -440,6 +626,9 @@ func decodeBatchFrontmatter(fmBlock, path string, batch *PlanBatch) error {
 	}
 	if fm.ChainEnd != nil {
 		batch.ChainEnd = *fm.ChainEnd
+	}
+	if fm.Root != nil {
+		batch.Root = *fm.Root
 	}
 	return nil
 }
@@ -503,33 +692,179 @@ func parseScopeSection(body string) ([]string, error) {
 	return scope, nil
 }
 
-// parseCardsSection scans a batch file's "## Cards" section for "### Card
-// N" headings (counted into cardCount) and "**Where:**" lines (whose
-// comma-separated paths accumulate, in file order, into whereFiles). A
-// batch file with no "## Cards" section yields a nil slice and zero count,
-// not an error.
-func parseCardsSection(body string) (whereFiles []string, cardCount int) {
+// parseCardsSection splits a batch file's "## Cards" section at "### Card
+// NN.C — <title>" headings and parses each into a PlanCard, resolving
+// every card file-op path against root (batch.Root, empty when the batch
+// carries no root: frontmatter). A batch file with no "## Cards" section
+// yields a nil slice, not an error. A "### " line inside the section that
+// does not match cardHeadingRe's shape is document structure, not a
+// card-level defect, and fails loud naming the offending line
+// (lenient-card-parse decision).
+func parseCardsSection(body, root string) ([]PlanCard, error) {
 	section := extractSection(body, cardsHeading)
 	if section == nil {
-		return nil, 0
+		return nil, nil
 	}
 
-	for _, raw := range section {
-		line := strings.TrimSpace(raw)
+	var cards []PlanCard
+	i := 0
+	for i < len(section) {
+		trimmed := strings.TrimSpace(section[i])
+		if !strings.HasPrefix(trimmed, "### ") {
+			// Blank lines and any other prose between cards (or before the
+			// first one) are not structurally significant.
+			i++
+			continue
+		}
+
+		m := cardHeadingRe.FindStringSubmatch(trimmed)
+		if m == nil {
+			return nil, fmt.Errorf("unrecognized heading inside %q: %q", cardsHeading, trimmed)
+		}
+
+		end := i + 1
+		for end < len(section) && !strings.HasPrefix(strings.TrimSpace(section[end]), "### ") {
+			end++
+		}
+
+		card, err := parseCardBody(m, section[i+1:end], root)
+		if err != nil {
+			return nil, err
+		}
+		cards = append(cards, card)
+		i = end
+	}
+	return cards, nil
+}
+
+// parseCardBody parses one card's body lines (the lines strictly between
+// its own "### Card NN.C — <title>" heading and the next card heading or
+// the end of the "## Cards" section) into a PlanCard. headingMatch is
+// cardHeadingRe's submatch against the card's heading line. Card-level
+// defects (a missing field, a malformed Moves: bullet) are recorded
+// leniently, never returned as an error — only Validate turns them into
+// findings (lenient-card-parse decision).
+func parseCardBody(headingMatch []string, lines []string, root string) (PlanCard, error) {
+	batchPrefix, err := strconv.Atoi(headingMatch[1])
+	if err != nil {
+		return PlanCard{}, fmt.Errorf("card heading %q: %w", headingMatch[0], err)
+	}
+	number, err := strconv.Atoi(headingMatch[2])
+	if err != nil {
+		return PlanCard{}, fmt.Errorf("card heading %q: %w", headingMatch[0], err)
+	}
+
+	card := PlanCard{
+		BatchPrefix: batchPrefix,
+		Number:      number,
+		Title:       strings.TrimSpace(headingMatch[3]),
+	}
+
+	i := 0
+	for i < len(lines) {
+		trimmed := strings.TrimSpace(lines[i])
 		switch {
-		case cardHeadingRe.MatchString(line):
-			cardCount++
-		case strings.HasPrefix(line, whereLinePrefix):
-			rest := strings.TrimSpace(strings.TrimPrefix(line, whereLinePrefix))
-			for _, p := range strings.Split(rest, ",") {
-				p = strings.TrimSpace(p)
-				if p != "" {
-					whereFiles = append(whereFiles, p)
-				}
+		case trimmed == "":
+			i++
+		case strings.HasPrefix(trimmed, whatLabel):
+			card.HasWhat = true
+			i++
+			for i < len(lines) && !isCardLabelLine(lines[i]) {
+				i++
 			}
+		case strings.HasPrefix(trimmed, contextLabel):
+			card.HasContext = true
+			card.ContextFiles, i = parseFileOpField(trimmed, contextLabel, root, lines, i+1)
+		case strings.HasPrefix(trimmed, editsLabel):
+			card.HasEdits = true
+			card.EditsFiles, i = parseFileOpField(trimmed, editsLabel, root, lines, i+1)
+		case strings.HasPrefix(trimmed, createsLabel):
+			card.HasCreates = true
+			card.CreatesFiles, i = parseFileOpField(trimmed, createsLabel, root, lines, i+1)
+		case strings.HasPrefix(trimmed, deletesLabel):
+			card.HasDeletes = true
+			card.DeletesFiles, i = parseFileOpField(trimmed, deletesLabel, root, lines, i+1)
+		case strings.HasPrefix(trimmed, movesLabel):
+			card.HasMoves = true
+			card.Moves, card.MovesRaw, i = parseMovesField(trimmed, root, lines, i+1)
+		case strings.HasPrefix(trimmed, commitLabel):
+			card.Commit = stripBackticks(strings.TrimSpace(strings.TrimPrefix(trimmed, commitLabel)))
+			i++
+		case strings.HasPrefix(trimmed, cardVerifyLabel):
+			card.VerifyCommand = strings.TrimSpace(strings.TrimPrefix(trimmed, cardVerifyLabel))
+			i++
+		default:
+			// Any other line (stray prose outside a recognized field) is
+			// not structurally significant — card-level content beyond the
+			// pinned grammar is not this parser's concern.
+			i++
 		}
 	}
-	return whereFiles, cardCount
+
+	return card, nil
+}
+
+// parseFileOpField parses one of a card's four non-Moves file-op fields
+// (Context/Edits/Creates/Deletes): labelLine is the field's own
+// "**Label:** ..." line, label is its exact bold-label prefix, and lines
+// starting at start are the remaining card body lines to scan for the
+// field's "- `path`" bullets. Returns the field's normalized path list
+// (empty non-nil for an inline "none", nil if no bullets followed a
+// non-none label) and the index of the first line not consumed.
+func parseFileOpField(labelLine, label, root string, lines []string, start int) ([]string, int) {
+	rest := strings.TrimSpace(strings.TrimPrefix(labelLine, label))
+	if strings.EqualFold(rest, noneSentinel) {
+		return []string{}, start
+	}
+
+	var files []string
+	i := start
+	for i < len(lines) {
+		trimmed := strings.TrimSpace(lines[i])
+		if trimmed == "" {
+			i++
+			continue
+		}
+		if isCardLabelLine(lines[i]) || !strings.HasPrefix(trimmed, "- ") {
+			break
+		}
+		payload := stripBackticks(strings.TrimSpace(strings.TrimPrefix(trimmed, "- ")))
+		files = append(files, normalizeCardPath(root, payload))
+		i++
+	}
+	return files, i
+}
+
+// parseMovesField parses a card's "**Moves:**" field the same way
+// parseFileOpField parses the other four, except each bullet is matched
+// against moveLineRe: a well-formed "`old` -> `new`" bullet becomes a
+// normalized MovePair, and any other bullet is retained verbatim (not
+// normalized) in raw for Validate's move-format check.
+func parseMovesField(labelLine, root string, lines []string, start int) (pairs []MovePair, raw []string, next int) {
+	rest := strings.TrimSpace(strings.TrimPrefix(labelLine, movesLabel))
+	if strings.EqualFold(rest, noneSentinel) {
+		return []MovePair{}, nil, start
+	}
+
+	i := start
+	for i < len(lines) {
+		trimmed := strings.TrimSpace(lines[i])
+		if trimmed == "" {
+			i++
+			continue
+		}
+		if isCardLabelLine(lines[i]) || !strings.HasPrefix(trimmed, "- ") {
+			break
+		}
+		payload := strings.TrimSpace(strings.TrimPrefix(trimmed, "- "))
+		if m := moveLineRe.FindStringSubmatch(payload); m != nil {
+			pairs = append(pairs, MovePair{Old: normalizeCardPath(root, m[1]), New: normalizeCardPath(root, m[2])})
+		} else {
+			raw = append(raw, payload)
+		}
+		i++
+	}
+	return pairs, raw, i
 }
 
 // parseVerifySection parses a batch file's "## verify:" section, returning
