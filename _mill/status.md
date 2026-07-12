@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: test-suite-regression
 branch: test-suite-regression
 plan: _mill/plan
@@ -20,4 +20,19 @@ discussed  '2026-07-12T07:01:03Z'
 planning  '2026-07-12T07:06:53Z'
 plan-fix-r1  '2026-07-12T07:16:34Z'
 planned  '2026-07-12T07:16:49Z'
+implementing  '2026-07-12T07:17:48Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: fix-red-packages
+    state: pending
+  - name: retier-offline-loop
+    state: pending
+  - name: tier-purity-guard
+    state: pending
+  - name: rebaseline-docs
+    state: pending
 ```
