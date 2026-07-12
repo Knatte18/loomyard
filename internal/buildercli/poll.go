@@ -37,6 +37,15 @@ type pollRealClock struct{}
 func (pollRealClock) Now() time.Time        { return time.Now() }
 func (pollRealClock) Sleep(d time.Duration) { time.Sleep(d) }
 
+// statReportPath is the seam gather's two report-existence checks (the
+// primary check and the pre-dead-classification re-check) both call instead
+// of os.Stat directly, mirroring pollRealClock's own test-injection pattern:
+// production always uses os.Stat, but a test can override this package
+// variable to script a distinct result per call -- in particular, a
+// non-ENOENT error on exactly the second (re-check) call, which a real
+// filesystem race cannot be scripted to reproduce deterministically.
+var statReportPath = os.Stat
+
 // digestFields converts a Digest into the map output.Ok expects: Digest's
 // own json tags already spell the pinned snake_case field names, so a
 // marshal/unmarshal round trip through map[string]any reuses them exactly
@@ -167,7 +176,7 @@ Example:
 					Elapsed:      time.Since(spawnedAt),
 				}
 
-				if _, statErr := os.Stat(reportPath); statErr == nil {
+				if _, statErr := statReportPath(reportPath); statErr == nil {
 					if err := gatherReport(&ins); err != nil {
 						return builderengine.Digest{}, false, err
 					}
@@ -192,13 +201,20 @@ Example:
 				// order: the implementer writes its report BEFORE its turn
 				// ends, so a Stop event observed above can postdate a report
 				// that landed after the first stat. Re-stat before returning
-				// any dead classification and let the report re-classify.
+				// any dead classification and let the report re-classify. A
+				// non-ENOENT stat error here gets the same fail-loud treatment
+				// as the primary stat above: silently falling through to the
+				// dead classification on a transient stat failure could mask a
+				// report that actually landed, the exact false positive this
+				// re-check exists to prevent.
 				if ins.Report == nil && digest.Status == builderengine.DigestStatusDead {
-					if _, statErr := os.Stat(reportPath); statErr == nil {
+					if _, statErr := statReportPath(reportPath); statErr == nil {
 						if err := gatherReport(&ins); err != nil {
 							return builderengine.Digest{}, false, err
 						}
 						digest, terminal = builderengine.Classify(ins)
+					} else if !os.IsNotExist(statErr) {
+						return builderengine.Digest{}, false, statErr
 					}
 				}
 

@@ -11,6 +11,7 @@ package buildercli
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -387,6 +388,58 @@ func TestPollCmd_ReportLandingDuringGatherBeatsStopEvent(t *testing.T) {
 	}
 	if strings.Contains(got, `"dead_reason"`) {
 		t.Errorf("output = %q; want no dead_reason at all", got)
+	}
+}
+
+// TestPollCmd_DeadRecheckStatErrorPropagates proves the dead-classification
+// re-check's report-existence stat gets the same fail-loud treatment as
+// gather's primary stat (round opus-r3's R2): the primary stat already
+// propagated a non-ENOENT error as a poll-tick failure, but the re-check
+// silently ignored one and let a dead classification stand -- exactly the
+// false positive this re-check exists to prevent. A real filesystem race
+// between the two stat calls cannot be scripted deterministically, so this
+// test drives it via statReportPath, the package seam both calls go through.
+func TestPollCmd_DeadRecheckStatErrorPropagates(t *testing.T) {
+	t.Setenv("WEFT_SKIP_GIT", "1")
+	fx := newPollFixture(t, &pollFakeEngine{events: []shuttleengine.Event{{Kind: shuttleengine.EventStop, Message: "final"}}}, &pollFakeMux{
+		status: muxengine.StatusResult{Strands: []muxengine.StrandStatus{{GUID: "strand-1", Live: true}}},
+	})
+
+	eventsPath := filepath.Join(t.TempDir(), "events.jsonl")
+	if err := os.WriteFile(eventsPath, []byte("irrelevant; pollFakeEngine ignores bytes"), 0o644); err != nil {
+		t.Fatalf("write events file: %v", err)
+	}
+	fx.seedInFlightBatch1(t, "irrelevant-sha", time.Now(), eventsPath)
+
+	// Call 1 (gather's primary stat) reports the report genuinely absent,
+	// driving the TurnEnded/StrandLive path to a dead classification; call 2
+	// (the pre-dead-classification re-check) then hits a distinct,
+	// non-ENOENT error -- e.g. a permission error a real stat call could
+	// surface, which the primary stat already treats as a hard failure.
+	wantErr := errors.New("boom: stat failed transiently")
+	calls := 0
+	origStat := statReportPath
+	statReportPath = func(name string) (os.FileInfo, error) {
+		calls++
+		if calls == 1 {
+			return nil, os.ErrNotExist
+		}
+		return nil, wantErr
+	}
+	t.Cleanup(func() { statReportPath = origStat })
+
+	var out bytes.Buffer
+	exitCode := clihelp.Execute(fx.CLI.pollCmd(), &out, nil)
+
+	if exitCode == 0 {
+		t.Fatalf("poll (re-check stat error) = 0; want a non-zero exit surfacing the stat error, output: %s", out.String())
+	}
+	got := out.String()
+	if !strings.Contains(got, wantErr.Error()) {
+		t.Errorf("output = %q; want it to surface the re-check's stat error %q", got, wantErr.Error())
+	}
+	if strings.Contains(got, `"status":"dead"`) {
+		t.Errorf("output = %q; want no dead classification -- the re-check's stat error must propagate, never be silently swallowed", got)
 	}
 }
 
