@@ -168,6 +168,16 @@ func TestPollCmd_DeadlineReturnsRunningWithoutWeftCommit(t *testing.T) {
 	if !strings.Contains(got, `"batch":"01-json-flag"`) {
 		t.Errorf("output missing batch identifier; got %q", got)
 	}
+	// The digest contract pins a running snapshot to exactly batch, status,
+	// and elapsed_s: files_changed/dirty are terminal, report-backed fields
+	// nothing measured on this tick, and elapsed_s must be present even at
+	// its zero first second.
+	if strings.Contains(got, `"files_changed"`) || strings.Contains(got, `"dirty"`) {
+		t.Errorf("running snapshot carries report-backed fields; got %q", got)
+	}
+	if !strings.Contains(got, `"elapsed_s"`) {
+		t.Errorf("running snapshot missing elapsed_s; got %q", got)
+	}
 
 	// A running snapshot must never weft-commit: state.json's Terminal
 	// field stays false and no batch-boundary commit happens.
@@ -401,6 +411,11 @@ func TestPollCmd_NoReportTurnEndedClassifiesDeadAsking(t *testing.T) {
 	got := out.String()
 	if !strings.Contains(got, `"status":"dead"`) || !strings.Contains(got, `"dead_reason":"asking"`) {
 		t.Errorf("output missing dead/asking classification; got %q", got)
+	}
+	// A dead digest is terminal but not report-backed: files_changed/dirty
+	// were never measured, so the envelope must not assert their zeros.
+	if strings.Contains(got, `"files_changed"`) || strings.Contains(got, `"dirty"`) {
+		t.Errorf("dead digest carries report-backed fields; got %q", got)
 	}
 
 	loaded, err := builderengine.LoadState(fx.CLI.builderDir)

@@ -40,11 +40,25 @@ func (pollRealClock) Sleep(d time.Duration) { time.Sleep(d) }
 // digestFields converts a Digest into the map output.Ok expects: Digest's
 // own json tags already spell the pinned snake_case field names, so a
 // marshal/unmarshal round trip through map[string]any reuses them exactly
-// rather than re-listing every field by hand here.
+// rather than re-listing every field by hand here. It then enforces the
+// digest contract's presence rules, which struct tags alone cannot express:
+// files_changed and dirty are "terminal, report-backed" fields — a running
+// or dead snapshot never measured them, so emitting a zero there would be a
+// false statement, while omitempty would wrongly drop a legitimate terminal
+// zero — and a running snapshot always carries elapsed_s, including the
+// omitempty-hostile 0 of its first second.
 func digestFields(d builderengine.Digest) map[string]any {
 	data, _ := json.Marshal(d)
 	var fields map[string]any
 	_ = json.Unmarshal(data, &fields)
+
+	if d.Status != builderengine.DigestStatusDone && d.Status != builderengine.DigestStatusStuck {
+		delete(fields, "files_changed")
+		delete(fields, "dirty")
+	}
+	if d.Status == builderengine.DigestStatusRunning {
+		fields["elapsed_s"] = d.ElapsedS
+	}
 	return fields
 }
 
