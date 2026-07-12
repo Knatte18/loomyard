@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r1
+phase: planned
 slug: test-suite-regression
 branch: test-suite-regression
 plan: _mill/plan
@@ -19,4 +19,5 @@ discussion-fix-r1  '2026-07-12T07:00:45Z'
 discussed  '2026-07-12T07:01:03Z'
 planning  '2026-07-12T07:06:53Z'
 plan-fix-r1  '2026-07-12T07:16:34Z'
+planned  '2026-07-12T07:16:49Z'
 ```
