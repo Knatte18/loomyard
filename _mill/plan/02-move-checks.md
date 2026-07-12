@@ -87,6 +87,7 @@ batch B moves Y->Z) must not false-positive.
 - **Edits:**
   - `internal/builderengine/validate.go`
   - `internal/builderengine/validate_test.go`
+  - `internal/builderengine/runlevel_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -111,6 +112,15 @@ batch B moves Y->Z) must not false-positive.
     chained rename (A: X->Y, B: Y->Z) -> suppressed; existing target flagged;
     two batches targeting one path -> flagged; cross-batch Creates collision ->
     flagged; `plan-valid` fixture still zero findings.
+  - `runlevel_test.go`'s `newRunFixture` sets `Deps.WorktreeRoot` to a bare
+    `t.TempDir()` unrelated to the copied plan-valid fixture; per the
+    fixture-self-reference decision the fixture's Moves: source
+    (`03-refactor-a.md`) only exists relative to the fixture dir itself, so
+    the new on-disk checks (move-source-missing) now fail every `Run()` test
+    that exercises the automatic validation gate. Fix: point
+    `WorktreeRoot` at the same copied `planDir` `newRunFixture` already
+    builds (its only consumer is the `Validate` call inside `Run`, so this is
+    a pure test-fixture correction, not a behavior change).
 - **Commit:** `02.3: move-source-missing and move-target-collision checks`
 
 ### Card 9: move-mechanic-missing check
