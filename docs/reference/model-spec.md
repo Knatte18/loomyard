@@ -2,7 +2,7 @@
 
 > **Status: Contract — pinned.** The notation every agent-spawning config in the stack
 > uses to say *which* LLM runs a role: builder's roles, perch/burler reviewers and
-> judges, loom's producers. Pinned alongside [plan-format v1](../modules/plan-format.md)
+> judges, loom's producers. Pinned alongside [plan-format v2](../modules/plan-format.md)
 > because the plan is model-agnostic — so the config side needs a precise notation.
 > The registry loader and spec parser land with the first consumer (`builder`); this doc
 > is the spec they implement against.
