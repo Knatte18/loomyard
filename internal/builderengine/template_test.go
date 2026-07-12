@@ -145,6 +145,29 @@ func TestImplementerTemplate_StatesBatchDiscipline(t *testing.T) {
 	// Never touch the weft.
 	requireContains(t, text, "Never touch the weft")
 	requireContains(t, text, "You never run git against the weft repo")
+
+	// plan-format v2: the implementer now reads its batch file AND the
+	// overview (framing, Batch Index, Shared Decisions), but still never
+	// another batch's own file.
+	requireContains(t, text, "plan-format v2")
+	requireContains(t, text, "also read\n`00-overview.md`")
+	requireContains(t, text, "Never read another\nbatch's own file")
+
+	// The five typed file-op field names a card carries.
+	requireContains(t, text, "**Edits:**")
+	requireContains(t, text, "**Creates:**")
+	requireContains(t, text, "**Deletes:**")
+	requireContains(t, text, "**Moves:**")
+	requireContains(t, text, "**Context:**")
+
+	// Rename-mechanic compliance: git mv FIRST, then only surgical edits,
+	// never rewrite-and-recreate.
+	requireContains(t, text, "run\n`git mv <old> <new>` FIRST")
+	requireContains(t, text, "never rewrite\nthe relocated file from scratch and delete the original")
+
+	// Commit-subject rule: the card's own **Commit:** value wins verbatim
+	// when present; otherwise the NN.C fallback is derived.
+	requireContains(t, text, `carries a "**Commit:**" field, use its value verbatim`)
 }
 
 // requireContains fails the test, naming the missing needle, if text does
