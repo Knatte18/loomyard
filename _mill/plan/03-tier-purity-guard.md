@@ -26,6 +26,7 @@ deliverable that turns the whole task from a one-off cleanup into an invariant.
 - **Context:**
   - `_mill/discussion.md`
   - `cmd/lyx/sandbox_coverage_test.go`
+  - `cmd/lyx/crosscompile_test.go`
   - `internal/hubgeometry/enforcement_test.go`
   - `internal/lyxtest/leaf_enforcement_test.go`
 - **Edits:**
@@ -38,9 +39,14 @@ deliverable that turns the whole task from a one-off cleanup into an invariant.
   `cmd/lyx/tierpurity_test.go` (package `main`, untagged — it must run on
   every `go test`). Mechanics: walk every `*_test.go` file under the module
   root (resolve the root via `go env GOMOD` exactly as
-  `crosscompile_test.go` does, or `filepath.WalkDir` from `../..` — prefer
-  the GOMOD approach for cwd-independence; skip `.git`, `_lyx`, `_mill`,
-  `.scratch`, `.wiki`, `_raddle` directories). For each file, read the
+  `crosscompile_test.go` does — its `go env GOMOD` + `os.DevNull` idiom is in
+  this card's Context — prefer the GOMOD approach for cwd-independence; skip
+  `.git`, `_lyx`, `_mill`, `.scratch`, `.wiki`, `_raddle` directories).
+  Normalize every walked module-relative path with `filepath.ToSlash` BEFORE
+  matching it against skip-dir names or `allowedSpawners` prefixes —
+  `filepath.WalkDir` yields backslash paths on Windows (the primary dev OS),
+  and un-normalized matching would silently miss the slash-separated
+  allowlist prefixes and falsely trip the guard. For each file, read the
   source; if the first non-empty line is NOT a `//go:build` constraint
   containing `integration` or `smoke`, the file is "untagged" (platform-only
   constraints like `//go:build windows` count as untagged — they still run
@@ -62,9 +68,13 @@ deliverable that turns the whole task from a one-off cleanup into an invariant.
   `//go:build integration` or add an allowlist entry with a reason). Also
   add a `## Test Tier Purity Invariant` section to `CONSTRAINTS.md`
   (between the Sandbox Suite Coverage section and the Documentation
-  Lifecycle section, matching the established format): statement (untagged
-  test files spawn no processes and copy no git fixtures — Tier 1 stays
-  offline and spawn-free), the banned-token + raw-substring semantics, the
+  Lifecycle section, matching the established format): statement worded as
+  "untagged test files perform no expensive spawns — no `git init` /
+  `git worktree add` / fixture-tree copies; Tier 1 stays offline and fast"
+  (NOT "spawn no processes": untagged tests that reach
+  `hubgeometry.Resolve` still spawn one cheap failing `git rev-parse`,
+  which the token guard deliberately does not ban), the banned-token +
+  raw-substring semantics, the
   allowlist rule (exists ⇒ tagged or allowlisted with reason), and an
   **Enforced by** line naming `cmd/lyx/tierpurity_test.go`
   (`TestTierPurity_UntaggedTestsSpawnNothing`) on every `go test`.

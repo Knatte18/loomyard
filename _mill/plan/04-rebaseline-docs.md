@@ -44,8 +44,13 @@ landed, and the guard is active. Docs only; no code changes.
   regression figures ~44 s / ~181 s, a short per-package "where the time
   goes" note per tier from the harness output, slowest-tests table) and
   state explicitly that the two red packages are fixed and the offline tier
-  is spawn-free again (guarded by
-  `cmd/lyx/tierpurity_test.go` / `TestTierPurity_UntaggedTestsSpawnNothing`).
+  is free of expensive spawns again — word it as "no `git init` / `git
+  worktree add` / fixture-tree copies", NOT "zero processes spawned"
+  (untagged tests reaching `hubgeometry.Resolve` still spawn one cheap
+  failing `git rev-parse`; the guard deliberately permits that) — guarded by
+  `cmd/lyx/tierpurity_test.go` / `TestTierPurity_UntaggedTestsSpawnNothing`.
+  Apply the same "no expensive spawns" wording wherever `running-tests.md`
+  restates the tier premise.
   Move the entire 2026-07-12 "Current best times" block into `## History
   (trend log)` as `### 2026-07-12 — regression baseline (pre-fix state)`,
   newest-first (above the 2026-06-23 state block), content unchanged. In

@@ -3,7 +3,7 @@
 ```yaml
 task: 'Fix test-suite regression: slow Tier 1 + 2 red packages + stale benchmarks'
 slug: test-suite-regression
-approved: false
+approved: true
 started: 20260712-070313
 parent: main
 root: ""
