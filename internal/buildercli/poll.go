@@ -16,6 +16,7 @@ package buildercli
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -217,6 +218,28 @@ Example:
 			if err := builderengine.SaveState(c.builderDir, st); err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
+			}
+
+			// Cleanup on the report-backed terminals, mirroring shuttle's own
+			// finalize (wait.go): nobody holds the shuttle Run handle across a
+			// batch (spawn-batch exits right after Start), so poll is the only
+			// place the strand can ever be released — without this every
+			// done/stuck batch leaks a live pane hosting an idle agent process
+			// forever (found live in round fable-r2). done also removes the
+			// run dir (shuttle parity); stuck keeps it, since its raw session
+			// output is the one diagnostic trail a human may still want. Every
+			// dead classification keeps BOTH pane and run dir — the doc-pinned
+			// diagnosis discipline. Cleanup failures are logged, never fatal:
+			// the classification itself already stands (shuttle's precedent).
+			if digest.Status == builderengine.DigestStatusDone || digest.Status == builderengine.DigestStatusStuck {
+				if _, err := c.mux.RemoveStrand(bs.StrandGUID, false); err != nil {
+					log.Printf("builder: poll cleanup: remove strand %s (non-fatal): %v", bs.StrandGUID, err)
+				}
+				if digest.Status == builderengine.DigestStatusDone {
+					if err := os.RemoveAll(bs.ShuttleRunDir); err != nil {
+						log.Printf("builder: poll cleanup: remove run dir %s (non-fatal): %v", bs.ShuttleRunDir, err)
+					}
+				}
 			}
 
 			if _, weftErr := weftCommit(c.layout, fmt.Sprintf("poll %02d-%s %s", batchNumber, bs.Slug, digest.Status)); weftErr != nil {

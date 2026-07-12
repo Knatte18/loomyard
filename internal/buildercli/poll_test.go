@@ -47,16 +47,19 @@ func (e *pollFakeEngine) ComposeSend(text string) []shuttleengine.PaneInput { re
 var _ shuttleengine.Engine = (*pollFakeEngine)(nil)
 
 // pollFakeMux is a minimal shuttleengine.MuxOps double for
-// builderengine.StrandLive: only Status is scripted, mirroring
-// builderengine's own poll_test.go fakeMux.
+// builderengine.StrandLive and poll's terminal cleanup: Status is scripted,
+// and RemoveStrand records every call so a test can assert whether the
+// terminal branch released the strand.
 type pollFakeMux struct {
-	status muxengine.StatusResult
+	status         muxengine.StatusResult
+	removedStrands []string
 }
 
 func (m *pollFakeMux) AddStrand(spec muxengine.AddSpec) (muxengine.Strand, error) {
 	return muxengine.Strand{}, nil
 }
 func (m *pollFakeMux) RemoveStrand(guid string, recursive bool) (muxengine.Removed, error) {
+	m.removedStrands = append(m.removedStrands, guid)
 	return muxengine.Removed{}, nil
 }
 func (m *pollFakeMux) Status() (muxengine.StatusResult, error)       { return m.status, nil }
@@ -102,17 +105,26 @@ func newPollFixture(t *testing.T, engine shuttleengine.Engine, mux shuttleengine
 // builderengine.StrandLive have somewhere real to look.
 func (fx *pollFixture) seedInFlightBatch1(t *testing.T, startSHA string, spawnedAt time.Time, eventsPath string) {
 	t.Helper()
+	fx.seedInFlightBatch1WithRunDir(t, startSHA, spawnedAt, eventsPath, filepath.Join(t.TempDir(), "run-1"))
+}
+
+// seedInFlightBatch1WithRunDir is seedInFlightBatch1 with a caller-chosen
+// ShuttleRunDir, for the cleanup tests that assert whether poll's terminal
+// branch removed or kept the run directory.
+func (fx *pollFixture) seedInFlightBatch1WithRunDir(t *testing.T, startSHA string, spawnedAt time.Time, eventsPath, runDir string) {
+	t.Helper()
 
 	st := &builderengine.State{
 		CurrentBatch: 1,
 		Batches: map[int]*builderengine.BatchState{
 			1: {
-				Slug:       "json-flag",
-				StartSHA:   startSHA,
-				Role:       "implementer",
-				StrandGUID: "strand-1",
-				EventsPath: eventsPath,
-				SpawnedAt:  spawnedAt.UTC().Format(time.RFC3339),
+				Slug:          "json-flag",
+				StartSHA:      startSHA,
+				Role:          "implementer",
+				StrandGUID:    "strand-1",
+				ShuttleRunDir: runDir,
+				EventsPath:    eventsPath,
+				SpawnedAt:     spawnedAt.UTC().Format(time.RFC3339),
 			},
 		},
 	}
@@ -212,6 +224,94 @@ func TestPollCmd_ReportPresentClassifiesDoneAndCommits(t *testing.T) {
 	}
 	if loaded.CurrentBatch != 0 {
 		t.Errorf("CurrentBatch = %d after a terminal classification; want 0 (state.go: 0 means none in flight)", loaded.CurrentBatch)
+	}
+}
+
+// TestPollCmd_TerminalCleanupMatrix proves poll's terminal branch releases
+// the batch's substrate exactly per the doc's discipline: done removes the
+// strand AND the run dir (shuttle-finalize parity); stuck removes the
+// strand but keeps the run dir (the raw session output is the stuck trail a
+// human may still inspect); dead keeps both for diagnosis. Without the
+// done/stuck cleanup every finished batch leaks a live pane hosting an idle
+// agent process forever, since nobody else ever holds the shuttle Run
+// handle (found live in round fable-r2: four leaked panes after two runs).
+func TestPollCmd_TerminalCleanupMatrix(t *testing.T) {
+	tests := []struct {
+		name          string
+		reportContent string
+		events        []shuttleengine.Event
+		wantRemoved   bool
+		wantRunDir    bool
+	}{
+		{
+			name:          "done removes strand and run dir",
+			reportContent: "batch: 01-json-flag\nstatus: done\ntests: green\nstuck_reason: null\n",
+			wantRemoved:   true,
+			wantRunDir:    false,
+		},
+		{
+			name:          "stuck removes strand but keeps run dir",
+			reportContent: "batch: 01-json-flag\nstatus: stuck\ntests: red\nstuck_reason: \"blocked\"\n",
+			wantRemoved:   true,
+			wantRunDir:    true,
+		},
+		{
+			name:        "dead asking keeps strand and run dir",
+			events:      []shuttleengine.Event{{Kind: shuttleengine.EventStop, Message: "final"}},
+			wantRemoved: false,
+			wantRunDir:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("WEFT_SKIP_GIT", "1")
+			mux := &pollFakeMux{status: muxengine.StatusResult{
+				Strands: []muxengine.StrandStatus{{GUID: "strand-1", Live: true}},
+			}}
+			fx := newPollFixture(t, &pollFakeEngine{events: tt.events}, mux)
+
+			startSHA := strings.TrimSpace(mustGit(t, fx.Hub, "rev-parse", "HEAD"))
+			eventsPath := filepath.Join(t.TempDir(), "events.jsonl")
+			if err := os.WriteFile(eventsPath, []byte("irrelevant; pollFakeEngine ignores bytes"), 0o644); err != nil {
+				t.Fatalf("write events file: %v", err)
+			}
+			runDir := filepath.Join(t.TempDir(), "run-1")
+			if err := os.MkdirAll(runDir, 0o755); err != nil {
+				t.Fatalf("mkdir run dir: %v", err)
+			}
+			fx.seedInFlightBatch1WithRunDir(t, startSHA, time.Now(), eventsPath, runDir)
+
+			if tt.reportContent != "" {
+				if err := os.MkdirAll(fx.CLI.reportsDir, 0o755); err != nil {
+					t.Fatalf("mkdir reports dir: %v", err)
+				}
+				reportPath := filepath.Join(fx.CLI.reportsDir, "01-json-flag.yaml")
+				if err := os.WriteFile(reportPath, []byte(tt.reportContent), 0o644); err != nil {
+					t.Fatalf("write report: %v", err)
+				}
+			}
+
+			var out bytes.Buffer
+			if exitCode := clihelp.Execute(fx.CLI.pollCmd(), &out, nil); exitCode != 0 {
+				t.Fatalf("poll = %d; want 0, output: %s", exitCode, out.String())
+			}
+
+			removed := len(mux.removedStrands) > 0
+			if removed != tt.wantRemoved {
+				t.Errorf("RemoveStrand calls = %v; wantRemoved = %v", mux.removedStrands, tt.wantRemoved)
+			}
+			if removed && mux.removedStrands[0] != "strand-1" {
+				t.Errorf("RemoveStrand guid = %q; want strand-1", mux.removedStrands[0])
+			}
+			_, statErr := os.Stat(runDir)
+			if tt.wantRunDir && statErr != nil {
+				t.Errorf("run dir %s missing after poll (stat: %v); want it kept", runDir, statErr)
+			}
+			if !tt.wantRunDir && !os.IsNotExist(statErr) {
+				t.Errorf("run dir %s still present after poll (stat: %v); want it removed", runDir, statErr)
+			}
+		})
 	}
 }
 

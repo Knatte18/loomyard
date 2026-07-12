@@ -79,7 +79,13 @@ files and a live mux query on every tick, in this pinned decision order:
    call re-polls from there.
 
 On any `dead` classification the pane/run dir is kept for diagnosis (shuttle's own
-died/timeout discipline). `poll --wait DURATION` blocks inside Go on this loop —
+died/timeout discipline). On the report-backed terminals poll itself releases the
+substrate — nobody else ever holds the shuttle `Run` handle (spawn-batch exits right
+after `Start`), so without this every finished batch would leak a live pane hosting
+an idle agent process: `done` removes the strand and the run dir (shuttle-finalize
+parity); `stuck` removes the strand but keeps the run dir (the raw session output is
+the stuck trail a human may still inspect). Cleanup failures are logged, never
+fatal — the classification already stands. `poll --wait DURATION` blocks inside Go on this loop —
 **the long-poll IS the notification**: a true push cannot reach a Claude session
 (mid-turn only tool results arrive; turn-end without the outcome file is `asking`
 under the file contract), so file-watching inside Go costs no orchestrator tokens and
