@@ -492,6 +492,42 @@ func TestRun_ProgressRenderingPartiallyReported(t *testing.T) {
 	}
 }
 
+// TestRun_ProgressRenderingStuckBatchIsNotDone proves {{.progress}} renders a
+// batch's OWN reported status, so a batch that reported stuck on a prior run
+// is summarized "stuck" (needing recovery) — never "done" — to the resumed
+// orchestrator. Labeling a stuck report "done" would make the resumed
+// orchestrator skip the recovery the batch still needs and finish the run
+// "done" for an incomplete plan, a silent false-success across crash/resume.
+func TestRun_ProgressRenderingStuckBatchIsNotDone(t *testing.T) {
+	fx := newRunFixture(t)
+	fx.Runner.Result = shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}
+	fx.Runner.WriteOutcome = doneOutcomeYAML
+
+	if err := os.MkdirAll(fx.Deps.ReportsDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(reports dir): %v", err)
+	}
+	reportPath := filepath.Join(fx.Deps.ReportsDir, "01-json-flag.yaml")
+	if err := os.WriteFile(reportPath, []byte("batch: 01-json-flag\nstatus: stuck\ntests: red\nstuck_reason: \"batch 01 blocked\"\n"), 0o644); err != nil {
+		t.Fatalf("seed stuck report: %v", err)
+	}
+
+	if _, err := builderengine.Run(fx.Deps, builderengine.RunOptions{}); err != nil {
+		t.Fatalf("Run() error = %v; want nil", err)
+	}
+
+	if len(fx.Runner.Calls) != 1 {
+		t.Fatalf("fake runner Calls = %d; want exactly 1", len(fx.Runner.Calls))
+	}
+	prompt := fx.Runner.Calls[0].Prompt
+
+	if !strings.Contains(prompt, "01-json-flag: stuck") {
+		t.Errorf("filled prompt does not summarize the stuck batch as stuck:\n%s", prompt)
+	}
+	if strings.Contains(prompt, "01-json-flag: done") {
+		t.Errorf("filled prompt wrongly summarizes the stuck batch as done:\n%s", prompt)
+	}
+}
+
 // TestRun_SpecFieldsMapped proves the shuttleengine.Spec built for the
 // orchestrator's own spawn matches modelspec's documented consumer mapping
 // and this batch's remaining Spec-field requirements (single output file,

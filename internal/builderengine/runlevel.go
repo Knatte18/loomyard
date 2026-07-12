@@ -305,7 +305,20 @@ func renderProgress(plan *Plan, reportsDir string) (string, error) {
 			}
 			return "", fmt.Errorf("builder: stat batch report %s: %w", reportPath, err)
 		}
-		lines = append(lines, fmt.Sprintf("%02d-%s: done", b.Number, b.Slug))
+		// Summarize each reported batch by its report's OWN status, not merely
+		// by the report's presence: a batch that reported stuck still needs
+		// recovery, so labeling it "done" here would tell a resumed
+		// orchestrator it already finished and make it skip the recovery the
+		// stuck batch actually needs — a silent false-success across a
+		// crash/resume boundary (poll commits a stuck report the same as a done
+		// one). A report that will not parse is corruption on the resume path:
+		// fail loud, the same discipline ParseReport applies everywhere else,
+		// never a guessed status.
+		report, err := ParseReport(reportPath)
+		if err != nil {
+			return "", err
+		}
+		lines = append(lines, fmt.Sprintf("%02d-%s: %s", b.Number, b.Slug, report.Status))
 	}
 	if len(lines) == 0 {
 		return "none", nil

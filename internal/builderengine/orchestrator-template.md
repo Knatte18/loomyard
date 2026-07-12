@@ -31,9 +31,11 @@ around, and no batch is ever skipped or reordered because it "looks independent.
 
 {{.progress}}
 
-`none` means this is a fresh run; any other value summarizes each already-reported
-batch's outcome, so a resumed session picks up exactly where the last one left off
-without re-driving batches that already finished.
+`none` means this is a fresh run. Any other value lists one `NN-slug: <status>` line per
+already-reported batch: a `done` batch already finished — never re-drive it; a `stuck`
+batch reported but did NOT finish — resume its recovery per the recovery ladder below,
+never treat it as done or skip past it. A resumed session thus picks up exactly where the
+last one left off.
 
 ## The loop: spawn, then poll — the poll call itself IS the notification
 
