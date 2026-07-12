@@ -40,7 +40,9 @@ batches:
     start_sha: 7e682ede10d4aa5eef901c1c9fb74edae7ce4fdc
     commit_sha: 71b62425124a15ab5f10380ed2fcf7e95f7133cb
   - name: templates-help
-    state: pending
+    state: running
+    implementer_session: 6aeebbd9-220a-405f-9efa-bbcdea7bb959
+    start_sha: fe2e7bb9f15d60298e1e63bd55b352526b542071
   - name: card-checks
     state: pending
   - name: docs
