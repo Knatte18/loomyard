@@ -789,6 +789,7 @@ func parseCardBody(headingMatch []string, lines []string, root string) (PlanCard
 	i := 0
 	for i < len(lines) {
 		trimmed := strings.TrimSpace(lines[i])
+		var fieldErr error
 		switch {
 		case trimmed == "":
 			i++
@@ -800,19 +801,19 @@ func parseCardBody(headingMatch []string, lines []string, root string) (PlanCard
 			}
 		case strings.HasPrefix(trimmed, contextLabel):
 			card.HasContext = true
-			card.ContextFiles, i = parseFileOpField(trimmed, contextLabel, root, lines, i+1)
+			card.ContextFiles, i, fieldErr = parseFileOpField(trimmed, contextLabel, root, lines, i+1)
 		case strings.HasPrefix(trimmed, editsLabel):
 			card.HasEdits = true
-			card.EditsFiles, i = parseFileOpField(trimmed, editsLabel, root, lines, i+1)
+			card.EditsFiles, i, fieldErr = parseFileOpField(trimmed, editsLabel, root, lines, i+1)
 		case strings.HasPrefix(trimmed, createsLabel):
 			card.HasCreates = true
-			card.CreatesFiles, i = parseFileOpField(trimmed, createsLabel, root, lines, i+1)
+			card.CreatesFiles, i, fieldErr = parseFileOpField(trimmed, createsLabel, root, lines, i+1)
 		case strings.HasPrefix(trimmed, deletesLabel):
 			card.HasDeletes = true
-			card.DeletesFiles, i = parseFileOpField(trimmed, deletesLabel, root, lines, i+1)
+			card.DeletesFiles, i, fieldErr = parseFileOpField(trimmed, deletesLabel, root, lines, i+1)
 		case strings.HasPrefix(trimmed, movesLabel):
 			card.HasMoves = true
-			card.Moves, card.MovesRaw, i = parseMovesField(trimmed, root, lines, i+1)
+			card.Moves, card.MovesRaw, i, fieldErr = parseMovesField(trimmed, root, lines, i+1)
 		case strings.HasPrefix(trimmed, commitLabel):
 			card.Commit = stripBackticks(strings.TrimSpace(strings.TrimPrefix(trimmed, commitLabel)))
 			i++
@@ -825,6 +826,9 @@ func parseCardBody(headingMatch []string, lines []string, root string) (PlanCard
 			// pinned grammar is not this parser's concern.
 			i++
 		}
+		if fieldErr != nil {
+			return PlanCard{}, fmt.Errorf("card %02d.%d: %w", card.BatchPrefix, card.Number, fieldErr)
+		}
 	}
 
 	return card, nil
@@ -836,11 +840,21 @@ func parseCardBody(headingMatch []string, lines []string, root string) (PlanCard
 // starting at start are the remaining card body lines to scan for the
 // field's "- `path`" bullets. Returns the field's normalized path list
 // (empty non-nil for an inline "none", nil if no bullets followed a
-// non-none label) and the index of the first line not consumed.
-func parseFileOpField(labelLine, label, root string, lines []string, start int) ([]string, int) {
+// non-none label) and the index of the first line not consumed. A non-empty
+// label-line value other than the "none" sentinel (e.g. an inline path) is
+// a fail-loud error, not a card-level finding: silently reading it as an
+// empty field would be exactly the silent degradation the none-sentinel
+// grammar exists to prevent — the field would look present to every check
+// while its paths vanished from validation and the context estimate. This
+// is document structure, the same class as parseScopeSection's glob
+// rejection, so it fails at parse time rather than waiting for Validate.
+func parseFileOpField(labelLine, label, root string, lines []string, start int) ([]string, int, error) {
 	rest := strings.TrimSpace(strings.TrimPrefix(labelLine, label))
 	if strings.EqualFold(rest, noneSentinel) {
-		return []string{}, start
+		return []string{}, start, nil
+	}
+	if rest != "" {
+		return nil, start, fmt.Errorf("card field %s carries an inline value %q; plan-format admits only the literal \"none\" or \"- `path`\" sub-bullets on the following lines", label, rest)
 	}
 
 	var files []string
@@ -858,7 +872,7 @@ func parseFileOpField(labelLine, label, root string, lines []string, start int) 
 		files = append(files, normalizeCardPath(root, payload))
 		i++
 	}
-	return files, i
+	return files, i, nil
 }
 
 // parseMovesField parses a card's "**Moves:**" field the same way
@@ -866,10 +880,15 @@ func parseFileOpField(labelLine, label, root string, lines []string, start int) 
 // against moveLineRe: a well-formed "`old` -> `new`" bullet becomes a
 // normalized MovePair, and any other bullet is retained verbatim (not
 // normalized) in raw for Validate's move-format check.
-func parseMovesField(labelLine, root string, lines []string, start int) (pairs []MovePair, raw []string, next int) {
+func parseMovesField(labelLine, root string, lines []string, start int) (pairs []MovePair, raw []string, next int, err error) {
 	rest := strings.TrimSpace(strings.TrimPrefix(labelLine, movesLabel))
 	if strings.EqualFold(rest, noneSentinel) {
-		return []MovePair{}, nil, start
+		return []MovePair{}, nil, start, nil
+	}
+	// Same inline-value rejection as parseFileOpField: an inline pair would
+	// silently vanish from move validation and the rename mechanics.
+	if rest != "" {
+		return nil, nil, start, fmt.Errorf("card field %s carries an inline value %q; plan-format admits only the literal \"none\" or \"- `src` -> `dst`\" sub-bullets on the following lines", movesLabel, rest)
 	}
 
 	i := start
@@ -890,7 +909,7 @@ func parseMovesField(labelLine, root string, lines []string, start int) (pairs [
 		}
 		i++
 	}
-	return pairs, raw, i
+	return pairs, raw, i, nil
 }
 
 // parseVerifySection parses a batch file's "## verify:" section, returning

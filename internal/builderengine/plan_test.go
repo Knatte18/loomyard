@@ -76,6 +76,57 @@ Add a --json output mode to lyx board list, emitting one JSON object per row.
 - 02 — list-tests (1 card) — cover --json in boardcli list tests and update help-tree pins
 `
 
+// TestParsePlan_InlineFieldValueFailsLoud proves a card file-op label line
+// carrying an inline value other than "none" (e.g. "**Edits:** `foo.go`")
+// is a fail-loud parse error, never silently read as an empty field: an
+// empty-but-present field passes card-missing-field while its paths vanish
+// from every other check — exactly the silent degradation the none-sentinel
+// grammar exists to prevent.
+func TestParsePlan_InlineFieldValueFailsLoud(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		fieldLine string
+	}{
+		{name: "inline Edits path", fieldLine: "**Edits:** `list.go`"},
+		{name: "inline Moves pair", fieldLine: "**Moves:** `a.go` -> `b.go`"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			batchBody := "# Batch\n\n## Scope\n\n- internal\n\n## Cards\n\n" +
+				"### Card 01.1 — placeholder\n\n" +
+				"**What:** placeholder card.\n" +
+				"**Context:** none\n" +
+				tt.fieldLine + "\n" +
+				"**Creates:** none\n" +
+				"**Deletes:** none\n\n" +
+				"## verify:\n\ngo build ./...\n"
+			// Complete the five-field set for the Moves case, which replaced
+			// the Edits line above.
+			if strings.HasPrefix(tt.fieldLine, "**Moves:**") {
+				batchBody = strings.Replace(batchBody, "**Context:** none\n", "**Context:** none\n**Edits:** none\n", 1)
+			} else {
+				batchBody = strings.Replace(batchBody, "**Deletes:** none\n", "**Deletes:** none\n**Moves:** none\n", 1)
+			}
+
+			dir := writePlanFiles(t, map[string]string{
+				"00-overview.md": "---\nformat: 2\napproved: true\n---\n\n# Plan\n\nFraming.\n\n## Batch Index\n\n- 01 — json-flag (1 card) — placeholder\n",
+				"01-json-flag.md": batchBody,
+			})
+
+			_, err := builderengine.ParsePlan(dir)
+			if err == nil {
+				t.Fatalf("ParsePlan() error = nil; want a fail-loud inline-value error for %q", tt.fieldLine)
+			}
+			if !strings.Contains(err.Error(), "inline value") {
+				t.Errorf("ParsePlan() error = %q; want it to name the inline value", err.Error())
+			}
+		})
+	}
+}
+
 func TestParsePlan_Overview(t *testing.T) {
 	t.Parallel()
 
