@@ -46,7 +46,9 @@ batches:
     start_sha: fe2e7bb9f15d60298e1e63bd55b352526b542071
     commit_sha: 82d1a3400c166ccd3791e98551c2ba62534f0bcd
   - name: card-checks
-    state: pending
+    state: running
+    implementer_session: b8931ac3-5a04-4b95-b317-643c70c4ffd9
+    start_sha: 723b7ec4854ad249ec5f30986a8cc6a428a27616
   - name: docs
     state: pending
 ```
