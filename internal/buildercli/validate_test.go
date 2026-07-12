@@ -54,7 +54,16 @@ func seedBuilderFixture(t *testing.T) lyxtest.HostFixture {
 // seedPlanFixture copies every top-level file from srcDir (one of
 // builderengine's own testdata plan fixtures) into hub's plan dir
 // (hubgeometry.PlanDir(hub)) -- the Hub Geometry Invariant's own helper,
-// never a hand-joined path.
+// never a hand-joined path -- AND into hub itself. The second copy matters
+// because validateCmd resolves every card's typed file-op paths against
+// c.layout.Cwd (hub, this package's worktreeRoot), never against planDir;
+// per the fixture-self-reference decision a fixture's own card paths (e.g.
+// plan-valid's Moves: source) are worktree-relative paths that resolve only
+// against the fixture directory itself, so builderengine's own tests pass
+// that directory as WorktreeRoot directly. buildercli's hub/planDir split
+// has no single directory that is both, so both copies are required for
+// batch 2's on-disk move-source-missing/move-target-collision checks to
+// resolve the same fixture correctly here.
 func seedPlanFixture(t *testing.T, hub, srcDir string) {
 	t.Helper()
 
@@ -75,6 +84,9 @@ func seedPlanFixture(t *testing.T, hub, srcDir string) {
 			t.Fatalf("ReadFile(%q): %v", e.Name(), err)
 		}
 		if err := os.WriteFile(filepath.Join(dstDir, e.Name()), data, 0o644); err != nil {
+			t.Fatalf("WriteFile(%q): %v", e.Name(), err)
+		}
+		if err := os.WriteFile(filepath.Join(hub, e.Name()), data, 0o644); err != nil {
 			t.Fatalf("WriteFile(%q): %v", e.Name(), err)
 		}
 	}
