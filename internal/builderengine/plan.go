@@ -534,17 +534,19 @@ func stripBackticks(s string) string {
 // normalizeCardPath resolves one card file-op path per the three-case rule
 // (per-batch-root-path-shorthand decision): a "//"-prefixed path always
 // strips exactly that prefix and is worktree-root-relative, whether or not
-// root is set; otherwise, a non-empty root joins as "<root>/<raw>";
-// otherwise raw is returned unchanged. Absolute paths, ".." segments, and
-// unclean paths are deliberately NOT rejected here — Validate's
-// scope-malformed check (extended to card paths) owns well-formedness, not
-// the parser (normalize-at-parse decision).
+// root is set; otherwise, a non-empty root joins as "<root>/<raw>", except
+// the degenerate "root: ." (the worktree root itself), which joins to raw
+// unchanged rather than the unclean "./<raw>" a literal string join would
+// produce. This is parse-time normalization of a well-formed degenerate
+// case, not well-formedness rejection: an actually malformed root or raw
+// (an absolute path, a ".." segment) still reaches Validate's
+// scope-malformed check unchanged (normalize-at-parse decision).
 func normalizeCardPath(root, raw string) string {
 	raw = strings.TrimSpace(raw)
 	if strings.HasPrefix(raw, "//") {
 		return strings.TrimPrefix(raw, "//")
 	}
-	if root != "" {
+	if root != "" && root != "." {
 		return root + "/" + raw
 	}
 	return raw

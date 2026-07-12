@@ -529,6 +529,17 @@ func TestParsePlan_RootNormalization(t *testing.T) {
 		}
 	})
 
+	t.Run(`root: "." joins to raw unchanged, not an unclean "./raw"`, func(t *testing.T) {
+		t.Parallel()
+
+		body := "---\nroot: .\n---\n\n# Batch\n\n## Cards\n\n### Card 01.1 — dot root\n\n" +
+			"**Context:** none\n**Edits:**\n- `list.go`\n**Creates:** none\n**Deletes:** none\n**Moves:** none\n"
+		batch := parseSingleBatch(t, body)
+		if want := []string{"list.go"}; !slices.Equal(batch.Cards[0].EditsFiles, want) {
+			t.Errorf("card.EditsFiles = %v; want %v (root: \".\" must not produce an unclean \"./\" prefix)", batch.Cards[0].EditsFiles, want)
+		}
+	})
+
 	t.Run("## Scope stays worktree-relative regardless of root:", func(t *testing.T) {
 		t.Parallel()
 
@@ -882,8 +893,8 @@ func TestParsePlan_PlanValidFixture(t *testing.T) {
 	if len(b1.Cards) != 2 {
 		t.Fatalf("len(batch 1 Cards) = %d; want 2", len(b1.Cards))
 	}
-	if want := []string{"./01-json-flag.md"}; !slices.Equal(b1.Cards[0].EditsFiles, want) {
-		t.Errorf("batch 1 card 1 EditsFiles = %v; want %v", b1.Cards[0].EditsFiles, want)
+	if want := []string{"01-json-flag.md"}; !slices.Equal(b1.Cards[0].EditsFiles, want) {
+		t.Errorf("batch 1 card 1 EditsFiles = %v; want %v (root: \".\" must not produce an unclean \"./\" prefix)", b1.Cards[0].EditsFiles, want)
 	}
 	if b1.Cards[0].Commit != "01.1: add the --json flag and row struct" {
 		t.Errorf("batch 1 card 1 Commit = %q; want the NN.C-prefixed commit message", b1.Cards[0].Commit)

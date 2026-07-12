@@ -88,6 +88,8 @@ func Validate(plan *Plan, worktreeRoot string, caps ValidateCaps) []ValidationEr
 	findings = append(findings, checkMoveSourceMissing(plan, worktreeRoot)...)
 	findings = append(findings, checkMoveTargetCollision(plan, worktreeRoot)...)
 	findings = append(findings, checkMoveMechanicMissing(plan)...)
+	findings = append(findings, checkCardMissingField(plan)...)
+	findings = append(findings, checkCardFieldOverlap(plan)...)
 
 	return findings
 }
@@ -315,7 +317,11 @@ func pathSizeOnDisk(path string) int64 {
 // checkScopeMalformed implements check 6: every Scope entry must be
 // non-empty, relative, clean, and free of ".." escapes. Existence on disk
 // is deliberately NOT required — plan-format.md's prefix list is well-formed
-// as long as its entries "exist or are creatable".
+// as long as its entries "exist or are creatable". It also runs the same
+// well-formedness reason over every card's five normalized file-op field
+// lists (both Moves sides counting as the fifth), citing the offending card
+// in Detail — card-path well-formedness reuses this check name rather than
+// minting a new one (validator-check-set decision).
 func checkScopeMalformed(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
@@ -326,6 +332,137 @@ func checkScopeMalformed(plan *Plan) []ValidationError {
 					Check:  "scope-malformed",
 					Batch:  batchID(b),
 					Detail: fmt.Sprintf("scope entry %q is malformed: %s", p, reason),
+				})
+			}
+		}
+
+		for _, c := range b.Cards {
+			for _, fields := range [][]string{c.ContextFiles, c.EditsFiles, c.CreatesFiles, c.DeletesFiles} {
+				for _, p := range fields {
+					if reason := scopeEntryMalformedReason(p); reason != "" {
+						findings = append(findings, ValidationError{
+							Check:  "scope-malformed",
+							Batch:  batchID(b),
+							Detail: fmt.Sprintf("card %02d.%d path %q is malformed: %s", c.BatchPrefix, c.Number, p, reason),
+						})
+					}
+				}
+			}
+			for _, mv := range c.Moves {
+				for _, p := range []string{mv.Old, mv.New} {
+					if reason := scopeEntryMalformedReason(p); reason != "" {
+						findings = append(findings, ValidationError{
+							Check:  "scope-malformed",
+							Batch:  batchID(b),
+							Detail: fmt.Sprintf("card %02d.%d path %q is malformed: %s", c.BatchPrefix, c.Number, p, reason),
+						})
+					}
+				}
+			}
+		}
+	}
+
+	return findings
+}
+
+// cardFieldLabel pairs a card field's Has-presence bool with the bold label
+// plan-format.md pins for it, in field order — checkCardMissingField's only
+// data shape, kept next to the check so the field order stays visibly tied
+// to the check that walks it.
+type cardFieldLabel struct {
+	present bool
+	label   string
+}
+
+// checkCardMissingField implements card-missing-field: every card must
+// carry all six of What:/Context:/Edits:/Creates:/Deletes:/Moves: — a
+// missing label yields one finding per absent field, Detail naming the card
+// and the missing label. Commit: and verify: are optional and never
+// flagged.
+func checkCardMissingField(plan *Plan) []ValidationError {
+	var findings []ValidationError
+
+	for _, b := range plan.Batches {
+		for _, c := range b.Cards {
+			fields := []cardFieldLabel{
+				{c.HasWhat, "What:"},
+				{c.HasContext, "Context:"},
+				{c.HasEdits, "Edits:"},
+				{c.HasCreates, "Creates:"},
+				{c.HasDeletes, "Deletes:"},
+				{c.HasMoves, "Moves:"},
+			}
+			for _, f := range fields {
+				if f.present {
+					continue
+				}
+				findings = append(findings, ValidationError{
+					Check:  "card-missing-field",
+					Batch:  batchID(b),
+					Detail: fmt.Sprintf("card %02d.%d is missing its %s field", c.BatchPrefix, c.Number, f.label),
+				})
+			}
+		}
+	}
+
+	return findings
+}
+
+// checkCardFieldOverlap implements card-field-overlap: within a single card,
+// a path appearing in more than one of ContextFiles/EditsFiles/CreatesFiles/
+// DeletesFiles, or as either side of a Moves: pair, is a conflicting
+// instruction — one finding per duplicated path, Detail naming the card and
+// every field the path appears in. Overlap is deliberately per-card only:
+// the same path in one card's Creates: and another card's Edits: (in the
+// same batch) is legitimate typed-field sequencing, not a defect.
+func checkCardFieldOverlap(plan *Plan) []ValidationError {
+	var findings []ValidationError
+
+	for _, b := range plan.Batches {
+		for _, c := range b.Cards {
+			fieldsOf := make(map[string][]string)
+			add := func(p, field string) {
+				for _, seen := range fieldsOf[p] {
+					if seen == field {
+						return
+					}
+				}
+				fieldsOf[p] = append(fieldsOf[p], field)
+			}
+
+			for _, p := range c.ContextFiles {
+				add(p, "Context:")
+			}
+			for _, p := range c.EditsFiles {
+				add(p, "Edits:")
+			}
+			for _, p := range c.CreatesFiles {
+				add(p, "Creates:")
+			}
+			for _, p := range c.DeletesFiles {
+				add(p, "Deletes:")
+			}
+			for _, mv := range c.Moves {
+				add(mv.Old, "Moves:")
+				add(mv.New, "Moves:")
+			}
+
+			var duplicated []string
+			for p, fields := range fieldsOf {
+				if len(fields) > 1 {
+					duplicated = append(duplicated, p)
+				}
+			}
+			sort.Strings(duplicated)
+
+			for _, p := range duplicated {
+				findings = append(findings, ValidationError{
+					Check: "card-field-overlap",
+					Batch: batchID(b),
+					Detail: fmt.Sprintf(
+						"card %02d.%d path %q appears in more than one field: %s",
+						c.BatchPrefix, c.Number, p, strings.Join(fieldsOf[p], ", "),
+					),
 				})
 			}
 		}

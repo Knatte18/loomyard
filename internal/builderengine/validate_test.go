@@ -723,6 +723,176 @@ func TestValidate_MoveMechanicMissing(t *testing.T) {
 	})
 }
 
+// TestValidate_CardMissingField covers card-missing-field: each of the six
+// required fields (What:/Context:/Edits:/Creates:/Deletes:/Moves:) is
+// flagged individually when absent, and a present-but-"none" field (empty
+// non-nil slice, HasX == true) is not flagged.
+func TestValidate_CardMissingField(t *testing.T) {
+	t.Parallel()
+
+	t.Run("each missing field is flagged individually", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		plan := syntheticPlan(dir, builderengine.PlanBatch{
+			Number: 1, Slug: "first", File: "01-first.md",
+			VerifyCommand: "go build ./...",
+			Cards: []builderengine.PlanCard{
+				{BatchPrefix: 1, Number: 1},
+			},
+		})
+
+		findings := builderengine.Validate(plan, dir, generousCaps)
+		wantDetails := []string{"What:", "Context:", "Edits:", "Creates:", "Deletes:", "Moves:"}
+		for _, label := range wantDetails {
+			found := false
+			for _, f := range findings {
+				if f.Check == "card-missing-field" && f.Batch == "01-first" &&
+					strings.Contains(f.Detail, "01.1") && strings.Contains(f.Detail, label) {
+					found = true
+				}
+			}
+			if !found {
+				t.Errorf("Validate() = %+v; want a card-missing-field finding citing card 01.1's missing %s", findings, label)
+			}
+		}
+	})
+
+	t.Run("none-sentinel fields are not flagged", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		plan := syntheticPlan(dir, builderengine.PlanBatch{
+			Number: 1, Slug: "first", File: "01-first.md",
+			VerifyCommand: "go build ./...",
+			Cards: []builderengine.PlanCard{
+				{
+					BatchPrefix: 1, Number: 1,
+					HasWhat: true, HasContext: true, HasEdits: true,
+					HasCreates: true, HasDeletes: true, HasMoves: true,
+					ContextFiles: []string{}, EditsFiles: []string{}, CreatesFiles: []string{}, DeletesFiles: []string{},
+					Moves: []builderengine.MovePair{},
+				},
+			},
+		})
+
+		findings := builderengine.Validate(plan, dir, generousCaps)
+		if hasFinding(findings, "card-missing-field", "01-first") {
+			t.Errorf("Validate() = %+v; want no card-missing-field finding when every field is present-but-none", findings)
+		}
+	})
+}
+
+// TestValidate_CardFieldOverlap covers card-field-overlap: the same path in
+// one card's Edits: and Creates: is flagged, but the same path split across
+// two different cards' Creates:/Edits: (in the same batch) is not.
+func TestValidate_CardFieldOverlap(t *testing.T) {
+	t.Parallel()
+
+	t.Run("same path in Edits and Creates of one card is flagged", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		plan := syntheticPlan(dir, builderengine.PlanBatch{
+			Number: 1, Slug: "first", File: "01-first.md",
+			VerifyCommand: "go build ./...",
+			Cards: []builderengine.PlanCard{
+				{
+					BatchPrefix: 1, Number: 1,
+					EditsFiles:   []string{"dup.go"},
+					CreatesFiles: []string{"dup.go"},
+				},
+			},
+		})
+
+		findings := builderengine.Validate(plan, dir, generousCaps)
+		found := false
+		for _, f := range findings {
+			if f.Check == "card-field-overlap" && f.Batch == "01-first" &&
+				strings.Contains(f.Detail, "01.1") && strings.Contains(f.Detail, "dup.go") {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("Validate() = %+v; want a card-field-overlap finding citing card 01.1 and dup.go", findings)
+		}
+	})
+
+	t.Run("Creates in card A and Edits in card B of the same batch is not flagged", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		plan := syntheticPlan(dir, builderengine.PlanBatch{
+			Number: 1, Slug: "first", File: "01-first.md",
+			VerifyCommand: "go build ./...",
+			Cards: []builderengine.PlanCard{
+				{BatchPrefix: 1, Number: 1, CreatesFiles: []string{"shared.go"}},
+				{BatchPrefix: 1, Number: 2, EditsFiles: []string{"shared.go"}},
+			},
+		})
+
+		findings := builderengine.Validate(plan, dir, generousCaps)
+		if hasFinding(findings, "card-field-overlap", "01-first") {
+			t.Errorf("Validate() = %+v; want no card-field-overlap finding across two different cards", findings)
+		}
+	})
+}
+
+// TestValidate_ScopeMalformed_CardPaths covers checkScopeMalformed's
+// extension to card paths: a ".."-escaping or absolute card path is flagged
+// as scope-malformed citing the offending card.
+func TestValidate_ScopeMalformed_CardPaths(t *testing.T) {
+	t.Parallel()
+
+	t.Run("dot-dot escape in a card path is flagged citing the card", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		plan := syntheticPlan(dir, builderengine.PlanBatch{
+			Number: 1, Slug: "first", File: "01-first.md",
+			VerifyCommand: "go build ./...",
+			Cards: []builderengine.PlanCard{
+				{BatchPrefix: 1, Number: 1, EditsFiles: []string{"../escape.go"}},
+			},
+		})
+
+		findings := builderengine.Validate(plan, dir, generousCaps)
+		found := false
+		for _, f := range findings {
+			if f.Check == "scope-malformed" && f.Batch == "01-first" && strings.Contains(f.Detail, "01.1") {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("Validate() = %+v; want a scope-malformed finding citing card 01.1 for the \"..\" escape", findings)
+		}
+	})
+
+	t.Run("absolute card path is flagged citing the card", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		plan := syntheticPlan(dir, builderengine.PlanBatch{
+			Number: 1, Slug: "first", File: "01-first.md",
+			VerifyCommand: "go build ./...",
+			Cards: []builderengine.PlanCard{
+				{BatchPrefix: 1, Number: 1, EditsFiles: []string{"/etc/passwd"}},
+			},
+		})
+
+		findings := builderengine.Validate(plan, dir, generousCaps)
+		found := false
+		for _, f := range findings {
+			if f.Check == "scope-malformed" && f.Batch == "01-first" && strings.Contains(f.Detail, "01.1") {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("Validate() = %+v; want a scope-malformed finding citing card 01.1 for the absolute path", findings)
+		}
+	})
+}
+
 // hasFinding reports whether findings contains an entry matching both check
 // and batch (an empty batch matches a plan-level finding).
 func hasFinding(findings []builderengine.ValidationError, check, batch string) bool {
