@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-fix-r4
+phase: discussed
 slug: faster-git-fixture-tests
 branch: faster-git-fixture-tests
 plan: null
@@ -16,4 +16,5 @@ task_description: |
 ```text
 discussing  '2026-07-13T04:47:27Z'
 discussion-fix-r4  '2026-07-13T05:55:46Z'
+discussed  '2026-07-13T05:56:03Z'
 ```
