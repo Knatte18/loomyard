@@ -56,11 +56,45 @@ Windows-only (the operator records separate Linux benchmarks later).
   - `cmd/testtiming/main.go`
 - **Creates:**
   - `docs/benchmarks/fixture-copy.md`
+  - `internal/buildercli/testdata_test.go`
+  - `internal/buildercli/pause_spawnbatch_test.go`
 - **Edits:**
   - `docs/benchmarks/test-suite-timing.md`
   - `docs/benchmarks/running-tests.md`
+  - `internal/buildercli/validate_test.go`
+  - `internal/buildercli/poll_test.go`
+  - `internal/buildercli/status_test.go`
+  - `internal/buildercli/pause_test.go`
 - **Deletes:** none
 - **Moves:** none
+- **Discovered-scope note:** the official Tier 1 run (`go run
+  ./cmd/testtiming`) surfaced a real `go test ./...` compile failure in
+  `internal/buildercli` that predates this card: batch 1's mechanical
+  `//go:build integration` tagging of `spawnbatch_test.go` /
+  `validate_test.go` (commit `77393ab`) hid helper functions
+  (`mustGit`/`newScratchRepo`/`commitFile`/`newSpawnBatchFixture`/
+  `seedBuilderFixture`/`builderengineTestdataDir`/`seedPlanFixture`) that
+  several **untagged** sibling test files in the same package
+  (`poll_test.go`, `status_test.go`, `run_test.go`, and one test in
+  `pause_test.go`) still reference, breaking the untagged (Tier 1) build.
+  This was invisible to every prior verify command in this task because
+  they all pass `-tags integration`, which compiles the hiding files back
+  in. Fix, split by whether the referencing test actually spawns real git:
+  the two pure-file-I/O helpers (`builderengineTestdataDir`,
+  `seedPlanFixture`) move to a new untagged `testdata_test.go` so
+  `run_test.go` keeps compiling at Tier 1 without gaining a git dependency;
+  `poll_test.go` and `status_test.go` are genuinely git-spawning throughout
+  (every test builds a real git fixture) and get `//go:build integration`;
+  `pause_test.go`'s one git-dependent test
+  (`TestSpawnBatchCmd_ObservesPauseFlagWrittenByPauseCmd`) moves to a new
+  integration-tagged `pause_spawnbatch_test.go`, leaving its two
+  git-free tests in Tier 1. No test assertion changes; this is a pure
+  compile-visibility fix required for card 12's "green suite in both
+  tiers" precondition (batch scope). `internal/buildercli`'s `smoke`-tagged
+  tier has the same latent gap (`smoke_test.go` also references the
+  git-spawning helpers) but is unaffected by any tier this task measures
+  (`go test ./...` and `go test -tags integration ./...` both exclude it)
+  and is left alone — out of this task's scope.
 - **Requirements:** Three parts. **(1) `fixture-copy.md`:** port the entire
   "Benchmark report (2026-07-13, Windows-only)" section of
   `_mill/discussion.md` — machine spec, Windows-only banner ("separate Linux
