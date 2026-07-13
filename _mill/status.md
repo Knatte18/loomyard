@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-testmains-and-guard
+phase: approved-bench-and-docs
 slug: faster-git-fixture-tests
 branch: faster-git-fixture-tests
 plan: _mill/plan
@@ -25,6 +25,7 @@ implementing  '2026-07-13T06:19:49Z'
 approved-retier-builder-tests  '2026-07-13T06:23:52Z'
 approved-hermetic-lyxtest  '2026-07-13T06:27:37Z'
 approved-testmains-and-guard  '2026-07-13T06:40:23Z'
+approved-bench-and-docs  '2026-07-13T07:10:18Z'
 ```
 
 ## Batches
@@ -44,7 +45,7 @@ batches:
     implementer_session: 36dfd378-ad6f-4683-892d-05fe5e1772a1
     start_sha: 670cc61d5bd35ca15ccae7196700e1551c5f6e8b
   - name: bench-and-docs
-    state: running
+    state: approved
     implementer_session: 02a495ef-d25d-4555-9531-e5c82dc410fd
     start_sha: 38e4b3fb83a28d95921faeee80212fa7c61ebe75
 ```
