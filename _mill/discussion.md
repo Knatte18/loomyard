@@ -188,6 +188,16 @@ recording before/after numbers.
   configcli, warpengine clone tests). Layer B covers every spawn but is
   forgettable; Layer A makes fixtures self-describing even if a future package
   forgets `TestMain`. Belt and braces; Layer A is 3 lines per template builder.
+- Layer B reaches **indirect** git spawns too: `os.Setenv` in `TestMain`
+  mutates the test process's environment, which `exec.Command` children
+  inherit by default and pass on to their own children — so git spawned by a
+  launched binary (e.g. `cmd/lyx`'s e2e tests running the lyx binary, which
+  itself spawns git) still sees `GIT_CONFIG_GLOBAL`/`GIT_CONFIG_NOSYSTEM`.
+  This is what makes the no-daemon acceptance check meaningful for `cmd/lyx`,
+  which is covered by a real `TestMain` (not allowlisted). Caveat for the
+  plan: any test that constructs an `exec.Cmd` with an explicit `Env`
+  whitelist would break this inheritance — none do today; the guard's
+  allowlist review is the checkpoint if one appears.
 - Rejected: env-only (silent regression on forgotten TestMain — mitigated by
   the guard, but fixtures should still be self-contained); template-only
   (measured hole: clone/init-created repos); injecting `-c` flags in
@@ -219,12 +229,24 @@ recording before/after numbers.
 
 - Decision: add a guard test in `cmd/lyx` (sibling of `tierpurity_test.go`,
   same walk-the-module-root technique): any package whose `*_test.go` files
-  contain a git-spawn token (reuse tierpurity's token set: `gitexec.RunGit`,
-  `exec.Command`, `lyxtest.Copy`) must contain a `TestMain` that calls the
-  lyxtest hermetic-env helper (raw-substring check on the helper's name), or
-  be named on an allowlist with a reason (`internal/proc` spawns non-git
-  processes; `cmd/lyx/tierpurity_test.go`-style self-references). Record the
-  invariant in CONSTRAINTS.md in the same commit.
+  contain a git-spawn token must contain a `TestMain` that calls the lyxtest
+  hermetic-env helper (raw-substring check on the helper's name), or be named
+  on an allowlist with a reason. The token set is tierpurity's set **plus the
+  lyxtest helpers that spawn git internally**: `gitexec.RunGit`,
+  `exec.Command`, `lyxtest.Copy`, `lyxtest.MustRun`, `lyxtest.SeedConfig` —
+  without the last two, a package whose only git spawn goes through those
+  helpers would contain no token and silently skip the hermetic requirement.
+  Record the invariant in CONSTRAINTS.md in the same commit.
+- Allowlist (enumerated; non-git spawners for which a git-hermetic `TestMain`
+  is meaningless, distinct from packages that get a real `TestMain`):
+  `internal/proc` (spawns generic processes — process control is the package's
+  subject); `internal/muxengine` (spawns `tmux`/`psmux`, not git); the guard's
+  own test file in `cmd/lyx` (contains the banned tokens as its own test
+  data, like `tierpurity_test.go`). `cmd/lyx` itself is **not** allowlisted:
+  its tests spawn `go` (crosscompile) but also git (`main_test.go`,
+  `main_integration_test.go`), so it gets a real `TestMain`. The plan should
+  re-derive the exact allowlist from the guard's first failing run rather
+  than trusting this enumeration blindly.
 - Rationale: without enforcement the daemons return silently with the next new
   package; "exists ⇒ covered or allowlisted" is this repo's established guard
   discipline (tierpurity, sandbox coverage, CLI registration).
@@ -369,3 +391,7 @@ recording before/after numbers.
   task — tag the 4 files `//go:build integration` before recording baselines.
 - **Q:** Implement hardlink/alternates anyway? **A:** No — byte-copy stays;
   report + permanent baseline benchmark only.
+- **Q:** (review r1 gap) Guard token set misses `lyxtest.MustRun` /
+  `lyxtest.SeedConfig`, which spawn git inside lyxtest? **A:** Add both to the
+  guard's token set (recommended option; operator standing directive: accept
+  recommended resolution on all mill-start review findings).
