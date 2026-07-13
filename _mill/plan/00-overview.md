@@ -3,7 +3,7 @@
 ```yaml
 task: 'Restore the Tier 1 floor: guards + perchengine'
 slug: restore-tier1-floor
-approved: false
+approved: true
 started: '20260713-090820'
 parent: main
 root: ""
@@ -33,9 +33,13 @@ batches:
 - **Decision:** This task's scope was set by discussion-phase measurement, not the
   wiki proposal. The two levers are (a) disabling cobra's Windows mousetrap check
   at the `internal/clihelp` seam and (b) moving the one real-time perchengine test
-  to Tier 2. The proposal's "shared parse-pass for cmd/lyx guards" is refuted
-  (guards cost ~0.25 s combined) and is NOT built. See `_mill/discussion.md` for
-  the full evidence trail.
+  to Tier 2 — plus (c) one bounded, conditional-keep attempt at shrinking the
+  boardtest concurrency test's writer-iteration volume (operator-approved
+  extension; kept only if it wins ≥ ~1 s of isolated package time, reverted with
+  a doc-comment note otherwise — see card 3 and the `boardtest-bounded-shrink`
+  decision in `_mill/discussion.md`). The proposal's "shared parse-pass for
+  cmd/lyx guards" is refuted (guards cost ~0.25 s combined) and is NOT built.
+  See `_mill/discussion.md` for the full evidence trail.
 - **Rationale:** Measured: Tier 1 wall ~37 s baseline → ~23 s with mousetrap
   disabled → ~11.7 s with both fixes (simulated in this worktree).
 - **Applies to:** all batches

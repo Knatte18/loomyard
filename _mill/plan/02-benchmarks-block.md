@@ -46,8 +46,12 @@ directly.
   frozen History entry `### 2026-07-13 — hermetic git test environment (was
   "Current best times")` placed as the newest History entry, content unchanged;
   (2) write the new "Current best times" section, dated with today's date from the
-  system clock, machine/Go/method lines in the established format ("median of 3
-  warm runs per tier via `go run ./cmd/testtiming[ -full]`"). The new block must
+  system clock and carrying a distinguishing descriptor in the established
+  `As of **DATE** (<descriptor>)` form — use "restore-tier1-floor: mousetrap
+  disabled + lingering-child test re-tiered" — so the two same-day headings stay
+  distinguishable once this block later freezes into History; machine/Go/method
+  lines in the established format ("median of 3 warm runs per tier via
+  `go run ./cmd/testtiming[ -full]`"). The new block must
   contain: **Headline** table (Tier 1 and Tier 2 wall-clock, each with a
   "vs. previous" column against the superseded block's ~29 s / ~128 s); a
   **Cause** section attributing the Tier 1 drop to (a) disabling cobra's
