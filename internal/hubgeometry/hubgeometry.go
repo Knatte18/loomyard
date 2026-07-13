@@ -171,6 +171,42 @@ func PerchRunsDir(baseDir string) string {
 	return filepath.Join(baseDir, LyxDirName, "perch")
 }
 
+// PlanDir returns the path to the base directory for builder's plan-format
+// v1 artifacts within a baseDir: the directory holding 00-overview.md and
+// every NN-<batch-slug>.md batch file (see docs/modules/plan-format.md). It
+// lives under _lyx so the plan is weft-synced via the host _lyx junction,
+// like every other durable lyx state. Per the Hub Geometry Invariant, no
+// other package may construct this path.
+//
+// Returns filepath.Join(baseDir, LyxDirName, "plan").
+func PlanDir(baseDir string) string {
+	return filepath.Join(baseDir, LyxDirName, "plan")
+}
+
+// BuilderDir returns the path to the base directory for builder's own
+// durable run state within a baseDir: state.json, the pause flag,
+// outcome.yaml, and the reports subdirectory (see BuilderReportsDir). It
+// lives under _lyx so builder's run state is weft-synced via the host _lyx
+// junction, like every other durable lyx state. Per the Hub Geometry
+// Invariant, no other package may construct this path.
+//
+// Returns filepath.Join(baseDir, LyxDirName, "builder").
+func BuilderDir(baseDir string) string {
+	return filepath.Join(baseDir, LyxDirName, "builder")
+}
+
+// BuilderReportsDir returns the path to the directory holding builder's
+// per-batch report files (NN-<batch-slug>.yaml, see
+// docs/modules/plan-format.md's batch-report contract) within a baseDir. It
+// lives under _lyx so reports are weft-synced via the host _lyx junction,
+// like every other durable lyx state. Per the Hub Geometry Invariant, no
+// other package may construct this path.
+//
+// Returns filepath.Join(BuilderDir(baseDir), "reports").
+func BuilderReportsDir(baseDir string) string {
+	return filepath.Join(BuilderDir(baseDir), "reports")
+}
+
 // DotEnv returns the path to the .env file within a baseDir.
 //
 // The .env file provides environment variable overrides for the worktree.

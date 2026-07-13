@@ -1,0 +1,20 @@
+# go:embed targets become byte-for-byte content baked into the built binary
+# (prompt templates sent to LLM agents, or scripts executed via shebang) --
+# their bytes must be deterministic across checkouts regardless of a given
+# machine's core.autocrlf setting, so they are pinned to LF here.
+internal/builderengine/implementer-template.md text eol=lf
+internal/builderengine/orchestrator-template.md text eol=lf
+internal/builderengine/template.yaml text eol=lf
+internal/burlerengine/review-prompt-template.md text eol=lf
+internal/boardengine/template.yaml text eol=lf
+internal/modelspec/template.yaml text eol=lf
+internal/muxengine/template_posix.yaml text eol=lf
+internal/muxengine/template_windows.yaml text eol=lf
+internal/perchengine/judge-circling-template.md text eol=lf
+internal/perchengine/judge-milestone-template.md text eol=lf
+internal/perchengine/template.yaml text eol=lf
+internal/perchengine/triage-template.md text eol=lf
+internal/shuttleengine/template.yaml text eol=lf
+internal/warpengine/post-checkout.sh text eol=lf
+internal/warpengine/template.yaml text eol=lf
+internal/weftengine/template.yaml text eol=lf

@@ -1,0 +1,10 @@
+orchestrator: sonnet  # model-spec for the long-lived orchestrator session that drives the batch loop
+implementer: sonnet  # model-spec for a normal-sized batch's implementer spawn
+implementer_oversized: sonnet  # model-spec for an oversized-flagged batch's implementer spawn; point at a large-window variant alias from models.yaml when one exists — context size is a model property, never a parameter (see docs/reference/model-spec.md)
+recovery: opus[effort=high]  # model-spec for the fresh escalated recovery spawn the orchestrator triggers after a batch reports stuck
+self_fix_cap: 2  # max self-fix attempts an implementer makes before reporting stuck
+poll_wait_s: 480  # seconds `poll --wait` blocks watching for the in-flight batch's terminal state before returning a running snapshot
+batch_timeout_min: 60  # minutes since spawn after which a batch with no report and no live strand classifies dead (dead_reason: timeout)
+orchestrator_timeout_min: 480  # minutes the orchestrator's own shuttle spawn is allowed to run
+batch_context_cap_tokens: 100000  # validation check 5's context-estimate cap (bytes/4 over Scope + Where files); a batch over this without oversized: true fails validation
+batch_card_cap: 10  # validation check 5's card-count cap per batch

@@ -7,6 +7,7 @@ package configreg
 
 import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/builderengine"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/muxengine"
 	"github.com/Knatte18/loomyard/internal/perchengine"
@@ -34,6 +35,7 @@ type Module struct {
 func Modules() []Module {
 	return []Module{
 		{Name: "board", Template: boardengine.ConfigTemplate},
+		{Name: "builder", Template: builderengine.ConfigTemplate},
 		{Name: "models", Template: modelspec.ConfigTemplate, SeedOnly: true},
 		{Name: "mux", Template: muxengine.ConfigTemplate},
 		{Name: "perch", Template: perchengine.ConfigTemplate},

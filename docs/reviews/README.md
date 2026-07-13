@@ -153,26 +153,55 @@ CPU peg is *not* a defect. Merge on: serial-clean + zero-stray-state + a couple 
 with zero corruption markers. (This distinction was agreed with the operator during the mux
 campaign; keep it — don't let an artificial stress peg block a correct module.)
 
-## The live sandbox suite (the substrate-driving vehicle)
+## Driving the real substrate — the round agent does it itself, directly
 
-Static and hermetic tests can't see the real bugs; a maintained **live-driving suite** is how the
-round agent (and you) exercise the real substrate. For mux that is
-[`tools/sandbox/SANDBOX-MUX-SUITE.md`](../../tools/sandbox/SANDBOX-MUX-SUITE.md) (scenarios M0–Mn),
-run through the harness documented in [sandbox-howto.md](../sandbox-howto.md). Reusable rules that
-bit us and are worth carrying to any module's suite:
+Static and hermetic tests can't see the real bugs; the round agent exercises the real substrate
+by calling the module's own CLI **directly, with its own tool calls**, guided by the per-module
+review prompt's "High-yield focus" invariant list (see
+[`review-prompt-template.md`](review-prompt-template.md)).
 
-- **Deploy-first footgun.** The suite runs the **deployed** binary, not your working tree. Re-run
-  `deploy.cmd` after **every** source change or you validate a stale binary and draw a false
+**Do not have the round agent invoke a `sandbox-<module>-suite.cmd` launcher.** `tools/sandbox/`'s
+launcher machinery (`SANDBOX-<MODULE>-SUITE.md` + `suite.go`/`main.go`/the `.cmd` wrapper) exists
+to hand a scenario doc to a SEPARATE, context-free interactive `claude` session — a naive
+black-box tester with no source knowledge, useful for a *human operator* dogfooding the CLI (see
+[sandbox-howto.md](../sandbox-howto.md)), but meaningless for a round agent to spawn on top of
+itself: the round agent already has full source knowledge and its own tool calls, and the spawned
+session has no attached console of its own to inherit in this context anyway. Builder's `opus-r1`
+round (2026-07) made exactly this mistake — it read "launch the suite" as "invoke the launcher",
+judged that operator-assisted/cost-bearing, and as a result skipped ALL live driving for an entire
+round, silently substituting pure code-tracing. The fix: the round agent runs the real CLI
+commands itself (`lyx <module> <verb>`, foreground, waiting for each to return). This spawns real
+substrate underneath when the module rides mux/shuttle (real psmux panes, real interactive
+`claude` sessions) — that is expected and required, not something to avoid. None of it needs an
+attached TTY of its own: a psmux pane is a real pty regardless of whether anyone is watching it.
+
+If the module already has a maintained `tools/sandbox/SANDBOX-<MODULE>-SUITE.md` (built for the
+separate human-operator dogfooding use case), the round agent MAY read it for scenario ideas, but
+must execute every scenario with its own tool calls — never via the launcher. **Building a new
+dedicated suite file + launcher wiring is NOT a prerequisite for running this method on a new
+module.** That machinery serves `CONSTRAINTS.md`'s Sandbox Suite Coverage invariant — a separate,
+pre-existing requirement for every *registered* module — not something this hardening method needs
+to stand up for itself.
+
+Reusable rules that bit us and are worth carrying to any module's live driving:
+
+- **Deploy-first footgun.** Live driving runs the **deployed** binary, not your working tree.
+  Re-run `deploy.cmd` after **every** source change or you validate a stale binary and draw a false
   PASS/FAIL. When in doubt, re-deploy.
-- **The suite is a floor, not a ceiling.** M0–Mn is the minimum. The round agent is expected to
+- **Cost/time is not a reason to skip live driving.** A real substrate session (a real
+  implementer/agent doing real work) takes real wall-clock minutes, not seconds — that is a budget
+  fact, not grounds to fall back to code-tracing. Reserve "cannot verify headlessly" strictly for a
+  genuine environment gap or an actual human-eyeball need (e.g. a visual `lyx mux attach`
+  confirmation) — never a blanket cost/turn-budget excuse.
+- **The high-yield focus list is a floor, not a ceiling.** The round agent is expected to
   hand-roll many more adversarial scenarios (crash/rebirth, cross-worktree scope, dead-but-present
-  state, mid-op-failure orphans, rapid churn) beyond what the suite codifies.
+  state, mid-op-failure orphans, rapid churn) beyond what that list names.
 - **Teardown discipline.** If you start any substrate server/session, tear it down and confirm zero
   stray processes at the end. "No stray state" is itself an invariant under test.
-- **Grow the suite with the module.** When a round surfaces a live behavior the suite doesn't cover,
-  add it as a new scenario in the same change (keep the coverage guard green — for mux,
-  `sandbox_coverage_test.go`). A bug found live should leave behind both a `//go:build smoke`
-  regression test *and*, where visual/manual, a suite scenario.
+- **Grow whatever scenario record you keep with the module.** If a maintained SANDBOX-suite file
+  already exists for the module, extend it when a round surfaces a live behavior it doesn't cover
+  (keep `sandbox_coverage_test.go` green). A bug found live should leave behind a
+  `//go:build smoke` regression test regardless of whether a suite file exists.
 
 ## Instantiating this for a new module
 
@@ -180,8 +209,11 @@ bit us and are worth carrying to any module's suite:
    `docs/reviews/<module>-review-prompt.md` and fill every `<PLACEHOLDER>` (what to read, the
    high-yield focus list = where *this* module's bugs actually live, the exact test commands, the
    substrate-teardown check).
-2. Stand up a live suite under `tools/sandbox/SANDBOX-<MODULE>-SUITE.md` (mux's is the worked
-   pattern) and wire its coverage guard.
+2. Confirm the module already satisfies `CONSTRAINTS.md`'s Sandbox Suite Coverage invariant (a
+   `**Covers:** <module>` tag somewhere under `tools/sandbox/*SUITE.md`). That invariant is
+   pre-existing and independent of this method — do NOT build a new dedicated suite file or
+   launcher just to satisfy this hardening loop; the round agent drives the real CLI directly (see
+   "Driving the real substrate" above) whether or not a dedicated suite file exists.
 3. Run the loop: seed → spawn (rotate model) → independently verify → re-seed → repeat until a
    safety pass finds nothing and your gates agree. Then do any operator-assisted step the harness
    can't reach headlessly (for mux: the visual `attach` test in a real TTY), and merge.
