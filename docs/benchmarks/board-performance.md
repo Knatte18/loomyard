@@ -107,15 +107,35 @@ Hot path — `Render` (pure, tasks → markdown, no I/O), `go test -bench . -ben
 Windows measured 0.03 / 0.28 / 3.5 ms for the same rows — Linux is ~2–3× faster
 even on this pure-CPU path (no I/O involved; the delta is CPU/allocator, not AV).
 
-**CLI-driven rows not yet measured on Linux.** `Upsert`/`Get`/`List` drive the
-command through `boardcli.RunCLI`, whose cwd-authoritative config resolution
-calls `hubgeometry.Resolve` (a `git rev-parse`), so the benchmark's seeded temp
-dir must be a git repo. `seedWiki` does not `git init`, so these three exit
-`not a git repository` on Linux. The naive fix (git-init in the shared
-`seedWiki`) would make the *untagged* Tier-1 concurrency test spawn git and trip
-the tier-purity guard, so recording these needs a small tiering change (an
-integration-tagged git-seeded bench helper), tracked separately — not folded
-into this measurement pass. `Render` above is unaffected (no CLI, no git).
+CLI-driven commands and the Board facade — CLI rows via
+`go test -tags integration -run '^$' -bench 'Upsert|Get|List' -benchmem` (they
+drive `boardcli.RunCLI`, whose config resolution spawns `git rev-parse`, so they
+now live behind `//go:build integration`; see `bench_cli_test.go`), facade rows
+via the untagged `-bench UpsertFacade`:
+
+| Benchmark      | n=10    | n=100   | n=1000  |
+|----------------|---------|---------|---------|
+| Upsert (CLI)   | 2.56 ms | 2.30 ms | 2.29 ms |
+| Get (CLI)      | 2.11 ms | 2.11 ms | 2.33 ms |
+| List (CLI)     | 2.09 ms | 2.22 ms | 2.25 ms |
+| UpsertFacade   | 0.12 ms | 0.41 ms | 3.91 ms |
+
+Two things to read here, both Linux-specific:
+
+- **The CLI rows are flat across board size** (~2.3 ms regardless of n), unlike
+  Windows (Upsert scaled 10.4 → 18.2 → 30.6 ms). On Linux the per-command cost is
+  dominated by a fixed ~2 ms floor — the `git rev-parse` config resolution
+  (`hubgeometry.Resolve`) plus CLI/config-load overhead paid once per command —
+  which swamps the sub-millisecond render work even at n=1000. The
+  **`UpsertFacade`** row (same write, but the facade bypasses CLI + config
+  resolution) is the one that scales with board size (0.12 → 3.91 ms), because it
+  is pure board logic with no per-call git.
+- **Do not compare these against the historical Windows CLI rows.** Those numbers
+  (Get 0.77 ms, Upsert 10–30 ms) predate the current git-requiring config
+  resolution — a Windows `git rev-parse` alone is ~72 ms (see
+  [fixture-copy.md](fixture-copy.md#process-spawn-cost-the-real-floor)), so those
+  sub-5 ms Get rows cannot have included it. Treat the Linux block as its own
+  baseline; the facade row is the only apples-to-apples cross-OS write cost.
 
 Process startup floor (native no-op Go exe, 50 sequential spawns, bash `for`):
 
