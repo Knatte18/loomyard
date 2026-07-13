@@ -150,6 +150,37 @@ gap that is the Windows `CreateProcess`-interception/AV-scan tax, not a Go cost
 hot path, this near-zero Linux spawn floor means a board write command's cost on
 Linux is essentially just the in-process `Render` + file write.
 
+### 2026-07-13 — Windows clean-CPU baseline (Ryzen 7 9800X3D, Defender A/B)
+
+A third machine, run to isolate the antivirus cost: same box, Defender active vs
+repo + `%TEMP%` excluded. No Cortex XDR here, so it is a clean Defender on/off
+comparison.
+
+- Machine: AMD Ryzen 7 9800X3D, Windows 11, 16 logical CPUs, Go 1.26.3
+
+| Benchmark (ns/op)     | Defender ACTIVE (n=10/100/1000) | Defender EXCLUDED (n=10/100/1000) |
+|-----------------------|----------------------------------|-----------------------------------|
+| Render (pure)         | 0.008 / 0.072 / 1.41 ms          | 0.008 / 0.068 / **0.79 ms**       |
+| UpsertFacade          | 2.52 / 6.12 / 10.7 ms            | **1.50 / 2.11 / 7.62 ms**         |
+| Upsert (CLI)          | ~36.4 ms (flat)                  | ~35.5 ms (flat)                   |
+| Get / List (CLI)      | ~33–35 ms (flat)                 | ~33–34 ms (flat)                  |
+
+Three effects, and they map cleanly onto *where* the work happens:
+
+- **In-process, allocation-heavy work is where Defender bites.** `UpsertFacade`
+  (load → mutate → render → write, no CLI/git) drops ~65 % at n=100 (6.12 → 2.11 ms)
+  with Defender off. Even pure `Render` (no I/O at all) is ~44 % faster at n=1000
+  (1.41 → 0.79 ms) — an *indirect* AV effect: MsMpEng's background scanning steals
+  CPU cycles from the benchmark, not by scanning its I/O (there is none) but by
+  contending for cores.
+- **The CLI rows are flat across Defender on/off (~35 ms) — process-spawn is not
+  AV-taxed here.** But note they are ~15× the Linux CLI numbers (~2.3 ms): that gap
+  is the Windows `git rev-parse` spawn cost per command (config resolution),
+  i.e. the process-creation floor, *not* antivirus. Defender does not touch it; the
+  OS does.
+- **Do not compare these CLI rows to the historical 155U CLI rows** above — those
+  predate the git-requiring config resolution (see the Linux block's note).
+
 ### Pre-config baseline — synchronous writes (historic reference)
 
 Kept for history. At this earlier revision every write did `pull → commit → push`

@@ -249,6 +249,48 @@ wall-clock grace/deadline windows and so do not shrink without AV:
 Tier 1 on Linux is dominated by `internal/boardengine/boardtest` (~0.33 s) and
 `internal/muxengine` (~0.16 s) — pure-CPU suites; no package does git in Tier 1.
 
+## Windows clean-CPU baseline (Ryzen 7 9800X3D, Defender A/B)
+
+A third machine (2026-07-13), run specifically to **isolate the antivirus cost**:
+the same box measured twice, once with Microsoft Defender real-time protection
+active and once with the repo + `%TEMP%` excluded. Same CPU, same OS, only AV
+differs — so the A→B delta is the pure Defender tax, and Run B is effectively
+"clean Windows." This box has **no Cortex XDR** (unlike the 155U above), so the
+comparison is single-variable.
+
+- Machine: AMD Ryzen 7 9800X3D, Windows 11 (10.0.26200), 16 logical CPUs, Go 1.26.3
+- Method: median of 3 warm runs per tier via `go run ./cmd/testtiming[ -full]`
+
+| Loop | Defender ACTIVE | Defender EXCLUDED (clean) | Defender tax |
+|------|-----------------|---------------------------|--------------|
+| **Tier 1** | 3.29 s | **1.53 s** | ~54 % |
+| **Tier 2** | 18.67 s | **16.09 s** | ~14 % |
+
+### What this settles about AV vs CPU vs OS
+
+Three machines side by side (median wall-clock):
+
+| | Tier 1 | Tier 2 | AV | CPU class |
+|---|--------|--------|-----|-----------|
+| Intel 155U | ~9.95 s | ~131.7 s | **Cortex XDR** | 15 W ultrabook |
+| Ryzen 9800X3D, Defender on | 3.29 s | 18.67 s | Defender | flagship desktop |
+| Ryzen 9800X3D, clean | 1.53 s | 16.09 s | none | flagship desktop |
+| Linux (Ryzen AI 7 445) | 1.03 s | 4.97 s | none | mobile |
+
+- **Defender is a real but modest tax, and it lands on in-process work, not
+  spawning.** Tier 1 (compile + in-process test execution + small-file I/O) drops
+  ~54 % without Defender; Tier 2 (dominated by git-subprocess spawns) drops only
+  ~14 %. The AV scanner spends its time on file reads/writes and allocation-heavy
+  in-process work, not on process creation, on this box.
+- **The 155U's huge numbers were mostly Cortex XDR + a weak CPU, not Defender.**
+  Even with Defender *on*, the 9800X3D runs Tier 1 in a third of the 155U's time
+  (3.29 s vs 9.95 s) — that gap is CPU + Cortex, since Defender itself only
+  accounts for the 3.29 → 1.53 s part. Do not read the 155U↔9800X3D gap as "AV."
+- **Clean Windows is still ~3× slower than Linux on Tier 2** (16.09 s vs 4.97 s)
+  with no AV on either side — the irreducible cost of Windows process-spawn +
+  NTFS + junctions vs POSIX `fork` + ext4 + symlinks. That floor is not AV and
+  does not go away.
+
 ## History (trend log)
 
 ### 2026-07-13 — hermetic git test environment (was "Current best times")
