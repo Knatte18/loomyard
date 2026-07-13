@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-fixing
+phase: nits-fixed-holistic
 slug: restore-tier1-floor
 branch: restore-tier1-floor
 plan: _mill/plan
@@ -25,6 +25,9 @@ approved-code-fixes  '2026-07-13T09:26:34Z'
 approved-benchmarks-block  '2026-07-13T09:41:31Z'
 holistic-reviewing  '2026-07-13T09:41:55Z'
 holistic-fixing  '2026-07-13T09:45:14Z'
+nits-fixed-holistic  '2026-07-13T09:48:16Z'
+holistic-approved  '2026-07-13T09:48:25Z'
+nits-fixed-holistic  '2026-07-13T09:48:25Z'
 ```
 
 ## Batches
