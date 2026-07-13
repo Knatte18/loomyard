@@ -34,7 +34,9 @@ batches:
     implementer_session: 657648c2-1f2f-4e08-a54a-4c46b106e2f6
     start_sha: da72bf24d05f0ac5450e30ca85f7cee38d4adf5a
   - name: hermetic-lyxtest
-    state: pending
+    state: running
+    implementer_session: 3ccce4bd-3fab-4ecc-a9fb-3bc4dc86a600
+    start_sha: f097eb2e07169b8dc9f76c29b58645a12fed530a
   - name: testmains-and-guard
     state: pending
   - name: bench-and-docs
