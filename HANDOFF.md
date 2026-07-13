@@ -28,9 +28,11 @@ You do **not** need to read code to do this task.
 
 - Do **not** run `mill-setup` or set up the mill hub — the benchmarks make their
   own git fixtures in temp; a plain checkout is enough.
-- Do **not** touch the wiki, and do **not** commit or push anything (the results
-  file goes under `.scratch/`, which is gitignored).
+- Do **not** touch the wiki.
 - Do **not** edit source or docs. This is measurement only.
+- Do **not** commit anything **except** the single results file in Step 4/5 —
+  that one you commit + push, because it is how the numbers reach the operator's
+  machine (you two share the same git remote). Nothing else should ever be staged.
 
 ## Step 0 — Verify environment (report, don't fix silently)
 
@@ -110,9 +112,9 @@ Remove-MpPreference -ExclusionPath $env:TEMP
 
 ## Step 4 — Write the results file
 
-Write everything to `.scratch\windows-bench-results.md` (create `.scratch\` if
-needed; it is gitignored). Use exactly this structure so it can be folded into the
-docs verbatim:
+Write everything to **`WINDOWS-BENCH-RESULTS.md` at the repo root** — a committed
+transient file, so it reaches the operator's machine via git (Step 5). Use exactly
+this structure so it can be folded into the docs verbatim:
 
 ```markdown
 # Windows bench results — Ryzen 7 9800X3D
@@ -142,9 +144,20 @@ docs verbatim:
 - Anything surprising (e.g. a number that got *slower* without AV).
 ```
 
-## Step 5 — Report back
+## Step 5 — Commit the results back (this is the delivery mechanism)
 
-Print the full contents of `.scratch\windows-bench-results.md` as your final
-message (a single copy-pasteable markdown block), so the operator can relay it to
-the Loomyard session that will fold it into `docs/benchmarks/`. Do not summarize
-away the raw numbers — the operator needs them verbatim.
+Deliver the numbers **through git**, not by pasting into a chat — the operator is
+on a different machine that shares this same remote. Stage only the results file:
+
+```powershell
+git add WINDOWS-BENCH-RESULTS.md
+git commit -m "bench: Windows Ryzen 7 9800X3D results (Defender on/excluded)"
+git pull --rebase        # in case the operator pushed to the branch meanwhile
+git push
+```
+
+Commit **only** `WINDOWS-BENCH-RESULTS.md` — verify with `git status` that nothing
+else is staged. Then print a one-line confirmation with the commit hash as your
+final message. The operator's Loomyard session will `git pull`, fold the numbers
+into `docs/benchmarks/`, and delete both this file and `HANDOFF.md`. Do not
+summarize away the raw numbers — leave them verbatim in the file.
