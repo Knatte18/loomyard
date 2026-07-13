@@ -7,12 +7,14 @@
 package warpengine
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fslink"
+	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
@@ -200,25 +202,43 @@ func TestStatus_JunctionHealth(t *testing.T) {
 
 // TestStatus_LyxPollutionDetected asserts that force-adding a _lyx path to the host index
 // is detected as pollution and the PollutionEntry carries a git rm --cached remedy.
+// injectLinkPollution stages relPath into hostDir's index as a tracked regular
+// file without writing through the _lyx/_raddle link. On Windows those links are
+// git-transparent junctions, so a plain `git add -f` of a path under them works;
+// on Linux they are symlinks and git refuses any pathspec "beyond a symbolic
+// link" (both `git add` and `git hash-object` of a path under the link). Hashing
+// the content from a scratch file outside the link and injecting the index entry
+// with `git update-index --add --cacheinfo` reproduces the identical
+// polluted-index state on either OS — which is all detectHostPollution's
+// `git ls-files` reads.
+func injectLinkPollution(t *testing.T, hostDir, relPath, content string) {
+	t.Helper()
+	src := filepath.Join(t.TempDir(), "pollution-blob")
+	if err := os.WriteFile(src, []byte(content), 0o644); err != nil {
+		t.Fatalf("write pollution blob source: %v", err)
+	}
+	sha, stderr, code, err := gitexec.RunGit([]string{"hash-object", "-w", src}, hostDir)
+	if err != nil || code != 0 {
+		t.Fatalf("hash-object %s: err=%v code=%d stderr=%q", src, err, code, stderr)
+	}
+	cacheinfo := fmt.Sprintf("100644,%s,%s", strings.TrimSpace(sha), relPath)
+	if _, stderr, code, err := gitexec.RunGit([]string{"update-index", "--add", "--cacheinfo", cacheinfo}, hostDir); err != nil || code != 0 {
+		t.Fatalf("update-index --cacheinfo %s: err=%v code=%d stderr=%q", cacheinfo, err, code, stderr)
+	}
+}
+
 func TestStatus_LyxPollutionDetected(t *testing.T) {
 	t.Parallel()
 
 	f := setupStatusFixture(t)
 
-	// Force-add a file under _lyx to the host index. In normal operation _lyx is a
-	// junction (excluded from tracking), but an accidental git add -f can bypass that.
-	// We create a plain file named _lyx/accidental.txt and force-add it.
-	lyxDir := filepath.Join(f.Hub, "_lyx")
-
-	// The junction exists at this path; we need to place a polluting tracked file there.
-	// Write a file into the weft _lyx dir (reachable via the junction) and stage it in the host.
-	accidentalPath := filepath.Join(lyxDir, "accidental.txt")
-	if err := os.WriteFile(accidentalPath, []byte("polluted"), 0o644); err != nil {
-		t.Fatalf("WriteFile accidental.txt: %v", err)
-	}
-
-	// git add -f bypasses .gitignore / git-exclude so the junction exclusion is overridden.
-	lyxtest.MustRun(t, f.Hub, "git", "add", "-f", accidentalPath)
+	// Stage a polluting file under _lyx in the host index. In normal operation
+	// _lyx is a link (Windows junction / Linux symlink) excluded from tracking,
+	// but an accidental force-track can bypass that. The index entry is injected
+	// via plumbing so the setup is filesystem-agnostic — a plain `git add -f` of
+	// a path under the link is refused on Linux ("beyond a symbolic link"); see
+	// injectLinkPollution.
+	injectLinkPollution(t, f.Hub, "_lyx/accidental.txt", "polluted")
 
 	w := New(Config{})
 	result, err := w.Status(f.Layout)
@@ -263,22 +283,11 @@ func TestStatus_LyxPollutionDetected(t *testing.T) {
 		t.Errorf("no pollution entry with _lyx prefix found; Pollution = %+v", pair.Pollution)
 	}
 
-	// Phase 2: Test _raddle pollution (report-only, no remedy in this release).
-	// Create and force-add a file under _raddle in the host worktree.
-	raddleDir := filepath.Join(f.Hub, "_raddle")
-	if err := os.MkdirAll(raddleDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll _raddle: %v", err)
-	}
-	raddlePath := filepath.Join(raddleDir, "overview.md")
-	if err := os.WriteFile(raddlePath, []byte("raddle polluted"), 0o644); err != nil {
-		t.Fatalf("WriteFile _raddle/overview.md: %v", err)
-	}
-
-	// Force-add to bypass any exclusion; _raddle may not be excluded yet.
-	lyxtest.MustRun(t, f.Hub, "git", "add", "-f", raddlePath)
-
-	// Commit so git ls-files picks it up as tracked (ls-files shows staged and committed files).
-	lyxtest.MustRun(t, f.Hub, "git", "commit", "-m", "test: force-add raddle pollution")
+	// Phase 2: _raddle pollution (report-only, no remedy in this release). Same
+	// plumbing injection — git indexes forward-slash paths on every OS, so this
+	// reproduces the polluted-index state whether _raddle is a junction or a
+	// symlink. ls-files reports staged entries, so no commit is needed.
+	injectLinkPollution(t, f.Hub, "_raddle/overview.md", "raddle polluted")
 
 	// Re-invoke Status() for the _raddle pollution check.
 	result2, err := w.Status(f.Layout)

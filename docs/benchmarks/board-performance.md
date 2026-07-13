@@ -32,13 +32,16 @@ to show how cost scales — every write re-renders all tasks.
 
 ## Results
 
-Numbers are wall-clock per op on Windows; they are **noisy** (Windows file I/O +
-Defender + GC), so treat them as order-of-magnitude, not precise. Record a new
-block per revision rather than editing the old one, so the trend stays visible.
+Numbers are wall-clock per op and **noisy**, so treat them as order-of-magnitude,
+not precise. Each dated block names its OS in the `Machine:` line — Windows blocks
+were measured with Cortex XDR live (file I/O + AV + GC); the
+[Linux baseline](#2026-07-13--linux-baseline-ubuntu-2604) has no such tax, so do
+not compare a Windows row against a Linux one. Record a new block per revision (or
+per OS) rather than editing the old one, so each trend stays visible.
 
 ### 2026-06-08 — async git sync
 
-- Machine: Intel Core Ultra 7 155U, `windows/amd64`, Go default GC
+- Machine: Intel Core Ultra 7 155U, Windows 11 Enterprise, `windows/amd64`, 14 logical CPUs, Go default GC
 - Endpoint security active (≈30 ms process-creation tax — see below)
 
 Hot path, in-process (`go test -bench . -benchmem`, default benchtime):
@@ -83,6 +86,100 @@ in-process write is the ~10–18 ms `Upsert` row above.
 **Note:** The integration tier no longer benchmarks against a remote — all git tests
 are now local and deterministic. Historical network benchmarks (SyncGit, SyncGitNoPush)
 have been removed.
+
+### 2026-07-13 — Linux baseline (Ubuntu 26.04)
+
+First Linux measurement, recorded in parallel with the Windows block above.
+**Compare down each OS's column, not across** — the Windows box ran Cortex XDR
+(file I/O + AV throttling), the Linux box has no equivalent, so faster Linux
+numbers mostly measure the absent AV tax. See
+[linux-portability-survey.md](../research/linux-portability-survey.md) for the
+portability pass that made the suite runnable on Linux.
+
+- Machine: AMD Ryzen AI 7 445 w/ Radeon 840M, Ubuntu 26.04 LTS, `linux/amd64`, 12 logical CPUs, Go 1.26.0, default GC
+
+Hot path — `Render` (pure, tasks → markdown, no I/O), `go test -bench . -benchmem`:
+
+| Benchmark     | n=10     | n=100    | n=1000   |
+|---------------|----------|----------|----------|
+| Render (pure) | 0.016 ms | 0.089 ms | 1.05 ms  |
+
+Windows measured 0.03 / 0.28 / 3.5 ms for the same rows — Linux is ~2–3× faster
+even on this pure-CPU path (no I/O involved; the delta is CPU/allocator, not AV).
+
+CLI-driven commands and the Board facade — CLI rows via
+`go test -tags integration -run '^$' -bench 'Upsert|Get|List' -benchmem` (they
+drive `boardcli.RunCLI`, whose config resolution spawns `git rev-parse`, so they
+now live behind `//go:build integration`; see `bench_cli_test.go`), facade rows
+via the untagged `-bench UpsertFacade`:
+
+| Benchmark      | n=10    | n=100   | n=1000  |
+|----------------|---------|---------|---------|
+| Upsert (CLI)   | 2.56 ms | 2.30 ms | 2.29 ms |
+| Get (CLI)      | 2.11 ms | 2.11 ms | 2.33 ms |
+| List (CLI)     | 2.09 ms | 2.22 ms | 2.25 ms |
+| UpsertFacade   | 0.12 ms | 0.41 ms | 3.91 ms |
+
+Two things to read here, both Linux-specific:
+
+- **The CLI rows are flat across board size** (~2.3 ms regardless of n), unlike
+  Windows (Upsert scaled 10.4 → 18.2 → 30.6 ms). On Linux the per-command cost is
+  dominated by a fixed ~2 ms floor — the `git rev-parse` config resolution
+  (`hubgeometry.Resolve`) plus CLI/config-load overhead paid once per command —
+  which swamps the sub-millisecond render work even at n=1000. The
+  **`UpsertFacade`** row (same write, but the facade bypasses CLI + config
+  resolution) is the one that scales with board size (0.12 → 3.91 ms), because it
+  is pure board logic with no per-call git.
+- **Do not compare these against the historical Windows CLI rows.** Those numbers
+  (Get 0.77 ms, Upsert 10–30 ms) predate the current git-requiring config
+  resolution — a Windows `git rev-parse` alone is ~72 ms (see
+  [fixture-copy.md](fixture-copy.md#process-spawn-cost-the-real-floor)), so those
+  sub-5 ms Get rows cannot have included it. Treat the Linux block as its own
+  baseline; the facade row is the only apples-to-apples cross-OS write cost.
+
+Process startup floor (native no-op Go exe, 50 sequential spawns, bash `for`):
+
+| Launcher            | ms / process |
+|---------------------|--------------|
+| bash (`for`), Linux | ~0.6         |
+
+vs Windows ~30 ms (cmd) / ~78 ms (git-bash) for the same no-op exe — a ~50–130×
+gap that is the Windows `CreateProcess`-interception/AV-scan tax, not a Go cost
+(a Go binary starts in single-digit ms on a clean machine, as
+[the Windows block](#process-startup-context) already noted). With git off the
+hot path, this near-zero Linux spawn floor means a board write command's cost on
+Linux is essentially just the in-process `Render` + file write.
+
+### 2026-07-13 — Windows clean-CPU baseline (Ryzen 7 9800X3D, Defender A/B)
+
+A third machine, run to isolate the antivirus cost: same box, Defender active vs
+repo + `%TEMP%` excluded. No Cortex XDR here, so it is a clean Defender on/off
+comparison.
+
+- Machine: AMD Ryzen 7 9800X3D, Windows 11, 16 logical CPUs, Go 1.26.3
+
+| Benchmark (ns/op)     | Defender ACTIVE (n=10/100/1000) | Defender EXCLUDED (n=10/100/1000) |
+|-----------------------|----------------------------------|-----------------------------------|
+| Render (pure)         | 0.008 / 0.072 / 1.41 ms          | 0.008 / 0.068 / **0.79 ms**       |
+| UpsertFacade          | 2.52 / 6.12 / 10.7 ms            | **1.50 / 2.11 / 7.62 ms**         |
+| Upsert (CLI)          | ~36.4 ms (flat)                  | ~35.5 ms (flat)                   |
+| Get / List (CLI)      | ~33–35 ms (flat)                 | ~33–34 ms (flat)                  |
+
+Three effects, and they map cleanly onto *where* the work happens:
+
+- **In-process, allocation-heavy work is where Defender bites.** `UpsertFacade`
+  (load → mutate → render → write, no CLI/git) drops ~65 % at n=100 (6.12 → 2.11 ms)
+  with Defender off. Even pure `Render` (no I/O at all) is ~44 % faster at n=1000
+  (1.41 → 0.79 ms) — an *indirect* AV effect: MsMpEng's background scanning steals
+  CPU cycles from the benchmark, not by scanning its I/O (there is none) but by
+  contending for cores.
+- **The CLI rows are flat across Defender on/off (~35 ms) — process-spawn is not
+  AV-taxed here.** But note they are ~15× the Linux CLI numbers (~2.3 ms): that gap
+  is the Windows `git rev-parse` spawn cost per command (config resolution),
+  i.e. the process-creation floor, *not* antivirus. Defender does not touch it; the
+  OS does.
+- **Do not compare these CLI rows to the historical 155U CLI rows** above — those
+  predate the git-requiring config resolution (see the Linux block's note).
 
 ### Pre-config baseline — synchronous writes (historic reference)
 

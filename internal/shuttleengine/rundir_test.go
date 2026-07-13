@@ -35,7 +35,11 @@ func TestRunDirRoot_RelativeResolvesAgainstWorktreeRoot(t *testing.T) {
 
 func TestRunDirRoot_AbsoluteUsedVerbatim(t *testing.T) {
 	layout := &hubgeometry.Layout{Cwd: `C:\worktree`, WorktreeRoot: `C:\worktree`}
-	abs := `D:\elsewhere\runs`
+	// An OS-absolute RunDir must be returned verbatim, never re-joined against
+	// WorktreeRoot. t.TempDir() yields an absolute path on any host (a
+	// drive-rooted path on Windows, a /… path on POSIX), so the test is not
+	// tied to one OS's notion of "absolute".
+	abs := filepath.Join(t.TempDir(), "runs")
 	got := runDirRoot(Config{RunDir: abs}, layout)
 	if got != abs {
 		t.Errorf("runDirRoot() = %q, want %q", got, abs)

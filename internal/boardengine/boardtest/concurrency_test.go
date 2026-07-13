@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 )
@@ -101,6 +102,17 @@ func TestConcurrentReadsDuringUpserts(t *testing.T) {
 					t.Errorf("reader saw %d tasks, want 100", len(tasks))
 					return
 				}
+
+				// Yield between reads. The reader/writer overlap this test
+				// demonstrates needs readers running *alongside* the writer, not
+				// readers running *flat out*: 8 lock-free readers spinning with no
+				// pause peg every core and starve the single writer's upserts —
+				// harmless on Windows, where endpoint AV throttled the readers into
+				// leaving CPU for the writer, but on an unthrottled host it stretched
+				// the writer's 10 upserts from sub-second to minutes. A 1 ms pause
+				// still lands hundreds of validated reads inside the writer's window
+				// while leaving it the CPU to finish.
+				time.Sleep(time.Millisecond)
 			}
 		}()
 	}

@@ -50,7 +50,10 @@ func TestSpec_Validate_RelativeOutputFilesResolveToAbsolute(t *testing.T) {
 }
 
 func TestSpec_Validate_AbsoluteOutputFilesPassThroughVerbatim(t *testing.T) {
-	abs := `D:\elsewhere\out.md`
+	// An OS-absolute OutputFiles entry must pass through unchanged, not be
+	// re-rooted at the worktree. t.TempDir() is absolute on any host; name a
+	// fresh file inside it (validate rejects pre-existing output files).
+	abs := filepath.Join(t.TempDir(), "out.md")
 	s := &Spec{Prompt: "do the thing", OutputFiles: []string{abs}}
 	if err := s.validate(`C:\worktree`, Config{RunTimeoutMin: 30}); err != nil {
 		t.Fatalf("validate() error: %v", err)
