@@ -237,6 +237,27 @@ recording before/after numbers.
   without the last two, a package whose only git spawn goes through those
   helpers would contain no token and silently skip the hermetic requirement.
   Record the invariant in CONSTRAINTS.md in the same commit.
+- **Scan semantics differ from tierpurity in one deliberate way:** tierpurity
+  early-skips files whose first line is a `//go:build integration`/`smoke`
+  constraint (its subject is untagged files only). The hermetic guard must
+  scan **all `*_test.go` files regardless of build tag** — the git-spawning
+  set is almost exactly the tagged set (all 15 warpengine git test files are
+  integration-tagged), so copying tierpurity's skip verbatim would make the
+  guard vacuous. Its vacuous-scan protection asserts a non-zero count of
+  git-spawning packages found (which, given the tagging reality, implies
+  tagged files were scanned).
+- The `lyxtest.MustRun` token is **broader than git** — `MustRun(tb, dir,
+  args...)` runs any command — so it can flag a package whose only spawn is
+  non-git. This over-breadth is intentional and self-correcting via the
+  allowlist re-derivation below: such a package gets an allowlist entry with
+  a reason, not a meaningless TestMain. A plan writer should not treat these
+  flags as guard bugs.
+- The raw-substring check on the helper's name proves **presence, not
+  semantics** — a comment mentioning the helper would pass it. The semantic
+  half (a real `func TestMain` that calls the helper before `m.Run()`) stays
+  a review obligation, exactly like the repo's other grep-guards (see the
+  Shell Mechanics Seam and Provider-Seam entries in CONSTRAINTS.md, whose
+  semantic halves are review obligations too).
 - Allowlist (enumerated; non-git spawners for which a git-hermetic `TestMain`
   is meaningless, distinct from packages that get a real `TestMain`):
   `internal/proc` (spawns generic processes — process control is the package's
@@ -395,3 +416,8 @@ recording before/after numbers.
   `lyxtest.SeedConfig`, which spawn git inside lyxtest? **A:** Add both to the
   guard's token set (recommended option; operator standing directive: accept
   recommended resolution on all mill-start review findings).
+- **Q:** (review r2 gap) Hermetic guard copied tierpurity's technique, which
+  skips tagged files — but git-spawning files are precisely the tagged set,
+  making the guard vacuous? **A:** Scan all `*_test.go` regardless of build
+  tag; vacuous-scan floor asserts non-zero git-spawning packages found
+  (recommended option, per standing directive).
