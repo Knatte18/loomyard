@@ -1,6 +1,9 @@
 // pause_test.go covers the pause verb's envelope shape and confirms it
 // writes the same flag file builderengine.PauseRequested/spawn-batch's own
-// gate reads -- the seam a subsequent spawn-batch test can observe.
+// gate reads. The seam a spawn-batch test observes against a real git
+// fixture is covered in pause_spawnbatch_test.go (integration-tagged,
+// since it needs newSpawnBatchFixture); the two tests below only touch
+// t.TempDir(), so they stay in Tier 1.
 
 package buildercli
 
@@ -54,29 +57,5 @@ func TestPauseCmd_IdempotentRePause(t *testing.T) {
 	}
 	if !strings.Contains(out2.String(), `"ok":true`) {
 		t.Errorf("second pause() output missing ok:true; got %q", out2.String())
-	}
-}
-
-// TestSpawnBatchCmd_ObservesPauseFlagWrittenByPauseCmd proves pause and
-// spawn-batch share the same flag file: a pause written by pauseCmd is
-// observed by spawnBatchCmd's own gate, the discussion's shared-seam
-// requirement.
-func TestSpawnBatchCmd_ObservesPauseFlagWrittenByPauseCmd(t *testing.T) {
-	t.Setenv("WEFT_SKIP_GIT", "1")
-	fx := newSpawnBatchFixture(t)
-	fx.initState(t)
-
-	var pauseOut bytes.Buffer
-	if exitCode := clihelp.Execute(fx.CLI.pauseCmd(), &pauseOut, nil); exitCode != 0 {
-		t.Fatalf("pause() = %d; want 0, output: %s", exitCode, pauseOut.String())
-	}
-
-	var out bytes.Buffer
-	exitCode := clihelp.Execute(fx.CLI.spawnBatchCmd(), &out, []string{"1"})
-	if exitCode != 1 {
-		t.Fatalf("spawn-batch after pause() = %d; want 1, output: %s", exitCode, out.String())
-	}
-	if !strings.Contains(out.String(), `"paused":true`) {
-		t.Errorf("output missing paused:true; got %q", out.String())
 	}
 }

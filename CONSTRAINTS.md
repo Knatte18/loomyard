@@ -213,6 +213,46 @@ fixture-tree copies; Tier 1 stays offline and fast.
 - **Enforced by** `cmd/lyx/tierpurity_test.go`
   (`TestTierPurity_UntaggedTestsSpawnNothing`) on every `go test`.
 
+## Hermetic Git Test Environment Invariant
+
+Every test package whose tests spawn git — directly or via the lyxtest fixture
+helpers — runs under the hermetic git test environment, so no test behaviour
+depends on the operator's `~/.gitconfig` or the system gitconfig.
+
+- **Statement.** A package is "git-spawning" when any of its `*_test.go` files
+  spawns git directly (`gitexec.RunGit`, `exec.Command`/`exec.CommandContext`) or
+  indirectly through a lyxtest fixture helper (`lyxtest.Copy*`, `lyxtest.MustRun`,
+  `lyxtest.SeedConfig`). Every such package must contain a `TestMain` that calls
+  `lyxtest.HermeticGitEnv()` before `m.Run()`, or be named on the allowlist below
+  with a reason. The concrete failure this kills: a global `core.fsmonitor=true`
+  in the operator's gitconfig spawning hundreds of `fsmonitor--daemon` processes
+  per integration run — see `docs/benchmarks/fixture-copy.md` for measured
+  numbers.
+- **Mechanics.** The guard walks every `*_test.go` file under the module root
+  (resolved via `go env GOMOD`, cwd-independent) and checks each file's source
+  for the bare, unqualified `HermeticGitEnv` substring — matching both the
+  qualified `lyxtest.HermeticGitEnv()` call form (other packages) and the
+  unqualified `HermeticGitEnv()` form `internal/lyxtest`'s own tests use. Unlike
+  the Test Tier Purity Invariant's guard, this one scans **every** test file
+  regardless of build constraint: the git-spawning set is almost exactly the
+  integration-tagged set, so skipping tagged files would make the guard
+  vacuous. This proves presence only — the mechanical half of the check. The
+  semantic half (a real `TestMain` that calls the helper before `m.Run()`) is a
+  review obligation, exactly like the repo's other grep-guards (the Shell
+  Mechanics Seam and Provider-Seam entries above).
+- **Allowlist.** Exists ⇒ hermetic or allowlisted with a reason. A package
+  directory-path prefix that spawns non-git processes for which a git-hermetic
+  `TestMain` would be meaningless is named on the guard's `allowedNonHermetic`
+  map with a one-line reason: `internal/proc` (process control is the
+  package's subject — its tests must spawn, just not git). The guard's own
+  file, `cmd/lyx/hermeticenv_test.go`, carries the tokens (including the bare
+  `HermeticGitEnv` presence token) as its own test data; it is a **per-file
+  scan exclusion**, not a package-level exemption — `cmd/lyx` itself
+  genuinely spawns git in its e2e tests and satisfies the requirement through
+  its own real `TestMain`.
+- **Enforced by** `cmd/lyx/hermeticenv_test.go`
+  (`TestHermeticGitEnv_GitSpawningPackagesHaveTestMain`) on every `go test`.
+
 ## Documentation Lifecycle
 
 Which docs are kept vs deleted (mechanical per-module docs vs durable design docs):

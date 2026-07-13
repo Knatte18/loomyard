@@ -1,3 +1,5 @@
+//go:build integration
+
 // validate_test.go covers the validate verb's envelope shapes through
 // RunCLI: a clean plan prints {"valid": true, "batches": N}; a plan with
 // findings prints an error envelope carrying the findings array; an absent
@@ -10,29 +12,14 @@ package buildercli
 
 import (
 	"bytes"
-	"os"
-	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/builderengine"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 	"github.com/Knatte18/loomyard/internal/muxengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
-
-// builderengineTestdataDir returns the absolute path to
-// internal/builderengine/testdata/<name>, resolved from this source file's
-// own location via runtime.Caller rather than a cwd-relative path: tests
-// that seed a fixture call t.Chdir into a scratch worktree first, which
-// would otherwise break a plain "../builderengine/testdata/..." relative
-// lookup.
-func builderengineTestdataDir(name string) string {
-	_, thisFile, _, _ := runtime.Caller(0)
-	return filepath.Join(filepath.Dir(thisFile), "..", "builderengine", "testdata", name)
-}
 
 // seedBuilderFixture returns a host-hub git fixture with shuttle/mux/
 // builder config seeded, chdir'd into the host hub, ready for a builder CLI
@@ -51,46 +38,9 @@ func seedBuilderFixture(t *testing.T) lyxtest.HostFixture {
 	return fixture
 }
 
-// seedPlanFixture copies every top-level file from srcDir (one of
-// builderengine's own testdata plan fixtures) into hub's plan dir
-// (hubgeometry.PlanDir(hub)) -- the Hub Geometry Invariant's own helper,
-// never a hand-joined path -- AND into hub itself. The second copy matters
-// because validateCmd resolves every card's typed file-op paths against
-// c.layout.Cwd (hub, this package's worktreeRoot), never against planDir;
-// per the fixture-self-reference decision a fixture's own card paths (e.g.
-// plan-valid's Moves: source) are worktree-relative paths that resolve only
-// against the fixture directory itself, so builderengine's own tests pass
-// that directory as WorktreeRoot directly. buildercli's hub/planDir split
-// has no single directory that is both, so both copies are required for
-// batch 2's on-disk move-source-missing/move-target-collision checks to
-// resolve the same fixture correctly here.
-func seedPlanFixture(t *testing.T, hub, srcDir string) {
-	t.Helper()
-
-	dstDir := hubgeometry.PlanDir(hub)
-	if err := os.MkdirAll(dstDir, 0o755); err != nil {
-		t.Fatalf("mkdir plan dir: %v", err)
-	}
-	entries, err := os.ReadDir(srcDir)
-	if err != nil {
-		t.Fatalf("ReadDir(%q): %v", srcDir, err)
-	}
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		data, err := os.ReadFile(filepath.Join(srcDir, e.Name()))
-		if err != nil {
-			t.Fatalf("ReadFile(%q): %v", e.Name(), err)
-		}
-		if err := os.WriteFile(filepath.Join(dstDir, e.Name()), data, 0o644); err != nil {
-			t.Fatalf("WriteFile(%q): %v", e.Name(), err)
-		}
-		if err := os.WriteFile(filepath.Join(hub, e.Name()), data, 0o644); err != nil {
-			t.Fatalf("WriteFile(%q): %v", e.Name(), err)
-		}
-	}
-}
+// builderengineTestdataDir and seedPlanFixture (the pure file-I/O plan
+// fixture helpers, no git spawn) live in testdata_test.go, untagged, so
+// Tier 1's run_test.go can use them without depending on this file.
 
 func TestRunCLI_Validate_CleanPlan(t *testing.T) {
 	fixture := seedBuilderFixture(t)

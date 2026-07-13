@@ -12,6 +12,73 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
+// TestMain wires up the hermetic git environment before any test in this
+// package spawns git, matching the canonical TestMain shape every
+// git-spawning package in the repo uses. lyxtest's own test file is
+// `package lyxtest`, so the call is unqualified — this is also why the
+// hermetic guard's presence token is the bare function name, not the
+// qualified lyxtest.HermeticGitEnv() form.
+func TestMain(m *testing.M) {
+	HermeticGitEnv()
+	os.Exit(m.Run())
+}
+
+// TestHermeticGitEnv_QuietAndPinned verifies Layer B end to end: a repo
+// created with a bare `git init` (no explicit -b flag) inside a fresh
+// t.TempDir() reads its fsmonitor setting from the hermetic env-level global
+// config (proving the operator's own global config is not being read), and
+// lands on branch "main" via init.defaultBranch rather than git's own
+// fallback default — the round-guarding edge case that motivates shipping
+// identity/defaultBranch in the neutral config alongside the quiet keys.
+func TestHermeticGitEnv_QuietAndPinned(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	MustRun(t, dir, "git", "init")
+
+	// The file is integration-tagged, so spawning git directly via exec.Command
+	// for these two read-only assertions is legal here.
+	cmd := exec.Command("git", "config", "core.fsmonitor")
+	cmd.Dir = dir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git config core.fsmonitor: %v; output: %s", err, output)
+	}
+	if got := strings.TrimSpace(string(output)); got != "false" {
+		t.Errorf("core.fsmonitor = %q; want %q", got, "false")
+	}
+
+	cmd = exec.Command("git", "symbolic-ref", "HEAD")
+	cmd.Dir = dir
+	output, err = cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git symbolic-ref HEAD: %v; output: %s", err, output)
+	}
+	if got := strings.TrimSpace(string(output)); got != "refs/heads/main" {
+		t.Errorf("symbolic-ref HEAD = %q; want %q", got, "refs/heads/main")
+	}
+}
+
+// TestTemplateQuietConfig verifies Layer A independently of Layer B: a
+// Copy*-produced fixture carries the quiet git settings in its own
+// .git/config, not merely inherited from the process-wide hermetic env.
+// --local scopes the read to the copy's own config file.
+func TestTemplateQuietConfig(t *testing.T) {
+	t.Parallel()
+
+	fixture := CopyHostHub(t)
+
+	cmd := exec.Command("git", "config", "--local", "core.fsmonitor")
+	cmd.Dir = fixture.Hub
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git config --local core.fsmonitor: %v; output: %s", err, output)
+	}
+	if got := strings.TrimSpace(string(output)); got != "false" {
+		t.Errorf("--local core.fsmonitor = %q; want %q", got, "false")
+	}
+}
+
 // TestCopyHostHub verifies that CopyHostHub returns valid independent git repos.
 func TestCopyHostHub(t *testing.T) {
 	t.Parallel()

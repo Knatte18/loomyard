@@ -79,11 +79,17 @@ func stripHookSamples(hooksDir string) {
 }
 
 // initRepo initializes a git repository at dir on branch main with user Test/test@test.com.
-// Fixture construction errors are unrecoverable, so any git command failure panics immediately.
+// It also disables fsmonitor and auto-maintenance so that fsmonitor--daemon and
+// auto-maintenance spawns never occur for this repo or any copy made from it (copies
+// inherit .git/config verbatim; worktrees share it). Fixture construction errors are
+// unrecoverable, so any git command failure panics immediately.
 func initRepo(dir string) {
 	mustGit(dir, "init", "-b", "main")
 	mustGit(dir, "config", "user.email", "test@test.com")
 	mustGit(dir, "config", "user.name", "Test")
+	mustGit(dir, "config", "core.fsmonitor", "false")
+	mustGit(dir, "config", "maintenance.auto", "false")
+	mustGit(dir, "config", "gc.auto", "0")
 	stripHookSamples(filepath.Join(dir, ".git", "hooks"))
 }
 
@@ -96,13 +102,18 @@ func commitAll(dir, message string) {
 
 // initBareRemote creates a bare git repository at dir and adds it as the origin remote
 // of the repo at repoDir. The bare repository starts empty; the caller is responsible
-// for any push that seeds it. Fixture construction errors are unrecoverable, so any
-// failure panics immediately.
+// for any push that seeds it. It also disables fsmonitor and auto-maintenance so that
+// fsmonitor--daemon and auto-maintenance spawns never occur for this bare repo or any
+// copy made from it. Fixture construction errors are unrecoverable, so any failure
+// panics immediately.
 func initBareRemote(dir, repoDir string) {
 	if err := os.Mkdir(dir, 0o755); err != nil {
 		panic(err)
 	}
 	mustGit(dir, "init", "--bare")
+	mustGit(dir, "config", "core.fsmonitor", "false")
+	mustGit(dir, "config", "maintenance.auto", "false")
+	mustGit(dir, "config", "gc.auto", "0")
 	stripHookSamples(filepath.Join(dir, "hooks"))
 	mustGit(repoDir, "remote", "add", "origin", dir)
 }

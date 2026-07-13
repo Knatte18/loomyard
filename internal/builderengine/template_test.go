@@ -1,3 +1,5 @@
+//go:build integration
+
 // template_test.go pins builder.yaml's seed template: it must parse as
 // YAML, round-trip through LoadConfig into the documented defaults, and
 // carry every Config yaml tag — so a struct field added without a matching
