@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-benchmarks-block
+phase: holistic-reviewing
 slug: restore-tier1-floor
 branch: restore-tier1-floor
 plan: _mill/plan
@@ -23,6 +23,7 @@ planned  '2026-07-13T09:15:28Z'
 implementing  '2026-07-13T09:19:09Z'
 approved-code-fixes  '2026-07-13T09:26:34Z'
 approved-benchmarks-block  '2026-07-13T09:41:31Z'
+holistic-reviewing  '2026-07-13T09:41:55Z'
 ```
 
 ## Batches
