@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussion-fix-r1
 slug: restore-tier1-floor
 branch: restore-tier1-floor
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-07-13T07:45:26Z'
+discussion-fix-r1  '2026-07-13T09:01:23Z'
 ```

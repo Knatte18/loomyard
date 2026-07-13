@@ -123,8 +123,11 @@ wall ~11.7 s, with `internal/boardengine/boardtest` (~5.2 s under contention,
 - Rationale: the guard is documented as deliberately narrow ("raw substring", "this
   is deliberately narrower than 'spawn no processes'"); banning production wrapper
   names is whack-a-mole and would couple the guard to every engine's internals.
-  After re-tiering, no untagged file spawns through that wrapper. The evasion is
-  worth a sentence in the benchmarks-doc block, not a guard change.
+  After re-tiering, no expensive/real-time spawn remains in an untagged file: the
+  four remaining untagged `execGateCommand` tests (pass, fail, not-found, 1 ns
+  timeout) still spawn cheap `go` processes through the wrapper, intentionally and
+  guard-invisibly — the cheap-subprocess shape the invariant deliberately permits.
+  The evasion is worth a sentence in the benchmarks-doc block, not a guard change.
 - Rejected: adding `execGateCommand` to `bannedTokens` (couples the repo-wide guard
   to one package's unexported helper; the helper's own untagged unit tests — pass,
   fail, not-found, 1 ns timeout — are cheap and legitimate Tier 1 tests that would
@@ -134,8 +137,11 @@ wall ~11.7 s, with `internal/boardengine/boardtest` (~5.2 s under contention,
 
 - Decision: one bounded attempt at `TestConcurrentReadsDuringUpserts`
   (`internal/boardengine/boardtest/concurrency_test.go`): reduce fixture volume —
-  seeded task count (100) and/or writer iterations (50) — while preserving the
-  test's shape (1 writer goroutine, 8 reader goroutines, readers validating
+  primarily the `writes = 50` writer-iteration const (the dominant re-render cost,
+  and uncoupled from any assertion); the seeded task count (100) only secondarily,
+  because it is coupled to two other literals that must move in lockstep (readers
+  call `GetTask("task-50")` and assert the task count stays 100) — while preserving
+  the test's shape (1 writer goroutine, 8 reader goroutines, readers validating
   mid-write, non-mutating upserts so the count assertion holds). Re-measure; keep
   the reduction only if it wins ≥ ~1 s of package time without weakening the race
   exposure below usefulness (writer must still be mid-flight while readers read —
@@ -184,8 +190,10 @@ wall ~11.7 s, with `internal/boardengine/boardtest` (~5.2 s under contention,
   Tier 2 (real spawns + 10 s real-time grace window by design).
 - **`internal/boardengine/boardtest/concurrency_test.go`** — `seedWiki(t, 100)`
   seeds 100 tasks; the writer does 50 `UpsertTask` calls each re-rendering
-  Home.md/_Sidebar.md; `SkipGit: true` so no spawns. Knobs are the `100`, the
-  `writes = 50` const, and possibly `readers = 8`.
+  Home.md/_Sidebar.md; `SkipGit: true` so no spawns. Primary knob is the
+  `writes = 50` const (uncoupled); the seeded `100` is coupled to the readers'
+  `GetTask("task-50")` and the count-stays-100 assertion, which must move in
+  lockstep if it changes; `readers = 8` is a possible third knob.
 - **Verification harness**: `go run ./cmd/testtiming` (Tier 1) and
   `go run ./cmd/testtiming -full` (Tier 2) produce the medians the benchmarks doc
   uses; `go build ./...` first to warm the build cache. Numbers are Windows-only
