@@ -39,7 +39,9 @@ batches:
     implementer_session: 3ccce4bd-3fab-4ecc-a9fb-3bc4dc86a600
     start_sha: f097eb2e07169b8dc9f76c29b58645a12fed530a
   - name: testmains-and-guard
-    state: pending
+    state: running
+    implementer_session: 36dfd378-ad6f-4683-892d-05fe5e1772a1
+    start_sha: 670cc61d5bd35ca15ccae7196700e1551c5f6e8b
   - name: bench-and-docs
     state: pending
 ```
