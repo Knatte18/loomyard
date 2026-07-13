@@ -94,7 +94,12 @@ Windows-only (the operator records separate Linux benchmarks later).
   tier has the same latent gap (`smoke_test.go` also references the
   git-spawning helpers) but is unaffected by any tier this task measures
   (`go test ./...` and `go test -tags integration ./...` both exclude it)
-  and is left alone — out of this task's scope.
+  and is left alone — out of this task's scope. **Follow-up gap found
+  while fixing the above:** `pollFakeMux` (a git-free
+  `shuttleengine.MuxOps` double defined in `poll_test.go`) is also
+  referenced by the untagged `run_test.go`; tagging `poll_test.go`
+  integration hid it the same way. Moves to the untagged
+  `testdata_test.go` alongside the other shared, git-free test doubles.
 - **Requirements:** Three parts. **(1) `fixture-copy.md`:** port the entire
   "Benchmark report (2026-07-13, Windows-only)" section of
   `_mill/discussion.md` — machine spec, Windows-only banner ("separate Linux
