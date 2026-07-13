@@ -1,0 +1,18 @@
+# Status
+
+```yaml
+phase: discussing
+slug: restore-tier1-floor
+branch: restore-tier1-floor
+plan: null
+parent: main
+task: 'Restore the Tier 1 floor: guards + perchengine'
+task_description: |
+  Restore the Tier 1 floor: guards + perchengine
+```
+
+## Timeline
+
+```text
+discussing  '2026-07-13T07:45:26Z'
+```
