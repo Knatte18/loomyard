@@ -34,5 +34,7 @@ batches:
     start_sha: 83b3d9139c35d933ec0a1c580640bab8a1d6b645
     commit_sha: 2da5ed24fe00735f708bc2004368a6b66bd37b35
   - name: benchmarks-block
-    state: pending
+    state: running
+    implementer_session: 79930f3a-b204-46ec-b4ea-1c6d17b6a6a8
+    start_sha: 64857d9566c4ea7a434bdd5fdee95a532215090e
 ```
