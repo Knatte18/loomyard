@@ -23,6 +23,24 @@ import (
 	"github.com/Knatte18/loomyard/internal/output"
 )
 
+// init disables cobra's Windows "mousetrap" check for every consumer of this
+// package. On Windows, cobra's preExecHook calls mousetrap.StartedByExplorer()
+// on every Command.Execute() — a CreateToolhelp32Snapshot walk of the entire OS
+// process table — purely to detect whether the binary was launched by double-
+// clicking it in Explorer, so it can print a "don't double-click, use a
+// terminal" message before the process window closes. Setting
+// cobra.MousetrapHelpText to the empty string is cobra's documented off-switch:
+// the hook checks this variable first and short-circuits before ever calling
+// the syscall. lyx is an orchestration CLI that is never launched by
+// double-click, so the message is dead weight, while the snapshot walk
+// dominated the test suite: a CPU profile of this package showed 99% of
+// samples inside that syscall (measured: internal/clihelp 8.0 s -> 1.0 s, full
+// Tier 1 suite ~37 s -> ~23 s). See docs/benchmarks/test-suite-timing.md for
+// the dated measurement block.
+func init() {
+	cobra.MousetrapHelpText = ""
+}
+
 // ctxKey is an unexported type for context keys in this package,
 // preventing collisions with keys defined in other packages.
 type ctxKey struct{}
