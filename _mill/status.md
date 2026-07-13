@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: faster-git-fixture-tests
 branch: faster-git-fixture-tests
 plan: _mill/plan
@@ -29,6 +29,7 @@ approved-bench-and-docs  '2026-07-13T07:10:18Z'
 holistic-reviewing  '2026-07-13T07:10:43Z'
 holistic-approved  '2026-07-13T07:13:37Z'
 done  '2026-07-13T07:14:06Z'
+pr-pending  '2026-07-13T07:15:06Z'
 ```
 
 ## Batches
