@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-retier-builder-tests
 slug: faster-git-fixture-tests
 branch: faster-git-fixture-tests
 plan: _mill/plan
@@ -22,6 +22,7 @@ planning  '2026-07-13T06:03:29Z'
 plan-fix-r1  '2026-07-13T06:11:13Z'
 planned  '2026-07-13T06:11:30Z'
 implementing  '2026-07-13T06:19:49Z'
+approved-retier-builder-tests  '2026-07-13T06:23:52Z'
 ```
 
 ## Batches
@@ -29,7 +30,7 @@ implementing  '2026-07-13T06:19:49Z'
 ```yaml
 batches:
   - name: retier-builder-tests
-    state: running
+    state: approved
     implementer_session: 657648c2-1f2f-4e08-a54a-4c46b106e2f6
     start_sha: da72bf24d05f0ac5450e30ca85f7cee38d4adf5a
   - name: hermetic-lyxtest
