@@ -218,6 +218,14 @@ recording before/after numbers.
   unset (system config is another machine-specific leak; Git for Windows ships
   autocrlf etc. there — removing it makes checkout behaviour deterministic,
   and test-created files are LF already).
+- File lifecycle: the helper creates the neutral config via `os.CreateTemp`
+  under `os.TempDir()` once per process. Cleanup is a **documented accepted
+  leak** (one ~6-line file per test-binary run): `TestMain` ends in
+  `os.Exit(m.Run())`, which skips deferred cleanup, and lyxtest's template
+  dirs (`os.MkdirTemp` in the `sync.Once` builders) already leak to `%TEMP%`
+  under exactly the same precedent — the OS temp cleaner owns both. State
+  the accepted leak in the helper's godoc rather than complicating every
+  `TestMain` with a cleanup-handle dance.
 - Verification note for the plan: the measured win used an *additive*
   `GIT_CONFIG_COUNT` override, not full hermeticity. The full-hermetic variant
   must be verified by a green full Tier 2 run during implementation; if some
@@ -272,7 +280,15 @@ recording before/after numbers.
   `internal/proc` (spawns generic processes — process control is the package's
   subject); `internal/muxengine` (spawns `tmux`/`psmux`, not git); the guard's
   own test file in `cmd/lyx` (contains the banned tokens as its own test
-  data, like `tierpurity_test.go`). `cmd/lyx` itself is **not** allowlisted:
+  data, like `tierpurity_test.go`).
+- **Reciprocal allowlisting:** the new guard file is itself an untagged
+  `*_test.go` in `cmd/lyx` that runs `go env GOMOD` via `exec.Command` and
+  carries `gitexec.RunGit`/`exec.Command`/`lyxtest.Copy` as literal token
+  data — all raw substrings the existing
+  `TestTierPurity_UntaggedTestsSpawnNothing` bans. The plan must add the new
+  guard file to `cmd/lyx/tierpurity_test.go`'s `allowedSpawners` map (with
+  the same "own test data" reason `tierpurity_test.go` gives itself), in the
+  same commit, or the "both tiers green" gate fails on arrival. `cmd/lyx` itself is **not** allowlisted:
   its tests spawn `go` (crosscompile) but also git (`main_test.go`,
   `main_integration_test.go`), so it gets a real `TestMain`. The plan should
   re-derive the exact allowlist from the guard's first failing run rather
