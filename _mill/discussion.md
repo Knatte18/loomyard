@@ -258,6 +258,15 @@ recording before/after numbers.
   a review obligation, exactly like the repo's other grep-guards (see the
   Shell Mechanics Seam and Provider-Seam entries in CONSTRAINTS.md, whose
   semantic halves are review obligations too).
+- **The helper-presence token is the bare function name** (e.g.
+  `HermeticGitEnv`), not the qualified `lyxtest.HermeticGitEnv` form. Reason:
+  `internal/lyxtest`'s own test file is `package lyxtest` and spawns git
+  directly, so its `TestMain` calls the helper unqualified — a
+  qualified-token check would either miss the repo's most git-heavy fixture
+  package or force it onto the allowlist, which is exactly wrong. The bare
+  name matches both call forms. Consequence: the bare name must be distinctive
+  (not a substring that appears incidentally); pick the helper name with the
+  guard in mind.
 - Allowlist (enumerated; non-git spawners for which a git-hermetic `TestMain`
   is meaningless, distinct from packages that get a real `TestMain`):
   `internal/proc` (spawns generic processes — process control is the package's
@@ -315,6 +324,18 @@ recording before/after numbers.
   `testmain_test.go` runs in Tier 1 too and merely sets env (spawns nothing,
   tier-purity-safe as long as the helper's name is not a banned token —
   do not name it anything matching `lyxtest.Copy*`).
+- **TestMain placement caveats:** (a) `internal/hubgeometry` — lyxtest imports
+  hubgeometry (Leaf Invariant direction), so a `TestMain` calling the lyxtest
+  helper cannot live in an internal `package hubgeometry` test file without
+  closing an import cycle; hubgeometry's git-spawning tests are already
+  `package hubgeometry_test` (external), so its `TestMain` goes there. Same
+  rule for any future leaf that lyxtest depends on. (b) `internal/lyxtest`
+  itself — its test file is `package lyxtest`, so its `TestMain` calls the
+  helper unqualified (which is why the guard token is the bare name, see the
+  guard decision). Go allows only one `TestMain` per test package
+  (`package foo` and `package foo_test` count as one test binary — the plan
+  must check each package for an existing external/internal test split and
+  put the single `TestMain` where it compiles for both).
 - Packages with git-spawning test files (24 files found; the guard computes
   the authoritative set mechanically): `warpengine`, `warpcli`, `weftengine`,
   `weftcli`, `perchcli`, `perchengine`, `muxcli`, `muxpoccli`, `initengine`,
@@ -421,3 +442,8 @@ recording before/after numbers.
   making the guard vacuous? **A:** Scan all `*_test.go` regardless of build
   tag; vacuous-scan floor asserts non-zero git-spawning packages found
   (recommended option, per standing directive).
+- **Q:** (review r3 gap) lyxtest's own `package lyxtest` test file calls the
+  helper unqualified, so a `lyxtest.<Helper>` token check misses the most
+  git-heavy package? **A:** The guard's helper token is the bare function
+  name, matching both qualified and unqualified call forms; pick a
+  distinctive helper name (recommended option, per standing directive).
