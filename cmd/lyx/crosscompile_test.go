@@ -1,9 +1,15 @@
+//go:build integration
+
 // crosscompile_test.go is the durable in-repo cross-compile gate for Linux support.
 // It shells out to the real `go` toolchain with GOOS=linux and fails the build if any
 // package in the module — including every `_linux.go` file, which the host's native
 // `go test` on Windows never compiles — fails to build. This is the mechanical proof
 // that the whole module cross-compiles for Linux; it adds no CI, because the repo has
-// none and enforces every invariant via `go test`.
+// none and enforces every invariant via `go test`. The gate now runs on every Tier 2
+// (`-tags integration`) run rather than on every `go test`, because a whole-module
+// `GOOS=linux go build ./...` does not belong in the offline loop (Test Tier Purity
+// Invariant); the per-batch `GOOS=linux go build` development gates it mirrors are
+// unchanged.
 
 package main
 
