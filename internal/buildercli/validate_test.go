@@ -1,3 +1,5 @@
+//go:build integration
+
 // validate_test.go covers the validate verb's envelope shapes through
 // RunCLI: a clean plan prints {"valid": true, "batches": N}; a plan with
 // findings prints an error envelope carrying the findings array; an absent
