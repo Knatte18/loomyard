@@ -10,9 +10,12 @@ before/after wall-clock numbers this task produced, see
 "how to run the suite" documentation, see
 [running-tests.md](running-tests.md).
 
-> **Windows-only.** Every number on this page was measured on the operator's
-> Windows machine. Separate Linux benchmarks will be recorded later; nothing
-> here should be assumed to transfer to another OS or filesystem.
+> **Windows + Linux.** The benchmark report below (2026-07-13) was measured on
+> the operator's Windows machine with Cortex XDR live. The previously-flagged
+> Linux gap is **now filled** — see [Linux benchmark](#linux-benchmark-2026-07-13)
+> at the bottom. Compare down each OS's column, never across: the Windows numbers
+> carry a file-I/O + AV tax the Linux box does not, and that tax turns out to be
+> nearly the *entire* measured copy cost.
 
 ## Benchmark report (2026-07-13, Windows-only)
 
@@ -191,3 +194,51 @@ total operations across all `GOMAXPROCS` workers), which is a different
 metric from the discussion-phase harness's per-op p50/p90 latency under
 contention (the arms table above) — both are legitimate ways to look at the
 same cost, they are not directly comparable line-for-line.
+
+## Linux benchmark (2026-07-13)
+
+The Linux counterpart to the Windows "Reproducing" numbers above, from the same
+permanent benchmark (`internal/lyxtest/bench_test.go`,
+`//go:build integration`). Command:
+
+```sh
+go test -tags integration -bench BenchmarkCopy -run '^$' -benchtime 10x ./internal/lyxtest
+```
+
+- Machine: AMD Ryzen AI 7 445 w/ Radeon 840M, Ubuntu 26.04 LTS, `linux/amd64`, 12 logical CPUs, Go 1.26.0
+
+```
+goos: linux
+goarch: amd64
+pkg: github.com/Knatte18/loomyard/internal/lyxtest
+cpu: AMD Ryzen AI 7 445 w/ Radeon 840M
+BenchmarkCopyPaired-12                 	      10	   6060124 ns/op
+BenchmarkCopyPairedLocal-12            	      10	   2164937 ns/op
+BenchmarkCopyPairedParallel-12         	      10	   1691159 ns/op
+BenchmarkCopyPairedLocalParallel-12    	      10	    456375 ns/op
+PASS
+```
+
+Side by side with the Windows `ns/op` numbers above (**down the column per OS,
+not across** — but the gap is the whole point here):
+
+| Benchmark                        | Windows (Cortex XDR) | Linux (no AV) | Windows ÷ Linux |
+|----------------------------------|----------------------|---------------|-----------------|
+| `BenchmarkCopyPaired`            | 452 ms               | **6.06 ms**   | ~75×            |
+| `BenchmarkCopyPairedLocal`       | 235 ms               | **2.16 ms**   | ~109×           |
+| `BenchmarkCopyPairedParallel`    | 56 ms                | **1.69 ms**   | ~33×            |
+| `BenchmarkCopyPairedLocalParallel` | 61 ms              | **0.46 ms**   | ~132×           |
+
+### This settles the hardlink question
+
+The report above **refuted** the hardlink-objects lever on Windows (it saved ~5 %
+of a copy that cost hundreds of ms; alternates ~33 %) and pivoted to the hermetic
+git-env lever instead. The Linux numbers make the refutation categorical: a
+paired-fixture copy is **~6 ms on Linux vs ~452 ms on Windows** — i.e. **~99 % of
+the measured Windows copy cost was the Cortex XDR / Defender on-write scan**, not
+the byte-copy itself. On Linux there is essentially nothing left for a hardlink or
+`objects/info/alternates` lever to shave: `copyDirRecursive` stays a plain
+byte-copy (as it is), and the lever is not merely "not worth its complexity"
+(the Windows conclusion) but **measures no meaningful target at all** on POSIX.
+The open question from the task brief — "does the hardlink lever matter on Linux"
+— is answered: **no**, and now with numbers rather than reasoning.

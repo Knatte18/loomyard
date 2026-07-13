@@ -22,16 +22,20 @@ twice** (full explanation in [running-tests.md](running-tests.md#the-two-tiers))
 _across_** — Tier 2 is the superset, so its larger numbers are expected, not a
 regression.
 
-Numbers are wall-clock on Windows and **noisy** (Windows file I/O + Defender +
-process-creation tax — see [board-performance.md](board-performance.md#process-startup-context));
-treat them as order-of-magnitude.
+Numbers here are wall-clock and **noisy** — treat them as order-of-magnitude.
+Each dated block is tagged with its OS in the `Machine:` line: the Windows blocks
+were measured with Cortex XDR live (file I/O + AV process-creation tax — see
+[board-performance.md](board-performance.md#process-startup-context)); the
+[Linux baseline](#linux-baseline) has no such tax. **Never compare a Windows
+number against a Linux one** — the AV delta dwarfs the code delta; compare down
+a single OS's column.
 
 ## Current best times
 
 As of **2026-07-13** (restore-tier1-floor: mousetrap disabled +
 lingering-child test re-tiered).
 
-- Machine: Intel Core Ultra 7 155U, `windows/amd64`, 14 logical CPUs
+- Machine: Intel Core Ultra 7 155U, Windows 11 Enterprise, `windows/amd64`, 14 logical CPUs
 - Go 1.26.4, default GC, `GOMAXPROCS` = NumCPU (14)
 - Method: median of 3 warm runs per tier via `go run ./cmd/testtiming[ -full]`
   (`-count=1` set by the harness; `go build ./...` run first to warm the build
@@ -195,6 +199,56 @@ c); it no longer dominates the Tier 1 top-10, unlike every prior block.
 | `TestPollCmd_TerminalCleanupMatrix` | `internal/buildercli` | 14.36 s |
 | `TestReconcile_MissingWeftWorktreeRecreated` | `internal/warpengine` | 13.93 s |
 
+## Linux baseline
+
+First Linux run of the suite (2026-07-13), recorded in parallel with the Windows
+numbers above — **compare down each OS's own column, never across OSes** (the two
+machines differ in CPU, core count, and, decisively, endpoint-AV load). The
+Windows numbers were measured with **Cortex XDR** live, which throttles every
+file-heavy operation; the Linux box has no equivalent tax, so a faster Linux
+number is *expected* and mostly measures the absence of AV, while a *slower*
+Linux number would flag a genuine Linux pathology.
+
+Getting the suite green on Linux first required a portability pass (see
+[linux-portability-survey.md](../research/linux-portability-survey.md)): the
+first run had 6 failing tests (Windows path/shell/FS assumptions) plus a
+concurrency test that self-starved to ~231 s without AV to throttle its readers.
+
+- Machine: AMD Ryzen AI 7 445 w/ Radeon 840M, Ubuntu 26.04 LTS, `linux/amd64`, 12 logical CPUs
+- Go 1.26.0, default GC, `GOMAXPROCS` = NumCPU (12)
+- Method: median of 3 warm runs per tier via `go run ./cmd/testtiming[ -full]`
+  (`-count=1` set by the harness; `go build ./...` run first to warm the cache)
+
+### Headline
+
+| Loop | Command | Linux wall-clock | Windows (2026-07-13, Cortex XDR) |
+|------|---------|------------------|----------------------------------|
+| **Tier 1** — offline, default | `go test ./... -count=1` | **~1.03 s** (spread 1.00–1.12 s) | ~9.95 s |
+| **Tier 2** — integration, opt-in | `go test -tags integration ./... -count=1` | **~4.97 s** (spread 4.82–5.01 s) | ~131.7 s |
+
+All 3 + 3 runs recorded `RESULT: all packages passed`. Tier 2 is ~26× faster on
+Linux — almost entirely the AV tax on `internal/warpengine`'s real git-worktree
+I/O that dominated Windows (~96 s there) evaporating (0.67 s here).
+
+### Where the time goes (the profile inverts)
+
+The Tier 2 floor moves OS to OS. On Windows it was **I/O-bound**
+(`internal/warpengine` git worktrees, throttled by AV). On Linux that work is
+nearly free, so the floor becomes **time-bound** — tests that sit in real
+wall-clock grace/deadline windows and so do not shrink without AV:
+
+| Package | Linux Tier 2 (median) | Note |
+|---------|------------------------|------|
+| `internal/buildercli` | ~4.31 s | poll-deadline/grace tests (`TestPollCmd_*`, ~1 s each) — real-time waits, the new Linux floor |
+| `cmd/lyx` | ~0.74 s | includes `TestCrossCompileLinux` (0.62 s) |
+| `internal/builderengine` | ~0.72 s | |
+| `internal/warpengine` | ~0.67 s | the Windows floor (~96 s) — now negligible without AV |
+| `internal/muxengine` | ~0.59 s | `TestMultiplexerContract` real-tmux probe |
+| `internal/boardengine/boardtest` | ~0.53 s | real local git commit/push |
+
+Tier 1 on Linux is dominated by `internal/boardengine/boardtest` (~0.33 s) and
+`internal/muxengine` (~0.16 s) — pure-CPU suites; no package does git in Tier 1.
+
 ## History (trend log)
 
 ### 2026-07-13 — hermetic git test environment (was "Current best times")
@@ -204,7 +258,7 @@ As of **2026-07-13** (hermetic git test environment landed — see
 change). Superseded by the 2026-07-13 restore-tier1-floor block above;
 frozen here for the trend log.
 
-- Machine: Intel Core Ultra 7 155U, `windows/amd64`, 14 logical CPUs
+- Machine: Intel Core Ultra 7 155U, Windows 11 Enterprise, `windows/amd64`, 14 logical CPUs
 - Go 1.26.4, default GC, `GOMAXPROCS` = NumCPU (14)
 - Method: median of 3 warm runs per tier via `go run ./cmd/testtiming[ -full]`
   (`-count=1` set by the harness; `go build ./...` run first to warm the build
@@ -341,7 +395,7 @@ As of **2026-07-12** (post-fix baseline — both Tier 2 reds fixed, Tier 1
 offline again). Superseded by the 2026-07-13 hermetic-git-env block above;
 frozen here for the trend log.
 
-- Machine: Intel Core Ultra 7 155U, `windows/amd64`, 14 logical CPUs
+- Machine: Intel Core Ultra 7 155U, Windows 11 Enterprise, `windows/amd64`, 14 logical CPUs
 - Go 1.26.4, default GC, `GOMAXPROCS` = NumCPU (14)
 - Method: median of 3 warm runs per tier via `go run ./cmd/testtiming[ -full]`
   (`-count=1` set by the harness; `go build ./...` run first to warm the build
@@ -431,7 +485,7 @@ real cost (see the attribution-noise note above).
 
 As of **2026-07-12** (fresh baseline — **regression recorded, not yet fixed**).
 
-- Machine: Intel Core Ultra 7 155U, `windows/amd64`, 14 logical CPUs
+- Machine: Intel Core Ultra 7 155U, Windows 11 Enterprise, `windows/amd64`, 14 logical CPUs
 - Go 1.26.4, default GC, `GOMAXPROCS` = NumCPU (14)
 - Method: median of 3 warm runs per tier via `go run ./cmd/testtiming[ -full]`
   (`-count=1` set by the harness)
@@ -527,7 +581,7 @@ real cost (see the attribution-noise note above).
 
 ### 2026-06-23 — state after `optimize-integration-tier` (was "Current best times")
 
-- Machine: Intel Core Ultra 7 155U, `windows/amd64`, 14 logical CPUs
+- Machine: Intel Core Ultra 7 155U, Windows 11 Enterprise, `windows/amd64`, 14 logical CPUs
 - Go 1.26.4, default GC, `GOMAXPROCS` = NumCPU (14)
 
 #### Headline

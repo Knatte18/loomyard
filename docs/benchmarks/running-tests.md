@@ -17,11 +17,13 @@ tests run twice.**
   `hubgeometry.Resolve`, is still allowed and does not violate it). Machine-
   enforced by `cmd/lyx/tierpurity_test.go`
   (`TestTierPurity_UntaggedTestsSpawnNothing`). Fast again: measured median
-  ~29 s. This is what you run constantly and what must stay fast.
+  ~29 s on Windows (Cortex XDR), ~1 s on Linux. This is what you run constantly
+  and what must stay fast.
 - **Tier 2 — the opt-in integration loop** (`go test -tags integration ./...`):
   Tier 1 **plus** the gated tests that spawn real `git` (worktrees, commits,
   pushes, junctions). It is slow **by design** — it does far more work.
-  Measured median ~128 s. Numbers and the full where-the-time-goes analysis:
+  Measured median ~128 s on Windows (Cortex XDR), ~5 s on Linux. Numbers and the
+  full where-the-time-goes analysis:
   [test-suite-timing.md](test-suite-timing.md#current-best-times). Every
   git-spawning test package runs under the **Hermetic Git Test Environment
   Invariant** (`CONSTRAINTS.md`): a `TestMain` wires in
@@ -65,10 +67,10 @@ suite and prints per-package times, the measured wall-clock, and the slowest
 top-level tests. No arguments needed; it works the same outside any editor.
 
 ```sh
-# Fast: Tier 1 (offline). ~29 s as of 2026-07-13 (median of 3 runs).
+# Fast: Tier 1 (offline). Windows ~29 s / Linux ~1 s (median of 3, 2026-07-13).
 go run ./cmd/testtiming
 
-# Full: Tier 2 (integration, real git). ~128 s as of 2026-07-13 (hermetic git env; median of 3 runs).
+# Full: Tier 2 (integration, real git). Windows ~128 s / Linux ~5 s (median of 3, 2026-07-13).
 go run ./cmd/testtiming -full
 
 # Show more (or fewer) of the slowest tests (default 15).
