@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-bench-and-docs
+phase: holistic-reviewing
 slug: faster-git-fixture-tests
 branch: faster-git-fixture-tests
 plan: _mill/plan
@@ -26,6 +26,7 @@ approved-retier-builder-tests  '2026-07-13T06:23:52Z'
 approved-hermetic-lyxtest  '2026-07-13T06:27:37Z'
 approved-testmains-and-guard  '2026-07-13T06:40:23Z'
 approved-bench-and-docs  '2026-07-13T07:10:18Z'
+holistic-reviewing  '2026-07-13T07:10:43Z'
 ```
 
 ## Batches
