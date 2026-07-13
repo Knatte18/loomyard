@@ -89,6 +89,8 @@ purity holds.
 
 - **Context:**
   - `_mill/discussion.md`
+  - `internal/lyxtest/lyxtest.go`
+  - `internal/lyxtest/hermetic.go`
 - **Edits:**
   - `internal/lyxtest/lyxtest_test.go`
 - **Creates:** none

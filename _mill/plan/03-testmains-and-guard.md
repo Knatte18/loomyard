@@ -58,7 +58,12 @@ guards — the full suites are not run per round.
   `allowedNonHermetic` map (path or path-prefix → one-line reason) with
   exactly these entries: `internal/proc` (spawns generic non-git processes —
   process control is the package's subject) and `cmd/lyx/hermeticenv_test.go`
-  (this guard file itself; carries the tokens as its own test data).
+  (this guard file itself; carries the tokens as its own test data). The
+  guard-file entry is a **per-file scan exclusion** (mirroring tierpurity's
+  per-file allowance semantics): it stops the guard's own token data from
+  marking `cmd/lyx` as git-spawning by itself, and must NEVER be read as a
+  package-level exemption — `cmd/lyx` genuinely spawns git in its e2e tests
+  and satisfies the requirement through its real `TestMain` (card 9).
   Vacuous-scan floor: fail if the scan finds zero git-spawning packages.
   Failure message must be actionable like tierpurity's: name the package,
   the triggering token, and the fix ("add a testmain_test.go calling
@@ -179,7 +184,9 @@ guards — the full suites are not run per round.
   obligation, like the repo's other grep-guards. Update
   `internal/lyxtest/doc.go`'s package comment with a short paragraph naming
   the two layers (template quiet-config + `HermeticGitEnv`) and pointing at
-  the CONSTRAINTS entry.
+  the CONSTRAINTS entry. The referenced `docs/benchmarks/fixture-copy.md`
+  is created by batch 4 (card 12); the link dangles between batch 3 and
+  batch 4 landing, which is accepted — the final merged state is consistent.
 - **Commit:** `docs(constraints): record the Hermetic Git Test Environment Invariant`
 
 ## Batch Tests

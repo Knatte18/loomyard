@@ -3,7 +3,7 @@
 ```yaml
 task: 'Speed up git-fixture tests: bench, analyse, hardlink'
 slug: 'faster-git-fixture-tests'
-approved: false
+approved: true
 started: '20260713-060023'
 parent: 'main'
 root: ""

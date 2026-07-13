@@ -92,7 +92,17 @@ Windows-only (the operator records separate Linux benchmarks later).
   at the Hermetic Git Test Environment Invariant (CONSTRAINTS.md) so tier
   documentation names the mechanism. Do NOT touch `docs/roadmap.md` — no
   planned milestone covers this task (verified during planning; CLAUDE.md
-  forbids roadmap entries for perf/hardening work).
+  forbids roadmap entries for perf/hardening work). **Contingency:** the
+  timing runs here are the first full-tier executions under the hermetic env.
+  If either tier goes red with a failure traceable to the removed
+  global/system git config (the `neutral-global-config-contents` decision in
+  `_mill/discussion.md` names Git-for-Windows `autocrlf` as the candidate
+  class), switch `HermeticGitEnv` from `GIT_CONFIG_GLOBAL`+
+  `GIT_CONFIG_NOSYSTEM` to the additive `GIT_CONFIG_COUNT`/`GIT_CONFIG_KEY_n`/
+  `GIT_CONFIG_VALUE_n` form carrying the same keys (quiet trio + identity +
+  `init.defaultBranch`) — the measured win is identical, only the hermeticity
+  guarantee weakens — update the helper's godoc and the CONSTRAINTS entry
+  wording accordingly, and re-run the timing.
 - **Commit:** `docs(benchmarks): fixture-copy analysis + hermetic-env before/after timing`
 
 ## Batch Tests

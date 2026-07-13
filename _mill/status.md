@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planning
+phase: plan-fix-r1
 slug: faster-git-fixture-tests
 branch: faster-git-fixture-tests
 plan: _mill/plan
@@ -18,4 +18,5 @@ discussing  '2026-07-13T04:47:27Z'
 discussion-fix-r4  '2026-07-13T05:55:46Z'
 discussed  '2026-07-13T05:56:03Z'
 planning  '2026-07-13T06:03:29Z'
+plan-fix-r1  '2026-07-13T06:11:13Z'
 ```
