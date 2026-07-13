@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: done
 slug: benchmark-suite-linux
 branch: benchmark-suite-linux
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-07-13T10:11:39Z'
+done  '2026-07-13T12:37:46Z'
 ```
