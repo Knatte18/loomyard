@@ -68,8 +68,8 @@ the risky parts — daemon and pane recovery — of the planned mux module.`,
 
 	// Register persistent tuning flags with the same defaults and usage strings
 	// as the legacy stdlib flag.FlagSet. These flags are inherited by all subcommands.
-	cmd.PersistentFlags().String("psmux", `C:\Code\tools\bin\psmux.exe`, "path to psmux executable")
-	cmd.PersistentFlags().String("pwsh", `C:\Code\tools\powershell7\pwsh.exe`, "path to powershell executable")
+	cmd.PersistentFlags().String("psmux", "psmux", "path to psmux executable (default: resolved via PATH)")
+	cmd.PersistentFlags().String("pwsh", "pwsh", "path to powershell executable (default: resolved via PATH)")
 	cmd.PersistentFlags().String("claude", "", "path to claude executable (empty: find on PATH)")
 	cmd.PersistentFlags().String("launch", "%CLAUDE% --session-id %SID% %TASK%", "template for new claude launch")
 	cmd.PersistentFlags().String("resume", "%CLAUDE% --resume %SID%", "template for claude resume")

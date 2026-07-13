@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	"github.com/Knatte18/loomyard/internal/shell"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -105,13 +106,22 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 		return shuttleengine.Launch{}, fmt.Errorf("write prompt: %w", err)
 	}
 
+	// The hook command embeds this path and runs under git-bash on Windows,
+	// where a backslash path is silently misread (backslash is git-bash's
+	// escape character) — so on Windows convert to the git-bash POSIX form.
+	// On a POSIX host the hook runs in the native shell and the path is already
+	// correct; pass it through unconverted (PosixPath only accepts drive-rooted
+	// Windows paths and would reject an ordinary /tmp/... run dir).
 	eventsPath := filepath.Join(runDir, "events.jsonl")
-	eventsPathPosix, err := shuttleengine.PosixPath(eventsPath)
-	if err != nil {
-		return shuttleengine.Launch{}, fmt.Errorf("convert events path to posix: %w", err)
+	eventsPathForHook := eventsPath
+	if runtime.GOOS == "windows" {
+		eventsPathForHook, err = shuttleengine.PosixPath(eventsPath)
+		if err != nil {
+			return shuttleengine.Launch{}, fmt.Errorf("convert events path to posix: %w", err)
+		}
 	}
 
-	settingsJSON, err := buildSettings(eventsPathPosix, spec.Interactive, cfg)
+	settingsJSON, err := buildSettings(eventsPathForHook, spec.Interactive, cfg)
 	if err != nil {
 		return shuttleengine.Launch{}, fmt.Errorf("build settings: %w", err)
 	}

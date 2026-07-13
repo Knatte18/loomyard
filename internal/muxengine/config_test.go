@@ -7,6 +7,7 @@ package muxengine_test
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -44,11 +45,18 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if cfg.Psmux != `C:\Code\tools\bin\psmux.exe` {
-		t.Errorf("Psmux = %q, want default", cfg.Psmux)
+	// ConfigTemplate() is OS-split (template_windows.go / template_posix.go),
+	// but both variants defer to PATH names rather than a pinned install
+	// path: psmux/pwsh on Windows, tmux/bash on POSIX.
+	wantPsmux, wantPwsh := "psmux", "pwsh"
+	if runtime.GOOS != "windows" {
+		wantPsmux, wantPwsh = "tmux", "bash"
 	}
-	if cfg.Pwsh != `C:\Code\tools\powershell7\pwsh.exe` {
-		t.Errorf("Pwsh = %q, want default", cfg.Pwsh)
+	if cfg.Psmux != wantPsmux {
+		t.Errorf("Psmux = %q, want %q", cfg.Psmux, wantPsmux)
+	}
+	if cfg.Pwsh != wantPwsh {
+		t.Errorf("Pwsh = %q, want %q", cfg.Pwsh, wantPwsh)
 	}
 	if cfg.Width != 220 {
 		t.Errorf("Width = %d, want 220", cfg.Width)

@@ -1,22 +1,22 @@
-// bench_test.go — no-git benchmarks for the core board commands.
+// bench_test.go — offline (Tier 1) benchmarks for the core board commands.
 //
-// Benchmarks the pure Render plus upsert / get / list (via the CLI entrypoint)
-// and the Board facade across board sizes of 10/100/1000 tasks, with git skipped
-// (BOARD_SKIP_GIT=1) so they measure board logic + file I/O only. Also defines
-// seedWiki, the task-seeding helper shared across this package.
+// Benchmarks the pure Render and the Board facade (Board.UpsertTask) across board
+// sizes of 10/100/1000 tasks, with git skipped (BOARD_SKIP_GIT=1) so they measure
+// board logic + file I/O only and stay in the default offline loop. Also defines
+// seedWiki, the task-seeding helper shared across this package. The CLI-driven
+// upsert/get/list benchmarks require a real git repo (config resolution) and so
+// live behind `//go:build integration` in bench_cli_test.go.
 
 package boardtest
 
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strconv"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/boardcli"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
@@ -112,70 +112,9 @@ func BenchmarkRender(b *testing.B) {
 	}
 }
 
-// BenchmarkUpsert measures a full "upsert" command through the CLI entrypoint:
-// JSON parse → dispatch → lock → load → mutate → render all tasks → write files.
-// It updates an existing task so the per-op work is stable across iterations.
-// CLI-bench numbers now include the added os.Getwd() + LoadConfig cost from cwd-based config.
-func BenchmarkUpsert(b *testing.B) {
-	b.Setenv("BOARD_SKIP_GIT", "1")
-	for _, n := range benchSizes {
-		b.Run(fmt.Sprintf("n=%d", n), func(b *testing.B) {
-			dir := seedWiki(b, n)
-			b.Chdir(dir)
-			args := []string{"upsert", `{"slug":"task-0","title":"Updated"}`}
-
-			b.ReportAllocs()
-			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
-				if code := boardcli.RunCLI(io.Discard, args); code != 0 {
-					b.Fatalf("RunCLI upsert exit %d", code)
-				}
-			}
-		})
-	}
-}
-
-// BenchmarkGet measures a "get" command: the read path (load tasks.json, look up
-// one task by slug). No render, no write.
-func BenchmarkGet(b *testing.B) {
-	b.Setenv("BOARD_SKIP_GIT", "1")
-	for _, n := range benchSizes {
-		b.Run(fmt.Sprintf("n=%d", n), func(b *testing.B) {
-			dir := seedWiki(b, n)
-			b.Chdir(dir)
-			args := []string{"get", `{"slug":"task-0"}`}
-
-			b.ReportAllocs()
-			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
-				if code := boardcli.RunCLI(io.Discard, args); code != 0 {
-					b.Fatalf("RunCLI get exit %d", code)
-				}
-			}
-		})
-	}
-}
-
-// BenchmarkList measures a "list" command: load all tasks, compute layers and
-// has_proposal, and serialise the brief view.
-func BenchmarkList(b *testing.B) {
-	b.Setenv("BOARD_SKIP_GIT", "1")
-	for _, n := range benchSizes {
-		b.Run(fmt.Sprintf("n=%d", n), func(b *testing.B) {
-			dir := seedWiki(b, n)
-			b.Chdir(dir)
-			args := []string{"list"}
-
-			b.ReportAllocs()
-			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
-				if code := boardcli.RunCLI(io.Discard, args); code != 0 {
-					b.Fatalf("RunCLI list exit %d", code)
-				}
-			}
-		})
-	}
-}
+// The CLI-driven command benchmarks (Upsert/Get/List) live in the
+// integration-tagged bench_cli_test.go: they drive boardcli.RunCLI, whose config
+// resolution requires a real git repo, so they spawn git and belong in Tier 2.
 
 // BenchmarkUpsertFacade measures Board.UpsertTask directly, bypassing the CLI's
 // flag parsing and JSON (un)marshalling. The gap to BenchmarkUpsert is the

@@ -10,9 +10,15 @@ before/after wall-clock numbers this task produced, see
 "how to run the suite" documentation, see
 [running-tests.md](running-tests.md).
 
-> **Windows-only.** Every number on this page was measured on the operator's
-> Windows machine. Separate Linux benchmarks will be recorded later; nothing
-> here should be assumed to transfer to another OS or filesystem.
+> **Windows + Linux.** The benchmark report below (2026-07-13) was measured on
+> the operator's 155U Windows machine with Cortex XDR live. The previously-flagged
+> Linux gap is **now filled** ([Linux benchmark](#linux-benchmark-2026-07-13)), and
+> a third machine isolates the AV cost
+> ([9800X3D A/B](#windows-clean-cpu-benchmark-ryzen-7-9800x3d-defender-ab)). Key
+> finding: the huge 155U copy cost was **Cortex XDR** (an aggressive corporate EDR)
+> plus a weak CPU — consumer **Defender barely touches this path** (~6 % A/B), and
+> even AV-free Windows is still ~14× slower than Linux on the raw filesystem floor.
+> Compare down each machine's column, never across.
 
 ## Benchmark report (2026-07-13, Windows-only)
 
@@ -191,3 +197,80 @@ total operations across all `GOMAXPROCS` workers), which is a different
 metric from the discussion-phase harness's per-op p50/p90 latency under
 contention (the arms table above) — both are legitimate ways to look at the
 same cost, they are not directly comparable line-for-line.
+
+## Linux benchmark (2026-07-13)
+
+The Linux counterpart to the Windows "Reproducing" numbers above, from the same
+permanent benchmark (`internal/lyxtest/bench_test.go`,
+`//go:build integration`). Command:
+
+```sh
+go test -tags integration -bench BenchmarkCopy -run '^$' -benchtime 10x ./internal/lyxtest
+```
+
+- Machine: AMD Ryzen AI 7 445 w/ Radeon 840M, Ubuntu 26.04 LTS, `linux/amd64`, 12 logical CPUs, Go 1.26.0
+
+```
+goos: linux
+goarch: amd64
+pkg: github.com/Knatte18/loomyard/internal/lyxtest
+cpu: AMD Ryzen AI 7 445 w/ Radeon 840M
+BenchmarkCopyPaired-12                 	      10	   6060124 ns/op
+BenchmarkCopyPairedLocal-12            	      10	   2164937 ns/op
+BenchmarkCopyPairedParallel-12         	      10	   1691159 ns/op
+BenchmarkCopyPairedLocalParallel-12    	      10	    456375 ns/op
+PASS
+```
+
+Side by side with the Windows `ns/op` numbers above (**down the column per OS,
+not across** — but the gap is the whole point here):
+
+| Benchmark                        | Windows (Cortex XDR) | Linux (no AV) | Windows ÷ Linux |
+|----------------------------------|----------------------|---------------|-----------------|
+| `BenchmarkCopyPaired`            | 452 ms               | **6.06 ms**   | ~75×            |
+| `BenchmarkCopyPairedLocal`       | 235 ms               | **2.16 ms**   | ~109×           |
+| `BenchmarkCopyPairedParallel`    | 56 ms                | **1.69 ms**   | ~33×            |
+| `BenchmarkCopyPairedLocalParallel` | 61 ms              | **0.46 ms**   | ~132×           |
+
+### Windows clean-CPU benchmark (Ryzen 7 9800X3D, Defender A/B)
+
+A third machine (2026-07-13), run to isolate the antivirus cost: same box, once
+with Defender active and once with the repo + `%TEMP%` excluded. No Cortex XDR on
+this machine, so it is a clean single-variable Defender on/off comparison.
+
+- Machine: AMD Ryzen 7 9800X3D, Windows 11, 16 logical CPUs, Go 1.26.3
+
+| Benchmark (ns/op)                  | Defender ACTIVE | Defender EXCLUDED |
+|------------------------------------|-----------------|-------------------|
+| `BenchmarkCopyPaired`              | 91.3 ms         | **85.5 ms**       |
+| `BenchmarkCopyPairedLocal`         | 49.9 ms         | 47.0 ms           |
+| `BenchmarkCopyPairedParallel`      | 11.95 ms        | 11.92 ms          |
+| `BenchmarkCopyPairedLocalParallel` | 11.18 ms        | 11.78 ms          |
+
+**This corrects an earlier claim.** An earlier version of this doc said "~99 % of
+the measured Windows copy cost was the Cortex XDR / Defender on-write scan." The
+9800X3D A/B run shows that lumping Cortex and Defender together was wrong:
+
+- **Defender alone is nearly free for fixture-copy** — 91.3 → 85.5 ms with it
+  excluded is ~6 % (within noise). Defender's real-time scanner does not tax this
+  byte-copy path meaningfully (its cost shows up in in-process/compile work
+  instead — see [test-suite-timing.md](test-suite-timing.md#windows-clean-cpu-baseline-ryzen-7-9800x3d-defender-ab)).
+- **The 452 ms on the 155U was Cortex XDR (an aggressive corporate EDR) plus a
+  weak 15 W CPU**, not Defender. Cortex is a different, far heavier scanner than
+  consumer Defender; do not generalize "AV" from it.
+- **Clean Windows is still ~14× slower than Linux** here (85.5 ms vs 6.06 ms) with
+  **no AV on either side**. That gap is the Windows filesystem/process floor —
+  NTFS, junctions, per-file open/close — not antivirus, and it does not go away.
+
+### This settles the hardlink question
+
+The report above **refuted** the hardlink-objects lever on the 155U (it saved
+~5 %; alternates ~33 %) and pivoted to the hermetic git-env lever. The multi-machine
+numbers make the refutation categorical for the *right* reason. On Linux a paired
+copy is ~6 ms — nothing left to shave. On clean Windows it is ~85 ms, but that cost
+is the OS filesystem/process floor, not the git object bytes a hardlink/alternates
+lever targets (which the 155U arms already showed saving only ~5 %). So
+`copyDirRecursive` stays a plain byte-copy on every platform. The task brief's open
+question — "does the hardlink lever matter on Linux" — is answered **no**, with
+numbers; and the sharper lesson is that the *original* Windows copy cost was AV
+(Cortex), not the copy, so the lever was aimed at the wrong target from the start.

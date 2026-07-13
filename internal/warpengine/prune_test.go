@@ -8,6 +8,7 @@ package warpengine
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -156,8 +157,10 @@ func TestPrune_StaleWeft(t *testing.T) {
 // pe.Error is composed from local context (the weft path and git exit code) rather
 // than git's own stderr text. The git-level failure is forced by locking the weft
 // worktree (`git worktree lock`, which even --force cannot override); the fallback
-// failure is forced by holding an open file handle inside the weft worktree, which
-// blocks deletion on Windows.
+// failure is forced OS-appropriately — an open file handle inside the weft worktree
+// on Windows (which refuses to unlink an open file), a write-stripped worktree dir on
+// POSIX (which refuses to unlink a directory's contents without write permission),
+// since POSIX unlinks open files freely and would otherwise let the fallback succeed.
 func TestPrune_DoubleRemovalFailureNoStderrLeak(t *testing.T) {
 	t.Parallel()
 
@@ -181,18 +184,29 @@ func TestPrune_DoubleRemovalFailureNoStderrLeak(t *testing.T) {
 	// `git worktree remove --force` (double -f or an explicit unlock is required).
 	lyxtest.MustRun(t, f.Layout.WeftRepoRoot(), "git", "worktree", "lock", weftPath, "--reason", "test-lock")
 
-	// Force the os.RemoveAll fallback to also fail: hold an open file handle inside
-	// the weft worktree so deletion is blocked (Windows refuses to unlink an
-	// open-for-read file out from under an active handle).
-	blockerPath := filepath.Join(weftPath, "prune-double-fail-blocker")
-	if err := os.WriteFile(blockerPath, []byte("blocker"), 0o644); err != nil {
-		t.Fatalf("write blocker file: %v", err)
+	// Force the os.RemoveAll fallback to also fail. The mechanism is OS-specific:
+	// Windows refuses to unlink an open-for-read file out from under an active handle;
+	// POSIX allows that, so instead strip write permission from the weft worktree dir,
+	// which makes unlinking its contents fail. releaseBlock restores state so the
+	// fixture teardown (t.Cleanup TempDir removal) succeeds cleanly.
+	var releaseBlock func()
+	if runtime.GOOS == "windows" {
+		blockerPath := filepath.Join(weftPath, "prune-double-fail-blocker")
+		if err := os.WriteFile(blockerPath, []byte("blocker"), 0o644); err != nil {
+			t.Fatalf("write blocker file: %v", err)
+		}
+		blocker, err := os.Open(blockerPath)
+		if err != nil {
+			t.Fatalf("open blocker file: %v", err)
+		}
+		releaseBlock = func() { blocker.Close() }
+	} else {
+		if err := os.Chmod(weftPath, 0o555); err != nil {
+			t.Fatalf("chmod weft worktree read-only: %v", err)
+		}
+		releaseBlock = func() { _ = os.Chmod(weftPath, 0o755) }
 	}
-	blocker, err := os.Open(blockerPath)
-	if err != nil {
-		t.Fatalf("open blocker file: %v", err)
-	}
-	defer blocker.Close()
+	defer releaseBlock()
 
 	r, err := w.Prune(f.Layout, true)
 	if err != nil {
@@ -220,9 +234,9 @@ func TestPrune_DoubleRemovalFailureNoStderrLeak(t *testing.T) {
 		t.Errorf("PruneEntry.Error = %q; want no %q substring (raw git stderr leak)", found.Error, "fatal:")
 	}
 
-	// Release the handle and unlock/remove the worktree so t.Cleanup (TempDir removal)
-	// does not fail on Windows, and so the fixture teardown succeeds cleanly.
-	blocker.Close()
+	// Release the block and unlock/remove the worktree so t.Cleanup (TempDir removal)
+	// does not fail, and so the fixture teardown succeeds cleanly.
+	releaseBlock()
 	_, _, _, _ = gitexec.RunGit([]string{"worktree", "unlock", weftPath}, f.Layout.WeftRepoRoot())
 	_, _, _, _ = gitexec.RunGit([]string{"worktree", "remove", "--force", weftPath}, f.Layout.WeftRepoRoot())
 }
