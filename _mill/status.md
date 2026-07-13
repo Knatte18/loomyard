@@ -28,7 +28,9 @@ implementing  '2026-07-13T09:19:09Z'
 ```yaml
 batches:
   - name: code-fixes
-    state: pending
+    state: running
+    implementer_session: f73bf23e-deb9-4497-a53f-8deb63e6c6fe
+    start_sha: 83b3d9139c35d933ec0a1c580640bab8a1d6b645
   - name: benchmarks-block
     state: pending
 ```
