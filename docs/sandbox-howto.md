@@ -7,10 +7,10 @@ rationale see [sandbox-hub.md](sandbox-hub.md).
 All commands run from the lyx repo root (`C:\Code\loomyard\wts\loomyard`) unless
 stated otherwise. The launchers (`deploy.cmd`, `sandbox-build.cmd`,
 `sandbox-core-suite.cmd`, `sandbox-mux-suite.cmd`, `sandbox-shuttle-suite.cmd`,
-`sandbox-burler-suite.cmd`, `sandbox-perch-suite.cmd`, `sandbox-fetch.cmd`)
-hardcode the machine-specific paths for this machine: deploy target
-`C:\Code\tools\bin`, Hub parent `C:\Code`. Each sandbox launcher does exactly
-one thing (build / one suite / fetch).
+`sandbox-burler-suite.cmd`, `sandbox-perch-suite.cmd`, `sandbox-builder-suite.cmd`,
+`sandbox-fetch.cmd`) hardcode the machine-specific paths for this machine: deploy
+target `C:\Code\tools\bin`, Hub parent `C:\Code`. Each sandbox launcher does
+exactly one thing (build / one suite / fetch).
 
 **Run every suite launcher in a real, attached interactive terminal** — never
 backgrounded, detached, or with stdout/stderr redirected. The agent session is
@@ -155,6 +155,19 @@ in turn wires shuttle) on every invocation, so the same live-psmux,
 PowerShell 7, logged-in-`claude`, and `lyx init`-ed prerequisites apply. Same
 `-claude`/`-prompt` overrides.
 
+### 4e. Run the builder suite (optional, needs live psmux + logged-in claude)
+
+```cmd
+sandbox-builder-suite.cmd
+```
+
+Same operating model as 4c/4d, for `lyx builder`'s batch-loop scenarios (the
+autonomous `run` happy path, `poll`'s dead/timeout classification, pause as a
+batch-boundary check, `run.lock` contention, and fingerprint/outcome
+archiving) — builder branches off shuttle directly (real psmux + real
+`claude`), so the same live-psmux, PowerShell 7, logged-in-`claude`, and
+`lyx init`-ed prerequisites apply. Same `-claude`/`-prompt` overrides.
+
 ### 5. Fetch the report
 
 ```cmd
@@ -197,3 +210,4 @@ nothing is written until you approve. Then groom/spawn as usual.
 - [sandbox-hub.md](sandbox-hub.md) — Hub topology, repo layout, design rationale.
 - [tools/sandbox/SANDBOX-CORE-SUITE.md](../tools/sandbox/SANDBOX-CORE-SUITE.md) — the embedded test scheme the agent follows.
 - [tools/sandbox/SANDBOX-MUX-SUITE.md](../tools/sandbox/SANDBOX-MUX-SUITE.md) — the embedded mux-specific test scheme `sandbox-mux-suite.cmd` follows.
+- [tools/sandbox/SANDBOX-BUILDER-SUITE.md](../tools/sandbox/SANDBOX-BUILDER-SUITE.md) — the embedded builder-specific test scheme `sandbox-builder-suite.cmd` follows.

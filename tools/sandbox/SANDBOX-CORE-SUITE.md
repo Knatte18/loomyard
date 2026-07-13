@@ -294,6 +294,79 @@ error there is the expected `OK` outcome, not a finding.
 
 ---
 
+### S9 -- Builder plan validate/status
+
+**Goal:** "Exercise `lyx builder validate` and `lyx builder status` against a trivial,
+hand-written plan-format v2 plan: confirm status reports uninitialized, a valid plan
+passes clean, and a broken plan reports findings instead of a bare error."
+
+**Covers:** builder
+
+**Note:** No agent spawns in this scenario. `lyx builder run` and `lyx builder
+spawn-batch` -- the verbs that spawn a real implementer session -- are deliberately
+NOT exercised here: a real end-to-end orchestrator run is slow, subscription-burning,
+and flaky, so it stays out of the CI/sandbox suite. This scenario only proves the
+fail-loud validate/status file-contract primitives.
+
+**Watch:** From the Hub host repo root, create `_lyx/plan/00-overview.md` with:
+
+```
+---
+format: 2
+approved: true
+---
+
+# Plan: builder sandbox smoke check
+
+One trivial batch, written by hand, whose only purpose is to exercise
+`lyx builder validate`/`status` without spawning anything.
+
+## Batch Index
+
+- 01 — smoke (1 card) — a placeholder batch
+```
+
+and `_lyx/plan/01-smoke.md` with:
+
+```
+# 01 — smoke: placeholder batch
+
+## Intent
+
+Exists only so the plan has one well-formed batch.
+
+## Scope
+
+- 01-smoke.md
+
+## Cards
+
+### Card 01.1 — placeholder
+
+**What:** Nothing; this card exists only so the batch has content.
+**Context:** none
+**Edits:** none
+**Creates:** none
+**Deletes:** none
+**Moves:** none
+
+## verify:
+
+go version
+```
+
+Run `lyx builder status` first, before writing any of the files above touches
+`_lyx/builder` -- expect `{"initialized": false}` since no run has ever started.
+Then, with the two plan files in place, run `lyx builder validate` -- expect the
+valid envelope `{"ok":true,"valid":true,"batches":1}`. Finally, edit
+`00-overview.md`, flipping `approved: true` to `approved: false`, and re-run
+`lyx builder validate` -- expect an error envelope (`"ok":false`) whose `findings`
+array carries a `plan-unapproved` finding, not a bare error string.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
+---
+
 mux has its own dedicated suite, `SANDBOX-MUX-SUITE.md` in this same directory,
 launched via `sandbox-mux-suite.cmd` -- mux needs a live psmux server and visual
 verification, a different test mode from this suite.
@@ -315,6 +388,7 @@ S5: <OK|WARN|FAIL> -- <one-line note if not OK>
 S6: <OK|WARN|FAIL> -- <one-line note if not OK>
 S7: <OK|WARN|FAIL> -- <one-line note if not OK>
 S8: <OK|WARN|FAIL> -- <one-line note if not OK>
+S9: <OK|WARN|FAIL> -- <one-line note if not OK>
 
 sandbox-report.json written: <count of WARN/FAIL items>
 ```

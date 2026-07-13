@@ -2,7 +2,7 @@
 
 > **Status: Contract — pinned.** The notation every agent-spawning config in the stack
 > uses to say *which* LLM runs a role: builder's roles, perch/burler reviewers and
-> judges, loom's producers. Pinned alongside [plan-format v1](../modules/plan-format.md)
+> judges, loom's producers. Pinned alongside [plan-format v2](../modules/plan-format.md)
 > because the plan is model-agnostic — so the config side needs a precise notation.
 > The registry loader and spec parser land with the first consumer (`builder`); this doc
 > is the spec they implement against.
@@ -137,7 +137,7 @@ large-window variant realization — lives in the provider engine
 ## Roles that use this notation
 
 builder.yaml holds four roles, each a model-spec: `orchestrator`, `implementer` (Sonnet
-default), `implementer_oversized`, `fixer`. There is no builder `evaluator` — the LLM
+default), `implementer_oversized`, `recovery`. There is no builder `evaluator` — the LLM
 orchestrator judges digests itself. Stack-wide roles elsewhere (perch/burler reviewers
 and judges, loom producers) use the same notation in their own config sections; loom's
 config section overrides per role when loom drives the module.

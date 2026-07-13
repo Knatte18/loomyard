@@ -35,10 +35,10 @@ weft engine + producers → **`proc`** (cross-OS spawn). ✅
 
 ```
 proc ✅ ──▶ mux ✅ ──▶ shuttle ✅ ──┬▶ burler ✅ ──▶ perch ✅ ──┬▶ loom
-                                   └▶ builder ─────────────────┘
+                                   └▶ builder ✅ ───────────────┘
 ```
 
-`builder` branches off `shuttle` (it spawns implementers directly, does **not** need `perch`);
+`builder` branched off `shuttle` (it spawns implementers directly, did **not** need `perch`);
 `loom` joins the two — it needs both `perch` (review) and `builder` (implementation).
 
 - **`mux`** is done — psmux overlay + **strand** bookkeeping + render sub-package
@@ -53,14 +53,16 @@ proc ✅ ──▶ mux ✅ ──▶ shuttle ✅ ──┬▶ burler ✅ ──�
   and **`perch`** is the Go loop that runs burler rounds until `APPROVED`/`STUCK`
   (progress-judge + cap). See [milestone 11](#orchestration-stack) / the `internal/burlerengine`
   and `internal/perchengine` package documentation.
-- **`builder`** (the batch-implementation module, carved out of loom's Builder phase) is the
-  **next** spine milestone. Its **plan format** is pinned ✅ — see
-  [modules/plan-format.md](modules/plan-format.md) (ordered batch list, **no DAG** — task-level
-  parallelism via separate worktrees + `lyx run`, not intra-plan) and the accompanying
-  [model-spec notation](reference/model-spec.md);
-  it branches off `shuttle` and does not need `perch`. **`loom`** needs both `perch` and `builder`
-  and is the **last** spine layer — the critical path to the orchestrator.
-  `lyx loom status` (the 1-line view) ships as a loom subcommand, not a module.
+- **`builder`** (the batch-implementation module, carved out of loom's Builder phase) ✅ **Done.**
+  See [modules/builder.md](modules/builder.md): the six as-built verbs (`validate`/`run`/
+  `spawn-batch`/`poll`/`status`/`pause`) over `internal/builderengine` + `internal/buildercli`,
+  driven by a long-lived LLM orchestrator session against the pinned
+  [plan format](modules/plan-format.md) (ordered batch list, **no DAG** — task-level parallelism
+  via separate worktrees + `lyx run`, not intra-plan) and the accompanying
+  [model-spec notation](reference/model-spec.md). It branched off `shuttle` and did not need
+  `perch`. **`loom`** still needs both `perch` and `builder` and remains the **last** spine layer
+  — the critical path to the orchestrator. `lyx loom status` (the 1-line view) ships as a loom
+  subcommand, not a module.
 
 **Setup track** — independent of the spine, interleave at any time: config TUI (in progress) ·
 `init`/board-repo creation · `doctor`.
@@ -68,9 +70,9 @@ proc ✅ ──▶ mux ✅ ──▶ shuttle ✅ ──┬▶ burler ✅ ──�
 **Deferred** — after `loom` works and only if wanted: mux daemon → Slack relay; session sync;
 plugin packaging.
 
-So the immediate front: **`builder`** (the Builder module, the next spine milestone before
-`loom`; its plan format is pinned ✅ — [modules/plan-format.md](modules/plan-format.md)) in
-parallel with finishing the **config TUI** — neither blocks the other.
+So the immediate front: **`loom`** (the phase machine, the last spine layer, now that
+`builder` ✅ is done — see [modules/builder.md](modules/builder.md)) in parallel with finishing
+the **config TUI** — neither blocks the other.
 
 ## Milestones
 
@@ -175,13 +177,14 @@ Each layer knows only the one below it; built bottom-up. See the
     ensure the worktree's psmux session, add the `lyx loom status` strand (1-line top pane), spawn
     the driver detached (`proc`), attach the terminal; a `.lyx/lyxrun.cmd` launcher makes it one
     click. The 1-line view ships as the `lyx loom status` subcommand (a strand), not a module.
-    The **Builder** phase is carved into its own module (**`builder`**, `internal/builderengine`) — a *sequential*
-    batch-implementation loop (ordered batches, **no DAG**; parallelism is task-level via separate
-    worktrees + `lyx run`, not intra-plan), driven by an LLM orchestrator over **distilled**
-    batch-reports (never raw sub-agent prose — the mill-go bloat lesson). **Batches are bounded to
-    fit an implementer's context window** (mill's 200k-Haiku/Sonnet pain; eased by Sonnet's 1M but
-    not to be relied on): prefer many small batches over few large. Its plan-format contract is
-    pinned in [modules/plan-format.md](modules/plan-format.md). ([modules/loom.md](modules/loom.md))
+    The **Builder** phase is carved into its own module (**`builder`**, `internal/builderengine`) —
+    ✅ **Done**, see [modules/builder.md](modules/builder.md) — a *sequential* batch-implementation
+    loop (ordered batches, **no DAG**; parallelism is task-level via separate worktrees + `lyx run`,
+    not intra-plan), driven by an LLM orchestrator over **distilled** batch-reports (never raw
+    sub-agent prose — the mill-go bloat lesson). **Batches are bounded to fit an implementer's
+    context window** (mill's 200k-Haiku/Sonnet pain; eased by Sonnet's 1M but not to be relied on):
+    prefer many small batches over few large. Its plan-format contract is pinned in
+    [modules/plan-format.md](modules/plan-format.md). ([modules/loom.md](modules/loom.md))
 
 ### Deferred mux enhancements
 

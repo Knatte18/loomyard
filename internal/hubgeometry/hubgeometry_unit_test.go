@@ -51,6 +51,42 @@ func TestConfigHelpers(t *testing.T) {
 		}
 	})
 
+	t.Run("PlanDir", func(t *testing.T) {
+		t.Parallel()
+
+		baseDir := "/home/user/project"
+		got := hubgeometry.PlanDir(baseDir)
+		want := filepath.Join(baseDir, hubgeometry.LyxDirName, "plan")
+
+		if got != want {
+			t.Errorf("PlanDir(%q) = %q; want %q", baseDir, got, want)
+		}
+	})
+
+	t.Run("BuilderDir", func(t *testing.T) {
+		t.Parallel()
+
+		baseDir := "/home/user/project"
+		got := hubgeometry.BuilderDir(baseDir)
+		want := filepath.Join(baseDir, hubgeometry.LyxDirName, "builder")
+
+		if got != want {
+			t.Errorf("BuilderDir(%q) = %q; want %q", baseDir, got, want)
+		}
+	})
+
+	t.Run("BuilderReportsDir", func(t *testing.T) {
+		t.Parallel()
+
+		baseDir := "/home/user/project"
+		got := hubgeometry.BuilderReportsDir(baseDir)
+		want := filepath.Join(baseDir, hubgeometry.LyxDirName, "builder", "reports")
+
+		if got != want {
+			t.Errorf("BuilderReportsDir(%q) = %q; want %q", baseDir, got, want)
+		}
+	})
+
 	t.Run("DotEnv", func(t *testing.T) {
 		t.Parallel()
 
