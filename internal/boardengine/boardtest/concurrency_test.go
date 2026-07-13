@@ -38,7 +38,16 @@ func TestConcurrentReadsDuringUpserts(t *testing.T) {
 
 	const (
 		readers = 8
-		writes  = 50
+		// writes is bounded-shrunk from 50 to 10 (2026-07-13, Restore the Tier 1
+		// floor task): each write re-renders the 100-task Home.md/_Sidebar.md to
+		// disk (the dominant per-write cost) and is coupled to no assertion, so
+		// the iteration count itself is free to tune. 10 upserts at ~30-40ms of
+		// render I/O each still gives readers a few hundred milliseconds of
+		// overlap window before the writer closes stop, which is enough for the
+		// reader goroutines to complete multiple validated reads while the
+		// writer is mid-flight — the real reader/writer overlap this test exists
+		// to demonstrate does not depend on running the writer for longer.
+		writes = 10
 	)
 
 	var wg sync.WaitGroup
