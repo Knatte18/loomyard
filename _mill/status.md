@@ -44,5 +44,7 @@ batches:
     implementer_session: 36dfd378-ad6f-4683-892d-05fe5e1772a1
     start_sha: 670cc61d5bd35ca15ccae7196700e1551c5f6e8b
   - name: bench-and-docs
-    state: pending
+    state: running
+    implementer_session: 02a495ef-d25d-4555-9531-e5c82dc410fd
+    start_sha: 38e4b3fb83a28d95921faeee80212fa7c61ebe75
 ```
