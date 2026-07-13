@@ -1,5 +1,5 @@
-psmux: ${env:LYX_MUX_PSMUX:-C:\Code\tools\bin\psmux.exe}  # path to the psmux executable
-pwsh: ${env:LYX_MUX_PWSH:-C:\Code\tools\powershell7\pwsh.exe}  # path to the powershell executable used inside panes
+psmux: ${env:LYX_MUX_PSMUX:-psmux}  # path to the psmux executable; set LYX_MUX_PSMUX to pin an explicit path
+pwsh: ${env:LYX_MUX_PWSH:-pwsh}  # path to the powershell executable used inside panes; set LYX_MUX_PWSH to pin an explicit path (e.g. if the PATH pwsh is a broken WindowsApps alias stub)
 width: 220  # psmux window width
 height: 50  # psmux window height
 collapsed_strip_rows: 3  # height a shrink:true ancestor collapses to once a descendant is present

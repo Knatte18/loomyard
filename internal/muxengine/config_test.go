@@ -45,11 +45,10 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// ConfigTemplate() is OS-split (template_windows.go / template_posix.go):
-	// the Windows template pins psmux.exe/pwsh.exe install paths, the POSIX
-	// template defers to the PATH names tmux/bash. Assert the default that
-	// matches the host so the test tracks whichever template was embedded.
-	wantPsmux, wantPwsh := `C:\Code\tools\bin\psmux.exe`, `C:\Code\tools\powershell7\pwsh.exe`
+	// ConfigTemplate() is OS-split (template_windows.go / template_posix.go),
+	// but both variants defer to PATH names rather than a pinned install
+	// path: psmux/pwsh on Windows, tmux/bash on POSIX.
+	wantPsmux, wantPwsh := "psmux", "pwsh"
 	if runtime.GOOS != "windows" {
 		wantPsmux, wantPwsh = "tmux", "bash"
 	}
