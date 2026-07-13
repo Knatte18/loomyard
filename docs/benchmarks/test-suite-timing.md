@@ -59,9 +59,9 @@ card 3:
   entire OS process table, done only to detect launch-by-double-click from
   Explorer. A CPU profile of `internal/clihelp` showed 99% of samples inside
   that syscall. Measured package effect: `internal/clihelp` 8.0 s → 0.46 s
-  (this run's isolated Tier 1 elapsed, median-run table below) — the
-  dominant lever, since every one of the ~15 `*cli` packages pays the
-  syscall once per test that drives a command through `Execute`/`RunCLI`.
+  (this run's isolated Tier 1 elapsed) — the dominant lever, since every
+  one of the ~15 `*cli` packages pays the syscall once per test that
+  drives a command through `Execute`/`RunCLI`.
 - **(b) `TestExecGateCommand_LingeringChildDoesNotHangPastWaitDelay`
   re-tiered to Tier 2** (`internal/perchengine/gate_lingering_test.go`,
   `//go:build integration`). Its two parallel subtests each sit in the
@@ -123,7 +123,7 @@ deliberately permits that.
 |---------|------------------------------|-------|
 | `cmd/lyx` | ~3.74 s | repo-wide guard tests plus cross-compile/help-tree checks — still the largest single package by elapsed, but the guards cost ~0.25 s combined in isolation; this is contention attribution, not AST-walk cost (see the supersession note above) |
 | `internal/perchengine` | ~3.21 s | the remaining 44-test run-loop/gate/judge/state-machine suite, now with the one real-time lingering-child test moved to Tier 2 |
-| `internal/builderengine` | ~3.00 s | builder-module facade tests (new since the 2026-07-13 hermetic-git-env block) |
+| `internal/builderengine` | ~3.00 s | builder-module facade tests (new since 2026-07-12) |
 | `internal/perchcli`, `internal/buildercli`, `internal/burlerengine`, `internal/configcli` | ~1.8–2.2 s each | contention-inflated CLI/facade suites |
 | everything else | < 1.8 s each, noisy | scheduler contention across 52 parallel test binaries, not a stable per-package cost |
 
