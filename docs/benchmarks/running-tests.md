@@ -17,12 +17,19 @@ tests run twice.**
   `hubgeometry.Resolve`, is still allowed and does not violate it). Machine-
   enforced by `cmd/lyx/tierpurity_test.go`
   (`TestTierPurity_UntaggedTestsSpawnNothing`). Fast again: measured median
-  ~36 s. This is what you run constantly and what must stay fast.
+  ~29 s. This is what you run constantly and what must stay fast.
 - **Tier 2 — the opt-in integration loop** (`go test -tags integration ./...`):
   Tier 1 **plus** the gated tests that spawn real `git` (worktrees, commits,
   pushes, junctions). It is slow **by design** — it does far more work.
-  Measured median ~208 s. Numbers and the full where-the-time-goes analysis:
-  [test-suite-timing.md](test-suite-timing.md#current-best-times).
+  Measured median ~128 s. Numbers and the full where-the-time-goes analysis:
+  [test-suite-timing.md](test-suite-timing.md#current-best-times). Every
+  git-spawning test package runs under the **Hermetic Git Test Environment
+  Invariant** (`CONSTRAINTS.md`): a `TestMain` wires in
+  `lyxtest.HermeticGitEnv()` before any test spawns git, which is what keeps
+  this tier's git processes from inheriting the operator's global
+  `~/.gitconfig` (and the `fsmonitor--daemon`/auto-`maintenance` spawns that
+  config can trigger) — see
+  [fixture-copy.md](fixture-copy.md) for the measured before/after.
 
 > **Tier 2 is not a regression of Tier 1.** The heavy git work used to run inside
 > the default loop and made it slow (~82 s historically); the two-tier split moved
@@ -58,10 +65,10 @@ suite and prints per-package times, the measured wall-clock, and the slowest
 top-level tests. No arguments needed; it works the same outside any editor.
 
 ```sh
-# Fast: Tier 1 (offline). ~36 s as of 2026-07-12 (post-fix; median of 3 runs).
+# Fast: Tier 1 (offline). ~29 s as of 2026-07-13 (median of 3 runs).
 go run ./cmd/testtiming
 
-# Full: Tier 2 (integration, real git). ~208 s as of 2026-07-12 (post-fix; median of 3 runs).
+# Full: Tier 2 (integration, real git). ~128 s as of 2026-07-13 (hermetic git env; median of 3 runs).
 go run ./cmd/testtiming -full
 
 # Show more (or fewer) of the slowest tests (default 15).
@@ -104,4 +111,4 @@ If the suite feels slow locally, the highest-leverage levers, in order:
    `git worktree add` / fixture-tree copies repo-wide (see
    [test-suite-timing.md](test-suite-timing.md#current-best-times)). Only reach
    for `-tags integration` when you are changing warp / weft / hubgeometry /
-   board / ide git behaviour — and budget ~208 s (~3.5 min) for that tier.
+   board / ide git behaviour — and budget ~128 s (~2 min) for that tier.

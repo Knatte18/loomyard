@@ -1,3 +1,5 @@
+//go:build integration
+
 // config_test.go verifies builder.yaml's template parses, defaults resolve
 // through LoadConfig, overrides round-trip, and a malformed role model-spec
 // fails loud naming the offending key — the perchengine config_test.go

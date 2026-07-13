@@ -1,3 +1,5 @@
+//go:build integration
+
 // poll_test.go covers the poll verb's classification wiring end to end:
 // no-batch-in-flight refusal, a running snapshot at the wait deadline (no
 // weft commit, no git diff), a done classification from an on-disk report
@@ -5,7 +7,9 @@
 // dead/asking classification derived purely from builderengine.TurnEnded/
 // builderengine.StrandLive when no report has landed. Fakes for
 // shuttleengine.Engine/MuxOps are package-local doubles mirroring
-// builderengine's own poll_test.go fakeEngine/fakeMux.
+// builderengine's own poll_test.go fakeEngine/fakeMux. Every test here
+// builds a real git fixture via newPollFixture -> newScratchRepo, so the
+// whole file runs behind the integration tag (Test Tier Purity Invariant).
 
 package buildercli
 
@@ -47,28 +51,8 @@ func (e *pollFakeEngine) ComposeSend(text string) []shuttleengine.PaneInput { re
 
 var _ shuttleengine.Engine = (*pollFakeEngine)(nil)
 
-// pollFakeMux is a minimal shuttleengine.MuxOps double for
-// builderengine.StrandLive and poll's terminal cleanup: Status is scripted,
-// and RemoveStrand records every call so a test can assert whether the
-// terminal branch released the strand.
-type pollFakeMux struct {
-	status         muxengine.StatusResult
-	removedStrands []string
-}
-
-func (m *pollFakeMux) AddStrand(spec muxengine.AddSpec) (muxengine.Strand, error) {
-	return muxengine.Strand{}, nil
-}
-func (m *pollFakeMux) RemoveStrand(guid string, recursive bool) (muxengine.Removed, error) {
-	m.removedStrands = append(m.removedStrands, guid)
-	return muxengine.Removed{}, nil
-}
-func (m *pollFakeMux) Status() (muxengine.StatusResult, error)       { return m.status, nil }
-func (m *pollFakeMux) SendText(guid, text string, submit bool) error { return nil }
-func (m *pollFakeMux) SendKey(guid, key string) error                { return nil }
-func (m *pollFakeMux) CapturePane(guid string) (string, error)       { return "", nil }
-
-var _ shuttleengine.MuxOps = (*pollFakeMux)(nil)
+// pollFakeMux (a git-free shuttleengine.MuxOps double) lives in
+// testdata_test.go, untagged, since run_test.go also uses it.
 
 // pollFixture is a fully-wired *builderCLI plus a scratch git repo standing
 // in for the host worktree, with the plan-valid fixture seeded under its

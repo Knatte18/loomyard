@@ -1,8 +1,12 @@
+//go:build integration
+
 // status_test.go covers the status verb's four envelope shapes through
 // RunCLI: uninitialized (no state.json), initialized with a mix of
 // terminal and in-flight batches, an on-disk report promoting a
 // not-yet-Terminal batch to its real status, and the paused flag surfacing
-// correctly.
+// correctly. Every test here seeds a real git fixture via
+// seedBuilderFixture (validate_test.go), so the whole file runs behind the
+// integration tag (Test Tier Purity Invariant).
 
 package buildercli
 

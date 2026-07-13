@@ -1,3 +1,5 @@
+//go:build integration
+
 // spawnbatch_test.go covers the spawn-batch verb's flag validation, the
 // plan-validation gate's shared findingsEnvelope, the ErrPaused envelope,
 // and the success envelope's field shape and weft commit -- stubbing the
