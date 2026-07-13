@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: restore-tier1-floor
 branch: restore-tier1-floor
 plan: _mill/plan
@@ -29,6 +29,7 @@ nits-fixed-holistic  '2026-07-13T09:48:16Z'
 holistic-approved  '2026-07-13T09:48:25Z'
 nits-fixed-holistic  '2026-07-13T09:48:25Z'
 done  '2026-07-13T09:49:08Z'
+pr-pending  '2026-07-13T09:50:02Z'
 ```
 
 ## Batches
