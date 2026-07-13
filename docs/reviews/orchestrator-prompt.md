@@ -37,21 +37,27 @@ converged. The single discipline that makes this work: **you never trust a round
 4. **One concern per round.** The review prompt is a full review+fix. A narrow follow-up (e.g. "close
    this one coverage gap", "split this file") is a *separate* targeted agent with its own tight
    brief — do not fold it into a review round.
-5. **The operator may pause and steer a live round at will — this is normal, not a failure.** The
-   human operator can stop a running round agent mid-task to ask it a question or redirect it, then
-   resume it themselves, as many times as they like within one round. A `killed`/`stopped by user`
-   completion notification produced this way is NOT a crash, NOT a stuck state, and NOT something
-   for you to recover from. Concretely, when you see such a notification:
+5. **Operator stop/restart is DELIBERATE — NEVER "recover" from it.** The operator stops running
+   round agents constantly, on purpose — to ask a question, redirect, or re-run from a cleaner
+   point — and then either resumes the same session OR kills it and respawns a fresh one. This is
+   the single most common thing that will happen to a live round, and it is done for a reason that
+   is theirs, not yours to second-guess or undo. A `killed`/`stopped by user` completion
+   notification — whether from a resume *or* a full restart — is NOT a crash, NOT a stuck state, and
+   NOT something for you to recover from. **Do not go amok.** Concretely, when you see such a
+   notification:
    - Do **not** stash, revert, or otherwise touch the round's in-progress working-tree changes.
-   - Do **not** respawn, re-seed, or restart the round yourself.
+   - Do **not** respawn, re-seed, or restart the round yourself — if a restart is wanted, the
+     operator does it.
+   - Do **not** kill, reap, or "tidy up" the agent, its session, or any sibling threads/worktrees.
    - Do **not** report it to the operator as a problem or ask whether to intervene — they already
-     know, they did it.
-   - Just note the state (e.g., "round N is paused, working tree has uncommitted in-progress
-     changes") and go back to waiting. The same `agentId` will notify again, potentially several
-     more times, before the round actually finishes for real.
-   Only step in on your own initiative if the round agent's own OUTPUT (not the stop/resume
+     know, they did it deliberately.
+   - Just note the state (e.g., "round N is paused/stopped, working tree has uncommitted in-progress
+     changes") and go back to waiting. The same round will notify again — potentially several more
+     times, and possibly under a **new** `agentId` after a fresh restart — before it actually
+     finishes for real.
+   Only step in on your own initiative if the round agent's own OUTPUT (not the stop/restart
    mechanics) shows an actual problem — e.g., it reports being stuck, or its own text shows it
-   misunderstood the brief. Stopping-and-resuming by the operator, by itself, is never that signal.
+   misunderstood the brief. Operator stop/restart, by itself, is never that signal.
 
 ## The loop (repeat until converged)
 1. **Seed.** Rewrite the review prompt's *"round context seeded from prior-round verification"*
