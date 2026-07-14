@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: warpengine-spawn-reduction
 branch: warpengine-spawn-reduction
 plan: _mill/plan
@@ -27,6 +27,7 @@ approved-reduce-redundant-resolve  '2026-07-14T08:37:51Z'
 holistic-reviewing  '2026-07-14T08:38:21Z'
 holistic-approved  '2026-07-14T08:41:04Z'
 done  '2026-07-14T08:42:01Z'
+pr-pending  '2026-07-14T08:42:58Z'
 ```
 
 ## Batches
