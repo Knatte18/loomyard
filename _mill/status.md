@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-render-defaults
 slug: mux-server-crash
 branch: mux-server-crash
 plan: _mill/plan
@@ -22,6 +22,7 @@ planning  '2026-07-14T18:52:35Z'
 plan-fix-r1  '2026-07-14T18:59:50Z'
 planned  '2026-07-14T19:00:12Z'
 implementing  '2026-07-14T19:06:58Z'
+approved-render-defaults  '2026-07-14T19:11:21Z'
 ```
 
 ## Batches
@@ -29,9 +30,10 @@ implementing  '2026-07-14T19:06:58Z'
 ```yaml
 batches:
   - name: render-defaults
-    state: running
+    state: approved
     implementer_session: 4a910ae3-2ca7-4e11-8bb4-91ed0e5ca68e
     start_sha: 6e067695141fca30c107393385c813aed122df0d
+    commit_sha: 4d7659cd5008e6ec07d4b166b7070a386e0f5622
   - name: debug-logging
     state: pending
   - name: resume-hint
