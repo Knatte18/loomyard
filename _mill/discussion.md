@@ -90,12 +90,15 @@ Windows), not a test-speed fix.
 
 - Decision: Add `func (l *Layout) SiblingLayout(worktreeRoot string) *Layout` to
   `internal/hubgeometry/hubgeometry.go`, returning
-  `{Cwd: worktreeRoot, WorktreeRoot: worktreeRoot, Hub: l.Hub, RelPath: ".",
-  Prime: l.Prime}` — no git spawn. **Precondition (godoc): `worktreeRoot` must be
-  an actual worktree root** (as returned by `hubgeometry.List`), not a subpath —
-  `RelPath: "."` is only correct for a root; a subpath argument would silently
-  mis-derive `RelPath` (unlike `Resolve`, which computes it). Callers only pass
-  `List` roots.
+  `{Cwd: c, WorktreeRoot: c, Hub: l.Hub, RelPath: ".", Prime: l.Prime}` where
+  `c := filepath.Clean(worktreeRoot)` — no git spawn. It **cleans its input via
+  `filepath.Clean`** to match `Resolve` exactly (`Resolve` sets
+  `Cwd = filepath.Clean(cwd)` and `WorktreeRoot = filepath.Clean(rev-parse
+  output)`); this removes any reliance on callers pre-cleaning the path.
+  **Precondition (godoc): `worktreeRoot` must be an actual worktree root** (as
+  returned by `hubgeometry.List`), not a subpath — `RelPath: "."` is only correct
+  for a root; a subpath argument would silently mis-derive `RelPath` (unlike
+  `Resolve`, which computes it). Callers only pass `List` roots.
 - Rationale: In `Status`/`Reconcile`, the loop iterates worktree roots already
   enumerated by one `hubgeometry.List(l.WorktreeRoot)` call. `Resolve(hostPath)`
   then re-spawns `rev-parse --show-toplevel` (root already known) **and** a second
@@ -115,12 +118,22 @@ Windows), not a test-speed fix.
   it only affects where a `_lyx` junction sits *inside* a worktree; the worktree
   **root** stays `<hub>/<name>`, so `filepath.Dir(root) == l.Hub` always holds).
   To keep the equivalence absolute even for the pathological out-of-hub case, the
-  call sites guard: `if filepath.Dir(worktreeRoot) != l.Hub` → fall back to
+  guard is `if filepath.Dir(worktreeRoot) != l.Hub` → fall back to
   `hubgeometry.Resolve(worktreeRoot)` (the spawning path); else use
   `SiblingLayout`. Non-sibling worktrees (rare/degenerate) take the slow path;
   siblings take the fast path. Since `Hub`, `WeftWorktree()`, `WeftLyxDir()`, and
   `WeftRepoRoot()` all derive from `Hub`, this makes the junction-health verdict
   and weft target byte-for-byte identical to today for every entry.
+  **Factoring:** the guard is lifted into **one unexported warpengine helper**
+  (both call sites are warpengine — `status.go` and `reconcile.go`), not inlined
+  at each site, e.g. `func hostLayoutFor(l *hubgeometry.Layout, root string)
+  (*hubgeometry.Layout, error)` returning `(l.SiblingLayout(root), nil)` for a
+  hub sibling and `hubgeometry.Resolve(root)` otherwise. It returns an `error` so
+  the existing per-iteration `Resolve`-error handling at each call site is
+  preserved unchanged (`SiblingLayout` never errors → `nil`). The helper lives in
+  warpengine, keeping `SiblingLayout` a pure, always-no-spawn primitive and the
+  fallback *decision* a warpengine concern; it constructs no geometry tokens, so
+  the Hub Geometry Invariant is unaffected.
 - Rejected: A keyed/memoized `Resolve` cache (staleness risk, overkill for a
   within-operation derivation); a free function `LayoutForKnownRoot(root, prime)`
   (the method on `Layout` reuses the already-resolved `Hub`+`Prime` and reads
@@ -132,9 +145,14 @@ Windows), not a test-speed fix.
 ### spawn-count-regression-guard
 
 - Decision: Add a trace-based guard test: run `Status` (and `Reconcile`) over a
-  fixture hub with N host worktrees under `GIT_TRACE2_EVENT`, assert the count of
-  `git rev-parse --show-toplevel` invocations does **not** grow with N (O(1), not
-  O(N)).
+  fixture hub at **two worktree counts** under `GIT_TRACE2_EVENT`, and assert the
+  count of `git rev-parse --show-toplevel` invocations **does not grow** between
+  them (the non-scaling property the guard exists to lock). Do not pin a single
+  constant: post-fix, `--show-toplevel` from these all-sibling loops is exactly 0
+  (`List` spawns `worktree list --porcelain`, not `--show-toplevel`), so a single-N
+  `== 0` assertion is brittle and its "bounded by one-time `List`" rationale is
+  imprecise — the two-N non-growth assertion is what actually fails if
+  per-iteration `Resolve` is reintroduced (it would make the count scale with N).
 - Rationale: Locks in the win and prevents a future edit from silently
   reintroducing per-iteration `Resolve`. Uses `GIT_TRACE2_EVENT` → a temp trace
   dir, parsed in-test; no production code change. GIT_TRACE2 passes through the
@@ -220,16 +238,19 @@ Windows), not a test-speed fix.
   `l.SiblingLayout(root)` returns a `Layout` deep-equal to `hubgeometry.Resolve(
   root)`. Write this first; it is the safety net proving the pure derivation
   matches the spawning path. Cover: main worktree root, a sibling child worktree
-  root, the `Hub`/`Prime`/`RelPath` fields explicitly, and **a non-hub-sibling
+  root, and **all four `Layout` fields explicitly** (`Cwd`, `WorktreeRoot`, `Hub`,
+  `Prime`, `RelPath`) — not just `Hub`/`Prime`/`RelPath` — so the input-cleaning
+  and `WorktreeRoot` derivation are pinned too. Also cover **a non-hub-sibling
   root** (out-of-hub worktree) pinning that the guarded call site falls back to
   `Resolve` (i.e. that `SiblingLayout` and `Resolve` diverge there, which is
   exactly why the guard exists).
-- **`internal/warpengine` — spawn-count regression guard (TDD candidate):** build
-  a fixture hub with ≥2 hub-sibling host worktrees, run `Status` (and `Reconcile`)
-  under `GIT_TRACE2_EVENT` pointed at `t.TempDir()`, and assert the number of
-  `rev-parse --show-toplevel` spawns is constant w.r.t. worktree count (e.g.
-  bounded by the one-time `List` setup, not `≥ N`). This is the guard that fails
-  if per-iteration `Resolve` is reintroduced.
+- **`internal/warpengine` — spawn-count regression guard (TDD candidate):** run
+  `Status` (and `Reconcile`) over a fixture hub at **two hub-sibling worktree
+  counts** (e.g. N=2 and N=4) under `GIT_TRACE2_EVENT` pointed at `t.TempDir()`,
+  and assert the `rev-parse --show-toplevel` spawn count **does not grow** between
+  the two runs (it is 0 in both post-fix). This non-scaling assertion is the guard
+  that fails if per-iteration `Resolve` is reintroduced (which would make the count
+  scale with worktree count); a single-N constant would be brittle.
 - **`internal/warpengine` — existing `Status`/`Reconcile` behavior tests:** must
   still pass unchanged (identical JSON output). Run the full
   `go test -tags integration ./internal/warpengine` before/after and confirm the
