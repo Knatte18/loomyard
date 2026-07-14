@@ -74,6 +74,66 @@ const (
 	staleSocketGrace   = 5 * time.Second
 )
 
+// serverLogPruneKeep is how many pre-existing tmux-server-*.log files
+// pruneServerLogsLocked keeps in the hub logs dir before a fresh boot writes
+// its own — Shared Decision log-prune-keep-3's concrete reading of "keep the
+// newest 3": 2 kept plus the fresh server's own log makes 3.
+const serverLogPruneKeep = 2
+
+// serverLogNamePrefix and serverLogNameSuffix bound the tmux-server-*.log
+// glob pruneServerLogsLocked matches against the hub logs dir; kept as named
+// constants (rather than an inline glob) since planLogPrune's caller side
+// needs to recognize the same filename shape tmux itself writes
+// (tmux-server-<pid>.log).
+const (
+	serverLogNamePrefix = "tmux-server-"
+	serverLogNameSuffix = ".log"
+)
+
+// pruneServerLogsLocked prunes tmux-server-*.log files in logsDir down to
+// the keep newest by mtime, deleting the rest via planLogPrune's plan. It
+// ignores os.Remove errors for files that vanish between the directory scan
+// and the removal (e.g. a sibling worktree's boot already cleaned up the
+// same stale file) — the caller only needs "no more than keep remain",
+// never a hard guarantee that this call itself removed every listed name.
+// It assumes the op lock is already held (the same withOpLock the rest of
+// ensureServerAndSessionLocked runs under) and performs no locking of its
+// own.
+func pruneServerLogsLocked(logsDir string, keep int) error {
+	entries, err := os.ReadDir(logsDir)
+	if err != nil {
+		return fmt.Errorf("read %s: %w", logsDir, err)
+	}
+
+	var names []string
+	var mtimes []time.Time
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if !strings.HasPrefix(name, serverLogNamePrefix) || !strings.HasSuffix(name, serverLogNameSuffix) {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			// The file vanished between ReadDir and Info (e.g. a concurrent
+			// prune by a sibling worktree's boot); it is already gone, which
+			// is exactly what pruning wants, so skip it rather than error.
+			continue
+		}
+		names = append(names, name)
+		mtimes = append(mtimes, info.ModTime())
+	}
+
+	for _, name := range planLogPrune(names, mtimes, keep) {
+		if err := os.Remove(filepath.Join(logsDir, name)); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("remove stale server log %s: %w", name, err)
+		}
+	}
+	return nil
+}
+
 // planUpLaunches always returns nil: Up never launches or relaunches a
 // strand command — only Resume replays. This trivial-but-explicit function
 // exists so Up's "never launches" contract has a concrete, unit-testable
@@ -120,8 +180,18 @@ func planResumeLaunches(strands []Strand, liveIDs map[string]bool) []Strand {
 // Before any of that, it runs the capability probe (probe.go) once and
 // returns a *CapabilityError immediately if the configured multiplexer
 // binary is below the pinned version floor or missing a required
-// subcommand.
+// subcommand. It also validates cfg.DebugLog via debugLogArgs up front and
+// returns that error before any psmux round trip at all — an invalid
+// debug_log value must fail the boot loud, not partway through a spawn.
 func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []string, err error) {
+	// Validate debug_log before anything else touches psmux: a misconfigured
+	// value is a pure config error, unrelated to server/session state, so it
+	// must surface before the capability probe or any spawn attempt.
+	debugArgs, err := debugLogArgs(e.cfg.DebugLog)
+	if err != nil {
+		return false, nil, err
+	}
+
 	// Fail loud, once per ensure/boot, if the configured multiplexer binary
 	// is below the pinned version floor or missing a required subcommand —
 	// far better than letting an unknown surface surface later as a cryptic
@@ -167,18 +237,44 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 		}
 	}
 
+	// Route the server's tmux-server-<pid>.log to the hub's deterministic
+	// forensic location (Shared Decision hub-logs-dir): tmux writes that log
+	// to the server process's own cwd with no redirect flag, so cmd.Dir below
+	// is the only lever. This happens on every boot, regardless of
+	// debug_log, and runs before the boot loop so a fresh server's log always
+	// lands in a directory that already exists and is already pruned.
+	logsDir := e.layout.HubLogsDir()
+	if err := os.MkdirAll(logsDir, 0o755); err != nil {
+		return false, nil, fmt.Errorf("create %s: %w", logsDir, err)
+	}
+	// Prune to the newest 2 pre-existing logs before this boot's own log is
+	// written, so at most 3 (2 kept + this boot's fresh one) ever exist
+	// (Shared Decision log-prune-keep-3) — forensic history without
+	// unbounded growth across repeated boots.
+	if err := pruneServerLogsLocked(logsDir, serverLogPruneKeep); err != nil {
+		return false, nil, fmt.Errorf("prune server logs: %w", err)
+	}
+
 	// Env hygiene: a spawned server must never inherit this process's own
 	// Claude Code session identity (CleanClaudeEnv is the single documented
 	// chokepoint for that decision).
 	clean, stripped := CleanClaudeEnv(os.Environ())
 	spawnSession := func() error {
-		cmd := exec.Command(e.cfg.Psmux,
+		// debugArgs are psmux GLOBAL flags (e.g. -v/-vv) and must precede
+		// -L/new-session on the argv; -c pins new-session's pane default cwd
+		// to the invoking worktree cwd, so panes keep today's behavior even
+		// though the server process's own cwd (cmd.Dir) has moved to logsDir.
+		argv := append([]string{}, debugArgs...)
+		argv = append(argv,
 			"-L", e.Socket(),
 			"new-session", "-d", "-s", session,
+			"-c", e.layout.Cwd,
 			"-x", strconv.Itoa(e.cfg.Width),
 			"-y", strconv.Itoa(e.cfg.Height),
 			e.cfg.Pwsh,
 		)
+		cmd := exec.Command(e.cfg.Psmux, argv...)
+		cmd.Dir = logsDir
 		cmd.Env = clean
 		proc.Detach(cmd)
 		if err := cmd.Start(); err != nil {
@@ -431,9 +527,10 @@ func (e *Engine) Down() (DownResult, error) {
 		// distinguish them, and kill-server is harmless in both); an ERRORED
 		// list-sessions means the socket-holder is unreachable — a zombie
 		// server cannot be hosting healthy sibling sessions, so it is torn
-		// down too rather than left squatting on the socket with the
-		// worktree as its cwd (the same sessionless-holder reasoning the
-		// pre-boot check applies).
+		// down too rather than left squatting on the socket (the server's
+		// own cwd is the hub's .lyx/logs dir, not this worktree, since the
+		// debug-logging batch — the same sessionless-holder reasoning the
+		// pre-boot check applies regardless).
 		var serverErr error
 		if out, err := e.psmux.output("list-sessions", "-F", "#{session_name}"); err != nil || strings.TrimSpace(out) == "" {
 			_ = e.psmux.run("kill-server")
@@ -444,10 +541,13 @@ func (e *Engine) Down() (DownResult, error) {
 		// teardown above hit trouble: a slow or failed server death must never
 		// skip the pane reap. An earlier fixed-deadline server wait returned on
 		// timeout and aborted down BEFORE this reap under CPU saturation,
-		// leaking both the server (whose cwd is this worktree) and pane children
-		// that kept the worktree directory busy. kill-session / kill-server
-		// terminate pane children asynchronously, so force-kill any that outlive
-		// the deadline.
+		// leaking pane children that kept the worktree directory busy (the
+		// server itself no longer holds a worktree busy since the
+		// debug-logging batch — its own cwd is now the hub's .lyx/logs dir,
+		// not this worktree — though a lingering server process is still its
+		// own leak worth reaping). kill-session / kill-server terminate pane
+		// children asynchronously, so force-kill any that outlive the
+		// deadline.
 		reapPaneChildren(panePIDs, reapExitTimeout)
 
 		if serverErr != nil {
@@ -566,16 +666,25 @@ const reapExitTimeout = 15 * time.Second
 // ensureServerGoneLocked guarantees no psmux process remains on this engine's
 // socket after a kill-server, so down provably leaves zero psmux for its socket
 // the moment it returns. kill-server is asynchronous and, under CPU saturation,
-// the main server AND its "__warm__" helper — both spawned with the worktree as
-// their cwd, so both keep the worktree directory busy — can outlive any fixed
-// wait. It first gives the graceful teardown a bounded window to finish on its
-// own (the common, quiet-machine path), then, if any psmux still names the
-// socket, force-reaps them and confirms the socket is clear. Force-reap-and-
-// confirm rather than a fixed wait that aborts down: a stray server holding the
-// worktree directory is a real "no stray state" leak, so down must actively
-// clear it, never merely hope it dies in time. Returns an error only if the
-// socket is still not clear after the force-reap — a genuine, reportable
-// failure. It assumes the op lock is already held.
+// the main server AND its "__warm__" helper can outlive any fixed wait. Since
+// the debug-logging batch, the server process's own cwd is the hub's
+// .lyx/logs dir (cmd.Dir on spawn), inside the hub container and never any
+// worktree, so a lingering server no longer holds a WORKTREE directory busy
+// the way it used to when its cwd was the worktree itself — the "no stray
+// state" concern this function guards is now about the socket/process
+// itself, not a worktree-dir lock. Windows' worktree-dir-in-use teardown
+// belt (which scans for processes holding a worktree directory open) no
+// longer sees the server's cwd at all for that reason; it still needs to see
+// pane child processes, whose cwd stays the invoking worktree via the -c
+// pin on new-session. It first gives the graceful teardown a bounded window
+// to finish on its own (the common, quiet-machine path), then, if any psmux
+// still names the socket, force-reaps them and confirms the socket is clear.
+// Force-reap-and-confirm rather than a fixed wait that aborts down: a stray
+// server left on the socket is a real leak even though it no longer pins a
+// worktree directory, so down must actively clear it, never merely hope it
+// dies in time. Returns an error only if the socket is still not clear after
+// the force-reap — a genuine, reportable failure. It assumes the op lock is
+// already held.
 func (e *Engine) ensureServerGoneLocked(serverPID int) error {
 	_ = waitProcessExit(serverPID, reapExitTimeout)
 	if len(e.serverProcessesOnSocket()) == 0 {

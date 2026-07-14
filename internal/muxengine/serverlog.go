@@ -8,7 +8,9 @@ package muxengine
 
 import (
 	"fmt"
+	"sort"
 	"strings"
+	"time"
 )
 
 // debugLogArgs maps a validated debug_log config value to the psmux global
@@ -31,4 +33,43 @@ func debugLogArgs(level string) ([]string, error) {
 	default:
 		return nil, fmt.Errorf("invalid debug_log %q: must be 0, 1 or 2", level)
 	}
+}
+
+// planLogPrune returns the subset of names to delete so that only the keep
+// newest (by the parallel mtimes slice) remain — the planning half of the
+// boot-time tmux-server-*.log prune (Shared Decision log-prune-keep-3); the
+// caller does the actual os.Remove calls. names and mtimes must be the same
+// length, each names[i] paired with mtimes[i]. When len(names) <= keep,
+// nothing is pruned and nil is returned. Ties (equal mtimes) are broken by
+// input order: entries earlier in names are treated as newer, so the result
+// is deterministic given the same input order. This is a pure function with
+// no filesystem I/O.
+func planLogPrune(names []string, mtimes []time.Time, keep int) []string {
+	if keep < 0 {
+		keep = 0
+	}
+	if len(names) <= keep {
+		return nil
+	}
+
+	type namedMtime struct {
+		name  string
+		mtime time.Time
+	}
+	entries := make([]namedMtime, len(names))
+	for i, n := range names {
+		entries[i] = namedMtime{name: n, mtime: mtimes[i]}
+	}
+	// Stable sort newest-first; SliceStable preserves the input order for
+	// entries with equal mtimes, which is what makes tie-breaking
+	// deterministic rather than dependent on sort's internal pivot choice.
+	sort.SliceStable(entries, func(i, j int) bool {
+		return entries[i].mtime.After(entries[j].mtime)
+	})
+
+	toDelete := make([]string, 0, len(entries)-keep)
+	for _, e := range entries[keep:] {
+		toDelete = append(toDelete, e.name)
+	}
+	return toDelete
 }

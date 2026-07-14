@@ -46,7 +46,10 @@
 // has-session, split-window, select-layout, select-pane, send-keys,
 // capture-pane, list-panes, list-sessions, display-message,
 // set-option -g remain-on-exit, kill-pane, kill-session, and kill-server all
-// behaving per tmux's own documented semantics for each.
+// behaving per tmux's own documented semantics for each. The engine may also
+// pass the standard tmux -v/-vv verbose-logging global flags on the
+// server-spawning invocation, opt-in via the debug_log config key; the
+// configured binary must accept them.
 //
 // Load-bearing behavioral assumptions, each with the rationale that makes it
 // load-bearing:

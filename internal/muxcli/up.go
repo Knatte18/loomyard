@@ -32,6 +32,11 @@ up is substrate-only: it never launches or relaunches a strand command.
 Bringing strand content back after a server restart is "lyx mux resume"'s
 job, not up's.
 
+Setting debug_log in mux.yaml (or LYX_MUX_DEBUG=1) enables server verbose
+logging to <hub>/.lyx/logs/, as forensics for unexplained server deaths; it
+applies only when this up actually boots the shared per-hub server, and
+existing hubs need "lyx config reconcile" after upgrading to adopt the key.
+
 Example:
   lyx mux up`,
 		RunE: func(cmd *cobra.Command, args []string) error {
