@@ -142,6 +142,33 @@ func Resolve(cwd string) (*Layout, error) {
 	}, nil
 }
 
+// SiblingLayout derives the Layout for a hub-sibling worktree from the receiver's
+// already-resolved Hub and Prime, without spawning git. It exists so callers that
+// already hold a resolved Layout and are iterating over hub-sibling worktrees (e.g.
+// warpengine's Status/Reconcile scans) can avoid a per-iteration git rev-parse spawn.
+//
+// Precondition: worktreeRoot must be an actual worktree root as returned by
+// hubgeometry.List (not an arbitrary subpath) and must be a direct child of l.Hub.
+// RelPath is hardcoded to "." here, which is only correct for a root; callers must
+// guard the non-sibling case (filepath.Dir(worktreeRoot) != l.Hub) themselves, since
+// SiblingLayout performs no such check and will silently reuse l.Hub even when it is
+// wrong for a worktree outside the hub.
+//
+// For any worktreeRoot where filepath.Dir(worktreeRoot) == l.Hub, this is byte-for-byte
+// equivalent to Resolve(worktreeRoot): both set Cwd and WorktreeRoot to
+// filepath.Clean(worktreeRoot), Hub to the same hub, RelPath to ".", and Prime to the
+// receiver's already-resolved Prime.
+func (l *Layout) SiblingLayout(worktreeRoot string) *Layout {
+	c := filepath.Clean(worktreeRoot)
+	return &Layout{
+		Cwd:          c,
+		WorktreeRoot: c,
+		Hub:          l.Hub,
+		RelPath:      ".",
+		Prime:        l.Prime,
+	}
+}
+
 // ConfigDir returns the path to the config directory within a baseDir.
 //
 // The config directory is where YAML configuration files are stored, organized by module.
