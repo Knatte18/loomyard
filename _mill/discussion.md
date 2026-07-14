@@ -44,8 +44,10 @@ corruption itself is what item 3–4 eliminate.
 - Bump the shipped `top_band_rows` default from 1 to **3** in both config templates
   (`internal/muxengine/template_posix.yaml`, `template_windows.yaml`) and update the
   default-asserting test (`config_test.go`).
-- New mux.yaml config key `debug_log: ${env:LYX_MUX_DEBUG:-0}` — int level `0|1|2` mapping
-  to no flag / `-v` / `-vv` on the server-spawning psmux invocation.
+- New mux.yaml config key `debug_log: ${env:LYX_MUX_DEBUG:-0}` — level `0|1|2` mapping
+  to no flag / `-v` / `-vv` on the server-spawning psmux invocation (string-typed Config
+  field; Go helper parses/validates). Existing hubs must run `lyx config reconcile` once
+  the template gains the key (strict-template contract).
 - Route the tmux/psmux server log file (`tmux-server-<pid>.log`, written to the server
   process's cwd) into `.lyx/logs/` (machine-local, never git-tracked), and prune old logs
   at server boot (keep the newest 3).
@@ -109,13 +111,21 @@ corruption itself is what item 3–4 eliminate.
 
 ### debug-log-config-key
 
-- Decision: New mux.yaml key `debug_log: ${env:LYX_MUX_DEBUG:-0}` (int). The template
-  supplies only the key and its env-resolved default; the 0–2 range check (and a clear
-  error for non-numeric env input) lives in the Go level→argv helper — `configengine.Load`
-  validates key presence and resolves `${env:...}`, it does no type/range validation.
-  Level 0 = off (default), 1 = `-v`, 2 = `-vv`, appended to the psmux argv in
-  `ensureServerAndSessionLocked`'s `spawnSession` (`internal/muxengine/lifecycle.go:174`).
-  Values outside 0–2 are an error surfaced at boot.
+- Decision: New mux.yaml key `debug_log: ${env:LYX_MUX_DEBUG:-0}`. The template supplies
+  only the key and its env-resolved default; on the Config struct the field is a
+  **`string`** (`DebugLog string`), so yaml.Unmarshal never chokes on non-numeric env
+  input — the Go level→argv helper owns all parsing and validation (numeric check + 0–2
+  range) and emits a clear error quoting the offending value (e.g. `invalid debug_log
+  "abc": must be 0, 1 or 2`). `configengine.Load` validates key presence and resolves
+  `${env:...}`, it does no type/range validation. Level 0 = off (default), 1 = `-v`,
+  2 = `-vv`, appended to the psmux argv in `ensureServerAndSessionLocked`'s
+  `spawnSession` (`internal/muxengine/lifecycle.go:174`). Invalid values are an error
+  surfaced at boot.
+- Migration note: the strict template contract means every already-initialized hub fails
+  all `lyx mux` verbs with `missing keys: debug_log; run "lyx config reconcile"` once the
+  template gains the key — including the sandbox Hub this logging is for. The plan must
+  note the reconcile step for existing hubs, and operator-facing help (`up`'s `Long`)
+  should not hide it.
 - Rationale: The forensic use case is "armed for weeks in the sandbox Hub until the crash
   recurs" — a durable config value, not a flag someone must remember on the one `up` that
   actually boots the shared per-hub server. The `${env:...}` template mechanism gives the
@@ -168,7 +178,10 @@ corruption itself is what item 3–4 eliminate.
 - Rejected: enriching only attach/status (leaves add/remove misleading); proactive
   detection (out of scope).
 - Note: tests asserting the exact old error string must be found and updated
-  (`no mux session` appears in engine and cli tests).
+  (`no mux session` appears in engine and cli tests) — and so must code comments quoting
+  the old wording verbatim: `internal/muxengine/strand.go` (~lines 308, 351, 411) and
+  `internal/muxcli/attach.go` (~line 53) cite `no mux session; run "lyx mux up"` in prose
+  and go stale when the message is enriched.
 
 ### mitigation-only-scope
 
@@ -257,8 +270,9 @@ From `CONSTRAINTS.md` (read in full this session), the ones this task touches:
   end-to-end in the parent worktree).
 - **Default bump:** update `config_test.go`'s `TopBandRows` expectation 1→3; grep for
   other tests pinning the old default.
-- **Debug level → argv mapping:** TDD candidate. Pure helper (level int → extra argv
-  slice, plus validation 0–2) with table-driven unit tests, untagged.
+- **Debug level → argv mapping:** TDD candidate. Pure helper (level string → extra argv
+  slice; numeric parse + 0–2 validation with a clear error quoting the value) with
+  table-driven unit tests, untagged.
 - **Log prune planning:** TDD candidate. Pure helper (existing filenames+mtimes → files
   to delete, keep newest 3) unit-tested untagged; the caller does the actual `os.Remove`.
 - **Resume-hint decision:** TDD candidate. Pure helper (state present? strand count →
@@ -285,6 +299,10 @@ From `CONSTRAINTS.md` (read in full this session), the ones this task touches:
   merge-back.
 - **Q:** Debug toggle mechanism? **A:** Config key with env-template default
   (`debug_log: ${env:LYX_MUX_DEBUG:-0}`), levels 0/1/2 → off/`-v`/`-vv`.
+- **Q:** Config field type for `debug_log` — `int` (yaml errors cryptically on
+  non-numeric env input) or `string` (Go helper owns parsing + clear error)? **A:**
+  `string`; the helper validates and quotes the offending value. (Operator delegated the
+  call.)
 - **Q:** Log location and growth control? **A:** Machine-local, never git-tracked —
   `.lyx/logs/` via the hubgeometry seam (`DotLyxDir()`), same home as mux.json; prune at
   boot keeping newest 3; no runtime rotation. (Reviewer gap: the first draft said `_lyx`,
