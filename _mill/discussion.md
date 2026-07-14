@@ -149,9 +149,11 @@ corruption itself is what item 3–4 eliminate.
   directory explicitly (`new-session -c <cwd>`) so pane default cwd is unchanged. The
   path comes from a **new hub-anchored `hubgeometry` helper** (the engine's `Layout`
   already carries `Hub`; exact API name up to the plan — the `.lyx` token stays owned by
-  hubgeometry). At each server boot, prune `tmux-server-*.log` in that directory down to
-  the newest 3. The cwd change and `-c` pinning apply on every boot; the `-v` flags only
-  when `debug_log > 0`.
+  hubgeometry). `-c` is pinned to `l.Cwd` — the invoking worktree cwd, exactly what panes
+  inherit today — so pane cwd behavior is byte-for-byte unchanged; `cmd.Dir` affects only
+  where the boot-winning spawn drops the log. At each server boot, prune
+  `tmux-server-*.log` in that directory down to the newest 3. The cwd change and `-c`
+  pinning apply on every boot; the `-v` flags only when `debug_log > 0`.
 - Rationale: tmux offers no flag to redirect its `-v` log — it writes to the server's cwd,
   so cwd is the only control point. The server is **per-hub** (one shared server for all
   sibling worktrees; socket derived from the hub path — `lock.go:56`), so the log
@@ -194,7 +196,12 @@ corruption itself is what item 3–4 eliminate.
   persisted, so update only the assertions whose scenario persists strands — the others
   keep today's text. Code comments quoting the old wording verbatim go stale too:
   `internal/muxengine/strand.go` (~lines 308, 351, 411) and `internal/muxcli/attach.go`
-  (~line 53) cite `no mux session; run "lyx mux up"` in prose.
+  (~line 53) cite `no mux session; run "lyx mux up"` in prose. Further verbatim quotes
+  exist in `docs/research/linux-portability-survey.md:116`,
+  `tools/sandbox/SANDBOX-MUX-SUITE.md` (M1), and `tools/sandbox/SANDBOX-BUILDER-SUITE.md:43`
+  — all verified no-strand scenarios (M1 is "fresh state, no session", failing before any
+  strand persists), so they correctly keep today's text and need no change. This
+  enumeration is a starting point, not proven exhaustive — the plan should grep afresh.
 
 ### mitigation-only-scope
 
