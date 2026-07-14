@@ -8,6 +8,7 @@
 package muxengine
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -794,25 +795,53 @@ func waitProcessExit(pid int, timeout time.Duration) error {
 	}
 }
 
+// noSessionMessage builds requireSessionLocked's operator-facing text for an
+// absent session, pointing at the verb that actually helps: strandCount <= 0
+// means mux.json is empty or unreadable, so there is nothing to rebuild and
+// today's bare "run lyx mux up" stands; strandCount >= 1 means persisted
+// strands exist, so the message names "lyx mux resume" first — resume is the
+// replaying verb (it relaunches every persisted, non-hidden strand), while up
+// only ever stands up a bare substrate and never replays anything (Shared
+// Decision enriched-no-session-error). This is an unexplained-server-death
+// mitigation, not a claim about why the session went away.
+func noSessionMessage(strandCount int) string {
+	if strandCount <= 0 {
+		return `no mux session; run "lyx mux up"`
+	}
+	return fmt.Sprintf(`no mux session (%d strands persisted); run "lyx mux resume" to rebuild, or "lyx mux up" for a bare substrate`, strandCount)
+}
+
 // requireSessionLocked returns a friendly, actionable error when this
 // worktree's psmux session does not exist, instead of letting a caller fall
 // through to a raw psmux error surfacing later from deep inside
 // launchStrandLocked or listPanes. Status has always pre-flighted this way;
-// AddStrand and RemoveStrand share the identical check (same error string)
-// because both hit psmux directly with no earlier session check of their
-// own — AddStrand via launchStrandLocked, RemoveStrand via
-// reconcileApplyPersistLocked's listPanes — which otherwise surfaces a
-// cryptic psmux error when a caller runs add/remove before up. It assumes
-// the op lock is already held and always makes a real psmux round trip.
+// AddStrand and RemoveStrand share the identical check because both hit
+// psmux directly with no earlier session check of their own — AddStrand via
+// launchStrandLocked, RemoveStrand via reconcileApplyPersistLocked's
+// listPanes — which otherwise surfaces a cryptic psmux error when a caller
+// runs add/remove before up. Beyond confirming the session is gone, it now
+// also tells the operator whether "lyx mux resume" would have anything to
+// rebuild: it loads the persisted state to count strands and lets
+// noSessionMessage pick the pointer, since resume (not up) is the verb that
+// replays strand content back after an unexplained server death. A
+// LoadState failure or a fresh worktree with no state yet falls back to
+// count 0 — the state read is diagnostic only and must never mask the
+// primary "no session" signal with a state-read error. It assumes the op
+// lock is already held and always makes a real psmux round trip.
 func (e *Engine) requireSessionLocked() error {
 	up, err := e.psmux.hasSession(e.SessionName())
 	if err != nil {
 		return fmt.Errorf("check session: %w", err)
 	}
-	if !up {
-		return fmt.Errorf(`no mux session; run "lyx mux up"`)
+	if up {
+		return nil
 	}
-	return nil
+
+	strandCount := 0
+	if st, err := LoadState(e.layout.DotLyxDir()); err == nil && st != nil {
+		strandCount = len(st.Strands)
+	}
+	return errors.New(noSessionMessage(strandCount))
 }
 
 // Status reports this session's tracked strands (guid, name, pane id,

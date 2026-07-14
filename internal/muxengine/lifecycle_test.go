@@ -38,6 +38,40 @@ func TestPlanUpLaunches_NeverLaunchesAnyStrand(t *testing.T) {
 	}
 }
 
+func TestNoSessionMessage_StrandCountVariants(t *testing.T) {
+	tests := []struct {
+		name        string
+		strandCount int
+		want        string
+	}{
+		{
+			// Zero strands persisted (or no mux.json at all): nothing for
+			// resume to rebuild, so today's bare "up" pointer is unchanged.
+			name:        "ZeroStrands_BareUpPointer",
+			strandCount: 0,
+			want:        `no mux session; run "lyx mux up"`,
+		},
+		{
+			name:        "OneStrand_ResumePointer",
+			strandCount: 1,
+			want:        `no mux session (1 strands persisted); run "lyx mux resume" to rebuild, or "lyx mux up" for a bare substrate`,
+		},
+		{
+			name:        "ThreeStrands_ResumePointer",
+			strandCount: 3,
+			want:        `no mux session (3 strands persisted); run "lyx mux resume" to rebuild, or "lyx mux up" for a bare substrate`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := noSessionMessage(tt.strandCount); got != tt.want {
+				t.Errorf("noSessionMessage(%d) = %q, want %q", tt.strandCount, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestPlanResumeLaunches_ThreeLifecycleStates(t *testing.T) {
 	notLive := Strand{GUID: "a", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent}}
 	stillLive := Strand{GUID: "b", PaneID: "%2", Display: render.Display{Anchor: render.AnchorBelowParent}}

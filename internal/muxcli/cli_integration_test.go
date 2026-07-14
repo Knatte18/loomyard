@@ -114,3 +114,51 @@ func TestRunCLI_RemoveNotUp_FriendlyError(t *testing.T) {
 		t.Errorf("RunCLI(remove) before up error = %q; want %q", errMsg, wantErr)
 	}
 }
+
+// TestRunCLI_StatusNotUp_EnrichedResumeHint verifies that running `status`
+// before `up`, with persisted strands already sitting in mux.json (an
+// unexplained-server-death scenario: the server is gone but the strand table
+// survived), surfaces the enriched "lyx mux resume" pointer instead of the
+// bare "lyx mux up" message the zero-strand before-up tests above assert —
+// requireSessionLocked/noSessionMessage's persisted-state branch (Shared
+// Decision enriched-no-session-error).
+func TestRunCLI_StatusNotUp_EnrichedResumeHint(t *testing.T) {
+	fixture := lyxtest.CopyPaired(t)
+	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
+		"mux": muxengine.ConfigTemplate(),
+	})
+
+	// Seed mux.json with two persisted strand records directly, bypassing a
+	// live add (there is no server up yet) — this is exactly the state an
+	// unexplained server death leaves behind: the strand table survives on
+	// disk even though the session is gone.
+	st := &muxengine.MuxState{
+		Socket:  "test-socket",
+		Session: "test-session",
+		Strands: []muxengine.Strand{
+			{GUID: "strand-one", Name: "one", Worktree: fixture.Layout.WorktreeRoot, Cmd: "true"},
+			{GUID: "strand-two", Name: "two", Worktree: fixture.Layout.WorktreeRoot, Cmd: "true"},
+		},
+	}
+	if err := muxengine.SaveState(fixture.Layout.DotLyxDir(), st); err != nil {
+		t.Fatalf("SaveState: %v", err)
+	}
+
+	t.Chdir(fixture.Hub)
+
+	var out bytes.Buffer
+	exitCode := RunCLI(&out, []string{"status"})
+
+	if exitCode != 1 {
+		t.Errorf("RunCLI(status) before up = %d; want 1 (no live psmux session)", exitCode)
+	}
+
+	var env map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
+		t.Fatalf("RunCLI(status) output is not valid JSON: %v; got: %q", err, out.String())
+	}
+	wantErr := `no mux session (2 strands persisted); run "lyx mux resume" to rebuild, or "lyx mux up" for a bare substrate`
+	if errMsg, _ := env["error"].(string); errMsg != wantErr {
+		t.Errorf("RunCLI(status) before up error = %q; want %q", errMsg, wantErr)
+	}
+}
