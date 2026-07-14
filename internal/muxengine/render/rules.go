@@ -54,6 +54,9 @@ func Rules(strands []Strand, box Box, p Params, paneOrder []string) (layout stri
 	y := box.Y
 	for i, s := range top {
 		height := p.TopBandRows
+		if s.Display.TopBandRows > 0 {
+			height = s.Display.TopBandRows
+		}
 		isLastTop := i == len(top)-1
 		if isLastTop && len(ordered) == 0 {
 			height = box.H - (y - box.Y)
