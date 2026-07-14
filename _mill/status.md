@@ -6,6 +6,7 @@ slug: mux-server-crash
 branch: mux-server-crash
 plan: _mill/plan
 parent: cluster-fork-spike
+module_verify_baseline: clean
 task: Investigate the unexplained lyx mux server crash
 task_description: |
   Investigate the unexplained lyx mux server crash
@@ -28,7 +29,9 @@ implementing  '2026-07-14T19:06:58Z'
 ```yaml
 batches:
   - name: render-defaults
-    state: pending
+    state: running
+    implementer_session: 4a910ae3-2ca7-4e11-8bb4-91ed0e5ca68e
+    start_sha: 6e067695141fca30c107393385c813aed122df0d
   - name: debug-logging
     state: pending
   - name: resume-hint
