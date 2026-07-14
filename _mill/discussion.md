@@ -45,10 +45,13 @@ Windows), not a test-speed fix.
 **In:**
 
 - New pure method on `hubgeometry.Layout` that derives a sibling worktree's
-  `Layout` from an already-resolved `Layout` **without spawning git**.
+  `Layout` from an already-resolved `Layout` **without spawning git**, with a
+  documented "input must be a worktree root" precondition.
 - Replace the per-iteration `hubgeometry.Resolve(hostPath)` call in
   `internal/warpengine/status.go` (`Status`) and
-  `internal/warpengine/reconcile.go` (`Reconcile`) loops with the new method.
+  `internal/warpengine/reconcile.go` (`Reconcile`) loops with the new method,
+  **guarded** by a `filepath.Dir(hostPath) != l.Hub` check that falls back to
+  `hubgeometry.Resolve` for any non-hub-sibling (out-of-hub raw) worktree root.
 - A `hubgeometry` equivalence test (new method ≡ `Resolve(root)`).
 - A trace-based spawn-count regression guard proving resolve spawns do **not**
   scale with worktree count in `Status`/`Reconcile`.
@@ -88,22 +91,43 @@ Windows), not a test-speed fix.
 - Decision: Add `func (l *Layout) SiblingLayout(worktreeRoot string) *Layout` to
   `internal/hubgeometry/hubgeometry.go`, returning
   `{Cwd: worktreeRoot, WorktreeRoot: worktreeRoot, Hub: l.Hub, RelPath: ".",
-  Prime: l.Prime}` — no git spawn.
+  Prime: l.Prime}` — no git spawn. **Precondition (godoc): `worktreeRoot` must be
+  an actual worktree root** (as returned by `hubgeometry.List`), not a subpath —
+  `RelPath: "."` is only correct for a root; a subpath argument would silently
+  mis-derive `RelPath` (unlike `Resolve`, which computes it). Callers only pass
+  `List` roots.
 - Rationale: In `Status`/`Reconcile`, the loop iterates worktree roots already
   enumerated by one `hubgeometry.List(l.WorktreeRoot)` call. `Resolve(hostPath)`
   then re-spawns `rev-parse --show-toplevel` (root already known) **and** a second
-  `worktree list` (via `Resolve`→`List`). For a host worktree root, `Resolve`
-  yields exactly `Cwd=root`, `WorktreeRoot=root`, `Hub=filepath.Dir(root)` (==
-  `l.Hub`, since hosts are siblings in the hub), `RelPath="."`, and `Prime` ==
-  `l.Prime` (repo-global; identical for every sibling). So the derivation is
-  provably equivalent and needs no spawn. This is *not* a cache — no retained
-  state, no staleness surface; it derives within one operation's consistent
-  worktree-list snapshot.
+  `worktree list` (via `Resolve`→`List`). For a hub-sibling host worktree root,
+  `Resolve` yields exactly `Cwd=root`, `WorktreeRoot=root`,
+  `Hub=filepath.Dir(root)` (== `l.Hub`, since hosts are siblings in the hub),
+  `RelPath="."`, and `Prime` == `l.Prime` (repo-global; identical for every
+  sibling). So the derivation is provably equivalent and needs no spawn. This is
+  *not* a cache — no retained state, no staleness surface; it derives within one
+  operation's consistent worktree-list snapshot.
+- **Non-sibling guard (byte-for-byte closure):** `Resolve(root)` sets
+  `Hub = filepath.Dir(root)`, whereas `SiblingLayout` sets `Hub = l.Hub`. These
+  diverge only for a worktree root that is **not** a direct child of `l.Hub` —
+  i.e. a non-lyx raw `git worktree add /elsewhere` outside the hub (which
+  `Reconcile`'s raw-adoption path can encounter). Every lyx-created worktree is a
+  hub sibling regardless of subpath `lyx init` (subpath init is additive/local —
+  it only affects where a `_lyx` junction sits *inside* a worktree; the worktree
+  **root** stays `<hub>/<name>`, so `filepath.Dir(root) == l.Hub` always holds).
+  To keep the equivalence absolute even for the pathological out-of-hub case, the
+  call sites guard: `if filepath.Dir(worktreeRoot) != l.Hub` → fall back to
+  `hubgeometry.Resolve(worktreeRoot)` (the spawning path); else use
+  `SiblingLayout`. Non-sibling worktrees (rare/degenerate) take the slow path;
+  siblings take the fast path. Since `Hub`, `WeftWorktree()`, `WeftLyxDir()`, and
+  `WeftRepoRoot()` all derive from `Hub`, this makes the junction-health verdict
+  and weft target byte-for-byte identical to today for every entry.
 - Rejected: A keyed/memoized `Resolve` cache (staleness risk, overkill for a
   within-operation derivation); a free function `LayoutForKnownRoot(root, prime)`
   (the method on `Layout` reuses the already-resolved `Hub`+`Prime` and reads
   more naturally at the call site); threading `Layout` through every warpengine
-  op entrypoint (unnecessary — only these two loops re-resolve).
+  op entrypoint (unnecessary — only these two loops re-resolve); documenting
+  non-sibling worktrees as out-of-scope without a guard (leaves a latent
+  behavioral divergence — the guard costs two lines and closes it).
 
 ### spawn-count-regression-guard
 
@@ -157,9 +181,14 @@ Windows), not a test-speed fix.
   229, branch 104, reset 68.
 - **Behavior must be byte-for-byte unchanged.** `SiblingLayout(root)` must produce
   the same `Layout` `Resolve(root)` did for a worktree root, so `Status`/
-  `Reconcile` JSON output is identical. Note the existing code already operates at
-  `RelPath="."` for host layouts (it passes the worktree *root*, not a subpath, to
-  `Resolve`), so `SiblingLayout` uses `RelPath="."` to match exactly.
+  `Reconcile` JSON output is identical. These loops are **root-scoped**: they pass
+  the worktree *root* (not a subpath) to the resolver, so the host layout already
+  operates at `RelPath="."` today, and `SiblingLayout` uses `RelPath="."` to match
+  exactly. Per-subpath `_lyx` junctions (from a subpath `lyx init`) are not
+  enumerated by these root-scoped loops — that is pre-existing behavior, unchanged
+  here. The `filepath.Dir(root) != l.Hub` guard (see the sibling-layout-method
+  decision) preserves equivalence for the one case where `Hub` would otherwise
+  diverge (an out-of-hub raw worktree).
 
 ## Constraints
 
@@ -180,15 +209,24 @@ Windows), not a test-speed fix.
 
 ## Testing
 
+- **Tagging (applies to both new tests):** both go in `//go:build integration`
+  files — the equivalence test calls `Resolve` (spawns git) and the guard runs
+  `Status`/`Reconcile` over a fixture hub, so an untagged placement trips the Test
+  Tier Purity guard (`cmd/lyx/tierpurity_test.go`). Do **not** target
+  `hubgeometry`'s untagged `hubgeometry_unit_test.go`. Both packages already carry
+  a `HermeticGitEnv` `TestMain`, so no new test infra is needed.
 - **`internal/hubgeometry` — equivalence unit test (TDD candidate, mandatory):**
   over a real fixture worktree (or hub with a known root), assert
   `l.SiblingLayout(root)` returns a `Layout` deep-equal to `hubgeometry.Resolve(
   root)`. Write this first; it is the safety net proving the pure derivation
   matches the spawning path. Cover: main worktree root, a sibling child worktree
-  root, and the `Hub`/`Prime`/`RelPath` fields explicitly.
+  root, the `Hub`/`Prime`/`RelPath` fields explicitly, and **a non-hub-sibling
+  root** (out-of-hub worktree) pinning that the guarded call site falls back to
+  `Resolve` (i.e. that `SiblingLayout` and `Resolve` diverge there, which is
+  exactly why the guard exists).
 - **`internal/warpengine` — spawn-count regression guard (TDD candidate):** build
-  a fixture hub with ≥2 host worktrees, run `Status` (and `Reconcile`) under
-  `GIT_TRACE2_EVENT` pointed at `t.TempDir()`, and assert the number of
+  a fixture hub with ≥2 hub-sibling host worktrees, run `Status` (and `Reconcile`)
+  under `GIT_TRACE2_EVENT` pointed at `t.TempDir()`, and assert the number of
   `rev-parse --show-toplevel` spawns is constant w.r.t. worktree count (e.g.
   bounded by the one-time `List` setup, not `≥ N`). This is the guard that fails
   if per-iteration `Resolve` is reintroduced.
@@ -224,3 +262,11 @@ Windows), not a test-speed fix.
 - **Q:** Where to record the benchmark/finding? **A:** A dated Linux block in
   `docs/benchmarks/fixture-copy.md`; skip `test-suite-timing.md` (no measurable
   Linux timing delta).
+- **Q:** (Review round 1 gap) `SiblingLayout` sets `Hub: l.Hub` while
+  `Resolve(root)` sets `Hub = filepath.Dir(root)` — these diverge for a worktree
+  not under `l.Hub`, breaking byte-for-byte. How to resolve? **A:** Guard the call
+  sites: `if filepath.Dir(root) != l.Hub` fall back to `Resolve(root)`, else use
+  `SiblingLayout`. Every lyx worktree is a hub sibling (confirmed: subpath
+  `lyx init` is additive/local and never moves the worktree root), so only an
+  out-of-hub raw worktree hits the fallback; the guard makes equivalence absolute
+  at trivial cost. An equivalence-test non-sibling case pins it.
