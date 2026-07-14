@@ -112,7 +112,7 @@ Example:
 	cmd.Flags().StringVar(&parent, "parent", "", "parent strand's guid")
 	cmd.Flags().StringVar(&anchor, "anchor", string(render.AnchorBelowParent), "placement: top|below-parent|hidden")
 	cmd.Flags().BoolVar(&focus, "focus", false, "give this strand psmux input focus")
-	cmd.Flags().IntVar(&topBandRows, "top-band-rows", 0, "override the config default band height for an --anchor top strand (0 inherits mux.yaml's top_band_rows; needed for a full TUI command sharing the top band, which renders corrupted at the 1-row default)")
+	cmd.Flags().IntVar(&topBandRows, "top-band-rows", 0, "override the config default band height for an --anchor top strand (0 inherits mux.yaml's top_band_rows; needed for a full TUI command sharing the top band, which renders corrupted at a too-small band height)")
 	if err := cmd.MarkFlagRequired("cmd"); err != nil {
 		// MarkFlagRequired only errors when the named flag does not exist on
 		// cmd; --cmd is registered immediately above, so this can never fire
