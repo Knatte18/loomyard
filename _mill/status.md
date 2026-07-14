@@ -2,17 +2,17 @@
 
 ```yaml
 phase: discussing
-slug: cluster-fork-spike
-branch: cluster-fork-spike
+slug: mux-server-crash
+branch: mux-server-crash
 plan: null
-parent: main
-task: 'Spike: measure Claude session-forking for cluster-review'
+parent: cluster-fork-spike
+task: Investigate the unexplained lyx mux server crash
 task_description: |
-  Spike: measure Claude session-forking for cluster-review
+  Investigate the unexplained lyx mux server crash
 ```
 
 ## Timeline
 
 ```text
-discussing  '2026-07-14T16:10:57Z'
+discussing  '2026-07-14T17:59:23Z'
 ```
