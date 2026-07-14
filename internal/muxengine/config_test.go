@@ -76,6 +76,9 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 	if cfg.StrandName != "<ROLE>:<ROUND>:<SHORT_GUID>" {
 		t.Errorf("StrandName = %q, want %q", cfg.StrandName, "<ROLE>:<ROUND>:<SHORT_GUID>")
 	}
+	if cfg.DebugLog != "0" {
+		t.Errorf("DebugLog = %q, want %q", cfg.DebugLog, "0")
+	}
 }
 
 func TestLoadConfig_EnvOverride(t *testing.T) {

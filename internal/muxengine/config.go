@@ -27,6 +27,17 @@ type Config struct {
 	TopBandRows        int    `yaml:"top_band_rows"`
 	MinFullRows        int    `yaml:"min_full_rows"`
 	StrandName         string `yaml:"strand_name"`
+
+	// DebugLog is the opt-in verbosity level for the server-spawning psmux
+	// invocation: "0" (default) for no extra flags, "1" for -v, "2" for -vv.
+	// It is deliberately a string, not an int, so yaml.Unmarshal never fails
+	// on a non-numeric ${env:LYX_MUX_DEBUG} override — validating and
+	// mapping it to actual psmux args is debugLogArgs' job (serverlog.go),
+	// not this struct's. It takes effect only on the boot that spawns the
+	// shared per-hub server (see hub-logs-dir/debug-log-key-semantics in the
+	// plan's Shared Decisions); a hub whose mux.yaml predates this field
+	// needs "lyx config reconcile" to adopt it.
+	DebugLog string `yaml:"debug_log"`
 }
 
 // LoadConfig loads and unmarshals configuration for the mux module.
