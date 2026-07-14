@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-fixing
 slug: mux-server-crash
 branch: mux-server-crash
 plan: _mill/plan
@@ -27,6 +27,7 @@ approved-debug-logging  '2026-07-14T19:23:43Z'
 approved-resume-hint  '2026-07-14T19:29:22Z'
 approved-review-prompt  '2026-07-14T19:32:22Z'
 holistic-reviewing  '2026-07-14T19:32:44Z'
+holistic-fixing  '2026-07-14T19:37:13Z'
 ```
 
 ## Batches
