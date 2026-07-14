@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: warpengine-spawn-reduction
 branch: warpengine-spawn-reduction
 plan: _mill/plan
@@ -22,4 +22,13 @@ plan-review-r1  '2026-07-14T08:19:02Z'
 plan-fix-r1  '2026-07-14T08:19:02Z'
 plan-fix-r2  '2026-07-14T08:22:41Z'
 planned  '2026-07-14T08:22:55Z'
+implementing  '2026-07-14T08:25:52Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: reduce-redundant-resolve
+    state: pending
 ```
