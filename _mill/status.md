@@ -41,7 +41,9 @@ batches:
     start_sha: 3d2989af7ab613e93b9332a909cb1c7011ef1ab3
     commit_sha: 8da3579e3c989ed0ea8ac5b4e8c24ad6ad4bc31e
   - name: resume-hint
-    state: pending
+    state: running
+    implementer_session: 9ad52363-799b-4249-b058-92296a4890e2
+    start_sha: 585f92933718976818b4671a578b224b2ae2319b
   - name: review-prompt
     state: pending
 ```
