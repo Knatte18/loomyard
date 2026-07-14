@@ -92,6 +92,34 @@ INVARIANT you must actively verify by driving real psmux — a green `go test` p
 - REPORTING HONESTY. Result counts (`resumed`, `removed`) and `status.live` must reflect reality,
   not intent.
 - ENV HYGIENE. `CleanClaudeEnv` must strip `CLAUDECODE` + `CLAUDE_CODE_*` on the server spawn.
+- DEBUG LOGGING. With `debug_log: 1` (or `LYX_MUX_DEBUG=1`) set on the boot that spawns the
+  shared per-hub server, that boot must leave a `tmux-server-*.log` file under the hub's
+  `<hub>/.lyx/logs/`; old logs there are pruned to the newest 3 total (including the fresh
+  one); an invalid `debug_log` value (anything other than `0`, `1`, or `2`) fails the boot
+  loud instead of being silently ignored; `debug_log: 0` (the default) adds no extra psmux
+  flags and leaves the invocation exactly as before. Verify: boot with each of `0`/`1`/`2`/an
+  invalid value and check both the log file and the exact server-spawn argv (`-vv`/`-v`/none).
+- DEAD-SERVER HINT. With persisted strands (a mux.json with ≥1 strand) but no live session,
+  every verb that shares the `requireSessionLocked` chokepoint (status, add, remove, attach's
+  pre-flight) must fail with an error pointing at `lyx mux resume` to rebuild the strands —
+  not just `lyx mux up`. When zero strands are persisted (or no mux.json exists), the plain
+  `no mux session; run "lyx mux up"` message is correct and must NOT mention `resume`. Verify
+  both branches: kill the server with strands persisted (resume-hint expected) vs. a genuinely
+  fresh hub with no persisted state (bare `up` hint expected).
+- TOP-BAND LEGIBILITY. The shipped `top_band_rows` config default is 3 (not 1) — a fresh
+  `up` must render an `anchor:top` strand with a 3-row band absent any override. A per-strand
+  `add --anchor top --top-band-rows N` override wins over the config default, and the
+  last-top-band-stretches-to-fill behavior still applies when the below-parent stack is
+  empty. Verify: default boot renders 3 rows; an explicit `--top-band-rows` override changes
+  only that strand's band height; the stretch rule still holds with the override in play.
+
+BOOT-WINNER SEMANTICS (review lens): the psmux server is per-hub and shared by sibling
+worktrees, so `debug_log` only matters on the boot that actually spawns that shared server —
+a sibling worktree's `up`/`resume` that finds the server already running does not re-apply
+its own `debug_log` value. If you are testing from a sibling worktree, either arm
+`LYX_MUX_DEBUG=1` machine-wide before any worktree boots, or boot from the worktree whose
+config carries `debug_log: 1`/`2` — do not conclude the feature is broken just because a
+non-boot-winning worktree's `debug_log` had no effect.
 
 ## Hooks are OUT of scope for mux v1
 Claude Code hooks (Stop/SessionStart/PreToolUse, marker/idle detection, resume-command
@@ -202,6 +230,20 @@ suspicious of. In particular drive the paths M0–M11 do not cover: two worktree
 server, a dead-but-present `pane_dead=1` pane, stale-pane-id reuse after server rebirth,
 mid-op-failure orphans, send-keys hygiene with embedded `;`/key-name tokens, rapid down→up→add
 churn, non-leaf remove without `--recursive`, unknown-parent and `own-window` rejection paths.
+Also drive the mitigations this task shipped:
+- DEBUG LOGGING: boot with `LYX_MUX_DEBUG=1` (or `debug_log: 1` in mux.yaml) armed on the
+  worktree that wins the boot, then inspect the hub's `<hub>/.lyx/logs/` directory for a fresh
+  `tmux-server-*.log` and confirm stale logs beyond the newest 3 are gone; repeat with `2`
+  (`-vv`) and with an invalid value (boot must fail loud) and with `0`/unset (no log, no extra
+  flags).
+- DEAD-SERVER HINT: with strands persisted, kill the server (`kill-server`) and run each verb
+  (`status`, `add`, `remove`, `attach`) to read its error — it must point at `lyx mux resume`;
+  then repeat from a hub with zero persisted strands and confirm the plain `lyx mux up` hint
+  (no `resume` mention).
+- TOP-BAND LEGIBILITY: `add --anchor top --top-band-rows N` on a strand and inspect the applied
+  layout (`display-message -p -t <session> "#{window_layout}"` / pane heights) to confirm the
+  override height wins over the config's `top_band_rows` default (3) and that the last-top-band
+  stretch still applies when appropriate.
 Report the exact commands and observations for these too. Build the binary
 (`go build -o <scratch>/lyx.exe ./cmd/lyx`), create throwaway git-repo fixtures with a
 `_lyx/config/mux.yaml` (copy `internal/muxengine/template.yaml`), and drive `lyx mux <verb>`

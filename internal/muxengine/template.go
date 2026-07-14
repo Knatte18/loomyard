@@ -10,10 +10,10 @@ package muxengine
 
 // ConfigTemplate returns the default YAML template for mux configuration.
 // The template uses ${env:VAR:-default} syntax for the machine tool paths
-// (psmux/pwsh/claude), allowing environment-based overrides while
-// preserving defaults when not set; the layout-tuning keys (width, height,
-// collapsed_strip_rows, top_band_rows, min_full_rows, strand_name) are
-// plain literals. On Windows the psmux/pwsh defaults are the machine's
+// (psmux/pwsh/claude) and debug_log, allowing environment-based overrides
+// while preserving defaults when not set; the layout-tuning keys (width,
+// height, collapsed_strip_rows, top_band_rows, min_full_rows, strand_name)
+// are plain literals. On Windows the psmux/pwsh defaults are the machine's
 // pinned psmux.exe/pwsh.exe paths; on every other GOOS they are the
 // PATH-resolved POSIX names tmux/bash (see template_windows.go /
 // template_posix.go for which embedded YAML backs configTemplate on a

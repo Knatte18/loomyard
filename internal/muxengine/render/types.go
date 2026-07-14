@@ -67,8 +67,8 @@ type Display struct {
 	// only, when > 0. Zero (the default) inherits the config-wide default.
 	// This exists because a single global top-band height cannot serve both
 	// genuine one-line status commands and a full box-drawing TUI (e.g.
-	// `claude`) sharing the AnchorTop slot: a TUI given only the default's
-	// 1-2 rows renders corrupted, overlapping frames, since it draws
+	// `claude`) sharing the AnchorTop slot: a TUI given only the config
+	// default's rows renders corrupted, overlapping frames, since it draws
 	// multi-row boxed output assuming more vertical space than it's given.
 	// Ignored for any strand not using AnchorTop.
 	TopBandRows int `json:"topBandRows,omitempty"`

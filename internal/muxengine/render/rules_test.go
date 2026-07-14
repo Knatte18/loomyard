@@ -45,8 +45,8 @@ func TestRulesGolden(t *testing.T) {
 				{GUID: "ta", PaneID: "%10", Live: true, Display: Display{Anchor: AnchorTop}},
 				{GUID: "tb", PaneID: "%20", Live: true, Display: Display{Anchor: AnchorTop}},
 			},
-			box:       Box{X: 0, Y: 0, W: 100, H: 20},
-			wantBody:  "100x20,0,0[100x3,0,0,10,100x16,0,4,20]",
+			box:      Box{X: 0, Y: 0, W: 100, H: 20},
+			wantBody: "100x20,0,0[100x3,0,0,10,100x16,0,4,20]",
 			// With no below-parent stack, focus falls back to the LAST top
 			// band (the stretched one): leaving it unset would let psmux
 			// park the active pane on an arbitrary 1-row band after
