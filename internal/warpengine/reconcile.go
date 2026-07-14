@@ -110,7 +110,8 @@ func (w *Worktree) Reconcile(l *hubgeometry.Layout) (ReconcileResult, error) {
 
 		// Build a per-host-worktree layout so junction geometry and branch resolution
 		// are rooted at the correct worktree rather than the cwd worktree.
-		hostLayout, layoutErr := hubgeometry.Resolve(hostPath)
+		// hostLayoutFor avoids a git spawn for the common hub-sibling case.
+		hostLayout, layoutErr := hostLayoutFor(l, hostPath)
 		if layoutErr != nil {
 			pr.Error = fmt.Sprintf("resolve layout: %v", layoutErr)
 			pr.Action = ReconcileActionUnmanagedReported

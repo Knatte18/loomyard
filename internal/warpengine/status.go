@@ -126,7 +126,8 @@ func (w *Worktree) Status(l *hubgeometry.Layout) (StatusResult, error) {
 		// Build a per-host-worktree layout to call PairInSync. PairInSync requires a
 		// Layout whose WorktreeRoot is the host worktree being inspected, so we derive
 		// one from the host path rather than reusing l (which points to the cwd worktree).
-		hostLayout, layoutErr := hubgeometry.Resolve(hostPath)
+		// hostLayoutFor avoids a git spawn for the common hub-sibling case.
+		hostLayout, layoutErr := hostLayoutFor(l, hostPath)
 		if layoutErr != nil {
 			pair.DriftReason = fmt.Sprintf("resolve host layout: %v", layoutErr)
 			result.Pairs = append(result.Pairs, pair)

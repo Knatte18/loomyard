@@ -274,3 +274,79 @@ lever targets (which the 155U arms already showed saving only ~5 %). So
 question — "does the hardlink lever matter on Linux" — is answered **no**, with
 numbers; and the sharper lesson is that the *original* Windows copy cost was AV
 (Cortex), not the copy, so the lever was aimed at the wrong target from the start.
+
+## warpengine spawn-reduction (2026-07-14, Linux)
+
+Record for the "Reduce git spawns in warpengine integration tests" task, which
+replaced `Status`'s and `Reconcile`'s per-enumerated-worktree
+`hubgeometry.Resolve` call with `hostLayoutFor`, a guarded helper that derives
+the sibling `Layout` via the new spawn-free `hubgeometry.Layout.SiblingLayout`
+for the common hub-sibling case and falls back to `Resolve` only for a
+worktree outside the hub. Machine: AMD Ryzen AI 7 445 w/ Radeon 840M, Ubuntu
+26.04 LTS, `linux/amd64`, 12 logical CPUs, git 2.53.0, Go 1.26.0 (same class
+of machine as the [Linux benchmark](#linux-benchmark-2026-07-13) above).
+
+**Before.** This task's baseline Linux census, `internal/warpengine` Tier 2:
+0.92 s wall, **1,435** git processes total. Subcommand breakdown: `rev-parse`
+398 (of which `--show-toplevel` **94**), `worktree` 229, `branch` 104, `reset`
+68. This corrects the task brief's premise: the brief characterized the 398
+`rev-parse` calls as "largely `hubgeometry.Resolve`", but re-measuring on
+Linux (via `GIT_TRACE2_EVENT`, filtering `argv` for the literal
+`["git","rev-parse","--show-toplevel"]` triple that `Resolve` spawns) shows
+only 94 of the 398 are `Resolve` calls — the rest are `--abbrev-ref HEAD`
+(branch reads) and other `rev-parse` uses unrelated to this task. The brief's
+premise that "Windows spawn count = wall-clock floor" also does not hold on
+Linux: at ~0.6 ms/spawn here (0.92 s ÷ 1,435 processes), removing spawns barely
+moves Linux wall-clock, even though the spawn *count* itself is OS-invariant
+(matches the Windows census in the "warpengine spawn census" section above,
+which was gathered on the same branch state before this task's fixes).
+
+**After.** Re-ran the actual census post-change with:
+
+```sh
+GIT_TRACE2_EVENT=.scratch/trace-after go test -tags integration -count=1 ./internal/warpengine
+```
+
+(trace files counted by `grep -c '"event":"cmd_name"'` per file for the
+subcommand breakdown, and by `grep -l '"argv":\["git","rev-parse","--show-toplevel"\]'`
+for the `Resolve`-attributable count — the same trace-file-per-process,
+argv-substring method as the "before" census and as the Windows census above).
+Note the "after" test population is larger than "before": this task's own
+card 2 (`TestSiblingLayout_EquivalentToResolve` / `_NonSiblingDiverges`, in
+`internal/hubgeometry`, not counted here) and card 4
+(`TestResolveSpawnsDoNotScale`, in `internal/warpengine`, counted here) add
+worktrees and fixture builds of their own, so the raw post-change total is not
+directly comparable to the pre-change total.
+
+Post-change `internal/warpengine` census: **1,581** git processes total,
+`rev-parse` 435 (of which `--show-toplevel` **87**), `worktree` 234, `branch`
+120, `reset` 84.
+
+**Isolated delta.** To attribute the `--show-toplevel` change specifically to
+the `hostLayoutFor` swap (and not to this task's own added tests), the same
+post-change test population was run twice against the same
+`GIT_TRACE2_EVENT` method: once with `hostLayoutFor`'s body temporarily
+reverted to a direct `hubgeometry.Resolve(hostPath)` call in both
+`status.go` and `reconcile.go` (reproducing the pre-task call site with the
+post-task test suite), and once with the shipped `hostLayoutFor` call. The
+reverted run also fails `TestResolveSpawnsDoNotScale` (2 vs 4 spawns at N=2
+vs N=4), confirming the guard is load-bearing:
+
+| Variant | Total git processes | `--show-toplevel` spawns |
+|---|---|---|
+| Reverted to per-iteration `Resolve` | 1,611 | 102 |
+| Shipped `hostLayoutFor` | 1,581 | 87 |
+| **Delta** | **−30** | **−15** |
+
+The −30 total-process delta is exactly 2× the −15 `--show-toplevel` delta,
+because each prevented `Resolve` call also prevents the `hubgeometry.List`
+call `Resolve` makes internally (`git worktree list --porcelain`) — one
+`Resolve` call removed is two git spawns removed.
+
+**Windows/AV projection (not measured on Windows in this task).** Applying
+the process-spawn-cost table above (`git rev-parse HEAD`: serial p50 72 ms,
+parallel p50 208 ms under Cortex XDR + a weak CPU) to the −30-spawn delta
+projects roughly 2.2 s serial / 6.2 s parallel of wall-clock saved on that
+class of machine, purely from removing this git-spawn count — an
+analytical projection from the existing per-spawn-cost measurements above,
+not a fresh Windows run.
