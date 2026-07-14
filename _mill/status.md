@@ -30,5 +30,7 @@ implementing  '2026-07-14T08:25:52Z'
 ```yaml
 batches:
   - name: reduce-redundant-resolve
-    state: pending
+    state: running
+    implementer_session: 61b46f92-415b-49d7-affc-7e98ff973408
+    start_sha: a814aca5920e1d7909045d4d35ed8f90aaa1f917
 ```
