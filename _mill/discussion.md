@@ -49,8 +49,9 @@ corruption itself is what item 3–4 eliminate.
   field; Go helper parses/validates). Existing hubs must run `lyx config reconcile` once
   the template gains the key (strict-template contract).
 - Route the tmux/psmux server log file (`tmux-server-<pid>.log`, written to the server
-  process's cwd) into `.lyx/logs/` (machine-local, never git-tracked), and prune old logs
-  at server boot (keep the newest 3).
+  process's cwd) into `<hub-root>/.lyx/logs/` (hub-level: one deterministic forensic
+  location per hub, matching the per-hub server; machine-local, never git-tracked), and
+  prune old logs at server boot (keep the newest 3).
 - Enrich the shared dead-session error in `requireSessionLocked`
   (`internal/muxengine/lifecycle.go`): when the session is absent **and** persisted
   mux.json exists with ≥1 strand, the error suggests `lyx mux resume` (rebuild) alongside
@@ -126,6 +127,12 @@ corruption itself is what item 3–4 eliminate.
   template gains the key — including the sandbox Hub this logging is for. The plan must
   note the reconcile step for existing hubs, and operator-facing help (`up`'s `Long`)
   should not hide it.
+- Boot-winner semantics (shared per-hub server): `debug_log` takes effect only on the
+  boot that actually spawns the server — a sibling worktree with `debug_log: 0` winning
+  the boot captures nothing. To arm reliably, either export `LYX_MUX_DEBUG=1`
+  machine-wide (the env-template default reaches whichever worktree boots) or set the key
+  in every worktree you boot from. Document this explicitly in `up`'s `Long` and the
+  template comment; no code-level cross-worktree config merge is attempted.
 - Rationale: The forensic use case is "armed for weeks in the sandbox Hub until the crash
   recurs" — a durable config value, not a flag someone must remember on the one `up` that
   actually boots the shared per-hub server. The `${env:...}` template mechanism gives the
@@ -135,29 +142,33 @@ corruption itself is what item 3–4 eliminate.
 - Rejected: env-var only (not durable); `lyx mux up --debug` flag only (only effective on
   the boot-winning `up`, easy to miss); bool key (loses the `-vv` escalation path).
 
-### server-log-under-dotlyx-logs
+### server-log-under-hub-dotlyx-logs
 
-- Decision: Spawn the server with `cmd.Dir` set to `.lyx/logs/` (created if absent) so
-  `tmux-server-<pid>.log` lands there, and pass the session's intended start directory
-  explicitly (`new-session -c <cwd>`) so pane default cwd is unchanged. The path is
-  `filepath.Join(e.layout.DotLyxDir(), "logs")` — `hubgeometry.Layout.DotLyxDir()`
-  already owns the `.lyx` token, and muxengine already joins filenames onto it
-  (`mux.json`, `mux.lock`), so no new hubgeometry helper is needed. At each server boot,
-  prune `tmux-server-*.log` in that directory down to the newest 3. The cwd change and
-  `-c` pinning apply on every boot; the `-v` flags only when `debug_log > 0`.
+- Decision: Spawn the server with `cmd.Dir` set to `<hub-root>/.lyx/logs/` (created if
+  absent) so `tmux-server-<pid>.log` lands there, and pass the session's intended start
+  directory explicitly (`new-session -c <cwd>`) so pane default cwd is unchanged. The
+  path comes from a **new hub-anchored `hubgeometry` helper** (the engine's `Layout`
+  already carries `Hub`; exact API name up to the plan — the `.lyx` token stays owned by
+  hubgeometry). At each server boot, prune `tmux-server-*.log` in that directory down to
+  the newest 3. The cwd change and `-c` pinning apply on every boot; the `-v` flags only
+  when `debug_log > 0`.
 - Rationale: tmux offers no flag to redirect its `-v` log — it writes to the server's cwd,
-  so cwd is the only control point. `.lyx` is machine-local, ephemeral, and **never
-  git-tracked** (operator requirement) — the right lifecycle for multi-MB server logs,
-  and the same home as mux's other runtime state (mux.json, mux.lock). Forensics happen
-  on the machine that crashed, so machine-local is sufficient. Boot-time prune (keep
-  newest 3) bounds growth across boots without runtime rotation machinery; `-v` volume
-  within one server lifetime is low (the 19MB observation was `-vv` under deliberate
-  stress).
-- Rejected: `_lyx/logs/` (durable and weft-synced — would commit multi-MB logs into the
-  weft repo; logs must not be git-tracked); `.scratch/` (routinely cleaned, bad for
-  forensics); size-capped in-place truncation on every mux op (complexity; the file is
-  held open by the server; YAGNI until a real week-long `-v` log proves too big); no
-  rotation at all (task body explicitly asks for growth control).
+  so cwd is the only control point. The server is **per-hub** (one shared server for all
+  sibling worktrees; socket derived from the hub path — `lock.go:56`), so the log
+  location must be per-hub too: one deterministic place to look during forensics,
+  regardless of which worktree's `up` happened to win the boot. `.lyx` is machine-local,
+  ephemeral, and **never git-tracked** (operator requirement) — the right lifecycle for
+  multi-MB server logs. Forensics happen on the machine that crashed, so machine-local is
+  sufficient. Boot-time prune (keep newest 3) bounds growth across boots without runtime
+  rotation machinery; `-v` volume within one server lifetime is low (the 19MB observation
+  was `-vv` under deliberate stress).
+- Rejected: per-worktree `.lyx/logs/` (the boot-winning worktree's dir — forensics would
+  have to search N worktrees for a per-hub server's log); `_lyx/logs/` (durable and
+  weft-synced — would commit multi-MB logs into the weft repo; logs must not be
+  git-tracked); `.scratch/` (routinely cleaned, bad for forensics); size-capped in-place
+  truncation on every mux op (complexity; the file is held open by the server; YAGNI
+  until a real week-long `-v` log proves too big); no rotation at all (task body
+  explicitly asks for growth control).
 - Accepted risk: psmux (Windows) is a tmux-derived clone; `-v`/`-vv` are assumed
   compatible. If a psmux version rejects them, the boot fails loud with the psmux error —
   acceptable for an opt-in debug mode; the live verification in this task runs against
@@ -177,11 +188,13 @@ corruption itself is what item 3–4 eliminate.
   operator to the wrong verb.
 - Rejected: enriching only attach/status (leaves add/remove misleading); proactive
   detection (out of scope).
-- Note: tests asserting the exact old error string must be found and updated
-  (`no mux session` appears in engine and cli tests) — and so must code comments quoting
-  the old wording verbatim: `internal/muxengine/strand.go` (~lines 308, 351, 411) and
-  `internal/muxcli/attach.go` (~line 53) cite `no mux session; run "lyx mux up"` in prose
-  and go stale when the message is enriched.
+- Note: tests asserting the exact old error string must be found and checked against
+  their fixture state (`no mux session` appears in engine and cli tests, e.g.
+  `cli_integration_test.go:83,112`): the enriched message only fires when ≥1 strand is
+  persisted, so update only the assertions whose scenario persists strands — the others
+  keep today's text. Code comments quoting the old wording verbatim go stale too:
+  `internal/muxengine/strand.go` (~lines 308, 351, 411) and `internal/muxcli/attach.go`
+  (~line 53) cite `no mux session; run "lyx mux up"` in prose.
 
 ### mitigation-only-scope
 
@@ -231,25 +244,34 @@ corruption itself is what item 3–4 eliminate.
   default start directory for panes independently of the server process cwd.
 - **Multiplexer contract:** `internal/muxengine/doc.go` documents the assumed subcommand
   surface and load-bearing quirks; `contract_integration_test.go` canaries it against the
-  real binary. `-v` is a server-invocation flag, not a subcommand — decide at plan time
-  whether the contract doc's prose needs a sentence.
+  real binary. `-v` is a server-invocation flag, not a subcommand — **decided:** add one
+  sentence to doc.go's contract prose documenting the optional `-v`/`-vv` server-spawn
+  flags (they change the documented spawn invocation), in the same change.
 - **Prior art on Windows quirks:** the server cwd currently is the invoking process's cwd
   (the worktree), and lifecycle comments note the server + `__warm__` helper holding the
-  worktree directory busy on Windows. Moving the server cwd to `.lyx/logs/` keeps it
-  inside the worktree — no behavior change for the busy-directory concern.
+  worktree directory busy on Windows. Moving the server cwd to the hub root's
+  `.lyx/logs/` takes it **out of every worktree** — a side benefit for the documented
+  busy-worktree-directory teardown pain; the plan should reconcile those lifecycle
+  comments if their prose assumes the worktree cwd.
 - **`.lyx` vs `_lyx`:** `hubgeometry` deliberately distinguishes `.lyx` (dot: ephemeral,
   machine-bound, never weft-synced/git-tracked; `Layout.DotLyxDir()`) from `_lyx`
   (underscore: durable, weft-synced; `LyxDirName`/`ConfigDir`). mux.json and mux.lock
-  live in `.lyx`; the server logs join them there.
+  live in the worktree's `.lyx`; the server log gets a **hub-root** `.lyx/logs/` (new
+  hub-anchored helper) because the server itself is per-hub while mux.json is
+  per-worktree state.
+- **Per-hub server:** the socket name derives from the hub path (`socketName(e.layout.Hub)`,
+  `lock.go:56`; see also doc.go's "exactly one named psmux server per hub"), so all
+  sibling worktrees share one server, and whichever worktree's `up`/`resume` wins the
+  boot supplies the spawn env, flags, and cwd.
 
 ## Constraints
 
 From `CONSTRAINTS.md` (read in full this session), the ones this task touches:
 
-- **Hub Geometry Invariant:** the `.lyx` path resolves through
-  `hubgeometry.Layout.DotLyxDir()` (muxengine already does this for mux.json/mux.lock);
-  no raw `_lyx`/`.lyx` string joins in path construction outside hubgeometry.
-  `TestEnforcement_GeometryLiterals` enforces on every `go test`.
+- **Hub Geometry Invariant:** the hub-root `.lyx/logs/` path resolves through a new
+  hub-anchored `internal/hubgeometry` helper (mirroring how `DotLyxDir()` owns the
+  worktree-level `.lyx`); no raw `_lyx`/`.lyx` string joins in path construction outside
+  hubgeometry. `TestEnforcement_GeometryLiterals` enforces on every `go test`.
 - **CLI / Cobra Invariant:** no new commands, but help accuracy — `up`'s `Long` must
   mention the debug toggle; `add`'s flag help ships with the re-applied fix. Errors stay
   on the JSON envelope (`output.Err`); the enriched `requireSessionLocked` message rides
@@ -279,8 +301,8 @@ From `CONSTRAINTS.md` (read in full this session), the ones this task touches:
   message) unit-tested untagged; update every test asserting the old
   `no mux session; run "lyx mux up"` string.
 - **Live verification (one tagged test):** boot with `debug_log: 1` against real tmux and
-  assert a `tmux-server-*.log` exists under `.lyx/logs/` and that old logs get
-  pruned; follow the existing `smoke_*_test.go` pattern (skip when the binary is absent,
+  assert a `tmux-server-*.log` exists under the hub root's `.lyx/logs/` and that old logs
+  get pruned; follow the existing `smoke_*_test.go` pattern (skip when the binary is absent,
   deadline-based waits, teardown discipline, HermeticGitEnv TestMain already in package).
 - **Help/registration guards:** `cmd/lyx` drift/helptree tests must stay green (no new
   subcommand, so no pinned-set update expected).
@@ -304,9 +326,14 @@ From `CONSTRAINTS.md` (read in full this session), the ones this task touches:
   `string`; the helper validates and quotes the offending value. (Operator delegated the
   call.)
 - **Q:** Log location and growth control? **A:** Machine-local, never git-tracked —
-  `.lyx/logs/` via the hubgeometry seam (`DotLyxDir()`), same home as mux.json; prune at
-  boot keeping newest 3; no runtime rotation. (Reviewer gap: the first draft said `_lyx`,
-  which is weft-synced — operator ruled logs must not be git-tracked.)
+  `.lyx/logs/` via the hubgeometry seam; prune at boot keeping newest 3; no runtime
+  rotation. (Reviewer gap: the first draft said `_lyx`, which is weft-synced — operator
+  ruled logs must not be git-tracked.)
+- **Q:** Per-hub server vs per-worktree `debug_log`/log dir — boot-winner decides both?
+  **A:** [operator delegated] Log dir moves to the **hub root's** `.lyx/logs/` (one
+  forensic location per hub, new hub-anchored hubgeometry helper); `debug_log` stays
+  per-worktree with the boot-winner semantics documented in `up`'s `Long` (arm via
+  machine-wide `LYX_MUX_DEBUG=1` or the key in every boot-from worktree).
 - **Q:** Dead-server notice? **A:** Enrich the shared `requireSessionLocked` error — all
   verbs inherit; suggest `resume` when persisted strands exist.
 - **Q:** New shipped `top_band_rows` default? **A:** 3. (Multi-column layouts noted as a
