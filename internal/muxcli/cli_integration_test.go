@@ -80,6 +80,10 @@ func TestRunCLI_AddNotUp_FriendlyError(t *testing.T) {
 	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
 		t.Fatalf("RunCLI(add) output is not valid JSON: %v; got: %q", err, out.String())
 	}
+	// Fresh CopyPaired fixture, no mux.json seeded: zero strands persisted,
+	// so requireSessionLocked/noSessionMessage keeps today's short message
+	// rather than the resume-hint enrichment (that case is covered by
+	// TestRunCLI_StatusNotUp_EnrichedResumeHint).
 	wantErr := `no mux session; run "lyx mux up"`
 	if errMsg, _ := env["error"].(string); errMsg != wantErr {
 		t.Errorf("RunCLI(add) before up error = %q; want %q", errMsg, wantErr)
@@ -109,6 +113,10 @@ func TestRunCLI_RemoveNotUp_FriendlyError(t *testing.T) {
 	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
 		t.Fatalf("RunCLI(remove) output is not valid JSON: %v; got: %q", err, out.String())
 	}
+	// Fresh CopyPaired fixture, no mux.json seeded: zero strands persisted,
+	// so requireSessionLocked/noSessionMessage keeps today's short message
+	// rather than the resume-hint enrichment (that case is covered by
+	// TestRunCLI_StatusNotUp_EnrichedResumeHint).
 	wantErr := `no mux session; run "lyx mux up"`
 	if errMsg, _ := env["error"].(string); errMsg != wantErr {
 		t.Errorf("RunCLI(remove) before up error = %q; want %q", errMsg, wantErr)

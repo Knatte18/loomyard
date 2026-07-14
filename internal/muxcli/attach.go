@@ -50,9 +50,10 @@ Example:
 			}
 			out := cmd.OutOrStdout()
 
-			// Pre-flight: surface "no mux session; run \"lyx mux up\"" (or any
-			// other Status failure) on the envelope before ever touching stdio,
-			// since after the handover below no JSON can reach the caller.
+			// Pre-flight: surface the friendly no-session error (see
+			// muxengine.requireSessionLocked/noSessionMessage), or any other
+			// Status failure, on the envelope before ever touching stdio, since
+			// after the handover below no JSON can reach the caller.
 			if _, err := c.eng.Status(); err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
