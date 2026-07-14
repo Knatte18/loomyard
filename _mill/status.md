@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-review-prompt
+phase: holistic-reviewing
 slug: mux-server-crash
 branch: mux-server-crash
 plan: _mill/plan
@@ -26,6 +26,7 @@ approved-render-defaults  '2026-07-14T19:11:21Z'
 approved-debug-logging  '2026-07-14T19:23:43Z'
 approved-resume-hint  '2026-07-14T19:29:22Z'
 approved-review-prompt  '2026-07-14T19:32:22Z'
+holistic-reviewing  '2026-07-14T19:32:44Z'
 ```
 
 ## Batches
