@@ -3,7 +3,7 @@
 ```yaml
 task: Investigate the unexplained lyx mux server crash
 slug: mux-server-crash
-approved: false
+approved: true
 started: 20260714-184916
 parent: cluster-fork-spike
 root: ""

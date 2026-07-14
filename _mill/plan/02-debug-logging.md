@@ -73,7 +73,10 @@ edge is the shared-file serialization). Delivers `hubgeometry.Layout.HubLogsDir(
   `"1"` → `(["-v"], nil)`, `"2"` → `(["-vv"], nil)`, anything else → error exactly
   `invalid debug_log %q: must be 0, 1 or 2`. Create `serverlog_test.go` with an
   untagged table-driven `TestDebugLogArgs` covering all four classes plus whitespace
-  (`" 1 "`) and empty-string input. Extend `config_test.go`'s template-default test to
+  (`" 1 "`) and empty-string input. When extending `template.go`'s file-comment key
+  list, place `debug_log` in the `${env:...}`-resolved group alongside psmux/pwsh —
+  NOT the plain-literal group (width, top_band_rows, …) — since its template value is
+  env-syntax. Extend `config_test.go`'s template-default test to
   assert `cfg.DebugLog == "0"` (env unset). Confirm with
   `grep -rn "SeedConfig" internal/ | grep -i mux` that mux config fixtures seed via
   `muxengine.ConfigTemplate()` (they track the template automatically); if any fixture
@@ -85,6 +88,7 @@ edge is the shared-file serialization). Delivers `hubgeometry.Layout.HubLogsDir(
 - **Context:**
   - `internal/hubgeometry/hubgeometry.go`
   - `internal/muxengine/env.go`
+  - `internal/muxengine/config.go`
 - **Edits:**
   - `internal/muxengine/lifecycle.go`
   - `internal/muxengine/serverlog.go`
@@ -112,8 +116,10 @@ edge is the shared-file serialization). Delivers `hubgeometry.Layout.HubLogsDir(
   today's behavior (Shared Decision hub-logs-dir). Keep `CleanClaudeEnv` wiring
   untouched. Reconcile stale prose: comments in `lifecycle.go` (e.g.
   `ensureServerGoneLocked`'s "both spawned with the worktree as their cwd") now
-  describe the server cwd as the hub's `.lyx/logs` dir — the server no longer holds
-  any worktree directory busy, note that where the old prose claimed otherwise. Add
+  describe the server cwd as the hub's `.lyx/logs` dir (inside the hub container, not
+  any worktree) — the server no longer holds any worktree directory busy, note that
+  where the old prose claimed otherwise, and note that Windows teardown belts that
+  scan only worktree-dir holders no longer see the server's cwd. Add
   one sentence to `doc.go`'s "Multiplexer contract surface" section documenting that
   the engine may pass the standard tmux `-v`/`-vv` verbose flags on the
   server-spawning invocation (opt-in via `debug_log`), which the binary must accept.
@@ -141,7 +147,11 @@ edge is the shared-file serialization). Delivers `hubgeometry.Layout.HubLogsDir(
   discipline — mirror `smoke_lifecycle_test.go`). Scenario: arm debug via
   `t.Setenv("LYX_MUX_DEBUG", "1")` (the template's env default resolves it in-process);
   pre-create three fake `tmux-server-*.log` files with staggered old mtimes (via
-  `os.Chtimes`) in the fixture hub's `.lyx/logs/`; run `up`; assert (a) a real
+  `os.Chtimes`) in the GEOMETRY hub's logs dir — compute it exactly as the engine does:
+  `filepath.Join(filepath.Dir(fixture.Hub), ".lyx", "logs")`, because
+  `lyxtest.PairedFixture.Hub` is the WORKTREE root while `Layout.Hub` (what
+  `HubLogsDir()` joins on) is its parent container — never `fixture.Hub/.lyx/logs`;
+  run `up`; assert (a) a real
   `tmux-server-*.log` newer than the fakes exists in that directory (the tmux `-v` log)
   and (b) the oldest fake was pruned (prune keeps the newest 2 pre-existing files);
   then run `down` and assert teardown per the existing pattern. Use polling with a

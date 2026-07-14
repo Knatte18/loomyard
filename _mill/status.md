@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planning
+phase: plan-fix-r1
 slug: mux-server-crash
 branch: mux-server-crash
 plan: _mill/plan
@@ -18,4 +18,5 @@ discussing  '2026-07-14T17:59:23Z'
 discussion-fix-r4  '2026-07-14T18:43:41Z'
 discussed  '2026-07-14T18:43:56Z'
 planning  '2026-07-14T18:52:35Z'
+plan-fix-r1  '2026-07-14T18:59:50Z'
 ```
