@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-reduce-redundant-resolve
 slug: warpengine-spawn-reduction
 branch: warpengine-spawn-reduction
 plan: _mill/plan
@@ -23,6 +23,7 @@ plan-fix-r1  '2026-07-14T08:19:02Z'
 plan-fix-r2  '2026-07-14T08:22:41Z'
 planned  '2026-07-14T08:22:55Z'
 implementing  '2026-07-14T08:25:52Z'
+approved-reduce-redundant-resolve  '2026-07-14T08:37:51Z'
 ```
 
 ## Batches
@@ -30,7 +31,8 @@ implementing  '2026-07-14T08:25:52Z'
 ```yaml
 batches:
   - name: reduce-redundant-resolve
-    state: running
+    state: approved
     implementer_session: 61b46f92-415b-49d7-affc-7e98ff973408
     start_sha: a814aca5920e1d7909045d4d35ed8f90aaa1f917
+    commit_sha: fc8b5877d648ca32069212be48f558e610d7efdd
 ```
