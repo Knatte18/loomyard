@@ -63,6 +63,15 @@ type Display struct {
 	// stay full height. When false the strand stays a co-equal full pane
 	// even while a descendant is present.
 	ShrinkWhenWaitingOnChild bool `json:"shrinkWhenWaitingOnChild"`
+	// TopBandRows overrides Params.TopBandRows for this AnchorTop strand
+	// only, when > 0. Zero (the default) inherits the config-wide default.
+	// This exists because a single global top-band height cannot serve both
+	// genuine one-line status commands and a full box-drawing TUI (e.g.
+	// `claude`) sharing the AnchorTop slot: a TUI given only the default's
+	// 1-2 rows renders corrupted, overlapping frames, since it draws
+	// multi-row boxed output assuming more vertical space than it's given.
+	// Ignored for any strand not using AnchorTop.
+	TopBandRows int `json:"topBandRows,omitempty"`
 }
 
 // Strand is the layout-facing projection of an engine strand: only the

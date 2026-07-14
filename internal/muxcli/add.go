@@ -16,20 +16,22 @@ import (
 )
 
 // addCmd builds the `add` subcommand: registers a new strand from the
-// --cmd/--role/--round/--name/--resume-cmd/--parent/--anchor/--focus flags.
-// It rejects --anchor own-window (declared but deferred) and any value
-// outside top|below-parent|hidden before ever calling the engine, then
-// builds a muxengine.AddSpec and delegates to c.eng.AddStrand.
+// --cmd/--role/--round/--name/--resume-cmd/--parent/--anchor/--focus/
+// --top-band-rows flags. It rejects --anchor own-window (declared but
+// deferred) and any value outside top|below-parent|hidden before ever
+// calling the engine, then builds a muxengine.AddSpec and delegates to
+// c.eng.AddStrand.
 func (c *muxCLI) addCmd() *cobra.Command {
 	var (
-		cmdFlag   string
-		role      string
-		round     string
-		name      string
-		resumeCmd string
-		parent    string
-		anchor    string
-		focus     bool
+		cmdFlag     string
+		role        string
+		round       string
+		name        string
+		resumeCmd   string
+		parent      string
+		anchor      string
+		focus       bool
+		topBandRows int
 	)
 
 	cmd := &cobra.Command{
@@ -84,6 +86,7 @@ Example:
 					Anchor:                   render.Anchor(anchor),
 					Focus:                    focus,
 					ShrinkWhenWaitingOnChild: true,
+					TopBandRows:              topBandRows,
 				},
 			}
 
@@ -109,6 +112,7 @@ Example:
 	cmd.Flags().StringVar(&parent, "parent", "", "parent strand's guid")
 	cmd.Flags().StringVar(&anchor, "anchor", string(render.AnchorBelowParent), "placement: top|below-parent|hidden")
 	cmd.Flags().BoolVar(&focus, "focus", false, "give this strand psmux input focus")
+	cmd.Flags().IntVar(&topBandRows, "top-band-rows", 0, "override the config default band height for an --anchor top strand (0 inherits mux.yaml's top_band_rows; needed for a full TUI command sharing the top band, which renders corrupted at the 1-row default)")
 	if err := cmd.MarkFlagRequired("cmd"); err != nil {
 		// MarkFlagRequired only errors when the named flag does not exist on
 		// cmd; --cmd is registered immediately above, so this can never fire

@@ -185,6 +185,54 @@ func TestRulesFocusPrefersDeclaredFocusStrandOverDefault(t *testing.T) {
 	}
 }
 
+func TestRulesTopBandRowsOverridePerStrand(t *testing.T) {
+	// A non-last top strand with no override uses the config-wide default (3);
+	// one that declares its own Display.TopBandRows uses that instead — the
+	// override needed so a full TUI command sharing an AnchorTop slot (which
+	// renders corrupted at the 1-2 row config default) can claim enough rows
+	// to draw cleanly, without inflating every other top band's height.
+	strands := []Strand{
+		{GUID: "status", PaneID: "%1", Live: true, Display: Display{Anchor: AnchorTop}},
+		{GUID: "tui", PaneID: "%2", Live: true, Display: Display{Anchor: AnchorTop, TopBandRows: 10}},
+		{GUID: "last", PaneID: "%3", Live: true, Display: Display{Anchor: AnchorTop}},
+	}
+	box := Box{X: 0, Y: 0, W: 100, H: 30}
+	p := Params{TopBandRows: 3, CollapsedStripRows: 2, MinFullRows: 3}
+
+	layout, _, err := Rules(strands, box, p, nil)
+	if err != nil {
+		t.Fatalf("Rules() unexpected error: %v", err)
+	}
+	// status: height 3 (default) at y=0; divider row; tui: height 10
+	// (override) at y=4; divider row; last: stretches to absorb the
+	// remainder (30 - 4 - 11 = 15) at y=15, since it's the last top band
+	// and there's no below-parent stack.
+	wantBody := "100x30,0,0[100x3,0,0,1,100x10,0,4,2,100x15,0,15,3]"
+	if want := wrapLayout(wantBody); layout != want {
+		t.Errorf("Rules() layout = %q, want %q", layout, want)
+	}
+}
+
+func TestRulesTopBandRowsOverrideIgnoredWhenZero(t *testing.T) {
+	// The zero value (unset) must fall back to the config default, not
+	// collapse the band to a zero-height pane.
+	strands := []Strand{
+		{GUID: "a", PaneID: "%1", Live: true, Display: Display{Anchor: AnchorTop, TopBandRows: 0}},
+		{GUID: "b", PaneID: "%2", Live: true, Display: Display{Anchor: AnchorTop}},
+	}
+	box := Box{X: 0, Y: 0, W: 100, H: 20}
+	p := Params{TopBandRows: 3, CollapsedStripRows: 2, MinFullRows: 3}
+
+	layout, _, err := Rules(strands, box, p, nil)
+	if err != nil {
+		t.Fatalf("Rules() unexpected error: %v", err)
+	}
+	wantBody := "100x20,0,0[100x3,0,0,1,100x16,0,4,2]"
+	if want := wrapLayout(wantBody); layout != want {
+		t.Errorf("Rules() layout = %q, want %q (zero override should inherit the config default)", layout, want)
+	}
+}
+
 func TestRulesIsPureRepeatedCallsMatch(t *testing.T) {
 	strands := belowParentChain()
 	box := Box{X: 0, Y: 0, W: 100, H: 21}
