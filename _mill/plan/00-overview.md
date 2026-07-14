@@ -3,7 +3,7 @@
 ```yaml
 task: "Reduce git spawns in warpengine integration tests"
 slug: "warpengine-spawn-reduction"
-approved: false
+approved: true
 started: "20260714-081130"
 parent: "main"
 root: ""

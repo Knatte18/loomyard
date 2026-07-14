@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r1
+phase: plan-fix-r2
 slug: warpengine-spawn-reduction
 branch: warpengine-spawn-reduction
 plan: _mill/plan
@@ -20,4 +20,5 @@ discussed  '2026-07-14T08:05:28Z'
 planning  '2026-07-14T08:13:19Z'
 plan-review-r1  '2026-07-14T08:19:02Z'
 plan-fix-r1  '2026-07-14T08:19:02Z'
+plan-fix-r2  '2026-07-14T08:22:41Z'
 ```
