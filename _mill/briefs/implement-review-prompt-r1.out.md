@@ -1,0 +1,7 @@
+No tracked modifications remain, and exactly 1 of 1 declared card (Card 9) is committed as `f1e13a1b`, matching the batch's single `## Cards` entry. `verify: null` in the batch frontmatter, so no verify command was run.
+
+{"status":"success","commit_sha":"f1e13a1b","session_id":"d528022b-b48e-47e8-b1f4-c225fb96e039"}
+
+Summary: 1 of 1 card committed (Card 9). Edited `docs/reviews/mux-review-prompt.md` (relative path from the worktree root `/home/knatte/Code/loomyard/wts/mux-server-crash`) adding three new "High-yield focus" invariant entries (DEBUG LOGGING, DEAD-SERVER HINT, TOP-BAND LEGIBILITY), a boot-winner-semantics review-lens paragraph, and matching hand-rolled drive instructions in the "Deeper hand-rolled driving" section — naming the exact `debug_log` key, `LYX_MUX_DEBUG` env var, `<hub>/.lyx/logs/` path, and both `requireSessionLocked` error-message variants per the batch's reviewer-facing quality gate. No existing "Round context"/deferred-items prose referenced this task's crash investigation, so no correlation-only wording change was needed there. Batch `verify: null`, so no test command was run; working tree is clean and the commit is pushed to `mux-server-crash`.
+
+{"status":"success","commit_sha":"f1e13a1b","session_id":"d528022b-b48e-47e8-b1f4-c225fb96e039"}

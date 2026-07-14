@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-resume-hint
+phase: approved-review-prompt
 slug: mux-server-crash
 branch: mux-server-crash
 plan: _mill/plan
@@ -25,6 +25,7 @@ implementing  '2026-07-14T19:06:58Z'
 approved-render-defaults  '2026-07-14T19:11:21Z'
 approved-debug-logging  '2026-07-14T19:23:43Z'
 approved-resume-hint  '2026-07-14T19:29:22Z'
+approved-review-prompt  '2026-07-14T19:32:22Z'
 ```
 
 ## Batches
@@ -47,7 +48,8 @@ batches:
     start_sha: 585f92933718976818b4671a578b224b2ae2319b
     commit_sha: 81693be69e2da478613ebcee046978280de2cfa2
   - name: review-prompt
-    state: running
+    state: approved
     implementer_session: d528022b-b48e-47e8-b1f4-c225fb96e039
     start_sha: e69ce33a2ce9a0c69594229dd8a52ef2e56d942a
+    commit_sha: f1e13a1b80124e2d235fd4e3f4018e1a62833708
 ```
