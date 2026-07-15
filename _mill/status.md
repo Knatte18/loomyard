@@ -2,17 +2,17 @@
 
 ```yaml
 phase: discussing
-slug: cluster-fork-spike
-branch: cluster-fork-spike
+slug: mux-mouse-default
+branch: mux-mouse-default
 plan: null
-parent: main
-task: 'Spike: measure Claude session-forking for cluster-review'
+parent: cluster-fork-spike
+task: Decide tmux mouse-mode default for lyx mux
 task_description: |
-  Spike: measure Claude session-forking for cluster-review
+  Decide tmux mouse-mode default for lyx mux
 ```
 
 ## Timeline
 
 ```text
-discussing  '2026-07-14T16:10:57Z'
+discussing  '2026-07-15T07:06:38Z'
 ```
