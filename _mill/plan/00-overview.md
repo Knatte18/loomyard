@@ -135,6 +135,7 @@ batches:
 - `internal/muxengine/io_test.go`
 - `internal/muxengine/lifecycle_test.go`
 - `internal/muxengine/lock_test.go`
+- `internal/muxengine/render/layout.go`
 - `internal/muxengine/render/policy.go`
 - `internal/muxengine/render/policy_test.go`
 - `internal/muxengine/render/rules.go`

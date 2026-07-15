@@ -86,9 +86,9 @@ empty-`PaneID` filter, `height.go`, `focus.go`, and the mechanics layer (`layout
   - `internal/muxengine/render/policy.go`
   - `internal/muxengine/render/height.go`
   - `internal/muxengine/render/focus.go`
-  - `internal/muxengine/render/layout.go`
 - **Edits:**
   - `internal/muxengine/render/rules.go`
+  - `internal/muxengine/render/layout.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -102,7 +102,10 @@ empty-`PaneID` filter, `height.go`, `focus.go`, and the mechanics layer (`layout
   is always either a stack or nothing to focus). Update the `Rules` doc comment and the
   `paneOrder` contract comment to drop "top bands first"/top-band language while preserving the
   positional-`select-layout` explanation that still governs the stack. `resequenceByPaneOrder`
-  and `buildStackBody` are unchanged.
+  and `buildStackBody` are unchanged. Also reword `layout.go`'s file-header doc comment (round-1
+  review NIT fix) to drop the "top-band region and the below-parent stack region can each be
+  rendered independently" clause — it is mechanics-layer prose only, no logic in `layout.go`
+  changes.
 - **Commit:** `refactor(render): remove top-band placement from Rules`
 
 ### Card 12: delete Config.TopBandRows and the top_band_rows template lines
