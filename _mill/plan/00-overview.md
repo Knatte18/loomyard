@@ -3,7 +3,7 @@
 ```yaml
 task: "lyx mux remove errors when it empties the last session"
 slug: "mux-remove-last-pane-error"
-approved: false
+approved: true
 started: "20260715-073202"
 parent: "cluster-fork-spike"
 root: ""
