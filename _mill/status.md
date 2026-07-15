@@ -44,5 +44,7 @@ batches:
     start_sha: 0c1dd6317a1033fb29f282f10e019d6d62298f11
     commit_sha: 3b5b03b958e651974b15ba0b0a892edee4a59d4d
   - name: docs-and-sandbox
-    state: pending
+    state: running
+    implementer_session: f44b15cc-3f0f-424d-932e-85aadf979eb3
+    start_sha: 1c2ea5ca9f0658fefd07a9d2072c5d59974c6ff7
 ```
