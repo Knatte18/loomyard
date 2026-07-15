@@ -298,6 +298,27 @@ func (e *Engine) removeStrandLocked(st *MuxState, guid string, recursive bool) (
 	return removed, paneIDs, nil
 }
 
+// removalEmptiedSession classifies whether a remove drained the session of
+// every strand that should still own a live pane, so a confirmed-gone
+// session is an expected terminal state rather than a failure. It returns
+// true iff sessionGone is true AND no strand in remaining is non-hidden —
+// mirroring anyPlacedStrand's "expected to own a live pane" filter
+// (apply.go: Anchor != render.AnchorHidden) so the two share one notion of
+// that concept rather than a second, driftable classification. An empty
+// remaining slice therefore returns true when sessionGone, since nothing is
+// left that should still own a pane.
+func removalEmptiedSession(remaining []Strand, sessionGone bool) bool {
+	if !sessionGone {
+		return false
+	}
+	for _, s := range remaining {
+		if s.Display.Anchor != render.AnchorHidden {
+			return false
+		}
+	}
+	return true
+}
+
 // AddStrand registers a new strand from spec and, unless added
 // anchor:hidden, realizes it into a live pane and runs its cmd, then
 // reconciles and re-applies the layout. The engine, not the caller, stamps
