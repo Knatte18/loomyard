@@ -8,7 +8,8 @@ several times as it evolved (most recently `mux-anchor-top-redesign`, done) and 
 
 ## Your two jobs, in order
 1. REVIEW: form your own independent judgment of mux's scope and correctness. Hunt for bugs by
-   reading the code AND by driving real tmux (on Windows via tmux; this is where mux's defects hide).
+   reading the code AND by driving real tmux (native tmux on Linux/macOS, psmux on Windows —
+   whichever this machine runs; this is where mux's defects hide).
 2. FIX: after you have a findings list, implement the fixes, verify each against real tmux,
    keep the whole test suite green, and update the docs in the same change. Do NOT commit or
    push unless the user explicitly tells you to — leave the changes in the working tree and
@@ -221,8 +222,8 @@ since (treat as unverified, not as settled — confirm or refute rather than ass
 
 YOUR JOB this round:
 - Do a genuinely INDEPENDENT clean-room pass (form + WRITE your own findings before reading prior
-  `.scratch/mux-review-*` reports). Adversarially live-drive the real multiplexer (tmux or
-  tmux, whichever this machine runs) for anything the four individual change-reviews missed,
+  `.scratch/mux-review-*` reports). Adversarially live-drive the real multiplexer (native tmux
+  on Linux/macOS, psmux on Windows — whichever this machine runs) for anything the four individual change-reviews missed,
   with special weight on the INTERACTION hunting described
   above — new edge cases, races, error paths, resume/crash-rebirth corners, cross-worktree
   behavior, and every combination of `debug_log` × `mouse` × the remove-fix × the anchor:top
@@ -243,34 +244,37 @@ Hermetic (must stay green throughout):
 - `go test ./internal/muxengine/... ./internal/muxcli/... ./cmd/lyx/...` (stress the
   concurrency/timing tests with `-count=5` to catch flakiness)
 
-Smoke (real tmux via tmux on Windows, behind a build tag):
+Smoke (real tmux, behind a build tag):
 - `go test -tags smoke ./internal/muxcli/... -run Smoke -v -count=1`
-- tmux (or `tmux` on Windows) must be on PATH; pwsh 7 resolved via PATH. 
-  On Windows: use explicit paths to resolve WindowsApps ConPTY stubs correctly, or ensure PATH points to the real binary.
+- tmux (or `psmux.exe` on Windows) must be on PATH; a shell (bash on POSIX, pwsh 7 on Windows)
+  resolved via PATH. On Windows: use explicit paths to resolve WindowsApps ConPTY stubs
+  correctly, or ensure PATH points to the real binary. On this machine (Linux), `which tmux`
+  already resolves to a real tmux 3.6 — confirm that before assuming anything is missing.
 
-Live tmux driving (on Windows via tmux) via the MUX SANDBOX SUITE (PRIMARY — this is where the bugs surface).
-The repo ships a dedicated, maintained live-tmux suite: `tools/sandbox/SANDBOX-MUX-SUITE.md`,
-scenarios M0–M18, driven through the harness. Run it — do not only hand-roll fixtures:
-- Deploy the current source as the binary under test: `deploy.cmd` (puts a fresh `lyx.exe`
-  on PATH). CRITICAL FOOTGUN: the suite runs the DEPLOYED snapshot, NOT your working tree — it
-  has no idea you edited source. You MUST re-run `deploy.cmd` after EVERY source change before
-  re-running the suite, or you will validate the STALE binary and wrongly conclude a fix works
-  (or fails). Deploy first, always; when in doubt, re-deploy.
-- Launch the interactive suite session: `sandbox-mux-suite.cmd` (repo root) — it runs
-  `go run ./tools/sandbox -parent C:\Code mux-suite`, materializes the sandbox Hub host repo,
-  and copies SANDBOX-MUX-SUITE.md (with a binary-fingerprint header) into it. Follow that
-  file's own Pre-conditions + "How to run a scenario" sections as the source of truth.
-- After the session, pull the findings back with `sandbox-fetch.cmd` (stamps the binary
-  fingerprint into the fetched `sandbox-report.json` `meta`).
+Live tmux driving (PRIMARY — this is where the bugs surface). DO NOT invoke
+`sandbox-mux-suite.cmd` / `go run ./tools/sandbox ... mux-suite` or any other suite launcher —
+that machinery spawns a SEPARATE, context-free interactive `claude` session as a naive
+black-box tester in a materialized sandbox Hub; it is built for a human operator dogfooding the
+CLI, not for you. Spawning it from inside this round would just be paying for and waiting on
+another agent's opaque session instead of doing the driving yourself, and you already have full
+source knowledge plus your own tool calls (see `docs/reviews/README.md`'s "Driving the real
+substrate" section for the full rationale — this is a hard rule, not a style preference).
+Instead:
+- Read `tools/sandbox/SANDBOX-MUX-SUITE.md` (scenarios M0–M18) as your scenario CHECKLIST only —
+  for ideas on what to exercise — then run every scenario yourself with direct `lyx mux <verb>`
+  CLI calls (foreground, waiting for each to return) against a throwaway git-repo fixture you
+  create, exactly as described in "Deeper hand-rolled driving" below. The suite's black-box rule
+  ("do not read the lyx source tree") binds the agent-under-test persona that launcher would
+  spawn — it does NOT apply to you; you read the source AND drive the CLI directly.
+- Build the binary yourself first: `go build -o <scratch>/lyx ./cmd/lyx` (see "Deeper
+  hand-rolled driving" below) — re-run this after every source change, same footgun as any
+  deploy step: a stale binary gives a false PASS/FAIL.
 - The suite's own scenarios already map onto the "High-yield focus" invariants: M8 (kill one
   pane → resume recreates it), M9 (kill-server → crash-resume rebuilds all), M10 (recursive
-  remove), M11 (down leaves no stray tmux). Walk every one and record OK/WARN/FAIL per the
-  suite's verdict key.
-- NOTE the persona split: SANDBOX-MUX-SUITE.md's black-box rule ("do not read the lyx source
-  tree") binds the *agent-under-test* persona, NOT you. As the reviewer you read the source
-  AND drive the suite — use the suite's scenarios/harness as your live-driving checklist while
-  still reasoning about the code. The `attach` scenario (M7) is operator-assisted (needs a TTY
-  in a second terminal); flag it as not-headlessly-verifiable, as before.
+  remove), M11 (down leaves no stray tmux). Walk every one via your own direct CLI calls and
+  record OK/WARN/FAIL per the suite's verdict key.
+- The `attach` scenario (M7) is operator-assisted (needs a TTY in a second terminal); flag it as
+  not-headlessly-verifiable, as before.
 
 Deeper hand-rolled driving (COMPLEMENTARY, and EXPECTED — the suite is a FLOOR, not a ceiling).
 Running M0–M18 is the minimum, not the whole job. You are expected to devise and run MANY MORE
@@ -291,7 +295,7 @@ Also drive the mitigations this task shipped:
   then repeat from a hub with zero persisted strands and confirm the plain `lyx mux up` hint
   (no `resume` mention).
 Report the exact commands and observations for these too. Build the binary
-(`go build -o <scratch>/lyx.exe ./cmd/lyx`), create throwaway git-repo fixtures with a
+(`go build -o <scratch>/lyx ./cmd/lyx`), create throwaway git-repo fixtures with a
 `_lyx/config/mux.yaml` (copy `internal/muxengine/template.yaml`), and drive `lyx mux <verb>`
 while inspecting real tmux with `tmux -L <socket> list-panes -t <session> -F "#{pane_id}
 #{pane_dead} #{pane_top} #{pane_height}"` and `... display-message -p -t <session>
@@ -303,8 +307,9 @@ simulate a crash; `up`/`resume`/`status`/`remove`/`down` in each resulting state
 remove without `--recursive`). Use `-vv` to trace exact tmux invocations.
 
 TEARDOWN DISCIPLINE (critical): if you start ANY tmux server/session, tear it down
-(`tmux -L <socket> kill-server`, or `lyx mux down`). At the end, confirm with `tasklist | grep
--i tmux` that ZERO tmux processes remain. Leave no stray tmux state.
+(`tmux -L <socket> kill-server`, or `lyx mux down`). At the end, confirm with `pgrep -a tmux`
+(POSIX; Windows: `tasklist | findstr /i tmux`) that ZERO tmux processes remain. Leave no stray
+tmux state.
 
 Be honest about what you could NOT verify: interactive `attach` cannot be driven headlessly (no
 TTY); real `claude --resume` needs a live agent. Say so explicitly.
@@ -359,12 +364,11 @@ These were consciously deferred last time; decide whether any now warrants fixin
   -run <name> -count=3` processes at once), not just once — a single PASS is not proof of
   determinism. If a fix touches a boot/reboot poll, prefer a deadline-based loop over a
   fixed-attempt count in the production code too.
-- Keep `go build`/`go vet`/`go test` green after every change. Then RE-DEPLOY (`deploy.cmd`)
-  and re-run the smoke + live suite scenarios to confirm the fix holds and nothing regressed —
-  re-deploying FIRST is mandatory: the MUX SANDBOX SUITE exercises the deployed `lyx.exe`, not
-  your edited tree, so skipping the re-deploy re-tests the OLD binary and gives a false PASS/FAIL.
-  (The hand-rolled `go build -o <scratch>/lyx.exe` path self-refreshes each build; the suite path
-  does NOT — it is your responsibility to `deploy.cmd` before every suite re-run.)
+- Keep `go build`/`go vet`/`go test` green after every change. Then REBUILD your own binary
+  (`go build -o <scratch>/lyx ./cmd/lyx`) and re-run the smoke + hand-rolled live scenarios to
+  confirm the fix holds and nothing regressed — rebuilding FIRST is mandatory: your live driving
+  exercises whatever binary you built earlier, not your edited tree, so a stale binary gives a
+  false PASS/FAIL.
 - Update the `internal/muxengine` package documentation (and `docs/overview.md` / `CONSTRAINTS.md`
   if invariants or the module table move) IN THE SAME change — reconcile any prose the fix makes
   stale. Do NOT add
