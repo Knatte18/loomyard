@@ -30,5 +30,7 @@ implementing  '2026-07-15T07:51:08Z'
 ```yaml
 batches:
   - name: remove-empties-session
-    state: pending
+    state: running
+    implementer_session: a5744a43-13bb-49b2-b1f4-1e1cd87923ca
+    start_sha: 6569c7a593490b5ddd2556f980ee5b5899b12a11
 ```
