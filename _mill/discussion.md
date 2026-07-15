@@ -188,7 +188,17 @@ which made the exact mechanism visible instead of a bare "no server running".
   reproduction showed from `listPanes`), which `hasSession` (`overlay.go:90`)
   maps to `(false, nil)` — record this so the "server-gone still classifies as
   `(false, nil)`" fact is not silently re-lost, and note that the integration
-  test's success assertion is what pins it against real tmux.
+  test's success assertion is what pins it against real tmux. The new bullet
+  must **cross-reference the existing "Async kill-server / probe-always-exits-0"
+  bullet** (doc.go L80–86) and state the contrast explicitly: `list-sessions`/
+  `kill-server` exit **0** regardless of server state (so they cannot
+  distinguish "no server" from "server dying asynchronously"), whereas
+  `has-session`/`list-panes` reliably surface exit **1** for "no server" —
+  which is precisely *why* the fix reprobes with `hasSession` and not, say,
+  `list-sessions`. Without this sentence the two bullets read as a
+  contradiction and a future reader could wrongly generalize
+  "probe-always-exits-0" to all psmux queries and conclude the reprobe can
+  never distinguish gone-from-not-gone (exactly backwards).
 - Rationale: CLAUDE.md requires docs updated in the same commit as behavior
   changes, and this is precisely the cross-platform assumption `doc.go`'s list
   exists to track. Leaving the false comment in place would re-seed the same
