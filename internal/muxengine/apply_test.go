@@ -15,7 +15,7 @@ import (
 func TestPlanLayout_MatchesRenderRulesForCanonicalStrandTable(t *testing.T) {
 	e := newTestEngine(t)
 	e.cfg.Width, e.cfg.Height = 100, 21
-	e.cfg.TopBandRows, e.cfg.CollapsedStripRows, e.cfg.MinFullRows = 3, 2, 3
+	e.cfg.CollapsedStripRows, e.cfg.MinFullRows = 2, 3
 
 	// The same root->mid->active below-parent chain rules_test.go's
 	// belowParentChain fixture uses: root stays full, mid collapses
@@ -31,7 +31,7 @@ func TestPlanLayout_MatchesRenderRulesForCanonicalStrandTable(t *testing.T) {
 		{GUID: "root", PaneID: "%1", Live: true, Display: render.Display{Anchor: render.AnchorBelowParent, ShrinkWhenWaitingOnChild: false}},
 		{GUID: "mid", Parent: "root", PaneID: "%2", Live: true, Display: render.Display{Anchor: render.AnchorBelowParent, ShrinkWhenWaitingOnChild: true}},
 		{GUID: "active", Parent: "mid", PaneID: "%3", Live: true, Display: render.Display{Anchor: render.AnchorBelowParent}},
-	}, render.Box{X: 0, Y: 0, W: 100, H: 21}, render.Params{TopBandRows: 3, CollapsedStripRows: 2, MinFullRows: 3}, nil)
+	}, render.Box{X: 0, Y: 0, W: 100, H: 21}, render.Params{CollapsedStripRows: 2, MinFullRows: 3}, nil)
 	if err != nil {
 		t.Fatalf("render.Rules() unexpected error: %v", err)
 	}
@@ -51,7 +51,7 @@ func TestPlanLayout_MatchesRenderRulesForCanonicalStrandTable(t *testing.T) {
 func TestPlanLayout_HiddenStrandExcludedFromPlacement(t *testing.T) {
 	e := newTestEngine(t)
 	e.cfg.Width, e.cfg.Height = 80, 12
-	e.cfg.TopBandRows, e.cfg.CollapsedStripRows, e.cfg.MinFullRows = 3, 2, 3
+	e.cfg.CollapsedStripRows, e.cfg.MinFullRows = 2, 3
 
 	st := &MuxState{Strands: []Strand{
 		{GUID: "only", PaneID: "%7", Display: render.Display{Anchor: render.AnchorBelowParent}},
@@ -66,7 +66,7 @@ func TestPlanLayout_HiddenStrandExcludedFromPlacement(t *testing.T) {
 	wantLayout, wantFocus, err := render.Rules([]render.Strand{
 		{GUID: "only", PaneID: "%7", Live: true, Display: render.Display{Anchor: render.AnchorBelowParent}},
 		{GUID: "hid", PaneID: "%8", Live: true, Display: render.Display{Anchor: render.AnchorHidden}},
-	}, render.Box{X: 0, Y: 0, W: 80, H: 12}, render.Params{TopBandRows: 3, CollapsedStripRows: 2, MinFullRows: 3}, nil)
+	}, render.Box{X: 0, Y: 0, W: 80, H: 12}, render.Params{CollapsedStripRows: 2, MinFullRows: 3}, nil)
 	if err != nil {
 		t.Fatalf("render.Rules() unexpected error: %v", err)
 	}
@@ -134,7 +134,7 @@ func TestAnyPlacedStrand(t *testing.T) {
 		{"NoStrands", nil, false},
 		{"BoundPresentVisible", []Strand{{GUID: "a", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent}}}, true},
 		{"BoundAbsentPane", []Strand{{GUID: "a", PaneID: "%9", Display: render.Display{Anchor: render.AnchorBelowParent}}}, false},
-		{"UnboundStrand", []Strand{{GUID: "a", PaneID: "", Display: render.Display{Anchor: render.AnchorTop}}}, false},
+		{"UnboundStrand", []Strand{{GUID: "a", PaneID: "", Display: render.Display{Anchor: render.AnchorBelowParent}}}, false},
 		{"HiddenStrandNeverPlaced", []Strand{{GUID: "a", PaneID: "%1", Display: render.Display{Anchor: render.AnchorHidden}}}, false},
 	}
 	for _, tc := range cases {
