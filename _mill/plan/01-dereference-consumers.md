@@ -5,7 +5,7 @@ task: "Reconsider whether lyx mux needs anchor:top at all"
 batch: dereference-consumers
 number: 1
 cards: 8
-verify: go build ./... && go test ./internal/muxengine/... ./internal/muxcli/... ./internal/shuttleengine/... && go test -tags smoke -run '^$' ./internal/muxcli/
+verify: go build ./... && go test ./internal/muxengine/... ./internal/muxcli/... ./internal/shuttleengine/... ./internal/shuttlecli/... && go test -tags smoke -run '^$' ./internal/muxcli/
 depends-on: []
 ```
 
@@ -196,27 +196,37 @@ does not change what those tests prove.
   the top-band split-path scenario retired with `anchor:top`; flag this choice for the reviewer.
 - **Commit:** `test(muxcli): re-express two-top-band smoke case without anchor:top`
 
-### Card 8: swap AnchorTop fixtures in shuttleengine tests
+### Card 8: swap shuttleengine fixtures and fix shuttlecli anchor help
 
 - **Context:**
   - `internal/muxengine/render/types.go`
+  - `internal/muxengine/strand.go`
 - **Edits:**
   - `internal/shuttleengine/spec_test.go`
   - `internal/shuttleengine/run_test.go`
+  - `internal/shuttlecli/run.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Replace every `render.AnchorTop` with `render.AnchorBelowParent` in
   `spec_test.go` (lines 183, 187, 188) and `run_test.go` (lines 44, 66). These assert that
   `Spec.Display` round-trips unchanged; the anchor value is incidental, so the swap must not
-  change what the tests prove. After this card neither shuttleengine test references
-  `render.AnchorTop`.
-- **Commit:** `test(shuttleengine): swap incidental anchor:top fixtures to below-parent`
+  change what the tests prove. In `shuttlecli/run.go`, change the `--anchor` flag usage string
+  (line 149) from `"placement: top|below-parent|hidden"` to `"placement: below-parent|hidden"`.
+  `shuttlecli` does not vet the anchor vocabulary itself — it passes `render.Anchor(anchor)`
+  straight to the engine (line 115), whose `validateAnchor` (card 3) now rejects `top` at
+  runtime — so only the stale help string is dead surface here; do **not** add a CLI-level
+  vocabulary switch (out of scope, and the engine already gates it). `shuttlecli/run.go` never
+  references the `render.AnchorTop` symbol (only `render.Anchor(...)` and
+  `render.AnchorBelowParent`), so batch 2's symbol deletion does not touch it. After this card
+  no shuttle file references `render.AnchorTop` or advertises `top`.
+- **Commit:** `refactor(shuttle): drop anchor:top from run.go help and test fixtures`
 
 ## Batch Tests
 
 `verify: go build ./... && go test ./internal/muxengine/... ./internal/muxcli/...
-./internal/shuttleengine/... && go test -tags smoke -run '^$' ./internal/muxcli/`
+./internal/shuttleengine/... ./internal/shuttlecli/... && go test -tags smoke -run '^$'
+./internal/muxcli/`
 
 - `go build ./...` proves the whole module still compiles with every consumer de-referenced
   (the retained top-band definitions are now referenced only at their own sites).
@@ -227,7 +237,11 @@ does not change what those tests prove.
 - `go test ./internal/muxcli/...` runs the non-smoke CLI tests (card 6's `add.go` change is
   exercised by the vocabulary/help surface; smoke tests are excluded by the missing `smoke`
   tag).
-- `go test ./internal/shuttleengine/...` covers card 8.
+- `go test ./internal/shuttleengine/... ./internal/shuttlecli/...` covers card 8 — the
+  shuttleengine `Display` round-trip fixtures and the `shuttlecli/run.go` `--anchor` help-string
+  change (the non-smoke `shuttlecli/cli_test.go` exercises the CLI surface; `shuttlecli` smoke
+  files are excluded by the missing `smoke` tag and reference `top` only as a string, never the
+  deleted symbol, so no smoke recompile is needed there).
 - `go test -tags smoke -run '^$' ./internal/muxcli/` compiles the `//go:build smoke` files —
   including card 7's rewritten `smoke_lifecycle_test.go` — and runs zero tests, so it needs no
   live psmux. This is the only way the default build reaches the smoke sources; without it a

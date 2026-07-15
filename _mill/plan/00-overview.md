@@ -22,7 +22,7 @@ batches:
     name: dereference-consumers
     file: 01-dereference-consumers.md
     depends-on: []
-    verify: go build ./... && go test ./internal/muxengine/... ./internal/muxcli/... ./internal/shuttleengine/... && go test -tags smoke -run '^$' ./internal/muxcli/
+    verify: go build ./... && go test ./internal/muxengine/... ./internal/muxcli/... ./internal/shuttleengine/... ./internal/shuttlecli/... && go test -tags smoke -run '^$' ./internal/muxcli/
   - number: 2
     name: delete-render-config-defs
     file: 02-delete-render-config-defs.md
@@ -146,6 +146,7 @@ batches:
 - `internal/muxengine/template.go`
 - `internal/muxengine/template_posix.yaml`
 - `internal/muxengine/template_windows.yaml`
+- `internal/shuttlecli/run.go`
 - `internal/shuttleengine/run_test.go`
 - `internal/shuttleengine/spec_test.go`
 - `tools/sandbox/SANDBOX-MUX-SUITE.md`

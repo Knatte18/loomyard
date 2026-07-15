@@ -55,7 +55,10 @@ test, which requires M2's `**Covers:** mux` tag to survive the edits.
   In the anchor-vocabulary line (256), change `--anchor top|below-parent|hidden` to `--anchor
   below-parent|hidden` (keep the `own-window`/unknown-parent/non-leaf rejection paths). In the
   psmux-normalization bullet (279), drop `top_band_rows` from the `collapsed_strip_rows` /
-  `top_band_rows` pair. Leave every non-top-band scenario untouched.
+  `top_band_rows` pair. Also drop the now-nonexistent `top_band_rows` key from the F1/F11
+  live-finding narrative at line 155 (`Config is honored (top_band_rows/collapsed_strip_rows
+  scale the layout)` → `Config is honored (collapsed_strip_rows scales the layout)`). Leave
+  every non-top-band scenario untouched.
 - **Commit:** `docs(reviews): remove anchor:top items from mux review prompt`
 
 ### Card 15: retire M6, rewrite M12, add M18 in the mux sandbox suite
