@@ -32,7 +32,9 @@ implementing  '2026-07-15T09:33:01Z'
 ```yaml
 batches:
   - name: dereference-consumers
-    state: pending
+    state: running
+    implementer_session: 2a9f6e76-2379-46f5-97b5-2ee0186acddc
+    start_sha: 0ddc880289825a8fd26d0d635525cc0eeaf2e96f
   - name: delete-render-config-defs
     state: pending
   - name: docs-and-sandbox
