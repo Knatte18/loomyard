@@ -26,7 +26,7 @@ func TestResolveLivePaneID(t *testing.T) {
 	st := &MuxState{Strands: []Strand{
 		{GUID: "live", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent}},
 		{GUID: "hidden", Display: render.Display{Anchor: render.AnchorHidden}},
-		{GUID: "unbound", Display: render.Display{Anchor: render.AnchorTop}},
+		{GUID: "unbound", Display: render.Display{Anchor: render.AnchorBelowParent}},
 	}}
 
 	tests := []struct {

@@ -41,7 +41,7 @@ func TestRunner_Start_HappyPath_WiresAddSpecVerbatim(t *testing.T) {
 		Role:        "reviewer",
 		Round:       "1",
 		Parent:      "parent-guid",
-		Display:     render.Display{Anchor: render.AnchorTop},
+		Display:     render.Display{Anchor: render.AnchorBelowParent},
 	}
 
 	run, err := runner.Start(spec)
@@ -63,7 +63,7 @@ func TestRunner_Start_HappyPath_WiresAddSpecVerbatim(t *testing.T) {
 		Cmd:       "launch-cmd",
 		ResumeCmd: "resume-cmd",
 		SessionID: "session-1",
-		Display:   render.Display{Anchor: render.AnchorTop},
+		Display:   render.Display{Anchor: render.AnchorBelowParent},
 	}
 	if got != want {
 		t.Errorf("AddStrand spec = %+v, want %+v", got, want)

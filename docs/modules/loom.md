@@ -234,7 +234,7 @@ boundary**, never mid-operation — `mill-pause`'s natural-stopping-point proper
 | `burler` | new Go module | one review+fix round: A-review (+ optional cluster) → B-fix; composed by `perch` |
 | builder | LLM orchestrator + Go verbs (`internal/builderengine`) | long-lived orchestrator session holds the batch loop over the six as-built verbs (`validate`/`run`/`spawn-batch`/`poll`/`status`/`pause`); Go = verbs + distillation; fresh-spawn escalation; ends at batches-built — the holistic review is perch's separate Builder-review gate, not builder's own job — **not** a single producer spawn; input contract: [plan-format.md](plan-format.md); as-built doc: [builder.md](builder.md) |
 | producers (discussion / plan) | prompt/profile files | **not** modules — just a prompt + profile fed to `shuttle.Run` |
-| `lyx loom status` | a loom subcommand | the 1-line status view; runs as a strand (see `internal/muxengine`; `anchor:top`), not a separate module |
+| `lyx loom status` | a loom subcommand | the 1-line status view; runs as a strand (see `internal/muxengine`; `below-parent` + `ShrinkWhenWaitingOnChild`), not a separate module |
 | execution stack | existing/new infra | [`proc`](README.md) → mux → shuttle — see [overview.md#execution-stack](../overview.md#execution-stack-orchestration-layers) — built once, used by both modules above |
 | Setup | uses existing modules | `warp` (topology owner), `weft`, `board` |
 | `/ly-*` skills | thin wrappers | over `lyx loom run` |
@@ -256,7 +256,12 @@ more than the driver alone. Run in a worktree's pane, it:
 lyx loom run:
   1. ensure the worktree's psmux session is up           (mux)
   2. add the status strand                                (mux.AddStrand "lyx loom status --watch",
-                                                           display: anchor:top, height:fixed(1))
+                                                           display: below-parent, shrinkWhenWaitingOnChild:true —
+                                                           full height while it has no live child, collapsing to
+                                                           collapsed_strip_rows once a forked child exists. A
+                                                           childless status strand rendering full-height is
+                                                           intended, not a bug to re-file (discussion Decision
+                                                           childless-full-height-is-acceptable).)
   3. spawn the loom driver DETACHED                       (internal/proc — it needs no TTY;
                                                            it reads/writes files, drives strands via mux)
   4. attach the current terminal to the psmux session     (mux takes the foreground)

@@ -106,12 +106,6 @@ INVARIANT you must actively verify by driving real psmux — a green `go test` p
   `no mux session; run "lyx mux up"` message is correct and must NOT mention `resume`. Verify
   both branches: kill the server with strands persisted (resume-hint expected) vs. a genuinely
   fresh hub with no persisted state (bare `up` hint expected).
-- TOP-BAND LEGIBILITY. The shipped `top_band_rows` config default is 3 (not 1) — a fresh
-  `up` must render an `anchor:top` strand with a 3-row band absent any override. A per-strand
-  `add --anchor top --top-band-rows N` override wins over the config default, and the
-  last-top-band-stretches-to-fill behavior still applies when the below-parent stack is
-  empty. Verify: default boot renders 3 rows; an explicit `--top-band-rows` override changes
-  only that strand's band height; the stretch rule still holds with the override in play.
 
 BOOT-WINNER SEMANTICS (review lens): the psmux server is per-hub and shared by sibling
 worktrees, so `debug_log` only matters on the boot that actually spawns that shared server —
@@ -152,7 +146,7 @@ CLOSED AND VERIFIED (do not re-chase):
   operator-assisted `attach` test on the deployed binary: the M6/M7 layout rendered correctly, and
   **F1/F11 were confirmed fixed live** — the operator split a foreign pane inside the session, then
   `up` reaped it deterministically and all three tracked strands survived (no zombie, no displaced
-  strand). Config is honored (`top_band_rows`/`collapsed_strip_rows` scale the layout); an attached
+  strand). Config is honored (`collapsed_strip_rows` scales the layout); an attached
   client correctly resizes the window to its own terminal (expected tmux behavior, not a bug).
 
 MERGE BAR (agreed with the operator): correctness in the NORMAL single-instance flow is the gate.
@@ -213,9 +207,9 @@ scenarios M0–M11, driven through the harness. Run it — do not only hand-roll
 - After the session, pull the findings back with `sandbox-fetch.cmd` (stamps the binary
   fingerprint into the fetched `sandbox-report.json` `meta`).
 - The suite's own scenarios already map onto the "High-yield focus" invariants: M8 (kill one
-  pane → resume recreates it), M9 (kill-server → crash-resume rebuilds all), M6 (≥2-top layout
-  tiling), M10 (recursive remove), M11 (down leaves no stray psmux). Walk every one and record
-  OK/WARN/FAIL per the suite's verdict key.
+  pane → resume recreates it), M9 (kill-server → crash-resume rebuilds all), M10 (recursive
+  remove), M11 (down leaves no stray psmux). Walk every one and record OK/WARN/FAIL per the
+  suite's verdict key.
 - NOTE the persona split: SANDBOX-MUX-SUITE.md's black-box rule ("do not read the lyx source
   tree") binds the *agent-under-test* persona, NOT you. As the reviewer you read the source
   AND drive the suite — use the suite's scenarios/harness as your live-driving checklist while
@@ -240,10 +234,6 @@ Also drive the mitigations this task shipped:
   (`status`, `add`, `remove`, `attach`) to read its error — it must point at `lyx mux resume`;
   then repeat from a hub with zero persisted strands and confirm the plain `lyx mux up` hint
   (no `resume` mention).
-- TOP-BAND LEGIBILITY: `add --anchor top --top-band-rows N` on a strand and inspect the applied
-  layout (`display-message -p -t <session> "#{window_layout}"` / pane heights) to confirm the
-  override height wins over the config's `top_band_rows` default (3) and that the last-top-band
-  stretch still applies when appropriate.
 Report the exact commands and observations for these too. Build the binary
 (`go build -o <scratch>/lyx.exe ./cmd/lyx`), create throwaway git-repo fixtures with a
 `_lyx/config/mux.yaml` (copy `internal/muxengine/template.yaml`), and drive `lyx mux <verb>`
@@ -253,7 +243,7 @@ while inspecting real psmux with `psmux -L <socket> list-panes -t <session> -F "
 focus" above, including: two worktrees under one hub; a parent+child stack; killing a strand's
 process (`send-keys -t <pane> "exit" Enter`, repeat until `pane_dead=1`); `kill-server` to
 simulate a crash; `up`/`resume`/`status`/`remove`/`down` in each resulting state; and
-`--anchor top|below-parent|hidden` plus rejection paths (`own-window`, unknown parent, non-leaf
+`--anchor below-parent|hidden` plus rejection paths (`own-window`, unknown parent, non-leaf
 remove without `--recursive`). Use `-vv` to trace exact psmux invocations.
 
 TEARDOWN DISCIPLINE (critical): if you start ANY psmux server/session, tear it down
@@ -275,8 +265,8 @@ These were consciously deferred last time; decide whether any now warrants fixin
   documented policy for operator-split panes rather than silent death).
 - A rare duplicate psmux server process spawned during rapid down→up→add churn (a boot-path
   race; needs a "server-down vs session-missing" distinction to fix safely).
-- psmux normalizing applied layouts (band/strip heights come back off-by-one vs the config knobs
-  `collapsed_strip_rows`/`top_band_rows` — cosmetic; maybe a code/doc note).
+- psmux normalizing applied layouts (band/strip heights come back off-by-one vs the config knob
+  `collapsed_strip_rows` — cosmetic; maybe a code/doc note).
 - `.lyx`/config anchored at `Cwd` not `WorktreeRoot` (running from a worktree SUBDIR gives a
   misleading "not initialized" error; a consistent fix belongs at the `hubgeometry` level).
 - Dead/spec-inherited surfaces: `PsmuxCmd.windowSize`, `PsmuxCmd.paneIDsTopToBottom`,

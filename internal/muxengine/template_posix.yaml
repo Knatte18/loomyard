@@ -3,7 +3,6 @@ pwsh: ${env:LYX_MUX_PWSH:-bash}  # path to the powershell executable used inside
 width: 220  # psmux window width
 height: 50  # psmux window height
 collapsed_strip_rows: 3  # height a shrink:true ancestor collapses to once a descendant is present
-top_band_rows: 3  # fixed height reserved for each anchor:top strand; 3 rows keeps a status command legible (a 1-row band shows effectively nothing) — use --top-band-rows on a strand for a taller need
 min_full_rows: 3  # floor height the clamp rule tries to preserve for a full pane
 strand_name: '<ROLE>:<ROUND>:<SHORT_GUID>'  # template for a strand's display name; unfilled tokens resolve to ""
 debug_log: ${env:LYX_MUX_DEBUG:-0}  # opt-in tmux/psmux server verbose logging (0 off, 1 -v, 2 -vv); takes effect only on the boot that spawns the shared per-hub server; existing hubs must run "lyx config reconcile" to adopt this key

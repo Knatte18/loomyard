@@ -72,7 +72,6 @@ func paneIDsByTop(live []LivePane) []string {
 func (e *Engine) planLayout(st *MuxState, live []LivePane) (layout, focus string, err error) {
 	strands := toRenderStrands(st.Strands, liveIDSet(live))
 	return render.Rules(strands, render.Box{X: 0, Y: 0, W: e.cfg.Width, H: e.cfg.Height}, render.Params{
-		TopBandRows:        e.cfg.TopBandRows,
 		CollapsedStripRows: e.cfg.CollapsedStripRows,
 		MinFullRows:        e.cfg.MinFullRows,
 	}, paneIDsByTop(live))

@@ -33,7 +33,6 @@ func newTestEngine(t *testing.T) *Engine {
 		Pwsh:               filepath.Join(root, "does-not-exist-pwsh.exe"),
 		Width:              100,
 		Height:             21,
-		TopBandRows:        3,
 		CollapsedStripRows: 2,
 		MinFullRows:        3,
 		StrandName:         "<ROLE>:<ROUND>:<SHORT_GUID>",

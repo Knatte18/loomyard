@@ -8,31 +8,22 @@ import "testing"
 func TestPartitionByAnchor(t *testing.T) {
 	t.Run("HiddenStrandsDropped", func(t *testing.T) {
 		strands := []Strand{
-			{GUID: "a", PaneID: "%1", Live: true, Display: Display{Anchor: AnchorTop}},
+			{GUID: "a", PaneID: "%1", Live: true, Display: Display{Anchor: AnchorBelowParent}},
 			{GUID: "b", PaneID: "%2", Live: true, Display: Display{Anchor: AnchorHidden}},
 		}
-		top, stack := partitionByAnchor(strands)
-		if len(top) != 1 || top[0].GUID != "a" {
-			t.Errorf("top = %+v, want only strand a", top)
-		}
-		if len(stack) != 0 {
-			t.Errorf("stack = %+v, want empty", stack)
+		stack := partitionByAnchor(strands)
+		if len(stack) != 1 || stack[0].GUID != "a" {
+			t.Errorf("stack = %+v, want only strand a", stack)
 		}
 	})
 
-	t.Run("NotLiveOrEmptyPaneIDDroppedFromBothPartitions", func(t *testing.T) {
+	t.Run("NotLiveOrEmptyPaneIDDropped", func(t *testing.T) {
 		strands := []Strand{
-			{GUID: "top-not-live", PaneID: "%1", Live: false, Display: Display{Anchor: AnchorTop}},
-			{GUID: "top-no-pane", PaneID: "", Live: true, Display: Display{Anchor: AnchorTop}},
-			{GUID: "stack-not-live", PaneID: "%2", Live: false, Display: Display{Anchor: AnchorBelowParent}},
+			{GUID: "stack-not-live", PaneID: "%1", Live: false, Display: Display{Anchor: AnchorBelowParent}},
 			{GUID: "stack-no-pane", PaneID: "", Live: true, Display: Display{Anchor: AnchorBelowParent}},
-			{GUID: "top-ok", PaneID: "%3", Live: true, Display: Display{Anchor: AnchorTop}},
-			{GUID: "stack-ok", PaneID: "%4", Live: true, Display: Display{Anchor: AnchorBelowParent}},
+			{GUID: "stack-ok", PaneID: "%2", Live: true, Display: Display{Anchor: AnchorBelowParent}},
 		}
-		top, stack := partitionByAnchor(strands)
-		if len(top) != 1 || top[0].GUID != "top-ok" {
-			t.Errorf("top = %+v, want only strand top-ok", top)
-		}
+		stack := partitionByAnchor(strands)
 		if len(stack) != 1 || stack[0].GUID != "stack-ok" {
 			t.Errorf("stack = %+v, want only strand stack-ok", stack)
 		}
@@ -42,9 +33,9 @@ func TestPartitionByAnchor(t *testing.T) {
 		strands := []Strand{
 			{GUID: "a", PaneID: "%1", Live: true, Display: Display{Anchor: AnchorOwnWindow}},
 		}
-		top, stack := partitionByAnchor(strands)
-		if len(top) != 0 || len(stack) != 0 {
-			t.Errorf("partitionByAnchor(own-window) = (%v, %v), want both empty", top, stack)
+		stack := partitionByAnchor(strands)
+		if len(stack) != 0 {
+			t.Errorf("partitionByAnchor(own-window) = %v, want empty", stack)
 		}
 	})
 }

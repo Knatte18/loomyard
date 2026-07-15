@@ -49,12 +49,12 @@ type Removed struct {
 // strand is removed.
 func validateAnchor(anchor render.Anchor) error {
 	switch anchor {
-	case render.AnchorTop, render.AnchorBelowParent, render.AnchorHidden:
+	case render.AnchorBelowParent, render.AnchorHidden:
 		return nil
 	case render.AnchorOwnWindow:
 		return fmt.Errorf("anchor %q is deferred, not supported in v1", render.AnchorOwnWindow)
 	default:
-		return fmt.Errorf("invalid anchor %q; want top|below-parent|hidden", anchor)
+		return fmt.Errorf("invalid anchor %q; want below-parent|hidden", anchor)
 	}
 }
 

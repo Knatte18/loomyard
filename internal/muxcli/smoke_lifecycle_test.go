@@ -87,16 +87,16 @@ func TestSmokeUpAddStatusDown(t *testing.T) {
 	}
 }
 
-// TestSmokeTopBandsThenStackAddsKeepEverySessionPane pins the composed
-// split-path defect this round fixed: with two top-anchored strands laid
-// out (a 1-row band + a stretched band), psmux parks the active pane on the
-// tiny band, and a session-target split-window then fails SILENTLY (exit 0,
-// no new pane, prints an existing pane's id) — mux would bind the new
-// strand to an existing pane, and the next select-layout's duplicate pane
+// TestSmokeStackedAddsKeepEverySessionPane pins the composed split-path
+// defect this round fixed: with several below-parent strands added in
+// sequence, each add's session-target split-window must genuinely create a
+// new pane rather than reusing an existing one — the old path could fail
+// SILENTLY (exit 0, no new pane, prints an existing pane's id), binding the
+// new strand to an existing pane, whose next select-layout's duplicate pane
 // number made psmux destroy every pane in the session. The fix splits the
 // tallest alive pane explicitly and hard-errors on a non-new reported id,
 // so this sequence must now yield one live pane per visible strand.
-func TestSmokeTopBandsThenStackAddsKeepEverySessionPane(t *testing.T) {
+func TestSmokeStackedAddsKeepEverySessionPane(t *testing.T) {
 	psmuxPath := psmuxBinaryPath(t)
 
 	fixture := lyxtest.CopyPaired(t)
@@ -117,8 +117,8 @@ func TestSmokeTopBandsThenStackAddsKeepEverySessionPane(t *testing.T) {
 
 	launch := "pwsh -NoExit -Command Write-Host ready"
 	guids := []string{
-		addStrand(t, launch, "--anchor", "top", "--name", "band1"),
-		addStrand(t, launch, "--anchor", "top", "--name", "band2"),
+		addStrand(t, launch, "--name", "strand1"),
+		addStrand(t, launch, "--name", "strand2"),
 		addStrand(t, launch, "--name", "stack1"),
 		addStrand(t, launch, "--name", "stack2"),
 	}
