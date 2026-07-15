@@ -9,7 +9,7 @@
 
 | Doc | Module | One-line role | CLI? |
 |-----|--------|---------------|------|
-| — | `internal/muxengine` | the window to the world: psmux overlay + **strand** bookkeeping + render (✅ built — see [overview.md#modules](../overview.md#modules) and the package documentation) | `lyx mux` |
+| — | `internal/muxengine` | the window to the world: tmux overlay + **strand** bookkeeping + render (✅ built — see [overview.md#modules](../overview.md#modules) and the package documentation) | `lyx mux` |
 | — | `internal/shuttleengine` + `internal/shuttleengine/claudeengine` + `internal/shuttlecli` | run **one** LLM agent via a swappable engine over the file contract (✅ built — see [overview.md#modules](../overview.md#modules) and the package documentation) | `lyx shuttle` |
 | — | `internal/burlerengine` + `internal/burlercli` | one review+fix round: A-review → B-fix, no self-grading (✅ built — see [overview.md#modules](../overview.md#modules) and the package documentation) | `lyx burler run` (debug only, composed by `perch`) |
 | — | `internal/perchengine` + `internal/perchcli` | the gate loop: run `burler` rounds → `APPROVED`/`STUCK` (+ operational `PAUSED`) + a holistic progress judge (✅ built — see [overview.md#modules](../overview.md#modules) and the package documentation) | `lyx perch run|pause` |
@@ -29,14 +29,14 @@ landed, per the [doc lifecycle](../overview.md#documentation-lifecycle)).
 
 ## Why a stack at all
 
-Spawning an agent is **not** a plain `exec`. Agents must run as **interactive psmux sessions** (an
+Spawning an agent is **not** a plain `exec`. Agents must run as **interactive tmux sessions** (an
 economic constraint — see the `internal/shuttleengine` package documentation),
 so "run one agent" decomposes into: *start a process → make it a visible/interactive pane → run the
 LLM in it → decide the result.* Each layer knows only the one below it.
 
 ```
 internal/proc      start an OS process (windowless / detached, cross-OS)   [knows: the OS]
-internal/mux       the window to the world — overlay + strands + render    [knows: psmux]
+internal/mux       the window to the world — overlay + strands + render    [knows: tmux]
 internal/shuttle   run one LLM agent in a strand, get a result file        [knows: prompts & engines]
 ─────
 burler             one review+fix round: A-review (+cluster) → B-fix        [knows: rubrics & a round]
@@ -56,7 +56,7 @@ Earlier drafts split the model and the view into separate `shed` / `glance` modu
 terminal per worktree** and a **closed, generic display vocabulary**, all three collapse cleanly
 into mux without dragging domain knowledge in:
 
-1. **Overlay** over psmux — every psmux command, env hygiene, resume, hooks, named server.
+1. **Overlay** over tmux — every tmux command, env hygiene, resume, hooks, named server.
 2. **Strand bookkeeping** — a strand (see the `internal/muxengine` package documentation) is one
    tracked process (a metadata record: session, worktree slug, parent, generic `display` spec),
    persisted to `.lyx/mux.json`.
@@ -85,7 +85,7 @@ loom wants a plan-reviewer for worktree `feature-x`:
 ## The disambiguating test
 
 - About **the OS**? → `proc`.
-- About **a psmux mechanic, a strand, or how it's laid out**? → `mux`.
+- About **a tmux mechanic, a strand, or how it's laid out**? → `mux`.
 - About **running an LLM and getting its answer**? → `shuttle`.
 - About **one review+fix round**? → `burler`.
 - About **whether an artifact passes (loop rounds until clean/stuck)**? → `perch`.

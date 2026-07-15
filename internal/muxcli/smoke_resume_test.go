@@ -16,7 +16,7 @@ import (
 )
 
 // TestSmokeCrashRecovery covers the discussion's "server dead (reboot)"
-// recovery state end-to-end against a live psmux server: after the server is
+// recovery state end-to-end against a live tmux server: after the server is
 // killed out from under mux, `up` must reboot the substrate and reconcile the
 // strand to not-live (its stale pane binding cleared, not mistaken for the
 // reborn session's reused initial pane id), and `resume` must then rebuild the
@@ -24,7 +24,7 @@ import (
 // (clearAllPaneBindings on a booted session) exists for; the single-pane
 // TestSmokeUpAddStatusDown above never reaches it.
 func TestSmokeCrashRecovery(t *testing.T) {
-	psmuxPath := psmuxBinaryPath(t)
+	tmuxPath := tmuxBinaryPath(t)
 
 	fixture := lyxtest.CopyPaired(t)
 	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
@@ -82,8 +82,8 @@ func TestSmokeCrashRecovery(t *testing.T) {
 		return strand, raw, ok
 	}
 
-	// Simulate a psmux crash: kill the whole server out from under mux.
-	if err := exec.Command(psmuxPath, "-L", socket, "kill-server").Run(); err != nil {
+	// Simulate a tmux crash: kill the whole server out from under mux.
+	if err := exec.Command(tmuxPath, "-L", socket, "kill-server").Run(); err != nil {
 		t.Fatalf("kill-server: %v", err)
 	}
 	// kill-server returns before the server has fully released its socket. If
@@ -92,7 +92,7 @@ func TestSmokeCrashRecovery(t *testing.T) {
 	// binding clear, and the reused pane id would read falsely live — a race
 	// that only surfaces on a loaded machine. A real crash is a dead process,
 	// so wait until the server is genuinely gone before simulating recovery.
-	waitServerGone(t, psmuxPath, socket, session)
+	waitServerGone(t, tmuxPath, socket, session)
 
 	// up after the crash: reboots the substrate and clears the stale binding
 	// (the reborn session's initial pane reuses the old pane id, so without
@@ -135,12 +135,12 @@ func TestSmokeCrashRecovery(t *testing.T) {
 // it, a claude launched from inside a Claude Code session treats itself as
 // a nested child and silently stops persisting its transcript) plus the
 // opaque resumeCmd replay. It launches a real claude in a strand with a
-// codeword prompt, kills the whole psmux server out from under it, resumes
+// codeword prompt, kills the whole tmux server out from under it, resumes
 // via the stored `claude --continue`, and asserts the codeword comes back —
 // which is only possible if the transcript was persisted and found again.
 // Needs a logged-in claude CLI; runs a real subscription session (~1-3 min).
 func TestSmokeClaudeResumeRecallsCodeword(t *testing.T) {
-	psmuxPath := psmuxBinaryPath(t)
+	tmuxPath := tmuxBinaryPath(t)
 	claudePath := claudeBinaryPath(t)
 
 	fixture := lyxtest.CopyPaired(t)
@@ -160,8 +160,9 @@ func TestSmokeClaudeResumeRecallsCodeword(t *testing.T) {
 	}
 
 	codeword := fmt.Sprintf("zebra-%d", time.Now().UnixNano()%1000000)
-	launch := fmt.Sprintf(`& '%s' 'Remember the codeword %s. Reply with exactly: STORED %s'`, claudePath, codeword, codeword)
-	resume := fmt.Sprintf(`& '%s' --continue`, claudePath)
+	prompt := fmt.Sprintf("Remember the codeword %s. Reply with exactly: STORED %s", codeword, codeword)
+	launch := smokeInvokeLine(claudePath, prompt)
+	resume := smokeInvokeLine(claudePath, "--continue")
 
 	// Scope the transcript watch to THIS test's claude project directory
 	// (derived from the fixture hub — the pane's cwd) and snapshot what is
@@ -196,9 +197,9 @@ func TestSmokeClaudeResumeRecallsCodeword(t *testing.T) {
 	// under test. Called on every poll iteration (not once) because a single
 	// early Enter can land before the prompt is interactive and be dropped.
 	dismissTrust := func(paneID string) {
-		content := capturePane(t, psmuxPath, socket, paneID)
+		content := capturePane(t, tmuxPath, socket, paneID)
 		if strings.Contains(content, "trust") && strings.Contains(content, "folder") {
-			_ = exec.Command(psmuxPath, "-L", socket, "send-keys", "-t", paneID, "Enter").Run()
+			_ = exec.Command(tmuxPath, "-L", socket, "send-keys", "-t", paneID, "Enter").Run()
 		}
 	}
 
@@ -219,10 +220,10 @@ func TestSmokeClaudeResumeRecallsCodeword(t *testing.T) {
 	// `claude --continue`, which reopens the most recent conversation for
 	// this directory — it only finds one because the transcript above
 	// persisted.
-	if err := exec.Command(psmuxPath, "-L", socket, "kill-server").Run(); err != nil {
+	if err := exec.Command(tmuxPath, "-L", socket, "kill-server").Run(); err != nil {
 		t.Fatalf("kill-server: %v", err)
 	}
-	waitServerGone(t, psmuxPath, socket, session)
+	waitServerGone(t, tmuxPath, socket, session)
 
 	out.Reset()
 	if code := RunCLI(&out, []string{"resume"}); code != 0 {
@@ -247,9 +248,9 @@ func TestSmokeClaudeResumeRecallsCodeword(t *testing.T) {
 	// so it cannot false-match).
 	resumedPane := readPane()
 	dismissTrust(resumedPane)
-	if paneEventuallyContains(t, psmuxPath, socket, resumedPane, codeword, 30*time.Second) {
+	if paneEventuallyContains(t, tmuxPath, socket, resumedPane, codeword, 30*time.Second) {
 		return
 	}
-	sendKeysLine(t, psmuxPath, socket, resumedPane, "What was the codeword I gave you? Reply with only that word.")
-	pollPaneContains(t, psmuxPath, socket, resumedPane, codeword, 120*time.Second)
+	sendKeysLine(t, tmuxPath, socket, resumedPane, "What was the codeword I gave you? Reply with only that word.")
+	pollPaneContains(t, tmuxPath, socket, resumedPane, codeword, 120*time.Second)
 }

@@ -20,8 +20,8 @@ import (
 
 // muxCLI is the receiver every mux verb hangs off of, so each subcommand's
 // RunE reads the same PersistentPreRunE-populated state. eng is the domain
-// handle every verb calls into, including for psmux-facing identity (attach,
-// card 27, reads the resolved psmux binary path via eng.PsmuxPath() to build
+// handle every verb calls into, including for tmux-facing identity (attach,
+// card 27, reads the resolved tmux binary path via eng.TmuxPath() to build
 // its in-place attach-session invocation, alongside Socket/SessionName) — no
 // verb needs the resolved Config directly. The zero muxCLI is not valid
 // until PersistentPreRunE has populated eng.
@@ -43,8 +43,8 @@ func Command() *cobra.Command {
 
 	parent := &cobra.Command{
 		Use:   "mux",
-		Short: "manage the psmux strand overlay for this worktree",
-		Long: `mux drives a per-hub psmux server that lays out one strand per pane for
+		Short: "manage the tmux strand overlay for this worktree",
+		Long: `mux drives a per-hub tmux server that lays out one strand per pane for
 this worktree's session: adding, removing, resuming, and attaching to
 strands, plus rendering their layout on every mutation.`,
 		// RunE is set so that bare "lyx mux" lists subcommands and "lyx mux bogus"

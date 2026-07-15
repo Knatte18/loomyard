@@ -47,16 +47,16 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 
 	// ConfigTemplate() is OS-split (template_windows.go / template_posix.go),
 	// but both variants defer to PATH names rather than a pinned install
-	// path: psmux/pwsh on Windows, tmux/bash on POSIX.
-	wantPsmux, wantPwsh := "psmux", "pwsh"
+	// path: tmux/pwsh on Windows, tmux/bash on POSIX.
+	wantTmux, wantShell := "tmux", "pwsh"
 	if runtime.GOOS != "windows" {
-		wantPsmux, wantPwsh = "tmux", "bash"
+		wantTmux, wantShell = "tmux", "bash"
 	}
-	if cfg.Psmux != wantPsmux {
-		t.Errorf("Psmux = %q, want %q", cfg.Psmux, wantPsmux)
+	if cfg.Tmux != wantTmux {
+		t.Errorf("Tmux = %q, want %q", cfg.Tmux, wantTmux)
 	}
-	if cfg.Pwsh != wantPwsh {
-		t.Errorf("Pwsh = %q, want %q", cfg.Pwsh, wantPwsh)
+	if cfg.Shell != wantShell {
+		t.Errorf("Shell = %q, want %q", cfg.Shell, wantShell)
 	}
 	if cfg.Width != 220 {
 		t.Errorf("Width = %d, want 220", cfg.Width)
@@ -67,28 +67,31 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 	if cfg.CollapsedStripRows != 3 {
 		t.Errorf("CollapsedStripRows = %d, want 3", cfg.CollapsedStripRows)
 	}
-	if cfg.TopBandRows != 1 {
-		t.Errorf("TopBandRows = %d, want 1", cfg.TopBandRows)
-	}
 	if cfg.MinFullRows != 3 {
 		t.Errorf("MinFullRows = %d, want 3", cfg.MinFullRows)
 	}
 	if cfg.StrandName != "<ROLE>:<ROUND>:<SHORT_GUID>" {
 		t.Errorf("StrandName = %q, want %q", cfg.StrandName, "<ROLE>:<ROUND>:<SHORT_GUID>")
 	}
+	if cfg.DebugLog != "0" {
+		t.Errorf("DebugLog = %q, want %q", cfg.DebugLog, "0")
+	}
+	if cfg.Mouse != "off" {
+		t.Errorf("Mouse = %q, want %q", cfg.Mouse, "off")
+	}
 }
 
 func TestLoadConfig_EnvOverride(t *testing.T) {
 	tmpDir := t.TempDir()
-	t.Setenv("LYX_MUX_PSMUX", `D:\tools\psmux.exe`)
+	t.Setenv("LYX_MUX_TMUX", `D:\tools\tmux.exe`)
 	seedLyxConfig(t, tmpDir, "mux", muxengine.ConfigTemplate())
 
 	cfg, err := muxengine.LoadConfig(tmpDir, "mux")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if cfg.Psmux != `D:\tools\psmux.exe` {
-		t.Errorf("Psmux = %q, want env override", cfg.Psmux)
+	if cfg.Tmux != `D:\tools\tmux.exe` {
+		t.Errorf("Tmux = %q, want env override", cfg.Tmux)
 	}
 }
 

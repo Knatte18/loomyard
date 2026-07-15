@@ -2,7 +2,7 @@
 
 ## What this is
 
-A structured test-loop for exercising `lyx shuttle` against a **live psmux server and a
+A structured test-loop for exercising `lyx shuttle` against a **live tmux server and a
 logged-in claude** in the sandbox Hub host repo. Like `SANDBOX-MUX-SUITE.md`, the value
 here is partly **visual**: a strand's pane doing real agent work, an outcome coming back.
 Not an automated suite -- an agent drives it, an operator watches.
@@ -16,8 +16,7 @@ Before starting a session:
 2. **Materialize the hub.** Run `sandbox-build.cmd` (or `sandbox-build.cmd -reset`
    to start clean); the session cwd is the Hub host repo root, the same operating model
    as the main suite.
-3. **Live-psmux and claude requirement.** `psmux.exe` on PATH (installed at
-   `C:\Code\tools\bin\psmux.exe`), PowerShell 7, and a logged-in `claude` on PATH.
+3. **Live-tmux and claude requirement.** tmux (or the Windows tmux port) on PATH, PowerShell 7, and a logged-in `claude` on PATH.
    If any of these is unavailable in the session, **note that as the session outcome
    rather than treating it as a shuttle defect** -- the `**Covers:** shuttle` tag on S1
    satisfies the sandbox coverage guard (`sandbox_coverage_test.go`) regardless of
@@ -35,12 +34,12 @@ It must not look for, read, or reason about the lyx source tree. No peeking at
 Discovering the command surface is done via `lyx shuttle`, `lyx shuttle <subcommand>`,
 and `lyx shuttle <subcommand> --help` alone -- not from documentation outside the Hub.
 
-### Controlled psmux exceptions
+### Controlled tmux exceptions
 
 One sanctioned deviation from the pure black-box rule, mirroring the mux suite's own
 controlled-exception note:
 
-- **Direct `psmux -L <socket> list-panes`/`ls`** is allowed only to confirm a strand's
+- **Direct `tmux -L <socket> list-panes`/`ls`** is allowed only to confirm a strand's
   pane exists (or was cleaned up), where `<socket>` is read from the shuttle run's
   strand guid cross-referenced against `lyx mux status` output.
 - **Scenario S2's operator attach** is operator-assisted -- see S2 below.
@@ -113,7 +112,7 @@ stamps `meta` (including the binary fingerprint). Confine all free text to the
 
 **Watch:** `lyx shuttle run --prompt "write the single line OK into result.md and
 nothing else" --output-file result.md` starts a strand (visible as a pane, confirmable
-via `lyx mux status` or `psmux -L <socket> list-panes`); the command blocks until the
+via `lyx mux status` or `tmux -L <socket> list-panes`); the command blocks until the
 agent finishes; the printed JSON envelope reports `"outcome":"done"` with a `sessionId`
 and `guid`; `result.md` exists with the expected content; and afterward the strand's
 pane and run directory are cleaned up (no leftover pane, `lyx mux status` no longer
@@ -190,6 +189,6 @@ findings section above -- with `items: []` when every scenario was `OK`.
 
 ## Notes
 
-- Host/weft scenarios stay in `SANDBOX-CORE-SUITE.md`, mux/psmux scenarios stay in
+- Host/weft scenarios stay in `SANDBOX-CORE-SUITE.md`, mux/tmux scenarios stay in
   `SANDBOX-MUX-SUITE.md`; this suite grows with shuttle (a second engine, cluster
   reviews) -- add `S` scenarios here, not in either other suite.

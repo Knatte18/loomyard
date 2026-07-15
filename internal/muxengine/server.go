@@ -1,7 +1,7 @@
-// server.go computes the per-hub psmux server identity: the server name
+// server.go computes the per-hub tmux server identity: the server name
 // (also reused as the -L socket name) and the per-worktree session name.
-// Server-name construction lives here, in the psmux domain, rather than in
-// hubgeometry, because it is a psmux-specific derivation (not a filesystem
+// Server-name construction lives here, in the tmux domain, rather than in
+// hubgeometry, because it is a tmux-specific derivation (not a filesystem
 // path) computed from a Layout.Hub value hubgeometry already resolves. The
 // file is named server.go, not naming.go, so it is not confusable with the
 // strand-name helpers in name.go.
@@ -13,7 +13,7 @@ import (
 	"path/filepath"
 )
 
-// ServerName returns the deterministic psmux server name for the hub at
+// ServerName returns the deterministic tmux server name for the hub at
 // hubPath: "lyx-<hub-basename>-<short-hash>", where <short-hash> is the
 // first 8 hex characters of sha256(abs-hub-path). Every worktree under the
 // same hub computes the same name, which is the mechanism behind the
@@ -28,7 +28,7 @@ func ServerName(hubPath string) string {
 	return "lyx-" + base + "-" + shortHash
 }
 
-// SessionName returns the psmux session name for a worktree: the worktree's
+// SessionName returns the tmux session name for a worktree: the worktree's
 // directory slug. Each strand's parent worktree maps to its own session
 // within the shared per-hub server.
 func SessionName(worktreeRoot string) string {

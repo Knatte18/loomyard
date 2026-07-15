@@ -1,9 +1,9 @@
 // reconcile.go implements the reconcile-against-live-panes engine op: the
 // pure planning function planReconcile decides which strand pane bindings
 // to clear and which dead panes to kill, and reconcileLocked composes that
-// plan with the psmux kill I/O. Every public engine op runs reconcile
+// plan with the tmux kill I/O. Every public engine op runs reconcile
 // first, under the op lock, so the persisted table never drifts from what
-// psmux's list-panes actually reports.
+// tmux's list-panes actually reports.
 
 package muxengine
 
@@ -12,16 +12,16 @@ import "fmt"
 // planReconcile is the pure planning half of reconcile: given the current
 // strand table and the live pane set list-panes just reported, it decides
 // which strands' pane bindings must be cleared and which panes must be
-// killed before the layout is re-applied. It never touches psmux itself, so
+// killed before the layout is re-applied. It never touches tmux itself, so
 // the decision logic is unit-testable without a running server.
 //
 // The kill-before-apply rule keeps the rendered window_layout string
-// consistent with psmux's actual pane set: a pane_dead=1 pane still
+// consistent with tmux's actual pane set: a pane_dead=1 pane still
 // occupies a slot in list-panes' output, so leaving it un-killed while
 // excluding its strand from the layout would make the layout string
-// enumerate fewer panes than psmux still holds (GAP2). The one exception is
+// enumerate fewer panes than tmux still holds (GAP2). The one exception is
 // enforced by the session-survival rule: at least one pane must always
-// survive, since psmux offers no clean way to empty a window (under
+// survive, since tmux offers no clean way to empty a window (under
 // remain-on-exit a last-pane kill corpses an alive pane rather than
 // refusing, and can end the session for a dead one — mux never asks). When
 // any pane is still alive, every dead pane is killable. When every pane is
@@ -37,7 +37,7 @@ import "fmt"
 // before persist) — are also scheduled for killing, but only while mux owns
 // content in the window (>=1 strand bound to a present pane). Killing them
 // here, deterministically, replaces relying on select-layout's positional
-// reaping: psmux assigns layout cells to panes in window order and destroys
+// reaping: tmux assigns layout cells to panes in window order and destroys
 // whichever panes sit BEYOND the emitted cell count, so with a foreign pane
 // present the reaped victim is positional — observed live to destroy a
 // TRACKED strand's pane while the foreign pane survived. With no bound
@@ -128,7 +128,7 @@ func planReconcile(strands []Strand, live []LivePane) (clearedGUIDs []string, pa
 }
 
 // clearAllPaneBindings drops every strand's PaneID. It is used after a
-// session is freshly booted (server rebirth): psmux restarts pane numbering
+// session is freshly booted (server rebirth): tmux restarts pane numbering
 // from %0/%1, so a persisted binding can collide with a reborn pane id and be
 // mistaken for a live strand by reconcile. A just-booted session hosts none
 // of the prior strands, so every binding is stale by definition.
@@ -138,7 +138,7 @@ func clearAllPaneBindings(st *MuxState) {
 	}
 }
 
-// reconcileLocked reconciles the persisted table against psmux's live pane
+// reconcileLocked reconciles the persisted table against tmux's live pane
 // set: it kills each pane planReconcile schedules (dead-but-not-sole panes,
 // plus untracked panes while mux owns bound content), then clears the
 // PaneID of every strand whose pane is gone or was just killed (keeping the
@@ -150,7 +150,7 @@ func (e *Engine) reconcileLocked(st *MuxState, live []LivePane) (killed []string
 	clearedGUIDs, panesToKill, _ := planReconcile(st.Strands, live)
 
 	for _, id := range panesToKill {
-		if err := e.psmux.run("kill-pane", "-t", id); err != nil {
+		if err := e.tmux.run("kill-pane", "-t", id); err != nil {
 			return killed, fmt.Errorf("kill pane %s: %w", id, err)
 		}
 		killed = append(killed, id)

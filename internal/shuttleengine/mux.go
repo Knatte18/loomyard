@@ -3,7 +3,7 @@
 // and the Interrupt/Send handle methods need (registering/removing a
 // strand, reading session status, and the pane-transport ops). The seam
 // exists so Runner/Wait/Interrupt/Send are testable against a hermetic fake
-// without a live psmux server; *muxengine.Engine satisfies MuxOps as-is —
+// without a live tmux server; *muxengine.Engine satisfies MuxOps as-is —
 // the seam adds no adapter layer, it only narrows the type the run loop
 // depends on.
 

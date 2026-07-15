@@ -42,7 +42,7 @@ type builderCLI struct {
 	// starter and orchestratorStarter default to runner (the latter through
 	// the runnerOrchestratorStarter adapter) in production. A test overrides
 	// one or the other with a fake to exercise spawn-batch/run without a
-	// live psmux/claude substrate, mirroring how builderengine's own
+	// live tmux/claude substrate, mirroring how builderengine's own
 	// spawn/run tests fake these same seams (spawn_test.go,
 	// runlevel_test.go).
 	runner              *shuttleengine.Runner

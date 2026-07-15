@@ -1,13 +1,13 @@
 // strand_test.go drives the strand-mutation *Locked helpers directly
 // against a fixture .lyx: guid generation/uniqueness, unknown/cyclic parent
 // rejection, the hidden-add no-launch path, the launch-path decision seam
-// (needsLaunchOnAdd/needsLaunchOnSurface — the actual real-psmux launch
+// (needsLaunchOnAdd/needsLaunchOnSurface — the actual real-tmux launch
 // itself is out of hermetic reach, see spawn_test.go), UpdateStrand's
 // visible->hidden rejection, and RemoveStrand's non-leaf guard/cascade.
-// None of these touch psmux: addStrandLocked/updateStrandLocked only reach
-// psmux through launchStrandLocked, and every case here either stays
+// None of these touch tmux: addStrandLocked/updateStrandLocked only reach
+// tmux through launchStrandLocked, and every case here either stays
 // hidden or is a rejection that never gets there; removeStrandLocked never
-// touches psmux at all.
+// touches tmux at all.
 
 package muxengine
 
@@ -148,7 +148,6 @@ func TestNeedsLaunchOnAdd(t *testing.T) {
 	}{
 		{"Hidden_NoLaunch", render.AnchorHidden, false},
 		{"BelowParent_Launches", render.AnchorBelowParent, true},
-		{"Top_Launches", render.AnchorTop, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -271,6 +270,60 @@ func TestRemoveStrandLocked_UnknownGuidRejected(t *testing.T) {
 
 	if _, _, err := e.removeStrandLocked(st, "does-not-exist", true); err == nil {
 		t.Fatal("removeStrandLocked(unknown guid) = nil error, want error")
+	}
+}
+
+// TestRemovalEmptiedSession pins the four-way classification
+// removalEmptiedSession makes: the success-swallow in RemoveStrand may only
+// fire when the session is confirmed gone AND no remaining strand is
+// expected to still own a live pane (mirroring anyPlacedStrand's
+// Anchor != render.AnchorHidden filter).
+func TestRemovalEmptiedSession(t *testing.T) {
+	tests := []struct {
+		name        string
+		remaining   []Strand
+		sessionGone bool
+		want        bool
+	}{
+		{
+			name:        "SessionGone_EmptyRemaining_True",
+			remaining:   nil,
+			sessionGone: true,
+			want:        true,
+		},
+		{
+			name: "SessionGone_AllRemainingHidden_True",
+			remaining: []Strand{
+				{GUID: "a", Display: render.Display{Anchor: render.AnchorHidden}},
+				{GUID: "b", Display: render.Display{Anchor: render.AnchorHidden}},
+			},
+			sessionGone: true,
+			want:        true,
+		},
+		{
+			name: "SessionGone_OneRemainingNonHidden_False",
+			remaining: []Strand{
+				{GUID: "a", Display: render.Display{Anchor: render.AnchorHidden}},
+				{GUID: "b", Display: render.Display{Anchor: render.AnchorBelowParent}},
+			},
+			sessionGone: true,
+			want:        false,
+		},
+		{
+			name: "SessionNotGone_AnyRemaining_False",
+			remaining: []Strand{
+				{GUID: "a", Display: render.Display{Anchor: render.AnchorHidden}},
+			},
+			sessionGone: false,
+			want:        false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := removalEmptiedSession(tt.remaining, tt.sessionGone); got != tt.want {
+				t.Errorf("removalEmptiedSession(%+v, sessionGone=%v) = %v, want %v", tt.remaining, tt.sessionGone, got, tt.want)
+			}
+		})
 	}
 }
 

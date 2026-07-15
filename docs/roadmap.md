@@ -11,7 +11,7 @@ done. What remains splits into two tracks:
 
 - **Setup track** — finish bootstrapping a hub: config TUI, board-repo creation,
   `doctor`. (`warp clone` handles the clone step — no standalone `ly-git-clone`.)
-- **Orchestration stack** — the part that ties worktrees, the board, and psmux
+- **Orchestration stack** — the part that ties worktrees, the board, and tmux
   into a spawn→review→merge lifecycle. This used to be a single distant "endgame";
   it is now a **designed, layered path**: `proc → mux → shuttle → burler → perch → loom`
   (see the [execution stack](overview.md#execution-stack-orchestration-layers)
@@ -41,11 +41,11 @@ proc ✅ ──▶ mux ✅ ──▶ shuttle ✅ ──┬▶ burler ✅ ──�
 `builder` branched off `shuttle` (it spawns implementers directly, did **not** need `perch`);
 `loom` joins the two — it needs both `perch` (review) and `builder` (implementation).
 
-- **`mux`** is done — psmux overlay + **strand** bookkeeping + render sub-package
+- **`mux`** is done — tmux overlay + **strand** bookkeeping + render sub-package
   (`internal/muxcli` + `internal/muxengine` + `internal/muxengine/render`; it absorbs what earlier
   drafts split into `shed`/`glance`). See [milestone 9](#orchestration-stack) / the
   `internal/muxengine` package documentation.
-- **`shuttle`** is done — one LLM agent as an interactive psmux strand over the file contract,
+- **`shuttle`** is done — one LLM agent as an interactive tmux strand over the file contract,
   behind a swappable engine. See [milestone 10](#orchestration-stack) / the
   [overview module entry](overview.md#modules).
 - **`burler` + `perch`** are both done — the former gate module `review` split into two:
@@ -127,7 +127,7 @@ Each layer knows only the one below it; built bottom-up. See the
    third member of the portability family after `fsx` and `fslink`).
 
 9. **`internal/mux` — the window to the world.** ✅ **Done.** Three things in one, split across
-   `internal/muxcli` + `internal/muxengine` + `internal/muxengine/render`: **overlay** over psmux
+   `internal/muxcli` + `internal/muxengine` + `internal/muxengine/render`: **overlay** over tmux
    (panes, send-keys/capture, env hygiene, native `--resume`, one named server per hub — orphan
    firewall — with one session per worktree); **strand bookkeeping** (each managed process is a
    strand — a `guid`-keyed record with name, worktree slug, parent, opaque `cmd`/`resumeCmd`,
@@ -139,10 +139,11 @@ Each layer knows only the one below it; built bottom-up. See the
    `shed`/`glance`. CLI verbs: `up`, `add`, `remove`, `status`, `attach`, `resume`, `down`.
    (see the `internal/muxengine` package documentation) **Built on what muxpoc proved** —
    clean-env boot, interactive claude, child-pane spawn, bottom-dominant layout, and resume after
-   `kill-server`; muxpoc itself is now parked ([overview.md#modules](overview.md#modules)).
+   `kill-server`; muxpoc itself has since been deleted, its job done
+   ([overview.md#modules](overview.md#modules)).
 
 10. **`internal/shuttleengine` — one LLM agent via a swappable engine.** ✅ **Done.** Runs a single
-    agent as an interactive psmux strand over the file contract; `Stop`-hook completion read off an
+    agent as an interactive tmux strand over the file contract; `Stop`-hook completion read off an
     events file classifies the run into `done`/`asking`/`died`/`timeout`; `PreToolUse` guardrails
     (deny in-process `Agent` always, `AskUserQuestion` too when autonomous). The **engine** seam
     isolates the provider (`internal/shuttleengine/claudeengine` is the only v1 engine; Gemini etc.
@@ -174,7 +175,7 @@ Each layer knows only the one below it; built bottom-up. See the
     the `_lyx/` status file, yielding only at human boundaries (or never, in `--auto`). **This is
     the orchestrator that finally replaces mill/millhouse** — the top of the stack above, sitting on
     board + worktree + weft + the `mux → shuttle` layers. `lyx run` is the **session bootstrap**:
-    ensure the worktree's psmux session, add the `lyx loom status` strand (1-line top pane), spawn
+    ensure the worktree's tmux session, add the `lyx loom status` strand (1-line top pane), spawn
     the driver detached (`proc`), attach the terminal; a `.lyx/lyxrun.cmd` launcher makes it one
     click. The 1-line view ships as the `lyx loom status` subcommand (a strand), not a module.
     The **Builder** phase is carved into its own module (**`builder`**, `internal/builderengine`) —
@@ -195,7 +196,7 @@ Layer in once the core stack works; not required for `loom` v1.
     (see the `internal/muxengine` package documentation). Deferred only because
     one-terminal-per-worktree is the right starting scope.
 
-14. **mux daemon.** Standalone watchdog process: detects a psmux crash via `cmd.Wait()`, recovers
+14. **mux daemon.** Standalone watchdog process: detects a tmux crash via `cmd.Wait()`, recovers
     each strand by replaying its stored opaque `resumeCmd` (native `--resume` **works** for
     programmatically-driven Claude panes once the inherited Claude-Code parent-session env is
     stripped — see the `internal/muxengine` package documentation on resume; the
@@ -205,8 +206,8 @@ Layer in once the core stack works; not required for `loom` v1.
     **Possible extension — foreign-pane self-heal:** today mux is one-shot, so an operator-split or
     stray "faux" pane is only reaped on the *next* mux verb (reconcile owns the session window). The
     daemon could close that gap by reconciling on its own. Design steer for when this is picked up:
-    prefer **event-driven psmux hooks** (e.g. `after-split-window` / `window-layout-changed`) over a
-    polling loop — near-free and responsive; fall back to a low-frequency sweep only if psmux lacks
+    prefer **event-driven tmux hooks** (e.g. `after-split-window` / `window-layout-changed`) over a
+    polling loop — near-free and responsive; fall back to a low-frequency sweep only if tmux lacks
     the hook. Gate it behind a policy that distinguishes a bug-induced faux pane from an operator's
     **intentional** scratch pane (a grace period or an opt-out) — silent real-time reaping is a UX
     hazard, not a win. Prerequisite: make the reap probe cheaper first (it currently spawns a fresh
@@ -262,7 +263,7 @@ Independent of the orchestration stack; interleave as needed.
 
 23. **`hardener` — behavior-based hardening of live-substrate modules.** 🧪 **DRAFT / concept — not
     settled.** A separate, **on-demand, post-loom** reviewer that *runs* a live-substrate module (the
-    archetype: `mux` driving real psmux) in a **sandbox repo** and reacts to what it observes, rather
+    archetype: `mux` driving real tmux) in a **sandbox repo** and reacts to what it observes, rather
     than reading an artifact as `perch` (see the `internal/perchengine` package documentation) does.
     Orchestrated by an accumulating (per-round-respawn + handoff) orchestrator that targets each round and verifies via a
     **deterministic gate** (N× concurrent smoke, zero stray state); shares only the `burler` round
@@ -274,7 +275,7 @@ Independent of the orchestration stack; interleave as needed.
 
 24. **Own-window strand anchoring** *(deferred mux enhancement — grouped with 13–15 thematically,
     numbered here to avoid renumbering the list).* A new `display` anchor that spawns a strand into
-    its **own switchable psmux window** rather than a pane in the worktree column — the piece mux is
+    its **own switchable tmux window** rather than a pane in the worktree column — the piece mux is
     missing today (windows are not yet a display target; mux runs one window of panes per worktree).
     This is what **unlocks `burler`'s `cluster-N > 0`**: N parallel cluster reviewers land in their
     own window the operator can switch to and watch, instead of a pane explosion in the worktree
@@ -291,7 +292,7 @@ Independent of the orchestration stack; interleave as needed.
     Linux but nothing here has actually *run* on Linux. This milestone is that deferred execution
     pass, carried verbatim from the discussion's "Out" section:
     1. Run the sandbox smoke suite green on real Linux.
-    2. Real tmux behavioral validation of every psmux edge-case assumption — silent split
+    2. Real tmux behavioral validation of every tmux edge-case assumption — silent split
        failure, dead-pane adoption, the `-l` leading-dash bug, empty-layout destruction, and
        async kill-server.
     3. Real `/proc` execution validation, including confirming the `serverProcessesOnSocket`

@@ -24,8 +24,8 @@ import "fmt"
 // re-sequences its placements to follow paneOrder; every pane keeps its own
 // strand's intended height, only the emission order bends to physical
 // reality. A nil/empty paneOrder keeps the intended order (parent above
-// child, top bands first) — correct whenever panes were created in table
-// order, and the deterministic shape golden tests assert on.
+// child) — correct whenever panes were created in table order, and the
+// deterministic shape golden tests assert on.
 func Rules(strands []Strand, box Box, p Params, paneOrder []string) (layout string, focus string, err error) {
 	for _, s := range strands {
 		if s.Display.Anchor == AnchorOwnWindow {
@@ -36,52 +36,14 @@ func Rules(strands []Strand, box Box, p Params, paneOrder []string) (layout stri
 	// Repair any corrupt cyclic parent table before depth-based ordering,
 	// so a bad persisted record can never hang layout.
 	fixed := breakCycles(strands)
-	top, stack := partitionByAnchor(fixed)
+	stack := partitionByAnchor(fixed)
 	ordered := orderStack(stack)
 
-	// Reserve a fixed band at the top of box for each AnchorTop strand, each
-	// followed by a one-row divider — except the very last top band's
-	// divider, which is only reserved when a below-parent stack follows it
-	// to consume the region past it. With >=2 top strands and zero stack
-	// strands there would otherwise be nothing left to fill the remainder of
-	// box.H (buildStackBody would then emit a window_layout string shorter
-	// than box.H, which psmux's select-layout rejects — a failure surfacing
-	// after launchStrandLocked already created the new pane, orphaning it;
-	// orch_04 review 04, finding #2), so the last top band instead stretches
-	// to absorb every leftover row: heights + dividers then always sum to
-	// exactly box.H regardless of how many top/stack strands are present.
-	placements := make([]placement, 0, len(top)+len(stack))
-	y := box.Y
-	for i, s := range top {
-		height := p.TopBandRows
-		isLastTop := i == len(top)-1
-		if isLastTop && len(ordered) == 0 {
-			height = box.H - (y - box.Y)
-		}
-		placements = append(placements, placement{id: s.PaneID, height: height})
-		y += height
-		if !isLastTop || len(ordered) > 0 {
-			y++ // one-row divider before the next top band or the stack region
-		}
-	}
-
-	stackBox := Box{X: box.X, Y: y, W: box.W, H: box.H - (y - box.Y)}
-	placements = append(placements, stackHeights(ordered, stackBox, p)...)
-
+	placements := stackHeights(ordered, box, p)
 	placements = resequenceByPaneOrder(placements, paneOrder)
 
 	body := buildStackBody(box, placements)
-	// focus resolves over the below-parent order first, so the bottom
-	// (active) pane is the default focus target. With no stack at all
-	// (top-only layouts), the last top band — the stretched one — is the
-	// fallback: leaving focus unset would let psmux park the active pane on
-	// an arbitrary (often 1-row) band after select-layout, and the active
-	// pane is both where an attaching operator lands and what an unguarded
-	// split would target.
 	focus = focusTarget(ordered)
-	if focus == "" && len(top) > 0 {
-		focus = top[len(top)-1].PaneID
-	}
 	return wrapLayout(body), focus, nil
 }
 

@@ -1,5 +1,11 @@
-# psmux + claude TUI behavior -- empirical findings
+# psmux (Windows) + claude TUI behavior -- empirical findings
 
+> This research was conducted specifically against **psmux on Windows**, not native
+> tmux — every finding below was observed running psmux, not verified against tmux
+> directly. Native tmux is assumed to behave similarly (psmux is designed as a
+> faithful tmux port), but that assumption is unconfirmed; treat any tmux-specific
+> claim here as inherited-by-assumption, not independently verified.
+>
 > Provenance: copied from `millhouse/doc/psmux-tui-behavior.md` (sessions
 > `replace-claude-p-with-psmux`, `smoke-test-psmux`). 100% relevant to the Loomyard mux
 > design — it is the prior empirical record of driving a real `claude` TUI inside a
@@ -8,14 +14,14 @@
 
 Observed 2026-05-31. Session: `replace-claude-p-with-psmux`.
 Updated 2026-06-01. Session: `smoke-test-psmux`.
-Terminal: `psmux new-session -x 220 -y 60 -- C:/Code/tools/powershell7/pwsh.exe`
+Terminal: `tmux new-session -x 220 -y 60 -- C:/Code/tools/powershell7/pwsh.exe` (on Windows, via psmux)
 Claude version: 2.1.158 (initial), 2.1.159 (smoke-test run), Sonnet 4.6.
 
 ---
 
 ## Shell startup
 
-`psmux new-session -- pwsh` resolves `pwsh` via PATH. On this machine,
+`tmux new-session -- pwsh` (on Windows via psmux) resolves `pwsh` via PATH. On this machine,
 `C:\Users\hanf\AppData\Local\Microsoft\WindowsApps\pwsh.exe` is a 0-byte App
 Execution Alias stub. The session spawns but the shell is dead. Any `send-keys`
 go into a dead pane; `_wait_for_marker_in_pane` polls until timeout (60s) and
@@ -23,7 +29,7 @@ returns False -- which causes the hang described in the proposal.
 
 Working path: `C:/Code/tools/powershell7/pwsh.exe`.
 
-Fix: add `llm.claude.psmux.shell_path` config key (default `pwsh`).
+Fix: add `llm.claude.tmux.shell_path` config key (default `pwsh` on Windows, `bash` on POSIX).
 
 ---
 
@@ -133,7 +139,7 @@ def _is_processing(capture: str) -> bool:
     return False
 ```
 
-**IMPORTANT -- non-ASCII spaces (discovered 2026-06-01):** psmux alternate-screen
+**IMPORTANT -- non-ASCII spaces (discovered 2026-06-01):** psmux (Windows tmux port) alternate-screen
 capture on Windows emits the status bar with non-ASCII space characters between
 words (not U+0020 ASCII spaces). When decoded with `encoding="utf-8", errors="replace"`,
 these become U+FFFD replacement chars. The result in Python is `"?forshortcuts??foragents"`,
@@ -184,7 +190,7 @@ use the first non-skip line as `content_end_idx`.
 
 ## Multi-line prompt submission
 
-**`psmux paste-buffer` does NOT work with Claude's TUI on Windows (psmux 3.3.4).**
+**`tmux paste-buffer` (via psmux on Windows 3.3.4) does NOT work with Claude's TUI.**
 The buffer is loaded correctly (`psmux load-buffer` succeeds and `psmux show-buffer`
 shows the content), but `psmux paste-buffer -t session -b buf` silently discards
 the content -- Claude's input area is never updated. This was previously documented
@@ -247,11 +253,11 @@ flag is a no-op for alternate screen. Use `psmux capture-pane -a -p` (no -S).
 
 ## Config keys needed
 
-In `mill-config.yaml` / template, under `llm.claude.psmux`:
+In `mill-config.yaml` / template, under `llm.claude.tmux`:
 
 | Key | Type | Default | Purpose |
 |-----|------|---------|---------|
-| `via_psmux` | bool | false | Route through psmux instead of `claude -p` |
+| `via_tmux` | bool | false | Route through tmux instead of `claude -p` |
 | `shell_path` | str | `pwsh` | Shell binary for `new_session`. Use full path on Windows where PATH stub is broken. |
 | `reuse_idle_timeout_s` | int | 10 | Seconds to wait for existing session to become idle before reuse fails. |
 
@@ -295,10 +301,10 @@ Bugs 7-8 were discovered during integration test verification (2026-06-01).
 
 ---
 
-## pipe-pane: does NOT work on Windows (psmux 3.3.4 / tmux 3.3.4)
+## pipe-pane: does NOT work on Windows (tmux 3.3.4)
 
-`psmux pipe-pane -t session "cat >> logfile"` and the equivalent tmux command
-both return exit 0 but pipe no data. Tested with psmux and tmux, with bash
+`tmux pipe-pane -t session "cat >> logfile"` (on Windows via psmux) and the tmux command
+both return exit 0 but pipe no data. Tested with psmux (Windows tmux port) and tmux, with bash
 session and pwsh session, with multiple path formats and shell wrappers. Files
 are created (0 bytes) or not created at all. This is a known limitation of
 Windows ports of tmux -- the pipe mechanism requires OS-level pty forking that
@@ -352,6 +358,6 @@ At a 0.5s polling interval, capture-pane overhead is ~4-5% of wall-clock.
 Not a bottleneck. A poller daemon running at 500ms intervals is practical.
 
 **Go implementation note:** for the long-term Slack streaming framework, Go
-is the right language. One goroutine per psmux session, ticker at 500ms,
-`exec.Command("psmux", "capture-pane", ...)`, diff logic, Slack webhook push.
+is the right language. One goroutine per tmux session, ticker at 500ms,
+`exec.Command("tmux", "capture-pane", ...)` (or `psmux` on Windows), diff logic, Slack webhook push.
 23ms per call is negligible. This is a separate submodule/repo from mill.

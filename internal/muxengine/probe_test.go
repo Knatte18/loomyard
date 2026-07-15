@@ -12,7 +12,7 @@ import (
 )
 
 // fakeVersionOutput reports a version comfortably above both
-// minPsmuxVersion and minTmuxVersion, in both binaries' own -V shapes, so
+// minTmuxVersion and minTmuxVersion, in both binaries' own -V shapes, so
 // the version check passes regardless of which GOOS branch
 // minMultiplexerVersion selects on the host running this test.
 const fakeVersionOutput = "psmux 99.0.0 / tmux 99.0\n"

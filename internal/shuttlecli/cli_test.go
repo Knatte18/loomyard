@@ -1,7 +1,7 @@
 // cli_test.go covers the shuttlecli cobra seam through RunCLI: bare-group
 // listing, the unknown-subcommand JSON envelope, run's flag-shape
 // validation, and interrupt/send's exact-args validation. No live
-// psmux/claude session is required by any test in this file; the full
+// tmux/claude session is required by any test in this file; the full
 // run/interrupt/send round-trip against a live agent lives in smoke tests
 // (batch 6) and the sandbox suite.
 
@@ -196,7 +196,7 @@ var _ shuttleengine.MuxOps = noopMux{}
 // builds, mirroring how --model is wired: a fake Runner (a real
 // *shuttleengine.Runner over a spec-capturing Engine fake and a no-op mux
 // fake) lets the test drive runCmd()'s RunE directly and inspect the Spec
-// the engine's Prepare was actually called with, without a live psmux/claude
+// the engine's Prepare was actually called with, without a live tmux/claude
 // session.
 func TestRunCmd_EffortFlag(t *testing.T) {
 	tests := []struct {

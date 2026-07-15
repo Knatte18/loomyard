@@ -12,7 +12,7 @@ module in the loomyard repo, followed by FIXING what you find. Work in the workt
 
 ## Your two jobs, in order
 1. REVIEW: form your own independent judgment of `<MODULE>`'s scope and correctness. Hunt for bugs
-   by reading the code AND by driving the real substrate (`<SUBSTRATE — e.g. real psmux>`) — this is
+   by reading the code AND by driving the real substrate (`<SUBSTRATE — e.g. real tmux>`) — this is
    where the defects hide.
 2. FIX: after you have a findings list, implement the fixes one at a time, verify each against the
    real substrate, keep the whole test suite green, and update the docs in the same change as the
@@ -129,7 +129,7 @@ Live driving — YOU drive it directly, no launcher (PRIMARY — where the bugs 
   yourself. Instead, run the real CLI commands yourself, directly, foreground, waiting for each to
   return: walk the "High-yield focus" list above (and `<SANDBOX-<MODULE>-SUITE.md>`'s scenarios, if
   one exists, for extra ideas) and record OK/WARN/FAIL for each. This spawns real substrate
-  underneath when the module rides mux/shuttle (real psmux panes, real `claude` sessions) — that is
+  underneath when the module rides mux/shuttle (real tmux panes, real `claude` sessions) — that is
   expected and required. None of it needs an attached TTY of its own.
 - The suite/list is a FLOOR — devise and run MANY more adversarial scenarios of your own beyond it
   (combine verbs in orders nothing has tried; chase anything the code makes you suspicious of).
@@ -154,7 +154,7 @@ Live driving — YOU drive it directly, no launcher (PRIMARY — where the bugs 
   blocked you.
 
 TEARDOWN DISCIPLINE (critical): if you start any substrate server/session, tear it down. At the end,
-confirm ZERO stray substrate processes (`<the exact check — e.g. tasklist | grep -i psmux>`). Leave
+confirm ZERO stray substrate processes (`<the exact check — e.g. tasklist | grep -i tmux>`). Leave
 no stray state. Be honest about what you could NOT verify and why.
 
 ## How to judge each finding

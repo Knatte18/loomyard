@@ -5,7 +5,7 @@
 // teardown guard) used across this file, smoke_guardrail_test.go, and
 // smoke_interrupt_test.go, plus TestSmokeShuttleRunWritesOutputAndCleans —
 // the full round-trip proof that `lyx shuttle run` drives a REAL claude in a
-// REAL psmux pane to a "done" outcome, writes the file-contract output, and
+// REAL tmux pane to a "done" outcome, writes the file-contract output, and
 // cleans up the strand and run directory afterward. Follows the
 // internal/muxcli/smoke_*.go conventions: opt-in via -tags smoke, skipped
 // when no claude binary resolves, deferHubRelease against the
@@ -231,7 +231,7 @@ func muxStatusStrand(t *testing.T, guid string) (map[string]any, bool) {
 }
 
 // TestSmokeShuttleRunWritesOutputAndCleans drives one full `lyx shuttle run`
-// against a REAL claude in a REAL psmux pane: `up` boots the substrate first
+// against a REAL claude in a REAL tmux pane: `up` boots the substrate first
 // (a strand must exist in an up'd session before AddStrand can bind a pane
 // to it), then `run` blocks until the agent writes the requested output file
 // and the run loop classifies it "done". Asserts the file-contract output,

@@ -67,9 +67,9 @@ type suiteSpec struct {
 	// instruction is the literal prompt string handed to the claude binary as
 	// its sole argument when no -prompt override is supplied.
 	instruction string
-	// muxTeardown marks suites whose scenarios boot a live psmux substrate
+	// muxTeardown marks suites whose scenarios boot a live tmux substrate
 	// (lyx mux up). For those, runSuite runs `lyx mux down` in the host repo
-	// after the agent session ends, whatever the agent did: an orphaned psmux
+	// after the agent session ends, whatever the agent did: an orphaned tmux
 	// server holds open handles inside the Hub and blocks the next
 	// sandbox-build.cmd -reset.
 	muxTeardown bool
@@ -84,7 +84,7 @@ var mainSuite = suiteSpec{
 }
 
 // muxSuite is the SANDBOX-MUX-SUITE spec: the dedicated scheme exercising the
-// mux/psmux lifecycle scenarios split out of the main suite.
+// mux/tmux lifecycle scenarios split out of the main suite.
 var muxSuite = suiteSpec{
 	fileName:    "SANDBOX-MUX-SUITE.md",
 	doc:         muxSandboxSuiteMD,
@@ -328,7 +328,7 @@ func ensureGitExclude(repoDir, entry string) error {
 // any stale sandbox-report.json from a prior run, and starts an interactive
 // Claude session with the given instruction string. After the session ends,
 // specs flagged muxTeardown get a best-effort `lyx mux down` in the host repo
-// so no psmux server outlives the run. It does not fetch the agent's report
+// so no tmux server outlives the run. It does not fetch the agent's report
 // -- that is the separate fetch subcommand (runFetch), run by the operator
 // after the session. claudeOverride and promptOverride are optional: when
 // empty the function resolves "claude" from PATH and uses spec.instruction.
@@ -413,7 +413,7 @@ func runSuite(parentDir, claudeOverride, promptOverride string, spec suiteSpec) 
 		code)
 
 	// For suites whose scenarios boot a live mux substrate, tear it down now,
-	// regardless of how the agent session ended: an orphaned psmux server holds
+	// regardless of how the agent session ended: an orphaned tmux server holds
 	// open handles inside the Hub host repo and blocks the next
 	// sandbox-build.cmd -reset. Best-effort -- a teardown failure must not turn
 	// a completed session into a launcher error.

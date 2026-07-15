@@ -17,7 +17,7 @@ import (
 
 // newTestEngine builds an Engine rooted at a fresh t.TempDir(), suitable
 // for any muxengine test that needs a *Engine but must never actually
-// shell out to psmux: cfg.Psmux/cfg.Pwsh point at paths that do not exist,
+// shell out to tmux: cfg.Tmux/cfg.Shell point at paths that do not exist,
 // so a stray real invocation fails fast with "file not found" instead of
 // hanging or silently succeeding against some unrelated running server.
 func newTestEngine(t *testing.T) *Engine {
@@ -29,11 +29,10 @@ func newTestEngine(t *testing.T) *Engine {
 		Hub:          filepath.Dir(root),
 	}
 	cfg := Config{
-		Psmux:              filepath.Join(root, "does-not-exist-psmux.exe"),
-		Pwsh:               filepath.Join(root, "does-not-exist-pwsh.exe"),
+		Tmux:               filepath.Join(root, "does-not-exist-tmux.exe"),
+		Shell:              filepath.Join(root, "does-not-exist-shell.exe"),
 		Width:              100,
 		Height:             21,
-		TopBandRows:        3,
 		CollapsedStripRows: 2,
 		MinFullRows:        3,
 		StrandName:         "<ROLE>:<ROUND>:<SHORT_GUID>",

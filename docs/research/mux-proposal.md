@@ -14,8 +14,8 @@ Two modules, built in priority order:
 
 | Module | Scope | Priority |
 |---|---|---|
-| **`mux`** | **One worktree at a time.** You open a terminal in the worktree you're working in (as today); mux runs the psmux session *for that worktree* — an **orchestrator claude plus the sub-agents it spawns**, stacked as visible panes you can watch and type in. | **Now** |
-| **`mplex`** | **Many worktrees.** One psmux instance with **a column per work-folder**, tiling several worktrees at once. | **Later / low** |
+| **`mux`** | **One worktree at a time.** You open a terminal in the worktree you're working in (as today); mux runs the tmux session *for that worktree* — an **orchestrator claude plus the sub-agents it spawns**, stacked as visible panes you can watch and type in. | **Now** |
+| **`mplex`** | **Many worktrees.** One tmux instance with **a column per work-folder**, tiling several worktrees at once. | **Later / low** |
 
 This split is endorsed because the single-worktree agent stack is exactly where the hard parts are
 already **proven** (muxpoc: spawn, dominant-bottom layout, crash recovery) and where the exploration's
@@ -29,10 +29,10 @@ The rest of this doc is **`mux` only**. `mplex` is sketched briefly at the end.
 ## What `mux` is
 
 Within one worktree: an **orchestrator** Claude Code session that spawns sub-agents (reviewer,
-implementer, …) as **real interactive `claude` processes in stacked psmux panes**, replacing the
+implementer, …) as **real interactive `claude` processes in stacked tmux panes**, replacing the
 invisible in-process Agent tool. Nesting is orchestrator → child → grandchild (**≤3 deep**); only the
 deepest pane is active (ancestors block waiting on it), so the **bottom/active pane dominates** the
-column height. Driven by `lyx mux <subcommand>`; one psmux session per worktree.
+column height. Driven by `lyx mux <subcommand>`; one tmux session per worktree.
 
 This is muxpoc's proven model, productionised and made **event-driven** with the hook findings.
 
@@ -47,7 +47,7 @@ This is muxpoc's proven model, productionised and made **event-driven** with the
    it in local-state from t0. This id is the join key for everything (hooks, resume, reconciliation).
 3. **Task injected at launch** as the positional `[prompt]` arg. Multi-line prompts cannot be typed
    into a running TUI (paste-buffer drops content; bracketed paste submits per `\n`).
-4. **Env hygiene is mandatory.** Strip `CLAUDE_CODE_*` / `CLAUDECODE` when spawning the psmux server
+4. **Env hygiene is mandatory.** Strip `CLAUDE_CODE_*` / `CLAUDECODE` when spawning the tmux server
    → every pane's claude is a clean top-level session → transcripts persist → `--resume` works.
 5. **Event-driven via per-child hooks (replaces the capture-pane idle poller).** Each spawned claude
    is launched with a `--settings` whose hooks call back `lyx mux …`, keyed by **its own
@@ -100,7 +100,7 @@ robust `mux spawn` from a fragile one.
 
 | Command | Does |
 |---|---|
-| `lyx mux up` | Boot the orchestrator claude in this worktree's psmux session: env-stripped server, assigned `--session-id`, hooks installed, layout seeded. Idempotent / cold-recovers a crashed session. |
+| `lyx mux up` | Boot the orchestrator claude in this worktree's tmux session: env-stripped server, assigned `--session-id`, hooks installed, layout seeded. Idempotent / cold-recovers a crashed session. |
 | `lyx mux spawn` | (Called by the orchestrator) launch a child agent in a stacked bottom pane; inject task; wire the result file. |
 | `lyx mux attach` | Pop one **maximized** terminal attached to the session (real TTY → claude renders; the orchestrator itself never needs to attach — it observes via the result files / hooks). |
 | `lyx mux on-start \| on-active \| on-idle` | Hook callbacks (per-child, keyed by `--session-id`): update state + drive focus. |
@@ -135,10 +135,10 @@ value. Stacking to ≤3 deep, `resume`, `status`, and the deny-guardrail come ri
 
 ## `mplex` (future, low priority — sketch only)
 
-One psmux instance, **a column per worktree**, tiling several worktrees at once (the old mux design's
+One tmux instance, **a column per worktree**, tiling several worktrees at once (the old mux design's
 "v1"). It composes over `mux`: each column is a worktree's orchestrator. Cross-worktree discovery can
 reuse **`claude agents --json --cwd <repo>`** (sessions per subtree) and the supervisor for headless
-columns. Overflow/orchestrator-switch via psmux **windows** inside one attached client (proven in
+columns. Overflow/orchestrator-switch via tmux **windows** inside one attached client (proven in
 `mux-exploration.md`). Build only after `mux` is solid.
 
 ---

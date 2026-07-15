@@ -368,7 +368,7 @@ array carries a `plan-unapproved` finding, not a bare error string.
 ---
 
 mux has its own dedicated suite, `SANDBOX-MUX-SUITE.md` in this same directory,
-launched via `sandbox-mux-suite.cmd` -- mux needs a live psmux server and visual
+launched via `sandbox-mux-suite.cmd` -- mux needs a live tmux server and visual
 verification, a different test mode from this suite.
 
 ## Session log format
@@ -403,7 +403,7 @@ findings section above -- with `items: []` when every scenario was `OK`.
   testing model is fundamentally different gets its own sibling suite file
   (`*SUITE.md`), with mux (`SANDBOX-MUX-SUITE.md`) as the precedent; the
   coverage guard scans all of them.
-- The psmux interactive launcher will replace the direct `claude` launch in a future
+- The tmux interactive launcher will replace the direct `claude` launch in a future
   iteration; the file contract (this `SANDBOX-CORE-SUITE.md` driving the agent) is unchanged.
 - The host repo `Knatte18/lyx-test` README uses the phrase "cwd-relpath mirroring"; this
   refers to **weft path mirroring** (how the weft worktree mirrors host subpaths) — not

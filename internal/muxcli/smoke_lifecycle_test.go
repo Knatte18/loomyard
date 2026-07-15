@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"os/exec"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -15,11 +16,11 @@ import (
 
 // TestSmokeUpAddStatusDown boots the substrate, adds one strand with a cheap
 // placeholder command, verifies status reports it tracked and live, then
-// tears the substrate back down. Skipped when psmux is not found at the
-// configured/default path so a -tags=smoke run never hard-fails on a
-// machine without the tool installed.
+// tears the substrate back down. Skipped when tmux is not found in PATH or
+// LYX_MUX_TMUX so a -tags=smoke run never hard-fails on a machine without
+// the tool installed.
 func TestSmokeUpAddStatusDown(t *testing.T) {
-	psmuxBinaryPath(t)
+	tmuxBinaryPath(t)
 
 	fixture := lyxtest.CopyPaired(t)
 	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
@@ -87,17 +88,17 @@ func TestSmokeUpAddStatusDown(t *testing.T) {
 	}
 }
 
-// TestSmokeTopBandsThenStackAddsKeepEverySessionPane pins the composed
-// split-path defect this round fixed: with two top-anchored strands laid
-// out (a 1-row band + a stretched band), psmux parks the active pane on the
-// tiny band, and a session-target split-window then fails SILENTLY (exit 0,
-// no new pane, prints an existing pane's id) — mux would bind the new
-// strand to an existing pane, and the next select-layout's duplicate pane
-// number made psmux destroy every pane in the session. The fix splits the
+// TestSmokeStackedAddsKeepEverySessionPane pins the composed split-path
+// defect this round fixed: with several below-parent strands added in
+// sequence, each add's session-target split-window must genuinely create a
+// new pane rather than reusing an existing one — the old path could fail
+// SILENTLY (exit 0, no new pane, prints an existing pane's id), binding the
+// new strand to an existing pane, whose next select-layout's duplicate pane
+// number made tmux destroy every pane in the session. The fix splits the
 // tallest alive pane explicitly and hard-errors on a non-new reported id,
 // so this sequence must now yield one live pane per visible strand.
-func TestSmokeTopBandsThenStackAddsKeepEverySessionPane(t *testing.T) {
-	psmuxPath := psmuxBinaryPath(t)
+func TestSmokeStackedAddsKeepEverySessionPane(t *testing.T) {
+	tmuxPath := tmuxBinaryPath(t)
 
 	fixture := lyxtest.CopyPaired(t)
 	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
@@ -117,14 +118,14 @@ func TestSmokeTopBandsThenStackAddsKeepEverySessionPane(t *testing.T) {
 
 	launch := "pwsh -NoExit -Command Write-Host ready"
 	guids := []string{
-		addStrand(t, launch, "--anchor", "top", "--name", "band1"),
-		addStrand(t, launch, "--anchor", "top", "--name", "band2"),
+		addStrand(t, launch, "--name", "strand1"),
+		addStrand(t, launch, "--name", "strand2"),
 		addStrand(t, launch, "--name", "stack1"),
 		addStrand(t, launch, "--name", "stack2"),
 	}
 
 	socket, session := socketAndSession(t)
-	panes := listPaneLines(t, psmuxPath, socket, session)
+	panes := listPaneLines(t, tmuxPath, socket, session)
 	if len(panes) != len(guids) {
 		t.Fatalf("session holds %d panes %v; want %d (one per visible strand — a shortfall means a silent split failure destroyed panes)", len(panes), panes, len(guids))
 	}
@@ -152,8 +153,30 @@ func TestSmokeTopBandsThenStackAddsKeepEverySessionPane(t *testing.T) {
 // next verb's reconcile stripped the binding again). The fix never adopts a
 // dead pane, so the post-remove add must yield a strand that is live and
 // STAYS live across the next reconciling verb.
+//
+// Caveat: this corpse-pane premise is PSMUX-SPECIFIC. tmux behaves
+// oppositely — killing a session's true last pane DESTROYS the session
+// (and, if it was the server's only session, the server exits) rather than
+// corpsing it — so this test's sole-pane remove would never reach an
+// "adopt or not" decision at all on tmux; see muxengine.RemoveStrand's
+// emptied-session swallow (strand.go) for how that backend is handled.
 func TestSmokeRemoveLastStrandThenAddRunsTheNewCommand(t *testing.T) {
-	psmuxBinaryPath(t)
+	tmuxBinaryPath(t)
+
+	// This test's whole premise — kill-pane on a session's sole pane corpses
+	// it (pane_dead=1, exit 0) rather than destroying the session — is
+	// PSMUX-SPECIFIC (see the doc comment above): on native tmux, killing a
+	// session's true last pane destroys the session outright, so the remove
+	// call below never reaches an "adopt a corpse or not" decision at all —
+	// there is nothing left to adopt, correctly, by design (see
+	// muxengine.RemoveStrand's emptied-session swallow in strand.go). Skip
+	// rather than hard-fail a scenario this backend cannot reach; the
+	// emptied-session path itself is covered by
+	// TestRemoveStrand_SoleStrandEmptiesSessionSucceeds
+	// (contract_integration_test.go).
+	if runtime.GOOS != "windows" {
+		t.Skip("corpse-pane-adoption premise is PSMUX-SPECIFIC; on native tmux, removing a session's sole strand destroys the session instead of corpsing its pane, so this scenario cannot occur here (see TestRemoveStrand_SoleStrandEmptiesSessionSucceeds for the tmux-side coverage)")
+	}
 
 	fixture := lyxtest.CopyPaired(t)
 	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
@@ -204,7 +227,7 @@ func TestSmokeRemoveLastStrandThenAddRunsTheNewCommand(t *testing.T) {
 // TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable pins the empty-layout
 // defect this round fixed: with ZERO strands tracked and a foreign pane in
 // the session (an operator's raw split-window — 2+ panes, none mux's), the
-// old apply emitted a layout string enumerating no cells, which psmux
+// old apply emitted a layout string enumerating no cells, which tmux
 // answers (exit 0) by destroying EVERY pane — leaving a zero-pane zombie
 // session in which add fails forever ("session has no panes to adopt or
 // split") while up keeps reporting success. Now (a) apply is skipped when no
@@ -212,7 +235,7 @@ func TestSmokeRemoveLastStrandThenAddRunsTheNewCommand(t *testing.T) {
 // even a zero-pane husk (simulated separately below via the same foreign
 // route) is healed by the next up's fresh boot.
 func TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable(t *testing.T) {
-	psmuxPath := psmuxBinaryPath(t)
+	tmuxPath := tmuxBinaryPath(t)
 
 	fixture := lyxtest.CopyPaired(t)
 	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
@@ -233,7 +256,7 @@ func TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable(t *testing.T) {
 
 	// A foreign pane mux does not track (the operator-split case): the
 	// session now has 2 panes and 0 strands.
-	if err := exec.Command(psmuxPath, "-L", socket, "split-window", "-t", session).Run(); err != nil {
+	if err := exec.Command(tmuxPath, "-L", socket, "split-window", "-t", session).Run(); err != nil {
 		t.Fatalf("foreign split-window: %v", err)
 	}
 
@@ -243,7 +266,7 @@ func TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable(t *testing.T) {
 	if code := RunCLI(&out, []string{"up"}); code != 0 {
 		t.Fatalf("second up = %d; want 0, output: %s", code, out.String())
 	}
-	if panes := listPaneLines(t, psmuxPath, socket, session); len(panes) == 0 {
+	if panes := listPaneLines(t, tmuxPath, socket, session); len(panes) == 0 {
 		t.Fatalf("up with only foreign panes destroyed the session's pane set (zero panes remain)")
 	}
 
@@ -265,7 +288,7 @@ func TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable(t *testing.T) {
 		t.Errorf("strand added after foreign-pane up: live = false; want true; status: %s", out.String())
 	}
 	strandPane, _ := strand["paneId"].(string)
-	panes := listPaneLines(t, psmuxPath, socket, session)
+	panes := listPaneLines(t, tmuxPath, socket, session)
 	if len(panes) != 1 || !strings.HasPrefix(panes[0], strandPane+" ") {
 		t.Errorf("after add, session panes = %v; want exactly the strand's pane %s (foreign pane must be reaped, strand pane never displaced)", panes, strandPane)
 	}

@@ -16,9 +16,9 @@ import (
 )
 
 // addCmd builds the `add` subcommand: registers a new strand from the
-// --cmd/--role/--round/--name/--resume-cmd/--parent/--anchor/--focus flags.
-// It rejects --anchor own-window (declared but deferred) and any value
-// outside top|below-parent|hidden before ever calling the engine, then
+// --cmd/--role/--round/--name/--resume-cmd/--parent/--anchor/--focus
+// flags. It rejects --anchor own-window (declared but deferred) and any
+// value outside below-parent|hidden before ever calling the engine, then
 // builds a muxengine.AddSpec and delegates to c.eng.AddStrand.
 func (c *muxCLI) addCmd() *cobra.Command {
 	var (
@@ -51,25 +51,17 @@ Example:
 			}
 			out := cmd.OutOrStdout()
 
-			// The anchor vocabulary is closed to top/below-parent/hidden in v1;
+			// The anchor vocabulary is closed to below-parent/hidden in v1;
 			// own-window is declared but deferred, so reject it here with a
 			// specific message rather than letting a confusing render-layer
 			// error surface later.
 			switch render.Anchor(anchor) {
-			case render.AnchorTop, render.AnchorBelowParent, render.AnchorHidden:
+			case render.AnchorBelowParent, render.AnchorHidden:
 			case render.AnchorOwnWindow:
 				clihelp.SetExit(cmd.Context(), output.Err(out, "--anchor own-window is deferred, not supported in v1"))
 				return nil
 			default:
-				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("invalid --anchor %q; want top|below-parent|hidden", anchor)))
-				return nil
-			}
-
-			// Focus targets the below-parent stack's active pane; a top status
-			// band is not an input target, and render never focuses it. Reject
-			// the combination rather than silently ignoring --focus.
-			if focus && render.Anchor(anchor) == render.AnchorTop {
-				clihelp.SetExit(cmd.Context(), output.Err(out, "--focus cannot be combined with --anchor top"))
+				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("invalid --anchor %q; want below-parent|hidden", anchor)))
 				return nil
 			}
 
@@ -107,8 +99,8 @@ Example:
 	cmd.Flags().StringVar(&name, "name", "", "explicit display name, overriding the strand-name template")
 	cmd.Flags().StringVar(&resumeCmd, "resume-cmd", "", `command "lyx mux resume" replays instead of --cmd`)
 	cmd.Flags().StringVar(&parent, "parent", "", "parent strand's guid")
-	cmd.Flags().StringVar(&anchor, "anchor", string(render.AnchorBelowParent), "placement: top|below-parent|hidden")
-	cmd.Flags().BoolVar(&focus, "focus", false, "give this strand psmux input focus")
+	cmd.Flags().StringVar(&anchor, "anchor", string(render.AnchorBelowParent), "placement: below-parent|hidden")
+	cmd.Flags().BoolVar(&focus, "focus", false, "give this strand tmux input focus")
 	if err := cmd.MarkFlagRequired("cmd"); err != nil {
 		// MarkFlagRequired only errors when the named flag does not exist on
 		// cmd; --cmd is registered immediately above, so this can never fire

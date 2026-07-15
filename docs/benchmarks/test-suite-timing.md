@@ -151,7 +151,7 @@ per-package numbers as attribution, not absolute cost.
 | `internal/boardengine/boardtest` | ~30.7 s | real local git commit/push, parallelized |
 | `internal/configcli`             | ~28.4 s | `git init` tests, including `TestE2ESyncIntegration` |
 | `internal/warpcli`               | ~26.2 s | CLI wrapper over warpengine clone/teardown paths |
-| `internal/muxcli`                | ~24.6 s | real `tmux`/`psmux` contract-integration tests |
+| `internal/muxcli`                | ~24.6 s | real `tmux`/`tmux` contract-integration tests |
 | `internal/perchengine`           | ~22.7 s | the same untagged run-loop suite re-run under `-tags integration`, **plus** the now-relocated `TestExecGateCommand_LingeringChildDoesNotHangPastWaitDelay` (measured this run: 10.12 s + 12.00 s parallel subtests) |
 
 The floor is still `internal/warpengine`, now at ~96.0 s in the median run
@@ -390,7 +390,7 @@ attribution, not absolute cost.
 | `internal/perchcli`              | ~40 s  | `lyxtest.CopyPaired[Local]` fixture copies + weft-sync git assertions |
 | `cmd/lyx`                        | ~36 s  | cross-compile + registration/help-tree over the full binary, plus real `git init` in `main_test.go` |
 | `internal/perchengine`           | ~29 s  | same in-process run-loop suite as Tier 1 (the untagged tests run again under `-tags integration`; not additional fixture cost) |
-| `internal/muxcli`                | ~24 s  | real `tmux`/`psmux` contract-integration tests |
+| `internal/muxcli`                | ~24 s  | real `tmux`/`tmux` contract-integration tests |
 
 The floor is still `internal/warpengine`, now at ~84 s (down from ~152 s):
 its slowest single tests this run cost 11–15 s each
@@ -494,7 +494,7 @@ not absolute cost.
 | `internal/boardengine/boardtest` | ~47 s  | real local git commit/push, parallelized |
 | `internal/perchengine`           | ~46 s  | same in-process run-loop suite as Tier 1 (the untagged tests run again under `-tags integration`; not additional fixture cost) |
 | `internal/configcli`             | ~40 s  | re-tiered `git init` tests |
-| `internal/muxengine`             | ~38 s  | real `tmux`/`psmux` contract-integration tests |
+| `internal/muxengine`             | ~38 s  | real `tmux`/`tmux` contract-integration tests |
 | `internal/warpcli`               | ~37 s  | CLI wrapper over warpengine clone/teardown paths |
 | `internal/ideengine`             | ~35 s  | fixed — board health-check tests over real board directories |
 

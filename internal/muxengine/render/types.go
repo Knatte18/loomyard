@@ -7,7 +7,7 @@
 // Package render owns the closed display vocabulary and the deterministic
 // Rules(strands, box, params) -> (layout, focus) function that turns a set
 // of strands into a tmux window_layout string. It is a pure leaf: no I/O, no
-// psmux, no engine import.
+// tmux, no engine import.
 //
 // The package is deliberately split into two layers that must never merge.
 // Layout policy (policy.go, height.go, focus.go) decides which strand lands
@@ -21,24 +21,16 @@
 package render
 
 // Anchor is the closed set of placement strategies a strand's Display may
-// declare. Render recognizes exactly these four values.
+// declare. Render recognizes exactly these three values.
 type Anchor string
 
 const (
-	// AnchorTop reserves a fixed-height band for a strand at the top of the
-	// window, above the below-parent stack. The band's GEOMETRY is always
-	// honored; its POSITION is only physically top when the strand's pane
-	// precedes the stack panes in the window's creation order — psmux
-	// applies layout cells positionally and cannot reorder panes (see
-	// Rules' paneOrder contract), so a top strand added after stack strands
-	// keeps its compact band height at its actual position.
-	AnchorTop Anchor = "top"
-	// AnchorBelowParent places a strand in the vertically stacked region
-	// below the top bands, ordered by parent-chain depth.
+	// AnchorBelowParent places a strand in the vertically stacked region,
+	// ordered by parent-chain depth.
 	AnchorBelowParent Anchor = "below-parent"
 	// AnchorOwnWindow is declared in the vocabulary but deferred in v1:
 	// Rules rejects any strand carrying it with an error. It is reserved
-	// for a future release that gives a strand its own psmux window
+	// for a future release that gives a strand its own tmux window
 	// instead of sharing a pane in the stacked layout.
 	AnchorOwnWindow Anchor = "own-window"
 	// AnchorHidden excludes a strand from the layout entirely. A hidden
@@ -53,7 +45,7 @@ const (
 type Display struct {
 	// Anchor selects which placement strategy governs this strand.
 	Anchor Anchor `json:"anchor"`
-	// Focus marks this strand as the one that should receive psmux input
+	// Focus marks this strand as the one that should receive tmux input
 	// focus. At most one strand is expected to set Focus; if several do,
 	// render breaks the tie by picking the bottom-most.
 	Focus bool `json:"focus"`
@@ -76,7 +68,7 @@ type Strand struct {
 	Parent string
 	// Display carries this strand's placement, focus, and shrink settings.
 	Display Display
-	// PaneID is the psmux pane id (e.g. "%5") this strand currently owns.
+	// PaneID is the tmux pane id (e.g. "%5") this strand currently owns.
 	// A strand with an empty PaneID owns no pane and is excluded from the
 	// layout.
 	PaneID string
@@ -94,8 +86,6 @@ type Box struct {
 // Params carries the tunable height-policy knobs the engine loads from
 // mux.yaml, keeping render itself config-agnostic.
 type Params struct {
-	// TopBandRows is the fixed height reserved for each AnchorTop strand.
-	TopBandRows int
 	// CollapsedStripRows is the height a shrink:true ancestor collapses to
 	// once it has a descendant present in the layout.
 	CollapsedStripRows int

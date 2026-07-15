@@ -1,52 +1,52 @@
 # Scripting & Automation
 
-psmux supports tmux-compatible commands for scripting and automation.
+tmux supports scripting and automation commands. On Windows, tmux (the Windows port of tmux) is command-compatible.
 
 ## Window & Pane Control
 
 ```powershell
 # Create a new window
-psmux new-window
+tmux new-window
 
 # Split panes
-psmux split-window -v          # Split vertically (top/bottom)
-psmux split-window -h          # Split horizontally (side by side)
+tmux split-window -v          # Split vertically (top/bottom)
+tmux split-window -h          # Split horizontally (side by side)
 
 # Navigate panes
-psmux select-pane -U           # Select pane above
-psmux select-pane -D           # Select pane below
-psmux select-pane -L           # Select pane to the left
-psmux select-pane -R           # Select pane to the right
+tmux select-pane -U           # Select pane above
+tmux select-pane -D           # Select pane below
+tmux select-pane -L           # Select pane to the left
+tmux select-pane -R           # Select pane to the right
 
 # Navigate windows
-psmux select-window -t 1       # Select window by index (default base-index is 1)
-psmux next-window              # Go to next window
-psmux previous-window          # Go to previous window
-psmux last-window              # Go to last active window
+tmux select-window -t 1       # Select window by index (default base-index is 1)
+tmux next-window              # Go to next window
+tmux previous-window          # Go to previous window
+tmux last-window              # Go to last active window
 
 # Kill panes and windows
-psmux kill-pane
-psmux kill-window
-psmux kill-session
+tmux kill-pane
+tmux kill-window
+tmux kill-session
 ```
 
 ## Sending Keys
 
 ```powershell
 # Send text directly
-psmux send-keys "ls -la" Enter
+tmux send-keys "ls -la" Enter
 
 # Send keys literally (no parsing)
-psmux send-keys -l "literal text"
+tmux send-keys -l "literal text"
 
 # Paste mode (legacy compatibility)
-psmux send-keys -p
+tmux send-keys -p
 
 # Repeat a key N times
-psmux send-keys -N 5 Up
+tmux send-keys -N 5 Up
 
 # Send copy mode command
-psmux send-keys -X copy-mode-up
+tmux send-keys -X copy-mode-up
 
 # Special keys supported:
 # Enter, Tab, Escape, Space, Backspace
@@ -59,67 +59,67 @@ psmux send-keys -X copy-mode-up
 
 ```powershell
 # List all panes in current window
-psmux list-panes
+tmux list-panes
 
 # List all windows
-psmux list-windows
+tmux list-windows
 
 # Capture pane content
-psmux capture-pane
+tmux capture-pane
 
 # Display formatted message with variables
-psmux display-message "#S:#I:#W"   # Session:Window Index:Window Name
+tmux display-message "#S:#I:#W"   # Session:Window Index:Window Name
 ```
 
 ## Paste Buffers
 
 ```powershell
 # Set paste buffer content
-psmux set-buffer "text to paste"
+tmux set-buffer "text to paste"
 
 # Paste buffer to active pane
-psmux paste-buffer
+tmux paste-buffer
 
 # List all buffers
-psmux list-buffers
+tmux list-buffers
 
 # Show buffer content
-psmux show-buffer
+tmux show-buffer
 
 # Delete buffer
-psmux delete-buffer
+tmux delete-buffer
 
 # Interactive buffer chooser (enter=paste, d=delete, esc=close)
-psmux choose-buffer
+tmux choose-buffer
 
 # Named buffers (separate from anonymous stack)
-psmux set-buffer -b mydata "key=value"
-psmux show-buffer -b mydata
-psmux paste-buffer -b mydata
-psmux delete-buffer -b mydata
+tmux set-buffer -b mydata "key=value"
+tmux show-buffer -b mydata
+tmux paste-buffer -b mydata
+tmux delete-buffer -b mydata
 
 # Clear command prompt history
-psmux clear-prompt-history
+tmux clear-prompt-history
 ```
 
 ## Pane Layout
 
 ```powershell
 # Resize panes
-psmux resize-pane -U 5         # Resize up by 5
-psmux resize-pane -D 5         # Resize down by 5
-psmux resize-pane -L 10        # Resize left by 10
-psmux resize-pane -R 10        # Resize right by 10
+tmux resize-pane -U 5         # Resize up by 5
+tmux resize-pane -D 5         # Resize down by 5
+tmux resize-pane -L 10        # Resize left by 10
+tmux resize-pane -R 10        # Resize right by 10
 
 # Swap panes
-psmux swap-pane -U             # Swap with pane above
-psmux swap-pane -D             # Swap with pane below
+tmux swap-pane -U             # Swap with pane above
+tmux swap-pane -D             # Swap with pane below
 
 # Rotate panes in window
-psmux rotate-window
+tmux rotate-window
 
 # Toggle pane zoom
-psmux zoom-pane
+tmux zoom-pane
 ```
 
 ## Pane Titles
@@ -128,16 +128,16 @@ Programs running inside a pane can set the title via OSC escape sequences. Power
 
 ```powershell
 # Set a title on the active pane
-psmux select-pane -T "my build pane"
+tmux select-pane -T "my build pane"
 
 # Set pane title on a specific pane
-psmux select-pane -t %3 -T "logs"
+tmux select-pane -t %3 -T "logs"
 
 # Set per-pane style (foreground/background color override)
-psmux select-pane -P "bg=default,fg=blue"
+tmux select-pane -P "bg=default,fg=blue"
 
 # Display pane title using format variables
-psmux display-message "#{pane_title}"
+tmux display-message "#{pane_title}"
 ```
 
 Enable `pane-border-format` and `pane-border-status` in your config to see titles on pane borders:
@@ -151,19 +151,19 @@ set -g pane-border-format " #{pane_index}: #{pane_title} "
 
 ```powershell
 # Open a popup running a command
-psmux display-popup "Get-Process"
+tmux display-popup "Get-Process"
 
 # Set width and height (absolute or percentage)
-psmux display-popup -w 80% -h 50% "htop"
+tmux display-popup -w 80% -h 50% "htop"
 
 # Set the starting directory
-psmux display-popup -d "C:\Projects" -w 100 -h 30
+tmux display-popup -d "C:\Projects" -w 100 -h 30
 
 # Close popup on command exit (default behavior, -E inverts it)
-psmux display-popup -E "git log --oneline -20"
+tmux display-popup -E "git log --oneline -20"
 
 # Keep popup open after command finishes
-psmux display-popup -K "echo done"
+tmux display-popup -K "echo done"
 ```
 
 ## Menus
@@ -171,14 +171,14 @@ psmux display-popup -K "echo done"
 ```powershell
 # Display an interactive menu
 # Format: display-menu [-x x] [-y y] [-T title] name key command ...
-psmux display-menu -T "Actions" \
+tmux display-menu -T "Actions" \
   "New Window" n "new-window" \
   "Split Horizontal" h "split-window -h" \
   "Split Vertical" v "split-window -v" \
   "Close Pane" x "kill-pane"
 
 # Position the menu at specific coordinates
-psmux display-menu -x 10 -y 5 -T "Quick" \
+tmux display-menu -x 10 -y 5 -T "Quick" \
   "Zoom" z "resize-pane -Z" \
   "Rename" r "command-prompt -I '#W' 'rename-window %%'"
 ```
@@ -187,66 +187,66 @@ psmux display-menu -x 10 -y 5 -T "Quick" \
 
 ```powershell
 # Check if session exists (exit code 0 = exists)
-psmux has-session -t mysession
+tmux has-session -t mysession
 
 # Rename session
-psmux rename-session newname
+tmux rename-session newname
 
 # Switch to another session
-psmux switch-client -t other-session
+tmux switch-client -t other-session
 
 # Cycle through sessions
-psmux switch-client -n          # Next session
-psmux switch-client -p          # Previous session
-psmux switch-client -l          # Last (most recently used) session
+tmux switch-client -n          # Next session
+tmux switch-client -p          # Previous session
+tmux switch-client -l          # Last (most recently used) session
 
 # Create a session with environment variables
-psmux new-session -s work -e "MY_VAR=value"
+tmux new-session -s work -e "MY_VAR=value"
 
 # Respawn pane (restart shell, or restart with a different command)
-psmux respawn-pane
-psmux respawn-pane -k           # Kill the current process first
-psmux respawn-pane -c /tmp      # Restart in a different directory
+tmux respawn-pane
+tmux respawn-pane -k           # Kill the current process first
+tmux respawn-pane -c /tmp      # Restart in a different directory
 ```
 
 ## Pane Reorganization
 
 ```powershell
 # Break the current pane out into a new window
-psmux break-pane
+tmux break-pane
 
 # Break a specific pane, keep it in background
-psmux break-pane -d -s %3
+tmux break-pane -d -s %3
 
 # Join a pane from another window into the current window
-psmux join-pane -s :2           # Bring pane from window 2
+tmux join-pane -s :2           # Bring pane from window 2
 
 # Join horizontally or vertically
-psmux join-pane -h -s :2        # Join side by side
-psmux join-pane -v -s :3        # Join top/bottom
+tmux join-pane -h -s :2        # Join side by side
+tmux join-pane -v -s :3        # Join top/bottom
 
 # Move a pane (same as join-pane)
-psmux move-pane -s %5 -t %3
+tmux move-pane -s %5 -t %3
 
 # Find a window by name or content
-psmux find-window "search term"
+tmux find-window "search term"
 ```
 
 ## Environment Variables
 
 ```powershell
 # Set a global env var (inherited by all new panes)
-psmux set-environment -g EDITOR vim
+tmux set-environment -g EDITOR vim
 
 # Set a session-scoped env var
-psmux set-environment MY_VAR value
+tmux set-environment MY_VAR value
 
 # Unset a global env var
-psmux set-environment -gu MY_VAR
+tmux set-environment -gu MY_VAR
 
 # Show all environment variables
-psmux show-environment
-psmux show-environment -g
+tmux show-environment
+tmux show-environment -g
 ```
 
 ## Format Variables
@@ -281,86 +281,86 @@ The `display-message` command supports 140+ variables. Common ones include:
 
 ```powershell
 # Conditional
-psmux display-message -p "#{?window_zoomed_flag,ZOOMED,normal}"
+tmux display-message -p "#{?window_zoomed_flag,ZOOMED,normal}"
 
 # Comparison
-psmux display-message -p "#{==:#{pane_index},0}"
+tmux display-message -p "#{==:#{pane_index},0}"
 
 # Regex substitution
-psmux display-message -p "#{s/old/new/:pane_title}"
+tmux display-message -p "#{s/old/new/:pane_title}"
 
 # Basename and dirname
-psmux display-message -p "#{b:pane_current_path}"
-psmux display-message -p "#{d:pane_current_path}"
+tmux display-message -p "#{b:pane_current_path}"
+tmux display-message -p "#{d:pane_current_path}"
 
 # Loop over all windows
-psmux display-message -p "#{W:#{window_index}:#{window_name} }"
+tmux display-message -p "#{W:#{window_index}:#{window_name} }"
 
 # Loop over all panes
-psmux display-message -p "#{P:#{pane_index} }"
+tmux display-message -p "#{P:#{pane_index} }"
 ```
 
 ## Advanced Commands
 
 ```powershell
 # Discover supported commands
-psmux list-commands
+tmux list-commands
 
 # Server/session management
-psmux kill-server
-psmux list-clients
-psmux switch-client -t other-session
+tmux kill-server
+tmux list-clients
+tmux switch-client -t other-session
 
 # Config at runtime
-psmux source-file ~/.psmux.conf
-psmux show-options
-psmux set-option -g status-left "[#S]"
+tmux source-file ~/.tmux.conf
+tmux show-options
+tmux set-option -g status-left "[#S]"
 
 # Layout/history/stream control
-psmux next-layout
-psmux previous-layout
-psmux select-layout tiled         # Apply a specific layout
-psmux clear-history
-psmux pipe-pane -o "cat > pane.log"
+tmux next-layout
+tmux previous-layout
+tmux select-layout tiled         # Apply a specific layout
+tmux clear-history
+tmux pipe-pane -o "cat > pane.log"
 
 # Hooks (event callbacks) - see Hooks section below for full reference
-psmux set-hook -g after-new-window "display-message created"
-psmux set-hook -g client-attached "run-shell 'echo attached'"
-psmux set-hook -gu after-new-window     # Unset (remove) a hook
-psmux show-hooks
+tmux set-hook -g after-new-window "display-message created"
+tmux set-hook -g client-attached "run-shell 'echo attached'"
+tmux set-hook -gu after-new-window     # Unset (remove) a hook
+tmux show-hooks
 
 # Run shell commands
-psmux run-shell "echo hello"           # Output shown in status bar
-psmux run-shell -b "long-running.ps1"  # Fire-and-forget (background)
+tmux run-shell "echo hello"           # Output shown in status bar
+tmux run-shell -b "long-running.ps1"  # Fire-and-forget (background)
 
 # Conditional execution
-psmux if-shell "test -f ~/.psmux.conf" "source-file ~/.psmux.conf"
-psmux if-shell -F "#{window_zoomed_flag}" "" "resize-pane -Z"
+tmux if-shell "test -f ~/.tmux.conf" "source-file ~/.tmux.conf"
+tmux if-shell -F "#{window_zoomed_flag}" "" "resize-pane -Z"
 
 # User confirmation dialogs
-psmux confirm-before -p "Kill this pane? (y/n)" kill-pane
+tmux confirm-before -p "Kill this pane? (y/n)" kill-pane
 
 # Wait channels for cross-pane synchronization
-psmux wait-for -L mychannel             # Lock a channel
-psmux wait-for -S mychannel             # Signal (unlock) a channel
-psmux wait-for mychannel                # Wait until channel is signaled
+tmux wait-for -L mychannel             # Lock a channel
+tmux wait-for -S mychannel             # Signal (unlock) a channel
+tmux wait-for mychannel                # Wait until channel is signaled
 ```
 
 ## Hooks (Event Callbacks)
 
-Hooks let you run commands automatically when events occur. They are one of the most powerful scripting features in psmux.
+Hooks let you run commands automatically when events occur. They are one of the most powerful scripting features in tmux.
 
 ### Setting Hooks
 
 ```powershell
 # Global hook (applies to all sessions)
-psmux set-hook -g after-new-window "display-message 'New window created'"
+tmux set-hook -g after-new-window "display-message 'New window created'"
 
 # Session-scoped hook
-psmux set-hook after-split-window "select-layout tiled"
+tmux set-hook after-split-window "select-layout tiled"
 
 # Chain multiple commands in a hook
-psmux set-hook -g after-new-session "set -g status-left '[#S] ' \; display-message 'Session ready'"
+tmux set-hook -g after-new-session "set -g status-left '[#S] ' \; display-message 'Session ready'"
 ```
 
 ### Available Hook Events
@@ -385,13 +385,13 @@ psmux set-hook -g after-new-session "set -g status-left '[#S] ' \; display-messa
 
 ```powershell
 # Remove a global hook
-psmux set-hook -gu after-new-window
+tmux set-hook -gu after-new-window
 
 # View all active hooks
-psmux show-hooks
+tmux show-hooks
 ```
 
-**Important:** If you repeatedly call `set-hook -g` for the same event, psmux appends duplicate entries. Use `set-hook -gu` to clear the old hook before setting a new one, or check `show-hooks` to verify no duplicates.
+**Important:** If you repeatedly call `set-hook -g` for the same event, tmux appends duplicate entries. Use `set-hook -gu` to clear the old hook before setting a new one, or check `show-hooks` to verify no duplicates.
 
 ## Display Panes
 
@@ -399,7 +399,7 @@ Show numbered overlays on all panes, then type a number to jump to that pane:
 
 ```powershell
 # Show pane number overlay (also: Prefix + q)
-psmux display-panes
+tmux display-panes
 ```
 
 The overlay shows each pane's number according to `pane-base-index`. Press a number key while the overlay is visible to switch to that pane. The overlay auto-dismisses after `display-panes-time` milliseconds.
@@ -410,109 +410,109 @@ Run an external command and display the output:
 
 ```powershell
 # Output appears in the status bar message area
-psmux run-shell "echo hello"
+tmux run-shell "echo hello"
 
 # Run in background (fire-and-forget, no output displayed)
-psmux run-shell -b "long-running-script.ps1"
+tmux run-shell -b "long-running-script.ps1"
 
 # Use format variables in shell commands
-psmux run-shell "echo 'Current pane: #{pane_index}'"
+tmux run-shell "echo 'Current pane: #{pane_index}'"
 ```
 
 ## Interactive Choosers
 
 ```powershell
 # Interactive session/window/pane tree browser
-psmux choose-tree
+tmux choose-tree
 
 # Show only sessions
-psmux choose-tree -s
+tmux choose-tree -s
 
 # Show only windows
-psmux choose-tree -w
+tmux choose-tree -w
 
 # Interactive buffer picker (enter=paste, d=delete)
-psmux choose-buffer
+tmux choose-buffer
 
 # Interactive client picker
-psmux choose-client
+tmux choose-client
 
 # Interactive options editor
-psmux customize-mode
+tmux customize-mode
 ```
 
 ## Target Syntax (`-t`)
 
-psmux supports tmux-style targets:
+tmux supports tmux-style targets:
 
 ```powershell
 # Window by index in session
-psmux select-window -t work:2
+tmux select-window -t work:2
 
 # Window by name in session
-psmux select-window -t work:editor
+tmux select-window -t work:editor
 
 # Specific pane by index
-psmux send-keys -t work:2.1 "echo hi" Enter
+tmux send-keys -t work:2.1 "echo hi" Enter
 
 # Pane by pane id
-psmux send-keys -t %3 "pwd" Enter
+tmux send-keys -t %3 "pwd" Enter
 
 # Window by window id
-psmux select-window -t @4
+tmux select-window -t @4
 
 # Target a specific session
-psmux has-session -t mysession
+tmux has-session -t mysession
 
 # Session:window.pane full path
-psmux send-keys -t dev:0.2 "make build" Enter
+tmux send-keys -t dev:0.2 "make build" Enter
 ```
 
 ## Server Namespaces (`-L`)
 
-Use `-L` to run multiple isolated psmux servers on the same machine:
+Use `-L` to run multiple isolated tmux servers on the same machine:
 
 ```powershell
 # Start a session in a named server namespace
-psmux -L work new-session -s dev
+tmux -L work new-session -s dev
 
 # Attach to a session in that namespace
-psmux -L work attach -t dev
+tmux -L work attach -t dev
 
 # Each namespace gets its own server, sessions, and socket
-psmux -L personal new-session -s play
+tmux -L personal new-session -s play
 ```
 
 ## Key Binding Management
 
 ```powershell
 # Bind a key in the default prefix table
-psmux bind-key h split-window -h
+tmux bind-key h split-window -h
 
 # Bind with format variable expansion (-F flag)
-psmux bind-key -F M-h "resize-pane -L #{pane_width}"
+tmux bind-key -F M-h "resize-pane -L #{pane_width}"
 
 # Bind with repeat (successive presses within repeat-time don't need prefix)
-psmux bind-key -r Left select-pane -L
-psmux bind-key -r Right select-pane -R
+tmux bind-key -r Left select-pane -L
+tmux bind-key -r Right select-pane -R
 
 # Bind in root table (no prefix needed)
-psmux bind-key -n M-Left select-pane -L
+tmux bind-key -n M-Left select-pane -L
 
 # Bind in a specific key table
-psmux bind-key -T copy-mode-vi y send-keys -X copy-selection
+tmux bind-key -T copy-mode-vi y send-keys -X copy-selection
 
 # Unbind a single key
-psmux unbind-key h
+tmux unbind-key h
 
 # Unbind ALL keys (reset to clean slate)
-psmux unbind-key -a
+tmux unbind-key -a
 
 # Unbind all keys in a specific key table only
-psmux unbind-key -a -T copy-mode-vi
-psmux unbind-key -a -T prefix
-psmux unbind-key -a -T root
-psmux unbind-key -a -T copy-mode
+tmux unbind-key -a -T copy-mode-vi
+tmux unbind-key -a -T prefix
+tmux unbind-key -a -T root
+tmux unbind-key -a -T copy-mode
 ```
 
 ## Command Chaining
@@ -533,32 +533,32 @@ bind-key M-z if-shell -F "#{window_zoomed_flag}" "resize-pane -Z" ""
 From the CLI, use `\;` or quote the command:
 
 ```powershell
-psmux split-window -h `; select-pane -L
+tmux split-window -h `; select-pane -L
 ```
 
 ## Querying Lists with Custom Formats
 
 ```powershell
 # List all sessions with custom format
-psmux list-sessions -F "#{session_name}:#{session_windows}"
+tmux list-sessions -F "#{session_name}:#{session_windows}"
 
 # List all windows with custom format
-psmux list-windows -F "#{window_index}:#{window_name}:#{window_panes}"
+tmux list-windows -F "#{window_index}:#{window_name}:#{window_panes}"
 
 # List all panes across the session (-s flag)
-psmux list-panes -s -F "#{window_index}.#{pane_index}: #{pane_current_command} [#{pane_width}x#{pane_height}]"
+tmux list-panes -s -F "#{window_index}.#{pane_index}: #{pane_current_command} [#{pane_width}x#{pane_height}]"
 
 # List all panes across all sessions (-a flag)
-psmux list-panes -a
+tmux list-panes -a
 
 # Capture pane content to stdout
-psmux capture-pane -p -t %0
+tmux capture-pane -p -t %0
 
 # Capture with line range (negative = scrollback)
-psmux capture-pane -p -S -100 -E -1
+tmux capture-pane -p -S -100 -E -1
 
 # Print a format variable
-psmux display-message -p "#{pane_current_path}"
+tmux display-message -p "#{pane_current_path}"
 ```
 
 ## Window and Pane Creation Options
@@ -567,19 +567,19 @@ psmux display-message -p "#{pane_current_path}"
 
 ```powershell
 # Create a window with a name
-psmux new-window -n "logs"
+tmux new-window -n "logs"
 
 # Create a window in the background (don't switch to it)
-psmux new-window -d -n "background"
+tmux new-window -d -n "background"
 
 # Create a window in a specific directory
-psmux new-window -c "C:\Projects\myapp"
+tmux new-window -c "C:\Projects\myapp"
 
 # Create a window running a command
-psmux new-window -n "build" -- cargo watch
+tmux new-window -n "build" -- cargo watch
 
 # Create a window at a specific index
-psmux new-window -t 5
+tmux new-window -t 5
 ```
 
 When you set a window name with `-n`, automatic renaming is disabled for that window so the foreground process name does not overwrite your chosen name.
@@ -588,42 +588,42 @@ When you set a window name with `-n`, automatic renaming is disabled for that wi
 
 ```powershell
 # Split with percentage size
-psmux split-window -v -p 30            # Bottom pane gets 30%
-psmux split-window -h -p 70            # Right pane gets 70%
+tmux split-window -v -p 30            # Bottom pane gets 30%
+tmux split-window -h -p 70            # Right pane gets 70%
 
 # Split in the current pane's directory
-psmux split-window -h -c "#{pane_current_path}"
+tmux split-window -h -c "#{pane_current_path}"
 
 # Split with a specific command
-psmux split-window -v -- python
+tmux split-window -v -- python
 
 # Split a specific target pane
-psmux split-window -v -t %3
+tmux split-window -v -t %3
 
 # Split without switching focus
-psmux split-window -d -v
+tmux split-window -d -v
 ```
 
 ### new-session
 
 ```powershell
 # Create a named session
-psmux new-session -s work
+tmux new-session -s work
 
 # Create in a specific directory
-psmux new-session -s project -c "C:\Projects\myapp"
+tmux new-session -s project -c "C:\Projects\myapp"
 
 # Create with environment variables
-psmux new-session -s dev -e "NODE_ENV=development"
+tmux new-session -s dev -e "NODE_ENV=development"
 
 # Create in background (detached)
-psmux new-session -d -s background
+tmux new-session -d -s background
 
 # Create with an initial command
-psmux new-session -s monitor -- htop
+tmux new-session -s monitor -- htop
 
 # Create a session with a named first window
-psmux new-session -s work -n "editor"
+tmux new-session -s work -n "editor"
 ```
 
 ## Target Syntax
@@ -632,41 +632,41 @@ Many commands accept a `-t` flag to specify which session, window, or pane to ac
 
 ```powershell
 # Target a session by name
-psmux switch-client -t mysession
+tmux switch-client -t mysession
 
 # Target a window by index (within current session)
-psmux select-window -t 3
+tmux select-window -t 3
 
 # Target a window in a specific session
-psmux select-window -t mysession:2
+tmux select-window -t mysession:2
 
 # Target a pane by ID (absolute, shown with %)
-psmux select-pane -t %5
+tmux select-pane -t %5
 
 # Target a pane within a window
-psmux select-pane -t :2.1             # Window 2, pane 1
+tmux select-pane -t :2.1             # Window 2, pane 1
 
 # Special targets
-psmux select-pane -t +               # Next pane
-psmux select-pane -t -               # Previous pane
-psmux select-window -t !             # Last (previous) window
+tmux select-pane -t +               # Next pane
+tmux select-pane -t -               # Previous pane
+tmux select-window -t !             # Last (previous) window
 ```
 
 ## Server Namespaces
 
-Run isolated psmux instances using the `-L` flag. Each namespace gets its own server process with its own sessions:
+Run isolated tmux instances using the `-L` flag. Each namespace gets its own server process with its own sessions:
 
 ```powershell
 # Start a session in a named namespace
-psmux -L work new-session -s dev
+tmux -L work new-session -s dev
 
 # Attach to a session in that namespace
-psmux -L work attach
+tmux -L work attach
 
 # List sessions in a namespace
-psmux -L work list-sessions
+tmux -L work list-sessions
 
 # Default namespace is used when -L is not specified
 ```
 
-This is useful for running completely separate psmux environments, for example one for development and one for monitoring.
+This is useful for running completely separate tmux environments, for example one for development and one for monitoring.

@@ -2,7 +2,7 @@
 
 ## What this is
 
-A structured test-loop for exercising `lyx builder` against a **live psmux server and a
+A structured test-loop for exercising `lyx builder` against a **live tmux server and a
 logged-in claude** in the sandbox Hub host repo. Like `SANDBOX-SHUTTLE-SUITE.md` and
 `SANDBOX-BURLER-SUITE.md`, the value here is partly **visual**: a batch's implementer doing
 real work in a pane, a digest coming back, a pause landing cleanly at a batch boundary. Not
@@ -29,8 +29,7 @@ Before starting a session:
 2. **Materialize the hub.** Run `sandbox-build.cmd` (or `sandbox-build.cmd -reset`
    to start clean); the session cwd is the Hub host repo root, the same operating model
    as the main suite.
-3. **Live-psmux and claude requirement.** `psmux.exe` on PATH (installed at
-   `C:\Code\tools\bin\psmux.exe`), PowerShell 7, and a logged-in `claude` on PATH.
+3. **Live-tmux and claude requirement.** tmux (or the Windows tmux port) on PATH, PowerShell 7, and a logged-in `claude` on PATH.
    If any of these is unavailable in the session, **note that as the session outcome
    rather than treating it as a builder defect** -- the `**Covers:** builder` tag on
    B1 satisfies the sandbox coverage guard (`sandbox_coverage_test.go`) regardless of
@@ -63,12 +62,12 @@ below; `docs/modules/plan-format.md`'s worked example (available via `lyx builde
 Keep every scenario's plan cards trivial -- e.g. "create `resultN.md` containing the single
 line `OK`" -- so a real implementer session finishes in one card, one commit, fast.
 
-### Controlled psmux exceptions
+### Controlled tmux exceptions
 
 One sanctioned deviation from the pure black-box rule, mirroring the mux/shuttle/burler
 suites' own controlled-exception note:
 
-- **Direct `psmux -L <socket> list-panes`/`ls`** is allowed only to confirm a strand's pane
+- **Direct `tmux -L <socket> list-panes`/`ls`** is allowed only to confirm a strand's pane
   exists (or was cleaned up), where `<socket>` is read from `lyx mux status` output.
 - **A second terminal** is required for B4 (run-lock contention) -- start the first `lyx
   builder run`/`spawn-batch` in terminal A, the contending call in terminal B, while A is
@@ -168,7 +167,7 @@ Poll with `lyx builder poll --wait <duration>` (or repeated short polls) before 
 window: confirm `status: running` with a growing `elapsed_s`. After `batch_timeout_min`
 minutes have elapsed with no report file and the mux strand still nominally present, confirm
 the NEXT poll classifies `status: dead`, `dead_reason: timeout`. Separately (a second run of
-this scenario, or a variant), end the implementer's pane/session directly (e.g. via `psmux`
+this scenario, or a variant), end the implementer's pane/session directly (e.g. via `tmux`
 against its socket) before it reports, and confirm poll instead (or additionally) exercises
 the `died` branch. Confirm the pane/run dir is kept for diagnosis on any `dead` classification
 (not auto-cleaned), per the doc's stated discipline.
@@ -343,7 +342,7 @@ never land in the fresh run's reports dir."
 
 **Watch:** Part 1: `lyx builder run` (terminal A), then kill that process (e.g. `taskkill
 /PID <pid> /F`) while `lyx mux status` shows the orchestrator and an implementer live.
-Confirm the orchestrator pane survives the kill (it is a detached psmux pane) and keeps
+Confirm the orchestrator pane survives the kill (it is a detached tmux pane) and keeps
 calling builder verbs. Re-run `lyx builder run`: confirm `lyx mux status` never shows two
 live `orchestrator:` strands -- the recorded one is stopped at run entry (state.json's
 `orchestratorStrand`), then the fresh one spawns, and the resumed run completes normally.
@@ -385,7 +384,7 @@ section above -- with `items: []` when every scenario was `OK`.
 ## Teardown
 
 After the session summary is recorded and `./sandbox-report.json` is written, run `lyx mux
-down` to tear down the psmux session/server the scenarios booted. An orphaned psmux server
+down` to tear down the tmux session/server the scenarios booted. An orphaned tmux server
 holds open handles inside the Hub host repo and blocks the next `sandbox-build.cmd -reset`.
 The launcher also runs `lyx mux down` itself after the session ends (deterministic backstop),
 but run it here anyway -- defense-in-depth, and it keeps the Hub clean while the session is
@@ -393,7 +392,7 @@ still open for inspection.
 
 ## Notes
 
-- Host/weft scenarios stay in `SANDBOX-CORE-SUITE.md`, mux/psmux scenarios stay in
+- Host/weft scenarios stay in `SANDBOX-CORE-SUITE.md`, mux/tmux scenarios stay in
   `SANDBOX-MUX-SUITE.md`, shuttle black-box agent scenarios stay in
   `SANDBOX-SHUTTLE-SUITE.md`, burler's own review+fix round scenarios stay in
   `SANDBOX-BURLER-SUITE.md`, perch's gate-loop scenarios stay in `SANDBOX-PERCH-SUITE.md`;

@@ -1,7 +1,8 @@
-// rules_test.go golden-tests the composed Rules entry point: top bands
-// pinned above the stack, the below-parent stack ordered by parent chain,
-// hidden-strand exclusion, mixed top+stack+hidden sets, empty/single-strand
-// edges, the checksum-prefix invariant, and the own-window rejection error.
+// rules_test.go golden-tests the composed Rules entry point: the
+// below-parent stack ordered by parent chain, hidden-strand exclusion,
+// empty/single-strand/parent-child edges, the checksum-prefix invariant, the
+// own-window rejection error, and pane-order resequencing to physical pane
+// position.
 
 package render
 
@@ -24,7 +25,7 @@ func belowParentChain() []Strand {
 }
 
 func TestRulesGolden(t *testing.T) {
-	params := Params{TopBandRows: 3, CollapsedStripRows: 2, MinFullRows: 3}
+	params := Params{CollapsedStripRows: 2, MinFullRows: 3}
 
 	tests := []struct {
 		name      string
@@ -33,41 +34,6 @@ func TestRulesGolden(t *testing.T) {
 		wantBody  string
 		wantFocus string
 	}{
-		{
-			// Regression for orch_04 review 04 finding #2: with >=2 top
-			// strands and zero stack strands, nothing but the last top band
-			// is left to fill the rest of box.H, so it must stretch — a
-			// fixed-height last band here would leave 13 rows unaccounted
-			// for (box.H 20 minus two 3-row bands minus one 1-row divider),
-			// producing a window_layout string select-layout rejects.
-			name: "TopPinnedAsFixedBandAboveStack",
-			strands: []Strand{
-				{GUID: "ta", PaneID: "%10", Live: true, Display: Display{Anchor: AnchorTop}},
-				{GUID: "tb", PaneID: "%20", Live: true, Display: Display{Anchor: AnchorTop}},
-			},
-			box:       Box{X: 0, Y: 0, W: 100, H: 20},
-			wantBody:  "100x20,0,0[100x3,0,0,10,100x16,0,4,20]",
-			// With no below-parent stack, focus falls back to the LAST top
-			// band (the stretched one): leaving it unset would let psmux
-			// park the active pane on an arbitrary 1-row band after
-			// select-layout.
-			wantFocus: "%20",
-		},
-		{
-			// A second, distinct (3 top, 0 stack) instance of the same
-			// finding #2 combination, pinning that the stretch always lands
-			// on the LAST top band specifically (not split across all of
-			// them, and not the first).
-			name: "ThreeTopBandsNoStackLastBandAbsorbsRemainder",
-			strands: []Strand{
-				{GUID: "ta", PaneID: "%10", Live: true, Display: Display{Anchor: AnchorTop}},
-				{GUID: "tb", PaneID: "%20", Live: true, Display: Display{Anchor: AnchorTop}},
-				{GUID: "tc", PaneID: "%30", Live: true, Display: Display{Anchor: AnchorTop}},
-			},
-			box:       Box{X: 0, Y: 0, W: 100, H: 15},
-			wantBody:  "100x15,0,0[100x3,0,0,10,100x3,0,4,20,100x7,0,8,30]",
-			wantFocus: "%30", // stack empty: the last (stretched) top band is the fallback focus
-		},
 		{
 			name:      "BelowParentFormsBottomDominantStackOrderedByParentChain",
 			strands:   belowParentChain(),
@@ -85,22 +51,6 @@ func TestRulesGolden(t *testing.T) {
 			wantFocus: "%3",
 		},
 		{
-			name: "MixedTopStackHidden",
-			strands: append(
-				[]Strand{
-					{GUID: "ta", PaneID: "%10", Live: true, Display: Display{Anchor: AnchorTop}},
-					{GUID: "tb", PaneID: "%20", Live: true, Display: Display{Anchor: AnchorTop}},
-					{GUID: "h", PaneID: "%99", Live: true, Display: Display{Anchor: AnchorHidden}},
-				},
-				belowParentChain()...,
-			),
-			box: Box{X: 0, Y: 0, W: 100, H: 29}, // 8 rows of top bands + dividers, then the same 21-row stack region
-			wantBody: "100x29,0,0[" +
-				"100x3,0,0,10,100x3,0,4,20," +
-				"100x8,0,8,1,100x2,0,17,2,100x9,0,20,3]",
-			wantFocus: "%3",
-		},
-		{
 			name:      "EmptyStrandsProducesEmptyPaneGroup",
 			strands:   nil,
 			box:       Box{X: 0, Y: 0, W: 50, H: 10},
@@ -115,6 +65,24 @@ func TestRulesGolden(t *testing.T) {
 			box:       Box{X: 0, Y: 0, W: 80, H: 12},
 			wantBody:  "80x12,0,0[80x12,0,0,7]",
 			wantFocus: "%7",
+		},
+		{
+			// The loom shape endorsed by discussion decision
+			// childless-full-height-is-acceptable's counterpart: a
+			// below-parent root parent with a single below-parent child
+			// collapses the parent to CollapsedStripRows once the child is
+			// present, and the child takes the remainder. The height-layer
+			// form of this is height_test.go's
+			// TestStackHeightsActiveStrictlyTallestWithSingleAncestor; this
+			// case only proves the same shape survives through Rules.
+			name: "BelowParentRootChildCollapsesRootToStripChildTakesRemainder",
+			strands: []Strand{
+				{GUID: "parent", PaneID: "%1", Live: true, Display: Display{Anchor: AnchorBelowParent, ShrinkWhenWaitingOnChild: true}},
+				{GUID: "child", Parent: "parent", PaneID: "%2", Live: true, Display: Display{Anchor: AnchorBelowParent}},
+			},
+			box:       Box{X: 0, Y: 0, W: 100, H: 15},
+			wantBody:  "100x15,0,0[100x2,0,0,1,100x12,0,3,2]",
+			wantFocus: "%2",
 		},
 	}
 
@@ -156,7 +124,7 @@ func TestRulesOwnWindowReturnsError(t *testing.T) {
 		{GUID: "a", PaneID: "%1", Live: true, Display: Display{Anchor: AnchorOwnWindow}},
 	}
 	box := Box{X: 0, Y: 0, W: 100, H: 20}
-	p := Params{TopBandRows: 3, CollapsedStripRows: 2, MinFullRows: 3}
+	p := Params{CollapsedStripRows: 2, MinFullRows: 3}
 
 	layout, focus, err := Rules(strands, box, p, nil)
 	if err == nil {
@@ -174,7 +142,7 @@ func TestRulesFocusPrefersDeclaredFocusStrandOverDefault(t *testing.T) {
 	strands[0].Display.Focus = true
 
 	box := Box{X: 0, Y: 0, W: 100, H: 21}
-	p := Params{TopBandRows: 3, CollapsedStripRows: 2, MinFullRows: 3}
+	p := Params{CollapsedStripRows: 2, MinFullRows: 3}
 
 	_, focus, err := Rules(strands, box, p, nil)
 	if err != nil {
@@ -188,7 +156,7 @@ func TestRulesFocusPrefersDeclaredFocusStrandOverDefault(t *testing.T) {
 func TestRulesIsPureRepeatedCallsMatch(t *testing.T) {
 	strands := belowParentChain()
 	box := Box{X: 0, Y: 0, W: 100, H: 21}
-	p := Params{TopBandRows: 3, CollapsedStripRows: 2, MinFullRows: 3}
+	p := Params{CollapsedStripRows: 2, MinFullRows: 3}
 
 	layout1, focus1, err1 := Rules(strands, box, p, nil)
 	layout2, focus2, err2 := Rules(strands, box, p, nil)
@@ -209,25 +177,26 @@ func TestRulesPaneOrderResequencesCellsToPhysicalOrder(t *testing.T) {
 	// bottom — Rules must emit each pane's cell at that pane's physical
 	// position, with the pane keeping its own intended height.
 	strands := []Strand{
-		{GUID: "ta", PaneID: "%10", Live: true, Display: Display{Anchor: AnchorTop}},
-		{GUID: "tb", PaneID: "%20", Live: true, Display: Display{Anchor: AnchorTop}},
+		{GUID: "root", PaneID: "%10", Live: true, Display: Display{Anchor: AnchorBelowParent}},
+		{GUID: "child", Parent: "root", PaneID: "%20", Live: true, Display: Display{Anchor: AnchorBelowParent}},
 	}
 	box := Box{X: 0, Y: 0, W: 100, H: 20}
-	p := Params{TopBandRows: 3, CollapsedStripRows: 2, MinFullRows: 3}
+	p := Params{CollapsedStripRows: 2, MinFullRows: 3}
 
-	// Physical order inverted vs table order: %20 sits on top.
+	// Physical order inverted vs table order: %20 (child) sits on top.
 	layout, focus, err := Rules(strands, box, p, []string{"%20", "%10"})
 	if err != nil {
 		t.Fatalf("Rules() unexpected error: %v", err)
 	}
-	// %20 keeps its intended stretched height (16) but is emitted first (at
-	// y=0); %10 keeps its intended 3-row band but lands at the bottom.
-	wantBody := "100x20,0,0[100x16,0,0,20,100x3,0,17,10]"
+	// child keeps its intended remainder-bearing height (10) but is emitted
+	// first (at y=0); root keeps its intended base height (9) but lands at
+	// the bottom.
+	wantBody := "100x20,0,0[100x10,0,0,20,100x9,0,11,10]"
 	if want := layoutChecksum(wantBody) + "," + wantBody; layout != want {
 		t.Errorf("Rules() layout = %q, want %q", layout, want)
 	}
-	// Focus stays id-based: the last (stretched) top band, regardless of
-	// where it physically sits.
+	// Focus stays id-based: the active/bottom strand, regardless of where it
+	// physically sits.
 	if want := "%20"; focus != want {
 		t.Errorf("Rules() focus = %q, want %q", focus, want)
 	}
@@ -235,13 +204,13 @@ func TestRulesPaneOrderResequencesCellsToPhysicalOrder(t *testing.T) {
 
 func TestRulesPaneOrderUnknownIDsKeepIntendedTailOrder(t *testing.T) {
 	strands := []Strand{
-		{GUID: "ta", PaneID: "%10", Live: true, Display: Display{Anchor: AnchorTop}},
-		{GUID: "tb", PaneID: "%20", Live: true, Display: Display{Anchor: AnchorTop}},
+		{GUID: "root", PaneID: "%10", Live: true, Display: Display{Anchor: AnchorBelowParent}},
+		{GUID: "child", Parent: "root", PaneID: "%20", Live: true, Display: Display{Anchor: AnchorBelowParent}},
 	}
 	box := Box{X: 0, Y: 0, W: 100, H: 20}
-	p := Params{TopBandRows: 3, CollapsedStripRows: 2, MinFullRows: 3}
+	p := Params{CollapsedStripRows: 2, MinFullRows: 3}
 
-	// paneOrder naming only panes render never placed: the intended order
+	// paneOrder naming only a pane render never placed: the intended order
 	// survives at the tail, identical to the nil-paneOrder shape.
 	withUnknown, _, err1 := Rules(strands, box, p, []string{"%99"})
 	intended, _, err2 := Rules(strands, box, p, nil)
