@@ -139,8 +139,17 @@ after.
   2. **Delete the now-orphaned symbols**: `AnchorTop`, `Display.TopBandRows`,
      `Params.TopBandRows`, `config.TopBandRows` + template lines, `partitionByAnchor`'s top
      branch, `Rules`' top-band block + stretch special case + top focus fallback,
-     `validateAnchor`'s `AnchorTop` case, and update every doc comment that says "four values"
-     / lists `top_band_rows`. Tree green because nothing references them.
+     `validateAnchor`'s `AnchorTop` case. Tree green because nothing references them.
+     **Sweep every residual `top`/`top-band` reference in retained code comments AND
+     user-facing CLI strings — not just the two enumerated doc spots.** Concretely that
+     includes: `policy.go`'s file doc and `partitionByAnchor` doc ("the fixed top-band
+     set"), `rules.go`'s `Rules`/paneOrder comment ("top bands first"), `types.go`'s "exactly
+     these four values" doc comment, `template.go`'s config-key-list comment (drops
+     `top_band_rows`), and the two user-facing `add.go` strings: the invalid-anchor error
+     (`add.go:66`, `want top|below-parent|hidden` → `want below-parent|hidden`) and the
+     `--anchor` flag usage (`add.go:113`, `placement: top|below-parent|hidden` →
+     `placement: below-parent|hidden`). Leaving any of these is exactly the dead surface this
+     task exists to remove.
   3. **Docs + sandbox** (independent, compile-neutral): `loom.md`, `overview.md` (line ~327
      generic anchor mention — verify still accurate), `mux-review-prompt.md`, and the
      SANDBOX-MUX-SUITE.md M6-retire / M12-rewrite / M18-add.
