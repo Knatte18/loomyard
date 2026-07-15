@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-mouse-default
 slug: mux-mouse-default
 branch: mux-mouse-default
 plan: _mill/plan
@@ -21,6 +21,7 @@ planning  '2026-07-15T07:31:36Z'
 plan-fix-r1  '2026-07-15T07:36:44Z'
 planned  '2026-07-15T07:37:18Z'
 implementing  '2026-07-15T07:39:53Z'
+approved-mouse-default  '2026-07-15T07:47:20Z'
 ```
 
 ## Batches
@@ -28,7 +29,8 @@ implementing  '2026-07-15T07:39:53Z'
 ```yaml
 batches:
   - name: mouse-default
-    state: running
+    state: approved
     implementer_session: 86cb89df-14ea-4dea-bf60-63cfa49871ba
     start_sha: 633243a0d96ea3629e117b0dc285c4bb1c150cbd
+    commit_sha: dcddf9aa35ae21932fa471cc6ffd759370086cb6
 ```
