@@ -38,7 +38,9 @@ batches:
     start_sha: 0ddc880289825a8fd26d0d635525cc0eeaf2e96f
     commit_sha: 05dd77d3322d9e200874ef45289d69d4a28b701d
   - name: delete-render-config-defs
-    state: pending
+    state: running
+    implementer_session: 18715d31-9d20-4c75-b154-9e1835db1746
+    start_sha: 0c1dd6317a1033fb29f282f10e019d6d62298f11
   - name: docs-and-sandbox
     state: pending
 ```
