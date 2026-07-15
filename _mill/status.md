@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: mux-mouse-default
 branch: mux-mouse-default
-plan: null
+plan: _mill/plan
 parent: cluster-fork-spike
 task: Decide tmux mouse-mode default for lyx mux
 task_description: |
@@ -17,4 +17,5 @@ task_description: |
 discussing  '2026-07-15T07:06:38Z'
 discussion-fix-r1  '2026-07-15T07:21:04Z'
 discussed  '2026-07-15T07:21:45Z'
+planning  '2026-07-15T07:31:36Z'
 ```
