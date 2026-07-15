@@ -79,6 +79,9 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 	if cfg.DebugLog != "0" {
 		t.Errorf("DebugLog = %q, want %q", cfg.DebugLog, "0")
 	}
+	if cfg.Mouse != "off" {
+		t.Errorf("Mouse = %q, want %q", cfg.Mouse, "off")
+	}
 }
 
 func TestLoadConfig_EnvOverride(t *testing.T) {

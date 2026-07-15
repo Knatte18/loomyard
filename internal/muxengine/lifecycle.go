@@ -181,14 +181,23 @@ func planResumeLaunches(strands []Strand, liveIDs map[string]bool) []Strand {
 // Before any of that, it runs the capability probe (probe.go) once and
 // returns a *CapabilityError immediately if the configured multiplexer
 // binary is below the pinned version floor or missing a required
-// subcommand. It also validates cfg.DebugLog via debugLogArgs up front and
-// returns that error before any psmux round trip at all — an invalid
-// debug_log value must fail the boot loud, not partway through a spawn.
+// subcommand. It also validates cfg.DebugLog via debugLogArgs and cfg.Mouse via
+// mouseOption up front and returns either error before any psmux round trip
+// at all — an invalid debug_log or mouse value must fail the boot loud, not
+// partway through a spawn.
 func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []string, err error) {
 	// Validate debug_log before anything else touches psmux: a misconfigured
 	// value is a pure config error, unrelated to server/session state, so it
 	// must surface before the capability probe or any spawn attempt.
 	debugArgs, err := debugLogArgs(e.cfg.DebugLog)
+	if err != nil {
+		return false, nil, err
+	}
+
+	// Validate mouse alongside debug_log, at the same early point: this too
+	// is a pure config error that must surface before the capability probe
+	// or any spawn attempt, not partway through a boot.
+	mouse, err := mouseOption(e.cfg.Mouse)
 	if err != nil {
 		return false, nil, err
 	}
@@ -340,6 +349,15 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	// detection depends on.
 	if err := e.psmux.run("set-option", "-g", "remain-on-exit", "on"); err != nil {
 		return false, nil, fmt.Errorf("set remain-on-exit: %w", err)
+	}
+	// Pin the mouse mode explicitly, in both directions: this call always
+	// runs on this fresh-boot path, even to set "off", so the live mouse
+	// state is deterministic regardless of the psmux/tmux backend's own
+	// default (Shared Decision explicit-set-both-ways-at-boot). Like
+	// remain-on-exit, this never re-applies on an already-up session — the
+	// early return above skips this whole path in that case.
+	if err := e.psmux.run("set-option", "-g", "mouse", mouse); err != nil {
+		return false, nil, fmt.Errorf("set mouse: %w", err)
 	}
 	return true, stripped, nil
 }

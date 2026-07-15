@@ -38,6 +38,18 @@ type Config struct {
 	// plan's Shared Decisions); a hub whose mux.yaml predates this field
 	// needs "lyx config reconcile" to adopt it.
 	DebugLog string `yaml:"debug_log"`
+
+	// Mouse is the tmux/psmux mouse-mode default: "off" (default) preserves
+	// native terminal text selection/copy, "on" enables click-to-switch-pane.
+	// It is deliberately a string, not a bool, so yaml.Unmarshal never fails
+	// on a non-boolean ${env:LYX_MUX_MOUSE} override — validating and mapping
+	// it to the psmux "on"/"off" option value is mouseOption's job
+	// (mouse.go), not this struct's. It takes effect only on the boot that
+	// spawns the shared per-hub server (see mouse-value-contract and
+	// explicit-set-both-ways-at-boot in the plan's Shared Decisions); a hub
+	// whose mux.yaml predates this field needs "lyx config reconcile" to
+	// adopt it.
+	Mouse string `yaml:"mouse"`
 }
 
 // LoadConfig loads and unmarshals configuration for the mux module.
