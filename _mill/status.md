@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: mux-remove-last-pane-error
 branch: mux-remove-last-pane-error
-plan: null
+plan: _mill/plan
 parent: cluster-fork-spike
 task: lyx mux remove errors when it empties the last session
 task_description: |
@@ -17,4 +17,5 @@ task_description: |
 discussing  '2026-07-15T07:06:46Z'
 discussion-fix-r1  '2026-07-15T07:21:16Z'
 discussed  '2026-07-15T07:21:48Z'
+planning  '2026-07-15T07:33:28Z'
 ```
