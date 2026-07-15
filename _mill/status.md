@@ -2,17 +2,17 @@
 
 ```yaml
 phase: discussing
-slug: cluster-fork-spike
-branch: cluster-fork-spike
+slug: mux-psmux-to-tmux-rename
+branch: mux-psmux-to-tmux-rename
 plan: null
-parent: main
-task: 'Spike: measure Claude session-forking for cluster-review'
+parent: cluster-fork-spike
+task: Rename psmux to tmux throughout the mux module
 task_description: |
-  Spike: measure Claude session-forking for cluster-review
+  Rename psmux to tmux throughout the mux module
 ```
 
 ## Timeline
 
 ```text
-discussing  '2026-07-14T16:10:57Z'
+discussing  '2026-07-15T17:49:14Z'
 ```
