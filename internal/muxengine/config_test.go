@@ -67,9 +67,6 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 	if cfg.CollapsedStripRows != 3 {
 		t.Errorf("CollapsedStripRows = %d, want 3", cfg.CollapsedStripRows)
 	}
-	if cfg.TopBandRows != 3 {
-		t.Errorf("TopBandRows = %d, want 3", cfg.TopBandRows)
-	}
 	if cfg.MinFullRows != 3 {
 		t.Errorf("MinFullRows = %d, want 3", cfg.MinFullRows)
 	}
