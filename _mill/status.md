@@ -2,17 +2,17 @@
 
 ```yaml
 phase: discussing
-slug: cluster-fork-spike
-branch: cluster-fork-spike
+slug: mux-remove-last-pane-error
+branch: mux-remove-last-pane-error
 plan: null
-parent: main
-task: 'Spike: measure Claude session-forking for cluster-review'
+parent: cluster-fork-spike
+task: lyx mux remove errors when it empties the last session
 task_description: |
-  Spike: measure Claude session-forking for cluster-review
+  lyx mux remove errors when it empties the last session
 ```
 
 ## Timeline
 
 ```text
-discussing  '2026-07-14T16:10:57Z'
+discussing  '2026-07-15T07:06:46Z'
 ```
