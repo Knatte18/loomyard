@@ -53,7 +53,7 @@ func seedMuxConfig(t *testing.T, tmpDir string) {
 
 // waitUntil polls cond every 100ms until it reports true or timeout elapses,
 // failing the test in the latter case. Pane state changes (a shell exiting,
-// remain-on-exit flipping pane_dead) are asynchronous from psmux's own CLI
+// remain-on-exit flipping pane_dead) are asynchronous from tmux's own CLI
 // return, so assertions on them must poll rather than check once.
 func waitUntil(t *testing.T, timeout time.Duration, msg string, cond func() bool) {
 	t.Helper()
@@ -111,7 +111,7 @@ func TestMultiplexerContract(t *testing.T) {
 	// new-session: the same shape ensureServerAndSessionLocked spawns
 	// (-x/-y sizing plus a real shell command as the initial pane's command),
 	// against a scratch session/socket this test owns exclusively.
-	if err := mux.run("new-session", "-d", "-s", session, "-x", "80", "-y", "24", cfg.Pwsh); err != nil {
+	if err := mux.run("new-session", "-d", "-s", session, "-x", "80", "-y", "24", cfg.Shell); err != nil {
 		t.Fatalf("new-session: %v", err)
 	}
 
@@ -313,7 +313,7 @@ func TestMultiplexerContract(t *testing.T) {
 // TestRemoveStrand_SoleStrandEmptiesSessionSucceeds reproduces, end to end
 // against a real Engine, the bug this batch fixes: removing a session's
 // sole non-hidden strand must return success and leave mux.json holding
-// zero persisted strands, never surface the raw "no server running" psmux
+// zero persisted strands, never surface the raw "no server running" tmux
 // error the original reproduction hit.
 //
 // Coverage note: this regression exercises the Card 2 swallow branch ONLY

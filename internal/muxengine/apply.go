@@ -1,9 +1,9 @@
 // apply.go implements the render -> select-layout/select-pane engine op:
 // planLayout is the pure half that maps the persisted strand table down to
 // render.Rules and computes the layout string + focus target, and
-// applyLayoutLocked composes that plan with the psmux apply I/O. Reconcile
+// applyLayoutLocked composes that plan with the tmux apply I/O. Reconcile
 // (reconcile.go) must run before this — kill dead -> re-enumerate live ->
-// compute layout -> apply — so live reflects psmux's actual pane set at
+// compute layout -> apply — so live reflects tmux's actual pane set at
 // render time; this file makes no reconcile decisions itself.
 
 package muxengine
@@ -18,7 +18,7 @@ import (
 // liveIDSet builds the set of pane ids present in live — alive or
 // dead-but-remain-on-exit — matching toRenderStrands' Live derivation:
 // "present in the window", not "still running". Render uses this set because
-// select-layout must enumerate every pane psmux still holds, dead ones
+// select-layout must enumerate every pane tmux still holds, dead ones
 // included.
 func liveIDSet(live []LivePane) map[string]bool {
 	ids := make(map[string]bool, len(live))
@@ -33,7 +33,7 @@ func liveIDSet(live []LivePane) map[string]bool {
 // set. Resume-planning and Status use this so a dead-but-remain-on-exit pane
 // counts as not-live: a strand bound to such a pane must be relaunched by
 // Resume and reported dead by Status, rather than being mistaken for a live
-// strand just because psmux still lists its (dead) pane.
+// strand just because tmux still lists its (dead) pane.
 func aliveIDSet(live []LivePane) map[string]bool {
 	ids := make(map[string]bool, len(live))
 	for _, p := range live {
@@ -46,9 +46,9 @@ func aliveIDSet(live []LivePane) map[string]bool {
 
 // paneIDsByTop returns live's pane ids sorted by vertical position
 // (pane_top), top first — the window's actual top-to-bottom pane order,
-// which is the order psmux applies layout cells against (see render.Rules'
+// which is the order tmux applies layout cells against (see render.Rules'
 // paneOrder contract). The sort is stable so panes reporting the same top
-// (which psmux does not produce for a vertical stack, but a corrupt
+// (which tmux does not produce for a vertical stack, but a corrupt
 // snapshot might) keep list-panes order.
 func paneIDsByTop(live []LivePane) []string {
 	sorted := make([]LivePane, len(live))
@@ -64,7 +64,7 @@ func paneIDsByTop(live []LivePane) []string {
 
 // planLayout computes the tmux window_layout string and focus pane id that
 // applyLayoutLocked would apply for st's current strand table against live,
-// without touching psmux. It maps every strand into render's projection via
+// without touching tmux. It maps every strand into render's projection via
 // toRenderStrands (render, not the engine, drops not-live/pane-less/hidden
 // strands from placement — GAP B, card 6) and calls render.Rules with
 // keyed struct fields, handing it live's actual top-to-bottom pane order so
@@ -81,7 +81,7 @@ func (e *Engine) planLayout(st *MuxState, live []LivePane) (layout, focus string
 // render.Rules against the given present-pane set: a non-hidden strand whose
 // PaneID names a pane still present in the window (matching
 // partitionByAnchor's filter). applyLayoutLocked uses this to refuse to apply
-// a layout that enumerates ZERO panes: psmux accepts an empty-cell layout
+// a layout that enumerates ZERO panes: tmux accepts an empty-cell layout
 // string (exit 0) and answers it by destroying every pane in the session,
 // leaving a zero-pane zombie session no later add can host a strand in
 // (verified live — an `up` in a session holding only foreign/operator panes
@@ -100,10 +100,10 @@ func anyPlacedStrand(strands []Strand, presentIDs map[string]bool) bool {
 // resolved focus pane via select-pane. It assumes the op lock is already
 // held and that reconcile has already run against live (this function
 // makes no reconcile decisions of its own). When live has fewer than two
-// panes it skips both psmux calls entirely, since a single pane already
+// panes it skips both tmux calls entirely, since a single pane already
 // fills the window and select-layout/select-pane would be a needless round
 // trip. It also skips them when no strand owns a present pane: the layout
-// string would then enumerate zero panes, which psmux answers by destroying
+// string would then enumerate zero panes, which tmux answers by destroying
 // the session's entire pane set (see anyPlacedStrand) — with nothing of
 // mux's to lay out, there is nothing worth destroying foreign panes over.
 func (e *Engine) applyLayoutLocked(st *MuxState, live []LivePane) error {

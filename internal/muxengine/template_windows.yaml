@@ -1,5 +1,5 @@
 tmux: ${env:LYX_MUX_TMUX:-tmux}  # path to the tmux executable (on Windows this may resolve to psmux, a tmux-compatible port); set LYX_MUX_TMUX to pin an explicit path
-pwsh: ${env:LYX_MUX_PWSH:-pwsh}  # path to the powershell executable used inside panes; set LYX_MUX_PWSH to pin an explicit path (e.g. if the PATH pwsh is a broken WindowsApps alias stub)
+shell: ${env:LYX_MUX_SHELL:-pwsh}  # path to the shell command lyx launches inside each pane (pwsh by default on Windows); set LYX_MUX_SHELL to pin an explicit path (e.g. if the PATH pwsh is a broken WindowsApps alias stub)
 width: 220  # tmux window width
 height: 50  # tmux window height
 collapsed_strip_rows: 3  # height a shrink:true ancestor collapses to once a descendant is present

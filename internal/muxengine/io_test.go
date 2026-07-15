@@ -4,9 +4,9 @@
 // pane through this exact function (there is no second lookup path), so
 // this one table pins every pane-transport op's error behavior at once.
 // It never calls SendText/SendKey/CapturePane themselves — those always
-// make a real psmux round trip once resolution succeeds, matching the
+// make a real tmux round trip once resolution succeeds, matching the
 // discipline reconcileApplyPersistLocked's own note establishes: hermetic
-// tests exercise the pure lookup, never the live psmux seam.
+// tests exercise the pure lookup, never the live tmux seam.
 
 package muxengine
 

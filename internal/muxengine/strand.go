@@ -184,8 +184,8 @@ func needsLaunchOnSurface(wasHidden bool, display render.Display) bool {
 // the shared launchStrandLocked (GAP A). It assumes the op lock is already
 // held and appends the new Strand into st.Strands in place. Hermetically
 // testable for a hidden add (needsLaunchOnAdd skips launchStrandLocked
-// entirely, so no psmux round trip happens); a non-hidden add always makes
-// a real psmux round trip via launchStrandLocked.
+// entirely, so no tmux round trip happens); a non-hidden add always makes
+// a real tmux round trip via launchStrandLocked.
 func (e *Engine) addStrandLocked(st *MuxState, spec AddSpec) (Strand, error) {
 	if err := validateAnchor(spec.Display.Anchor); err != nil {
 		return Strand{}, err
@@ -231,7 +231,7 @@ func (e *Engine) addStrandLocked(st *MuxState, spec AddSpec) (Strand, error) {
 // hidden->visible transition — realizes the strand into a live pane via
 // launchStrandLocked before returning (GAP A). It assumes the op lock is
 // already held. Hermetically testable except for the actual surfacing
-// launch, which always makes a real psmux round trip.
+// launch, which always makes a real tmux round trip.
 func (e *Engine) updateStrandLocked(st *MuxState, guid string, display render.Display) (Strand, error) {
 	if err := validateAnchor(display.Anchor); err != nil {
 		return Strand{}, err
@@ -262,7 +262,7 @@ func (e *Engine) updateStrandLocked(st *MuxState, guid string, display render.Di
 // removeStrandLocked removes guid from st.Strands: a non-leaf without
 // recursive is rejected outright; otherwise the whole descendant subtree is
 // cascaded away (never orphaning children into a broken parent chain). It
-// assumes the op lock is already held, never touches psmux itself, and so
+// assumes the op lock is already held, never touches tmux itself, and so
 // is fully hermetically testable. It returns the pane ids of every removed
 // strand that held a live pane binding, so the caller can kill those panes
 // explicitly rather than relying on select-layout to reap them.
@@ -327,7 +327,7 @@ func removalEmptiedSession(remaining []Strand, sessionGone bool) bool {
 // computed before the guid exists). Pre-flights the session's existence
 // (mirroring Status) so running add before up fails with the same friendly
 // no-session error (see requireSessionLocked/noSessionMessage) instead of a
-// raw psmux error surfacing later from inside launchStrandLocked.
+// raw tmux error surfacing later from inside launchStrandLocked.
 func (e *Engine) AddStrand(spec AddSpec) (Strand, error) {
 	var result Strand
 	err := e.withOpLock(func() error {
@@ -370,7 +370,7 @@ func (e *Engine) AddStrand(spec AddSpec) (Strand, error) {
 // surfaces the strand (creates its pane, runs its cmd). Pre-flights the
 // session's existence (like AddStrand/RemoveStrand) so surfacing a hidden
 // strand before "up" fails with the friendly no-session error (see
-// requireSessionLocked/noSessionMessage) instead of a raw psmux error from
+// requireSessionLocked/noSessionMessage) instead of a raw tmux error from
 // inside launchStrandLocked. UpdateStrand is engine-API-only in v1 — there
 // is no CLI verb for it.
 func (e *Engine) UpdateStrand(guid string, display render.Display) (Strand, error) {
@@ -431,10 +431,10 @@ func alivePanePIDs(paneIDs []string, live []LivePane) []int {
 // then reconciles and re-applies the layout. Returns every strand actually
 // removed. Pre-flights the session's existence (mirroring Status) so
 // running remove before up fails with the same friendly no-session error
-// (see requireSessionLocked/noSessionMessage) instead of a raw psmux error
+// (see requireSessionLocked/noSessionMessage) instead of a raw tmux error
 // surfacing later from inside reconcileApplyPersistLocked's listPanes. Like
 // Down, it waits for the
-// destroyed panes' process subtrees to exit before returning: psmux
+// destroyed panes' process subtrees to exit before returning: tmux
 // terminates a pane's children asynchronously, and on Windows the process
 // actually holding the worktree directory is a deep descendant of
 // #{pane_pid} — a remove that returned without the reap could leave a

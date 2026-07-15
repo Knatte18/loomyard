@@ -1,6 +1,6 @@
 // lifecycle.go implements the four lifecycle engine ops — Up, Resume, Down,
 // Status — plus the pure planning helpers that make their decisions
-// unit-testable without a live psmux server. The sharp boundary the batch
+// unit-testable without a live tmux server. The sharp boundary the batch
 // discussion settles on: Up ensures the substrate (server + session) exists
 // and never launches a strand command; Resume is the only replayer, and it
 // skips anchor:hidden strands (pending first surface, not dead).
@@ -149,7 +149,7 @@ func planUpLaunches(strands []Strand) []Strand {
 // strand that is not live (no pane, or its pane is absent from liveIDs) and
 // not anchor:hidden. A hidden strand is "pending first surface", not dead,
 // so Resume must not surface it (GAP1) — that is UpdateStrand's job.
-// liveIDs is the set of pane ids currently present in the psmux window per
+// liveIDs is the set of pane ids currently present in the tmux window per
 // list-panes, matching toRenderStrands' Live derivation.
 func planResumeLaunches(strands []Strand, liveIDs map[string]bool) []Strand {
 	var out []Strand
@@ -166,13 +166,13 @@ func planResumeLaunches(strands []Strand, liveIDs map[string]bool) []Strand {
 	return out
 }
 
-// ensureServerAndSessionLocked ensures this hub's named psmux server and
+// ensureServerAndSessionLocked ensures this hub's named tmux server and
 // this worktree's session exist, spawning a fresh server via a raw
 // new-session when has-session reports absent. It never runs a strand
 // command: Up composes only this plus reconcile/apply, and Resume replays
 // separately via launchStrandLocked after this returns — matching the
 // sharp up=substrate / resume=replay boundary. It assumes the op lock is
-// already held and always makes a real psmux round trip.
+// already held and always makes a real tmux round trip.
 // It reports booted=true when it spawned a fresh session and false when the
 // session already existed, so callers can tell a server rebirth (bindings are
 // all stale) from a normal no-op bring-up; strippedKeys names the env keys
@@ -182,11 +182,11 @@ func planResumeLaunches(strands []Strand, liveIDs map[string]bool) []Strand {
 // returns a *CapabilityError immediately if the configured multiplexer
 // binary is below the pinned version floor or missing a required
 // subcommand. It also validates cfg.DebugLog via debugLogArgs and cfg.Mouse via
-// mouseOption up front and returns either error before any psmux round trip
+// mouseOption up front and returns either error before any tmux round trip
 // at all — an invalid debug_log or mouse value must fail the boot loud, not
 // partway through a spawn.
 func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []string, err error) {
-	// Validate debug_log before anything else touches psmux: a misconfigured
+	// Validate debug_log before anything else touches tmux: a misconfigured
 	// value is a pure config error, unrelated to server/session state, so it
 	// must surface before the capability probe or any spawn attempt.
 	debugArgs, err := debugLogArgs(e.cfg.DebugLog)
@@ -205,7 +205,7 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	// Fail loud, once per ensure/boot, if the configured multiplexer binary
 	// is below the pinned version floor or missing a required subcommand —
 	// far better than letting an unknown surface surface later as a cryptic
-	// psmux/tmux error deep inside the boot loop below.
+	// tmux error deep inside the boot loop below.
 	if err := e.probeCapabilityLocked(); err != nil {
 		return false, nil, err
 	}
@@ -217,10 +217,10 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	}
 	if up {
 		// A session that exists but holds ZERO panes is broken substrate: it
-		// cannot host a strand (there is no pane to adopt or split, and psmux
+		// cannot host a strand (there is no pane to adopt or split, and tmux
 		// offers no way to add a pane to an empty window), so add would fail
 		// forever while up kept reporting success. The state is reachable
-		// when an applied layout once destroyed every pane (psmux reaps any
+		// when an applied layout once destroyed every pane (tmux reaps any
 		// pane absent from a select-layout string). Kill the husk and fall
 		// through to a fresh boot — the booted=true return then makes the
 		// caller clear every stale binding, exactly like a server rebirth.
@@ -234,16 +234,16 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 		_ = e.tmux.run("kill-session", "-t", session)
 	}
 
-	// A stale socket-holder wedges a fresh boot: psmux's internal "__warm__"
-	// helper can outlive a kill-server and sit on the -L socket without ever
-	// hosting a session, so a new-session spawned against it never
-	// materializes. A socket whose holder reports zero sessions across the
-	// grace window is such a stale helper, a dying server, or an unreachable
-	// zombie — never a healthy shared server (sibling worktrees' sessions
-	// would list) — so force-reaping it before spawning is safe.
+	// A stale socket-holder wedges a fresh boot: on Windows, psmux's internal
+	// "__warm__" helper can outlive a kill-server and sit on the -L socket
+	// without ever hosting a session, so a new-session spawned against it
+	// never materializes. A socket whose holder reports zero sessions across
+	// the grace window is such a stale helper, a dying server, or an
+	// unreachable zombie — never a healthy shared server (sibling worktrees'
+	// sessions would list) — so force-reaping it before spawning is safe.
 	if e.sessionlessSocketHolderPersists() {
 		if err := e.reapSocketProcesses(); err != nil {
-			return false, nil, fmt.Errorf("stale psmux socket-holder: %w", err)
+			return false, nil, fmt.Errorf("stale tmux socket-holder: %w", err)
 		}
 	}
 
@@ -270,7 +270,7 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	// chokepoint for that decision).
 	clean, stripped := CleanClaudeEnv(os.Environ())
 	spawnSession := func() error {
-		// debugArgs are psmux GLOBAL flags (e.g. -v/-vv) and must precede
+		// debugArgs are tmux GLOBAL flags (e.g. -v/-vv) and must precede
 		// -L/new-session on the argv; -c pins new-session's pane default cwd
 		// to the invoking worktree cwd, so panes keep today's behavior even
 		// though the server process's own cwd (cmd.Dir) has moved to logsDir.
@@ -281,14 +281,14 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 			"-c", e.layout.Cwd,
 			"-x", strconv.Itoa(e.cfg.Width),
 			"-y", strconv.Itoa(e.cfg.Height),
-			e.cfg.Pwsh,
+			e.cfg.Shell,
 		)
 		cmd := exec.Command(e.cfg.Tmux, argv...)
 		cmd.Dir = logsDir
 		cmd.Env = clean
 		proc.Detach(cmd)
 		if err := cmd.Start(); err != nil {
-			return fmt.Errorf("start psmux: %w", err)
+			return fmt.Errorf("start tmux: %w", err)
 		}
 		return nil
 	}
@@ -298,7 +298,7 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	// loaded machine — a real boot is ~1-2s quiet but has been observed to
 	// exceed two full 20s attempt windows when several concurrent test
 	// suites peg the CPU, so the loop retries against an overall deadline
-	// rather than a fixed attempt count; and (b) a ZOMBIE boot — psmux has a
+	// rather than a fixed attempt count; and (b) a ZOMBIE boot — tmux has a
 	// race under concurrent server startups where the spawned server process
 	// runs but never becomes reachable on its socket (list-sessions empty,
 	// has-session exit 1, forever), which no amount of waiting fixes. After
@@ -333,13 +333,13 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 		}
 
 		if out, err := e.tmux.output("list-sessions", "-F", "#{session_name}"); err == nil && strings.TrimSpace(out) != "" {
-			return false, nil, fmt.Errorf("psmux server is up but session %q did not materialize within %s", session, bootAttemptTimeout)
+			return false, nil, fmt.Errorf("tmux server is up but session %q did not materialize within %s", session, bootAttemptTimeout)
 		}
 		if err := e.reapSocketProcesses(); err != nil {
-			return false, nil, fmt.Errorf("reap zombie psmux boot: %w", err)
+			return false, nil, fmt.Errorf("reap zombie tmux boot: %w", err)
 		}
 		if time.Now().After(bootDeadline) {
-			return false, nil, fmt.Errorf("psmux session did not start within %s", bootOverallTimeout)
+			return false, nil, fmt.Errorf("tmux session did not start within %s", bootOverallTimeout)
 		}
 	}
 
@@ -352,7 +352,7 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	}
 	// Pin the mouse mode explicitly, in both directions: this call always
 	// runs on this fresh-boot path, even to set "off", so the live mouse
-	// state is deterministic regardless of the psmux/tmux backend's own
+	// state is deterministic regardless of the tmux backend's own
 	// default (Shared Decision explicit-set-both-ways-at-boot). Like
 	// remain-on-exit, this never re-applies on an already-up session — the
 	// early return above skips this whole path in that case.
@@ -408,7 +408,7 @@ func (e *Engine) Up() (UpResult, error) {
 // Without this, a strand's stale non-empty PaneID from before the crash
 // would make planLaunch see a "pane already held" table and split instead of
 // adopting the new session's sole initial pane, leaving it orphaned and
-// causing the final layout apply to enumerate one pane fewer than psmux
+// causing the final layout apply to enumerate one pane fewer than tmux
 // actually holds (GAP2). Then — for every persisted strand that is not live
 // and not anchor:hidden — it realizes the strand into a live pane via the
 // shared launchStrandLocked (GAP A), replaying its ResumeCmd (or Cmd, when
@@ -483,7 +483,7 @@ func (e *Engine) Resume() (ResumeResult, error) {
 			}
 			// Re-apply the layout after each launch, not once at the end:
 			// consecutive splits without a re-apply halve the same target
-			// pane until psmux silently refuses to split it, while a
+			// pane until tmux silently refuses to split it, while a
 			// re-apply re-stretches the bottom/active pane so the next
 			// launch always splits the tallest pane the policy just sized.
 			if _, err := e.reconcileApplyPersistLocked(st); err != nil {
@@ -508,13 +508,13 @@ func (e *Engine) Resume() (ResumeResult, error) {
 // not-exist). Errors from kill-session are ignored so Down stays idempotent
 // against an already-stopped session. When this was the last session on the
 // server, the now-empty server is cleaned up — and Down then WAITS until the
-// server process has actually released the socket: psmux's kill-server is
+// server process has actually released the socket: tmux's kill-server is
 // asynchronous, and returning while the old server still holds the socket
 // lets an immediately following up spawn a second server process on the same
 // -L name, whose loser lingers forever as an unreachable stray (observed
 // live under down->up churn). Down also waits for this session's pane CHILD
-// processes (the shell psmux ran in each pane, and whatever it launched) to
-// exit before returning: psmux terminates pane children asynchronously, so a
+// processes (the shell tmux ran in each pane, and whatever it launched) to
+// exit before returning: tmux terminates pane children asynchronously, so a
 // Down that waited only on the server process could return while a pane's
 // shell — whose cwd is the worktree — was still alive, a "no stray state"
 // violation (observed as a worktree-dir-in-use failure under load). It does
@@ -524,13 +524,13 @@ func (e *Engine) Down() (DownResult, error) {
 	var result DownResult
 	err := e.withOpLock(func() error {
 		// Grab the server's OS pid while our session can still be queried —
-		// it is the only reliable death signal: psmux's CLI cannot report
+		// it is the only reliable death signal: tmux's CLI cannot report
 		// "no server" at all (list-sessions exits 0 with empty output and
 		// kill-server exits 0 whether or not a server holds the socket).
 		serverPID := e.serverPIDLocked()
 
 		// Capture this session's pane process subtrees BEFORE kill-session,
-		// while the panes still exist to be listed — the shells psmux ran in
+		// while the panes still exist to be listed — the shells tmux ran in
 		// each pane plus their descendants (on Windows the process actually
 		// holding the worktree directory is a deeper descendant of the pane
 		// pid). Reaping them is how down keeps its "no stray state" guarantee
@@ -542,7 +542,7 @@ func (e *Engine) Down() (DownResult, error) {
 		_ = e.tmux.run("kill-session", "-t", e.SessionName())
 
 		// Tidy the server only if no sessions remain. An EMPTY list-sessions
-		// covers both "zero sessions" and "no server" (psmux does not
+		// covers both "zero sessions" and "no server" (tmux does not
 		// distinguish them, and kill-server is harmless in both); an ERRORED
 		// list-sessions means the socket-holder is unreachable — a zombie
 		// server cannot be hosting healthy sibling sessions, so it is torn
@@ -584,7 +584,7 @@ func (e *Engine) Down() (DownResult, error) {
 	return result, err
 }
 
-// sessionlessSocketHolderPersists reports whether a psmux process is
+// sessionlessSocketHolderPersists reports whether a tmux process is
 // squatting on this engine's socket without hosting any session, and keeps
 // doing so across staleSocketGrace. The grace window exists because the mux
 // op lock is per-worktree: a SIBLING worktree's up may have just spawned
@@ -613,7 +613,7 @@ func (e *Engine) sessionlessSocketHolderPersists() bool {
 	}
 }
 
-// serverPIDLocked returns the psmux server's OS pid as psmux reports it via
+// serverPIDLocked returns the tmux server's OS pid as tmux reports it via
 // the #{pid} format variable, or 0 when it cannot be determined (server or
 // session absent, unparseable output) — callers treat 0 as "nothing to wait
 // on". It targets this worktree's session, so it must run BEFORE
@@ -632,7 +632,7 @@ func (e *Engine) serverPIDLocked() int {
 }
 
 // panePIDsLocked returns the OS pids of this worktree's session's pane child
-// processes — the immediate shell psmux launched in each pane, as psmux
+// processes — the immediate shell tmux launched in each pane, as tmux
 // reports them via the #{pane_pid} format variable (carried on LivePane by
 // listPanes). It returns nil when the session is absent or the query fails
 // (callers treat that as "no children to reap"). It must run BEFORE
@@ -673,7 +673,7 @@ const forceKillExitGrace = 5 * time.Second
 
 // reapExitTimeout bounds how long the pane-child and server reaps wait for a
 // graceful async teardown before force-killing stragglers. It is deliberately
-// generous rather than the old fixed 5s: on a CPU-saturated machine psmux's
+// generous rather than the old fixed 5s: on a CPU-saturated machine tmux's
 // async pane/server teardown — and the Win32_Process probe the reap relies on —
 // both slow down, so a tight deadline risks force-killing prematurely (harmless)
 // or, in the pre-fix code, a fixed wait that ERRORED and aborted the teardown.
@@ -682,8 +682,8 @@ const forceKillExitGrace = 5 * time.Second
 // path returns as soon as the processes exit.
 const reapExitTimeout = 15 * time.Second
 
-// ensureServerGoneLocked guarantees no psmux process remains on this engine's
-// socket after a kill-server, so down provably leaves zero psmux for its socket
+// ensureServerGoneLocked guarantees no tmux process remains on this engine's
+// socket after a kill-server, so down provably leaves zero tmux for its socket
 // the moment it returns. kill-server is asynchronous and, under CPU saturation,
 // the main server AND its "__warm__" helper can outlive any fixed wait. Since
 // the debug-logging batch, the server process's own cwd is the hub's
@@ -696,7 +696,7 @@ const reapExitTimeout = 15 * time.Second
 // longer sees the server's cwd at all for that reason; it still needs to see
 // pane child processes, whose cwd stays the invoking worktree via the -c
 // pin on new-session. It first gives the graceful teardown a bounded window
-// to finish on its own (the common, quiet-machine path), then, if any psmux
+// to finish on its own (the common, quiet-machine path), then, if any tmux
 // still names the socket, force-reaps them and confirms the socket is clear.
 // Force-reap-and-confirm rather than a fixed wait that aborts down: a stray
 // server left on the socket is a real leak even though it no longer pins a
@@ -714,12 +714,12 @@ func (e *Engine) ensureServerGoneLocked(serverPID int) error {
 
 // reapPaneChildren waits for every pane child process to exit, force-killing
 // any that outlive the deadline, so a pane-destroying op leaves no pane
-// grandchild holding worktree resources. psmux terminates pane children
+// grandchild holding worktree resources. tmux terminates pane children
 // asynchronously when a pane/session/server is killed, so an op that
 // returned without this wait could do so while a pane's shell (whose cwd is
 // the worktree) was still alive — the "no stray state" gap that surfaces as
 // a worktree-dir-in-use failure under load. The wait is the normal path (the
-// graceful psmux teardown reaps each child moments later); the force-kill
+// graceful tmux teardown reaps each child moments later); the force-kill
 // fires only for a pid that failed to exit within the deadline, so it can
 // never target a reused pid (a pid that never exited cannot have been
 // reused) — and it then waits again, briefly, for the kill to land, because
@@ -743,7 +743,7 @@ func reapPaneChildren(pids []int, timeout time.Duration) {
 	}
 }
 
-// waitServerProcessesGone polls serverProcessesOnSocket until no psmux
+// waitServerProcessesGone polls serverProcessesOnSocket until no tmux
 // process names this socket, erroring after timeout. It is the belt to
 // waitProcessExit's suspenders: the pid wait covers the main server exactly
 // and instantly, while this drain also catches the "__warm__" helper, which
@@ -757,13 +757,13 @@ func (e *Engine) waitServerProcessesGone(timeout time.Duration) error {
 			return nil
 		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("psmux processes %v still on socket %s after %s", pids, e.Socket(), timeout)
+			return fmt.Errorf("tmux processes %v still on socket %s after %s", pids, e.Socket(), timeout)
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
 }
 
-// reapSocketProcesses force-terminates every psmux process on this engine's
+// reapSocketProcesses force-terminates every tmux process on this engine's
 // socket and drains until the process table confirms they are gone: a
 // graceful kill-server first, then TerminateProcess by pid — necessary
 // because a zombie-booted server (running but never reachable on its
@@ -783,7 +783,7 @@ func (e *Engine) reapSocketProcesses() error {
 
 // waitProcessExit blocks until the process with pid has exited, or errors
 // after timeout. A pid of 0 (unknown) and an already-gone process both
-// return nil immediately. This exists because psmux's kill-server is
+// return nil immediately. This exists because tmux's kill-server is
 // asynchronous AND its CLI cannot report server absence (every probe exits
 // 0), so the only trustworthy "the socket is free" signal is the server
 // process itself disappearing — without this wait, a down immediately
@@ -809,7 +809,7 @@ func waitProcessExit(pid int, timeout time.Duration) error {
 	case <-done:
 		return nil
 	case <-time.After(timeout):
-		return fmt.Errorf("psmux server (pid %d) still up %s after kill-server", pid, timeout)
+		return fmt.Errorf("tmux server (pid %d) still up %s after kill-server", pid, timeout)
 	}
 }
 
@@ -830,13 +830,13 @@ func noSessionMessage(strandCount int) string {
 }
 
 // requireSessionLocked returns a friendly, actionable error when this
-// worktree's psmux session does not exist, instead of letting a caller fall
-// through to a raw psmux error surfacing later from deep inside
+// worktree's tmux session does not exist, instead of letting a caller fall
+// through to a raw tmux error surfacing later from deep inside
 // launchStrandLocked or listPanes. Status has always pre-flighted this way;
 // AddStrand and RemoveStrand share the identical check because both hit
-// psmux directly with no earlier session check of their own — AddStrand via
+// tmux directly with no earlier session check of their own — AddStrand via
 // launchStrandLocked, RemoveStrand via reconcileApplyPersistLocked's
-// listPanes — which otherwise surfaces a cryptic psmux error when a caller
+// listPanes — which otherwise surfaces a cryptic tmux error when a caller
 // runs add/remove before up. Beyond confirming the session is gone, it now
 // also tells the operator whether "lyx mux resume" would have anything to
 // rebuild: it loads the persisted state to count strands and lets
@@ -845,7 +845,7 @@ func noSessionMessage(strandCount int) string {
 // LoadState failure or a fresh worktree with no state yet falls back to
 // count 0 — the state read is diagnostic only and must never mask the
 // primary "no session" signal with a state-read error. It assumes the op
-// lock is already held and always makes a real psmux round trip.
+// lock is already held and always makes a real tmux round trip.
 func (e *Engine) requireSessionLocked() error {
 	up, err := e.tmux.hasSession(e.SessionName())
 	if err != nil {
@@ -865,7 +865,7 @@ func (e *Engine) requireSessionLocked() error {
 // Status reports this session's tracked strands (guid, name, pane id,
 // live/dead) purely by cross-referencing the persisted table against the
 // live pane set list-panes just reported. Status is a read verb, so unlike
-// the mutating ops it must not touch psmux beyond the read-only
+// the mutating ops it must not touch tmux beyond the read-only
 // has-session/list-panes calls: it does NOT run reconcileLocked (which kills
 // dead-but-not-sole panes and clears their strands' bindings — a real state
 // correction that belongs to a mutating op, not a query) and it does NOT run
@@ -899,7 +899,7 @@ func (e *Engine) Status() (StatusResult, error) {
 
 		// aliveIDSet, not liveIDSet: report a strand bound to a
 		// dead-but-present pane as not live — the operator asks status whether
-		// the strand's process is running, not whether psmux still lists a
+		// the strand's process is running, not whether tmux still lists a
 		// (dead) pane for it.
 		aliveIDs := aliveIDSet(live)
 		strands := make([]StrandStatus, len(st.Strands))

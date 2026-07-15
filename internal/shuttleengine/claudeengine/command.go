@@ -1,7 +1,7 @@
 // command.go composes the opaque pane-shell command lines Prepare (settings.go)
 // hands back as a Launch: the launch line that starts a fresh session and
 // the resume line that reattaches an existing one. Both are single-line
-// strings typed verbatim into a pane via psmux send-keys (see
+// strings typed verbatim into a pane via tmux send-keys (see
 // muxengine/spawn.go's launchStrandLocked) — no newline may appear in
 // either, since send-keys submits a line at a time. Argument quoting, the
 // call operator, and the prompt-file read idiom are pane-shell mechanics
@@ -29,7 +29,7 @@ import (
 // `died` after the full startup window. UTF-8 byte count is a safe upper
 // bound on UTF-16 length (every code point's UTF-16 unit count ≤ its UTF-8
 // byte count), and the ~2.7 KB left under the ceiling covers the binary
-// path, session id, settings path, flags, quoting, and psmux's own claude
+// path, session id, settings path, flags, quoting, and tmux's own claude
 // wrapper function on the same line.
 const maxLaunchPromptBytes = 30000
 
@@ -105,7 +105,7 @@ func claudeBinary(cfg shuttleengine.Config) string {
 
 // buildLaunchCmd composes the pane-shell line that starts a fresh claude
 // session: the prompt is read from promptPath via sh.ReadFile rather than
-// typed inline, so a large or quote-laden prompt never has to survive psmux
+// typed inline, so a large or quote-laden prompt never has to survive tmux
 // send-keys or shell string escaping — though it still becomes one argument
 // of the claude process's command line, which is why Prepare bounds it at
 // maxLaunchPromptBytes. --model is appended only when model is

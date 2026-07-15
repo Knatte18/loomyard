@@ -12,7 +12,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// upCmd builds the `up` subcommand: ensures this hub's named psmux server
+// upCmd builds the `up` subcommand: ensures this hub's named tmux server
 // and this worktree's session exist, then reconciles and re-applies the
 // current strand layout. It follows Idiom B — ShouldAbort guard, engine
 // call, error/success envelope, always return nil.
@@ -20,7 +20,7 @@ func (c *muxCLI) upCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "up",
 		Short: "boot the mux substrate (server + session) for this worktree",
-		Long: `up ensures this hub's named psmux server and this worktree's session
+		Long: `up ensures this hub's named tmux server and this worktree's session
 exist (booting them if absent, a no-op if already up), then reconciles dead
 panes and re-applies the current strand layout.
 
@@ -61,13 +61,13 @@ Example:
 	}
 }
 
-// downCmd builds the `down` subcommand: kills this worktree's psmux session
+// downCmd builds the `down` subcommand: kills this worktree's tmux session
 // and clears its persisted strand state.
 func (c *muxCLI) downCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "down",
 		Short: "kill this worktree's mux session and clear its strand state",
-		Long: `down kills this worktree's psmux session and deletes its persisted
+		Long: `down kills this worktree's tmux session and deletes its persisted
 strand state. Sibling worktrees sharing the hub's server are untouched;
 when this was the server's last session, the now-empty server is shut down
 too (down waits until the server process has actually exited). down is

@@ -101,7 +101,7 @@
 // ClusterN selects how many extra cross-checking reviewers step A spawns
 // alongside the round's own review. Only ClusterN == 0 is supported today;
 // a positive value fails validate with ErrClusterUnsupported. Cluster
-// reviewers need their own switchable psmux window (mux's own-window
+// reviewers need their own switchable tmux window (mux's own-window
 // anchoring), which does not exist yet — this gates only the cluster
 // feature, not the rest of the shuttle -> burler -> perch -> loom spine,
 // which ships on ClusterN == 0. See the roadmap's own-window-anchoring

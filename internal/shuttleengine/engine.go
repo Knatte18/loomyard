@@ -57,12 +57,12 @@ type Launch struct {
 
 // PaneInput is one step of provider-specific key choreography a run loop
 // sends into a pane via mux's send-keys primitives. Exactly one of Key or
-// Text is set: Key names a psmux key (e.g. "Escape", "Enter") sent as a key
+// Text is set: Key names a tmux key (e.g. "Escape", "Enter") sent as a key
 // press, Text is literal text typed into the pane. When Submit is true and
 // Text is set, an Enter key follows Text — the two-step "type then submit"
-// psmux requires for literal text.
+// tmux requires for literal text.
 type PaneInput struct {
-	// Key is a psmux named key (e.g. "Escape"). Empty when this step types
+	// Key is a tmux named key (e.g. "Escape"). Empty when this step types
 	// literal Text instead.
 	Key string
 	// Text is literal text typed into the pane. Empty when this step sends

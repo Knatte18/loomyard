@@ -1,8 +1,8 @@
 // apply_test.go verifies planLayout produces the same layout string and
 // focus target render.Rules would for an equivalent canonical strand table
 // (reusing render's golden expectations), and that applyLayoutLocked skips
-// psmux entirely when fewer than two panes are live — both hermetic, no
-// live psmux required.
+// tmux entirely when fewer than two panes are live — both hermetic, no
+// live tmux required.
 
 package muxengine
 
@@ -75,8 +75,8 @@ func TestPlanLayout_HiddenStrandExcludedFromPlacement(t *testing.T) {
 	}
 }
 
-func TestApplyLayoutLocked_SkipsPsmuxWhenFewerThanTwoLivePanes(t *testing.T) {
-	// e's psmux points at a nonexistent binary (newTestEngine's fixture);
+func TestApplyLayoutLocked_SkipsTmuxWhenFewerThanTwoLivePanes(t *testing.T) {
+	// e's tmux points at a nonexistent binary (newTestEngine's fixture);
 	// if applyLayoutLocked issued select-layout/select-pane here it would
 	// fail loudly rather than silently passing.
 	e := newTestEngine(t)
@@ -98,11 +98,11 @@ func TestApplyLayoutLocked_SkipsPsmuxWhenFewerThanTwoLivePanes(t *testing.T) {
 	})
 }
 
-func TestApplyLayoutLocked_SkipsPsmuxWhenNoStrandOwnsAPresentPane(t *testing.T) {
-	// e's psmux points at a nonexistent binary (newTestEngine's fixture);
+func TestApplyLayoutLocked_SkipsTmuxWhenNoStrandOwnsAPresentPane(t *testing.T) {
+	// e's tmux points at a nonexistent binary (newTestEngine's fixture);
 	// if applyLayoutLocked issued select-layout here it would fail loudly.
 	// Two live panes but no strand owning either: the rendered layout would
-	// enumerate ZERO cells, and psmux answers an empty-cell layout by
+	// enumerate ZERO cells, and tmux answers an empty-cell layout by
 	// destroying every pane in the session — so the apply must be skipped.
 	e := newTestEngine(t)
 

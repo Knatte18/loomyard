@@ -1,9 +1,9 @@
 // spawn_test.go table-tests planPaneTarget's adopt-vs-split decision —
-// including the corpse-pane rules psmux forces (never adopt a dead pane;
+// including the corpse-pane rules tmux forces (never adopt a dead pane;
 // split the tallest alive pane, or the kept corpse when nothing is alive) —
 // and verifies loadOrInitStateLocked's fresh-worktree bootstrap. Both are
-// pure/hermetic, no live psmux required. launchStrandLocked itself always
-// makes a real psmux round trip (list-panes/split-window + send-keys), so
+// pure/hermetic, no live tmux required. launchStrandLocked itself always
+// makes a real tmux round trip (list-panes/split-window + send-keys), so
 // it is exercised only through this decision seam, not invoked directly
 // here; the composed live behavior is covered by the smoke tests.
 
@@ -51,7 +51,7 @@ func TestPlanPaneTarget(t *testing.T) {
 		},
 		{
 			name: "TinyActiveBand_SplitTargetsTheTallestNotTheFirst",
-			// The session-target split defect this planner replaces: psmux
+			// The session-target split defect this planner replaces: tmux
 			// splits the active pane, which select-layout can leave on a
 			// 1-2 row band, and a too-small split fails silently. The
 			// planner must always pick the tallest alive pane instead.
@@ -138,8 +138,8 @@ func TestLoadOrInitStateLocked_ExistingFileLoadsVerbatim(t *testing.T) {
 	}
 }
 
-// TestSendKeysLiteralArg pins the dash-escape rule for psmux send-keys -l:
-// psmux parses a '-'-leading literal argument as flags and silently drops
+// TestSendKeysLiteralArg pins the dash-escape rule for tmux send-keys -l:
+// tmux parses a '-'-leading literal argument as flags and silently drops
 // it (exit 0, nothing typed; '--' does not stop the parsing), so a
 // dash-leading opaque cmd must be sent with one leading space — which the
 // pane shell ignores — while every other text passes through verbatim.

@@ -100,7 +100,7 @@ Example:
 	cmd.Flags().StringVar(&resumeCmd, "resume-cmd", "", `command "lyx mux resume" replays instead of --cmd`)
 	cmd.Flags().StringVar(&parent, "parent", "", "parent strand's guid")
 	cmd.Flags().StringVar(&anchor, "anchor", string(render.AnchorBelowParent), "placement: below-parent|hidden")
-	cmd.Flags().BoolVar(&focus, "focus", false, "give this strand psmux input focus")
+	cmd.Flags().BoolVar(&focus, "focus", false, "give this strand tmux input focus")
 	if err := cmd.MarkFlagRequired("cmd"); err != nil {
 		// MarkFlagRequired only errors when the named flag does not exist on
 		// cmd; --cmd is registered immediately above, so this can never fire

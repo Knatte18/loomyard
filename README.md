@@ -44,7 +44,7 @@ LoomYard keeps the host repo pristine by routing all its own artifacts into a co
   └── _board/                       (board repo; the task store)
 ```
 
-Each host worktree uses a **junction** (Windows) or symlink to route writes (`_lyx/config/`, `_raddle/`) into its sibling weft worktree — transparently, so code that writes `_lyx/config/board.yaml` never sees the indirection. Two state roots with opposite lifecycles: **`_lyx/`** is durable and weft-synced (config, board, orchestration status — resume works across machines); **`.lyx/`** is ephemeral and machine-bound (live psmux runtime state, never synced).
+Each host worktree uses a **junction** (Windows) or symlink to route writes (`_lyx/config/`, `_raddle/`) into its sibling weft worktree — transparently, so code that writes `_lyx/config/board.yaml` never sees the indirection. Two state roots with opposite lifecycles: **`_lyx/`** is durable and weft-synced (config, board, orchestration status — resume works across machines); **`.lyx/`** is ephemeral and machine-bound (live tmux runtime state, never synced).
 
 All worktree and Hub geometry resolves through a single package, `internal/hubgeometry` — the sole owner of cwd and worktree-root math. See [CONSTRAINTS.md](CONSTRAINTS.md).
 

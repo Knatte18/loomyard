@@ -422,7 +422,7 @@ func requireReadyAgentPane(mux MuxOps, engine Engine, guid string) error {
 
 // requireLiveStrand fails unless guid's strand is currently tracked by mux
 // AND bound to a live pane. It is the first half of requireReadyAgentPane's
-// guard (and separately keeps the cheap failure modes cheap): psmux's
+// guard (and separately keeps the cheap failure modes cheap): tmux's
 // send-keys against a dead or missing pane exits 0 while delivering nothing
 // (proven live: interrupt/send against a run that had classified "died"
 // both reported success as silent no-ops) — without the guard, the exact

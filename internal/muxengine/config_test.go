@@ -48,15 +48,15 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 	// ConfigTemplate() is OS-split (template_windows.go / template_posix.go),
 	// but both variants defer to PATH names rather than a pinned install
 	// path: tmux/pwsh on Windows, tmux/bash on POSIX.
-	wantTmux, wantPwsh := "tmux", "pwsh"
+	wantTmux, wantShell := "tmux", "pwsh"
 	if runtime.GOOS != "windows" {
-		wantTmux, wantPwsh = "tmux", "bash"
+		wantTmux, wantShell = "tmux", "bash"
 	}
 	if cfg.Tmux != wantTmux {
 		t.Errorf("Tmux = %q, want %q", cfg.Tmux, wantTmux)
 	}
-	if cfg.Pwsh != wantPwsh {
-		t.Errorf("Pwsh = %q, want %q", cfg.Pwsh, wantPwsh)
+	if cfg.Shell != wantShell {
+		t.Errorf("Shell = %q, want %q", cfg.Shell, wantShell)
 	}
 	if cfg.Width != 220 {
 		t.Errorf("Width = %d, want 220", cfg.Width)

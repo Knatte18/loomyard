@@ -1,8 +1,8 @@
 // mouse.go implements the mouse config value validator: mapping the mouse
-// config key's raw string to the canonical "on"/"off" psmux/tmux option
+// config key's raw string to the canonical "on"/"off" tmux option
 // value the boot-time set-option call needs. It is a pure planning helper (no
 // filesystem or process I/O); the caller (lifecycle.go) performs the actual
-// psmux set-option round trip.
+// tmux set-option round trip.
 
 package muxengine
 
@@ -12,7 +12,7 @@ import (
 )
 
 // mouseOption validates and normalizes a mouse config value to the exact
-// string the psmux/tmux "set-option -g mouse" invocation expects: "on" or
+// string the tmux "set-option -g mouse" invocation expects: "on" or
 // "off". raw is trimmed of surrounding whitespace and lowercased before
 // comparison, so a template-sourced value like " ON " resolves the same as
 // "on". Every other value — the empty string included — is a misconfiguration

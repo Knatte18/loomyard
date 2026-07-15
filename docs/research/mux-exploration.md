@@ -158,7 +158,8 @@ needs a TTY; the orchestrator never attaches — it sees via `capture-pane`.**
   quit-keys); allow 4–6s for TUI-exit screen settle.
 
 ### Real interactive `claude` in a pane (verified 2026-06-11)
-Cross-reference: [`tmux-tui-behavior.md`](tmux-tui-behavior.md) (prior millhouse findings on tmux/Windows,
+Cross-reference: [`psmux-tui-behavior.md`](psmux-tui-behavior.md) (prior millhouse findings on
+psmux/Windows — tmux's own behavior is assumed similar but was not separately verified,
 claude 2.1.158/159). This session re-verified on claude **2.1.173**.
 - **Renders + drivable.** A real interactive `claude` TUI launched via `send-keys` in a pane
   renders fully in `capture-pane`; `send-keys -l "<text>"` + `send-keys Enter` submits a prompt;
@@ -174,7 +175,7 @@ claude 2.1.158/159). This session re-verified on claude **2.1.173**.
   = `? for shortcuts`). millhouse's non-ASCII-space bug (2.1.158) did NOT reproduce. Still match
   the single token (`shortcuts`/`interrupt`) to stay version-agnostic.
 - **Multi-line prompts cannot be typed into a running pane** (paste-buffer drops content;
-  bracketed paste submits on each `\n` — see tmux-tui-behavior.md). → mux gives each claude its
+  bracketed paste submits on each `\n` — see psmux-tui-behavior.md). → mux gives each claude its
   task **at launch** (positional `[prompt]` arg / `Get-Content -Raw` script), not by typing into
   a live TUI. Reuse = single-line only, and must send **Esc** first to clear leaked auto-suggest.
 - **Teammate-mode does NOT auto-spawn panes here.** With `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`

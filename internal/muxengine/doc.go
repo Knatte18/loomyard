@@ -2,8 +2,8 @@
 // code — its only job is documenting the package's role and contract in one
 // place a reader finds first.
 
-// Package muxengine is the domain kernel for lyx's psmux window manager: the
-// psmux subprocess overlay, strand bookkeeping, persisted state, config, and
+// Package muxengine is the domain kernel for lyx's tmux window manager: the
+// tmux subprocess overlay, strand bookkeeping, persisted state, config, and
 // (in the operations layer) the lifecycle verbs that compose them. It is the
 // "dumb carrier" for its caller's strand data — muxengine stores every field
 // a caller writes into a strand and reads none of them semantically. There is
@@ -17,10 +17,10 @@
 // computing a layout; render never imports muxengine, so the import graph
 // stays acyclic (muxcli -> muxengine -> render).
 //
-// One additional invariant this package enforces: exactly one named psmux
+// One additional invariant this package enforces: exactly one named tmux
 // server per hub. The server name is derived deterministically from the hub
 // path (ServerName), so every worktree under the same hub locates and shares
-// the same psmux server rather than each spawning its own.
+// the same tmux server rather than each spawning its own.
 //
 // # Multiplexer contract surface
 //
