@@ -5,9 +5,8 @@ runs one command, writes JSON to stdout, and exits — there is no daemon and no
 shared memory. State lives on disk per module and is coordinated with file locks,
 so concurrent `lyx` processes on a machine cooperate through the filesystem. The
 first module, **board** (a task tracker), is implemented; **warp** (the host↔weft
-topology owner) is implemented; **muxpoc**, a proof-of-concept orchestrator, is
-parked (kept on disk as a reference, unwired from the CLI); and **mux**, the clean
-tmux overlay it informed, is implemented (see [roadmap.md](roadmap.md)).
+topology owner) is implemented; and **mux**, the clean tmux overlay built on what its
+now-deleted proof-of-concept (`muxpoc`) proved, is implemented (see [roadmap.md](roadmap.md)).
 
 In the long term, Loomyard is intended to **replace mill/millhouse (Python)** entirely.
 We get there by building these modules as self-contained toolkits first;
@@ -181,7 +180,6 @@ github.com/Knatte18/loomyard/
 ├── internal/weftengine/          the weft domain kernel
 ├── internal/idecli/              the ide CLI command
 ├── internal/ideengine/           the ide domain kernel
-├── internal/muxpoccli/           the muxpoc POC module (parked)
 ├── internal/muxcli/              the mux CLI command
 ├── internal/muxengine/           the mux domain kernel (overlay + strand bookkeeping)
 ├── internal/muxengine/render/    pure display-vocabulary leaf (layout = Rules(strands))
@@ -230,10 +228,6 @@ User-facing modules each get one `lyx <module>` namespace:
 - **weft** — owns all git into the paired weft repo (`lyx weft status|commit|push|pull|sync`). ✅ Implemented.
 - **warp** — **host↔weft-coordinated git topology**: clone (hub-creator), dual-worktree add/remove, coordinated checkout (switches host+weft together + re-points junctions), reconcile, status, prune, cleanup. The single owner of the mirror invariant — consolidates the former `worktree` / `git-clone` modules and `internal/git`; its CLI surface is `lyx warp clone|add|list|remove|checkout|status|reconcile|prune|cleanup`. ✅ Implemented.
 - **ide** — one-shot VS Code launcher with interactive menu. ✅ Implemented.
-- **muxpoc** — proof-of-concept tmux orchestrator that proved the risky parts (layout checksum,
-  bottom-dominant layout, env hygiene, native `--resume`) later reused by the **mux** module.
-  **Parked** — kept on disk as a reference, unregistered from the `lyx` CLI. See the
-  `internal/muxengine` package documentation.
 - **selfreport** — file bugs and enhancements against `Knatte18/loomyard` via the `gh` CLI
   (`lyx selfreport create <title>`). Target repo is hardcoded; supports `--body` (or `-` for
   stdin) and `--label`; defaults to `bug`. Callable from any sandbox agent context with no
@@ -241,7 +235,9 @@ User-facing modules each get one `lyx <module>` namespace:
 - **mux** — **the window to the world**: tmux overlay + **strand** bookkeeping + render
   (`internal/muxcli` + `internal/muxengine` + `internal/muxengine/render`). Hosts every managed
   process as a strand, arranges them, persists to `.lyx/mux.json` (`lyx mux
-  up|add|remove|status|attach|resume|down`). ✅ Implemented. See the `internal/muxengine` package
+  up|add|remove|status|attach|resume|down`). Built on what its proof-of-concept, `muxpoc`, proved
+  first (layout checksum, bottom-dominant layout, env hygiene, native `--resume`); `muxpoc` has
+  since been deleted, its job done. ✅ Implemented. See the `internal/muxengine` package
   documentation.
 - **shuttle** — run **one** LLM agent as an interactive tmux strand over the file contract
   (`internal/shuttleengine` + `internal/shuttleengine/claudeengine` + `internal/shuttlecli`;

@@ -1,7 +1,7 @@
 // leaf_enforcement_test.go enforces the lyxtest Leaf Invariant: internal/lyxtest
 // must not import internal/configreg or any feature package (boardengine/boardcli,
-// warpengine/warpcli, weftengine/weftcli, ideengine/idecli, selfreportengine/selfreportcli,
-// muxpoccli). Tests that need real config seed it via SeedConfig with a configreg-free
+// warpengine/warpcli, weftengine/weftcli, ideengine/idecli, selfreportengine/selfreportcli).
+// Tests that need real config seed it via SeedConfig with a configreg-free
 // map[string]string (never configreg types).
 
 package lyxtest
@@ -18,7 +18,7 @@ import (
 
 // TestLeafInvariant verifies that lyxtest imports only stdlib and internal/hubgeometry,
 // never internal/configreg or any feature package (boardengine/boardcli, warpengine/warpcli,
-// weftengine/weftcli, ideengine/idecli, selfreportengine/selfreportcli, muxpoccli).
+// weftengine/weftcli, ideengine/idecli, selfreportengine/selfreportcli).
 // It uses go/parser to read actual import paths, avoiding false positives from
 // string literals in doc comments.
 func TestLeafInvariant(t *testing.T) {
@@ -45,7 +45,6 @@ func TestLeafInvariant(t *testing.T) {
 		"github.com/Knatte18/loomyard/internal/idecli",
 		"github.com/Knatte18/loomyard/internal/selfreportengine",
 		"github.com/Knatte18/loomyard/internal/selfreportcli",
-		"github.com/Knatte18/loomyard/internal/muxpoccli",
 	}
 
 	var failures []string

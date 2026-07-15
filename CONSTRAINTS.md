@@ -79,8 +79,10 @@ Every lyx CLI module is a cobra subtree assembled under one root in `cmd/lyx/mai
 - **Package naming.** A Cobra-registered package is `<module>cli`; its extracted domain
   kernel is `<module>engine`. cli imports engine; engine never imports cli or cobra.
   Litmus: returns `(T, error)` with no cobra/`io.Writer`/exit codes ⇒ engine. Skip the
-  engine only for trivial wrappers (`configcli`) or throwaway (`muxpoccli`);
-  "no consumer today" is not a skip reason. `initcli`/`initengine` follows the standard
+  engine only for trivial wrappers (`configcli`) or a throwaway proof-of-concept meant
+  to be deleted once it proves its point (e.g. `muxpoccli`, which followed exactly that
+  path — deleted once `mux` shipped); "no consumer today" is not a skip reason.
+  `initcli`/`initengine` follows the standard
   split (no longer exempt — `lyx init --undo` grew enough core logic that mixing it into
   the cli package was rot, not simplicity).
 - **Enforced by** `cmd/lyx/drift_test.go` (every command has `Short`),

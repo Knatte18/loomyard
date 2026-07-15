@@ -35,9 +35,9 @@ var _ shuttleengine.Engine = (*Claude)(nil)
 
 // newSessionID mints a UUID v4 (crypto/rand, RFC-4122 version/variant bits
 // set) as the session identity Prepare hands to claude via --session-id.
-// This mirrors muxpoccli's newSessionID recipe; it is reimplemented here
-// rather than imported because muxpoccli is a feature package shuttleengine
-// must not depend on.
+// This mirrors the same recipe muxpoccli (now deleted) used; it is
+// independently implemented here rather than shared via import because
+// a CLI feature package is not something shuttleengine should depend on.
 func newSessionID() (string, error) {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {

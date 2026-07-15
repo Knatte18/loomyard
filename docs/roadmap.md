@@ -139,7 +139,8 @@ Each layer knows only the one below it; built bottom-up. See the
    `shed`/`glance`. CLI verbs: `up`, `add`, `remove`, `status`, `attach`, `resume`, `down`.
    (see the `internal/muxengine` package documentation) **Built on what muxpoc proved** —
    clean-env boot, interactive claude, child-pane spawn, bottom-dominant layout, and resume after
-   `kill-server`; muxpoc itself is now parked ([overview.md#modules](overview.md#modules)).
+   `kill-server`; muxpoc itself has since been deleted, its job done
+   ([overview.md#modules](overview.md#modules)).
 
 10. **`internal/shuttleengine` — one LLM agent via a swappable engine.** ✅ **Done.** Runs a single
     agent as an interactive tmux strand over the file contract; `Stop`-hook completion read off an

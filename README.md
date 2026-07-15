@@ -60,12 +60,13 @@ Every user-facing module is a `lyx <module>` namespace, assembled into one cobra
 - **weft** — owns all git into the paired weft repo (`status|commit|push|pull|sync`).
 - **warp** — the host↔weft git topology owner: clone, dual-worktree add/remove, coordinated checkout, reconcile, status, prune, cleanup.
 - **ide** — one-shot IDE launcher for worktrees, with an interactive menu.
-- **muxpoc** — a shipped proof-of-concept tmux orchestrator.
+- **mux** — the tmux overlay + strand bookkeeping + render. (Superseded `muxpoc`, the
+  proof-of-concept it was built from — `muxpoc` proved the risky parts, then was
+  deleted once `mux` shipped.)
 - **selfreport** — file bugs/enhancements against the repo via `gh`.
 
 **In progress (design):**
 
-- **mux** — the tmux overlay + strand bookkeeping + render.
 - **loom** — the phased orchestrator (Setup → Discussion → Plan → Builder → Finalize), each phase gated by a review.
 - **review** — a generic profile-driven gate engine, used by `loom` and standalone.
 
