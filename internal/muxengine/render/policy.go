@@ -117,7 +117,8 @@ func orderStack(stack []Strand) []Strand {
 
 // chainDepth counts hops from s up its parent chain until it reaches a
 // strand with no parent, or a parent that is not part of this stack (its
-// actual parent anchors elsewhere, e.g. in the fixed top band).
+// actual parent is AnchorHidden, deferred AnchorOwnWindow, not Live, or has
+// an empty PaneID, and so was excluded by partitionByAnchor's filter).
 func chainDepth(s Strand, byGUID map[string]Strand) int {
 	depth := 0
 	cur := s.Parent
