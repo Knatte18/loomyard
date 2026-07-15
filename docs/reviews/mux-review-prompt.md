@@ -1,9 +1,10 @@
 # mux — independent review + fix
 
 You are a senior engineer doing a COMPLETE, adversarial, INDEPENDENT review of the `mux`
-module in the loomyard repo, followed by FIXING what you find. Work in the worktree at
-`C:\Code\loomyard\wts\internal-mux` (branch `internal-mux`). Adjust that path/branch if the
-task lives elsewhere now.
+module in the loomyard repo, followed by FIXING what you find. Work in whichever worktree
+this task was spawned into — check `git branch --show-current` and `_mill/status.md` in
+your own worktree rather than assuming a fixed path; the module has moved worktrees/branches
+several times as it evolved (most recently `mux-anchor-top-redesign`, done) and will again.
 
 ## Your two jobs, in order
 1. REVIEW: form your own independent judgment of mux's scope and correctness. Hunt for bugs by
@@ -36,8 +37,11 @@ preserved.
   `docs/research/mux-hooks-exploration.md`, `docs/overview.md`, `docs/roadmap.md`,
   `CONSTRAINTS.md`, `README.md`.
 - The dedicated live-driving suite you will RUN: `tools/sandbox/SANDBOX-MUX-SUITE.md`
-  (scenarios M0–M11) plus `docs/sandbox-howto.md` for how the sandbox harness works. This
-  suite is the maintained, structured vehicle for driving real psmux — see "What to TEST".
+  (scenarios M0–M18 as of this writing — M6 was retired when `anchor:top` was removed and
+  replaced by M18's below-parent mother/child shrink scenario; confirm the current max
+  scenario number yourself, the suite is expected to keep growing) plus `docs/sandbox-howto.md`
+  for how the sandbox harness works. This suite is the maintained, structured vehicle for
+  driving real psmux — see "What to TEST".
 - Repo rules you MUST follow: `CLAUDE.md` (root + `~/.claude/CLAUDE.md`) and `CONSTRAINTS.md`
   (Hub Geometry Invariant, CLI/Cobra Invariant, lyxtest Leaf Invariant, Sandbox Suite Coverage,
   Documentation Lifecycle). A change that ships behaviour without updating the module doc /
@@ -73,10 +77,17 @@ INVARIANT you must actively verify by driving real psmux — a green `go test` p
   `%1` again). Verify a stale binding is never mistaken for a live strand: `up` after a crash
   must clear stale bindings; `resume` after a crash must rebuild every non-hidden strand exactly
   once (adopt the initial pane, split the rest — no orphans, no double-launch).
-- SOLE / ALL-DEAD PANES. psmux refuses to kill a session's last pane. Verify reconcile keeps
-  exactly one pane when every pane is dead (so the session survives) and that resume still
-  rebuilds all strands in ONE pass (no "resumed:N but only 1 came back", no adopting a dead pane
-  and silently swallowing the launch).
+- SOLE / ALL-DEAD PANES. This bullet's ORIGINAL claim — "psmux refuses to kill a session's last
+  pane" — is now KNOWN WRONG on tmux (see `mux-remove-last-pane-error`, done): killing a
+  session's true last pane destroys the session outright, corpsing nothing. What still needs
+  verifying: reconcile keeps exactly one pane when every pane is dead-but-present (a `pane_dead=1`
+  corpse is not the same as "no panes" — a session with N dead panes and zero live ones is a
+  different state than a session actually reduced to zero panes by an explicit `kill-pane`), and
+  that resume still rebuilds all strands in ONE pass (no "resumed:N but only 1 came back", no
+  adopting a dead pane and silently swallowing the launch). Whether real psmux on Windows still
+  behaves the old "refuses to kill the last pane" way the original bullet claimed is itself
+  UNVERIFIED (no Windows box was available when this was found) — if you have Windows access,
+  checking that directly would resolve a real open question, not just a documentation nit.
 - CROSS-WORKTREE SCOPE. The psmux server is per-HUB, shared by sibling worktrees. Verify `down`
   in one worktree does NOT kill sibling worktrees' sessions/agents; verify two worktrees on one
   hub server coexist; watch for duplicate server processes spawned during down/up churn.
@@ -106,6 +117,50 @@ INVARIANT you must actively verify by driving real psmux — a green `go test` p
   `no mux session; run "lyx mux up"` message is correct and must NOT mention `resume`. Verify
   both branches: kill the server with strands persisted (resume-hint expected) vs. a genuinely
   fresh hub with no persisted state (bare `up` hint expected).
+- REMOVE EMPTIES THE SESSION. `lyx mux remove <guid>` on a session's true last live strand
+  must return SUCCESS, not the old `"list panes: exit status 1: no server running"` error —
+  killing that pane legitimately destroys the session (and, since it was the server's only
+  session, the server itself exits); this is expected, not a failure. Verify: (a) removing the
+  sole live strand returns `ok:true` with the removed strand named in the result; (b) `mux.json`
+  afterward has zero strands (the persistence-gap regression — a resurrect-on-resume bug if this
+  is broken); (c) `lyx mux resume` afterward does NOT try to resurrect the removed strand; (d) a
+  genuinely unexpected reconcile/apply failure with the session still ALIVE (e.g. some other
+  tmux/psmux error unrelated to session death) still surfaces as an error — the swallow must be
+  specific to "session confirmed gone", not blanket-swallow every remove-time failure. Also
+  verify the hidden-strand edge case: removing the last VISIBLE strand while an `anchor:hidden`
+  strand remains still succeeds (hidden strands never hold a pane, so the session legitimately
+  dying is still expected there too).
+- MOUSE MODE DEFAULT. A fresh mux server boot must explicitly pin `mouse` via
+  `set-option -g mouse <on|off>` to the configured value — default `off` (preserves native
+  terminal text-selection/copy), operator-configurable via `mouse: on` in mux.yaml or
+  `LYX_MUX_MOUSE=on`. Verify: (a) `show-options -g mouse` reports `off` under the default
+  config, `on` when configured on — for BOTH values, not just the non-default one (the boot
+  must pin the option in both directions, never skip the call when the value is `off`); (b) an
+  invalid `mouse` value (anything but `on`/`off`, case-insensitive; including an explicitly-empty
+  value) fails the boot loud before any tmux/psmux round-trip, mirroring `debug_log`'s validation
+  placement; (c) toggling `mouse` in config on an ALREADY-RUNNING hub has NO effect until the
+  mux server actually restarts — a live session with live panes hits the early-return boot path
+  and never re-runs `set-option`, same live-change semantics as `debug_log`/`remain-on-exit`.
+  Do not conflate this with a per-strand or per-pane setting — mouse is a server-global (`-g`)
+  tmux concept with no finer-grained variant; there is deliberately no CLI flag for it.
+- ANCHOR:TOP IS GONE — verify nothing still assumes it exists. `anchor:top`/`TopBandRows`/
+  `top_band_rows` were removed entirely (see `mux-anchor-top-redesign`, done) in favor of
+  `below-parent` + `ShrinkWhenWaitingOnChild` (already the default on every `lyx mux add`),
+  which places a parent above its live descendants and collapses it to `collapsed_strip_rows`
+  only once it actually has one. Verify: (a) `--anchor` only accepts `below-parent`/`hidden` —
+  any other value (including the old `top`) is rejected with a clear "want below-parent|hidden"
+  error, not a silent fallback; (b) a config file carrying a stale `top_band_rows` key from
+  before the removal does not break `lyx config reconcile`/boot (should be silently droppable
+  as an unrecognized key, per the existing "preserved unless reconciled" contract — confirm this
+  is actually true rather than assumed); (c) a below-parent root ("mother") with no live
+  descendant renders FULL HEIGHT (not collapsed) — this is intended, not a regression, and is
+  exactly the behavior `mux-anchor-top-redesign`'s M18 sandbox scenario exercises; (d) once a
+  child is added under it via `--parent`, the mother collapses to `collapsed_strip_rows` and a
+  PLAIN status-line command stays legible there (no box-drawing-TUI corruption risk for a
+  simple status line — that corruption class was specifically what the now-removed `TopBandRows`
+  override existed to work around for TUI commands sharing the old fixed `anchor:top` band; a
+  full TUI command, e.g. `claude`, should still generally be the below-parent CHILD, not the
+  collapsing ancestor, precisely to avoid ever forcing a TUI into a collapsed strip).
 
 BOOT-WINNER SEMANTICS (review lens): the psmux server is per-hub and shared by sibling
 worktrees, so `debug_log` only matters on the boot that actually spawns that shared server —
@@ -120,62 +175,69 @@ Claude Code hooks (Stop/SessionStart/PreToolUse, marker/idle detection, resume-c
 construction) belong to `shuttle`, not mux. Their absence is correct — do not flag it. mux is a
 dumb carrier: it runs opaque command strings and its only liveness signal is generic `pane-died`.
 
-## Round context seeded from prior-round verification — SAFETY PASS: confirm merge-readiness or find what all prior rounds missed
-There is NO known open residual. Rounds 3→6 CONVERGED and round 6 was INDEPENDENTLY verified CLEAN
-by the human operator (not by the round's own self-verdict, which has been wrong before). This round
-is a final SAFETY pass before merging `internal-mux` → `main`. Do NOT re-open, re-litigate, or undo
-any of the CLOSED-AND-VERIFIED work below; spend your effort looking HARD for anything every prior
-round missed.
+## Round context — HARDENING PASS after four back-to-back mux changes
+mux already merged into `main` long ago (the `internal-mux` build-out and its R3–R6 review
+rounds referenced in old `.scratch/mux-review-*` files are historical — that work is done and
+should not be re-litigated by number). What's current: four separate, individually-reviewed
+changes landed on `mux` in quick succession in the same working session, each scoped and tested
+on its own but never exercised TOGETHER under one adversarial pass:
 
-CLOSED AND VERIFIED (do not re-chase):
-- Stray-state teardown race (R3 `down` reap → R4 shared `descendantClosurePIDs`/`reapPaneChildren`
-  seam for `down`+`remove` → R5 traced the real holder via PEB cwd and closed the psmux-server leak
-  with confirmation-based saturation-tolerant deadlines). Operator-verified: 3× concurrent full smoke
-  leaves ZERO stray psmux; serial `-count=5` reap tests 5/5.
-- R6 fixed two NEW product defects: **F1** (zero-pane zombie — `up`/apply emitted an empty-cell
-  layout when ≥2 panes were live but no strand owned one → psmux destroys every pane; fixed by
-  skipping empty-layout apply in `applyLayoutLocked` + healing a zero-pane husk on boot) and **F11**
-  (psmux `select-layout` reaping is POSITIONAL and could destroy a TRACKED strand's pane while a
-  foreign pane survived; fixed by deterministic untracked-pane reaping in `reconcile.go`). Plus F5
-  (`remove` always reaps even when layout repair errors), F6 (`down` tears down an unreachable/zombie
-  server), F4 (deadline-based boot), F7 (sibling-boot grace), and harness F2 (kill orphaned
-  hub-holding conhosts — they persist for hours) / F3 (scope the claude transcript watch).
-- Operator INDEPENDENT verification of R6 (the authoritative sign-off): build/vet; hermetic
-  `-count=3`; full serial smoke **11/11**; 3× concurrent full suite ×2 rounds = **3/3 PASS each,
-  zero `\hub`/boot/non-conhost markers, zero stray psmux, zero leftover temp dirs**. PLUS a LIVE
-  operator-assisted `attach` test on the deployed binary: the M6/M7 layout rendered correctly, and
-  **F1/F11 were confirmed fixed live** — the operator split a foreign pane inside the session, then
-  `up` reaped it deterministically and all three tracked strands survived (no zombie, no displaced
-  strand). Config is honored (`collapsed_strip_rows` scales the layout); an attached
-  client correctly resizes the window to its own terminal (expected tmux behavior, not a bug).
+1. **`mux-server-crash`** (done) — added opt-in `debug_log`/`LYX_MUX_DEBUG` server-verbose-logging
+   (routed to `<hub>/.lyx/logs/`, pruned to the newest 3), and the `lyx mux resume` hint on a
+   dead-server error when strands are persisted. The whole-server-crash mechanism ITSELF that
+   prompted this work was never actually root-caused — it happened twice, was never reproduced
+   again even under heavy deliberate stress-testing with full signal tracing, and remains an open
+   question. This logging exists so a future recurrence finally leaves a forensic trail; it is not
+   a fix for a known cause.
+2. **`mux-mouse-default`** (done) — added the `mouse`/`LYX_MUX_MOUSE` config key (default `off`),
+   pinned explicitly at boot in both directions.
+3. **`mux-remove-last-pane-error`** (done) — fixed `lyx mux remove` on a session's true last live
+   strand returning a hard error despite the removal succeeding; the swallow is keyed off a
+   `hasSession` re-probe (an observed fact), not a repeat of the wrong assumption that caused the
+   bug (that killing a session's last pane always leaves a `pane_dead=1` corpse — false on tmux).
+4. **`mux-anchor-top-redesign`** (done) — removed `anchor:top`/`TopBandRows`/`top_band_rows`
+   entirely; `--anchor` now only accepts `below-parent`/`hidden`. `below-parent` +
+   `ShrinkWhenWaitingOnChild` (already the default) is now the only "ancestor above descendant"
+   mechanism — see the new High-yield-focus bullet above for what to verify here specifically.
+   This was the largest of the four: ~24 files touched across `render/`, `muxcli/`, docs, and the
+   sandbox suite (M6 retired, M18 added).
 
-MERGE BAR (agreed with the operator): correctness in the NORMAL single-instance flow is the gate.
-The 3×-concurrent suite is a DIAGNOSTIC amplifier that already did its job (it drove R3–R6's real
-fixes) — it is NOT a merge blocker, and the correctness well it fed is now DRY. Run it as a stress
-diagnostic, but a timeout under an artificial 3-suite CPU peg is not a defect.
+Each change has its own discussion.md / plan / review trail and shipped with passing tests
+(hermetic + integration where applicable) — do not re-litigate any single change's own recorded
+decisions from scratch. **Your job is different: hunt for INTERACTION effects between the four**
+— e.g. does `debug_log`'s boot-time argv construction still compose correctly now that the
+`anchor:top` removal touched `add.go`'s flag set? Does the `mouse` `set-option` call and the
+`remove`-emptied-session `hasSession` re-probe ever race or interfere on the same boot/teardown
+path? Does a below-parent mother/child pair (M18's new pattern) behave correctly under
+`debug_log`-instrumented crash-resume? None of these combinations were tested together before
+now — that gap, not any single change in isolation, is what this pass exists to close.
+
+Non-blocking items carried forward from the ORIGINAL `internal-mux` build-out, never revisited
+since (treat as unverified, not as settled — confirm or refute rather than assuming either way):
+1. mux does not stamp the strand name into the pane title/identity (`pane_title` stays the
+   hostname), so an attached operator cannot visually tell strands apart. Acceptable, or a cheap
+   ergonomic win (pane title = strand name)?
+2. The reap probe spawns a fresh `pwsh` + full `Get-CimInstance Win32_Process` per poll (Windows
+   path) — costly and self-saturating under load; a cheaper probe would speed real
+   single-instance `down` too. Worth doing now, or a documented follow-up?
+3. Portability lens (mux targets Linux/tmux too; psmux is meant to be a faithful tmux clone): for
+   each Windows-substrate workaround, note whether it is faithful-tmux (portable) or a psmux
+   divergence (upstream candidate). Flag observations; do not implement a Linux engine here.
 
 YOUR JOB this round:
 - Do a genuinely INDEPENDENT clean-room pass (form + WRITE your own findings before reading prior
-  `.scratch/mux-review-*` reports). Adversarially live-drive psmux for anything every prior round
-  missed — new edge cases, races, error paths, resume/crash-rebirth corners, cross-worktree behavior.
-- If you find a REAL defect that affects the normal flow, fix it with tests + doc updates in the same
-  change. If you do NOT, say so explicitly and CONFIRM merge-readiness — an honest "no new defects,
-  ship it" is the expected and valuable outcome of a safety pass. Do not invent work to look busy.
-- NON-BLOCKING candidates the operator surfaced — assess and report, implement only if cheap and
-  clearly right (do NOT over-engineer, do NOT block merge on these):
-  1. mux does not stamp the strand name into the pane title/identity (`pane_title` stays the
-     hostname), so an attached operator cannot visually tell strands apart. Acceptable for v1, or a
-     cheap ergonomic win (pane title = strand name)?
-  2. The reap probe spawns a fresh `pwsh` + full `Get-CimInstance Win32_Process` per poll — costly
-     and self-saturating under load; a cheaper probe would speed real single-instance `down` too.
-     Worth doing now, or a documented follow-up?
-  3. Portability lens (mux targets Linux/tmux too; psmux is meant to be a faithful tmux clone): for
-     each Windows-substrate workaround, note whether it is faithful-tmux (portable) or a psmux
-     divergence (upstream candidate). The whole `\hub in use` class is Windows-only. Flag
-     observations; do not implement a Linux engine here.
-- VERIFY with the usual discipline: build/vet; hermetic `-count=5`; full serial smoke; a couple of
-  3×-concurrent rounds as a stress diagnostic (zero `\hub` markers, zero stray psmux at teardown);
-  live sandbox driving on the freshly re-deployed binary. Report merge-readiness explicitly.
+  `.scratch/mux-review-*` reports). Adversarially live-drive the real multiplexer (tmux or
+  psmux, whichever this machine runs) for anything the four individual change-reviews missed,
+  with special weight on the INTERACTION hunting described
+  above — new edge cases, races, error paths, resume/crash-rebirth corners, cross-worktree
+  behavior, and every combination of `debug_log` × `mouse` × the remove-fix × the anchor:top
+  removal you can construct.
+- If you find a REAL defect, fix it with tests + doc updates in the same change. If you do NOT,
+  say so explicitly and give an honest hardening verdict — "no new defects, the four changes
+  compose cleanly" is a valid and valuable outcome. Do not invent work to look busy.
+- VERIFY with the usual discipline: build/vet; hermetic `-count=5`; the integration suite
+  (`-tags integration`, real tmux); full serial smoke; live sandbox driving (M0–M18, current
+  numbering) on the freshly re-deployed binary. Report a hardening verdict explicitly.
 
 ## What to TEST — do not just read, EXERCISE it
 Report the exact commands you ran and what you observed.
@@ -194,7 +256,7 @@ Smoke (real psmux, behind a build tag):
 
 Live psmux driving via the MUX SANDBOX SUITE (PRIMARY — this is where the bugs surface).
 The repo ships a dedicated, maintained live-psmux suite: `tools/sandbox/SANDBOX-MUX-SUITE.md`,
-scenarios M0–M11, driven through the harness. Run it — do not only hand-roll fixtures:
+scenarios M0–M18, driven through the harness. Run it — do not only hand-roll fixtures:
 - Deploy the current source as the binary under test: `deploy.cmd` (puts a fresh `lyx.exe`
   on PATH). CRITICAL FOOTGUN: the suite runs the DEPLOYED snapshot, NOT your working tree — it
   has no idea you edited source. You MUST re-run `deploy.cmd` after EVERY source change before
@@ -217,10 +279,10 @@ scenarios M0–M11, driven through the harness. Run it — do not only hand-roll
   in a second terminal); flag it as not-headlessly-verifiable, as before.
 
 Deeper hand-rolled driving (COMPLEMENTARY, and EXPECTED — the suite is a FLOOR, not a ceiling).
-Running M0–M11 is the minimum, not the whole job. You are expected to devise and run MANY MORE
+Running M0–M18 is the minimum, not the whole job. You are expected to devise and run MANY MORE
 adversarial tests of your own beyond the suite — invent scenarios the suite does not cover, push
 edge cases, combine verbs in orders the suite never tries, and chase anything the code makes you
-suspicious of. In particular drive the paths M0–M11 do not cover: two worktrees on one hub
+suspicious of. In particular drive the paths M0–M18 do not cover: two worktrees on one hub
 server, a dead-but-present `pane_dead=1` pane, stale-pane-id reuse after server rebirth,
 mid-op-failure orphans, send-keys hygiene with embedded `;`/key-name tokens, rapid down→up→add
 churn, non-leaf remove without `--recursive`, unknown-parent and `own-window` rejection paths.
@@ -281,8 +343,8 @@ These were consciously deferred last time; decide whether any now warrants fixin
   psmux is absent). A hermetic unit test for the pure planning helper is good; a smoke test for
   the composed behavior is what actually protects the recovery paths.
 - EXTEND THE MUX SANDBOX SUITE when it helps. If the review surfaces a live/visual behavior that
-  M0–M11 do not cover — or you find yourself repeatedly hand-driving a scenario the suite should
-  own — add it to `tools/sandbox/SANDBOX-MUX-SUITE.md` as a new `M12+` scenario (match the
+  M0–M18 do not cover — or you find yourself repeatedly hand-driving a scenario the suite should
+  own — add it to `tools/sandbox/SANDBOX-MUX-SUITE.md` as a new `M19+` scenario (match the
   existing Goal/Watch/Verdict shape; note any controlled `psmux -L <socket>` exception; keep the
   black-box ethos for the agent-under-test persona). The suite is meant to grow with mux — this
   is encouraged, not scope-creep. If you touch the suite's scenario set, keep the coverage guard
