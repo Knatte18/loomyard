@@ -168,8 +168,11 @@ does not change what those tests prove.
   and the `TopBandRows: topBandRows` field in the `render.Display{...}` literal; change the
   `--anchor` flag usage string `"placement: top|below-parent|hidden"` to `"placement:
   below-parent|hidden"` (line 113); if the command `Long` text names `top` as a placement,
-  update it to the two-value vocabulary. After this card `add.go` has no `render.AnchorTop` or
-  `TopBandRows` reference. Keep `Short` intact (CLI/Cobra invariant).
+  update it to the two-value vocabulary. Also update the `addCmd` godoc comment (lines 18-23):
+  drop `--top-band-rows` from the flag enumeration and change "any value outside
+  `top|below-parent|hidden`" to "any value outside `below-parent|hidden`". After this card
+  `add.go` has no `render.AnchorTop` or `TopBandRows` reference and its godoc names neither
+  `top` nor `--top-band-rows`. Keep `Short` intact (CLI/Cobra invariant).
 - **Commit:** `feat(muxcli): remove --anchor top and --top-band-rows from add`
 
 ### Card 7: rewrite the smoke lifecycle two-top-band test
@@ -188,8 +191,11 @@ does not change what those tests prove.
   panes must still tile the window. With `anchor:top` removed, re-express the same multi-pane
   split concern using `below-parent` strands (e.g. a parent strand plus a below-parent child,
   or two below-parent siblings) so the test still exercises a multi-pane `select-layout` apply
-  and its stray-state assertions. Replace the `"--anchor", "top"` argument pairs accordingly and
-  update the comment at line 91. The file is `//go:build smoke` tagged and is not run here — it
+  and its stray-state assertions. Replace the `"--anchor", "top"` argument pairs accordingly,
+  update the comment at line 91, and rename the test function
+  `TestSmokeTopBandsThenStackAddsKeepEverySessionPane` to reflect the below-parent multi-pane
+  scenario it now exercises (e.g. `TestSmokeStackedAddsKeepEverySessionPane`) so no stale
+  "TopBands" reference survives. The file is `//go:build smoke` tagged and is not run here — it
   must only **compile** under `-tags smoke` (the batch verify runs `go test -tags smoke -run
   '^$'`). If the defect was intrinsically about top-band tiling and has no below-parent analog,
   instead delete the two `band` strands and their assertions and add a one-line comment stating

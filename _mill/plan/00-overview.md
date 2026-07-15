@@ -3,7 +3,7 @@
 ```yaml
 task: "Reconsider whether lyx mux needs anchor:top at all"
 slug: mux-anchor-top-redesign
-approved: false
+approved: true
 started: 20260715-090830
 parent: cluster-fork-spike
 root: ""
