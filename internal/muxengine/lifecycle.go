@@ -81,26 +81,38 @@ const (
 // newest 3": 2 kept plus the fresh server's own log makes 3.
 const serverLogPruneKeep = 2
 
-// serverLogNamePrefix and serverLogNameSuffix bound the tmux-server-*.log
-// glob pruneServerLogsLocked matches against the hub logs dir; kept as named
-// constants (rather than an inline glob) since planLogPrune's caller side
-// needs to recognize the same filename shape tmux itself writes
-// (tmux-server-<pid>.log).
+// serverLogNamePrefix and clientLogNamePrefix bound the two log-filename
+// shapes a debug-armed boot can leave in the hub logs dir, and
+// serverLogNameSuffix is the shared suffix; kept as named constants (rather
+// than an inline glob) since planLogPrune's caller side needs to recognize
+// the same filename shapes tmux itself writes. -v/-vv are GLOBAL tmux flags
+// on the spawn invocation, and that invocation is simultaneously a CLIENT
+// (the local process issuing the command) and, once forked, the SERVER it
+// starts — so tmux logs BOTH sides: tmux-server-<pid>.log from the forked
+// server (documented since the original debug-logging batch) and
+// tmux-client-<pid>.log from the client half of that same invocation
+// (observed live against native tmux 3.6 on Linux — the original
+// debug-logging batch was developed and reviewed against psmux on Windows,
+// which never surfaced this). Both are pruned identically so neither
+// accumulates unbounded across repeated debug-armed boots/crashes.
 const (
 	serverLogNamePrefix = "tmux-server-"
+	clientLogNamePrefix = "tmux-client-"
 	serverLogNameSuffix = ".log"
 )
 
-// pruneServerLogsLocked prunes tmux-server-*.log files in logsDir down to
-// the keep newest by mtime, deleting the rest via planLogPrune's plan. It
-// ignores os.Remove errors for files that vanish between the directory scan
-// and the removal (e.g. a sibling worktree's boot already cleaned up the
-// same stale file) — the caller only needs "no more than keep remain",
-// never a hard guarantee that this call itself removed every listed name.
-// It assumes the op lock is already held (the same withOpLock the rest of
-// ensureServerAndSessionLocked runs under) and performs no locking of its
-// own.
-func pruneServerLogsLocked(logsDir string, keep int) error {
+// pruneServerLogsLocked prunes files under logsDir matching prefix+*+suffix
+// down to the keep newest by mtime, deleting the rest via planLogPrune's
+// plan. It ignores os.Remove errors for files that vanish between the
+// directory scan and the removal (e.g. a sibling worktree's boot already
+// cleaned up the same stale file) — the caller only needs "no more than
+// keep remain", never a hard guarantee that this call itself removed every
+// listed name. It assumes the op lock is already held (the same withOpLock
+// the rest of ensureServerAndSessionLocked runs under) and performs no
+// locking of its own. Called once per log-filename shape (server, client)
+// so each stays independently bounded rather than competing for one shared
+// budget.
+func pruneServerLogsLocked(logsDir, prefix string, keep int) error {
 	entries, err := os.ReadDir(logsDir)
 	if err != nil {
 		return fmt.Errorf("read %s: %w", logsDir, err)
@@ -113,7 +125,7 @@ func pruneServerLogsLocked(logsDir string, keep int) error {
 			continue
 		}
 		name := entry.Name()
-		if !strings.HasPrefix(name, serverLogNamePrefix) || !strings.HasSuffix(name, serverLogNameSuffix) {
+		if !strings.HasPrefix(name, prefix) || !strings.HasSuffix(name, serverLogNameSuffix) {
 			continue
 		}
 		info, err := entry.Info()
@@ -260,9 +272,14 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	// Prune to the newest 2 pre-existing logs before this boot's own log is
 	// written, so at most 3 (2 kept + this boot's fresh one) ever exist
 	// (Shared Decision log-prune-keep-3) — forensic history without
-	// unbounded growth across repeated boots.
-	if err := pruneServerLogsLocked(logsDir, serverLogPruneKeep); err != nil {
+	// unbounded growth across repeated boots. Both filename shapes a
+	// debug-armed boot can leave (server, client — see clientLogNamePrefix)
+	// are pruned, independently bounded, so neither accumulates unbounded.
+	if err := pruneServerLogsLocked(logsDir, serverLogNamePrefix, serverLogPruneKeep); err != nil {
 		return false, nil, fmt.Errorf("prune server logs: %w", err)
+	}
+	if err := pruneServerLogsLocked(logsDir, clientLogNamePrefix, serverLogPruneKeep); err != nil {
+		return false, nil, fmt.Errorf("prune client logs: %w", err)
 	}
 
 	// Env hygiene: a spawned server must never inherit this process's own

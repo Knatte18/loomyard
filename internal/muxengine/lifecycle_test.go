@@ -9,7 +9,10 @@
 package muxengine
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/muxengine/render"
 )
@@ -69,6 +72,87 @@ func TestNoSessionMessage_StrandCountVariants(t *testing.T) {
 				t.Errorf("noSessionMessage(%d) = %q, want %q", tt.strandCount, got, tt.want)
 			}
 		})
+	}
+}
+
+// TestPruneServerLogsLocked_ServerAndClientPrefixesPrunedIndependently pins
+// the fix for a real defect found live-driving debug_log against native
+// tmux: a debug-armed boot's -v/-vv global flag makes tmux log BOTH the
+// forked server (tmux-server-<pid>.log, documented and already pruned) AND
+// the client half of that same invocation (tmux-client-<pid>.log, observed
+// live — never surfaced before since the original debug-logging batch was
+// developed/reviewed against psmux on Windows, not native tmux). Without
+// pruning the client-prefixed files too, they accumulate unbounded across
+// repeated debug-armed boots/crashes while the server-prefixed files stay
+// capped — this test seeds both shapes plus an unrelated file the pruner
+// must never touch, and asserts each prefix is pruned to keep independently.
+func TestPruneServerLogsLocked_ServerAndClientPrefixesPrunedIndependently(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Now()
+
+	write := func(name string, age time.Duration) {
+		t.Helper()
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte("x"), 0o644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+		mtime := now.Add(-age)
+		if err := os.Chtimes(path, mtime, mtime); err != nil {
+			t.Fatalf("chtimes %s: %v", name, err)
+		}
+	}
+
+	// Three server logs (oldest to newest) and three client logs (oldest to
+	// newest), interleaved in age so a prefix-blind prune would not
+	// accidentally produce the same result as a correct per-prefix prune.
+	write("tmux-server-1.log", 6*time.Minute)
+	write("tmux-client-1.log", 5*time.Minute)
+	write("tmux-server-2.log", 4*time.Minute)
+	write("tmux-client-2.log", 3*time.Minute)
+	write("tmux-server-3.log", 2*time.Minute)
+	write("tmux-client-3.log", time.Minute)
+	// An unrelated file must survive untouched — the pruner only matches its
+	// given prefix, never a bare glob over every file in the dir.
+	write("unrelated.log", 10*time.Minute)
+
+	if err := pruneServerLogsLocked(dir, serverLogNamePrefix, 2); err != nil {
+		t.Fatalf("prune server logs: %v", err)
+	}
+	if err := pruneServerLogsLocked(dir, clientLogNamePrefix, 2); err != nil {
+		t.Fatalf("prune client logs: %v", err)
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read dir: %v", err)
+	}
+	var remaining []string
+	for _, e := range entries {
+		remaining = append(remaining, e.Name())
+	}
+
+	wantPresent := []string{"tmux-server-2.log", "tmux-server-3.log", "tmux-client-2.log", "tmux-client-3.log", "unrelated.log"}
+	wantAbsent := []string{"tmux-server-1.log", "tmux-client-1.log"}
+	for _, name := range wantPresent {
+		found := false
+		for _, r := range remaining {
+			if r == name {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("expected %s to survive pruning; remaining = %v", name, remaining)
+		}
+	}
+	for _, name := range wantAbsent {
+		for _, r := range remaining {
+			if r == name {
+				t.Errorf("expected %s to be pruned; remaining = %v", name, remaining)
+			}
+		}
+	}
+	if len(remaining) != len(wantPresent) {
+		t.Errorf("remaining = %v; want exactly %v", remaining, wantPresent)
 	}
 }
 
