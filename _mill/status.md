@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: mux-mouse-default
 branch: mux-mouse-default
 plan: _mill/plan
@@ -25,6 +25,7 @@ approved-mouse-default  '2026-07-15T07:47:20Z'
 holistic-reviewing  '2026-07-15T07:47:51Z'
 holistic-approved  '2026-07-15T07:49:34Z'
 done  '2026-07-15T07:50:10Z'
+pr-pending  '2026-07-15T07:51:02Z'
 ```
 
 ## Batches
