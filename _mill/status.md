@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-docs-and-sandbox
+phase: holistic-reviewing
 slug: mux-anchor-top-redesign
 branch: mux-anchor-top-redesign
 plan: _mill/plan
@@ -28,6 +28,7 @@ implementing  '2026-07-15T09:33:01Z'
 approved-dereference-consumers  '2026-07-15T09:43:32Z'
 approved-delete-render-config-defs  '2026-07-15T09:48:08Z'
 approved-docs-and-sandbox  '2026-07-15T09:52:30Z'
+holistic-reviewing  '2026-07-15T09:52:46Z'
 ```
 
 ## Batches
