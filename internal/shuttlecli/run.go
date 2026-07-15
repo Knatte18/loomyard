@@ -146,7 +146,7 @@ the provider default.`,
 	cmd.Flags().StringVar(&role, "role", "", "role token used to fill the strand-name template")
 	cmd.Flags().StringVar(&round, "round", "", "round token used to fill the strand-name template")
 	cmd.Flags().StringVar(&parent, "parent", "", "parent strand's guid")
-	cmd.Flags().StringVar(&anchor, "anchor", string(render.AnchorBelowParent), "placement: top|below-parent|hidden")
+	cmd.Flags().StringVar(&anchor, "anchor", string(render.AnchorBelowParent), "placement: below-parent|hidden")
 	cmd.Flags().BoolVar(&focus, "focus", true, "give this strand psmux input focus")
 	cmd.Flags().BoolVar(&shrink, "shrink", true, "collapse this strand to a compact strip once a descendant is present")
 	cmd.Flags().DurationVar(&timeout, "timeout", 0, "wall-clock deadline before an in-progress run is classified as timed out (0 = config default)")
