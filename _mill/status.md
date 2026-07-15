@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-dereference-consumers
 slug: mux-anchor-top-redesign
 branch: mux-anchor-top-redesign
 plan: _mill/plan
@@ -25,6 +25,7 @@ plan-fix-r2  '2026-07-15T09:25:42Z'
 plan-fix-r3  '2026-07-15T09:31:09Z'
 planned  '2026-07-15T09:31:20Z'
 implementing  '2026-07-15T09:33:01Z'
+approved-dereference-consumers  '2026-07-15T09:43:32Z'
 ```
 
 ## Batches
@@ -32,9 +33,10 @@ implementing  '2026-07-15T09:33:01Z'
 ```yaml
 batches:
   - name: dereference-consumers
-    state: running
+    state: approved
     implementer_session: 2a9f6e76-2379-46f5-97b5-2ee0186acddc
     start_sha: 0ddc880289825a8fd26d0d635525cc0eeaf2e96f
+    commit_sha: 05dd77d3322d9e200874ef45289d69d4a28b701d
   - name: delete-render-config-defs
     state: pending
   - name: docs-and-sandbox
