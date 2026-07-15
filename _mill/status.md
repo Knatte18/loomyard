@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r3
+phase: planned
 slug: mux-anchor-top-redesign
 branch: mux-anchor-top-redesign
 plan: _mill/plan
@@ -23,4 +23,5 @@ plan-fix-r1  '2026-07-15T09:20:16Z'
 plan-review-r2  '2026-07-15T09:25:42Z'
 plan-fix-r2  '2026-07-15T09:25:42Z'
 plan-fix-r3  '2026-07-15T09:31:09Z'
+planned  '2026-07-15T09:31:20Z'
 ```
