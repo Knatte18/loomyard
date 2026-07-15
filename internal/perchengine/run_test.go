@@ -4,7 +4,7 @@
 // scripted done-results imply) and a scripted queuedShuttle (a queue of
 // judge/triage verdict-file contents or errors, recording every Spec it
 // received) — the full fake-seam surface the discussion's Testing section
-// pins for perch's strong deterministic test suite: no LLM, no psmux, no
+// pins for perch's strong deterministic test suite: no LLM, no tmux, no
 // weft.
 
 package perchengine

@@ -4,9 +4,9 @@
 // pane through this exact function (there is no second lookup path), so
 // this one table pins every pane-transport op's error behavior at once.
 // It never calls SendText/SendKey/CapturePane themselves — those always
-// make a real psmux round trip once resolution succeeds, matching the
+// make a real tmux round trip once resolution succeeds, matching the
 // discipline reconcileApplyPersistLocked's own note establishes: hermetic
-// tests exercise the pure lookup, never the live psmux seam.
+// tests exercise the pure lookup, never the live tmux seam.
 
 package muxengine
 
@@ -26,7 +26,7 @@ func TestResolveLivePaneID(t *testing.T) {
 	st := &MuxState{Strands: []Strand{
 		{GUID: "live", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent}},
 		{GUID: "hidden", Display: render.Display{Anchor: render.AnchorHidden}},
-		{GUID: "unbound", Display: render.Display{Anchor: render.AnchorTop}},
+		{GUID: "unbound", Display: render.Display{Anchor: render.AnchorBelowParent}},
 	}}
 
 	tests := []struct {

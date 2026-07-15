@@ -180,11 +180,11 @@ func TestSpec_Validate_VersionUntouched(t *testing.T) {
 }
 
 func TestSpec_Validate_AnchorPassThroughWhenSet(t *testing.T) {
-	s := &Spec{Prompt: "do the thing", OutputFiles: []string{"out.md"}, Display: render.Display{Anchor: render.AnchorTop}}
+	s := &Spec{Prompt: "do the thing", OutputFiles: []string{"out.md"}, Display: render.Display{Anchor: render.AnchorBelowParent}}
 	if err := s.validate(`C:\worktree`, Config{RunTimeoutMin: 30}); err != nil {
 		t.Fatalf("validate() error: %v", err)
 	}
-	if s.Display.Anchor != render.AnchorTop {
-		t.Errorf("Display.Anchor = %q, want unchanged %q", s.Display.Anchor, render.AnchorTop)
+	if s.Display.Anchor != render.AnchorBelowParent {
+		t.Errorf("Display.Anchor = %q, want unchanged %q", s.Display.Anchor, render.AnchorBelowParent)
 	}
 }

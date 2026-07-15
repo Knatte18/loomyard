@@ -1,29 +1,27 @@
-// policy.go implements the anchor-to-placement dispatch: routing strands to
-// the top band or the below-parent stack (or excluding them entirely),
-// ordering the stack deterministically by parent-chain depth, and repairing
-// a corrupt cyclic parent table so ordering always terminates. This is the
-// legible half of the policy layer — adding a new anchor means adding a case
-// here, not touching the mechanics layer in layout.go/checksum.go.
+// policy.go implements the anchor-to-placement dispatch: filtering strands
+// down to the below-parent stack (or excluding them entirely), ordering the
+// stack deterministically by parent-chain depth, and repairing a corrupt
+// cyclic parent table so ordering always terminates. This is the legible
+// half of the policy layer — adding a new anchor means adding a case here,
+// not touching the mechanics layer in layout.go/checksum.go.
 
 package render
 
 import "sort"
 
-// partitionByAnchor splits strands into the fixed top-band set and the
-// below-parent stack. It is the single filter point that excludes a strand
-// which is AnchorHidden, is not Live, or has an empty PaneID: render only
-// ever lays out a strand that owns a present window pane, so it can never
-// emit a paneNum built from an empty id. AnchorOwnWindow strands are also
-// excluded from both sets — that anchor is deferred in v1; Rules is
-// responsible for surfacing an error when one is present, not this function.
-func partitionByAnchor(strands []Strand) (top []Strand, stack []Strand) {
+// partitionByAnchor filters strands down to the below-parent stack. It is
+// the single filter point that excludes a strand which is AnchorHidden, is
+// not Live, or has an empty PaneID: render only ever lays out a strand that
+// owns a present window pane, so it can never emit a paneNum built from an
+// empty id. AnchorOwnWindow strands are also excluded — that anchor is
+// deferred in v1; Rules is responsible for surfacing an error when one is
+// present, not this function.
+func partitionByAnchor(strands []Strand) (stack []Strand) {
 	for _, s := range strands {
 		if s.Display.Anchor == AnchorHidden || !s.Live || s.PaneID == "" {
 			continue
 		}
 		switch s.Display.Anchor {
-		case AnchorTop:
-			top = append(top, s)
 		case AnchorBelowParent:
 			stack = append(stack, s)
 		default:
@@ -31,7 +29,7 @@ func partitionByAnchor(strands []Strand) (top []Strand, stack []Strand) {
 			// placed by this policy.
 		}
 	}
-	return top, stack
+	return stack
 }
 
 // breakCycles returns a copy of strands with any cyclic parent chain broken.
@@ -119,7 +117,8 @@ func orderStack(stack []Strand) []Strand {
 
 // chainDepth counts hops from s up its parent chain until it reaches a
 // strand with no parent, or a parent that is not part of this stack (its
-// actual parent anchors elsewhere, e.g. in the fixed top band).
+// actual parent is AnchorHidden, deferred AnchorOwnWindow, not Live, or has
+// an empty PaneID, and so was excluded by partitionByAnchor's filter).
 func chainDepth(s Strand, byGUID map[string]Strand) int {
 	depth := 0
 	cur := s.Parent

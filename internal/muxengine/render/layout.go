@@ -1,9 +1,8 @@
 // layout.go is the layout mechanics layer: it turns a resolved, ordered list
 // of pane placements within a Box into a tmux/psmux window_layout body and
 // its checksum-prefixed full string. It is region-relative — offsets are
-// anchored to box.X/box.Y rather than the whole window — so the top-band
-// region and the below-parent stack region can each be rendered
-// independently and then concatenated into one placements list. This file
+// anchored to box.X/box.Y rather than the whole window — so the stack region
+// can be rendered independently of the Box it is placed within. This file
 // makes no placement or height decisions; those live in policy.go and
 // height.go. It only renders the string from the placements it is given.
 
@@ -14,7 +13,7 @@ import (
 	"strings"
 )
 
-// placement is one resolved pane: its psmux pane id and the row height it
+// placement is one resolved pane: its tmux pane id and the row height it
 // has been assigned. It is the internal handoff between the height policy
 // (height.go) and the mechanics that render it (buildStackBody); callers of
 // Rules never see it.
@@ -38,7 +37,7 @@ func buildStackBody(box Box, panes []placement) string {
 			b.WriteByte(',')
 		}
 		// paneNum is the bare pane number tmux's layout string expects —
-		// the psmux pane id minus its leading '%'.
+		// the tmux pane id minus its leading '%'.
 		fmt.Fprintf(&b, "%dx%d,%d,%d,%s", box.W, p.height, box.X, y, strings.TrimPrefix(p.id, "%"))
 		y += p.height + 1 // advance past this pane and its one-row divider
 	}
@@ -47,7 +46,7 @@ func buildStackBody(box Box, panes []placement) string {
 }
 
 // wrapLayout prefixes body with its tmux layout checksum, producing the full
-// window_layout string psmux's select-layout accepts.
+// window_layout string tmux's select-layout accepts.
 func wrapLayout(body string) string {
 	return layoutChecksum(body) + "," + body
 }

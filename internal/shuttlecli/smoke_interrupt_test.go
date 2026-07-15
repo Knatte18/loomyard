@@ -1,7 +1,7 @@
 //go:build smoke
 
 // smoke_interrupt_test.go proves the run loop's core interrupt use case
-// against a REAL claude in a REAL psmux pane: Runner.Start's returned *Run
+// against a REAL claude in a REAL tmux pane: Runner.Start's returned *Run
 // stays usable while its Wait call blocks in a goroutine, so an operator
 // (or another process, via the CLI's interrupt/send verbs) can stop the
 // agent's in-progress turn and hand it a one-line replacement instruction

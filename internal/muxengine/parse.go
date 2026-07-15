@@ -1,6 +1,6 @@
-// parse.go implements the pure, I/O-free parser the psmux overlay (overlay.go)
+// parse.go implements the pure, I/O-free parser the tmux overlay (overlay.go)
 // calls after shelling out: pane-list parsing. Keeping it free of subprocess
-// I/O means it is unit-testable without a running psmux server, matching the
+// I/O means it is unit-testable without a running tmux server, matching the
 // module's hermetic-by-default testing posture.
 
 package muxengine
@@ -11,9 +11,9 @@ import (
 	"strings"
 )
 
-// LivePane represents the state of a single psmux pane as reported by
+// LivePane represents the state of a single tmux pane as reported by
 // list-panes: its id, whether it is dead (present but its command has
-// exited — psmux keeps a dead pane around under `remain-on-exit on` until
+// exited — tmux keeps a dead pane around under `remain-on-exit on` until
 // something explicitly kills it), its vertical position (pane_top, the row
 // its first line occupies — the key for deriving the window's actual
 // top-to-bottom pane order, which select-layout applies cells against), its
@@ -52,7 +52,7 @@ func parsePaneList(out string) ([]LivePane, error) {
 			return nil, fmt.Errorf("invalid pane format: %q", line)
 		}
 
-		// psmux reports pane_dead as "1"/"0"; remain-on-exit keeps the pane
+		// tmux reports pane_dead as "1"/"0"; remain-on-exit keeps the pane
 		// entry around after its command exits, which is exactly the case
 		// this flag exists to distinguish from a live pane.
 		dead := parts[1] == "1"

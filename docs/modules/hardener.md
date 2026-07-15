@@ -18,7 +18,7 @@ documentation) reads an artifact, hardener
 **runs** a live-substrate module, reacts to what it observes, and builds bespoke adversarial
 scenarios to break it. It is a separate, on-demand, **post-loom** module — not on the
 `shuttle → burler → perch → loom` spine — meant to harden a live-substrate module (the archetype:
-`mux` driving real psmux) before merge.
+`mux` driving real tmux) before merge.
 
 ## Why it is not `perch`
 
@@ -90,7 +90,7 @@ models is stronger evidence than N passes from one.
 ## The sandbox dependency
 
 Hardener cannot run against the module's own repo alone — it needs a **live sandbox repo** to do
-destructive, stateful things (create worktrees, junctions, spawn psmux, tear down) without corrupting
+destructive, stateful things (create worktrees, junctions, spawn tmux, tear down) without corrupting
 the real repo, and a maintained **live-driving suite** (`tools/sandbox/SANDBOX-<MODULE>-SUITE.md`) as
 the substrate-exercising vehicle. Consequences carried from the hand-run method:
 

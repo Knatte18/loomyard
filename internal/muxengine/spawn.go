@@ -1,7 +1,7 @@
 // spawn.go implements the shared pane-launch helper every strand-realizing
 // path composes: AddStrand launching a freshly added strand, UpdateStrand
 // surfacing a hidden->visible strand, and Resume replaying a not-live
-// strand all call launchStrandLocked to actually create (or adopt) a psmux
+// strand all call launchStrandLocked to actually create (or adopt) a tmux
 // pane and run the strand's command in it (GAP A) — without this shared
 // helper, add would register a record and re-render but never create a
 // pane or run anything. This file also carries the two other small
@@ -24,13 +24,13 @@ import (
 // Adoption is the fresh-session case: no strand currently holds a pane
 // binding AND an alive (present, not pane_dead) pane exists — the first
 // alive pane in live, i.e. the new-session initial shell pane. A dead pane
-// is never adopted: psmux's display-message happily names a pane_dead=1
+// is never adopted: tmux's display-message happily names a pane_dead=1
 // corpse as the active pane, and send-keys into a corpse exits 0 while
 // running nothing, so blind adoption silently swallows the strand's command.
 //
 // Every other realization splits. The split target is the tallest alive
 // pane (the stretch/active pane under mux's height policy, so always the
-// most splittable): psmux's split-window on a too-small pane fails
+// most splittable): tmux's split-window on a too-small pane fails
 // SILENTLY — exit 0, no new pane, and it prints an existing pane's id — so
 // the target must never be left to whatever pane happens to be active.
 // When no pane is alive (only the sole kept pane_dead corpse remains), the
@@ -72,13 +72,13 @@ func planPaneTarget(strands []Strand, live []LivePane) (adoptID, splitTargetID s
 	return "", splitTargetID, nil
 }
 
-// sendKeysLiteralArg returns the argument psmux `send-keys -l` must be
-// handed so text is typed verbatim. psmux (3.3.4) parses a '-'-leading
+// sendKeysLiteralArg returns the argument tmux `send-keys -l` must be
+// handed so text is typed verbatim. tmux (3.3.4) parses a '-'-leading
 // literal argument as flags and silently drops it — exit 0, nothing typed —
 // and a `--` separator does not stop that parsing, so an opaque cmd/
 // resumeCmd beginning with '-' would never run while the strand still read
 // live (its pane shell is alive). Prefixing one space inside the same
-// argument makes psmux treat it as text (verified live), and the pane's
+// argument makes tmux treat it as text (verified live), and the pane's
 // shell ignores the leading blank when the line is submitted.
 func sendKeysLiteralArg(text string) string {
 	if strings.HasPrefix(text, "-") {
@@ -87,18 +87,18 @@ func sendKeysLiteralArg(text string) string {
 	return text
 }
 
-// launchStrandLocked realizes s into a live psmux pane and runs launchCmd
+// launchStrandLocked realizes s into a live tmux pane and runs launchCmd
 // in it: it adopts the session's initial new-session pane when no other
 // strand currently holds a pane binding and that pane is alive, or splits
 // the tallest alive pane otherwise (planPaneTarget decides which), captures
 // the resulting pane id into s.PaneID, and sends launchCmd via send-keys.
-// A split whose reported pane id is not genuinely new (psmux's silent
+// A split whose reported pane id is not genuinely new (tmux's silent
 // too-small-to-split failure prints an existing pane's id with exit 0) is a
 // hard error — recording it would bind two strands to one pane, and the
 // next select-layout string would then carry a duplicate pane number, which
-// psmux answers by destroying the session's panes wholesale. It assumes the
+// tmux answers by destroying the session's panes wholesale. It assumes the
 // op lock is already held. This is the single realization path
-// add/surface/resume all share (GAP A); it always makes a real psmux round
+// add/surface/resume all share (GAP A); it always makes a real tmux round
 // trip, so no hermetic test calls it directly with a non-hidden/surfacing
 // strand.
 //
@@ -110,7 +110,7 @@ func sendKeysLiteralArg(text string) string {
 func (e *Engine) launchStrandLocked(st *MuxState, s *Strand, launchCmd string) error {
 	session := e.SessionName()
 
-	live, err := e.psmux.listPanes(session)
+	live, err := e.tmux.listPanes(session)
 	if err != nil {
 		return fmt.Errorf("list panes: %w", err)
 	}
@@ -121,7 +121,7 @@ func (e *Engine) launchStrandLocked(st *MuxState, s *Strand, launchCmd string) e
 
 	paneID := adoptID
 	if paneID == "" {
-		out, err := e.psmux.output("split-window", "-t", splitTargetID, "-P", "-F", "#{pane_id}")
+		out, err := e.tmux.output("split-window", "-t", splitTargetID, "-P", "-F", "#{pane_id}")
 		if err != nil {
 			return fmt.Errorf("split window: %w", err)
 		}
@@ -132,14 +132,14 @@ func (e *Engine) launchStrandLocked(st *MuxState, s *Strand, launchCmd string) e
 	}
 
 	s.PaneID = paneID
-	// Send the command as a literal string (-l) so psmux never reinterprets
+	// Send the command as a literal string (-l) so tmux never reinterprets
 	// any part of the opaque launchCmd as a key name (e.g. "Enter", "C-c") or
 	// splits it on an embedded ';' — the caller (shuttle) builds arbitrary
 	// PowerShell command chains. A separate Enter then submits it.
-	if err := e.psmux.run("send-keys", "-t", paneID, "-l", sendKeysLiteralArg(launchCmd)); err != nil {
+	if err := e.tmux.run("send-keys", "-t", paneID, "-l", sendKeysLiteralArg(launchCmd)); err != nil {
 		return fmt.Errorf("send launch command: %w", err)
 	}
-	if err := e.psmux.run("send-keys", "-t", paneID, "Enter"); err != nil {
+	if err := e.tmux.run("send-keys", "-t", paneID, "Enter"); err != nil {
 		return fmt.Errorf("submit launch command: %w", err)
 	}
 	return nil
@@ -168,7 +168,7 @@ func (e *Engine) loadOrInitStateLocked() (*MuxState, error) {
 // reconcile (clears dead-pane bindings, keeps records, kills
 // dead-except-sole), re-apply the layout against what remains, then
 // persist. It assumes the op lock is already held, and always makes at
-// least one live psmux round trip (list-panes, plus a second one when
+// least one live tmux round trip (list-panes, plus a second one when
 // reconcile actually killed something, plus select-layout/select-pane
 // inside applyLayoutLocked once there are 2+ panes) — so it is the one seam
 // every public op's hermetic unit test must not cross. Tests instead
@@ -178,7 +178,7 @@ func (e *Engine) loadOrInitStateLocked() (*MuxState, error) {
 // caller that needs it for reporting (Status) does not have to re-query.
 func (e *Engine) reconcileApplyPersistLocked(st *MuxState) ([]LivePane, error) {
 	session := e.SessionName()
-	live, err := e.psmux.listPanes(session)
+	live, err := e.tmux.listPanes(session)
 	if err != nil {
 		return nil, fmt.Errorf("list panes: %w", err)
 	}
@@ -191,7 +191,7 @@ func (e *Engine) reconcileApplyPersistLocked(st *MuxState) ([]LivePane, error) {
 		// Order matters: kill dead -> re-enumerate live -> compute layout
 		// -> apply. The kill-pane calls above mutate the pane set the next
 		// select-layout must enumerate, so enumeration must follow them.
-		live, err = e.psmux.listPanes(session)
+		live, err = e.tmux.listPanes(session)
 		if err != nil {
 			return nil, fmt.Errorf("list panes after reconcile: %w", err)
 		}

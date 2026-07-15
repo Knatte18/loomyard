@@ -1,21 +1,21 @@
 # mux — CC hooks & `claude agents --json` exploration log
 
 Empirical evidence for how the **mux** module (`internal/muxengine` — see the package
-documentation and [overview.md#modules](../overview.md#modules)) can drive psmux pane
+documentation and [overview.md#modules](../overview.md#modules)) can drive tmux pane
 **switching/focus** off Claude Code's *own* signals — its **hook system** and the
 **`claude agents --json`** registry — rather than (or alongside) the `lyx mux spawn`
 replace-dispatch model. Companion to [`mux-exploration.md`](mux-exploration.md) (which proved
-the psmux primitives); this file proves the **CC-side** primitives.
+the tmux primitives); this file proves the **CC-side** primitives.
 
 All claims below are hands-on, verified on this box unless marked **UNVERIFIED**. Probe
 scaffolding lived in `.scratch/hook-probe/` (gitignored): a `logger.ps1` that dumps each hook's
 raw stdin payload to a uniquely-named file, a `settings.json` wiring nine hook events to it, and
-an isolated psmux server (`psmux -L lyxhookprobe`) running a **real interactive** `claude` — never
+an isolated tmux server (via tmux on Windows) running a **real interactive** `claude` — never
 `claude -p` (headless is out of scope; panes must be interactive sessions).
 
 Environment (verified 2026-06-15):
-- claude **2.1.177** (native, `C:\Users\hanf\.local\bin\claude.exe`)
-- psmux **3.3.4** (`C:\Code\tools\bin\psmux.exe`); pwsh **7.6.2**
+- claude **2.1.177** (native, resolved via PATH)
+- tmux **3.3.4** (via tmux on Windows); pwsh **7.6.2**
 - Probe model resolved to `claude-opus-4-8[1m]` (the box default).
 
 ---
@@ -63,7 +63,7 @@ Code's `agents` view. **Verified.**
   `--all` includes completed/failed sessions. `--json` **needs no TTY** → callable from Go `exec`.
   Bare `claude agents` requires a TTY and refuses under a pipe.
 - **No control verbs.** `claude agents` only *dispatches* and *lists* — there is **no
-  focus/kill/send** subcommand. mux drives psmux directly for all pane control.
+  focus/kill/send** subcommand. mux drives tmux directly for all pane control.
 - **`status` is live but best-effort.** Caught a real `idle→busy` flip on an unrelated session,
   so it tracks activity. **But it is inconsistently present for interactive sessions** (2 of 8 in a
   snapshot had it; absence is *not* explained by `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` — unset in a
@@ -118,7 +118,7 @@ Dispatching a subagent does **not** block the parent turn. Observed order:
 (`background_tasks[].status:"running"`) → subagent finishes → its result is injected into the parent
 as a **`<task-notification>` `UserPromptSubmit`** → `SubagentStop` (real one) → parent `Stop`. The
 subagent runs **in-process** under the parent (its `outputFile` lives under the parent session's
-temp dir); it is **not** a separate OS process and **not** a psmux pane.
+temp dir); it is **not** a separate OS process and **not** a tmux pane.
 
 ### Quirk: `SubagentStop` fires for the main agent too (verified)
 
@@ -154,7 +154,7 @@ Claude Code conversations that keep running with no terminal attached. Verified 
   |---|---|---|
   | `claude agents --json [--all]` | List sessions; background entries carry rich state | ✅ |
   | `claude logs <id>` | Print a session's recent terminal output (raw VT100 → ANSI-strip) | ✅ |
-  | `claude attach <id>` | Attach the live session into **this terminal** | ✅ (incl. into a psmux pane) |
+  | `claude attach <id>` | Attach the live session into **this terminal** | ✅ (incl. into a tmux pane) |
   | `claude stop <id>` | Stop the session (process exits, transcript kept) | ✅ |
   | `claude rm <id>` | Remove from the list (may clean a Claude-created worktree) | ✅ |
 - **Rich `--json` for background sessions:** `id`, full `sessionId`, `cwd`, `kind:"background"`,
@@ -168,7 +168,7 @@ Claude Code conversations that keep running with no terminal attached. Verified 
 - **`claude logs <id>` is daemon-routed:** it failed with `connect ENOENT \\.\pipe\cc-daemon-…-control`
   for a session whose daemon was gone — so it only works for live supervisor sessions, and is the
   natural replacement for `capture-pane` scraping when one *is* live.
-- **`claude attach <id>` renders a background session inside a psmux pane** — verified: the live
+- **`claude attach <id>` renders a background session inside a tmux pane** — verified: the live
   session's input box + title rendered in the pane. Detaching (kill the client) leaves it running.
 
 **This is the structured `needs-input`/idle signal that the `Notification` hook would not give**, and
@@ -186,11 +186,11 @@ background session normally.
 
 | Path | Per-keystroke hops | Felt latency |
 |---|---|---|
-| **§A** — claude launched **directly** in a psmux pane | WT → psmux → pane → claude | **clearly lowest (snappy)** |
+| **§A** — claude launched **directly** in a tmux pane | WT → tmux → pane → claude | **clearly lowest (snappy)** |
 | §D plain — `claude attach <id>` in a bare terminal | WT → **cc-daemon** → bg session | noticeable lag |
-| §D + psmux — `claude attach <id>` inside a psmux pane | WT → psmux → pane → **cc-daemon** → bg | most lag |
+| §D + tmux — `claude attach <id>` inside a tmux pane | WT → tmux → pane → **cc-daemon** → bg | most lag |
 
-The dominant cost is the **`claude attach` → cc-daemon named-pipe round-trip per keystroke**; psmux
+The dominant cost is the **`claude attach` → cc-daemon named-pipe round-trip per keystroke**; tmux
 adds a small increment on top. §A has **no daemon in the path** and is materially snappier. **Design
 implication:** §D suits *fire-and-forget + occasional check* (its design point), but **for panes a
 human actively types in, §A's direct launch is the better experience.** This tilts the own-vs-display
@@ -203,7 +203,7 @@ needs-input) reserved for monitoring/headless work.
 
 The model first, because it dictates which hooks matter: **mux never uses Claude Code's in-process
 Agent tool.** Every agent — the orchestrator and every descendant — is a **separate OS `claude`
-process** that `lyx mux spawn` launches in its own psmux pane, with its **task injected as the launch
+process** that `lyx mux spawn` launches in its own tmux pane, with its **task injected as the launch
 `[prompt]` arg** and a **mux-assigned `--session-id`**. A parent spawns a child by running
 `lyx mux spawn` through its **Bash tool**, not the Agent tool. So the operative signals are each
 process's **own session-scoped hooks**, keyed by the session id mux already assigned — *not* the
@@ -221,7 +221,7 @@ Notification       → (optional) delayed needs-input nudge — NOT on the criti
 ```
 
 Join key = the process's **own `session_id`** (present in every payload). **Proven — the probe
-session *was* exactly this case:** a fresh `claude` process spawned into a psmux pane, task injected
+session *was* exactly this case:** a fresh `claude` process spawned into a tmux pane, task injected
 at launch, with a mux-assigned `--session-id`; its `SessionStart`/`UserPromptSubmit`/`Stop` all
 carried that id. This gives **event-driven, per-pane** active/idle edges — replacing both the
 capture-pane idle poller *and* the spotty agents-JSON `status` for the focus decision. Switch logic:
@@ -265,7 +265,7 @@ what mux must build. Instead of mux owning raw process spawn + lifecycle + recov
 
 1. **Dispatch** work via `claude --bg` (or the agent-view) → the supervisor owns lifecycle,
    crash-survival, resume, and **needs-input detection (`state==blocked`)** for free.
-2. **Tile** by running `claude attach <id>` in each psmux pane — proven to render — for the
+2. **Tile** by running `claude attach <id>` in each tmux pane — proven to render — for the
    simultaneous, visible layout that is mux's actual differentiator.
 3. **Drive focus** off `claude agents --json` `state` (working/blocked/done) — *and still* layer the
    per-session hooks (§A) on top, because a background session is a full CC session with its own
@@ -282,7 +282,7 @@ direct-launch avoids. So the fork is no longer all-or-nothing; the empirical rec
 **split**: use **§A (direct launch)** for the panes a human types in (snappy), and borrow §D's
 supervisor primitives (`state`/`logs`/needs-input, crash-survival) for **headless/fire-and-forget**
 agents and monitoring — *not* as the live-typing path. **Still-open risks** (a dedicated spike): N
-concurrent `claude attach` clients to one daemon + psmux smallest-client-wins; whether `--bg` silently
+concurrent `claude attach` clients to one daemon + tmux smallest-client-wins; whether `--bg` silently
 creates worktrees; detach/re-attach + crash behavior; AI-generated `name` override; `waitingFor`
 reliability for the permission-prompt case. The own-vs-display fork — "mux owns the agents" (§A/B) vs.
 "mux displays Claude Code's agents" (§D) — is now a **deliberate split**, not a single choice.
@@ -292,7 +292,7 @@ reliability for the permission-prompt case. The own-vs-display fork — "mux own
 ```
 CC hook fires (≈0 cost)  →  lyx mux <verb> --session-id|--agent-id <x>
                           →  (optional) one `claude agents --json` reconcile
-                          →  psmux select-pane / select-window / render-layout
+                          →  tmux select-pane / select-window / render-layout
 ```
 
 Event-driven beats polling here on every axis: latency (hook is immediate vs 500 ms poll),
@@ -333,7 +333,7 @@ cost (no idle CPU), and fidelity (payload says *what* the pane is waiting on via
   in-process Agent tool and inject a reason that steers the model to `lyx mux spawn` instead? The
   deny-and-steer path is not yet probed.
 - [ ] **Supervisor-viewer spike** (§D — the consequential one): tile **N** `claude attach <id>` panes
-  over one supervisor and test psmux smallest-client-wins, detach/re-attach + crash behavior, whether
+  over one supervisor and test tmux smallest-client-wins, detach/re-attach + crash behavior, whether
   `claude --bg` creates worktrees, `name` override, and `waitingFor` for the permission-prompt case.
   Decides whether mux owns vs. displays the agents — settle before mux v1.
 

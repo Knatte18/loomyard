@@ -153,9 +153,9 @@ error so the operator can tell "the agent wrote nothing" from "the agent wrote g
 Only `sandbox-fetch.cmd` passes `-loomyard` (as `"%~dp0."`, the loomyard repo
 root); it is required only by this subcommand.
 
-### Future: psmux launch
+### Future: tmux launch
 
-The direct `claude` launch used today will be replaced by a psmux interactive session
+The direct `claude` launch used today will be replaced by a tmux interactive session
 once the `mux` module is available. The file contract (`SANDBOX-CORE-SUITE.md` driving the
 agent) is unchanged; only the launch mechanism will differ.
 
@@ -165,8 +165,8 @@ Alongside the main suite, `sandbox-mux-suite.cmd` runs a dedicated black-box sui
 against `lyx mux`. It mirrors the main-suite flow: it copies a fingerprinted
 `SANDBOX-MUX-SUITE.md` into the Hub host repo, git-excludes the copy the same way
 `SANDBOX-CORE-SUITE.md` is excluded, clears any stale `sandbox-report.json`, and launches
-the interactive agent there. Because it exercises live psmux panes (crash simulation,
-layout verification, attach), it needs a live psmux (`psmux.exe` on PATH) as a
+the interactive agent there. Because it exercises live tmux panes (crash simulation,
+layout verification, attach), it needs a live tmux (`tmux.exe` on PATH) as a
 precondition beyond what the main suite requires. Findings land in the same
 `sandbox-report.json` in the host repo, so `sandbox-fetch.cmd` collects a mux-suite
 report exactly as it collects a main-suite report — the two suites share one report

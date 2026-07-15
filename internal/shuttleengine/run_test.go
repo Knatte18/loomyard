@@ -41,7 +41,7 @@ func TestRunner_Start_HappyPath_WiresAddSpecVerbatim(t *testing.T) {
 		Role:        "reviewer",
 		Round:       "1",
 		Parent:      "parent-guid",
-		Display:     render.Display{Anchor: render.AnchorTop},
+		Display:     render.Display{Anchor: render.AnchorBelowParent},
 	}
 
 	run, err := runner.Start(spec)
@@ -63,7 +63,7 @@ func TestRunner_Start_HappyPath_WiresAddSpecVerbatim(t *testing.T) {
 		Cmd:       "launch-cmd",
 		ResumeCmd: "resume-cmd",
 		SessionID: "session-1",
-		Display:   render.Display{Anchor: render.AnchorTop},
+		Display:   render.Display{Anchor: render.AnchorBelowParent},
 	}
 	if got != want {
 		t.Errorf("AddStrand spec = %+v, want %+v", got, want)
@@ -447,7 +447,7 @@ func repeatCapture(capture string, n int) []string {
 }
 
 func TestRun_InterruptAndSend_RefuseDeadOrUntrackedStrand(t *testing.T) {
-	// psmux send-keys against a dead or missing pane exits 0 while
+	// tmux send-keys against a dead or missing pane exits 0 while
 	// delivering nothing (proven live), so Interrupt/Send must refuse
 	// before touching the pane rather than report a silent-no-op success.
 	tests := []struct {

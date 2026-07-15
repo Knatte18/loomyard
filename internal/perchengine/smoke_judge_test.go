@@ -2,7 +2,7 @@
 
 // smoke_judge_test.go is perchengine's opt-in live-integration smoke test:
 // TestSmokeJudgeCirclingToyFixture drives one real per-round circling-check
-// progress judge call — runCircling — against a REAL claude in a REAL psmux
+// progress judge call — runCircling — against a REAL claude in a REAL tmux
 // pane, over two tiny fixture review files the test writes itself. This is
 // the caller wiring the real substrate (muxengine + claudeengine +
 // shuttleengine.Runner) directly, mirroring the Shuttle Provider-Seam
@@ -217,7 +217,7 @@ func deferHubRelease(t *testing.T, hub string) {
 }
 
 // TestSmokeJudgeCirclingToyFixture drives one real per-round circling-check
-// progress judge call against a REAL claude in a REAL psmux pane, over two
+// progress judge call against a REAL claude in a REAL tmux pane, over two
 // tiny fixture review files the test writes itself: an unambiguous
 // same-finding-recurring case, so the machinery (not the judge's own
 // reading of the case) is what this test proves. It constructs the real

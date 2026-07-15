@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/muxengine/render"
 )
 
 // seedMuxConfig writes <tmpDir>/_lyx/config/mux.yaml with the module's own
@@ -32,7 +33,7 @@ import (
 // Config. This duplicates (rather than imports) config_test.go's
 // seedLyxConfig fixture: that helper lives in the external muxengine_test
 // package, while this file is package muxengine so it can reach the real,
-// unexported listPanes/PsmuxCmd helpers the contract assertions below drive
+// unexported listPanes/TmuxCmd helpers the contract assertions below drive
 // directly.
 func seedMuxConfig(t *testing.T, tmpDir string) {
 	t.Helper()
@@ -52,7 +53,7 @@ func seedMuxConfig(t *testing.T, tmpDir string) {
 
 // waitUntil polls cond every 100ms until it reports true or timeout elapses,
 // failing the test in the latter case. Pane state changes (a shell exiting,
-// remain-on-exit flipping pane_dead) are asynchronous from psmux's own CLI
+// remain-on-exit flipping pane_dead) are asynchronous from tmux's own CLI
 // return, so assertions on them must poll rather than check once.
 func waitUntil(t *testing.T, timeout time.Duration, msg string, cond func() bool) {
 	t.Helper()
@@ -92,13 +93,13 @@ func TestMultiplexerContract(t *testing.T) {
 	// The self-skip: this test's whole point is to validate whatever binary
 	// is actually configured, so an absent binary is "nothing to validate
 	// here", not a failure.
-	if _, err := exec.LookPath(cfg.Psmux); err != nil {
-		t.Skipf("configured multiplexer binary %q not found: %v", cfg.Psmux, err)
+	if _, err := exec.LookPath(cfg.Tmux); err != nil {
+		t.Skipf("configured multiplexer binary %q not found: %v", cfg.Tmux, err)
 	}
 
 	socket := fmt.Sprintf("lyx-contract-test-%d-%d", os.Getpid(), time.Now().UnixNano())
 	session := "contract-session"
-	mux := NewPsmuxCmd(cfg.Psmux, socket)
+	mux := NewTmuxCmd(cfg.Tmux, socket)
 
 	t.Cleanup(func() {
 		// Always torn down, success or failure: a leaked scratch server on a
@@ -110,7 +111,7 @@ func TestMultiplexerContract(t *testing.T) {
 	// new-session: the same shape ensureServerAndSessionLocked spawns
 	// (-x/-y sizing plus a real shell command as the initial pane's command),
 	// against a scratch session/socket this test owns exclusively.
-	if err := mux.run("new-session", "-d", "-s", session, "-x", "80", "-y", "24", cfg.Pwsh); err != nil {
+	if err := mux.run("new-session", "-d", "-s", session, "-x", "80", "-y", "24", cfg.Shell); err != nil {
 		t.Fatalf("new-session: %v", err)
 	}
 
@@ -307,4 +308,93 @@ func TestMultiplexerContract(t *testing.T) {
 	if stillUp, err := mux.hasSession(session); err == nil && stillUp {
 		t.Errorf("has-session reports %q still present after kill-session", session)
 	}
+}
+
+// TestRemoveStrand_SoleStrandEmptiesSessionSucceeds reproduces, end to end
+// against a real Engine, the bug this batch fixes: removing a session's
+// sole non-hidden strand must return success and leave mux.json holding
+// zero persisted strands, never surface the raw "no server running" tmux
+// error the original reproduction hit.
+//
+// Coverage note: this regression exercises the Card 2 swallow branch ONLY
+// on last-pane-DESTROY backends (tmux, the POSIX default per
+// template_posix.go) — there, without the fix, RemoveStrand would return
+// the "no server running" error surfaced from reconcileApplyPersistLocked's
+// listPanes call once kill-pane has destroyed the session, so a passing
+// test genuinely covers the swallow. On corpse backends (psmux/Windows) the
+// same scenario passes via RemoveStrand's normal path instead (kill-pane
+// corpses the pane, the session survives, reconcileApplyPersistLocked
+// succeeds), so the swallow is never reached there — TestRemovalEmptiedSession
+// (strand_test.go) covers the pure decision logic on every platform
+// regardless of which binary is configured. This test therefore asserts
+// only the observable contract (nil error, zero persisted strands), never
+// which internal branch RemoveStrand actually took.
+func TestRemoveStrand_SoleStrandEmptiesSessionSucceeds(t *testing.T) {
+	tmpDir := t.TempDir()
+	seedMuxConfig(t, tmpDir)
+
+	cfg, err := LoadConfig(tmpDir, "mux")
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+
+	// The self-skip: on a box without the configured multiplexer binary
+	// there is nothing to drive, matching TestMultiplexerContract's guard.
+	if _, err := exec.LookPath(cfg.Tmux); err != nil {
+		t.Skipf("configured multiplexer binary %q not found: %v", cfg.Tmux, err)
+	}
+
+	// A real *hubgeometry.Layout rooted at a scratch tmpDir, mirroring
+	// newTestEngine's (lock_test.go) Cwd/WorktreeRoot/Hub shape but built
+	// against the real, LoadConfig-resolved cfg rather than the
+	// does-not-exist stub paths newTestEngine deliberately uses.
+	layout := &hubgeometry.Layout{
+		Cwd:          tmpDir,
+		WorktreeRoot: tmpDir,
+		Hub:          filepath.Dir(tmpDir),
+	}
+	e := New(cfg, layout)
+
+	t.Cleanup(func() {
+		// Best-effort: the fix under test is expected to have already torn
+		// the session (and, on tmux, the whole server, since it was this
+		// scratch server's only session) down, so Down's own error here is
+		// unsurprising and ignored. The raw kill-server afterward is the
+		// belt-and-suspenders guard against a leaked scratch server on a
+		// genuine test failure that never reached RemoveStrand.
+		_, _ = e.Down()
+		_ = e.tmux.run("kill-server")
+	})
+
+	if _, err := e.Up(); err != nil {
+		t.Fatalf("Up: %v", err)
+	}
+
+	// One non-hidden strand, anchored so it is realized into a live pane at
+	// add time; a long-lived command so it is still running when removed.
+	strand, err := e.AddStrand(AddSpec{
+		Cmd:     "sleep 300",
+		Display: render.Display{Anchor: render.AnchorBelowParent},
+	})
+	if err != nil {
+		t.Fatalf("AddStrand: %v", err)
+	}
+
+	removed, err := e.RemoveStrand(strand.GUID, false)
+	if err != nil {
+		t.Fatalf("RemoveStrand(sole strand) = %v, want nil error (emptying the session is an expected terminal state, not a failure)", err)
+	}
+	if len(removed.Strands) != 1 || removed.Strands[0].GUID != strand.GUID {
+		t.Fatalf("RemoveStrand.Removed.Strands = %+v, want exactly guid %q", removed.Strands, strand.GUID)
+	}
+
+	// Persistence is the resurrect-on-resume guard: removeStrandLocked only
+	// prunes st.Strands in memory, so this must reload from disk rather than
+	// trust the in-memory Removed result above. Polled, not asserted once,
+	// since the swallow path's own SaveState races the surrounding async
+	// pane/session teardown this whole fix is about.
+	waitUntil(t, 5*time.Second, "persisted mux.json never reflected the emptied strand table", func() bool {
+		st, err := LoadState(layout.DotLyxDir())
+		return err == nil && st != nil && len(st.Strands) == 0
+	})
 }

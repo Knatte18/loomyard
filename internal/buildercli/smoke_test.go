@@ -1,13 +1,13 @@
 //go:build smoke
 
 // smoke_test.go walks the two live-composed builder behaviors round fable-r2
-// found broken against a REAL psmux server (no fake mux): poll's terminal
+// found broken against a REAL tmux server (no fake mux): poll's terminal
 // strand release (a done batch must not leak its live pane — nobody else
 // ever holds the shuttle Run handle) and spawn-batch's in-flight guard (a
 // live strand behind a non-terminal cursor refuses the spawn). The pane runs
 // a plain pwsh, never a real agent — the behaviors under test are builder's
 // own substrate bookkeeping, not implementer quality. Both tests self-skip
-// when the configured psmux binary is absent, mirroring muxengine's
+// when the configured tmux binary is absent, mirroring muxengine's
 // contract_integration_test.go discipline, and tear their scratch server
 // down via t.Cleanup.
 
@@ -33,8 +33,8 @@ import (
 )
 
 // bootRealMux builds a scratch hub (git repo + plan fixture + mux config),
-// boots a REAL psmux server/session on the hub's own derived socket, and
-// registers teardown. Skips the calling test when the configured psmux
+// boots a REAL tmux server/session on the hub's own derived socket, and
+// registers teardown. Skips the calling test when the configured tmux
 // binary is not on this box.
 func bootRealMux(t *testing.T) (*muxengine.Engine, *hubgeometry.Layout, string) {
 	t.Helper()
@@ -55,8 +55,8 @@ func bootRealMux(t *testing.T) (*muxengine.Engine, *hubgeometry.Layout, string) 
 	if err != nil {
 		t.Fatalf("muxengine.LoadConfig: %v", err)
 	}
-	if _, err := exec.LookPath(cfg.Psmux); err != nil {
-		t.Skipf("configured psmux binary %q not found: %v", cfg.Psmux, err)
+	if _, err := exec.LookPath(cfg.Tmux); err != nil {
+		t.Skipf("configured tmux binary %q not found: %v", cfg.Tmux, err)
 	}
 
 	layout := &hubgeometry.Layout{Hub: hub, WorktreeRoot: hub, Cwd: hub, RelPath: "."}
@@ -106,7 +106,7 @@ func addLivePane(t *testing.T, eng *muxengine.Engine, role, round string) string
 	}
 }
 
-// TestSmoke_PollDoneReleasesStrand proves against a real psmux server that a
+// TestSmoke_PollDoneReleasesStrand proves against a real tmux server that a
 // done classification releases the batch's strand: the pane is gone from the
 // live mux Status after poll returns (the F1 leak, observed live as panes
 // accumulating across runs).
@@ -188,7 +188,7 @@ func (s smokeFailStarter) Start(spec shuttleengine.Spec) (*shuttleengine.Run, er
 	return nil, errors.New("starter must not be reached")
 }
 
-// TestSmoke_SpawnRefusedWhileStrandLive proves against a real psmux server
+// TestSmoke_SpawnRefusedWhileStrandLive proves against a real tmux server
 // that spawn-batch's in-flight guard refuses while a non-terminal batch's
 // strand is genuinely live (the F4 double-spawn, observed live as two
 // implementer panes for the same batch).
@@ -233,7 +233,7 @@ func TestSmoke_SpawnRefusedWhileStrandLive(t *testing.T) {
 	}
 }
 
-// TestSmoke_RunEntryReclaimsOrphanedOrchestrator proves against a real psmux
+// TestSmoke_RunEntryReclaimsOrphanedOrchestrator proves against a real tmux
 // server that Run's entry-time reclaim stops a recorded orchestrator strand
 // the mux still reports live (the fable-r4 double-orchestrator: a killed
 // `run` process, or a timed-out orchestrator whose kept pane kept working)

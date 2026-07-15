@@ -21,7 +21,7 @@ half of a pair whose CONVERGE half is `internal/perchengine`: builder ends at
 [Holistic review is perch's job](#holistic-review-is-perchs-job-not-builders) below).
 
 `builder` branches off `shuttle` directly (it spawns implementers as interactive
-psmux strands over the file contract) and does not need `perch`; `loom` (not yet
+tmux strands over the file contract) and does not need `perch`; `loom` (not yet
 built) needs both `perch` and `builder`.
 
 ## Verb surface

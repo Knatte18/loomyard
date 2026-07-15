@@ -3,7 +3,7 @@
 // RunState as run.json, looking a run up by its owning strand guid, and
 // sweeping orphaned run dirs left behind when a strand no longer exists in
 // mux state. Everything here is pure I/O over a caller-supplied root and
-// caller-injected guids/clock — no psmux, no claude, so it is testable
+// caller-injected guids/clock — no tmux, no claude, so it is testable
 // without either.
 
 package shuttleengine

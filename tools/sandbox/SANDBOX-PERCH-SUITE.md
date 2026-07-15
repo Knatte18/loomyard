@@ -2,7 +2,7 @@
 
 ## What this is
 
-A structured test-loop for exercising `lyx perch` against a **live psmux server and a
+A structured test-loop for exercising `lyx perch` against a **live tmux server and a
 logged-in claude** in the sandbox Hub host repo. Like `SANDBOX-SHUTTLE-SUITE.md` and
 `SANDBOX-BURLER-SUITE.md`, the value here is partly **visual**: a block converging round
 by round, a pause landing cleanly, a resume picking up where it left off. Not an
@@ -26,8 +26,7 @@ Before starting a session:
 2. **Materialize the hub.** Run `sandbox-build.cmd` (or `sandbox-build.cmd -reset`
    to start clean); the session cwd is the Hub host repo root, the same operating model
    as the main suite.
-3. **Live-psmux and claude requirement.** `psmux.exe` on PATH (installed at
-   `C:\Code\tools\bin\psmux.exe`), PowerShell 7, and a logged-in `claude` on PATH.
+3. **Live-tmux and claude requirement.** tmux (or the Windows tmux port) on PATH, PowerShell 7, and a logged-in `claude` on PATH.
    If any of these is unavailable in the session, **note that as the session outcome
    rather than treating it as a perch defect** -- the `**Covers:** perch` tag on S1 and
    S2 satisfies the sandbox coverage guard (`sandbox_coverage_test.go`) regardless of
@@ -209,8 +208,8 @@ findings section above -- with `items: []` when every scenario was `OK`.
 ## Teardown
 
 After the session summary is recorded and `./sandbox-report.json` is written, run
-`lyx mux down` to tear down the psmux session/server the scenarios booted with
-`lyx mux up`. An orphaned psmux server holds open handles inside the Hub host
+`lyx mux down` to tear down the tmux session/server the scenarios booted with
+`lyx mux up`. An orphaned tmux server holds open handles inside the Hub host
 repo and blocks the next `sandbox-build.cmd -reset`. The launcher also runs
 `lyx mux down` itself after the session ends (deterministic backstop), but run
 it here anyway -- defense-in-depth, and it keeps the Hub clean while the session
@@ -218,7 +217,7 @@ is still open for inspection.
 
 ## Notes
 
-- Host/weft scenarios stay in `SANDBOX-CORE-SUITE.md`, mux/psmux scenarios stay in
+- Host/weft scenarios stay in `SANDBOX-CORE-SUITE.md`, mux/tmux scenarios stay in
   `SANDBOX-MUX-SUITE.md`, shuttle black-box agent scenarios stay in
   `SANDBOX-SHUTTLE-SUITE.md`, burler's own review+fix round scenarios stay in
   `SANDBOX-BURLER-SUITE.md`; this suite holds only the perch gate-loop scenarios --

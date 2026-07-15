@@ -308,6 +308,20 @@ func (l *Layout) DotLyxDir() string {
 	return filepath.Join(l.Cwd, dotLyxDirName)
 }
 
+// HubLogsDir returns the path to the hub-level (not worktree-level) directory
+// where the shared per-hub mux server writes its runtime log. It is hub-anchored
+// because consumers like mux run exactly one shared server per hub and need one
+// deterministic machine-local place for its runtime logs — never one per
+// worktree. It lives under the ephemeral, machine-bound ".lyx" (dot) directory,
+// the same lifecycle rationale DotLyxDir documents: server logs are runtime
+// forensic artifacts, never weft-synced. HubLogsDir returns the path only; it
+// never creates the directory.
+//
+// Returns filepath.Join(Hub, dotLyxDirName, "logs").
+func (l *Layout) HubLogsDir() string {
+	return filepath.Join(l.Hub, dotLyxDirName, "logs")
+}
+
 // WorktreePath returns the path to a sibling worktree with the given slug.
 //
 // Returns filepath.Join(Hub, slug).

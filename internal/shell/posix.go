@@ -1,5 +1,5 @@
 // posix.go implements the Shell interface for a POSIX shell (sh/bash), the pane shell
-// psmux launches on Linux. It is deliberately plain (untagged) Go — not a `_linux.go`
+// tmux launches on Linux. It is deliberately plain (untagged) Go — not a `_linux.go`
 // file — so it is host-testable on Windows even though it is only ever *selected* at
 // runtime on Linux (see ForGOOS in shell.go).
 

@@ -6,7 +6,7 @@ class never recurs.
 
 **Dependency direction (Go enforces it):** `internal/hubgeometry` imports only
 `internal/gitexec` + stdlib and **never** a domain module. All domain modules
-(`warp`, `board`, `ide`, `muxpoc`) import `hubgeometry` for geometry.
+(`warp`, `board`, `ide`, `mux`) import `hubgeometry` for geometry.
 
 ## The problem
 

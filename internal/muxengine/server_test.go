@@ -10,7 +10,7 @@ import (
 )
 
 // socketUnsafeChars matches the characters ServerName/socketName must never
-// produce: ':', '\', and space, all of which are unsafe in a psmux -L
+// produce: ':', '\', and space, all of which are unsafe in a tmux -L
 // socket argument.
 var socketUnsafeChars = regexp.MustCompile(`[:\\ ]`)
 

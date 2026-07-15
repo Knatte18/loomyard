@@ -1,23 +1,23 @@
-# mux — hands-on psmux exploration log
+# mux — hands-on tmux exploration log (tmux on Windows)
 
 Empirical evidence for designing the `mux` module (now built as `internal/muxengine` +
 `internal/muxengine/render` + `internal/muxcli` — see the package documentation and
 [overview.md#modules](../overview.md#modules)). The brief: design the mux
-module, but **first** find out what psmux/tmux actually supports in practice with
-Claude Code on Windows — what works reliably, how Claude attaches/resumes inside
+module, but **first** find out what tmux actually supports in practice with
+Claude Code — what works reliably, how Claude attaches/resumes inside
 panes, what the harness already owns vs. what mux must own, and what a minimal v1 is.
 This file is the running, committed log of that exploration; the `internal/muxengine`
 package documentation is the as-built reference that draws from it.
 
-All probes use an isolated psmux server (`psmux -L lyxprobe …`) so the operator's real
-psmux is never touched. Scratch scripts live in `.scratch/mux-probe/` (gitignored).
+All probes use an isolated tmux server (`tmux -L lyxprobe …`) so the operator's real
+session is never touched. Scratch scripts live in `.scratch/mux-probe/` (gitignored).
 
 Environment (verified 2026-06-11):
-- psmux **3.3.4** (`C:\Code\tools\bin\psmux.exe`)
-- pwsh **7.6.2** (`C:\Code\tools\powershell7\pwsh.exe`; a WindowsApps alias stub also exists)
-- claude **2.1.173**, native install first on PATH (`C:\Users\hanf\.local\bin\claude.exe`)
-- node **not required** (claude runs from the native Bun binary; Loomyard is Go, psmux is Rust)
-- psmux's default shell on this box = PowerShell 7
+- tmux **3.3.4** (via tmux on Windows)
+- pwsh **7.6.2** (resolved via PATH; a WindowsApps alias stub also exists)
+- claude **2.1.173**, native install first on PATH
+- node **not required** (claude runs from the native Bun binary; Loomyard is Go, tmux is Rust-based/C on Windows port)
+- tmux's default shell on this box = PowerShell 7
 
 ---
 
@@ -33,14 +33,14 @@ Environment (verified 2026-06-11):
    `even-horizontal` flattens vertical sub-stacks, so once a column owns an internal stack
    mux must render the `window_layout` string directly. The tmux layout checksum is
    verified and reproducible in Go.
-4. **Orchestrator/hub = its own psmux *window*, not a column** — keeps the worktree
+4. **Orchestrator/hub = its own tmux *window*, not a column** — keeps the worktree
    overview at fewer, wider columns.
-5. **Overflow / orchestrator-switch via psmux *windows* inside ONE attached client** — not
-   WT tabs, not multiple psmux clients. `Ctrl+b` switches. This is the only "tab" mechanism
+5. **Overflow / orchestrator-switch via tmux *windows* inside ONE attached client** — not
+   WT tabs, not multiple tmux clients. `Ctrl+b` switches. This is the only "tab" mechanism
    mux can drive without client-mirroring, smallest-wins, or WT-quoting fragility.
 6. **Loomyard never owns OS window management.** Popping ONE maximized window attached to a
    session is fine and reliable (`lyx mux attach`). Precise multi-window docking and WT
-   multi-tab launching are brittle → best-effort, not core. mux is host-agnostic; psmux
+   multi-tab launching are brittle → best-effort, not core. mux is host-agnostic; tmux
    auto-resizes to the attached client.
 7. **Crash recovery via native `claude --resume` — works, given env hygiene.** mux assigns each
    pane `--session-id <uuid>` at launch, records it (+ worktree + layout) in local-state, and after
@@ -53,7 +53,7 @@ Environment (verified 2026-06-11):
    treats the pane as a nested child and **suppresses transcript writing** → empty resume. **This is
    the common path, not an edge case:** the primary use is *claude itself running `lyx` to spawn
    reviewers/implementers*, so Loomyard is normally launched from inside a Claude Code session and
-   inherits these vars. Loomyard (Go) is the chokepoint → spawn the psmux server with a sanitized
+   inherits these vars. Loomyard (Go) is the chokepoint → spawn the tmux server with a sanitized
    `exec.Cmd.Env`; agent panes spawned later inherit the server's clean env even when the spawning
    `lyx` call came from a poisoned claude (provided the server was started clean). Per-launch clear
    in the pane is the verified fallback. mux's `capture-pane` journal is then **optional**
@@ -71,7 +71,7 @@ exact journal format + cadence + how much scrollback to re-inject on resume (ful
 - **send-keys + capture-pane: reliable.** Clean round-trip to a detached pane targeted by
   name and by `%id`, with the default shell and explicit pwsh.
 - **Default shell = pwsh 7.** `new-session -d` with no `-- cmd` gives a PowerShell 7 prompt.
-- **`pane_current_command` always = `shell`.** psmux/Windows never reports the real
+- **`pane_current_command` always = `shell`.** tmux/Windows never reports the real
   foreground process name → a daemon cannot use it to know what runs in a pane; must use
   `capture-pane` content or `pane_pid`.
 - **Bare `pwsh` fails inside a pane; explicit path works.** `new-session -- pwsh` rendered
@@ -86,7 +86,7 @@ exact journal format + cadence + how much scrollback to re-inject on resume (ful
   active pane.
 - `select-layout even-horizontal` rebalances a flat row to equal columns (`49|49|49|50`).
   Sufficient for v1 (one pane per worktree) — no math needed.
-- **psmux natively models a column with a vertical sub-stack.** `dump-layout` for "3
+- **tmux natively models a column with a vertical sub-stack.** `dump-layout` for "3
   columns, 3rd split vertically" =
   `{65x50,0,0,2, 65x50,66,0,3, 68x50,132,0[68x24,132,0,4, 68x25,132,25,5]}`. `{…}` =
   left-right container (columns); `[…]` = top-bottom container (the stack inside a column).
@@ -96,7 +96,7 @@ exact journal format + cadence + how much scrollback to re-inject on resume (ful
 - **Hand-built layout strings work.** Format `<csum>,<body>`; tmux checksum = rotate-right-1
   accumulate over body bytes (16-bit). Verified against a real dump (`723c == 723c`).
   `select-layout "<csum>,<body>"` is accepted (rc=0), **preserves column+sub-stack
-  structure**, and **honors sizing** (asked `120|39|39` → got `118|37|43`; psmux normalizes
+  structure**, and **honors sizing** (asked `120|39|39` → got `118|37|43`; tmux normalizes
   a few cells for constraints). → mux owns a `render(columns) → layout-string` function,
   applied atomically via `select-layout`, recomputed on each mutation.
 
@@ -105,20 +105,20 @@ On one 1440p/27" screen (~280×70 cells) you cannot get all three at once: (a) a
 visible, (b) comfortable width per WT, (c) vertical height to stack agents. Measured: 4
 columns = 69 wide (narrow); 2×2 grid = 139×35 (grid kills the height v2 stacks need); rows =
 280×16 (too short). **Full-height columns are the right form**; the width crunch is the
-operator's screen limit, mitigated by zoom and (if needed) psmux-window overflow.
+operator's screen limit, mitigated by zoom and (if needed) tmux-window overflow.
 - `Ctrl+b z` zoom (per-pane, not per-column-subtree) = the read/type grip.
-- Multi-window pagination across psmux windows verified (`pag` session: 3 windows, per-window
+- Multi-window pagination across tmux windows verified (`pag` session: 3 windows, per-window
   `split`+`even-horizontal`, `select-window`, `list-windows -F`, `list-panes -s` all work).
   3 cols/window = comfortable width + full height.
 
-### psmux windows are TABS, not OS windows (critical boundary)
-- psmux "windows" = tabs inside one attached terminal; `select-window` flips the tab the
-  single viewport shows. psmux never opens, positions, or docks an OS window.
-- **No clean simultaneous multi-window view.** psmux does NOT support tmux grouped sessions
+### tmux windows are TABS, not OS windows (critical boundary)
+- tmux "windows" = tabs inside one attached terminal; `select-window` flips the tab the
+  single viewport shows. tmux never opens, positions, or docks an OS window.
+- **No clean simultaneous multi-window view.** tmux does NOT support tmux grouped sessions
   (`new-session -t pag` gave a session with 1 window, not shared; `session_group` empty).
   Two clients on one session mirror each other → the design must not assume seeing two pages
   at once.
-- **Smallest client wins.** Two clients on one session → psmux sizes the window to the
+- **Smallest client wins.** Two clients on one session → tmux sizes the window to the
   SMALLEST. A 120×29 pop-up shrank a 210×56 view to 120×29 (4 columns → 29×29). A pop-up
   helper must pop **maximized** or be the sole client.
 - **`detach-client` by name is NOT supported** (`detach` is self-detach only) → a harness
@@ -143,22 +143,23 @@ An external process drove the **entire** lifecycle headless, zero human attach: 
 it, then added a worktree paginated to a new window. **Only the human "watch" act (attach)
 needs a TTY; the orchestrator never attaches — it sees via `capture-pane`.**
 
-### From the psmux repo docs (`C:\Code\psmux\docs`)
-- **claude-code.md**: psmux has first-class Claude Code agent-team support. Inside a pane it
+### From the tmux repo docs (`C:\Code\tmux\docs`)
+- **claude-code.md**: tmux has first-class Claude Code agent-team support. Inside a pane it
   auto-sets `TMUX`, `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`, `PSMUX_CLAUDE_TEAMMATE_MODE=tmux`
   and defines a `claude` wrapper injecting `--teammate-mode tmux`; teammate agents then spawn
   into panes via split-window/send-keys. **Requires pwsh 7+** (present). Caveat: **Opus
   prefers `isolation:"worktree"`** (in-process, invisible; tmux integration hardcoded-disabled
   on Windows), so Opus agents won't appear in panes regardless. Teammate panes spawn only in
   **interactive** mode, not `-p`.
-- **control-mode.md**: `psmux -CC` = tmux-compatible control protocol over stdin/stdout, with
+- **control-mode.md**: `tmux -CC` = tmux-compatible control protocol over stdin/stdout, with
   live `%output %<pid>` notifications, `dump-state` (JSON), and pane events — an alternative
   to capture-polling for a future daemon. ConPTY caveats: alternate-screen flag always false;
   `capture-pane` only sees the primary buffer; Ctrl+C hits ALL console processes (prefer app
   quit-keys); allow 4–6s for TUI-exit screen settle.
 
 ### Real interactive `claude` in a pane (verified 2026-06-11)
-Cross-reference: [`psmux-tui-behavior.md`](psmux-tui-behavior.md) (prior millhouse findings,
+Cross-reference: [`psmux-tui-behavior.md`](psmux-tui-behavior.md) (prior millhouse findings on
+psmux/Windows — tmux's own behavior is assumed similar but was not separately verified,
 claude 2.1.158/159). This session re-verified on claude **2.1.173**.
 - **Renders + drivable.** A real interactive `claude` TUI launched via `send-keys` in a pane
   renders fully in `capture-pane`; `send-keys -l "<text>"` + `send-keys Enter` submits a prompt;
@@ -185,10 +186,10 @@ claude 2.1.158/159). This session re-verified on claude **2.1.173**.
 
 ### Session persistence & `--resume` — RESOLVED: native resume works; root cause was inherited env
 **Final determination (after a long, flip-flopping investigation, confirmed twice):** native
-`claude --resume` **works for programmatically-driven psmux panes.** The persistence failures were
+`claude --resume` **works for programmatically-driven tmux panes.** The persistence failures were
 an artifact of the test harness: probes ran from **inside a Claude Code session**, whose
 environment exports `CLAUDE_CODE_CHILD_SESSION=1` (+ `CLAUDECODE`, `CLAUDE_CODE_SESSION_ID`,
-`CLAUDE_CODE_ENTRYPOINT`, `CLAUDE_CODE_SSE_PORT`); psmux passed these into the panes, and claude
+`CLAUDE_CODE_ENTRYPOINT`, `CLAUDE_CODE_SSE_PORT`); tmux passed these into the panes, and claude
 treated each pane as a **nested child session and suppressed transcript writing** → only an
 `ai-title` stub. **Strip those vars before launching claude in the pane and persistence + native
 resume work perfectly** — verified independently twice (14.3 KB transcript with real
@@ -198,13 +199,13 @@ decision 7. The evidence trail (note: bullets below marked "did NOT persist" wer
 poisoning env present — they are the symptom, not a limitation):
 - claude stores transcripts at `~/.claude/projects/<cwd-encoded>/<session-id>.jsonl`
   (path encoding replaces `:`, `\`, AND `.` with `-`).
-- **A real keyboard-typed interactive `claude` in a psmux pane persists the FULL transcript,
+- **A real keyboard-typed interactive `claude` in a tmux pane persists the FULL transcript,
   and `--resume` restores it — VERIFIED end-to-end.** Operator launched `claude --session-id
-  <id>` in an attached psmux pane, typed "Husk kodeordet appelsin001" by hand, stopped it → the
+  <id>` in an attached tmux pane, typed "Husk kodeordet appelsin001" by hand, stopped it → the
   `.jsonl` was **18.6 KB / 17 records** with real `user`/`assistant`/`last-prompt` entries. Then
-  `claude --resume <id>` in a fresh psmux pane (same cwd) **reopened the prior conversation and
+  `claude --resume <id>` in a fresh tmux pane (same cwd) **reopened the prior conversation and
   recalled the codeword** ("Kodeordet du ga meg var appelsin001."). So native resume DOES work
-  **when the transcript exists** — i.e. for a human-typed session. There is no psmux limitation
+  **when the transcript exists** — i.e. for a human-typed session. There is no tmux limitation
   on the *resume* step itself; the gap is purely whether the transcript got written.
 - **Programmatically-driven sessions do NOT persist — this is the case that matters for mux.**
   Every probe where input was injected (`send-keys` burst, `send-keys` char-by-char, or the task
@@ -242,7 +243,7 @@ poisoning env present — they are the symptom, not a limitation):
   even while another claude session runs → **concurrency was never the blocker.**
 - **Reference point:** a real-terminal interactive claude writes its transcript **incrementally
   while running** (verified on a live 2.1 MB / 997-record session with seconds-old `user`/
-  `assistant` records) — that is why a human's reboot → `/resume` works. The psmux-pane programmatic
+  `assistant` records) — that is why a human's reboot → `/resume` works. The tmux-pane programmatic
   case does NOT reach this state (init records never written), so this reference does not transfer
   to mux's use.
 - **Design implication (Landed decision 7):** `lyx mux resume` **cannot** use native
@@ -259,7 +260,7 @@ never reaches claude. Drive `send-keys` from **pwsh** (or Go `exec`, which has n
 Loomyard is unaffected; the probe harness was.
 
 ### Hooks & event-driven monitoring (tested 2026-06-12)
-psmux documents tmux-style hooks (`set-hook -g <event> "<cmd>"`, `show-hooks`, `run-shell -b`).
+tmux documents tmux-style hooks (`set-hook -g <event> "<cmd>"`, `show-hooks`, `run-shell -b`).
 What actually works on this build:
 - **`pane-died` fires reliably**, and runs a background command via `run-shell -b` (verified: a
   `pwsh -File logger.ps1` hook wrote to disk). **Requires `set-option -g remain-on-exit on`** —
@@ -290,7 +291,7 @@ What actually works on this build:
   shell** (not the custom command string I passed — the `[shell-command]` arg form needs care
   through the quoting layers), so the working pattern is: `respawn-pane` → then launch claude into
   the revived pane. `-k` kill-and-respawn on a live pane also works (id reused).
-- **Control-mode `-CC` works on Windows psmux — including live `%output` push.** `psmux -CC attach`
+- **Control-mode `-CC` works on Windows tmux — including live `%output` push.** `tmux -CC attach`
   speaks the tmux control protocol: `%begin/%end` framing around command responses (`list-windows`
   → `0: pwsh* (1 panes) [100x30]`), commands accepted on stdin. Crucially, **`%output %<pane>
   <data>` notifications fire in real time** as a pane produces output (verified: a marker echoed in

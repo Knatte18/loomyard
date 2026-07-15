@@ -49,12 +49,12 @@ type Removed struct {
 // strand is removed.
 func validateAnchor(anchor render.Anchor) error {
 	switch anchor {
-	case render.AnchorTop, render.AnchorBelowParent, render.AnchorHidden:
+	case render.AnchorBelowParent, render.AnchorHidden:
 		return nil
 	case render.AnchorOwnWindow:
 		return fmt.Errorf("anchor %q is deferred, not supported in v1", render.AnchorOwnWindow)
 	default:
-		return fmt.Errorf("invalid anchor %q; want top|below-parent|hidden", anchor)
+		return fmt.Errorf("invalid anchor %q; want below-parent|hidden", anchor)
 	}
 }
 
@@ -184,8 +184,8 @@ func needsLaunchOnSurface(wasHidden bool, display render.Display) bool {
 // the shared launchStrandLocked (GAP A). It assumes the op lock is already
 // held and appends the new Strand into st.Strands in place. Hermetically
 // testable for a hidden add (needsLaunchOnAdd skips launchStrandLocked
-// entirely, so no psmux round trip happens); a non-hidden add always makes
-// a real psmux round trip via launchStrandLocked.
+// entirely, so no tmux round trip happens); a non-hidden add always makes
+// a real tmux round trip via launchStrandLocked.
 func (e *Engine) addStrandLocked(st *MuxState, spec AddSpec) (Strand, error) {
 	if err := validateAnchor(spec.Display.Anchor); err != nil {
 		return Strand{}, err
@@ -231,7 +231,7 @@ func (e *Engine) addStrandLocked(st *MuxState, spec AddSpec) (Strand, error) {
 // hidden->visible transition — realizes the strand into a live pane via
 // launchStrandLocked before returning (GAP A). It assumes the op lock is
 // already held. Hermetically testable except for the actual surfacing
-// launch, which always makes a real psmux round trip.
+// launch, which always makes a real tmux round trip.
 func (e *Engine) updateStrandLocked(st *MuxState, guid string, display render.Display) (Strand, error) {
 	if err := validateAnchor(display.Anchor); err != nil {
 		return Strand{}, err
@@ -262,7 +262,7 @@ func (e *Engine) updateStrandLocked(st *MuxState, guid string, display render.Di
 // removeStrandLocked removes guid from st.Strands: a non-leaf without
 // recursive is rejected outright; otherwise the whole descendant subtree is
 // cascaded away (never orphaning children into a broken parent chain). It
-// assumes the op lock is already held, never touches psmux itself, and so
+// assumes the op lock is already held, never touches tmux itself, and so
 // is fully hermetically testable. It returns the pane ids of every removed
 // strand that held a live pane binding, so the caller can kill those panes
 // explicitly rather than relying on select-layout to reap them.
@@ -298,6 +298,27 @@ func (e *Engine) removeStrandLocked(st *MuxState, guid string, recursive bool) (
 	return removed, paneIDs, nil
 }
 
+// removalEmptiedSession classifies whether a remove drained the session of
+// every strand that should still own a live pane, so a confirmed-gone
+// session is an expected terminal state rather than a failure. It returns
+// true iff sessionGone is true AND no strand in remaining is non-hidden —
+// mirroring anyPlacedStrand's "expected to own a live pane" filter
+// (apply.go: Anchor != render.AnchorHidden) so the two share one notion of
+// that concept rather than a second, driftable classification. An empty
+// remaining slice therefore returns true when sessionGone, since nothing is
+// left that should still own a pane.
+func removalEmptiedSession(remaining []Strand, sessionGone bool) bool {
+	if !sessionGone {
+		return false
+	}
+	for _, s := range remaining {
+		if s.Display.Anchor != render.AnchorHidden {
+			return false
+		}
+	}
+	return true
+}
+
 // AddStrand registers a new strand from spec and, unless added
 // anchor:hidden, realizes it into a live pane and runs its cmd, then
 // reconciles and re-applies the layout. The engine, not the caller, stamps
@@ -305,8 +326,8 @@ func (e *Engine) removeStrandLocked(st *MuxState, guid string, recursive bool) (
 // and guid generation (the guid-dependent <SHORT_GUID> name token cannot be
 // computed before the guid exists). Pre-flights the session's existence
 // (mirroring Status) so running add before up fails with the same friendly
-// "no mux session" error instead of a raw psmux error surfacing later from
-// inside launchStrandLocked.
+// no-session error (see requireSessionLocked/noSessionMessage) instead of a
+// raw tmux error surfacing later from inside launchStrandLocked.
 func (e *Engine) AddStrand(spec AddSpec) (Strand, error) {
 	var result Strand
 	err := e.withOpLock(func() error {
@@ -348,9 +369,10 @@ func (e *Engine) AddStrand(spec AddSpec) (Strand, error) {
 // ("cannot hide a live strand in v1"); a hidden->visible transition
 // surfaces the strand (creates its pane, runs its cmd). Pre-flights the
 // session's existence (like AddStrand/RemoveStrand) so surfacing a hidden
-// strand before "up" fails with the friendly "no mux session" error instead
-// of a raw psmux error from inside launchStrandLocked. UpdateStrand is
-// engine-API-only in v1 — there is no CLI verb for it.
+// strand before "up" fails with the friendly no-session error (see
+// requireSessionLocked/noSessionMessage) instead of a raw tmux error from
+// inside launchStrandLocked. UpdateStrand is engine-API-only in v1 — there
+// is no CLI verb for it.
 func (e *Engine) UpdateStrand(guid string, display render.Display) (Strand, error) {
 	var result Strand
 	err := e.withOpLock(func() error {
@@ -408,10 +430,11 @@ func alivePanePIDs(paneIDs []string, live []LivePane) []int {
 // non-leaf, or the call errors instead of silently deleting descendants),
 // then reconciles and re-applies the layout. Returns every strand actually
 // removed. Pre-flights the session's existence (mirroring Status) so
-// running remove before up fails with the same friendly "no mux session"
-// error instead of a raw psmux error surfacing later from inside
-// reconcileApplyPersistLocked's listPanes. Like Down, it waits for the
-// destroyed panes' process subtrees to exit before returning: psmux
+// running remove before up fails with the same friendly no-session error
+// (see requireSessionLocked/noSessionMessage) instead of a raw tmux error
+// surfacing later from inside reconcileApplyPersistLocked's listPanes. Like
+// Down, it waits for the
+// destroyed panes' process subtrees to exit before returning: tmux
 // terminates a pane's children asynchronously, and on Windows the process
 // actually holding the worktree directory is a deep descendant of
 // #{pane_pid} — a remove that returned without the reap could leave a
@@ -439,7 +462,7 @@ func (e *Engine) RemoveStrand(guid string, recursive bool) (Removed, error) {
 		// un-reused (the processes are still running).
 		var reapPIDs []int
 		if len(paneIDs) > 0 {
-			if live, err := e.psmux.listPanes(e.SessionName()); err == nil {
+			if live, err := e.tmux.listPanes(e.SessionName()); err == nil {
 				reapPIDs = e.descendantClosurePIDs(alivePanePIDs(paneIDs, live))
 			}
 		}
@@ -447,13 +470,20 @@ func (e *Engine) RemoveStrand(guid string, recursive bool) (Removed, error) {
 		// Kill the removed strands' panes explicitly rather than relying on
 		// select-layout to reap panes missing from the layout string (a
 		// psmux-only side effect; tmux would reject a mismatched layout
-		// instead). Best-effort: a pane may already be dead or gone, and
-		// killing a session's LAST pane does not remove it — under
-		// remain-on-exit psmux corpses it as pane_dead=1 (exit 0), keeping
-		// the session alive — the reconcile tail below re-enumerates and
-		// re-applies either way, and planPaneTarget never adopts a corpse.
+		// instead). Best-effort: a pane may already be dead or gone. What
+		// killing a session's LAST pane does next is BINARY-DEPENDENT, not
+		// universal: on psmux, remain-on-exit corpses it as pane_dead=1
+		// (exit 0), keeping the session alive; on tmux, killing a session's
+		// true last pane DESTROYS the session (and, if it was the server's
+		// only session, the server exits) — the reconcile tail below then
+		// fails its listPanes call against the now-gone session. RemoveStrand
+		// below handles both outcomes by re-probing hasSession and swallowing
+		// that failure as an expected success only when the session is
+		// confirmed gone (the tmux case); on psmux the reconcile tail simply
+		// re-enumerates and re-applies, and planPaneTarget never adopts a
+		// corpse.
 		for _, id := range paneIDs {
-			_ = e.psmux.run("kill-pane", "-t", id)
+			_ = e.tmux.run("kill-pane", "-t", id)
 		}
 
 		// Reap after the layout repair, so the surviving panes re-tile
@@ -469,6 +499,27 @@ func (e *Engine) RemoveStrand(guid string, recursive bool) (Removed, error) {
 		_, applyErr := e.reconcileApplyPersistLocked(st)
 		reapPaneChildren(reapPIDs, reapExitTimeout)
 		if applyErr != nil {
+			// applyErr alone cannot tell "the removal legitimately emptied
+			// the session" (an expected terminal state — see the tmux/psmux
+			// last-pane split above) apart from a genuine failure, so
+			// re-probe the session directly rather than string-match
+			// applyErr. hasSession maps a "no server running" exit (1) to
+			// (false, nil), the same classification requireSessionLocked
+			// already relies on.
+			up, herr := e.tmux.hasSession(e.SessionName())
+			sessionGone := herr == nil && !up
+			if removalEmptiedSession(st.Strands, sessionGone) {
+				// removeStrandLocked already pruned st.Strands in memory, but
+				// reconcileApplyPersistLocked's own SaveState never ran (it
+				// failed before reaching it) — persist the pruned state here
+				// so a later "lyx mux resume" does not resurrect the strand
+				// this call just removed.
+				if err := SaveState(e.layout.DotLyxDir(), st); err != nil {
+					return fmt.Errorf("save state after emptying session: %w", err)
+				}
+				result = removed
+				return nil
+			}
 			return applyErr
 		}
 

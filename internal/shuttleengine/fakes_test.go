@@ -17,7 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/muxengine"
 )
 
-// fakeMux is a hermetic MuxOps double: it never touches psmux. CallLog
+// fakeMux is a hermetic MuxOps double: it never touches tmux. CallLog
 // records every call across all six methods, in invocation order, as a
 // short formatted tag — the single source tests use to assert
 // cross-method choreography (e.g. Interrupt/Send's exact key/text

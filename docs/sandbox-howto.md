@@ -106,7 +106,7 @@ sandbox-core-suite.cmd -claude <path>   # override the claude binary (default: f
 sandbox-core-suite.cmd -prompt <text>   # override the instruction string
 ```
 
-### 4b. Run the mux suite (optional, needs live psmux)
+### 4b. Run the mux suite (optional, needs live tmux)
 
 ```cmd
 sandbox-mux-suite.cmd
@@ -114,7 +114,7 @@ sandbox-mux-suite.cmd
 
 This copies a fingerprinted `SANDBOX-MUX-SUITE.md` into the Hub host repo and
 launches the interactive agent there, same as step 4 but for `lyx mux`'s
-scenarios. It needs a live psmux (`psmux.exe` on PATH) and PowerShell 7. The
+scenarios. It needs a live tmux (`tmux.exe` on PATH) and PowerShell 7. The
 attach scenario (M7) pauses for the operator to run `lyx mux attach` in a
 second terminal and confirm visually. Findings go to the same
 `sandbox-report.json`, so step 5 (`sandbox-fetch.cmd`) and step 6 (triage)
@@ -128,7 +128,7 @@ sandbox-mux-suite.cmd -claude <path>   # override the claude binary (default: fr
 sandbox-mux-suite.cmd -prompt <text>   # override the instruction string
 ```
 
-### 4c. Run the shuttle or burler suite (optional, needs live psmux + logged-in claude)
+### 4c. Run the shuttle or burler suite (optional, needs live tmux + logged-in claude)
 
 ```cmd
 sandbox-shuttle-suite.cmd
@@ -136,14 +136,14 @@ sandbox-burler-suite.cmd
 ```
 
 Same operating model as 4b, for `lyx shuttle`'s and `lyx burler`'s scenarios
-respectively; both need a live psmux, PowerShell 7, a logged-in `claude`, and
+respectively; both need a live tmux, PowerShell 7, a logged-in `claude`, and
 an `lyx init`-ed host repo. Same `-claude`/`-prompt` overrides. After the
 session ends, the launcher runs `lyx mux down` in the host repo (for the mux,
-shuttle, burler, and perch suites) so no psmux server outlives the run — an
+shuttle, burler, and perch suites) so no tmux server outlives the run — an
 orphaned server holds handles inside the Hub and blocks the next
 `sandbox-build.cmd -reset`.
 
-### 4d. Run the perch suite (optional, needs live psmux + logged-in claude)
+### 4d. Run the perch suite (optional, needs live tmux + logged-in claude)
 
 ```cmd
 sandbox-perch-suite.cmd
@@ -151,11 +151,11 @@ sandbox-perch-suite.cmd
 
 Same operating model as 4c, for `lyx perch`'s gate-loop scenarios (convergence,
 pause/resume, the command gate) — perch wires the real burler substrate (which
-in turn wires shuttle) on every invocation, so the same live-psmux,
+in turn wires shuttle) on every invocation, so the same live-tmux,
 PowerShell 7, logged-in-`claude`, and `lyx init`-ed prerequisites apply. Same
 `-claude`/`-prompt` overrides.
 
-### 4e. Run the builder suite (optional, needs live psmux + logged-in claude)
+### 4e. Run the builder suite (optional, needs live tmux + logged-in claude)
 
 ```cmd
 sandbox-builder-suite.cmd
@@ -164,8 +164,8 @@ sandbox-builder-suite.cmd
 Same operating model as 4c/4d, for `lyx builder`'s batch-loop scenarios (the
 autonomous `run` happy path, `poll`'s dead/timeout classification, pause as a
 batch-boundary check, `run.lock` contention, and fingerprint/outcome
-archiving) — builder branches off shuttle directly (real psmux + real
-`claude`), so the same live-psmux, PowerShell 7, logged-in-`claude`, and
+archiving) — builder branches off shuttle directly (real tmux + real
+`claude`), so the same live-tmux, PowerShell 7, logged-in-`claude`, and
 `lyx init`-ed prerequisites apply. Same `-claude`/`-prompt` overrides.
 
 ### 5. Fetch the report
@@ -201,7 +201,7 @@ nothing is written until you approve. Then groom/spawn as usual.
 | `lyx` not found / old behaviour | binary on PATH is stale or `C:\Code\tools\bin` not on PATH | rerun `deploy.cmd`; check PATH |
 | `warp clone` fails during build | sandbox wiki not initialized | enable Wikis + add a page on `lyx-test-weft`, then `sandbox-build.cmd -reset` |
 | Hub looks corrupt / half-cloned | interrupted earlier run | `sandbox-build.cmd -reset` |
-| `sandbox-build.cmd -reset` fails: "being used by another process" | orphaned `psmux.exe` from an earlier suite session still holds Hub handles | the launcher now runs `lyx mux down` after mux-backed suites; if hit anyway, find the Hub-scoped `psmux.exe` PIDs by `StartTime` (`Get-Process -Name psmux \| Select Id,StartTime`) and kill only those — never blanket-kill by image name |
+| `sandbox-build.cmd -reset` fails: "being used by another process" | orphaned `tmux.exe` from an earlier suite session still holds Hub handles | the launcher now runs `lyx mux down` after mux-backed suites; if hit anyway, find the Hub-scoped `tmux.exe` PIDs by `StartTime` (`Get-Process -Name tmux \| Select Id,StartTime`) and kill only those — never blanket-kill by image name |
 | agent session ends early, scenarios abandoned, no report | launcher was backgrounded/redirected (no TTY) | rerun in a real attached terminal; heed the launcher's non-console stdio warning |
 | exit code always 0/1, not claude's | launcher collapses claude's code | build and run `go build -o sandbox.exe ./tools/sandbox` for precise codes |
 

@@ -1,8 +1,9 @@
-psmux: ${env:LYX_MUX_PSMUX:-tmux}  # path to the psmux executable
-pwsh: ${env:LYX_MUX_PWSH:-bash}  # path to the powershell executable used inside panes
-width: 220  # psmux window width
-height: 50  # psmux window height
+tmux: ${env:LYX_MUX_TMUX:-tmux}  # path to the tmux executable
+shell: ${env:LYX_MUX_SHELL:-bash}  # path to the shell command lyx launches inside each pane (bash on POSIX, pwsh on Windows by default)
+width: 220  # tmux window width
+height: 50  # tmux window height
 collapsed_strip_rows: 3  # height a shrink:true ancestor collapses to once a descendant is present
-top_band_rows: 1  # fixed height reserved for each anchor:top strand
 min_full_rows: 3  # floor height the clamp rule tries to preserve for a full pane
 strand_name: '<ROLE>:<ROUND>:<SHORT_GUID>'  # template for a strand's display name; unfilled tokens resolve to ""
+debug_log: ${env:LYX_MUX_DEBUG:-0}  # opt-in tmux server verbose logging (0 off, 1 -v, 2 -vv); takes effect only on the boot that spawns the shared per-hub server; existing hubs must run "lyx config reconcile" to adopt this key
+mouse: ${env:LYX_MUX_MOUSE:-off}  # tmux mouse-mode default (on/off; off preserves native terminal text selection/copy; set on for click-to-switch-pane; takes effect on a fresh mux server boot only — a live toggle needs a server restart)

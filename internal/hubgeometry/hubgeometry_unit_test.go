@@ -129,3 +129,19 @@ func TestDotLyxDir(t *testing.T) {
 		t.Errorf("DotLyxDir() = %q; must be distinct from LyxDir() = %q", got, layout.LyxDir())
 	}
 }
+
+// TestHubLogsDir verifies that HubLogsDir resolves to "<Hub>/.lyx/logs" — pure
+// path math, hub-anchored (not worktree-anchored), with no filesystem I/O.
+func TestHubLogsDir(t *testing.T) {
+	t.Parallel()
+
+	hub := filepath.Join("home", "user", "project-HUB")
+	layout := &hubgeometry.Layout{Hub: hub}
+
+	got := layout.HubLogsDir()
+	want := filepath.Join(hub, ".lyx", "logs")
+
+	if got != want {
+		t.Errorf("HubLogsDir() = %q; want %q", got, want)
+	}
+}

@@ -8,7 +8,7 @@ the task lives elsewhere now.
 ## Your two jobs, in order
 1. REVIEW: form your own independent judgment of builder's scope and correctness. Hunt for bugs
    by reading the code AND by driving the real substrate — `lyx builder run`/`spawn-batch`/
-   `poll`/`pause` wired to a REAL shuttle spawn (real psmux, a real logged-in `claude`) — this is
+   `poll`/`pause` wired to a REAL shuttle spawn (real tmux, a real logged-in `claude`) — this is
    where builder's defects hide, not in the hermetic unit tests.
 2. FIX: after you have a findings list, implement the fixes one at a time, verify each against
    the real substrate, keep the whole test suite green, and update the docs in the same change as
@@ -175,7 +175,7 @@ Round 1 (`opus-r1`):
 - **B5 (NIT)** — duplicated archive-collision loop, DRY'd. Fixed at `b6ce13d`.
 - **B6 (suite)** — stuck→recovery sandbox scenario added at `62a8429`.
 
-Round 2 (`fable-r2`) — drove the REAL substrate for the first time this campaign (real psmux, real
+Round 2 (`fable-r2`) — drove the REAL substrate for the first time this campaign (real tmux, real
 logged-in `claude` sessions, deployed binary, sandbox Hub `C:\Code\lyx-test-HUB`) and found eleven
 MORE defects the code-only round completely missed, all fixed, none deferred:
 - **F1 (MEDIUM)** — `poll` never released a `done`/`stuck` batch's strand — every finished batch
@@ -213,11 +213,11 @@ MORE defects the code-only round completely missed, all fixed, none deferred:
 - **F9 (NIT)** — `chain-end:` without `verify: deferred` passed validation. Fixed `4485f99`.
 - **F10 (NIT/docs)** — sandbox suite B4 promised a run-busy refusal `spawn-batch` structurally
   cannot give; reworded, new B7 scenario added. Fixed `f1122ab`.
-- New `internal/buildercli/smoke_test.go` (`//go:build smoke`) boots a REAL psmux server and
+- New `internal/buildercli/smoke_test.go` (`//go:build smoke`) boots a REAL tmux server and
   exercises F1's strand release + F4's in-flight guard against it — independently re-run by the
   orchestrator, green (`go test -tags smoke -run TestSmoke_ ./internal/buildercli/...`, 2 tests,
   ~36s).
-- Cold `go build`/`vet`/`go test -count=5 (+ -tags integration, + -tags smoke against a REAL psmux
+- Cold `go build`/`vet`/`go test -count=5 (+ -tags integration, + -tags smoke against a REAL tmux
   server) ./internal/builderengine/... ./internal/buildercli/... ./cmd/lyx/... ./tools/sandbox/...`
   all green, independently re-run by the orchestrator (not cached, not trusted from any round's
   own report).
@@ -361,9 +361,9 @@ Live driving via the SANDBOX SUITE (PRIMARY — where the bugs surface):
   treat `SANDBOX-BUILDER-SUITE.md`'s scenarios (B1–B9) as a checklist YOU execute directly, with
   your own tool calls: materialize the Hub yourself (`sandbox-build.cmd`, then `lyx init` in the
   host repo), then run the real `lyx builder run` / `spawn-batch` / `poll` / `pause` commands the
-  scenarios describe, foreground, waiting for each to return. This DOES spawn real psmux panes and
+  scenarios describe, foreground, waiting for each to return. This DOES spawn real tmux panes and
   real interactive `claude` sessions underneath (as builder's own substrate, via shuttle) — that is
-  expected and required, not something to avoid. It needs no attached TTY of ITS OWN: a psmux pane
+  expected and required, not something to avoid. It needs no attached TTY of ITS OWN: a tmux pane
   is a real pty regardless of whether anyone is watching it, so `lyx builder run` blocking in your
   own foreground Bash call is a normal, fully headless-capable action for you to take, not an
   operator-assisted one.
@@ -397,14 +397,14 @@ Live driving via the SANDBOX SUITE (PRIMARY — where the bugs surface):
   strand; `pause` racing a `run --fresh` invocation; a third overlapping `run` process).
 - The only legitimate "cannot verify" cases are: (a) a scenario that structurally requires a human
   to visually confirm something (there are none in B1-B9 today — flag it if you add one that does),
-  or (b) a genuine environment gap (`claude` not logged in, `psmux.exe` missing — check for this
+  or (b) a genuine environment gap (`claude` not logged in, `tmux.exe` missing — check for this
   FIRST, before doing anything else, so you know up front whether it applies). Flag those as
   not-headlessly-verifiable with the specific missing precondition — never as a blanket
   cost/time/turn-budget excuse.
 
 TEARDOWN DISCIPLINE (critical): if you start any substrate server/session (builder's own
-orchestrator spawn, or any batch implementer spawn, both ride real psmux via shuttle), tear it
-down. At the end, confirm ZERO stray substrate processes: `tasklist | grep -i psmux` must report
+orchestrator spawn, or any batch implementer spawn, both ride real tmux via shuttle), tear it
+down. At the end, confirm ZERO stray substrate processes: `tasklist | grep -i tmux` must report
 zero. Leave no stray state. Be honest about what you could NOT verify and why.
 
 ## How to judge each finding

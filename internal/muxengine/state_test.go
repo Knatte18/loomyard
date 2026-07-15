@@ -53,7 +53,7 @@ func TestSaveState_ThenLoadState_RoundTrips(t *testing.T) {
 				Cmd:      "claude --session-id def",
 				PaneID:   "%2",
 				Display: render.Display{
-					Anchor:                   render.AnchorTop,
+					Anchor:                   render.AnchorBelowParent,
 					ShrinkWhenWaitingOnChild: true,
 				},
 			},
@@ -108,7 +108,7 @@ func TestLoadState_CorruptFileErrors(t *testing.T) {
 func TestToRenderStrands_MapsFieldsAndSetsLiveFromPaneSet(t *testing.T) {
 	strands := []Strand{
 		{GUID: "g1", Parent: "", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent, Focus: true}},
-		{GUID: "g2", Parent: "g1", PaneID: "%2", Display: render.Display{Anchor: render.AnchorTop}},
+		{GUID: "g2", Parent: "g1", PaneID: "%2", Display: render.Display{Anchor: render.AnchorBelowParent}},
 		{GUID: "g3", Parent: "g1", PaneID: "", Display: render.Display{Anchor: render.AnchorHidden}},
 	}
 	liveIDs := map[string]bool{"%1": true}

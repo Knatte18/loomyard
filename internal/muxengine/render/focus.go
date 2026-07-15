@@ -1,11 +1,11 @@
-// focus.go resolves which pane receives psmux input focus, and detects
+// focus.go resolves which pane receives tmux input focus, and detects
 // whether a strand has a descendant present in the ordered stack — the
 // isAncestor test the height policy (height.go) uses to decide whether a
 // shrink:true strand collapses to a compact strip.
 
 package render
 
-// focusTarget returns the pane id of the strand that should receive psmux
+// focusTarget returns the pane id of the strand that should receive tmux
 // focus, exactly one per session. If one or more strands in ordered declare
 // Display.Focus, the bottom-most such strand wins (ties resolve to
 // bottom-most). Otherwise the bottom-most strand in ordered is the default

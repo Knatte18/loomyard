@@ -15,7 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
-// Strand is the persisted record for one psmux pane muxengine owns. It
+// Strand is the persisted record for one tmux pane muxengine owns. It
 // reuses render.Display/render.Anchor for the display vocabulary (a single
 // source of that vocabulary) and adds the opaque carrier fields muxengine
 // stores but never interprets: Cmd/ResumeCmd (opaque launch/resume command
@@ -34,7 +34,7 @@ type Strand struct {
 	Display   render.Display `json:"display"`
 }
 
-// MuxState is the persisted record for one hub's psmux server: the socket
+// MuxState is the persisted record for one hub's tmux server: the socket
 // name (which doubles as the server name — one identity, stored once), the
 // session this state file belongs to, the env keys stripped at server-spawn
 // time (stamped when this worktree's op booted the server, for diagnosis),
@@ -86,7 +86,7 @@ func SaveState(dotLyxDir string, s *MuxState) error {
 // toRenderStrands maps the persisted strands down to the render-facing
 // projection Rules needs: GUID, Parent, Display, and PaneID carry straight
 // through, and Live is set from liveIDs[PaneID]. liveIDs is the set of pane
-// ids currently present in the psmux window per list-panes — a
+// ids currently present in the tmux window per list-panes — a
 // dead-but-remain-on-exit pane still counts as present until something
 // explicitly kills it, so Live means "this strand owns a present window
 // pane", not "this strand's command is still running". toRenderStrands maps

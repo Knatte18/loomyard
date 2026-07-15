@@ -18,7 +18,7 @@ func TestStartup_Classification(t *testing.T) {
 		want    shuttleengine.StartupState
 	}{
 		{
-			// The REAL trust dialog as captured live from a psmux pane
+			// The REAL trust dialog as captured live from a tmux pane
 			// (claude 2.1.200): the TUI's space-stripping rendering quirk is
 			// preserved verbatim, and — critically — the dialog contains the
 			// "❯" ready marker as its option-selection caret. This is the

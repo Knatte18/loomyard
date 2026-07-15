@@ -23,11 +23,11 @@ type Shell interface {
 	// ReadFile returns the shell syntax that expands path's contents into a single
 	// command-line argument, reproducing the "prompt read from a file, not typed
 	// inline" idiom every provider engine relies on to keep a large or quote-laden
-	// prompt off of psmux send-keys and shell string escaping.
+	// prompt off of tmux send-keys and shell string escaping.
 	ReadFile(path string) string
 }
 
-// ForGOOS returns the Shell implementation for the pane shell psmux launches on the
+// ForGOOS returns the Shell implementation for the pane shell tmux launches on the
 // current host: the pwsh impl on Windows, the posix impl everywhere else. Callers that
 // need to exercise a specific implementation regardless of host OS should call Pwsh or
 // Posix directly instead.

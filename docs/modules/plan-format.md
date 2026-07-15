@@ -77,7 +77,7 @@ approved: true     # Builder refuses to run an unapproved plan
 ```
 
 Builder refuses a plan that is unapproved **or** whose `format` it does not recognize —
-fail loud, never misread (the same discipline as the burler verdict-parse and the psmux
+fail loud, never misread (the same discipline as the burler verdict-parse and the tmux
 capability-probe). `format: 2` makes every plan self-identifying the day v3 arrives.
 
 The body carries:

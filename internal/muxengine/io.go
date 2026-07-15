@@ -39,7 +39,7 @@ func resolveLivePaneID(st *MuxState, guid string) (string, error) {
 }
 
 // SendText types text into guid's live pane as a literal string (never
-// reinterpreted as psmux flags or key names) and, when submit is true,
+// reinterpreted as tmux flags or key names) and, when submit is true,
 // follows it with a separate Enter — the exact two-step send-keys pattern
 // launchStrandLocked uses to run a strand's launch command. SendText is pure
 // transport: it does not reconcile, re-render, or persist, so a caller
@@ -64,11 +64,11 @@ func (e *Engine) SendText(guid, text string, submit bool) error {
 			return err
 		}
 
-		if err := e.psmux.run("send-keys", "-t", paneID, "-l", sendKeysLiteralArg(text)); err != nil {
+		if err := e.tmux.run("send-keys", "-t", paneID, "-l", sendKeysLiteralArg(text)); err != nil {
 			return fmt.Errorf("send text: %w", err)
 		}
 		if submit {
-			if err := e.psmux.run("send-keys", "-t", paneID, "Enter"); err != nil {
+			if err := e.tmux.run("send-keys", "-t", paneID, "Enter"); err != nil {
 				return fmt.Errorf("submit text: %w", err)
 			}
 		}
@@ -77,7 +77,7 @@ func (e *Engine) SendText(guid, text string, submit bool) error {
 }
 
 // SendKey sends a single named key (e.g. "Enter", "Escape") into guid's live
-// pane WITHOUT the -l literal flag, so psmux interprets it as a key name
+// pane WITHOUT the -l literal flag, so tmux interprets it as a key name
 // rather than typing it verbatim — the opposite of SendText's literal
 // transport. Like SendText, it is pure transport (no reconcile, re-render,
 // or persist) and runs its lookup-then-send sequence under the op lock.
@@ -97,7 +97,7 @@ func (e *Engine) SendKey(guid, key string) error {
 			return err
 		}
 
-		if err := e.psmux.run("send-keys", "-t", paneID, key); err != nil {
+		if err := e.tmux.run("send-keys", "-t", paneID, key); err != nil {
 			return fmt.Errorf("send key %q: %w", key, err)
 		}
 		return nil
@@ -105,7 +105,7 @@ func (e *Engine) SendKey(guid, key string) error {
 }
 
 // CapturePane returns guid's live pane's current screen contents via
-// psmux's capture-pane, resolving the pane the same way SendText/SendKey do.
+// tmux's capture-pane, resolving the pane the same way SendText/SendKey do.
 // It is a read-only query, mirroring Status's discipline: it does not
 // reconcile (which can kill dead-but-not-sole panes), does not re-apply the
 // layout (which would move input focus as a side effect), and does not
@@ -128,7 +128,7 @@ func (e *Engine) CapturePane(guid string) (string, error) {
 			return err
 		}
 
-		out, err := e.psmux.output("capture-pane", "-p", "-t", paneID)
+		out, err := e.tmux.output("capture-pane", "-p", "-t", paneID)
 		if err != nil {
 			return fmt.Errorf("capture pane: %w", err)
 		}

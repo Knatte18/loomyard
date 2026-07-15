@@ -1,5 +1,5 @@
 // parse_test.go table-tests the pure pane-list parser in parse.go against
-// the exact psmux output shape it is expected to handle, including the
+// the exact tmux output shape it is expected to handle, including the
 // pane_dead=1 row that remain-on-exit produces.
 
 package muxengine
