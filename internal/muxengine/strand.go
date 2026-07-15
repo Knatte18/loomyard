@@ -492,6 +492,27 @@ func (e *Engine) RemoveStrand(guid string, recursive bool) (Removed, error) {
 		_, applyErr := e.reconcileApplyPersistLocked(st)
 		reapPaneChildren(reapPIDs, reapExitTimeout)
 		if applyErr != nil {
+			// applyErr alone cannot tell "the removal legitimately emptied
+			// the session" (an expected terminal state — see the tmux/psmux
+			// last-pane split above) apart from a genuine failure, so
+			// re-probe the session directly rather than string-match
+			// applyErr. hasSession maps a "no server running" exit (1) to
+			// (false, nil), the same classification requireSessionLocked
+			// already relies on.
+			up, herr := e.psmux.hasSession(e.SessionName())
+			sessionGone := herr == nil && !up
+			if removalEmptiedSession(st.Strands, sessionGone) {
+				// removeStrandLocked already pruned st.Strands in memory, but
+				// reconcileApplyPersistLocked's own SaveState never ran (it
+				// failed before reaching it) — persist the pruned state here
+				// so a later "lyx mux resume" does not resurrect the strand
+				// this call just removed.
+				if err := SaveState(e.layout.DotLyxDir(), st); err != nil {
+					return fmt.Errorf("save state after emptying session: %w", err)
+				}
+				result = removed
+				return nil
+			}
 			return applyErr
 		}
 
