@@ -28,7 +28,7 @@ func TestPlanUpLaunches_NeverLaunchesAnyStrand(t *testing.T) {
 		{{GUID: "a", Display: render.Display{Anchor: render.AnchorBelowParent}}},
 		{
 			{GUID: "a", Display: render.Display{Anchor: render.AnchorHidden}},
-			{GUID: "b", PaneID: "%1", Display: render.Display{Anchor: render.AnchorTop}},
+			{GUID: "b", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent}},
 		},
 	}
 	for _, strands := range tables {

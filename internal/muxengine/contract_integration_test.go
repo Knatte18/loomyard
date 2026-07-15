@@ -374,7 +374,7 @@ func TestRemoveStrand_SoleStrandEmptiesSessionSucceeds(t *testing.T) {
 	// add time; a long-lived command so it is still running when removed.
 	strand, err := e.AddStrand(AddSpec{
 		Cmd:     "sleep 300",
-		Display: render.Display{Anchor: render.AnchorTop},
+		Display: render.Display{Anchor: render.AnchorBelowParent},
 	})
 	if err != nil {
 		t.Fatalf("AddStrand: %v", err)
