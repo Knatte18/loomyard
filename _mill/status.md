@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-mouse-default
+phase: holistic-reviewing
 slug: mux-mouse-default
 branch: mux-mouse-default
 plan: _mill/plan
@@ -22,6 +22,7 @@ plan-fix-r1  '2026-07-15T07:36:44Z'
 planned  '2026-07-15T07:37:18Z'
 implementing  '2026-07-15T07:39:53Z'
 approved-mouse-default  '2026-07-15T07:47:20Z'
+holistic-reviewing  '2026-07-15T07:47:51Z'
 ```
 
 ## Batches
