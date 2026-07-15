@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: mux-anchor-top-redesign
 branch: mux-anchor-top-redesign
 plan: _mill/plan
@@ -24,4 +24,17 @@ plan-review-r2  '2026-07-15T09:25:42Z'
 plan-fix-r2  '2026-07-15T09:25:42Z'
 plan-fix-r3  '2026-07-15T09:31:09Z'
 planned  '2026-07-15T09:31:20Z'
+implementing  '2026-07-15T09:33:01Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: dereference-consumers
+    state: pending
+  - name: delete-render-config-defs
+    state: pending
+  - name: docs-and-sandbox
+    state: pending
 ```
