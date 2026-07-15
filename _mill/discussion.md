@@ -113,9 +113,16 @@ explicitly at boot, and giving the operator a documented knob to control it.
 
 ### validate-up-front
 
-- Decision: Accept only `on`/`off` (case-insensitive). Any other value fails the boot
-  loud, validated up front before any psmux round-trip — the same placement as
-  `debugLogArgs` validation in `ensureServerAndSessionLocked`.
+- Decision: Accept only `on`/`off` (case-insensitive). Any other value — including an
+  **empty string** — fails the boot loud, validated up front before any psmux round-trip
+  — the same placement as `debugLogArgs` validation in `ensureServerAndSessionLocked`.
+  Explicitly: `mouseOption("")` **errors**; it does NOT silently default to `off`. The
+  `${env:LYX_MUX_MOUSE:-off}` default supplies `off` only when the env var is unset, so a
+  well-formed config never reaches the helper with an empty value; an empty value means a
+  misconfiguration (e.g. `LYX_MUX_MOUSE=` explicitly set empty) and must fail loud. Do not
+  inherit `debug_log`'s comment-vs-code ambiguity here — `debugLogArgs`' own doc comment
+  claims empty "yields no flags" while its code routes empty through the error path; for
+  `mouse` the contract is unambiguous: empty errors.
 - Rationale: A misconfigured `mouse` value is a pure config error, unrelated to
   server/session state, so it must surface immediately and loudly rather than partway
   through a spawn or as a cryptic tmux error. Restricting to on/off (no true/false/1/0
@@ -136,7 +143,13 @@ Relevant module: `internal/muxengine`.
   already up with live panes, so the set-option calls run on a fresh boot/new-session,
   not on every `Up` — same semantics as `remain-on-exit`. Because `mouse` is a
   server-global (`-g`) option on the shared per-hub server, setting it on any boot that
-  runs `new-session` is sufficient.
+  runs `new-session` is sufficient. Consequence for operators: because the option is only
+  (re)applied on a boot, **toggling `mouse` in config or `LYX_MUX_MOUSE` on an
+  already-running hub does not take effect until the mux server restarts** — a running
+  session with live panes hits the early return and never re-runs `set-option`. This is
+  the same live-change semantics `debug_log` and `remain-on-exit` already have, and it
+  must be stated in the docs so an operator does not expect a live toggle (the demo
+  scenario itself was a fresh boot).
 - **Up-front validation precedent.** The same function validates `debug_log` first via
   `debugArgs, err := debugLogArgs(e.cfg.DebugLog)` (~line 191) and returns the error
   before the capability probe or any psmux round-trip. The `mouse` value should be parsed
@@ -173,7 +186,9 @@ From `CONSTRAINTS.md` (hub root) and CLAUDE.md, the ones that bear on this task:
   surface must update docs in the **same commit**: the mux module doc under
   `docs/modules/` and the new config-key documentation. This is an observable-behavior
   change (a new config key; boot now pins mouse), so the doc update is mandatory, not a
-  follow-up. No new cross-cutting invariant is introduced, so `CONSTRAINTS.md` itself does
+  follow-up. The docs must also state that toggling `mouse` on a live hub requires a **mux
+  server restart** to take effect, not merely `lyx config reconcile` (see Technical
+  context: boot site). No new cross-cutting invariant is introduced, so `CONSTRAINTS.md` itself does
   not change. `docs/roadmap.md` is **not** touched — this is delivered work, not a planned
   milestone.
 
@@ -184,9 +199,11 @@ Module under test: `internal/muxengine`.
 - **Value helper (unit, TDD candidate).** The parse/validate helper (e.g. `mouseOption`)
   is the natural TDD candidate — pure input→output with no psmux dependency. Table-driven
   test in the style of the `debug_log` helper test: cover `on`, `off`, case variations
-  (`ON`, `Off`), the default resolution, and invalid values (`yes`, `1`, empty-after-env,
-  garbage) asserting a loud error. This is the primary correctness gate for the
-  fail-loud-on-invalid decision.
+  (`ON`, `Off`), the default resolution, and invalid values (`yes`, `1`, garbage, and the
+  **empty string**) asserting a loud error. The empty-string case is explicit: assert
+  `mouseOption("")` returns an error, not a silent default-to-`off` (see Decision:
+  validate-up-front). This is the primary correctness gate for the fail-loud-on-invalid
+  decision.
 - **Boot sets the option (integration, real tmux).** Mirror `contract_integration_test.go`:
   bring a server up via the engine, then assert `show-options -g mouse` matches the
   configured value — `off` under the default config, `on` when configured on. This is the

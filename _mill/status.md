@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussion-fix-r1
 slug: mux-mouse-default
 branch: mux-mouse-default
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-07-15T07:06:38Z'
+discussion-fix-r1  '2026-07-15T07:21:04Z'
 ```
