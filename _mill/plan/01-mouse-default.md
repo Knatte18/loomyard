@@ -41,6 +41,7 @@ helper-lives-in-mouse.go, docs-target-reconciliation, integration-test-gating).
 
 - **Context:**
   - `internal/muxengine/serverlog.go`
+  - `internal/muxengine/mouse.go`
 - **Edits:**
   - `internal/muxengine/config.go`
   - `internal/muxengine/template_posix.yaml`
@@ -55,6 +56,7 @@ helper-lives-in-mouse.go, docs-target-reconciliation, integration-test-gating).
 
 - **Context:**
   - `internal/muxengine/serverlog.go`
+  - `internal/muxengine/mouse.go`
 - **Edits:**
   - `internal/muxengine/lifecycle.go`
 - **Creates:** none
@@ -88,7 +90,7 @@ helper-lives-in-mouse.go, docs-target-reconciliation, integration-test-gating).
   - `internal/muxengine/mouse_boot_integration_test.go`
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Create a `//go:build integration`-tagged test file (package `muxengine`) that self-skips when the configured multiplexer binary is absent, mirroring `contract_integration_test.go`'s skip/scratch-socket/`seedMuxConfig` harness. Build an `Engine` via `New(cfg, layout)` (lock.go) against a `t.TempDir()`-rooted `hubgeometry.Layout` (Cwd/WorktreeRoot/Hub set under the temp dir) and a `Config` whose `Mouse` field is set for the case under test (construct the `Config` directly or seed the template and override `cfg.Mouse`). Always tear the scratch server down (`kill-server` on `e.Socket()`) via `t.Cleanup`, exactly as the contract test does, so no scratch server leaks. Two cases: (1) **fresh boot pins the option** — with `Mouse: "off"` call `e.Up()` then assert `show-options -g mouse` on `e.Socket()` reports `off`; with a fresh temp hub and `Mouse: "on"` assert it reports `on`. (2) **no live toggle without restart** — boot once with `Mouse: "off"` and confirm `off`; then, without tearing the session down, build a second `Engine` on the SAME layout with `Mouse: "on"` and call `Up()` again; assert `show-options -g mouse` is STILL `off`, proving the already-up session hits the early return and does not re-apply `set-option`. Read `mouse` back using the same raw-psmux command style the contract test uses for its option assertions.
+- **Requirements:** Create a `//go:build integration`-tagged test file (package `muxengine`) that self-skips when the configured multiplexer binary is absent, mirroring `contract_integration_test.go`'s skip/scratch-socket/`seedMuxConfig` harness. Build an `Engine` via `New(cfg, layout)` (lock.go) against a `t.TempDir()`-rooted `hubgeometry.Layout` (Cwd/WorktreeRoot/Hub set under the temp dir) and a `Config` whose `Mouse` field is set for the case under test (construct the `Config` directly or seed the template and override `cfg.Mouse`). Always tear the scratch server down (`kill-server` on `e.Socket()`) via `t.Cleanup`, exactly as the contract test does, so no scratch server leaks. Two cases: (1) **fresh boot pins the option** — with `Mouse: "off"` call `e.Up()` then assert `show-options -g mouse` on `e.Socket()` reports `off`; with a fresh temp hub and `Mouse: "on"` assert it reports `on`. (2) **no live toggle without restart** — boot once with `Mouse: "off"` and confirm `off`; then, without tearing the session down, build a second `Engine` on the SAME layout with `Mouse: "on"` and call `Up()` again; assert `show-options -g mouse` is STILL `off`, proving the already-up session hits the early return and does not re-apply `set-option`. Read `mouse` back with a raw psmux invocation (`show-options -g mouse` on `e.Socket()`) built in the same style `contract_integration_test.go` uses for its own `PsmuxCmd`/output reads (e.g. its `list-sessions`/`display-message` queries) — note that the contract test sets `remain-on-exit` but never reads an option back, so there is no `show-options` assertion there to mirror directly; model only the command-construction/output-parsing style, not a preexisting option-read.
 - **Commit:** `test(muxengine): integration test for mouse boot option and no-live-toggle`
 
 ### Card 6: Document the mouse boot option in package godoc

@@ -3,7 +3,7 @@
 ```yaml
 task: "Decide tmux mouse-mode default for lyx mux"
 slug: "mux-mouse-default"
-approved: false
+approved: true
 started: "20260715-072956"
 parent: "cluster-fork-spike"
 root: ""
