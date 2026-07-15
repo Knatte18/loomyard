@@ -28,5 +28,7 @@ implementing  '2026-07-15T07:39:53Z'
 ```yaml
 batches:
   - name: mouse-default
-    state: pending
+    state: running
+    implementer_session: 86cb89df-14ea-4dea-bf60-63cfa49871ba
+    start_sha: 633243a0d96ea3629e117b0dc285c4bb1c150cbd
 ```
