@@ -24,6 +24,7 @@ import (
 // status bar, and after a C-b d detach the attach process must exit 0.
 func TestSmokeAttachRendersInsideHarnessPane(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
+	shellPath := harnessShellBinaryPath(t)
 	lyxExe := buildLyxBinary(t)
 
 	fixture := lyxtest.CopyPaired(t)
@@ -41,14 +42,14 @@ func TestSmokeAttachRendersInsideHarnessPane(t *testing.T) {
 	if code := RunCLI(&out, []string{"up"}); code != 0 {
 		t.Fatalf("up = %d; want 0, output: %s", code, out.String())
 	}
-	addStrand(t, "pwsh -NoExit -Command Write-Host ATTACH-MARKER-ALPHA", "--name", "amarker")
+	addStrand(t, smokeMarkerLaunchCmd("ATTACH-MARKER-ALPHA"), "--name", "amarker")
 	muxSocket, session := socketAndSession(t)
 
 	// Harness server on its own socket, spawned with cwd = the fixture hub
 	// so the lyx process typed into its pane resolves the right geometry.
 	harness := fmt.Sprintf("lyx-attach-harness-%d", os.Getpid())
 	if err := exec.Command(tmuxPath, "-L", harness, "new-session", "-d", "-s", "h", "-x", "140", "-y", "42",
-		smokePwshPath).Run(); err != nil {
+		shellPath).Run(); err != nil {
 		t.Fatalf("boot harness server: %v", err)
 	}
 	// Reap the harness server's WHOLE process subtree before the framework's
@@ -59,7 +60,7 @@ func TestSmokeAttachRendersInsideHarnessPane(t *testing.T) {
 	// can outlive TempDir's RemoveAll under load and fail it with a
 	// worktree-dir-in-use error — a test-harness artifact, not a mux defect.
 	t.Cleanup(func() {
-		reapHarnessServer(t, tmuxPath, smokePwshPath, harness)
+		reapHarnessServer(t, tmuxPath, harness)
 	})
 	// Saturation-sized boot deadline: a quiet harness boot is ~1s, but
 	// concurrent suites pegging the CPU starve it well past 10s.
@@ -71,21 +72,28 @@ func TestSmokeAttachRendersInsideHarnessPane(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	}
 
+	// The harness's own single pane, resolved rather than hardcoded as
+	// "%1": pane ids are a per-SERVER counter starting at %0 on real tmux,
+	// but psmux's internal "__warm__" helper pane consumes %0 first, so a
+	// psmux harness's one visible pane really is %1 — a psmux-specific
+	// artifact real tmux does not replicate (verified live: a fresh real
+	// tmux server's first pane is %0).
+	harnessPane := harnessOnlyPaneID(t, tmuxPath, harness, "h")
+
 	// The handover under test: attach to the mux session from inside the
 	// harness pane. TMUX_SESSION must be unset or tmux refuses to nest.
-	sendKeysLine(t, tmuxPath, harness, "%1",
-		fmt.Sprintf(`$env:TMUX_SESSION=$null; & '%s' mux attach; Write-Host ATTACH-EXIT:$LASTEXITCODE`, lyxExe))
+	sendKeysLine(t, tmuxPath, harness, harnessPane, smokeAttachInvokeLine(lyxExe))
 
 	// The harness pane now renders the INNER session: the strand's marker
 	// only ever existed inside the mux session, so seeing it here proves
 	// the attach handover rendered for real.
-	pollPaneContains(t, tmuxPath, harness, "%1", "ATTACH-MARKER-ALPHA", 20*time.Second)
+	pollPaneContains(t, tmuxPath, harness, harnessPane, "ATTACH-MARKER-ALPHA", 20*time.Second)
 
 	// Detach (prefix C-b, then d) and confirm the attach process exited 0.
-	if err := exec.Command(tmuxPath, "-L", harness, "send-keys", "-t", "%1", "C-b", "d").Run(); err != nil {
+	if err := exec.Command(tmuxPath, "-L", harness, "send-keys", "-t", harnessPane, "C-b", "d").Run(); err != nil {
 		t.Fatalf("send detach keys: %v", err)
 	}
-	pollPaneContains(t, tmuxPath, harness, "%1", "ATTACH-EXIT:0", 15*time.Second)
+	pollPaneContains(t, tmuxPath, harness, harnessPane, "ATTACH-EXIT:0", 15*time.Second)
 
 	// The mux session itself must have survived the client detaching.
 	if err := exec.Command(tmuxPath, "-L", muxSocket, "has-session", "-t", session).Run(); err != nil {
