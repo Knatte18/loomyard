@@ -242,6 +242,28 @@ func smokeAttachInvokeLine(lyxExe string) string {
 	return fmt.Sprintf(`unset TMUX_SESSION; '%s' mux attach; echo ATTACH-EXIT:$?`, lyxExe)
 }
 
+// smokeInvokeLine returns the OS-appropriate command line that runs bin with
+// args typed literally into the pane's own shell: pwsh's call operator (`&
+// 'bin' 'arg' ...`) on Windows, direct invocation (`'bin' 'arg' ...`) on
+// POSIX — `&` there is bash's BACKGROUND-job operator, not a call operator,
+// so a bare leading `&` is a hard syntax error (verified:
+// `bash -c "& 'echo' 'hi'"` → "syntax error near unexpected token `&'"),
+// which is why TestSmokeClaudeResumeRecallsCodeword's claude launch/resume
+// command lines never actually ran claude at all on Linux before this fix —
+// the pane just showed a syntax error, and the test then waited its full
+// timeout for a transcript a process that never started could never write.
+func smokeInvokeLine(bin string, args ...string) string {
+	quoted := make([]string, 0, len(args)+1)
+	quoted = append(quoted, "'"+bin+"'")
+	for _, a := range args {
+		quoted = append(quoted, "'"+a+"'")
+	}
+	if runtime.GOOS == "windows" {
+		return "& " + strings.Join(quoted, " ")
+	}
+	return strings.Join(quoted, " ")
+}
+
 // addStrand runs `add` with the given extra flags and returns the new guid.
 func addStrand(t *testing.T, cmdStr string, extra ...string) string {
 	t.Helper()

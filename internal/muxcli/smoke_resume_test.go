@@ -160,8 +160,9 @@ func TestSmokeClaudeResumeRecallsCodeword(t *testing.T) {
 	}
 
 	codeword := fmt.Sprintf("zebra-%d", time.Now().UnixNano()%1000000)
-	launch := fmt.Sprintf(`& '%s' 'Remember the codeword %s. Reply with exactly: STORED %s'`, claudePath, codeword, codeword)
-	resume := fmt.Sprintf(`& '%s' --continue`, claudePath)
+	prompt := fmt.Sprintf("Remember the codeword %s. Reply with exactly: STORED %s", codeword, codeword)
+	launch := smokeInvokeLine(claudePath, prompt)
+	resume := smokeInvokeLine(claudePath, "--continue")
 
 	// Scope the transcript watch to THIS test's claude project directory
 	// (derived from the fixture hub — the pane's cwd) and snapshot what is
