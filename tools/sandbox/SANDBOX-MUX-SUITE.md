@@ -2,7 +2,7 @@
 
 ## What this is
 
-A structured test-loop for exercising `lyx mux` against a **live psmux server** in the
+A structured test-loop for exercising `lyx mux` against a **live tmux server** in the
 sandbox Hub host repo. Unlike the host/weft-centric main suite (`SANDBOX-CORE-SUITE.md`), the
 value here is partly **visual**: panes popping up, layout holding. Not an automated
 suite -- an agent drives it, an operator watches.
@@ -16,8 +16,7 @@ Before starting a session:
 2. **Materialize the hub.** Run `sandbox-build.cmd` (or `sandbox-build.cmd -reset`
    to start clean); the session cwd is the Hub host repo root, the same operating model
    as the main suite.
-3. **Live-psmux requirement.** `psmux.exe` on PATH (installed at
-   `C:\Code\tools\bin\psmux.exe`) and PowerShell 7 present. If psmux or pwsh is
+3. **Live-tmux requirement.** tmux (or the Windows tmux port) on PATH and PowerShell 7 present. If tmux or pwsh is
    unavailable in the session, **note that as the session outcome rather than treating
    it as a mux defect** -- the `**Covers:** mux` tag on M2 satisfies the sandbox
    coverage guard (`sandbox_coverage_test.go`) regardless of runtime availability.
@@ -32,12 +31,12 @@ It must not look for, read, or reason about the lyx source tree. No peeking at
 Discovering the command surface is done via `lyx mux`, `lyx mux <subcommand>`, and
 `lyx mux <subcommand> --help` alone -- not from documentation outside the Hub.
 
-### Controlled psmux exceptions
+### Controlled tmux exceptions
 
 Two sanctioned deviations from the pure black-box rule, mirroring the main suite's S6
 controlled-exception note:
 
-- **(a) Direct `psmux -L <socket>` verbs** (`kill-server`, `list-panes`, `ls`) are
+- **(a) Direct `tmux -L <socket>` verbs** (`kill-server`, `list-panes`, `ls`) are
   allowed **only** for crash simulation and layout/stray-state verification, where
   `<socket>` is taken from `lyx mux status` output (its JSON result carries `session`,
   `socket`, and `strands[]` with `guid`/`name`/`paneId`/`live`).
@@ -203,7 +202,7 @@ no JSON. Neither behaviour is a finding.
 recreates a pane that was killed out from under it."
 
 **Watch:** `lyx mux resume` with all strands live leaves them untouched (no double
-launch). Then kill one strand's pane via `psmux -L <socket> kill-pane -t <paneId>`
+launch). Then kill one strand's pane via `tmux -L <socket> kill-pane -t <paneId>`
 (controlled exception; `paneId` from `status`) and run `resume` again: the strand's pane
 is recreated and its stored resume/launch command replays.
 
@@ -215,7 +214,7 @@ is recreated and its stored resume/launch command replays.
 
 **Goal:** "Simulate a server crash and confirm resume rebuilds everything."
 
-**Watch:** `psmux -L <socket> kill-server` (controlled exception) simulates a server
+**Watch:** `tmux -L <socket> kill-server` (controlled exception) simulates a server
 crash; `lyx mux resume` boots a fresh server + session and replays every non-hidden
 strand's command into a new pane.
 
@@ -245,25 +244,25 @@ Covered headlessly by `TestSmokeRemoveReapsRemovedPaneChildProcesses`.
 **Goal:** "Tear the overlay down and confirm nothing is left behind."
 
 **Watch:** `lyx mux down` kills the server and clears the worktree's strand state;
-`psmux -L <socket> ls` (controlled exception) confirms no server survives, and a
+`tmux -L <socket> ls` (controlled exception) confirms no server survives, and a
 follow-up `lyx mux status` reports the friendly no-session error rather than stale
 strands. "No stray state" means, concretely, that the instant `down` returns: (a) **no
-psmux process names this socket** — `down` force-reaps the server *and* its internal
+tmux process names this socket** — `down` force-reaps the server *and* its internal
 `__warm__` helper and confirms the socket is clear, because both carry the worktree as
 their cwd and a survivor would keep the worktree dir busy (check with `tasklist | findstr
-psmux` filtered to this `-L` socket — expect zero); and (b) **no pane process subtree
+tmux` filtered to this `-L` socket — expect zero); and (b) **no pane process subtree
 survives** — `down` always reaps this session's whole pane process subtree before
 returning (checkable via the pre-`down` `#{pane_pid}` values and their descendants being
 gone from `tasklist`). Covered headlessly by `TestSmokeDownReapsPaneChildProcesses` and
-`TestSmokeDownLeavesNoPsmuxOnSocket`.
+`TestSmokeDownLeavesNoTmuxOnSocket`.
 
-> **Not a FAIL:** a `conhost.exe` (the OS ConPTY host psmux uses per pane) may linger with
+> **Not a FAIL:** a `conhost.exe` (the OS ConPTY host tmux uses per pane) may linger with
 > the worktree as its cwd — usually it exits on its own a beat later, but under heavy CPU
 > saturation it can be orphaned and then holds the dir indefinitely. It is not a
 > `#{pane_pid}` descendant and mux does not reap it — an OS console host is not stray
 > *agent* state (the smoke harness kills hub-holding conhosts itself; see
 > `deferHubRelease`). A held worktree dir is therefore not by itself a mux leak. Only a
-> surviving **psmux** process or a live **pane shell** is a `FAIL` here.
+> surviving **tmux** process or a live **pane shell** is a `FAIL` here.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -276,7 +275,7 @@ then a second child under the parent -- and confirm every strand still has its o
 pane."
 
 **Watch:** After all three `add`s, `lyx mux status` reports all three strands
-`live: true`, and `psmux -L <socket> list-panes` (controlled exception) shows exactly
+`live: true`, and `tmux -L <socket> list-panes` (controlled exception) shows exactly
 three panes with sane geometry: the parent shrunk to a `collapsed_strip_rows` strip once
 a child exists, and the deepest child dominant (the tallest, bottom-most pane). A pane
 count below three, an empty pane list, or a strand that flips to `live: false` after the
@@ -308,10 +307,10 @@ empty `paneId` adopted a dead leftover pane and its command never ran (`FAIL`).
 that the command exits."
 
 **Watch:** With the overlay up and at least one strand added, `lyx mux attach` from a
-**second terminal** shows the strands' panes and the psmux status bar; `Ctrl+b d`
+**second terminal** shows the strands' panes and the tmux status bar; `Ctrl+b d`
 detaches cleanly and the session keeps running (`lyx mux status` still lists it).
 Operator-assisted like M7. (The automated layer covers this headlessly:
-`TestSmokeAttachRendersInsideHarnessPane` drives attach inside a harness psmux pane
+`TestSmokeAttachRendersInsideHarnessTmuxPane` drives attach inside a harness tmux pane
 and asserts the rendered content -- so a `FAIL` here is a visual/UX issue, not a
 correctness gap.)
 
@@ -326,7 +325,7 @@ strand, give it a codeword, crash the server, resume, and confirm the codeword c
 back."
 
 **Watch:** `lyx mux add --cmd "claude '...codeword...'" --resume-cmd "claude
---continue"`; after claude answers, `psmux -L <socket> kill-server` (controlled
+--continue"`; after claude answers, `tmux -L <socket> kill-server` (controlled
 exception) simulates a crash; `lyx mux resume` replays `claude --continue` and the
 resumed pane recalls the codeword. If `claude --continue` reports **"No conversation
 found"**, env hygiene failed to let the transcript persist -- that is a `FAIL` (the one
@@ -340,10 +339,10 @@ headlessly by `TestSmokeClaudeResumeRecallsCodeword`.)
 **Goal:** "With the overlay up and **no strands added**, create a pane in the mux session
 behind mux's back, then run `lyx mux up` again and prove the session is still usable."
 
-**Watch:** `psmux -L <socket> split-window -t <session>` (controlled exception) simulates
+**Watch:** `tmux -L <socket> split-window -t <session>` (controlled exception) simulates
 an operator-split/foreign pane. The follow-up `lyx mux up` must **not** destroy the
-session's pane set (`psmux -L <socket> list-panes` still shows panes — an empty pane list
-means an empty layout was applied and psmux wiped the window: `FAIL`). A subsequent
+session's pane set (`tmux -L <socket> list-panes` still shows panes — an empty pane list
+means an empty layout was applied and tmux wiped the window: `FAIL`). A subsequent
 `lyx mux add --cmd <long-running command>` must succeed and read `live: true` in `status`
 (a "session has no panes to adopt or split" error means the session became a zero-pane
 husk: `FAIL`), and after that add the foreign pane is **deterministically reaped** by
@@ -361,15 +360,15 @@ Covered headlessly by `TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable`.
 worktree on the same hub** can run its own mux session at the same time, and that tearing
 THIS worktree's overlay `down` leaves the sibling's session, panes, and agents untouched."
 
-**Watch:** The psmux server is **per-hub** -- sibling worktrees under one hub share one
+**Watch:** The tmux server is **per-hub** -- sibling worktrees under one hub share one
 server (one `-L <socket>`) but each owns a distinct session (named after its worktree
 basename). So a second worktree on the same hub that runs `lyx mux up` + `lyx mux add`
 must appear as a **second session on the same socket, backed by the same single server**
-(no duplicate server spawned): `psmux -L <socket> ls` (controlled exception) lists both
+(no duplicate server spawned): `tmux -L <socket> ls` (controlled exception) lists both
 sessions, and `#{pid}` from each is identical. The proof is what happens on `lyx mux down`
-in the FIRST worktree: it must kill **only its own session** (`psmux -L <socket>
+in the FIRST worktree: it must kill **only its own session** (`tmux -L <socket>
 has-session -t <this-session>` now fails) while the sibling's session **stays live** --
-`psmux -L <socket> has-session -t <sibling-session>` still succeeds, its pane is still
+`tmux -L <socket> has-session -t <sibling-session>` still succeeds, its pane is still
 present and not `pane_dead`, and the shared server's `#{pid}` is unchanged. The sibling's
 overlay dying because a `down` next door killed the shared server is a `FAIL`. (Only when
 the *last* session on the hub goes `down` is the server itself torn down -- M11's
@@ -393,7 +392,7 @@ height while it has no live child, then add a Claude Code child under it via
 the bulk of the window."
 
 **Watch:** With only the mother strand live, `lyx mux status` reports it `live: true`
-and `psmux -L <socket> list-panes` (controlled exception) shows its pane at full box
+and `tmux -L <socket> list-panes` (controlled exception) shows its pane at full box
 height -- a childless below-parent mother rendering full-height is intended (not a
 bug to file). After `lyx mux add --parent <mother-guid> --cmd claude ...` adds the
 Claude Code child, both strands read `live: true`, the mother's pane collapses to

@@ -211,7 +211,7 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	}
 
 	session := e.SessionName()
-	up, err := e.psmux.hasSession(session)
+	up, err := e.tmux.hasSession(session)
 	if err != nil {
 		return false, nil, fmt.Errorf("check session: %w", err)
 	}
@@ -224,14 +224,14 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 		// pane absent from a select-layout string). Kill the husk and fall
 		// through to a fresh boot — the booted=true return then makes the
 		// caller clear every stale binding, exactly like a server rebirth.
-		live, err := e.psmux.listPanes(session)
+		live, err := e.tmux.listPanes(session)
 		if err != nil {
 			return false, nil, fmt.Errorf("list panes: %w", err)
 		}
 		if len(live) > 0 {
 			return false, nil, nil
 		}
-		_ = e.psmux.run("kill-session", "-t", session)
+		_ = e.tmux.run("kill-session", "-t", session)
 	}
 
 	// A stale socket-holder wedges a fresh boot: psmux's internal "__warm__"
@@ -283,7 +283,7 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 			"-y", strconv.Itoa(e.cfg.Height),
 			e.cfg.Pwsh,
 		)
-		cmd := exec.Command(e.cfg.Psmux, argv...)
+		cmd := exec.Command(e.cfg.Tmux, argv...)
 		cmd.Dir = logsDir
 		cmd.Env = clean
 		proc.Detach(cmd)
@@ -318,7 +318,7 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 		attemptDeadline := time.Now().Add(bootAttemptTimeout)
 		sessionUp := false
 		for time.Now().Before(attemptDeadline) {
-			up, err := e.psmux.hasSession(session)
+			up, err := e.tmux.hasSession(session)
 			if err != nil {
 				return false, nil, fmt.Errorf("check session: %w", err)
 			}
@@ -332,7 +332,7 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 			break
 		}
 
-		if out, err := e.psmux.output("list-sessions", "-F", "#{session_name}"); err == nil && strings.TrimSpace(out) != "" {
+		if out, err := e.tmux.output("list-sessions", "-F", "#{session_name}"); err == nil && strings.TrimSpace(out) != "" {
 			return false, nil, fmt.Errorf("psmux server is up but session %q did not materialize within %s", session, bootAttemptTimeout)
 		}
 		if err := e.reapSocketProcesses(); err != nil {
@@ -347,7 +347,7 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	// pane_dead=1 instead of vanishing (which would also kill the session
 	// if it were the last pane) — the mechanism reconcile's dead-pane
 	// detection depends on.
-	if err := e.psmux.run("set-option", "-g", "remain-on-exit", "on"); err != nil {
+	if err := e.tmux.run("set-option", "-g", "remain-on-exit", "on"); err != nil {
 		return false, nil, fmt.Errorf("set remain-on-exit: %w", err)
 	}
 	// Pin the mouse mode explicitly, in both directions: this call always
@@ -356,7 +356,7 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	// default (Shared Decision explicit-set-both-ways-at-boot). Like
 	// remain-on-exit, this never re-applies on an already-up session — the
 	// early return above skips this whole path in that case.
-	if err := e.psmux.run("set-option", "-g", "mouse", mouse); err != nil {
+	if err := e.tmux.run("set-option", "-g", "mouse", mouse); err != nil {
 		return false, nil, fmt.Errorf("set mouse: %w", err)
 	}
 	return true, stripped, nil
@@ -440,7 +440,7 @@ func (e *Engine) Resume() (ResumeResult, error) {
 			st.StrippedEnv = stripped
 		}
 
-		live, err := e.psmux.listPanes(e.SessionName())
+		live, err := e.tmux.listPanes(e.SessionName())
 		if err != nil {
 			return fmt.Errorf("list panes: %w", err)
 		}
@@ -449,7 +449,7 @@ func (e *Engine) Resume() (ResumeResult, error) {
 			return fmt.Errorf("reconcile: %w", err)
 		}
 		if len(killed) > 0 {
-			live, err = e.psmux.listPanes(e.SessionName())
+			live, err = e.tmux.listPanes(e.SessionName())
 			if err != nil {
 				return fmt.Errorf("list panes after reconcile: %w", err)
 			}
@@ -539,7 +539,7 @@ func (e *Engine) Down() (DownResult, error) {
 
 		// Ignore the error: the session may already be gone, and Down must
 		// stay idempotent either way.
-		_ = e.psmux.run("kill-session", "-t", e.SessionName())
+		_ = e.tmux.run("kill-session", "-t", e.SessionName())
 
 		// Tidy the server only if no sessions remain. An EMPTY list-sessions
 		// covers both "zero sessions" and "no server" (psmux does not
@@ -551,8 +551,8 @@ func (e *Engine) Down() (DownResult, error) {
 		// debug-logging batch — the same sessionless-holder reasoning the
 		// pre-boot check applies regardless).
 		var serverErr error
-		if out, err := e.psmux.output("list-sessions", "-F", "#{session_name}"); err != nil || strings.TrimSpace(out) == "" {
-			_ = e.psmux.run("kill-server")
+		if out, err := e.tmux.output("list-sessions", "-F", "#{session_name}"); err != nil || strings.TrimSpace(out) == "" {
+			_ = e.tmux.run("kill-server")
 			serverErr = e.ensureServerGoneLocked(serverPID)
 		}
 
@@ -600,7 +600,7 @@ func (e *Engine) sessionlessSocketHolderPersists() bool {
 	for {
 		// A socket that lists sessions hosts a healthy shared server — never
 		// in scope for reaping, no matter what else is pending.
-		if out, err := e.psmux.output("list-sessions", "-F", "#{session_name}"); err == nil && strings.TrimSpace(out) != "" {
+		if out, err := e.tmux.output("list-sessions", "-F", "#{session_name}"); err == nil && strings.TrimSpace(out) != "" {
 			return false
 		}
 		if len(e.serverProcessesOnSocket()) == 0 {
@@ -620,7 +620,7 @@ func (e *Engine) sessionlessSocketHolderPersists() bool {
 // kill-session when the caller intends to wait on the server afterwards.
 // It assumes the op lock is already held.
 func (e *Engine) serverPIDLocked() int {
-	out, err := e.psmux.output("display-message", "-p", "-t", e.SessionName(), "#{pid}")
+	out, err := e.tmux.output("display-message", "-p", "-t", e.SessionName(), "#{pid}")
 	if err != nil {
 		return 0
 	}
@@ -641,7 +641,7 @@ func (e *Engine) serverPIDLocked() int {
 // worktree directory want the whole subtree (paneProcessTreePIDsLocked), not
 // just these launcher pids.
 func (e *Engine) panePIDsLocked() []int {
-	live, err := e.psmux.listPanes(e.SessionName())
+	live, err := e.tmux.listPanes(e.SessionName())
 	if err != nil {
 		return nil
 	}
@@ -772,7 +772,7 @@ func (e *Engine) waitServerProcessesGone(timeout time.Duration) error {
 // live sessions (list-sessions empty/unreachable), so a healthy shared
 // server is never in scope here.
 func (e *Engine) reapSocketProcesses() error {
-	_ = e.psmux.run("kill-server")
+	_ = e.tmux.run("kill-server")
 	for _, pid := range e.serverProcessesOnSocket() {
 		if proc, err := os.FindProcess(pid); err == nil {
 			_ = proc.Kill()
@@ -847,7 +847,7 @@ func noSessionMessage(strandCount int) string {
 // primary "no session" signal with a state-read error. It assumes the op
 // lock is already held and always makes a real psmux round trip.
 func (e *Engine) requireSessionLocked() error {
-	up, err := e.psmux.hasSession(e.SessionName())
+	up, err := e.tmux.hasSession(e.SessionName())
 	if err != nil {
 		return fmt.Errorf("check session: %w", err)
 	}
@@ -892,7 +892,7 @@ func (e *Engine) Status() (StatusResult, error) {
 			return err
 		}
 
-		live, err := e.psmux.listPanes(session)
+		live, err := e.tmux.listPanes(session)
 		if err != nil {
 			return fmt.Errorf("list panes: %w", err)
 		}

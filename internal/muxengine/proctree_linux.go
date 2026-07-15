@@ -63,7 +63,7 @@ func (e *Engine) descendantClosurePIDs(roots []int) []int {
 
 // serverProcessesOnSocket returns the OS pids of every process on this
 // engine's -L socket, discovered by scanning /proc/*/cmdline for argv
-// containing both the configured multiplexer binary (e.cfg.Psmux — tmux on
+// containing both the configured multiplexer binary (e.cfg.Tmux — tmux on
 // Linux via the config-swap the platform seam relies on) and an adjacent
 // "-L <socket>" pair. This scan is a stray-process backstop only — the
 // authoritative liveness signal on Linux is tmux's own honest CLI absence
@@ -100,5 +100,5 @@ func (e *Engine) serverProcessesOnSocket() []int {
 		argv := strings.Split(strings.TrimSuffix(string(raw), "\x00"), "\x00")
 		procs = append(procs, ProcCmdline{PID: pid, Argv: argv})
 	}
-	return matchSocketCmdlines(procs, e.cfg.Psmux, e.Socket())
+	return matchSocketCmdlines(procs, e.cfg.Tmux, e.Socket())
 }

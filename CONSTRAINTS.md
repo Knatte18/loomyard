@@ -70,7 +70,7 @@ Every lyx CLI module is a cobra subtree assembled under one root in `cmd/lyx/mai
   `RunE = clihelp.GroupRunE` to reject unknown subcommands.
 - **Interactive-handoff exception (narrow, per-command).** A subcommand whose whole job is
   to hand the operator's stdio to another interactive program and block (`ide menu`'s stdin
-  picker; `mux attach`'s `psmux attach`) cannot emit the JSON envelope on that terminal-handover
+  picker; `mux attach`'s `tmux attach`) cannot emit the JSON envelope on that terminal-handover
   tail. The exception is scoped tightly: everything that can fail runs **pre-flight and stays
   on the envelope** (`output.Err`, non-zero exit); only the post-handoff tail is exempt, and on
   success it emits no JSON. `mux attach` follows the pre-existing `ide menu` precedent; see the

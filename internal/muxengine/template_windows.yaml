@@ -1,9 +1,9 @@
-psmux: ${env:LYX_MUX_PSMUX:-psmux}  # path to the psmux executable; set LYX_MUX_PSMUX to pin an explicit path
+tmux: ${env:LYX_MUX_TMUX:-tmux}  # path to the tmux executable (on Windows this may resolve to psmux, a tmux-compatible port); set LYX_MUX_TMUX to pin an explicit path
 pwsh: ${env:LYX_MUX_PWSH:-pwsh}  # path to the powershell executable used inside panes; set LYX_MUX_PWSH to pin an explicit path (e.g. if the PATH pwsh is a broken WindowsApps alias stub)
-width: 220  # psmux window width
-height: 50  # psmux window height
+width: 220  # tmux window width
+height: 50  # tmux window height
 collapsed_strip_rows: 3  # height a shrink:true ancestor collapses to once a descendant is present
 min_full_rows: 3  # floor height the clamp rule tries to preserve for a full pane
 strand_name: '<ROLE>:<ROUND>:<SHORT_GUID>'  # template for a strand's display name; unfilled tokens resolve to ""
-debug_log: ${env:LYX_MUX_DEBUG:-0}  # opt-in tmux/psmux server verbose logging (0 off, 1 -v, 2 -vv); takes effect only on the boot that spawns the shared per-hub server; existing hubs must run "lyx config reconcile" to adopt this key
-mouse: ${env:LYX_MUX_MOUSE:-off}  # tmux/psmux mouse-mode default (on/off; off preserves native terminal text selection/copy; set on for click-to-switch-pane; takes effect on a fresh mux server boot only — a live toggle needs a server restart)
+debug_log: ${env:LYX_MUX_DEBUG:-0}  # opt-in tmux server verbose logging (0 off, 1 -v, 2 -vv); takes effect only on the boot that spawns the shared per-hub server; existing hubs must run "lyx config reconcile" to adopt this key
+mouse: ${env:LYX_MUX_MOUSE:-off}  # tmux mouse-mode default (on/off; off preserves native terminal text selection/copy; set on for click-to-switch-pane; takes effect on a fresh mux server boot only — a live toggle needs a server restart)

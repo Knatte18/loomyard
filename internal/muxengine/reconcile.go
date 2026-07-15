@@ -150,7 +150,7 @@ func (e *Engine) reconcileLocked(st *MuxState, live []LivePane) (killed []string
 	clearedGUIDs, panesToKill, _ := planReconcile(st.Strands, live)
 
 	for _, id := range panesToKill {
-		if err := e.psmux.run("kill-pane", "-t", id); err != nil {
+		if err := e.tmux.run("kill-pane", "-t", id); err != nil {
 			return killed, fmt.Errorf("kill pane %s: %w", id, err)
 		}
 		killed = append(killed, id)

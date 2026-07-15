@@ -31,24 +31,24 @@ func TestParseTmuxVersion(t *testing.T) {
 	}
 }
 
-func TestParsePsmuxVersion(t *testing.T) {
+func TestParseTmuxVersionWindows(t *testing.T) {
 	tests := []struct {
 		name    string
 		out     string
 		want    [3]int
 		wantErr bool
 	}{
-		{"valid psmux -V line", "psmux 3.3.4\n", [3]int{3, 3, 4}, false},
+		{"valid Windows tmux-port (psmux) -V line", "psmux 3.3.4\n", [3]int{3, 3, 4}, false},
 		{"malformed input", "psmux dev-build\n", [3]int{}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := parsePsmuxVersion(tt.out)
+			got, err := parseTmuxVersionWindows(tt.out)
 			if (err != nil) != tt.wantErr {
-				t.Fatalf("parsePsmuxVersion(%q) error = %v, wantErr %v", tt.out, err, tt.wantErr)
+				t.Fatalf("parseTmuxVersionWindows(%q) error = %v, wantErr %v", tt.out, err, tt.wantErr)
 			}
 			if err == nil && got != tt.want {
-				t.Errorf("parsePsmuxVersion(%q) = %v, want %v", tt.out, got, tt.want)
+				t.Errorf("parseTmuxVersionWindows(%q) = %v, want %v", tt.out, got, tt.want)
 			}
 		})
 	}

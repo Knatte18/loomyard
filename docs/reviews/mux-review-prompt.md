@@ -8,8 +8,8 @@ several times as it evolved (most recently `mux-anchor-top-redesign`, done) and 
 
 ## Your two jobs, in order
 1. REVIEW: form your own independent judgment of mux's scope and correctness. Hunt for bugs by
-   reading the code AND by driving real psmux (this is where mux's defects hide).
-2. FIX: after you have a findings list, implement the fixes, verify each against real psmux,
+   reading the code AND by driving real tmux (on Windows via tmux; this is where mux's defects hide).
+2. FIX: after you have a findings list, implement the fixes, verify each against real tmux,
    keep the whole test suite green, and update the docs in the same change. Do NOT commit or
    push unless the user explicitly tells you to — leave the changes in the working tree and
    report them.
@@ -41,18 +41,13 @@ preserved.
   replaced by M18's below-parent mother/child shrink scenario; confirm the current max
   scenario number yourself, the suite is expected to keep growing) plus `docs/sandbox-howto.md`
   for how the sandbox harness works. This suite is the maintained, structured vehicle for
-  driving real psmux — see "What to TEST".
+  driving real tmux — see "What to TEST".
 - Repo rules you MUST follow: `CLAUDE.md` (root + `~/.claude/CLAUDE.md`) and `CONSTRAINTS.md`
   (Hub Geometry Invariant, CLI/Cobra Invariant, lyxtest Leaf Invariant, Sandbox Suite Coverage,
   Documentation Lifecycle). A change that ships behaviour without updating the module doc /
   invariants in the same change is incomplete.
 - Design intent (SPEC, not a review). `_mill/discussion.md` and `_mill/plan/*` were removed from
-  this branch by a pre-merge cleanup commit; recover them from git history:
-  `git log --oneline -- _mill/discussion.md` to find the last sha that had them (a known-good
-  pre-cleanup sha is `a4e0ba8`), then:
-    - `git show a4e0ba8:_mill/discussion.md`
-    - `git show a4e0ba8:_mill/plan/00-overview.md` and the per-batch cards
-      `git show a4e0ba8:_mill/plan/NN-*.md` (01..08)
+  this branch by a pre-merge cleanup commit; recover them from git history if needed.
   Use these as the authoritative source of intended v1 scope/behavior.
 
 ## Mission (assess on two axes, be adversarial)
@@ -65,9 +60,9 @@ run this?).
 
 ## High-yield focus — where mux's real bugs live (drive these, do not just read them)
 The pure/unit-tested parts (render math, checksum, name templating, parsing, the op lock) are
-solid and rarely wrong. The defects concentrate in the COMPOSED, LIVE-psmux behavior that the
+solid and rarely wrong. The defects concentrate in the COMPOSED, LIVE-tmux behavior that the
 hermetic tests and the single-strand smoke test never exercise. Treat every one of these as an
-INVARIANT you must actively verify by driving real psmux — a green `go test` proves nothing here:
+INVARIANT you must actively verify by driving real tmux — a green `go test` proves nothing here:
 
 - LIVENESS DEFINITION. "present in `list-panes`" must NOT be conflated with "the strand's
   process is alive". A `pane_dead=1` pane is present-but-not-alive. Verify: `status` reports a
@@ -77,21 +72,21 @@ INVARIANT you must actively verify by driving real psmux — a green `go test` p
   `%1` again). Verify a stale binding is never mistaken for a live strand: `up` after a crash
   must clear stale bindings; `resume` after a crash must rebuild every non-hidden strand exactly
   once (adopt the initial pane, split the rest — no orphans, no double-launch).
-- SOLE / ALL-DEAD PANES. This bullet's ORIGINAL claim — "psmux refuses to kill a session's last
+- SOLE / ALL-DEAD PANES. This bullet's ORIGINAL claim — "tmux refuses to kill a session's last
   pane" — is now KNOWN WRONG on tmux (see `mux-remove-last-pane-error`, done): killing a
   session's true last pane destroys the session outright, corpsing nothing. What still needs
   verifying: reconcile keeps exactly one pane when every pane is dead-but-present (a `pane_dead=1`
   corpse is not the same as "no panes" — a session with N dead panes and zero live ones is a
   different state than a session actually reduced to zero panes by an explicit `kill-pane`), and
   that resume still rebuilds all strands in ONE pass (no "resumed:N but only 1 came back", no
-  adopting a dead pane and silently swallowing the launch). Whether real psmux on Windows still
+  adopting a dead pane and silently swallowing the launch). Whether real tmux on Windows still
   behaves the old "refuses to kill the last pane" way the original bullet claimed is itself
   UNVERIFIED (no Windows box was available when this was found) — if you have Windows access,
   checking that directly would resolve a real open question, not just a documentation nit.
-- CROSS-WORKTREE SCOPE. The psmux server is per-HUB, shared by sibling worktrees. Verify `down`
+- CROSS-WORKTREE SCOPE. The tmux server is per-HUB, shared by sibling worktrees. Verify `down`
   in one worktree does NOT kill sibling worktrees' sessions/agents; verify two worktrees on one
   hub server coexist; watch for duplicate server processes spawned during down/up churn.
-- REMOVE / LAYOUT REAPING. psmux (3.3.4) silently DESTROYS any pane not present in an applied
+- REMOVE / LAYOUT REAPING. tmux (3.3.4) silently DESTROYS any pane not present in an applied
   `select-layout` string. Verify `remove` kills the removed strand's pane deterministically
   (not by accident of layout reaping), and think about what a manual operator-split pane suffers
   when the next mux verb re-applies the layout.
@@ -99,7 +94,7 @@ INVARIANT you must actively verify by driving real psmux — a green `go test` p
   step fails (i.e. persist the record before the fragile apply).
 - SEND-KEYS HYGIENE. Opaque `cmd`/`resumeCmd` strings (shuttle builds arbitrary PowerShell
   chains) must be sent literally so an embedded `;` or a key-name-like token is not reinterpreted
-  by psmux.
+  by tmux.
 - REPORTING HONESTY. Result counts (`resumed`, `removed`) and `status.live` must reflect reality,
   not intent.
 - ENV HYGIENE. `CleanClaudeEnv` must strip `CLAUDECODE` + `CLAUDE_CODE_*` on the server spawn.
@@ -107,7 +102,7 @@ INVARIANT you must actively verify by driving real psmux — a green `go test` p
   shared per-hub server, that boot must leave a `tmux-server-*.log` file under the hub's
   `<hub>/.lyx/logs/`; old logs there are pruned to the newest 3 total (including the fresh
   one); an invalid `debug_log` value (anything other than `0`, `1`, or `2`) fails the boot
-  loud instead of being silently ignored; `debug_log: 0` (the default) adds no extra psmux
+  loud instead of being silently ignored; `debug_log: 0` (the default) adds no extra tmux
   flags and leaves the invocation exactly as before. Verify: boot with each of `0`/`1`/`2`/an
   invalid value and check both the log file and the exact server-spawn argv (`-vv`/`-v`/none).
 - DEAD-SERVER HINT. With persisted strands (a mux.json with ≥1 strand) but no live session,
@@ -125,7 +120,7 @@ INVARIANT you must actively verify by driving real psmux — a green `go test` p
   afterward has zero strands (the persistence-gap regression — a resurrect-on-resume bug if this
   is broken); (c) `lyx mux resume` afterward does NOT try to resurrect the removed strand; (d) a
   genuinely unexpected reconcile/apply failure with the session still ALIVE (e.g. some other
-  tmux/psmux error unrelated to session death) still surfaces as an error — the swallow must be
+  tmux/tmux error unrelated to session death) still surfaces as an error — the swallow must be
   specific to "session confirmed gone", not blanket-swallow every remove-time failure. Also
   verify the hidden-strand edge case: removing the last VISIBLE strand while an `anchor:hidden`
   strand remains still succeeds (hidden strands never hold a pane, so the session legitimately
@@ -137,7 +132,7 @@ INVARIANT you must actively verify by driving real psmux — a green `go test` p
   config, `on` when configured on — for BOTH values, not just the non-default one (the boot
   must pin the option in both directions, never skip the call when the value is `off`); (b) an
   invalid `mouse` value (anything but `on`/`off`, case-insensitive; including an explicitly-empty
-  value) fails the boot loud before any tmux/psmux round-trip, mirroring `debug_log`'s validation
+  value) fails the boot loud before any tmux/tmux round-trip, mirroring `debug_log`'s validation
   placement; (c) toggling `mouse` in config on an ALREADY-RUNNING hub has NO effect until the
   mux server actually restarts — a live session with live panes hits the early-return boot path
   and never re-runs `set-option`, same live-change semantics as `debug_log`/`remain-on-exit`.
@@ -162,7 +157,7 @@ INVARIANT you must actively verify by driving real psmux — a green `go test` p
   full TUI command, e.g. `claude`, should still generally be the below-parent CHILD, not the
   collapsing ancestor, precisely to avoid ever forcing a TUI into a collapsed strip).
 
-BOOT-WINNER SEMANTICS (review lens): the psmux server is per-hub and shared by sibling
+BOOT-WINNER SEMANTICS (review lens): the tmux server is per-hub and shared by sibling
 worktrees, so `debug_log` only matters on the boot that actually spawns that shared server —
 a sibling worktree's `up`/`resume` that finds the server already running does not re-apply
 its own `debug_log` value. If you are testing from a sibling worktree, either arm
@@ -220,14 +215,14 @@ since (treat as unverified, not as settled — confirm or refute rather than ass
 2. The reap probe spawns a fresh `pwsh` + full `Get-CimInstance Win32_Process` per poll (Windows
    path) — costly and self-saturating under load; a cheaper probe would speed real
    single-instance `down` too. Worth doing now, or a documented follow-up?
-3. Portability lens (mux targets Linux/tmux too; psmux is meant to be a faithful tmux clone): for
-   each Windows-substrate workaround, note whether it is faithful-tmux (portable) or a psmux
+3. Portability lens (mux targets Linux/tmux too; tmux is meant to be a faithful tmux clone): for
+   each Windows-substrate workaround, note whether it is faithful-tmux (portable) or a tmux
    divergence (upstream candidate). Flag observations; do not implement a Linux engine here.
 
 YOUR JOB this round:
 - Do a genuinely INDEPENDENT clean-room pass (form + WRITE your own findings before reading prior
   `.scratch/mux-review-*` reports). Adversarially live-drive the real multiplexer (tmux or
-  psmux, whichever this machine runs) for anything the four individual change-reviews missed,
+  tmux, whichever this machine runs) for anything the four individual change-reviews missed,
   with special weight on the INTERACTION hunting described
   above — new edge cases, races, error paths, resume/crash-rebirth corners, cross-worktree
   behavior, and every combination of `debug_log` × `mouse` × the remove-fix × the anchor:top
@@ -248,14 +243,13 @@ Hermetic (must stay green throughout):
 - `go test ./internal/muxengine/... ./internal/muxcli/... ./cmd/lyx/...` (stress the
   concurrency/timing tests with `-count=5` to catch flakiness)
 
-Smoke (real psmux, behind a build tag):
+Smoke (real tmux via tmux on Windows, behind a build tag):
 - `go test -tags smoke ./internal/muxcli/... -run Smoke -v -count=1`
-- psmux is installed at `C:\Code\tools\bin\psmux.exe` (also on PATH as `psmux`); pwsh 7 at
-  `C:\Code\tools\powershell7\pwsh.exe`. Launch tools with EXPLICIT absolute paths — a bare
-  `pwsh` resolves to a 0-byte WindowsApps ConPTY stub that renders nothing.
+- tmux (or `tmux` on Windows) must be on PATH; pwsh 7 resolved via PATH. 
+  On Windows: use explicit paths to resolve WindowsApps ConPTY stubs correctly, or ensure PATH points to the real binary.
 
-Live psmux driving via the MUX SANDBOX SUITE (PRIMARY — this is where the bugs surface).
-The repo ships a dedicated, maintained live-psmux suite: `tools/sandbox/SANDBOX-MUX-SUITE.md`,
+Live tmux driving (on Windows via tmux) via the MUX SANDBOX SUITE (PRIMARY — this is where the bugs surface).
+The repo ships a dedicated, maintained live-tmux suite: `tools/sandbox/SANDBOX-MUX-SUITE.md`,
 scenarios M0–M18, driven through the harness. Run it — do not only hand-roll fixtures:
 - Deploy the current source as the binary under test: `deploy.cmd` (puts a fresh `lyx.exe`
   on PATH). CRITICAL FOOTGUN: the suite runs the DEPLOYED snapshot, NOT your working tree — it
@@ -270,7 +264,7 @@ scenarios M0–M18, driven through the harness. Run it — do not only hand-roll
   fingerprint into the fetched `sandbox-report.json` `meta`).
 - The suite's own scenarios already map onto the "High-yield focus" invariants: M8 (kill one
   pane → resume recreates it), M9 (kill-server → crash-resume rebuilds all), M10 (recursive
-  remove), M11 (down leaves no stray psmux). Walk every one and record OK/WARN/FAIL per the
+  remove), M11 (down leaves no stray tmux). Walk every one and record OK/WARN/FAIL per the
   suite's verdict key.
 - NOTE the persona split: SANDBOX-MUX-SUITE.md's black-box rule ("do not read the lyx source
   tree") binds the *agent-under-test* persona, NOT you. As the reviewer you read the source
@@ -299,18 +293,18 @@ Also drive the mitigations this task shipped:
 Report the exact commands and observations for these too. Build the binary
 (`go build -o <scratch>/lyx.exe ./cmd/lyx`), create throwaway git-repo fixtures with a
 `_lyx/config/mux.yaml` (copy `internal/muxengine/template.yaml`), and drive `lyx mux <verb>`
-while inspecting real psmux with `psmux -L <socket> list-panes -t <session> -F "#{pane_id}
+while inspecting real tmux with `tmux -L <socket> list-panes -t <session> -F "#{pane_id}
 #{pane_dead} #{pane_top} #{pane_height}"` and `... display-message -p -t <session>
 "#{window_layout}"`. Use isolated `-L` sockets. Walk at minimum every scenario in "High-yield
 focus" above, including: two worktrees under one hub; a parent+child stack; killing a strand's
 process (`send-keys -t <pane> "exit" Enter`, repeat until `pane_dead=1`); `kill-server` to
 simulate a crash; `up`/`resume`/`status`/`remove`/`down` in each resulting state; and
 `--anchor below-parent|hidden` plus rejection paths (`own-window`, unknown parent, non-leaf
-remove without `--recursive`). Use `-vv` to trace exact psmux invocations.
+remove without `--recursive`). Use `-vv` to trace exact tmux invocations.
 
-TEARDOWN DISCIPLINE (critical): if you start ANY psmux server/session, tear it down
-(`psmux -L <socket> kill-server`, or `lyx mux down`). At the end, confirm with `tasklist | grep
--i psmux` that ZERO psmux processes remain. Leave no stray psmux state.
+TEARDOWN DISCIPLINE (critical): if you start ANY tmux server/session, tear it down
+(`tmux -L <socket> kill-server`, or `lyx mux down`). At the end, confirm with `tasklist | grep
+-i tmux` that ZERO tmux processes remain. Leave no stray tmux state.
 
 Be honest about what you could NOT verify: interactive `attach` cannot be driven headlessly (no
 TTY); real `claude --resume` needs a live agent. Say so explicitly.
@@ -325,9 +319,9 @@ flag deferred-that-should-be-v1 and shipped-beyond-scope.
 These were consciously deferred last time; decide whether any now warrants fixing:
 - Untracked panes destroyed by `select-layout` reaping (mux "owns" the session window — needs a
   documented policy for operator-split panes rather than silent death).
-- A rare duplicate psmux server process spawned during rapid down→up→add churn (a boot-path
+- A rare duplicate tmux server process spawned during rapid down→up→add churn (a boot-path
   race; needs a "server-down vs session-missing" distinction to fix safely).
-- psmux normalizing applied layouts (band/strip heights come back off-by-one vs the config knob
+- tmux normalizing applied layouts (band/strip heights come back off-by-one vs the config knob
   `collapsed_strip_rows` — cosmetic; maybe a code/doc note).
 - `.lyx`/config anchored at `Cwd` not `WorktreeRoot` (running from a worktree SUBDIR gives a
   misleading "not initialized" error; a consistent fix belongs at the `hubgeometry` level).
@@ -339,19 +333,19 @@ These were consciously deferred last time; decide whether any now warrants fixin
 - Prefer surgical edits; match existing style and the file-level doc-comment convention.
 - For every bug you fix, add or extend a test that would have caught it. In particular, if you
   find a live-only defect, add a `//go:build smoke` test that walks the failing scenario against
-  real psmux (the existing `internal/muxcli/smoke_test.go` shows the pattern, incl. a skip when
-  psmux is absent). A hermetic unit test for the pure planning helper is good; a smoke test for
+  real tmux (the existing `internal/muxcli/smoke_test.go` shows the pattern, incl. a skip when
+  tmux is absent). A hermetic unit test for the pure planning helper is good; a smoke test for
   the composed behavior is what actually protects the recovery paths.
 - EXTEND THE MUX SANDBOX SUITE when it helps. If the review surfaces a live/visual behavior that
   M0–M18 do not cover — or you find yourself repeatedly hand-driving a scenario the suite should
   own — add it to `tools/sandbox/SANDBOX-MUX-SUITE.md` as a new `M19+` scenario (match the
-  existing Goal/Watch/Verdict shape; note any controlled `psmux -L <socket>` exception; keep the
+  existing Goal/Watch/Verdict shape; note any controlled `tmux -L <socket>` exception; keep the
   black-box ethos for the agent-under-test persona). The suite is meant to grow with mux — this
   is encouraged, not scope-creep. If you touch the suite's scenario set, keep the coverage guard
   green (`go test ./cmd/lyx/...` — `sandbox_coverage_test.go` scans `tools/sandbox/*SUITE.md`
   for the `**Covers:** mux` tag) and honor the Documentation Lifecycle / Sandbox Suite Coverage
   invariant in `CONSTRAINTS.md` in the SAME change.
-- MAKE SMOKE TESTS DETERMINISTIC. Timing-sensitive psmux operations are asynchronous: `kill-server`
+- MAKE SMOKE TESTS DETERMINISTIC. Timing-sensitive tmux operations are asynchronous: `kill-server`
   returns before the socket is released, and a freshly spawned server takes a variable time to
   accept commands (longer on a loaded machine). A smoke test that assumes a CLI verb is synchronous
   will pass on your quiet machine and FAIL intermittently on a loaded orchestrator box. Wait on the
@@ -372,7 +366,7 @@ These were consciously deferred last time; decide whether any now warrants fixin
   stale. Do NOT add
   bugfix/hardening notes to `docs/roadmap.md` (roadmap is for planned milestones only, per
   CLAUDE.md).
-- Tear down all psmux state; confirm zero psmux processes.
+- Tear down all tmux state; confirm zero tmux processes.
 - Do NOT commit or push unless the user explicitly asks. Report the changed files and how you
   verified each fix.
 
@@ -388,5 +382,5 @@ These were consciously deferred last time; decide whether any now warrants fixin
 3. In your final chat message: a concise summary (executive summary + counts by severity + the
    two report paths). Do not paste the whole reports.
 
-Begin with the clean-room review (read the SPEC + code + docs, then drive real psmux), produce
+Begin with the clean-room review (read the SPEC + code + docs, then drive real tmux), produce
 your independent findings, then implement and verify the fixes.

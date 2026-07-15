@@ -112,16 +112,16 @@ func parseCommandNames(out string) map[string]bool {
 }
 
 // probeCapabilityLocked runs the capability probe against this engine's
-// configured multiplexer binary (e.cfg.Psmux), invoking it directly rather
+// configured multiplexer binary (e.cfg.Tmux), invoking it directly rather
 // than through the overlay's -L <socket> prefix: -V and list-commands are
 // socket-free queries that must succeed even before any server exists, so
-// routing them through PsmuxCmd's socket-bound run/output would be both
+// routing them through TmuxCmd's socket-bound run/output would be both
 // unnecessary and, before the first boot, meaningless (no socket to name
 // yet). It assumes the op lock is already held, matching every other
 // *Locked helper in this package.
 func (e *Engine) probeCapabilityLocked() error {
 	run := func(args ...string) (string, error) {
-		out, err := exec.Command(e.cfg.Psmux, args...).Output()
+		out, err := exec.Command(e.cfg.Tmux, args...).Output()
 		return string(out), err
 	}
 	return probeCapability(run)

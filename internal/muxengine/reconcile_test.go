@@ -133,7 +133,7 @@ func findStrandPaneID(strands []Strand, guid string) string {
 }
 
 func TestReconcileLocked_NoDeadPanes_ClearsGoneBindingsWithoutTouchingPsmux(t *testing.T) {
-	// cfg.Psmux points at a nonexistent binary (newTestEngine's fixture): if
+	// cfg.Tmux points at a nonexistent binary (newTestEngine's fixture): if
 	// reconcileLocked ever shelled out here, this test would fail loudly
 	// rather than silently passing against a stray real server.
 	e := newTestEngine(t)

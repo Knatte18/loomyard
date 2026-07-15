@@ -38,19 +38,37 @@ import (
 // bare "pwsh": the WindowsApps execution alias is a 0-byte ConPTY stub.
 const smokePwshPath = `C:\Code\tools\powershell7\pwsh.exe`
 
-// psmuxBinaryPath returns the psmux binary path from the environment or the
-// default install location, skipping the calling test when it is absent so a
+// tmuxBinaryPath returns the tmux binary path from the environment or
+// resolved via PATH, skipping the calling test when it is absent so a
 // -tags=smoke run never hard-fails on a machine without the tool.
-func psmuxBinaryPath(t *testing.T) string {
+func tmuxBinaryPath(t *testing.T) string {
 	t.Helper()
-	path := os.Getenv("LYX_MUX_PSMUX")
-	if path == "" {
-		path = `C:\Code\tools\bin\psmux.exe`
+	// Check LYX_MUX_TMUX env var first for explicit override
+	if path := os.Getenv("LYX_MUX_TMUX"); path != "" {
+		if _, err := os.Stat(path); err == nil {
+			return path
+		}
 	}
-	if _, err := os.Stat(path); err != nil {
-		t.Skipf("psmux not found at %s", path)
+	// Resolve tmux via PATH on Windows (.exe suffix) or POSIX (bare name)
+	binName := "tmux"
+	if _, err := os.Stat(`C:\Windows\System32\cmd.exe`); err == nil {
+		// Windows detected: try tmux.exe
+		binName = "tmux.exe"
 	}
-	return path
+	if path, err := exec.LookPath(binName); err == nil {
+		return path
+	}
+	// Fallback: try the other name variant
+	altName := "tmux"
+	if binName == "tmux" {
+		altName = "tmux.exe"
+	}
+	if path, err := exec.LookPath(altName); err == nil {
+		return path
+	}
+	// Not found on PATH; skip the test
+	t.Skipf("tmux not found in PATH or LYX_MUX_TMUX; checked: %s, %s", binName, altName)
+	return ""
 }
 
 // statusStrand returns the tracked strand with the given guid from a `status`
@@ -899,19 +917,19 @@ func assertSiblingStaysLive(t *testing.T, psmuxPath, socket, session, paneID str
 	}
 }
 
-// waitSocketFreeOfPsmux polls until no psmux process names the socket, or fails
+// waitSocketFreeOfTmux polls until no tmux process names the socket, or fails
 // after a saturation-sized deadline. kill-server is async, so the final
 // stray-server check must poll rather than read once.
-func waitSocketFreeOfPsmux(t *testing.T, pwshPath, socket string) {
+func waitSocketFreeOfTmux(t *testing.T, pwshPath, socket string) {
 	t.Helper()
 	const timeout = 30 * time.Second
 	deadline := time.Now().Add(timeout)
 	for {
-		if pids := psmuxSocketPids(t, pwshPath, socket); len(pids) == 0 {
+		if pids := tmuxSocketPids(t, pwshPath, socket); len(pids) == 0 {
 			return
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("psmux still on socket %s after %s: pids=%v", socket, timeout, psmuxSocketPids(t, pwshPath, socket))
+			t.Fatalf("tmux still on socket %s after %s: pids=%v", socket, timeout, tmuxSocketPids(t, pwshPath, socket))
 		}
 		time.Sleep(100 * time.Millisecond)
 	}

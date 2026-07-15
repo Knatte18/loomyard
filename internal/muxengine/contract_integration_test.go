@@ -33,7 +33,7 @@ import (
 // Config. This duplicates (rather than imports) config_test.go's
 // seedLyxConfig fixture: that helper lives in the external muxengine_test
 // package, while this file is package muxengine so it can reach the real,
-// unexported listPanes/PsmuxCmd helpers the contract assertions below drive
+// unexported listPanes/TmuxCmd helpers the contract assertions below drive
 // directly.
 func seedMuxConfig(t *testing.T, tmpDir string) {
 	t.Helper()
@@ -93,13 +93,13 @@ func TestMultiplexerContract(t *testing.T) {
 	// The self-skip: this test's whole point is to validate whatever binary
 	// is actually configured, so an absent binary is "nothing to validate
 	// here", not a failure.
-	if _, err := exec.LookPath(cfg.Psmux); err != nil {
-		t.Skipf("configured multiplexer binary %q not found: %v", cfg.Psmux, err)
+	if _, err := exec.LookPath(cfg.Tmux); err != nil {
+		t.Skipf("configured multiplexer binary %q not found: %v", cfg.Tmux, err)
 	}
 
 	socket := fmt.Sprintf("lyx-contract-test-%d-%d", os.Getpid(), time.Now().UnixNano())
 	session := "contract-session"
-	mux := NewPsmuxCmd(cfg.Psmux, socket)
+	mux := NewTmuxCmd(cfg.Tmux, socket)
 
 	t.Cleanup(func() {
 		// Always torn down, success or failure: a leaked scratch server on a
@@ -340,8 +340,8 @@ func TestRemoveStrand_SoleStrandEmptiesSessionSucceeds(t *testing.T) {
 
 	// The self-skip: on a box without the configured multiplexer binary
 	// there is nothing to drive, matching TestMultiplexerContract's guard.
-	if _, err := exec.LookPath(cfg.Psmux); err != nil {
-		t.Skipf("configured multiplexer binary %q not found: %v", cfg.Psmux, err)
+	if _, err := exec.LookPath(cfg.Tmux); err != nil {
+		t.Skipf("configured multiplexer binary %q not found: %v", cfg.Tmux, err)
 	}
 
 	// A real *hubgeometry.Layout rooted at a scratch tmpDir, mirroring
@@ -363,7 +363,7 @@ func TestRemoveStrand_SoleStrandEmptiesSessionSucceeds(t *testing.T) {
 		// belt-and-suspenders guard against a leaked scratch server on a
 		// genuine test failure that never reached RemoveStrand.
 		_, _ = e.Down()
-		_ = e.psmux.run("kill-server")
+		_ = e.tmux.run("kill-server")
 	})
 
 	if _, err := e.Up(); err != nil {

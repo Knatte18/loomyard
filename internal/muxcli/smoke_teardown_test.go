@@ -13,15 +13,15 @@ import (
 )
 
 // TestSmokeDownReleasesServerBeforeReturning pins the down->up churn race
-// this round fixed: psmux's kill-server is asynchronous, and a Down that
+// this round fixed: tmux's kill-server is asynchronous, and a Down that
 // returned while the old server still held the socket let an immediate up
 // spawn a duplicate server process that lingered forever as an unreachable
-// stray. Down now waits on the server PROCESS itself (psmux's CLI cannot
+// stray. Down now waits on the server PROCESS itself (tmux's CLI cannot
 // report server absence — every probe exits 0), so the moment it returns
 // the server must be gone — and an immediate up+add cycle must work. Three
 // back-to-back cycles with no sleeps.
 func TestSmokeDownReleasesServerBeforeReturning(t *testing.T) {
-	psmuxPath := psmuxBinaryPath(t)
+	tmuxPath := tmuxBinaryPath(t)
 
 	fixture := lyxtest.CopyPaired(t)
 	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
@@ -42,7 +42,7 @@ func TestSmokeDownReleasesServerBeforeReturning(t *testing.T) {
 
 	launch := "pwsh -NoExit -Command Write-Host ready"
 	for cycle := 0; cycle < 3; cycle++ {
-		pid := serverPID(t, psmuxPath, socket, session)
+		pid := serverPID(t, tmuxPath, socket, session)
 		out.Reset()
 		if code := RunCLI(&out, []string{"down"}); code != 0 {
 			t.Fatalf("cycle %d down = %d; want 0, output: %s", cycle, code, out.String())
@@ -50,7 +50,7 @@ func TestSmokeDownReleasesServerBeforeReturning(t *testing.T) {
 		// No sleep: the server process must already be gone when down
 		// returns.
 		if !processGone(pid) {
-			t.Fatalf("cycle %d: psmux server (pid %d) still running immediately after down returned", cycle, pid)
+			t.Fatalf("cycle %d: tmux server (pid %d) still running immediately after down returned", cycle, pid)
 		}
 		out.Reset()
 		if code := RunCLI(&out, []string{"up"}); code != 0 {
@@ -61,7 +61,7 @@ func TestSmokeDownReleasesServerBeforeReturning(t *testing.T) {
 }
 
 // TestSmokeDownReapsPaneChildProcesses pins the pane-child reaping gap this
-// round fixed: psmux terminates pane children asynchronously, so a down that
+// round fixed: tmux terminates pane children asynchronously, so a down that
 // waited only on the server process could return while a pane's shell subtree
 // (a deep descendant whose cwd is the worktree) was still alive — a "no stray
 // state" violation that surfaced as a worktree-dir-in-use failure under load.
@@ -69,7 +69,7 @@ func TestSmokeDownReleasesServerBeforeReturning(t *testing.T) {
 // returning, so the instant down returns every pane descendant must be gone.
 // Loops several add->down cycles to give the async teardown a chance to lag.
 func TestSmokeDownReapsPaneChildProcesses(t *testing.T) {
-	psmuxPath := psmuxBinaryPath(t)
+	tmuxPath := tmuxBinaryPath(t)
 
 	fixture := lyxtest.CopyPaired(t)
 	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{

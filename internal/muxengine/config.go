@@ -19,7 +19,7 @@ import (
 // paths psmux/pwsh spawn, the window dimensions, the height-policy knobs
 // render.Params carries, and the strand-name template.
 type Config struct {
-	Psmux              string `yaml:"psmux"`
+	Tmux               string `yaml:"tmux"`
 	Pwsh               string `yaml:"pwsh"`
 	Width              int    `yaml:"width"`
 	Height             int    `yaml:"height"`

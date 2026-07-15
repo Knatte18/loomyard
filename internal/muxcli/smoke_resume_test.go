@@ -16,7 +16,7 @@ import (
 )
 
 // TestSmokeCrashRecovery covers the discussion's "server dead (reboot)"
-// recovery state end-to-end against a live psmux server: after the server is
+// recovery state end-to-end against a live tmux server: after the server is
 // killed out from under mux, `up` must reboot the substrate and reconcile the
 // strand to not-live (its stale pane binding cleared, not mistaken for the
 // reborn session's reused initial pane id), and `resume` must then rebuild the
@@ -24,7 +24,7 @@ import (
 // (clearAllPaneBindings on a booted session) exists for; the single-pane
 // TestSmokeUpAddStatusDown above never reaches it.
 func TestSmokeCrashRecovery(t *testing.T) {
-	psmuxPath := psmuxBinaryPath(t)
+	tmuxPath := tmuxBinaryPath(t)
 
 	fixture := lyxtest.CopyPaired(t)
 	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{

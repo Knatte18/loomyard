@@ -74,7 +74,7 @@ which is not drive-rooted, so `PosixPath` rejects it and `Prepare()` fails with
 are this one call.
 
 **Why it matters most:** per `CLAUDE.md`, the Claude engine is what drives *every* agent
-lyx spawns (loom producers, review handler, cluster reviewers, progress-judge) as psmux
+lyx spawns (loom producers, review handler, cluster reviewers, progress-judge) as tmux
 sessions. If `Prepare()` cannot run on Linux, agent-driving — the whole architecture — is
 blocked on Linux, independent of benchmarks.
 
@@ -107,7 +107,7 @@ real dirs; (c) confining the affected operations. This is the one finding that t
 `CONSTRAINTS.md` invariant (Hub Geometry / fslink) and deserves its own task and
 discussion. It is **not** in scope for "record benchmark numbers."
 
-### B3 — mux multiplexer binary: raw exec error + Windows-only defaults
+### B3 — mux multiplexer binary: raw exec error + path resolution
 
 `internal/muxcli` — `TestRunCLI_AddNotUp_FriendlyError` / `RemoveNotUp`:
 
@@ -116,18 +116,18 @@ RunCLI(add) before up error = "check session: exec: \"tmux\": executable file no
   want "no mux session; run \"lyx mux up\""
 ```
 
-Two sub-issues:
+Two sub-issues (now addressed by the `mux-psmux-to-tmux-rename` task):
 - **Environment:** `tmux` is not installed on this box; the POSIX mux path shells out to
-  `tmux` (Windows uses `psmux`). Any mux run needs tmux present.
-- **Robustness (Windows assumption):** the friendly-error path maps "session not found"
-  but not "multiplexer binary missing" — on Windows `psmux.exe` was effectively always
-  present, so this path was never exercised. `internal/muxpoccli/cli.go:71-72` and the
-  muxengine POSIX template similarly still hardcode `C:\Code\tools\bin\psmux.exe` /
-  `pwsh.exe` as flag defaults in at least the POC CLI.
+  `tmux` (Windows uses tmux via the psmux port). Any mux run needs tmux present.
+- **Robustness (path resolution):** the friendly-error path maps "session not found"
+  but not "multiplexer binary missing" — older documentation and examples hardcoded
+  specific absolute paths like `C:\Code\tools\bin\psmux.exe` / `pwsh.exe`, which are
+  unverifiable across different machine setups. This has been fixed by the `mux-psmux-to-tmux-rename`
+  rename task, which updated all examples to resolve tmux via PATH and use env-var overrides
+  (e.g., `LYX_MUX_TMUX`) for customization.
 
-**Direction:** install tmux for the run; separately, treat "multiplexer binary not found"
-as a not-up condition (or a distinct friendly error) so the failure mode is legible on
-either OS.
+**Direction (CLOSED):** the hardcoded-path problem is resolved by genericizing examples to
+use PATH-resolved binary names and documenting env-var overrides.
 
 ## Category A — Windows-only test assertions (test-level; no prod impact)
 
@@ -135,10 +135,10 @@ These are tests that bake Windows path/FS semantics into their expectations. Pro
 code is fine; the *tests* are non-portable and should be made OS-aware or POSIX-tagged.
 
 - **`internal/muxengine` `TestLoadConfig_TemplateDefaultsResolve`** (`config_test.go:47-52`)
-  hardcodes `cfg.Psmux == \`C:\Code\tools\bin\psmux.exe\`` and `cfg.Pwsh == \`...pwsh.exe\``.
-  But `muxengine.ConfigTemplate()` is **OS-split** (`template_windows.go` /
-  `template_posix.go`); on Linux it resolves `Psmux=tmux`, `Pwsh=bash`. The test must
-  assert the OS-appropriate default (mirror the template split), not the Windows literals.
+  hardcodes `cfg.Tmux == \`tmux\`` (bare command name, resolved via PATH) and `cfg.Pwsh == \`bash\`` on POSIX.
+  The `muxengine.ConfigTemplate()` is **OS-split** (`template_windows.go` /
+  `template_posix.go`); on Linux it resolves `Tmux=tmux`, `Pwsh=bash`. The test must
+  assert the OS-appropriate default (mirror the template split).
 - **`internal/shuttleengine` `TestRunDirRoot_AbsoluteUsedVerbatim`** and
   **`TestSpec_Validate_AbsoluteOutputFilesPassThroughVerbatim`** feed `D:\elsewhere\runs`
   and expect it passed through as absolute. On Linux `D:\...` is a *relative* path, so it

@@ -120,13 +120,13 @@ func (e *Engine) applyLayoutLocked(st *MuxState, live []LivePane) error {
 	}
 
 	session := e.SessionName()
-	if err := e.psmux.run("select-layout", "-t", session, layout); err != nil {
+	if err := e.tmux.run("select-layout", "-t", session, layout); err != nil {
 		return fmt.Errorf("select-layout: %w", err)
 	}
 	if focus == "" {
 		return nil
 	}
-	if err := e.psmux.run("select-pane", "-t", focus); err != nil {
+	if err := e.tmux.run("select-pane", "-t", focus); err != nil {
 		return fmt.Errorf("select-pane: %w", err)
 	}
 	return nil

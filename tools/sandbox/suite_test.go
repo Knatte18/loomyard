@@ -762,7 +762,7 @@ func TestRunSuite_ShuttleSpec_PromptOverride(t *testing.T) {
 }
 
 // TestSuiteSpecs_MuxTeardownFlag pins which suites get the post-session mux
-// teardown: every suite whose scenarios boot a live psmux substrate (mux,
+// teardown: every suite whose scenarios boot a live tmux substrate (mux,
 // shuttle, burler), and not the main suite, whose scenarios never run mux up.
 func TestSuiteSpecs_MuxTeardownFlag(t *testing.T) {
 	if mainSuite.muxTeardown {

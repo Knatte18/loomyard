@@ -7,7 +7,7 @@ so concurrent `lyx` processes on a machine cooperate through the filesystem. The
 first module, **board** (a task tracker), is implemented; **warp** (the host↔weft
 topology owner) is implemented; **muxpoc**, a proof-of-concept orchestrator, is
 parked (kept on disk as a reference, unwired from the CLI); and **mux**, the clean
-psmux overlay it informed, is implemented (see [roadmap.md](roadmap.md)).
+tmux overlay it informed, is implemented (see [roadmap.md](roadmap.md)).
 
 In the long term, Loomyard is intended to **replace mill/millhouse (Python)** entirely.
 We get there by building these modules as self-contained toolkits first;
@@ -45,7 +45,7 @@ Convenience alias: **`lyx run` → `lyx loom run`** (the everyday autonomous cal
    infrastructure plumbing — see [shared-libs/README.md](shared-libs/README.md).
 3. **One-shot, daemonless, file-coordinated.** A command does its work, writes JSON,
    exits. Processes cooperate through files + locks, not a server. (The future mux
-   daemon is the one deliberate exception, for crash recovery psmux can't self-detect.)
+   daemon is the one deliberate exception, for crash recovery tmux can't self-detect.)
 4. **cwd-authoritative; cwd ≠ git-repo-path.** Config and state resolve from the
    current working directory, which need *not* equal the git-repo root. Designed in
    from the start — this was repeatedly forgotten in millpy and caused constant
@@ -134,10 +134,10 @@ Two state roots with opposite lifecycles:
   resume works across machines *because* its status is weft-synced.
 - **`.lyx/`** — **ephemeral, local, machine-bound.** Untracked (listed in
   `.git/info/exclude`, never `.gitignore`), changing constantly while a run is live. The live
-  psmux runtime state — `mux`'s (see the `internal/muxengine` package documentation) `.lyx/mux.json`
+  tmux runtime state — `mux`'s (see the `internal/muxengine` package documentation) `.lyx/mux.json`
   (the socket/session names + the strand table: each managed process, its session, parent,
-  ephemeral pane id, and display spec) — goes here, because a pane ID or the psmux socket is
-  meaningless on another machine. It is rebuilt by reconciling against live psmux on startup, never
+  ephemeral pane id, and display spec) — goes here, because a pane ID or the tmux socket is
+  meaningless on another machine. It is rebuilt by reconciling against live tmux on startup, never
   synced.
 
 The test: **would this state mean anything on a different machine?** Orchestration progress
@@ -230,7 +230,7 @@ User-facing modules each get one `lyx <module>` namespace:
 - **weft** — owns all git into the paired weft repo (`lyx weft status|commit|push|pull|sync`). ✅ Implemented.
 - **warp** — **host↔weft-coordinated git topology**: clone (hub-creator), dual-worktree add/remove, coordinated checkout (switches host+weft together + re-points junctions), reconcile, status, prune, cleanup. The single owner of the mirror invariant — consolidates the former `worktree` / `git-clone` modules and `internal/git`; its CLI surface is `lyx warp clone|add|list|remove|checkout|status|reconcile|prune|cleanup`. ✅ Implemented.
 - **ide** — one-shot VS Code launcher with interactive menu. ✅ Implemented.
-- **muxpoc** — proof-of-concept psmux orchestrator that proved the risky parts (layout checksum,
+- **muxpoc** — proof-of-concept tmux orchestrator that proved the risky parts (layout checksum,
   bottom-dominant layout, env hygiene, native `--resume`) later reused by the **mux** module.
   **Parked** — kept on disk as a reference, unregistered from the `lyx` CLI. See the
   `internal/muxengine` package documentation.
@@ -238,12 +238,12 @@ User-facing modules each get one `lyx <module>` namespace:
   (`lyx selfreport create <title>`). Target repo is hardcoded; supports `--body` (or `-` for
   stdin) and `--label`; defaults to `bug`. Callable from any sandbox agent context with no
   config. ✅ Implemented.
-- **mux** — **the window to the world**: psmux overlay + **strand** bookkeeping + render
+- **mux** — **the window to the world**: tmux overlay + **strand** bookkeeping + render
   (`internal/muxcli` + `internal/muxengine` + `internal/muxengine/render`). Hosts every managed
   process as a strand, arranges them, persists to `.lyx/mux.json` (`lyx mux
   up|add|remove|status|attach|resume|down`). ✅ Implemented. See the `internal/muxengine` package
   documentation.
-- **shuttle** — run **one** LLM agent as an interactive psmux strand over the file contract
+- **shuttle** — run **one** LLM agent as an interactive tmux strand over the file contract
   (`internal/shuttleengine` + `internal/shuttleengine/claudeengine` + `internal/shuttlecli`;
   `lyx shuttle run|interrupt|send`). `Stop`-hook completion is read off an events file and
   classified into four outcomes — `done`/`asking`/`died`/`timeout` — with `asking` as the
@@ -299,7 +299,7 @@ The user-facing modules sit on a thin layer of shared infrastructure
 ## Execution stack (orchestration layers)
 
 The orchestrator is not one module but a **layered stack**, each layer knowing only the one
-below it. It exists in this shape for one reason: agents must run as **interactive psmux
+below it. It exists in this shape for one reason: agents must run as **interactive tmux
 sessions, never headless `claude -p`** (an economic constraint — see the `internal/shuttleengine`
 package documentation), so
 spawning an agent is not a plain `exec` but "place a pane, launch a provider in it, drive it,
@@ -320,7 +320,7 @@ loom              phase machine: drive each phase through a perch gate         [
 The whole stack runs **headless** (auto mode): strands exist (the interactive-session
 requirement), agents run, output files are read, nobody need watch.
 
-- **mux is three things, and it is built** — an **overlay** over psmux, **strand bookkeeping** (a
+- **mux is three things, and it is built** — an **overlay** over tmux, **strand bookkeeping** (a
   strand = one tracked process: a metadata record with a `guid`, `name`, worktree slug, parent, and
   a *generic* display spec), and a **render** sub-package (`internal/muxengine/render`,
   `layout = Rules(strands, box)`). Callers hand mux `{cmd, name, display}` where `display` is
@@ -335,7 +335,7 @@ requirement), agents run, output files are read, nobody need watch.
 - **perch is independent of loom** — it is a standalone gate loop (`lyx perch`) over `burler` rounds;
   loom just uses it heavily (a perch review between every phase). perch builds on `burler` → `shuttle`,
   not on `loom`.
-- **the bootstrap** — `lyx loom run` (alias `lyx run`) brings up the worktree's psmux session, adds
+- **the bootstrap** — `lyx loom run` (alias `lyx run`) brings up the worktree's tmux session, adds
   the `lyx loom status` strand (a 1-line top pane), spawns the loom driver **detached** (via `proc`,
   no TTY), and attaches the terminal to the session. loom runs in the background; the mux view takes
   the foreground. A `.lyx/lyxrun.cmd` launcher makes it one click.
@@ -353,14 +353,14 @@ git-backed integration — live in the black-box `internal/boardengine/boardtest
 
 ## Sandbox Hub
 
-The **sandbox Hub** is a dedicated bench for manual testing of lyx's core workflows — its purpose is dogfooding lyx against itself. It lives on disk at `C:\Code\lyx-test-HUB` and exercises the real deployed `lyx` binary: the command surface, JSON output, and topology wiring users encounter. Build it via `sandbox-build.cmd` once `lyx` is deployed and the GitHub weft wiki is initialized (`sandbox-core-suite.cmd` then runs the agent, `sandbox-mux-suite.cmd` runs the mux-specific suite (`SANDBOX-MUX-SUITE.md`, needs live psmux), and `sandbox-fetch.cmd` collects the report from either — the same fetch command for both). See [sandbox-howto.md](sandbox-howto.md) for the step-by-step runbook (deploy → clone Hub → run suite) and [sandbox-hub.md](sandbox-hub.md) for topology and design details.
+The **sandbox Hub** is a dedicated bench for manual testing of lyx's core workflows — its purpose is dogfooding lyx against itself. It lives on disk at `C:\Code\lyx-test-HUB` and exercises the real deployed `lyx` binary: the command surface, JSON output, and topology wiring users encounter. Build it via `sandbox-build.cmd` once `lyx` is deployed and the GitHub weft wiki is initialized (`sandbox-core-suite.cmd` then runs the agent, `sandbox-mux-suite.cmd` runs the mux-specific suite (`SANDBOX-MUX-SUITE.md`, needs live tmux), and `sandbox-fetch.cmd` collects the report from either — the same fetch command for both). See [sandbox-howto.md](sandbox-howto.md) for the step-by-step runbook (deploy → clone Hub → run suite) and [sandbox-hub.md](sandbox-hub.md) for topology and design details.
 
 ## Other docs
 
 - [modules/README.md](modules/README.md) — **the module map**: index of every module doc + how the layers stack (design).
 - [modules/loom.md](modules/loom.md) — the phased orchestrator (`lyx loom` + `lyx perch`); design.
 - [modules/builder.md](modules/builder.md) — the batch-implementation loop (`lyx builder`): verb surface, digest contract, poll classification, chain rollback, pause, outcome contract (as-built; kept as a durable contract doc, not deleted on landing).
-- `internal/muxengine` package documentation — the window to the world: psmux overlay + strand bookkeeping + render (as-built; module doc deleted per the documentation lifecycle).
+- `internal/muxengine` package documentation — the window to the world: tmux overlay + strand bookkeeping + render (as-built; module doc deleted per the documentation lifecycle).
 - `internal/shuttleengine` package documentation — run one LLM agent via a swappable engine over the file contract (as-built; module doc deleted per the documentation lifecycle).
 - `internal/burlerengine` package documentation — one review+fix round: A-review → B-fix, no self-grading (as-built; module doc deleted per the documentation lifecycle).
 - `internal/perchengine` package documentation — the gate loop: run `burler` rounds → `APPROVED`/`STUCK`/`PAUSED` (as-built; module doc deleted per the documentation lifecycle).
@@ -368,7 +368,7 @@ The **sandbox Hub** is a dedicated bench for manual testing of lyx's core workfl
 - [benchmarks/](benchmarks/board-performance.md) — board performance, tracked across revisions.
 - [shared-libs/](shared-libs/README.md) — the shared infrastructure plumbing.
 - [research/](research/) — design exploration (mux research logs).
-- [reference/psmux_scripting.md](reference/psmux_scripting.md) — upstream psmux command reference (vendored).
+- [reference/tmux_scripting.md](reference/tmux_scripting.md) — tmux command reference (vendored).
 - [roadmap.md](roadmap.md) — numbered milestones and long-term direction.
 - [sandbox-howto.md](sandbox-howto.md) — operator runbook: deploy `lyx`, build the Hub, run the suite agent (procedure).
 - [sandbox-hub.md](sandbox-hub.md) — the sandbox Hub: a dedicated bench for manual (dogfooding) testing.

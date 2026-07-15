@@ -462,7 +462,7 @@ func (e *Engine) RemoveStrand(guid string, recursive bool) (Removed, error) {
 		// un-reused (the processes are still running).
 		var reapPIDs []int
 		if len(paneIDs) > 0 {
-			if live, err := e.psmux.listPanes(e.SessionName()); err == nil {
+			if live, err := e.tmux.listPanes(e.SessionName()); err == nil {
 				reapPIDs = e.descendantClosurePIDs(alivePanePIDs(paneIDs, live))
 			}
 		}
@@ -483,7 +483,7 @@ func (e *Engine) RemoveStrand(guid string, recursive bool) (Removed, error) {
 		// re-enumerates and re-applies, and planPaneTarget never adopts a
 		// corpse.
 		for _, id := range paneIDs {
-			_ = e.psmux.run("kill-pane", "-t", id)
+			_ = e.tmux.run("kill-pane", "-t", id)
 		}
 
 		// Reap after the layout repair, so the surviving panes re-tile
@@ -506,7 +506,7 @@ func (e *Engine) RemoveStrand(guid string, recursive bool) (Removed, error) {
 			// applyErr. hasSession maps a "no server running" exit (1) to
 			// (false, nil), the same classification requireSessionLocked
 			// already relies on.
-			up, herr := e.psmux.hasSession(e.SessionName())
+			up, herr := e.tmux.hasSession(e.SessionName())
 			sessionGone := herr == nil && !up
 			if removalEmptiedSession(st.Strands, sessionGone) {
 				// removeStrandLocked already pruned st.Strands in memory, but

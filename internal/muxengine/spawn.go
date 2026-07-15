@@ -110,7 +110,7 @@ func sendKeysLiteralArg(text string) string {
 func (e *Engine) launchStrandLocked(st *MuxState, s *Strand, launchCmd string) error {
 	session := e.SessionName()
 
-	live, err := e.psmux.listPanes(session)
+	live, err := e.tmux.listPanes(session)
 	if err != nil {
 		return fmt.Errorf("list panes: %w", err)
 	}
@@ -121,7 +121,7 @@ func (e *Engine) launchStrandLocked(st *MuxState, s *Strand, launchCmd string) e
 
 	paneID := adoptID
 	if paneID == "" {
-		out, err := e.psmux.output("split-window", "-t", splitTargetID, "-P", "-F", "#{pane_id}")
+		out, err := e.tmux.output("split-window", "-t", splitTargetID, "-P", "-F", "#{pane_id}")
 		if err != nil {
 			return fmt.Errorf("split window: %w", err)
 		}
@@ -136,10 +136,10 @@ func (e *Engine) launchStrandLocked(st *MuxState, s *Strand, launchCmd string) e
 	// any part of the opaque launchCmd as a key name (e.g. "Enter", "C-c") or
 	// splits it on an embedded ';' — the caller (shuttle) builds arbitrary
 	// PowerShell command chains. A separate Enter then submits it.
-	if err := e.psmux.run("send-keys", "-t", paneID, "-l", sendKeysLiteralArg(launchCmd)); err != nil {
+	if err := e.tmux.run("send-keys", "-t", paneID, "-l", sendKeysLiteralArg(launchCmd)); err != nil {
 		return fmt.Errorf("send launch command: %w", err)
 	}
-	if err := e.psmux.run("send-keys", "-t", paneID, "Enter"); err != nil {
+	if err := e.tmux.run("send-keys", "-t", paneID, "Enter"); err != nil {
 		return fmt.Errorf("submit launch command: %w", err)
 	}
 	return nil
@@ -178,7 +178,7 @@ func (e *Engine) loadOrInitStateLocked() (*MuxState, error) {
 // caller that needs it for reporting (Status) does not have to re-query.
 func (e *Engine) reconcileApplyPersistLocked(st *MuxState) ([]LivePane, error) {
 	session := e.SessionName()
-	live, err := e.psmux.listPanes(session)
+	live, err := e.tmux.listPanes(session)
 	if err != nil {
 		return nil, fmt.Errorf("list panes: %w", err)
 	}
@@ -191,7 +191,7 @@ func (e *Engine) reconcileApplyPersistLocked(st *MuxState) ([]LivePane, error) {
 		// Order matters: kill dead -> re-enumerate live -> compute layout
 		// -> apply. The kill-pane calls above mutate the pane set the next
 		// select-layout must enumerate, so enumeration must follow them.
-		live, err = e.psmux.listPanes(session)
+		live, err = e.tmux.listPanes(session)
 		if err != nil {
 			return nil, fmt.Errorf("list panes after reconcile: %w", err)
 		}

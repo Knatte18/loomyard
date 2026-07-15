@@ -60,12 +60,12 @@ Every user-facing module is a `lyx <module>` namespace, assembled into one cobra
 - **weft** — owns all git into the paired weft repo (`status|commit|push|pull|sync`).
 - **warp** — the host↔weft git topology owner: clone, dual-worktree add/remove, coordinated checkout, reconcile, status, prune, cleanup.
 - **ide** — one-shot IDE launcher for worktrees, with an interactive menu.
-- **muxpoc** — a shipped proof-of-concept psmux orchestrator.
+- **muxpoc** — a shipped proof-of-concept tmux orchestrator.
 - **selfreport** — file bugs/enhancements against the repo via `gh`.
 
 **In progress (design):**
 
-- **mux** — the psmux overlay + strand bookkeeping + render.
+- **mux** — the tmux overlay + strand bookkeeping + render.
 - **loom** — the phased orchestrator (Setup → Discussion → Plan → Builder → Finalize), each phase gated by a review.
 - **review** — a generic profile-driven gate engine, used by `loom` and standalone.
 
@@ -73,11 +73,11 @@ The internal libraries **proc** (cross-OS process spawn) and **shuttle** (drive 
 
 ## Orchestration stack
 
-The orchestrator is a layered stack, each layer knowing only the one below. It has this shape because agents run as **interactive psmux sessions, never headless `claude -p`** — so spawning an agent is "place a pane, launch a provider, drive it, detect completion," not a plain `exec`.
+The orchestrator is a layered stack, each layer knowing only the one below. It has this shape because agents run as **interactive tmux sessions, never headless `claude -p`** — so spawning an agent is "place a pane, launch a provider, drive it, detect completion," not a plain `exec`.
 
 ```
 internal/proc     spawn any OS process, cross-OS                    [OS primitive]
-internal/mux      psmux overlay + strand bookkeeping + render       [builds on proc]
+internal/mux      tmux overlay + strand bookkeeping + render        [builds on proc]
 internal/shuttle  run ONE LLM agent via a swappable engine          [builds on mux]
 review            generic gate engine: handler/fixer + judge        [builds on shuttle]
 loom              phase machine: drive each phase through a gate     [builds on review]
@@ -104,7 +104,7 @@ The **sandbox Hub** is a dedicated bench for dogfooding `lyx` against itself, ex
 - Go 1.26+
 - `gh` CLI authenticated (`gh auth login`)
 - Git 2.35+ (for `git worktree`)
-- psmux (for the orchestration layers)
+- tmux (for the orchestration layers; on Windows via psmux)
 
 ## Documentation
 

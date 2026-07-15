@@ -34,7 +34,7 @@ instead of re-inventing it each time.
 
 Reach for this before merging a **live-substrate module** — one whose real defects hide in composed,
 stateful, timing-sensitive behavior that a green `go test` does **not** prove (mux driving real
-psmux is the archetype; anything driving real processes, sockets, or an external tool qualifies).
+tmux is the archetype; anything driving real processes, sockets, or an external tool qualifies).
 For pure/logic modules a normal PR review is enough. The tell that you need this loop: *"the unit
 tests pass but I don't trust it under load / crash / concurrency."*
 
@@ -142,8 +142,8 @@ for i in 1 2 3; do ( "$SCRATCH/smoke.test.exe" -test.run Smoke -test.count=1 -te
 grep -hiE 'being used by another process|TempDir RemoveAll|did not start|FAIL' "$SCRATCH"/smoke_*.txt \
     || echo "no markers"
 
-# 4. ZERO stray substrate state at teardown (mux: no leftover psmux servers)
-tasklist | grep -i psmux || echo "zero psmux"   # must be zero
+# 4. ZERO stray substrate state at teardown (mux: no leftover tmux servers)
+tasklist | grep -i tmux || echo "zero tmux"   # must be zero
 ```
 
 **Reading the result.** Green static+hermetic+serial-smoke establishes *correctness in the normal
@@ -171,9 +171,9 @@ round (2026-07) made exactly this mistake — it read "launch the suite" as "inv
 judged that operator-assisted/cost-bearing, and as a result skipped ALL live driving for an entire
 round, silently substituting pure code-tracing. The fix: the round agent runs the real CLI
 commands itself (`lyx <module> <verb>`, foreground, waiting for each to return). This spawns real
-substrate underneath when the module rides mux/shuttle (real psmux panes, real interactive
+substrate underneath when the module rides mux/shuttle (real tmux panes, real interactive
 `claude` sessions) — that is expected and required, not something to avoid. None of it needs an
-attached TTY of its own: a psmux pane is a real pty regardless of whether anyone is watching it.
+attached TTY of its own: a tmux pane is a real pty regardless of whether anyone is watching it.
 
 If the module already has a maintained `tools/sandbox/SANDBOX-<MODULE>-SUITE.md` (built for the
 separate human-operator dogfooding use case), the round agent MAY read it for scenario ideas, but
@@ -227,7 +227,7 @@ degraded monotonically until it hit zero:
 |------:|-------|----------------|
 | R3 | Opus  | `down` reap of pane children (left `remove`/churn leaking) |
 | R4 | Fable | shared `descendantClosurePIDs`/`reapPaneChildren` seam for `down`+`remove`; dash-leading cmd escape; anchor validation (residual under concurrency) |
-| R5 | Opus  | traced the real hub holder via PEB cwd; closed the psmux-**server** leak with saturation-tolerant deadlines (residual = pure timeout-under-saturation) |
+| R5 | Opus  | traced the real hub holder via PEB cwd; closed the tmux-**server** leak with saturation-tolerant deadlines (residual = pure timeout-under-saturation) |
 | R6 | Fable | **F1** zero-pane zombie (empty-layout apply destroyed every pane) + **F11** positional select-layout reaping a tracked pane — two *new product* bugs prior rounds missed; plus hardening (F5/F6) and harness (F2/F3/F4) |
 | R7 | Opus  | safety pass — **no new defects**; independently confirmed merge-ready |
 

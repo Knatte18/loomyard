@@ -15,11 +15,11 @@ import (
 
 // TestSmokeUpAddStatusDown boots the substrate, adds one strand with a cheap
 // placeholder command, verifies status reports it tracked and live, then
-// tears the substrate back down. Skipped when psmux is not found at the
-// configured/default path so a -tags=smoke run never hard-fails on a
-// machine without the tool installed.
+// tears the substrate back down. Skipped when tmux is not found in PATH or
+// LYX_MUX_TMUX so a -tags=smoke run never hard-fails on a machine without
+// the tool installed.
 func TestSmokeUpAddStatusDown(t *testing.T) {
-	psmuxBinaryPath(t)
+	tmuxBinaryPath(t)
 
 	fixture := lyxtest.CopyPaired(t)
 	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
@@ -93,11 +93,11 @@ func TestSmokeUpAddStatusDown(t *testing.T) {
 // new pane rather than reusing an existing one — the old path could fail
 // SILENTLY (exit 0, no new pane, prints an existing pane's id), binding the
 // new strand to an existing pane, whose next select-layout's duplicate pane
-// number made psmux destroy every pane in the session. The fix splits the
+// number made tmux destroy every pane in the session. The fix splits the
 // tallest alive pane explicitly and hard-errors on a non-new reported id,
 // so this sequence must now yield one live pane per visible strand.
 func TestSmokeStackedAddsKeepEverySessionPane(t *testing.T) {
-	psmuxPath := psmuxBinaryPath(t)
+	tmuxPath := tmuxBinaryPath(t)
 
 	fixture := lyxtest.CopyPaired(t)
 	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{

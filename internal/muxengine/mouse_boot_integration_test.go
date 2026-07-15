@@ -40,8 +40,8 @@ func newIntegrationEngine(t *testing.T, mouse string) *Engine {
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)
 	}
-	if _, err := exec.LookPath(cfg.Psmux); err != nil {
-		t.Skipf("configured multiplexer binary %q not found: %v", cfg.Psmux, err)
+	if _, err := exec.LookPath(cfg.Tmux); err != nil {
+		t.Skipf("configured multiplexer binary %q not found: %v", cfg.Tmux, err)
 	}
 	// Override the template-resolved default with the value this test case
 	// wants to exercise, rather than relying on LYX_MUX_MOUSE env plumbing.
@@ -60,7 +60,7 @@ func newIntegrationEngine(t *testing.T, mouse string) *Engine {
 		// Always torn down, success or failure: a leaked scratch server on a
 		// per-test-tempdir-derived socket is harmless to a real hub server,
 		// but leaves a stray process behind if the test does not clean up.
-		_ = e.psmux.run("kill-server")
+		_ = e.tmux.run("kill-server")
 	})
 	return e
 }
@@ -72,7 +72,7 @@ func newIntegrationEngine(t *testing.T, mouse string) *Engine {
 // style, not a preexisting show-options assertion there).
 func readMouseOption(t *testing.T, e *Engine) string {
 	t.Helper()
-	out, err := e.psmux.output("show-options", "-g", "mouse")
+	out, err := e.tmux.output("show-options", "-g", "mouse")
 	if err != nil {
 		t.Fatalf("show-options -g mouse: %v", err)
 	}

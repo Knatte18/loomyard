@@ -20,8 +20,7 @@ converged. The single discipline that makes this work: **you never trust a round
 - The per-module **review prompt** the round agent reads: `docs/reviews/<module>-review-prompt.md`
   (instantiated from [`review-prompt-template.md`](review-prompt-template.md)). It carries a
   *"round context seeded from prior-round verification"* section that **you** rewrite each round.
-- Substrate + tool locations for verification: `<e.g. psmux at C:\Code\tools\bin\psmux.exe, pwsh7 at
-  C:\Code\tools\powershell7\pwsh.exe>`.
+- Substrate + tool locations for verification: `<e.g. tmux resolved via PATH, pwsh7 resolved via PATH>`.
 - A scratchpad for verification artifacts. Round deliverables live under `.scratch/` (gitignored).
 
 ## Hard rules (do not violate)
@@ -110,7 +109,7 @@ for i in 1 2 3; do ( "$SCRATCH/smoke.test.exe" -test.run Smoke -test.count=1 -te
     > "$SCRATCH/s_$i.txt" 2>&1; echo rc=$? ) & done; wait
 grep -hiE 'being used by another process|TempDir RemoveAll|did not start|FAIL' "$SCRATCH"/s_*.txt \
     || echo "no markers"
-<substrate teardown check — e.g. tasklist | grep -i psmux>                                 # must be zero
+<substrate teardown check — e.g. tasklist | grep -i tmux>                                 # must be zero
 ```
 **Reading it:** green static+hermetic+serial-smoke + zero stray substrate = the **merge bar** (normal
 single-instance correctness). The N× concurrent suite is a **diagnostic amplifier**, not the merge

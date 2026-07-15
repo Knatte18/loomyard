@@ -2,9 +2,9 @@
 
 // smoke_debuglog_test.go exercises the composed live behavior of the
 // debug_log opt-in: a real boot with LYX_MUX_DEBUG=1 must write a genuine
-// tmux/psmux verbose server log into the hub's .lyx/logs/ dir, and the
+// tmux verbose server log into the hub's .lyx/logs/ dir, and the
 // boot-time prune must have already trimmed pre-existing logs there down to
-// the newest 2. This is the one live-psmux composed test for this batch;
+// the newest 2. This is the one live-tmux composed test for this batch;
 // debugLogArgs and planLogPrune's own unit tests already cover the pure
 // planning logic in isolation (see internal/muxengine/serverlog_test.go).
 
@@ -23,11 +23,11 @@ import (
 
 // TestSmokeDebugLog arms debug_log via LYX_MUX_DEBUG, pre-seeds three stale
 // fake server logs with staggered mtimes in the hub logs dir, boots the
-// substrate, and asserts (a) a fresh tmux/psmux verbose log newer than the
+// substrate, and asserts (a) a fresh tmux verbose log newer than the
 // fakes appears there and (b) the oldest fake was pruned (boot keeps the
 // newest 2 pre-existing logs, so with the fresh log at most 3 ever exist).
 func TestSmokeDebugLog(t *testing.T) {
-	psmuxBinaryPath(t)
+	tmuxBinaryPath(t)
 
 	// The template's ${env:LYX_MUX_DEBUG:-0} resolves this in-process at
 	// LoadConfig time — no rebuild or restart needed for the override to

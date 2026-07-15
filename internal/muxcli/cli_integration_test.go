@@ -21,7 +21,7 @@ import (
 // hub's _lyx/config/ (mux config is anchored at layout.Cwd, unlike weft's
 // weft-sibling-anchored config) and verifies PersistentPreRunE reaches the
 // engine call rather than aborting on Getwd/Resolve/LoadConfig. Status then
-// fails because no psmux server is running under this fixture's socket name
+// fails because no tmux server is running under this fixture's socket name
 // — that failure is the point: it proves config resolution itself
 // succeeded, exercising a domain-error path distinct from the no-git-repo
 // path TestRunCLI_NotAGitRepo covers.
@@ -37,7 +37,7 @@ func TestRunCLI_ResolvesLayoutAndConfig(t *testing.T) {
 	exitCode := RunCLI(&out, []string{"status"})
 
 	if exitCode != 1 {
-		t.Errorf("RunCLI(status) = %d; want 1 (no live psmux session)", exitCode)
+		t.Errorf("RunCLI(status) = %d; want 1 (no live tmux session)", exitCode)
 	}
 
 	var env map[string]any
@@ -45,16 +45,16 @@ func TestRunCLI_ResolvesLayoutAndConfig(t *testing.T) {
 		t.Fatalf("RunCLI(status) output is not valid JSON: %v; got: %q", err, out.String())
 	}
 	if ok, _ := env["ok"].(bool); ok {
-		t.Errorf("RunCLI(status) ok = true; want false (no psmux session up)")
+		t.Errorf("RunCLI(status) ok = true; want false (no tmux session up)")
 	}
 
 	// Guard against the wrong failure: this must NOT be a config-resolution
 	// error (those paths are covered by TestRunCLI_NotAGitRepo and the
 	// "not initialized" case) — this test's whole point is that config
-	// resolution succeeded and the engine's own psmux check is what failed.
+	// resolution succeeded and the engine's own tmux check is what failed.
 	errMsg, _ := env["error"].(string)
 	if strings.Contains(errMsg, "not initialized") || strings.Contains(errMsg, "not a git repository") {
-		t.Errorf("RunCLI(status) error = %q; want a psmux/session error, not a config-resolution error", errMsg)
+		t.Errorf("RunCLI(status) error = %q; want a tmux/session error, not a config-resolution error", errMsg)
 	}
 }
 

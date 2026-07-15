@@ -1,6 +1,6 @@
 // lock.go defines the Engine type — the domain kernel's public handle,
 // holding a resolved Config, the worktree's hubgeometry.Layout, and the
-// PsmuxCmd bound to this hub's socket — plus the single mux-operation lock
+// TmuxCmd bound to this hub's socket — plus the single mux-operation lock
 // every public engine op acquires exactly once at its outer boundary. Every
 // other file in this package (reconcile.go, apply.go, spawn.go, strand.go,
 // lifecycle.go) hangs its exported/*Locked methods off *Engine.
@@ -28,25 +28,25 @@ const muxLockFileName = "mux.lock"
 
 // Engine is the domain kernel's public handle: a resolved Config, the
 // worktree's hubgeometry.Layout (the Hub Geometry Invariant's single owner
-// of cwd/geometry), and the PsmuxCmd bound to this hub's socket. Every
+// of cwd/geometry), and the TmuxCmd bound to this hub's socket. Every
 // exported method returns a plain result struct and error — no cobra, no
 // io.Writer, no exit codes (the engine-purity litmus muxcli, batch 6,
 // depends on). The zero Engine is not valid; always build one via New.
 type Engine struct {
 	cfg    Config
 	layout *hubgeometry.Layout
-	psmux  PsmuxCmd
+	tmux   TmuxCmd
 }
 
 // New builds an Engine for the given resolved Config and Layout, deriving
-// the PsmuxCmd from cfg.Psmux and this hub's socket name (server.go's
+// the TmuxCmd from cfg.Tmux and this hub's socket name (server.go's
 // socketName). Every psmux command an Engine method issues therefore
 // targets the one named server this hub shares across its worktrees.
 func New(cfg Config, layout *hubgeometry.Layout) *Engine {
 	return &Engine{
 		cfg:    cfg,
 		layout: layout,
-		psmux:  NewPsmuxCmd(cfg.Psmux, socketName(layout.Hub)),
+		tmux:   NewTmuxCmd(cfg.Tmux, socketName(layout.Hub)),
 	}
 }
 
@@ -62,13 +62,13 @@ func (e *Engine) SessionName() string {
 	return SessionName(e.layout.WorktreeRoot)
 }
 
-// PsmuxPath returns the resolved psmux binary path this engine's PsmuxCmd
+// TmuxPath returns the resolved psmux binary path this engine's TmuxCmd
 // was built from, so a caller that must build its own raw exec.Command (like
 // attach's in-place attach-session handover, which needs stdio inheritance
 // psmux's own run/output helpers don't support) can target the same binary
 // without reaching into engine config directly.
-func (e *Engine) PsmuxPath() string {
-	return e.cfg.Psmux
+func (e *Engine) TmuxPath() string {
+	return e.cfg.Tmux
 }
 
 // withOpLock acquires the mux operation lock at

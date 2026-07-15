@@ -142,7 +142,7 @@ hidden process state. Because the status lives in the weft repo (git-synced), re
 works across machines too. It is per-task and cwd-authoritative ([Principle 4](../overview.md#principles)).
 
 **Human boundaries.** `lyx run` drives every phase it *can* drive **unattended** — the
-agents are interactive psmux sessions, but no human sits in them ([Agent execution](#agent-execution)).
+agents are interactive tmux sessions, but no human sits in them ([Agent execution](#agent-execution)).
 When it reaches an inherently interactive boundary — Discussion input, or a `stuck`
 escalation — it stops cleanly, writes the next action to the status file, and exits. The
 human does the interactive part (which advances the status), and the next `lyx run`
@@ -254,7 +254,7 @@ more than the driver alone. Run in a worktree's pane, it:
 
 ```
 lyx loom run:
-  1. ensure the worktree's psmux session is up           (mux)
+  1. ensure the worktree's tmux session is up           (mux)
   2. add the status strand                                (mux.AddStrand "lyx loom status --watch",
                                                            display: below-parent, shrinkWhenWaitingOnChild:true —
                                                            full height while it has no live child, collapsing to
@@ -264,10 +264,10 @@ lyx loom run:
                                                            childless-full-height-is-acceptable).)
   3. spawn the loom driver DETACHED                       (internal/proc — it needs no TTY;
                                                            it reads/writes files, drives strands via mux)
-  4. attach the current terminal to the psmux session     (mux takes the foreground)
+  4. attach the current terminal to the tmux session     (mux takes the foreground)
 ```
 
-So **loom goes to the background and the psmux session takes the window.** loom needs no terminal —
+So **loom goes to the background and the tmux session takes the window.** loom needs no terminal —
 it coordinates through files and drives strands via mux — so the screen is free for the mux view
 (the status line on top, agents below as they spawn). loom and the view are independent: loom writes
 the `_lyx/` status file; the status strand reads and prints it; neither blocks the other.
@@ -280,7 +280,7 @@ from cwd, so you cannot run it from the wrong place. It reuses the
 [launcher geometry](../overview.md#hub-geometry-invariants) already in `internal/hubgeometry`.
 
 **One terminal per worktree.** Scope for now is exactly that — each worktree its own terminal /
-psmux session. The cross-worktree multi-column view (all worktrees in one window) is a deferred mux
+tmux session. The cross-worktree multi-column view (all worktrees in one window) is a deferred mux
 feature (see the `internal/muxengine` package documentation) — cheap
 when it comes (a `worktree` strand field + a grouping rule), but not now.
 
@@ -288,7 +288,7 @@ when it comes (a `worktree` strand field + a grouping rule), but not now.
 
 Every agent loom spawns — producers, the review handler, cluster reviewers, the
 progress-judge — runs through the `internal/shuttleengine` layer as an **interactive
-psmux session, never headless `claude -p`** (an economic constraint; see the
+tmux session, never headless `claude -p`** (an economic constraint; see the
 `internal/shuttleengine` package documentation). **I/O still rides
 the file contract** — the agent writes its output files and Go reads them — so the
 file-contract design above is unchanged; only the *spawn + completion-detection* mechanism

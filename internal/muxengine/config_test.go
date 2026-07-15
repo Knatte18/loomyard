@@ -47,13 +47,13 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 
 	// ConfigTemplate() is OS-split (template_windows.go / template_posix.go),
 	// but both variants defer to PATH names rather than a pinned install
-	// path: psmux/pwsh on Windows, tmux/bash on POSIX.
-	wantPsmux, wantPwsh := "psmux", "pwsh"
+	// path: tmux/pwsh on Windows, tmux/bash on POSIX.
+	wantTmux, wantPwsh := "tmux", "pwsh"
 	if runtime.GOOS != "windows" {
-		wantPsmux, wantPwsh = "tmux", "bash"
+		wantTmux, wantPwsh = "tmux", "bash"
 	}
-	if cfg.Psmux != wantPsmux {
-		t.Errorf("Psmux = %q, want %q", cfg.Psmux, wantPsmux)
+	if cfg.Tmux != wantTmux {
+		t.Errorf("Tmux = %q, want %q", cfg.Tmux, wantTmux)
 	}
 	if cfg.Pwsh != wantPwsh {
 		t.Errorf("Pwsh = %q, want %q", cfg.Pwsh, wantPwsh)
@@ -83,15 +83,15 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 
 func TestLoadConfig_EnvOverride(t *testing.T) {
 	tmpDir := t.TempDir()
-	t.Setenv("LYX_MUX_PSMUX", `D:\tools\psmux.exe`)
+	t.Setenv("LYX_MUX_TMUX", `D:\tools\tmux.exe`)
 	seedLyxConfig(t, tmpDir, "mux", muxengine.ConfigTemplate())
 
 	cfg, err := muxengine.LoadConfig(tmpDir, "mux")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if cfg.Psmux != `D:\tools\psmux.exe` {
-		t.Errorf("Psmux = %q, want env override", cfg.Psmux)
+	if cfg.Tmux != `D:\tools\tmux.exe` {
+		t.Errorf("Tmux = %q, want env override", cfg.Tmux)
 	}
 }
 

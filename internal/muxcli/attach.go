@@ -59,7 +59,7 @@ Example:
 				return nil
 			}
 
-			attach := exec.Command(c.eng.PsmuxPath(), attachArgv(c.eng.Socket(), c.eng.SessionName())...)
+			attach := exec.Command(c.eng.TmuxPath(), attachArgv(c.eng.Socket(), c.eng.SessionName())...)
 			attach.Stdin = os.Stdin
 			attach.Stdout = os.Stdout
 			attach.Stderr = os.Stderr
@@ -67,7 +67,7 @@ Example:
 			// Terminal-handover tail: stdio is now inherited by the child
 			// process, so this is the one documented exception to "every RunE
 			// ends in a JSON envelope" — no JSON is written here even on
-			// failure (psmux's own stderr already reached the operator's
+			// failure (tmux's own stderr already reached the operator's
 			// terminal), but the child's exit code still propagates so a
 			// failed attach is not reported as success.
 			if err := attach.Run(); err != nil {
