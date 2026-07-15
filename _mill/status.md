@@ -2,17 +2,17 @@
 
 ```yaml
 phase: discussing
-slug: cluster-fork-spike
-branch: cluster-fork-spike
+slug: mux-anchor-top-redesign
+branch: mux-anchor-top-redesign
 plan: null
-parent: main
-task: 'Spike: measure Claude session-forking for cluster-review'
+parent: cluster-fork-spike
+task: Reconsider whether lyx mux needs anchor:top at all
 task_description: |
-  Spike: measure Claude session-forking for cluster-review
+  Reconsider whether lyx mux needs anchor:top at all
 ```
 
 ## Timeline
 
 ```text
-discussing  '2026-07-14T16:10:57Z'
+discussing  '2026-07-15T08:32:57Z'
 ```
