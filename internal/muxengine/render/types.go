@@ -7,7 +7,7 @@
 // Package render owns the closed display vocabulary and the deterministic
 // Rules(strands, box, params) -> (layout, focus) function that turns a set
 // of strands into a tmux window_layout string. It is a pure leaf: no I/O, no
-// psmux, no engine import.
+// tmux, no engine import.
 //
 // The package is deliberately split into two layers that must never merge.
 // Layout policy (policy.go, height.go, focus.go) decides which strand lands
@@ -30,7 +30,7 @@ const (
 	AnchorBelowParent Anchor = "below-parent"
 	// AnchorOwnWindow is declared in the vocabulary but deferred in v1:
 	// Rules rejects any strand carrying it with an error. It is reserved
-	// for a future release that gives a strand its own psmux window
+	// for a future release that gives a strand its own tmux window
 	// instead of sharing a pane in the stacked layout.
 	AnchorOwnWindow Anchor = "own-window"
 	// AnchorHidden excludes a strand from the layout entirely. A hidden
@@ -45,7 +45,7 @@ const (
 type Display struct {
 	// Anchor selects which placement strategy governs this strand.
 	Anchor Anchor `json:"anchor"`
-	// Focus marks this strand as the one that should receive psmux input
+	// Focus marks this strand as the one that should receive tmux input
 	// focus. At most one strand is expected to set Focus; if several do,
 	// render breaks the tie by picking the bottom-most.
 	Focus bool `json:"focus"`
@@ -68,7 +68,7 @@ type Strand struct {
 	Parent string
 	// Display carries this strand's placement, focus, and shrink settings.
 	Display Display
-	// PaneID is the psmux pane id (e.g. "%5") this strand currently owns.
+	// PaneID is the tmux pane id (e.g. "%5") this strand currently owns.
 	// A strand with an empty PaneID owns no pane and is excluded from the
 	// layout.
 	PaneID string

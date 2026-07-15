@@ -44,7 +44,7 @@ func TestRunCLI_Pause_InvalidRunID(t *testing.T) {
 
 // seedPerchFixture returns a paired git-repo fixture with real shuttle/mux/
 // perch config seeded, chdir'd into the host hub, ready for a "lyx perch
-// pause" invocation. It never boots psmux or spawns a burler round — pause
+// pause" invocation. It never boots tmux or spawns a burler round — pause
 // only stats/writes a flag file and never touches the resolved engine
 // ingredients PersistentPreRunE stores.
 func seedPerchFixture(t *testing.T) lyxtest.PairedFixture {

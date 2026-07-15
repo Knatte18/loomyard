@@ -40,7 +40,7 @@ type Engine struct {
 
 // New builds an Engine for the given resolved Config and Layout, deriving
 // the TmuxCmd from cfg.Tmux and this hub's socket name (server.go's
-// socketName). Every psmux command an Engine method issues therefore
+// socketName). Every tmux command an Engine method issues therefore
 // targets the one named server this hub shares across its worktrees.
 func New(cfg Config, layout *hubgeometry.Layout) *Engine {
 	return &Engine{
@@ -50,22 +50,22 @@ func New(cfg Config, layout *hubgeometry.Layout) *Engine {
 	}
 }
 
-// Socket returns this engine's psmux -L socket name, so muxcli never needs
+// Socket returns this engine's tmux -L socket name, so muxcli never needs
 // the unexported socketName helper or the raw Layout to report it.
 func (e *Engine) Socket() string {
 	return socketName(e.layout.Hub)
 }
 
-// SessionName returns this engine's psmux session name (this worktree's
+// SessionName returns this engine's tmux session name (this worktree's
 // directory slug), so muxcli never needs the raw Layout to report it.
 func (e *Engine) SessionName() string {
 	return SessionName(e.layout.WorktreeRoot)
 }
 
-// TmuxPath returns the resolved psmux binary path this engine's TmuxCmd
+// TmuxPath returns the resolved tmux binary path this engine's TmuxCmd
 // was built from, so a caller that must build its own raw exec.Command (like
 // attach's in-place attach-session handover, which needs stdio inheritance
-// psmux's own run/output helpers don't support) can target the same binary
+// tmux's own run/output helpers don't support) can target the same binary
 // without reaching into engine config directly.
 func (e *Engine) TmuxPath() string {
 	return e.cfg.Tmux

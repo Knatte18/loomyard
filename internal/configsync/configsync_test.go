@@ -145,7 +145,7 @@ func TestReconcileAll_DropsStaleMuxClaudeKey(t *testing.T) {
 	// Seed mux.yaml as it would exist on disk for a user who set up their
 	// worktree before the claude: key was removed from the template.
 	muxPath := hubgeometry.ConfigFile(tmpDir, "mux")
-	seedContent := "psmux: C:\\tools\\psmux.exe\nclaude: C:\\tools\\claude.exe\n"
+	seedContent := "tmux: C:\\tools\\tmux.exe\nclaude: C:\\tools\\claude.exe\n"
 	if err := os.WriteFile(muxPath, []byte(seedContent), 0o644); err != nil {
 		t.Fatalf("write mux.yaml: %v", err)
 	}

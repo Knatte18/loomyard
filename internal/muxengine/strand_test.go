@@ -1,13 +1,13 @@
 // strand_test.go drives the strand-mutation *Locked helpers directly
 // against a fixture .lyx: guid generation/uniqueness, unknown/cyclic parent
 // rejection, the hidden-add no-launch path, the launch-path decision seam
-// (needsLaunchOnAdd/needsLaunchOnSurface — the actual real-psmux launch
+// (needsLaunchOnAdd/needsLaunchOnSurface — the actual real-tmux launch
 // itself is out of hermetic reach, see spawn_test.go), UpdateStrand's
 // visible->hidden rejection, and RemoveStrand's non-leaf guard/cascade.
-// None of these touch psmux: addStrandLocked/updateStrandLocked only reach
-// psmux through launchStrandLocked, and every case here either stays
+// None of these touch tmux: addStrandLocked/updateStrandLocked only reach
+// tmux through launchStrandLocked, and every case here either stays
 // hidden or is a rejection that never gets there; removeStrandLocked never
-// touches psmux at all.
+// touches tmux at all.
 
 package muxengine
 

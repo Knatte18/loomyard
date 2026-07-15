@@ -1,7 +1,7 @@
 //go:build !windows
 
 // template_posix.go embeds the POSIX variant of the mux.yaml template, whose
-// psmux/pwsh defaults are the PATH-resolved names tmux/bash rather than a
+// tmux/shell defaults are the PATH-resolved names tmux/bash rather than a
 // pinned Windows install path. It deliberately carries no "_linux" filename
 // suffix: the explicit "!windows" tag (rather than a linux-only suffix) is
 // what makes every non-Windows GOOS pick up these POSIX defaults, per the

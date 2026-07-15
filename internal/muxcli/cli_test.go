@@ -1,6 +1,6 @@
 // cli_test.go covers the muxcli cobra seam through RunCLI: bare-group
 // listing, the unknown-subcommand JSON envelope, and the built attach
-// invocation. No live psmux session is required by any test in this file;
+// invocation. No live tmux session is required by any test in this file;
 // the real up/add/status/down round-trip lives in smoke_test.go behind
 // //go:build smoke. Config resolution against a real fixture hub now lives
 // in cli_integration_test.go per the Test Tier Purity Invariant.
@@ -88,7 +88,7 @@ func TestRunCLI_NotAGitRepo(t *testing.T) {
 // TestAttachArgv verifies the attach invocation targets the worktree
 // session: "-L <socket> attach-session -t <session>". This is the built
 // attach invocation's one assertable seam — the argv build, not a JSON
-// round-trip, since a real attach hands stdio to psmux (the documented
+// round-trip, since a real attach hands stdio to tmux (the documented
 // JSON-envelope exception).
 func TestAttachArgv(t *testing.T) {
 	got := attachArgv("hub-abc123", "my-worktree")

@@ -4,7 +4,7 @@
 // (minMultiplexerVersion, version.go) and its `list-commands` output
 // against the engine's required subcommand set, plus a thin Engine method
 // (probeCapabilityLocked) that binds the pure core to a real exec.Command
-// invocation of the configured psmux/tmux binary.
+// invocation of the configured tmux binary.
 
 package muxengine
 
@@ -31,7 +31,7 @@ func (e *CapabilityError) Error() string {
 	return e.Reason
 }
 
-// requiredSubcommands names every psmux/tmux subcommand the engine's
+// requiredSubcommands names every tmux subcommand the engine's
 // lifecycle, overlay, and pane-management code depends on (has-session,
 // new-session, and the pane-lifecycle/query verbs overlay.go and
 // lifecycle.go issue). The capability probe treats a multiplexer binary
@@ -93,11 +93,10 @@ func probeCapability(run func(args ...string) (string, error)) error {
 }
 
 // parseCommandNames extracts the first whitespace-delimited token from each
-// line of list-commands output into a set. Both psmux and tmux append
-// aliases/descriptions after the command name on the same line (e.g.
-// "kill-server               - Kill the psmux server"), so only the
-// leading token is a stable command name across their differing
-// list-commands formatting; blank lines and header text are harmless
+// line of list-commands output into a set. tmux appends aliases/descriptions
+// after the command name on the same line (e.g. "kill-server               -
+// Kill the tmux server"), so only the leading token is a stable command name
+// across list-commands formatting; blank lines and header text are harmless
 // extras in the returned set since callers only ever look up known names.
 func parseCommandNames(out string) map[string]bool {
 	names := make(map[string]bool)

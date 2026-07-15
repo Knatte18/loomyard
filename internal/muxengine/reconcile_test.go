@@ -1,7 +1,7 @@
 // reconcile_test.go table-tests planReconcile's pure decision logic against
 // saved strand tables and fake list-panes results (including pane_dead=1
 // rows), and exercises reconcileLocked's real-record mutation for the
-// no-dead-panes path, which never touches psmux and so stays hermetic.
+// no-dead-panes path, which never touches tmux and so stays hermetic.
 
 package muxengine
 
@@ -132,7 +132,7 @@ func findStrandPaneID(strands []Strand, guid string) string {
 	return ""
 }
 
-func TestReconcileLocked_NoDeadPanes_ClearsGoneBindingsWithoutTouchingPsmux(t *testing.T) {
+func TestReconcileLocked_NoDeadPanes_ClearsGoneBindingsWithoutTouchingTmux(t *testing.T) {
 	// cfg.Tmux points at a nonexistent binary (newTestEngine's fixture): if
 	// reconcileLocked ever shelled out here, this test would fail loudly
 	// rather than silently passing against a stray real server.

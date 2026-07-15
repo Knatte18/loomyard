@@ -2,7 +2,7 @@
 // against shuttleengine.Engine. The type itself carries no state — every
 // method it implements is a pure function of its arguments (see command.go,
 // settings.go, events.go, startup.go) — which is what makes the whole
-// adapter hermetically testable without psmux or a real claude process.
+// adapter hermetically testable without tmux or a real claude process.
 
 package claudeengine
 

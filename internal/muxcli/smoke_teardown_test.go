@@ -92,7 +92,7 @@ func TestSmokeDownReapsPaneChildProcesses(t *testing.T) {
 		addStrand(t, launch, "--name", "reap")
 		addStrand(t, launch, "--name", "reap2")
 		socket, session := socketAndSession(t)
-		pids := paneProcessTree(t, psmuxPath, pwshPath, socket, session)
+		pids := paneProcessTree(t, tmuxPath, pwshPath, socket, session)
 		if len(pids) == 0 {
 			t.Fatalf("cycle %d: session reported no pane process subtree", cycle)
 		}
@@ -112,16 +112,16 @@ func TestSmokeDownReapsPaneChildProcesses(t *testing.T) {
 	}
 }
 
-// TestSmokeDownLeavesNoPsmuxOnSocket pins the stray-server guarantee down's
-// robust teardown owns: after down tears the shared server down, ZERO psmux
+// TestSmokeDownLeavesNoTmuxOnSocket pins the stray-server guarantee down's
+// robust teardown owns: after down tears the shared server down, ZERO tmux
 // process may still name this worktree's socket — not the main server, not its
-// __warm__ helper. The psmux server is spawned with the worktree as its cwd, so
+// __warm__ helper. The tmux server is spawned with the worktree as its cwd, so
 // a server that outlives down keeps the worktree directory busy (a real "no
 // stray state" leak observed under down->up churn on a saturated machine, where
 // a fixed-deadline server wait timed out and aborted down before the socket was
 // cleared). Several add->down cycles give the async kill-server a chance to lag.
-func TestSmokeDownLeavesNoPsmuxOnSocket(t *testing.T) {
-	psmuxBinaryPath(t)
+func TestSmokeDownLeavesNoTmuxOnSocket(t *testing.T) {
+	tmuxBinaryPath(t)
 	pwshPath := smokePwshPath
 
 	fixture := lyxtest.CopyPaired(t)
@@ -149,9 +149,9 @@ func TestSmokeDownLeavesNoPsmuxOnSocket(t *testing.T) {
 		if code := RunCLI(&out, []string{"down"}); code != 0 {
 			t.Fatalf("cycle %d down = %d; want 0, output: %s", cycle, code, out.String())
 		}
-		// No sleep: the moment down returns, the socket must be free of psmux.
-		if pids := psmuxSocketPids(t, pwshPath, socket); len(pids) != 0 {
-			t.Fatalf("cycle %d: psmux still on socket %s after down returned: pids=%v", cycle, socket, pids)
+		// No sleep: the moment down returns, the socket must be free of tmux.
+		if pids := tmuxSocketPids(t, pwshPath, socket); len(pids) != 0 {
+			t.Fatalf("cycle %d: tmux still on socket %s after down returned: pids=%v", cycle, socket, pids)
 		}
 	}
 }
@@ -168,7 +168,7 @@ func TestSmokeDownLeavesNoPsmuxOnSocket(t *testing.T) {
 // the removed pane must be gone. A sibling strand is kept alive throughout
 // so the session survives and the removed pane is never the sole pane.
 func TestSmokeRemoveReapsRemovedPaneChildProcesses(t *testing.T) {
-	psmuxPath := psmuxBinaryPath(t)
+	tmuxPath := tmuxBinaryPath(t)
 
 	fixture := lyxtest.CopyPaired(t)
 	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
@@ -206,7 +206,7 @@ func TestSmokeRemoveReapsRemovedPaneChildProcesses(t *testing.T) {
 		if victimPane == "" {
 			t.Fatalf("cycle %d: victim %s has no pane: %s", cycle, victim, out.String())
 		}
-		pids := panePaneSubtree(t, psmuxPath, pwshPath, socket, session, victimPane)
+		pids := panePaneSubtree(t, tmuxPath, pwshPath, socket, session, victimPane)
 		if len(pids) == 0 {
 			t.Fatalf("cycle %d: victim pane %s reported no process subtree", cycle, victimPane)
 		}
@@ -242,7 +242,7 @@ func TestSmokeRemoveReapsRemovedPaneChildProcesses(t *testing.T) {
 }
 
 // TestSmokeDownInOneWorktreeLeavesSiblingSessionAlive codifies the CROSS-WORKTREE
-// SCOPE invariant: the psmux server identity is per-HUB (the -L socket derives
+// SCOPE invariant: the tmux server identity is per-HUB (the -L socket derives
 // from the hub) and shared by sibling worktrees, so `lyx mux down` in worktree A
 // must tear down ONLY A's session, never worktree B's session, panes, or agents
 // that share the same hub socket. (This psmux port backs each session with its
@@ -252,12 +252,12 @@ func TestSmokeRemoveReapsRemovedPaneChildProcesses(t *testing.T) {
 // (same socket, distinct sessions, one backing process each), each adds a live
 // strand; A goes `down`; then B's session + pane + agent subtree + its single
 // backing server must all still be live while A's session and pane subtree are
-// gone. B then `down`s last and the socket must be free of every psmux. The core
+// gone. B then `down`s last and the socket must be free of every tmux. The core
 // assertion is B's continued liveness AFTER A's down (see assertSiblingStaysLive)
 // — a naive "down kills the whole socket's server set" implementation fails this
 // test rather than reporting a false green.
 func TestSmokeDownInOneWorktreeLeavesSiblingSessionAlive(t *testing.T) {
-	psmuxPath := psmuxBinaryPath(t)
+	tmuxPath := tmuxBinaryPath(t)
 	pwshPath := smokePwshPath
 
 	fixture := lyxtest.CopyPaired(t)
@@ -317,8 +317,8 @@ func TestSmokeDownInOneWorktreeLeavesSiblingSessionAlive(t *testing.T) {
 	socket := socketA
 
 	// Both sessions live on the one socket.
-	waitSessionUp(t, psmuxPath, socket, sessionA)
-	waitSessionUp(t, psmuxPath, socket, sessionB)
+	waitSessionUp(t, tmuxPath, socket, sessionA)
+	waitSessionUp(t, tmuxPath, socket, sessionB)
 
 	// Exactly one backing server process per session on the shared socket — no
 	// duplicate spawned for either session.
@@ -327,18 +327,18 @@ func TestSmokeDownInOneWorktreeLeavesSiblingSessionAlive(t *testing.T) {
 
 	// B's backing-server pid, for the post-down stability check: it must be
 	// unchanged after A's down (B's server neither killed nor restarted).
-	bServerPID := serverPID(t, psmuxPath, socket, sessionB)
+	bServerPID := serverPID(t, tmuxPath, socket, sessionB)
 
 	// Snapshot BEFORE A's down, while both panes still exist to enumerate:
 	// worktree A's whole pane process subtree (asserted GONE after A's down — a
 	// transient child that already exited still reads gone, so this is not
 	// flaky), and worktree B's pane ROOT pid (asserted ALIVE — only the stable
 	// root, never its come-and-go descendants, so the liveness check is robust).
-	aSubtree := panePaneSubtree(t, psmuxPath, pwshPath, socket, sessionA, aPane)
+	aSubtree := panePaneSubtree(t, tmuxPath, pwshPath, socket, sessionA, aPane)
 	if len(aSubtree) == 0 {
 		t.Fatalf("worktree A pane %s reported no process subtree", aPane)
 	}
-	bPanePID := paneRootPID(t, psmuxPath, socket, sessionB, bPane)
+	bPanePID := paneRootPID(t, tmuxPath, socket, sessionB, bPane)
 
 	// --- down in worktree A ---
 	mustChdir(t, fixture.Hub)
@@ -350,7 +350,7 @@ func TestSmokeDownInOneWorktreeLeavesSiblingSessionAlive(t *testing.T) {
 	// A's own session is gone and its pane subtree reaped (down reaps this
 	// session's pane children before returning — no sleep, mirroring the
 	// down-reap tests).
-	waitServerGone(t, psmuxPath, socket, sessionA)
+	waitServerGone(t, tmuxPath, socket, sessionA)
 	for _, pid := range aSubtree {
 		if !processGone(pid) {
 			t.Fatalf("worktree A pane subtree pid %d still running immediately after A down returned", pid)
@@ -363,7 +363,7 @@ func TestSmokeDownInOneWorktreeLeavesSiblingSessionAlive(t *testing.T) {
 	// process must ALL stay live throughout a stability window. A down that tore
 	// down the shared socket's server set would trip this instead of reporting a
 	// false green.
-	assertSiblingStaysLive(t, psmuxPath, socket, sessionB, bPane, bServerPID, bPanePID, 2*time.Second)
+	assertSiblingStaysLive(t, tmuxPath, socket, sessionB, bPane, bServerPID, bPanePID, 2*time.Second)
 
 	// And still exactly ONE backing server for B — no duplicate spawned during
 	// the A up/down churn (the one process-table check, done once here rather
@@ -378,5 +378,5 @@ func TestSmokeDownInOneWorktreeLeavesSiblingSessionAlive(t *testing.T) {
 	if code := RunCLI(&out, []string{"down"}); code != 0 {
 		t.Fatalf("B down = %d; want 0, output: %s", code, out.String())
 	}
-	waitSocketFreeOfPsmux(t, pwshPath, socket)
+	waitSocketFreeOfTmux(t, pwshPath, socket)
 }

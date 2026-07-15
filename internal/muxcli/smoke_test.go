@@ -1,16 +1,16 @@
 //go:build smoke
 
 // smoke_test.go is the shared smoke-test harness: the helpers (binary
-// discovery, live-psmux process/pane probes, transcript watching, fixture
+// discovery, live-tmux process/pane probes, transcript watching, fixture
 // wiring) common to the smoke test files in this package
 // (smoke_lifecycle_test.go, smoke_teardown_test.go, smoke_resume_test.go,
-// smoke_attach_test.go). Those files drive the composed live-psmux behaviors
+// smoke_attach_test.go). Those files drive the composed live-tmux behaviors
 // through RunCLI against a real server — the basic up -> add -> status ->
 // down round-trip, crash recovery, layout survival under stacked
 // below-parent adds, add-after-remove-last, down's synchronous server teardown,
 // cross-worktree scope, the interactive attach handover, and native claude
 // --resume codeword recall. These paths are exactly where hermetic tests
-// prove nothing — psmux's real semantics (positional select-layout, silent
+// prove nothing — tmux's real semantics (positional select-layout, silent
 // split failures, corpse panes, async kill-server) and claude's real
 // transcript persistence only show up live. Excluded from the default `go
 // test ./internal/muxcli/...`; runs under `go test -tags smoke`.
@@ -89,36 +89,36 @@ func statusStrand(t *testing.T, statusJSON []byte, guid string) (map[string]any,
 	return nil, false
 }
 
-// waitServerGone blocks until `psmux -L socket has-session -t session` exits
+// waitServerGone blocks until `tmux -L socket has-session -t session` exits
 // non-zero (the server/session is gone), or fails the test after a timeout.
-// psmux's kill-server is asynchronous — it returns before the socket is
+// tmux's kill-server is asynchronous — it returns before the socket is
 // released — so a test that simulates a crash must wait for the server to
 // actually die before exercising recovery, or it races the teardown. The
 // deadline is saturation-sized: the teardown is ~1s quiet, but concurrent
 // suites pegging the CPU have starved fixed 5s waits of this shape.
-func waitServerGone(t *testing.T, psmuxPath, socket, session string) {
+func waitServerGone(t *testing.T, tmuxPath, socket, session string) {
 	t.Helper()
 	const timeout = 30 * time.Second
 	deadline := time.Now().Add(timeout)
 	for {
-		if err := exec.Command(psmuxPath, "-L", socket, "has-session", "-t", session).Run(); err != nil {
+		if err := exec.Command(tmuxPath, "-L", socket, "has-session", "-t", session).Run(); err != nil {
 			return // non-zero exit: server/session gone
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("psmux server still up %s after kill-server (socket %s)", timeout, socket)
+			t.Fatalf("tmux server still up %s after kill-server (socket %s)", timeout, socket)
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
 }
 
 // listPaneLines returns the session's list-panes rows as
-// "<pane_id> <pane_dead> <pane_top> <pane_height>" strings. Uses psmux
+// "<pane_id> <pane_dead> <pane_top> <pane_height>" strings. Uses tmux
 // directly (the same controlled exception the sandbox suite grants) so a
 // smoke test can assert on the real pane set rather than trusting mux's own
 // reporting.
-func listPaneLines(t *testing.T, psmuxPath, socket, session string) []string {
+func listPaneLines(t *testing.T, tmuxPath, socket, session string) []string {
 	t.Helper()
-	out, err := exec.Command(psmuxPath, "-L", socket, "list-panes", "-t", session,
+	out, err := exec.Command(tmuxPath, "-L", socket, "list-panes", "-t", session,
 		"-F", "#{pane_id} #{pane_dead} #{pane_top} #{pane_height}").Output()
 	if err != nil {
 		t.Fatalf("list-panes: %v", err)
@@ -170,12 +170,12 @@ func addStrand(t *testing.T, cmdStr string, extra ...string) string {
 	return guid
 }
 
-// serverPID asks psmux for the server's OS pid via the #{pid} format
-// variable (the only server-liveness signal psmux exposes: list-sessions
+// serverPID asks tmux for the server's OS pid via the #{pid} format
+// variable (the only server-liveness signal tmux exposes: list-sessions
 // and kill-server both exit 0 whether or not a server holds the socket).
-func serverPID(t *testing.T, psmuxPath, socket, session string) int {
+func serverPID(t *testing.T, tmuxPath, socket, session string) int {
 	t.Helper()
-	out, err := exec.Command(psmuxPath, "-L", socket, "display-message", "-p", "-t", session, "#{pid}").Output()
+	out, err := exec.Command(tmuxPath, "-L", socket, "display-message", "-p", "-t", session, "#{pid}").Output()
 	if err != nil {
 		t.Fatalf("display-message #{pid}: %v", err)
 	}
@@ -213,9 +213,9 @@ func processGone(pid int) bool {
 // directory is a deeper descendant, so the reap-correctness assertion must
 // track the whole subtree, computed here with the same Win32_Process closure
 // the engine uses.
-func paneProcessTree(t *testing.T, psmuxPath, pwshPath, socket, session string) []int {
+func paneProcessTree(t *testing.T, tmuxPath, pwshPath, socket, session string) []int {
 	t.Helper()
-	out, err := exec.Command(psmuxPath, "-L", socket, "list-panes", "-t", session, "-F", "#{pane_pid}").Output()
+	out, err := exec.Command(tmuxPath, "-L", socket, "list-panes", "-t", session, "-F", "#{pane_pid}").Output()
 	if err != nil {
 		t.Fatalf("list-panes #{pane_pid}: %v", err)
 	}
@@ -260,9 +260,9 @@ $acc`, strings.Join(roots, ","))
 // the engine uses — the per-pane analogue of paneProcessTree, so the remove
 // reap assertion tracks exactly the removed pane's subtree and not the
 // surviving keeper's.
-func panePaneSubtree(t *testing.T, psmuxPath, pwshPath, socket, session, paneID string) []int {
+func panePaneSubtree(t *testing.T, tmuxPath, pwshPath, socket, session, paneID string) []int {
 	t.Helper()
-	out, err := exec.Command(psmuxPath, "-L", socket, "list-panes", "-t", session,
+	out, err := exec.Command(tmuxPath, "-L", socket, "list-panes", "-t", session,
 		"-F", "#{pane_id} #{pane_pid}").Output()
 	if err != nil {
 		t.Fatalf("list-panes #{pane_id} #{pane_pid}: %v", err)
@@ -459,12 +459,12 @@ func deferHubRelease(t *testing.T, hub string) {
 	})
 }
 
-// psmuxSocketPids returns the OS pids of every psmux.exe process whose command
+// tmuxSocketPids returns the OS pids of every psmux.exe process whose command
 // line names the given -L socket (the server plus its __warm__ helper),
 // enumerated through the Windows process table — the same reliable signal
 // muxengine.serverProcessesOnSocket uses, reproduced here so the harness reap
 // can find its private server without a mux engine handle.
-func psmuxSocketPids(t *testing.T, pwshPath, socket string) []int {
+func tmuxSocketPids(t *testing.T, pwshPath, socket string) []int {
 	t.Helper()
 	script := fmt.Sprintf(
 		`(Get-CimInstance Win32_Process -Filter "Name='psmux.exe'" | Where-Object { $_.CommandLine -match [regex]::Escape('-L %s') }).ProcessId`,
@@ -517,7 +517,7 @@ $acc`, strings.Join(lits, ","))
 	return pids
 }
 
-// reapHarnessServer tears down the test's private harness psmux server and
+// reapHarnessServer tears down the test's private harness tmux server and
 // waits for its whole process subtree (the server, its __warm__ helper, and the
 // pane shells whose cwd is the fixture hub) to actually exit before returning.
 // The harness is the test's own scaffolding, not a mux-managed session, so
@@ -526,10 +526,10 @@ $acc`, strings.Join(lits, ","))
 // under load. It snapshots the subtree BEFORE kill-server (while the processes
 // still exist to enumerate), kills the server, then polls each pid to genuine
 // exit, force-killing any straggler that outlives a generous deadline.
-func reapHarnessServer(t *testing.T, psmuxPath, pwshPath, socket string) {
+func reapHarnessServer(t *testing.T, tmuxPath, pwshPath, socket string) {
 	t.Helper()
-	subtree := pidClosure(t, pwshPath, psmuxSocketPids(t, pwshPath, socket))
-	_ = exec.Command(psmuxPath, "-L", socket, "kill-server").Run()
+	subtree := pidClosure(t, pwshPath, tmuxSocketPids(t, pwshPath, socket))
+	_ = exec.Command(tmuxPath, "-L", socket, "kill-server").Run()
 	deadline := time.Now().Add(20 * time.Second)
 	for _, pid := range subtree {
 		for !processGone(pid) {
@@ -546,10 +546,10 @@ func reapHarnessServer(t *testing.T, psmuxPath, pwshPath, socket string) {
 }
 
 // capturePane returns the rendered content of the target pane on socket via
-// capture-pane -p (a controlled psmux exception, like listPaneLines).
-func capturePane(t *testing.T, psmuxPath, socket, target string) string {
+// capture-pane -p (a controlled tmux exception, like listPaneLines).
+func capturePane(t *testing.T, tmuxPath, socket, target string) string {
 	t.Helper()
-	out, err := exec.Command(psmuxPath, "-L", socket, "capture-pane", "-p", "-t", target).Output()
+	out, err := exec.Command(tmuxPath, "-L", socket, "capture-pane", "-p", "-t", target).Output()
 	if err != nil {
 		t.Fatalf("capture-pane -t %s: %v", target, err)
 	}
@@ -557,13 +557,13 @@ func capturePane(t *testing.T, psmuxPath, socket, target string) string {
 }
 
 // sendKeysLine types text literally into the target pane (send-keys -l, so
-// psmux never reinterprets it) and submits it with a separate Enter.
-func sendKeysLine(t *testing.T, psmuxPath, socket, target, text string) {
+// tmux never reinterprets it) and submits it with a separate Enter.
+func sendKeysLine(t *testing.T, tmuxPath, socket, target, text string) {
 	t.Helper()
-	if err := exec.Command(psmuxPath, "-L", socket, "send-keys", "-t", target, "-l", text).Run(); err != nil {
+	if err := exec.Command(tmuxPath, "-L", socket, "send-keys", "-t", target, "-l", text).Run(); err != nil {
 		t.Fatalf("send-keys -l %q: %v", text, err)
 	}
-	if err := exec.Command(psmuxPath, "-L", socket, "send-keys", "-t", target, "Enter").Run(); err != nil {
+	if err := exec.Command(tmuxPath, "-L", socket, "send-keys", "-t", target, "Enter").Run(); err != nil {
 		t.Fatalf("send-keys Enter: %v", err)
 	}
 }
@@ -571,12 +571,12 @@ func sendKeysLine(t *testing.T, psmuxPath, socket, target, text string) {
 // pollPaneContains polls capture-pane until the target pane's rendered
 // content contains want, failing the test after timeout with the last
 // capture attached for diagnosis.
-func pollPaneContains(t *testing.T, psmuxPath, socket, target, want string, timeout time.Duration) {
+func pollPaneContains(t *testing.T, tmuxPath, socket, target, want string, timeout time.Duration) {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
 	last := ""
 	for {
-		last = capturePane(t, psmuxPath, socket, target)
+		last = capturePane(t, tmuxPath, socket, target)
 		if strings.Contains(last, want) {
 			return
 		}
@@ -610,11 +610,11 @@ func buildLyxBinary(t *testing.T) string {
 // paneEventuallyContains reports whether the target pane's rendered content
 // comes to contain want within timeout — the non-fatal sibling of
 // pollPaneContains, for a branch that has a fallback path when it does not.
-func paneEventuallyContains(t *testing.T, psmuxPath, socket, target, want string, timeout time.Duration) bool {
+func paneEventuallyContains(t *testing.T, tmuxPath, socket, target, want string, timeout time.Duration) bool {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
 	for {
-		if strings.Contains(capturePane(t, psmuxPath, socket, target), want) {
+		if strings.Contains(capturePane(t, tmuxPath, socket, target), want) {
 			return true
 		}
 		if time.Now().After(deadline) {
@@ -721,7 +721,7 @@ func claudeBinaryPath(t *testing.T) string {
 
 // materializeSibling clones the paired fixture's bare origin into a second
 // worktree directory alongside the primary hub, so both live directly under
-// the same parent directory. Because the psmux server name/socket derives from
+// the same parent directory. Because the tmux server name/socket derives from
 // the hub (the parent of the worktree root) while the session name is the
 // worktree's own basename, the two clones resolve to the SAME per-hub socket
 // but carry DISTINCT sessions — exactly the "two worktrees on one hub" fixture
@@ -756,19 +756,19 @@ func mustChdir(t *testing.T, dir string) {
 // sessionAlive reports whether the named session currently exists on the
 // socket (has-session exit 0), without failing the test — the non-fatal probe
 // the stability loop polls on.
-func sessionAlive(psmuxPath, socket, session string) bool {
-	return exec.Command(psmuxPath, "-L", socket, "has-session", "-t", session).Run() == nil
+func sessionAlive(tmuxPath, socket, session string) bool {
+	return exec.Command(tmuxPath, "-L", socket, "has-session", "-t", session).Run() == nil
 }
 
 // waitSessionUp blocks until the named session answers has-session on the
-// socket, or fails after a saturation-sized deadline. psmux verbs are async, so
+// socket, or fails after a saturation-sized deadline. tmux verbs are async, so
 // a just-issued up may not have registered its session on the first probe.
-func waitSessionUp(t *testing.T, psmuxPath, socket, session string) {
+func waitSessionUp(t *testing.T, tmuxPath, socket, session string) {
 	t.Helper()
 	const timeout = 60 * time.Second
 	deadline := time.Now().Add(timeout)
 	for {
-		if sessionAlive(psmuxPath, socket, session) {
+		if sessionAlive(tmuxPath, socket, session) {
 			return
 		}
 		if time.Now().After(deadline) {
@@ -791,14 +791,14 @@ func paneLiveOnSession(lines []string, paneID string) bool {
 }
 
 // paneRootPID returns a pane's root process id (#{pane_pid}) on the socket —
-// the immediate process psmux launched in the pane. For this test's
+// the immediate process tmux launched in the pane. For this test's
 // `pwsh -NoExit` placeholder that root IS the agent process, and it is stable
 // (unlike the pane's transient descendants such as the OS ConPTY conhost),
 // which makes it the reliable OS-level "the agent is alive" signal for the
 // sibling-stability check.
-func paneRootPID(t *testing.T, psmuxPath, socket, session, paneID string) int {
+func paneRootPID(t *testing.T, tmuxPath, socket, session, paneID string) int {
 	t.Helper()
-	out, err := exec.Command(psmuxPath, "-L", socket, "list-panes", "-t", session,
+	out, err := exec.Command(tmuxPath, "-L", socket, "list-panes", "-t", session,
 		"-F", "#{pane_id} #{pane_pid}").Output()
 	if err != nil {
 		t.Fatalf("list-panes #{pane_id} #{pane_pid}: %v", err)
@@ -889,22 +889,22 @@ func waitServerProcCountForSession(t *testing.T, pwshPath, socket, session strin
 // (rather than only its own session) would trip one of these checks on the
 // first or an early iteration, and holding the invariant for the whole window
 // proves down left the sibling genuinely usable — not merely that a stale
-// has-session lingered. Every per-iteration probe here is a fast psmux call
+// has-session lingered. Every per-iteration probe here is a fast tmux call
 // (has-session / list-panes / display-message) or an in-process pid wait; the
 // expensive process-table count that guards against a *duplicate* backing
 // server is checked ONCE by the caller after this returns, so the tight loop
 // never spawns a pwsh-per-iteration and starves concurrent copies under load.
-func assertSiblingStaysLive(t *testing.T, psmuxPath, socket, session, paneID string, wantServerPID, agentPID int, dur time.Duration) {
+func assertSiblingStaysLive(t *testing.T, tmuxPath, socket, session, paneID string, wantServerPID, agentPID int, dur time.Duration) {
 	t.Helper()
 	deadline := time.Now().Add(dur)
 	for {
-		if !sessionAlive(psmuxPath, socket, session) {
+		if !sessionAlive(tmuxPath, socket, session) {
 			t.Fatalf("sibling session %s died after down in the other worktree — down killed the shared-socket server set", session)
 		}
-		if lines := listPaneLines(t, psmuxPath, socket, session); !paneLiveOnSession(lines, paneID) {
+		if lines := listPaneLines(t, tmuxPath, socket, session); !paneLiveOnSession(lines, paneID) {
 			t.Fatalf("sibling pane %s not live after down in the other worktree; panes=%v", paneID, lines)
 		}
-		if pid := serverPID(t, psmuxPath, socket, session); pid != wantServerPID {
+		if pid := serverPID(t, tmuxPath, socket, session); pid != wantServerPID {
 			t.Fatalf("sibling backing-server pid changed to %d (was %d) after down in the other worktree — its server was killed or restarted", pid, wantServerPID)
 		}
 		if processGone(agentPID) {

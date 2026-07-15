@@ -60,8 +60,8 @@ func TestRunCLI_ResolvesLayoutAndConfig(t *testing.T) {
 
 // TestRunCLI_AddNotUp_FriendlyError verifies that running `add` before `up`
 // surfaces the same friendly "no mux session" error Status has always given,
-// rather than a raw psmux error bubbling up from launchStrandLocked's first
-// unguarded psmux call (orch_04 finding #3).
+// rather than a raw tmux error bubbling up from launchStrandLocked's first
+// unguarded tmux call (orch_04 finding #3).
 func TestRunCLI_AddNotUp_FriendlyError(t *testing.T) {
 	fixture := lyxtest.CopyPaired(t)
 	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
@@ -73,7 +73,7 @@ func TestRunCLI_AddNotUp_FriendlyError(t *testing.T) {
 	exitCode := RunCLI(&out, []string{"add", "--cmd", "pwsh -NoExit -Command Write-Host ready"})
 
 	if exitCode != 1 {
-		t.Errorf("RunCLI(add) before up = %d; want 1 (no live psmux session)", exitCode)
+		t.Errorf("RunCLI(add) before up = %d; want 1 (no live tmux session)", exitCode)
 	}
 
 	var env map[string]any
@@ -92,7 +92,7 @@ func TestRunCLI_AddNotUp_FriendlyError(t *testing.T) {
 
 // TestRunCLI_RemoveNotUp_FriendlyError verifies that running `remove` before
 // `up` surfaces the same friendly "no mux session" error, rather than a raw
-// psmux error bubbling up from reconcileApplyPersistLocked's first unguarded
+// tmux error bubbling up from reconcileApplyPersistLocked's first unguarded
 // listPanes call (orch_04 finding #3). The guid is a placeholder — the
 // pre-flight session check must fail before the table is even consulted.
 func TestRunCLI_RemoveNotUp_FriendlyError(t *testing.T) {
@@ -106,7 +106,7 @@ func TestRunCLI_RemoveNotUp_FriendlyError(t *testing.T) {
 	exitCode := RunCLI(&out, []string{"remove", "does-not-exist"})
 
 	if exitCode != 1 {
-		t.Errorf("RunCLI(remove) before up = %d; want 1 (no live psmux session)", exitCode)
+		t.Errorf("RunCLI(remove) before up = %d; want 1 (no live tmux session)", exitCode)
 	}
 
 	var env map[string]any
@@ -158,7 +158,7 @@ func TestRunCLI_StatusNotUp_EnrichedResumeHint(t *testing.T) {
 	exitCode := RunCLI(&out, []string{"status"})
 
 	if exitCode != 1 {
-		t.Errorf("RunCLI(status) before up = %d; want 1 (no live psmux session)", exitCode)
+		t.Errorf("RunCLI(status) before up = %d; want 1 (no live tmux session)", exitCode)
 	}
 
 	var env map[string]any

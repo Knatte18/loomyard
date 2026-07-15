@@ -1,8 +1,8 @@
 // serverlog.go implements server-log concerns: mapping the opt-in debug_log
-// config value to psmux verbose-logging flags, and boot-time pruning of the
+// config value to tmux verbose-logging flags, and boot-time pruning of the
 // per-hub server's log files under the hub's .lyx/logs/. Both are pure
 // planning helpers (no filesystem or process I/O); the caller (lifecycle.go)
-// performs the actual psmux spawn and file removals.
+// performs the actual tmux spawn and file removals.
 
 package muxengine
 
@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-// debugLogArgs maps a validated debug_log config value to the psmux global
+// debugLogArgs maps a validated debug_log config value to the tmux global
 // flags the server-spawning invocation should prepend to its argv. level is
 // trimmed of surrounding whitespace before comparison, so a template-sourced
 // value like " 1 " resolves the same as "1". "0" (or empty after trimming —

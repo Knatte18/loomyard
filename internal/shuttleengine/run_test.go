@@ -447,7 +447,7 @@ func repeatCapture(capture string, n int) []string {
 }
 
 func TestRun_InterruptAndSend_RefuseDeadOrUntrackedStrand(t *testing.T) {
-	// psmux send-keys against a dead or missing pane exits 0 while
+	// tmux send-keys against a dead or missing pane exits 0 while
 	// delivering nothing (proven live), so Interrupt/Send must refuse
 	// before touching the pane rather than report a silent-no-op success.
 	tests := []struct {

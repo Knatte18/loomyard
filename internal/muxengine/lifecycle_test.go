@@ -1,8 +1,8 @@
 // lifecycle_test.go drives the lifecycle ops' planning seams — the parts
-// that decide what would run without needing a live psmux server:
+// that decide what would run without needing a live tmux server:
 // planUpLaunches (Up never launches anything) and planResumeLaunches across
 // the three states the discussion calls out (server dead, server-up/
-// CLI-restarted, a single strand's pane died). Any real-psmux round trip
+// CLI-restarted, a single strand's pane died). Any real-tmux round trip
 // (ensureServerAndSessionLocked, and Up/Resume/Down/Status themselves) is
 // out of hermetic reach and is not exercised here.
 

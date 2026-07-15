@@ -2,7 +2,7 @@
 
 // smoke_round_test.go is burlerengine's opt-in live-integration smoke test:
 // TestSmokeBurlerRoundToyFixture drives one full burler round — A-review then
-// B-fix — against a REAL claude in a REAL psmux pane, over a toy chair/table
+// B-fix — against a REAL claude in a REAL tmux pane, over a toy chair/table
 // color-mismatch fixture. This is the caller wiring the real substrate
 // (muxengine + claudeengine + shuttleengine.Runner) directly, in an external
 // test package, per the Shuttle Provider-Seam Invariant: burlerengine itself
@@ -232,7 +232,7 @@ func distinctColorsMentioned(text string) []string {
 }
 
 // TestSmokeBurlerRoundToyFixture drives one full burler round against a REAL
-// claude in a REAL psmux pane, over a toy fixture whose chair and table
+// claude in a REAL tmux pane, over a toy fixture whose chair and table
 // colors deliberately mismatch: the target is unambiguous on purpose so this
 // test proves the A->B machinery + file contract + verdict parse against a
 // real engine, never review quality. It constructs the real stack directly
