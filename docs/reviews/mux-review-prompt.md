@@ -207,9 +207,9 @@ scenarios M0–M11, driven through the harness. Run it — do not only hand-roll
 - After the session, pull the findings back with `sandbox-fetch.cmd` (stamps the binary
   fingerprint into the fetched `sandbox-report.json` `meta`).
 - The suite's own scenarios already map onto the "High-yield focus" invariants: M8 (kill one
-  pane → resume recreates it), M9 (kill-server → crash-resume rebuilds all), M6 (≥2-top layout
-  tiling), M10 (recursive remove), M11 (down leaves no stray psmux). Walk every one and record
-  OK/WARN/FAIL per the suite's verdict key.
+  pane → resume recreates it), M9 (kill-server → crash-resume rebuilds all), M10 (recursive
+  remove), M11 (down leaves no stray psmux). Walk every one and record OK/WARN/FAIL per the
+  suite's verdict key.
 - NOTE the persona split: SANDBOX-MUX-SUITE.md's black-box rule ("do not read the lyx source
   tree") binds the *agent-under-test* persona, NOT you. As the reviewer you read the source
   AND drive the suite — use the suite's scenarios/harness as your live-driving checklist while
