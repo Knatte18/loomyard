@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-remove-empties-session
 slug: mux-remove-last-pane-error
 branch: mux-remove-last-pane-error
 plan: _mill/plan
@@ -23,6 +23,7 @@ plan-fix-r1  '2026-07-15T07:44:38Z'
 plan-review-r2  '2026-07-15T07:49:07Z'
 planned  '2026-07-15T07:49:19Z'
 implementing  '2026-07-15T07:51:08Z'
+approved-remove-empties-session  '2026-07-15T07:57:28Z'
 ```
 
 ## Batches
@@ -30,7 +31,8 @@ implementing  '2026-07-15T07:51:08Z'
 ```yaml
 batches:
   - name: remove-empties-session
-    state: running
+    state: approved
     implementer_session: a5744a43-13bb-49b2-b1f4-1e1cd87923ca
     start_sha: 6569c7a593490b5ddd2556f980ee5b5899b12a11
+    commit_sha: 7a9aca6b2e4d14ba3a5205ac76e7dd19973cfc33
 ```
