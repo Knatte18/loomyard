@@ -470,11 +470,18 @@ func (e *Engine) RemoveStrand(guid string, recursive bool) (Removed, error) {
 		// Kill the removed strands' panes explicitly rather than relying on
 		// select-layout to reap panes missing from the layout string (a
 		// psmux-only side effect; tmux would reject a mismatched layout
-		// instead). Best-effort: a pane may already be dead or gone, and
-		// killing a session's LAST pane does not remove it — under
-		// remain-on-exit psmux corpses it as pane_dead=1 (exit 0), keeping
-		// the session alive — the reconcile tail below re-enumerates and
-		// re-applies either way, and planPaneTarget never adopts a corpse.
+		// instead). Best-effort: a pane may already be dead or gone. What
+		// killing a session's LAST pane does next is BINARY-DEPENDENT, not
+		// universal: on psmux, remain-on-exit corpses it as pane_dead=1
+		// (exit 0), keeping the session alive; on tmux, killing a session's
+		// true last pane DESTROYS the session (and, if it was the server's
+		// only session, the server exits) — the reconcile tail below then
+		// fails its listPanes call against the now-gone session. RemoveStrand
+		// below handles both outcomes by re-probing hasSession and swallowing
+		// that failure as an expected success only when the session is
+		// confirmed gone (the tmux case); on psmux the reconcile tail simply
+		// re-enumerates and re-applies, and planPaneTarget never adopts a
+		// corpse.
 		for _, id := range paneIDs {
 			_ = e.psmux.run("kill-pane", "-t", id)
 		}
