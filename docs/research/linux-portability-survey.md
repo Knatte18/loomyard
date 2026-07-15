@@ -1,11 +1,21 @@
 # Linux portability survey (kartlegging)
 
+> **Status: ALL FINDINGS RESOLVED (re-verified 2026-07-15).** Every failure this survey
+> documented — B1, B2, B3, all three Category-A tests, and the Category-C perf
+> pathology — currently **passes** on this Linux box (the perf test dropped from ~130s
+> to ~0.02s). This is kept as the historical record of the original investigation, not
+> as an open issue list; nothing below still needs action. The fix work landed across
+> several subsequent tasks (including `mux-psmux-to-tmux-rename` for B3's path-resolution
+> sub-issue); this file was not updated commit-by-commit as each finding closed, so no
+> single commit reference is given per row — the point-in-time re-verification above is
+> what's authoritative now.
+
 Empirical map of what breaks when Loomyard's Go test suite is run on **Linux** for the
 first time. The codebase was written and exercised exclusively on Windows 11; nothing
 here had ever run on Linux before this survey. The trigger was the *"run the full
-benchmark suite on Linux, mark OS in results"* task — which is **blocked** until the
-suite is green on Linux, because you cannot record a comparable Linux baseline from a
-red suite. This file is that blocker, written down.
+benchmark suite on Linux, mark OS in results"* task — which was **blocked** until the
+suite went green on Linux, because you cannot record a comparable Linux baseline from a
+red suite. This file was that blocker, written down.
 
 All claims below are hands-on, verified on this box unless marked **UNVERIFIED**.
 
@@ -37,15 +47,15 @@ not AV overhead.
 
 ## Failure summary
 
-| Tier | Package | Failing test(s) | Category |
-|------|---------|-----------------|----------|
-| 1+2 | `internal/shuttleengine/claudeengine` | 5× `TestPrepare_*` | **B1 — prod bug (critical)** |
-| 1+2 | `internal/muxengine` | `TestLoadConfig_TemplateDefaultsResolve` | A — Windows-only test assertion |
-| 1+2 | `internal/shuttleengine` | `TestRunDirRoot_AbsoluteUsedVerbatim`, `TestSpec_Validate_AbsoluteOutputFilesPassThroughVerbatim` | A — Windows-only test assertion |
-| 2 | `internal/warpengine` | `TestStatus_LyxPollutionDetected` | **B2 — junction≠symlink (deep)** |
-| 2 | `internal/warpengine` | `TestPrune_DoubleRemovalFailureNoStderrLeak` | A — Windows-FS-semantics test |
-| 2 | `internal/muxcli` | `TestRunCLI_AddNotUp_FriendlyError`, `TestRunCLI_RemoveNotUp_FriendlyError` | B3 — env + robustness |
-| 1 | `internal/boardengine/boardtest` | `TestConcurrentReadsDuringUpserts` (**passes**, but **130 s**) | **C — perf pathology** |
+| Tier | Package | Failing test(s) (at survey time) | Category | Status (2026-07-15) |
+|------|---------|-----------------|----------|----------|
+| 1+2 | `internal/shuttleengine/claudeengine` | 5× `TestPrepare_*` | **B1 — prod bug (critical)** | ✅ FIXED — passes |
+| 1+2 | `internal/muxengine` | `TestLoadConfig_TemplateDefaultsResolve` | A — Windows-only test assertion | ✅ FIXED — passes |
+| 1+2 | `internal/shuttleengine` | `TestRunDirRoot_AbsoluteUsedVerbatim`, `TestSpec_Validate_AbsoluteOutputFilesPassThroughVerbatim` | A — Windows-only test assertion | ✅ FIXED — passes |
+| 2 | `internal/warpengine` | `TestStatus_LyxPollutionDetected` | **B2 — junction≠symlink (deep)** | ✅ FIXED — passes |
+| 2 | `internal/warpengine` | `TestPrune_DoubleRemovalFailureNoStderrLeak` | A — Windows-FS-semantics test | ✅ FIXED — passes |
+| 2 | `internal/muxcli` | `TestRunCLI_AddNotUp_FriendlyError`, `TestRunCLI_RemoveNotUp_FriendlyError` | B3 — env + robustness | ✅ FIXED — passes |
+| 1 | `internal/boardengine/boardtest` | `TestConcurrentReadsDuringUpserts` (**passes**, but **130 s**) | **C — perf pathology** | ✅ FIXED — 0.02s |
 
 Tier 2 is a superset of Tier 1, so it re-hits the three Tier-1 packages and adds
 `warpengine` + `muxcli`. Nothing in `internal/warpengine`'s real-git worktree/junction
@@ -54,7 +64,7 @@ weft/host topology fine on Linux.
 
 ## Category B — production Windows assumptions (real Linux bugs)
 
-### B1 (CRITICAL) — the Claude engine cannot `Prepare()` on Linux
+### B1 (CRITICAL, RESOLVED) — the Claude engine cannot `Prepare()` on Linux
 
 `internal/shuttleengine/claudeengine/claudeengine.go:109`
 
@@ -84,7 +94,7 @@ the path is already what the native shell/hook wants. Guard the conversion by GO
 `PosixPath` a pass-through for already-absolute POSIX paths). Only call site is this one —
 narrow blast radius.
 
-### B2 (DEEP) — `_lyx` junction vs symlink: git refuses pathspecs "beyond a symbolic link"
+### B2 (DEEP, RESOLVED) — `_lyx` junction vs symlink: git refuses pathspecs "beyond a symbolic link"
 
 `internal/warpengine` — `TestStatus_LyxPollutionDetected`:
 
@@ -107,7 +117,7 @@ real dirs; (c) confining the affected operations. This is the one finding that t
 `CONSTRAINTS.md` invariant (Hub Geometry / fslink) and deserves its own task and
 discussion. It is **not** in scope for "record benchmark numbers."
 
-### B3 — mux multiplexer binary: raw exec error + path resolution
+### B3 (RESOLVED) — mux multiplexer binary: raw exec error + path resolution
 
 `internal/muxcli` — `TestRunCLI_AddNotUp_FriendlyError` / `RemoveNotUp`:
 
@@ -129,7 +139,7 @@ Two sub-issues (now addressed by the `mux-psmux-to-tmux-rename` task):
 **Direction (CLOSED):** the hardcoded-path problem is resolved by genericizing examples to
 use PATH-resolved binary names and documenting env-var overrides.
 
-## Category A — Windows-only test assertions (test-level; no prod impact)
+## Category A (RESOLVED) — Windows-only test assertions (test-level; no prod impact)
 
 These are tests that bake Windows path/FS semantics into their expectations. Production
 code is fine; the *tests* are non-portable and should be made OS-aware or POSIX-tagged.
@@ -152,7 +162,7 @@ code is fine; the *tests* are non-portable and should be made OS-aware or POSIX-
   Windows-specific; the test needs a Linux-appropriate "make removal fail" mechanism
   (e.g. a read-only parent dir) or a `//go:build windows` guard with a POSIX analogue.
 
-## Category C — performance pathology (blocks a meaningful Tier 1 Linux baseline)
+## Category C (RESOLVED) — performance pathology (blocks a meaningful Tier 1 Linux baseline)
 
 **`internal/boardengine/boardtest` `TestConcurrentReadsDuringUpserts`: ~130 s on Linux vs
 0.45 s on Windows** (~290×). It *passes*, but single-handedly dominates the Tier 1
