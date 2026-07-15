@@ -148,7 +148,6 @@ func TestNeedsLaunchOnAdd(t *testing.T) {
 	}{
 		{"Hidden_NoLaunch", render.AnchorHidden, false},
 		{"BelowParent_Launches", render.AnchorBelowParent, true},
-		{"Top_Launches", render.AnchorTop, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -305,7 +304,7 @@ func TestRemovalEmptiedSession(t *testing.T) {
 			name: "SessionGone_OneRemainingNonHidden_False",
 			remaining: []Strand{
 				{GUID: "a", Display: render.Display{Anchor: render.AnchorHidden}},
-				{GUID: "b", Display: render.Display{Anchor: render.AnchorTop}},
+				{GUID: "b", Display: render.Display{Anchor: render.AnchorBelowParent}},
 			},
 			sessionGone: true,
 			want:        false,
