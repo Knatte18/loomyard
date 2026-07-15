@@ -325,8 +325,12 @@ These were consciously deferred last time; decide whether any now warrants fixin
   `collapsed_strip_rows` — cosmetic; maybe a code/doc note).
 - `.lyx`/config anchored at `Cwd` not `WorktreeRoot` (running from a worktree SUBDIR gives a
   misleading "not initialized" error; a consistent fix belongs at the `hubgeometry` level).
-- Dead/spec-inherited surfaces: `PsmuxCmd.windowSize`, `PsmuxCmd.paneIDsTopToBottom`,
-  `Config.Claude`, `MuxState.StrippedEnv` (always serialized `null`) — delete or wire up.
+- Dead/spec-inherited surfaces — **re-verify this whole bullet, it's stale**: `TmuxCmd.windowSize`
+  and `TmuxCmd.paneIDsTopToBottom` no longer exist in the codebase at all (already removed at some
+  point, this list was never updated), and `MuxState.StrippedEnv` is actively populated
+  (`lifecycle.go` writes to it in the env-hygiene path) — the "always serialized null" claim is
+  demonstrably false today. Confirm what (if anything) in this bullet still applies before acting
+  on it; do not trust it as-is.
 
 ## Fixing — after the review
 - Load the code-quality guidance (`/code-quality` skill or `mill:code-quality`) before editing.
