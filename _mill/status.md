@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-review-r2
+phase: planned
 slug: mux-remove-last-pane-error
 branch: mux-remove-last-pane-error
 plan: _mill/plan
@@ -21,4 +21,5 @@ planning  '2026-07-15T07:33:28Z'
 plan-review-r1  '2026-07-15T07:44:38Z'
 plan-fix-r1  '2026-07-15T07:44:38Z'
 plan-review-r2  '2026-07-15T07:49:07Z'
+planned  '2026-07-15T07:49:19Z'
 ```
