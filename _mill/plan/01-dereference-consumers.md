@@ -29,32 +29,39 @@ does not change what those tests prove.
 
 ## Cards
 
-### Card 1: strip top-band cases from render's own tests
+### Card 1: strip top-band cases from render's rules tests
 
 - **Context:**
   - `internal/muxengine/render/rules.go`
   - `internal/muxengine/render/policy.go`
   - `internal/muxengine/render/types.go`
   - `internal/muxengine/render/height.go`
+  - `internal/muxengine/render/height_test.go`
 - **Edits:**
   - `internal/muxengine/render/rules_test.go`
-  - `internal/muxengine/render/policy_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Delete every test case that exercises `render.AnchorTop` or
-  `render.Display.TopBandRows` from both files: in `rules_test.go` remove all top-band golden
-  cases in `TestRulesGolden` (top-band placement, the `>=2 top / 0 stack` last-band stretch,
-  every top+stack mix) and the per-strand `Display.TopBandRows` override cases; in
-  `policy_test.go` remove the `partitionByAnchor` cases that assert the top partition. After
-  this card **no `render.AnchorTop` or `TopBandRows` reference may remain in either file** (so
-  batch 2 can delete the symbols). Keep — and if absent, add — a `TestRulesGolden` (or sibling)
-  case proving the loom shape at the `Rules` level: (a) a single lone `below-parent` strand
-  fills the full box; (b) a `below-parent` root parent + one child collapses the parent to
-  `CollapsedStripRows` with the child taking the remainder. Case (a) is the childless-full-height
-  behavior the task explicitly endorses (discussion Decision `childless-full-height-is-acceptable`);
-  `height_test.go`'s `TestStackHeightsActiveStrictlyTallestWithSingleAncestor` already covers the
-  height-layer form of (b) — do not duplicate it, only ensure the `Rules`-level golden exists.
+- **Requirements:** In `rules_test.go`, remove all top-band cases that exercise
+  `render.AnchorTop` or `render.Display.TopBandRows`: the top-band golden cases in
+  `TestRulesGolden` (top-band placement, the `>=2 top / 0 stack` last-band stretch, every
+  top+stack mix) and the per-strand `Display.TopBandRows` override cases. **Do not delete** the
+  paneOrder tests (`TestRulesPaneOrderResequencesCellsToPhysicalOrder` and
+  `TestRulesPaneOrderUnknownIDsKeepIntendedTailOrder`) even though they are built on
+  `AnchorTop` fixtures — `resequenceByPaneOrder` is retained unchanged by batch 2 card 11, so
+  re-express both against a `below-parent` parent+child stack with an inverted `paneOrder`
+  (preserving the same positional-reorder and unknown-id-tail assertions) rather than losing
+  the coverage. After this card **no `render.AnchorTop` or `TopBandRows` reference may remain in
+  `rules_test.go`** (so batch 2 can delete the symbols). Keep — and if absent, add — a
+  `TestRulesGolden` (or sibling) case proving the loom shape at the `Rules` level: (a) a single
+  lone `below-parent` strand fills the full box; (b) a `below-parent` root parent + one child
+  collapses the parent to `CollapsedStripRows` with the child taking the remainder. Case (a) is
+  the childless-full-height behavior the task explicitly endorses (discussion Decision
+  `childless-full-height-is-acceptable`); `height_test.go`'s
+  `TestStackHeightsActiveStrictlyTallestWithSingleAncestor` already covers the height-layer form
+  of (b) — do not duplicate it, only ensure the `Rules`-level golden exists. `policy_test.go` is
+  **not** touched here — its `partitionByAnchor` two-return call sites are migrated in batch 2
+  card 10 alongside the signature change, so it must keep compiling unedited through this batch.
 - **Commit:** `test(render): drop anchor:top golden and override cases`
 
 ### Card 2: swap incidental AnchorTop fixtures in engine tests
@@ -136,8 +143,9 @@ does not change what those tests prove.
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** In `config_test.go`, remove the `cfg.TopBandRows != 3` assertion block
-  (lines 70-71) — do not replace it; the remaining `collapsed_strip_rows`/`min_full_rows`
-  assertions still prove config loading. In `lock_test.go`, remove the `TopBandRows: 3,` entry
+  (lines 70-72, i.e. the `if` line, the `t.Errorf` line, and the closing brace) — do not
+  replace it; the remaining `collapsed_strip_rows`/`min_full_rows` assertions still prove config
+  loading. In `lock_test.go`, remove the `TopBandRows: 3,` entry
   from its config/Params literal (line 36). After this card neither file references
   `TopBandRows`.
 - **Commit:** `test(muxengine): drop TopBandRows assertions from config and lock tests`

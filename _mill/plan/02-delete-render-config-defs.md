@@ -59,6 +59,7 @@ empty-`PaneID` filter, `height.go`, `focus.go`, and the mechanics layer (`layout
   - `internal/muxengine/render/height.go`
 - **Edits:**
   - `internal/muxengine/render/policy.go`
+  - `internal/muxengine/render/policy_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -67,7 +68,15 @@ empty-`PaneID` filter, `height.go`, `focus.go`, and the mechanics layer (`layout
   || !Live || PaneID == ""`) and the `AnchorOwnWindow`/default no-op arm. Update the function's
   and file's doc comments to remove "the fixed top-band set" language and describe a single
   stack partition. `breakCycles`, `orderStack`, `chainDepth`, `severParent` are unchanged.
-  Coordinate the new signature with card 11's `Rules` call site.
+  Coordinate the new signature with card 11's `Rules` call site. In `policy_test.go`, migrate
+  `TestPartitionByAnchor` to the single-return signature (`stack := partitionByAnchor(...)` at
+  the call sites currently written as `top, stack := ...`): remove the top-partition assertion
+  cases entirely and keep the exclusion-filter (non-live / empty-`PaneID` / `AnchorHidden`) and
+  `AnchorOwnWindow`-excluded cases, asserting only the returned stack. After this card
+  `policy_test.go` carries no `render.AnchorTop` reference and calls the new one-value signature.
+  This file is edited only in this batch — batch 1 leaves it compiling against the old two-value
+  signature, so the signature change and its test migration land together here (per the
+  round-1 review BLOCKING fix).
 - **Commit:** `refactor(render): partitionByAnchor returns only the below-parent stack`
 
 ### Card 11: strip the top-band placement block from Rules

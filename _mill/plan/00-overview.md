@@ -58,8 +58,14 @@ batches:
 - **Rationale:** mill's per-batch green-build invariant forbids deleting `render.AnchorTop` in
   one batch while another still references it. The two code batches touch **disjoint file
   sets** (verified: batch 1 edits only consumers/tests + `add.go`/`strand.go`/`apply.go`;
-  batch 2 edits only `render/{types,policy,rules}.go` + `config.go` + `template.go` + the two
-  template yamls), so no file is edited by both — each batch compiles and tests green on its own.
+  batch 2 edits only `render/{types,policy,rules}.go` + `render/policy_test.go` + `config.go` +
+  `template.go` + the two template yamls), so no file is edited by both — each batch compiles
+  and tests green on its own. `render/policy_test.go` belongs to **batch 2** specifically:
+  `partitionByAnchor`'s two-return→one-return signature change (batch 2 card 10) and that test's
+  call-site migration must land together, so batch 1 leaves the file compiling unedited against
+  the old signature (round-1 review BLOCKING fix). `rules_test.go` stays a batch-1 file because
+  `Rules`' signature is unchanged — only its internal logic changes in batch 2, so the batch-1
+  goldens keep compiling.
 - **Applies to:** dereference-consumers, delete-render-config-defs
 
 ### Decision: user-facing strings sweep with their own file's code edits
