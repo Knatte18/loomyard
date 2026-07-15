@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-fix-r1
+phase: discussed
 slug: mux-anchor-top-redesign
 branch: mux-anchor-top-redesign
 plan: null
@@ -16,4 +16,5 @@ task_description: |
 ```text
 discussing  '2026-07-15T08:32:57Z'
 discussion-fix-r1  '2026-07-15T09:00:58Z'
+discussed  '2026-07-15T09:01:13Z'
 ```
