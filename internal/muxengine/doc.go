@@ -45,11 +45,11 @@
 // Subcommand set: the engine's correctness depends on new-session,
 // has-session, split-window, select-layout, select-pane, send-keys,
 // capture-pane, list-panes, list-sessions, display-message,
-// set-option -g remain-on-exit, kill-pane, kill-session, and kill-server all
-// behaving per tmux's own documented semantics for each. The engine may also
-// pass the standard tmux -v/-vv verbose-logging global flags on the
-// server-spawning invocation, opt-in via the debug_log config key; the
-// configured binary must accept them.
+// set-option -g remain-on-exit, set-option -g mouse, kill-pane,
+// kill-session, and kill-server all behaving per tmux's own documented
+// semantics for each. The engine may also pass the standard tmux -v/-vv
+// verbose-logging global flags on the server-spawning invocation, opt-in
+// via the debug_log config key; the configured binary must accept them.
 //
 // Load-bearing behavioral assumptions, each with the rationale that makes it
 // load-bearing:
@@ -113,4 +113,11 @@
 //     asynchronously", since both exit 0 either way — so Down/reap logic
 //     waits on the underlying OS process actually exiting rather than
 //     trusting any CLI exit code as a death signal.
+//   - Mouse boot pin (lifecycle.go): the engine pins "-g mouse" to the
+//     configured mouse value (default "off") on a fresh boot, right
+//     alongside remain-on-exit. Like remain-on-exit and debug_log, this is
+//     applied only on the boot that spawns the session, so toggling mouse in
+//     config or LYX_MUX_MOUSE on an already-running hub has no effect until
+//     the mux server restarts. "off" preserves native terminal text
+//     selection/copy; "on" enables click-to-switch-pane.
 package muxengine

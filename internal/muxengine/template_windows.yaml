@@ -7,3 +7,4 @@ top_band_rows: 3  # fixed height reserved for each anchor:top strand; 3 rows kee
 min_full_rows: 3  # floor height the clamp rule tries to preserve for a full pane
 strand_name: '<ROLE>:<ROUND>:<SHORT_GUID>'  # template for a strand's display name; unfilled tokens resolve to ""
 debug_log: ${env:LYX_MUX_DEBUG:-0}  # opt-in tmux/psmux server verbose logging (0 off, 1 -v, 2 -vv); takes effect only on the boot that spawns the shared per-hub server; existing hubs must run "lyx config reconcile" to adopt this key
+mouse: ${env:LYX_MUX_MOUSE:-off}  # tmux/psmux mouse-mode default (on/off; off preserves native terminal text selection/copy; set on for click-to-switch-pane; takes effect on a fresh mux server boot only — a live toggle needs a server restart)
