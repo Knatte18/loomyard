@@ -9,11 +9,21 @@ several times as it evolved (most recently `mux-anchor-top-redesign`, done) and 
 ## Your two jobs, in order
 1. REVIEW: form your own independent judgment of mux's scope and correctness. Hunt for bugs by
    reading the code AND by driving real tmux (native tmux on Linux/macOS, psmux on Windows —
-   whichever this machine runs; this is where mux's defects hide).
-2. FIX: after you have a findings list, implement the fixes, verify each against real tmux,
-   keep the whole test suite green, and update the docs in the same change. Do NOT commit or
-   push unless the user explicitly tells you to — leave the changes in the working tree and
-   report them.
+   whichever this machine runs; this is where mux's defects hide). **Write your findings to
+   `.scratch/mux-review-<yourtag>.md` — completely, on disk — BEFORE you touch any production
+   or test file.** This is `CONSTRAINTS.md`'s Review Round Invariant (A-before-B), not a
+   stylistic preference: if you find a bug mid-live-driving, WRITE IT DOWN as a finding and
+   KEEP DRIVING — do not stop to fix it in the moment, even if the fix is obvious and one line.
+   The review file existing on disk, with every finding you intend to act on already in it, is
+   what makes Job B a response to an independent judgment instead of a post-hoc rationalization
+   of edits you already made. A round that discovers a bug live and fixes it immediately, only
+   writing the review report afterward, HAS VIOLATED this invariant even if the fix is correct
+   and even if the finding was genuinely self-discovered — the written record is what proves
+   the independence, not your memory of how it happened.
+2. FIX: only after the review file above exists on disk with your complete findings list,
+   implement the fixes, verify each against real tmux, keep the whole test suite green, and
+   update the docs in the same change. Do NOT commit or push unless the user explicitly tells
+   you to — leave the changes in the working tree and report them.
 
 ## Clean-room review constraint (do this part unprimed)
 Form your OWN findings first. Do NOT read any prior review or review-dialogue files before you
@@ -171,42 +181,64 @@ Claude Code hooks (Stop/SessionStart/PreToolUse, marker/idle detection, resume-c
 construction) belong to `shuttle`, not mux. Their absence is correct — do not flag it. mux is a
 dumb carrier: it runs opaque command strings and its only liveness signal is generic `pane-died`.
 
-## Round context — HARDENING PASS after four back-to-back mux changes
+## Round context — R2 (Opus), after R1 (Fable, self-tagged `sonnet-r1`) closed two real defects
 mux already merged into `main` long ago (the `internal-mux` build-out and its R3–R6 review
 rounds referenced in old `.scratch/mux-review-*` files are historical — that work is done and
-should not be re-litigated by number). What's current: four separate, individually-reviewed
-changes landed on `mux` in quick succession in the same working session, each scoped and tested
-on its own but never exercised TOGETHER under one adversarial pass:
+should not be re-litigated by number). The immediate context for THIS campaign: four separate,
+individually-reviewed changes (`mux-server-crash`, `mux-mouse-default`,
+`mux-remove-last-pane-error`, `mux-anchor-top-redesign` — see the High-yield-focus bullets above
+for what each touches) landed in quick succession, each scoped and tested on its own but never
+exercised TOGETHER — that is what this hardening campaign as a whole exists to close.
 
-1. **`mux-server-crash`** (done) — added opt-in `debug_log`/`LYX_MUX_DEBUG` server-verbose-logging
-   (routed to `<hub>/.lyx/logs/`, pruned to the newest 3), and the `lyx mux resume` hint on a
-   dead-server error when strands are persisted. The whole-server-crash mechanism ITSELF that
-   prompted this work was never actually root-caused — it happened twice, was never reproduced
-   again even under heavy deliberate stress-testing with full signal tracing, and remains an open
-   question. This logging exists so a future recurrence finally leaves a forensic trail; it is not
-   a fix for a known cause.
-2. **`mux-mouse-default`** (done) — added the `mouse`/`LYX_MUX_MOUSE` config key (default `off`),
-   pinned explicitly at boot in both directions.
-3. **`mux-remove-last-pane-error`** (done) — fixed `lyx mux remove` on a session's true last live
-   strand returning a hard error despite the removal succeeding; the swallow is keyed off a
-   `hasSession` re-probe (an observed fact), not a repeat of the wrong assumption that caused the
-   bug (that killing a session's last pane always leaves a `pane_dead=1` corpse — false on tmux).
-4. **`mux-anchor-top-redesign`** (done) — removed `anchor:top`/`TopBandRows`/`top_band_rows`
-   entirely; `--anchor` now only accepts `below-parent`/`hidden`. `below-parent` +
-   `ShrinkWhenWaitingOnChild` (already the default) is now the only "ancestor above descendant"
-   mechanism — see the new High-yield-focus bullet above for what to verify here specifically.
-   This was the largest of the four: ~24 files touched across `render/`, `muxcli/`, docs, and the
-   sandbox suite (M6 retired, M18 added).
+CLOSED-AND-VERIFIED by R1 — do not re-litigate, but DO check for regressions (commits are on
+this branch, `cluster-fork-spike`):
+- **F1** (MEDIUM): `tmux-client-*.log` grew unbounded under `debug_log`. tmux's `-v`/`-vv` are
+  GLOBAL flags on a boot invocation that is simultaneously a client and, once forked, the server
+  — so a debug-armed boot writes BOTH `tmux-server-*.log` AND `tmux-client-*.log`, but pruning
+  only matched the server prefix. Fixed in `internal/muxengine/lifecycle.go` (commit `0570b620`)
+  — both filename shapes now pruned independently to the same newest-3 policy. Never caught by
+  the original `mux-server-crash` batch because that work was developed/reviewed against psmux
+  on Windows, which does not write a client-side log.
+- **F2** (LOW): `TestSmokeRemoveLastStrandThenAddRunsTheNewCommand`'s corpse-pane-adoption
+  premise is psmux-specific (its own doc comment already said so) but the test was not actually
+  skipped on other backends and hard-failed on native tmux. Fixed with a `runtime.GOOS` skip
+  guard (commit `ec5409c2`).
+- The orchestrator independently re-verified both (not just R1's self-report): build/vet green,
+  hermetic `-count=5` green, serial smoke — the only remaining failures (attach's pwsh-syntax
+  assumption, claude-resume's nested-session transcript issue, two hardcoded-`pwsh.exe`
+  reap-tree tests, and one sibling-worktree teardown test) were confirmed PRE-EXISTING on the
+  pre-R1 baseline too (orchestrator stashed R1's diff and re-ran the identical suite to confirm)
+  — R1 introduced zero regressions. 3× concurrent smoke clean, zero stray tmux throughout.
 
-Each change has its own discussion.md / plan / review trail and shipped with passing tests
-(hermetic + integration where applicable) — do not re-litigate any single change's own recorded
-decisions from scratch. **Your job is different: hunt for INTERACTION effects between the four**
-— e.g. does `debug_log`'s boot-time argv construction still compose correctly now that the
-`anchor:top` removal touched `add.go`'s flag set? Does the `mouse` `set-option` call and the
-`remove`-emptied-session `hasSession` re-probe ever race or interfere on the same boot/teardown
-path? Does a below-parent mother/child pair (M18's new pattern) behave correctly under
-`debug_log`-instrumented crash-resume? None of these combinations were tested together before
-now — that gap, not any single change in isolation, is what this pass exists to close.
+UNCONFIRMED — worth a second, harder attempt this round: mid-way through a long cross-worktree
+churn sequence (mother/child stack → hidden strand → a recursive remove that emptied and
+re-booted the session → single-pane kill+resume → a full `kill-server` crash-resume cycle → THEN
+a sibling worktree boot), R1 hit ONE observation where `lyx mux down` on worktree A returned
+`{"ok":true}` while an immediate follow-up `tmux -L <socket> has-session -t <A>` still reported
+the session alive, with sibling worktree B correctly still alive. R1 carefully rebuilt the exact
+same sequence afterward and could NOT reproduce it; it suspects transient background system load
+(R1 had its own concurrent tool invocations running at the time, one of which was forcibly killed
+mid-run by the permission system) rather than a real defect, and reported it PLAUSIBLE-but-
+UNCONFIRMED per the CONFIRMED/PLAUSIBLE discipline rather than filing a speculative fix. Full
+narrative: `.scratch/mux-review-sonnet-r1.md`'s "Investigated, not reproduced" section (read it
+only AFTER your own independent pass, per the clean-room constraint above). If you can reproduce
+this — especially under genuine system load with a similarly long operation chain, not a quiet
+isolated attempt — that is a real, high-value finding: `down` reporting success without actually
+killing the session is exactly the class of bug the REPORTING HONESTY invariant exists to catch.
+If you cannot reproduce it either after a serious attempt, that is itself useful convergence
+signal — say so explicitly rather than silently dropping it a second time.
+
+PROCESS NOTE (do not repeat this — read it, then follow "Your two jobs" above exactly): R1
+formed its two findings independently in the moment — both were self-discovered via its own
+live-driving, not read from a prior report — but fixed each one immediately upon discovery,
+writing the review report to disk only at the very end. That is a real violation of
+`CONSTRAINTS.md`'s Review Round Invariant (A-before-B), which R1 caught in itself mid-round and
+disclosed honestly rather than hiding. The operator accepted R1's result as-is — the fixes are
+independently verified correct, and redoing the round would only fix the paperwork ordering, not
+the outcome — but "Your two jobs" above has since been tightened with an explicit,
+unambiguous instruction on exactly this point. Follow it to the letter this round: write EVERY
+finding to `.scratch/mux-review-opus-r2.md` before touching any production or test file, full
+stop, even if the fix is one line and you spotted the bug three tool-calls ago.
 
 Non-blocking items carried forward from the ORIGINAL `internal-mux` build-out, never revisited
 since (treat as unverified, not as settled — confirm or refute rather than assuming either way):
@@ -222,18 +254,20 @@ since (treat as unverified, not as settled — confirm or refute rather than ass
 
 YOUR JOB this round:
 - Do a genuinely INDEPENDENT clean-room pass (form + WRITE your own findings before reading prior
-  `.scratch/mux-review-*` reports). Adversarially live-drive the real multiplexer (native tmux
-  on Linux/macOS, psmux on Windows — whichever this machine runs) for anything the four individual change-reviews missed,
-  with special weight on the INTERACTION hunting described
-  above — new edge cases, races, error paths, resume/crash-rebirth corners, cross-worktree
-  behavior, and every combination of `debug_log` × `mouse` × the remove-fix × the anchor:top
-  removal you can construct.
-- If you find a REAL defect, fix it with tests + doc updates in the same change. If you do NOT,
-  say so explicitly and give an honest hardening verdict — "no new defects, the four changes
-  compose cleanly" is a valid and valuable outcome. Do not invent work to look busy.
+  `.scratch/mux-review-*` reports — including R1's). Adversarially live-drive the real
+  multiplexer (native tmux on Linux/macOS, psmux on Windows — whichever this machine runs),
+  continuing the INTERACTION-hunting mandate (debug_log × mouse × the remove-fix × the
+  anchor:top removal, in every combination you can construct) plus a serious attempt at
+  reproducing the UNCONFIRMED anomaly above under real system load.
+- If you find a REAL defect, fix it with tests + doc updates in the same change (A-before-B —
+  see the PROCESS NOTE above). If you do NOT, say so explicitly and give an honest hardening
+  verdict — "no new defects, R1's fixes hold, the anomaly still does not reproduce" is a valid
+  and valuable outcome, and may be the safety pass that closes this campaign. Do not invent work
+  to look busy.
 - VERIFY with the usual discipline: build/vet; hermetic `-count=5`; the integration suite
-  (`-tags integration`, real tmux); full serial smoke; live sandbox driving (M0–M18, current
-  numbering) on the freshly re-deployed binary. Report a hardening verdict explicitly.
+  (`-tags integration`, real tmux); full serial smoke; live hand-rolled driving (M0–M18 as a
+  checklist, current numbering) on your own freshly rebuilt binary. Report a hardening verdict
+  explicitly.
 
 ## What to TEST — do not just read, EXERCISE it
 Report the exact commands you ran and what you observed.
