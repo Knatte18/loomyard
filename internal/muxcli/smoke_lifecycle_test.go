@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"os/exec"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -161,6 +162,21 @@ func TestSmokeStackedAddsKeepEverySessionPane(t *testing.T) {
 // emptied-session swallow (strand.go) for how that backend is handled.
 func TestSmokeRemoveLastStrandThenAddRunsTheNewCommand(t *testing.T) {
 	tmuxBinaryPath(t)
+
+	// This test's whole premise — kill-pane on a session's sole pane corpses
+	// it (pane_dead=1, exit 0) rather than destroying the session — is
+	// PSMUX-SPECIFIC (see the doc comment above): on native tmux, killing a
+	// session's true last pane destroys the session outright, so the remove
+	// call below never reaches an "adopt a corpse or not" decision at all —
+	// there is nothing left to adopt, correctly, by design (see
+	// muxengine.RemoveStrand's emptied-session swallow in strand.go). Skip
+	// rather than hard-fail a scenario this backend cannot reach; the
+	// emptied-session path itself is covered by
+	// TestRemoveStrand_SoleStrandEmptiesSessionSucceeds
+	// (contract_integration_test.go).
+	if runtime.GOOS != "windows" {
+		t.Skip("corpse-pane-adoption premise is PSMUX-SPECIFIC; on native tmux, removing a session's sole strand destroys the session instead of corpsing its pane, so this scenario cannot occur here (see TestRemoveStrand_SoleStrandEmptiesSessionSucceeds for the tmux-side coverage)")
+	}
 
 	fixture := lyxtest.CopyPaired(t)
 	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
