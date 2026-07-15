@@ -24,7 +24,6 @@ type Config struct {
 	Width              int    `yaml:"width"`
 	Height             int    `yaml:"height"`
 	CollapsedStripRows int    `yaml:"collapsed_strip_rows"`
-	TopBandRows        int    `yaml:"top_band_rows"`
 	MinFullRows        int    `yaml:"min_full_rows"`
 	StrandName         string `yaml:"strand_name"`
 
