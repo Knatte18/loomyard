@@ -6,8 +6,8 @@
 // (smoke_lifecycle_test.go, smoke_teardown_test.go, smoke_resume_test.go,
 // smoke_attach_test.go). Those files drive the composed live-psmux behaviors
 // through RunCLI against a real server — the basic up -> add -> status ->
-// down round-trip, crash recovery, layout survival under mixed top/stack
-// adds, add-after-remove-last, down's synchronous server teardown,
+// down round-trip, crash recovery, layout survival under stacked
+// below-parent adds, add-after-remove-last, down's synchronous server teardown,
 // cross-worktree scope, the interactive attach handover, and native claude
 // --resume codeword recall. These paths are exactly where hermetic tests
 // prove nothing — psmux's real semantics (positional select-layout, silent
