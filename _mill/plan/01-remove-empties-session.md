@@ -5,7 +5,7 @@ task: "lyx mux remove errors when it empties the last session"
 batch: "remove-empties-session"
 number: 1
 cards: 5
-verify: go test -tags integration ./internal/muxengine/
+verify: go test -tags "integration smoke" ./internal/muxengine/ ./internal/muxcli/
 depends-on: []
 ```
 
@@ -77,38 +77,55 @@ deviations.
   `removalEmptiedSession`, never off the `applyErr` string.
 - **Commit:** `fix(muxengine): treat emptied last session as success in RemoveStrand`
 
-### Card 3: Correct the kill-pane comment and doc.go assumptions list
+### Card 3: Correct the last-pane assumption per-binary in comment, doc.go, and the smoke test
 
-- **Context:** none
+- **Context:**
+  - `internal/muxengine/overlay.go`
 - **Edits:**
   - `internal/muxengine/strand.go`
   - `internal/muxengine/doc.go`
+  - `internal/muxcli/smoke_lifecycle_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** (a) In `strand.go`, rewrite the `kill-pane` loop's comment
-  (the block currently asserting "killing a session's LAST pane does not remove
-  it — under remain-on-exit psmux corpses it as pane_dead=1 ... keeping the
-  session alive") so it no longer states that false claim; instead state the
-  corrected tmux behavior (killing a session's true last pane destroys the
-  session) and that `RemoveStrand` now treats an emptied session as an expected
-  success via the `hasSession` re-probe. (b) In `doc.go`, under "Load-bearing
-  behavioral assumptions", refine the existing "Dead-pane adoption via
-  remain-on-exit" bullet (which currently implies the corpse behavior holds
-  universally) and add the corrected assumption: on tmux, killing a session's
-  *true last* pane destroys the session, and if it was the server's only session
-  the server then exits. State the exit-code dependency explicitly:
-  `has-session`/`list-panes` exit **1** for "no server running" (the same exit-1
-  the reproduction showed from `listPanes`), which `hasSession` (`overlay.go`)
-  maps to `(false, nil)` — this is what lets `RemoveStrand`'s re-probe classify
-  the emptied session. Cross-reference the existing "Async kill-server /
-  probe-always-exits-0" bullet and state the contrast: `list-sessions`/
-  `kill-server` exit **0** regardless of server state (cannot distinguish "no
-  server" from "server dying asynchronously"), whereas `has-session`/`list-panes`
-  reliably surface exit 1 for "no server" — which is *why* the fix re-probes with
-  `hasSession` and not `list-sessions`. Note the Windows/psmux last-pane behavior
-  as unverified.
-- **Commit:** `docs(muxengine): correct last-pane remain-on-exit assumption`
+- **Requirements:** The remain-on-exit-corpses-the-last-pane claim is
+  **binary-dependent**, not universally false (see the overview Shared Decision
+  "the last-pane assumption is BINARY-DEPENDENT"). Reconcile all three in-tree
+  encodings so none contradicts another:
+  (a) In `strand.go`, rewrite the `kill-pane` loop's comment (the block
+  currently asserting "killing a session's LAST pane does not remove it — under
+  remain-on-exit psmux corpses it as pane_dead=1 ... keeping the session alive")
+  so it no longer states that claim *universally*. State it per backend: on
+  **tmux** killing a session's true last pane **destroys the session** (and, if
+  it was the server's only session, the server exits); on **psmux** it corpses
+  the pane and the session survives. Then state that `RemoveStrand` handles both
+  via the `hasSession` re-probe — swallowing the resulting `applyErr` as an
+  expected success only when the session is confirmed gone (the tmux case).
+  (b) In `doc.go`, under "Load-bearing behavioral assumptions", refine the
+  existing "Dead-pane adoption via remain-on-exit" bullet (which currently
+  implies the corpse behavior holds universally — scope it to the non-last pane
+  and/or psmux) and add the corrected last-pane assumption as a **per-binary**
+  statement: tmux destroys the last-pane session; psmux corpses it (verified by
+  `internal/muxcli/smoke_lifecycle_test.go`'s
+  `TestSmokeRemoveLastStrandThenAddRunsTheNewCommand`). State the exit-code
+  dependency explicitly: `has-session`/`list-panes` exit **1** for "no server
+  running" (the same exit-1 the reproduction showed from `listPanes`), which
+  `hasSession` (`overlay.go`) maps to `(false, nil)` — this is what lets
+  `RemoveStrand`'s re-probe classify the emptied session on tmux.
+  Cross-reference the existing "Async kill-server / probe-always-exits-0" bullet
+  and state the contrast: `list-sessions`/`kill-server` exit **0** regardless of
+  server state (cannot distinguish "no server" from "server dying
+  asynchronously"), whereas `has-session`/`list-panes` reliably surface exit 1
+  for "no server" — which is *why* the fix re-probes with `hasSession` and not
+  `list-sessions`. Do NOT call psmux last-pane behavior "unverified" — the smoke
+  test verifies it.
+  (c) In `internal/muxcli/smoke_lifecycle_test.go`, add a brief caveat to
+  `TestSmokeRemoveLastStrandThenAddRunsTheNewCommand`'s doc comment noting that
+  its corpse-pane premise is **psmux-specific** and that tmux behaves oppositely
+  (destroys the last-pane session), pointing at `RemoveStrand`'s
+  emptied-session swallow. Do NOT change the test's assertions or build tag —
+  they correctly pin psmux behavior; only the comment is reconciled.
+- **Commit:** `docs(muxengine): document last-pane behavior as binary-dependent`
 
 ### Card 4: Hermetic unit test for removalEmptiedSession
 
@@ -165,21 +182,43 @@ deviations.
   confirm the persisted `MuxState` has zero strands (guards the
   resurrect-on-resume regression). Because pane/session teardown is async, poll
   where needed using the existing `waitUntil` helper rather than asserting once.
+  Coverage note (state this in the test's doc comment): this regression
+  exercises the Card 2 swallow branch **only on last-pane-destroy backends
+  (tmux, the POSIX default per `template_posix.go`)** — there, without the fix,
+  `RemoveStrand` would return the `no server running` error, so a passing test
+  genuinely covers the swallow. On corpse backends (psmux/Windows) the same
+  scenario passes via `RemoveStrand`'s normal path (the session survives), so
+  the swallow is not reached; the pure-helper unit test (Card 4) covers the
+  decision logic on every platform. Do not assert on which internal branch was
+  taken — assert only the observable contract (nil error, zero persisted
+  strands).
 - **Commit:** `test(muxengine): integration regression for removing the last strand`
 
 ## Batch Tests
 
-`verify: go test -tags integration ./internal/muxengine/` compiles and runs the
-whole `muxengine` package test suite **including** the `//go:build integration`
-files. This scope is required (not an over-broad choice): the fix spans a
-hermetic helper (Card 1/4, run by the normal build) and the end-to-end
-regression (Card 5, gated behind the `integration` build tag), so only a
-tags-`integration` package run exercises both in one command. Go's test unit is
-the package, so a single-file scope is not available without brittle `-run`
-filters; running the one affected package is the idiomatic, correctly-scoped
-choice and stays well within the muxengine package (not a repo-wide run). The
-integration test self-skips when the configured multiplexer binary is absent, so
-this command is safe to run repeatedly during mill-go's per-round verify even on
-a box without tmux. Key assertions: Card 4 pins the four-way classification of
-`removalEmptiedSession`; Card 5 pins that `RemoveStrand` of the sole non-hidden
-strand returns success and leaves a zero-strand `mux.json`.
+`verify: go test -tags "integration smoke" ./internal/muxengine/ ./internal/muxcli/`
+compiles and runs both affected packages with **both** build tags. This scope is
+required, not over-broad, because the batch touches files behind two different
+build tags in two packages:
+- `./internal/muxengine/` with `-tags integration` covers the hermetic helper
+  test (Card 4, normal build) and the end-to-end regression (Card 5, behind
+  `//go:build integration`).
+- `./internal/muxcli/` with `-tags smoke` compiles the smoke test whose comment
+  Card 3 edits (`smoke_lifecycle_test.go`, behind `//go:build smoke`) — without
+  the `smoke` tag and the `muxcli` package on the command line, a break in that
+  edit would never be caught (the original single-package verify could not see
+  it — this closed a review BLOCKING). It is also what surfaces any contradiction
+  the fix would otherwise introduce in the muxcli encoding of the assumption.
+
+Both build-tagged end-to-end tests self-skip when their binary is absent: the
+muxengine integration test skips without `cfg.Psmux` (on this POSIX box that is
+tmux, so it runs and exercises the swallow); the muxcli smoke test skips without
+psmux (absent here, so it compiles but skips). So the command is safe to run
+repeatedly during mill-go's per-round verify. Go's test unit is the package, so
+single-file scoping is not available without brittle `-run` filters; the two
+named packages are the minimal correctly-scoped set (not a repo-wide run).
+
+Key assertions: Card 4 pins the four-way classification of
+`removalEmptiedSession` on every platform; Card 5 pins that `RemoveStrand` of the
+sole non-hidden strand returns success and leaves a zero-strand `mux.json` (and,
+on tmux, genuinely covers the swallow branch — see Card 5's coverage note).

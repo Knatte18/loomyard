@@ -22,7 +22,7 @@ batches:
     name: remove-empties-session
     file: 01-remove-empties-session.md
     depends-on: []
-    verify: go test -tags integration ./internal/muxengine/
+    verify: go test -tags "integration smoke" ./internal/muxengine/ ./internal/muxcli/
 ```
 
 ## Shared Decisions
@@ -86,16 +86,37 @@ subsection per decision. Batch-local decisions live in each batch file._
   psmux call site — out of proportion and against the seam rule.
 - **Applies to:** all batches
 
-### Decision: docs corrected in the same commit; Windows + crash-link are unverified notes
+### Decision: the last-pane assumption is BINARY-DEPENDENT, not universally false
 
-- **Decision:** The false `kill-pane` comment in `strand.go` and the `doc.go`
-  load-bearing-assumptions list are corrected in the same batch. Windows/psmux
-  last-pane behavior and any `mux-server-crash` connection are documented as
-  unverified notes only — not investigated here.
+- **Decision:** The remain-on-exit-corpses-the-last-pane assumption is **not**
+  universally false — it is **binary-dependent**, and the correction must say so
+  per backend, in the same commit:
+  - **tmux** (the reproduction backend; PATH-resolved default on POSIX per
+    `template_posix.go`): killing a session's *true last* pane **destroys the
+    session** (and, if it was the server's only session, the server exits). This
+    is what the bug's `exit status 1: no server running` repro observed.
+  - **psmux** (Windows default): **corpses** the last pane as `pane_dead=1`,
+    keeping the session alive — this is **verified**, not unverified, by the
+    committed smoke test
+    `internal/muxcli/smoke_lifecycle_test.go::TestSmokeRemoveLastStrandThenAddRunsTheNewCommand`
+    (remove of the sole strand returns 0, then a subsequent `add` — which calls
+    `requireSessionLocked` and never re-boots — yields a *live* second strand,
+    which can only hold if the session survived).
+  - The code fix (re-probe `hasSession`; swallow only when the session is
+    *confirmed* gone) is correctly backend-agnostic: on tmux the session is gone
+    so the swallow fires; on psmux the session survives, `reconcileApplyPersistLocked`
+    succeeds, and the swallow is never consulted. Only the *docs/comment framing*
+    was wrong (declaring the corpse claim universally false and calling psmux
+    "unverified"); the correction states both behaviors explicitly and reconciles
+    all three in-tree encodings of the claim (`strand.go` comment, `doc.go`
+    assumptions list, and the smoke test's comment).
+  - The `mux-server-crash` connection remains an unverified note only — a
+    separate investigation, not opened here.
 - **Rationale:** CLAUDE.md requires docs updated in the same commit as the
   behavior change, and this is exactly the cross-platform assumption `doc.go`'s
-  list exists to track. Windows verification needs hardware not available; the
-  crash link is a separate investigation.
+  list exists to track. A committed, authoritative smoke test already pins the
+  psmux side, so labeling it "unverified" and the assumption "false" would leave
+  a second contradicting encoding in the tree and mis-state a verified fact.
 - **Applies to:** all batches
 
 ## All Files Touched
@@ -103,6 +124,7 @@ subsection per decision. Batch-local decisions live in each batch file._
 _Full union of every `Creates:` / `Edits:` / `Moves:` **target** path across
 every batch, sorted alphabetically._
 
+- `internal/muxcli/smoke_lifecycle_test.go`
 - `internal/muxengine/contract_integration_test.go`
 - `internal/muxengine/doc.go`
 - `internal/muxengine/strand.go`
