@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-remove-empties-session
+phase: holistic-reviewing
 slug: mux-remove-last-pane-error
 branch: mux-remove-last-pane-error
 plan: _mill/plan
@@ -24,6 +24,7 @@ plan-review-r2  '2026-07-15T07:49:07Z'
 planned  '2026-07-15T07:49:19Z'
 implementing  '2026-07-15T07:51:08Z'
 approved-remove-empties-session  '2026-07-15T07:57:28Z'
+holistic-reviewing  '2026-07-15T07:57:43Z'
 ```
 
 ## Batches
