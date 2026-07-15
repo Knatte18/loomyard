@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-fixing
+phase: holistic-approved
 slug: mux-anchor-top-redesign
 branch: mux-anchor-top-redesign
 plan: _mill/plan
@@ -32,6 +32,8 @@ holistic-reviewing  '2026-07-15T09:52:46Z'
 holistic-fixing  '2026-07-15T09:56:41Z'
 holistic-reviewing  '2026-07-15T10:00:26Z'
 holistic-fixing  '2026-07-15T10:04:47Z'
+nits-fixed-holistic  '2026-07-15T10:06:40Z'
+holistic-approved  '2026-07-15T10:06:47Z'
 ```
 
 ## Batches
