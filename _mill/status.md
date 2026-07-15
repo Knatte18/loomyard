@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: mux-mouse-default
 branch: mux-mouse-default
 plan: _mill/plan
@@ -20,4 +20,13 @@ discussed  '2026-07-15T07:21:45Z'
 planning  '2026-07-15T07:31:36Z'
 plan-fix-r1  '2026-07-15T07:36:44Z'
 planned  '2026-07-15T07:37:18Z'
+implementing  '2026-07-15T07:39:53Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: mouse-default
+    state: pending
 ```
