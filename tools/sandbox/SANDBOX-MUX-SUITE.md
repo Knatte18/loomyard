@@ -92,7 +92,7 @@ zero `WARN`/`FAIL` findings** -- in that case `items` is an empty array.
 
 - `source` is the literal string `"sandbox-report"`.
 - `items[]` holds only `WARN`/`FAIL` findings -- do not record `OK` scenarios here.
-- `ref` is the scenario id (`M0`-`M17`).
+- `ref` is the scenario id (`M0`-`M18`).
 - `title` is a short one-line summary.
 - `body` folds the detail, repro steps, and verdict into one markdown string.
 
@@ -178,15 +178,7 @@ its absence is not a finding.
 
 ---
 
-### M6 -- Layout sanity (>=2 top, 0 stack)
-
-**Goal:** "With at least two top-anchored strands and no below-parent strands, confirm
-the layout tiles the full box with no torn/leftover rows."
-
-**Watch:** The last top band stretches to tile the full box. Verify via
-`psmux -L <socket> list-panes` geometry (controlled exception) or visually at M7.
-
-**Verdict:** `OK` / `WARN` / `FAIL`
+### M6 -- Retired: top-band tiling removed with anchor:top
 
 ---
 
@@ -279,15 +271,17 @@ gone from `tasklist`). Covered headlessly by `TestSmokeDownReapsPaneChildProcess
 
 ### M12 -- Layout survival under mixed adds
 
-**Goal:** "Build a busy session -- two top-anchored strands, then a parent strand,
-then a child under it -- and confirm every strand still has its own live pane."
+**Goal:** "Build a busy below-parent-only session -- a parent strand, a child under it,
+then a second child under the parent -- and confirm every strand still has its own live
+pane."
 
-**Watch:** After all four `add`s, `lyx mux status` reports all four strands
+**Watch:** After all three `add`s, `lyx mux status` reports all three strands
 `live: true`, and `psmux -L <socket> list-panes` (controlled exception) shows exactly
-four panes with sane geometry (the two top strands as compact bands, the child as the
-dominant bottom pane). A pane count below four, an empty pane list, or a strand that
-flips to `live: false` after the next verb means a split/apply silently destroyed
-panes -- that is a `FAIL`, not cosmetics.
+three panes with sane geometry: the parent shrunk to a `collapsed_strip_rows` strip once
+a child exists, and the deepest child dominant (the tallest, bottom-most pane). A pane
+count below three, an empty pane list, or a strand that flips to `live: false` after the
+next verb means a split/apply silently destroyed panes -- that is a `FAIL`, not
+cosmetics.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -388,6 +382,29 @@ is available to hand-drive.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
+---
+
+### M18 -- Below-parent mother/child shrink (operator-assisted visual)
+
+**Goal:** "Add a below-parent *root* 'mother' strand running a plain, non-TUI
+status-line placeholder command (no `--anchor top` anywhere), confirm it renders full
+height while it has no live child, then add a Claude Code child under it via
+`--parent` and confirm the mother collapses to a compact strip while the child takes
+the bulk of the window."
+
+**Watch:** With only the mother strand live, `lyx mux status` reports it `live: true`
+and `psmux -L <socket> list-panes` (controlled exception) shows its pane at full box
+height -- a childless below-parent mother rendering full-height is intended (not a
+bug to file). After `lyx mux add --parent <mother-guid> --cmd claude ...` adds the
+Claude Code child, both strands read `live: true`, the mother's pane collapses to
+`collapsed_strip_rows`, and the child's pane gets the rest of the window. Confirm the
+mother's plain-text status line stays legible at the collapsed height -- this is the
+scenario the removed `TopBandRows` band-height override existed to protect against
+box-drawing-TUI corruption at a fixed 1-row band; a plain-text line has no such
+corruption risk.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
 ## Session log format
 
 After running all scenarios, record a short session summary:
@@ -414,6 +431,7 @@ M14: <OK|WARN|FAIL> -- <one-line note if not OK>
 M15: <OK|WARN|FAIL> -- <one-line note if not OK>
 M16: <OK|WARN|FAIL> -- <one-line note if not OK>
 M17: <OK|WARN|FAIL> -- <one-line note if not OK>
+M18: <OK|WARN|FAIL> -- <one-line note if not OK>
 
 sandbox-report.json written: <count of WARN/FAIL items>
 ```
