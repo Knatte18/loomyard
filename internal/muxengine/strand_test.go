@@ -274,6 +274,60 @@ func TestRemoveStrandLocked_UnknownGuidRejected(t *testing.T) {
 	}
 }
 
+// TestRemovalEmptiedSession pins the four-way classification
+// removalEmptiedSession makes: the success-swallow in RemoveStrand may only
+// fire when the session is confirmed gone AND no remaining strand is
+// expected to still own a live pane (mirroring anyPlacedStrand's
+// Anchor != render.AnchorHidden filter).
+func TestRemovalEmptiedSession(t *testing.T) {
+	tests := []struct {
+		name        string
+		remaining   []Strand
+		sessionGone bool
+		want        bool
+	}{
+		{
+			name:        "SessionGone_EmptyRemaining_True",
+			remaining:   nil,
+			sessionGone: true,
+			want:        true,
+		},
+		{
+			name: "SessionGone_AllRemainingHidden_True",
+			remaining: []Strand{
+				{GUID: "a", Display: render.Display{Anchor: render.AnchorHidden}},
+				{GUID: "b", Display: render.Display{Anchor: render.AnchorHidden}},
+			},
+			sessionGone: true,
+			want:        true,
+		},
+		{
+			name: "SessionGone_OneRemainingNonHidden_False",
+			remaining: []Strand{
+				{GUID: "a", Display: render.Display{Anchor: render.AnchorHidden}},
+				{GUID: "b", Display: render.Display{Anchor: render.AnchorTop}},
+			},
+			sessionGone: true,
+			want:        false,
+		},
+		{
+			name: "SessionNotGone_AnyRemaining_False",
+			remaining: []Strand{
+				{GUID: "a", Display: render.Display{Anchor: render.AnchorHidden}},
+			},
+			sessionGone: false,
+			want:        false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := removalEmptiedSession(tt.remaining, tt.sessionGone); got != tt.want {
+				t.Errorf("removalEmptiedSession(%+v, sessionGone=%v) = %v, want %v", tt.remaining, tt.sessionGone, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestResolveStrandName(t *testing.T) {
 	const tpl = "<ROLE>:<ROUND>:<SHORT_GUID>"
 	guid := "abc1234500000000000000000000000"

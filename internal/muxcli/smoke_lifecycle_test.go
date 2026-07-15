@@ -152,6 +152,13 @@ func TestSmokeTopBandsThenStackAddsKeepEverySessionPane(t *testing.T) {
 // next verb's reconcile stripped the binding again). The fix never adopts a
 // dead pane, so the post-remove add must yield a strand that is live and
 // STAYS live across the next reconciling verb.
+//
+// Caveat: this corpse-pane premise is PSMUX-SPECIFIC. tmux behaves
+// oppositely — killing a session's true last pane DESTROYS the session
+// (and, if it was the server's only session, the server exits) rather than
+// corpsing it — so this test's sole-pane remove would never reach an
+// "adopt or not" decision at all on tmux; see muxengine.RemoveStrand's
+// emptied-session swallow (strand.go) for how that backend is handled.
 func TestSmokeRemoveLastStrandThenAddRunsTheNewCommand(t *testing.T) {
 	psmuxBinaryPath(t)
 
