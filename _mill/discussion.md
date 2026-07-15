@@ -210,6 +210,16 @@ Module under test: `internal/muxengine`.
   end-to-end proof that boot pins the option in both directions (explicit-set-both-ways).
   Gate/skip consistently with the existing integration tests if they are environment-gated
   on tmux availability.
+- **No live toggle without restart (integration, real tmux) — required.** A sibling of the
+  above that pins the early-return contract the docs are about to promise operators: boot
+  with `mouse: off` and confirm `show-options -g mouse` is `off`; then change the config
+  (or `LYX_MUX_MOUSE`) to `on` **without** tearing the session down and call `Up()` again;
+  assert `show-options -g mouse` is **still `off`**. This proves that a running session
+  with live panes hits the early return (lifecycle.go ~line 223) and does NOT re-apply
+  `set-option`, so a config/env change only lands on a fresh boot. Without this test, a
+  future change that re-runs `set-option` unconditionally on every `Up` (silently breaking
+  the documented no-live-toggle guarantee and diverging config from the live server) would
+  pass the suite unnoticed. Cheap to add given the fresh-boot test exists as a sibling.
 - **Config load (unit).** If there is an existing config round-trip/template test, extend
   it so the new `mouse` key is present in the resolved template and unmarshals into the
   `Config.Mouse` field with the expected default. Do not add a redundant new test if the
