@@ -21,20 +21,12 @@
 package render
 
 // Anchor is the closed set of placement strategies a strand's Display may
-// declare. Render recognizes exactly these four values.
+// declare. Render recognizes exactly these three values.
 type Anchor string
 
 const (
-	// AnchorTop reserves a fixed-height band for a strand at the top of the
-	// window, above the below-parent stack. The band's GEOMETRY is always
-	// honored; its POSITION is only physically top when the strand's pane
-	// precedes the stack panes in the window's creation order — psmux
-	// applies layout cells positionally and cannot reorder panes (see
-	// Rules' paneOrder contract), so a top strand added after stack strands
-	// keeps its compact band height at its actual position.
-	AnchorTop Anchor = "top"
-	// AnchorBelowParent places a strand in the vertically stacked region
-	// below the top bands, ordered by parent-chain depth.
+	// AnchorBelowParent places a strand in the vertically stacked region,
+	// ordered by parent-chain depth.
 	AnchorBelowParent Anchor = "below-parent"
 	// AnchorOwnWindow is declared in the vocabulary but deferred in v1:
 	// Rules rejects any strand carrying it with an error. It is reserved
@@ -63,15 +55,6 @@ type Display struct {
 	// stay full height. When false the strand stays a co-equal full pane
 	// even while a descendant is present.
 	ShrinkWhenWaitingOnChild bool `json:"shrinkWhenWaitingOnChild"`
-	// TopBandRows overrides Params.TopBandRows for this AnchorTop strand
-	// only, when > 0. Zero (the default) inherits the config-wide default.
-	// This exists because a single global top-band height cannot serve both
-	// genuine one-line status commands and a full box-drawing TUI (e.g.
-	// `claude`) sharing the AnchorTop slot: a TUI given only the config
-	// default's rows renders corrupted, overlapping frames, since it draws
-	// multi-row boxed output assuming more vertical space than it's given.
-	// Ignored for any strand not using AnchorTop.
-	TopBandRows int `json:"topBandRows,omitempty"`
 }
 
 // Strand is the layout-facing projection of an engine strand: only the
@@ -103,8 +86,6 @@ type Box struct {
 // Params carries the tunable height-policy knobs the engine loads from
 // mux.yaml, keeping render itself config-agnostic.
 type Params struct {
-	// TopBandRows is the fixed height reserved for each AnchorTop strand.
-	TopBandRows int
 	// CollapsedStripRows is the height a shrink:true ancestor collapses to
 	// once it has a descendant present in the layout.
 	CollapsedStripRows int
