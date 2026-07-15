@@ -89,6 +89,18 @@ which made the exact mechanism visible instead of a bare "no server running".
   round-trip `requireSessionLocked` already uses to classify "no session", so
   this reuses the module's existing, backend-agnostic classification rather
   than inventing a new one.
+  - **Exit-code grounding (why this is observation, not prediction):** the bug
+    is a *server* exit, not merely a session removal, yet `hasSession`
+    (`overlay.go:90`) still reports it as `(false, nil)` — because tmux's
+    `has-session` exits **1** on "no server running", and `hasSession` maps
+    exit 1 to `(false, nil)` (only other exit codes surface as an error). That
+    is the *same* exit-1 the reproduction observed from `listPanes`
+    (`exit status 1: no server running`). So the swallow keys off an observed
+    exit code, not an assumption about pane/session lifecycle. This exit-code
+    dependency must be recorded explicitly in the new `doc.go` bullet (see
+    doc-correction-in-scope) so the "server-gone still classifies as
+    `(false, nil)`" fact is not silently re-lost, and the integration test's
+    success assertion is what pins it against real tmux.
 - Rejected:
   - **String-matching the psmux error text** for "no server running"/"no
     session" — fragile across tmux vs psmux (Windows) wording, and the Windows
@@ -170,7 +182,13 @@ which made the exact mechanism visible instead of a bare "no server running".
   last* pane destroys the session (and, if it was the server's only session,
   the server exits) — refining the existing "Dead-pane adoption via
   remain-on-exit" bullet (L62–68), which currently implies the corpse behavior
-  holds universally. Note the Windows/psmux side as unverified.
+  holds universally. Note the Windows/psmux side as unverified. The new bullet
+  must **state the exit-code dependency explicitly**: the swallow's correctness
+  rests on `has-session` exiting 1 for "no server running" (the same exit-1 the
+  reproduction showed from `listPanes`), which `hasSession` (`overlay.go:90`)
+  maps to `(false, nil)` — record this so the "server-gone still classifies as
+  `(false, nil)`" fact is not silently re-lost, and note that the integration
+  test's success assertion is what pins it against real tmux.
 - Rationale: CLAUDE.md requires docs updated in the same commit as behavior
   changes, and this is precisely the cross-platform assumption `doc.go`'s list
   exists to track. Leaving the false comment in place would re-seed the same
