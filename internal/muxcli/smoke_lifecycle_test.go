@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"os/exec"
 	"runtime"
-	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lyxtest"
@@ -96,7 +95,8 @@ func TestSmokeUpAddStatusDown(t *testing.T) {
 // new strand to an existing pane, whose next select-layout's duplicate pane
 // number made tmux destroy every pane in the session. The fix splits the
 // tallest alive pane explicitly and hard-errors on a non-new reported id,
-// so this sequence must now yield one live pane per visible strand.
+// so this sequence must now yield one live pane per visible strand, plus
+// one more for the always-present header pane.
 func TestSmokeStackedAddsKeepEverySessionPane(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
 
@@ -126,8 +126,9 @@ func TestSmokeStackedAddsKeepEverySessionPane(t *testing.T) {
 
 	socket, session := socketAndSession(t)
 	panes := listPaneLines(t, tmuxPath, socket, session)
-	if len(panes) != len(guids) {
-		t.Fatalf("session holds %d panes %v; want %d (one per visible strand — a shortfall means a silent split failure destroyed panes)", len(panes), panes, len(guids))
+	wantPanes := len(guids) + 1 // +1 for the always-present header pane
+	if len(panes) != wantPanes {
+		t.Fatalf("session holds %d panes %v; want %d (one per visible strand plus the header pane — a shortfall means a silent split failure destroyed panes)", len(panes), panes, wantPanes)
 	}
 
 	out.Reset()
@@ -254,8 +255,19 @@ func TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable(t *testing.T) {
 	}
 	socket, session := socketAndSession(t)
 
+	// up already booted the always-present header pane before any strand
+	// exists, alongside the session's not-yet-adopted initial pane (2
+	// panes, 0 strands). Read the header's pane id directly from mux.json
+	// so the assertions below can tell it apart from the foreign pane.
+	st, err := muxengine.LoadState(fixture.Layout.DotLyxDir())
+	if err != nil || st == nil || st.HeaderPaneID == "" {
+		t.Fatalf("LoadState after up = (%+v, %v), want a persisted HeaderPaneID", st, err)
+	}
+	headerPaneID := st.HeaderPaneID
+
 	// A foreign pane mux does not track (the operator-split case): the
-	// session now has 2 panes and 0 strands.
+	// session now has 3 panes (header, the not-yet-adopted initial pane,
+	// and this foreign one) and 0 strands.
 	if err := exec.Command(tmuxPath, "-L", socket, "split-window", "-t", session).Run(); err != nil {
 		t.Fatalf("foreign split-window: %v", err)
 	}
@@ -289,7 +301,120 @@ func TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable(t *testing.T) {
 	}
 	strandPane, _ := strand["paneId"].(string)
 	panes := listPaneLines(t, tmuxPath, socket, session)
-	if len(panes) != 1 || !strings.HasPrefix(panes[0], strandPane+" ") {
-		t.Errorf("after add, session panes = %v; want exactly the strand's pane %s (foreign pane must be reaped, strand pane never displaced)", panes, strandPane)
+	if len(panes) != 2 || !paneLiveOnSession(panes, strandPane) || !paneLiveOnSession(panes, headerPaneID) {
+		t.Errorf("after add, session panes = %v; want exactly the strand's pane %s and the header pane %s (foreign pane must be reaped, neither pane ever displaced)", panes, strandPane, headerPaneID)
+	}
+}
+
+// TestSmokeHeaderPaneSurvivesUpAddRemoveAndReconcile pins the header-pane
+// keepalive guarantee this batch adds: the always-present header pane must
+// survive a full up -> add -> remove -> add cycle and every reconcile along
+// the way, never adopted/reaped as a strand's pane, and — the whole point —
+// still alive even when the strand table momentarily drops to zero after a
+// remove. Mirrors TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable's
+// tmux-driven verification style (list-panes via the real binary, not mux's
+// own reporting) but for the header instead of a foreign pane.
+func TestSmokeHeaderPaneSurvivesUpAddRemoveAndReconcile(t *testing.T) {
+	tmuxPath := tmuxBinaryPath(t)
+
+	fixture := lyxtest.CopyPaired(t)
+	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
+		"mux": muxengine.ConfigTemplate(),
+	})
+	deferHubRelease(t, fixture.Hub)
+	t.Chdir(fixture.Hub)
+	t.Cleanup(func() {
+		var buf bytes.Buffer
+		RunCLI(&buf, []string{"down"})
+	})
+
+	var out bytes.Buffer
+	if code := RunCLI(&out, []string{"up"}); code != 0 {
+		t.Fatalf("up = %d; want 0, output: %s", code, out.String())
+	}
+
+	// up boots the header pane before any strand exists (card 17). Read the
+	// persisted pane id directly from mux.json (RunCLI/status carries no
+	// header field) rather than assuming which of the session's panes it is.
+	st, err := muxengine.LoadState(fixture.Layout.DotLyxDir())
+	if err != nil || st == nil || st.HeaderPaneID == "" {
+		t.Fatalf("LoadState after up = (%+v, %v), want a persisted HeaderPaneID", st, err)
+	}
+	headerPaneID := st.HeaderPaneID
+
+	socket, session := socketAndSession(t)
+	requireHeaderAlive := func(when string) {
+		t.Helper()
+		lines := listPaneLines(t, tmuxPath, socket, session)
+		if !paneLiveOnSession(lines, headerPaneID) {
+			t.Fatalf("header pane %s not alive %s; panes=%v", headerPaneID, when, lines)
+		}
+	}
+	requireHeaderAlive("right after up (zero strands)")
+
+	// add: the header must never be adopted as this first strand's pane —
+	// planPaneTarget excludes it from adoption, so the strand lands on the
+	// session's other (pre-header) pane instead.
+	guid := addStrand(t, "pwsh -NoExit -Command Write-Host ready", "--name", "first")
+	requireHeaderAlive("after add")
+
+	out.Reset()
+	if code := RunCLI(&out, []string{"status"}); code != 0 {
+		t.Fatalf("status = %d; want 0, output: %s", code, out.String())
+	}
+	strand, found := statusStrand(t, out.Bytes(), guid)
+	if !found {
+		t.Fatalf("status missing strand %s; output: %s", guid, out.String())
+	}
+	if live, _ := strand["live"].(bool); !live {
+		t.Errorf("strand %s live = false; want true", guid)
+	}
+	strandPaneID, _ := strand["paneId"].(string)
+	if strandPaneID == "" || strandPaneID == headerPaneID {
+		t.Fatalf("strand %s paneId = %q, want a real, non-header pane id", guid, strandPaneID)
+	}
+
+	// remove: the session's only strand is gone, but the header pane — a
+	// permanent second pane — must keep the session (and itself) alive,
+	// exactly the invariant contract_integration_test.go's
+	// TestRemoveStrand_SoleStrandEmptiesSessionSucceeds pins at the engine
+	// level.
+	out.Reset()
+	if code := RunCLI(&out, []string{"remove", guid}); code != 0 {
+		t.Fatalf("remove = %d; want 0, output: %s", code, out.String())
+	}
+	if !sessionAlive(tmuxPath, socket, session) {
+		t.Fatalf("session %s died after removing its sole strand; the header pane must have kept it alive", session)
+	}
+	requireHeaderAlive("after removing the sole strand (zero strands tracked)")
+
+	// A reconciling verb (up) with zero strands must not disturb the header
+	// either — mirrors TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable's
+	// same-shaped assertion for a foreign pane.
+	out.Reset()
+	if code := RunCLI(&out, []string{"up"}); code != 0 {
+		t.Fatalf("post-remove up = %d; want 0, output: %s", code, out.String())
+	}
+	requireHeaderAlive("after a reconciling up with zero strands")
+
+	// add again: the header must still never be adopted, and the new
+	// strand must come up live — the substrate the header keeps alive is
+	// still genuinely usable, not a wedged husk.
+	second := addStrand(t, "pwsh -NoExit -Command Write-Host ready", "--name", "second")
+	requireHeaderAlive("after a second add with strands now bound")
+
+	out.Reset()
+	if code := RunCLI(&out, []string{"status"}); code != 0 {
+		t.Fatalf("status = %d; want 0, output: %s", code, out.String())
+	}
+	strand2, found := statusStrand(t, out.Bytes(), second)
+	if !found {
+		t.Fatalf("status missing strand %s; output: %s", second, out.String())
+	}
+	if live, _ := strand2["live"].(bool); !live {
+		t.Errorf("strand %s live = false; want true", second)
+	}
+	if paneID, _ := strand2["paneId"].(string); paneID == headerPaneID {
+		t.Errorf("strand %s was bound to the header pane %s; the header must never be adopted", second, headerPaneID)
 	}
 }

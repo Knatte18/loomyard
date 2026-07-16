@@ -1,11 +1,13 @@
 // spawn_test.go table-tests planPaneTarget's adopt-vs-split decision —
 // including the corpse-pane rules tmux forces (never adopt a dead pane;
-// split the tallest alive pane, or the kept corpse when nothing is alive) —
-// and verifies loadOrInitStateLocked's fresh-worktree bootstrap. Both are
-// pure/hermetic, no live tmux required. launchStrandLocked itself always
-// makes a real tmux round trip (list-panes/split-window + send-keys), so
-// it is exercised only through this decision seam, not invoked directly
-// here; the composed live behavior is covered by the smoke tests.
+// split the tallest alive pane, or the kept corpse when nothing is alive)
+// and the header-pane exclusion (never adopted, never the preferred split
+// target, but the sole-pane fallback) — and verifies loadOrInitStateLocked's
+// fresh-worktree bootstrap. Both are pure/hermetic, no live tmux required.
+// launchStrandLocked itself always makes a real tmux round trip
+// (list-panes/split-window + send-keys), so it is exercised only through
+// this decision seam, not invoked directly here; the composed live behavior
+// is covered by the smoke tests.
 
 package muxengine
 
@@ -16,6 +18,7 @@ func TestPlanPaneTarget(t *testing.T) {
 		name            string
 		strands         []Strand
 		live            []LivePane
+		headerPaneID    string
 		wantAdoptID     string
 		wantSplitTarget string
 		wantErr         bool
@@ -71,14 +74,44 @@ func TestPlanPaneTarget(t *testing.T) {
 			live:    nil,
 			wantErr: true,
 		},
+		{
+			name: "HeaderPresentNoStrandBound_HeaderNeverAdopted",
+			// A live header pane plus an alive non-header pane: adoption
+			// must land on the non-header pane, never the header, even
+			// though no strand holds a binding yet.
+			strands:      nil,
+			live:         []LivePane{{ID: "%header", Height: 1}, {ID: "%1", Height: 50}},
+			headerPaneID: "%header",
+			wantAdoptID:  "%1",
+		},
+		{
+			name: "HeaderPresentWithStrand_HeaderNeverTheSplitTarget",
+			// The header is tallest by raw Height here, but must still
+			// never be chosen over a genuine (if shorter) non-header
+			// candidate.
+			strands:         []Strand{{GUID: "a", PaneID: "%1"}},
+			live:            []LivePane{{ID: "%header", Height: 90}, {ID: "%1", Height: 10}},
+			headerPaneID:    "%header",
+			wantSplitTarget: "%1",
+		},
+		{
+			name: "HeaderIsSolePane_SplitTargetFallsBackToHeader",
+			// Every strand has been removed: only the header remains. The
+			// header must become the split target so a subsequent add still
+			// has something to split (the header survives the split).
+			strands:         nil,
+			live:            []LivePane{{ID: "%header", Height: 21}},
+			headerPaneID:    "%header",
+			wantSplitTarget: "%header",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			adoptID, splitTarget, err := planPaneTarget(tt.strands, tt.live)
+			adoptID, splitTarget, err := planPaneTarget(tt.strands, tt.live, tt.headerPaneID)
 			if tt.wantErr {
 				if err == nil {
-					t.Fatalf("planPaneTarget(%+v, %+v): expected error, got nil", tt.strands, tt.live)
+					t.Fatalf("planPaneTarget(%+v, %+v, %q): expected error, got nil", tt.strands, tt.live, tt.headerPaneID)
 				}
 				return
 			}
@@ -86,8 +119,8 @@ func TestPlanPaneTarget(t *testing.T) {
 				t.Fatalf("planPaneTarget: unexpected error: %v", err)
 			}
 			if adoptID != tt.wantAdoptID || splitTarget != tt.wantSplitTarget {
-				t.Errorf("planPaneTarget(%+v, %+v) = (adopt %q, split %q), want (adopt %q, split %q)",
-					tt.strands, tt.live, adoptID, splitTarget, tt.wantAdoptID, tt.wantSplitTarget)
+				t.Errorf("planPaneTarget(%+v, %+v, %q) = (adopt %q, split %q), want (adopt %q, split %q)",
+					tt.strands, tt.live, tt.headerPaneID, adoptID, splitTarget, tt.wantAdoptID, tt.wantSplitTarget)
 			}
 		})
 	}

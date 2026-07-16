@@ -1,8 +1,9 @@
 // height_test.go exercises the derived height policy in height.go: the
 // heights-fill-the-box invariant, the collapsed-strip height, the active
-// pane's remainder rule, and the too-short-window clamp order. It also
-// exercises layout.go's buildStackBody/wrapLayout and focus.go's
-// isAncestor, since cards 5 and 7 ship no standalone test file.
+// pane's remainder rule, the too-short-window clamp order, and the
+// header-vs-window height clamp (clampHeaderHeight). It also exercises
+// layout.go's buildStackBody/wrapLayout and focus.go's isAncestor, since
+// cards 5 and 7 ship no standalone test file.
 
 package render
 
@@ -162,6 +163,54 @@ func TestStackHeightsExtremelyShortWindowNeverNonPositive(t *testing.T) {
 		if pl.height <= 0 {
 			t.Errorf("placement %+v has non-positive height in an impossible-to-fit window", pl)
 		}
+	}
+}
+
+// TestClampHeaderHeight covers the window-split clamp: the header yields
+// rows first so the strand-stack region never shrinks below MinFullRows
+// (floored at 1) total rows, distinct from clampToFit's job of distributing
+// rows AMONG strands inside an already-shrunk box.
+func TestClampHeaderHeight(t *testing.T) {
+	tests := []struct {
+		name         string
+		headerRows   int
+		windowRows   int
+		minStackRows int
+		want         int
+	}{
+		{"WellWithinFloor_Unclamped", 3, 21, 3, 3},
+		{"ExactlyAtFloor_Unclamped", 18, 21, 3, 18},
+		{
+			// An oversized configured height_rows must yield rows so the
+			// stack region keeps its MinFullRows floor, even though that
+			// means the header itself ends up shorter than configured.
+			name: "Oversized_ClampedToPreserveFloor", headerRows: 25, windowRows: 21, minStackRows: 3, want: 18,
+		},
+		{
+			// The window cannot fit both a header and the floor at all:
+			// the header is clamped all the way to zero rather than ever
+			// going negative or starving the stack further.
+			name: "WindowTooShortForBoth_HeaderClampedToZero", headerRows: 5, windowRows: 2, minStackRows: 3, want: 0,
+		},
+		{"NegativeHeaderRows_TreatedAsZero", -4, 21, 3, 0},
+		{"NonPositiveMinStackRowsFlooredAtOne", 25, 21, 0, 20},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := clampHeaderHeight(tt.headerRows, tt.windowRows, tt.minStackRows); got != tt.want {
+				t.Errorf("clampHeaderHeight(%d, %d, %d) = %d, want %d", tt.headerRows, tt.windowRows, tt.minStackRows, got, tt.want)
+			}
+			// Invariant every case must hold: the stack region resulting
+			// from this clamp never shrinks below the floored MinFullRows.
+			floor := tt.minStackRows
+			if floor < 1 {
+				floor = 1
+			}
+			got := clampHeaderHeight(tt.headerRows, tt.windowRows, tt.minStackRows)
+			if stackRows := tt.windowRows - got; stackRows < floor && tt.windowRows >= floor {
+				t.Errorf("clampHeaderHeight(%d, %d, %d) left only %d stack rows, want >= floor %d", tt.headerRows, tt.windowRows, tt.minStackRows, stackRows, floor)
+			}
+		})
 	}
 }
 

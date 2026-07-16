@@ -446,7 +446,19 @@ func (e *Engine) ensureHeaderPaneLocked(st *MuxState) error {
 		return fmt.Errorf("resolve lyx binary path: %w", err)
 	}
 
-	out, err := e.tmux.output("split-window", "-t", target, "-c", e.layout.Hub, "-P", "-F", "#{pane_id}")
+	// -b places the NEW pane above target rather than below it (tmux's
+	// default split direction is vertical, new pane below): render.Rules
+	// always emits the header cell FIRST, assuming a fixed top band, and
+	// psmux/tmux apply layout cells POSITIONALLY to the window's actual
+	// top-to-bottom pane order — so the header pane must physically stay
+	// topmost, or the very first select-layout would invert the header and
+	// the first strand's heights (verified live: without -b, a stacked-adds
+	// smoke scenario failed a later split with "no space for new pane"
+	// because the 1-row header cell landed on the STRAND's physically-top
+	// pane instead). Every subsequent strand split (spawn.go) always
+	// targets a non-header pane and inserts below it, so this is the only
+	// split in the whole engine that needs -b.
+	out, err := e.tmux.output("split-window", "-b", "-t", target, "-c", e.layout.Hub, "-P", "-F", "#{pane_id}")
 	if err != nil {
 		return fmt.Errorf("split header pane: %w", err)
 	}

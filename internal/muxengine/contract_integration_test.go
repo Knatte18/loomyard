@@ -310,25 +310,20 @@ func TestMultiplexerContract(t *testing.T) {
 	}
 }
 
-// TestRemoveStrand_SoleStrandEmptiesSessionSucceeds reproduces, end to end
-// against a real Engine, the bug this batch fixes: removing a session's
-// sole non-hidden strand must return success and leave mux.json holding
-// zero persisted strands, never surface the raw "no server running" tmux
-// error the original reproduction hit.
-//
-// Coverage note: this regression exercises the Card 2 swallow branch ONLY
-// on last-pane-DESTROY backends (tmux, the POSIX default per
-// template_posix.go) — there, without the fix, RemoveStrand would return
-// the "no server running" error surfaced from reconcileApplyPersistLocked's
-// listPanes call once kill-pane has destroyed the session, so a passing
-// test genuinely covers the swallow. On corpse backends (psmux/Windows) the
-// same scenario passes via RemoveStrand's normal path instead (kill-pane
-// corpses the pane, the session survives, reconcileApplyPersistLocked
-// succeeds), so the swallow is never reached there — TestRemovalEmptiedSession
-// (strand_test.go) covers the pure decision logic on every platform
-// regardless of which binary is configured. This test therefore asserts
-// only the observable contract (nil error, zero persisted strands), never
-// which internal branch RemoveStrand actually took.
+// TestRemoveStrand_SoleStrandEmptiesSessionSucceeds is the header-pane
+// keepalive regression this batch adds: with the always-present header pane
+// booted, removing a session's sole non-hidden strand must return success,
+// leave mux.json holding zero persisted strands, AND leave both the session
+// and the header pane specifically alive — the header's whole purpose. This
+// supersedes the original pre-header regression (removing a session's true
+// last pane used to be backend-dependent: tmux destroyed the session
+// outright, forcing RemoveStrand to swallow the resulting "no server
+// running" error as an expected success — see removalEmptiedSession,
+// strand.go). With the header pane as a permanent second pane, killing the
+// strand's pane is never a last-pane-destroy on ANY backend, so that
+// swallow branch is no longer reached by this scenario at all; it remains
+// in place for the (now believed unreachable in practice, but still
+// defensive) case where the header pane is itself somehow absent.
 func TestRemoveStrand_SoleStrandEmptiesSessionSucceeds(t *testing.T) {
 	tmpDir := t.TempDir()
 	seedMuxConfig(t, tmpDir)
@@ -370,6 +365,15 @@ func TestRemoveStrand_SoleStrandEmptiesSessionSucceeds(t *testing.T) {
 		t.Fatalf("Up: %v", err)
 	}
 
+	// The header pane is booted as part of Up, before any strand exists;
+	// capture its id so the post-remove assertions below can confirm it
+	// specifically (not merely "some pane") survived.
+	upSt, err := LoadState(layout.DotLyxDir())
+	if err != nil || upSt == nil || upSt.HeaderPaneID == "" {
+		t.Fatalf("LoadState after Up = (%+v, %v), want a persisted HeaderPaneID", upSt, err)
+	}
+	headerPaneID := upSt.HeaderPaneID
+
 	// One non-hidden strand, anchored so it is realized into a live pane at
 	// add time; a long-lived command so it is still running when removed.
 	strand, err := e.AddStrand(AddSpec{
@@ -382,7 +386,7 @@ func TestRemoveStrand_SoleStrandEmptiesSessionSucceeds(t *testing.T) {
 
 	removed, err := e.RemoveStrand(strand.GUID, false)
 	if err != nil {
-		t.Fatalf("RemoveStrand(sole strand) = %v, want nil error (emptying the session is an expected terminal state, not a failure)", err)
+		t.Fatalf("RemoveStrand(sole strand) = %v, want nil error (the header pane keeps the session alive, so emptying the strand table is never a last-pane-destroy)", err)
 	}
 	if len(removed.Strands) != 1 || removed.Strands[0].GUID != strand.GUID {
 		t.Fatalf("RemoveStrand.Removed.Strands = %+v, want exactly guid %q", removed.Strands, strand.GUID)
@@ -390,11 +394,32 @@ func TestRemoveStrand_SoleStrandEmptiesSessionSucceeds(t *testing.T) {
 
 	// Persistence is the resurrect-on-resume guard: removeStrandLocked only
 	// prunes st.Strands in memory, so this must reload from disk rather than
-	// trust the in-memory Removed result above. Polled, not asserted once,
-	// since the swallow path's own SaveState races the surrounding async
-	// pane/session teardown this whole fix is about.
+	// trust the in-memory Removed result above.
 	waitUntil(t, 5*time.Second, "persisted mux.json never reflected the emptied strand table", func() bool {
 		st, err := LoadState(layout.DotLyxDir())
 		return err == nil && st != nil && len(st.Strands) == 0
 	})
+
+	// The keepalive guarantee this batch adds: the session, and the header
+	// pane specifically, must still be alive with zero strands tracked.
+	up, err := e.tmux.hasSession(e.SessionName())
+	if err != nil || !up {
+		t.Fatalf("hasSession after removing the sole strand = (%v, %v), want (true, nil) — the header pane must keep the session alive", up, err)
+	}
+	live, err := e.tmux.listPanes(e.SessionName())
+	if err != nil {
+		t.Fatalf("listPanes after removing the sole strand: %v", err)
+	}
+	headerFound := false
+	for _, p := range live {
+		if p.ID == headerPaneID {
+			headerFound = true
+			if p.Dead {
+				t.Errorf("header pane %s reports Dead = true after removing the sole strand, want it alive", headerPaneID)
+			}
+		}
+	}
+	if !headerFound {
+		t.Fatalf("header pane %s missing from live panes %+v after removing the sole strand", headerPaneID, live)
+	}
 }
