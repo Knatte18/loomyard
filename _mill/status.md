@@ -6,6 +6,7 @@ slug: mux-operator-console
 branch: mux-operator-console
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: Built-in operator console pane in mux
 task_description: |
   Built-in operator console pane in mux
@@ -30,7 +31,9 @@ implementing  '2026-07-16T12:13:38Z'
 ```yaml
 batches:
   - name: hubgeometry-repo
-    state: pending
+    state: running
+    implementer_session: 0c1ecebb-7f0b-4a79-9f0d-faa85b1d4146
+    start_sha: 650ea6f15e6f8a025808469efc1eb0298a1e75a9
   - name: tokenvocab-module
     state: pending
   - name: header-text-pipeline
