@@ -38,15 +38,22 @@ to make the keepalive a built-in mux feature.
 - **One header per column** (see decision `header-per-column`).
 - Header content is configurable via a template filled by the existing
   `internal/stencil` module (`{{.token}}` markers).
+- A **new token-vocabulary module** that builds the token→value map, designed so new
+  tokens are **trivial to define and add**. v1 tokens include the repo; `slug` (a task's
+  slug) is deferred until a task actually needs it.
 - New rendering: a pinned fixed-height **top band** in the render layer (no such
   anchor exists today).
+- v1: a **single** header spanning the full width at the top; the strand stack is pushed
+  down below it (`box.Y += header height`).
 
 **Out:**
 
 - Interactive scratch-terminal use — **dropped**. The header is pure display; it only
   runs `lyx mux header` (print + hang), never a usable shell.
-- Building a brand-new token-substitution module — **rejected** in favour of reusing
-  `internal/stencil`.
+- Building a brand-new *substitution* engine — **rejected** in favour of reusing
+  `internal/stencil` for the fill step.
+- Multi-column render layout — **deferred** (render is single-column today; YAGNI).
+- The `slug` token — **deferred** (added when a task-scoped need arises).
 - General pane naming/tagging as a mux feature (separate spike gap, not this task).
 
 ## Decisions
@@ -69,15 +76,32 @@ to make the keepalive a built-in mux feature.
   long-lived process, not from operator interaction.
 - Rejected: scratch terminal (would need a real shell + more rows).
 
-### token-substitution via stencil (Q2)
+### three-part text pipeline: vocab + stencil + thin glue (Q2, Q6, Q7)
 
-- Decision: Reuse `internal/stencil` (`Fill(template []byte, values map[string]string)`)
-  for header text. The header template uses `{{.token}}` markers (Go text/template), not
-  `<TOKEN>` angle brackets.
-- Rationale: `stencil` already does exactly "template + token map → filled text" with
-  strict unfilled-marker detection (`stencil.go:36`). Reuse satisfies CONSTRAINTS; no
-  duplicate module.
-- Rejected: new `<TOKEN_NAME>` module; extending stencil with angle-bracket syntax.
+The header text is produced by three separate pieces, each with one job:
+
+1. **`lyx mux header` (new muxcli verb) — SUPER-SIMPLE glue.** It does no work of its own:
+   resolve context (hubgeometry from the pane cwd) → ask the vocabulary module for the
+   token map → `stencil.Fill(template, map)` → print once → block forever. Every helper it
+   uses comes from another module; the command is pure orchestration.
+
+2. **Token-vocabulary module (NEW) — builds the `map[string]string`.** Owns the *definition*
+   of the vocabulary. Hard requirement (user): **it must be trivial to define and add new
+   tokens.** Shape TBD (batch 3), but a registry of `name → resolver(ctx)` is the leading
+   idea. v1 includes a `repo` token (+ hub, TBD); `slug` (task slug) is deferred and added
+   later when a task-scoped need arises. Lives as its own `internal/<name>` module, not
+   inside muxcli/muxengine, because building the map is explicitly "a completely different
+   module" from the header command.
+
+3. **`internal/stencil` (EXISTING) — the fill step.** `Fill(template []byte, values map[string]string)`
+   (`stencil.go:36`), strict unfilled-marker detection. Reused as-is; template uses
+   `{{.token}}` markers (Go text/template), not `<TOKEN>` angle brackets.
+
+- Rationale: clean separation — the command stays trivial, the vocabulary is extensible in
+  one place, and the fill engine already exists. Reuse satisfies CONSTRAINTS; no duplicate
+  substitution engine.
+- Rejected: a single new `<TOKEN_NAME>` module doing map-building + fill together; putting
+  map-building inside the header command or the engine.
 
 ### top-band-in-render (Q3)
 
@@ -90,11 +114,25 @@ to make the keepalive a built-in mux feature.
 - Rejected: header in its own tmux window (`AnchorOwnWindow`) — keeps the session alive but
   is not a visible top band.
 
-### header-per-column (Q3 follow-up — ⏳ needs column-model clarification)
+### single header for v1 (one-per-column invariant) (Q5)
 
-- Decision (stated by user): **at most one header per column.**
-- ⏳ OPEN: mux's render is a single vertical below-parent stack today; the "column" concept
-  needs defining before this can be planned. _batch 2 Q5._
+- Decision: Render is single-column today (`buildStackBody`, `layout.go:30` — one full-width
+  vertical stack). v1 ships **one** header spanning the full width at the top; the strand
+  stack is pushed down below it. "One header per column" is the invariant that will hold
+  naturally if columns are ever added; multi-column layout is **not** built now.
+- Rationale: YAGNI — no column concept exists to hang multiple headers on.
+- Rejected: building multi-column layout now.
+
+### header pane is the persistent keepalive (Q8)
+
+- Decision: The header pane is created at `up`/boot **before** any strand, is re-created if
+  missing on `up`/`resume`, and is torn down with the session on `down`. Its pane id is
+  persisted in `mux.json` **outside** the `Strands` slice. It is **always on** and cannot be
+  disabled — it is structural. This is the pane that remains alive even when **all strands are
+  dead**, which is what makes the last-strand teardown unreachable.
+- Rationale: the keepalive guarantee only holds if the header always exists and is never
+  counted/removed as a strand.
+- Rejected: a `header.enabled` config toggle (would surrender the keepalive guarantee).
 
 ### header-config-block (Q4)
 
@@ -157,3 +195,9 @@ Candidates (refine as decisions settle):
   render layer; header is its own thing; **one header per column**.
 - **Q:** Where does header config live? **A:** A `header:` block in the mux config (template + height rows,
   default 1).
+- **Q:** How is the token vocabulary built? **A:** By a **separate new module** whose only job is producing
+  the token→value map; it must make adding new tokens trivial. `lyx mux header` is super-simple glue that
+  pulls the template, asks this module for the map, calls `stencil.Fill`, prints, and hangs. v1 includes a
+  `repo` token; `slug` (task slug) is deferred.
+- **Q:** Why does the header pane matter? **A:** It is THE persistent pane — it keeps a pane alive in mux even
+  when every strand is dead, so the session can never be torn down by last-strand removal.
