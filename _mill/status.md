@@ -40,7 +40,9 @@ batches:
     start_sha: 7e47006daab58074fa5a6001176b41efedbf2f4b
     commit_sha: d6ccf0821c6c2beb23da7067e898064e82d60935
   - name: burler-config-module
-    state: pending
+    state: running
+    implementer_session: 6b026116-ee79-4b72-9e91-455d3fadca21
+    start_sha: d067a937a9a75e1abcf0dfc9320f78837d31c72e
   - name: claudeengine-fork-mode
     state: pending
   - name: burler-cluster-round
