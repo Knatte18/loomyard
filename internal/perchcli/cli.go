@@ -1,7 +1,7 @@
 // cli.go builds the cobra command tree for the perch module and the
 // RunCLI seam that wires it into the standard io.Writer-based call contract.
 // The parent "perch" command carries a PersistentPreRunE that resolves
-// cwd -> layout -> shuttle config -> mux config -> perch config -> mux
+// cwd -> layout -> shuttle config -> mux config -> perch config -> burler config -> mux
 // engine -> claude engine -> shuttleengine.Runner -> burlerengine.Engine
 // exactly once per invocation, storing the resolved ingredients on perchCLI
 // rather than a constructed *perchengine.Engine: the pause seam
@@ -45,7 +45,7 @@ type perchCLI struct {
 // Command returns the cobra command tree for the perch module.
 //
 // The parent "perch" command carries a PersistentPreRunE that resolves
-// cwd -> layout -> shuttle config -> mux config -> perch config -> mux
+// cwd -> layout -> shuttle config -> mux config -> perch config -> burler config -> mux
 // engine -> claude engine -> shuttleengine.Runner -> burlerengine.Engine
 // into c, skipping that resolution entirely when the group command itself
 // is invoked (bare "lyx perch" listing or an unknown-subcommand error via
@@ -125,9 +125,20 @@ Example:
 				return nil
 			}
 
+			// burlerengine.LoadConfig's only error today is a read/decode
+			// failure — an absent burler.yaml is not an error, it decodes to
+			// the zero Config (clustering then fails later, at fan
+			// resolution, with a message naming `lyx config reconcile`).
+			burlerCfg, err := burlerengine.LoadConfig(layout.Cwd)
+			if err != nil {
+				output.Err(out, err.Error())
+				clihelp.Abort(ctx, 1)
+				return nil
+			}
+
 			muxEngine := muxengine.New(muxCfg, layout)
 			runner := shuttleengine.NewRunner(muxEngine, claudeengine.New(), layout, shuttleCfg)
-			c.burlerEngine = burlerengine.New(runner, layout)
+			c.burlerEngine = burlerengine.New(runner, layout, burlerCfg)
 			c.runner = runner
 			c.perchCfg = perchCfg
 			c.layout = layout
