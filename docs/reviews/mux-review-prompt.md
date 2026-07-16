@@ -263,93 +263,78 @@ Claude Code hooks (Stop/SessionStart/PreToolUse, marker/idle detection, resume-c
 construction) belong to `shuttle`, not mux. Their absence is correct — do not flag it. mux is a
 dumb carrier: it runs opaque command strings and its only liveness signal is generic `pane-died`.
 
-## Round context — HEADER-PANE CAMPAIGN, round 2 (tag `opus-header-r2`), after round 1 (Fable, tag `fable-header-r1`) closed ten real defects
+## Round context — HEADER-PANE CAMPAIGN, round 3 (tag `fable-header-r3`), after round 1 (Fable, `fable-header-r1`) closed 10 defects and round 2 (Opus, `opus-header-r2`) closed 2 more
 
-**This is a NEW, separate hardening campaign from the CLOSED R1/R2 campaign further below** —
 `mux-operator-console` landed a genuinely new, stateful feature on top of already-hardened mux:
 the always-on header pane (`MuxState.HeaderPaneID`), with its own boot/rebirth lifecycle, three
-exclusion seams, and new layout math applied against real tmux via `select-layout`.
+exclusion seams, and new layout math applied against real tmux via `select-layout`. This is a
+NEW, separate hardening campaign from the CLOSED R1/R2 (pre-header) campaign further below.
 
-**Round 1 (`fable-header-r1`) is CLOSED-AND-VERIFIED — do not re-litigate, but DO check for
-regressions.** It found and fixed ten findings (3 BLOCKING, 3 MEDIUM, 2 LOW, 2 NIT), all
-independently re-verified by the orchestrator from a cold state on the committed tree (not just
-the round's own self-report):
-- **F4** (BLOCKING): bare `-t <session>` tmux targets prefix-match, so a re-`down` in one
-  worktree could kill a prefix-sharing sibling worktree's live session. Fixed with exact-match
-  (`=name` / `=name:`) targets everywhere a session name is a `-t` argument. Commit `aa93f631`.
-- **F1** (BLOCKING): the header pane booted with cwd `layout.Hub` (not a git repo by definition),
-  so its own launch command died and the console showed a JSON error forever. Fixed: split at
-  `layout.Cwd` instead. Commit `ec57662c`.
-- **F9** (MEDIUM, found+fixed mid-round): in-process test flows made header panes recursively
-  exec the test binary/suite — the mechanism behind this machine's large pre-existing stray-tmux
-  baseline. Fixed with TestMain argv guards. Commit `6ee09d23`.
-- **F2** (BLOCKING, folds in F5/F8): a dead/killed header pane wasn't exempt from reconcile's
-  dead-pane kill loop; the stale `HeaderPaneID` still got threaded into the next layout string;
-  tmux silently accepted the cell/pane-count mismatch and scrambled every strand's height
-  positionally; the header was gone entirely; the next `up` wedged permanently. Fixed across
-  three seams (reconcile exemption, layout presence-filtering, aliveness-keyed topmost-targeted
-  heal in `ensureHeaderPaneLocked`, zero-pane error not panic). Commit `f9e7d66e`.
-- **F10** (MEDIUM, found+fixed mid-round): at the default `height_rows: 1`, the header's rendered
-  text was invisible (scrolled off by the echoed launch line). Fixed via ANSI clear + trimmed
-  print. Commit `2e8a51db`.
-- **F3** (MEDIUM): `ValidateHeader` ran after the session spawn, so a broken template during
-  crash-rebirth silently lost the stale-binding clear and a later `resume` reported a bare shell
-  as live. Fixed: validate before any tmux contact, alongside debug_log/mouse. Commit `cdcdbdfe`.
-- **F6** (LOW): `render.Rules`' no-placed-strand header path contradicted its own doc and could
-  emit a zero-height cell. Fixed: header claims the whole box as a bracket-less sole cell. Commit
-  `3b062cab`.
-- **F7** (NIT), **F8** (NIT, folded into F2's commit): doc corrections. Commits `ecd25fc5`,
-  `f9e7d66e`.
-- Plus a new sandbox scenario, **M19** (always-on header pane), added to
-  `tools/sandbox/SANDBOX-MUX-SUITE.md`. Commit `15bea532`.
+**Round 1 (`fable-header-r1`) is CLOSED-AND-VERIFIED.** Ten findings (3 BLOCKING, 3 MEDIUM, 2 LOW,
+2 NIT), commits `aa93f631`..`15bea532`. Highlights: **F4** (BLOCKING) — bare `-t <session>` tmux
+targets prefix-match, so a re-`down` in one worktree could kill a prefix-sharing sibling's live
+session; fixed with exact-match (`=name`/`=name:`) targets everywhere. **F1** (BLOCKING) — header
+pane cwd was `layout.Hub` (not a git repo by definition), so its own launch command died and the
+console showed a JSON error forever; fixed by splitting at `layout.Cwd`. **F2** (BLOCKING, folds
+F5/F8) — a dead/killed header wasn't exempt from reconcile's dead-pane kill loop, so the stale
+`HeaderPaneID` still got threaded into the layout string, tmux silently scrambled every strand's
+height positionally, and the header was gone entirely, wedging every subsequent `up`; fixed across
+3 seams. Plus F9 (test-suite recursion via header panes, root-caused this machine's large stray-tmux
+baseline), F10 (invisible 1-row header text), F3 (ValidateHeader ordering), F6/F7/F8 (render/doc
+fixes), and M19 (new sandbox scenario). Full detail: `.scratch/mux-review-fable-header-r1.md` +
+`-fixer-report.md`.
 
-**Orchestrator's independent verification of round 1 (not just the round's self-report):**
-`go build ./...`, `go vet` (plain + `-tags integration` + `-tags smoke`), `go test -count=5`
-(muxengine/muxcli/cmd/lyx), the full `-tags integration` suite (incl.
-`TestExactSessionTargetsNeverPrefixMatchSiblings`, `TestDeadHeaderPaneIsHealedByUpWithoutCorruptingLayout`,
-`TestHeaderNeverGetsZeroHeightLayoutCell`), the full serial smoke suite (`-run Smoke -v -count=1`,
-all PASS + 1 expected psmux-only SKIP), and a 3× concurrent full-smoke-suite amplifier (zero
-corruption markers) — all green. The orchestrator additionally hand-mutated F4's and F2's fixes
-itself (not trusting the round's own mutation-check claim): reverting each fix independently made
-the corresponding new test(s) fail at exactly the right assertion, and reverting the mutation
-restored a byte-identical (empty) diff and a green re-run. Stray-tmux accounting: `pgrep -a tmux`
-before and after every one of the orchestrator's own verification runs showed the **exact same
-PIDs** for this machine's large pre-existing baseline (dozens of stray processes from unrelated
-concurrent worktrees/test runs on this shared machine, predating this campaign — see the
-Environment note in `.scratch/mux-review-HANDOFF.md`; do not treat that baseline count as a
-finding) — zero new stray processes were left by round 1 or by the orchestrator's own
-build/vet/test/mutation-check/smoke/concurrent-smoke runs.
+**Round 2 (`opus-header-r2`) is ALSO CLOSED-AND-VERIFIED — a much lighter round, a real
+convergence signal.** A full genuinely-independent pass (including concurrency/timing scenarios
+round 1 had driven mostly serially: concurrent same-worktree adds, concurrent two-worktree server
+boot, cross-worktree churn under load) found only **1 MEDIUM + 1 NIT** — a sharp drop from round
+1's ten findings, and round 1's ten fixes were confirmed to hold under round 2's own independent
+adversarial driving (not just re-reading the diff):
+- **F-OPUS-1** (MEDIUM): a `-vv`-only `tmux-out-<pid>.log` third log shape was missed by the
+  existing server/client log prune, so `debug_log: 2` boots accumulated it unbounded — same class
+  as the CLOSED prior R1/R2 campaign's already-fixed F1 (client logs), one prefix further. Fixed:
+  `outLogNamePrefix` added to the same newest-3 prune budget. Commit `1c6cd050`.
+- **F-OPUS-2** (NIT): header template banner described `{{.hub}}` as "the hub's directory name"
+  when it renders the hub's absolute path. Commit `08c027ea`.
+- The `sonnet-r1` "down reports ok but session alive" item (from the CLOSED prior campaign) did
+  NOT reproduce under round 2's driving either — second independent non-reproduction, on top of
+  round 1's; convergence signal that F4's fix (round 1) closed its real root cause.
 
-**YOUR JOB this round (header-pane campaign, round 2) — genuinely independent, not a light
-regression pass.** Round 1 found real, severe defects; by this method's own convergence bar (see
-the worked mux campaign in `docs/reviews/README.md` — rounds 3, 4, and 5 of THAT campaign each
-self-reported "merge-ready" and each still left a residual the next round's independent pass
-caught), one clean round is not evidence of convergence. Do a full clean-room review exactly as
-prescribed by "Your two jobs" and the clean-room constraint above — form and write your OWN
-findings before reading `.scratch/mux-review-fable-header-r1.md` or its fixer report. In
-particular:
-- Re-drive every bullet under "NEW THIS ROUND — THE ALWAYS-ON HEADER PANE" in High-yield focus
-  above from scratch, with your own scenarios — do not assume round 1's scenarios were
-  exhaustive. Pay special attention to concurrency/timing angles round 1 drove mostly serially:
-  a real race between two concurrent mux invocations against the same session (e.g. `add` and
-  `remove` racing, or an `attach` mid-`apply`), and repeat round 1's F2 (dead-header) and F4
-  (cross-worktree) scenarios under genuine concurrent load, not just a quiet isolated attempt.
-- After your own pass, consult `fable-header-r1`'s review + fixer report to (a) confirm its ten
-  fixes actually hold under YOUR adversarial driving (do not just re-read the diff — drive it
-  live yourself) and (b) check whether any of its fixes introduced a new seam worth probing (e.g.
-  the new `exactSessionTarget`/`exactSessionWindowTarget` helpers, the aliveness-keyed
-  `ensureHeaderPaneLocked` heal path, the TestMain argv guards).
-- The two contract assumptions round 1 could not verify on this Linux box remain open: the `=`
-  exact-target grammar's behavior on psmux/Windows, and whether Windows tmux truly "refuses to
-  kill the last pane" (the original, now-superseded claim). If you have Windows/psmux access,
-  checking either resolves a real open question; if not, say so explicitly (not a blanket
-  cannot-verify excuse — only if the environment gap is genuine).
+**Orchestrator's independent verification of round 2 (not just the round's self-report):**
+`go build ./...`, `go vet` (plain), `go test -count=5` (muxengine/muxcli/tokenvocab/cmd/lyx), the
+full `-tags integration` suite, the full serial smoke suite (`-run Smoke -v -count=1`, all PASS + 1
+expected psmux-only SKIP), and a 3× concurrent full-smoke-suite amplifier (zero corruption
+markers) — all green, from a cold state on the committed tree. The orchestrator hand-mutated
+F-OPUS-1's fix itself (temporarily removed the `outLogNamePrefix` prune call): the regression test
+failed at exactly the right assertion (`tmux-out-*.log count = 5 ... want <= 3`), and reverting the
+mutation restored an empty diff and a green re-run. Stray-tmux accounting: `pgrep -ac tmux` before
+and after every verification run stayed at exactly **117** — this machine's large pre-existing
+baseline from unrelated concurrent worktrees/test runs (see the Environment note in
+`.scratch/mux-review-HANDOFF.md`; not a finding) — zero new strays from round 2 or from the
+orchestrator's own runs.
 
-**Secondary, regression-check only: the CLOSED R1/R2 (pre-header) campaign below.** That
-campaign's four changes were independently hardened and converged before the header pane
-existed. Confirm none of them regressed now that round 1's header fixes are also in the mix
-(e.g. F4's exact-target-matching touches the same session-name plumbing those items rely on) —
-a lighter pass, not a from-scratch re-review.
+**YOUR JOB this round (header-pane campaign, round 3) — genuinely independent, not a rubber
+stamp.** Two rounds have now converged toward "clean" (round 1 severe → round 2 light), but by
+this method's own bar (see the worked mux campaign in `docs/reviews/README.md`: rounds 3, 4, AND 5
+of THAT campaign each self-reported clean and each still had a residual the next round caught;
+convergence needs multiple *different* models agreeing, not one quiet round), two rounds is not
+yet the bar — continue the full independent treatment:
+- Form and write your OWN findings before reading either `fable-header-r1`'s or
+  `opus-header-r2`'s review/fixer reports. Re-drive every bullet under "NEW THIS ROUND — THE
+  ALWAYS-ON HEADER PANE" in High-yield focus above with your own scenarios.
+- Since two different models (Fable, Opus) have both now driven this surface hard and the finding
+  rate is dropping, use your own independent judgment about where to concentrate: either find a
+  genuinely new angle neither round tried, or do a rigorous safety-pass-style confirmation if you
+  find nothing — either is a valid, honest round-3 outcome. Do not invent work to look busy, but do
+  not under-drive it either.
+- After your own pass, consult both prior rounds' reports to confirm their 12 combined fixes hold
+  under YOUR adversarial driving (drive it live yourself, don't just re-read the diffs) and to
+  re-check the CLOSED prior R1/R2 (pre-header) campaign's four items for regressions — a lighter
+  pass, not a from-scratch re-review.
+- The Windows/psmux contract questions (the `=` exact-target grammar's behavior there, and whether
+  Windows tmux truly "refuses to kill the last pane") remain open on this Linux box across two
+  rounds now. If you have Windows/psmux access, checking either resolves a real open question; if
+  not, say so explicitly rather than a blanket cannot-verify excuse.
 
 ---
 
