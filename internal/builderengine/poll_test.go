@@ -136,6 +136,11 @@ func (e *fakeEngine) InterruptSequence() []shuttleengine.PaneInput      { return
 func (e *fakeEngine) TrustDismissSequence() []shuttleengine.PaneInput   { return nil }
 func (e *fakeEngine) ComposeSend(text string) []shuttleengine.PaneInput { return nil }
 
+// AuditForks is never reached: this double never runs fork-mode specs.
+func (e *fakeEngine) AuditForks(sessionID, workdir string) (shuttleengine.ForkAudit, error) {
+	return shuttleengine.ForkAudit{}, nil
+}
+
 var _ shuttleengine.Engine = (*fakeEngine)(nil)
 
 func TestTurnEnded(t *testing.T) {

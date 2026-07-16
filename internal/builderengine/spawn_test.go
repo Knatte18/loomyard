@@ -112,6 +112,11 @@ func (e *spawnFakeEngine) ComposeSend(text string) []shuttleengine.PaneInput {
 	return nil
 }
 
+// AuditForks is never reached: this double never runs fork-mode specs.
+func (e *spawnFakeEngine) AuditForks(sessionID, workdir string) (shuttleengine.ForkAudit, error) {
+	return shuttleengine.ForkAudit{}, nil
+}
+
 var _ shuttleengine.Engine = (*spawnFakeEngine)(nil)
 
 // spawnFixture is a fully-wired, mutation-safe-to-share-across-subtests set
