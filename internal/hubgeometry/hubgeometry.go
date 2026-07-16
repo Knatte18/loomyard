@@ -174,8 +174,9 @@ func deriveRepo(prime, worktreeRoot string) string {
 //
 // For any worktreeRoot where filepath.Dir(worktreeRoot) == l.Hub, this is byte-for-byte
 // equivalent to Resolve(worktreeRoot): both set Cwd and WorktreeRoot to
-// filepath.Clean(worktreeRoot), Hub to the same hub, RelPath to ".", and Prime to the
-// receiver's already-resolved Prime.
+// filepath.Clean(worktreeRoot), Hub to the same hub, RelPath to ".", and Prime and Repo to
+// the receiver's already-resolved Prime and Repo (every hub-sibling worktree shares the
+// same Prime, so Repo — derived from Prime — is identical too).
 func (l *Layout) SiblingLayout(worktreeRoot string) *Layout {
 	c := filepath.Clean(worktreeRoot)
 	return &Layout{
@@ -184,6 +185,7 @@ func (l *Layout) SiblingLayout(worktreeRoot string) *Layout {
 		Hub:          l.Hub,
 		RelPath:      ".",
 		Prime:        l.Prime,
+		Repo:         l.Repo,
 	}
 }
 
