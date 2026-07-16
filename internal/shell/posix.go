@@ -37,3 +37,10 @@ func (p posixShell) Invoke(bin string) string {
 func (p posixShell) ReadFile(path string) string {
 	return `"$(cat ` + p.Quote(path) + `)"`
 }
+
+// WithEnv prefixes cmd with a POSIX command-scoped assignment (`key=value cmd`), which
+// sets the variable only for the duration of cmd's own execution — no leakage into the
+// rest of the pane session. value is always quoted, never interpolated raw.
+func (p posixShell) WithEnv(key, value, cmd string) string {
+	return key + "=" + p.Quote(value) + " " + cmd
+}
