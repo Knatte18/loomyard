@@ -110,14 +110,25 @@ production-code and test-gap clusters counted separately).
   (`instafork.sh`: fresh explorer, forks spawned 34 s after it went idle — well inside
   the 5-minute cache TTL) reproduced the *exact* same split: cache_read = 54,492 per
   fork, cache_creation ≈ 75.2k. Same number across two different explorer parents ⇒
-  the 54,492 is the session-independent static prefix (system prompt + tool defs +
-  project context) that every session in the hub shares — none of it is the parent's
-  exploration. The inherited conversation is paid as cache_creation by each fork
-  regardless of timing, presumably because the fork's re-serialized history is not
-  byte-identical to the parent's cached prefix. So on API billing, fork input gets no
-  cache discount; the saving is entirely from skipping the explore phase itself
-  (12 tool calls / 15 turns, ~209k vs ~97k compute per reviewer). On subscription the
-  compute saving above is what counts either way.
+  none of it is the parent's exploration. A controlled follow-up
+  (`exp-resume.sh`, results in `results/exp-resume.md`) pinned the root cause: with a
+  tiny parent (one tool call) and children spawned seconds later, a **plain
+  `--resume` continuation and a fork miss the parent's history identically**
+  (cache_read = the 27,246-token static per-cwd prefix in both), while the parent's
+  own live process reads static + its own history. So: Claude Code re-serializes any
+  *reloaded* session (resume and fork alike) into bytes that don't match the live
+  session's cached prefix — history-computation reuse on reload is 0% by
+  construction. Not a TTL effect, not the 20-block lookback, not fork-specific. This
+  is a Claude Code client behavior, not an API violation — Anthropic's caching docs
+  never promise resume/fork reuse and place the exact-prefix burden on the client.
+  Two consequences: (a) on API billing, fork input gets no cache discount from the
+  parent — the saving is entirely from skipping the explore phase itself (~209k vs
+  ~97k compute per reviewer); (b) re-serialization is deterministic, so **sibling
+  forks of one parent can read each other's cache** (this is what the 54,492 in the
+  main run was: static 27,246 + a chunk the earlier M1 fork had cached). Design
+  lever for an API-billed cluster: stagger fork launches — fire one, await its first
+  streamed token, then fire the rest, per Anthropic's documented fan-out pattern. On
+  subscription the compute saving above is what counts either way.
 
 ## Decision
 
