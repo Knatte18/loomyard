@@ -61,6 +61,7 @@ interface consumed by batch 3: `tokenvocab.Ctx`, `tokenvocab.Build`, and `tokenv
 ### Card 5: tokenvocab unit tests
 
 - **Context:**
+  - `internal/hubgeometry/hubgeometry.go`
   - `internal/tokenvocab/tokenvocab.go`
   - `internal/tokenvocab/render.go`
   - `internal/stencil/stencil_test.go`

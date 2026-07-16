@@ -3,7 +3,7 @@
 ```yaml
 task: "Built-in operator console pane in mux"
 slug: mux-operator-console
-approved: false
+approved: true
 started: "20260716-114948"
 parent: main
 root: ""

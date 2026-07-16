@@ -132,6 +132,7 @@ note without a redundant flag); only `--blocking` is envelope-exempt.
 ### Card 13: Header pipeline tests
 
 - **Context:**
+  - `internal/hubgeometry/hubgeometry.go`
   - `internal/muxengine/header.go`
   - `internal/muxengine/config.go`
   - `internal/muxengine/headertemplate.go`

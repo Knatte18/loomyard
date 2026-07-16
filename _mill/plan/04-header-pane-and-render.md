@@ -210,7 +210,7 @@ _No `Moves:` in this batch; section included for completeness only — there are
 
 ## Batch Tests
 
-`verify: go test ./internal/muxengine/... ./internal/muxcli/...` runs all hermetic unit tests (cards
+`verify: go test -tags integration ./internal/muxengine/... ./internal/muxcli/...` runs all hermetic unit tests (cards
 14, 16, 20), the render enumeration tests (card 15/20), and — via the `-tags integration` flag — the
 `//go:build integration` `contract_integration_test.go` keepalive regression (skips if tmux is absent;
 present on this host). The build-tagged smoke

@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r1
+phase: plan-fix-r2
 slug: mux-operator-console
 branch: mux-operator-console
 plan: _mill/plan
@@ -20,4 +20,5 @@ discussed  '2026-07-16T11:44:20Z'
 planning  '2026-07-16T11:57:24Z'
 plan-review-r1  '2026-07-16T12:06:34Z'
 plan-fix-r1  '2026-07-16T12:06:34Z'
+plan-fix-r2  '2026-07-16T12:11:54Z'
 ```
