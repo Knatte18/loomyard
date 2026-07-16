@@ -97,9 +97,10 @@ The header text is produced by three pieces, each with one job:
    v1 exposes only **always-resolvable** tokens (`repo`, `hub`); `slug` (task slug) is deferred
    with its own empty-value policy then. The `repo` resolver simply reads a **new
    `hubgeometry.Layout.Repo` field** (GAP-2): hubgeometry owns geometry (Hub Geometry Invariant),
-   so it — not tokenvocab — derives the repo name from git (guaranteed non-empty; derivation is a
-   hubgeometry impl detail, e.g. remote-origin basename with a fallback to the main-worktree
-   basename). `hub` reads `Layout.Hub`.
+   so it — not tokenvocab — sets the repo name. Derivation is **`filepath.Base(Prime)`** (r2 NOTE):
+   `Prime` (the main worktree path) is already computed by `Resolve`, so this is **spawn-free** — no
+   `git remote get-url` subprocess is added to the `Resolve` hot path (the repo recently invested in
+   reducing git spawns). Always non-empty. `hub` reads `Layout.Hub`.
 
 3. **`internal/stencil` (EXISTING) — the fill step.** `Fill(template, values)` (`stencil.go:36`),
    strict unfilled-marker detection. Reused as-is; template uses `{{.token}}` markers.
@@ -125,12 +126,20 @@ The header text is produced by three pieces, each with one job:
 - Rationale: matches "header at the top, over the strands." No `anchor:top` exists today
   (`render/types.go:23-39`), so this is new render work (new `policy.go` case +
   `layout.go`/`height.go` mechanics; shrink the strand `Box` by the header height).
-- **Height clamp (NOTE-2):** `height_rows` is config-driven, so an oversized value could shrink
-  the strand `Box` to zero. The header height must be **clamped** against the window so the strand
-  stack retains at least its `MinFullRows` floor (reuse the existing `clampToFit`/`MinFullRows`
-  logic in `render/height.go:88`); the header yields rows before strands are starved.
-- Rejected: header in its own tmux window (`AnchorOwnWindow`) — keeps the session alive but is
-  not a visible top band; an unclamped header height that can starve the strand stack.
+- **Layout enumeration (GAP-2 r2 — BINDING correctness):** `render.Rules(strands, box, params,
+  paneOrder)` (`rules.go:29`) enumerates only strands, but the emitted `window_layout` must list
+  **every** live pane or tmux rejects the mismatched-count layout and psmux reaps the extra pane
+  (`apply.go:74` renders over `Box{0,0,Width,Height}`). So `HeaderPaneID` + header height must be
+  **threaded into `planLayout`→`Rules` as a new parameter** (NOT a synthetic strand): `Rules`
+  emits the header band cell at `{Y:0, H:headerHeight}` and lays the strand stack in the shrunk
+  `Box{Y:headerHeight, H:Height-headerHeight}` below it.
+- **Height clamp (NOTE-2, refined r2):** the window→(header, strand-box) split is **new clamp
+  logic**, distinct from the existing `clampToFit` (`height.go:88`, which distributes rows *among
+  strands inside* an already-shrunk Box). The new step clamps `header height` so the strand-stack
+  **region** keeps a floor (a stack-total minimum, e.g. `MinFullRows` for the region — not
+  per-strand); `clampToFit` then distributes within that region as today.
+- Rejected: header in its own tmux window (`AnchorOwnWindow`); an unclamped header height that can
+  starve the strand stack; modelling the header as a hidden/special strand just to reach `Rules`.
 
 ### header pane is the persistent keepalive (Q8)
 
@@ -138,6 +147,13 @@ The header text is produced by three pieces, each with one job:
   torn down with the session on `down`; pane id persisted in `mux.json` outside `Strands`.
   **Always on**, cannot be disabled — it is structural. It remains alive when **all strands are
   dead**, making the last-strand teardown unreachable.
+- **Adoption/split protection (GAP-2 r2 → GAP-1 r2 — BINDING correctness):** `planPaneTarget`
+  (`spawn.go:40`) returns the **first alive pane** as the adoption target when no strand is bound
+  yet (exactly the post-boot state) and picks the **tallest alive pane** as the split target. The
+  header pane is alive but not a strand, so the first strand added after boot would **adopt (take
+  over) the header pane**, destroying the keepalive — or split it. `HeaderPaneID` must be
+  **excluded from both** `planPaneTarget`'s adoption-candidate loop and its split-target selection,
+  in addition to the `reconcile.go:93-113` exemption.
 - **Error path (GAP-3 — errors are fixed loudly, never left):** `up`/config-load **eagerly
   validates** the header template (renders it once, `output.Err` + non-zero exit on a bad
   template / unresolvable token), so a misconfiguration fails **loud and early**, before the
@@ -175,9 +191,13 @@ Full codebase map: `.scratch/mux-console-exploration.md`. Highlights mill-plan n
 - **No `anchor:top` band exists** — `render/types.go:23-39` vocab is
   `below-parent | own-window (deferred) | hidden`. Top band = new render work; render stacks
   vertically full-width within a `Box{X,Y,W,H}` (`layout.go:30 buildStackBody`).
-- **Most dangerous seam:** `reconcile.go:93-113` — `planReconcile` kills any live pane not in
-  `boundPaneIDs` (built from `Strand.PaneID`). The header pane id MUST be threaded into an
-  exemption set here or it is reaped on the next add/resume/remove.
+- **Pane seams the header id MUST be excluded from (all three, or the keepalive breaks):**
+  (1) `reconcile.go:93-113` — `planReconcile` kills any live pane not in `boundPaneIDs` (from
+  `Strand.PaneID`); thread the header id into an exemption set. (2) `planPaneTarget` (`spawn.go:40`)
+  — excludes the header pane from adoption (first-alive-pane, post-boot) and split-target
+  (tallest-alive) selection. (3) `render.Rules`/`planLayout` (`rules.go:29`, `apply.go:74`) — the
+  header id + height are passed in as a new param so the emitted `window_layout` enumerates the
+  header band; otherwise tmux rejects the layout / psmux reaps the pane.
 - **Accounting exclusion points:** `lifecycle.go:415` (`UpResult.Strands` count),
   `lifecycle.go:922-925` (`Status` loop), `noSessionMessage`/`strandCount` (`lifecycle.go:842-847`).
 - **Last-pane kill site:** `strand.go:485-487` (`RemoveStrand`'s explicit kill-pane loop — what
@@ -233,6 +253,11 @@ Per-module approach (TDD candidates called out):
 - **Reconcile exemption (smoke):** mirror `TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable`
   (`smoke_lifecycle_test.go:237`) — the header pane survives reconcile even with strands bound
   (its id is in the exemption set), and survives `up`/`add`/`remove` cycles.
+- **Adoption protection (hermetic, `planPaneTarget`):** given a live header pane and no bound strand,
+  `planPaneTarget` neither adopts nor split-targets the header id (the first real strand splits a
+  fresh pane, header untouched).
+- **Layout enumeration (hermetic, `planLayout`/`Rules`):** the emitted `window_layout` contains the
+  header band cell + one cell per strand (count matches live panes), header at top, strand box shrunk.
 - **Top-band render (hermetic):** header placed at the top at `height_rows`, strand stack tiled in
   the shrunk `Box` below, heights still tile exactly.
 - **Boot/persistence:** header created before the first strand; `HeaderPaneID` persisted to
@@ -270,3 +295,9 @@ Per-module approach (TDD candidates called out):
 - **Q (GAP-3):** What happens on a header render error? **A:** Errors are fixed loudly — `up`/config-load
   validates the template eagerly (`output.Err`, early), so a broken config never boots silently. The
   `--blocking` pane only prints-and-keeps-blocking as a rare last-resort fallback.
+- **Q (r2 GAP-1):** Can the first strand take over the header pane? **A:** Not once fixed — `HeaderPaneID`
+  is excluded from `planPaneTarget`'s adoption and split-target selection (`spawn.go:40`), alongside the
+  reconcile exemption.
+- **Q (r2 GAP-2):** How does the header pane get into the tmux layout string? **A:** `HeaderPaneID` + height
+  are threaded into `planLayout`→`render.Rules` as a new param (not a synthetic strand); Rules emits the
+  header band cell + the shrunk strand stack, so the layout enumerates every live pane.
