@@ -194,10 +194,12 @@ func planResumeLaunches(strands []Strand, liveIDs map[string]bool) []Strand {
 // Before any of that, it runs the capability probe (probe.go) once and
 // returns a *CapabilityError immediately if the configured multiplexer
 // binary is below the pinned version floor or missing a required
-// subcommand. It also validates cfg.DebugLog via debugLogArgs and cfg.Mouse via
-// mouseOption up front and returns either error before any tmux round trip
-// at all — an invalid debug_log or mouse value must fail the boot loud, not
-// partway through a spawn.
+// subcommand. It also validates cfg.DebugLog via debugLogArgs, cfg.Mouse
+// via mouseOption, and the header template via ValidateHeader up front and
+// returns any of those errors before any tmux round trip at all — an
+// invalid debug_log, mouse, or header-template value must fail the boot
+// loud, not partway through a spawn (see the header-validation comment in
+// the body for why "after the spawn" was concretely harmful).
 func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []string, err error) {
 	// Validate debug_log before anything else touches tmux: a misconfigured
 	// value is a pure config error, unrelated to server/session state, so it
@@ -212,6 +214,24 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	// or any spawn attempt, not partway through a boot.
 	mouse, err := mouseOption(e.cfg.Mouse)
 	if err != nil {
+		return false, nil, err
+	}
+
+	// Validate the header template in the same pre-tmux block — it reads
+	// only cfg+layout (HeaderText makes no tmux round trip), so like
+	// debug_log and mouse it must fail the boot before anything is spawned.
+	// An earlier version validated only AFTER the session existed, which
+	// left a half-created session behind on a bad template — and, on the
+	// crash-recovery path, lost the booted=true rebirth signal: the boot
+	// had already replaced the session (pane ids reset) when validation
+	// failed, so the NEXT resume saw the session simply "up", skipped
+	// clearAllPaneBindings, and mistook stale pre-crash pane bindings for
+	// live strands (observed live: resumed:0 with a bare shell reported
+	// live). Validating up front removes the realistic — config-mistake —
+	// path into that trap; a set-option failure between spawn and return
+	// can still theoretically lose the signal, but has no config-shaped
+	// trigger.
+	if err := e.ValidateHeader(); err != nil {
 		return false, nil, err
 	}
 
@@ -242,15 +262,8 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 			return false, nil, fmt.Errorf("list panes: %w", err)
 		}
 		if len(live) > 0 {
-			// The session/initial pane already exists: validate the header
-			// template eagerly, before returning to the caller (which then
-			// proceeds to ensureHeaderPaneLocked and, on Resume, strand
-			// replay) — loud and early, per the eager-header-validation
-			// decision, rather than only surfacing when the header pane
-			// itself is spawned.
-			if err := e.ValidateHeader(); err != nil {
-				return false, nil, err
-			}
+			// The header template was already validated in the pre-tmux
+			// block above, so this healthy already-up path returns directly.
 			return false, nil, nil
 		}
 		_ = e.tmux.run("kill-session", "-t", exactSessionTarget(session))
@@ -387,15 +400,6 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 		return false, nil, fmt.Errorf("set mouse: %w", err)
 	}
 
-	// The session/initial pane now exists on this freshly booted path too:
-	// validate the header template before returning, exactly as the
-	// already-up branch above does, so a bad template is caught eagerly on
-	// EVERY call site of this shared boot path (Up and Resume alike, not
-	// only a first Up) — per the eager-header-validation decision, before
-	// the header pane itself is ever created.
-	if err := e.ValidateHeader(); err != nil {
-		return false, nil, err
-	}
 	return true, stripped, nil
 }
 

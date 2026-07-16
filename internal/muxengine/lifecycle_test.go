@@ -11,6 +11,7 @@ package muxengine
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -23,6 +24,32 @@ func guids(strands []Strand) []string {
 		out[i] = s.GUID
 	}
 	return out
+}
+
+// TestUp_BadHeaderTemplateFailsBeforeAnyTmuxContact pins the header
+// template's validation ORDER, not just its existence: it must sit in the
+// same pre-tmux validation block as debug_log/mouse. The engine's tmux path
+// points at a nonexistent binary (newTestEngine's fixture), so if
+// validation ran after any tmux contact — the capability probe, a
+// has-session, a spawn — Up's error would be about that binary instead of
+// the template. Validating after the spawn was concretely harmful: a bad
+// template then left a half-created session behind and, on the
+// crash-recovery path, lost the booted=true rebirth signal, making the
+// next resume mistake stale pre-crash pane bindings for live strands
+// (observed live in fable-header-r1).
+func TestUp_BadHeaderTemplateFailsBeforeAnyTmuxContact(t *testing.T) {
+	e := newTestEngine(t)
+	e.cfg.DebugLog = "0"
+	e.cfg.Mouse = "off"
+	e.cfg.Header.Template = "{{.bogus}}"
+
+	_, err := e.Up()
+	if err == nil {
+		t.Fatal("Up() with a bad header template = nil error, want the eager validation error")
+	}
+	if !strings.Contains(err.Error(), "unfilled top-level marker") {
+		t.Errorf("Up() error = %q, want the stencil unfilled-marker error — any other error (e.g. the nonexistent tmux binary's) means validation ran after tmux contact", err)
+	}
 }
 
 func TestPlanUpLaunches_NeverLaunchesAnyStrand(t *testing.T) {
