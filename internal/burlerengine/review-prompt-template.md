@@ -2,7 +2,7 @@
      via internal/stencil and handed to the shuttle as the agent's entire
      instruction set — the round runs as a single clean-room agent told only
      "read this file and do exactly what it says". Every marker below is a
-     top-level {{.X}} substitution; stencil.Fill requires all eight non-empty
+     top-level {{.X}} substitution; stencil.Fill requires all nine non-empty
      and there are no {{if}}/{{range}} conditionals anywhere in this file
      (a required marker inside a conditional branch would render silently
      blank when present-but-empty — see internal/stencil/stencil.go). -->
@@ -48,6 +48,10 @@ destroys the one property this whole method depends on. If you catch yourself wa
 something the moment you spot it: don't. Write it down as a finding, keep reading, finish the
 review, save the file, THEN start job B.
 
+## Cluster rules
+
+{{.cluster_rules}}
+
 ## Fix-everything rule (BLOCKING — do not skip low-severity findings)
 
 Every finding you record in the review gets fixed in job B — all severities, including LOW and
@@ -83,6 +87,8 @@ Frontmatter rules, all strict:
 - Never write `APPROVED` while any finding is `BLOCKING` — a self-contradictory review file
   must never happen and must never look approved.
 - Omit `findings` entirely when you found nothing. Never invent a finding to pad the list.
+- In a cluster round, each finding also carries an `origin:` key — `lens:<name>` for a
+  finding kept from a named fork, or `handler` for one you found yourself.
 
 Below the closing `---`, write prose: one `### [SEVERITY] <title>` block per finding, each
 carrying `**Location:**`, `**Issue:**`, and `**Fix:**` lines.
