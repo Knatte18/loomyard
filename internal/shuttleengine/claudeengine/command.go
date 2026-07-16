@@ -103,6 +103,13 @@ func claudeBinary(cfg shuttleengine.Config) string {
 	return "claude"
 }
 
+// forkSubagentEnvKey is the staged-rollout flag (Claude Code v2.1.117+)
+// enabling the built-in fork subagent type. It is set inline on the launch
+// line ONLY — the mux server env is deliberately scrubbed of CLAUDE_CODE_*
+// at boot by muxengine.CleanClaudeEnv, so the flag must ride the pane
+// command, and only fork-mode runs get it.
+const forkSubagentEnvKey = "CLAUDE_CODE_FORK_SUBAGENT"
+
 // buildLaunchCmd composes the pane-shell line that starts a fresh claude
 // session: the prompt is read from promptPath via sh.ReadFile rather than
 // typed inline, so a large or quote-laden prompt never has to survive tmux
@@ -130,7 +137,11 @@ func claudeBinary(cfg shuttleengine.Config) string {
 // single send-keys call. sh supplies every bit of shell syntax (the call
 // operator, quoting, and the prompt-file read idiom) so this function never
 // hardcodes a pwsh- or posix-specific token.
-func buildLaunchCmd(sh shell.Shell, bin, promptPath, settingsPath, sessionID, model, effort string, interactive bool) string {
+// forkSubagents, when true, wraps the fully composed line via
+// sh.WithEnv(forkSubagentEnvKey, "1", cmd) so the claude process launches
+// with the fork subagent type enabled; when false the line is returned
+// unchanged, exactly as before this parameter existed.
+func buildLaunchCmd(sh shell.Shell, bin, promptPath, settingsPath, sessionID, model, effort string, interactive, forkSubagents bool) string {
 	cmd := sh.Invoke(bin) + " " + sh.ReadFile(promptPath) +
 		" --session-id " + sh.Quote(sessionID) + " --settings " + sh.Quote(settingsPath)
 	if model != "" {
@@ -142,6 +153,9 @@ func buildLaunchCmd(sh shell.Shell, bin, promptPath, settingsPath, sessionID, mo
 	if !interactive {
 		cmd += " --dangerously-skip-permissions"
 	}
+	if forkSubagents {
+		cmd = sh.WithEnv(forkSubagentEnvKey, "1", cmd)
+	}
 	return cmd
 }
 
@@ -152,6 +166,13 @@ func buildLaunchCmd(sh shell.Shell, bin, promptPath, settingsPath, sessionID, mo
 // concurrently, whereas --resume <id> names the exact session (discussion
 // "Session identity"). sh supplies the call operator and quoting exactly as
 // buildLaunchCmd does, so the two builders never diverge on shell syntax.
-func buildResumeCmd(sh shell.Shell, bin, settingsPath, sessionID string) string {
-	return sh.Invoke(bin) + " --resume " + sh.Quote(sessionID) + " --settings " + sh.Quote(settingsPath)
+// forkSubagents receives the same sh.WithEnv wrapping treatment as
+// buildLaunchCmd: a resumed fork-mode session must keep the fork-subagent
+// capability it launched with.
+func buildResumeCmd(sh shell.Shell, bin, settingsPath, sessionID string, forkSubagents bool) string {
+	cmd := sh.Invoke(bin) + " --resume " + sh.Quote(sessionID) + " --settings " + sh.Quote(settingsPath)
+	if forkSubagents {
+		cmd = sh.WithEnv(forkSubagentEnvKey, "1", cmd)
+	}
+	return cmd
 }
