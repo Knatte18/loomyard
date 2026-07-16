@@ -37,6 +37,12 @@ text to stdout and then blocks forever; this is the header pane's own
 keepalive tail and the one part of this command exempt from the JSON
 envelope (everything fallible still runs pre-flight, on the envelope).
 
+The live header pane renders its text once, at pane launch: after editing
+header.template in mux.yaml, this verb previews the new rendering
+immediately, but the running pane keeps its old text until the header is
+next rebuilt (a server restart, a dead-header heal, or "lyx mux down" +
+"up") — an "up" that finds the header alive deliberately leaves it as is.
+
 Example:
   lyx mux header
   lyx mux header --blocking`,
