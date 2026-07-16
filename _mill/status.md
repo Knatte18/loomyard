@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-burler-cluster-round
+phase: approved-docs-and-smoke
 slug: burler-fork-cluster
 branch: burler-fork-cluster
 plan: _mill/plan
@@ -31,6 +31,7 @@ approved-shell-env-and-shuttle-fork-types  '2026-07-16T20:23:25Z'
 approved-burler-config-module  '2026-07-16T20:30:11Z'
 approved-claudeengine-fork-mode  '2026-07-16T20:43:42Z'
 approved-burler-cluster-round  '2026-07-16T21:05:38Z'
+approved-docs-and-smoke  '2026-07-16T21:26:21Z'
 ```
 
 ## Batches
@@ -58,7 +59,8 @@ batches:
     start_sha: ef1d0f1f47667cb13067ba49a652387b6fe6d4a3
     commit_sha: 34bc7189d9c154d4fd0156c3630eb9474ea9b7dd
   - name: docs-and-smoke
-    state: running
+    state: approved
     implementer_session: ae945882-08fb-4eaf-b0ec-6c6677af4405
     start_sha: 22f2382278ffd1d5cf8698f0390ab652ba5d0499
+    commit_sha: bb22576a4db7ad1c57d0dfaa8bf68a8b26697eaa
 ```
