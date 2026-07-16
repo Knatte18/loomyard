@@ -73,7 +73,7 @@ preserved.
   `docs/research/mux-hooks-exploration.md`, `docs/overview.md`, `docs/roadmap.md`,
   `CONSTRAINTS.md`, `README.md`.
 - The dedicated live-driving suite you will RUN: `tools/sandbox/SANDBOX-MUX-SUITE.md`
-  (scenarios M0–M18 as of this writing — M6 was retired when `anchor:top` was removed and
+  (scenarios M0–M19 as of this writing — M6 was retired when `anchor:top` was removed and
   replaced by M18's below-parent mother/child shrink scenario; confirm the current max
   scenario number yourself, the suite is expected to keep growing) plus `docs/sandbox-howto.md`
   for how the sandbox harness works. This suite is the maintained, structured vehicle for
@@ -263,36 +263,93 @@ Claude Code hooks (Stop/SessionStart/PreToolUse, marker/idle detection, resume-c
 construction) belong to `shuttle`, not mux. Their absence is correct — do not flag it. mux is a
 dumb carrier: it runs opaque command strings and its only liveness signal is generic `pane-died`.
 
-## Round context — HEADER-PANE CAMPAIGN, round 1 (fresh campaign, tag `<model>-header-r1`)
+## Round context — HEADER-PANE CAMPAIGN, round 2 (tag `opus-header-r2`), after round 1 (Fable, tag `fable-header-r1`) closed ten real defects
 
-**This is a NEW, separate hardening campaign, not a continuation of the R1/R2 campaign below.**
-`mux-operator-console` just landed a genuinely new, stateful feature on top of already-hardened
-mux: the always-on header pane (`MuxState.HeaderPaneID`) — new boot/rebirth lifecycle, three new
-exclusion seams (adoption, split-target selection, reconcile), and new layout math (band
-splicing, divider-row budgeting, height clamping) applied against real tmux via `select-layout`.
-None of that has been through THIS hand-run hardening method yet — it went through mill's own
-automated per-batch + holistic LLM code review during implementation (which already found and
-fixed one real bug: the header/stack divider row was originally unbudgeted, causing a silent
-one-row window overflow, caught only by a real-tmux integration test, not by the unit suite —
-see `TestHeaderNeverGetsZeroHeightLayoutCell` and the "HEADER BAND LAYOUT + THE DIVIDER-ROW
-REGRESSION" bullet in High-yield focus above). That automated pass is real signal but is NOT a
-round of this method (no live adversarial driving beyond the one integration test, no
-independent human-gated verification) — so this is genuinely **round 1** for the header-pane
-surface specifically. Tag your deliverables `<model>-header-r1` (e.g.
-`.scratch/mux-review-opus-header-r1.md`) to keep them clearly distinct from the closed R1/R2
-campaign's `-sonnet-r1`/`-opus-r2` files below — do not reuse or continue that numbering.
+**This is a NEW, separate hardening campaign from the CLOSED R1/R2 campaign further below** —
+`mux-operator-console` landed a genuinely new, stateful feature on top of already-hardened mux:
+the always-on header pane (`MuxState.HeaderPaneID`), with its own boot/rebirth lifecycle, three
+exclusion seams, and new layout math applied against real tmux via `select-layout`.
 
-**Primary target this round: the header-pane surface** (see the dedicated High-yield-focus bullet
-above) — full independent adversarial review + live-driving, exactly as prescribed by "Your two
-jobs" and the clean-room constraint.
+**Round 1 (`fable-header-r1`) is CLOSED-AND-VERIFIED — do not re-litigate, but DO check for
+regressions.** It found and fixed ten findings (3 BLOCKING, 3 MEDIUM, 2 LOW, 2 NIT), all
+independently re-verified by the orchestrator from a cold state on the committed tree (not just
+the round's own self-report):
+- **F4** (BLOCKING): bare `-t <session>` tmux targets prefix-match, so a re-`down` in one
+  worktree could kill a prefix-sharing sibling worktree's live session. Fixed with exact-match
+  (`=name` / `=name:`) targets everywhere a session name is a `-t` argument. Commit `aa93f631`.
+- **F1** (BLOCKING): the header pane booted with cwd `layout.Hub` (not a git repo by definition),
+  so its own launch command died and the console showed a JSON error forever. Fixed: split at
+  `layout.Cwd` instead. Commit `ec57662c`.
+- **F9** (MEDIUM, found+fixed mid-round): in-process test flows made header panes recursively
+  exec the test binary/suite — the mechanism behind this machine's large pre-existing stray-tmux
+  baseline. Fixed with TestMain argv guards. Commit `6ee09d23`.
+- **F2** (BLOCKING, folds in F5/F8): a dead/killed header pane wasn't exempt from reconcile's
+  dead-pane kill loop; the stale `HeaderPaneID` still got threaded into the next layout string;
+  tmux silently accepted the cell/pane-count mismatch and scrambled every strand's height
+  positionally; the header was gone entirely; the next `up` wedged permanently. Fixed across
+  three seams (reconcile exemption, layout presence-filtering, aliveness-keyed topmost-targeted
+  heal in `ensureHeaderPaneLocked`, zero-pane error not panic). Commit `f9e7d66e`.
+- **F10** (MEDIUM, found+fixed mid-round): at the default `height_rows: 1`, the header's rendered
+  text was invisible (scrolled off by the echoed launch line). Fixed via ANSI clear + trimmed
+  print. Commit `2e8a51db`.
+- **F3** (MEDIUM): `ValidateHeader` ran after the session spawn, so a broken template during
+  crash-rebirth silently lost the stale-binding clear and a later `resume` reported a bare shell
+  as live. Fixed: validate before any tmux contact, alongside debug_log/mouse. Commit `cdcdbdfe`.
+- **F6** (LOW): `render.Rules`' no-placed-strand header path contradicted its own doc and could
+  emit a zero-height cell. Fixed: header claims the whole box as a bracket-less sole cell. Commit
+  `3b062cab`.
+- **F7** (NIT), **F8** (NIT, folded into F2's commit): doc corrections. Commits `ecd25fc5`,
+  `f9e7d66e`.
+- Plus a new sandbox scenario, **M19** (always-on header pane), added to
+  `tools/sandbox/SANDBOX-MUX-SUITE.md`. Commit `15bea532`.
 
-**Secondary, regression-check only: the CLOSED R1/R2 campaign below.** That campaign's four
-changes (`mux-server-crash`, `mux-mouse-default`, `mux-remove-last-pane-error`,
-`mux-anchor-top-redesign`) were already independently hardened and converged before the header
-pane existed. The header pane is new code layered directly on top of the same session/pane
-lifecycle those items touch (boot, crash/rebirth, reconcile, layout) — confirm none of them
-regressed now that the header pane is in the mix, but do not re-litigate them from scratch or
-spend round-1 budget rediscovering already-closed findings.
+**Orchestrator's independent verification of round 1 (not just the round's self-report):**
+`go build ./...`, `go vet` (plain + `-tags integration` + `-tags smoke`), `go test -count=5`
+(muxengine/muxcli/cmd/lyx), the full `-tags integration` suite (incl.
+`TestExactSessionTargetsNeverPrefixMatchSiblings`, `TestDeadHeaderPaneIsHealedByUpWithoutCorruptingLayout`,
+`TestHeaderNeverGetsZeroHeightLayoutCell`), the full serial smoke suite (`-run Smoke -v -count=1`,
+all PASS + 1 expected psmux-only SKIP), and a 3× concurrent full-smoke-suite amplifier (zero
+corruption markers) — all green. The orchestrator additionally hand-mutated F4's and F2's fixes
+itself (not trusting the round's own mutation-check claim): reverting each fix independently made
+the corresponding new test(s) fail at exactly the right assertion, and reverting the mutation
+restored a byte-identical (empty) diff and a green re-run. Stray-tmux accounting: `pgrep -a tmux`
+before and after every one of the orchestrator's own verification runs showed the **exact same
+PIDs** for this machine's large pre-existing baseline (dozens of stray processes from unrelated
+concurrent worktrees/test runs on this shared machine, predating this campaign — see the
+Environment note in `.scratch/mux-review-HANDOFF.md`; do not treat that baseline count as a
+finding) — zero new stray processes were left by round 1 or by the orchestrator's own
+build/vet/test/mutation-check/smoke/concurrent-smoke runs.
+
+**YOUR JOB this round (header-pane campaign, round 2) — genuinely independent, not a light
+regression pass.** Round 1 found real, severe defects; by this method's own convergence bar (see
+the worked mux campaign in `docs/reviews/README.md` — rounds 3, 4, and 5 of THAT campaign each
+self-reported "merge-ready" and each still left a residual the next round's independent pass
+caught), one clean round is not evidence of convergence. Do a full clean-room review exactly as
+prescribed by "Your two jobs" and the clean-room constraint above — form and write your OWN
+findings before reading `.scratch/mux-review-fable-header-r1.md` or its fixer report. In
+particular:
+- Re-drive every bullet under "NEW THIS ROUND — THE ALWAYS-ON HEADER PANE" in High-yield focus
+  above from scratch, with your own scenarios — do not assume round 1's scenarios were
+  exhaustive. Pay special attention to concurrency/timing angles round 1 drove mostly serially:
+  a real race between two concurrent mux invocations against the same session (e.g. `add` and
+  `remove` racing, or an `attach` mid-`apply`), and repeat round 1's F2 (dead-header) and F4
+  (cross-worktree) scenarios under genuine concurrent load, not just a quiet isolated attempt.
+- After your own pass, consult `fable-header-r1`'s review + fixer report to (a) confirm its ten
+  fixes actually hold under YOUR adversarial driving (do not just re-read the diff — drive it
+  live yourself) and (b) check whether any of its fixes introduced a new seam worth probing (e.g.
+  the new `exactSessionTarget`/`exactSessionWindowTarget` helpers, the aliveness-keyed
+  `ensureHeaderPaneLocked` heal path, the TestMain argv guards).
+- The two contract assumptions round 1 could not verify on this Linux box remain open: the `=`
+  exact-target grammar's behavior on psmux/Windows, and whether Windows tmux truly "refuses to
+  kill the last pane" (the original, now-superseded claim). If you have Windows/psmux access,
+  checking either resolves a real open question; if not, say so explicitly (not a blanket
+  cannot-verify excuse — only if the environment gap is genuine).
+
+**Secondary, regression-check only: the CLOSED R1/R2 (pre-header) campaign below.** That
+campaign's four changes were independently hardened and converged before the header pane
+existed. Confirm none of them regressed now that round 1's header fixes are also in the mix
+(e.g. F4's exact-target-matching touches the same session-name plumbing those items rely on) —
+a lighter pass, not a from-scratch re-review.
 
 ---
 
@@ -368,35 +425,9 @@ since (treat as unverified, not as settled — confirm or refute rather than ass
    each Windows-substrate workaround, note whether it is faithful-tmux (portable) or a tmux
    divergence (upstream candidate). Flag observations; do not implement a Linux engine here.
 
-YOUR JOB this round (header-pane campaign, round 1):
-- Do a genuinely INDEPENDENT clean-room pass on the **header-pane surface** (form + WRITE your
-  own findings before reading any prior `.scratch/mux-review-*` report — including both the
-  closed R1/R2 campaign's and, obviously, none exist yet for `-header-`). Adversarially
-  live-drive the real multiplexer (native tmux on Linux/macOS, psmux on Windows — whichever
-  this machine runs) against every bullet under "NEW THIS ROUND — THE ALWAYS-ON HEADER PANE" in
-  High-yield focus above: not-a-strand accounting, boot/rebirth idempotency, eager validation,
-  header-survives-last-strand-removal (the feature's whole point), the three exclusion seams
-  adversarially combined, the header-band divider/height-clamp regression re-verified with your
-  OWN pathological ratios, physical top-position stability, and the interaction of all of the
-  above with the pre-existing invariants (crash/rebirth, cross-worktree scope, remove/layout
-  reaping).
-- Secondarily, spot-check the CLOSED prior campaign's four items for regressions now that the
-  header pane sits in the same session/pane lifecycle — this is a lighter regression pass, not a
-  from-scratch re-review; do not spend the bulk of the round here.
-- If you find a REAL defect, fix it with tests + doc updates in the same change (A-before-B —
-  see the PROCESS NOTE above; it applies to this round exactly as it did to R1/R2). If you do
-  NOT, say so explicitly and give an honest hardening verdict — "no defects in the header-pane
-  surface, prior campaign's fixes hold" is a valid and valuable outcome for a round 1, though
-  less likely than for a safety-pass round given how much of this surface is genuinely new. Do
-  not invent work to look busy.
-- VERIFY with the usual discipline: build/vet; hermetic `-count=5`; the integration suite
-  (`-tags integration ./internal/muxengine/...`, real tmux — this now includes
-  `TestHeaderNeverGetsZeroHeightLayoutCell` and
-  `TestRemoveStrand_SoleStrandEmptiesSessionSucceeds`); full serial smoke (incl.
-  `TestSmokeHeaderPaneSurvivesUpAddRemoveAndReconcile`); live hand-rolled driving (M0–M18 as a
-  checklist, current numbering, PLUS the header-pane scenarios you devise yourself — the suite
-  does not have dedicated header scenarios yet; consider adding M19+ if you find yourself
-  repeating one) on your own freshly rebuilt binary. Report a hardening verdict explicitly.
+(See "YOUR JOB this round (header-pane campaign, round 2)" above for this round's actual
+instructions — the round-1 job description that used to live here is superseded now that round 1
+has closed.)
 
 ## What to TEST — do not just read, EXERCISE it
 Report the exact commands you ran and what you observed.
@@ -406,11 +437,13 @@ Hermetic (must stay green throughout):
 - `go vet ./internal/muxengine/... ./internal/muxcli/...`
 - `go test ./internal/muxengine/... ./internal/muxcli/... ./cmd/lyx/...` (stress the
   concurrency/timing tests with `-count=5` to catch flakiness)
-- `go test -tags integration ./internal/muxengine/...` — **NEW this round**: this is where the
-  header-pane's real-tmux regression tests live
-  (`TestHeaderNeverGetsZeroHeightLayoutCell`, `TestRemoveStrand_SoleStrandEmptiesSessionSucceeds`).
-  Green here is necessary but NOT sufficient — these two tests pin the specific ratios/sequences
-  their authors thought of; your live-driving below must go beyond them, not stop once they pass.
+- `go test -tags integration ./internal/muxengine/...` — this is where the header-pane's
+  real-tmux regression tests live: `TestHeaderNeverGetsZeroHeightLayoutCell`,
+  `TestRemoveStrand_SoleStrandEmptiesSessionSucceeds`, and, added by round 1,
+  `TestExactSessionTargetsNeverPrefixMatchSiblings` (F4) and
+  `TestDeadHeaderPaneIsHealedByUpWithoutCorruptingLayout` (F2). Green here is necessary but NOT
+  sufficient — these tests pin the specific ratios/sequences their authors thought of; your
+  live-driving below must go beyond them, not stop once they pass.
 
 Smoke (real tmux, behind a build tag):
 - `go test -tags smoke ./internal/muxcli/... -run Smoke -v -count=1`
@@ -428,7 +461,7 @@ another agent's opaque session instead of doing the driving yourself, and you al
 source knowledge plus your own tool calls (see `docs/reviews/README.md`'s "Driving the real
 substrate" section for the full rationale — this is a hard rule, not a style preference).
 Instead:
-- Read `tools/sandbox/SANDBOX-MUX-SUITE.md` (scenarios M0–M18) as your scenario CHECKLIST only —
+- Read `tools/sandbox/SANDBOX-MUX-SUITE.md` (scenarios M0–M19) as your scenario CHECKLIST only —
   for ideas on what to exercise — then run every scenario yourself with direct `lyx mux <verb>`
   CLI calls (foreground, waiting for each to return) against a throwaway git-repo fixture you
   create, exactly as described in "Deeper hand-rolled driving" below. The suite's black-box rule
@@ -445,10 +478,10 @@ Instead:
   not-headlessly-verifiable, as before.
 
 Deeper hand-rolled driving (COMPLEMENTARY, and EXPECTED — the suite is a FLOOR, not a ceiling).
-Running M0–M18 is the minimum, not the whole job. You are expected to devise and run MANY MORE
+Running M0–M19 is the minimum, not the whole job. You are expected to devise and run MANY MORE
 adversarial tests of your own beyond the suite — invent scenarios the suite does not cover, push
 edge cases, combine verbs in orders the suite never tries, and chase anything the code makes you
-suspicious of. In particular drive the paths M0–M18 do not cover: two worktrees on one hub
+suspicious of. In particular drive the paths M0–M19 do not cover: two worktrees on one hub
 server, a dead-but-present `pane_dead=1` pane, stale-pane-id reuse after server rebirth,
 mid-op-failure orphans, send-keys hygiene with embedded `;`/key-name tokens, rapid down→up→add
 churn, non-leaf remove without `--recursive`, unknown-parent and `own-window` rejection paths.
@@ -543,7 +576,7 @@ items yet, since this is its round 1):
   tmux is absent). A hermetic unit test for the pure planning helper is good; a smoke test for
   the composed behavior is what actually protects the recovery paths.
 - EXTEND THE MUX SANDBOX SUITE when it helps. If the review surfaces a live/visual behavior that
-  M0–M18 do not cover — or you find yourself repeatedly hand-driving a scenario the suite should
+  M0–M19 do not cover — or you find yourself repeatedly hand-driving a scenario the suite should
   own — add it to `tools/sandbox/SANDBOX-MUX-SUITE.md` as a new `M19+` scenario (match the
   existing Goal/Watch/Verdict shape; note any controlled `tmux -L <socket>` exception; keep the
   black-box ethos for the agent-under-test persona). The suite is meant to grow with mux — this
