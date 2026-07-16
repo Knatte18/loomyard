@@ -269,7 +269,7 @@ User-facing modules each get one `lyx <module>` namespace:
   [plan-format.md](modules/plan-format.md). Branches off `shuttle` directly; does not
   need `perch`. Ends at batches-built — the terminal holistic review is the separate
   Builder-review gate (`perch`), driven by `loom` or the operator. ✅ Implemented. See
-  [modules/builder.md](modules/builder.md).
+  [modules/builder-contract.md](modules/builder-contract.md).
 - **loom** — phased orchestrator: drives Setup → Discussion → Plan → Builder → Finalize, each
   gated by a perch review (`lyx loom run`, alias `lyx run`). 🚧 Design — not built. See
   [modules/loom.md](modules/loom.md).
@@ -371,7 +371,7 @@ The **sandbox Hub** is a dedicated bench for manual testing of lyx's core workfl
   `Render` over `internal/stencil`), consumed by mux's header pipeline and, later, loom's
   prompt templates; a leaf, not a phased module (as-built; module doc deleted per the
   documentation lifecycle).
-- [modules/builder.md](modules/builder.md) — the batch-implementation loop (`lyx builder`): verb surface, digest contract, poll classification, chain rollback, pause, outcome contract (as-built; kept as a durable contract doc, not deleted on landing).
+- [modules/builder-contract.md](modules/builder-contract.md) — the batch-implementation loop (`lyx builder`): verb surface, digest contract, poll classification, chain rollback, pause, outcome contract (as-built; kept as a durable contract doc, not deleted on landing).
 - `internal/muxengine` package documentation — the window to the world: tmux overlay + strand bookkeeping + render (as-built; module doc deleted per the documentation lifecycle).
 - `internal/shuttleengine` package documentation — run one LLM agent via a swappable engine over the file contract (as-built; module doc deleted per the documentation lifecycle).
 - `internal/burlerengine` package documentation — one review+fix round: A-review → B-fix, no self-grading (as-built; module doc deleted per the documentation lifecycle).

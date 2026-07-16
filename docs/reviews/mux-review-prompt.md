@@ -41,10 +41,21 @@ preserved.
 
 ## What to read
 - Code: `internal/muxengine/**` (incl. `render/**`), `internal/muxcli/**`, and the `cmd/lyx`
-  integration (`main.go`, sandbox/help/registration guard tests).
+  integration (`main.go`, sandbox/help/registration guard tests). **NEW this round** — the
+  header-pane surface: `lifecycle.go`'s `ensureHeaderPaneLocked` + the `ValidateHeader`
+  eager-validation call sites + the `HeaderPaneID`-clear-on-rebirth path; `spawn.go`'s
+  `planPaneTarget` header-exclusion-from-adoption and header-as-last-resort-split-target
+  logic; `reconcile.go`'s `exemptPaneIDs` (separate from `boundPaneIDs`); `render/rules.go`'s
+  header-band splicing + divider-row budgeting; `render/height.go`'s `clampHeaderHeight`;
+  `render/layout.go`'s `bandHeader`; `muxcli/header.go` (the config block + `headerLaunchCmd`);
+  and `internal/tokenvocab` (new leaf dependency — the token registry + `Render` that fills
+  the header template; read its own leaf-invariant test too).
 - Docs: the `internal/muxengine` package documentation (the design doc this prompt originally
-  pointed at was deleted per the documentation lifecycle once mux landed),
-  `docs/research/mux-exploration.md`,
+  pointed at was deleted per the documentation lifecycle once mux landed — it now also
+  carries a package-level summary of the header-pane invariant and the divider-row
+  behavioral assumption, added when `docs/modules/mux.md` was deleted a second time for
+  recreating exactly the doc this lifecycle rule forbids), `internal/tokenvocab`'s package
+  documentation, `docs/research/mux-exploration.md`,
   `docs/research/mux-hooks-exploration.md`, `docs/overview.md`, `docs/roadmap.md`,
   `CONSTRAINTS.md`, `README.md`.
 - The dedicated live-driving suite you will RUN: `tools/sandbox/SANDBOX-MUX-SUITE.md`
@@ -167,6 +178,63 @@ INVARIANT you must actively verify by driving real tmux — a green `go test` pr
   override existed to work around for TUI commands sharing the old fixed `anchor:top` band; a
   full TUI command, e.g. `claude`, should still generally be the below-parent CHILD, not the
   collapsing ancestor, precisely to avoid ever forcing a TUI into a collapsed strip).
+
+- **NEW THIS ROUND — THE ALWAYS-ON HEADER PANE.** Every session now carries one extra,
+  permanent pane beyond its strands (`MuxState.HeaderPaneID`), deliberately never a `Strand`.
+  This is genuinely new stateful lifecycle + layout surface — treat it with the same
+  adversarial weight as the bullets above, not as a light add-on:
+  - NOT-A-STRAND ACCOUNTING. Verify the header never appears in any strand-keyed output
+    (`status`'s per-strand loop, `UpResult`'s strand count, the no-session error's
+    strand-count pointer) and is never itself adoptable, splittable-into, or reconcile-reaped
+    as an ordinary strand would be.
+  - BOOT / REBIRTH IDEMPOTENCY. `ensureHeaderPaneLocked` must be a no-op on a repeated
+    `up`/`resume` when `HeaderPaneID` already names a live pane; after a `kill-server` crash
+    (server rebirth, pane ids reused), `HeaderPaneID` must be cleared alongside every strand
+    binding and the header rebuilt exactly once — verify no double-header, no stale-id
+    misdetection as still-live.
+  - EAGER VALIDATION. A bad/unresolvable header template must fail the boot loud (via
+    `Engine.ValidateHeader`) BEFORE the header pane is ever created — on both a first `Up`
+    and a crash-recovery `Resume`. Verify both paths, not just the happy one.
+  - THE WHOLE POINT: HEADER SURVIVES LAST-STRAND REMOVAL. This is the feature's core promise
+    — removing a session's true last strand must no longer destroy the session (tmux) or
+    corpse its sole pane (psmux); the header pane keeps the session alive. Verify this live,
+    then verify a subsequent `add` still works against the header-only session (the header
+    becomes the split target as a last resort — confirm it survives that split too and its
+    configured height is restored on the next render).
+  - THE THREE EXCLUSION SEAMS, ADVERSARIALLY. (1) Adoption: on a fresh substrate with no
+    strand pane binding, the header must never be adopted as if it were an orphaned strand
+    pane. (2) Split-target selection: the tallest ALIVE NON-header pane is preferred; only
+    when zero non-header panes exist does the header become the target. (3) Reconcile: the
+    header pane id must be excluded from `boundPaneIDs` (which also gates
+    `anyBoundPresent`) but included in the separate `exemptPaneIDs` set that guards the
+    untracked-pane reap loop — construct a scenario with zero strands bound, the header
+    alive, and a genuine untracked/foreign pane present, and verify the foreign pane is
+    reaped while the header is not, and that `anyBoundPresent` does not spuriously flip true
+    off the header's mere presence.
+  - HEADER BAND LAYOUT + THE DIVIDER-ROW REGRESSION. `render.Rules` reserves one divider row
+    between the header band and the strand stack (mirroring the inter-strand divider budget)
+    and `clampHeaderHeight` never clamps the header below 1 row — both exist because a real
+    tmux `select-layout` accepts a layout omitting either and still silently overflows the
+    window by one row. A regression test
+    (`contract_integration_test.go`'s `TestHeaderNeverGetsZeroHeightLayoutCell`) already pins
+    this, but re-verify it live with your OWN pathological window/`height_rows` ratios beyond
+    what that test constructs — this is exactly the class of bug a green `go test` can miss if
+    the adversarial ratio isn't the one hardcoded in the test. Also verify the ordinary case:
+    a normal-sized header + several strands lays out with no visual corruption and no
+    off-by-one at the window's bottom edge.
+  - `-b` SPLIT DIRECTION / PHYSICAL TOP POSITION. The header's own boot split uses `-b` so it
+    lands physically above its split target and every later STRAND split targets a
+    non-header pane and inserts below it. Verify the header never loses its physically
+    topmost position across a realistic sequence of adds/removes — `render.Rules` always
+    emits the header cell first and assumes it IS topmost; if physical position and layout
+    emission order ever disagree, `select-layout` positionally misassigns cells (see the
+    package documentation's "Multiplexer contract surface" for why this is load-bearing).
+  - INTERACTION WITH EXISTING INVARIANTS. The header pane is new state layered onto every
+    existing invariant above — do not review it in isolation. In particular: combine header
+    presence with CRASH/SERVER REBIRTH, CROSS-WORKTREE SCOPE (does each sibling worktree's
+    session get its own header pane correctly?), and REMOVE/LAYOUT REAPING (does a header
+    pane ever get destroyed as reaping collateral when a `select-layout` string is
+    misconstructed?).
 
 BOOT-WINNER SEMANTICS (review lens): the tmux server is per-hub and shared by sibling
 worktrees, so `debug_log` only matters on the boot that actually spawns that shared server —
