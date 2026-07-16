@@ -49,5 +49,7 @@ batches:
     start_sha: a3a27fd3186cf8d1600b9bbaa7e8bc5fb31d2b09
     commit_sha: b82973174d89283e740a5d17e9f38f9d7f156399
   - name: header-pane-and-render
-    state: pending
+    state: running
+    implementer_session: 6ecc1215-adad-4c4a-a210-626128aa8dbd
+    start_sha: 1963c9754cb132e426997dbdd5c3ee66d4d99d85
 ```
