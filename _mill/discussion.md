@@ -109,8 +109,11 @@ everything into one severity-ordered review, and feeds the existing fix phase.
   `docs-consistency` — plus `generic` (broad review, no emphasis). No language-specific
   lens (no golang) in the standard set; repo-tailored lenses (a CONSTRAINTS-fit lens for
   lyx, C# lenses for other repos) are operator-authored in that repo's `burler.yaml`.
-  Seeded fans: `default: [generic, generic, correctness, error-handling, test-gaps]`
-  (N=5) and `full` (all eight standard lenses, N=8).
+  Seeded fans: `standard: [generic, generic, correctness, error-handling, test-gaps]`
+  (N=5) and `full` (all eight standard lenses, N=8). The fan is named `standard`, NOT
+  `default`, precisely because no fan is ever active on its own — every seeded fan is
+  dormant until a round profile names it in `cluster-fan` — and a fan literally named
+  "default" would invite the misread that it applies by default.
 - Rationale: The spike's B1 arm (identical generic prompts) out-covered hard lenses —
   sampling diversity is strong — so the default fan blends two generics with the three
   core lenses. Every lens phrases steering as emphasis, never exclusion ("report anything
@@ -296,7 +299,10 @@ everything into one severity-ordered review, and feeds the existing fix phase.
   CC concurrency cap min(16, cores−2) — forks queue and serialize on low-core hosts) in
   the burlerengine package doc and the CLI `Long` text.
 - Rationale: The knob exists and is caller-resolved by design (the run-tuning-off-profile
-  decision); inventing a scaling formula couples burler to host-core guesswork.
+  decision); inventing a scaling formula couples burler to host-core guesswork. Note
+  that serialization under the cap never breaks exact-N — every fork still runs and
+  leaves its transcript, only wall-time grows — so a slow low-core host manifests as
+  `OutcomeTimeout`, never as a fork-shortfall error.
 - Rejected: auto-multiplying the timeout by fan length (hides the real cost profile and
   overrides explicit operator tuning).
 
@@ -410,7 +416,9 @@ everything into one severity-ordered review, and feeds the existing fix phase.
   consolidated review parses with origins, and — explicitly — the PreToolUse(Agent) hook
   fires INSIDE a fork (the unverified assumption from the spike): a fork instructed to
   attempt a non-fork Agent call must be denied. Tagged per Test Tier Purity; hermetic
-  git env per the invariant.
+  git env per the invariant. The smoke sets a generous explicit timeout: on low-core
+  hosts forks serialize under the CC cap (wall-time grows, exact-N still holds), and a
+  slow runner must surface as a timeout, never be misread as a fork-shortfall failure.
 - **TDD candidates:** ParseReview origin extension, fan resolution/validate, audit
   policy, shell env-prefix primitive — all pure functions with crisp contracts.
 
@@ -450,10 +458,11 @@ everything into one severity-ordered review, and feeds the existing fix phase.
   with everything in it (Q20: option 1).
 - **Q:** What turns clustering on? **A:** "We set cluster-profile — isn't that easiest?
   The default profile is its own thing, with standard stuff. … a profile IS cluster-N" —
-  `cluster-fan` alone activates; N = fan length; a `default` fan ships in the seed.
+  `cluster-fan` alone activates; N = fan length; a standard fan ships in the seed
+  (named `standard`, not `default` — dormant until a profile names it).
 - **Q:** Standard library content? **A:** "Golang is NOT a standard lens. I don't know —
   you'll figure something out. But it must not be hard to CHANGE what's default. That's
-  the point." — spike's 8 + `generic`; seeded `default` fan
+  the point." — spike's 8 + `generic`; seeded `standard` fan
   `[generic, generic, correctness, error-handling, test-gaps]`; language/repo lenses are
   per-repo additions.
 - **Q:** "Fan" or "profile"? **A:** Operator: not important, your call — "fan" (avoids
