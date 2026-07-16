@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-fixing
 slug: mux-operator-console
 branch: mux-operator-console
 plan: _mill/plan
@@ -29,6 +29,7 @@ approved-tokenvocab-module  '2026-07-16T13:26:33Z'
 approved-header-text-pipeline  '2026-07-16T13:33:36Z'
 approved-header-pane-and-render  '2026-07-16T14:00:13Z'
 holistic-reviewing  '2026-07-16T14:00:26Z'
+holistic-fixing  '2026-07-16T14:04:15Z'
 ```
 
 ## Batches
