@@ -3,8 +3,8 @@
 // parent "mux" command carries a PersistentPreRunE that resolves cwd ->
 // layout -> config -> *muxengine.Engine exactly once per invocation, into a
 // receiver every verb (up.go, add.go, remove.go, status.go, resume.go,
-// attach.go) closes over, so no subcommand re-resolves geometry or config
-// itself.
+// attach.go, header.go) closes over, so no subcommand re-resolves geometry
+// or config itself.
 
 package muxcli
 
@@ -93,7 +93,7 @@ strands, plus rendering their layout on every mutation.`,
 		},
 	}
 
-	parent.AddCommand(c.upCmd(), c.downCmd(), c.addCmd(), c.removeCmd(), c.statusCmd(), c.resumeCmd(), c.attachCmd())
+	parent.AddCommand(c.upCmd(), c.downCmd(), c.addCmd(), c.removeCmd(), c.statusCmd(), c.resumeCmd(), c.attachCmd(), c.headerCmd())
 
 	return parent
 }
