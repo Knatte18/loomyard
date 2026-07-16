@@ -21,9 +21,23 @@ several times as it evolved (most recently `mux-anchor-top-redesign`, done) and 
    and even if the finding was genuinely self-discovered — the written record is what proves
    the independence, not your memory of how it happened.
 2. FIX: only after the review file above exists on disk with your complete findings list,
-   implement the fixes, verify each against real tmux, keep the whole test suite green, and
-   update the docs in the same change. Do NOT commit or push unless the user explicitly tells
-   you to — leave the changes in the working tree and report them.
+   implement the fixes one at a time, verify each against real tmux, keep the whole test suite
+   green, and update the docs in the same change as the fix they document. COMMIT after each
+   individual fix lands green (see "Commit per fix" below). Do NOT push unless the user
+   explicitly tells you to.
+
+## Commit per fix (BLOCKING — do not batch fixes into one uncommitted diff)
+As soon as one finding's fix is implemented, green (`go build`/`vet`/hermetic test, plus the live
+smoke/suite check if the finding needed one), and its doc update (if any) is included, COMMIT it —
+on the current branch, no push — before starting the next finding. Commit message format:
+`mux: fix <finding-id> — <one-line what/why>`. Do not commit `.scratch/` (gitignored; your review
+and fixer reports never belong in a commit regardless). This exists because a round agent's
+session can be killed mid-fix by something entirely outside the method's control (a corrupted
+terminal, a lost connection). A single monolithic uncommitted diff left behind by a crash forces
+the orchestrator to reverse-engineer, finding by finding, which fixes are actually complete versus
+half-done. A trail of small commits turns that same crash into something the orchestrator can just
+read: `git log` shows exactly which findings landed clean, and anything with no commit is
+unambiguously not done yet — no guesswork.
 
 ## Clean-room review constraint (do this part unprimed)
 Form your OWN findings first. Do NOT read any prior review or review-dialogue files before you
@@ -558,8 +572,8 @@ items yet, since this is its round 1):
   bugfix/hardening notes to `docs/roadmap.md` (roadmap is for planned milestones only, per
   CLAUDE.md).
 - Tear down all tmux state; confirm zero tmux processes.
-- Do NOT commit or push unless the user explicitly asks. Report the changed files and how you
-  verified each fix.
+- COMMIT each fix as you finish it (see "Commit per fix" above) — do NOT push unless the user
+  explicitly asks. Report the changed files and how you verified each fix.
 
 ## Deliverables
 1. A structured review report (Executive summary with top risks + merge-readiness opinion;
