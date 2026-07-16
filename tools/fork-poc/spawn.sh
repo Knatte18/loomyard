@@ -17,7 +17,9 @@ NAME="$1"; PROMPT="$2"; shift 2
 mkdir -p "$SCRATCH"
 SID="$(uuidgen)"
 sed -e "s|{{WT}}|$WT|g" -e "s|{{NONCE}}|${NONCE:-}|g" "$PROMPT" > "$SCRATCH/$NAME.prompt"
+# The prompt is the FIRST positional arg: variadic flags like
+# --add-dir <directories...> would otherwise swallow a trailing prompt.
 (cd "$HUB" && lyx mux add --name "$NAME" \
-  --cmd "claude --session-id $SID $* \"\$(cat $SCRATCH/$NAME.prompt)\"" >&2)
+  --cmd "claude \"\$(cat $SCRATCH/$NAME.prompt)\" --session-id $SID $*" >&2)
 printf '%s\t%s\n' "$NAME" "$SID" >> "$SCRATCH/sessions.tsv"
 echo "$SID"
