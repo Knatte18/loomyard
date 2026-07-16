@@ -1,8 +1,8 @@
 // settings_test.go covers buildSettings' JSON composition across the
 // agent-deny/askuser-deny toggle matrix and the interactive/autonomous
-// split, asserts the events path is embedded in its POSIX form, checks the
-// no-single-quote steer invariant, and exercises Prepare end to end against
-// a real temp directory.
+// split, the fork-mode conditional Agent hook, asserts the events path is
+// embedded in its POSIX form, checks the no-single-quote steer invariant,
+// and exercises Prepare end to end against a real temp directory.
 
 package claudeengine
 
@@ -36,7 +36,7 @@ func hooksFor(doc map[string]any, event string) []any {
 }
 
 func TestBuildSettings_StopHookAlwaysPresent(t *testing.T) {
-	data, err := buildSettings("/c/run/events.jsonl", false, shuttleengine.Config{})
+	data, err := buildSettings("/c/run/events.jsonl", false, shuttleengine.Config{}, false)
 	if err != nil {
 		t.Fatalf("buildSettings() error: %v", err)
 	}
@@ -76,7 +76,7 @@ func TestBuildSettings_EventsPathSingleQuoteEscaped(t *testing.T) {
 	// must not be able to break out of the Stop hook's single-quoted shell
 	// argument: the embedded quote is escaped via the standard sh idiom
 	// rather than passed through raw.
-	data, err := buildSettings(`/c/run's dir/events.jsonl`, false, shuttleengine.Config{})
+	data, err := buildSettings(`/c/run's dir/events.jsonl`, false, shuttleengine.Config{}, false)
 	if err != nil {
 		t.Fatalf("buildSettings() error: %v", err)
 	}
@@ -116,7 +116,7 @@ func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := shuttleengine.Config{ClaudeDenyAgentTool: tt.agentDeny, ClaudeDenyAskUserQuestion: tt.askUserDeny}
-			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, cfg)
+			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, cfg, false)
 			if err != nil {
 				t.Fatalf("buildSettings() error: %v", err)
 			}
@@ -192,11 +192,92 @@ func TestBuildSettings_NoForbiddenCharsInSteerText(t *testing.T) {
 	// `"` or `\` would corrupt the payload) nested inside a single-quoted
 	// echo argument under git-bash (so a literal `'` would corrupt the
 	// hook command) — all three characters must stay absent.
-	for _, steer := range []string{steerAgentDeny, steerAskUserQuestionDeny} {
+	for _, steer := range []string{steerAgentDeny, steerAskUserQuestionDeny, steerAgentNonForkDeny} {
 		if strings.ContainsAny(steer, steerTextForbiddenChars) {
 			t.Errorf("steer text contains a forbidden character (one of %q): %q", steerTextForbiddenChars, steer)
 		}
 	}
+}
+
+// agentCommand returns the Agent PreToolUse entry's command string and
+// whether an Agent entry is present at all.
+func agentCommand(t *testing.T, doc map[string]any) (string, bool) {
+	t.Helper()
+	preToolUse := hooksFor(doc, "PreToolUse")
+	for _, e := range preToolUse {
+		entry, _ := e.(map[string]any)
+		if entry["matcher"] != "Agent" {
+			continue
+		}
+		hooks, _ := entry["hooks"].([]any)
+		if len(hooks) == 0 {
+			return "", true
+		}
+		cmd, _ := hooks[0].(map[string]any)
+		command, _ := cmd["command"].(string)
+		return command, true
+	}
+	return "", false
+}
+
+// TestBuildSettings_ForkMode covers the three-way interaction between
+// cfg.ClaudeDenyAgentTool and forkSubagents: fork mode on with the deny
+// configured replaces the blanket deny with the conditional grep hook; fork
+// mode off leaves today's blanket deny unchanged; and the deny configured
+// off entirely emits no Agent entry regardless of fork mode.
+func TestBuildSettings_ForkMode(t *testing.T) {
+	t.Run("fork_mode_on_replaces_blanket_deny", func(t *testing.T) {
+		cfg := shuttleengine.Config{ClaudeDenyAgentTool: true}
+		data, err := buildSettings("/c/run/events.jsonl", false, cfg, true)
+		if err != nil {
+			t.Fatalf("buildSettings() error: %v", err)
+		}
+		doc := parseSettings(t, data)
+		command, present := agentCommand(t, doc)
+		if !present {
+			t.Fatal("Agent PreToolUse entry absent; want the conditional fork-allow hook")
+		}
+		if !strings.Contains(command, `"subagent_type":"fork"`) {
+			t.Errorf("Agent command = %q; want it to contain the subagent_type fork grep pattern", command)
+		}
+		if !strings.Contains(command, steerAgentNonForkDeny) {
+			t.Errorf("Agent command = %q; want it to contain steerAgentNonForkDeny %q", command, steerAgentNonForkDeny)
+		}
+		if strings.Contains(command, steerAgentDeny) {
+			t.Errorf("Agent command = %q; want it to NOT contain the blanket steerAgentDeny text", command)
+		}
+	})
+
+	t.Run("fork_mode_off_keeps_blanket_deny", func(t *testing.T) {
+		cfg := shuttleengine.Config{ClaudeDenyAgentTool: true}
+		data, err := buildSettings("/c/run/events.jsonl", false, cfg, false)
+		if err != nil {
+			t.Fatalf("buildSettings() error: %v", err)
+		}
+		doc := parseSettings(t, data)
+		command, present := agentCommand(t, doc)
+		if !present {
+			t.Fatal("Agent PreToolUse entry absent; want today's blanket deny")
+		}
+		if !strings.Contains(command, steerAgentDeny) {
+			t.Errorf("Agent command = %q; want the unchanged blanket steerAgentDeny text", command)
+		}
+		if strings.Contains(command, `"subagent_type":"fork"`) {
+			t.Errorf("Agent command = %q; want no conditional fork-allow grep when fork mode is off", command)
+		}
+	})
+
+	t.Run("deny_off_and_fork_mode_on_emits_no_agent_entry", func(t *testing.T) {
+		cfg := shuttleengine.Config{ClaudeDenyAgentTool: false}
+		data, err := buildSettings("/c/run/events.jsonl", false, cfg, true)
+		if err != nil {
+			t.Fatalf("buildSettings() error: %v", err)
+		}
+		doc := parseSettings(t, data)
+		if _, present := agentCommand(t, doc); present {
+			t.Error("Agent PreToolUse entry present; want none when ClaudeDenyAgentTool is false, regardless of fork mode")
+		}
+	})
 }
 
 // TestPrepare_PromptLaunchLimit pins the maxLaunchPromptBytes guard: a
