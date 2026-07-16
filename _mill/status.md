@@ -58,5 +58,7 @@ batches:
     start_sha: ef1d0f1f47667cb13067ba49a652387b6fe6d4a3
     commit_sha: 34bc7189d9c154d4fd0156c3630eb9474ea9b7dd
   - name: docs-and-smoke
-    state: pending
+    state: running
+    implementer_session: ae945882-08fb-4eaf-b0ec-6c6677af4405
+    start_sha: 22f2382278ffd1d5cf8698f0390ab652ba5d0499
 ```
