@@ -91,7 +91,7 @@ zero `WARN`/`FAIL` findings** -- in that case `items` is an empty array.
 
 - `source` is the literal string `"sandbox-report"`.
 - `items[]` holds only `WARN`/`FAIL` findings -- do not record `OK` scenarios here.
-- `ref` is the scenario id (`M0`-`M18`).
+- `ref` is the scenario id (`M0`-`M19`).
 - `title` is a short one-line summary.
 - `body` folds the detail, repro steps, and verdict into one markdown string.
 
@@ -404,6 +404,35 @@ corruption risk.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
+---
+
+### M19 -- Always-on header pane (operator console)
+
+**Goal:** "With the overlay up, find the always-on header pane, confirm it actually
+shows its rendered text, and prove it survives everything the strand lifecycle throws
+at it — including the removal of the session's last strand and the death of its own
+process."
+
+**Watch:** After `lyx mux up`, the session holds one extra pane beyond any strands: the
+header, physically topmost, whose **visible content** is the rendered header line
+(default template: `hub: <hub path>`) — a JSON error body, a bare shell prompt, or an
+empty row where the text should be is a `FAIL`, not cosmetics (the pane merely being
+*alive* is not enough). `lyx mux status` must never list the header as a strand, and
+`up`'s `strands` count must exclude it. Then: add a strand, remove it — the session
+**survives** on the header alone (pre-header mux destroyed the session with its last
+pane; that teardown is the footgun this feature exists to remove) and a follow-up `add`
+still works, with the header back at its configured `height_rows` (default 1) and still
+topmost. Finally kill the header's own process (`tmux -L <socket> list-panes -t
+"=<session>:" -F "#{pane_id} #{pane_pid}"` to find it, then kill that pid — controlled
+exception; on POSIX use `kill -9`, interactive shells ignore TERM): intermediate verbs
+(`add`/`remove`) must keep working with sane pane geometry (a strand squeezed to 1 row
+means a stale header cell scrambled the layout: `FAIL`), and the next `lyx mux up` must
+**heal** the header — a fresh, alive, topmost pane showing the rendered text again,
+with the corpse gone. A `split header pane: ... no space for new pane` error from `up`
+is the wedged-heal regression: `FAIL`.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
 ## Session log format
 
 After running all scenarios, record a short session summary:
@@ -431,6 +460,7 @@ M15: <OK|WARN|FAIL> -- <one-line note if not OK>
 M16: <OK|WARN|FAIL> -- <one-line note if not OK>
 M17: <OK|WARN|FAIL> -- <one-line note if not OK>
 M18: <OK|WARN|FAIL> -- <one-line note if not OK>
+M19: <OK|WARN|FAIL> -- <one-line note if not OK>
 
 sandbox-report.json written: <count of WARN/FAIL items>
 ```
