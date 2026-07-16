@@ -48,6 +48,10 @@ type Result struct {
 	StrandGUID           string
 	LastAssistantMessage string
 	RunDir               string
+	// ForkAudit is populated only when the Spec that started this run set
+	// ForkSubagents and the run classified OutcomeDone; nil otherwise (including
+	// when ForkSubagents was set but the run did not reach OutcomeDone).
+	ForkAudit *ForkAudit
 }
 
 // Run is the handle to one in-progress or completed shuttle run, returned by
