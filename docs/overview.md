@@ -236,10 +236,15 @@ User-facing modules each get one `lyx <module>` namespace:
 - **mux** — **the window to the world**: tmux overlay + **strand** bookkeeping + render
   (`internal/muxcli` + `internal/muxengine` + `internal/muxengine/render`). Hosts every managed
   process as a strand, arranges them, persists to `.lyx/mux.json` (`lyx mux
-  up|add|remove|status|attach|resume|down`). Built on what its proof-of-concept, `muxpoc`, proved
-  first (layout checksum, bottom-dominant layout, env hygiene, native `--resume`); `muxpoc` has
-  since been deleted, its job done. ✅ Implemented. See the `internal/muxengine` package
-  documentation.
+  up|add|remove|status|attach|resume|header|down`). Built on what its proof-of-concept, `muxpoc`,
+  proved first (layout checksum, bottom-dominant layout, env hygiene, native `--resume`); `muxpoc`
+  has since been deleted, its job done. `mux attach` and `mux header --blocking` are this module's
+  two registered interactive-handoff exceptions (CONSTRAINTS.md CLI/Cobra Invariant): `attach`
+  hands the operator's stdio to a `tmux attach-session` child in place, and `header --blocking`
+  prints the rendered header-pane text (`Engine.HeaderText`, over `internal/tokenvocab`) then
+  blocks forever as the header pane's own keepalive — in both cases every fallible step runs
+  pre-flight, on the envelope, and only the terminal-handover/keepalive tail itself is exempt from
+  emitting JSON. ✅ Implemented. See the `internal/muxengine` package documentation.
 - **shuttle** — run **one** LLM agent as an interactive tmux strand over the file contract
   (`internal/shuttleengine` + `internal/shuttleengine/claudeengine` + `internal/shuttlecli`;
   `lyx shuttle run|interrupt|send`). `Stop`-hook completion is read off an events file and
