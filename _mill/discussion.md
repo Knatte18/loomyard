@@ -85,13 +85,18 @@ The header text is produced by three separate pieces, each with one job:
    token map → `stencil.Fill(template, map)` → print once → block forever. Every helper it
    uses comes from another module; the command is pure orchestration.
 
-2. **Token-vocabulary module (NEW) — builds the `map[string]string`.** Owns the *definition*
-   of the vocabulary. Hard requirement (user): **it must be trivial to define and add new
-   tokens.** Shape TBD (batch 3), but a registry of `name → resolver(ctx)` is the leading
-   idea. v1 includes a `repo` token (+ hub, TBD); `slug` (task slug) is deferred and added
-   later when a task-scoped need arises. Lives as its own `internal/<name>` module, not
-   inside muxcli/muxengine, because building the map is explicitly "a completely different
-   module" from the header command.
+2. **`internal/tokenvocab` (NEW) — builds the `map[string]string`.** Owns the *definition* of
+   the vocabulary. Hard requirement (user): **trivial to define and add new tokens.** Shape:
+   a **registry of `Token{Name string; Resolve func(ctx) string}`** — adding a token = append
+   one entry (testable per token). `ctx` wraps `*hubgeometry.Layout` (v1). v1 exposes only
+   **always-resolvable** tokens (`repo`, `hub`); `slug` (task slug) is deferred until task
+   context exists, with its own empty-value policy then (v1 avoids stencil's unfilled-marker
+   error by exposing nothing that can be empty). `repo` is derived from the layout (basename of
+   `WorktreeRoot`, or via the `HubSuffix` convention — impl detail for mill-plan).
+
+   **Dependency graph (no cycle):** `stencil` → stdlib only (stays a pure leaf; the vocabulary
+   is deliberately NOT inside stencil). `tokenvocab` → `hubgeometry` (never imports stencil).
+   `muxcli`/`muxengine` → import both + hubgeometry. One-directional.
 
 3. **`internal/stencil` (EXISTING) — the fill step.** `Fill(template []byte, values map[string]string)`
    (`stencil.go:36`), strict unfilled-marker detection. Reused as-is; template uses
@@ -134,12 +139,18 @@ The header text is produced by three separate pieces, each with one job:
   counted/removed as a strand.
 - Rejected: a `header.enabled` config toggle (would surrender the keepalive guarantee).
 
-### header-config-block (Q4)
+### header-config-block (Q4, Q12)
 
 - Decision: Add a `header:` block to the mux config (`muxengine/config.go` +
-  `template.go ConfigTemplate`): the text template + `height_rows` (default 1).
-- Rationale: One place, follows the existing mux-config pattern.
-- Rejected: separate config file.
+  `template.go ConfigTemplate`): the text template + `height_rows` (default 1). The default
+  header template ships as an **embedded asset** with a **distinctive name** (e.g.
+  `header-template.md`, following the `builderengine` `*-template.md` precedent) — **not**
+  `template.yaml`, which is already the per-engine *config*-template convention
+  (`//go:embed template.yaml`). Config `header.template` overrides the default inline.
+- Rationale: One config place; distinctive asset name avoids confusion with the config template.
+- ⏳ OPEN (batch 4): exact asset location + whether assembly lives in `Engine.HeaderText()`
+  (CLI-Cobra invariant: thin verb → one engine method) or in the muxcli verb.
+- Rejected: separate config file; naming the asset `template.yaml`.
 
 ## Technical context
 
@@ -201,3 +212,9 @@ Candidates (refine as decisions settle):
   `repo` token; `slug` (task slug) is deferred.
 - **Q:** Why does the header pane matter? **A:** It is THE persistent pane — it keeps a pane alive in mux even
   when every strand is dead, so the session can never be torn down by last-strand removal.
+- **Q:** How are tokens defined so adding is easy? **A:** A registry of `Token{Name, Resolve func(ctx) string}`
+  in a new `internal/tokenvocab` package — one entry per token. No circular import: stencil stays a pure
+  leaf, tokenvocab imports only hubgeometry.
+- **Q:** What are v1 tokens? **A:** Only always-resolvable ones (`repo`, `hub`); `slug` deferred.
+- **Q:** What is the default template asset called? **A:** A distinctive name like `header-template.md` (per
+  the `builderengine` `*-template.md` precedent) — never `template.yaml` (that is the config-template name).
