@@ -34,7 +34,9 @@ implementing  '2026-07-16T20:17:53Z'
 ```yaml
 batches:
   - name: shell-env-and-shuttle-fork-types
-    state: pending
+    state: running
+    implementer_session: 38e9a129-a7db-466d-8fb5-7d85ce95c16c
+    start_sha: 7e47006daab58074fa5a6001176b41efedbf2f4b
   - name: burler-config-module
     state: pending
   - name: claudeengine-fork-mode
