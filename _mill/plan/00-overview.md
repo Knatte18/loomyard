@@ -160,7 +160,6 @@ batches:
 - `internal/shuttleengine/forkaudit.go`
 - `internal/shuttleengine/run.go`
 - `internal/shuttleengine/spec.go`
-- `internal/shuttleengine/spec_test.go`
 - `internal/shuttleengine/wait.go`
 - `internal/shuttleengine/wait_test.go`
 - `tools/sandbox/SANDBOX-BURLER-SUITE.md`

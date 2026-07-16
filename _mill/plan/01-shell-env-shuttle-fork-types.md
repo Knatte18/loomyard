@@ -25,11 +25,12 @@ to land alone and batch 2 (claudeengine) consumes the external interface: `shell
 ### Card 1: shell.WithEnv env-prefix primitive
 
 - **Context:**
-  - `internal/shell/shell_test.go`
+  - `internal/shuttleengine/claudeengine/command.go`
 - **Edits:**
   - `internal/shell/shell.go`
   - `internal/shell/pwsh.go`
   - `internal/shell/posix.go`
+  - `internal/shell/shell_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
