@@ -24,9 +24,12 @@ keepalive a built-in mux feature.
 
 - A new built-in **header** construct in mux: a small, always-present tmux/psmux pane
   pinned at the **top**, at a **config-driven fixed height** (default 1 row).
-- The header pane runs a new command `lyx mux header`, which prints text defined by mux
-  config and then **hangs** so the pane never exits. It is the pane that keeps the session
-  alive even when every strand is dead.
+- A new command `lyx mux header` with two modes: **default** returns the header text via the
+  output envelope (smoke-testable, `--json` available); **`--blocking`** prints the text and hangs
+  — the mux pane boots `lyx mux header --blocking`. It is the pane that keeps the session alive
+  even when every strand is dead.
+- A new **`Repo` field on `hubgeometry.Layout`** (git-derived repo name), so the `repo` token is
+  always resolvable. (Task now also touches `internal/hubgeometry`.)
 - The header is **NOT a strand**: separate construct, not in the `Strands` slice, excluded
   from all strand accounting (`status`, `resume`, `remove`, count).
 - v1: a **single** header spanning full width at the top; the strand stack is pushed down
@@ -68,12 +71,22 @@ keepalive a built-in mux feature.
 
 The header text is produced by three pieces, each with one job:
 
-1. **`lyx mux header` (new muxcli verb) — SUPER-SIMPLE glue.** It does no work of its own; it
-   delegates to a single engine method and then prints + blocks. Per the CLI-Cobra invariant
-   (thin verb → one engine method), the assembly lives in **`Engine.HeaderText()`** (muxengine):
-   read the `header:` config template (or embedded default) → `tokenvocab.Render(template, ctx)`
-   → return text. The engine already holds `layout *hubgeometry.Layout`, so it can build `ctx`.
-   The verb prints the returned text once and blocks forever.
+1. **`lyx mux header` (new muxcli verb) — two modes (Q13, GAP-1, GAP-3).**
+   - **Default (non-blocking, enveloped):** renders and **returns** the header text via the
+     `internal/output` envelope (`output.Ok`; a `--json` form is available). This is a normal,
+     fully-testable CLI command — used as a **smoke test** and for inspection — so it needs no
+     carve-out and satisfies the CLI/Cobra invariant outright. A bad template / unresolvable
+     token surfaces as `output.Err` (non-zero exit) — loud, not silent.
+   - **`--blocking`:** the variant the mux pane actually runs — prints the rendered text, then
+     **blocks forever** (keepalive). Only this flag-gated mode is exempt from the JSON envelope
+     (it prints raw text then hangs). This narrow, self-displaying keepalive exemption **extends
+     the CONSTRAINTS.md interactive-handoff exception** (which today only covers handing stdio to
+     *another* interactive program); record the extension in CONSTRAINTS.md in the same commit.
+   - Assembly lives in **`Engine.HeaderText()`** (muxengine, per CLI/Cobra: thin verb → one engine
+     method): read the `header:` config template (or embedded default) → `tokenvocab.Render(template,
+     ctx)` → return text. The engine holds `layout *hubgeometry.Layout`, so it builds `ctx`. Both
+     modes call `HeaderText()`; they differ only in blocking + output format. The mux pane boots
+     with `lyx mux header --blocking`.
 
 2. **`internal/tokenvocab` (NEW, general/shared) — the vocabulary + the reusable compose.**
    Owns the *definition* of the vocabulary as a **registry of `Token{Name string; Resolve
@@ -82,8 +95,11 @@ The header text is produced by three pieces, each with one job:
    `Render(template []byte, ctx) ([]byte, error)` = `stencil.Fill(template, Build(ctx))`, so
    every consumer (mux header, **loom**) composes with one call instead of re-implementing it.
    v1 exposes only **always-resolvable** tokens (`repo`, `hub`); `slug` (task slug) is deferred
-   with its own empty-value policy then. `repo` is derived from the layout (basename of
-   `WorktreeRoot`, or via the `HubSuffix` convention — impl detail for mill-plan).
+   with its own empty-value policy then. The `repo` resolver simply reads a **new
+   `hubgeometry.Layout.Repo` field** (GAP-2): hubgeometry owns geometry (Hub Geometry Invariant),
+   so it — not tokenvocab — derives the repo name from git (guaranteed non-empty; derivation is a
+   hubgeometry impl detail, e.g. remote-origin basename with a fallback to the main-worktree
+   basename). `hub` reads `Layout.Hub`.
 
 3. **`internal/stencil` (EXISTING) — the fill step.** `Fill(template, values)` (`stencil.go:36`),
    strict unfilled-marker detection. Reused as-is; template uses `{{.token}}` markers.
@@ -109,8 +125,12 @@ The header text is produced by three pieces, each with one job:
 - Rationale: matches "header at the top, over the strands." No `anchor:top` exists today
   (`render/types.go:23-39`), so this is new render work (new `policy.go` case +
   `layout.go`/`height.go` mechanics; shrink the strand `Box` by the header height).
+- **Height clamp (NOTE-2):** `height_rows` is config-driven, so an oversized value could shrink
+  the strand `Box` to zero. The header height must be **clamped** against the window so the strand
+  stack retains at least its `MinFullRows` floor (reuse the existing `clampToFit`/`MinFullRows`
+  logic in `render/height.go:88`); the header yields rows before strands are starved.
 - Rejected: header in its own tmux window (`AnchorOwnWindow`) — keeps the session alive but is
-  not a visible top band.
+  not a visible top band; an unclamped header height that can starve the strand stack.
 
 ### header pane is the persistent keepalive (Q8)
 
@@ -118,21 +138,33 @@ The header text is produced by three pieces, each with one job:
   torn down with the session on `down`; pane id persisted in `mux.json` outside `Strands`.
   **Always on**, cannot be disabled — it is structural. It remains alive when **all strands are
   dead**, making the last-strand teardown unreachable.
+- **Error path (GAP-3 — errors are fixed loudly, never left):** `up`/config-load **eagerly
+  validates** the header template (renders it once, `output.Err` + non-zero exit on a bad
+  template / unresolvable token), so a misconfiguration fails **loud and early**, before the
+  session boots — not silently swallowed. Only if a render error somehow reaches the running
+  `--blocking` pane does it print the error text into the pane and keep blocking (keepalive
+  preserved); that path is a rare fallback because eager validation catches broken configs first.
 - Rationale: the keepalive guarantee only holds if the header always exists and is never
-  counted/removed as a strand.
-- Rejected: a `header.enabled` toggle (would surrender the guarantee).
+  counted/removed as a strand; and a bad config must surface loudly at `up`, not hide in a pane.
+- Rejected: a `header.enabled` toggle (would surrender the guarantee); silently ignoring a render
+  error; exiting on render failure (would drop the keepalive at boot when misconfigured).
 
 ### header-config-block + asset naming (Q4, Q12, Q14)
 
-- Decision: Add a `header:` block to the mux config (`muxengine/config.go` +
-  `template.go ConfigTemplate`): text template + `height_rows` (default 1). The default header
-  template ships as an embedded asset at **`internal/muxengine/header-template.md`**
-  (`//go:embed`), a distinctive name following the `builderengine` `*-template.md` precedent —
-  **not** `template.yaml` (the per-engine config-template convention). Config `header.template`
-  overrides the default inline.
+- Decision: Add a `header:` block (text template + `height_rows`, default 1) to the mux config
+  struct in `muxengine/config.go`. The embedded config-template YAML is **GOOS-selected**
+  (NOTE-1): the `header:` block must be added to **both** `internal/muxengine/template_posix.yaml`
+  and `internal/muxengine/template_windows.yaml` (embedded by `template_posix.go` /
+  `template_windows.go`; `template.go` is only the accessor). The default *header* text template
+  ships as a separate embedded asset at **`internal/muxengine/header-template.md`** (`//go:embed`),
+  a distinctive name following the `builderengine` `*-template.md` precedent — **not**
+  `template.yaml` (the per-engine config-template convention). Config `header.template` overrides
+  the default inline.
 - Rationale: one config place; distinctive asset name avoids confusion with the config template;
-  assembly next to the engine that owns config + Layout.
-- Rejected: separate config file; naming the asset `template.yaml`; embedding it in muxcli.
+  assembly next to the engine that owns config + Layout; both GOOS variants must carry the block or
+  one platform ships without a header default.
+- Rejected: separate config file; naming the asset `template.yaml`; embedding it in muxcli; editing
+  only `template.go` (an accessor — embeds nothing).
 
 ## Technical context
 
@@ -155,7 +187,9 @@ Full codebase map: `.scratch/mux-console-exploration.md`. Highlights mill-plan n
   boot `new-session -c <layout.Cwd>` passes a cwd (`lifecycle.go:294-302`). Header wants the hub
   root → new `split-window -c <e.layout.Hub>`. Command injected via `send-keys` (`spawn.go:139-142`).
 - **Hub root:** `hubgeometry.Layout.Hub = filepath.Dir(WorktreeRoot)` (`hubgeometry.go:117`);
-  `Layout{Cwd, WorktreeRoot, Hub, RelPath, Prime}`. `repo` derives from `WorktreeRoot`/`HubSuffix`.
+  `Layout{Cwd, WorktreeRoot, Hub, RelPath, Prime}`. A **new `Repo` field** is added to `Layout`
+  and populated by `hubgeometry.Resolve` from git (always non-empty), so `tokenvocab`'s `repo`
+  resolver just reads `layout.Repo` (Hub Geometry Invariant keeps this derivation in hubgeometry).
 - **tmux/psmux layer:** `overlay.go` `TmuxCmd` is the only subprocess seam. The feature must work
   on **both** tmux (real session dies on last pane) and psmux (Windows; pane corpses) — smoke
   tests are psmux-gated.
@@ -163,13 +197,17 @@ Full codebase map: `.scratch/mux-console-exploration.md`. Highlights mill-plan n
 
 ## Constraints
 
-- CONSTRAINTS.md: **Hub Geometry Invariant** — all cwd/geometry via `internal/hubgeometry`
-  (`layout.Hub`, never recompute). **CLI / Cobra Invariant** — `lyx mux header` needs a `Short`,
-  the `Command()`/`RunCLI` seam, help-tree tests; thin verb → one `Engine` method. **lyxtest Leaf
-  Invariant** for fixtures. **Documentation Lifecycle** — update `docs/modules/` (mux module doc +
-  a new `tokenvocab` module doc) + `docs/overview.md` (module table gains `tokenvocab`) in the same
-  commit; if the "header is not a strand / keepalive" rule is cross-cutting, record it in
-  CONSTRAINTS.md.
+- CONSTRAINTS.md: **Hub Geometry Invariant** — all cwd/geometry via `internal/hubgeometry`; the new
+  `Layout.Repo` field belongs here (never recompute repo/geometry outside hubgeometry). **CLI /
+  Cobra Invariant** — `lyx mux header` needs a `Short`, the `Command()`/`RunCLI` seam, help-tree
+  tests, thin verb → one `Engine` method. Default mode emits the JSON envelope (`output.Ok`/`Err`);
+  the **`--blocking` mode extends the narrow interactive-handoff exception** (CONSTRAINTS.md lines
+  ~71-76 today cover only handing stdio to *another* interactive program — the self-displaying
+  keepalive is a new sub-case). **This CONSTRAINTS.md extension must land in the same commit as the
+  implementation** (Documentation Lifecycle). **lyxtest Leaf Invariant** for fixtures.
+  **Documentation Lifecycle** — update `docs/modules/` (mux module doc + a new `tokenvocab` module
+  doc) + `docs/overview.md` (module table gains `tokenvocab`) in the same commit; record the
+  "header is not a strand / structural keepalive" rule in CONSTRAINTS.md if cross-cutting.
 - Dependency direction `muxcli → muxengine → render` stays one-directional; `stencil` stays a pure
   leaf; `tokenvocab → {hubgeometry, stencil}` only.
 
@@ -184,8 +222,11 @@ Per-module approach (TDD candidates called out):
 - **`Engine.HeaderText()` (TDD, hermetic):** returns the stencil-filled template from a fixture
   config + Layout; falls back to the embedded default when `header.template` is unset; propagates a
   bad-template error.
-- **`lyx mux header` verb:** help-tree/CLI test (Short present, wired into the mux command tree);
-  prints `HeaderText()` output and blocks.
+- **`lyx mux header` verb:** help-tree/CLI test (Short present, wired into the mux command tree).
+  The **default non-blocking mode is the test seam** (NOTE-3): tests execute the command and assert
+  the rendered/enveloped text (and `--json` shape) without hanging; a bad template asserts the
+  `output.Err` non-zero exit. `--blocking` is exercised only indirectly via the keepalive smoke
+  test — never run inline in a unit test (it hangs by design).
 - **Keepalive regression (real tmux):** flip `TestRemoveStrand_SoleStrandEmptiesSessionSucceeds`
   (`contract_integration_test.go:332`) — with a header present, removing the last strand leaves the
   session + header alive and strand count reaches zero (session NOT torn down).
@@ -219,3 +260,13 @@ Per-module approach (TDD candidates called out):
   `builderengine` `*-template.md` precedent) — never `template.yaml`.
 - **Q:** Why does the header pane matter? **A:** It is THE persistent pane — a pane stays alive even
   when every strand is dead, so the session can never be torn down by last-strand removal.
+- **Q (GAP-1):** How is `lyx mux header` reconciled with the JSON-envelope invariant? **A:** Two modes:
+  default returns the text via the envelope (smoke-testable, `--json`), and `--blocking` prints text +
+  hangs for the pane. Only `--blocking` is exempt — a narrow extension of the interactive-handoff
+  exception, recorded in CONSTRAINTS.md.
+- **Q (GAP-2):** How is `repo` derived so it is always non-empty? **A:** A new git-derived
+  `hubgeometry.Layout.Repo` field; `tokenvocab`'s `repo` resolver just reads it. Derivation stays in
+  hubgeometry (Hub Geometry Invariant).
+- **Q (GAP-3):** What happens on a header render error? **A:** Errors are fixed loudly — `up`/config-load
+  validates the template eagerly (`output.Err`, early), so a broken config never boots silently. The
+  `--blocking` pane only prints-and-keeps-blocking as a rare last-resort fallback.
