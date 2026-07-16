@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-hubgeometry-repo
 slug: mux-operator-console
 branch: mux-operator-console
 plan: _mill/plan
@@ -24,6 +24,7 @@ plan-fix-r1  '2026-07-16T12:06:34Z'
 plan-fix-r2  '2026-07-16T12:11:54Z'
 planned  '2026-07-16T12:12:22Z'
 implementing  '2026-07-16T12:13:38Z'
+approved-hubgeometry-repo  '2026-07-16T12:19:22Z'
 ```
 
 ## Batches
@@ -31,9 +32,10 @@ implementing  '2026-07-16T12:13:38Z'
 ```yaml
 batches:
   - name: hubgeometry-repo
-    state: running
+    state: approved
     implementer_session: 0c1ecebb-7f0b-4a79-9f0d-faa85b1d4146
     start_sha: 650ea6f15e6f8a025808469efc1eb0298a1e75a9
+    commit_sha: 957ad2249a6f446ef01346f6391447dce44dc9cc
   - name: tokenvocab-module
     state: pending
   - name: header-text-pipeline
