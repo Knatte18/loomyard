@@ -1,11 +1,13 @@
-# Builder: the batch-implementation loop
+# Builder contract: the batch-implementation loop's cross-module contracts
 
-> **Status: As-built.** Unlike most per-module docs, this one is **not** deleted on
-> landing (per the [documentation lifecycle](../overview.md#documentation-lifecycle)):
-> builder's digest/outcome/state contracts are consumed by a future `loom` the same way
-> [plan-format.md](plan-format.md) is, so this doc stays as the durable reference for
-> those contracts, alongside the package documentation in `internal/builderengine` and
-> `internal/buildercli`.
+> **Status: As-built — contract, not a module design doc.** This file isn't "builder's
+> design docs kept past landing" — it's the cross-module contract (digest/outcome/state
+> shapes) that a future `loom` will consume, the same way
+> [plan-format.md](plan-format.md) pins the contract between a future Planner and
+> `builder`. Named and scoped like `plan-format.md` for that reason. `builder`'s own
+> internal design/behavior lives in the package documentation in
+> `internal/builderengine` and `internal/buildercli`, same as any other landed module,
+> and is out of scope for this file.
 
 ## What it is
 
