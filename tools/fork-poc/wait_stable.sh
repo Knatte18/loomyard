@@ -1,14 +1,18 @@
 #!/usr/bin/env bash
-# wait_stable.sh TRANSCRIPT_PATH [TIMEOUT_S] [MARKER]
+# wait_stable.sh TRANSCRIPT_PATH [TIMEOUT_S] [MARKER] [PANE_ID]
 #
 # Blocks until TRANSCRIPT_PATH exists, contains at least one assistant
 # message after MARKER (when given — guards against the false-stable window
 # between the fork-copy flush and the first reply flush: launch + first
 # thinking can exceed any fixed quiet window), and its size has been
-# unchanged for three consecutive 10s polls. Exits 0 with the final size on
-# stdout, 1 on timeout.
+# unchanged for three consecutive 10s polls. With PANE_ID (and $SOCK set to
+# the tmux socket name), additionally requires the pane to be idle — no
+# "esc to interrupt" spinner. Size-quiet alone is NOT a done-signal: long
+# thinking pauses and between-phase gaps exceed any fixed window; the pane
+# spinner is the direct signal. Exits 0 with the final size on stdout, 1 on
+# timeout.
 set -euo pipefail
-P="$1"; TIMEOUT="${2:-600}"; MARKER="${3:-}"
+P="$1"; TIMEOUT="${2:-600}"; MARKER="${3:-}"; PANE="${4:-}"
 HERE="$(dirname "$0")"
 DEADLINE=$((SECONDS + TIMEOUT))
 LAST=-1; STREAK=0
@@ -17,9 +21,14 @@ while [ "$SECONDS" -lt "$DEADLINE" ]; do
   if [ "$SIZE" -gt 0 ] && [ "$SIZE" -eq "$LAST" ]; then
     STREAK=$((STREAK + 1))
     if [ "$STREAK" -ge 3 ]; then
-      if [ -z "$MARKER" ] || [ "$(python3 "$HERE/harvest.py" "$P" "$MARKER" | head -1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["turns"])')" -gt 0 ]; then
-        echo "$SIZE"; exit 0
+      OK=1
+      if [ -n "$MARKER" ]; then
+        [ "$(python3 "$HERE/harvest.py" "$P" "$MARKER" | head -1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["turns"])')" -gt 0 ] || OK=0
       fi
+      if [ "$OK" -eq 1 ] && [ -n "$PANE" ]; then
+        tmux -L "${SOCK:?set SOCK to the tmux socket name}" capture-pane -p -t "$PANE" | grep -q "esc to interrupt" && OK=0
+      fi
+      if [ "$OK" -eq 1 ]; then echo "$SIZE"; exit 0; fi
       STREAK=0
     fi
   else
