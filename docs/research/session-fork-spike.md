@@ -13,16 +13,22 @@ Rig: `tools/fork-poc/` (prompts, spawn/wait/harvest helpers). Raw session output
 
 ## Step 0 — transcript persistence (attempt 1's blocker)
 
-**Resolved, and the fullscreen hypothesis is refuted.** A plain interactive `claude`
-spawned as a mux strand persisted its `.jsonl` within ~10 s — with `"tui": "fullscreen"`
-still set in `~/.claude/settings.json`. The actual root cause of attempt 1's "no
-transcript ever appears": a claude launched from inside a Claude Code session inherits
-`CLAUDECODE`/`CLAUDE_CODE_*` and treats itself as a nested child, silently not
-persisting its transcript. `muxengine.CleanClaudeEnv` (the env-hygiene chokepoint on
-server spawn) is the fix, already proven end-to-end by
+**Confirmed live, and the fullscreen hypothesis is refuted — but this was not a spike
+discovery.** The root cause and fix were already established and documented a week
+before attempt 1 was abandoned: a claude launched from inside a Claude Code session
+inherits `CLAUDECODE`/`CLAUDE_CODE_*` and treats itself as a nested child, silently not
+persisting its transcript. Documented in `docs/research/mux-exploration.md` (which names
+`CLAUDE_CODE_CHILD_SESSION=1` as the prime culprit), mandated by
+`docs/research/mux-proposal.md` ("Env hygiene is mandatory"), implemented as
+`muxengine.CleanClaudeEnv` (landed 2026-07-05), and proven end-to-end by
 `internal/muxcli/smoke_resume_test.go:TestSmokeClaudeResumeRecallsCodeword`.
-**Every resume/fork-based design in lyx inherits this constraint: agent-spawning paths
-must scrub `CLAUDECODE`/`CLAUDE_CODE_*` (mux already does).**
+
+Step 0's actual contribution: a plain interactive `claude` spawned as a mux strand
+persisted its `.jsonl` within ~10 s — with `"tui": "fullscreen"` still set in
+`~/.claude/settings.json` — killing the settings.json hypothesis attempt 1's writeup
+carried as "leading". **Process lesson (sharper than "commit as you go"): attempt 1
+hit an already-documented failure and hypothesized a novel cause instead of checking
+the repo's own `docs/research/` — read the existing research before diagnosing.**
 
 ## Method
 
@@ -99,11 +105,19 @@ production-code and test-gap clusters counted separately).
 - **Marginal reviewer:** fork ≈ 97k avg vs cold ≈ 209k avg — **2.16× cheaper per
   reviewer**. The explorer amortizes, so the arm-level saving grows with N
   (extrapolated N=5: ~641k vs ~1,047k, ~39% cheaper) and approaches 2.16× asymptotically.
-- **Cache secondary reading (API-relevance):** a fork's first turn shows
-  cache_read ≈ 54k and cache_creation ≈ 75k — the fork reuses part of the parent's
-  prefix cache but re-creates the rest. On API billing the fork saving would be partial,
-  not the full explore margin; on subscription the compute saving above is what counts.
-  What the fork fully skips is the explore phase's 12 tool calls / 15 turns.
+- **Cache secondary reading (API-relevance): fork inherited-history reuse is ZERO.**
+  Every fork shows cache_read = 54,492 and cache_creation ≈ 75k. A follow-up probe
+  (`instafork.sh`: fresh explorer, forks spawned 34 s after it went idle — well inside
+  the 5-minute cache TTL) reproduced the *exact* same split: cache_read = 54,492 per
+  fork, cache_creation ≈ 75.2k. Same number across two different explorer parents ⇒
+  the 54,492 is the session-independent static prefix (system prompt + tool defs +
+  project context) that every session in the hub shares — none of it is the parent's
+  exploration. The inherited conversation is paid as cache_creation by each fork
+  regardless of timing, presumably because the fork's re-serialized history is not
+  byte-identical to the parent's cached prefix. So on API billing, fork input gets no
+  cache discount; the saving is entirely from skipping the explore phase itself
+  (12 tool calls / 15 turns, ~209k vs ~97k compute per reviewer). On subscription the
+  compute saving above is what counts either way.
 
 ## Decision
 
