@@ -68,12 +68,17 @@ func paneIDsByTop(live []LivePane) []string {
 // toRenderStrands (render, not the engine, drops not-live/pane-less/hidden
 // strands from placement — GAP B, card 6) and calls render.Rules with
 // keyed struct fields, handing it live's actual top-to-bottom pane order so
-// the emitted cells land on the panes they were sized for.
+// the emitted cells land on the panes they were sized for. st.HeaderPaneID
+// and the configured header height are threaded through as render.Header —
+// the header is never itself a Strand (Shared Decision
+// header-is-not-a-strand), so it is injected at this Params seam rather
+// than being appended to strands.
 func (e *Engine) planLayout(st *MuxState, live []LivePane) (layout, focus string, err error) {
 	strands := toRenderStrands(st.Strands, liveIDSet(live))
 	return render.Rules(strands, render.Box{X: 0, Y: 0, W: e.cfg.Width, H: e.cfg.Height}, render.Params{
 		CollapsedStripRows: e.cfg.CollapsedStripRows,
 		MinFullRows:        e.cfg.MinFullRows,
+		Header:             render.Header{PaneID: st.HeaderPaneID, HeightRows: e.cfg.Header.HeightRows},
 	}, paneIDsByTop(live))
 }
 

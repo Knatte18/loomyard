@@ -14,6 +14,18 @@ import "fmt"
 // strand, Rules is pure and total — a corrupt cyclic parent table is
 // repaired by breakCycles rather than causing an error or a hang.
 //
+// When p.Header.PaneID is non-empty, Rules first carves a fixed-height top
+// band for it — {X:0, Y:0, W:box.W, H:headerHeight} — and lays the
+// below-parent stack out in the shrunk region below it, {X:0,
+// Y:headerHeight, W:box.W, H:box.H-headerHeight}, so the emitted
+// window_layout enumerates the header cell plus every strand cell (the
+// live-pane count the caller's select-layout must match). The header is
+// never itself a Strand — it is injected here at the Params seam instead of
+// being modelled in the strand slice (Shared Decision
+// header-is-not-a-strand) — so partitionByAnchor/orderStack below never see
+// it. A zero-value p.Header (empty PaneID) skips all of this and Rules
+// behaves exactly as it did before the header pane existed.
+//
 // paneOrder is the window's actual top-to-bottom pane order (pane ids as
 // list-panes reports them, sorted by pane_top). psmux applies a layout
 // string's cells POSITIONALLY to the window's current pane order and
@@ -39,10 +51,21 @@ func Rules(strands []Strand, box Box, p Params, paneOrder []string) (layout stri
 	stack := partitionByAnchor(fixed)
 	ordered := orderStack(stack)
 
-	placements := stackHeights(ordered, box, p)
+	hasHeader := p.Header.PaneID != ""
+	stackBox := box
+	headerHeight := 0
+	if hasHeader {
+		headerHeight = p.Header.HeightRows
+		stackBox = Box{X: box.X, Y: box.Y + headerHeight, W: box.W, H: box.H - headerHeight}
+	}
+
+	placements := stackHeights(ordered, stackBox, p)
 	placements = resequenceByPaneOrder(placements, paneOrder)
 
-	body := buildStackBody(box, placements)
+	body := buildStackBody(stackBox, placements)
+	if hasHeader {
+		body = bandHeader(box, p.Header.PaneID, headerHeight, body)
+	}
 	focus = focusTarget(ordered)
 	return wrapLayout(body), focus, nil
 }
