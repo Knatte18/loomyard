@@ -52,7 +52,9 @@ batches:
     start_sha: f83813ca88b050b9705fc48a8e23aea60344f9a3
     commit_sha: cfe208b52faf1be405e6a912b1fce9353557ce16
   - name: burler-cluster-round
-    state: pending
+    state: running
+    implementer_session: 1c027ca8-8034-446f-821d-5c06e077e5a5
+    start_sha: ef1d0f1f47667cb13067ba49a652387b6fe6d4a3
   - name: docs-and-smoke
     state: pending
 ```
