@@ -22,6 +22,20 @@
 // path (ServerName), so every worktree under the same hub locates and shares
 // the same tmux server rather than each spawning its own.
 //
+// A second package-level invariant: every session also carries exactly one
+// additional, permanent pane beyond its strands — the header
+// (MuxState.HeaderPaneID). It is a first-class construct, deliberately never
+// a Strand (Shared Decision header-is-not-a-strand): it is excluded from
+// every strand-accounting, adoption, split-target, and reconcile path (see
+// ensureHeaderPaneLocked in lifecycle.go, planPaneTarget in spawn.go, and
+// planReconcile's exemptPaneIDs in reconcile.go for the three exclusion
+// seams), so that removing a session's last strand can never destroy the
+// session or corpse its sole pane — the header keeps the session (and the
+// substrate the next add needs) alive no matter how many strands come and
+// go. It boots alongside the session/initial pane on both Up and Resume, and
+// Engine.ValidateHeader runs eagerly on every boot path so a bad header
+// template surfaces loud before the pane is ever created, never silently.
+//
 // # Multiplexer contract surface
 //
 // This package assumes its configured binary (psmux on Windows today, tmux
@@ -120,4 +134,16 @@
 //     config or LYX_MUX_MOUSE on an already-running hub has no effect until
 //     the mux server restarts. "off" preserves native terminal text
 //     selection/copy; "on" enables click-to-switch-pane.
+//   - Header band divider row (render/rules.go, height.go): the header pane
+//     and the strand stack below it are physically adjacent, so tmux/psmux
+//     always renders the same one-row border between them that
+//     buildStackBody already budgets for between individual strands —
+//     omitting that budget still lets select-layout return success, but
+//     tmux inserts the border row anyway, silently overflowing the window
+//     by one row. clampHeaderHeight (height.go) also never clamps the
+//     header below 1 row for the same reason: a real tmux/psmux
+//     select-layout does not cleanly support a genuinely zero-height cell
+//     for an always-on pane either. Verified against a real tmux instance;
+//     contract_integration_test.go's TestHeaderNeverGetsZeroHeightLayoutCell
+//     pins it.
 package muxengine

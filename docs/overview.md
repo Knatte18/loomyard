@@ -339,7 +339,7 @@ requirement), agents run, output files are read, nobody need watch.
   `modelspec` as a general-purpose leaf the stack's modules consume, not a stage of the
   proc→mux→shuttle→burler→perch→loom chain itself. mux's header text pipeline consumes it
   today; loom's prompt templates are expected to reuse the same `Render` compose later. See
-  [modules/tokenvocab.md](modules/tokenvocab.md).
+  the `internal/tokenvocab` package documentation.
 - **perch is independent of loom** — it is a standalone gate loop (`lyx perch`) over `burler` rounds;
   loom just uses it heavily (a perch review between every phase). perch builds on `burler` → `shuttle`,
   not on `loom`.
@@ -367,9 +367,10 @@ The **sandbox Hub** is a dedicated bench for manual testing of lyx's core workfl
 
 - [modules/README.md](modules/README.md) — **the module map**: index of every module doc + how the layers stack (design).
 - [modules/loom.md](modules/loom.md) — the phased orchestrator (`lyx loom` + `lyx perch`); design.
-- [modules/tokenvocab.md](modules/tokenvocab.md) — the shared token vocabulary (`repo`/`hub` +
+- `internal/tokenvocab` package documentation — the shared token vocabulary (`repo`/`hub` +
   `Render` over `internal/stencil`), consumed by mux's header pipeline and, later, loom's
-  prompt templates; a leaf, not a phased module.
+  prompt templates; a leaf, not a phased module (as-built; module doc deleted per the
+  documentation lifecycle).
 - [modules/builder.md](modules/builder.md) — the batch-implementation loop (`lyx builder`): verb surface, digest contract, poll classification, chain rollback, pause, outcome contract (as-built; kept as a durable contract doc, not deleted on landing).
 - `internal/muxengine` package documentation — the window to the world: tmux overlay + strand bookkeeping + render (as-built; module doc deleted per the documentation lifecycle).
 - `internal/shuttleengine` package documentation — run one LLM agent via a swappable engine over the file contract (as-built; module doc deleted per the documentation lifecycle).
