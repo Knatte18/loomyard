@@ -110,25 +110,26 @@ production-code and test-gap clusters counted separately).
   (`instafork.sh`: fresh explorer, forks spawned 34 s after it went idle — well inside
   the 5-minute cache TTL) reproduced the *exact* same split: cache_read = 54,492 per
   fork, cache_creation ≈ 75.2k. Same number across two different explorer parents ⇒
-  none of it is the parent's exploration. A controlled follow-up
-  (`exp-resume.sh`, results in `results/exp-resume.md`) pinned the root cause: with a
-  tiny parent (one tool call) and children spawned seconds later, a **plain
-  `--resume` continuation and a fork miss the parent's history identically**
-  (cache_read = the 27,246-token static per-cwd prefix in both), while the parent's
-  own live process reads static + its own history. So: Claude Code re-serializes any
-  *reloaded* session (resume and fork alike) into bytes that don't match the live
-  session's cached prefix — history-computation reuse on reload is 0% by
-  construction. Not a TTL effect, not the 20-block lookback, not fork-specific. This
-  is a Claude Code client behavior, not an API violation — Anthropic's caching docs
-  never promise resume/fork reuse and place the exact-prefix burden on the client.
-  Two consequences: (a) on API billing, fork input gets no cache discount from the
-  parent — the saving is entirely from skipping the explore phase itself (~209k vs
-  ~97k compute per reviewer); (b) re-serialization is deterministic, so **sibling
-  forks of one parent can read each other's cache** (this is what the 54,492 in the
-  main run was: static 27,246 + a chunk the earlier M1 fork had cached). Design
-  lever for an API-billed cluster: stagger fork launches — fire one, await its first
-  streamed token, then fire the rest, per Anthropic's documented fan-out pattern. On
-  subscription the compute saving above is what counts either way.
+  none of it is the parent's exploration. Controlled follow-ups (`exp-resume.sh`,
+  results and correction in `results/exp-resume.md`) pinned the root cause:
+  **system-prompt divergence between parent and child requests**, from two
+  independent sources. (a) Harness bug: the parent ran with `--add-dir` and the
+  children without — the system prompt embeds the additional-directory list, and the
+  API's own diagnostic named it (`cache_miss_reason: system_changed`). With flags
+  matched, a plain `--resume` continuation reuses the parent's **entire** cache
+  (cache_read 43,611, cache_creation 65 — a full hit; Claude Code's history
+  re-serialization on reload is byte-faithful). (b) Structural, fork-only:
+  `--fork-session` assigns a new session id, and the system prompt contains
+  session-unique bytes (the scratchpad path embeds the session id) — so a CLI fork's
+  system tier can never match its parent's, the messages tier is invalidated with
+  it, and sibling forks don't share with each other either. Consequences: on API
+  billing a CLI fork gets no cache discount from the parent (the saving is entirely
+  from skipping the explore phase, ~209k vs ~97k compute per reviewer), while a
+  resume-based design with identical launch flags gets near-total reuse. The
+  promising escape from (b) is Claude Code's built-in **fork subagents**
+  (Agent tool, `subagent_type: "fork"`), which run inside the parent process under
+  the parent's own system prompt — unmeasured in this spike, flagged as follow-up.
+  On subscription the compute saving above is what counts either way.
 
 ## Decision
 
