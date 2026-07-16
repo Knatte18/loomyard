@@ -5,7 +5,10 @@
 
 package render
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // Rules computes the tmux window_layout string and focus pane id for
 // strands laid out within box, using p's height-policy knobs. It rejects
@@ -37,10 +40,14 @@ import "fmt"
 // (clampHeaderHeight never hands this a zero, since a real tmux/psmux
 // select-layout does not cleanly support a genuinely zero-height cell
 // either). When no strand is actually placed (an empty stack — the header
-// is the window's sole pane), no divider is reserved and the header may
-// claim the whole box; in practice this case never reaches select-layout at
-// all, since applyLayoutLocked skips both tmux calls whenever fewer than
-// two panes are live. The header is never itself a Strand — it is injected
+// is the window's sole mux-owned pane), no divider is reserved and the
+// header claims the whole box, emitted as a bracket-less single-cell body
+// (the same shape tmux itself reports for a one-pane window) rather than a
+// zero-height cell inside a group; in practice this case never reaches
+// select-layout at all, since applyLayoutLocked skips both tmux calls
+// whenever fewer than two panes are live or no strand owns a present pane,
+// but the pure function's output must still honor the never-zero-height
+// rule for any caller. The header is never itself a Strand — it is injected
 // here at the Params seam instead of being modelled in the strand slice
 // (Shared Decision header-is-not-a-strand) — so partitionByAnchor/orderStack
 // below never see it. A zero-value p.Header (empty PaneID) skips all of
@@ -72,9 +79,18 @@ func Rules(strands []Strand, box Box, p Params, paneOrder []string) (layout stri
 	ordered := orderStack(stack)
 
 	hasHeader := p.Header.PaneID != ""
+	if hasHeader && len(ordered) == 0 {
+		// No strand placed: the header claims the whole box as a
+		// bracket-less single-cell body (see the doc comment) — never a
+		// zero-height cell inside a group, which the real multiplexer
+		// mishandles. No focus target exists without a placed strand.
+		sole := fmt.Sprintf("%dx%d,%d,%d,%s", box.W, box.H, box.X, box.Y, strings.TrimPrefix(p.Header.PaneID, "%"))
+		return wrapLayout(sole), "", nil
+	}
+
 	stackBox := box
 	headerHeight := 0
-	if hasHeader && len(ordered) > 0 {
+	if hasHeader {
 		// The header and the strand stack are physically adjacent panes, so
 		// tmux/psmux always renders a one-row border between them — the same
 		// budget buildStackBody already reserves between individual strands

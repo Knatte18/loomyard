@@ -237,6 +237,40 @@ func TestRulesHeaderBandEnumeratesHeaderPlusEveryStrandCell(t *testing.T) {
 	}
 }
 
+// TestRulesHeaderWithNoPlacedStrandClaimsWholeBoxAsSoleCell pins the
+// empty-stack header shape: with a header pane and ZERO placed strands,
+// Rules must emit the header as a bracket-less single-cell body claiming
+// the whole box — the same shape tmux reports for a one-pane window —
+// never a zero-height header cell inside a group (the fable-header-r1
+// finding: headerHeight stayed 0 on this path and bandHeader emitted a
+// literal "Wx0" cell, exactly the shape
+// TestHeaderNeverGetsZeroHeightLayoutCell exists to forbid, while the doc
+// comment claimed the header "may claim the whole box"). Unreachable
+// through applyLayoutLocked today (anyPlacedStrand gates the apply), but
+// Rules is a pure function whose contract must hold for any caller.
+func TestRulesHeaderWithNoPlacedStrandClaimsWholeBoxAsSoleCell(t *testing.T) {
+	box := Box{X: 0, Y: 0, W: 100, H: 21}
+	p := Params{CollapsedStripRows: 2, MinFullRows: 3, Header: Header{PaneID: "%h", HeightRows: 3}}
+
+	// nil strands and an all-filtered stack (a hidden strand) must both
+	// produce the sole-header shape.
+	for name, strands := range map[string][]Strand{
+		"NilStrands":       nil,
+		"OnlyHiddenStrand": {{GUID: "hid", PaneID: "%9", Live: true, Display: Display{Anchor: AnchorHidden}}},
+	} {
+		layout, focus, err := Rules(strands, box, p, nil)
+		if err != nil {
+			t.Fatalf("%s: Rules() unexpected error: %v", name, err)
+		}
+		if want := wrapLayout("100x21,0,0,h"); layout != want {
+			t.Errorf("%s: Rules() layout = %q, want the sole-header body %q", name, layout, want)
+		}
+		if focus != "" {
+			t.Errorf("%s: Rules() focus = %q, want \"\" (no placed strand to focus)", name, focus)
+		}
+	}
+}
+
 // TestRulesNoHeaderPreservesPreHeaderBehavior asserts a zero-value
 // Params.Header (empty PaneID) produces byte-identical output to omitting
 // Header entirely — every pre-header caller must be unaffected.
