@@ -54,6 +54,9 @@ profiles — pass through one resolver before any strand spawns.
   table: empty fan string skips resolution; unknown fan, unknown lens, over-cap fan
   propagate `ResolveFan` errors; happy path populates `clusterLenses` in fan order),
   `engine_test.go` (the `New` helper at its line ~80 gains a `Config{}` argument;
+  DELETE `TestEngine_Run_ClusterUnsupported` at its line ~145 — it exercises the
+  removed `ClusterN`/`ErrClusterUnsupported` pair and cannot compile; its
+  replacement coverage is the ClusterFan resolution-error table in `profile_test.go`;
   add one case asserting a cluster profile's shuttle Spec has `ForkSubagents: true`
   and a plain profile false — extend the existing fake-shuttle spec-capture pattern),
   and `smoke_round_test.go` (compile only: `New` call gains a `Config{}` argument and
@@ -63,6 +66,7 @@ profiles — pass through one resolver before any strand spawns.
 ### Card 9: cluster prompt block
 
 - **Context:**
+  - `internal/burlerengine/profile.go`
   - `internal/burlerengine/config.go`
   - `internal/burlerengine/template.go`
   - `internal/stencil/stencil.go`

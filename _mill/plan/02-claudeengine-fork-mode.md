@@ -134,9 +134,9 @@ security boundary (the audit is the backstop), as pinned in `_mill/discussion.md
   with no error (zero forks is a legitimate finding for the caller's policy); an
   unreadable file or missing parent transcript is an error. (3) In `wait.go`, at the
   point where a done classification builds the terminal `Result`, when
-  `spec.ForkSubagents` call `AuditForks(state.SessionID, layout-worktree-root)` (use
-  whatever the run loop already holds for the worktree root; follow the existing field
-  access pattern in the file) and attach the result to `Result.ForkAudit`; an audit
+  `spec.ForkSubagents` call
+  `AuditForks(run.state.SessionID, run.runner.layout.WorktreeRoot)` and attach the
+  result to `Result.ForkAudit`; an audit
   error fails `Wait` with a wrapped error (fail-loud — a fork-mode run whose audit
   cannot be read must not classify as a clean done). (4) Update the fake engine in
   `fakes_test.go` with a configurable `AuditForks` (returning a canned `ForkAudit`),
