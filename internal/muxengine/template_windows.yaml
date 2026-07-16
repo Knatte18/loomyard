@@ -7,3 +7,6 @@ min_full_rows: 3  # floor height the clamp rule tries to preserve for a full pan
 strand_name: '<ROLE>:<ROUND>:<SHORT_GUID>'  # template for a strand's display name; unfilled tokens resolve to ""
 debug_log: ${env:LYX_MUX_DEBUG:-0}  # opt-in tmux server verbose logging (0 off, 1 -v, 2 -vv); takes effect only on the boot that spawns the shared per-hub server; existing hubs must run "lyx config reconcile" to adopt this key
 mouse: ${env:LYX_MUX_MOUSE:-off}  # tmux mouse-mode default (on/off; off preserves native terminal text selection/copy; set on for click-to-switch-pane; takes effect on a fresh mux server boot only — a live toggle needs a server restart)
+header:  # the always-on operator console pane's rendered text
+  template: ""  # empty means "use the embedded default template"; set to override
+  height_rows: 1  # fixed row count the header pane occupies

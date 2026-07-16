@@ -15,7 +15,10 @@ import "sort"
 // owns a present window pane, so it can never emit a paneNum built from an
 // empty id. AnchorOwnWindow strands are also excluded — that anchor is
 // deferred in v1; Rules is responsible for surfacing an error when one is
-// present, not this function.
+// present, not this function. The always-on header pane is never a member
+// of strands in the first place (Shared Decision header-is-not-a-strand —
+// Rules injects it separately, at the Params.Header seam), so this
+// function's filtering is never asked to reason about it.
 func partitionByAnchor(strands []Strand) (stack []Strand) {
 	for _, s := range strands {
 		if s.Display.Anchor == AnchorHidden || !s.Live || s.PaneID == "" {

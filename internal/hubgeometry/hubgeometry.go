@@ -62,12 +62,15 @@ var ErrNotAGitRepo = errors.New("not a git repository")
 //   - Hub: the parent directory of WorktreeRoot (the container directory, not a git repo)
 //   - RelPath: the relative path from WorktreeRoot to Cwd
 //   - Prime: the path to the main (first) worktree from List()
+//   - Repo: the repository name, filepath.Base(Prime), or filepath.Base(WorktreeRoot) when
+//     no main worktree is resolved
 type Layout struct {
 	Cwd          string
 	WorktreeRoot string
 	Hub          string
 	RelPath      string
 	Prime        string
+	Repo         string
 }
 
 // Getwd returns the current working directory.
@@ -139,7 +142,22 @@ func Resolve(cwd string) (*Layout, error) {
 		Hub:          hub,
 		RelPath:      relPath,
 		Prime:        prime,
+		Repo:         deriveRepo(prime, workTreeRoot),
 	}, nil
+}
+
+// deriveRepo derives the repository name from an already-resolved Prime (main worktree
+// path) without spawning git. It exists so Resolve can populate Layout.Repo purely from
+// values it has already computed, rather than issuing an extra git call for a repo name.
+//
+// It returns filepath.Base(prime) when prime is non-empty; otherwise it falls back to
+// filepath.Base(worktreeRoot). The fallback never yields "." for a real worktree, because
+// worktreeRoot is always the non-empty git toplevel Resolve already validated.
+func deriveRepo(prime, worktreeRoot string) string {
+	if prime != "" {
+		return filepath.Base(prime)
+	}
+	return filepath.Base(worktreeRoot)
 }
 
 // SiblingLayout derives the Layout for a hub-sibling worktree from the receiver's
@@ -156,8 +174,9 @@ func Resolve(cwd string) (*Layout, error) {
 //
 // For any worktreeRoot where filepath.Dir(worktreeRoot) == l.Hub, this is byte-for-byte
 // equivalent to Resolve(worktreeRoot): both set Cwd and WorktreeRoot to
-// filepath.Clean(worktreeRoot), Hub to the same hub, RelPath to ".", and Prime to the
-// receiver's already-resolved Prime.
+// filepath.Clean(worktreeRoot), Hub to the same hub, RelPath to ".", and Prime and Repo to
+// the receiver's already-resolved Prime and Repo (every hub-sibling worktree shares the
+// same Prime, so Repo — derived from Prime — is identical too).
 func (l *Layout) SiblingLayout(worktreeRoot string) *Layout {
 	c := filepath.Clean(worktreeRoot)
 	return &Layout{
@@ -166,6 +185,7 @@ func (l *Layout) SiblingLayout(worktreeRoot string) *Layout {
 		Hub:          l.Hub,
 		RelPath:      ".",
 		Prime:        l.Prime,
+		Repo:         l.Repo,
 	}
 }
 

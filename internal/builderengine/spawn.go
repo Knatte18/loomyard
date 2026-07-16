@@ -324,7 +324,7 @@ func SpawnBatch(deps SpawnDeps, opts SpawnBatchOptions) (*SpawnResult, error) {
 	// lower members). Re-point the spawn to the lowest member HERE, before role,
 	// report-path, and chain-anchor resolution all key off batch, so Go owns
 	// "restart from the bottom" rather than trusting the caller to name it —
-	// matching builder.md's chain-rollback contract ("the chain always restarts
+	// matching builder-contract.md's chain-rollback contract ("the chain always restarts
 	// from its lowest member"). The chainless refusal moves here too, so it
 	// fires before any later work rather than mid-way through the reset block.
 	if opts.RestartChain {

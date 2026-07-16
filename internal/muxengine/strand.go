@@ -468,9 +468,12 @@ func (e *Engine) RemoveStrand(guid string, recursive bool) (Removed, error) {
 		}
 
 		// Kill the removed strands' panes explicitly rather than relying on
-		// select-layout to reap panes missing from the layout string (a
-		// psmux-only side effect; tmux would reject a mismatched layout
-		// instead). Best-effort: a pane may already be dead or gone. What
+		// select-layout to reap panes missing from the layout string: psmux
+		// reaps the extra panes as a side effect, and tmux does NOT reject a
+		// mismatched layout either — it accepts a cell/pane count mismatch
+		// with exit 0 and assigns cells positionally (observed live,
+		// tmux 3.6), so neither backend reaps deterministically enough to
+		// lean on. Best-effort: a pane may already be dead or gone. What
 		// killing a session's LAST pane does next is BINARY-DEPENDENT, not
 		// universal: on psmux, remain-on-exit corpses it as pane_dead=1
 		// (exit 0), keeping the session alive; on tmux, killing a session's

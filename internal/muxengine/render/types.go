@@ -83,6 +83,20 @@ type Box struct {
 	X, Y, W, H int
 }
 
+// Header carries the always-on operator console pane's placement: PaneID
+// names the tmux pane Rules renders as a fixed-height top band above the
+// below-parent stack, and HeightRows is its requested row count (before
+// clampHeaderHeight's floor-preserving adjustment). A zero-value Header
+// (empty PaneID) means "no header" — Rules then lays out exactly as it did
+// before the header pane existed, so every pre-header caller is unaffected.
+// The header is never a Strand: it is injected at this Params seam instead
+// of being modelled in the strand slice (Shared Decision
+// header-is-not-a-strand).
+type Header struct {
+	PaneID     string
+	HeightRows int
+}
+
 // Params carries the tunable height-policy knobs the engine loads from
 // mux.yaml, keeping render itself config-agnostic.
 type Params struct {
@@ -91,6 +105,10 @@ type Params struct {
 	CollapsedStripRows int
 	// MinFullRows is the floor height the clamp rule tries to preserve for
 	// a full (non-collapsed) pane when the window is too short to satisfy
-	// every strand's natural height.
+	// every strand's natural height. clampHeaderHeight also uses this as
+	// the strand-stack region's floor when a header pane is present.
 	MinFullRows int
+	// Header carries the always-on operator console pane's placement, if
+	// any. A zero-value Header (empty PaneID) means no header is rendered.
+	Header Header
 }

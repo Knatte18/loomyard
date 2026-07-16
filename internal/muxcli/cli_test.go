@@ -86,13 +86,15 @@ func TestRunCLI_NotAGitRepo(t *testing.T) {
 }
 
 // TestAttachArgv verifies the attach invocation targets the worktree
-// session: "-L <socket> attach-session -t <session>". This is the built
-// attach invocation's one assertable seam — the argv build, not a JSON
-// round-trip, since a real attach hands stdio to tmux (the documented
-// JSON-envelope exception).
+// session by EXACT name: "-L <socket> attach-session -t =<session>" — the
+// "=" pins tmux's exact session matching so a bare name can never prefix
+// match a sibling worktree's session (see attachArgv's doc comment). This
+// is the built attach invocation's one assertable seam — the argv build,
+// not a JSON round-trip, since a real attach hands stdio to tmux (the
+// documented JSON-envelope exception).
 func TestAttachArgv(t *testing.T) {
 	got := attachArgv("hub-abc123", "my-worktree")
-	want := []string{"-L", "hub-abc123", "attach-session", "-t", "my-worktree"}
+	want := []string{"-L", "hub-abc123", "attach-session", "-t", "=my-worktree"}
 
 	if len(got) != len(want) {
 		t.Fatalf("attachArgv() = %v; want %v", got, want)
