@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: burler-fork-cluster
 branch: burler-fork-cluster
-plan: null
+plan: _mill/plan
 parent: main
 task: Fork-based cluster review in burler
 task_description: |
@@ -17,4 +17,5 @@ task_description: |
 discussing  '2026-07-16T18:29:58Z'
 discussion-fix-r2  '2026-07-16T19:34:29Z'
 discussed  '2026-07-16T19:34:38Z'
+planning  '2026-07-16T19:47:56Z'
 ```
