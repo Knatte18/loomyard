@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-header-pane-and-render
+phase: holistic-reviewing
 slug: mux-operator-console
 branch: mux-operator-console
 plan: _mill/plan
@@ -28,6 +28,7 @@ approved-hubgeometry-repo  '2026-07-16T12:19:22Z'
 approved-tokenvocab-module  '2026-07-16T13:26:33Z'
 approved-header-text-pipeline  '2026-07-16T13:33:36Z'
 approved-header-pane-and-render  '2026-07-16T14:00:13Z'
+holistic-reviewing  '2026-07-16T14:00:26Z'
 ```
 
 ## Batches
