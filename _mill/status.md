@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: mux-operator-console
 branch: mux-operator-console
-plan: null
+plan: _mill/plan
 parent: main
 task: Built-in operator console pane in mux
 task_description: |
@@ -17,4 +17,5 @@ task_description: |
 discussing  '2026-07-16T09:41:58Z'
 discussion-fix-r3  '2026-07-16T11:44:07Z'
 discussed  '2026-07-16T11:44:20Z'
+planning  '2026-07-16T11:57:24Z'
 ```
