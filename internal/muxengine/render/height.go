@@ -8,6 +8,36 @@
 
 package render
 
+// clampHeaderHeight returns headerRows clamped so the strand-stack region
+// never shrinks below minStackRows total rows — the window-split clamp,
+// distinct from clampToFit, which distributes rows AMONG strands inside an
+// already-shrunk box; this one instead decides how much of the WHOLE window
+// the header band itself may claim. minStackRows is floored at 1 (mirroring
+// clampToFit's own MinFullRows floor) so a misconfigured non-positive value
+// can never demand a zero-or-negative stack region. The header yields rows
+// first when the window is too short to satisfy both regions: an oversized
+// configured height_rows can never starve the strand stack below its floor,
+// even though that means the header itself may end up shorter than
+// configured (down to zero when the window cannot fit both a header and the
+// floor). A negative headerRows is treated as zero.
+func clampHeaderHeight(headerRows, windowRows, minStackRows int) int {
+	if headerRows < 0 {
+		headerRows = 0
+	}
+	floor := minStackRows
+	if floor < 1 {
+		floor = 1
+	}
+	maxHeader := windowRows - floor
+	if maxHeader < 0 {
+		maxHeader = 0
+	}
+	if headerRows > maxHeader {
+		return maxHeader
+	}
+	return headerRows
+}
+
 // stackHeights computes a height for every strand in stack (already ordered
 // by orderStack) within box: usable rows are box.H minus one divider row per
 // gap between panes. A shrink:true ancestor — a strand for which isAncestor

@@ -19,12 +19,15 @@ import "fmt"
 // below-parent stack out in the shrunk region below it, {X:0,
 // Y:headerHeight, W:box.W, H:box.H-headerHeight}, so the emitted
 // window_layout enumerates the header cell plus every strand cell (the
-// live-pane count the caller's select-layout must match). The header is
-// never itself a Strand — it is injected here at the Params seam instead of
-// being modelled in the strand slice (Shared Decision
-// header-is-not-a-strand) — so partitionByAnchor/orderStack below never see
-// it. A zero-value p.Header (empty PaneID) skips all of this and Rules
-// behaves exactly as it did before the header pane existed.
+// live-pane count the caller's select-layout must match). headerHeight is
+// clampHeaderHeight's output, not the raw configured value: an oversized
+// height_rows can never shrink the strand region below its MinFullRows
+// floor, so the header itself yields rows first when the window is too
+// short for both. The header is never itself a Strand — it is injected here
+// at the Params seam instead of being modelled in the strand slice (Shared
+// Decision header-is-not-a-strand) — so partitionByAnchor/orderStack below
+// never see it. A zero-value p.Header (empty PaneID) skips all of this and
+// Rules behaves exactly as it did before the header pane existed.
 //
 // paneOrder is the window's actual top-to-bottom pane order (pane ids as
 // list-panes reports them, sorted by pane_top). psmux applies a layout
@@ -55,7 +58,13 @@ func Rules(strands []Strand, box Box, p Params, paneOrder []string) (layout stri
 	stackBox := box
 	headerHeight := 0
 	if hasHeader {
-		headerHeight = p.Header.HeightRows
+		// clampHeaderHeight (height.go) is the window-split clamp: an
+		// oversized configured height_rows can never shrink the strand
+		// stack below its MinFullRows floor — the header yields rows
+		// first. clampToFit (called inside stackHeights below) then
+		// distributes rows AMONG strands within whatever (possibly
+		// clamped) stack region results.
+		headerHeight = clampHeaderHeight(p.Header.HeightRows, box.H, p.MinFullRows)
 		stackBox = Box{X: box.X, Y: box.Y + headerHeight, W: box.W, H: box.H - headerHeight}
 	}
 
