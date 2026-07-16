@@ -46,7 +46,9 @@ batches:
     start_sha: d067a937a9a75e1abcf0dfc9320f78837d31c72e
     commit_sha: 4a729b2fc3f55a76fe676bf98f0be4af51bc5922
   - name: claudeengine-fork-mode
-    state: pending
+    state: running
+    implementer_session: 185f5f0e-9e04-4dd0-9d20-ca7a1f23fb4a
+    start_sha: f83813ca88b050b9705fc48a8e23aea60344f9a3
   - name: burler-cluster-round
     state: pending
   - name: docs-and-smoke
