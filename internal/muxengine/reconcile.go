@@ -50,7 +50,18 @@ import "fmt"
 // its binding is gone so it renders as not-live; (b) a strand whose pane is
 // present and not being killed keeps its binding untouched — Live derives
 // true for it downstream, via toRenderStrands' liveIDs lookup.
-func planReconcile(strands []Strand, live []LivePane) (clearedGUIDs []string, panesToKill []string, keptDeadPane string) {
+//
+// headerPaneID names the always-present header pane (empty when none is
+// tracked yet). It is deliberately NEVER folded into boundPaneIDs — that map
+// also gates anyBoundPresent below, and folding the header in would make
+// anyBoundPresent true whenever the header is merely live, reaping
+// operator/foreign panes even with zero strands bound and breaking the
+// documented "no bound content, foreign panes untouched" invariant. Instead
+// it is added ONLY to a separate exemptPaneIDs set that the untracked-pane
+// reap loop below checks, so the header pane itself is never killed as an
+// "untracked" pane while still never counting toward "mux owns bound
+// content" (Shared Decision header-is-not-a-strand).
+func planReconcile(strands []Strand, live []LivePane, headerPaneID string) (clearedGUIDs []string, panesToKill []string, keptDeadPane string) {
 	liveByID := make(map[string]LivePane, len(live))
 	for _, p := range live {
 		liveByID[p.ID] = p
@@ -103,9 +114,21 @@ func planReconcile(strands []Strand, live []LivePane) (clearedGUIDs []string, pa
 			break
 		}
 	}
+
+	// exemptPaneIDs gates ONLY which untracked panes escape the deterministic
+	// reap below; anyBoundPresent above stays computed from real strand
+	// bindings alone (see this function's doc comment).
+	exemptPaneIDs := make(map[string]bool, len(boundPaneIDs)+1)
+	for id := range boundPaneIDs {
+		exemptPaneIDs[id] = true
+	}
+	if headerPaneID != "" {
+		exemptPaneIDs[headerPaneID] = true
+	}
+
 	if anyBoundPresent {
 		for _, p := range live {
-			if !boundPaneIDs[p.ID] && !killSet[p.ID] && p.ID != keptDeadPaneID {
+			if !exemptPaneIDs[p.ID] && !killSet[p.ID] && p.ID != keptDeadPaneID {
 				killSet[p.ID] = true
 				panesToKill = append(panesToKill, p.ID)
 			}
@@ -147,7 +170,7 @@ func clearAllPaneBindings(st *MuxState) {
 // actually killed so the caller can re-derive the post-kill live set
 // without a second list-panes round trip.
 func (e *Engine) reconcileLocked(st *MuxState, live []LivePane) (killed []string, err error) {
-	clearedGUIDs, panesToKill, _ := planReconcile(st.Strands, live)
+	clearedGUIDs, panesToKill, _ := planReconcile(st.Strands, live, st.HeaderPaneID)
 
 	for _, id := range panesToKill {
 		if err := e.tmux.run("kill-pane", "-t", id); err != nil {

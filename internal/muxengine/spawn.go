@@ -20,24 +20,38 @@ import (
 // planPaneTarget decides how the next strand realization obtains its pane:
 // adopt an existing pane (adoptID != "") or split off a target pane
 // (splitTargetID != ""). Exactly one of the two is non-empty on success.
+// headerPaneID names the always-present header pane (empty when none is
+// tracked yet), and is excluded from BOTH decisions below except as the
+// sole-pane split-target fallback — the header is a first-class but
+// separate construct, never itself a strand's pane (Shared Decision
+// header-is-not-a-strand).
 //
 // Adoption is the fresh-session case: no strand currently holds a pane
-// binding AND an alive (present, not pane_dead) pane exists — the first
-// alive pane in live, i.e. the new-session initial shell pane. A dead pane
-// is never adopted: tmux's display-message happily names a pane_dead=1
-// corpse as the active pane, and send-keys into a corpse exits 0 while
-// running nothing, so blind adoption silently swallows the strand's command.
+// binding AND an alive (present, not pane_dead), non-header pane exists —
+// the first such pane in live, i.e. the new-session initial shell pane. A
+// dead pane is never adopted: tmux's display-message happily names a
+// pane_dead=1 corpse as the active pane, and send-keys into a corpse exits
+// 0 while running nothing, so blind adoption silently swallows the
+// strand's command. The header pane is never adopted either — its pane
+// always runs the header's own print-then-block pipeline, never a strand's
+// command.
 //
 // Every other realization splits. The split target is the tallest alive
-// pane (the stretch/active pane under mux's height policy, so always the
-// most splittable): tmux's split-window on a too-small pane fails
-// SILENTLY — exit 0, no new pane, and it prints an existing pane's id — so
-// the target must never be left to whatever pane happens to be active.
-// When no pane is alive (only the sole kept pane_dead corpse remains), the
-// tallest present pane is the target — splitting a dead pane works, and the
+// NON-HEADER pane (the stretch/active pane under mux's height policy, so
+// always the most splittable): tmux's split-window on a too-small pane
+// fails SILENTLY — exit 0, no new pane, and it prints an existing pane's
+// id — so the target must never be left to whatever pane happens to be
+// active. When no non-header pane is alive, the tallest PRESENT
+// non-header pane is the target — splitting a dead pane works, and the
 // caller's reconcile tail reaps the corpse once the new pane is alive.
-// A session with no panes at all cannot host a strand and is an error.
-func planPaneTarget(strands []Strand, live []LivePane) (adoptID, splitTargetID string, err error) {
+// Only when NO non-header pane exists at all (every strand has been
+// removed and the header is the session's sole pane) does the header
+// itself become the split target — the sole-pane fallback that lets an
+// add-after-all-strands-removed still have something to split; the header
+// survives the split, and render's clampHeaderHeight restores its fixed
+// height afterward. A session with no panes at all cannot host a strand
+// and is an error.
+func planPaneTarget(strands []Strand, live []LivePane, headerPaneID string) (adoptID, splitTargetID string, err error) {
 	if len(live) == 0 {
 		return "", "", fmt.Errorf("session has no panes to adopt or split")
 	}
@@ -51,6 +65,9 @@ func planPaneTarget(strands []Strand, live []LivePane) (adoptID, splitTargetID s
 	}
 	if !anyBound {
 		for _, p := range live {
+			if p.ID == headerPaneID {
+				continue
+			}
 			if !p.Dead {
 				return p.ID, "", nil
 			}
@@ -60,13 +77,29 @@ func planPaneTarget(strands []Strand, live []LivePane) (adoptID, splitTargetID s
 	splitTargetID = ""
 	tallestAlive := -1
 	for _, p := range live {
-		if !p.Dead && p.Height > tallestAlive {
+		if p.ID == headerPaneID || p.Dead {
+			continue
+		}
+		if p.Height > tallestAlive {
 			tallestAlive = p.Height
 			splitTargetID = p.ID
 		}
 	}
 	if splitTargetID == "" {
-		// Every pane is dead: split off the (kept) corpse.
+		// No alive non-header pane: fall back to any present non-header
+		// pane (a dead corpse), mirroring the pre-header "every pane dead"
+		// fallback.
+		for _, p := range live {
+			if p.ID != headerPaneID {
+				splitTargetID = p.ID
+				break
+			}
+		}
+	}
+	if splitTargetID == "" {
+		// No non-header pane exists at all: every strand has been removed
+		// and only the header remains. Split the header itself so this add
+		// still has a pane to split.
 		splitTargetID = live[0].ID
 	}
 	return "", splitTargetID, nil
@@ -114,7 +147,7 @@ func (e *Engine) launchStrandLocked(st *MuxState, s *Strand, launchCmd string) e
 	if err != nil {
 		return fmt.Errorf("list panes: %w", err)
 	}
-	adoptID, splitTargetID, err := planPaneTarget(st.Strands, live)
+	adoptID, splitTargetID, err := planPaneTarget(st.Strands, live, st.HeaderPaneID)
 	if err != nil {
 		return err
 	}
