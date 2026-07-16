@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-fix-r3
+phase: discussed
 slug: mux-operator-console
 branch: mux-operator-console
 plan: null
@@ -16,4 +16,5 @@ task_description: |
 ```text
 discussing  '2026-07-16T09:41:58Z'
 discussion-fix-r3  '2026-07-16T11:44:07Z'
+discussed  '2026-07-16T11:44:20Z'
 ```
