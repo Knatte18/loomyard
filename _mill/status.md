@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-header-text-pipeline
+phase: approved-header-pane-and-render
 slug: mux-operator-console
 branch: mux-operator-console
 plan: _mill/plan
@@ -27,6 +27,7 @@ implementing  '2026-07-16T12:13:38Z'
 approved-hubgeometry-repo  '2026-07-16T12:19:22Z'
 approved-tokenvocab-module  '2026-07-16T13:26:33Z'
 approved-header-text-pipeline  '2026-07-16T13:33:36Z'
+approved-header-pane-and-render  '2026-07-16T14:00:13Z'
 ```
 
 ## Batches
@@ -49,7 +50,8 @@ batches:
     start_sha: a3a27fd3186cf8d1600b9bbaa7e8bc5fb31d2b09
     commit_sha: b82973174d89283e740a5d17e9f38f9d7f156399
   - name: header-pane-and-render
-    state: running
+    state: approved
     implementer_session: 6ecc1215-adad-4c4a-a210-626128aa8dbd
     start_sha: 1963c9754cb132e426997dbdd5c3ee66d4d99d85
+    commit_sha: ffac03e43905b3eab0b11d2df1a48e998a88ced9
 ```
