@@ -19,6 +19,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/muxengine/render"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/shell"
 )
 
 // UpResult reports the outcome of Up: the resolved session/socket identity
@@ -241,6 +242,15 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 			return false, nil, fmt.Errorf("list panes: %w", err)
 		}
 		if len(live) > 0 {
+			// The session/initial pane already exists: validate the header
+			// template eagerly, before returning to the caller (which then
+			// proceeds to ensureHeaderPaneLocked and, on Resume, strand
+			// replay) — loud and early, per the eager-header-validation
+			// decision, rather than only surfacing when the header pane
+			// itself is spawned.
+			if err := e.ValidateHeader(); err != nil {
+				return false, nil, err
+			}
 			return false, nil, nil
 		}
 		_ = e.tmux.run("kill-session", "-t", session)
@@ -376,7 +386,91 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	if err := e.tmux.run("set-option", "-g", "mouse", mouse); err != nil {
 		return false, nil, fmt.Errorf("set mouse: %w", err)
 	}
+
+	// The session/initial pane now exists on this freshly booted path too:
+	// validate the header template before returning, exactly as the
+	// already-up branch above does, so a bad template is caught eagerly on
+	// EVERY call site of this shared boot path (Up and Resume alike, not
+	// only a first Up) — per the eager-header-validation decision, before
+	// the header pane itself is ever created.
+	if err := e.ValidateHeader(); err != nil {
+		return false, nil, err
+	}
 	return true, stripped, nil
+}
+
+// ensureHeaderPaneLocked ensures this hub's always-present header pane
+// exists, (re)creating it when st.HeaderPaneID is empty or names a pane no
+// longer present in the live set — idempotent across up/resume, exactly
+// like the rest of this file's boot steps. It never touches st.Strands: the
+// header pane is a first-class but separate construct (Shared Decision
+// header-is-not-a-strand), so it must never be added to the strand table
+// this method would otherwise mutate. It splits off whichever pane is
+// currently alive (a fresh boot has exactly one — the new-session initial
+// pane; a header rebuilt after a crash-reborn server finds the same shape,
+// since the caller clears HeaderPaneID alongside every strand binding on
+// that path, before any strand has re-split anything) with -c e.layout.Hub
+// (Hub Geometry Invariant — the header pane's cwd is never recomputed
+// here), reusing the same send-keys launch mechanics launchStrandLocked
+// uses (spawn.go). The header pane runs headerLaunchCmd's own eagerly
+// validated print-then-block pipeline, never a strand's cmd/resumeCmd. It
+// assumes the op lock is already held and always persists st immediately on
+// success, before returning, so a later failure elsewhere in the same op
+// can never orphan an untracked header pane.
+func (e *Engine) ensureHeaderPaneLocked(st *MuxState) error {
+	session := e.SessionName()
+	live, err := e.tmux.listPanes(session)
+	if err != nil {
+		return fmt.Errorf("list panes: %w", err)
+	}
+
+	if st.HeaderPaneID != "" && liveIDSet(live)[st.HeaderPaneID] {
+		// Already present: idempotent no-op across up/resume.
+		return nil
+	}
+
+	// Split off whatever pane is currently alive; fall back to the first
+	// present pane if every pane is somehow already dead (this boot path
+	// runs before any strand has been (re)launched, so a dead corpse here
+	// would be unusual, but splitting a dead pane still works).
+	target := live[0].ID
+	for _, p := range live {
+		if !p.Dead {
+			target = p.ID
+			break
+		}
+	}
+
+	exe, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("resolve lyx binary path: %w", err)
+	}
+
+	out, err := e.tmux.output("split-window", "-t", target, "-c", e.layout.Hub, "-P", "-F", "#{pane_id}")
+	if err != nil {
+		return fmt.Errorf("split header pane: %w", err)
+	}
+	paneID := strings.TrimSpace(out)
+	if paneID == "" {
+		return fmt.Errorf("split-window created no header pane (target %s)", target)
+	}
+
+	launchCmd := headerLaunchCmd(shell.ForGOOS(), exe)
+	// Same literal send-keys mechanics launchStrandLocked (spawn.go) uses:
+	// -l so tmux never reinterprets any part of the launch line, then a
+	// separate Enter to submit it.
+	if err := e.tmux.run("send-keys", "-t", paneID, "-l", sendKeysLiteralArg(launchCmd)); err != nil {
+		return fmt.Errorf("send header launch command: %w", err)
+	}
+	if err := e.tmux.run("send-keys", "-t", paneID, "Enter"); err != nil {
+		return fmt.Errorf("submit header launch command: %w", err)
+	}
+
+	st.HeaderPaneID = paneID
+	if err := SaveState(e.layout.DotLyxDir(), st); err != nil {
+		return fmt.Errorf("persist header pane id: %w", err)
+	}
+	return nil
 }
 
 // Up ensures the named server and this worktree's session exist (booting
@@ -402,10 +496,21 @@ func (e *Engine) Up() (UpResult, error) {
 		// live strand. Clear every binding: a just-booted session hosts none
 		// of the prior strands. Up leaves them not-live (Resume rebuilds them).
 		// The stripped env keys are stamped for diagnosis — mux.json records
-		// what the server spawn actually removed.
+		// what the server spawn actually removed. HeaderPaneID is cleared
+		// alongside every strand binding for the identical reason — a
+		// reborn session's reused pane id would otherwise be mistaken for
+		// the still-live header pane — so ensureHeaderPaneLocked below
+		// rebuilds it fresh; the clear lives here, not inside
+		// clearAllPaneBindings itself, since the header is not a strand
+		// binding.
 		if booted {
 			clearAllPaneBindings(st)
 			st.StrippedEnv = stripped
+			st.HeaderPaneID = ""
+		}
+
+		if err := e.ensureHeaderPaneLocked(st); err != nil {
+			return err
 		}
 
 		if _, err := e.reconcileApplyPersistLocked(st); err != nil {
@@ -452,9 +557,20 @@ func (e *Engine) Resume() (ResumeResult, error) {
 		// On a server rebirth the reborn session reuses pane ids, so a stale
 		// binding would look live to reconcile below and wrongly skip relaunch.
 		// Clear every binding first so all non-hidden strands are rebuilt.
+		// HeaderPaneID is cleared alongside them for the identical reason —
+		// a reborn session's reused pane id would otherwise be mistaken for
+		// the still-live header pane — so ensureHeaderPaneLocked below
+		// rebuilds it fresh before any strand replay below runs; the clear
+		// lives here, not inside clearAllPaneBindings itself, since the
+		// header is not a strand binding.
 		if booted {
 			clearAllPaneBindings(st)
 			st.StrippedEnv = stripped
+			st.HeaderPaneID = ""
+		}
+
+		if err := e.ensureHeaderPaneLocked(st); err != nil {
+			return err
 		}
 
 		live, err := e.tmux.listPanes(e.SessionName())
