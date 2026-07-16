@@ -517,6 +517,11 @@ func (e *Engine) Up() (UpResult, error) {
 			return err
 		}
 
+		// len(st.Strands) deliberately excludes the header pane: the header
+		// is not in st.Strands (Shared Decision header-is-not-a-strand), so
+		// this count is already correct by construction. Do not "fix" a
+		// future off-by-one here by adding the header — it must never be
+		// counted as a strand.
 		result = UpResult{Session: e.SessionName(), Socket: e.Socket(), Strands: len(st.Strands)}
 		return nil
 	})
@@ -954,7 +959,10 @@ func waitProcessExit(pid int, timeout time.Duration) error {
 // replaying verb (it relaunches every persisted, non-hidden strand), while up
 // only ever stands up a bare substrate and never replays anything (Shared
 // Decision enriched-no-session-error). This is an unexplained-server-death
-// mitigation, not a claim about why the session went away.
+// mitigation, not a claim about why the session went away. strandCount is
+// always a strand count, never inclusive of the header pane — the header
+// is not a strand and is never something "lyx mux resume" would rebuild,
+// so it must never be folded into this count.
 func noSessionMessage(strandCount int) string {
 	if strandCount <= 0 {
 		return `no mux session; run "lyx mux up"`
@@ -988,6 +996,10 @@ func (e *Engine) requireSessionLocked() error {
 		return nil
 	}
 
+	// len(st.Strands) deliberately excludes the header pane (see
+	// noSessionMessage's doc comment): st.HeaderPaneID is a separate field,
+	// never part of Strands, so this count is already correct by
+	// construction.
 	strandCount := 0
 	if st, err := LoadState(e.layout.DotLyxDir()); err == nil && st != nil {
 		strandCount = len(st.Strands)
@@ -1035,6 +1047,11 @@ func (e *Engine) Status() (StatusResult, error) {
 		// the strand's process is running, not whether tmux still lists a
 		// (dead) pane for it.
 		aliveIDs := aliveIDSet(live)
+		// This loop iterates st.Strands only — the header pane is
+		// deliberately never reported as a strand here (it is not one; see
+		// MuxState.HeaderPaneID). Status still succeeds (the session is up)
+		// when st.Strands is empty but the header pane is alive; a future
+		// edit must not "fix" a missing header row by appending one here.
 		strands := make([]StrandStatus, len(st.Strands))
 		for i, s := range st.Strands {
 			strands[i] = StrandStatus{GUID: s.GUID, Name: s.Name, PaneID: s.PaneID, Live: aliveIDs[s.PaneID]}
