@@ -54,6 +54,7 @@ survives the split and render restores its fixed height).
   - `internal/muxengine/render/rules.go`
   - `internal/muxengine/render/policy.go`
   - `internal/muxengine/apply.go`
+- **Creates:** none
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Thread the header into the render entry point WITHOUT modelling it as a strand.
@@ -76,6 +77,7 @@ survives the split and render restores its fixed height).
 - **Edits:**
   - `internal/muxengine/render/height.go`
   - `internal/muxengine/render/layout.go`
+- **Creates:** none
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Add the new window-split clamp (distinct from `clampToFit`, which distributes rows
@@ -121,6 +123,7 @@ survives the split and render restores its fixed height).
 - **Edits:**
   - `internal/muxengine/spawn.go`
   - `internal/muxengine/reconcile.go`
+- **Creates:** none
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Give `planPaneTarget` the header pane id (thread `st.HeaderPaneID` through its
@@ -140,6 +143,7 @@ survives the split and render restores its fixed height).
   - `internal/muxengine/apply.go`
 - **Edits:**
   - `internal/muxengine/lifecycle.go`
+- **Creates:** none
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Ensure strand accounting never counts the header. The header is not in
