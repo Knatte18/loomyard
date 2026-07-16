@@ -135,6 +135,7 @@ note without a redundant flag); only `--blocking` is envelope-exempt.
   - `internal/muxengine/header.go`
   - `internal/muxengine/config.go`
   - `internal/muxengine/headertemplate.go`
+  - `internal/muxengine/lock.go`
   - `internal/muxcli/cli_test.go`
 - **Edits:** none
 - **Creates:**

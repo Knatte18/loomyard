@@ -35,7 +35,7 @@ batches:
     name: header-pane-and-render
     file: 04-header-pane-and-render.md
     depends-on: [3]
-    verify: go test ./internal/muxengine/... ./internal/muxcli/...
+    verify: go test -tags integration ./internal/muxengine/... ./internal/muxcli/...
 ```
 
 ## Shared Decisions
@@ -95,11 +95,12 @@ batches:
 ### Decision: go-verify-scoping-and-tiers
 
 - **Decision:** This is a Go repo — `verify:` uses `go test` directly (no `PYTHONPATH=` prefix),
-  scoped to the packages the batch touches. Real-tmux integration tests (untagged, skip via
-  `exec.LookPath`) run under the batch's plain `go test`. Build-tagged smoke tests
-  (`//go:build smoke`) and the `--blocking` pane are exercised only via the named smoke commands in
-  each `## Batch Tests`, never inline in the fast per-round `verify:`. Untagged unit tests build
-  `hubgeometry.Layout` struct literals rather than calling `Resolve` (Test Tier Purity Invariant).
+  scoped to the packages the batch touches. Real-tmux tests in `contract_integration_test.go` are
+  `//go:build integration`, so batch 4's verify passes `-tags integration` (the tests skip via
+  `exec.LookPath` when tmux is absent). Build-tagged smoke tests (`//go:build smoke`) and the
+  `--blocking` pane are exercised only via the named smoke commands in each `## Batch Tests`, never
+  inline in the per-round `verify:`. Untagged unit tests build `hubgeometry.Layout` struct literals
+  rather than calling `Resolve` (Test Tier Purity Invariant).
 - **Rationale:** CONSTRAINTS.md Test Tier Purity + Hermetic Git Test Environment invariants; keep the
   per-round verify fast.
 - **Applies to:** all batches

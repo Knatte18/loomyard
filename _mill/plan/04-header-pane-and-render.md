@@ -5,7 +5,7 @@ task: "Built-in operator console pane in mux"
 batch: header-pane-and-render
 number: 4
 cards: 7
-verify: go test ./internal/muxengine/... ./internal/muxcli/...
+verify: go test -tags integration ./internal/muxengine/... ./internal/muxcli/...
 depends-on: [3]
 ```
 
@@ -94,6 +94,7 @@ survives the split and render restores its fixed height).
 - **Context:**
   - `internal/muxengine/spawn.go`
   - `internal/muxengine/overlay.go`
+  - `internal/muxengine/reconcile.go`
   - `internal/muxengine/header.go`
   - `internal/muxengine/headerpane.go`
   - `internal/shell/shell.go`
@@ -102,17 +103,20 @@ survives the split and render restores its fixed height).
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** In `ensureServerAndSessionLocked` (or `Up`), after the session/initial pane exists
-  and BEFORE any strand work, ensure the header pane: if `st.HeaderPaneID` is empty or not in the live
-  pane set, create it by splitting the initial pane with `-c <e.layout.Hub>` (Hub Geometry Invariant —
-  never recompute), running `headerLaunchCmd(shell.ForGOOS(), exe)` where `exe` comes from
-  `os.Executable()`, capture the new `#{pane_id}` into `st.HeaderPaneID`, and persist. Make this
-  idempotent across `up`/`resume` (recreate only when missing — the reboot path that
-  `clearAllPaneBindings` wipes strand bindings must also clear/rebuild `HeaderPaneID`). Call
-  `e.ValidateHeader()` eagerly at the start of `Up` and return its error via the normal path (loud,
-  before boot) so a bad header template fails `lyx mux up` rather than silently at the pane. Reuse the
-  existing `send-keys` launch mechanics from `spawn.go`; the header pane runs no strand command and is
-  never added to `st.Strands`.
+- **Requirements:** In `ensureServerAndSessionLocked` (the shared boot path both `Up` (lifecycle.go:390)
+  and `Resume` (lifecycle.go:442) call), after the session/initial pane exists and BEFORE any strand
+  work: first call `e.ValidateHeader()` and return its error via the normal path (loud, before the pane
+  is created) — placing it on the SHARED boot path (not only `Up`) so a bad template is caught eagerly
+  on a resume-after-crash too, per the `eager-header-validation` decision. Then ensure the header pane:
+  if `st.HeaderPaneID` is empty or not in the live pane set, create it by splitting the initial pane
+  with `-c <e.layout.Hub>` (Hub Geometry Invariant — never recompute), running
+  `headerLaunchCmd(shell.ForGOOS(), exe)` where `exe` comes from `os.Executable()`, capture the new
+  `#{pane_id}` into `st.HeaderPaneID`, and persist. Make this idempotent across `up`/`resume` (recreate
+  only when missing). On the reboot path (`lifecycle.go`'s `if booted` block that calls
+  `clearAllPaneBindings` from `reconcile.go` to wipe stale strand bindings), also clear `HeaderPaneID`
+  in that same block so it is rebuilt fresh — the clear lands in lifecycle.go, not in
+  `clearAllPaneBindings` itself. Reuse the existing `send-keys` launch mechanics from `spawn.go`; the
+  header pane runs no strand command and is never added to `st.Strands`.
 - **Commit:** `feat(muxengine): boot and recreate the persistent header pane at up`
 
 ### Card 18: Exclude the header from adoption, split-target, and reconcile
@@ -131,9 +135,15 @@ survives the split and render restores its fixed height).
   strand's pane. In the split-target selection, prefer the tallest alive NON-header pane; fall back to
   the header pane only when it is the sole live pane (so an add-after-all-strands-removed still splits
   successfully — the header survives the split, and render/card 16 restores its fixed height). In
-  `planReconcile` (`reconcile.go:93-113`), add `st.HeaderPaneID` to the `boundPaneIDs` exemption set so
-  the header pane is never reaped as an untracked/foreign pane. The existing `keptDeadPane` last-pane
-  guard is left in place (made moot by the permanent header, but harmless).
+  `planReconcile` (`reconcile.go:93-113`), do NOT add `st.HeaderPaneID` to `boundPaneIDs` — that map
+  also gates `anyBoundPresent` (reconcile.go:99-106), so folding the header in would make
+  `anyBoundPresent` true whenever the header is live and reap operator/foreign panes even with zero
+  strands, breaking the documented "no bound content, foreign panes untouched" invariant
+  (reconcile.go:43-45). Instead compute a SEPARATE exemption set used only in the reap-skip test — e.g.
+  `exemptPaneIDs` = `boundPaneIDs` plus `st.HeaderPaneID` — and change the kill loop's guard from
+  `!boundPaneIDs[p.ID]` to `!exemptPaneIDs[p.ID]`, leaving `anyBoundPresent` computed from real strand
+  bindings (`boundPaneIDs`) only. The existing `keptDeadPane` last-pane guard is left in place (made
+  moot by the permanent header, but harmless).
 - **Commit:** `fix(muxengine): protect the header pane from adoption, split, and reconcile reaping`
 
 ### Card 19: Exclude the header from strand accounting
@@ -185,7 +195,7 @@ survives the split and render restores its fixed height).
   when a strand is bound. `render/rules_test.go` asserts the emitted layout enumerates the header band
   cell at top + one cell per strand with the strand box shrunk by header height; `render/height_test.go`
   covers `clampHeaderHeight` (oversized header clamped to keep the stack floor). Real-tmux
-  (`contract_integration_test.go`, skips via `exec.LookPath`): flip
+  (`contract_integration_test.go`, `//go:build integration`, skips via `exec.LookPath`): flip
   `TestRemoveStrand_SoleStrandEmptiesSessionSucceeds` so that with a header present, removing the last
   strand leaves the session AND header alive and strand count reaches zero. Smoke
   (`smoke_lifecycle_test.go`, `//go:build smoke`): the header pane survives `up`/`add`/`remove` cycles
@@ -201,8 +211,9 @@ _No `Moves:` in this batch; section included for completeness only — there are
 ## Batch Tests
 
 `verify: go test ./internal/muxengine/... ./internal/muxcli/...` runs all hermetic unit tests (cards
-14, 16, 20), the render enumeration tests (card 15/20), and the untagged real-tmux
-`contract_integration_test.go` (skips if tmux is absent; present on this host). The build-tagged smoke
+14, 16, 20), the render enumeration tests (card 15/20), and — via the `-tags integration` flag — the
+`//go:build integration` `contract_integration_test.go` keepalive regression (skips if tmux is absent;
+present on this host). The build-tagged smoke
 suite (`go test -tags smoke ./internal/muxcli/...`) exercises the full `up`/`add`/`remove` header
 survival and is named here for the reviewer but is NOT in the fast per-round `verify:` (it spawns real
 sessions and the `--blocking` pane). The module-wide `go build ./...` overview gate catches any
