@@ -47,6 +47,15 @@ type MuxState struct {
 	Session     string   `json:"session"`
 	StrippedEnv []string `json:"strippedEnv"`
 	Strands     []Strand `json:"strands"`
+	// HeaderPaneID is the tmux pane id of the always-present header pane —
+	// deliberately outside Strands, since the header is a first-class but
+	// separate construct and never itself a strand (Shared Decision
+	// header-is-not-a-strand): it is excluded from every strand accounting,
+	// adoption, reconcile, and layout path a Strand would otherwise be
+	// subject to. Empty means the header pane has not yet been created (a
+	// fresh worktree, or a server rebirth that cleared every binding) and
+	// must be (re)created at the next up/resume boot.
+	HeaderPaneID string `json:"headerPaneId,omitempty"`
 }
 
 // muxStateFileName is the mux.json file name inside a Layout's ephemeral

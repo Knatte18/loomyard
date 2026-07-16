@@ -1,7 +1,8 @@
 // reconcile_test.go table-tests planReconcile's pure decision logic against
 // saved strand tables and fake list-panes results (including pane_dead=1
-// rows), and exercises reconcileLocked's real-record mutation for the
-// no-dead-panes path, which never touches tmux and so stays hermetic.
+// rows and the header-pane exemption), and exercises reconcileLocked's
+// real-record mutation for the no-dead-panes path, which never touches
+// tmux and so stays hermetic.
 
 package muxengine
 
@@ -24,6 +25,7 @@ func TestPlanReconcile(t *testing.T) {
 		name            string
 		strands         []Strand
 		live            []LivePane
+		headerPaneID    string
 		wantCleared     []string
 		wantPanesToKill []string
 		wantSolePane    string
@@ -103,11 +105,63 @@ func TestPlanReconcile(t *testing.T) {
 			live:        []LivePane{{ID: "%7", Dead: false}, {ID: "%8", Dead: false}},
 			wantCleared: nil,
 		},
+		{
+			// The header pane must never be reaped as an "untracked" pane
+			// even while a strand is bound and anyBoundPresent is true —
+			// exemptPaneIDs (boundPaneIDs plus the header) is what protects
+			// it, distinct from boundPaneIDs itself (which must stay
+			// strand-only so anyBoundPresent is never inflated by a merely
+			// live header).
+			name:         "HeaderPaneNeverReapedAsUntrackedWhileStrandBound",
+			strands:      []Strand{{GUID: "g1", PaneID: "%1"}},
+			live:         []LivePane{{ID: "%1", Dead: false}, {ID: "%header", Dead: false}, {ID: "%7", Dead: false}},
+			headerPaneID: "%header",
+			wantCleared:  nil,
+			// %7 is a genuine foreign pane and is still reaped; %header is
+			// exempt and must not appear here.
+			wantPanesToKill: []string{"%7"},
+		},
+		{
+			// With the header live but NO strand bound to any present pane,
+			// anyBoundPresent must stay false (derived from boundPaneIDs
+			// alone, never the header) so foreign panes are left untouched —
+			// folding the header into boundPaneIDs would wrongly flip this.
+			name:         "HeaderAloneNeverMakesAnyBoundPresentTrue",
+			strands:      []Strand{{GUID: "cleared", PaneID: ""}},
+			live:         []LivePane{{ID: "%header", Dead: false}, {ID: "%7", Dead: false}},
+			headerPaneID: "%header",
+			wantCleared:  nil,
+		},
+		{
+			// A DEAD header pane must not be scheduled for killing either —
+			// the dead-pane kill loop, not only the untracked reap, spares
+			// it. Nothing outside up/resume rebuilds a header, so killing
+			// the corpse here would leave every intermediate add/remove
+			// headerless with a stale HeaderPaneID (the fable-header-r1
+			// layout-scramble-then-wedged-up defect). The kept corpse stays
+			// enumerable; ensureHeaderPaneLocked heals it at the next boot.
+			name:         "DeadHeaderPaneKeptNotKilled",
+			strands:      []Strand{{GUID: "g1", PaneID: "%1"}},
+			live:         []LivePane{{ID: "%header", Dead: true}, {ID: "%1", Dead: false}},
+			headerPaneID: "%header",
+			wantCleared:  nil,
+		},
+		{
+			// A dead header alongside a dead strand pane: the strand corpse
+			// is still killable business-as-usual (an alive pane remains),
+			// while the header corpse stays exempt.
+			name:            "DeadHeaderExemptWhileDeadStrandPaneStillKilled",
+			strands:         []Strand{{GUID: "g1", PaneID: "%1"}, {GUID: "g2", PaneID: "%2"}},
+			live:            []LivePane{{ID: "%header", Dead: true}, {ID: "%1", Dead: true}, {ID: "%2", Dead: false}},
+			headerPaneID:    "%header",
+			wantCleared:     []string{"g1"},
+			wantPanesToKill: []string{"%1"},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotCleared, gotKill, gotSole := planReconcile(tt.strands, tt.live)
+			gotCleared, gotKill, gotSole := planReconcile(tt.strands, tt.live, tt.headerPaneID)
 			if !equalStringSlices(gotCleared, tt.wantCleared) {
 				t.Errorf("planReconcile() clearedGUIDs = %v, want %v", gotCleared, tt.wantCleared)
 			}

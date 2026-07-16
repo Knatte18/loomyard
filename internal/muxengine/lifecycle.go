@@ -19,6 +19,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/muxengine/render"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/shell"
 )
 
 // UpResult reports the outcome of Up: the resolved session/socket identity
@@ -81,23 +82,28 @@ const (
 // newest 3": 2 kept plus the fresh server's own log makes 3.
 const serverLogPruneKeep = 2
 
-// serverLogNamePrefix and clientLogNamePrefix bound the two log-filename
-// shapes a debug-armed boot can leave in the hub logs dir, and
-// serverLogNameSuffix is the shared suffix; kept as named constants (rather
-// than an inline glob) since planLogPrune's caller side needs to recognize
-// the same filename shapes tmux itself writes. -v/-vv are GLOBAL tmux flags
-// on the spawn invocation, and that invocation is simultaneously a CLIENT
-// (the local process issuing the command) and, once forked, the SERVER it
-// starts — so tmux logs BOTH sides: tmux-server-<pid>.log from the forked
+// serverLogNamePrefix, clientLogNamePrefix, and outLogNamePrefix bound the
+// three log-filename shapes a debug-armed boot can leave in the hub logs dir,
+// and serverLogNameSuffix is the shared suffix; kept as named constants
+// (rather than an inline glob) since planLogPrune's caller side needs to
+// recognize the same filename shapes tmux itself writes. -v/-vv are GLOBAL
+// tmux flags on the spawn invocation, and that invocation is simultaneously a
+// CLIENT (the local process issuing the command) and, once forked, the SERVER
+// it starts — so tmux logs BOTH sides: tmux-server-<pid>.log from the forked
 // server (documented since the original debug-logging batch) and
 // tmux-client-<pid>.log from the client half of that same invocation
 // (observed live against native tmux 3.6 on Linux — the original
 // debug-logging batch was developed and reviewed against psmux on Windows,
-// which never surfaced this). Both are pruned identically so neither
-// accumulates unbounded across repeated debug-armed boots/crashes.
+// which never surfaced this). At -vv (debug_log: 2) the server additionally
+// writes a tmux-out-<pid>.log protocol-output log — a THIRD shape that only
+// appears at the higher verbosity, so an earlier fix that added client-log
+// pruning at -v never surfaced it and it accumulated unbounded across repeated
+// -vv boots (observed live, tmux 3.6). All three are pruned identically so
+// none accumulates unbounded across repeated debug-armed boots/crashes.
 const (
 	serverLogNamePrefix = "tmux-server-"
 	clientLogNamePrefix = "tmux-client-"
+	outLogNamePrefix    = "tmux-out-"
 	serverLogNameSuffix = ".log"
 )
 
@@ -109,9 +115,9 @@ const (
 // keep remain", never a hard guarantee that this call itself removed every
 // listed name. It assumes the op lock is already held (the same withOpLock
 // the rest of ensureServerAndSessionLocked runs under) and performs no
-// locking of its own. Called once per log-filename shape (server, client)
-// so each stays independently bounded rather than competing for one shared
-// budget.
+// locking of its own. Called once per log-filename shape (server, client,
+// out) so each stays independently bounded rather than competing for one
+// shared budget.
 func pruneServerLogsLocked(logsDir, prefix string, keep int) error {
 	entries, err := os.ReadDir(logsDir)
 	if err != nil {
@@ -193,10 +199,12 @@ func planResumeLaunches(strands []Strand, liveIDs map[string]bool) []Strand {
 // Before any of that, it runs the capability probe (probe.go) once and
 // returns a *CapabilityError immediately if the configured multiplexer
 // binary is below the pinned version floor or missing a required
-// subcommand. It also validates cfg.DebugLog via debugLogArgs and cfg.Mouse via
-// mouseOption up front and returns either error before any tmux round trip
-// at all — an invalid debug_log or mouse value must fail the boot loud, not
-// partway through a spawn.
+// subcommand. It also validates cfg.DebugLog via debugLogArgs, cfg.Mouse
+// via mouseOption, and the header template via ValidateHeader up front and
+// returns any of those errors before any tmux round trip at all — an
+// invalid debug_log, mouse, or header-template value must fail the boot
+// loud, not partway through a spawn (see the header-validation comment in
+// the body for why "after the spawn" was concretely harmful).
 func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []string, err error) {
 	// Validate debug_log before anything else touches tmux: a misconfigured
 	// value is a pure config error, unrelated to server/session state, so it
@@ -211,6 +219,24 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	// or any spawn attempt, not partway through a boot.
 	mouse, err := mouseOption(e.cfg.Mouse)
 	if err != nil {
+		return false, nil, err
+	}
+
+	// Validate the header template in the same pre-tmux block — it reads
+	// only cfg+layout (HeaderText makes no tmux round trip), so like
+	// debug_log and mouse it must fail the boot before anything is spawned.
+	// An earlier version validated only AFTER the session existed, which
+	// left a half-created session behind on a bad template — and, on the
+	// crash-recovery path, lost the booted=true rebirth signal: the boot
+	// had already replaced the session (pane ids reset) when validation
+	// failed, so the NEXT resume saw the session simply "up", skipped
+	// clearAllPaneBindings, and mistook stale pre-crash pane bindings for
+	// live strands (observed live: resumed:0 with a bare shell reported
+	// live). Validating up front removes the realistic — config-mistake —
+	// path into that trap; a set-option failure between spawn and return
+	// can still theoretically lose the signal, but has no config-shaped
+	// trigger.
+	if err := e.ValidateHeader(); err != nil {
 		return false, nil, err
 	}
 
@@ -241,9 +267,11 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 			return false, nil, fmt.Errorf("list panes: %w", err)
 		}
 		if len(live) > 0 {
+			// The header template was already validated in the pre-tmux
+			// block above, so this healthy already-up path returns directly.
 			return false, nil, nil
 		}
-		_ = e.tmux.run("kill-session", "-t", session)
+		_ = e.tmux.run("kill-session", "-t", exactSessionTarget(session))
 	}
 
 	// A stale socket-holder wedges a fresh boot: on Windows, psmux's internal
@@ -280,6 +308,12 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	}
 	if err := pruneServerLogsLocked(logsDir, clientLogNamePrefix, serverLogPruneKeep); err != nil {
 		return false, nil, fmt.Errorf("prune client logs: %w", err)
+	}
+	// The -vv-only tmux-out-<pid>.log protocol log is the third shape a
+	// debug-armed boot can leave; prune it on the same newest-3 budget so it
+	// does not accumulate unbounded across repeated debug_log: 2 boots.
+	if err := pruneServerLogsLocked(logsDir, outLogNamePrefix, serverLogPruneKeep); err != nil {
+		return false, nil, fmt.Errorf("prune out logs: %w", err)
 	}
 
 	// Env hygiene: a spawned server must never inherit this process's own
@@ -376,7 +410,172 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	if err := e.tmux.run("set-option", "-g", "mouse", mouse); err != nil {
 		return false, nil, fmt.Errorf("set mouse: %w", err)
 	}
+
 	return true, stripped, nil
+}
+
+// ensureHeaderPaneLocked ensures this hub's always-present header pane
+// exists AND is alive, (re)creating it when st.HeaderPaneID is empty, names
+// a pane no longer present in the live set, or names a dead-but-present
+// corpse (the keepalive process exited — one attached-operator keystroke
+// away — and reconcile deliberately never kills a dead header, so this boot
+// step is the single place a header is ever healed) — idempotent across
+// up/resume, exactly like the rest of this file's boot steps. A corpse is
+// killed before the new header is split (when it is not the session's sole
+// pane — killing a sole pane would end the session, so that order flips)
+// so the top row it occupied is freed for the replacement. The split
+// targets the TOPMOST pane with -b, never merely the first alive one:
+// render.Rules emits the header cell first and psmux/tmux assign layout
+// cells positionally, so a rebuilt header must land physically topmost or
+// every later select-layout would misassign heights; splitting a dead
+// topmost pane works (remain-on-exit corpses stay splittable), and a
+// too-short topmost pane surfaces as a hard error either way: native tmux
+// errors loud ("no space for new pane"), while psmux's silent-split shape
+// (exit 0, an EXISTING pane's id printed — doc.go's "Silent split failure"
+// contract bullet) is caught by the same validateSplitCreatedNewPane guard
+// launchStrandLocked runs, so a printed pre-existing pane id is never
+// recorded as the header. It
+// never touches st.Strands: the
+// header pane is a first-class but separate construct (Shared Decision
+// header-is-not-a-strand), so it must never be added to the strand table
+// this method would otherwise mutate. It splits off whichever pane is
+// currently alive (a fresh boot has exactly one — the new-session initial
+// pane; a header rebuilt after a crash-reborn server finds the same shape,
+// since the caller clears HeaderPaneID alongside every strand binding on
+// that path, before any strand has re-split anything) with -c e.layout.Cwd
+// — the SAME worktree cwd new-session -c pins for the initial pane, and
+// deliberately NOT e.layout.Hub: the hub is the container directory, not a
+// git repo (hubgeometry.Layout's own contract), so a header pane spawned
+// there cannot resolve geometry or config and its "lyx mux header
+// --blocking" command dies with "not a git repository" instead of ever
+// rendering the header text (observed live; the discussion.md spec's
+// "-c <e.layout.Hub>" line carried this defect). The {{.hub}} token still
+// renders the hub path — tokens resolve from the layout, not from where
+// the pane sits. It reuses the same send-keys launch mechanics
+// launchStrandLocked uses (spawn.go). The header pane runs headerLaunchCmd's own eagerly
+// validated print-then-block pipeline, never a strand's cmd/resumeCmd. It
+// assumes the op lock is already held and always persists st immediately on
+// success, before returning, so a later failure elsewhere in the same op
+// can never orphan an untracked header pane. One cosmetic consequence of
+// the boot ordering: until the first strand is actually placed, the header
+// keeps whatever height the -b split gave it (roughly half the window) —
+// applyLayoutLocked deliberately skips select-layout while no strand owns
+// a present pane (the empty-layout protection), so the configured
+// height_rows band is only enforced from the first placement on. This is
+// intended, not drift.
+func (e *Engine) ensureHeaderPaneLocked(st *MuxState) error {
+	session := e.SessionName()
+	live, err := e.tmux.listPanes(session)
+	if err != nil {
+		return fmt.Errorf("list panes: %w", err)
+	}
+
+	if len(live) == 0 {
+		// A zero-pane husk cannot host a split; surface it rather than
+		// panicking on an empty slice below. ensureServerAndSessionLocked
+		// kills husks before this runs, so reaching this means the session
+		// emptied between the two probes — an error, not an invariant.
+		return fmt.Errorf("session %s has no panes to split a header pane from", session)
+	}
+
+	if st.HeaderPaneID != "" && aliveIDSet(live)[st.HeaderPaneID] {
+		// Present AND alive: idempotent no-op across up/resume. Aliveness,
+		// not mere presence, is the check — a dead-but-present header corpse
+		// (kept enumerable by reconcile's deliberate exemption) must be
+		// healed here, not mistaken for a working header.
+		return nil
+	}
+
+	// A dead-but-present header corpse is killed before the replacement is
+	// split, so its top row is freed and the topmost target below is a real
+	// (usually alive) pane — unless the corpse is the session's SOLE pane,
+	// where killing first would end the session; then the corpse itself is
+	// the split target and it is killed after the new pane exists.
+	corpseID := ""
+	if st.HeaderPaneID != "" && liveIDSet(live)[st.HeaderPaneID] {
+		corpseID = st.HeaderPaneID
+		if len(live) > 1 {
+			if err := e.tmux.run("kill-pane", "-t", corpseID); err != nil {
+				return fmt.Errorf("kill dead header pane %s: %w", corpseID, err)
+			}
+			corpseID = ""
+			live, err = e.tmux.listPanes(session)
+			if err != nil {
+				return fmt.Errorf("list panes after killing dead header: %w", err)
+			}
+			if len(live) == 0 {
+				return fmt.Errorf("session %s has no panes to split a header pane from", session)
+			}
+		}
+	}
+
+	// The topmost pane, so the -b split lands the new header physically
+	// topmost (see the doc comment). When the sole pane is the corpse this
+	// resolves to the corpse itself, by design.
+	target := live[0].ID
+	targetTop := live[0].Top
+	for _, p := range live[1:] {
+		if p.Top < targetTop {
+			target = p.ID
+			targetTop = p.Top
+		}
+	}
+
+	exe, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("resolve lyx binary path: %w", err)
+	}
+
+	// -b places the NEW pane above target rather than below it (tmux's
+	// default split direction is vertical, new pane below): render.Rules
+	// always emits the header cell FIRST, assuming a fixed top band, and
+	// psmux/tmux apply layout cells POSITIONALLY to the window's actual
+	// top-to-bottom pane order — so the header pane must physically stay
+	// topmost, or the very first select-layout would invert the header and
+	// the first strand's heights (verified live: without -b, a stacked-adds
+	// smoke scenario failed a later split with "no space for new pane"
+	// because the 1-row header cell landed on the STRAND's physically-top
+	// pane instead). Every subsequent strand split (spawn.go) always
+	// targets a non-header pane and inserts below it, so this is the only
+	// split in the whole engine that needs -b.
+	out, err := e.tmux.output("split-window", "-b", "-t", target, "-c", e.layout.Cwd, "-P", "-F", "#{pane_id}")
+	if err != nil {
+		return fmt.Errorf("split header pane: %w", err)
+	}
+	paneID := strings.TrimSpace(out)
+	// Same genuinely-new-pane guard launchStrandLocked runs: psmux's silent
+	// too-small-to-split failure prints an EXISTING pane's id with exit 0,
+	// and recording that id as the header would bind the header to a strand's
+	// pane — the next layout string would then carry a duplicate pane number,
+	// destroying the session's panes wholesale (see
+	// validateSplitCreatedNewPane).
+	if err := validateSplitCreatedNewPane(paneID, live, target); err != nil {
+		return fmt.Errorf("split header pane: %w", err)
+	}
+
+	if corpseID != "" {
+		// The sole-pane corpse the new header was split off of: now that a
+		// second pane exists, killing it can no longer end the session.
+		// Best-effort — a corpse that somehow vanished already is fine.
+		_ = e.tmux.run("kill-pane", "-t", corpseID)
+	}
+
+	launchCmd := headerLaunchCmd(shell.ForGOOS(), exe)
+	// Same literal send-keys mechanics launchStrandLocked (spawn.go) uses:
+	// -l so tmux never reinterprets any part of the launch line, then a
+	// separate Enter to submit it.
+	if err := e.tmux.run("send-keys", "-t", paneID, "-l", sendKeysLiteralArg(launchCmd)); err != nil {
+		return fmt.Errorf("send header launch command: %w", err)
+	}
+	if err := e.tmux.run("send-keys", "-t", paneID, "Enter"); err != nil {
+		return fmt.Errorf("submit header launch command: %w", err)
+	}
+
+	st.HeaderPaneID = paneID
+	if err := SaveState(e.layout.DotLyxDir(), st); err != nil {
+		return fmt.Errorf("persist header pane id: %w", err)
+	}
+	return nil
 }
 
 // Up ensures the named server and this worktree's session exist (booting
@@ -402,16 +601,32 @@ func (e *Engine) Up() (UpResult, error) {
 		// live strand. Clear every binding: a just-booted session hosts none
 		// of the prior strands. Up leaves them not-live (Resume rebuilds them).
 		// The stripped env keys are stamped for diagnosis — mux.json records
-		// what the server spawn actually removed.
+		// what the server spawn actually removed. HeaderPaneID is cleared
+		// alongside every strand binding for the identical reason — a
+		// reborn session's reused pane id would otherwise be mistaken for
+		// the still-live header pane — so ensureHeaderPaneLocked below
+		// rebuilds it fresh; the clear lives here, not inside
+		// clearAllPaneBindings itself, since the header is not a strand
+		// binding.
 		if booted {
 			clearAllPaneBindings(st)
 			st.StrippedEnv = stripped
+			st.HeaderPaneID = ""
+		}
+
+		if err := e.ensureHeaderPaneLocked(st); err != nil {
+			return err
 		}
 
 		if _, err := e.reconcileApplyPersistLocked(st); err != nil {
 			return err
 		}
 
+		// len(st.Strands) deliberately excludes the header pane: the header
+		// is not in st.Strands (Shared Decision header-is-not-a-strand), so
+		// this count is already correct by construction. Do not "fix" a
+		// future off-by-one here by adding the header — it must never be
+		// counted as a strand.
 		result = UpResult{Session: e.SessionName(), Socket: e.Socket(), Strands: len(st.Strands)}
 		return nil
 	})
@@ -452,9 +667,20 @@ func (e *Engine) Resume() (ResumeResult, error) {
 		// On a server rebirth the reborn session reuses pane ids, so a stale
 		// binding would look live to reconcile below and wrongly skip relaunch.
 		// Clear every binding first so all non-hidden strands are rebuilt.
+		// HeaderPaneID is cleared alongside them for the identical reason —
+		// a reborn session's reused pane id would otherwise be mistaken for
+		// the still-live header pane — so ensureHeaderPaneLocked below
+		// rebuilds it fresh before any strand replay below runs; the clear
+		// lives here, not inside clearAllPaneBindings itself, since the
+		// header is not a strand binding.
 		if booted {
 			clearAllPaneBindings(st)
 			st.StrippedEnv = stripped
+			st.HeaderPaneID = ""
+		}
+
+		if err := e.ensureHeaderPaneLocked(st); err != nil {
+			return err
 		}
 
 		live, err := e.tmux.listPanes(e.SessionName())
@@ -555,8 +781,11 @@ func (e *Engine) Down() (DownResult, error) {
 		panePIDs := e.paneProcessTreePIDsLocked()
 
 		// Ignore the error: the session may already be gone, and Down must
-		// stay idempotent either way.
-		_ = e.tmux.run("kill-session", "-t", e.SessionName())
+		// stay idempotent either way. The exact-match target is load-bearing
+		// on exactly this ignored-error path: a bare -t name would PREFIX
+		// match once this session is gone, so a second down would kill a
+		// prefix-sharing sibling worktree's session (see exactSessionTarget).
+		_ = e.tmux.run("kill-session", "-t", exactSessionTarget(e.SessionName()))
 
 		// Tidy the server only if no sessions remain. An EMPTY list-sessions
 		// covers both "zero sessions" and "no server" (tmux does not
@@ -637,7 +866,7 @@ func (e *Engine) sessionlessSocketHolderPersists() bool {
 // kill-session when the caller intends to wait on the server afterwards.
 // It assumes the op lock is already held.
 func (e *Engine) serverPIDLocked() int {
-	out, err := e.tmux.output("display-message", "-p", "-t", e.SessionName(), "#{pid}")
+	out, err := e.tmux.output("display-message", "-p", "-t", exactSessionWindowTarget(e.SessionName()), "#{pid}")
 	if err != nil {
 		return 0
 	}
@@ -838,7 +1067,10 @@ func waitProcessExit(pid int, timeout time.Duration) error {
 // replaying verb (it relaunches every persisted, non-hidden strand), while up
 // only ever stands up a bare substrate and never replays anything (Shared
 // Decision enriched-no-session-error). This is an unexplained-server-death
-// mitigation, not a claim about why the session went away.
+// mitigation, not a claim about why the session went away. strandCount is
+// always a strand count, never inclusive of the header pane — the header
+// is not a strand and is never something "lyx mux resume" would rebuild,
+// so it must never be folded into this count.
 func noSessionMessage(strandCount int) string {
 	if strandCount <= 0 {
 		return `no mux session; run "lyx mux up"`
@@ -872,6 +1104,10 @@ func (e *Engine) requireSessionLocked() error {
 		return nil
 	}
 
+	// len(st.Strands) deliberately excludes the header pane (see
+	// noSessionMessage's doc comment): st.HeaderPaneID is a separate field,
+	// never part of Strands, so this count is already correct by
+	// construction.
 	strandCount := 0
 	if st, err := LoadState(e.layout.DotLyxDir()); err == nil && st != nil {
 		strandCount = len(st.Strands)
@@ -919,6 +1155,11 @@ func (e *Engine) Status() (StatusResult, error) {
 		// the strand's process is running, not whether tmux still lists a
 		// (dead) pane for it.
 		aliveIDs := aliveIDSet(live)
+		// This loop iterates st.Strands only — the header pane is
+		// deliberately never reported as a strand here (it is not one; see
+		// MuxState.HeaderPaneID). Status still succeeds (the session is up)
+		// when st.Strands is empty but the header pane is alive; a future
+		// edit must not "fix" a missing header row by appending one here.
 		strands := make([]StrandStatus, len(st.Strands))
 		for i, s := range st.Strands {
 			strands[i] = StrandStatus{GUID: s.GUID, Name: s.Name, PaneID: s.PaneID, Live: aliveIDs[s.PaneID]}

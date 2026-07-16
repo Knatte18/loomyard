@@ -83,7 +83,7 @@ func TestHelpTree_VerbModuleSubcommands(t *testing.T) {
 		{
 			name:     "mux",
 			module:   "mux",
-			wantSubs: []string{"up", "add", "remove", "status", "attach", "resume", "down"},
+			wantSubs: []string{"up", "add", "remove", "status", "attach", "resume", "down", "header"},
 		},
 		{
 			name:     "selfreport",

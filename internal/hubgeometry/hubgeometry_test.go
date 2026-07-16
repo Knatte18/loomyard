@@ -64,6 +64,11 @@ func TestResolve_FromWorktreeRoot(t *testing.T) {
 	if layout.Prime != hub {
 		t.Errorf("layout.Prime = %q; want %q", layout.Prime, hub)
 	}
+
+	// Repo should be derived from Prime for a resolved real worktree.
+	if layout.Repo != filepath.Base(layout.Prime) {
+		t.Errorf("layout.Repo = %q; want %q", layout.Repo, filepath.Base(layout.Prime))
+	}
 }
 
 // TestResolve_FromSubdirectory verifies that Resolve from a subdirectory

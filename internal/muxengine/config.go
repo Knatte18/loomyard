@@ -51,6 +51,34 @@ type Config struct {
 	// whose mux.yaml predates this field needs "lyx config reconcile" to
 	// adopt it.
 	Mouse string `yaml:"mouse"`
+
+	// Header configures the always-on operator console pane's text. A hub
+	// whose mux.yaml predates this field needs "lyx config reconcile" to
+	// adopt it, matching the DebugLog/Mouse precedent above.
+	Header HeaderConfig `yaml:"header"`
+}
+
+// HeaderConfig configures the header pane's rendered text: which template to
+// render and how many rows it occupies. Template empty means "use the
+// embedded default" (see internal/muxengine.HeaderTemplate); HeightRows
+// defaults to 1.
+type HeaderConfig struct {
+	// Template is the raw header-text template, filled via
+	// tokenvocab.Render. Empty means "use the embedded default template"
+	// (headertemplate.go) rather than an empty rendered header.
+	//
+	// Live-change semantics (mirroring DebugLog/Mouse's boot-scoped notes
+	// above): the pane renders its text ONCE, at header-pane launch, so a
+	// template edit takes effect only when the header pane is next actually
+	// (re)built — a server rebirth, a dead-header heal, or a down+up cycle.
+	// An "up" that finds the header alive is an idempotent no-op and
+	// deliberately leaves the running pane's text unchanged; "lyx mux
+	// header" (the plain verb) previews the new rendering immediately.
+	Template string `yaml:"template"`
+	// HeightRows is the header pane's fixed row count; it defaults to 1.
+	// Unlike Template it re-applies on the NEXT layout apply (any mutating
+	// verb re-runs select-layout), no header rebuild needed.
+	HeightRows int `yaml:"height_rows"`
 }
 
 // LoadConfig loads and unmarshals configuration for the mux module.

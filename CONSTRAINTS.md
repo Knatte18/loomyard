@@ -47,6 +47,17 @@ import it without cycles.
 - **Enforced by** `internal/modelspec/leaf_enforcement_test.go`
   (`TestLeafInvariant_AllowlistOnly`) on every `go test`.
 
+## Tokenvocab Leaf Invariant
+
+`internal/tokenvocab` production code imports only stdlib, `internal/hubgeometry`, and
+`internal/stencil` — so every future consumer (mux's header pipeline, loom's prompt
+templates) can import it without cycles.
+
+- The reverse import (`tokenvocab` → `mux`, `tokenvocab` → `loom`, or any other feature
+  package) is never allowed.
+- **Enforced by** `internal/tokenvocab/leaf_enforcement_test.go`
+  (`TestLeafInvariant_AllowlistOnly`) on every `go test`.
+
 ## CLI / Cobra Invariant
 
 Every lyx CLI module is a cobra subtree assembled under one root in `cmd/lyx/main.go`.
@@ -70,11 +81,15 @@ Every lyx CLI module is a cobra subtree assembled under one root in `cmd/lyx/mai
   `RunE = clihelp.GroupRunE` to reject unknown subcommands.
 - **Interactive-handoff exception (narrow, per-command).** A subcommand whose whole job is
   to hand the operator's stdio to another interactive program and block (`ide menu`'s stdin
-  picker; `mux attach`'s `tmux attach`) cannot emit the JSON envelope on that terminal-handover
-  tail. The exception is scoped tightly: everything that can fail runs **pre-flight and stays
-  on the envelope** (`output.Err`, non-zero exit); only the post-handoff tail is exempt, and on
-  success it emits no JSON. `mux attach` follows the pre-existing `ide menu` precedent; see the
-  `internal/muxcli` attach command's godoc/`Long` and
+  picker; `mux attach`'s `tmux attach`), or to self-display and then keep a pane alive
+  forever (`mux header --blocking`, the header pane's own print-then-block keepalive tail),
+  cannot emit the JSON envelope on that terminal-handover/keepalive tail. The exception is
+  scoped tightly: everything that can fail runs **pre-flight and stays on the envelope**
+  (`output.Err`, non-zero exit); only the post-handoff/keepalive tail is exempt, and on
+  success it emits no JSON. `mux attach` follows the pre-existing `ide menu` precedent;
+  `mux header --blocking` is a narrower sub-case still — the command's own default mode
+  (no `--blocking`) stays fully on the envelope, and only the flag-gated tail is exempt. See
+  the `internal/muxcli` attach/header commands' godoc/`Long` and
   [docs/overview.md#modules](docs/overview.md#modules) for the full rationale.
 - **Package naming.** A Cobra-registered package is `<module>cli`; its extracted domain
   kernel is `<module>engine`. cli imports engine; engine never imports cli or cobra.

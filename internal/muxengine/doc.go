@@ -22,6 +22,28 @@
 // path (ServerName), so every worktree under the same hub locates and shares
 // the same tmux server rather than each spawning its own.
 //
+// A second package-level invariant: every session also carries exactly one
+// additional, permanent pane beyond its strands — the header
+// (MuxState.HeaderPaneID). It is a first-class construct, deliberately never
+// a Strand (Shared Decision header-is-not-a-strand): it is excluded from
+// every strand-accounting, adoption, split-target, and reconcile path (see
+// ensureHeaderPaneLocked in lifecycle.go, planPaneTarget in spawn.go, and
+// planReconcile's exemptPaneIDs in reconcile.go for the three exclusion
+// seams), so that removing a session's last strand can never destroy the
+// session or corpse its sole pane — the header keeps the session (and the
+// substrate the next add needs) alive no matter how many strands come and
+// go. It boots alongside the session/initial pane on both Up and Resume, and
+// Engine.ValidateHeader runs eagerly on every boot path so a bad header
+// template surfaces loud before the pane is ever created, never silently.
+// A header whose keepalive process dies (pane_dead=1) is deliberately kept
+// as an enumerable corpse by reconcile — never killed there — and healed
+// (corpse killed, a fresh header split back in at the physical top) by
+// ensureHeaderPaneLocked on the next Up/Resume; planLayout only ever emits
+// a header cell for a pane actually present in the window, so a stale
+// HeaderPaneID can never put an absent pane's cell into select-layout's
+// string (which a real tmux accepts and misassigns positionally rather
+// than rejecting).
+//
 // # Multiplexer contract surface
 //
 // This package assumes its configured binary (psmux on Windows today, tmux
@@ -42,6 +64,20 @@
 // parsePaneList keys a dead pane on the literal value "1", never a numeric
 // or boolean comparison.
 //
+// Session targeting: every -t argument that names a SESSION is passed in
+// an exact-match form — "=<name>" for session targets (has-session,
+// kill-session, attach-session) and "=<name>:" for window/pane targets
+// (list-panes, select-layout, display-message), since the window/pane
+// target parser rejects the bare "=<name>" form. This is load-bearing:
+// tmux falls back to PREFIX matching a bare -t name when no exact match
+// exists, so on the shared per-hub server a bare name issued from one
+// worktree can silently address a prefix-sharing sibling worktree's
+// session — verified live (tmux 3.6): with only "repo2" present,
+// `has-session -t repo` exits 0 and `kill-session -t repo` kills repo2.
+// contract_integration_test.go's
+// TestExactSessionTargetsNeverPrefixMatchSiblings pins both grammars.
+// Pane-id (-t %N) targets are already exact and stay bare.
+//
 // Subcommand set: the engine's correctness depends on new-session,
 // has-session, split-window, select-layout, select-pane, send-keys,
 // capture-pane, list-panes, list-sessions, display-message,
@@ -56,9 +92,12 @@
 //
 //   - Silent split failure (spawn.go): split-window against a pane too
 //     small to split exits 0, creates no new pane, and prints an EXISTING
-//     pane's id on stdout rather than erroring — so launchStrandLocked must
+//     pane's id on stdout rather than erroring (psmux's shape; native tmux
+//     errors loud with "no space for new pane") — so EVERY split site must
 //     verify a split's returned pane id was absent from the pre-split live
-//     set before trusting it as genuinely new.
+//     set before trusting it as genuinely new: launchStrandLocked's strand
+//     splits and ensureHeaderPaneLocked's header rebuild both run the shared
+//     validateSplitCreatedNewPane guard.
 //   - Dead-pane adoption via remain-on-exit (spawn.go): with
 //     "set-option -g remain-on-exit on" set at boot, a pane whose command
 //     exits stays enumerable (pane_dead=1) instead of vanishing WHILE THE
@@ -120,4 +159,16 @@
 //     config or LYX_MUX_MOUSE on an already-running hub has no effect until
 //     the mux server restarts. "off" preserves native terminal text
 //     selection/copy; "on" enables click-to-switch-pane.
+//   - Header band divider row (render/rules.go, height.go): the header pane
+//     and the strand stack below it are physically adjacent, so tmux/psmux
+//     always renders the same one-row border between them that
+//     buildStackBody already budgets for between individual strands —
+//     omitting that budget still lets select-layout return success, but
+//     tmux inserts the border row anyway, silently overflowing the window
+//     by one row. clampHeaderHeight (height.go) also never clamps the
+//     header below 1 row for the same reason: a real tmux/psmux
+//     select-layout does not cleanly support a genuinely zero-height cell
+//     for an always-on pane either. Verified against a real tmux instance;
+//     contract_integration_test.go's TestHeaderNeverGetsZeroHeightLayoutCell
+//     pins it.
 package muxengine

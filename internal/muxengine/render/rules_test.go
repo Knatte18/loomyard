@@ -1,8 +1,8 @@
 // rules_test.go golden-tests the composed Rules entry point: the
 // below-parent stack ordered by parent chain, hidden-strand exclusion,
 // empty/single-strand/parent-child edges, the checksum-prefix invariant, the
-// own-window rejection error, and pane-order resequencing to physical pane
-// position.
+// own-window rejection error, pane-order resequencing to physical pane
+// position, and the header top-band enumeration (Params.Header).
 
 package render
 
@@ -199,6 +199,92 @@ func TestRulesPaneOrderResequencesCellsToPhysicalOrder(t *testing.T) {
 	// physically sits.
 	if want := "%20"; focus != want {
 		t.Errorf("Rules() focus = %q, want %q", focus, want)
+	}
+}
+
+// TestRulesHeaderBandEnumeratesHeaderPlusEveryStrandCell asserts the header
+// top-band shape card 15/16 add: a fixed-height header cell at the top,
+// followed by the below-parent stack laid out in the shrunk region below
+// it — the emitted window_layout must enumerate the header cell plus every
+// strand cell so the live-pane count the caller's select-layout applies
+// against matches tmux's actual pane set.
+func TestRulesHeaderBandEnumeratesHeaderPlusEveryStrandCell(t *testing.T) {
+	params := Params{
+		CollapsedStripRows: 2,
+		MinFullRows:        3,
+		Header:             Header{PaneID: "%h", HeightRows: 3},
+	}
+	box := Box{X: 0, Y: 0, W: 100, H: 21}
+
+	layout, focus, err := Rules(belowParentChain(), box, params, nil)
+	if err != nil {
+		t.Fatalf("Rules() unexpected error: %v", err)
+	}
+
+	// headerHeight=3 (unclamped: with the header's own one-row divider
+	// budget subtracted first (box.H-1=20), MinFullRows=3 leaves 17 rows for
+	// the stack, well above the natural split's needs). The stack region is
+	// {X:0,Y:4,W:100,H:17} (Y shifted by headerHeight+1 for the divider
+	// between the header band and the stack): usable=17-2 dividers=15,
+	// stripDemand=2 (mid collapses to CollapsedStripRows), fullRemaining=13
+	// split 6/7 between root and active (remainder to active).
+	wantBody := "100x21,0,0[100x3,0,0,h,100x6,0,4,1,100x2,0,11,2,100x7,0,14,3]"
+	if want := wrapLayout(wantBody); layout != want {
+		t.Errorf("Rules() with header layout = %q, want %q", layout, want)
+	}
+	if want := "%3"; focus != want {
+		t.Errorf("Rules() with header focus = %q, want %q (header never affects focus)", focus, want)
+	}
+}
+
+// TestRulesHeaderWithNoPlacedStrandClaimsWholeBoxAsSoleCell pins the
+// empty-stack header shape: with a header pane and ZERO placed strands,
+// Rules must emit the header as a bracket-less single-cell body claiming
+// the whole box — the same shape tmux reports for a one-pane window —
+// never a zero-height header cell inside a group (the fable-header-r1
+// finding: headerHeight stayed 0 on this path and bandHeader emitted a
+// literal "Wx0" cell, exactly the shape
+// TestHeaderNeverGetsZeroHeightLayoutCell exists to forbid, while the doc
+// comment claimed the header "may claim the whole box"). Unreachable
+// through applyLayoutLocked today (anyPlacedStrand gates the apply), but
+// Rules is a pure function whose contract must hold for any caller.
+func TestRulesHeaderWithNoPlacedStrandClaimsWholeBoxAsSoleCell(t *testing.T) {
+	box := Box{X: 0, Y: 0, W: 100, H: 21}
+	p := Params{CollapsedStripRows: 2, MinFullRows: 3, Header: Header{PaneID: "%h", HeightRows: 3}}
+
+	// nil strands and an all-filtered stack (a hidden strand) must both
+	// produce the sole-header shape.
+	for name, strands := range map[string][]Strand{
+		"NilStrands":       nil,
+		"OnlyHiddenStrand": {{GUID: "hid", PaneID: "%9", Live: true, Display: Display{Anchor: AnchorHidden}}},
+	} {
+		layout, focus, err := Rules(strands, box, p, nil)
+		if err != nil {
+			t.Fatalf("%s: Rules() unexpected error: %v", name, err)
+		}
+		if want := wrapLayout("100x21,0,0,h"); layout != want {
+			t.Errorf("%s: Rules() layout = %q, want the sole-header body %q", name, layout, want)
+		}
+		if focus != "" {
+			t.Errorf("%s: Rules() focus = %q, want \"\" (no placed strand to focus)", name, focus)
+		}
+	}
+}
+
+// TestRulesNoHeaderPreservesPreHeaderBehavior asserts a zero-value
+// Params.Header (empty PaneID) produces byte-identical output to omitting
+// Header entirely — every pre-header caller must be unaffected.
+func TestRulesNoHeaderPreservesPreHeaderBehavior(t *testing.T) {
+	strands := belowParentChain()
+	box := Box{X: 0, Y: 0, W: 100, H: 21}
+
+	withZeroHeader, focus1, err1 := Rules(strands, box, Params{CollapsedStripRows: 2, MinFullRows: 3, Header: Header{}}, nil)
+	without, focus2, err2 := Rules(strands, box, Params{CollapsedStripRows: 2, MinFullRows: 3}, nil)
+	if err1 != nil || err2 != nil {
+		t.Fatalf("Rules() unexpected errors: %v, %v", err1, err2)
+	}
+	if withZeroHeader != without || focus1 != focus2 {
+		t.Errorf("Rules() with zero-value Header = (%q,%q), want identical to omitting Header entirely (%q,%q)", withZeroHeader, focus1, without, focus2)
 	}
 }
 

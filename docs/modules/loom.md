@@ -114,7 +114,7 @@ output, not from the loop being LLM-held.
   review of its own. The terminal holistic review is the separate **Builder-review gate**: a
   full `perch` converge-loop over the whole diff, driven by `loom` (or the operator running
   `lyx perch run` directly) *after* `builder run` returns `done`; no per-batch design review in
-  v1. See [modules/builder.md](builder.md) for the as-built verb surface and digest contract.
+  v1. See [modules/builder-contract.md](builder-contract.md) for the as-built verb surface and digest contract.
 - **Digest-only consumption.** The `poll` verb reads the implementer's on-disk batch-report,
   distills it in Go, and returns a terse digest; the orchestrator never ingests raw session
   prose. That is what keeps a persistent LLM orchestrator lean.
@@ -232,7 +232,7 @@ boundary**, never mid-operation — `mill-pause`'s natural-stopping-point proper
 | `loom` (`lyx loom run`) | new Go module | the phase machine / autonomous driver |
 | `perch` (`lyx perch`) | new Go module | the gate loop: run `burler` rounds → `APPROVED`/`stuck` + progress-judge + cap |
 | `burler` | new Go module | one review+fix round: A-review (+ optional cluster) → B-fix; composed by `perch` |
-| builder | LLM orchestrator + Go verbs (`internal/builderengine`) | long-lived orchestrator session holds the batch loop over the six as-built verbs (`validate`/`run`/`spawn-batch`/`poll`/`status`/`pause`); Go = verbs + distillation; fresh-spawn escalation; ends at batches-built — the holistic review is perch's separate Builder-review gate, not builder's own job — **not** a single producer spawn; input contract: [plan-format.md](plan-format.md); as-built doc: [builder.md](builder.md) |
+| builder | LLM orchestrator + Go verbs (`internal/builderengine`) | long-lived orchestrator session holds the batch loop over the six as-built verbs (`validate`/`run`/`spawn-batch`/`poll`/`status`/`pause`); Go = verbs + distillation; fresh-spawn escalation; ends at batches-built — the holistic review is perch's separate Builder-review gate, not builder's own job — **not** a single producer spawn; input contract: [plan-format.md](plan-format.md); as-built doc: [builder-contract.md](builder-contract.md) |
 | producers (discussion / plan) | prompt/profile files | **not** modules — just a prompt + profile fed to `shuttle.Run` |
 | `lyx loom status` | a loom subcommand | the 1-line status view; runs as a strand (see `internal/muxengine`; `below-parent` + `ShrinkWhenWaitingOnChild`), not a separate module |
 | execution stack | existing/new infra | [`proc`](README.md) → mux → shuttle — see [overview.md#execution-stack](../overview.md#execution-stack-orchestration-layers) — built once, used by both modules above |

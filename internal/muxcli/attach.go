@@ -17,11 +17,17 @@ import (
 )
 
 // attachArgv builds the tmux argv for an in-place attach: "-L <socket>
-// attach-session -t <session>". It is kept as a pure function, separate
-// from the exec.Command call it feeds, so cli_test.go can assert the built
-// invocation without spawning tmux or needing a live session.
+// attach-session -t =<session>". The "=" pins tmux's exact session-name
+// matching — a bare -t name falls back to PREFIX matching when no exact
+// match exists, which could attach the operator to a prefix-sharing SIBLING
+// worktree's session (mirroring muxengine's exactSessionTarget; the
+// pre-flight Status() makes that window small but not zero, since the
+// session can die between pre-flight and exec). It is kept as a pure
+// function, separate from the exec.Command call it feeds, so cli_test.go
+// can assert the built invocation without spawning tmux or needing a live
+// session.
 func attachArgv(socket, session string) []string {
-	return []string{"-L", socket, "attach-session", "-t", session}
+	return []string{"-L", socket, "attach-session", "-t", "=" + session}
 }
 
 // attachCmd builds the `attach` subcommand: a session-level verb (no strand

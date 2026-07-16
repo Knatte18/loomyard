@@ -310,25 +310,101 @@ func TestMultiplexerContract(t *testing.T) {
 	}
 }
 
-// TestRemoveStrand_SoleStrandEmptiesSessionSucceeds reproduces, end to end
-// against a real Engine, the bug this batch fixes: removing a session's
-// sole non-hidden strand must return success and leave mux.json holding
-// zero persisted strands, never surface the raw "no server running" tmux
-// error the original reproduction hit.
-//
-// Coverage note: this regression exercises the Card 2 swallow branch ONLY
-// on last-pane-DESTROY backends (tmux, the POSIX default per
-// template_posix.go) — there, without the fix, RemoveStrand would return
-// the "no server running" error surfaced from reconcileApplyPersistLocked's
-// listPanes call once kill-pane has destroyed the session, so a passing
-// test genuinely covers the swallow. On corpse backends (psmux/Windows) the
-// same scenario passes via RemoveStrand's normal path instead (kill-pane
-// corpses the pane, the session survives, reconcileApplyPersistLocked
-// succeeds), so the swallow is never reached there — TestRemovalEmptiedSession
-// (strand_test.go) covers the pure decision logic on every platform
-// regardless of which binary is configured. This test therefore asserts
-// only the observable contract (nil error, zero persisted strands), never
-// which internal branch RemoveStrand actually took.
+// TestExactSessionTargetsNeverPrefixMatchSiblings pins the exact-match
+// target forms exactSessionTarget ("=<name>") and exactSessionWindowTarget
+// ("=<name>:") against a real multiplexer. tmux resolves a bare -t session
+// name by exact match first but falls back to PREFIX matching when no exact
+// match exists — so with sessions "repo" and "repo2" on one shared per-hub
+// server (exactly what two prefix-sharing sibling worktrees produce), a
+// bare `kill-session -t repo` issued after "repo" is already gone KILLS
+// "repo2", and a bare `has-session -t repo` false-positives on it (both
+// verified live on tmux 3.6, which is what motivated the "=" forms). This
+// test asserts the engine's two target grammars behave exactly: they
+// resolve the exact-named session while it exists, error (rather than
+// prefix-match the sibling) once it is gone, and never touch the sibling —
+// the canary for a configured binary (psmux) that does not implement the
+// "=" target syntax.
+func TestExactSessionTargetsNeverPrefixMatchSiblings(t *testing.T) {
+	tmpDir := t.TempDir()
+	seedMuxConfig(t, tmpDir)
+
+	cfg, err := LoadConfig(tmpDir, "mux")
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if _, err := exec.LookPath(cfg.Tmux); err != nil {
+		t.Skipf("configured multiplexer binary %q not found: %v", cfg.Tmux, err)
+	}
+
+	socket := fmt.Sprintf("lyx-contract-exact-target-test-%d-%d", os.Getpid(), time.Now().UnixNano())
+	// sibling's name deliberately extends session's, so any prefix-match
+	// fallback in the binary would resolve session-targets onto the sibling
+	// once the exact-named session is gone.
+	const session = "exact-target"
+	const sibling = "exact-target2"
+	mux := NewTmuxCmd(cfg.Tmux, socket)
+
+	t.Cleanup(func() {
+		_ = mux.run("kill-server")
+	})
+
+	for _, name := range []string{session, sibling} {
+		if err := mux.run("new-session", "-d", "-s", name, "-x", "80", "-y", "24", cfg.Shell); err != nil {
+			t.Fatalf("new-session %s: %v", name, err)
+		}
+	}
+
+	// While the exact-named session exists, both grammars resolve it.
+	if up, err := mux.hasSession(session); err != nil || !up {
+		t.Fatalf("hasSession(%q) = (%v, %v), want (true, nil) while it exists", session, up, err)
+	}
+	if _, err := mux.listPanes(session); err != nil {
+		t.Fatalf("listPanes(%q) via exact window target: %v", session, err)
+	}
+	if _, err := mux.output("display-message", "-p", "-t", exactSessionWindowTarget(session), "#{pid}"); err != nil {
+		t.Fatalf("display-message -t %q: %v", exactSessionWindowTarget(session), err)
+	}
+	if err := mux.run("select-layout", "-t", exactSessionWindowTarget(session), "even-vertical"); err != nil {
+		t.Fatalf("select-layout -t %q: %v", exactSessionWindowTarget(session), err)
+	}
+
+	// Kill the exact-named session, leaving only the prefix-sharing sibling.
+	if err := mux.run("kill-session", "-t", exactSessionTarget(session)); err != nil {
+		t.Fatalf("kill-session -t %q: %v", exactSessionTarget(session), err)
+	}
+
+	// The trap the "=" forms exist for: every exact-target probe must now
+	// report the session ABSENT/ERROR rather than resolving the sibling.
+	if up, err := mux.hasSession(session); err != nil || up {
+		t.Fatalf("hasSession(%q) = (%v, %v) with only %q present, want (false, nil) — a true result means the target prefix-matched the sibling", session, up, err, sibling)
+	}
+	if _, err := mux.listPanes(session); err == nil {
+		t.Fatalf("listPanes(%q) succeeded with only %q present, want an error — success means the window target prefix-matched the sibling", session, sibling)
+	}
+	// The idempotent-down shape: a second kill-session against the gone
+	// session must error, and above all must NOT kill the sibling.
+	if err := mux.run("kill-session", "-t", exactSessionTarget(session)); err == nil {
+		t.Errorf("kill-session -t %q succeeded with only %q present, want an error — success means it prefix-matched (and killed) the sibling", exactSessionTarget(session), sibling)
+	}
+	if up, err := mux.hasSession(sibling); err != nil || !up {
+		t.Fatalf("hasSession(%q) = (%v, %v) after the re-kill, want (true, nil) — the sibling must survive every exact-target op against its prefix", sibling, up, err)
+	}
+}
+
+// TestRemoveStrand_SoleStrandEmptiesSessionSucceeds is the header-pane
+// keepalive regression this batch adds: with the always-present header pane
+// booted, removing a session's sole non-hidden strand must return success,
+// leave mux.json holding zero persisted strands, AND leave both the session
+// and the header pane specifically alive — the header's whole purpose. This
+// supersedes the original pre-header regression (removing a session's true
+// last pane used to be backend-dependent: tmux destroyed the session
+// outright, forcing RemoveStrand to swallow the resulting "no server
+// running" error as an expected success — see removalEmptiedSession,
+// strand.go). With the header pane as a permanent second pane, killing the
+// strand's pane is never a last-pane-destroy on ANY backend, so that
+// swallow branch is no longer reached by this scenario at all; it remains
+// in place for the (now believed unreachable in practice, but still
+// defensive) case where the header pane is itself somehow absent.
 func TestRemoveStrand_SoleStrandEmptiesSessionSucceeds(t *testing.T) {
 	tmpDir := t.TempDir()
 	seedMuxConfig(t, tmpDir)
@@ -370,6 +446,15 @@ func TestRemoveStrand_SoleStrandEmptiesSessionSucceeds(t *testing.T) {
 		t.Fatalf("Up: %v", err)
 	}
 
+	// The header pane is booted as part of Up, before any strand exists;
+	// capture its id so the post-remove assertions below can confirm it
+	// specifically (not merely "some pane") survived.
+	upSt, err := LoadState(layout.DotLyxDir())
+	if err != nil || upSt == nil || upSt.HeaderPaneID == "" {
+		t.Fatalf("LoadState after Up = (%+v, %v), want a persisted HeaderPaneID", upSt, err)
+	}
+	headerPaneID := upSt.HeaderPaneID
+
 	// One non-hidden strand, anchored so it is realized into a live pane at
 	// add time; a long-lived command so it is still running when removed.
 	strand, err := e.AddStrand(AddSpec{
@@ -382,7 +467,7 @@ func TestRemoveStrand_SoleStrandEmptiesSessionSucceeds(t *testing.T) {
 
 	removed, err := e.RemoveStrand(strand.GUID, false)
 	if err != nil {
-		t.Fatalf("RemoveStrand(sole strand) = %v, want nil error (emptying the session is an expected terminal state, not a failure)", err)
+		t.Fatalf("RemoveStrand(sole strand) = %v, want nil error (the header pane keeps the session alive, so emptying the strand table is never a last-pane-destroy)", err)
 	}
 	if len(removed.Strands) != 1 || removed.Strands[0].GUID != strand.GUID {
 		t.Fatalf("RemoveStrand.Removed.Strands = %+v, want exactly guid %q", removed.Strands, strand.GUID)
@@ -390,11 +475,276 @@ func TestRemoveStrand_SoleStrandEmptiesSessionSucceeds(t *testing.T) {
 
 	// Persistence is the resurrect-on-resume guard: removeStrandLocked only
 	// prunes st.Strands in memory, so this must reload from disk rather than
-	// trust the in-memory Removed result above. Polled, not asserted once,
-	// since the swallow path's own SaveState races the surrounding async
-	// pane/session teardown this whole fix is about.
+	// trust the in-memory Removed result above.
 	waitUntil(t, 5*time.Second, "persisted mux.json never reflected the emptied strand table", func() bool {
 		st, err := LoadState(layout.DotLyxDir())
 		return err == nil && st != nil && len(st.Strands) == 0
 	})
+
+	// The keepalive guarantee this batch adds: the session, and the header
+	// pane specifically, must still be alive with zero strands tracked.
+	up, err := e.tmux.hasSession(e.SessionName())
+	if err != nil || !up {
+		t.Fatalf("hasSession after removing the sole strand = (%v, %v), want (true, nil) — the header pane must keep the session alive", up, err)
+	}
+	live, err := e.tmux.listPanes(e.SessionName())
+	if err != nil {
+		t.Fatalf("listPanes after removing the sole strand: %v", err)
+	}
+	headerFound := false
+	for _, p := range live {
+		if p.ID == headerPaneID {
+			headerFound = true
+			if p.Dead {
+				t.Errorf("header pane %s reports Dead = true after removing the sole strand, want it alive", headerPaneID)
+			}
+		}
+	}
+	if !headerFound {
+		t.Fatalf("header pane %s missing from live panes %+v after removing the sole strand", headerPaneID, live)
+	}
+}
+
+// TestDeadHeaderPaneIsHealedByUpWithoutCorruptingLayout drives the
+// dead-header lifecycle the fable-header-r1 round found broken, end to end
+// against a real multiplexer: the header's keepalive process exits
+// (pane_dead=1 under remain-on-exit), a subsequent AddStrand must keep the
+// corpse enumerable (reconcile's dead-kill exemption) and lay out with no
+// window-bottom overflow and no stale-cell scramble (planLayout's presence
+// filter), and the next Up must heal the header — kill the corpse, split a
+// fresh header back in at the physical top, persist the new id — instead of
+// treating the corpse as a working header (the old presence-keyed
+// idempotency check) or wedging on a too-short split target (the old
+// first-alive targeting). Pre-fix this sequence scrambled every strand's
+// height on the add and then failed every up with "no space for new pane"
+// until a full down.
+func TestDeadHeaderPaneIsHealedByUpWithoutCorruptingLayout(t *testing.T) {
+	tmpDir := t.TempDir()
+	seedMuxConfig(t, tmpDir)
+
+	cfg, err := LoadConfig(tmpDir, "mux")
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if _, err := exec.LookPath(cfg.Tmux); err != nil {
+		t.Skipf("configured multiplexer binary %q not found: %v", cfg.Tmux, err)
+	}
+
+	layout := &hubgeometry.Layout{
+		Cwd:          tmpDir,
+		WorktreeRoot: tmpDir,
+		Hub:          filepath.Dir(tmpDir),
+	}
+	e := New(cfg, layout)
+
+	t.Cleanup(func() {
+		_, _ = e.Down()
+		_ = e.tmux.run("kill-server")
+	})
+
+	if _, err := e.Up(); err != nil {
+		t.Fatalf("Up: %v", err)
+	}
+	st, err := LoadState(layout.DotLyxDir())
+	if err != nil || st == nil || st.HeaderPaneID == "" {
+		t.Fatalf("LoadState after Up = (%+v, %v), want a persisted HeaderPaneID", st, err)
+	}
+	deadHeaderID := st.HeaderPaneID
+
+	if _, err := e.AddStrand(AddSpec{Cmd: "sleep 300", Display: render.Display{Anchor: render.AnchorBelowParent}}); err != nil {
+		t.Fatalf("AddStrand (first): %v", err)
+	}
+
+	// Kill the header's keepalive by pid: the pane's shell/keepalive does
+	// not read stdin (that is the keepalive's whole contract), so typing
+	// exit would go nowhere — killing #{pane_pid} is how a real keepalive
+	// death looks to tmux. remain-on-exit then corpses the pane
+	// (pane_dead=1); the flip is asynchronous, so poll.
+	live, err := e.tmux.listPanes(e.SessionName())
+	if err != nil {
+		t.Fatalf("listPanes before header kill: %v", err)
+	}
+	for _, p := range live {
+		if p.ID == deadHeaderID {
+			proc, err := os.FindProcess(p.PID)
+			if err != nil {
+				t.Fatalf("FindProcess(header pane pid %d): %v", p.PID, err)
+			}
+			if err := proc.Kill(); err != nil {
+				t.Fatalf("kill header pane pid %d: %v", p.PID, err)
+			}
+		}
+	}
+	waitUntil(t, 10*time.Second, "header pane never reported dead", func() bool {
+		live, err := e.tmux.listPanes(e.SessionName())
+		if err != nil {
+			return false
+		}
+		for _, p := range live {
+			if p.ID == deadHeaderID {
+				return p.Dead
+			}
+		}
+		return false
+	})
+
+	// An add with the header dead: must succeed, keep the corpse enumerable,
+	// and produce a sane layout (no pane past the window's bottom edge — the
+	// stale-cell scramble's signature was positional misassignment).
+	if _, err := e.AddStrand(AddSpec{Cmd: "sleep 300", Display: render.Display{Anchor: render.AnchorBelowParent}}); err != nil {
+		t.Fatalf("AddStrand with dead header: %v", err)
+	}
+	live, err = e.tmux.listPanes(e.SessionName())
+	if err != nil {
+		t.Fatalf("listPanes after add-with-dead-header: %v", err)
+	}
+	corpsePresent := false
+	for _, p := range live {
+		if p.ID == deadHeaderID {
+			corpsePresent = true
+			if !p.Dead {
+				t.Errorf("header corpse %s reports alive after add, want still dead", deadHeaderID)
+			}
+		}
+		if p.Top+p.Height > cfg.Height {
+			t.Errorf("pane %s top+height = %d+%d exceeds window height %d after add-with-dead-header (stale-cell scramble)", p.ID, p.Top, p.Height, cfg.Height)
+		}
+	}
+	if !corpsePresent {
+		t.Fatalf("header corpse %s was killed by the add's reconcile; it must stay enumerable until up/resume heals it (panes: %+v)", deadHeaderID, live)
+	}
+
+	// The heal: Up must replace the corpse with a fresh, alive, physically
+	// topmost header and persist its id.
+	if _, err := e.Up(); err != nil {
+		t.Fatalf("Up (heal) = %v, want success — pre-fix this wedged on \"no space for new pane\"", err)
+	}
+	st, err = LoadState(layout.DotLyxDir())
+	if err != nil || st == nil || st.HeaderPaneID == "" {
+		t.Fatalf("LoadState after healing Up = (%+v, %v), want a persisted HeaderPaneID", st, err)
+	}
+	if st.HeaderPaneID == deadHeaderID {
+		t.Fatalf("HeaderPaneID still names the corpse %s after the healing Up", deadHeaderID)
+	}
+	live, err = e.tmux.listPanes(e.SessionName())
+	if err != nil {
+		t.Fatalf("listPanes after healing Up: %v", err)
+	}
+	headerSeen := false
+	for _, p := range live {
+		if p.ID == deadHeaderID {
+			t.Errorf("header corpse %s still present after the healing Up, want it killed and replaced", deadHeaderID)
+		}
+		if p.ID == st.HeaderPaneID {
+			headerSeen = true
+			if p.Dead {
+				t.Errorf("healed header pane %s reports dead", p.ID)
+			}
+			if p.Top != 0 {
+				t.Errorf("healed header pane %s top = %d, want 0 (physically topmost — render.Rules emits its cell first)", p.ID, p.Top)
+			}
+		}
+		if p.Top+p.Height > cfg.Height {
+			t.Errorf("pane %s top+height = %d+%d exceeds window height %d after the healing Up", p.ID, p.Top, p.Height, cfg.Height)
+		}
+	}
+	if !headerSeen {
+		t.Fatalf("healed header pane %s missing from live panes %+v", st.HeaderPaneID, live)
+	}
+}
+
+// TestHeaderNeverGetsZeroHeightLayoutCell pins clampHeaderHeight's
+// never-below-1 floor (height.go) against a real multiplexer. A pathological
+// config — height_rows large relative to a tiny window height — used to let
+// clampHeaderHeight legally return 0, which bandHeader would then emit as a
+// literal "WxH,..." header cell with H=0 in the window_layout string. Manual
+// probing against a live tmux 3.6 instance showed that a genuinely
+// zero-height cell is NOT rendered as "no header": select-layout accepts the
+// string (no error), but silently keeps a row for the header pane anyway,
+// pushing every pane below it down by one row and overflowing the bottom of
+// the window by exactly one row (the last pane's top+height exceeds the
+// window height). clampHeaderHeight now floors the header at 1 row whenever
+// it exists, which this test confirms produces a layout the real multiplexer
+// applies cleanly, with every pane's top+height staying within the window.
+func TestHeaderNeverGetsZeroHeightLayoutCell(t *testing.T) {
+	tmpDir := t.TempDir()
+	seedMuxConfig(t, tmpDir)
+
+	cfg, err := LoadConfig(tmpDir, "mux")
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+
+	if _, err := exec.LookPath(cfg.Tmux); err != nil {
+		t.Skipf("configured multiplexer binary %q not found: %v", cfg.Tmux, err)
+	}
+
+	const windowRows = 6
+	socket := fmt.Sprintf("lyx-contract-header-floor-test-%d-%d", os.Getpid(), time.Now().UnixNano())
+	session := "header-floor-session"
+	mux := NewTmuxCmd(cfg.Tmux, socket)
+
+	t.Cleanup(func() {
+		_ = mux.run("kill-server")
+	})
+
+	if err := mux.run("new-session", "-d", "-s", session, "-x", "80", "-y", strconv.Itoa(windowRows), cfg.Shell); err != nil {
+		t.Fatalf("new-session: %v", err)
+	}
+
+	headerOut, err := mux.output("split-window", "-t", session, "-b", "-P", "-F", "#{pane_id}")
+	if err != nil {
+		t.Fatalf("split-window (header): %v", err)
+	}
+	headerPaneID := strings.TrimSpace(headerOut)
+
+	live, err := mux.listPanes(session)
+	if err != nil {
+		t.Fatalf("list panes: %v", err)
+	}
+	if len(live) != 2 {
+		t.Fatalf("listPanes after split = %d pane(s), want 2", len(live))
+	}
+	var strandPaneID string
+	for _, p := range live {
+		if p.ID != headerPaneID {
+			strandPaneID = p.ID
+		}
+	}
+	if strandPaneID == "" {
+		t.Fatalf("could not identify the non-header pane among %+v", live)
+	}
+
+	// A pathological config (MinFullRows far larger than the window, plus an
+	// oversized configured height_rows) that pre-fix would have driven
+	// clampHeaderHeight all the way to 0.
+	strands := []render.Strand{
+		{GUID: "s1", PaneID: strandPaneID, Display: render.Display{Anchor: render.AnchorBelowParent}, Live: true},
+	}
+	box := render.Box{X: 0, Y: 0, W: 80, H: windowRows}
+	params := render.Params{
+		MinFullRows: windowRows * 5,
+		Header:      render.Header{PaneID: headerPaneID, HeightRows: windowRows * 5},
+	}
+	layout, _, err := render.Rules(strands, box, params, []string{headerPaneID, strandPaneID})
+	if err != nil {
+		t.Fatalf("render.Rules: %v", err)
+	}
+
+	if err := mux.run("select-layout", "-t", session, layout); err != nil {
+		t.Fatalf("select-layout %q: %v (a real multiplexer rejecting this layout means clampHeaderHeight's floor no longer matches what select-layout accepts)", layout, err)
+	}
+
+	live, err = mux.listPanes(session)
+	if err != nil {
+		t.Fatalf("list panes after select-layout: %v", err)
+	}
+	for _, p := range live {
+		if p.Height < 1 {
+			t.Errorf("pane %s height = %d after select-layout %q, want >= 1 (a zero-height cell must never survive the real multiplexer)", p.ID, p.Height, layout)
+		}
+		if p.Top+p.Height > windowRows {
+			t.Errorf("pane %s top+height = %d+%d = %d after select-layout %q, want <= window height %d (the off-by-one overflow a bare H=0 header cell used to cause)", p.ID, p.Top, p.Height, p.Top+p.Height, layout, windowRows)
+		}
+	}
 }
