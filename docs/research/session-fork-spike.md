@@ -131,14 +131,42 @@ production-code and test-gap clusters counted separately).
   the parent's own system prompt — unmeasured in this spike, flagged as follow-up.
   On subscription the compute saving above is what counts either way.
 
+## Follow-up: built-in fork subagents (D-arm) — the better mechanism
+
+Prompted by the CLI forks' structural cache miss, a fourth arm tested Claude Code's
+built-in fork subagents (`CLAUDE_CODE_FORK_SUBAGENT=1`, v2.1.117+; Agent tool with
+`subagent_type` omitted and no `name`): one explorer strand explored the module,
+then spawned three parallel lens forks itself and relayed their reports
+(`results/d-arm-usage.md`, `results/d-arm-parent.md`).
+
+- **Cache: full hit.** Each fork's first request read 51,673 tokens — the parent's
+  entire live prefix — from cache (CLI forks: 27,246 static only). Fork subagents
+  run inside the parent process under the parent's exact system prompt and tool
+  array (`useExactTools`, harness-internal), which is precisely what defeats the
+  session-id/system-prompt problem above.
+- **Marginal cost per reviewer: ~17k compute** vs ~97k (CLI fork) vs ~209k (cold).
+  Arm total ≈ 286k vs B2's 447k and A's 628k. On API billing the inherited prefix
+  is cache_read (10%) instead of cache_creation (125%).
+- **Quality holds:** 18 findings across the lenses, consistent with the B2/A
+  clusters; nonce recalled by all three forks, zero re-reads.
+- **Trade-offs:** forks always run the parent's model (the M2 model-per-fork axis
+  is unavailable), cannot nest, must stay unnamed (named forks silently lose
+  context in ≤2.1.206), the env var is a staged-rollout flag, and reviewers are
+  in-pane background tasks rather than separate mux strands — per-reviewer
+  visibility is via `<session-id>/subagents/*.jsonl` on disk, not tmux.
+
 ## Decision
 
-Both criteria hold → **forking is worthwhile as the cluster-review mechanism.**
+Both criteria hold → **forking is worthwhile as the cluster-review mechanism —
+and built-in fork subagents are the preferred variant** (5–6× cheaper per reviewer
+than CLI forks, single-strand orchestration). CLI `--resume`+`--fork-session`
+remains the fallback where separate panes per reviewer or model-per-fork matter.
 
 Recommendations for the eventual burler/perch cluster design:
 
 1. **Fork one explorer into N reviewers** — mechanics proven (M1, M2), cost is less
-   than half per reviewer, coverage does not drop.
+   than half per reviewer even via CLI, and ~12× cheaper via fork subagents;
+   coverage does not drop.
 2. **Do not use hard exclusion lenses.** Identical or lightly-steered prompts
    out-covered strict lenses; if steering is wanted, phrase it as emphasis
    ("pay extra attention to X"), never as "ignore Y". Lens-per-fork also wastes a fork
