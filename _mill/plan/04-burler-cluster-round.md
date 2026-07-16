@@ -75,6 +75,7 @@ profiles — pass through one resolver before any strand spawns.
   - `internal/burlerengine/prompt.go`
   - `internal/burlerengine/prompt_test.go`
   - `internal/burlerengine/review-prompt-template.md`
+  - `internal/burlerengine/template.go`
   - `internal/burlerengine/template_test.go`
 - **Creates:** none
 - **Deletes:** none
@@ -85,7 +86,9 @@ profiles — pass through one resolver before any strand spawns.
   review-file-format section with one static sentence: in a cluster round each finding
   carries an `origin:` key (`lens:<name>` or `handler`). Keep the template free of
   `{{if}}`/`{{range}}` (stencil requires every marker non-empty — same constraint the
-  template's header comment documents; update that comment's marker count). In
+  template's header comment documents; update that comment's marker count, and update
+  the stale "eight markers" counts in BOTH `template.go`'s file header and
+  `prompt.go`'s file/`composePrompt` comments to nine). In
   `prompt.go` add `clusterRulesBlock(p *Profile) string`, wired into `composePrompt`'s
   values map. Non-cluster value: explicit prose — "This is a single-reviewer round —
   no cluster forks. Do the full review yourself." Cluster value, composed from

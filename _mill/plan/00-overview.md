@@ -23,7 +23,7 @@ batches:
     name: claudeengine-fork-mode
     file: 02-claudeengine-fork-mode.md
     depends-on: [1]
-    verify: go test ./internal/shuttleengine/...
+    verify: go test ./internal/shuttleengine/... ./internal/shuttlecli/ ./internal/builderengine/ ./internal/buildercli/
   - number: 3
     name: burler-config-module
     file: 03-burler-config-module.md
@@ -110,6 +110,10 @@ batches:
 - `CONSTRAINTS.md`
 - `docs/overview.md`
 - `docs/roadmap.md`
+- `internal/buildercli/poll_test.go`
+- `internal/buildercli/spawnbatch_test.go`
+- `internal/builderengine/poll_test.go`
+- `internal/builderengine/spawn_test.go`
 - `internal/burlercli/cli.go`
 - `internal/burlercli/cli_test.go`
 - `internal/burlercli/run.go`
@@ -127,6 +131,7 @@ batches:
 - `internal/burlerengine/review-prompt-template.md`
 - `internal/burlerengine/smoke_cluster_test.go`
 - `internal/burlerengine/smoke_round_test.go`
+- `internal/burlerengine/template.go`
 - `internal/burlerengine/template.yaml`
 - `internal/burlerengine/template_test.go`
 - `internal/burlerengine/verdict.go`
@@ -159,6 +164,7 @@ batches:
 - `internal/shuttleengine/fakes_test.go`
 - `internal/shuttleengine/forkaudit.go`
 - `internal/shuttleengine/run.go`
+- `internal/shuttlecli/cli_test.go`
 - `internal/shuttleengine/spec.go`
 - `internal/shuttleengine/wait.go`
 - `internal/shuttleengine/wait_test.go`

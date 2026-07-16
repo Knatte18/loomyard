@@ -5,7 +5,7 @@ task: "Fork-based cluster review in burler"
 batch: "claudeengine-fork-mode"
 number: 2
 cards: 3
-verify: go test ./internal/shuttleengine/...
+verify: go test ./internal/shuttleengine/... ./internal/shuttlecli/ ./internal/builderengine/ ./internal/buildercli/
 depends-on: [1]
 ```
 
@@ -103,6 +103,11 @@ security boundary (the audit is the backstop), as pinned in `_mill/discussion.md
   - `internal/shuttleengine/run.go`
   - `internal/shuttleengine/fakes_test.go`
   - `internal/shuttleengine/wait_test.go`
+  - `internal/shuttlecli/cli_test.go`
+  - `internal/builderengine/poll_test.go`
+  - `internal/builderengine/spawn_test.go`
+  - `internal/buildercli/poll_test.go`
+  - `internal/buildercli/spawnbatch_test.go`
 - **Creates:**
   - `internal/shuttleengine/claudeengine/audit.go`
   - `internal/shuttleengine/claudeengine/audit_test.go`
@@ -140,7 +145,16 @@ security boundary (the audit is the backstop), as pinned in `_mill/discussion.md
   error fails `Wait` with a wrapped error (fail-loud — a fork-mode run whose audit
   cannot be read must not classify as a clean done). (4) Update the fake engine in
   `fakes_test.go` with a configurable `AuditForks` (returning a canned `ForkAudit`),
-  and add one `wait_test.go` case: fork-mode spec + done classification → Result
+  and add a minimal satisfying stub — returning
+  `shuttleengine.ForkAudit{}, nil` with a one-line comment that the double never runs
+  fork-mode specs — to every other compile-time Engine double: `specCapturingEngine`
+  (`internal/shuttlecli/cli_test.go` ~line 169), `fakeEngine`
+  (`internal/builderengine/poll_test.go` ~line 139), `spawnFakeEngine`
+  (`internal/builderengine/spawn_test.go` ~line 115), `pollFakeEngine`
+  (`internal/buildercli/poll_test.go` ~line 52), and `spawnFakeEngine`
+  (`internal/buildercli/spawnbatch_test.go` ~line 84) — the interface widening must
+  leave every package compiling at this batch's boundary, not first at batch 5's
+  repo-wide gate. Add one `wait_test.go` case: fork-mode spec + done classification → Result
   carries the fake audit; non-fork spec → `Result.ForkAudit` nil and the fake's
   audit method not called. (5) Fixtures: hand-write minimal-but-realistic JSONL —
   `fork-clean.jsonl` (a few Read/Grep tool_use lines + final assistant message),
