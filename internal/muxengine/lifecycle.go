@@ -429,7 +429,12 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 // cells positionally, so a rebuilt header must land physically topmost or
 // every later select-layout would misassign heights; splitting a dead
 // topmost pane works (remain-on-exit corpses stay splittable), and a
-// too-short topmost pane fails the split loud rather than silently. It
+// too-short topmost pane surfaces as a hard error either way: native tmux
+// errors loud ("no space for new pane"), while psmux's silent-split shape
+// (exit 0, an EXISTING pane's id printed — doc.go's "Silent split failure"
+// contract bullet) is caught by the same validateSplitCreatedNewPane guard
+// launchStrandLocked runs, so a printed pre-existing pane id is never
+// recorded as the header. It
 // never touches st.Strands: the
 // header pane is a first-class but separate construct (Shared Decision
 // header-is-not-a-strand), so it must never be added to the strand table
@@ -538,8 +543,14 @@ func (e *Engine) ensureHeaderPaneLocked(st *MuxState) error {
 		return fmt.Errorf("split header pane: %w", err)
 	}
 	paneID := strings.TrimSpace(out)
-	if paneID == "" {
-		return fmt.Errorf("split-window created no header pane (target %s)", target)
+	// Same genuinely-new-pane guard launchStrandLocked runs: psmux's silent
+	// too-small-to-split failure prints an EXISTING pane's id with exit 0,
+	// and recording that id as the header would bind the header to a strand's
+	// pane — the next layout string would then carry a duplicate pane number,
+	// destroying the session's panes wholesale (see
+	// validateSplitCreatedNewPane).
+	if err := validateSplitCreatedNewPane(paneID, live, target); err != nil {
+		return fmt.Errorf("split header pane: %w", err)
 	}
 
 	if corpseID != "" {

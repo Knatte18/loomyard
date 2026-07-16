@@ -194,3 +194,32 @@ func TestSendKeysLiteralArg(t *testing.T) {
 		}
 	}
 }
+
+// TestValidateSplitCreatedNewPane pins the genuinely-new-pane guard both
+// split sites (launchStrandLocked, ensureHeaderPaneLocked) share: psmux's
+// silent too-small-to-split failure exits 0 and prints an EXISTING pane's
+// id, and trusting it would bind two owners to one pane — a duplicate pane
+// number in the next select-layout string, which destroys the session's
+// panes wholesale.
+func TestValidateSplitCreatedNewPane(t *testing.T) {
+	preSplitLive := []LivePane{{ID: "%0"}, {ID: "%1", Dead: true}}
+
+	tests := []struct {
+		name    string
+		paneID  string
+		wantErr bool
+	}{
+		{"genuinely new pane id passes", "%2", false},
+		{"empty pane id errors", "", true},
+		{"pre-existing alive pane id errors", "%0", true},
+		{"pre-existing dead pane id errors", "%1", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateSplitCreatedNewPane(tt.paneID, preSplitLive, "%0")
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validateSplitCreatedNewPane(%q) error = %v, wantErr %v", tt.paneID, err, tt.wantErr)
+			}
+		})
+	}
+}

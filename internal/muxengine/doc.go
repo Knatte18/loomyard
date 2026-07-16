@@ -92,9 +92,12 @@
 //
 //   - Silent split failure (spawn.go): split-window against a pane too
 //     small to split exits 0, creates no new pane, and prints an EXISTING
-//     pane's id on stdout rather than erroring — so launchStrandLocked must
+//     pane's id on stdout rather than erroring (psmux's shape; native tmux
+//     errors loud with "no space for new pane") — so EVERY split site must
 //     verify a split's returned pane id was absent from the pre-split live
-//     set before trusting it as genuinely new.
+//     set before trusting it as genuinely new: launchStrandLocked's strand
+//     splits and ensureHeaderPaneLocked's header rebuild both run the shared
+//     validateSplitCreatedNewPane guard.
 //   - Dead-pane adoption via remain-on-exit (spawn.go): with
 //     "set-option -g remain-on-exit on" set at boot, a pane whose command
 //     exits stays enumerable (pane_dead=1) instead of vanishing WHILE THE

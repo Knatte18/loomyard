@@ -105,6 +105,26 @@ func planPaneTarget(strands []Strand, live []LivePane, headerPaneID string) (ado
 	return "", splitTargetID, nil
 }
 
+// validateSplitCreatedNewPane returns a hard error unless paneID names a
+// genuinely NEW pane — non-empty and absent from preSplitLive, the live pane
+// set captured immediately before the split-window call. psmux's
+// split-window against a pane too small to split fails SILENTLY: exit 0, no
+// new pane, and an EXISTING pane's id printed on stdout (a documented
+// multiplexer-contract assumption — see doc.go's "Silent split failure"
+// bullet; native tmux instead errors loud with "no space for new pane", so
+// the silent shape never fires there). Trusting such an id would bind two
+// owners to one pane, and the next select-layout string would then carry a
+// duplicate pane number, which the multiplexer answers by destroying the
+// session's panes wholesale — so EVERY split site (launchStrandLocked's
+// strand splits and ensureHeaderPaneLocked's header rebuild) must run the
+// printed pane id through this check before recording it anywhere.
+func validateSplitCreatedNewPane(paneID string, preSplitLive []LivePane, target string) error {
+	if paneID == "" || liveIDSet(preSplitLive)[paneID] {
+		return fmt.Errorf("split-window created no new pane (got %q; target %s likely too small to split)", paneID, target)
+	}
+	return nil
+}
+
 // sendKeysLiteralArg returns the argument tmux `send-keys -l` must be
 // handed so text is typed verbatim. tmux (3.3.4) parses a '-'-leading
 // literal argument as flags and silently drops it — exit 0, nothing typed —
@@ -159,8 +179,8 @@ func (e *Engine) launchStrandLocked(st *MuxState, s *Strand, launchCmd string) e
 			return fmt.Errorf("split window: %w", err)
 		}
 		paneID = strings.TrimSpace(out)
-		if paneID == "" || liveIDSet(live)[paneID] {
-			return fmt.Errorf("split-window created no new pane (got %q; target %s likely too small to split)", paneID, splitTargetID)
+		if err := validateSplitCreatedNewPane(paneID, live, splitTargetID); err != nil {
+			return err
 		}
 	}
 
