@@ -100,7 +100,11 @@ The header text is produced by three pieces, each with one job:
    so it — not tokenvocab — sets the repo name. Derivation is **`filepath.Base(Prime)`** (r2 NOTE):
    `Prime` (the main worktree path) is already computed by `Resolve`, so this is **spawn-free** — no
    `git remote get-url` subprocess is added to the `Resolve` hot path (the repo recently invested in
-   reducing git spawns). Always non-empty. `hub` reads `Layout.Hub`.
+   reducing git spawns). **Empty-`Prime` guard (r3 NOTE):** `Resolve` leaves `Prime == ""` when
+   `List` returns no `Main` entry (`hubgeometry.go:126-131`), and `filepath.Base("")` is `"."` — so
+   the `Repo` setter must **fall back to `filepath.Base(WorktreeRoot)`** when `Prime` is empty
+   (`WorktreeRoot` is always the non-empty git toplevel). That is what makes `repo` genuinely
+   always-non-empty-and-correct. `hub` reads `Layout.Hub`.
 
 3. **`internal/stencil` (EXISTING) — the fill step.** `Fill(template, values)` (`stencil.go:36`),
    strict unfilled-marker detection. Reused as-is; template uses `{{.token}}` markers.
@@ -108,6 +112,11 @@ The header text is produced by three pieces, each with one job:
 - **Dependency graph (acyclic, no cycle):** `stencil` → stdlib only (stays a pure leaf — the
   vocabulary is deliberately NOT inside stencil). `tokenvocab` → `{hubgeometry, stencil}`.
   `muxengine`/`muxcli` and `loom` → `{tokenvocab, ...}`. One-directional.
+- **Import-direction enforcement (r3 NOTE):** because `tokenvocab` is general/shared (loom will
+  import it), the leaf/acyclic direction gets a **machine-enforced import test**, mirroring the
+  peer precedent `internal/modelspec/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`)
+  and `internal/lyxtest/leaf_enforcement_test.go` — allowlist = stdlib + `hubgeometry` + `stencil`.
+  Record the `tokenvocab` import invariant in CONSTRAINTS.md alongside the other leaf invariants.
 - Rejected: a single new `<TOKEN_NAME>` module doing map-build + fill together; putting the
   map-build inside the header command or the engine; naming the module mux-specific.
 
@@ -237,8 +246,10 @@ Per-module approach (TDD candidates called out):
 
 - **`internal/tokenvocab` (TDD):** hermetic unit tests — each token's `Resolve` given a fixture
   `Layout` (`repo`, `hub`); `Build` returns the full map; `Render` composes with stencil (fills a
-  template, and surfaces stencil's unfilled-marker error for an unknown token). Adding a token = a
-  new registry entry + a new case; the test file demonstrates the "trivial to add" property.
+  template, and surfaces stencil's unfilled-marker error for an unknown token). Cover the empty-`Prime`
+  fallback for `repo` (r3). Adding a token = a new registry entry + a new case; the test file
+  demonstrates the "trivial to add" property. Ship a **leaf/import-enforcement test** mirroring
+  `modelspec`/`lyxtest` (allowlist = stdlib + `hubgeometry` + `stencil`).
 - **`Engine.HeaderText()` (TDD, hermetic):** returns the stencil-filled template from a fixture
   config + Layout; falls back to the embedded default when `header.template` is unset; propagates a
   bad-template error.
