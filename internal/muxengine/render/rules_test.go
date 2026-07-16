@@ -221,12 +221,14 @@ func TestRulesHeaderBandEnumeratesHeaderPlusEveryStrandCell(t *testing.T) {
 		t.Fatalf("Rules() unexpected error: %v", err)
 	}
 
-	// headerHeight=3 (unclamped: MinFullRows=3 leaves 18 rows for the
-	// stack, well above the natural split's needs). The stack region is
-	// {X:0,Y:3,W:100,H:18}: usable=18-2 dividers=16, stripDemand=2 (mid
-	// collapses to CollapsedStripRows), fullRemaining=14 split 7/7 between
-	// root and active (no remainder).
-	wantBody := "100x21,0,0[100x3,0,0,h,100x7,0,3,1,100x2,0,11,2,100x7,0,14,3]"
+	// headerHeight=3 (unclamped: with the header's own one-row divider
+	// budget subtracted first (box.H-1=20), MinFullRows=3 leaves 17 rows for
+	// the stack, well above the natural split's needs). The stack region is
+	// {X:0,Y:4,W:100,H:17} (Y shifted by headerHeight+1 for the divider
+	// between the header band and the stack): usable=17-2 dividers=15,
+	// stripDemand=2 (mid collapses to CollapsedStripRows), fullRemaining=13
+	// split 6/7 between root and active (remainder to active).
+	wantBody := "100x21,0,0[100x3,0,0,h,100x6,0,4,1,100x2,0,11,2,100x7,0,14,3]"
 	if want := wrapLayout(wantBody); layout != want {
 		t.Errorf("Rules() with header layout = %q, want %q", layout, want)
 	}

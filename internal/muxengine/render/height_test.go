@@ -187,13 +187,26 @@ func TestClampHeaderHeight(t *testing.T) {
 			name: "Oversized_ClampedToPreserveFloor", headerRows: 25, windowRows: 21, minStackRows: 3, want: 18,
 		},
 		{
-			// The window cannot fit both a header and the floor at all:
-			// the header is clamped all the way to zero rather than ever
-			// going negative or starving the stack further.
-			name: "WindowTooShortForBoth_HeaderClampedToZero", headerRows: 5, windowRows: 2, minStackRows: 3, want: 0,
+			// The window cannot fit both a header and the floor at all: the
+			// header still keeps its 1-row minimum (real tmux/psmux does not
+			// cleanly support a zero-height select-layout cell — see
+			// height.go's doc comment) rather than going to zero, even
+			// though that means the stack floor itself is violated instead.
+			name: "WindowTooShortForBoth_HeaderFlooredAtOne", headerRows: 5, windowRows: 2, minStackRows: 3, want: 1,
 		},
-		{"NegativeHeaderRows_TreatedAsZero", -4, 21, 3, 0},
+		{
+			// headerRows <= 0 (including the negative-treated-as-zero case)
+			// still floors to 1 once the window has any rows to give — a
+			// header pane exists whenever this function is called, so it
+			// can never legitimately request/receive a zero-height cell.
+			name: "NegativeHeaderRows_FlooredAtOne", headerRows: -4, windowRows: 21, minStackRows: 3, want: 1,
+		},
 		{"NonPositiveMinStackRowsFlooredAtOne", 25, 21, 0, 20},
+		{
+			// windowRows itself has nothing to give: the result is 0, not a
+			// floored 1, since there is no row available at all.
+			name: "ZeroWindowRows_NothingToGive", headerRows: 5, windowRows: 0, minStackRows: 3, want: 0,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

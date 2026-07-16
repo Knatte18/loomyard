@@ -14,20 +14,37 @@ import "fmt"
 // strand, Rules is pure and total — a corrupt cyclic parent table is
 // repaired by breakCycles rather than causing an error or a hang.
 //
-// When p.Header.PaneID is non-empty, Rules first carves a fixed-height top
-// band for it — {X:0, Y:0, W:box.W, H:headerHeight} — and lays the
-// below-parent stack out in the shrunk region below it, {X:0,
-// Y:headerHeight, W:box.W, H:box.H-headerHeight}, so the emitted
-// window_layout enumerates the header cell plus every strand cell (the
-// live-pane count the caller's select-layout must match). headerHeight is
-// clampHeaderHeight's output, not the raw configured value: an oversized
+// When p.Header.PaneID is non-empty AND at least one strand is actually
+// placed, Rules first carves a fixed-height top band for the header —
+// {X:0, Y:0, W:box.W, H:headerHeight} — one divider row for the physical
+// border tmux/psmux always renders between vertically adjacent panes
+// (mirroring the same one-row-per-gap budget buildStackBody already reserves
+// BETWEEN strands), and lays the below-parent stack out in the shrunk region
+// below both, {X:0, Y:headerHeight+1, W:box.W, H:box.H-headerHeight-1} — so
+// the emitted window_layout enumerates the header cell plus every strand
+// cell (the live-pane count the caller's select-layout must match) with
+// every cell's declared height leaving room for tmux's own border row.
+// Verified against a real tmux instance: omitting this divider budget still
+// makes select-layout return success, but tmux inserts the border row
+// anyway, pushing every subsequent pane down by one and overflowing the
+// bottom of the window by exactly one row (contract_integration_test.go's
+// TestHeaderNeverGetsZeroHeightLayoutCell pins this). headerHeight is
+// clampHeaderHeight's output, not the raw configured value, called with the
+// divider already subtracted from the window's row budget: an oversized
 // height_rows can never shrink the strand region below its MinFullRows
 // floor, so the header itself yields rows first when the window is too
-// short for both. The header is never itself a Strand — it is injected here
-// at the Params seam instead of being modelled in the strand slice (Shared
-// Decision header-is-not-a-strand) — so partitionByAnchor/orderStack below
-// never see it. A zero-value p.Header (empty PaneID) skips all of this and
-// Rules behaves exactly as it did before the header pane existed.
+// short for both — but headerHeight itself is never clamped below 1 row
+// (clampHeaderHeight never hands this a zero, since a real tmux/psmux
+// select-layout does not cleanly support a genuinely zero-height cell
+// either). When no strand is actually placed (an empty stack — the header
+// is the window's sole pane), no divider is reserved and the header may
+// claim the whole box; in practice this case never reaches select-layout at
+// all, since applyLayoutLocked skips both tmux calls whenever fewer than
+// two panes are live. The header is never itself a Strand — it is injected
+// here at the Params seam instead of being modelled in the strand slice
+// (Shared Decision header-is-not-a-strand) — so partitionByAnchor/orderStack
+// below never see it. A zero-value p.Header (empty PaneID) skips all of
+// this and Rules behaves exactly as it did before the header pane existed.
 //
 // paneOrder is the window's actual top-to-bottom pane order (pane ids as
 // list-panes reports them, sorted by pane_top). psmux applies a layout
@@ -57,15 +74,20 @@ func Rules(strands []Strand, box Box, p Params, paneOrder []string) (layout stri
 	hasHeader := p.Header.PaneID != ""
 	stackBox := box
 	headerHeight := 0
-	if hasHeader {
-		// clampHeaderHeight (height.go) is the window-split clamp: an
-		// oversized configured height_rows can never shrink the strand
-		// stack below its MinFullRows floor — the header yields rows
-		// first. clampToFit (called inside stackHeights below) then
-		// distributes rows AMONG strands within whatever (possibly
+	if hasHeader && len(ordered) > 0 {
+		// The header and the strand stack are physically adjacent panes, so
+		// tmux/psmux always renders a one-row border between them — the same
+		// budget buildStackBody already reserves between individual strands
+		// (dividers := n-1). That row must come out of the window's total
+		// budget before clampHeaderHeight (height.go) decides the
+		// window-split: an oversized configured height_rows can never
+		// shrink the strand stack below its MinFullRows floor — the header
+		// yields rows first. clampToFit (called inside stackHeights below)
+		// then distributes rows AMONG strands within whatever (possibly
 		// clamped) stack region results.
-		headerHeight = clampHeaderHeight(p.Header.HeightRows, box.H, p.MinFullRows)
-		stackBox = Box{X: box.X, Y: box.Y + headerHeight, W: box.W, H: box.H - headerHeight}
+		const headerDivider = 1
+		headerHeight = clampHeaderHeight(p.Header.HeightRows, box.H-headerDivider, p.MinFullRows)
+		stackBox = Box{X: box.X, Y: box.Y + headerHeight + headerDivider, W: box.W, H: box.H - headerHeight - headerDivider}
 	}
 
 	placements := stackHeights(ordered, stackBox, p)

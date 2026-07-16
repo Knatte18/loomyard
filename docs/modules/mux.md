@@ -71,17 +71,31 @@ pipeline itself.
 header" — every pre-header caller of `render.Rules` is unaffected. When a header pane id is
 present, `Rules`:
 
-1. Computes the header's actual row count via `clampHeaderHeight(headerRows, windowRows,
-   minStackRows)` — the **window-split clamp**, distinct from `clampToFit` (which
-   distributes rows *among* strands inside an already-shrunk box). `clampHeaderHeight`
-   instead decides how much of the *whole window* the header band may claim: the
-   strand-stack region never shrinks below `MinFullRows` (floored at 1) total rows, so an
-   oversized configured `height_rows` can never starve the strand stack — the header
-   yields rows first.
-2. Lays the below-parent stack out in the shrunk region below the header band
-   (`{X:0, Y:headerHeight, W:box.W, H:box.H-headerHeight}`), reusing the existing
-   `buildStackBody` unchanged against that shrunk box.
-3. Splices a fixed-height header cell in front of the stack's cells (`bandHeader`,
+1. Reserves one divider row between the header band and the stack — the same one-row-per-gap
+   border tmux/psmux always renders between vertically adjacent panes that
+   `buildStackBody` already budgets for *between* strands (`dividers := n-1`). Verified
+   against a real tmux instance: omitting this budget still lets `select-layout` return
+   success, but tmux inserts the border row anyway, silently overflowing the bottom of the
+   window by exactly one row (`contract_integration_test.go`'s
+   `TestHeaderNeverGetsZeroHeightLayoutCell` pins this). The divider is only reserved when
+   at least one strand is actually placed — an empty stack (header as the window's sole
+   pane) never reaches `select-layout` at all (`applyLayoutLocked` skips both tmux calls
+   below two live panes).
+2. Computes the header's actual row count via `clampHeaderHeight(headerRows,
+   windowRows-1, minStackRows)` (the window's row budget minus that reserved divider) — the
+   **window-split clamp**, distinct from `clampToFit` (which distributes rows *among*
+   strands inside an already-shrunk box). `clampHeaderHeight` instead decides how much of
+   the *whole window* the header band may claim: the strand-stack region never shrinks
+   below `MinFullRows` (floored at 1) total rows, so an oversized configured `height_rows`
+   can never starve the strand stack — the header yields rows first. The result itself is
+   never clamped below 1 row (as long as the window has any rows to give): a real
+   tmux/psmux `select-layout` does not cleanly support a genuinely zero-height cell for an
+   always-on pane either — it silently keeps a row for it anyway, causing the same
+   off-by-one overflow the missing divider did.
+3. Lays the below-parent stack out in the shrunk region below the header band and its
+   divider (`{X:0, Y:headerHeight+1, W:box.W, H:box.H-headerHeight-1}`), reusing the
+   existing `buildStackBody` unchanged against that shrunk box.
+4. Splices a fixed-height header cell in front of the stack's cells (`bandHeader`,
    layout.go) so the emitted `window_layout` enumerates the header cell **plus every
    strand cell** — the live-pane count the caller's `select-layout` must match exactly, or
    tmux/psmux reaps the mismatch (`applyLayoutLocked`'s doc comment; this is why lifecycle
@@ -151,6 +165,11 @@ vocabulary itself.
   `TestRemoveStrand_SoleStrandEmptiesSessionSucceeds` (contract_integration_test.go) proves
   end to end that removing a session's sole strand leaves the session **and the header
   pane specifically** alive, with zero strands persisted.
+  `TestHeaderNeverGetsZeroHeightLayoutCell` (contract_integration_test.go) applies a
+  `render.Rules`-generated header layout against a live tmux session with a pathological
+  window/header-height ratio and asserts every resulting pane keeps a positive height and
+  stays within the window's bounds — the real-multiplexer contract check the header/stack
+  divider budget and `clampHeaderHeight`'s never-below-1 floor exist to satisfy.
 - **Smoke (`//go:build smoke`):** `TestSmokeHeaderPaneSurvivesUpAddRemoveAndReconcile`
   (smoke_lifecycle_test.go) drives a full `up` → `add` → `remove` → `add` cycle through the
   real CLI, asserting the header pane survives every step and is never adopted as a

@@ -423,3 +423,99 @@ func TestRemoveStrand_SoleStrandEmptiesSessionSucceeds(t *testing.T) {
 		t.Fatalf("header pane %s missing from live panes %+v after removing the sole strand", headerPaneID, live)
 	}
 }
+
+// TestHeaderNeverGetsZeroHeightLayoutCell pins clampHeaderHeight's
+// never-below-1 floor (height.go) against a real multiplexer. A pathological
+// config — height_rows large relative to a tiny window height — used to let
+// clampHeaderHeight legally return 0, which bandHeader would then emit as a
+// literal "WxH,..." header cell with H=0 in the window_layout string. Manual
+// probing against a live tmux 3.6 instance showed that a genuinely
+// zero-height cell is NOT rendered as "no header": select-layout accepts the
+// string (no error), but silently keeps a row for the header pane anyway,
+// pushing every pane below it down by one row and overflowing the bottom of
+// the window by exactly one row (the last pane's top+height exceeds the
+// window height). clampHeaderHeight now floors the header at 1 row whenever
+// it exists, which this test confirms produces a layout the real multiplexer
+// applies cleanly, with every pane's top+height staying within the window.
+func TestHeaderNeverGetsZeroHeightLayoutCell(t *testing.T) {
+	tmpDir := t.TempDir()
+	seedMuxConfig(t, tmpDir)
+
+	cfg, err := LoadConfig(tmpDir, "mux")
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+
+	if _, err := exec.LookPath(cfg.Tmux); err != nil {
+		t.Skipf("configured multiplexer binary %q not found: %v", cfg.Tmux, err)
+	}
+
+	const windowRows = 6
+	socket := fmt.Sprintf("lyx-contract-header-floor-test-%d-%d", os.Getpid(), time.Now().UnixNano())
+	session := "header-floor-session"
+	mux := NewTmuxCmd(cfg.Tmux, socket)
+
+	t.Cleanup(func() {
+		_ = mux.run("kill-server")
+	})
+
+	if err := mux.run("new-session", "-d", "-s", session, "-x", "80", "-y", strconv.Itoa(windowRows), cfg.Shell); err != nil {
+		t.Fatalf("new-session: %v", err)
+	}
+
+	headerOut, err := mux.output("split-window", "-t", session, "-b", "-P", "-F", "#{pane_id}")
+	if err != nil {
+		t.Fatalf("split-window (header): %v", err)
+	}
+	headerPaneID := strings.TrimSpace(headerOut)
+
+	live, err := mux.listPanes(session)
+	if err != nil {
+		t.Fatalf("list panes: %v", err)
+	}
+	if len(live) != 2 {
+		t.Fatalf("listPanes after split = %d pane(s), want 2", len(live))
+	}
+	var strandPaneID string
+	for _, p := range live {
+		if p.ID != headerPaneID {
+			strandPaneID = p.ID
+		}
+	}
+	if strandPaneID == "" {
+		t.Fatalf("could not identify the non-header pane among %+v", live)
+	}
+
+	// A pathological config (MinFullRows far larger than the window, plus an
+	// oversized configured height_rows) that pre-fix would have driven
+	// clampHeaderHeight all the way to 0.
+	strands := []render.Strand{
+		{GUID: "s1", PaneID: strandPaneID, Display: render.Display{Anchor: render.AnchorBelowParent}, Live: true},
+	}
+	box := render.Box{X: 0, Y: 0, W: 80, H: windowRows}
+	params := render.Params{
+		MinFullRows: windowRows * 5,
+		Header:      render.Header{PaneID: headerPaneID, HeightRows: windowRows * 5},
+	}
+	layout, _, err := render.Rules(strands, box, params, []string{headerPaneID, strandPaneID})
+	if err != nil {
+		t.Fatalf("render.Rules: %v", err)
+	}
+
+	if err := mux.run("select-layout", "-t", session, layout); err != nil {
+		t.Fatalf("select-layout %q: %v (a real multiplexer rejecting this layout means clampHeaderHeight's floor no longer matches what select-layout accepts)", layout, err)
+	}
+
+	live, err = mux.listPanes(session)
+	if err != nil {
+		t.Fatalf("list panes after select-layout: %v", err)
+	}
+	for _, p := range live {
+		if p.Height < 1 {
+			t.Errorf("pane %s height = %d after select-layout %q, want >= 1 (a zero-height cell must never survive the real multiplexer)", p.ID, p.Height, layout)
+		}
+		if p.Top+p.Height > windowRows {
+			t.Errorf("pane %s top+height = %d+%d = %d after select-layout %q, want <= window height %d (the off-by-one overflow a bare H=0 header cell used to cause)", p.ID, p.Top, p.Height, p.Top+p.Height, layout, windowRows)
+		}
+	}
+}

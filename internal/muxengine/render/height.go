@@ -18,19 +18,41 @@ package render
 // first when the window is too short to satisfy both regions: an oversized
 // configured height_rows can never starve the strand stack below its floor,
 // even though that means the header itself may end up shorter than
-// configured (down to zero when the window cannot fit both a header and the
-// floor). A negative headerRows is treated as zero.
+// configured. The result is never less than 1 row as long as windowRows
+// itself has at least 1 row to give — verified against a real tmux instance,
+// select-layout does not cleanly support a genuinely zero-height cell for an
+// always-on pane (it silently keeps a row for it anyway, overflowing the
+// window by one row rather than rendering "no header"; see
+// contract_integration_test.go's TestHeaderNeverGetsZeroHeightLayoutCell), so
+// this function must never hand bandHeader an H=0 header cell. When the
+// window is too short to give the header even that 1 row (windowRows itself
+// non-positive), there is nothing to give and the result is 0. A negative
+// headerRows is treated as zero, then floored the same as any other request.
 func clampHeaderHeight(headerRows, windowRows, minStackRows int) int {
 	if headerRows < 0 {
 		headerRows = 0
+	}
+	if windowRows <= 0 {
+		return 0
 	}
 	floor := minStackRows
 	if floor < 1 {
 		floor = 1
 	}
 	maxHeader := windowRows - floor
-	if maxHeader < 0 {
-		maxHeader = 0
+	if maxHeader < 1 {
+		// Never fully starve the header once it exists: the stack's own
+		// floor is the lesser of two structural violations when the window
+		// cannot fit both, since a starved stack strand still renders
+		// (clampToFit floors every strand at 1 row already) while a
+		// zero-height header cell is mishandled by the real multiplexer.
+		maxHeader = 1
+	}
+	if maxHeader > windowRows {
+		maxHeader = windowRows
+	}
+	if headerRows < 1 {
+		headerRows = 1
 	}
 	if headerRows > maxHeader {
 		return maxHeader
