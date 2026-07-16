@@ -237,3 +237,55 @@ func TestPlanResumeLaunches_ThreeLifecycleStates(t *testing.T) {
 		})
 	}
 }
+
+// TestEnsureHeaderPaneLocked_RebuildRejectsSilentSplitFailure pins the
+// validateSplitCreatedNewPane guard AT ITS ACTUAL CALL SITE inside
+// ensureHeaderPaneLocked's header-rebuild path — not merely the shared pure
+// function (TestValidateSplitCreatedNewPane in spawn_test.go covers that in
+// isolation). The distinction is the whole point: the pure-function test stays
+// green even if the wiring in ensureHeaderPaneLocked is silently deleted, so it
+// cannot protect this call site against a future regression that drops the
+// guard here. This test drives the rebuild through a scripted tmux (the
+// execHook white-box seam) that reproduces psmux's silent too-small-to-split
+// failure — split-window exits 0 and prints an EXISTING pane id — which native
+// tmux cannot produce (it errors loud). With the guard present the rebuild must
+// FAIL and must NOT bind HeaderPaneID to that pre-existing strand pane; if the
+// guard call at this site were removed or bypassed, ensureHeaderPaneLocked
+// would instead record the bogus id and return nil, failing this test.
+func TestEnsureHeaderPaneLocked_RebuildRejectsSilentSplitFailure(t *testing.T) {
+	e := newTestEngine(t)
+
+	// One alive, non-header pane (%0) — the new-session initial pane a fresh
+	// boot leaves before any header exists. It is the only pane, so it is both
+	// the topmost split target and the id psmux's silent-split shape re-prints.
+	const existingPaneID = "%0"
+	listPanesOut := existingPaneID + " 0 0 100 20 4321\n"
+
+	e.tmux.execHook = func(capture bool, args ...string) (string, error) {
+		switch args[0] {
+		case "list-panes":
+			return listPanesOut, nil
+		case "split-window":
+			// psmux silent failure: exit 0, no new pane, an EXISTING pane's id
+			// printed on stdout. Trusting it would bind the header to %0.
+			return existingPaneID + "\n", nil
+		default:
+			// send-keys / kill-pane etc. — only reached if the guard is
+			// (wrongly) bypassed; succeed so the missing-guard regression
+			// returns nil and this test's error assertion catches it.
+			return "", nil
+		}
+	}
+
+	st := &MuxState{Socket: e.Socket(), Session: e.SessionName()}
+	err := e.ensureHeaderPaneLocked(st)
+	if err == nil {
+		t.Fatalf("ensureHeaderPaneLocked accepted a silent-split failure (bound header to pre-existing pane %q); the validateSplitCreatedNewPane guard at this call site is missing or bypassed", existingPaneID)
+	}
+	if !strings.Contains(err.Error(), "split header pane") {
+		t.Errorf("error = %v, want it to name the header split failure", err)
+	}
+	if st.HeaderPaneID != "" {
+		t.Errorf("HeaderPaneID = %q, want unchanged (never bound to the pre-existing strand pane on a rejected rebuild)", st.HeaderPaneID)
+	}
+}

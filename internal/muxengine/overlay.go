@@ -27,6 +27,18 @@ import (
 type TmuxCmd struct {
 	tmuxPath string
 	socket   string
+	// execHook, when non-nil, replaces the real subprocess exec for BOTH run
+	// and output — the single white-box seam a test can stub to drive a
+	// composed engine call site (e.g. ensureHeaderPaneLocked's header-rebuild
+	// split) against a scripted tmux response WITHOUT a live server. It is the
+	// only way to exercise the psmux-only silent-split failure shape (exit 0
+	// with an EXISTING pane id printed) that native tmux cannot produce — the
+	// exact shape validateSplitCreatedNewPane guards each split site against.
+	// capture mirrors output's stdout-capturing call (true) vs run's
+	// discard-stdout call (false); args is the tmux subcommand argv WITHOUT the
+	// leading "-L <socket>", so a hook matches on args[0] (the subcommand)
+	// directly. Production never sets it; a set hook is a test-only override.
+	execHook func(capture bool, args ...string) (string, error)
 }
 
 // NewTmuxCmd builds a TmuxCmd bound to the given tmux binary path and -L
@@ -43,6 +55,10 @@ func NewTmuxCmd(tmuxPath, socket string) TmuxCmd {
 // argument list at Debug level before exec so a -vv run can see exactly
 // what tmux was told to do.
 func (p TmuxCmd) run(args ...string) error {
+	if p.execHook != nil {
+		_, err := p.execHook(false, args...)
+		return err
+	}
 	fullArgs := append([]string{"-L", p.socket}, args...)
 	logger.Debug("tmux", "args", fullArgs)
 	cmd := exec.Command(p.tmuxPath, fullArgs...)
@@ -57,6 +73,9 @@ func (p TmuxCmd) run(args ...string) error {
 // capturing stdout and folding tmux's stderr into the returned error,
 // matching run's tracing and error shape.
 func (p TmuxCmd) output(args ...string) (string, error) {
+	if p.execHook != nil {
+		return p.execHook(true, args...)
+	}
 	fullArgs := append([]string{"-L", p.socket}, args...)
 	logger.Debug("tmux", "args", fullArgs)
 	cmd := exec.Command(p.tmuxPath, fullArgs...)
