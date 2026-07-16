@@ -47,6 +47,17 @@ import it without cycles.
 - **Enforced by** `internal/modelspec/leaf_enforcement_test.go`
   (`TestLeafInvariant_AllowlistOnly`) on every `go test`.
 
+## Tokenvocab Leaf Invariant
+
+`internal/tokenvocab` production code imports only stdlib, `internal/hubgeometry`, and
+`internal/stencil` — so every future consumer (mux's header pipeline, loom's prompt
+templates) can import it without cycles.
+
+- The reverse import (`tokenvocab` → `mux`, `tokenvocab` → `loom`, or any other feature
+  package) is never allowed.
+- **Enforced by** `internal/tokenvocab/leaf_enforcement_test.go`
+  (`TestLeafInvariant_AllowlistOnly`) on every `go test`.
+
 ## CLI / Cobra Invariant
 
 Every lyx CLI module is a cobra subtree assembled under one root in `cmd/lyx/main.go`.

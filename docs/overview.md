@@ -193,6 +193,7 @@ github.com/Knatte18/loomyard/
 ├── internal/lock/                shared file locking
 ├── internal/output/              shared JSON output
 ├── internal/modelspec/           model-spec parser + models.yaml registry leaf
+├── internal/tokenvocab/          shared token vocabulary (repo, hub) + Render compose over stencil, a leaf
 └── internal/shell/               provider-invariant pane-shell mechanics leaf (pwsh + posix)
 ```
 
@@ -289,7 +290,7 @@ the `internal/muxengine` package documentation.)
 scaffolds the shared `_lyx/` config dir for every module.
 
 The user-facing modules sit on a thin layer of shared infrastructure
-(`internal/configengine`, `internal/gitexec`, `internal/lock`, `internal/output`, `internal/hubgeometry`, `internal/state`, `internal/shell`, `internal/modelspec`) — defined in
+(`internal/configengine`, `internal/gitexec`, `internal/lock`, `internal/output`, `internal/hubgeometry`, `internal/state`, `internal/shell`, `internal/modelspec`, `internal/tokenvocab`) — defined in
 [shared-libs/README.md](shared-libs/README.md).
 
 ## Execution stack (orchestration layers)
@@ -328,6 +329,12 @@ requirement), agents run, output files are read, nobody need watch.
 - **provider-invariant** — `shuttle` runs Claude today through an **engine**; the verdict/output
   contract is provider-invariant, so a different model can be swapped in without touching the
   review machinery. Non-Claude is not a current priority.
+- **`tokenvocab` is a shared leaf, not a stack layer** — `internal/tokenvocab` (the `repo`/`hub`
+  token registry + the `Render` compose over `internal/stencil`) sits beside `stencil` and
+  `modelspec` as a general-purpose leaf the stack's modules consume, not a stage of the
+  proc→mux→shuttle→burler→perch→loom chain itself. mux's header text pipeline consumes it
+  today; loom's prompt templates are expected to reuse the same `Render` compose later. See
+  [modules/tokenvocab.md](modules/tokenvocab.md).
 - **perch is independent of loom** — it is a standalone gate loop (`lyx perch`) over `burler` rounds;
   loom just uses it heavily (a perch review between every phase). perch builds on `burler` → `shuttle`,
   not on `loom`.
@@ -355,6 +362,9 @@ The **sandbox Hub** is a dedicated bench for manual testing of lyx's core workfl
 
 - [modules/README.md](modules/README.md) — **the module map**: index of every module doc + how the layers stack (design).
 - [modules/loom.md](modules/loom.md) — the phased orchestrator (`lyx loom` + `lyx perch`); design.
+- [modules/tokenvocab.md](modules/tokenvocab.md) — the shared token vocabulary (`repo`/`hub` +
+  `Render` over `internal/stencil`), consumed by mux's header pipeline and, later, loom's
+  prompt templates; a leaf, not a phased module.
 - [modules/builder.md](modules/builder.md) — the batch-implementation loop (`lyx builder`): verb surface, digest contract, poll classification, chain rollback, pause, outcome contract (as-built; kept as a durable contract doc, not deleted on landing).
 - `internal/muxengine` package documentation — the window to the world: tmux overlay + strand bookkeeping + render (as-built; module doc deleted per the documentation lifecycle).
 - `internal/shuttleengine` package documentation — run one LLM agent via a swappable engine over the file contract (as-built; module doc deleted per the documentation lifecycle).
