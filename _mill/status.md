@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-fixing
+phase: holistic-approved
 slug: burler-fork-cluster
 branch: burler-fork-cluster
 plan: _mill/plan
@@ -34,6 +34,8 @@ approved-burler-cluster-round  '2026-07-16T21:05:38Z'
 approved-docs-and-smoke  '2026-07-16T21:26:21Z'
 holistic-reviewing  '2026-07-16T21:26:32Z'
 holistic-fixing  '2026-07-16T21:30:44Z'
+nits-fixed-holistic  '2026-07-16T21:33:02Z'
+holistic-approved  '2026-07-16T21:33:07Z'
 ```
 
 ## Batches
