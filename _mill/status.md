@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-tokenvocab-module
+phase: approved-header-text-pipeline
 slug: mux-operator-console
 branch: mux-operator-console
 plan: _mill/plan
@@ -26,6 +26,7 @@ planned  '2026-07-16T12:12:22Z'
 implementing  '2026-07-16T12:13:38Z'
 approved-hubgeometry-repo  '2026-07-16T12:19:22Z'
 approved-tokenvocab-module  '2026-07-16T13:26:33Z'
+approved-header-text-pipeline  '2026-07-16T13:33:36Z'
 ```
 
 ## Batches
@@ -43,9 +44,10 @@ batches:
     start_sha: afb6b00dba1f69c7222aa584e648ba32ae78633a
     commit_sha: 94aa23fd63afeb639fe3ec256e7000d5ce5cbf8c
   - name: header-text-pipeline
-    state: running
+    state: approved
     implementer_session: 0a727bb2-c3a9-4e93-9a4c-b6b7cd422272
     start_sha: a3a27fd3186cf8d1600b9bbaa7e8bc5fb31d2b09
+    commit_sha: b82973174d89283e740a5d17e9f38f9d7f156399
   - name: header-pane-and-render
     state: pending
 ```
