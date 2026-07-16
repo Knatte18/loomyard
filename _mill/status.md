@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-docs-and-smoke
+phase: holistic-reviewing
 slug: burler-fork-cluster
 branch: burler-fork-cluster
 plan: _mill/plan
@@ -32,6 +32,7 @@ approved-burler-config-module  '2026-07-16T20:30:11Z'
 approved-claudeengine-fork-mode  '2026-07-16T20:43:42Z'
 approved-burler-cluster-round  '2026-07-16T21:05:38Z'
 approved-docs-and-smoke  '2026-07-16T21:26:21Z'
+holistic-reviewing  '2026-07-16T21:26:32Z'
 ```
 
 ## Batches
