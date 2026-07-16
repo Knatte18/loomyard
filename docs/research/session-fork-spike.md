@@ -7,9 +7,13 @@ reviewers, and a forked reviewer costs less than half of a cold one. One design 
 hard "ignore everything else" lenses were *not* load-bearing — identical-prompt forks
 diverged strongly on their own and out-covered the lens arm.
 
-Rig: `tools/fork-poc/` (prompts, spawn/wait/harvest helpers). Raw session outputs:
-`tools/fork-poc/results/`. All live sessions ran as `lyx mux` strands in the sandbox hub
-(`~/Code/lyx-test-HUB/lyx-test`), watched live by the operator via `lyx mux attach`.
+Rig and raw data: the throwaway harness (`tools/fork-poc/` — prompts, spawn/wait/
+harvest helpers) and every raw session output (`tools/fork-poc/results/`) were
+committed incrementally on the task branch and removed before merge; all `tools/
+fork-poc/...` paths referenced below resolve in the task branch's history (archive
+tag `session-fork-diversity-spike`), not on main. All live sessions ran as `lyx mux`
+strands in the sandbox hub (`~/Code/lyx-test-HUB/lyx-test`), watched live by the
+operator via `lyx mux attach`.
 
 ## Step 0 — transcript persistence (attempt 1's blocker)
 
