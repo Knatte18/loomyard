@@ -69,7 +69,7 @@ func buildRoundProfile(p Profile, paths roundArtifactPaths, priorReviews, priorF
 		Rubric:            p.Rubric,
 		FixScope:          p.FixScope,
 		ToolUse:           p.ToolUse,
-		ClusterN:          p.ClusterN,
+		ClusterFan:        p.ClusterFan,
 		ReviewPath:        paths.Review,
 		FixerReportPath:   paths.FixerReport,
 		PriorReviews:      priorReviews,
