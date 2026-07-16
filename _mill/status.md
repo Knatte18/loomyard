@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: burler-fork-cluster
 branch: burler-fork-cluster
 plan: _mill/plan
@@ -26,4 +26,21 @@ plan-review-r3  '2026-07-16T20:09:12Z'
 plan-fix-r3  '2026-07-16T20:09:12Z'
 plan-fix-r4  '2026-07-16T20:14:00Z'
 planned  '2026-07-16T20:14:11Z'
+implementing  '2026-07-16T20:17:53Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: shell-env-and-shuttle-fork-types
+    state: pending
+  - name: burler-config-module
+    state: pending
+  - name: claudeengine-fork-mode
+    state: pending
+  - name: burler-cluster-round
+    state: pending
+  - name: docs-and-smoke
+    state: pending
 ```
