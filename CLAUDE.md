@@ -29,6 +29,24 @@ Pushing directly to `main` is fine in this repo — no PR or branch-first gate. 
 self-contained changes (doc moves, fixups) may be committed and pushed straight to
 `main`. This overrides the global "branch first / commit only when asked" default.
 
+## Worktree isolation — never write outside your own worktree
+
+"This branch is fine to push directly to" (e.g. the rule above) is a statement about
+which **branch** a change may land on — it is never permission to touch a **worktree**
+other than the one you were invoked in. This repo always has several worktrees
+checked out at once (`<container>/wts/<slug>`, one per active mill task, plus a
+long-lived one tracking `main`) — a worktree that isn't yours is a black box: you
+cannot see whether another session, script, or the user has uncommitted changes
+there, holds a file open, or is mid-commit/push. Editing, committing, or pushing in
+it risks silently clobbering someone else's in-progress work.
+
+If a change needs to land on a different branch than your current worktree's own
+(e.g. an unrelated `main`-only doc fixup while working a task worktree), either do it
+in your own worktree and let it ride whatever branch/PR that implies, create a
+**brand-new** worktree of your own via `git worktree add <fresh-path>` for that one
+change, or ask the user how they want it handled. Never `cd` into or reuse an
+already-checked-out worktree just because it's convenient.
+
 ## Mill wiki
 
 Never write to the mill wiki directly. Absolutely all interaction with the mill
