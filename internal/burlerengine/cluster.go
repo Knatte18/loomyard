@@ -54,7 +54,9 @@ var mutatingGitPattern = regexp.MustCompile(
 //     hook denied, is itself the violation — forks cannot nest.
 //  3. Any fork with WriteCalls > 0: a fork reviewer must never mutate a file.
 //  4. Any fork whose BashCommands contains an entry matching mutatingGitPattern: a fork
-//     reviewer must never run any git command.
+//     reviewer must never run a state-mutating git command. Read-only git (log/diff/
+//     status and the like) is intentionally out of scope for this backstop — see
+//     mutatingGitPattern's doc comment for the exact subcommand list it flags.
 //  5. audit.NamedSpawns > 0: a named fork silently loses inherited context — silent
 //     quality degradation is the rejected class, same severity as the mechanical
 //     violations above it.
@@ -84,7 +86,7 @@ func auditClusterRound(audit *shuttleengine.ForkAudit, wantN int) ([]string, err
 	for _, fork := range audit.Forks {
 		for _, cmd := range fork.BashCommands {
 			if mutatingGitPattern.MatchString(cmd) {
-				return nil, fmt.Errorf("burler: fork %q ran a git-mutating command (%q) — a fork reviewer must never run any git command", fork.TranscriptPath, cmd)
+				return nil, fmt.Errorf("burler: fork %q ran a git-mutating command (%q) — a fork reviewer must never run a state-mutating git command", fork.TranscriptPath, cmd)
 			}
 		}
 	}
