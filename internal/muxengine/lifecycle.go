@@ -440,7 +440,13 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 // validated print-then-block pipeline, never a strand's cmd/resumeCmd. It
 // assumes the op lock is already held and always persists st immediately on
 // success, before returning, so a later failure elsewhere in the same op
-// can never orphan an untracked header pane.
+// can never orphan an untracked header pane. One cosmetic consequence of
+// the boot ordering: until the first strand is actually placed, the header
+// keeps whatever height the -b split gave it (roughly half the window) —
+// applyLayoutLocked deliberately skips select-layout while no strand owns
+// a present pane (the empty-layout protection), so the configured
+// height_rows band is only enforced from the first placement on. This is
+// intended, not drift.
 func (e *Engine) ensureHeaderPaneLocked(st *MuxState) error {
 	session := e.SessionName()
 	live, err := e.tmux.listPanes(session)
