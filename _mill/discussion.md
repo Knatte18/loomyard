@@ -137,6 +137,28 @@ everything into one severity-ordered review, and feeds the existing fix phase.
   design — 5–6× costlier per reviewer, needs unbuilt mux work); reviewers as CLI
   `--resume --fork-session` strands (no cache reuse — session-id-unique system prompt).
 
+### Fork discipline: read-only phase-A workers
+
+- Decision: The handler-composed fork prompts carry a fixed boilerplate discipline
+  (part of the cluster block's machinery, never per-lens): read-only evidence gathering
+  only (read files, read-only commands per the round's tool-use rules); never Write/
+  Edit/delete any file — host or weft/`_lyx` (weft files are visible and writable via
+  the junctions, but forks have no overlay files to write: the round's two output files
+  are handler-owned); no git commands of any kind (weft git is categorically an
+  in-process weftengine operation per the Weft Git Invariant; host git commit-per-fix
+  is phase-B discipline, reserved to the handler); never touch the round's ReviewPath/
+  FixerReportPath (shuttle classifies the run done the instant both exist — a fork
+  writing them mid-phase-2 would end the round under the handler); findings return ONLY
+  as the fork's final message. This discharges the Weft Git Invariant's
+  prompt-template review obligation for fork prompts explicitly.
+- Rationale: Forks keep ALL tools (`useExactTools`) — without stated discipline a
+  phase-A fork could mutate target files (destroying A-before-B), run git against
+  weft paths, or prematurely satisfy the file contract. Prompt discipline is the
+  steering layer; the audit (below) is the enforcement layer.
+- Rejected: relying on the fix-scope rules (they bind phase B, the handler — forks are
+  never on that write surface); advisory-only treatment of fork file mutations (an
+  A-phase mutation of the target is a broken round, not sloppiness).
+
 ### Prompt integration: Go-composed cluster marker
 
 - Decision: The cluster instructions enter `review-prompt-template.md` as new top-level
@@ -172,7 +194,14 @@ everything into one severity-ordered review, and feeds the existing fix phase.
   Non-cluster runs keep today's blanket Agent deny unchanged
   (`claude_deny_agent_tool: true` default untouched). The hook command pattern-matches
   the stdin JSON payload with grep-class tools under git-bash (no jq dependency) — same
-  execution environment the Stop hook already relies on.
+  execution environment the Stop hook already relies on. Concrete pattern: ALLOW iff
+  the payload contains the compact-JSON substring `"subagent_type":"fork"`, DENY
+  otherwise. The `name`-ban is deliberately NOT hook-checked — a `"name"` substring is
+  indistinguishable from prompt-string content by grep — so unnamed-ness is enforced by
+  the fork-spawn prompt and verified by the audit from the parent transcript's recorded
+  Agent tool_use input. The hook is a steering guard with the audit as backstop, not a
+  security boundary (the allow substring could in principle appear inside a non-fork
+  call's prompt text).
 - Rationale: Mechanical prevention beats prompt trust (operator decision). Session-level
   hooks also police Agent calls made INSIDE forks, so a fork attempting any non-fork
   Agent call is denied by the hook, and fork-in-fork is additionally blocked by CC
@@ -204,7 +233,10 @@ everything into one severity-ordered review, and feeds the existing fix phase.
   implements it — it owns the knowledge that fork transcripts live at
   `~/.claude/projects/<encoded-cwd>/<session-id>/subagents/*.jsonl` (path-encoding prior
   art exists in muxcli smoke tests) — and returns provider-invariant per-fork facts:
-  fork count, Agent-call count, tool-call counts, whether a report was returned. The
+  fork count, Agent-call count, file-mutating tool calls (Write/Edit/NotebookEdit,
+  git-mutating Bash), tool-call counts, whether a report was returned, and the spawn
+  parameters recorded in the parent transcript's Agent tool_use input (for the
+  unnamed-fork check). The
   Runner attaches the audit to `shuttleengine.Result` when the Spec requested fork mode
   (after a done classification). burlerengine applies policy on top.
 - Rationale: Transcript layout is Claude-specific (Provider-Seam Invariant); policy —
@@ -225,7 +257,11 @@ everything into one severity-ordered review, and feeds the existing fix phase.
   (2) **An Agent call found inside a fork transcript** is a hard error too — the
   mechanical prevention layer (hook + CC depth block) failed, which is a bug, not a
   judgment call.
-  (3) **Format non-adherence and rogue tool sprees** are NOT round-failing: they are
+  (2b) **A file-mutating tool call inside a fork transcript** (Write/Edit/NotebookEdit,
+  or a git-mutating Bash command) is a hard error of the same class: it breaks
+  A-before-B, the weft discipline, or the file contract mechanically (see the fork
+  discipline decision above).
+  (3) **Format non-adherence and rogue read-only tool sprees** are NOT round-failing: they are
   hook-unpreventable agent behavior, the handler-as-judge phase is the semantic defense
   (spike-proven: it flagged the rogue fork and salvaged its novel findings), and the
   audit records them (tool-call counts, report-returned flags) as visible signal on the
@@ -250,6 +286,19 @@ everything into one severity-ordered review, and feeds the existing fix phase.
 - Rejected: strict machine schema (origin required at cluster, rejected list in
   frontmatter — parser rules for data nothing machine-consumes yet); prose-only origin
   (loses cheap provenance).
+
+### Cluster timeout: no auto-scaling
+
+- Decision: Cluster rounds get no automatic timeout scaling. `RunOpts.Timeout` is
+  already per-invocation (profile/flags/perch round config); operators and perch set a
+  longer `--timeout` for cluster profiles. A cluster round that outruns its deadline
+  surfaces as the existing `OutcomeTimeout`. Document the guidance (fan length and the
+  CC concurrency cap min(16, cores−2) — forks queue and serialize on low-core hosts) in
+  the burlerengine package doc and the CLI `Long` text.
+- Rationale: The knob exists and is caller-resolved by design (the run-tuning-off-profile
+  decision); inventing a scaling formula couples burler to host-core guesswork.
+- Rejected: auto-multiplying the timeout by fan length (hides the real cost profile and
+  overrides explicit operator tuning).
 
 ### Engine wiring for fan resolution
 
@@ -340,7 +389,8 @@ everything into one severity-ordered review, and feeds the existing fix phase.
   prompt composition — cluster block present with resolved lens texts at cluster,
   explicit no-cluster prose otherwise, all markers non-empty; audit policy — exact-N
   enforcement returns the typed sentinel with requested/actual counts, Agent-call-in-fork
-  hard error, sloppy-fork facts surface on Result without failing; ParseReview — `origin:`
+  and file-mutation-in-fork hard errors, sloppy-fork facts surface on Result without
+  failing; ParseReview — `origin:`
   carried when present, absent-origin files still parse (backward compat).
 - **Template pins:** extend `TestTemplate_StatesRoundDiscipline`-class assertions to the
   cluster sequencing statements (consolidated review on disk before B; forks spawned in
@@ -409,3 +459,8 @@ everything into one severity-ordered review, and feeds the existing fix phase.
 - **Q:** "Fan" or "profile"? **A:** Operator: not important, your call — "fan" (avoids
   double-booking "profile", matches the fan-out framing); docs note "fan (a cluster
   profile)" once.
+- **Q:** (review gap r1) Fork write/weft-git discipline? **A:** Operator confirmed the
+  hard line: weft files are visible via junctions in the host repo, but ALL commits of
+  weft files happen via the weft module — and forks get the full read-only discipline
+  (no writes, no git, no output-file touches; findings as final message only), with
+  file-mutating fork tool calls audit-enforced as round-failing.
