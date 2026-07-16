@@ -3,7 +3,7 @@
 ```yaml
 task: "Fork-based cluster review in burler"
 slug: "burler-fork-cluster"
-approved: false
+approved: true
 started: "20260716-194307"
 parent: "main"
 root: ""

@@ -30,6 +30,7 @@ interface for batch 4: `burlerengine.Config`, `Lens`, `LoadConfig`, `ResolveFan`
 - **Context:**
   - `internal/modelspec/load.go`
   - `internal/modelspec/template.go`
+  - `internal/hubgeometry/hubgeometry.go`
   - `internal/burlerengine/template.go`
   - `docs/research/session-fork-spike.md`
 - **Edits:** none
