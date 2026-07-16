@@ -35,6 +35,14 @@
 // go. It boots alongside the session/initial pane on both Up and Resume, and
 // Engine.ValidateHeader runs eagerly on every boot path so a bad header
 // template surfaces loud before the pane is ever created, never silently.
+// A header whose keepalive process dies (pane_dead=1) is deliberately kept
+// as an enumerable corpse by reconcile — never killed there — and healed
+// (corpse killed, a fresh header split back in at the physical top) by
+// ensureHeaderPaneLocked on the next Up/Resume; planLayout only ever emits
+// a header cell for a pane actually present in the window, so a stale
+// HeaderPaneID can never put an absent pane's cell into select-layout's
+// string (which a real tmux accepts and misassigns positionally rather
+// than rejecting).
 //
 // # Multiplexer contract surface
 //

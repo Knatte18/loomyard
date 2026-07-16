@@ -132,6 +132,31 @@ func TestPlanReconcile(t *testing.T) {
 			headerPaneID: "%header",
 			wantCleared:  nil,
 		},
+		{
+			// A DEAD header pane must not be scheduled for killing either —
+			// the dead-pane kill loop, not only the untracked reap, spares
+			// it. Nothing outside up/resume rebuilds a header, so killing
+			// the corpse here would leave every intermediate add/remove
+			// headerless with a stale HeaderPaneID (the fable-header-r1
+			// layout-scramble-then-wedged-up defect). The kept corpse stays
+			// enumerable; ensureHeaderPaneLocked heals it at the next boot.
+			name:         "DeadHeaderPaneKeptNotKilled",
+			strands:      []Strand{{GUID: "g1", PaneID: "%1"}},
+			live:         []LivePane{{ID: "%header", Dead: true}, {ID: "%1", Dead: false}},
+			headerPaneID: "%header",
+			wantCleared:  nil,
+		},
+		{
+			// A dead header alongside a dead strand pane: the strand corpse
+			// is still killable business-as-usual (an alive pane remains),
+			// while the header corpse stays exempt.
+			name:            "DeadHeaderExemptWhileDeadStrandPaneStillKilled",
+			strands:         []Strand{{GUID: "g1", PaneID: "%1"}, {GUID: "g2", PaneID: "%2"}},
+			live:            []LivePane{{ID: "%header", Dead: true}, {ID: "%1", Dead: true}, {ID: "%2", Dead: false}},
+			headerPaneID:    "%header",
+			wantCleared:     []string{"g1"},
+			wantPanesToKill: []string{"%1"},
+		},
 	}
 
 	for _, tt := range tests {

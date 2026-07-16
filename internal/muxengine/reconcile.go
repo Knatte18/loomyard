@@ -60,7 +60,12 @@ import "fmt"
 // it is added ONLY to a separate exemptPaneIDs set that the untracked-pane
 // reap loop below checks, so the header pane itself is never killed as an
 // "untracked" pane while still never counting toward "mux owns bound
-// content" (Shared Decision header-is-not-a-strand).
+// content" (Shared Decision header-is-not-a-strand). The header is spared
+// by the DEAD-pane kill loop too: a pane_dead=1 header corpse is kept
+// enumerable rather than killed, since only up/resume can rebuild a header
+// (ensureHeaderPaneLocked) and killing it here would leave every
+// intermediate add/remove running headerless with a stale HeaderPaneID —
+// see the comment at the kill loop.
 func planReconcile(strands []Strand, live []LivePane, headerPaneID string) (clearedGUIDs []string, panesToKill []string, keptDeadPane string) {
 	liveByID := make(map[string]LivePane, len(live))
 	for _, p := range live {
@@ -89,9 +94,20 @@ func planReconcile(strands []Strand, live []LivePane, headerPaneID string) (clea
 		}
 	}
 
+	// The header pane is exempt from the dead-pane kill too, not only from
+	// the untracked reap below: nothing outside up/resume ever rebuilds the
+	// header, so killing a pane_dead=1 header here would leave the session
+	// headerless (breaking the always-on keepalive the header exists for)
+	// with a stale HeaderPaneID until the next up/resume — and, before the
+	// planLayout presence filter existed, that stale id was still emitted as
+	// a layout cell, which a real tmux ACCEPTS (exit 0) and assigns
+	// positionally, scrambling every strand's height (observed live,
+	// tmux 3.6). A kept header corpse instead stays enumerable, keeps the
+	// cell/pane count consistent, and is healed — killed and re-split — by
+	// ensureHeaderPaneLocked on the next up/resume.
 	killSet := make(map[string]bool, len(live))
 	for _, p := range live {
-		if p.Dead && p.ID != keptDeadPaneID {
+		if p.Dead && p.ID != keptDeadPaneID && p.ID != headerPaneID {
 			killSet[p.ID] = true
 			panesToKill = append(panesToKill, p.ID)
 		}

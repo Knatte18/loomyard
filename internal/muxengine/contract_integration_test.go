@@ -505,6 +505,154 @@ func TestRemoveStrand_SoleStrandEmptiesSessionSucceeds(t *testing.T) {
 	}
 }
 
+// TestDeadHeaderPaneIsHealedByUpWithoutCorruptingLayout drives the
+// dead-header lifecycle the fable-header-r1 round found broken, end to end
+// against a real multiplexer: the header's keepalive process exits
+// (pane_dead=1 under remain-on-exit), a subsequent AddStrand must keep the
+// corpse enumerable (reconcile's dead-kill exemption) and lay out with no
+// window-bottom overflow and no stale-cell scramble (planLayout's presence
+// filter), and the next Up must heal the header — kill the corpse, split a
+// fresh header back in at the physical top, persist the new id — instead of
+// treating the corpse as a working header (the old presence-keyed
+// idempotency check) or wedging on a too-short split target (the old
+// first-alive targeting). Pre-fix this sequence scrambled every strand's
+// height on the add and then failed every up with "no space for new pane"
+// until a full down.
+func TestDeadHeaderPaneIsHealedByUpWithoutCorruptingLayout(t *testing.T) {
+	tmpDir := t.TempDir()
+	seedMuxConfig(t, tmpDir)
+
+	cfg, err := LoadConfig(tmpDir, "mux")
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if _, err := exec.LookPath(cfg.Tmux); err != nil {
+		t.Skipf("configured multiplexer binary %q not found: %v", cfg.Tmux, err)
+	}
+
+	layout := &hubgeometry.Layout{
+		Cwd:          tmpDir,
+		WorktreeRoot: tmpDir,
+		Hub:          filepath.Dir(tmpDir),
+	}
+	e := New(cfg, layout)
+
+	t.Cleanup(func() {
+		_, _ = e.Down()
+		_ = e.tmux.run("kill-server")
+	})
+
+	if _, err := e.Up(); err != nil {
+		t.Fatalf("Up: %v", err)
+	}
+	st, err := LoadState(layout.DotLyxDir())
+	if err != nil || st == nil || st.HeaderPaneID == "" {
+		t.Fatalf("LoadState after Up = (%+v, %v), want a persisted HeaderPaneID", st, err)
+	}
+	deadHeaderID := st.HeaderPaneID
+
+	if _, err := e.AddStrand(AddSpec{Cmd: "sleep 300", Display: render.Display{Anchor: render.AnchorBelowParent}}); err != nil {
+		t.Fatalf("AddStrand (first): %v", err)
+	}
+
+	// Kill the header's keepalive by pid: the pane's shell/keepalive does
+	// not read stdin (that is the keepalive's whole contract), so typing
+	// exit would go nowhere — killing #{pane_pid} is how a real keepalive
+	// death looks to tmux. remain-on-exit then corpses the pane
+	// (pane_dead=1); the flip is asynchronous, so poll.
+	live, err := e.tmux.listPanes(e.SessionName())
+	if err != nil {
+		t.Fatalf("listPanes before header kill: %v", err)
+	}
+	for _, p := range live {
+		if p.ID == deadHeaderID {
+			proc, err := os.FindProcess(p.PID)
+			if err != nil {
+				t.Fatalf("FindProcess(header pane pid %d): %v", p.PID, err)
+			}
+			if err := proc.Kill(); err != nil {
+				t.Fatalf("kill header pane pid %d: %v", p.PID, err)
+			}
+		}
+	}
+	waitUntil(t, 10*time.Second, "header pane never reported dead", func() bool {
+		live, err := e.tmux.listPanes(e.SessionName())
+		if err != nil {
+			return false
+		}
+		for _, p := range live {
+			if p.ID == deadHeaderID {
+				return p.Dead
+			}
+		}
+		return false
+	})
+
+	// An add with the header dead: must succeed, keep the corpse enumerable,
+	// and produce a sane layout (no pane past the window's bottom edge — the
+	// stale-cell scramble's signature was positional misassignment).
+	if _, err := e.AddStrand(AddSpec{Cmd: "sleep 300", Display: render.Display{Anchor: render.AnchorBelowParent}}); err != nil {
+		t.Fatalf("AddStrand with dead header: %v", err)
+	}
+	live, err = e.tmux.listPanes(e.SessionName())
+	if err != nil {
+		t.Fatalf("listPanes after add-with-dead-header: %v", err)
+	}
+	corpsePresent := false
+	for _, p := range live {
+		if p.ID == deadHeaderID {
+			corpsePresent = true
+			if !p.Dead {
+				t.Errorf("header corpse %s reports alive after add, want still dead", deadHeaderID)
+			}
+		}
+		if p.Top+p.Height > cfg.Height {
+			t.Errorf("pane %s top+height = %d+%d exceeds window height %d after add-with-dead-header (stale-cell scramble)", p.ID, p.Top, p.Height, cfg.Height)
+		}
+	}
+	if !corpsePresent {
+		t.Fatalf("header corpse %s was killed by the add's reconcile; it must stay enumerable until up/resume heals it (panes: %+v)", deadHeaderID, live)
+	}
+
+	// The heal: Up must replace the corpse with a fresh, alive, physically
+	// topmost header and persist its id.
+	if _, err := e.Up(); err != nil {
+		t.Fatalf("Up (heal) = %v, want success — pre-fix this wedged on \"no space for new pane\"", err)
+	}
+	st, err = LoadState(layout.DotLyxDir())
+	if err != nil || st == nil || st.HeaderPaneID == "" {
+		t.Fatalf("LoadState after healing Up = (%+v, %v), want a persisted HeaderPaneID", st, err)
+	}
+	if st.HeaderPaneID == deadHeaderID {
+		t.Fatalf("HeaderPaneID still names the corpse %s after the healing Up", deadHeaderID)
+	}
+	live, err = e.tmux.listPanes(e.SessionName())
+	if err != nil {
+		t.Fatalf("listPanes after healing Up: %v", err)
+	}
+	headerSeen := false
+	for _, p := range live {
+		if p.ID == deadHeaderID {
+			t.Errorf("header corpse %s still present after the healing Up, want it killed and replaced", deadHeaderID)
+		}
+		if p.ID == st.HeaderPaneID {
+			headerSeen = true
+			if p.Dead {
+				t.Errorf("healed header pane %s reports dead", p.ID)
+			}
+			if p.Top != 0 {
+				t.Errorf("healed header pane %s top = %d, want 0 (physically topmost — render.Rules emits its cell first)", p.ID, p.Top)
+			}
+		}
+		if p.Top+p.Height > cfg.Height {
+			t.Errorf("pane %s top+height = %d+%d exceeds window height %d after the healing Up", p.ID, p.Top, p.Height, cfg.Height)
+		}
+	}
+	if !headerSeen {
+		t.Fatalf("healed header pane %s missing from live panes %+v", st.HeaderPaneID, live)
+	}
+}
+
 // TestHeaderNeverGetsZeroHeightLayoutCell pins clampHeaderHeight's
 // never-below-1 floor (height.go) against a real multiplexer. A pathological
 // config — height_rows large relative to a tiny window height — used to let

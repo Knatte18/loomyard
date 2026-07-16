@@ -400,9 +400,22 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 }
 
 // ensureHeaderPaneLocked ensures this hub's always-present header pane
-// exists, (re)creating it when st.HeaderPaneID is empty or names a pane no
-// longer present in the live set — idempotent across up/resume, exactly
-// like the rest of this file's boot steps. It never touches st.Strands: the
+// exists AND is alive, (re)creating it when st.HeaderPaneID is empty, names
+// a pane no longer present in the live set, or names a dead-but-present
+// corpse (the keepalive process exited — one attached-operator keystroke
+// away — and reconcile deliberately never kills a dead header, so this boot
+// step is the single place a header is ever healed) — idempotent across
+// up/resume, exactly like the rest of this file's boot steps. A corpse is
+// killed before the new header is split (when it is not the session's sole
+// pane — killing a sole pane would end the session, so that order flips)
+// so the top row it occupied is freed for the replacement. The split
+// targets the TOPMOST pane with -b, never merely the first alive one:
+// render.Rules emits the header cell first and psmux/tmux assign layout
+// cells positionally, so a rebuilt header must land physically topmost or
+// every later select-layout would misassign heights; splitting a dead
+// topmost pane works (remain-on-exit corpses stay splittable), and a
+// too-short topmost pane fails the split loud rather than silently. It
+// never touches st.Strands: the
 // header pane is a first-class but separate construct (Shared Decision
 // header-is-not-a-strand), so it must never be added to the strand table
 // this method would otherwise mutate. It splits off whichever pane is
@@ -431,20 +444,54 @@ func (e *Engine) ensureHeaderPaneLocked(st *MuxState) error {
 		return fmt.Errorf("list panes: %w", err)
 	}
 
-	if st.HeaderPaneID != "" && liveIDSet(live)[st.HeaderPaneID] {
-		// Already present: idempotent no-op across up/resume.
+	if len(live) == 0 {
+		// A zero-pane husk cannot host a split; surface it rather than
+		// panicking on an empty slice below. ensureServerAndSessionLocked
+		// kills husks before this runs, so reaching this means the session
+		// emptied between the two probes — an error, not an invariant.
+		return fmt.Errorf("session %s has no panes to split a header pane from", session)
+	}
+
+	if st.HeaderPaneID != "" && aliveIDSet(live)[st.HeaderPaneID] {
+		// Present AND alive: idempotent no-op across up/resume. Aliveness,
+		// not mere presence, is the check — a dead-but-present header corpse
+		// (kept enumerable by reconcile's deliberate exemption) must be
+		// healed here, not mistaken for a working header.
 		return nil
 	}
 
-	// Split off whatever pane is currently alive; fall back to the first
-	// present pane if every pane is somehow already dead (this boot path
-	// runs before any strand has been (re)launched, so a dead corpse here
-	// would be unusual, but splitting a dead pane still works).
+	// A dead-but-present header corpse is killed before the replacement is
+	// split, so its top row is freed and the topmost target below is a real
+	// (usually alive) pane — unless the corpse is the session's SOLE pane,
+	// where killing first would end the session; then the corpse itself is
+	// the split target and it is killed after the new pane exists.
+	corpseID := ""
+	if st.HeaderPaneID != "" && liveIDSet(live)[st.HeaderPaneID] {
+		corpseID = st.HeaderPaneID
+		if len(live) > 1 {
+			if err := e.tmux.run("kill-pane", "-t", corpseID); err != nil {
+				return fmt.Errorf("kill dead header pane %s: %w", corpseID, err)
+			}
+			corpseID = ""
+			live, err = e.tmux.listPanes(session)
+			if err != nil {
+				return fmt.Errorf("list panes after killing dead header: %w", err)
+			}
+			if len(live) == 0 {
+				return fmt.Errorf("session %s has no panes to split a header pane from", session)
+			}
+		}
+	}
+
+	// The topmost pane, so the -b split lands the new header physically
+	// topmost (see the doc comment). When the sole pane is the corpse this
+	// resolves to the corpse itself, by design.
 	target := live[0].ID
-	for _, p := range live {
-		if !p.Dead {
+	targetTop := live[0].Top
+	for _, p := range live[1:] {
+		if p.Top < targetTop {
 			target = p.ID
-			break
+			targetTop = p.Top
 		}
 	}
 
@@ -472,6 +519,13 @@ func (e *Engine) ensureHeaderPaneLocked(st *MuxState) error {
 	paneID := strings.TrimSpace(out)
 	if paneID == "" {
 		return fmt.Errorf("split-window created no header pane (target %s)", target)
+	}
+
+	if corpseID != "" {
+		// The sole-pane corpse the new header was split off of: now that a
+		// second pane exists, killing it can no longer end the session.
+		// Best-effort — a corpse that somehow vanished already is fine.
+		_ = e.tmux.run("kill-pane", "-t", corpseID)
 	}
 
 	launchCmd := headerLaunchCmd(shell.ForGOOS(), exe)

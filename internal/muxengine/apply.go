@@ -72,13 +72,27 @@ func paneIDsByTop(live []LivePane) []string {
 // and the configured header height are threaded through as render.Header —
 // the header is never itself a Strand (Shared Decision
 // header-is-not-a-strand), so it is injected at this Params seam rather
-// than being appended to strands.
+// than being appended to strands — but ONLY while that pane is actually
+// present in live: a stale HeaderPaneID (the header pane killed externally,
+// or its corpse gone before the next up/resume rebuilds it) must never be
+// emitted as a layout cell, because a real tmux ACCEPTS a layout naming an
+// absent pane (exit 0, more cells than panes) and assigns the cells
+// positionally, scrambling every strand's height (observed live, tmux 3.6 —
+// contradicting the once-assumed "tmux rejects a mismatched layout").
+// Presence, not aliveness, is the right filter: a dead-but-present header
+// corpse still occupies a window slot the layout must enumerate, exactly
+// like a strand corpse.
 func (e *Engine) planLayout(st *MuxState, live []LivePane) (layout, focus string, err error) {
-	strands := toRenderStrands(st.Strands, liveIDSet(live))
+	presentIDs := liveIDSet(live)
+	strands := toRenderStrands(st.Strands, presentIDs)
+	headerPaneID := st.HeaderPaneID
+	if !presentIDs[headerPaneID] {
+		headerPaneID = ""
+	}
 	return render.Rules(strands, render.Box{X: 0, Y: 0, W: e.cfg.Width, H: e.cfg.Height}, render.Params{
 		CollapsedStripRows: e.cfg.CollapsedStripRows,
 		MinFullRows:        e.cfg.MinFullRows,
-		Header:             render.Header{PaneID: st.HeaderPaneID, HeightRows: e.cfg.Header.HeightRows},
+		Header:             render.Header{PaneID: headerPaneID, HeightRows: e.cfg.Header.HeightRows},
 	}, paneIDsByTop(live))
 }
 

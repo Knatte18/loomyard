@@ -75,6 +75,69 @@ func TestPlanLayout_HiddenStrandExcludedFromPlacement(t *testing.T) {
 	}
 }
 
+// TestPlanLayout_StaleHeaderPaneIDNeverEmittedAsLayoutCell pins planLayout's
+// header presence filter: a persisted HeaderPaneID naming a pane no longer
+// in the window (the header pane killed externally, or gone before the next
+// up/resume heals it) must render exactly as if no header existed — a real
+// tmux ACCEPTS a layout string naming an absent pane (exit 0, more cells
+// than panes) and assigns cells positionally, scrambling every strand's
+// height (observed live, tmux 3.6, fable-header-r1), so the stale cell must
+// never be emitted in the first place. A dead-but-PRESENT header corpse, by
+// contrast, must still get its cell (it occupies a window slot the layout
+// has to enumerate).
+func TestPlanLayout_StaleHeaderPaneIDNeverEmittedAsLayoutCell(t *testing.T) {
+	e := newTestEngine(t)
+	e.cfg.Width, e.cfg.Height = 100, 21
+	e.cfg.CollapsedStripRows, e.cfg.MinFullRows = 2, 3
+	e.cfg.Header.HeightRows = 1
+
+	strands := []Strand{
+		{GUID: "a", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent}},
+		{GUID: "b", PaneID: "%2", Display: render.Display{Anchor: render.AnchorBelowParent}},
+	}
+	renderStrands := []render.Strand{
+		{GUID: "a", PaneID: "%1", Live: true, Display: render.Display{Anchor: render.AnchorBelowParent}},
+		{GUID: "b", PaneID: "%2", Live: true, Display: render.Display{Anchor: render.AnchorBelowParent}},
+	}
+	live := []LivePane{{ID: "%1", Top: 0}, {ID: "%2", Top: 11}}
+
+	// Stale header: %9 is nowhere in live, so the plan must equal the
+	// no-header plan bit for bit.
+	st := &MuxState{Strands: strands, HeaderPaneID: "%9"}
+	gotLayout, gotFocus, err := e.planLayout(st, live)
+	if err != nil {
+		t.Fatalf("planLayout() unexpected error: %v", err)
+	}
+	wantLayout, wantFocus, err := render.Rules(renderStrands,
+		render.Box{X: 0, Y: 0, W: 100, H: 21},
+		render.Params{CollapsedStripRows: 2, MinFullRows: 3},
+		[]string{"%1", "%2"})
+	if err != nil {
+		t.Fatalf("render.Rules() unexpected error: %v", err)
+	}
+	if gotLayout != wantLayout || gotFocus != wantFocus {
+		t.Errorf("planLayout() with stale header = (%q,%q), want the no-header plan (%q,%q)", gotLayout, gotFocus, wantLayout, wantFocus)
+	}
+
+	// Present-but-dead header corpse: the cell must still be emitted, same
+	// as any dead-but-present pane the layout has to enumerate.
+	liveWithCorpse := append([]LivePane{{ID: "%9", Dead: true, Top: 0}}, []LivePane{{ID: "%1", Top: 2}, {ID: "%2", Top: 12}}...)
+	gotLayout, _, err = e.planLayout(st, liveWithCorpse)
+	if err != nil {
+		t.Fatalf("planLayout() with corpse header unexpected error: %v", err)
+	}
+	wantLayout, _, err = render.Rules(renderStrands,
+		render.Box{X: 0, Y: 0, W: 100, H: 21},
+		render.Params{CollapsedStripRows: 2, MinFullRows: 3, Header: render.Header{PaneID: "%9", HeightRows: 1}},
+		[]string{"%9", "%1", "%2"})
+	if err != nil {
+		t.Fatalf("render.Rules() with header unexpected error: %v", err)
+	}
+	if gotLayout != wantLayout {
+		t.Errorf("planLayout() with corpse header = %q, want the with-header plan %q (a present corpse still occupies a layout slot)", gotLayout, wantLayout)
+	}
+}
+
 func TestApplyLayoutLocked_SkipsTmuxWhenFewerThanTwoLivePanes(t *testing.T) {
 	// e's tmux points at a nonexistent binary (newTestEngine's fixture);
 	// if applyLayoutLocked issued select-layout/select-pane here it would
