@@ -38,8 +38,8 @@ batches:
     commit_sha: 957ad2249a6f446ef01346f6391447dce44dc9cc
   - name: tokenvocab-module
     state: running
-    implementer_session: d3e2f1dd-bf86-4b02-b874-b5a336651ed5
-    start_sha: 8fbd0a03d56dd580750800914457b2a9e9fe154d
+    implementer_session: 1cbdd6c9-1b49-44d5-aa75-8f81fa2f1af8
+    start_sha: afb6b00dba1f69c7222aa584e648ba32ae78633a
   - name: header-text-pipeline
     state: pending
   - name: header-pane-and-render
