@@ -226,6 +226,13 @@ unreliable for it).
 - **Mouse mode:** default is `off` by design (mux-mouse-default task); live enable on
   a running server works via raw `tmux set -g mouse on`, while the supported path
   (`mouse: on` / `LYX_MUX_MOUSE=on`) needs a server reboot.
+- **Removing down to the last strand kills the whole mux session** (tmux tears the
+  session down with its last pane) — this killed a running test mid-spike. Design
+  suggestion (operator-endorsed): mux should keep a small built-in **operator
+  console pane** — a plain shell started in the hub root, so its prompt shows which
+  folder the mux serves. It doubles as (a) a scratch terminal for operator small
+  jobs and (b) a structural keepalive that makes the last-strand teardown
+  unreachable.
 - `internal/modelspec` review findings themselves (the strongest recurring ones: the
   `Resolve` zero-value/shape hole, empty-alias-key acceptance, multi-bracket
   mis-rejection, `builtins()` vs `template.yaml` drift) are raw material for a real
