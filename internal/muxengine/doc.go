@@ -56,6 +56,20 @@
 // parsePaneList keys a dead pane on the literal value "1", never a numeric
 // or boolean comparison.
 //
+// Session targeting: every -t argument that names a SESSION is passed in
+// an exact-match form — "=<name>" for session targets (has-session,
+// kill-session, attach-session) and "=<name>:" for window/pane targets
+// (list-panes, select-layout, display-message), since the window/pane
+// target parser rejects the bare "=<name>" form. This is load-bearing:
+// tmux falls back to PREFIX matching a bare -t name when no exact match
+// exists, so on the shared per-hub server a bare name issued from one
+// worktree can silently address a prefix-sharing sibling worktree's
+// session — verified live (tmux 3.6): with only "repo2" present,
+// `has-session -t repo` exits 0 and `kill-session -t repo` kills repo2.
+// contract_integration_test.go's
+// TestExactSessionTargetsNeverPrefixMatchSiblings pins both grammars.
+// Pane-id (-t %N) targets are already exact and stay bare.
+//
 // Subcommand set: the engine's correctness depends on new-session,
 // has-session, split-window, select-layout, select-pane, send-keys,
 // capture-pane, list-panes, list-sessions, display-message,

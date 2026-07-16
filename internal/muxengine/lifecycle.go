@@ -253,7 +253,7 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 			}
 			return false, nil, nil
 		}
-		_ = e.tmux.run("kill-session", "-t", session)
+		_ = e.tmux.run("kill-session", "-t", exactSessionTarget(session))
 	}
 
 	// A stale socket-holder wedges a fresh boot: on Windows, psmux's internal
@@ -688,8 +688,11 @@ func (e *Engine) Down() (DownResult, error) {
 		panePIDs := e.paneProcessTreePIDsLocked()
 
 		// Ignore the error: the session may already be gone, and Down must
-		// stay idempotent either way.
-		_ = e.tmux.run("kill-session", "-t", e.SessionName())
+		// stay idempotent either way. The exact-match target is load-bearing
+		// on exactly this ignored-error path: a bare -t name would PREFIX
+		// match once this session is gone, so a second down would kill a
+		// prefix-sharing sibling worktree's session (see exactSessionTarget).
+		_ = e.tmux.run("kill-session", "-t", exactSessionTarget(e.SessionName()))
 
 		// Tidy the server only if no sessions remain. An EMPTY list-sessions
 		// covers both "zero sessions" and "no server" (tmux does not
@@ -770,7 +773,7 @@ func (e *Engine) sessionlessSocketHolderPersists() bool {
 // kill-session when the caller intends to wait on the server afterwards.
 // It assumes the op lock is already held.
 func (e *Engine) serverPIDLocked() int {
-	out, err := e.tmux.output("display-message", "-p", "-t", e.SessionName(), "#{pid}")
+	out, err := e.tmux.output("display-message", "-p", "-t", exactSessionWindowTarget(e.SessionName()), "#{pid}")
 	if err != nil {
 		return 0
 	}

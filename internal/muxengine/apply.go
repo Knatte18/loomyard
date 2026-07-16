@@ -125,7 +125,7 @@ func (e *Engine) applyLayoutLocked(st *MuxState, live []LivePane) error {
 	}
 
 	session := e.SessionName()
-	if err := e.tmux.run("select-layout", "-t", session, layout); err != nil {
+	if err := e.tmux.run("select-layout", "-t", exactSessionWindowTarget(session), layout); err != nil {
 		return fmt.Errorf("select-layout: %w", err)
 	}
 	if focus == "" {

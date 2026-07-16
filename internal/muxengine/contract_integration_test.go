@@ -310,6 +310,87 @@ func TestMultiplexerContract(t *testing.T) {
 	}
 }
 
+// TestExactSessionTargetsNeverPrefixMatchSiblings pins the exact-match
+// target forms exactSessionTarget ("=<name>") and exactSessionWindowTarget
+// ("=<name>:") against a real multiplexer. tmux resolves a bare -t session
+// name by exact match first but falls back to PREFIX matching when no exact
+// match exists — so with sessions "repo" and "repo2" on one shared per-hub
+// server (exactly what two prefix-sharing sibling worktrees produce), a
+// bare `kill-session -t repo` issued after "repo" is already gone KILLS
+// "repo2", and a bare `has-session -t repo` false-positives on it (both
+// verified live on tmux 3.6, which is what motivated the "=" forms). This
+// test asserts the engine's two target grammars behave exactly: they
+// resolve the exact-named session while it exists, error (rather than
+// prefix-match the sibling) once it is gone, and never touch the sibling —
+// the canary for a configured binary (psmux) that does not implement the
+// "=" target syntax.
+func TestExactSessionTargetsNeverPrefixMatchSiblings(t *testing.T) {
+	tmpDir := t.TempDir()
+	seedMuxConfig(t, tmpDir)
+
+	cfg, err := LoadConfig(tmpDir, "mux")
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if _, err := exec.LookPath(cfg.Tmux); err != nil {
+		t.Skipf("configured multiplexer binary %q not found: %v", cfg.Tmux, err)
+	}
+
+	socket := fmt.Sprintf("lyx-contract-exact-target-test-%d-%d", os.Getpid(), time.Now().UnixNano())
+	// sibling's name deliberately extends session's, so any prefix-match
+	// fallback in the binary would resolve session-targets onto the sibling
+	// once the exact-named session is gone.
+	const session = "exact-target"
+	const sibling = "exact-target2"
+	mux := NewTmuxCmd(cfg.Tmux, socket)
+
+	t.Cleanup(func() {
+		_ = mux.run("kill-server")
+	})
+
+	for _, name := range []string{session, sibling} {
+		if err := mux.run("new-session", "-d", "-s", name, "-x", "80", "-y", "24", cfg.Shell); err != nil {
+			t.Fatalf("new-session %s: %v", name, err)
+		}
+	}
+
+	// While the exact-named session exists, both grammars resolve it.
+	if up, err := mux.hasSession(session); err != nil || !up {
+		t.Fatalf("hasSession(%q) = (%v, %v), want (true, nil) while it exists", session, up, err)
+	}
+	if _, err := mux.listPanes(session); err != nil {
+		t.Fatalf("listPanes(%q) via exact window target: %v", session, err)
+	}
+	if _, err := mux.output("display-message", "-p", "-t", exactSessionWindowTarget(session), "#{pid}"); err != nil {
+		t.Fatalf("display-message -t %q: %v", exactSessionWindowTarget(session), err)
+	}
+	if err := mux.run("select-layout", "-t", exactSessionWindowTarget(session), "even-vertical"); err != nil {
+		t.Fatalf("select-layout -t %q: %v", exactSessionWindowTarget(session), err)
+	}
+
+	// Kill the exact-named session, leaving only the prefix-sharing sibling.
+	if err := mux.run("kill-session", "-t", exactSessionTarget(session)); err != nil {
+		t.Fatalf("kill-session -t %q: %v", exactSessionTarget(session), err)
+	}
+
+	// The trap the "=" forms exist for: every exact-target probe must now
+	// report the session ABSENT/ERROR rather than resolving the sibling.
+	if up, err := mux.hasSession(session); err != nil || up {
+		t.Fatalf("hasSession(%q) = (%v, %v) with only %q present, want (false, nil) — a true result means the target prefix-matched the sibling", session, up, err, sibling)
+	}
+	if _, err := mux.listPanes(session); err == nil {
+		t.Fatalf("listPanes(%q) succeeded with only %q present, want an error — success means the window target prefix-matched the sibling", session, sibling)
+	}
+	// The idempotent-down shape: a second kill-session against the gone
+	// session must error, and above all must NOT kill the sibling.
+	if err := mux.run("kill-session", "-t", exactSessionTarget(session)); err == nil {
+		t.Errorf("kill-session -t %q succeeded with only %q present, want an error — success means it prefix-matched (and killed) the sibling", exactSessionTarget(session), sibling)
+	}
+	if up, err := mux.hasSession(sibling); err != nil || !up {
+		t.Fatalf("hasSession(%q) = (%v, %v) after the re-kill, want (true, nil) — the sibling must survive every exact-target op against its prefix", sibling, up, err)
+	}
+}
+
 // TestRemoveStrand_SoleStrandEmptiesSessionSucceeds is the header-pane
 // keepalive regression this batch adds: with the always-present header pane
 // booted, removing a session's sole non-hidden strand must return success,
