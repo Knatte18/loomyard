@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r4
+phase: planned
 slug: burler-fork-cluster
 branch: burler-fork-cluster
 plan: _mill/plan
@@ -25,4 +25,5 @@ plan-fix-r2  '2026-07-16T20:01:53Z'
 plan-review-r3  '2026-07-16T20:09:12Z'
 plan-fix-r3  '2026-07-16T20:09:12Z'
 plan-fix-r4  '2026-07-16T20:14:00Z'
+planned  '2026-07-16T20:14:11Z'
 ```
