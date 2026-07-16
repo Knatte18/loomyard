@@ -157,8 +157,10 @@ Each layer knows only the one below it; built bottom-up. See the
     module, split in two. **`burler` (round worker):** ✅ **Done** — one review+fix round: A-review →
     B-fix, one agent, no self-grading, over the shuttle file contract; LLM-heavy, standalone,
     smoke-tested; builds on `shuttle`. See the `internal/burlerengine` package documentation. Cluster
-    reviewers as own-window strands are deferred (see
-    [Deferred burler enhancements](#deferred-burler-enhancements)). **`perch` (`lyx perch run|pause`,
+    fan-out — ✅ **Done** via built-in fork subagents (`cluster-fan` names a fan from the seed-only
+    `burler.yaml` lens/fan library; the handler explores, spawns N unnamed lens forks in one message
+    + does its own holistic review, then consolidates — all inside step A) — see the
+    `internal/burlerengine` package documentation for the as-built shape. **`perch` (`lyx perch run|pause`,
     gate loop):** ✅ **Done** — the Go loop that runs `burler` rounds until `APPROVED`/`STUCK` (plus an
     operational `PAUSED` exit) — loop-until-dry convergence, a milestone-capped `round_caps` ladder, a
     holistic verdict judge (superseding an earlier canonical-key/cycle-detection design — see the
@@ -216,7 +218,8 @@ Layer in once the core stack works; not required for `loom` v1.
 15. **Slack relay.** Bidirectional, one channel per worktree, riding on the daemon.
 
     **See also milestone 24 (own-window strand anchoring)** — another deferred mux enhancement,
-    numbered at the end to avoid renumbering the list; it is what unlocks `burler`'s `cluster-N > 0`.
+    numbered at the end to avoid renumbering the list; an independent mux enhancement, no longer a
+    gate for `burler`'s cluster review (see milestone 24 below).
 
 ### Setup & supporting milestones
 
@@ -277,14 +280,16 @@ Independent of the orchestration stack; interleave as needed.
     numbered here to avoid renumbering the list).* A new `display` anchor that spawns a strand into
     its **own switchable tmux window** rather than a pane in the worktree column — the piece mux is
     missing today (windows are not yet a display target; mux runs one window of panes per worktree).
-    This is what **unlocks `burler`'s `cluster-N > 0`**: N parallel cluster reviewers land in their
-    own window the operator can switch to and watch, instead of a pane explosion in the worktree
-    column (see [Deferred burler enhancements](#deferred-burler-enhancements) and the
-    `internal/burlerengine` package documentation). Purely additive to mux's closed
-    display vocabulary + render rules. **Independent of the spine** — `burler` / `perch` / `loom` all
-    ship on `cluster-N = 0` without it, so this is picked up only when someone wants live cluster
-    review. Distinct from milestone 13 (cross-worktree *columns*): that groups worktrees into columns
-    of one window; this adds *windows* as a spawn target.
+    This **no longer gates `burler`'s cluster review**: cluster fan-out shipped via built-in fork
+    subagents, which run in-session as background tasks inside the handler's own pane, needing no
+    extra tmux window at all (see [Deferred burler enhancements](#deferred-burler-enhancements) and
+    the `internal/burlerengine` package documentation). This milestone's remaining cluster-adjacent
+    value is narrower but still real: **live per-reviewer pane visibility** — today a fork's progress
+    is only inspectable via its `subagents/*.jsonl` transcript on disk, not a watchable pane; an
+    own-window anchor could still be picked up as a pure mux enhancement independent of the spine.
+    Purely additive to mux's closed display vocabulary + render rules. Distinct from milestone 13
+    (cross-worktree *columns*): that groups worktrees into columns of one window; this adds *windows*
+    as a spawn target.
 
 25. **Real-Linux validation for `lyx` on Linux.** 🚧 **Planned.** This task (Facilitate Linux
     support) built and cross-compiled the Linux seam from a Win11-only box with no Linux machine
@@ -306,13 +311,16 @@ Ideas from `burler`'s design that did not ship with the module (milestone 11's b
 required for `perch` or `loom` v1. See the `internal/burlerengine` package documentation for the
 as-built shape.
 
-- **Cluster fan-out (`cluster-N > 0`).** N extra cross-checking reviewers spawned inside step A.
-  Blocked on milestone 24 (own-window strand anchoring) — burler today rejects `cluster-N > 0` with
-  a typed validation error rather than crowd the worktree column.
+- **Cluster fan-out (`cluster-fan`).** ✅ **Done, via built-in fork subagents** — see the
+  `internal/burlerengine` package documentation for the as-built shape (fan model, three-phase round,
+  fork discipline + audit enforcement). No longer blocked on milestone 24 (own-window strand
+  anchoring): forks run in-session inside the handler's own pane, not as separate strands.
 - **A generic tools-restriction on the shuttle `Spec`.** Meaningless for today's single-session A→B
   agent (B must always write, and `claudeengine` writes `settings.json` once at launch for the whole
-  session); only meaningful for cluster reviewers, which are separate, pure-review sessions and are
-  themselves gated on milestone 24.
+  session). This entry's original premise — that it would matter for cluster reviewers as separate,
+  pure-review sessions gated on milestone 24 — is now stale: cluster reviewers are fork subagents
+  running inside the handler's own session (`useExactTools`, no separate `settings.json` of their
+  own), so this remains speculative and unmotivated rather than blocked on anything.
 - **Bulk-mode clusters + provider-side context caching.** A cluster round can run *tool-use* (each
   reviewer explores independently) or *bulk* (Go concatenates target + fasit + rubric into one blob
   passed as a value). Bulk is what makes provider-side context caching (e.g. Gemini's explicit cache)
