@@ -1,0 +1,8 @@
+{"in": 1676, "cache_cr": 74820, "cache_rd": 54492, "out": 30862, "turns": 2, "compute": 107358, "tool_calls": 0, "models": ["claude-sonnet-5"], "found_marker": true}
+Findings (correctness lens only):
+
+1. [load.go, `validateAlias`] `Entry.Defaults` values loaded from `models.yaml` are never charset-validated (only checked for non-empty), unlike bracket param values in `parse.go` which must pass `isModelIDChar` — an operator can seed a default like `effort: "!!!"` that would be rejected outright if supplied via bracket syntax on the same key, so the two paths to `Resolved.Params` enforce different validity rules for the same param space — LOW.
+
+2. [parse.go, `Parse` bracket splitting] The bracket boundary is computed as "first `[` to *last* `]` in the whole string" rather than "first `[` to the next `]`", so a spec with two bracket-like groups (e.g. `sonnet[effort=high][x=y]`) has its interior mis-delimited into one bracketInner blob containing a literal `]` character; this currently still gets rejected, but only incidentally because `]` always fails `isModelIDChar` charset checking downstream — the rejection is not structurally guaranteed by the bracket-matching logic itself, making it a latent risk rather than a deliberate invariant — LOW.
+
+No HIGH or MED-severity correctness defects found: `Parse`/`parseBracket`, `Registry.Resolve` (bracket-over-default precedence, param copying, escape-form bypass), `LoadRegistry` (absent/empty-file fallback, whole-entry replacement, validation ordering), and `ConfigTemplate`/`template.yaml` are internally consistent with their documented invariants and match the test tables I inherited in context.
