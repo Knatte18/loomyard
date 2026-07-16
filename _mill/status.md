@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-shell-env-and-shuttle-fork-types
+phase: approved-burler-config-module
 slug: burler-fork-cluster
 branch: burler-fork-cluster
 plan: _mill/plan
@@ -28,6 +28,7 @@ plan-fix-r4  '2026-07-16T20:14:00Z'
 planned  '2026-07-16T20:14:11Z'
 implementing  '2026-07-16T20:17:53Z'
 approved-shell-env-and-shuttle-fork-types  '2026-07-16T20:23:25Z'
+approved-burler-config-module  '2026-07-16T20:30:11Z'
 ```
 
 ## Batches
@@ -40,9 +41,10 @@ batches:
     start_sha: 7e47006daab58074fa5a6001176b41efedbf2f4b
     commit_sha: d6ccf0821c6c2beb23da7067e898064e82d60935
   - name: burler-config-module
-    state: running
+    state: approved
     implementer_session: 6b026116-ee79-4b72-9e91-455d3fadca21
     start_sha: d067a937a9a75e1abcf0dfc9320f78837d31c72e
+    commit_sha: 4a729b2fc3f55a76fe676bf98f0be4af51bc5922
   - name: claudeengine-fork-mode
     state: pending
   - name: burler-cluster-round
