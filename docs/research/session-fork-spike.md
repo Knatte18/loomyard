@@ -155,11 +155,39 @@ then spawned three parallel lens forks itself and relayed their reports
   in-pane background tasks rather than separate mux strands — per-reviewer
   visibility is via `<session-id>/subagents/*.jsonl` on disk, not tmux.
 
+## Follow-up 2: 8-lens handler run (E-arm) — the burler phase shape works
+
+A second fork-subagent run tested the intended burler shape at scale (sonnet):
+handler explores → spawns **8 unnamed lens forks in one message** + does its own
+**holistic** review (architecture, cross-file invariants, CONSTRAINTS fit — the
+level no narrow lens covers) → consolidates everything into one review with
+origin labels and a rejected-section (`results/e-arm-usage.md`,
+`results/e-arm-consolidated.md`).
+
+- All 8 forks ran in parallel (concurrency cap ≈ min(16, cores−2), queueing not
+  errors beyond it — not reached here). Every fork's first request: **73,078
+  cache_read / 73 cache_creation** — effectively perfect prefix sharing at N=8.
+- Compliance is imperfect and must be designed for: one fork attempted nested
+  forking (blocked — "Fork is not available inside a forked worker", confirming
+  the depth limit empirically) and fell back to running all lenses itself; two
+  used tools against instruction. The **handler-as-judge phase caught it**:
+  flagged the rogue fork, salvaged only its novel findings, and verified an
+  uncertain claim empirically before including it.
+- Design rules fed forward to burler: lens prompts are **configurable templates**
+  (shipped defaults, per-run selection — never hardcoded in lyx); forks **keep
+  tool access** (exploration can't be assumed complete per lens — steer with
+  "prefer inherited context, fetch only what your lens needs", not bans; note
+  `useExactTools` means the toolset cannot be stripped anyway); fork prompts
+  hard-ban Agent calls (nested forking fails); the Go orchestrator verifies each
+  fork mechanically from `<session-id>/subagents/*.jsonl` (no Agent calls,
+  format adherence) instead of trusting any narrative.
+
 ## Decision
 
 Both criteria hold → **forking is worthwhile as the cluster-review mechanism —
 and built-in fork subagents are the preferred variant** (5–6× cheaper per reviewer
-than CLI forks, single-strand orchestration). CLI `--resume`+`--fork-session`
+than CLI forks, single-strand orchestration, validated at N=8 with a handler
+doing holistic review + consolidation). CLI `--resume`+`--fork-session`
 remains the fallback where separate panes per reviewer or model-per-fork matter.
 
 Recommendations for the eventual burler/perch cluster design:
