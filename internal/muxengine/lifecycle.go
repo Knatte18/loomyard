@@ -409,10 +409,17 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 // currently alive (a fresh boot has exactly one — the new-session initial
 // pane; a header rebuilt after a crash-reborn server finds the same shape,
 // since the caller clears HeaderPaneID alongside every strand binding on
-// that path, before any strand has re-split anything) with -c e.layout.Hub
-// (Hub Geometry Invariant — the header pane's cwd is never recomputed
-// here), reusing the same send-keys launch mechanics launchStrandLocked
-// uses (spawn.go). The header pane runs headerLaunchCmd's own eagerly
+// that path, before any strand has re-split anything) with -c e.layout.Cwd
+// — the SAME worktree cwd new-session -c pins for the initial pane, and
+// deliberately NOT e.layout.Hub: the hub is the container directory, not a
+// git repo (hubgeometry.Layout's own contract), so a header pane spawned
+// there cannot resolve geometry or config and its "lyx mux header
+// --blocking" command dies with "not a git repository" instead of ever
+// rendering the header text (observed live; the discussion.md spec's
+// "-c <e.layout.Hub>" line carried this defect). The {{.hub}} token still
+// renders the hub path — tokens resolve from the layout, not from where
+// the pane sits. It reuses the same send-keys launch mechanics
+// launchStrandLocked uses (spawn.go). The header pane runs headerLaunchCmd's own eagerly
 // validated print-then-block pipeline, never a strand's cmd/resumeCmd. It
 // assumes the op lock is already held and always persists st immediately on
 // success, before returning, so a later failure elsewhere in the same op
@@ -458,7 +465,7 @@ func (e *Engine) ensureHeaderPaneLocked(st *MuxState) error {
 	// pane instead). Every subsequent strand split (spawn.go) always
 	// targets a non-header pane and inserts below it, so this is the only
 	// split in the whole engine that needs -b.
-	out, err := e.tmux.output("split-window", "-b", "-t", target, "-c", e.layout.Hub, "-P", "-F", "#{pane_id}")
+	out, err := e.tmux.output("split-window", "-b", "-t", target, "-c", e.layout.Cwd, "-P", "-F", "#{pane_id}")
 	if err != nil {
 		return fmt.Errorf("split header pane: %w", err)
 	}

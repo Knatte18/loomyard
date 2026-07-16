@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"runtime"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 	"github.com/Knatte18/loomyard/internal/muxengine"
@@ -304,6 +305,55 @@ func TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable(t *testing.T) {
 	if len(panes) != 2 || !paneLiveOnSession(panes, strandPane) || !paneLiveOnSession(panes, headerPaneID) {
 		t.Errorf("after add, session panes = %v; want exactly the strand's pane %s and the header pane %s (foreign pane must be reaped, neither pane ever displaced)", panes, strandPane, headerPaneID)
 	}
+}
+
+// TestSmokeHeaderPaneDisplaysRenderedHeaderText pins the header pane's
+// actual OUTPUT — the rendered "hub: <hub path>" line from the embedded
+// default template — not merely its liveness. This is the regression test
+// for the header-cwd defect the fable-header-r1 round found: the pane used
+// to be split with -c layout.Hub, a container directory that is by
+// definition not a git repo, so its "lyx mux header --blocking" command
+// died at geometry resolution ({"ok":false,"error":"not a git repository"})
+// and the operator console showed a JSON error over a bash prompt forever —
+// while every liveness-only assertion stayed green, because the pane's
+// parent shell survived the failed command. Two things make content
+// assertable here where the other smoke tests cannot: up must run as a
+// SUBPROCESS of the built lyx binary (the header pane boots
+// os.Executable() + " mux header --blocking", and an in-process RunCLI's
+// executable is this TEST binary, whose header invocation is nonsense), and
+// the assertion polls capture-pane for the rendered text rather than
+// list-panes for presence.
+func TestSmokeHeaderPaneDisplaysRenderedHeaderText(t *testing.T) {
+	tmuxPath := tmuxBinaryPath(t)
+	lyxExe := buildLyxBinary(t)
+
+	fixture := lyxtest.CopyPaired(t)
+	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
+		"mux": muxengine.ConfigTemplate(),
+	})
+	deferHubRelease(t, fixture.Hub)
+	t.Chdir(fixture.Hub)
+	t.Cleanup(func() {
+		var buf bytes.Buffer
+		RunCLI(&buf, []string{"down"})
+	})
+
+	upCmd := exec.Command(lyxExe, "mux", "up")
+	upCmd.Dir = fixture.Hub
+	if out, err := upCmd.CombinedOutput(); err != nil {
+		t.Fatalf("built-binary up: %v\n%s", err, out)
+	}
+
+	st, err := muxengine.LoadState(fixture.Layout.DotLyxDir())
+	if err != nil || st == nil || st.HeaderPaneID == "" {
+		t.Fatalf("LoadState after up = (%+v, %v), want a persisted HeaderPaneID", st, err)
+	}
+
+	socket, _ := socketAndSession(t)
+	// The embedded default template renders "hub: {{.hub}}"; the fixture's
+	// hub is its temp container. A JSON error body in the pane (the pre-fix
+	// symptom) can never contain this line.
+	pollPaneContains(t, tmuxPath, socket, st.HeaderPaneID, "hub: "+fixture.Layout.Hub, 20*time.Second)
 }
 
 // TestSmokeHeaderPaneSurvivesUpAddRemoveAndReconcile pins the header-pane
