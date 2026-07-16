@@ -30,16 +30,19 @@ type Shuttle interface {
 var _ Shuttle = (*shuttleengine.Runner)(nil)
 
 // Engine drives burler rounds through a Shuttle, resolving Profile paths
-// against layout's worktree root.
+// against layout's worktree root and Profile.ClusterFan against cfg's
+// lens/fan library.
 type Engine struct {
 	shuttle Shuttle
 	layout  *hubgeometry.Layout
+	cfg     Config
 }
 
 // New returns an Engine ready to run rounds against shuttle, resolving
-// relative Profile paths against layout.WorktreeRoot.
-func New(shuttle Shuttle, layout *hubgeometry.Layout) *Engine {
-	return &Engine{shuttle: shuttle, layout: layout}
+// relative Profile paths against layout.WorktreeRoot and any Profile.ClusterFan
+// against cfg (the burler.yaml lens/fan library, loaded via LoadConfig).
+func New(shuttle Shuttle, layout *hubgeometry.Layout, cfg Config) *Engine {
+	return &Engine{shuttle: shuttle, layout: layout, cfg: cfg}
 }
 
 // Result is one round's outcome: how the shuttle run classified (Outcome),
@@ -78,7 +81,7 @@ type Result struct {
 // parse failure on a done run, since a defaulted verdict could silently
 // terminate a caller's round loop on a malformed round.
 func (e *Engine) Run(p Profile, opts RunOpts) (Result, error) {
-	if err := p.validate(e.layout.WorktreeRoot); err != nil {
+	if err := p.validate(e.layout.WorktreeRoot, e.cfg); err != nil {
 		return Result{}, err
 	}
 
@@ -95,6 +98,10 @@ func (e *Engine) Run(p Profile, opts RunOpts) (Result, error) {
 		Timeout:     opts.Timeout,
 		Role:        "burler",
 		Round:       opts.Round,
+		// ForkSubagents authorizes cluster-round fork spawns only when a
+		// fan actually resolved — a non-cluster round never touches this
+		// authorization.
+		ForkSubagents: p.ClusterFan != "",
 	}
 
 	shuttleResult, err := e.shuttle.Run(spec)

@@ -1,7 +1,8 @@
 // engine_test.go tables Engine.Run against a same-package fakeShuttle: spec
-// construction, the ClusterN>0 rejection, every shuttleengine.Outcome, and
-// the review-file parse path (valid BLOCKING/APPROVED, missing file,
-// malformed frontmatter) plus a hard shuttle error.
+// construction (including the ClusterFan -> Spec.ForkSubagents wiring),
+// every shuttleengine.Outcome, and the review-file parse path (valid
+// BLOCKING/APPROVED, missing file, malformed frontmatter) plus a hard
+// shuttle error.
 
 package burlerengine
 
@@ -77,7 +78,7 @@ func newEngineTestProfile(t *testing.T) (root string, p Profile) {
 }
 
 func newEngineForTest(root string, shuttle Shuttle) *Engine {
-	return New(shuttle, &hubgeometry.Layout{WorktreeRoot: root})
+	return New(shuttle, &hubgeometry.Layout{WorktreeRoot: root}, Config{})
 }
 
 const (
@@ -139,22 +140,50 @@ func TestEngine_Run_SpecConstruction(t *testing.T) {
 	}
 }
 
-// TestEngine_Run_ClusterUnsupported proves ClusterN: 1 fails validate
-// before the shuttle is ever invoked, with an error satisfying
-// errors.Is(err, ErrClusterUnsupported).
-func TestEngine_Run_ClusterUnsupported(t *testing.T) {
-	root, p := newEngineTestProfile(t)
-	p.ClusterN = 1
-	shuttle := &fakeShuttle{}
-	e := newEngineForTest(root, shuttle)
+// TestEngine_Run_ForkSubagentsSpecWiring proves Spec.ForkSubagents mirrors
+// Profile.ClusterFan exactly: true only when a fan actually resolved, false
+// for a plain (non-cluster) profile — the sole trigger for a cluster
+// round's fork authorization.
+func TestEngine_Run_ForkSubagentsSpecWiring(t *testing.T) {
+	cfg := Config{
+		Lenses: map[string]string{"style": "style prose"},
+		Fans:   map[string][]string{"standard": {"style"}},
+	}
 
-	_, err := e.Run(p, RunOpts{})
-	if !errors.Is(err, ErrClusterUnsupported) {
-		t.Fatalf("Run() error = %v; want errors.Is(err, ErrClusterUnsupported)", err)
-	}
-	if shuttle.called {
-		t.Errorf("fakeShuttle.Run was called; want it never invoked for a rejected profile")
-	}
+	t.Run("cluster profile", func(t *testing.T) {
+		root, p := newEngineTestProfile(t)
+		p.ClusterFan = "standard"
+		shuttle := &fakeShuttle{
+			reviewContent: approvedReview,
+			fixerContent:  "nothing fixed",
+			result:        shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
+		}
+		e := New(shuttle, &hubgeometry.Layout{WorktreeRoot: root}, cfg)
+
+		if _, err := e.Run(p, RunOpts{}); err != nil {
+			t.Fatalf("Run() = %v; want nil error", err)
+		}
+		if !shuttle.spec.ForkSubagents {
+			t.Errorf("spec.ForkSubagents = false; want true for a cluster profile")
+		}
+	})
+
+	t.Run("plain profile", func(t *testing.T) {
+		root, p := newEngineTestProfile(t)
+		shuttle := &fakeShuttle{
+			reviewContent: approvedReview,
+			fixerContent:  "nothing fixed",
+			result:        shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
+		}
+		e := New(shuttle, &hubgeometry.Layout{WorktreeRoot: root}, cfg)
+
+		if _, err := e.Run(p, RunOpts{}); err != nil {
+			t.Fatalf("Run() = %v; want nil error", err)
+		}
+		if shuttle.spec.ForkSubagents {
+			t.Errorf("spec.ForkSubagents = true; want false for a plain profile")
+		}
+	})
 }
 
 // TestEngine_Run_NonDoneOutcomes proves every non-done shuttleengine
