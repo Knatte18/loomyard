@@ -82,23 +82,28 @@ const (
 // newest 3": 2 kept plus the fresh server's own log makes 3.
 const serverLogPruneKeep = 2
 
-// serverLogNamePrefix and clientLogNamePrefix bound the two log-filename
-// shapes a debug-armed boot can leave in the hub logs dir, and
-// serverLogNameSuffix is the shared suffix; kept as named constants (rather
-// than an inline glob) since planLogPrune's caller side needs to recognize
-// the same filename shapes tmux itself writes. -v/-vv are GLOBAL tmux flags
-// on the spawn invocation, and that invocation is simultaneously a CLIENT
-// (the local process issuing the command) and, once forked, the SERVER it
-// starts — so tmux logs BOTH sides: tmux-server-<pid>.log from the forked
+// serverLogNamePrefix, clientLogNamePrefix, and outLogNamePrefix bound the
+// three log-filename shapes a debug-armed boot can leave in the hub logs dir,
+// and serverLogNameSuffix is the shared suffix; kept as named constants
+// (rather than an inline glob) since planLogPrune's caller side needs to
+// recognize the same filename shapes tmux itself writes. -v/-vv are GLOBAL
+// tmux flags on the spawn invocation, and that invocation is simultaneously a
+// CLIENT (the local process issuing the command) and, once forked, the SERVER
+// it starts — so tmux logs BOTH sides: tmux-server-<pid>.log from the forked
 // server (documented since the original debug-logging batch) and
 // tmux-client-<pid>.log from the client half of that same invocation
 // (observed live against native tmux 3.6 on Linux — the original
 // debug-logging batch was developed and reviewed against psmux on Windows,
-// which never surfaced this). Both are pruned identically so neither
-// accumulates unbounded across repeated debug-armed boots/crashes.
+// which never surfaced this). At -vv (debug_log: 2) the server additionally
+// writes a tmux-out-<pid>.log protocol-output log — a THIRD shape that only
+// appears at the higher verbosity, so an earlier fix that added client-log
+// pruning at -v never surfaced it and it accumulated unbounded across repeated
+// -vv boots (observed live, tmux 3.6). All three are pruned identically so
+// none accumulates unbounded across repeated debug-armed boots/crashes.
 const (
 	serverLogNamePrefix = "tmux-server-"
 	clientLogNamePrefix = "tmux-client-"
+	outLogNamePrefix    = "tmux-out-"
 	serverLogNameSuffix = ".log"
 )
 
@@ -110,9 +115,9 @@ const (
 // keep remain", never a hard guarantee that this call itself removed every
 // listed name. It assumes the op lock is already held (the same withOpLock
 // the rest of ensureServerAndSessionLocked runs under) and performs no
-// locking of its own. Called once per log-filename shape (server, client)
-// so each stays independently bounded rather than competing for one shared
-// budget.
+// locking of its own. Called once per log-filename shape (server, client,
+// out) so each stays independently bounded rather than competing for one
+// shared budget.
 func pruneServerLogsLocked(logsDir, prefix string, keep int) error {
 	entries, err := os.ReadDir(logsDir)
 	if err != nil {
@@ -303,6 +308,12 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	}
 	if err := pruneServerLogsLocked(logsDir, clientLogNamePrefix, serverLogPruneKeep); err != nil {
 		return false, nil, fmt.Errorf("prune client logs: %w", err)
+	}
+	// The -vv-only tmux-out-<pid>.log protocol log is the third shape a
+	// debug-armed boot can leave; prune it on the same newest-3 budget so it
+	// does not accumulate unbounded across repeated debug_log: 2 boots.
+	if err := pruneServerLogsLocked(logsDir, outLogNamePrefix, serverLogPruneKeep); err != nil {
+		return false, nil, fmt.Errorf("prune out logs: %w", err)
 	}
 
 	// Env hygiene: a spawned server must never inherit this process's own

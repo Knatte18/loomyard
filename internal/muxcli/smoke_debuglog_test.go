@@ -158,7 +158,7 @@ func countLogsWithPrefix(t *testing.T, logsDir, prefix string) int {
 	return n
 }
 
-// TestSmokeDebugLog_RepeatedCrashBootsBoundBothServerAndClientLogs pins a
+// TestSmokeDebugLog_RepeatedCrashBootsBoundServerClientAndOutLogs pins a
 // real defect found live-driving debug_log against native tmux (not
 // reproducible against psmux, the Windows dev-box default the original
 // debug-logging batch was developed/reviewed against): -v/-vv are GLOBAL
@@ -168,12 +168,17 @@ func countLogsWithPrefix(t *testing.T, logsDir, prefix string) int {
 // tmux-server-<pid>.log (documented, already pruned) and a
 // tmux-client-<pid>.log (previously unpruned — it accumulated unbounded
 // across repeated debug-armed boots since pruneServerLogsLocked only ever
-// matched the server-prefixed shape). Five kill-server-then-up cycles with
-// LYX_MUX_DEBUG=1 must leave at most 3 of EACH prefix in the hub logs dir,
-// never an unbounded pile of client logs.
-func TestSmokeDebugLog_RepeatedCrashBootsBoundBothServerAndClientLogs(t *testing.T) {
+// matched the server-prefixed shape). At -vv (debug_log: 2) the server
+// additionally writes a tmux-out-<pid>.log protocol-output log — a THIRD
+// shape that only appears at the higher verbosity, so the earlier client-log
+// fix (driven at -v) never surfaced it and it too accumulated unbounded
+// across repeated -vv boots. This test runs at LYX_MUX_DEBUG=2 (which emits
+// all three shapes, a strict superset of -v) so five kill-server-then-up
+// cycles must leave at most 3 of EACH prefix in the hub logs dir, never an
+// unbounded pile of any of them.
+func TestSmokeDebugLog_RepeatedCrashBootsBoundServerClientAndOutLogs(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
-	t.Setenv("LYX_MUX_DEBUG", "1")
+	t.Setenv("LYX_MUX_DEBUG", "2")
 
 	fixture := lyxtest.CopyPaired(t)
 	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
@@ -211,10 +216,11 @@ func TestSmokeDebugLog_RepeatedCrashBootsBoundBothServerAndClientLogs(t *testing
 	if waitForFreshServerLog(t, logsDir, time.Time{}) == "" {
 		t.Fatalf("no tmux-server-*.log ever appeared in %s", logsDir)
 	}
-	// Give the paired client log the same asynchronous-write grace as the
-	// server log above before counting either prefix.
+	// Give the paired client and out logs the same asynchronous-write grace as
+	// the server log above before counting any prefix.
 	deadline := time.Now().Add(10 * time.Second)
-	for countLogsWithPrefix(t, logsDir, "tmux-client-") == 0 && time.Now().Before(deadline) {
+	for (countLogsWithPrefix(t, logsDir, "tmux-client-") == 0 ||
+		countLogsWithPrefix(t, logsDir, "tmux-out-") == 0) && time.Now().Before(deadline) {
 		time.Sleep(200 * time.Millisecond)
 	}
 
@@ -222,6 +228,9 @@ func TestSmokeDebugLog_RepeatedCrashBootsBoundBothServerAndClientLogs(t *testing
 		t.Errorf("tmux-server-*.log count = %d after 5 debug-armed boots; want <= 3 (pruning must keep this bounded)", got)
 	}
 	if got := countLogsWithPrefix(t, logsDir, "tmux-client-"); got > 3 {
-		t.Errorf("tmux-client-*.log count = %d after 5 debug-armed boots; want <= 3 (this is the defect this test pins: the client-side log a debug-armed boot also leaves must be pruned too, not left to accumulate unbounded)", got)
+		t.Errorf("tmux-client-*.log count = %d after 5 debug-armed boots; want <= 3 (the client-side log a debug-armed boot also leaves must be pruned too, not left to accumulate unbounded)", got)
+	}
+	if got := countLogsWithPrefix(t, logsDir, "tmux-out-"); got > 3 {
+		t.Errorf("tmux-out-*.log count = %d after 5 debug-armed boots; want <= 3 (this is the defect this test pins: the -vv-only protocol-output log must be pruned too, not left to accumulate unbounded)", got)
 	}
 }
