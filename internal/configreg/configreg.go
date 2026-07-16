@@ -8,6 +8,7 @@ package configreg
 import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/builderengine"
+	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/muxengine"
 	"github.com/Knatte18/loomyard/internal/perchengine"
@@ -23,10 +24,11 @@ type Module struct {
 	// Template is a function that returns the default YAML template for this module.
 	Template func() string
 	// SeedOnly marks a module whose key set is open-ended and owned by the
-	// operator (e.g. models.yaml aliases). configsync materializes a
-	// seed-only module's template when its file is absent, and never
-	// rewrites a present file — it neither adds nor prunes keys, unlike the
-	// default reconcile behavior applied to every other module.
+	// operator (e.g. models.yaml aliases, burler.yaml lenses/fans).
+	// configsync materializes a seed-only module's template when its file
+	// is absent, and never rewrites a present file — it neither adds nor
+	// prunes keys, unlike the default reconcile behavior applied to every
+	// other module.
 	SeedOnly bool
 }
 
@@ -36,6 +38,7 @@ func Modules() []Module {
 	return []Module{
 		{Name: "board", Template: boardengine.ConfigTemplate},
 		{Name: "builder", Template: builderengine.ConfigTemplate},
+		{Name: "burler", Template: burlerengine.ConfigTemplate, SeedOnly: true},
 		{Name: "models", Template: modelspec.ConfigTemplate, SeedOnly: true},
 		{Name: "mux", Template: muxengine.ConfigTemplate},
 		{Name: "perch", Template: perchengine.ConfigTemplate},
