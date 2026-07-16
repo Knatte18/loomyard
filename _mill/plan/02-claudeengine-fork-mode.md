@@ -140,8 +140,14 @@ security boundary (the audit is the backstop), as pinned in `_mill/discussion.md
   unreadable file or missing parent transcript is an error. (3) In `wait.go`, at the
   point where a done classification builds the terminal `Result`, when
   `spec.ForkSubagents` call
-  `AuditForks(run.state.SessionID, run.runner.layout.WorktreeRoot)` and attach the
-  result to `Result.ForkAudit`; an audit
+  `AuditForks(run.state.SessionID, run.runner.layout.Cwd)` and attach the
+  result to `Result.ForkAudit` — the workdir MUST be `layout.Cwd`, never
+  `layout.WorktreeRoot`: mux launches every pane with `-c e.layout.Cwd`
+  (muxengine lifecycle.go `new-session`/`split-window`), so the claude process cwd
+  that encodes the `~/.claude/projects/<encoded-cwd>` directory is `Cwd`, and the two
+  diverge whenever the operator invokes from a subdirectory (`RelPath != "."`) —
+  state this in the call-site comment and in `AuditForks`' doc comment (the `workdir`
+  parameter is the pane's actual process cwd); an audit
   error fails `Wait` with a wrapped error (fail-loud — a fork-mode run whose audit
   cannot be read must not classify as a clean done). (4) Update the fake engine in
   `fakes_test.go` with a configurable `AuditForks` (returning a canned `ForkAudit`),

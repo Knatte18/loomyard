@@ -88,7 +88,10 @@ profiles — pass through one resolver before any strand spawns.
   `{{if}}`/`{{range}}` (stencil requires every marker non-empty — same constraint the
   template's header comment documents; update that comment's marker count, and update
   the stale "eight markers" counts in BOTH `template.go`'s file header and
-  `prompt.go`'s file/`composePrompt` comments to nine). In
+  `prompt.go`'s file/`composePrompt` comments to nine, and in `template_test.go`
+  update the same "eight required top-level markers" prose at its lines ~4-5, ~42-43,
+  ~58-59 AND add `cluster_rules` to the hard-coded required-marker list at its line
+  ~67 — the "all markers supplied" subtest fails otherwise). In
   `prompt.go` add `clusterRulesBlock(p *Profile) string`, wired into `composePrompt`'s
   values map. Non-cluster value: explicit prose — "This is a single-reviewer round —
   no cluster forks. Do the full review yourself." Cluster value, composed from
