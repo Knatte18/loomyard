@@ -354,6 +354,20 @@ func TestSmokeHeaderPaneDisplaysRenderedHeaderText(t *testing.T) {
 	// hub is its temp container. A JSON error body in the pane (the pre-fix
 	// symptom) can never contain this line.
 	pollPaneContains(t, tmuxPath, socket, st.HeaderPaneID, "hub: "+fixture.Layout.Hub, 20*time.Second)
+
+	// The 1-row regression (fable-header-r1 F10): once a strand exists the
+	// header clamps to its configured single row (height_rows: 1), and
+	// capture-pane's default output is the VISIBLE area only — so this
+	// second poll proves the rendered text sits ON that one visible row.
+	// Pre-fix, the pane's echoed launch line plus a trailing newline left
+	// the cursor on a fresh empty row, which was the only row the 1-row
+	// pane showed; the text existed solely in scrollback.
+	addCmd := exec.Command(lyxExe, "mux", "add", "--cmd", smokeReapLaunchCmd(), "--name", "clamps-header")
+	addCmd.Dir = fixture.Hub
+	if out, err := addCmd.CombinedOutput(); err != nil {
+		t.Fatalf("built-binary add: %v\n%s", err, out)
+	}
+	pollPaneContains(t, tmuxPath, socket, st.HeaderPaneID, "hub: "+fixture.Layout.Hub, 20*time.Second)
 }
 
 // TestSmokeHeaderPaneSurvivesUpAddRemoveAndReconcile pins the header-pane

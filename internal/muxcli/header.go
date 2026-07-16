@@ -8,6 +8,7 @@ package muxcli
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/output"
@@ -52,12 +53,23 @@ Example:
 			}
 
 			if blocking {
-				// The pane keepalive: print the rendered text once, then hold
-				// the pane open forever. No JSON is written here even on
+				// The pane keepalive: display the rendered text once, then
+				// hold the pane open forever. No JSON is written here even on
 				// success — this is the one documented envelope exception,
 				// scoped to exactly this tail (rendering above already ran
 				// pre-flight, on the envelope).
-				fmt.Fprintln(out, text)
+				//
+				// Display mechanics are load-bearing for the DEFAULT 1-row
+				// header pane (height_rows: 1): the pane's shell has already
+				// echoed this command's own (long) launch line, and a
+				// trailing newline after the text would park the cursor on a
+				// fresh empty row — which is the only row a 1-row pane shows,
+				// scrolling the text itself out of view (observed live,
+				// tmux 3.6). So: clear the pane and home the cursor (hides
+				// the echoed launch line at any height), then print the text
+				// with its trailing newlines trimmed via Fprint, leaving the
+				// cursor on the text's last row so that row stays visible.
+				fmt.Fprint(out, "\x1b[2J\x1b[H"+strings.TrimRight(text, "\r\n"))
 				select {}
 			}
 
