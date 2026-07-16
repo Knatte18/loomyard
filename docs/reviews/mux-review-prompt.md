@@ -263,78 +263,105 @@ Claude Code hooks (Stop/SessionStart/PreToolUse, marker/idle detection, resume-c
 construction) belong to `shuttle`, not mux. Their absence is correct — do not flag it. mux is a
 dumb carrier: it runs opaque command strings and its only liveness signal is generic `pane-died`.
 
-## Round context — HEADER-PANE CAMPAIGN, round 3 (tag `fable-header-r3`), after round 1 (Fable, `fable-header-r1`) closed 10 defects and round 2 (Opus, `opus-header-r2`) closed 2 more
+## Round context — HEADER-PANE CAMPAIGN, round 4 (tag `opus-header-r4`), after rounds 1-3 closed 14 defects — plus ONE residual the orchestrator itself found
 
 `mux-operator-console` landed a genuinely new, stateful feature on top of already-hardened mux:
-the always-on header pane (`MuxState.HeaderPaneID`), with its own boot/rebirth lifecycle, three
-exclusion seams, and new layout math applied against real tmux via `select-layout`. This is a
-NEW, separate hardening campaign from the CLOSED R1/R2 (pre-header) campaign further below.
+the always-on header pane (`MuxState.HeaderPaneID`). This is a NEW, separate hardening campaign
+from the CLOSED R1/R2 (pre-header) campaign further below. **This is the fourth and, per the
+operator's plan, final scheduled round of this campaign's fable→opus→fable→opus rotation.**
 
 **Round 1 (`fable-header-r1`) is CLOSED-AND-VERIFIED.** Ten findings (3 BLOCKING, 3 MEDIUM, 2 LOW,
 2 NIT), commits `aa93f631`..`15bea532`. Highlights: **F4** (BLOCKING) — bare `-t <session>` tmux
-targets prefix-match, so a re-`down` in one worktree could kill a prefix-sharing sibling's live
-session; fixed with exact-match (`=name`/`=name:`) targets everywhere. **F1** (BLOCKING) — header
-pane cwd was `layout.Hub` (not a git repo by definition), so its own launch command died and the
-console showed a JSON error forever; fixed by splitting at `layout.Cwd`. **F2** (BLOCKING, folds
-F5/F8) — a dead/killed header wasn't exempt from reconcile's dead-pane kill loop, so the stale
-`HeaderPaneID` still got threaded into the layout string, tmux silently scrambled every strand's
-height positionally, and the header was gone entirely, wedging every subsequent `up`; fixed across
-3 seams. Plus F9 (test-suite recursion via header panes, root-caused this machine's large stray-tmux
-baseline), F10 (invisible 1-row header text), F3 (ValidateHeader ordering), F6/F7/F8 (render/doc
-fixes), and M19 (new sandbox scenario). Full detail: `.scratch/mux-review-fable-header-r1.md` +
-`-fixer-report.md`.
+targets prefix-match, letting a re-`down` in one worktree kill a prefix-sharing sibling's live
+session; fixed with exact-match targets everywhere. **F1** (BLOCKING) — header pane cwd was
+`layout.Hub` (not a git repo by definition), so its launch command died and the console showed a
+JSON error forever; fixed by splitting at `layout.Cwd`. **F2** (BLOCKING, folds F5/F8) — a
+dead/killed header wasn't exempt from reconcile's dead-pane kill loop, scrambling every strand's
+layout and wedging every subsequent `up`; fixed across 3 seams. Plus F9/F10/F3/F6/F7/F8 and M19.
+Full detail: `.scratch/mux-review-fable-header-r1.md` + `-fixer-report.md`.
 
-**Round 2 (`opus-header-r2`) is ALSO CLOSED-AND-VERIFIED — a much lighter round, a real
-convergence signal.** A full genuinely-independent pass (including concurrency/timing scenarios
-round 1 had driven mostly serially: concurrent same-worktree adds, concurrent two-worktree server
-boot, cross-worktree churn under load) found only **1 MEDIUM + 1 NIT** — a sharp drop from round
-1's ten findings, and round 1's ten fixes were confirmed to hold under round 2's own independent
-adversarial driving (not just re-reading the diff):
-- **F-OPUS-1** (MEDIUM): a `-vv`-only `tmux-out-<pid>.log` third log shape was missed by the
-  existing server/client log prune, so `debug_log: 2` boots accumulated it unbounded — same class
-  as the CLOSED prior R1/R2 campaign's already-fixed F1 (client logs), one prefix further. Fixed:
-  `outLogNamePrefix` added to the same newest-3 prune budget. Commit `1c6cd050`.
-- **F-OPUS-2** (NIT): header template banner described `{{.hub}}` as "the hub's directory name"
-  when it renders the hub's absolute path. Commit `08c027ea`.
-- The `sonnet-r1` "down reports ok but session alive" item (from the CLOSED prior campaign) did
-  NOT reproduce under round 2's driving either — second independent non-reproduction, on top of
-  round 1's; convergence signal that F4's fix (round 1) closed its real root cause.
+**Round 2 (`opus-header-r2`) is CLOSED-AND-VERIFIED — a much lighter round.** 2 findings
+(F-OPUS-1 MEDIUM: unbounded `tmux-out-*.log` under `debug_log: 2`, same class as an
+already-closed prior-campaign log-prune bug; F-OPUS-2 NIT: doc wording). Commits `1c6cd050`,
+`08c027ea`. Round 1's ten fixes confirmed to hold under round 2's own independent driving,
+including concurrency/timing scenarios round 1 drove mostly serially. Full detail:
+`.scratch/mux-review-opus-header-r2.md` + `-fixer-report.md`.
 
-**Orchestrator's independent verification of round 2 (not just the round's self-report):**
-`go build ./...`, `go vet` (plain), `go test -count=5` (muxengine/muxcli/tokenvocab/cmd/lyx), the
-full `-tags integration` suite, the full serial smoke suite (`-run Smoke -v -count=1`, all PASS + 1
-expected psmux-only SKIP), and a 3× concurrent full-smoke-suite amplifier (zero corruption
-markers) — all green, from a cold state on the committed tree. The orchestrator hand-mutated
-F-OPUS-1's fix itself (temporarily removed the `outLogNamePrefix` prune call): the regression test
-failed at exactly the right assertion (`tmux-out-*.log count = 5 ... want <= 3`), and reverting the
-mutation restored an empty diff and a green re-run. Stray-tmux accounting: `pgrep -ac tmux` before
-and after every verification run stayed at exactly **117** — this machine's large pre-existing
-baseline from unrelated concurrent worktrees/test runs (see the Environment note in
-`.scratch/mux-review-HANDOFF.md`; not a finding) — zero new strays from round 2 or from the
-orchestrator's own runs.
+**Round 3 (`fable-header-r3`) is CLOSED-AND-VERIFIED, WITH ONE RESIDUAL the orchestrator found
+during independent verification (see below).** 2 more findings, both novel (neither prior round
+touched them):
+- **F-FBL3-1** (MEDIUM, PLAUSIBLE — confirmed unreachable on native tmux, real risk on psmux):
+  `ensureHeaderPaneLocked`'s header-rebuild split trusted `split-window`'s printed pane id with
+  only an empty-string check — missing the genuinely-new-pane guard `launchStrandLocked` already
+  carries for the package's documented psmux silent-too-small-split contract (an existing pane's
+  id gets printed with exit 0). A silently-failed header rebuild would bind `HeaderPaneID` to a
+  strand's pane → duplicate pane number in the next layout string → the documented
+  session-destroying shape. Fixed: both split sites now share one `validateSplitCreatedNewPane`
+  guard. Commit `aa860c5f`.
+- **F-FBL3-2** (NIT, CONFIRMED live): `header.template`'s live-change semantics were undocumented
+  (a template edit renders immediately in `lyx mux header` but the live pane keeps old text until
+  an actual header rebuild, unlike `height_rows` which re-applies on the next layout apply). Fixed
+  with doc additions. Commit `aca83a93`.
+- Round 3 also independently re-confirmed all 12 prior fixes hold, and the `sonnet-r1`
+  down-honesty ghost did not reproduce a THIRD time (5 full crash-chain cycles under concurrent
+  same-socket churn).
 
-**YOUR JOB this round (header-pane campaign, round 3) — genuinely independent, not a rubber
-stamp.** Two rounds have now converged toward "clean" (round 1 severe → round 2 light), but by
-this method's own bar (see the worked mux campaign in `docs/reviews/README.md`: rounds 3, 4, AND 5
-of THAT campaign each self-reported clean and each still had a residual the next round caught;
-convergence needs multiple *different* models agreeing, not one quiet round), two rounds is not
-yet the bar — continue the full independent treatment:
-- Form and write your OWN findings before reading either `fable-header-r1`'s or
-  `opus-header-r2`'s review/fixer reports. Re-drive every bullet under "NEW THIS ROUND — THE
-  ALWAYS-ON HEADER PANE" in High-yield focus above with your own scenarios.
-- Since two different models (Fable, Opus) have both now driven this surface hard and the finding
-  rate is dropping, use your own independent judgment about where to concentrate: either find a
-  genuinely new angle neither round tried, or do a rigorous safety-pass-style confirmation if you
-  find nothing — either is a valid, honest round-3 outcome. Do not invent work to look busy, but do
-  not under-drive it either.
-- After your own pass, consult both prior rounds' reports to confirm their 12 combined fixes hold
-  under YOUR adversarial driving (drive it live yourself, don't just re-read the diffs) and to
-  re-check the CLOSED prior R1/R2 (pre-header) campaign's four items for regressions — a lighter
-  pass, not a from-scratch re-review.
-- The Windows/psmux contract questions (the `=` exact-target grammar's behavior there, and whether
-  Windows tmux truly "refuses to kill the last pane") remain open on this Linux box across two
-  rounds now. If you have Windows/psmux access, checking either resolves a real open question; if
-  not, say so explicitly rather than a blanket cannot-verify excuse.
+**ORCHESTRATOR'S OWN RESIDUAL FINDING (not from any round — found during my independent
+verification, is the seed for THIS round):** F-FBL3-1's fix is only unit-tested at the shared
+pure-function level (`TestValidateSplitCreatedNewPane` in `spawn_test.go`), never at the actual
+call site the finding was about (`ensureHeaderPaneLocked`'s header-rebuild split in
+`lifecycle.go`, around the `validateSplitCreatedNewPane(paneID, live, target)` call). I proved
+this by temporarily deleting that one call site's guard call by hand: `go vet`, the full hermetic
+suite (`-count=1`), and the full `-tags integration` suite all stayed **green** with the guard
+removed — meaning nothing on this branch would catch a future regression that silently drops the
+wiring at this specific call site, even though the underlying logic it calls is well-tested in
+isolation. (I restored the guard immediately after confirming this — working tree is clean, this
+is not an open code change, just an open TEST-COVERAGE gap.) This is lower severity than any
+BLOCKING/MEDIUM finding from rounds 1-3 (the underlying bug is still unreachable on native tmux,
+same as F-FBL3-1 itself), but it is a real gap in exactly the kind of thing this method exists to
+catch — a fix that "closes" a finding without proof that regression coverage actually exercises
+the fixed code path, not just the helper it calls.
+- **YOUR FIRST JOB, before your own review:** close this specific gap. Add a regression test that
+  exercises `ensureHeaderPaneLocked`'s rebuild path itself (not just the shared pure function) and
+  would fail if the `validateSplitCreatedNewPane` call at that site were ever silently removed or
+  bypassed. If `TmuxCmd`/the split-window invocation isn't presently injectable/fakeable at that
+  layer, that is itself worth a short note either way (either make it fakeable, or explain why a
+  live-tmux integration test is the right substitute and add that instead — native tmux errors
+  loud on a too-small split, so you may need to reason about how to simulate the psmux-only
+  silent-failure shape, e.g. by calling the lower-level rebuild helper directly with a stubbed
+  pane-id string the way `TestValidateSplitCreatedNewPane` already does for the pure function, but
+  through the actual call site rather than around it). Treat this exactly like any other reported
+  finding: fix it, verify it, commit it on its own (message format:
+  `mux: fix ORCH-R3-1 — <what/why>`).
+
+**YOUR JOB this round (header-pane campaign, round 4, FINAL scheduled round) — genuinely
+independent, not a rubber stamp.** Three rounds have now converged toward "clean" (10 → 2 → 2
+findings), a strong trend, but by this method's own bar (see the worked mux campaign in
+`docs/reviews/README.md`: rounds 3, 4, AND 5 of THAT campaign each self-reported clean and each
+still had a residual) three rounds of dropping-but-nonzero findings, plus the orchestrator's own
+coverage-gap catch above, means this round still needs full independent treatment, not a
+formality:
+- After closing ORCH-R3-1 above, form and write your OWN findings before reading any of the three
+  prior rounds' review/fixer reports. Re-drive every bullet under "NEW THIS ROUND — THE ALWAYS-ON
+  HEADER PANE" in High-yield focus above with your own scenarios.
+- Since three different models/rounds have now driven this surface hard with a dropping finding
+  rate, use your own independent judgment: either find a genuinely new angle none of the three
+  tried, or do a rigorous safety-pass-style confirmation if you find nothing — either is a valid,
+  honest outcome for this round. Do not invent work to look busy, but do not under-drive it
+  either — this is the last scheduled round, so be thorough.
+- After your own pass, consult all three prior rounds' reports to confirm their combined 14 fixes
+  (now 15 with ORCH-R3-1) hold under YOUR adversarial driving (drive it live yourself, don't just
+  re-read the diffs), and re-check the CLOSED prior R1/R2 (pre-header) campaign's four items for
+  regressions — a lighter pass, not a from-scratch re-review.
+- The Windows/psmux contract questions (the `=` exact-target grammar's behavior there, whether
+  Windows tmux truly "refuses to kill the last pane", and now F-FBL3-1's psmux-only reachability)
+  remain open on this Linux box across three rounds now. If you have Windows/psmux access,
+  checking any of these resolves a real open question; if not, say so explicitly rather than a
+  blanket cannot-verify excuse — this is worth flagging clearly in your final verdict as the
+  campaign's one category of un-closeable-on-this-box risk.
+- Give an explicit, honest opinion on overall campaign convergence in your final verdict (not just
+  this round's own findings) — the operator will decide whether the fixed 4-round rotation is
+  sufficient or whether more rounds/an operator-assisted Windows pass is warranted.
 
 ---
 
