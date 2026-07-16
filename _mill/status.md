@@ -43,7 +43,9 @@ batches:
     start_sha: afb6b00dba1f69c7222aa584e648ba32ae78633a
     commit_sha: 94aa23fd63afeb639fe3ec256e7000d5ce5cbf8c
   - name: header-text-pipeline
-    state: pending
+    state: running
+    implementer_session: 0a727bb2-c3a9-4e93-9a4c-b6b7cd422272
+    start_sha: a3a27fd3186cf8d1600b9bbaa7e8bc5fb31d2b09
   - name: header-pane-and-render
     state: pending
 ```
