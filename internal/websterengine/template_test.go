@@ -8,7 +8,7 @@
 // statement and exact-field-list assertions in the same style as
 // builderengine/template_test.go, plus stencil.Fill round-trips proving
 // every required marker. Every test here is untagged and spawn-free: no
-// exec.Command, no git, no fixture trees — only embedded bytes and
+// subprocess exec, no git, no fixture trees — only embedded bytes and
 // stencil.Fill, per the batch's own test-tiers-and-hermetic-git decision.
 
 package websterengine_test

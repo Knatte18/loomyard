@@ -2,7 +2,7 @@
 // through LoadConfig, overrides round-trip, and a malformed role model-spec
 // fails loud naming the offending key — the builderengine config_test.go
 // pattern, but seeded via plain os.MkdirAll/os.WriteFile against a
-// t.TempDir() rather than lyxtest.CopyWeft/SeedConfig: configengine.Load
+// t.TempDir() rather than lyxtest's weft/config fixture-copy helpers: configengine.Load
 // only requires a filesystem _lyx/config/<module>.yaml, no git repository,
 // so this test stays untagged and spawn-free (Test Tier Purity Invariant).
 

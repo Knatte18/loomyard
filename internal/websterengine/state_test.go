@@ -4,7 +4,7 @@
 // state.json returning (nil, nil), a corrupt state.json returning a wrapped
 // error rather than a guessed value, and the state-mutation lease's
 // cross-holder exclusion. All plain t.TempDir() files — no git, no
-// exec.Command — Test Tier Purity Invariant.
+// subprocess spawns — Test Tier Purity Invariant.
 
 package websterengine_test
 
