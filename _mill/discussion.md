@@ -51,9 +51,10 @@ implementation. It produces two contract documents (plus adjacent doc reconcilia
     grep: `modules/…` from docs at the `docs/` root (`docs/overview.md:269,272,375`,
     `docs/roadmap.md:57,60,74,189,195,333` → `reference/…`), `../modules/plan-format.md` from
     `docs/reference/model-spec.md:5` (→ `plan-format.md`, now a sibling), and same-folder
-    sibling links from `docs/modules/loom.md` (`(builder-contract.md)` at L117 →
-    `../reference/builder-contract.md`). Since this task already edits loom.md, overview.md,
-    and roadmap.md, their inbound links move in the same pass.
+    sibling links from `docs/modules/loom.md` (`(plan-format.md)` at L36/L111,
+    `(builder-contract.md)` at L117, and both at L235 → `../reference/…`). Since this task
+    already edits loom.md, overview.md, and roadmap.md, their inbound links move in the same
+    pass.
   These are comment/string-only edits — see the "No Go code = no *functional* Go" note under
   Constraints. Bare-filename mentions ("`plan-format.md` pins …", encoding no path) are
   location-agnostic and left untouched. (round-1 gap G1; round-2 gap + note)
@@ -152,7 +153,10 @@ table links neither doc — verified — so there is nothing there to update. ro
     total overview of *where it is*.
   - `narration` — one composed human string with `now:`/`last:`/`wait:` segments (loom.md's
     example); loom writes it, the status strand prints it, mux never parses it.
-  - `history` — **per-phase outcome trail** (see `verdict-history-granularity`).
+  - `history` — **per-phase outcome trail** (see `verdict-history-granularity`). Each entry's
+    `ts` (and any other timestamp field) is **RFC3339 UTC** (e.g. `2026-07-17T10:01:30Z`) —
+    pinned so the fail-loud parse has a well-defined "malformed" for the field; state this in
+    `status-schema.md`'s field notes / check list.
   - `start_sha` — host `HEAD` stamped when Builder begins, so Raddle can diff `start_sha..HEAD`.
   - `pause_requested` — in-status flag (loom.md keeps loom's pause flag here; note this
     diverges from builder, which uses a separate pause *flag file* — call the divergence out
