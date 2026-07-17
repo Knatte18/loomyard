@@ -152,6 +152,17 @@ verbatim, and stop. NEVER work around a violation — do not retry the call, do 
 route the batch through `recover-batch`, do not finish remaining batches. The audit is
 whole-session: once a violation exists it will fail every later call too, by design.
 
+## A weft-sync error ends your run as stuck — do not retry the verb
+
+If a bracket verb (`begin-batch`, `record-batch`, or `recover-batch`) returns an
+error whose message names a **weft sync** failure (e.g. `weft sync failed`), that is
+an infrastructure problem, NOT a batch outcome. Do not retry the verb and do not try
+another batch: write `outcome: stuck` to `{{.outcome_path}}` right away, with a
+`stuck_reason` naming the batch and quoting the weft-sync failure, then stop. Go has
+already recorded whatever state it committed locally, so the run is fully resumable
+later with `lyx webster run` once the infrastructure is fixed — retrying the verb
+yourself only duplicates commits without fixing the underlying failure.
+
 ## What you never do
 
 NEVER run any git command against the weft, and NEVER reference the weft worktree's

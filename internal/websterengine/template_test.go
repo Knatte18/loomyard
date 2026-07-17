@@ -227,6 +227,12 @@ func TestMasterTemplate_StatesBracketSequenceAndRecoveryLadder(t *testing.T) {
 	// otherwise Master improvises (round fable-r1's F10). Both stuck and dead
 	// recovery terminals end the run stuck.
 	requireContains(t, text, "OR `status: dead`")
+
+	// A bracket-verb weft-sync error must have its own explicit rung — without
+	// it Master improvises and retries the verb, double-committing (round
+	// opus-r2 live). It ends the run stuck; the run is resumable.
+	requireContains(t, text, "weft sync")
+	requireContains(t, text, "do not retry the verb")
 }
 
 // TestMasterTemplate_FillsWithAllMarkers asserts stencil.Fill succeeds when
