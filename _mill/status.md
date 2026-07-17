@@ -35,7 +35,9 @@ batches:
     start_sha: 79f5b9cd831daaba8797b90a2099ba594555de5c
     commit_sha: 230fdcdd47e2799e97f290e461334aa5180937b1
   - name: webster-foundation
-    state: pending
+    state: running
+    implementer_session: efde3f47-abf5-4397-86ba-34428efadbf7
+    start_sha: 83d7815a8197bdf89a78899cb258ea28a93d453f
   - name: webster-audit-policy
     state: pending
   - name: webster-templates
