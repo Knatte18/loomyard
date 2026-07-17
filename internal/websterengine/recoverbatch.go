@@ -154,9 +154,13 @@ func archiveStaleReport(reportsDir string, number int, slug string, now func() t
 // batch's existing BatchState, if any (nil for a batch that has never been
 // touched by begin-batch or a prior recovery); its StrandGUID (empty for a
 // plain fork batch, since only recovery batches carry strand fields) is the
-// only field this function reads from it. Returns the freshly-built
-// BatchState the caller records into deps.State.Batches[batchNumber].
-func recoverSpawn(deps RecoverDeps, batch builderengine.PlanBatch, prior *BatchState) (*BatchState, error) {
+// only field this function reads from it. clk stamps SpawnedAt (clk.Now(),
+// never the wall clock directly) so the elapsed-since-spawn measurement
+// awaitTerminal performs later is computed against the SAME clock a caller
+// injects for the whole call — the property a fake clock's tests depend on.
+// Returns the freshly-built BatchState the caller records into
+// deps.State.Batches[batchNumber].
+func recoverSpawn(deps RecoverDeps, batch builderengine.PlanBatch, prior *BatchState, clk Clock) (*BatchState, error) {
 	if _, err := archiveStaleReport(deps.ReportsDir, batch.Number, batch.Slug, time.Now); err != nil {
 		return nil, err
 	}
@@ -224,7 +228,7 @@ func recoverSpawn(deps RecoverDeps, batch builderengine.PlanBatch, prior *BatchS
 		Slug:          batch.Slug,
 		StartSHA:      head,
 		Kind:          "recovery",
-		SpawnedAt:     time.Now().UTC().Format(time.RFC3339),
+		SpawnedAt:     clk.Now().UTC().Format(time.RFC3339),
 		StrandGUID:    run.StrandGUID(),
 		ShuttleRunDir: runDir,
 		EventsPath:    runState.EventsPath,
@@ -255,7 +259,7 @@ func RecoverBatch(deps RecoverDeps, batchNumber int, wait time.Duration, clk Clo
 	spawned := false
 	bs := prior
 	if !attach {
-		fresh, err := recoverSpawn(deps, batch, prior)
+		fresh, err := recoverSpawn(deps, batch, prior, clk)
 		if err != nil {
 			return nil, err
 		}
