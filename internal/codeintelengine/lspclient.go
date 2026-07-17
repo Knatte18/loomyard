@@ -247,6 +247,16 @@ func (c *lspClient) readMessage() (*lspMessage, error) {
 // id) are dropped silently. phase names the current request for
 // ErrServerTimeout's Phase field if ctx expires first.
 func (c *lspClient) call(ctx context.Context, phase, method string, params any) (json.RawMessage, error) {
+	// writeMessage below has no context awareness of its own: on a
+	// pipe/subprocess-stdin transport a Write can block until something
+	// reads it, so a ctx that is already expired before the write is even
+	// attempted must be caught here rather than left to hang. Once the
+	// write has actually started, the select loop below is what bounds the
+	// remaining wait.
+	if err := ctx.Err(); err != nil {
+		return nil, &ErrServerTimeout{Phase: phase, Timeout: err.Error()}
+	}
+
 	c.nextID++
 	id := c.nextID
 	idBytes := []byte(strconv.Itoa(id))
