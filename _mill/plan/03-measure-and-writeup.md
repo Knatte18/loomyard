@@ -5,7 +5,7 @@ task: 'Spike: structured Go reference/call-graph lookup (go/packages / gopls)'
 batch: measure-and-writeup
 number: 3
 cards: 2
-verify: go build ./tools/codeintel-poc/
+verify: go build ./...
 depends-on: [1, 2]
 ```
 

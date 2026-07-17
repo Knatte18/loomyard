@@ -21,17 +21,17 @@ batches:
     name: poc-scaffold-gopackages
     file: 01-poc-scaffold-gopackages.md
     depends-on: []
-    verify: go build ./tools/codeintel-poc/
+    verify: go build ./...
   - number: 2
     name: poc-gopls-callgraph
     file: 02-poc-gopls-callgraph.md
     depends-on: [1]
-    verify: go build ./tools/codeintel-poc/
+    verify: go build ./...
   - number: 3
     name: measure-and-writeup
     file: 03-measure-and-writeup.md
     depends-on: [1, 2]
-    verify: go build ./tools/codeintel-poc/
+    verify: go build ./...
   - number: 4
     name: revert-and-verify
     file: 04-revert-and-verify.md

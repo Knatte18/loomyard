@@ -5,7 +5,7 @@ task: 'Spike: structured Go reference/call-graph lookup (go/packages / gopls)'
 batch: poc-scaffold-gopackages
 number: 1
 cards: 3
-verify: go build ./tools/codeintel-poc/
+verify: go build ./...
 depends-on: []
 ```
 
