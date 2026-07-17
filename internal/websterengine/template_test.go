@@ -205,8 +205,9 @@ func TestMasterTemplate_StatesBracketSequenceAndRecoveryLadder(t *testing.T) {
 	requireContains(t, text, "forwarded verbatim")
 	requireContains(t, text, "BACKGROUNDED agent")
 	requireContains(t, text, "call `lyx webster await-batch <NN>`")
-	requireContains(t, text, "`await-batch` re-called until the report lands")
-	requireContains(t, text, "NEVER end your turn while a batch is open")
+	requireContains(t, text, "`await-batch` re-called in the foreground until the report lands")
+	requireContains(t, text, "NEVER background it")
+	requireContains(t, text, "a turn ended mid-batch kills the whole run")
 	requireContains(t, text, "`record-batch` once the fork has delivered")
 	requireContains(t, text, "re-call `recover-batch` until terminal")
 

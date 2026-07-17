@@ -37,15 +37,19 @@
 // (pause/fingerprint checks, optional chain rollback, records the batch's
 // start-SHA, idempotently asserts Master's model for this batch, renders
 // and writes the fork prompt) immediately before forking, await-batch (a
-// bounded, stateless long-poll on the batch's report path) between the fork
-// spawn and the record, and record-batch (incremental fork audit,
-// batch-report parsing, digest distillation, state update) once the fork
-// has delivered. await-batch exists because the Agent-tool fork is a
-// BACKGROUNDED agent on current Claude Code (2.1.205): the fork call
-// returns immediately, before the batch is done, so Master must stay
-// inside its turn by blocking on await-batch until the report lands — a
-// Master that ends its turn "waiting" is classified asking by the shuttle
-// file contract and kills the run (found live in round fable-r1). Go's
+// SHORT, stateless, foreground poll on the batch's report path, re-called
+// in a loop) between the fork spawn and the record, and record-batch
+// (incremental fork audit, batch-report parsing, digest distillation, state
+// update) once the fork has delivered. await-batch exists because the
+// Agent-tool fork is a BACKGROUNDED agent on current Claude Code (2.1.205):
+// the fork call returns immediately, before the batch is done, so Master
+// must stay inside its turn by re-polling await-batch until the report
+// lands — a Master that ends its turn "waiting" is classified asking by the
+// shuttle file contract and kills the run (found live in round fable-r1).
+// Each await-batch call blocks only ~30s (DefaultAwaitWaitS), deliberately
+// short: Claude Code auto-backgrounds a foreground command that runs much
+// past ~2 minutes, and a backgrounded poll stops keeping Master's turn
+// alive — so the poll is short and looped rather than one long block. Go's
 // gates only run when Master actually calls them — the fork itself is
 // Master's own un-gateable act, so enforcement is two-layer: template
 // discipline (the master template pins the begin -> fork -> await -> record

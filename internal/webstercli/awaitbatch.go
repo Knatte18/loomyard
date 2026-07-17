@@ -61,9 +61,14 @@ Example:
 				return nil
 			}
 
+			// Default to a SHORT block (not poll_wait_s): await-batch runs as
+			// Master's foreground call, and Claude Code auto-backgrounds a
+			// command that runs much past ~2 minutes — a backgrounded
+			// await-batch stops keeping Master's turn alive. Master re-calls
+			// in a foreground loop instead (see DefaultAwaitWaitS).
 			waitBudget := wait
 			if waitBudget == 0 {
-				waitBudget = time.Duration(c.cfg.PollWaitS) * time.Second
+				waitBudget = time.Duration(websterengine.DefaultAwaitWaitS) * time.Second
 			}
 
 			result, err := websterengine.AwaitBatch(plan, c.reportsDir, batchNumber, waitBudget, recoverRealClock{})

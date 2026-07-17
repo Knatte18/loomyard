@@ -24,9 +24,21 @@ import (
 
 // awaitTick is the fixed re-check cadence AwaitBatch polls the report path
 // on: frequent enough that a fork's just-written report is seen within a
-// second, cheap enough that a full poll_wait_s window costs nothing but
-// stat calls.
+// second, cheap enough that a full wait window costs nothing but stat calls.
 const awaitTick = time.Second
+
+// DefaultAwaitWaitS is await-batch's default per-call block when --wait is
+// not given: deliberately SHORT (not poll_wait_s, unlike recover-batch),
+// because await-batch runs as Master's own FOREGROUND Bash tool call and
+// Claude Code auto-backgrounds a foreground command that runs much past ~2
+// minutes — a backgrounded await-batch stops keeping Master's turn alive,
+// which reintroduces the very asking-classification crash await-batch exists
+// to prevent (found live in round fable-r1). A ~30s block stays comfortably
+// under that threshold: each call returns quickly with report:false while
+// the fork is still running, Master re-calls in a foreground loop (per the
+// master template), and the turn stays alive across an arbitrarily long fork
+// without any single tool call ever getting backgrounded.
+const DefaultAwaitWaitS = 30
 
 // AwaitResult is what one AwaitBatch call hands back to its caller
 // (internal/webstercli's await-batch verb): BatchName is the batch's

@@ -61,18 +61,23 @@ For each batch not already reported, in order:
    path from the begin-batch envelope>` — forwarded verbatim, no additions of your
    own.
 3. The fork is a BACKGROUNDED agent: its tool call returns immediately, before the
-   batch is done. Immediately call `lyx webster await-batch <NN>` — it blocks until
-   the batch's report file lands and returns `{"report": true}`, or returns
-   `{"report": false}` when its wait window elapses first. While it returns
-   `{"report": false}` and your fork is still running, call `await-batch <NN>` again.
-   NEVER end your turn while a batch is open — between calls the only thing you do
-   is call `await-batch` again; a turn ended mid-batch kills the whole run.
+   batch is done. Immediately call `lyx webster await-batch <NN>` — a SHORT foreground
+   poll (about 30 seconds) that returns `{"report": true}` the moment the batch's
+   report lands, or `{"report": false}` when its short window elapses with the fork
+   still running. It is deliberately short so it stays a normal foreground call.
+   **Run `await-batch` in the FOREGROUND every time — NEVER background it** (no
+   `run_in_background`, no Ctrl-B, no `&`): a backgrounded poll ends your turn, and
+   a turn ended mid-batch kills the whole run. While it returns `{"report": false}` and
+   your fork is still running, call `await-batch <NN>` AGAIN, in the foreground —
+   loop this way as many times as it takes. Between calls the only thing you do is
+   call `await-batch` again; do not go idle, do not check files yourself, do not end
+   your turn.
 4. Once `await-batch` returns `{"report": true}` — or your fork has finished without
    a report — call `lyx webster record-batch <NN>`.
 
 This sequence is fixed and non-negotiable: `begin-batch` before every fork;
 `subagent_type: "fork"` with no name; the fork's prompt forwarded verbatim;
-`await-batch` re-called until the report lands;
+`await-batch` re-called in the foreground until the report lands;
 `record-batch` once the fork has delivered; and, on a running result,
 re-call `recover-batch` until terminal (see the failure ladder below).
 
