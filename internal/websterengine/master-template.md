@@ -108,6 +108,12 @@ design.
 - `recover-batch <NN>` returns a `running` snapshot → re-call `lyx webster
   recover-batch <NN>` until it returns a terminal digest — each call blocks at most
   `{{.poll_wait_s}}` seconds, so re-polling immediately is not busy-waiting.
+- `recover-batch <NN>` returns a terminal `status: done` → move on to the next batch.
+- `recover-batch <NN>` returns a terminal `status: stuck` OR `status: dead` (any
+  `dead_reason`) → the recovery itself failed. You have exhausted this batch's
+  recovery: stop the run here — write `outcome: stuck` to `{{.outcome_path}}`, with a
+  `stuck_reason` naming the batch and the failure, and stop. Do NOT re-fork it, do NOT
+  begin the next batch (batch N+1 assumes N is committed).
 - A stuck deferred-verify chain → `lyx webster begin-batch <NN> --restart-chain`,
   naming any member of that chain.
 

@@ -215,6 +215,11 @@ func TestMasterTemplate_StatesBracketSequenceAndRecoveryLadder(t *testing.T) {
 	requireContains(t, text, "SAME prompt file and no new `begin-batch`")
 	requireContains(t, text, "--restart-chain")
 	requireContains(t, text, `"paused": true`)
+
+	// A terminal dead recovery result must have an explicit ladder rung —
+	// otherwise Master improvises (round fable-r1's F10). Both stuck and dead
+	// recovery terminals end the run stuck.
+	requireContains(t, text, "OR `status: dead`")
 }
 
 // TestMasterTemplate_FillsWithAllMarkers asserts stencil.Fill succeeds when
