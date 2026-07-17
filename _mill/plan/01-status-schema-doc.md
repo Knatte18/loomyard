@@ -25,7 +25,7 @@ this batch renders that design as a pinned doc in the house style of `builder-co
 - **Context:**
   - `_mill/discussion.md`
   - `docs/modules/loom.md`
-  - `docs/modules/builder-contract.md`
+  - `docs/reference/builder-contract.md`
 - **Edits:** none
 - **Creates:**
   - `docs/reference/status-schema.md`

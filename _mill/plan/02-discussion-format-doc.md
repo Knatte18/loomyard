@@ -23,7 +23,7 @@ Self-contained; no other batch depends on its contents. The design is fully spec
 
 - **Context:**
   - `_mill/discussion.md`
-  - `docs/modules/plan-format.md`
+  - `docs/reference/plan-format.md`
 - **Edits:** none
 - **Creates:**
   - `docs/reference/discussion-format.md`
