@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-fix-r2
+phase: discussed
 slug: codeintel-spike
 branch: codeintel-spike
 plan: null
@@ -16,4 +16,5 @@ task_description: |
 ```text
 discussing  '2026-07-17T14:24:44Z'
 discussion-fix-r2  '2026-07-17T15:01:44Z'
+discussed  '2026-07-17T15:01:59Z'
 ```
