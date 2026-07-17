@@ -71,7 +71,9 @@ batches:
     start_sha: 2959e259905dfcfb3bb4bb078dcbc379e8d6a9fc
     commit_sha: 47dbfd00b5b542f015f300d952e1d47b2e5d221c
   - name: webstercli-registration
-    state: pending
+    state: running
+    implementer_session: 2d4fdc96-311c-47f9-97f2-38d6df5cbea7
+    start_sha: 108d46fc12758e544204f2e22edfb23051a2ff21
   - name: sandbox-and-docs
     state: pending
 ```
