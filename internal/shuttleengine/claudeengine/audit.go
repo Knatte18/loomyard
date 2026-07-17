@@ -136,6 +136,7 @@ func claudeProjectDirFor(workdir string) (string, error) {
 // fields (events.go).
 type transcriptBlock struct {
 	Type  string         `json:"type"`
+	ID    string         `json:"id"`
 	Name  string         `json:"name"`
 	Input map[string]any `json:"input"`
 	Text  string         `json:"text"`
@@ -235,6 +236,30 @@ func auditParentTranscript(path string) (spawnCalls, namedSpawns, writeCalls int
 	return spawnCalls, namedSpawns, writeCalls, writes, bashCommands, nil
 }
 
+// forkSpawnToolUseID returns the tool_use id of the parent's own Agent call
+// that spawned the fork whose transcript lives at transcriptPath, read from the
+// sibling <transcript>.meta.json file Claude Code writes next to every fork
+// transcript ({"toolUseId": "toolu_..."}). The fork transcript's FIRST
+// assistant line is a replay of exactly that spawning call (the
+// inherited-context boundary — observed live on Claude Code 2.1.205), so the
+// audit needs this id to avoid counting the parent's own spawn as the fork's
+// nested-Agent attempt. A missing or unparseable meta file returns "" — the
+// caller then skips nothing, which is the pre-meta.json behavior.
+func forkSpawnToolUseID(transcriptPath string) string {
+	metaPath := strings.TrimSuffix(transcriptPath, ".jsonl") + ".meta.json"
+	data, err := os.ReadFile(metaPath)
+	if err != nil {
+		return ""
+	}
+	var meta struct {
+		ToolUseID string `json:"toolUseId"`
+	}
+	if err := json.Unmarshal(data, &meta); err != nil {
+		return ""
+	}
+	return meta.ToolUseID
+}
+
 // auditForkTranscript reads path (one fork subagent's own transcript) into a
 // ForkReport: ToolCalls tallies every tool_use by tool name, AgentCalls and
 // WriteCalls narrow that tally to the two tool families the fail-loud posture
@@ -251,6 +276,12 @@ func auditForkTranscript(path string) (shuttleengine.ForkReport, error) {
 	if err != nil {
 		return shuttleengine.ForkReport{}, fmt.Errorf("claudeengine: read fork transcript %q: %w", path, err)
 	}
+
+	// The parent's own spawning Agent call is replayed as the fork
+	// transcript's inherited-context boundary entry; counting it would flag
+	// every legitimate fork as a nested-Agent violation, so it is excluded by
+	// its tool_use id (from the sibling .meta.json).
+	spawnToolUseID := forkSpawnToolUseID(path)
 
 	report := shuttleengine.ForkReport{
 		TranscriptPath: path,
@@ -269,6 +300,10 @@ func auditForkTranscript(path string) (shuttleengine.ForkReport, error) {
 		for _, block := range line.Message.Content {
 			switch block.Type {
 			case "tool_use":
+				if spawnToolUseID != "" && block.ID == spawnToolUseID {
+					// The parent's spawning call, not something this fork did.
+					continue
+				}
 				report.ToolCalls[block.Name]++
 				switch block.Name {
 				case "Agent":
