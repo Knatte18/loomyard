@@ -63,8 +63,12 @@ It is measurement and a prototype, **not a production build** — no integration
   implementations slice, plus the callgraph comparison, matters here.
 - The harness is **deleted before merge** (like the `session-fork-spike`'s `tools/fork-poc/`);
   nothing ships to `main` except `docs/research/codeintel-spike.md`. The `golang.org/x/tools`
-  go.mod dependency the harness pulls in is **reverted before merge** — it is not vetted or
-  pinned for production by this task.
+  dependency the harness pulls in (both **`go.mod` and `go.sum`**) and any throwaway
+  **`.lsp.json`** are **reverted before merge** — `x/tools` is not vetted or pinned for
+  production by this task. The plan MUST carry this as an **explicit final step** (see
+  Testing → final revert-and-verify step), not an assumption: revert harness + `go.mod` +
+  `go.sum` + `.lsp.json`, then confirm the branch's merge diff against `main` is
+  **doc-only** (`docs/research/codeintel-spike.md` and nothing else).
 
 ## Decisions
 
@@ -109,6 +113,12 @@ It is measurement and a prototype, **not a production build** — no integration
   wire up `ENABLE_LSP_TOOL=1` + a `.lsp.json` pointing at `gopls` and drive **one real
   reference query, timeboxed**; if it misbehaves within the timebox, fall back to
   characterizing it from docs. Document the recipe regardless.
+  - **Accepted-outcome note:** enabling `ENABLE_LSP_TOOL=1` requires an interactive Claude
+    Code session with that env toggled and `gopls` installed, which may not be togglable in
+    the spike author's harness at all. A **docs-only characterization is an accepted,
+    non-blocking outcome** if the tool cannot be enabled here *at all* — not only if it
+    "misbehaves" once enabled. The spike does not stall or block on making the native tool
+    runnable; the two Go mechanisms are the load-bearing measurements.
 - Rationale: The repo the user flagged, `github.com/zircote/go-lsp`, is **not a Go library**
   — it is a thin Claude Code *plugin* (only `.go` file is a test sample): a `.lsp.json`
   launching `gopls` over stdio, a setup command installing gopls + lint/security tools, and
@@ -296,14 +306,28 @@ measurement rig and its validity**, not a production test suite:
     the same warm process. Numbers are wall-clock and noisy — report as order-of-magnitude
     with the machine/toolchain noted (matching `docs/benchmarks/` house style).
   - **CHA/RTA/VTA comparison:** for at least the interface-satisfaction symbol, report each
-    algorithm's caller set size and its precision against ground truth, plus build/analysis
-    time — the divergence between them is the transitive finding.
+    algorithm's caller set size plus build/analysis time. **Transitive precision method
+    (a full transitive caller set cannot be hand-enumerated at scale):** treat **VTA as the
+    reference/gold** set and report how much **CHA and RTA over-approximate relative to VTA**
+    — this inter-algorithm divergence is the transitive finding. Additionally, hand-verify
+    the **complete transitive caller set for exactly one deliberately small, shallow symbol**
+    (few callers, ≤2–3 hops) as an **absolute-truth anchor** confirming even VTA misses no
+    real caller on this repo. So: divergence is graded VTA-relative; soundness is spot-checked
+    once against hand-built truth. Direct-reference precision is unaffected — it is still
+    graded against grep+manual ground truth per the bullet above.
 - **If the verdict is adopt**, the findings doc's how-to section must contain a **runnable**
   minimal example (exact imports + call sequence, or exact gopls LSP request) that a
   follow-up implementer can lift directly — verified by actually running it during the spike,
   not written from memory.
 - **No production test-tier obligations** are incurred because nothing ships to `main`
   except the doc.
+- **Final revert-and-verify step (mandatory plan step):** after measurement is done and the
+  findings doc is written, revert the throwaway harness (`tools/codeintel-poc/`), the
+  `golang.org/x/tools` entries in **both `go.mod` and `go.sum`**, and any throwaway
+  `.lsp.json`; then verify `git diff main...HEAD --name-only` lists **only**
+  `docs/research/codeintel-spike.md`. A non-doc-only diff at this point is a task failure to
+  fix before handoff — this is the machine-checkable guard the "deleted before merge"
+  assertion needs.
 
 ## Q&A log
 
@@ -316,3 +340,4 @@ measurement rig and its validity**, not a production test suite:
 - **Q:** Who picks the precision benchmark symbols? **A:** The spike author picks a fixed handful from loomyard targeting interface-satisfaction, generics, high-fan-in, a method, and a reflection-adjacent negative case.
 - **Q:** How deeply to measure the CC-native LSP tool? **A:** Actually wire `ENABLE_LSP_TOOL` + `.lsp.json` and drive one real query, timeboxed; fall back to docs-characterization if it misbehaves. Document the recipe.
 - **Q:** Adopt/defer/drop rubric? **A:** Two-dimensional (cost + precision), no-false-negatives-on-ordinary-code required for adopt, separate CHA/RTA/VTA sub-verdict; author sets exact thresholds per the elaborated rubric.
+- **Q:** [r1 gap] How is *transitive* (CHA/RTA/VTA) precision measured, given a full transitive caller set can't be hand-enumerated? **A:** VTA-as-reference for the CHA/RTA over-approximation divergence (the finding), **plus** one deliberately small, shallow symbol hand-verified end-to-end as an absolute-truth soundness anchor. Author's call (user delegated).
