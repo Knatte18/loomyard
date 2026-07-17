@@ -108,15 +108,50 @@ func (f *capabilityFlag) UnmarshalJSON(data []byte) error {
 // Content-Length-framed LSP envelope: w is the outbound half, stdout the
 // buffered inbound half, closer tears both down together. cmd is nil when
 // the client was built over an injected transport with no subprocess —
-// kill() and close() guard on that.
+// kill() and close() guard on that. incoming is fed by exactly one
+// long-lived readLoop goroutine, started once at construction: every call()
+// across the client's lifetime reads from this same channel rather than
+// spawning its own reader, because two goroutines calling readMessage
+// concurrently on the same bufio.Reader would race and corrupt the framing
+// (each would consume an arbitrary interleaving of the byte stream).
 type lspClient struct {
-	cmd    *exec.Cmd
-	w      io.Writer
-	stdout *bufio.Reader
-	closer io.Closer
-	nextID int
-	closed bool
-	caps   capabilities
+	cmd      *exec.Cmd
+	w        io.Writer
+	stdout   *bufio.Reader
+	closer   io.Closer
+	nextID   int
+	closed   bool
+	caps     capabilities
+	incoming chan lspReadResult
+}
+
+// lspReadResult is one readLoop iteration's outcome, delivered to whichever
+// call() is currently selecting on lspClient.incoming.
+type lspReadResult struct {
+	msg *lspMessage
+	err error
+}
+
+// readLoop is the client's single persistent reader: it calls readMessage
+// in a tight loop for as long as the transport stays open, forwarding each
+// result to incoming. It is started once per client (by both constructors)
+// and runs until readMessage returns an error (transport closed) — at
+// which point it sends that final error and exits. The send is
+// deliberately not ctx-aware: incoming is shared across every call() the
+// client ever makes, so no single call's context should be able to steal
+// or drop a message meant for a different, still-pending call. If nothing
+// is selecting on incoming when readLoop's final send happens (e.g. every
+// caller has already given up), that send — and the goroutine — blocks
+// forever; this is a bounded, one-goroutine-per-client leak accepted for
+// the client's remaining process lifetime, not an unbounded one.
+func (c *lspClient) readLoop() {
+	for {
+		msg, err := c.readMessage()
+		c.incoming <- lspReadResult{msg: msg, err: err}
+		if err != nil {
+			return
+		}
+	}
 }
 
 // newLSPClient resolves command[0] on $PATH and spawns it with command[1:]
@@ -154,12 +189,15 @@ func newLSPClient(command []string) (*lspClient, error) {
 		return nil, fmt.Errorf("start %s: %w", bin, err)
 	}
 
-	return &lspClient{
-		cmd:    cmd,
-		w:      stdin,
-		stdout: bufio.NewReader(stdout),
-		closer: stdin,
-	}, nil
+	c := &lspClient{
+		cmd:      cmd,
+		w:        stdin,
+		stdout:   bufio.NewReader(stdout),
+		closer:   stdin,
+		incoming: make(chan lspReadResult),
+	}
+	go c.readLoop()
+	return c, nil
 }
 
 // newLSPClientFromRW builds an lspClient over a caller-supplied
@@ -169,11 +207,14 @@ func newLSPClient(command []string) (*lspClient, error) {
 // server-initiated-request handling, initialize/references/workspaceSymbol)
 // be exercised without spawning a real language server.
 func newLSPClientFromRW(rwc io.ReadWriteCloser) *lspClient {
-	return &lspClient{
-		w:      rwc,
-		stdout: bufio.NewReader(rwc),
-		closer: rwc,
+	c := &lspClient{
+		w:        rwc,
+		stdout:   bufio.NewReader(rwc),
+		closer:   rwc,
+		incoming: make(chan lspReadResult),
 	}
+	go c.readLoop()
+	return c
 }
 
 // writeMessage marshals v and frames it with the LSP Content-Length header,
@@ -232,20 +273,20 @@ func (c *lspClient) readMessage() (*lspMessage, error) {
 }
 
 // call sends a JSON-RPC request and blocks until either the matching
-// response arrives or ctx is done, whichever comes first. A single
-// background goroutine drives the blocking reads (readMessage has no
-// context awareness of its own) and forwards each message over an
-// unbuffered channel; the select below is what actually respects ctx.Done.
-// If ctx expires while a read is in flight, that goroutine leaks until the
-// transport is closed — the timeout path's caller is expected to call
-// kill(), which unblocks it. While waiting, call also answers any
-// server-initiated request it encounters (e.g. client/registerCapability or
-// workspace/configuration) with an empty success result — this client
-// implements no client-side LSP capability of its own, so an honest empty
-// response is the correct answer rather than leaving the server blocked
-// waiting on a reply that will never come. Notifications (messages with no
-// id) are dropped silently. phase names the current request for
-// ErrServerTimeout's Phase field if ctx expires first.
+// response arrives on c.incoming or ctx is done, whichever comes first.
+// incoming is fed by the client's single persistent readLoop goroutine
+// (started once at construction, not per call) — see lspClient's doc
+// comment for why sharing one reader across every call matters. While
+// waiting, call also answers any server-initiated request it encounters in
+// the meantime (e.g. client/registerCapability or workspace/configuration)
+// with an empty success result — this client implements no client-side LSP
+// capability of its own, so an honest empty response is the correct answer
+// rather than leaving the server blocked waiting on a reply that will
+// never come. Notifications and any other message not addressed to this
+// call's id (e.g. a stale message for a call this client already gave up
+// on after a previous timeout) are dropped silently and the wait
+// continues. phase names the current request for ErrServerTimeout's Phase
+// field if ctx expires first.
 func (c *lspClient) call(ctx context.Context, phase, method string, params any) (json.RawMessage, error) {
 	// writeMessage below has no context awareness of its own: on a
 	// pipe/subprocess-stdin transport a Write can block until something
@@ -269,30 +310,11 @@ func (c *lspClient) call(ctx context.Context, phase, method string, params any) 
 		return nil, fmt.Errorf("send %s: %w", method, err)
 	}
 
-	type readResult struct {
-		msg *lspMessage
-		err error
-	}
-	msgs := make(chan readResult)
-	go func() {
-		for {
-			msg, err := c.readMessage()
-			select {
-			case msgs <- readResult{msg: msg, err: err}:
-				if err != nil {
-					return
-				}
-			case <-ctx.Done():
-				return
-			}
-		}
-	}()
-
 	for {
 		select {
 		case <-ctx.Done():
 			return nil, &ErrServerTimeout{Phase: phase, Timeout: ctx.Err().Error()}
-		case r := <-msgs:
+		case r := <-c.incoming:
 			if r.err != nil {
 				return nil, fmt.Errorf("await response to %s: %w", method, r.err)
 			}
