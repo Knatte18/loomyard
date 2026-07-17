@@ -27,9 +27,7 @@ documented in `-help` and reused by every later mode.
 - **Context:**
   - `tools/sandbox/main.go`
   - `docs/research/session-fork-spike.md`
-- **Edits:**
-  - `go.mod`
-  - `go.sum`
+- **Edits:** none
 - **Creates:**
   - `tools/codeintel-poc/main.go`
 - **Deletes:** none
@@ -42,13 +40,13 @@ documented in `-help` and reused by every later mode.
   repeats; default 5), `-algo` (string, for callgraph mode; default `cha`), `-json` (bool,
   emit JSON). Include a `-help`/usage string documenting the symbol spec form and every mode.
   Define a `dispatch(mode string) error` switch that returns `fmt.Errorf("unknown mode %q",
-  mode)` for unimplemented modes so later cards register their handlers by extending it. Add
-  `golang.org/x/tools` to `go.mod` by running `go get golang.org/x/tools@latest && go mod
-  tidy` (this also updates `go.sum`); the import is exercised starting in Card 2. The file
-  must compile with `go build ./tools/codeintel-poc/` even before later modes exist (unknown
-  modes error at runtime, not compile time). No `*_test.go`. This is throwaway per Shared
-  Decision `no-production-module-conventions`.
-- **Commit:** `chore(codeintel-poc): scaffold harness cli + add x/tools dep`
+  mode)` for unimplemented modes so later cards register their handlers by extending it. This
+  card imports **only stdlib** (`flag`, `fmt`, `os`); the `golang.org/x/tools` dependency is
+  added in Card 2 where its first import lands (adding it here and running `go mod tidy` with
+  no importer would prune it again — the r1 review's blocking finding). The file must compile
+  with `go build ./tools/codeintel-poc/` (unknown modes error at runtime, not compile time).
+  No `*_test.go`. This is throwaway per Shared Decision `no-production-module-conventions`.
+- **Commit:** `chore(codeintel-poc): scaffold harness cli skeleton`
 
 ### Card 2: In-process go/packages reference finder
 
@@ -59,11 +57,16 @@ documented in `-help` and reused by every later mode.
   - `internal/shuttleengine/engine.go`
 - **Edits:**
   - `tools/codeintel-poc/main.go`
+  - `go.mod`
+  - `go.sum`
 - **Creates:**
   - `tools/codeintel-poc/gopackages.go`
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** In `tools/codeintel-poc/gopackages.go`, implement the `refs` mode. Add a
+- **Requirements:** First add the dependency: run `go get golang.org/x/tools@latest` (updates
+  both `go.mod` and `go.sum`) — this card is the first to import `golang.org/x/tools/go/...`,
+  so the require will not be pruned. Then, in `tools/codeintel-poc/gopackages.go`, implement
+  the `refs` mode. Add a
   `loadPackages(dir string) ([]*packages.Package, time.Duration, error)` that calls
   `packages.Load` with `Mode: packages.NeedName | NeedFiles | NeedSyntax | NeedTypes |
   NeedTypesInfo | NeedDeps | NeedImports | NeedModule` and `&packages.Config{Dir: dir, Tests:

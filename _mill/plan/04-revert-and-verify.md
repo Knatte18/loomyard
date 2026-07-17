@@ -19,7 +19,7 @@ guard that the "deleted before merge" assertion needs (Shared Decision
 
 ## Cards
 
-### Card 10: Revert harness, `go.mod`/`go.sum`, `.lsp.json`; assert doc-only diff
+### Card 8: Revert harness, `go.mod`/`go.sum`, `.lsp.json`; assert doc-only diff
 
 - **Context:**
   - `_mill/discussion.md`
