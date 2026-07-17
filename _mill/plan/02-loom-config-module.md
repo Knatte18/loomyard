@@ -55,7 +55,7 @@ package already exists (Preflight). This batch is independent of batch 1.
 - **Context:**
   - `internal/builderengine/config.go`
   - `internal/loomengine/template.yaml`
-  - `internal/configengine/configengine.go`
+  - `internal/configengine/config.go`
   - `internal/modelspec/parse.go`
 - **Edits:** none
 - **Creates:**
