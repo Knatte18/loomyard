@@ -246,18 +246,23 @@ func reclaimEntryTimeStrands(mux shuttleengine.MuxOps, st *State) error {
 	return nil
 }
 
-// countBegunForkBatches counts st's recorded batches whose Kind is "fork" —
-// the run-exit audit cross-check's begun-batch baseline: every one of these
-// batches was recorded because BeginBatch ran for it, so its own in-session
+// countBegunForkBatches counts st's recorded batches whose Kind is "fork"
+// AND whose recorded SessionID matches sessionID — the run-exit audit
+// cross-check's begun-batch baseline: every such batch was recorded because
+// BeginBatch ran for it under THIS Master session, so its own in-session
 // fork MUST be represented in the whole-session audit's transcript count,
-// or a fork silently failed to survive audit.
-func countBegunForkBatches(st *State) int {
+// or a fork silently failed to survive audit. The session scoping exists
+// because the whole-session audit only ever covers the current session's
+// own subagents directory: a crash-resumed run's fresh Master never forked
+// the batches a prior session completed, and counting those would fail
+// every legitimately completed resume.
+func countBegunForkBatches(st *State, sessionID string) int {
 	if st == nil {
 		return 0
 	}
 	count := 0
 	for _, bs := range st.Batches {
-		if bs != nil && bs.Kind == "fork" {
+		if bs != nil && bs.Kind == "fork" && bs.SessionID == sessionID {
 			count++
 		}
 	}
@@ -559,11 +564,13 @@ func mapMasterDone(deps RunDeps, outcomePath, summaryPath string, result shuttle
 // itself a hard error (the audit could not complete — fail loud, never
 // skipped), CheckParent/CheckFork run over the whole-session facts exactly
 // as record-batch's own incremental audit does, and the total audited
-// fork-transcript count must be >= the number of batches BeginBatch ever
-// recorded with Kind: "fork" — a shortfall means a batch was recorded
-// without its fork surviving audit. Every violation is a hard error carried
-// on the run's own error; the outcome file stays on disk for diagnosis (Run
-// never removes it).
+// fork-transcript count must be >= the number of batches BeginBatch
+// recorded with Kind: "fork" under THIS Master session (see
+// countBegunForkBatches — a prior crashed session's batches are outside the
+// current session's audit by construction) — a shortfall means a batch was
+// recorded without its fork surviving audit. Every violation is a hard
+// error carried on the run's own error; the outcome file stays on disk for
+// diagnosis (Run never removes it).
 func runExitAuditCrossCheck(deps RunDeps, outcomePath, summaryPath string, result shuttleengine.Result) error {
 	if result.ForkAudit == nil {
 		return fmt.Errorf("webster: run reached outcome: done on a fork-authorized master spawn but its whole-session fork audit did not complete (nil ForkAudit) — this is fail-loud, never skipped")
@@ -592,7 +599,7 @@ func runExitAuditCrossCheck(deps RunDeps, outcomePath, summaryPath string, resul
 		return errors.Join(violations...)
 	}
 
-	begun := countBegunForkBatches(st)
+	begun := countBegunForkBatches(st, result.SessionID)
 	audited := len(result.ForkAudit.Forks)
 	if audited < begun {
 		return fmt.Errorf("webster: run-exit audit cross-check: %d audited fork transcript(s) is fewer than %d begun fork batch(es) — a batch was recorded without its fork surviving audit", audited, begun)

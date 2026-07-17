@@ -119,6 +119,14 @@ type BatchState struct {
 	// SpawnedAt is the RFC3339 UTC timestamp this batch's implementer was
 	// forked or spawned at.
 	SpawnedAt string `json:"spawnedAt"`
+	// SessionID is the Master session that begin-batch opened this batch
+	// under (State.MasterSessionID at begin time). The run-exit audit
+	// cross-check scopes its begun-fork-batch count to the CURRENT Master
+	// session via this field: a crash-resumed run's whole-session audit only
+	// ever covers the fresh session's own forks, so counting a prior
+	// session's batches against it would fail every legitimately completed
+	// resume (found in round fable-r1). Empty for a recovery batch.
+	SessionID string `json:"sessionId,omitempty"`
 	// Terminal reports whether this batch has reached a terminal
 	// classification (done, stuck, or dead).
 	Terminal bool `json:"terminal"`

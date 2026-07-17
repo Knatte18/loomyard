@@ -623,6 +623,77 @@ func TestRun_DoneOutcomeWithValidSummaryAndCleanAuditPopulatesResult(t *testing.
 	}
 }
 
+// TestRun_ResumedDoneRunCountsOnlyCurrentSessionForkBatches proves the
+// run-exit audit cross-check is session-scoped: a crash-resumed run whose
+// prior session already completed fork batches must NOT count them against
+// the fresh session's whole-session audit (which by construction covers
+// only the fresh session's own subagents dir). Before this scoping, a
+// legitimately completed resume hard-errored with "audited < begun"
+// (round fable-r1's F5). The current session's own shortfall still fails.
+func TestRun_ResumedDoneRunCountsOnlyCurrentSessionForkBatches(t *testing.T) {
+	newHandle := func(fx *runFixture, forks []shuttleengine.ForkReport) *runFakeHandle {
+		return &runFakeHandle{
+			strandGUID: "master-strand-resume",
+			result: shuttleengine.Result{
+				Outcome:   shuttleengine.OutcomeDone,
+				SessionID: "master-session-resume",
+				RunDir:    "/run/dir/resume",
+				ForkAudit: &shuttleengine.ForkAudit{Forks: forks},
+			},
+			onWait: func() {
+				if err := os.WriteFile(filepath.Join(fx.Deps.WebsterDir, "outcome.yaml"), []byte("outcome: done\nstuck_reason: null\nbatches_done: 2\n"), 0o644); err != nil {
+					t.Fatalf("write outcome.yaml: %v", err)
+				}
+				if err := os.WriteFile(filepath.Join(fx.Deps.WebsterDir, "summary.md"), []byte("# Resumed and finished\n\nBoth batches done.\n"), 0o644); err != nil {
+					t.Fatalf("write summary.md: %v", err)
+				}
+			},
+		}
+	}
+
+	t.Run("PriorSessionBatchesExcluded_ResumePasses", func(t *testing.T) {
+		fx := newRunFixture(t, 2)
+		// Batch 1 was forked and recorded by the CRASHED prior session; only
+		// batch 2 belongs to the fresh session the audit covers.
+		seedMatchingState(t, fx, &websterengine.State{
+			Batches: map[int]*websterengine.BatchState{
+				1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done", SessionID: "master-session-crashed"},
+				2: {Slug: "batch2", Kind: "fork", Terminal: true, Status: "done", SessionID: "master-session-resume"},
+			},
+		})
+		fx.Starter.handle = newHandle(fx, []shuttleengine.ForkReport{
+			{TranscriptPath: "/transcripts/fork2.jsonl", ReportReturned: true},
+		})
+		seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-resume", "master-session-resume")
+
+		if _, err := websterengine.Run(fx.Deps, websterengine.RunOptions{}); err != nil {
+			t.Fatalf("Run() on a completed resume = %v; want nil (prior session's batches are outside this session's audit)", err)
+		}
+	})
+
+	t.Run("CurrentSessionShortfallStillFails", func(t *testing.T) {
+		fx := newRunFixture(t, 2)
+		seedMatchingState(t, fx, &websterengine.State{
+			Batches: map[int]*websterengine.BatchState{
+				1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done", SessionID: "master-session-resume"},
+				2: {Slug: "batch2", Kind: "fork", Terminal: true, Status: "done", SessionID: "master-session-resume"},
+			},
+		})
+		fx.Starter.handle = newHandle(fx, []shuttleengine.ForkReport{
+			{TranscriptPath: "/transcripts/fork2.jsonl", ReportReturned: true},
+		})
+		seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-resume", "master-session-resume")
+
+		_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
+		if err == nil {
+			t.Fatal("Run() = nil error; want the audited-fewer-than-begun cross-check failure for the current session")
+		}
+		if !strings.Contains(err.Error(), "fewer than") {
+			t.Errorf("Run() error = %q; want the cross-check shortfall message", err.Error())
+		}
+	})
+}
+
 // TestRun_DoneWithMissingSummaryIsHardError proves a done outcome.yaml with
 // no summary.md at all is a hard error — required content-validity on
 // outcome: done, never guessed.

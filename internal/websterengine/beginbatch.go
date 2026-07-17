@@ -242,6 +242,10 @@ func BeginBatch(deps BeginDeps, batchNumber int, restartChain bool) (*BeginResul
 		StartSHA:  head,
 		Kind:      "fork",
 		SpawnedAt: time.Now().UTC().Format(time.RFC3339),
+		// Stamp the opening Master session so the run-exit audit cross-check
+		// can scope its begun-batch count to the session whose forks the
+		// whole-session audit actually covers.
+		SessionID: deps.State.MasterSessionID,
 	}
 	deps.State.CurrentBatch = batch.Number
 
