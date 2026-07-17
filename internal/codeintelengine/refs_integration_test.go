@@ -5,8 +5,9 @@
 // language server. It is //go:build integration-tagged and therefore
 // excluded from the plain `go test` verify (the Test Tier Purity
 // Invariant); it is run separately with `-tags integration` on a machine
-// with gopls installed. The whole test is guarded on exec.LookPath("gopls")
-// so the suite still passes (via t.Skip) on a machine without it. This test
+// with gopls installed. Only the gopls-spawning subtest is guarded on
+// exec.LookPath("gopls") (via t.Skip); the ErrServerNotFound subtest never
+// launches gopls and always runs, even on a machine without it. This test
 // only spawns gopls, never git, so no TestMain/lyxtest.HermeticGitEnv is
 // required per the Hermetic Git Test Environment Invariant.
 
@@ -70,11 +71,11 @@ func repoRoot(t *testing.T) string {
 }
 
 func TestReferences_Integration(t *testing.T) {
-	if _, err := exec.LookPath("gopls"); err != nil {
-		t.Skip(builtins()["go"].InstallHint)
-	}
-
 	t.Run("live gopls references for a known high-fan-in symbol", func(t *testing.T) {
+		if _, err := exec.LookPath("gopls"); err != nil {
+			t.Skip(builtins()["go"].InstallHint)
+		}
+
 		root := repoRoot(t)
 		hubgeometryFile := filepath.Join(root, "internal", "hubgeometry", "hubgeometry.go")
 		pos := findFuncPosition(t, hubgeometryFile, "Resolve")
