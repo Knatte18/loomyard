@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: codeintel-multilang
 branch: codeintel-multilang
 plan: _mill/plan
@@ -22,4 +22,19 @@ plan-review-r1  '2026-07-17T17:39:24Z'
 plan-fix-r1  '2026-07-17T17:39:24Z'
 plan-fix-r2  '2026-07-17T17:43:54Z'
 planned  '2026-07-17T17:44:10Z'
+implementing  '2026-07-17T17:45:59Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: codeintelengine-core
+    state: pending
+  - name: lsp-client-and-refs
+    state: pending
+  - name: cli-wiring-and-docs
+    state: pending
+  - name: measurement-and-writeup
+    state: pending
 ```
