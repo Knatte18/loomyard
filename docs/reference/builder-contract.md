@@ -391,9 +391,9 @@ would move that judgment back into a Go branch, rejected as YAGNI.
 
 - [plan-format.md](plan-format.md) — builder's pinned input contract (plan structure,
   validation checks, the batch-report schema builder's `Distill` reads).
-- [docs/reference/model-spec.md](../reference/model-spec.md) — the model-spec notation
+- [docs/reference/model-spec.md](model-spec.md) — the model-spec notation
   and registry `ResolveRoles` resolves against.
-- [loom.md](loom.md) — the phase machine that will drive `builder run` as one phase,
+- [loom.md](../modules/loom.md) — the phase machine that will drive `builder run` as one phase,
   gated by `perch` on either side.
 - `internal/builderengine` and `internal/buildercli` package documentation — the
   as-built code this doc summarizes.
