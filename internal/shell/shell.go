@@ -25,6 +25,18 @@ type Shell interface {
 	// inline" idiom every provider engine relies on to keep a large or quote-laden
 	// prompt off of tmux send-keys and shell string escaping.
 	ReadFile(path string) string
+	// WithEnv returns cmd prefixed so that the environment variable key=value is set
+	// for the command when the returned line is typed into a pane shell. key must be a
+	// plain identifier ([A-Za-z_][A-Za-z0-9_]*); WithEnv performs no key validation of
+	// its own (mirroring how Invoke trusts bin) — callers pass compile-time constants.
+	// value is always routed through Quote, never interpolated raw, for the same
+	// injection-hardening reason documented on buildLaunchCmd in
+	// internal/shuttleengine/claudeengine/command.go. The two implementations diverge
+	// in scope: a POSIX shell has a command-scoped assignment form, so posixShell's
+	// prefix affects only cmd; pwsh has no equivalent, so pwshShell's assignment
+	// persists for the rest of the pane session — acceptable because shuttle panes are
+	// per-run, so nothing else in the pane's lifetime observes the leaked assignment.
+	WithEnv(key, value, cmd string) string
 }
 
 // ForGOOS returns the Shell implementation for the pane shell tmux launches on the

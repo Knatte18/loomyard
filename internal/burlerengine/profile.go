@@ -7,7 +7,6 @@
 package burlerengine
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -45,23 +44,14 @@ const (
 	FixScopeSource FixScope = "source"
 )
 
-// ErrClusterUnsupported is the sentinel wrapped into the error returned when
-// a Profile requests ClusterN > 0. Cluster fan-out is gated on mux own-window
-// anchoring (roadmap milestone 24) and is not implemented in v1; callers can
-// test for this specific rejection with errors.Is.
-// ErrClusterUnsupported carries no "burler: " prefix of its own: every call
-// site that surfaces it (validate, below) already wraps it inside its own
-// burler-prefixed message, and prefixing it here too would double that
-// prefix in the final error text.
-var ErrClusterUnsupported = errors.New("cluster-N > 0 is not supported — cluster reviewers are gated on mux own-window anchoring (roadmap milestone 24); use cluster-N = 0")
-
 // Profile is the content contract for one burler round: what to review
 // (Target), what to judge it against (Fasit), the criteria (Rubric), the
 // write-surface discipline (FixScope), whether the agent may drive the real
-// substrate (ToolUse), cluster fan-out (ClusterN, v1-unsupported above zero),
-// the caller-named output paths, and optional prior-round files for
-// clean-room hydration. Profile is caller-constructed data; validate is the
-// single place that normalizes and checks it before a round runs.
+// substrate (ToolUse), cluster fan-out (ClusterFan, naming a fan from
+// burler.yaml), the caller-named output paths, and optional prior-round
+// files for clean-room hydration. Profile is caller-constructed data;
+// validate is the single place that normalizes and checks it before a round
+// runs.
 type Profile struct {
 	// Target is what to review AND what phase B may fix.
 	Target FileSet
@@ -81,9 +71,17 @@ type Profile struct {
 	// effect on the shuttle Spec in v1 — see the tool-use-prompt-level
 	// decision.
 	ToolUse bool
-	// ClusterN selects fan-out review count. Only 0 is supported in v1;
-	// any positive value fails validate with ErrClusterUnsupported.
-	ClusterN int
+	// ClusterFan names a fan from burler.yaml (see Config/ResolveFan in
+	// config.go). Naming a fan IS what activates clustering: the round
+	// spawns one fork reviewer per entry in the fan, in fan order. Empty
+	// means a single-reviewer round — the default — since clustering is
+	// never on unless a profile explicitly names a fan. validate resolves
+	// this against the Config it is given, storing the result in the
+	// unexported clusterLenses field.
+	ClusterFan string
+	// clusterLenses is the fan ClusterFan resolved to, populated by
+	// validate via ResolveFan. Empty when ClusterFan is empty.
+	clusterLenses []Lens
 	// ReviewPath and FixerReportPath are the caller-supplied output
 	// paths for the round's two artifacts. Both are required.
 	ReviewPath      string
@@ -115,8 +113,11 @@ type RunOpts struct {
 // joined onto worktreeRoot), mirroring shuttleengine.Spec.validate so every
 // later reader — the prompt, the Spec, Result — sees only absolute paths.
 // Checks run in the fixed order documented on the fields below; the first
-// failure is returned.
-func (p *Profile) validate(worktreeRoot string) error {
+// failure is returned. cfg is the burler.yaml lens/fan Config, consulted
+// only when ClusterFan is non-empty: validate resolves it via ResolveFan and
+// stores the result in p.clusterLenses, propagating ResolveFan's fail-loud
+// errors verbatim (they are already burler-prefixed).
+func (p *Profile) validate(worktreeRoot string, cfg Config) error {
 	// Resolve every path-bearing field up front, before any existence or
 	// content check, so later checks never have to reason about relative
 	// vs. absolute paths again.
@@ -165,13 +166,15 @@ func (p *Profile) validate(worktreeRoot string) error {
 		return fmt.Errorf("burler: profile.FixScope must be %q or %q, got %q", FixScopeOverlay, FixScopeSource, p.FixScope)
 	}
 
-	if p.ClusterN < 0 {
-		return fmt.Errorf("burler: profile.ClusterN must not be negative (got %d)", p.ClusterN)
-	}
-	if p.ClusterN > 0 {
-		// Wrap the sentinel with %w so callers can test with errors.Is
-		// while still getting a burler-prefixed, self-explanatory message.
-		return fmt.Errorf("burler: profile.ClusterN = %d: %w", p.ClusterN, ErrClusterUnsupported)
+	if p.ClusterFan != "" {
+		// Naming a fan IS what activates clustering — resolve it now so a
+		// bad fan/lens name fails validate up front, before any prompt is
+		// composed or shuttle spawned, exactly like every other field here.
+		lenses, err := ResolveFan(cfg, p.ClusterFan)
+		if err != nil {
+			return err
+		}
+		p.clusterLenses = lenses
 	}
 
 	if p.ReviewPath == "" {

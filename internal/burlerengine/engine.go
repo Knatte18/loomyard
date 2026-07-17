@@ -30,16 +30,19 @@ type Shuttle interface {
 var _ Shuttle = (*shuttleengine.Runner)(nil)
 
 // Engine drives burler rounds through a Shuttle, resolving Profile paths
-// against layout's worktree root.
+// against layout's worktree root and Profile.ClusterFan against cfg's
+// lens/fan library.
 type Engine struct {
 	shuttle Shuttle
 	layout  *hubgeometry.Layout
+	cfg     Config
 }
 
 // New returns an Engine ready to run rounds against shuttle, resolving
-// relative Profile paths against layout.WorktreeRoot.
-func New(shuttle Shuttle, layout *hubgeometry.Layout) *Engine {
-	return &Engine{shuttle: shuttle, layout: layout}
+// relative Profile paths against layout.WorktreeRoot and any Profile.ClusterFan
+// against cfg (the burler.yaml lens/fan library, loaded via LoadConfig).
+func New(shuttle Shuttle, layout *hubgeometry.Layout, cfg Config) *Engine {
+	return &Engine{shuttle: shuttle, layout: layout, cfg: cfg}
 }
 
 // Result is one round's outcome: how the shuttle run classified (Outcome),
@@ -61,6 +64,16 @@ type Result struct {
 	// out, so it can point an operator (or perch's own error message) at
 	// the run's SessionID/StrandGUID and artifacts for inspection.
 	RunDir string
+	// ForkAudit is a 1:1 passthrough of shuttleengine.Result.ForkAudit, set
+	// only for a cluster round (Profile.ClusterFan != "") whose run reached
+	// shuttleengine.OutcomeDone. nil for a non-cluster round or a
+	// non-done outcome.
+	ForkAudit *shuttleengine.ForkAudit
+	// ClusterWarnings carries the non-fatal audit findings auditClusterRound
+	// returns for a cluster round (e.g. a fork that never returned a
+	// report) — sloppiness no mechanism prevents in advance, surfaced here
+	// rather than failing the round. Empty for a non-cluster round.
+	ClusterWarnings []string
 }
 
 // Run drives one burler round for p, tuned by opts. Sequence: validate p
@@ -68,17 +81,21 @@ type Result struct {
 // shuttle Spec (Interactive/Parent/Display/KeepPane stay zero-valued —
 // rounds are autonomous by default, per the run-tuning-off-profile
 // decision); run it through the Shuttle seam; populate Result from the
-// shuttle Result; and, only when the run reached shuttleengine.OutcomeDone,
-// read and strictly parse the review file into Verdict/Findings.
+// shuttle Result; for a cluster round (p.ClusterFan != "") that reached
+// done, copy the shuttle's ForkAudit onto Result and enforce the cluster
+// audit policy (auditClusterRound) before reading the review file at all;
+// and, only when the run reached shuttleengine.OutcomeDone, read and
+// strictly parse the review file into Verdict/Findings.
 //
 // Run returns a nil error for every non-done outcome (asking/died/timeout
 // are normal loop events a caller branches on via Result.Outcome, with an
 // empty Verdict) and reserves errors for hard failures: an invalid profile,
-// a shuttle start/run failure, and — deliberately fail-loud — a verdict
-// parse failure on a done run, since a defaulted verdict could silently
-// terminate a caller's round loop on a malformed round.
+// a shuttle start/run failure, a cluster audit policy violation, and —
+// deliberately fail-loud — a verdict parse failure on a done run, since a
+// defaulted verdict could silently terminate a caller's round loop on a
+// malformed round.
 func (e *Engine) Run(p Profile, opts RunOpts) (Result, error) {
-	if err := p.validate(e.layout.WorktreeRoot); err != nil {
+	if err := p.validate(e.layout.WorktreeRoot, e.cfg); err != nil {
 		return Result{}, err
 	}
 
@@ -95,6 +112,10 @@ func (e *Engine) Run(p Profile, opts RunOpts) (Result, error) {
 		Timeout:     opts.Timeout,
 		Role:        "burler",
 		Round:       opts.Round,
+		// ForkSubagents authorizes cluster-round fork spawns only when a
+		// fan actually resolved — a non-cluster round never touches this
+		// authorization.
+		ForkSubagents: p.ClusterFan != "",
 	}
 
 	shuttleResult, err := e.shuttle.Run(spec)
@@ -117,6 +138,19 @@ func (e *Engine) Run(p Profile, opts RunOpts) (Result, error) {
 		// caller branches on Outcome (and, for asking, LastAssistantMessage
 		// above). Verdict stays empty: there is no review file to trust yet.
 		return result, nil
+	}
+
+	if p.ClusterFan != "" {
+		// Copy the audit onto the Result before checking it, so a caller
+		// inspecting a policy failure below still gets the raw ForkAudit
+		// for diagnosis — the same "populated-so-far Result on a hard
+		// error" shape the verdict-parse failure path below uses.
+		result.ForkAudit = shuttleResult.ForkAudit
+		warnings, err := auditClusterRound(shuttleResult.ForkAudit, len(p.clusterLenses))
+		if err != nil {
+			return result, err
+		}
+		result.ClusterWarnings = warnings
 	}
 
 	content, err := os.ReadFile(p.ReviewPath)

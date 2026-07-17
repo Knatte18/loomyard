@@ -289,7 +289,6 @@ func TestSmokeBurlerRoundToyFixture(t *testing.T) {
 			"color match; note anything else as a non-blocking MEDIUM/LOW/NIT finding.",
 		FixScope:        burlerengine.FixScopeOverlay,
 		ToolUse:         false,
-		ClusterN:        0,
 		ReviewPath:      reviewPath,
 		FixerReportPath: fixerReportPath,
 	}
@@ -306,7 +305,7 @@ func TestSmokeBurlerRoundToyFixture(t *testing.T) {
 	}
 	muxEngine := muxengine.New(muxCfg, fixture.Layout)
 	runner := shuttleengine.NewRunner(muxEngine, claudeengine.New(), fixture.Layout, shuttleCfg)
-	engine := burlerengine.New(runner, fixture.Layout)
+	engine := burlerengine.New(runner, fixture.Layout, burlerengine.Config{})
 
 	result, err := engine.Run(profile, burlerengine.RunOpts{Timeout: 5 * time.Minute})
 	if err != nil {

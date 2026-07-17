@@ -3,9 +3,10 @@
 // double that records every call and lets a test script Status
 // liveness/CapturePane content per call and inject a per-method error) and
 // fakeEngine (an Engine double with a canned Launch, a trivial fixture
-// format for ParseEvents, a scriptable Startup sequence, and fixed
-// InterruptSequence/ComposeSend choreographies). Neither fake asserts
-// anything itself — tests inspect their recorded calls.
+// format for ParseEvents, a scriptable Startup sequence, fixed
+// InterruptSequence/ComposeSend choreographies, and a scriptable AuditForks
+// canned result/error). Neither fake asserts anything itself — tests inspect
+// their recorded calls.
 
 package shuttleengine
 
@@ -188,6 +189,16 @@ type fakeEngine struct {
 
 	StartupScript []StartupState
 	StartupCalls  []string
+
+	// AuditForksResult is returned by AuditForks whenever AuditForksErr is
+	// nil; AuditForksCalls records every (sessionID, workdir) pair AuditForks
+	// was called with, so a test can assert it was — or was NOT — called.
+	AuditForksResult ForkAudit
+	AuditForksErr    error
+	AuditForksCalls  []struct {
+		SessionID string
+		Workdir   string
+	}
 }
 
 func (e *fakeEngine) Prepare(runDir string, spec Spec, cfg Config) (Launch, error) {
@@ -274,6 +285,22 @@ func (e *fakeEngine) ComposeSend(text string) []PaneInput {
 		{Key: "Escape"},
 		{Text: text, Submit: true},
 	}
+}
+
+// AuditForks records the (sessionID, workdir) it was called with and returns
+// AuditForksResult/AuditForksErr — a test scripts the canned audit a
+// fork-mode done classification should attach to Result.ForkAudit.
+func (e *fakeEngine) AuditForks(sessionID, workdir string) (ForkAudit, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.AuditForksCalls = append(e.AuditForksCalls, struct {
+		SessionID string
+		Workdir   string
+	}{sessionID, workdir})
+	if e.AuditForksErr != nil {
+		return ForkAudit{}, e.AuditForksErr
+	}
+	return e.AuditForksResult, nil
 }
 
 // var _ Engine = (*fakeEngine)(nil) is the compile-time proof fakeEngine

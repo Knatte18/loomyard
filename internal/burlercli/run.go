@@ -37,7 +37,7 @@ type profileYAML struct {
 	Rubric            string      `yaml:"rubric"`
 	FixScope          string      `yaml:"fix-scope"`
 	ToolUse           bool        `yaml:"tool-use"`
-	ClusterN          int         `yaml:"cluster-n"`
+	ClusterFan        string      `yaml:"cluster-fan"`
 	ReviewPath        string      `yaml:"review-path"`
 	FixerReportPath   string      `yaml:"fixer-report-path"`
 	PriorReviews      []string    `yaml:"prior-reviews"`
@@ -73,7 +73,7 @@ func decodeProfile(data []byte) (burlerengine.Profile, error) {
 		Rubric:            parsed.Rubric,
 		FixScope:          burlerengine.FixScope(parsed.FixScope),
 		ToolUse:           parsed.ToolUse,
-		ClusterN:          parsed.ClusterN,
+		ClusterFan:        parsed.ClusterFan,
 		ReviewPath:        parsed.ReviewPath,
 		FixerReportPath:   parsed.FixerReportPath,
 		PriorReviews:      parsed.PriorReviews,
@@ -90,10 +90,10 @@ func decodeProfile(data []byte) (burlerengine.Profile, error) {
 // maps the four run-tuning flags onto a burlerengine.RunOpts, and blocks on
 // c.engine.Run(profile, opts) until the round reaches a classified outcome.
 // Every error path (missing --profile, profile read, strict decode, or a Run
-// failure — validation, ErrClusterUnsupported, shuttle, verdict parse) goes
-// through output.Err; a successful Run — for any outcome, not only done — is
-// reported via output.Ok, mirroring shuttlecli's run.go pattern where a
-// classified outcome is data, not an error.
+// failure — validation, fan resolution, cluster audit policy, shuttle,
+// verdict parse) goes through output.Err; a successful Run — for any
+// outcome, not only done — is reported via output.Ok, mirroring shuttlecli's
+// run.go pattern where a classified outcome is data, not an error.
 //
 // --profile is validated manually here rather than via cobra's
 // MarkFlagRequired: MarkFlagRequired's error is raised by cobra itself,
@@ -132,7 +132,7 @@ Example profile YAML:
     NIT: minor formatting.
   fix-scope: source
   tool-use: false
-  cluster-n: 0
+  cluster-fan: ""  # naming a fan from burler.yaml activates cluster review, one fork per fan entry
   review-path: _lyx/burler/review.md
   fixer-report-path: _lyx/burler/fixer-report.md
   prior-reviews: []
@@ -189,15 +189,7 @@ run-timeout; zero defers to the config default.`,
 				return nil
 			}
 
-			clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{
-				"outcome":              string(result.Outcome),
-				"verdict":              string(result.Verdict),
-				"reviewPath":           result.ReviewPath,
-				"fixerReportPath":      result.FixerReportPath,
-				"sessionId":            result.SessionID,
-				"strandGuid":           result.StrandGUID,
-				"lastAssistantMessage": result.LastAssistantMessage,
-			}))
+			clihelp.SetExit(cmd.Context(), output.Ok(out, resultEnvelope(result)))
 			return nil
 		},
 	}
@@ -209,4 +201,28 @@ run-timeout; zero defers to the config default.`,
 	cmd.Flags().DurationVar(&timeout, "timeout", 0, "wall-clock deadline before an in-progress run is classified as timed out (0 = config default)")
 
 	return cmd
+}
+
+// resultEnvelope maps a burlerengine.Result onto the JSON envelope run's RunE prints via
+// output.Ok. It is a separate function (rather than an inline map literal) so its shape
+// is directly unit-testable without needing a live c.engine.Run call. result.ForkAudit
+// is nil for a non-cluster round (or one that never reached done) — forkCount guards
+// that nil rather than dereferencing Forks on it.
+func resultEnvelope(result burlerengine.Result) map[string]any {
+	forkCount := 0
+	if result.ForkAudit != nil {
+		forkCount = len(result.ForkAudit.Forks)
+	}
+
+	return map[string]any{
+		"outcome":              string(result.Outcome),
+		"verdict":              string(result.Verdict),
+		"reviewPath":           result.ReviewPath,
+		"fixerReportPath":      result.FixerReportPath,
+		"sessionId":            result.SessionID,
+		"strandGuid":           result.StrandGUID,
+		"lastAssistantMessage": result.LastAssistantMessage,
+		"clusterWarnings":      result.ClusterWarnings,
+		"forkCount":            forkCount,
+	}
 }

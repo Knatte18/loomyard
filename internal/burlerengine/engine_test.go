@@ -1,7 +1,10 @@
 // engine_test.go tables Engine.Run against a same-package fakeShuttle: spec
-// construction, the ClusterN>0 rejection, every shuttleengine.Outcome, and
-// the review-file parse path (valid BLOCKING/APPROVED, missing file,
-// malformed frontmatter) plus a hard shuttle error.
+// construction (including the ClusterFan -> Spec.ForkSubagents wiring), the
+// cluster audit policy wiring (a violating audit fails the round, a clean
+// one passes with warnings copied through, and a non-cluster profile never
+// invokes it), every shuttleengine.Outcome, and the review-file parse path
+// (valid BLOCKING/APPROVED, missing file, malformed frontmatter) plus a
+// hard shuttle error.
 
 package burlerengine
 
@@ -77,7 +80,7 @@ func newEngineTestProfile(t *testing.T) (root string, p Profile) {
 }
 
 func newEngineForTest(root string, shuttle Shuttle) *Engine {
-	return New(shuttle, &hubgeometry.Layout{WorktreeRoot: root})
+	return New(shuttle, &hubgeometry.Layout{WorktreeRoot: root}, Config{})
 }
 
 const (
@@ -139,22 +142,145 @@ func TestEngine_Run_SpecConstruction(t *testing.T) {
 	}
 }
 
-// TestEngine_Run_ClusterUnsupported proves ClusterN: 1 fails validate
-// before the shuttle is ever invoked, with an error satisfying
-// errors.Is(err, ErrClusterUnsupported).
-func TestEngine_Run_ClusterUnsupported(t *testing.T) {
-	root, p := newEngineTestProfile(t)
-	p.ClusterN = 1
-	shuttle := &fakeShuttle{}
-	e := newEngineForTest(root, shuttle)
+// TestEngine_Run_ForkSubagentsSpecWiring proves Spec.ForkSubagents mirrors
+// Profile.ClusterFan exactly: true only when a fan actually resolved, false
+// for a plain (non-cluster) profile — the sole trigger for a cluster
+// round's fork authorization.
+func TestEngine_Run_ForkSubagentsSpecWiring(t *testing.T) {
+	cfg := Config{
+		Lenses: map[string]string{"style": "style prose"},
+		Fans:   map[string][]string{"standard": {"style"}},
+	}
 
-	_, err := e.Run(p, RunOpts{})
-	if !errors.Is(err, ErrClusterUnsupported) {
-		t.Fatalf("Run() error = %v; want errors.Is(err, ErrClusterUnsupported)", err)
+	t.Run("cluster profile", func(t *testing.T) {
+		root, p := newEngineTestProfile(t)
+		p.ClusterFan = "standard"
+		shuttle := &fakeShuttle{
+			reviewContent: approvedReview,
+			fixerContent:  "nothing fixed",
+			result: shuttleengine.Result{
+				Outcome: shuttleengine.OutcomeDone,
+				// "standard" resolves to exactly one lens (style) — the
+				// audit requires exactly one clean fork report to pass.
+				ForkAudit: &shuttleengine.ForkAudit{
+					Forks: []shuttleengine.ForkReport{{TranscriptPath: "fork-1", ReportReturned: true}},
+				},
+			},
+		}
+		e := New(shuttle, &hubgeometry.Layout{WorktreeRoot: root}, cfg)
+
+		if _, err := e.Run(p, RunOpts{}); err != nil {
+			t.Fatalf("Run() = %v; want nil error", err)
+		}
+		if !shuttle.spec.ForkSubagents {
+			t.Errorf("spec.ForkSubagents = false; want true for a cluster profile")
+		}
+	})
+
+	t.Run("plain profile", func(t *testing.T) {
+		root, p := newEngineTestProfile(t)
+		shuttle := &fakeShuttle{
+			reviewContent: approvedReview,
+			fixerContent:  "nothing fixed",
+			result:        shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
+		}
+		e := New(shuttle, &hubgeometry.Layout{WorktreeRoot: root}, cfg)
+
+		if _, err := e.Run(p, RunOpts{}); err != nil {
+			t.Fatalf("Run() = %v; want nil error", err)
+		}
+		if shuttle.spec.ForkSubagents {
+			t.Errorf("spec.ForkSubagents = true; want false for a plain profile")
+		}
+	})
+}
+
+// TestEngine_Run_ClusterAuditPolicy proves Run wires shuttleResult.ForkAudit through
+// auditClusterRound for a done cluster round: a violating audit fails Run with the
+// populated-so-far Result carrying the raw ForkAudit, a clean-but-warning audit passes
+// with Result.ClusterWarnings copied through, and a non-cluster profile never invokes
+// the policy at all — no ForkAudit/ClusterWarnings on the Result even when the fake
+// shuttle's scripted Result carries one.
+func TestEngine_Run_ClusterAuditPolicy(t *testing.T) {
+	cfg := Config{
+		Lenses: map[string]string{"style": "style prose"},
+		Fans:   map[string][]string{"standard": {"style"}},
 	}
-	if shuttle.called {
-		t.Errorf("fakeShuttle.Run was called; want it never invoked for a rejected profile")
-	}
+
+	t.Run("violating audit fails the round", func(t *testing.T) {
+		root, p := newEngineTestProfile(t)
+		p.ClusterFan = "standard"
+		violatingAudit := &shuttleengine.ForkAudit{
+			Forks: []shuttleengine.ForkReport{{TranscriptPath: "fork-1", ReportReturned: true, WriteCalls: 1}},
+		}
+		shuttle := &fakeShuttle{
+			reviewContent: approvedReview,
+			fixerContent:  "nothing fixed",
+			result:        shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, ForkAudit: violatingAudit},
+		}
+		e := New(shuttle, &hubgeometry.Layout{WorktreeRoot: root}, cfg)
+
+		got, err := e.Run(p, RunOpts{})
+		if err == nil {
+			t.Fatalf("Run() error = nil; want a cluster audit policy failure")
+		}
+		if !strings.Contains(err.Error(), "write/edit tool call") {
+			t.Errorf("Run() error = %q; want it to carry the underlying audit violation", err.Error())
+		}
+		if got.ForkAudit != violatingAudit {
+			t.Errorf("Result.ForkAudit = %v; want the raw audit copied through even on a policy failure", got.ForkAudit)
+		}
+	})
+
+	t.Run("clean audit with a warning passes and copies warnings through", func(t *testing.T) {
+		root, p := newEngineTestProfile(t)
+		p.ClusterFan = "standard"
+		cleanAudit := &shuttleengine.ForkAudit{
+			Forks: []shuttleengine.ForkReport{{TranscriptPath: "fork-1", ReportReturned: false}},
+		}
+		shuttle := &fakeShuttle{
+			reviewContent: approvedReview,
+			fixerContent:  "nothing fixed",
+			result:        shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, ForkAudit: cleanAudit},
+		}
+		e := New(shuttle, &hubgeometry.Layout{WorktreeRoot: root}, cfg)
+
+		got, err := e.Run(p, RunOpts{})
+		if err != nil {
+			t.Fatalf("Run() = %v; want nil error", err)
+		}
+		if len(got.ClusterWarnings) != 1 {
+			t.Fatalf("Result.ClusterWarnings = %v; want exactly one warning", got.ClusterWarnings)
+		}
+	})
+
+	t.Run("non-cluster profile never invokes the policy", func(t *testing.T) {
+		root, p := newEngineTestProfile(t)
+		// A non-cluster profile carries no ClusterFan; a scripted ForkAudit
+		// on the fake shuttle's Result must be ignored entirely — the
+		// policy is not even consulted, so it must never surface on
+		// Result even though the shuttle "returned" one.
+		shuttle := &fakeShuttle{
+			reviewContent: approvedReview,
+			fixerContent:  "nothing fixed",
+			result: shuttleengine.Result{
+				Outcome:   shuttleengine.OutcomeDone,
+				ForkAudit: &shuttleengine.ForkAudit{Forks: []shuttleengine.ForkReport{{WriteCalls: 99}}},
+			},
+		}
+		e := New(shuttle, &hubgeometry.Layout{WorktreeRoot: root}, cfg)
+
+		got, err := e.Run(p, RunOpts{})
+		if err != nil {
+			t.Fatalf("Run() = %v; want nil error (policy never invoked for a non-cluster profile)", err)
+		}
+		if got.ForkAudit != nil {
+			t.Errorf("Result.ForkAudit = %v; want nil for a non-cluster profile", got.ForkAudit)
+		}
+		if got.ClusterWarnings != nil {
+			t.Errorf("Result.ClusterWarnings = %v; want nil for a non-cluster profile", got.ClusterWarnings)
+		}
+	})
 }
 
 // TestEngine_Run_NonDoneOutcomes proves every non-done shuttleengine

@@ -170,10 +170,15 @@ One review+fix round (burler now, hardener later) follows the round discipline: 
 (the review is fully written to disk before any target file is touched); every recorded
 finding is fixed in B, all severities including LOW/NIT; no self-grading (round N's fix is
 judged by round N+1's fresh review, never its own); commit-per-fix on host source, never push.
+In a cluster round, the fork reports, the handler's own holistic review, and the consolidation
+into one review file are ALL part of A — the consolidated review is fully on disk before B
+touches a single target file, exactly as in a solo round — and fork reviewers are read-only:
+no writes, no git, mechanically enforced by the fork audit (never advisory).
 
-- **Enforced by** `internal/burlerengine/template_test.go` (`TestTemplate_StatesRoundDiscipline`)
-  for the template's sequencing and fix-everything statements. The rest — no self-grading,
-  commit-per-fix discipline — is a review obligation on prompt templates, not machine-checked.
+- **Enforced by** `internal/burlerengine/template_test.go` (`TestTemplate_StatesRoundDiscipline`
+  for the template's sequencing and fix-everything statements, `TestTemplate_StatesClusterForkDiscipline`
+  for the cluster sequencing/read-only statements). The rest — no self-grading, commit-per-fix
+  discipline — is a review obligation on prompt templates, not machine-checked.
 
 ## Sandbox Suite Coverage
 

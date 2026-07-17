@@ -54,6 +54,12 @@ type Spec struct {
 	// pair the engine cannot realize is a hard error from the engine (see
 	// claudeengine's resolveModelID), not from Spec.validate.
 	Version string
+	// ForkSubagents, when true, authorizes this run to spawn in-session fork
+	// subagents: the engine must realize the authorization (an env flag, a
+	// hook shape — whatever its provider needs) or hard-error if it cannot.
+	// ForkSubagents is engine vocabulary, exactly like Effort/Version above —
+	// validate does not inspect this field at all.
+	ForkSubagents bool
 	// Interactive encodes !Autonomous: the Go zero value (false) means
 	// autonomous, the default. Autonomous runs add
 	// --dangerously-skip-permissions and the AskUserQuestion PreToolUse

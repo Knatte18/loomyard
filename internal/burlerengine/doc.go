@@ -52,7 +52,7 @@
 // to a pure internal-consistency check, which validate rejects), the
 // criteria (Rubric, mapped onto the fixed Severity vocabulary), the
 // write-surface discipline (FixScope), whether the round may drive the
-// real substrate (ToolUse), cluster fan-out (ClusterN), the caller-named
+// real substrate (ToolUse), cluster fan-out (ClusterFan), the caller-named
 // output paths, and optional prior-round hydration paths.
 //
 // RunOpts (Model, Effort, Timeout, Round) is kept deliberately OFF the
@@ -96,16 +96,90 @@
 // under FixScopeSource — that is an ordinary host-repo commit, not a weft
 // operation.
 //
-// # Cluster fan-out (not yet)
+// # Cluster fan-out (fork subagents)
 //
-// ClusterN selects how many extra cross-checking reviewers step A spawns
-// alongside the round's own review. Only ClusterN == 0 is supported today;
-// a positive value fails validate with ErrClusterUnsupported. Cluster
-// reviewers need their own switchable tmux window (mux's own-window
-// anchoring), which does not exist yet — this gates only the cluster
-// feature, not the rest of the shuttle -> burler -> perch -> loom spine,
-// which ships on ClusterN == 0. See the roadmap's own-window-anchoring
-// milestone.
+// ClusterFan names a fan from the burler.yaml lens/fan library (see
+// Config/ResolveFan in config.go — a seed-only, operator-owned config
+// module registered in internal/configreg). Naming a fan IS what activates
+// clustering: the fan's entry count becomes the fork count, one fork per
+// listed lens, in fan order (repeats allowed). An empty ClusterFan is a
+// single-reviewer round — the default, since forking is never on unless a
+// profile explicitly names a fan — and a fan longer than maxClusterN (16)
+// entries fails validate. There is deliberately no fan named "default":
+// every seeded fan is dormant until a profile names it.
+//
+// A cluster round still runs as ONE shuttle session — the handler — inside
+// job A, in three phases: (1) the handler explores the target in full; (2)
+// the handler spawns all N lens forks in a SINGLE message via Claude Code's
+// built-in fork subagents (Agent tool, subagent_type "fork", always
+// unnamed), and, while they run, performs its own HOLISTIC review —
+// architecture, cross-file invariants, CONSTRAINTS-fit — the level no
+// narrow lens covers; (3) the handler consolidates every fork's returned
+// findings together with its own holistic findings into the ONE review
+// file: dedup across lenses, an origin: frontmatter key on every kept
+// finding (lens:<name> or handler), a ## Rejected prose section for false
+// positives (judged with equal skepticism, never appearing in the parsed
+// findings), and severity ordering. All three phases are part of job A —
+// A-before-B is intact exactly as in a solo round, since the consolidated
+// review is fully written to disk before the round's fix phase (B) touches
+// a single target file.
+//
+// Fork discipline is fixed boilerplate the handler composes into every
+// fork's prompt, never per-lens: read-only evidence gathering only (no
+// Write/Edit/delete of any file, host or weft), no git commands of any
+// kind, no touching the round's ReviewPath/FixerReportPath, and no nested
+// Agent calls (forks cannot spawn forks). Two enforcement layers back this
+// discipline mechanically rather than trusting the prompt alone: a
+// session-level PreToolUse(Agent) hook that allows only unnamed
+// subagent_type:"fork" calls through and denies everything else (policing
+// Agent calls made from inside a fork's own pane too, not just the
+// handler's); and, once the run reaches shuttleengine.OutcomeDone,
+// auditClusterRound in cluster.go, which reads the shuttleengine.ForkAudit
+// the engine attaches to the run (per-fork AgentCalls/WriteCalls/
+// BashCommands facts from shuttleengine.AuditForks — never this package's
+// own knowledge of the transcript layout) and enforces the fail-loud
+// posture: exactly len(clusterLenses) fork transcripts or
+// ErrClusterForksMissing (naming requested vs actual — a shortfall,
+// including zero, is an infrastructure defect, never a degrade-to-solo);
+// any fork with AgentCalls > 0, WriteCalls > 0, or a git-mutating Bash
+// command is a hard error; any named spawn is a hard error. A fork that
+// ran clean but never returned a report is sloppiness no mechanism
+// prevents in advance — it is collected into Result.ClusterWarnings, never
+// failing the round, since the handler's own consolidation phase already
+// judges each fork's output on its merits.
+//
+// Run mechanics: forks run IN the handler's own shuttle session, under the
+// handler's own model — there is no model-per-fork axis (a Claude Code
+// constraint, not a burler choice), and no separate tmux pane or window
+// per fork is needed. shuttleengine.Spec.ForkSubagents authorizes this for
+// the run; claudeengine sets CLAUDE_CODE_FORK_SUBAGENT=1 inline on the
+// launch line itself, never on the mux server's own environment, because
+// muxengine.CleanClaudeEnv scrubs CLAUDECODE/CLAUDE_CODE_* from the server
+// env at boot as mandatory hygiene — the launch line runs after that
+// scrub, which is the only place a per-run, staged-rollout flag can ride.
+//
+// Version pinning: CLAUDE_CODE_FORK_SUBAGENT is a staged-rollout flag
+// requiring Claude Code v2.1.117+, and forks must stay UNNAMED — named
+// forks silently lose their inherited context in Claude Code releases up
+// to and including 2.1.206. A CC upgrade or downgrade should be checked
+// against both facts before trusting a cluster round's output.
+//
+// Timeout guidance: cluster rounds get no automatic timeout scaling —
+// RunOpts.Timeout is the same caller-resolved, per-invocation knob a solo
+// round uses (the run-tuning-off-profile decision), so a wider fan needs
+// an explicitly longer timeout from the caller. Forks queue under Claude
+// Code's own concurrency cap (min(16, cores−2)) rather than running
+// unboundedly parallel, so a low-core host serializes a wide fan instead
+// of running it all at once; that serialization never breaks the exact-N
+// contract above — every fork still runs and leaves its transcript, only
+// wall-time grows — so a slow host surfaces as shuttleengine.OutcomeTimeout,
+// never as a fork-shortfall error.
+//
+// Cluster rounds weaken nothing about weft-blindness: forks write no
+// files at all — read-only evidence gathering, findings returned only as
+// their final message — so the write-surface story above (this package
+// never imports weft, never constructs a _lyx/... path) is exactly as
+// true for a cluster round as for a solo one.
 //
 // # What a round returns
 //

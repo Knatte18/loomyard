@@ -279,8 +279,9 @@ User-facing modules each get one `lyx <module>` namespace:
   (`lyx perch run|pause`). ✅ Implemented. See the `internal/perchengine` package documentation.
 - **burler** — one review+fix round: A-review → B-fix, one agent, no self-grading, over the shuttle
   file contract (`internal/burlerengine` + `internal/burlercli`). Profile-driven: `{overlay, source}`
-  fix-scope, tool-use, cluster-N rejected with a typed error until mux own-window anchoring lands.
-  Strict frontmatter verdict parse; debug CLI `lyx burler run`. ✅ Implemented. See the
+  fix-scope, tool-use. Cluster review fans job A out into N fork-subagent reviewers by naming a fan
+  (`cluster-fan`) from the seed-only `burler.yaml` lens/fan library — never on by default. Strict
+  frontmatter verdict parse; debug CLI `lyx burler run`. ✅ Implemented. See the
   `internal/burlerengine` package documentation.
 - **hardener** — **DRAFT / concept.** Behavior-based reviewer that *runs* a live-substrate module
   (needs a sandbox repo) to harden it before merge; on-demand, post-loom, **off the spine**, shares

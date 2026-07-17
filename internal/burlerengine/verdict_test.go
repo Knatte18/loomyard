@@ -1,7 +1,8 @@
 // verdict_test.go table-drives ParseReview over the happy paths and every
 // fail-loud rule documented on it: frontmatter presence/closure, YAML
 // validity, verdict spelling, per-finding key completeness, severity
-// vocabulary, duplicate ids, and the two verdict/findings consistency rules.
+// vocabulary, duplicate ids, the two verdict/findings consistency rules, and
+// the optional Origin field's pass-through (with and without it present).
 
 package burlerengine
 
@@ -69,6 +70,54 @@ Fix the nil check.
 			wantFindings: []Finding{
 				{ID: "b-1", Severity: SeverityBlocking, Location: "file.go:5", Summary: "missing nil check"},
 				{ID: "m-1", Severity: SeverityMedium, Location: "file.go:20", Summary: "unclear naming"},
+			},
+		},
+		{
+			// A cluster round's consolidated review tags each finding with an
+			// origin: key (lens:<name> or handler) — ParseReview must parse it
+			// through onto Finding.Origin without validating its content.
+			name: "cluster findings carry origin",
+			content: `---
+verdict: BLOCKING
+findings:
+  - id: b-1
+    severity: BLOCKING
+    location: file.go:5
+    summary: missing nil check
+    origin: lens:security
+  - id: m-1
+    severity: MEDIUM
+    location: file.go:20
+    summary: unclear naming
+    origin: handler
+---
+
+Fix the nil check.
+`,
+			wantVerdict: VerdictBlocking,
+			wantFindings: []Finding{
+				{ID: "b-1", Severity: SeverityBlocking, Location: "file.go:5", Summary: "missing nil check", Origin: "lens:security"},
+				{ID: "m-1", Severity: SeverityMedium, Location: "file.go:20", Summary: "unclear naming", Origin: "handler"},
+			},
+		},
+		{
+			// A pre-cluster (origin-less) review file must keep parsing
+			// identically — origin is optional and never required.
+			name: "findings without origin parse identically",
+			content: `---
+verdict: BLOCKING
+findings:
+  - id: b-1
+    severity: BLOCKING
+    location: file.go:5
+    summary: missing nil check
+---
+
+Fix the nil check.
+`,
+			wantVerdict: VerdictBlocking,
+			wantFindings: []Finding{
+				{ID: "b-1", Severity: SeverityBlocking, Location: "file.go:5", Summary: "missing nil check"},
 			},
 		},
 		{

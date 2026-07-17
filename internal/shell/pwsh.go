@@ -31,3 +31,12 @@ func (p pwshShell) Invoke(bin string) string {
 func (p pwshShell) ReadFile(path string) string {
 	return "(Get-Content -Raw " + p.Quote(path) + ")"
 }
+
+// WithEnv prefixes cmd with a `$env:key = <quoted value>; ` assignment: pwsh has no
+// command-scoped assignment form (unlike POSIX's `key=value cmd`), so the assignment
+// persists for the rest of the pane session rather than being scoped to cmd alone. This
+// is acceptable because shuttle panes are per-run — nothing later in the same pane's
+// life observes the leaked assignment. value is always quoted, never interpolated raw.
+func (p pwshShell) WithEnv(key, value, cmd string) string {
+	return "$env:" + key + " = " + p.Quote(value) + "; " + cmd
+}

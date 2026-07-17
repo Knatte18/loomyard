@@ -40,13 +40,19 @@ const (
 // fail-loud across rounds so cross-round hydration and audit can cite it
 // unambiguously — perch judges progress across rounds holistically via a
 // verdict judge, not by tracking finding-key identity), a Severity from the
-// fixed vocabulary, a Location pointing at the offending content, and a
-// prose Summary.
+// fixed vocabulary, a Location pointing at the offending content, a prose
+// Summary, and an optional Origin.
 type Finding struct {
 	ID       string   `yaml:"id"`
 	Severity Severity `yaml:"severity"`
 	Location string   `yaml:"location"`
 	Summary  string   `yaml:"summary"`
+	// Origin is optional free-text provenance (`lens:<name>` or `handler`)
+	// a cluster round writes onto each consolidated finding. It is never
+	// validated and never required — ParseReview accepts review files with
+	// and without it, so every existing (pre-cluster) review file keeps
+	// parsing identically.
+	Origin string `yaml:"origin"`
 }
 
 // reviewHeader mirrors the review file's YAML frontmatter shape. Unknown

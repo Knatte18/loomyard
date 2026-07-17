@@ -1,17 +1,40 @@
 // profile_test.go table-drives Profile.validate over the happy path and
 // every fail-loud rule documented on validate: field-emptiness, path
-// existence, FixScope legality, ClusterN's typed-error gate, and in-place
-// absolute-path resolution for both relative and already-absolute entries.
+// existence, FixScope legality, ClusterFan's fan-resolution gate, and
+// in-place absolute-path resolution for both relative and already-absolute
+// entries.
 
 package burlerengine
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+// testClusterFanConfig returns a Config fixture exercising every ResolveFan
+// outcome profile_test.go's table needs: a resolvable "standard" fan, a fan
+// naming an undefined lens ("badlens"), and a fan longer than maxClusterN
+// ("huge") — deliberately distinct from any fixture config_test.go itself
+// owns, so this file's cases never depend on that file's fixtures.
+func testClusterFanConfig() Config {
+	huge := make([]string, maxClusterN+1)
+	for i := range huge {
+		huge[i] = "style"
+	}
+	return Config{
+		Lenses: map[string]string{
+			"style":    "style prose",
+			"security": "security prose",
+		},
+		Fans: map[string][]string{
+			"standard": {"style", "security"},
+			"badlens":  {"style", "ghost"},
+			"huge":     huge,
+		},
+	}
+}
 
 // newValidProfileFixture creates a temp worktree root with every file
 // validate requires to exist (a target file, a target directory, a fasit
@@ -36,7 +59,6 @@ func newValidProfileFixture(t *testing.T) (root string, base Profile) {
 		Rubric:            "the widget must be blue",
 		FixScope:          FixScopeSource,
 		ToolUse:           false,
-		ClusterN:          0,
 		ReviewPath:        "review.md",
 		FixerReportPath:   "fixer-report.md",
 		PriorReviews:      []string{"prior-review.md"},
@@ -60,7 +82,6 @@ func TestProfile_Validate(t *testing.T) {
 		mutate    func(root string, p *Profile)
 		wantErr   bool
 		errSubstr string
-		wantErrIs error
 	}{
 		{
 			name:    "valid profile",
@@ -177,21 +198,46 @@ func TestProfile_Validate(t *testing.T) {
 			errSubstr: "profile.FixScope must be",
 		},
 		{
-			name: "clustern negative",
+			// Empty ClusterFan (the default) must skip fan resolution
+			// entirely — clustering is never on unless a profile names a
+			// fan — so it must not error even against a cfg with zero fans
+			// configured at all.
+			name: "clusterfan empty skips resolution",
 			mutate: func(root string, p *Profile) {
-				p.ClusterN = -1
+				p.ClusterFan = ""
 			},
-			wantErr:   true,
-			errSubstr: "profile.ClusterN must not be negative",
+			wantErr: false,
 		},
 		{
-			name: "clustern positive is unsupported",
+			name: "clusterfan happy path",
 			mutate: func(root string, p *Profile) {
-				p.ClusterN = 1
+				p.ClusterFan = "standard"
+			},
+			wantErr: false,
+		},
+		{
+			name: "clusterfan unknown fan",
+			mutate: func(root string, p *Profile) {
+				p.ClusterFan = "missing"
 			},
 			wantErr:   true,
-			errSubstr: "cluster-N > 0 is not supported",
-			wantErrIs: ErrClusterUnsupported,
+			errSubstr: "unknown fan",
+		},
+		{
+			name: "clusterfan unknown lens",
+			mutate: func(root string, p *Profile) {
+				p.ClusterFan = "badlens"
+			},
+			wantErr:   true,
+			errSubstr: "undefined lens",
+		},
+		{
+			name: "clusterfan over cap",
+			mutate: func(root string, p *Profile) {
+				p.ClusterFan = "huge"
+			},
+			wantErr:   true,
+			errSubstr: "exceeding the maximum",
 		},
 		{
 			name: "reviewpath empty",
@@ -237,12 +283,13 @@ func TestProfile_Validate(t *testing.T) {
 		},
 	}
 
+	cfg := testClusterFanConfig()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			root, p := newValidProfileFixture(t)
 			tt.mutate(root, &p)
 
-			err := p.validate(root)
+			err := p.validate(root, cfg)
 
 			if tt.wantErr {
 				if err == nil {
@@ -255,14 +302,11 @@ func TestProfile_Validate(t *testing.T) {
 					t.Errorf("validate() error = %q; want burler: -prefixed message", err.Error())
 				}
 				// Every validate error carries exactly one "burler: " prefix.
-				// A wrapped sentinel (like ErrClusterUnsupported) that also
-				// spells its own "burler: " would double it in the final
-				// message — this caught exactly that bug once (N1).
+				// A wrapped ResolveFan error that also spells its own
+				// "burler: " would double it in the final message — this
+				// caught exactly that bug once (N1).
 				if n := strings.Count(err.Error(), "burler: "); n != 1 {
 					t.Errorf("validate() error = %q; want exactly one %q prefix, found %d", err.Error(), "burler: ", n)
-				}
-				if tt.wantErrIs != nil && !errors.Is(err, tt.wantErrIs) {
-					t.Errorf("errors.Is(validate() error, %v) = false; want true", tt.wantErrIs)
 				}
 				return
 			}
@@ -286,7 +330,7 @@ func TestProfile_Validate_ResolvesPathsInPlace(t *testing.T) {
 	absoluteFasit := filepath.Join(root, "fasit.txt")
 	p.Fasit.Paths = []string{"fasit.txt", absoluteFasit}
 
-	if err := p.validate(root); err != nil {
+	if err := p.validate(root, Config{}); err != nil {
 		t.Fatalf("validate() = %v; want nil", err)
 	}
 
@@ -333,13 +377,47 @@ func TestProfile_Validate_AbsolutePathsKeptVerbatim(t *testing.T) {
 	absoluteTarget := filepath.Join(elsewhere, "outside.txt")
 	p.Target.Paths = []string{absoluteTarget}
 
-	if err := p.validate(root); err != nil {
+	if err := p.validate(root, Config{}); err != nil {
 		t.Fatalf("validate() = %v; want nil", err)
 	}
 
 	want := filepath.Clean(absoluteTarget)
 	if len(p.Target.Paths) != 1 || p.Target.Paths[0] != want {
 		t.Errorf("Target.Paths = %v; want [%q]", p.Target.Paths, want)
+	}
+}
+
+// TestProfile_Validate_ClusterFanPopulatesLensesInOrder asserts the
+// ClusterFan happy path: validate populates p.clusterLenses with the
+// resolved fan's lenses in fan order, and an empty ClusterFan leaves
+// clusterLenses nil — clustering is never on unless a profile names a fan.
+func TestProfile_Validate_ClusterFanPopulatesLensesInOrder(t *testing.T) {
+	cfg := testClusterFanConfig()
+
+	root, p := newValidProfileFixture(t)
+	p.ClusterFan = "standard"
+	if err := p.validate(root, cfg); err != nil {
+		t.Fatalf("validate() = %v; want nil", err)
+	}
+	want := []Lens{
+		{Name: "style", Text: "style prose"},
+		{Name: "security", Text: "security prose"},
+	}
+	if len(p.clusterLenses) != len(want) {
+		t.Fatalf("clusterLenses = %+v; want %+v", p.clusterLenses, want)
+	}
+	for i := range want {
+		if p.clusterLenses[i] != want[i] {
+			t.Errorf("clusterLenses[%d] = %+v; want %+v", i, p.clusterLenses[i], want[i])
+		}
+	}
+
+	root2, p2 := newValidProfileFixture(t)
+	if err := p2.validate(root2, cfg); err != nil {
+		t.Fatalf("validate() = %v; want nil", err)
+	}
+	if p2.clusterLenses != nil {
+		t.Errorf("clusterLenses = %+v; want nil for an empty ClusterFan", p2.clusterLenses)
 	}
 }
 

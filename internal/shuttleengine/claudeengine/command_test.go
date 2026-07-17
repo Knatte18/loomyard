@@ -1,10 +1,12 @@
 // command_test.go table-tests the pane-shell command composition helpers:
 // quoting of paths with spaces and embedded single quotes, model/flag
 // presence per the interactive toggle, the exact resume-command shape, the
-// resolveModelID bare-word-plus-version composition rule, and a no-newline
-// invariant every produced command must hold (they are typed into a pane via
-// a single send-keys call). The pwsh-quote cases formerly asserted here now
-// live in internal/shell's shell_test.go, since quoting itself moved there.
+// resolveModelID bare-word-plus-version composition rule, the
+// forkSubagents env-prefix wrapping on both launch and resume lines, and a
+// no-newline invariant every produced command must hold (they are typed
+// into a pane via a single send-keys call). The pwsh-quote cases formerly
+// asserted here now live in internal/shell's shell_test.go, since quoting
+// itself moved there.
 
 package claudeengine
 
@@ -37,16 +39,17 @@ func TestClaudeBinary(t *testing.T) {
 
 func TestBuildLaunchCmd(t *testing.T) {
 	tests := []struct {
-		name         string
-		sh           shell.Shell // nil defaults to shell.Pwsh(), the pre-existing coverage's shell
-		bin          string
-		promptPath   string
-		settingsPath string
-		sessionID    string
-		model        string
-		effort       string
-		interactive  bool
-		want         string
+		name          string
+		sh            shell.Shell // nil defaults to shell.Pwsh(), the pre-existing coverage's shell
+		bin           string
+		promptPath    string
+		settingsPath  string
+		sessionID     string
+		model         string
+		effort        string
+		interactive   bool
+		forkSubagents bool
+		want          string
 	}{
 		{
 			name:         "autonomous_no_model",
@@ -211,6 +214,45 @@ func TestBuildLaunchCmd(t *testing.T) {
 			interactive:  false,
 			want:         `'claude' "$(cat '/run/prompt.md')" --session-id 'abc-123' --settings '/run/settings.json' --dangerously-skip-permissions`,
 		},
+		{
+			// Fork mode on (pwsh): the fully composed line is wrapped in the
+			// pwsh $env: assignment prefix — asserted as the exact composed
+			// prefix, not just a substring, so a future WithEnv shape change
+			// cannot silently drift undetected here.
+			name:          "fork_mode_on_pwsh",
+			bin:           "claude",
+			promptPath:    `C:\run\prompt.md`,
+			settingsPath:  `C:\run\settings.json`,
+			sessionID:     "abc-123",
+			interactive:   false,
+			forkSubagents: true,
+			want:          `$env:CLAUDE_CODE_FORK_SUBAGENT = '1'; & 'claude' (Get-Content -Raw 'C:\run\prompt.md') --session-id 'abc-123' --settings 'C:\run\settings.json' --dangerously-skip-permissions`,
+		},
+		{
+			// Fork mode on (posix): the fully composed line is wrapped in the
+			// posix command-scoped assignment prefix.
+			name:          "fork_mode_on_posix",
+			sh:            shell.Posix(),
+			bin:           "claude",
+			promptPath:    "/run/prompt.md",
+			settingsPath:  "/run/settings.json",
+			sessionID:     "abc-123",
+			interactive:   false,
+			forkSubagents: true,
+			want:          `CLAUDE_CODE_FORK_SUBAGENT='1' 'claude' "$(cat '/run/prompt.md')" --session-id 'abc-123' --settings '/run/settings.json' --dangerously-skip-permissions`,
+		},
+		{
+			// Fork mode off: the line is unchanged from today's shape — no
+			// env prefix at all.
+			name:          "fork_mode_off",
+			bin:           "claude",
+			promptPath:    `C:\run\prompt.md`,
+			settingsPath:  `C:\run\settings.json`,
+			sessionID:     "abc-123",
+			interactive:   false,
+			forkSubagents: false,
+			want:          `& 'claude' (Get-Content -Raw 'C:\run\prompt.md') --session-id 'abc-123' --settings 'C:\run\settings.json' --dangerously-skip-permissions`,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -218,7 +260,7 @@ func TestBuildLaunchCmd(t *testing.T) {
 			if sh == nil {
 				sh = shell.Pwsh()
 			}
-			got := buildLaunchCmd(sh, tt.bin, tt.promptPath, tt.settingsPath, tt.sessionID, tt.model, tt.effort, tt.interactive)
+			got := buildLaunchCmd(sh, tt.bin, tt.promptPath, tt.settingsPath, tt.sessionID, tt.model, tt.effort, tt.interactive, tt.forkSubagents)
 			if got != tt.want {
 				t.Errorf("buildLaunchCmd(...) = %q; want %q", got, tt.want)
 			}
@@ -304,12 +346,28 @@ func TestResolveModelID(t *testing.T) {
 }
 
 func TestBuildResumeCmd(t *testing.T) {
-	got := buildResumeCmd(shell.Pwsh(), "claude", `C:\run\settings.json`, "abc-123")
-	want := `& 'claude' --resume 'abc-123' --settings 'C:\run\settings.json'`
-	if got != want {
-		t.Errorf("buildResumeCmd(...) = %q; want %q", got, want)
+	tests := []struct {
+		name          string
+		forkSubagents bool
+		want          string
+	}{
+		{"fork_mode_off", false, `& 'claude' --resume 'abc-123' --settings 'C:\run\settings.json'`},
+		{
+			// A resumed fork-mode session must keep the fork-subagent
+			// capability it launched with.
+			"fork_mode_on", true,
+			`$env:CLAUDE_CODE_FORK_SUBAGENT = '1'; & 'claude' --resume 'abc-123' --settings 'C:\run\settings.json'`,
+		},
 	}
-	if strings.ContainsAny(got, "\r\n") {
-		t.Errorf("buildResumeCmd(...) = %q; contains a newline, but the command is typed via a single send-keys call", got)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := buildResumeCmd(shell.Pwsh(), "claude", `C:\run\settings.json`, "abc-123", tt.forkSubagents)
+			if got != tt.want {
+				t.Errorf("buildResumeCmd(...) = %q; want %q", got, tt.want)
+			}
+			if strings.ContainsAny(got, "\r\n") {
+				t.Errorf("buildResumeCmd(...) = %q; contains a newline, but the command is typed via a single send-keys call", got)
+			}
+		})
 	}
 }

@@ -1,7 +1,8 @@
-// prompt.go composes the burler round prompt: it builds the eight marker
+// prompt.go composes the burler round prompt: it builds the nine marker
 // values the embedded template (template.go) requires and fills it via
 // internal/stencil. composePrompt is called only after (*Profile).validate
-// has run, so every path field it reads is already a cleaned absolute path.
+// has run, so every path field it reads is already a cleaned absolute path
+// and p.clusterLenses (when ClusterFan was set) is already resolved.
 
 package burlerengine
 
@@ -14,9 +15,9 @@ import (
 )
 
 // composePrompt builds the burler round prompt for p by composing each of
-// the template's eight top-level marker values (path lists, fix-scope
-// rules, tool-use rules, the prior-rounds block) and filling
-// reviewPromptTemplate with them via stencil.Fill.
+// the template's nine top-level marker values (path lists, fix-scope rules,
+// tool-use rules, the prior-rounds block, the cluster-rules block) and
+// filling reviewPromptTemplate with them via stencil.Fill.
 func composePrompt(p *Profile) (string, error) {
 	values := map[string]string{
 		"target":            formatFileSet(p.Target),
@@ -25,6 +26,7 @@ func composePrompt(p *Profile) (string, error) {
 		"fix_scope_rules":   fixScopeRules(p),
 		"tool_use_rules":    toolUseRules(p.ToolUse),
 		"prior_rounds":      priorRoundsBlock(p),
+		"cluster_rules":     clusterRulesBlock(p),
 		"review_path":       p.ReviewPath,
 		"fixer_report_path": p.FixerReportPath,
 	}
@@ -127,4 +129,47 @@ func priorRoundsBlock(p *Profile) string {
 		"read the prior rounds' files, to confirm previously-fixed behaviors have not " +
 		"regressed and to re-evaluate their deferred items.")
 	return b.String()
+}
+
+// clusterRulesBlock returns job A's fork-cluster prose: the plain
+// single-reviewer statement when p carries no ClusterFan, or the full
+// phase/spawn/consolidation discipline composed from p.clusterLenses when
+// it does. p.clusterLenses is assumed already resolved by
+// (*Profile).validate — composePrompt never calls ResolveFan itself.
+func clusterRulesBlock(p *Profile) string {
+	if p.ClusterFan == "" {
+		return "This is a single-reviewer round — no cluster forks. Do the full review yourself."
+	}
+
+	var lenses strings.Builder
+	for _, lens := range p.clusterLenses {
+		lenses.WriteString("- ")
+		lenses.WriteString(lens.Name)
+		lenses.WriteString(": ")
+		lenses.WriteString(lens.Text)
+		lenses.WriteString("\n")
+	}
+
+	return "This is a cluster round: after exploring the target fully, spawn ALL of the fork " +
+		"reviewers below in a SINGLE message via the Agent tool with `subagent_type: \"fork\"`, " +
+		"one per lens listed here — never pass a `name` (named forks silently lose inherited " +
+		"context).\n\n" +
+		"Lenses for this round:\n\n" + lenses.String() + "\n" +
+		"Each fork's prompt is this boilerplate plus that lens's emphasis text below: prefer " +
+		"your inherited context and fetch only what your lens needs; you are READ-ONLY — never " +
+		"Write/Edit/delete any file, never run any git command, never touch the two round " +
+		"output files, and never call the Agent tool yourself (forks cannot nest); return your " +
+		"findings ONLY as your final message, each with a severity, a location, and a one-line " +
+		"summary.\n\n" +
+		"While the forks run, YOU (the handler) do your own HOLISTIC review — architecture, " +
+		"cross-file invariants, CONSTRAINTS-fit — and prepare the ground truths and the " +
+		"severity rubric you will judge every finding against.\n\n" +
+		"Consolidation: judge every fork finding and your own holistic findings with EQUAL " +
+		"skepticism, dedup findings that describe the same defect across lenses, tag every " +
+		"kept finding's frontmatter with an `origin:` key (`lens:<name>` or `handler`), move " +
+		"false positives to a `## Rejected` prose section below the frontmatter with a " +
+		"one-line reason each (a rejected item never appears in `findings:`), and order kept " +
+		"findings by severity. The consolidated review is the ONE review file, and it must be " +
+		"fully written to disk before job B touches anything — consolidation is part of job A, " +
+		"not a separate step after it."
 }
