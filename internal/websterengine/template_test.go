@@ -265,6 +265,13 @@ func TestForkTemplate_PinsReportSchemaKeys(t *testing.T) {
 	requireContains(t, text, "## The FRESH-READ rule")
 	requireContains(t, text, "Commit the card to the HOST repo")
 	requireContains(t, text, "One commit per card is the norm")
+
+	// The fork inherits Master's loop instructions; it must be told forcefully
+	// NOT to drive the webster loop itself (a fork that polls await-batch for
+	// its own report deadlocks — nobody writes it; found live in round
+	// fable-r1's first clean await-batch drive).
+	requireContains(t, text, "NEVER run any `lyx webster` command")
+	requireContains(t, text, "YOU are the one who WRITES that report")
 }
 
 // TestForkTemplate_FillsWithAllMarkers asserts stencil.Fill succeeds when

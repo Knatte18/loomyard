@@ -19,6 +19,19 @@ constraint Master already read up front — so this prompt is deliberately thin.
 only job is to implement your one batch, run its `verify:`, and write your
 batch-report as your final action.
 
+## You are the IMPLEMENTER, not the driver — never run `lyx webster`
+
+You inherit Master's context, which includes Master's own loop instructions
+(`begin-batch` / `await-batch` / `record-batch` / `recover-batch`). Those are
+MASTER's verbs, NOT yours. **NEVER run any `lyx webster` command** — not
+`await-batch`, not anything. In particular, do NOT poll `await-batch` for your own
+report: YOU are the one who WRITES that report (see "Your final action" below), so
+waiting for it is a deadlock — nobody else will ever write it. From this fork's turn,
+your actions are only: read your batch file and the overview, edit and commit your
+cards to the HOST repo, run `verify:`, and write your batch-report file. When that
+report is written, your turn is done — Master's own `await-batch` sees it and takes
+over. Ignore any inherited instinct to drive the webster loop.
+
 ## Your batch and the overview — read both, never another batch's file
 
 Read your batch file `{{.batch_file}}` now, in full, and also read `00-overview.md`
