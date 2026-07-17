@@ -1,0 +1,38 @@
+# servers.yaml — the language-server registry. This file is OPERATOR-EDITABLE:
+# it is never generated or overwritten by lyx itself (there is no "seed once"
+# materialization step for servers.yaml the way models.yaml has one), and
+# every block here whole-replaces the matching built-in language entry --
+# there is no field-level merge, so overriding "command" for a language also
+# requires repeating its markers/match/install_hint if you want to keep them.
+#
+# Add a new language, or override a built-in one, with a block like this:
+# zig: {markers: [build.zig], match: any, command: [zls], install_hint: "install zls from https://github.com/zigtools/zls"}
+#
+# The five built-in languages below are shown at their default values; delete
+# a block to fall back to its built-in, or edit any field to override it.
+
+go:
+  markers: [go.mod]
+  match: any
+  command: [gopls]
+  install_hint: "go install golang.org/x/tools/gopls@latest"
+python:
+  markers: [pyproject.toml, setup.py, setup.cfg]
+  match: any
+  command: [pyright-langserver, --stdio]
+  install_hint: "npm install -g pyright"
+csharp:
+  markers: [.sln, .csproj]
+  match: any
+  command: [csharp-ls]
+  install_hint: "dotnet tool install --global csharp-ls"
+typescript:
+  markers: [package.json, tsconfig.json]
+  match: all
+  command: [typescript-language-server, --stdio]
+  install_hint: "npm install -g typescript-language-server typescript"
+rust:
+  markers: [Cargo.toml]
+  match: any
+  command: [rust-analyzer]
+  install_hint: "install via rustup component add rust-analyzer"

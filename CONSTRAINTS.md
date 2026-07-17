@@ -58,6 +58,22 @@ templates) can import it without cycles.
 - **Enforced by** `internal/tokenvocab/leaf_enforcement_test.go`
   (`TestLeafInvariant_AllowlistOnly`) on every `go test`.
 
+## Codeintelengine Leaf Invariant
+
+`internal/codeintelengine` production code imports only stdlib, `internal/hubgeometry`,
+and `gopkg.in/yaml.v3` — no `internal/output`, no `cobra`, no `internal/*cli` package —
+so the engine stays a cycle-free leaf importable by builder/webster later, exactly like
+`internal/modelspec`'s leaf excludes `output`. The engine returns typed Go errors and
+typed result values (`(T, error)`) and never touches `io.Writer`, exit codes, or the
+`output.Ok`/`output.Err` envelope; `internal/codeintelcli` is the sole layer that maps
+engine errors/results into that envelope.
+
+- `codeintelcli` → `codeintelengine` is the only allowed direction; the reverse import
+  (`codeintelengine` → `codeintelcli`, or `codeintelengine` → any other feature package)
+  is never allowed.
+- **Enforced by** `internal/codeintelengine/leaf_enforcement_test.go`
+  (`TestLeafInvariant_AllowlistOnly`) on every `go test`.
+
 ## CLI / Cobra Invariant
 
 Every lyx CLI module is a cobra subtree assembled under one root in `cmd/lyx/main.go`.
