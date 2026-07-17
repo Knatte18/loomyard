@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: codeintel-spike
 branch: codeintel-spike
 plan: _mill/plan
@@ -22,4 +22,19 @@ plan-review-r1  '2026-07-17T15:19:20Z'
 plan-fix-r1  '2026-07-17T15:19:20Z'
 plan-fix-r2  '2026-07-17T15:21:36Z'
 planned  '2026-07-17T15:21:49Z'
+implementing  '2026-07-17T15:26:17Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: poc-scaffold-gopackages
+    state: pending
+  - name: poc-gopls-callgraph
+    state: pending
+  - name: measure-and-writeup
+    state: pending
+  - name: revert-and-verify
+    state: pending
 ```
