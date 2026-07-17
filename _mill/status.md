@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-loom-config-module
+phase: approved-discussion-producer
 slug: loom-discussion-producer
 branch: loom-discussion-producer
 plan: _mill/plan
@@ -24,6 +24,7 @@ planned  '2026-07-17T18:30:02Z'
 implementing  '2026-07-17T18:31:12Z'
 approved-hubgeometry-discussion-paths  '2026-07-17T18:34:17Z'
 approved-loom-config-module  '2026-07-17T18:37:41Z'
+approved-discussion-producer  '2026-07-17T18:42:16Z'
 ```
 
 ## Batches
@@ -41,7 +42,8 @@ batches:
     start_sha: dca04bd5eacf3f30c67b865b5a6eef94b272f17b
     commit_sha: dc6036ef1f794bd1f2cf6719bd5fc05e2f06767d
   - name: discussion-producer
-    state: running
+    state: approved
     implementer_session: ce301252-fcd3-4147-886e-a27470d0c2e4
     start_sha: f3f5b60bb21ddb622dc60459254cc0a57b6b901a
+    commit_sha: a1cdceb38b047acaf931750585b5130eec0ca32a
 ```
