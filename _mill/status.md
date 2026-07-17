@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: codeintel-multilang
 branch: codeintel-multilang
 plan: _mill/plan
@@ -32,6 +32,7 @@ holistic-fixing  '2026-07-17T18:48:04Z'
 nits-fixed-holistic  '2026-07-17T18:51:44Z'
 holistic-approved  '2026-07-17T18:51:52Z'
 done  '2026-07-17T18:52:21Z'
+pr-pending  '2026-07-17T18:55:21Z'
 ```
 
 ## Batches
