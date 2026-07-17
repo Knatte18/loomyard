@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r1
+phase: plan-fix-r2
 slug: loom-preflight
 branch: loom-preflight
 plan: _mill/plan
@@ -20,4 +20,5 @@ discussed  '2026-07-17T15:48:08Z'
 planning  '2026-07-17T16:12:54Z'
 plan-review-r1  '2026-07-17T16:20:19Z'
 plan-fix-r1  '2026-07-17T16:20:19Z'
+plan-fix-r2  '2026-07-17T16:25:15Z'
 ```

@@ -157,6 +157,7 @@ the future phase-machine skeleton (a later task) will be the first caller.
 
 - **Context:**
   - `internal/lyxtest/lyxtest.go`
+  - `internal/hubgeometry/hubgeometry.go`
   - `internal/warpengine/testmain_test.go`
   - `internal/warpengine/drift.go`
   - `internal/warpengine/junction.go`

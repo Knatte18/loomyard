@@ -3,7 +3,7 @@
 ```yaml
 task: 'loom: Preflight phase (precondition validation)'
 slug: loom-preflight
-approved: false
+approved: true
 started: 20260717-160904
 parent: main
 root: ""
