@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r2
+phase: planned
 slug: codeintel-multilang
 branch: codeintel-multilang
 plan: _mill/plan
@@ -21,4 +21,5 @@ planning  '2026-07-17T17:31:24Z'
 plan-review-r1  '2026-07-17T17:39:24Z'
 plan-fix-r1  '2026-07-17T17:39:24Z'
 plan-fix-r2  '2026-07-17T17:43:54Z'
+planned  '2026-07-17T17:44:10Z'
 ```
