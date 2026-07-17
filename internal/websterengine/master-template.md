@@ -68,8 +68,16 @@ around, and no batch is ever skipped or reordered because it "looks independent.
 {{.progress}}
 
 `none` means this is a fresh run. Any other value lists one `NN-slug: <status>` line
-per already-reported batch: skip every batch this trail already reports — a resumed
-session thus picks up exactly where the last one left off.
+per already-reported batch. Read the trail by status — a resumed session thus picks
+up exactly where the last one left off:
+
+- `done` → skip that batch; it is finished and committed.
+- `stuck` → its fork reported stuck and the previous session never finished the
+  recovery: call `lyx webster recover-batch <NN>` for it and follow the failure
+  ladder below before touching any later batch.
+- `dead` → its recovery already failed terminally: the run is exhausted for that
+  batch — write `outcome: stuck` naming it (per the dead rung of the failure
+  ladder) and stop. Do NOT skip it and do NOT begin any later batch.
 
 ## The loop: begin-batch, fork, await-batch, record-batch — verbatim sequence
 

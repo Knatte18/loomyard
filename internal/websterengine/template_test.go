@@ -249,6 +249,14 @@ func TestMasterTemplate_StatesBracketSequenceAndRecoveryLadder(t *testing.T) {
 	// or recover-batch (recovery batch).
 	requireContains(t, text, "already has a report")
 	requireContains(t, text, "consume that report")
+
+	// The progress trail lists EVERY terminal status (RenderProgress renders
+	// done, stuck, and dead alike), so the read rule must branch by status —
+	// a blanket "skip every reported batch" would skip a half-built stuck
+	// batch and build the rest of the plan on top of it (round fable-r3).
+	requireContains(t, text, "`done` → skip")
+	requireContains(t, text, "`stuck` → its fork reported stuck")
+	requireContains(t, text, "`dead` → its recovery already failed")
 }
 
 // TestMasterTemplate_FillsWithAllMarkers asserts stencil.Fill succeeds when
