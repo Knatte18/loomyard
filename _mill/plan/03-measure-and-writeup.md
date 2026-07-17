@@ -74,6 +74,23 @@ set, transitive method) is drawn from `_mill/discussion.md`, read as Context.
     found on type "Engine"`, discovered while running Card 7 step (b). Fix:
     branch on whether the named type's underlying type is `*types.Interface` and, if
     so, look up on the named type directly instead of a pointer to it.
+  - `tools/codeintel-poc/callgraph.go` — `transitiveCallers`'s generic-origin seed
+    condition `fn.Origin() == origin` is unconditionally true for **any two
+    non-generic functions**, not just for `target` itself: `(*ssa.Function).Origin()`
+    returns `nil` for a function that is not a generic instantiation (per its own
+    doc comment), so for a non-generic `target`, `origin := target.Origin()` is
+    `nil`, and every other non-generic `fn` in the graph also has `fn.Origin() ==
+    nil`, making the loop seed the walk from **every non-generic node in the whole
+    program**, not just target's. Confirmed empirically while running Card 7 step
+    (b): `-symbol=...claudeengine.Claude.Prepare` and
+    `-symbol=...hubgeometry.Layout.WeftWorktree` (two unrelated targets) produced
+    byte-identical 15,872-entry transitive-caller sets under `-algo=cha`. Fix: match
+    a graph node's function against target with `fn == target ||
+    (fn != nil && fn.Origin() == target)` — the first arm covers the ordinary
+    non-generic case exactly, the second still covers every generic instantiation
+    of a generic target (resolveSymbol always resolves to the generic origin
+    declaration, never a specific instantiation, so `target` is always the origin
+    to compare instantiations' `Origin()` against).
 - **Creates:**
   - `docs/research/codeintel-spike.md`
 - **Deletes:** none
