@@ -98,9 +98,15 @@ func resolveSymbol(pkgs []*packages.Package, spec string) (types.Object, error) 
 		}
 
 		// LookupFieldOrMethod on the pointer type surfaces both pointer- and
-		// value-receiver methods; NewMethodSet on the pointer type is the
-		// superset method set for the same reason.
-		obj, _, _ := types.LookupFieldOrMethod(types.NewPointer(named), true, pkg.Types, methodName)
+		// value-receiver methods for a concrete type. An interface type has no
+		// pointer-to-interface method set at all (LookupFieldOrMethod on
+		// types.NewPointer(named) always returns nil for one), so its method
+		// must instead be looked up on the named type itself.
+		lookupOn := types.Type(types.NewPointer(named))
+		if _, isInterface := named.Underlying().(*types.Interface); isInterface {
+			lookupOn = named
+		}
+		obj, _, _ := types.LookupFieldOrMethod(lookupOn, true, pkg.Types, methodName)
 		if obj == nil {
 			return nil, fmt.Errorf("resolve symbol %q: method %q not found on type %q", spec, methodName, typeName)
 		}
