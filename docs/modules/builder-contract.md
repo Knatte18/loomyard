@@ -387,6 +387,51 @@ above). Scope-drift itself is deliberately **unconfigurable** — the digest alw
 flags `drift_unreported`, the orchestrator always judges; a `judge|block` policy knob
 would move that judgment back into a Go branch, rejected as YAGNI.
 
+## Webster: the fork-based sibling
+
+`webster` (`internal/websterengine` + `internal/webstercli`, `lyx webster`) is a second,
+parallel implementation of this same batch-implementation loop, built to be A/B tested
+against `builder` on the same plan rather than a revision of it: instead of a long-lived
+LLM **orchestrator** session spawning each batch's implementer as its own fresh mux/tmux
+strand, one long-lived **Master** session reads the plan once and forks one implementer
+per batch **in-session** (Claude Code's Agent tool). This section pins only the facts a
+future `loom` needs to treat the two as interchangeable underneath its own Builder-phase
+integration; webster's own design (the bracket-verb shape, the fork-audit policy, the
+`/model` escalation mechanism, crash/resume) lives in `internal/websterengine`'s package
+documentation, not here — same split this file already draws against `builder`'s own
+package docs.
+
+- **Same plan input, one parser.** webster consumes the identical pinned
+  [plan-format v2](plan-format.md) plan via the exact same parser, `builderengine.ParsePlan`
+  — there is exactly one plan parser in the repo, imported by webster rather than
+  duplicated.
+- **Same batch-report schema, one parser.** A webster fork writes the same batch-report
+  shape builder's implementer writes, decoded by the same `builderengine.ParseReport` — no
+  second report parser exists.
+- **Compatible `outcome.yaml`, one parser.** webster's own final action writes an
+  `outcome.yaml` on the same schema (`outcome`/`stuck_reason`/`batches_done`), decoded by
+  the same `builderengine.ParseOutcome`.
+- **Shared digest contract.** The terse, prose-free digest fields (`batch`, `status`,
+  `tests`, `files_changed`, `dirty`, …) that builder's `poll` emits are the exact same
+  fields webster's `record-batch` emits — one digest contract, two producers.
+- **Webster-only addition: `_lyx/webster/summary.md`.** Alongside `outcome.yaml`, webster
+  writes a prose summary artifact — first line `# <title>`, then a free-form narrative of
+  what was actually built, including deviations from the original task. It is required
+  (presence + non-empty + title line, fail-loud) only when `outcome: done`, and follows the
+  same archive-never-refuse discipline as every other stale artifact here. This is the
+  future `loom-finalize`'s PR-text source, since a long-lived Master session is the only
+  party with full oversight of what actually shipped — builder has no equivalent artifact.
+- **Independent state, no collision.** webster owns its own `_lyx/webster/` (its own
+  `state.json`, reports dir, `outcome.yaml`, `summary.md`, locks, pause flag), resolved via
+  its own `hubgeometry` helpers — never `_lyx/builder/`. This is what lets an A/B run of
+  the same plan through both modules coexist without either clobbering the other's
+  progress.
+
+See the `internal/websterengine` package documentation for webster's own design: the
+bracket-verb shape (`begin-batch`/`record-batch` in place of `spawn-batch`/`poll`), the
+fork-audit policy, the `oversized:`-driven `/model` pane-injection escalation mechanism and
+its documented fallback, and crash/resume.
+
 ## See also
 
 - [plan-format.md](plan-format.md) — builder's pinned input contract (plan structure,

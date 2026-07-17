@@ -270,6 +270,15 @@ User-facing modules each get one `lyx <module>` namespace:
   need `perch`. Ends at batches-built — the terminal holistic review is the separate
   Builder-review gate (`perch`), driven by `loom` or the operator. ✅ Implemented. See
   [modules/builder-contract.md](modules/builder-contract.md).
+- **webster** — fork-based sibling of builder: one long-lived Master session reads the
+  codebase and the whole plan once, then forks one implementer per batch in-session
+  (Claude Code's Agent tool) instead of spawning a fresh mux/tmux strand per batch;
+  bracket verbs (`begin-batch`/`record-batch`) replace `spawn-batch`/`poll`, and a genuine
+  model escalation (recovery after a stuck/report-less fork) still spawns a cold strand.
+  Kept contract-compatible with `builder` (same plan input, batch-report schema, and
+  outcome schema) so both can be A/B tested on the same plan (`internal/websterengine` +
+  `internal/webstercli`). ✅ Implemented. See
+  [modules/builder-contract.md](modules/builder-contract.md#webster-the-fork-based-sibling).
 - **loom** — phased orchestrator: drives Setup → Discussion → Plan → Builder → Finalize, each
   gated by a perch review (`lyx loom run`, alias `lyx run`). 🚧 Design — not built. See
   [modules/loom.md](modules/loom.md).
