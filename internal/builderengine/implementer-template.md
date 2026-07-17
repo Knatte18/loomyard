@@ -1,5 +1,5 @@
 <!-- This is the implementer prompt for one batch of a pinned plan-format v2
-     plan (docs/modules/plan-format.md). It is filled by SpawnBatch
+     plan (docs/reference/plan-format.md). It is filled by SpawnBatch
      (spawn.go) via internal/stencil and handed to the shuttle as the
      implementer's entire instruction set for this one batch. Every marker
      below is a top-level {{.X}} substitution; stencil.Fill requires all

@@ -9,7 +9,7 @@ real work in a pane, a digest coming back, a pause landing cleanly at a batch bo
 an automated suite -- an agent drives it, an operator watches.
 
 `builder` drives a pinned plan-format v2 plan through implementer sessions, batch by batch,
-until the plan is built (see `docs/modules/builder-contract.md`). `lyx builder run` spawns its own
+until the plan is built (see `docs/reference/builder-contract.md`). `lyx builder run` spawns its own
 **long-lived LLM orchestrator session** that autonomously calls `spawn-batch`/`poll`/`pause`
 itself; `spawn-batch`, `poll`, and `pause` are also directly invocable `lyx builder`
 subcommands, which is how scenarios B2-B7 below isolate the Go-level state-machine mechanics
@@ -57,7 +57,7 @@ It must not look for, read, or reason about the lyx source tree. No peeking at
 Discovering the command surface is done via `lyx builder --help` and `lyx builder
 <subcommand> --help` alone -- not from documentation outside the Hub. The plan file(s) under
 `_lyx/plan/` are the one artifact the agent must construct itself per each scenario's Goal
-below; `docs/modules/plan-format.md`'s worked example (available via `lyx builder validate
+below; `docs/reference/plan-format.md`'s worked example (available via `lyx builder validate
 --help` or by reasoning from validation error messages) is the reference for the file shape.
 Keep every scenario's plan cards trivial -- e.g. "create `resultN.md` containing the single
 line `OK`" -- so a real implementer session finishes in one card, one commit, fast.
@@ -146,7 +146,7 @@ landed as its own commit with the `NN.C: <what>` subject convention. `lyx builde
 after completion shows both batches `done`/`tests: green`. Confirm the three weft-commit
 points actually fired (not just the exit-time backstop): `state.json` was committed at each
 `spawn-batch`, the batch report was committed at each terminal `poll` classification, per
-`docs/modules/builder-contract.md`'s "three weft-commit points". Afterward, both batches' panes/run
+`docs/reference/builder-contract.md`'s "three weft-commit points". Afterward, both batches' panes/run
 dirs are cleaned up (no leftover pane, `lyx mux status` no longer lists either guid).
 
 **Verdict:** `OK` / `WARN` / `FAIL`
