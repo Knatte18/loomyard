@@ -112,14 +112,19 @@ func (c *Claude) ComposeSend(text string) []shuttleengine.PaneInput {
 }
 
 // ModelSwitchSequence returns the key choreography that switches a live
-// claude session's model: the same Escape-then-settle clearing step
-// ComposeSend uses, followed by the `/model <name>` slash command typed and
-// submitted. The literal "/model" string is claude-specific grammar and
-// deliberately appears only here, never in shuttleengine, per the Shuttle
-// Provider-Seam Invariant.
+// claude session's model: the `/model <name>` slash command typed and
+// submitted. Unlike ComposeSend it deliberately sends NO leading Escape:
+// this sequence's one production caller (webster's begin-batch) injects it
+// while a foreground Bash tool call is executing in the target pane, and
+// Escape during tool execution is claude's interrupt-running-tool key — a
+// leading Escape kills the very subprocess doing the injecting and aborts
+// the session's whole turn (confirmed live on 2.1.205 in webster's hardening
+// round fable-r1). ComposeSend's autosuggest-clearing rationale does not
+// apply here either: mid-tool-call the input line is empty. The literal
+// "/model" string is claude-specific grammar and deliberately appears only
+// here, never in shuttleengine, per the Shuttle Provider-Seam Invariant.
 func (c *Claude) ModelSwitchSequence(model string) []shuttleengine.PaneInput {
 	return []shuttleengine.PaneInput{
-		{Key: "Escape", SettleMS: composeSendSettleMS},
 		{Text: "/model " + model, Submit: true},
 	}
 }

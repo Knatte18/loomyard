@@ -1,6 +1,9 @@
 // modelswitch_test.go pins ModelSwitchSequence's exact choreography shape:
-// Escape first with its settle pause, then the `/model <name>` command typed
-// and submitted, with the model name passed through verbatim.
+// the `/model <name>` command typed and submitted, with the model name passed
+// through verbatim and — load-bearing — NO leading Escape key, since the
+// sequence is injected while a foreground tool call runs in the target pane
+// and Escape there is claude's interrupt-running-tool key (it killed the
+// injecting begin-batch subprocess live on 2.1.205).
 
 package claudeengine
 
@@ -11,9 +14,8 @@ import (
 )
 
 // TestModelSwitchSequence_ShapeAndVerbatimModel proves the returned sequence
-// is exactly [Escape+settle, "/model <name>"+submit], for several model
-// name shapes (including ones containing characters that must NOT be
-// escaped or altered).
+// is exactly ["/model <name>"+submit], for several model name shapes
+// (including ones containing characters that must NOT be escaped or altered).
 func TestModelSwitchSequence_ShapeAndVerbatimModel(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -29,7 +31,6 @@ func TestModelSwitchSequence_ShapeAndVerbatimModel(t *testing.T) {
 			got := c.ModelSwitchSequence(tt.model)
 
 			want := []shuttleengine.PaneInput{
-				{Key: "Escape", SettleMS: composeSendSettleMS},
 				{Text: "/model " + tt.model, Submit: true},
 			}
 			if len(got) != len(want) {
@@ -44,21 +45,20 @@ func TestModelSwitchSequence_ShapeAndVerbatimModel(t *testing.T) {
 	}
 }
 
-// TestModelSwitchSequence_EscapeCarriesNoText proves the leading Escape step
-// carries no Text/Submit — it is a pure key press, exactly like ComposeSend's
-// leading Escape.
-func TestModelSwitchSequence_EscapeCarriesNoText(t *testing.T) {
+// TestModelSwitchSequence_NoKeyPresses proves no step in the sequence sends a
+// bare key press (Escape included): the sequence is injected mid-tool-call,
+// where Escape interrupts the running tool and aborts the target session's
+// turn — the W2b corruption mode webster's hardening round confirmed live.
+func TestModelSwitchSequence_NoKeyPresses(t *testing.T) {
 	c := New()
 	got := c.ModelSwitchSequence("opus")
 
 	if len(got) == 0 {
 		t.Fatal("ModelSwitchSequence() returned no steps")
 	}
-	first := got[0]
-	if first.Key != "Escape" || first.Text != "" || first.Submit {
-		t.Errorf("ModelSwitchSequence()[0] = %+v; want a pure Escape key press", first)
-	}
-	if first.SettleMS != composeSendSettleMS {
-		t.Errorf("ModelSwitchSequence()[0].SettleMS = %d; want %d (same settle gap as ComposeSend)", first.SettleMS, composeSendSettleMS)
+	for i, step := range got {
+		if step.Key != "" {
+			t.Errorf("ModelSwitchSequence()[%d].Key = %q; want no key presses anywhere in the sequence", i, step.Key)
+		}
 	}
 }
