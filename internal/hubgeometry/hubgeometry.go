@@ -254,6 +254,42 @@ func BuilderReportsDir(baseDir string) string {
 	return filepath.Join(BuilderDir(baseDir), "reports")
 }
 
+// WebsterDir returns the path to the base directory for webster's own
+// durable run state within a baseDir: state.json, the pause flag,
+// outcome.yaml, and the reports/prompts subdirectories (see
+// WebsterReportsDir/WebsterPromptsDir). It lives under _lyx so webster's run
+// state is weft-synced via the host _lyx junction, like every other durable
+// lyx state. Per the Hub Geometry Invariant, no other package may construct
+// this path.
+//
+// Returns filepath.Join(baseDir, LyxDirName, "webster").
+func WebsterDir(baseDir string) string {
+	return filepath.Join(baseDir, LyxDirName, "webster")
+}
+
+// WebsterReportsDir returns the path to the directory holding webster's
+// per-batch report files within a baseDir. It lives under _lyx so reports
+// are weft-synced via the host _lyx junction, like every other durable lyx
+// state. Per the Hub Geometry Invariant, no other package may construct this
+// path.
+//
+// Returns filepath.Join(WebsterDir(baseDir), "reports").
+func WebsterReportsDir(baseDir string) string {
+	return filepath.Join(WebsterDir(baseDir), "reports")
+}
+
+// WebsterPromptsDir returns the path to the directory holding webster's
+// rendered fork prompts within a baseDir. Prompts are machine-local,
+// re-renderable artifacts (rendered from templates + current state on every
+// fork) and are deliberately excluded from weft commits — only the state and
+// report artifacts under WebsterDir/WebsterReportsDir are durable. Per the
+// Hub Geometry Invariant, no other package may construct this path.
+//
+// Returns filepath.Join(WebsterDir(baseDir), "prompts").
+func WebsterPromptsDir(baseDir string) string {
+	return filepath.Join(WebsterDir(baseDir), "prompts")
+}
+
 // DotEnv returns the path to the .env file within a baseDir.
 //
 // The .env file provides environment variable overrides for the worktree.
