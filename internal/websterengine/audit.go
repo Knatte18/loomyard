@@ -15,9 +15,11 @@
 package websterengine
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"regexp"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -185,4 +187,128 @@ func ForkWarnings(f shuttleengine.ForkReport) []string {
 		return []string{fmt.Sprintf("fork %q never returned a final report", f.TranscriptPath)}
 	}
 	return nil
+}
+
+// ErrNoForkTranscripts is the sentinel ClassifyAttribution's zero-new-transcript
+// case wraps. record-batch's caller (batch 5) issues this as its own hard error
+// AFTER SettleRetry's settle window is exhausted — never on the first miss, since
+// a fork's transcript file may not have flushed to disk yet the instant the Agent
+// tool call returns (the discussion's "first miss is inconclusive" flush-timing
+// caveat). A report file existing alongside zero new transcripts does NOT save the
+// batch from this error: a report with no fork behind it means Master wrote it
+// itself, which is exactly the defect this check exists to catch (pinned check
+// order: transcript count is decided BEFORE report presence).
+var ErrNoForkTranscripts = errors.New("zero new fork transcripts since the previous batch boundary — the batch was never forked")
+
+// DefaultSettleWindow is SettleRetry's recommended total wait budget before its
+// caller gives up and treats a zero-transcript result as final: a few seconds is
+// enough slack for Claude Code to flush a just-returned fork's
+// subagents/<id>.jsonl to disk without meaningfully slowing down a normal
+// record-batch call (which almost always finds its transcript on the first scan).
+const DefaultSettleWindow = 3 * time.Second
+
+// DefaultSettleTick is SettleRetry's recommended re-scan interval within the
+// settle window: frequent enough that a normal (non-degenerate) call resolves
+// within one or two ticks of the transcript actually appearing.
+const DefaultSettleTick = 250 * time.Millisecond
+
+// Sleeper abstracts time.Sleep so SettleRetry's wait loop never blocks for real
+// under test — a recording fake Sleeper lets a test assert exactly how many ticks
+// were requested and drive SettleRetry's retry loop to completion instantly,
+// mirroring the clock seam builderengine's PollUntilTerminal and shuttleengine's
+// wait.go already establish for the same reason.
+type Sleeper interface {
+	// Sleep blocks (in production) or records a request to block (under test)
+	// for d.
+	Sleep(d time.Duration)
+}
+
+// NewTranscripts returns the ForkReport entries in audit whose TranscriptPath is
+// NOT a member of seen. It is a defensive re-filter that runs even when the
+// engine's own AuditForksIncremental already excluded seen transcripts (see
+// shuttleengine.Engine.AuditForksIncremental) — a caller that assembled audit from
+// AuditForks (the full, non-incremental read) instead, or that is re-deriving
+// attribution after a settle retry re-fetched everything, still gets the correct
+// new-since-seen set either way.
+func NewTranscripts(audit shuttleengine.ForkAudit, seen []string) []shuttleengine.ForkReport {
+	seenSet := make(map[string]bool, len(seen))
+	for _, path := range seen {
+		seenSet[path] = true
+	}
+
+	var newReports []shuttleengine.ForkReport
+	for _, f := range audit.Forks {
+		if !seenSet[f.TranscriptPath] {
+			newReports = append(newReports, f)
+		}
+	}
+	return newReports
+}
+
+// SettleRetry re-invokes fetch on tick's cadence, sleeping via s between attempts,
+// until at least one transcript new since seen appears or window elapses —
+// implementing the flush-timing de-risk from discussion.md's fork-audit-policy
+// decision ("first miss is inconclusive"): the zero-transcript hard error is only
+// ever issued by the CALLER, and only after SettleRetry itself has exhausted the
+// settle window, never on this function's first fetch. SettleRetry returns as soon
+// as fetch reports one or more new transcripts — it never sleeps out the rest of
+// window once it has an answer. A fetch error propagates immediately: an audit
+// read that itself failed has nothing safe to retry against. When window elapses
+// with zero new transcripts, SettleRetry returns the last fetched audit, a nil (or
+// empty) newReports slice, and a nil error — it is the caller's job (see
+// ClassifyAttribution) to turn that empty result into ErrNoForkTranscripts.
+func SettleRetry(
+	fetch func() (shuttleengine.ForkAudit, error),
+	seen []string,
+	window time.Duration,
+	tick time.Duration,
+	s Sleeper,
+) (shuttleengine.ForkAudit, []shuttleengine.ForkReport, error) {
+	var elapsed time.Duration
+
+	for {
+		audit, err := fetch()
+		if err != nil {
+			return shuttleengine.ForkAudit{}, nil, err
+		}
+
+		newReports := NewTranscripts(audit, seen)
+		if len(newReports) > 0 {
+			return audit, newReports, nil
+		}
+
+		if elapsed >= window {
+			return audit, newReports, nil
+		}
+
+		s.Sleep(tick)
+		elapsed += tick
+	}
+}
+
+// ClassifyAttribution pins the fork-audit-policy decision's check order over
+// newReports, the transcripts SettleRetry (or a direct NewTranscripts call)
+// determined are new since the previous batch boundary:
+//
+//  1. Zero new transcripts: hard error (ErrNoForkTranscripts), REGARDLESS of
+//     whether a batch report file exists — a report with no fork behind it means
+//     Master wrote it itself. Transcript-count-before-report-presence is what
+//     makes that defect unfakeable; the caller must check this BEFORE it even
+//     looks for a report file.
+//  2. Exactly one new transcript: clean — the normal case. Returns ("", nil).
+//  3. More than one new transcript: warning only, never hard — a fork whose
+//     Agent call errored mid-flight followed by a direct re-fork, with no
+//     record-batch call in between, is legitimate retry behavior, not a defect.
+func ClassifyAttribution(newReports []shuttleengine.ForkReport) (warning string, err error) {
+	switch len(newReports) {
+	case 0:
+		return "", ErrNoForkTranscripts
+	case 1:
+		return "", nil
+	default:
+		return fmt.Sprintf(
+			"%d new fork transcripts since the previous batch boundary — expected exactly one; treating as a fork-error-then-re-fork with no intervening record-batch call",
+			len(newReports),
+		), nil
+	}
 }
