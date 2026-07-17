@@ -46,7 +46,9 @@ batches:
     start_sha: 65c50461c7918b45cba0f9f9b5ef03dc7bc0fc80
     commit_sha: 562ee905548d8e73ff96ca2ec235b1100a607865
   - name: inbound-refs-nondoc
-    state: pending
+    state: running
+    implementer_session: e94ed043-48b1-446c-95a1-45fbdfb4580e
+    start_sha: 89b7e32e67b0a82ca76047686067b41216b08f9c
   - name: reconcile-narrative
     state: pending
 ```
