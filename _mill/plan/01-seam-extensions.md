@@ -135,9 +135,9 @@ and `builderengine.ArchiveStateFile`/`ArchiveReportsDir`/`FirstFreeArchivePath`/
 
 ### Card 5: Export builderengine archive/strand helpers
 
-- **Context:**
-  - `internal/builderengine/outcome.go`
+- **Context:** none
 - **Edits:**
+  - `internal/builderengine/outcome.go`
   - `internal/builderengine/runlevel.go`
   - `internal/builderengine/spawn.go`
 - **Creates:** none
