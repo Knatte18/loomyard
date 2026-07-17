@@ -51,6 +51,16 @@ for every run above is under `.scratch/codeintel/` (gitignored, not part of this
 per Shared Decision `measurement-artifacts-to-scratch`); the tables below are the
 distilled result.
 
+**Harness source (preserved in git history).** The throwaway harness was deleted in
+batch 4 (revert commit `d4dcb31c`) so this branch's product diff against `main` is
+doc-only. Its full, tested source is preserved in git history at `d4dcb31c^` =
+**`3b4dcf86`** (the last commit before the revert): `tools/codeintel-poc/{main,
+gopackages,callers,gopls,callgraph}.go` plus the repo-root `.lsp.json`. Recover a single
+file with `git show 3b4dcf86:tools/codeintel-poc/gopackages.go`, or check out the whole
+harness with `git checkout 3b4dcf86 -- tools/codeintel-poc .lsp.json`. The same tree is
+also reachable via the `codeintel-spike` archive tag `mill-merge` creates when this task
+lands.
+
 **Ground truth** for the precision table was established by hand: `grep`-ing every
 non-test call site of each benchmark symbol across the module and manually excluding
 false grep matches (e.g. a doc-comment mentioning the symbol's name), then diffing that
@@ -284,8 +294,9 @@ measured only as a baseline, never a lead candidate, per the discussion's own fr
 
 Verified live during this spike (Card 7 step (b), the `refs` runs tabulated above).
 Minimal, runnable shape a follow-up production Go verb can lift directly — see
-`tools/codeintel-poc/gopackages.go` on this task branch's history (archive tag
-`codeintel-spike`) for the full, tested version this recipe is extracted from:
+`tools/codeintel-poc/gopackages.go` at commit `3b4dcf86` in git history (the full, tested
+version this recipe is extracted from; see **Method → Harness source** above for recovery
+commands):
 
 ```go
 import (
