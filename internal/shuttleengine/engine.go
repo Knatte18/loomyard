@@ -175,4 +175,14 @@ type Engine interface {
 	// submits text as a new turn (e.g. clearing a leaked auto-suggest
 	// before typing text and submitting it).
 	ComposeSend(text string) []PaneInput
+	// AuditForks reads the provider's on-disk record of a fork-authorized
+	// session's fork subagents — sessionID identifies the session, workdir
+	// is the pane's actual process cwd (never a worktree root that may
+	// diverge from it) — and returns the mechanical facts observed, with no
+	// interpretation of whether they constitute a policy violation. The run
+	// loop calls this only for done-classified fork-mode runs (see wait.go's
+	// finalize). An engine whose provider has no fork concept returns an
+	// error rather than a zero ForkAudit, so a caller cannot mistake "this
+	// provider cannot audit forks" for "this run spawned zero forks".
+	AuditForks(sessionID, workdir string) (ForkAudit, error)
 }

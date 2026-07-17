@@ -1,0 +1,99 @@
+# burler.yaml — the lens/fan library for burler cluster review. Materialized
+# once (lyx init / lyx config reconcile) when this file is absent; after that,
+# this file is OPERATOR-OWNED: reconcile is seed-only for burler.yaml and
+# never rewrites or prunes it again, so any lens or fan you add, edit, or
+# remove here survives every future reconcile untouched. Deleting a standard
+# lens or fan you don't want is a supported, permanent choice — it will not
+# come back on the next reconcile.
+#
+# lenses: maps a lens name to emphasis-steering review prose for one fork of a
+# cluster round. Add a repo-local lens by adding a block like this:
+#
+# my-lens: |
+#   Pay extra attention to <your concrete focus area>. Report anything else
+#   you notice too — emphasis, never exclusion.
+#
+# fans: maps a fan name to an ordered list of lens names — the fan's length is
+# the fork count a cluster round spawns for it, and a lens name may repeat
+# (each repeat runs as its own fork). Add a repo-local fan the same way:
+#
+# my-fan: [generic, my-lens, my-lens]
+#
+# Lens prose is always phrased as EMPHASIS, never exclusion — no lens tells a
+# fork to ignore anything, because hard "ignore everything else" lenses
+# measurably suppressed cross-category coverage in the spike behind this
+# design (docs/research/session-fork-spike.md, Q2). A fork keeps full tool
+# access and its inherited context regardless of which lens it carries.
+
+lenses:
+  generic: |
+    Review broadly with no single area of emphasis: read for correctness,
+    design fit, error handling, tests, and anything else that looks off.
+    Trust your own judgment about what matters most in what you read — this
+    lens deliberately narrows to nothing, so the widest possible read is the
+    point.
+  correctness: |
+    Focus on logic bugs: wrong results, incorrect conditionals, off-by-one and
+    boundary mistakes, mismatched assumptions between caller and callee, and
+    edge cases (empty/nil/zero-value inputs, unusual ordering) the code
+    doesn't actually handle the way it looks like it does. Report anything
+    else you notice too — emphasis, never exclusion.
+  error-handling: |
+    Focus on how failures are handled: swallowed or discarded errors, wrong or
+    missing error wrapping/context, return values ignored where they carry a
+    failure signal, panics used where a returned error is more appropriate,
+    and failure paths that leave state inconsistent. Report anything else you
+    notice too — emphasis, never exclusion.
+  test-gaps: |
+    Focus on test coverage: behavior with no test at all, missing edge/negative
+    cases in an otherwise-tested function, table-driven tests missing an
+    obvious case their own table structure invites, and assertions weak enough
+    to pass even if the code under test regressed. Report anything else you
+    notice too — emphasis, never exclusion.
+  security: |
+    Focus on security-relevant issues: unchecked or unsanitized input, injection
+    surfaces (command, path, query), unsafe deserialization, secrets or
+    credentials in code/logs/errors, path traversal, and any operation that
+    trusts data it should verify. Report anything else you notice too —
+    emphasis, never exclusion.
+  performance: |
+    Focus on performance: unnecessary allocations or copies in hot paths,
+    quadratic or worse patterns over data that can grow, blocking calls where a
+    non-blocking one is available, unbounded loops/memory/goroutines, and
+    inefficient use of the standard library where a direct alternative exists.
+    Report anything else you notice too — emphasis, never exclusion.
+  api-design: |
+    Focus on the public surface: naming and signature consistency with the rest
+    of the package, whether exported symbols are documented, backward
+    compatibility of any changed signature, and whether parameter/return
+    shapes make the common call easy and the misuse hard. Report anything else
+    you notice too — emphasis, never exclusion.
+  concurrency: |
+    Focus on concurrency: shared state touched without synchronization, races
+    between goroutines, goroutine or resource leaks on early return, deadlock
+    potential from lock ordering or blocking channel operations, and context
+    cancellation that is accepted but not actually honored. Report anything
+    else you notice too — emphasis, never exclusion.
+  docs-consistency: |
+    Focus on documentation drift: comments or docs that no longer match the
+    code they describe, module docs or CONSTRAINTS.md entries a behavior
+    change should have updated but didn't, stale references to removed or
+    renamed symbols, and examples that would no longer compile or run as
+    written. Report anything else you notice too — emphasis, never exclusion.
+
+fans:
+  standard:
+    - generic
+    - generic
+    - correctness
+    - error-handling
+    - test-gaps
+  full:
+    - correctness
+    - error-handling
+    - test-gaps
+    - security
+    - performance
+    - api-design
+    - concurrency
+    - docs-consistency

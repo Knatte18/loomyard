@@ -81,6 +81,11 @@ func (e *spawnFakeEngine) ComposeSend(text string) []shuttleengine.PaneInput {
 	return nil
 }
 
+// AuditForks is never reached: this double never runs fork-mode specs.
+func (e *spawnFakeEngine) AuditForks(sessionID, workdir string) (shuttleengine.ForkAudit, error) {
+	return shuttleengine.ForkAudit{}, nil
+}
+
 var _ shuttleengine.Engine = (*spawnFakeEngine)(nil)
 
 // newScratchRepo initializes a fresh git repo at t.TempDir(), configures a

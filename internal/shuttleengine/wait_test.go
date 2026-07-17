@@ -1,14 +1,16 @@
 // wait_test.go covers Run.Wait's poll loop against fakeMux/fakeEngine and a
 // fake clock: all four outcome classifications, KeepPane skipping cleanup,
 // the startup probe's trust-dismiss and fast-fail-on-timeout paths,
-// multi-Stop offset tracking, and events-offset resilience across a
-// partial line.
+// multi-Stop offset tracking, events-offset resilience across a partial
+// line, and finalize's fork-audit attach (only for a fork-mode spec's done
+// classification).
 
 package shuttleengine
 
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -449,6 +451,76 @@ func TestRun_Wait_Timeout_KeepsStrand(t *testing.T) {
 	}
 	if _, err := os.Stat(runDir); err != nil {
 		t.Errorf("run dir removed for timeout outcome: %v", err)
+	}
+}
+
+// TestRun_Wait_ForkAudit_AttachedOnlyForForkModeDone proves finalize's
+// AuditForks wiring: a fork-mode spec's done classification calls
+// engine.AuditForks(sessionID, layout.Cwd) and attaches its result to
+// Result.ForkAudit, while a non-fork spec's done classification never calls
+// AuditForks at all and leaves Result.ForkAudit nil.
+func TestRun_Wait_ForkAudit_AttachedOnlyForForkModeDone(t *testing.T) {
+	tests := []struct {
+		name          string
+		forkSubagents bool
+	}{
+		{"fork_mode_on_attaches_audit", true},
+		{"fork_mode_off_no_audit_call", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runDir := t.TempDir()
+			eventsPath := filepath.Join(runDir, "events.jsonl")
+			outputFile := filepath.Join(runDir, "out.md")
+			if err := os.WriteFile(outputFile, []byte("result"), 0o644); err != nil {
+				t.Fatalf("seed output file: %v", err)
+			}
+			if err := os.WriteFile(eventsPath, []byte("STOP:done\n"), 0o644); err != nil {
+				t.Fatalf("seed events: %v", err)
+			}
+
+			cannedAudit := ForkAudit{SpawnCalls: 1, NamedSpawns: 0}
+			mux := &fakeMux{StatusQueue: []muxengine.StatusResult{{Strands: []muxengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
+			engine := &fakeEngine{StartupScript: []StartupState{StartupReady}, AuditForksResult: cannedAudit}
+			runner := newWaitTestRunner(t, mux, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+			fc := newFakeClock(time.Now())
+			run := &Run{
+				runner:   runner,
+				spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, ForkSubagents: tt.forkSubagents},
+				runDir:   runDir,
+				state:    RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath},
+				clock:    fc,
+				deadline: fc.Now().Add(time.Minute),
+			}
+
+			result, err := run.Wait()
+			if err != nil {
+				t.Fatalf("Wait() error: %v", err)
+			}
+			if result.Outcome != OutcomeDone {
+				t.Fatalf("Outcome = %q, want %q", result.Outcome, OutcomeDone)
+			}
+
+			if tt.forkSubagents {
+				if len(engine.AuditForksCalls) != 1 {
+					t.Fatalf("AuditForksCalls = %v; want exactly one call", engine.AuditForksCalls)
+				}
+				call := engine.AuditForksCalls[0]
+				if call.SessionID != "session-1" || call.Workdir != runner.layout.Cwd {
+					t.Errorf("AuditForks called with (%q, %q); want (%q, %q)", call.SessionID, call.Workdir, "session-1", runner.layout.Cwd)
+				}
+				if result.ForkAudit == nil || !reflect.DeepEqual(*result.ForkAudit, cannedAudit) {
+					t.Errorf("Result.ForkAudit = %+v; want it to carry the fake's canned audit %+v", result.ForkAudit, cannedAudit)
+				}
+			} else {
+				if len(engine.AuditForksCalls) != 0 {
+					t.Errorf("AuditForksCalls = %v; want none for a non-fork spec", engine.AuditForksCalls)
+				}
+				if result.ForkAudit != nil {
+					t.Errorf("Result.ForkAudit = %+v; want nil for a non-fork spec", result.ForkAudit)
+				}
+			}
+		})
 	}
 }
 

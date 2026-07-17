@@ -47,7 +47,7 @@ type gateYAML struct {
 
 // profileYAML mirrors a profile file's top-level shape 1:1 onto
 // perchengine.Profile's fields: the embedded burler content keys (Target,
-// Fasit, Rubric, FixScope, ToolUse, ClusterN — burler's own kebab-case
+// Fasit, Rubric, FixScope, ToolUse, ClusterFan — burler's own kebab-case
 // vocabulary) plus the perch-owned loop keys (Gate, RoundCaps, JudgeModel,
 // JudgeEffort, Model, Effort, Timeout). It exists as a separate type (rather
 // than decoding straight into Profile) so the YAML key vocabulary stays
@@ -59,7 +59,7 @@ type profileYAML struct {
 	Rubric      string      `yaml:"rubric"`
 	FixScope    string      `yaml:"fix-scope"`
 	ToolUse     bool        `yaml:"tool-use"`
-	ClusterN    int         `yaml:"cluster-n"`
+	ClusterFan  string      `yaml:"cluster-fan"`
 	Gate        gateYAML    `yaml:"gate"`
 	RoundCaps   []int       `yaml:"round-caps"`
 	JudgeModel  string      `yaml:"judge-model"`
@@ -116,10 +116,10 @@ func decodeProfile(data []byte) (perchengine.Profile, error) {
 			Paths:        parsed.Fasit.Paths,
 			Instructions: parsed.Fasit.Instructions,
 		},
-		Rubric:   parsed.Rubric,
-		FixScope: burlerengine.FixScope(parsed.FixScope),
-		ToolUse:  parsed.ToolUse,
-		ClusterN: parsed.ClusterN,
+		Rubric:     parsed.Rubric,
+		FixScope:   burlerengine.FixScope(parsed.FixScope),
+		ToolUse:    parsed.ToolUse,
+		ClusterFan: parsed.ClusterFan,
 		Gate: perchengine.Gate{
 			Mode:    perchengine.GateMode(parsed.Gate.Mode),
 			Command: parsed.Gate.Command,
@@ -249,7 +249,7 @@ Example profile YAML (llm-verdict gate — the default for text review):
     NIT: minor formatting.
   fix-scope: overlay
   tool-use: false
-  cluster-n: 0
+  cluster-fan: ""  # naming a fan from burler.yaml activates cluster review, one fork per fan entry
   gate:
     mode: llm-verdict
   round-caps: [5, 8, 10]

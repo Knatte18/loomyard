@@ -166,6 +166,12 @@ func (e *specCapturingEngine) InterruptSequence() []shuttleengine.PaneInput     
 func (e *specCapturingEngine) TrustDismissSequence() []shuttleengine.PaneInput   { return nil }
 func (e *specCapturingEngine) ComposeSend(text string) []shuttleengine.PaneInput { return nil }
 
+// AuditForks is never reached: Prepare always fails before Runner.Start could
+// ever run this spec to a fork-mode done classification.
+func (e *specCapturingEngine) AuditForks(sessionID, workdir string) (shuttleengine.ForkAudit, error) {
+	return shuttleengine.ForkAudit{}, nil
+}
+
 var _ shuttleengine.Engine = (*specCapturingEngine)(nil)
 
 // errSpecCaptured is the sentinel specCapturingEngine.Prepare always

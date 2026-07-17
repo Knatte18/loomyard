@@ -1,7 +1,7 @@
 // prompt_test.go covers composePrompt's marker composition: the happy path
 // fills every marker, and each switched block (fix-scope, tool-use,
-// prior-rounds) renders the branch its Profile field selects and not the
-// other branch's exclusive phrasing.
+// prior-rounds, cluster-rules) renders the branch its Profile field selects
+// and not the other branch's exclusive phrasing.
 
 package burlerengine
 
@@ -170,6 +170,44 @@ func TestComposePrompt_DirectoryAnnotation(t *testing.T) {
 		t.Fatalf("composePrompt() output missing a line for the target file entry")
 	}
 	requireNotContains(t, fileLine, "a directory")
+}
+
+// TestComposePrompt_ClusterRules proves the cluster-rules block switches on
+// p.ClusterFan: empty renders the explicit single-reviewer prose with none
+// of the fork machinery language, while a resolved fan renders every lens
+// name plus both load-bearing fork-discipline ban phrases (no Agent tool,
+// no git). composePrompt reads p.clusterLenses directly (as
+// (*Profile).validate would have left it) rather than calling ResolveFan
+// itself.
+func TestComposePrompt_ClusterRules(t *testing.T) {
+	t.Run("non-cluster", func(t *testing.T) {
+		p := newComposableProfile(t)
+
+		got, err := composePrompt(&p)
+		if err != nil {
+			t.Fatalf("composePrompt() = %v; want nil error", err)
+		}
+		requireContains(t, got, "single-reviewer round")
+		requireNotContains(t, got, "subagent_type")
+	})
+
+	t.Run("cluster", func(t *testing.T) {
+		p := newComposableProfile(t)
+		p.ClusterFan = "standard"
+		p.clusterLenses = []Lens{
+			{Name: "style", Text: "pay extra attention to style"},
+			{Name: "security", Text: "pay extra attention to security"},
+		}
+
+		got, err := composePrompt(&p)
+		if err != nil {
+			t.Fatalf("composePrompt() = %v; want nil error", err)
+		}
+		requireContains(t, got, "style")
+		requireContains(t, got, "security")
+		requireContains(t, got, "never call the Agent tool")
+		requireContains(t, got, "never run any git command")
+	})
 }
 
 // findLineContaining returns the first line of text containing needle, or

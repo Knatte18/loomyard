@@ -93,7 +93,7 @@ fasit:
 rubric: "BLOCKING: x. NIT: y."
 fix-scope: overlay
 tool-use: true
-cluster-n: 0
+cluster-fan: "standard"
 gate:
   mode: command
   command: ["go", "test", "./..."]
@@ -136,6 +136,23 @@ gate:
 		{
 			name:    "MalformedYAML",
 			yaml:    "target: [this is not: valid yaml: at all",
+			wantErr: true,
+		},
+		{
+			// cluster-n was replaced with cluster-fan; the strict decode
+			// must reject the old key rather than silently ignoring it.
+			name: "UnknownKeyClusterN",
+			yaml: `
+target:
+  instructions: "diff against main"
+fasit:
+  instructions: "the discussion"
+rubric: "BLOCKING: x."
+fix-scope: overlay
+cluster-n: 0
+gate:
+  mode: llm-verdict
+`,
 			wantErr: true,
 		},
 		{
@@ -182,8 +199,8 @@ gate:
 // valid profile YAML lands on the corresponding Profile field, including
 // the gate.command argv, both Go-duration-string parses (gate.timeout and
 // the top-level timeout), and round-caps — the zero-value edge case
-// (tool-use: true, cluster-n: 0) a zero-value-blind mapping bug could
-// silently drop.
+// (tool-use: true, cluster-fan: "standard") a zero-value-blind mapping bug
+// could silently drop.
 func TestDecodeProfile_FullValidFieldMapping(t *testing.T) {
 	data := []byte(`
 target:
@@ -195,7 +212,7 @@ fasit:
 rubric: "BLOCKING: x. NIT: y."
 fix-scope: overlay
 tool-use: true
-cluster-n: 0
+cluster-fan: "standard"
 gate:
   mode: command
   command: ["go", "test", "./..."]
@@ -231,8 +248,8 @@ timeout: 30m
 	if !profile.ToolUse {
 		t.Errorf("ToolUse = false; want true")
 	}
-	if profile.ClusterN != 0 {
-		t.Errorf("ClusterN = %d; want 0", profile.ClusterN)
+	if profile.ClusterFan != "standard" {
+		t.Errorf("ClusterFan = %q; want %q", profile.ClusterFan, "standard")
 	}
 	if string(profile.Gate.Mode) != "command" {
 		t.Errorf("Gate.Mode = %q; want %q", profile.Gate.Mode, "command")

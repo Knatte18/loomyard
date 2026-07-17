@@ -86,12 +86,12 @@ func TestArtifactPaths(t *testing.T) {
 // otherwise invent entries in them.
 func TestBuildRoundProfile_FieldMapping(t *testing.T) {
 	p := Profile{
-		Target:   burlerengine.FileSet{Paths: []string{"target.txt"}},
-		Fasit:    burlerengine.FileSet{Instructions: "judge against the discussion"},
-		Rubric:   "the widget must be blue",
-		FixScope: burlerengine.FixScopeSource,
-		ToolUse:  true,
-		ClusterN: 0,
+		Target:     burlerengine.FileSet{Paths: []string{"target.txt"}},
+		Fasit:      burlerengine.FileSet{Instructions: "judge against the discussion"},
+		Rubric:     "the widget must be blue",
+		FixScope:   burlerengine.FixScopeSource,
+		ToolUse:    true,
+		ClusterFan: "standard",
 		// Perch-owned fields must never leak into the burler round profile.
 		Gate:        Gate{Mode: GateLLMVerdict},
 		RoundCaps:   []int{5, 8, 10},
@@ -112,7 +112,7 @@ func TestBuildRoundProfile_FieldMapping(t *testing.T) {
 		Rubric:            p.Rubric,
 		FixScope:          p.FixScope,
 		ToolUse:           p.ToolUse,
-		ClusterN:          p.ClusterN,
+		ClusterFan:        p.ClusterFan,
 		ReviewPath:        paths.Review,
 		FixerReportPath:   paths.FixerReport,
 		PriorReviews:      priorReviews,
@@ -134,8 +134,8 @@ func TestBuildRoundProfile_FieldMapping(t *testing.T) {
 	if got.ToolUse != want.ToolUse {
 		t.Errorf("ToolUse = %v; want %v", got.ToolUse, want.ToolUse)
 	}
-	if got.ClusterN != want.ClusterN {
-		t.Errorf("ClusterN = %d; want %d", got.ClusterN, want.ClusterN)
+	if got.ClusterFan != want.ClusterFan {
+		t.Errorf("ClusterFan = %q; want %q", got.ClusterFan, want.ClusterFan)
 	}
 	if got.ReviewPath != want.ReviewPath {
 		t.Errorf("ReviewPath = %q; want %q", got.ReviewPath, want.ReviewPath)

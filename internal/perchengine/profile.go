@@ -62,24 +62,25 @@ const (
 // Profile is the content contract for one perch block: the burler content
 // fields (embedded by value — the same vocabulary burlerengine.Profile
 // itself carries, so a perch operator writes exactly the same target/
-// fasit/rubric/fix-scope/tool-use/cluster-n keys a bare burler profile
+// fasit/rubric/fix-scope/tool-use/cluster-fan keys a bare burler profile
 // would) plus the perch-owned fields that drive the loop around them: the
 // convergence Gate, the milestone RoundCaps ladder, the judge model/effort,
 // and uniform per-round burler tuning (JudgeModel, JudgeEffort, Model,
 // Effort, Timeout — the "Run-tuning v1" decision applies these identically
 // to every round rather than escalating them).
 type Profile struct {
-	// Target, Fasit, Rubric, FixScope, ToolUse, and ClusterN are the burler
-	// content fields, carried 1:1 into every round's burlerengine.Profile by
-	// buildRoundProfile. validate below does not check these — they are
-	// validated by burlerengine.Profile.validate inside the first round's
-	// Engine.Run, which is the single place that already enforces them.
-	Target   burlerengine.FileSet
-	Fasit    burlerengine.FileSet
-	Rubric   string
-	FixScope burlerengine.FixScope
-	ToolUse  bool
-	ClusterN int
+	// Target, Fasit, Rubric, FixScope, ToolUse, and ClusterFan are the
+	// burler content fields, carried 1:1 into every round's
+	// burlerengine.Profile by buildRoundProfile. validate below does not
+	// check these — they are validated by burlerengine.Profile.validate
+	// inside the first round's Engine.Run, which is the single place that
+	// already enforces them (including ClusterFan's fan resolution).
+	Target     burlerengine.FileSet
+	Fasit      burlerengine.FileSet
+	Rubric     string
+	FixScope   burlerengine.FixScope
+	ToolUse    bool
+	ClusterFan string
 
 	// Gate selects and configures the block's convergence check.
 	Gate Gate

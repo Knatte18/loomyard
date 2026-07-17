@@ -121,7 +121,7 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 		}
 	}
 
-	settingsJSON, err := buildSettings(eventsPathForHook, spec.Interactive, cfg)
+	settingsJSON, err := buildSettings(eventsPathForHook, spec.Interactive, cfg, spec.ForkSubagents)
 	if err != nil {
 		return shuttleengine.Launch{}, fmt.Errorf("build settings: %w", err)
 	}
@@ -136,8 +136,8 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 	// so buildLaunchCmd/buildResumeCmd never hardcode either shell's syntax.
 	sh := shell.ForGOOS()
 	return shuttleengine.Launch{
-		Cmd:       buildLaunchCmd(sh, bin, promptPath, settingsPath, sessionID, resolvedModel, spec.Effort, spec.Interactive),
-		ResumeCmd: buildResumeCmd(sh, bin, settingsPath, sessionID),
+		Cmd:       buildLaunchCmd(sh, bin, promptPath, settingsPath, sessionID, resolvedModel, spec.Effort, spec.Interactive, spec.ForkSubagents),
+		ResumeCmd: buildResumeCmd(sh, bin, settingsPath, sessionID, spec.ForkSubagents),
 		SessionID: sessionID,
 	}, nil
 }

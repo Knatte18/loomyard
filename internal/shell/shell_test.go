@@ -1,6 +1,6 @@
 // shell_test.go table-tests both pane-shell implementations: argument quoting across
-// plain, space-containing, and quote-containing inputs, and the exact Invoke/ReadFile
-// output each impl composes. The pwsh quoting cases are migrated verbatim from
+// plain, space-containing, and quote-containing inputs, and the exact Invoke/ReadFile/
+// WithEnv output each impl composes. The pwsh quoting cases are migrated verbatim from
 // claudeengine's former TestPwshSingleQuote so the coverage moves with the logic it
 // tests.
 
@@ -67,6 +67,50 @@ func TestPosixShell_InvokeAndReadFile(t *testing.T) {
 	}
 	if got, want := sh.ReadFile("/run/prompt.md"), `"$(cat '/run/prompt.md')"`; got != want {
 		t.Errorf("Posix().ReadFile(%q) = %q; want %q", "/run/prompt.md", got, want)
+	}
+}
+
+func TestPwshShell_WithEnv(t *testing.T) {
+	tests := []struct {
+		name  string
+		key   string
+		value string
+		cmd   string
+		want  string
+	}{
+		{"plain", "CLAUDE_CODE_FORK_SUBAGENT", "1", "claude", "$env:CLAUDE_CODE_FORK_SUBAGENT = '1'; claude"},
+		{"space", "CLAUDE_CODE_FORK_SUBAGENT", "a b", "claude", "$env:CLAUDE_CODE_FORK_SUBAGENT = 'a b'; claude"},
+		{"quote", "CLAUDE_CODE_FORK_SUBAGENT", "it's", "claude", "$env:CLAUDE_CODE_FORK_SUBAGENT = 'it''s'; claude"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Pwsh().WithEnv(tt.key, tt.value, tt.cmd)
+			if got != tt.want {
+				t.Errorf("Pwsh().WithEnv(%q, %q, %q) = %q; want %q", tt.key, tt.value, tt.cmd, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestPosixShell_WithEnv(t *testing.T) {
+	tests := []struct {
+		name  string
+		key   string
+		value string
+		cmd   string
+		want  string
+	}{
+		{"plain", "CLAUDE_CODE_FORK_SUBAGENT", "1", "claude", "CLAUDE_CODE_FORK_SUBAGENT='1' claude"},
+		{"space", "CLAUDE_CODE_FORK_SUBAGENT", "a b", "claude", "CLAUDE_CODE_FORK_SUBAGENT='a b' claude"},
+		{"quote", "CLAUDE_CODE_FORK_SUBAGENT", "it's", "claude", `CLAUDE_CODE_FORK_SUBAGENT='it'\''s' claude`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Posix().WithEnv(tt.key, tt.value, tt.cmd)
+			if got != tt.want {
+				t.Errorf("Posix().WithEnv(%q, %q, %q) = %q; want %q", tt.key, tt.value, tt.cmd, got, tt.want)
+			}
+		})
 	}
 }
 

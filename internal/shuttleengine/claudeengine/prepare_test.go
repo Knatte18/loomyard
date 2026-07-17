@@ -3,8 +3,9 @@
 // TestPrepare_PromptLaunchLimit's before-artifacts guarantee), a valid
 // effort ends up in the returned Launch.Cmd, an empty effort emits no
 // --effort flag at all, a bare-word model plus version composes into the
-// pinned model id in Launch.Cmd, and a dashed model plus version is rejected
-// before any artifact is written.
+// pinned model id in Launch.Cmd, a dashed model plus version is rejected
+// before any artifact is written, and Spec.ForkSubagents threads through to
+// Launch.Cmd's CLAUDE_CODE_FORK_SUBAGENT env prefix.
 
 package claudeengine
 
@@ -122,5 +123,37 @@ func TestPrepare_DashedModelWithVersionRejectedBeforeArtifacts(t *testing.T) {
 	}
 	if _, statErr := os.Stat(filepath.Join(runDir, "settings.json")); !os.IsNotExist(statErr) {
 		t.Errorf("settings.json exists after a rejected Prepare (stat err=%v); want no artifacts written", statErr)
+	}
+}
+
+// TestPrepare_ForkSubagentsThreadsIntoLaunchCmd proves Prepare threads
+// spec.ForkSubagents through to buildLaunchCmd: a true value produces a
+// Launch.Cmd containing the CLAUDE_CODE_FORK_SUBAGENT env prefix, and a
+// false value (the zero value) produces a Launch.Cmd with no such prefix.
+func TestPrepare_ForkSubagentsThreadsIntoLaunchCmd(t *testing.T) {
+	tests := []struct {
+		name          string
+		forkSubagents bool
+		wantContains  bool
+	}{
+		{"fork_mode_on", true, true},
+		{"fork_mode_off", false, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runDir := t.TempDir()
+			spec := shuttleengine.Spec{Prompt: "do the thing", ForkSubagents: tt.forkSubagents}
+			cfg := shuttleengine.Config{}
+
+			c := New()
+			launch, err := c.Prepare(runDir, spec, cfg)
+			if err != nil {
+				t.Fatalf("Prepare() error: %v; want nil", err)
+			}
+			gotContains := strings.Contains(launch.Cmd, "CLAUDE_CODE_FORK_SUBAGENT")
+			if gotContains != tt.wantContains {
+				t.Errorf("Launch.Cmd = %q; contains CLAUDE_CODE_FORK_SUBAGENT = %v, want %v", launch.Cmd, gotContains, tt.wantContains)
+			}
+		})
 	}
 }

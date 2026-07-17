@@ -139,7 +139,8 @@ is red. The table is blue."). Write a profile YAML naming that file as `target`,
 an inline `fasit.instructions` stating the rule "the chair's color must match the
 table's color" (no fasit paths needed -- the rule itself is the source of truth
 here), a short `rubric` mapping a color mismatch to a BLOCKING finding, `fix-scope:
-overlay`, `tool-use: false`, `cluster-n: 0`, and fresh `review-path` /
+overlay`, `tool-use: false`, `cluster-fan` omitted (empty -- a solo round, since
+naming a fan is what activates clustering), and fresh `review-path` /
 `fixer-report-path` (files that do not already exist). Run
 `lyx burler run --profile <file>`. The command blocks until the round finishes;
 the printed JSON envelope reports `"outcome":"done"` and `"verdict":"BLOCKING"`;
@@ -179,7 +180,7 @@ it should say so).
 **Covers:** burler
 
 **Goal:** "Confirm four profile-level mistakes are each rejected with a distinct,
-sane error in the JSON envelope: an unsupported cluster count, an empty fasit, a
+sane error in the JSON envelope: an unknown cluster fan name, an empty fasit, a
 re-run against an already-existing review-path, and a review-path identical to
 the fixer-report-path."
 
@@ -187,8 +188,8 @@ the fixer-report-path."
 non-zero with an error in the JSON envelope (not a panic, not a silent
 zero-exit):
 
-1. Take a valid profile (e.g. a copy of S1's) and set `cluster-n: 1`. The run
-   must fail with an error naming cluster fan-out as unsupported in v1.
+1. Take a valid profile (e.g. a copy of S1's) and set `cluster-fan: no-such-fan`.
+   The run must fail with a validation error naming the unknown fan.
 2. Take a valid profile and clear `fasit` entirely (empty `paths` and empty
    `instructions`). The run must fail with a validation error naming the empty
    fasit -- not silently degrade to reviewing the target in isolation.

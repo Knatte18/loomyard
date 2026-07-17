@@ -305,6 +305,18 @@ func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time) (Out
 // errors are logged, not fatal, since the classification itself already
 // stands. Every other outcome keeps both the strand and the run directory
 // for diagnosis/attach.
+//
+// When run.spec.ForkSubagents is set and outcome is OutcomeDone, this also
+// audits the session's fork subagents (Engine.AuditForks) and attaches the
+// result to Result.ForkAudit. The workdir passed is run.runner.layout.Cwd —
+// NEVER layout.WorktreeRoot: mux launches every pane with `-c e.layout.Cwd`
+// (muxengine lifecycle.go new-session/split-window), so the claude process's
+// actual cwd — which is what encodes the provider's
+// ~/.claude/projects/<encoded-cwd> transcript directory — is Cwd, and the
+// two diverge whenever the operator invoked lyx from a subdirectory
+// (layout.RelPath != "."). An audit error fails Wait outright with a
+// wrapped error (fail-loud): a fork-mode run whose audit cannot be read must
+// never classify as a clean done.
 func (run *Run) finalize(outcome Outcome, message string) (Result, error) {
 	result := Result{
 		Outcome:              outcome,
@@ -312,6 +324,14 @@ func (run *Run) finalize(outcome Outcome, message string) (Result, error) {
 		StrandGUID:           run.state.StrandGUID,
 		LastAssistantMessage: message,
 		RunDir:               run.runDir,
+	}
+
+	if outcome == OutcomeDone && run.spec.ForkSubagents {
+		audit, err := run.runner.engine.AuditForks(run.state.SessionID, run.runner.layout.Cwd)
+		if err != nil {
+			return Result{}, fmt.Errorf("shuttle: audit forks for session %q: %w", run.state.SessionID, err)
+		}
+		result.ForkAudit = &audit
 	}
 
 	if outcome == OutcomeDone && !run.spec.KeepPane {

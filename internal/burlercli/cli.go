@@ -1,11 +1,12 @@
 // cli.go builds the cobra command tree for the burler module and the
 // RunCLI seam that wires it into the standard io.Writer-based call contract.
 // The parent "burler" command carries a PersistentPreRunE that resolves
-// cwd -> layout -> shuttle config -> mux config -> mux engine -> claude
-// engine -> shuttleengine.Runner -> burlerengine.Engine exactly once per
-// invocation, into a receiver the run verb closes over, so the debug CLI
-// wires the real substrate exactly like shuttlecli — burlercli is the
-// module's claudeengine wiring point, mirroring the Provider-Seam Invariant.
+// cwd -> layout -> shuttle config -> burler config -> mux config -> mux
+// engine -> claude engine -> shuttleengine.Runner -> burlerengine.Engine
+// exactly once per invocation, into a receiver the run verb closes over, so
+// the debug CLI wires the real substrate exactly like shuttlecli — burlercli
+// is the module's claudeengine wiring point, mirroring the Provider-Seam
+// Invariant.
 
 package burlercli
 
@@ -33,12 +34,12 @@ type burlerCLI struct {
 // Command returns the cobra command tree for the burler module.
 //
 // The parent "burler" command carries a PersistentPreRunE that resolves
-// cwd -> layout -> shuttle config -> mux config -> mux engine -> claude
-// engine -> shuttleengine.Runner -> burlerengine.Engine into c, skipping
-// that resolution entirely when the group command itself is invoked (bare
-// "lyx burler" listing or an unknown-subcommand error via GroupRunE) so
-// neither path requires a git repository. The run verb creates its own
-// (c *burlerCLI) runCmd() builder and registers it here via
+// cwd -> layout -> shuttle config -> burler config -> mux config -> mux
+// engine -> claude engine -> shuttleengine.Runner -> burlerengine.Engine
+// into c, skipping that resolution entirely when the group command itself
+// is invoked (bare "lyx burler" listing or an unknown-subcommand error via
+// GroupRunE) so neither path requires a git repository. The run verb
+// creates its own (c *burlerCLI) runCmd() builder and registers it here via
 // parent.AddCommand.
 func Command() *cobra.Command {
 	c := &burlerCLI{}
@@ -98,6 +99,17 @@ Example:
 				return nil
 			}
 
+			// burlerengine.LoadConfig's only error today is a read/decode
+			// failure — an absent burler.yaml is not an error, it decodes to
+			// the zero Config (clustering then fails later, at fan
+			// resolution, with a message naming `lyx config reconcile`).
+			burlerCfg, err := burlerengine.LoadConfig(layout.Cwd)
+			if err != nil {
+				output.Err(out, err.Error())
+				clihelp.Abort(ctx, 1)
+				return nil
+			}
+
 			muxCfg, err := muxengine.LoadConfig(layout.Cwd, "mux")
 			if err != nil {
 				output.Err(out, err.Error())
@@ -107,7 +119,7 @@ Example:
 
 			muxEngine := muxengine.New(muxCfg, layout)
 			runner := shuttleengine.NewRunner(muxEngine, claudeengine.New(), layout, shuttleCfg)
-			c.engine = burlerengine.New(runner, layout)
+			c.engine = burlerengine.New(runner, layout, burlerCfg)
 			return nil
 		},
 	}

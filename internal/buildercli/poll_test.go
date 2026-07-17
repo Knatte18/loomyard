@@ -49,6 +49,11 @@ func (e *pollFakeEngine) InterruptSequence() []shuttleengine.PaneInput      { re
 func (e *pollFakeEngine) TrustDismissSequence() []shuttleengine.PaneInput   { return nil }
 func (e *pollFakeEngine) ComposeSend(text string) []shuttleengine.PaneInput { return nil }
 
+// AuditForks is never reached: this double never runs fork-mode specs.
+func (e *pollFakeEngine) AuditForks(sessionID, workdir string) (shuttleengine.ForkAudit, error) {
+	return shuttleengine.ForkAudit{}, nil
+}
+
 var _ shuttleengine.Engine = (*pollFakeEngine)(nil)
 
 // pollFakeMux (a git-free shuttleengine.MuxOps double) lives in

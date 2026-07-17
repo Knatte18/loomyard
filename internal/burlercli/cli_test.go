@@ -1,9 +1,11 @@
 // cli_test.go covers the burlercli cobra seam through RunCLI: bare-group
 // listing, the unknown-subcommand JSON envelope, the PersistentPreRunE
 // group-command guard, run's required --profile flag, the help-tree Short
-// completeness check, and decodeProfile's strict YAML decode. Engine.Run
-// itself is NOT exercised here — it needs a live mux/claude session; that
-// coverage lives in the smoke test and the sandbox suite.
+// completeness check, decodeProfile's strict YAML decode, and
+// resultEnvelope's success-envelope shape (including its forkCount nil
+// guard). Engine.Run itself is NOT exercised here — it needs a live
+// mux/claude session; that coverage lives in the smoke test and the
+// sandbox suite.
 
 package burlercli
 
@@ -12,6 +14,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/spf13/cobra"
 )
 
@@ -111,14 +115,16 @@ func TestCommand_EveryCommandHasShort(t *testing.T) {
 
 // TestDecodeProfile covers decodeProfile's strict YAML decode: a full valid
 // profile (every field lands, including the boolean/zero-value edge cases
-// tool-use: true and cluster-n: 0), a minimal valid profile, an unknown key
-// (rejected per the yaml-strictness-split decision's KnownFields(true)), and
+// tool-use: true and cluster-fan: ""), a minimal valid profile, an unknown
+// key (rejected per the yaml-strictness-split decision's KnownFields(true)),
+// the now-removed cluster-n key specifically (rejected the same way), and
 // malformed YAML.
 func TestDecodeProfile(t *testing.T) {
 	tests := []struct {
-		name    string
-		yaml    string
-		wantErr bool
+		name      string
+		yaml      string
+		wantErr   bool
+		errSubstr string
 	}{
 		{
 			name: "FullValid",
@@ -132,7 +138,7 @@ fasit:
 rubric: "BLOCKING: x. NIT: y."
 fix-scope: source
 tool-use: true
-cluster-n: 0
+cluster-fan: "standard"
 review-path: review.md
 fixer-report-path: fixer-report.md
 prior-reviews: ["prior-review.md"]
@@ -167,6 +173,24 @@ fixer-report-path: fixer-report.md
 			wantErr: true,
 		},
 		{
+			// cluster-n was replaced with cluster-fan; the strict decode
+			// must reject the old key by name, not silently ignore it.
+			name: "UnknownKeyClusterN",
+			yaml: `
+target:
+  instructions: "diff against main"
+fasit:
+  instructions: "the discussion"
+rubric: "BLOCKING: x."
+fix-scope: overlay
+cluster-n: 0
+review-path: review.md
+fixer-report-path: fixer-report.md
+`,
+			wantErr:   true,
+			errSubstr: "cluster-n",
+		},
+		{
 			name:    "MalformedYAML",
 			yaml:    "target: [this is not: valid yaml: at all",
 			wantErr: true,
@@ -179,6 +203,9 @@ fixer-report-path: fixer-report.md
 			if tt.wantErr {
 				if err == nil {
 					t.Fatalf("decodeProfile(%q) error = nil; want error", tt.name)
+				}
+				if tt.errSubstr != "" && !strings.Contains(err.Error(), tt.errSubstr) {
+					t.Errorf("decodeProfile(%q) error = %q; want substring %q", tt.name, err.Error(), tt.errSubstr)
 				}
 				return
 			}
@@ -197,8 +224,8 @@ fixer-report-path: fixer-report.md
 
 // TestDecodeProfile_FullValidFieldMapping asserts every field of a full
 // valid profile YAML lands on the corresponding Profile field, including the
-// boolean/zero-value edge cases (tool-use: true, cluster-n: 0) that a
-// zero-value-blind mapping bug could silently drop.
+// boolean/zero-value edge cases (tool-use: true, cluster-fan: "standard")
+// that a zero-value-blind mapping bug could silently drop.
 func TestDecodeProfile_FullValidFieldMapping(t *testing.T) {
 	data := []byte(`
 target:
@@ -210,7 +237,7 @@ fasit:
 rubric: "BLOCKING: x. NIT: y."
 fix-scope: source
 tool-use: true
-cluster-n: 0
+cluster-fan: "standard"
 review-path: review.md
 fixer-report-path: fixer-report.md
 prior-reviews: ["prior-review.md"]
@@ -240,8 +267,8 @@ prior-fixer-reports: ["prior-fixer.md"]
 	if !profile.ToolUse {
 		t.Errorf("ToolUse = false; want true")
 	}
-	if profile.ClusterN != 0 {
-		t.Errorf("ClusterN = %d; want 0", profile.ClusterN)
+	if profile.ClusterFan != "standard" {
+		t.Errorf("ClusterFan = %q; want %q", profile.ClusterFan, "standard")
 	}
 	if profile.ReviewPath != "review.md" {
 		t.Errorf("ReviewPath = %q; want %q", profile.ReviewPath, "review.md")
@@ -255,6 +282,42 @@ prior-fixer-reports: ["prior-fixer.md"]
 	if got, want := profile.PriorFixerReports, []string{"prior-fixer.md"}; !equalStrings(got, want) {
 		t.Errorf("PriorFixerReports = %v; want %v", got, want)
 	}
+}
+
+// TestResultEnvelope_ForkCountNilGuard asserts resultEnvelope's forkCount guards a nil
+// ForkAudit (the non-cluster or non-done case) to 0 rather than panicking, and reports
+// the real fork count plus the raw ClusterWarnings slice when ForkAudit is set.
+func TestResultEnvelope_ForkCountNilGuard(t *testing.T) {
+	t.Run("nil ForkAudit", func(t *testing.T) {
+		env := resultEnvelope(burlerengine.Result{Outcome: shuttleengine.OutcomeDone})
+		if got := env["forkCount"]; got != 0 {
+			t.Errorf(`resultEnvelope() forkCount = %v; want 0`, got)
+		}
+		// env["clusterWarnings"] holds a nil []string boxed in an `any` —
+		// comparing the interface itself to nil would always be false (a
+		// typed-nil-in-interface is never == nil), so assert on length.
+		if got := env["clusterWarnings"].([]string); len(got) != 0 {
+			t.Errorf(`resultEnvelope() clusterWarnings = %v; want empty`, got)
+		}
+	})
+
+	t.Run("populated ForkAudit and warnings", func(t *testing.T) {
+		result := burlerengine.Result{
+			Outcome: shuttleengine.OutcomeDone,
+			ForkAudit: &shuttleengine.ForkAudit{
+				Forks: []shuttleengine.ForkReport{{TranscriptPath: "a"}, {TranscriptPath: "b"}},
+			},
+			ClusterWarnings: []string{`fork "b" never returned a final report`},
+		}
+		env := resultEnvelope(result)
+		if got := env["forkCount"]; got != 2 {
+			t.Errorf(`resultEnvelope() forkCount = %v; want 2`, got)
+		}
+		gotWarnings, ok := env["clusterWarnings"].([]string)
+		if !ok || len(gotWarnings) != 1 {
+			t.Errorf(`resultEnvelope() clusterWarnings = %v; want one warning`, env["clusterWarnings"])
+		}
+	})
 }
 
 // equalStrings reports whether got and want hold the same strings in the

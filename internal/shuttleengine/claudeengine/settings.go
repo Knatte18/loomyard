@@ -2,11 +2,12 @@
 // writes for each run: a Stop hook that appends every turn-end event to the
 // run's events.jsonl (the only channel ParseEvents reads), and the
 // PreToolUse guardrails that keep a run's work visible in its own pane —
-// denying the in-process Agent tool always, denying AskUserQuestion in
-// autonomous runs (where there is no operator present to answer it), and
-// recording — never denying — a live AskUserQuestion call in interactive
-// runs so the run loop can classify it as a real-time asking signal instead
-// of waiting for the timeout.
+// denying the in-process Agent tool (or, in a fork-mode run, allowing only
+// unnamed fork calls through it), denying AskUserQuestion in autonomous runs
+// (where there is no operator present to answer it), and recording — never
+// denying — a live AskUserQuestion call in interactive runs so the run loop
+// can classify it as a real-time asking signal instead of waiting for the
+// timeout.
 
 package claudeengine
 
@@ -23,6 +24,12 @@ import (
 // every agent is a separate, visible tmux pane — never Claude Code's
 // in-process Agent tool (mux-hooks-exploration.md §B).
 const steerAgentDeny = "do the work in this session; nested agents are not available here — all work must stay visible in this pane"
+
+// steerAgentNonForkDeny is the PreToolUse(Agent) deny reason used in
+// fork-mode runs in place of steerAgentDeny: an unnamed fork call is allowed
+// through (see the conditional hook built in buildSettings below), so the
+// steer text narrows to "other agents", not "nested agents" generally.
+const steerAgentNonForkDeny = "only fork subagents may be spawned here; other agents are unavailable — do the work in this session or in your forks"
 
 // steerAskUserQuestionDeny is the PreToolUse(AskUserQuestion) deny reason
 // used only for autonomous runs: there is no operator present to answer an
@@ -105,7 +112,23 @@ func denyJSON(steer string) string {
 // cfg.ClaudeDenyAskUserQuestion, since there is no operator to answer a
 // dialog there (Shared Decision "Interactive bool encodes the discussion's
 // Autonomous default true", and the live-ask-signal decision).
-func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.Config) ([]byte, error) {
+//
+// forkSubagents changes the Agent-tool deny's shape when
+// cfg.ClaudeDenyAgentTool is set: false keeps today's blanket deny
+// (steerAgentDeny) unchanged; true replaces it with a conditional hook that
+// greps the hook's stdin payload (the tool call's compact-JSON tool_input)
+// for the substring `"subagent_type":"fork"` — a match exits 0 printing
+// nothing, allowing an unnamed fork call through, while no match falls
+// through to echoing the steerAgentNonForkDeny deny JSON. This is
+// deliberately a steering guard, not a security boundary: the `name`
+// parameter a caller could still pass to fork() is NOT hook-checked, since a
+// `"name"` substring is indistinguishable from ordinary prompt-string
+// content by grep — unnamed-ness is verified post-hoc by AuditForks reading
+// the parent transcript instead. The hook applies session-wide, so it also
+// polices any Agent call attempted from inside a fork's own pane, not just
+// the parent's. When cfg.ClaudeDenyAgentTool is false, fork mode emits no
+// Agent hook at all, exactly as before this parameter existed.
+func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.Config, forkSubagents bool) ([]byte, error) {
 	quotedEventsPath := shQuote(eventsPathPosix)
 	stopCmd := fmt.Sprintf("cat >> %s && printf '\\n' >> %s", quotedEventsPath, quotedEventsPath)
 
@@ -118,10 +141,23 @@ func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.C
 	}
 
 	if cfg.ClaudeDenyAgentTool {
-		doc.Hooks.PreToolUse = append(doc.Hooks.PreToolUse, hookEntry{
-			Matcher: "Agent",
-			Hooks:   []hookCommand{{Type: "command", Command: "echo '" + denyJSON(steerAgentDeny) + "'"}},
-		})
+		if forkSubagents {
+			// grep reads the hook's stdin payload; a match (an unnamed-fork
+			// call's compact-JSON tool_input) exits 0 printing nothing, which
+			// allows the call; no match falls through to echoing the deny
+			// JSON. See buildSettings' doc comment above for why this is a
+			// steering guard, not a security boundary.
+			agentCmd := fmt.Sprintf(`grep -q '"subagent_type":"fork"' || echo '%s'`, denyJSON(steerAgentNonForkDeny))
+			doc.Hooks.PreToolUse = append(doc.Hooks.PreToolUse, hookEntry{
+				Matcher: "Agent",
+				Hooks:   []hookCommand{{Type: "command", Command: agentCmd}},
+			})
+		} else {
+			doc.Hooks.PreToolUse = append(doc.Hooks.PreToolUse, hookEntry{
+				Matcher: "Agent",
+				Hooks:   []hookCommand{{Type: "command", Command: "echo '" + denyJSON(steerAgentDeny) + "'"}},
+			})
+		}
 	}
 	if interactive {
 		// Record the live ask instead of denying it: the marker hook reuses
@@ -164,7 +200,7 @@ const steerTextForbiddenChars = `'"\`
 // into an immediate, unmissable failure rather than a subtle hook-command or
 // JSON-payload corruption discovered only via a live smoke test.
 func init() {
-	for _, steer := range []string{steerAgentDeny, steerAskUserQuestionDeny} {
+	for _, steer := range []string{steerAgentDeny, steerAskUserQuestionDeny, steerAgentNonForkDeny} {
 		if strings.ContainsAny(steer, steerTextForbiddenChars) {
 			panic(fmt.Sprintf("claudeengine: steer text contains a forbidden character (one of %q), which would break the JSON payload or the echo hook command: %q", steerTextForbiddenChars, steer))
 		}
