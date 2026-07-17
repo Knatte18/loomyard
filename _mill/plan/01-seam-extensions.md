@@ -63,6 +63,7 @@ and `builderengine.ArchiveStateFile`/`ArchiveReportsDir`/`FirstFreeArchivePath`/
   - `internal/shuttleengine/engine.go`
   - `internal/shuttleengine/claudeengine/audit.go`
   - `internal/shuttleengine/fakes_test.go`
+  - `internal/builderengine/poll_test.go`
 - **Creates:**
   - `internal/shuttleengine/claudeengine/audit_incremental_test.go`
 - **Deletes:** none
@@ -81,6 +82,13 @@ and `builderengine.ArchiveStateFile`/`ArchiveReportsDir`/`FirstFreeArchivePath`/
   `shuttleengine/fakes_test.go` to satisfy the widened interface. New test
   file covers: seen-set filtering (only unseen transcripts reported), nil-map
   equivalence with `AuditForks`, parent facts unaffected by the seen set.
+  Widening `shuttleengine.Engine` also breaks builderengine's own
+  package-local `fakeEngine` double (`poll_test.go`), which independently
+  satisfies the same interface for `TurnEnded`'s tests — this batch's own
+  `verify:` covers both packages together, so add stub
+  `AuditForksIncremental`/`ModelSwitchSequence` methods there too (both
+  unreached by `TurnEnded`, mirroring the existing unreached-`AuditForks`
+  stub already in that file).
 - **Commit:** `shuttle: add AuditForksIncremental to the Engine seam`
 
 ### Card 3: Engine.ModelSwitchSequence
