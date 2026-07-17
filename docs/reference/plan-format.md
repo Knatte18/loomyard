@@ -478,7 +478,7 @@ model. Models are configuration:
   the LLM orchestrator itself judges digests.
 - loom's config section overrides per role when loom drives builder.
 - The notation, registry, and precedence rules are pinned in
-  [docs/reference/model-spec.md](../reference/model-spec.md).
+  [docs/reference/model-spec.md](model-spec.md).
 
 ## Validation checks (spec for the future validator)
 

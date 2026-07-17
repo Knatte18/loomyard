@@ -282,7 +282,7 @@ func extractBacktickBullets(text, heading string) []string {
 
 // TestOrchestratorTemplate_QuotesDigestFieldsAndNoOthers asserts the
 // template's digest-field bullet list names exactly the ten pinned digest
-// field names (docs/modules/plan-format.md's poll digest contract) — no
+// field names (docs/reference/plan-format.md's poll digest contract) — no
 // fewer, no extras — the mechanical half of the discussion's "the
 // orchestrator reads only distilled digests" decision.
 func TestOrchestratorTemplate_QuotesDigestFieldsAndNoOthers(t *testing.T) {
