@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-fixing
 slug: codeintel-spike
 branch: codeintel-spike
 plan: _mill/plan
@@ -28,6 +28,7 @@ approved-poc-gopls-callgraph  '2026-07-17T15:44:42Z'
 approved-measure-and-writeup  '2026-07-17T16:02:58Z'
 approved-revert-and-verify  '2026-07-17T16:06:34Z'
 holistic-reviewing  '2026-07-17T16:06:59Z'
+holistic-fixing  '2026-07-17T16:11:21Z'
 ```
 
 ## Batches
