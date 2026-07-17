@@ -82,7 +82,8 @@ Batch-local decision: the registry is keyed by a canonical **language name** (`"
   - `internal/modelspec/load.go`
   - `internal/hubgeometry/hubgeometry.go`
   - `internal/codeintelengine/registry.go`
-- **Edits:** none
+- **Edits:**
+  - `internal/codeintelengine/registry.go`
 - **Creates:**
   - `internal/codeintelengine/load.go`
 - **Deletes:** none
@@ -92,11 +93,16 @@ Batch-local decision: the registry is keyed by a canonical **language name** (`"
   (never hand-joined, per the Hub Geometry Invariant); an absent file returns `builtins()` with no
   error (`errors.Is(err, os.ErrNotExist)`); any other read error is wrapped with the path. Decode the
   present file into `map[string]Entry` with `yaml.NewDecoder` + `KnownFields(true)` (unknown field →
-  loud error). An empty/comments-only file (io.EOF, no entries) yields `builtins()` unchanged. Build
-  the result from `builtins()` with each file entry overlaid as a **whole-entry replacement**, then
-  run `validateEntry` on every file-supplied entry (naming the offending alias + the file path on
-  failure). Import stdlib + `internal/hubgeometry` + `gopkg.in/yaml.v3`. Do NOT import
-  `internal/output`.
+  loud error). Add `yaml:"markers"`/`yaml:"match"`/`yaml:"command"`/`yaml:"install_hint"` struct tags
+  to `Entry` in `registry.go` (a struct-tag-only edit, no new import — yaml.v3's default field
+  matching lowercases the Go field name with no separator, so `InstallHint` would otherwise need to
+  match a nonexistent `installhint` YAML key instead of the template's `install_hint`; confirmed by
+  running the decode: `KnownFields(true)` rejects `install_hint` against an untagged `Entry` with
+  "field install_hint not found in type Entry"). An empty/comments-only file (io.EOF, no entries)
+  yields `builtins()` unchanged. Build the result from `builtins()` with each file entry overlaid as
+  a **whole-entry replacement**, then run `validateEntry` on every file-supplied entry (naming the
+  offending alias + the file path on failure). Import stdlib + `internal/hubgeometry` +
+  `gopkg.in/yaml.v3`. Do NOT import `internal/output`.
 - **Commit:** `feat(codeintelengine): optional servers.yaml overlay loader`
 
 ### Card 4: embedded seed template
