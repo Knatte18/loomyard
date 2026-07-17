@@ -33,8 +33,9 @@ correct, fail-loud gate so no downstream phase ever runs against a broken worktr
 **In:**
 
 - A new `internal/loomengine` Go package exposing a pure function
-  `Preflight(l *hubgeometry.Layout) (Report, error)` that validates five preconditions over
-  git/filesystem state only.
+  `Preflight(l *hubgeometry.Layout) (Report, error)` that validates four preconditions over
+  git/filesystem state only (one of them — check 4 — absorbing the no-half-finished condition as
+  an internal coherence rule rather than a separate check).
 - The canonical Go type for the `_lyx/status.json` schema (the pinned
   [status-schema.md](../docs/reference/status-schema.md)) and a coherence validator implementing
   the schema doc's validation checklist (with the presence nuance in
@@ -118,9 +119,11 @@ correct, fail-loud gate so no downstream phase ever runs against a broken worktr
   plus a human string for the operator. `OK == (len(Failures) == 0)`.
 - **Rejected:** Plain `[]string` reasons — not machine-classifiable.
 
-### the-five-checks
+### the-four-checks
 
-Preflight validates exactly these, in this order (see check-ordering-and-collection):
+Preflight validates exactly these four, in this order (see check-ordering-and-collection); the
+former "fifth" (no half-finished prior run) is folded into check 4 as an internal coherence rule,
+not a standalone check:
 
 1. **Geometry / cwd** — `hubgeometry.Getwd()` then `hubgeometry.Resolve(cwd)` succeeds and
    yields a usable `*Layout` (non-empty `Prime`), **and `l.RelPath == "."` (Preflight runs at
@@ -158,6 +161,19 @@ Preflight validates exactly these, in this order (see check-ordering-and-collect
 - **Consequence for this task:** Preflight does **not** need (and must not add) any
   "am I past preflight?" gate — that would duplicate the phase machine and risk rejecting a
   legitimate resume.
+- **The caller contract MUST be carried into godoc (not left implicit).** This invariant —
+  "only ever call Preflight at the fresh/preflight stage" — is what makes "non-empty history ⇒
+  half-finished" correct rather than a false positive on legitimate cross-machine resume. It is
+  owned by a *different, not-yet-built* module (the phase machine, the phase-machine skeleton /
+  build-piece #5), so a future implementer wiring the call in will be reading `internal/loomengine`'s
+  package/`Preflight` godoc, **not** this discussion doc (which is deleted once loom-preflight
+  lands, per the Documentation Lifecycle). Therefore the **`Preflight` godoc comment (and the
+  `loomengine` package doc) MUST state the caller precondition explicitly**, in words to the
+  effect of: *"Callers MUST NOT invoke Preflight except when the task is at the fresh/preflight
+  stage. Invoking it on an already-advanced task (non-empty `history`, set `start_sha`, etc.) is
+  a caller error that will be reported as a `half-finished` precondition failure, not diagnosed
+  as misuse — because Preflight is a stateless validator and cannot distinguish the two."* This
+  is a required deliverable of the implementation commit, not optional prose.
 
 ### no-half-finished-prior-run
 
@@ -234,8 +250,20 @@ Preflight validates exactly these, in this order (see check-ordering-and-collect
   sentinels — forces callers to string-match wrap messages to classify, which is fragile.
 - **Error classification (read vs decode vs missing).** The missing/unreadable/incoherent
   split (Report `CheckID`s) is derived as:
-  - `os.Stat` the seed path **first** (see seed-read-path): `os.IsNotExist` → `seed-missing`
-    (Report); any other stat error → `seed-unreadable` (Report, "see check 3").
+  - `os.Stat` the seed path **first** (see seed-read-path), and classify its result **gated on
+    check 3's outcome**, not on the stat error's shape alone:
+    - **If check 3 produced a `junction` *or* `weft-pairing` failure** (junction missing /
+      points elsewhere, or the weft worktree is missing so the junction target doesn't exist):
+      the `_lyx` junction can't be trusted to reach the seed, and a broken junction / missing
+      target commonly makes the seed stat return `IsNotExist` too (the `_lyx` component doesn't
+      resolve, or the wrong target has no `status.json`), so *any* stat failure here —
+      `IsNotExist` included — is classified `seed-unreadable` (Report, "see check 3"), **never**
+      `seed-missing`. This is the case the "see check 3" attribution actually exists for.
+      (`weft-sync` is deliberately excluded from this gate: a mere branch divergence leaves the
+      junction healthy, so the seed is genuinely readable and normal shape-based classification
+      applies.)
+    - **Else (check 3's junction/pairing is healthy):** classify by stat shape — `os.IsNotExist`
+      → `seed-missing` (Report); any other stat error → `seed-unreadable` (Report).
   - Then, only when the stat succeeded, call `ReadJSONStrict` and classify a non-nil `err` by a
     single rule: **`errors.Is(err, state.ErrDecode)` (parse / unknown-field / type-mismatch) →
     `seed-incoherent` (Report); *every other* non-nil error → escalate as `error`** ("broke
@@ -316,24 +344,30 @@ Preflight validates exactly these, in this order (see check-ordering-and-collect
   Because check 1 requires `RelPath == "."` (see at-worktree-root), `Cwd == WorktreeRoot`, so
   `LoomStatusFile()` (WorktreeRoot-anchored) resolves to the **same `_lyx`** that check 3's
   junction validation (`PairInSync` → `HostLyxLinkHere()` = `WorktreeRoot/RelPath/_lyx`) checks
-  and that `HostClean`/the branch check use — all five checks agree on one `_lyx`, and the
-  "seed-unreadable, see check 3" attribution is exact (the junction check 3 validated is the
-  very junction the seed read traverses). WorktreeRoot-anchoring is the canonical choice and is
-  defence-in-depth even though `RelPath == "."` already makes it equal to `Cwd`. Error
-  classification:
-  `os.Stat` first — `os.IsNotExist` → clean `seed-missing` failure; any other **stat** error →
-  `seed-unreadable` failure with reason "unreadable, see check 3 (junction)". Never report a
-  non-`IsNotExist` error as "missing". After a successful `os.Stat`, the parse goes through
-  `state.ReadJSONStrict` (see strict-read-mechanism), and its error follows the single rule
-  there: `state.ErrDecode` → `seed-incoherent`; **every other** non-nil error (`state.ErrRead`,
-  a `lock.AcquireReadLock` failure, anything else) → escalate as `error`, not a Report failure.
+  and that `HostClean`/the branch check use — all four checks agree on one `_lyx`, and the
+  junction check 3 validated is the very junction the seed read traverses. WorktreeRoot-anchoring
+  is the canonical choice and is defence-in-depth even though `RelPath == "."` already makes it
+  equal to `Cwd`. Error classification is **gated on check 3's outcome, not on the stat error's
+  shape** (see strict-read-mechanism → Error classification for the full rule): a `os.Stat` that
+  fails when check 3 has already reported a `junction` or `weft-pairing` failure is classified
+  `seed-unreadable` "see check 3" — *including* `IsNotExist`, because a broken junction / missing
+  weft target commonly surfaces as `IsNotExist` at the seed path, and that is exactly the case
+  the attribution exists for. Only when check 3's junction/pairing is healthy does a stat failure
+  classify by shape (`IsNotExist` → `seed-missing`; other → `seed-unreadable`). After a successful
+  `os.Stat`, the parse goes through `state.ReadJSONStrict` (see strict-read-mechanism), and its
+  error follows the single rule there: `state.ErrDecode` → `seed-incoherent`; **every other**
+  non-nil error (`state.ErrRead`, a `lock.AcquireReadLock` failure, anything else) → escalate as
+  `error`, not a Report failure.
 - **Rationale:** The junction model exists precisely so `_lyx/` reads as part of the host repo;
   code reading `_lyx/status.json` must not need to know it goes via a junction to the weft.
   Reading via `WeftLyxDir()` in Preflight would break that abstraction in the one place that
   should validate the abstraction holds. A broken junction is an **ordering** concern, not a
-  path concern: check 3 (junction health) runs before check 4 and produces the authoritative
-  junction-broken report; check 4 then attributes any non-`IsNotExist` read error to it
-  instead of lying about a missing seed.
+  path concern: check 3 (junction/pairing health) runs before check 4 and produces the
+  authoritative junction-broken/weft-missing report; check 4 then, seeing that outcome, attributes
+  *its own* read failure (`IsNotExist` included) to it — "seed-unreadable, see check 3" — instead
+  of lying about a missing seed. The gate is check 3's **outcome**, not the stat error's shape,
+  because the realistic broken-junction failure surfaces as `IsNotExist` at the seed path, so a
+  shape-based rule would mislabel the common case `seed-missing`.
 - **Rejected:** A weft-path (`WeftLyxDir()`) read that bypasses the junction — decouples the
   two failures at the cost of breaking the junction abstraction in exactly the wrong place.
 
@@ -388,7 +422,7 @@ Preflight validates exactly these, in this order (see check-ordering-and-collect
 ### run-in-existing-or-prime-worktree
 
 - **Decision:** Preflight does **not** special-case or reject the Prime/main worktree, and
-  does **not** enforce that the worktree directory name matches the seed's `slug`. All five
+  does **not** enforce that the worktree directory name matches the seed's `slug`. All four
   checks run uniformly on whatever worktree is current.
 - **Rationale:** lyx must support running a new task in an existing worktree. The seed's `slug`
   is a *logical task pointer*; pairing is *name-based* (`WeftWorktree()` = `<worktree-base>-weft`,
@@ -447,10 +481,14 @@ Preflight validates exactly these, in this order (see check-ordering-and-collect
   return immediately with a single `geometry` / `worktree-root` failure (no usable, root-anchored
   `Layout` ⇒ no other check is meaningful — the `_lyx` paths would not agree; see
   at-worktree-root). All remaining checks (2 clean, 3 pairing/sync/junction, 4 seed/coherence)
-  **run and collect all their failures** into `Report.Failures`. The one interpretation dependency: junction health
-  (check 3) informs check 4's error attribution (a non-`IsNotExist` seed read error is reported
-  as `seed-unreadable` "see check 3", never `seed-missing`). Check 4 still runs even if the
-  junction is broken; it just does not lie about *why* the read failed.
+  **run and collect all their failures** into `Report.Failures`. The one interpretation
+  dependency: check 3's **outcome** informs check 4's error attribution — when check 3 reported a
+  `junction` or `weft-pairing` failure, check 4 classifies *any* resulting seed-read failure
+  (`IsNotExist` included) as `seed-unreadable` "see check 3", never `seed-missing`
+  (see strict-read-mechanism → Error classification). The gate is check 3's outcome, not the
+  stat error's shape, because the realistic broken-junction/missing-weft case surfaces as
+  `IsNotExist` at the seed path. Check 4 still runs regardless; it just does not lie about *why*
+  the read failed.
 - **Rationale:** Maximal actionable information per run (fix everything in one pass), with only
   the one unavoidable short-circuit (geometry) and honest cross-check attribution.
 - **Rejected:** Fully sequential short-circuit — forces fix-rerun-fix cycles.
@@ -521,7 +559,11 @@ From [CONSTRAINTS.md](../CONSTRAINTS.md):
   **same commit**: note Preflight as built in `docs/modules/loom.md` (and mark roadmap
   milestone 12 build-piece #2 done, with a pointer); if a new cross-cutting invariant emerges
   (none expected), record it in `CONSTRAINTS.md`. Package godoc on `loomengine` documents the
-  `Preflight` contract, `Report`/`Failure`/`CheckID`, and the status.json type.
+  `Preflight` contract, `Report`/`Failure`/`CheckID`, and the status.json type — and **must**
+  carry the caller precondition from preflight-invocation-model ("only call at the fresh/preflight
+  stage; calling on an advanced task is reported as `half-finished`, not diagnosed as misuse"),
+  since that invariant is owned by the not-yet-built phase machine and would otherwise vanish when
+  this discussion doc is deleted.
 
 ## Testing
 
@@ -559,9 +601,17 @@ Hybrid tiering (decision the-testing-tiers):
   - Weft worktree missing entirely → `weft-pairing` ("not paired"), distinct from sync.
   - Host and weft on different branches → `weft-sync` ("host on X, weft on Y").
   - Junction missing / points elsewhere → `junction`.
-  - Seed missing (`os.IsNotExist`) → `seed-missing` (hard failure).
-  - Seed unreadable via broken junction (non-`IsNotExist`) → `seed-unreadable` "see check 3",
-    **not** `seed-missing` — asserted alongside the `junction` failure in the same `Report`.
+  - Seed missing when the **junction is healthy** (`os.IsNotExist`, check 3 passed) →
+    `seed-missing` (hard failure).
+  - **Broken junction → seed read `IsNotExist` (the common case):** with check 3 reporting a
+    `junction` failure, the seed stat also returns `IsNotExist`; assert check 4 classifies it
+    `seed-unreadable` "see check 3", **not** `seed-missing` — the outcome-gated attribution, and
+    the realistic broken-junction shape on Linux/Windows. Both the `junction` and `seed-unreadable`
+    failures appear in the same `Report`.
+  - **Missing weft → seed read `IsNotExist`:** with check 3 reporting `weft-pairing`, the seed
+    stat `IsNotExist` is likewise classified `seed-unreadable` "see check 3", not `seed-missing`.
+  - Seed unreadable via a non-`IsNotExist` stat error (permission-denied, `_lyx` is a plain file)
+    while check 3 is healthy → `seed-unreadable`.
   - Multiple simultaneous failures (e.g. dirty + out-of-sync + incoherent seed) all appear in
     `Report.Failures` (collection behaviour).
   - Running in the **Prime** worktree with name ≠ slug but a healthy pair+seed → `Report.OK`
@@ -574,6 +624,19 @@ plan pins the concrete table-test structure.
 
 ## Q&A log
 
+- **Q (external review r1):** Does the "seed-unreadable, see check 3" attribution actually fire
+  for a real broken junction? **A:** Not as originally written — a broken junction / missing weft
+  commonly makes the seed stat return `IsNotExist`, so shape-based classification mislabels it
+  `seed-missing`. Fixed: check 4's classification is **gated on check 3's outcome** — if check 3
+  reported `junction` or `weft-pairing`, any seed-read failure (`IsNotExist` included) →
+  `seed-unreadable` "see check 3". See strict-read-mechanism → Error classification.
+- **Q (external review r1):** "Five" vs "four" checks? **A:** Four — the no-half-finished
+  condition is folded into check 4 as an internal coherence rule, not a standalone check. Renamed
+  `the-four-checks` and reworded Scope; godoc must not say "five".
+- **Q (external review r1):** Is the "only call at the fresh stage" invariant visible where #5
+  (phase machine) wires the call? **A:** Made it a required `Preflight`/`loomengine` godoc
+  deliverable (preflight-invocation-model + Documentation Lifecycle), since the discussion doc is
+  deleted on landing and the invariant is owned by the not-yet-built phase machine.
 - **Q (review round 4 gap):** The WorktreeRoot-anchored seed read disagrees with check 3's
   `Cwd`-anchored junction check under subdir invocation — how is that reconciled? **A:** Require
   `RelPath == "."` in check 1 (a `worktree-root` failure otherwise), so `Cwd == WorktreeRoot` and
