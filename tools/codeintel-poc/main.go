@@ -71,6 +71,8 @@ func dispatch(mode string) error {
 	switch mode {
 	case "refs":
 		return runRefs(cfg)
+	case "callers":
+		return runCallers(cfg)
 	default:
 		return fmt.Errorf("unknown mode %q", mode)
 	}
