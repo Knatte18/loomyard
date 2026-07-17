@@ -403,6 +403,33 @@ func TestBeginBatch_StateUpdated(t *testing.T) {
 // resolved model-spec entry fails loud rather than injecting a zero-value
 // model, naming the missing role. batchNumber is embedded in the message via
 // strconv so the assertion does not depend on Roles map iteration order.
+// TestBeginBatch_PreExistingReportRefused proves builder's
+// pre-existing-report guard applies to the fork path: a batch whose report
+// file already exists is refused loud (naming the recovery/restart escapes)
+// with its BatchState left untouched — finished work is never silently
+// overwritten by an accidental re-begin.
+func TestBeginBatch_PreExistingReportRefused(t *testing.T) {
+	fx := newBeginFixture(t)
+	reportPath := filepath.Join(fx.Deps.ReportsDir, builderengine.BatchReportFileName(1, "json-flag"))
+	if err := os.WriteFile(reportPath, []byte("batch: 01-json-flag\nstatus: done\ntests: green\nstuck_reason: null\n"), 0o644); err != nil {
+		t.Fatalf("seed report: %v", err)
+	}
+	fx.Deps.State.Batches = map[int]*websterengine.BatchState{
+		1: {Slug: "json-flag", Kind: "fork", Terminal: true, Status: "done"},
+	}
+
+	_, err := websterengine.BeginBatch(fx.Deps, 1, false)
+	if err == nil {
+		t.Fatal("BeginBatch() with an existing report = nil error; want the pre-existing-report refusal")
+	}
+	if !strings.Contains(err.Error(), "recover-batch") || !strings.Contains(err.Error(), "--restart-chain") {
+		t.Errorf("error = %q; want it to name the recover-batch and --restart-chain escapes", err.Error())
+	}
+	if bs := fx.Deps.State.Batches[1]; !bs.Terminal || bs.Status != "done" {
+		t.Errorf("Batches[1] = %+v; want the terminal done record untouched by the refusal", bs)
+	}
+}
+
 func TestBeginBatch_UnknownRoleErrors(t *testing.T) {
 	fx := newBeginFixture(t)
 	delete(fx.Deps.Roles, websterengine.RoleMaster)

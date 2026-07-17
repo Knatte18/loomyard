@@ -32,7 +32,10 @@ func (c *websterCLI) beginBatchCmd() *cobra.Command {
 		Use:   "begin-batch <NN>",
 		Short: "Master's bracket call immediately before forking one batch's implementer",
 		Long: `begin-batch <NN> checks the webster pause flag (refusing with a
-"paused": true envelope if "lyx webster pause" was called), records the
+"paused": true envelope if "lyx webster pause" was called), refuses loud
+when the batch's report file already exists (finished work is never
+silently overwritten -- a stuck batch escalates via recover-batch, a stuck
+chain via --restart-chain), records the
 batch's start-SHA in state.json, asserts the model that batch's own
 oversized: frontmatter requires (idempotent -- a repeated call for the same
 batch never re-injects a switch Master's pane is already running), renders

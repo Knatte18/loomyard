@@ -163,6 +163,21 @@ func BeginBatch(deps BeginDeps, batchNumber int, restartChain bool) (*BeginResul
 		return nil, err
 	}
 
+	// Builder's pre-existing-report refusal, applied to the fork path: a
+	// batch whose report already landed is finished work — silently
+	// overwriting its BatchState (and letting a fresh fork overwrite the
+	// report) must never happen by accident. Every legitimate re-begin path
+	// arrives here report-free: --restart-chain deleted its members' reports
+	// above, a no_report re-fork never calls begin-batch again (the bracket
+	// is still open), and a crash-resumed re-drive targets the first batch
+	// WITHOUT a report by definition.
+	existingReport := filepath.Join(deps.ReportsDir, builderengine.BatchReportFileName(batch.Number, batch.Slug))
+	if _, statErr := os.Stat(existingReport); statErr == nil {
+		return nil, fmt.Errorf("webster: batch %02d-%s already has a report at %s — begin-batch never overwrites finished work; a stuck batch escalates via `lyx webster recover-batch %d` (which archives the report), and a stuck deferred-verify chain restarts via `begin-batch --restart-chain`", batch.Number, batch.Slug, existingReport, batch.Number)
+	} else if !os.IsNotExist(statErr) {
+		return nil, fmt.Errorf("webster: stat batch report %s: %w", existingReport, statErr)
+	}
+
 	head, err := builderengine.HeadSHA(deps.WorktreeRoot)
 	if err != nil {
 		return nil, err
