@@ -30,7 +30,9 @@ implementing  '2026-07-17T15:26:17Z'
 ```yaml
 batches:
   - name: poc-scaffold-gopackages
-    state: pending
+    state: running
+    implementer_session: 1a315ecd-1f70-4817-a5b1-2d505523708e
+    start_sha: 74c65d26187d81fc6596a89d50b814190c7f2c1d
   - name: poc-gopls-callgraph
     state: pending
   - name: measure-and-writeup
