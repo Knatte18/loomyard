@@ -1,10 +1,11 @@
 // startup.go implements Startup (classifying a pane's capture during the
-// launch window) and the two fixed key-choreography sequences,
-// InterruptSequence and ComposeSend, that the run loop sends into a pane to
-// interrupt or resume a turn. All three are pure over a capture string /
-// literal text — the classification heuristics were proven live against a
-// real claude TUI (docs/research/mux-hooks-exploration.md and muxcli's
-// dismissTrust).
+// launch window) and the fixed key-choreography sequences —
+// InterruptSequence, ComposeSend, and ModelSwitchSequence — that the run
+// loop and long-lived callers send into a pane to interrupt a turn, resume
+// one, or switch the session's active model. All are pure over a capture
+// string / literal text — the classification heuristics were proven live
+// against a real claude TUI (docs/research/mux-hooks-exploration.md and
+// muxcli's dismissTrust).
 
 package claudeengine
 
@@ -107,5 +108,18 @@ func (c *Claude) ComposeSend(text string) []shuttleengine.PaneInput {
 	return []shuttleengine.PaneInput{
 		{Key: "Escape", SettleMS: composeSendSettleMS},
 		{Text: text, Submit: true},
+	}
+}
+
+// ModelSwitchSequence returns the key choreography that switches a live
+// claude session's model: the same Escape-then-settle clearing step
+// ComposeSend uses, followed by the `/model <name>` slash command typed and
+// submitted. The literal "/model" string is claude-specific grammar and
+// deliberately appears only here, never in shuttleengine, per the Shuttle
+// Provider-Seam Invariant.
+func (c *Claude) ModelSwitchSequence(model string) []shuttleengine.PaneInput {
+	return []shuttleengine.PaneInput{
+		{Key: "Escape", SettleMS: composeSendSettleMS},
+		{Text: "/model " + model, Submit: true},
 	}
 }

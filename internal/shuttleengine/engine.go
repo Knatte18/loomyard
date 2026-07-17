@@ -175,6 +175,15 @@ type Engine interface {
 	// submits text as a new turn (e.g. clearing a leaked auto-suggest
 	// before typing text and submitting it).
 	ComposeSend(text string) []PaneInput
+	// ModelSwitchSequence returns the provider-specific key choreography that
+	// switches a live interactive session's model to model, mirroring
+	// ComposeSend's shape (a clearing step, then the switch command typed and
+	// submitted). It exists on the seam — not hardcoded in any caller —
+	// because which command string and key sequence switch a provider's
+	// active model is provider grammar, exactly like ComposeSend/
+	// InterruptSequence (the Shuttle Provider-Seam Invariant's semantic
+	// half).
+	ModelSwitchSequence(model string) []PaneInput
 	// AuditForks reads the provider's on-disk record of a fork-authorized
 	// session's fork subagents — sessionID identifies the session, workdir
 	// is the pane's actual process cwd (never a worktree root that may

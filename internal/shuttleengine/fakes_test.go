@@ -287,6 +287,15 @@ func (e *fakeEngine) ComposeSend(text string) []PaneInput {
 	}
 }
 
+// ModelSwitchSequence returns a canonical Escape-then-submit-model-command
+// choreography — fixed, not scripted, so tests assert against it directly.
+func (e *fakeEngine) ModelSwitchSequence(model string) []PaneInput {
+	return []PaneInput{
+		{Key: "Escape"},
+		{Text: "MODEL:" + model, Submit: true},
+	}
+}
+
 // AuditForks records the (sessionID, workdir) it was called with and returns
 // AuditForksResult/AuditForksErr — a test scripts the canned audit a
 // fork-mode done classification should attach to Result.ForkAudit. It forwards
