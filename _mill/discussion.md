@@ -117,7 +117,11 @@ path rather than the Go-only one.
   a large solution for far longer). On deadline expiry the engine cancels the in-flight LSP
   request, tears down the server subprocess, and returns a typed `ErrServerTimeout` naming
   the phase that stalled (`initialize` vs `references` vs `workspace/symbol`); `codeintelcli`
-  emits it as `output.Err`. Without this, a server that launches but hangs on `initialize`
+  emits it as `output.Err`. **Timeout teardown hard-kills the subprocess**
+  (`cmd.Process.Kill()`), *not* the recovered client's graceful `shutdown`/`exit` handshake —
+  on `ErrServerTimeout` the server is by definition unresponsive, so the graceful path could
+  re-block on the same fault; the graceful `close` handshake is only for the normal
+  (non-timeout) end of a run. Without this, a server that launches but hangs on `initialize`
   (the fault #008 flagged as the realistic slow case) would block the verb forever — no fast
   typed error covers it.
 - Recovered reference: the existing client is preserved at commit `3b4dcf86`
@@ -148,6 +152,20 @@ path rather than the Go-only one.
   reproduces #008's gopls behaviour (name the one command that unblocks the arm).
 - Rejected: hardcoding the marker→command map in Go with no overlay — every new server or
   binary-path change would need a recompile, unlike every other lyx registry.
+- **TypeScript and Rust entries ship unmeasured.** The built-in registry includes
+  `typescript-language-server` and `rust-analyzer` as marker→command config, but the
+  measurement matrix (below) validates only Go, Python (pyright+pylsp), and C#. The TS/Rust
+  entries ship as **unverified registry configuration** — correct marker→launch-command
+  wiring, no live-server benchmark — so a plan writer must not schedule benchmark validation
+  for them. They become measurable later through the same verb with no code change; only the
+  empirical numbers are out of this task's scope.
+- **Entry overlay schema** (richer than modelspec's Engine/Model/Defaults): each entry
+  carries `markers` (list of filenames), `match` (closed vocab: exactly `all` | `any` —
+  validated with a loud error naming the offending entry, exactly like modelspec's engine
+  vocab), `command` (non-empty launch argv), and `install_hint` (non-empty). The overlay is
+  decoded under `yaml.Decoder.KnownFields(true)`, so an unknown field or an out-of-vocab
+  `match` value is a loud error, never a silent default. mill-plan pins the exact YAML field
+  names against this list rather than inventing them.
 - Note: `pylsp` (the second Python server measured) is a benchmark alternative, not the
   default Python built-in — the default is `pyright` (more precise). The registry may carry
   an alt-server mechanism or the measurement can point the client at pylsp directly; a

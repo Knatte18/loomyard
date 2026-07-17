@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussion-fix-r3
 slug: codeintel-multilang
 branch: codeintel-multilang
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-07-17T16:48:37Z'
+discussion-fix-r3  '2026-07-17T17:20:38Z'
 ```
