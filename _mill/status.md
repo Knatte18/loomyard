@@ -48,5 +48,7 @@ batches:
     start_sha: 4ba60dd72f56930eb740b0d3d158ebeee7faf23e
     commit_sha: c5c6aa223dd98baa892f14d7fee9fa45f4362f5e
   - name: measurement-and-writeup
-    state: pending
+    state: running
+    implementer_session: 8866c0ad-8867-4afe-924c-2c49a3eafa08
+    start_sha: 21cc598a809b646126e3076a4ff62404c5b7bb40
 ```
