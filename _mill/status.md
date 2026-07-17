@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: loom-preflight
 branch: loom-preflight
 plan: _mill/plan
@@ -22,4 +22,17 @@ plan-review-r1  '2026-07-17T16:20:19Z'
 plan-fix-r1  '2026-07-17T16:20:19Z'
 plan-fix-r2  '2026-07-17T16:25:15Z'
 planned  '2026-07-17T16:25:27Z'
+implementing  '2026-07-17T16:28:34Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: preflight-prereqs
+    state: pending
+  - name: loomengine-preflight
+    state: pending
+  - name: docs
+    state: pending
 ```
