@@ -1,15 +1,16 @@
 // main.go implements the sandbox tool entry point, flag parsing, and subcommand
-// dispatch. It supports eight subcommands: "build" (default, clones the Hub),
+// dispatch. It supports nine subcommands: "build" (default, clones the Hub),
 // "suite" (runs the embedded SANDBOX-CORE-SUITE agent), "mux-suite" (runs the
 // embedded SANDBOX-MUX-SUITE agent), "shuttle-suite" (runs the embedded
 // SANDBOX-SHUTTLE-SUITE agent), "burler-suite" (runs the embedded
 // SANDBOX-BURLER-SUITE agent), "perch-suite" (runs the embedded
 // SANDBOX-PERCH-SUITE agent), "builder-suite" (runs the embedded
-// SANDBOX-BUILDER-SUITE agent), and "fetch" (collects the agent-written
+// SANDBOX-BUILDER-SUITE agent), "webster-suite" (runs the embedded
+// SANDBOX-WEBSTER-SUITE agent), and "fetch" (collects the agent-written
 // report into .scratch). Only -parent and -loomyard live at the top level;
 // -reset is a build-subcommand flag, parsed after the "build" token like
-// suite/mux-suite/shuttle-suite/burler-suite/perch-suite/builder-suite parse
-// their -claude/-prompt flags.
+// suite/mux-suite/shuttle-suite/burler-suite/perch-suite/builder-suite/
+// webster-suite parse their -claude/-prompt flags.
 
 package main
 
@@ -269,6 +270,30 @@ func run(argv []string) int {
 		}
 
 		if err := runSuite(absParent, *claudeFlag, *promptFlag, builderSuite); err != nil {
+			fmt.Fprintf(os.Stderr, "sandbox: %v\n", err)
+			return 1
+		}
+
+	case "webster-suite":
+		// The webster-suite subcommand mirrors "suite"/"mux-suite"/
+		// "shuttle-suite"/"burler-suite"/"perch-suite"/"builder-suite"
+		// exactly, but runs the dedicated SANDBOX-WEBSTER-SUITE scheme via
+		// the websterSuite spec; fetching the report is the same shared
+		// fetch subcommand, so -loomyard is not required here either.
+
+		// Parse webster-suite-specific flags from the remaining positionals
+		// after "webster-suite".
+		wsf := flag.NewFlagSet("sandbox webster-suite", flag.ContinueOnError)
+		wsf.SetOutput(os.Stderr)
+		claudeFlag := wsf.String("claude", "", "path to the claude binary (default: resolve from PATH)")
+		promptFlag := wsf.String("prompt", "", "instruction string passed to the agent (default: built-in)")
+
+		remaining := fs.Args()[1:]
+		if err := wsf.Parse(remaining); err != nil {
+			return 1
+		}
+
+		if err := runSuite(absParent, *claudeFlag, *promptFlag, websterSuite); err != nil {
 			fmt.Fprintf(os.Stderr, "sandbox: %v\n", err)
 			return 1
 		}

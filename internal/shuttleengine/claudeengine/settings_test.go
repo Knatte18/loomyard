@@ -192,11 +192,84 @@ func TestBuildSettings_NoForbiddenCharsInSteerText(t *testing.T) {
 	// `"` or `\` would corrupt the payload) nested inside a single-quoted
 	// echo argument under git-bash (so a literal `'` would corrupt the
 	// hook command) — all three characters must stay absent.
-	for _, steer := range []string{steerAgentDeny, steerAskUserQuestionDeny, steerAgentNonForkDeny} {
+	for _, steer := range []string{steerAgentDeny, steerAskUserQuestionDeny, steerAgentNonForkDeny, steerWebsterForkDeny} {
 		if strings.ContainsAny(steer, steerTextForbiddenChars) {
 			t.Errorf("steer text contains a forbidden character (one of %q): %q", steerTextForbiddenChars, steer)
 		}
 	}
+}
+
+// bashCommand returns the Bash PreToolUse entry's command string and whether a
+// Bash entry is present at all — the fork-context webster-verb guard's hook.
+func bashCommand(t *testing.T, doc map[string]any) (string, bool) {
+	t.Helper()
+	preToolUse := hooksFor(doc, "PreToolUse")
+	for _, e := range preToolUse {
+		entry, _ := e.(map[string]any)
+		if entry["matcher"] != "Bash" {
+			continue
+		}
+		hooks, _ := entry["hooks"].([]any)
+		if len(hooks) == 0 {
+			return "", true
+		}
+		cmd, _ := hooks[0].(map[string]any)
+		command, _ := cmd["command"].(string)
+		return command, true
+	}
+	return "", false
+}
+
+// TestBuildSettings_ForkContextWebsterGuard pins the fork-loop-deadlock guard:
+// a fork-mode run emits a PreToolUse(Bash) hook that greps the payload for a
+// fork-context agent_id AND a `lyx webster` command before denying (with
+// steerWebsterForkDeny), and always exits 0 via the trailing `; true`. The
+// guard is independent of ClaudeDenyAgentTool and absent entirely when fork
+// mode is off (no Master, so no fork could reach the loop).
+func TestBuildSettings_ForkContextWebsterGuard(t *testing.T) {
+	t.Run("fork_mode_emits_bash_guard_independent_of_agent_deny", func(t *testing.T) {
+		for _, agentDeny := range []bool{true, false} {
+			cfg := shuttleengine.Config{ClaudeDenyAgentTool: agentDeny}
+			data, err := buildSettings("/c/run/events.jsonl", false, cfg, true)
+			if err != nil {
+				t.Fatalf("buildSettings() error: %v", err)
+			}
+			doc := parseSettings(t, data)
+			command, present := bashCommand(t, doc)
+			if !present {
+				t.Fatalf("Bash PreToolUse guard absent with ClaudeDenyAgentTool=%v; want it present in fork mode regardless", agentDeny)
+			}
+			// The two AND-ed detection predicates: fork context (agent_id) and
+			// a lyx webster command.
+			if !strings.Contains(command, `"agent_id"`) {
+				t.Errorf("Bash guard command = %q; want the fork-context agent_id grep", command)
+			}
+			if !strings.Contains(command, `lyx[[:space:]]+webster`) {
+				t.Errorf("Bash guard command = %q; want the lyx-webster command grep", command)
+			}
+			if !strings.Contains(command, steerWebsterForkDeny) {
+				t.Errorf("Bash guard command = %q; want it to carry steerWebsterForkDeny", command)
+			}
+			// A non-matching grep exits non-zero; the trailing `; true` keeps
+			// the hook's own exit code 0 so a non-fork/non-webster call is
+			// allowed, never a spurious hook error.
+			if !strings.HasSuffix(command, "; true") {
+				t.Errorf("Bash guard command = %q; want it to end with `; true` so a non-deny path exits 0", command)
+			}
+		}
+	})
+
+	t.Run("non_fork_mode_emits_no_bash_guard", func(t *testing.T) {
+		cfg := shuttleengine.Config{ClaudeDenyAgentTool: true}
+		data, err := buildSettings("/c/run/events.jsonl", false, cfg, false)
+		if err != nil {
+			t.Fatalf("buildSettings() error: %v", err)
+		}
+		doc := parseSettings(t, data)
+		if _, present := bashCommand(t, doc); present {
+			t.Error("Bash PreToolUse guard present with forkSubagents=false; want none (no fork can reach the loop)")
+		}
+	})
 }
 
 // agentCommand returns the Agent PreToolUse entry's command string and

@@ -86,6 +86,16 @@ func (e *spawnFakeEngine) AuditForks(sessionID, workdir string) (shuttleengine.F
 	return shuttleengine.ForkAudit{}, nil
 }
 
+// AuditForksIncremental is never reached, for the same reason as AuditForks.
+func (e *spawnFakeEngine) AuditForksIncremental(sessionID, workdir string, seenTranscripts map[string]bool) (shuttleengine.ForkAudit, error) {
+	return shuttleengine.ForkAudit{}, nil
+}
+
+// ModelSwitchSequence is never reached: spawn-batch never drives a model switch.
+func (e *spawnFakeEngine) ModelSwitchSequence(model string) []shuttleengine.PaneInput {
+	return nil
+}
+
 var _ shuttleengine.Engine = (*spawnFakeEngine)(nil)
 
 // newScratchRepo initializes a fresh git repo at t.TempDir(), configures a

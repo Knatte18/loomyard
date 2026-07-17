@@ -172,6 +172,17 @@ func (e *specCapturingEngine) AuditForks(sessionID, workdir string) (shuttleengi
 	return shuttleengine.ForkAudit{}, nil
 }
 
+// AuditForksIncremental is never reached, for the same reason as AuditForks.
+func (e *specCapturingEngine) AuditForksIncremental(sessionID, workdir string, seenTranscripts map[string]bool) (shuttleengine.ForkAudit, error) {
+	return shuttleengine.ForkAudit{}, nil
+}
+
+// ModelSwitchSequence is never reached: Prepare always fails before any
+// model-switch choreography could ever be driven.
+func (e *specCapturingEngine) ModelSwitchSequence(model string) []shuttleengine.PaneInput {
+	return nil
+}
+
 var _ shuttleengine.Engine = (*specCapturingEngine)(nil)
 
 // errSpecCaptured is the sentinel specCapturingEngine.Prepare always

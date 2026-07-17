@@ -1,13 +1,13 @@
 // suite.go implements the "sandbox suite", "sandbox mux-suite", "sandbox
-// shuttle-suite", "sandbox burler-suite", "sandbox perch-suite", and "sandbox
-// builder-suite" subcommands: copies one of the embedded suite templates
-// (main, mux, shuttle, burler, perch, or builder) into the Hub host repo,
-// stamps a lyx binary fingerprint, registers the file as a git exclude entry,
-// and launches an interactive Claude session to execute it. The six suites
-// share every mechanic (fingerprinting, git-exclude, stale-report cleanup,
-// agent launch, post-session mux teardown) via the suiteSpec parameterization
-// of runSuite; only the file name, embedded doc body, default instruction,
-// and mux-teardown flag differ.
+// shuttle-suite", "sandbox burler-suite", "sandbox perch-suite", "sandbox
+// builder-suite", and "sandbox webster-suite" subcommands: copies one of the
+// embedded suite templates (main, mux, shuttle, burler, perch, builder, or
+// webster) into the Hub host repo, stamps a lyx binary fingerprint, registers
+// the file as a git exclude entry, and launches an interactive Claude session
+// to execute it. The seven suites share every mechanic (fingerprinting,
+// git-exclude, stale-report cleanup, agent launch, post-session mux teardown)
+// via the suiteSpec parameterization of runSuite; only the file name,
+// embedded doc body, default instruction, and mux-teardown flag differ.
 
 package main
 
@@ -49,10 +49,13 @@ var perchSandboxSuiteMD string
 //go:embed SANDBOX-BUILDER-SUITE.md
 var builderSandboxSuiteMD string
 
-// suiteSpec parameterizes runSuite over the six supported suites (main,
-// mux, shuttle, burler, perch, and builder): the file written into the Hub
-// host repo, the embedded doc body rendered into it, the default prompt
-// handed to claude when the operator supplies no -prompt override, and
+//go:embed SANDBOX-WEBSTER-SUITE.md
+var websterSandboxSuiteMD string
+
+// suiteSpec parameterizes runSuite over the seven supported suites (main,
+// mux, shuttle, burler, perch, builder, and webster): the file written into
+// the Hub host repo, the embedded doc body rendered into it, the default
+// prompt handed to claude when the operator supplies no -prompt override, and
 // whether the suite boots a live mux substrate that must be torn down after
 // the session. Every other mechanic (fingerprinting, git-exclude,
 // stale-report cleanup, agent launch) is shared across specs.
@@ -125,6 +128,16 @@ var builderSuite = suiteSpec{
 	fileName:    "SANDBOX-BUILDER-SUITE.md",
 	doc:         builderSandboxSuiteMD,
 	instruction: "Read ./SANDBOX-BUILDER-SUITE.md and follow the instructions in it exactly.",
+	muxTeardown: true,
+}
+
+// websterSuite is the SANDBOX-WEBSTER-SUITE spec: the dedicated scheme
+// exercising the lyx webster fork-loop and model-escalation black-box agent
+// scenarios.
+var websterSuite = suiteSpec{
+	fileName:    "SANDBOX-WEBSTER-SUITE.md",
+	doc:         websterSandboxSuiteMD,
+	instruction: "Read ./SANDBOX-WEBSTER-SUITE.md and follow the instructions in it exactly.",
 	muxTeardown: true,
 }
 
@@ -333,7 +346,7 @@ func ensureGitExclude(repoDir, entry string) error {
 // after the session. claudeOverride and promptOverride are optional: when
 // empty the function resolves "claude" from PATH and uses spec.instruction.
 // spec selects which suite (mainSuite, muxSuite, shuttleSuite, burlerSuite,
-// or perchSuite) is run.
+// perchSuite, builderSuite, or websterSuite) is run.
 func runSuite(parentDir, claudeOverride, promptOverride string, spec suiteSpec) error {
 	// Derive the host repo path from the shared hubName const (main.go) and the
 	// suite-local hostDirName const; the function relies on those consts rather than
