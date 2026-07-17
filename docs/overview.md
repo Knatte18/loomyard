@@ -285,7 +285,10 @@ User-facing modules each get one `lyx <module>` namespace:
   [builder-contract.md](reference/builder-contract.md).
 - **loom** — phased orchestrator: drives Preflight → Discussion → Plan → Builder → Raddle →
   Finalize, each gated by a perch review (`lyx loom run`, alias `lyx run`). 🚧 Design — not
-  built. See [modules/loom.md](modules/loom.md).
+  built; the `lyx loom` command and phase machine are unbuilt. loom's config module
+  (`loom.yaml`, holding the `discussion` role model-spec and `discussion_timeout_min`)
+  exists and reconciles via `lyx init` / `lyx config reconcile`. See
+  [modules/loom.md](modules/loom.md).
 - **perch** — generic profile-driven gate loop: runs `burler` rounds on one artifact until
   `APPROVED`/`STUCK` (milestone-capped `round_caps` ladder + a holistic progress judge), plus an
   operational `PAUSED` exit; independent of `loom` but used by it between every phase, and standalone
