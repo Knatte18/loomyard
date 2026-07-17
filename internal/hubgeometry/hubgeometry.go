@@ -351,6 +351,45 @@ func (l *Layout) LoomStatusLock() string {
 	return filepath.Join(l.WorktreeRoot, LyxDirName, "status.json.lock")
 }
 
+// DiscussionDir returns the path to the Discussion phase's output directory
+// for this worktree: the two-file `decision-record.md` / `support-log.md`
+// pair described in docs/reference/discussion-format.md. It is deliberately
+// WorktreeRoot-anchored, NOT built on LyxDir() (which is Cwd-anchored, see
+// LyxDir above): the discussion artifact is the one true per-worktree
+// artifact, like LoomStatusFile above, so a caller invoked from a
+// subdirectory (Cwd != WorktreeRoot) must still resolve the single
+// `_lyx/discussion/` at the worktree root. Per the Hub Geometry Invariant, no
+// other package may construct this path.
+//
+// Returns filepath.Join(WorktreeRoot, LyxDirName, "discussion").
+func (l *Layout) DiscussionDir() string {
+	return filepath.Join(l.WorktreeRoot, LyxDirName, "discussion")
+}
+
+// DiscussionDecisionRecord returns the path to the distilled decision record
+// that is the Plan producer's sole input out of `_lyx/discussion/` (see
+// docs/reference/discussion-format.md). It shares DiscussionDir's
+// WorktreeRoot anchoring for the same reason: the record must resolve to the
+// one true copy at the worktree root, not a per-subdirectory copy. Per the
+// Hub Geometry Invariant, no other package may construct this path.
+//
+// Returns filepath.Join(DiscussionDir(), "decision-record.md").
+func (l *Layout) DiscussionDecisionRecord() string {
+	return filepath.Join(l.DiscussionDir(), "decision-record.md")
+}
+
+// DiscussionSupportLog returns the path to the raw support log read by the
+// Discussion-review gate only — never by the Plan producer (see
+// docs/reference/discussion-format.md). It shares DiscussionDir's
+// WorktreeRoot anchoring for the same reason: the log must resolve to the
+// one true copy at the worktree root, not a per-subdirectory copy. Per the
+// Hub Geometry Invariant, no other package may construct this path.
+//
+// Returns filepath.Join(DiscussionDir(), "support-log.md").
+func (l *Layout) DiscussionSupportLog() string {
+	return filepath.Join(l.DiscussionDir(), "support-log.md")
+}
+
 // HubLogsDir returns the path to the hub-level (not worktree-level) directory
 // where the shared per-hub mux server writes its runtime log. It is hub-anchored
 // because consumers like mux run exactly one shared server per hub and need one
