@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-cli-wiring-and-docs
+phase: approved-measurement-and-writeup
 slug: codeintel-multilang
 branch: codeintel-multilang
 plan: _mill/plan
@@ -26,6 +26,7 @@ implementing  '2026-07-17T17:45:59Z'
 approved-codeintelengine-core  '2026-07-17T17:55:50Z'
 approved-lsp-client-and-refs  '2026-07-17T18:16:48Z'
 approved-cli-wiring-and-docs  '2026-07-17T18:26:24Z'
+approved-measurement-and-writeup  '2026-07-17T18:44:51Z'
 ```
 
 ## Batches
@@ -48,7 +49,8 @@ batches:
     start_sha: 4ba60dd72f56930eb740b0d3d158ebeee7faf23e
     commit_sha: c5c6aa223dd98baa892f14d7fee9fa45f4362f5e
   - name: measurement-and-writeup
-    state: running
+    state: approved
     implementer_session: 8866c0ad-8867-4afe-924c-2c49a3eafa08
     start_sha: 21cc598a809b646126e3076a4ff62404c5b7bb40
+    commit_sha: 2e87570c0655774a4bcff25e8ec05c34d7751d42
 ```
