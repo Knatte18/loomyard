@@ -54,10 +54,8 @@ var (
 )
 
 // dispatch runs the handler registered for mode, returning an error for any
-// mode not yet implemented by the current batch. Later cards extend this
-// switch as each mode's handler lands; the default branch keeps the binary
-// compiling and runnable before every mode exists (unknown modes error at
-// runtime, not compile time).
+// mode this harness does not recognize (unknown modes error at runtime, not
+// compile time, since mode arrives as a flag value).
 func dispatch(mode string) error {
 	cfg := config{
 		mode:   mode,
@@ -77,6 +75,8 @@ func dispatch(mode string) error {
 		return runGoplsRefs(cfg)
 	case "gopls-cli-refs":
 		return runGoplsCLIRefs(cfg)
+	case "callgraph":
+		return runCallgraph(cfg)
 	default:
 		return fmt.Errorf("unknown mode %q", mode)
 	}
