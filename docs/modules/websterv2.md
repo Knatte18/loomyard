@@ -1,14 +1,27 @@
-# webster v2 — card-level parallel implementation (DRAFT / concept)
+# webster v2 — card-level parallel implementation, and structured impact lookup (DRAFT / concept)
 
-> **Status: DRAFT / concept. Not built, not scheduled.** This is a forward-looking
-> design note for a possible evolution of the `webster` module (see
-> [builder-contract.md](../reference/builder-contract.md#webster-the-fork-based-sibling)).
-> It is speculative in the same sense as [long-term-ideas.md](../long-term-ideas.md):
-> nothing here is committed to until v1 (`internal/websterengine` + `internal/webstercli`)
-> has run in anger and the parallelism payoff is measured, not assumed. Treat every
-> number below as an estimate from a single case study, not a guarantee.
+> **Status: DRAFT / concept. Not built, not scheduled.** Two companion design notes for a
+> possible evolution of the `webster` module (see
+> [builder-contract.md](../reference/builder-contract.md#webster-the-fork-based-sibling)),
+> merged into one file since they were always meant to be read together. Both are speculative
+> in the same sense as [long-term-ideas.md](../long-term-ideas.md): nothing here is committed to
+> until v1 (`internal/websterengine` + `internal/webstercli`) has run in anger and the
+> parallelism payoff is measured, not assumed.
+>
+> - **Part A** is the card-level parallel-execution design. Treat every number in it as an
+>   estimate from a single case study, not a guarantee.
+> - **Part B** is a separable idea that surfaced while discussing Part A's case study: replace
+>   LLM-driven ripple-search with a deterministic Go verb. It supersedes an earlier draft that
+>   proposed sharing ripple-search results via Master's in-context "impact index" — this revision
+>   describes a strictly better mechanism (§B.2). Its underlying tooling was tested independently
+>   of webster's own timeline as wiki task `codeintel-spike` (done; see §B.6), with a follow-up
+>   wiki task `codeintel-multilang` now open to generalize the LSP arm beyond Go.
 
-## 1. Where v1 stands, and what v2 changes
+---
+
+# Part A — Card-level parallel implementation
+
+## A.1. Where v1 stands, and what v2 changes
 
 **webster v1 (built):** one long-lived **Master** session reads the codebase and the whole
 plan once, then forks **one implementer per batch, sequentially, in-session** (Claude Code's
@@ -25,11 +38,11 @@ replace the v1 engine — it *consumes* it. Everything v1 built (the shuttle for
 templates, weft commits, `summary.md`, run-level) is model-invariant substrate that v2 needs
 regardless.
 
-The v2 bet rests on one empirical claim, examined in §6: **at card granularity, real
+The v2 bet rests on one empirical claim, examined in §A.6: **at card granularity, real
 implementation plans are wider than their batch structure suggests** — so a card-level
 scheduler can extract parallelism the batch-sequential model leaves on the table.
 
-## 2. The two sources of speedup — keep them separate
+## A.2. The two sources of speedup — keep them separate
 
 They behave differently and must not be conflated:
 
@@ -46,7 +59,7 @@ Prompt caching already covers the *static* prompt text; it does **not** cover th
 exploration. That exploration is the expensive, identical-across-cold-implementers work fork
 inheritance eliminates — the single reason "read once, fork many" pays.
 
-## 3. Redefining the Card
+## A.3. Redefining the Card
 
 The `card` concept was designed for mill-plan / mill-go: an **ordered chunk sized to fill one
 implementer thread**, with **advisory** file lists, whose ordering is encoded *implicitly by
@@ -80,16 +93,16 @@ depends-cards: [8, 9, 10, 3]   # semantic edges: needs Config, roles, State/Batc
 these lists. If they are wrong, forks race on undeclared files or run before a symbol exists.
 In v1 an implementer that discovered an out-of-scope file just ran the "STOP → extend plan →
 commit plan-edit first" protocol serially. Under v2 that discovery is a **scheduling fault** —
-see §7.
+see §A.7.
 
-## 4. Redefining the Batch (= a wave)
+## A.4. Redefining the Batch (= a wave)
 
 A v2 **batch is a wave**: the maximal set of cards with **no unmet dependencies**, run **in
 parallel**, then **integrated and tested as a unit**. This is exactly a topological level of
 the card DAG. The batch keeps three roles it also had in v1, and gains one:
 
 - **Transaction / integration boundary** — the point where the wave's worktrees merge into the
-  task branch and the *full* verify runs (per-fork verify is local-only; see §5).
+  task branch and the *full* verify runs (per-fork verify is local-only; see §A.5).
 - **Digest boundary** — where each fork's distilled outcome is recorded (`RecordBatch`) and the
   Master's shared substrate advances.
 - **Deviation-synchronization point** — this is the subtle one. Forks in the *same* wave run
@@ -105,7 +118,7 @@ moved parallelism from *between* batches (where v1/mill-go found it rarely paid)
 batch (where the forks share Master's warm context). The batch-level DAG is dropped; a
 **card-level** dependency graph replaces it.
 
-## 5. Execution model
+## A.5. Execution model
 
 Per wave:
 
@@ -127,7 +140,7 @@ Per wave:
    localization is preserved.
 6. **Record digests, advance Master, next wave.**
 
-## 6. Does the parallelism actually materialize? (the case study)
+## A.6. Does the parallelism actually materialize? (the case study)
 
 A card-level dependency analysis of *this very plan* (the 42-card master-builder plan that built
 webster v1) is the first data point, and it **overturned the naive "linear chain" assumption**:
@@ -158,7 +171,7 @@ Findings worth carrying into the design:
 **Honest speedup estimate: ~2–3× wall-clock**, discounted from the analysis's 3–5× ideal
 because a wave's wall-clock is its **slowest** card, and the heavy implementation cards
 (`BeginBatch`, `RecordBatch`, `Run`) sit *on* the critical path — so width doesn't reduce below
-the heavy-card chain. Add fork-carry overhead and edit-time-discovered edges (§7) and 2–3× is
+the heavy-card chain. Add fork-carry overhead and edit-time-discovered edges (§A.7) and 2–3× is
 the honest band. Real, worth it — but not 6×, and not free.
 
 **Two caveats that both push the real number down:**
@@ -170,9 +183,9 @@ the honest band. Real, worth it — but not 6×, and not free.
   waves), so the 2–3× here is closer to an **upper bound** than a typical figure. A routine
   5–10-card task has little fan-out headroom and would show a speedup near 1×, dominated by
   warm-context (source 1), not parallelism. This is the central reason v2 must be gated on
-  measurement across *real* plans (§9), not justified by this one flattering case.
+  measurement across *real* plans (§A.9), not justified by this one flattering case.
 
-## 7. Hazards and open problems
+## A.7. Hazards and open problems
 
 1. **Undeclared file touches (the scheduling fault).** v1 handled "I must touch a file outside
    my card" by stopping and extending the plan serially. Under v2 a fork discovering this is a
@@ -203,7 +216,7 @@ the honest band. Real, worth it — but not 6×, and not free.
    deviation deltas, never success narratives.** On a clean card the delta is empty and Master
    reads only the SHA.
 
-## 8. Two separable wins — you can take the cheap one first
+## A.8. Two separable wins — you can take the cheap one first
 
 The case study implies v2's value splits into two independently-shippable pieces:
 
@@ -212,14 +225,14 @@ The case study implies v2's value splits into two independently-shippable pieces
   concurrent execution**. mill-plan changes its output; the scheduler derives waves. Cheap,
   low-risk, worth taking regardless of whether (b) ever ships.
 - **(b) A parallel executor with worktree isolation** that actually *runs* the width. This is the
-  big change §5 describes, and the one worth gating on evidence.
+  big change §A.5 describes, and the one worth gating on evidence.
 
 Ship (a), measure real wave widths across several plans, and build (b) only if the widths hold
 up under real (not inferred) dependency graphs.
 
-## 9. Decision gate — when is v2 worth building?
+## A.9. Decision gate — when is v2 worth building?
 
-Run the card-DAG width analysis (§6) across several *real* completed plans — and weight for
+Run the card-DAG width analysis (§A.6) across several *real* completed plans — and weight for
 **typical** task size, not this outlier. Then:
 
 - **Wide (fat waves, short critical path, low file-conflict):** v2's executor pays — build (b).
@@ -229,14 +242,161 @@ Run the card-DAG width analysis (§6) across several *real* completed plans — 
 
 The overhead calculus per card (cold-start orientation is a one-time expensive serial cost;
 fork-carry is a cheap per-turn cost when cached) means fork-per-card is a clear win for **small
-atomic cards** and can *lose* for large multi-turn cards — which is the deepest reason §3 demands
-extreme atomicity. v2 lives or dies on how atomic and how airtight-in-file-declaration its cards
-are.
+atomic cards** and can *lose* for large multi-turn cards — which is the deepest reason §A.3
+demands extreme atomicity. v2 lives or dies on how atomic and how airtight-in-file-declaration its
+cards are.
+
+---
+
+# Part B — Structured impact lookup via go/packages / gopls
+
+## B.1. The gap this responds to
+
+Discussing Part A's case study, the `mill-go` thread made a sharper point than §A.1's own
+framing: the expensive part of an implementer's turn is usually not *re-deriving general
+orientation* (where things live, what `CONSTRAINTS.md` demands) — it's **finding every place
+affected by the one specific edit a card makes**, and confirming every follow-on fix lands. That
+ripple/impact search is inherently **per-card**: Master's one-time initial exploration cannot
+have pre-computed "who calls the function card 7 is about to change," because the edit hasn't
+happened yet. A warm fork inherits Master's *general* orientation, but still has to pay the full
+ripple-search cost itself — today, via LLM-driven Grep/Read — exactly like a cold implementer
+would.
+
+Consequence: webster v1's warm-start benefit is real but narrower than it first appears — it
+eliminates redundant *generic* exploration, not the dominant *card-specific* impact-search cost.
+v2's parallel executor doesn't fix this either; it just lets several forks pay that same
+per-card cost **concurrently** instead of serially (a real but Amdahl-bounded win, and one that
+depends on v2's risky airtight-dependency-graph machinery actually working — see §A.6–A.7).
+
+## B.2. The idea
+
+Go has a direct analog to what Roslyn gives C#/.NET: `go/packages` + `go/types` (whole-module,
+type-checked semantic analysis, not textual matching), and `gopls` — the official language
+server — is built on exactly that stack. It already answers, precisely and deterministically:
+
+- "find all references" to a symbol (`textDocument/references`)
+- call hierarchy, incoming/outgoing (`callHierarchy/incomingCalls` / `outgoingCalls`)
+- interface implementations (`textDocument/implementation`)
+
+For transitive impact (not just direct callers), `golang.org/x/tools/go/callgraph` builds a
+whole-program call graph (CHA/RTA/VTA — increasing precision and cost).
+
+So instead of the earlier draft's mechanism — Master doing an LLM-driven search once and
+sharing the result via context inheritance, which only pays off when cards' impact areas happen
+to overlap — expose this as a **Go verb**: a fork (or Master, or any LLM session) shells out to
+`gopls` (or calls `go/packages`+`go/types` directly, in-process) and gets back a precise,
+structured list of call sites for a given symbol, on demand, per card, at near-zero cost. No
+context-sharing trick, no overlap requirement, no prefetch-timing guess.
+
+This is a strict upgrade over the earlier draft:
+
+1. **Precise** — no false positives/negatives from textual grep.
+2. **Cheap** — zero LLM tokens spent on the search itself; it's a native computation, not a
+   sequence of exploratory tool calls.
+3. **Needs no cross-card overlap to pay off** — any fork calls it fresh, for its own card,
+   whenever it needs it. This removes the central limitation of the earlier draft entirely (see
+   §B.4).
+
+## B.3. The real remaining cost: package-graph warm-up, not search results
+
+`go/packages`/`gopls` must load and type-check the module before it can answer anything —
+that's a real, possibly non-trivial cost on a large repo (seconds, not milliseconds). That load
+is the one thing actually worth amortizing across a run: keep the loaded package graph warm
+(e.g. a long-lived `gopls` process, or a cached `go/packages` load) across every query in a
+plan's execution, rather than re-loading it per card. This is a much cheaper and more reliable
+thing to keep warm than "an LLM's prior grep conclusions" (the earlier draft's mechanism) — it's
+a deterministic cache, not something that depends on which cards happen to share symbols.
+
+Open questions a spike needs to answer, not assumed here:
+
+- Load/warm-up cost on this repo's actual size, and whether it's cheap enough to pay once per
+  `lyx webster run` (or once per `lyx builder run`) without materially affecting wall-clock.
+- `gopls`-as-subprocess (LSP over stdio) vs. `go/packages`+`go/types` called directly from a Go
+  verb's own process — **these are not just an efficiency tradeoff, they differ in whether the
+  capability generalizes beyond Go at all.** `go/packages`/`go/types` is a Go-only library — it
+  cannot exist for a Python, TypeScript, or Rust target repo. LSP is a protocol, not a Go thing:
+  every mainstream language has a server implementing the same `textDocument/references` /
+  `callHierarchy/*` methods (pyright/pylsp, typescript-language-server, rust-analyzer, clangd,
+  …). A Go verb built as a generic stdio LSP client generalizes across target-repo languages for
+  free — the per-repo cost is picking which server binary to shell out to, not rewriting the
+  verb — while the direct-library route only ever pays off for Go targets, since `lyx` itself is
+  written in Go, and would need a wholly separate implementation per language to match. Given lyx
+  is used against non-Go target repos too (see §B.4), this makes the LSP-subprocess route the
+  strategic default; direct `go/packages`/`go/types` use is at best a Go-target-only fallback or
+  optimization, not the general answer — this is worth weighing alongside the raw
+  overhead-vs.-reimplementation cost the spike measures.
+- Precision limits worth knowing up front: interface satisfaction, reflection, and generics can
+  make "who calls this" incomplete or over-broad depending on which call-graph algorithm
+  (CHA/RTA/VTA) is used — a spike should characterize this on real code, not assume CHA's
+  cheap-but-imprecise answer is good enough. Note the callgraph algorithms (CHA/RTA/VTA) are
+  themselves Go-only (`golang.org/x/tools/go/callgraph`) regardless of which option above is
+  picked — an LSP server's own `callHierarchy` methods are the only route to comparable
+  transitive-impact answers for non-Go languages.
+
+## B.4. Relationship to v1 and v2 — this is no longer regime-specific (or language-specific)
+
+`lyx` is routinely used against target repos that aren't Go — webster/builder implementers work
+in whatever language the target project is written in, not necessarily Go. That makes the
+language-generality point in §B.3 more than a hypothetical: a Go-only implementation of this
+capability (the direct `go/packages`/`go/types` route) would only ever help implementers on Go
+target repos, leaving the common non-Go case with no structured lookup at all. The
+LSP-subprocess route is what makes this capability actually general-purpose across `lyx`'s real
+usage profile, not just across webster's own plan shapes.
+
+The earlier draft of this note only helped "narrow/coupled" plans (§A.9's two regimes) because
+its mechanism depended on cards' impact areas overlapping. A Go-verb-based lookup has no such
+dependency — it's a flat, on-demand, per-query capability any fork can use regardless of plan
+shape:
+
+- **Sequential (webster v1):** each batch's fork calls it for its own card instead of paying the
+  ripple-search cost via LLM-driven Grep/Read.
+- **Parallel (webster v2, if ever built):** every concurrent fork in a wave calls it independently
+  — cheap and stateless, no coordination needed between forks. This also directly attacks
+  §A.6's finding that wave wall-clock is dominated by the *heaviest* card on the
+  critical path (`BeginBatch`, `RecordBatch`, `Run`): if impact-search is what makes those cards
+  heavy, a fast precise lookup shrinks the ceiling v2's own case study identified, independent of
+  whether v2's scheduling machinery ever gets built.
+
+In other words: this is not a webster-specific idea at all. It is a general capability that
+would reduce tool-call/token burden for **any** LLM-driven module that currently does ripple
+analysis via Grep/Read — `builder`'s implementers today, `webster`'s forks, and `burler`'s
+reviewers, not only a hypothetical future v2.
+
+## B.5. Cost and risk profile
+
+- No new execution shape, no worktrees, no scheduling faults — this is additive tooling any
+  session can call, not a change to webster's fork/batch model.
+- New dependency: either a `gopls` binary available in the environment, or a vendored
+  `go/packages`/`go/types`-based implementation — either way, a new external-tool or library
+  dependency to vet and pin.
+- Precision is bounded by static analysis limits (see §B.3) — this augments, not replaces, an
+  implementer's judgment; a card's fork should still be free to Grep/Read further if the
+  structured answer looks incomplete.
+- Fits the existing digest discipline used elsewhere in webster/builder: a Go verb computes and
+  returns a structured, bounded answer; the LLM reads it rather than performing the raw search
+  itself.
+
+## B.6. This doesn't need to wait for webster or loom
+
+Unlike Part A's parallel-executor idea, this capability's value is not contingent
+on webster v1's hardening, on loom, or on any card-DAG planning problem — it is useful today,
+for `builder`'s implementers as they run in production right now. That is why it was spiked as
+its own standalone wiki task, `codeintel-spike` (no dependency on `webster`/`loom`, **now done**)
+rather than folded into webster's roadmap milestone. The spike's harness measured both the
+Go-only in-process arm and the `gopls`-as-subprocess (LSP) arm side by side; its findings on the
+LSP arm's cost/precision are the starting point for the open follow-up wiki task,
+`codeintel-multilang`, which generalizes the LSP-client plumbing to non-Go target-repo languages
+(§B.3/§B.4 above).
 
 ## Related
 
 - [builder-contract.md](../reference/builder-contract.md#webster-the-fork-based-sibling) — the v1
   cross-module contract webster shares with `builder`.
 - [long-term-ideas.md](../long-term-ideas.md) — the original speculative parallel-batches-via-DAG
-  note this design makes concrete.
-- `internal/websterengine` package docs — the v1 engine v2 builds on.
+  note Part A makes concrete, and the "impact index" note Part B's earlier draft descended from.
+- `internal/websterengine` package docs — the v1 engine Part A builds on.
+- wiki task `codeintel-spike` — the standalone feasibility spike for the `go/packages`/`gopls`
+  tooling Part B relies on (done).
+- wiki task `codeintel-multilang` — the open follow-up generalizing Part B's LSP arm beyond Go.
+- `docs/reference/model-spec.md` — the registry pattern `codeintel-multilang`'s per-language
+  server mapping is modeled on.
