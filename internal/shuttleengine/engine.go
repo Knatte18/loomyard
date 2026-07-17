@@ -185,4 +185,18 @@ type Engine interface {
 	// error rather than a zero ForkAudit, so a caller cannot mistake "this
 	// provider cannot audit forks" for "this run spawned zero forks".
 	AuditForks(sessionID, workdir string) (ForkAudit, error)
+	// AuditForksIncremental is AuditForks for a long-lived caller that has
+	// already processed some of a session's fork transcripts and wants only
+	// the ones it has not seen yet. Parent facts (SpawnCalls, NamedSpawns,
+	// ParentWriteCalls, ParentWrites, ParentBashCommands) are always
+	// full/cumulative — re-read from the parent transcript in its entirety
+	// every call — since a parent session keeps appending to the same
+	// transcript file across turns. Forks holds one ForkReport per fork
+	// subagent transcript whose TranscriptPath is NOT a key of
+	// seenTranscripts; a nil seenTranscripts reports every fork transcript,
+	// which is what makes AuditForks expressible as this method called with
+	// a nil map. The same zero-fork/missing-parent-transcript error posture
+	// as AuditForks applies: a missing subagents/ directory is a legitimate
+	// zero-fork result, a missing parent transcript is a hard error.
+	AuditForksIncremental(sessionID, workdir string, seenTranscripts map[string]bool) (ForkAudit, error)
 }

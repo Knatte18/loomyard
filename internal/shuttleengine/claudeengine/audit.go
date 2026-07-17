@@ -1,7 +1,9 @@
-// audit.go implements Claude's AuditForks: reading the on-disk session transcript
-// layout Claude Code itself maintains under ~/.claude/projects/<encoded-cwd>/ to
-// recover mechanical facts about a fork-authorized run's fork subagents. All of this
-// file's knowledge — the project directory's cwd-encoding scheme, the parent/fork
+// audit.go implements Claude's AuditForks/AuditForksIncremental: reading the
+// on-disk session transcript layout Claude Code itself maintains under
+// ~/.claude/projects/<encoded-cwd>/ to recover mechanical facts about a
+// fork-authorized run's fork subagents, optionally filtered to only the fork
+// transcripts a long-lived caller has not yet seen. All of this file's
+// knowledge — the project directory's cwd-encoding scheme, the parent/fork
 // transcript paths, and the JSONL message shape — is Claude-specific and stays
 // contained here, per the Shuttle Provider-Seam Invariant; shuttleengine itself only
 // ever sees the provider-invariant ForkAudit/ForkReport value types this file
@@ -19,21 +21,32 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// AuditForks implements shuttleengine.Engine.AuditForks for Claude. It derives the
-// session's project directory from workdir (claudeProjectDirFor), reads
-// <projectDir>/<sessionID>.jsonl as the parent session's own transcript
-// (SpawnCalls/NamedSpawns), and reads every
-// <projectDir>/<sessionID>/subagents/*.jsonl as one fork subagent's transcript
-// (one ForkReport each). workdir MUST be the pane's actual process cwd — see the
-// call site in wait.go's finalize for why layout.Cwd, never layout.WorktreeRoot, is
-// what must be passed here. A missing subagents/ directory is not an error: zero
-// forks is a legitimate finding for the caller's policy to interpret (an
+// AuditForks implements shuttleengine.Engine.AuditForks for Claude by calling
+// AuditForksIncremental with a nil seenTranscripts map, which reports every fork
+// transcript found — see AuditForksIncremental for the full contract.
+func (c *Claude) AuditForks(sessionID, workdir string) (shuttleengine.ForkAudit, error) {
+	return c.AuditForksIncremental(sessionID, workdir, nil)
+}
+
+// AuditForksIncremental implements shuttleengine.Engine.AuditForksIncremental for
+// Claude. It derives the session's project directory from workdir
+// (claudeProjectDirFor), reads <projectDir>/<sessionID>.jsonl as the parent
+// session's own transcript (always read in full: SpawnCalls, NamedSpawns,
+// ParentWriteCalls, ParentWrites, ParentBashCommands), and reads every
+// <projectDir>/<sessionID>/subagents/*.jsonl whose full path is NOT a key of
+// seenTranscripts as one fork subagent's transcript (one ForkReport each); a nil
+// seenTranscripts reports every fork transcript, which is what makes AuditForks
+// expressible as this method called with a nil map — one parsing path, no
+// duplication. workdir MUST be the pane's actual process cwd — see the call site
+// in wait.go's finalize for why layout.Cwd, never layout.WorktreeRoot, is what
+// must be passed here. A missing subagents/ directory is not an error: zero forks
+// is a legitimate finding for the caller's policy to interpret (an
 // authorized-but-unused capability), so it yields ForkAudit{Forks: []ForkReport{}}
 // with a nil error. A missing parent transcript, or a fork transcript that exists
 // but cannot be read, IS an error — the audit could not be completed at all, and
 // wait.go's fail-loud posture on this error is what keeps a fork-mode run whose
 // audit came back incomplete from ever silently classifying as a clean done.
-func (c *Claude) AuditForks(sessionID, workdir string) (shuttleengine.ForkAudit, error) {
+func (c *Claude) AuditForksIncremental(sessionID, workdir string, seenTranscripts map[string]bool) (shuttleengine.ForkAudit, error) {
 	projectDir, err := claudeProjectDirFor(workdir)
 	if err != nil {
 		return shuttleengine.ForkAudit{}, err
@@ -69,7 +82,14 @@ func (c *Claude) AuditForks(sessionID, workdir string) (shuttleengine.ForkAudit,
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".jsonl") {
 			continue
 		}
-		report, err := auditForkTranscript(filepath.Join(subagentsDir, entry.Name()))
+		transcriptPath := filepath.Join(subagentsDir, entry.Name())
+		if seenTranscripts != nil && seenTranscripts[transcriptPath] {
+			// Already processed by the caller in an earlier incremental call —
+			// re-parsing it would re-report facts a long-lived caller has
+			// already acted on.
+			continue
+		}
+		report, err := auditForkTranscript(transcriptPath)
 		if err != nil {
 			return shuttleengine.ForkAudit{}, err
 		}
