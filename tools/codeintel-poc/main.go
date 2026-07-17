@@ -59,10 +59,33 @@ var (
 // compiling and runnable before every mode exists (unknown modes error at
 // runtime, not compile time).
 func dispatch(mode string) error {
+	cfg := config{
+		mode:   mode,
+		symbol: symbolFlag,
+		dir:    dirFlag,
+		n:      nFlag,
+		algo:   algoFlag,
+		json:   jsonFlag,
+	}
+
 	switch mode {
+	case "refs":
+		return runRefs(cfg)
 	default:
 		return fmt.Errorf("unknown mode %q", mode)
 	}
+}
+
+// config carries every flag value a mode handler needs, snapshotted from the
+// package-level flag vars at dispatch time so handlers take one plain value
+// rather than reaching into flag.CommandLine themselves.
+type config struct {
+	mode   string
+	symbol string
+	dir    string
+	n      int
+	algo   string
+	json   bool
 }
 
 // main parses flags and dispatches to the requested mode's handler, printing
