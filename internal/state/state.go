@@ -7,7 +7,9 @@
 package state
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,6 +17,19 @@ import (
 	"github.com/Knatte18/loomyard/internal/fsx"
 	"github.com/Knatte18/loomyard/internal/lock"
 )
+
+// ErrRead sentinels a failure to read the state file's bytes off disk (I/O
+// error other than the file simply not existing, e.g. permissions). Callers
+// use errors.Is(err, ErrRead) to distinguish this "couldn't even read it"
+// class of failure from a decode failure or an infra failure acquiring the
+// lock, since a caller may want to retry or escalate each class differently.
+var ErrRead = errors.New("state: read failed")
+
+// ErrDecode sentinels a failure to strictly decode the state file's bytes as
+// JSON of the expected shape (malformed JSON or an unknown field). Callers
+// use errors.Is(err, ErrDecode) to distinguish "the file exists and was read
+// but its contents are not a valid instance of T" from a raw read failure.
+var ErrDecode = errors.New("state: decode failed")
 
 // WriteJSON writes a value as indented JSON to the given path atomically.
 // It creates missing parent directories, acquires an exclusive write lock on
@@ -70,6 +85,50 @@ func ReadJSON[T any](path, lockPath string) (T, bool, error) {
 	var v T
 	if err := json.Unmarshal(data, &v); err != nil {
 		return zero, false, fmt.Errorf("unmarshal state: %w", err)
+	}
+
+	return v, true, nil
+}
+
+// ReadJSONStrict reads a JSON value from the given path into a value of type
+// T, rejecting unknown fields instead of silently ignoring them. Unlike
+// ReadJSON it does not call os.MkdirAll — a read must not have the
+// side effect of creating directories that were never written to. (A
+// sidecar .lock file is still taken by lock.AcquireReadLock, so the call is
+// not fully side-effect-free.) It acquires a shared read lock on the
+// caller-supplied lockPath, reads the file, and decodes it via
+// json.Decoder.DisallowUnknownFields so that stale or mistyped fields are
+// caught rather than silently dropped. Returns (zero, false, nil) if the
+// file does not exist. A raw read failure (I/O error other than
+// not-exist) is wrapped so errors.Is(err, ErrRead) is true; a decode failure
+// (malformed JSON or an unknown field) is wrapped so errors.Is(err,
+// ErrDecode) is true — callers classify the failure via errors.Is rather
+// than string-matching. A lock.AcquireReadLock failure is returned wrapped
+// as today, carrying neither sentinel: it is a third, infra-level failure
+// mode the caller escalates rather than classifies as read-vs-decode.
+// Returns (value, true, nil) on success. The lock is released via defer.
+func ReadJSONStrict[T any](path, lockPath string) (T, bool, error) {
+	var zero T
+
+	l, err := lock.AcquireReadLock(lockPath)
+	if err != nil {
+		return zero, false, fmt.Errorf("acquire read lock: %w", err)
+	}
+	defer l.Release()
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return zero, false, nil
+		}
+		return zero, false, fmt.Errorf("%w: %v", ErrRead, err)
+	}
+
+	var v T
+	d := json.NewDecoder(bytes.NewReader(data))
+	d.DisallowUnknownFields()
+	if err := d.Decode(&v); err != nil {
+		return zero, false, fmt.Errorf("%w: %v", ErrDecode, err)
 	}
 
 	return v, true, nil
