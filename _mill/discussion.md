@@ -103,15 +103,15 @@ description).
   around each fork:
   - `begin-batch <NN> [--restart-chain]` — pause-flag check, plan-fingerprint
     check, optional chain rollback, records the batch's start-SHA in `state.json`,
-    performs the oversized `/model` escalation when the batch declares
-    `oversized: true`, renders the fork prompt, weft-commits state. Called by
-    Master immediately before forking.
-  - `record-batch <NN>` — parses the batch report the fork wrote, distills it into
-    the pinned digest (same `Digest` contract as builder, returned as the JSON
-    envelope Master reads), runs the incremental fork audit and attributes new fork
-    transcripts to this batch, de-escalates the model if escalated, updates
-    `state.json`, weft-commits report + state. Called by Master immediately after
-    the fork returns.
+    **idempotently asserts Master's model for this batch** (see
+    `oversized-model-escalation`), renders the fork prompt, weft-commits state.
+    Called by Master immediately before forking.
+  - `record-batch <NN>` — runs the incremental fork audit first (transcript-count
+    precedence — see `fork-audit-policy`), parses the batch report the fork wrote,
+    distills it into the pinned digest (same `Digest` contract as builder, returned
+    as the JSON envelope Master reads), updates `state.json`, weft-commits report +
+    state. Called by Master immediately after the fork returns. It never touches
+    the model — model assertion is `begin-batch`'s job alone.
 - Rationale: preserves builder's three weft-commit points, the digest discipline
   (Master never reads raw reports — the mill-go-bloat lesson), and gives per-batch
   audit attribution plus early violation detection, none of which survive a
@@ -268,15 +268,26 @@ description).
     Write/Edit **allowed**; host-repo git **allowed** (per-card commits are
     required by the implementer contract); any Bash command referencing the weft
     worktree path or invoking `lyx weft` / `lyx warp` = hard error.
-  - **Master (parent transcript):** same weft ban; Write/Edit allowed **only**
-    under `_lyx/webster/` (`outcome.yaml` + `summary.md` are Master's own contract
-    files — a blanket write ban would break the outcome contract); any parent
-    write outside it = hard error (catches a "lazy" Master implementing batches
-    itself — same silent-quality-degradation class as named forks).
-  - **Attribution:** `record-batch` attributes all fork transcripts new since the
-    previous batch boundary to the current batch. Zero new = hard error (the batch
-    was never forked); more than one = warning only (legitimate retry after a
-    reported `no_report`), never hard.
+  - **Master (parent transcript):** same weft ban; Write/Edit allowed **only** to
+    Master's two contract files, `_lyx/webster/outcome.yaml` and
+    `_lyx/webster/summary.md` (a blanket write ban would break the outcome
+    contract); any other parent write — including into webster's reports dir — =
+    hard error (catches a "lazy" Master implementing batches itself or
+    hand-writing a batch report — same silent-quality-degradation class as named
+    forks).
+  - **Attribution, with pinned check order:** `record-batch` checks the
+    fork-transcript count **before** report presence. (1) Zero fork transcripts
+    new since the previous batch boundary = hard error — the batch was never
+    forked, **regardless of whether a report file exists** (a report with no fork
+    behind it means Master wrote it itself; transcript-count-first is what makes
+    that unfakeable). (2) One-or-more new transcripts + report present → normal
+    parse/distill; more than one transcript = warning only (legitimate retry
+    after a reported `no_report`), never hard. (3) One-or-more new transcripts +
+    **no** report → the `no_report` classification (the fork ran but violated the
+    file contract) → Master's ladder re-forks once. An Agent tool call that
+    errors before the fork ever runs surfaces synchronously as Master's own tool
+    error — Master re-forks directly and never calls `record-batch` on a
+    transcript-less batch.
   - **Timing:** incremental per-batch audit at `record-batch` (early detection +
     attribution), plus the standard whole-session audit at run finalize
     (`OutcomeDone` only) as the backstop cross-check.
@@ -322,17 +333,29 @@ description).
 ### oversized-model-escalation
 
 - Decision: model escalation for `oversized: true` batches is **Go-driven pane
-  injection**: `begin-batch` on an oversized batch synchronously injects
-  `/model <master_oversized>` into Master's tmux pane via mux **before returning
-  its envelope** (no race — by the time Master reads the envelope and forks, the
-  model is switched, and the fork inherits it); `record-batch` symmetrically
-  injects `/model <master>` to de-escalate. Go always makes this call — never
-  Master's judgment. Mechanical caveat, pinned as an explicit early validation
-  scenario in the sandbox suite: `/model` is a local CLI command and *should*
-  apply to subsequent API calls within Master's single long agentic turn — if
-  real-world validation shows it does not take effect mid-turn, the feature
-  degrades to the documented fallback: `oversized:` is accepted for plan
-  compatibility but has no spawn effect in webster.
+  injection**, and the injection is **idempotent per batch**: every `begin-batch`
+  synchronously injects `/model <target>` into Master's tmux pane via mux
+  **before returning its envelope**, where `<target>` is `master_oversized` when
+  the batch declares `oversized: true` and `master` otherwise — it asserts the
+  correct model for *this* batch rather than assuming the previous batch's state.
+  No race: by the time Master reads the envelope and forks, the model is
+  switched, and the fork inherits it. This is the **only** injection point:
+  `record-batch` never touches the model, no failure-path de-escalation exists to
+  forget (a `stuck`/`no_report` batch that skips `record-batch` is self-healed by
+  the next batch's `begin-batch` assertion), and no run-exit reset is needed (the
+  Master session terminates at run end; no model state survives it). Go always
+  makes this call — never Master's judgment. Mechanical caveat, pinned as an
+  explicit early validation scenario in the sandbox suite: `/model` is a local
+  CLI command and *should* apply to subsequent API calls within Master's single
+  long agentic turn. The load-bearing uncertainty the scenario must exercise is
+  the exact production timing: the keys are injected **while a bracket-verb Bash
+  subprocess is executing in Master's pane** — the scenario must inject during a
+  running foreground tool subprocess and confirm the keys reach Claude's TUI
+  input (which keeps reading during tool execution) and switch the model for
+  subsequent calls in the same turn, not merely assert mid-turn effect in a quiet
+  pane. If real-world validation shows it does not hold, the feature degrades to
+  the documented fallback: `oversized:` is accepted for plan compatibility but
+  has no spawn effect in webster.
 - Rationale: forks inherit the session's current model, so switching Master's
   model at the batch boundary is the only way to restore `oversized:` semantics
   in-session; the user expects real use for this. The Go-side `run` process /
@@ -341,7 +364,10 @@ description).
 - Rejected: an operator-only `escalate` verb (operator rarely watching); building
   a general supervisor/watchdog in `run` (YAGNI until webster has run in anger);
   `oversized:` → cold strand with `implementer_oversized` (reintroduces the
-  per-batch process mechanism this module exists to remove).
+  per-batch process mechanism this module exists to remove); escalate-in-
+  `begin-batch` / de-escalate-in-`record-batch` pairing (leaks the escalated
+  model onto every later batch whenever a failure path skips `record-batch` —
+  review r1's gap).
 
 ### config-webster-yaml
 
@@ -349,9 +375,14 @@ description).
   builder's implementer default, so A/B compares mechanism, not model),
   `master_oversized` (default `opus`), `recovery` (default `opus[effort=high]`,
   as builder). Knobs: `self_fix_cap`, `master_timeout_min` (the Master spawn's
-  shuttle timeout), `recovery_timeout_min` (recover-batch's terminal-wait
-  timeout), and the validate caps (`batch_context_cap_tokens`, `batch_card_cap`)
-  mirroring builder's. Role grammar checked at `LoadConfig` via `modelspec.Parse`;
+  shuttle timeout — the **whole-run** analog of builder's
+  `orchestrator_timeout_min`, default 480, deliberately generous because it spans
+  every batch of the sequential plan; it is NOT a per-batch timeout, and no
+  per-batch watchdog exists in-session since fork completion is synchronous
+  within Master's turn), `recovery_timeout_min` (recover-batch's terminal-wait
+  timeout — the per-batch `batch_timeout_min` analog, applying only to the cold
+  recovery strand), and the validate caps (`batch_context_cap_tokens`,
+  `batch_card_cap`) mirroring builder's. Role grammar checked at `LoadConfig` via `modelspec.Parse`;
   all roles resolved via `ResolveRoles`-style pre-flight at `run` entry.
 - Rationale: matches builder's config discipline; sonnet default keeps the A/B
   honest.
@@ -479,10 +510,10 @@ description).
 - Weft commits by module verbs are the established pattern (buildercli's three
   points) — the Weft Git Invariant bans *agents* driving weft git, not Go verbs
   the agent happens to invoke.
-- The master template must pin: Master never Writes/Edits outside
-  `_lyx/webster/`, never runs git at all, never calls `/model` itself, never
-  forks without `begin-batch`, forwards the Go-rendered fork prompt verbatim,
-  reads only digest fields.
+- The master template must pin: Master never Writes/Edits any file other than
+  `_lyx/webster/outcome.yaml` and `_lyx/webster/summary.md`, never runs git at
+  all, never calls `/model` itself, never forks without `begin-batch`, forwards
+  the Go-rendered fork prompt verbatim, reads only digest fields.
 
 ## Constraints
 
@@ -521,8 +552,9 @@ From `CONSTRAINTS.md`, directly applicable:
 
 - **TDD candidates:** the webster audit-policy function (pure: `ForkAudit` facts
   in, hard-error/warning split out — table-driven over all violation classes:
-  nested Agent, named spawn, parent write outside `_lyx/webster/`, weft-referencing
-  Bash, zero/multi transcript attribution); the `summary.md` presence/title
+  nested Agent, named spawn, parent write outside the two contract files,
+  weft-referencing Bash, zero/multi transcript attribution and its
+  transcript-count-before-report-presence check order); the `summary.md` presence/title
   validation; the state schema round-trip; the fork-prompt rendering (marker
   presence, report-path/batch-file substitution); the `no_report` classification
   in `record-batch`.
@@ -544,9 +576,13 @@ From `CONSTRAINTS.md`, directly applicable:
   pattern), including weft-commit pathspec exclusion of locks/pause flag.
 - **Integration-tagged:** state/weft round-trips with hermetic git.
 - **Sandbox suite:** one webster scenario (`**Covers:** webster`) driving a tiny
-  real plan end-to-end, plus the `/model` mid-turn injection validation scenario
-  whose verdict decides escalation-vs-fallback — pinned as an early milestone in
-  the plan so the fallback decision lands before the escalation code hardens.
+  real plan end-to-end, plus the `/model` injection validation scenario whose
+  verdict decides escalation-vs-fallback — it must inject **while a foreground
+  Bash tool subprocess is executing in the pane** (the production `begin-batch`
+  timing) and confirm the keys reach the TUI input and the model switches for
+  subsequent calls in the same turn, not merely assert mid-turn effect in a quiet
+  pane — pinned as an early milestone in the plan so the fallback decision lands
+  before the escalation code hardens.
 
 ## Q&A log
 
@@ -594,3 +630,8 @@ From `CONSTRAINTS.md`, directly applicable:
   batch by forking; builder started it via a Go call — captured as the
   bracket-is-discipline-not-gate decision (Go gates can only refuse when called;
   enforcement is template discipline + fail-loud audit).
+- **Q:** (review r1 gap) Model de-escalation leaks when a failure path skips
+  `record-batch` — who de-escalates? **A:** Nobody: `begin-batch` idempotently
+  asserts the correct model for each batch (escalate or de-escalate as needed),
+  making it the single injection point; `record-batch` never touches the model
+  and no run-exit reset is needed.
