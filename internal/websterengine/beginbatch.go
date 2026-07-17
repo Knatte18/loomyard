@@ -170,14 +170,17 @@ func BeginBatch(deps BeginDeps, batchNumber int, restartChain bool) (*BeginResul
 	// Builder's pre-existing-report refusal, applied to the fork path: a
 	// batch whose report already landed is finished work — silently
 	// overwriting its BatchState (and letting a fresh fork overwrite the
-	// report) must never happen by accident. Every legitimate re-begin path
-	// arrives here report-free: --restart-chain deleted its members' reports
-	// above, a no_report re-fork never calls begin-batch again (the bracket
-	// is still open), and a crash-resumed re-drive targets the first batch
-	// WITHOUT a report by definition.
+	// report) must never happen by accident. The legitimate re-begin paths
+	// arrive here report-free (--restart-chain deleted its members' reports
+	// above; a no_report re-fork never calls begin-batch again — the bracket
+	// is still open), with ONE exception: a run resumed after a crash that
+	// landed between the fork's report and record-batch re-drives a batch
+	// whose report IS on disk — that report is consumed by record-batch (the
+	// audit keys on the bracket-opening session, see RecordBatch), so the
+	// refusal message names that recourse alongside the stuck-batch ones.
 	existingReport := filepath.Join(deps.ReportsDir, builderengine.BatchReportFileName(batch.Number, batch.Slug))
 	if _, statErr := os.Stat(existingReport); statErr == nil {
-		return nil, fmt.Errorf("webster: batch %02d-%s already has a report at %s — begin-batch never overwrites finished work; a stuck batch escalates via `lyx webster recover-batch %d` (which archives the report), and a stuck deferred-verify chain restarts via `begin-batch --restart-chain`", batch.Number, batch.Slug, existingReport, batch.Number)
+		return nil, fmt.Errorf("webster: batch %02d-%s already has a report at %s — begin-batch never overwrites finished work; a report left behind by a crashed session is consumed by `lyx webster record-batch %d` (or `lyx webster recover-batch %d` for a recovery batch), a stuck batch escalates via `lyx webster recover-batch %d` (which archives the report), and a stuck deferred-verify chain restarts via `begin-batch --restart-chain`", batch.Number, batch.Slug, existingReport, batch.Number, batch.Number, batch.Number)
 	} else if !os.IsNotExist(statErr) {
 		return nil, fmt.Errorf("webster: stat batch report %s: %w", existingReport, statErr)
 	}

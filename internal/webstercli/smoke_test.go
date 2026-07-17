@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/builderengine"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -292,6 +293,120 @@ func TestSmoke_ForkTranscriptAuditCountsOneNoNestedAgent(t *testing.T) {
 	}
 	if audit.Forks[0].AgentCalls != 0 {
 		t.Errorf("fork AgentCalls = %d; want 0 — the parent's own spawn replay must not be miscounted as a nested Agent call (F2)", audit.Forks[0].AgentCalls)
+	}
+}
+
+// smokeGitRepo initializes dir as a git repo with one base commit and returns
+// that commit's SHA — the StartSHA a RecordBatch drift computation diffs
+// against. Identity is set repo-locally so the hermetic git env needs no
+// global config.
+func smokeGitRepo(t *testing.T, dir string) string {
+	t.Helper()
+	for _, args := range [][]string{
+		{"init", "-q", "-b", "main"},
+		{"config", "user.email", "smoke@test"},
+		{"config", "user.name", "smoke"},
+		{"commit", "-q", "--allow-empty", "-m", "base"},
+	} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v; output: %s", args, err, out)
+		}
+	}
+	cmd := exec.Command("git", "rev-parse", "HEAD")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git rev-parse HEAD: %v", err)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// TestSmoke_RecordBatchConsumesCrashedSessionReport proves the crash/resume
+// seam fixed in round fable-r3 (FR3-2) against the REAL transcript layout: a
+// fork spawned under one session writes its batch report; RecordBatch is then
+// driven with a DIFFERENT current Master session (the resumed run's fresh
+// session) but a begin record stamped with the original session — and must
+// find the crashed session's fork transcript on disk, audit it, and consume
+// the report as a terminal done digest. Before the fix this exact state
+// wedged every resume of the report-landed-but-unrecorded crash window across
+// all three bracket verbs (live-reproduced: the resumed Master declared a
+// finished batch stuck).
+func TestSmoke_RecordBatchConsumesCrashedSessionReport(t *testing.T) {
+	bin := smokeClaudeBin(t)
+	settingsPath := realForkSettingsPath(t)
+	dir := t.TempDir()
+	startSHA := smokeGitRepo(t, dir)
+	reportsDir := filepath.Join(dir, "reports")
+	if err := os.MkdirAll(reportsDir, 0o755); err != nil {
+		t.Fatalf("mkdir reports dir: %v", err)
+	}
+	reportPath := filepath.Join(reportsDir, builderengine.BatchReportFileName(1, "alpha"))
+	crashedSession := mintSessionID(t)
+
+	prompt := "Spawn exactly one Agent-tool subagent with subagent_type set to \"fork\" and NO name. " +
+		"Instruct the fork to create the file " + reportPath + " with exactly this content and nothing else:\n" +
+		"batch: 01-alpha\nstatus: done\ntests: green\nstuck_reason: null\n" +
+		"After the fork returns, stop."
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	runClaudeFork(t, ctx, bin, dir, settingsPath, crashedSession, prompt)
+
+	// The fork's transcript flush is asynchronous from the run's return; wait
+	// for both the report and the transcript before driving RecordBatch, so
+	// the test asserts the session-keying behavior, not flush timing.
+	deadline := time.Now().Add(30 * time.Second)
+	if !pollExists(reportPath, deadline) {
+		t.Fatalf("the fork never wrote %s", reportPath)
+	}
+	eng := claudeengine.New()
+	for {
+		audit, err := eng.AuditForks(crashedSession, dir)
+		if err != nil {
+			t.Fatalf("AuditForks: %v", err)
+		}
+		if len(audit.Forks) >= 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("no fork transcript flushed for session %s", crashedSession)
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+
+	// The resumed run's state: a FRESH Master session, with the batch's begin
+	// record still stamped by the crashed session that actually forked it.
+	layout := &hubgeometry.Layout{Cwd: dir, WorktreeRoot: dir, Hub: filepath.Dir(dir)}
+	state := &websterengine.State{
+		MasterSessionID: mintSessionID(t),
+		CurrentBatch:    1,
+		Batches: map[int]*websterengine.BatchState{
+			1: {Slug: "alpha", StartSHA: startSHA, Kind: "fork", SessionID: crashedSession},
+		},
+	}
+	deps := websterengine.RecordDeps{
+		Plan:         &builderengine.Plan{Batches: []builderengine.PlanBatch{{Number: 1, Slug: "alpha"}}},
+		State:        state,
+		Engine:       eng,
+		Layout:       layout,
+		WorktreeRoot: dir,
+		ReportsDir:   reportsDir,
+		OutcomePath:  filepath.Join(dir, "outcome.yaml"),
+		SummaryPath:  filepath.Join(dir, "summary.md"),
+		Sleeper:      realSleeper{},
+	}
+
+	result, err := websterengine.RecordBatch(deps, 1)
+	if err != nil {
+		t.Fatalf("RecordBatch() error = %v; want the crashed session's report consumed", err)
+	}
+	if result.Digest == nil || result.Digest.Status != builderengine.DigestStatusDone {
+		t.Fatalf("RecordBatch() digest = %+v; want a terminal done digest", result.Digest)
+	}
+	if !state.Batches[1].Terminal {
+		t.Error("batch 1 not marked Terminal after the late record")
 	}
 }
 

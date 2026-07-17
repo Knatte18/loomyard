@@ -134,6 +134,11 @@ design.
   begin the next batch (batch N+1 assumes N is committed).
 - A stuck deferred-verify chain → `lyx webster begin-batch <NN> --restart-chain`,
   naming any member of that chain.
+- `begin-batch <NN>` refuses because the batch **already has a report** (a resumed run
+  found a crashed session's leftover) → do NOT fork; call `lyx webster record-batch
+  <NN>` to consume that report. If record-batch refuses because the batch is a
+  recovery batch, call `lyx webster recover-batch <NN>` instead. Then continue the
+  loop from the next batch.
 
 ## A paused refusal ends your run immediately
 

@@ -48,6 +48,10 @@ var _ websterengine.Sleeper = (*recordFakeSleeper)(nil)
 type recordFakeEngine struct {
 	scripted  []shuttleengine.ForkAudit
 	callCount int
+	// sessions records the sessionID of every AuditForksIncremental call, so a
+	// test can assert WHICH session the audit was keyed on (the
+	// bracket-opening session, never blindly the current Master session).
+	sessions []string
 }
 
 func (e *recordFakeEngine) AuditForksIncremental(sessionID, workdir string, seenTranscripts map[string]bool) (shuttleengine.ForkAudit, error) {
@@ -56,6 +60,7 @@ func (e *recordFakeEngine) AuditForksIncremental(sessionID, workdir string, seen
 		idx = len(e.scripted) - 1
 	}
 	e.callCount++
+	e.sessions = append(e.sessions, sessionID)
 	return e.scripted[idx], nil
 }
 
@@ -121,7 +126,7 @@ func newRecordFixture(t *testing.T, scripted []shuttleengine.ForkAudit) *recordF
 		MasterSessionID: "session-1",
 		CurrentBatch:    1,
 		Batches: map[int]*websterengine.BatchState{
-			1: {Slug: "json-flag", StartSHA: startSHA},
+			1: {Slug: "json-flag", StartSHA: startSHA, Kind: "fork", SessionID: "session-1"},
 		},
 	}
 
@@ -179,6 +184,53 @@ func TestRecordBatch_NoBeginRecord(t *testing.T) {
 			t.Fatalf("RecordBatch() error = %v; want errors.Is(err, ErrNoBeginRecord)", err)
 		}
 	})
+}
+
+// TestRecordBatch_RecoveryBatchRefusedLoud proves the kind guard: a recovery
+// batch's report is recover-batch's to classify, never record-batch's — the
+// refusal names the correct verb instead of dying later in the fork audit
+// with a misleading "never forked" error (round fable-r3 live).
+func TestRecordBatch_RecoveryBatchRefusedLoud(t *testing.T) {
+	fx := newRecordFixture(t, nil)
+	fx.Deps.State.Batches[1].Kind = "recovery"
+
+	_, err := websterengine.RecordBatch(fx.Deps, 1)
+	if err == nil || !strings.Contains(err.Error(), "recover-batch") {
+		t.Fatalf("RecordBatch() error = %v; want a refusal naming recover-batch", err)
+	}
+	if fx.Engine.callCount != 0 {
+		t.Errorf("Engine was reached (%d calls) for a recovery batch; want zero", fx.Engine.callCount)
+	}
+}
+
+// TestRecordBatch_AuditsBracketOpeningSession proves the crash/resume seam:
+// the fork audit keys on the session recorded in the batch's begin record
+// (bs.SessionID), never blindly on the CURRENT Master session — a resumed
+// run's fresh Master must be able to consume a report whose fork transcript
+// lives under the crashed session's own subagents directory (round fable-r3
+// live: auditing the current session instead wedged that resume across all
+// three verbs).
+func TestRecordBatch_AuditsBracketOpeningSession(t *testing.T) {
+	audit := shuttleengine.ForkAudit{
+		Forks: []shuttleengine.ForkReport{{TranscriptPath: "/transcripts/crashed-session/subagents/f1.jsonl", ReportReturned: true}},
+	}
+	fx := newRecordFixture(t, []shuttleengine.ForkAudit{audit})
+	fx.Deps.State.MasterSessionID = "session-resumed"
+	fx.Deps.State.Batches[1].SessionID = "session-crashed"
+	writeReport(t, fx.ReportsDir, validReportYAML)
+
+	result, err := websterengine.RecordBatch(fx.Deps, 1)
+	if err != nil {
+		t.Fatalf("RecordBatch() error = %v; want nil", err)
+	}
+	if result.Digest == nil || result.Digest.Status != builderengine.DigestStatusDone {
+		t.Fatalf("RecordBatch() digest = %+v; want a terminal done digest", result.Digest)
+	}
+	for i, session := range fx.Engine.sessions {
+		if session != "session-crashed" {
+			t.Errorf("AuditForksIncremental call %d keyed on session %q; want the bracket-opening \"session-crashed\"", i, session)
+		}
+	}
 }
 
 // TestRecordBatch_ZeroNewTranscriptsHardErrorsEvenWithReport proves the

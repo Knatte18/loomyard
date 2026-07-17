@@ -233,6 +233,14 @@ func TestMasterTemplate_StatesBracketSequenceAndRecoveryLadder(t *testing.T) {
 	// opus-r2 live). It ends the run stuck; the run is resumable.
 	requireContains(t, text, "weft sync")
 	requireContains(t, text, "do not retry the verb")
+
+	// A resumed run over a crash that landed between the fork's report and
+	// record-batch finds the report already on disk; without an explicit rung
+	// Master exhausts all three verbs and declares the finished batch stuck
+	// (round fable-r3 live). The rung routes it to record-batch (fork batch)
+	// or recover-batch (recovery batch).
+	requireContains(t, text, "already has a report")
+	requireContains(t, text, "consume that report")
 }
 
 // TestMasterTemplate_FillsWithAllMarkers asserts stencil.Fill succeeds when

@@ -135,7 +135,16 @@
 // context — and re-drives the first batch that has no terminal record. Every
 // card an implementer commits survives independently of Master's fate; only
 // reports and state are weft-committed per batch, so nothing already recorded
-// is ever lost.
+// is ever lost. One crash window needs a distinct resume move: a crash landing
+// between a fork's report and record-batch leaves the re-driven batch with a
+// report already on disk, which begin-batch refuses to overwrite — the resumed
+// Master consumes it with record-batch instead (its fork audit keys on the
+// bracket-opening session recorded in the batch state, never the current
+// Master session, so the crashed session's fork transcript — still on disk —
+// is found and policy-checked exactly as a late record would have), or with
+// recover-batch's attach path for a recovery batch (found live in round
+// fable-r3, where auditing the current session instead wedged that resume
+// across all three verbs).
 //
 // # builderengine reuse inventory: pause and validate pass-throughs
 //

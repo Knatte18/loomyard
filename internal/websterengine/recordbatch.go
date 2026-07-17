@@ -86,6 +86,15 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 		return nil, ErrNoBeginRecord
 	}
 
+	// A recovery batch is never record-batch's to consume: its report is
+	// classified by recover-batch's own bounded wait, and running the fork
+	// audit against it can only ever end in a misleading "never forked" error
+	// (a recovery strand is a separate process, not a fork). Refuse loud with
+	// the correct verb instead.
+	if bs.Kind != "fork" {
+		return nil, fmt.Errorf("webster: batch %d is a %s batch, not a fork batch — its report is consumed by `lyx webster recover-batch %d`, never record-batch", batchNumber, bs.Kind, batchNumber)
+	}
+
 	batch, err := findBatch(deps.Plan, batchNumber)
 	if err != nil {
 		return nil, err
@@ -96,8 +105,17 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 		seenSet[p] = true
 	}
 
+	// The audit keys on the session that OPENED this batch's bracket
+	// (bs.SessionID, stamped by begin-batch) — equal to the current Master
+	// session in the normal flow, but deliberately NOT read from
+	// State.MasterSessionID: after a crash between the fork's report landing
+	// and record-batch, a resumed run's fresh Master must still be able to
+	// consume the report, and the fork's transcript lives under the CRASHED
+	// session's subagents directory, which persists on disk (found live in
+	// round fable-r3: auditing the new session instead wedged every resume of
+	// exactly that crash window across all three verbs).
 	fetch := func() (shuttleengine.ForkAudit, error) {
-		return deps.Engine.AuditForksIncremental(deps.State.MasterSessionID, deps.Layout.Cwd, seenSet)
+		return deps.Engine.AuditForksIncremental(bs.SessionID, deps.Layout.Cwd, seenSet)
 	}
 
 	audit, newReports, err := SettleRetry(fetch, deps.State.SeenForkTranscripts, DefaultSettleWindow, DefaultSettleTick, deps.Sleeper)
