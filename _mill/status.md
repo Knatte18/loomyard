@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: master-builder
 branch: master-builder
 plan: _mill/plan
@@ -34,6 +34,7 @@ approved-sandbox-and-docs  '2026-07-17T13:35:15Z'
 holistic-reviewing  '2026-07-17T13:35:35Z'
 holistic-approved  '2026-07-17T13:41:18Z'
 done  '2026-07-17T13:41:41Z'
+pr-pending  '2026-07-17T13:50:14Z'
 ```
 
 ## Batches
