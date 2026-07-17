@@ -206,15 +206,8 @@ Layer in once the core stack works; not required for `loom` v1.
     capture journal is optional belt-and-suspenders, not the primary mechanism), mutual watchdog so
     both must die to go dark. See the `internal/muxengine` package documentation. **Proven in
     muxpoc, now built into mux's on-demand reconcile** ([overview.md#modules](overview.md#modules)).
-    **Possible extension — foreign-pane self-heal:** today mux is one-shot, so an operator-split or
-    stray "faux" pane is only reaped on the *next* mux verb (reconcile owns the session window). The
-    daemon could close that gap by reconciling on its own. Design steer for when this is picked up:
-    prefer **event-driven tmux hooks** (e.g. `after-split-window` / `window-layout-changed`) over a
-    polling loop — near-free and responsive; fall back to a low-frequency sweep only if tmux lacks
-    the hook. Gate it behind a policy that distinguishes a bug-induced faux pane from an operator's
-    **intentional** scratch pane (a grace period or an opt-out) — silent real-time reaping is a UX
-    hazard, not a win. Prerequisite: make the reap probe cheaper first (it currently spawns a fresh
-    pwsh + full `Win32_Process` WMI enumeration per poll), so a daemon loop is not a CPU drain.
+    A possible further extension (foreign-pane self-heal) is not yet scoped — see
+    [long-term-ideas.md](long-term-ideas.md).
 
 15. **Slack relay.** Bidirectional, one channel per worktree, riding on the daemon.
 
@@ -265,17 +258,9 @@ Independent of the orchestration stack; interleave as needed.
     context. Supports `--body` (or `-` to read from stdin) and `--label`; defaults to the `bug`
     label when no label is supplied. Durable design lives in the `internal/selfreportengine` package header.
 
-23. **`hardener` — behavior-based hardening of live-substrate modules.** 🧪 **DRAFT / concept — not
-    settled.** A separate, **on-demand, post-loom** reviewer that *runs* a live-substrate module (the
-    archetype: `mux` driving real tmux) in a **sandbox repo** and reacts to what it observes, rather
-    than reading an artifact as `perch` (see the `internal/perchengine` package documentation) does.
-    Orchestrated by an accumulating (per-round-respawn + handoff) orchestrator that targets each round and verifies via a
-    **deterministic gate** (N× concurrent smoke, zero stray state); shares only the `burler` round
-    discipline (see the `internal/burlerengine` package documentation). Token- and wall-clock-heavy
-    (a campaign ran a weekend), but it hardened `mux` where text-review could not. **Off the
-    `burler → perch → loom` spine** — it blocks nothing and is picked up only after `loom` works.
-    Concept still being figured
-    out; see [modules/hardener.md](modules/hardener.md) (a DRAFT doc, do not implement from it yet).
+*(Milestone 23, `hardener`, moved to [long-term-ideas.md](long-term-ideas.md) — it's an unsettled
+draft concept, not a scoped milestone; see [modules/hardener.md](modules/hardener.md) for the design
+sketch.)*
 
 24. **Own-window strand anchoring** *(deferred mux enhancement — grouped with 13–15 thematically,
     numbered here to avoid renumbering the list).* A new `display` anchor that spawns a strand into
@@ -283,7 +268,7 @@ Independent of the orchestration stack; interleave as needed.
     missing today (windows are not yet a display target; mux runs one window of panes per worktree).
     This **no longer gates `burler`'s cluster review**: cluster fan-out shipped via built-in fork
     subagents, which run in-session as background tasks inside the handler's own pane, needing no
-    extra tmux window at all (see [Deferred burler enhancements](#deferred-burler-enhancements) and
+    extra tmux window at all (see [milestone 11](#orchestration-stack) and
     the `internal/burlerengine` package documentation). This milestone's remaining cluster-adjacent
     value is narrower but still real: **live per-reviewer pane visibility** — today a fork's progress
     is only inspectable via its `subagents/*.jsonl` transcript on disk, not a watchable pane; an
@@ -306,30 +291,9 @@ Independent of the orchestration stack; interleave as needed.
        title to `tmux: server` and drop the `-L` token from argv — load-bearing for Linux
        confirm-gone).
 
-### Deferred burler enhancements
-
-Ideas from `burler`'s design that did not ship with the module (milestone 11's burler half); not
-required for `perch` or `loom` v1. See the `internal/burlerengine` package documentation for the
-as-built shape.
-
-- **Cluster fan-out (`cluster-fan`).** ✅ **Done, via built-in fork subagents** — see the
-  `internal/burlerengine` package documentation for the as-built shape (fan model, three-phase round,
-  fork discipline + audit enforcement). No longer blocked on milestone 24 (own-window strand
-  anchoring): forks run in-session inside the handler's own pane, not as separate strands.
-- **A generic tools-restriction on the shuttle `Spec`.** Meaningless for today's single-session A→B
-  agent (B must always write, and `claudeengine` writes `settings.json` once at launch for the whole
-  session). This entry's original premise — that it would matter for cluster reviewers as separate,
-  pure-review sessions gated on milestone 24 — is now stale: cluster reviewers are fork subagents
-  running inside the handler's own session (`useExactTools`, no separate `settings.json` of their
-  own), so this remains speculative and unmotivated rather than blocked on anything.
-- **Bulk-mode clusters + provider-side context caching.** A cluster round can run *tool-use* (each
-  reviewer explores independently) or *bulk* (Go concatenates target + fasit + rubric into one blob
-  passed as a value). Bulk is what makes provider-side context caching (e.g. Gemini's explicit cache)
-  pay off, and only if it is modelled as **one shared prefix + N distinct suffixes**, never N full
-  prompts — that modelling constraint is what keeps caching possible instead of foreclosed once bulk
-  is eventually built.
-- **A per-round provider selector on the shuttle `Spec`.** Today "provider" means whichever engine is
-  wired into the `Runner`; a selector field is only needed once a second engine lands.
+*(Burler's cluster fan-out — the once-deferred idea in this slot — shipped; see milestone 11 above.
+Three other, still-unscheduled burler/shuttle ideas from this section moved to
+[long-term-ideas.md](long-term-ideas.md).)*
 
 ## Explicitly out of scope
 
@@ -348,5 +312,8 @@ These stay in the Python/millpy domain and are **not** planned for `lyx`:
 This roadmap is the shared reference for sequencing. When landing work:
 
 - Move a milestone to ✅ **Done** with a link to its module doc when it ships.
-- Add newly-discovered deferred work as a numbered milestone in the right place.
+- Add newly-discovered deferred work as a numbered milestone in the right place — but only once
+  it's scoped enough to commit to. Unscheduled, speculative ideas that aren't there yet belong in
+  [long-term-ideas.md](long-term-ideas.md), not here (see its Maintenance note for the reverse
+  direction — graduating an idea into a milestone).
 - Do **not** enumerate fine-grained sub-tasks here — those live in the board.
