@@ -42,7 +42,9 @@ batches:
     start_sha: a80313a29cf40ea4487c7381bf86573f5f0683de
     commit_sha: 3724774367056c54e0bf2c86a6cbc0e2630a5e10
   - name: cli-wiring-and-docs
-    state: pending
+    state: running
+    implementer_session: 369f5946-d2c8-497e-a2f6-0b69a05ea870
+    start_sha: 4ba60dd72f56930eb740b0d3d158ebeee7faf23e
   - name: measurement-and-writeup
     state: pending
 ```
