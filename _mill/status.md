@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-seam-extensions
 slug: master-builder
 branch: master-builder
 plan: _mill/plan
@@ -22,6 +22,7 @@ planning  '2026-07-17T11:21:45Z'
 plan-fix-r1  '2026-07-17T11:28:22Z'
 planned  '2026-07-17T11:28:39Z'
 implementing  '2026-07-17T11:29:30Z'
+approved-seam-extensions  '2026-07-17T11:46:22Z'
 ```
 
 ## Batches
@@ -29,9 +30,10 @@ implementing  '2026-07-17T11:29:30Z'
 ```yaml
 batches:
   - name: seam-extensions
-    state: running
+    state: approved
     implementer_session: 9ab2b4ba-c41e-4fac-957e-d01c1c265afa
     start_sha: 79f5b9cd831daaba8797b90a2099ba594555de5c
+    commit_sha: 230fdcdd47e2799e97f290e461334aa5180937b1
   - name: webster-foundation
     state: pending
   - name: webster-audit-policy
