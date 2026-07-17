@@ -492,7 +492,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 
 	switch result.Outcome {
 	case shuttleengine.OutcomeDone:
-		return mapMasterDone(deps, outcomePath, summaryPath, result)
+		return mapMasterDone(deps, plan, outcomePath, summaryPath, result)
 
 	case shuttleengine.OutcomeAsking:
 		return RunResult{}, &MasterAskingError{SessionID: result.SessionID, RunDir: result.RunDir, Message: result.LastAssistantMessage}
@@ -511,13 +511,14 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 // mapMasterDone maps a shuttle-level OutcomeDone Master spawn (both contract
 // files landed) onto RunResult: strict outcome.yaml parsing, the summary.md
 // gate (required content-validity when outcome: done, best-effort
-// otherwise), the run-exit whole-session audit cross-check (done outcomes
-// only — the backstop behind record-batch's own per-batch incremental
-// audit), and the pause-flag clear every non-paused terminal performs. The
+// otherwise), the every-batch-terminal-done cross-check and the run-exit
+// whole-session audit cross-check (done outcomes only — the backstops
+// behind record-batch's own per-batch incremental audit), and the
+// pause-flag clear every non-paused terminal performs. The
 // asking/died/timeout shuttle outcomes never reach this function — they are
 // mapped directly in Run, before any attempt to parse a file Master never
 // wrote.
-func mapMasterDone(deps RunDeps, outcomePath, summaryPath string, result shuttleengine.Result) (RunResult, error) {
+func mapMasterDone(deps RunDeps, plan *builderengine.Plan, outcomePath, summaryPath string, result shuttleengine.Result) (RunResult, error) {
 	outcome, err := builderengine.ParseOutcome(outcomePath)
 	if err != nil {
 		return RunResult{}, err
@@ -533,6 +534,15 @@ func mapMasterDone(deps RunDeps, outcomePath, summaryPath string, result shuttle
 			return RunResult{}, fmt.Errorf("webster: run reached outcome: done but summary.md is missing or malformed: %w", err)
 		}
 		summaryTitle = summary.Title
+
+		// outcome: done is a whole-plan claim: every batch must carry a
+		// persisted terminal done record. A Master that wrote done while a
+		// batch was begun-but-never-recorded (a fork slipped past
+		// record-batch) is caught here, closing the begin-without-record leg
+		// of the two-layer bracket enforcement at run exit.
+		if err := verifyEveryBatchDone(deps.WebsterDir, plan); err != nil {
+			return RunResult{}, err
+		}
 
 		if err := runExitAuditCrossCheck(deps, outcomePath, summaryPath, result); err != nil {
 			return RunResult{}, err
@@ -556,6 +566,43 @@ func mapMasterDone(deps RunDeps, outcomePath, summaryPath string, result shuttle
 		BatchesDone:  outcome.BatchesDone,
 		SummaryTitle: summaryTitle,
 	}, nil
+}
+
+// verifyEveryBatchDone reloads the persisted state and confirms every batch
+// in plan carries a terminal record whose status is done — the whole-plan
+// invariant an outcome: done claims. A batch with no record, a non-terminal
+// record, or a terminal non-done record (stuck/dead) means Master wrote
+// done while that batch was not actually built — most importantly a batch
+// begun but never recorded (its fork slipped past record-batch), which the
+// transcript-count cross-check alone cannot catch when the fork transcript
+// exists but no record-batch consumed it. State is reloaded fresh because
+// the in-memory copy Run captured before Master spawned is stale by run
+// exit (begin/record-batch mutated it repeatedly).
+func verifyEveryBatchDone(websterDir string, plan *builderengine.Plan) error {
+	st, err := LoadState(websterDir)
+	if err != nil {
+		return err
+	}
+	if st == nil {
+		return fmt.Errorf("webster: run reached outcome: done but no state.json exists — no batch was ever recorded")
+	}
+
+	var offenders []string
+	for _, b := range plan.Batches {
+		bs, ok := st.Batches[b.Number]
+		switch {
+		case !ok || bs == nil:
+			offenders = append(offenders, fmt.Sprintf("%02d-%s (never recorded)", b.Number, b.Slug))
+		case !bs.Terminal:
+			offenders = append(offenders, fmt.Sprintf("%02d-%s (begun, not recorded terminal)", b.Number, b.Slug))
+		case bs.Status != builderengine.DigestStatusDone:
+			offenders = append(offenders, fmt.Sprintf("%02d-%s (%s)", b.Number, b.Slug, bs.Status))
+		}
+	}
+	if len(offenders) > 0 {
+		return fmt.Errorf("webster: run reached outcome: done but %d batch(es) lack a terminal done record: %s — a batch was begun without being recorded done, or Master claimed done prematurely", len(offenders), strings.Join(offenders, ", "))
+	}
+	return nil
 }
 
 // runExitAuditCrossCheck implements the run-exit whole-session backstop

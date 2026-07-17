@@ -727,12 +727,72 @@ func TestRun_DoneWithMissingSummaryIsHardError(t *testing.T) {
 	}
 }
 
+// TestRun_DoneWithUnrecordedBatchIsHardError proves the every-batch-done
+// gate: a Master that writes outcome: done while a plan batch has no
+// terminal done record (begun-but-never-recorded — a fork that slipped past
+// record-batch) is a hard error naming the offending batch, even when the
+// outcome/summary files are well-formed and the whole-session audit is
+// clean (round fable-r1's F11).
+func TestRun_DoneWithUnrecordedBatchIsHardError(t *testing.T) {
+	fx := newRunFixture(t, 2)
+
+	// Batch 1 recorded done; batch 2 was begun but never recorded terminal.
+	seedMatchingState(t, fx, &websterengine.State{
+		Batches: map[int]*websterengine.BatchState{
+			1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done", SessionID: "master-session-partial"},
+			2: {Slug: "batch2", Kind: "fork", Terminal: false, SessionID: "master-session-partial"},
+		},
+	})
+
+	handle := &runFakeHandle{
+		strandGUID: "master-strand-partial",
+		result: shuttleengine.Result{
+			Outcome:   shuttleengine.OutcomeDone,
+			SessionID: "master-session-partial",
+			RunDir:    "/run/dir/partial",
+			ForkAudit: &shuttleengine.ForkAudit{
+				Forks: []shuttleengine.ForkReport{
+					{TranscriptPath: "/transcripts/fork1.jsonl", ReportReturned: true},
+					{TranscriptPath: "/transcripts/fork2.jsonl", ReportReturned: true},
+				},
+			},
+		},
+		onWait: func() {
+			if err := os.WriteFile(filepath.Join(fx.Deps.WebsterDir, "outcome.yaml"), []byte("outcome: done\nstuck_reason: null\nbatches_done: 2\n"), 0o644); err != nil {
+				t.Fatalf("write outcome.yaml: %v", err)
+			}
+			if err := os.WriteFile(filepath.Join(fx.Deps.WebsterDir, "summary.md"), []byte("# Claimed done\n\nPremature.\n"), 0o644); err != nil {
+				t.Fatalf("write summary.md: %v", err)
+			}
+		},
+	}
+	fx.Starter.handle = handle
+	seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-partial", "master-session-partial")
+
+	_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	if err == nil {
+		t.Fatal("Run() = nil error; want a hard error for a done outcome with a batch lacking a terminal done record")
+	}
+	if !strings.Contains(err.Error(), "terminal done record") {
+		t.Errorf("Run() error = %q; want the every-batch-done gate message", err.Error())
+	}
+}
+
 // TestRun_DoneWithParentWriteViolationIsHardError proves the run-exit audit
 // cross-check's CheckParent pass fires on a done outcome: a parent write
 // outside the two contract files is a hard error carried on the run's own
 // error, even though the outcome/summary files themselves are well-formed.
 func TestRun_DoneWithParentWriteViolationIsHardError(t *testing.T) {
 	fx := newRunFixture(t, 1)
+
+	// Seed batch 1 as terminal done (recorded under the run's own Master
+	// session) so the run reaches the whole-session audit cross-check rather
+	// than tripping the every-batch-done gate first.
+	seedMatchingState(t, fx, &websterengine.State{
+		Batches: map[int]*websterengine.BatchState{
+			1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done", SessionID: "master-session-violation"},
+		},
+	})
 
 	handle := &runFakeHandle{
 		strandGUID: "master-strand-violation",
