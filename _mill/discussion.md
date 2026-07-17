@@ -176,6 +176,13 @@ It is measurement and a prototype, **not a production build** — no integration
   transitive story characterized too. CHA is cheap/over-broad, RTA is mid, VTA is
   precise/costly — the spike must characterize which (if any) lands in a usable
   precision/cost spot on this repo rather than assuming CHA is good enough.
+  **Callgraph roots:** RTA and VTA build an SSA callgraph from **seed roots** before any
+  incoming edge can be queried, so results are meaningless without a named root set. The
+  spike author **selects and records the roots used** (baseline: `cmd/lyx` `main` + package
+  `init`s, plus test mains if relevant) in the findings doc; reachability — and therefore the
+  RTA/VTA caller sets — is relative to that root set, so it must be stated alongside the
+  numbers. (CHA needs no roots; it is class-hierarchy-based, another reason its results
+  differ from RTA/VTA.)
 - Rejected: direct-references-only (the user chose to include the callgraph comparison).
 
 ### benchmark-symbols
@@ -255,7 +262,12 @@ What mill-plan needs to know about this repo to write the plan:
     before merge**.
   - `gopls` is **not currently installed** in this environment — the gopls-subprocess and
     CC-native-LSP arms require `go install golang.org/x/tools/gopls@latest` first. Record
-    the version tested in the findings doc.
+    the version tested in the findings doc. **Load-bearing arm & fallback:** the **in-process
+    `go/packages`+`go/types` arm is the load-bearing measurement** and needs no external
+    binary (only the `x/tools` library). If `gopls` cannot be installed here (network/policy
+    blocks the `go install`), the **gopls-subprocess comparison degrades to a docs-based
+    characterization** — an accepted, non-blocking outcome, exactly like the CC-native arm.
+    The spike does not stall on installing gopls.
 - **CC-native-LSP wiring:** `.lsp.json` at repo root with
   `{"go": {"command": "gopls", "transport": "stdio", "maxRestarts": 3, ...}}` and
   `ENABLE_LSP_TOOL=1` (per the `zircote/go-lsp` recipe). Any `.lsp.json` added for the
