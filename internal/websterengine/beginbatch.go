@@ -53,9 +53,12 @@ type Injector interface {
 // role->model-spec map (see ResolveRoles); Config is the loaded
 // webster.yaml; Engine supplies the provider-specific ModelSwitchSequence
 // choreography; Injector is what actually types that choreography into
-// Master's pane; WorktreeRoot is the host repo checkout BeginBatch captures
-// HeadSHA from; WebsterDir, ReportsDir, and PromptsDir are the
-// hubgeometry-resolved _lyx/webster, _lyx/webster/reports, and
+// Master's pane; Mux is the live mux query surface the strand-reclaim guards
+// consult (--restart-chain stopping live chain members, and the
+// prior-recovery-strand reclaim before a fork batch overwrites a
+// dead-but-live recovery record); WorktreeRoot is the host repo checkout
+// BeginBatch captures HeadSHA from; WebsterDir, ReportsDir, and PromptsDir
+// are the hubgeometry-resolved _lyx/webster, _lyx/webster/reports, and
 // _lyx/webster/prompts directories.
 type BeginDeps struct {
 	Plan         *builderengine.Plan
@@ -64,6 +67,7 @@ type BeginDeps struct {
 	Config       Config
 	Engine       shuttleengine.Engine
 	Injector     Injector
+	Mux          shuttleengine.MuxOps
 	WorktreeRoot string
 	WebsterDir   string
 	ReportsDir   string
@@ -148,7 +152,7 @@ func BeginBatch(deps BeginDeps, batchNumber int, restartChain bool) (*BeginResul
 	}
 
 	if restartChain {
-		lowest, err := RestartChain(deps.WorktreeRoot, deps.State, deps.Plan, batchNumber, deps.ReportsDir)
+		lowest, err := RestartChain(deps.Mux, deps.WorktreeRoot, deps.State, deps.Plan, batchNumber, deps.ReportsDir)
 		if err != nil {
 			return nil, err
 		}
@@ -251,6 +255,18 @@ func BeginBatch(deps BeginDeps, batchNumber int, restartChain bool) (*BeginResul
 
 	if deps.State.Batches == nil {
 		deps.State.Batches = map[int]*BatchState{}
+	}
+	// If a prior recovery attempt for this batch left a recorded strand (a
+	// dead classification keeps its substrate alive by design, and it may
+	// still be genuinely working), stop it before the record below erases
+	// its StrandGUID: an unreclaimed recovery strand would race this batch's
+	// fresh fork on the host repo — the same kept-strand reclaim builder's
+	// respawn path performs. A plain fork batch's record has an empty
+	// StrandGUID and RemoveStrandIfLive no-ops on it.
+	if prior, ok := deps.State.Batches[batch.Number]; ok && prior != nil && prior.StrandGUID != "" {
+		if err := builderengine.RemoveStrandIfLive(deps.Mux, prior.StrandGUID); err != nil {
+			return nil, err
+		}
 	}
 	deps.State.Batches[batch.Number] = &BatchState{
 		Slug:      batch.Slug,

@@ -17,8 +17,39 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/builderengine"
+	"github.com/Knatte18/loomyard/internal/muxengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
+
+// chainFakeMux is a minimal shuttleengine.MuxOps double for RestartChain's
+// strand-reclaim step: Status returns a scripted set of live strands, and
+// RemoveStrand records every guid it was asked to stop. Only Status and
+// RemoveStrand are reached by RestartChain's own path.
+type chainFakeMux struct {
+	live    []string
+	removed []string
+}
+
+func (m *chainFakeMux) Status() (muxengine.StatusResult, error) {
+	var strands []muxengine.StrandStatus
+	for _, g := range m.live {
+		strands = append(strands, muxengine.StrandStatus{GUID: g, Live: true})
+	}
+	return muxengine.StatusResult{Strands: strands}, nil
+}
+func (m *chainFakeMux) RemoveStrand(guid string, recursive bool) (muxengine.Removed, error) {
+	m.removed = append(m.removed, guid)
+	return muxengine.Removed{}, nil
+}
+func (m *chainFakeMux) AddStrand(spec muxengine.AddSpec) (muxengine.Strand, error) {
+	return muxengine.Strand{}, nil
+}
+func (m *chainFakeMux) SendText(guid, text string, submit bool) error { return nil }
+func (m *chainFakeMux) SendKey(guid, key string) error               { return nil }
+func (m *chainFakeMux) CapturePane(guid string) (string, error)      { return "", nil }
+
+var _ shuttleengine.MuxOps = (*chainFakeMux)(nil)
 
 // chainTestPlan returns a literal two-batch plan with a deferred-verify
 // chain (batch 3 declares chain-end 4; batch 4 IS the chain-end), mirroring
@@ -59,7 +90,7 @@ func TestRestartChain_ResetAndClearMembers(t *testing.T) {
 		ChainStartSHAs: map[int]string{4: anchor},
 	}
 
-	lowest, err := websterengine.RestartChain(worktree, st, chainTestPlan(), 4, reportsDir)
+	lowest, err := websterengine.RestartChain(&chainFakeMux{}, worktree, st, chainTestPlan(), 4, reportsDir)
 	if err != nil {
 		t.Fatalf("RestartChain() error = %v; want nil", err)
 	}
@@ -92,6 +123,36 @@ func TestRestartChain_ResetAndClearMembers(t *testing.T) {
 	}
 }
 
+// TestRestartChain_StopsLiveMemberStrandsBeforeReset proves the reclaim
+// step: a chain member whose recorded recovery strand the mux still reports
+// live is stopped BEFORE the destructive reset (a kept-alive strand would
+// commit on top of the rolled-back tree and be unreclaimable once its
+// BatchState is deleted), while a member whose strand is not live, and a
+// plain fork member with no StrandGUID, are never asked to be removed.
+func TestRestartChain_StopsLiveMemberStrandsBeforeReset(t *testing.T) {
+	worktree := newScratchRepo(t)
+	anchor := commitFile(t, worktree, "base.txt", "base", "base commit")
+	commitFile(t, worktree, "03.md", "batch 03 intermediate work", "03.1: intermediate work")
+
+	st := &websterengine.State{
+		CurrentBatch: 3,
+		Batches: map[int]*websterengine.BatchState{
+			3: {Slug: "refactor-a", StartSHA: anchor, Kind: "recovery", StrandGUID: "live-recovery-strand"},
+			4: {Slug: "refactor-b", Kind: "fork"}, // no StrandGUID — never queried for removal
+		},
+		ChainStartSHAs: map[int]string{4: anchor},
+	}
+
+	mux := &chainFakeMux{live: []string{"live-recovery-strand"}}
+	if _, err := websterengine.RestartChain(mux, worktree, st, chainTestPlan(), 4, t.TempDir()); err != nil {
+		t.Fatalf("RestartChain() error = %v; want nil", err)
+	}
+
+	if len(mux.removed) != 1 || mux.removed[0] != "live-recovery-strand" {
+		t.Errorf("mux.removed = %v; want exactly [live-recovery-strand] stopped before the reset", mux.removed)
+	}
+}
+
 // TestRestartChain_UnrecordedAnchorErrors proves an unrecorded chain-start
 // SHA is refused rather than guessed, and that the refusal touches nothing:
 // the repo is not reset and the seeded report survives untouched.
@@ -111,7 +172,7 @@ func TestRestartChain_UnrecordedAnchorErrors(t *testing.T) {
 		ChainStartSHAs: map[int]string{},
 	}
 
-	_, err := websterengine.RestartChain(worktree, st, chainTestPlan(), 4, reportsDir)
+	_, err := websterengine.RestartChain(&chainFakeMux{}, worktree, st, chainTestPlan(), 4, reportsDir)
 	if err == nil {
 		t.Fatal("RestartChain() error = nil; want an error for an unrecorded chain-start SHA")
 	}
@@ -147,7 +208,7 @@ func TestRestartChain_ChainlessBatchErrors(t *testing.T) {
 	}
 	st := &websterengine.State{ChainStartSHAs: map[int]string{}}
 
-	_, err := websterengine.RestartChain(worktree, st, plan, 1, t.TempDir())
+	_, err := websterengine.RestartChain(&chainFakeMux{}, worktree, st, plan, 1, t.TempDir())
 	if err == nil {
 		t.Fatal("RestartChain() error = nil; want an error (batch 1 names no chain)")
 	}
