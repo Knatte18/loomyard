@@ -1,0 +1,9 @@
+master: sonnet  # model-spec for the long-lived Master session that reads the plan once and forks one implementer per batch in-session
+master_oversized: opus  # model-spec begin-batch injects into Master's pane for a batch flagged oversized: true; forks always inherit the session's CURRENT model, so this is what an oversized batch's fork actually runs at
+recovery: "opus[effort=high]"  # model-spec for the cold, fresh recovery strand recover-batch spawns when a fork reports stuck or writes no report
+self_fix_cap: 2  # max self-fix attempts a forked implementer makes before reporting stuck
+master_timeout_min: 480  # minutes the Master session's own shuttle spawn is allowed to run; this is the WHOLE-RUN timeout (the orchestrator_timeout_min analog, spanning every batch of the plan) — never a per-batch timeout, since fork completion is synchronous within Master's own turn
+recovery_timeout_min: 60  # minutes since spawn after which the cold recovery strand with no report and no live strand classifies dead (dead_reason: timeout); the batch_timeout_min analog, applying only to recover-batch
+poll_wait_s: 480  # seconds a single `recover-batch` call blocks watching the recovery strand for a terminal state before returning a running snapshot
+batch_context_cap_tokens: 100000  # validation check 5's context-estimate cap (bytes/4 over Scope + Where files); a batch over this without oversized: true fails validation
+batch_card_cap: 10  # validation check 5's card-count cap per batch
