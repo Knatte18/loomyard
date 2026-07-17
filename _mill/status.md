@@ -42,7 +42,9 @@ batches:
     start_sha: f1041b3cab46744a5e159232efb65d8824e09f31
     commit_sha: 2fa53f6283234b01ae3d160f97f5af6bcec42ed2
   - name: measure-and-writeup
-    state: pending
+    state: running
+    implementer_session: dc018ac2-265d-4dd6-a8c8-4969a2e86367
+    start_sha: 7093780f80bf35186c4394c1e56355fd502a23c7
   - name: revert-and-verify
     state: pending
 ```
