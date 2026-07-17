@@ -343,6 +343,43 @@ func (r *Runner) Send(guid, text string) error {
 	return sendVerified(r.mux, r.engine, guid, text)
 }
 
+// Inject plays inputs into the live pane of the run whose strand is
+// identified by guid, without needing an in-process Run handle — this is how
+// a caller reaches a session that is mid-turn, busy executing a foreground
+// tool subprocess (e.g. a long-running shell command), rather than sitting
+// idle at its input-ready TUI. It resolves guid via FindRun to confirm it
+// actually names a shuttle run, then requires the strand's pane still be
+// live (requireLiveStrand — the same liveness check Send uses), and plays
+// inputs through playInputs.
+//
+// Contrast with Send/Interrupt: those both call requireReadyAgentPane, which
+// refuses unless the engine classifies the CURRENT pane capture as
+// StartupReady — the provider's idle input prompt actually on screen. Inject
+// deliberately skips that guard: its whole purpose is to deliver keys while
+// the provider is busy and its TUI does NOT show the ready marker, which is
+// exactly the state requireReadyAgentPane would refuse. This makes Inject
+// less safe than Send in one respect — nothing here confirms the target
+// pane is in a state that can actually receive and act on these keys, only
+// that its pane is live — and that gap is deliberately accepted, not
+// papered over: whether delivery into a busy TUI actually lands correctly
+// is validated live by webster's sandbox scenario (a real fork-authorized
+// run mid-turn), not by a guard in this package. Empty inputs is a no-op
+// error, since there would be nothing to deliver and callers building an
+// input slice from optional steps should notice an accidentally-empty
+// result rather than have it silently succeed as a no-op.
+func (r *Runner) Inject(guid string, inputs []PaneInput) error {
+	if len(inputs) == 0 {
+		return fmt.Errorf("shuttle: Inject: inputs must not be empty — there is nothing to deliver")
+	}
+	if _, _, err := FindRun(r.cfg, r.layout, guid); err != nil {
+		return fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
+	}
+	if err := requireLiveStrand(r.mux, guid); err != nil {
+		return err
+	}
+	return playInputs(r.mux, guid, inputs)
+}
+
 // Send delivery-verification tuning: after playing the ComposeSend
 // choreography, the send path polls the pane capture for the sent text —
 // up to sendVerifyAttempts polls, sendVerifyInterval apart — and replays

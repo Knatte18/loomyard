@@ -94,6 +94,12 @@ func TestAuditForks_FullLayout(t *testing.T) {
 	if mutating.WriteCalls != 1 {
 		t.Errorf("mutating fork WriteCalls = %d; want 1", mutating.WriteCalls)
 	}
+	// WritePaths must carry the written path itself, not just the count — a
+	// caller whose forks may write (webster's implementers) polices WHICH
+	// files were touched, per-fork, exactly as ParentWrites does for Master.
+	if len(mutating.WritePaths) != 1 || mutating.WritePaths[0] != "/tmp/repo/notes.md" {
+		t.Errorf("mutating fork WritePaths = %v; want [\"/tmp/repo/notes.md\"]", mutating.WritePaths)
+	}
 	if len(mutating.BashCommands) != 1 || mutating.BashCommands[0] != "git commit -am 'oops'" {
 		t.Errorf("mutating fork BashCommands = %v; want [\"git commit -am 'oops'\"]", mutating.BashCommands)
 	}

@@ -161,7 +161,7 @@ func BatchReportFileName(number int, slug string) string {
 // stuck report auditable rather than deleting it. now is a seam so tests can
 // pin the timestamp; production callers pass time.Now. Absent file: ("", nil),
 // a no-op — a recovery spawn is legitimate even when no prior report exists.
-// Reuses runlevel.go's firstFreeArchivePath so the same-second "-1"/"-2"
+// Reuses runlevel.go's FirstFreeArchivePath so the same-second "-1"/"-2"
 // collision rule lives in exactly one place.
 func archiveStaleReport(reportsDir string, number int, slug string, now func() time.Time) (string, error) {
 	path := filepath.Join(reportsDir, BatchReportFileName(number, slug))
@@ -178,7 +178,7 @@ func archiveStaleReport(reportsDir string, number int, slug string, now func() t
 	const ext = ".yaml"
 	base := strings.TrimSuffix(BatchReportFileName(number, slug), ext)
 	stamp := now().UTC().Format(archiveTimestampFormat)
-	target, err := firstFreeArchivePath(func(suffix string) string {
+	target, err := FirstFreeArchivePath(func(suffix string) string {
 		return filepath.Join(reportsDir, fmt.Sprintf("%s-%s%s%s", base, stamp, suffix, ext))
 	})
 	if err != nil {
@@ -191,7 +191,7 @@ func archiveStaleReport(reportsDir string, number int, slug string, now func() t
 	return target, nil
 }
 
-// removeStrandIfLive removes guid's mux strand when the mux still reports
+// RemoveStrandIfLive removes guid's mux strand when the mux still reports
 // it live, and is a no-op otherwise. It exists for the respawn paths that
 // re-claim a dead-classified batch's deliberately-kept pane: a timed-out
 // implementer may still be WORKING, not hung, and left alive it races the
@@ -200,8 +200,10 @@ func archiveStaleReport(reportsDir string, number int, slug string, now func() t
 // is treated as not-live — a downed mux session hosts no live strand. A
 // failed removal of a genuinely live strand propagates: spawning while the
 // orphan cannot be stopped is exactly the double-drive this helper exists
-// to prevent.
-func removeStrandIfLive(mux shuttleengine.MuxOps, guid string) error {
+// to prevent. Exported as shared infrastructure with a second consumer
+// (webster), which applies the same kept-substrate reclaim discipline to
+// its own respawn ladders.
+func RemoveStrandIfLive(mux shuttleengine.MuxOps, guid string) error {
 	live, err := StrandLive(mux, guid)
 	if err != nil || !live {
 		return nil
@@ -378,7 +380,7 @@ func SpawnBatch(deps SpawnDeps, opts SpawnBatchOptions) (*SpawnResult, error) {
 		// tree. Stop every member's recorded strand before the reset.
 		for _, member := range ChainMembers(deps.Plan, chainEnd) {
 			if memberState := deps.State.Batches[member]; memberState != nil {
-				if err := removeStrandIfLive(deps.Mux, memberState.StrandGUID); err != nil {
+				if err := RemoveStrandIfLive(deps.Mux, memberState.StrandGUID); err != nil {
 					return nil, err
 				}
 			}
@@ -406,7 +408,7 @@ func SpawnBatch(deps SpawnDeps, opts SpawnBatchOptions) (*SpawnResult, error) {
 	priorState := deps.State.Batches[batch.Number]
 	respawnOfDead := priorState != nil && priorState.Terminal && priorState.Status == DigestStatusDead
 	if respawnOfDead {
-		if err := removeStrandIfLive(deps.Mux, priorState.StrandGUID); err != nil {
+		if err := RemoveStrandIfLive(deps.Mux, priorState.StrandGUID); err != nil {
 			return nil, err
 		}
 	}
