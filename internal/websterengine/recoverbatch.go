@@ -271,31 +271,142 @@ func RecoverBatch(deps RecoverDeps, batchNumber int, wait time.Duration, clk Clo
 	return awaitTerminal(deps, batch, bs, spawned, wait, clk)
 }
 
-// awaitTerminal is a placeholder bounded wait: report presence only, no
-// TurnEnded/StrandLive/timeout classification and no substrate cleanup.
-// TODO(recover-batch batch 26): replace with the full Classify-based gather
-// (TurnEnded, StrandLive, Elapsed measured since bs.SpawnedAt across every
-// re-entrant call, drift computation) and terminal substrate-release parity
-// with builder's dead-respawn ladder.
+// awaitTerminal drives one bounded long-poll wait for bs's recovery strand:
+// a gather closure assembles builderengine.ClassifyInputs — the
+// report-presence branch of Classify (parsed only when the report file
+// exists), TurnEnded(bs.EventsPath, deps.Engine), StrandLive(deps.Mux,
+// bs.StrandGUID), Elapsed computed from bs.SpawnedAt (parsed once, up
+// front) so RecoveryTimeoutMin measures wall-clock time since the strand
+// was SPAWNED, not since this particular call started — the property that
+// makes the long-poll safely re-entrant across the tool-call ceiling — and
+// Changed/Dirty via the gitquery helpers, populated only once a report has
+// landed, mirroring Classify's own documented contract. gather is handed to
+// builderengine.PollUntilTerminal, which re-runs it on its fixed tick until
+// terminal or wait elapses.
+//
+// A non-terminal return after wait elapses reports RecoverResult{Running:
+// true, Spawned: spawned, ElapsedS: <since spawn>} — deps.State is left
+// completely untouched, so the caller's next call re-enters cleanly.
+//
+// A terminal return persists exactly as builder's own RecordBatch persists
+// a distilled digest (Digest, Terminal, Status, and CurrentBatch cleared),
+// then releases the recovery strand's substrate with builder's own parity
+// rules: done removes the strand (if still live) and the shuttle run
+// directory; stuck removes the strand but KEEPS the run directory (the
+// stuck trail a human or a fresh recovery diagnosis reads); dead keeps
+// BOTH — the kept pane may still be genuinely working, exactly the
+// kept-substrate reclaim builder's dead-respawn ladder consumes elsewhere.
+// A cleanup failure is collected as a warning on the result, never
+// returned as a fatal error: the terminal classification itself already
+// succeeded, and a caller must not lose that judgment over a best-effort
+// housekeeping failure.
 func awaitTerminal(deps RecoverDeps, batch builderengine.PlanBatch, bs *BatchState, spawned bool, wait time.Duration, clk Clock) (*RecoverResult, error) {
-	reportPath := filepath.Join(deps.ReportsDir, builderengine.BatchReportFileName(batch.Number, batch.Slug))
-	deadline := clk.Now().Add(wait)
-	for {
-		if _, err := os.Stat(reportPath); err == nil {
-			report, err := builderengine.ParseReport(reportPath)
-			if err != nil {
-				return nil, err
-			}
-			digest := builderengine.Distill(report, nil, batch.Scope, false)
-			bs.Digest = &digest
-			bs.Terminal = true
-			bs.Status = digest.Status
-			deps.State.CurrentBatch = 0
-			return &RecoverResult{Digest: &digest, Spawned: spawned}, nil
-		}
-		if clk.Now().After(deadline) {
-			return &RecoverResult{Running: true, Spawned: spawned}, nil
-		}
-		clk.Sleep(time.Second)
+	spawnedAt, err := time.Parse(time.RFC3339, bs.SpawnedAt)
+	if err != nil {
+		return nil, fmt.Errorf("webster: parse recorded spawnedAt %q for batch %d: %w", bs.SpawnedAt, batch.Number, err)
 	}
+
+	reportPath := filepath.Join(deps.ReportsDir, builderengine.BatchReportFileName(batch.Number, batch.Slug))
+	timeout := time.Duration(deps.Config.RecoveryTimeoutMin) * time.Minute
+
+	gather := func() (builderengine.Digest, bool, error) {
+		var report *builderengine.Report
+		if _, statErr := os.Stat(reportPath); statErr == nil {
+			r, err := builderengine.ParseReport(reportPath)
+			if err != nil {
+				return builderengine.Digest{}, false, err
+			}
+			report = r
+		} else if !os.IsNotExist(statErr) {
+			return builderengine.Digest{}, false, fmt.Errorf("webster: stat batch report %s: %w", reportPath, statErr)
+		}
+
+		turnEnded, err := builderengine.TurnEnded(bs.EventsPath, deps.Engine)
+		if err != nil {
+			return builderengine.Digest{}, false, err
+		}
+		strandLive, err := builderengine.StrandLive(deps.Mux, bs.StrandGUID)
+		if err != nil {
+			return builderengine.Digest{}, false, err
+		}
+
+		// Changed/Dirty are Distill's own inputs, populated only once a
+		// report has landed — a running snapshot never touches git, per
+		// ClassifyInputs' documented contract.
+		var changed []string
+		var dirty bool
+		if report != nil {
+			changed, err = builderengine.ChangedFiles(deps.WorktreeRoot, bs.StartSHA)
+			if err != nil {
+				return builderengine.Digest{}, false, err
+			}
+			dirty, err = builderengine.Dirty(deps.WorktreeRoot)
+			if err != nil {
+				return builderengine.Digest{}, false, err
+			}
+		}
+
+		in := builderengine.ClassifyInputs{
+			BatchNumber:  batch.Number,
+			BatchSlug:    batch.Slug,
+			ReportPath:   reportPath,
+			Report:       report,
+			TurnEnded:    turnEnded,
+			StrandLive:   strandLive,
+			Elapsed:      clk.Now().Sub(spawnedAt),
+			BatchTimeout: timeout,
+			Changed:      changed,
+			Scope:        batch.Scope,
+			Dirty:        dirty,
+		}
+		digest, terminal := builderengine.Classify(in)
+		return digest, terminal, nil
+	}
+
+	digest, err := builderengine.PollUntilTerminal(gather, wait, clk)
+	if err != nil {
+		return nil, err
+	}
+
+	elapsedS := int(clk.Now().Sub(spawnedAt).Seconds())
+
+	if digest.Status == builderengine.DigestStatusRunning {
+		return &RecoverResult{Running: true, Spawned: spawned, ElapsedS: elapsedS}, nil
+	}
+
+	bs.Digest = &digest
+	bs.Terminal = true
+	bs.Status = digest.Status
+	deps.State.CurrentBatch = 0
+
+	var warnings []string
+	removeStrand := func() {
+		if err := builderengine.RemoveStrandIfLive(deps.Mux, bs.StrandGUID); err != nil {
+			warnings = append(warnings, fmt.Sprintf("recover-batch: remove strand %s: %v", bs.StrandGUID, err))
+		}
+	}
+	removeRunDir := func() {
+		if bs.ShuttleRunDir == "" {
+			return
+		}
+		if err := os.RemoveAll(bs.ShuttleRunDir); err != nil {
+			warnings = append(warnings, fmt.Sprintf("recover-batch: remove run dir %s: %v", bs.ShuttleRunDir, err))
+		}
+	}
+
+	switch digest.Status {
+	case builderengine.DigestStatusDone:
+		removeStrand()
+		removeRunDir()
+	case builderengine.DigestStatusStuck:
+		// Strand removed, run dir KEPT — the stuck trail a fresh recovery
+		// diagnosis or a human reads.
+		removeStrand()
+	case builderengine.DigestStatusDead:
+		// Both kept: a dead-classified strand may still be genuinely
+		// working, not hung — the same kept-substrate reclaim builder's own
+		// dead-respawn ladder consumes on its next spawn.
+	}
+
+	return &RecoverResult{Digest: &digest, Spawned: spawned, ElapsedS: elapsedS, Warnings: warnings}, nil
 }
