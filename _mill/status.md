@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-sandbox-and-docs
+phase: holistic-reviewing
 slug: master-builder
 branch: master-builder
 plan: _mill/plan
@@ -31,6 +31,7 @@ approved-recover-batch  '2026-07-17T12:36:52Z'
 approved-run-level  '2026-07-17T12:56:40Z'
 approved-webstercli-registration  '2026-07-17T13:28:19Z'
 approved-sandbox-and-docs  '2026-07-17T13:35:15Z'
+holistic-reviewing  '2026-07-17T13:35:35Z'
 ```
 
 ## Batches
