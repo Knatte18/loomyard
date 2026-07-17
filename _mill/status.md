@@ -35,7 +35,9 @@ batches:
     start_sha: 41b4b036e04c5ec9e73a66c5f9d059a709e70359
     commit_sha: 6e67c83bda062926a52f0d21d5a188e003896800
   - name: loom-config-module
-    state: pending
+    state: running
+    implementer_session: ca7aeb18-8b03-4cc6-b7dc-dabfae92484d
+    start_sha: dca04bd5eacf3f30c67b865b5a6eef94b272f17b
   - name: discussion-producer
     state: pending
 ```
