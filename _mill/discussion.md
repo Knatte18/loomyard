@@ -297,6 +297,12 @@ Concrete references:
   anchored on `WorktreeRoot` like `LoomStatusFile` (the discussion artifact is the
   true per-worktree-root one, not a per-subdir copy). `_lyx/discussion/` is durable
   weft-synced state. Filenames: `decision-record.md`, `support-log.md`.
+- **Directory creation is the agent's write concern, not Go's.** `hubgeometry`
+  only *computes* the paths and `Spec.validate` only *rejects* pre-existing
+  outputs — neither creates `_lyx/discussion/`. The prompt instructs the agent to
+  write both files at their absolute paths; the agent's `Write` creates parent
+  dirs (or it `mkdir -p`s first). No Go pre-create step is in scope for the
+  producer, keeping the factory a pure Spec composer.
 
 **Board read** (agent-side, in the prompt, not Go): `lyx board get '{"slug":"<slug>"}'`
 → `{"task": {...}}`; `{"task": null}` if not found — instruct the agent to stop and
