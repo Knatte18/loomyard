@@ -7,6 +7,7 @@ package hubgeometry
 import (
 	"go/ast"
 	"go/parser"
+	"go/scanner"
 	"go/token"
 	"io/fs"
 	"os"
@@ -16,6 +17,74 @@ import (
 	"strings"
 	"testing"
 )
+
+// stripGoComments blanks every comment in the Go source data, replacing the
+// comment bytes with spaces while preserving newlines and the exact byte offsets
+// of all non-comment code. This lets TestEnforcement's substring guard match real
+// code usages of banned tokens (os.Getwd, --show-toplevel) without tripping on the
+// same tokens when they appear only inside explanatory comments. go/scanner (not
+// go/parser) is used deliberately: scanning tolerates build-tag-guarded platform
+// files that would not fully parse, so no production file is silently skipped.
+func stripGoComments(data []byte) []byte {
+	fset := token.NewFileSet()
+	file := fset.AddFile("", fset.Base(), len(data))
+	var s scanner.Scanner
+	s.Init(file, data, nil, scanner.ScanComments)
+
+	out := make([]byte, len(data))
+	copy(out, data)
+	for {
+		pos, tok, lit := s.Scan()
+		if tok == token.EOF {
+			break
+		}
+		if tok != token.COMMENT {
+			continue
+		}
+		start := file.Offset(pos)
+		for i := start; i < start+len(lit) && i < len(out); i++ {
+			if out[i] != '\n' {
+				out[i] = ' '
+			}
+		}
+	}
+	return out
+}
+
+// TestStripGoComments locks in the comment-stripping guard: banned tokens that
+// appear only in comments must be removed, while identical tokens in real code
+// (including string literals) must survive untouched.
+func TestStripGoComments(t *testing.T) {
+	tests := []struct {
+		name    string
+		src     string
+		present bool // whether "os.Getwd" survives stripping
+	}{
+		{
+			name:    "line comment mentioning token is stripped",
+			src:     "package p\n// hubgeometry.Getwd is the only permitted os.Getwd caller\nvar _ = 1\n",
+			present: false,
+		},
+		{
+			name:    "block comment mentioning token is stripped",
+			src:     "package p\n/* avoid os.Getwd here */\nvar _ = 1\n",
+			present: false,
+		},
+		{
+			name:    "real code usage survives",
+			src:     "package p\nimport \"os\"\nvar _, _ = os.Getwd()\n",
+			present: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := strings.Contains(string(stripGoComments([]byte(tt.src))), "os.Getwd")
+			if got != tt.present {
+				t.Errorf("after stripGoComments, os.Getwd present = %v, want %v\nsrc:\n%s", got, tt.present, tt.src)
+			}
+		})
+	}
+}
 
 // TestEnforcement walks the repo source tree and verifies that no source file
 // outside internal/hubgeometry and cmd/lyx contains the raw cwd/root primitives
@@ -74,12 +143,16 @@ func TestEnforcement(t *testing.T) {
 					return nil
 				}
 
-				// Check the file for banned tokens.
+				// Check the file for banned tokens. Comments are stripped first so
+				// that a file which merely *names* a banned token in an explanatory
+				// comment (e.g. codeintelcli/cli.go documenting why hubgeometry.Getwd
+				// is the only permitted os.Getwd caller) is not falsely flagged; the
+				// guard is about real code usage, not prose.
 				data, err := os.ReadFile(path)
 				if err != nil {
 					return err
 				}
-				if isBanned(data) {
+				if isBanned(stripGoComments(data)) {
 					failures = append(failures, relPath)
 				}
 			}
