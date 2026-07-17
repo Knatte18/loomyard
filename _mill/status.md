@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-webster-foundation
+phase: approved-webster-audit-policy
 slug: master-builder
 branch: master-builder
 plan: _mill/plan
@@ -24,6 +24,7 @@ planned  '2026-07-17T11:28:39Z'
 implementing  '2026-07-17T11:29:30Z'
 approved-seam-extensions  '2026-07-17T11:46:22Z'
 approved-webster-foundation  '2026-07-17T11:55:24Z'
+approved-webster-audit-policy  '2026-07-17T12:02:41Z'
 ```
 
 ## Batches
@@ -41,9 +42,10 @@ batches:
     start_sha: 83d7815a8197bdf89a78899cb258ea28a93d453f
     commit_sha: a27f5c2db05c7f60c0e982047637c748829632cf
   - name: webster-audit-policy
-    state: running
+    state: approved
     implementer_session: ad7e0a7d-a686-44a1-968b-4061a7005cc4
     start_sha: 6b62dbfce828093da63e6cd7f65464aa88f15e98
+    commit_sha: b15c944a7eeda008641d7616caf599f9c1a14d1e
   - name: webster-templates
     state: pending
   - name: bracket-verbs
