@@ -52,5 +52,7 @@ batches:
     start_sha: 89b7e32e67b0a82ca76047686067b41216b08f9c
     commit_sha: 54bee383e9fa320ada6fca52ad4752bc06fbc7ec
   - name: reconcile-narrative
-    state: pending
+    state: running
+    implementer_session: 01462222-bdf5-4d17-8533-f7b303e0353e
+    start_sha: 3025c20de370f3272897747b21e90a2407dd8def
 ```
