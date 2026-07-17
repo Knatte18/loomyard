@@ -53,6 +53,7 @@ envelopes.
 
 - **Context:**
   - `internal/builderengine/runlevel.go`
+  - `internal/builderengine/spawn.go`
   - `internal/builderengine/plan.go`
   - `internal/builderengine/validate.go`
   - `internal/builderengine/fingerprint.go`
@@ -131,9 +132,12 @@ envelopes.
   outcome-file parse (the two failure classes are never conflated). `done` →
   `builderengine.ParseOutcome` (strict) + `ParseSummary` REQUIRED when
   `outcome: done` (missing/invalid summary = hard error; optional on
-  `stuck`/`paused`) + the RUN-EXIT AUDIT CROSS-CHECK: run `CheckParent` and
-  `CheckFork` over `Result.ForkAudit` (the whole-session backstop behind the
-  per-batch incremental audits) and verify the audited fork-transcript count
+  `stuck`/`paused`) + the RUN-EXIT AUDIT CROSS-CHECK: `Result.ForkAudit` is a
+  pointer populated only on fork-authorized done runs — a NIL `ForkAudit` on
+  a `done` run of the Master's `ForkSubagents: true` spec is itself a hard
+  error (the audit could not complete; fail-loud, never skipped); otherwise
+  run `CheckParent` and `CheckFork` over it (the whole-session backstop
+  behind the per-batch incremental audits) and verify the audited fork-transcript count
   is >= the number of begun batches with `Kind: "fork"` — a shortfall means a
   batch was recorded without its fork surviving audit; violations are hard
   errors carried on the run error, the outcome stays on disk for diagnosis.

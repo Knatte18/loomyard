@@ -191,10 +191,14 @@ helptree pins). Mirrors buildercli file-for-file. External interface:
   edits (they derive from the live tree). The sandbox-coverage guard
   (`TestSandboxCoverage_AllModulesCoveredOrExcluded`) fires the moment the
   module registers — so this card ALSO creates
-  `tools/sandbox/SANDBOX-WEBSTER-SUITE.md` with its two scenarios (full
-  scenario content specified in card 40's requirements; write it here, card
-  40 then only reviews/extends it), so `**Covers:** webster` exists in the
-  same commit that registers the module and `./cmd/lyx/...` stays green.
+  `tools/sandbox/SANDBOX-WEBSTER-SUITE.md` as a MINIMAL stub in the existing
+  suites' grammar (copied from `SANDBOX-BUILDER-SUITE.md`'s shape): the suite
+  header plus one scenario shell `### W1 -- placeholder (authored in the
+  sandbox-and-docs batch)` carrying the load-bearing `**Covers:** webster`
+  line and placeholder `**Goal:**`/`**Watch:**`/`**Verdict:**` fields. The
+  full W1/W2 scenario content is authored by card 40 (batch 9), which owns
+  the scenario prose — this card only satisfies the coverage guard in the
+  same commit that registers the module so `./cmd/lyx/...` stays green.
 - **Commit:** `lyx: register the webster module with sandbox suite coverage`
 
 ### Card 39: cli tests

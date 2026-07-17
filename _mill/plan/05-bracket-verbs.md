@@ -23,7 +23,33 @@ engine, fake clock) — no CLI, no weft (that is batch 8). External interface:
 
 ## Cards
 
-### Card 19: BeginBatch
+### Card 19: webster RestartChain
+
+- **Context:**
+  - `internal/builderengine/chain.go`
+  - `internal/builderengine/gitquery.go`
+  - `internal/builderengine/spawn.go`
+  - `internal/websterengine/state.go`
+- **Edits:** none
+- **Creates:**
+  - `internal/websterengine/chain.go`
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:** `RestartChain(worktree string, st *State, plan *builderengine.Plan, member int, reportsDir string) (lowest int, err error)`
+  — webster's variant of builder's chain rollback against webster's own
+  `State` (builder's `RestartChain` couples to builder's `State` type, so this
+  is a re-expression, not a copy of shared contract parsing): resolve the
+  chain via `builderengine.ChainEndFor`/`ChainMembers` (any member may be
+  named); require a recorded `ChainStartSHAs` entry (no caller-supplied SHA
+  ever — hard error when unrecorded); `builderengine.ResetHard` to it; delete
+  every member's report file (`builderengine.BatchReportFileName`) and clear
+  their `Batches` entries (digests included); reset `CurrentBatch = 0`;
+  return the chain's LOWEST member for the caller to re-point the begin at
+  (builder's re-point rule). Lands first in this batch: `BeginBatch`
+  (card 20) calls it.
+- **Commit:** `webster: chain rollback against webster state`
+
+### Card 20: BeginBatch
 
 - **Context:**
   - `internal/builderengine/spawn.go`
@@ -51,7 +77,7 @@ engine, fake clock) — no CLI, no weft (that is batch 8). External interface:
   (2) fingerprint gate — `builderengine.Fingerprint(plan.Dir)` vs
   `State.PlanFingerprint` → webster-local `ErrFingerprintMismatch` naming both
   and pointing at `lyx webster run --fresh`;
-  (3) optional `RestartChain` (card 21) when `restartChain` — then continue
+  (3) optional `RestartChain` (card 19) when `restartChain` — then continue
   with the re-pointed lowest member exactly as builder's spawn does;
   (4) resolve the batch from the plan; capture
   `builderengine.HeadSHA(deps.WorktreeRoot)`; record the chain-start SHA in
@@ -74,7 +100,7 @@ engine, fake clock) — no CLI, no weft (that is batch 8). External interface:
   Return `BeginResult{BatchName, PromptPath, StartSHA, AssertedModel}`.
 - **Commit:** `webster: BeginBatch with gates and idempotent model assertion`
 
-### Card 20: RecordBatch
+### Card 21: RecordBatch
 
 - **Context:**
   - `internal/builderengine/report.go`
@@ -127,31 +153,6 @@ engine, fake clock) — no CLI, no weft (that is batch 8). External interface:
   `Status = digest.Status`, clear `CurrentBatch`.
   Return `RecordResult{Digest *builderengine.Digest, NoReport bool, Warnings []string}`.
 - **Commit:** `webster: RecordBatch with incremental audit and digest persistence`
-
-### Card 21: webster RestartChain
-
-- **Context:**
-  - `internal/builderengine/chain.go`
-  - `internal/builderengine/gitquery.go`
-  - `internal/builderengine/spawn.go`
-  - `internal/websterengine/state.go`
-- **Edits:** none
-- **Creates:**
-  - `internal/websterengine/chain.go`
-- **Deletes:** none
-- **Moves:** none
-- **Requirements:** `RestartChain(worktree string, st *State, plan *builderengine.Plan, member int, reportsDir string) (lowest int, err error)`
-  — webster's variant of builder's chain rollback against webster's own
-  `State` (builder's `RestartChain` couples to builder's `State` type, so this
-  is a re-expression, not a copy of shared contract parsing): resolve the
-  chain via `builderengine.ChainEndFor`/`ChainMembers` (any member may be
-  named); require a recorded `ChainStartSHAs` entry (no caller-supplied SHA
-  ever — hard error when unrecorded); `builderengine.ResetHard` to it; delete
-  every member's report file (`builderengine.BatchReportFileName`) and clear
-  their `Batches` entries (digests included); reset `CurrentBatch = 0`;
-  return the chain's LOWEST member for the caller to re-point the begin at
-  (builder's re-point rule).
-- **Commit:** `webster: chain rollback against webster state`
 
 ### Card 22: BeginBatch tests
 
