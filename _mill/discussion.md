@@ -293,7 +293,16 @@ description).
     new since the previous batch boundary = hard error — the batch was never
     forked, **regardless of whether a report file exists** (a report with no fork
     behind it means Master wrote it itself; transcript-count-first is what makes
-    that unfakeable). (2) One-or-more new transcripts + report present → normal
+    that unfakeable). **Flush-timing caveat, explicit:** this moves transcript
+    reading from run-finalize (today's only audit point) to the instant the
+    Agent tool call returns, which assumes Claude Code has flushed
+    `subagents/<id>.jsonl` by then. The zero-transcript hard error therefore
+    fires only after a **bounded settle-retry** (re-scan for a few seconds)
+    — builder's "first failed parse is inconclusive" discipline applied to
+    transcript presence: never a guessed error, at worst one settle-window
+    later. The flush timing itself is asserted in the sandbox validation
+    scenario (transcript present at tool-return time) alongside the `/model`
+    checks. (2) One-or-more new transcripts + report present → normal
     parse/distill; more than one transcript = warning only (legitimate retry
     after a reported `no_report`), never hard. (3) One-or-more new transcripts +
     **no** report → the `no_report` classification (the fork ran but violated the
@@ -329,14 +338,20 @@ description).
 ### fork-prompt-go-rendered
 
 - Decision: `begin-batch` renders the fork-implementer prompt from an embedded
-  webster template (adapted from builder's `implementer-template.md`) and returns
-  it (path or inline in the envelope); Master forwards it **verbatim** to the
-  Agent fork — no additions of its own, ever. Cross-batch digest context is
-  Go-rendered into the prompt by `begin-batch` itself, **unconditionally from
-  batch 2 onward**: the immediately preceding batch's recorded digest line is
-  included as a fixed template section (a Go-decided constant — the plan format
-  is a flat ordered list with no DAG, so there is no dependency edge to consult
-  and no selectivity to infer; see `docs/long-term-ideas.md`'s no-DAG decision).
+  webster template (adapted from builder's `implementer-template.md`) and
+  **writes it to a prompt file** under `_lyx/webster/` (e.g.
+  `prompts/NN-<slug>.md` — a re-renderable runtime artifact, excluded from the
+  weft-commit pathspec like the locks), returning the path in the envelope.
+  Master's Agent fork call is then exactly "Read this file and follow it
+  exactly: <path>" per its template — the mill-brief delivery pattern; no
+  paraphrase surface at all, and the prompt text never sits in Master's context.
+  Cross-batch digest context is Go-rendered into the prompt by `begin-batch`
+  itself, **unconditionally from batch 2 onward**: the immediately preceding
+  batch's digest — read from its persisted `BatchState.Digest` (see
+  `state-schema`), never re-derived — is included as a fixed template section (a
+  Go-decided constant — the plan format is a flat ordered list with no DAG, so
+  there is no dependency edge to consult and no selectivity to infer; see
+  `docs/long-term-ideas.md`'s no-DAG decision).
   The fork prompt is thin —
   batch file path, report path, `self_fix_cap`, per-card host-commit discipline,
   and the fresh-read rule ("re-read the files your batch touches; inherited file
@@ -349,7 +364,12 @@ description).
 - Rejected: Master composing fork prompts freehand from rules in its template;
   Master selectively prefixing prior-batch context by its own judgment (no
   mechanical dependency signal exists in the no-DAG plan format — external
-  review r2's finding).
+  review r2's finding); returning the prompt inline in the envelope (duplicates
+  the text into Master's context and reopens a paraphrase surface);
+  `begin-batch` re-parsing and re-`Distill`ing the preceding report instead of
+  reading the persisted digest (re-derives `files_changed`/`drift`/`dirty`
+  against a HEAD that has since moved — the reconstructed digest could differ
+  from what Master actually saw).
 
 ### oversized-model-escalation
 
@@ -435,7 +455,11 @@ description).
   transcript-audit resolution), `AttributedForkTranscripts` (per-batch map of
   transcript filenames already audited), `Batches map[int]*BatchState`,
   `ChainStartSHAs`. `BatchState`: `Slug`, `StartSHA`, `Kind` (`fork` |
-  `recovery`), `SpawnedAt`, `Terminal`, `Status`, and — recovery only —
+  `recovery`), `SpawnedAt`, `Terminal`, `Status`, `Digest` (the distilled digest
+  persisted by `record-batch` at terminal classification — the persistence home
+  that carries batch N's digest forward to `begin-batch(N+1)`'s fork-prompt
+  rendering and to the crash-resume `{{.progress}}` rendering; builder never
+  persisted `Digest`, webster must), and — recovery only —
   `StrandGUID`/`ShuttleRunDir`/`EventsPath`. Fork batches carry no strand fields
   (there is no strand).
 - Rationale: builder's three strand fields are exactly the mechanism-specific part
@@ -608,8 +632,11 @@ From `CONSTRAINTS.md`, directly applicable:
   injected keystrokes do **not** leak into the running subprocess's own
   stdin/output or otherwise corrupt that tool call's result (corruption is the
   dangerous failure mode that unconditionally triggers the fallback). Not merely
-  mid-turn effect in a quiet pane. Pinned as an early milestone in the plan so
-  the fallback decision lands before the escalation code hardens.
+  mid-turn effect in a quiet pane. The same scenario also asserts the
+  transcript-flush timing the incremental audit depends on: `subagents/<id>.jsonl`
+  is present on disk when the Agent fork call returns. Pinned as an early
+  milestone in the plan so the fallback decision lands before the escalation
+  code hardens.
 
 ## Q&A log
 
@@ -672,3 +699,13 @@ From `CONSTRAINTS.md`, directly applicable:
   Unconditionally from batch 2 onward, Go-rendered by `begin-batch` (the
   preceding batch's digest as a fixed template section) — never Master's
   selective judgment.
+- **Q:** (review r2 gap) Where does batch N's digest live so `begin-batch(N+1)`
+  can render it? **A:** Persisted in `BatchState.Digest` by `record-batch`;
+  never re-`Distill`ed from the report (re-derivation against a moved HEAD could
+  differ from what Master saw). [User standing directive: apply reviewer-round
+  recommendations without per-gap prompting.]
+- **Q:** (review r2 gap) The zero-transcript hard error assumes the fork
+  transcript is flushed when the Agent call returns — de-risk how? **A:**
+  Bounded settle-retry before the hard error (first-miss-is-inconclusive
+  discipline) plus an explicit flush-timing assertion in the sandbox validation
+  scenario.
