@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-status-schema-doc
 slug: loom-contracts
 branch: loom-contracts
 plan: _mill/plan
@@ -21,6 +21,7 @@ planning  '2026-07-17T11:13:52Z'
 plan-review-r1  '2026-07-17T11:20:11Z'
 planned  '2026-07-17T11:20:21Z'
 implementing  '2026-07-17T11:21:48Z'
+approved-status-schema-doc  '2026-07-17T11:25:24Z'
 ```
 
 ## Batches
@@ -28,9 +29,10 @@ implementing  '2026-07-17T11:21:48Z'
 ```yaml
 batches:
   - name: status-schema-doc
-    state: running
+    state: approved
     implementer_session: f7f00c68-f2b8-4872-b8c0-6fc509f8573b
     start_sha: 6c495bdc49eef741b8018cc8ee27a2eae3e64752
+    commit_sha: 94a4ddea480e2369877c82057fce1bd378c76534
   - name: discussion-format-doc
     state: pending
   - name: relocate-contracts

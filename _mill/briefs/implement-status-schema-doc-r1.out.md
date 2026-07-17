@@ -1,0 +1,5 @@
+{"status":"success","commit_sha":"94a4ddea480e2369877c82057fce1bd378c76534","session_id":"f7f00c68-f2b8-4872-b8c0-6fc509f8573b"}
+
+Summary: 1 of 1 cards committed. Created `/home/knatte/Code/loomyard/wts/loom-contracts/docs/reference/status-schema.md`, pinning the `_lyx/status.json` spawn/handover status schema per discussion decisions `status-file-format-json`, `status-single-schema-superset`, `status-seed-writer-is-a-lyx-command`, `status-field-set`, `verdict-history-granularity`, `no-schema-version`, and `doc-rigor-moderate`, in the house style of `docs/modules/builder-contract.md`/`docs/modules/plan-format.md`. Committed as `94a4ddea` ("docs(status-schema): pin _lyx/status.json spawn/handover schema") and pushed. Batch verify (`test -f docs/reference/status-schema.md`) passes. Working tree has no dirty tracked in-scope files (only the untracked implementer brief `_mill/briefs/implement-status-schema-doc-r1.md` remains, which is outside this batch's scope).
+
+{"status":"success","commit_sha":"94a4ddea480e2369877c82057fce1bd378c76534","session_id":"f7f00c68-f2b8-4872-b8c0-6fc509f8573b"}
