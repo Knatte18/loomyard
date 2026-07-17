@@ -36,10 +36,14 @@ correct, fail-loud gate so no downstream phase ever runs against a broken worktr
   `Preflight(l *hubgeometry.Layout) (Report, error)` that validates five preconditions over
   git/filesystem state only.
 - The canonical Go type for the `_lyx/status.json` schema (the pinned
-  [status-schema.md](../docs/reference/status-schema.md)), plus a strict reader
-  (`internal/state.ReadJSON` with `KnownFields(true)`) and a coherence validator implementing
+  [status-schema.md](../docs/reference/status-schema.md)) and a coherence validator implementing
   the schema doc's validation checklist. This type is the one the later phase-machine
   skeleton reuses.
+- A **new shared strict-read primitive `state.ReadJSONStrict[T]`** in `internal/state` (beside
+  the existing `ReadJSON`/`WriteJSON`), using `json.Decoder` + `DisallowUnknownFields()` while
+  keeping the same shared read-lock and atomic-read behaviour. It is a reusable module function,
+  not local to `loomengine` — builder, perch, and the phase-machine skeleton can all adopt it.
+  `loomengine` uses it to parse the seed strictly.
 - A new `hubgeometry` accessor returning the host-side `_lyx/status.json` path (required by
   the Hub Geometry Invariant — `_lyx` paths resolve only through `internal/hubgeometry`).
 - A new exported host-worktree cleanliness helper `warpengine.HostClean(l *hubgeometry.Layout)`
@@ -118,7 +122,9 @@ Preflight validates exactly these, in this order (see check-ordering-and-collect
 3. **Weft paired and in sync** — `os.Stat(l.WeftWorktree())` first (a missing weft yields a
    clean `weft-pairing` "not paired" failure); if present, `warpengine.PairInSync(l)` validates
    host-branch == weft-branch **and** the `_lyx` junction is valid and points at the weft
-   `_lyx` (see weft-pairing-composition). Sync divergence → `weft-sync`; junction problems →
+   `_lyx` (see weft-pairing-composition). `PairInSync`'s single opaque `reason` string is
+   classified into a `CheckID` by prefix (see weft-pairing-composition → reason-classification):
+   branch divergence (`"host on …"`) → `weft-sync`; junction reasons (`"junction …"`) →
    `junction`.
 4. **Seed exists and is coherent** — the `_lyx/status.json` handoff seed exists, parses
    strictly, and is internally coherent (see status-json-typed-and-strict and
@@ -169,9 +175,12 @@ Preflight validates exactly these, in this order (see check-ordering-and-collect
 - **Decision:** This task defines the **canonical Go type** for the `_lyx/status.json`
   schema in `internal/loomengine` (fields per [status-schema.md](../docs/reference/status-schema.md):
   `slug`, `parent`, `phase`, `stage`, `narration`, `history[]{phase,outcome,bounced_to?,ts}`,
-  `start_sha`, `pause_requested`, `next_action`). It is read via `internal/state.ReadJSON[T]`
-  with a strict, fail-loud parse (`KnownFields(true)` discipline — the same as builder's
-  `ParseOutcome` and the burler verdict parse). Unknown/malformed fields are a hard
+  `start_sha`, `pause_requested`, `next_action`). It is read via the **new
+  `state.ReadJSONStrict[T]`** (see Scope → In and strict-read-mechanism below), which uses
+  `json.Decoder` + `DisallowUnknownFields()` — the JSON-accurate analogue of the
+  **DisallowUnknownFields discipline** (this is *not* `KnownFields(true)`, which is a
+  `yaml.Decoder` method; the seed is JSON, so the strict-unknown-field guard is
+  `json.Decoder.DisallowUnknownFields()`). Unknown/malformed fields are a hard
   `seed-incoherent` failure, never silently ignored.
 - **Rationale:** Preflight is the first code consumer of the pinned schema; defining the type
   here (rather than a throwaway existence check) enforces the contract at its first consumer
@@ -179,9 +188,34 @@ Preflight validates exactly these, in this order (see check-ordering-and-collect
   (the schema doc omits it deliberately — single writer, no version pressure).
 - **Rejected:** A minimal "does it parse as *some* JSON" check — leaves the pinned contract
   unenforced at its first consumer and forces the type to be defined later anyway.
-- **Open implementation note for the plan:** `state.ReadJSON` takes a `lockPath`; choose a
-  lock path consistent with builder's `state.json` convention (e.g. a sibling
-  `.status.json.lock` under `_lyx/`). The plan must pin the exact lock-path choice.
+
+#### strict-read-mechanism
+
+- **Decision:** `internal/state.ReadJSON` does **not** reject unknown fields today
+  (`state.go:71` uses plain `json.Unmarshal`), so the strict parse cannot ride on it as-is.
+  Add a **new sibling `state.ReadJSONStrict[T](path, lockPath) (T, bool, error)`** in the
+  `internal/state` package that is identical to `ReadJSON` (same shared read-lock, same atomic
+  read, same `(zero, false, nil)` on `os.IsNotExist`) except it decodes via
+  `json.NewDecoder(...).DisallowUnknownFields()` instead of `json.Unmarshal`. `loomengine`
+  calls `ReadJSONStrict`.
+- **Rationale:** Keeps one strict primitive in the shared `state` module (reusable by builder,
+  perch, and the phase-machine skeleton — a general helper, not local to `loomengine`), with
+  **zero blast radius** on existing `ReadJSON` callers (builder's `state.json`), and preserves
+  the lock/atomic guarantees.
+- **Rejected:** (a) Changing `ReadJSON` itself to `DisallowUnknownFields()` — wide blast radius;
+  every existing caller suddenly rejects any unknown/forward-compat field. (b) `loomengine`
+  reading the bytes with a local decoder — bypasses the shared read-lock and duplicates the
+  read primitive.
+- **Error classification.** Because `ReadJSONStrict` (like `ReadJSON`) returns `(zero, false,
+  nil)` on `os.IsNotExist` and wraps every other read/parse failure as a single `err`, the
+  missing/unreadable/incoherent split (Report `CheckID`s) is derived as: do the seed-read-path
+  `os.Stat` **first** (see seed-read-path) — `IsNotExist` → `seed-missing`, other stat error →
+  `seed-unreadable`; then, only when the stat succeeded, a non-nil `err` from `ReadJSONStrict`
+  is a **parse/unknown-field** failure → `seed-incoherent`, and a `found == false` (should not
+  happen after a successful stat, but treated defensively) → `seed-unreadable`.
+- **Open implementation note for the plan:** `ReadJSONStrict` takes a `lockPath`; choose a lock
+  path consistent with builder's `state.json` convention (e.g. a sibling `.status.json.lock`
+  under `_lyx/`). The plan must pin the exact lock-path choice.
 
 ### seed-read-path
 
@@ -189,7 +223,9 @@ Preflight validates exactly these, in this order (see check-ordering-and-collect
   (i.e. through the `_lyx` junction), **not** via `l.WeftLyxDir()`. Error classification:
   `os.IsNotExist` → clean `seed-missing` failure; any other stat/read error → `seed-unreadable`
   failure with reason "unreadable, see check 3 (junction)". Never report a non-`IsNotExist`
-  error as "missing".
+  error as "missing". After a successful `os.Stat`, the parse itself goes through
+  `state.ReadJSONStrict` (see strict-read-mechanism), whose parse/unknown-field error →
+  `seed-incoherent`.
 - **Rationale:** The junction model exists precisely so `_lyx/` reads as part of the host repo;
   code reading `_lyx/status.json` must not need to know it goes via a junction to the weft.
   Reading via `WeftLyxDir()` in Preflight would break that abstraction in the one place that
@@ -235,6 +271,18 @@ Preflight validates exactly these, in this order (see check-ordering-and-collect
 - **Note:** `l.WeftWorktree()` is name-based (`<worktree-base>-weft`), and *"at the main
   worktree this equals `WeftRepoRoot()`"* — so pairing resolves uniformly for prime and task
   worktrees alike (see run-in-existing-or-prime-worktree).
+- **reason-classification.** `PairInSync` returns a single opaque `reason` string, not a typed
+  `CheckID`. `loomengine` maps it to a `CheckID` by **prefix match on the known reason strings**
+  the function emits (`drift.go`): a reason beginning `"host on "` (branch divergence,
+  `"host on X, weft on Y"`) → `weft-sync`; a reason beginning `"junction "` (`"junction missing"`,
+  `"junction points elsewhere"`) → `junction`. Any **unrecognized** reason → `weft-sync` as the
+  safe default (it still surfaces the raw reason string to the operator, just under the more
+  general sync `CheckID`). The mapping lives in `loomengine` and is unit-testable against the
+  three literal reason strings. A cleaner long-term alternative — promoting `PairInSync` to
+  return a typed reason enum — is deliberately **out of scope** here: it is a warp change with
+  a wider blast radius (`warp pairs`/`reconcile` consume `PairInSync`), and prefix-matching the
+  three pinned strings is sufficient for Preflight. If warp later adds a fourth reason, the
+  unknown-reason default keeps Preflight correct (reported, never dropped).
 
 ### run-in-existing-or-prime-worktree
 
@@ -304,8 +352,12 @@ What the plan needs about the codebase:
   (weft- and pathspec-scoped; returns a `dirty` bool) but is **not** a host clean-check; not
   what check 2 needs.
 - **`internal/state`** ([state.go](../internal/state/state.go)) — `ReadJSON[T](path, lockPath)
-  (T, bool, error)` and `WriteJSON[T]`: locked, atomic, typed. Use `ReadJSON` for the seed with
-  strict decoding. This is the schema doc's mandated mechanism (same as builder's `state.json`).
+  (T, bool, error)` and `WriteJSON[T]`: locked, atomic, typed. **Note `ReadJSON` at `state.go:71`
+  uses plain `json.Unmarshal` — it does NOT reject unknown fields**, and returns `(zero, false,
+  nil)` on `os.IsNotExist`. This task adds a strict sibling `ReadJSONStrict[T]` (see Decisions →
+  strict-read-mechanism) using `json.Decoder.DisallowUnknownFields()`; `loomengine` uses that,
+  not `ReadJSON`. The `internal/state` primitive is still the schema doc's mandated read
+  mechanism (same package as builder's `state.json`).
 - **Pinned contract:** [status-schema.md](../docs/reference/status-schema.md) — the field set,
   the validation checklist (required fields, enum values, `bounced_to`-only-with-`stuck`,
   RFC3339 UTC timestamps), and the strict-parse discipline. Preflight's coherence validator
@@ -348,7 +400,7 @@ Hybrid tiering (decision the-testing-tiers):
 
 - **Untagged (Tier 1, fast, no spawn) — pure status.json coherence/parse:**
   - Valid seed → no failure.
-  - Unknown field / malformed JSON → `seed-incoherent` (strict `KnownFields`).
+  - Unknown field / malformed JSON → `seed-incoherent` (strict `DisallowUnknownFields`).
   - Missing required field → `seed-incoherent`.
   - Bad enum (`phase`/`stage`/`outcome`) → `seed-incoherent`.
   - `bounced_to` present without `outcome: stuck` → `seed-incoherent`.
@@ -395,8 +447,14 @@ plan pins the concrete table-test structure.
 - **Q:** Fail-fast or collect all failures? **A:** Collect all, except geometry (foundational)
   short-circuits; junction health informs seed-error attribution.
 - **Q:** Validate the status.json schema deeply, or just check existence? **A:** Define the
-  canonical Go type + strict `KnownFields(true)` parse implementing the schema doc's full
+  canonical Go type + strict-unknown-field parse implementing the schema doc's full
   validation checklist — Preflight is the schema's first code consumer.
+- **Q (review round 1 gap):** How is the strict, fail-loud parse implemented, given
+  `state.ReadJSON` does not reject unknown fields today? **A:** Add a new shared
+  `state.ReadJSONStrict[T]` in `internal/state` (a reusable module helper, not local to
+  `loomengine`) using `json.Decoder.DisallowUnknownFields()`; keep the lock/atomic behaviour;
+  zero blast radius on existing `ReadJSON` callers. Classify errors via a preceding `os.Stat`
+  (missing/unreadable) + strict-parse error (incoherent).
 - **Q:** Should untracked files count as dirty? **A:** Yes — deliberately stricter than
   Millhouse; everything must be committed at spawn. New `warpengine.HostClean` uses bare
   `--porcelain`.
