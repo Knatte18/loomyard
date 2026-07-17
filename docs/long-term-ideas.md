@@ -14,7 +14,7 @@ graduated out of this file — see `roadmap.md` milestone 26 / wiki task `master
 entry is only the riskier remainder that wasn't picked up with it.
 
 Today's plan format is deliberately a flat ordered list with **no DAG** (see
-`modules/plan-format.md` and `roadmap.md` milestone 12 — "task-level parallelism via separate
+`reference/plan-format.md` and `roadmap.md` milestone 12 — "task-level parallelism via separate
 worktrees + `lyx run`, not intra-plan"). Running independent batches as *parallel* forks would
 require reintroducing a DAG into the plan, which reopens exactly the problem that decision
 avoided: two forks writing to the same worktree at the same time can collide on disk. That's only

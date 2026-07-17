@@ -220,7 +220,7 @@ func PerchRunsDir(baseDir string) string {
 
 // PlanDir returns the path to the base directory for builder's plan-format
 // v1 artifacts within a baseDir: the directory holding 00-overview.md and
-// every NN-<batch-slug>.md batch file (see docs/modules/plan-format.md). It
+// every NN-<batch-slug>.md batch file (see docs/reference/plan-format.md). It
 // lives under _lyx so the plan is weft-synced via the host _lyx junction,
 // like every other durable lyx state. Per the Hub Geometry Invariant, no
 // other package may construct this path.
@@ -244,7 +244,7 @@ func BuilderDir(baseDir string) string {
 
 // BuilderReportsDir returns the path to the directory holding builder's
 // per-batch report files (NN-<batch-slug>.yaml, see
-// docs/modules/plan-format.md's batch-report contract) within a baseDir. It
+// docs/reference/plan-format.md's batch-report contract) within a baseDir. It
 // lives under _lyx so reports are weft-synced via the host _lyx junction,
 // like every other durable lyx state. Per the Hub Geometry Invariant, no
 // other package may construct this path.
