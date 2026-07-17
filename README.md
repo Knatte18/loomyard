@@ -30,6 +30,7 @@ Convenience alias: **`lyx run` → `lyx loom run`** (the everyday autonomous cal
 2. **One-shot, daemonless, file-coordinated.** A command does its work, writes JSON to stdout, and exits. Concurrent processes cooperate through files and locks, not a server.
 3. **cwd-authoritative.** Config and state resolve from the current working directory, which need not equal the git-repo root.
 4. **Correctness by tool design, not by recall.** A `lyx` command makes the correct path the path of least resistance and makes drift *detectable*, rather than relying on an operator or agent to remember a rule.
+5. **Go where it can be; LLM only for judgment.** Deterministic work — verbs, control-flow, parsing, distillation, geometry, git — is Go; an LLM handles only the judgment a program can't (review verdicts, batch implementation, an orchestrator's recovery decisions).
 
 ## Weft overlay model
 
@@ -63,14 +64,18 @@ Every user-facing module is a `lyx <module>` namespace, assembled into one cobra
 - **mux** — the tmux overlay + strand bookkeeping + render. (Superseded `muxpoc`, the
   proof-of-concept it was built from — `muxpoc` proved the risky parts, then was
   deleted once `mux` shipped.)
+- **shuttle** — runs one LLM agent as an interactive tmux strand over a file contract, via a swappable provider engine (Claude today).
 - **selfreport** — file bugs/enhancements against the repo via `gh`.
+- **builder** — an LLM orchestrator over Go verbs: drives a pinned implementation plan batch by batch, spawning each batch's implementer as its own tmux strand.
+- **webster** — a fork-based sibling of `builder`, built to be A/B tested on the same plan: one long-lived Master session forks one implementer per batch **in-session** instead of spawning a fresh strand per batch.
+- **perch** — a generic profile-driven review-gate loop: runs `burler` rounds on one artifact until `APPROVED`/`STUCK`, standalone or as loom's gate between phases.
+- **burler** — one review+fix round (review → fix, no self-grading) over the shuttle file contract; composed by `perch`.
 
 **In progress (design):**
 
-- **loom** — the phased orchestrator (Setup → Discussion → Plan → Builder → Finalize), each phase gated by a review.
-- **review** — a generic profile-driven gate engine, used by `loom` and standalone.
+- **loom** — the phased orchestrator (Preflight → Discussion → Plan → Builder → Raddle → Finalize), each producing phase gated by a `perch` review. Preflight is built; Discussion, Plan, the phase-machine skeleton, Finalize, and session bootstrap are still being built out.
 
-The internal libraries **proc** (cross-OS process spawn) and **shuttle** (drive one LLM agent via a swappable engine) sit under these; see [docs/modules/](docs/modules/).
+The internal library **proc** (cross-OS process spawn) sits under all of these; see [docs/modules/](docs/modules/).
 
 ## Orchestration stack
 
@@ -80,11 +85,12 @@ The orchestrator is a layered stack, each layer knowing only the one below. It h
 internal/proc     spawn any OS process, cross-OS                    [OS primitive]
 internal/mux      tmux overlay + strand bookkeeping + render        [builds on proc]
 internal/shuttle  run ONE LLM agent via a swappable engine          [builds on mux]
-review            generic gate engine: handler/fixer + judge        [builds on shuttle]
-loom              phase machine: drive each phase through a gate     [builds on review]
+burler            one review+fix round: review → fix                [builds on shuttle]
+perch             run burler rounds on one artifact → APPROVED/STUCK [builds on burler]
+loom              phase machine: drive each phase through a gate     [builds on perch]
 ```
 
-The whole stack runs headless (auto mode): strands exist, agents run, output files are read, nobody need watch.
+`builder` and `webster` branch off `shuttle` directly (an LLM orchestrator driving fat Go verbs, not a `perch`/`burler` gate loop). The whole stack runs headless (auto mode): strands exist, agents run, output files are read, nobody need watch.
 
 ## Building
 
