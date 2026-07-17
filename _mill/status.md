@@ -30,7 +30,9 @@ implementing  '2026-07-17T16:28:34Z'
 ```yaml
 batches:
   - name: preflight-prereqs
-    state: pending
+    state: running
+    implementer_session: 3e7d49c7-1991-43ae-9396-dba30b9dc00b
+    start_sha: 90adefa41904dd93a5f13193af5651387a858105
   - name: loomengine-preflight
     state: pending
   - name: docs
