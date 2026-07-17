@@ -46,8 +46,10 @@ config, model resolution, the Spec, output-file contract) is Go. The producer is
   same mechanism as `builder.yaml`:
   - `internal/loomengine/config.go` — `Config` type + `LoadConfig` (validates the
     role model-spec grammar via `modelspec.Parse` at load, like `builderengine`).
-  - `internal/loomengine/template.yaml` — the seed (`discussion: opus[effort=high]`,
-    `discussion_timeout_min: <generous>`).
+    Config fields: `Discussion string` (yaml `discussion`) and
+    `DiscussionTimeoutMin int` (yaml `discussion_timeout_min`).
+  - `internal/loomengine/template.yaml` — the seed
+    (`discussion: opus[effort=high]`, `discussion_timeout_min: 480`).
   - A `ConfigTemplate()` accessor (embed).
   - Register `{Name: "loom", Template: loomengine.ConfigTemplate}` in
     `internal/configreg/configreg.go` `Modules()`.
@@ -165,6 +167,22 @@ config, model resolution, the Spec, output-file contract) is Go. The producer is
   (diverges from the roles pattern; the user wants it in loom's config now, not
   deferred).
 
+### discussion-timeout-knob-is-live
+
+- Decision: `loom.yaml` carries `discussion_timeout_min` (Config
+  `DiscussionTimeoutMin int`), default **480**, and the factory maps it to
+  `Spec.Timeout = time.Duration(DiscussionTimeoutMin) * time.Minute` — the knob is
+  live, not decorative. A factory test asserts the mapping.
+- Rationale: an interactive design interview with a human in the loop runs long;
+  a discussion-specific timeout must be able to exceed shuttle's global
+  `RunTimeoutMin`. If the factory left `Spec.Timeout = 0`, the knob would be dead
+  (shuttle's `Spec.validate` replaces `0` with the global `RunTimeoutMin`), so the
+  mapping must be explicit and tested. Minutes-int → `time.Duration` mirrors
+  `builder.yaml`'s `*_timeout_min` fields.
+- Rejected: dropping the knob and relying on the global `RunTimeoutMin` (a long
+  interactive interview could hit the global default and time out mid-session);
+  leaving the mapping as "defaults or the knob" (ambiguous — the r1 review gap).
+
 ### mill-start-reuse-discipline-not-plumbing
 
 - Decision: The prompt ports `mill-start`'s **interviewing discipline** and
@@ -189,13 +207,19 @@ config, model resolution, the Spec, output-file contract) is Go. The producer is
 - Decision: In interactive mode the agent asks the operator as ordinary
   numbered-list **conversational pane text** and reads the typed reply; it does
   **not** use `AskUserQuestion`.
-- Rationale: `shuttle` treats a live `AskUserQuestion` call as the *asking/yield*
-  terminal outcome, so using it mid-interview would wrongly end the run. (Note:
-  `AskUserQuestion` is *not* inherently banned — that ban was a millhouse/VS-Code
-  leftover; we do not carry that moralizing into the prompt. It is simply the
-  wrong channel for in-interview Q&A here.)
-- Rejected: `AskUserQuestion` for in-interview questions (triggers a premature
-  asking-outcome yield).
+- Rationale: `shuttle`'s `wait.go` classifies `OutcomeAsking` at **any** turn-end
+  where the output files are still unmet — so a conversational-pane question and
+  an `AskUserQuestion` call **both** yield `OutcomeAsking` per turn; that per-turn
+  yield is not the discriminator. The real difference is **answerability on
+  resume**: the phase machine (12.5) answers a yielded turn by `shuttle`'s `Send`
+  (typed text into the pane), which a human's typed pane reply can carry forward,
+  but which **cannot** dismiss/answer a modal `AskUserQuestion` dialog. So
+  conversational pane text is the channel the resume mechanism can actually drive.
+  (Note: `AskUserQuestion` is *not* inherently banned — that ban was a
+  millhouse/VS-Code leftover; we do not carry that moralizing into the prompt.)
+  The multi-turn asking/resume loop itself is 12.5's job, not this task's.
+- Rejected: `AskUserQuestion` for in-interview questions (a modal dialog the
+  `Send`-based resume path cannot answer).
 
 ### producer-seeds-support-log-sections
 
@@ -205,6 +229,14 @@ config, model resolution, the Spec, output-file contract) is Go. The producer is
   placeholder). It writes `decision-record.md`'s seven required sections (Goal,
   Scope, Decisions, Constraints, Auto-mode assumptions, Open risks, Acceptance
   criteria) plus the optional "Notes for the plan writer."
+- The prompt **must also encode `discussion-format.md`'s compaction rules**:
+  `decision-record.md` Decisions carry **Decision + Rationale only** — rejected
+  alternatives go to `support-log.md`'s Rejected alternatives section, **not** the
+  record; must-cover test scenarios go under Acceptance criteria (no standalone
+  Testing section); the record is terse structured prose with no italic
+  prose-coaching. This is prompt-instruction discipline the section-completeness
+  validation checklist does not enforce, so a compliant-but-wrong record could
+  otherwise re-litigate rejected options in the Plan producer's sole input.
 - Rationale: keeps both files contract-complete (per `discussion-format.md`
   validation checklist) without the producer owning review state; the perch gate
   appends rounds later (authorship of Review-rounds content is an explicit
@@ -232,8 +264,9 @@ Concrete references:
 - `Spec` (spec.go): the factory sets `Prompt`, `OutputFiles` (the two discussion
   files — **both** must exist for the run to be "done"; that is the whole return
   channel), `Interactive = !autonomous`, `Role = "discussion"`, `Model/Effort/Version`
-  from the resolved model-spec, and leaves `Display`/`Timeout` at defaults (or
-  `Timeout` from the `loom.yaml` knob). `shuttle` **never templates prompt content**
+  from the resolved model-spec, `Timeout = time.Duration(cfg.DiscussionTimeoutMin) * time.Minute`
+  (see the `discussion-timeout-knob-is-live` decision), and leaves `Display` at
+  its default (`AnchorBelowParent`). `shuttle` **never templates prompt content**
   — the caller composes it (dumb transport). `Spec.validate` **rejects
   pre-existing OutputFiles** — a re-run/resume with stale discussion files fails
   loud there, which is correct and is the phase machine's cleanup concern, not the
@@ -314,8 +347,10 @@ over fixtures.
   instructions are present. **TDD candidate.**
 - **Spec factory:** `OutputFiles` equals exactly the two `_lyx/discussion/` paths
   (absolute, via `hubgeometry`); `Interactive == !autonomous`; `Role == "discussion"`;
-  resolved model-spec maps to `Model/Effort/Version`; the composed prompt is
-  non-empty. A pre-existing output file makes a subsequent `shuttle` run fail — but
+  resolved model-spec maps to `Model/Effort/Version`;
+  `Spec.Timeout == time.Duration(cfg.DiscussionTimeoutMin) * time.Minute` (assert
+  the knob is live — a non-default `DiscussionTimeoutMin` produces a matching
+  non-zero `Timeout`, not `0`); the composed prompt is non-empty. A pre-existing output file makes a subsequent `shuttle` run fail — but
   that is `shuttle`'s tested behaviour, not re-tested here; the factory itself does
   not stat the files.
 - **Config load** (`loom.yaml`): valid `discussion` role parses; a **typo'd
@@ -356,4 +391,9 @@ over fixtures.
 - **Q:** Which `support-log.md` sections does the producer write? **A:** Interview,
   Rejected alternatives, Question ledger; seed an empty Review-rounds section for
   the gate.
+- **Q:** (r1 review gap) Does the `loom.yaml` discussion timeout knob actually map
+  to `Spec.Timeout`? **A:** Yes — make it live: `discussion_timeout_min`
+  (`DiscussionTimeoutMin int`, default 480) → `Spec.Timeout =
+  time.Duration(mins) * time.Minute`, with a factory test. Not dropped (a long
+  interactive interview could hit shuttle's global `RunTimeoutMin` and time out).
 ```
