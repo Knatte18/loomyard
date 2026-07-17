@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-approved
+phase: done
 slug: master-builder
 branch: master-builder
 plan: _mill/plan
@@ -33,6 +33,7 @@ approved-webstercli-registration  '2026-07-17T13:28:19Z'
 approved-sandbox-and-docs  '2026-07-17T13:35:15Z'
 holistic-reviewing  '2026-07-17T13:35:35Z'
 holistic-approved  '2026-07-17T13:41:18Z'
+done  '2026-07-17T13:41:41Z'
 ```
 
 ## Batches
