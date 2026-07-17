@@ -203,6 +203,12 @@ func TestMasterTemplate_StatesBracketSequenceAndRecoveryLadder(t *testing.T) {
 	requireContains(t, text, `subagent_type: "fork"`)
 	requireContains(t, text, "with no name")
 	requireContains(t, text, "forwarded verbatim")
+	// The master prompt is inherited by every fork, so it must disambiguate
+	// role up front and send an inheriting fork away — otherwise the fork
+	// runs Master's await-batch loop and deadlocks (round fable-r1 live).
+	requireContains(t, text, "you are an **IMPLEMENTER")
+	requireContains(t, text, "STOP reading this Master prompt")
+
 	requireContains(t, text, "BACKGROUNDED agent")
 	requireContains(t, text, "call `lyx webster await-batch <NN>`")
 	requireContains(t, text, "`await-batch` re-called in the foreground until the report lands")
