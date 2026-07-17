@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-revert-and-verify
+phase: holistic-reviewing
 slug: codeintel-spike
 branch: codeintel-spike
 plan: _mill/plan
@@ -27,6 +27,7 @@ approved-poc-scaffold-gopackages  '2026-07-17T15:33:45Z'
 approved-poc-gopls-callgraph  '2026-07-17T15:44:42Z'
 approved-measure-and-writeup  '2026-07-17T16:02:58Z'
 approved-revert-and-verify  '2026-07-17T16:06:34Z'
+holistic-reviewing  '2026-07-17T16:06:59Z'
 ```
 
 ## Batches
