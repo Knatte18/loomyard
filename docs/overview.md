@@ -246,6 +246,19 @@ User-facing modules each get one `lyx <module>` namespace:
   (`lyx selfreport create <title>`). Target repo is hardcoded; supports `--body` (or `-` for
   stdin) and `--label`; defaults to `bug`. Callable from any sandbox agent context with no
   config. ✅ Implemented.
+- **codeintel** — multi-language reference lookup over LSP (`internal/codeintelcli` +
+  `internal/codeintelengine`; `lyx codeintel refs <symbol|file:line:col>`). Generalizes
+  the Go-only in-process `go/packages`/`go/types` approach the
+  [codeintel spike](research/codeintel-spike.md) (#008) recommended into a uniform LSP
+  path across five languages (Go, Python, C#, TypeScript, Rust): marker-based language
+  detection with a pinned precedence order, a `builtins()` fallback registry with an
+  optional operator-editable `servers.yaml` overlay (mirroring `internal/modelspec`'s
+  registry shape), and a generalized stdio LSP client (`textDocument/references` +
+  `workspace/symbol` name resolution only, deadline-bounded with a hard-kill on
+  timeout). `internal/codeintelengine` is a cycle-free leaf (typed results/errors, no
+  `internal/output`); `internal/codeintelcli` is the sole layer that maps it to the JSON
+  envelope. ✅ Implemented (v1 scope: references-only, no call hierarchy, no in-process
+  Go arm). See [modules/codeintel.md](modules/codeintel.md).
 - **mux** — **the window to the world**: tmux overlay + **strand** bookkeeping + render
   (`internal/muxcli` + `internal/muxengine` + `internal/muxengine/render`). Hosts every managed
   process as a strand, arranges them, persists to `.lyx/mux.json` (`lyx mux
@@ -393,6 +406,7 @@ The **sandbox Hub** is a dedicated bench for manual testing of lyx's core workfl
 
 - [modules/README.md](modules/README.md) — **the module map**: index of every module doc + how the layers stack (design).
 - [modules/loom.md](modules/loom.md) — the phased orchestrator (`lyx loom` + `lyx perch`); design.
+- [modules/codeintel.md](modules/codeintel.md) — multi-language reference lookup over LSP (`lyx codeintel refs`); as-built design (kept until the doc folds into the `internal/codeintelengine` package header, per the documentation lifecycle).
 - `internal/tokenvocab` package documentation — the shared token vocabulary (`repo`/`hub` +
   `Render` over `internal/stencil`), consumed by mux's header pipeline and, later, loom's
   prompt templates; a leaf, not a phased module (as-built; module doc deleted per the

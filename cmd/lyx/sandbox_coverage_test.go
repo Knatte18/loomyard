@@ -28,6 +28,7 @@ var coversLinePattern = regexp.MustCompile(`^\*\*Covers:\*\*\s*(.+)$`)
 var excludedModules = map[string]string{
 	"ide":        "side-effect heavy: spawn opens a real VS Code window, menu is an interactive stdin picker",
 	"selfreport": "create files a real GitHub issue",
+	"codeintel":  "requires an external language-server binary (gopls/pyright/csharp-ls) on $PATH; exercised by //go:build integration tests, not the black-box sandbox suite",
 }
 
 // TestSandboxCoverage_AllModulesCoveredOrExcluded discovers every module
