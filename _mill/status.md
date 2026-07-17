@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-codeintelengine-core
+phase: approved-lsp-client-and-refs
 slug: codeintel-multilang
 branch: codeintel-multilang
 plan: _mill/plan
@@ -24,6 +24,7 @@ plan-fix-r2  '2026-07-17T17:43:54Z'
 planned  '2026-07-17T17:44:10Z'
 implementing  '2026-07-17T17:45:59Z'
 approved-codeintelengine-core  '2026-07-17T17:55:50Z'
+approved-lsp-client-and-refs  '2026-07-17T18:16:48Z'
 ```
 
 ## Batches
@@ -36,9 +37,10 @@ batches:
     start_sha: 4982fbdb728d83b11a7eb7e7325cc1187336c235
     commit_sha: a55edacef10dc5f1ee20c06ec6b1c28055d9b6cf
   - name: lsp-client-and-refs
-    state: running
+    state: approved
     implementer_session: f7bc336d-747c-4d8f-b6ee-c23307f71ddd
     start_sha: a80313a29cf40ea4487c7381bf86573f5f0683de
+    commit_sha: 3724774367056c54e0bf2c86a6cbc0e2630a5e10
   - name: cli-wiring-and-docs
     state: pending
   - name: measurement-and-writeup
