@@ -198,12 +198,16 @@ func newRunGUID() (string, error) {
 // identically regardless of which one archived it.
 const archiveTimestampFormat = "20060102T150405Z"
 
-// firstFreeArchivePath returns the first path in the sequence
+// FirstFreeArchivePath returns the first path in the sequence
 // candidate(""), candidate("-1"), candidate("-2"), ... that does not
 // currently exist on disk — the same same-second collision rule
-// ArchiveStaleOutcome documents, shared here so archiveStateFile and
-// archiveReportsDir need not each duplicate the collision loop.
-func firstFreeArchivePath(candidate func(suffix string) string) (string, error) {
+// ArchiveStaleOutcome documents, shared here so ArchiveStateFile and
+// ArchiveReportsDir need not each duplicate the collision loop. Exported
+// as shared archive infrastructure: webster's own archive-never-refuse
+// posture (fail-loud-archive-never-refuse) reuses this exact collision rule
+// rather than re-implementing it, per the Shared Decision
+// reuse-by-import-never-copy.
+func FirstFreeArchivePath(candidate func(suffix string) string) (string, error) {
 	for n := 0; ; n++ {
 		suffix := ""
 		if n > 0 {
@@ -219,10 +223,12 @@ func firstFreeArchivePath(candidate func(suffix string) string) (string, error) 
 	}
 }
 
-// archiveStateFile renames builderDir's state.json, if present, to
+// ArchiveStateFile renames builderDir's state.json, if present, to
 // state-<UTC-compact-timestamp>.json in place — the discussion's
 // fingerprint-mismatch escape's first half. Absent file: ("", nil), a no-op.
-func archiveStateFile(builderDir string, now func() time.Time) (string, error) {
+// Exported as shared infrastructure with a second consumer (webster), which
+// applies the same archive-never-refuse posture to its own state file.
+func ArchiveStateFile(builderDir string, now func() time.Time) (string, error) {
 	path := filepath.Join(builderDir, stateFileName)
 	if _, err := os.Stat(path); err != nil {
 		if os.IsNotExist(err) {
@@ -232,7 +238,7 @@ func archiveStateFile(builderDir string, now func() time.Time) (string, error) {
 	}
 
 	stamp := now().UTC().Format(archiveTimestampFormat)
-	target, err := firstFreeArchivePath(func(suffix string) string {
+	target, err := FirstFreeArchivePath(func(suffix string) string {
 		return filepath.Join(builderDir, fmt.Sprintf("state-%s%s.json", stamp, suffix))
 	})
 	if err != nil {
@@ -245,14 +251,16 @@ func archiveStateFile(builderDir string, now func() time.Time) (string, error) {
 	return target, nil
 }
 
-// archiveReportsDir renames reportsDir wholesale, if present, to
+// ArchiveReportsDir renames reportsDir wholesale, if present, to
 // <reportsDir>-<UTC-compact-timestamp> — "clears the reports dir the same
 // way" the discussion's fingerprint-mismatch escape pins — then recreates an
 // empty reportsDir so the re-initialized run has somewhere to write the
 // first batch's report into. Absent dir: a no-op (still recreates an empty
 // one, since a fresh run needs it regardless of whether a prior one ever
-// existed).
-func archiveReportsDir(reportsDir string, now func() time.Time) error {
+// existed). Exported as shared infrastructure with a second consumer
+// (webster), which applies the same archive-never-refuse posture to its own
+// reports dir.
+func ArchiveReportsDir(reportsDir string, now func() time.Time) error {
 	if _, err := os.Stat(reportsDir); err != nil {
 		if !os.IsNotExist(err) {
 			return fmt.Errorf("builder: stat reports dir %s: %w", reportsDir, err)
@@ -261,7 +269,7 @@ func archiveReportsDir(reportsDir string, now func() time.Time) error {
 		stamp := now().UTC().Format(archiveTimestampFormat)
 		parent := filepath.Dir(reportsDir)
 		base := filepath.Base(reportsDir)
-		target, err := firstFreeArchivePath(func(suffix string) string {
+		target, err := FirstFreeArchivePath(func(suffix string) string {
 			return filepath.Join(parent, fmt.Sprintf("%s-%s%s", base, stamp, suffix))
 		})
 		if err != nil {
@@ -429,7 +437,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	// substrate reclaim. A strand that already finished (shuttle removed it on
 	// done) or died on its own reports not-live and is left alone.
 	if st != nil && st.OrchestratorStrand != "" {
-		if err := removeStrandIfLive(deps.Mux, st.OrchestratorStrand); err != nil {
+		if err := RemoveStrandIfLive(deps.Mux, st.OrchestratorStrand); err != nil {
 			return RunResult{}, err
 		}
 	}
@@ -467,15 +475,15 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		// run's own still-working implementer). Same reclaim discipline as
 		// the dead-respawn ladder and the entry-time orchestrator reclaim.
 		for _, bs := range st.Batches {
-			if err := removeStrandIfLive(deps.Mux, bs.StrandGUID); err != nil {
+			if err := RemoveStrandIfLive(deps.Mux, bs.StrandGUID); err != nil {
 				return RunResult{}, err
 			}
 		}
 
-		if _, err := archiveStateFile(deps.BuilderDir, time.Now); err != nil {
+		if _, err := ArchiveStateFile(deps.BuilderDir, time.Now); err != nil {
 			return RunResult{}, err
 		}
-		if err := archiveReportsDir(deps.ReportsDir, time.Now); err != nil {
+		if err := ArchiveReportsDir(deps.ReportsDir, time.Now); err != nil {
 			return RunResult{}, err
 		}
 

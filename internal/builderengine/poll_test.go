@@ -141,6 +141,16 @@ func (e *fakeEngine) AuditForks(sessionID, workdir string) (shuttleengine.ForkAu
 	return shuttleengine.ForkAudit{}, nil
 }
 
+// AuditForksIncremental is never reached, for the same reason as AuditForks.
+func (e *fakeEngine) AuditForksIncremental(sessionID, workdir string, seenTranscripts map[string]bool) (shuttleengine.ForkAudit, error) {
+	return shuttleengine.ForkAudit{}, nil
+}
+
+// ModelSwitchSequence is never reached: TurnEnded never drives a model switch.
+func (e *fakeEngine) ModelSwitchSequence(model string) []shuttleengine.PaneInput {
+	return nil
+}
+
 var _ shuttleengine.Engine = (*fakeEngine)(nil)
 
 func TestTurnEnded(t *testing.T) {

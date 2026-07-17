@@ -104,12 +104,12 @@ func ArchiveStaleOutcome(builderDir string, now func() time.Time) (archivedTo st
 		return "", fmt.Errorf("builder: stat outcome file %s: %w", path, statErr)
 	}
 
-	// Route the same-second collision loop through firstFreeArchivePath so the
+	// Route the same-second collision loop through FirstFreeArchivePath so the
 	// "-1"/"-2" suffix rule lives in exactly one place (runlevel.go), shared
 	// with Run's --fresh state/reports archiving and the recovery report
 	// archive; archiveTimestampFormat is the same shared UTC-compact stamp.
 	stamp := now().UTC().Format(archiveTimestampFormat)
-	target, err := firstFreeArchivePath(func(suffix string) string {
+	target, err := FirstFreeArchivePath(func(suffix string) string {
 		return filepath.Join(builderDir, fmt.Sprintf("outcome-%s%s.yaml", stamp, suffix))
 	})
 	if err != nil {

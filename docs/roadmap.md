@@ -73,7 +73,7 @@ plugin packaging.
 So the immediate front: **`loom`** (the phase machine, the last spine layer, now that
 `builder` ✅ is done — see [builder-contract.md](reference/builder-contract.md)) — the last
 remaining spine layer. The setup-track items (`init`/board-repo creation, `doctor`) remain
-available to interleave at any time; neither blocks `loom`. **Milestone 26 (Master Builder) can
+available to interleave at any time; neither blocks `loom`. **Milestone 26 (webster) can
 proceed in parallel with the whole `loom-*` build order** (see milestone 12) — it's a new, separate
 module, not a revision of the existing `builder`, so nothing about it blocks starting `loom-*` work;
 only one `loom` piece (`loom-finalize`) depends on the prose summary artifact it adds.
@@ -209,7 +209,7 @@ Each layer knows only the one below it; built bottom-up. See the
     2. **Preflight** (renamed from an earlier "Setup" label — it's a pure precondition/validity
        check, not worktree creation, which is `warp`'s job): geometry/cwd via
        `internal/hubgeometry`, clean worktree, weft paired and in sync, no half-finished prior run.
-       No LLM involved; testable in complete isolation.
+       No LLM involved; testable in complete isolation. ✅ **Done** — see `internal/loomengine`.
     3. **Discussion producer** — the one interactive phase, heavily reusing `mill-start`, auto-mode
        capable.
     4. **Plan producer** — autonomous, no inputs beyond `discussion.md`; mostly a well-instructed
@@ -326,19 +326,21 @@ sketch.)*
        title to `tmux: server` and drop the `-L` token from argv — load-bearing for Linux
        confirm-gone).
 
-26. **Master Builder — new, parallel fork-based implementation module.** 🚧 **Planned — can proceed
-    in parallel with the `loom-*` build order.** Graduated from
+26. **webster — fork-based implementation module (né "Master Builder").** ✅ **Done.** See
+    [builder-contract.md](reference/builder-contract.md#webster-the-fork-based-sibling) (the
+    cross-module contract deltas) and the `internal/websterengine` package documentation (webster's
+    own design). Graduated from
     [long-term-ideas.md](long-term-ideas.md). **Not a revision of the existing `builder`** — a new
     module built alongside it, so both can be A/B tested on the same plan before deciding anything.
     The spawn mechanism differs too much to revise in place: today's `builder` spawns each batch's
     implementer as its own separate mux/tmux strand (a new `shuttle.Run` process — see
-    [builder-contract.md](reference/builder-contract.md)). **Master Builder** instead reads
+    [builder-contract.md](reference/builder-contract.md)). **webster** instead reads
     the codebase and the overall implementation plan once in one long-lived session, then forks out
     one implementer per batch (sequential, same order as today) as **in-session Agent-tool forks** —
     the same mechanism `burler` validated for cluster review, applied to writing instead of
     reviewing; no new process, no new mux strand per batch. Note: `burler`'s existing fork-audit
     (`internal/burlerengine/cluster.go`) hard-bans any fork from writing/editing — the opposite of
-    what an implementer fork must do — so Master Builder needs its **own** audit policy (allow
+    what an implementer fork must do — so webster needs its **own** audit policy (allow
     writes, still ban nested `Agent` calls), not a shared audit path with `burler`. Separates what's
     safe to inherit through every fork indefinitely (stable orientation: codebase structure,
     conventions, `CONSTRAINTS.md`, the plan itself) from what isn't (mutable file content — each

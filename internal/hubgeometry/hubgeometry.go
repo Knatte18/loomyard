@@ -254,6 +254,42 @@ func BuilderReportsDir(baseDir string) string {
 	return filepath.Join(BuilderDir(baseDir), "reports")
 }
 
+// WebsterDir returns the path to the base directory for webster's own
+// durable run state within a baseDir: state.json, the pause flag,
+// outcome.yaml, and the reports/prompts subdirectories (see
+// WebsterReportsDir/WebsterPromptsDir). It lives under _lyx so webster's run
+// state is weft-synced via the host _lyx junction, like every other durable
+// lyx state. Per the Hub Geometry Invariant, no other package may construct
+// this path.
+//
+// Returns filepath.Join(baseDir, LyxDirName, "webster").
+func WebsterDir(baseDir string) string {
+	return filepath.Join(baseDir, LyxDirName, "webster")
+}
+
+// WebsterReportsDir returns the path to the directory holding webster's
+// per-batch report files within a baseDir. It lives under _lyx so reports
+// are weft-synced via the host _lyx junction, like every other durable lyx
+// state. Per the Hub Geometry Invariant, no other package may construct this
+// path.
+//
+// Returns filepath.Join(WebsterDir(baseDir), "reports").
+func WebsterReportsDir(baseDir string) string {
+	return filepath.Join(WebsterDir(baseDir), "reports")
+}
+
+// WebsterPromptsDir returns the path to the directory holding webster's
+// rendered fork prompts within a baseDir. Prompts are machine-local,
+// re-renderable artifacts (rendered from templates + current state on every
+// fork) and are deliberately excluded from weft commits — only the state and
+// report artifacts under WebsterDir/WebsterReportsDir are durable. Per the
+// Hub Geometry Invariant, no other package may construct this path.
+//
+// Returns filepath.Join(WebsterDir(baseDir), "prompts").
+func WebsterPromptsDir(baseDir string) string {
+	return filepath.Join(WebsterDir(baseDir), "prompts")
+}
+
 // DotEnv returns the path to the .env file within a baseDir.
 //
 // The .env file provides environment variable overrides for the worktree.
@@ -326,6 +362,29 @@ func (l *Layout) LyxDir() string {
 // Returns filepath.Join(Cwd, dotLyxDirName).
 func (l *Layout) DotLyxDir() string {
 	return filepath.Join(l.Cwd, dotLyxDirName)
+}
+
+// LoomStatusFile returns the path to the loom phase-machine's status.json
+// sidecar for this worktree. It is deliberately WorktreeRoot-anchored, NOT
+// built on LyxDir() (which is Cwd-anchored, see LyxDir above): the loom
+// status file records the state of the whole worktree, and a caller invoked
+// from a subdirectory (Cwd != WorktreeRoot) must still resolve the one true
+// status.json at the worktree root rather than misreading (or seeding) a
+// spurious copy scoped to its subdirectory.
+//
+// Returns filepath.Join(WorktreeRoot, LyxDirName, "status.json").
+func (l *Layout) LoomStatusFile() string {
+	return filepath.Join(l.WorktreeRoot, LyxDirName, "status.json")
+}
+
+// LoomStatusLock returns the path to the advisory lock file guarding
+// concurrent access to LoomStatusFile(). It shares LoomStatusFile's
+// WorktreeRoot anchoring for the same reason: the lock must fence the one
+// true status.json at the worktree root, not a per-subdirectory copy.
+//
+// Returns filepath.Join(WorktreeRoot, LyxDirName, "status.json.lock").
+func (l *Layout) LoomStatusLock() string {
+	return filepath.Join(l.WorktreeRoot, LyxDirName, "status.json.lock")
 }
 
 // HubLogsDir returns the path to the hub-level (not worktree-level) directory
