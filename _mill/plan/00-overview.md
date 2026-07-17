@@ -118,6 +118,7 @@ batches:
 - `internal/codeintelengine/position_test.go`
 - `internal/codeintelengine/refs.go`
 - `internal/codeintelengine/refs_integration_test.go`
+- `internal/codeintelengine/refs_test.go`
 - `internal/codeintelengine/registry.go`
 - `internal/codeintelengine/registry_test.go`
 - `internal/codeintelengine/template.go`

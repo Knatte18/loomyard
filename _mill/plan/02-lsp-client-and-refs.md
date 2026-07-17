@@ -123,6 +123,7 @@ tests are `//go:build integration`-tagged; the in-memory framing test is untagge
 - **Edits:** none
 - **Creates:**
   - `internal/codeintelengine/refs.go`
+  - `internal/codeintelengine/refs_test.go`
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Define public types: `type Reference struct { File string; Line int; Character int }`;
@@ -141,6 +142,10 @@ tests are `//go:build integration`-tagged; the in-memory framing test is untagge
   (7) `references(ctx, fileURI, lspPos)`; (8) map results to `[]Reference` sorted by file:line:col.
   Wrap the phase name into `ErrServerTimeout` at each LSP step. Import stdlib + the sibling files'
   identifiers only. No `internal/output`, no cobra.
+  `refs_test.go` (untagged, spawn-free): point a synthetic registry entry's `Command` at a
+  nonexistent binary and assert `References(...)` returns an error satisfying
+  `errors.Is(err, ErrServerNotFoundSentinel)` — `exec.LookPath` fails before any subprocess is
+  spawned, so this needs no real language server and does not require the `integration` tag.
 - **Commit:** `feat(codeintelengine): References orchestration across detect, registry, and LSP`
 
 ### Card 12: live-server integration test (gopls)
@@ -170,8 +175,9 @@ tests are `//go:build integration`-tagged; the in-memory framing test is untagge
 
 ## Batch Tests
 
-`verify: go test ./internal/codeintelengine/...` runs the untagged Cards 8 and 10 tests (position
-conversion, LSP framing against the in-memory fake) plus batch 1's tests. Card 12's live-gopls test is
+`verify: go test ./internal/codeintelengine/...` runs the untagged Cards 8, 10, and 11 tests (position
+conversion, LSP framing against the in-memory fake, and `References`'s `ErrServerNotFound` mapping via
+a nonexistent-binary registry entry) plus batch 1's tests. Card 12's live-gopls test is
 `//go:build integration`-tagged and excluded from the plain verify, keeping tier-1 offline and
 spawn-free per the Test Tier Purity Invariant; it is exercised separately with `-tags integration` on
 a machine with `gopls` installed (batch 4 installs it).
