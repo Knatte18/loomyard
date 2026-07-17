@@ -36,7 +36,9 @@ batches:
     start_sha: 90adefa41904dd93a5f13193af5651387a858105
     commit_sha: 8201e28d4edc0ed855f4b4ce5596d1f9c8e39ba4
   - name: loomengine-preflight
-    state: pending
+    state: running
+    implementer_session: 1e433e21-2902-443b-b5d5-b945d8f83b20
+    start_sha: 583e2dbcbcdf69007b0a6e6b30348f3c67f54790
   - name: docs
     state: pending
 ```
