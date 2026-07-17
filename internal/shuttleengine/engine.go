@@ -175,6 +175,15 @@ type Engine interface {
 	// submits text as a new turn (e.g. clearing a leaked auto-suggest
 	// before typing text and submitting it).
 	ComposeSend(text string) []PaneInput
+	// ModelSwitchSequence returns the provider-specific key choreography that
+	// switches a live interactive session's model to model, mirroring
+	// ComposeSend's shape (a clearing step, then the switch command typed and
+	// submitted). It exists on the seam — not hardcoded in any caller —
+	// because which command string and key sequence switch a provider's
+	// active model is provider grammar, exactly like ComposeSend/
+	// InterruptSequence (the Shuttle Provider-Seam Invariant's semantic
+	// half).
+	ModelSwitchSequence(model string) []PaneInput
 	// AuditForks reads the provider's on-disk record of a fork-authorized
 	// session's fork subagents — sessionID identifies the session, workdir
 	// is the pane's actual process cwd (never a worktree root that may
@@ -185,4 +194,18 @@ type Engine interface {
 	// error rather than a zero ForkAudit, so a caller cannot mistake "this
 	// provider cannot audit forks" for "this run spawned zero forks".
 	AuditForks(sessionID, workdir string) (ForkAudit, error)
+	// AuditForksIncremental is AuditForks for a long-lived caller that has
+	// already processed some of a session's fork transcripts and wants only
+	// the ones it has not seen yet. Parent facts (SpawnCalls, NamedSpawns,
+	// ParentWriteCalls, ParentWrites, ParentBashCommands) are always
+	// full/cumulative — re-read from the parent transcript in its entirety
+	// every call — since a parent session keeps appending to the same
+	// transcript file across turns. Forks holds one ForkReport per fork
+	// subagent transcript whose TranscriptPath is NOT a key of
+	// seenTranscripts; a nil seenTranscripts reports every fork transcript,
+	// which is what makes AuditForks expressible as this method called with
+	// a nil map. The same zero-fork/missing-parent-transcript error posture
+	// as AuditForks applies: a missing subagents/ directory is a legitimate
+	// zero-fork result, a missing parent transcript is a hard error.
+	AuditForksIncremental(sessionID, workdir string, seenTranscripts map[string]bool) (ForkAudit, error)
 }

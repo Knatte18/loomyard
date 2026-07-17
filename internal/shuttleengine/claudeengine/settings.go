@@ -3,11 +3,12 @@
 // run's events.jsonl (the only channel ParseEvents reads), and the
 // PreToolUse guardrails that keep a run's work visible in its own pane —
 // denying the in-process Agent tool (or, in a fork-mode run, allowing only
-// unnamed fork calls through it), denying AskUserQuestion in autonomous runs
-// (where there is no operator present to answer it), and recording — never
-// denying — a live AskUserQuestion call in interactive runs so the run loop
-// can classify it as a real-time asking signal instead of waiting for the
-// timeout.
+// unnamed fork calls through it), refusing `lyx webster` verbs from inside a
+// fork in a fork-mode run (the fork-context deadlock guard), denying
+// AskUserQuestion in autonomous runs (where there is no operator present to
+// answer it), and recording — never denying — a live AskUserQuestion call in
+// interactive runs so the run loop can classify it as a real-time asking
+// signal instead of waiting for the timeout.
 
 package claudeengine
 
@@ -36,6 +37,19 @@ const steerAgentNonForkDeny = "only fork subagents may be spawned here; other ag
 // interactive dialog, so the model is steered to end its turn with the
 // question as its final message instead.
 const steerAskUserQuestionDeny = "you cannot open an interactive dialog here. If you are blocked or need operator input, state the question as your final message and end your turn WITHOUT writing the result file."
+
+// steerWebsterForkDeny is the PreToolUse(Bash) deny reason for the
+// fork-context webster-verb guard (see the Bash hook built in buildSettings
+// below). webster's Master session forks one implementer per batch in-session,
+// and every fork inherits Master's whole prompt — including the master
+// template's await-batch poll loop. A fork that starts driving that loop
+// itself (polling await-batch for the report it is itself meant to write)
+// livelocks the run, so this guard refuses a `lyx webster` command whenever
+// the hook fires inside a fork (the payload carries a top-level agent_id),
+// steering the fork back to its own implementer job. It must contain no
+// single/double quote or backslash, for the same nested-quoting reason as the
+// other steer constants (checked at init).
+const steerWebsterForkDeny = "lyx webster verbs belong to the Master session, never a fork. You are an implementer fork: do your batch work and write your report, and do NOT run any lyx webster command (not await-batch, not anything) — polling for the report you must write only deadlocks the run. This call is refused."
 
 // hookCommand is one Claude Code hook invocation: a shell command run under
 // git-bash on Windows.
@@ -128,6 +142,14 @@ func denyJSON(steer string) string {
 // polices any Agent call attempted from inside a fork's own pane, not just
 // the parent's. When cfg.ClaudeDenyAgentTool is false, fork mode emits no
 // Agent hook at all, exactly as before this parameter existed.
+//
+// forkSubagents also adds a second, independent PreToolUse(Bash) hook — the
+// fork-context webster-verb guard (steerWebsterForkDeny) — regardless of
+// cfg.ClaudeDenyAgentTool: it deterministically closes webster's fork-loop
+// deadlock by refusing a `lyx webster` command whenever the hook fires inside
+// a fork (its payload carries a top-level agent_id). See the inline comment
+// on that hook below for the full rationale and the live-verified detection
+// signal.
 func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.Config, forkSubagents bool) ([]byte, error) {
 	quotedEventsPath := shQuote(eventsPathPosix)
 	stopCmd := fmt.Sprintf("cat >> %s && printf '\\n' >> %s", quotedEventsPath, quotedEventsPath)
@@ -158,6 +180,34 @@ func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.C
 				Hooks:   []hookCommand{{Type: "command", Command: "echo '" + denyJSON(steerAgentDeny) + "'"}},
 			})
 		}
+	}
+	if forkSubagents {
+		// The fork-context webster-verb guard: a deterministic close for the
+		// fork-loop deadlock (a fork inheriting Master's await-batch loop can
+		// drive `lyx webster` verbs itself and livelock the run). The hook
+		// reads its stdin payload once and denies the Bash call only when BOTH
+		// (a) it fired inside a fork — the payload carries a top-level
+		// `agent_id`, present only for a subagent, never a top-level Master
+		// call (confirmed live on Claude Code 2.1.205; the fork's
+		// transcript_path is NOT distinguishable, it equals the parent's) —
+		// AND (b) the command is a `lyx webster` invocation. A fork's ordinary
+		// Bash (git, verify, edit) is left untouched; only Master's own verbs
+		// are policed. Ending with `; true` guarantees exit 0 (a non-matching
+		// grep would otherwise exit non-zero) so a non-webster or non-fork call
+		// is allowed, never a spurious hook error. Gated on forkSubagents alone
+		// because only a fork-authorized (webster Master) run has forks that
+		// could reach this state; a recovery strand is a separate,
+		// non-fork-authorized session and never sees this hook. This is a
+		// steering guard, not a security boundary — the same class as the
+		// Agent-tool deny above — so the grep patterns are substring/whitespace
+		// matches, not a full JSON parse. `lyx webster` is a webster-family
+		// string rather than a Claude marker; it lives here (not in webster)
+		// because hook-schema composition is claudeengine's own seam.
+		webForkCmd := "in=$(cat); { printf '%s' \"$in\" | grep -q '\"agent_id\"'; } && { printf '%s' \"$in\" | grep -Eq 'lyx[[:space:]]+webster'; } && echo '" + denyJSON(steerWebsterForkDeny) + "'; true"
+		doc.Hooks.PreToolUse = append(doc.Hooks.PreToolUse, hookEntry{
+			Matcher: "Bash",
+			Hooks:   []hookCommand{{Type: "command", Command: webForkCmd}},
+		})
 	}
 	if interactive {
 		// Record the live ask instead of denying it: the marker hook reuses
@@ -200,7 +250,7 @@ const steerTextForbiddenChars = `'"\`
 // into an immediate, unmissable failure rather than a subtle hook-command or
 // JSON-payload corruption discovered only via a live smoke test.
 func init() {
-	for _, steer := range []string{steerAgentDeny, steerAskUserQuestionDeny, steerAgentNonForkDeny} {
+	for _, steer := range []string{steerAgentDeny, steerAskUserQuestionDeny, steerAgentNonForkDeny, steerWebsterForkDeny} {
 		if strings.ContainsAny(steer, steerTextForbiddenChars) {
 			panic(fmt.Sprintf("claudeengine: steer text contains a forbidden character (one of %q), which would break the JSON payload or the echo hook command: %q", steerTextForbiddenChars, steer))
 		}

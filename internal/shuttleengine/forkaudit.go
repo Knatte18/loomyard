@@ -25,6 +25,22 @@ type ForkAudit struct {
 	// NamedSpawns is a defect signal a caller should hard-error on, not merely warn
 	// about.
 	NamedSpawns int
+	// ParentWriteCalls counts Write/Edit/NotebookEdit tool_use blocks observed in
+	// the parent session's own transcript. Interpreting this fact — e.g. whether a
+	// fork-authorized parent is expected to mutate files itself — is the caller's
+	// policy, not this package's.
+	ParentWriteCalls int
+	// ParentWrites carries the file path of every parent-session Write/Edit/
+	// NotebookEdit tool_use block, in transcript order. The path comes from the
+	// block's file_path input key, falling back to notebook_path for NotebookEdit;
+	// a write whose block carries neither key is still counted in
+	// ParentWriteCalls but contributes no entry here.
+	ParentWrites []string
+	// ParentBashCommands carries the verbatim command input of every parent-session
+	// Bash tool_use block, in transcript order. Classifying which of these are
+	// git-mutating (or otherwise disallowed) is the caller's policy, not this
+	// package's — ParentBashCommands only carries the raw strings.
+	ParentBashCommands []string
 }
 
 // ForkReport summarizes one fork subagent's transcript: what it attempted (AgentCalls,
@@ -46,6 +62,15 @@ type ForkReport struct {
 	// own transcript — a fork subagent is expected to review, not mutate files, so a
 	// non-zero WriteCalls is a defect signal a caller may hard-error on.
 	WriteCalls int
+	// WritePaths carries the file path of every fork Write/Edit/NotebookEdit
+	// tool_use block, in transcript order — the per-fork analog of
+	// ForkAudit.ParentWrites, read from the block's file_path input key with the
+	// notebook_path fallback; a write whose block carries neither key still counts
+	// in WriteCalls but contributes no entry here. A caller whose forks are
+	// ALLOWED to write (webster's implementer forks) needs the paths, not just the
+	// count, to police the narrow set of files a fork must never touch (a rogue
+	// fork writing the run's outcome/summary contract files, observed live).
+	WritePaths []string
 	// BashCommands carries every Bash tool_use command string observed in the fork's
 	// own transcript, verbatim and in order. Classifying which of these are
 	// git-mutating (or otherwise disallowed) is the caller's policy, not this

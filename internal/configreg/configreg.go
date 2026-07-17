@@ -14,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/perchengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/warpengine"
+	"github.com/Knatte18/loomyard/internal/websterengine"
 	"github.com/Knatte18/loomyard/internal/weftengine"
 )
 
@@ -44,6 +45,7 @@ func Modules() []Module {
 		{Name: "perch", Template: perchengine.ConfigTemplate},
 		{Name: "shuttle", Template: shuttleengine.ConfigTemplate},
 		{Name: "warp", Template: warpengine.ConfigTemplate},
+		{Name: "webster", Template: websterengine.ConfigTemplate},
 		{Name: "weft", Template: weftengine.ConfigTemplate},
 	}
 }
