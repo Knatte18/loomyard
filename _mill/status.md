@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-fixing
 slug: loom-preflight
 branch: loom-preflight
 plan: _mill/plan
@@ -27,6 +27,7 @@ approved-preflight-prereqs  '2026-07-17T16:34:47Z'
 approved-loomengine-preflight  '2026-07-17T16:43:36Z'
 approved-docs  '2026-07-17T16:46:08Z'
 holistic-reviewing  '2026-07-17T16:46:37Z'
+holistic-fixing  '2026-07-17T16:50:00Z'
 ```
 
 ## Batches
