@@ -39,16 +39,24 @@ implementation. It produces two contract documents (plus adjacent doc reconcilia
 - Author `docs/reference/discussion-format.md` — pins the `_lyx/discussion/` contract (contract 2).
 - **Relocate** `docs/modules/plan-format.md` → `docs/reference/plan-format.md` and
   `docs/modules/builder-contract.md` → `docs/reference/builder-contract.md` (they are
-  cross-module *contracts*, not module-design docs). Fix **every full-path inbound
-  reference** repo-wide — `docs/modules/{plan-format,builder-contract}.md` →
-  `docs/reference/…` — wherever it appears: docs, Go godoc **comments**
-  (`internal/hubgeometry/hubgeometry.go`, `internal/buildercli/cli.go`,
-  `internal/builderengine/{validate,report,doc,template_test}.go`), the
-  `internal/builderengine/implementer-template.md` template, and
-  `tools/sandbox/SANDBOX-BUILDER-SUITE.md`. These are comment/string-only edits — see the
-  "No Go code = no *functional* Go" note under Constraints. Bare-filename mentions
-  ("`plan-format.md` pins …", no `docs/modules/` prefix) are location-agnostic and left
-  untouched. (round-1 gap G1)
+  cross-module *contracts*, not module-design docs). Fix **every inbound reference that
+  encodes the old location** repo-wide → `docs/reference/…`, in **both** forms:
+  - **Full-path** `docs/modules/{plan-format,builder-contract}.md` — in docs, Go godoc
+    **comments** (`internal/hubgeometry/hubgeometry.go`, `internal/buildercli/cli.go`,
+    `internal/builderengine/{validate,report,doc,template_test}.go`), the
+    `internal/builderengine/implementer-template.md` template,
+    `tools/sandbox/SANDBOX-BUILDER-SUITE.md`, and `docs/reviews/builder-review-prompt.md`
+    (8 refs — the largest single cluster).
+  - **Relative** markdown links that resolve to the moving files but never match a full-path
+    grep: `modules/…` from docs at the `docs/` root (`docs/overview.md:269,272,375`,
+    `docs/roadmap.md:57,60,74,189,195,333` → `reference/…`), `../modules/plan-format.md` from
+    `docs/reference/model-spec.md:5` (→ `plan-format.md`, now a sibling), and same-folder
+    sibling links from `docs/modules/loom.md` (`(builder-contract.md)` at L117 →
+    `../reference/builder-contract.md`). Since this task already edits loom.md, overview.md,
+    and roadmap.md, their inbound links move in the same pass.
+  These are comment/string-only edits — see the "No Go code = no *functional* Go" note under
+  Constraints. Bare-filename mentions ("`plan-format.md` pins …", encoding no path) are
+  location-agnostic and left untouched. (round-1 gap G1; round-2 gap + note)
 - Reconcile `docs/modules/loom.md` to match the pinned status schema **and** the
   Setup→Preflight rename (see Decisions: `loom-md-reconciliation`).
 - Update `docs/overview.md`'s Documentation-lifecycle section to distinguish *module-design
@@ -321,13 +329,17 @@ table links neither doc — verified — so there is nothing there to update. ro
 
 No code, so no unit tests. The plan's per-batch `verify:` is documentation integrity:
 
-- **Link integrity (repo-wide)** — after relocating, grep the whole repo for
-  `docs/modules/plan-format.md` and `docs/modules/builder-contract.md`; confirm **zero** stale
-  full-path references remain in docs, Go godoc comments, `implementer-template.md`, or
-  `tools/sandbox/SANDBOX-BUILDER-SUITE.md`. Also fix intra-file relative links *inside* the two
-  moved files (their links to sibling module docs such as `loom.md` shift `loom.md` →
-  `../modules/loom.md`; `../overview.md` and the two files' mutual sibling link are unchanged
-  since both move together). Bare-filename mentions are location-agnostic and excluded.
+- **Link integrity (repo-wide, both link forms)** — after relocating, grep the whole repo for
+  **full-path** (`docs/modules/plan-format.md`, `docs/modules/builder-contract.md`) **and
+  relative** (`modules/plan-format.md`, `modules/builder-contract.md`,
+  `../modules/plan-format.md`, `../modules/builder-contract.md`, and loom.md's same-folder
+  `(plan-format.md)` / `(builder-contract.md)`) references; confirm **zero** that still resolve
+  to `docs/modules/…`. Covers docs, Go godoc comments, `implementer-template.md`,
+  `tools/sandbox/SANDBOX-BUILDER-SUITE.md`, and `docs/reviews/builder-review-prompt.md`. Also
+  fix intra-file relative links *inside* the two moved files (their links to sibling module
+  docs such as `loom.md` shift `loom.md` → `../modules/loom.md`; `../overview.md` and the two
+  files' mutual sibling link are unchanged since both move together). Bare-filename mentions
+  are location-agnostic and excluded.
 - **Contract self-consistency** — the status-schema field list, the phase/stage/outcome
   vocabularies, and the worked examples agree internally and with loom.md's (reconciled)
   prose.
@@ -378,3 +390,7 @@ No code, so no unit tests. The plan's per-batch `verify:` is documentation integ
 - **Q (review r1 G3):** Setup vs pinned `preflight`? **A:** Rename Setup→Preflight in loom.md
   + overview.md and add Raddle to overview.md's loom blurb — the rename was already agreed
   (roadmap 12.2); loom.md/overview.md just never caught up.
+- **Q (review r2 G):** Relative inbound links (not only full-path) to the relocated docs?
+  **A:** Fix both forms — full-path AND relative (`modules/…`, `../modules/…`, loom.md
+  same-folder siblings) → `reference/…`; the link-integrity verify greps both forms. The
+  builder-review-prompt.md cluster (8 refs) is named explicitly in Scope.
