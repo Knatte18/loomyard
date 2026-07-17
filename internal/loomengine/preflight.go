@@ -40,7 +40,7 @@ import (
 // all (a git spawn failure, an unexpected I/O error, or similar infra
 // failure) — the caller must escalate, not treat this as "not ready".
 func Preflight() (Report, error) {
-	// Resolve cwd via hubgeometry.Getwd(), the only permitted os.Getwd call
+	// Resolve cwd via hubgeometry.Getwd(), the only permitted raw-cwd read
 	// outside cmd/lyx/main.go (per the Hub Geometry Invariant).
 	cwd, err := hubgeometry.Getwd()
 	if err != nil {
