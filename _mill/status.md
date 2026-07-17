@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-webster-templates
+phase: approved-bracket-verbs
 slug: master-builder
 branch: master-builder
 plan: _mill/plan
@@ -26,6 +26,7 @@ approved-seam-extensions  '2026-07-17T11:46:22Z'
 approved-webster-foundation  '2026-07-17T11:55:24Z'
 approved-webster-audit-policy  '2026-07-17T12:02:41Z'
 approved-webster-templates  '2026-07-17T12:12:24Z'
+approved-bracket-verbs  '2026-07-17T12:24:56Z'
 ```
 
 ## Batches
@@ -53,9 +54,10 @@ batches:
     start_sha: d72fa93c47dabb79a5d1614605729c4682403b35
     commit_sha: 184fadf025c433aed922d5bf5bb3fb543cdad3f6
   - name: bracket-verbs
-    state: running
+    state: approved
     implementer_session: 5b6901c3-8e67-430f-b456-79c4ffde27ee
     start_sha: 5504145c3b1de1bbea84e573011c2649f602d514
+    commit_sha: 880765120a781cd505688da3200038a73d39443f
   - name: recover-batch
     state: pending
   - name: run-level
