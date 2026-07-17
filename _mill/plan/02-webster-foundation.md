@@ -167,6 +167,7 @@ rest of the plan consumes: `hubgeometry.WebsterDir`/`WebsterReportsDir`/
   - `internal/websterengine/template.go`
 - **Edits:**
   - `internal/configreg/configreg.go`
+  - `internal/configreg/configreg_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
