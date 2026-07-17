@@ -167,22 +167,34 @@ description).
   single-model-only with prompt-escalated re-forks as the sole recovery (user
   explicitly wants real model escalation via cold start).
 
-### recover-batch-blocking-verb
+### recover-batch-reentrant-verb
 
-- Decision: `recover-batch <NN>` is one blocking Go verb: it archives the stale
-  stuck report (archive-never-refuse, builder's rename discipline), spawns the
-  recovery implementer as a shuttle strand (reusing `builderengine.SpawnBatch`
-  machinery via import, with webster's dirs and the `recovery` role), records the
-  strand in `state.json` (weft-committed immediately, so a crash mid-recovery
-  leaves a reclaimable record), blocks until terminal classification (reusing
-  `Classify`/`PollUntilTerminal`), then weft-commits report + state and returns
-  the digest directly in its envelope.
-- Rationale: Master is a live session that would only be poll-looping anyway;
-  collapsing spawn+poll into one blocking verb removes all poll semantics from the
-  master template. The four-branch dead classification (`asking`/`timeout`/`died`)
-  still applies inside the verb — its result surfaces in the returned digest.
+- Decision: `recover-batch <NN>` is one **re-entrant, bounded long-poll** Go
+  verb. The first call archives the stale stuck report (archive-never-refuse,
+  builder's rename discipline), spawns the recovery implementer as a shuttle
+  strand (reusing `builderengine.SpawnBatch` machinery via import, with
+  webster's dirs and the `recovery` role), and records the strand in
+  `state.json` (weft-committed immediately, so a crash mid-recovery leaves a
+  reclaimable record). Every call — including the first — then blocks for at
+  most `poll_wait_s` (builder's ~8-minute default) and returns either the
+  terminal digest (weft-committing report + state) or a `running` snapshot
+  (touching nothing, like builder's poll). A re-entrant call finds the recorded
+  live recovery strand in state and skips straight to the bounded wait — Master
+  simply re-calls `recover-batch <NN>` until terminal.
+- Rationale: a single unbounded block would hold one Bash tool call open for up
+  to `recovery_timeout_min` (60+ minutes) — exceeding the harness's tool-call
+  ceiling and recreating exactly the shape builder's poll loop was built to
+  avoid; bounded ~8-minute windows are builder's proven long-poll discipline
+  (the long-poll IS the notification), with no fragile coupling between the
+  tool-timeout and `recovery_timeout_min` knobs. Still one verb from Master's
+  side: the template's exception path learns only "re-call until terminal",
+  never a separate spawn/poll pair. The four-branch dead classification
+  (`asking`/`timeout`/`died`) still applies inside the verb — its result
+  surfaces in the returned digest.
 - Rejected: mirroring builder's two-verb `spawn-batch --role recovery` + `poll`
-  shape (teaches the template poll semantics used only on the exception path).
+  shape (teaches the template a spawn/poll split used only on the exception
+  path); one unbounded blocking call (external review r2's finding — tool-call
+  ceiling risk, dead-tool-result-while-Go-lives ambiguity, hour-long open call).
 
 ### fork-failure-ladder
 
@@ -244,9 +256,10 @@ description).
   library calls** inside webstercli's verbs, at four deterministic points:
   1. `begin-batch` — state.json (start-SHA + batch entry durable before the fork).
   2. `record-batch` — batch report + state.json (the main per-batch sync).
-  3. `recover-batch` — twice: after spawn (state with recovery-strand record) and
-     at terminal classification (report + state), mirroring builder's
-     spawn-batch/poll points.
+  3. `recover-batch` — twice: on the spawning first call (state with
+     recovery-strand record) and on the call that reaches terminal
+     classification (report + state), mirroring builder's spawn-batch/poll
+     points; intermediate `running`-snapshot calls touch neither git nor weft.
   4. `run` — exit backstop regardless of outcome (covers `outcome.yaml`,
      `summary.md`, stragglers), skipped only on `ErrRunBusy`.
   Pathspec always excludes `*.lock` and the pause flag, as builder's does.
@@ -318,8 +331,13 @@ description).
 - Decision: `begin-batch` renders the fork-implementer prompt from an embedded
   webster template (adapted from builder's `implementer-template.md`) and returns
   it (path or inline in the envelope); Master forwards it **verbatim** to the
-  Agent fork, optionally prefixed with one line of distilled prior-batch digest
-  context when the batch depends on an earlier one. The fork prompt is thin —
+  Agent fork — no additions of its own, ever. Cross-batch digest context is
+  Go-rendered into the prompt by `begin-batch` itself, **unconditionally from
+  batch 2 onward**: the immediately preceding batch's recorded digest line is
+  included as a fixed template section (a Go-decided constant — the plan format
+  is a flat ordered list with no DAG, so there is no dependency edge to consult
+  and no selectivity to infer; see `docs/long-term-ideas.md`'s no-DAG decision).
+  The fork prompt is thin —
   batch file path, report path, `self_fix_cap`, per-card host-commit discipline,
   and the fresh-read rule ("re-read the files your batch touches; inherited file
   content may be stale") — because the fork inherits Master's full context and
@@ -328,7 +346,10 @@ description).
   rendering the prompt in Go keeps both halves of that contract co-versioned in
   one commit, per builder's templates↔parsers rule. Master paraphrasing the report
   schema would be a silent-breakage vector.
-- Rejected: Master composing fork prompts freehand from rules in its template.
+- Rejected: Master composing fork prompts freehand from rules in its template;
+  Master selectively prefixing prior-batch context by its own judgment (no
+  mechanical dependency signal exists in the no-DAG plan format — external
+  review r2's finding).
 
 ### oversized-model-escalation
 
@@ -379,9 +400,11 @@ description).
   `orchestrator_timeout_min`, default 480, deliberately generous because it spans
   every batch of the sequential plan; it is NOT a per-batch timeout, and no
   per-batch watchdog exists in-session since fork completion is synchronous
-  within Master's turn), `recovery_timeout_min` (recover-batch's terminal-wait
-  timeout — the per-batch `batch_timeout_min` analog, applying only to the cold
-  recovery strand), and the validate caps (`batch_context_cap_tokens`,
+  within Master's turn), `recovery_timeout_min` (the per-batch
+  `batch_timeout_min` analog, applying only to the cold recovery strand —
+  elapsed-since-spawn, evaluated across re-entrant `recover-batch` calls),
+  `poll_wait_s` (the bounded window a single `recover-batch` call blocks for,
+  builder's ~480s default), and the validate caps (`batch_context_cap_tokens`,
   `batch_card_cap`) mirroring builder's. Role grammar checked at `LoadConfig` via `modelspec.Parse`;
   all roles resolved via `ResolveRoles`-style pre-flight at `run` entry.
 - Rationale: matches builder's config discipline; sonnet default keeps the A/B
@@ -579,10 +602,14 @@ From `CONSTRAINTS.md`, directly applicable:
   real plan end-to-end, plus the `/model` injection validation scenario whose
   verdict decides escalation-vs-fallback — it must inject **while a foreground
   Bash tool subprocess is executing in the pane** (the production `begin-batch`
-  timing) and confirm the keys reach the TUI input and the model switches for
-  subsequent calls in the same turn, not merely assert mid-turn effect in a quiet
-  pane — pinned as an early milestone in the plan so the fallback decision lands
-  before the escalation code hardens.
+  timing) and assert two distinct properties: (a) the keys reach the TUI input
+  and the model switches for subsequent calls in the same turn (a miss here is
+  the benign failure mode → degrade to the documented fallback), and (b) the
+  injected keystrokes do **not** leak into the running subprocess's own
+  stdin/output or otherwise corrupt that tool call's result (corruption is the
+  dangerous failure mode that unconditionally triggers the fallback). Not merely
+  mid-turn effect in a quiet pane. Pinned as an early milestone in the plan so
+  the fallback decision lands before the escalation code hardens.
 
 ## Q&A log
 
@@ -635,3 +662,13 @@ From `CONSTRAINTS.md`, directly applicable:
   asserts the correct model for each batch (escalate or de-escalate as needed),
   making it the single injection point; `record-batch` never touches the model
   and no run-exit reset is needed.
+- **Q:** (external review r2) `recover-batch` as one unbounded blocking call
+  exceeds the tool-call ceiling and recreates the shape builder's poll avoided —
+  bound it or raise the ceiling? **A:** User delegated; chose the re-entrant
+  bounded long-poll shape (`poll_wait_s` windows, Master re-calls until
+  terminal) over raising Master's Bash ceiling.
+- **Q:** (external review r2) When does the fork prompt carry prior-batch digest
+  context, given the no-DAG plan format has no dependency edges? **A:**
+  Unconditionally from batch 2 onward, Go-rendered by `begin-batch` (the
+  preceding batch's digest as a fixed template section) — never Master's
+  selective judgment.
