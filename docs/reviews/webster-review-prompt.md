@@ -221,16 +221,20 @@ green `go test` proves nothing here:
   fork orchestration (that is websterv2).
 
 ## Round context seeded from prior-round verification
-You are round tag `fable-r3` — **round 3** of an initial cap of **up to 4 rounds**, model rotation
-**Fable → Opus → Fable → Opus**. **This is a SAFETY PASS.** Rounds 1 and 2 both converged: the
-orchestrator has independently verified the module is **MERGEABLE for the normal single-instance
-flow** (cold hermetic gates green; the live smoke suite runs 4/4 real-substrate; the fork-loop
-deadlock is mechanically closed and live-regression-guarded). There is **no known residual.** Your
-job is the belt-and-suspenders check the method requires before merge: a genuinely independent
-clean-room pass to find anything BOTH prior rounds missed — OR to honestly confirm merge-readiness.
-**"No new defects, ship it" is the EXPECTED, valuable outcome of a safety pass — do not invent work
-to justify the round.** Equally, do not rubber-stamp: the loop now runs end-to-end, so seams that
-were unreachable before are reachable now — genuinely exercise them.
+You are round tag `opus-r4` — **round 4**, the **LAST authorized round** of an initial cap of **up to
+4 rounds**, model rotation **Fable → Opus → Fable → Opus**. **This is a SAFETY PASS.** Rounds 1, 2,
+and 3 have all been independently orchestrator-verified. Crucially, **round 3 (the previous safety
+pass) did NOT come back clean** — a genuinely independent Fable pass found a **BLOCKING happy-path
+run-killer** (FR3-1: the run-exit audit false-failed a fully-successful `done` run whenever Master
+spelled its contract-file Write path relatively) plus two more confirmed-live MEDIUMs, all in seams
+the earlier fork-loop deadlock had blocked from being reached. That is exactly why a fresh-model
+safety pass has value: **the last two rounds each found real bugs the prior cold verification missed.**
+Your job is the belt-and-suspenders check the method requires before merge: a genuinely independent
+clean-room pass — with an OPUS lens this time — to find anything the three prior rounds missed, OR to
+honestly confirm merge-readiness. **"No new defects, ship it" is the EXPECTED, valuable outcome of a
+safety pass — do not invent work to justify the round.** Equally, do not rubber-stamp: round 3 proves
+these now-reachable seams still hide bugs — genuinely exercise them, especially the ones round 3 just
+touched.
 
 **CLOSED AND ORCHESTRATOR-VERIFIED — do NOT re-litigate (confirm no regression only):**
 - Round 1 (`fable-r1`, commits `aea58060..51b65cf2`): F1–F18, 18 findings. Headline: on Claude Code
@@ -246,27 +250,48 @@ were unreachable before are reachable now — genuinely exercise them.
   a fork's `lyx webster` call while Master's own + a fork's git/verify Bash pass — this is what makes
   the deadlock mechanically impossible; recovery strands run `ForkSubagents:false` so they are
   unaffected. F-R2b — the `//go:build smoke` suite (`internal/webstercli/smoke_test.go`). Plus two
-  LOWs: stale "fork is synchronous" comment in `template.yaml`, and a master-template weft-sync-error
-  ladder rung.
+  LOWs.
+- Round 3 (`fable-r3`, commits `804c6b83..9d9b4642`): 8 findings, 3 CONFIRMED live. **FR3-1
+  (BLOCKING):** `CheckParent`/`CheckFork` now canonicalize each transcript-recorded write path via
+  `resolveWritePath(workdir, path)` (relative → resolved against the pane cwd) before comparing to the
+  absolute contract paths — killed a false `parent-write` violation that failed healthy `done` runs
+  on a path-spelling coin-flip. **FR3-2 (MEDIUM):** `RecordBatch` now audits the bracket-OPENING
+  session (`bs.SessionID`), not the current Master session, so a resume after a crash between a fork's
+  report landing and `record-batch` can still consume that report (the crashed session's fork
+  transcript persists on disk); + a Kind guard refusing a recovery-kind batch loud, a template resume
+  rung, and a live smoke `TestSmoke_RecordBatchConsumesCrashedSessionReport`. **FR3-3 (MEDIUM):**
+  `shuttleengine.ForkReport.WritePaths` + a `fork-contract-write` hard-violation class flag a fork
+  writing Master's `outcome.yaml`/`summary.md`. **FR3-4 (MEDIUM):** master template hardened against a
+  fork reasoning "I am the Master" past the disambiguation banner. FR3-5/6 (LOW: progress-trail
+  status-awareness; model-injection-is-last-fallible-act ordering), FR3-7 (doc pin), FR3-8 (NIT flag
+  help). **W2 `/model` was closed live in round 3:** on Claude Code 2.1.205 the injected `/model` is
+  QUEUED for Master's whole single turn and never executes mid-run — the oversized escalation degrades
+  to its documented benign fallback (forks inherit the launch model); (b) no foreground corruption
+  holds post-F18; (c) exactly one transcript attributed per batch. This is now pinned in `doc.go`
+  (FR3-7) — do NOT re-litigate whether oversized "should" switch the model mid-run; it structurally
+  cannot on 2.1.205, and that is documented, not a defect.
 
 **Your mandate this round:**
-1. **Independent safety pass.** Read the SPEC + current code yourself; drive the real substrate
-   against every "High-yield focus" invariant, especially seams the deadlock previously blocked from
-   reaching: the `await-batch` poll loop under a slow / never-arriving report; the R2-a guard's
-   interaction with `recover-batch` (a recovery strand is NOT a fork — it MUST still be allowed);
-   crash/resume THROUGH the async await loop; the weft-sync-error ladder rung R2 added. Form your own
-   findings before consulting prior `.scratch/webster-review-*` material.
-2. **One live gap to close this round (both prior rounds left it):** drive the **W2 `/model`
-   injection for an oversized batch end-to-end live** — a plan with an `oversized: true` batch, run
-   far enough that `begin-batch` for it fires the `/model` pane injection, and record W2's three
-   assertions separately (a: model switches — benign miss = documented fallback; b: no corruption of
-   the foreground `begin-batch` call — a hit here is dangerous, must NOT regress post-F18; c:
-   fork-transcript flush timing). fable-r1 verified (b) clean post-F18; opus-r2 did not re-drive it.
-   Confirm it still holds on the current tree.
+1. **Independent safety pass (Opus lens).** Read the SPEC + current code yourself; drive the real
+   substrate against every "High-yield focus" invariant. Form your own findings before consulting any
+   prior `.scratch/webster-review-*` material.
+2. **Regression-check round 3's fresh fixes specifically** (these are the newest, least-weathered
+   code): the relative-path write resolution (`resolveWritePath` — probe odd spellings: `../`
+   escaping the workdir, a symlinked cwd, an absolute path that differs only by a trailing slash or
+   `//`, a Windows-style path if the parser ever sees one; does the canonicalization ever FALSE-flag a
+   legitimate Master write, or MISS a genuine rogue one?); the FR3-2 bracket-opening-session keying
+   (does any OTHER resume path — recover-batch, --fresh, a double crash — now key on the wrong session,
+   or does record-batch's new Kind guard reject a legitimate call?); FR3-3's fork-contract-write class
+   (can a fork evade it, e.g. via a relative path FR3-1's resolution then normalizes AWAY from the
+   contract path?); FR3-4's template wording (does the new banner rung ever mis-fire and confuse a
+   legitimate Master?). Also the seams round 3 exercised but you should re-drive independently:
+   `await-batch` under a slow/never-arriving report; the R2-a guard vs `recover-batch`; crash/resume
+   THROUGH the async await loop.
 
 If your safety pass finds real defects, fix them (all severities incl. NIT, per the discipline below)
 — finding real bugs is itself the signal to keep hardening. If it finds none, say so plainly with the
-transcript of what you drove as evidence.
+transcript of what you drove as evidence. **This is the last authorized round: an honest, evidenced
+"clean — ship it" is the outcome that lets the campaign converge.**
 
 State the **merge bar** so you calibrate: correctness in the NORMAL single-instance flow (one
 `lyx webster run` at a time, no artificial concurrency stress) is the gate. If you run N× concurrent
@@ -287,14 +312,21 @@ structurally needs a human's physical eyes.
 
 Hermetic (must stay green throughout):
 - `go build ./...`
-- `go vet ./internal/websterengine/... ./internal/webstercli/...`
+- `go vet ./internal/websterengine/... ./internal/webstercli/... ./internal/shuttleengine/...`
 - `go test -count=5 ./internal/websterengine/... ./internal/webstercli/... ./cmd/lyx/...`
+- **`go test -tags integration -count=2 ./internal/websterengine/... ./internal/webstercli/...`** —
+  DO NOT skip this. Webster's `beginbatch/recordbatch/recoverbatch/runlevel/chain _test.go` are ALL
+  `//go:build integration` (Tier-2, real scratch git repo + call-scripted fakes). A plain
+  `go test -count=5` compiles and runs NONE of them — the FR3-2 keying test, the FR3-1/FR3-3 audit
+  tests, and the template-drift guards all live behind this tag. Rounds 1–2's gate missed it.
 
 Live smoke (real substrate, behind the `smoke` build tag):
-- `go test -tags smoke ./internal/webstercli/... -run Smoke -v -count=1` — **NOTE: webster has NO
-  `//go:build smoke` tests yet.** This campaign accretes them: for every live-only defect you fix,
-  add a deterministic smoke test that walks the failing scenario against the real substrate (follow
-  another module's `*smoke_test.go` pattern, incl. a skip when the substrate is absent).
+- `go test -tags smoke ./internal/webstercli/... -run Smoke -v -count=1` — webster now has **5**
+  `//go:build smoke` tests (`internal/webstercli/smoke_test.go`), the newest being
+  `TestSmoke_RecordBatchConsumesCrashedSessionReport` (FR3-2, spawns a real fork under one session and
+  drives RecordBatch under a different session). Keep accreting: for every NEW live-only defect you
+  fix, add a deterministic smoke test that walks the failing scenario against the real substrate
+  (follow the existing ones' pattern, incl. the substrate-absent skip).
 
 Live driving — YOU drive it directly, no launcher (PRIMARY — where the bugs surface):
 - **Deploy on Linux:** `go run ./tools/deploy -dest /home/knatte/.local/bin` (this is the Linux
@@ -355,16 +387,17 @@ cannot do alone this round — an operator decision on a real design tradeoff, o
 you don't have. Even then say so explicitly in the fixer report's deferred section — never bucket
 something as "deferred, low priority" just because it felt small.
 
-## Deferred items from the prior round — RE-EVALUATE these (after your own pass)
-Nothing outstanding — both prior residuals (R2-a fork-loop deadlock guard, R2-b smoke tests) were
-CLOSED and orchestrator-verified in round 2. The only consciously-carried item is an **accepted
-limitation, not a defect to fix**: `await-batch` has no Go-side upper bound / fork-liveness signal —
-a mis-looping Master only stops at `master_timeout_min`. This is inherent to the backgrounded-fork +
-shuttle done-or-asking model; a "still-working" third state in shuttle is explicitly OUT OF SCOPE for
-this campaign (future shuttle task). The R2-a guard already forces a mis-driving fork to abandon the
-loop, which is the in-scope mitigation. Do NOT re-open it as a finding; note it only if you discover
-it is worse than characterized. If your own pass surfaces something new you cannot resolve alone this
-round, defer it here explicitly with the reason; do not silently drop it.
+## Deferred items from the prior rounds — RE-EVALUATE these (after your own pass)
+Nothing outstanding to FIX — R1's residuals (R2-a fork-loop deadlock guard, R2-b smoke tests) closed
+in R2; R3 fixed all 8 of its own findings (FR3-1..FR3-8), nothing deferred. The only consciously-
+carried item is an **accepted limitation, not a defect to fix**: `await-batch` has no Go-side upper
+bound / fork-liveness signal — a mis-looping Master only stops at `master_timeout_min`. This is
+inherent to the backgrounded-fork + shuttle done-or-asking model; a "still-working" third state in
+shuttle is explicitly OUT OF SCOPE for this campaign (future shuttle task). The R2-a guard already
+forces a mis-driving fork to abandon the loop, which is the in-scope mitigation. Do NOT re-open it as
+a finding; note it only if you discover it is worse than characterized. If your own pass surfaces
+something new you cannot resolve alone this round, defer it here explicitly with the reason; do not
+silently drop it.
 
 ## Fixing — after the review
 - Fix EVERY finding from your review, all severities including NIT.
