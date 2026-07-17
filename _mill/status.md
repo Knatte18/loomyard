@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: loom-contracts
 branch: loom-contracts
 plan: _mill/plan
@@ -20,4 +20,21 @@ discussed  '2026-07-17T11:02:33Z'
 planning  '2026-07-17T11:13:52Z'
 plan-review-r1  '2026-07-17T11:20:11Z'
 planned  '2026-07-17T11:20:21Z'
+implementing  '2026-07-17T11:21:48Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: status-schema-doc
+    state: pending
+  - name: discussion-format-doc
+    state: pending
+  - name: relocate-contracts
+    state: pending
+  - name: inbound-refs-nondoc
+    state: pending
+  - name: reconcile-narrative
+    state: pending
 ```
