@@ -73,7 +73,10 @@ plugin packaging.
 So the immediate front: **`loom`** (the phase machine, the last spine layer, now that
 `builder` ✅ is done — see [modules/builder-contract.md](modules/builder-contract.md)) — the last
 remaining spine layer. The setup-track items (`init`/board-repo creation, `doctor`) remain
-available to interleave at any time; neither blocks `loom`.
+available to interleave at any time; neither blocks `loom`. **Milestone 26 (Master Builder) can
+proceed in parallel with the whole `loom-*` build order** (see milestone 12) — it's a new, separate
+module, not a revision of the existing `builder`, so nothing about it blocks starting `loom-*` work;
+only one `loom` piece (`loom-finalize`) depends on the prose summary artifact it adds.
 
 ## Milestones
 
@@ -174,21 +177,51 @@ Each layer knows only the one below it; built bottom-up. See the
     documentation.
 
 12. **`loom` (`lyx loom run`, alias `lyx run`) — the phase machine.** The autonomous driver:
-    Setup → Discussion → Plan → Builder → Finalize, each gated by a review, resume-from-disk via
-    the `_lyx/` status file, yielding only at human boundaries (or never, in `--auto`). **This is
-    the orchestrator that finally replaces mill/millhouse** — the top of the stack above, sitting on
-    board + worktree + weft + the `mux → shuttle` layers. `lyx run` is the **session bootstrap**:
-    ensure the worktree's tmux session, add the `lyx loom status` strand (1-line top pane), spawn
-    the driver detached (`proc`), attach the terminal; a `.lyx/lyxrun.cmd` launcher makes it one
-    click. The 1-line view ships as the `lyx loom status` subcommand (a strand), not a module.
-    The **Builder** phase is carved into its own module (**`builder`**, `internal/builderengine`) —
-    ✅ **Done**, see [modules/builder-contract.md](modules/builder-contract.md) — a *sequential* batch-implementation
+    Preflight → Discussion → Plan → Builder → Raddle → Finalize, each producing phase gated by a
+    review, resume-from-disk via the `_lyx/` status file, yielding only at human boundaries (or
+    never, in `--auto`). **This is the orchestrator that finally replaces mill/millhouse** — the
+    top of the stack above, sitting on board + worktree + weft + the `mux → shuttle` layers.
+    `lyx run` is the **session bootstrap**: ensure the worktree's tmux session, add the
+    `lyx loom status` strand (1-line top pane), spawn the driver detached (`proc`), attach the
+    terminal; a `.lyx/lyxrun.cmd` launcher makes it one click. The 1-line view ships as the
+    `lyx loom status` subcommand (a strand), not a module. The **Builder** phase is carved into its
+    own module (**`builder`**, `internal/builderengine`) — ✅ **Done**, see
+    [modules/builder-contract.md](modules/builder-contract.md) — a *sequential* batch-implementation
     loop (ordered batches, **no DAG**; parallelism is task-level via separate worktrees + `lyx run`,
     not intra-plan), driven by an LLM orchestrator over **distilled** batch-reports (never raw
     sub-agent prose — the mill-go bloat lesson). **Batches are bounded to fit an implementer's
     context window** (mill's 200k-Haiku/Sonnet pain; eased by Sonnet's 1M but not to be relied on):
     prefer many small batches over few large. Its plan-format contract is pinned in
     [modules/plan-format.md](modules/plan-format.md). ([modules/loom.md](modules/loom.md))
+
+    **Build order for the rest of loom** — too large for one task; decomposed into independently
+    buildable/testable pieces, contracts before code:
+    1. **Contracts first** (spec only, no code, review-gated like everything else — never
+       hand-written outside the pipeline): the spawn/handover status schema (the seed state of
+       loom's own ongoing `_lyx/` status file — just a pointer, e.g. the board-task slug, plus
+       loom's phase/round state; board already owns title/description durably, so nothing is
+       duplicated) and `discussion-format.md` (the `discussion.md` ↔ Plan contract; `plan-format.md`
+       already exists as the precedent). `discussion.md` itself is expected to split into a
+       distilled decision-record (what Plan reads) and a raw support log (what the Discussion-review
+       gate reads, never Plan) — mirrors Builder's own "distilled digest, never raw prose" rule.
+    2. **Preflight** (renamed from an earlier "Setup" label — it's a pure precondition/validity
+       check, not worktree creation, which is `warp`'s job): geometry/cwd via
+       `internal/hubgeometry`, clean worktree, weft paired and in sync, no half-finished prior run.
+       No LLM involved; testable in complete isolation.
+    3. **Discussion producer** — the one interactive phase, heavily reusing `mill-start`, auto-mode
+       capable.
+    4. **Plan producer** — autonomous, no inputs beyond `discussion.md`; mostly a well-instructed
+       prompt/profile fed to `shuttle.Run`, heavily reusing `mill-plan`; no review logic of its own
+       (that's `perch`/`burler`, entirely separate).
+    5. **Phase-machine skeleton** — the status-file-driven engine itself (sequencing, resume,
+       crash-recovery, pause); buildable/testable against fake phases before real producers are
+       wired in.
+    6. **Finalize** — vital, not deferred: the merge-back step after Builder-review is `APPROVED`,
+       mostly wiring on top of the already-built `warp cleanup` mechanics.
+    7. **Session bootstrap** — the `lyx loom run` entry point.
+
+    **Raddle is the one deferred piece** — the phase machine reserves its slot (after Builder,
+    before Finalize) from the start, but it isn't built in this first pass.
 
 ### Deferred mux enhancements
 
@@ -290,6 +323,39 @@ sketch.)*
        `/proc/*/cmdline` match shape holds against a live tmux server (which may rewrite its
        title to `tmux: server` and drop the `-L` token from argv — load-bearing for Linux
        confirm-gone).
+
+26. **Master Builder — new, parallel fork-based implementation module.** 🚧 **Planned — can proceed
+    in parallel with the `loom-*` build order.** Graduated from
+    [long-term-ideas.md](long-term-ideas.md). **Not a revision of the existing `builder`** — a new
+    module built alongside it, so both can be A/B tested on the same plan before deciding anything.
+    The spawn mechanism differs too much to revise in place: today's `builder` spawns each batch's
+    implementer as its own separate mux/tmux strand (a new `shuttle.Run` process — see
+    [modules/builder-contract.md](modules/builder-contract.md)). **Master Builder** instead reads
+    the codebase and the overall implementation plan once in one long-lived session, then forks out
+    one implementer per batch (sequential, same order as today) as **in-session Agent-tool forks** —
+    the same mechanism `burler` validated for cluster review, applied to writing instead of
+    reviewing; no new process, no new mux strand per batch. Note: `burler`'s existing fork-audit
+    (`internal/burlerengine/cluster.go`) hard-bans any fork from writing/editing — the opposite of
+    what an implementer fork must do — so Master Builder needs its **own** audit policy (allow
+    writes, still ban nested `Agent` calls), not a shared audit path with `burler`. Separates what's
+    safe to inherit through every fork indefinitely (stable orientation: codebase structure,
+    conventions, `CONSTRAINTS.md`, the plan itself) from what isn't (mutable file content — each
+    fork does its own fresh read of the files its batch touches); cross-batch dependencies are
+    bridged by a short distilled summary Master absorbs before forking a dependent batch, never a
+    raw file re-read or raw sub-agent transcript — the same "mill-go bloat lesson" digest discipline
+    used elsewhere. **Also includes a new prose summary artifact**: alongside the existing
+    machine-readable `_lyx/builder/outcome.yaml` (`outcome`/`stuck_reason`/`batches_done`), the
+    final action now also writes a human-readable summary (title + narrative of what was actually
+    built, including deviations from the original task) — the future `loom-finalize` PR-text
+    source, since a long-lived Builder session is the only party with full oversight of what
+    actually shipped (often diverging from the original task description). **Kept
+    contract-compatible with the existing `builder`** wherever possible (same `plan-format.md`
+    input, compatible `outcome.yaml` + the new summary shape, same batch-report shape) so
+    `loom-phase-machine`'s Builder-phase integration won't care which implementation runs
+    underneath. Does **not** include the riskier parallel-batches-via-DAG extension — that remains
+    speculative in [long-term-ideas.md](long-term-ideas.md) until this lands and looks worth the
+    added complexity. Independent of the `loom-*` build order below — can proceed alongside all of
+    it; only `loom-finalize` depends on the prose summary artifact this adds.
 
 *(Burler's cluster fan-out — the once-deferred idea in this slot — shipped; see milestone 11 above.
 Three other, still-unscheduled burler/shuttle ideas from this section moved to
