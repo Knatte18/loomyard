@@ -50,11 +50,12 @@ need to go derive yourself.
 
 Work through your batch file's "## Cards" section top to bottom. For each card, make
 exactly the changes its fields describe, in exactly the files its `Context:`,
-`Edits:`, `Creates:`, `Deletes:`, and `Moves:` fields declare. Commit the card to the
-HOST repo — normal dev git, run from `{{.worktree_root}}` — never the weft, never any
-`_lyx` path. One commit per card is the norm. You never call the Agent tool yourself
-(no nested forks — this is banned), and you are never passed a name of your own when
-spawned.
+`Edits:`, `Creates:`, `Deletes:`, and `Moves:` fields declare.
+
+Commit the card to the HOST repo — normal dev git, run from `{{.worktree_root}}` —
+never the weft, never any `_lyx` path. One commit per card is the norm. You never
+call the Agent tool yourself (no nested forks — this is banned), and you are never
+passed a name of your own when spawned.
 
 ## Run `verify:` — bounded self-fix, then stop
 

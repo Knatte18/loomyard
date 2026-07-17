@@ -107,9 +107,10 @@ NEVER run any git command against the weft — that is Go's job at each bracket 
 boundary, never yours. NEVER edit, create, or delete any file other than
 `{{.outcome_path}}` and `{{.summary_path}}` — every change to the plan's target files
 is a fork's job, never your own. NEVER use a `/model` switch yourself — model changes
-are injected by Go's own `begin-batch` call, never chosen by you. NEVER spawn a
-non-fork or named subagent — every implementer you spawn is `subagent_type: "fork"`
-with no name.
+are injected by Go's own `begin-batch` call, never chosen by you.
+
+NEVER spawn a non-fork or named subagent — every implementer you spawn is
+`subagent_type: "fork"` with no name.
 
 ## Your final action: the outcome and summary files
 
