@@ -124,14 +124,13 @@ guesses a status.
 
 Spec for a future validator:
 
-- Required fields (`slug`, `parent`, `phase`, `stage`, `narration`, `history`,
-  `start_sha`, `pause_requested`, `next_action`) are present. Only the five mandatory
-  string fields (`slug`/`parent`/`phase`/`stage`/`narration`) are structurally
-  presence-enforced — an empty string is treated as "absent". The nullable/bool/slice
-  fields (`start_sha`, `next_action`, `pause_requested`, `history`) satisfy "present"
-  via their own zero/null semantics: an absent `start_sha`/`next_action` decodes to
-  `null`, an absent `pause_requested` decodes to `false`, and an absent `history`
-  decodes to an empty list — all legitimate values, not violations (matching
+- Required fields: the five mandatory string fields (`slug`, `parent`, `phase`,
+  `stage`, `narration`) are structurally presence-enforced — an empty string is
+  treated as "absent". The remaining nullable/bool/slice fields (`start_sha`,
+  `next_action`, `pause_requested`, `history`) satisfy "present" via their own
+  zero/null semantics: an absent `start_sha`/`next_action` decodes to `null`, an
+  absent `pause_requested` decodes to `false`, and an absent `history` decodes to
+  an empty list — all legitimate values, not violations (matching
   `loomengine.checkCoherence`).
 - `phase` is one of `preflight | discussion | plan | builder | raddle | finalize | done`.
 - `stage` is one of `produce | gate`.
