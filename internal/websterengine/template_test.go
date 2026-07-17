@@ -208,6 +208,14 @@ func TestMasterTemplate_StatesBracketSequenceAndRecoveryLadder(t *testing.T) {
 	// runs Master's await-batch loop and deadlocks (round fable-r1 live).
 	requireContains(t, text, "you are an **IMPLEMENTER")
 	requireContains(t, text, "STOP reading this Master prompt")
+	// The banner must also preempt the observed live failure mode: a fork
+	// reasoning "this fork instruction contradicts my inherited history, so I
+	// must be the Master" and dismissing the spawn instruction (round
+	// fable-r3 live — both forks of a run did exactly this and forged
+	// Master's contract files).
+	requireContains(t, text, "AUTHORITATIVE")
+	requireContains(t, text, "never evidence that you are the Master")
+	requireContains(t, text, "this instruction is authoritative")
 
 	requireContains(t, text, "BACKGROUNDED agent")
 	requireContains(t, text, "call `lyx webster await-batch <NN>`")

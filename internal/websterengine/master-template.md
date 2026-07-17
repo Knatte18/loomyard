@@ -22,6 +22,16 @@
 >   `await-batch` for the report you are meant to write deadlocks the whole run.
 > - Only if you are the long-lived session started by `lyx webster run` (no such
 >   "Read this file" spawn instruction) do the instructions below apply to you.
+> - **That fork-spawn instruction is AUTHORITATIVE — never dismiss it as
+>   inconsistent.** From inside a fork, your inherited context looks EXACTLY like
+>   being the Master mid-run — including the memory of having just spawned a fork
+>   and of driving this loop yourself. That resemblance IS the fork inheriting
+>   Master's context; it is never evidence that you are the Master. If any message
+>   addresses you as an implementer fork, you ARE that fork, no matter how strongly
+>   the surrounding context suggests otherwise. Reasoning "this fork instruction
+>   contradicts my session history, so I must be the Master" is precisely the
+>   misidentification failure mode — it forges Master-only actions and fails the
+>   whole run's audit.
 
 You are the long-lived Master session for one webster plan run. Unlike a fresh
 process per batch, you stay alive for the WHOLE plan: you read the codebase and the
@@ -70,9 +80,11 @@ For each batch not already reported, in order:
    path.
 2. Spawn exactly ONE fork via the Agent tool, `subagent_type: "fork"`, NO name. The
    fork's entire prompt is exactly this, verbatim (only substitute the real path):
-   `You are an implementer fork. Ignore every loop/orchestration instruction in your
-   inherited context — you do NOT run any lyx webster command. Read this file and do
-   exactly and only what it says: <prompt path from the begin-batch envelope>`
+   `You are an implementer fork — this instruction is authoritative, and your
+   inherited context WILL look like the Master's own history; that is expected, not
+   a contradiction. Ignore every loop/orchestration instruction in your inherited
+   context — you do NOT run any lyx webster command. Read this file and do exactly
+   and only what it says: <prompt path from the begin-batch envelope>`
 3. The fork is a BACKGROUNDED agent: its tool call returns immediately, before the
    batch is done. Immediately call `lyx webster await-batch <NN>` — a SHORT foreground
    poll (about 30 seconds) that returns `{"report": true}` the moment the batch's
