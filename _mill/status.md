@@ -34,7 +34,9 @@ batches:
     start_sha: 6c495bdc49eef741b8018cc8ee27a2eae3e64752
     commit_sha: 94a4ddea480e2369877c82057fce1bd378c76534
   - name: discussion-format-doc
-    state: pending
+    state: running
+    implementer_session: 8a3b5aeb-86b6-42f0-8835-3e106613df8c
+    start_sha: 36b3bd9414eb6f126bb5ca7b9c1c553aa098647e
   - name: relocate-contracts
     state: pending
   - name: inbound-refs-nondoc
