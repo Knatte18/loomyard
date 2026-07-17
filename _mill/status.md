@@ -36,7 +36,9 @@ batches:
     start_sha: 4982fbdb728d83b11a7eb7e7325cc1187336c235
     commit_sha: a55edacef10dc5f1ee20c06ec6b1c28055d9b6cf
   - name: lsp-client-and-refs
-    state: pending
+    state: running
+    implementer_session: f7bc336d-747c-4d8f-b6ee-c23307f71ddd
+    start_sha: a80313a29cf40ea4487c7381bf86573f5f0683de
   - name: cli-wiring-and-docs
     state: pending
   - name: measurement-and-writeup
