@@ -6,6 +6,7 @@ slug: master-builder
 branch: master-builder
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: 'Master Builder: new, parallel fork-based implementation module'
 task_description: |
   Master Builder: new, parallel fork-based implementation module
@@ -28,7 +29,9 @@ implementing  '2026-07-17T11:29:30Z'
 ```yaml
 batches:
   - name: seam-extensions
-    state: pending
+    state: running
+    implementer_session: 9ab2b4ba-c41e-4fac-957e-d01c1c265afa
+    start_sha: 79f5b9cd831daaba8797b90a2099ba594555de5c
   - name: webster-foundation
     state: pending
   - name: webster-audit-policy
