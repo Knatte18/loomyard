@@ -3,7 +3,7 @@
 ```yaml
 task: Extend codeintel lookup to non-Go languages via LSP
 slug: codeintel-multilang
-approved: false
+approved: true
 started: 20260717-172437
 parent: main
 root: ""

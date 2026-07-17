@@ -25,6 +25,7 @@ cwd is not inside a lyx hub), and maps every engine typed error to `output.Err`.
 
 - **Context:**
   - `internal/weftcli/cli.go`
+  - `internal/buildercli/cli.go`
   - `internal/codeintelengine/refs.go`
   - `internal/codeintelengine/load.go`
   - `internal/codeintelengine/errors.go`
@@ -40,13 +41,18 @@ cwd is not inside a lyx hub), and maps every engine typed error to `output.Err`.
   command (`Use: "codeintel"`, non-empty `Short`, `RunE: clihelp.GroupRunE` so bare `lyx codeintel`
   lists subcommands and an unknown subcommand emits a JSON error). Add a `refs` subcommand
   (`Use: "refs <symbol|file:line:col>"`, non-empty `Short`, a `Long` with concrete examples of both
-  the name form and the `file:line:col` form) with flags `--target-dir` (string; default cwd),
-  `--lang` (string; override detection), `--timeout` (duration; default 30s). Its `RunE`: resolve the
-  target dir (flag value, or `hubgeometry.Getwd()` when empty — never raw `os.Getwd`); parse the
-  positional arg into a `codeintelengine.Query` (`file:line:col` when it matches that shape, else a
-  symbol name); resolve the overlay base by attempting `hubgeometry.Resolve(cwd)` and, on success,
-  loading `codeintelengine.LoadRegistry(<hub base>)`, else falling back to
-  `codeintelengine.BuiltinRegistry()` (defined in batch 1 Card 2); call
+  the name form and the `file:line:col` form) with `Args: cobra.ExactArgs(1)` (so bare
+  `lyx codeintel refs` or a 2-arg call fails through the JSON envelope, matching Card 14's assertions)
+  and flags `--target-dir` (string; default cwd), `--lang` (string; override detection), `--timeout`
+  (duration; default 30s). Its `RunE`: resolve the target dir (flag value, or `hubgeometry.Getwd()`
+  when empty — never raw `os.Getwd`); parse the positional arg into a `codeintelengine.Query`
+  (`file:line:col` when it matches that shape, else a symbol name); resolve the overlay base by
+  attempting `hubgeometry.Resolve(cwd)` and, on success, loading
+  `codeintelengine.LoadRegistry(layout.Cwd)` — pass the resolved `*hubgeometry.Layout`'s **`Cwd`**
+  field as `baseDir` (the worktree cwd, exactly as `internal/buildercli/cli.go:187` calls
+  `modelspec.LoadRegistry(layout.Cwd)`; `ConfigFile(baseDir, "servers")` resolves
+  `<baseDir>/_lyx/config/servers.yaml`, so passing `l.Hub` would silently miss every overlay) — else
+  falling back to `codeintelengine.BuiltinRegistry()` (defined in batch 1 Card 2); call
   `codeintelengine.References(ctx, opts)`; on success
   `output.Ok` with the reference list (each `{file,line,character}`); on error `output.Err(err.Error())`
   and non-zero exit via the `clihelp.SetExit`/`output.Err` pattern used in `weftcli`. `func RunCLI(out
