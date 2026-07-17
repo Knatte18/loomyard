@@ -48,5 +48,7 @@ batches:
     start_sha: 7093780f80bf35186c4394c1e56355fd502a23c7
     commit_sha: bd670d62d7f988234b4f3c463045502c87e81fab
   - name: revert-and-verify
-    state: pending
+    state: running
+    implementer_session: 619a4beb-9d0c-4d9f-84b8-5f6290357b7a
+    start_sha: 666fa6ea85d08fb9d15025b0013b2978b608564a
 ```
