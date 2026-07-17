@@ -73,6 +73,10 @@ func dispatch(mode string) error {
 		return runRefs(cfg)
 	case "callers":
 		return runCallers(cfg)
+	case "gopls-refs":
+		return runGoplsRefs(cfg)
+	case "gopls-cli-refs":
+		return runGoplsCLIRefs(cfg)
 	default:
 		return fmt.Errorf("unknown mode %q", mode)
 	}
