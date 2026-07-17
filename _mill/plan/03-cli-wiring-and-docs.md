@@ -95,10 +95,22 @@ cwd is not inside a lyx hub), and maps every engine typed error to `output.Err`.
   - `cmd/lyx/main.go`
   - `cmd/lyx/sandbox_coverage_test.go`
   - `cmd/lyx/helptree_test.go`
+  - `internal/codeintelcli/cli_test.go`
+  - `internal/codeintelengine/detect_test.go`
+  - `internal/codeintelengine/lspclient_test.go`
+  - `internal/codeintelengine/position_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** In `cmd/lyx/main.go` `newRoot()`: add the import for
+- **Requirements:** `go test ./cmd/lyx/...`'s repo-wide `tierpurity_test.go`/`hermeticenv_test.go`
+  guards do a raw-substring scan for tokens like `exec.Command`/`gitexec.RunGit`/`lyxtest.Copy`
+  across every untagged `*_test.go` file, including ones this batch does not otherwise touch — a
+  disclaiming comment mention (e.g. "no exec.Command anywhere in this file") trips the same guard
+  as a real call, by the guard's own documented design ("Comment or string-literal mentions trip
+  the guard too — that is accepted (rename the mention or tag the file)"). Reword the four listed
+  comment-only mentions (in `internal/codeintelcli/cli_test.go`, created by Card 14, and three
+  batch-1/2 `internal/codeintelengine` test files) so the banned substrings no longer appear
+  literally, with no change to test behavior. In `cmd/lyx/main.go` `newRoot()`: add the import for
   `github.com/Knatte18/loomyard/internal/codeintelcli` and add `codeintelcli.Command()` to the
   `root.AddCommand(...)` call; append `codeintel` to the root `Long` "Available modules:" list. In
   `cmd/lyx/sandbox_coverage_test.go`, add an `excludedModules` entry:
