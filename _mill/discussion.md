@@ -40,9 +40,10 @@ correct, fail-loud gate so no downstream phase ever runs against a broken worktr
   the schema doc's validation checklist (with the presence nuance in
   field-presence-and-nullability — absent nullable/bool/slice fields satisfy "present" via
   zero/null semantics). This type is the one the later phase-machine skeleton reuses.
-- A wording update to `status-schema.md`'s validation-checklist item 1 (made in the
-  implementation commit per the Documentation Lifecycle) clarifying that absent
-  nullable/bool/slice fields satisfy "present".
+- Wording updates to `status-schema.md` (made in the implementation commit per the
+  Documentation Lifecycle): validation-checklist item 1 (absent nullable/bool/slice fields
+  satisfy "present") and the "Parse discipline" paragraph (realign `KnownFields(true)` →
+  `json.Decoder.DisallowUnknownFields()` for the JSON seed).
 - A **new shared strict-read primitive `state.ReadJSONStrict[T]`** in `internal/state` (beside
   the existing `ReadJSON`/`WriteJSON`), using `json.Decoder` + `DisallowUnknownFields()` while
   keeping the same shared read-lock and atomic-read behaviour, and exposing `state.ErrRead` /
@@ -235,11 +236,14 @@ Preflight validates exactly these, in this order (see check-ordering-and-collect
   split (Report `CheckID`s) is derived as:
   - `os.Stat` the seed path **first** (see seed-read-path): `os.IsNotExist` → `seed-missing`
     (Report); any other stat error → `seed-unreadable` (Report, "see check 3").
-  - Then, only when the stat succeeded, call `ReadJSONStrict` and classify a non-nil `err`:
-    `errors.Is(err, state.ErrDecode)` (parse / unknown-field / type-mismatch) → `seed-incoherent`
-    (Report); `errors.Is(err, state.ErrRead)` (a rare TOCTOU/I/O read failure after a good stat)
-    → **escalate as `error`** ("broke while checking", per result-error-contract), *not*
-    `seed-incoherent`.
+  - Then, only when the stat succeeded, call `ReadJSONStrict` and classify a non-nil `err` by a
+    single rule: **`errors.Is(err, state.ErrDecode)` (parse / unknown-field / type-mismatch) →
+    `seed-incoherent` (Report); *every other* non-nil error → escalate as `error`** ("broke
+    while checking", per result-error-contract). "Every other" explicitly covers
+    `state.ErrRead` (a rare TOCTOU/I/O read failure after a good stat) **and** a
+    `lock.AcquireReadLock` failure (a third mode that is neither `ErrRead` nor `ErrDecode`) —
+    both are infrastructure failures, not determined preconditions, so only `ErrDecode` ever
+    maps to a Report failure.
   - A `found == false` after a successful stat (should not happen) is treated defensively as
     the escalate `error` path (the file was there a moment ago).
 - **lock-path.** `ReadJSONStrict` takes a `lockPath`. Follow builder's precedent — builder puts
@@ -295,9 +299,13 @@ Preflight validates exactly these, in this order (see check-ordering-and-collect
   other items already require (empty slice / `null` / `false`), so there is no observable
   difference between "absent" and "present with the required zero value". This is a
   clarification of the checklist, not a contradiction of it. **The implementation must update
-  `status-schema.md`'s checklist wording** (item 1) to state this explicitly — a doc change made
-  in the mill-go commit per the Documentation Lifecycle (this discussion does not edit the pinned
-  contract). Only the five mandatory strings are structurally presence-enforced.
+  `status-schema.md` in two places** (a doc change made in the mill-go commit per the
+  Documentation Lifecycle — this discussion does not edit the pinned contract): (1) the
+  validation-checklist **item 1** wording, to state that absent nullable/bool/slice fields
+  satisfy "present" via zero/null semantics; and (2) the **"Parse discipline"** paragraph (which
+  currently describes the JSON status.json strict parse as "the same `KnownFields(true)`
+  discipline" — a `yaml.Decoder` API), realigning it to `json.Decoder.DisallowUnknownFields()`
+  for the JSON seed. Only the five mandatory strings are structurally presence-enforced.
 
 ### seed-read-path
 
@@ -316,9 +324,9 @@ Preflight validates exactly these, in this order (see check-ordering-and-collect
   `os.Stat` first — `os.IsNotExist` → clean `seed-missing` failure; any other **stat** error →
   `seed-unreadable` failure with reason "unreadable, see check 3 (junction)". Never report a
   non-`IsNotExist` error as "missing". After a successful `os.Stat`, the parse goes through
-  `state.ReadJSONStrict` (see strict-read-mechanism), and its error is split by sentinel:
-  `state.ErrDecode` → `seed-incoherent`; `state.ErrRead` (a rare post-stat I/O failure) →
-  escalate as `error`, not a Report failure.
+  `state.ReadJSONStrict` (see strict-read-mechanism), and its error follows the single rule
+  there: `state.ErrDecode` → `seed-incoherent`; **every other** non-nil error (`state.ErrRead`,
+  a `lock.AcquireReadLock` failure, anything else) → escalate as `error`, not a Report failure.
 - **Rationale:** The junction model exists precisely so `_lyx/` reads as part of the host repo;
   code reading `_lyx/status.json` must not need to know it goes via a junction to the weft.
   Reading via `WeftLyxDir()` in Preflight would break that abstraction in the one place that
