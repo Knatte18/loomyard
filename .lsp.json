@@ -1,0 +1,1 @@
+{"go": {"command": "gopls", "args": [], "extensionToLanguage": {".go": "go"}, "transport": "stdio", "initializationOptions": {}, "settings": {}, "maxRestarts": 3}}
