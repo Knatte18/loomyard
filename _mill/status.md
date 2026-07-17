@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-fix-r3
+phase: discussed
 slug: loom-contracts
 branch: loom-contracts
 plan: null
@@ -16,4 +16,5 @@ task_description: |
 ```text
 discussing  '2026-07-17T09:45:41Z'
 discussion-fix-r3  '2026-07-17T11:02:14Z'
+discussed  '2026-07-17T11:02:33Z'
 ```
