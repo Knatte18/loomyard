@@ -7,70 +7,22 @@ and doesn't clutter the roadmap with maybes. Entries here have no schedule and m
 When an idea here matures into a concrete, scoped plan, it graduates to a numbered milestone in
 `roadmap.md` (and this entry should be removed or marked graduated).
 
-## Master Builder: fork-based batch implementation
+## Master Builder: parallel batches via a DAG (further-out, beyond the sequential fork model)
 
-**Status:** idea, not scoped. Builder as it stands today (see
-[modules/builder-contract.md](modules/builder-contract.md)) is fine for now — this is a possible
-future optimization, not a gap.
+**Status:** speculative, not scoped. The sequential fork-based module this would extend has
+graduated out of this file — see `roadmap.md` milestone 26 / wiki task `master-builder`. This
+entry is only the riskier remainder that wasn't picked up with it.
 
-**The problem today:** the orchestrator spawns one fresh implementer thread per batch. Each fresh
-thread has to re-orient itself from scratch — read the relevant code, understand conventions and
-architecture, find where things live — before it can even start on its actual batch. That
-orientation cost is paid again, from zero, on every single batch.
-
-**The idea:** apply the same shape `burler` already validated for cluster review — one parent
-session does the expensive orientation once, then forks out per unit of work, so forks inherit
-that orientation instead of rebuilding it. For Builder: a **Master Builder** reads the codebase and
-the overall implementation plan once, then forks out one implementer per batch instead of spawning
-a fresh thread per batch. Sequential forking (one batch at a time, same order as today) is the
-straightforward version — no new concurrency risk, since it's structurally the same loop Builder
-runs today, just with forks instead of fresh spawns.
-
-**The catch, and why it's not just "inherit everything":** unlike burler's reviewers (read-only,
-so inherited file content stays valid for the life of the review), Builder's forks *write* code.
-If Batch B depends on Batch A, the files A touched have changed by the time B starts — but B's
-fork was forked from Master's *pre-A* snapshot, so anything A changed is stale in B's inherited
-context. Re-reading those files fixes correctness but creates duplicate, confusing context (a
-stale copy inherited from the fork point, a fresh copy read again) — exactly the "context
-clutter" this idea is trying to avoid in the first place.
-
-**Proposed resolution — separate what's stable from what's mutable:**
-
-1. **Stable orientation context** — codebase structure, conventions, `CONSTRAINTS.md`, module
-   interfaces, the implementation plan itself. This doesn't change as batches land. This is the
-   expensive-to-rebuild part, and it's safe to inherit through every fork indefinitely.
-2. **Mutable file content** — the actual files a batch will edit. This *does* go stale the moment
-   an earlier batch commits. Master should never treat raw file content as part of the durable,
-   inherited prefix; each fork does its own fresh read of the specific files its batch touches,
-   right before it starts writing. This avoids the stale-vs-fresh duplicate problem entirely,
-   because the inherited context never claimed the file content was current — only the
-   orientation was.
-3. **Cross-batch dependencies (B depends on A)** — B needs to know not just A's finished files
-   (covered by point 2) but *what A did and why* (decisions, deviations from plan). Reusing the
-   principle already established for the loom orchestrator loop — **distilled batch reports, never
-   raw sub-agent prose** (the "mill-go bloat lesson", see `roadmap.md` milestone 12) — Master
-   absorbs a short distilled summary of a completed batch before forking the next batch that
-   depends on it. Master's own context then grows only by one small summary per completed
-   dependency, not by re-read file content or raw transcripts.
-4. **Independent batches** (no dependency edge) can all fork from the same common Master
-   snapshot — there's no cross-batch information they need from each other.
-
-Open question not yet resolved: should the distilled summary be something **Master itself writes**
-after reading a batch's report (mirroring how loom's orchestrator already digests batch reports),
-or should the **implementer fork be contractually required to produce it** as part of its own
-output (more structured, but needs a new field in the batch/digest contract)?
-
-**Further-out, riskier extension — parallel batches via a DAG:** today's plan format is
-deliberately a flat ordered list with **no DAG** (see `modules/plan-format.md` and `roadmap.md`
-milestone 12 — "task-level parallelism via separate worktrees + `lyx run`, not intra-plan"). Running
-independent batches as *parallel* forks would require reintroducing a DAG into the plan, which
-reopens exactly the problem that decision avoided: two forks writing to the same worktree at the
-same time can collide on disk. That's only safe if either (a) the DAG's independence edges
-actually guarantee no file overlap between parallel batches — a guarantee the DAG would need to
-prove, not just assume — or (b) each parallel batch gets its own worktree/branch, which
-reintroduces the multi-branch merge complexity the no-DAG decision was specifically chosen to
-avoid. Not pursued further until the sequential version above is real and this looks worth the
-complexity.
+Today's plan format is deliberately a flat ordered list with **no DAG** (see
+`modules/plan-format.md` and `roadmap.md` milestone 12 — "task-level parallelism via separate
+worktrees + `lyx run`, not intra-plan"). Running independent batches as *parallel* forks would
+require reintroducing a DAG into the plan, which reopens exactly the problem that decision
+avoided: two forks writing to the same worktree at the same time can collide on disk. That's only
+safe if either (a) the DAG's independence edges actually guarantee no file overlap between
+parallel batches — a guarantee the DAG would need to prove, not just assume — or (b) each parallel
+batch gets its own worktree/branch, which reintroduces the multi-branch merge complexity the
+no-DAG decision was specifically chosen to avoid. Not pursued further until Master Builder's
+sequential model is real and this looks worth the complexity.
 
 ## `hardener`: behavior-based hardening of live-substrate modules
 
