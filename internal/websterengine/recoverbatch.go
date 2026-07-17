@@ -139,6 +139,38 @@ func archiveStaleReport(reportsDir string, number int, slug string, now func() t
 	return target, nil
 }
 
+// refuseRecoveringDoneReport is recoverSpawn's finished-work guard: when the
+// batch's on-disk report already parses to status: done, spawning a recovery
+// strand would silently archive finished work away and pay for a cold
+// implementer to redo a complete batch — record-batch, not recover-batch, is
+// the verb that consumes a done report (found live in round fable-r1: a
+// record-batch-wedged Master recovered two already-done batches). The ONE
+// exception mirrors builder's dead-respawn rule: a batch whose persisted
+// state is terminal dead may carry a LATE done report its orphaned strand
+// wrote after the classification — that report is archive-never-refuse
+// material, so the guard steps aside. A missing or unparseable report also
+// steps aside: recovery is exactly the path for a batch with no usable
+// report.
+func refuseRecoveringDoneReport(reportsDir string, batch builderengine.PlanBatch, prior *BatchState) error {
+	// The dead-orphan late-report exception: builder's ladder archives, never
+	// refuses, a report the orphan wrote after a dead classification.
+	if prior != nil && prior.Terminal && prior.Status == builderengine.DigestStatusDead {
+		return nil
+	}
+
+	reportPath := filepath.Join(reportsDir, builderengine.BatchReportFileName(batch.Number, batch.Slug))
+	report, err := builderengine.ParseReport(reportPath)
+	if err != nil {
+		// Absent or malformed: nothing finished to protect — recovery is the
+		// designed path for exactly this state.
+		return nil
+	}
+	if report.Status == builderengine.ReportStatusDone {
+		return fmt.Errorf("webster: batch %02d-%s already has a report with status: done at %s — recover-batch never archives finished work; record it with `lyx webster record-batch %d` instead", batch.Number, batch.Slug, reportPath, batch.Number)
+	}
+	return nil
+}
+
 // recoverSpawn performs the SPAWN half of RecoverBatch's spawn-or-attach
 // decision: archive any stale report at this batch's own report path
 // (archive-never-refuse — the stuck report is the recovery spawn's own
@@ -161,6 +193,10 @@ func archiveStaleReport(reportsDir string, number int, slug string, now func() t
 // Returns the freshly-built BatchState the caller records into
 // deps.State.Batches[batchNumber].
 func recoverSpawn(deps RecoverDeps, batch builderengine.PlanBatch, prior *BatchState, clk Clock) (*BatchState, error) {
+	if err := refuseRecoveringDoneReport(deps.ReportsDir, batch, prior); err != nil {
+		return nil, err
+	}
+
 	if _, err := archiveStaleReport(deps.ReportsDir, batch.Number, batch.Slug, time.Now); err != nil {
 		return nil, err
 	}

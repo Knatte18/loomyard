@@ -319,6 +319,56 @@ func TestRecoverBatch_FirstCallSpawnsArchivesStaleReportAndStopsLiveStrand(t *te
 	}
 }
 
+// TestRecoverBatch_DoneReportRefusedUnlessPriorDead proves the
+// finished-work guard: a batch whose on-disk report already parses to
+// status: done is refused (recover-batch never archives finished work —
+// record-batch is the consuming verb), EXCEPT when the batch's persisted
+// state is terminal dead, builder's dead-orphan late-report case, where the
+// report is archived and the spawn proceeds.
+func TestRecoverBatch_DoneReportRefusedUnlessPriorDead(t *testing.T) {
+	doneReport := "batch: 01-json-flag\nstatus: done\ntests: green\nstuck_reason: null\n"
+
+	t.Run("DoneReport_NoPriorRecord_Refused", func(t *testing.T) {
+		fx := newRecoverFixture(t)
+		if err := os.WriteFile(filepath.Join(fx.ReportsDir, "01-json-flag.yaml"), []byte(doneReport), 0o644); err != nil {
+			t.Fatalf("seed done report: %v", err)
+		}
+
+		_, err := websterengine.RecoverBatch(fx.Deps, 1, time.Second, &recoverFakeClock{now: time.Unix(0, 0)})
+		if err == nil {
+			t.Fatal("RecoverBatch() with a done report = nil error; want the finished-work refusal")
+		}
+		if !strings.Contains(err.Error(), "record-batch") {
+			t.Errorf("error = %q; want it to name record-batch as the consuming verb", err.Error())
+		}
+		// The done report must be untouched — never archived by a refusal.
+		if _, statErr := os.Stat(filepath.Join(fx.ReportsDir, "01-json-flag.yaml")); statErr != nil {
+			t.Errorf("stat(done report) = %v; want the report left in place", statErr)
+		}
+		if fx.Engine.prepareCallCount() != 0 {
+			t.Errorf("Engine.prepareCalls = %d; want 0 (no spawn on refusal)", fx.Engine.prepareCallCount())
+		}
+	})
+
+	t.Run("DoneReport_PriorTerminalDead_ArchivedAndSpawned", func(t *testing.T) {
+		fx := newRecoverFixture(t)
+		if err := os.WriteFile(filepath.Join(fx.ReportsDir, "01-json-flag.yaml"), []byte(doneReport), 0o644); err != nil {
+			t.Fatalf("seed late done report: %v", err)
+		}
+		fx.Deps.State.Batches[1] = &websterengine.BatchState{
+			Slug: "json-flag", Kind: "recovery", Terminal: true, Status: "dead",
+		}
+
+		result, err := websterengine.RecoverBatch(fx.Deps, 1, time.Second, &recoverFakeClock{now: time.Unix(0, 0)})
+		if err != nil {
+			t.Fatalf("RecoverBatch() for a dead batch with a late done report = %v; want the archive-and-respawn path", err)
+		}
+		if !result.Spawned {
+			t.Error("RecoverResult.Spawned = false; want true (dead-orphan late report is archive-never-refuse)")
+		}
+	})
+}
+
 // TestRecoverBatch_SecondCallAttachesAndPersistsDoneDigest proves a
 // re-entrant second call for the same batch, while the recovery strand is
 // still recorded and non-terminal, ATTACHES rather than re-spawning (the
