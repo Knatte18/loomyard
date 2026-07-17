@@ -196,11 +196,16 @@ batches:
 - `docs/modules/builder-contract.md`
 - `docs/overview.md`
 - `docs/roadmap.md`
+- `internal/builderengine/poll_test.go`
 - `internal/builderengine/runlevel.go`
 - `internal/builderengine/spawn.go`
+- `internal/builderengine/spawn_test.go`
+- `internal/buildercli/poll_test.go`
+- `internal/buildercli/spawnbatch_test.go`
 - `internal/configreg/configreg.go`
 - `internal/hubgeometry/hubgeometry.go`
 - `internal/hubgeometry/webstergeom_test.go`
+- `internal/shuttlecli/cli_test.go`
 - `internal/shuttleengine/claudeengine/audit.go`
 - `internal/shuttleengine/claudeengine/audit_incremental_test.go`
 - `internal/shuttleengine/claudeengine/audit_parentfacts_test.go`

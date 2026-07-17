@@ -64,6 +64,10 @@ and `builderengine.ArchiveStateFile`/`ArchiveReportsDir`/`FirstFreeArchivePath`/
   - `internal/shuttleengine/claudeengine/audit.go`
   - `internal/shuttleengine/fakes_test.go`
   - `internal/builderengine/poll_test.go`
+  - `internal/builderengine/spawn_test.go`
+  - `internal/buildercli/poll_test.go`
+  - `internal/buildercli/spawnbatch_test.go`
+  - `internal/shuttlecli/cli_test.go`
 - **Creates:**
   - `internal/shuttleengine/claudeengine/audit_incremental_test.go`
 - **Deletes:** none
@@ -82,13 +86,25 @@ and `builderengine.ArchiveStateFile`/`ArchiveReportsDir`/`FirstFreeArchivePath`/
   `shuttleengine/fakes_test.go` to satisfy the widened interface. New test
   file covers: seen-set filtering (only unseen transcripts reported), nil-map
   equivalence with `AuditForks`, parent facts unaffected by the seen set.
-  Widening `shuttleengine.Engine` also breaks builderengine's own
-  package-local `fakeEngine` double (`poll_test.go`), which independently
-  satisfies the same interface for `TurnEnded`'s tests — this batch's own
-  `verify:` covers both packages together, so add stub
-  `AuditForksIncremental`/`ModelSwitchSequence` methods there too (both
-  unreached by `TurnEnded`, mirroring the existing unreached-`AuditForks`
-  stub already in that file).
+  Widening `shuttleengine.Engine` (this card's `AuditForksIncremental` plus
+  Card 3's `ModelSwitchSequence`) also breaks every OTHER package-local fake
+  Engine double repo-wide that independently satisfies the same interface —
+  found via `grep -rl "shuttleengine.Engine = "`:
+  `internal/builderengine/poll_test.go` (`fakeEngine`),
+  `internal/builderengine/spawn_test.go` (`spawnFakeEngine`),
+  `internal/buildercli/poll_test.go` (`pollFakeEngine`; `pollRaceEngine`
+  embeds it and needs no separate fix),
+  `internal/buildercli/spawnbatch_test.go` (`spawnFakeEngine`, a distinct
+  type from builderengine's despite the same name), and
+  `internal/shuttlecli/cli_test.go` (`specCapturingEngine`). None of these
+  packages is otherwise in this task's scope (buildercli/shuttlecli are
+  pre-existing, unrelated to Master Builder) — they are touched ONLY to add
+  the same two never-reached stub methods (mirroring each file's own
+  existing unreached-`AuditForks` stub) so `go vet ./...`/`go test ./...`
+  keep building repo-wide; no other change to any of them.
+  Card 3 (`ModelSwitchSequence`) breaks the same five files a second time;
+  since both cards land in the same implementer session, the five files'
+  fix carries both stub methods in one pass rather than two separate edits.
 - **Commit:** `shuttle: add AuditForksIncremental to the Engine seam`
 
 ### Card 3: Engine.ModelSwitchSequence
@@ -99,6 +115,11 @@ and `builderengine.ArchiveStateFile`/`ArchiveReportsDir`/`FirstFreeArchivePath`/
   - `internal/shuttleengine/engine.go`
   - `internal/shuttleengine/claudeengine/startup.go`
   - `internal/shuttleengine/fakes_test.go`
+  - `internal/builderengine/poll_test.go`
+  - `internal/builderengine/spawn_test.go`
+  - `internal/buildercli/poll_test.go`
+  - `internal/buildercli/spawnbatch_test.go`
+  - `internal/shuttlecli/cli_test.go`
 - **Creates:**
   - `internal/shuttleengine/claudeengine/modelswitch_test.go`
 - **Deletes:** none
@@ -112,7 +133,11 @@ and `builderengine.ArchiveStateFile`/`ArchiveReportsDir`/`FirstFreeArchivePath`/
   Invariant — shuttleengine must not contain it). Update the engine fake in
   `fakes_test.go`. New test pins the exact sequence shape (Escape first with
   settle, then `/model <name>` submitted) and that the model string is passed
-  through verbatim.
+  through verbatim. This card's interface widening breaks the same five
+  package-local fake Engine doubles Card 2's note names (each gets a second
+  never-reached stub method); both cards' stub additions land together in
+  one pass across those five files (see Card 2's note for the full list and
+  reasoning).
 - **Commit:** `shuttle: add ModelSwitchSequence choreography to the Engine seam`
 
 ### Card 4: Runner.Inject
