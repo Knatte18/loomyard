@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-approved
+phase: done
 slug: loom-contracts
 branch: loom-contracts
 plan: _mill/plan
@@ -28,6 +28,7 @@ approved-inbound-refs-nondoc  '2026-07-17T11:34:51Z'
 approved-reconcile-narrative  '2026-07-17T11:39:28Z'
 holistic-reviewing  '2026-07-17T11:40:01Z'
 holistic-approved  '2026-07-17T11:44:30Z'
+done  '2026-07-17T11:44:50Z'
 ```
 
 ## Batches
