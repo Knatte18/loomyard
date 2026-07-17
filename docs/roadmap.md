@@ -9,8 +9,8 @@ deep internal tests, landed one at a time so the operator keeps full control at
 every step. The toolkit layer (board, worktree, weft, ide, config) is largely
 done. What remains splits into two tracks:
 
-- **Setup track** — finish bootstrapping a hub: config TUI, board-repo creation,
-  `doctor`. (`warp clone` handles the clone step — no standalone `ly-git-clone`.)
+- **Setup track** — finish bootstrapping a hub: board-repo creation, `doctor`. (Config TUI,
+  milestone 7, is done. `warp clone` handles the clone step — no standalone `ly-git-clone`.)
 - **Orchestration stack** — the part that ties worktrees, the board, and tmux
   into a spawn→review→merge lifecycle. This used to be a single distant "endgame";
   it is now a **designed, layered path**: `proc → mux → shuttle → burler → perch → loom`
@@ -64,15 +64,16 @@ proc ✅ ──▶ mux ✅ ──▶ shuttle ✅ ──┬▶ burler ✅ ──�
   — the critical path to the orchestrator. `lyx loom status` (the 1-line view) ships as a loom
   subcommand, not a module.
 
-**Setup track** — independent of the spine, interleave at any time: config TUI (in progress) ·
-`init`/board-repo creation · `doctor`.
+**Setup track** — independent of the spine, interleave at any time: `init`/board-repo creation ·
+`doctor`. (Config TUI, milestone 7, is done.)
 
 **Deferred** — after `loom` works and only if wanted: mux daemon → Slack relay; session sync;
 plugin packaging.
 
 So the immediate front: **`loom`** (the phase machine, the last spine layer, now that
-`builder` ✅ is done — see [modules/builder-contract.md](modules/builder-contract.md)) in parallel with finishing
-the **config TUI** — neither blocks the other.
+`builder` ✅ is done — see [modules/builder-contract.md](modules/builder-contract.md)) — the last
+remaining spine layer. The setup-track items (`init`/board-repo creation, `doctor`) remain
+available to interleave at any time; neither blocks `loom`.
 
 ## Milestones
 
