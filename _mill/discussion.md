@@ -110,6 +110,16 @@ path rather than the Go-only one.
   unusable for name-based callers; (b) grep-based name→position — reintroduces the textual
   imprecision LSP exists to remove; (c) full impact surface (references + callHierarchy +
   implementation) — unmeasured surface, larger client, defers the honest first deliverable.
+- **Deadline / cancellation contract** (a *slow*/hung fault, distinct from the fast typed
+  errors elsewhere): the engine's references entry point takes a `context.Context` and every
+  call is bounded by a deadline — a `--timeout <dur>` flag on the verb (sensible default,
+  e.g. 30s, given #008 measured multi-second warm-ups and rust-analyzer/csharp-ls can index
+  a large solution for far longer). On deadline expiry the engine cancels the in-flight LSP
+  request, tears down the server subprocess, and returns a typed `ErrServerTimeout` naming
+  the phase that stalled (`initialize` vs `references` vs `workspace/symbol`); `codeintelcli`
+  emits it as `output.Err`. Without this, a server that launches but hangs on `initialize`
+  (the fault #008 flagged as the realistic slow case) would block the verb forever — no fast
+  typed error covers it.
 - Recovered reference: the existing client is preserved at commit `3b4dcf86`
   (`tools/codeintel-poc/gopls.go`; recover with `git show 3b4dcf86:tools/codeintel-poc/gopls.go`).
   Its `lspClient`, `call`/`notify`, `references`, `toLSPPosition`/`utf16Length`, and
@@ -141,7 +151,11 @@ path rather than the Go-only one.
 - Note: `pylsp` (the second Python server measured) is a benchmark alternative, not the
   default Python built-in — the default is `pyright` (more precise). The registry may carry
   an alt-server mechanism or the measurement can point the client at pylsp directly; a
-  detail for mill-plan, not load-bearing for the registry contract.
+  detail for mill-plan, not load-bearing for the registry contract. If an alt-server *field*
+  is chosen over pointing the client at pylsp directly, it must ride the **same overlay and
+  validation path** as primary entries — decoded under `yaml.Decoder.KnownFields(true)`,
+  carrying its own install-hint, validated for a known/non-empty launch command — never a
+  side-channel that bypasses the registry's loud-error validation.
 
 ### language-detection
 
@@ -194,6 +208,13 @@ path rather than the Go-only one.
   form bypasses resolution entirely. (`workspace/symbol` precision is best-effort, per Scope
   → Out; the contract is about *how ambiguity is surfaced*, not about guaranteeing a unique
   match.) `codeintelcli` maps each typed error to `output.Err`.
+- **Resolver-capability signal** (distinct from a genuine no-match): a server that does not
+  advertise `workspaceSymbolProvider` in its `initialize` capabilities (or under-populates
+  it) would otherwise return zero candidates and masquerade as `ErrSymbolNotFound`. The
+  engine inspects the `initialize` response and, when the capability is absent, returns a
+  distinct typed `ErrResolverUnsupported` for the `<symbol>` form — telling the caller "this
+  server can't resolve names, use `file:line:col`" rather than "the symbol doesn't exist."
+  The `file:line:col` form is unaffected (it needs no resolver).
 - Rejected: library-only `internal/codeintel` with tests as the only driver — nothing
   exercises it end-to-end, and the measurement would need a bespoke harness instead of the
   shipping verb. Rejected: silently picking the first of multiple `workspace/symbol`
@@ -368,3 +389,4 @@ From `CONSTRAINTS.md` (this task must satisfy):
 - **Q:** How to handle the measurement given the machine had no toolchains and Ubuntu 26.04 strips `ensurepip`? **A:** Operator can sudo-install. Full matrix: Go/gopls (parity, no sudo) + Python/pyright + Python/pylsp (precision spread within Python) + C#/csharp-ls.
 - **Q:** What target repos to measure against? **A:** (delegated) One mid-size, real, partially-typed project per language cloned into `.scratch/codeintel/targets/`; Go measured against loomyard as #008 did; exact repos recorded in the write-up.
 - **Q:** (review r1 gap) The engine leaf allowlist listed `internal/output`, but `output.Err/Ok` are CLI-layer (io.Writer + exit code) and the CLI/Cobra invariant bars the engine from importing them — how is the layer split resolved? **A:** Engine returns typed errors/`(T, error)`; `codeintelcli` alone maps them to the `output` envelope. `output` dropped from the engine leaf allowlist (matching modelspec). See the `engine-cli-layering` decision.
+- **Q:** (review r2 gap) Every failure mode was a fast typed error, but a server that launches then hangs on `initialize`/`references` (rust-analyzer/csharp-ls indexing) has no deadline — the verb blocks forever. **A:** The `refs` entry point takes a `context.Context`; a `--timeout` flag (default ~30s) bounds every call; expiry cancels the request, tears down the subprocess, and returns typed `ErrServerTimeout` naming the stalled phase. See `lsp-client-surface` → Deadline / cancellation contract.
