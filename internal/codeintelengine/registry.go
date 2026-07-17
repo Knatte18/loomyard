@@ -16,11 +16,17 @@ import "fmt"
 // whether all or any of them must be present. Command is the launch argv
 // (the first element is the binary looked up on $PATH); InstallHint is the
 // operator-facing command to install that binary when it's missing.
+//
+// The yaml struct tags let LoadRegistry (load.go) decode a servers.yaml
+// entry directly into this type: without them, yaml.v3's default field
+// matching would require a YAML key of "installhint" (the lowercased Go
+// field name with no separator) rather than the template's snake_case
+// "install_hint".
 type Entry struct {
-	Markers     []string
-	Match       string
-	Command     []string
-	InstallHint string
+	Markers     []string `yaml:"markers"`
+	Match       string   `yaml:"match"`
+	Command     []string `yaml:"command"`
+	InstallHint string   `yaml:"install_hint"`
 }
 
 // Registry maps a canonical language name ("go", "python", "csharp",
