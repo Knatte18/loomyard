@@ -86,6 +86,19 @@
 // failure path that skips record-batch: the next batch's begin-batch call
 // asserts afresh regardless of what the prior batch left behind.
 //
+// Live-verified caveat (Claude Code 2.1.205, round fable-r3): a /model
+// command injected while Master is mid-turn is QUEUED as a pending message
+// ("queue-operation: enqueue" in the session transcript) and is not executed
+// until the turn ends — and Master's whole run is one long turn, so the
+// switch never takes effect for any fork of the run. The oversized
+// escalation therefore currently degrades to its documented benign fallback:
+// oversized: true keeps plan-format compatibility but has no spawn effect,
+// and every fork inherits the launch model. The injection itself is safe —
+// it does not corrupt the foreground begin-batch call (verified live
+// post-F18) — and the idempotent assertion machinery stays correct, so the
+// feature re-activates automatically if a future Claude Code executes a
+// queued slash command at a step boundary.
+//
 // # cold recovery is the only real model escalation
 //
 // The one place webster spawns a genuinely separate process is
