@@ -7,7 +7,7 @@ and doesn't clutter the roadmap with maybes. Entries here have no schedule and m
 When an idea here matures into a concrete, scoped plan, it graduates to a numbered milestone in
 `roadmap.md` (and this entry should be removed or marked graduated).
 
-## Master Builder: parallel batches via a DAG (further-out, beyond the sequential fork model)
+## Webster: parallel batches via a DAG (further-out, beyond the sequential fork model)
 
 **Status:** speculative, not scoped. The sequential fork-based module this would extend has
 graduated out of this file — see `roadmap.md` milestone 26 / wiki task `master-builder`. This
@@ -21,7 +21,7 @@ avoided: two forks writing to the same worktree at the same time can collide on 
 safe if either (a) the DAG's independence edges actually guarantee no file overlap between
 parallel batches — a guarantee the DAG would need to prove, not just assume — or (b) each parallel
 batch gets its own worktree/branch, which reintroduces the multi-branch merge complexity the
-no-DAG decision was specifically chosen to avoid. Not pursued further until Master Builder's
+no-DAG decision was specifically chosen to avoid. Not pursued further until webster's
 sequential model is real and this looks worth the complexity.
 
 ## `hardener`: behavior-based hardening of live-substrate modules
