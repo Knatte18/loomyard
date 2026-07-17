@@ -40,7 +40,7 @@ func (c *Claude) AuditForks(sessionID, workdir string) (shuttleengine.ForkAudit,
 	}
 
 	parentPath := filepath.Join(projectDir, sessionID+".jsonl")
-	spawnCalls, namedSpawns, err := auditParentTranscript(parentPath)
+	spawnCalls, namedSpawns, writeCalls, writes, bashCommands, err := auditParentTranscript(parentPath)
 	if err != nil {
 		return shuttleengine.ForkAudit{}, err
 	}
@@ -52,7 +52,14 @@ func (c *Claude) AuditForks(sessionID, workdir string) (shuttleengine.ForkAudit,
 			// The run never actually spawned a fork (or Claude has not yet
 			// created the subagents/ directory) — a legitimate, zero-fork
 			// finding, not a failure to complete the audit.
-			return shuttleengine.ForkAudit{Forks: []shuttleengine.ForkReport{}, SpawnCalls: spawnCalls, NamedSpawns: namedSpawns}, nil
+			return shuttleengine.ForkAudit{
+				Forks:              []shuttleengine.ForkReport{},
+				SpawnCalls:         spawnCalls,
+				NamedSpawns:        namedSpawns,
+				ParentWriteCalls:   writeCalls,
+				ParentWrites:       writes,
+				ParentBashCommands: bashCommands,
+			}, nil
 		}
 		return shuttleengine.ForkAudit{}, fmt.Errorf("claudeengine: read subagents dir %q: %w", subagentsDir, err)
 	}
@@ -69,7 +76,14 @@ func (c *Claude) AuditForks(sessionID, workdir string) (shuttleengine.ForkAudit,
 		forks = append(forks, report)
 	}
 
-	return shuttleengine.ForkAudit{Forks: forks, SpawnCalls: spawnCalls, NamedSpawns: namedSpawns}, nil
+	return shuttleengine.ForkAudit{
+		Forks:              forks,
+		SpawnCalls:         spawnCalls,
+		NamedSpawns:        namedSpawns,
+		ParentWriteCalls:   writeCalls,
+		ParentWrites:       writes,
+		ParentBashCommands: bashCommands,
+	}, nil
 }
 
 // claudeProjectDirFor derives the ~/.claude/projects/<encoded-workdir> directory
@@ -147,16 +161,23 @@ func readTranscriptLines(path string) ([]transcriptLine, error) {
 }
 
 // auditParentTranscript reads path (the parent session's own transcript) and
-// counts its Agent tool_use invocations: spawnCalls is the total count, and
-// namedSpawns is how many of those carried a non-empty tool_input.name field — a
-// defect signal the caller's fail-loud policy hard-errors on (named forks
-// silently lose inherited context in Claude Code ≤2.1.206). A missing or
-// unreadable parent transcript is an error: without it there is no way to know
-// what the session actually spawned.
-func auditParentTranscript(path string) (spawnCalls, namedSpawns int, err error) {
+// extracts three provider-invariant fact groups the caller's policy interprets:
+// spawnCalls is the total count of Agent tool_use invocations, and namedSpawns
+// is how many of those carried a non-empty tool_input.name field — a defect
+// signal the caller's fail-loud policy hard-errors on (named forks silently
+// lose inherited context in Claude Code ≤2.1.206). writeCalls counts every
+// Write/Edit/NotebookEdit tool_use block, and writes carries the file path of
+// each one, in transcript order — read from the block's file_path input key,
+// falling back to notebook_path for NotebookEdit; a block whose input carries
+// neither key still increments writeCalls but contributes no entry to writes
+// (skipped, not a panic). bashCommands carries the verbatim command input of
+// every Bash tool_use block, in transcript order. A missing or unreadable
+// parent transcript is an error: without it there is no way to know what the
+// session actually spawned or did.
+func auditParentTranscript(path string) (spawnCalls, namedSpawns, writeCalls int, writes, bashCommands []string, err error) {
 	lines, err := readTranscriptLines(path)
 	if err != nil {
-		return 0, 0, fmt.Errorf("claudeengine: read parent transcript %q: %w", path, err)
+		return 0, 0, 0, nil, nil, fmt.Errorf("claudeengine: read parent transcript %q: %w", path, err)
 	}
 
 	for _, line := range lines {
@@ -164,16 +185,34 @@ func auditParentTranscript(path string) (spawnCalls, namedSpawns int, err error)
 			continue
 		}
 		for _, block := range line.Message.Content {
-			if block.Type != "tool_use" || block.Name != "Agent" {
+			if block.Type != "tool_use" {
 				continue
 			}
-			spawnCalls++
-			if name, _ := block.Input["name"].(string); name != "" {
-				namedSpawns++
+			switch block.Name {
+			case "Agent":
+				spawnCalls++
+				if name, _ := block.Input["name"].(string); name != "" {
+					namedSpawns++
+				}
+			case "Write", "Edit", "NotebookEdit":
+				writeCalls++
+				filePath, ok := block.Input["file_path"].(string)
+				if !ok || filePath == "" {
+					// NotebookEdit carries its path under notebook_path, not
+					// file_path — fall back before giving up on this block.
+					filePath, ok = block.Input["notebook_path"].(string)
+				}
+				if ok && filePath != "" {
+					writes = append(writes, filePath)
+				}
+			case "Bash":
+				if cmd, _ := block.Input["command"].(string); cmd != "" {
+					bashCommands = append(bashCommands, cmd)
+				}
 			}
 		}
 	}
-	return spawnCalls, namedSpawns, nil
+	return spawnCalls, namedSpawns, writeCalls, writes, bashCommands, nil
 }
 
 // auditForkTranscript reads path (one fork subagent's own transcript) into a

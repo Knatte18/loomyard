@@ -25,6 +25,22 @@ type ForkAudit struct {
 	// NamedSpawns is a defect signal a caller should hard-error on, not merely warn
 	// about.
 	NamedSpawns int
+	// ParentWriteCalls counts Write/Edit/NotebookEdit tool_use blocks observed in
+	// the parent session's own transcript. Interpreting this fact — e.g. whether a
+	// fork-authorized parent is expected to mutate files itself — is the caller's
+	// policy, not this package's.
+	ParentWriteCalls int
+	// ParentWrites carries the file path of every parent-session Write/Edit/
+	// NotebookEdit tool_use block, in transcript order. The path comes from the
+	// block's file_path input key, falling back to notebook_path for NotebookEdit;
+	// a write whose block carries neither key is still counted in
+	// ParentWriteCalls but contributes no entry here.
+	ParentWrites []string
+	// ParentBashCommands carries the verbatim command input of every parent-session
+	// Bash tool_use block, in transcript order. Classifying which of these are
+	// git-mutating (or otherwise disallowed) is the caller's policy, not this
+	// package's — ParentBashCommands only carries the raw strings.
+	ParentBashCommands []string
 }
 
 // ForkReport summarizes one fork subagent's transcript: what it attempted (AgentCalls,
