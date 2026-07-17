@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-recover-batch
+phase: approved-run-level
 slug: master-builder
 branch: master-builder
 plan: _mill/plan
@@ -28,6 +28,7 @@ approved-webster-audit-policy  '2026-07-17T12:02:41Z'
 approved-webster-templates  '2026-07-17T12:12:24Z'
 approved-bracket-verbs  '2026-07-17T12:24:56Z'
 approved-recover-batch  '2026-07-17T12:36:52Z'
+approved-run-level  '2026-07-17T12:56:40Z'
 ```
 
 ## Batches
@@ -65,9 +66,10 @@ batches:
     start_sha: d1a3c60babe08e4c4d636bdd17a0f4b0d6c74216
     commit_sha: de6223d579220e4bb45144ce50ef781e217fb54c
   - name: run-level
-    state: running
+    state: approved
     implementer_session: 0828bb13-6d9c-4ac9-8436-981e795a920b
     start_sha: 2959e259905dfcfb3bb4bb078dcbc379e8d6a9fc
+    commit_sha: 47dbfd00b5b542f015f300d952e1d47b2e5d221c
   - name: webstercli-registration
     state: pending
   - name: sandbox-and-docs
