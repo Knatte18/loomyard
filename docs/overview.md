@@ -286,8 +286,11 @@ User-facing modules each get one `lyx <module>` namespace:
 - **webster** — fork-based sibling of builder: one long-lived Master session reads the
   codebase and the whole plan once, then forks one implementer per batch in-session
   (Claude Code's Agent tool) instead of spawning a fresh mux/tmux strand per batch;
-  bracket verbs (`begin-batch`/`record-batch`) replace `spawn-batch`/`poll`, and a genuine
-  model escalation (recovery after a stuck/report-less fork) still spawns a cold strand.
+  bracket verbs (`begin-batch`/`await-batch`/`record-batch`) replace `spawn-batch`/`poll`
+  (forks are backgrounded agents on current Claude Code, so Master long-polls
+  `await-batch` for each batch's report instead of relying on a synchronous fork return),
+  and a genuine model escalation (recovery after a stuck/report-less fork) still spawns a
+  cold strand.
   Kept contract-compatible with `builder` (same plan input, batch-report schema, and
   outcome schema) so both can be A/B tested on the same plan (`internal/websterengine` +
   `internal/webstercli`). ✅ Implemented. See
