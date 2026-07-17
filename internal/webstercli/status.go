@@ -1,14 +1,14 @@
 // status.go implements the `status` webster verb: an instant, side-effect-
-// free snapshot of _lyx/webster/state.json plus the reports dir -- the same
-// navigation refresher buildercli's own status.go documents (human- and
-// loom-facing). It never spawns an agent, never weft-commits, and never
-// mutates state.json; unlike builder (which only learns a batch's terminal
-// status from poll's own next tick or a live report-file scan), webster's
-// own record-batch/recover-batch persist BatchState.Status/Terminal/Digest
-// directly onto state.json the moment the batch reaches a terminal
-// classification, so status here is a plain read of the persisted record --
-// builder-parity in verb shape (a pure snapshot, never a mutation), not in
-// mechanism.
+// free snapshot of _lyx/webster/state.json -- the same navigation refresher
+// buildercli's own status.go documents (human- and loom-facing). It never
+// spawns an agent, never weft-commits, and never mutates state.json; unlike
+// builder (which only learns a batch's terminal status from poll's own next
+// tick or a live report-file scan), webster's own record-batch/recover-batch
+// persist BatchState.Status/Terminal/Digest directly onto state.json the
+// moment the batch reaches a terminal classification, so status here is a
+// plain read of the persisted record and needs no separate reports-dir scan
+// -- builder-parity in verb shape (a pure snapshot, never a mutation), not
+// in mechanism.
 package webstercli
 
 import (
@@ -29,7 +29,7 @@ import (
 func (c *websterCLI) statusCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "status",
-		Short: "print an instant snapshot of state.json and the reports dir",
+		Short: "print an instant snapshot of the run's persisted state.json",
 		Long: `status reads _lyx/webster/state.json and reports the run's identity, the
 in-flight batch cursor, the plan fingerprint, every batch's own persisted
 record (number, slug, kind, status, terminal, whether a digest is
