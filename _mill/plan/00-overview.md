@@ -33,7 +33,7 @@ batches:
     name: measurement-and-writeup
     file: 04-measurement-and-writeup.md
     depends-on: [3]
-    verify: null
+    verify: go test -tags integration ./internal/codeintelengine/...
 ```
 
 ## Shared Decisions
@@ -98,6 +98,7 @@ batches:
 ## All Files Touched
 
 - `CONSTRAINTS.md`
+- `cmd/lyx/helptree_test.go`
 - `cmd/lyx/main.go`
 - `cmd/lyx/sandbox_coverage_test.go`
 - `docs/modules/codeintel.md`

@@ -45,9 +45,9 @@ cwd is not inside a lyx hub), and maps every engine typed error to `output.Err`.
   target dir (flag value, or `hubgeometry.Getwd()` when empty — never raw `os.Getwd`); parse the
   positional arg into a `codeintelengine.Query` (`file:line:col` when it matches that shape, else a
   symbol name); resolve the overlay base by attempting `hubgeometry.Resolve(cwd)` and, on success,
-  loading `codeintelengine.LoadRegistry(<hub base>)`, else falling back to `codeintelengine`'s built-in
-  registry accessor (add a small exported `BuiltinRegistry()` in the engine if `builtins()` is
-  unexported — a one-line wrapper); call `codeintelengine.References(ctx, opts)`; on success
+  loading `codeintelengine.LoadRegistry(<hub base>)`, else falling back to
+  `codeintelengine.BuiltinRegistry()` (defined in batch 1 Card 2); call
+  `codeintelengine.References(ctx, opts)`; on success
   `output.Ok` with the reference list (each `{file,line,character}`); on error `output.Err(err.Error())`
   and non-zero exit via the `clihelp.SetExit`/`output.Err` pattern used in `weftcli`. `func RunCLI(out
   io.Writer, args []string) int = clihelp.Execute(Command(), out, args)`. Import `internal/codeintelengine`,
@@ -84,24 +84,27 @@ cwd is not inside a lyx hub), and maps every engine typed error to `output.Err`.
   - `internal/codeintelcli/cli.go`
   - `cmd/lyx/registration_test.go`
   - `cmd/lyx/longlist_test.go`
-  - `cmd/lyx/helptree_test.go`
   - `cmd/lyx/drift_test.go`
 - **Edits:**
   - `cmd/lyx/main.go`
   - `cmd/lyx/sandbox_coverage_test.go`
+  - `cmd/lyx/helptree_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** In `cmd/lyx/main.go` `newRoot()`: add the import for
   `github.com/Knatte18/loomyard/internal/codeintelcli` and add `codeintelcli.Command()` to the
   `root.AddCommand(...)` call; append `codeintel` to the root `Long` "Available modules:" list. In
-  `cmd/lyx/sandbox_coverage_test.go`, add a `excludedModules` entry:
+  `cmd/lyx/sandbox_coverage_test.go`, add an `excludedModules` entry:
   `"codeintel": "requires an external language-server binary (gopls/pyright/csharp-ls) on $PATH; exercised by //go:build integration tests, not the black-box sandbox suite"`.
-  No edits to `registration_test.go`/`longlist_test.go`/`helptree_test.go`/`drift_test.go` are needed —
-  they auto-derive from the live root (registration auto-discovers `internal/*cli` `Command()`
-  packages; longlist/helptree/drift assert against `newRoot()`), so registering the command + naming it
-  in `Long` + the `Short` on every command (Card 13) satisfies all four guards. Confirm the full
-  `go test ./cmd/lyx/...` passes.
+  In `cmd/lyx/helptree_test.go`, update the **pinned sets** (per the CLI/Cobra Invariant's "update the
+  pinned sets in the same commit"): add `"codeintel"` to the `requiredModules` slice and add a
+  `{module: "codeintel", wantSubs: []string{"refs"}}` case to `TestHelpTree_VerbModuleSubcommands`. No
+  edits to `registration_test.go`/`longlist_test.go`/`drift_test.go` are needed — those three
+  auto-derive from the live root (registration auto-discovers `internal/*cli` `Command()` packages;
+  longlist asserts `root.Long` names each registered module; drift asserts every command has a
+  `Short`), so registering the command + naming it in `Long` + the `Short` on every command (Card 13)
+  satisfies them. Confirm the full `go test ./cmd/lyx/...` passes.
 - **Commit:** `feat(cmd/lyx): register codeintel module + sandbox exclusion`
 
 ### Card 16: module design doc + overview update
@@ -124,9 +127,11 @@ cwd is not inside a lyx hub), and maps every engine typed error to `output.Err`.
   language-server registry (built-ins + `servers.yaml` overlay + `match` all/any semantics + pinned
   detection precedence), the typed error vocabulary, the `lyx codeintel refs` verb surface, and the
   explicit scope boundaries (uniform LSP path with `go.mod → gopls`; in-process `go/packages` arm,
-  callHierarchy, implementation, and a lyx-owned server install/pin story all deferred). Reference
-  `docs/research/codeintel-multilang.md` (created in batch 4) for the measurement and
-  `docs/modules/websterv2_extension.md` for the origin reasoning. In `docs/overview.md`, add
+  callHierarchy, implementation, and a lyx-owned server install/pin story all deferred). Cross-link
+  the in-tree `docs/research/codeintel-spike.md` (#008) and `docs/research/codeintel-multilang.md`
+  (created in batch 4). Refer to `docs/modules/websterv2_extension.md` for the origin reasoning **by
+  name in prose** — that doc lives on `main` (not in this worktree), so mention it rather than writing
+  a relative link that would dangle at this branch's HEAD. In `docs/overview.md`, add
   `codeintel` to the module table / execution-stack listing in the same style as the existing entries.
 - **Commit:** `docs(codeintel): module design doc + overview entry`
 

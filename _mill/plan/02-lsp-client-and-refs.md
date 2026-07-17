@@ -79,9 +79,15 @@ tests are `//go:build integration`-tagged; the in-memory framing test is untagge
   `references(ctx, fileURI, pos)` (with `includeDeclaration: true`) and
   `workspaceSymbol(ctx, query)` returning candidate locations. Add `close()` (graceful
   `shutdown`/`exit`, best-effort, for the normal end of a run) and `kill()` (`cmd.Process.Kill()` +
-  `Wait`, for the timeout path). Add a `supportsWorkspaceSymbol() bool` accessor. Import stdlib only
-  (`bufio`, `bytes`, `context`, `encoding/json`, `fmt`, `io`, `os`, `os/exec`, `sort`, `strconv`,
-  `strings`, `time`). No `internal/output`.
+  `Wait`, for the timeout path). Add a `supportsWorkspaceSymbol() bool` accessor. **Factor the I/O
+  over an injectable transport for testability:** the `lspClient` holds a writer + buffered reader
+  (and, when spawned, the `*exec.Cmd`); provide the production constructor
+  `newLSPClient(command []string)` (spawns the subprocess, wires its stdio) **and** an unexported seam
+  constructor `newLSPClientFromRW(rwc io.ReadWriteCloser) *lspClient` that builds a client over a
+  caller-supplied transport with **no** subprocess — Card 10 drives this seam. `kill()` guards on a
+  nil `*exec.Cmd` (no-op / closes the transport) so the pipe-backed client is safe to tear down.
+  Import stdlib only (`bufio`, `bytes`, `context`, `encoding/json`, `fmt`, `io`, `os`, `os/exec`,
+  `sort`, `strconv`, `strings`, `time`). No `internal/output`.
 - **Commit:** `feat(codeintelengine): generalized stdio LSP client`
 
 ### Card 10: LSP client framing unit test (fake server)
@@ -95,17 +101,15 @@ tests are `//go:build integration`-tagged; the in-memory framing test is untagge
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Untagged, spawn-free. Exercise the framing/protocol logic **without launching a
-  real subprocess**: refactor `lspClient` so its I/O is testable against an in-memory transport (e.g.
-  a small interface or an injectable `io.Reader`/`io.Writer` pair driven by `io.Pipe`, or a
-  constructor variant `newLSPClientFromPipes` used only by the test) — a scripted fake server
-  goroutine writes Content-Length-framed responses. Assert: the `initialize` handshake round-trips and
-  the capabilities are captured (`supportsWorkspaceSymbol` reflects the scripted response); a
-  server-initiated `client/registerCapability` request receives an empty-result reply; a
-  `textDocument/references` call sends `includeDeclaration: true` and parses the location list; a
-  `context` whose deadline is already exceeded yields `ErrServerTimeout` (assert via `errors.Is`). Do
-  NOT use `exec.Command` in this file (keep it untagged; a real `os/exec` launch belongs in Card 12's
-  integration test). If a small production seam is needed to inject the transport, add it in
-  `lspclient.go` under Card 9's file rather than here.
+  real subprocess** by building the client via Card 9's `newLSPClientFromRW(rwc)` seam over an
+  `io.Pipe`-backed transport — a scripted fake server goroutine writes Content-Length-framed
+  responses. Assert: the `initialize` handshake round-trips and the capabilities are captured
+  (`supportsWorkspaceSymbol` reflects the scripted response); a server-initiated
+  `client/registerCapability` request receives an empty-result reply; a `textDocument/references` call
+  sends `includeDeclaration: true` and parses the location list; a `context` whose deadline is already
+  exceeded yields `ErrServerTimeout` (assert via `errors.Is`). Do NOT use `exec.Command` in this file
+  (keep it untagged; a real `os/exec` launch belongs in Card 12's integration test). The transport
+  seam already exists from Card 9 — this card writes only the test.
 - **Commit:** `test(codeintelengine): LSP framing tests against an in-memory server`
 
 ### Card 11: References orchestration + public types

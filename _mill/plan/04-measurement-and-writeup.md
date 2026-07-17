@@ -5,7 +5,7 @@ task: Extend codeintel lookup to non-Go languages via LSP
 batch: measurement-and-writeup
 number: 4
 cards: 1
-verify: null
+verify: go test -tags integration ./internal/codeintelengine/...
 depends-on: [3]
 ```
 
@@ -13,10 +13,13 @@ depends-on: [3]
 
 Runs #008's references precision/cost measurement through the new `lyx codeintel refs` verb across the
 agreed matrix — Go/gopls (parity), Python/pyright, Python/pylsp, C#/csharp-ls — and writes the honest
-findings to `docs/research/codeintel-multilang.md`. This batch produces no Go code; its deliverable is
-the research write-up plus the raw measurement JSON under `.scratch/codeintel/` (gitignored, not
-committed, exactly as #008 did). `verify: null` because there is no runnable Go test surface — the
-verification is the hand-established ground truth recorded in the write-up.
+findings to `docs/research/codeintel-multilang.md`. This batch produces no new Go code; its deliverable
+is the research write-up plus the raw measurement JSON under `.scratch/codeintel/` (gitignored, not
+committed, exactly as #008 did). Because Card 17 installs `gopls` (no sudo), this batch is also where
+the shipped live-server integration test (batch 2 Card 12) first becomes runnable — so
+`verify: go test -tags integration ./internal/codeintelengine/...` runs it here (it `t.Skip`s cleanly
+if `gopls` is somehow still absent). The measurement's own precision numbers are verified by
+hand-established ground truth recorded in the write-up, not by a Go assertion.
 
 **Toolchain reality (this dev machine).** Only `go` and `python3` are installed; Ubuntu 26.04 strips
 `ensurepip`. The operator has approved sudo installs on request. Server installs:
@@ -72,15 +75,19 @@ CC-native LSP arm as "characterized, not measured live."
   fuzzy-Python contrast); the exact target repos + commits; a caveats section (single machine,
   hand-picked symbols, order-of-magnitude numbers). Any arm whose server was not installed is recorded
   as **"pending operator install"** with its exact install command and the benchmark plan ready to run,
-  not silently omitted. Cross-link `docs/modules/codeintel.md` and
-  `docs/modules/websterv2_extension.md`. The single commit carries only the write-up (the `.scratch`
+  not silently omitted. Cross-link the in-tree `docs/modules/codeintel.md` and
+  `docs/research/codeintel-spike.md`; refer to `docs/modules/websterv2_extension.md` (the origin doc,
+  which lives on `main`, not in this worktree) by name in prose rather than as a relative link that
+  would dangle at this branch's HEAD. The single commit carries only the write-up (the `.scratch`
   artifacts are gitignored).
 - **Commit:** `docs(codeintel): multi-language references measurement + write-up`
 
 ## Batch Tests
 
-`verify: null` — this batch produces the research write-up (`docs/research/codeintel-multilang.md`) and
-gitignored `.scratch/codeintel/` measurement artifacts; there is no Go test surface to run. The
-"verification" is the hand-established ground truth (grep + manual false-match exclusion) recorded in
-the precision table, exactly as #008 verified its own measurement. The correctness of the shipped
-code is covered by batches 1–3's tests and Card 12's live-gopls integration test.
+`verify: go test -tags integration ./internal/codeintelengine/...` — Card 17 installs `gopls`, so
+this batch is the first point at which batch 2 Card 12's live-gopls integration test is runnable; the
+integration verify exercises it end-to-end (and `t.Skip`s cleanly if `gopls` is absent). The
+measurement's own precision numbers are not a Go assertion — they are hand-established ground truth
+(grep + manual false-match exclusion) recorded in the write-up's precision table, exactly as #008
+verified its own measurement. The correctness of the shipped code is otherwise covered by batches 1–3's
+untagged tests.

@@ -16,8 +16,8 @@ the typed error vocabulary, the language-server registry (built-ins + `servers.y
 embedded seed template), and marker-based language detection. No subprocess, no LSP, no network —
 every test here is untagged, offline, and spawn-free. This batch also records the new
 `Codeintelengine Leaf Invariant` in `CONSTRAINTS.md` alongside its enforcement test, in the same
-commit. The external interface batch 2 consumes: the `Registry` type, `LoadRegistry(baseDir)`,
-`DetectLanguage(...)`, the `Entry` struct, and the sentinel errors.
+commit. The external interface batches 2 and 3 consume: the `Registry` type, `LoadRegistry(baseDir)`,
+`BuiltinRegistry()`, `DetectLanguage(...)`, the `Entry` struct, and the sentinel errors.
 
 Batch-local decision: the registry is keyed by a canonical **language name** (`"go"`, `"python"`,
 `"csharp"`, `"typescript"`, `"rust"`), and detection precedence is a fixed slice in that order:
@@ -70,7 +70,10 @@ Batch-local decision: the registry is keyed by a canonical **language name** (`"
   `var precedence = []string{"go", "rust", "csharp", "typescript", "python"}` — the fixed
   detection order. Add `func validateEntry(name string, e Entry) error` enforcing:
   non-empty `Markers`, `Match` ∈ {`all`,`any`}, non-empty `Command`, non-empty `InstallHint` —
-  loud error naming `name` on any violation. Import stdlib + `fmt` only.
+  loud error naming `name` on any violation. Add an exported `func BuiltinRegistry() Registry`
+  returning `builtins()` (a one-line public accessor) — this is the registry the CLI layer uses when
+  no lyx-hub overlay base is resolvable; `builtins()` itself stays unexported. Import stdlib + `fmt`
+  only.
 - **Commit:** `feat(codeintelengine): language-server registry with pinned built-ins`
 
 ### Card 3: servers.yaml overlay loader
