@@ -1,10 +1,11 @@
 // cli_test.go drives RunCLI through its seam: the bare/--help subcommand listing,
 // every command's Short, and the ErrNoLanguage error-envelope path. It is
-// deliberately untagged, offline, and spawn-free — no exec.Command, no gitexec, no
-// lyxtest.Copy — so it never launches a language server or requires a git repo.
-// A real "refs" query against a live language server belongs to the
-// //go:build integration tier (internal/codeintelengine's own integration test)
-// and batch 4's measurement, not here.
+// deliberately untagged, offline, and spawn-free: it never shells out to a
+// subprocess, never touches git, and never copies a fixture tree, so it never
+// launches a language server or requires a git repo. A real "refs" query against a
+// live language server belongs to the //go:build integration tier
+// (internal/codeintelengine's own integration test) and batch 4's measurement, not
+// here.
 
 package codeintelcli
 

@@ -3,8 +3,8 @@
 // newLSPClientFromRW(rwc) seam with an io.Pipe-backed transport, driven by
 // a scripted fake-server goroutine that reads Content-Length-framed
 // requests and writes back Content-Length-framed responses. Untagged and
-// spawn-free — no exec.Command anywhere in this file; a real os/exec launch
-// belongs in refs_integration_test.go's //go:build integration test.
+// spawn-free — no subprocess launch anywhere in this file; a real os/exec
+// call belongs in refs_integration_test.go's //go:build integration test.
 //
 // The fake-server helpers report failures via t.Errorf and an "ok" return
 // rather than t.Fatalf: testing.T's FailNow (which Fatalf calls) must only

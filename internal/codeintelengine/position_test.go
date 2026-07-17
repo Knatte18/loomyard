@@ -2,7 +2,7 @@
 // pure-ASCII line, where byte column and UTF-16 offset coincide, and on a
 // line with a multi-byte rune before the target column, where they diverge)
 // and formatLocation's round trip back to a display string. Entirely
-// offline and spawn-free: stdlib only, no exec.Command.
+// offline and spawn-free: stdlib only, no subprocess launch.
 
 package codeintelengine
 

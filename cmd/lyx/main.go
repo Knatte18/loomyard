@@ -23,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/buildercli"
 	"github.com/Knatte18/loomyard/internal/burlercli"
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/codeintelcli"
 	"github.com/Knatte18/loomyard/internal/configcli"
 	"github.com/Knatte18/loomyard/internal/idecli"
 	"github.com/Knatte18/loomyard/internal/initcli"
@@ -83,7 +84,7 @@ It assembles every module's cobra command tree under a single root so that
 all modules are discoverable via "lyx --help" and every subcommand carries
 its own --help and --json help output.
 
-Available modules: init, board, config, ide, mux, weft, warp, selfreport, shuttle, burler, perch, builder.`,
+Available modules: init, board, config, ide, mux, weft, warp, selfreport, shuttle, burler, perch, builder, codeintel.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		// Several module groups (board, ide, mux, weft) install their own
@@ -125,6 +126,7 @@ Available modules: init, board, config, ide, mux, weft, warp, selfreport, shuttl
 		burlercli.Command(),
 		perchcli.Command(),
 		buildercli.Command(),
+		codeintelcli.Command(),
 	)
 
 	return root
