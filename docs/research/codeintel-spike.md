@@ -200,31 +200,41 @@ exactly one direct call site (`internal/warpcli/warp.go:430`, the `pruneCmd`'s `
 closure — the 6th `cobra.Command` literal in `warp.go`'s `Command()`, hence VTA's own
 name for it, `warpcli.Command$6`), and that closure is wired through the shared
 `clihelp.WrapRun` → `RunRoot` → `Execute` path every module's `RunCLI` uses, up to
-`cmd/lyx.main`. Hand-traced **true chain**:
+`cmd/lyx.main`. Hand-traced **true chain** (verified against
+`internal/clihelp/exec.go`, where `RunRoot` calls `cmd.ExecuteContext(ctx)` directly —
+cobra's own `ExecuteContext` → `Execute` → `ExecuteC` → `execute` delegation chain is
+therefore a real, exercised link here, not an artifact):
 
 ```
-WeftHostSlug → Prune → warpcli.Command$6 → clihelp.WrapRun$1 → clihelp.RunRoot →
-clihelp.Execute → warpcli.RunCLI → (*cobra.Command).execute/ExecuteC/Execute →
-cmd/lyx.main
+WeftHostSlug → Prune → warpcli.runPruneWithFlag → warpcli.Command$6 →
+clihelp.WrapRun$1 → (*cobra.Command).execute → (*cobra.Command).ExecuteC →
+(*cobra.Command).Execute → (*cobra.Command).ExecuteContext → clihelp.RunRoot →
+clihelp.Execute → warpcli.RunCLI → cmd/lyx.main
 ```
 
-VTA's reported 30-entry set **contains every link of this true chain — zero missed
-real callers, confirming soundness** — but pads it with 10 extra entries: the sibling
-modules' own `RunCLI` functions (`boardcli.RunCLI`, `buildercli.RunCLI`,
-`burlercli.RunCLI`, `configcli.*` ×5, `idecli.RunCLI`, `initcli.RunInit`,
-`muxcli.RunCLI`, `perchcli.RunCLI`, `selfreportcli.RunCLI`, `shuttlecli.RunCLI`,
-`weftcli.RunCLI`). None of these modules' code paths can actually reach
-`warpcli.runPruneWithFlag` — they are **false positives** caused by every module
-wrapping its own commands through the same `clihelp.WrapRun` closure shape
-(`func(io.Writer, []string) int`), which VTA's type-based abstraction cannot fully
-disambiguate by closure identity once several different closures share that exact
-signature. This is the "bounded, explainable false positives" the rubric tolerates —
-explainable here down to the exact repo pattern causing it — but it is real, present
-even in VTA (the most precise of the three), and is what keeps the callgraph
-sub-verdict at Defer rather than Adopt: an implementer using VTA's transitive result
-on this repo would need to manually discount every unrelated sibling-`RunCLI` entry,
-which undermines "trust it instead of grep" for the transitive case specifically (direct
-`refs`/`callers` carry no such caveat).
+VTA's reported 30-entry set **contains every link of this 12-entry true chain — zero
+missed real callers, confirming soundness** — but pads it with 18 extra entries: the
+sibling modules' own `RunCLI` functions (`boardcli.RunCLI`, `buildercli.RunCLI`,
+`burlercli.RunCLI`, `idecli.RunCLI`, `initcli.RunInit`, `muxcli.RunCLI`,
+`perchcli.RunCLI`, `selfreportcli.RunCLI`, `shuttlecli.RunCLI`, `weftcli.RunCLI` — 10
+functions) plus `configcli`'s own internal call fan-out (`configcli.Command$1`,
+`configcli.RunCLI`, `configcli.dispatch`, `configcli.editOne`, `configcli.menu`,
+`configcli.runConfig`, `configcli.runConfig$1`, `configcli.setModule` — 8 functions).
+None of these 18 functions' code
+paths can actually reach `warpcli.runPruneWithFlag` — they are **false positives**
+caused by every module wrapping its own commands through the same `clihelp.WrapRun`
+closure shape (`func(io.Writer, []string) int`), which VTA's type-based abstraction
+cannot fully disambiguate by closure identity once several different closures share
+that exact signature. This is the "bounded, explainable false positives" the rubric
+tolerates — explainable here down to the exact repo pattern causing it — but it is
+real, present even in VTA (the most precise of the three), and is what keeps the
+callgraph sub-verdict at Defer rather than Adopt: an implementer using VTA's
+transitive result on this repo would need to manually discount every unrelated
+sibling-module entry, which undermines "trust it instead of grep" for the transitive
+case specifically (direct `refs`/`callers` carry no such caveat).
+
+12 (true chain) + 18 (sibling-module false positives) = the full 30-entry
+`transitive_callers` set in `.scratch/codeintel/weftHostSlug-callgraph-vta.json`.
 
 ## Run-scoped warm-host model
 
