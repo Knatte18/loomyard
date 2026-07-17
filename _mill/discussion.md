@@ -37,16 +37,22 @@ correct, fail-loud gate so no downstream phase ever runs against a broken worktr
   git/filesystem state only.
 - The canonical Go type for the `_lyx/status.json` schema (the pinned
   [status-schema.md](../docs/reference/status-schema.md)) and a coherence validator implementing
-  the schema doc's validation checklist. This type is the one the later phase-machine
-  skeleton reuses.
+  the schema doc's validation checklist (with the presence nuance in
+  field-presence-and-nullability — absent nullable/bool/slice fields satisfy "present" via
+  zero/null semantics). This type is the one the later phase-machine skeleton reuses.
+- A wording update to `status-schema.md`'s validation-checklist item 1 (made in the
+  implementation commit per the Documentation Lifecycle) clarifying that absent
+  nullable/bool/slice fields satisfy "present".
 - A **new shared strict-read primitive `state.ReadJSONStrict[T]`** in `internal/state` (beside
   the existing `ReadJSON`/`WriteJSON`), using `json.Decoder` + `DisallowUnknownFields()` while
   keeping the same shared read-lock and atomic-read behaviour, and exposing `state.ErrRead` /
   `state.ErrDecode` sentinels so callers can tell an I/O read error from a parse error. It is a
   reusable module function, not local to `loomengine` — builder, perch, and the phase-machine
   skeleton can all adopt it. `loomengine` uses it to parse the seed strictly.
-- A new `hubgeometry` accessor returning the host-side `_lyx/status.json` path (required by
-  the Hub Geometry Invariant — `_lyx` paths resolve only through `internal/hubgeometry`).
+- A new **WorktreeRoot-anchored** `hubgeometry` accessor `LoomStatusFile()` returning the
+  host-side `<WorktreeRoot>/_lyx/status.json` path (required by the Hub Geometry Invariant —
+  `_lyx` paths resolve only through `internal/hubgeometry`). Anchored at `WorktreeRoot`, not
+  `Cwd`, so invocation from a worktree subdirectory does not misread the seed (see seed-read-path).
 - A new exported host-worktree cleanliness helper `warpengine.HostClean(l *hubgeometry.Layout)`
   (untracked files count as dirty), replacing the ad-hoc inlined `status --porcelain` pattern
   for loom's use.
@@ -129,7 +135,8 @@ Preflight validates exactly these, in this order (see check-ordering-and-collect
    `junction`.
 4. **Seed exists and is coherent** — the `_lyx/status.json` handoff seed exists, parses
    strictly, and is internally coherent (see status-json-typed-and-strict and
-   no-half-finished-prior-run). Read via the host-junction path (see seed-read-path).
+   no-half-finished-prior-run). Read via the WorktreeRoot-anchored `LoomStatusFile()` accessor
+   (see seed-read-path).
 5. *(No fifth "no half-finished prior run" as a separate filesystem check — it is folded into
    the coherence half of check 4; see no-half-finished-prior-run.)*
 
@@ -200,7 +207,16 @@ Preflight validates exactly these, in this order (see check-ordering-and-collect
   `json.NewDecoder(...).DisallowUnknownFields()` instead of `json.Unmarshal`. **It also wraps
   its two failure modes with exported sentinels — `state.ErrRead` (the `os.ReadFile` failure)
   and `state.ErrDecode` (the decode failure)** — so callers can tell an I/O read error from a
-  parse error via `errors.Is`. `loomengine` calls `ReadJSONStrict`.
+  parse error via `errors.Is`. `loomengine` calls `ReadJSONStrict`. **Read-only: it does NOT
+  `os.MkdirAll` the parent** (unlike `ReadJSON`, whose `state.go:52` `MkdirAll`-on-read is
+  nonsensical) — a read must never create directories, so the only filesystem touch is the
+  advisory read-lock file (see side-effects).
+- **Side effects vs "Preflight never mutates".** "Never mutates" (Problem/Scope) means
+  Preflight never mutates **git-tracked / observable repo state** — no worktree content, no git
+  ops. The advisory read-lock `internal/lock` takes is an ephemeral, gitignored `*.lock`
+  (weft-excluded — see lock-path below), not repo state; it is the same benign lock builder's
+  `state.json` reads take. With `MkdirAll` dropped, that lock file is the sole filesystem side
+  effect and it trips no Preflight check.
 - **Rationale:** Keeps one strict primitive in the shared `state` module (reusable by builder,
   perch, and the phase-machine skeleton — a general helper, not local to `loomengine`), with
   **zero blast radius** on existing `ReadJSON` callers (builder's `state.json`), and preserves
@@ -222,9 +238,15 @@ Preflight validates exactly these, in this order (see check-ordering-and-collect
     `seed-incoherent`.
   - A `found == false` after a successful stat (should not happen) is treated defensively as
     the escalate `error` path (the file was there a moment ago).
-- **Open implementation note for the plan:** `ReadJSONStrict` takes a `lockPath`; choose a lock
-  path consistent with builder's `state.json` convention (e.g. a sibling `.status.json.lock`
-  under `_lyx/`). The plan must pin the exact lock-path choice.
+- **lock-path.** `ReadJSONStrict` takes a `lockPath`. It must follow builder's precedent —
+  builder puts `state.json.lock` beside its state file under `_lyx/builder/` — so loom's lock
+  is a `*.lock` beside the seed (e.g. `<WorktreeRoot>/_lyx/status.json.lock`). Critically, this
+  lock sits inside the **weft-synced `_lyx/` overlay**, so the plan must **confirm the loom lock
+  path is excluded from the weft commit pathspec exactly as builder's `*.lock` is** (builder's
+  `*.lock` is already weft-excluded; verify loom's inherits the same exclusion, e.g. via the
+  `.gitignore`/`ScopedPathspec` mechanism), so the ephemeral lock never gets committed and never
+  trips Preflight's own clean-worktree check. The plan pins the exact lock-path and confirms the
+  exclusion.
 
 #### field-presence-and-nullability
 
@@ -258,11 +280,29 @@ Preflight validates exactly these, in this order (see check-ordering-and-collect
 - **Test-plan wording.** "Missing required field → `seed-incoherent`" means a missing/empty
   **mandatory string** (`slug`/`parent`/`phase`/`stage`/`narration`); the nullable/bool fields
   are not presence-tested (their absence is a valid state).
+- **Reconciliation with the pinned schema doc.** `status-schema.md`'s validation-checklist
+  item 1 says *all nine* fields must be "present". This decision **intentionally** treats an
+  absent `history` / `start_sha` / `pause_requested` / `next_action` as *satisfying* "present"
+  through zero/null semantics — an omitted field decodes to exactly the value the checklist's
+  other items already require (empty slice / `null` / `false`), so there is no observable
+  difference between "absent" and "present with the required zero value". This is a
+  clarification of the checklist, not a contradiction of it. **The implementation must update
+  `status-schema.md`'s checklist wording** (item 1) to state this explicitly — a doc change made
+  in the mill-go commit per the Documentation Lifecycle (this discussion does not edit the pinned
+  contract). Only the five mandatory strings are structurally presence-enforced.
 
 ### seed-read-path
 
-- **Decision:** Read `status.json` via the **normal host path** `l.LyxDir()/status.json`
-  (i.e. through the `_lyx` junction), **not** via `l.WeftLyxDir()`. Error classification:
+- **Decision:** Read `status.json` via the **normal host path**, resolved by a **new
+  WorktreeRoot-anchored `hubgeometry` accessor `l.LoomStatusFile()` = `filepath.Join(l.WorktreeRoot,
+  LyxDirName, "status.json")`** (i.e. through the worktree-root `_lyx` junction), **not** via
+  `l.WeftLyxDir()`, and **not** via `l.LyxDir()`. **Anchoring at `WorktreeRoot`, not `Cwd`, is
+  deliberate:** `l.LyxDir()` is `filepath.Join(l.Cwd, LyxDirName)` (hubgeometry.go:319), so if
+  Preflight were invoked from a *subdirectory* of the worktree, `LyxDir()/status.json` would
+  point at a nonexistent `<subdir>/_lyx` and falsely report `seed-missing`. loom's `status.json`
+  is a single per-task file at the worktree root; `LoomStatusFile()` anchors there so all five
+  checks agree on one worktree regardless of the cwd Preflight was invoked from (`PairInSync`'s
+  branch check already uses `l.WorktreeRoot`; `HostClean` uses it too). Error classification:
   `os.Stat` first — `os.IsNotExist` → clean `seed-missing` failure; any other **stat** error →
   `seed-unreadable` failure with reason "unreadable, see check 3 (junction)". Never report a
   non-`IsNotExist` error as "missing". After a successful `os.Stat`, the parse goes through
@@ -380,10 +420,14 @@ What the plan needs about the codebase:
 - **`internal/hubgeometry`** ([hubgeometry.go](../internal/hubgeometry/hubgeometry.go)) —
   `Getwd()`, `Resolve(cwd) (*Layout, error)` (returns `ErrNotAGitRepo`), `Layout` with
   `Cwd/WorktreeRoot/Hub/RelPath/Prime/Repo`. Existing weft-geometry methods to reuse:
-  `LyxDir()` (host `_lyx`), `WeftWorktree()`, `WeftLyxDir()`, `HostLyxLinkHere()`,
-  `WeftRepoRoot()`, `PrimeName()`. **This task adds** a `_lyx/status.json` host-path accessor
-  here (Hub Geometry Invariant). Note: the Layout construction spawns `git rev-parse` — cheap
-  but a spawn (matters for the Test Tier Purity Invariant).
+  `LyxDir()` (host `_lyx`, **`Cwd`-anchored** — `filepath.Join(l.Cwd, LyxDirName)`,
+  hubgeometry.go:319), `WeftWorktree()`, `WeftLyxDir()`, `HostLyxLinkHere()`
+  (`WorktreeRoot/RelPath/_lyx`), `WeftRepoRoot()`, `PrimeName()`. **This task adds** a
+  **`WorktreeRoot`-anchored** `LoomStatusFile()` accessor (`filepath.Join(l.WorktreeRoot,
+  LyxDirName, "status.json")`) — deliberately not built on `LyxDir()`, whose `Cwd`-anchoring
+  would misread the seed from a subdirectory (Hub Geometry Invariant). Note: the Layout
+  construction spawns `git rev-parse` — cheap but a spawn (matters for the Test Tier Purity
+  Invariant).
 - **`internal/warpengine`** — `PairInSync(l) (ok bool, reason string, err error)` in
   [drift.go](../internal/warpengine/drift.go) is the "drift detection" loom.md references:
   checks host-branch == weft-branch and junction validity; stateless; returns `(false, reason,
@@ -513,10 +557,11 @@ plan pins the concrete table-test structure.
 - **Q:** Should untracked files count as dirty? **A:** Yes — deliberately stricter than
   Millhouse; everything must be committed at spawn. New `warpengine.HostClean` uses bare
   `--porcelain`.
-- **Q:** Read status.json via the weft path or the host junction? **A:** Host junction path
-  (`LyxDir()/status.json`) — the junction abstraction must hold. Classify `os.IsNotExist`
-  (seed missing) vs other errors (unreadable → "see check 3"); check 3 validates the junction
-  first.
+- **Q:** Read status.json via the weft path or the host junction? **A:** Host junction path via
+  a new **WorktreeRoot-anchored** `LoomStatusFile()` accessor (not `Cwd`-anchored `LyxDir()`,
+  which would misread from a subdirectory) — the junction abstraction must hold. Classify
+  `os.IsNotExist` (seed missing) vs other errors (unreadable → "see check 3"); check 3 validates
+  the junction first.
 - **Q:** How to distinguish "weft not paired" from "weft out of sync"? **A:** `os.Stat` the
   weft worktree first for a clean "not paired"; only then call `PairInSync` for the sync/junction
   verdicts.
