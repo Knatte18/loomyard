@@ -178,6 +178,9 @@ helptree pins). Mirrors buildercli file-for-file. External interface:
 - **Edits:**
   - `cmd/lyx/main.go`
   - `cmd/lyx/helptree_test.go`
+  - `internal/websterengine/config_test.go`
+  - `internal/websterengine/state_test.go`
+  - `internal/websterengine/template_test.go`
 - **Creates:**
   - `tools/sandbox/SANDBOX-WEBSTER-SUITE.md`
 - **Deletes:** none
@@ -199,6 +202,18 @@ helptree pins). Mirrors buildercli file-for-file. External interface:
   full W1/W2 scenario content is authored by card 40 (batch 9), which owns
   the scenario prose — this card only satisfies the coverage guard in the
   same commit that registers the module so `./cmd/lyx/...` stays green.
+  `cmd/lyx`'s own `TestTierPurity_UntaggedTestsSpawnNothing` guard walks
+  every `*_test.go` file under the whole module root unconditionally (not
+  gated on cobra registration), so three `websterengine` test files landed
+  by earlier batches (`config_test.go`, `state_test.go`,
+  `template_test.go`) were already tripping it before this card: each carries
+  a doc-comment MENTION of a banned raw substring (`lyxtest.CopyWeft`,
+  `exec.Command`) explaining why the file does NOT spawn — the guard's own
+  raw-substring match trips on the mention itself, not real usage. Since
+  `./cmd/lyx/...` is this batch's own verify command, this card rewords
+  those three comments (no behavior change) so the mention no longer
+  contains the literal banned substring, rather than leaving this batch's
+  own verify command failing on a defect an earlier batch introduced.
 - **Commit:** `lyx: register the webster module with sandbox suite coverage`
 
 ### Card 39: cli tests
