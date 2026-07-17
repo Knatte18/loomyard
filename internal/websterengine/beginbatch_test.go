@@ -285,6 +285,33 @@ func TestBeginBatch_ModelAssertion(t *testing.T) {
 			t.Errorf("State.AssertedModel = %q; want unchanged %q", fx.Deps.State.AssertedModel, "oversized-model")
 		}
 	})
+
+	t.Run("prompt write failure fires no injection and leaves AssertedModel unchanged", func(t *testing.T) {
+		// The assertion is deliberately the LAST fallible act of BeginBatch:
+		// an earlier failure must never leave the pane switched while the
+		// caller's error path discards the unsaved AssertedModel mutation —
+		// that divergence would silently skip a needed re-assertion later.
+		fx := newBeginFixture(t)
+		fx.Deps.State.AssertedModel = "master-model"
+		// A regular file at the PromptsDir path makes MkdirAll — and thus the
+		// prompt write — fail before the injection site is ever reached.
+		blockedDir := filepath.Join(t.TempDir(), "prompts")
+		if err := os.WriteFile(blockedDir, []byte("not a dir"), 0o644); err != nil {
+			t.Fatalf("seed blocking file: %v", err)
+		}
+		fx.Deps.PromptsDir = blockedDir
+
+		_, err := websterengine.BeginBatch(fx.Deps, 2, false)
+		if err == nil {
+			t.Fatal("BeginBatch() error = nil; want a prompt-write failure")
+		}
+		if len(fx.Injector.calls) != 0 {
+			t.Errorf("Injector.calls = %d; want zero — a failed begin-batch must not have switched the pane", len(fx.Injector.calls))
+		}
+		if fx.Deps.State.AssertedModel != "master-model" {
+			t.Errorf("State.AssertedModel = %q; want unchanged %q", fx.Deps.State.AssertedModel, "master-model")
+		}
+	})
 }
 
 // TestBeginBatch_PromptFilePrevDigest proves the fork prompt is written under

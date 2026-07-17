@@ -132,9 +132,10 @@ func digestSummaryLine(d *builderengine.Digest) string {
 // Master forks batchNumber's implementer: the pause gate, the fingerprint
 // gate, the optional --restart-chain reset (re-pointing at the chain's
 // lowest member per builder's own rule), start-SHA capture and first-member
-// chain-anchor recording, the idempotent per-batch model assertion, the
-// previous batch's persisted digest rendered into the fork prompt, and the
-// prompt file write itself. The caller holds the state-mutation lease
+// chain-anchor recording, the previous batch's persisted digest rendered
+// into the fork prompt, the prompt file write itself, and — last, so an
+// earlier failure never leaves the pane switched with nothing persisted —
+// the idempotent per-batch model assertion. The caller holds the state-mutation lease
 // across this whole call and is responsible for persisting deps.State via
 // SaveState once BeginBatch returns successfully — BeginBatch itself never
 // calls SaveState and never touches weft.
@@ -213,17 +214,6 @@ func BeginBatch(deps BeginDeps, batchNumber int, restartChain bool) (*BeginResul
 	}
 	targetModel := resolved.Model
 
-	// The ONLY model-injection site in webster (discussion.md
-	// oversized-model-escalation): idempotent against State.AssertedModel,
-	// so a resumed or repeated begin-batch call for the same batch never
-	// re-injects a switch Master's pane is already running.
-	if deps.State.AssertedModel != targetModel {
-		if err := deps.Injector.Inject(deps.State.MasterStrand, deps.Engine.ModelSwitchSequence(targetModel)); err != nil {
-			return nil, fmt.Errorf("webster: inject model switch for batch %d: %w", batchNumber, err)
-		}
-		deps.State.AssertedModel = targetModel
-	}
-
 	var prevDigest string
 	if batchNumber > 1 {
 		if prev, ok := deps.State.Batches[batchNumber-1]; ok && prev != nil {
@@ -271,6 +261,24 @@ func BeginBatch(deps BeginDeps, batchNumber int, restartChain bool) (*BeginResul
 			return nil, err
 		}
 	}
+
+	// The ONLY model-injection site in webster (discussion.md
+	// oversized-model-escalation): idempotent against State.AssertedModel,
+	// so a resumed or repeated begin-batch call for the same batch never
+	// re-injects a switch Master's pane is already running. Deliberately the
+	// LAST fallible act of this call — every earlier step (prompt render and
+	// write, strand reclaim) can still fail without the pane having been
+	// switched, so the pane's model and the persisted AssertedModel can never
+	// diverge across an error return: either the injection and its memory
+	// both happen (only infallible in-memory recording remains below) or
+	// neither does.
+	if deps.State.AssertedModel != targetModel {
+		if err := deps.Injector.Inject(deps.State.MasterStrand, deps.Engine.ModelSwitchSequence(targetModel)); err != nil {
+			return nil, fmt.Errorf("webster: inject model switch for batch %d: %w", batchNumber, err)
+		}
+		deps.State.AssertedModel = targetModel
+	}
+
 	deps.State.Batches[batch.Number] = &BatchState{
 		Slug:      batch.Slug,
 		StartSHA:  head,
