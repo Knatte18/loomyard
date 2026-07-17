@@ -209,7 +209,7 @@ Each layer knows only the one below it; built bottom-up. See the
     2. **Preflight** (renamed from an earlier "Setup" label — it's a pure precondition/validity
        check, not worktree creation, which is `warp`'s job): geometry/cwd via
        `internal/hubgeometry`, clean worktree, weft paired and in sync, no half-finished prior run.
-       No LLM involved; testable in complete isolation.
+       No LLM involved; testable in complete isolation. ✅ **Done** — see `internal/loomengine`.
     3. **Discussion producer** — the one interactive phase, heavily reusing `mill-start`, auto-mode
        capable.
     4. **Plan producer** — autonomous, no inputs beyond `discussion.md`; mostly a well-instructed

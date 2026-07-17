@@ -114,17 +114,24 @@ Per-field notes:
 
 ## Parse discipline
 
-Strict, fail-loud parsing: the `internal/state` read rejects unknown or malformed
-fields — the same `KnownFields(true)` discipline as builder's `ParseOutcome` and the
-burler verdict-parse. An unparseable or malformed status file is a hard error; loom
-never guesses a status.
+Strict, fail-loud parsing: the `internal/state` read (`state.ReadJSONStrict`) rejects
+unknown or malformed fields via `json.Decoder.DisallowUnknownFields()` — the JSON
+analogue of the discipline builder's `ParseOutcome` and the burler verdict-parse apply
+to their own YAML. An unparseable or malformed status file is a hard error; loom never
+guesses a status.
 
 ## Validation checklist
 
 Spec for a future validator:
 
-- Required fields (`slug`, `parent`, `phase`, `stage`, `narration`, `history`,
-  `start_sha`, `pause_requested`, `next_action`) are present.
+- Required fields: the five mandatory string fields (`slug`, `parent`, `phase`,
+  `stage`, `narration`) are structurally presence-enforced — an empty string is
+  treated as "absent". The remaining nullable/bool/slice fields (`start_sha`,
+  `next_action`, `pause_requested`, `history`) satisfy "present" via their own
+  zero/null semantics: an absent `start_sha`/`next_action` decodes to `null`, an
+  absent `pause_requested` decodes to `false`, and an absent `history` decodes to
+  an empty list — all legitimate values, not violations (matching
+  `loomengine.checkCoherence`).
 - `phase` is one of `preflight | discussion | plan | builder | raddle | finalize | done`.
 - `stage` is one of `produce | gate`.
 - Every `history[].outcome` is one of `approved | stuck`; `bounced_to` is present only

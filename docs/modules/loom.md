@@ -60,9 +60,12 @@ Finalize                                               │
                                        (stuck handler)─┘
 ```
 
-Preflight validates geometry and preconditions (cwd/Hub/Prime via `internal/hubgeometry`, clean
-worktree, weft pairing present **and in sync** — host branch == weft branch, via
-[`warp`](warp.md#drift-detection--when) — no half-finished prior run). Each producing phase emits
+Preflight is **built**, as `internal/loomengine.Preflight` — engine-only, no cobra module yet
+(see [module decomposition](#module-decomposition)). It validates the four preconditions over
+git/filesystem state: worktree geometry and at-root (cwd/Hub/Prime via `internal/hubgeometry`),
+the host worktree is clean, weft pairing is present **and in sync** — host branch == weft branch,
+via [`warp`](warp.md#drift-detection--when) — and `_lyx/status.json` exists and is a coherent
+fresh seed (no half-finished prior run). Each producing phase emits
 a draft artifact and is followed by a review gate. `approved` advances to the next
 phase; `stuck` routes to the stuck handler (bounce back to an earlier phase, or escalate
 to a human) — never "keep fixing symptoms."
@@ -239,7 +242,7 @@ boundary**, never mid-operation — `mill-pause`'s natural-stopping-point proper
 | producers (discussion / plan) | prompt/profile files | **not** modules — just a prompt + profile fed to `shuttle.Run` |
 | `lyx loom status` | a loom subcommand | the 1-line status view; runs as a strand (see `internal/muxengine`; `below-parent` + `ShrinkWhenWaitingOnChild`), not a separate module |
 | execution stack | existing/new infra | [`proc`](README.md) → mux → shuttle — see [overview.md#execution-stack](../overview.md#execution-stack-orchestration-layers) — built once, used by both modules above |
-| Preflight | uses existing modules | `warp` (topology owner), `weft`, `board` |
+| Preflight | new Go package (`internal/loomengine`) | ✅ **Done**, engine-only (no cobra module yet) — validates the four preconditions (geometry + at-worktree-root, host worktree clean, weft paired & in sync, seed exists & coherent) over git/filesystem state; builds on `internal/hubgeometry`, `internal/warpengine`, `internal/state` |
 | `/ly-*` skills | thin wrappers | over `lyx loom run` |
 
 The new Go specific to loom is the **three modules** (`loom`, `perch`, `burler`) plus the

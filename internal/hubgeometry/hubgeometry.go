@@ -328,6 +328,29 @@ func (l *Layout) DotLyxDir() string {
 	return filepath.Join(l.Cwd, dotLyxDirName)
 }
 
+// LoomStatusFile returns the path to the loom phase-machine's status.json
+// sidecar for this worktree. It is deliberately WorktreeRoot-anchored, NOT
+// built on LyxDir() (which is Cwd-anchored, see LyxDir above): the loom
+// status file records the state of the whole worktree, and a caller invoked
+// from a subdirectory (Cwd != WorktreeRoot) must still resolve the one true
+// status.json at the worktree root rather than misreading (or seeding) a
+// spurious copy scoped to its subdirectory.
+//
+// Returns filepath.Join(WorktreeRoot, LyxDirName, "status.json").
+func (l *Layout) LoomStatusFile() string {
+	return filepath.Join(l.WorktreeRoot, LyxDirName, "status.json")
+}
+
+// LoomStatusLock returns the path to the advisory lock file guarding
+// concurrent access to LoomStatusFile(). It shares LoomStatusFile's
+// WorktreeRoot anchoring for the same reason: the lock must fence the one
+// true status.json at the worktree root, not a per-subdirectory copy.
+//
+// Returns filepath.Join(WorktreeRoot, LyxDirName, "status.json.lock").
+func (l *Layout) LoomStatusLock() string {
+	return filepath.Join(l.WorktreeRoot, LyxDirName, "status.json.lock")
+}
+
 // HubLogsDir returns the path to the hub-level (not worktree-level) directory
 // where the shared per-hub mux server writes its runtime log. It is hub-anchored
 // because consumers like mux run exactly one shared server per hub and need one
