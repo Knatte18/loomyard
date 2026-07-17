@@ -53,7 +53,9 @@ batches:
     start_sha: d72fa93c47dabb79a5d1614605729c4682403b35
     commit_sha: 184fadf025c433aed922d5bf5bb3fb543cdad3f6
   - name: bracket-verbs
-    state: pending
+    state: running
+    implementer_session: 5b6901c3-8e67-430f-b456-79c4ffde27ee
+    start_sha: 5504145c3b1de1bbea84e573011c2649f602d514
   - name: recover-batch
     state: pending
   - name: run-level
