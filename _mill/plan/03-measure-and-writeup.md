@@ -62,7 +62,18 @@ set, transitive method) is drawn from `_mill/discussion.md`, read as Context.
   - `internal/shuttleengine/claudeengine`
   - `internal/hubgeometry/hubgeometry.go`
   - `internal/output`
-- **Edits:** none
+- **Edits:**
+  - `tools/codeintel-poc/gopackages.go` — `resolveSymbol`'s `<Type>.<Method>` branch
+    always wraps the named type in `types.NewPointer` before calling
+    `types.LookupFieldOrMethod`, which is correct for a concrete type's method set but
+    returns `nil` for an **interface** type (`LookupFieldOrMethod` on a
+    pointer-to-interface never resolves — the interface's method set lives on the
+    named type itself, not a synthesized pointer to it). This silently blocks
+    resolving the batch's own primary interface-satisfaction benchmark symbol
+    (`shuttleengine.Engine.Prepare`) with `resolve symbol ...: method "Prepare" not
+    found on type "Engine"`, discovered while running Card 7 step (b). Fix:
+    branch on whether the named type's underlying type is `*types.Interface` and, if
+    so, look up on the named type directly instead of a pointer to it.
 - **Creates:**
   - `docs/research/codeintel-spike.md`
 - **Deletes:** none
