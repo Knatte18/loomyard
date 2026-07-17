@@ -92,7 +92,20 @@ See [CONSTRAINTS.md](../CONSTRAINTS.md) for details.
 
 ## Documentation lifecycle
 
-Mechanical per-module design docs (`docs/modules/<module>.md`) are deleted when their module lands; the implementation and tests become the source of truth. The durable documentation is this `overview.md` (principles, naming, the module and shared-lib map, the weft contract, and this lifecycle convention) and the not-yet-landed portion of `roadmap.md`. A module's purpose and key design rationale live in its Go package header comment, next to the code it documents.
+Two doc classes, opposite lifecycles:
+
+- **Module-design docs** (`docs/modules/<module>.md`) are mechanical per-module design
+  drafts, deleted when their module lands; the implementation and tests become the
+  source of truth. A module's purpose and key design rationale then live in its Go
+  package header comment, next to the code it documents.
+- **Durable contract/reference docs** (`docs/reference/`) pin cross-module file
+  contracts a real consumer honors — they are **kept**, not deleted on landing:
+  `status-schema.md`, `discussion-format.md`, `plan-format.md`, `builder-contract.md`,
+  `model-spec.md`.
+
+The other durable documentation is this `overview.md` (principles, naming, the module and
+shared-lib map, the weft contract, and this lifecycle convention) and the not-yet-landed
+portion of `roadmap.md`.
 
 ## Weft overlay model
 
@@ -266,13 +279,13 @@ User-facing modules each get one `lyx <module>` namespace:
   pinned plan-format v2 plan, batch by batch, until the plan is built; Go supplies only
   the verbs plus the distillation behind them (digest, chain rollback, pause, outcome
   parsing), never the loop itself. Input contract:
-  [plan-format.md](modules/plan-format.md). Branches off `shuttle` directly; does not
+  [plan-format.md](reference/plan-format.md). Branches off `shuttle` directly; does not
   need `perch`. Ends at batches-built — the terminal holistic review is the separate
   Builder-review gate (`perch`), driven by `loom` or the operator. ✅ Implemented. See
-  [modules/builder-contract.md](modules/builder-contract.md).
-- **loom** — phased orchestrator: drives Setup → Discussion → Plan → Builder → Finalize, each
-  gated by a perch review (`lyx loom run`, alias `lyx run`). 🚧 Design — not built. See
-  [modules/loom.md](modules/loom.md).
+  [builder-contract.md](reference/builder-contract.md).
+- **loom** — phased orchestrator: drives Preflight → Discussion → Plan → Builder → Raddle →
+  Finalize, each gated by a perch review (`lyx loom run`, alias `lyx run`). 🚧 Design — not
+  built. See [modules/loom.md](modules/loom.md).
 - **perch** — generic profile-driven gate loop: runs `burler` rounds on one artifact until
   `APPROVED`/`STUCK` (milestone-capped `round_caps` ladder + a holistic progress judge), plus an
   operational `PAUSED` exit; independent of `loom` but used by it between every phase, and standalone
@@ -372,7 +385,7 @@ The **sandbox Hub** is a dedicated bench for manual testing of lyx's core workfl
   `Render` over `internal/stencil`), consumed by mux's header pipeline and, later, loom's
   prompt templates; a leaf, not a phased module (as-built; module doc deleted per the
   documentation lifecycle).
-- [modules/builder-contract.md](modules/builder-contract.md) — the batch-implementation loop (`lyx builder`): verb surface, digest contract, poll classification, chain rollback, pause, outcome contract (as-built; kept as a durable contract doc, not deleted on landing).
+- [builder-contract.md](reference/builder-contract.md) — the batch-implementation loop (`lyx builder`): verb surface, digest contract, poll classification, chain rollback, pause, outcome contract (as-built; kept as a durable contract doc, not deleted on landing).
 - `internal/muxengine` package documentation — the window to the world: tmux overlay + strand bookkeeping + render (as-built; module doc deleted per the documentation lifecycle).
 - `internal/shuttleengine` package documentation — run one LLM agent via a swappable engine over the file contract (as-built; module doc deleted per the documentation lifecycle).
 - `internal/burlerengine` package documentation — one review+fix round: A-review → B-fix, no self-grading (as-built; module doc deleted per the documentation lifecycle).
