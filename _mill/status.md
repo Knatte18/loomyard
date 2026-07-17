@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-loomengine-preflight
+phase: approved-docs
 slug: loom-preflight
 branch: loom-preflight
 plan: _mill/plan
@@ -25,6 +25,7 @@ planned  '2026-07-17T16:25:27Z'
 implementing  '2026-07-17T16:28:34Z'
 approved-preflight-prereqs  '2026-07-17T16:34:47Z'
 approved-loomengine-preflight  '2026-07-17T16:43:36Z'
+approved-docs  '2026-07-17T16:46:08Z'
 ```
 
 ## Batches
@@ -42,7 +43,8 @@ batches:
     start_sha: 583e2dbcbcdf69007b0a6e6b30348f3c67f54790
     commit_sha: 2dbee3105d33555abca712253132af44fc65e55a
   - name: docs
-    state: running
+    state: approved
     implementer_session: 98104193-69ea-4758-b195-2602e9322d54
     start_sha: 475f6a76512a74e549d22ad927f26ca95a5853a3
+    commit_sha: adc512d7b7859630d2c6d440e36a21fb985c0c4e
 ```
