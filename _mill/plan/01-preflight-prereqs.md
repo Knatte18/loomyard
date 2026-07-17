@@ -45,11 +45,14 @@ external interface batch 2 consumes: `state.ReadJSONStrict[T]` + `state.ErrRead`
   `fmt.Errorf("%w: %v", ErrRead, err)` and the decode failure as
   `fmt.Errorf("%w: %v", ErrDecode, err)` so callers classify via `errors.Is`. The
   `lock.AcquireReadLock` failure is returned wrapped as today (neither sentinel — it is a third,
-  infra mode the caller escalates). Godoc the sentinels and the read-only / strict / classification
-  behaviour. `strict_test.go` (untagged, temp-file only, no git) covers: valid decode →
-  `(v, true, nil)`; unknown field → `errors.Is(err, ErrDecode)`; malformed JSON →
-  `errors.Is(err, ErrDecode)`; missing file → `(zero, false, nil)`; and confirms no directory is
-  created for a missing parent (read-only).
+  infra mode the caller escalates). Godoc the sentinels and the "no `MkdirAll` — creates no
+  directory (a sidecar `.lock` is still taken by `AcquireReadLock`, so it is not fully
+  side-effect-free)" / strict / classification behaviour. `strict_test.go` (untagged, temp-file
+  only, no git) covers: valid decode → `(v, true, nil)`; unknown field → `errors.Is(err,
+  ErrDecode)`; malformed JSON → `errors.Is(err, ErrDecode)`; **missing file with an existing
+  parent dir** → `(zero, false, nil)` (use a real `t.TempDir()` as the parent so the read miss
+  is a clean `IsNotExist`, not a lock-acquire failure from an absent parent); and confirms the
+  parent directory is not newly created by the call (no `MkdirAll`).
 - **Commit:** `feat(state): add strict read-only ReadJSONStrict with ErrRead/ErrDecode sentinels`
 
 ### Card 2: hubgeometry LoomStatusFile + LoomStatusLock accessors

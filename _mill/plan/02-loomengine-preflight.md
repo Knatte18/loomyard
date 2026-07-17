@@ -137,8 +137,12 @@ the future phase-machine skeleton (a later task) will be the first caller.
   ...}`. When the stat succeeds, `s, found, rerr := state.ReadJSONStrict[Status](l.LoomStatusFile(),
   l.LoomStatusLock())`; classify `rerr` by the single rule: `errors.Is(rerr, state.ErrDecode)` →
   append `{CheckSeedIncoherent, ...}`; every other non-nil `rerr` (`state.ErrRead`, a lock-acquire
-  failure, anything else) → return `Report{}, err` (escalate); `!found` after a good stat →
-  return `Report{}, err` (defensive). On a clean parse, append `checkCoherence(s)`'s failures.
+  failure, anything else) → return `Report{}, rerr` (escalate); `!found` after a good stat is a
+  TOCTOU race (`ReadJSONStrict` returns `(zero,false,nil)` on `IsNotExist`, so `rerr` is **nil**
+  here) — return a **synthesized non-nil error** (e.g. `fmt.Errorf("loomengine: seed vanished
+  between stat and read: %s", l.LoomStatusFile())`), never `Report{}, nil`, so both the escalate
+  contract and `OK == (len(Failures)==0)` hold. On a clean parse, append `checkCoherence(s)`'s
+  failures.
   Finally `Report.OK = len(Failures) == 0`. Godoc `Preflight` with the **caller-contract**
   required by preflight-invocation-model, verbatim intent: "Callers MUST NOT invoke Preflight
   except when the task is at the fresh/preflight stage. Invoking it on an already-advanced task
@@ -155,6 +159,8 @@ the future phase-machine skeleton (a later task) will be the first caller.
   - `internal/lyxtest/lyxtest.go`
   - `internal/warpengine/testmain_test.go`
   - `internal/warpengine/drift.go`
+  - `internal/warpengine/junction.go`
+  - `internal/warpengine/checkout_test.go`
   - `internal/loomengine/preflight.go`
   - `internal/loomengine/report.go`
 - **Edits:** none
@@ -168,21 +174,31 @@ the future phase-machine skeleton (a later task) will be the first caller.
   `internal/warpengine/testmain_test.go` (Hermetic Git Test Environment Invariant).
   `preflight_integration_test.go` is `//go:build integration`-tagged (it spawns git via fixtures).
   Build a healthy paired host+weft fixture with `lyxtest.CopyPaired(t)` (gives `Hub`, `WeftPrime`,
-  `Layout`), seed a valid `_lyx/status.json` at `fixture.Layout.LoomStatusFile()` (fresh seed:
-  `phase:"discussion"`/`"preflight"`, `stage:"produce"`, empty history, null `start_sha`/
-  `next_action`, `pause_requested:false`, a non-empty narration), and assert `Preflight` (invoked
-  with the fixture's cwd — resolve via a `checkResolved(fixture.Layout)` call so the test injects
-  the Layout) returns `Report.OK`. Then mutate to trip each scenario, asserting the exact `CheckID`
-  set each yields: not-a-git-repo (run from a non-repo temp dir → `Preflight()` → `geometry`,
-  no other failures); subdirectory invocation (`RelPath != "."` → `worktree-root`, short-circuit);
-  empty `Prime` → `geometry`; host dirty (tracked-modified, staged, and untracked-only) →
-  `worktree-clean`; weft worktree removed → `weft-pairing`; host/weft on different branches →
-  `weft-sync`; junction broken → seed stat also `IsNotExist`, assert `seed-unreadable` (NOT
-  `seed-missing`) appears alongside `junction`; weft removed → seed `IsNotExist` classified
+  `Layout`). **`CopyPaired` does NOT wire the `_lyx` junction**, so first call
+  `warpengine.WireJunctions(fixture.Layout, slug)` (slug = `filepath.Base(fixture.Layout.WorktreeRoot)`)
+  **before** creating any `_lyx` — `WireJunctions` enforces the host-pristine invariant and errors
+  if a real host `_lyx` already exists — then seed the valid `_lyx/status.json` at
+  `fixture.Layout.LoomStatusFile()` (which now resolves through the wired junction to the weft
+  `_lyx`). Mirror the wire-then-operate pattern in `internal/warpengine/checkout_test.go` /
+  `cleanup_test.go`. Fresh seed: `phase:"discussion"`/`"preflight"`, `stage:"produce"`, empty
+  history, null `start_sha`/`next_action`, `pause_requested:false`, a non-empty narration. Assert
+  the anchor case (`checkResolved(fixture.Layout)`, injecting the Layout for isolation) returns
+  `Report.OK`. Then mutate to trip each scenario, asserting the exact `CheckID` set each yields:
+  not-a-git-repo (run from a non-repo temp dir → `Preflight()` → `geometry`, no other failures);
+  subdirectory invocation (`RelPath != "."` → `worktree-root`, short-circuit); empty `Prime` →
+  `geometry`; host dirty (tracked-modified, staged, and untracked-only) → `worktree-clean`; weft
+  worktree removed → `weft-pairing`; host/weft on different branches → `weft-sync`; junction
+  broken (remove/re-point the wired junction) → seed stat also `IsNotExist`, assert `seed-unreadable`
+  (NOT `seed-missing`) appears alongside `junction`; weft removed → seed `IsNotExist` classified
   `seed-unreadable` alongside `weft-pairing`; seed missing while junction healthy → `seed-missing`;
   seed with an unknown field → `seed-incoherent`; seed with non-empty history / set `start_sha` →
   `half-finished`; multiple simultaneous failures all collected; Prime worktree with a healthy
-  pair+seed → `Report.OK` (run-in-existing-or-prime-worktree). Use `lyxtest.MustRun` for git
+  pair+seed → `Report.OK` (run-in-existing-or-prime-worktree). **The `not-a-git-repo` and
+  `subdirectory` scenarios exercise the public `Preflight()` (which reads the process cwd via
+  `hubgeometry.Getwd`), so they `os.Chdir` into the target dir and restore the original cwd via
+  `defer`/`t.Cleanup`; because `os.Chdir` is process-global these two scenarios MUST NOT run under
+  `t.Parallel()`.** Every other scenario drives `checkResolved(l)` with an injected Layout and
+  needs no chdir. Use `lyxtest.MustRun` for git
   fixture mutations, mirroring existing warpengine integration tests. Assert only on the `CheckID`
   set per scenario, not exact `Reason` strings.
 - **Commit:** `test(loomengine): add integration tests for Preflight across all preconditions`
