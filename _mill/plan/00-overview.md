@@ -3,7 +3,7 @@
 ```yaml
 task: 'loom: pin the spawn/handover status schema + discussion-format.md'
 slug: loom-contracts
-approved: false
+approved: true
 started: 20260717-111021
 parent: main
 root: ""
