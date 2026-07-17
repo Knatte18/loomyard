@@ -59,6 +59,20 @@
 // is a steering guard, not a security boundary, the same class as burler's
 // nested-Agent ban.
 //
+// A third, deterministic layer closes the fork-loop deadlock: because a fork
+// inherits Master's whole prompt (the await-batch poll loop included), a fork
+// that starts driving that loop itself — polling await-batch for the report
+// it is meant to write — livelocks the run. A fork-context PreToolUse(Bash)
+// hook in the claudeengine seam (buildSettings, gated on the same
+// fork-authorized spec that enables forks) refuses any `lyx webster` command
+// when it fires inside a fork (the hook payload carries a top-level agent_id,
+// present only for a subagent, never a top-level Master call — the fork's
+// transcript_path is NOT distinguishable, so agent_id is the load-bearing
+// signal), while Master's own verb calls pass. This makes the deadlock
+// deterministically impossible rather than merely template-discouraged; a
+// cold recovery strand is a separate, non-fork-authorized session and never
+// sees the hook.
+//
 // # idempotent per-batch model assertion
 //
 // Forks always inherit Master's current model — there is no per-fork model
