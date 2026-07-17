@@ -47,7 +47,9 @@ batches:
     start_sha: 6b62dbfce828093da63e6cd7f65464aa88f15e98
     commit_sha: b15c944a7eeda008641d7616caf599f9c1a14d1e
   - name: webster-templates
-    state: pending
+    state: running
+    implementer_session: c2a884f3-095a-4ae8-a4da-c2ad08d1607d
+    start_sha: d72fa93c47dabb79a5d1614605729c4682403b35
   - name: bracket-verbs
     state: pending
   - name: recover-batch
