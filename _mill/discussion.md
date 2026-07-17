@@ -190,7 +190,11 @@ description).
   side: the template's exception path learns only "re-call until terminal",
   never a separate spawn/poll pair. The four-branch dead classification
   (`asking`/`timeout`/`died`) still applies inside the verb — its result
-  surfaces in the returned digest.
+  surfaces in the returned digest. The recovery strand is a cold builder-parity
+  shuttle session and is **intentionally outside the fork audit** (which reads
+  in-session subagent transcripts): its write/weft/per-card-commit discipline
+  rests on the recovery prompt template, exactly as builder's own implementer
+  and recovery sessions do today.
 - Rejected: mirroring builder's two-verb `spawn-batch --role recovery` + `poll`
   shape (teaches the template a spawn/poll split used only on the exception
   path); one unbounded blocking call (external review r2's finding — tool-call
@@ -303,13 +307,17 @@ description).
     later. The flush timing itself is asserted in the sandbox validation
     scenario (transcript present at tool-return time) alongside the `/model`
     checks. (2) One-or-more new transcripts + report present → normal
-    parse/distill; more than one transcript = warning only (legitimate retry
-    after a reported `no_report`), never hard. (3) One-or-more new transcripts +
-    **no** report → the `no_report` classification (the fork ran but violated the
-    file contract) → Master's ladder re-forks once. An Agent tool call that
-    errors before the fork ever runs surfaces synchronously as Master's own tool
-    error — Master re-forks directly and never calls `record-batch` on a
-    transcript-less batch.
+    parse/distill; more than one transcript = warning only (a fork whose Agent
+    call errored mid-flight followed by a direct re-fork, with no `record-batch`
+    in between), never hard. (3) One-or-more new transcripts + **no** report →
+    the `no_report` classification (the fork ran but violated the file contract)
+    → Master's ladder re-forks once. An Agent tool call that errors before the
+    fork ever runs surfaces synchronously as Master's own tool error — Master
+    re-forks directly and never calls `record-batch` on a transcript-less batch.
+    **Attribution advances on every `record-batch` call, `no_report` included**
+    — scanned transcripts are marked attributed immediately, so the post-retry
+    `record-batch` sees exactly the retry fork's one new transcript (the normal
+    path) and the transcript-count branches stay unambiguous across the ladder.
   - **Timing:** incremental per-batch audit at `record-batch` (early detection +
     attribution), plus the standard whole-session audit at run finalize
     (`OutcomeDone` only) as the backstop cross-check.
@@ -444,6 +452,17 @@ description).
   Master-spawn non-done outcomes (`asking`/`died`/`timeout`) map to distinct
   errors carrying session ID + kept run dir, exactly like builder's orchestrator
   errors. Requires a live mux session (`lyx mux up` first).
+  Two builder-parity companions, pinned so a plan writer does not re-invent
+  them: `status` is an instant, side-effect-free snapshot of webster's
+  `state.json` + reports dir (never spawns, never weft-commits;
+  `{"initialized": false}` before first run), and `pause` writes the flag file
+  `begin-batch`'s boundary check refuses against (`{"paused": true}` envelope →
+  Master writes `outcome: paused` and exits cleanly; flag cleared at `run`'s
+  post-gate commitment point and at every non-`paused` terminal outcome —
+  builder's exact mechanics against webster's dir). **Empty plan:** a plan that
+  parses to zero batches is refused loud at `run`'s automatic validation gate —
+  nothing-to-build is a malformed plan, never a vacuous `outcome: done` (if the
+  imported `Validate` lacks this check, webster adds its own pre-flight).
 - Rationale: all of this is mechanism-agnostic run-level discipline that builder
   already proved; webster changes only what happens *between* the boundaries.
 - Rejected: nothing — carried over deliberately.
