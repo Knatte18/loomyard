@@ -1,5 +1,5 @@
 // validate.go implements Validate, plan-format v2's complete machine check
-// set (docs/modules/plan-format.md's "Validation checks" section), run in
+// set (docs/reference/plan-format.md's "Validation checks" section), run in
 // this fixed order: format/approval (format-unrecognized, plan-unapproved),
 // Batch Index <-> file consistency (index-file-mismatch), verify: presence
 // (verify-missing), chain-end soundness (chain-end-dangling), the

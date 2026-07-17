@@ -44,10 +44,10 @@ the bottom.
 ## What to read
 - Code: `internal/builderengine/**`, `internal/buildercli/**`, and the `cmd/lyx` integration
   (`main.go`, sandbox/help/registration guard tests).
-- Docs: `docs/modules/builder-contract.md` (the as-built contract this doc pins — digest fields, poll's
+- Docs: `docs/reference/builder-contract.md` (the as-built contract this doc pins — digest fields, poll's
   four-branch terminal classification, chain rollback, pause discipline, outcome contract +
   archiving, the three weft-commit points, the co-versioning rule between the orchestrator/
-  implementer templates and their Go parsers), `docs/modules/plan-format.md` (builder's pinned
+  implementer templates and their Go parsers), `docs/reference/plan-format.md` (builder's pinned
   input contract), `docs/overview.md`, `docs/roadmap.md`, `CONSTRAINTS.md`, `README.md`.
 - The dedicated live-driving suite you will RUN: `tools/sandbox/SANDBOX-BUILDER-SUITE.md`
   (scenarios B1–B9) plus [`docs/sandbox-howto.md`](../sandbox-howto.md) for how the harness works.
@@ -58,14 +58,14 @@ the bottom.
   Documentation Lifecycle). A change that ships behaviour without updating the module doc /
   invariants in the SAME change is incomplete.
 - Design intent (SPEC, not a review): the 8-batch build plan that produced this module has already
-  landed and its `_mill/` task state was cleaned up on merge. Treat `docs/modules/builder-contract.md` and
-  `docs/modules/plan-format.md` as the authoritative as-built contract; if you need the original
+  landed and its `_mill/` task state was cleaned up on merge. Treat `docs/reference/builder-contract.md` and
+  `docs/reference/plan-format.md` as the authoritative as-built contract; if you need the original
   design rationale, `git log --oneline --all -- '**/builder*'` and the PR history for
   `internal-builder` are your recovery path.
 
 ## Mission (assess on two axes, be adversarial)
 1. Scope / omfang — is the module's scope right? Does the as-built code deliver what
-  `docs/modules/builder-contract.md` promises? Gaps, over-reach, silently-dropped requirements,
+  `docs/reference/builder-contract.md` promises? Gaps, over-reach, silently-dropped requirements,
   deferred-that-should-ship-in-v1. In particular: is "holistic review is perch's job, not
   builder's" actually honored (builder must never itself perform or fake a terminal review)?
 2. Correctness — bugs, races, error handling, edge cases; concentrate on the historically-fragile
@@ -147,7 +147,7 @@ substrate — a green `go test` proves nothing here:
 - **`loom`'s phase-machine wiring.** `loom` (not yet built) will drive `builder run` as one phase,
   gated by `perch` on either side. builder must not itself contain any loom-specific orchestration.
 - **Mill's DAG-based intra-plan parallelism.** Already deliberately dropped at the plan-format
-  level (see `docs/modules/plan-format.md`) — builder's strictly-sequential batch loop is correct,
+  level (see `docs/reference/plan-format.md`) — builder's strictly-sequential batch loop is correct,
   not a missing feature.
 - **Non-Claude engines.** Per `CLAUDE.md`, non-Claude LLM support is not a current priority; don't
   flag the absence of a Gemini/other-provider path.
@@ -241,7 +241,7 @@ had flagged as never live-exercised (`--restart-chain`); found two more real def
   seam so a test can script the interleave deterministically. Revert-proof done: removing the
   re-check's error-propagation branch makes `TestPollCmd_DeadRecheckStatErrorPropagates` return a
   false `dead:asking` instead of surfacing the stat error, exactly as described.
-- Both commits update `docs/modules/builder-contract.md`; R1 also updates `orchestrator-template.md` (no
+- Both commits update `docs/reference/builder-contract.md`; R1 also updates `orchestrator-template.md` (no
   new template co-versioning needed for R2, which is poll-internal).
 - Merge-readiness opinion (round's own, independently corroborated): ready. All sixteen prior
   fixes (opus-r1 B1/B2/B3/B5/B6; fable-r2 F1–F11) were spot-checked live during this round with no
@@ -449,7 +449,7 @@ a finding.
   honest).
 - Keep `go build`/`vet`/`test` green after every change. Then RE-DEPLOY (`deploy.cmd`) and re-run
   the suite scenarios — re-deploying FIRST is mandatory.
-- Update `docs/modules/builder-contract.md` (and `docs/overview.md` / `CONSTRAINTS.md` if invariants or the
+- Update `docs/reference/builder-contract.md` (and `docs/overview.md` / `CONSTRAINTS.md` if invariants or the
   module table move) IN THE SAME change. Do NOT add bugfix/hardening notes to `docs/roadmap.md`.
 - Tear down all substrate state; confirm zero stray processes. COMMIT each fix as you finish it —
   do NOT push unless the user explicitly asks. Report the changed files and how you verified each

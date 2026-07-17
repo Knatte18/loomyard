@@ -54,10 +54,10 @@ proc ✅ ──▶ mux ✅ ──▶ shuttle ✅ ──┬▶ burler ✅ ──�
   (progress-judge + cap). See [milestone 11](#orchestration-stack) / the `internal/burlerengine`
   and `internal/perchengine` package documentation.
 - **`builder`** (the batch-implementation module, carved out of loom's Builder phase) ✅ **Done.**
-  See [modules/builder-contract.md](modules/builder-contract.md): the six as-built verbs (`validate`/`run`/
+  See [builder-contract.md](reference/builder-contract.md): the six as-built verbs (`validate`/`run`/
   `spawn-batch`/`poll`/`status`/`pause`) over `internal/builderengine` + `internal/buildercli`,
   driven by a long-lived LLM orchestrator session against the pinned
-  [plan format](modules/plan-format.md) (ordered batch list, **no DAG** — task-level parallelism
+  [plan format](reference/plan-format.md) (ordered batch list, **no DAG** — task-level parallelism
   via separate worktrees + `lyx run`, not intra-plan) and the accompanying
   [model-spec notation](reference/model-spec.md). It branched off `shuttle` and did not need
   `perch`. **`loom`** still needs both `perch` and `builder` and remains the **last** spine layer
@@ -71,7 +71,7 @@ proc ✅ ──▶ mux ✅ ──▶ shuttle ✅ ──┬▶ burler ✅ ──�
 plugin packaging.
 
 So the immediate front: **`loom`** (the phase machine, the last spine layer, now that
-`builder` ✅ is done — see [modules/builder-contract.md](modules/builder-contract.md)) — the last
+`builder` ✅ is done — see [builder-contract.md](reference/builder-contract.md)) — the last
 remaining spine layer. The setup-track items (`init`/board-repo creation, `doctor`) remain
 available to interleave at any time; neither blocks `loom`. **Milestone 26 (webster) can
 proceed in parallel with the whole `loom-*` build order** (see milestone 12) — it's a new, separate
@@ -186,24 +186,26 @@ Each layer knows only the one below it; built bottom-up. See the
     terminal; a `.lyx/lyxrun.cmd` launcher makes it one click. The 1-line view ships as the
     `lyx loom status` subcommand (a strand), not a module. The **Builder** phase is carved into its
     own module (**`builder`**, `internal/builderengine`) — ✅ **Done**, see
-    [modules/builder-contract.md](modules/builder-contract.md) — a *sequential* batch-implementation
+    [builder-contract.md](reference/builder-contract.md) — a *sequential* batch-implementation
     loop (ordered batches, **no DAG**; parallelism is task-level via separate worktrees + `lyx run`,
     not intra-plan), driven by an LLM orchestrator over **distilled** batch-reports (never raw
     sub-agent prose — the mill-go bloat lesson). **Batches are bounded to fit an implementer's
     context window** (mill's 200k-Haiku/Sonnet pain; eased by Sonnet's 1M but not to be relied on):
     prefer many small batches over few large. Its plan-format contract is pinned in
-    [modules/plan-format.md](modules/plan-format.md). ([modules/loom.md](modules/loom.md))
+    [plan-format.md](reference/plan-format.md). ([modules/loom.md](modules/loom.md))
 
     **Build order for the rest of loom** — too large for one task; decomposed into independently
     buildable/testable pieces, contracts before code:
-    1. **Contracts first** (spec only, no code, review-gated like everything else — never
-       hand-written outside the pipeline): the spawn/handover status schema (the seed state of
-       loom's own ongoing `_lyx/` status file — just a pointer, e.g. the board-task slug, plus
-       loom's phase/round state; board already owns title/description durably, so nothing is
-       duplicated) and `discussion-format.md` (the `discussion.md` ↔ Plan contract; `plan-format.md`
-       already exists as the precedent). `discussion.md` itself is expected to split into a
-       distilled decision-record (what Plan reads) and a raw support log (what the Discussion-review
-       gate reads, never Plan) — mirrors Builder's own "distilled digest, never raw prose" rule.
+    1. **Contracts first** ✅ **Done** (spec only, no code, review-gated like everything else — never
+       hand-written outside the pipeline): the spawn/handover status schema
+       ([status-schema.md](reference/status-schema.md) — the seed state of loom's own ongoing
+       `_lyx/` status file — just a pointer, e.g. the board-task slug, plus loom's phase/round
+       state; board already owns title/description durably, so nothing is duplicated) and
+       [discussion-format.md](reference/discussion-format.md) (the `discussion.md` ↔ Plan contract;
+       `plan-format.md` already exists as the precedent). `discussion.md` itself is expected to
+       split into a distilled decision-record (what Plan reads) and a raw support log (what the
+       Discussion-review gate reads, never Plan) — mirrors Builder's own "distilled digest, never
+       raw prose" rule.
     2. **Preflight** (renamed from an earlier "Setup" label — it's a pure precondition/validity
        check, not worktree creation, which is `warp`'s job): geometry/cwd via
        `internal/hubgeometry`, clean worktree, weft paired and in sync, no half-finished prior run.
@@ -325,14 +327,14 @@ sketch.)*
        confirm-gone).
 
 26. **webster — fork-based implementation module (né "Master Builder").** ✅ **Done.** See
-    [modules/builder-contract.md](modules/builder-contract.md#webster-the-fork-based-sibling) (the
+    [builder-contract.md](reference/builder-contract.md#webster-the-fork-based-sibling) (the
     cross-module contract deltas) and the `internal/websterengine` package documentation (webster's
     own design). Graduated from
     [long-term-ideas.md](long-term-ideas.md). **Not a revision of the existing `builder`** — a new
     module built alongside it, so both can be A/B tested on the same plan before deciding anything.
     The spawn mechanism differs too much to revise in place: today's `builder` spawns each batch's
     implementer as its own separate mux/tmux strand (a new `shuttle.Run` process — see
-    [modules/builder-contract.md](modules/builder-contract.md)). **webster** instead reads
+    [builder-contract.md](reference/builder-contract.md)). **webster** instead reads
     the codebase and the overall implementation plan once in one long-lived session, then forks out
     one implementer per batch (sequential, same order as today) as **in-session Agent-tool forks** —
     the same mechanism `burler` validated for cluster review, applied to writing instead of

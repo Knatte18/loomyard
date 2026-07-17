@@ -1,6 +1,6 @@
 // report.go implements ParseReport, the fail-loud parser for the batch-
 // report YAML file an implementer writes as its final action to
-// _lyx/builder/reports/NN-<batch-slug>.yaml (docs/modules/plan-format.md's
+// _lyx/builder/reports/NN-<batch-slug>.yaml (docs/reference/plan-format.md's
 // "Batch-report" section). Every distinct malformation — an unrecognized
 // status/tests value, a missing batch, a stuck report with no
 // stuck_reason, or an out_of_scope entry missing path/why — is its own
