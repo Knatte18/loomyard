@@ -47,6 +47,33 @@ const runLockName = "run.lock"
 // exit-time weft backstop for it.
 var ErrRunBusy = errors.New("webster: run is already in progress")
 
+// RunActive reports whether a live `lyx webster run` currently holds
+// websterDir's run.lock. It probes non-blocking: if the run.lock can be
+// acquired, no run owns it (the lock is released again immediately), so the
+// probe returns false; if the acquire fails because the lock is held, a run
+// owns it and the probe returns true. The bracket verbs (begin/await/record/
+// recover-batch) are Master's own calls and legitimately run only under a
+// live run that holds this lock, so a false result flags the zombie case —
+// a Master still driving verbs after its run process died (e.g. the
+// shuttle-asking exit that leaves the pane alive): the verb still functions
+// but its mutations have no run-level owner and no run-exit backstop, worth
+// warning about. A probe error (never an OS lock outcome, only an
+// underlying filesystem failure) is returned so the caller can decide; it
+// is not itself a reason to refuse the verb.
+func RunActive(websterDir string) (bool, error) {
+	fl, acquired, err := lock.TryAcquireWriteLock(filepath.Join(websterDir, runLockName))
+	if err != nil {
+		return false, fmt.Errorf("webster: probe run.lock in %s: %w", websterDir, err)
+	}
+	if acquired {
+		// Nobody held it — release the probe lock immediately so a real run
+		// starting right after is never blocked by the probe.
+		_ = fl.Release()
+		return false, nil
+	}
+	return true, nil
+}
+
 // OutcomeFileName is outcome.yaml's fixed filename inside a webster dir —
 // webster's own copy of builderengine's own unexported outcomeFileName
 // constant, kept identical so a webster run's outcome.yaml reads exactly

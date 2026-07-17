@@ -154,17 +154,19 @@ Example:
 				return nil
 			}
 
+			warnings := ownerlessRunWarnings(c.websterDir, result.Warnings)
+
 			if result.NoReport {
 				clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{
 					"no_report": true,
 					"batch":     batchName,
-					"warnings":  result.Warnings,
+					"warnings":  warnings,
 				}))
 				return nil
 			}
 
 			fields := digestFields(*result.Digest)
-			fields["warnings"] = result.Warnings
+			fields["warnings"] = warnings
 			clihelp.SetExit(cmd.Context(), output.Ok(out, fields))
 			return nil
 		},

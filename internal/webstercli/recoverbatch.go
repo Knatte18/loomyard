@@ -197,7 +197,7 @@ Example:
 				}
 
 				fields := digestFields(*result.Digest)
-				fields["warnings"] = result.Warnings
+				fields["warnings"] = ownerlessRunWarnings(c.websterDir, result.Warnings)
 				clihelp.SetExit(cmd.Context(), output.Ok(out, fields))
 				return nil
 			}
@@ -206,6 +206,7 @@ Example:
 				"batch":     batchName,
 				"status":    "running",
 				"elapsed_s": result.ElapsedS,
+				"warnings":  ownerlessRunWarnings(c.websterDir, result.Warnings),
 			}))
 			return nil
 		},

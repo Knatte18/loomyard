@@ -146,6 +146,7 @@ Example:
 				"prompt_path": result.PromptPath,
 				"start_sha":   result.StartSHA,
 				"model":       result.AssertedModel,
+				"warnings":    ownerlessRunWarnings(c.websterDir, nil),
 			}))
 			return nil
 		},

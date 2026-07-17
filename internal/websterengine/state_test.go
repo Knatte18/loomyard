@@ -238,3 +238,37 @@ func TestAcquireStateMutation_ExcludesSecondHolder(t *testing.T) {
 	}
 	_ = second.Release()
 }
+
+// TestRunActive_ReflectsRunLockHeld proves the ownerless-run probe: an
+// unheld run.lock reads as no live run (and the probe releases what it
+// briefly acquired, so a real run right after is never blocked), while a
+// held run.lock reads as a live run owning the state — the signal the
+// bracket verbs' zombie-Master warning keys off (round fable-r1's F17).
+func TestRunActive_ReflectsRunLockHeld(t *testing.T) {
+	websterDir := t.TempDir()
+
+	active, err := websterengine.RunActive(websterDir)
+	if err != nil {
+		t.Fatalf("RunActive() on a free lock error = %v; want nil", err)
+	}
+	if active {
+		t.Error("RunActive() = true with no run.lock held; want false")
+	}
+
+	// The probe must have released the lock it briefly took, so it is
+	// acquirable now.
+	held, locked, err := lock.TryAcquireWriteLock(filepath.Join(websterDir, "run.lock"))
+	if err != nil || !locked {
+		t.Fatalf("run.lock acquire after probe = locked=%v err=%v; want the probe to have released it", locked, err)
+	}
+
+	active, err = websterengine.RunActive(websterDir)
+	if err != nil {
+		t.Fatalf("RunActive() on a held lock error = %v; want nil", err)
+	}
+	if !active {
+		t.Error("RunActive() = false while run.lock is held; want true (a live run owns the state)")
+	}
+
+	_ = held.Release()
+}
