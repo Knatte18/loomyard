@@ -1,0 +1,2 @@
+discussion: opus[effort=high]  # model-spec for the discussion-phase interview agent (see docs/reference/model-spec.md)
+discussion_timeout_min: 480  # minutes the discussion agent's shuttle run is allowed to run (interactive interviews run long)

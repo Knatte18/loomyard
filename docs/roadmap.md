@@ -210,8 +210,9 @@ Each layer knows only the one below it; built bottom-up. See the
        check, not worktree creation, which is `warp`'s job): geometry/cwd via
        `internal/hubgeometry`, clean worktree, weft paired and in sync, no half-finished prior run.
        No LLM involved; testable in complete isolation. ✅ **Done** — see `internal/loomengine`.
-    3. **Discussion producer** — the one interactive phase, heavily reusing `mill-start`, auto-mode
-       capable.
+    3. **Discussion producer** ✅ **Done** — the one interactive phase, heavily reusing
+       `mill-start`, auto-mode capable: the interview prompt + `DiscussionSpec` factory in
+       `internal/loomengine`.
     4. **Plan producer** — autonomous, no inputs beyond `discussion.md`; mostly a well-instructed
        prompt/profile fed to `shuttle.Run`, heavily reusing `mill-plan`; no review logic of its own
        (that's `perch`/`burler`, entirely separate).
