@@ -39,14 +39,26 @@ implementation. It produces two contract documents (plus adjacent doc reconcilia
 - Author `docs/reference/discussion-format.md` — pins the `_lyx/discussion/` contract (contract 2).
 - **Relocate** `docs/modules/plan-format.md` → `docs/reference/plan-format.md` and
   `docs/modules/builder-contract.md` → `docs/reference/builder-contract.md` (they are
-  cross-module *contracts*, not module-design docs), updating every inbound link.
-- Reconcile `docs/modules/loom.md`'s "State & contracts" section to match the pinned status
-  schema (see Decisions: `loom-md-reconciliation`).
+  cross-module *contracts*, not module-design docs). Fix **every full-path inbound
+  reference** repo-wide — `docs/modules/{plan-format,builder-contract}.md` →
+  `docs/reference/…` — wherever it appears: docs, Go godoc **comments**
+  (`internal/hubgeometry/hubgeometry.go`, `internal/buildercli/cli.go`,
+  `internal/builderengine/{validate,report,doc,template_test}.go`), the
+  `internal/builderengine/implementer-template.md` template, and
+  `tools/sandbox/SANDBOX-BUILDER-SUITE.md`. These are comment/string-only edits — see the
+  "No Go code = no *functional* Go" note under Constraints. Bare-filename mentions
+  ("`plan-format.md` pins …", no `docs/modules/` prefix) are location-agnostic and left
+  untouched. (round-1 gap G1)
+- Reconcile `docs/modules/loom.md` to match the pinned status schema **and** the
+  Setup→Preflight rename (see Decisions: `loom-md-reconciliation`).
 - Update `docs/overview.md`'s Documentation-lifecycle section to distinguish *module-design
   docs* (`docs/modules/`, deleted on landing) from *durable contract/reference docs*
-  (`docs/reference/`, kept).
-- Update `docs/modules/README.md` (its table links `plan-format.md`/`builder-contract.md`).
+  (`docs/reference/`, kept); also rename Setup→Preflight and add Raddle in overview.md's loom
+  phase blurb (`overview.md:273`).
 - Mark roadmap milestone 12 sub-item 1 ("Contracts first") ✅ Done on completion.
+
+(The round-1 review's "update `docs/modules/README.md`" candidate was **dropped**: that file's
+table links neither doc — verified — so there is nothing there to update. round-1 gap G2.)
 
 **Out:**
 
@@ -244,12 +256,22 @@ implementation. It produces two contract documents (plus adjacent doc reconcilia
 
 ### loom-md-reconciliation
 
-- **Decision:** Update `docs/modules/loom.md` "State & contracts" (and any related prose) to:
-  point at the new `docs/reference/status-schema.md`; correct the verdict-history wording to
-  **per-phase outcome** (not per-round — that's perch's); reflect JSON-via-`internal/state`;
-  and keep the in-status `pause_requested` note.
-- **Rationale:** The doc-lifecycle rule (CLAUDE.md) forbids shipping the new contract while
-  loom.md's prose still describes a divergent one. Same-commit reconciliation.
+- **Decision:** Reconcile the phase/status prose to match the pinned contracts, same commit:
+  - `docs/modules/loom.md` "State & contracts" (and related prose): point at the new
+    `docs/reference/status-schema.md`; correct verdict-history wording to **per-phase outcome**
+    (not per-round — that's perch's); reflect JSON-via-`internal/state`; keep the in-status
+    `pause_requested` note.
+  - **Setup→Preflight rename** (the roadmap-12.2 rename loom.md/overview.md never caught up
+    to): `docs/modules/loom.md` phase-machine diagram (L54), the "Setup validates geometry…"
+    prose (L63), and the module-decomposition table row (L239); plus `docs/overview.md:273`'s
+    loom blurb. (round-1 gap G3)
+  - **Add Raddle** to `overview.md:273`'s loom phase list (currently
+    Setup→Discussion→Plan→Builder→Finalize, omitting Raddle).
+- **Rationale:** The doc-lifecycle rule (CLAUDE.md) forbids shipping the pinned `preflight`
+  enum + status contract while loom.md/overview.md prose still says "Setup" or describes a
+  divergent status shape. The pinned `phase` vocabulary
+  (`preflight|discussion|plan|builder|raddle|finalize|done`) is the source of truth the prose
+  must match.
 
 ## Technical context
 
@@ -290,22 +312,30 @@ implementation. It produces two contract documents (plus adjacent doc reconcilia
   outside it.
 - **Spec-only:** no `go` code, so no `go test`/build gate applies to the deliverable itself;
   the "verify" for the plan's batches is doc-review / link-integrity, not compilation.
+- **"No Go code" = no *functional* Go.** Editing doc-path strings inside Go godoc **comments**
+  (and the `implementer-template.md` / sandbox markdown) to retarget the relocated docs is in
+  scope and is NOT "writing Go code": no types, no logic, no behavior, nothing recompiled in
+  substance. This resolves the apparent Scope↔"no code" contradiction (round-1 gap G1).
 
 ## Testing
 
 No code, so no unit tests. The plan's per-batch `verify:` is documentation integrity:
 
-- **Link integrity** — after relocating `plan-format.md`/`builder-contract.md`, every inbound
-  link and anchor across the repo resolves (grep for the old `docs/modules/plan-format.md` /
-  `docs/modules/builder-contract.md` paths; confirm zero stale references; check relative
-  `../` depth changes from `docs/modules/` → `docs/reference/`).
+- **Link integrity (repo-wide)** — after relocating, grep the whole repo for
+  `docs/modules/plan-format.md` and `docs/modules/builder-contract.md`; confirm **zero** stale
+  full-path references remain in docs, Go godoc comments, `implementer-template.md`, or
+  `tools/sandbox/SANDBOX-BUILDER-SUITE.md`. Also fix intra-file relative links *inside* the two
+  moved files (their links to sibling module docs such as `loom.md` shift `loom.md` →
+  `../modules/loom.md`; `../overview.md` and the two files' mutual sibling link are unchanged
+  since both move together). Bare-filename mentions are location-agnostic and excluded.
 - **Contract self-consistency** — the status-schema field list, the phase/stage/outcome
   vocabularies, and the worked examples agree internally and with loom.md's (reconciled)
   prose.
 - **Boundary statement present** — discussion-format.md explicitly states the
   Plan-never-reads-`support-log` boundary and the record↔log split.
 - **No orphaned prose** — loom.md and overview.md contain no remaining wording describing the
-  superseded (per-round-in-status / YAML / docs-in-modules) shape.
+  superseded shape (per-round-in-status / YAML / docs-in-modules), **no remaining "Setup"
+  label** for the Preflight phase, and overview.md's loom blurb includes Raddle.
 - **Roadmap** — milestone 12 sub-item 1 marked ✅ Done with links to the two new docs.
 
 ## Q&A log
@@ -340,3 +370,11 @@ No code, so no unit tests. The plan's per-batch `verify:` is documentation integ
   points.
 - **Q:** Doc rigor vs plan-format? **A:** Moderate — short validation-check list + compact
   worked example; lighter than plan-format's 18 checks.
+- **Q (review r1 G1):** Do godoc/template/sandbox full-path refs to the relocating docs get
+  fixed, given "no Go code"? **A:** Yes — fix every full-path `docs/modules/…` reference
+  repo-wide; comment/string-only edits are not "functional Go." Bare-name mentions untouched.
+- **Q (review r1 G2):** Update `docs/modules/README.md`? **A:** No — its table links neither
+  doc (verified); item dropped, link-integrity covers the real inbound links.
+- **Q (review r1 G3):** Setup vs pinned `preflight`? **A:** Rename Setup→Preflight in loom.md
+  + overview.md and add Raddle to overview.md's loom blurb — the rename was already agreed
+  (roadmap 12.2); loom.md/overview.md just never caught up.
