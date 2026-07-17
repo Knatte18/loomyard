@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: loom-discussion-producer
 branch: loom-discussion-producer
 plan: _mill/plan
@@ -20,4 +20,17 @@ discussed  '2026-07-17T18:12:11Z'
 planning  '2026-07-17T18:24:35Z'
 plan-fix-r1  '2026-07-17T18:29:31Z'
 planned  '2026-07-17T18:30:02Z'
+implementing  '2026-07-17T18:31:12Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: hubgeometry-discussion-paths
+    state: pending
+  - name: loom-config-module
+    state: pending
+  - name: discussion-producer
+    state: pending
 ```
