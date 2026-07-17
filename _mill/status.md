@@ -59,7 +59,9 @@ batches:
     start_sha: 5504145c3b1de1bbea84e573011c2649f602d514
     commit_sha: 880765120a781cd505688da3200038a73d39443f
   - name: recover-batch
-    state: pending
+    state: running
+    implementer_session: c60f01b2-a4b2-45c2-ab8f-7f4ff2f41ac6
+    start_sha: d1a3c60babe08e4c4d636bdd17a0f4b0d6c74216
   - name: run-level
     state: pending
   - name: webstercli-registration
