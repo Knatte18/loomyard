@@ -202,16 +202,21 @@ func reachableFromCHA(chaGraph *callgraph.Graph, roots []*ssa.Function) map[*ssa
 // directly or indirectly. A generic target has no single graph node: per
 // ssa.InstantiateGenerics, each call site targets a distinct monomorphized
 // instantiation of the generic origin rather than the origin itself, so
-// this seeds the walk from every node sharing target's Origin() (which for
-// a non-generic target is just target itself) rather than only
-// g.Nodes[target] — otherwise a generic function's real callers would be
-// silently missed. It returns nil (not an error) when no node shares
-// target's origin — an honest "target is never called in this graph"
-// result, not a failure, since cha.CallGraph and rta/vta results only
-// create nodes for functions actually involved in a call edge.
+// this seeds the walk from every node whose function is target itself
+// (the ordinary, non-generic case) OR whose Origin() is target (every
+// generic instantiation of it — resolveSymbol always resolves to the
+// generic origin declaration, never a specific instantiation, so target
+// is always the right-hand side to compare instantiations' Origin()
+// against). Matching only on Origin() equality is wrong for a non-generic
+// target: (*ssa.Function).Origin() returns nil for anything that is not an
+// instantiation, so origin-only matching would seed the walk from every
+// non-generic function in the whole program, not just target's — the
+// fn == target arm exists specifically to avoid that. It returns nil (not
+// an error) when no node matches — an honest "target is never called in
+// this graph" result, not a failure, since cha.CallGraph and rta/vta
+// results only create nodes for functions actually involved in a call
+// edge.
 func transitiveCallers(g *callgraph.Graph, target *ssa.Function) []string {
-	origin := target.Origin()
-
 	visited := make(map[*ssa.Function]bool)
 	var order []string
 
@@ -229,7 +234,7 @@ func transitiveCallers(g *callgraph.Graph, target *ssa.Function) []string {
 	}
 
 	for fn, node := range g.Nodes {
-		if fn != nil && fn.Origin() == origin {
+		if fn == target || (fn != nil && fn.Origin() == target) {
 			visit(node)
 		}
 	}
