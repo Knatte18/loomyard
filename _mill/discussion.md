@@ -109,10 +109,10 @@ correct, fail-loud gate so no downstream phase ever runs against a broken worktr
 ### report-shape
 
 - **Decision:** `Report{ OK bool; Failures []Failure }`, `Failure{ Check CheckID; Reason string }`,
-  where `CheckID` is a small closed set of string constants (e.g. `geometry`, `worktree-clean`,
-  `weft-pairing`, `weft-sync`, `junction`, `seed-missing`, `seed-unreadable`, `seed-incoherent`,
-  `half-finished`). `Reason` is the human-readable message (often passed through from the
-  underlying helper, e.g. `PairInSync`'s `"host on X, weft on Y"`).
+  where `CheckID` is a small closed set of string constants (e.g. `geometry`, `worktree-root`,
+  `worktree-clean`, `weft-pairing`, `weft-sync`, `junction`, `seed-missing`, `seed-unreadable`,
+  `seed-incoherent`, `half-finished`). `Reason` is the human-readable message (often passed
+  through from the underlying helper, e.g. `PairInSync`'s `"host on X, weft on Y"`).
 - **Rationale:** Machine-consumable (`CheckID`) for the future phase machine / status narration,
   plus a human string for the operator. `OK == (len(Failures) == 0)`.
 - **Rejected:** Plain `[]string` reasons — not machine-classifiable.
@@ -122,8 +122,11 @@ correct, fail-loud gate so no downstream phase ever runs against a broken worktr
 Preflight validates exactly these, in this order (see check-ordering-and-collection):
 
 1. **Geometry / cwd** — `hubgeometry.Getwd()` then `hubgeometry.Resolve(cwd)` succeeds and
-   yields a usable `*Layout` (non-empty `Prime`). Foundational: on failure, short-circuit —
-   nothing else is meaningful without a `Layout`. `ErrNotAGitRepo` → a `geometry` failure.
+   yields a usable `*Layout` (non-empty `Prime`), **and `l.RelPath == "."` (Preflight runs at
+   the worktree root)**. Foundational: on failure, short-circuit — nothing else is meaningful
+   without a `Layout` that agrees on one `_lyx`. `ErrNotAGitRepo` → a `geometry` failure;
+   `RelPath != "."` → a `worktree-root` failure ("run from the worktree root, not <RelPath>").
+   See at-worktree-root for why this requirement exists.
 2. **Clean host worktree** — `warpengine.HostClean(l)` reports no changes. **Untracked files
    count as dirty** (see host-clean-untracked-is-dirty).
 3. **Weft paired and in sync** — `os.Stat(l.WeftWorktree())` first (a missing weft yields a
@@ -213,10 +216,11 @@ Preflight validates exactly these, in this order (see check-ordering-and-collect
   advisory read-lock file (see side-effects).
 - **Side effects vs "Preflight never mutates".** "Never mutates" (Problem/Scope) means
   Preflight never mutates **git-tracked / observable repo state** — no worktree content, no git
-  ops. The advisory read-lock `internal/lock` takes is an ephemeral, gitignored `*.lock`
-  (weft-excluded — see lock-path below), not repo state; it is the same benign lock builder's
-  `state.json` reads take. With `MkdirAll` dropped, that lock file is the sole filesystem side
-  effect and it trips no Preflight check.
+  ops. The advisory read-lock `internal/lock` takes is an ephemeral `*.lock` file in the weft
+  overlay (the same benign lock builder's `state.json` reads take); it is not host-tracked repo
+  state and, being weft-side, is invisible to Preflight's host-only clean check (see lock-path
+  for why it trips no check and why weft-commit exclusion is a future command's concern). With
+  `MkdirAll` dropped, that lock file is the sole filesystem side effect.
 - **Rationale:** Keeps one strict primitive in the shared `state` module (reusable by builder,
   perch, and the phase-machine skeleton — a general helper, not local to `loomengine`), with
   **zero blast radius** on existing `ReadJSON` callers (builder's `state.json`), and preserves
@@ -238,15 +242,19 @@ Preflight validates exactly these, in this order (see check-ordering-and-collect
     `seed-incoherent`.
   - A `found == false` after a successful stat (should not happen) is treated defensively as
     the escalate `error` path (the file was there a moment ago).
-- **lock-path.** `ReadJSONStrict` takes a `lockPath`. It must follow builder's precedent —
-  builder puts `state.json.lock` beside its state file under `_lyx/builder/` — so loom's lock
-  is a `*.lock` beside the seed (e.g. `<WorktreeRoot>/_lyx/status.json.lock`). Critically, this
-  lock sits inside the **weft-synced `_lyx/` overlay**, so the plan must **confirm the loom lock
-  path is excluded from the weft commit pathspec exactly as builder's `*.lock` is** (builder's
-  `*.lock` is already weft-excluded; verify loom's inherits the same exclusion, e.g. via the
-  `.gitignore`/`ScopedPathspec` mechanism), so the ephemeral lock never gets committed and never
-  trips Preflight's own clean-worktree check. The plan pins the exact lock-path and confirms the
-  exclusion.
+- **lock-path.** `ReadJSONStrict` takes a `lockPath`. Follow builder's precedent — builder puts
+  `state.json.lock` beside its state file under `_lyx/builder/` — so loom's lock is a `*.lock`
+  beside the seed (e.g. `<WorktreeRoot>/_lyx/status.json.lock`). **This lock poses no risk to any
+  of *this task's* checks:** Preflight's clean check (check 2) is **host-only** (`git status` on
+  the host worktree) and does not see weft-tree files through the `_lyx` junction, so a lock file
+  living in the weft overlay never appears in the host `git status` and cannot trip
+  `worktree-clean`. Weft-side commit exclusion is **not** a `.gitignore` or `ScopedPathspec`
+  concern (there is no `*.lock` gitignore entry, and `ScopedPathspec` does not exclude) — exclusion
+  is a per-command `:(exclude)*.lock` pathspec token owned by whichever command *commits* the weft
+  (e.g. builder's, `weft.go:36`). Preflight **commits nothing**, so ensuring the lock isn't
+  weft-committed belongs to the future seed/loom-commit command, **out of scope here**. The plan
+  need only pin the exact lock-path (matching builder's convention); the weft-exclusion obligation
+  travels with the future committing command.
 
 #### field-presence-and-nullability
 
@@ -296,13 +304,15 @@ Preflight validates exactly these, in this order (see check-ordering-and-collect
 - **Decision:** Read `status.json` via the **normal host path**, resolved by a **new
   WorktreeRoot-anchored `hubgeometry` accessor `l.LoomStatusFile()` = `filepath.Join(l.WorktreeRoot,
   LyxDirName, "status.json")`** (i.e. through the worktree-root `_lyx` junction), **not** via
-  `l.WeftLyxDir()`, and **not** via `l.LyxDir()`. **Anchoring at `WorktreeRoot`, not `Cwd`, is
-  deliberate:** `l.LyxDir()` is `filepath.Join(l.Cwd, LyxDirName)` (hubgeometry.go:319), so if
-  Preflight were invoked from a *subdirectory* of the worktree, `LyxDir()/status.json` would
-  point at a nonexistent `<subdir>/_lyx` and falsely report `seed-missing`. loom's `status.json`
-  is a single per-task file at the worktree root; `LoomStatusFile()` anchors there so all five
-  checks agree on one worktree regardless of the cwd Preflight was invoked from (`PairInSync`'s
-  branch check already uses `l.WorktreeRoot`; `HostClean` uses it too). Error classification:
+  `l.WeftLyxDir()`, and **not** via `l.LyxDir()` (which is `Cwd`-anchored, hubgeometry.go:319).
+  Because check 1 requires `RelPath == "."` (see at-worktree-root), `Cwd == WorktreeRoot`, so
+  `LoomStatusFile()` (WorktreeRoot-anchored) resolves to the **same `_lyx`** that check 3's
+  junction validation (`PairInSync` → `HostLyxLinkHere()` = `WorktreeRoot/RelPath/_lyx`) checks
+  and that `HostClean`/the branch check use — all five checks agree on one `_lyx`, and the
+  "seed-unreadable, see check 3" attribution is exact (the junction check 3 validated is the
+  very junction the seed read traverses). WorktreeRoot-anchoring is the canonical choice and is
+  defence-in-depth even though `RelPath == "."` already makes it equal to `Cwd`. Error
+  classification:
   `os.Stat` first — `os.IsNotExist` → clean `seed-missing` failure; any other **stat** error →
   `seed-unreadable` failure with reason "unreadable, see check 3 (junction)". Never report a
   non-`IsNotExist` error as "missing". After a successful `os.Stat`, the parse goes through
@@ -389,6 +399,29 @@ Preflight validates exactly these, in this order (see check-ordering-and-collect
 - **Rejected:** Rejecting `WorktreeRoot == Prime` or enforcing name == slug — would block a
   supported workflow and couple Preflight to a naming convention the seed does not require.
 
+### at-worktree-root
+
+- **Decision:** Preflight requires `l.RelPath == "."` — it must be run from the **worktree
+  root**, not a subdirectory. A `RelPath != "."` is a foundational `worktree-root` failure
+  (checked in check 1, short-circuits like the rest of geometry).
+- **Rationale:** loom's geometry is only self-consistent at the root. `l.LyxDir()` and the
+  junction `HostLyxLinkHere()` are `Cwd`/`RelPath`-anchored (`Cwd/_lyx`), while the seed's
+  canonical location and `PairInSync`'s branch check are worktree-root things. If Preflight ran
+  from a subdirectory (`RelPath != "."`), check 3 would validate the *subdir's* `_lyx` junction
+  while check 4 read the *root's* `status.json` — two different `_lyx` dirs, breaking both the
+  "all checks agree on one worktree" guarantee and the "seed-unreadable → see check 3"
+  attribution. Requiring `RelPath == "."` collapses `Cwd == WorktreeRoot`, so every `_lyx`-path
+  in every check is the same directory. This matches how loom is actually launched (the
+  `.lyx/lyxrun.cmd` run-launcher does `cd <worktree>` then `lyx loom run`), so the requirement
+  costs real usage nothing and turns a silent wrong-directory mistake into a clear, early
+  failure.
+- **Not in tension with run-in-existing-or-prime-worktree.** "Which worktree" (Prime or a task
+  worktree — supported uniformly) is orthogonal to "at that worktree's root" (required). Prime's
+  own root has `RelPath == "."` too.
+- **Rejected:** Silently walking up to the worktree root from a subdirectory — masks a
+  wrong-directory invocation; a loud `worktree-root` failure is safer and matches the launcher's
+  guarantee.
+
 ### missing-seed-is-hard-failure
 
 - **Decision:** A missing seed (`os.IsNotExist` on `status.json`) is a **hard precondition
@@ -402,10 +435,11 @@ Preflight validates exactly these, in this order (see check-ordering-and-collect
 
 ### check-ordering-and-collection
 
-- **Decision:** Geometry (check 1) is foundational: if `Resolve` fails, return immediately
-  with a single `geometry` failure (no `Layout` ⇒ no other check is meaningful). All remaining
-  checks (2 clean, 3 pairing/sync/junction, 4 seed/coherence) **run and collect all their
-  failures** into `Report.Failures`. The one interpretation dependency: junction health
+- **Decision:** Geometry (check 1) is foundational: if `Resolve` fails **or `RelPath != "."`**,
+  return immediately with a single `geometry` / `worktree-root` failure (no usable, root-anchored
+  `Layout` ⇒ no other check is meaningful — the `_lyx` paths would not agree; see
+  at-worktree-root). All remaining checks (2 clean, 3 pairing/sync/junction, 4 seed/coherence)
+  **run and collect all their failures** into `Report.Failures`. The one interpretation dependency: junction health
   (check 3) informs check 4's error attribution (a non-`IsNotExist` seed read error is reported
   as `seed-unreadable` "see check 3", never `seed-missing`). Check 4 still runs even if the
   junction is broken; it just does not lie about *why* the read failed.
@@ -509,6 +543,9 @@ Hybrid tiering (decision the-testing-tiers):
   mutate to trip each check independently:
   - Not a git repo (run from a non-repo dir) → `geometry`, short-circuit (no other failures).
   - `Resolve` yields empty `Prime` (no main worktree) → `geometry`.
+  - Invoked from a **subdirectory** of an otherwise-healthy worktree (`RelPath != "."`) →
+    `worktree-root`, short-circuit (no other failures), proving check 1's root requirement
+    (see at-worktree-root).
   - Host worktree dirty: tracked-modified, staged, **and untracked-only** → `worktree-clean`
     (untracked-only is the deliberate strict-policy case — TDD candidate).
   - Weft worktree missing entirely → `weft-pairing` ("not paired"), distinct from sync.
@@ -529,6 +566,11 @@ plan pins the concrete table-test structure.
 
 ## Q&A log
 
+- **Q (review round 4 gap):** The WorktreeRoot-anchored seed read disagrees with check 3's
+  `Cwd`-anchored junction check under subdir invocation — how is that reconciled? **A:** Require
+  `RelPath == "."` in check 1 (a `worktree-root` failure otherwise), so `Cwd == WorktreeRoot` and
+  every `_lyx` path across all checks is the same directory. Matches the run-launcher's
+  `cd <worktree>`. See at-worktree-root.
 - **Q (review round 2 gap):** How does Preflight detect a *missing* required field, since
   `DisallowUnknownFields` won't? **A:** Scope presence-detection by field semantics: an explicit
   non-empty check on the mandatory strings (`slug`/`parent`/`phase`/`stage`/`narration`);
