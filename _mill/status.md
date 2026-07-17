@@ -30,7 +30,9 @@ implementing  '2026-07-17T17:45:59Z'
 ```yaml
 batches:
   - name: codeintelengine-core
-    state: pending
+    state: running
+    implementer_session: 8cff6f5a-cec5-4c15-a9ea-c8462adff195
+    start_sha: 4982fbdb728d83b11a7eb7e7325cc1187336c235
   - name: lsp-client-and-refs
     state: pending
   - name: cli-wiring-and-docs
