@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-fixing
 slug: codeintel-multilang
 branch: codeintel-multilang
 plan: _mill/plan
@@ -28,6 +28,7 @@ approved-lsp-client-and-refs  '2026-07-17T18:16:48Z'
 approved-cli-wiring-and-docs  '2026-07-17T18:26:24Z'
 approved-measurement-and-writeup  '2026-07-17T18:44:51Z'
 holistic-reviewing  '2026-07-17T18:45:19Z'
+holistic-fixing  '2026-07-17T18:48:04Z'
 ```
 
 ## Batches
