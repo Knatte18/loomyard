@@ -178,6 +178,31 @@ func TestCheckParent(t *testing.T) {
 			wantClasses: nil,
 		},
 		{
+			// The transcript records whatever file_path string Master passed to
+			// its Write tool; a RELATIVE spelling of a contract file must resolve
+			// against the pane cwd, never false-positive (found live in round
+			// fable-r3: a fully-done run failed its exit audit on exactly this).
+			name: "relative write to outcome.yaml is allowed",
+			audit: shuttleengine.ForkAudit{
+				ParentWrites: []string{"_lyx/webster/outcome.yaml"},
+			},
+			wantClasses: nil,
+		},
+		{
+			name: "dot-prefixed relative write to summary.md is allowed",
+			audit: shuttleengine.ForkAudit{
+				ParentWrites: []string{"./_lyx/webster/summary.md"},
+			},
+			wantClasses: nil,
+		},
+		{
+			name: "relative write to a source file is a hard error",
+			audit: shuttleengine.ForkAudit{
+				ParentWrites: []string{"internal/websterengine/audit.go"},
+			},
+			wantClasses: []AuditViolationClass{ClassParentWrite},
+		},
+		{
 			name: "write to a source file is a hard error",
 			audit: shuttleengine.ForkAudit{
 				ParentWrites: []string{"/hub/master-builder/internal/websterengine/audit.go"},
@@ -202,7 +227,7 @@ func TestCheckParent(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := CheckParent(tt.audit, outcomePath, summaryPath, weftRef)
+			got := CheckParent(tt.audit, outcomePath, summaryPath, "/hub/master-builder", weftRef)
 			if len(got) != len(tt.wantClasses) {
 				t.Fatalf("CheckParent() = %v; want %d violation(s) of class %v", got, len(tt.wantClasses), tt.wantClasses)
 			}

@@ -126,21 +126,40 @@ func CheckFork(f shuttleengine.ForkReport, weftRef *regexp.Regexp) []AuditViolat
 	return violations
 }
 
+// resolveWritePath canonicalizes one transcript-recorded write path for
+// comparison against the run's absolute contract paths: cleaned, and — when the
+// transcript recorded a RELATIVE path — resolved against workdir, the pane's
+// working directory every agent's relative tool paths are anchored at. The
+// transcript records whatever file_path string the agent passed to its Write
+// tool, and agents freely mix absolute and relative spellings for the same file
+// (observed live in round fable-r3: one Master wrote "_lyx/webster/outcome.yaml",
+// the next wrote the absolute path — the unresolved comparison failed the first
+// run's exit audit with a false parent-write violation).
+func resolveWritePath(workdir, path string) string {
+	cleaned := filepath.Clean(path)
+	if filepath.IsAbs(cleaned) {
+		return cleaned
+	}
+	return filepath.Join(workdir, cleaned)
+}
+
 // CheckParent evaluates Master's own parent-session facts against webster's Master
 // policy: the mirror image of CheckFork's write posture. A fork MUST write to
 // implement its batch; Master must NOT — except for the run's two contract files,
 // outcomePath and summaryPath (_lyx/webster/outcome.yaml and _lyx/webster/
 // summary.md), since a blanket write ban would break the outcome/summary contract
-// itself. Paths are compared after filepath.Clean on both sides, so a
-// slash/separator or "./" difference between a's raw ParentWrites entry and the
-// caller-supplied contract paths never false-positives. Three hard violations:
+// itself. workdir is the pane's working directory (layout.Cwd — the same dir the
+// fork audit keys transcripts on); each ParentWrites entry is canonicalized via
+// resolveWritePath before comparing, so a relative-vs-absolute or "./" spelling
+// difference between the transcript's raw entry and the caller-supplied absolute
+// contract paths never false-positives. Three hard violations:
 // any named spawn (silent context loss — same posture as burlerengine's
 // NamedSpawns check), any parent write outside the two contract files (Master
 // implementing a batch itself, or hand-writing a batch report — the same
 // silent-quality-degradation class as a named spawn), and any parent Bash command
 // matching weftRef (Master never drives weft directly; weftengine.Commit/Push run
 // in-process inside webstercli's verbs, per the Weft Git Invariant).
-func CheckParent(a shuttleengine.ForkAudit, outcomePath, summaryPath string, weftRef *regexp.Regexp) []AuditViolation {
+func CheckParent(a shuttleengine.ForkAudit, outcomePath, summaryPath, workdir string, weftRef *regexp.Regexp) []AuditViolation {
 	var violations []AuditViolation
 
 	if a.NamedSpawns > 0 {
@@ -156,7 +175,7 @@ func CheckParent(a shuttleengine.ForkAudit, outcomePath, summaryPath string, wef
 	cleanOutcome := filepath.Clean(outcomePath)
 	cleanSummary := filepath.Clean(summaryPath)
 	for _, w := range a.ParentWrites {
-		cw := filepath.Clean(w)
+		cw := resolveWritePath(workdir, w)
 		if cw != cleanOutcome && cw != cleanSummary {
 			violations = append(violations, AuditViolation{
 				Class:  ClassParentWrite,

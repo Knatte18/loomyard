@@ -122,7 +122,7 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 	weftRef := weftReferencePattern(deps.Layout)
 
 	var violations []error
-	for _, v := range CheckParent(audit, deps.OutcomePath, deps.SummaryPath, weftRef) {
+	for _, v := range CheckParent(audit, deps.OutcomePath, deps.SummaryPath, deps.Layout.Cwd, weftRef) {
 		violations = append(violations, v)
 	}
 	for _, f := range newReports {

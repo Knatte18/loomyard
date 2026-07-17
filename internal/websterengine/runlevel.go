@@ -669,7 +669,7 @@ func runExitAuditCrossCheck(deps RunDeps, outcomePath, summaryPath string, resul
 	weftRef := weftReferencePattern(deps.Layout)
 
 	var violations []error
-	for _, v := range CheckParent(*result.ForkAudit, outcomePath, summaryPath, weftRef) {
+	for _, v := range CheckParent(*result.ForkAudit, outcomePath, summaryPath, deps.Layout.Cwd, weftRef) {
 		violations = append(violations, v)
 	}
 	for _, f := range result.ForkAudit.Forks {
