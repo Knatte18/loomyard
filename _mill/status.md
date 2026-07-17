@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-status-schema-doc
+phase: approved-discussion-format-doc
 slug: loom-contracts
 branch: loom-contracts
 plan: _mill/plan
@@ -22,6 +22,7 @@ plan-review-r1  '2026-07-17T11:20:11Z'
 planned  '2026-07-17T11:20:21Z'
 implementing  '2026-07-17T11:21:48Z'
 approved-status-schema-doc  '2026-07-17T11:25:24Z'
+approved-discussion-format-doc  '2026-07-17T11:27:52Z'
 ```
 
 ## Batches
@@ -34,9 +35,10 @@ batches:
     start_sha: 6c495bdc49eef741b8018cc8ee27a2eae3e64752
     commit_sha: 94a4ddea480e2369877c82057fce1bd378c76534
   - name: discussion-format-doc
-    state: running
+    state: approved
     implementer_session: 8a3b5aeb-86b6-42f0-8835-3e106613df8c
     start_sha: 36b3bd9414eb6f126bb5ca7b9c1c553aa098647e
+    commit_sha: 973913cecdb068803b14113e7f0b68dde709b0ed
   - name: relocate-contracts
     state: pending
   - name: inbound-refs-nondoc
