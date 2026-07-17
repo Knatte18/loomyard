@@ -41,5 +41,7 @@ batches:
     start_sha: dca04bd5eacf3f30c67b865b5a6eef94b272f17b
     commit_sha: dc6036ef1f794bd1f2cf6719bd5fc05e2f06767d
   - name: discussion-producer
-    state: pending
+    state: running
+    implementer_session: ce301252-fcd3-4147-886e-a27470d0c2e4
+    start_sha: f3f5b60bb21ddb622dc60459254cc0a57b6b901a
 ```
