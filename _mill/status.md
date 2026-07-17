@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-poc-gopls-callgraph
+phase: approved-measure-and-writeup
 slug: codeintel-spike
 branch: codeintel-spike
 plan: _mill/plan
@@ -25,6 +25,7 @@ planned  '2026-07-17T15:21:49Z'
 implementing  '2026-07-17T15:26:17Z'
 approved-poc-scaffold-gopackages  '2026-07-17T15:33:45Z'
 approved-poc-gopls-callgraph  '2026-07-17T15:44:42Z'
+approved-measure-and-writeup  '2026-07-17T16:02:58Z'
 ```
 
 ## Batches
@@ -42,9 +43,10 @@ batches:
     start_sha: f1041b3cab46744a5e159232efb65d8824e09f31
     commit_sha: 2fa53f6283234b01ae3d160f97f5af6bcec42ed2
   - name: measure-and-writeup
-    state: running
+    state: approved
     implementer_session: dc018ac2-265d-4dd6-a8c8-4969a2e86367
     start_sha: 7093780f80bf35186c4394c1e56355fd502a23c7
+    commit_sha: bd670d62d7f988234b4f3c463045502c87e81fab
   - name: revert-and-verify
     state: pending
 ```
