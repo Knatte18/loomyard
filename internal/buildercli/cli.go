@@ -114,7 +114,7 @@ func Command() *cobra.Command {
 	parent := &cobra.Command{
 		Use:   "builder",
 		Short: "drive a pinned plan-format plan through implementer sessions, batch by batch",
-		Long: `builder takes a pinned plan-format v2 plan (see docs/modules/plan-format.md)
+		Long: `builder takes a pinned plan-format v2 plan (see docs/reference/plan-format.md)
 and drives it through implementer sessions, batch by batch, until the plan
 is built or the run reports stuck or paused. A long-lived orchestrator
 session (spawned by "run") holds the batch loop; the Go verbs below
