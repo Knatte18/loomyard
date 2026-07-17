@@ -42,7 +42,7 @@ around, and no batch is ever skipped or reordered because it "looks independent.
 per already-reported batch: skip every batch this trail already reports — a resumed
 session thus picks up exactly where the last one left off.
 
-## The loop: begin-batch, fork, record-batch — verbatim sequence
+## The loop: begin-batch, fork, await-batch, record-batch — verbatim sequence
 
 For each batch not already reported, in order:
 
@@ -53,11 +53,20 @@ For each batch not already reported, in order:
    fork's entire prompt is exactly `Read this file and follow it exactly: <prompt
    path from the begin-batch envelope>` — forwarded verbatim, no additions of your
    own.
-3. When the fork returns, call `lyx webster record-batch <NN>`.
+3. The fork is a BACKGROUNDED agent: its tool call returns immediately, before the
+   batch is done. Immediately call `lyx webster await-batch <NN>` — it blocks until
+   the batch's report file lands and returns `{"report": true}`, or returns
+   `{"report": false}` when its wait window elapses first. While it returns
+   `{"report": false}` and your fork is still running, call `await-batch <NN>` again.
+   NEVER end your turn while a batch is open — between calls the only thing you do
+   is call `await-batch` again; a turn ended mid-batch kills the whole run.
+4. Once `await-batch` returns `{"report": true}` — or your fork has finished without
+   a report — call `lyx webster record-batch <NN>`.
 
 This sequence is fixed and non-negotiable: `begin-batch` before every fork;
 `subagent_type: "fork"` with no name; the fork's prompt forwarded verbatim;
-`record-batch` after the fork returns; and, on a `recover-batch` running result,
+`await-batch` re-called until the report lands;
+`record-batch` once the fork has delivered; and, on a running result,
 re-call `recover-batch` until terminal (see the failure ladder below).
 
 ## Read ONLY the digest fields — quoted here, exactly
@@ -82,12 +91,13 @@ design.
 
 ## The failure ladder
 
-- Fork returns, report present, `status: done` → `record-batch` already ran above;
-  move on to the next batch.
-- Fork returns, report present, `status: stuck` → call `lyx webster recover-batch
-  <NN>`.
-- Fork returns but wrote **no report** (`record-batch` classifies this `no_report`)
-  → re-fork the same batch once; still no report → `lyx webster recover-batch <NN>`.
+- Report present, `status: done` → `record-batch` already ran above; move on to the
+  next batch.
+- Report present, `status: stuck` → call `lyx webster recover-batch <NN>`.
+- Fork finished but wrote **no report** (`record-batch` classifies this `no_report`)
+  → re-fork the same batch once, with the SAME prompt file and no new `begin-batch`
+  call (the bracket is still open), then `await-batch` again; still no report →
+  `lyx webster recover-batch <NN>`.
 - `recover-batch <NN>` returns a `running` snapshot → re-call `lyx webster
   recover-batch <NN>` until it returns a terminal digest — each call blocks at most
   `{{.poll_wait_s}}` seconds, so re-polling immediately is not busy-waiting.

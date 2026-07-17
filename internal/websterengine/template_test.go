@@ -177,9 +177,12 @@ func TestMasterTemplate_ForbidsWeftGitModelAndNamedSubagents(t *testing.T) {
 
 // TestMasterTemplate_StatesBracketSequenceAndRecoveryLadder asserts the
 // embedded template's bytes carry every rung of the begin-batch -> fork ->
-// record-batch sequence, verbatim prompt forwarding, and the recovery
-// ladder (no_report re-fork-once, stuck -> recover-batch, running ->
-// re-call until terminal, stuck chain -> restart-chain) in prose.
+// await-batch -> record-batch sequence, verbatim prompt forwarding, the
+// backgrounded-fork wait discipline (forks return immediately on current
+// Claude Code, so Master must block on await-batch instead of ever ending
+// its turn mid-batch — round fable-r1's F1), and the recovery ladder
+// (no_report re-fork-once with the same prompt file, stuck -> recover-batch,
+// running -> re-call until terminal, stuck chain -> restart-chain) in prose.
 func TestMasterTemplate_StatesBracketSequenceAndRecoveryLadder(t *testing.T) {
 	text := string(websterengine.MasterTemplate())
 
@@ -187,11 +190,16 @@ func TestMasterTemplate_StatesBracketSequenceAndRecoveryLadder(t *testing.T) {
 	requireContains(t, text, `subagent_type: "fork"`)
 	requireContains(t, text, "with no name")
 	requireContains(t, text, "forwarded verbatim")
-	requireContains(t, text, "`record-batch` after the fork returns")
+	requireContains(t, text, "BACKGROUNDED agent")
+	requireContains(t, text, "call `lyx webster await-batch <NN>`")
+	requireContains(t, text, "`await-batch` re-called until the report lands")
+	requireContains(t, text, "NEVER end your turn while a batch is open")
+	requireContains(t, text, "`record-batch` once the fork has delivered")
 	requireContains(t, text, "re-call `recover-batch` until terminal")
 
 	requireContains(t, text, "Drive it STRICTLY in order")
 	requireContains(t, text, "re-fork the same batch once")
+	requireContains(t, text, "SAME prompt file and no new `begin-batch`")
 	requireContains(t, text, "--restart-chain")
 	requireContains(t, text, `"paused": true`)
 }

@@ -31,17 +31,24 @@
 //
 // # bracket verbs, not spawn/poll
 //
-// Because the fork returns synchronously inside Master's own turn, there is
-// nothing for Go to spawn or poll in the normal path — spawn-batch and poll
-// do not exist here. Instead Go provides two thin bracket verbs Master calls
-// around each fork: begin-batch (pause/fingerprint checks, optional chain
-// rollback, records the batch's start-SHA, idempotently asserts Master's
-// model for this batch, renders and writes the fork prompt) immediately
-// before forking, and record-batch (incremental fork audit, batch-report
-// parsing, digest distillation, state update) immediately after the fork
-// returns. Go's gates only run when Master actually calls them — the fork
-// itself is Master's own un-gateable act, so enforcement is two-layer:
-// template discipline (the master template pins the begin -> fork -> record
+// Because the fork runs inside Master's own session, there is nothing for
+// Go to spawn in the normal path — spawn-batch does not exist here. Go
+// provides thin bracket verbs Master calls around each fork: begin-batch
+// (pause/fingerprint checks, optional chain rollback, records the batch's
+// start-SHA, idempotently asserts Master's model for this batch, renders
+// and writes the fork prompt) immediately before forking, await-batch (a
+// bounded, stateless long-poll on the batch's report path) between the fork
+// spawn and the record, and record-batch (incremental fork audit,
+// batch-report parsing, digest distillation, state update) once the fork
+// has delivered. await-batch exists because the Agent-tool fork is a
+// BACKGROUNDED agent on current Claude Code (2.1.205): the fork call
+// returns immediately, before the batch is done, so Master must stay
+// inside its turn by blocking on await-batch until the report lands — a
+// Master that ends its turn "waiting" is classified asking by the shuttle
+// file contract and kills the run (found live in round fable-r1). Go's
+// gates only run when Master actually calls them — the fork itself is
+// Master's own un-gateable act, so enforcement is two-layer: template
+// discipline (the master template pins the begin -> fork -> await -> record
 // sequence, property-tested) plus fail-loud detection after the fact
 // (record-batch hard-errors when a batch has no begin-batch record; the
 // audit cross-checks fork-transcript count against begun-batch count). This

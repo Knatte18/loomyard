@@ -428,7 +428,10 @@ package docs.
   progress.
 
 See the `internal/websterengine` package documentation for webster's own design: the
-bracket-verb shape (`begin-batch`/`record-batch` in place of `spawn-batch`/`poll`), the
+bracket-verb shape (`begin-batch`/`await-batch`/`record-batch` in place of
+`spawn-batch`/`poll` — forks are backgrounded agents on current Claude Code, so Master
+long-polls `await-batch` for the report instead of relying on a synchronous fork
+return), the
 fork-audit policy, the `oversized:`-driven `/model` pane-injection escalation mechanism and
 its documented fallback, and crash/resume.
 

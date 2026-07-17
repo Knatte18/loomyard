@@ -349,6 +349,50 @@ func TestBeginBatchCmd_PausedEnvelope(t *testing.T) {
 	}
 }
 
+// TestAwaitBatchCmd_ReportPresenceEnvelope proves await-batch's two
+// envelopes: {"report": true} the moment the batch's report file exists,
+// and {"report": false} once the bounded wait (PollWaitS = 1s in this
+// fixture) elapses with no report — with no state.json ever read or
+// written, since the verb is deliberately stateless.
+func TestAwaitBatchCmd_ReportPresenceEnvelope(t *testing.T) {
+	fx := newVerbsFixture(t)
+
+	t.Run("NoReport_WindowElapses", func(t *testing.T) {
+		var out strings.Builder
+		exitCode := clihelp.Execute(fx.CLI.awaitBatchCmd(), &out, []string{"1"})
+		if exitCode != 0 {
+			t.Fatalf("await-batch 1 = %d; want 0, output: %s", exitCode, out.String())
+		}
+		if !strings.Contains(out.String(), `"report":false`) {
+			t.Errorf("output missing report:false; got %q", out.String())
+		}
+	})
+
+	t.Run("ReportPresent", func(t *testing.T) {
+		writeBatchReport(t, fx.CLI.reportsDir)
+		var out strings.Builder
+		exitCode := clihelp.Execute(fx.CLI.awaitBatchCmd(), &out, []string{"1"})
+		if exitCode != 0 {
+			t.Fatalf("await-batch 1 = %d; want 0, output: %s", exitCode, out.String())
+		}
+		got := out.String()
+		for _, want := range []string{`"batch":"01-only"`, `"report":true`} {
+			if !strings.Contains(got, want) {
+				t.Errorf("output missing %q; got %q", want, got)
+			}
+		}
+	})
+
+	// Statelessness: neither call may have created a state.json.
+	loaded, err := websterengine.LoadState(fx.CLI.websterDir)
+	if err != nil {
+		t.Fatalf("LoadState() error = %v", err)
+	}
+	if loaded != nil {
+		t.Error("await-batch created or mutated state.json; the verb must be stateless")
+	}
+}
+
 // TestRecordBatchCmd_DigestEnvelope proves the terminal success envelope is
 // the digest verbatim plus warnings, once one new fork transcript and a
 // matching batch report are both present.

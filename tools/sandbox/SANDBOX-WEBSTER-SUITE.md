@@ -8,7 +8,10 @@ operating model. `webster` is builder's fork-based sibling: instead of spawning 
 mux/tmux strand per batch, one long-lived **Master** session reads the codebase and the
 whole plan once, then forks one implementer per batch in-session (Claude Code's Agent tool,
 `subagent_type: "fork"`) -- no `spawn-batch`/`poll` verbs exist here; Master itself brackets
-each fork with `begin-batch`/`record-batch` calls. This suite is deliberately narrow: two
+each fork with `begin-batch`/`await-batch`/`record-batch` calls (forks are BACKGROUNDED
+agents on current Claude Code -- the Agent call returns immediately, so Master long-polls
+`await-batch` for the batch report instead of relying on a synchronous fork return, and
+never ends its turn while a batch is open). This suite is deliberately narrow: two
 scenarios, not builder's nine, because webster's Go-level mechanics (fingerprinting,
 `--fresh` archiving, chain rollback, pause) are the SAME imported `builderengine` code
 builder's own suite already exercises (per discussion.md's `reuse-by-import` decision) --
@@ -190,12 +193,14 @@ what (a) or (c) showed:
   result is not corrupted by the injection racing it. **A hit here (corruption) is the
   DANGEROUS failure mode** -- it unconditionally triggers the fallback regardless of what
   (a) showed, since a corrupted tool result is worse than no escalation at all.
-- **(c) Fork-transcript flush timing.** At the exact moment the Agent fork tool call
-  returns control to Master's own turn, the fork's `subagents/<id>.jsonl` transcript file
-  already exists on disk (under the session's `~/.claude/projects/<encoded-cwd>/<sessionID>/
-  subagents/` directory) -- the incremental per-batch audit's transcript-count-before-
-  report-presence check (`record-batch`) depends on this flush having already happened by
-  call-return time, not merely by session end.
+- **(c) Fork-transcript flush timing.** By the time the fork has COMPLETED (its report
+  file has landed -- the moment `await-batch` returns `{"report": true}` and Master calls
+  `record-batch`), the fork's `subagents/<id>.jsonl` transcript file already exists on
+  disk (under the session's `~/.claude/projects/<encoded-cwd>/<sessionID>/subagents/`
+  directory) -- the incremental per-batch audit's transcript-count-before-report-presence
+  check (`record-batch`) depends on this flush having already happened by then, not
+  merely by session end. (Forks are backgrounded on current Claude Code, so "the Agent
+  call returning" is the spawn acknowledgment, not completion.)
 
 **Verdict:** `OK` / `WARN` / `FAIL` for EACH of (a), (b), (c) independently; record all
 three in the session log and name whichever one(s) failed.

@@ -115,7 +115,7 @@ func (s runnerMasterStarter) StartMaster(spec shuttleengine.Spec) (websterengine
 // group command itself is invoked (bare "lyx webster" listing or an
 // unknown-subcommand error via GroupRunE) so neither path requires a git
 // repository. Role resolution runs against every one of the config's three
-// roles as a pre-flight -- deliberately uniform across all seven verbs,
+// roles as a pre-flight -- deliberately uniform across all eight verbs,
 // mirroring buildercli's own uniform role pre-flight -- so a typo'd role
 // alias in webster.yaml aborts every verb here, before any agent ever forks
 // or spawns.
@@ -139,7 +139,8 @@ Verbs:
   lyx webster status                         an instant snapshot of state.json + reports
   lyx webster pause                          request a pause at the next batch boundary
   lyx webster begin-batch 3                  Master's bracket call immediately before forking batch 3
-  lyx webster record-batch 3                 Master's bracket call immediately after batch 3's fork returns
+  lyx webster await-batch 3                  block until batch 3's report lands (forks are backgrounded)
+  lyx webster record-batch 3                 Master's bracket call once batch 3's fork has delivered
   lyx webster recover-batch 3 --wait 8m      escalate batch 3 to a cold recovery strand`,
 		// RunE is set so that bare "lyx webster" lists subcommands and "lyx
 		// webster bogus" emits a JSON error envelope instead of falling
@@ -251,6 +252,7 @@ Verbs:
 	parent.AddCommand(c.statusCmd())
 	parent.AddCommand(c.pauseCmd())
 	parent.AddCommand(c.beginBatchCmd())
+	parent.AddCommand(c.awaitBatchCmd())
 	parent.AddCommand(c.recordBatchCmd())
 	parent.AddCommand(c.recoverBatchCmd())
 

@@ -97,8 +97,8 @@ func TestCommand_EveryCommandHasShort(t *testing.T) {
 
 // TestCommand_AllSevenSubcommandsRegistered asserts every one of webster's
 // seven subcommands is present on the tree Command() builds.
-func TestCommand_AllSevenSubcommandsRegistered(t *testing.T) {
-	want := []string{"validate", "run", "status", "pause", "begin-batch", "record-batch", "recover-batch"}
+func TestCommand_AllEightSubcommandsRegistered(t *testing.T) {
+	want := []string{"validate", "run", "status", "pause", "begin-batch", "await-batch", "record-batch", "recover-batch"}
 	got := map[string]bool{}
 	for _, sub := range Command().Commands() {
 		got[sub.Name()] = true

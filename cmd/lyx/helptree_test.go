@@ -113,7 +113,7 @@ func TestHelpTree_VerbModuleSubcommands(t *testing.T) {
 		{
 			name:     "webster",
 			module:   "webster",
-			wantSubs: []string{"validate", "run", "status", "pause", "begin-batch", "record-batch", "recover-batch"},
+			wantSubs: []string{"validate", "run", "status", "pause", "begin-batch", "await-batch", "record-batch", "recover-batch"},
 		},
 	}
 
