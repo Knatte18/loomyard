@@ -111,4 +111,37 @@
 // card an implementer commits survives independently of Master's fate; only
 // reports and state are weft-committed per batch, so nothing already recorded
 // is ever lost.
+//
+// # builderengine reuse inventory: pause and validate pass-throughs
+//
+// Two of webster's own gates carry NO webster-side engine code at all —
+// they call builderengine's dir-parameterized functions directly, against
+// webster's own dirs, rather than duplicating a webster-local copy:
+//
+//   - Pause: builderengine.RequestPause/PauseRequested/ClearPause, called
+//     against WebsterDir exactly as builder's own pause verb calls them
+//     against BuilderDir. Mechanics: BeginBatch checks PauseRequested at the
+//     begin-batch boundary (the only place a pause gate fires — Master's own
+//     fork call is un-gateable, per the bracket-is-discipline-not-gate
+//     decision) and refuses with webster's own ErrPaused; Run clears the
+//     flag once it is committed to spawning (every refusal gate already
+//     passed — validation, the fingerprint check — so a resumed run never
+//     instantly re-pauses on the very flag that requested the pause it is
+//     now resuming from) and again at every non-paused terminal outcome (a
+//     paused terminal deliberately leaves the flag as the operator's own
+//     record — see mapMasterDone).
+//   - Validate: Run calls builderengine.ParsePlan then builderengine.Validate
+//     directly with caps sourced from webster's own Config, exactly as
+//     builder's own run/spawn-batch do. Run additionally refuses a plan that
+//     parses to zero batches — Validate itself carries no such check, and
+//     "nothing to build" must never resolve to a vacuous outcome: done — as
+//     webster's own pre-flight immediately after ParsePlan, before Validate
+//     ever runs.
+//
+// There is no webster-side duplicate of either act: `internal/webstercli`
+// wires these same builderengine functions directly into its own `pause` and
+// `validate` verbs (batch 8) rather than adding a websterengine-local
+// pass-through layer that would just forward the call — one fewer seam to
+// keep in sync with builderengine's own behavior, per the
+// reuse-by-import-never-copy decision.
 package websterengine
