@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-poc-scaffold-gopackages
+phase: approved-poc-gopls-callgraph
 slug: codeintel-spike
 branch: codeintel-spike
 plan: _mill/plan
@@ -24,6 +24,7 @@ plan-fix-r2  '2026-07-17T15:21:36Z'
 planned  '2026-07-17T15:21:49Z'
 implementing  '2026-07-17T15:26:17Z'
 approved-poc-scaffold-gopackages  '2026-07-17T15:33:45Z'
+approved-poc-gopls-callgraph  '2026-07-17T15:44:42Z'
 ```
 
 ## Batches
@@ -36,9 +37,10 @@ batches:
     start_sha: 74c65d26187d81fc6596a89d50b814190c7f2c1d
     commit_sha: c57004418ade2795c4cdf0fbd3fff386da74c5c1
   - name: poc-gopls-callgraph
-    state: running
+    state: approved
     implementer_session: 5fc2ce0f-438f-4406-9774-7e1f2e5f93dd
     start_sha: f1041b3cab46744a5e159232efb65d8824e09f31
+    commit_sha: 2fa53f6283234b01ae3d160f97f5af6bcec42ed2
   - name: measure-and-writeup
     state: pending
   - name: revert-and-verify
