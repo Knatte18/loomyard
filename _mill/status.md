@@ -6,6 +6,7 @@ slug: loom-discussion-producer
 branch: loom-discussion-producer
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: 'loom: Discussion producer (interactive interview, auto-mode capable)'
 task_description: |
   loom: Discussion producer (interactive interview, auto-mode capable)
@@ -28,7 +29,9 @@ implementing  '2026-07-17T18:31:12Z'
 ```yaml
 batches:
   - name: hubgeometry-discussion-paths
-    state: pending
+    state: running
+    implementer_session: 6740a6ca-67ae-49c6-8b37-c0448bb3aa0e
+    start_sha: 41b4b036e04c5ec9e73a66c5f9d059a709e70359
   - name: loom-config-module
     state: pending
   - name: discussion-producer
