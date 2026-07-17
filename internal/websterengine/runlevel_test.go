@@ -567,6 +567,32 @@ func TestRun_AssertedModelInitializedToMasterRoleModel(t *testing.T) {
 	}
 }
 
+// TestRun_MasterStrandPersistedBeforeFindRun proves F14's orphan-window
+// narrowing: when FindRun fails AFTER Master's pane is live (no shuttle run
+// state seeded, so the session-ID resolve errors), Run still errors — but
+// state.json has already recorded MasterStrand, so the next run's entry-time
+// reclaim can find and stop the orphaned live pane. Without the pre-resolve
+// save, the live pane would be invisible to every future reclaim.
+func TestRun_MasterStrandPersistedBeforeFindRun(t *testing.T) {
+	fx := newRunFixture(t, 1)
+
+	fx.Starter.handle = &runFakeHandle{strandGUID: "master-strand-orphan"}
+	// Deliberately DO NOT seed shuttle run state — FindRun then fails.
+
+	_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	if err == nil {
+		t.Fatal("Run() = nil error; want the FindRun resolve failure")
+	}
+
+	st, loadErr := websterengine.LoadState(fx.Deps.WebsterDir)
+	if loadErr != nil || st == nil {
+		t.Fatalf("LoadState() = %v, %v; want the pre-resolve state persisted", st, loadErr)
+	}
+	if st.MasterStrand != "master-strand-orphan" {
+		t.Errorf("State.MasterStrand = %q; want it persisted BEFORE the FindRun failure so the reclaim can find the orphan", st.MasterStrand)
+	}
+}
+
 // TestRun_DoneOutcomeWithValidSummaryAndCleanAuditPopulatesResult proves the
 // full success path: a done outcome.yaml with valid batches_done, a valid
 // summary.md, and a clean whole-session audit whose fork-transcript count

@@ -459,12 +459,19 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		return RunResult{}, fmt.Errorf("webster: start master: %w", err)
 	}
 
-	// Persist Master's strand identity, session ID, and launch-model
-	// baseline BEFORE blocking on the spawn: if this process dies mid-wait,
-	// the next run's entry-time reclaim above is the only thing that can
-	// ever find and stop the still-live Master session, and this record is
-	// what it reads.
+	// Record and persist Master's strand GUID the instant it exists — BEFORE
+	// resolving the session ID via FindRun, which itself can fail. The
+	// entry-time reclaim is the only thing that can ever stop a still-live
+	// Master a dead run process left behind, and it keys off MasterStrand; if
+	// FindRun failed after a live pane was already spawned but before the
+	// strand was durable, that pane would be invisible to every future
+	// reclaim. Two saves, not one, keep the reclaimable record ahead of the
+	// fallible resolve.
 	st.MasterStrand = handle.StrandGUID()
+	if err := SaveState(deps.WebsterDir, st); err != nil {
+		return RunResult{}, err
+	}
+
 	runState, _, err := shuttleengine.FindRun(deps.ShuttleCfg, deps.Layout, st.MasterStrand)
 	if err != nil {
 		return RunResult{}, fmt.Errorf("webster: resolve spawned master run: %w", err)
@@ -476,6 +483,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	// already equal to RoleMaster's model and injects nothing.
 	st.AssertedModel = resolved.Model
 
+	// Second save: the session ID and launch-model baseline the verbs read.
 	if err := SaveState(deps.WebsterDir, st); err != nil {
 		return RunResult{}, err
 	}
