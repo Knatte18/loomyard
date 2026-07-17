@@ -87,7 +87,7 @@ Example:
 		},
 	}
 
-	cmd.Flags().DurationVar(&wait, "wait", 0, "long-poll wait budget before returning report:false; 0 defers to webster.yaml's poll_wait_s")
+	cmd.Flags().DurationVar(&wait, "wait", 0, "poll window before returning report:false; 0 uses the short foreground default (~30s), deliberately NOT poll_wait_s")
 
 	return cmd
 }
