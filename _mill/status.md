@@ -41,7 +41,9 @@ batches:
     start_sha: 83d7815a8197bdf89a78899cb258ea28a93d453f
     commit_sha: a27f5c2db05c7f60c0e982047637c748829632cf
   - name: webster-audit-policy
-    state: pending
+    state: running
+    implementer_session: ad7e0a7d-a686-44a1-968b-4061a7005cc4
+    start_sha: 6b62dbfce828093da63e6cd7f65464aa88f15e98
   - name: webster-templates
     state: pending
   - name: bracket-verbs
