@@ -146,19 +146,29 @@ path rather than the Go-only one.
 ### language-detection
 
 - Decision: Detect the target language by scanning the target-repo root for the registry's
-  marker files; first matching entry wins, with a deterministic precedence order for repos
-  carrying multiple markers (e.g. a polyglot repo). Ambiguous/absent → a loud
-  `output.Err` naming the markers searched.
-- Rationale: Mirrors the registry's own marker set; no separate config. Deterministic
-  precedence keeps polyglot repos predictable.
+  marker files. Each registry entry declares its marker-match as **all-of** (AND — e.g.
+  TypeScript needs `package.json` AND `tsconfig.json`) or **any-of** (OR — e.g. C# `.sln`
+  OR `.csproj`; Python `pyproject.toml` OR `setup.py` OR `setup.cfg`; Go `go.mod`; Rust
+  `Cargo.toml`). Entries are tested in a **fixed precedence order** —
+  `[go, rust, csharp, typescript, python]` (most structurally-specific / least-ambiguous
+  markers first) — and the first entry whose marker-condition is satisfied wins. A
+  `--lang <name>` flag overrides detection outright for polyglot repos. No entry matched →
+  the engine returns a typed `ErrNoLanguage` naming the markers searched (the CLI emits it
+  as `output.Err`).
+- Rationale: Mirrors the registry's own marker set; no separate config. A pinned precedence
+  list + per-entry AND/OR semantics + a `--lang` escape hatch makes polyglot repos fully
+  predictable rather than order-of-filesystem-walk dependent.
 - Rejected: shelling out to a language-guesser (e.g. linguist) — heavy external dependency
-  for what a handful of marker checks answers.
+  for what a handful of marker checks answers. Rejected: leaving precedence unpinned — a
+  polyglot repo (a Go service with a `package.json` tooling shim) would resolve
+  nondeterministically.
 
 ### server-provisioning
 
-- Decision: Server binaries are assumed present on `$PATH`. A missing binary is a loud
-  `output.Err` carrying that server's install command (from the registry entry). lyx does
-  **not** install/pin servers itself in this task.
+- Decision: Server binaries are assumed present on `$PATH`. A missing binary makes the
+  engine return a typed `ErrServerNotFound` carrying that server's install command (from
+  the registry entry), which `codeintelcli` emits as `output.Err`. lyx does **not**
+  install/pin servers itself in this task.
 - Rationale: Exactly #008's gopls behaviour. A cross-platform install/pin story per server
   is arguably its own task and out of scope here.
 - Rejected: lyx-owned install/pin now — large cross-platform surface (npm, dotnet tool,
@@ -168,17 +178,43 @@ path rather than the Go-only one.
 
 ### cli-verb
 
-- Decision: Expose `lyx codeintel refs <symbol|file:line:col> [--target-dir <path>]` via
-  `internal/codeintelcli` (`Command()` + `RunCLI`) with domain logic in
+- Decision: Expose `lyx codeintel refs <symbol|file:line:col> [--target-dir <path>]
+  [--lang <name>]` via `internal/codeintelcli` (`Command()` + `RunCLI`) with domain logic in
   `internal/codeintelengine`. Registered in `cmd/lyx/main.go` `newRoot()` and the root
   `Long` module list.
 - Rationale: Matches every module's Cobra seam (CLI/Cobra Invariant), gives the benchmark a
   real driver (as #008 drove its harness via a command), and is the "expose as a Go verb
   any session can call" the webster doc envisions. `--json` output via the `output`
   envelope, one JSON object per line.
+- **Name-resolution contract** (the `<symbol>` form, resolved via `workspace/symbol`):
+  exactly-one candidate → proceed to references. Zero candidates → engine returns a typed
+  `ErrSymbolNotFound` naming the queried symbol and target. Multiple candidates → engine
+  returns a typed `ErrAmbiguousSymbol` listing every candidate's `file:line:col` so the
+  caller can re-issue the query with the precise `file:line:col` form. The `file:line:col`
+  form bypasses resolution entirely. (`workspace/symbol` precision is best-effort, per Scope
+  → Out; the contract is about *how ambiguity is surfaced*, not about guaranteeing a unique
+  match.) `codeintelcli` maps each typed error to `output.Err`.
 - Rejected: library-only `internal/codeintel` with tests as the only driver — nothing
   exercises it end-to-end, and the measurement would need a bespoke harness instead of the
-  shipping verb.
+  shipping verb. Rejected: silently picking the first of multiple `workspace/symbol`
+  candidates — hides ambiguity and yields a wrong-symbol reference set with no signal.
+
+### engine-cli-layering
+
+- Decision: `codeintelengine` returns typed Go errors and typed result values (`(T, error)`)
+  and imports **no** `io.Writer`/exit-code/output machinery; `codeintelcli` is the sole
+  layer that maps those to the `internal/output` JSON envelope (`output.Ok`/`output.Err`).
+  The engine leaf allowlist is therefore stdlib + `hubgeometry` + `gopkg.in/yaml.v3` —
+  **not** `internal/output` (exactly as `internal/modelspec`'s leaf excludes it).
+- Rationale: Required by the CLI/Cobra Invariant ("engine returns `(T, error)` with no
+  cobra/`io.Writer`/exit codes; cli imports engine, engine never imports cli"). Keeping
+  `output` out of the engine is also what lets the engine stay a cycle-free leaf importable
+  by builder/webster later.
+- Rejected: the engine calling `output.Err` directly — mixes the presentation envelope into
+  the domain kernel, violates the invariant, and drags an `io.Writer`/exit-code dependency
+  into a package meant to return values. (This corrects an internal inconsistency in an
+  earlier draft of this discussion that both listed `output` in the leaf allowlist and had
+  engine-level decisions emit `output.Err`.)
 
 ### measurement-matrix
 
@@ -238,8 +274,9 @@ path rather than the Go-only one.
   template.yaml}`. `LoadRegistry(baseDir)` reads `hubgeometry.ConfigFile(baseDir, "…")`,
   absent-file-is-not-error, `yaml.Decoder.KnownFields(true)`, whole-entry overlay,
   `builtins()` fallback, `ConfigTemplate()` embed accessor. Keep the new engine a **leaf**
-  (stdlib + `hubgeometry` + `gopkg.in/yaml.v3` + `output`) and add a
-  `leaf_enforcement_test.go` like modelspec/tokenvocab if it will be imported widely.
+  (stdlib + `hubgeometry` + `gopkg.in/yaml.v3`; **not** `internal/output` — see the
+  `engine-cli-layering` decision) and add a `leaf_enforcement_test.go` like
+  modelspec/tokenvocab if it will be imported widely.
 - **CLI seam:** `internal/*cli` exposes `Command() *cobra.Command` and
   `RunCLI(out io.Writer, args []string) int = clihelp.Execute(Command(), out, args)`; wired
   in `cmd/lyx/main.go newRoot()`. Look at a small pair (e.g. `weftcli`/`weftengine`) for the
@@ -330,3 +367,4 @@ From `CONSTRAINTS.md` (this task must satisfy):
 - **Q:** CLI verb or library-only? **A:** (delegated) Thin `lyx codeintel refs` verb via `codeintelcli`/`codeintelengine`.
 - **Q:** How to handle the measurement given the machine had no toolchains and Ubuntu 26.04 strips `ensurepip`? **A:** Operator can sudo-install. Full matrix: Go/gopls (parity, no sudo) + Python/pyright + Python/pylsp (precision spread within Python) + C#/csharp-ls.
 - **Q:** What target repos to measure against? **A:** (delegated) One mid-size, real, partially-typed project per language cloned into `.scratch/codeintel/targets/`; Go measured against loomyard as #008 did; exact repos recorded in the write-up.
+- **Q:** (review r1 gap) The engine leaf allowlist listed `internal/output`, but `output.Err/Ok` are CLI-layer (io.Writer + exit code) and the CLI/Cobra invariant bars the engine from importing them — how is the layer split resolved? **A:** Engine returns typed errors/`(T, error)`; `codeintelcli` alone maps them to the `output` envelope. `output` dropped from the engine leaf allowlist (matching modelspec). See the `engine-cli-layering` decision.
