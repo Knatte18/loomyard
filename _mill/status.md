@@ -28,7 +28,9 @@ implementing  '2026-07-17T11:21:48Z'
 ```yaml
 batches:
   - name: status-schema-doc
-    state: pending
+    state: running
+    implementer_session: f7f00c68-f2b8-4872-b8c0-6fc509f8573b
+    start_sha: 6c495bdc49eef741b8018cc8ee27a2eae3e64752
   - name: discussion-format-doc
     state: pending
   - name: relocate-contracts
