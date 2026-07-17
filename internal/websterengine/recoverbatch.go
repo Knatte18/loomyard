@@ -198,7 +198,7 @@ func recoverSpawn(deps RecoverDeps, batch builderengine.PlanBatch, prior *BatchS
 		return nil, err
 	}
 
-	if _, err := archiveStaleReport(deps.ReportsDir, batch.Number, batch.Slug, time.Now); err != nil {
+	if _, err := archiveStaleReport(deps.ReportsDir, batch.Number, batch.Slug, clk.Now); err != nil {
 		return nil, err
 	}
 

@@ -306,6 +306,12 @@ func TestRecoverBatch_FirstCallSpawnsArchivesStaleReportAndStopsLiveStrand(t *te
 	if globErr != nil || len(archived) != 1 {
 		t.Fatalf("archived report glob = %v, %v; want exactly 1 archive", archived, globErr)
 	}
+	// The archive timestamp comes from the INJECTED clock (clk starts at
+	// time.Unix(0,0)), not the wall clock — F16: recoverSpawn archives with
+	// clk.Now so a test clock makes the archive name deterministic.
+	if !strings.Contains(archived[0], "19700101T000000Z") {
+		t.Errorf("archived report %q; want the injected-clock epoch stamp 19700101T000000Z", archived[0])
+	}
 	data, err := os.ReadFile(archived[0])
 	if err != nil {
 		t.Fatalf("read archived report %s: %v", archived[0], err)
