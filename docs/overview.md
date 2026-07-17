@@ -80,7 +80,8 @@ exposes two entry points:
 - `Resolve(cwd)` → `Layout` — one-stop geometry: cwd, repo root (from `git rev-parse
   --show-toplevel`), Hub, relative path, and Prime worktree.
 
-The `Layout` type provides geometry methods: `LyxDir()`, `WorktreePath(slug)`,
+The `Layout` type provides geometry methods: `LyxDir()`, `LoomStatusFile()`, `LoomStatusLock()`,
+`DiscussionDir()`, `DiscussionDecisionRecord()`, `DiscussionSupportLog()`, `WorktreePath(slug)`,
 `PortalsDir()`, `PortalLink(slug)`, `PortalTarget(slug)`, `LaunchersDir()`, `LauncherDir(slug)`, `MenuLauncherPath()`, `LauncherSpawnRel(slug)`, `MenuLauncherRel()`, `PrimeName()`, `WeftRepoRoot()`, `WeftWorktreePath(slug)`, `WeftWorktree()`, `WeftLyxDir()`, `WeftLyxDirFor(slug)`, `WeftRaddleDir()`, `HostLyxLink(slug)`, `HostLyxLinkHere()`, `HostJunctions(slug)`.
 
 **Raw `os.Getwd` and `git rev-parse --show-toplevel` are banned** outside `internal/hubgeometry`
