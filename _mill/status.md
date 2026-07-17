@@ -36,7 +36,9 @@ batches:
     start_sha: 74c65d26187d81fc6596a89d50b814190c7f2c1d
     commit_sha: c57004418ade2795c4cdf0fbd3fff386da74c5c1
   - name: poc-gopls-callgraph
-    state: pending
+    state: running
+    implementer_session: 5fc2ce0f-438f-4406-9774-7e1f2e5f93dd
+    start_sha: f1041b3cab46744a5e159232efb65d8824e09f31
   - name: measure-and-writeup
     state: pending
   - name: revert-and-verify
