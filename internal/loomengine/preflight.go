@@ -22,9 +22,10 @@ import (
 // clean, the weft pairing is present and in sync, and _lyx/status.json is a
 // coherent, fresh seed. It owns cwd resolution end-to-end (Getwd + Resolve)
 // so it can be called with no arguments from anywhere in a worktree; a
-// caller that already holds a resolved Layout (e.g. for isolated testing)
-// cannot reach checkResolved directly, since that helper is unexported by
-// design — Preflight is the only entry point.
+// caller outside this package that already holds a resolved Layout (e.g. for
+// isolated testing) cannot reach checkResolved directly, since that helper is
+// unexported by design — Preflight is the only entry point from outside the
+// package.
 //
 // Callers MUST NOT invoke Preflight except when the task is at the
 // fresh/preflight stage. Invoking it on an already-advanced task (non-empty
