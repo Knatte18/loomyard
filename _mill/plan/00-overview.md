@@ -3,7 +3,7 @@
 ```yaml
 task: 'loom: Discussion producer (interactive interview, auto-mode capable)'
 slug: loom-discussion-producer
-approved: false
+approved: true
 started: '20260717-182111'
 parent: main
 root: ""

@@ -110,25 +110,31 @@ package already exists (Preflight). This batch is independent of batch 1.
   - `internal/loomengine/config.go`
   - `internal/loomengine/configtemplate.go`
   - `internal/loomengine/testmain_test.go`
-  - `internal/builderengine/config_test.go`
+  - `internal/configengine/config.go`
 - **Edits:** none
 - **Creates:**
   - `internal/loomengine/config_test.go`
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** New `package loomengine` test file mirroring
-  `builderengine/config_test.go`'s approach. Cover: (a) a well-formed
-  `_lyx/config/loom.yaml` (materialized from `ConfigTemplate()` into a temp
-  `baseDir` with the `_lyx/config/` layout `configengine.Load` expects) loads and
-  yields `Discussion == "opus[effort=high]"` and `DiscussionTimeoutMin == 480`;
+- **Requirements:** New `package loomengine` test file. It MUST be an **untagged
+  Tier-1 unit test** (NO `//go:build integration` tag) so it runs under the
+  batch's plain `go test ./internal/loomengine/` verify — do NOT mirror
+  `builderengine/config_test.go` (that file is integration-tagged and uses
+  `lyxtest.CopyWeft` + `SeedConfig` with a live git spawn, which this test must
+  avoid). Seed the config inline in a `t.TempDir()`: `os.MkdirAll(filepath.Join(baseDir, "_lyx", "config"), 0o755)`
+  then `os.WriteFile(filepath.Join(baseDir, "_lyx", "config", "loom.yaml"), []byte(ConfigTemplate()), 0o644)`,
+  then call `LoadConfig(baseDir, "loom")`. No `CopyWeft`, no `SeedConfig`, no git
+  (`configengine.Load`'s env-source build tolerates a missing `.env`, so a bare
+  temp dir with the `_lyx/config/loom.yaml` file is sufficient — read
+  `internal/configengine/config.go` to confirm the exact baseDir layout `Load`
+  expects: `_lyx/config/<module>.yaml`). Cover:
+  (a) the seeded well-formed `loom.yaml` loads and yields
+  `Discussion == "opus[effort=high]"` and `DiscussionTimeoutMin == 480`;
   (b) a `loom.yaml` whose `discussion:` value is a malformed model-spec (e.g.
-  `discussion: "opus[effort"` — unclosed bracket) makes `LoadConfig` fail with an
-  error naming the `"discussion"` key; (c) a missing `_lyx/` directory yields the
-  `not initialized here; run "lyx init"` error. Reuse whatever temp-dir /
-  config-seeding helper `builderengine/config_test.go` uses (read it to match the
-  exact `configengine.Load` baseDir layout — `_lyx/config/<module>.yaml`); if that
-  helper is package-private to builderengine, replicate the minimal file-writing
-  inline. Do not depend on a live hub.
+  `discussion: "opus[effort"` — unclosed bracket, written in place of the template)
+  makes `LoadConfig` fail with an error naming the `"discussion"` key;
+  (c) a bare temp `baseDir` with no `_lyx/` directory yields the
+  `not initialized here; run "lyx init"` error.
 - **Commit:** `test(loom): cover loomengine LoadConfig`
 
 ### Card 7: Document the loom config module

@@ -157,7 +157,7 @@ batch 2 (`loomengine.Config` for the model + timeout). No cobra command is added
     `OutputFiles` = `[]string{decisionRecordPath, supportLogPath}` (both files —
     the run is "done" only when both exist); `Model = resolved.Model`,
     `Effort = resolved.Params["effort"]`, `Version = resolved.Params["version"]`
-    (the exact mapping from `builderengine/spawn.go` / `roles.go`);
+    (the exact mapping documented verbatim in `builderengine/roles.go`'s godoc);
     `Interactive = !autonomous`; `Role = "discussion"`; and
     `Timeout = time.Duration(cfg.DiscussionTimeoutMin) * time.Minute`. Leave
     `Round`, `Parent`, `Display`, and `KeepPane` at their zero values (the caller
