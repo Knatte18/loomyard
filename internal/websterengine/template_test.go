@@ -173,6 +173,19 @@ func TestMasterTemplate_ForbidsWeftGitModelAndNamedSubagents(t *testing.T) {
 	requireContains(t, text, "NEVER edit, create, or delete any file other than")
 	requireContains(t, text, "NEVER use a `/model` switch")
 	requireContains(t, text, "NEVER spawn a non-fork or named subagent")
+
+	// The weft ban must cover read-only references too — a Master's
+	// orientation `find` on the physical weft path permanently wedged
+	// record-batch's whole-session audit in round fable-r1 (F3): the ban the
+	// audit enforces and the ban the template states must be the same ban,
+	// and the template must tell Master what a violation MEANS (terminal
+	// stuck, never worked around).
+	requireContains(t, text, "NEVER reference that physical weft path in ANY command")
+	requireContains(t, text, "not even a read-only `ls`, `find`, `cat`, or `readlink`")
+	requireContains(t, text, "The `_lyx` path is your one sanctioned window")
+	requireContains(t, text, "## A policy violation ends your run as stuck")
+	requireContains(t, text, "NEVER work around a violation")
+	requireContains(t, text, "The audit is")
 }
 
 // TestMasterTemplate_StatesBracketSequenceAndRecoveryLadder asserts the

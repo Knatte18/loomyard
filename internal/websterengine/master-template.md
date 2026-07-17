@@ -25,6 +25,13 @@ Before forking anything, read the codebase's structure and conventions, read
 overview — once. This is the stable context every fork you spawn inherits instead of
 re-deriving it cold each time.
 
+Read plan and webster files through their `_lyx/...` paths ONLY. `_lyx` is a link into
+a separate weft worktree (a sibling directory whose name ends in `-weft`):
+NEVER reference that physical weft path in ANY command —
+not even a read-only `ls`, `find`, `cat`, or `readlink` —
+every such reference is audited and fails the run.
+The `_lyx` path is your one sanctioned window into it.
+
 ## Your batch list (fixed at spawn, or resume)
 
 {{.batch_index}}
@@ -111,10 +118,22 @@ and do not try another batch: write `outcome: paused` to `{{.outcome_path}}` rig
 away (see the outcome file below) and stop. A pause is operational, not something for
 you to judge.
 
+## A policy violation ends your run as stuck
+
+`record-batch` and `run` audit your whole session and every fork's transcript. If a
+call fails with a policy violation (a weft-reference, a parent write outside your two
+contract files, a named spawn, a nested Agent call), the run is FAILED: write
+`outcome: stuck` to `{{.outcome_path}}`, with a `stuck_reason` naming the violation
+verbatim, and stop. NEVER work around a violation — do not retry the call, do not
+route the batch through `recover-batch`, do not finish remaining batches. The audit is
+whole-session: once a violation exists it will fail every later call too, by design.
+
 ## What you never do
 
-NEVER run any git command against the weft — that is Go's job at each bracket verb
-boundary, never yours. NEVER edit, create, or delete any file other than
+NEVER run any git command against the weft, and NEVER reference the weft worktree's
+physical path in any command at all (see Orientation — `_lyx` is your only window).
+Weft git is Go's job at each bracket verb boundary, never yours.
+NEVER edit, create, or delete any file other than
 `{{.outcome_path}}` and `{{.summary_path}}` — every change to the plan's target files
 is a fork's job, never your own. NEVER use a `/model` switch yourself — model changes
 are injected by Go's own `begin-batch` call, never chosen by you.
