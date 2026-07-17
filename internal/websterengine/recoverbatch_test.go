@@ -223,6 +223,45 @@ func writeRecoverReport(t *testing.T, reportsDir, content string) {
 	}
 }
 
+// recoverDriveResult mirrors the composed per-call outcome the CLI verb
+// assembles from the three lease-scoped phases, so each test keeps asserting
+// one call's whole effect.
+type recoverDriveResult struct {
+	Digest   *builderengine.Digest
+	Running  bool
+	Spawned  bool
+	ElapsedS int
+	Warnings []string
+}
+
+// driveRecoverBatch composes RecoverSpawnOrAttach -> RecoverAwait ->
+// PersistRecoveryTerminal against deps' in-memory state, exactly the
+// sequence webstercli's recover-batch verb drives (minus the lease and
+// SaveState/weft steps, which the CLI owns) — so every re-entrancy and
+// classification test below exercises the same composition production runs.
+func driveRecoverBatch(deps websterengine.RecoverDeps, batchNumber int, wait time.Duration, clk websterengine.Clock) (*recoverDriveResult, error) {
+	bs, spawned, err := websterengine.RecoverSpawnOrAttach(deps, batchNumber, clk)
+	if err != nil {
+		return nil, err
+	}
+	result, err := websterengine.RecoverAwait(deps, batchNumber, bs, wait, clk)
+	if err != nil {
+		return nil, err
+	}
+	if result.Digest != nil {
+		if err := websterengine.PersistRecoveryTerminal(deps.State, batchNumber, result.Digest); err != nil {
+			return nil, err
+		}
+	}
+	return &recoverDriveResult{
+		Digest:   result.Digest,
+		Running:  result.Running,
+		Spawned:  spawned,
+		ElapsedS: result.ElapsedS,
+		Warnings: result.Warnings,
+	}, nil
+}
+
 // TestRecoverBatch_FirstCallSpawnsArchivesStaleReportAndStopsLiveStrand
 // proves the first call for a batch with no live recovery record spawns a
 // fresh recovery strand: a stale report at the batch's own report path is
@@ -244,7 +283,7 @@ func TestRecoverBatch_FirstCallSpawnsArchivesStaleReportAndStopsLiveStrand(t *te
 	fx.Mux.status = muxengine.StatusResult{Strands: []muxengine.StrandStatus{{GUID: "orphan-1", Live: true}}}
 
 	clk := &recoverFakeClock{now: time.Unix(0, 0)}
-	result, err := websterengine.RecoverBatch(fx.Deps, 1, 3*time.Second, clk)
+	result, err := driveRecoverBatch(fx.Deps, 1, 3*time.Second, clk)
 	if err != nil {
 		t.Fatalf("RecoverBatch() error = %v; want nil", err)
 	}
@@ -334,7 +373,7 @@ func TestRecoverBatch_DoneReportRefusedUnlessPriorDead(t *testing.T) {
 			t.Fatalf("seed done report: %v", err)
 		}
 
-		_, err := websterengine.RecoverBatch(fx.Deps, 1, time.Second, &recoverFakeClock{now: time.Unix(0, 0)})
+		_, err := driveRecoverBatch(fx.Deps, 1, time.Second, &recoverFakeClock{now: time.Unix(0, 0)})
 		if err == nil {
 			t.Fatal("RecoverBatch() with a done report = nil error; want the finished-work refusal")
 		}
@@ -359,7 +398,7 @@ func TestRecoverBatch_DoneReportRefusedUnlessPriorDead(t *testing.T) {
 			Slug: "json-flag", Kind: "recovery", Terminal: true, Status: "dead",
 		}
 
-		result, err := websterengine.RecoverBatch(fx.Deps, 1, time.Second, &recoverFakeClock{now: time.Unix(0, 0)})
+		result, err := driveRecoverBatch(fx.Deps, 1, time.Second, &recoverFakeClock{now: time.Unix(0, 0)})
 		if err != nil {
 			t.Fatalf("RecoverBatch() for a dead batch with a late done report = %v; want the archive-and-respawn path", err)
 		}
@@ -380,7 +419,7 @@ func TestRecoverBatch_SecondCallAttachesAndPersistsDoneDigest(t *testing.T) {
 	clk := &recoverFakeClock{now: time.Unix(0, 0)}
 
 	// First call spawns; no report yet.
-	first, err := websterengine.RecoverBatch(fx.Deps, 1, 2*time.Second, clk)
+	first, err := driveRecoverBatch(fx.Deps, 1, 2*time.Second, clk)
 	if err != nil {
 		t.Fatalf("RecoverBatch() first call error = %v; want nil", err)
 	}
@@ -393,7 +432,7 @@ func TestRecoverBatch_SecondCallAttachesAndPersistsDoneDigest(t *testing.T) {
 	// The re-fork's report has now landed.
 	writeRecoverReport(t, fx.ReportsDir, "batch: 01-json-flag\nstatus: done\ntests: green\nstuck_reason: null\n")
 
-	second, err := websterengine.RecoverBatch(fx.Deps, 1, 2*time.Second, clk)
+	second, err := driveRecoverBatch(fx.Deps, 1, 2*time.Second, clk)
 	if err != nil {
 		t.Fatalf("RecoverBatch() second call error = %v; want nil", err)
 	}
@@ -454,7 +493,7 @@ func TestRecoverBatch_TimeoutAcrossCallsClassifiesDead(t *testing.T) {
 	fx.Deps.Config.RecoveryTimeoutMin = 1 // 1 minute
 	clk := &recoverFakeClock{now: time.Unix(0, 0)}
 
-	first, err := websterengine.RecoverBatch(fx.Deps, 1, 2*time.Second, clk)
+	first, err := driveRecoverBatch(fx.Deps, 1, 2*time.Second, clk)
 	if err != nil {
 		t.Fatalf("RecoverBatch() first call error = %v; want nil", err)
 	}
@@ -469,7 +508,7 @@ func TestRecoverBatch_TimeoutAcrossCallsClassifiesDead(t *testing.T) {
 	// report ever landing.
 	clk.now = clk.now.Add(2 * time.Minute)
 
-	second, err := websterengine.RecoverBatch(fx.Deps, 1, 2*time.Second, clk)
+	second, err := driveRecoverBatch(fx.Deps, 1, 2*time.Second, clk)
 	if err != nil {
 		t.Fatalf("RecoverBatch() second call error = %v; want nil", err)
 	}
@@ -529,7 +568,7 @@ func TestRecoverBatch_UnrecordedOrTerminalBatchSpawnsFresh(t *testing.T) {
 			}
 
 			clk := &recoverFakeClock{now: time.Unix(0, 0)}
-			_, err := websterengine.RecoverBatch(fx.Deps, 1, 1*time.Second, clk)
+			_, err := driveRecoverBatch(fx.Deps, 1, 1*time.Second, clk)
 			if err != nil {
 				t.Fatalf("RecoverBatch() error = %v; want nil", err)
 			}

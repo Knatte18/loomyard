@@ -1,17 +1,17 @@
 // recoverbatch.go implements the `recover-batch` webster verb: the
 // re-entrant, bounded long-poll escalation call Master's own prompt makes
-// when a fork reports stuck or never reports at all. It runs
-// websterengine.RecoverBatch with a real, wall-clock Clock, holding the
-// state-mutation lease around the whole call (RecoverBatch's own
-// spawn-or-attach decision and its bounded wait are a single synchronous
-// engine call, so there is no mid-call point at which the CLI could
-// release and reacquire the lease) and then performs webster's third and
-// fourth weft-commit points in sequence once the call returns: "... spawn"
-// immediately after a call that performed the spawn (regardless of whether
-// that same call's bounded wait also reached terminal), and "... <status>"
-// once a terminal digest has actually landed -- mirroring the discussion's
-// weft-ownership decision's two recover-batch commit points even when a
-// single fast recovery strand collapses both into one call.
+// when a fork reports stuck or never reports at all. It drives
+// websterengine's three lease-scoped phases with a real, wall-clock Clock:
+// RecoverSpawnOrAttach under the state-mutation lease (saved and
+// weft-committed "... spawn" when this call performed the spawn),
+// RecoverAwait with the lease RELEASED (a single wait blocks up to
+// poll_wait_s -- holding the lease across it would stall every concurrent
+// verb and run entry for minutes, the exact hold AcquireStateMutation's
+// contract forbids), and, on a terminal digest, PersistRecoveryTerminal
+// into a FRESHLY reloaded state under a re-acquired lease, followed by the
+// "... <status>" terminal weft commit -- webster's third and fourth
+// weft-commit points, each now carrying exactly the mutation its label
+// names.
 package webstercli
 
 import (
@@ -129,7 +129,7 @@ Example:
 				ReportsDir:   c.reportsDir,
 			}
 
-			result, err := websterengine.RecoverBatch(deps, batchNumber, waitBudget, recoverRealClock{})
+			bs, spawned, err := websterengine.RecoverSpawnOrAttach(deps, batchNumber, recoverRealClock{})
 			if err != nil {
 				_ = mutateLock.Release()
 				mutateHeld = false
@@ -137,12 +137,10 @@ Example:
 				return nil
 			}
 
-			// Persist whatever RecoverBatch mutated: the spawn record
-			// (always, once Spawned) and/or the terminal digest fields
-			// (once Digest != nil) -- both live on the same in-memory st,
-			// so one SaveState captures either or both. A pure attach call
-			// that is still running touches neither and needs no save.
-			if result.Spawned || result.Digest != nil {
+			// A spawn mutated the state; persist the fresh strand record
+			// before anything else so a crash mid-wait leaves it reclaimable.
+			// A pure attach mutated nothing and needs no save.
+			if spawned {
 				if err := websterengine.SaveState(c.websterDir, st); err != nil {
 					_ = mutateLock.Release()
 					mutateHeld = false
@@ -150,17 +148,49 @@ Example:
 					return nil
 				}
 			}
+			// The state phase is over; the bounded wait below runs with the
+			// lease RELEASED, per AcquireStateMutation's contract.
 			_ = mutateLock.Release()
 			mutateHeld = false
 
-			if result.Spawned {
+			if spawned {
 				if _, weftErr := weftCommit(c.layout, fmt.Sprintf("recover-batch %s spawn", batchName)); weftErr != nil {
 					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: batch %s recovery spawned but the weft sync failed: %v", batchName, weftErr)))
 					return nil
 				}
 			}
 
+			result, err := websterengine.RecoverAwait(deps, batchNumber, bs, waitBudget, recoverRealClock{})
+			if err != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+				return nil
+			}
+
 			if result.Digest != nil {
+				// Terminal: re-acquire the lease and merge the digest into a
+				// FRESHLY loaded state — the pre-wait copy may be minutes
+				// stale, and saving it would erase a concurrent mutation.
+				terminalLock, err := websterengine.AcquireStateMutation(c.websterDir)
+				if err != nil {
+					clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+					return nil
+				}
+				fresh, err := websterengine.LoadState(c.websterDir)
+				if err == nil && fresh == nil {
+					err = fmt.Errorf("webster: state.json disappeared during the recovery wait for batch %s", batchName)
+				}
+				if err == nil {
+					err = websterengine.PersistRecoveryTerminal(fresh, batchNumber, result.Digest)
+				}
+				if err == nil {
+					err = websterengine.SaveState(c.websterDir, fresh)
+				}
+				_ = terminalLock.Release()
+				if err != nil {
+					clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+					return nil
+				}
+
 				if _, weftErr := weftCommit(c.layout, fmt.Sprintf("recover-batch %s %s", batchName, result.Digest.Status)); weftErr != nil {
 					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: batch %s recovery classified %s but the weft sync failed: %v", batchName, result.Digest.Status, weftErr)))
 					return nil

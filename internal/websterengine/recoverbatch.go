@@ -1,21 +1,25 @@
-// recoverbatch.go implements RecoverBatch, webster's re-entrant, bounded
-// long-poll exception-path verb: the only place webster spawns a genuinely
-// separate process. It escalates a batch a fork reported stuck (or never
-// reported at all) to a cold implementer strand at the recovery role,
-// reusing builderengine's SpawnBatch machinery by import rather than
-// duplicating it (spawn-or-attach decision, the stencil-filled implementer
-// template, the shuttleengine.Spec construction, and the cross-process
-// FindRun resolution) plus builder's own classification machinery
-// (Classify/PollUntilTerminal/TurnEnded/StrandLive) for the bounded wait
-// that follows. First call spawns and records; every call (the first
-// included) blocks at most one wait window and returns either the terminal
-// digest or a running snapshot; a caller (webstercli) re-calls until
-// terminal.
+// recoverbatch.go implements webster's re-entrant, bounded long-poll
+// exception-path verb as three lease-scoped phases: RecoverSpawnOrAttach
+// (the only place webster spawns a genuinely separate process — escalating
+// a batch a fork reported stuck, or never reported at all, to a cold
+// implementer strand at the recovery role, reusing builderengine's
+// SpawnBatch machinery by import: the stencil-filled implementer template,
+// the shuttleengine.Spec construction, and the cross-process FindRun
+// resolution), RecoverAwait (the bounded wait, reusing builder's own
+// classification machinery — Classify/PollUntilTerminal/TurnEnded/
+// StrandLive), and PersistRecoveryTerminal (the terminal digest merge into
+// a freshly reloaded state). First call spawns and records; every call (the
+// first included) blocks at most one wait window and returns either the
+// terminal digest or a running snapshot; a caller (webstercli) re-calls
+// until terminal.
 //
-// RecoverBatch never touches weft: the caller holds the state-mutation
-// lease around the spawn-and-record phase and weft-commits state.json
-// immediately after it, and again at terminal persistence, mirroring
-// builder's own weft-commit-boundary discipline.
+// The three-phase split exists for the state-mutation lease: the caller
+// holds it across spawn-or-attach and across the terminal persist, but
+// NEVER across the bounded wait between them (see AcquireStateMutation's
+// never-across-a-long-block contract). Nothing here touches weft: the
+// caller weft-commits state.json after the spawn record and again at
+// terminal persistence, mirroring builder's own weft-commit-boundary
+// discipline.
 
 package websterengine
 
@@ -74,21 +78,18 @@ type RecoverDeps struct {
 	ReportsDir   string
 }
 
-// RecoverResult is what one RecoverBatch call hands back to its caller
+// RecoverResult is what one RecoverAwait call hands back to its caller
 // (internal/webstercli's recover-batch verb): Digest is the distilled
 // digest once the recovery strand reaches a terminal classification (nil
 // while Running); Running reports whether this call's bounded wait elapsed
-// with the batch still non-terminal (the caller re-calls); Spawned reports
-// whether THIS call performed the spawn (false on an attach-only call), so
-// the caller knows whether to weft-commit a freshly-recorded strand;
-// ElapsedS is the number of seconds since the recovery strand was spawned,
-// measured across every re-entrant call, not merely this one; Warnings
-// carries every non-fatal substrate-cleanup failure observed at terminal
-// persistence, never treated as a failure.
+// with the batch still non-terminal (the caller re-calls); ElapsedS is the
+// number of seconds since the recovery strand was spawned, measured across
+// every re-entrant call, not merely this one; Warnings carries every
+// non-fatal substrate-cleanup failure observed at terminal classification,
+// never treated as a failure.
 type RecoverResult struct {
 	Digest   *builderengine.Digest
 	Running  bool
-	Spawned  bool
 	ElapsedS int
 	Warnings []string
 }
@@ -271,44 +272,76 @@ func recoverSpawn(deps RecoverDeps, batch builderengine.PlanBatch, prior *BatchS
 	}, nil
 }
 
-// RecoverBatch drives one recover-batch call to completion: the
-// spawn-or-attach decision, then the bounded wait (see awaitTerminal). The
-// spawn-or-attach decision reads deps.State.Batches[batchNumber]: a
-// recorded, non-terminal BatchState whose Kind is "recovery" and whose
-// StrandGUID is already set means a prior call already spawned this
-// recovery strand — ATTACH, skip straight to the bounded wait. Any other
-// state (no record, a plain fork batch's record, or a previously-terminal
-// recovery record) means SPAWN a fresh recovery strand. The caller
-// (webstercli) holds the state-mutation lease around this whole call and is
-// responsible for persisting deps.State via SaveState once RecoverBatch
-// returns successfully — RecoverBatch itself never calls SaveState and
-// never touches weft.
-func RecoverBatch(deps RecoverDeps, batchNumber int, wait time.Duration, clk Clock) (*RecoverResult, error) {
+// RecoverSpawnOrAttach drives the spawn-or-attach half of one recover-batch
+// call. The decision reads deps.State.Batches[batchNumber]: a recorded,
+// non-terminal BatchState whose Kind is "recovery" and whose StrandGUID is
+// already set means a prior call already spawned this recovery strand —
+// ATTACH, mutate nothing, return that record. Any other state (no record, a
+// plain fork batch's record, or a previously-terminal recovery record)
+// means SPAWN a fresh recovery strand and record it into deps.State. The
+// caller (webstercli) holds the state-mutation lease across this call ONLY
+// — never across the bounded wait that follows (RecoverAwait) — and is
+// responsible for persisting deps.State via SaveState when spawned is true.
+// This function never calls SaveState and never touches weft.
+func RecoverSpawnOrAttach(deps RecoverDeps, batchNumber int, clk Clock) (bs *BatchState, spawned bool, err error) {
+	batch, err := findBatch(deps.Plan, batchNumber)
+	if err != nil {
+		return nil, false, err
+	}
+
+	prior := deps.State.Batches[batchNumber]
+	if prior != nil && prior.Kind == "recovery" && !prior.Terminal && prior.StrandGUID != "" {
+		return prior, false, nil
+	}
+
+	fresh, err := recoverSpawn(deps, batch, prior, clk)
+	if err != nil {
+		return nil, false, err
+	}
+	if deps.State.Batches == nil {
+		deps.State.Batches = map[int]*BatchState{}
+	}
+	deps.State.Batches[batchNumber] = fresh
+	deps.State.CurrentBatch = batchNumber
+	return fresh, true, nil
+}
+
+// RecoverAwait drives the bounded-wait half of one recover-batch call for a
+// recovery strand RecoverSpawnOrAttach already recorded: the long-poll
+// classification loop (see awaitTerminal) plus, on a terminal
+// classification, the strand/run-dir substrate release. It reads and
+// mutates NO run state — the caller runs it with the state-mutation lease
+// RELEASED (a single call blocks up to poll_wait_s, and holding the lease
+// across that block would stall every concurrent verb and run entry for
+// minutes — the exact hold AcquireStateMutation's contract forbids), then
+// re-acquires the lease and persists a terminal digest into a FRESHLY
+// loaded state via PersistRecoveryTerminal.
+func RecoverAwait(deps RecoverDeps, batchNumber int, bs *BatchState, wait time.Duration, clk Clock) (*RecoverResult, error) {
 	batch, err := findBatch(deps.Plan, batchNumber)
 	if err != nil {
 		return nil, err
 	}
+	return awaitTerminal(deps, batch, bs, wait, clk)
+}
 
-	prior := deps.State.Batches[batchNumber]
-	attach := prior != nil && prior.Kind == "recovery" && !prior.Terminal && prior.StrandGUID != ""
-
-	spawned := false
-	bs := prior
-	if !attach {
-		fresh, err := recoverSpawn(deps, batch, prior, clk)
-		if err != nil {
-			return nil, err
-		}
-		if deps.State.Batches == nil {
-			deps.State.Batches = map[int]*BatchState{}
-		}
-		deps.State.Batches[batchNumber] = fresh
-		deps.State.CurrentBatch = batchNumber
-		bs = fresh
-		spawned = true
+// PersistRecoveryTerminal merges a terminal recovery digest into st — which
+// the caller re-loaded FRESH under the state-mutation lease AFTER the
+// unleased bounded wait, so a concurrently persisted mutation is never
+// erased by saving a stale pre-wait copy (builder's poll applies the same
+// reload-under-lease discipline). It marks st.Batches[batchNumber]
+// terminal with digest and clears the in-flight cursor; a missing batch
+// record is a hard error, never silently recreated — the record was
+// persisted at spawn time and nothing in the normal flow removes it.
+func PersistRecoveryTerminal(st *State, batchNumber int, digest *builderengine.Digest) error {
+	bs, ok := st.Batches[batchNumber]
+	if !ok || bs == nil {
+		return fmt.Errorf("webster: no recorded state for batch %d at recovery terminal persistence — state.json changed underneath the recovery wait", batchNumber)
 	}
-
-	return awaitTerminal(deps, batch, bs, spawned, wait, clk)
+	bs.Digest = digest
+	bs.Terminal = true
+	bs.Status = digest.Status
+	st.CurrentBatch = 0
+	return nil
 }
 
 // awaitTerminal drives one bounded long-poll wait for bs's recovery strand:
@@ -325,22 +358,22 @@ func RecoverBatch(deps RecoverDeps, batchNumber int, wait time.Duration, clk Clo
 // terminal or wait elapses.
 //
 // A non-terminal return after wait elapses reports RecoverResult{Running:
-// true, Spawned: spawned, ElapsedS: <since spawn>} — deps.State is left
-// completely untouched, so the caller's next call re-enters cleanly.
+// true, ElapsedS: <since spawn>} — nothing anywhere is mutated, so the
+// caller's next call re-enters cleanly.
 //
-// A terminal return persists exactly as builder's own RecordBatch persists
-// a distilled digest (Digest, Terminal, Status, and CurrentBatch cleared),
-// then releases the recovery strand's substrate with builder's own parity
-// rules: done removes the strand (if still live) and the shuttle run
-// directory; stuck removes the strand but KEEPS the run directory (the
-// stuck trail a human or a fresh recovery diagnosis reads); dead keeps
-// BOTH — the kept pane may still be genuinely working, exactly the
-// kept-substrate reclaim builder's dead-respawn ladder consumes elsewhere.
-// A cleanup failure is collected as a warning on the result, never
-// returned as a fatal error: the terminal classification itself already
-// succeeded, and a caller must not lose that judgment over a best-effort
-// housekeeping failure.
-func awaitTerminal(deps RecoverDeps, batch builderengine.PlanBatch, bs *BatchState, spawned bool, wait time.Duration, clk Clock) (*RecoverResult, error) {
+// A terminal return carries the digest for the caller to persist (see
+// PersistRecoveryTerminal — awaitTerminal itself mutates no state, since it
+// runs with the state-mutation lease released), then releases the recovery
+// strand's substrate with builder's own parity rules: done removes the
+// strand (if still live) and the shuttle run directory; stuck removes the
+// strand but KEEPS the run directory (the stuck trail a human or a fresh
+// recovery diagnosis reads); dead keeps BOTH — the kept pane may still be
+// genuinely working, exactly the kept-substrate reclaim builder's
+// dead-respawn ladder consumes elsewhere. A cleanup failure is collected as
+// a warning on the result, never returned as a fatal error: the terminal
+// classification itself already succeeded, and a caller must not lose that
+// judgment over a best-effort housekeeping failure.
+func awaitTerminal(deps RecoverDeps, batch builderengine.PlanBatch, bs *BatchState, wait time.Duration, clk Clock) (*RecoverResult, error) {
 	spawnedAt, err := time.Parse(time.RFC3339, bs.SpawnedAt)
 	if err != nil {
 		return nil, fmt.Errorf("webster: parse recorded spawnedAt %q for batch %d: %w", bs.SpawnedAt, batch.Number, err)
@@ -411,13 +444,8 @@ func awaitTerminal(deps RecoverDeps, batch builderengine.PlanBatch, bs *BatchSta
 	elapsedS := int(clk.Now().Sub(spawnedAt).Seconds())
 
 	if digest.Status == builderengine.DigestStatusRunning {
-		return &RecoverResult{Running: true, Spawned: spawned, ElapsedS: elapsedS}, nil
+		return &RecoverResult{Running: true, ElapsedS: elapsedS}, nil
 	}
-
-	bs.Digest = &digest
-	bs.Terminal = true
-	bs.Status = digest.Status
-	deps.State.CurrentBatch = 0
 
 	var warnings []string
 	removeStrand := func() {
@@ -448,5 +476,5 @@ func awaitTerminal(deps RecoverDeps, batch builderengine.PlanBatch, bs *BatchSta
 		// dead-respawn ladder consumes on its next spawn.
 	}
 
-	return &RecoverResult{Digest: &digest, Spawned: spawned, ElapsedS: elapsedS, Warnings: warnings}, nil
+	return &RecoverResult{Digest: &digest, ElapsedS: elapsedS, Warnings: warnings}, nil
 }
