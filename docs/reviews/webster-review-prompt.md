@@ -210,15 +210,63 @@ green `go test` proves nothing here:
 - **Non-Claude engines.** Per `CLAUDE.md`, non-Claude LLM support is not a current priority — don't
   flag the absence of a Gemini/other-provider path. (webster's `/model` injection and Agent-tool
   fork are legitimately Claude-Code-specific by design.)
+- **Changing shuttle's outcome contract.** Do NOT modify `internal/shuttleengine/wait.go`'s
+  Stop-without-output⇒`OutcomeAsking` classification, the `Outcome` enum in `engine.go`, or the
+  run-loop. That done-or-asking model is correct for shuttle's other clients (builder's single-
+  deliverable implementers) and is a deliberately-accepted limitation webster works around in its own
+  package (`await-batch`). A true async/parallel Master would need a shuttle "still-working" third
+  state — that is a SEPARATE future shuttle task, explicitly not this campaign's. Your R2-a mechanism
+  guard belongs in the **claudeengine hook seam** (`settings.go`, like `steerAgentNonForkDeny`), NOT
+  in shuttle's outcome classification. Keep v1 strictly serial — no fan-out / await-many / parallel
+  fork orchestration (that is websterv2).
 
 ## Round context seeded from prior-round verification
-You are round tag `fable-r1` — **round 1** of an initial cap of **up to 4 rounds**, model rotation
-**Fable → Opus → Fable → Opus**. This is the FIRST round of webster's hardening campaign: there is
-**no prior residual and no prior review to consult** — you are establishing the baseline. Do a
-genuinely independent clean-room pass: read the SPEC (`doc.go` + `builder-contract.md#webster` +
-`plan-format.md`) and the code yourself, drive the real substrate against every "High-yield focus"
-invariant, and form your own findings. An honest, well-evidenced findings list is the goal; do not
-invent findings to pad the round, and do not skip live driving to save your own time.
+You are round tag `opus-r2` — **round 2** of an initial cap of **up to 4 rounds**, model rotation
+**Fable → Opus → Fable → Opus**.
+
+**What round 1 (`fable-r1`) already CLOSED — orchestrator-verified, do NOT re-litigate:** 18 findings
+fixed, per-fix commits `aea58060..51b65cf2`, hermetic gates re-run green cold by the orchestrator,
+and F2/F18 revert-and-confirm-fail proven. Headline: **on Claude Code 2.1.205 the Agent-tool fork is
+BACKGROUNDED, not synchronous** — this killed webster's original "fork returns synchronously" premise
+(doc.go). F1's fix landed the current design and it is authoritative now: `begin-batch` → spawn the
+(async) fork → **new `lyx webster await-batch <NN>` verb** polled in a loop by the master template
+until the report lands → `record-batch`, strictly serial, one batch fully done before the next. Also
+fixed: F2 (fork audit counted the parent's own spawning `Agent` call), F3 (weft-path read wedged
+record-batch), F18 (the `/model` injection's leading **Escape** was interrupting the foreground
+`begin-batch` — dropped it), and F4–F17. **Shuttle's outcome contract (`wait.go` Stop⇒`OutcomeAsking`,
+the `Outcome` enum, the run-loop) was deliberately left UNTOUCHED** — its done-or-asking-on-turn-end
+model is a known, accepted limitation that webster works around in its own package via `await-batch`.
+That boundary still holds this round (see OUT OF SCOPE).
+
+**Your PRIMARY mandate this round — the one residual fable-r1 flagged and deferred, now
+operator-AUTHORIZED to fix:**
+- **(R2-a) The fork-loop deadlock — close it deterministically with a MECHANISM GUARD.** Because the
+  fork inherits Master's full context (including the master template's `await-batch` poll loop), a
+  fork can start driving that loop itself — polling `await-batch` for the report it is itself supposed
+  to write → nondeterministic livelock. fable-r1's three template-only mitigations made a
+  real-work fork's happy path pass but a **no-work fork still deadlocked** (nondeterministic — not
+  mergeable). Build a deterministic guard: a **fork-context-detecting hook that refuses `lyx webster`
+  verbs when invoked from inside a fork**, following the existing `steerAgentNonForkDeny` precedent
+  in `internal/shuttleengine/claudeengine/settings.go` (the claudeengine hook seam — the SAME
+  provider seam F2 used, and the RIGHT place for Claude-fork-context detection). Master's own
+  `lyx webster` calls must still pass; only fork-context calls are refused, loudly, so the fork
+  abandons the loop instead of livelocking. Prove it live: the no-work-fork scenario (fable-r1's W2b)
+  that deadlocked must now terminate cleanly.
+- **(R2-b) Add the missing `//go:build smoke` regression tests** — fable-r1 added NONE despite
+  F1/F2/F3/F18 all being live-only defects (a method violation the orchestrator caught). Start the
+  smoke-test file: cover the live-only BLOCKINGs (F1 await-batch loop reaching a report; F2 a real
+  fork transcript's audit; the R2-a fork-context guard refusing a fork's `lyx webster` call) walking
+  the real substrate, deterministically (poll with a deadline; never a fixed sleep; skip when the
+  substrate is absent). Prove determinism by running them repeatedly in parallel under load.
+
+Beyond those two mandated items, do a **genuinely independent clean-room pass** on top: read the SPEC
++ the current code yourself and drive the real substrate against every "High-yield focus" invariant.
+The loop now actually runs end-to-end, so seams that were unreachable in round 1 are reachable now —
+exercise them fresh: the `await-batch` poll loop under a slow/never-arriving report, the R2-a guard's
+interaction with `recover-batch` (a recovery strand is NOT a fork — it must still be allowed), crash/
+resume THROUGH the async await loop, and anything the F1 template rewrite touched. Find what round 1
+missed; an honest, well-evidenced list is the goal — do not invent findings to pad the round, and do
+not skip live driving to save your own time.
 
 State the **merge bar** so you calibrate: correctness in the NORMAL single-instance flow (one
 `lyx webster run` at a time, no artificial concurrency stress) is the gate. If you run N× concurrent
@@ -308,8 +356,13 @@ you don't have. Even then say so explicitly in the fixer report's deferred secti
 something as "deferred, low priority" just because it felt small.
 
 ## Deferred items from the prior round — RE-EVALUATE these (after your own pass)
-Nothing is on this list — round 1 is the baseline. If your own pass surfaces something you genuinely
-cannot resolve alone this round, defer it here explicitly with the reason; do not silently drop it.
+- **The fork-loop deadlock (R2-a above).** fable-r1 deferred the deterministic fix pending operator
+  sign-off; it is now AUTHORIZED and is your primary mandate this round — build the claudeengine
+  fork-context mechanism guard and prove it live. This is no longer "deferred", it is to be CLOSED.
+- **Missing smoke tests (R2-b above).** Also to be closed this round, not carried further.
+
+If your own pass surfaces something you genuinely cannot resolve alone this round, defer it here
+explicitly with the reason; do not silently drop it.
 
 ## Fixing — after the review
 - Fix EVERY finding from your review, all severities including NIT.
