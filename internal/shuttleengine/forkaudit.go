@@ -62,6 +62,15 @@ type ForkReport struct {
 	// own transcript — a fork subagent is expected to review, not mutate files, so a
 	// non-zero WriteCalls is a defect signal a caller may hard-error on.
 	WriteCalls int
+	// WritePaths carries the file path of every fork Write/Edit/NotebookEdit
+	// tool_use block, in transcript order — the per-fork analog of
+	// ForkAudit.ParentWrites, read from the block's file_path input key with the
+	// notebook_path fallback; a write whose block carries neither key still counts
+	// in WriteCalls but contributes no entry here. A caller whose forks are
+	// ALLOWED to write (webster's implementer forks) needs the paths, not just the
+	// count, to police the narrow set of files a fork must never touch (a rogue
+	// fork writing the run's outcome/summary contract files, observed live).
+	WritePaths []string
 	// BashCommands carries every Bash tool_use command string observed in the fork's
 	// own transcript, verbatim and in order. Classifying which of these are
 	// git-mutating (or otherwise disallowed) is the caller's policy, not this

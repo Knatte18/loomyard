@@ -3,8 +3,9 @@
 // implementer or Master's own parent session can trigger, and the weft-reference
 // matcher both checks share. Unlike burlerengine's read-only cluster-round policy
 // (a fork reviewer must never mutate anything), webster's forks are implementers —
-// Write/Edit and host-repo git are the whole point of a batch, so CheckFork only
-// bans nesting (Agent calls) and weft references, never writes. Master's own parent
+// Write/Edit and host-repo git are the whole point of a batch, so CheckFork bans
+// only nesting (Agent calls), weft references, and writes to the run's two contract
+// files (outcome.yaml/summary.md — Master's alone), never batch writes. Master's own parent
 // transcript is the mirror image: writes are banned everywhere EXCEPT the run's two
 // contract files, since a Master that "helpfully" implements a batch itself or
 // hand-writes a batch report defeats the fork-audit design as silently as a named
@@ -46,6 +47,13 @@ const (
 	// run's two contract files (outcome.yaml, summary.md) — a Master implementing
 	// batches itself or hand-writing a batch report.
 	ClassParentWrite AuditViolationClass = "parent-write"
+	// ClassForkContractWrite means a fork's own transcript wrote one of the run's
+	// two contract files (outcome.yaml, summary.md) — the exact mirror-image hole
+	// of ClassParentWrite: those files are MASTER's only permitted writes, and a
+	// fork writing them forges the run's own terminal judgment (observed live in
+	// round fable-r3: a misidentifying fork overwrote outcome.yaml with a forged
+	// "stuck" mid-run).
+	ClassForkContractWrite AuditViolationClass = "fork-contract-write"
 )
 
 // AuditViolation is one hard fork-audit policy violation observed in either a
@@ -94,12 +102,16 @@ func weftReferencePattern(layout *hubgeometry.Layout) *regexp.Regexp {
 // CheckFork evaluates one fork's transcript facts against webster's implementer
 // policy: Write/Edit and host-repo git are explicitly ALLOWED (a batch's per-card
 // commits are the whole implementer contract — the opposite of burlerengine's
-// read-only cluster-reviewer policy, which hard-bans any fork write). Only two hard
+// read-only cluster-reviewer policy, which hard-bans any fork write). Three hard
 // violations remain for a fork: any attempted Agent call (forks cannot nest, even a
-// denied attempt — same posture as burler's nested-Agent ban) and any Bash command
-// matching weftRef (an implementer fork must never touch weft; weft sync is
+// denied attempt — same posture as burler's nested-Agent ban), any write landing on
+// one of the run's two contract files, outcomePath or summaryPath (those are
+// MASTER's only permitted writes — a fork writing them forges the run's own
+// terminal judgment; each WritePaths entry is canonicalized via resolveWritePath
+// against workdir, exactly as CheckParent canonicalizes ParentWrites), and any Bash
+// command matching weftRef (an implementer fork must never touch weft; weft sync is
 // webstercli's own in-process job, per the Weft Git Invariant).
-func CheckFork(f shuttleengine.ForkReport, weftRef *regexp.Regexp) []AuditViolation {
+func CheckFork(f shuttleengine.ForkReport, outcomePath, summaryPath, workdir string, weftRef *regexp.Regexp) []AuditViolation {
 	var violations []AuditViolation
 
 	if f.AgentCalls > 0 {
@@ -111,6 +123,19 @@ func CheckFork(f shuttleengine.ForkReport, weftRef *regexp.Regexp) []AuditViolat
 				f.AgentCalls,
 			),
 		})
+	}
+
+	cleanOutcome := filepath.Clean(outcomePath)
+	cleanSummary := filepath.Clean(summaryPath)
+	for _, w := range f.WritePaths {
+		cw := resolveWritePath(workdir, w)
+		if cw == cleanOutcome || cw == cleanSummary {
+			violations = append(violations, AuditViolation{
+				Class:          ClassForkContractWrite,
+				TranscriptPath: f.TranscriptPath,
+				Detail:         fmt.Sprintf("fork wrote %q — outcome.yaml and summary.md are Master's own contract files; a fork writing either forges the run's terminal judgment", w),
+			})
+		}
 	}
 
 	for _, cmd := range f.BashCommands {

@@ -120,11 +120,41 @@ func TestCheckFork(t *testing.T) {
 			},
 			wantClasses: []AuditViolationClass{ClassWeftReference},
 		},
+		{
+			// A fork writing Master's own contract files forges the run's
+			// terminal judgment (round fable-r3 live: a misidentifying fork
+			// overwrote outcome.yaml with a forged stuck mid-run).
+			name: "fork write to outcome.yaml is a hard error",
+			fork: shuttleengine.ForkReport{
+				TranscriptPath: "f", ReportReturned: true,
+				WritePaths: []string{"/hub/master-builder/_lyx/webster/outcome.yaml"},
+			},
+			wantClasses: []AuditViolationClass{ClassForkContractWrite},
+		},
+		{
+			name: "relative fork write to summary.md is a hard error",
+			fork: shuttleengine.ForkReport{
+				TranscriptPath: "g", ReportReturned: true,
+				WritePaths: []string{"_lyx/webster/summary.md"},
+			},
+			wantClasses: []AuditViolationClass{ClassForkContractWrite},
+		},
+		{
+			name: "fork write to its own batch report stays allowed",
+			fork: shuttleengine.ForkReport{
+				TranscriptPath: "h", ReportReturned: true,
+				WritePaths: []string{"/hub/master-builder/_lyx/webster/reports/01-json-flag.yaml"},
+			},
+			wantClasses: nil,
+		},
 	}
+
+	const outcomePath = "/hub/master-builder/_lyx/webster/outcome.yaml"
+	const summaryPath = "/hub/master-builder/_lyx/webster/summary.md"
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := CheckFork(tt.fork, weftRef)
+			got := CheckFork(tt.fork, outcomePath, summaryPath, "/hub/master-builder", weftRef)
 			if len(got) != len(tt.wantClasses) {
 				t.Fatalf("CheckFork() = %v; want %d violation(s) of class %v", got, len(tt.wantClasses), tt.wantClasses)
 			}

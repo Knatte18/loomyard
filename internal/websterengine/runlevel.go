@@ -673,7 +673,7 @@ func runExitAuditCrossCheck(deps RunDeps, outcomePath, summaryPath string, resul
 		violations = append(violations, v)
 	}
 	for _, f := range result.ForkAudit.Forks {
-		for _, v := range CheckFork(f, weftRef) {
+		for _, v := range CheckFork(f, outcomePath, summaryPath, deps.Layout.Cwd, weftRef) {
 			violations = append(violations, v)
 		}
 	}

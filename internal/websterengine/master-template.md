@@ -151,7 +151,8 @@ you to judge.
 
 `record-batch` and `run` audit your whole session and every fork's transcript. If a
 call fails with a policy violation (a weft-reference, a parent write outside your two
-contract files, a named spawn, a nested Agent call), the run is FAILED: write
+contract files, a fork writing either contract file, a named spawn, a nested Agent
+call), the run is FAILED: write
 `outcome: stuck` to `{{.outcome_path}}`, with a `stuck_reason` naming the violation
 verbatim, and stop. NEVER work around a violation — do not retry the call, do not
 route the batch through `recover-batch`, do not finish remaining batches. The audit is

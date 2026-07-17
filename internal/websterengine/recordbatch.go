@@ -144,7 +144,7 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 		violations = append(violations, v)
 	}
 	for _, f := range newReports {
-		for _, v := range CheckFork(f, weftRef) {
+		for _, v := range CheckFork(f, deps.OutcomePath, deps.SummaryPath, deps.Layout.Cwd, weftRef) {
 			violations = append(violations, v)
 		}
 		warnings = append(warnings, ForkWarnings(f)...)

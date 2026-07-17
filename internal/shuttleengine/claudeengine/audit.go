@@ -310,6 +310,16 @@ func auditForkTranscript(path string) (shuttleengine.ForkReport, error) {
 					report.AgentCalls++
 				case "Write", "Edit", "NotebookEdit":
 					report.WriteCalls++
+					// Mirror auditParentTranscript's path extraction: file_path
+					// first, notebook_path fallback, and a pathless block still
+					// counts above without contributing an entry.
+					filePath, ok := block.Input["file_path"].(string)
+					if !ok || filePath == "" {
+						filePath, ok = block.Input["notebook_path"].(string)
+					}
+					if ok && filePath != "" {
+						report.WritePaths = append(report.WritePaths, filePath)
+					}
 				case "Bash":
 					if cmd, _ := block.Input["command"].(string); cmd != "" {
 						report.BashCommands = append(report.BashCommands, cmd)
