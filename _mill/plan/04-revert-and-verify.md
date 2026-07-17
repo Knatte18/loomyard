@@ -54,5 +54,5 @@ guard that the "deleted before merge" assertion needs (Shared Decision
 confirming the revert left the repo in a clean, buildable state with `golang.org/x/tools`
 removed. This is intentionally broader than the earlier batches' `./tools/codeintel-poc/`
 scope because the harness no longer exists and the point of this batch is that the *rest of
-the module* is unaffected. The doc-only diff assertion in card 10 is the batch's other
+the module* is unaffected. The doc-only diff assertion in card 8 is the batch's other
 acceptance check.

@@ -3,7 +3,7 @@
 ```yaml
 task: 'Spike: structured Go reference/call-graph lookup (go/packages / gopls)'
 slug: codeintel-spike
-approved: false
+approved: true
 started: '20260717-150903'
 parent: main
 root: ""

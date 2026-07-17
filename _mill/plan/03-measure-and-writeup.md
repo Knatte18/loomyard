@@ -42,7 +42,7 @@ set, transitive method) is drawn from `_mill/discussion.md`, read as Context.
   `_mill/discussion.md` → `cc-native-lsp-mismatch` (Accepted-outcome note), a **docs-only
   characterization is an accepted, non-blocking outcome**: if the tool cannot be driven here,
   record that fact plus the intended recipe (`ENABLE_LSP_TOOL=1` + this `.lsp.json`, then an
-  LLM-issued reference query) to `.scratch/codeintel/cc-native.md` for card 9 to fold into the
+  LLM-issued reference query) to `.scratch/codeintel/cc-native.md` for card 7 to fold into the
   doc. Do **not** block or mark the task stuck on the CC-native arm. The `.lsp.json` is
   throwaway and is deleted in batch 4.
 - **Commit:** `chore(codeintel-poc): add throwaway .lsp.json + characterize CC-native LSP`

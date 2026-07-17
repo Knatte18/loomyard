@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r1
+phase: plan-fix-r2
 slug: codeintel-spike
 branch: codeintel-spike
 plan: _mill/plan
@@ -20,4 +20,5 @@ discussed  '2026-07-17T15:01:59Z'
 planning  '2026-07-17T15:12:10Z'
 plan-review-r1  '2026-07-17T15:19:20Z'
 plan-fix-r1  '2026-07-17T15:19:20Z'
+plan-fix-r2  '2026-07-17T15:21:36Z'
 ```
