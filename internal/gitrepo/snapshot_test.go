@@ -11,9 +11,11 @@ package gitrepo_test
 import (
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gitrepo"
+	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
 // TestSnapshotSHA_ReturnsEmptyBeforeAnySet asserts SnapshotSHA's documented
@@ -152,6 +154,80 @@ func TestSetSnapshotSHA_AdoptsOnFastForwardConflict(t *testing.T) {
 	}
 	if got != headSHA2 {
 		t.Errorf("SnapshotSHA() (clone A after adopt) = %q; want %q (clone B's advanced value)", got, headSHA2)
+	}
+}
+
+// TestSetSnapshotSHA_ConcurrentCreationRace_NewestValueWins races two clones'
+// first-ever SetSnapshotSHA for the same key, where clone B's SHA strictly
+// descends from clone A's. Whichever write lands first, the key must end at
+// B's newer value: if A lands first, B's push is rejected by the remote-side
+// creation race ("reference already exists") even though it is a pure
+// fast-forward, and the adopt-then-retry-once path must recover it rather
+// than silently adopting the older value. Several rounds are raced because a
+// single round can resolve without contention at all (B simply lands first);
+// the assertion itself is deterministic — every round must converge on B's
+// value, whichever interleaving occurred.
+func TestSetSnapshotSHA_ConcurrentCreationRace_NewestValueWins(t *testing.T) {
+	container := t.TempDir()
+	bareRemote := newBareRemote(t, container)
+
+	cloneAPath, repoA := newRepoWithRemote(t, container, "cloneA", bareRemote)
+	writeFile(t, cloneAPath, "a.txt", "commit 1")
+	commitAll(t, cloneAPath, "commit 1")
+	if err := repoA.Push(); err != nil {
+		t.Fatalf("Push() error = %v; want nil", err)
+	}
+	olderSHA, err := repoA.CurrentSHA()
+	if err != nil {
+		t.Fatalf("CurrentSHA() error = %v", err)
+	}
+
+	cloneBPath, repoB := cloneFromBare(t, container, "cloneB", bareRemote)
+	writeFile(t, cloneBPath, "b.txt", "commit 2")
+	commitAll(t, cloneBPath, "commit 2")
+	if err := repoB.Push(); err != nil {
+		t.Fatalf("Push() error = %v; want nil", err)
+	}
+	newerSHA, err := repoB.CurrentSHA()
+	if err != nil {
+		t.Fatalf("CurrentSHA() error = %v", err)
+	}
+
+	const key = "racekey"
+	ref := "refs/loomyard/snapshot/" + key
+	for round := 0; round < 5; round++ {
+		var wg sync.WaitGroup
+		var errA, errB error
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			errA = repoA.SetSnapshotSHA(key, olderSHA)
+		}()
+		go func() {
+			defer wg.Done()
+			errB = repoB.SetSnapshotSHA(key, newerSHA)
+		}()
+		wg.Wait()
+		if errA != nil || errB != nil {
+			t.Fatalf("round %d: SetSnapshotSHA errors = (%v, %v); want both nil", round, errA, errB)
+		}
+
+		remoteVal, stderr, code, err := runGit(t, bareRemote, "rev-parse", ref)
+		if err != nil {
+			t.Fatalf("round %d: git rev-parse (bare) error = %v", round, err)
+		}
+		if code != 0 {
+			t.Fatalf("round %d: git rev-parse (bare) exited %d: %s", round, code, stderr)
+		}
+		if got := strings.TrimSpace(remoteVal); got != newerSHA {
+			t.Fatalf("round %d: remote %s = %q; want %q (the strictly-newer value must never be dropped)", round, ref, got, newerSHA)
+		}
+
+		// Reset the key everywhere so the next round races the creation again.
+		lyxtest.MustRun(t, bareRemote, "git", "update-ref", "-d", ref)
+		for _, dir := range []string{cloneAPath, cloneBPath} {
+			lyxtest.MustRun(t, dir, "git", "update-ref", "-d", ref)
+		}
 	}
 }
 

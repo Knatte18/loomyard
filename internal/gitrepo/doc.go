@@ -102,10 +102,14 @@
 // reading; a fetch failure degrades to the last-known local ref rather than
 // surfacing as an error, since a slightly-stale snapshot at worst
 // reprocesses already-done work. SetSnapshotSHA writes are fast-forward-only
-// with adopt-on-conflict: a rejected push means another clone already
-// advanced the key past this value, so SetSnapshotSHA fetches and adopts the
-// remote's value into the local ref and returns nil rather than an error —
-// a key advances along a single monotonically-forward line, so a rejection
-// means someone else processed further and their SHA is the correct one to
-// take.
+// with adopt-on-conflict: a rejected push normally means another clone
+// already advanced the key past this value, so SetSnapshotSHA fetches and
+// adopts the remote's value into the local ref and returns nil rather than
+// an error — a key advances along a single monotonically-forward line, so a
+// rejection usually means someone else processed further and their SHA is
+// the correct one to take. The one exception is a remote-side creation race,
+// which rejects the loser regardless of ancestry ("reference already
+// exists"); when the adopted value turns out to be an ancestor of the value
+// being set, SetSnapshotSHA retries the push exactly once so a
+// strictly-newer value is not silently dropped by transient contention.
 package gitrepo

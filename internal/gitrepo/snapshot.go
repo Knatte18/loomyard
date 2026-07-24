@@ -97,15 +97,21 @@ func (r *Repo) SnapshotSHA(key string) (string, error) {
 
 // SetSnapshotSHA records sha as the value for key, advancing
 // refs/loomyard/snapshot/<key> locally and then pushing it to the repo's
-// remote fast-forward-only. On a rejected push — another clone already
-// advanced this key past sha — SetSnapshotSHA fetches and adopts the
-// remote's value into the local ref and returns nil rather than an error:
-// per discussion.md's safe model, a key advances along a single monotonic
-// line, so a rejection means someone else processed further and their SHA is
-// the correct one to take. Any other push failure returns an error
-// including git's stderr. A non-hex sha returns ErrInvalidSHA (checkable via
-// errors.Is) without spawning git — an option-shaped value must never reach
-// update-ref, where e.g. "-d" would delete the ref instead of setting it.
+// remote fast-forward-only. On a rejected push SetSnapshotSHA fetches and
+// adopts the remote's value into the local ref rather than treating the
+// rejection as an error — per discussion.md's safe model, a key advances
+// along a single monotonic line, so a rejection normally means someone else
+// processed further and their SHA is the correct one to take. One rejection
+// shape breaks that assumption: a remote-side creation race rejects the
+// loser with "reference already exists" regardless of ancestry, so the
+// rejected caller may actually hold the newer value. When the adopted value
+// turns out to be an ancestor of sha, SetSnapshotSHA therefore re-advances
+// the local ref and retries the push exactly once (a second rejection
+// re-adopts and returns nil, keeping the retry bounded). Any other push
+// failure returns an error including git's stderr. A non-hex sha returns
+// ErrInvalidSHA (checkable via errors.Is) without spawning git — an
+// option-shaped value must never reach update-ref, where e.g. "-d" would
+// delete the ref instead of setting it.
 func (r *Repo) SetSnapshotSHA(key, sha string) error {
 	if !validSnapshotKey(key) {
 		return ErrInvalidSnapshotKey
@@ -115,31 +121,68 @@ func (r *Repo) SetSnapshotSHA(key, sha string) error {
 	}
 
 	ref := snapshotRef(key)
-	_, stderr, code, err := r.run("update-ref", ref, sha)
-	if err != nil {
+	remote := r.remoteName()
+	rejected, err := r.advanceAndPushSnapshotRef(remote, ref, sha)
+	if err != nil || !rejected {
 		return err
-	}
-	if code != 0 {
-		return fmt.Errorf("gitrepo: git update-ref %s: %s", ref, stderr)
 	}
 
-	remote := r.remoteName()
-	_, stderr, code, err = r.run("push", remote, ref)
+	// The push was rejected; adopt the remote's current value so the local
+	// ref converges — and so we can see whether the rejection was a genuine
+	// advance past sha or only transient contention.
+	if err := r.adoptSnapshotRef(remote, ref); err != nil {
+		return err
+	}
+
+	// If sha strictly descends from the adopted value, we lost a creation
+	// race (or transient ref-lock contention) while actually being further
+	// along — the monotonic line says our value is the correct one, so retry
+	// the push once. A second rejection re-adopts and returns nil.
+	adopted, _, code, err := r.run("rev-parse", "--verify", "--quiet", ref)
 	if err != nil {
 		return err
 	}
-	if code == 0 {
+	if code != 0 || !r.isStrictDescendant(strings.TrimSpace(adopted), sha) {
 		return nil
 	}
+	rejected, err = r.advanceAndPushSnapshotRef(remote, ref, sha)
+	if err != nil || !rejected {
+		return err
+	}
+	return r.adoptSnapshotRef(remote, ref)
+}
 
-	if !containsAny(stderr, rebaseRetryTriggers) {
-		return fmt.Errorf("gitrepo: git push %s %s: %s", remote, ref, stderr)
+// advanceAndPushSnapshotRef sets ref to sha locally and pushes it to
+// remote. It reports rejected=true when the push failed with a recoverable
+// rejection (the rebaseRetryTriggers set — non-fast-forward or a creation
+// race's "reference already exists"), leaving the caller to run the
+// adopt-on-conflict protocol; any other failure is returned as an error.
+func (r *Repo) advanceAndPushSnapshotRef(remote, ref, sha string) (rejected bool, err error) {
+	_, stderr, code, err := r.run("update-ref", ref, sha)
+	if err != nil {
+		return false, err
+	}
+	if code != 0 {
+		return false, fmt.Errorf("gitrepo: git update-ref %s: %s", ref, stderr)
 	}
 
-	// The remote already has a newer value for this key; adopt it into our
-	// local ref rather than treating the rejection as a failure — the
-	// rejecting clone processed further along the same monotonic line.
-	_, stderr, code, err = r.run("fetch", remote, "+"+ref+":"+ref)
+	_, stderr, code, err = r.run("push", remote, ref)
+	if err != nil {
+		return false, err
+	}
+	if code == 0 {
+		return false, nil
+	}
+	if !containsAny(stderr, rebaseRetryTriggers) {
+		return false, fmt.Errorf("gitrepo: git push %s %s: %s", remote, ref, stderr)
+	}
+	return true, nil
+}
+
+// adoptSnapshotRef force-fetches ref's current value on remote into the
+// local ref — the adopt half of SetSnapshotSHA's adopt-on-conflict protocol.
+func (r *Repo) adoptSnapshotRef(remote, ref string) error {
+	_, stderr, code, err := r.run("fetch", remote, "+"+ref+":"+ref)
 	if err != nil {
 		return err
 	}
@@ -147,4 +190,17 @@ func (r *Repo) SetSnapshotSHA(key, sha string) error {
 		return fmt.Errorf("gitrepo: git fetch %s +%s:%s (adopt-on-conflict): %s", remote, ref, ref, stderr)
 	}
 	return nil
+}
+
+// isStrictDescendant reports whether descendant is a commit strictly ahead
+// of ancestor along one line of history: ancestor is reachable from
+// descendant and the two are not the same commit. Any git failure (e.g. an
+// object missing locally) reports false, which callers treat as "not
+// provably ahead — do not retry".
+func (r *Repo) isStrictDescendant(ancestor, descendant string) bool {
+	if ancestor == descendant {
+		return false
+	}
+	_, _, code, err := r.run("merge-base", "--is-ancestor", ancestor, descendant)
+	return err == nil && code == 0
 }
