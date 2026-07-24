@@ -15,6 +15,13 @@ Committed to, in this order, next.
    `internal/gitexec` command-execution layer. Lands and gets tested standalone, before `fabric`
    consumes it. See [designs/gitrepo.md](designs/gitrepo.md).
 
+1. **board: use `gitrepo` as its git operator** — rewires board's existing hand-rolled git
+   plumbing (`internal/boardengine/git.go`, `sync.go`'s detached sync) onto `gitrepo.Repo`
+   instead. Depends only on `gitrepo`, not `fabric` — can be built in parallel with it. Distinct
+   from the **board: move storage to `weft:main`** item below (that one changes *where* board
+   stores data; this one only changes *how* it talks to git). See
+   [designs/board-use-gitrepo.md](designs/board-use-gitrepo.md).
+
 1. **fabric** — replaces `warp` and `weft` in full: all topology (clone, dual-worktree add/remove,
    coordinated checkout, reconcile, prune, cleanup, branch naming — including enforcing
    `<slug>-weft` uniformly, no exceptions) and all git mechanics into the paired weft repo, unified

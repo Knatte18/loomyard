@@ -104,5 +104,8 @@ this repo already follows.
 
 - [fabric.md](fabric.md) — the only consumer that holds two `gitrepo.Repo` instances and adds
   cross-repo coordination on top.
+- [board-use-gitrepo.md](board-use-gitrepo.md) — rewires board's existing git plumbing (today's
+  hand-rolled `gitexec.RunGit` calls) onto this instead; the second real consumer, built in
+  parallel with `fabric`.
 - [raddle.md](raddle.md) — uses `SnapshotSHA`/`SetSnapshotSHA` for staleness tracking.
 - `internal/gitexec` (shipped) — the raw command-execution layer this builds on.
