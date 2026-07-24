@@ -125,7 +125,11 @@ instances) is touched, because `fabric`'s correctness (SHA correspondence, snaps
 
 - Decision: `SetSnapshotSHA` pushes the ref fast-forward-only; on rejection (another clone already
   advanced the same key), fetch and **adopt** the remote value with no error. `SnapshotSHA` fetches
-  the snapshot refs before reading so it reflects other clones' advances.
+  the snapshot refs before reading so it reflects other clones' advances; **if that pre-read fetch
+  fails (offline, transient), `SnapshotSHA` degrades to the last-known local ref value rather than
+  erroring** — consistent with `SHAExists` swallowing failures and the self-correcting model: a
+  slightly-stale local snapshot at worst re-processes already-done work (safe), and offline reads
+  keep working.
 - Rationale: a key advances monotonically forward through history; a rejected push means someone
   processed further, so their SHA is the correct one to take. Self-correcting, no manual conflict
   resolution.
@@ -161,6 +165,14 @@ instances) is touched, because `fabric`'s correctness (SHA correspondence, snaps
   `git.go`'s `non-fast-forward`/`rejected` pair (required to "fully replace board's `sync.go`").
   Unpushed detection uses `rev-list --count @{u}..HEAD`; **no upstream ⇒ treat as unpushed** so the
   first push (which sets upstream) still happens, matching board.
+  **Rebase-retry precondition:** the `pull --rebase` step aborts if the worktree has dirty *tracked*
+  files (`cannot pull with rebase: unstaged changes`). Board avoids this because `commitDirty`
+  `add -A`s to a clean tree first; `gitrepo` does not stage on the caller's behalf, so **a clean
+  tree w.r.t. tracked files is the caller's precondition** for rebase-retry to recover — dirty
+  tracked files are the caller's responsibility. This holds by construction for the real consumers:
+  the `_board` worktree and fabric's push boundaries commit explicitly before pushing. `gitrepo`
+  does **not** auto-stash (rejected: drags stash-conflict edge cases and hidden state mutation into
+  a primitive).
   The **detachment** (fire-and-forget so a short-lived CLI caller neither blocks on a slow push nor
   dies before it finishes) stays at the **CLI layer** via the existing `internal/proc` `Detach`,
   because it must re-exec a concrete command (`lyx board sync`, later `lyx fabric sync`) that a
@@ -192,12 +204,16 @@ instances) is touched, because `fabric`'s correctness (SHA correspondence, snaps
 ### Lock ownership — push-coalescing lock in gitrepo, domain write-mutex in the consumer
 
 - Decision: the **single-pusher lock** (coalescing) lives in `gitrepo`'s `PushCoalesced`; its lock
-  file lives in the **worktree root**, landing — for the future board case — in the single `_board`
-  worktree that always has weft:main checked out and through which all board interaction flows.
-  `gitrepo` does **not** manage `.gitignore` for the lock file: because `gitrepo` only ever stages
-  an explicit file set (`StageAndCommit`) and `PushCoalesced` is push-only, the lock file is never
-  staged, so board's auto-gitignore step is **dropped as redundant**. A consumer that wants the
-  lock file hidden from its own `git status` commits its own `.gitignore` (its concern, not
+  file is a **pinned, repo-agnostic name — `.gitrepo-push.lock`** (a package-level constant) — in
+  the **worktree root**, landing — for the future board case — in the single `_board` worktree that
+  always has weft:main checked out and through which all board interaction flows. `gitrepo` does
+  **not** manage `.gitignore`: because `gitrepo` only ever stages an explicit file set
+  (`StageAndCommit`) and `PushCoalesced` is push-only, `.gitrepo-push.lock` is never staged, so the
+  **push-lock portion** of board's `ensureLockfilesIgnored` becomes redundant. This does **not**
+  eliminate board's `.gitignore` outright: board still ignores its non-lock sidecars (the render
+  manifest, `*.swaplock`) via its own committed `.gitignore` — only the push-lock entry is dropped
+  as redundant under explicit-only staging. A consumer that wants `.gitrepo-push.lock` hidden from
+  its own `git status` adds it to that same consumer-owned `.gitignore` (its concern, not
   `gitrepo`'s). The **domain write-mutex** that serialises a consumer's data mutations against the
   commit snapshot (board's `tasks.json.lock`) stays in the **consumer** (board), not in `gitrepo`.
   Consumers other than board need neither lock by default.
@@ -324,14 +340,23 @@ repos with real `git init`/commits — never touch a real warp/weft/board repo.
   remote as the fixture.
 - Plain `Push`: succeeds fast-forward; recovers via one rebase-retry on a non-fast-forward; surfaces
   a genuine push failure.
-- `PushCoalesced` (push-only): several pre-made commits collapse to as few pushes as possible; a
-  second concurrent `PushCoalesced` blocks on the single-pusher lock, finds nothing unpushed, and
-  exits; loops to catch a commit that lands mid-push; recovers via rebase-retry on each of
-  `non-fast-forward` / `rejected` / `fetch first`; no upstream ⇒ still pushes (sets upstream); never
-  `add -A`s. Shown sufficient to replace board's `sync.go` push loop (commit stays the caller's
-  `StageAndCommit`). Use two clones sharing a bare remote for the concurrent-pusher fixture.
+- `PushCoalesced` (push-only): several pre-made commits collapse to as few pushes as possible; loops
+  to catch a commit that lands mid-push; no upstream ⇒ still pushes (sets upstream); never `add -A`s.
+  Shown sufficient to replace board's `sync.go` push loop (commit stays the caller's
+  `StageAndCommit`). **Two distinct fixtures — do not conflate them** (the single-pusher lock is a
+  worktree-root flock, so it only serialises processes sharing *one* worktree):
+  - **Lock-blocking / coalescing** = **two processes on one clone** (one worktree, one
+    `.gitrepo-push.lock`): the second `PushCoalesced` blocks on the lock, finds nothing unpushed,
+    and exits. Two clones would have two lock files and never block.
+  - **Cross-clone conflict / rebase-retry** = **two clones sharing a bare remote**: a non-fast-forward
+    push recovers via rebase-retry on each of `non-fast-forward` / `rejected` / `fetch first`;
+    genuine push failures surface.
+- Rebase-retry precondition: with a dirty *tracked* file present, `pull --rebase` aborts and the
+  push errors (caller-precondition, not a `gitrepo` bug) — assert this failure mode explicitly.
 - No remote/upstream: `Push`, `PushCoalesced`, and `SetSnapshotSHA` surface git's own error
   unchanged (no pre-validation).
+- `SnapshotSHA` pre-read fetch failure (remote configured but unreachable): degrades to the
+  last-known local ref value, no error.
 
 ## Q&A log
 
@@ -367,6 +392,15 @@ repos with real `git init`/commits — never touch a real warp/weft/board repo.
 - **Q:** [r1 gap] How is the lock file's `.gitignore` handled under explicit-only staging? **A:**
   Dropped as redundant — `gitrepo` never `add -A`s, so the lock file is never staged; `gitrepo`
   does not manage `.gitignore` at all. A consumer commits its own if it wants the file hidden.
+- **Q:** [r2 gap] Rebase-retry needs a clean tree `gitrepo` no longer guarantees — precondition or
+  auto-stash? **A:** Document the precondition — rebase-retry requires no dirty *tracked* files;
+  that is the caller's responsibility (real consumers commit explicitly before pushing). No
+  auto-stash.
+- **Q:** [r2 gap] The two-clone fixture can't exercise single-pusher-lock blocking. **A:** Split
+  the fixtures — lock-blocking/coalescing = two processes on one clone; cross-clone conflict/
+  rebase-retry = two clones on a bare remote.
+- **Q:** [r2 gap] What does `SnapshotSHA` do when its pre-read fetch fails? **A:** Degrade to the
+  last-known local ref value, no error (self-correcting; offline reads keep working).
 - **Q:** Is rewriting board to use `gitrepo` in scope? **A:** No — land `gitrepo` standalone +
   tested, but design its push surface so it can fully replace board's git logic; the board rewrite
   is a later task (board-on-weft:main migration). Avoids permanent duplication without breaking the
