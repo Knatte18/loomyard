@@ -10,14 +10,19 @@
 package gitrepo_test
 
 import (
+	"bufio"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/gitrepo"
+	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
@@ -337,5 +342,202 @@ func TestPushCoalesced_LockBlocking_Serializes(t *testing.T) {
 	}
 	if got := strings.TrimSpace(remoteHead); got != localHead {
 		t.Errorf("bare remote main = %q; want it to match local HEAD %q", got, localHead)
+	}
+}
+
+// TestPushCoalescedChildProcess is not a standalone test: it is the child
+// body TestPushCoalesced_CrossProcess_Serializes re-execs from the test
+// binary with GITREPO_TEST_PUSH_DIR set, so the single-pusher lock is
+// exercised across genuinely separate OS processes. It skips in a normal
+// run (env unset).
+func TestPushCoalescedChildProcess(t *testing.T) {
+	dir := os.Getenv("GITREPO_TEST_PUSH_DIR")
+	if dir == "" {
+		t.Skip("child-process body; runs only re-exec'd with GITREPO_TEST_PUSH_DIR set")
+	}
+	if err := gitrepo.New(dir).PushCoalesced(); err != nil {
+		t.Fatalf("PushCoalesced() in child process error = %v; want nil", err)
+	}
+}
+
+// TestPushCoalesced_CrossProcess_Serializes proves the single-pusher lock
+// holds across real OS processes, not just goroutines sharing one process
+// (TestPushCoalesced_LockBlocking_Serializes' proxy): several re-exec'd
+// child processes call PushCoalesced against the same clone concurrently,
+// and every commit must land on the bare remote with all children
+// succeeding. Synchronization is the lock itself — no timing assumptions.
+func TestPushCoalesced_CrossProcess_Serializes(t *testing.T) {
+	container := t.TempDir()
+	bareRemote := newBareRemote(t, container)
+
+	repoPath, repo := newRepoWithRemote(t, container, "clone", bareRemote)
+	writeFile(t, repoPath, "a.txt", "initial")
+	commitAll(t, repoPath, "init")
+	if err := repo.Push(); err != nil {
+		t.Fatalf("Push() (establish upstream) error = %v; want nil", err)
+	}
+	for i := 0; i < 3; i++ {
+		writeFile(t, repoPath, fmt.Sprintf("file%d.txt", i), "content")
+		commitAll(t, repoPath, fmt.Sprintf("commit %d", i))
+	}
+	localHead, err := repo.CurrentSHA()
+	if err != nil {
+		t.Fatalf("CurrentSHA() error = %v", err)
+	}
+
+	testBin, err := os.Executable()
+	if err != nil {
+		t.Fatalf("os.Executable() error = %v", err)
+	}
+
+	const procs = 4
+	var wg sync.WaitGroup
+	outputs := make([]string, procs)
+	errs := make([]error, procs)
+	for i := 0; i < procs; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			cmd := exec.Command(testBin, "-test.run=^TestPushCoalescedChildProcess$", "-test.v")
+			cmd.Env = append(os.Environ(), "GITREPO_TEST_PUSH_DIR="+repoPath)
+			out, err := cmd.CombinedOutput()
+			outputs[i], errs[i] = string(out), err
+		}(i)
+	}
+	wg.Wait()
+
+	for i := 0; i < procs; i++ {
+		if errs[i] != nil {
+			t.Errorf("child process %d failed: %v\noutput:\n%s", i, errs[i], outputs[i])
+		}
+	}
+	remoteHead, stderr, code, err := runGit(t, bareRemote, "rev-parse", "main")
+	if err != nil {
+		t.Fatalf("git rev-parse main (bare) error = %v", err)
+	}
+	if code != 0 {
+		t.Fatalf("git rev-parse main (bare) exited %d: %s", code, stderr)
+	}
+	if got := strings.TrimSpace(remoteHead); got != localHead {
+		t.Errorf("bare remote main = %q; want local HEAD %q after all child processes pushed", got, localHead)
+	}
+}
+
+// TestLockHolderChildProcess is not a standalone test: it is the child body
+// TestPushCoalesced_LockHolderCrash_Recovers re-execs. It acquires the
+// repo's push lock, prints a marker so the parent knows the lock is held,
+// and blocks until the parent SIGKILLs it. It skips in a normal run.
+func TestLockHolderChildProcess(t *testing.T) {
+	dir := os.Getenv("GITREPO_TEST_LOCKHOLD_DIR")
+	if dir == "" {
+		t.Skip("child-process body; runs only re-exec'd with GITREPO_TEST_LOCKHOLD_DIR set")
+	}
+	held, err := lock.AcquireWriteLock(filepath.Join(dir, ".gitrepo-push.lock"))
+	if err != nil {
+		t.Fatalf("AcquireWriteLock() in child process error = %v", err)
+	}
+	fmt.Println("LOCK-HELD")
+	// Block until SIGKILLed. KeepAlive prevents the garbage collector from
+	// finalizing the lock's file handle, which would silently release it.
+	for {
+		time.Sleep(time.Hour)
+		runtime.KeepAlive(held)
+	}
+}
+
+// TestPushCoalesced_LockHolderCrash_Recovers proves the push lock does not
+// wedge the repo when its holder dies without releasing: a child process
+// acquires .gitrepo-push.lock (confirmed genuinely held cross-process via a
+// failed TryAcquire), is SIGKILLed mid-hold, and a fresh PushCoalesced must
+// then complete — the OS releases a flock on process death — and push the
+// pending commit.
+func TestPushCoalesced_LockHolderCrash_Recovers(t *testing.T) {
+	container := t.TempDir()
+	bareRemote := newBareRemote(t, container)
+
+	repoPath, repo := newRepoWithRemote(t, container, "clone", bareRemote)
+	writeFile(t, repoPath, "a.txt", "initial")
+	commitAll(t, repoPath, "init")
+	if err := repo.Push(); err != nil {
+		t.Fatalf("Push() (establish upstream) error = %v; want nil", err)
+	}
+	writeFile(t, repoPath, "b.txt", "unpushed")
+	commitAll(t, repoPath, "unpushed commit")
+
+	testBin, err := os.Executable()
+	if err != nil {
+		t.Fatalf("os.Executable() error = %v", err)
+	}
+	cmd := exec.Command(testBin, "-test.run=^TestLockHolderChildProcess$", "-test.v")
+	cmd.Env = append(os.Environ(), "GITREPO_TEST_LOCKHOLD_DIR="+repoPath)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatalf("StdoutPipe() error = %v", err)
+	}
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("starting lock-holder child: %v", err)
+	}
+	t.Cleanup(func() {
+		cmd.Process.Kill()
+		cmd.Wait()
+	})
+
+	// Wait on the child's explicit marker — a real state transition, not a
+	// timing guess — before trusting that the lock is held.
+	markerSeen := make(chan struct{})
+	go func() {
+		scanner := bufio.NewScanner(stdout)
+		for scanner.Scan() {
+			if strings.Contains(scanner.Text(), "LOCK-HELD") {
+				close(markerSeen)
+				return
+			}
+		}
+	}()
+	select {
+	case <-markerSeen:
+	case <-time.After(30 * time.Second):
+		t.Fatal("lock-holder child never reported LOCK-HELD")
+	}
+
+	// The lock must be genuinely held by the other process before the kill,
+	// or the recovery below would prove nothing.
+	if _, ok, err := lock.TryAcquireWriteLock(filepath.Join(repoPath, ".gitrepo-push.lock")); err != nil {
+		t.Fatalf("TryAcquireWriteLock() error = %v", err)
+	} else if ok {
+		t.Fatal("TryAcquireWriteLock() ok = true while the child holds the lock; want contention")
+	}
+
+	if err := cmd.Process.Kill(); err != nil { // SIGKILL — no graceful release
+		t.Fatalf("killing lock-holder child: %v", err)
+	}
+	cmd.Wait()
+
+	// A fresh PushCoalesced must neither wedge nor fail: the OS released the
+	// dead holder's flock, and the pending commit gets pushed.
+	done := make(chan error, 1)
+	go func() { done <- repo.PushCoalesced() }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("PushCoalesced() after lock-holder crash error = %v; want nil", err)
+		}
+	case <-time.After(30 * time.Second):
+		t.Fatal("PushCoalesced() wedged after lock-holder crash; want the dead process's lock released")
+	}
+
+	localHead, err := repo.CurrentSHA()
+	if err != nil {
+		t.Fatalf("CurrentSHA() error = %v", err)
+	}
+	remoteHead, stderr, code, err := runGit(t, bareRemote, "rev-parse", "main")
+	if err != nil {
+		t.Fatalf("git rev-parse main (bare) error = %v", err)
+	}
+	if code != 0 {
+		t.Fatalf("git rev-parse main (bare) exited %d: %s", code, stderr)
+	}
+	if got := strings.TrimSpace(remoteHead); got != localHead {
+		t.Errorf("bare remote main = %q; want local HEAD %q after crash recovery", got, localHead)
 	}
 }
