@@ -1,7 +1,7 @@
 // gitrepo.go defines the Repo type and its read/commit primitives: New, the
-// shared run helper over gitexec.RunGit, and CurrentSHA. Later cards in this
-// package add StageAndCommit, ChangedFilesSince, and SHAExists on the same
-// type.
+// shared run helper over gitexec.RunGit, CurrentSHA, and StageAndCommit.
+// Later cards in this package add ChangedFilesSince and SHAExists on the
+// same type.
 
 package gitrepo
 
@@ -67,4 +67,52 @@ func (r *Repo) CurrentSHA() (string, error) {
 		return "", fmt.Errorf("gitrepo: rev-parse HEAD: %s", stderr)
 	}
 	return strings.TrimSpace(stdout), nil
+}
+
+// StageAndCommit stages exactly the given files (never a wildcard/`add -A`
+// stage — see the explicit-file-lists decision) and commits them with msg.
+// When the listed files produce no staged change — including when files is
+// empty, which stages nothing — StageAndCommit returns ("", false, nil): a
+// plain signal, not an error, since "nothing to commit" is an expected,
+// inspectable outcome rather than a failure. On a real commit it returns the
+// new HEAD SHA with committed=true.
+func (r *Repo) StageAndCommit(msg string, files []string) (sha string, committed bool, err error) {
+	addArgs := append([]string{"add", "--"}, files...)
+	_, stderr, code, err := r.run(addArgs...)
+	if err != nil {
+		return "", false, err
+	}
+	if code != 0 {
+		return "", false, fmt.Errorf("gitrepo: git add: %s", stderr)
+	}
+
+	// `diff --cached --quiet` reports via exit code alone: 0 means the
+	// staged tree matches HEAD (nothing to commit), 1 means it differs
+	// (proceed to commit). Any other exit is a genuine git failure.
+	_, stderr, code, err = r.run("diff", "--cached", "--quiet")
+	if err != nil {
+		return "", false, err
+	}
+	switch code {
+	case 0:
+		return "", false, nil
+	case 1:
+		// Staged changes exist; fall through to commit.
+	default:
+		return "", false, fmt.Errorf("gitrepo: git diff --cached --quiet: %s", stderr)
+	}
+
+	_, stderr, code, err = r.run("commit", "-m", msg)
+	if err != nil {
+		return "", false, err
+	}
+	if code != 0 {
+		return "", false, fmt.Errorf("gitrepo: git commit: %s", stderr)
+	}
+
+	sha, err = r.CurrentSHA()
+	if err != nil {
+		return "", false, err
+	}
+	return sha, true, nil
 }
