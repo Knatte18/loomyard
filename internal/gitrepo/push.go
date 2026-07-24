@@ -74,7 +74,18 @@ func (r *Repo) pushWithRebaseRetry() error {
 		return err
 	}
 	if rebaseCode != 0 {
-		r.run("rebase", "--abort")
+		// When pull failed before a rebase ever started (dirty tree, no
+		// tracking information), the abort itself fails with "no rebase in
+		// progress" — expected and ignorable. Any other abort failure means
+		// the worktree may genuinely be left mid-rebase, which the returned
+		// error must say instead of implying a clean state.
+		_, abortStderr, abortCode, abortErr := r.run("rebase", "--abort")
+		if abortErr != nil {
+			return fmt.Errorf("gitrepo: git pull --rebase: %s (and rebase --abort could not run, repository may be left mid-rebase: %v)", rebaseStderr, abortErr)
+		}
+		if abortCode != 0 && !strings.Contains(strings.ToLower(abortStderr), "no rebase in progress") {
+			return fmt.Errorf("gitrepo: git pull --rebase: %s (and rebase --abort failed, repository may be left mid-rebase: %s)", rebaseStderr, abortStderr)
+		}
 		return fmt.Errorf("gitrepo: git pull --rebase: %s", rebaseStderr)
 	}
 

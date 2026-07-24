@@ -167,6 +167,66 @@ func TestPush_RebaseRetryPrecondition_DirtyTrackedFileAborts(t *testing.T) {
 	}
 }
 
+// TestPush_RebaseConflict_AbortsToCleanState drives a genuine content
+// conflict through the rebase-retry: both clones commit conflicting edits to
+// the same file, so clone A's pull --rebase stops mid-rebase. Push must
+// surface an error AND leave the repository fully restored — clean worktree,
+// no rebase in progress, HEAD back on the local commit — because the
+// rebase-retry's contract is to never leave a rebase half-done.
+func TestPush_RebaseConflict_AbortsToCleanState(t *testing.T) {
+	container := t.TempDir()
+	bareRemote := newBareRemote(t, container)
+
+	cloneAPath, repoA := newRepoWithRemote(t, container, "cloneA", bareRemote)
+	writeFile(t, cloneAPath, "shared.txt", "base\n")
+	commitAll(t, cloneAPath, "init")
+	if err := repoA.Push(); err != nil {
+		t.Fatalf("Push() (establish upstream) error = %v; want nil", err)
+	}
+
+	cloneBPath, repoB := cloneFromBare(t, container, "cloneB", bareRemote)
+	writeFile(t, cloneBPath, "shared.txt", "B version\n")
+	commitAll(t, cloneBPath, "B edit")
+	if err := repoB.Push(); err != nil {
+		t.Fatalf("Push() from clone B error = %v; want nil", err)
+	}
+
+	writeFile(t, cloneAPath, "shared.txt", "A version\n")
+	commitAll(t, cloneAPath, "A conflicting edit")
+	localHead, err := repoA.CurrentSHA()
+	if err != nil {
+		t.Fatalf("CurrentSHA() error = %v", err)
+	}
+
+	if err := repoA.Push(); err == nil {
+		t.Fatal("Push() with a genuine rebase conflict error = nil; want an error")
+	}
+
+	// The abort must have restored a fully clean, non-rebasing state.
+	stdout, stderr, code, err := runGitStatus(t, cloneAPath)
+	if err != nil {
+		t.Fatalf("git status error = %v", err)
+	}
+	if code != 0 {
+		t.Fatalf("git status exited %d: %s", code, stderr)
+	}
+	if strings.TrimSpace(stdout) != "" {
+		t.Errorf("git status --porcelain after aborted rebase = %q; want empty (clean tree)", stdout)
+	}
+	for _, rebaseDir := range []string{"rebase-merge", "rebase-apply"} {
+		if _, statErr := os.Stat(filepath.Join(cloneAPath, ".git", rebaseDir)); statErr == nil {
+			t.Errorf(".git/%s exists after Push(); want no rebase left in progress", rebaseDir)
+		}
+	}
+	head, err := repoA.CurrentSHA()
+	if err != nil {
+		t.Fatalf("CurrentSHA() error = %v", err)
+	}
+	if head != localHead {
+		t.Errorf("HEAD after aborted rebase = %q; want %q (local commit preserved)", head, localHead)
+	}
+}
+
 // TestPush_NoRemoteConfigured_SurfacesGitError asserts the third fixture
 // discussion.md calls out: a repo with zero remotes configured at all (not
 // merely no upstream tracking branch — no "origin" either). Push must not
