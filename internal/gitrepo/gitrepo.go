@@ -90,17 +90,32 @@ func (r *Repo) CurrentSHA() (string, error) {
 }
 
 // StageAndCommit stages exactly the given files (never a wildcard/`add -A`
-// stage — see the explicit-file-lists decision) and commits them with msg.
-// When the listed files produce no staged change — including when files is
-// empty, which stages nothing — StageAndCommit returns ("", false, nil): a
-// plain signal, not an error, since "nothing to commit" is an expected,
-// inspectable outcome rather than a failure. On a real commit it returns the
-// new HEAD SHA with committed=true. Each files entry is a git pathspec
-// relative to the repo root, not a literal filename: git still interprets
-// pathspec magic after `--`, so an entry starting with ':' is treated as a
-// magic signature (and a file literally named that way cannot be staged
-// as-is) — callers pass plain relative paths and must not rely on magic.
+// stage — see the explicit-file-lists decision) and commits exactly those
+// files with msg. Index entries staged outside this call are neither
+// inspected nor committed — they stay staged, untouched — so an automated
+// commit can never sweep up a half-staged edit someone else (a human sharing
+// the worktree) left in the index; in a worktree mid-merge, git refuses the
+// pathspec-scoped commit outright, surfacing an error instead of silently
+// completing the merge under msg. When the listed files produce no staged
+// change — including when files is empty, which stages nothing and spawns no
+// git at all — StageAndCommit returns ("", false, nil): a plain signal, not
+// an error, since "nothing to commit" is an expected, inspectable outcome
+// rather than a failure. On a real commit it returns the new HEAD SHA with
+// committed=true. Each files entry is a git pathspec relative to the repo
+// root, not a literal filename: git still interprets pathspec magic after
+// `--` (in the add, the staged-change check, and the commit alike), so an
+// entry starting with ':' is treated as a magic signature (and a file
+// literally named that way cannot be staged as-is) — callers pass plain
+// relative paths and must not rely on magic.
 func (r *Repo) StageAndCommit(msg string, files []string) (sha string, committed bool, err error) {
+	// An empty list stages nothing, so there is never anything of the
+	// caller's to commit; return the documented no-op signal before any git
+	// spawn — an unscoped `git commit` here would otherwise commit whatever
+	// happened to be staged already.
+	if len(files) == 0 {
+		return "", false, nil
+	}
+
 	addArgs := append([]string{"add", "--"}, files...)
 	_, stderr, code, err := r.run(addArgs...)
 	if err != nil {
@@ -110,10 +125,13 @@ func (r *Repo) StageAndCommit(msg string, files []string) (sha string, committed
 		return "", false, fmt.Errorf("gitrepo: git add: %s", stderr)
 	}
 
-	// `diff --cached --quiet` reports via exit code alone: 0 means the
-	// staged tree matches HEAD (nothing to commit), 1 means it differs
-	// (proceed to commit). Any other exit is a genuine git failure.
-	_, stderr, code, err = r.run("diff", "--cached", "--quiet")
+	// `diff --cached --quiet -- <files>` reports via exit code alone: 0 means
+	// the staged tree matches HEAD within the listed pathspecs (nothing of
+	// ours to commit), 1 means it differs (proceed to commit). The pathspec
+	// scoping keeps entries staged outside this call from counting as "ours".
+	// Any other exit is a genuine git failure.
+	diffArgs := append([]string{"diff", "--cached", "--quiet", "--"}, files...)
+	_, stderr, code, err = r.run(diffArgs...)
 	if err != nil {
 		return "", false, err
 	}
@@ -121,12 +139,16 @@ func (r *Repo) StageAndCommit(msg string, files []string) (sha string, committed
 	case 0:
 		return "", false, nil
 	case 1:
-		// Staged changes exist; fall through to commit.
+		// Staged changes exist within the listed files; fall through to commit.
 	default:
 		return "", false, fmt.Errorf("gitrepo: git diff --cached --quiet: %s", stderr)
 	}
 
-	_, stderr, code, err = r.run("commit", "-m", msg)
+	// Commit scoped to the same pathspecs: git commits the listed paths'
+	// current contents (identical to what the add above just staged) and
+	// leaves any other staged entry staged and uncommitted.
+	commitArgs := append([]string{"commit", "-m", msg, "--"}, files...)
+	_, stderr, code, err = r.run(commitArgs...)
 	if err != nil {
 		return "", false, err
 	}

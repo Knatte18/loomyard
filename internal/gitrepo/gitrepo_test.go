@@ -185,6 +185,90 @@ func TestStageAndCommit_NeverStagesUnlistedFile(t *testing.T) {
 	}
 }
 
+// TestStageAndCommit_PreStagedUnlistedEntry_NotCommitted asserts that an
+// index entry staged outside the call (a human's half-staged WIP in the
+// shared worktree) is not swept into the automated commit: only the listed
+// file is committed, and the pre-staged entry stays staged and uncommitted.
+func TestStageAndCommit_PreStagedUnlistedEntry_NotCommitted(t *testing.T) {
+	dir, repo := newRepo(t)
+	writeFile(t, dir, "a.txt", "initial")
+	commitAll(t, dir, "init")
+
+	// Someone else stages wip.txt but never commits it; the caller then
+	// commits an unrelated change to a.txt.
+	writeFile(t, dir, "wip.txt", "half-staged WIP")
+	lyxtest.MustRun(t, dir, "git", "add", "wip.txt")
+	writeFile(t, dir, "a.txt", "changed")
+
+	sha, committed, err := repo.StageAndCommit("commit a only", []string{"a.txt"})
+	if err != nil {
+		t.Fatalf("StageAndCommit() error = %v; want nil", err)
+	}
+	if !committed || sha == "" {
+		t.Fatalf("StageAndCommit() = (%q, %v); want a real commit of a.txt", sha, committed)
+	}
+
+	// The new commit must contain a.txt only — never the pre-staged wip.txt.
+	shown, stderr, code, err := runGit(t, dir, "show", "--name-only", "--format=", "HEAD")
+	if err != nil {
+		t.Fatalf("git show error = %v", err)
+	}
+	if code != 0 {
+		t.Fatalf("git show exited %d: %s", code, stderr)
+	}
+	if strings.Contains(shown, "wip.txt") {
+		t.Errorf("git show --name-only HEAD = %q; pre-staged wip.txt must not be committed", shown)
+	}
+
+	// wip.txt must still be staged (status "A ") awaiting its own commit.
+	stdout, stderr, code, err := runGitStatus(t, dir)
+	if err != nil {
+		t.Fatalf("git status error = %v", err)
+	}
+	if code != 0 {
+		t.Fatalf("git status exited %d: %s", code, stderr)
+	}
+	if !strings.Contains(stdout, "wip.txt") {
+		t.Errorf("git status --porcelain = %q; want wip.txt still staged and uncommitted", stdout)
+	}
+}
+
+// TestStageAndCommit_EmptyFiles_WithPreStagedEntry_NoCommit asserts the
+// documented empty-list contract holds even when the index already has a
+// staged entry: ("", false, nil) with HEAD unmoved — an empty list must not
+// become a commit of someone else's staged change.
+func TestStageAndCommit_EmptyFiles_WithPreStagedEntry_NoCommit(t *testing.T) {
+	dir, repo := newRepo(t)
+	writeFile(t, dir, "a.txt", "initial")
+	commitAll(t, dir, "init")
+
+	headBefore, err := repo.CurrentSHA()
+	if err != nil {
+		t.Fatalf("CurrentSHA() error = %v", err)
+	}
+
+	writeFile(t, dir, "wip.txt", "half-staged WIP")
+	lyxtest.MustRun(t, dir, "git", "add", "wip.txt")
+
+	for _, files := range [][]string{nil, {}} {
+		sha, committed, err := repo.StageAndCommit("must not happen", files)
+		if err != nil {
+			t.Fatalf("StageAndCommit(%v) error = %v; want nil", files, err)
+		}
+		if committed || sha != "" {
+			t.Errorf("StageAndCommit(%v) = (%q, %v); want (\"\", false)", files, sha, committed)
+		}
+	}
+
+	headAfter, err := repo.CurrentSHA()
+	if err != nil {
+		t.Fatalf("CurrentSHA() error = %v", err)
+	}
+	if headAfter != headBefore {
+		t.Errorf("HEAD after empty-list StageAndCommit = %q; want unchanged %q", headAfter, headBefore)
+	}
+}
+
 func TestChangedFilesSince_ReturnsCorrectSet(t *testing.T) {
 	dir, repo := newRepo(t)
 	writeFile(t, dir, "a.txt", "initial")
