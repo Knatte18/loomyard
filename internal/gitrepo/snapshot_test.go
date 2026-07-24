@@ -324,6 +324,39 @@ func TestSetSnapshotSHA_ThreeWayCreationRace_NewestValueWins(t *testing.T) {
 	}
 }
 
+// TestSetSnapshotSHA_AbbreviatedSHA_ResolvesToFull asserts that an
+// abbreviated hex sha (validSHA admits 4-64 hex digits) is canonicalized to
+// the commit's full name: the stored ref and a subsequent read both carry the
+// full spelling, so the adopt-on-conflict ancestry comparison never sees two
+// spellings of one commit.
+func TestSetSnapshotSHA_AbbreviatedSHA_ResolvesToFull(t *testing.T) {
+	container := t.TempDir()
+	bareRemote := newBareRemote(t, container)
+
+	clonePath, repo := newRepoWithRemote(t, container, "clone", bareRemote)
+	writeFile(t, clonePath, "a.txt", "initial")
+	commitAll(t, clonePath, "init")
+	if err := repo.Push(); err != nil {
+		t.Fatalf("Push() error = %v; want nil", err)
+	}
+
+	fullSHA, err := repo.CurrentSHA()
+	if err != nil {
+		t.Fatalf("CurrentSHA() error = %v", err)
+	}
+
+	if err := repo.SetSnapshotSHA("abbrevkey", fullSHA[:7]); err != nil {
+		t.Fatalf("SetSnapshotSHA(abbreviated) error = %v; want nil", err)
+	}
+	got, err := repo.SnapshotSHA("abbrevkey")
+	if err != nil {
+		t.Fatalf("SnapshotSHA() error = %v; want nil", err)
+	}
+	if got != fullSHA {
+		t.Errorf("SnapshotSHA() after abbreviated set = %q; want full %q", got, fullSHA)
+	}
+}
+
 // TestSnapshotSHA_NotARepo_SurfacesError asserts that a Repo wrapping a path
 // that is not a git repository at all surfaces the hard rev-parse failure as
 // an error rather than folding it into the ("", nil) "no snapshot" state —

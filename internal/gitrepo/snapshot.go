@@ -146,7 +146,10 @@ const snapshotPushMaxAttempts = 8
 // sha (adopt it and stop), or the cap is reached. A single retry is not enough
 // under three or more concurrent writers, where the one retry can itself lose
 // transient contention and silently drop a strictly-newer value. Any other
-// push failure returns an error including git's stderr. A non-hex sha returns
+// push failure returns an error including git's stderr. An abbreviated hex
+// sha is accepted and canonicalized to the commit's full name before use, so
+// the ref always stores — and the ancestry comparison always sees — the full
+// spelling. A non-hex sha returns
 // ErrInvalidSHA (checkable via errors.Is) without spawning git — an
 // option-shaped value must never reach update-ref, where e.g. "-d" would
 // delete the ref instead of setting it.
@@ -156,6 +159,16 @@ func (r *Repo) SetSnapshotSHA(key, sha string) error {
 	}
 	if !validSHA(sha) {
 		return ErrInvalidSHA
+	}
+
+	// Canonicalize sha to its full spelling when it resolves locally, so the
+	// adopt-on-conflict ancestry comparison below compares commits rather than
+	// spellings — an abbreviated sha would otherwise compare unequal to the
+	// same commit's full form and cost a redundant retry round-trip. A sha
+	// that does not resolve is passed through unchanged for update-ref to
+	// reject with git's own error.
+	if full, _, code, err := r.run("rev-parse", "--verify", "--quiet", sha+"^{commit}"); err == nil && code == 0 {
+		sha = strings.TrimSpace(full)
 	}
 
 	ref := snapshotRef(key)
