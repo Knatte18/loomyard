@@ -1,7 +1,6 @@
 // gitrepo.go defines the Repo type and its read/commit primitives: New, the
-// shared run helper over gitexec.RunGit, CurrentSHA, and StageAndCommit.
-// Later cards in this package add ChangedFilesSince and SHAExists on the
-// same type.
+// shared run helper over gitexec.RunGit, CurrentSHA, StageAndCommit,
+// ChangedFilesSince, and SHAExists.
 
 package gitrepo
 
@@ -115,4 +114,40 @@ func (r *Repo) StageAndCommit(msg string, files []string) (sha string, committed
 		return "", false, err
 	}
 	return sha, true, nil
+}
+
+// SHAExists reports whether sha names a commit reachable in this Repo. A
+// git failure (spawn error or non-zero exit — a missing/garbage SHA is a
+// non-zero exit here) is swallowed into false rather than surfaced as an
+// error: callers treat "false" as a staleness signal ("when in doubt,
+// rebuild") regardless of whether the SHA was simply absent or the check
+// itself failed, so distinguishing the two would buy nothing.
+func (r *Repo) SHAExists(sha string) bool {
+	_, _, code, err := r.run("rev-parse", "--verify", "--quiet", sha+"^{commit}")
+	return err == nil && code == 0
+}
+
+// ChangedFilesSince returns the repo-relative paths that differ between sha
+// and HEAD, considering committed history only — uncommitted working-tree
+// or staged edits are never inspected, matching the snapshot model's
+// SHA-to-SHA determinism. A missing or invalid sha is a genuine failure
+// here (unlike SHAExists' bool-swallowing posture): callers are expected to
+// check SHAExists first and treat a missing SHA as staleness.
+func (r *Repo) ChangedFilesSince(sha string) ([]string, error) {
+	stdout, stderr, code, err := r.run("diff", "--name-only", sha+"..HEAD")
+	if err != nil {
+		return nil, err
+	}
+	if code != 0 {
+		return nil, fmt.Errorf("gitrepo: git diff --name-only %s..HEAD: %s", sha, stderr)
+	}
+
+	var files []string
+	for _, line := range strings.Split(stdout, "\n") {
+		if line == "" {
+			continue
+		}
+		files = append(files, line)
+	}
+	return files, nil
 }
