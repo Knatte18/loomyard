@@ -28,7 +28,7 @@ instances) is touched, because `fabric`'s correctness (SHA correspondence, snaps
 
 - New package `internal/gitrepo` exposing a typed `Repo` over **one** local git checkout, built on
   top of `gitexec.RunGit` (never shelling out directly).
-- `Repo` API: `New`, `StageAndCommit`, `Push`, a **coalescing push** mode, `CurrentSHA`,
+- `Repo` API: `New`, `StageAndCommit`, `Push`, `PushCoalesced` (push-only coalescing), `CurrentSHA`,
   `ChangedFilesSince`, `SHAExists`, `SnapshotSHA`, `SetSnapshotSHA`.
 - Snapshot tracking stored as git refs under `refs/loomyard/snapshot/<key>`, **pushed to remote**.
 - Integration-tagged, hermetic test suite that spawns real git against throwaway repos.
@@ -141,40 +141,75 @@ instances) is touched, because `fabric`'s correctness (SHA correspondence, snaps
   mess.
 - Rejected: silent sanitisation (hides mistakes, risks two keys collapsing to one ref).
 
-### Push surface — plain Push + a coalescing pusher; detachment is the caller's job
+### Push surface — Push + PushCoalesced (both push-only); detachment is the caller's job
 
-- Decision: two push entry points on `Repo`:
-  1. `Push() error` — a single synchronous push with **rebase-retry resilience** (on
-     non-fast-forward: `pull --rebase`, one retry, `rebase --abort` on failure). Used by
-     `fabric`/`raddle`/`webster`/`codeintel`, which push deliberately and need no coalescing.
-  2. A **coalescing pusher** — takes a single-pusher lock, then loops "commit any pending
-     work / push anything unpushed" until the tree is clean and nothing is unpushed, with the same
-     rebase-retry. This is the board-shaped "no stacking" push: a burst of writes coalesces into as
-     few pushes as possible because a second pusher blocks on the lock, finds nothing to do, and
-     exits. This mode must be able to fully replace board's `sync.go`.
+- Decision: two push entry points on `Repo`, **both push-only** — committing is always the
+  caller's separate job (`StageAndCommit` with an explicit file set); `gitrepo` never `add -A`s
+  anywhere:
+  1. `Push() error` — a single synchronous push with **rebase-retry resilience** (`pull --rebase`,
+     one retry, `rebase --abort` on failure). Used by `fabric`/`raddle`/`webster`/`codeintel`,
+     which push deliberately and need no coalescing.
+  2. `PushCoalesced() error` — holds a single-pusher lock, then loops "push anything unpushed"
+     until nothing is unpushed, with the same rebase-retry. This is the board-shaped "no stacking"
+     push: a burst of commits collapses into as few pushes as possible because a second pusher
+     blocks on the lock, finds nothing to do, and exits. It coalesces the **push only** — the
+     commits are made beforehand via `StageAndCommit`. Keeping commit (explicit files) and push
+     (coalesced) as separate calls keeps `add -A` out of `gitrepo` entirely and lets
+     `PushCoalesced` fully replace board's `sync.go` push loop.
+  **Rebase-retry trigger set (both methods):** retry once when stderr contains `non-fast-forward`,
+  `rejected`, **or `fetch first`** — the full set board's `sync.go:pushUnpushed` matches, not just
+  `git.go`'s `non-fast-forward`/`rejected` pair (required to "fully replace board's `sync.go`").
+  Unpushed detection uses `rev-list --count @{u}..HEAD`; **no upstream ⇒ treat as unpushed** so the
+  first push (which sets upstream) still happens, matching board.
   The **detachment** (fire-and-forget so a short-lived CLI caller neither blocks on a slow push nor
   dies before it finishes) stays at the **CLI layer** via the existing `internal/proc` `Detach`,
   because it must re-exec a concrete command (`lyx board sync`, later `lyx fabric sync`) that a
   generic library cannot know.
 - Rationale: mirrors how board is already structured — engine in `sync.go`, detachment in
   `spawn.go` via `proc.Detach`. `gitrepo` owns the pure, testable coalescing engine; process
-  spawning stays where a re-invocable command exists. An in-process goroutine is wrong: a
-  short-lived CLI caller exits before the goroutine's push completes.
-- Rejected: `PushDetached(argv []string)` inside `gitrepo` (leaks the "there is a re-invocable sync
-  command" assumption into a generic library); in-process goroutine (dies with the parent).
+  spawning stays where a re-invocable command exists. Splitting commit from push removes every
+  `add -A` from `gitrepo`, which in turn makes board's auto-gitignore redundant (see Lock
+  ownership). An in-process goroutine is wrong: a short-lived CLI caller exits before the
+  goroutine's push completes.
+- Rejected: a combined `PushCoalesced(msg string, files []string)` that also commits (re-mixes
+  commit and push and drags the `add -A`/gitignore coupling back in); a `Pusher` type with the file
+  set fixed at construction (needless state — the commits already exist on disk); `PushDetached(argv
+  []string)` inside `gitrepo` (leaks the "there is a re-invocable sync command" assumption into a
+  generic library); in-process goroutine (dies with the parent).
+
+### No remote / no upstream — the git error surfaces unchanged
+
+- Decision: `Push`, `PushCoalesced`, and the snapshot ref push in `SetSnapshotSHA` all assume a
+  configured remote/upstream. When none is configured, `gitrepo` does not pre-validate — the
+  underlying git failure surfaces as the method's error, unchanged. (`New` validates nothing, so
+  there is no earlier point to catch it.)
+- Rationale: `gitrepo` is repo-agnostic and deliberately lazy (see `New`); a repo with no remote is
+  a caller/setup error, and git's own message is the clearest signal. Consumers here always run
+  against repos `fabric`/board set up with a remote.
+- Rejected: pre-flighting remote configuration in `New` or each push (I/O + an extra error path for
+  a condition that never occurs in the real consumers).
 
 ### Lock ownership — push-coalescing lock in gitrepo, domain write-mutex in the consumer
 
-- Decision: the **single-pusher lock** (coalescing) lives in `gitrepo`'s coalescing pusher; its
-  lock file lives in the **worktree root** (auto-added to `.gitignore`), landing — for the future
-  board case — in the single `_board` worktree that always has weft:main checked out and through
-  which all board interaction flows. The **domain write-mutex** that serialises a consumer's data
-  mutations against the commit snapshot (board's `tasks.json.lock`) stays in the **consumer**
-  (board), not in `gitrepo`. Consumers other than board need neither lock by default.
+- Decision: the **single-pusher lock** (coalescing) lives in `gitrepo`'s `PushCoalesced`; its lock
+  file lives in the **worktree root**, landing — for the future board case — in the single `_board`
+  worktree that always has weft:main checked out and through which all board interaction flows.
+  `gitrepo` does **not** manage `.gitignore` for the lock file: because `gitrepo` only ever stages
+  an explicit file set (`StageAndCommit`) and `PushCoalesced` is push-only, the lock file is never
+  staged, so board's auto-gitignore step is **dropped as redundant**. A consumer that wants the
+  lock file hidden from its own `git status` commits its own `.gitignore` (its concern, not
+  `gitrepo`'s). The **domain write-mutex** that serialises a consumer's data mutations against the
+  commit snapshot (board's `tasks.json.lock`) stays in the **consumer** (board), not in `gitrepo`.
+  Consumers other than board need neither lock by default.
 - Rationale: coalescing is a git-push concern (gitrepo); protecting a consumer's own data files
   mid-mutation is that consumer's concern (board). Keeps `gitrepo` free of board-domain knowledge.
+  Dropping the auto-gitignore removes the one place board relied on `add -A` to make it effective —
+  impossible under explicit-only staging, and unnecessary since explicit staging can never pick up
+  the lock file.
 - Rejected: putting the domain mutex in `gitrepo`; `.git/`-internal lock location (user chose the
-  worktree root, aligned with the `_board` worktree model).
+  worktree root, aligned with the `_board` worktree model); keeping an auto-gitignore that
+  `gitrepo` commits itself (board-domain setup leaking into a generic primitive, and it would need
+  its own explicit `.gitignore` commit that no other consumer wants).
 
 ### CurrentSHA on an empty repo — typed error
 
@@ -222,8 +257,9 @@ instances) is touched, because `fabric`'s correctness (SHA correspondence, snaps
   - `sync.go`: `Sync` loops `commitDirty` + `pushUnpushed` under `pushLock` until clean; `hasUnpushed`
     uses `rev-list --count @{u}..HEAD` (no upstream ⇒ treat as unpushed so the first push sets it);
     `commitDirty` runs under `writeLock` (**board-domain**, stays in board). Board's `Sync` uses
-    `add -A` — `gitrepo`'s coalescing pusher must instead take an explicit file set (see the
-    StageAndCommit decision) rather than wildcard-staging.
+    `add -A`; `gitrepo` never wildcard-stages — commit is always the caller's explicit
+    `StageAndCommit`, and `PushCoalesced` is push-only, so board's `commitDirty` half stays in board
+    (with explicit files) while its `pushUnpushed` half becomes `PushCoalesced`.
   - `spawn.go`: `spawnSync` re-execs `lyx board --board-path <abs> sync` via `proc.Detach`, `Start()`
     without `Wait()` — the detachment pattern that stays at the CLI layer.
   - Locks via `internal/lock` (`flock.AcquireWriteLock` → `Release`).
@@ -288,10 +324,14 @@ repos with real `git init`/commits — never touch a real warp/weft/board repo.
   remote as the fixture.
 - Plain `Push`: succeeds fast-forward; recovers via one rebase-retry on a non-fast-forward; surfaces
   a genuine push failure.
-- Coalescing pusher: a burst of pending changes collapses to as few pushes as possible; a second
-  concurrent pusher blocks on the single-pusher lock, finds nothing to do, and exits; loops to catch
-  a change that lands mid-push; uses an explicit file set, not `add -A`; must be shown sufficient to
-  replace board's `sync.go` behaviour.
+- `PushCoalesced` (push-only): several pre-made commits collapse to as few pushes as possible; a
+  second concurrent `PushCoalesced` blocks on the single-pusher lock, finds nothing unpushed, and
+  exits; loops to catch a commit that lands mid-push; recovers via rebase-retry on each of
+  `non-fast-forward` / `rejected` / `fetch first`; no upstream ⇒ still pushes (sets upstream); never
+  `add -A`s. Shown sufficient to replace board's `sync.go` push loop (commit stays the caller's
+  `StageAndCommit`). Use two clones sharing a bare remote for the concurrent-pusher fixture.
+- No remote/upstream: `Push`, `PushCoalesced`, and `SetSnapshotSHA` surface git's own error
+  unchanged (no pre-validation).
 
 ## Q&A log
 
@@ -321,6 +361,12 @@ repos with real `git init`/commits — never touch a real warp/weft/board repo.
   real hazard; document, no mutex. The domain write-mutex is the consumer's (board's), not
   `gitrepo`'s.
 - **Q:** Commit identity? **A:** Use the repo's configured identity; no override.
+- **Q:** [r1 gap] What is the coalescing pusher's API shape? **A:** `PushCoalesced() error` —
+  push-only (single-pusher lock + loop-until-nothing-unpushed + rebase-retry); committing stays the
+  caller's separate `StageAndCommit`. Keeps `add -A` out of `gitrepo`.
+- **Q:** [r1 gap] How is the lock file's `.gitignore` handled under explicit-only staging? **A:**
+  Dropped as redundant — `gitrepo` never `add -A`s, so the lock file is never staged; `gitrepo`
+  does not manage `.gitignore` at all. A consumer commits its own if it wants the file hidden.
 - **Q:** Is rewriting board to use `gitrepo` in scope? **A:** No — land `gitrepo` standalone +
   tested, but design its push surface so it can fully replace board's git logic; the board rewrite
   is a later task (board-on-weft:main migration). Avoids permanent duplication without breaking the
