@@ -205,6 +205,7 @@ github.com/Knatte18/loomyard/
 ├── internal/hubgeometry/         geometry resolver (the sole owner of cwd/root math)
 ├── internal/configengine/        shared config resolution
 ├── internal/gitexec/             shared git operations
+├── internal/gitrepo/             typed Repo over one local git checkout, built on gitexec
 ├── internal/lock/                shared file locking
 ├── internal/output/              shared JSON output
 ├── internal/modelspec/           model-spec parser + models.yaml registry leaf
@@ -343,7 +344,7 @@ modules; both folded back into mux — see the `internal/muxengine` package docu
 scaffolds the shared `_lyx/` config dir for every module.
 
 The user-facing modules sit on a thin layer of shared infrastructure
-(`internal/configengine`, `internal/gitexec`, `internal/lock`, `internal/output`, `internal/hubgeometry`, `internal/state`, `internal/shell`, `internal/modelspec`, `internal/tokenvocab`) — defined in
+(`internal/configengine`, `internal/gitexec`, `internal/gitrepo`, `internal/lock`, `internal/output`, `internal/hubgeometry`, `internal/state`, `internal/shell`, `internal/modelspec`, `internal/tokenvocab`) — defined in
 [shared-libs/README.md](shared-libs/README.md).
 
 ## Execution stack (orchestration layers)

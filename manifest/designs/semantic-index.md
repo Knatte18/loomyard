@@ -35,7 +35,7 @@ Enzyme indexes a personal notes vault; the same shape maps onto a codebase's des
    heavily than old, rarely-touched text — the index shifts with the codebase's current shape,
    not a static snapshot taken once. For code specifically, "recency" is naturally available
    from git history (`git log` per file/function) — plausibly the same kind of SHA-diffing
-   [gitrepo](gitrepo.md) already does for other consumers, rather than a new mechanism.
+   `internal/gitrepo` already does for other consumers, rather than a new mechanism.
 4. **Semantic retrieval.** An agent searches catalyst vectors instead of guessing grep terms,
    surfacing conceptually related code across files/packages that share no literal vocabulary.
 
@@ -70,4 +70,5 @@ None of these three replace either of the others — different question, differe
 - [codeintel-redesign.md](codeintel-redesign.md) — the precise, compiler-derived sibling; already
   named this as an explicitly out-of-scope, deferred idea.
 - [raddle.md](raddle.md) — the curated-narrative sibling.
-- [gitrepo.md](gitrepo.md) — plausible source of the temporal-decay recency signal.
+- [`internal/gitrepo`](../../internal/gitrepo/doc.go) — plausible source of the temporal-decay
+  recency signal.

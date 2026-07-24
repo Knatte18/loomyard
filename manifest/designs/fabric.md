@@ -40,7 +40,7 @@ below), `warp`/`weft` will simultaneously mean (a) the two `gitrepo.Repo` instan
 
 ## Architecture: built on `gitrepo`, `fabric` is the only module that knows both repos exist
 
-`fabric` is the consumer of [gitrepo](gitrepo.md) — the generic, repo-agnostic `Repo` type
+`fabric` is the consumer of `internal/gitrepo` — the generic, repo-agnostic `Repo` type
 (`StageAndCommit`, `Push`, `CurrentSHA`, `ChangedFilesSince`, `SHAExists`, `SnapshotSHA`/
 `SetSnapshotSHA`) lands as its own item first, built and tested standalone; `fabric` holds two
 instances of it and adds the cross-repo coordination `gitrepo` deliberately doesn't know about.
@@ -108,7 +108,7 @@ The index can always be proven correct against the trailers (source of truth) vi
 
 ## History-rewrite safety
 
-`fabric` relies on [gitrepo's `SHAExists`](gitrepo.md#shaexists--history-rewrite-safety) before
+`fabric` relies on `internal/gitrepo`'s `SHAExists` before
 trusting any stored SHA reference (a weft trailer, or a `SnapshotSHA` value) — rebase/amend/
 force-push can invalidate one out from under `fabric`, and `fabric` doesn't try to be
 "rebase-aware" any more than `gitrepo` does.
@@ -130,7 +130,7 @@ force-push can invalidate one out from under `fabric`, and `fabric` doesn't try 
 
 ## Scope boundaries — deliberately not a general-purpose git wrapper
 
-[gitrepo's own scope](gitrepo.md#scope-boundaries--deliberately-not-a-general-purpose-git-wrapper)
+`internal/gitrepo`'s own scope
 already excludes rebase, interactive staging, cherry-pick, and conflict resolution. `fabric` adds
 exactly one more layer on top — the topology operations `warp` owns today (clone, worktree
 add/remove, checkout, reconcile, prune, cleanup, branch naming) — and adds no other git surface
@@ -165,8 +165,7 @@ ordinary git repos underneath.
 
 ## Build order
 
-0. [gitrepo](gitrepo.md) lands first, standalone, with its own test pass — see that doc's own
-   Build-and-test section.
+0. `internal/gitrepo` lands first, standalone, with its own test pass.
 1. Write `fabric` **parallel to** the existing `warp`/`weft` code — not replacing it yet. The
    existing modules serve as the reference/test fixture for validating `fabric`'s behavior
    before cutover.
@@ -187,8 +186,8 @@ ordinary git repos underneath.
 
 ## Related
 
-- [gitrepo.md](gitrepo.md) — the generic primitive layer `fabric` is built on; lands first,
-  standalone.
+- [`internal/gitrepo`](../../internal/gitrepo/doc.go) — the generic primitive layer `fabric` is
+  built on; lands first, standalone.
 - [board-weft-storage.md](board-weft-storage.md) — depends on `fabric`/`warp`'s branch-naming
   enforcement (`<slug>-weft` uniformly, no exceptions) to keep `weft:main` permanently unclaimed.
 - [raddle.md](raddle.md) — the other loomyard-specific consumer of `fabric`'s snapshot tracking.
