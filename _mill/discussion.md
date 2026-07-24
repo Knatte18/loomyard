@@ -130,11 +130,19 @@ instances) is touched, because `fabric`'s correctness (SHA correspondence, snaps
   erroring** — consistent with `SHAExists` swallowing failures and the self-correcting model: a
   slightly-stale local snapshot at worst re-processes already-done work (safe), and offline reads
   keep working.
+- **Precondition (safe model):** adopt-on-conflict is correct only while a snapshot key advances
+  along a **single, monotonically-forward line — never rebased, force-pushed, or divergent**. A
+  rejected push from a legitimately divergent SHA would adopt a value whose history omits this
+  clone's already-processed commits (falsely marking them done). Divergence/history-rewrite is
+  deliberately **out of the safe model**: it is caught upstream by `SHAExists` (a stored snapshot
+  SHA that was orphaned reads as missing → staleness → full rebuild), the same history-rewrite
+  safety net the whole design leans on — not by making the ref-adopt logic divergence-aware.
 - Rationale: a key advances monotonically forward through history; a rejected push means someone
   processed further, so their SHA is the correct one to take. Self-correcting, no manual conflict
   resolution.
 - Rejected: force-push last-writer-wins (can drag another consumer's progress backwards); treat the
-  local ref as sole truth with fetch/push as a separate caller-driven step.
+  local ref as sole truth with fetch/push as a separate caller-driven step; making adopt-on-conflict
+  divergence-aware (reflog/remap complexity `SHAExists` already obviates).
 
 ### Snapshot key validation — reject invalid keys
 
@@ -208,13 +216,15 @@ instances) is touched, because `fabric`'s correctness (SHA correspondence, snaps
   the **worktree root**, landing — for the future board case — in the single `_board` worktree that
   always has weft:main checked out and through which all board interaction flows. `gitrepo` does
   **not** manage `.gitignore`: because `gitrepo` only ever stages an explicit file set
-  (`StageAndCommit`) and `PushCoalesced` is push-only, `.gitrepo-push.lock` is never staged, so the
-  **push-lock portion** of board's `ensureLockfilesIgnored` becomes redundant. This does **not**
-  eliminate board's `.gitignore` outright: board still ignores its non-lock sidecars (the render
-  manifest, `*.swaplock`) via its own committed `.gitignore` — only the push-lock entry is dropped
-  as redundant under explicit-only staging. A consumer that wants `.gitrepo-push.lock` hidden from
-  its own `git status` adds it to that same consumer-owned `.gitignore` (its concern, not
-  `gitrepo`'s). The **domain write-mutex** that serialises a consumer's data mutations against the
+  (`StageAndCommit`) and `PushCoalesced` is push-only, `.gitrepo-push.lock` is never staged, so
+  `gitrepo` needs no push-lock gitignore of its own. Note board's `ensureLockfilesIgnored` uses a
+  single `*.lock` glob that covers **both** its write-mutex (`tasks.json.lock`, which stays) and any
+  push lock; that `*.lock` entry therefore **stays** for the domain mutex — nothing to drop there.
+  Whether the board rewrite renames `.gitrepo-push.lock` under that glob or ignores it explicitly is
+  the **later board-rewrite task's concern** (explicitly out of scope here) and does not block
+  planning. Board also still ignores its non-lock sidecars (render manifest, `*.swaplock`) via that
+  same committed `.gitignore`. A consumer wanting `.gitrepo-push.lock` hidden from its own `git
+  status` covers it in its own `.gitignore` (its concern, not `gitrepo`'s). The **domain write-mutex** that serialises a consumer's data mutations against the
   commit snapshot (board's `tasks.json.lock`) stays in the **consumer** (board), not in `gitrepo`.
   Consumers other than board need neither lock by default.
 - Rationale: coalescing is a git-push concern (gitrepo); protecting a consumer's own data files
