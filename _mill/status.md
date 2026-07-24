@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: gitrepo
 branch: gitrepo
 plan: _mill/plan
@@ -20,4 +20,19 @@ discussed  '2026-07-24T17:45:40Z'
 planning  '2026-07-24T17:54:39Z'
 plan-fix-r1  '2026-07-24T18:00:09Z'
 planned  '2026-07-24T18:00:24Z'
+implementing  '2026-07-24T18:01:35Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: core-repo
+    state: pending
+  - name: push
+    state: pending
+  - name: snapshot
+    state: pending
+  - name: docs-lifecycle
+    state: pending
 ```
