@@ -337,7 +337,7 @@ the fixed code path, not just the helper it calls.
 **YOUR JOB this round (header-pane campaign, round 4, FINAL scheduled round) — genuinely
 independent, not a rubber stamp.** Three rounds have now converged toward "clean" (10 → 2 → 2
 findings), a strong trend, but by this method's own bar (see the worked mux campaign in
-`docs/reviews/README.md`: rounds 3, 4, AND 5 of THAT campaign each self-reported clean and each
+`crucible/README.md`: rounds 3, 4, AND 5 of THAT campaign each self-reported clean and each
 still had a residual) three rounds of dropping-but-nonzero findings, plus the orchestrator's own
 coverage-gap catch above, means this round still needs full independent treatment, not a
 formality:
@@ -470,7 +470,7 @@ that machinery spawns a SEPARATE, context-free interactive `claude` session as a
 black-box tester in a materialized sandbox Hub; it is built for a human operator dogfooding the
 CLI, not for you. Spawning it from inside this round would just be paying for and waiting on
 another agent's opaque session instead of doing the driving yourself, and you already have full
-source knowledge plus your own tool calls (see `docs/reviews/README.md`'s "Driving the real
+source knowledge plus your own tool calls (see `crucible/README.md`'s "Driving the real
 substrate" section for the full rationale — this is a hard rule, not a style preference).
 Instead:
 - Read `tools/sandbox/SANDBOX-MUX-SUITE.md` (scenarios M0–M19) as your scenario CHECKLIST only —

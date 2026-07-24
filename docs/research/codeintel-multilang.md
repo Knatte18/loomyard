@@ -55,7 +55,7 @@ query cost for one LSP round trip per query" — see that package documentation 
 design (engine/CLI split, typed errors, registry) and [`codeintel-spike.md`](codeintel-spike.md) (#008) for the
 Go-only `go/packages`/`go/types` numbers this doc's Go/gopls arm is being compared against.
 The original design reasoning that motivated generalizing lookup beyond Go in the first
-place lives in `manifest/modules/websterv2.md` — named here in prose rather than as a
+place lives in `manifest/designs/websterv2.md` — named here in prose rather than as a
 link, because that doc lives on `main`, not this task branch, and a relative link here
 would dangle at this branch's HEAD.
 

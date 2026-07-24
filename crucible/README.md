@@ -1,12 +1,15 @@
-# Serial review+fix loop — a reusable hardening method
+# crucible — a serial review+fix loop, a reusable hardening method
 
-This directory holds the **manual, human-in-the-loop review method** we used to harden `mux`
-before merging it to `main`, plus the two prompts that drove it. The method is
-**module-agnostic** — it is written down here so the modules built *on top of* mux
-(`shuttle` — see the `internal/shuttleengine` package documentation, `perch` (see the
-`internal/perchengine` package documentation) + `burler` (see the `internal/burlerengine` package
-documentation), [`hardener`](../../manifest/modules/hardener.md), [`loom`](../../manifest/modules/loom.md)) can reuse it
-instead of re-inventing it each time.
+This directory holds **`crucible`** — the **manual, human-in-the-loop review method** we used to
+harden `mux` before merging it to `main`, plus the two prompts that drove it. Named separately
+from the future, automated [`hardener`](../../manifest/designs/hardener.md) module this method is
+the hand-run prototype of (see below) — `crucible` is what you actually run today; `hardener` is
+what it becomes once Go takes over the orchestrator role. The method is **module-agnostic** — it
+is written down here so the modules built *on top of* mux (`shuttle` — see the
+`internal/shuttleengine` package documentation, `perch` (see the `internal/perchengine` package
+documentation) + `burler` (see the `internal/burlerengine` package documentation),
+[`hardener`](../../manifest/designs/hardener.md), [`loom`](../../manifest/designs/loom.md)) can
+reuse it instead of re-inventing it each time.
 
 **The files here:**
 - [`orchestrator-prompt.md`](orchestrator-prompt.md) — paste-ready prompt that bootstraps a thread
@@ -18,7 +21,7 @@ instead of re-inventing it each time.
 
 > **This is the hand-executed prototype of the `perch` (see the `internal/perchengine` package
 > documentation) + `burler` (see the `internal/burlerengine` package documentation) round loop**
-> (and the origin of the behavior-based [`hardener`](../../manifest/modules/hardener.md) concept). The
+> (and the origin of the behavior-based [`hardener`](../../manifest/designs/hardener.md) concept). The
 > automated engine — a fresh `burler` per round that does **A: review** then **B: fix**, with
 > **no self-grading**, looped by `perch` with an **independent** progress check — is exactly this
 > loop with the orchestrator role moved from a human+Claude pair into Go. This is how the method
@@ -27,7 +30,7 @@ instead of re-inventing it each time.
 > package documentation.
 >
 > **Text vs. behavior:** `perch`/`burler` automate the **text-based** form (read the artifact).
-> [`hardener`](../../manifest/modules/hardener.md) (DRAFT) is the **behavior-based** form — *run* a live-substrate
+> [`hardener`](../../manifest/designs/hardener.md) (DRAFT) is the **behavior-based** form — *run* a live-substrate
 > module in a sandbox — which is the harder campaign this directory actually documents for `mux`.
 
 ## When to use it
@@ -206,7 +209,7 @@ Reusable rules that bit us and are worth carrying to any module's live driving:
 ## Instantiating this for a new module
 
 1. Copy [`review-prompt-template.md`](review-prompt-template.md) to
-   `docs/reviews/<module>-review-prompt.md` and fill every `<PLACEHOLDER>` (what to read, the
+   `crucible/<module>-review-prompt.md` and fill every `<PLACEHOLDER>` (what to read, the
    high-yield focus list = where *this* module's bugs actually live, the exact test commands, the
    substrate-teardown check).
 2. Confirm the module already satisfies `CONSTRAINTS.md`'s Sandbox Suite Coverage invariant (a

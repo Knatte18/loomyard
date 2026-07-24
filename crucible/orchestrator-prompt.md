@@ -17,7 +17,7 @@ converged. The single discipline that makes this work: **you never trust a round
 "merge-ready" verdict** — only your own verification gates it.
 
 ## Your inputs
-- The per-module **review prompt** the round agent reads: `docs/reviews/<module>-review-prompt.md`
+- The per-module **review prompt** the round agent reads: `crucible/<module>-review-prompt.md`
   (instantiated from [`review-prompt-template.md`](review-prompt-template.md)). It carries a
   *"round context seeded from prior-round verification"* section that **you** rewrite each round.
 - Substrate + tool locations for verification: `<e.g. tmux resolved via PATH, pwsh7 resolved via PATH>`.
@@ -67,7 +67,7 @@ converged. The single discipline that makes this work: **you never trust a round
    honestly confirm merge-readiness"). List the CLOSED-AND-VERIFIED items so they are not
    re-litigated. Commit the re-seed.
 2. **Spawn.** `Agent` tool → `subagent_type: general-purpose`, `model: <the operator's pick this
-   round>`, prompt = *"Read `docs/reviews/<module>-review-prompt.md` and do exactly what it says."*
+   round>`, prompt = *"Read `crucible/<module>-review-prompt.md` and do exactly what it says."*
    Give it a tag `<model>-r<N>`, tell it to **commit each individual fix as it lands** (message
    identifying the finding it closes — the prompt template's "Commit per fix" section has the exact
    format) but **never push**, and ask it to reply with only a concise executive summary + counts by

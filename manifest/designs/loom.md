@@ -32,8 +32,11 @@ length is structural, not poor writing, as long as control flow lives in a promp
 Move the machine into Go and orchestration leaves *every* prompt. Each agent collapses
 to one job over a file contract:
 
-- Plan producer: "read `discussion.md`, write the `plan/` directory
-  ([plan format](../../docs/reference/plan-format.md))." Nothing else.
+- Plan producer: "read `discussion.md`, write the `plan/` directory." Nothing else. **The target
+  format is changing:** today's pinned [plan-format.md v2](../../docs/reference/plan-format.md)
+  (batch-based) is being replaced by [plan-format v3](plan-format-v3.md) (a flat card list) —
+  see that doc for the schema the Plan producer will write against, and
+  [webster-rewrite.md](webster-rewrite.md) for the consumer-side redesign this implies.
 - Review handler: "read the plan (against `discussion.md`), write review + fixer-report."
 
 No agent knows about rounds, gates, N-caps, finalize, or the others. Each phase becomes
@@ -99,6 +102,12 @@ package documentation for the round-loop and stuck detection, and the `internal/
 documentation for the combined handler/fixer round and the profile schema.
 
 ## Builder — an LLM orchestrator over Go verbs (advance), the sibling of perch (converge)
+
+> **This section describes the shipped v1 design.** A redesign to consume
+> [plan-format v3](plan-format-v3.md)'s flat card list instead of the batch-format below is
+> planned — see [webster-rewrite.md](webster-rewrite.md) for the card-level fork contract,
+> scheduling, and Master-context design that supersedes the batch-loop description here once it
+> lands.
 
 Unlike the discussion and plan producers (each one `shuttle.Run` → one artifact), **Builder is a
 batch loop held by a long-lived LLM orchestrator session** (model config-chosen; Sonnet default)
@@ -239,7 +248,7 @@ boundary**, never mid-operation — `mill-pause`'s natural-stopping-point proper
 | `perch` (`lyx perch`) | new Go module | the gate loop: run `burler` rounds → `APPROVED`/`stuck` + progress-judge + cap |
 | `burler` | new Go module | one review+fix round: A-review (+ optional cluster) → B-fix; composed by `perch` |
 | builder | LLM orchestrator + Go verbs (`internal/builderengine`) | long-lived orchestrator session holds the batch loop over the six as-built verbs (`validate`/`run`/`spawn-batch`/`poll`/`status`/`pause`); Go = verbs + distillation; fresh-spawn escalation; ends at batches-built — the holistic review is perch's separate Builder-review gate, not builder's own job — **not** a single producer spawn; input contract: [plan-format.md](../../docs/reference/plan-format.md); as-built doc: [builder-contract.md](../../docs/reference/builder-contract.md) |
-| producers (discussion / plan) | prompt/profile files | **not** modules — just a prompt + profile fed to `shuttle.Run`. The Discussion producer is ✅ **built**: an interview prompt + `stencil` composer + `DiscussionSpec(...) (shuttleengine.Spec, error)` factory in `internal/loomengine` (`discussion-template.md`, `prompt.go`, `discussion.go`), fed to `shuttle.Run` by the future phase machine; `loom.yaml` supplies its `discussion` model-spec and `discussion_timeout_min` knobs |
+| producers (discussion / plan) | prompt/profile files | **not** modules — just a prompt + profile fed to `shuttle.Run`. The Discussion producer is ✅ **built**: an interview prompt + `stencil` composer + `DiscussionSpec(...) (shuttleengine.Spec, error)` factory in `internal/loomengine` (`discussion-template.md`, `prompt.go`, `discussion.go`), fed to `shuttle.Run` by the future phase machine; `loom.yaml` supplies its `discussion` model-spec and `discussion_timeout_min` knobs. The **Planner producer** (not built): "read `discussion.md`, write a [plan-format v3](plan-format-v3.md) flat card list." No manifest/glossary/CONTEXT.md artifact to design around — see [webster-rewrite.md](webster-rewrite.md#adjacent-pieces-not-websters-own-job-but-webster-hands-off-to-them) for why that idea was explored and rejected. |
 | `lyx loom status` | a loom subcommand | the 1-line status view; runs as a strand (see `internal/muxengine`; `below-parent` + `ShrinkWhenWaitingOnChild`), not a separate module |
 | execution stack | existing/new infra | `proc` → mux → shuttle — see [overview.md#execution-stack](../../docs/overview.md#execution-stack-orchestration-layers) — built once, used by both modules above |
 | Preflight | new Go package (`internal/loomengine`) | ✅ **Done**, engine-only (no cobra module yet) — validates the four preconditions (geometry + at-worktree-root, host worktree clean, weft paired & in sync, seed exists & coherent) over git/filesystem state; builds on `internal/hubgeometry`, `internal/warpengine`, `internal/state` |

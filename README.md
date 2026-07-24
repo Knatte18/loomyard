@@ -75,7 +75,7 @@ Every user-facing module is a `lyx <module>` namespace, assembled into one cobra
 
 - **loom** — the phased orchestrator (Preflight → Discussion → Plan → Builder → Raddle → Finalize), each producing phase gated by a `perch` review. Preflight is built; Discussion, Plan, the phase-machine skeleton, Finalize, and session bootstrap are still being built out.
 
-The internal library **proc** (cross-OS process spawn) sits under all of these; see [manifest/modules/](manifest/modules/) for the not-yet-built ones' design docs.
+The internal library **proc** (cross-OS process spawn) sits under all of these; see [manifest/designs/](manifest/designs/) for the not-yet-built ones' design docs.
 
 ## Orchestration stack
 
@@ -118,4 +118,7 @@ The **sandbox Hub** is a dedicated bench for dogfooding `lyx` against itself, ex
 - [CONSTRAINTS.md](CONSTRAINTS.md) — the repo's structural invariants (authoritative).
 - [docs/overview.md](docs/overview.md) — architecture, naming, module and shared-lib map.
 - [manifest/roadmap.md](manifest/roadmap.md) — what's planned and what's shipped.
-- [manifest/modules/](manifest/modules/) — per-module design docs for planned, not-yet-built modules.
+- [manifest/designs/](manifest/designs/) — per-module design docs for planned, not-yet-built modules.
+- [crucible/](crucible/README.md) — `crucible`, the hand-run serial review+fix loop for hardening
+  a live-substrate module before merge (not documentation of shipped code, so it lives at the
+  repo root, not under `docs/`).
