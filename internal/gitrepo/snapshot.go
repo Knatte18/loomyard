@@ -83,6 +83,9 @@ func (r *Repo) remoteName() string {
 // swallowed rather than surfaced, and the read degrades to the last-known
 // local ref value — consistent with SHAExists' failure-swallowing posture,
 // since a slightly-stale snapshot at worst re-processes already-done work.
+// Only a verified-absent ref reads as ("", nil); a checkout that cannot be
+// read at all (path is not a git repository, corrupt ref store) surfaces as
+// an error instead, so a miswired consumer is not told "no snapshot" forever.
 func (r *Repo) SnapshotSHA(key string) (string, error) {
 	if !validSnapshotKey(key) {
 		return "", ErrInvalidSnapshotKey
@@ -95,15 +98,23 @@ func (r *Repo) SnapshotSHA(key string) (string, error) {
 	r.run("fetch", remote, "+refs/loomyard/snapshot/*:refs/loomyard/snapshot/*")
 
 	ref := snapshotRef(key)
-	stdout, _, code, err := r.run("rev-parse", "--verify", "--quiet", ref)
+	stdout, stderr, code, err := r.run("rev-parse", "--verify", "--quiet", ref)
 	if err != nil {
 		return "", err
 	}
-	if code != 0 {
-		// The ref does not exist yet; absent is a normal state, not a failure.
+	switch code {
+	case 0:
+		return strings.TrimSpace(stdout), nil
+	case 1:
+		// `--verify --quiet` reports a missing ref as exit 1 with no output;
+		// the ref does not exist yet — absent is a normal state, not a failure.
 		return "", nil
+	default:
+		// Any other exit (128: not a git repository, corrupt ref store) is a
+		// genuine failure — folding it into "absent" would let a miswired
+		// read-only consumer reprocess from scratch forever with no signal.
+		return "", fmt.Errorf("gitrepo: git rev-parse --verify %s: %s", ref, stderr)
 	}
-	return strings.TrimSpace(stdout), nil
 }
 
 // snapshotPushMaxAttempts bounds the adopt-on-conflict retry loop in

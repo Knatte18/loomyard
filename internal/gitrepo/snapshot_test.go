@@ -324,6 +324,19 @@ func TestSetSnapshotSHA_ThreeWayCreationRace_NewestValueWins(t *testing.T) {
 	}
 }
 
+// TestSnapshotSHA_NotARepo_SurfacesError asserts that a Repo wrapping a path
+// that is not a git repository at all surfaces the hard rev-parse failure as
+// an error rather than folding it into the ("", nil) "no snapshot" state —
+// a miswired read-only consumer must get a loud signal, not eternal
+// reprocess-from-scratch.
+func TestSnapshotSHA_NotARepo_SurfacesError(t *testing.T) {
+	repo := gitrepo.New(t.TempDir())
+
+	if _, err := repo.SnapshotSHA("somekey"); err == nil {
+		t.Fatal("SnapshotSHA() on a non-repo path error = nil; want an error, not the absent-ref ('', nil) state")
+	}
+}
+
 // TestSnapshotMethods_InvalidKey_ReturnsErrInvalidSnapshotKey asserts both
 // SnapshotSHA and SetSnapshotSHA reject a ref-illegal key before it ever
 // reaches git.
