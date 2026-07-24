@@ -231,6 +231,99 @@ func TestSetSnapshotSHA_ConcurrentCreationRace_NewestValueWins(t *testing.T) {
 	}
 }
 
+// TestSetSnapshotSHA_ThreeWayCreationRace_NewestValueWins extends the
+// two-clone creation race to three concurrent writers on one monotonic line of
+// SHAs. Round 1's F3 fix retried a rejected creation push exactly once; under
+// three or more writers that single retry can itself lose transient ref-lock
+// contention, silently dropping the strictly-newest value. The bounded retry
+// loop must instead converge on the newest value every round, whichever
+// interleaving occurs. Several rounds are raced because a quiet interleaving
+// can resolve without contention; the assertion is deterministic — the newest
+// value must always end up on the remote.
+func TestSetSnapshotSHA_ThreeWayCreationRace_NewestValueWins(t *testing.T) {
+	container := t.TempDir()
+	bareRemote := newBareRemote(t, container)
+
+	// Build a three-commit monotonic line and push it, so each clone below
+	// checks out the full history and can name any of the three SHAs.
+	seedPath, seed := newRepoWithRemote(t, container, "seed", bareRemote)
+	writeFile(t, seedPath, "f.txt", "c1")
+	commitAll(t, seedPath, "commit 1")
+	olderSHA, err := seed.CurrentSHA()
+	if err != nil {
+		t.Fatalf("CurrentSHA() error = %v", err)
+	}
+	writeFile(t, seedPath, "f.txt", "c2")
+	commitAll(t, seedPath, "commit 2")
+	midSHA, err := seed.CurrentSHA()
+	if err != nil {
+		t.Fatalf("CurrentSHA() error = %v", err)
+	}
+	writeFile(t, seedPath, "f.txt", "c3")
+	commitAll(t, seedPath, "commit 3")
+	newestSHA, err := seed.CurrentSHA()
+	if err != nil {
+		t.Fatalf("CurrentSHA() error = %v", err)
+	}
+	if err := seed.Push(); err != nil {
+		t.Fatalf("Push() error = %v; want nil", err)
+	}
+
+	// Three independent clones, each assigned a different SHA on the line; the
+	// clone holding the strict tip (newestSHA) must always win the race.
+	cloneOldPath, repoOld := cloneFromBare(t, container, "cloneOld", bareRemote)
+	cloneMidPath, repoMid := cloneFromBare(t, container, "cloneMid", bareRemote)
+	cloneNewPath, repoNew := cloneFromBare(t, container, "cloneNew", bareRemote)
+
+	const key = "racekey"
+	ref := "refs/loomyard/snapshot/" + key
+	writers := []struct {
+		repo *gitrepo.Repo
+		sha  string
+	}{
+		{repoOld, olderSHA},
+		{repoMid, midSHA},
+		{repoNew, newestSHA},
+	}
+
+	for round := 0; round < 5; round++ {
+		var wg sync.WaitGroup
+		errs := make([]error, len(writers))
+		for i := range writers {
+			wg.Add(1)
+			go func(i int) {
+				defer wg.Done()
+				errs[i] = writers[i].repo.SetSnapshotSHA(key, writers[i].sha)
+			}(i)
+		}
+		wg.Wait()
+		for i, err := range errs {
+			if err != nil {
+				t.Fatalf("round %d: writer %d SetSnapshotSHA error = %v; want nil", round, i, err)
+			}
+		}
+
+		remoteVal, stderr, code, err := runGit(t, bareRemote, "rev-parse", ref)
+		if err != nil {
+			t.Fatalf("round %d: git rev-parse (bare) error = %v", round, err)
+		}
+		if code != 0 {
+			t.Fatalf("round %d: git rev-parse (bare) exited %d: %s", round, code, stderr)
+		}
+		if got := strings.TrimSpace(remoteVal); got != newestSHA {
+			t.Fatalf("round %d: remote %s = %q; want %q (the strictly-newest value must never be dropped)", round, ref, got, newestSHA)
+		}
+
+		// Reset the key everywhere so the next round races the creation again.
+		// Every writer creates its local ref before pushing (advanceAndPush's
+		// update-ref) or adopts one on rejection, so all three clones hold it.
+		lyxtest.MustRun(t, bareRemote, "git", "update-ref", "-d", ref)
+		for _, dir := range []string{cloneOldPath, cloneMidPath, cloneNewPath} {
+			lyxtest.MustRun(t, dir, "git", "update-ref", "-d", ref)
+		}
+	}
+}
+
 // TestSnapshotMethods_InvalidKey_ReturnsErrInvalidSnapshotKey asserts both
 // SnapshotSHA and SetSnapshotSHA reject a ref-illegal key before it ever
 // reaches git.

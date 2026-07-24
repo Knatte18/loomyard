@@ -107,11 +107,15 @@
 // adopts the remote's value into the local ref and returns nil rather than
 // an error — a key advances along a single monotonically-forward line, so a
 // rejection usually means someone else processed further and their SHA is
-// the correct one to take. The one exception is a remote-side creation race,
-// which rejects the loser regardless of ancestry ("reference already
-// exists"); when the adopted value turns out to be an ancestor of the value
-// being set, SetSnapshotSHA retries the push exactly once so a
-// strictly-newer value is not silently dropped by transient contention.
+// the correct one to take. The one exception is transient contention — a
+// remote-side creation race that rejects the loser regardless of ancestry
+// ("reference already exists"), or a lost ref-lock race under concurrent
+// writers; when the adopted value turns out to be a strict ancestor of the
+// value being set, SetSnapshotSHA re-advances and retries the push, looping
+// (bounded) until it lands or the remote genuinely moves past it, so a
+// strictly-newer value is not silently dropped by transient contention — not
+// even under three or more concurrent writers, where a single retry could
+// itself lose the race.
 //
 // The snapshot remote is resolved from the current branch's tracking
 // configuration, falling back to the conventional "origin" name. In a repo

@@ -106,6 +106,17 @@ func (r *Repo) SnapshotSHA(key string) (string, error) {
 	return strings.TrimSpace(stdout), nil
 }
 
+// snapshotPushMaxAttempts bounds the adopt-on-conflict retry loop in
+// SetSnapshotSHA so it always terminates. Every attempt past the first is
+// taken only when the caller is strictly newer than the value it just adopted,
+// so the loop advances monotonically toward sha and in practice needs at most
+// as many attempts as there are concurrent writers; the cap is a safety net
+// against pathological sustained contention. Hitting it is behaviourally
+// identical to giving up — the value is re-derived and re-set on the caller's
+// next cycle, per the self-correcting snapshot model — so a generous cap costs
+// nothing.
+const snapshotPushMaxAttempts = 8
+
 // SetSnapshotSHA records sha as the value for key, advancing
 // refs/loomyard/snapshot/<key> locally and then pushing it to the repo's
 // remote fast-forward-only. On a rejected push SetSnapshotSHA fetches and
@@ -113,13 +124,18 @@ func (r *Repo) SnapshotSHA(key string) (string, error) {
 // rejection as an error — per discussion.md's safe model, a key advances
 // along a single monotonic line, so a rejection normally means someone else
 // processed further and their SHA is the correct one to take. One rejection
-// shape breaks that assumption: a remote-side creation race rejects the
-// loser with "reference already exists" regardless of ancestry, so the
-// rejected caller may actually hold the newer value. When the adopted value
-// turns out to be an ancestor of sha, SetSnapshotSHA therefore re-advances
-// the local ref and retries the push exactly once (a second rejection
-// re-adopts and returns nil, keeping the retry bounded). Any other push
-// failure returns an error including git's stderr. A non-hex sha returns
+// shape breaks that assumption: transient contention — a remote-side creation
+// race that rejects the loser with "reference already exists" regardless of
+// ancestry, or a lost ref-lock race under concurrent writers — can reject a
+// push whose sha is actually strictly newer than the adopted value. When the
+// adopted value turns out to be a strict ancestor of sha, SetSnapshotSHA is
+// therefore genuinely further along, so it re-advances the local ref and
+// retries, looping (bounded by snapshotPushMaxAttempts) until its push lands,
+// the remote genuinely advances to a value that is not a strict ancestor of
+// sha (adopt it and stop), or the cap is reached. A single retry is not enough
+// under three or more concurrent writers, where the one retry can itself lose
+// transient contention and silently drop a strictly-newer value. Any other
+// push failure returns an error including git's stderr. A non-hex sha returns
 // ErrInvalidSHA (checkable via errors.Is) without spawning git — an
 // option-shaped value must never reach update-ref, where e.g. "-d" would
 // delete the ref instead of setting it.
@@ -133,34 +149,35 @@ func (r *Repo) SetSnapshotSHA(key, sha string) error {
 
 	ref := snapshotRef(key)
 	remote := r.remoteName()
-	rejected, err := r.advanceAndPushSnapshotRef(remote, ref, sha)
-	if err != nil || !rejected {
-		return err
-	}
 
-	// The push was rejected; adopt the remote's current value so the local
-	// ref converges — and so we can see whether the rejection was a genuine
-	// advance past sha or only transient contention.
-	if err := r.adoptSnapshotRef(remote, ref); err != nil {
-		return err
-	}
+	for attempt := 0; attempt < snapshotPushMaxAttempts; attempt++ {
+		rejected, err := r.advanceAndPushSnapshotRef(remote, ref, sha)
+		if err != nil || !rejected {
+			return err
+		}
 
-	// If sha strictly descends from the adopted value, we lost a creation
-	// race (or transient ref-lock contention) while actually being further
-	// along — the monotonic line says our value is the correct one, so retry
-	// the push once. A second rejection re-adopts and returns nil.
-	adopted, _, code, err := r.run("rev-parse", "--verify", "--quiet", ref)
-	if err != nil {
-		return err
+		// The push was rejected; adopt the remote's current value so the local
+		// ref converges — and so we can tell a genuine advance past sha from
+		// transient contention that merely raced us.
+		if err := r.adoptSnapshotRef(remote, ref); err != nil {
+			return err
+		}
+
+		adopted, _, code, err := r.run("rev-parse", "--verify", "--quiet", ref)
+		if err != nil {
+			return err
+		}
+		// If the adopted value is not a strict ancestor of sha, another writer
+		// genuinely processed at least as far as us: the monotonic line says
+		// their value is the correct one to keep, so stop with it adopted.
+		if code != 0 || !r.isStrictDescendant(strings.TrimSpace(adopted), sha) {
+			return nil
+		}
+		// Otherwise sha strictly descends from the adopted value — we lost only
+		// transient contention while actually being further along — so loop and
+		// retry the push rather than silently dropping the strictly-newer value.
 	}
-	if code != 0 || !r.isStrictDescendant(strings.TrimSpace(adopted), sha) {
-		return nil
-	}
-	rejected, err = r.advanceAndPushSnapshotRef(remote, ref, sha)
-	if err != nil || !rejected {
-		return err
-	}
-	return r.adoptSnapshotRef(remote, ref)
+	return nil
 }
 
 // advanceAndPushSnapshotRef sets ref to sha locally and pushes it to
