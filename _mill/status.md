@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-core-repo
 slug: gitrepo
 branch: gitrepo
 plan: _mill/plan
@@ -21,6 +21,7 @@ planning  '2026-07-24T17:54:39Z'
 plan-fix-r1  '2026-07-24T18:00:09Z'
 planned  '2026-07-24T18:00:24Z'
 implementing  '2026-07-24T18:01:35Z'
+approved-core-repo  '2026-07-24T18:06:51Z'
 ```
 
 ## Batches
@@ -28,9 +29,10 @@ implementing  '2026-07-24T18:01:35Z'
 ```yaml
 batches:
   - name: core-repo
-    state: running
+    state: approved
     implementer_session: 65edf1e0-63cb-4aa7-8772-6cece6ff5e50
     start_sha: cbd3975627cad2a098419b0dd76b9b183a42046a
+    commit_sha: 918de263ae084ec80233a104a1b1528407bcd0b5
   - name: push
     state: pending
   - name: snapshot
