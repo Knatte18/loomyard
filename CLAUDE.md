@@ -94,7 +94,7 @@ Every task that adds a module, changes observable CLI behaviour, or introduces
 cross-cutting infrastructure **must update docs as part of the same commit** —
 not as a follow-up. Specifically:
 
-- Update or create the module doc in `manifest/modules/` if the change touches a named,
+- Update or create the module doc in `manifest/designs/` if the change touches a named,
   not-yet-built module's design.
 - Update `docs/overview.md` if the module table or execution stack changes.
 - Record new cross-cutting invariants in `CONSTRAINTS.md` (same commit).

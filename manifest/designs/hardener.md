@@ -8,10 +8,12 @@
 > normal *Design — not built* entry; per the [documentation lifecycle](../../docs/overview.md#documentation-lifecycle)
 > it is eventually deleted into the package header + `overview.md` on landing.
 >
-> **Hand-executed origin:** [`docs/reviews/`](../../docs/reviews/README.md) is the method this module would
-> automate. `hardener` was developed over the last week out of a concrete need: to **run** actual
-> `mux` code hard enough to surface defects a green `go test` never proves. Six hand-orchestrated
-> rounds fixed what many rounds of text-based review could not — it was genuinely *hardening*.
+> **Hand-executed origin:** [`crucible`](../../crucible/README.md) is the method this module would
+> automate — the hand-run version of the same idea, named separately to avoid colliding with this
+> module's own name. `hardener` was developed over the last week out of a concrete need: to **run**
+> actual `mux` code hard enough to surface defects a green `go test` never proves. Six
+> hand-orchestrated rounds fixed what many rounds of text-based review could not — it was
+> genuinely *hardening*.
 
 `hardener` is a **behavior-based reviewer**: where `perch` (see the `internal/perchengine` package
 documentation) reads an artifact, hardener

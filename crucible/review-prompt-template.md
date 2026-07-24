@@ -1,6 +1,6 @@
 # `<MODULE>` — independent review + fix (prompt template)
 
-> **This is a TEMPLATE.** Copy it to `docs/reviews/<module>-review-prompt.md` and replace every
+> **This is a TEMPLATE.** Copy it to `crucible/<module>-review-prompt.md` and replace every
 > `<PLACEHOLDER>`. It is the round agent's *entire* instruction set — the orchestrator spawns a
 > fresh clean-room agent told only "read this file and do exactly what it says". See
 > [README.md](README.md) for the loop this prompt runs inside, and
@@ -58,7 +58,7 @@ previously-fixed behaviors have not regressed and (b) re-evaluate the deferred i
 
 ## What to read
 - Code: `<CODE PATHS — e.g. internal/<module>engine/**, internal/<module>cli/**, cmd/lyx integration>`.
-- Docs: `<MODULE DOC — manifest/modules/<module>.md>`, `docs/overview.md`, `manifest/roadmap.md`,
+- Docs: `<MODULE DOC — manifest/designs/<module>.md>`, `docs/overview.md`, `manifest/roadmap.md`,
   `CONSTRAINTS.md`, `README.md`, and any `docs/research/<module>-*.md`.
 - If one already exists, `<tools/sandbox/SANDBOX-<MODULE>-SUITE.md>` — for SCENARIO IDEAS only.
   You run every scenario yourself, directly, with your own tool calls; you do NOT invoke its
@@ -206,7 +206,7 @@ round. Empty on the first round.>`
 - Keep `go build`/`vet`/`test` green after every change. Then RE-DEPLOY (`deploy.cmd`) and re-run
   every live scenario yourself, directly — re-deploying FIRST is mandatory (live driving tests the
   deployed binary).
-- Update `<manifest/modules/<module>.md>` (and `docs/overview.md` / `CONSTRAINTS.md` if invariants or the
+- Update `<manifest/designs/<module>.md>` (and `docs/overview.md` / `CONSTRAINTS.md` if invariants or the
   module table move) IN THE SAME change. Do NOT add bugfix/hardening notes to `manifest/roadmap.md`
   (roadmap is planned milestones only, per CLAUDE.md).
 - Tear down all substrate state; confirm zero stray processes. COMMIT each fix as you finish it
