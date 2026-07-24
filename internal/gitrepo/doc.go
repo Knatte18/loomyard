@@ -28,6 +28,12 @@
 //   - SnapshotSHA and SetSnapshotSHA are the snapshot-tracking surface (see
 //     below).
 //
+// Caller-supplied SHA arguments (SHAExists, ChangedFilesSince,
+// SetSnapshotSHA) are validated as plain hex object names before ever
+// reaching git, so an option-shaped string (a value with a leading '-') can
+// never be parsed as a git flag; invalid SHAs surface as ErrInvalidSHA, or
+// as false from SHAExists per its bool-swallowing posture.
+//
 // # The self-correcting snapshot pattern
 //
 // SnapshotSHA/SetSnapshotSHA is the one pattern every consumer of gitrepo

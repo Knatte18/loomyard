@@ -103,10 +103,15 @@ func (r *Repo) SnapshotSHA(key string) (string, error) {
 // per discussion.md's safe model, a key advances along a single monotonic
 // line, so a rejection means someone else processed further and their SHA is
 // the correct one to take. Any other push failure returns an error
-// including git's stderr.
+// including git's stderr. A non-hex sha returns ErrInvalidSHA (checkable via
+// errors.Is) without spawning git — an option-shaped value must never reach
+// update-ref, where e.g. "-d" would delete the ref instead of setting it.
 func (r *Repo) SetSnapshotSHA(key, sha string) error {
 	if !validSnapshotKey(key) {
 		return ErrInvalidSnapshotKey
+	}
+	if !validSHA(sha) {
+		return ErrInvalidSHA
 	}
 
 	ref := snapshotRef(key)

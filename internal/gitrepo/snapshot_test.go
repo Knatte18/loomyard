@@ -179,3 +179,46 @@ func TestSnapshotMethods_InvalidKey_ReturnsErrInvalidSnapshotKey(t *testing.T) {
 		t.Errorf("SetSnapshotSHA(%q, ...) error = %v; want errors.Is(err, ErrInvalidSnapshotKey)", badKey, err)
 	}
 }
+
+// TestSetSnapshotSHA_OptionShapedSHA_RejectedAndRefUntouched asserts the
+// SHA-injection guard: an option-shaped sha like "-d" (git update-ref's
+// delete flag) must return ErrInvalidSHA before ever reaching git — without
+// the guard, `git update-ref <ref> -d` deletes the ref instead of setting
+// it, destroying local snapshot state.
+func TestSetSnapshotSHA_OptionShapedSHA_RejectedAndRefUntouched(t *testing.T) {
+	container := t.TempDir()
+	bareRemote := newBareRemote(t, container)
+
+	clonePath, repo := newRepoWithRemote(t, container, "clone", bareRemote)
+	writeFile(t, clonePath, "a.txt", "initial")
+	commitAll(t, clonePath, "init")
+	if err := repo.Push(); err != nil {
+		t.Fatalf("Push() error = %v; want nil", err)
+	}
+
+	headSHA, err := repo.CurrentSHA()
+	if err != nil {
+		t.Fatalf("CurrentSHA() error = %v", err)
+	}
+	if err := repo.SetSnapshotSHA("mykey", headSHA); err != nil {
+		t.Fatalf("SetSnapshotSHA() error = %v; want nil", err)
+	}
+
+	for _, badSHA := range []string{"-d", "--stdin", "-O/dev/null", "HEAD"} {
+		if err := repo.SetSnapshotSHA("mykey", badSHA); !errors.Is(err, gitrepo.ErrInvalidSHA) {
+			t.Errorf("SetSnapshotSHA(mykey, %q) error = %v; want errors.Is(err, ErrInvalidSHA)", badSHA, err)
+		}
+	}
+	if _, err := repo.ChangedFilesSince("-O/dev/null"); !errors.Is(err, gitrepo.ErrInvalidSHA) {
+		t.Errorf("ChangedFilesSince(\"-O/dev/null\") error = %v; want errors.Is(err, ErrInvalidSHA)", err)
+	}
+
+	// The stored value must be untouched by any of the rejected calls.
+	got, err := repo.SnapshotSHA("mykey")
+	if err != nil {
+		t.Fatalf("SnapshotSHA() error = %v", err)
+	}
+	if got != headSHA {
+		t.Errorf("SnapshotSHA() after rejected option-shaped writes = %q; want %q (unchanged)", got, headSHA)
+	}
+}

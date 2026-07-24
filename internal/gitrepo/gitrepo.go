@@ -7,6 +7,7 @@ package gitrepo
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
@@ -16,6 +17,26 @@ import (
 // yet (a freshly-initialized repo with an unborn HEAD), so callers get a
 // typed signal instead of an ambiguous empty SHA string.
 var ErrNoCommits = errors.New("gitrepo: repository has no commits")
+
+// ErrInvalidSHA is returned by ChangedFilesSince and SetSnapshotSHA (and
+// folded into false by SHAExists, per its bool-swallowing posture) when a
+// caller-supplied SHA argument is not a plain hex object name — surfaced
+// before the string ever reaches git, where an option-shaped value would be
+// parsed as a flag (`update-ref <ref> -d` deletes the ref instead of setting
+// it).
+var ErrInvalidSHA = errors.New("gitrepo: invalid SHA")
+
+// shaPattern matches a plain abbreviated-or-full hex object name: 4 hex
+// digits (git's minimum abbreviation) up to 64 (a full SHA-256 name). It
+// deliberately excludes symbolic revisions (HEAD, refs, ranges) — gitrepo's
+// SHA-taking methods contract on stored SHAs, not general revision syntax.
+var shaPattern = regexp.MustCompile(`^[0-9a-fA-F]{4,64}$`)
+
+// validSHA reports whether sha is a plain hex object name that is safe to
+// embed in a git command line as an argument.
+func validSHA(sha string) bool {
+	return shaPattern.MatchString(sha)
+}
 
 // Repo is a typed handle on one local git checkout, identified by its
 // filesystem path. Repo does not create, clone, or validate the checkout at
@@ -121,8 +142,12 @@ func (r *Repo) StageAndCommit(msg string, files []string) (sha string, committed
 // non-zero exit here) is swallowed into false rather than surfaced as an
 // error: callers treat "false" as a staleness signal ("when in doubt,
 // rebuild") regardless of whether the SHA was simply absent or the check
-// itself failed, so distinguishing the two would buy nothing.
+// itself failed, so distinguishing the two would buy nothing. A non-hex sha
+// is folded into the same false for the same reason, without spawning git.
 func (r *Repo) SHAExists(sha string) bool {
+	if !validSHA(sha) {
+		return false
+	}
 	_, _, code, err := r.run("rev-parse", "--verify", "--quiet", sha+"^{commit}")
 	return err == nil && code == 0
 }
@@ -132,8 +157,12 @@ func (r *Repo) SHAExists(sha string) bool {
 // or staged edits are never inspected, matching the snapshot model's
 // SHA-to-SHA determinism. A missing or invalid sha is a genuine failure
 // here (unlike SHAExists' bool-swallowing posture): callers are expected to
-// check SHAExists first and treat a missing SHA as staleness.
+// check SHAExists first and treat a missing SHA as staleness. A non-hex sha
+// returns ErrInvalidSHA (checkable via errors.Is) without spawning git.
 func (r *Repo) ChangedFilesSince(sha string) ([]string, error) {
+	if !validSHA(sha) {
+		return nil, ErrInvalidSHA
+	}
 	stdout, stderr, code, err := r.run("diff", "--name-only", sha+"..HEAD")
 	if err != nil {
 		return nil, err
