@@ -59,8 +59,10 @@ compile check that `doc.go` still builds.
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** In `manifest/roadmap.md`, remove the `gitrepo` item from `## Planned` and add a
-  `gitrepo` entry under `## Done` in that section's existing entry format, linking to the shipped
-  package `internal/gitrepo` rather than the deleted `designs/gitrepo.md`. (The Planned list uses
+  `gitrepo` entry under `## Done` in that section's existing entry format. Per the roadmap's own
+  Maintenance convention, Done entries do **not** link (the design doc is deleted) — reference the
+  shipped package as an inline code-span `` `internal/gitrepo` ``, matching existing Done entries,
+  not a markdown link. (The Planned list uses
   repeated `1.` markdown auto-numbering, so no manual renumber is needed — confirm the remaining
   items still render sequentially.) In `docs/overview.md`, add a `internal/gitrepo/` line to the
   file-tree next to the existing `internal/gitexec/` entry (e.g. `typed Repo over one local git

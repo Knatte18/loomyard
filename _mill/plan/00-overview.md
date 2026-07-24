@@ -3,7 +3,7 @@
 ```yaml
 task: 'gitrepo: generic, repo-agnostic git primitives'
 slug: gitrepo
-approved: false
+approved: true
 started: '20260724-175205'
 parent: main
 root: ""

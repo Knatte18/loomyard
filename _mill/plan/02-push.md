@@ -12,8 +12,9 @@ depends-on: [1]
 ## Batch Scope
 
 Delivers the push surface in a new `push.go`: `Push()` (single synchronous push with rebase-retry)
-and `PushCoalesced()` (single-pusher lock + loop-until-nothing-unpushed, the board `sync.go`
-replacement), sharing one rebase-retry helper, plus `push_test.go`. Both are push-only; committing
+and `PushCoalesced()` (single-pusher lock + a single guarded push, the board `sync.go` push-loop
+replacement — cross-process coalescing via the lock queue, not an internal loop), sharing one
+rebase-retry helper, plus `push_test.go`. Both are push-only; committing
 is the caller's `StageAndCommit` from batch 1. This batch touches only new files
 (`push.go`/`push_test.go`) and reads `Repo` from batch 1 — it never edits `gitrepo.go`, so it runs
 in parallel with the snapshot batch without file overlap.
@@ -61,12 +62,17 @@ in parallel with the snapshot batch without file overlap.
   pinned repo-agnostic lock-file name from discussion.md). Add
   `func (r *Repo) PushCoalesced() error`: acquire the single-pusher lock with
   `lock.AcquireWriteLock(filepath.Join(r.path, pushLockFile))` (blocking; `defer` its `Release()`),
-  then loop — call `hasUnpushed()`; if false, break; otherwise call `pushWithRebaseRetry()` and, on
-  error, return it — repeating so a commit landing mid-push is caught. Add
-  `func (r *Repo) hasUnpushed() (bool, error)`: run `rev-list --count @{u}..HEAD`; a non-zero exit
-  means no upstream is configured → return `true` (so the first push, which sets upstream, still
-  happens); otherwise return whether the trimmed count is not `"0"`. `gitrepo` does **not** manage
-  `.gitignore` for the lock file (it is never staged under explicit-only staging).
+  then do a **single guarded push** — call `hasUnpushed()`; if false, return nil; otherwise call
+  `pushWithRebaseRetry()` and return its result. Do **not** loop on `hasUnpushed()`: `git push`
+  sends every commit ahead of upstream atomically, and cross-process coalescing is handled by the
+  lock queue — each blocked pusher pushes whatever is newly unpushed when it acquires the lock, or
+  finds nothing and returns. An unbounded `hasUnpushed()` loop would spin forever if a push
+  succeeds without configuring an upstream (e.g. `push.default=current` without `autoSetupRemote`),
+  because `hasUnpushed()` would stay true. Add `func (r *Repo) hasUnpushed() (bool, error)`: run
+  `rev-list --count @{u}..HEAD`; a non-zero exit means no upstream is configured → return `true` (so
+  the first push, which sets upstream, still happens); otherwise return whether the trimmed count is
+  not `"0"`. `gitrepo` does **not** manage `.gitignore` for the lock file (it is never staged under
+  explicit-only staging).
 - **Commit:** `feat(gitrepo): add PushCoalesced with single-pusher lock`
 
 ### Card 7: push and coalescing tests

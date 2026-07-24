@@ -93,6 +93,7 @@ context (`gitexec` only).
   - `internal/gitexec/testmain_test.go`
   - `internal/gitexec/gitexec_test.go`
   - `internal/lyxtest/lyxtest.go`
+  - `internal/lyxtest/hermetic.go`
   - `internal/warpengine/clone_integration_test.go`
   - `_mill/discussion.md`
 - **Edits:** none

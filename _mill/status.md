@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planning
+phase: plan-fix-r1
 slug: gitrepo
 branch: gitrepo
 plan: _mill/plan
@@ -18,4 +18,5 @@ discussing  '2026-07-24T15:39:09Z'
 discussion-fix-r3  '2026-07-24T17:45:28Z'
 discussed  '2026-07-24T17:45:40Z'
 planning  '2026-07-24T17:54:39Z'
+plan-fix-r1  '2026-07-24T18:00:09Z'
 ```
