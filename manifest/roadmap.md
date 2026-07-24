@@ -10,11 +10,6 @@ doc under [designs/](designs/). See Maintenance below for how the numbering work
 
 Committed to, in this order, next.
 
-1. **gitrepo** — generic, repo-agnostic git primitives (`StageAndCommit`, `Push`, `CurrentSHA`,
-   `ChangedFilesSince`, `SHAExists`, `SnapshotSHA`/`SetSnapshotSHA`), built on the existing
-   `internal/gitexec` command-execution layer. Lands and gets tested standalone, before `fabric`
-   consumes it. See [designs/gitrepo.md](designs/gitrepo.md).
-
 1. **fabric** — replaces `warp` and `weft` in full: all topology (clone, dual-worktree add/remove,
    coordinated checkout, reconcile, prune, cleanup, branch naming — including enforcing
    `<slug>-weft` uniformly, no exceptions) and all git mechanics into the paired weft repo, unified
@@ -140,6 +135,11 @@ between these items.
 
 1. **shared infra** — `internal/configengine`, `internal/gitexec`, `internal/lock`,
    `internal/state`.
+
+1. **gitrepo** — generic, repo-agnostic git primitives (`StageAndCommit`, `Push`,
+   `PushCoalesced`, `CurrentSHA`, `ChangedFilesSince`, `SHAExists`, `SnapshotSHA`/
+   `SetSnapshotSHA`) built on `internal/gitexec` (`internal/gitrepo`; consumed by the Planned
+   `fabric` item once it ships).
 
 1. **worktree + ide** — worktree/portal management, VS Code launcher (worktree itself superseded by
    `warp`).
