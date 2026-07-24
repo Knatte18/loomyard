@@ -166,7 +166,11 @@ func (r *Repo) ChangedFilesSince(sha string) ([]string, error) {
 	// -z terminates each path with NUL and disables core.quotePath's C-style
 	// escaping, so a non-ASCII filename comes back verbatim instead of as a
 	// quoted "\303\245"-style string that matches nothing on disk.
-	stdout, stderr, code, err := r.run("diff", "--name-only", "-z", sha+"..HEAD")
+	// --no-renames keeps a rename reported as both its old path (deleted) and
+	// its new path (added); git's default rename detection would fold the pair
+	// into one entry and --name-only would then drop the old path, leaving a
+	// per-file-state consumer with stale state for it forever.
+	stdout, stderr, code, err := r.run("diff", "--name-only", "-z", "--no-renames", sha+"..HEAD")
 	if err != nil {
 		return nil, err
 	}

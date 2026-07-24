@@ -283,6 +283,39 @@ func TestChangedFilesSince_NonASCIIPathReturnedVerbatim(t *testing.T) {
 	}
 }
 
+// TestChangedFilesSince_RenameReportsBothPaths asserts that a rename lists
+// both the old path (which no longer exists at HEAD) and the new one; git's
+// default rename detection would report only the destination, leaving a
+// consumer's per-file state for the old path stale forever.
+func TestChangedFilesSince_RenameReportsBothPaths(t *testing.T) {
+	dir, repo := newRepo(t)
+	writeFile(t, dir, "old.txt", "content that stays identical")
+	commitAll(t, dir, "init")
+
+	base, err := repo.CurrentSHA()
+	if err != nil {
+		t.Fatalf("CurrentSHA() error = %v", err)
+	}
+
+	// A pure rename (identical content) is the case rename detection folds.
+	lyxtest.MustRun(t, dir, "git", "mv", "old.txt", "new.txt")
+	lyxtest.MustRun(t, dir, "git", "commit", "-m", "rename")
+
+	got, err := repo.ChangedFilesSince(base)
+	if err != nil {
+		t.Fatalf("ChangedFilesSince() error = %v; want nil", err)
+	}
+	want := map[string]bool{"old.txt": true, "new.txt": true}
+	if len(got) != len(want) {
+		t.Fatalf("ChangedFilesSince() = %v; want exactly both sides of the rename %v", got, want)
+	}
+	for _, f := range got {
+		if !want[f] {
+			t.Errorf("ChangedFilesSince() contains unexpected file %q", f)
+		}
+	}
+}
+
 func TestChangedFilesSince_ErrorsOnFabricatedSHA(t *testing.T) {
 	dir, repo := newRepo(t)
 	writeFile(t, dir, "a.txt", "initial")
