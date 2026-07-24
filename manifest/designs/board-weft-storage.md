@@ -51,6 +51,13 @@ Board's front page is a plain `README.md` at the root of `weft:main`. GitHub ren
 automatically for **any** repo, private or public — unlike wiki, this requires no visibility
 change. Solves the consulting-privacy concern completely, not just partially.
 
+Unlike today's hand-maintained `manifest/roadmap.md`, this `README.md` is **generated output,
+never edited directly** — by a human or an LLM. Writes go through a command/verb that updates
+`tasks.json`/`notes.json` and re-runs the render step; nothing ever calls `Edit` on the rendered
+file itself. This is the opposite of today's actual state (`roadmap.md` is hand-edited prose) —
+a deliberate change, not an oversight, since generated output stays consistent under concurrent
+writers in a way hand-edited prose can't.
+
 ## The "prime" worktree's asymmetric relationship to weft
 
 The long-lived, primary worktree ("prime") is the only worktree with a reason to check out
@@ -113,6 +120,22 @@ categories:
 4. **Done** — archive, periodically cleaned (same discipline already practiced in the Millhouse
    wiki).
 
+## Two JSON stores, not one
+
+The four categories above split into two JSON files with genuinely different shapes and write
+patterns, not one shared file:
+
+- **`tasks.json`** — Tasks + Done, same schema (a `status` field: active/done), mirroring the
+  existing mill-wiki `tasks.json` precedent already used elsewhere in this project. Every entry
+  is dependency-tracked and claimable; this is the one file `mill-spawn`/loom reads from
+  directly.
+- **`notes.json`** — Proposals + Manifest. Raw, uncurated entries and their curated
+  (short-bullet-plus-link) promotions live in the same loose file; "curated" is a flag/promotion
+  on an entry, not a move to a different file. Nothing here is claimable by loom.
+
+Splitting this way keeps the claimable list's schema small and stable regardless of how much
+loose note-taking piles up in the other file.
+
 ## Curation flow
 
 - **Anyone can add a raw proposal.** No gatekeeping at intake — deliberate, since requiring every
@@ -133,13 +156,24 @@ categories:
   machinery (discussion → plan → webster → finalize) — task creation is a new *intake* into an
   existing pipeline, not a new pipeline.
 
-## Note on this manifest folder's own name
+## Consequence: this repo's own `manifest/` and the mill wiki's task list both fold into board
 
-Board's "Manifest" category (short curated bullets + linked detail) is conceptually the same
-pattern this repo's own top-level `manifest/roadmap.md` already follows. Worth keeping in mind
-when board actually ships: the file-based `manifest/` convention here may become a precursor to,
-or eventually be superseded by, board's JSON-backed Manifest category — not a coincidence, likely
-the same idea arrived at independently.
+Two things this design retires, not just resembles:
+
+- **`manifest/roadmap.md`'s Planned list already has board's Tasks-category shape today** — bold
+  name + link to a `designs/*.md` proposal file — not a coincidence, likely the same idea arrived
+  at independently. Once board ships, this list *becomes* board's `tasks.json` directly;
+  `manifest/roadmap.md` stops being hand-maintained and becomes generated output (see Rendering
+  above). The Someday section maps the same way onto `notes.json`'s curated (Manifest-category)
+  tier.
+- **The mill wiki's separate task-claiming mechanism becomes redundant.** Today, moving a
+  designed item from `manifest/roadmap.md`'s Planned list into the mill wiki (so `mill-spawn` can
+  find it) is a manual, duplicate step — done by hand for both `gitrepo` and `board-use-gitrepo`.
+  Once board's `tasks.json` is the one list `mill-spawn` reads from, that hop disappears
+  entirely.
+
+Not a change to make now — board v2 doesn't exist yet — but worth recording so the eventual
+cutover isn't re-litigated as a fresh design question later.
 
 ## Related
 
