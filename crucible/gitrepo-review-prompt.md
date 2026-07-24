@@ -156,31 +156,42 @@ scenario silently corrupts data rather than failing visibly; do not flag the doc
 not-goroutine-safe contract itself as a bug.
 
 ## Round context seeded from prior-round verification
-**Safety pass.** Round 1 (`fable-r1`) found and fixed 9 findings (0 BLOCKING, 3 MEDIUM, 4 LOW, 2
-NIT), all independently re-verified by the orchestrator: build/vet/hermetic/`-tags integration
--count=5`/`-race` all green; `golangci-lint` clean (remaining notes match pre-existing repo
-patterns); the three MEDIUM fixes' regression tests were each falsified (production fix reverted,
-confirmed the test fails at the intended assertion, then cleanly restored to an empty diff) —
-F1 (`SetSnapshotSHA("-d")` no longer deletes the ref), F2/F5 (`ChangedFilesSince` no longer mangles
-non-ASCII paths or drops a rename's old path), F3 (`SetSnapshotSHA`'s adopt-then-retry-once no
-longer silently drops a strictly-newer value under a creation race — reproduced the pre-fix bug
-failing at round 0 of 5). No residual from round 1.
+**Safety pass.** Round 1 (`fable-r1`, 9 findings) and round 2 (`opus-r2`, 1 finding) are both
+CLOSED-AND-VERIFIED by the orchestrator — build/vet/hermetic/`-tags integration -count=5`/`-race`
+green after each round; `golangci-lint` clean (remaining notes match pre-existing repo patterns);
+every regression test tied to a MEDIUM-or-above finding, plus round 2's finding, was independently
+falsified by the orchestrator (production fix reverted, confirmed the test fails at the intended
+assertion — including a `-count=20` flake-rate check for round 2's finding — then cleanly restored
+to an empty diff). Round 2 was seeded as a safety pass but was NOT a clean one: it found and fixed
+one real LOW-severity incompleteness in round 1's own F3 fix (see R1 below). Round 3 is therefore
+also not guaranteed to be clean — do not assume convergence just because no round has left an
+independently-verified residual yet.
 
-**CLOSED-AND-VERIFIED — do NOT re-litigate these** (commits `e06daf6a`..`d5d86ecb` on branch
+**CLOSED-AND-VERIFIED — do NOT re-litigate these** (commits `e06daf6a`..`9e69ef65` on branch
 `gitrepo`):
 - F1 — SHA-argument injection (`validSHA` hex-only gate on `SHAExists`/`ChangedFilesSince`/`SetSnapshotSHA`)
 - F2 — `ChangedFilesSince` non-ASCII path mangling (`-z` + NUL split)
-- F3 — `SetSnapshotSHA` adopt-on-conflict dropping a strictly-newer value under a creation race (adopt-then-retry-once)
+- F3 — `SetSnapshotSHA` adopt-on-conflict dropping a strictly-newer value under a 2-way creation race (adopt-then-retry-once — superseded by R1 below, which generalizes this to N-way)
 - F4 — `validSnapshotKey` admitting keys git itself refuses (trailing `.`, `.lock` suffix)
 - F5 — `ChangedFilesSince` dropping a rename's old path (`--no-renames`)
 - F6 — non-`origin`-remote silent read-path degradation (documented, no behavior change)
 - F7 — `rebase --abort`'s result previously discarded (now checked, honest mid-rebase error)
 - F8 — `StageAndCommit` file entries being pathspecs, not literal paths (doc-only)
 - F9 — missing real-process lock-serialization and crash-recovery test coverage (added)
+- R1 — `SetSnapshotSHA`'s F3 fix only tolerated 2-way transient contention; a 3rd+ concurrent
+  writer could still lose the single retry and silently drop the strictly-newest value (~12% of
+  rounds in a 3-writer race, independently reproduced by the orchestrator: reverting the bounded
+  loop's cap from 8 back to 2 made the new 3-writer regression test fail repeatedly at the "must
+  never be dropped" assertion under `-count=20`). Fixed with a bounded retry loop
+  (`snapshotPushMaxAttempts = 8`) that keeps retrying while the caller remains strictly ahead of
+  the value it just adopted.
 
-This is round 2 — do a genuinely independent clean-room pass to find anything round 1 missed, OR
-honestly confirm merge-readiness ("no new defects, ship it" is the expected, valuable outcome of a
-safety pass — do not invent work to justify the round). Nothing is currently deferred.
+This is round 3 — do a genuinely independent clean-room pass to find anything rounds 1-2 missed,
+OR honestly confirm merge-readiness ("no new defects, ship it" is the expected, valuable outcome of
+a safety pass — do not invent work to justify the round). Given the pattern so far (both real
+defects found were in the snapshot-ref concurrency/adopt-on-conflict machinery), that area
+deserves a particularly skeptical second look, but do not confine yourself to it — review the whole
+module clean-room. Nothing is currently deferred.
 
 State the **merge bar** so you calibrate: correctness in the NORMAL single-instance,
 single-or-few-concurrent-caller flow is the gate; an artificial many-way concurrency stress beyond
