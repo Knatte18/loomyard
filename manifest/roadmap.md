@@ -10,11 +10,6 @@ doc under [designs/](designs/). See Maintenance below for how the numbering work
 
 Committed to, in this order, next.
 
-1. **gitrepo** — generic, repo-agnostic git primitives (`StageAndCommit`, `Push`, `CurrentSHA`,
-   `ChangedFilesSince`, `SHAExists`, `SnapshotSHA`/`SetSnapshotSHA`), built on the existing
-   `internal/gitexec` command-execution layer. Lands and gets tested standalone, before `fabric`
-   consumes it. See [designs/gitrepo.md](designs/gitrepo.md).
-
 1. **board: use `gitrepo` as its git operator** — rewires board's existing hand-rolled git
    plumbing (`internal/boardengine/git.go`, `sync.go`'s detached sync) onto `gitrepo.Repo`
    instead. Depends only on `gitrepo`, not `fabric` — can be built in parallel with it. Distinct
@@ -141,12 +136,21 @@ between these items.
    linked per-topic doc. Millhouse's own `CONSTRAINTS.md` stays untouched for as long as Millhouse
    develops loomyard.
 
+1. **git-native-library** — evaluate a native Go git library (e.g. `go-git`) in place of shelling
+   out via `internal/gitexec`. Genuinely speculative, not yet scoped. See
+   [designs/git-native-library.md](designs/git-native-library.md).
+
 ## Done
 
 1. **board** — task tracker (storage model superseded by the Planned `board` item once it ships).
 
 1. **shared infra** — `internal/configengine`, `internal/gitexec`, `internal/lock`,
    `internal/state`.
+
+1. **gitrepo** — generic, repo-agnostic git primitives (`StageAndCommit`, `Push`,
+   `PushCoalesced`, `CurrentSHA`, `ChangedFilesSince`, `SHAExists`, `SnapshotSHA`/
+   `SetSnapshotSHA`) built on `internal/gitexec` (`internal/gitrepo`; consumed by the Planned
+   `fabric` item once it ships).
 
 1. **worktree + ide** — worktree/portal management, VS Code launcher (worktree itself superseded by
    `warp`).
