@@ -16,6 +16,16 @@
 // many consumers (not merged into it — gitexec has ~80 call-sites across
 // packages, some lower in the layering than gitrepo, e.g. hubgeometry).
 //
+// Some outcome classification matches git's own untranslated (C/English
+// locale) message text: CurrentSHA's unborn-HEAD detection, the recoverable
+// push-rejection triggers behind the rebase-retry and the snapshot
+// adopt-on-conflict, and the benign "no rebase in progress" abort check. A
+// git with translation catalogs installed, running under a non-English
+// locale, defeats those matches; every affected path then degrades loudly —
+// a generic error instead of ErrNoCommits, a hard push error instead of a
+// recovery — never a silent wrong success. Pinning the subprocess locale
+// would be a gitexec-level, repo-wide decision, deliberately not taken here.
+//
 // # The Repo API
 //
 // New(path) wraps an existing checkout with no validation and no I/O — it
