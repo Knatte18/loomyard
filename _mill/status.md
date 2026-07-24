@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-snapshot
+phase: approved-docs-lifecycle
 slug: gitrepo
 branch: gitrepo
 plan: _mill/plan
@@ -24,6 +24,7 @@ implementing  '2026-07-24T18:01:35Z'
 approved-core-repo  '2026-07-24T18:06:51Z'
 approved-push  '2026-07-24T18:14:41Z'
 approved-snapshot  '2026-07-24T18:19:10Z'
+approved-docs-lifecycle  '2026-07-24T18:23:19Z'
 ```
 
 ## Batches
@@ -46,7 +47,8 @@ batches:
     start_sha: 3f7edf37f5379c37e55cae1bc06c7ebcb10099bd
     commit_sha: 5d28e35f21e7f784654fc5eb1dc03fc2bf033dae
   - name: docs-lifecycle
-    state: running
+    state: approved
     implementer_session: 9242c4c5-6f00-45a2-a7e2-044607c16f9f
     start_sha: ae0fd0e5192dc69281dd5a884ab0989594a5e08d
+    commit_sha: b216c6f3d2eb3489a5f38f9138dd093fc6feec48
 ```
