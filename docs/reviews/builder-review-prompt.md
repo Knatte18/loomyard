@@ -48,7 +48,7 @@ the bottom.
   four-branch terminal classification, chain rollback, pause discipline, outcome contract +
   archiving, the three weft-commit points, the co-versioning rule between the orchestrator/
   implementer templates and their Go parsers), `docs/reference/plan-format.md` (builder's pinned
-  input contract), `docs/overview.md`, `docs/roadmap.md`, `CONSTRAINTS.md`, `README.md`.
+  input contract), `docs/overview.md`, `manifest/roadmap.md`, `CONSTRAINTS.md`, `README.md`.
 - The dedicated live-driving suite you will RUN: `tools/sandbox/SANDBOX-BUILDER-SUITE.md`
   (scenarios B1–B9) plus [`docs/sandbox-howto.md`](../sandbox-howto.md) for how the harness works.
   Four rounds have already extended it (B6, B7, B8, B9) — treat it as a FLOOR, not a spec: extend
@@ -450,7 +450,7 @@ a finding.
 - Keep `go build`/`vet`/`test` green after every change. Then RE-DEPLOY (`deploy.cmd`) and re-run
   the suite scenarios — re-deploying FIRST is mandatory.
 - Update `docs/reference/builder-contract.md` (and `docs/overview.md` / `CONSTRAINTS.md` if invariants or the
-  module table move) IN THE SAME change. Do NOT add bugfix/hardening notes to `docs/roadmap.md`.
+  module table move) IN THE SAME change. Do NOT add bugfix/hardening notes to `manifest/roadmap.md`.
 - Tear down all substrate state; confirm zero stray processes. COMMIT each fix as you finish it —
   do NOT push unless the user explicitly asks. Report the changed files and how you verified each
   fix.

@@ -10,12 +10,12 @@ When an idea here matures into a concrete, scoped plan, it graduates to a number
 ## Webster: parallel batches via a DAG (further-out, beyond the sequential fork model)
 
 **Status:** speculative, not scoped. The sequential fork-based module this would extend has
-graduated out of this file — see `roadmap.md` milestone 26 / wiki task `master-builder`. This
-entry is only the riskier remainder that wasn't picked up with it.
+graduated out of this file — see `roadmap.md`'s Done list (webster) / wiki task `master-builder`.
+This entry is only the riskier remainder that wasn't picked up with it.
 
 Today's plan format is deliberately a flat ordered list with **no DAG** (see
-`reference/plan-format.md` and `roadmap.md` milestone 12 — "task-level parallelism via separate
-worktrees + `lyx run`, not intra-plan"). Running independent batches as *parallel* forks would
+[../docs/reference/plan-format.md](../docs/reference/plan-format.md) — "task-level parallelism via
+separate worktrees + `lyx run`, not intra-plan"). Running independent batches as *parallel* forks would
 require reintroducing a DAG into the plan, which reopens exactly the problem that decision
 avoided: two forks writing to the same worktree at the same time can collide on disk. That's only
 safe if either (a) the DAG's independence edges actually guarantee no file overlap between
@@ -26,8 +26,8 @@ sequential model is real and this looks worth the complexity.
 
 ## `hardener`: behavior-based hardening of live-substrate modules
 
-**Status:** draft concept, not settled. Moved here from what used to be roadmap milestone 23 — it
-never belonged among scoped, committed milestones.
+**Status:** draft concept, not settled. Not on the roadmap — it never belonged among scoped,
+committed items.
 
 A separate, **on-demand, post-loom** reviewer that *runs* a live-substrate module (the archetype:
 `mux` driving real tmux) in a **sandbox repo** and reacts to what it observes, rather than reading
@@ -42,10 +42,11 @@ not implement from it yet).
 
 ## mux daemon: foreign-pane self-heal
 
-**Status:** possible extension to roadmap milestone 14 (mux daemon), not yet scoped as part of it.
+**Status:** possible extension to the roadmap's "mux: daemon → Slack relay" item, not yet scoped as
+part of it.
 
 Today mux is one-shot, so an operator-split or stray "faux" pane is only reaped on the *next* mux
-verb (reconcile owns the session window). The daemon (once built, per milestone 14) could close
+verb (reconcile owns the session window). The daemon (once built) could close
 that gap by reconciling on its own. Design steer for when this is picked up: prefer **event-driven
 tmux hooks** (e.g. `after-split-window` / `window-layout-changed`) over a polling loop — near-free
 and responsive; fall back to a low-frequency sweep only if tmux lacks the hook. Gate it behind a
@@ -85,7 +86,7 @@ what keeps caching possible instead of foreclosed once bulk is eventually built.
 ## Maintenance
 
 - New long-horizon ideas go here, not into `roadmap.md`, until they're scoped enough to commit to.
-- When an idea here becomes a real, scoped plan, move it to `roadmap.md` as a numbered milestone
-  and remove (or mark graduated) its entry here.
+- When an idea here becomes a real, scoped plan, move it to `roadmap.md`'s Planned list as a bullet
+  (with a `modules/<name>.md` doc if it needs one) and remove (or mark graduated) its entry here.
 - Entries here are free-form — no numbering, no required ordering. Don't force one out just because
   it's been sitting a while; only drop an entry if it's been superseded, resolved, or abandoned.

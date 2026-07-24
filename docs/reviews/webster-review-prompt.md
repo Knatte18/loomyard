@@ -65,7 +65,7 @@ previously-fixed behaviors have not regressed and (b) re-evaluate the deferred i
     the A/B facts a future `loom` treats as interchangeable) plus the whole doc for the shared
     contract webster imports (digest fields, report schema, outcome schema, chain rollback, pause).
   - `docs/reference/plan-format.md` — webster's pinned input contract (same parser as builder).
-- Docs: `docs/overview.md`, `docs/roadmap.md`, `CONSTRAINTS.md`, `README.md`.
+- Docs: `docs/overview.md`, `manifest/roadmap.md`, `CONSTRAINTS.md`, `README.md`.
 - `tools/sandbox/SANDBOX-WEBSTER-SUITE.md` (scenarios W1 = fork loop, W2 = `/model` injection) —
   for SCENARIO IDEAS only. You run every scenario yourself, directly, with your own tool calls; you
   do NOT invoke any `sandbox-webster-suite.cmd` launcher (that spawns a SEPARATE, context-free
@@ -202,7 +202,7 @@ green `go test` proves nothing here:
 - **`loom`'s phase-machine wiring.** `loom` (not yet built) will drive `webster run` (or
   `builder run`) as one phase, gated by `perch`. webster must not contain loom-specific orchestration.
 - **The `websterv2.md` redesign (DAG-based intra-batch parallelism, worktree-isolated parallel
-  cards, atomic-card dependency lists).** `docs/modules/websterv2.md` is a DRAFT FUTURE-REDESIGN
+  cards, atomic-card dependency lists).** `manifest/modules/websterv2.md` is a DRAFT FUTURE-REDESIGN
   CONCEPT — it is NOT the v1 spec. webster v1 is deliberately strictly sequential (one in-session
   fork per batch, batches in DAG order, same as builder), and that is CORRECT, not a missing feature.
   Do NOT flag v1 for failing to match websterv2's parallel-card design. Judge v1 solely against
@@ -421,7 +421,7 @@ silently drop it.
   re-deploying FIRST is mandatory.
 - Update `internal/websterengine/doc.go` and/or `docs/reference/builder-contract.md` (and
   `docs/overview.md` / `CONSTRAINTS.md` if invariants or the module table move) IN THE SAME change
-  as the fix. Do NOT add bugfix/hardening notes to `docs/roadmap.md` (roadmap is planned milestones
+  as the fix. Do NOT add bugfix/hardening notes to `manifest/roadmap.md` (roadmap is planned milestones
   only, per CLAUDE.md).
 - Tear down all substrate state; confirm zero stray processes. COMMIT each fix as you finish it — do
   NOT push unless the user explicitly asks. Report the changed files and how you verified each fix.

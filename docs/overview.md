@@ -6,7 +6,7 @@ shared memory. State lives on disk per module and is coordinated with file locks
 so concurrent `lyx` processes on a machine cooperate through the filesystem. The
 first module, **board** (a task tracker), is implemented; **warp** (the host↔weft
 topology owner) is implemented; and **mux**, the clean tmux overlay built on what its
-now-deleted proof-of-concept (`muxpoc`) proved, is implemented (see [roadmap.md](roadmap.md)).
+now-deleted proof-of-concept (`muxpoc`) proved, is implemented (see [manifest/roadmap.md](../manifest/roadmap.md)).
 
 In the long term, Loomyard is intended to **replace mill/millhouse (Python)** entirely.
 We get there by building these modules as self-contained toolkits first;
@@ -23,7 +23,7 @@ Three distinct names for three layers, deliberately non-overlapping to avoid the
   subcommand tree (`lyx board`, `lyx weft`, `lyx loom`, …). The analog of millhouse's `millpy`
   backend.
 - **`loom`** — the orchestrator *module* (`lyx loom run`, `lyx loom status`): the domain that
-  drives the phased run, a module like `board` or `weft`. See [modules/loom.md](modules/loom.md).
+  drives the phased run, a module like `board` or `weft`. See [manifest/modules/loom.md](../manifest/modules/loom.md).
 - **`ly`** — the skill / orchestration plugin (the analog of `mill`); skills are `/ly-*`.
 
 **Never name skills `lyx-*` or `loom-*`** — skills are `ly-*`, distinct from both the binary
@@ -95,18 +95,19 @@ See [CONSTRAINTS.md](../CONSTRAINTS.md) for details.
 
 Two doc classes, opposite lifecycles:
 
-- **Module-design docs** (`docs/modules/<module>.md`) are mechanical per-module design
-  drafts, deleted when their module lands; the implementation and tests become the
-  source of truth. A module's purpose and key design rationale then live in its Go
-  package header comment, next to the code it documents.
+- **Module-design docs** (`manifest/modules/<module>.md`) are mechanical per-module design
+  drafts for **planned, not-yet-built** modules — deleted when their module lands; the
+  implementation and tests become the source of truth. A module's purpose and key design
+  rationale then live in its Go package header comment, next to the code it documents.
 - **Durable contract/reference docs** (`docs/reference/`) pin cross-module file
   contracts a real consumer honors — they are **kept**, not deleted on landing:
   `status-schema.md`, `discussion-format.md`, `plan-format.md`, `builder-contract.md`,
   `model-spec.md`.
 
 The other durable documentation is this `overview.md` (principles, naming, the module and
-shared-lib map, the weft contract, and this lifecycle convention) and the not-yet-landed
-portion of `roadmap.md`.
+shared-lib map, the weft contract, and this lifecycle convention). Planned-but-not-built work
+lives under the separate top-level `manifest/` (`manifest/roadmap.md` + `manifest/modules/`) —
+see its own maintenance note there.
 
 ## Weft overlay model
 
@@ -259,7 +260,8 @@ User-facing modules each get one `lyx <module>` namespace:
   timeout). `internal/codeintelengine` is a cycle-free leaf (typed results/errors, no
   `internal/output`); `internal/codeintelcli` is the sole layer that maps it to the JSON
   envelope. ✅ Implemented (v1 scope: references-only, no call hierarchy, no in-process
-  Go arm). See [modules/codeintel.md](modules/codeintel.md).
+  Go arm). Design doc deleted on landing per the documentation lifecycle; durable rationale
+  lives in the `internal/codeintelengine` package documentation.
 - **mux** — **the window to the world**: tmux overlay + **strand** bookkeeping + render
   (`internal/muxcli` + `internal/muxengine` + `internal/muxengine/render`). Hosts every managed
   process as a strand, arranges them, persists to `.lyx/mux.json` (`lyx mux
@@ -317,7 +319,7 @@ User-facing modules each get one `lyx <module>` namespace:
   itself is ✅ **built**, ahead of the phase machine: a prompt/profile fed to `shuttle.Run`
   (`internal/loomengine`'s `discussion-template.md` + `prompt.go` + `discussion.go`), distinct
   from the still-unbuilt `lyx loom run` phase machine that will drive it. See
-  [modules/loom.md](modules/loom.md).
+  [manifest/modules/loom.md](../manifest/modules/loom.md).
 - **perch** — generic profile-driven gate loop: runs `burler` rounds on one artifact until
   `APPROVED`/`STUCK` (milestone-capped `round_caps` ladder + a holistic progress judge), plus an
   operational `PAUSED` exit; independent of `loom` but used by it between every phase, and standalone
@@ -330,12 +332,12 @@ User-facing modules each get one `lyx <module>` namespace:
   `internal/burlerengine` package documentation.
 - **hardener** — **DRAFT / concept.** Behavior-based reviewer that *runs* a live-substrate module
   (needs a sandbox repo) to harden it before merge; on-demand, post-loom, **off the spine**, shares
-  only the `burler` round discipline. See [modules/hardener.md](modules/hardener.md).
+  only the `burler` round discipline. See [manifest/modules/hardener.md](../manifest/modules/hardener.md).
 
 The cross-OS spawn primitive **proc** is the one remaining internal (non-CLI) layer — the base of
-the stack. The [module map](modules/README.md) explains how proc / mux / shuttle fit together.
-(Earlier drafts split mux into separate `shed`/`glance` modules; both folded back into mux — see
-the `internal/muxengine` package documentation.)
+the stack; see the [Execution stack](#execution-stack-orchestration-layers) section below for how
+proc / mux / shuttle fit together. (Earlier drafts split mux into separate `shed`/`glance`
+modules; both folded back into mux — see the `internal/muxengine` package documentation.)
 
 **init** is not a module but a cross-cutting setup command (`lyx init`) that
 scaffolds the shared `_lyx/` config dir for every module.
@@ -351,7 +353,7 @@ below it. It exists in this shape for one reason: agents must run as **interacti
 sessions, never headless `claude -p`** (an economic constraint — see the `internal/shuttleengine`
 package documentation), so
 spawning an agent is not a plain `exec` but "place a pane, launch a provider in it, drive it,
-detect completion." Full side-by-side disambiguation: the [module map](modules/README.md).
+detect completion."
 
 ```
 internal/proc     spawn any OS process (windowless / detached), cross-OS      [OS primitive]
@@ -397,7 +399,31 @@ requirement), agents run, output files are read, nobody need watch.
   (`lyx shuttle run|interrupt|send` lets an operator or another process drive one agent
   standalone, before loom/perch exist); `burler` is composed by `perch` (`lyx burler run` is a
   debug-only wrapper, not a product verb), and
-  `proc` alone stays an internal library with no CLI of its own. See the [module map](modules/README.md).
+  `proc` alone stays an internal library with no CLI of its own.
+
+### Following one spawn down the stack
+
+loom wants a plan-reviewer for worktree `feature-x`:
+
+1. `loom` → `perch.Run(profile, "feature-x")` — "review this plan against the discussion until clean."
+2. `perch` → `burler.Run(profile, priorFiles)` — "run one review+fix round."
+3. `burler` → `shuttle.Run(prompt, engine)` — "run one handler agent."
+4. `shuttle` → `mux.AddStrand{ cmd:"claude …", worktree:"feature-x", display:{anchor:below-parent, focus:true} }`.
+5. `mux` records the strand in `.lyx/mux.json`, runs the command via `proc` in a pane, re-renders
+   the layout (`layout = rules(strands)`), and applies it.
+6. The `Stop` hook fires → mux notes the edge → shuttle reads the output file → returns to burler →
+   burler writes review/fixer-report + verdict → perch reads it, decides loop or exit → on a clean
+   round returns `APPROVED | stuck` → loom advances.
+
+### The disambiguating test
+
+- About **the OS**? → `proc`.
+- About **a tmux mechanic, a strand, or how it's laid out**? → `mux`.
+- About **running an LLM and getting its answer**? → `shuttle`.
+- About **one review+fix round**? → `burler`.
+- About **whether an artifact passes (loop rounds until clean/stuck)**? → `perch`.
+- About **hardening a live-substrate module by running it** (post-loom, off-spine)? → `hardener` (DRAFT).
+- About **what to run next**? → `loom`.
 
 ## Tests
 
@@ -411,9 +437,8 @@ The **sandbox Hub** is a dedicated bench for manual testing of lyx's core workfl
 
 ## Other docs
 
-- [modules/README.md](modules/README.md) — **the module map**: index of every module doc + how the layers stack (design).
-- [modules/loom.md](modules/loom.md) — the phased orchestrator (`lyx loom` + `lyx perch`); design.
-- [modules/codeintel.md](modules/codeintel.md) — multi-language reference lookup over LSP (`lyx codeintel refs`); as-built design (kept until the doc folds into the `internal/codeintelengine` package header, per the documentation lifecycle).
+- [manifest/modules/loom.md](../manifest/modules/loom.md) — the phased orchestrator (`lyx loom` + `lyx perch`); design.
+- `internal/codeintelengine` package documentation — multi-language reference lookup over LSP (`lyx codeintel refs`) (as-built; module doc deleted per the documentation lifecycle).
 - `internal/tokenvocab` package documentation — the shared token vocabulary (`repo`/`hub` +
   `Render` over `internal/stencil`), consumed by mux's header pipeline and, later, loom's
   prompt templates; a leaf, not a phased module (as-built; module doc deleted per the
@@ -423,14 +448,14 @@ The **sandbox Hub** is a dedicated bench for manual testing of lyx's core workfl
 - `internal/shuttleengine` package documentation — run one LLM agent via a swappable engine over the file contract (as-built; module doc deleted per the documentation lifecycle).
 - `internal/burlerengine` package documentation — one review+fix round: A-review → B-fix, no self-grading (as-built; module doc deleted per the documentation lifecycle).
 - `internal/perchengine` package documentation — the gate loop: run `burler` rounds → `APPROVED`/`STUCK`/`PAUSED` (as-built; module doc deleted per the documentation lifecycle).
-- [modules/hardener.md](modules/hardener.md) — **DRAFT/concept**: behavior-based hardening of a live-substrate module (post-loom, off-spine).
+- [manifest/modules/hardener.md](../manifest/modules/hardener.md) — **DRAFT/concept**: behavior-based hardening of a live-substrate module (post-loom, off-spine).
 - [benchmarks/](benchmarks/board-performance.md) — board performance, tracked across revisions.
 - [shared-libs/](shared-libs/README.md) — the shared infrastructure plumbing.
 - [research/](research/) — design exploration (mux research logs).
 - [reference/tmux_scripting.md](reference/tmux_scripting.md) — tmux command reference (vendored).
-- [roadmap.md](roadmap.md) — numbered milestones and long-term direction.
-- [long-term-ideas.md](long-term-ideas.md) — speculative, unscheduled design ideas not yet mature
-  enough to be a roadmap milestone.
+- [manifest/roadmap.md](../manifest/roadmap.md) — planned modules/milestones and what's shipped.
+- [manifest/long-term-ideas.md](../manifest/long-term-ideas.md) — speculative, unscheduled design ideas not yet mature
+  enough to be a roadmap entry.
 - [sandbox-howto.md](sandbox-howto.md) — operator runbook: deploy `lyx`, build the Hub, run the suite agent (procedure).
 - [sandbox-hub.md](sandbox-hub.md) — the sandbox Hub: a dedicated bench for manual (dogfooding) testing.
-- [reviews/README.md](reviews/README.md) — the **serial review+fix loop**: a reusable method for hardening a live-substrate module before merge (orchestrator-driven, model-rotating, clean-room self-fixing rounds + independent verification). The hand-executed prototype of the `perch` (see the `internal/perchengine` package documentation) + `burler` (see the `internal/burlerengine` package documentation) round loop (and the origin of the [`hardener`](modules/hardener.md) concept); ships two paste-ready prompts — an [orchestrator prompt](reviews/orchestrator-prompt.md) (drives the loop + verifies) and a [round-agent prompt template](reviews/review-prompt-template.md) (the reviewer-fixer), to instantiate per module.
+- [reviews/README.md](reviews/README.md) — the **serial review+fix loop**: a reusable method for hardening a live-substrate module before merge (orchestrator-driven, model-rotating, clean-room self-fixing rounds + independent verification). The hand-executed prototype of the `perch` (see the `internal/perchengine` package documentation) + `burler` (see the `internal/burlerengine` package documentation) round loop (and the origin of the [`hardener`](../manifest/modules/hardener.md) concept); ships two paste-ready prompts — an [orchestrator prompt](reviews/orchestrator-prompt.md) (drives the loop + verifies) and a [round-agent prompt template](reviews/review-prompt-template.md) (the reviewer-fixer), to instantiate per module.

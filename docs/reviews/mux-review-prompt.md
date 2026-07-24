@@ -70,7 +70,7 @@ preserved.
   behavioral assumption, added when `docs/modules/mux.md` was deleted a second time for
   recreating exactly the doc this lifecycle rule forbids), `internal/tokenvocab`'s package
   documentation, `docs/research/mux-exploration.md`,
-  `docs/research/mux-hooks-exploration.md`, `docs/overview.md`, `docs/roadmap.md`,
+  `docs/research/mux-hooks-exploration.md`, `docs/overview.md`, `manifest/roadmap.md`,
   `CONSTRAINTS.md`, `README.md`.
 - The dedicated live-driving suite you will RUN: `tools/sandbox/SANDBOX-MUX-SUITE.md`
   (scenarios M0–M19 as of this writing — M6 was retired when `anchor:top` was removed and
@@ -614,7 +614,7 @@ items yet, since this is its round 1):
 - Update the `internal/muxengine` package documentation (and `docs/overview.md` / `CONSTRAINTS.md`
   if invariants or the module table move) IN THE SAME change — reconcile any prose the fix makes
   stale. Do NOT add
-  bugfix/hardening notes to `docs/roadmap.md` (roadmap is for planned milestones only, per
+  bugfix/hardening notes to `manifest/roadmap.md` (roadmap is for planned milestones only, per
   CLAUDE.md).
 - Tear down all tmux state; confirm zero tmux processes.
 - COMMIT each fix as you finish it (see "Commit per fix" above) — do NOT push unless the user

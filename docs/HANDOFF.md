@@ -13,7 +13,7 @@ Nothing is currently spawned/active. Wiki task list is authoritative — read it
 client (`_client.list_tasks_brief`/`list_tasks_full`), never by opening `Home.md` directly (see
 CLAUDE.md `## Mill wiki`).
 
-## loom build order (docs/roadmap.md milestone 12)
+## loom build order (manifest/roadmap.md)
 
 1. Contracts — done
 2. Preflight — done
@@ -35,7 +35,7 @@ fold into session bootstrap (#5)?
 
 Long design discussion this session concluded #3 should **not** start yet, because its output
 format (the plan's card schema) is exactly what's in question for a possible webster v2. See
-`docs/modules/websterv2.md` (Part A = card-level parallel execution, Part B = structured
+`manifest/modules/websterv2.md` (Part A = card-level parallel execution, Part B = structured
 impact lookup via LSP — the two former separate docs, merged into one this session).
 
 **Recommended next step:** spawn one new, narrowly-scoped wiki task — call it something like
@@ -75,8 +75,8 @@ Once pinned, #3 can build against it, and #4 (phase-machine) can proceed in para
 
 ## Reference docs
 
-- `docs/modules/websterv2.md` — the merged v2 design doc (Part A + Part B).
-- `docs/roadmap.md` milestone 12 — loom's pinned build order.
+- `manifest/modules/websterv2.md` — the merged v2 design doc (Part A + Part B).
+- `manifest/roadmap.md` — loom's pinned build order.
 - `docs/reference/discussion-format.md` — the `decision-record.md`/`support-log.md` contract
   `loom-discussion-producer` implements.
 - `docs/reference/builder-contract.md` — the v1 cross-module contract `builder`/`webster` share

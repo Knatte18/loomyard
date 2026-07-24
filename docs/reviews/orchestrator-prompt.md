@@ -128,7 +128,7 @@ one. Use the more capable model for the final safety pass and for correctness-cr
 - Commit each round's work (a clean base for the next). `.scratch/` is gitignored — review reports
   never get committed; commit code + docs + suite + tests explicitly.
 - Every task that changes behaviour must update the module doc / `overview.md` / `CONSTRAINTS.md` in
-  the **same** commit (per `CLAUDE.md`). Do not add bugfix notes to `docs/roadmap.md`.
+  the **same** commit (per `CLAUDE.md`). Do not add bugfix notes to `manifest/roadmap.md`.
 - Keep ONE handoff note (e.g. `.scratch/<module>-review-HANDOFF.md`) so the loop survives a context
   compaction, or briefs a genuinely fresh orchestrator that never saw this session. Refresh it after
   every round's verification. Size its detail to what actually happened, not to a fixed template —

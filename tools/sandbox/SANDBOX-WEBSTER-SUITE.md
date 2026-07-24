@@ -55,7 +55,7 @@ It must not look for, read, or reason about the lyx source tree. No peeking at
 Discovering the command surface is done via `lyx webster --help` and `lyx webster
 <subcommand> --help` alone -- not from documentation outside the Hub. The plan file(s) under
 `_lyx/plan/` are the one artifact the agent must construct itself per each scenario's Goal
-below; `docs/modules/plan-format.md`'s worked example (available via `lyx webster validate
+below; `docs/reference/plan-format.md`'s worked example (available via `lyx webster validate
 --help` or by reasoning from validation error messages) is the reference for the file shape.
 Keep every scenario's plan cards trivial -- e.g. "create `resultN.md` containing the single
 line `OK`" -- so a real fork finishes each batch in one card, one commit, fast.
