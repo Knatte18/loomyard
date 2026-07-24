@@ -162,18 +162,13 @@ working.
 ## Adjacent pieces (not webster's own job, but webster hands off to them)
 
 - **The planner instruction** (feeds webster its input) — converts a discussion-protocol thread
-  into a flat card list per [plan-format-v3.md](plan-format-v3.md). No manifest/glossary/
-  CONTEXT.md artifact to design around: a "living vision" document (Matt Pocock–style
-  CONTEXT.md/ADR split) was explored at length and **deliberately rejected** for this project —
-  raddle (code-derived, snapshot-tracked) already owns "what IS," and CONSTRAINTS.md-equivalent
-  files already own "what must remain true"; no separate "what SHALL become" artifact was judged
-  necessary. See [loom.md](loom.md) for where this fits in the phase machine.
-- **Loom's finishing step** — merge-in from parent (in case parent has moved), conflict
-  resolution (spawn an LLM fork if a real conflict occurs), optional PR creation if configured.
-  Expected to be mostly deterministic Go. **Before writing this from scratch: check Millhouse's
-  existing auto-merge machinery for direct reuse/porting** — it's already production-tested,
-  including against the exact kind of plan-vs-actual-impact drift discussed above; likely the
-  strongest, most battle-tested candidate for anything touched on here.
+  into a flat card list per [plan-format-v3.md](plan-format-v3.md). Own doc:
+  [loom-planner.md](loom-planner.md).
+- **Loom's Finalize phase** — merge-in from parent, conflict resolution, optional PR creation.
+  Own doc: [loom-finalize.md](loom-finalize.md). **Before writing it from scratch: check
+  Millhouse's existing auto-merge machinery for direct reuse/porting** — it's already
+  production-tested, including against the exact kind of plan-vs-actual-impact drift discussed
+  above; likely the strongest, most battle-tested candidate for anything touched on here.
 
 ## Superseded: the more aggressive parallel-card-execution design
 

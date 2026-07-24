@@ -40,9 +40,17 @@ Committed to, in this order, next.
 
 1. **mux → reed** — rename, no behavior change. See [designs/mux-to-reed.md](designs/mux-to-reed.md).
 
-1. **loom: Planner producer + remaining phases** — converts `discussion.md` into a plan-format-v3
-   card list; the phase-machine skeleton, Finalize, and session bootstrap remain around it. See
+1. **loom: Planner producer** — converts `discussion.md` into a plan-format-v3 card list; no
+   inputs beyond `discussion.md`, no review logic of its own. See
+   [designs/loom-planner.md](designs/loom-planner.md).
+
+1. **loom: phase-machine skeleton + session bootstrap** — the status-file-driven engine
+   (sequencing, resume, crash-recovery, pause), testable against fake phases before real
+   producers are wired in, plus the `lyx loom run` entry point. See
    [designs/loom.md](designs/loom.md).
+
+1. **loom: Finalize phase** — merge-back after Builder-review approval; Go-first, LLM only on
+   merge conflict; optional PR creation. See [designs/loom-finalize.md](designs/loom-finalize.md).
 
 1. **dev/test `lyx.exe` separated from production deploy** — a second deploy target so
    review/sandbox tooling never overwrites the stable production binary with an in-progress test

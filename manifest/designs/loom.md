@@ -67,11 +67,17 @@ Preflight is **built**, as `internal/loomengine.Preflight` — engine-only, no c
 (see [module decomposition](#module-decomposition)). It validates the four preconditions over
 git/filesystem state: worktree geometry and at-root (cwd/Hub/Prime via `internal/hubgeometry`),
 the host worktree is clean, weft pairing is present **and in sync** — host branch == weft branch,
-via [`warp`](warp.md#drift-detection--when) — and `_lyx/status.json` exists and is a coherent
+via `warp`'s drift detection — and `_lyx/status.json` exists and is a coherent
 fresh seed (no half-finished prior run). Each producing phase emits
 a draft artifact and is followed by a review gate. `approved` advances to the next
 phase; `stuck` routes to the stuck handler (bounce back to an earlier phase, or escalate
 to a human) — never "keep fixing symptoms."
+
+**The phase-machine skeleton is testable against fake phases before real producers are wired
+in** — the same fake-tested approach `perch` used against a fake `burler` (see the
+`internal/burlerengine` package documentation), applied one level up: sequencing, resume,
+crash-recovery, and pause can all be verified against stub phases well before Discussion/Plan/
+Builder are real.
 
 **Raddle** is a dedicated step after Builder — deliberately *not* the implementer's job.
 Experience (millhouse) is that implementers, busy with code, forget the docs; a dedicated
@@ -81,10 +87,13 @@ head." Mechanism: loom stamps a **start-SHA** (host `HEAD`) into the status file
 begins; the Builder agent **commits its own work** (required anyway — for backtracking, and
 so there is a diff to read). The Raddle step then generates docs over
 `git diff <start-SHA>..HEAD` on the host (excluding `_lyx`/`_raddle`) for a targeted
-update — **building heavily on millhouse's `codeguide-update`** — and commits the docs into the weft via `lyx weft sync` (never raw git — see the
-[warp responsibility boundary](warp.md#responsibility-boundary--warp-vs-weft-vs-host)). The
+update — **building heavily on millhouse's `codeguide-update`** — and commits the docs into the weft via `lyx weft sync` (never raw git — this is `warp`'s responsibility boundary between
+warp/weft/host). The
 `_raddle` merge-back at Finalize is exactly what `warp cleanup` gates on. (Whether the
 Raddle step is itself review-gated is an open choice; shown ungated above.)
+
+**Finalize** is loom's last phase — merge-back after Builder-review approval, optional PR
+creation. Substantial enough to warrant its own doc: see [loom-finalize.md](loom-finalize.md).
 
 ## The gate
 
@@ -101,45 +110,18 @@ invariant; only the review *profile* (rubric + fasit) differs per phase. See the
 package documentation for the round-loop and stuck detection, and the `internal/burlerengine` package
 documentation for the combined handler/fixer round and the profile schema.
 
-## Builder — an LLM orchestrator over Go verbs (advance), the sibling of perch (converge)
+## Builder — a black box loom drives, the sibling of perch
 
-> **This section describes the shipped v1 design.** A redesign to consume
-> [plan-format v3](plan-format-v3.md)'s flat card list instead of the batch-format below is
-> planned — see [webster-rewrite.md](webster-rewrite.md) for the card-level fork contract,
-> scheduling, and Master-context design that supersedes the batch-loop description here once it
-> lands.
-
-Unlike the discussion and plan producers (each one `shuttle.Run` → one artifact), **Builder is a
-batch loop held by a long-lived LLM orchestrator session** (model config-chosen; Sonnet default)
-that drives fat **`lyx builder` verbs** — `spawn-batch`, `poll`, `status` — provided by Go
-(`internal/builderengine`). Go supplies **only the verbs plus the distillation behind them**: it
-does not hold the loop, iterate batches, or make orchestration decisions. This is the one
-deliberate exception to "Go owns the machine": a pure Go-driven batch loop was explicitly
-rejected — mill-go's context bloat came from the LLM orchestrator swallowing verbose sub-agent
-output, not from the loop being LLM-held.
-
-- **Advance per batch, end at batches-built.** The orchestrator drives the plan's batches
-  strictly in order (ordered list, **no DAG** — the plan contract is pinned in
-  [plan-format.md](../../docs/reference/plan-format.md)), spawning one implementer worker per batch (config-chosen
-  model; Sonnet default — see [model-spec](../../docs/reference/model-spec.md)). `builder run` itself
-  ends the moment the last batch is green (or the run reports stuck/paused) — it runs **no**
-  review of its own. The terminal holistic review is the separate **Builder-review gate**: a
-  full `perch` converge-loop over the whole diff, driven by `loom` (or the operator running
-  `lyx perch run` directly) *after* `builder run` returns `done`; no per-batch design review in
-  v1. See [builder-contract.md](../../docs/reference/builder-contract.md) for the as-built verb surface and digest contract.
-- **Digest-only consumption.** The `poll` verb reads the implementer's on-disk batch-report,
-  distills it in Go, and returns a terse digest; the orchestrator never ingests raw session
-  prose. That is what keeps a persistent LLM orchestrator lean.
-- **Escalation by fresh spawn.** A stuck worker is escalated by the orchestrator spawning a
-  **fresh higher-capability model** that reads the durable reports — not a `/model` switch
-  inside the stuck session (which would inherit the polluted context; see the
-  `internal/shuttleengine` package documentation for the escalation rationale).
-
-**Same substrate, different loop semantics:** Builder **advances** (batch → batch → done);
-perch **converges** (iterate review+fix on one artifact until `APPROVED`/`stuck`) — the
-Builder-review gate is perch running *after* builder, never a phase inside builder's own loop.
-Pause stays uniform across them (see [pause](#graceful-pause)): builder's verbs check the pause
-flag at the batch boundary even though its loop is LLM-held.
+From loom's view, **Builder is a black box loom calls, exactly like perch**: `loom` runs
+`builder run` and, once it returns `done`, drives the terminal **Builder-review gate** — a full
+`perch` converge-loop over the whole diff. loom does not see Builder's batch loop, its verbs, or
+its escalation mechanics, the same way it doesn't see perch's rounds. Builder's own internal
+design (today: a batch loop over `internal/builderengine`'s verbs; planned: a
+[card-level rewrite](webster-rewrite.md)) lives in
+[webster-rewrite.md](webster-rewrite.md) and [builder-contract.md](../../docs/reference/builder-contract.md),
+not here — pause stays uniform across loom/perch/Builder (see [pause](#graceful-pause)) because
+every loop checks the same `pause_requested` flag at its own step boundary, regardless of which
+module holds the loop.
 
 ## `loom` — the autonomous driver
 
@@ -218,12 +200,12 @@ files. A dead claude with a finished output file is, to loom, a **done step** �
 boundary**, never mid-operation — `mill-pause`'s natural-stopping-point property, made systematic.
 
 - **A property of the loop pattern, not loom alone.** Every loop — loom (phases),
-  `perch` (rounds), [Builder](#builder--an-llm-orchestrator-over-go-verbs-advance-the-sibling-of-perch-converge)
-  (batches; its loop is LLM-held, but the `spawn-batch` verb checks the flag in Go before
-  spawning) — checks a `pause_requested` flag in the [status file](#state--contracts) at its step
-  boundary and stops before spawning the next unit. The **innermost active loop** honours it first,
-  so pause lands at the finest active boundary (next batch / round / phase). The Go code is almost
-  always *between* steps (it spawns and waits), so catching it there is trivial.
+  `perch` (rounds), [Builder](#builder--a-black-box-loom-drives-the-sibling-of-perch) (batches;
+  its loop is LLM-held, but the batch-spawn verb checks the flag in Go before spawning) — checks
+  a `pause_requested` flag in the [status file](#state--contracts) at its step boundary and stops
+  before spawning the next unit. The **innermost active loop** honours it first, so pause lands
+  at the finest active boundary (next batch / round / phase). The Go code is almost always
+  *between* steps (it spawns and waits), so catching it there is trivial.
 - **The leaf agent finishes its unit; nothing is killed.** Boundary pause lets the in-flight worker
   complete its small unit (one batch / round — its output file written), then the driver stops.
   Resume (`lyx loom run`) spawns the next step from the status file — the same resume-on-files
@@ -247,8 +229,8 @@ boundary**, never mid-operation — `mill-pause`'s natural-stopping-point proper
 | `loom` (`lyx loom run`) | new Go module | the phase machine / autonomous driver |
 | `perch` (`lyx perch`) | new Go module | the gate loop: run `burler` rounds → `APPROVED`/`stuck` + progress-judge + cap |
 | `burler` | new Go module | one review+fix round: A-review (+ optional cluster) → B-fix; composed by `perch` |
-| builder | LLM orchestrator + Go verbs (`internal/builderengine`) | long-lived orchestrator session holds the batch loop over the six as-built verbs (`validate`/`run`/`spawn-batch`/`poll`/`status`/`pause`); Go = verbs + distillation; fresh-spawn escalation; ends at batches-built — the holistic review is perch's separate Builder-review gate, not builder's own job — **not** a single producer spawn; input contract: [plan-format.md](../../docs/reference/plan-format.md); as-built doc: [builder-contract.md](../../docs/reference/builder-contract.md) |
-| producers (discussion / plan) | prompt/profile files | **not** modules — just a prompt + profile fed to `shuttle.Run`. The Discussion producer is ✅ **built**: an interview prompt + `stencil` composer + `DiscussionSpec(...) (shuttleengine.Spec, error)` factory in `internal/loomengine` (`discussion-template.md`, `prompt.go`, `discussion.go`), fed to `shuttle.Run` by the future phase machine; `loom.yaml` supplies its `discussion` model-spec and `discussion_timeout_min` knobs. The **Planner producer** (not built): "read `discussion.md`, write a [plan-format v3](plan-format-v3.md) flat card list." No manifest/glossary/CONTEXT.md artifact to design around — see [webster-rewrite.md](webster-rewrite.md#adjacent-pieces-not-websters-own-job-but-webster-hands-off-to-them) for why that idea was explored and rejected. |
+| builder | LLM orchestrator + Go verbs (`internal/builderengine`) | a black box from loom's view — see [webster-rewrite.md](webster-rewrite.md) and [builder-contract.md](../../docs/reference/builder-contract.md) |
+| producers (discussion / plan) | prompt/profile files | **not** modules — just a prompt + profile fed to `shuttle.Run`. The Discussion producer is ✅ **built**: an interview prompt + `stencil` composer + `DiscussionSpec(...) (shuttleengine.Spec, error)` factory in `internal/loomengine` (`discussion-template.md`, `prompt.go`, `discussion.go`), fed to `shuttle.Run` by the future phase machine; `loom.yaml` supplies its `discussion` model-spec and `discussion_timeout_min` knobs. The Planner producer (not built) has its own doc: [loom-planner.md](loom-planner.md). |
 | `lyx loom status` | a loom subcommand | the 1-line status view; runs as a strand (see `internal/muxengine`; `below-parent` + `ShrinkWhenWaitingOnChild`), not a separate module |
 | execution stack | existing/new infra | `proc` → mux → shuttle — see [overview.md#execution-stack](../../docs/overview.md#execution-stack-orchestration-layers) — built once, used by both modules above |
 | Preflight | new Go package (`internal/loomengine`) | ✅ **Done**, engine-only (no cobra module yet) — validates the four preconditions (geometry + at-worktree-root, host worktree clean, weft paired & in sync, seed exists & coherent) over git/filesystem state; builds on `internal/hubgeometry`, `internal/warpengine`, `internal/state` |
@@ -256,7 +238,9 @@ boundary**, never mid-operation — `mill-pause`'s natural-stopping-point proper
 
 The new Go specific to loom is the **three modules** (`loom`, `perch`, `burler`) plus the
 **builder module** (`internal/builderengine` — the fat verbs + distillation the Builder
-orchestrator drives) and the `lyx loom status` subcommand; beneath them is the shared [execution stack](README.md) (`proc`, `mux`, `shuttle`); and
+orchestrator drives) and the `lyx loom status` subcommand; beneath them is the shared
+[execution stack](../../docs/overview.md#execution-stack-orchestration-layers) (`proc`, `mux`,
+`shuttle`); and
 everything else is prompt files, profiles, and the existing lyx modules. The display is **not** a
 module — it is `lyx loom status` running in a strand that `mux` (see
 [overview.md#modules](../../docs/overview.md#modules)) hosts and arranges.
@@ -309,8 +293,9 @@ the file contract** — the agent writes its output files and Go reads them — 
 file-contract design above is unchanged; only the *spawn + completion-detection* mechanism
 differs from a headless model.
 
-The consequence for loom: it sits on top of the [`proc → mux → shuttle`](README.md) stack, so that
-stack is on loom's critical path. loom (via `perch` — see the `internal/perchengine` package
+The consequence for loom: it sits on top of the
+[`proc → mux → shuttle`](../../docs/overview.md#execution-stack-orchestration-layers) stack, so
+that stack is on loom's critical path. loom (via `perch` — see the `internal/perchengine` package
 documentation — → `burler`, see the `internal/burlerengine` package documentation) calls
 `shuttle.Run` per spawn and stays ignorant of strands, layout, and engines — those belong to `mux` (see
 [overview.md#modules](../../docs/overview.md#modules); the strand
