@@ -38,6 +38,14 @@ var rebaseRetryTriggers = []string{"non-fast-forward", "rejected", "fetch first"
 // the caller's separate, prior step — so a clean tree with respect to
 // tracked files is the caller's responsibility for the rebase-retry path to
 // recover; gitrepo does not auto-stash.
+//
+// SHA invalidation: when the retry path fires, the rebase rewrites the local
+// commits it replays, so any SHA captured before Push — StageAndCommit's
+// return value in particular — may no longer name a commit on the branch
+// after a SUCCESSFUL push. SHAExists does not catch this (the pre-rebase
+// object survives locally via the reflog), so a stale SHA recorded via
+// SetSnapshotSHA would push an off-history snapshot. Callers must re-read
+// CurrentSHA after a successful Push before recording any SHA.
 func (r *Repo) Push() error {
 	return r.pushWithRebaseRetry()
 }
@@ -119,7 +127,9 @@ func containsAny(s string, substrs []string) bool {
 // queue is what turns a burst of writers into as few pushes as possible. An
 // unbounded loop on hasUnpushed would spin forever if a push ever succeeded
 // without configuring an upstream, since hasUnpushed would keep reporting
-// true.
+// true. The guarded push shares Push's rebase-retry, including its SHA
+// invalidation caveat: re-read CurrentSHA after a successful call before
+// recording any pre-call SHA (see Push).
 func (r *Repo) PushCoalesced() error {
 	l, err := lock.AcquireWriteLock(filepath.Join(r.path, pushLockFile))
 	if err != nil {

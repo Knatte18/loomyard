@@ -84,7 +84,12 @@
 // first" — the full trigger set board's sync.go:pushUnpushed matches) via
 // one `pull --rebase` before retrying; the rebase-retry path requires a
 // worktree clean of tracked-file changes, which StageAndCommit's caller is
-// responsible for by having already committed. PushCoalesced adds
+// responsible for by having already committed. A push that recovered via the
+// rebase rewrote the local commits it replayed: any SHA captured before the
+// push (StageAndCommit's return value in particular) may afterwards name an
+// off-history commit that SHAExists still reports true for via the reflog —
+// callers re-read CurrentSHA after a successful push before recording a SHA
+// anywhere, SetSnapshotSHA included. PushCoalesced adds
 // cross-process coalescing on top: it
 // acquires a single-pusher lock file, .gitrepo-push.lock, in the repo's
 // worktree root before checking whether anything is actually unpushed, so a
