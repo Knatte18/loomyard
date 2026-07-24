@@ -163,7 +163,10 @@ func (r *Repo) ChangedFilesSince(sha string) ([]string, error) {
 	if !validSHA(sha) {
 		return nil, ErrInvalidSHA
 	}
-	stdout, stderr, code, err := r.run("diff", "--name-only", sha+"..HEAD")
+	// -z terminates each path with NUL and disables core.quotePath's C-style
+	// escaping, so a non-ASCII filename comes back verbatim instead of as a
+	// quoted "\303\245"-style string that matches nothing on disk.
+	stdout, stderr, code, err := r.run("diff", "--name-only", "-z", sha+"..HEAD")
 	if err != nil {
 		return nil, err
 	}
@@ -172,11 +175,11 @@ func (r *Repo) ChangedFilesSince(sha string) ([]string, error) {
 	}
 
 	var files []string
-	for _, line := range strings.Split(stdout, "\n") {
-		if line == "" {
+	for _, path := range strings.Split(stdout, "\x00") {
+		if path == "" {
 			continue
 		}
-		files = append(files, line)
+		files = append(files, path)
 	}
 	return files, nil
 }

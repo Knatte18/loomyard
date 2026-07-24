@@ -256,6 +256,33 @@ func TestChangedFilesSince_ExcludesUncommittedEdit(t *testing.T) {
 	}
 }
 
+// TestChangedFilesSince_NonASCIIPathReturnedVerbatim asserts that a filename
+// outside ASCII comes back as the literal on-disk path, not core.quotePath's
+// C-quoted escape form ("\"bl\\303\\245b\\303\\246r.txt\"") that matches
+// nothing on disk.
+func TestChangedFilesSince_NonASCIIPathReturnedVerbatim(t *testing.T) {
+	dir, repo := newRepo(t)
+	writeFile(t, dir, "a.txt", "initial")
+	commitAll(t, dir, "init")
+
+	base, err := repo.CurrentSHA()
+	if err != nil {
+		t.Fatalf("CurrentSHA() error = %v", err)
+	}
+
+	const name = "blåbær.txt"
+	writeFile(t, dir, name, "berries")
+	commitAll(t, dir, "add non-ascii filename")
+
+	got, err := repo.ChangedFilesSince(base)
+	if err != nil {
+		t.Fatalf("ChangedFilesSince() error = %v; want nil", err)
+	}
+	if len(got) != 1 || got[0] != name {
+		t.Errorf("ChangedFilesSince() = %q; want [%q] verbatim", got, name)
+	}
+}
+
 func TestChangedFilesSince_ErrorsOnFabricatedSHA(t *testing.T) {
 	dir, repo := newRepo(t)
 	writeFile(t, dir, "a.txt", "initial")
