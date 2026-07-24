@@ -156,42 +156,73 @@ scenario silently corrupts data rather than failing visibly; do not flag the doc
 not-goroutine-safe contract itself as a bug.
 
 ## Round context seeded from prior-round verification
-**Safety pass.** Round 1 (`fable-r1`, 9 findings) and round 2 (`opus-r2`, 1 finding) are both
-CLOSED-AND-VERIFIED by the orchestrator — build/vet/hermetic/`-tags integration -count=5`/`-race`
-green after each round; `golangci-lint` clean (remaining notes match pre-existing repo patterns);
-every regression test tied to a MEDIUM-or-above finding, plus round 2's finding, was independently
-falsified by the orchestrator (production fix reverted, confirmed the test fails at the intended
-assertion — including a `-count=20` flake-rate check for round 2's finding — then cleanly restored
-to an empty diff). Round 2 was seeded as a safety pass but was NOT a clean one: it found and fixed
-one real LOW-severity incompleteness in round 1's own F3 fix (see R1 below). Round 3 is therefore
-also not guaranteed to be clean — do not assume convergence just because no round has left an
-independently-verified residual yet.
+**Safety pass.** Rounds 1 (`fable-r1`, 9 findings), 2 (`opus-r2`, 1 finding), and 3 (`fable-r3`, 5
+findings) are all CLOSED-AND-VERIFIED by the orchestrator — build/vet/hermetic (whole-repo
+`go test ./...`, all CONSTRAINTS guards)/`-tags integration -count=5`/`-race -count=2` green after
+every round; `golangci-lint` clean (remaining notes match pre-existing repo patterns); every
+MEDIUM-or-above finding's regression test was independently falsified by the orchestrator
+(production fix reverted, confirmed the test fails at the intended assertion — including a
+`-count=20` flake-rate check for round 2's probabilistic bug — then cleanly restored to an empty
+diff), including round 3's MEDIUM finding (F-R3-1, `StageAndCommit`) which was falsified in two
+separate mutation steps (the empty-list guard alone, and then the commit-scoping alone) to confirm
+each half of the fix is independently load-bearing.
 
-**CLOSED-AND-VERIFIED — do NOT re-litigate these** (commits `e06daf6a`..`9e69ef65` on branch
+**Rounds 2 and 3 were BOTH seeded as safety passes and BOTH found real defects** (round 2: 1 LOW;
+round 3: 1 MEDIUM + 3 LOW + 1 NIT). Do not assume convergence just because a round is labeled
+"safety pass" — that label describes what was seeded, not a prediction of the outcome. Round 3's
+own reviewer flagged that its MEDIUM fix (`StageAndCommit`'s pathspec-scoping) touches the module's
+single most-consumed primitive and explicitly asked for fresh-eyes re-verification in a further
+round — this round IS that fresh look, on top of also being a genuinely independent full pass, not
+a narrow recheck of just that one fix.
+
+**CLOSED-AND-VERIFIED — do NOT re-litigate these** (commits `e06daf6a`..`ee462c04` on branch
 `gitrepo`):
 - F1 — SHA-argument injection (`validSHA` hex-only gate on `SHAExists`/`ChangedFilesSince`/`SetSnapshotSHA`)
 - F2 — `ChangedFilesSince` non-ASCII path mangling (`-z` + NUL split)
-- F3 — `SetSnapshotSHA` adopt-on-conflict dropping a strictly-newer value under a 2-way creation race (adopt-then-retry-once — superseded by R1 below, which generalizes this to N-way)
+- F3 — `SetSnapshotSHA` adopt-on-conflict dropping a strictly-newer value under a 2-way creation race (superseded by R1 below, which generalizes this to N-way)
 - F4 — `validSnapshotKey` admitting keys git itself refuses (trailing `.`, `.lock` suffix)
 - F5 — `ChangedFilesSince` dropping a rename's old path (`--no-renames`)
 - F6 — non-`origin`-remote silent read-path degradation (documented, no behavior change)
 - F7 — `rebase --abort`'s result previously discarded (now checked, honest mid-rebase error)
 - F8 — `StageAndCommit` file entries being pathspecs, not literal paths (doc-only)
 - F9 — missing real-process lock-serialization and crash-recovery test coverage (added)
-- R1 — `SetSnapshotSHA`'s F3 fix only tolerated 2-way transient contention; a 3rd+ concurrent
-  writer could still lose the single retry and silently drop the strictly-newest value (~12% of
-  rounds in a 3-writer race, independently reproduced by the orchestrator: reverting the bounded
-  loop's cap from 8 back to 2 made the new 3-writer regression test fail repeatedly at the "must
-  never be dropped" assertion under `-count=20`). Fixed with a bounded retry loop
-  (`snapshotPushMaxAttempts = 8`) that keeps retrying while the caller remains strictly ahead of
-  the value it just adopted.
+- R1 — `SetSnapshotSHA`'s F3 fix only tolerated 2-way transient contention; fixed with a bounded
+  retry loop (`snapshotPushMaxAttempts = 8`) that keeps retrying while the caller remains strictly
+  ahead of the value it just adopted. Independently falsified by the orchestrator (cap reverted to
+  2, new 3-writer test failed repeatedly under `-count=20`, restored clean).
+- F-R3-1 — MEDIUM — `StageAndCommit` committed pre-staged, unlisted index entries, and an *empty*
+  files list could produce a real commit (contradicting the documented `("", false, nil)`
+  contract). Fixed with an empty-list early return (no git spawn) plus pathspec-scoping both the
+  staged-change check and the commit itself to the listed files. Independently falsified by the
+  orchestrator in two steps: (1) removing only the empty-list guard reproduced the empty-list
+  false-commit; (2) additionally unscoping the commit's own pathspec reproduced the
+  pre-staged-unlisted-file-swept-into-commit bug too — both failed at the intended assertions,
+  both restored clean.
+- F-R3-2 — LOW — `SnapshotSHA` folded hard git failures (not-a-repo, exit 128) into the "no
+  snapshot" `("", nil)` state; now only a verified-absent ref (exit 1) reads as absent. Independently
+  falsified by the orchestrator (folded every non-zero exit back to absent, confirmed
+  `TestSnapshotSHA_NotARepo_SurfacesError` fails at the intended assertion, restored clean).
+- F-R3-3 — LOW (doc) — `Push`'s rebase-retry can rewrite local SHAs out from under a caller
+  (`SHAExists` can't catch it — the old object survives via reflog); documented on `Push`/
+  `PushCoalesced`/the package doc. No behavior change.
+- F-R3-4 — LOW (doc) — stderr-text outcome classification assumes untranslated git messages;
+  documented as an assumption. The real fix (pinning `LC_ALL=C` in `gitexec`) is DELIBERATELY
+  DEFERRED as an operator decision (repo-wide blast radius across ~80 `gitexec.RunGit` call-sites,
+  beyond this module's scope, risk unreachable on this machine and always degrades loudly never
+  silently) — do not re-open this as an in-scope fix; it is a conscious, recorded deferral, not an
+  oversight.
+- F-R3-5 — NIT — `isStrictDescendant` compared SHA spellings, not resolved commits, for an
+  abbreviated `sha`; `SetSnapshotSHA` now canonicalizes to the full spelling at entry.
 
-This is round 3 — do a genuinely independent clean-room pass to find anything rounds 1-2 missed,
-OR honestly confirm merge-readiness ("no new defects, ship it" is the expected, valuable outcome of
-a safety pass — do not invent work to justify the round). Given the pattern so far (both real
-defects found were in the snapshot-ref concurrency/adopt-on-conflict machinery), that area
-deserves a particularly skeptical second look, but do not confine yourself to it — review the whole
-module clean-room. Nothing is currently deferred.
+This is round 4 (the last round in this loop's budget) — do a genuinely independent clean-room
+pass to find anything rounds 1-3 missed, OR honestly confirm merge-readiness ("no new defects, ship
+it" is the expected, valuable outcome of a safety pass — do not invent work to justify the round).
+Given the pattern so far, both `StageAndCommit`/`ChangedFilesSince`'s git-argument construction and
+the snapshot-ref concurrency/adopt-on-conflict machinery have each yielded real defects across
+different rounds — those deserve a particularly skeptical look, but review the whole module
+clean-room, don't confine yourself to them. The one deliberately-deferred item (F-R3-4's `LC_ALL=C`
+pinning) is an operator decision, not something to re-litigate or fix yourself. Nothing else is
+currently deferred.
 
 State the **merge bar** so you calibrate: correctness in the NORMAL single-instance,
 single-or-few-concurrent-caller flow is the gate; an artificial many-way concurrency stress beyond
