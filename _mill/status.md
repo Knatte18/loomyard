@@ -28,7 +28,9 @@ implementing  '2026-07-24T18:01:35Z'
 ```yaml
 batches:
   - name: core-repo
-    state: pending
+    state: running
+    implementer_session: 65edf1e0-63cb-4aa7-8772-6cece6ff5e50
+    start_sha: cbd3975627cad2a098419b0dd76b9b183a42046a
   - name: push
     state: pending
   - name: snapshot
