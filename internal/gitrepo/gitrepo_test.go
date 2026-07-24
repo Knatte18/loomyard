@@ -269,6 +269,57 @@ func TestStageAndCommit_EmptyFiles_WithPreStagedEntry_NoCommit(t *testing.T) {
 	}
 }
 
+// TestStageAndCommit_MidMerge_RefusesPartialCommit asserts the documented
+// mid-merge safety property: while a merge is in progress (MERGE_HEAD present),
+// a pathspec-scoped StageAndCommit of an unrelated file is refused by git
+// ("cannot do a partial commit during a merge") rather than silently finalizing
+// the human's half-done merge under the automated message. The merge is left
+// clean and resolved (git merge --no-commit of a non-conflicting branch) on
+// purpose: an unresolved conflict would block any commit and mask the
+// distinction, so this test is load-bearing only against a clean merge-in-
+// progress. It guards the mid-merge consequence of the commit's pathspec
+// scoping — `commit -- <files>` refuses a partial commit mid-merge, whereas an
+// unscoped `git commit` would complete the merge — so the merge must still be
+// pending afterward.
+func TestStageAndCommit_MidMerge_RefusesPartialCommit(t *testing.T) {
+	dir, repo := newRepo(t)
+	writeFile(t, dir, "base.txt", "base\n")
+	commitAll(t, dir, "base")
+
+	// A feature branch adds feat.txt while main edits a different file, so the
+	// merge is non-conflicting and leaves a clean, fully-resolved index.
+	lyxtest.MustRun(t, dir, "git", "checkout", "-b", "feature")
+	writeFile(t, dir, "feat.txt", "feature\n")
+	commitAll(t, dir, "feature edit")
+	lyxtest.MustRun(t, dir, "git", "checkout", "main")
+	writeFile(t, dir, "base.txt", "base\nmain edit\n")
+	commitAll(t, dir, "main edit")
+
+	// --no-commit stops after merging into the index/worktree, so MERGE_HEAD is
+	// set with a clean index — the mid-merge state a commit could finalize.
+	lyxtest.MustRun(t, dir, "git", "merge", "--no-commit", "feature")
+	if _, _, code, _ := runGit(t, dir, "rev-parse", "--verify", "--quiet", "MERGE_HEAD"); code != 0 {
+		t.Fatalf("MERGE_HEAD not present after --no-commit merge (exit %d); test needs a mid-merge state", code)
+	}
+
+	// The caller stages and commits only an unrelated file. The pathspec-scoped
+	// commit must be refused mid-merge, not silently complete the merge.
+	writeFile(t, dir, "other.txt", "written by caller\n")
+	sha, committed, err := repo.StageAndCommit("automated commit during merge", []string{"other.txt"})
+	if err == nil {
+		t.Fatal("StageAndCommit() mid-merge error = nil; want git's partial-commit refusal")
+	}
+	if committed || sha != "" {
+		t.Errorf("StageAndCommit() mid-merge = (%q, %v); want (\"\", false) — no commit", sha, committed)
+	}
+
+	// The merge must still be pending: a refused partial commit must not have
+	// finalized it under the automated message.
+	if _, _, code, _ := runGit(t, dir, "rev-parse", "--verify", "--quiet", "MERGE_HEAD"); code != 0 {
+		t.Errorf("MERGE_HEAD absent after refused StageAndCommit (exit %d); the merge must not have been completed", code)
+	}
+}
+
 func TestChangedFilesSince_ReturnsCorrectSet(t *testing.T) {
 	dir, repo := newRepo(t)
 	writeFile(t, dir, "a.txt", "initial")
