@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: gitrepo
 branch: gitrepo
 plan: _mill/plan
@@ -30,6 +30,7 @@ holistic-fixing  '2026-07-24T18:28:14Z'
 nits-fixed-holistic  '2026-07-24T18:31:08Z'
 holistic-approved  '2026-07-24T18:31:17Z'
 done  '2026-07-24T18:31:42Z'
+pr-pending  '2026-07-24T18:35:31Z'
 ```
 
 ## Batches
