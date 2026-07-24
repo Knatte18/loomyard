@@ -136,19 +136,9 @@ between these items.
    linked per-topic doc. Millhouse's own `CONSTRAINTS.md` stays untouched for as long as Millhouse
    develops loomyard.
 
-1. **Evaluate a native Go git library (e.g. `go-git`) in place of shelling out via `internal/gitexec`**
-   — `gitrepo`'s crucible hardening (4 review rounds) found real bugs in the class of "parse git's
-   human-readable stderr as a de-facto API": SHA-argument injection, non-ASCII path C-quoting, and
-   a locale-dependent-message assumption (git's output is only guaranteed English if untranslated).
-   A native library would eliminate that whole class by returning typed Go values/errors instead of
-   text to parse. It would NOT eliminate the other bug class crucible found — the N-way
-   `SetSnapshotSHA` adopt-on-conflict race and `StageAndCommit`'s pathspec-scoping contract are
-   inherent to the *problem* (concurrent writers racing a git ref; an explicit-file-list commit
-   contract), not to shelling out — those would need the same logic regardless of backend. Also
-   note `go-git`'s rebase support is notably weaker than real git's (a mechanism `gitrepo.Push`'s
-   retry depends on), and `gitexec` has ~80 call-sites across the codebase today, so this is a
-   large, separate architectural evaluation — not a small patch, and not to be undertaken as part
-   of any single module's hardening pass. Genuinely speculative, not yet scoped.
+1. **git-native-library** — evaluate a native Go git library (e.g. `go-git`) in place of shelling
+   out via `internal/gitexec`. Genuinely speculative, not yet scoped. See
+   [designs/git-native-library.md](designs/git-native-library.md).
 
 ## Done
 
