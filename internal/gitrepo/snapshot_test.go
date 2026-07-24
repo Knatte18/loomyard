@@ -10,6 +10,7 @@ package gitrepo_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gitrepo"
@@ -35,6 +36,30 @@ func TestSnapshotSHA_ReturnsEmptyBeforeAnySet(t *testing.T) {
 	}
 	if got != "" {
 		t.Errorf("SnapshotSHA() = %q; want \"\" before any SetSnapshotSHA", got)
+	}
+}
+
+// TestSetSnapshotSHA_NoRemoteConfigured_SurfacesGitError asserts the third
+// fixture discussion.md calls out: a repo with zero remotes configured at
+// all. remoteName falls back to "origin" even though no such remote exists,
+// so the push to it fails outright — a rejection that must not be confused
+// with the adopt-on-conflict path (its stderr never matches
+// rebaseRetryTriggers), so SetSnapshotSHA must return git's own error
+// unchanged rather than silently swallowing it as if it were a conflict.
+func TestSetSnapshotSHA_NoRemoteConfigured_SurfacesGitError(t *testing.T) {
+	dir, repo := newRepo(t)
+	writeFile(t, dir, "a.txt", "initial")
+	commitAll(t, dir, "init")
+
+	sha, err := repo.CurrentSHA()
+	if err != nil {
+		t.Fatalf("CurrentSHA() error = %v", err)
+	}
+
+	if err := repo.SetSnapshotSHA("mykey", sha); err == nil {
+		t.Fatal("SetSnapshotSHA() with no remote configured error = nil; want an error")
+	} else if !strings.Contains(err.Error(), "gitrepo: git push") {
+		t.Errorf("SetSnapshotSHA() error = %q; want it to wrap git's own push error unchanged", err)
 	}
 }
 

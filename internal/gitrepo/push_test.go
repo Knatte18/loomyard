@@ -167,6 +167,46 @@ func TestPush_RebaseRetryPrecondition_DirtyTrackedFileAborts(t *testing.T) {
 	}
 }
 
+// TestPush_NoRemoteConfigured_SurfacesGitError asserts the third fixture
+// discussion.md calls out: a repo with zero remotes configured at all (not
+// merely no upstream tracking branch — no "origin" either). Push must not
+// swallow this into a synthetic message; the wrapped error must still carry
+// git's own stderr, matching Push's documented "any other push failure
+// returns an error including git's stderr" contract.
+func TestPush_NoRemoteConfigured_SurfacesGitError(t *testing.T) {
+	dir, repo := newRepo(t)
+	writeFile(t, dir, "a.txt", "content")
+	commitAll(t, dir, "init")
+
+	err := repo.Push()
+	if err == nil {
+		t.Fatal("Push() with no remote configured error = nil; want an error")
+	}
+	if !strings.Contains(err.Error(), "gitrepo: git push:") {
+		t.Errorf("Push() error = %q; want it to wrap git's own push error unchanged", err)
+	}
+}
+
+// TestPushCoalesced_NoRemoteConfigured_SurfacesGitError is PushCoalesced's
+// counterpart to TestPush_NoRemoteConfigured_SurfacesGitError: hasUnpushed
+// treats the missing upstream as "unpushed" regardless of the missing
+// remote, so PushCoalesced proceeds to the same pushWithRebaseRetry path and
+// must surface the same unwrapped git error rather than the lock machinery
+// masking it.
+func TestPushCoalesced_NoRemoteConfigured_SurfacesGitError(t *testing.T) {
+	dir, repo := newRepo(t)
+	writeFile(t, dir, "a.txt", "content")
+	commitAll(t, dir, "init")
+
+	err := repo.PushCoalesced()
+	if err == nil {
+		t.Fatal("PushCoalesced() with no remote configured error = nil; want an error")
+	}
+	if !strings.Contains(err.Error(), "gitrepo: git push:") {
+		t.Errorf("PushCoalesced() error = %q; want it to wrap git's own push error unchanged", err)
+	}
+}
+
 // TestPushCoalesced_LockBlocking_Serializes exercises fixture (b): a single
 // clone (one worktree, one .gitrepo-push.lock). Several commits are made
 // before any push runs, then PushCoalesced is called concurrently from two
