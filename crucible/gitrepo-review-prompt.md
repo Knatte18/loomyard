@@ -156,8 +156,31 @@ scenario silently corrupts data rather than failing visibly; do not flag the doc
 not-goroutine-safe contract itself as a bug.
 
 ## Round context seeded from prior-round verification
-**Safety pass / first round.** There is no prior round — this is round 1. Do a genuinely
-independent clean-room pass. There is nothing CLOSED-AND-VERIFIED yet and nothing deferred yet.
+**Safety pass.** Round 1 (`fable-r1`) found and fixed 9 findings (0 BLOCKING, 3 MEDIUM, 4 LOW, 2
+NIT), all independently re-verified by the orchestrator: build/vet/hermetic/`-tags integration
+-count=5`/`-race` all green; `golangci-lint` clean (remaining notes match pre-existing repo
+patterns); the three MEDIUM fixes' regression tests were each falsified (production fix reverted,
+confirmed the test fails at the intended assertion, then cleanly restored to an empty diff) —
+F1 (`SetSnapshotSHA("-d")` no longer deletes the ref), F2/F5 (`ChangedFilesSince` no longer mangles
+non-ASCII paths or drops a rename's old path), F3 (`SetSnapshotSHA`'s adopt-then-retry-once no
+longer silently drops a strictly-newer value under a creation race — reproduced the pre-fix bug
+failing at round 0 of 5). No residual from round 1.
+
+**CLOSED-AND-VERIFIED — do NOT re-litigate these** (commits `e06daf6a`..`d5d86ecb` on branch
+`gitrepo`):
+- F1 — SHA-argument injection (`validSHA` hex-only gate on `SHAExists`/`ChangedFilesSince`/`SetSnapshotSHA`)
+- F2 — `ChangedFilesSince` non-ASCII path mangling (`-z` + NUL split)
+- F3 — `SetSnapshotSHA` adopt-on-conflict dropping a strictly-newer value under a creation race (adopt-then-retry-once)
+- F4 — `validSnapshotKey` admitting keys git itself refuses (trailing `.`, `.lock` suffix)
+- F5 — `ChangedFilesSince` dropping a rename's old path (`--no-renames`)
+- F6 — non-`origin`-remote silent read-path degradation (documented, no behavior change)
+- F7 — `rebase --abort`'s result previously discarded (now checked, honest mid-rebase error)
+- F8 — `StageAndCommit` file entries being pathspecs, not literal paths (doc-only)
+- F9 — missing real-process lock-serialization and crash-recovery test coverage (added)
+
+This is round 2 — do a genuinely independent clean-room pass to find anything round 1 missed, OR
+honestly confirm merge-readiness ("no new defects, ship it" is the expected, valuable outcome of a
+safety pass — do not invent work to justify the round). Nothing is currently deferred.
 
 State the **merge bar** so you calibrate: correctness in the NORMAL single-instance,
 single-or-few-concurrent-caller flow is the gate; an artificial many-way concurrency stress beyond
@@ -218,7 +241,7 @@ cannot do alone this round — an operator decision on a real design tradeoff. E
 so explicitly, with the specific reason, in the fixer report's deferred section.
 
 ## Deferred items from the prior round — RE-EVALUATE these (after your own pass)
-None — this is round 1.
+None — round 1 fixed every finding it recorded; nothing was deferred.
 
 ## Fixing — after the review
 - Fix EVERY finding from your review, all severities including NIT — not just BLOCKING/MEDIUM ones.
