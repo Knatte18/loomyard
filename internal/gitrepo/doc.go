@@ -69,13 +69,17 @@
 //
 // Push and PushCoalesced are both push-only — committing is always the
 // caller's separate, prior StageAndCommit call, so a wildcard `add -A` never
-// enters gitrepo. Push runs a single git push and transparently recovers
-// from exactly one non-fast-forward-style rejection (stderr containing
-// "non-fast-forward", "rejected", or "fetch first" — the full trigger set
-// board's sync.go:pushUnpushed matches) via one `pull --rebase` before
-// retrying; the rebase-retry path requires a worktree clean of tracked-file
-// changes, which StageAndCommit's caller is responsible for by having
-// already committed. PushCoalesced adds cross-process coalescing on top: it
+// enters gitrepo. Every push goes through `git -c push.autoSetupRemote=true
+// push`, so a checkout's very first push (no upstream configured yet) still
+// succeeds and establishes tracking instead of failing outright — matching
+// hasUnpushed's no-upstream-means-unpushed contract. Push runs a single git
+// push and transparently recovers from exactly one non-fast-forward-style
+// rejection (stderr containing "non-fast-forward", "rejected", or "fetch
+// first" — the full trigger set board's sync.go:pushUnpushed matches) via
+// one `pull --rebase` before retrying; the rebase-retry path requires a
+// worktree clean of tracked-file changes, which StageAndCommit's caller is
+// responsible for by having already committed. PushCoalesced adds
+// cross-process coalescing on top: it
 // acquires a single-pusher lock file, .gitrepo-push.lock, in the repo's
 // worktree root before checking whether anything is actually unpushed, so a
 // burst of concurrent callers collapses into as few pushes as possible — a
