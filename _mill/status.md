@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-fix-r3
+phase: discussed
 slug: gitrepo
 branch: gitrepo
 plan: null
@@ -16,4 +16,5 @@ task_description: |
 ```text
 discussing  '2026-07-24T15:39:09Z'
 discussion-fix-r3  '2026-07-24T17:45:28Z'
+discussed  '2026-07-24T17:45:40Z'
 ```
