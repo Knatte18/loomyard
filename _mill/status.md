@@ -34,7 +34,9 @@ batches:
     start_sha: cbd3975627cad2a098419b0dd76b9b183a42046a
     commit_sha: 918de263ae084ec80233a104a1b1528407bcd0b5
   - name: push
-    state: pending
+    state: running
+    implementer_session: 101ae823-0bbf-41be-97eb-7b67e774ffb7
+    start_sha: 9d93d9e26eb63eece4d2b4d25dbdf8dec5fb3b06
   - name: snapshot
     state: pending
   - name: docs-lifecycle
