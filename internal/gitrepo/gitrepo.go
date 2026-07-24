@@ -95,7 +95,11 @@ func (r *Repo) CurrentSHA() (string, error) {
 // empty, which stages nothing — StageAndCommit returns ("", false, nil): a
 // plain signal, not an error, since "nothing to commit" is an expected,
 // inspectable outcome rather than a failure. On a real commit it returns the
-// new HEAD SHA with committed=true.
+// new HEAD SHA with committed=true. Each files entry is a git pathspec
+// relative to the repo root, not a literal filename: git still interprets
+// pathspec magic after `--`, so an entry starting with ':' is treated as a
+// magic signature (and a file literally named that way cannot be staged
+// as-is) — callers pass plain relative paths and must not rely on magic.
 func (r *Repo) StageAndCommit(msg string, files []string) (sha string, committed bool, err error) {
 	addArgs := append([]string{"add", "--"}, files...)
 	_, stderr, code, err := r.run(addArgs...)
