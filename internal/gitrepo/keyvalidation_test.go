@@ -24,6 +24,10 @@ func TestValidSnapshotKey(t *testing.T) {
 		{"ContainsDoubleDot", "a..b", false},
 		{"LeadingSlash", "/lead", false},
 		{"TrailingSlash", "trail/", false},
+		{"TrailingDot", "trail.", false},
+		{"LockSuffix", "key.lock", false},
+		{"LockInMiddle", "key.lock.ok", true},
+		{"InteriorDot", "codeintel.go", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

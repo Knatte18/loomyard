@@ -27,11 +27,17 @@ var ErrInvalidSnapshotKey = errors.New("gitrepo: invalid snapshot key")
 var snapshotKeyPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 
 // validSnapshotKey reports whether key is safe to embed in a git ref name.
-// Beyond the character-class check, it separately rejects ".." — legal under
-// the character class but reserved by git ref syntax as a path-traversal-like
-// separator — so a key can never produce an ambiguous or malformed ref.
+// Beyond the character-class check, it separately rejects the shapes that are
+// legal under the character class but refused by git ref syntax — ".." (a
+// path-traversal-like separator), a trailing ".", and a ".lock" suffix
+// (reserved for git's own ref lock files) — so a key can never produce an
+// ambiguous or malformed ref: an invalid key always surfaces as
+// ErrInvalidSnapshotKey before reaching git, never as a raw git error.
 func validSnapshotKey(key string) bool {
-	return snapshotKeyPattern.MatchString(key) && !strings.Contains(key, "..")
+	return snapshotKeyPattern.MatchString(key) &&
+		!strings.Contains(key, "..") &&
+		!strings.HasSuffix(key, ".") &&
+		!strings.HasSuffix(key, ".lock")
 }
 
 // snapshotRef returns the fully-qualified ref name a snapshot key is stored
