@@ -15,7 +15,7 @@
 // forking a copy per phase would lose the point (Profile — rubric, fasit,
 // gate, caps — is data, never code). The heavier, behavior-based hardening
 // of live-substrate modules is a separate module, hardener (see
-// docs/modules/hardener.md), which shares only the burler round discipline
+// manifest/modules/hardener.md), which shares only the burler round discipline
 // and runs post-loom, off this spine.
 //
 // # The gate — a black box with two judgment exits, plus pause

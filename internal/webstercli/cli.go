@@ -125,7 +125,7 @@ func Command() *cobra.Command {
 	parent := &cobra.Command{
 		Use:   "webster",
 		Short: "drive a pinned plan-format plan through a long-lived Master session that forks one implementer per batch",
-		Long: `webster takes a pinned plan-format v2 plan (see docs/modules/plan-format.md)
+		Long: `webster takes a pinned plan-format v2 plan (see docs/reference/plan-format.md)
 and drives it through a long-lived Master session that reads the plan once
 and forks one implementer per batch in-session, bracketing each fork with
 begin-batch/record-batch calls, until the plan is built or the run reports

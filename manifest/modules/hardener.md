@@ -5,10 +5,10 @@
 > captures what a weekend of hand-running the method taught us and the decisions reached so far in
 > discussion; **expect fields, mechanisms, and even the boundary of the module to change.** Do not
 > implement from this doc yet. When the concept firms up this banner comes off and the doc becomes a
-> normal *Design — not built* entry; per the [documentation lifecycle](../overview.md#documentation-lifecycle)
+> normal *Design — not built* entry; per the [documentation lifecycle](../../docs/overview.md#documentation-lifecycle)
 > it is eventually deleted into the package header + `overview.md` on landing.
 >
-> **Hand-executed origin:** [`docs/reviews/`](../reviews/README.md) is the method this module would
+> **Hand-executed origin:** [`docs/reviews/`](../../docs/reviews/README.md) is the method this module would
 > automate. `hardener` was developed over the last week out of a concrete need: to **run** actual
 > `mux` code hard enough to surface defects a green `go test` never proves. Six hand-orchestrated
 > rounds fixed what many rounds of text-based review could not — it was genuinely *hardening*.
@@ -123,7 +123,7 @@ Whether the round agent literally imports the `burler` package or only follows t
 ## Dependencies (tentative)
 
 - `shuttle` — spawns the orchestrator strand, the round agents, and any judges.
-- [`internal/stencil`](../shared-libs/stencil.md) — fills the round-agent / orchestrator prompt
+- [`internal/stencil`](../../docs/shared-libs/stencil.md) — fills the round-agent / orchestrator prompt
   templates (shared with `burler`/`perch`).
 - `internal/state` — handoff + round artifacts on disk (the memory that makes respawn work).
 - a **sandbox repo + live suite** — a provisioned environment and a maintained asset, not just code.

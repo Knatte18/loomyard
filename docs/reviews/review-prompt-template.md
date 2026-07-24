@@ -58,7 +58,7 @@ previously-fixed behaviors have not regressed and (b) re-evaluate the deferred i
 
 ## What to read
 - Code: `<CODE PATHS — e.g. internal/<module>engine/**, internal/<module>cli/**, cmd/lyx integration>`.
-- Docs: `<MODULE DOC — docs/modules/<module>.md>`, `docs/overview.md`, `docs/roadmap.md`,
+- Docs: `<MODULE DOC — manifest/modules/<module>.md>`, `docs/overview.md`, `manifest/roadmap.md`,
   `CONSTRAINTS.md`, `README.md`, and any `docs/research/<module>-*.md`.
 - If one already exists, `<tools/sandbox/SANDBOX-<MODULE>-SUITE.md>` — for SCENARIO IDEAS only.
   You run every scenario yourself, directly, with your own tool calls; you do NOT invoke its
@@ -206,8 +206,8 @@ round. Empty on the first round.>`
 - Keep `go build`/`vet`/`test` green after every change. Then RE-DEPLOY (`deploy.cmd`) and re-run
   every live scenario yourself, directly — re-deploying FIRST is mandatory (live driving tests the
   deployed binary).
-- Update `<docs/modules/<module>.md>` (and `docs/overview.md` / `CONSTRAINTS.md` if invariants or the
-  module table move) IN THE SAME change. Do NOT add bugfix/hardening notes to `docs/roadmap.md`
+- Update `<manifest/modules/<module>.md>` (and `docs/overview.md` / `CONSTRAINTS.md` if invariants or the
+  module table move) IN THE SAME change. Do NOT add bugfix/hardening notes to `manifest/roadmap.md`
   (roadmap is planned milestones only, per CLAUDE.md).
 - Tear down all substrate state; confirm zero stray processes. COMMIT each fix as you finish it
   (see "Commit per fix" above) — do NOT push unless the user explicitly asks. Report the changed

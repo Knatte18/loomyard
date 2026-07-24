@@ -5,7 +5,7 @@ before merging it to `main`, plus the two prompts that drove it. The method is
 **module-agnostic** — it is written down here so the modules built *on top of* mux
 (`shuttle` — see the `internal/shuttleengine` package documentation, `perch` (see the
 `internal/perchengine` package documentation) + `burler` (see the `internal/burlerengine` package
-documentation), [`hardener`](../modules/hardener.md), [`loom`](../modules/loom.md)) can reuse it
+documentation), [`hardener`](../../manifest/modules/hardener.md), [`loom`](../../manifest/modules/loom.md)) can reuse it
 instead of re-inventing it each time.
 
 **The files here:**
@@ -18,7 +18,7 @@ instead of re-inventing it each time.
 
 > **This is the hand-executed prototype of the `perch` (see the `internal/perchengine` package
 > documentation) + `burler` (see the `internal/burlerengine` package documentation) round loop**
-> (and the origin of the behavior-based [`hardener`](../modules/hardener.md) concept). The
+> (and the origin of the behavior-based [`hardener`](../../manifest/modules/hardener.md) concept). The
 > automated engine — a fresh `burler` per round that does **A: review** then **B: fix**, with
 > **no self-grading**, looped by `perch` with an **independent** progress check — is exactly this
 > loop with the orchestrator role moved from a human+Claude pair into Go. This is how the method
@@ -27,7 +27,7 @@ instead of re-inventing it each time.
 > package documentation.
 >
 > **Text vs. behavior:** `perch`/`burler` automate the **text-based** form (read the artifact).
-> [`hardener`](../modules/hardener.md) (DRAFT) is the **behavior-based** form — *run* a live-substrate
+> [`hardener`](../../manifest/modules/hardener.md) (DRAFT) is the **behavior-based** form — *run* a live-substrate
 > module in a sandbox — which is the harder campaign this directory actually documents for `mux`.
 
 ## When to use it

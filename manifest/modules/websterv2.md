@@ -2,7 +2,7 @@
 
 > **Status: DRAFT / concept. Not built, not scheduled.** Two companion design notes for a
 > possible evolution of the `webster` module (see
-> [builder-contract.md](../reference/builder-contract.md#webster-the-fork-based-sibling)),
+> [builder-contract.md](../../docs/reference/builder-contract.md#webster-the-fork-based-sibling)),
 > merged into one file since they were always meant to be read together. Both are speculative
 > in the same sense as [long-term-ideas.md](../long-term-ideas.md): nothing here is committed to
 > until v1 (`internal/websterengine` + `internal/webstercli`) has run in anger and the
@@ -390,7 +390,7 @@ LSP arm's cost/precision are the starting point for the open follow-up wiki task
 
 ## Related
 
-- [builder-contract.md](../reference/builder-contract.md#webster-the-fork-based-sibling) — the v1
+- [builder-contract.md](../../docs/reference/builder-contract.md#webster-the-fork-based-sibling) — the v1
   cross-module contract webster shares with `builder`.
 - [long-term-ideas.md](../long-term-ideas.md) — the original speculative parallel-batches-via-DAG
   note Part A makes concrete, and the "impact index" note Part B's earlier draft descended from.

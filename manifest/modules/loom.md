@@ -1,7 +1,7 @@
 # Loom: the phased orchestrator
 
 > **Status: Design — not built.** This is a plan draft. Per the [documentation
-> lifecycle](../overview.md#documentation-lifecycle), when the modules land the durable
+> lifecycle](../../docs/overview.md#documentation-lifecycle), when the modules land the durable
 > parts of this doc fold into `overview.md` and the package headers, and this file is
 > deleted. Until then it is the single design reference for the loom orchestration model.
 
@@ -20,7 +20,7 @@ phase. `perch` composes `burler` (see the `internal/burlerengine`
 package documentation), the review+fix round worker. The `/ly-*` skill layer shrinks to thin
 human-facing wrappers over these. The everyday call has a convenience alias:
 **`lyx run` → `lyx loom run`**. (Naming: `lyx` is the binary,
-`loom`/`perch`/`burler` are modules, `ly-*` are the skills — see [overview.md](../overview.md).)
+`loom`/`perch`/`burler` are modules, `ly-*` are the skills — see [overview.md](../../docs/overview.md).)
 
 ## Why — the inversion
 
@@ -33,7 +33,7 @@ Move the machine into Go and orchestration leaves *every* prompt. Each agent col
 to one job over a file contract:
 
 - Plan producer: "read `discussion.md`, write the `plan/` directory
-  ([plan format](../reference/plan-format.md))." Nothing else.
+  ([plan format](../../docs/reference/plan-format.md))." Nothing else.
 - Review handler: "read the plan (against `discussion.md`), write review + fixer-report."
 
 No agent knows about rounds, gates, N-caps, finalize, or the others. Each phase becomes
@@ -111,13 +111,13 @@ output, not from the loop being LLM-held.
 
 - **Advance per batch, end at batches-built.** The orchestrator drives the plan's batches
   strictly in order (ordered list, **no DAG** — the plan contract is pinned in
-  [plan-format.md](../reference/plan-format.md)), spawning one implementer worker per batch (config-chosen
-  model; Sonnet default — see [model-spec](../reference/model-spec.md)). `builder run` itself
+  [plan-format.md](../../docs/reference/plan-format.md)), spawning one implementer worker per batch (config-chosen
+  model; Sonnet default — see [model-spec](../../docs/reference/model-spec.md)). `builder run` itself
   ends the moment the last batch is green (or the run reports stuck/paused) — it runs **no**
   review of its own. The terminal holistic review is the separate **Builder-review gate**: a
   full `perch` converge-loop over the whole diff, driven by `loom` (or the operator running
   `lyx perch run` directly) *after* `builder run` returns `done`; no per-batch design review in
-  v1. See [builder-contract.md](../reference/builder-contract.md) for the as-built verb surface and digest contract.
+  v1. See [builder-contract.md](../../docs/reference/builder-contract.md) for the as-built verb surface and digest contract.
 - **Digest-only consumption.** The `poll` verb reads the implementer's on-disk batch-report,
   distills it in Go, and returns a terse digest; the orchestrator never ingests raw session
   prose. That is what keeps a persistent LLM orchestrator lean.
@@ -142,7 +142,7 @@ close the laptop — and the next `lyx run` continues where it left off.**
 This is the lyx model applied to orchestration: one-shot, daemonless, file-coordinated,
 resume-from-disk. `lyx run` is a pure function of {status file + artifact files} with no
 hidden process state. Because the status lives in the weft repo (git-synced), resume
-works across machines too. It is per-task and cwd-authoritative ([Principle 4](../overview.md#principles)).
+works across machines too. It is per-task and cwd-authoritative ([Principle 4](../../docs/overview.md#principles)).
 
 **Human boundaries.** `lyx run` drives every phase it *can* drive **unattended** — the
 agents are interactive tmux sessions, but no human sits in them ([Agent execution](#agent-execution)).
@@ -163,7 +163,7 @@ looking.
 ### State & contracts
 
 - **The status file (`_lyx/status.json`, JSON via `internal/state` — see
-  [status-schema.md](../reference/status-schema.md)) is the single source of truth** for
+  [status-schema.md](../../docs/reference/status-schema.md)) is the single source of truth** for
   orchestration state: current phase, current review stage, and a **per-phase outcome**
   trail (`history`) — per-round verdicts live in perch's block files, not here. Nothing
   orchestration-relevant lives anywhere else. The pause flag (`pause_requested`) is also
@@ -190,7 +190,7 @@ this tractable: **loom resumes on output FILES, not on live processes.** The fil
 1. **Is there a complete output file?** → the step finished; read it and advance. (The agent's
    process may be long dead — its result survived. This is the common case.)
 2. **Else, is the agent's session still alive?** (via `mux`'s — see
-   [overview.md#modules](../overview.md#modules) — `.lyx/mux.json` → session
+   [overview.md#modules](../../docs/overview.md#modules) — `.lyx/mux.json` → session
    id → `claude agents --json`) → *working*: re-attach, just wait on its `Stop` hook (do **not**
    respawn — that would duplicate). *blocked*: it is a human gate / stuck — surface it.
 3. **Else (dead, no output):** respawn a **fresh** agent for the step, hydrated from the prior
@@ -222,7 +222,7 @@ boundary**, never mid-operation — `mill-pause`'s natural-stopping-point proper
   the crash.
 - **In-agent interrupt is optional.** To pause *faster* than the current unit finishes,
   `shuttle` (see the `internal/shuttleengine` package documentation) can ESC-and-hold the live
-  agent (session kept warm in the mux server — see [overview.md#modules](../overview.md#modules),
+  agent (session kept warm in the mux server — see [overview.md#modules](../../docs/overview.md#modules),
   not killed; resume continues it in place). With Builder
   decomposed into batches/cards the boundary wait is short, so this is a latency nicety, not a
   correctness requirement.
@@ -238,10 +238,10 @@ boundary**, never mid-operation — `mill-pause`'s natural-stopping-point proper
 | `loom` (`lyx loom run`) | new Go module | the phase machine / autonomous driver |
 | `perch` (`lyx perch`) | new Go module | the gate loop: run `burler` rounds → `APPROVED`/`stuck` + progress-judge + cap |
 | `burler` | new Go module | one review+fix round: A-review (+ optional cluster) → B-fix; composed by `perch` |
-| builder | LLM orchestrator + Go verbs (`internal/builderengine`) | long-lived orchestrator session holds the batch loop over the six as-built verbs (`validate`/`run`/`spawn-batch`/`poll`/`status`/`pause`); Go = verbs + distillation; fresh-spawn escalation; ends at batches-built — the holistic review is perch's separate Builder-review gate, not builder's own job — **not** a single producer spawn; input contract: [plan-format.md](../reference/plan-format.md); as-built doc: [builder-contract.md](../reference/builder-contract.md) |
+| builder | LLM orchestrator + Go verbs (`internal/builderengine`) | long-lived orchestrator session holds the batch loop over the six as-built verbs (`validate`/`run`/`spawn-batch`/`poll`/`status`/`pause`); Go = verbs + distillation; fresh-spawn escalation; ends at batches-built — the holistic review is perch's separate Builder-review gate, not builder's own job — **not** a single producer spawn; input contract: [plan-format.md](../../docs/reference/plan-format.md); as-built doc: [builder-contract.md](../../docs/reference/builder-contract.md) |
 | producers (discussion / plan) | prompt/profile files | **not** modules — just a prompt + profile fed to `shuttle.Run`. The Discussion producer is ✅ **built**: an interview prompt + `stencil` composer + `DiscussionSpec(...) (shuttleengine.Spec, error)` factory in `internal/loomengine` (`discussion-template.md`, `prompt.go`, `discussion.go`), fed to `shuttle.Run` by the future phase machine; `loom.yaml` supplies its `discussion` model-spec and `discussion_timeout_min` knobs |
 | `lyx loom status` | a loom subcommand | the 1-line status view; runs as a strand (see `internal/muxengine`; `below-parent` + `ShrinkWhenWaitingOnChild`), not a separate module |
-| execution stack | existing/new infra | [`proc`](README.md) → mux → shuttle — see [overview.md#execution-stack](../overview.md#execution-stack-orchestration-layers) — built once, used by both modules above |
+| execution stack | existing/new infra | `proc` → mux → shuttle — see [overview.md#execution-stack](../../docs/overview.md#execution-stack-orchestration-layers) — built once, used by both modules above |
 | Preflight | new Go package (`internal/loomengine`) | ✅ **Done**, engine-only (no cobra module yet) — validates the four preconditions (geometry + at-worktree-root, host worktree clean, weft paired & in sync, seed exists & coherent) over git/filesystem state; builds on `internal/hubgeometry`, `internal/warpengine`, `internal/state` |
 | `/ly-*` skills | thin wrappers | over `lyx loom run` |
 
@@ -250,7 +250,7 @@ The new Go specific to loom is the **three modules** (`loom`, `perch`, `burler`)
 orchestrator drives) and the `lyx loom status` subcommand; beneath them is the shared [execution stack](README.md) (`proc`, `mux`, `shuttle`); and
 everything else is prompt files, profiles, and the existing lyx modules. The display is **not** a
 module — it is `lyx loom status` running in a strand that `mux` (see
-[overview.md#modules](../overview.md#modules)) hosts and arranges.
+[overview.md#modules](../../docs/overview.md#modules)) hosts and arranges.
 
 ## Entry point — the session bootstrap
 
@@ -281,9 +281,9 @@ the `_lyx/` status file; the status strand reads and prints it; neither blocks t
 **The run-launcher.** A double-click shortcut makes this one click: `lyx warp add` drops a
 small `.lyx/lyxrun.cmd` (machine-local, untracked — it embeds an absolute path) in the worktree
 that just does `cd <worktree>` then `lyx loom run`. Because everything is
-[cwd-authoritative](../overview.md#principles), the launcher needs no arguments — geometry resolves
+[cwd-authoritative](../../docs/overview.md#principles), the launcher needs no arguments — geometry resolves
 from cwd, so you cannot run it from the wrong place. It reuses the
-[launcher geometry](../overview.md#hub-geometry-invariants) already in `internal/hubgeometry`.
+[launcher geometry](../../docs/overview.md#hub-geometry-invariants) already in `internal/hubgeometry`.
 
 **One terminal per worktree.** Scope for now is exactly that — each worktree its own terminal /
 tmux session. The cross-worktree multi-column view (all worktrees in one window) is a deferred mux
@@ -304,19 +304,19 @@ The consequence for loom: it sits on top of the [`proc → mux → shuttle`](REA
 stack is on loom's critical path. loom (via `perch` — see the `internal/perchengine` package
 documentation — → `burler`, see the `internal/burlerengine` package documentation) calls
 `shuttle.Run` per spawn and stays ignorant of strands, layout, and engines — those belong to `mux` (see
-[overview.md#modules](../overview.md#modules); the strand
+[overview.md#modules](../../docs/overview.md#modules); the strand
 bookkeeping + render: which pane is which, layout, focus, the cluster window where N reviewers go)
 and `shuttle` (see the `internal/shuttleengine` package documentation; the swappable provider engine). What loom owns is everything in this
 document: the phase machine, the gate wiring, and the status contract.
 
 ## Principle alignment
 
-- **One-shot, daemonless, file-coordinated** ([Principle 3](../overview.md#principles)) — `lyx run`
+- **One-shot, daemonless, file-coordinated** ([Principle 3](../../docs/overview.md#principles)) — `lyx run`
   and `lyx perch` are processes that read state, act, and exit; they cooperate through
   files and the status file, not a server.
-- **cwd-authoritative** ([Principle 4](../overview.md#principles)) — `lyx run` operates on the
+- **cwd-authoritative** ([Principle 4](../../docs/overview.md#principles)) — `lyx run` operates on the
   current worktree's task.
-- **Correctness by tool-design** ([Principle 6](../overview.md#principles)) — moving control flow
+- **Correctness by tool-design** ([Principle 6](../../docs/overview.md#principles)) — moving control flow
   into Go makes the correct sequence the only sequence: the machine cannot forget a phase,
   skip a gate, or miscount rounds the way a prose-driven LLM orchestrator can.
 

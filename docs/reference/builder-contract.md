@@ -441,7 +441,7 @@ its documented fallback, and crash/resume.
   validation checks, the batch-report schema builder's `Distill` reads).
 - [docs/reference/model-spec.md](model-spec.md) — the model-spec notation
   and registry `ResolveRoles` resolves against.
-- [loom.md](../modules/loom.md) — the phase machine that will drive `builder run` as one phase,
+- [loom.md](../../manifest/modules/loom.md) — the phase machine that will drive `builder run` as one phase,
   gated by `perch` on either side.
 - `internal/builderengine` and `internal/buildercli` package documentation — the
   as-built code this doc summarizes.

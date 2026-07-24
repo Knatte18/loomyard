@@ -49,13 +49,13 @@ branch at commit `cb12deb472652308f79145baa65452c070c9b2bc`.
 
 ## Relationship to the spike and the module doc
 
-This doc is the trade-off record `docs/modules/codeintel.md` points to when it says the
-LSP-generalized design "trad[es] the spike's sub-millisecond in-process query cost for one
-LSP round trip per query" — see that file for the shipped design (engine/CLI split,
-typed errors, registry) and [`codeintel-spike.md`](codeintel-spike.md) (#008) for the
+This doc is the trade-off record the `internal/codeintelengine` package documentation points
+to when it says the LSP-generalized design "trad[es] the spike's sub-millisecond in-process
+query cost for one LSP round trip per query" — see that package documentation for the shipped
+design (engine/CLI split, typed errors, registry) and [`codeintel-spike.md`](codeintel-spike.md) (#008) for the
 Go-only `go/packages`/`go/types` numbers this doc's Go/gopls arm is being compared against.
 The original design reasoning that motivated generalizing lookup beyond Go in the first
-place lives in `docs/modules/websterv2_extension.md` — named here in prose rather than as a
+place lives in `manifest/modules/websterv2.md` — named here in prose rather than as a
 link, because that doc lives on `main`, not this task branch, and a relative link here
 would dangle at this branch's HEAD.
 
@@ -139,7 +139,7 @@ not an override) and pointing `command` at the venv-installed `pylsp` binary —
 the duration of this measurement and removed afterward (not part of this commit; the
 registry mechanism itself, `LoadRegistry`'s whole-entry overlay, already shipped in batch
 1). This is the exact "operator adds a server without a recompile" use case
-`docs/modules/codeintel.md` describes, not a side channel.
+the `internal/codeintelengine` package documentation describes, not a side channel.
 
 ## Cost table (warm-up = run 1, steady-state = median of runs 2–3, ms; n=3 per symbol)
 
