@@ -112,4 +112,15 @@
 // exists"); when the adopted value turns out to be an ancestor of the value
 // being set, SetSnapshotSHA retries the push exactly once so a
 // strictly-newer value is not silently dropped by transient contention.
+//
+// The snapshot remote is resolved from the current branch's tracking
+// configuration, falling back to the conventional "origin" name. In a repo
+// that violates that assumption (its only remote named something else, no
+// branch tracking configured) the two surfaces degrade asymmetrically:
+// SnapshotSHA's best-effort fetch fails silently every call, so reads report
+// only the local ref — ("", nil) forever if nothing was ever set locally,
+// indistinguishable from "no snapshot" — while SetSnapshotSHA fails loudly
+// on its push. The loud write-path failure is what keeps the silence
+// acceptable: a misconfigured consumer cannot run long without its first
+// write surfacing the problem.
 package gitrepo

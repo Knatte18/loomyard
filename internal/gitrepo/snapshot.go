@@ -52,6 +52,11 @@ func snapshotRef(key string) string {
 // "origin" when no such configuration exists — matching the assumption
 // throughout gitrepo that every real consumer's repo has a conventional
 // single "origin" remote unless it has explicitly set up branch tracking.
+// When that assumption is violated (only remote named differently, no
+// tracking), the fallback names a nonexistent remote: SnapshotSHA's
+// best-effort fetch then degrades silently to the local ref while
+// SetSnapshotSHA's push fails loudly — see the package doc's snapshot
+// remote model for why that asymmetry is acceptable.
 func (r *Repo) remoteName() string {
 	stdout, _, code, err := r.run("symbolic-ref", "--short", "HEAD")
 	if err != nil || code != 0 {
