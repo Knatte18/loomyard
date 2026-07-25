@@ -113,9 +113,11 @@ answer plus a reproducible prototype — not a migration.
 
 ### go-git-primary
 
-- **Decision:** **go-git** (`github.com/go-git/go-git`, latest stable that `go get`
-  resolves — the maintained fork; the old `src-d/go-git` is deprecated) is the primary and
-  default library. `git2go`/libgit2 is investigated **only** if go-git genuinely cannot do a
+- **Decision:** **go-git** (`github.com/go-git/go-git/v5` — the maintained fork's
+  module path *includes the `/v5` major-version suffix*; bare `github.com/go-git/go-git`
+  resolves the deprecated pre-module version, and `src-d/go-git` is dead; use whatever current
+  major `go get` resolves at build time, verifying the suffix) is the primary and default
+  library. `git2go`/libgit2 is investigated **only** if go-git genuinely cannot do a
   specific operation, and is not adopted by this task regardless.
 - **Rationale:** go-git is pure Go — no cgo — which preserves the single-static-binary build
   and easy cross-compilation (especially to Windows) that are the main practical draw. cgo
