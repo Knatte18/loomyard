@@ -47,6 +47,12 @@ func TestLoadConfig_WellFormed(t *testing.T) {
 	if cfg.DiscussionTimeoutMin != 480 {
 		t.Errorf("cfg.DiscussionTimeoutMin = %d; want %d", cfg.DiscussionTimeoutMin, 480)
 	}
+	if cfg.Plan != "opus[effort=high]" {
+		t.Errorf("cfg.Plan = %q; want %q", cfg.Plan, "opus[effort=high]")
+	}
+	if cfg.PlanTimeoutMin != 120 {
+		t.Errorf("cfg.PlanTimeoutMin = %d; want %d", cfg.PlanTimeoutMin, 120)
+	}
 }
 
 // TestLoadConfig_MalformedDiscussionSpec verifies a hand-edited loom.yaml
@@ -59,6 +65,8 @@ func TestLoadConfig_MalformedDiscussionSpec(t *testing.T) {
 	// template's well-formed discussion spec.
 	seedLoomConfig(t, baseDir, `discussion: "opus[effort"
 discussion_timeout_min: 480
+plan: opus[effort=high]
+plan_timeout_min: 120
 `)
 
 	_, err := LoadConfig(baseDir, "loom")
@@ -67,6 +75,29 @@ discussion_timeout_min: 480
 	}
 	if !strings.Contains(err.Error(), "discussion") {
 		t.Errorf("LoadConfig() error = %q; want it to name the %q key", err.Error(), "discussion")
+	}
+}
+
+// TestLoadConfig_MalformedPlanSpec verifies a hand-edited loom.yaml with a
+// well-formed discussion spec but an ungrammatical plan model-spec fails
+// loud at load time, naming the "plan" key, rather than being silently
+// carried into the plan producer's spawn site.
+func TestLoadConfig_MalformedPlanSpec(t *testing.T) {
+	baseDir := t.TempDir()
+	// "opus[effort" has an unclosed bracket, written in place of the
+	// template's well-formed plan spec.
+	seedLoomConfig(t, baseDir, `discussion: opus[effort=high]
+discussion_timeout_min: 480
+plan: "opus[effort"
+plan_timeout_min: 120
+`)
+
+	_, err := LoadConfig(baseDir, "loom")
+	if err == nil {
+		t.Fatal("LoadConfig() = _, nil; want non-nil error for malformed plan spec")
+	}
+	if !strings.Contains(err.Error(), "plan") {
+		t.Errorf("LoadConfig() error = %q; want it to name the %q key", err.Error(), "plan")
 	}
 }
 
