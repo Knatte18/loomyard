@@ -149,21 +149,30 @@ consumers and deletes warp/weft is a later, separate task (step 2).
 ### Correspondence index: gitignored local cache
 
 - Decision: the warp↔weft SHA correspondence index is a local, never-committed cache
-  file stored **inside the weft clone's git directory** (resolved via
-  `git rev-parse --git-dir`, so it works in worktrees too) — not in the working tree, so
-  no `.gitignore` entry is needed or written. Atomic-write/lock handling follows
-  `internal/state`'s patterns. Sorted for binary-search "nearest older" lookup. API per design doc: `RecordCorrespondence`,
+  file stored **inside the weft worktree's git directory** (resolved via
+  `git rev-parse --git-dir`, which in a linked worktree names the per-worktree gitdir —
+  deliberately so: the index is **per-worktree**, i.e. per host↔weft pair, covering that
+  pair's own weft branch history; `RebuildIndex` scans the current weft branch's
+  trailers) — not in the working tree, so no `.gitignore` entry is needed or written.
+  **Layering:** the index component takes an explicit file path and never touches git
+  itself; the fabric layer owns gitdir resolution and hands the path in. Atomic-write/
+  lock handling follows `internal/state`'s patterns. Sorted for binary-search "nearest
+  older" lookup. API per design doc: `RecordCorrespondence`,
   `WeftSHAForWarpSHA`, `RebuildIndex` (full trailer scan via `git interpret-trailers`,
   reconstructs the cache; trailers in weft history are the sole source of truth).
-- Rationale: the index is pure derived state, per-clone rebuildable; sharing it (e.g. via
-  a snapshot ref) adds sync complexity for no gain.
+- Rationale: the index is pure derived state, per-worktree rebuildable from that
+  worktree's branch trailers; sharing it (e.g. via a snapshot ref) adds sync complexity
+  for no gain.
 - Rejected: snapshot-ref storage à la `refs/loomyard/...`; a committed mapping file
   (already rejected in the design doc — can drift).
 
 ### RevertWithWeft: nearest-older with explicit gap report
 
-- Decision: when the target warp SHA has no exact weft correspondence, `RevertWithWeft`
-  resets weft to the nearest older correspondence and returns a typed result stating
+- Decision: `RevertWithWeft(warpSHA)` resets **both** repos, per the design doc: warp is
+  reset to `warpSHA` first, then weft to the corresponding point — the method owns the
+  warp reset; it is not left to the caller. When the target warp SHA has no exact weft
+  correspondence, it resets weft to the nearest older correspondence and returns a typed
+  result stating
   exact-match vs gap (including the warp-SHA range in the gap) so the caller can flag
   weft/raddle as stale. Error only when no older correspondence exists at all. All stored
   SHAs (trailer values, index entries) are checked with `SHAExists` before use.
@@ -340,8 +349,12 @@ From `CONSTRAINTS.md` (authoritative; read it before writing code):
 - **TDD candidates (pure logic, untagged Tier-1 tests):** branch-name derivation
   (`<slug>` ↔ `<slug>-weft`, primary `main` ↔ `main-weft`); correspondence-index
   operations (`RecordCorrespondence`, `WeftSHAForWarpSHA` exact + nearest-older binary
-  search, empty index); `RevertWithWeft` gap classification (exact / gap-with-range / no
-  older correspondence → error); trailer formatting/parsing round-trip.
+  search, empty index) — exercised against an **explicit temp file path, no git spawn**
+  (the index component never resolves gitdir itself, per the Correspondence index
+  decision's layering, keeping these untagged under the Test Tier Purity Invariant);
+  `RevertWithWeft` gap classification (exact / gap-with-range / no older correspondence
+  → error); trailer formatting/parsing round-trip. Gitdir resolution and trailer
+  scanning spawn git and are integration-tagged.
 - **gitrepo additions** (pull, pathspec staging, write-lock serialization) get their own
   tests in `internal/gitrepo` following its existing integration-tagged + hermetic
   pattern.
@@ -397,3 +410,7 @@ From `CONSTRAINTS.md` (authoritative; read it before writing code):
   entries self-correcting via `SHAExists` + `RebuildIndex`. Constraint: async push must
   remain first-class — board (on `weft:main` per board-weft-storage) must never be
   forced to wait on a synchronous push.
+- **Q:** (review r2 gap) Index TDD tests were claimed Tier-1 but path resolution spawns
+  git (`rev-parse --git-dir`) — Tier Purity conflict. **A:** Split layering: the index
+  component takes an explicit file path and never touches git (Tier-1 untagged tests);
+  the fabric layer owns gitdir resolution (integration-tagged tests).
