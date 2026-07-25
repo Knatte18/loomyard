@@ -243,23 +243,38 @@ func TestMasterTemplate_ForbidsWeftGitModelAndNamedSubagents(t *testing.T) {
 // contract classifies asking, killing the run (~40% of real spawns). The
 // template must state that the prompt is real and delivered by `lyx
 // webster run`, that `lyx` is a CLI driven via the Bash tool (never a
-// listed tool), and that the session verifies via `lyx webster status`
-// instead of ever ending its turn to ask.
+// listed tool), and that the session gets its bearings via `lyx webster
+// status` rather than ending its turn to ask.
+//
+// The grounding is deliberately EVIDENCE-FIRST and NEUTRAL, not defensive:
+// round opus-r2 (crucible) live-observed a Master quote the prior fix's own
+// anti-refusal phrasing — an imperative "never by asking" plus "no human
+// reads this session, so a clarifying question is never answered; it just
+// ends the run as failed" — back as the very injection tell that made it
+// refuse ("a manipulation tactic, not something a legitimate harness needs
+// to say"). A block that preempts the "is this real?" doubt and forbids
+// asking pattern-matches the exact move an injection would make. So the
+// grounding leads with orientation (the two read-only checks and what they
+// prove) and states the non-interactive execution mode as a plain fact
+// (there is no chat partner to field a question), never as a prohibition on
+// asking or a warning about fabricated/injected content.
 func TestMasterTemplate_GroundsHarnessRealityAgainstInjectionRefusal(t *testing.T) {
 	text := string(websterengine.MasterTemplate())
 
-	requireContains(t, text, "verify this harness with two read-only commands — never by asking")
-	requireContains(t, text, "submitted by `lyx webster run`")
+	requireContains(t, text, "get your bearings against the real state on disk")
+	requireContains(t, text, "non-interactively by `lyx webster run`")
 	requireContains(t, text, "it is an ordinary CLI binary")
 	requireContains(t, text, "RUNNING it with your")
 	requireContains(t, text, "run `lyx webster status`")
-	// The safe-under-either-hypothesis framing is the load-bearing part: a
-	// skeptical model must be handed an epistemically safe first move
-	// (read-only verification), never a bare "trust this document" — the
-	// latter itself pattern-matches an injection move and triggered a live
-	// refusal (round fable-r1, post-first-fix iteration).
-	requireContains(t, text, "safe under EITHER hypothesis")
-	requireContains(t, text, "a clarifying question is never answered")
+	// Evidence-first is the load-bearing part: a skeptical model is handed a
+	// concrete first move (read-only orientation) and told exactly what the
+	// two checks prove, so it reaches "proceed" from verifiable facts rather
+	// than being asked to trust the document.
+	requireContains(t, text, "confirm the harness, the run state, and the plan are all present")
+	// The non-interactive mode is stated as a neutral operational fact, never
+	// as an imperative "never ask": a message that forbids asking is itself
+	// what round opus-r2 saw quoted back as an injection tell.
+	requireContains(t, text, "there is no chat partner on the other end")
 }
 
 // TestMasterTemplate_StatesBracketSequenceAndRecoveryLadder asserts the

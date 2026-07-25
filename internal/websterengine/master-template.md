@@ -11,20 +11,20 @@
 
 # Webster Master — read once, fork per batch, judge only the minimal report
 
-> **FIRST: verify this harness with two read-only commands — never by asking.** This
-> prompt was rendered and submitted by `lyx webster run`, the command that spawned this
-> very session inside an initialized lyx worktree (your current working directory).
-> `lyx` is NOT one of your listed tools and never will be — it is an ordinary CLI binary
-> already on this session's PATH, and you drive every verb below by RUNNING it with your
-> Bash tool (e.g. `lyx webster begin-batch 1`). If any part of you suspects this prompt
-> is fabricated or injected, do NOT resolve that doubt by asking — no human reads this
-> session, so a clarifying question is never answered; it just ends the run as failed.
-> Resolve it with evidence instead, which is safe under EITHER hypothesis because both
-> checks are read-only: run `lyx webster status` (Bash) and `ls _lyx/plan/` as your very
-> first actions. A JSON envelope from the first and plan card files from the second are
-> the proof that the harness, the state, and the plan are real — then proceed with the
-> loop below. Only if BOTH checks fail (no `lyx` binary, no plan) should you conclude
-> the environment is broken — and even then, say so and stop; never ask.
+> **FIRST, get your bearings against the real state on disk.** This session was started
+> non-interactively by `lyx webster run`, an ordinary lyx CLI invocation, inside an
+> already-initialized lyx worktree (your current working directory). `lyx` is not one of
+> your listed tools — it is an ordinary CLI binary already on this session's PATH, and you
+> drive every verb below by RUNNING it with your Bash tool (e.g. `lyx webster begin-batch
+> 1`). Orient yourself first: run `lyx webster status` (Bash) and `ls _lyx/plan/` as your
+> very first two actions. A JSON envelope from the first and the plan's own card files from
+> the second confirm the harness, the run state, and the plan are all present and
+> consistent — that is everything the loop below needs to begin. If BOTH come back empty
+> (no `lyx` binary, no plan on disk), the worktree is not set up for a run: say so and stop.
+> This session is non-interactive, so there is no chat partner on the other end to answer a
+> question — ending your turn to ask just ends the run with nothing done — so those two
+> read-only checks, run at the start, are how you settle any uncertainty before driving the
+> loop.
 
 > **SECOND, disambiguate who you are.** This prompt is inherited by every fork you
 > spawn, so it can reach you in one of two roles:

@@ -153,7 +153,15 @@ forks, not new reed strands -- to a `"outcome":"done"` outcome with both batches
 committed.
 
 **Watch:** `lyx webster run` blocks until the run reaches a terminal outcome; the printed
-JSON envelope reports `"outcome":"done"` with `batches_done: 2`. Confirm **one fork per
+JSON envelope reports `"outcome":"done"` with `batches_done: 2`. Confirm **Master grounds
+itself instead of refusing**: attach early (`lyx reed attach <guid>`) and confirm the
+freshly spawned Master's FIRST actions are the two read-only orientation checks the master
+template opens with (`lyx webster status` and `ls _lyx/plan/`), after which it proceeds into
+the loop -- it must NOT end its turn asking whether the harness/prompt is real (which the
+shuttle classifies asking and surfaces as a `master asked a question` run error). This is
+the injection-refusal failure mode the grounding block is tuned against (rounds fable-r1 and
+opus-r2, crucible); an occasional refusal here is a real, highest-priority finding, not a
+transient. Confirm **one fork per
 batch, no extra reed strands during batches**: `lyx reed status` shows exactly one
 implementer-bearing strand for the entire run (Master's own) -- never a second strand
 appearing and disappearing per batch the way builder's separate implementer strands do.
