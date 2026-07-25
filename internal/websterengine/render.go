@@ -1,13 +1,15 @@
-// render.go implements the two embedded prompt-template assets
-// (fork-template.md, master-template.md) and the rendering functions that
-// fill them: RenderForkPrompt (called by begin-batch immediately before each
-// fork) and RenderMasterPrompt (called by run at Master's own spawn), plus
-// the two batch-list/progress renderers those prompts embed
-// (RenderBatchIndex, RenderProgress). The two go:embed directives and their
-// accessors live here rather than in template.go, which stays config-only —
-// mirroring builderengine's own split between template.go's
-// ConfigTemplate/ImplementerTemplate/OrchestratorTemplate accessors and this
-// package's own render-time logic.
+// render.go implements the three embedded prompt-template assets
+// (fork-template.md, master-template.md, integration-template.md) and the
+// rendering functions that fill them: RenderForkPrompt (called by
+// begin-batch immediately before each fork), RenderMasterPrompt (called by
+// run at Master's own spawn), and RenderIntegrationPrompt (called for the
+// plan's single dedicated integration-suite fork, when
+// ShouldRunIntegration reports true), plus the two batch-list/progress
+// renderers those prompts embed (RenderBatchIndex, RenderProgress). The
+// three go:embed directives and their accessors live here rather than in
+// template.go, which stays config-only — mirroring builderengine's own
+// split between template.go's ConfigTemplate/ImplementerTemplate/
+// OrchestratorTemplate accessors and this package's own render-time logic.
 //
 // This file is retargeted onto planparser.Plan / batcher.Batch (the flat
 // card-list model) and away from builderengine.Plan/PlanBatch. A fork
@@ -51,6 +53,18 @@ var forkTemplate []byte
 // writes the result to a prompt file Master's Agent-tool fork call reads.
 func ForkTemplate() []byte {
 	return forkTemplate
+}
+
+//go:embed integration-template.md
+var integrationTemplate []byte
+
+// IntegrationTemplate returns the embedded integration-suite fork prompt
+// template's raw bytes (see integration-template.md's leading banner
+// comment for its top-level markers), mirroring ForkTemplate/MasterTemplate's
+// own accessor shape. RenderIntegrationPrompt fills it via stencil.Fill
+// before the single dedicated integration fork's prompt file is written.
+func IntegrationTemplate() []byte {
+	return integrationTemplate
 }
 
 // noPrecedingBatchDigest is the literal sentinel RenderForkPrompt renders
@@ -195,6 +209,44 @@ func renderMovesField(moves []planparser.MovePair) string {
 		fmt.Fprintf(&b, "- `%s` -> `%s`\n", m.Old, m.New)
 	}
 	return b.String()
+}
+
+// RenderIntegrationPrompt fills integration-template.md for the plan's
+// single, dedicated integration-suite fork's own prompt: run once (if at
+// all), after every batch has reached a terminal-done state, only when
+// ShouldRunIntegration(plan) is true (integration.go). plan is the whole
+// parsed plan — this function injects its own plan-level "## verify:" text
+// (plan.Verify) and "## Shared Decisions" (plan.SharedDecisions), the
+// integration-suite fork's own extension of the fork-prompt-plan-level-
+// context Shared Decision. reportPath and worktreeRoot are the fork's own
+// OutputFiles target and host checkout, mirroring RenderForkPrompt's own
+// two path parameters. Returns an error when plan.Verify is empty: callers
+// gate this call on ShouldRunIntegration first, so an empty plan-level
+// verify reaching this function is a caller bug, not a value this function
+// papers over with a sentinel the way RenderForkPrompt's own
+// prev_digest/shared_decisions markers do.
+func RenderIntegrationPrompt(plan *planparser.Plan, reportPath, worktreeRoot string) ([]byte, error) {
+	verify := strings.TrimSpace(plan.Verify)
+	if verify == "" {
+		return nil, fmt.Errorf("webster: render integration prompt: plan carries no plan-level \"## verify:\" section")
+	}
+
+	sharedDecisions := strings.TrimSpace(plan.SharedDecisions)
+	if sharedDecisions == "" {
+		sharedDecisions = noSharedDecisions
+	}
+
+	values := map[string]string{
+		"verify":           verify,
+		"report_path":      reportPath,
+		"worktree_root":    worktreeRoot,
+		"shared_decisions": sharedDecisions,
+	}
+	prompt, err := stencil.Fill(IntegrationTemplate(), values)
+	if err != nil {
+		return nil, fmt.Errorf("webster: fill integration template: %w", err)
+	}
+	return prompt, nil
 }
 
 // RenderMasterPrompt fills master-template.md for one `lyx webster run`

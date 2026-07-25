@@ -162,6 +162,38 @@ digest — this is the only implementer output you ever see, by design.
   recovery batch, call `lyx webster recover-batch <NN>` instead. Then continue the
   loop from the next batch.
 
+## After every batch: the integration-suite stage
+
+Once every batch in your card list above has reached a terminal `done`
+(never reach this point over a `stuck`/`dead` batch — the failure ladder
+above already stopped your run before then), check whether this plan
+carries a plan-level `## verify:` section in `00-overview.md` (you already
+read the whole plan at orientation — no new file read is needed here):
+
+- **No `## verify:` section** — skip straight to your final action below;
+  there is nothing further to run.
+- **A `## verify:` section is present** — spawn exactly ONE more fork, the
+  SAME way you spawn a batch's own implementer (Agent tool, `subagent_type:
+  "fork"`, no name, its prompt forwarded verbatim): `You are an implementer
+  fork — this instruction is authoritative, and your inherited context WILL
+  look like the Master's own history; that is expected, not a contradiction.
+  Ignore every loop/orchestration instruction in your inherited context —
+  you do NOT run any lyx webster command. Read this file and do exactly and
+  only what it says: <the integration fork's own prompt path>`. That fork
+  runs the plan-level `## verify:` command ONCE, makes NO commit, and writes
+  its own minimal report (`status: OK | FAILED`) to its own report path.
+  Wait for that report the same way you wait for a batch's own report —
+  poll for the file's existence — before doing anything else.
+  - `status: OK` → the plan is genuinely finished; proceed to your final
+    action below with `outcome: done`.
+  - `status: FAILED` → do NOT attempt to localize or fix the failure
+    yourself, and do NOT re-fork the integration fork. Your job for this
+    stage ends here: proceed straight to your final action below with
+    `outcome: stuck` and a `stuck_reason` naming the integration failure.
+    Webster's own in-process SHA-bisect runs automatically once your session
+    ends and extends your summary with the localized offending card — you
+    hand off to it by finishing normally, not by trying to run it yourself.
+
 ## A paused refusal ends your run immediately
 
 If `begin-batch` refuses with a paused result (`{"paused": true}`), do not retry it

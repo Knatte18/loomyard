@@ -515,6 +515,46 @@ func TestRenderForkPrompt_InjectsRenameMechanicOnlyForMovesBearingBatch(t *testi
 	})
 }
 
+// TestRenderIntegrationPrompt_InjectsVerifyText asserts RenderIntegrationPrompt
+// injects the plan's own plan-level "## verify:" text (plan.Verify) into the
+// rendered integration-suite fork prompt verbatim, and that an empty
+// plan.Verify is refused loud rather than papered over with a sentinel — a
+// caller must gate this call on ShouldRunIntegration first.
+func TestRenderIntegrationPrompt_InjectsVerifyText(t *testing.T) {
+	plan := &planparser.Plan{Verify: "go test ./internal/boardcli/... ./cmd/lyx/..."}
+
+	got, err := websterengine.RenderIntegrationPrompt(plan, "/reports/integration.yaml", "/worktree")
+	if err != nil {
+		t.Fatalf("RenderIntegrationPrompt() = _, %v; want nil error", err)
+	}
+	requireContains(t, string(got), plan.Verify)
+}
+
+// TestRenderIntegrationPrompt_EmptyVerifyErrors asserts RenderIntegrationPrompt
+// refuses loud on a plan with no plan-level verify, rather than silently
+// rendering a prompt with an empty verify command.
+func TestRenderIntegrationPrompt_EmptyVerifyErrors(t *testing.T) {
+	plan := &planparser.Plan{Verify: ""}
+
+	if _, err := websterengine.RenderIntegrationPrompt(plan, "/reports/integration.yaml", "/worktree"); err == nil {
+		t.Fatalf("RenderIntegrationPrompt() error = nil; want an error for a plan with no plan-level verify")
+	}
+}
+
+// TestIntegrationTemplate_CarriesNoPerCardOrCommitInstructions asserts the
+// embedded integration template's bytes carry no per-card or commit
+// instructions of any kind: the integration fork runs the plan-level verify
+// ONCE and makes NO commit, unlike a batch's own fork template.
+func TestIntegrationTemplate_CarriesNoPerCardOrCommitInstructions(t *testing.T) {
+	text := string(websterengine.IntegrationTemplate())
+
+	requireNotContains(t, text, "**Commit:**")
+	requireNotContains(t, text, "One commit per card")
+	requireNotContains(t, text, "{{.cards}}")
+	requireContains(t, text, "implement NO cards")
+	requireContains(t, text, "make NO commit")
+}
+
 // TestRenderProgress_ListsOnlyTerminalBatches asserts RenderProgress lists
 // exactly the batches whose persisted BatchState is Terminal, one
 // "NN-slug: status" line per batch in plan order, omitting any batch with
