@@ -29,6 +29,7 @@ dev-path derivation and the PATH fallback are injectable in tests without touchi
 
 - **Context:**
   - `tools/sandbox/suite.go`
+  - `tools/internal/devbin/devbin.go`
   - `go.mod`
 - **Edits:** none
 - **Creates:**
@@ -54,6 +55,7 @@ dev-path derivation and the PATH fallback are injectable in tests without touchi
 ### Card 6: Unit-test resolveLyx and prependPath
 
 - **Context:**
+  - `tools/sandbox/resolve.go`
   - `tools/sandbox/suite.go`
   - `tools/sandbox/suite_test.go`
 - **Edits:** none

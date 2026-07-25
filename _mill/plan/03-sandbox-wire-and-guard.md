@@ -29,6 +29,7 @@ Batch-local decisions: `binaryFingerprint` gains a `source string` parameter (st
 
 - **Context:**
   - `tools/sandbox/report.go`
+  - `tools/sandbox/resolve.go`
 - **Edits:**
   - `tools/sandbox/suite.go`
 - **Creates:** none
@@ -52,6 +53,7 @@ Batch-local decisions: `binaryFingerprint` gains a `source string` parameter (st
 ### Card 8: Add Source to the report fingerprint
 
 - **Context:**
+  - `tools/sandbox/resolve.go`
   - `tools/sandbox/suite.go`
 - **Edits:**
   - `tools/sandbox/report.go`
@@ -70,6 +72,7 @@ Batch-local decisions: `binaryFingerprint` gains a `source string` parameter (st
 
 - **Context:**
   - `tools/sandbox/report.go`
+  - `tools/sandbox/resolve.go`
 - **Edits:**
   - `tools/sandbox/main.go`
 - **Creates:** none
@@ -91,6 +94,7 @@ Batch-local decisions: `binaryFingerprint` gains a `source string` parameter (st
 ### Card 10: Update suite tests for new signatures
 
 - **Context:**
+  - `tools/sandbox/resolve.go`
   - `tools/sandbox/suite.go`
 - **Edits:**
   - `tools/sandbox/suite_test.go`
@@ -112,6 +116,7 @@ Batch-local decisions: `binaryFingerprint` gains a `source string` parameter (st
 
 - **Context:**
   - `tools/sandbox/report.go`
+  - `tools/sandbox/resolve.go`
 - **Edits:**
   - `tools/sandbox/report_test.go`
 - **Creates:** none
@@ -145,6 +150,7 @@ Batch-local decisions: `binaryFingerprint` gains a `source string` parameter (st
   - `tools/sandbox/suite.go`
 - **Edits:**
   - `cmd/lyx/tierpurity_test.go`
+  - `cmd/lyx/hermeticenv_test.go`
 - **Creates:**
   - `tools/sandbox/pathresolve_guard_test.go`
 - **Deletes:** none
@@ -164,7 +170,11 @@ Batch-local decisions: `binaryFingerprint` gains a `source string` parameter (st
   module-relative path with a reason like "contains the banned `exec.Command`/
   `exec.CommandContext` token strings as its own scan data (Dev/Prod Binary Separation guard)"
   — mirror the existing `cmd/lyx/tierpurity_test.go` / `cmd/lyx/hermeticenv_test.go` entries.
-  Without this, the module-wide Test Tier Purity guard (`go test ./cmd/lyx/`) fails on the new
+  **Likewise** add an `allowedNonHermetic` entry (same module-relative key + reason style) in
+  `cmd/lyx/hermeticenv_test.go` for `tools/sandbox/pathresolve_guard_test.go`, because
+  `hermeticenv_test.go`'s `gitSpawnTokens` also includes `exec.Command`/`exec.CommandContext`
+  and its module-wide walk would otherwise mark the new file git-spawning-without-hermetic.
+  Without both allowlist entries the module-wide guards (`go test ./cmd/lyx/`) fail on the new
   guard file's scan literals.
 - **Commit:** `test(sandbox): guard against bare-PATH lyx lookups`
 
@@ -174,7 +184,8 @@ Batch-local decisions: `binaryFingerprint` gains a `source string` parameter (st
 tests (updated suite/report/main tests, the batch-2 `resolve_test.go`, and the new
 `pathresolve_guard_test.go`) AND the `cmd/lyx` module-wide guards. The `./cmd/lyx/` scope is
 required because the new guard file carries `exec.Command`/`exec.CommandContext` scan literals
-that the module-wide Test Tier Purity guard (`cmd/lyx/tierpurity_test.go`) inspects — this batch
-adds the matching `allowedSpawners` self-exclusion entry, and only `go test ./cmd/lyx/` confirms
-it. The sandbox guard passes only because cards 7–9 removed every bare-PATH `lyx` lookup outside
+that BOTH module-wide guards inspect — Test Tier Purity (`cmd/lyx/tierpurity_test.go`) and
+Hermetic Git Test Environment (`cmd/lyx/hermeticenv_test.go`); this batch adds the matching
+`allowedSpawners` and `allowedNonHermetic` self-exclusion entries, and only `go test ./cmd/lyx/`
+confirms them. The sandbox guard passes only because cards 7–9 removed every bare-PATH `lyx` lookup outside
 `resolve.go`. All tests remain Tier-1 pure (seams, temp dirs, file scans).

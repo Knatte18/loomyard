@@ -109,6 +109,7 @@ batches:
 
 - `.gitignore`
 - `CONSTRAINTS.md`
+- `cmd/lyx/hermeticenv_test.go`
 - `cmd/lyx/tierpurity_test.go`
 - `crucible/README.md`
 - `crucible/board-review-prompt.md`
