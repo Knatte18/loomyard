@@ -122,7 +122,14 @@
 // the correct model for THIS batch rather than assuming the previous
 // batch's state. There is nothing to forget on a failure path that skips
 // record-batch: the next batch's begin-batch call asserts afresh
-// regardless of what the prior batch left behind.
+// regardless of what the prior batch left behind. Note that the injection
+// itself is DORMANT in the shipped flow: run launches Master with
+// RoleMaster's model AND baselines State.AssertedModel to that same value
+// at every entry, and begin-batch's only target is RoleMaster, so the
+// idempotency check never finds a divergence without manual state
+// tampering — the mechanism is the seam a future per-batch model policy
+// plugs into, and its live timing is exercised only by the sandbox
+// suite's tamper-armed W2 scenario.
 //
 // # cold recovery is the only real model escalation
 //
