@@ -230,6 +230,58 @@ func (r *Repo) SHAExists(sha string) bool {
 	return err == nil && code == 0
 }
 
+// CurrentBranch returns the short name of the branch HEAD currently points
+// at (e.g. "main"), used by the integration bisect to capture the branch it
+// must restore to BEFORE detaching HEAD for a candidate checkout. It returns
+// a wrapped error when HEAD is detached (or on any other git failure) rather
+// than an empty string, since a caller that failed to capture a branch name
+// has no safe ref to hand RestoreBranch afterwards.
+func (r *Repo) CurrentBranch() (string, error) {
+	stdout, stderr, code, err := r.run("symbolic-ref", "--short", "HEAD")
+	if err != nil {
+		return "", err
+	}
+	if code != 0 {
+		return "", fmt.Errorf("gitrepo: symbolic-ref --short HEAD: %s", stderr)
+	}
+	return strings.TrimSpace(stdout), nil
+}
+
+// CheckoutDetached moves HEAD to sha without updating any branch ref,
+// leaving the working tree at that commit's contents — the bisect's
+// per-candidate checkout step, run in place in the single worktree rather
+// than a separate clone. sha is validated with the same validSHA check as
+// ChangedFilesSince and SHAExists before it ever reaches git, returning
+// ErrInvalidSHA (checkable via errors.Is) on a non-hex value rather than
+// letting an option-shaped string be parsed as a checkout flag.
+func (r *Repo) CheckoutDetached(sha string) error {
+	if !validSHA(sha) {
+		return ErrInvalidSHA
+	}
+	_, stderr, code, err := r.run("checkout", "--detach", sha)
+	if err != nil {
+		return err
+	}
+	if code != 0 {
+		return fmt.Errorf("gitrepo: git checkout --detach %s: %s", sha, stderr)
+	}
+	return nil
+}
+
+// RestoreBranch moves HEAD back onto ref (the branch name CurrentBranch
+// captured before the bisect loop's first CheckoutDetached call), ending
+// the detached-HEAD state the bisect left the worktree in.
+func (r *Repo) RestoreBranch(ref string) error {
+	_, stderr, code, err := r.run("checkout", ref)
+	if err != nil {
+		return err
+	}
+	if code != 0 {
+		return fmt.Errorf("gitrepo: git checkout %s: %s", ref, stderr)
+	}
+	return nil
+}
+
 // ChangedFilesSince returns the repo-relative paths that differ between sha
 // and HEAD, considering committed history only — uncommitted working-tree
 // or staged edits are never inspected, matching the snapshot model's
