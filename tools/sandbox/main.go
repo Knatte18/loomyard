@@ -1,7 +1,7 @@
 // main.go implements the sandbox tool entry point, flag parsing, and subcommand
 // dispatch. It supports nine subcommands: "build" (default, clones the Hub),
-// "suite" (runs the embedded SANDBOX-CORE-SUITE agent), "mux-suite" (runs the
-// embedded SANDBOX-MUX-SUITE agent), "shuttle-suite" (runs the embedded
+// "suite" (runs the embedded SANDBOX-CORE-SUITE agent), "reed-suite" (runs the
+// embedded SANDBOX-REED-SUITE agent), "shuttle-suite" (runs the embedded
 // SANDBOX-SHUTTLE-SUITE agent), "burler-suite" (runs the embedded
 // SANDBOX-BURLER-SUITE agent), "perch-suite" (runs the embedded
 // SANDBOX-PERCH-SUITE agent), "builder-suite" (runs the embedded
@@ -9,7 +9,7 @@
 // SANDBOX-WEBSTER-SUITE agent), and "fetch" (collects the agent-written
 // report into .scratch). Only -parent and -loomyard live at the top level;
 // -reset is a build-subcommand flag, parsed after the "build" token like
-// suite/mux-suite/shuttle-suite/burler-suite/perch-suite/builder-suite/
+// suite/reed-suite/shuttle-suite/burler-suite/perch-suite/builder-suite/
 // webster-suite parse their -claude/-prompt flags.
 
 package main
@@ -168,31 +168,31 @@ func run(argv []string) int {
 			return 1
 		}
 
-	case "mux-suite":
-		// The mux-suite subcommand mirrors "suite" exactly, but runs the
-		// dedicated SANDBOX-MUX-SUITE scheme via the muxSuite spec; fetching the
+	case "reed-suite":
+		// The reed-suite subcommand mirrors "suite" exactly, but runs the
+		// dedicated SANDBOX-REED-SUITE scheme via the reedSuite spec; fetching the
 		// report is the same shared fetch subcommand, so -loomyard is not
 		// required here either.
 
-		// Parse mux-suite-specific flags from the remaining positionals after
-		// "mux-suite".
-		mf := flag.NewFlagSet("sandbox mux-suite", flag.ContinueOnError)
-		mf.SetOutput(os.Stderr)
-		claudeFlag := mf.String("claude", "", "path to the claude binary (default: resolve from PATH)")
-		promptFlag := mf.String("prompt", "", "instruction string passed to the agent (default: built-in)")
+		// Parse reed-suite-specific flags from the remaining positionals after
+		// "reed-suite".
+		rf := flag.NewFlagSet("sandbox reed-suite", flag.ContinueOnError)
+		rf.SetOutput(os.Stderr)
+		claudeFlag := rf.String("claude", "", "path to the claude binary (default: resolve from PATH)")
+		promptFlag := rf.String("prompt", "", "instruction string passed to the agent (default: built-in)")
 
 		remaining := fs.Args()[1:]
-		if err := mf.Parse(remaining); err != nil {
+		if err := rf.Parse(remaining); err != nil {
 			return 1
 		}
 
-		if err := runSuite(absParent, *claudeFlag, *promptFlag, muxSuite); err != nil {
+		if err := runSuite(absParent, *claudeFlag, *promptFlag, reedSuite); err != nil {
 			fmt.Fprintf(os.Stderr, "sandbox: %v\n", err)
 			return 1
 		}
 
 	case "shuttle-suite":
-		// The shuttle-suite subcommand mirrors "suite"/"mux-suite" exactly, but
+		// The shuttle-suite subcommand mirrors "suite"/"reed-suite" exactly, but
 		// runs the dedicated SANDBOX-SHUTTLE-SUITE scheme via the shuttleSuite
 		// spec; fetching the report is the same shared fetch subcommand, so
 		// -loomyard is not required here either.
@@ -215,7 +215,7 @@ func run(argv []string) int {
 		}
 
 	case "burler-suite":
-		// The burler-suite subcommand mirrors "suite"/"mux-suite"/
+		// The burler-suite subcommand mirrors "suite"/"reed-suite"/
 		// "shuttle-suite" exactly, but runs the dedicated
 		// SANDBOX-BURLER-SUITE scheme via the burlerSuite spec; fetching the
 		// report is the same shared fetch subcommand, so -loomyard is not
@@ -239,7 +239,7 @@ func run(argv []string) int {
 		}
 
 	case "perch-suite":
-		// The perch-suite subcommand mirrors "suite"/"mux-suite"/
+		// The perch-suite subcommand mirrors "suite"/"reed-suite"/
 		// "shuttle-suite"/"burler-suite" exactly, but runs the dedicated
 		// SANDBOX-PERCH-SUITE scheme via the perchSuite spec; fetching the
 		// report is the same shared fetch subcommand, so -loomyard is not
@@ -263,7 +263,7 @@ func run(argv []string) int {
 		}
 
 	case "builder-suite":
-		// The builder-suite subcommand mirrors "suite"/"mux-suite"/
+		// The builder-suite subcommand mirrors "suite"/"reed-suite"/
 		// "shuttle-suite"/"burler-suite"/"perch-suite" exactly, but runs the
 		// dedicated SANDBOX-BUILDER-SUITE scheme via the builderSuite spec;
 		// fetching the report is the same shared fetch subcommand, so
@@ -287,7 +287,7 @@ func run(argv []string) int {
 		}
 
 	case "webster-suite":
-		// The webster-suite subcommand mirrors "suite"/"mux-suite"/
+		// The webster-suite subcommand mirrors "suite"/"reed-suite"/
 		// "shuttle-suite"/"burler-suite"/"perch-suite"/"builder-suite"
 		// exactly, but runs the dedicated SANDBOX-WEBSTER-SUITE scheme via
 		// the websterSuite spec; fetching the report is the same shared

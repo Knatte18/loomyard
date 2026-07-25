@@ -3,7 +3,7 @@
 // recoverbatch_test.go exercises RecoverBatch end to end (Tier 2 — see
 // docs/benchmarks/running-tests.md): a real scratch git repo backs
 // WorktreeRoot for the genuine HeadSHA/ChangedFiles/Dirty calls, a real
-// *shuttleengine.Runner wired over local fake shuttleengine.MuxOps/
+// *shuttleengine.Runner wired over local fake shuttleengine.ReedOps/
 // shuttleengine.Engine doubles is the Starter (builderengine's own
 // established fake-starter approach — spawn_test.go's spawnFixture
 // pattern), and a fake Clock replays the whole bounded-wait sequence with
@@ -27,35 +27,35 @@ import (
 	"github.com/Knatte18/loomyard/internal/builderengine"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/modelspec"
-	"github.com/Knatte18/loomyard/internal/muxengine"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// recoverFakeMux is a hermetic shuttleengine.MuxOps double: AddStrand mints
+// recoverFakeReed is a hermetic shuttleengine.ReedOps double: AddStrand mints
 // a distinct GUID per call and registers it live in the scripted Status
 // result (a spawned strand is live until explicitly removed or the test
 // overrides Status directly), RemoveStrand records every call and retires
 // the guid from Status, and the send/capture methods stay inert since
 // RecoverBatch's own path never exercises them.
-type recoverFakeMux struct {
+type recoverFakeReed struct {
 	mu             sync.Mutex
 	counter        int
-	status         muxengine.StatusResult
+	status         reedengine.StatusResult
 	statusErr      error
 	removedStrands []string
 }
 
-func (m *recoverFakeMux) AddStrand(spec muxengine.AddSpec) (muxengine.Strand, error) {
+func (m *recoverFakeReed) AddStrand(spec reedengine.AddSpec) (reedengine.Strand, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.counter++
 	guid := fmt.Sprintf("recover-test-strand-%d", m.counter)
-	m.status.Strands = append(m.status.Strands, muxengine.StrandStatus{GUID: guid, Live: true})
-	return muxengine.Strand{GUID: guid}, nil
+	m.status.Strands = append(m.status.Strands, reedengine.StrandStatus{GUID: guid, Live: true})
+	return reedengine.Strand{GUID: guid}, nil
 }
 
-func (m *recoverFakeMux) RemoveStrand(guid string, recursive bool) (muxengine.Removed, error) {
+func (m *recoverFakeReed) RemoveStrand(guid string, recursive bool) (reedengine.Removed, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.removedStrands = append(m.removedStrands, guid)
@@ -65,23 +65,23 @@ func (m *recoverFakeMux) RemoveStrand(guid string, recursive bool) (muxengine.Re
 			break
 		}
 	}
-	return muxengine.Removed{}, nil
+	return reedengine.Removed{}, nil
 }
 
-func (m *recoverFakeMux) Status() (muxengine.StatusResult, error) {
+func (m *recoverFakeReed) Status() (reedengine.StatusResult, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.statusErr != nil {
-		return muxengine.StatusResult{}, m.statusErr
+		return reedengine.StatusResult{}, m.statusErr
 	}
 	return m.status, nil
 }
 
-func (m *recoverFakeMux) SendText(guid, text string, submit bool) error { return nil }
-func (m *recoverFakeMux) SendKey(guid, key string) error                { return nil }
-func (m *recoverFakeMux) CapturePane(guid string) (string, error)       { return "", nil }
+func (m *recoverFakeReed) SendText(guid, text string, submit bool) error { return nil }
+func (m *recoverFakeReed) SendKey(guid, key string) error                { return nil }
+func (m *recoverFakeReed) CapturePane(guid string) (string, error)       { return "", nil }
 
-var _ shuttleengine.MuxOps = (*recoverFakeMux)(nil)
+var _ shuttleengine.ReedOps = (*recoverFakeReed)(nil)
 
 // recoverFakeEngine is a hermetic shuttleengine.Engine double: Prepare
 // counts every call (so a test can prove an ATTACH call never re-spawns)
@@ -157,11 +157,11 @@ var _ websterengine.Clock = (*recoverFakeClock)(nil)
 // recoverFixture is a fully-wired set of RecoverBatch dependencies: a real
 // scratch git repo (one base commit) as WorktreeRoot, a literal one-batch
 // plan backed by a seeded plan dir, a real *shuttleengine.Runner over
-// recoverFakeMux/recoverFakeEngine as the Starter, and webster's three
+// recoverFakeReed/recoverFakeEngine as the Starter, and webster's three
 // roles pre-resolved.
 type recoverFixture struct {
 	Deps       websterengine.RecoverDeps
-	Mux        *recoverFakeMux
+	Reed       *recoverFakeReed
 	Engine     *recoverFakeEngine
 	Worktree   string
 	ReportsDir string
@@ -181,11 +181,11 @@ func newRecoverFixture(t *testing.T) *recoverFixture {
 	worktree := newScratchRepo(t)
 	commitFile(t, worktree, "base.txt", "base", "base commit")
 
-	mux := &recoverFakeMux{}
+	reed := &recoverFakeReed{}
 	engine := &recoverFakeEngine{}
 	layout := &hubgeometry.Layout{WorktreeRoot: worktree, Cwd: worktree}
 	shuttleCfg := shuttleengine.Config{RunDir: t.TempDir(), RunTimeoutMin: 60, StartupTimeoutS: 30}
-	runner := shuttleengine.NewRunner(mux, engine, layout, shuttleCfg)
+	runner := shuttleengine.NewRunner(reed, engine, layout, shuttleCfg)
 
 	roles := map[websterengine.Role]modelspec.Resolved{
 		websterengine.RoleMaster:          {Engine: "claude", Model: "master-model", Params: map[string]string{}},
@@ -202,7 +202,7 @@ func newRecoverFixture(t *testing.T) *recoverFixture {
 		Roles:        roles,
 		Config:       websterengine.Config{SelfFixCap: 2, RecoveryTimeoutMin: 30},
 		Engine:       engine,
-		Mux:          mux,
+		Reed:         reed,
 		ShuttleCfg:   shuttleCfg,
 		Layout:       layout,
 		WorktreeRoot: worktree,
@@ -210,7 +210,7 @@ func newRecoverFixture(t *testing.T) *recoverFixture {
 		ReportsDir:   reportsDir,
 	}
 
-	return &recoverFixture{Deps: deps, Mux: mux, Engine: engine, Worktree: worktree, ReportsDir: reportsDir}
+	return &recoverFixture{Deps: deps, Reed: reed, Engine: engine, Worktree: worktree, ReportsDir: reportsDir}
 }
 
 // writeRecoverReport seeds fx's reportsDir with a batch-report YAML file for
@@ -266,7 +266,7 @@ func driveRecoverBatch(deps websterengine.RecoverDeps, batchNumber int, wait tim
 // proves the first call for a batch with no live recovery record spawns a
 // fresh recovery strand: a stale report at the batch's own report path is
 // archived (renamed with a timestamp suffix, never deleted), a prior
-// recorded strand still reported live by the mux is stopped, the fresh
+// recorded strand still reported live by the reed is stopped, the fresh
 // BatchState's strand fields are recorded, and — with no report landing
 // inside the wait window — the call returns Running with Spawned: true.
 func TestRecoverBatch_FirstCallSpawnsArchivesStaleReportAndStopsLiveStrand(t *testing.T) {
@@ -280,7 +280,7 @@ func TestRecoverBatch_FirstCallSpawnsArchivesStaleReportAndStopsLiveStrand(t *te
 	fx.Deps.State.Batches[1] = &websterengine.BatchState{
 		Slug: "json-flag", Kind: "recovery", Terminal: true, Status: "dead", StrandGUID: "orphan-1",
 	}
-	fx.Mux.status = muxengine.StatusResult{Strands: []muxengine.StrandStatus{{GUID: "orphan-1", Live: true}}}
+	fx.Reed.status = reedengine.StatusResult{Strands: []reedengine.StrandStatus{{GUID: "orphan-1", Live: true}}}
 
 	clk := &recoverFakeClock{now: time.Unix(0, 0)}
 	result, err := driveRecoverBatch(fx.Deps, 1, 3*time.Second, clk)
@@ -322,13 +322,13 @@ func TestRecoverBatch_FirstCallSpawnsArchivesStaleReportAndStopsLiveStrand(t *te
 
 	// The prior orphan's live strand was stopped before the fresh spawn.
 	found := false
-	for _, guid := range fx.Mux.removedStrands {
+	for _, guid := range fx.Reed.removedStrands {
 		if guid == "orphan-1" {
 			found = true
 		}
 	}
 	if !found {
-		t.Errorf("RemoveStrand calls = %v; want the prior live strand %q stopped", fx.Mux.removedStrands, "orphan-1")
+		t.Errorf("RemoveStrand calls = %v; want the prior live strand %q stopped", fx.Reed.removedStrands, "orphan-1")
 	}
 
 	// The fresh BatchState's strand fields are recorded.
@@ -474,13 +474,13 @@ func TestRecoverBatch_SecondCallAttachesAndPersistsDoneDigest(t *testing.T) {
 
 	// done-substrate release: strand removed, run dir removed.
 	foundRemoved := false
-	for _, guid := range fx.Mux.removedStrands {
+	for _, guid := range fx.Reed.removedStrands {
 		if guid == strandGUID {
 			foundRemoved = true
 		}
 	}
 	if !foundRemoved {
-		t.Errorf("RemoveStrand calls = %v; want the done strand %q removed", fx.Mux.removedStrands, strandGUID)
+		t.Errorf("RemoveStrand calls = %v; want the done strand %q removed", fx.Reed.removedStrands, strandGUID)
 	}
 	if _, statErr := os.Stat(runDir); !os.IsNotExist(statErr) {
 		t.Errorf("stat(%s) = %v; want the done run dir removed", runDir, statErr)
@@ -532,9 +532,9 @@ func TestRecoverBatch_TimeoutAcrossCallsClassifiesDead(t *testing.T) {
 	}
 
 	// dead classification keeps both the strand and the run dir.
-	for _, guid := range fx.Mux.removedStrands {
+	for _, guid := range fx.Reed.removedStrands {
 		if guid == strandGUID {
-			t.Errorf("RemoveStrand calls = %v; want the dead-classified strand %q kept", fx.Mux.removedStrands, strandGUID)
+			t.Errorf("RemoveStrand calls = %v; want the dead-classified strand %q kept", fx.Reed.removedStrands, strandGUID)
 		}
 	}
 	if _, statErr := os.Stat(runDir); statErr != nil {
@@ -569,7 +569,7 @@ func TestRecoverBatch_UnrecordedOrTerminalBatchSpawnsFresh(t *testing.T) {
 			if tt.prior != nil {
 				fx.Deps.State.Batches[1] = tt.prior
 				if tt.prior.StrandGUID != "" {
-					fx.Mux.status = muxengine.StatusResult{Strands: []muxengine.StrandStatus{{GUID: tt.prior.StrandGUID, Live: true}}}
+					fx.Reed.status = reedengine.StatusResult{Strands: []reedengine.StrandStatus{{GUID: tt.prior.StrandGUID, Live: true}}}
 				}
 			}
 

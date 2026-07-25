@@ -79,14 +79,14 @@ programmatically-driven session *interactive*.
   I/O still rides the **file contract** (the agent writes its output files; Go reads
   them) — that part is unchanged from a headless model.
 - Therefore the agent-driving layer (loom's producers, the review handler, cluster
-  reviewers, the progress-judge) will depend on the **mux** module; it cannot be built
-  on a headless `exec`. mux is on loom's critical path for this reason.
+  reviewers, the progress-judge) will depend on the **reed** module; it cannot be built
+  on a headless `exec`. reed is on loom's critical path for this reason.
 - Agents are provider-agnostic via **engines** — per-LLM adapters (a Claude engine now;
   Gemini etc. later) that know how to launch/drive their provider as a tmux session.
   The verdict/output contract is provider-invariant, which is what makes engines
   swappable. **Non-Claude support is not a current priority.**
 - Cluster-reviews (N parallel reviewers) scale via tmux **windows** (spawned clusters
-  land in their own windows, not a pane explosion) — long-term mux work, not now.
+  land in their own windows, not a pane explosion) — long-term reed work, not now.
 
 ## Task completion
 

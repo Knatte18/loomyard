@@ -131,23 +131,23 @@ func TestReconcileAll_ApplyCreatesFiles(t *testing.T) {
 	}
 }
 
-// TestReconcileAll_DropsStaleMuxClaudeKey pins the specific removed-key case
-// this batch introduces: an existing user mux.yaml written before the
+// TestReconcileAll_DropsStaleReedClaudeKey pins the specific removed-key case
+// this batch introduces: an existing user reed.yaml written before the
 // claude: key was dropped from the template must have that key reconciled
 // away, exactly like any other stale key a template no longer declares.
-func TestReconcileAll_DropsStaleMuxClaudeKey(t *testing.T) {
+func TestReconcileAll_DropsStaleReedClaudeKey(t *testing.T) {
 	tmpDir := t.TempDir()
 	configDir := hubgeometry.ConfigDir(tmpDir)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
 
-	// Seed mux.yaml as it would exist on disk for a user who set up their
+	// Seed reed.yaml as it would exist on disk for a user who set up their
 	// worktree before the claude: key was removed from the template.
-	muxPath := hubgeometry.ConfigFile(tmpDir, "mux")
+	reedPath := hubgeometry.ConfigFile(tmpDir, "reed")
 	seedContent := "tmux: C:\\tools\\tmux.exe\nclaude: C:\\tools\\claude.exe\n"
-	if err := os.WriteFile(muxPath, []byte(seedContent), 0o644); err != nil {
-		t.Fatalf("write mux.yaml: %v", err)
+	if err := os.WriteFile(reedPath, []byte(seedContent), 0o644); err != nil {
+		t.Fatalf("write reed.yaml: %v", err)
 	}
 
 	results, err := ReconcileAll(tmpDir, true)
@@ -155,36 +155,36 @@ func TestReconcileAll_DropsStaleMuxClaudeKey(t *testing.T) {
 		t.Fatalf("ReconcileAll(true): %v", err)
 	}
 
-	var muxResult *Result
+	var reedResult *Result
 	for i := range results {
-		if results[i].Module == "mux" {
-			muxResult = &results[i]
+		if results[i].Module == "reed" {
+			reedResult = &results[i]
 			break
 		}
 	}
-	if muxResult == nil {
-		t.Fatal("mux result not found")
+	if reedResult == nil {
+		t.Fatal("reed result not found")
 	}
-	if !muxResult.Applied {
-		t.Error("mux.Applied is false; want true (stale claude key should trigger a rewrite)")
+	if !reedResult.Applied {
+		t.Error("reed.Applied is false; want true (stale claude key should trigger a rewrite)")
 	}
 
 	found := false
-	for _, r := range muxResult.Removed {
+	for _, r := range reedResult.Removed {
 		if r == "claude" {
 			found = true
 		}
 	}
 	if !found {
-		t.Errorf("mux.Removed = %v, want it to contain %q", muxResult.Removed, "claude")
+		t.Errorf("reed.Removed = %v, want it to contain %q", reedResult.Removed, "claude")
 	}
 
-	content, err := os.ReadFile(muxPath)
+	content, err := os.ReadFile(reedPath)
 	if err != nil {
-		t.Fatalf("read mux.yaml: %v", err)
+		t.Fatalf("read reed.yaml: %v", err)
 	}
 	if contains(string(content), "claude:") {
-		t.Error("mux.yaml still contains claude: key after apply; should have been removed")
+		t.Error("reed.yaml still contains claude: key after apply; should have been removed")
 	}
 }
 

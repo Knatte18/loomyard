@@ -126,11 +126,11 @@ func parseCoveredModules(t *testing.T) map[string][]string {
 		t.Fatalf("could not glob tools/sandbox/*SUITE.md: %v", err)
 	}
 	// Vacuous-glob guard: the repo ships at least SANDBOX-CORE-SUITE.md and
-	// SANDBOX-MUX-SUITE.md, so fewer than two matches means the pattern or
+	// SANDBOX-REED-SUITE.md, so fewer than two matches means the pattern or
 	// directory resolved wrong rather than the suite set having genuinely shrunk.
 	if len(suitePaths) < 2 {
 		t.Fatalf(
-			"tools/sandbox/*SUITE.md glob matched %d file(s) (%v); expected at least 2 (the repo ships SANDBOX-CORE-SUITE.md and SANDBOX-MUX-SUITE.md) — the pattern or directory is likely wrong",
+			"tools/sandbox/*SUITE.md glob matched %d file(s) (%v); expected at least 2 (the repo ships SANDBOX-CORE-SUITE.md and SANDBOX-REED-SUITE.md) — the pattern or directory is likely wrong",
 			len(suitePaths), suitePaths,
 		)
 	}

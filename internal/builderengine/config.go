@@ -77,7 +77,7 @@ func LoadConfig(baseDir, module string) (Config, error) {
 	resolved, err := configengine.Load(baseDir, module, []byte(ConfigTemplate()))
 	if err != nil {
 		// Wrap the generic "not initialized" error with the builder-specific
-		// hint, matching perchengine/muxengine/shuttleengine's shape so every
+		// hint, matching perchengine/reedengine/shuttleengine's shape so every
 		// module surfaces the same recovery instruction.
 		if strings.Contains(err.Error(), "not initialized") {
 			return Config{}, fmt.Errorf("not initialized here; run \"lyx init\"")

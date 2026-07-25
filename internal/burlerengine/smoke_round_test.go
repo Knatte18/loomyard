@@ -4,7 +4,7 @@
 // TestSmokeBurlerRoundToyFixture drives one full burler round — A-review then
 // B-fix — against a REAL claude in a REAL tmux pane, over a toy chair/table
 // color-mismatch fixture. This is the caller wiring the real substrate
-// (muxengine + claudeengine + shuttleengine.Runner) directly, in an external
+// (reedengine + claudeengine + shuttleengine.Runner) directly, in an external
 // test package, per the Shuttle Provider-Seam Invariant: burlerengine itself
 // never imports claudeengine, but the test that exercises it as a caller may.
 // The assertions are deliberately trivial (the toy is unambiguous on
@@ -31,8 +31,8 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
-	"github.com/Knatte18/loomyard/internal/muxcli"
-	"github.com/Knatte18/loomyard/internal/muxengine"
+	"github.com/Knatte18/loomyard/internal/reedcli"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 )
@@ -47,7 +47,7 @@ const smokePwshPath = `C:\Code\tools\powershell7\pwsh.exe`
 // never hard-fails on a machine without a configured claude.
 func claudeBinaryPath(t *testing.T) string {
 	t.Helper()
-	if path := os.Getenv("LYX_MUX_CLAUDE"); path != "" {
+	if path := os.Getenv("LYX_REED_CLAUDE"); path != "" {
 		return path
 	}
 	path, err := exec.LookPath("claude")
@@ -133,7 +133,7 @@ Get-Process | ForEach-Object {
 // releasable before the framework's TempDir RemoveAll — which runs AFTER
 // this cleanup — so RemoveAll never fails with a worktree-dir-in-use error.
 // The holder in question is the conhost.exe the OS parents to psmux to host
-// each pane's pseudo-console: mux never spawns it, it is not a #{pane_pid}
+// each pane's pseudo-console: reed never spawns it, it is not a #{pane_pid}
 // descendant, and on a quiet machine it exits on its own a beat after its
 // pane dies — but under CPU saturation it can be ORPHANED and then holds the
 // hub cwd indefinitely, so no fixed wait can ever out-last it. The cleanup
@@ -236,7 +236,7 @@ func distinctColorsMentioned(text string) []string {
 // colors deliberately mismatch: the target is unambiguous on purpose so this
 // test proves the A->B machinery + file contract + verdict parse against a
 // real engine, never review quality. It constructs the real stack directly
-// (muxengine + claudeengine + shuttleengine.Runner + burlerengine.Engine) —
+// (reedengine + claudeengine + shuttleengine.Runner + burlerengine.Engine) —
 // this test IS the caller the Shuttle Provider-Seam Invariant reserves that
 // wiring for.
 func TestSmokeBurlerRoundToyFixture(t *testing.T) {
@@ -245,21 +245,21 @@ func TestSmokeBurlerRoundToyFixture(t *testing.T) {
 	fixture := lyxtest.CopyPaired(t)
 	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
 		"shuttle": shuttleengine.ConfigTemplate(),
-		"mux":     muxengine.ConfigTemplate(),
+		"reed":    reedengine.ConfigTemplate(),
 	})
 	deferHubRelease(t, fixture.Hub)
 	t.Chdir(fixture.Hub)
 	t.Cleanup(func() {
 		var buf bytes.Buffer
-		muxcli.RunCLI(&buf, []string{"down"})
+		reedcli.RunCLI(&buf, []string{"down"})
 	})
 
 	// up: boots the substrate. A strand must exist in an up'd session before
 	// shuttle's AddStrand can bind it to a pane — burlerengine.Run drives
 	// exactly one shuttle run under the hood.
-	var muxOut bytes.Buffer
-	if code := muxcli.RunCLI(&muxOut, []string{"up"}); code != 0 {
-		t.Fatalf("mux up = %d; want 0, output: %s", code, muxOut.String())
+	var reedOut bytes.Buffer
+	if code := reedcli.RunCLI(&reedOut, []string{"up"}); code != 0 {
+		t.Fatalf("reed up = %d; want 0, output: %s", code, reedOut.String())
 	}
 
 	// Write the toy target: an unambiguous chair/table color mismatch, the
@@ -295,16 +295,16 @@ func TestSmokeBurlerRoundToyFixture(t *testing.T) {
 
 	// Wire the real stack directly: burlerengine never imports claudeengine
 	// itself, but this test is the caller and may.
-	muxCfg, err := muxengine.LoadConfig(fixture.Layout.Cwd, "mux")
+	reedCfg, err := reedengine.LoadConfig(fixture.Layout.Cwd, "reed")
 	if err != nil {
-		t.Fatalf("load mux config: %v", err)
+		t.Fatalf("load reed config: %v", err)
 	}
 	shuttleCfg, err := shuttleengine.LoadConfig(fixture.Layout.Cwd, "shuttle")
 	if err != nil {
 		t.Fatalf("load shuttle config: %v", err)
 	}
-	muxEngine := muxengine.New(muxCfg, fixture.Layout)
-	runner := shuttleengine.NewRunner(muxEngine, claudeengine.New(), fixture.Layout, shuttleCfg)
+	reedEngine := reedengine.New(reedCfg, fixture.Layout)
+	runner := shuttleengine.NewRunner(reedEngine, claudeengine.New(), fixture.Layout, shuttleCfg)
 	engine := burlerengine.New(runner, fixture.Layout, burlerengine.Config{})
 
 	result, err := engine.Run(profile, burlerengine.RunOpts{Timeout: 5 * time.Minute})

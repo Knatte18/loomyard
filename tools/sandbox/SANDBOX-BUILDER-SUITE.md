@@ -38,11 +38,11 @@ Before starting a session:
    B1 satisfies the sandbox coverage guard (`sandbox_coverage_test.go`) regardless of
    runtime availability.
 4. **`lyx init` first.** `lyx builder` requires an initialized worktree
-   (`_lyx/config/builder.yaml`, plus `shuttle.yaml`/`mux.yaml` since builder branches off
+   (`_lyx/config/builder.yaml`, plus `shuttle.yaml`/`reed.yaml` since builder branches off
    shuttle directly) exactly like `lyx shuttle`/`lyx burler` do.
-5. **`lyx mux up` before any spawn.** `run` and `spawn-batch` spawn through shuttle
-   into an existing mux session and do not boot one themselves; without it the spawn
-   fails loud with `no mux session; run "lyx mux up"` (after `run` has already taken
+5. **`lyx reed up` before any spawn.** `run` and `spawn-batch` spawn through shuttle
+   into an existing reed session and do not boot one themselves; without it the spawn
+   fails loud with `no reed session; run "lyx reed up"` (after `run` has already taken
    the lock and initialized `state.json`, so its error-exit backstop weft commit fires).
 6. **Attached interactive terminal.** Launch `sandbox-builder-suite.cmd` from a real,
    attached console -- never redirected, backgrounded, or detached. Without a TTY the
@@ -67,11 +67,11 @@ line `OK`" -- so a real implementer session finishes in one card, one commit, fa
 
 ### Controlled tmux exceptions
 
-One sanctioned deviation from the pure black-box rule, mirroring the mux/shuttle/burler
+One sanctioned deviation from the pure black-box rule, mirroring the reed/shuttle/burler
 suites' own controlled-exception note:
 
 - **Direct `tmux -L <socket> list-panes`/`ls`** is allowed only to confirm a strand's pane
-  exists (or was cleaned up), where `<socket>` is read from `lyx mux status` output.
+  exists (or was cleaned up), where `<socket>` is read from `lyx reed status` output.
 - **A second terminal** is required for B4 (run-lock contention) -- start the first `lyx
   builder run`/`spawn-batch` in terminal A, the contending call in terminal B, while A is
   still in flight.
@@ -144,13 +144,13 @@ batches' cards committed and both weft-commit boundaries honored."
 
 **Watch:** `lyx builder run` blocks until the run reaches a terminal outcome; the printed
 JSON envelope reports `"outcome":"done"` with `batches_done: 2`. Each batch spawned a real
-implementer pane (visible via `lyx mux status` while running), and each batch's card(s)
+implementer pane (visible via `lyx reed status` while running), and each batch's card(s)
 landed as its own commit with the `NN.C: <what>` subject convention. `lyx builder status`
 after completion shows both batches `done`/`tests: green`. Confirm the three weft-commit
 points actually fired (not just the exit-time backstop): `state.json` was committed at each
 `spawn-batch`, the batch report was committed at each terminal `poll` classification, per
 `docs/reference/builder-contract.md`'s "three weft-commit points". Afterward, both batches' panes/run
-dirs are cleaned up (no leftover pane, `lyx mux status` no longer lists either guid).
+dirs are cleaned up (no leftover pane, `lyx reed status` no longer lists either guid).
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -168,7 +168,7 @@ interrupt its pane before it reports), and confirm `poll` classifies it terminal
 **Watch:** `lyx builder spawn-batch <NN>` returns immediately once the strand is registered.
 Poll with `lyx builder poll --wait <duration>` (or repeated short polls) before the timeout
 window: confirm `status: running` with a growing `elapsed_s`. After `batch_timeout_min`
-minutes have elapsed with no report file and the mux strand still nominally present, confirm
+minutes have elapsed with no report file and the reed strand still nominally present, confirm
 the NEXT poll classifies `status: dead`, `dead_reason: timeout`. Separately (a second run of
 this scenario, or a variant), end the implementer's pane/session directly (e.g. via `tmux`
 against its socket) before it reports, and confirm poll instead (or additionally) exercises
@@ -268,7 +268,7 @@ stuck) is on disk and was weft-committed. Now run `lyx builder spawn-batch 01 --
 recovery`: confirm it succeeds (does NOT return `batch report already exists`), that the
 prior report was RENAMED to `01-<slug>-<UTC-compact-timestamp>.yaml` (archived, not deleted
 -- the prior stuck judgment stays on disk), that the live `01-<slug>.yaml` path is free, and
-that a real recovery-role implementer pane spawned (visible via `lyx mux status`, role
+that a real recovery-role implementer pane spawned (visible via `lyx reed status`, role
 `recovery`). Let the recovery session run and confirm it writes its own fresh
 `01-<slug>.yaml`, which the next `poll` distills normally. This is the exact stuck->recovery
 escalation the orchestrator drives autonomously in B1; B6 isolates it at the Go verb level so
@@ -292,11 +292,11 @@ deleted, never refused on)."
 **Watch:** `lyx builder spawn-batch 01` (a slow batch -- e.g. a card instructing one long
 blocking `sleep`), then immediately `lyx builder spawn-batch 02` from a second terminal:
 confirm it refuses naming the in-flight batch and its strand, pointing at `lyx builder poll`,
-and spawns nothing (`lyx mux status` still lists exactly one implementer strand). Poll batch
+and spawns nothing (`lyx reed status` still lists exactly one implementer strand). Poll batch
 01 past a short `batch_timeout_min` to its `dead`/`timeout` classification (pane kept live,
 per B2). If the orphan then finishes and writes its report late, confirm
 `lyx builder spawn-batch 01` is still NOT refused: the late report is renamed with the
-UTC-compact archive suffix and the kept strand is gone from `lyx mux status` before the
+UTC-compact archive suffix and the kept strand is gone from `lyx reed status` before the
 fresh implementer spawns. Also confirm the B1 happy path's cleanup half: after every
 `done`/`stuck` classification the batch's pane is released (no leftover implementer strands
 accumulate across a run), while every `dead` classification keeps its pane for diagnosis
@@ -344,14 +344,14 @@ implementer's strand is stopped before state/reports are archived -- its late re
 never land in the fresh run's reports dir."
 
 **Watch:** Part 1: `lyx builder run` (terminal A), then kill that process (e.g. `taskkill
-/PID <pid> /F`) while `lyx mux status` shows the orchestrator and an implementer live.
+/PID <pid> /F`) while `lyx reed status` shows the orchestrator and an implementer live.
 Confirm the orchestrator pane survives the kill (it is a detached tmux pane) and keeps
-calling builder verbs. Re-run `lyx builder run`: confirm `lyx mux status` never shows two
+calling builder verbs. Re-run `lyx builder run`: confirm `lyx reed status` never shows two
 live `orchestrator:` strands -- the recorded one is stopped at run entry (state.json's
 `orchestratorStrand`), then the fresh one spawns, and the resumed run completes normally.
 Part 2: spawn a slow batch (a card with one long blocking wait), edit any plan file while
 it is in flight, then `lyx builder run --fresh`: confirm the old implementer strand is gone
-from `lyx mux status` before the fresh orchestrator's first spawn-batch, that `state.json`/
+from `lyx reed status` before the fresh orchestrator's first spawn-batch, that `state.json`/
 reports were archived with the timestamp suffix as in B5, and that the fresh run's batch is
 implemented by its OWN implementer (the fresh run's outcome reflects the EDITED plan's
 content, not the superseded card's). A second live orchestrator, a superseded implementer
@@ -386,17 +386,17 @@ section above -- with `items: []` when every scenario was `OK`.
 
 ## Teardown
 
-After the session summary is recorded and `./sandbox-report.json` is written, run `lyx mux
+After the session summary is recorded and `./sandbox-report.json` is written, run `lyx reed
 down` to tear down the tmux session/server the scenarios booted. An orphaned tmux server
 holds open handles inside the Hub host repo and blocks the next `sandbox-build.cmd -reset`.
-The launcher also runs `lyx mux down` itself after the session ends (deterministic backstop),
+The launcher also runs `lyx reed down` itself after the session ends (deterministic backstop),
 but run it here anyway -- defense-in-depth, and it keeps the Hub clean while the session is
 still open for inspection.
 
 ## Notes
 
-- Host/weft scenarios stay in `SANDBOX-CORE-SUITE.md`, mux/tmux scenarios stay in
-  `SANDBOX-MUX-SUITE.md`, shuttle black-box agent scenarios stay in
+- Host/weft scenarios stay in `SANDBOX-CORE-SUITE.md`, reed/tmux scenarios stay in
+  `SANDBOX-REED-SUITE.md`, shuttle black-box agent scenarios stay in
   `SANDBOX-SHUTTLE-SUITE.md`, burler's own review+fix round scenarios stay in
   `SANDBOX-BURLER-SUITE.md`, perch's gate-loop scenarios stay in `SANDBOX-PERCH-SUITE.md`;
   this suite holds only builder's batch-loop scenarios -- add `B` scenarios here, not in any

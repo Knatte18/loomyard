@@ -1,0 +1,108 @@
+// cli.go builds the cobra command tree for the reed module and the RunCLI
+// seam that wires it into the standard io.Writer-based call contract. The
+// parent "reed" command carries a PersistentPreRunE that resolves cwd ->
+// layout -> config -> *reedengine.Engine exactly once per invocation, into a
+// receiver every verb (up.go, add.go, remove.go, status.go, resume.go,
+// attach.go, header.go) closes over, so no subcommand re-resolves geometry
+// or config itself.
+
+package reedcli
+
+import (
+	"io"
+
+	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/spf13/cobra"
+)
+
+// reedCLI is the receiver every reed verb hangs off of, so each subcommand's
+// RunE reads the same PersistentPreRunE-populated state. eng is the domain
+// handle every verb calls into, including for tmux-facing identity (attach,
+// card 27, reads the resolved tmux binary path via eng.TmuxPath() to build
+// its in-place attach-session invocation, alongside Socket/SessionName) — no
+// verb needs the resolved Config directly. The zero reedCLI is not valid
+// until PersistentPreRunE has populated eng.
+type reedCLI struct {
+	eng *reedengine.Engine
+}
+
+// Command returns the cobra command tree for the reed module.
+//
+// The parent "reed" command carries a PersistentPreRunE that resolves cwd ->
+// layout -> config -> *reedengine.Engine into c, skipping that resolution
+// entirely when the group command itself is invoked (bare "lyx reed" listing
+// or an unknown-subcommand error via GroupRunE) so neither path requires a
+// git repository. Every verb card (22-27) creates its own (c *reedCLI)
+// xCmd() builder and registers it here via parent.AddCommand — this card
+// registers no subcommands itself.
+func Command() *cobra.Command {
+	c := &reedCLI{}
+
+	parent := &cobra.Command{
+		Use:   "reed",
+		Short: "manage the tmux strand overlay for this worktree",
+		Long: `reed drives a per-hub tmux server that lays out one strand per pane for
+this worktree's session: adding, removing, resuming, and attaching to
+strands, plus rendering their layout on every mutation.`,
+		// RunE is set so that bare "lyx reed" lists subcommands and "lyx reed bogus"
+		// emits a JSON error envelope instead of falling through to cobra's plain-text help.
+		RunE: clihelp.GroupRunE,
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			// Guard: when the reed group command itself is invoked (bare listing or
+			// unknown-subcommand error path via GroupRunE), skip cwd/layout/config
+			// resolution so that neither path requires a git repository to be present.
+			if cmd.Name() == "reed" {
+				return nil
+			}
+
+			ctx := cmd.Context()
+			out := cmd.OutOrStdout()
+
+			cwd, err := hubgeometry.Getwd()
+			if err != nil {
+				output.Err(out, err.Error())
+				clihelp.Abort(ctx, 1)
+				return nil
+			}
+
+			layout, err := hubgeometry.Resolve(cwd)
+			if err != nil {
+				// hubgeometry.Resolve's error is already self-describing (it IS the
+				// "not a git repository" sentinel); pass it through bare rather than
+				// doubling that same text on top of it.
+				output.Err(out, err.Error())
+				clihelp.Abort(ctx, 1)
+				return nil
+			}
+
+			// The _lyx/config/ root is anchored at layout.Cwd, not WorktreeRoot or
+			// any weft sibling — reed config lives with the worktree the operator is
+			// actually standing in.
+			cfg, err := reedengine.LoadConfig(layout.Cwd, "reed")
+			if err != nil {
+				output.Err(out, err.Error())
+				clihelp.Abort(ctx, 1)
+				return nil
+			}
+
+			c.eng = reedengine.New(cfg, layout)
+			return nil
+		},
+	}
+
+	parent.AddCommand(c.upCmd(), c.downCmd(), c.addCmd(), c.removeCmd(), c.statusCmd(), c.resumeCmd(), c.attachCmd(), c.headerCmd())
+
+	return parent
+}
+
+// RunCLI is the public seam for the reed module CLI.
+//
+// It delegates to clihelp.Execute with the cobra command tree, passing out as
+// the capture writer for all output (including cobra's error text). This
+// preserves the existing call contract so that callers and tests are unchanged.
+func RunCLI(out io.Writer, args []string) int {
+	return clihelp.Execute(Command(), out, args)
+}

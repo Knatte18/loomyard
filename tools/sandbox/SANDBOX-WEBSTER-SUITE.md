@@ -5,7 +5,7 @@
 A structured test-loop for exercising `lyx webster` against a **live tmux server and a
 logged-in claude** in the sandbox Hub host repo, mirroring `SANDBOX-BUILDER-SUITE.md`'s own
 operating model. `webster` is builder's fork-based sibling: instead of spawning a fresh
-mux/tmux strand per batch, one long-lived **Master** session reads the codebase and the
+reed/tmux strand per batch, one long-lived **Master** session reads the codebase and the
 whole plan once, then forks one implementer per batch in-session (Claude Code's Agent tool,
 `subagent_type: "fork"`) -- no `spawn-batch`/`poll` verbs exist here; Master itself brackets
 each fork with `begin-batch`/`await-batch`/`record-batch` calls (forks are BACKGROUNDED
@@ -37,11 +37,11 @@ Before starting a session:
    W1 satisfies the sandbox coverage guard (`sandbox_coverage_test.go`) regardless of
    runtime availability.
 4. **`lyx init` first.** `lyx webster` requires an initialized worktree
-   (`_lyx/config/webster.yaml`, plus `shuttle.yaml`/`mux.yaml` since webster branches off
+   (`_lyx/config/webster.yaml`, plus `shuttle.yaml`/`reed.yaml` since webster branches off
    shuttle directly) exactly like `lyx shuttle`/`lyx burler`/`lyx builder` do.
-5. **`lyx mux up` before any spawn.** `webster run` spawns the Master session through
-   shuttle into an existing mux session and does not boot one itself; without it the
-   spawn fails loud with `no mux session; run "lyx mux up"`.
+5. **`lyx reed up` before any spawn.** `webster run` spawns the Master session through
+   shuttle into an existing reed session and does not boot one itself; without it the
+   spawn fails loud with `no reed session; run "lyx reed up"`.
 6. **Attached interactive terminal.** Launch `sandbox-webster-suite.cmd` from a real,
    attached console -- never redirected, backgrounded, or detached. Without a TTY the
    driving claude session cannot idle between turns waiting for notifications, so the
@@ -65,11 +65,11 @@ line `OK`" -- so a real fork finishes each batch in one card, one commit, fast.
 
 ### Controlled tmux exceptions
 
-One sanctioned deviation from the pure black-box rule, mirroring the mux/shuttle/burler/
+One sanctioned deviation from the pure black-box rule, mirroring the reed/shuttle/burler/
 builder suites' own controlled-exception note:
 
 - **Direct `tmux -L <socket> list-panes`/`ls`** is allowed only to confirm Master's own
-  strand exists (or was cleaned up), where `<socket>` is read from `lyx mux status` output
+  strand exists (or was cleaned up), where `<socket>` is read from `lyx reed status` output
   -- this is also how W1 confirms no EXTRA strand appears per batch (a fork is not a new
   strand; there is exactly one implementer-bearing strand, Master's own, for the whole run).
 
@@ -138,12 +138,12 @@ string fields so the JSON stays well-formed.
 
 **Goal:** Pin a tiny two-batch plan whose cards each just write one fixed-content file, run
 `lyx webster run`, and confirm it drives itself end-to-end -- via in-session Agent-tool
-forks, not new mux strands -- to a `"outcome":"done"` outcome with both batches' cards
+forks, not new reed strands -- to a `"outcome":"done"` outcome with both batches' cards
 committed.
 
 **Watch:** `lyx webster run` blocks until the run reaches a terminal outcome; the printed
 JSON envelope reports `"outcome":"done"` with `batches_done: 2`. Confirm **one fork per
-batch, no extra mux strands during batches**: `lyx mux status` shows exactly one
+batch, no extra reed strands during batches**: `lyx reed status` shows exactly one
 implementer-bearing strand for the entire run (Master's own) -- never a second strand
 appearing and disappearing per batch the way builder's separate implementer strands do.
 Confirm **per-batch weft commits landing**: `state.json` committed at each batch's
@@ -155,7 +155,7 @@ pinned digest fields (`batch`, `status`, `tests`, `files_changed`, `dirty` -- th
 terse, prose-free shape builder's `poll` emits, never raw report prose). Confirm **a valid
 `summary.md`** at exit: `_lyx/webster/summary.md` exists, its first line is `# <title>`,
 and the rest is a non-empty narrative -- alongside `_lyx/webster/outcome.yaml`. Afterward,
-Master's pane/run dir is cleaned up (no leftover strand; `lyx mux status` no longer lists
+Master's pane/run dir is cleaned up (no leftover strand; `lyx reed status` no longer lists
 it).
 
 **Verdict:** `OK` / `WARN` / `FAIL`
@@ -229,17 +229,17 @@ section above -- with `items: []` when every scenario was `OK`.
 
 ## Teardown
 
-After the session summary is recorded and `./sandbox-report.json` is written, run `lyx mux
+After the session summary is recorded and `./sandbox-report.json` is written, run `lyx reed
 down` to tear down the tmux session/server the scenarios booted. An orphaned tmux server
 holds open handles inside the Hub host repo and blocks the next `sandbox-build.cmd -reset`.
-The launcher also runs `lyx mux down` itself after the session ends (deterministic backstop),
+The launcher also runs `lyx reed down` itself after the session ends (deterministic backstop),
 but run it here anyway -- defense-in-depth, and it keeps the Hub clean while the session is
 still open for inspection.
 
 ## Notes
 
-- Host/weft scenarios stay in `SANDBOX-CORE-SUITE.md`, mux/tmux scenarios stay in
-  `SANDBOX-MUX-SUITE.md`, shuttle black-box agent scenarios stay in
+- Host/weft scenarios stay in `SANDBOX-CORE-SUITE.md`, reed/tmux scenarios stay in
+  `SANDBOX-REED-SUITE.md`, shuttle black-box agent scenarios stay in
   `SANDBOX-SHUTTLE-SUITE.md`, burler's own review+fix round scenarios stay in
   `SANDBOX-BURLER-SUITE.md`, perch's gate-loop scenarios stay in `SANDBOX-PERCH-SUITE.md`,
   builder's batch-loop scenarios stay in `SANDBOX-BUILDER-SUITE.md`; this suite holds only

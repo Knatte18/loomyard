@@ -11,18 +11,18 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/muxengine/render"
+	"github.com/Knatte18/loomyard/internal/reedengine/render"
 )
 
 // Spec describes one shuttle run: the prompt handed to the provider as the
 // launch argument, the output files that constitute the run's return value,
-// and the display/lifecycle knobs the run loop and mux need. Spec is a
+// and the display/lifecycle knobs the run loop and reed need. Spec is a
 // plain value the caller (review, loom) constructs; it carries no methods
 // beyond validate, which normalizes and checks it in place.
 type Spec struct {
 	// Prompt is the task text handed to the provider as the launch
 	// argument. shuttle never templates prompt content — the caller
-	// composes it (dumb transport, like mux).
+	// composes it (dumb transport, like reed).
 	Prompt string
 	// OutputFiles names the files the agent is instructed to write. The
 	// run is not "done" until every entry exists — the file contract: a
@@ -74,7 +74,7 @@ type Spec struct {
 	Round string
 	// Parent is the parent strand's GUID, or "" for a root strand.
 	Parent string
-	// Display carries the mux placement/focus/shrink settings for this
+	// Display carries the reed placement/focus/shrink settings for this
 	// run's strand.
 	Display render.Display
 	// Timeout is the wall-clock deadline after which an in-progress run is
