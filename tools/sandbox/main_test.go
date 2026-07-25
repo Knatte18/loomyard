@@ -850,6 +850,86 @@ func TestRun_PerchSuiteRoutesToLaunch(t *testing.T) {
 	}
 }
 
+// TestRun_FabricSuiteRoutesToLaunch tests that the "fabric-suite" positional
+// routes to the fabric-suite path and ultimately invokes launchAgent with the
+// correct dedicated fabric host repo directory and the fabric default
+// instruction, mirroring TestRun_MuxSuiteRoutesToLaunch for the "fabric-suite"
+// dispatch. The dedicated fabric hub host repo dir is pre-created so
+// decideFabricClone finds the hub already present and skips fabricCloneRun.
+func TestRun_FabricSuiteRoutesToLaunch(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create the dedicated fabric Hub host repo directory that runFabricSuite
+	// requires; decideFabricClone sees the fabric hub already exists (this
+	// directory is nested inside it) and skips the clone step.
+	hostRepoDir := filepath.Join(tmpDir, fabricHubName, fabricHostDir)
+	if err := os.MkdirAll(filepath.Join(hostRepoDir, ".git", "info"), 0o755); err != nil {
+		t.Fatalf("create fabric host repo dir: %v", err)
+	}
+
+	// Provide a real file so binaryFingerprint can stat and hash it.
+	fakeLyx := filepath.Join(tmpDir, "lyx.exe")
+	if err := os.WriteFile(fakeLyx, []byte("fake lyx binary"), 0o755); err != nil {
+		t.Fatalf("write fake lyx: %v", err)
+	}
+	fakeClaude := filepath.Join(tmpDir, "claude.exe")
+
+	// No dev binary in play: resolveLyx must fall through to the lookPath
+	// stub below and resolve sourceProd.
+	oldDevBinPath := devBinPath
+	defer func() { devBinPath = oldDevBinPath }()
+	devBinPath = func() (string, error) { return filepath.Join(t.TempDir(), "lyx"), nil }
+
+	oldLookPath := lookPath
+	defer func() { lookPath = oldLookPath }()
+	lookPath = func(name string) (string, error) {
+		switch name {
+		case "lyx":
+			return fakeLyx, nil
+		case "claude":
+			return fakeClaude, nil
+		default:
+			return "", fmt.Errorf("not found: %s", name)
+		}
+	}
+
+	// fabricCloneRun must not be invoked: the hub already exists.
+	fabricCloneRunCalled := false
+	oldFabricCloneRun := fabricCloneRun
+	defer func() { fabricCloneRun = oldFabricCloneRun }()
+	fabricCloneRun = func(parentDir, lyxPath string) error {
+		fabricCloneRunCalled = true
+		return nil
+	}
+
+	launchAgentCalled := false
+	var gotInstruction string
+	oldLaunchAgent := launchAgent
+	defer func() { launchAgent = oldLaunchAgent }()
+	launchAgent = func(dir, claude, instruction, binDir string) int {
+		launchAgentCalled = true
+		gotInstruction = instruction
+		if dir != hostRepoDir {
+			t.Errorf("launchAgent dir = %q; want %q", dir, hostRepoDir)
+		}
+		return 0
+	}
+
+	code := run([]string{"-parent", tmpDir, "fabric-suite"})
+	if code != 0 {
+		t.Errorf("run() = %d; want 0", code)
+	}
+	if fabricCloneRunCalled {
+		t.Error("fabricCloneRun was called even though the fabric hub already existed")
+	}
+	if !launchAgentCalled {
+		t.Error("launchAgent was not called for fabric-suite subcommand")
+	}
+	if gotInstruction != fabricSuiteAsk {
+		t.Errorf("launchAgent instruction = %q; want %q", gotInstruction, fabricSuiteAsk)
+	}
+}
+
 // TestRun_FetchReportRoutesToFetch verifies that the "fetch" positional
 // routes to runFetch: with a built Hub, an on-PATH lyx, and a host report, the
 // dispatch reaches fetchReport and run returns 0.

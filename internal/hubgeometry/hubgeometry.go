@@ -382,6 +382,22 @@ func WeftHostSlug(name string) (slug string, ok bool) {
 	return s, true
 }
 
+// IsReservedHubName reports whether name is one of the hub-level entry names
+// lyx geometry itself owns: the per-worktree lyx dir (_lyx), the raddle dir
+// (_raddle), the board passenger (_board), and the portal/launcher mirrors
+// (_portals, _launchers). A worktree slug must never claim one of these — a
+// host worktree directory named after a geometry token collides with the very
+// paths lyx composes at the hub level (e.g. a worktree named "_portals" would
+// have portal junctions created inside it). Slug validation (fabric's Add)
+// calls this so the rejection lives with the single owner of the literals.
+func IsReservedHubName(name string) bool {
+	switch name {
+	case LyxDirName, "_raddle", BoardDirName, "_portals", "_launchers":
+		return true
+	}
+	return false
+}
+
 // LyxDir returns the path to the _lyx directory in the current working directory.
 //
 // Returns filepath.Join(Cwd, LyxDirName).
