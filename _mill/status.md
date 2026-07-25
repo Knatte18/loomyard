@@ -65,5 +65,7 @@ batches:
     start_sha: 11fd1599583522418ae254278a21f0596f2ac123
     commit_sha: 77a5a26e931188aeb9348a6d64b7066506919ba0
   - name: suite-docs-sweep
-    state: pending
+    state: running
+    implementer_session: 423ae6dd-240f-44ec-934d-18d0511da6f0
+    start_sha: f03e91cc301fab18ed26c46a4b9c9ec3b469203e
 ```
