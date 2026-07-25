@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: webster-rewrite
 branch: webster-rewrite
-plan: null
+plan: _mill/plan
 parent: main
 task: 'webster: rewrite for flat card list'
 task_description: |
@@ -16,4 +16,5 @@ task_description: |
 ```text
 discussing  '2026-07-25T12:03:21Z'
 discussed  '2026-07-25T12:59:19Z'
+planning  '2026-07-25T13:38:02Z'
 ```
