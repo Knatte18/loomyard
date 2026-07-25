@@ -51,9 +51,12 @@ data (that is the separate, `fabric`-dependent `board-weft-storage` redesign).
   deleted `Pull`/`CommitPush`).
 - Add a gitrepo integration test for `StageAllAndCommit`.
 - Documentation lifecycle: fold the durable design into `internal/boardengine`'s
-  package doc and update `internal/gitrepo/doc.go` for the new method; delete
-  `manifest/designs/board-use-gitrepo.md` (per its own header + the
-  Documentation Lifecycle constraint).
+  package doc; update `sync.go`'s own file/package comment so it no longer
+  describes the deleted `hasUnpushed` short-circuit ("pushes all unpushed
+  commits…") but the new unconditional-push-per-iteration behavior; update
+  `internal/gitrepo/doc.go` for the new method (both assertion sites — see the
+  wildcard-method decision); delete `manifest/designs/board-use-gitrepo.md` (per
+  its own header + the Documentation Lifecycle constraint).
 
 **Out:**
 
@@ -159,10 +162,15 @@ data (that is the separate, `fabric`-dependent `board-weft-storage` redesign).
   `status --porcelain` dirty-check is subsumed by the method's `diff --cached
   --quiet` (returns `committed=false` on a clean tree), so board no longer needs
   a separate status probe.
-- Documentation: `doc.go`'s Scope-boundaries section must state this is board's
-  own exception (board's `Sync`/`commitDirty` path only), **not** a general
-  relaxation — `fabric`/`raddle`/`codeintel` keep using the explicit-list
-  `StageAndCommit`.
+- Documentation: `doc.go` must be reconciled with `StageAllAndCommit` in **both**
+  places it currently asserts wildcard staging never enters gitrepo: (a) the
+  Scope-boundaries section ("explicit file list, never wildcard-stage") and (b)
+  the Push-surface section ("so a wildcard `add -A` never enters gitrepo"). Both
+  must now document the `StageAllAndCommit` exception as board's own escape hatch
+  (board's `Sync`/`commitDirty` path only), **not** a general relaxation —
+  `fabric`/`raddle`/`codeintel` keep using the explicit-list `StageAndCommit`.
+  Updating only the Scope-boundaries line would leave the Push-surface assertion
+  stale/false.
 - Rejected: an option/bool on `StageAndCommit` (violates the design's "not a
   change to StageAndCommit's contract"); a differently-named method like
   `CommitAll` (same behavior, less symmetric with the existing name).
@@ -252,8 +260,10 @@ From `CONSTRAINTS.md` (relevant subset):
   ("Commit and push pending board changes to the remote") stays accurate; no
   command surface changes, so no help-tree/registration edits.
 - **Documentation Lifecycle** — same-commit doc updates: fold durable design into
-  `boardengine`'s package doc, update `gitrepo/doc.go` for `StageAllAndCommit`,
-  and delete `manifest/designs/board-use-gitrepo.md`. This task does not touch
+  `boardengine`'s package doc, update `sync.go`'s file comment for
+  unconditional-push-per-iteration, update `gitrepo/doc.go` for
+  `StageAllAndCommit` (both wildcard-assertion sites), and delete
+  `manifest/designs/board-use-gitrepo.md`. This task does not touch
   the module table in `docs/overview.md` (both modules already exist), and adds
   no roadmap item (it completes a planned one — move it Planned→Done with a
   pointer, per the roadmap rule).
