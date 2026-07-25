@@ -121,8 +121,9 @@ func (t *Topology) Remove(l *hubgeometry.Layout, slug string, force bool) (Remov
 		_, _, _, _ = gitexec.RunGit([]string{"worktree", "prune"}, l.WorktreeRoot)
 	}
 
-	// (9) Remove weft worktree and branch
-	_ = removeWeftWorktree(l, slug, weftBranch, force)
+	// (9) Remove weft worktree and branch. Remove always owns the branch
+	// deletion: destroying the pair is this verb's explicit, user-requested job.
+	_ = removeWeftWorktree(l, slug, weftBranch, force, true)
 
 	return RemoveResult{
 		Slug:         slug,

@@ -131,17 +131,25 @@ func removeHostJunction(l *hubgeometry.Layout, slug string) error {
 	return nil
 }
 
-// removeWeftWorktree tears down the weft worktree, branch (an already-suffixed
-// weft branch name, i.e. the result of WeftBranchName), and related state.
+// removeWeftWorktree tears down the weft worktree, optionally its branch (an
+// already-suffixed weft branch name, i.e. the result of WeftBranchName), and
+// related state.
 //
 // Steps (best-effort, errors collected):
 //  1. git worktree remove [--force] <weft-worktree-path>
-//  2. git branch -D <branch>
+//  2. git branch -D <branch> (only when deleteBranch is true)
 //  3. git worktree prune
+//
+// deleteBranch exists for Add's rollback of an ADOPTED weft branch: when Add
+// merely adopted a pre-existing branch (rather than creating one), rolling
+// back must remove only the worktree Add created and leave the branch — and
+// any unpushed history it carries — untouched. Deleting it would destroy work
+// that predates the failed Add, the exact work Cleanup's raddle-fold-back
+// gate exists to protect.
 //
 // All commands run with cwd = WeftRepoRoot.
 // Returns the first error encountered, or nil if all steps succeed.
-func removeWeftWorktree(l *hubgeometry.Layout, slug, branch string, force bool) error {
+func removeWeftWorktree(l *hubgeometry.Layout, slug, branch string, force, deleteBranch bool) error {
 	weftPath := l.WeftWorktreePath(slug)
 	weftRoot := l.WeftRepoRoot()
 
@@ -164,14 +172,17 @@ func removeWeftWorktree(l *hubgeometry.Layout, slug, branch string, force bool) 
 		}
 	}
 
-	// Delete branch
-	_, _, exitCode, err = gitexec.RunGit([]string{"branch", "-D", branch}, weftRoot)
-	if err != nil || exitCode != 0 {
-		if firstErr == nil {
-			if err != nil {
-				firstErr = err
-			} else {
-				firstErr = fmt.Errorf("git branch -D failed with exit code %d", exitCode)
+	// Delete branch — skipped when the caller does not own the branch (an
+	// adopted, pre-existing weft branch survives its worktree's rollback).
+	if deleteBranch {
+		_, _, exitCode, err = gitexec.RunGit([]string{"branch", "-D", branch}, weftRoot)
+		if err != nil || exitCode != 0 {
+			if firstErr == nil {
+				if err != nil {
+					firstErr = err
+				} else {
+					firstErr = fmt.Errorf("git branch -D failed with exit code %d", exitCode)
+				}
 			}
 		}
 	}

@@ -65,7 +65,8 @@ type AddResult struct {
 // 12. Push weft branch: git push -u origin <weftBranch> to weft remote (respects opts).
 //
 // On ANY error at or after step 7, performs a best-effort full paired rollback:
-// - removeWeftWorktree(l, slug, weftBranch, true) — tear down weft side (worktree + branch + prune)
+// - removeWeftWorktree — tear down the weft worktree (and the weft branch only
+//   when Add created it; an adopted pre-existing branch is never deleted)
 // - removePortal(l, slug)
 // - removeLaunchers(l, slug)
 // - git worktree remove --force <host-target>
@@ -170,47 +171,47 @@ func (t *Topology) Add(l *hubgeometry.Layout, slug string, opts AddOptions) (Add
 			l.WeftRepoRoot(),
 		)
 		if err != nil {
-			_ = t.rollbackAdd(l, slug, hostBranch, weftBranch, target)
+			_ = t.rollbackAdd(l, slug, hostBranch, weftBranch, target, weftBranchAlreadyExists)
 			return AddResult{}, fmt.Errorf("failed to adopt weft worktree: %w", err)
 		}
 		if exitCode != 0 {
-			_ = t.rollbackAdd(l, slug, hostBranch, weftBranch, target)
+			_ = t.rollbackAdd(l, slug, hostBranch, weftBranch, target, weftBranchAlreadyExists)
 			return AddResult{}, fmt.Errorf("adopt weft worktree for branch %q failed (git exit %d)", weftBranch, exitCode)
 		}
 	} else {
 		// Create: git worktree add -b <weftBranch> <path> <parentWeftBranch> (fork from parent's weft branch)
 		if err := createWeftWorktree(l, slug, weftBranch, parentWeftBranch); err != nil {
-			_ = t.rollbackAdd(l, slug, hostBranch, weftBranch, target)
+			_ = t.rollbackAdd(l, slug, hostBranch, weftBranch, target, weftBranchAlreadyExists)
 			return AddResult{}, err
 		}
 	}
 
 	// (9) Create portal junction
 	if err := createPortal(l, slug); err != nil {
-		_ = t.rollbackAdd(l, slug, hostBranch, weftBranch, target)
+		_ = t.rollbackAdd(l, slug, hostBranch, weftBranch, target, weftBranchAlreadyExists)
 		return AddResult{}, err
 	}
 
 	// (10) Write launchers
 	if err := writeLaunchers(l, slug); err != nil {
-		_ = t.rollbackAdd(l, slug, hostBranch, weftBranch, target)
+		_ = t.rollbackAdd(l, slug, hostBranch, weftBranch, target, weftBranchAlreadyExists)
 		return AddResult{}, err
 	}
 
 	// (11) Push host branch (LAST step for host)
 	_, _, exitCode, err = gitexec.RunGit([]string{"push", "-u", "origin", hostBranch}, l.WorktreeRoot)
 	if err != nil {
-		_ = t.rollbackAdd(l, slug, hostBranch, weftBranch, target)
+		_ = t.rollbackAdd(l, slug, hostBranch, weftBranch, target, weftBranchAlreadyExists)
 		return AddResult{}, fmt.Errorf("push: %w", err)
 	}
 	if exitCode != 0 {
-		_ = t.rollbackAdd(l, slug, hostBranch, weftBranch, target)
+		_ = t.rollbackAdd(l, slug, hostBranch, weftBranch, target, weftBranchAlreadyExists)
 		return AddResult{}, fmt.Errorf("push branch %q failed (git exit %d)", hostBranch, exitCode)
 	}
 
 	// (12) Push weft branch
 	if err := pushWeftBranch(l, slug, weftBranch, opts); err != nil {
-		_ = t.rollbackAdd(l, slug, hostBranch, weftBranch, target)
+		_ = t.rollbackAdd(l, slug, hostBranch, weftBranch, target, weftBranchAlreadyExists)
 		return AddResult{}, err
 	}
 
@@ -227,21 +228,28 @@ func (t *Topology) Add(l *hubgeometry.Layout, slug string, opts AddOptions) (Add
 // rollbackAdd performs best-effort paired cleanup on Add failure.
 //
 // Steps (best-effort, errors collected but not masked):
-//  1. removeWeftWorktree — tear down weft side (worktree + branch + prune)
+//  1. removeWeftWorktree — tear down the weft worktree (and the weft branch
+//     only when Add created it — see weftBranchAdopted below)
 //  2. removePortal — remove host portal junction
 //  3. removeLaunchers — remove host launchers
 //  4. git worktree remove --force <host-target>
 //  5. git branch -D <hostBranch> (host)
 //  6. git worktree prune (host)
 //
+// weftBranchAdopted reports whether Add adopted a pre-existing weft branch
+// (step 8's adopt path) rather than creating one. An adopted branch — and any
+// unpushed history it carries — predates this Add and is never deleted by its
+// rollback; only a branch Add itself created is torn down.
+//
 // Note: Add does not wire the host _lyx junction (it is dormant), so rollback
 // does not remove it. The junction is wired by lyx init via WireJunctions.
 // All errors are collected; the original error passed to the caller is preserved.
-func (t *Topology) rollbackAdd(l *hubgeometry.Layout, slug, hostBranch, weftBranch, target string) error {
+func (t *Topology) rollbackAdd(l *hubgeometry.Layout, slug, hostBranch, weftBranch, target string, weftBranchAdopted bool) error {
 	var firstErr error
 
-	// (1) Remove weft worktree and branch
-	if err := removeWeftWorktree(l, slug, weftBranch, true); err != nil {
+	// (1) Remove the weft worktree; delete the weft branch only when this Add
+	// created it, so a rollback never destroys pre-existing weft history.
+	if err := removeWeftWorktree(l, slug, weftBranch, true, !weftBranchAdopted); err != nil {
 		if firstErr == nil {
 			firstErr = err
 		}
