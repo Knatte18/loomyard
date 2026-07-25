@@ -78,7 +78,7 @@ matching gitrepo's `ErrInvalidSHA` idiom.
   to fabric identically and is left unchanged.
 - **Commit:** `feat(fabricengine): correspondence index git wiring; amend Weft Git Invariant`
 
-### Card 23: weft-git parity verbs and Weft Git Invariant amendment
+### Card 23: weft-git parity verbs
 
 - **Context:**
   - `internal/weftengine/weft.go`
