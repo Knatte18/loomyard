@@ -117,9 +117,9 @@ gate. No `Moves:`, so no `## Rename mechanic`.
     entry), as a sibling bullet
     `- [plan-format-v3.md](plan-format-v3.md) — the emerging flat-card format the Planned webster-rewrite will consume.`
     Leave the doc's v2 description otherwise unchanged.
-  - `docs/reference/model-spec.md`: in the Status header (currently line 7,
-    "Pinned alongside [plan-format v2](plan-format.md) because the plan is
-    model-agnostic …"), extend the parenthetical/clause to mention v3 too,
+  - `docs/reference/model-spec.md`: in the Status header (the clause currently on
+    lines 5–6, "Pinned alongside [plan-format v2](plan-format.md) because the plan
+    is model-agnostic …"), extend the parenthetical/clause to mention v3 too,
     linking same-directory `[v3](plan-format-v3.md)` (e.g. "Pinned alongside
     [plan-format v2](plan-format.md) — and the emerging
     [v3](plan-format-v3.md) — because the plan is model-agnostic …"). No other
@@ -146,7 +146,9 @@ after the cards land):
 - **Repo-wide no-dangling sweep** (covers both batches together): after this
   batch, `grep -rn "](plan-format-v3.md)" docs/ manifest/` returns nothing, and
   every `plan-format-v3.md` reference across `docs/` and `manifest/` resolves to
-  the reference doc (or, for `webster-rewrite.md` line 32, a local anchor).
+  the reference doc — except `webster-rewrite.md` line 32 (a local anchor) and
+  the mechanism-naming `codeintel-redesign.md` links (25/139/150 + prose 18),
+  which point to `webster-rewrite.md` where that content now lives.
 - **v2 stays valid:** `docs/reference/plan-format.md` still describes v2
   truthfully after only its Status-header softening; no neighbour doc
   contradicts it.

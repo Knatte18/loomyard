@@ -3,7 +3,7 @@
 ```yaml
 task: 'plan-format v3: flat card list'
 slug: plan-format-v3
-approved: false
+approved: true
 started: 20260725-060638
 parent: main
 root: ""

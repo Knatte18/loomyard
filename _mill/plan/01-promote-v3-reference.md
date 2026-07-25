@@ -263,23 +263,44 @@ mechanic`** section.
   cards 1 and 2 have already extracted everything they need from the design doc.
   - **Delete** `manifest/designs/plan-format-v3.md` with `git rm` (so the
     deletion is staged as a rename-free removal in git).
-  - **Repoint the Markdown links** `[..](plan-format-v3.md)` to
-    `[..](../../docs/reference/plan-format-v3.md)` in each of the four Edits
-    files (grep each file for `plan-format-v3.md` to confirm the exact set at
-    edit time). As of writing:
-    - `manifest/designs/loom.md`: line 37.
-    - `manifest/designs/loom-planner.md`: lines 10 and 28.
-    - `manifest/designs/codeintel-redesign.md`: lines 16, 25, 139, 150, 165.
-    - `manifest/designs/webster-parallel-execution.md`: lines 12, 69, 82. Per the
-      task's Out-of-scope, touch this file **only** to repoint these links —
-      make no other edits.
-  - **Leave bare-prose (non-link) mentions unchanged**, because the file's
-    basename is still `plan-format-v3.md` so the prose stays accurate and the
-    task scope is Markdown *links*, not prose: `manifest/designs/loom-planner.md`
-    line 24 ("the plan-format-v3 card list" — a format-name mention, no `.md`),
-    and `manifest/designs/codeintel-redesign.md` line 18 ("see plan-format-v3.md's
-    resolution …" — a bare filename in prose, not a `[..](..)` link). Do not
-    convert or churn these.
+  - **Repoint each inbound link to where the content it names actually lives.**
+    Most links name the v3 *schema* and repoint to the reference doc; a few in
+    `codeintel-redesign.md` name the detailed *mechanism* that card 2 relocated
+    into `webster-rewrite.md`, and those must point there instead — otherwise
+    they resolve to a doc that (by card 1) deliberately excludes that detail.
+    Grep each file for `plan-format-v3.md` to confirm the exact set at edit time.
+    As of writing:
+    - `manifest/designs/loom.md`: line 37 `[plan-format v3](plan-format-v3.md)`
+      (names the schema) → `[plan-format v3](../../docs/reference/plan-format-v3.md)`.
+    - `manifest/designs/loom-planner.md`: lines 10 and 28 (both name the schema)
+      → `../../docs/reference/plan-format-v3.md`.
+    - `manifest/designs/webster-parallel-execution.md`: lines 12, 69, 82 (all
+      name the schema / `depends-on`) → `../../docs/reference/plan-format-v3.md`.
+      Per the task's Out-of-scope, touch this file **only** to repoint these
+      links — make no other edits.
+    - `manifest/designs/codeintel-redesign.md` — **split by what the link names**:
+      - Lines 16 (`'s symbol fields`) and 165 (Related — "the symbol fields this
+        module makes trustworthy") name the symbol-field *concept*, which the
+        reference doc's Deferred/forward-compat section names → repoint to
+        `../../docs/reference/plan-format-v3.md`.
+      - Lines 25 ("mechanical DAG-derivation is webster's own logic"), 139
+        ("plan-internal name matching for not-yet-existing symbols" = Mechanism
+        1), and 150 ("verifies symbol names against the real codebase" =
+        Mechanism 2) name the detailed mechanism card 2 relocated into
+        `webster-rewrite.md` → repoint these to the **same-directory**
+        `webster-rewrite.md` (NOT the reference doc, which excludes this detail).
+  - **Fix the bare-prose mention at `manifest/designs/codeintel-redesign.md`
+    line 18** ("see plan-format-v3.md's resolution of this exact machine-mismatch
+    problem"): the availability-mismatch *resolution* it names is relocated by
+    card 2 into `webster-rewrite.md`, so pointing at the reference doc's basename
+    would be false. Repoint it to `webster-rewrite.md` — either convert it to a
+    proper same-directory link (`see [webster-rewrite.md](webster-rewrite.md)'s
+    resolution of this exact machine-mismatch problem`) or reword to name
+    `webster-rewrite.md`.
+  - **Leave the one remaining bare-prose format-name mention unchanged:**
+    `manifest/designs/loom-planner.md` line 24 ("the plan-format-v3 card list" —
+    a format-*name* mention with no `.md` and no link) stays as-is; it names the
+    format, not the file, so it is neither a link nor a claim about doc contents.
   - Follow `mill:markdown` conventions.
 - **Commit:** `3: delete design doc, repoint remaining inbound links`
 
@@ -294,8 +315,10 @@ these grep checks (run from the worktree root after the batch's cards land):
 
 - **No dangling same-directory link remains:** `grep -rn "](plan-format-v3.md)" docs/ manifest/`
   must return **nothing** (every inbound link is now up-and-over to
-  `docs/reference/plan-format-v3.md`, or — for `webster-rewrite.md` line 32 — a
-  local `#…` anchor).
+  `docs/reference/plan-format-v3.md`, or — for `webster-rewrite.md` line 32 and
+  the mechanism-naming `codeintel-redesign.md` links 25/139/150 + prose 18 — a
+  point at the local/same-dir `webster-rewrite.md` where card 2 relocated that
+  content).
 - **No `designs/plan-format-v3.md` path reference remains:** `grep -rn "designs/plan-format-v3.md" docs/ manifest/`
   must return **nothing** (the roadmap's item — repointed in batch 2 — is the
   only place that used that spelling; within this batch confirm none was
