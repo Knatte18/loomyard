@@ -47,7 +47,8 @@ type AddResult struct {
 // from environment variables at the CLI edge (a later batch).
 //
 // Steps:
-//  0. Slug validation: slug must be a single path component (no '/' or '\').
+//  0. Slug validation: slug must be a single path component (no '/' or '\') and
+//     must not end in the weft suffix (which is reserved for weft worktrees).
 //  1. Clean check: l.WorktreeRoot must have no uncommitted changes.
 //  2. Branch name: hostBranch := t.cfg.BranchPrefix + slug; weftBranch := WeftBranchName(hostBranch)
 //  3. Branch-exists check: hostBranch must not already exist in host.
@@ -86,6 +87,17 @@ func (t *Topology) Add(l *hubgeometry.Layout, slug string, opts AddOptions) (Add
 	// every platform — a slash-free contract must not depend on GOOS.
 	if strings.ContainsAny(slug, `/\`) {
 		return AddResult{}, fmt.Errorf("invalid slug %q: a slug must be a single path component (no '/' or '\\')", slug)
+	}
+
+	// A slug ending in the weft suffix would name a host worktree directory
+	// (l.WorktreePath(slug)) that is indistinguishable from a weft worktree
+	// directory: hubgeometry.WeftHostSlug accepts it, so prune's hub scan would
+	// misclassify the host worktree as an orphaned weft and — under --apply —
+	// os.RemoveAll it, destroying the host worktree and any uncommitted work in
+	// it. fabric owns the weft suffix namespace, so the safe place to close this
+	// is here, before any git operation, rejecting the collision at the source.
+	if strings.HasSuffix(slug, hubgeometry.WeftSuffix) {
+		return AddResult{}, fmt.Errorf("invalid slug %q: a slug must not end in %q (that suffix is reserved for weft worktrees)", slug, hubgeometry.WeftSuffix)
 	}
 
 	// (1) Clean check

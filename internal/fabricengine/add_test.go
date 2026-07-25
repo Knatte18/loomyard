@@ -46,3 +46,40 @@ func TestAdd_RejectsSeparatorSlug(t *testing.T) {
 		})
 	}
 }
+
+// TestAdd_RejectsWeftSuffixSlug asserts that Add refuses a slug ending in the
+// weft suffix before touching git or the filesystem. Such a slug names a host
+// worktree directory (l.WorktreePath(slug)) that is indistinguishable from a
+// weft worktree directory: hubgeometry.WeftHostSlug accepts it, so prune's hub
+// scan misclassifies the host worktree as an orphaned weft and — under
+// --apply — os.RemoveAll's it, destroying the host worktree and any uncommitted
+// work. Rejecting the collision at the source is fabric's job (it owns the weft
+// suffix namespace). Validation runs before any git op, so this stays untagged
+// Tier-1.
+func TestAdd_RejectsWeftSuffixSlug(t *testing.T) {
+	tests := []struct {
+		name string
+		slug string
+	}{
+		{"PlainWeftSuffix", "zed" + hubgeometry.WeftSuffix},
+		{"BareWeftSuffix", hubgeometry.WeftSuffix},
+		{"NestedLookingWeftSuffix", "feature" + hubgeometry.WeftSuffix},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			topology := fabricengine.NewTopology(fabricengine.Config{})
+			// The layout points at a non-repo temp dir: validation must reject
+			// the slug before Add consults the layout, so no git or stat error
+			// can mask the validation error.
+			layout := &hubgeometry.Layout{WorktreeRoot: t.TempDir()}
+
+			_, err := topology.Add(layout, tt.slug, fabricengine.AddOptions{})
+			if err == nil {
+				t.Fatalf("Add(%q) error = nil; want invalid-slug error", tt.slug)
+			}
+			if !strings.Contains(err.Error(), "invalid slug") {
+				t.Errorf("Add(%q) error = %v; want error containing %q", tt.slug, err, "invalid slug")
+			}
+		})
+	}
+}

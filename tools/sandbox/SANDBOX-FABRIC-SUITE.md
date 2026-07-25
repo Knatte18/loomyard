@@ -116,7 +116,7 @@ zero `WARN`/`FAIL` findings** -- in that case `items` is an empty array.
 
 - `source` is the literal string `"sandbox-report"`.
 - `items[]` holds only `WARN`/`FAIL` findings -- do not record `OK` scenarios here.
-- `ref` is the scenario id (`F0`-`F3`).
+- `ref` is the scenario id (`F0`-`F4`).
 - `title` is a short one-line summary.
 - `body` folds the detail, repro steps, and verdict into one markdown string.
 
@@ -203,6 +203,27 @@ the test change should land inside that scope to be picked up at all.
 
 ---
 
+### F4 -- Reserved-slug guardrail
+
+**Covers:** fabric
+
+**Goal:** "Confirm `lyx fabric add` refuses a slug that would collide with the
+weft-worktree directory namespace, before it can create a booby-trapped pair."
+
+**Watch:** Run `lyx fabric add <name>-weft` (a slug ending in the reserved `-weft`
+suffix -- e.g. `add zed-weft`). It must be **rejected** with an `invalid slug` error and
+create nothing. It must NOT create a host worktree directory `<name>-weft`: such a
+directory is indistinguishable from a weft worktree, so a later `lyx fabric prune --apply`
+would misclassify the host worktree as an orphaned weft and delete it (destroying any
+uncommitted work). To confirm the guard holds, follow the rejected add with
+`lyx fabric list`/`lyx fabric pairs` and plain `ls` of the hub -- no `<name>-weft` host
+worktree should exist. (Historical: before this guard, `add zed-weft` succeeded and a
+routine `prune --apply` silently `os.RemoveAll`'d the host worktree -- a data-loss bug.)
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
+---
+
 ## Session log format
 
 After running all scenarios, record a short session summary:
@@ -215,6 +236,7 @@ F0: <OK|WARN|FAIL> -- <one-line note if not OK>
 F1: <OK|WARN|FAIL> -- <one-line note if not OK>
 F2: <OK|WARN|FAIL> -- <one-line note if not OK>
 F3: <OK|WARN|FAIL> -- <one-line note if not OK>
+F4: <OK|WARN|FAIL> -- <one-line note if not OK>
 
 sandbox-report.json written: <count of WARN/FAIL items>
 ```
