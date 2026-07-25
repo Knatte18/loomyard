@@ -137,6 +137,24 @@ func TestPlanSpec_PromptStatesRootResolution(t *testing.T) {
 	}
 }
 
+// TestPlanSpec_PromptStatesContextSemantics verifies the rendered prompt
+// defines `Context:` (read-but-not-change, advisory) and the per-card
+// field mutual-exclusivity rule, matching plan-format-v3.md's
+// card-field-overlap contract — a template that names the five fields
+// without their semantics leaves an agent free to misuse them.
+func TestPlanSpec_PromptStatesContextSemantics(t *testing.T) {
+	prompt := renderedPlanPrompt(t)
+
+	for _, want := range []string{
+		"read but not change",
+		"ONE of the five fields",
+	} {
+		if !strings.Contains(prompt, want) {
+			t.Errorf("PlanSpec(...).Prompt does not contain %q; Context:/exclusivity semantics must reach the agent", want)
+		}
+	}
+}
+
 // renderedPlanPrompt returns the prompt PlanSpec renders for a hand-built
 // Layout and the default in-memory Config, for template-content assertions.
 func renderedPlanPrompt(t *testing.T) string {

@@ -77,6 +77,11 @@ line ranges (`Moves:` sub-bullets are `` `old` -> `new` `` pairs); then
 `**Depends-on:**` (card numbers or `none`, referencing only earlier cards in this same
 plan); optionally `**Commit:**` (must start `N: `) and `**verify:**`.
 
+`Context:` names files to read but not change (advisory, not exhaustive); never repeat
+a path from the same card's `Edits:` there. Within one card a path may appear in only
+ONE of the five fields (a `Moves:` endpoint counts); across different cards, repeating
+a path is normal sequencing.
+
 ### `## Rename mechanic` — reproduce verbatim when any card has a `Moves:`
 
 ```markdown
