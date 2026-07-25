@@ -253,12 +253,18 @@ func (r *Repo) SnapshotSHA(key string) (string, error) {
 // that specific syntax. This method reaches the same *behavioural* result by
 // resolving the upstream ref manually from branch config and comparing
 // commit reachability directly, which is MIGRATE: `git rev-list --count
-// @{u}..HEAD`'s set-difference semantics are reproduced by seeding
-// object.NewCommitPreorderIter's ignore list with the upstream commit,
-// which excludes everything reachable only through it while walking from
-// HEAD — this holds for a diverged/rebased history too, not just a
-// fast-forward one, because reachability (not linear position) is what both
-// sides actually compute.
+// @{u}..HEAD`'s set-difference semantics are reproduced by first walking the
+// upstream commit's own history to build its full reachable-commit set, then
+// walking from HEAD with that whole set passed as object.NewCommitPreorderIter's
+// seenExternal map — NewCommitPreorderIter's ignore list only seeds the
+// literal listed hashes into its "seen" map, not their ancestors, so seeding
+// just the upstream hash itself (rather than everything reachable from it)
+// would wrongly count HEAD as ahead whenever HEAD is a strict ancestor of
+// upstream (purely behind, nothing to push) — confirmed by reading
+// plumbing/object/commit_walker.go in the pinned module. Precomputing the
+// full ancestor set first fixes that: this holds for a diverged/rebased
+// history too, not just a fast-forward one, because reachability (not linear
+// position) is what both sides actually compute.
 func (r *Repo) hasUnpushed() (bool, error) {
 	symbolicHead, err := r.repo.Reference(plumbing.HEAD, false)
 	if err != nil || symbolicHead.Type() != plumbing.SymbolicReference {
@@ -295,9 +301,26 @@ func (r *Repo) hasUnpushed() (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	upstreamCommit, err := r.repo.CommitObject(upstreamRef.Hash())
+	if err != nil {
+		return false, err
+	}
+
+	// Walk the full history reachable from upstream first, so the HEAD walk
+	// below can exclude everything upstream can already reach — not just the
+	// upstream tip itself — reproducing @{u}..HEAD's set-difference rather
+	// than a single-hash exclusion.
+	reachableFromUpstream := make(map[plumbing.Hash]bool)
+	upstreamIter := object.NewCommitPreorderIter(upstreamCommit, nil, nil)
+	if err := upstreamIter.ForEach(func(c *object.Commit) error {
+		reachableFromUpstream[c.Hash] = true
+		return nil
+	}); err != nil {
+		return false, err
+	}
 
 	ahead := 0
-	iter := object.NewCommitPreorderIter(headCommit, nil, []plumbing.Hash{upstreamRef.Hash()})
+	iter := object.NewCommitPreorderIter(headCommit, reachableFromUpstream, nil)
 	if err := iter.ForEach(func(*object.Commit) error {
 		ahead++
 		return nil

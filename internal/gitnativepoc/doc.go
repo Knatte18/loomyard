@@ -35,13 +35,13 @@
 //
 // # Per-operation verdicts
 //
-// Rubric (see the plan's migrate-vs-cli-bound-rubric Shared Decision): hard
+// Rubric (see _mill/discussion.md's migrate-vs-cli-bound-rubric decision): hard
 // gates are (a) typed result/error, (b) behavioural parity with git on the
 // documented "must match" cases, and (c) works on Windows (Win11); failing
 // any one forces CLI-BOUND. This task verified (a) and (b) on Linux only;
 // every MIGRATE verdict below is therefore provisional on (c), marked
 // Win11-pending, until a later pass runs the same harness on a Win11
-// machine — see the windows-portable-now-verify-later Shared Decision.
+// machine — see _mill/discussion.md's windows-portable-now-verify-later decision.
 //
 //   - CurrentSHA — MIGRATE (a: yes, go-git's plumbing.ErrReferenceNotFound on
 //     an unborn HEAD is translated to the typed ErrNoCommits sentinel; b:
@@ -76,12 +76,15 @@
 //     always fails, even against a real upstream-tracking clone), so this is
 //     CLI-BOUND for that literal syntax, but the same behavioural result is
 //     reached MIGRATE by resolving the upstream ref from branch config and
-//     comparing commit reachability directly via
-//     object.NewCommitPreorderIter's ignore list, which holds for a
-//     diverged/rebased history too, not just a fast-forward one; c:
-//     Win11-pending). Evidence: read_test.go's TestHasUnpushed (asserted
-//     directly against fixture-derived expectations since hasUnpushed is
-//     unexported on both sides).
+//     comparing commit reachability directly: the commits reachable from
+//     upstream are walked first into a full ancestor set, then
+//     object.NewCommitPreorderIter walks from HEAD excluding that whole set
+//     (not just the upstream tip), which holds for a diverged/rebased
+//     history too, not just a fast-forward one, and correctly reports false
+//     when HEAD is strictly behind upstream; c: Win11-pending). Evidence:
+//     read_test.go's TestHasUnpushed (asserted directly against
+//     fixture-derived expectations since hasUnpushed is unexported on both
+//     sides).
 //   - isStrictDescendant — MIGRATE (a: yes, bool-only contract; b: yes, an
 //     ancestor, the same commit compared to itself, and an unrelated
 //     orphan-branch commit all match gitrepo's merge-base --is-ancestor
@@ -157,17 +160,19 @@
 // rebase-retry recovery specifically — the design draft's own "Known costs"
 // section flagged go-git's weak rebase support as the open question, and
 // this write-up is what answers it (CLI-BOUND, see above) rather than
-// leaving it as a documented risk. Per the documentation lifecycle and the
-// writeup-home-and-lifecycle Shared Decision, the design draft is deleted
-// once this write-up lands; this doc comment is its durable replacement.
+// leaving it as a documented risk. Per the documentation lifecycle and
+// _mill/discussion.md's writeup-home-and-lifecycle decision, the design
+// draft is deleted once this write-up lands; this doc comment is its
+// durable replacement.
 //
 // # Windows
 //
 // All poc code and the parity harness are written OS-portable (no
 // Linux-only path or permission assumptions) but were verified on Linux
-// only in this task, per the windows-portable-now-verify-later Shared
-// Decision. Every MIGRATE verdict above is marked Win11-pending: gate (c) is
-// a hard gate for the final recommendation but has not yet been exercised.
+// only in this task, per _mill/discussion.md's
+// windows-portable-now-verify-later decision. Every MIGRATE verdict above
+// is marked Win11-pending: gate (c) is a hard gate for the final
+// recommendation but has not yet been exercised.
 // The one verdict that is not Win11-pending is Push's rebase-retry
 // CLI-BOUND finding, since go-git's lack of any rebase implementation is not
 // an OS-specific behaviour a Windows run could change.

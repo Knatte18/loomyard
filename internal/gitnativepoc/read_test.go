@@ -375,7 +375,8 @@ func TestSnapshotSHA_InvalidKey(t *testing.T) {
 // TestHasUnpushed is MIGRATE, asserted directly against fixture-derived
 // expectations rather than gitrepo.Repo since hasUnpushed is unexported on
 // both sides and has no public gitrepo oracle: HEAD ahead of its upstream
-// reports true, an up-to-date checkout reports false, and no upstream
+// reports true, an up-to-date checkout reports false, HEAD strictly behind
+// its upstream (nothing local to push) reports false, and no upstream
 // configured at all reports true (never an error) — matching
 // gitrepo.hasUnpushed's contract.
 func TestHasUnpushed(t *testing.T) {
@@ -411,6 +412,35 @@ func TestHasUnpushed(t *testing.T) {
 		}
 		if got {
 			t.Errorf("hasUnpushed() = %v, want false (up to date)", got)
+		}
+	})
+
+	t.Run("Behind", func(t *testing.T) {
+		fixture := newBareRemoteFixture(t)
+
+		// CloneB pushes a new commit to the shared remote, then CloneA fetches
+		// (without merging) so CloneA's upstream-tracking ref advances past
+		// CloneA's own branch tip. CloneA's own branch never gains a commit
+		// upstream lacks, so there is nothing to push — regression case for
+		// NewCommitPreorderIter's ignore list seeding only the literal
+		// upstream hash rather than its full ancestor set, which used to walk
+		// CloneA's whole history and report every commit as "ahead".
+		writeFixtureFile(t, fixture.CloneB, "b.txt", "b's change")
+		lyxtest.MustRun(t, fixture.CloneB, "git", "add", ".")
+		lyxtest.MustRun(t, fixture.CloneB, "git", "commit", "-m", "b advances main")
+		lyxtest.MustRun(t, fixture.CloneB, "git", "push")
+		lyxtest.MustRun(t, fixture.CloneA, "git", "fetch")
+
+		poc, err := OpenRepo(fixture.CloneA)
+		if err != nil {
+			t.Fatalf("OpenRepo(%q) error = %v", fixture.CloneA, err)
+		}
+		got, err := poc.hasUnpushed()
+		if err != nil {
+			t.Fatalf("hasUnpushed() error = %v", err)
+		}
+		if got {
+			t.Errorf("hasUnpushed() = %v, want false (behind upstream, nothing to push)", got)
 		}
 	})
 
