@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"os"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
@@ -40,7 +41,7 @@ func Command() *cobra.Command {
 
 The config file (_lyx/config/board.yaml) controls non-geometry settings: home,
 sidebar, and proposal_prefix filenames. The board data dir (<hub>/_board) is
-derived from the worktree layout via the paths package and is not config- or
+derived from the worktree layout via hubgeometry and is not config- or
 env-overridable. The hidden --board-path flag overrides the data dir for the
 detached sync child process. Running "lyx board" with no subcommand lists
 available subcommands without requiring a git repo.`,
@@ -609,10 +610,14 @@ func resolveLookup(raw []byte, extraKeys ...string) (any, map[string]any, error)
 		return slugStr, m, nil
 	}
 
-	// JSON numbers always decode as float64; the store's type-switch handles both
-	// float64 and int, so pass the float64 directly.
+	// JSON numbers always decode as float64. Reject fractional values here so
+	// {"id":1.5} errors instead of silently truncating to task 1 in the store's
+	// int conversion; a whole float64 passes through unchanged.
 	switch v := m["id"].(type) {
 	case float64:
+		if v != math.Trunc(v) {
+			return nil, nil, fmt.Errorf("id must be an integer")
+		}
 		return v, m, nil
 	default:
 		return nil, nil, fmt.Errorf("id must be a number")

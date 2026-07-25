@@ -13,16 +13,18 @@ Webster forks (and the planner) currently discover "what does this symbol touch"
 search (Grep/Glob) plus manual reading — imprecise (false positives from name collisions,
 silent misses) and expensive (every false-positive hit costs a full LLM round-trip). A working
 codeintel replaces this with fast, deterministic, compiler-derived lookups, and is what makes
-[plan-format v3](plan-format-v3.md)'s symbol fields (`creates-symbols`/`edits-symbols`/
-`reads-symbols`) trustworthy enough to write into a card at all — without it, they degrade to
-guesses (see plan-format-v3.md's resolution of this exact machine-mismatch problem).
+[plan-format v3](../../docs/reference/plan-format-v3.md)'s symbol fields
+(`creates-symbols`/`edits-symbols`/`reads-symbols`) trustworthy enough to write into a card at
+all — without it, they degrade to guesses (see
+[webster-rewrite.md](webster-rewrite.md)'s resolution of this exact machine-mismatch problem).
 
 **What codeintel is not:** not a semantic/conceptual index ("what have we written that's
 thematically similar" — see [semantic-index.md](semantic-index.md), a separate, further-out idea,
 not part of this proposal); not a
 replacement for raddle (raddle answers "where does this belong and why," codeintel answers "what
 exactly is affected"); not a DAG builder itself (it provides raw reference/definition facts;
-mechanical DAG-derivation is webster's own logic — see [plan-format-v3.md](plan-format-v3.md)).
+mechanical DAG-derivation is webster's own logic — see
+[webster-rewrite.md](webster-rewrite.md)).
 
 ## Four-layer architecture
 
@@ -136,7 +138,7 @@ path immediately rather than attempting the call and getting an undefined result
 
 - **Cannot resolve symbols that don't exist yet** — a structural limit, not a bug. Mitigated at
   the webster/plan-format level by plan-internal name matching for not-yet-existing symbols (see
-  [plan-format-v3.md](plan-format-v3.md)), not by codeintel itself.
+  [webster-rewrite.md](webster-rewrite.md)), not by codeintel itself.
 - Reduced precision around generics, reflection, and heavy dynamic-dispatch patterns (DI
   containers, `dynamic` in C#) — worth explicit measurement per language before trusting
   codeintel as a hard collision judge, especially for C#.
@@ -147,7 +149,8 @@ path immediately rather than attempting the call and getting an undefined result
 ## Consumers and usage pattern
 
 - **Planner:** verifies symbol names against the real codebase before writing
-  `edits-symbols`/`reads-symbols` into a card (see [plan-format-v3.md](plan-format-v3.md)).
+  `edits-symbols`/`reads-symbols` into a card (see
+  [webster-rewrite.md](webster-rewrite.md)).
 - **Webster forks:** conditional prompt injection — only when a card has declared
   `edits-symbols` *and* the relevant language's codeintel daemon is confirmed reachable. Put the
   instruction in the card/task prompt itself, near the relevant field, not in a static
@@ -162,7 +165,8 @@ path immediately rather than attempting the call and getting an undefined result
 
 ## Related
 
-- [plan-format-v3.md](plan-format-v3.md) — the symbol fields this module makes trustworthy.
+- [plan-format-v3.md](../../docs/reference/plan-format-v3.md) — the symbol fields this module
+  makes trustworthy.
 - [fabric.md](fabric.md) — per-language snapshot-key notification.
 - `internal/codeintelengine` package doc — the current, simpler, shipped implementation this
   design eventually redesigns (not superseded yet — no work has started on this redesign).

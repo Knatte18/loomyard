@@ -439,6 +439,8 @@ its documented fallback, and crash/resume.
 
 - [plan-format.md](plan-format.md) — builder's pinned input contract (plan structure,
   validation checks, the batch-report schema builder's `Distill` reads).
+- [plan-format-v3.md](plan-format-v3.md) — the emerging flat-card format the Planned
+  webster-rewrite will consume.
 - [docs/reference/model-spec.md](model-spec.md) — the model-spec notation
   and registry `ResolveRoles` resolves against.
 - [loom.md](../../manifest/designs/loom.md) — the phase machine that will drive `builder run` as one phase,
