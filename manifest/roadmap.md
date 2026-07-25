@@ -10,14 +10,14 @@ doc under [designs/](designs/). See Maintenance below for how the numbering work
 
 Committed to, in this order, next.
 
-1. **fabric** — replaces `warp` and `weft` in full: all topology (clone, dual-worktree add/remove,
-   coordinated checkout, reconcile, prune, cleanup, branch naming — including enforcing
-   `<slug>-weft` uniformly, no exceptions) and all git mechanics into the paired weft repo, unified
-   into one module built on `gitrepo`. **Parallel build landed**: `fabric` (`internal/fabricengine`
-   + `internal/fabriccli`) is built and registered alongside the existing `warp`/`weft` code,
-   validated by differential tests against them as the reference fixture. Only the cutover
-   remains — one coordinated pass that rewires consumers onto `fabric` and deletes the old
-   modules. See [designs/fabric.md](designs/fabric.md).
+1. **fabric: cutover** — rewires every consumer currently calling into `warp`/`weft`
+   (`initengine`, `loomengine`, `buildercli`, `webstercli`, `perchcli`, `configcli`) onto the
+   already-built `fabric` (`internal/fabricengine` + `internal/fabriccli`, validated by
+   differential tests against `warp`/`weft` as the reference fixture), then deletes the old
+   `warp`/`weft` modules in one coordinated pass — not incremental, since the two old modules are
+   tightly coupled to how git state is read across the codebase today. Connecting `fabric` into
+   the actual system is what this item is — the parallel build itself already landed. See
+   [designs/fabric.md](designs/fabric.md).
 
 1. **webster: rewrite for flat card list** — fork-per-card unchanged; no DAG/SCC in v0 (a dead
    `HasSymbolFields()` scheduler branch is reserved for later); integration suite runs as one final
@@ -26,8 +26,9 @@ Committed to, in this order, next.
 
 1. **board: move storage to `weft:main`** — replaces board's own separate remote repo with a
    reserved `weft:main` branch (README.md rendering, JSON-backed Proposals/Manifest/Tasks/Done).
-   Depends on fabric's branch-naming enforcement (`<slug>-weft` uniformly). See
-   [designs/board-weft-storage.md](designs/board-weft-storage.md).
+   Depends on the Planned `fabric: cutover` item's branch-naming enforcement (`<slug>-weft`
+   uniformly) actually taking effect, not just `fabric`'s code existing alongside the old
+   modules. See [designs/board-weft-storage.md](designs/board-weft-storage.md).
 
 1. **loom: phase-machine skeleton + session bootstrap** — the status-file-driven engine
    (sequencing, resume, crash-recovery, pause), testable against fake phases before real
