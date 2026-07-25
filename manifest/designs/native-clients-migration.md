@@ -24,15 +24,18 @@ This task is the actual migration into `internal/gitrepo`. The spike's prototype
 `internal/gitnativepoc` was throwaway/reference code, not production — no consumer was migrated by
 the spike itself, so that work is still fully ahead of us.
 
-### 2. `selfreportengine` → `go-github`
+### 2. `selfreportengine`'s internal `gh`-CLI transport → `go-github`
 
-`internal/selfreportengine/selfreport.go` currently shells out to the real `gh` binary
-(`exec.Command("gh", args...)`) and parses its stdout/exit code to create GitHub issues — the same
-"parse CLI output as a de-facto API" pattern `gitexec` had for git, on a narrower and more stable
-surface (issue creation only, today). Replace with `google/go-github`, the standard,
-well-maintained official REST client. No feasibility spike needed first — this surface is small
-(one CLI invocation shape) and GitHub's REST API is far more stable/documented than git's porcelain
-text output, unlike the genuine uncertainty a git-library swap carried.
+Not a replacement of the module — `internal/selfreportengine`'s public entry point, `CreateIssue`,
+keeps its exact signature and behavior, and every caller (`selfreportcli`, `mill-self-report`, etc.)
+is unaffected. What changes is only what's *underneath* it: today `CreateIssue` goes through
+`RunGH`/`realRunGH` (`selfreport.go`), which shells out to the real `gh` binary
+(`exec.Command("gh", args...)`) and parses its stdout/exit code — the same "parse CLI output as a
+de-facto API" pattern `gitexec` had for git, on a narrower and more stable surface (issue creation
+only, today). Replace that transport with `google/go-github`, the standard, well-maintained
+official REST client. No feasibility spike needed first — this surface is small (one CLI
+invocation shape) and GitHub's REST API is far more stable/documented than git's porcelain text
+output, unlike the genuine uncertainty a git-library swap carried.
 
 **Auth wrinkle:** `gh` gets authentication for free via the user's `gh auth login`
 session/keychain. A `go-github`-based client needs its own token resolution — either an env var
