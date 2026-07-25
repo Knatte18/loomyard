@@ -56,16 +56,12 @@ type Digest struct {
 // has landed: r.Status maps OK -> DigestStatusDone / FAILED ->
 // DigestStatusStuck, r.HeadSHA carries straight through, and r.Deviations
 // (the fork-reported, informational deviation list) carries straight
-// through as Deviations. changed is changedFiles' optional Master
-// cross-check of the same deviation signal — per the deviation-list-is-
-// informational Shared Decision it is recorded nowhere on the digest and
-// never inspected here beyond being accepted as a parameter, since the
-// digest's own Deviations field is always the fork's own report, not a
-// recomputation; a caller wanting a cross-check reads changed itself,
-// before or after calling distill. distill never sets Batch — the caller
-// (Classify) composes and assigns the NN-<batch-slug> identifier, since a
-// fork Report carries no batch field of its own.
-func distill(r *Report, changed []string) Digest {
+// through as Deviations — the digest's Deviations field is always the
+// fork's own report, never a host-side recomputation, per the
+// deviation-list-is-informational Shared Decision. distill never sets
+// Batch — the caller (Classify) composes and assigns the NN-<batch-slug>
+// identifier, since a fork Report carries no batch field of its own.
+func distill(r *Report) Digest {
 	status := DigestStatusStuck
 	if r.Status == ReportStatusOK {
 		status = DigestStatusDone

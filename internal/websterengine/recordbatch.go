@@ -38,8 +38,8 @@ var ErrNoBeginRecord = errors.New("webster: record-batch called with no begin-ba
 // loaded webster.yaml; Engine supplies the incremental fork audit
 // (AuditForksIncremental); Layout resolves the pane's actual process cwd the
 // audit reads against and the weft-reference pattern CheckFork/CheckParent
-// consult; WorktreeRoot is the host repo checkout the drift computation
-// diffs against; OutcomePath and SummaryPath are the run's two Master
+// consult; WorktreeRoot is the host repo checkout the dirty-worktree
+// warning and the head-SHA cross-check read; OutcomePath and SummaryPath are the run's two Master
 // contract files CheckParent's write-policy exempts; Sleeper is the clock
 // seam SettleRetry's bounded wait uses.
 type RecordDeps struct {
@@ -183,14 +183,6 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 		return nil, err
 	}
 
-	// changed is Master's own optional cross-check of the fork-reported
-	// deviation list — informational, never inspected by distill itself
-	// (the deviation-list-is-informational Shared Decision) and never
-	// itself a reason to fail this call.
-	changed, err := changedFiles(deps.WorktreeRoot, bs.StartSHA)
-	if err != nil {
-		return nil, err
-	}
 	if isDirty, err := dirty(deps.WorktreeRoot); err != nil {
 		return nil, err
 	} else if isDirty {
@@ -209,7 +201,7 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 		return nil, fmt.Errorf("webster: batch report %s: head_sha %q does not match the worktree's actual HEAD %q", reportPath, report.HeadSHA, actualHead)
 	}
 
-	digest := distill(report, changed)
+	digest := distill(report)
 	digest.Batch = polledID
 
 	bs.Digest = &digest

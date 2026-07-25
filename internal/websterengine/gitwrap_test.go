@@ -1,6 +1,6 @@
 //go:build integration
 
-// gitwrap_test.go exercises headSHA, changedFiles, and dirty against real
+// gitwrap_test.go exercises headSHA and dirty against real
 // scratch git repositories built fresh under t.TempDir() for each test,
 // reusing the package's existing hermetic TestMain (testmain_test.go) so
 // these git spawns never inherit the operator's global gitconfig.
@@ -71,32 +71,6 @@ func TestHeadSHA_ReturnsHEAD(t *testing.T) {
 	}
 	if got != want {
 		t.Errorf("headSHA() = %q; want %q", got, want)
-	}
-}
-
-func TestChangedFiles_ReturnsSortedSlashNormalizedSet(t *testing.T) {
-	t.Parallel()
-
-	dir := gitwrapNewScratchRepo(t)
-	sinceSHA := gitwrapCommitFile(t, dir, "base.txt", "base", "base commit")
-	gitwrapCommitFile(t, dir, "z.txt", "z", "add z")
-	gitwrapCommitFile(t, dir, filepath.Join("sub", "a.txt"), "a", "add sub/a")
-
-	got, err := changedFiles(dir, sinceSHA)
-	if err != nil {
-		t.Fatalf("changedFiles() error = %v; want nil", err)
-	}
-
-	// Sorted lexically: "sub/a.txt" sorts before "z.txt", proving the
-	// helper's own sort ran rather than relying on git's own diff order.
-	want := []string{"sub/a.txt", "z.txt"}
-	if len(got) != len(want) {
-		t.Fatalf("changedFiles() = %v; want %v", got, want)
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Errorf("changedFiles()[%d] = %q; want %q", i, got[i], want[i])
-		}
 	}
 }
 

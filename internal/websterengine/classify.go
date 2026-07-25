@@ -47,24 +47,15 @@ type ClassifyInputs struct {
 	Elapsed time.Duration
 	// BatchTimeout is the configured ceiling Elapsed is compared against.
 	BatchTimeout time.Duration
-
-	// Changed and Dirty are distill's optional cross-check inputs,
-	// populated only when Report is non-nil: Changed is changedFiles'
-	// result (an optional Master cross-check of the fork's own reported
-	// Deviations, per the deviation-list-is-informational Shared
-	// Decision) and Dirty is the worktree-cleanliness signal at
-	// classification time. Neither ever changes distill's Status.
-	Changed []string
-	Dirty   bool
 }
 
 // Classify decides a batch's classification from ins, in the pinned
 // decision order, returning the Digest to report and whether that
 // classification is terminal:
 //
-//  1. Report present: terminal, via distill(in.Report, in.Changed) with
-//     the composed NN-<batch-slug> identifier assigned — status is done or
-//     stuck per the report's own OK/FAILED status.
+//  1. Report present: terminal, via distill(in.Report) with the composed
+//     NN-<batch-slug> identifier assigned — status is done or stuck per
+//     the report's own OK/FAILED status.
 //  2. No report, TurnEnded: terminal dead, DeadReasonAsking — the fork
 //     ended its turn without ever satisfying the file contract, which is
 //     recovery material, same as a crash.
@@ -77,7 +68,7 @@ func Classify(in ClassifyInputs) (Digest, bool) {
 	batch := fmt.Sprintf("%02d-%s", in.BatchNumber, in.BatchSlug)
 
 	if in.Report != nil {
-		d := distill(in.Report, in.Changed)
+		d := distill(in.Report)
 		d.Batch = batch
 		return d, true
 	}

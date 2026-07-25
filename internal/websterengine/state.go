@@ -102,8 +102,8 @@ type BatchState struct {
 	// Slug is the batch's <batch-slug> segment.
 	Slug string `json:"slug"`
 	// StartSHA is the host HEAD immediately before this batch's implementer
-	// first forked (or, for a recovery batch, first spawned) — the base
-	// commit record-batch's drift computation diffs against.
+	// first forked (or, for a recovery batch, first spawned) — the durable
+	// base-commit record a resume or an operator diagnosis reads.
 	StartSHA string `json:"startSha"`
 	// Kind is how this batch's implementer ran: "fork" for the normal
 	// in-session Agent-tool fork, or "recovery" for a cold recovery strand

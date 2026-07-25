@@ -565,8 +565,10 @@ func TestRecoverBatchCmd_RunningThenTerminal(t *testing.T) {
 	}
 
 	// Between the two calls, the recovery implementer "finishes": its
-	// report lands on disk.
-	writeBatchReport(t, fx.CLI.reportsDir, "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef")
+	// report lands on disk, self-reporting the worktree's real HEAD (the
+	// recovery path cross-checks head_sha against the worktree exactly like
+	// record-batch does).
+	writeBatchReport(t, fx.CLI.reportsDir, strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD")))
 
 	// Second call: ATTACH (Kind == recovery, non-terminal, StrandGUID set)
 	// -- recoverSpawn/archiveStaleReport never runs again, so the report

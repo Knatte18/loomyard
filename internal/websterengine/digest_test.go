@@ -27,7 +27,7 @@ func TestDistill_StatusMapping(t *testing.T) {
 			t.Parallel()
 
 			r := &Report{Status: tt.reportStat, HeadSHA: "abc123"}
-			got := distill(r, nil)
+			got := distill(r)
 			if got.Status != tt.want {
 				t.Errorf("distill(%q).Status = %q; want %q", tt.reportStat, got.Status, tt.want)
 			}
@@ -44,7 +44,7 @@ func TestDistill_CarriesHeadSHAAndDeviations(t *testing.T) {
 		Deviations: []string{"internal/foo.go", "docs/bar.md"},
 	}
 
-	got := distill(r, nil)
+	got := distill(r)
 
 	if got.HeadSHA != r.HeadSHA {
 		t.Errorf("distill().HeadSHA = %q; want %q", got.HeadSHA, r.HeadSHA)
@@ -68,31 +68,12 @@ func TestDistill_LargeDeviationListNeverChangesStatus(t *testing.T) {
 	}
 
 	okReport := &Report{Status: ReportStatusOK, HeadSHA: "abc", Deviations: many}
-	if got := distill(okReport, nil); got.Status != DigestStatusDone {
+	if got := distill(okReport); got.Status != DigestStatusDone {
 		t.Errorf("distill(OK with %d deviations).Status = %q; want %q", len(many), got.Status, DigestStatusDone)
 	}
 
 	failedReport := &Report{Status: ReportStatusFailed, HeadSHA: "def", Deviations: many}
-	if got := distill(failedReport, nil); got.Status != DigestStatusStuck {
+	if got := distill(failedReport); got.Status != DigestStatusStuck {
 		t.Errorf("distill(FAILED with %d deviations).Status = %q; want %q", len(many), got.Status, DigestStatusStuck)
-	}
-}
-
-func TestDistill_ChangedParamNeverAffectsResult(t *testing.T) {
-	t.Parallel()
-
-	r := &Report{Status: ReportStatusOK, HeadSHA: "abc123", Deviations: []string{"a.go"}}
-
-	withoutChanged := distill(r, nil)
-	withChanged := distill(r, []string{"a.go", "b.go", "c.go"})
-
-	if withoutChanged.Status != withChanged.Status {
-		t.Errorf("distill() Status differs by changed argument: %q vs %q", withoutChanged.Status, withChanged.Status)
-	}
-	if withoutChanged.HeadSHA != withChanged.HeadSHA {
-		t.Errorf("distill() HeadSHA differs by changed argument: %q vs %q", withoutChanged.HeadSHA, withChanged.HeadSHA)
-	}
-	if len(withoutChanged.Deviations) != len(withChanged.Deviations) {
-		t.Errorf("distill() Deviations differs by changed argument: %v vs %v", withoutChanged.Deviations, withChanged.Deviations)
 	}
 }

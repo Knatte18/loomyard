@@ -365,10 +365,8 @@ func PersistRecoveryTerminal(st *State, batchNumber int, digest *Digest) error {
 // bs.SpawnedAt (parsed once, up front) so RecoveryTimeoutMin measures
 // wall-clock time since the strand was SPAWNED, not since this particular
 // call started — the property that makes the long-poll safely re-entrant
-// across the tool-call ceiling — and Changed/Dirty via the gitwrap helpers,
-// populated only once a report has landed, mirroring Classify's own
-// documented contract. gather is handed to PollUntilTerminal, which re-runs
-// it on its fixed tick until terminal or wait elapses.
+// across the tool-call ceiling. gather is handed to PollUntilTerminal,
+// which re-runs it on its fixed tick until terminal or wait elapses.
 //
 // A non-terminal return after wait elapses reports RecoverResult{Running:
 // true, ElapsedS: <since spawn>} — nothing anywhere is mutated, so the
@@ -418,22 +416,6 @@ func awaitTerminal(deps RecoverDeps, batch batcher.Batch, bs *BatchState, wait t
 			return Digest{}, false, err
 		}
 
-		// Changed/Dirty are distill's own optional cross-check inputs,
-		// populated only once a report has landed — a running snapshot
-		// never touches git, per ClassifyInputs' documented contract.
-		var changed []string
-		var isDirty bool
-		if report != nil {
-			changed, err = changedFiles(deps.WorktreeRoot, bs.StartSHA)
-			if err != nil {
-				return Digest{}, false, err
-			}
-			isDirty, err = dirty(deps.WorktreeRoot)
-			if err != nil {
-				return Digest{}, false, err
-			}
-		}
-
 		in := ClassifyInputs{
 			BatchNumber:  number,
 			BatchSlug:    slug,
@@ -443,8 +425,6 @@ func awaitTerminal(deps RecoverDeps, batch batcher.Batch, bs *BatchState, wait t
 			StrandLive:   strandLive,
 			Elapsed:      clk.Now().Sub(spawnedAt),
 			BatchTimeout: timeout,
-			Changed:      changed,
-			Dirty:        isDirty,
 		}
 		digest, terminal := Classify(in)
 		return digest, terminal, nil
