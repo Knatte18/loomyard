@@ -4,20 +4,22 @@
 
 A structured test-loop for exercising `lyx webster` against a **live tmux server and a
 logged-in claude** in the sandbox Hub host repo, mirroring `SANDBOX-BUILDER-SUITE.md`'s own
-operating model. `webster` is builder's fork-based sibling: instead of spawning a fresh
-reed/tmux strand per batch, one long-lived **Master** session reads the codebase and the
-whole plan once, then forks one implementer per batch in-session (Claude Code's Agent tool,
-`subagent_type: "fork"`) -- no `spawn-batch`/`poll` verbs exist here; Master itself brackets
-each fork with `begin-batch`/`await-batch`/`record-batch` calls (forks are BACKGROUNDED
-agents on current Claude Code -- the Agent call returns immediately, so Master long-polls
-`await-batch` for the batch report instead of relying on a synchronous fork return, and
-never ends its turn while a batch is open). This suite is deliberately narrow: two
-scenarios, not builder's nine, because webster's Go-level mechanics (fingerprinting,
-`--fresh` archiving, chain rollback, pause) are the SAME imported `builderengine` code
-builder's own suite already exercises (per discussion.md's `reuse-by-import` decision) --
-what is genuinely new here is the fork loop itself (W1) and the one load-bearing,
-previously-unvalidated mechanism unique to webster: Go-driven `/model` pane injection for
-oversized batches (W2).
+operating model. `webster` is builder's fork-based sibling with its own plan format and
+report contract: instead of spawning a fresh reed/tmux strand per batch, one long-lived
+**Master** session reads the codebase and the whole flat card-list plan (plan-format v3,
+parsed by `internal/planparser`, grouped into execution batches by `internal/batcher`'s
+config-selected batchifier -- identity by default, one card per batch) once, then forks one
+implementer per batch in-session (Claude Code's Agent tool, `subagent_type: "fork"`) -- no
+`spawn-batch`/`poll` verbs exist here; Master itself brackets each fork with
+`begin-batch`/`await-batch`/`record-batch` calls (forks are BACKGROUNDED agents on current
+Claude Code -- the Agent call returns immediately, so Master long-polls `await-batch` for
+the batch report instead of relying on a synchronous fork return, and never ends its turn
+while a batch is open). This suite is deliberately narrow: two scenarios, not builder's
+nine, because webster's pure Go-level mechanics (fingerprinting, `--fresh` archiving,
+pause, `run.lock` contention, plan validation) are webster-local code already covered by
+the hermetic and `-tags integration` test tiers -- what is genuinely live-only here is the
+fork loop itself (W1) and the one dormant-by-default, timing-sensitive mechanism unique to
+webster: the idempotent per-batch Master model assertion's `/model` pane injection (W2).
 
 ## Pre-conditions
 
@@ -58,20 +60,29 @@ It must not look for, read, or reason about the lyx source tree. No peeking at
 Discovering the command surface is done via `lyx webster --help` and `lyx webster
 <subcommand> --help` alone -- not from documentation outside the Hub. The plan file(s) under
 `_lyx/plan/` are the one artifact the agent must construct itself per each scenario's Goal
-below; `docs/reference/plan-format.md`'s worked example (available via `lyx webster validate
---help` or by reasoning from validation error messages) is the reference for the file shape.
-Keep every scenario's plan cards trivial -- e.g. "create `resultN.md` containing the single
+below: a plan-format v3 flat card list -- `00-overview.md` (frontmatter `format: 3` /
+`approved: true`, a `## Card Index`) plus one `NN-<card-slug>.md` per card carrying
+`**What:**`, the five typed file-op fields (`**Context:**`/`**Edits:**`/`**Creates:**`/
+`**Deletes:**`/`**Moves:**`, `none` when empty), and `**Depends-on:**` -- reason the shape
+out from `lyx webster validate`'s error messages, which name every violated check. Keep
+every scenario's plan cards trivial -- e.g. "create `resultN.md` containing the single
 line `OK`" -- so a real fork finishes each batch in one card, one commit, fast.
 
-### Controlled tmux exceptions
+### Controlled exceptions
 
-One sanctioned deviation from the pure black-box rule, mirroring the reed/shuttle/burler/
-builder suites' own controlled-exception note:
+Two sanctioned deviations from the pure black-box rule, mirroring the reed/shuttle/burler/
+builder suites' own controlled-exception notes:
 
 - **Direct `tmux -L <socket> list-panes`/`ls`** is allowed only to confirm Master's own
   strand exists (or was cleaned up), where `<socket>` is read from `lyx reed status` output
   -- this is also how W1 confirms no EXTRA strand appears per batch (a fork is not a new
   strand; there is exactly one implementer-bearing strand, Master's own, for the whole run).
+- **One targeted `_lyx/webster/state.json` edit (W2 only).** The per-batch model assertion
+  is DORMANT in the shipped flow -- `run` launches Master with the master role's model and
+  baselines the persisted `assertedModel` to that same value at entry, so `begin-batch`'s
+  idempotency check never finds a divergence on its own. W2 arms the injection by editing
+  the `assertedModel` value in `_lyx/webster/state.json` mid-run (see W2's Goal); no other
+  scenario may touch webster state by hand.
 
 ## Fingerprint header
 
@@ -136,7 +147,7 @@ string fields so the JSON stays well-formed.
 
 **Covers:** webster
 
-**Goal:** Pin a tiny two-batch plan whose cards each just write one fixed-content file, run
+**Goal:** Pin a tiny two-card plan whose cards each just write one fixed-content file, run
 `lyx webster run`, and confirm it drives itself end-to-end -- via in-session Agent-tool
 forks, not new reed strands -- to a `"outcome":"done"` outcome with both batches' cards
 committed.
@@ -150,60 +161,66 @@ Confirm **per-batch weft commits landing**: `state.json` committed at each batch
 `begin-batch` (start-SHA + batch entry durable before the fork), and the batch report plus
 `state.json` committed at each batch's `record-batch` (the main per-batch sync) -- inspect
 the weft's own commit log for both. Confirm **digest envelopes from `record-batch`**: each
-batch's fork-return is followed by a `record-batch` call whose JSON response carries the
-pinned digest fields (`batch`, `status`, `tests`, `files_changed`, `dirty` -- the same
-terse, prose-free shape builder's `poll` emits, never raw report prose). Confirm **a valid
-`summary.md`** at exit: `_lyx/webster/summary.md` exists, its first line is `# <title>`,
-and the rest is a non-empty narrative -- alongside `_lyx/webster/outcome.yaml`. Afterward,
-Master's pane/run dir is cleaned up (no leftover strand; `lyx reed status` no longer lists
-it).
+batch's fork-return is followed by a `record-batch` call whose JSON response carries
+webster's pinned digest fields (`batch`, `status`, `head_sha`, `deviations`, `dead_reason`,
+`elapsed_s` -- webster's own minimal fork-return digest, never raw report prose; absent
+optional fields may be omitted). Confirm **digest carry-forward**: batch 2's rendered fork
+prompt (`_lyx/webster/prompts/02-*.md`) embeds batch 1's one-line persisted digest in its
+"Prior-batch context" section. Confirm **a valid `summary.md`** at exit:
+`_lyx/webster/summary.md` exists, its first line is `# <title>`, and the rest is a
+non-empty narrative -- alongside `_lyx/webster/outcome.yaml`. Afterward, Master's pane/run
+dir is cleaned up (no leftover strand; `lyx reed status` no longer lists it).
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
 ---
 
-### W2 -- `/model` injection validation (the escalation-vs-fallback decider)
+### W2 -- Idempotent per-batch `/model` assertion (tamper-armed injection timing)
 
 **Covers:** webster
 
-**Goal:** Pin a plan with one `oversized: true` batch and drive the run far enough that
-`begin-batch` for that batch fires its `/model` pane-injection choreography (see
-discussion.md's `oversized-model-escalation` decision) **while the `begin-batch` Bash
-subprocess call is still the foreground tool call executing inside Master's own pane** --
-capture the pane's state at the moment the injection races the still-running subprocess,
-not after that tool call has already returned. This is the load-bearing, previously
-UNVALIDATED production timing: `/model` is a local Claude Code CLI command expected to
-apply to subsequent API calls within Master's single long agentic turn, but whether
-pane-injected keys actually reach the TUI input while a foreground subprocess is mid-flight
--- rather than merely in a quiet, idle pane -- had never been confirmed before this
-scenario. **State plainly in the session log: this scenario's verdict decides whether the
-oversized-batch model-escalation feature stays enabled, or permanently degrades to its
-documented fallback** (`oversized:` stays accepted for plan-format compatibility but has no
-spawn effect in webster).
+**Goal:** Arm and observe the ONLY model-injection site in webster -- `begin-batch`'s
+idempotent per-batch Master model assertion -- under its real production timing: the
+injection types `/model <master-model>` into Master's own pane **while `begin-batch`
+itself is still the foreground Bash tool call executing inside that pane**. The mechanism
+is dormant by default (the launch model already equals the master role's model and
+`assertedModel` is baselined at run entry), so arm it deliberately: pin a plan of at least
+three trivial cards, start `lyx webster run`, and -- from your own session, once you see an
+early batch's report land under `_lyx/webster/reports/` -- edit
+`_lyx/webster/state.json`, changing `assertedModel` to any OTHER registered model alias
+(e.g. `opus`). The next `begin-batch` then finds the divergence and fires a real
+`/model` injection racing its own still-running foreground subprocess. The edit races
+Master's own state saves; if a save overwrites your tamper before the next `begin-batch`
+reads it, nothing fires -- a benign miss, re-tamper at the next batch boundary (this is
+why the plan needs at least three cards).
 
 **Watch**, recorded as **three separately-verdicted assertions** -- do not fold them into
 one OK/WARN/FAIL; a miss on (a) alone is benign, a hit on (b) is dangerous regardless of
 what (a) or (c) showed:
 
-- **(a) Model switch takes effect.** The injected `/model <target>` keystrokes reach
-  Claude's TUI input and the session's model actually switches for subsequent calls within
-  the same turn (observe the pane directly, or a subsequent call's behavior, for the
-  model change). **A miss here is the BENIGN failure mode**: `oversized:` keeps its
-  plan-format compatibility but has no spawn effect in webster -- this IS the documented
-  fallback, not a defect to fix.
+- **(a) Assertion lands and re-arms idempotency.** The injected `/model <master-model>`
+  keystrokes reach Claude's TUI input (capture the pane around the armed `begin-batch` to
+  see them), the armed `begin-batch`'s own envelope reports the master role's model, and
+  the FOLLOWING batch's `begin-batch` does NOT re-inject (the persisted `assertedModel` is
+  back at the master model -- the idempotency memory). A miss here (keystrokes never land,
+  model never switches) is the BENIGN failure mode: the assertion seam exists for a future
+  per-batch model policy, and a no-op injection leaves the run driving on the launch model
+  exactly as if never armed.
 - **(b) No corruption of the foreground call.** The injected keystrokes do **not** leak
-  into the running foreground subprocess's own stdin/output, and that Bash tool call's own
-  result is not corrupted by the injection racing it. **A hit here (corruption) is the
-  DANGEROUS failure mode** -- it unconditionally triggers the fallback regardless of what
-  (a) showed, since a corrupted tool result is worse than no escalation at all.
-- **(c) Fork-transcript flush timing.** By the time the fork has COMPLETED (its report
+  into the running `begin-batch` subprocess's own stdin/output: its JSON envelope parses
+  clean in Master's transcript, the run proceeds to fork the batch normally, and the batch
+  still reaches `record-batch` with a clean digest. **A hit here (corruption) is the
+  DANGEROUS failure mode** -- it means pane injection cannot safely race a foreground
+  tool call at all, regardless of what (a) showed.
+- **(c) Fork-transcript flush timing.** By the time a fork has COMPLETED (its report
   file has landed -- the moment `await-batch` returns `{"report": true}` and Master calls
   `record-batch`), the fork's `subagents/<id>.jsonl` transcript file already exists on
   disk (under the session's `~/.claude/projects/<encoded-cwd>/<sessionID>/subagents/`
   directory) -- the incremental per-batch audit's transcript-count-before-report-presence
-  check (`record-batch`) depends on this flush having already happened by then, not
-  merely by session end. (Forks are backgrounded on current Claude Code, so "the Agent
-  call returning" is the spawn acknowledgment, not completion.)
+  check (`record-batch`, with its bounded settle retry) depends on this flush having
+  already happened within seconds of the report, not merely by session end. (Forks are
+  backgrounded on current Claude Code, so "the Agent call returning" is the spawn
+  acknowledgment, not completion.)
 
 **Verdict:** `OK` / `WARN` / `FAIL` for EACH of (a), (b), (c) independently; record all
 three in the session log and name whichever one(s) failed.
@@ -243,15 +260,13 @@ still open for inspection.
   `SANDBOX-SHUTTLE-SUITE.md`, burler's own review+fix round scenarios stay in
   `SANDBOX-BURLER-SUITE.md`, perch's gate-loop scenarios stay in `SANDBOX-PERCH-SUITE.md`,
   builder's batch-loop scenarios stay in `SANDBOX-BUILDER-SUITE.md`; this suite holds only
-  webster's fork-loop and model-escalation scenarios -- add `W` scenarios here, not in any
+  webster's fork-loop and model-assertion scenarios -- add `W` scenarios here, not in any
   other suite.
 - This suite is a FLOOR, not a ceiling, and deliberately narrower than builder's own: the
-  run-level mechanics (fingerprinting, `--fresh` archiving, chain rollback, pause,
-  `run.lock` contention) are the SAME imported `builderengine` code builder's own suite
-  (`SANDBOX-BUILDER-SUITE.md`'s B2-B9) already exercises against webster's own dirs, per
-  the reuse-by-import decision -- duplicating those scenarios here would test the same Go
-  code twice under a different module name. What is genuinely webster-specific is the fork
-  loop itself (W1) and the one load-bearing, previously-unvalidated mechanism unique to
-  webster: Go-driven `/model` pane injection (W2). Neither scenario proves implementer
-  quality or plan-format content richness -- those are a normal code review's and `perch`'s
-  job respectively.
+  run-level mechanics (fingerprinting, `--fresh` archiving, pause, `run.lock` contention,
+  plan validation, crash reclaim) are webster-local Go code exercised by the hermetic and
+  `-tags integration` test tiers plus `internal/webstercli/smoke_test.go`'s live smoke
+  tests -- duplicating those here would re-test covered Go paths through a slower medium.
+  What is genuinely live-only is the fork loop itself (W1) and the tamper-armed `/model`
+  pane-injection timing (W2). Neither scenario proves implementer quality or plan-format
+  content richness -- those are a normal code review's and `perch`'s job respectively.
