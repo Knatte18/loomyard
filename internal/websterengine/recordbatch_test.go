@@ -14,6 +14,8 @@ package websterengine_test
 
 import (
 	"errors"
+	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -53,15 +55,22 @@ type recordFakeEngine struct {
 	// test can assert WHICH session the audit was keyed on (the
 	// bracket-opening session, never blindly the current Master session).
 	sessions []string
+	// auditErr, when non-nil, is returned by every AuditForksIncremental call
+	// instead of the script — the missing-transcript failure double for the
+	// cross-machine resume path.
+	auditErr error
 }
 
 func (e *recordFakeEngine) AuditForksIncremental(sessionID, workdir string, seenTranscripts map[string]bool) (shuttleengine.ForkAudit, error) {
-	idx := e.callCount
+	e.callCount++
+	e.sessions = append(e.sessions, sessionID)
+	if e.auditErr != nil {
+		return shuttleengine.ForkAudit{}, e.auditErr
+	}
+	idx := e.callCount - 1
 	if idx >= len(e.scripted) {
 		idx = len(e.scripted) - 1
 	}
-	e.callCount++
-	e.sessions = append(e.sessions, sessionID)
 	return e.scripted[idx], nil
 }
 
@@ -475,5 +484,31 @@ func TestRecordBatch_MalformedReportYAMLErrors(t *testing.T) {
 	_, err := websterengine.RecordBatch(fx.Deps, 1)
 	if err == nil {
 		t.Fatal("RecordBatch() error = nil; want a hard error for an unrecognized status value")
+	}
+}
+
+// TestRecordBatch_MissingSessionTranscriptNamesRecourse proves the TRUE
+// cross-machine resume failure — the bracket-opening session's transcript
+// file does not exist on this machine at all, so the audit read itself fails
+// with fs.ErrNotExist — is wrapped with the machine-local-transcripts
+// explanation and the move-the-report-aside operator recourse, instead of
+// surfacing a bare "no such file or directory" (found live in crucible
+// round fable-r3). errors.Is must still see the underlying fs.ErrNotExist.
+func TestRecordBatch_MissingSessionTranscriptNamesRecourse(t *testing.T) {
+	fx := newRecordFixture(t, nil)
+	fx.Engine.auditErr = fmt.Errorf("claudeengine: read parent transcript %q: %w", "/nope/session.jsonl", fs.ErrNotExist)
+	writeReport(t, fx.ReportsDir, "status: OK\nhead_sha: "+fx.HeadSHA+"\n")
+
+	_, err := websterengine.RecordBatch(fx.Deps, 1)
+	if err == nil {
+		t.Fatal("RecordBatch() error = nil; want the wrapped missing-transcript error")
+	}
+	if !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("RecordBatch() error = %v; want errors.Is(err, fs.ErrNotExist) preserved through the wrap", err)
+	}
+	for _, needle := range []string{"machine-local", "moving the batch's report file", "session-1"} {
+		if !strings.Contains(err.Error(), needle) {
+			t.Errorf("RecordBatch() error = %q; want it to contain %q", err.Error(), needle)
+		}
 	}
 }

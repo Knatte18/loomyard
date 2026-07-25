@@ -15,6 +15,7 @@ package websterengine
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 
@@ -124,6 +125,17 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 
 	audit, newReports, err := SettleRetry(fetch, deps.State.SeenForkTranscripts, DefaultSettleWindow, DefaultSettleTick, deps.Sleeper)
 	if err != nil {
+		// A missing transcript FILE for the bracket-opening session means that
+		// session's transcripts are not on this machine at all — the parent
+		// transcript is machine-local exactly like the fork transcripts, so the
+		// true cross-machine resume dies HERE, before ClassifyAttribution's
+		// ErrNoForkTranscripts can ever name the operator recourse. Wrap the
+		// raw file error with the same explanation and recourse (found live in
+		// crucible round fable-r3: the resume surfaced a bare "no such file or
+		// directory" instead of the documented escape).
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, fmt.Errorf("webster: no transcript exists on this machine for the session that opened batch %02d-%s's bracket (%s): %w — session transcripts are machine-local, so a crash window resumed on a different machine cannot re-attribute its report; an operator resolves that by moving the batch's report file out of the reports dir and re-driving the batch", number, slug, bs.SessionID, err)
+		}
 		return nil, err
 	}
 
