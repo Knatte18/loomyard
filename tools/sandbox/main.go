@@ -1,20 +1,23 @@
 // main.go implements the sandbox tool entry point, flag parsing, and subcommand
-// dispatch. It supports nine subcommands: "build" (default, clones the Hub),
+// dispatch. It supports ten subcommands: "build" (default, clones the Hub),
 // "suite" (runs the embedded SANDBOX-CORE-SUITE agent), "mux-suite" (runs the
 // embedded SANDBOX-MUX-SUITE agent), "shuttle-suite" (runs the embedded
 // SANDBOX-SHUTTLE-SUITE agent), "burler-suite" (runs the embedded
 // SANDBOX-BURLER-SUITE agent), "perch-suite" (runs the embedded
 // SANDBOX-PERCH-SUITE agent), "builder-suite" (runs the embedded
 // SANDBOX-BUILDER-SUITE agent), "webster-suite" (runs the embedded
-// SANDBOX-WEBSTER-SUITE agent), and "fetch" (collects the agent-written
-// report into .scratch). Only -parent and -loomyard live at the top level;
-// -reset is a build-subcommand flag, parsed after the "build" token like
-// suite/mux-suite/shuttle-suite/burler-suite/perch-suite/builder-suite/
-// webster-suite parse their -claude/-prompt flags.
+// SANDBOX-WEBSTER-SUITE agent), "fabric-suite" (clones the dedicated fabric
+// hub if absent, then runs the embedded SANDBOX-FABRIC-SUITE agent), and
+// "fetch" (collects the agent-written report into .scratch). Only -parent and
+// -loomyard live at the top level; -reset is a build-subcommand flag, parsed
+// after the "build" token like suite/mux-suite/shuttle-suite/burler-suite/
+// perch-suite/builder-suite/webster-suite/fabric-suite parse their
+// -claude/-prompt flags.
 
 package main
 
 import (
+	_ "embed"
 	"flag"
 	"fmt"
 	"os"
@@ -26,12 +29,46 @@ const (
 	hostURL = "https://github.com/Knatte18/lyx-test"
 	weftURL = "https://github.com/Knatte18/lyx-test-weft"
 	hubName = "lyx-test-HUB"
+
+	// fabric-suite runs against its own dedicated hub, never the shared
+	// lyx-test-HUB above -- warp/weft's sandbox state must stay untouched by
+	// fabric's parallel-build testing and vice versa.
+	fabricHostURL   = "https://github.com/Knatte18/lyx-fabric-test"
+	fabricWeftURL   = "https://github.com/Knatte18/lyx-fabric-test-weft"
+	fabricHubName   = "lyx-fabric-test-HUB"
+	fabricHostDir   = "lyx-fabric-test"
+	fabricSuiteFile = "SANDBOX-FABRIC-SUITE.md"
+	fabricSuiteAsk  = "Read ./SANDBOX-FABRIC-SUITE.md and follow the instructions in it exactly."
 )
+
+//go:embed SANDBOX-FABRIC-SUITE.md
+var fabricSandboxSuiteMD string
 
 // cloneRun is a testability seam for executing the clone command.
 // In tests, this can be replaced to avoid network calls.
 var cloneRun = func(parentDir string) error {
 	cmd := exec.Command("lyx", "warp", "clone", hostURL, weftURL)
+	cmd.Dir = parentDir
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		if _, isExitError := err.(*exec.ExitError); isExitError {
+			// Subprocess printed its own error; just propagate the exit code
+			return err
+		}
+		// Startup error (lyx not found, etc.); add context
+		return fmt.Errorf("lyx not found on PATH: %w", err)
+	}
+	return nil
+}
+
+// fabricCloneRun is a testability seam for executing `lyx fabric clone` against
+// the dedicated fabric sandbox repos. It mirrors cloneRun's shape exactly --
+// same subprocess-error-vs-startup-error handling -- but shells "fabric clone"
+// (never "warp clone") and targets fabric's own dedicated hub instead of the
+// shared lyx-test-HUB.
+var fabricCloneRun = func(parentDir string) error {
+	cmd := exec.Command("lyx", "fabric", "clone", fabricHostURL, fabricWeftURL)
 	cmd.Dir = parentDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -75,6 +112,112 @@ func decideClone(hubPath string, reset bool) error {
 	// Run the clone command
 	parentDir := filepath.Dir(hubPath)
 	return cloneRun(parentDir)
+}
+
+// decideFabricClone materializes the dedicated fabric sandbox hub at hubPath if
+// it does not already exist. Unlike decideClone, this has no -reset flag: the
+// "fabric-suite" subcommand is not the "build" subcommand, so it always reuses
+// whatever state a prior session left the hub in rather than tearing it down.
+func decideFabricClone(hubPath string) error {
+	if _, err := os.Stat(hubPath); err == nil {
+		// Hub already exists; reuse it as-is.
+		fmt.Printf("Fabric hub already exists at %s\n", hubPath)
+		return nil
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("stat fabric hub path: %w", err)
+	}
+
+	parentDir := filepath.Dir(hubPath)
+	return fabricCloneRun(parentDir)
+}
+
+// runFabricSuite fingerprints the deployed lyx binary, writes the rendered
+// SANDBOX-FABRIC-SUITE.md into the dedicated fabric hub's host repo, registers
+// it (and the report file) in .git/info/exclude, and launches an interactive
+// Claude session against it.
+//
+// This duplicates the fingerprint/write/exclude/launch mechanics of suite.go's
+// runSuite (binaryFingerprint, renderScheme, ensureGitExclude, lookPath,
+// launchAgent, reportFileName -- all same-package, so no import is needed)
+// rather than calling runSuite directly: runSuite's hostRepoDir is hardcoded to
+// the shared hubName/hostDirName constants, and fabric needs its own dedicated
+// hub instead. fabric-suite also has no live-substrate teardown step (unlike
+// the muxTeardown specs in suite.go) because none of its scenarios boot mux.
+func runFabricSuite(parentDir, claudeOverride, promptOverride string) error {
+	hostRepoDir := filepath.Join(parentDir, fabricHubName, fabricHostDir)
+
+	// Guard against a missing Hub so the operator gets a clear, actionable message
+	// rather than a confusing downstream file-write failure. Under normal use this
+	// cannot happen -- the "fabric-suite" case runs decideFabricClone first -- but
+	// a direct call (e.g. from a test) should still fail loudly.
+	if _, err := os.Stat(hostRepoDir); os.IsNotExist(err) {
+		return fmt.Errorf("fabric hub host repo not found at %s -- run sandbox-fabric-suite.cmd, which clones it first", hostRepoDir)
+	} else if err != nil {
+		return fmt.Errorf("stat fabric host repo %s: %w", hostRepoDir, err)
+	}
+
+	// Resolve lyx via PATH so the fingerprint captures the exact binary the
+	// operator has deployed; the binary must be on PATH before running the suite.
+	lyxPath, err := lookPath("lyx")
+	if err != nil {
+		return fmt.Errorf("lyx not found on PATH -- deploy the binary before running the suite: %w", err)
+	}
+
+	info, err := binaryFingerprint(lyxPath)
+	if err != nil {
+		return fmt.Errorf("fingerprint lyx binary: %w", err)
+	}
+
+	// Write the rendered scheme (fingerprint header + body) into the host repo,
+	// overwriting any copy left from a previous run so every session starts fresh.
+	suitePath := filepath.Join(hostRepoDir, fabricSuiteFile)
+	if err := os.WriteFile(suitePath, []byte(renderScheme(info, fabricSandboxSuiteMD)), 0o644); err != nil {
+		return fmt.Errorf("write %s: %w", fabricSuiteFile, err)
+	}
+
+	// Exclude the scheme file from git tracking in the host repo so it does not
+	// show up as an untracked change when the agent runs git status or similar.
+	if err := ensureGitExclude(hostRepoDir, fabricSuiteFile); err != nil {
+		return fmt.Errorf("ensure git exclude: %w", err)
+	}
+
+	// Remove any report left over from a previous session so a fetch run after
+	// this session cannot pick up stale findings under a fresh fingerprint; if
+	// the agent writes nothing, fetch then correctly surfaces the missing-report
+	// error instead.
+	reportPath := filepath.Join(hostRepoDir, reportFileName)
+	if err := os.Remove(reportPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove stale %s: %w", reportFileName, err)
+	}
+	if err := ensureGitExclude(hostRepoDir, reportFileName); err != nil {
+		return fmt.Errorf("ensure git exclude: %w", err)
+	}
+
+	// Resolve the claude binary: honour an explicit override flag, otherwise
+	// search PATH -- the agent must be installed like any other tool.
+	claudePath := claudeOverride
+	if claudePath == "" {
+		claudePath, err = lookPath("claude")
+		if err != nil {
+			return fmt.Errorf("claude not found on PATH: %w", err)
+		}
+	}
+
+	instruction := promptOverride
+	if instruction == "" {
+		instruction = fabricSuiteAsk
+	}
+
+	// Launch the interactive agent session. An interactive claude session never
+	// self-terminates, so its manual exit is expected and its non-zero exit code
+	// is NORMAL -- it must not be treated as a failure. Fetching the report is a
+	// separate step, so print guidance and return nil regardless of the code.
+	code := launchAgent(hostRepoDir, claudePath, instruction)
+	fmt.Fprintf(os.Stderr,
+		"sandbox: agent session ended (exit code %d). Run sandbox-fetch.cmd to collect findings into .scratch.\n",
+		code)
+
+	return nil
 }
 
 // run is the testable entry point for the sandbox tool. It parses argv, resolves
@@ -294,6 +437,35 @@ func run(argv []string) int {
 		}
 
 		if err := runSuite(absParent, *claudeFlag, *promptFlag, websterSuite); err != nil {
+			fmt.Fprintf(os.Stderr, "sandbox: %v\n", err)
+			return 1
+		}
+
+	case "fabric-suite":
+		// Unlike every other *-suite subcommand above, fabric-suite runs against
+		// its own dedicated hub rather than the shared lyx-test-HUB, and it has
+		// no separate "build" step: it clones that hub itself (idempotently) via
+		// decideFabricClone before launching the agent.
+
+		// Parse fabric-suite-specific flags from the remaining positionals
+		// after "fabric-suite".
+		ffsf := flag.NewFlagSet("sandbox fabric-suite", flag.ContinueOnError)
+		ffsf.SetOutput(os.Stderr)
+		claudeFlag := ffsf.String("claude", "", "path to the claude binary (default: resolve from PATH)")
+		promptFlag := ffsf.String("prompt", "", "instruction string passed to the agent (default: built-in)")
+
+		remaining := fs.Args()[1:]
+		if err := ffsf.Parse(remaining); err != nil {
+			return 1
+		}
+
+		fabricHubPath := filepath.Join(absParent, fabricHubName)
+		if err := decideFabricClone(fabricHubPath); err != nil {
+			fmt.Fprintf(os.Stderr, "sandbox: %v\n", err)
+			return 1
+		}
+
+		if err := runFabricSuite(absParent, *claudeFlag, *promptFlag); err != nil {
 			fmt.Fprintf(os.Stderr, "sandbox: %v\n", err)
 			return 1
 		}
