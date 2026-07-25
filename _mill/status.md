@@ -39,7 +39,9 @@ batches:
     start_sha: 9e37d1788b3fc420cdf012e96a4b2113d4322564
     commit_sha: 93e5457fc6929dee56a8d105003fb93229175e57
   - name: gitrepo-bisect-primitive
-    state: pending
+    state: running
+    implementer_session: 78d1c371-7f42-4974-95df-898c0a396b37
+    start_sha: 19f848fd4e7c5bc1ce4dce88bd2251e30e0614b2
   - name: planparser-checks
     state: pending
   - name: batcher
