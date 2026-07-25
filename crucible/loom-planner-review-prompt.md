@@ -199,10 +199,12 @@ in these seams instead:
   something there.
 
 ## Round context seeded from prior-round verification
-You are round tag `opus-r2` — round 2 of an up-to-4-round campaign, alternating Fable/Opus. Round 1
-(`fable-r1`) ran, found 7 real findings (all CONFIRMED against a real live-driven throwaway hub +
-real `claude` agent, none merely PLAUSIBLE), fixed all 7, and was independently re-verified by the
-orchestrator from a cold state. Do NOT re-open this CLOSED-AND-VERIFIED work — it holds:
+You are round tag `fable-r3` — round 3 of an up-to-4-round campaign (the cap is fixed at 4; this is
+the second-to-last round), alternating Fable/Opus. Rounds 1 (`fable-r1`) and 2 (`opus-r2`) both ran,
+both found real CONFIRMED-live findings, both were independently re-verified by the orchestrator from
+a cold state (hermetic gates green, revert-and-confirm-fail proofs reproduced for every MEDIUM+
+finding with a string-content test, teardown/report claims spot-checked against actual on-disk
+state). Do NOT re-open this CLOSED-AND-VERIFIED work — it holds:
 
 - **T1 (MEDIUM, confirmed live, two iterations)** — `plan-template.md` never said what a card is; a
   live run produced a new-behavior card with no bundled test. Fixed `2eda08cb` with a "What a card
@@ -230,45 +232,58 @@ orchestrator from a cold state. Do NOT re-open this CLOSED-AND-VERIFIED work —
   the agent also writes card files, which are NOT in `OutputFiles`). Fixed `3113aa47`.
 - **C1 (NIT)** — `manifest/designs/loom.md`'s producer row dangled `approved: false` onto the card
   files rather than the overview frontmatter. Fixed `610b6cf9`.
+- **P1 (LOW, confirmed live, intermittent)** — round 2 found that a rename-plus-extraction card could
+  intermittently double-declare the moved file in both `Edits:` and as its `Moves:` destination (a
+  `card-field-overlap` violation per `docs/reference/plan-format-v3.md` check 10) — the exclusivity
+  rule (T3, round 1) and the Rename mechanic's "make surgical edits to the moved file" language were
+  never reconciled. Reproduced live in one drive (`memstore.go` in both fields), absent in a second
+  identical drive — genuinely intermittent, the signature of borderline-but-not-quite-sufficient
+  wording. Fixed `80c6ef86`: the Rename mechanic now states the moved file's surgical edits are
+  already covered by its `Moves:` entry and must never also appear in `Edits:`. Pinned by
+  `TestPlanSpec_PromptStatesMovedFileNotInEdits`; orchestrator reproduced the revert-and-confirm-fail
+  proof (removing the added sentences fails all 3 assertions; restored, diff empty) and confirmed
+  round 2's own two post-fix live re-drives both came back clean.
+- **R1 (NIT)** — the orphaned `PlanOverview` doc-comment line wrap (seeded for round 2) was reflowed.
+  Fixed `37412dc3`.
 
-Process note (not a module defect): round 1's own session was interrupted after committing all 7
-fixes but before finishing its final live re-drive (Run G) and before tearing down its throwaway
-substrate — its fixer report even left "Run G: see result below" with the result never filled in,
-and falsely claimed teardown was done. The orchestrator independently reproduced Run G's actual
-on-disk result (genuinely fixed, see T1 above), killed the leaked `lyx-notes-HUB-*` tmux server, and
-deleted a leftover untracked `internal/loomengine/zz_throwaway_render_test.go`. This is not something
-for you to fix or re-litigate — it's recorded here only so you don't mistake the now-clean working
-tree for round 1 having been trivial.
+Process notes (not module defects, recorded so you don't need to rediscover them):
+- Round 1's session was interrupted before finishing its final live re-drive and before tearing down
+  its throwaway substrate; the orchestrator had to independently reproduce that run's result and clean
+  up a leaked tmux server + a stray untracked file. Round 2, explicitly warned about this, actually did
+  finish and tear down cleanly — the orchestrator confirmed zero stray tmux processes and a clean `git
+  status` after round 2. Keep matching round 2's discipline: finish every live run you start and tear
+  down before you write your final summary, not as an unreached last step.
+- Round 2 independently re-verified round 1's `PlanDir`/builder-consumer non-regression concern (H2
+  from round 1's own review, never a finding) and confirmed builder/webster's pre-existing free-function
+  call sites are untouched. You do not need to re-verify this a third time unless you have a specific
+  new reason to suspect it.
 
-**Residual to close (found by the orchestrator's own verification pass, not by round 1):**
-`internal/hubgeometry/hubgeometry.go`, the `PlanOverview` doc comment (currently around line
-253–260). The H1 edit left an awkward orphaned line wrap: `...It shares` ends one line, then
-`PlanDir's WorktreeRoot` sits alone on the next line, then `// anchoring for the same reason: ...`
-continues — the sentence "It shares PlanDir's WorktreeRoot anchoring for the same reason: ..." reads
-fine but the line-wrapping is broken (a short, isolated line where every other line in this
-doc-comment block runs close to the column width the rest of the file uses). Reflow that paragraph to
-match the file's normal comment-wrapping width. This is purely cosmetic (NIT) — no test needed beyond
-`gofmt`/`go vet` staying green — but fix it along with whatever else your own independent pass finds;
-do not treat it as the only thing to look for this round.
+There is nothing further seeded as a residual — rounds 1 and 2 both closed everything they found, and
+the orchestrator's own independent pass after round 2 found no additional defect beyond what round 2
+itself already caught and fixed (P1, R1 above).
 
-Do a genuinely independent clean-room pass on top of the above: read the code and docs yourself
-(including the CLOSED-AND-VERIFIED commits, to confirm no regression), then drive at least two more
-live runs of your own devising against a real throwaway hub (try scenarios round 1 did NOT: a
-multi-card plan that exercises `Moves:`/the Rename mechanic for real, a missing decision-record file,
-an empty-but-present decision-record file, a deliberately ambiguous decision record) before consulting
-round 1's `.scratch/` material. An honest "no NEW defects beyond the seeded residual" is a completely
-legitimate outcome for this round.
+Do a genuinely independent clean-room pass: read the code and docs yourself (including all
+CLOSED-AND-VERIFIED commits above, to confirm no regression — in particular re-drive at least one
+rename-plus-extraction plan for real to confirm P1 stays fixed, since it was intermittent and a single
+clean drive is not strong evidence), then drive live runs of scenarios neither prior round tried (a
+deliberately AMBIGUOUS-but-present decision record where the agent must make a best-judgment call
+without `AskUserQuestion`; a decision record whose scope implies zero code changes, e.g. a pure
+documentation task; a plan that would naturally want MORE than one card with real `Depends-on:`
+chaining) before consulting prior rounds' `.scratch/` material. Because this is round 3 of a
+hard-capped 4, treat this explicitly as a bid for a genuine SAFETY PASS: if you find nothing beyond
+what's already fixed, say so honestly — "no new defects" is a fully legitimate, valuable outcome here,
+not a failure to try hard enough. If you do find something real, fix it as thoroughly as rounds 1–2
+did; round 4 (the final round) will re-verify whatever you close.
 
 State the merge bar so you calibrate: this is a small, low-concurrency, single-shot producer — there
 is no meaningful "N× concurrent" stress dimension the way a stateful CLI verb has (nothing here holds
 a lock or mutates shared state across invocations). The merge bar is: hermetic tests green, the
 `hubgeometry` Hub Geometry Invariant honored, and — the part that actually matters for THIS module —
 a real agent given the composed prompt reliably produces a correct, spec-conformant plan-format-v3
-output across multiple independently-driven live runs (not just one lucky pass). **Before you end
-your session, actually finish and record the result of every live run you start, and actually tear
-down your throwaway substrate (`lyx mux down`, kill the tmux server, delete the throwaway hub dir and
-any throwaway test files) — do not leave a run's outcome as "see result below" with nothing after
-it.**
+output across multiple independently-driven live runs (not just one lucky pass). **Before you end your
+session, actually finish and record the result of every live run you start, and actually tear down
+your throwaway substrate (`lyx mux down`, kill the tmux server, delete the throwaway hub dir and any
+throwaway test files) — do not leave a run's outcome unrecorded.**
 
 ## What to TEST — do not just read, EXERCISE it
 Report the exact commands you ran and what you observed.
