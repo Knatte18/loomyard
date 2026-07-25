@@ -87,5 +87,7 @@ batches:
     start_sha: 5e37b39ccc2dbc5b81453051f5aef64ac3305c25
     commit_sha: f22c81237cae6c64e8193d374f1dba68ba1ddd6b
   - name: docs-constraints
-    state: pending
+    state: running
+    implementer_session: 4ab42279-1b1a-49e3-9142-7d15927ba390
+    start_sha: 5ad363bf65d43566ebf3fff54c0513376beb02fe
 ```
