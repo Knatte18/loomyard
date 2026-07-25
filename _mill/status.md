@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-suite-docs-sweep
+phase: holistic-reviewing
 slug: dev-test-binary
 branch: dev-test-binary
 plan: _mill/plan
@@ -34,6 +34,7 @@ approved-sandbox-wire-and-guard  '2026-07-25T08:38:06Z'
 approved-launchers-and-lifecycle  '2026-07-25T08:41:28Z'
 approved-crucible-sweep  '2026-07-25T08:44:52Z'
 approved-suite-docs-sweep  '2026-07-25T08:49:48Z'
+holistic-reviewing  '2026-07-25T08:50:05Z'
 ```
 
 ## Batches
