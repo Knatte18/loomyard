@@ -3,11 +3,17 @@
 > **Superseded.** This file previously documented a completed 4-round campaign (R1–R4) against
 > the OLD, pre-rewrite webster — a builder-A/B-compatible design built on `chain.go`, a
 > `## Scope` plan section, oversized-batch `/model` escalation for individual forks, and a
-> deferred-verify chain. That design is GONE. Webster was rewritten from scratch (branch
-> `webster-rewrite`, PR [#97](https://github.com/Knatte18/loomyard/pull/97)) on top of
-> `internal/planparser` (the sole parser of the flat card-list plan format,
-> [plan-format-v3.md](../docs/reference/plan-format-v3.md)) and `internal/batcher` (a
-> config-selected batchifier registry). This is a FRESH round 1 for the new module — do not
+> deferred-verify chain. That design is GONE, but this was a RETARGETING of existing webster
+> code (branch `webster-rewrite`, PR [#97](https://github.com/Knatte18/loomyard/pull/97)), not a
+> from-scratch rebuild: the fork-based Master architecture, the bracket-verb shape
+> (begin/await/record-batch), digest persistence, crash/resume, weft-blindness, and the
+> fork-audit policy all predate this task and were CARRIED FORWARD (several are frozen copies of
+> `builderengine`, per the `builder-is-frozen-copy-not-move` decision). What actually changed:
+> the plan input/parser (`internal/planparser`, the sole parser of the flat card-list
+> [plan-format-v3.md](../docs/reference/plan-format-v3.md), replacing the old chain-based
+> format), a new `internal/batcher` config-selected batchifier registry (batching didn't exist
+> in the old format), the oversized/chain concepts dropped, and the integration-suite fork +
+> bisect added as new capability. This is a FRESH round 1 for the retargeted module — do not
 > assume anything from the old campaign still applies; re-derive everything from the current code.
 
 You are a senior engineer doing a COMPLETE, adversarial, INDEPENDENT review of the `webster`
