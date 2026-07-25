@@ -70,6 +70,15 @@ func (t *Topology) Prune(l *hubgeometry.Layout, apply bool) (PruneResult, error)
 	// We use this below when scanning for orphaned weft worktrees.
 	liveHostSlugs := make(map[string]bool)
 
+	// Track host slugs already emitted by Pass 1 (a registered host worktree whose
+	// directory is gone). Pass 2 scans the hub for weft directories with no live host
+	// sibling; without this set it would emit a SECOND entry for the very same orphaned
+	// weft that Pass 1 already reported (when the host was deleted by a bare rm rather
+	// than `git worktree remove`, leaving a stale registration), making dry-run
+	// over-report and disagree with --apply (which removes the weft in Pass 1, so Pass 2
+	// then finds nothing).
+	pass1Slugs := make(map[string]bool)
+
 	var result PruneResult
 
 	// Pass 1: find registered host worktrees whose directory is missing.
@@ -101,6 +110,8 @@ func (t *Topology) Prune(l *hubgeometry.Layout, apply bool) (PruneResult, error)
 				pe.Removed = removeStalePair(l, weftPath, &pe)
 			}
 
+			// Record this slug so Pass 2 does not re-report the same orphaned weft.
+			pass1Slugs[slug] = true
 			result.Entries = append(result.Entries, pe)
 		} else {
 			// Record this slug as having a live host directory so we can skip it
@@ -134,7 +145,9 @@ func (t *Topology) Prune(l *hubgeometry.Layout, apply bool) (PruneResult, error)
 		}
 
 		// Skip if a live host worktree exists for this slug — the pair is healthy.
-		if liveHostSlugs[hostSlug] {
+		// Also skip if Pass 1 already emitted this slug (its host was a stale
+		// registration whose directory is gone), so an orphaned weft is reported once.
+		if liveHostSlugs[hostSlug] || pass1Slugs[hostSlug] {
 			continue
 		}
 
@@ -160,29 +173,39 @@ func (t *Topology) Prune(l *hubgeometry.Layout, apply bool) (PruneResult, error)
 	return result, nil
 }
 
-// removeStalePair removes the stale weft worktree at weftPath and runs
-// git worktree prune on the weft repo to clean up administrative state.
+// removeStalePair removes the stale weft worktree at weftPath (when it exists) and
+// prunes administrative state on both repos.
 //
-// It writes any removal error into pe.Error and returns true only when
-// the removal completed without error. The caller has already set pe fields
-// other than Removed and Error.
+// It writes any removal error into pe.Error and returns true only when a weft
+// worktree actually existed and was removed without error. When no weft worktree
+// exists at weftPath there is nothing to delete, so it returns false (Removed stays
+// honest) — the stale host worktree registration is still pruned below. The caller has
+// already set pe fields other than Removed and Error.
 func removeStalePair(l *hubgeometry.Layout, weftPath string, pe *PruneEntry) bool {
-	// Attempt to remove via git worktree remove --force. We use --force because
-	// the host is already gone so the weft may have been left in a dirty state.
-	_, _, exitCode, err := gitexec.RunGit(
-		[]string{"worktree", "remove", "--force", weftPath},
-		l.WeftRepoRoot(),
-	)
-	if err != nil {
-		pe.Error = fmt.Sprintf("git worktree remove: %v", err)
-		return false
-	}
-	if exitCode != 0 {
-		// git worktree remove --force failed; fall back to os.RemoveAll.
-		if removeErr := os.RemoveAll(weftPath); removeErr != nil {
-			pe.Error = fmt.Sprintf("remove weft worktree %q failed (git exit %d); fallback cleanup also failed: %v", weftPath, exitCode, removeErr)
+	removed := false
+
+	// Only attempt a removal when the weft worktree directory actually exists.
+	// A stale host registration may have no paired weft worktree at all; removing
+	// nothing must not be reported as Removed=true.
+	if _, statErr := os.Stat(weftPath); statErr == nil {
+		// Attempt to remove via git worktree remove --force. We use --force because
+		// the host is already gone so the weft may have been left in a dirty state.
+		_, _, exitCode, err := gitexec.RunGit(
+			[]string{"worktree", "remove", "--force", weftPath},
+			l.WeftRepoRoot(),
+		)
+		if err != nil {
+			pe.Error = fmt.Sprintf("git worktree remove: %v", err)
 			return false
 		}
+		if exitCode != 0 {
+			// git worktree remove --force failed; fall back to os.RemoveAll.
+			if removeErr := os.RemoveAll(weftPath); removeErr != nil {
+				pe.Error = fmt.Sprintf("remove weft worktree %q failed (git exit %d); fallback cleanup also failed: %v", weftPath, exitCode, removeErr)
+				return false
+			}
+		}
+		removed = true
 	}
 
 	// Prune stale administrative refs in the weft repo so git worktree list is clean.
@@ -192,5 +215,5 @@ func removeStalePair(l *hubgeometry.Layout, weftPath string, pe *PruneEntry) boo
 	// Also prune on the host repo so the host's worktree refs are cleaned up.
 	gitexec.RunGit([]string{"worktree", "prune"}, l.WorktreeRoot) //nolint:errcheck
 
-	return true
+	return removed
 }

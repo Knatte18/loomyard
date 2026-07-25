@@ -486,6 +486,103 @@ func findFabricPruneEntryByWeftPath(t *testing.T, entries []fabricengine.PruneEn
 	return nil
 }
 
+// TestPrune_StaleRegistrationReportedOnce is the F2/F3 regression guard (fabric-only,
+// no warp comparison — warp shares the original double-count). When a host worktree
+// directory is deleted by a bare removal (leaving a stale git worktree registration)
+// rather than `git worktree remove`, Pass 1 (missing registered host) and Pass 2 (weft
+// with no host sibling) both see the same orphaned weft. Prune must report it exactly
+// once so dry-run and --apply agree, and must not claim Removed=true when there is no
+// weft directory to delete.
+func TestPrune_StaleRegistrationReportedOnce(t *testing.T) {
+	t.Run("DoubleCountAvoided", func(t *testing.T) {
+		t.Parallel()
+
+		const slug = "diff-prune-stale-reg"
+		dp := buildDiffPair(t, "")
+		wireDiffPairJunctions(t, dp)
+
+		if _, err := dp.Fabric.Add(dp.FabricFixture.Layout, slug, fabricengine.AddOptions{SkipGit: true}); err != nil {
+			t.Fatalf("setup fabricengine Add: %v", err)
+		}
+		hostPath := dp.FabricFixture.Layout.WorktreePath(slug)
+		weftPath := dp.FabricFixture.Layout.WeftWorktreePath(slug)
+
+		// Bare removal of the host directory leaves the git worktree registration stale
+		// (unlike `git worktree remove`), so both prune passes see the orphan.
+		if err := os.RemoveAll(hostPath); err != nil {
+			t.Fatalf("bare-remove host worktree: %v", err)
+		}
+
+		dry, err := dp.Fabric.Prune(dp.FabricFixture.Layout, false)
+		if err != nil {
+			t.Fatalf("fabricengine Prune(dry-run): %v", err)
+		}
+		if got := countPruneEntriesForWeft(dry.Entries, weftPath); got != 1 {
+			t.Errorf("dry-run reported weft %s %d times; want exactly 1", weftPath, got)
+		}
+
+		apply, err := dp.Fabric.Prune(dp.FabricFixture.Layout, true)
+		if err != nil {
+			t.Fatalf("fabricengine Prune(apply): %v", err)
+		}
+		if got := countPruneEntriesForWeft(apply.Entries, weftPath); got != 1 {
+			t.Errorf("apply reported weft %s %d times; want exactly 1", weftPath, got)
+		}
+		if len(dry.Entries) != len(apply.Entries) {
+			t.Errorf("dry-run entry count %d != apply entry count %d; want agreement", len(dry.Entries), len(apply.Entries))
+		}
+		if _, err := os.Stat(weftPath); !os.IsNotExist(err) {
+			t.Errorf("weft dir %s still exists after apply Prune", weftPath)
+		}
+	})
+
+	t.Run("RemovedFalseWhenNoWeftDir", func(t *testing.T) {
+		t.Parallel()
+
+		const slug = "diff-prune-noweft"
+		dp := buildDiffPair(t, "")
+		wireDiffPairJunctions(t, dp)
+
+		if _, err := dp.Fabric.Add(dp.FabricFixture.Layout, slug, fabricengine.AddOptions{SkipGit: true}); err != nil {
+			t.Fatalf("setup fabricengine Add: %v", err)
+		}
+		hostPath := dp.FabricFixture.Layout.WorktreePath(slug)
+		weftPath := dp.FabricFixture.Layout.WeftWorktreePath(slug)
+
+		// Bare-remove BOTH sides, leaving both registrations stale. With the weft
+		// directory gone, Pass 1's removeStalePair has nothing to delete.
+		if err := os.RemoveAll(hostPath); err != nil {
+			t.Fatalf("bare-remove host worktree: %v", err)
+		}
+		if err := os.RemoveAll(weftPath); err != nil {
+			t.Fatalf("bare-remove weft worktree: %v", err)
+		}
+
+		apply, err := dp.Fabric.Prune(dp.FabricFixture.Layout, true)
+		if err != nil {
+			t.Fatalf("fabricengine Prune(apply): %v", err)
+		}
+		entry := findFabricPruneEntryByWeftPath(t, apply.Entries, weftPath)
+		if entry.Removed {
+			t.Errorf("Removed = true for a weft worktree that no longer existed; want false")
+		}
+		if entry.Error != "" {
+			t.Errorf("unexpected error for missing weft dir: %q", entry.Error)
+		}
+	})
+}
+
+// countPruneEntriesForWeft counts how many prune entries reference weftPath.
+func countPruneEntriesForWeft(entries []fabricengine.PruneEntry, weftPath string) int {
+	n := 0
+	for i := range entries {
+		if filepath.Clean(entries[i].WeftWorktree) == filepath.Clean(weftPath) {
+			n++
+		}
+	}
+	return n
+}
+
 // TestCleanup_DifferentialEquivalence covers Cleanup's full dry-run/apply/force
 // matrix, the accidental-but-real protection a currently-checked-out primary weft
 // branch gets from git's own refusal (main on warp, main-weft on fabric — the
