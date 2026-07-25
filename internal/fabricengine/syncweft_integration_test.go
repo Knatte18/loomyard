@@ -226,6 +226,85 @@ func TestSyncWeft_RecordsPostPushSHA(t *testing.T) {
 	}
 }
 
+// TestSyncWeft_WarpSHAMatchesTrailer covers the R11 fix: the warp SHA
+// SyncWeft reports (and records in the correspondence index) must be the one
+// parsed out of the weft commit's own Warp-SHA trailer — never a separate
+// re-read of warp HEAD, which could advance between CommitWeft's trailer
+// write and the re-read and leave the index disagreeing with the trailer it
+// sits beside. Asserted on both the pushed path and the SkipPush path.
+func TestSyncWeft_WarpSHAMatchesTrailer(t *testing.T) {
+	t.Run("PushedPath", func(t *testing.T) {
+		warpPath := newPlainWarpRepo(t)
+		weftFixture := lyxtest.CopyWeft(t)
+		f := newFabric(t, warpPath, weftFixture.WeftPath)
+
+		warpSHA := commitWarp(t, warpPath, "warp change")
+		writeWeftConfigContent(t, weftFixture.WeftPath, "weft change")
+
+		res, err := f.SyncWeft(DefaultCommitMessage, []string{"_lyx"}, SyncOptions{})
+		if err != nil {
+			t.Fatalf("SyncWeft() error = %v", err)
+		}
+		if !res.Committed || !res.Pushed {
+			t.Fatalf("SyncWeft() = %+v; want Committed and Pushed both true", res)
+		}
+
+		// The result's warp SHA is the trailer's value by construction.
+		trailerSHA, ok := parseWarpSHATrailer(commitMessageAt(t, weftFixture.WeftPath, res.WeftSHA))
+		if !ok {
+			t.Fatalf("pushed weft commit %s carries no Warp-SHA trailer", res.WeftSHA)
+		}
+		if res.WarpSHA != trailerSHA {
+			t.Errorf("SyncWeft() WarpSHA = %q; want the trailer's %q", res.WarpSHA, trailerSHA)
+		}
+		if res.WarpSHA != warpSHA {
+			t.Errorf("SyncWeft() WarpSHA = %q; want the warp HEAD at commit time %q", res.WarpSHA, warpSHA)
+		}
+
+		// The index entry recorded beside the trailer names the same pair.
+		path, err := f.corrIndexPath()
+		if err != nil {
+			t.Fatalf("corrIndexPath() error = %v", err)
+		}
+		ix, err := loadCorrIndex(path)
+		if err != nil {
+			t.Fatalf("loadCorrIndex() error = %v", err)
+		}
+		entry, ok := ix.exact(trailerSHA)
+		if !ok {
+			t.Fatalf("index has no entry for the trailer's warp SHA %q", trailerSHA)
+		}
+		if entry.WeftSHA != res.WeftSHA {
+			t.Errorf("index entry for %q names weft SHA %q; want the post-push %q", trailerSHA, entry.WeftSHA, res.WeftSHA)
+		}
+	})
+
+	t.Run("SkipPushPath", func(t *testing.T) {
+		warpPath := newPlainWarpRepo(t)
+		weftFixture := lyxtest.CopyWeft(t)
+		f := newFabric(t, warpPath, weftFixture.WeftPath)
+
+		commitWarp(t, warpPath, "warp change")
+		writeWeftConfigContent(t, weftFixture.WeftPath, "weft change")
+
+		res, err := f.SyncWeft(DefaultCommitMessage, []string{"_lyx"}, SyncOptions{SkipPush: true})
+		if err != nil {
+			t.Fatalf("SyncWeft(SkipPush) error = %v", err)
+		}
+		if !res.Committed || res.Pushed {
+			t.Fatalf("SyncWeft(SkipPush) = %+v; want Committed=true Pushed=false", res)
+		}
+
+		trailerSHA, ok := parseWarpSHATrailer(commitMessageAt(t, weftFixture.WeftPath, res.WeftSHA))
+		if !ok {
+			t.Fatalf("weft commit %s carries no Warp-SHA trailer", res.WeftSHA)
+		}
+		if res.WarpSHA != trailerSHA {
+			t.Errorf("SyncWeft(SkipPush) WarpSHA = %q; want the trailer's %q", res.WarpSHA, trailerSHA)
+		}
+	})
+}
+
 // expireAndPruneUnreachable forces git to actually forget any commit
 // objects that are no longer reachable from a ref, in repoPath. A plain
 // amend/reset alone leaves the superseded object resolvable via the reflog
