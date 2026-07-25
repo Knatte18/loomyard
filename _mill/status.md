@@ -53,7 +53,9 @@ batches:
     start_sha: c681fea82b39d1e40929711e2748d73fb04a6f20
     commit_sha: 7da444d97f8c3d1e3aebd37df358f1dbd5cfd197
   - name: launchers-and-lifecycle
-    state: pending
+    state: running
+    implementer_session: ad3bf4d8-a6b9-4617-afb1-fed90e8733e6
+    start_sha: 7f40a2c25fb2c41d499921ea30a2b49e21f54a2d
   - name: crucible-sweep
     state: pending
   - name: suite-docs-sweep
