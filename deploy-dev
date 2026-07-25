@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Local launcher for the lyx DEV deploy target. No machine-specific path here —
+# -dev resolves the derived .dev-bin directory (see tools/internal/devbin), so
+# this launcher never overwrites the production install deploy/deploy.cmd targets.
+# cd to the repo root (this script's own directory) so `go run` finds go.mod.
+cd "$(dirname "$0")"
+exec go run ./tools/deploy -dev "$@"

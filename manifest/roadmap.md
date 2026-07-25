@@ -45,10 +45,6 @@ Committed to, in this order, next.
 1. **loom: Finalize phase** — merge-back after Builder-review approval; Go-first, LLM only on
    merge conflict; optional PR creation. See [designs/loom-finalize.md](designs/loom-finalize.md).
 
-1. **dev/test `lyx.exe` separated from production deploy** — a second deploy target so
-   review/sandbox tooling never overwrites the stable production binary with an in-progress test
-   build. See [designs/dev-test-binary.md](designs/dev-test-binary.md).
-
 ## Someday
 
 Committed to eventually — will be done — but not scheduled next. No build order is implied
@@ -190,6 +186,11 @@ between these items.
    plan-format-v3 flat-card plan; a prompt/profile fed to `shuttle.Run` (not a module), the
    `PlanSpec(...)` factory + `plan-template.md` in `internal/loomengine`. No review logic of
    its own.
+
+1. **dev/test `lyx.exe` separated from production deploy** — a second deploy target
+   (`deploy-dev`/`deploy-dev.cmd`) so review/sandbox tooling never overwrites the stable
+   production binary with an in-progress test build. See CONSTRAINTS.md's Dev/Prod Binary
+   Separation invariant.
 
 ## Maintenance
 

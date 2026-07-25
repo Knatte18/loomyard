@@ -189,8 +189,8 @@ to stand up for itself.
 Reusable rules that bit us and are worth carrying to any module's live driving:
 
 - **Deploy-first footgun.** Live driving runs the **deployed** binary, not your working tree.
-  Re-run `deploy.cmd` after **every** source change or you validate a stale binary and draw a false
-  PASS/FAIL. When in doubt, re-deploy.
+  Re-run `deploy-dev.cmd` (`deploy-dev` on POSIX) after **every** source change or you validate a
+  stale binary and draw a false PASS/FAIL. When in doubt, re-deploy.
 - **Cost/time is not a reason to skip live driving.** A real substrate session (a real
   implementer/agent doing real work) takes real wall-clock minutes, not seconds — that is a budget
   fact, not grounds to fall back to code-tracing. Reserve "cannot verify headlessly" strictly for a

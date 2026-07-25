@@ -14,8 +14,11 @@ agent can operate it in a real repo, then use that experience to harden lyx.
 
 Before starting a session:
 
-1. **Deploy a fresh binary.** Run `deploy.cmd` so `lyx.exe` on PATH is current source.
-   The deployed binary is a snapshot -- re-deploy after any source change you want to test.
+1. **Deploy a fresh dev binary.** Run `deploy-dev` to build `lyx.exe` into `.dev-bin` as
+   current source. The suite resolves `.dev-bin` itself and prepends it to the agent's PATH
+   (the fingerprint header's `Source: dev` line confirms the dev build is under test) -- no
+   PATH setup needed, and production `lyx` stays untouched. The deployed binary is a snapshot
+   -- re-deploy after any source change you want to test.
 2. **Materialize the hub.** Run `sandbox-build.cmd` (or `sandbox-build.cmd -reset`
    to start clean) to clone the host and weft into a fresh `lyx-test-HUB`.
 3. **`lyx` on PATH.** Confirm `lyx --help` works from any directory.

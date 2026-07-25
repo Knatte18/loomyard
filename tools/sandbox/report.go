@@ -47,6 +47,10 @@ type reportFingerprint struct {
 	SHA256  string `json:"sha256"`
 	Size    int64  `json:"size"`
 	ModTime string `json:"modtime"`
+	// Source records which binary resolveLyx picked (sourceDev or sourceProd,
+	// from resolve.go), so a maintainer reading sandbox-report.json can tell
+	// a dev build's findings from a prod build's without cross-referencing Path.
+	Source string `json:"source"`
 }
 
 // reportItem is a single WARN/FAIL finding recorded by the agent during a
@@ -59,10 +63,10 @@ type reportItem struct {
 
 // runFetch executes the "sandbox fetch" subcommand, run by the operator
 // after a suite session ends. It mirrors runSuite's host-repo derivation,
-// re-fingerprints the lyx currently on PATH, and fetches the agent-written
-// sandbox-report.json into <loomyardRoot>/.scratch. For the normal flow (run the
-// suite, then fetch) the on-PATH binary is the same one the suite fingerprinted,
-// so re-fingerprinting here is acceptable and intended.
+// re-resolves and re-fingerprints lyx via resolveLyx, and fetches the
+// agent-written sandbox-report.json into <loomyardRoot>/.scratch. For the
+// normal flow (run the suite, then fetch) resolveLyx picks the same binary
+// both times, so re-resolving here is acceptable and intended.
 func runFetch(parentDir, loomyardRoot string) error {
 	// Derive the host repo path the same way runSuite does, from the shared
 	// hubName const (main.go) and the suite-local hostDirName const.
@@ -76,14 +80,16 @@ func runFetch(parentDir, loomyardRoot string) error {
 		return fmt.Errorf("stat host repo %s: %w", hostRepoDir, err)
 	}
 
-	// Resolve lyx via PATH so the fingerprint captures the exact binary the
-	// operator has deployed; the binary must be on PATH before running the suite.
-	lyxPath, err := lookPath("lyx")
+	// Resolve lyx via resolveLyx (derived .dev-bin first, PATH fallback) so the
+	// fingerprint captures the exact binary that produced the report -- the
+	// normal flow (run the suite, then fetch) resolves the same binary both
+	// times, so re-resolving here is acceptable and intended.
+	lyxPath, source, err := resolveLyx()
 	if err != nil {
-		return fmt.Errorf("lyx not found on PATH -- deploy the binary before running the suite: %w", err)
+		return err
 	}
 
-	info, err := binaryFingerprint(lyxPath)
+	info, err := binaryFingerprint(lyxPath, source)
 	if err != nil {
 		return fmt.Errorf("fingerprint lyx binary: %w", err)
 	}
@@ -151,6 +157,7 @@ func fetchReport(hostRepoDir, loomyardRoot string, info binaryInfo) (string, int
 		SHA256:  info.SHA256,
 		Size:    info.Size,
 		ModTime: info.ModTime.Format(time.RFC3339),
+		Source:  info.Source,
 	}
 
 	normalized, err := json.MarshalIndent(report, "", "  ")
