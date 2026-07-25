@@ -51,7 +51,9 @@ batches:
     start_sha: a4603ba9c6332f4d8a65694467d3b3d257d1839b
     commit_sha: 038187a053cf4684439258439852e341b244d51b
   - name: batcher
-    state: pending
+    state: running
+    implementer_session: b6d8b9e4-e0f8-40d1-bfe6-fdbc239b3f4a
+    start_sha: 6d7b6a83279cc566eb5be6bf2964b5ce135097d1
   - name: webster-mechanism-helpers
     state: pending
   - name: webster-report-digest
