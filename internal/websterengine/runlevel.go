@@ -76,10 +76,10 @@ func RunActive(websterDir string) (bool, error) {
 	return true, nil
 }
 
-// OutcomeFileName is outcome.yaml's fixed filename inside a webster dir —
-// webster's own copy of builderengine's own unexported outcomeFileName
-// constant, kept identical so a webster run's outcome.yaml reads exactly
-// like builder's, per the A/B contract-compatibility decision.
+// OutcomeFileName is outcome.yaml's fixed filename inside a webster dir.
+// The name matches builder's own outcome-file convention by heritage, but
+// the file's schema is webster's alone (outcome.go) — webster is not
+// contract-compatible with builder.
 const OutcomeFileName = "outcome.yaml"
 
 // OutcomePath returns the path to outcome.yaml inside websterDir.

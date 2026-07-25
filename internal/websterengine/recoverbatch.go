@@ -95,15 +95,6 @@ type RecoverResult struct {
 	Warnings []string
 }
 
-// recoverArchiveTimestampFormat is the UTC compact timestamp format
-// archiveStaleReport archives a stale batch report under — shared with
-// archive.go's own archiveTimestampFormat in spirit, kept as its own
-// constant here since archiveStaleReport predates that shared const and the
-// two format strings must simply stay identical so an archived webster
-// artifact sorts and reads the same way regardless of which helper archived
-// it.
-const recoverArchiveTimestampFormat = archiveTimestampFormat
-
 // archiveStaleReport renames reportsDir's NN-<slug>.yaml, if present, to
 // NN-<slug>-<UTC-compact-timestamp>.yaml in place: the recovery path's
 // archive-never-refuse escape. A recovery spawn re-uses the batch's own
@@ -126,7 +117,7 @@ func archiveStaleReport(reportsDir string, number int, slug string, now func() t
 
 	const ext = ".yaml"
 	base := strings.TrimSuffix(ReportFileName(number, slug), ext)
-	stamp := now().UTC().Format(recoverArchiveTimestampFormat)
+	stamp := now().UTC().Format(archiveTimestampFormat)
 	target, err := firstFreeArchivePath(func(suffix string) string {
 		return filepath.Join(reportsDir, fmt.Sprintf("%s-%s%s%s", base, stamp, suffix, ext))
 	})

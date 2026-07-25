@@ -1,5 +1,5 @@
 // roles.go implements the role-resolution pre-flight: mapping webster.yaml's
-// three role model-spec strings onto their resolved model-spec Resolved
+// two role model-spec strings onto their resolved model-spec Resolved
 // values, once, before any agent spawns. `run` calls ResolveRoles at entry
 // so a typo'd alias in webster.yaml fails loud before Master ever starts,
 // never mid-run when a role first spawns.

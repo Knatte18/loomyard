@@ -25,12 +25,6 @@ import (
 // SummaryFileName is summary.md's fixed filename inside a webster dir.
 const SummaryFileName = "summary.md"
 
-// summaryArchiveTimestampFormat is the UTC compact timestamp format
-// ArchiveStaleSummary archives a stale summary.md under — kept identical to
-// archive.go's own archiveTimestampFormat so an archived webster artifact
-// sorts and reads the same way regardless of which helper archived it.
-const summaryArchiveTimestampFormat = archiveTimestampFormat
-
 // SummaryPath returns the path to summary.md inside websterDir.
 func SummaryPath(websterDir string) string {
 	return filepath.Join(websterDir, SummaryFileName)
@@ -104,7 +98,7 @@ func ArchiveStaleSummary(websterDir string, now func() time.Time) (archivedTo st
 		return "", fmt.Errorf("webster: stat summary file %s: %w", path, statErr)
 	}
 
-	stamp := now().UTC().Format(summaryArchiveTimestampFormat)
+	stamp := now().UTC().Format(archiveTimestampFormat)
 	target, err := firstFreeArchivePath(func(suffix string) string {
 		return filepath.Join(websterDir, fmt.Sprintf("summary-%s%s.md", stamp, suffix))
 	})
