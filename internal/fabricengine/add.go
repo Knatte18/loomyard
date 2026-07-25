@@ -48,7 +48,9 @@ type AddResult struct {
 //
 // Steps:
 //  0. Slug validation: slug must be non-empty, a single path component (no '/'
-//     or '\'), and must not end in the weft suffix (reserved for weft worktrees).
+//     or '\'), must not end in the weft suffix (reserved for weft worktrees),
+//     and must not name a reserved hub-level geometry entry
+//     (hubgeometry.IsReservedHubName: _lyx, _raddle, _board, _portals, _launchers).
 //  1. Clean check: l.WorktreeRoot must have no uncommitted changes.
 //  2. Branch name: hostBranch := t.cfg.BranchPrefix + slug; weftBranch := WeftBranchName(hostBranch)
 //  3. Branch-exists check: hostBranch must not already exist in host.
@@ -106,6 +108,18 @@ func (t *Topology) Add(l *hubgeometry.Layout, slug string, opts AddOptions) (Add
 	// is here, before any git operation, rejecting the collision at the source.
 	if strings.HasSuffix(slug, hubgeometry.WeftSuffix) {
 		return AddResult{}, fmt.Errorf("invalid slug %q: a slug must not end in %q (that suffix is reserved for weft worktrees)", slug, hubgeometry.WeftSuffix)
+	}
+
+	// A slug naming a reserved hub-level geometry entry (_lyx, _raddle, _board,
+	// _portals, _launchers) would create a host worktree directory colliding
+	// with the paths lyx composes at the hub level — e.g. a worktree named
+	// "_portals" on a fresh hub would later have portal junctions created
+	// inside it, and a hub-level "_lyx" worktree shadows the config-dir token
+	// every module resolves. Some of these are blocked incidentally by the
+	// step-4 directory-exists check on mature hubs; rejecting them here makes
+	// the guard unconditional and the error honest.
+	if hubgeometry.IsReservedHubName(slug) {
+		return AddResult{}, fmt.Errorf("invalid slug %q: that name is reserved for lyx hub geometry", slug)
 	}
 
 	// (1) Clean check

@@ -113,3 +113,40 @@ func TestAdd_RejectsWeftSuffixSlug(t *testing.T) {
 		})
 	}
 }
+
+// TestAdd_RejectsReservedHubNameSlug asserts that Add refuses a slug naming a
+// reserved hub-level geometry entry before touching git or the filesystem. A
+// host worktree directory named after a geometry token collides with the paths
+// lyx composes at the hub level — a "_portals" worktree on a fresh hub would
+// have portal junctions created inside it, and a hub-level "_lyx" worktree
+// shadows the config-dir token. Validation runs before any git op, so this
+// stays untagged Tier-1.
+func TestAdd_RejectsReservedHubNameSlug(t *testing.T) {
+	tests := []struct {
+		name string
+		slug string
+	}{
+		{"LyxDir", "_lyx"},
+		{"RaddleDir", "_raddle"},
+		{"BoardDir", "_board"},
+		{"PortalsDir", "_portals"},
+		{"LaunchersDir", "_launchers"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			topology := fabricengine.NewTopology(fabricengine.Config{})
+			layout := &hubgeometry.Layout{WorktreeRoot: t.TempDir()}
+
+			_, err := topology.Add(layout, tt.slug, fabricengine.AddOptions{})
+			if err == nil {
+				t.Fatalf("Add(%q) error = nil; want invalid-slug error", tt.slug)
+			}
+			if !strings.Contains(err.Error(), "invalid slug") {
+				t.Errorf("Add(%q) error = %v; want error containing %q", tt.slug, err, "invalid slug")
+			}
+			if !strings.Contains(err.Error(), "reserved for lyx hub geometry") {
+				t.Errorf("Add(%q) error = %v; want error containing %q", tt.slug, err, "reserved for lyx hub geometry")
+			}
+		})
+	}
+}
