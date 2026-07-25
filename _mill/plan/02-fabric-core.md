@@ -34,6 +34,7 @@ No batch-local decisions differ from the overview.
   - `internal/warpengine/template.yaml`
   - `internal/warpengine/template_test.go`
   - `internal/warpengine/testmain_test.go`
+  - `internal/lyxtest/hermetic.go`
   - `internal/weftengine/config.go`
   - `internal/weftengine/template.yaml`
   - `internal/configengine/config.go`

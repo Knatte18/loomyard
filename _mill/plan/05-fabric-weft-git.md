@@ -16,7 +16,8 @@ git-wiring (`RecordCorrespondence`/`WeftSHAForWarpSHA`/`RebuildIndex`), the pari
 (`StatusWeft`/`CommitWeft`/`PushWeft`/`PullWeft` plus package-level `PushWeftAt` for the
 detached-push child), and the two genuinely cross-repo operations `SyncWeft` and
 `RevertWithWeft` — plus the CONSTRAINTS.md Weft Git Invariant amendment in the same
-commit as the first weft-touching code. Runs parallel to batches 3/4 (disjoint files;
+commit as the batch's FIRST weft-touching code (card 22, whose index wiring already
+runs git against the weft worktree). Runs parallel to batches 3/4 (disjoint files;
 depends only on gitrepo growth and fabric-core). External interface for batch 6: all
 `Fabric` methods above, `PushWeftAt`, and the typed errors/results. Batch-local
 decision: typed sentinel errors (`ErrNoCorrespondence`, `ErrStaleSHA`,
@@ -34,9 +35,11 @@ matching gitrepo's `ErrInvalidSHA` idiom.
   - `internal/gitrepo/gitrepo.go`
   - `internal/gitexec/gitexec.go`
   - `internal/state/state.go`
+  - `internal/lyxtest/lyxtest.go`
   - `manifest/designs/fabric.md`
   - `_mill/discussion.md`
-- **Edits:** none
+- **Edits:**
+  - `CONSTRAINTS.md`
 - **Creates:**
   - `internal/fabricengine/index.go`
   - `internal/fabricengine/index_integration_test.go`
@@ -64,8 +67,16 @@ matching gitrepo's `ErrInvalidSHA` idiom.
   replace the index file. Integration-tagged `index_integration_test.go`
   (`lyxtest.CopyWeft` + a plain host repo fixture): gitdir resolution lands inside
   the weft gitdir; record→lookup round-trip; `RebuildIndex` on a branch with
-  hand-crafted trailer commits reproduces the recorded entries.
-- **Commit:** `feat(fabricengine): correspondence index git wiring on Fabric`
+  hand-crafted trailer commits reproduces the recorded entries. CONSTRAINTS.md, this
+  same commit (this card is the batch's FIRST weft-touching code — the invariant must
+  sanction fabricengine before any fabric git runs against a weft worktree): amend the
+  Weft Git Invariant's module-ownership bullet to "goes through `internal/weftengine`
+  **or** `internal/fabricengine`" and "through `internal/warpengine` **or**
+  `internal/fabricengine`", with an explicit parallel-build note ("fabric is the
+  in-progress unified replacement; this dual ownership lasts until the warp/weft
+  cutover task and is then collapsed") — the agent-never-drives-weft-git half applies
+  to fabric identically and is left unchanged.
+- **Commit:** `feat(fabricengine): correspondence index git wiring; amend Weft Git Invariant`
 
 ### Card 23: weft-git parity verbs and Weft Git Invariant amendment
 
@@ -82,9 +93,9 @@ matching gitrepo's `ErrInvalidSHA` idiom.
   - `internal/fabricengine/fabric.go`
   - `internal/fabricengine/trailer.go`
   - `internal/fabricengine/index.go`
-  - `_mill/discussion.md`
-- **Edits:**
   - `CONSTRAINTS.md`
+  - `_mill/discussion.md`
+- **Edits:** none
 - **Creates:**
   - `internal/fabricengine/weftgit.go`
 - **Deletes:** none
@@ -107,14 +118,11 @@ matching gitrepo's `ErrInvalidSHA` idiom.
   SyncOptions) error`: SkipGit gate, then `f.Weft.Pull()`. Package-level
   `func PushWeftAt(weftPath string, opts SyncOptions) error` (the detached-push
   child's entry: gates, `gitrepo.New(weftPath).PushCoalesced()` — no `Fabric`, no
-  warp path, mirroring weftcli's bypass push). CONSTRAINTS.md, same commit: amend the
-  Weft Git Invariant's module-ownership bullet to "goes through `internal/weftengine`
-  **or** `internal/fabricengine`" and "through `internal/warpengine` **or**
-  `internal/fabricengine`", with an explicit parallel-build note ("fabric is the
-  in-progress unified replacement; this dual ownership lasts until the warp/weft
-  cutover task and is then collapsed") — the agent-never-drives-weft-git half applies
-  to fabric identically and is left unchanged.
-- **Commit:** `feat(fabricengine): weft-git verbs under fabric-layer lock; amend Weft Git Invariant`
+  warp path, mirroring weftcli's bypass push). The Weft Git Invariant amendment
+  sanctioning fabricengine already landed with card 22 (this batch's first
+  weft-touching commit); CONSTRAINTS.md is listed as Context so the implementer works
+  under the amended invariant.
+- **Commit:** `feat(fabricengine): weft-git verbs under fabric-layer write lock`
 
 ### Card 24: SyncWeft and RevertWithWeft
 
