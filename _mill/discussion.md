@@ -42,7 +42,11 @@ this task carries a version suffix**. The old format dies with builder, so the n
 - New package **`internal/planparser`** — parses `_lyx/plan/` (`00-overview.md` +
   `NN-<card-slug>.md`) into `Plan`/`Card` Go structs, normalizes card paths (`root:`/`//`
   resolution → plain worktree-relative), and runs the format's **14 validation checks** (listed in
-  `plan-format-v3.md` §"Validation checks"). Replaces `builderengine.ParsePlan`/`Validate`.
+  `plan-format-v3.md` §"Validation checks"). It also extracts and exposes the plan-level
+  `00-overview.md` body sections — `## Shared Decisions`, `## Rename mechanic`, and `## verify:` — on
+  the `Plan` struct, so that **no other package reads `_lyx/plan/`** (honoring the sole-parser
+  invariant): `RenderForkPrompt` and the integration-suite fork consume them from `planparser`, never
+  from disk. Replaces `builderengine.ParsePlan`/`Validate`.
 - New package **`internal/batcher`** — a *library* of batchifiers behind a `Batcher` interface
   (`[]Card → []Batch`), a name-keyed registry, and a **config-selected** active batcher. Ships the
   **identity** batcher (one card → one batch) as the first registered implementation. Grouping
@@ -335,7 +339,12 @@ Current state established during exploration (see `manifest/designs/webster-rewr
     `fork-template.md`/`master-template.md`. **Rewrite templates** for card list + per-batch cards +
     the new fork return contract; drop batch/scope language. `RenderForkPrompt` additionally injects
     the plan-level `## Shared Decisions` into every fork prompt and the CANONICAL `## Rename
-    mechanic` when the batch has a `Moves:` card (see decision *fork-prompt-plan-level-context*).
+    mechanic` when the batch has a `Moves:` card (see decision *fork-prompt-plan-level-context*),
+    consuming both from `planparser.Plan`. The **integration-suite fork's prompt** (which runs the
+    plan-level `## verify:`) needs a rendering surface too — a dedicated `RenderIntegrationPrompt` +
+    template, or a reuse of `RenderForkPrompt`; which one is a plan-phase determination, but the
+    surface (a renderer injecting the plan-level `## verify:` text) is called out here so it is not
+    forgotten.
   - `summary.go` — `summary.md` prose-artifact contract (reuse; retarget the one `builderengine`
     helper).
 - **`internal/webstercli`** — `Command()`/`RunCLI` seam (`cli.go:122`/`:267`). PersistentPreRunE
@@ -414,6 +423,10 @@ Discovered during discussion:
   parser takes an explicit worktree-root argument (supplied in production via `hubgeometry`), and the
   tests point it at a temp dir populated with the fixture's real on-disk files — so the on-disk vs.
   plan-declared distinction is exercised hermetically without touching the actual repo tree.
+  Also cover **plan-level body-section extraction**: assert `planparser` exposes `## Shared
+  Decisions`, `## Rename mechanic`, and `## verify:` from `00-overview.md` on the `Plan` struct (from
+  the worked-example fixture), since these feed `RenderForkPrompt`/the integration fork and no other
+  package may read `_lyx/plan/`.
 - **`internal/batcher`** (TDD candidate): the `Batcher` interface contract; the **identity** batcher
   (N cards → N single-card batches, order preserved); the registry (register/lookup, unknown-name
   error); config selection (valid name resolves, unknown name errors at load). Grouping batchifiers
@@ -491,3 +504,7 @@ Discovered during discussion:
   `gitrepo`? **A:** No — v0 (batch ≡ card) captures the single head SHA via `CurrentSHA`; the
   multi-card enumeration is dormant and lands with a new git-log-range primitive alongside the first
   grouping batcher (decision *per-card-commit-and-sha-capture*).
+- **Q:** [review-r3 gap] Who parses the plan-level body sections, given the sole-parser invariant?
+  **A:** `planparser` extracts and exposes `## Shared Decisions`, `## Rename mechanic`, and
+  `## verify:` on the `Plan` struct; `RenderForkPrompt` and the integration fork consume them from
+  there, so no other package reads `_lyx/plan/`.
