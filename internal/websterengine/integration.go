@@ -1,24 +1,30 @@
 // integration.go implements the plan-level integration-suite stage: the
-// skip-check (ShouldRunIntegration) and the single dedicated integration
+// skip-check (ShouldRunIntegration), the single dedicated integration
 // fork's own await/report plumbing (AwaitIntegration/RunIntegration,
 // reusing AwaitBatch's own bounded long-poll idiom over a fixed, non-batch
-// report path, and webster's own ParseReport for the fork's OK/FAILED). The
-// integration fork itself is spawned the same way a batch's own
-// implementer is — Master's own in-session Agent-tool fork call, per
-// master-template.md's own integration-fork bracket instruction — so this
-// file never spawns anything; it only confirms the fork's report has
-// landed and interprets it. The in-process SHA-bisect this stage runs on a
-// FAILED report, and the escalation path that follows, are added alongside
-// this file's own bisect/BisectAndEscalate/RecordIntegrationFailure.
+// report path, and webster's own ParseReport for the fork's OK/FAILED), and
+// the in-process SHA-bisect + escalation path a FAILED report triggers
+// (bisect, RecordIntegrationFailure, BisectAndEscalate). The integration
+// fork itself is spawned the same way a batch's own implementer is —
+// Master's own in-session Agent-tool fork call, per master-template.md's
+// own integration-fork bracket instruction — so this file never spawns
+// anything; it only confirms the fork's report has landed, interprets it,
+// and — on failure — localizes and records the offending card entirely
+// in-process (no fork per bisect candidate), per the
+// integration-suite-fork-with-bisect decision.
 
 package websterengine
 
 import (
+	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/planparser"
 )
 
@@ -104,4 +110,152 @@ func RunIntegration(reportsDir string, wait time.Duration, clk Clock) (*Report, 
 		return nil, fmt.Errorf("webster: integration report did not land within %s", wait)
 	}
 	return ParseReport(IntegrationReportPath(reportsDir))
+}
+
+// integrationBatchKey is the reserved State.Batches key the integration
+// stage's own terminal escalation record lives under: -1, which can never
+// collide with a real plan card's own number (plan-format v3 card numbers
+// are always positive, 1..N, per docs/reference/plan-format-v3.md's
+// "Numbering and commit subject"), so RecordIntegrationFailure's own entry
+// can never be mistaken for a real batch's record, and RenderProgress's
+// walk over plan.Cards (which only ever looks up positive card numbers) can
+// never surface it by accident.
+const integrationBatchKey = -1
+
+// bisect performs an in-process binary search over shas — the ordered
+// per-card commit SHA trail accumulated across every batch's own
+// BatchState.CardSHAs — to localize the first SHA at which verifyCmd
+// fails: it captures repo's current branch (CurrentBranch), checks out each
+// candidate SHA detached (CheckoutDetached), runs verifyCmd IN-PROCESS via
+// os/exec at worktree (never a fork per candidate, preserving the
+// no-concurrent-forks guarantee the integration stage as a whole depends
+// on), and ALWAYS restores the captured branch (RestoreBranch) before
+// returning — including on error, via defer — so HEAD is never left
+// detached. shas is assumed ordered oldest-to-newest with verifyCmd passing
+// on early entries and failing from the offending entry onward (the
+// monotonic property a binary search requires); offendingIndex is the
+// first index at which verifyCmd fails. An empty shas is a hard error —
+// there is nothing to search over and nothing safe to report. A
+// single-element shas degrades gracefully without spawning a checkout or a
+// verify run at all: by construction it is the only candidate, so
+// offendingIndex is 0 unconditionally (the sole/HEAD card).
+func bisect(repo *gitrepo.Repo, shas []string, verifyCmd string, worktree string) (offendingIndex int, err error) {
+	if len(shas) == 0 {
+		return 0, fmt.Errorf("webster: bisect: no card SHAs recorded to search")
+	}
+	if len(shas) == 1 {
+		return 0, nil
+	}
+
+	branch, err := repo.CurrentBranch()
+	if err != nil {
+		return 0, fmt.Errorf("webster: bisect: capture current branch: %w", err)
+	}
+	defer func() {
+		_ = repo.RestoreBranch(branch)
+	}()
+
+	// Standard binary search for the first failing index: a passing
+	// candidate means the offending SHA is later; a failing one means it is
+	// this candidate or earlier.
+	lo, hi := 0, len(shas)-1
+	for lo < hi {
+		mid := (lo + hi) / 2
+		passed, verErr := checkoutAndVerify(repo, shas[mid], verifyCmd, worktree)
+		if verErr != nil {
+			return 0, verErr
+		}
+		if passed {
+			lo = mid + 1
+		} else {
+			hi = mid
+		}
+	}
+	return lo, nil
+}
+
+// checkoutAndVerify checks out sha detached in repo, then runs verifyCmd
+// in-process at worktree, reporting whether it passed.
+func checkoutAndVerify(repo *gitrepo.Repo, sha, verifyCmd, worktree string) (bool, error) {
+	if err := repo.CheckoutDetached(sha); err != nil {
+		return false, fmt.Errorf("webster: bisect: checkout %s: %w", sha, err)
+	}
+	return runVerifyCommand(verifyCmd, worktree)
+}
+
+// runVerifyCommand runs verifyCmd in-process via os/exec, in a shell ("sh
+// -c" on non-Windows, "cmd /C" on Windows — the same GOOS split
+// hubgeometry.go's own menuLauncherName applies for a platform-varying
+// choice), from worktree. A non-zero exit is a failed verify — reported as
+// (false, nil), never an error, since a verify command failing is the
+// expected shape of a bisect step, not a bisect malfunction; a genuine
+// spawn failure (the shell itself could not run) is a real error.
+func runVerifyCommand(verifyCmd, worktree string) (bool, error) {
+	shell, flag := "sh", "-c"
+	if runtime.GOOS == "windows" {
+		shell, flag = "cmd", "/C"
+	}
+
+	cmd := exec.Command(shell, flag, verifyCmd)
+	cmd.Dir = worktree
+	if err := cmd.Run(); err != nil {
+		// An *exec.ExitError means the command ran and exited non-zero — a
+		// failed verify, not a bisect malfunction. Any other error (the shell
+		// itself could not be spawned) propagates as a real failure.
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			return false, nil
+		}
+		return false, fmt.Errorf("webster: bisect: run verify command %q: %w", verifyCmd, err)
+	}
+	return true, nil
+}
+
+// RecordIntegrationFailure marks a terminal, non-successful record for the
+// integration stage into st under integrationBatchKey — the existing
+// State.Batches terminal-record mechanism, reused rather than inventing a
+// new operator signal or a new State field, per the
+// integration-suite-fork-with-bisect decision's own "reuse the existing
+// terminal path" escalation mechanism. The caller persists st via SaveState
+// under the state-mutation lease, exactly as every other terminal batch
+// mutation in this package does.
+func RecordIntegrationFailure(st *State, offendingCard, offendingSHA string) {
+	if st.Batches == nil {
+		st.Batches = map[int]*BatchState{}
+	}
+	st.Batches[integrationBatchKey] = &BatchState{
+		Slug:     offendingCard,
+		Terminal: true,
+		Status:   DigestStatusStuck,
+		Digest: &Digest{
+			Batch:   offendingCard,
+			Status:  DigestStatusStuck,
+			HeadSHA: offendingSHA,
+		},
+		CardSHAs: []string{offendingSHA},
+	}
+}
+
+// BisectAndEscalate runs bisect over shas against a FAILED integration
+// report, resolves the localized index to its own card label from labels
+// (parallel to shas, same order/length — the caller's own ordered
+// accumulation of every terminal batch's "NN-slug" identity alongside its
+// own BatchState.CardSHAs), records the terminal escalation into st
+// (RecordIntegrationFailure), and extends websterDir's summary.md
+// (AppendIntegrationFailure, summary.go) naming the localized card. The
+// caller persists st via SaveState under the state-mutation lease.
+func BisectAndEscalate(repo *gitrepo.Repo, shas, labels []string, verifyCmd, worktree, websterDir string, st *State) error {
+	idx, err := bisect(repo, shas, verifyCmd, worktree)
+	if err != nil {
+		return err
+	}
+
+	offendingSHA := shas[idx]
+	offendingCard := "unknown"
+	if idx < len(labels) {
+		offendingCard = labels[idx]
+	}
+
+	RecordIntegrationFailure(st, offendingCard, offendingSHA)
+	return AppendIntegrationFailure(websterDir, offendingCard, offendingSHA)
 }

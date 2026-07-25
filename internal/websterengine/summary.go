@@ -3,11 +3,14 @@
 // ParseSummary enforces discussion.md's summary-artifact decision's minimal
 // fail-loud validation (presence, non-empty, a "# <title>" first non-blank
 // line with a non-empty title) — the artifact is the future loom-finalize
-// PR-text source, never itself schema-validated beyond that; and
+// PR-text source, never itself schema-validated beyond that;
 // ArchiveStaleSummary applies the same archive-never-refuse timestamp-rename
 // discipline as outcome.go's own archiveStaleOutcome, reusing archive.go's
 // firstFreeArchivePath rather than re-implementing the same-second
-// collision loop.
+// collision loop; and AppendIntegrationFailure extends an already-written
+// summary.md with the integration-suite bisect's own localized finding
+// (integration.go's BisectAndEscalate), the summary-document half of that
+// escalation path.
 
 package websterengine
 
@@ -113,4 +116,28 @@ func ArchiveStaleSummary(websterDir string, now func() time.Time) (archivedTo st
 		return "", fmt.Errorf("webster: archive stale summary file %s: %w", path, err)
 	}
 	return target, nil
+}
+
+// AppendIntegrationFailure appends a short section naming the integration
+// bisect's own localized finding to websterDir's summary.md — the
+// summary-document half of the integration-suite escalation path (see
+// integration.go's bisect/BisectAndEscalate). Master's own final-action
+// rule (master-template.md) already guarantees summary.md exists by the
+// time this runs — shuttle classifies Master's own spawn done only once
+// BOTH outcome.yaml and summary.md have landed — so this always APPENDS to
+// an existing file rather than creating one from scratch.
+func AppendIntegrationFailure(websterDir, offendingCard, offendingSHA string) error {
+	path := SummaryPath(websterDir)
+	section := fmt.Sprintf("\n\n## Integration suite failed\n\nThe plan-level `## verify:` suite failed. SHA-bisect localized the failure to card `%s` (commit `%s`).\n", offendingCard, offendingSHA)
+
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		return fmt.Errorf("webster: append integration failure to summary file %s: %w", path, err)
+	}
+	defer f.Close()
+
+	if _, err := f.WriteString(section); err != nil {
+		return fmt.Errorf("webster: append integration failure to summary file %s: %w", path, err)
+	}
+	return nil
 }
