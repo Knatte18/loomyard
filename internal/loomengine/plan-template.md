@@ -82,6 +82,10 @@ a path from the same card's `Edits:` there. Within one card a path may appear in
 ONE of the five fields (a `Moves:` endpoint counts); across different cards, repeating
 a path is normal sequencing.
 
+Every `verify:` value — a card's optional `**verify:**` and the plan-level `## verify:`
+section — is one or more runnable shell commands, never prose; the plan-level
+`## verify:` is the single integration check run once at the end of the whole plan.
+
 ### `## Rename mechanic` — reproduce verbatim when any card has a `Moves:`
 
 A `Moves:` endpoint must not also appear in any card's `Creates:`/`Deletes:` anywhere

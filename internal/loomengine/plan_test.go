@@ -172,6 +172,24 @@ func TestPlanSpec_PromptStatesMoveRedundantRule(t *testing.T) {
 	}
 }
 
+// TestPlanSpec_PromptStatesVerifyIsRunnable verifies the rendered prompt
+// pins verify: values to runnable shell commands: a live run against a
+// template without this clause produced a plan-level `## verify:` of prose
+// acceptance criteria a mechanical consumer cannot run (proven live, round
+// fable-r1).
+func TestPlanSpec_PromptStatesVerifyIsRunnable(t *testing.T) {
+	prompt := renderedPlanPrompt(t)
+
+	for _, want := range []string{
+		"runnable shell commands",
+		"never prose",
+	} {
+		if !strings.Contains(prompt, want) {
+			t.Errorf("PlanSpec(...).Prompt does not contain %q; the runnable-verify rule must reach the agent", want)
+		}
+	}
+}
+
 // renderedPlanPrompt returns the prompt PlanSpec renders for a hand-built
 // Layout and the default in-memory Config, for template-content assertions.
 func renderedPlanPrompt(t *testing.T) string {
