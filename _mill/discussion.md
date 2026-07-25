@@ -58,8 +58,14 @@ that parses/executes v3 (and eventually retires the v2 parser) is the separate w
   - `manifest/roadmap.md:39` (the **plan-format v3** Planned item) — handled by the Planned→Done
     move, see `roadmap-planned-to-done`.
   - `manifest/designs/*.md` that link to it: `loom.md`, `loom-planner.md`, `codeintel-redesign.md`,
-    `webster-rewrite.md`, `webster-parallel-execution.md` (grep `plan-format-v3.md` to get the exact
-    set at edit time).
+    `webster-parallel-execution.md` (grep `plan-format-v3.md` to get the exact set at edit time) —
+    plain path repoints to `docs/reference/plan-format-v3.md`.
+  - **`manifest/designs/webster-rewrite.md` gets special handling** (see
+    `symbol-fields-deferred-compact`): the detailed continuous-DAG-update/SCC scheduling design is
+    **relocated into** this doc's "Scheduling: no DAG, no SCC merging in v0" section (it would
+    otherwise be lost by the trim), and `webster-rewrite.md:32`'s link is repointed to that
+    **now-local section anchor**, not to the trimmed `plan-format-v3.md` stub — otherwise the anchor
+    fragment `#continuous-dag-update-…` dangles even though the filename resolves.
 - **`manifest/roadmap.md`: move the plan-format v3 item Planned → Done**, with a link to the new
   `docs/reference/plan-format-v3.md` (see `roadmap-planned-to-done`).
 - **Additive cross-links to v3 in the neighbour durable docs** (NOT reconciliation — v2 stays valid,
@@ -211,10 +217,15 @@ that parses/executes v3 (and eventually retires the v2 parser) is the separate w
 ### numbering-and-commit-subject
 
 - Decision: cards are numbered flat **`N` (1..N)** across the whole plan. Heading id is `N`; the
-  per-card file prefix `NN` (zero-padded) must equal it; the commit subject is `N: <short what>`.
+  per-card file prefix `NN` (zero-padded) must equal it. **The default commit subject is
+  `N: <name>`** — the card's heading `<name>` (honoring the design doc's "name used in the commit
+  message"); there is no separate `<short what>` string. An explicit `**Commit:**` field overrides
+  the default but must start with the card's own `N: ` prefix (`commit-subject-mismatch` check).
 - Rationale: batch is gone, so the `NN.C` composite id collapses to `N`; still keyed to the git-log
-  resume trail.
-- Rejected: keeping `NN.C`; using the card `name` as the commit id.
+  resume trail. Seeding the default from the single card `<name>` removes the v2 ambiguity where
+  heading title and commit text could diverge — there is now exactly one source for the default.
+- Rejected: keeping `NN.C`; a distinct `<short what>` seed separate from `<name>` (the doubly-specified
+  default the round-2 review flagged); using the card `name` as the numeric card id.
 
 ### verify-model
 
@@ -289,15 +300,26 @@ that parses/executes v3 (and eventually retires the v2 parser) is the separate w
 
 ### symbol-fields-deferred-compact
 
-- Decision: keep only a **short "Deferred / forward-compat"** section: symbol fields
-  (`creates-symbols`/`edits-symbols`/`reads-symbols`) are **deliberately omitted in v0** (waiting on
-  codeintel), with a compact summary and pointers to `codeintel-redesign.md` and `webster-rewrite.md`.
-  Trim the detailed Mechanism-1/2 / continuous-DAG-update / SCC-merging design (it lives in those two
-  docs). This section is also where the derived `changes-files` union is named (see
+- Decision: keep only a **short "Deferred / forward-compat"** section in `plan-format-v3.md`: symbol
+  fields (`creates-symbols`/`edits-symbols`/`reads-symbols`) are **deliberately omitted in v0**
+  (waiting on codeintel), with a compact summary and pointers to `codeintel-redesign.md` and
+  `webster-rewrite.md`. This section is also where the derived `changes-files` union is named (see
   `changes-files-is-derived-and-named`).
-- Rationale: the pinned contract should not carry non-v0 dead-code design; the detail is preserved
-  elsewhere and survives the design-doc deletion.
-- Rejected: porting the full deferred design into `plan-format-v3.md`.
+- **Relocate, do not drop, the detailed design.** The detailed Mechanism-1/2 / continuous-DAG-update
+  (Kahn-style greedy topological selection) / SCC-merging (Tarjan) design currently lives **only** in
+  `manifest/designs/plan-format-v3.md` — trimming it to a stub would *lose* it, since
+  `webster-rewrite.md` today only *points* at it (`webster-rewrite.md:32`), it does not contain it.
+  That machinery is **scheduling/execution** (how webster incrementally updates the DAG and merges
+  cyclic card groups as cards land), which by `strip-execution-policy` does not belong in the schema
+  doc. So **move the detailed design into `webster-rewrite.md`** — fold it into that doc's existing
+  "Scheduling: no DAG, no SCC merging in v0" section — and **repoint `webster-rewrite.md:32`'s link to
+  that now-local section anchor** (not to the trimmed `plan-format-v3.md` stub, which would leave a
+  dead anchor fragment). *(Resolves round-2 gap.)*
+- Rationale: the pinned contract carries no non-v0 dead-code scheduling design; the design is
+  preserved in the doc that will implement it; and no inbound anchor dangles.
+- Rejected: porting the full deferred design into `plan-format-v3.md` (violates `strip-execution-policy`;
+  long "deferred" section); dropping the detailed design entirely (loses the incremental-DAG/SCC
+  reasoning); repointing only the file path and leaving the `#continuous-dag-update-…` anchor dead.
 
 ### validation-checks-enumerated
 
@@ -348,9 +370,13 @@ Files to change:
   repoint.
 - **Edit** the `manifest/designs/*.md` files that link to `plan-format-v3.md` — repoint each to
   `docs/reference/plan-format-v3.md`. Known set (verify by grep at edit time): `loom.md`,
-  `loom-planner.md`, `codeintel-redesign.md`, `webster-rewrite.md`, `webster-parallel-execution.md`.
-  Note these currently use a same-directory link `plan-format-v3.md`; the new target is up-and-over
+  `loom-planner.md`, `codeintel-redesign.md`, `webster-parallel-execution.md`. Note these currently
+  use a same-directory link `plan-format-v3.md`; the new target is up-and-over
   (`../../docs/reference/plan-format-v3.md` from `manifest/designs/`).
+- **Edit** `manifest/designs/webster-rewrite.md` — (a) **relocate** the detailed
+  continuous-DAG-update/Mechanism-1/2/SCC-merging design out of the promoted `plan-format-v3.md` into
+  this doc's "Scheduling: no DAG, no SCC merging in v0" section; (b) repoint its line-32 link's
+  **anchor** to that now-local section (not the trimmed stub). See `symbol-fields-deferred-compact`.
 - **Edit** `docs/overview.md` — add `plan-format-v3.md` to the durable-reference-docs list
   (~line 104) + a one-line "v3 is the emerging format webster-rewrite consumes" mention; builder
   section stays v2-accurate.
@@ -386,10 +412,14 @@ Documentation-only task — no runtime behaviour to exercise, no new code to uni
 - **Internal consistency of the new `plan-format-v3.md`**: the worked example must be byte-consistent
   across Card Index ↔ per-card filenames ↔ card headings/numbering (checked by reading; no validator
   runs it).
-- **No dangling links** (the core mechanical check for this task): after deleting
-  `manifest/designs/plan-format-v3.md`, grep `plan-format-v3.md` across the repo — every inbound link
-  must now resolve to `docs/reference/plan-format-v3.md` (roadmap item + the `manifest/designs/*.md`
-  set). Also grep `plan-format` broadly to confirm nothing else dangles.
+- **No dangling links, including anchor fragments** (the core mechanical check for this task): after
+  deleting `manifest/designs/plan-format-v3.md`, grep `plan-format-v3.md` across the repo — every
+  inbound link must now resolve to `docs/reference/plan-format-v3.md` (roadmap item + the
+  `manifest/designs/*.md` set). Crucially, verify **anchor fragments** too, not just filenames: any
+  `plan-format-v3.md#…` link into a section that was trimmed (e.g. `webster-rewrite.md:32`'s
+  `#continuous-dag-update-…`) must be retargeted to a section that still exists — a filename-only
+  grep passes while the anchor is dead. Also grep `plan-format` broadly to confirm nothing else
+  dangles.
 - **v2 stays valid**: `plan-format.md` (v2) still describes v2 truthfully after its one softening
   note; no neighbour doc contradicts it. `builder-contract.md`/`overview.md` remain v2-accurate with
   only additive v3 cross-links.
@@ -434,4 +464,12 @@ No TDD candidates (no code). No CLI surface changes, so no help-tree pins to upd
   the v3 doc — that info lands in webster-rewrite's "webster-preprocessing" part; not relocated here.
 - **Q:** The deferred symbol-field/DAG design? **A:** A short "Deferred / forward-compat" section
   (symbol fields omitted in v0, pending codeintel) with pointers to `codeintel-redesign.md` and
-  `webster-rewrite.md`; detailed mechanism trimmed.
+  `webster-rewrite.md`.
+- **Q:** Where does the detailed continuous-DAG-update/SCC-merging design go when it's trimmed from
+  the promoted doc (it lives only there, and `webster-rewrite.md:32` links into it)? **A:** Relocate
+  it into `webster-rewrite.md`'s scheduling section (it is scheduling/execution, not schema) and
+  repoint that link's anchor to the now-local section — do not just repoint the file path, which
+  would leave a dead `#continuous-dag-update-…` anchor.
+- **Q:** Which string seeds the default commit subject (heading `<name>` vs a `<short what>`)?
+  **A:** The card `<name>` — default subject is `N: <name>`; there is no separate `<short what>`. An
+  explicit `Commit:` overrides but must start with `N: `.
