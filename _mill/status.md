@@ -35,5 +35,7 @@ batches:
     start_sha: e5654ca6ba139ce9320dd2a0c10e881756b820d6
     commit_sha: 06d49d95291198275ab682ded1ec1c180dc0e040
   - name: planner-producer
-    state: pending
+    state: running
+    implementer_session: c649c191-d24a-4614-8d07-a38fc5ea837f
+    start_sha: d1de9c1e0ede82c1498fb55f94d9a822e86ad21f
 ```
