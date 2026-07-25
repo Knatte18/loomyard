@@ -42,9 +42,12 @@ answer plus a reproducible prototype — not a migration.
   verifying it — rebase is go-git's known weak spot).
 - Adding **go-git** as a real `go.mod` dependency on `main` (a direct consequence of keeping
   the prototype).
-- A **write-up** that replaces `manifest/designs/git-native-library.md` with the spike's
-  recommendation — **ADOPT** / **ADOPT-PARTIAL** / **DECLINE** — the per-operation
-  MIGRATE/CLI-BOUND table, and the evidence behind each verdict.
+- A **write-up** capturing the spike's recommendation — **ADOPT** / **ADOPT-PARTIAL** /
+  **DECLINE** — the per-operation MIGRATE/CLI-BOUND table, and the evidence behind each
+  verdict, authored as the **`internal/gitnativepoc` package godoc (`doc.go`)** — the kept
+  code's durable home per the documentation-lifecycle convention. The old design draft
+  `manifest/designs/git-native-library.md` is **deleted** on landing, and the roadmap item
+  moves Planned→Done **with no link** (see `writeup-home-and-lifecycle` and Constraints).
 
 **Out:**
 
@@ -75,7 +78,9 @@ answer plus a reproducible prototype — not a migration.
 ### keep-the-poc-code
 
 - **Decision:** The prototype **is kept and merges to `main`** (it is not deleted after the
-  verdict). The findings write-up replaces `manifest/designs/git-native-library.md`.
+  verdict). The findings write-up is authored as the kept package's godoc
+  (`internal/gitnativepoc/doc.go`), **not** in `manifest/designs/` — see the
+  `writeup-home-and-lifecycle` decision.
 - **Rationale:** User wants the prototype retained as reproducible, runnable evidence and a
   head-start for any future migration. Keeping it makes the parity harness re-runnable
   (including the later Win11 run) via `go test`.
@@ -83,6 +88,28 @@ answer plus a reproducible prototype — not a migration.
   CONSTRAINTS.md's CLI/Cobra Invariant) — rejected because the user explicitly wants the code
   kept. Consequence accepted: go-git lands in `go.mod` on `main`, and a non-production
   experimental package lives in the tree.
+
+### writeup-home-and-lifecycle
+
+- **Decision:** The durable spike write-up lives in the **kept `internal/gitnativepoc` package
+  godoc (`doc.go`)**: recommendation (ADOPT/ADOPT-PARTIAL/DECLINE), the per-operation
+  MIGRATE/CLI-BOUND table, and the evidence. The old design draft
+  `manifest/designs/git-native-library.md` is **deleted** when this task lands, and
+  `manifest/roadmap.md`'s `git-native-library` item moves Planned→Done **with no link**. The
+  write-up states it **supersedes** the design doc's earlier "read-only subset" framing, since
+  the spike widened to the full surface including the write/rebase path.
+- **Rationale:** `docs/overview.md#documentation-lifecycle` says `manifest/designs/<module>.md`
+  is a mechanical draft for a not-yet-built module, deleted on landing, with the durable
+  rationale then living in the code's package header — and the design doc's own header
+  (lines 4–8) already anticipates its own deletion. `roadmap.md` Maintenance (lines 207–211)
+  states Done entries deliberately **don't link**, precisely because the design doc they would
+  link is deleted. Keeping the write-up in the retained package's godoc satisfies both
+  conventions with zero carve-out.
+- **Rejected:** Turning `manifest/designs/git-native-library.md` into the kept write-up
+  (contradicts the lifecycle — that path is for to-be-deleted drafts); `docs/reference/`
+  (defined for cross-module *file contracts* a real consumer honors, which a spike report is
+  not); a documented lifecycle carve-out that keeps the designs doc (least convention-compliant,
+  needs an explicit standing exception).
 
 ### go-git-primary
 
@@ -94,6 +121,10 @@ answer plus a reproducible prototype — not a migration.
   and easy cross-compilation (especially to Windows) that are the main practical draw. cgo
   bindings undercut exactly that. Library choice is confirmed empirically by the harness, not
   by reputation.
+- **Version pin (reproducibility):** the go-git version the harness resolves is **pinned in
+  `go.mod`/`go.sum`** (not floating) and **recorded in the write-up alongside each
+  MIGRATE/CLI-BOUND verdict**, since the dependency lands on `main` and the verdict must be
+  reproducible for the later Win11 run.
 - **Rejected:** go-git-only with cgo entirely off the table (too rigid — if go-git *cannot*
   do something, we should at least record whether libgit2 could); head-to-head go-git vs
   git2go (more work than a spike warrants).
@@ -128,11 +159,12 @@ answer plus a reproducible prototype — not a migration.
   writes including the **rebase-retry** path — over go-git, and classifies each. Writes are
   built in the prototype **only to find where the CLI boundary falls**, especially for
   rebase; this does not migrate the real write path.
-- **Rationale:** The design explicitly mandates verifying `gitrepo.Push`'s rebase-retry
-  dependency (`pull --rebase` / `rebase --abort`) because go-git's rebase support is
-  reportedly weak, and that answer decides whether a full migration is ever possible. Building
-  the write experiments in the *throwaway prototype* does not violate the "don't touch the
-  real writes" non-goal — the prototype is separate code.
+- **Rationale:** The task brief/body explicitly **requires** verifying `gitrepo.Push`'s
+  rebase-retry dependency (`pull --rebase` / `rebase --abort`) — the design doc lists rebase
+  as a "Known cost" to check — because go-git's rebase support is reportedly weak, and that
+  answer decides whether a full migration is ever possible. Building the write experiments in
+  the *throwaway prototype* does not violate the "don't touch the real writes" non-goal — the
+  prototype is separate code.
 - **Rejected:** Reads-only with rebase answered on paper (contradicts the design's
   verify-rebase mandate and leaves the pivotal question to guesswork); treating writes as
   real migration candidates now (broader than scope).
@@ -212,6 +244,13 @@ harness has to assert, because these are the tricky cases the crucible hardening
   **expensive-spawn** package (Test Tier Purity Invariant applies) — hence integration-tagged
   with a `TestMain` calling `lyxtest.HermeticGitEnv()`.
 
+### Build-order prerequisite (met)
+
+`board-use-gitrepo` — the design's build-order gate — **has landed**: its wildcard-stage
+method `StageAllAndCommit` is present in `internal/gitrepo/gitrepo.go` (and `roadmap.md` lists
+`board` as Done consuming it). `gitrepo`'s surface is therefore **stable to mirror** — the
+spike is not targeting a moving target, and the plan writer need not re-check this.
+
 ### Reference points in the tree
 
 - `internal/gitrepo/gitrepo.go`, `push.go`, `snapshot.go` — the surface being mirrored, with
@@ -245,12 +284,16 @@ From `CONSTRAINTS.md` (hub root) and `CLAUDE.md`:
   arise, but it applies.)
 - **Documentation Lifecycle / Task completion (`CLAUDE.md`)** — this task ships behaviour
   (new package, new dependency) and therefore **must** update docs in the same work:
-  - Replace `manifest/designs/git-native-library.md` with the findings write-up.
-  - Move `git-native-library` from **Planned** to **Done** in `manifest/roadmap.md`, linking
+  - **Delete** `manifest/designs/git-native-library.md` on landing (mechanical draft for a
+    not-yet-built module; its own header anticipates deletion) — do **not** convert it into
     the write-up.
+  - Author the durable write-up as `internal/gitnativepoc/doc.go` (package godoc), per the
+    `writeup-home-and-lifecycle` decision; it supersedes the deleted draft's read-only framing.
+  - Move `git-native-library` from **Planned** to **Done** in `manifest/roadmap.md`, **with no
+    link** (Done entries don't link — roadmap Maintenance lines 207–211).
   - Add a one-line note for the experimental `internal/gitnativepoc` package to
-    `docs/overview.md` if the module table lists internal packages (check at plan time;
-    add only if the table's convention includes it).
+    `docs/overview.md` if the module / shared-lib map lists internal packages (check at plan
+    time; add only if the map's convention includes it).
   - No new cross-cutting invariant is introduced by a throwaway experimental package, so
     `CONSTRAINTS.md` needs no new entry — unless plan-time review decides the "experimental,
     never wired into production" status of `gitnativepoc` warrants a recorded note.
@@ -316,3 +359,7 @@ From `CONSTRAINTS.md` (hub root) and `CLAUDE.md`:
 - **Q:** Windows? **A:** Win11 is a hard gate for the verdict, but this task only writes
   OS-portable, Win11-ready code and verifies on Linux; the actual Win11 run is deferred to a
   later Win11 machine, and Windows-dependent conclusions are marked Win11-pending.
+- **Q:** Where does the kept write-up live, given the doc-lifecycle convention? **A:** In the
+  kept `internal/gitnativepoc/doc.go` package godoc; the `manifest/designs/git-native-library.md`
+  draft is deleted on landing and the roadmap item moves Planned→Done **with no link** (both
+  per the documentation-lifecycle + roadmap conventions).
