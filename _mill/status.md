@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: pr-pending
 slug: mux-to-reed
 branch: mux-to-reed
 plan: null
@@ -15,4 +15,6 @@ task_description: |
 
 ```text
 discussing  '2026-07-25T13:07:49Z'
+done  '2026-07-25T13:31:34Z'
+pr-pending  '2026-07-25T13:31:55Z'
 ```
