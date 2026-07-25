@@ -1,9 +1,0 @@
-Card-count self-check: batch `01-plan-path-helpers.md` declares 1 card. Range start (via `mill-go: start batch` grep) is `3ae71fa6`; `git log 3ae71fa6..HEAD --oneline` shows exactly one commit, `06d49d95 feat(hubgeometry): add Layout.PlanDir/PlanOverview accessors`, matching Card 1's `Commit:` message verbatim. **1 of 1 cards committed — all complete.**
-
-Summary of work:
-- `/home/knatte/Code/loomyard/wts/loom-planner/internal/hubgeometry/hubgeometry.go`: added `func (l *Layout) PlanDir() string` (delegates to the free `PlanDir(baseDir)`) and `func (l *Layout) PlanOverview() string` (returns `filepath.Join(l.PlanDir(), "00-overview.md")`), placed immediately after the existing free `PlanDir(baseDir string)` function; also fixed that free function's godoc to drop the stale "plan-format v1" wording in favor of format-agnostic phrasing, keeping the `Returns filepath.Join(baseDir, LyxDirName, "plan").` line and rest of the comment intact.
-- `/home/knatte/Code/loomyard/wts/loom-planner/internal/hubgeometry/planpath_test.go` (new): mirrors `discussionpath_test.go` — `TestLayoutPlanDir`, `TestLayoutPlanOverview`, `TestLayoutPlanDir_CwdEqualsWorktreeRoot`, pure path arithmetic, untagged Tier 1.
-
-Verify (`go test ./internal/hubgeometry/...`) passes. `goimports -l` and `golangci-lint run ./internal/hubgeometry/...` were clean on the changed files. A pre-existing `gofmt` drift in `internal/hubgeometry/weft_test.go` was confirmed present on `main` (unrelated to this batch) and left untouched. Codeguide is not initialized in this repo (`resolve.py --json` returned `found: false`), so no codeguide-sync step was needed. Commit `06d49d95` was pushed to `origin/loom-planner`. Working tree is clean aside from the untracked brief file `_mill/briefs/implement-plan-path-helpers-r1.md`, which is out of this batch's scope.
-
-{"status":"success","commit_sha":"06d49d95","session_id":"c1eb3167-e077-4fba-849a-b5747ceaf764"}

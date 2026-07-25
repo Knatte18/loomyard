@@ -1,1 +1,0 @@
-- ConfigTemplate() doc comment still names only the discussion knobs: ConfigTemplate's doc comment reads "the discussion role model-spec and the discussion_timeout_min knob the discussion producer consults," but template.yaml (edited by card 2) now also carries plan/plan_timeout_min; the comment under-describes the asset it documents.
