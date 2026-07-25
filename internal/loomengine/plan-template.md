@@ -29,6 +29,17 @@ inventing new ones.
 Create `{{.plan_dir}}` first if it does not already exist. Write one `00-overview.md`
 plus one `NN-<card-slug>.md` per card, following this **compact plan-format-v3** spec.
 
+### What a card is
+
+Each card is the smallest change that:
+
+1. **Builds on its own** — the project compiles (`go build ./...` or the repo's
+   equivalent) immediately after the card's commit; never reference a symbol that no
+   earlier card creates.
+2. **Is independently committable** — a meaningful, revertible git commit on its own.
+3. **Bundles its own test when it introduces new behavior** — implementation plus test
+   file in the same card; pure refactors/renames may rely on existing tests instead.
+
 ### On-disk layout
 
 `00-overview.md` + one `NN-<card-slug>.md` per card. `NN` is zero-padded and equals the
