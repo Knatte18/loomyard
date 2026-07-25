@@ -3,7 +3,7 @@
 ```yaml
 task: dev/test lyx.exe separated from production deploy
 slug: dev-test-binary
-approved: false
+approved: true
 started: 20260725-074748
 parent: main
 root: ""

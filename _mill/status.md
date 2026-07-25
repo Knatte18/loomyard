@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r3
+phase: plan-fix-r4
 slug: dev-test-binary
 branch: dev-test-binary
 plan: _mill/plan
@@ -24,4 +24,5 @@ plan-review-r2  '2026-07-25T08:07:42Z'
 plan-fix-r2  '2026-07-25T08:07:42Z'
 plan-review-r3  '2026-07-25T08:12:49Z'
 plan-fix-r3  '2026-07-25T08:12:49Z'
+plan-fix-r4  '2026-07-25T08:17:55Z'
 ```

@@ -83,12 +83,15 @@ Batch-local decisions: `binaryFingerprint` gains a `source string` parameter (st
   "clone", hostURL, weftURL)` with `exec.Command(lyxPath, "warp", "clone", hostURL, weftURL)`
   and update the stale startup-error string `"lyx not found on PATH"` (the binary is now
   resolved by the caller — reword to reference the resolved `lyxPath` and point at
-  `deploy-dev`). Change `decideClone(hubPath string, reset bool) error` to `decideClone(hubPath
-  string, reset bool, lyxPath string) error` and pass `lyxPath` to `cloneRun`. In `run()`'s
-  build case (around the `decideClone(hubPath, *reset)` call), resolve the binary first via
-  `lyxPath, _, err := resolveLyx()` (handle the error by printing `"sandbox: ..."` to stderr
-  and returning 1, matching the surrounding error style) and pass `lyxPath` to `decideClone`.
-  After this change no bare `exec.Command("lyx", …)` remains in `main.go`.
+  `deploy-dev`). Keep `decideClone(hubPath string, reset bool) error`'s signature **unchanged**;
+  resolve the binary **inside** `decideClone`, at the clone step only — i.e. after the
+  "Hub already exists, no `-reset`" early-return no-op and after the reset `removeAll`, on the
+  line right before `cloneRun` is invoked: `lyxPath, _, err := resolveLyx()` (return that error
+  as-is), then `cloneRun(parentDir, lyxPath)`. Do NOT resolve in `run()`'s build case and do
+  NOT thread `lyxPath` as a `decideClone` parameter — resolving lazily keeps the no-op path
+  (Hub exists, no reset) succeeding even when no dev binary and no PATH `lyx` are resolvable
+  (the current behaviour). After this change no bare `exec.Command("lyx", …)` remains in
+  `main.go`.
 - **Commit:** `feat(sandbox): resolve dev binary for Hub build clone`
 
 ### Card 10: Update suite tests for new signatures
@@ -140,9 +143,14 @@ Batch-local decisions: `binaryFingerprint` gains a `source string` parameter (st
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Update the `cloneRun` seam stub and every `decideClone(...)` test call to
-  the new `lyxPath` parameter; assert `decideClone` forwards the received `lyxPath` into
-  `cloneRun` (capture it in the stub). **Also** update every `launchAgent` stub in
+- **Requirements:** Update the `cloneRun` seam stub to the new `func(parentDir, lyxPath string)
+  error` signature. `decideClone`'s signature is unchanged (`hubPath, reset`), but it now
+  resolves the binary internally at the clone step — so in the clone-path test, stub
+  `resolveLyx`'s seams (`devBinPath` returning a non-existent path + `lookPath` returning a
+  known fake path) and assert `cloneRun` receives that resolved path (capture it in the stub).
+  Keep the no-op test (Hub exists, no `-reset`) asserting success **without** stubbing any
+  resolution seam, proving the no-op path never resolves `lyx`. **Also** update every
+  `launchAgent` stub in
   `main_test.go` from the 3-arg `func(dir, claude, instruction string) int` form to the new
   4-arg `func(hostRepoDir, claudePath, instruction, binDir string) int` signature (Card 7's
   change) — there are several such stubs across the run()/suite-routing tests; missing any one
