@@ -92,9 +92,13 @@ section — is one or more runnable shell commands, never prose; the plan-level
 ### `## Rename mechanic` — reproduce verbatim when any card has a `Moves:`
 
 A `Moves:` endpoint must not also appear in any card's `Creates:`/`Deletes:` anywhere
-in the same plan — that is two contradictory instructions for one file. When a rename
-also splits new content out of the relocated file, the relocation stays exactly one
-`Moves:` pair and the split-out file is a separate plain `Creates:` entry.
+in the same plan — that is two contradictory instructions for one file. The moved
+file's own surgical edits (package/import/identifier retargeting, dropping any content
+that splits out) are already declared by its `Moves:` entry, so never also list a moved
+file — either endpoint — in that same card's `Edits:`; a path in both `Edits:` and a
+`Moves:` endpoint is the same card-field-overlap contradiction. When a rename also
+splits new content out of the relocated file, the relocation stays exactly one `Moves:`
+pair and the split-out file is a separate plain `Creates:` entry.
 
 ```markdown
 ## Rename mechanic

@@ -191,6 +191,28 @@ func TestPlanSpec_PromptStatesVerifyIsRunnable(t *testing.T) {
 	}
 }
 
+// TestPlanSpec_PromptStatesMovedFileNotInEdits verifies the rendered prompt
+// reconciles the Rename mechanic's "make surgical edits to the moved file"
+// instruction with the per-card field-exclusivity rule: the moved file's
+// surgical edits are covered by its Moves: entry, so a moved file must never
+// also appear in the same card's Edits:. A live rename-plus-extraction run
+// (round opus-r2) intermittently produced a card declaring the moved file in
+// both Edits: and as its Moves: destination — a card-field-overlap the
+// exclusivity sentence alone did not prevent under the mechanic's pull.
+func TestPlanSpec_PromptStatesMovedFileNotInEdits(t *testing.T) {
+	prompt := renderedPlanPrompt(t)
+
+	for _, want := range []string{
+		"already declared by its `Moves:` entry",
+		"either endpoint — in that same card's `Edits:`",
+		"same card-field-overlap contradiction",
+	} {
+		if !strings.Contains(prompt, want) {
+			t.Errorf("PlanSpec(...).Prompt does not contain %q; the moved-file-not-in-Edits rule must reach the agent", want)
+		}
+	}
+}
+
 // renderedPlanPrompt returns the prompt PlanSpec renders for a hand-built
 // Layout and the default in-memory Config, for template-content assertions.
 func renderedPlanPrompt(t *testing.T) string {
