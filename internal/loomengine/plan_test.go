@@ -117,6 +117,26 @@ func TestPlanSpec_PromptStatesCardCriteria(t *testing.T) {
 	}
 }
 
+// TestPlanSpec_PromptStatesRootResolution verifies the rendered prompt
+// explains the frontmatter `root:` key it advertises — the `<root>/<path>`
+// join and the `//` worktree-root escape — rather than naming the key with
+// no resolution rules (an agent electing to set `root:` could not otherwise
+// write conformant escaped paths; see docs/reference/plan-format-v3.md's
+// "Card path resolution" section).
+func TestPlanSpec_PromptStatesRootResolution(t *testing.T) {
+	prompt := renderedPlanPrompt(t)
+
+	for _, want := range []string{
+		"`root:` is optional",
+		"`<root>/<path>`",
+		"worktree-root-relative",
+	} {
+		if !strings.Contains(prompt, want) {
+			t.Errorf("PlanSpec(...).Prompt does not contain %q; root:/// resolution rules must reach the agent", want)
+		}
+	}
+}
+
 // renderedPlanPrompt returns the prompt PlanSpec renders for a hand-built
 // Layout and the default in-memory Config, for template-content assertions.
 func renderedPlanPrompt(t *testing.T) string {

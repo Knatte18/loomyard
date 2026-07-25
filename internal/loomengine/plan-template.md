@@ -55,6 +55,12 @@ approved: false
 root: <optional worktree-relative dir>
 ```
 
+`root:` is optional shorthand for a plan whose cards repeat one directory prefix: when
+set, every card file-op path resolves as `<root>/<path>` — unless the path starts with
+`//`, which is always worktree-root-relative (root set or not). Omit `root:` when there
+is no shared prefix. Card paths are always worktree-relative and clean: never absolute,
+never containing `..`.
+
 Always write `approved: false` — you never self-approve; a future review gate flips it
 to `true`. Body: a short task-framing paragraph, then an ordered **Card Index**
 (`N — <card-slug> — <one-line intent>`), then the optional plan-level sections
