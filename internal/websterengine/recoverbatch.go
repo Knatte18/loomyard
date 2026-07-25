@@ -199,6 +199,13 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 		return nil, err
 	}
 
+	// Same reports-dir guarantee BeginBatch makes for a fork batch: the
+	// recovery strand's report write must never fail on a missing parent dir
+	// (a recover-batch can legitimately be the first verb to ever need it).
+	if err := os.MkdirAll(deps.ReportsDir, 0o755); err != nil {
+		return nil, fmt.Errorf("webster: create reports dir %s: %w", deps.ReportsDir, err)
+	}
+
 	if _, err := archiveStaleReport(deps.ReportsDir, number, slug, clk.Now); err != nil {
 		return nil, err
 	}

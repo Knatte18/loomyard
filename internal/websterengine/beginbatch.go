@@ -158,6 +158,15 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	}
 	number, slug := batchIdentity(batch)
 
+	// The fork writes its report here with whatever tool it likes — a plain
+	// shell redirect included, which unlike an agent Write tool never creates
+	// missing parents. Only the --fresh archive path recreated this dir
+	// before; the ordinary first run left it absent (found live in crucible
+	// round fable-r1).
+	if err := os.MkdirAll(deps.ReportsDir, 0o755); err != nil {
+		return nil, fmt.Errorf("webster: create reports dir %s: %w", deps.ReportsDir, err)
+	}
+
 	// Builder's pre-existing-report refusal, applied to the fork path: a
 	// batch whose report already landed is finished work — silently
 	// overwriting its BatchState (and letting a fresh fork overwrite the

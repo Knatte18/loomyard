@@ -479,6 +479,25 @@ func TestBeginBatch_StateUpdated(t *testing.T) {
 	}
 }
 
+// TestBeginBatch_CreatesReportsDir proves BeginBatch creates a missing
+// reports dir itself: the fork writes its report there with whatever tool
+// it likes — a plain shell redirect included, which never creates missing
+// parents — and only the --fresh archive path recreated the dir before
+// (crucible round fable-r1's F5: an ordinary first run left it absent and a
+// shell-writing fork's report failed on ENOENT).
+func TestBeginBatch_CreatesReportsDir(t *testing.T) {
+	fx := newBeginFixture(t)
+	fx.Deps.ReportsDir = filepath.Join(t.TempDir(), "reports")
+
+	if _, err := websterengine.BeginBatch(fx.Deps, 1); err != nil {
+		t.Fatalf("BeginBatch(1) error = %v; want nil", err)
+	}
+	info, err := os.Stat(fx.Deps.ReportsDir)
+	if err != nil || !info.IsDir() {
+		t.Errorf("stat(reports dir) = %v, %v; want the dir created by BeginBatch", info, err)
+	}
+}
+
 // TestBeginBatch_UnknownRoleErrors proves a missing role resolution fails
 // loud rather than injecting a zero-value model, naming the missing role.
 func TestBeginBatch_UnknownRoleErrors(t *testing.T) {
