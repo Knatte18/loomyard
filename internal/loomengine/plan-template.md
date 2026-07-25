@@ -38,7 +38,10 @@ Each card is the smallest change that:
    earlier card creates.
 2. **Is independently committable** — a meaningful, revertible git commit on its own.
 3. **Bundles its own test when it introduces new behavior** — implementation plus test
-   file in the same card; pure refactors/renames may rely on existing tests instead.
+   file in the same card, structuring the change so it is testable (extract a helper
+   rather than leaving logic inline in `main`, for example). `verify:` commands are
+   not a substitute for a bundled test; only pure refactors/renames may rely on
+   existing tests instead.
 
 ### On-disk layout
 

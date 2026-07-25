@@ -110,6 +110,7 @@ func TestPlanSpec_PromptStatesCardCriteria(t *testing.T) {
 		"smallest change",
 		"independently committable",
 		"Bundles its own test",
+		"not a substitute for a bundled test",
 	} {
 		if !strings.Contains(prompt, want) {
 			t.Errorf("PlanSpec(...).Prompt does not contain %q; the card-granularity contract must reach the agent", want)
