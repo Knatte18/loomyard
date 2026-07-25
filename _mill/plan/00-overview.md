@@ -3,7 +3,7 @@
 ```yaml
 task: 'webster: rewrite for flat card list'
 slug: webster-rewrite
-approved: false
+approved: true
 started: 20260725-131925
 parent: main
 root: ""
