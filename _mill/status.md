@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-fabric-cli-registration
+phase: holistic-reviewing
 slug: fabric
 branch: fabric
 plan: _mill/plan
@@ -32,6 +32,7 @@ approved-fabric-topology-mechanics  '2026-07-25T07:30:11Z'
 approved-fabric-weft-git  '2026-07-25T07:58:30Z'
 approved-fabric-pair-lifecycle  '2026-07-25T08:18:16Z'
 approved-fabric-cli-registration  '2026-07-25T08:35:02Z'
+holistic-reviewing  '2026-07-25T08:35:27Z'
 ```
 
 ## Batches
