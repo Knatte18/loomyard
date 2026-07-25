@@ -9,10 +9,9 @@
 // branch delta: wherever warp mirrors the host branch name onto the weft side, fabric
 // uses WeftBranchName(hostBranch).
 //
-// readBranch and checkJunctionHealth are also this batch's Status (a later card) uses
-// them; they live here because Reconcile needs them first and both verbs share the
-// same package, mirroring warp's status.go origin for the pair but relocated to the
-// file that needs them earliest in this batch's card order.
+// readBranch and checkJunctionHealth are also used by Status; they live here because
+// Reconcile needs them first and both verbs share the same package, mirroring warp's
+// status.go origin for the pair but relocated to the file that needs them earliest.
 
 package fabricengine
 
@@ -143,7 +142,7 @@ func (t *Topology) Reconcile(l *hubgeometry.Layout) (ReconcileResult, error) {
 
 		if !weftWorktreeExists {
 			// The weft worktree is absent. Decide between recreate, adopt, or report.
-			pairedAction := t.reconcileMissingWeft(l, hostLayout, hostPath, weftPath, slug, hostBranch, &pr)
+			pairedAction := t.reconcileMissingWeft(hostLayout, hostPath, weftPath, slug, hostBranch, &pr)
 			pr.Action = pairedAction
 		} else {
 			// The weft worktree exists. Check whether the junction is healthy; if not, re-point it.
@@ -182,7 +181,6 @@ func (t *Topology) Reconcile(l *hubgeometry.Layout) (ReconcileResult, error) {
 //     weft branch and worktree dormant (no junction).
 //  3. Otherwise → report unmanaged and touch nothing.
 func (t *Topology) reconcileMissingWeft(
-	l *hubgeometry.Layout,
 	hostLayout *hubgeometry.Layout,
 	hostPath, weftPath, slug, hostBranch string,
 	pr *ReconcilePairResult,
@@ -216,7 +214,7 @@ func (t *Topology) reconcileMissingWeft(
 	// and worktree dormant. The host _lyx junction is NOT wired here; lyx init handles that.
 	isRaw := isRawHostWorktree(hostPath)
 	if isRaw {
-		if err := createDormantWeftForRawHost(hostLayout, l, slug, weftBranch); err != nil {
+		if err := createDormantWeftForRawHost(hostLayout, slug, weftBranch); err != nil {
 			pr.Error = fmt.Sprintf("adopt raw host worktree: %v", err)
 			return ReconcileActionRawAdopted
 		}
@@ -270,7 +268,7 @@ func isRawHostWorktree(hostPath string) bool {
 // leaving it dormant (no junction wiring). The weft branch forks from the current weft
 // HEAD (parallel to Add's adopt-or-create logic). The caller must run lyx init to wire
 // junctions.
-func createDormantWeftForRawHost(hostLayout *hubgeometry.Layout, l *hubgeometry.Layout, slug, weftBranch string) error {
+func createDormantWeftForRawHost(hostLayout *hubgeometry.Layout, slug, weftBranch string) error {
 	weftRoot := hostLayout.WeftRepoRoot()
 
 	// Capture the current weft HEAD branch as the fork point for the new weft branch.
@@ -292,10 +290,6 @@ func createDormantWeftForRawHost(hostLayout *hubgeometry.Layout, l *hubgeometry.
 	if err := createWeftWorktree(hostLayout, slug, weftBranch, parentWeftBranch); err != nil {
 		return fmt.Errorf("create dormant weft worktree: %w", err)
 	}
-
-	// Suppress "unused variable" — l is threaded through but not yet consumed beyond
-	// the weft geometry already captured via hostLayout. Keep it for future extension.
-	_ = l
 
 	return nil
 }
