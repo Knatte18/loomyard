@@ -184,7 +184,17 @@ matching gitrepo's `ErrInvalidSHA` idiom.
   - `internal/fabricengine/fabric.go`
   - `internal/fabricengine/weftgit.go`
   - `internal/fabricengine/trailer.go`
-- **Edits:** none
+- **Edits:**
+  - `internal/fabricengine/weftgit.go` — discovered while writing this card's
+    "already-removed pathspec returns `(false, nil)` on both" case:
+    `gitrepo.StageAndCommit`'s `git add --` does NOT tolerate git's "did not
+    match any files" failure the way `weftengine.Commit` explicitly does
+    (`sync.go`'s `!strings.Contains(stderr, "did not match any files")`
+    check) — an already-fully-removed pathspec makes `CommitWeft` return an
+    error instead of `("", false, nil)`, breaking parity. `gitrepo.go` is a
+    shared primitive (fabric/raddle/codeintel) and out of this batch's scope
+    to touch, so `CommitWeft` itself gets the same per-caller tolerance
+    `weftengine.Commit` already has, at the fabricengine layer.
 - **Creates:**
   - `internal/fabricengine/weftgit_differential_test.go`
 - **Deletes:** none
