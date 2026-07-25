@@ -1,0 +1,27 @@
+MILL_REVIEW_BEGIN
+# Review: git-native-library: feasibility spike — holistic
+
+```yaml
+verdict: APPROVE
+reviewer_model: sonnethigh
+reviewed_file: plan/ + source
+date: 2026-07-25
+```
+
+## Findings
+
+### [NIT] assertParityErrClass is dead code, never exercised
+**Location:** `internal/gitnativepoc/harness_test.go:221-230`
+**Issue:** Card 3's `assertParityErrClass` (shared-target `errors.Is` comparison) is never called anywhere — every error-class check in `read_test.go` instead uses a locally-defined `assertParityErrClassCrossTarget` (`read_test.go:32-41`), since `gitnativepoc` and `gitrepo` define independent sentinel errors and no shared target exists. This is a legitimate, documented reason, but the batch-1 helper's anticipated use never materializes anywhere in batches 2-3.
+**Fix:** No action required for this spike; if the harness is ever reused, consider deleting the unused helper or noting in its doc comment that it is superseded by the cross-target variant.
+
+### [NIT] StageAndCommit can report committed=false after a real commit landed
+**Location:** `internal/gitnativepoc/write.go:105-125`
+**Issue:** If `wt.Commit` succeeds but the subsequent `r.repo.Storer.SetIndex(realIndex)` restore fails, the method returns `("", false, restoreErr)` even though go-git already wrote the commit object and advanced HEAD — the caller is told nothing was committed when something was, contradicting the documented `(sha, committed=true)` contract on a "real commit" path.
+**Fix:** On this narrow post-commit restore failure, still return the real commit's SHA/`committed=true` alongside the restore error, or document the discrepancy explicitly; low-probability (`SetIndex` failure needs a Storer I/O fault) and acceptable as-is for a throwaway spike, but worth a one-line comment acknowledging it.
+
+## Verdict
+
+APPROVE
+Plan alignment, cross-batch contracts, doc lifecycle, and constraints all verified clean; only two low-severity NITs found.
+MILL_REVIEW_END
