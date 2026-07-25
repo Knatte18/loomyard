@@ -75,7 +75,9 @@ batches:
     start_sha: fe593c1bf438c4f3cf613ef6a328f1acc81eb9ab
     commit_sha: 46687ef384ed0a80929023c4cd9f84922e947646
   - name: integration-fork-bisect
-    state: pending
+    state: running
+    implementer_session: c11157f8-ad6f-45fe-b20c-5f21c016255c
+    start_sha: 486a95145e2f466a4572ece4db28f737d1f7d58b
   - name: webstercli-rewire
     state: pending
   - name: docs-constraints
