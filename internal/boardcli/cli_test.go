@@ -611,6 +611,20 @@ func TestCLILookupContract(t *testing.T) {
 			wantError:    "only one of slug or id may be given",
 		},
 		{
+			name: "get_fractional_id_errors",
+			setup: func(t *testing.T) {
+				seedCwd(t)
+				runCLI(t, "upsert", `{"slug":"task-a","title":"A"}`)
+				runCLI(t, "upsert", `{"slug":"task-b","title":"B"}`)
+			},
+			verb: "get",
+			// 1.5 must error, not silently truncate to task id 1 (task-b).
+			payload:      `{"id":1.5}`,
+			wantExitCode: 1,
+			wantOK:       false,
+			wantError:    "id must be an integer",
+		},
+		{
 			name: "get_unknown_key_errors",
 			setup: func(t *testing.T) {
 				seedCwd(t)
