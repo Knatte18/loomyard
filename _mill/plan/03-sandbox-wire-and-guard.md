@@ -129,19 +129,27 @@ Batch-local decisions: `binaryFingerprint` gains a `source string` parameter (st
   call to pass a `source` argument. Tier-1 pure.
 - **Commit:** `test(sandbox): assert source in report fingerprint JSON`
 
-### Card 12: Update main tests for cloneRun signature
+### Card 12: Update main tests for cloneRun and launchAgent signatures
 
 - **Context:**
   - `tools/sandbox/main.go`
+  - `tools/sandbox/suite.go`
+  - `tools/sandbox/resolve.go`
 - **Edits:**
   - `tools/sandbox/main_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Update the `cloneRun` seam stub and every `decideClone(...)` test call to
-  the new `lyxPath` parameter. Assert that `decideClone` forwards the received `lyxPath` into
-  `cloneRun` (capture it in the stub). Tier-1 pure (no real clone).
-- **Commit:** `test(sandbox): update main tests for cloneRun lyxPath`
+  the new `lyxPath` parameter; assert `decideClone` forwards the received `lyxPath` into
+  `cloneRun` (capture it in the stub). **Also** update every `launchAgent` stub in
+  `main_test.go` from the 3-arg `func(dir, claude, instruction string) int` form to the new
+  4-arg `func(hostRepoDir, claudePath, instruction, binDir string) int` signature (Card 7's
+  change) — there are several such stubs across the run()/suite-routing tests; missing any one
+  makes `main_test.go` fail to compile. In suite-routing tests that reach `runSuite`, stub
+  `devBinPath` to return a non-existent path so resolution stays `sourceProd` (no `.dev-bin`
+  dependency). Tier-1 pure (no real clone, no real agent).
+- **Commit:** `test(sandbox): update main tests for cloneRun + launchAgent`
 
 ### Card 13: Guard test forbidding bare-PATH lyx lookups
 

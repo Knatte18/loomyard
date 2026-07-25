@@ -47,9 +47,11 @@ dev-path derivation and the PATH fallback are injectable in tests without touchi
   deploy the binary" guidance style used in `suite.go`/`report.go` today, extended to mention
   `deploy-dev`). A `devBinPath()` error is non-fatal — treat it as "no dev binary" and fall
   through to the PATH branch. Add `prependPath(dir string, environ []string) []string`: when
-  `dir == ""` return `environ` unchanged; otherwise return a copy of `environ` where the
-  `PATH=` entry has `dir + string(os.PathListSeparator)` prepended to its value (add a fresh
-  `PATH=` entry if none exists); leave every non-PATH entry untouched and preserve order.
+  `dir == ""` return `environ` unchanged; otherwise return a copy of `environ` where the PATH
+  entry has `dir + string(os.PathListSeparator)` prepended to its value (add a fresh `PATH=`
+  entry if none exists); leave every non-PATH entry untouched and preserve order. Match the
+  variable **name case-insensitively** — split each entry on the first `=`, uppercase the key,
+  compare to `PATH` — so a Windows `Path=...` entry is edited in place rather than duplicated.
 - **Commit:** `feat(sandbox): add resolveLyx + prependPath resolution core`
 
 ### Card 6: Unit-test resolveLyx and prependPath
@@ -71,7 +73,9 @@ dev-path derivation and the PATH fallback are injectable in tests without touchi
   and `path` is the fake prod path; (c) same as (b) but `lookPath` returns an error → assert
   the error propagates. For `prependPath`: assert `dir` is the first `PATH` segment with prior
   segments preserved after it; assert a non-`PATH` env var (e.g. `HOME=/x`) is untouched;
-  assert `dir == ""` returns the input environ unchanged (equal slice contents).
+  assert `dir == ""` returns the input environ unchanged (equal slice contents); assert a
+  lowercase-cased `Path=...` entry (Windows form) is edited in place — `dir` prepended — rather
+  than left alone with a duplicate `PATH=` entry appended.
 - **Commit:** `test(sandbox): cover resolveLyx source selection and prependPath`
 
 ## Batch Tests
