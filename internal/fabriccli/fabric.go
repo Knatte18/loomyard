@@ -220,6 +220,10 @@ deleted here, since they are not fabric-managed.`,
 	cleanupCmd.Flags().Bool("force", false, "also delete gate-protected task branches (requires --apply)")
 	cmd.AddCommand(cleanupCmd)
 
+	// Wire the weft-git content-sync verbs (status/commit/push/pull/sync), their
+	// own --weft-path bypass flag, and their scoped PersistentPreRunE.
+	addWeftVerbs(cmd)
+
 	return cmd
 }
 
