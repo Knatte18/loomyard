@@ -36,8 +36,10 @@ data (that is the separate, `fabric`-dependent `board-weft-storage` redesign).
 - Rewrite `internal/boardengine/sync.go`'s git plumbing onto a single
   `gitrepo.Repo` instance:
   - `commitDirty` → `repo.StageAllAndCommit("board sync")` (new gitrepo method).
-  - The push path (`pushUnpushed` + `hasUnpushed` + the `pushLockFile` +
-    the 2-attempt retry loop) → `repo.PushCoalesced()`.
+  - The push path (`pushUnpushed` + `hasUnpushed` + the 2-attempt retry loop)
+    → `repo.Push()`. Board **keeps** its own top-level `pushLockFile` spanning
+    the whole commit+push loop (see the locking decision below), so `Push()`
+    — not `PushCoalesced()` — is what board calls inside that lock.
 - Add **one** new method to `internal/gitrepo`: `StageAllAndCommit(msg string)
   (sha string, committed bool, err error)` — the opt-in `add -A` wildcard-stage
   variant, board's documented exception to gitrepo's explicit-file-list rule.
@@ -66,9 +68,13 @@ data (that is the separate, `fabric`-dependent `board-weft-storage` redesign).
   push → 1 `pull --rebase` → 1 retry, aborting the rebase on failure).
 - **New gitrepo primitives beyond the wildcard method** — no `pull --ff-only`
   method (nothing calls `Pull` anymore), no new rebase surface. gitrepo's
-  existing `Push`/`PushCoalesced` already model `pull --rebase` + `rebase
-  --abort`, so the design's "expected gitrepo gap" for the push path is already
-  filled and requires no new method.
+  existing `Push` already models `pull --rebase` + `rebase --abort`, so the
+  design's "expected gitrepo gap" for the push path is already filled and
+  requires no new method.
+- **`PushCoalesced` is not used** — board provides its own cross-process
+  single-pusher coalescing via its retained top-level `pushLockFile`; layering
+  `PushCoalesced`'s internal `.gitrepo-push.lock` on top would be redundant
+  double-locking. See the locking decision.
 - **`CurrentSHA`/`SHAExists`/`ChangedFilesSince`/snapshot calls** — board tracks
   no snapshot SHA and delegates rebase to gitrepo, so it needs none of these.
   The design mentioned them speculatively; YAGNI.
@@ -93,30 +99,50 @@ data (that is the separate, `fabric`-dependent `board-weft-storage` redesign).
   alive and forces a `pull --ff-only` gitrepo method nobody calls; (b) leaving
   `git.go` untouched — leaves two divergent git-plumbing styles in the package.
 
-### push-path-collapses-onto-PushCoalesced
+### push-path-uses-gitrepo-Push-under-board's-own-lock
 
-- Decision: `Sync` adopts `gitrepo.PushCoalesced()` wholesale for the push half.
-  Drop board's `pushLockFile` constant, its `pushLock` acquisition, `hasUnpushed`,
-  and `pushUnpushed`. `Sync` keeps only its commit loop; each iteration commits
-  (under the existing `writeLockFile`) then, unless `skipPush`, calls
-  `repo.PushCoalesced()`.
-- Rationale: gitrepo's `PushCoalesced` *is* the documented replacement — it
-  provides the same cross-process single-pusher coalescing (via its own
-  `.gitrepo-push.lock`), the same `hasUnpushed` short-circuit, and the same
-  rebase-retry policy board hand-rolls. Board's retry policy is byte-for-byte
-  equivalent to gitrepo's, so nothing is lost.
-- Consequence (intended, benign): commits (`writeLockFile`) and pushes
-  (gitrepo's `.gitrepo-push.lock`) are no longer held under one shared board
-  lock across the whole `Sync`. Concurrency is still correct — `writeLockFile`
-  serializes commits, gitrepo's lock serializes pushes — and a second concurrent
-  `Sync` process still coalesces to a fast no-op. This is slightly more
-  concurrent than today, never less safe.
+- Decision: `Sync` **keeps** board's single top-level `pushLockFile`
+  (`tasks.json.push.lock`), acquired once at the top and held across the entire
+  commit+push loop, exactly as today. Inside that lock each iteration commits
+  (under the existing finer `writeLockFile`) then, unless `skipPush`, calls
+  `repo.Push()`. Board's own top-level lock is the cross-process single-pusher /
+  coalescing mechanism; `gitrepo.PushCoalesced()` is **not** used. Board still
+  deletes its hand-rolled `hasUnpushed`, `pushUnpushed`, and the 2-attempt retry
+  loop — `Push()` owns the push + rebase-retry.
+- Rationale — the locking race this avoids: if board dropped its top-level lock
+  and pushed via `PushCoalesced` (which acquires only its own
+  `.gitrepo-push.lock`) while commits ran under a *separate* `writeLockFile`,
+  the two locks would not exclude each other. A concurrent `Sync` process B's
+  `commitDirty` (`add -A`) could then run at the same time as process A's
+  `Push`/`PushCoalesced` `pull --rebase` — both mutate `.git/index` and contend
+  on `.git/index.lock` — a real race that today's shared top-level lock
+  prevents. gitrepo's doc names `PushCoalesced` "the board sync.go push-loop
+  replacement," but that framing predates this locking analysis: `PushCoalesced`
+  cannot be wrapped in board's own shared commit+push lock (it acquires its lock
+  internally), so keeping board's lock + `Push()` is the only way to preserve
+  today's commit-vs-push mutual exclusion while still routing all raw git through
+  gitrepo. Board's rebase-retry policy is byte-for-byte equivalent to
+  `Push()`'s, so nothing behavioral is lost.
+- Consequence (locking unchanged from today): commit and push remain mutually
+  exclusive across `Sync` processes under the single top-level lock; a second
+  concurrent `Sync` still blocks at the top and coalesces to a fast no-op. There
+  is **no new concurrency** relative to today — the migration is
+  locking-behavior-preserving.
+- Consequence (minor): `Push()` has no `hasUnpushed` short-circuit, so a loop
+  iteration with nothing unpushed runs one no-op `git push` ("Everything
+  up-to-date", exit 0) instead of skipping. Harmless, and it also makes the
+  push path self-healing — an unpushed commit left by a prior failed push is
+  always retried, not gated behind a stale `hasUnpushed` check.
 - Consequence (improvement): gitrepo pushes with `-c push.autoSetupRemote=true`,
   so board's very first push on a branch with no upstream now establishes
   tracking instead of relying on pre-existing `@{u}` config.
-- Rejected: keeping board's own retry loop and adding primitive `push` /
-  `pull --rebase` methods to gitrepo — duplicates logic gitrepo already owns and
-  adds rebase surface gitrepo's scope boundaries deliberately exclude.
+- Rejected: (a) adopting `PushCoalesced` wholesale and dropping the top-level
+  lock — introduces the `index.lock` race above; (b) keeping the top-level lock
+  *and* using `PushCoalesced` inside it — race-free but redundant double-locking
+  (board's lock + gitrepo's `.gitrepo-push.lock`) for one job; (c) keeping
+  board's own retry loop and adding primitive `push`/`pull --rebase` methods to
+  gitrepo — duplicates logic gitrepo already owns and adds rebase surface
+  gitrepo's scope boundaries deliberately exclude.
 
 ### wildcard-stage-method-shape
 
@@ -144,8 +170,8 @@ data (that is the separate, `fabric`-dependent `board-weft-storage` redesign).
 ### board-only-uses-three-gitrepo-calls
 
 - Decision: Board's migrated code uses exactly `gitrepo.New`,
-  `(*Repo).StageAllAndCommit`, and `(*Repo).PushCoalesced`. No `CurrentSHA`,
-  `SHAExists`, `ChangedFilesSince`, `Push`, or snapshot calls.
+  `(*Repo).StageAllAndCommit`, and `(*Repo).Push`. No `CurrentSHA`,
+  `SHAExists`, `ChangedFilesSince`, `PushCoalesced`, or snapshot calls.
 - Rationale: board's push path delegates the rebase to gitrepo and tracks no
   snapshot SHA, so it never needs to inspect what it is racing against. YAGNI.
 - Rejected: wiring `CurrentSHA`/`SHAExists` "for later" — unused calls today.
@@ -169,31 +195,36 @@ data (that is the separate, `fabric`-dependent `board-weft-storage` redesign).
   - `StageAndCommit(msg, files)` — explicit-list, never wildcards. The new
     `StageAllAndCommit` is its wildcard sibling; add it in `gitrepo.go` next to
     `StageAndCommit`, reusing the same `run` helper and `CurrentSHA`.
-  - `Push()` / `PushCoalesced()` (`push.go`) — both push-only; both run
-    `pushWithRebaseRetry` (one push, one `pull --rebase` on a
-    `rebaseRetryTriggers` rejection, one retry, `rebase --abort` on failure).
-    `PushCoalesced` wraps that in a `lock.AcquireWriteLock` on
-    `.gitrepo-push.lock` in the repo root + an internal `hasUnpushed` guard.
+  - `Push()` (`push.go`) — push-only; runs `pushWithRebaseRetry` (one push, one
+    `pull --rebase` on a `rebaseRetryTriggers` rejection, one retry, `rebase
+    --abort` on failure). This is the method board uses. (`PushCoalesced` wraps
+    the same retry in its own `.gitrepo-push.lock` + `hasUnpushed` guard; board
+    does not use it — board's own top-level lock already coalesces.)
 - **`internal/boardengine/sync.go`** — the file to rewrite:
-  - Keep `Sync(boardPath, skipGit, skipPush)`'s outer shape: `skipGit` early
-    return, `ensureLockfilesIgnored`, then the commit loop keyed on whether a
+  - Keep `Sync(boardPath, skipGit, skipPush)`'s outer shape unchanged: `skipGit`
+    early return, `ensureLockfilesIgnored`, **acquire the top-level
+    `pushLockFile` (`tasks.json.push.lock`) once and hold it across the whole
+    loop** (unchanged from today), then the commit loop keyed on whether a
     commit was made.
   - `commitDirty` keeps acquiring `writeLockFile` (`tasks.json.lock`) — that
     write-vs-commit serialization is board's, not gitrepo's — but its body
     becomes a single `repo.StageAllAndCommit("board sync")` call returning
     `committed`.
   - Construct one `repo := gitrepo.New(boardPath)` in `Sync` and pass it to
-    `commitDirty`; the push step is `if !skipPush { repo.PushCoalesced() }`.
-  - Delete `pushUnpushed`, `hasUnpushed`, and the `pushLockFile` const.
-- **`.gitignore` / lock-file interaction (important):** board's
-  `StageAllAndCommit` runs `add -A`, which would otherwise stage gitrepo's
-  `.gitrepo-push.lock`. `ensureLockfilesIgnored` already appends `*.lock` to the
-  board dir's `.gitignore` (alongside `*.swaplock` and `renderManifestFile =
-  ".board-rendered.json"`), and `.gitrepo-push.lock` matches `*.lock` — so it is
-  ignored with no change needed. `ensureLockfilesIgnored` must keep running
-  before the first commit. This is exactly the "board wildcard-stages, so board
-  owns ignoring gitrepo's lock" situation gitrepo's doc flags (gitrepo itself
-  manages no `.gitignore` because its own `StageAndCommit` never wildcards).
+    `commitDirty`; the push step is `if !skipPush { repo.Push() }`, inside the
+    held top-level lock.
+  - Delete `pushUnpushed` and `hasUnpushed` (gitrepo's `Push` owns both the push
+    and the rebase-retry). **Keep** the `pushLockFile` const and its
+    acquisition.
+- **`.gitignore` / lock-file interaction:** board's `StageAllAndCommit` runs
+  `add -A`, which would otherwise stage board's own lock files
+  (`tasks.json.lock`, `tasks.json.push.lock`). `ensureLockfilesIgnored` already
+  appends `*.lock` to the board dir's `.gitignore` (alongside `*.swaplock` and
+  `renderManifestFile = ".board-rendered.json"`), and both match `*.lock` — so
+  they are ignored with no change needed. `ensureLockfilesIgnored` must keep
+  running before the first commit. (Since board uses `Push()` not
+  `PushCoalesced`, gitrepo's `.gitrepo-push.lock` is never created in the board
+  dir, so there is nothing new for board to ignore.)
 - **No import cycle:** `boardengine` already imports `internal/gitexec` and
   `internal/lock`; `gitrepo` imports the same two and never imports
   `boardengine`. No boardengine leaf invariant exists. Adding the `gitrepo`
@@ -249,11 +280,17 @@ From `CONSTRAINTS.md` (relevant subset):
   - `TestSyncCleanTreeIsNoOp` — first sync commits `.gitignore`, second is a
     no-op.
   - `TestSyncIgnoresLockfiles` — `.gitignore` committed; no `.lock`/`.swaplock`
-    tracked. This also implicitly guards that gitrepo's `.gitrepo-push.lock` is
-    never committed (matches `*.lock`); consider an explicit assertion that
-    `.gitrepo-push.lock` is untracked after a push.
+    tracked (covers board's own `tasks.json.lock` / `tasks.json.push.lock`).
 - **Delete `boardtest/git_test.go`** — it only tested the removed
   `Pull`/`CommitPush`.
+- **Concurrency coverage (resolves the round-1 review NOTE):** no new
+  concurrent-`Sync` test is required. Under the locking decision above, board's
+  top-level `pushLockFile` still spans the whole commit+push loop, so the
+  commit-vs-push locking semantics are **identical to today's** — this task
+  introduces no new concurrency to guard against. The existing single-process
+  `sync_test.go` remains exactly as sufficient a safety net as it was before the
+  migration; adding a concurrent-`Sync` test would be net-new coverage of
+  pre-existing behavior, out of scope for this task.
 - **Full run:** `go test ./...` plus the integration tier
   (`-tags integration`) must pass, including the CONSTRAINTS enforcement tests
   (hermetic-env, tier-purity, help-tree).
@@ -262,17 +299,27 @@ From `CONSTRAINTS.md` (relevant subset):
 
 - **Q:** Delete, rewire, or leave `git.go`'s `Pull`/`CommitPush`? **A:** Delete
   them and their test — zero production callers; `BoardPushError` goes too.
-- **Q:** Adopt gitrepo's `PushCoalesced` wholesale, or keep board's retry loop
-  and add primitive push/rebase methods to gitrepo? **A:** Adopt `PushCoalesced`
-  wholesale; board's retry policy is identical to gitrepo's, and gitrepo's doc
-  names this the push-loop replacement.
+- **Q:** How does the push half migrate — adopt `PushCoalesced` wholesale, or
+  keep board's own locking? **A:** (revised after round-1 review) Keep board's
+  top-level `pushLockFile` spanning commit+push and call gitrepo's `Push()`
+  inside it; do **not** use `PushCoalesced`. Board's retry policy is identical
+  to `Push()`'s, and board's own lock preserves today's commit-vs-push mutual
+  exclusion. (The initial answer — "adopt `PushCoalesced` wholesale, drop the
+  outer lock" — was reversed because it introduced an `index.lock` race; see
+  the round-1 gap below.)
+- **Q (round-1 review gap):** Dropping board's shared top-level lock lets a
+  concurrent `Sync`'s `commitDirty` (`add -A`) race a `PushCoalesced` `pull
+  --rebase` on the same repo's index — resolve it. **A:** Keep board's single
+  top-level `pushLockFile` spanning commit+push and use gitrepo `Push()` (not
+  `PushCoalesced`) inside it. Locking stays identical to today, so no new race
+  and no new test needed (round-1 NOTE folded into Testing).
 - **Q:** Shape/name of the new wildcard-stage method? **A:**
   `StageAllAndCommit(msg string) (sha string, committed bool, err error)`,
   mirroring `StageAndCommit`; separate method, never a change to
   `StageAndCommit`'s explicit-list contract; documented as board's exception.
 - **Q:** Should board also wire `CurrentSHA`/`SHAExists`? **A:** No — YAGNI;
   board delegates rebase to gitrepo and tracks no snapshot SHA. Only `New` +
-  `StageAllAndCommit` + `PushCoalesced`.
+  `StageAllAndCommit` + `Push`.
 - **Q:** Test strategy? **A:** Migrate `sync_test.go` unchanged as the safety
   net, add a gitrepo integration test for `StageAllAndCommit`, delete
   `git_test.go`.
