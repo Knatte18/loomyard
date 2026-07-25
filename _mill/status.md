@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-fabric-core
+phase: approved-fabric-topology-mechanics
 slug: fabric
 branch: fabric
 plan: _mill/plan
@@ -28,6 +28,7 @@ planned  '2026-07-25T06:58:30Z'
 implementing  '2026-07-25T07:02:27Z'
 approved-gitrepo-growth  '2026-07-25T07:08:56Z'
 approved-fabric-core  '2026-07-25T07:17:35Z'
+approved-fabric-topology-mechanics  '2026-07-25T07:30:11Z'
 ```
 
 ## Batches
@@ -43,7 +44,7 @@ batches:
     implementer_session: 4291fd05-52ba-438f-9d78-28cf7d95a1c6
     start_sha: b0eec86825e4b2d4a5048b8b3ee7430a5bb69cab
   - name: fabric-topology-mechanics
-    state: running
+    state: approved
     implementer_session: 722842f1-5d6c-45f9-9563-ca39a099b44c
     start_sha: d759fe047c95dc00bc82cbbde19d4057a87fe344
   - name: fabric-weft-git
