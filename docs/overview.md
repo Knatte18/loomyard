@@ -298,22 +298,33 @@ User-facing modules each get one `lyx <module>` namespace:
   parsing), never the loop itself. Input contract:
   [plan-format.md](reference/plan-format.md). Branches off `shuttle` directly; does not
   need `perch`. Ends at batches-built — the terminal holistic review is the separate
-  Builder-review gate (`perch`), driven by `loom` or the operator. ✅ Implemented. See
+  Builder-review gate (`perch`), driven by `loom` or the operator. **Now obsolete as an
+  active plan-format consumer** — `webster`'s rewrite moved plan-format-v3 consumption
+  onto `internal/planparser`/`internal/batcher`, so `builder` no longer gains new plans;
+  it stays frozen and fully functional in-tree (`lyx builder` and its own tests
+  untouched), with its deletion tracked as a separate later task. ✅ Implemented. See
   [builder-contract.md](reference/builder-contract.md).
 - **webster** — fork-based sibling of builder: one long-lived Master session reads the
-  codebase and the whole plan once, then forks one implementer per batch in-session
-  (Claude Code's Agent tool) instead of spawning a fresh mux/tmux strand per batch;
-  bracket verbs (`begin-batch`/`await-batch`/`record-batch`) replace `spawn-batch`/`poll`
-  (forks are backgrounded agents on current Claude Code, so Master long-polls
-  `await-batch` for each batch's report instead of relying on a synchronous fork return),
-  and a genuine model escalation (recovery after a stuck/report-less fork) still spawns a
-  cold strand.
-  Kept contract-compatible with `builder` (same plan input, batch-report schema, and
-  outcome schema) so both can be A/B tested on the same plan (`internal/websterengine` +
+  codebase and the whole plan once, then forks one implementer per execution batch
+  in-session (Claude Code's Agent tool) instead of spawning a fresh mux/tmux strand per
+  batch; bracket verbs (`begin-batch`/`await-batch`/`record-batch`) replace
+  `spawn-batch`/`poll` (forks are backgrounded agents on current Claude Code, so Master
+  long-polls `await-batch` for each batch's report instead of relying on a synchronous
+  fork return), and a genuine model escalation (recovery after a stuck/report-less fork)
+  still spawns a cold strand. Consumes the flat card-list
+  [plan-format-v3.md](reference/plan-format-v3.md) plan via its own sole parser,
+  `internal/planparser`, groups that plan's cards into execution batches via its own
+  config-selected `internal/batcher` registry (identity batcher — one card, one batch —
+  by default), and runs a dedicated integration-suite fork with in-process SHA-bisect on
+  failure once every batch has landed done (`internal/websterengine` +
   `internal/webstercli`). ✅ Implemented. See
   [builder-contract.md](reference/builder-contract.md#webster-the-fork-based-sibling).
-  The Planned `webster: rewrite for flat card list` item will move `webster` off this v2
-  plan input onto the emerging [plan-format-v3.md](reference/plan-format-v3.md).
+- **planparser** — the sole parser of the on-disk flat card-list plan format
+  (`_lyx/plan/`, see [plan-format-v3.md](reference/plan-format-v3.md)); no other package
+  reads that tree directly (`internal/planparser`). ✅ Implemented.
+- **batcher** — the name-keyed batchifier registry that groups a plan's flat card list
+  into webster's execution batches, selected by `webster.yaml`'s `batcher:` config key
+  (default: identity, one card per batch) (`internal/batcher`). ✅ Implemented.
 - **loom** — phased orchestrator: drives Preflight → Discussion → Plan → Builder → Raddle →
   Finalize, each gated by a perch review (`lyx loom run`, alias `lyx run`). 🚧 Design — not
   built; the `lyx loom` command and phase machine are unbuilt. loom's config module
