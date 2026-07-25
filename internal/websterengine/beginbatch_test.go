@@ -4,24 +4,35 @@
 // docs/benchmarks/running-tests.md): a real scratch git repo backs
 // WorktreeRoot for the genuine HeadSHA capture, while the model-injection
 // seam (Injector) and the provider seam (shuttleengine.Engine) are local
-// fakes, mirroring builderengine/spawn_test.go's fixture pattern. Plan
-// values are constructed as *builderengine.Plan literals; the only
-// directory ParsePlan-style parsing this file needs is Fingerprint's own
-// *.md scan, backed by a t.TempDir() seeded with throwaway markdown files.
+// fakes, mirroring builderengine/spawn_test.go's fixture pattern. The plan
+// itself is a minimal *planparser.Plan (Dir only — begin-batch never reads
+// Plan.Cards, only deps.Batches, the already-derived execution batches),
+// backed by a t.TempDir() seeded with a throwaway markdown file so the
+// fingerprint gate has something real to hash. There is no chain/restart
+// path and no oversized role under the flat card-list model: this file's
+// own mustFingerprint helper duplicates fingerprint.go's pure hashing
+// algorithm rather than importing anything, since this file deliberately
+// stays in the external websterengine_test package (fingerprint itself is
+// package-private).
 
 package websterengine_test
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/builderengine"
+	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/muxengine"
+	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -72,10 +83,10 @@ func commitFile(t *testing.T, dir, name, content, message string) string {
 }
 
 // seedPlanDir creates a t.TempDir() seeded with one throwaway markdown file,
-// so builderengine.Fingerprint has something real to hash — BeginBatch's
-// fingerprint gate reads planDir directly, never Plan.Batches, so no actual
+// so the fingerprint gate has something real to hash — BeginBatch's
+// fingerprint gate reads planDir directly, never deps.Batches, so no actual
 // plan-format parsing is needed for these tests (per the card's own literal-
-// Plan-value requirement).
+// Batches-value requirement).
 func seedPlanDir(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -83,6 +94,77 @@ func seedPlanDir(t *testing.T) string {
 		t.Fatalf("seed plan dir: %v", err)
 	}
 	return dir
+}
+
+// mustFingerprint replicates fingerprint.go's own algorithm exactly
+// (SHA-256 over every "*.md" file's name and contents, sorted, NUL-
+// separated) so a test can seed a State.PlanFingerprint that matches what
+// BeginBatch will independently recompute — fingerprint itself is
+// package-private and this file's tests deliberately stay in the external
+// websterengine_test package (see the file's own doc comment).
+func mustFingerprint(t *testing.T, planDir string) string {
+	t.Helper()
+	entries, err := os.ReadDir(planDir)
+	if err != nil {
+		t.Fatalf("ReadDir(%q): %v", planDir, err)
+	}
+	var names []string
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+			continue
+		}
+		names = append(names, e.Name())
+	}
+	sort.Strings(names)
+
+	h := sha256.New()
+	for _, name := range names {
+		data, err := os.ReadFile(filepath.Join(planDir, name))
+		if err != nil {
+			t.Fatalf("read %s: %v", name, err)
+		}
+		h.Write([]byte(name))
+		h.Write([]byte{0})
+		h.Write(data)
+		h.Write([]byte{0})
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+// beginFakeMux is a minimal shuttleengine.MuxOps double for BeginBatch's
+// strand-reclaim step: Status returns a scripted set of live strands, and
+// RemoveStrand records every guid it was asked to stop. Only Status and
+// RemoveStrand are reached by BeginBatch's own path.
+type beginFakeMux struct {
+	live    []string
+	removed []string
+}
+
+func (m *beginFakeMux) Status() (muxengine.StatusResult, error) {
+	var strands []muxengine.StrandStatus
+	for _, g := range m.live {
+		strands = append(strands, muxengine.StrandStatus{GUID: g, Live: true})
+	}
+	return muxengine.StatusResult{Strands: strands}, nil
+}
+func (m *beginFakeMux) RemoveStrand(guid string, recursive bool) (muxengine.Removed, error) {
+	m.removed = append(m.removed, guid)
+	return muxengine.Removed{}, nil
+}
+func (m *beginFakeMux) AddStrand(spec muxengine.AddSpec) (muxengine.Strand, error) {
+	return muxengine.Strand{}, nil
+}
+func (m *beginFakeMux) SendText(guid, text string, submit bool) error { return nil }
+func (m *beginFakeMux) SendKey(guid, key string) error                { return nil }
+func (m *beginFakeMux) CapturePane(guid string) (string, error)       { return "", nil }
+
+var _ shuttleengine.MuxOps = (*beginFakeMux)(nil)
+
+// beginCard returns a minimal single-card batcher.Batch identifying number
+// and slug — begin-batch's batchIdentity assumption (batch ≡ card under the
+// identity batchifier).
+func beginCard(number int, slug string) batcher.Batch {
+	return batcher.Batch{Cards: []planparser.Card{{Number: number, Slug: slug, Title: slug, Intent: "placeholder card " + slug}}}
 }
 
 // beginFakeInjector is a hermetic websterengine.Injector double: it records
@@ -142,14 +224,13 @@ var _ shuttleengine.Engine = (*beginFakeEngine)(nil)
 
 // beginFixture is a fully-wired set of BeginBatch dependencies: a real
 // scratch git repo as WorktreeRoot, fresh webster/reports/prompts temp dirs,
-// a literal two-batch plan (batch 1 plain, batch 2 oversized) backed by a
-// seeded plan dir for the fingerprint gate, and every one of webster's three
-// roles pre-resolved with distinct model names so a model-assertion test can
-// tell them apart.
+// two literal single-card execution batches backed by a seeded plan dir for
+// the fingerprint gate, and webster's two roles pre-resolved with distinct
+// model names.
 type beginFixture struct {
 	Deps      websterengine.BeginDeps
 	Injector  *beginFakeInjector
-	Mux       *chainFakeMux
+	Mux       *beginFakeMux
 	Worktree  string
 	PlanDir   string
 	PromptDir string
@@ -159,35 +240,30 @@ func newBeginFixture(t *testing.T) *beginFixture {
 	t.Helper()
 
 	planDir := seedPlanDir(t)
-	fingerprint, err := builderengine.Fingerprint(planDir)
-	if err != nil {
-		t.Fatalf("Fingerprint(%q) error = %v; want nil", planDir, err)
-	}
+	fp := mustFingerprint(t, planDir)
 
-	plan := &builderengine.Plan{
-		Dir: planDir,
-		Batches: []builderengine.PlanBatch{
-			{Number: 1, Slug: "json-flag", File: "01-json-flag.md", Scope: []string{"internal/foo"}},
-			{Number: 2, Slug: "list-tests", File: "02-list-tests.md", Oversized: true, Scope: []string{"internal/bar"}},
-		},
+	plan := &planparser.Plan{Dir: planDir}
+	batches := []batcher.Batch{
+		beginCard(1, "json-flag"),
+		beginCard(2, "list-tests"),
 	}
 
 	worktree := newScratchRepo(t)
 	commitFile(t, worktree, "base.txt", "base", "base commit")
 
 	roles := map[websterengine.Role]modelspec.Resolved{
-		websterengine.RoleMaster:          {Engine: "claude", Model: "master-model", Params: map[string]string{}},
-		websterengine.RoleMasterOversized: {Engine: "claude", Model: "oversized-model", Params: map[string]string{}},
-		websterengine.RoleRecovery:        {Engine: "claude", Model: "recovery-model", Params: map[string]string{}},
+		websterengine.RoleMaster:   {Engine: "claude", Model: "master-model", Params: map[string]string{}},
+		websterengine.RoleRecovery: {Engine: "claude", Model: "recovery-model", Params: map[string]string{}},
 	}
 
 	injector := &beginFakeInjector{}
 	promptsDir := t.TempDir()
-	mux := &chainFakeMux{}
+	mux := &beginFakeMux{}
 
 	deps := websterengine.BeginDeps{
 		Plan:         plan,
-		State:        &websterengine.State{PlanFingerprint: fingerprint, MasterStrand: "master-strand-1"},
+		Batches:      batches,
+		State:        &websterengine.State{PlanFingerprint: fp, MasterStrand: "master-strand-1"},
 		Roles:        roles,
 		Config:       websterengine.Config{SelfFixCap: 2},
 		Engine:       &beginFakeEngine{},
@@ -208,11 +284,11 @@ func newBeginFixture(t *testing.T) *beginFixture {
 func TestBeginBatch_PauseSentinel(t *testing.T) {
 	fx := newBeginFixture(t)
 
-	if err := builderengine.RequestPause(fx.Deps.WebsterDir); err != nil {
+	if err := websterengine.RequestPause(fx.Deps.WebsterDir); err != nil {
 		t.Fatalf("RequestPause() error = %v; want nil", err)
 	}
 
-	_, err := websterengine.BeginBatch(fx.Deps, 1, false)
+	_, err := websterengine.BeginBatch(fx.Deps, 1)
 	if !errors.Is(err, websterengine.ErrPaused) {
 		t.Fatalf("BeginBatch() error = %v; want errors.Is(err, ErrPaused)", err)
 	}
@@ -228,7 +304,7 @@ func TestBeginBatch_FingerprintMismatch(t *testing.T) {
 	fx := newBeginFixture(t)
 	fx.Deps.State.PlanFingerprint = "0000000000000000000000000000000000000000000000000000000000000000"
 
-	_, err := websterengine.BeginBatch(fx.Deps, 1, false)
+	_, err := websterengine.BeginBatch(fx.Deps, 1)
 	if !errors.Is(err, websterengine.ErrFingerprintMismatch) {
 		t.Fatalf("BeginBatch() error = %v; want errors.Is(err, ErrFingerprintMismatch)", err)
 	}
@@ -241,15 +317,17 @@ func TestBeginBatch_FingerprintMismatch(t *testing.T) {
 }
 
 // TestBeginBatch_ModelAssertion proves the idempotent model-assertion rule:
-// an oversized batch injects exactly once when AssertedModel still names the
-// plain master model, updating AssertedModel afterward, while a repeat call
+// a begin-batch call injects exactly once when AssertedModel still names a
+// different model, updating AssertedModel afterward, while a repeat call
 // once AssertedModel already names the target model injects zero times.
+// There is no oversized escalation under the flat card-list model — every
+// batch targets the same RoleMaster model.
 func TestBeginBatch_ModelAssertion(t *testing.T) {
-	t.Run("oversized batch injects once and updates AssertedModel", func(t *testing.T) {
+	t.Run("first call injects and updates AssertedModel", func(t *testing.T) {
 		fx := newBeginFixture(t)
-		fx.Deps.State.AssertedModel = "master-model"
+		fx.Deps.State.AssertedModel = "some-other-model"
 
-		result, err := websterengine.BeginBatch(fx.Deps, 2, false)
+		result, err := websterengine.BeginBatch(fx.Deps, 1)
 		if err != nil {
 			t.Fatalf("BeginBatch() error = %v; want nil", err)
 		}
@@ -260,29 +338,29 @@ func TestBeginBatch_ModelAssertion(t *testing.T) {
 		if call.GUID != "master-strand-1" {
 			t.Errorf("Inject guid = %q; want %q", call.GUID, "master-strand-1")
 		}
-		if len(call.Inputs) != 1 || !strings.Contains(call.Inputs[0].Text, "oversized-model") {
-			t.Errorf("Inject inputs = %v; want the oversized-model switch sequence", call.Inputs)
+		if len(call.Inputs) != 1 || !strings.Contains(call.Inputs[0].Text, "master-model") {
+			t.Errorf("Inject inputs = %v; want the master-model switch sequence", call.Inputs)
 		}
-		if fx.Deps.State.AssertedModel != "oversized-model" {
-			t.Errorf("State.AssertedModel = %q; want %q", fx.Deps.State.AssertedModel, "oversized-model")
+		if fx.Deps.State.AssertedModel != "master-model" {
+			t.Errorf("State.AssertedModel = %q; want %q", fx.Deps.State.AssertedModel, "master-model")
 		}
-		if result.AssertedModel != "oversized-model" {
-			t.Errorf("BeginResult.AssertedModel = %q; want %q", result.AssertedModel, "oversized-model")
+		if result.AssertedModel != "master-model" {
+			t.Errorf("BeginResult.AssertedModel = %q; want %q", result.AssertedModel, "master-model")
 		}
 	})
 
 	t.Run("same-model batch injects zero times (idempotence)", func(t *testing.T) {
 		fx := newBeginFixture(t)
-		fx.Deps.State.AssertedModel = "oversized-model"
+		fx.Deps.State.AssertedModel = "master-model"
 
-		if _, err := websterengine.BeginBatch(fx.Deps, 2, false); err != nil {
+		if _, err := websterengine.BeginBatch(fx.Deps, 1); err != nil {
 			t.Fatalf("BeginBatch() error = %v; want nil", err)
 		}
 		if len(fx.Injector.calls) != 0 {
 			t.Errorf("Injector.calls = %d; want zero (AssertedModel already matched the target)", len(fx.Injector.calls))
 		}
-		if fx.Deps.State.AssertedModel != "oversized-model" {
-			t.Errorf("State.AssertedModel = %q; want unchanged %q", fx.Deps.State.AssertedModel, "oversized-model")
+		if fx.Deps.State.AssertedModel != "master-model" {
+			t.Errorf("State.AssertedModel = %q; want unchanged %q", fx.Deps.State.AssertedModel, "master-model")
 		}
 	})
 
@@ -292,7 +370,7 @@ func TestBeginBatch_ModelAssertion(t *testing.T) {
 		// caller's error path discards the unsaved AssertedModel mutation —
 		// that divergence would silently skip a needed re-assertion later.
 		fx := newBeginFixture(t)
-		fx.Deps.State.AssertedModel = "master-model"
+		fx.Deps.State.AssertedModel = "some-other-model"
 		// A regular file at the PromptsDir path makes MkdirAll — and thus the
 		// prompt write — fail before the injection site is ever reached.
 		blockedDir := filepath.Join(t.TempDir(), "prompts")
@@ -301,15 +379,15 @@ func TestBeginBatch_ModelAssertion(t *testing.T) {
 		}
 		fx.Deps.PromptsDir = blockedDir
 
-		_, err := websterengine.BeginBatch(fx.Deps, 2, false)
+		_, err := websterengine.BeginBatch(fx.Deps, 1)
 		if err == nil {
 			t.Fatal("BeginBatch() error = nil; want a prompt-write failure")
 		}
 		if len(fx.Injector.calls) != 0 {
 			t.Errorf("Injector.calls = %d; want zero — a failed begin-batch must not have switched the pane", len(fx.Injector.calls))
 		}
-		if fx.Deps.State.AssertedModel != "master-model" {
-			t.Errorf("State.AssertedModel = %q; want unchanged %q", fx.Deps.State.AssertedModel, "master-model")
+		if fx.Deps.State.AssertedModel != "some-other-model" {
+			t.Errorf("State.AssertedModel = %q; want unchanged %q", fx.Deps.State.AssertedModel, "some-other-model")
 		}
 	})
 }
@@ -322,7 +400,7 @@ func TestBeginBatch_PromptFilePrevDigest(t *testing.T) {
 	t.Run("batch 1 renders the first-batch sentinel", func(t *testing.T) {
 		fx := newBeginFixture(t)
 
-		result, err := websterengine.BeginBatch(fx.Deps, 1, false)
+		result, err := websterengine.BeginBatch(fx.Deps, 1)
 		if err != nil {
 			t.Fatalf("BeginBatch() error = %v; want nil", err)
 		}
@@ -342,16 +420,15 @@ func TestBeginBatch_PromptFilePrevDigest(t *testing.T) {
 				Slug:     "json-flag",
 				Terminal: true,
 				Status:   "done",
-				Digest: &builderengine.Digest{
-					Batch:        "01-json-flag",
-					Status:       builderengine.DigestStatusDone,
-					Tests:        "green",
-					FilesChanged: 3,
+				Digest: &websterengine.Digest{
+					Batch:   "01-json-flag",
+					Status:  websterengine.DigestStatusDone,
+					HeadSHA: "deadbeef",
 				},
 			},
 		}
 
-		result, err := websterengine.BeginBatch(fx.Deps, 2, false)
+		result, err := websterengine.BeginBatch(fx.Deps, 2)
 		if err != nil {
 			t.Fatalf("BeginBatch() error = %v; want nil", err)
 		}
@@ -359,7 +436,7 @@ func TestBeginBatch_PromptFilePrevDigest(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read prompt file %s: %v", result.PromptPath, err)
 		}
-		for _, want := range []string{"01-json-flag", "done", "tests=green", "files_changed=3"} {
+		for _, want := range []string{"01-json-flag", "done", "head_sha=deadbeef"} {
 			if !strings.Contains(string(data), want) {
 				t.Errorf("prompt file does not contain %q; got:\n%s", want, data)
 			}
@@ -369,7 +446,7 @@ func TestBeginBatch_PromptFilePrevDigest(t *testing.T) {
 	t.Run("prompt path is under PromptsDir", func(t *testing.T) {
 		fx := newBeginFixture(t)
 
-		result, err := websterengine.BeginBatch(fx.Deps, 1, false)
+		result, err := websterengine.BeginBatch(fx.Deps, 1)
 		if err != nil {
 			t.Fatalf("BeginBatch() error = %v; want nil", err)
 		}
@@ -381,20 +458,12 @@ func TestBeginBatch_PromptFilePrevDigest(t *testing.T) {
 
 // TestBeginBatch_StateUpdated proves BeginBatch mutates State exactly as
 // documented: CurrentBatch and the fresh BatchState fields for the batch it
-// began, and the chain-start SHA recorded once at the first chain member's
-// begin-batch call, never overwritten by a later member's own call.
+// began. There is no chain/restart concept left under the flat card-list
+// model.
 func TestBeginBatch_StateUpdated(t *testing.T) {
 	fx := newBeginFixture(t)
-	// Extend the fixture's plan with a two-member deferred-verify chain
-	// (batch 3 declares chain-end 4; batch 4 IS the chain-end), mirroring
-	// builderengine's own testdata/plan-valid chain shape.
-	fx.Deps.Plan.Batches = append(fx.Deps.Plan.Batches, builderengine.PlanBatch{
-		Number: 3, Slug: "refactor-a", File: "03-refactor-a.md", ChainEnd: 4,
-	}, builderengine.PlanBatch{
-		Number: 4, Slug: "refactor-b", File: "04-refactor-b.md",
-	})
 
-	result, err := websterengine.BeginBatch(fx.Deps, 1, false)
+	result, err := websterengine.BeginBatch(fx.Deps, 1)
 	if err != nil {
 		t.Fatalf("BeginBatch(1) error = %v; want nil", err)
 	}
@@ -408,52 +477,48 @@ func TestBeginBatch_StateUpdated(t *testing.T) {
 	if bs.Slug != "json-flag" || bs.StartSHA != result.StartSHA || bs.Kind != "fork" || bs.SpawnedAt == "" {
 		t.Errorf("State.Batches[1] = %+v; want Slug=json-flag StartSHA=%q Kind=fork SpawnedAt=<non-empty>", bs, result.StartSHA)
 	}
+}
 
-	if _, err := websterengine.BeginBatch(fx.Deps, 3, false); err != nil {
-		t.Fatalf("BeginBatch(3) error = %v; want nil", err)
-	}
-	anchor, ok := fx.Deps.State.ChainStartSHAs[4]
-	if !ok || anchor == "" {
-		t.Fatalf("ChainStartSHAs[4] not recorded after begin-batch on chain member 3")
-	}
+// TestBeginBatch_UnknownRoleErrors proves a missing role resolution fails
+// loud rather than injecting a zero-value model, naming the missing role.
+func TestBeginBatch_UnknownRoleErrors(t *testing.T) {
+	fx := newBeginFixture(t)
+	delete(fx.Deps.Roles, websterengine.RoleMaster)
 
-	// Advance the host repo's HEAD before begin-batching the chain's other
-	// member, so a wrongly-overwritten anchor would visibly differ.
-	commitFile(t, fx.Worktree, "extra.txt", "extra", "extra commit")
-
-	if _, err := websterengine.BeginBatch(fx.Deps, 4, false); err != nil {
-		t.Fatalf("BeginBatch(4) error = %v; want nil", err)
+	_, err := websterengine.BeginBatch(fx.Deps, 1)
+	if err == nil {
+		t.Fatal("BeginBatch() error = nil; want an error for a missing role resolution")
 	}
-	if got := fx.Deps.State.ChainStartSHAs[4]; got != anchor {
-		t.Errorf("ChainStartSHAs[4] = %q after begin-batching batch 4; want unchanged anchor %q", got, anchor)
+	if !strings.Contains(err.Error(), string(websterengine.RoleMaster)) {
+		t.Errorf("BeginBatch() error = %q; want it to name the missing role %q (batch %s)", err.Error(), websterengine.RoleMaster, strconv.Itoa(1))
 	}
 }
 
-// TestBeginBatch_UnknownRoleErrors proves a batch whose target role has no
-// resolved model-spec entry fails loud rather than injecting a zero-value
-// model, naming the missing role. batchNumber is embedded in the message via
-// strconv so the assertion does not depend on Roles map iteration order.
 // TestBeginBatch_PreExistingReportRefused proves builder's
 // pre-existing-report guard applies to the fork path: a batch whose report
-// file already exists is refused loud (naming the recovery/restart escapes)
-// with its BatchState left untouched — finished work is never silently
-// overwritten by an accidental re-begin.
+// file already exists is refused loud (naming the recovery escape) with its
+// BatchState left untouched — finished work is never silently overwritten
+// by an accidental re-begin. There is no --restart-chain escape under the
+// flat card-list model.
 func TestBeginBatch_PreExistingReportRefused(t *testing.T) {
 	fx := newBeginFixture(t)
-	reportPath := filepath.Join(fx.Deps.ReportsDir, builderengine.BatchReportFileName(1, "json-flag"))
-	if err := os.WriteFile(reportPath, []byte("batch: 01-json-flag\nstatus: done\ntests: green\nstuck_reason: null\n"), 0o644); err != nil {
+	reportPath := filepath.Join(fx.Deps.ReportsDir, websterengine.ReportFileName(1, "json-flag"))
+	if err := os.WriteFile(reportPath, []byte("status: OK\nhead_sha: deadbeef\n"), 0o644); err != nil {
 		t.Fatalf("seed report: %v", err)
 	}
 	fx.Deps.State.Batches = map[int]*websterengine.BatchState{
 		1: {Slug: "json-flag", Kind: "fork", Terminal: true, Status: "done"},
 	}
 
-	_, err := websterengine.BeginBatch(fx.Deps, 1, false)
+	_, err := websterengine.BeginBatch(fx.Deps, 1)
 	if err == nil {
 		t.Fatal("BeginBatch() with an existing report = nil error; want the pre-existing-report refusal")
 	}
-	if !strings.Contains(err.Error(), "recover-batch") || !strings.Contains(err.Error(), "--restart-chain") {
-		t.Errorf("error = %q; want it to name the recover-batch and --restart-chain escapes", err.Error())
+	if !strings.Contains(err.Error(), "recover-batch") {
+		t.Errorf("error = %q; want it to name the recover-batch escape", err.Error())
+	}
+	if strings.Contains(err.Error(), "--restart-chain") {
+		t.Errorf("error = %q; want no --restart-chain escape (chain machinery is gone)", err.Error())
 	}
 	if bs := fx.Deps.State.Batches[1]; !bs.Terminal || bs.Status != "done" {
 		t.Errorf("Batches[1] = %+v; want the terminal done record untouched by the refusal", bs)
@@ -474,7 +539,7 @@ func TestBeginBatch_ReclaimsPriorRecoveryStrandBeforeOverwrite(t *testing.T) {
 	}
 	fx.Mux.live = []string{"dead-but-live-recovery"}
 
-	if _, err := websterengine.BeginBatch(fx.Deps, 1, false); err != nil {
+	if _, err := websterengine.BeginBatch(fx.Deps, 1); err != nil {
 		t.Fatalf("BeginBatch() error = %v; want nil", err)
 	}
 
@@ -484,18 +549,5 @@ func TestBeginBatch_ReclaimsPriorRecoveryStrandBeforeOverwrite(t *testing.T) {
 	// The record was overwritten to a fresh fork batch.
 	if bs := fx.Deps.State.Batches[1]; bs.Kind != "fork" || bs.Terminal || bs.StrandGUID != "" {
 		t.Errorf("Batches[1] = %+v; want a fresh non-terminal fork record with no strand", bs)
-	}
-}
-
-func TestBeginBatch_UnknownRoleErrors(t *testing.T) {
-	fx := newBeginFixture(t)
-	delete(fx.Deps.Roles, websterengine.RoleMaster)
-
-	_, err := websterengine.BeginBatch(fx.Deps, 1, false)
-	if err == nil {
-		t.Fatal("BeginBatch() error = nil; want an error for a missing role resolution")
-	}
-	if !strings.Contains(err.Error(), string(websterengine.RoleMaster)) {
-		t.Errorf("BeginBatch() error = %q; want it to name the missing role %q (batch %s)", err.Error(), websterengine.RoleMaster, strconv.Itoa(1))
 	}
 }
