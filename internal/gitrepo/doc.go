@@ -32,8 +32,8 @@
 // cannot fail, and it does not create, clone, or otherwise manage repo
 // topology; that is fabric's job, built directly on gitexec. From there:
 //
-//   - CurrentSHA, StageAndCommit, ChangedFilesSince, and SHAExists are the
-//     core read/write primitives.
+//   - CurrentSHA, StageAndCommit, StageAllAndCommit, ChangedFilesSince, and
+//     SHAExists are the core read/write primitives.
 //   - Push and PushCoalesced are the push surface (see below).
 //   - SnapshotSHA and SetSnapshotSHA are the snapshot-tracking surface (see
 //     below).
@@ -74,6 +74,9 @@
 // gitrepo covers only the operations its consumers actually need
 // programmatically: stage+commit (explicit file list, never wildcard-stage),
 // diff-since-SHA, current-SHA, push, and snapshot/correspondence tracking.
+// StageAllAndCommit is a separate wildcard-stage variant provided as board's
+// opt-in exception, not a relaxation of the explicit-list default —
+// fabric, raddle, and codeintel keep using explicit-list StageAndCommit.
 // Rebase, interactive staging, cherry-pick, and conflict resolution are
 // explicitly not supported — a human can always use plain git directly in
 // the working tree, since it's an ordinary git repo underneath. fabric
@@ -84,24 +87,25 @@
 // # Push surface
 //
 // Push and PushCoalesced are both push-only — committing is always the
-// caller's separate, prior StageAndCommit call, so a wildcard `add -A` never
-// enters gitrepo. Every push goes through `git -c push.autoSetupRemote=true
+// caller's separate, prior step, whether via StageAndCommit's explicit list
+// or board's StageAllAndCommit wildcard escape hatch; push itself never
+// stages anything. Every push goes through `git -c push.autoSetupRemote=true
 // push`, so a checkout's very first push (no upstream configured yet) still
-// succeeds and establishes tracking instead of failing outright — matching
-// hasUnpushed's no-upstream-means-unpushed contract. Push runs a single git
-// push and transparently recovers from exactly one non-fast-forward-style
-// rejection (stderr containing "non-fast-forward", "rejected", or "fetch
-// first" — the full trigger set board's sync.go:pushUnpushed matches) via
-// one `pull --rebase` before retrying; the rebase-retry path requires a
-// worktree clean of tracked-file changes, which StageAndCommit's caller is
-// responsible for by having already committed. A push that recovered via the
-// rebase rewrote the local commits it replayed: any SHA captured before the
-// push (StageAndCommit's return value in particular) may afterwards name an
-// off-history commit that SHAExists still reports true for via the reflog —
-// callers re-read CurrentSHA after a successful push before recording a SHA
-// anywhere, SetSnapshotSHA included. PushCoalesced adds
-// cross-process coalescing on top: it
-// acquires a single-pusher lock file, .gitrepo-push.lock, in the repo's
+// succeeds and establishes tracking instead of failing outright — a
+// checkout with no upstream configured is always treated as having
+// something to push, so the first push is attempted rather than skipped.
+// Push runs a single git push and transparently recovers from exactly one
+// non-fast-forward-style rejection (stderr containing "non-fast-forward",
+// "rejected", or "fetch first") via one `pull --rebase` before retrying; the
+// rebase-retry path requires a worktree clean of tracked-file changes,
+// which the caller's prior commit call is responsible for. A push that
+// recovered via the rebase rewrote the local commits it replayed: any SHA
+// captured before the push (StageAndCommit's return value in particular)
+// may afterwards name an off-history commit that SHAExists still reports
+// true for via the reflog — callers re-read CurrentSHA after a successful
+// push before recording a SHA anywhere, SetSnapshotSHA included.
+// PushCoalesced adds cross-process coalescing on top: it acquires a
+// single-pusher lock file, .gitrepo-push.lock, in the repo's
 // worktree root before checking whether anything is actually unpushed, so a
 // burst of concurrent callers collapses into as few pushes as possible — a
 // caller that finds nothing unpushed once it acquires the lock returns
