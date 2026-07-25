@@ -219,12 +219,16 @@ func PerchRunsDir(baseDir string) string {
 }
 
 // PlanDir returns the path to the base directory for the plan's artifacts
-// within a baseDir: the directory holding 00-overview.md and every
-// NN-<batch-slug>.md batch file, shared across plan-format versions (see
-// docs/reference/plan-format-v3.md). It lives under _lyx so the plan is
-// weft-synced via the host _lyx junction, like every other durable lyx
-// state. Per the Hub Geometry Invariant, no other package may construct
-// this path.
+// within a baseDir: the directory holding 00-overview.md and one
+// NN-<slug>.md file per plan unit — a batch under plan-format v1/v2
+// (builder's consumer, see docs/reference/plan-format.md), a card under
+// plan-format v3 (loom's Planner producer, see
+// docs/reference/plan-format-v3.md). Both format generations share this
+// one physical `_lyx/plan` directory deliberately: a worktree holds one
+// plan at a time, and v2 retires when webster's flat-card rewrite lands.
+// It lives under _lyx so the plan is weft-synced via the host _lyx
+// junction, like every other durable lyx state. Per the Hub Geometry
+// Invariant, no other package may construct this path.
 //
 // Returns filepath.Join(baseDir, LyxDirName, "plan").
 func PlanDir(baseDir string) string {
@@ -233,7 +237,7 @@ func PlanDir(baseDir string) string {
 
 // PlanDir returns the path to the Plan phase's output directory for this
 // worktree: the directory holding 00-overview.md and every
-// NN-<batch-slug>.md batch file (see PlanOverview). It delegates to the
+// NN-<card-slug>.md card file (see PlanOverview). It delegates to the
 // free PlanDir function so the `_lyx/plan` path has exactly one definition.
 // It is deliberately WorktreeRoot-anchored, NOT Cwd-anchored, matching
 // DiscussionDir's rationale: the plan is the one true per-worktree
@@ -246,9 +250,11 @@ func (l *Layout) PlanDir() string {
 	return PlanDir(l.WorktreeRoot)
 }
 
-// PlanOverview returns the path to the plan's overview file, the Planner
-// producer's sole output artifact and the Plan phase's done-sentinel (see
-// docs/reference/plan-format-v3.md). It shares PlanDir's WorktreeRoot
+// PlanOverview returns the path to the plan's overview file: the Plan
+// phase's done-sentinel and the Planner producer's sole Spec.OutputFiles
+// entry — written last, after every NN-<card-slug>.md card file the
+// producer also writes (see docs/reference/plan-format-v3.md). It shares
+// PlanDir's WorktreeRoot
 // anchoring for the same reason: the overview must resolve to the one true
 // copy at the worktree root, not a per-subdirectory copy. Per the Hub
 // Geometry Invariant, no other package may construct this path.
