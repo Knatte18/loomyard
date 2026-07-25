@@ -33,7 +33,9 @@ implementing  '2026-07-25T07:02:27Z'
 ```yaml
 batches:
   - name: gitrepo-growth
-    state: pending
+    state: running
+    implementer_session: ef34c301-260b-4ffa-810f-f651f6e6bf42
+    start_sha: 98066fa83ead4bbd6e3280cde94ef72b18c9eabe
   - name: fabric-core
     state: pending
   - name: fabric-topology-mechanics
