@@ -57,9 +57,9 @@ the relocated file from scratch and delete the original.
 
 Inherited context can be stale. A file Master or an earlier fork looked at during
 this session's own orientation is not necessarily the version on disk right now — a
-prior batch's own card commits may have changed it since. Re-read every file a
-card's `Context:` list and every file-op field name — before you edit any of
-them — in THIS fork's own turn. Only your own reads, taken now, are current; content
+prior batch's own card commits may have changed it since. Before you edit anything,
+re-read — in THIS fork's own turn — every file named by your cards' `Context:` lists
+and file-op fields. Only your own reads, taken now, are current; content
 you merely inherited through the fork is not.
 
 ## Prior-batch context
