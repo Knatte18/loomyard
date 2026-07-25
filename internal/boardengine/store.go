@@ -578,12 +578,18 @@ func (s *Store) MergeTasks(removeSlugs []string, upsert map[string]any, setStatu
 		return Task{}, err
 	}
 
-	// Validate the upserted task against projected snapshot
+	// Validate the upserted task against projected snapshot. The checked
+	// assertion mirrors UpsertTask: a JSON payload can carry any type here,
+	// and a number/bool/null slug must surface as an envelope error, not a
+	// panic in the CLI process.
 	slugVal, hasSlug := upsert["slug"]
 	if !hasSlug {
 		return Task{}, fmt.Errorf("slug key is missing in merge upsert")
 	}
-	slugStr := slugVal.(string)
+	slugStr, ok := slugVal.(string)
+	if !ok || slugStr == "" {
+		return Task{}, fmt.Errorf("slug must be a non-empty string")
+	}
 
 	var incoming Task
 	var err error

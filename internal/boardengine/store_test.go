@@ -478,6 +478,20 @@ func TestMergeTasks(t *testing.T) {
 		}
 	})
 
+	t.Run("TestMergeTasksNonStringSlugErrors", func(t *testing.T) {
+		s := boardengine.NewStore("")
+
+		// A JSON payload can carry any type as slug; a number must produce an
+		// envelope-able error, not an interface-conversion panic.
+		_, err := s.MergeTasks(nil, map[string]any{"slug": float64(123), "title": "num"}, nil)
+		if err == nil {
+			t.Fatalf("MergeTasks with numeric slug should error")
+		}
+		if got, want := err.Error(), "slug must be a non-empty string"; got != want {
+			t.Errorf("MergeTasks numeric slug error = %q; want %q", got, want)
+		}
+	})
+
 	t.Run("TestMergeTasksValidationRollback", func(t *testing.T) {
 		s := boardengine.NewStore("")
 
