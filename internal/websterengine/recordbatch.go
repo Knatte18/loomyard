@@ -4,9 +4,10 @@
 // matching begin-batch record is refused), the incremental fork audit with
 // its bounded settle retry, webster's fork-audit policy checks, the
 // unconditional transcript-attribution advance, the batch-report presence
-// check and parse, and the distilled digest's persistence. RecordBatch never
-// touches weft — the caller weft-commits state.json and the batch report
-// once RecordBatch returns successfully, mirroring builder's own
+// check and parse, the head-SHA cross-check against the fork's own
+// self-reported head_sha, and the distilled digest's persistence. RecordBatch
+// never touches weft — the caller weft-commits state.json and the batch
+// report once RecordBatch returns successfully, mirroring builder's own
 // weft-commit-boundary discipline.
 
 package websterengine
@@ -17,7 +18,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/Knatte18/loomyard/internal/builderengine"
+	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
@@ -31,9 +32,10 @@ import (
 var ErrNoBeginRecord = errors.New("webster: record-batch called with no begin-batch record for this batch")
 
 // RecordDeps carries every seam RecordBatch needs, so a test can fake each
-// one independently: Plan and State are the already-parsed/loaded plan and
-// run state RecordBatch reads and mutates; Config is the loaded
-// webster.yaml; Engine supplies the incremental fork audit
+// one independently: Batches is the batchifier-derived execution batches
+// (see internal/batcher.Select) `run` computed once at entry; State is the
+// already-loaded run state RecordBatch reads and mutates; Config is the
+// loaded webster.yaml; Engine supplies the incremental fork audit
 // (AuditForksIncremental); Layout resolves the pane's actual process cwd the
 // audit reads against and the weft-reference pattern CheckFork/CheckParent
 // consult; WorktreeRoot is the host repo checkout the drift computation
@@ -41,7 +43,7 @@ var ErrNoBeginRecord = errors.New("webster: record-batch called with no begin-ba
 // contract files CheckParent's write-policy exempts; Sleeper is the clock
 // seam SettleRetry's bounded wait uses.
 type RecordDeps struct {
-	Plan         *builderengine.Plan
+	Batches      []batcher.Batch
 	State        *State
 	Config       Config
 	Engine       shuttleengine.Engine
@@ -60,10 +62,11 @@ type RecordDeps struct {
 // still absent this call (the batch stays non-terminal and
 // State.CurrentBatch stays unchanged — Master's ladder re-forks once);
 // Warnings carries every non-fatal fork-audit-policy warning observed this
-// call (a multi-new-transcript notice, or a fork that never returned a
-// final report), never treated as a failure.
+// call (a multi-new-transcript notice, a fork that never returned a final
+// report, or a dirty worktree after the batch's own commits), never treated
+// as a failure.
 type RecordResult struct {
-	Digest   *builderengine.Digest
+	Digest   *Digest
 	NoReport bool
 	Warnings []string
 }
@@ -95,10 +98,11 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 		return nil, fmt.Errorf("webster: batch %d is a %s batch, not a fork batch — its report is consumed by `lyx webster recover-batch %d`, never record-batch", batchNumber, bs.Kind, batchNumber)
 	}
 
-	batch, err := findBatch(deps.Plan, batchNumber)
+	batch, err := findBatch(deps.Batches, batchNumber)
 	if err != nil {
 		return nil, err
 	}
+	number, slug := batchIdentity(batch)
 
 	seenSet := make(map[string]bool, len(deps.State.SeenForkTranscripts))
 	for _, p := range deps.State.SeenForkTranscripts {
@@ -164,7 +168,9 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 	deps.State.SeenForkTranscripts = append(deps.State.SeenForkTranscripts, newPaths...)
 	bs.ForkTranscripts = append(bs.ForkTranscripts, newPaths...)
 
-	reportPath := filepath.Join(deps.ReportsDir, builderengine.BatchReportFileName(batch.Number, batch.Slug))
+	polledID := fmt.Sprintf("%02d-%s", number, slug)
+
+	reportPath := filepath.Join(deps.ReportsDir, ReportFileName(number, slug))
 	if _, statErr := os.Stat(reportPath); statErr != nil {
 		if os.IsNotExist(statErr) {
 			return &RecordResult{NoReport: true, Warnings: warnings}, nil
@@ -172,28 +178,42 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 		return nil, fmt.Errorf("webster: stat batch report %s: %w", reportPath, statErr)
 	}
 
-	report, err := builderengine.ParseReport(reportPath)
+	report, err := ParseReport(reportPath)
 	if err != nil {
 		return nil, err
 	}
 
-	polledID := fmt.Sprintf("%02d-%s", batch.Number, batch.Slug)
-	if report.Batch != polledID {
-		return nil, fmt.Errorf("webster: batch report %s: batch field %q does not match the polled batch %q", reportPath, report.Batch, polledID)
-	}
-
-	changed, err := builderengine.ChangedFiles(deps.WorktreeRoot, bs.StartSHA)
+	// changed is Master's own optional cross-check of the fork-reported
+	// deviation list — informational, never inspected by distill itself
+	// (the deviation-list-is-informational Shared Decision) and never
+	// itself a reason to fail this call.
+	changed, err := changedFiles(deps.WorktreeRoot, bs.StartSHA)
 	if err != nil {
 		return nil, err
 	}
-	dirty, err := builderengine.Dirty(deps.WorktreeRoot)
+	if isDirty, err := dirty(deps.WorktreeRoot); err != nil {
+		return nil, err
+	} else if isDirty {
+		warnings = append(warnings, fmt.Sprintf("worktree is dirty after batch %s's own commits (uncommitted or untracked changes remain)", polledID))
+	}
+
+	// The fork's own self-reported head_sha is cross-checked against the
+	// worktree's actual current HEAD: a mismatch means the fork's report and
+	// the host repo it left behind disagree about where the batch's work
+	// actually landed, which is never trusted silently.
+	actualHead, err := headSHA(deps.WorktreeRoot)
 	if err != nil {
 		return nil, err
 	}
+	if actualHead != report.HeadSHA {
+		return nil, fmt.Errorf("webster: batch report %s: head_sha %q does not match the worktree's actual HEAD %q", reportPath, report.HeadSHA, actualHead)
+	}
 
-	digest := builderengine.Distill(report, changed, batch.Scope, dirty)
+	digest := distill(report, changed)
+	digest.Batch = polledID
 
 	bs.Digest = &digest
+	bs.CardSHAs = []string{actualHead}
 	bs.Terminal = true
 	bs.Status = digest.Status
 	deps.State.CurrentBatch = 0
