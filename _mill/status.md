@@ -53,7 +53,9 @@ batches:
     implementer_session: 67bf4c1a-206a-4822-824e-ce13b3169b18
     start_sha: 167937639b7387f18ecacc22b29f37ece30380cf
   - name: fabric-pair-lifecycle
-    state: pending
+    state: running
+    implementer_session: 36b6edc9-3b2e-4df0-8a61-5ef8f3db2884
+    start_sha: 4263247c8b7b0e5674d0f9061ffbe88c6109dfc2
   - name: fabric-cli-registration
     state: pending
 ```
