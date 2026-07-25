@@ -874,6 +874,12 @@ func TestRun_FabricSuiteRoutesToLaunch(t *testing.T) {
 	}
 	fakeClaude := filepath.Join(tmpDir, "claude.exe")
 
+	// No dev binary in play: resolveLyx must fall through to the lookPath
+	// stub below and resolve sourceProd.
+	oldDevBinPath := devBinPath
+	defer func() { devBinPath = oldDevBinPath }()
+	devBinPath = func() (string, error) { return filepath.Join(t.TempDir(), "lyx"), nil }
+
 	oldLookPath := lookPath
 	defer func() { lookPath = oldLookPath }()
 	lookPath = func(name string) (string, error) {
@@ -891,7 +897,7 @@ func TestRun_FabricSuiteRoutesToLaunch(t *testing.T) {
 	fabricCloneRunCalled := false
 	oldFabricCloneRun := fabricCloneRun
 	defer func() { fabricCloneRun = oldFabricCloneRun }()
-	fabricCloneRun = func(parentDir string) error {
+	fabricCloneRun = func(parentDir, lyxPath string) error {
 		fabricCloneRunCalled = true
 		return nil
 	}
@@ -900,7 +906,7 @@ func TestRun_FabricSuiteRoutesToLaunch(t *testing.T) {
 	var gotInstruction string
 	oldLaunchAgent := launchAgent
 	defer func() { launchAgent = oldLaunchAgent }()
-	launchAgent = func(dir, claude, instruction string) int {
+	launchAgent = func(dir, claude, instruction, binDir string) int {
 		launchAgentCalled = true
 		gotInstruction = instruction
 		if dir != hostRepoDir {

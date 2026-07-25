@@ -67,11 +67,12 @@ var cloneRun = func(parentDir, lyxPath string) error {
 
 // fabricCloneRun is a testability seam for executing `lyx fabric clone` against
 // the dedicated fabric sandbox repos. It mirrors cloneRun's shape exactly --
-// same subprocess-error-vs-startup-error handling -- but shells "fabric clone"
-// (never "warp clone") and targets fabric's own dedicated hub instead of the
-// shared lyx-test-HUB.
-var fabricCloneRun = func(parentDir string) error {
-	cmd := exec.Command("lyx", "fabric", "clone", fabricHostURL, fabricWeftURL)
+// same subprocess-error-vs-startup-error handling, same resolved-binary
+// parameter instead of a bare-PATH lookup -- but shells "fabric clone" (never
+// "warp clone") and targets fabric's own dedicated hub instead of the shared
+// lyx-test-HUB.
+var fabricCloneRun = func(parentDir, lyxPath string) error {
+	cmd := exec.Command(lyxPath, "fabric", "clone", fabricHostURL, fabricWeftURL)
 	cmd.Dir = parentDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -80,8 +81,9 @@ var fabricCloneRun = func(parentDir string) error {
 			// Subprocess printed its own error; just propagate the exit code
 			return err
 		}
-		// Startup error (lyx not found, etc.); add context
-		return fmt.Errorf("lyx not found on PATH: %w", err)
+		// Startup error (resolved binary vanished, permission denied, etc.); add
+		// context pointing at deploy-dev as an alternative to the resolved path.
+		return fmt.Errorf("failed to start resolved lyx binary %s (deploy it, or run deploy-dev): %w", lyxPath, err)
 	}
 	return nil
 }
@@ -139,8 +141,16 @@ func decideFabricClone(hubPath string) error {
 		return fmt.Errorf("stat fabric hub path: %w", err)
 	}
 
+	// Resolve the binary lazily, here at the clone step, mirroring decideClone's
+	// rationale exactly (the "hub already exists" no-op path above must keep
+	// succeeding even when no lyx is resolvable).
+	lyxPath, _, err := resolveLyx()
+	if err != nil {
+		return err
+	}
+
 	parentDir := filepath.Dir(hubPath)
-	return fabricCloneRun(parentDir)
+	return fabricCloneRun(parentDir, lyxPath)
 }
 
 // runFabricSuite fingerprints the deployed lyx binary, writes the rendered
@@ -168,14 +178,15 @@ func runFabricSuite(parentDir, claudeOverride, promptOverride string) error {
 		return fmt.Errorf("stat fabric host repo %s: %w", hostRepoDir, err)
 	}
 
-	// Resolve lyx via PATH so the fingerprint captures the exact binary the
-	// operator has deployed; the binary must be on PATH before running the suite.
-	lyxPath, err := lookPath("lyx")
+	// Resolve lyx via resolveLyx (derived .dev-bin first, PATH fallback) so the
+	// fingerprint captures the exact binary the session will run, and so the
+	// dev/prod distinction can be stamped and threaded to the agent's PATH below.
+	lyxPath, source, err := resolveLyx()
 	if err != nil {
-		return fmt.Errorf("lyx not found on PATH -- deploy the binary before running the suite: %w", err)
+		return err
 	}
 
-	info, err := binaryFingerprint(lyxPath)
+	info, err := binaryFingerprint(lyxPath, source)
 	if err != nil {
 		return fmt.Errorf("fingerprint lyx binary: %w", err)
 	}
@@ -220,11 +231,20 @@ func runFabricSuite(parentDir, claudeOverride, promptOverride string) error {
 		instruction = fabricSuiteAsk
 	}
 
+	// Only a resolved dev binary gets its directory prepended to the agent's
+	// PATH (see the agent-path-prepend-launchagent-only Shared Decision); a
+	// prod resolution leaves binDir empty so launchAgent inherits the
+	// environment unchanged, exactly as before.
+	binDir := ""
+	if source == sourceDev {
+		binDir = filepath.Dir(lyxPath)
+	}
+
 	// Launch the interactive agent session. An interactive claude session never
 	// self-terminates, so its manual exit is expected and its non-zero exit code
 	// is NORMAL -- it must not be treated as a failure. Fetching the report is a
 	// separate step, so print guidance and return nil regardless of the code.
-	code := launchAgent(hostRepoDir, claudePath, instruction)
+	code := launchAgent(hostRepoDir, claudePath, instruction, binDir)
 	fmt.Fprintf(os.Stderr,
 		"sandbox: agent session ended (exit code %d). Run sandbox-fetch.cmd to collect findings into .scratch.\n",
 		code)
