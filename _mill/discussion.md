@@ -157,6 +157,12 @@ this task carries a version suffix**. The old format dies with builder, so the n
 - Rejected: Fork reports a rich success narrative (context bloat); deviation treated as failure
   (brittle); fork omits the SHA and Master captures it purely from git (loses the manifest's stated
   contract and the fork's own cross-check — see next decision).
+- Deviation-list source of truth: the deviation list is **fork-reported** — the fork computes which
+  of its changed files fall outside its cards' declared file-ops union and returns them. Master
+  **may** independently recompute the set via `gitrepo.ChangedFilesSince(startSHA)` vs. the declared
+  union as a cross-check, but both views are **informational, never blocking**; the fork-reported
+  list is what gets recorded. (v0 does not require Master to recompute; whether it does is a
+  plan-phase call.)
 - On-disk report format: the fork writes its report to a per-batch report file under
   `WebsterReportsDir` (resolved via `hubgeometry`), replacing the v2 batch-report YAML that
   `builderengine.ParseReport` consumed. The minimal grammar is a small structured document carrying
@@ -217,9 +223,14 @@ this task carries a version suffix**. The old format dies with builder, so the n
 - Decision: Post-commit contract verification calls `internal/gitrepo` directly
   (`ChangedFilesSince`, `CurrentSHA`, `SHAExists`, `SnapshotSHA`) — all already implemented and
   tested.
-- Rationale: Every primitive exists today; no need to pull in the unbuilt, separately-designed
-  `fabric` module. `fabric` is a future consolidation wrapper over exactly these `gitrepo`
-  primitives, so a later swap is transparent.
+- Rationale: Every **verification** primitive exists today; no need to pull in the unbuilt,
+  separately-designed `fabric` module. `fabric` is a future consolidation wrapper over exactly these
+  `gitrepo` primitives, so a later swap is transparent.
+- Caveat: v0 adds **exactly one** new `gitrepo` primitive — a detached checkout + branch-restore
+  pair used only by the integration bisect (see *integration-suite-fork-with-bisect*). This is the
+  sole `gitrepo` addition; the multi-card git-log-range primitive (see
+  *per-card-commit-and-sha-capture*) is explicitly deferred to the grouping-batcher task and is
+  **not** added in v0.
 - Rejected: Building a `fabric` wrapper as part of this task (drags an unbuilt, out-of-scope module
   into scope prematurely).
 
@@ -251,11 +262,18 @@ this task carries a version suffix**. The old format dies with builder, so the n
   (loses automatic localization); running the suite in a separate worktree (out of scope in v0).
 - Bisect staging: the SHA-bisect runs **after all batches have landed** and the plan run is
   otherwise complete, so there are no concurrent forks contending for the working tree. Bisect
-  re-runs the `## verify:` suite at a candidate per-card SHA by **checking that SHA out in-place in
-  the single worktree**, then restoring HEAD when done — no separate worktree is needed. This does
-  not conflict with the "no separate worktree in v0" rejection below, which concerns *parallel card
-  execution* (many forks committing at once), not a sequential post-run bisect. The exact
-  checkout/restore mechanism is a plan-phase determination.
+  narrows over the known ordered list of per-card SHAs (a binary search, not `git bisect`): it
+  **checks a candidate SHA out in-place in the single worktree** (detached), runs `## verify:`, then
+  restores the branch HEAD when done — no separate worktree is needed. This does not conflict with
+  the "no separate worktree in v0" rejection below, which concerns *parallel card execution* (many
+  forks committing at once), not a sequential post-run bisect.
+- Bisect executor & primitive: the **one dedicated integration fork** runs `## verify:` once at
+  HEAD; the subsequent bisect re-runs are executed by **webster in-process** (Go exec-ing the same
+  `## verify:` command after each checkout) — **not** a fork per candidate — which keeps bisect
+  cheap and preserves the "no concurrent forks" guarantee. The detached-checkout + restore this
+  needs is **the single new `gitrepo` primitive v0 adds** (e.g. `gitrepo.CheckoutDetached(sha)` +
+  `gitrepo.RestoreBranch(name)`); every other operation uses existing `gitrepo` methods. The exact
+  primitive name/signature is a plan-phase determination.
 - Escalation mechanism: "escalate to a human" surfaces the same way webster already surfaces a
   terminal condition — a failed/stuck run terminus recorded in `_lyx/webster/state.json` (the run
   ends non-successfully rather than proceeding to loom's finishing step) plus the written summary
@@ -355,7 +373,10 @@ Current state established during exploration (see `manifest/designs/webster-rewr
   hubgeometry** (Hub Geometry Invariant).
 - **`internal/gitrepo`** — verification substrate, all present & tested: `ChangedFilesSince`
   (`gitrepo.go:240`), `CurrentSHA` (`:73`), `SHAExists` (`:225`), `StageAndCommit` (`:110`),
-  `SnapshotSHA`/`SetSnapshotSHA` (`snapshot.go`).
+  `StageAllAndCommit`, `SnapshotSHA`/`SetSnapshotSHA` (`snapshot.go`). **Not present today** and
+  added by this task: a detached-checkout + branch-restore pair for the integration bisect (the one
+  new `gitrepo` primitive v0 adds). A git-log-range commit enumerator is *not* added here (deferred
+  to the future grouping-batcher task).
 - **Fork mechanism** — normal path: Master forks in-session via the Agent tool
   (`subagent_type "fork"`), enabled by a fork-authorized spec at Master spawn; a fork-context
   `PreToolUse(Bash)` hook in `internal/shuttleengine/claudeengine` refuses `lyx webster` inside a
@@ -508,3 +529,7 @@ Discovered during discussion:
   **A:** `planparser` extracts and exposes `## Shared Decisions`, `## Rename mechanic`, and
   `## verify:` on the `Plan` struct; `RenderForkPrompt` and the integration fork consume them from
   there, so no other package reads `_lyx/plan/`.
+- **Q:** [review-r4 gap] Does bisect's in-place checkout have a `gitrepo` primitive? **A:** No, not
+  today — v0 adds exactly one new `gitrepo` primitive (detached checkout + branch restore) for the
+  bisect; bisect re-runs `## verify:` in-process (Go), no fork per candidate. The deviation list is
+  fork-reported; Master may recompute it via `ChangedFilesSince` as an informational cross-check.
