@@ -63,9 +63,12 @@ that parses/executes v3 (and eventually retires the v2 parser) is the separate w
   - **`manifest/designs/webster-rewrite.md` gets special handling** (see
     `symbol-fields-deferred-compact`): the detailed continuous-DAG-update/SCC scheduling design is
     **relocated into** this doc's "Scheduling: no DAG, no SCC merging in v0" section (it would
-    otherwise be lost by the trim), and `webster-rewrite.md:32`'s link is repointed to that
-    **now-local section anchor**, not to the trimmed `plan-format-v3.md` stub — otherwise the anchor
-    fragment `#continuous-dag-update-…` dangles even though the filename resolves.
+    otherwise be lost by the trim), and the line-32 link (`plan-format-v3.md#continuous-dag-update-…`)
+    is repointed to that **now-local section anchor**, not to the trimmed `plan-format-v3.md` stub —
+    otherwise the anchor fragment dangles even though the filename resolves. **This doc's *other*
+    plain `plan-format-v3.md` links (currently at lines 5, 72, 165, 190) also repoint** to
+    `../../docs/reference/plan-format-v3.md` like the rest — grep the whole file, do not fix only the
+    line-32 anchor.
 - **`manifest/roadmap.md`: move the plan-format v3 item Planned → Done**, with a link to the new
   `docs/reference/plan-format-v3.md` (see `roadmap-planned-to-done`).
 - **Additive cross-links to v3 in the neighbour durable docs** (NOT reconciliation — v2 stays valid,
@@ -456,8 +459,8 @@ No TDD candidates (no code). No CLI surface changes, so no help-tree pins to upd
 - **Q:** `root:` placement? **A:** Plan-level (in `00-overview.md` frontmatter), `//` escape retained.
 - **Q:** Rename mechanic placement? **A:** One plan-level `## Rename mechanic` section, required when
   any card has a non-empty `Moves:`.
-- **Q:** Card numbering / commit subject? **A:** Flat `N` (1..N); commit `N: <short what>`; file
-  prefix `NN` matches `N`.
+- **Q:** Card numbering / commit subject? **A:** Flat `N` (1..N); default commit subject `N: <name>`
+  (the card heading name; no separate `<short what>` seed); file prefix `NN` matches `N`.
 - **Q:** Output/report schema in the doc? **A:** Punted to the consumer doc; `plan-format-v3.md` pins
   only the input plan schema.
 - **Q:** Execution-policy sections (roles/models, review cadence, oversized, chains)? **A:** Not in
