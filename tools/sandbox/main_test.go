@@ -433,7 +433,7 @@ func TestRun_SuiteRoutesSuiteToLaunch(t *testing.T) {
 	}
 
 	launchAgentCalled := false
-	stubMuxDownNoop(t)
+	stubReedDownNoop(t)
 	oldLaunchAgent := launchAgent
 	defer func() { launchAgent = oldLaunchAgent }()
 	launchAgent = func(dir, claude, instruction, binDir string) int {
@@ -453,11 +453,11 @@ func TestRun_SuiteRoutesSuiteToLaunch(t *testing.T) {
 	}
 }
 
-// TestRun_MuxSuiteRoutesToLaunch tests that the "mux-suite" positional routes
-// to the mux-suite path and ultimately invokes launchAgent with the correct
-// host repo directory and the mux default instruction, mirroring
+// TestRun_ReedSuiteRoutesToLaunch tests that the "reed-suite" positional routes
+// to the reed-suite path and ultimately invokes launchAgent with the correct
+// host repo directory and the reed default instruction, mirroring
 // TestRun_SuiteRoutesSuiteToLaunch for the "suite" dispatch.
-func TestRun_MuxSuiteRoutesToLaunch(t *testing.T) {
+func TestRun_ReedSuiteRoutesToLaunch(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create the Hub host repo directory that runSuite requires.
@@ -494,7 +494,7 @@ func TestRun_MuxSuiteRoutesToLaunch(t *testing.T) {
 
 	launchAgentCalled := false
 	var gotInstruction string
-	stubMuxDownNoop(t)
+	stubReedDownNoop(t)
 	oldLaunchAgent := launchAgent
 	defer func() { launchAgent = oldLaunchAgent }()
 	launchAgent = func(dir, claude, instruction, binDir string) int {
@@ -506,22 +506,22 @@ func TestRun_MuxSuiteRoutesToLaunch(t *testing.T) {
 		return 0
 	}
 
-	code := run([]string{"-parent", tmpDir, "mux-suite"})
+	code := run([]string{"-parent", tmpDir, "reed-suite"})
 	if code != 0 {
 		t.Errorf("run() = %d; want 0", code)
 	}
 	if !launchAgentCalled {
-		t.Error("launchAgent was not called for mux-suite subcommand")
+		t.Error("launchAgent was not called for reed-suite subcommand")
 	}
-	if gotInstruction != muxSuite.instruction {
-		t.Errorf("launchAgent instruction = %q; want %q", gotInstruction, muxSuite.instruction)
+	if gotInstruction != reedSuite.instruction {
+		t.Errorf("launchAgent instruction = %q; want %q", gotInstruction, reedSuite.instruction)
 	}
 }
 
-// TestRun_MuxSuiteFlagsRoutedAfterToken tests that -claude/-prompt flags
-// following the "mux-suite" positional are parsed and forwarded to
+// TestRun_ReedSuiteFlagsRoutedAfterToken tests that -claude/-prompt flags
+// following the "reed-suite" positional are parsed and forwarded to
 // launchAgent, mirroring the "suite" subcommand's flag handling.
-func TestRun_MuxSuiteFlagsRoutedAfterToken(t *testing.T) {
+func TestRun_ReedSuiteFlagsRoutedAfterToken(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	hostRepoDir := filepath.Join(tmpDir, hubName, hostDirName)
@@ -534,7 +534,7 @@ func TestRun_MuxSuiteFlagsRoutedAfterToken(t *testing.T) {
 		t.Fatalf("write fake lyx: %v", err)
 	}
 	customClaude := filepath.Join(tmpDir, "custom-claude.exe")
-	customPrompt := "Do the mux thing my way."
+	customPrompt := "Do the reed thing my way."
 
 	// No dev binary in play: resolveLyx must fall through to the lookPath
 	// stub below and resolve sourceProd.
@@ -553,7 +553,7 @@ func TestRun_MuxSuiteFlagsRoutedAfterToken(t *testing.T) {
 	}
 
 	var gotClaude, gotInstruction string
-	stubMuxDownNoop(t)
+	stubReedDownNoop(t)
 	oldLaunchAgent := launchAgent
 	defer func() { launchAgent = oldLaunchAgent }()
 	launchAgent = func(dir, claude, instruction, binDir string) int {
@@ -562,7 +562,7 @@ func TestRun_MuxSuiteFlagsRoutedAfterToken(t *testing.T) {
 		return 0
 	}
 
-	code := run([]string{"-parent", tmpDir, "mux-suite", "-claude", customClaude, "-prompt", customPrompt})
+	code := run([]string{"-parent", tmpDir, "reed-suite", "-claude", customClaude, "-prompt", customPrompt})
 	if code != 0 {
 		t.Errorf("run() = %d; want 0", code)
 	}
@@ -574,23 +574,23 @@ func TestRun_MuxSuiteFlagsRoutedAfterToken(t *testing.T) {
 	}
 }
 
-// TestRun_MuxSuiteErrorPropagation tests that a runSuite error under the
-// mux-suite dispatch (Hub absent) is propagated as a non-zero exit code,
+// TestRun_ReedSuiteErrorPropagation tests that a runSuite error under the
+// reed-suite dispatch (Hub absent) is propagated as a non-zero exit code,
 // mirroring the error-propagation coverage the "suite" dispatch relies on via
 // TestRunSuite_HubAbsent at the runSuite level.
-func TestRun_MuxSuiteErrorPropagation(t *testing.T) {
+func TestRun_ReedSuiteErrorPropagation(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	code := run([]string{"-parent", tmpDir, "mux-suite"})
+	code := run([]string{"-parent", tmpDir, "reed-suite"})
 	if code == 0 {
-		t.Error("run() = 0; want non-zero when Hub host repo is absent for mux-suite subcommand")
+		t.Error("run() = 0; want non-zero when Hub host repo is absent for reed-suite subcommand")
 	}
 }
 
 // TestRun_ShuttleSuiteRoutesToLaunch tests that the "shuttle-suite" positional
 // routes to the shuttle-suite path and ultimately invokes launchAgent with the
 // correct host repo directory and the shuttle default instruction, mirroring
-// TestRun_MuxSuiteRoutesToLaunch for the "shuttle-suite" dispatch.
+// TestRun_ReedSuiteRoutesToLaunch for the "shuttle-suite" dispatch.
 func TestRun_ShuttleSuiteRoutesToLaunch(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -628,7 +628,7 @@ func TestRun_ShuttleSuiteRoutesToLaunch(t *testing.T) {
 
 	launchAgentCalled := false
 	var gotInstruction string
-	stubMuxDownNoop(t)
+	stubReedDownNoop(t)
 	oldLaunchAgent := launchAgent
 	defer func() { launchAgent = oldLaunchAgent }()
 	launchAgent = func(dir, claude, instruction, binDir string) int {
@@ -654,7 +654,7 @@ func TestRun_ShuttleSuiteRoutesToLaunch(t *testing.T) {
 
 // TestRun_ShuttleSuiteFlagsRoutedAfterToken tests that -claude/-prompt flags
 // following the "shuttle-suite" positional are parsed and forwarded to
-// launchAgent, mirroring the "mux-suite" subcommand's flag handling.
+// launchAgent, mirroring the "reed-suite" subcommand's flag handling.
 func TestRun_ShuttleSuiteFlagsRoutedAfterToken(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -687,7 +687,7 @@ func TestRun_ShuttleSuiteFlagsRoutedAfterToken(t *testing.T) {
 	}
 
 	var gotClaude, gotInstruction string
-	stubMuxDownNoop(t)
+	stubReedDownNoop(t)
 	oldLaunchAgent := launchAgent
 	defer func() { launchAgent = oldLaunchAgent }()
 	launchAgent = func(dir, claude, instruction, binDir string) int {
@@ -710,7 +710,7 @@ func TestRun_ShuttleSuiteFlagsRoutedAfterToken(t *testing.T) {
 
 // TestRun_ShuttleSuiteErrorPropagation tests that a runSuite error under the
 // shuttle-suite dispatch (Hub absent) is propagated as a non-zero exit code,
-// mirroring TestRun_MuxSuiteErrorPropagation for the "shuttle-suite" dispatch.
+// mirroring TestRun_ReedSuiteErrorPropagation for the "shuttle-suite" dispatch.
 func TestRun_ShuttleSuiteErrorPropagation(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -723,7 +723,7 @@ func TestRun_ShuttleSuiteErrorPropagation(t *testing.T) {
 // TestRun_BurlerSuiteRoutesToLaunch tests that the "burler-suite" positional
 // routes to the burler-suite path and ultimately invokes launchAgent with the
 // correct host repo directory and the burler default instruction, mirroring
-// TestRun_MuxSuiteRoutesToLaunch for the "burler-suite" dispatch.
+// TestRun_ReedSuiteRoutesToLaunch for the "burler-suite" dispatch.
 func TestRun_BurlerSuiteRoutesToLaunch(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -761,7 +761,7 @@ func TestRun_BurlerSuiteRoutesToLaunch(t *testing.T) {
 
 	launchAgentCalled := false
 	var gotInstruction string
-	stubMuxDownNoop(t)
+	stubReedDownNoop(t)
 	oldLaunchAgent := launchAgent
 	defer func() { launchAgent = oldLaunchAgent }()
 	launchAgent = func(dir, claude, instruction, binDir string) int {
@@ -788,7 +788,7 @@ func TestRun_BurlerSuiteRoutesToLaunch(t *testing.T) {
 // TestRun_PerchSuiteRoutesToLaunch tests that the "perch-suite" positional
 // routes to the perch-suite path and ultimately invokes launchAgent with the
 // correct host repo directory and the perch default instruction, mirroring
-// TestRun_MuxSuiteRoutesToLaunch for the "perch-suite" dispatch.
+// TestRun_ReedSuiteRoutesToLaunch for the "perch-suite" dispatch.
 func TestRun_PerchSuiteRoutesToLaunch(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -826,7 +826,7 @@ func TestRun_PerchSuiteRoutesToLaunch(t *testing.T) {
 
 	launchAgentCalled := false
 	var gotInstruction string
-	stubMuxDownNoop(t)
+	stubReedDownNoop(t)
 	oldLaunchAgent := launchAgent
 	defer func() { launchAgent = oldLaunchAgent }()
 	launchAgent = func(dir, claude, instruction, binDir string) int {

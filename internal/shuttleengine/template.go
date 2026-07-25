@@ -1,7 +1,7 @@
 // template.go — shuttle.yaml template accessor.
 //
 // Provides the default YAML template for shuttle configuration, embedded
-// directly from template.yaml at build time, mirroring muxengine's
+// directly from template.yaml at build time, mirroring reedengine's
 // ${env:VAR:-default} config pattern.
 
 package shuttleengine

@@ -26,7 +26,7 @@ Convenience alias: **`lyx run` → `lyx loom run`** (the everyday autonomous cal
 
 ## Design principles
 
-1. **Toolkit-first.** Build small, composable primitives (board, warp, weft, mux) before the orchestrator that ties them together.
+1. **Toolkit-first.** Build small, composable primitives (board, warp, weft, reed) before the orchestrator that ties them together.
 2. **One-shot, daemonless, file-coordinated.** A command does its work, writes JSON to stdout, and exits. Concurrent processes cooperate through files and locks, not a server.
 3. **cwd-authoritative.** Config and state resolve from the current working directory, which need not equal the git-repo root.
 4. **Correctness by tool design, not by recall.** A `lyx` command makes the correct path the path of least resistance and makes drift *detectable*, rather than relying on an operator or agent to remember a rule.
@@ -61,9 +61,9 @@ Every user-facing module is a `lyx <module>` namespace, assembled into one cobra
 - **weft** — owns all git into the paired weft repo (`status|commit|push|pull|sync`).
 - **warp** — the host↔weft git topology owner: clone, dual-worktree add/remove, coordinated checkout, reconcile, status, prune, cleanup.
 - **ide** — one-shot IDE launcher for worktrees, with an interactive menu.
-- **mux** — the tmux overlay + strand bookkeeping + render. (Superseded `muxpoc`, the
+- **reed** — the tmux overlay + strand bookkeeping + render. (Superseded `muxpoc`, the
   proof-of-concept it was built from — `muxpoc` proved the risky parts, then was
-  deleted once `mux` shipped.)
+  deleted once `reed` shipped.)
 - **shuttle** — runs one LLM agent as an interactive tmux strand over a file contract, via a swappable provider engine (Claude today).
 - **selfreport** — file bugs/enhancements against the repo via `gh`.
 - **builder** — an LLM orchestrator over Go verbs: drives a pinned implementation plan batch by batch, spawning each batch's implementer as its own tmux strand.
@@ -83,8 +83,8 @@ The orchestrator is a layered stack, each layer knowing only the one below. It h
 
 ```
 internal/proc     spawn any OS process, cross-OS                    [OS primitive]
-internal/mux      tmux overlay + strand bookkeeping + render        [builds on proc]
-internal/shuttle  run ONE LLM agent via a swappable engine          [builds on mux]
+internal/reed     tmux overlay + strand bookkeeping + render        [builds on proc]
+internal/shuttle  run ONE LLM agent via a swappable engine          [builds on reed]
 burler            one review+fix round: review → fix                [builds on shuttle]
 perch             run burler rounds on one artifact → APPROVED/STUCK [builds on burler]
 loom              phase machine: drive each phase through a gate     [builds on perch]

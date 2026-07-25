@@ -2,7 +2,7 @@
 // decision function that re-derives an in-flight implementer's cross-
 // process terminal state (nobody in poll's process holds the shuttle Run
 // handle — spawn-batch exits right after Start — so this is re-derived from
-// files and a live mux query every tick, never from an in-process handle);
+// files and a live reed query every tick, never from an in-process handle);
 // the two impure gatherers Classify's caller feeds from (TurnEnded,
 // StrandLive), both riding shuttle's provider-invariant seams per the
 // Shuttle Provider-Seam Invariant — builderengine never parses event
@@ -54,7 +54,7 @@ type ClassifyInputs struct {
 	// TurnEnded reports whether the implementer's turn has ended (a Stop
 	// event was observed) — see the package-level TurnEnded gatherer.
 	TurnEnded bool
-	// StrandLive reports whether the implementer's mux strand is still
+	// StrandLive reports whether the implementer's reed strand is still
 	// live — see the package-level StrandLive gatherer.
 	StrandLive bool
 
@@ -146,19 +146,19 @@ func TurnEnded(eventsPath string, engine shuttleengine.Engine) (bool, error) {
 	return false, nil
 }
 
-// StrandLive reports whether guid names a strand mux currently tracks as
-// live: it calls mux.Status() and scans the returned Strands for guid's
-// Live field. guid absent from the result reports (false, nil) — mux no
+// StrandLive reports whether guid names a strand reed currently tracks as
+// live: it calls reed.Status() and scans the returned Strands for guid's
+// Live field. guid absent from the result reports (false, nil) — reed no
 // longer tracks it, which the caller treats identically to a pane that
-// died. Liveness is NEVER read from persisted mux state
-// (muxengine.LoadState carries no liveness field at all); only this live
+// died. Liveness is NEVER read from persisted reed state
+// (reedengine.LoadState carries no liveness field at all); only this live
 // Status() query can answer "is the pane actually there right now".
 // Exported for the same reason as TurnEnded above: buildercli's `poll`
 // verb calls this directly instead of carrying its own copy.
-func StrandLive(mux shuttleengine.MuxOps, guid string) (bool, error) {
-	status, err := mux.Status()
+func StrandLive(reed shuttleengine.ReedOps, guid string) (bool, error) {
+	status, err := reed.Status()
 	if err != nil {
-		return false, fmt.Errorf("builder: mux status: %w", err)
+		return false, fmt.Errorf("builder: reed status: %w", err)
 	}
 	for _, s := range status.Strands {
 		if s.GUID == guid {

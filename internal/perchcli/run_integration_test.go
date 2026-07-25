@@ -18,8 +18,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
-	"github.com/Knatte18/loomyard/internal/muxengine"
 	"github.com/Knatte18/loomyard/internal/perchengine"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -28,7 +28,7 @@ import (
 // successful terminal outcome does, per the Weft Git Invariant: perchcli is
 // the loop owner regardless of how the block ended. A profile whose
 // round-caps ladder fails Profile.validate (non-increasing entries) makes
-// Engine.Run return an error deterministically, with no live mux/claude
+// Engine.Run return an error deterministically, with no live reed/claude
 // substrate needed — validate runs before the first round would ever spawn,
 // so this test pre-seeds the run dir with a placeholder artifact (standing
 // in for what a real partially-completed block, e.g. a completed round
@@ -39,7 +39,7 @@ func TestRunCLI_Run_WeftSyncRunsOnEngineError(t *testing.T) {
 	fixture := lyxtest.CopyPairedLocal(t)
 	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
 		"shuttle": shuttleengine.ConfigTemplate(),
-		"mux":     muxengine.ConfigTemplate(),
+		"reed":    reedengine.ConfigTemplate(),
 		"perch":   perchengine.ConfigTemplate(),
 	})
 	t.Chdir(fixture.Hub)
@@ -95,7 +95,7 @@ func TestRunCLI_Run_WeftCommitExcludesLockFiles(t *testing.T) {
 	fixture := lyxtest.CopyPairedLocal(t)
 	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
 		"shuttle": shuttleengine.ConfigTemplate(),
-		"mux":     muxengine.ConfigTemplate(),
+		"reed":    reedengine.ConfigTemplate(),
 		"perch":   perchengine.ConfigTemplate(),
 	})
 	t.Chdir(fixture.Hub)
@@ -151,7 +151,7 @@ func TestRunCLI_Run_BusyBlockSkipsWeftSync(t *testing.T) {
 	fixture := lyxtest.CopyPairedLocal(t)
 	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
 		"shuttle": shuttleengine.ConfigTemplate(),
-		"mux":     muxengine.ConfigTemplate(),
+		"reed":    reedengine.ConfigTemplate(),
 		"perch":   perchengine.ConfigTemplate(),
 	})
 	t.Chdir(fixture.Hub)

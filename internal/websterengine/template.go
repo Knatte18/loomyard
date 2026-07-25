@@ -2,7 +2,7 @@
 //
 // ConfigTemplate provides the default YAML template for webster
 // configuration, embedded directly from template.yaml at build time,
-// mirroring builderengine's (and perchengine's/muxengine's) embed-and-
+// mirroring builderengine's (and perchengine's/reedengine's) embed-and-
 // accessor pattern.
 
 package websterengine

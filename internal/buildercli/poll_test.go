@@ -6,8 +6,8 @@
 // (with a real diff/dirty computation against a scratch git repo), and a
 // dead/asking classification derived purely from builderengine.TurnEnded/
 // builderengine.StrandLive when no report has landed. Fakes for
-// shuttleengine.Engine/MuxOps are package-local doubles mirroring
-// builderengine's own poll_test.go fakeEngine/fakeMux. Every test here
+// shuttleengine.Engine/ReedOps are package-local doubles mirroring
+// builderengine's own poll_test.go fakeEngine/fakeReed. Every test here
 // builds a real git fixture via newPollFixture -> newScratchRepo, so the
 // whole file runs behind the integration tag (Test Tier Purity Invariant).
 
@@ -25,7 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/builderengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
-	"github.com/Knatte18/loomyard/internal/muxengine"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -66,7 +66,7 @@ func (e *pollFakeEngine) ModelSwitchSequence(model string) []shuttleengine.PaneI
 
 var _ shuttleengine.Engine = (*pollFakeEngine)(nil)
 
-// pollFakeMux (a git-free shuttleengine.MuxOps double) lives in
+// pollFakeReed (a git-free shuttleengine.ReedOps double) lives in
 // testdata_test.go, untagged, since run_test.go also uses it.
 
 // pollFixture is a fully-wired *builderCLI plus a scratch git repo standing
@@ -77,7 +77,7 @@ type pollFixture struct {
 	Hub string
 }
 
-func newPollFixture(t *testing.T, engine shuttleengine.Engine, mux shuttleengine.MuxOps) *pollFixture {
+func newPollFixture(t *testing.T, engine shuttleengine.Engine, reed shuttleengine.ReedOps) *pollFixture {
 	t.Helper()
 
 	hub := newScratchRepo(t)
@@ -88,7 +88,7 @@ func newPollFixture(t *testing.T, engine shuttleengine.Engine, mux shuttleengine
 
 	c := &builderCLI{
 		engine:     engine,
-		mux:        mux,
+		reed:       reed,
 		layout:     layout,
 		cfg:        builderengine.Config{BatchTimeoutMin: 60, PollWaitS: 5},
 		planDir:    hubgeometry.PlanDir(hub),
@@ -135,7 +135,7 @@ func (fx *pollFixture) seedInFlightBatch1WithRunDir(t *testing.T, startSHA strin
 
 func TestPollCmd_NoBatchInFlight(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
-	fx := newPollFixture(t, &pollFakeEngine{}, &pollFakeMux{})
+	fx := newPollFixture(t, &pollFakeEngine{}, &pollFakeReed{})
 
 	var out bytes.Buffer
 	exitCode := clihelp.Execute(fx.CLI.pollCmd(), &out, nil)
@@ -149,8 +149,8 @@ func TestPollCmd_NoBatchInFlight(t *testing.T) {
 }
 
 func TestPollCmd_DeadlineReturnsRunningWithoutWeftCommit(t *testing.T) {
-	fx := newPollFixture(t, &pollFakeEngine{}, &pollFakeMux{status: muxengine.StatusResult{
-		Strands: []muxengine.StrandStatus{{GUID: "strand-1", Live: true}},
+	fx := newPollFixture(t, &pollFakeEngine{}, &pollFakeReed{status: reedengine.StatusResult{
+		Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}},
 	}})
 	eventsPath := filepath.Join(t.TempDir(), "events.jsonl")
 	fx.seedInFlightBatch1(t, "irrelevant-sha", time.Now(), eventsPath)
@@ -192,7 +192,7 @@ func TestPollCmd_DeadlineReturnsRunningWithoutWeftCommit(t *testing.T) {
 
 func TestPollCmd_ReportPresentClassifiesDoneAndCommits(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
-	fx := newPollFixture(t, &pollFakeEngine{}, &pollFakeMux{})
+	fx := newPollFixture(t, &pollFakeEngine{}, &pollFakeReed{})
 
 	startSHA := mustGit(t, fx.Hub, "rev-parse", "HEAD")
 	startSHA = strings.TrimSpace(startSHA)
@@ -276,10 +276,10 @@ func TestPollCmd_TerminalCleanupMatrix(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Setenv("WEFT_SKIP_GIT", "1")
-			mux := &pollFakeMux{status: muxengine.StatusResult{
-				Strands: []muxengine.StrandStatus{{GUID: "strand-1", Live: true}},
+			reed := &pollFakeReed{status: reedengine.StatusResult{
+				Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}},
 			}}
-			fx := newPollFixture(t, &pollFakeEngine{events: tt.events}, mux)
+			fx := newPollFixture(t, &pollFakeEngine{events: tt.events}, reed)
 
 			startSHA := strings.TrimSpace(mustGit(t, fx.Hub, "rev-parse", "HEAD"))
 			eventsPath := filepath.Join(t.TempDir(), "events.jsonl")
@@ -307,12 +307,12 @@ func TestPollCmd_TerminalCleanupMatrix(t *testing.T) {
 				t.Fatalf("poll = %d; want 0, output: %s", exitCode, out.String())
 			}
 
-			removed := len(mux.removedStrands) > 0
+			removed := len(reed.removedStrands) > 0
 			if removed != tt.wantRemoved {
-				t.Errorf("RemoveStrand calls = %v; wantRemoved = %v", mux.removedStrands, tt.wantRemoved)
+				t.Errorf("RemoveStrand calls = %v; wantRemoved = %v", reed.removedStrands, tt.wantRemoved)
 			}
-			if removed && mux.removedStrands[0] != "strand-1" {
-				t.Errorf("RemoveStrand guid = %q; want strand-1", mux.removedStrands[0])
+			if removed && reed.removedStrands[0] != "strand-1" {
+				t.Errorf("RemoveStrand guid = %q; want strand-1", reed.removedStrands[0])
 			}
 			_, statErr := os.Stat(runDir)
 			if tt.wantRunDir && statErr != nil {
@@ -363,8 +363,8 @@ func TestPollCmd_ReportLandingDuringGatherBeatsStopEvent(t *testing.T) {
 			t.Errorf("write report mid-gather: %v", err)
 		}
 	}}
-	fx = newPollFixture(t, engine, &pollFakeMux{
-		status: muxengine.StatusResult{Strands: []muxengine.StrandStatus{{GUID: "strand-1", Live: true}}},
+	fx = newPollFixture(t, engine, &pollFakeReed{
+		status: reedengine.StatusResult{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}},
 	})
 	reportPath = filepath.Join(fx.CLI.reportsDir, "01-json-flag.yaml")
 
@@ -400,8 +400,8 @@ func TestPollCmd_ReportLandingDuringGatherBeatsStopEvent(t *testing.T) {
 // test drives it via statReportPath, the package seam both calls go through.
 func TestPollCmd_DeadRecheckStatErrorPropagates(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
-	fx := newPollFixture(t, &pollFakeEngine{events: []shuttleengine.Event{{Kind: shuttleengine.EventStop, Message: "final"}}}, &pollFakeMux{
-		status: muxengine.StatusResult{Strands: []muxengine.StrandStatus{{GUID: "strand-1", Live: true}}},
+	fx := newPollFixture(t, &pollFakeEngine{events: []shuttleengine.Event{{Kind: shuttleengine.EventStop, Message: "final"}}}, &pollFakeReed{
+		status: reedengine.StatusResult{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}},
 	})
 
 	eventsPath := filepath.Join(t.TempDir(), "events.jsonl")
@@ -444,8 +444,8 @@ func TestPollCmd_DeadRecheckStatErrorPropagates(t *testing.T) {
 
 func TestPollCmd_NoReportTurnEndedClassifiesDeadAsking(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
-	fx := newPollFixture(t, &pollFakeEngine{events: []shuttleengine.Event{{Kind: shuttleengine.EventStop, Message: "final"}}}, &pollFakeMux{
-		status: muxengine.StatusResult{Strands: []muxengine.StrandStatus{{GUID: "strand-1", Live: true}}},
+	fx := newPollFixture(t, &pollFakeEngine{events: []shuttleengine.Event{{Kind: shuttleengine.EventStop, Message: "final"}}}, &pollFakeReed{
+		status: reedengine.StatusResult{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}},
 	})
 
 	eventsPath := filepath.Join(t.TempDir(), "events.jsonl")
@@ -493,7 +493,7 @@ func TestPollCmd_NoReportTurnEndedClassifiesDeadAsking(t *testing.T) {
 // spawned batch's record and cursor must survive.
 func TestPollCmd_TerminalPersistMergesConcurrentSpawn(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
-	fx := newPollFixture(t, &pollFakeEngine{}, &pollFakeMux{})
+	fx := newPollFixture(t, &pollFakeEngine{}, &pollFakeReed{})
 
 	startSHA := strings.TrimSpace(mustGit(t, fx.Hub, "rev-parse", "HEAD"))
 	commitFile(t, fx.Hub, "extra.txt", "extra", "extra commit")
@@ -566,7 +566,7 @@ func TestPollCmd_TerminalPersistMergesConcurrentSpawn(t *testing.T) {
 // as the same malformed-report error class every other field gets.
 func TestPollCmd_ReportBatchFieldMismatchFailsLoud(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
-	fx := newPollFixture(t, &pollFakeEngine{}, &pollFakeMux{})
+	fx := newPollFixture(t, &pollFakeEngine{}, &pollFakeReed{})
 
 	startSHA := strings.TrimSpace(mustGit(t, fx.Hub, "rev-parse", "HEAD"))
 	fx.seedInFlightBatch1(t, startSHA, time.Now(), filepath.Join(t.TempDir(), "events.jsonl"))
@@ -612,7 +612,7 @@ func TestPollCmd_ReportBatchFieldMismatchFailsLoud(t *testing.T) {
 // the first stat sees a truncated report, the second sees it completed.
 func TestPollCmd_HalfWrittenReportGetsOneTickGrace(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
-	fx := newPollFixture(t, &pollFakeEngine{}, &pollFakeMux{})
+	fx := newPollFixture(t, &pollFakeEngine{}, &pollFakeReed{})
 
 	startSHA := strings.TrimSpace(mustGit(t, fx.Hub, "rev-parse", "HEAD"))
 	commitFile(t, fx.Hub, "extra.txt", "extra", "extra commit")
@@ -658,7 +658,7 @@ func TestPollCmd_HalfWrittenReportGetsOneTickGrace(t *testing.T) {
 // grace must never let a broken report wedge the poll into polling forever.
 func TestPollCmd_PersistentlyMalformedReportFailsAfterGrace(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
-	fx := newPollFixture(t, &pollFakeEngine{}, &pollFakeMux{})
+	fx := newPollFixture(t, &pollFakeEngine{}, &pollFakeReed{})
 
 	startSHA := strings.TrimSpace(mustGit(t, fx.Hub, "rev-parse", "HEAD"))
 	fx.seedInFlightBatch1(t, startSHA, time.Now(), filepath.Join(t.TempDir(), "events.jsonl"))

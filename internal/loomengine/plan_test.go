@@ -1,5 +1,5 @@
 // plan_test.go — untagged Tier-1 unit tests for PlanSpec. Pure Go over an
-// in-memory Config and a temp-dir modelspec registry; no live hub, mux, or
+// in-memory Config and a temp-dir modelspec registry; no live hub, reed, or
 // network involved.
 
 package loomengine

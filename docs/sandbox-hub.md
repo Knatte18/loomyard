@@ -159,26 +159,26 @@ root); it is required only by this subcommand.
 ### Future: tmux launch
 
 The direct `claude` launch used today will be replaced by a tmux interactive session
-once the `mux` module is available. The file contract (`SANDBOX-CORE-SUITE.md` driving the
+once the `reed` module is available. The file contract (`SANDBOX-CORE-SUITE.md` driving the
 agent) is unchanged; only the launch mechanism will differ.
 
-## Running the mux suite
+## Running the reed suite
 
-Alongside the main suite, `sandbox-mux-suite.cmd` runs a dedicated black-box suite
-against `lyx mux`. It mirrors the main-suite flow: it copies a fingerprinted
-`SANDBOX-MUX-SUITE.md` into the Hub host repo, git-excludes the copy the same way
+Alongside the main suite, `sandbox-reed-suite.cmd` runs a dedicated black-box suite
+against `lyx reed`. It mirrors the main-suite flow: it copies a fingerprinted
+`SANDBOX-REED-SUITE.md` into the Hub host repo, git-excludes the copy the same way
 `SANDBOX-CORE-SUITE.md` is excluded, clears any stale `sandbox-report.json`, and launches
 the interactive agent there. Because it exercises live tmux panes (crash simulation,
 layout verification, attach), it needs a live tmux (`tmux.exe` on PATH) as a
 precondition beyond what the main suite requires. Findings land in the same
-`sandbox-report.json` in the host repo, so `sandbox-fetch.cmd` collects a mux-suite
+`sandbox-report.json` in the host repo, so `sandbox-fetch.cmd` collects a reed-suite
 report exactly as it collects a main-suite report — the two suites share one report
 pipeline, one run at a time.
 
 ## Launchers and subcommands
 
 The single Go tool (`tools/sandbox`) still dispatches four subcommands
-internally — `build` (default), `suite`, `mux-suite`, and `fetch` — but each is
+internally — `build` (default), `suite`, `reed-suite`, and `fetch` — but each is
 fronted by its own single-purpose launcher, mirroring how `deploy.cmd`/`deploy-dev.cmd`
 each do one thing:
 
@@ -186,7 +186,7 @@ each do one thing:
 sandbox-build.cmd            # go run ./tools/sandbox -parent C:\Code build
 sandbox-build.cmd -reset     # ... build -reset  (tear down and re-clone)
 sandbox-core-suite.cmd            # ... suite  (run the interactive agent)
-sandbox-mux-suite.cmd        # ... mux-suite  (run the mux-specific interactive agent)
+sandbox-reed-suite.cmd       # ... reed-suite  (run the reed-specific interactive agent)
 sandbox-fetch.cmd            # ... -loomyard "%~dp0." fetch  (collect the report)
 ```
 

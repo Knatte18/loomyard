@@ -145,7 +145,7 @@ Example:
 				ReportsDir:   c.reportsDir,
 				ShuttleCfg:   c.shuttleCfg,
 				Layout:       c.layout,
-				Mux:          c.mux,
+				Reed:         c.reed,
 			}
 
 			result, err := builderengine.SpawnBatch(deps, builderengine.SpawnBatchOptions{

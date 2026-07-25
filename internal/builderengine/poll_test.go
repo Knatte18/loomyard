@@ -1,7 +1,7 @@
 // poll_test.go covers Classify's decision table (all five classification
 // outcomes: report-present terminal, dead/asking, dead/timeout, dead/died,
 // and non-terminal running), TurnEnded against a fake shuttleengine.Engine
-// double, StrandLive against a fake shuttleengine.MuxOps double, and
+// double, StrandLive against a fake shuttleengine.ReedOps double, and
 // PollUntilTerminal's long-poll loop against a fake clock — a terminal
 // mid-wait result short-circuits, a deadline returns the last running
 // digest, and a gather error propagates. This file lives in package
@@ -17,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/muxengine"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -208,41 +208,41 @@ func TestTurnEnded(t *testing.T) {
 	})
 }
 
-// fakeMux is a minimal shuttleengine.MuxOps double for StrandLive: only
+// fakeReed is a minimal shuttleengine.ReedOps double for StrandLive: only
 // Status is scripted (a canned StatusResult or a canned error), since
 // StrandLive never calls any other method.
-type fakeMux struct {
-	status muxengine.StatusResult
+type fakeReed struct {
+	status reedengine.StatusResult
 	err    error
 }
 
-func (m *fakeMux) AddStrand(spec muxengine.AddSpec) (muxengine.Strand, error) {
-	return muxengine.Strand{}, nil
+func (m *fakeReed) AddStrand(spec reedengine.AddSpec) (reedengine.Strand, error) {
+	return reedengine.Strand{}, nil
 }
-func (m *fakeMux) RemoveStrand(guid string, recursive bool) (muxengine.Removed, error) {
-	return muxengine.Removed{}, nil
+func (m *fakeReed) RemoveStrand(guid string, recursive bool) (reedengine.Removed, error) {
+	return reedengine.Removed{}, nil
 }
-func (m *fakeMux) Status() (muxengine.StatusResult, error) {
+func (m *fakeReed) Status() (reedengine.StatusResult, error) {
 	if m.err != nil {
-		return muxengine.StatusResult{}, m.err
+		return reedengine.StatusResult{}, m.err
 	}
 	return m.status, nil
 }
-func (m *fakeMux) SendText(guid, text string, submit bool) error { return nil }
-func (m *fakeMux) SendKey(guid, key string) error                { return nil }
-func (m *fakeMux) CapturePane(guid string) (string, error)       { return "", nil }
+func (m *fakeReed) SendText(guid, text string, submit bool) error { return nil }
+func (m *fakeReed) SendKey(guid, key string) error                { return nil }
+func (m *fakeReed) CapturePane(guid string) (string, error)       { return "", nil }
 
-var _ shuttleengine.MuxOps = (*fakeMux)(nil)
+var _ shuttleengine.ReedOps = (*fakeReed)(nil)
 
 func TestStrandLive(t *testing.T) {
 	t.Parallel()
 
 	t.Run("guid present and live", func(t *testing.T) {
-		mux := &fakeMux{status: muxengine.StatusResult{Strands: []muxengine.StrandStatus{
+		reed := &fakeReed{status: reedengine.StatusResult{Strands: []reedengine.StrandStatus{
 			{GUID: "other", Live: false},
 			{GUID: "target", Live: true},
 		}}}
-		live, err := StrandLive(mux, "target")
+		live, err := StrandLive(reed, "target")
 		if err != nil {
 			t.Fatalf("StrandLive() error = %v; want nil", err)
 		}
@@ -252,8 +252,8 @@ func TestStrandLive(t *testing.T) {
 	})
 
 	t.Run("guid present and not live", func(t *testing.T) {
-		mux := &fakeMux{status: muxengine.StatusResult{Strands: []muxengine.StrandStatus{{GUID: "target", Live: false}}}}
-		live, err := StrandLive(mux, "target")
+		reed := &fakeReed{status: reedengine.StatusResult{Strands: []reedengine.StrandStatus{{GUID: "target", Live: false}}}}
+		live, err := StrandLive(reed, "target")
 		if err != nil {
 			t.Fatalf("StrandLive() error = %v; want nil", err)
 		}
@@ -263,8 +263,8 @@ func TestStrandLive(t *testing.T) {
 	})
 
 	t.Run("guid absent from Status is false, nil", func(t *testing.T) {
-		mux := &fakeMux{status: muxengine.StatusResult{Strands: []muxengine.StrandStatus{{GUID: "someone-else", Live: true}}}}
-		live, err := StrandLive(mux, "target")
+		reed := &fakeReed{status: reedengine.StatusResult{Strands: []reedengine.StrandStatus{{GUID: "someone-else", Live: true}}}}
+		live, err := StrandLive(reed, "target")
 		if err != nil {
 			t.Fatalf("StrandLive() error = %v; want nil", err)
 		}
@@ -273,9 +273,9 @@ func TestStrandLive(t *testing.T) {
 		}
 	})
 
-	t.Run("mux Status error propagates", func(t *testing.T) {
-		wantErr := errors.New("mux unreachable")
-		_, err := StrandLive(&fakeMux{err: wantErr}, "target")
+	t.Run("reed Status error propagates", func(t *testing.T) {
+		wantErr := errors.New("reed unreachable")
+		_, err := StrandLive(&fakeReed{err: wantErr}, "target")
 		if err == nil {
 			t.Fatalf("StrandLive() error = nil; want a wrapped error")
 		}

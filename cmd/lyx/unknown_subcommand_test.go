@@ -14,7 +14,7 @@ import (
 // TestMountedUnknownSubcommand verifies that "lyx <group> bogus" exits 1 and emits
 // a JSON error envelope with ok=false and an error string containing "unknown subcommand".
 // This exercises the GroupRunE wiring applied to each mounted group command in batch 2:
-// warp (no guard), and weft/board/ide/mux (with PersistentPreRunE guards).
+// warp (no guard), and weft/board/ide/reed (with PersistentPreRunE guards).
 func TestMountedUnknownSubcommand(t *testing.T) {
 	tests := []struct {
 		group string
@@ -23,7 +23,7 @@ func TestMountedUnknownSubcommand(t *testing.T) {
 		{"weft"},
 		{"board"},
 		{"ide"},
-		{"mux"},
+		{"reed"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.group, func(t *testing.T) {
@@ -65,7 +65,7 @@ func TestMountedBareGroupListing_NoGitRepo(t *testing.T) {
 		{"weft", "commit"},
 		{"board", "upsert"},
 		{"ide", "spawn"},
-		{"mux", "up"},
+		{"reed", "up"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.group, func(t *testing.T) {

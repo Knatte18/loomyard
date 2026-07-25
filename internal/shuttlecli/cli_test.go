@@ -14,7 +14,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
-	"github.com/Knatte18/loomyard/internal/muxengine"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -146,8 +146,8 @@ func TestRunCLI_Interrupt_ArgValidation(t *testing.T) {
 // job is to record the Spec it was handed and then fail Prepare — the test
 // only needs to inspect the flag-to-Spec mapping run.go's RunE builds, never
 // a live pane launch, so failing fast at Prepare (before Runner.Start ever
-// touches mux.AddStrand) keeps the test hermetic without needing a working
-// fakeMux beyond satisfying the interface.
+// touches reed.AddStrand) keeps the test hermetic without needing a working
+// fakeReed beyond satisfying the interface.
 type specCapturingEngine struct {
 	gotSpec shuttleengine.Spec
 }
@@ -190,28 +190,28 @@ var _ shuttleengine.Engine = (*specCapturingEngine)(nil)
 // from any other failure mode.
 var errSpecCaptured = errors.New("specCapturingEngine: spec captured")
 
-// noopMux is a hermetic shuttleengine.MuxOps double whose methods are never
+// noopReed is a hermetic shuttleengine.ReedOps double whose methods are never
 // actually reached in TestRunCmd_EffortFlag (specCapturingEngine.Prepare
 // fails before Runner.Start ever calls AddStrand) — it exists only to
-// satisfy the MuxOps interface Runner requires.
-type noopMux struct{}
+// satisfy the ReedOps interface Runner requires.
+type noopReed struct{}
 
-func (noopMux) AddStrand(spec muxengine.AddSpec) (muxengine.Strand, error) {
-	return muxengine.Strand{}, nil
+func (noopReed) AddStrand(spec reedengine.AddSpec) (reedengine.Strand, error) {
+	return reedengine.Strand{}, nil
 }
-func (noopMux) RemoveStrand(guid string, recursive bool) (muxengine.Removed, error) {
-	return muxengine.Removed{}, nil
+func (noopReed) RemoveStrand(guid string, recursive bool) (reedengine.Removed, error) {
+	return reedengine.Removed{}, nil
 }
-func (noopMux) Status() (muxengine.StatusResult, error)       { return muxengine.StatusResult{}, nil }
-func (noopMux) SendText(guid, text string, submit bool) error { return nil }
-func (noopMux) SendKey(guid, key string) error                { return nil }
-func (noopMux) CapturePane(guid string) (string, error)       { return "", nil }
+func (noopReed) Status() (reedengine.StatusResult, error)      { return reedengine.StatusResult{}, nil }
+func (noopReed) SendText(guid, text string, submit bool) error { return nil }
+func (noopReed) SendKey(guid, key string) error                { return nil }
+func (noopReed) CapturePane(guid string) (string, error)       { return "", nil }
 
-var _ shuttleengine.MuxOps = noopMux{}
+var _ shuttleengine.ReedOps = noopReed{}
 
 // TestRunCmd_EffortFlag proves --effort lands in the shuttleengine.Spec run
 // builds, mirroring how --model is wired: a fake Runner (a real
-// *shuttleengine.Runner over a spec-capturing Engine fake and a no-op mux
+// *shuttleengine.Runner over a spec-capturing Engine fake and a no-op reed
 // fake) lets the test drive runCmd()'s RunE directly and inspect the Spec
 // the engine's Prepare was actually called with, without a live tmux/claude
 // session.
@@ -237,7 +237,7 @@ func TestRunCmd_EffortFlag(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			engine := &specCapturingEngine{}
 			layout := &hubgeometry.Layout{WorktreeRoot: t.TempDir()}
-			runner := shuttleengine.NewRunner(noopMux{}, engine, layout, shuttleengine.Config{RunTimeoutMin: 30})
+			runner := shuttleengine.NewRunner(noopReed{}, engine, layout, shuttleengine.Config{RunTimeoutMin: 30})
 
 			c := &shuttleCLI{runner: runner}
 			cmd := c.runCmd()

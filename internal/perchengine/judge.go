@@ -25,7 +25,7 @@ import (
 // *shuttleengine.Runner in production and by a fake in unit tests. Kept
 // package-local rather than shared with burlerengine's own Shuttle
 // interface, mirroring that seam's own rationale: it lets perchengine stay
-// engine-agnostic and testable without wiring mux or an LLM provider.
+// engine-agnostic and testable without wiring reed or an LLM provider.
 type Shuttle interface {
 	Run(shuttleengine.Spec) (shuttleengine.Result, error)
 }
