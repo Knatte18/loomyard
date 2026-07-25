@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-devbin-and-deploy
 slug: dev-test-binary
 branch: dev-test-binary
 plan: _mill/plan
@@ -28,6 +28,7 @@ plan-fix-r3  '2026-07-25T08:12:49Z'
 plan-fix-r4  '2026-07-25T08:17:55Z'
 planned  '2026-07-25T08:18:27Z'
 implementing  '2026-07-25T08:19:34Z'
+approved-devbin-and-deploy  '2026-07-25T08:23:13Z'
 ```
 
 ## Batches
@@ -35,9 +36,10 @@ implementing  '2026-07-25T08:19:34Z'
 ```yaml
 batches:
   - name: devbin-and-deploy
-    state: running
+    state: approved
     implementer_session: 4775aea4-5b47-494c-a9f8-e4ab5e7a7d54
     start_sha: dcc1c9a47952d7b10fd715c457144485e0c5aaea
+    commit_sha: 78db2cfd181013f79602ac7a7bf7168bc73b0a2a
   - name: sandbox-resolve-core
     state: pending
   - name: sandbox-wire-and-guard
