@@ -4,7 +4,7 @@
 // repo (Tier 2 — see docs/benchmarks/running-tests.md, mirroring chain_test.go
 // and gitquery_test.go): HeadSHA capture is genuine git, and the spawn itself
 // runs through a real *shuttleengine.Runner wired to local fake
-// shuttleengine.MuxOps/shuttleengine.Engine doubles (the shuttleengine
+// shuttleengine.ReedOps/shuttleengine.Engine doubles (the shuttleengine
 // fakes_test.go pattern — builderengine's own fakes are test-file-local, per
 // the discussion's test-conventions decision), so Start produces a genuine
 // *shuttleengine.Run whose run.json shuttleengine.FindRun can resolve. No
@@ -25,51 +25,51 @@ import (
 	"github.com/Knatte18/loomyard/internal/builderengine"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/modelspec"
-	"github.com/Knatte18/loomyard/internal/muxengine"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// spawnFakeMux is a hermetic shuttleengine.MuxOps double: AddStrand mints a
+// spawnFakeReed is a hermetic shuttleengine.ReedOps double: AddStrand mints a
 // distinct GUID per call so multiple spawns in one test never collide;
 // Status and RemoveStrand are scriptable/recorded so the in-flight guard and
 // dead-respawn cleanup tests can drive and observe them; the send/capture
 // methods stay inert, since SpawnBatch's path never exercises them.
-type spawnFakeMux struct {
+type spawnFakeReed struct {
 	mu             sync.Mutex
 	counter        int
-	status         muxengine.StatusResult
+	status         reedengine.StatusResult
 	statusErr      error
 	removedStrands []string
 }
 
-func (m *spawnFakeMux) AddStrand(spec muxengine.AddSpec) (muxengine.Strand, error) {
+func (m *spawnFakeReed) AddStrand(spec reedengine.AddSpec) (reedengine.Strand, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.counter++
-	return muxengine.Strand{GUID: "spawn-test-strand-" + strconv.Itoa(m.counter)}, nil
+	return reedengine.Strand{GUID: "spawn-test-strand-" + strconv.Itoa(m.counter)}, nil
 }
 
-func (m *spawnFakeMux) RemoveStrand(guid string, recursive bool) (muxengine.Removed, error) {
+func (m *spawnFakeReed) RemoveStrand(guid string, recursive bool) (reedengine.Removed, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.removedStrands = append(m.removedStrands, guid)
-	return muxengine.Removed{}, nil
+	return reedengine.Removed{}, nil
 }
 
-func (m *spawnFakeMux) Status() (muxengine.StatusResult, error) {
+func (m *spawnFakeReed) Status() (reedengine.StatusResult, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.statusErr != nil {
-		return muxengine.StatusResult{}, m.statusErr
+		return reedengine.StatusResult{}, m.statusErr
 	}
 	return m.status, nil
 }
 
-func (m *spawnFakeMux) SendText(guid, text string, submit bool) error { return nil }
-func (m *spawnFakeMux) SendKey(guid, key string) error                { return nil }
-func (m *spawnFakeMux) CapturePane(guid string) (string, error)       { return "", nil }
+func (m *spawnFakeReed) SendText(guid, text string, submit bool) error { return nil }
+func (m *spawnFakeReed) SendKey(guid, key string) error                { return nil }
+func (m *spawnFakeReed) CapturePane(guid string) (string, error)       { return "", nil }
 
-var _ shuttleengine.MuxOps = (*spawnFakeMux)(nil)
+var _ shuttleengine.ReedOps = (*spawnFakeReed)(nil)
 
 // prepareCall records one spawnFakeEngine.Prepare invocation: the run
 // directory it was handed and the exact Spec it received (already
@@ -132,13 +132,13 @@ var _ shuttleengine.Engine = (*spawnFakeEngine)(nil)
 // spawnFixture is a fully-wired, mutation-safe-to-share-across-subtests set
 // of SpawnBatch dependencies: a real scratch git repo (one committed base
 // file) as WorktreeRoot, fresh builder/reports temp dirs, a real
-// *shuttleengine.Runner over spawnFakeMux/spawnFakeEngine, and every one of
+// *shuttleengine.Runner over spawnFakeReed/spawnFakeEngine, and every one of
 // builderengine's four roles pre-resolved with distinct
 // Model/Effort/Version values so a spec-mapping test can tell them apart.
 type spawnFixture struct {
 	Deps       builderengine.SpawnDeps
 	Engine     *spawnFakeEngine
-	Mux        *spawnFakeMux
+	Reed       *spawnFakeReed
 	Worktree   string
 	ReportsDir string
 }
@@ -172,11 +172,11 @@ func newSpawnFixture(t *testing.T) *spawnFixture {
 	reportsDir := t.TempDir()
 	runRoot := t.TempDir()
 
-	mux := &spawnFakeMux{}
+	reed := &spawnFakeReed{}
 	engine := &spawnFakeEngine{}
 	layout := &hubgeometry.Layout{WorktreeRoot: worktree, Cwd: worktree}
 	shuttleCfg := shuttleengine.Config{RunDir: runRoot, RunTimeoutMin: 60, StartupTimeoutS: 30}
-	runner := shuttleengine.NewRunner(mux, engine, layout, shuttleCfg)
+	runner := shuttleengine.NewRunner(reed, engine, layout, shuttleCfg)
 
 	roles := map[builderengine.Role]modelspec.Resolved{
 		builderengine.RoleOrchestrator: {
@@ -212,10 +212,10 @@ func newSpawnFixture(t *testing.T) *spawnFixture {
 		ReportsDir:   reportsDir,
 		ShuttleCfg:   shuttleCfg,
 		Layout:       layout,
-		Mux:          mux,
+		Reed:         reed,
 	}
 
-	return &spawnFixture{Deps: deps, Engine: engine, Mux: mux, Worktree: worktree, ReportsDir: reportsDir}
+	return &spawnFixture{Deps: deps, Engine: engine, Reed: reed, Worktree: worktree, ReportsDir: reportsDir}
 }
 
 // TestSpawnBatch_RoleSelectionMatrix proves the discussion's role-selection
@@ -421,7 +421,7 @@ func TestSpawnBatch_DeadRespawnReclaimsKeptSubstrate(t *testing.T) {
 				1: {Slug: "json-flag", StrandGUID: "orphan-1", Terminal: true, Status: tt.priorStatus},
 			}
 			if tt.orphanLive {
-				fx.Mux.status = muxengine.StatusResult{Strands: []muxengine.StrandStatus{{GUID: "orphan-1", Live: true}}}
+				fx.Reed.status = reedengine.StatusResult{Strands: []reedengine.StrandStatus{{GUID: "orphan-1", Live: true}}}
 			}
 
 			// The late report the orphan wrote after its dead classification
@@ -437,8 +437,8 @@ func TestSpawnBatch_DeadRespawnReclaimsKeptSubstrate(t *testing.T) {
 				if err == nil || !strings.Contains(err.Error(), "already exists") {
 					t.Fatalf("SpawnBatch() error = %v; want the pre-existing-report refusal", err)
 				}
-				if len(fx.Mux.removedStrands) != 0 {
-					t.Errorf("RemoveStrand calls = %v; want none on a refused done respawn", fx.Mux.removedStrands)
+				if len(fx.Reed.removedStrands) != 0 {
+					t.Errorf("RemoveStrand calls = %v; want none on a refused done respawn", fx.Reed.removedStrands)
 				}
 				return
 			}
@@ -454,12 +454,12 @@ func TestSpawnBatch_DeadRespawnReclaimsKeptSubstrate(t *testing.T) {
 				t.Errorf("archived report glob = %v, %v; want exactly 1 archive", archived, globErr)
 			}
 
-			removed := len(fx.Mux.removedStrands) > 0
+			removed := len(fx.Reed.removedStrands) > 0
 			if removed != tt.wantRemoved {
-				t.Errorf("RemoveStrand calls = %v; wantRemoved = %v", fx.Mux.removedStrands, tt.wantRemoved)
+				t.Errorf("RemoveStrand calls = %v; wantRemoved = %v", fx.Reed.removedStrands, tt.wantRemoved)
 			}
-			if removed && fx.Mux.removedStrands[0] != "orphan-1" {
-				t.Errorf("RemoveStrand guid = %q; want orphan-1", fx.Mux.removedStrands[0])
+			if removed && fx.Reed.removedStrands[0] != "orphan-1" {
+				t.Errorf("RemoveStrand guid = %q; want orphan-1", fx.Reed.removedStrands[0])
 			}
 		})
 	}
@@ -519,7 +519,7 @@ func TestSpawnBatch_RestartChainStopsLiveMemberStrands(t *testing.T) {
 
 	// The recorded member strand is still live in its kept pane.
 	memberGUID := fx.Deps.State.Batches[3].StrandGUID
-	fx.Mux.status = muxengine.StatusResult{Strands: []muxengine.StrandStatus{{GUID: memberGUID, Live: true}}}
+	fx.Reed.status = reedengine.StatusResult{Strands: []reedengine.StrandStatus{{GUID: memberGUID, Live: true}}}
 	// The member classified dead (pane kept); the cursor is clear, as after
 	// any terminal poll.
 	fx.Deps.State.Batches[3].Terminal = true
@@ -531,13 +531,13 @@ func TestSpawnBatch_RestartChainStopsLiveMemberStrands(t *testing.T) {
 	}
 
 	found := false
-	for _, guid := range fx.Mux.removedStrands {
+	for _, guid := range fx.Reed.removedStrands {
 		if guid == memberGUID {
 			found = true
 		}
 	}
 	if !found {
-		t.Errorf("RemoveStrand calls = %v; want the live member strand %q stopped before the reset", fx.Mux.removedStrands, memberGUID)
+		t.Errorf("RemoveStrand calls = %v; want the live member strand %q stopped before the reset", fx.Reed.removedStrands, memberGUID)
 	}
 }
 
@@ -583,8 +583,8 @@ func TestSpawnBatch_RestartChainFromNonLowestMemberSpawnsLowest(t *testing.T) {
 // TestSpawnBatch_InFlightGuardMatrix proves the ErrBatchInFlight guard
 // refuses a spawn exactly when a recorded non-terminal batch's strand is
 // still live, and never on the intended respawn ladders (terminal batch,
-// dead strand, no cursor) nor when the mux status query itself fails (a
-// downed mux hosts no live strand; Start surfaces real substrate errors).
+// dead strand, no cursor) nor when the reed status query itself fails (a
+// downed reed hosts no live strand; Start surfaces real substrate errors).
 func TestSpawnBatch_InFlightGuardMatrix(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -598,15 +598,15 @@ func TestSpawnBatch_InFlightGuardMatrix(t *testing.T) {
 		{name: "non-terminal dead strand proceeds", currentBatch: 2, strandLive: false},
 		{name: "terminal batch proceeds (respawn ladder)", currentBatch: 2, terminal: true, strandLive: true},
 		{name: "no cursor proceeds", currentBatch: 0, strandLive: true},
-		{name: "mux status error proceeds", currentBatch: 2, strandLive: true, statusErr: errors.New("no mux session")},
+		{name: "reed status error proceeds", currentBatch: 2, strandLive: true, statusErr: errors.New("no reed session")},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			fx := newSpawnFixture(t)
-			fx.Mux.statusErr = tt.statusErr
+			fx.Reed.statusErr = tt.statusErr
 			if tt.strandLive {
-				fx.Mux.status = muxengine.StatusResult{Strands: []muxengine.StrandStatus{{GUID: "in-flight-strand", Live: true}}}
+				fx.Reed.status = reedengine.StatusResult{Strands: []reedengine.StrandStatus{{GUID: "in-flight-strand", Live: true}}}
 			}
 			if tt.currentBatch != 0 {
 				fx.Deps.State.CurrentBatch = tt.currentBatch

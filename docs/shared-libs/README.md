@@ -1,6 +1,6 @@
 # Shared internal libraries
 
-Loomyard's user-facing modules (`board`, `warp`, `ide`, `mux`) are self-contained: all
+Loomyard's user-facing modules (`board`, `warp`, `ide`, `reed`) are self-contained: all
 of a module's *domain* logic and its deep test suite live in that module's package
 and nowhere else. What they share is a thin layer of **infrastructure plumbing** —
 mechanical helpers with no opinion about tasks, worktrees, or panes. See [overview.md](../overview.md).

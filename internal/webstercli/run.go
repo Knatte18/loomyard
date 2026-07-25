@@ -55,7 +55,7 @@ Example:
 
 			deps := websterengine.RunDeps{
 				Starter:      c.masterStarter,
-				Mux:          c.mux,
+				Reed:         c.reed,
 				Engine:       c.engine,
 				ShuttleCfg:   c.shuttleCfg,
 				Layout:       c.layout,

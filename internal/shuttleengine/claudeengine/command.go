@@ -2,7 +2,7 @@
 // hands back as a Launch: the launch line that starts a fresh session and
 // the resume line that reattaches an existing one. Both are single-line
 // strings typed verbatim into a pane via tmux send-keys (see
-// muxengine/spawn.go's launchStrandLocked) — no newline may appear in
+// reedengine/spawn.go's launchStrandLocked) — no newline may appear in
 // either, since send-keys submits a line at a time. Argument quoting, the
 // call operator, and the prompt-file read idiom are pane-shell mechanics
 // owned entirely by internal/shell (the Shell Mechanics Seam invariant);
@@ -105,8 +105,8 @@ func claudeBinary(cfg shuttleengine.Config) string {
 
 // forkSubagentEnvKey is the staged-rollout flag (Claude Code v2.1.117+)
 // enabling the built-in fork subagent type. It is set inline on the launch
-// line ONLY — the mux server env is deliberately scrubbed of CLAUDE_CODE_*
-// at boot by muxengine.CleanClaudeEnv, so the flag must ride the pane
+// line ONLY — the reed server env is deliberately scrubbed of CLAUDE_CODE_*
+// at boot by reedengine.CleanClaudeEnv, so the flag must ride the pane
 // command, and only fork-mode runs get it.
 const forkSubagentEnvKey = "CLAUDE_CODE_FORK_SUBAGENT"
 

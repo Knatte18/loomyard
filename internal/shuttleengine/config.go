@@ -53,7 +53,7 @@ type Config struct {
 // validate the config file against the template, resolve environment
 // variables, and return resolved bytes. Unmarshals the resolved bytes into a
 // Config struct. The module name is threaded through by the caller (never
-// hardcoded to "shuttle" here), mirroring muxengine.LoadConfig.
+// hardcoded to "shuttle" here), mirroring reedengine.LoadConfig.
 //
 // If <baseDir>/_lyx/ does not exist, returns an error containing
 // "not initialized here; run \"lyx init\"".
@@ -61,7 +61,7 @@ func LoadConfig(baseDir, module string) (Config, error) {
 	resolved, err := configengine.Load(baseDir, module, []byte(ConfigTemplate()))
 	if err != nil {
 		// Wrap the generic "not initialized" error with the shuttle-specific
-		// hint, matching muxengine's shape so every module surfaces the same
+		// hint, matching reedengine's shape so every module surfaces the same
 		// recovery instruction.
 		if strings.Contains(err.Error(), "not initialized") {
 			return Config{}, fmt.Errorf("not initialized here; run \"lyx init\"")

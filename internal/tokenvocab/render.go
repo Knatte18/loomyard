@@ -1,5 +1,5 @@
 // render.go isolates the stencil dependency: Render is the single reusable compose
-// every consumer (mux's header pipeline, loom's prompt templates) calls to fill a
+// every consumer (reed's header pipeline, loom's prompt templates) calls to fill a
 // template with the token vocabulary.
 
 package tokenvocab

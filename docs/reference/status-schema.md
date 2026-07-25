@@ -87,7 +87,7 @@ Per-field notes:
   needs produce-vs-gate for resume; the finer per-round detail stays in perch's block
   files (see [Parse discipline](#parse-discipline) and history below).
 - **`narration`** — one composed human string with `now:`/`last:`/`wait:` segments.
-  loom writes it, the `lyx loom status --watch` strand prints it; mux never parses it.
+  loom writes it, the `lyx loom status --watch` strand prints it; reed never parses it.
 - **`history`** — a **per-phase outcome trail**: one entry per phase attempt
   (`{phase, outcome: approved | stuck, bounced_to?, ts}`), including stuck-handler
   bounce-backs. Per-*round* verdicts are **not** duplicated here — those live in

@@ -17,7 +17,7 @@ markers. Callers own the templates and the values; stencil just fills them.
 A **stencil** is a template with cut-out fields you fill to reproduce a pattern — exactly "markdown
 with marker fields that get filled." The name deliberately avoids two collisions in this codebase:
 
-- **`render`** — already `mux`'s layout sub-package (`internal/muxengine/render`, strands → layout).
+- **`render`** — already `reed`'s layout sub-package (`internal/reedengine/render`, strands → layout).
 - **`template`** — already means the config default in `configreg.ConfigTemplate()`.
 
 `stencil` is "template" said with its own word, so neither meaning is overloaded.

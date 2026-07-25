@@ -1,6 +1,6 @@
 // run.go implements the run loop's provider-invariant core: Runner, the
 // per-run Run handle, and Start — the sequence that prepares a run's
-// artifacts, registers its strand with mux, and persists run.json so the
+// artifacts, registers its strand with reed, and persists run.json so the
 // CLI's interrupt/send verbs and a later diagnosis pass can find it again.
 // Wait (wait.go) and Interrupt/Send round out the Run handle's public
 // surface.
@@ -17,24 +17,24 @@ import (
 	"unicode"
 
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
-	"github.com/Knatte18/loomyard/internal/muxengine"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 )
 
 // Runner is the provider-invariant run loop: it drives one Engine
-// implementation over the file contract through the MuxOps seam, so a
-// caller (review, loom) constructs exactly one Runner per (mux, engine,
+// implementation over the file contract through the ReedOps seam, so a
+// caller (review, loom) constructs exactly one Runner per (reed, engine,
 // layout, cfg) combination and calls Start/Run for every agent spawn.
 type Runner struct {
-	mux    MuxOps
+	reed   ReedOps
 	engine Engine
 	layout *hubgeometry.Layout
 	cfg    Config
 }
 
-// NewRunner returns a Runner ready to start runs against mux and engine,
+// NewRunner returns a Runner ready to start runs against reed and engine,
 // scoped to layout's worktree and cfg's tuning knobs.
-func NewRunner(mux MuxOps, engine Engine, layout *hubgeometry.Layout, cfg Config) *Runner {
-	return &Runner{mux: mux, engine: engine, layout: layout, cfg: cfg}
+func NewRunner(reed ReedOps, engine Engine, layout *hubgeometry.Layout, cfg Config) *Runner {
+	return &Runner{reed: reed, engine: engine, layout: layout, cfg: cfg}
 }
 
 // Result is a completed run's terminal report: how it was classified, the
@@ -87,13 +87,13 @@ const (
 	eventsFileName   = "events.jsonl"
 )
 
-// Start prepares one run described by spec and registers it with mux,
+// Start prepares one run described by spec and registers it with reed,
 // returning a handle a caller waits on (or drives via Interrupt/Send)
 // without blocking. Sequence: validate spec; opportunistically sweep
-// orphaned run directories left behind by strands mux no longer tracks
+// orphaned run directories left behind by strands reed no longer tracks
 // (never blocking on a sweep failure); mint a fresh run directory; ask the
 // engine to prepare its provider-specific artifacts; register the strand
-// with mux using the engine's Launch commands; and persist run.json. On an
+// with reed using the engine's Launch commands; and persist run.json. On an
 // AddStrand failure the just-created run directory is removed before the
 // error returns — there is nothing yet a caller could resume. A failure
 // persisting run.json AFTER AddStrand succeeded removes both the run
@@ -120,7 +120,7 @@ func (r *Runner) Start(spec Spec) (*Run, error) {
 		return nil, fmt.Errorf("shuttle: prepare run: %w", err)
 	}
 
-	strand, err := r.mux.AddStrand(muxengine.AddSpec{
+	strand, err := r.reed.AddStrand(reedengine.AddSpec{
 		Role:      spec.Role,
 		Round:     spec.Round,
 		Parent:    spec.Parent,
@@ -156,7 +156,7 @@ func (r *Runner) Start(spec Spec) (*Run, error) {
 		// the strand and directory back down so the failure is honest rather
 		// than leaking a live, untracked agent pane — the same cleanup the
 		// AddStrand-failure path above performs.
-		if _, rerr := r.mux.RemoveStrand(strand.GUID, false); rerr != nil {
+		if _, rerr := r.reed.RemoveStrand(strand.GUID, false); rerr != nil {
 			log.Printf("shuttle: start run: remove strand %s after save-state failure (non-fatal): %v", strand.GUID, rerr)
 		}
 		_ = os.RemoveAll(runDir)
@@ -174,7 +174,7 @@ func (r *Runner) Start(spec Spec) (*Run, error) {
 	}, nil
 }
 
-// StrandGUID returns the mux strand guid bound to this run. It is available
+// StrandGUID returns the reed strand guid bound to this run. It is available
 // as soon as Start returns — before Wait completes — so an in-process caller
 // holding the handle can capture the run's pane, log its identity, or resolve
 // it for diagnosis while the run is still in flight (the same guid Result
@@ -195,21 +195,21 @@ func (r *Runner) Run(spec Spec) (Result, error) {
 }
 
 // sweepOrphansOpportunistic removes run directories whose strand is no
-// longer tracked in mux state, using the live-guid set read from mux.json.
-// A genuinely absent state file (st == nil, no error — the post-`mux down`
+// longer tracked in reed state, using the live-guid set read from reed.json.
+// A genuinely absent state file (st == nil, no error — the post-`reed down`
 // case) degrades to an empty live set: every dir old enough is a real
-// orphan there. A LoadState ERROR (corrupt or unreadable mux.json) is
+// orphan there. A LoadState ERROR (corrupt or unreadable reed.json) is
 // different and skips the sweep entirely for this Start, rather than also
 // degrading to an empty set: treating a read failure as "no live strands"
 // would sweep every run dir past the age guard — including the kept
-// asking/died/timeout dirs of strands mux still actually tracks — destroying
+// asking/died/timeout dirs of strands reed still actually tracks — destroying
 // diagnosis material over an unrelated I/O problem. Either way, a failure
 // here never blocks Start: an orphaned run directory left behind costs
 // nothing but disk, while blocking a new run on housekeeping would.
 func (r *Runner) sweepOrphansOpportunistic() {
-	st, err := muxengine.LoadState(r.layout.DotLyxDir())
+	st, err := reedengine.LoadState(r.layout.DotLyxDir())
 	if err != nil {
-		log.Printf("shuttle: orphan sweep: load mux state failed, skipping this sweep (non-fatal, new run proceeds): %v", err)
+		log.Printf("shuttle: orphan sweep: load reed state failed, skipping this sweep (non-fatal, new run proceeds): %v", err)
 		return
 	}
 
@@ -231,10 +231,10 @@ func (r *Runner) sweepOrphansOpportunistic() {
 // session: after confirming the strand still has a live pane showing the
 // provider's input-ready TUI (see requireReadyAgentPane), it plays the
 // engine's InterruptSequence (e.g. a single
-// Escape key press) through the mux seam. The pane stays warm and idle afterward —
+// Escape key press) through the reed seam. The pane stays warm and idle afterward —
 // the caller typically follows with Send to give the agent updated
 // instructions and let it continue, or lets the operator attach directly.
-// Safe to call concurrently with a blocked Wait: mux's op lock serializes
+// Safe to call concurrently with a blocked Wait: reed's op lock serializes
 // the underlying send-keys calls, and Interrupt mutates no Run-local state.
 //
 // Calibration (verified live): a provider's Stop hook fires on ANY turn end,
@@ -249,10 +249,10 @@ func (r *Runner) sweepOrphansOpportunistic() {
 // Wait call will observe the redirect's own eventual outcome — this is the
 // documented v1 limitation that there is no re-wait path once Wait returns.
 func (run *Run) Interrupt() error {
-	if err := requireReadyAgentPane(run.runner.mux, run.runner.engine, run.state.StrandGUID); err != nil {
+	if err := requireReadyAgentPane(run.runner.reed, run.runner.engine, run.state.StrandGUID); err != nil {
 		return err
 	}
-	return playInputs(run.runner.mux, run.state.StrandGUID, run.runner.engine.InterruptSequence())
+	return playInputs(run.runner.reed, run.state.StrandGUID, run.runner.engine.InterruptSequence())
 }
 
 // Send types text as run's next turn: text must be a single, non-empty line
@@ -261,7 +261,7 @@ func (run *Run) Interrupt() error {
 // continue"), and an empty or whitespace-only send has nothing to deliver
 // (see validateSendText).
 // It plays the engine's ComposeSend choreography (typically clearing a
-// leaked auto-suggest before typing text and submitting it) through the mux
+// leaked auto-suggest before typing text and submitting it) through the reed
 // seam and then VERIFIES delivery by observing the text in the pane capture,
 // replaying once if it never appears (see sendVerified — the provider TUI
 // can silently swallow the whole input). A nil return therefore means the
@@ -271,10 +271,10 @@ func (run *Run) Send(text string) error {
 	if err := validateSendText(text); err != nil {
 		return err
 	}
-	if err := requireReadyAgentPane(run.runner.mux, run.runner.engine, run.state.StrandGUID); err != nil {
+	if err := requireReadyAgentPane(run.runner.reed, run.runner.engine, run.state.StrandGUID); err != nil {
 		return err
 	}
-	return sendVerified(run.runner.mux, run.runner.engine, run.state.StrandGUID, text)
+	return sendVerified(run.runner.reed, run.runner.engine, run.state.StrandGUID, text)
 }
 
 // validateSendText rejects text that cannot be delivered as a single agent
@@ -302,7 +302,7 @@ func validateSendText(text string) error {
 // guid via FindRun to confirm it actually names a shuttle run, confirms the
 // strand still has a live pane showing the provider's input-ready TUI
 // (requireReadyAgentPane), then plays the engine's
-// InterruptSequence through the mux seam via the same playInputs helper
+// InterruptSequence through the reed seam via the same playInputs helper
 // (*Run).Interrupt uses. FindRun's underlying error is wrapped (%w) into the
 // "not a shuttle strand" message rather than discarded, so an operator
 // debugging a genuine I/O error against the run-dir root (as opposed to a
@@ -311,10 +311,10 @@ func (r *Runner) Interrupt(guid string) error {
 	if _, _, err := FindRun(r.cfg, r.layout, guid); err != nil {
 		return fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
 	}
-	if err := requireReadyAgentPane(r.mux, r.engine, guid); err != nil {
+	if err := requireReadyAgentPane(r.reed, r.engine, guid); err != nil {
 		return err
 	}
-	return playInputs(r.mux, guid, r.engine.InterruptSequence())
+	return playInputs(r.reed, guid, r.engine.InterruptSequence())
 }
 
 // Send types text as the next turn of the run whose strand is identified by
@@ -337,10 +337,10 @@ func (r *Runner) Send(guid, text string) error {
 	if _, _, err := FindRun(r.cfg, r.layout, guid); err != nil {
 		return fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
 	}
-	if err := requireReadyAgentPane(r.mux, r.engine, guid); err != nil {
+	if err := requireReadyAgentPane(r.reed, r.engine, guid); err != nil {
 		return err
 	}
-	return sendVerified(r.mux, r.engine, guid, text)
+	return sendVerified(r.reed, r.engine, guid, text)
 }
 
 // Inject plays inputs into the live pane of the run whose strand is
@@ -374,10 +374,10 @@ func (r *Runner) Inject(guid string, inputs []PaneInput) error {
 	if _, _, err := FindRun(r.cfg, r.layout, guid); err != nil {
 		return fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
 	}
-	if err := requireLiveStrand(r.mux, guid); err != nil {
+	if err := requireLiveStrand(r.reed, guid); err != nil {
 		return err
 	}
-	return playInputs(r.mux, guid, inputs)
+	return playInputs(r.reed, guid, inputs)
 }
 
 // Send delivery-verification tuning: after playing the ComposeSend
@@ -426,8 +426,8 @@ const (
 // dead provider whose final TUI frame is still rendered in the pane, can
 // still false-pass — the guard narrows the hole to the states a capture can
 // distinguish, it cannot close it.
-func requireReadyAgentPane(mux MuxOps, engine Engine, guid string) error {
-	if err := requireLiveStrand(mux, guid); err != nil {
+func requireReadyAgentPane(reed ReedOps, engine Engine, guid string) error {
+	if err := requireLiveStrand(reed, guid); err != nil {
 		return err
 	}
 
@@ -436,7 +436,7 @@ func requireReadyAgentPane(mux MuxOps, engine Engine, guid string) error {
 		if attempt > 0 {
 			inputSleep(agentPaneProbeInterval)
 		}
-		capture, err := mux.CapturePane(guid)
+		capture, err := reed.CapturePane(guid)
 		if err != nil {
 			// A capture error may be transient noise (like sendVerified's
 			// polls treat it); only after every attempt fails does it become
@@ -461,7 +461,7 @@ func requireReadyAgentPane(mux MuxOps, engine Engine, guid string) error {
 	return fmt.Errorf("shuttle: strand %q's pane shows no input-ready provider TUI — either the provider is still starting up (retry once it is ready), or its process exited (launch failure or crash) while the pane's shell stayed alive, in which case keys would be executed by the shell instead of reaching an agent", guid)
 }
 
-// requireLiveStrand fails unless guid's strand is currently tracked by mux
+// requireLiveStrand fails unless guid's strand is currently tracked by reed
 // AND bound to a live pane. It is the first half of requireReadyAgentPane's
 // guard (and separately keeps the cheap failure modes cheap): tmux's
 // send-keys against a dead or missing pane exits 0 while delivering nothing
@@ -469,8 +469,8 @@ func requireReadyAgentPane(mux MuxOps, engine Engine, guid string) error {
 // both reported success as silent no-ops) — without the guard, the exact
 // verbs the kept died/timeout state exists to support would lie to the
 // operator.
-func requireLiveStrand(mux MuxOps, guid string) error {
-	status, err := mux.Status()
+func requireLiveStrand(reed ReedOps, guid string) error {
+	status, err := reed.Status()
 	if err != nil {
 		return fmt.Errorf("shuttle: check strand liveness: %w", err)
 	}
@@ -483,10 +483,10 @@ func requireLiveStrand(mux MuxOps, guid string) error {
 		}
 		return nil
 	}
-	return fmt.Errorf("shuttle: strand %q is not tracked by mux — its run has completed and been cleaned up", guid)
+	return fmt.Errorf("shuttle: strand %q is not tracked by reed — its run has completed and been cleaned up", guid)
 }
 
-// playInputs plays inputs into guid's pane through mux, in order: a Key
+// playInputs plays inputs into guid's pane through reed, in order: a Key
 // step sends a named key (SendKey), a Text step types literal text and,
 // when Submit is set, follows it with Enter (SendText's submit flag) — the
 // shared choreography both Interrupt and Send drive, and the same one
@@ -494,13 +494,13 @@ func requireLiveStrand(mux MuxOps, guid string) error {
 // caller plays a PaneInput sequence identically. A step's SettleMS is
 // honored after the step lands, so an engine can force a pause between an
 // Escape and the text that follows it (see PaneInput.SettleMS for why).
-func playInputs(mux MuxOps, guid string, inputs []PaneInput) error {
+func playInputs(reed ReedOps, guid string, inputs []PaneInput) error {
 	for _, in := range inputs {
 		if in.Key != "" {
-			if err := mux.SendKey(guid, in.Key); err != nil {
+			if err := reed.SendKey(guid, in.Key); err != nil {
 				return fmt.Errorf("shuttle: send key %q: %w", in.Key, err)
 			}
-		} else if err := mux.SendText(guid, in.Text, in.Submit); err != nil {
+		} else if err := reed.SendText(guid, in.Text, in.Submit); err != nil {
 			return fmt.Errorf("shuttle: send text: %w", err)
 		}
 		if in.SettleMS > 0 {
@@ -527,7 +527,7 @@ func playInputs(mux MuxOps, guid string, inputs []PaneInput) error {
 // (normalizePaneText) because pane captures can drop spaces entirely and
 // wrap long lines, and only a bounded prefix of the text is required so a
 // line-wrapped tail cannot defeat the match.
-func sendVerified(mux MuxOps, engine Engine, guid, text string) error {
+func sendVerified(reed ReedOps, engine Engine, guid, text string) error {
 	needle := normalizePaneText(text)
 	if runes := []rune(needle); len(runes) > 48 {
 		needle = string(runes[:48])
@@ -537,16 +537,16 @@ func sendVerified(mux MuxOps, engine Engine, guid, text string) error {
 	// occurrence on top of this. A failed baseline capture degrades to 0 —
 	// the presence-only semantics this check strengthens, never weaker.
 	baseline := 0
-	if capture, err := mux.CapturePane(guid); err == nil {
+	if capture, err := reed.CapturePane(guid); err == nil {
 		baseline = strings.Count(normalizePaneText(capture), needle)
 	}
 
 	for try := 0; try <= sendReplays; try++ {
-		if err := playInputs(mux, guid, engine.ComposeSend(text)); err != nil {
+		if err := playInputs(reed, guid, engine.ComposeSend(text)); err != nil {
 			return err
 		}
 		for attempt := 0; attempt < sendVerifyAttempts; attempt++ {
-			capture, err := mux.CapturePane(guid)
+			capture, err := reed.CapturePane(guid)
 			if err == nil && strings.Count(normalizePaneText(capture), needle) > baseline {
 				return nil
 			}

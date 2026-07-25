@@ -109,7 +109,7 @@ func (e *OrchestratorTimeoutError) Unwrap() error { return ErrOrchestratorTimeou
 var ErrOrchestratorTimeout = errors.New("builder: orchestrator timed out")
 
 // OrchestratorHandle is the started-but-not-yet-finished orchestrator spawn
-// Run blocks on: StrandGUID identifies the mux strand the orchestrator runs
+// Run blocks on: StrandGUID identifies the reed strand the orchestrator runs
 // in (available immediately after the start, so Run can persist it to
 // state.json BEFORE blocking — the record the next run's entry-time orphan
 // reclaim reads), and Wait blocks until the spawn reaches a terminal shuttle
@@ -136,7 +136,7 @@ type OrchestratorStarter interface {
 
 // RunDeps carries every seam Run needs, so a test can fake each one
 // independently: Runner starts the orchestrator and hands back the handle
-// Run blocks on; Mux is the live mux query surface the entry-time orphan
+// Run blocks on; Reed is the live reed query surface the entry-time orphan
 // reclaim consults via StrandLive/RemoveStrand (the same handle SpawnBatch's
 // in-flight guard already holds); PlanDir, BuilderDir, and ReportsDir are
 // the hubgeometry-resolved _lyx/plan, _lyx/builder, and _lyx/builder/reports
@@ -146,7 +146,7 @@ type OrchestratorStarter interface {
 // ResolveRoles).
 type RunDeps struct {
 	Runner       OrchestratorStarter
-	Mux          shuttleengine.MuxOps
+	Reed         shuttleengine.ReedOps
 	PlanDir      string
 	BuilderDir   string
 	ReportsDir   string
@@ -181,7 +181,7 @@ type RunResult struct {
 }
 
 // newRunGUID returns a 128-bit random identifier, hex-encoded, generated
-// from crypto/rand — mirroring internal/muxengine's own newGUID, the
+// from crypto/rand — mirroring internal/reedengine's own newGUID, the
 // pattern this package's own RunGUID field (see state.go) is minted with:
 // once, at first init, never regenerated across a resume.
 func newRunGUID() (string, error) {
@@ -432,12 +432,12 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	// its own — found live in round fable-r4 as two orchestrators driving the
 	// same state.json at once, both writing the same outcome.yaml. Resume's
 	// contract is "always spawns a fresh orchestrator, hydrated from on-disk
-	// state"; stopping the recorded strand when the mux still reports it live
+	// state"; stopping the recorded strand when the reed still reports it live
 	// makes that true by construction, mirroring the dead-respawn ladder's
 	// substrate reclaim. A strand that already finished (shuttle removed it on
 	// done) or died on its own reports not-live and is left alone.
 	if st != nil && st.OrchestratorStrand != "" {
-		if err := RemoveStrandIfLive(deps.Mux, st.OrchestratorStrand); err != nil {
+		if err := RemoveStrandIfLive(deps.Reed, st.OrchestratorStrand); err != nil {
 			return RunResult{}, err
 		}
 	}
@@ -463,7 +463,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 			return RunResult{}, fmt.Errorf("%w: on-disk plan fingerprint %s does not match this run's recorded fingerprint %s; the plan changed since state.json was created — re-run with --fresh to archive the stale state and reports and start over", ErrFingerprintMismatch, fingerprint, st.PlanFingerprint)
 		}
 
-		// Stop every recorded batch strand the mux still reports live BEFORE
+		// Stop every recorded batch strand the reed still reports live BEFORE
 		// archiving the only state that records them: the archived run can
 		// never be resumed, so its substrate has no legitimate owner, and a
 		// superseded implementer left alive keeps working against the same
@@ -475,7 +475,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		// run's own still-working implementer). Same reclaim discipline as
 		// the dead-respawn ladder and the entry-time orchestrator reclaim.
 		for _, bs := range st.Batches {
-			if err := RemoveStrandIfLive(deps.Mux, bs.StrandGUID); err != nil {
+			if err := RemoveStrandIfLive(deps.Reed, bs.StrandGUID); err != nil {
 				return RunResult{}, err
 			}
 		}
