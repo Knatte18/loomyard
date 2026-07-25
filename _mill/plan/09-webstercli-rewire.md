@@ -44,6 +44,7 @@ resolution chain is preserved; the one addition is load-time batcher selection/v
 - **Context:**
   - `internal/planparser/plan.go`
   - `internal/planparser/validate.go`
+  - `internal/websterengine/beginbatch.go`
   - `internal/websterengine/digest.go`
   - `internal/websterengine/report.go`
   - `internal/hubgeometry/hubgeometry.go`
@@ -95,6 +96,6 @@ resolution chain is preserved; the one addition is load-time batcher selection/v
 
 `verify: go test -tags integration ./internal/webstercli/...` runs the verb/seam behavior tests
 (fake injection) plus any integration-tagged smoke tests. The help-tree/drift/registration pins
-in `cmd/lyx` are exercised by the overview `go build ./...` gate and the full-suite done check;
+in `cmd/lyx` are exercised by batch 10's final `go build ./...` gate and the full-suite done check;
 this batch keeps the eight verb names and `Short` strings unchanged so those pins hold. The
 existing `TestMain` neutralizes the operator gitconfig for any real-git smoke path.

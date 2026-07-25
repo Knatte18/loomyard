@@ -7,7 +7,7 @@ approved: false
 started: 20260725-131925
 parent: main
 root: ""
-verify: go build ./...
+verify: null
 ```
 
 ## Batch Index
@@ -112,7 +112,7 @@ _Cross-cutting decisions every batch inherits._
 
 ### Decision: verify-command-native-go
 
-- **Decision:** All `verify:` commands are native `go test` / `go build` (this is a Go repo — the `PYTHONPATH= ` prefix rule does not apply). Per-batch verify is scoped to the touched package. Batches that add git-spawning (integration-tagged) tests use `go test -tags integration ./internal/<pkg>/...` so the new tests actually run; the module-wide overview `verify: go build ./...` is the cheap cross-package compile gate run at each batch boundary.
+- **Decision:** All `verify:` commands are native `go test` / `go build` (this is a Go repo — the `PYTHONPATH= ` prefix rule does not apply). Per-batch verify is scoped to the touched package. Batches that add git-spawning (integration-tagged) tests use `go test -tags integration ./internal/<pkg>/...` so the new tests actually run. The whole-module `go build ./...` is a **plan-final gate** run once, as batch 10's `verify:` — it is deliberately NOT the overview module-wide per-boundary gate (that field is `null`), because the engine-decouple is a multi-batch API migration: batch 7 changes `websterengine`'s public surface (`BeginBatch` arity, `BeginDeps.Plan`/`RecordResult.Digest` types) while its downstream consumers `internal/webstercli` and `cmd/lyx` are not rewired until batch 9, so a whole-module build is intentionally red across the batch-7 and batch-8 boundaries. Each of batches 7–8 is gated only by its own package-scoped `go test -tags integration ./internal/websterengine/...` (which does not compile the downstream packages); batch 9 restores a green `internal/webstercli` build, and batch 10's `go build ./...` is the final cross-package integrity gate.
 - **Applies to:** all batches.
 
 ### Decision: fork-prompt-plan-level-context

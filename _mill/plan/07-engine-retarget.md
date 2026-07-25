@@ -213,5 +213,9 @@ suite — Tier-1 fake-based verb/state/render/config tests plus the integration-
 against the fully retargeted package. This is the batch that must leave `internal/websterengine`
 importing zero `builderengine` symbols while green; the `-tags integration` flag ensures the
 real-git paths (recover/record SHA capture) run, and the existing hermetic `TestMain` neutralizes
-the operator gitconfig. Cross-package breakage (e.g. webstercli still on the old signatures) is
-caught by the overview `go build ./...` gate and fully resolved in batch 9.
+the operator gitconfig. This package-scoped verify does NOT compile the downstream `internal/webstercli`
+/ `cmd/lyx` packages, which is deliberate: they still reference `websterengine`'s old public signatures
+and stay uncompilable until batch 9 rewires them, so a whole-module `go build ./...` is intentionally red
+across this batch's boundary (see the `verify-command-native-go` Shared Decision — `go build ./...` is a
+plan-final gate at batch 10, not a per-boundary gate). Cross-package breakage is fully resolved in batch 9
+and confirmed green by batch 10's final `go build ./...`.

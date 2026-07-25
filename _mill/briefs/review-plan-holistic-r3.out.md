@@ -1,0 +1,27 @@
+MILL_REVIEW_BEGIN
+# Review: webster: rewrite for flat card list — holistic
+
+```yaml
+verdict: REQUEST_CHANGES
+reviewer_model: opushigh
+reviewed_file: plan/
+date: 2026-07-25
+```
+
+## Findings
+
+### [BLOCKING] Overview build gate cannot pass at batch-7/8 boundaries
+**Location:** 00-overview.md (`verify-command-native-go` Decision) + 07 Batch Tests / 08
+**Issue:** Batch 7 changes `websterengine.BeginBatch` arity (drops `restartChain`), `BeginDeps.Plan` type (`*builderengine.Plan`→`*planparser.Plan`), and `RecordResult.Digest`/`digestFields` type, but webstercli (`beginbatch.go:111`, `beginDeps.Plan`, `recordbatch.go:43/168`) is not rewired until batch 9 — so the module-wide `go build ./...` is red across the batch-7 AND batch-8 boundaries, yet the Decision states it is "the cheap cross-package compile gate run at each batch boundary" and plan-format-v3 criterion 1 requires `go build ./...` green after every card.
+**Fix:** State explicitly that `go build ./...` is a plan-final gate (run once at completion), NOT a per-batch gate; batches 7–8 are gated only by their package-scoped `go test ./internal/websterengine/...` verify. Correct the "run at each batch boundary" wording and the batch-7 "caught by the overview gate" note.
+
+### [NIT] Card 40 calls BeginBatch without its file in Context
+**Location:** 09-webstercli-rewire.md, Card 40
+**Issue:** The card updates the `websterengine.BeginBatch(...)` call to its new (batch-7) signature, but `internal/websterengine/beginbatch.go` is in neither `Context:` nor `Edits:`, so the exact new arity is not readable from the card's declared context.
+**Fix:** Add `internal/websterengine/beginbatch.go` to Card 40's `Context:` (or state the new signature inline).
+
+## Verdict
+
+REQUEST_CHANGES
+Resolve the batch-7/8 whole-module build-gate contradiction; otherwise the plan is sound.
+MILL_REVIEW_END
