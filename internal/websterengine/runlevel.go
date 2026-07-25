@@ -24,10 +24,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/builderengine"
+	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -143,15 +144,16 @@ type RunOptions struct {
 // (Outcome/StuckReason/BatchesDone) plus, once a valid summary.md has been
 // read, its title — the future loom-finalize PR-text source's headline.
 type RunResult struct {
-	// Outcome is one of builderengine.OutcomeDone, OutcomeStuck, or
-	// OutcomePaused, taken verbatim from the parsed outcome.yaml.
+	// Outcome is one of webster's own outcomeDone, outcomeStuck, or
+	// outcomePaused values (outcome.go), taken verbatim from the parsed
+	// outcome.yaml.
 	Outcome string
 	// StuckReason is the parsed outcome.yaml's stuck_reason, verbatim.
 	StuckReason string
 	// BatchesDone is the parsed outcome.yaml's batches_done, verbatim.
 	BatchesDone int
 	// SummaryTitle is the parsed summary.md's title heading. Always
-	// populated for Outcome == builderengine.OutcomeDone (ParseSummary is
+	// populated for Outcome == outcomeDone (ParseSummary is
 	// required there — a missing or malformed summary is a hard error);
 	// populated best-effort for stuck/paused (empty when summary.md is
 	// itself missing or malformed, which is not an error on those two
@@ -257,14 +259,14 @@ func reclaimEntryTimeStrands(mux shuttleengine.MuxOps, st *State) error {
 	}
 
 	if st.MasterStrand != "" {
-		if err := builderengine.RemoveStrandIfLive(mux, st.MasterStrand); err != nil {
+		if err := removeStrandIfLive(mux, st.MasterStrand); err != nil {
 			return err
 		}
 	}
 
 	for _, bs := range st.Batches {
 		if bs != nil && bs.Kind == "recovery" && !bs.Terminal {
-			if err := builderengine.RemoveStrandIfLive(mux, bs.StrandGUID); err != nil {
+			if err := removeStrandIfLive(mux, bs.StrandGUID); err != nil {
 				return err
 			}
 		}
@@ -323,23 +325,12 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	}
 	defer runLock.Release()
 
-	plan, err := builderengine.ParsePlan(deps.PlanDir)
+	plan, err := planparser.ParsePlan(deps.PlanDir)
 	if err != nil {
 		return RunResult{}, err
 	}
 
-	// nothing-to-build is a malformed plan, never a vacuous outcome: done —
-	// webster's own pre-flight ahead of builderengine.Validate, per
-	// discussion.md's run-verb-shape decision.
-	if len(plan.Batches) == 0 {
-		return RunResult{}, fmt.Errorf("webster: plan %s has zero batches; nothing to build is a malformed plan, never a vacuous outcome: done", deps.PlanDir)
-	}
-
-	caps := builderengine.ValidateCaps{
-		ContextCapTokens: deps.Config.BatchContextCapTokens,
-		CardCap:          deps.Config.BatchCardCap,
-	}
-	if findings := builderengine.Validate(plan, deps.WorktreeRoot, caps); len(findings) > 0 {
+	if findings := planparser.Validate(plan, deps.WorktreeRoot); len(findings) > 0 {
 		msgs := make([]string, len(findings))
 		for i, f := range findings {
 			msgs[i] = f.Error()
@@ -347,7 +338,20 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		return RunResult{}, fmt.Errorf("webster: plan validation refused this run (%d finding(s)): %s", len(findings), strings.Join(msgs, "; "))
 	}
 
-	fingerprint, err := builderengine.Fingerprint(deps.PlanDir)
+	active, err := batcher.Select(deps.Config.Batcher)
+	if err != nil {
+		return RunResult{}, fmt.Errorf("webster: %w", err)
+	}
+	batches := active.Batch(plan.Cards)
+
+	// nothing-to-build is a malformed plan, never a vacuous outcome: done —
+	// webster's own pre-flight over the batchifier's own output, per
+	// discussion.md's run-verb-shape decision.
+	if len(batches) == 0 {
+		return RunResult{}, fmt.Errorf("webster: plan %s produced zero execution batches; nothing to build is a malformed plan, never a vacuous outcome: done", deps.PlanDir)
+	}
+
+	fingerprint, err := fingerprint(deps.PlanDir)
 	if err != nil {
 		return RunResult{}, err
 	}
@@ -392,7 +396,6 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 			RunGUID:         guid,
 			PlanFingerprint: fingerprint,
 			Batches:         map[int]*BatchState{},
-			ChainStartSHAs:  map[int]string{},
 		}
 		if err := SaveState(deps.WebsterDir, st); err != nil {
 			return RunResult{}, err
@@ -403,10 +406,10 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 			return RunResult{}, fmt.Errorf("%w: on-disk plan fingerprint %s does not match this run's recorded fingerprint %s; the plan changed since state.json was created — re-run with --fresh to archive the stale state and reports and start over", ErrFingerprintMismatch, fingerprint, st.PlanFingerprint)
 		}
 
-		if _, err := builderengine.ArchiveStateFile(deps.WebsterDir, time.Now); err != nil {
+		if _, err := archiveStateFile(deps.WebsterDir, time.Now); err != nil {
 			return RunResult{}, err
 		}
-		if err := builderengine.ArchiveReportsDir(deps.ReportsDir, time.Now); err != nil {
+		if err := archiveReportsDir(deps.ReportsDir, time.Now); err != nil {
 			return RunResult{}, err
 		}
 		if err := clearRenderedPrompts(deps.PromptsDir); err != nil {
@@ -421,7 +424,6 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 			RunGUID:         guid,
 			PlanFingerprint: fingerprint,
 			Batches:         map[int]*BatchState{},
-			ChainStartSHAs:  map[int]string{},
 		}
 		if err := SaveState(deps.WebsterDir, st); err != nil {
 			return RunResult{}, err
@@ -435,11 +437,11 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	// now resuming from. Placing the clear HERE — not at the bare entry —
 	// means a run that refused above leaves the operator's pending pause
 	// intact rather than silently discarding a request it never acted on.
-	if err := builderengine.ClearPause(deps.WebsterDir); err != nil {
+	if err := ClearPause(deps.WebsterDir); err != nil {
 		return RunResult{}, err
 	}
 
-	if _, err := builderengine.ArchiveStaleOutcome(deps.WebsterDir, time.Now); err != nil {
+	if _, err := archiveStaleOutcome(deps.WebsterDir, time.Now); err != nil {
 		return RunResult{}, err
 	}
 	if _, err := ArchiveStaleSummary(deps.WebsterDir, time.Now); err != nil {
@@ -506,8 +508,8 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	st.MasterSessionID = runState.SessionID
 	// The launch model IS the idempotent-assertion baseline BeginBatch's
 	// own per-batch model check consults from batch 1 onward — a batch 1
-	// begin-batch call for a non-oversized batch then finds AssertedModel
-	// already equal to RoleMaster's model and injects nothing.
+	// begin-batch call then finds AssertedModel already equal to
+	// RoleMaster's model and injects nothing.
 	st.AssertedModel = resolved.Model
 
 	// Second save: the session ID and launch-model baseline the verbs read.
@@ -527,7 +529,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 
 	switch result.Outcome {
 	case shuttleengine.OutcomeDone:
-		return mapMasterDone(deps, plan, outcomePath, summaryPath, result)
+		return mapMasterDone(deps, batches, outcomePath, summaryPath, result)
 
 	case shuttleengine.OutcomeAsking:
 		return RunResult{}, &MasterAskingError{SessionID: result.SessionID, RunDir: result.RunDir, Message: result.LastAssistantMessage}
@@ -553,14 +555,14 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 // asking/died/timeout shuttle outcomes never reach this function — they are
 // mapped directly in Run, before any attempt to parse a file Master never
 // wrote.
-func mapMasterDone(deps RunDeps, plan *builderengine.Plan, outcomePath, summaryPath string, result shuttleengine.Result) (RunResult, error) {
-	outcome, err := builderengine.ParseOutcome(outcomePath)
+func mapMasterDone(deps RunDeps, batches []batcher.Batch, outcomePath, summaryPath string, result shuttleengine.Result) (RunResult, error) {
+	outcome, err := parseOutcome(outcomePath)
 	if err != nil {
 		return RunResult{}, err
 	}
 
 	var summaryTitle string
-	if outcome.Outcome == builderengine.OutcomeDone {
+	if outcome.Outcome == outcomeDone {
 		// Required: a done run with a missing or malformed summary.md is a
 		// hard error, never guessed — the artifact is the future
 		// loom-finalize PR-text source.
@@ -575,7 +577,7 @@ func mapMasterDone(deps RunDeps, plan *builderengine.Plan, outcomePath, summaryP
 		// batch was begun-but-never-recorded (a fork slipped past
 		// record-batch) is caught here, closing the begin-without-record leg
 		// of the two-layer bracket enforcement at run exit.
-		if err := verifyEveryBatchDone(deps.WebsterDir, plan); err != nil {
+		if err := verifyEveryBatchDone(deps.WebsterDir, batches); err != nil {
 			return RunResult{}, err
 		}
 
@@ -589,8 +591,8 @@ func mapMasterDone(deps RunDeps, plan *builderengine.Plan, outcomePath, summaryP
 		summaryTitle = summary.Title
 	}
 
-	if outcome.Outcome != builderengine.OutcomePaused {
-		if err := builderengine.ClearPause(deps.WebsterDir); err != nil {
+	if outcome.Outcome != outcomePaused {
+		if err := ClearPause(deps.WebsterDir); err != nil {
 			return RunResult{}, err
 		}
 	}
@@ -603,17 +605,30 @@ func mapMasterDone(deps RunDeps, plan *builderengine.Plan, outcomePath, summaryP
 	}, nil
 }
 
+// batchIdentity returns b's own number/slug identity, taken from its first
+// card. This is a v0 identity-batcher assumption — one card per batch, so
+// the batch's own number/slug coincide with its sole card's — documented
+// the same way state.go's BatchState.CardSHAs is: the multi-card
+// enumeration path is dormant until a grouping batchifier ships, and needs
+// its own identity scheme then, not a change here.
+func batchIdentity(b batcher.Batch) (number int, slug string) {
+	if len(b.Cards) == 0 {
+		return 0, ""
+	}
+	return b.Cards[0].Number, b.Cards[0].Slug
+}
+
 // verifyEveryBatchDone reloads the persisted state and confirms every batch
-// in plan carries a terminal record whose status is done — the whole-plan
-// invariant an outcome: done claims. A batch with no record, a non-terminal
-// record, or a terminal non-done record (stuck/dead) means Master wrote
-// done while that batch was not actually built — most importantly a batch
-// begun but never recorded (its fork slipped past record-batch), which the
-// transcript-count cross-check alone cannot catch when the fork transcript
-// exists but no record-batch consumed it. State is reloaded fresh because
-// the in-memory copy Run captured before Master spawned is stale by run
-// exit (begin/record-batch mutated it repeatedly).
-func verifyEveryBatchDone(websterDir string, plan *builderengine.Plan) error {
+// in batches carries a terminal record whose status is done — the
+// whole-plan invariant an outcome: done claims. A batch with no record, a
+// non-terminal record, or a terminal non-done record (stuck/dead) means
+// Master wrote done while that batch was not actually built — most
+// importantly a batch begun but never recorded (its fork slipped past
+// record-batch), which the transcript-count cross-check alone cannot catch
+// when the fork transcript exists but no record-batch consumed it. State is
+// reloaded fresh because the in-memory copy Run captured before Master
+// spawned is stale by run exit (begin/record-batch mutated it repeatedly).
+func verifyEveryBatchDone(websterDir string, batches []batcher.Batch) error {
 	st, err := LoadState(websterDir)
 	if err != nil {
 		return err
@@ -623,15 +638,16 @@ func verifyEveryBatchDone(websterDir string, plan *builderengine.Plan) error {
 	}
 
 	var offenders []string
-	for _, b := range plan.Batches {
-		bs, ok := st.Batches[b.Number]
+	for _, b := range batches {
+		number, slug := batchIdentity(b)
+		bs, ok := st.Batches[number]
 		switch {
 		case !ok || bs == nil:
-			offenders = append(offenders, fmt.Sprintf("%02d-%s (never recorded)", b.Number, b.Slug))
+			offenders = append(offenders, fmt.Sprintf("%02d-%s (never recorded)", number, slug))
 		case !bs.Terminal:
-			offenders = append(offenders, fmt.Sprintf("%02d-%s (begun, not recorded terminal)", b.Number, b.Slug))
-		case bs.Status != builderengine.DigestStatusDone:
-			offenders = append(offenders, fmt.Sprintf("%02d-%s (%s)", b.Number, b.Slug, bs.Status))
+			offenders = append(offenders, fmt.Sprintf("%02d-%s (begun, not recorded terminal)", number, slug))
+		case bs.Status != DigestStatusDone:
+			offenders = append(offenders, fmt.Sprintf("%02d-%s (%s)", number, slug, bs.Status))
 		}
 	}
 	if len(offenders) > 0 {
