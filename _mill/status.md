@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-planparser-core
+phase: approved-gitrepo-bisect-primitive
 slug: webster-rewrite
 branch: webster-rewrite
 plan: _mill/plan
@@ -27,6 +27,7 @@ plan-fix-r4  '2026-07-25T14:00:25Z'
 planned  '2026-07-25T14:00:41Z'
 implementing  '2026-07-25T14:02:53Z'
 approved-planparser-core  '2026-07-25T14:19:05Z'
+approved-gitrepo-bisect-primitive  '2026-07-25T14:22:44Z'
 ```
 
 ## Batches
@@ -39,9 +40,10 @@ batches:
     start_sha: 9e37d1788b3fc420cdf012e96a4b2113d4322564
     commit_sha: 93e5457fc6929dee56a8d105003fb93229175e57
   - name: gitrepo-bisect-primitive
-    state: running
+    state: approved
     implementer_session: 78d1c371-7f42-4974-95df-898c0a396b37
     start_sha: 19f848fd4e7c5bc1ce4dce88bd2251e30e0614b2
+    commit_sha: 05fbfff460adba0b830987938344bebf0aa7d9ff
   - name: planparser-checks
     state: pending
   - name: batcher
