@@ -407,8 +407,8 @@ and fully functional in-tree, per the `builder-is-frozen-copy-not-move` decision
 
 This section pins only the facts that remain true of webster's shape regardless of which
 plan format it consumes; webster's own design (the bracket-verb shape, plan/batch
-consumption, the fork-audit policy, the `/model` escalation mechanism, crash/resume, the
-integration-suite fork + bisect) lives in `internal/websterengine`'s package
+consumption, the fork-audit policy, the idempotent per-batch model assertion, crash/resume,
+the integration-suite fork + bisect) lives in `internal/websterengine`'s package
 documentation, not here — same split this file already draws against `builder`'s own
 package docs.
 
@@ -436,8 +436,9 @@ bracket-verb shape (`begin-batch`/`await-batch`/`record-batch` in place of
 `spawn-batch`/`poll` — forks are backgrounded agents on current Claude Code, so Master
 long-polls `await-batch` for the report instead of relying on a synchronous fork
 return), plan/batch consumption via `internal/planparser` + `internal/batcher`, the
-fork-audit policy, the idempotent `/model` pane-injection assertion and its documented
-fallback, the integration-suite fork with in-process SHA-bisect, and crash/resume.
+fork-audit policy, the idempotent per-batch `/model` pane-injection assertion (dormant in
+the shipped flow — the launch model already equals RoleMaster's), the integration-suite
+fork with in-process SHA-bisect, and crash/resume.
 
 ## See also
 
