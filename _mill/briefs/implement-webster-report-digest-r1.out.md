@@ -1,5 +1,0 @@
-All 4 cards (21, 22, 23, 24) declared in this batch are committed, one commit per card, matching their exact `Commit:` messages. Verify (`go test -tags integration ./internal/websterengine/...`) passes. `git status --porcelain --untracked-files=no` shows no in-scope dirty changes (the only untracked file is the brief itself, outside scope).
-
-**Summary: 4 of 4 cards committed** (Cards 21, 22, 23, 24 - fork-return report contract, webster state Digest/distill, recovery classification, and PollUntilTerminal with injectable clock). All new files live under `internal/websterengine/`: `report.go`/`report_test.go`, `digest.go`/`digest_test.go`, `classify.go`/`classify_test.go`, `poll.go`/`poll_test.go`. Batch verify passed. Pre-existing gofmt drift in `internal/websterengine/chain_test.go` was noted but left untouched since it's outside this batch's declared file scope.
-
-{"status":"success","commit_sha":"529242e6","session_id":"c2fe5970-53b1-439b-acd9-646f2b395ef5","cards_done":[21,22,23,24]}
