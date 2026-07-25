@@ -32,9 +32,11 @@ consumers and deletes warp/weft is a later, separate task (step 2).
   `Warp-SHA` trailer, correspondence index).
 - `lyx fabric` registered in `cmd/lyx` alongside `lyx warp` / `lyx weft` (flat tree,
   14 verbs — see Decisions).
-- Growing `internal/gitrepo` with the generic git mechanics weft has and gitrepo lacks
-  (fast-forward pull, pathspec-scoped staging, lock-serialized commit; push serialization
-  reuses the existing `PushCoalesced` lock).
+- Growing `internal/gitrepo` with the generic git mechanics it lacks: fast-forward
+  pull, lock-serialized commit, and a SHA-validated hard reset (for `RevertWithWeft`).
+  Pathspec-scoped staging already ships (`StageAndCommit` accepts an explicit pathspec
+  list, directories included); push serialization reuses the existing `PushCoalesced`
+  lock.
 - New uniform branch-naming scheme enforced by fabric: host `<slug>` ↔ weft
   `<slug>-weft`, no exceptions, primary worktree included (host `main` ↔ weft
   `main-weft`), effective from `lyx fabric clone`.
@@ -102,10 +104,14 @@ consumers and deletes warp/weft is a later, separate task (step 2).
 
 ### Most git mechanics grow into gitrepo
 
-- Decision: generic single-repo git operations weft implements today move down into
-  `internal/gitrepo`: fast-forward pull, pathspec-scoped stage+commit, and lock-serialized
-  write (weftengine's `.weft/weft.write.lock` equivalent, generalized). Push serialization
-  reuses gitrepo's existing `PushCoalesced` / `.gitrepo-push.lock` rather than porting
+- Decision: generic single-repo git operations move down into `internal/gitrepo`:
+  fast-forward pull, lock-serialized write (weftengine's `.weft/weft.write.lock`
+  equivalent, generalized), and a hard reset (`ResetHard(sha)`-style, needed by
+  `RevertWithWeft`; the caller-supplied SHA is validated as plain hex exactly like
+  `SHAExists`/`ChangedFilesSince` do). Pathspec-scoped staging is NOT a gap —
+  `StageAndCommit` already stages an explicit caller-supplied pathspec list
+  (directories included); fabric supplies the scoped list. Push serialization reuses
+  gitrepo's existing `PushCoalesced` / `.gitrepo-push.lock` rather than porting
   weftengine's separate push lock. fabric itself keeps only what is genuinely
   coordination or policy: two-repo operations (SyncWeft, RevertWithWeft, coordinated
   topology), `SkipGit`/`SkipPush` env gating (`EnvSyncOptions` equivalent), and pathspec
@@ -170,7 +176,8 @@ consumers and deletes warp/weft is a later, separate task (step 2).
 
 - Decision: `RevertWithWeft(warpSHA)` resets **both** repos, per the design doc: warp is
   reset to `warpSHA` first, then weft to the corresponding point — the method owns the
-  warp reset; it is not left to the caller. When the target warp SHA has no exact weft
+  warp reset; it is not left to the caller. Both resets go through gitrepo's new
+  SHA-validated reset method (see "Most git mechanics grow into gitrepo"). When the target warp SHA has no exact weft
   correspondence, it resets weft to the nearest older correspondence and returns a typed
   result stating
   exact-match vs gap (including the warp-SHA range in the gap) so the caller can flag
@@ -396,7 +403,11 @@ From `CONSTRAINTS.md` (authoritative; read it before writing code):
   scenarios mirroring the warp/weft ones, run against the dedicated empty test repos
   `https://github.com/Knatte18/lyx-fabric-test` (host) and
   `https://github.com/Knatte18/lyx-fabric-test-weft` (weft) — NOT the existing sandbox
-  repo, which stays reserved for warp/weft testing.
+  repo, which stays reserved for warp/weft testing. **Precondition (operator action,
+  requested during discussion):** the GitHub wiki on `lyx-fabric-test-weft` must be
+  initialized (first page created) so clone's derived board URL
+  `<weftURL>.wiki.git` exists; the clone scenario exercises the default derivation
+  with no explicit board-url.
 - All new test packages: `TestMain` with `lyxtest.HermeticGitEnv()`; spawning tests
   integration-tagged; fabriccli help-tree covered by the existing pinned-set tests.
 
@@ -444,3 +455,10 @@ From `CONSTRAINTS.md` (authoritative; read it before writing code):
   **A:** Yes — full parity (optional board-url, `resolvedBoardURL`, board cloned into
   the hub), as a package-level function; `Fabric` holds only Warp/Weft. Board's move
   into `weft:main` is the separate, already-planned board-weft-storage task.
+- **Q:** (review r4 gap) Where does RevertWithWeft's git reset live? **A:** A new
+  SHA-validated hard-reset method on `gitrepo.Repo` — generic ops go to gitrepo.
+- **Q:** (review r4 gap) Clone's derived board URL (`<weftURL>.wiki.git`) doesn't exist
+  for the fabric test repos — sandbox clone would abort. **A:** Operator initializes the
+  GitHub wiki on `lyx-fabric-test-weft`; the scenario tests the default derivation.
+- **Q:** Standing instruction for review handling? **A:** From round 4 on, the operator
+  pre-authorized auto-picking the recommended resolution for every review finding.
