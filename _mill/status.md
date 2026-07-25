@@ -47,7 +47,9 @@ batches:
     start_sha: 1ca64e81f1b8a3f52c0e880b21b5a71ae029e45d
     commit_sha: 11a7e9e248ea70d73ae37b0f8339d8166342f48c
   - name: sandbox-wire-and-guard
-    state: pending
+    state: running
+    implementer_session: 9adc0d8e-7ba1-4ece-8764-13c8c209c64b
+    start_sha: c681fea82b39d1e40929711e2748d73fb04a6f20
   - name: launchers-and-lifecycle
     state: pending
   - name: crucible-sweep
