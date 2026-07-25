@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-promote-v3-reference
 slug: plan-format-v3
 branch: plan-format-v3
 plan: _mill/plan
@@ -21,6 +21,7 @@ planning  '2026-07-25T06:11:48Z'
 plan-fix-r1  '2026-07-25T06:19:40Z'
 planned  '2026-07-25T06:20:06Z'
 implementing  '2026-07-25T06:24:10Z'
+approved-promote-v3-reference  '2026-07-25T06:32:30Z'
 ```
 
 ## Batches
@@ -28,9 +29,10 @@ implementing  '2026-07-25T06:24:10Z'
 ```yaml
 batches:
   - name: promote-v3-reference
-    state: running
+    state: approved
     implementer_session: cda6bc45-34ea-41e1-9674-445a1644d9d9
     start_sha: ddb836eb08707e59430a57a3dee5cc00f3331781
+    commit_sha: 5e7f13d3a922acf3117e093bfabed0a53206dd97
   - name: neighbour-doc-crosslinks
     state: pending
 ```
