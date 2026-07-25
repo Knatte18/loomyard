@@ -324,6 +324,15 @@ func TestMasterTemplate_StatesBracketSequenceAndRecoveryLadder(t *testing.T) {
 	requireContains(t, text, "`done` → skip")
 	requireContains(t, text, "`stuck` → its fork reported stuck")
 	requireContains(t, text, "`dead` → its recovery already failed")
+
+	// The integration report has no await verb — the template must spell out
+	// the concrete bounded foreground poll, or a literal-minded Master has no
+	// defined wait mechanism for the integration fork (crucible round
+	// fable-r1's F15: "the same way you wait for a batch's own report"
+	// pointed at await-batch, which cannot target integration.yaml).
+	requireContains(t, text, "there is no")
+	requireContains(t, text, "await verb for the integration report")
+	requireContains(t, text, "never end your turn")
 }
 
 // TestMasterTemplate_FillsWithAllMarkers asserts stencil.Fill succeeds when

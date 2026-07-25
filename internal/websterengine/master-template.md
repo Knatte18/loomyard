@@ -194,8 +194,13 @@ read the whole plan at orientation — no new file read is needed here):
   only what it says: <the integration fork's own prompt path>`. That fork
   runs the plan-level `## verify:` command ONCE, makes NO commit, and writes
   its own minimal report (`status: OK | FAILED`) to its own report path.
-  Wait for that report the same way you wait for a batch's own report —
-  poll for the file's existence — before doing anything else.
+  Wait for that report with SHORT foreground Bash checks — there is no
+  await verb for the integration report, so poll its file yourself:
+  `sleep 20; test -f <the integration report path> && echo present || echo absent`,
+  re-run in the foreground until `present`. The same turn discipline as
+  `await-batch` applies verbatim: every check is a SHORT foreground call,
+  never one long block, never backgrounded, and you never end your turn
+  while the integration fork is still running.
   - `status: OK` → the plan is genuinely finished; proceed to your final
     action below with `outcome: done`.
   - `status: FAILED` → do NOT attempt to localize or fix the failure
