@@ -162,10 +162,13 @@ Every git operation on the weft repo goes through the weft/warp engines in Go, d
 orchestration layer in-process — never raw git, and never an LLM agent.
 
 - **Module ownership.** Weft-internal git (`commit`/`push`/`pull`/`sync`) goes through
-  `internal/weftengine`; coordinated host↔weft topology (a checkout that moves both and re-points
-  junctions, dual-worktree add/remove/clone) goes through `internal/warpengine`. No other package
-  runs raw git against a weft worktree. The **host** repo is unrestricted — it is an ordinary project
-  repo.
+  `internal/weftengine` **or** `internal/fabricengine`; coordinated host↔weft topology (a checkout
+  that moves both and re-points junctions, dual-worktree add/remove/clone) goes through
+  `internal/warpengine` **or** `internal/fabricengine`. No other package runs raw git against a weft
+  worktree. The **host** repo is unrestricted — it is an ordinary project repo. **Parallel-build
+  note:** `fabricengine` is the in-progress unified replacement for `weftengine`/`warpengine`; this
+  dual ownership lasts only until the warp/weft cutover task, which rewires every consumer onto
+  `fabricengine` and collapses this bullet back down to a single module per concern.
 - **Orchestration, not agent.** The weft commit is Go calling the engine in-process
   (`weftengine.Sync`/`Commit`) at a round/phase boundary the loop owner (loom, or perch's CLI
   standalone) controls. An LLM agent never drives weft git — not raw git, not by shelling `lyx weft`.
