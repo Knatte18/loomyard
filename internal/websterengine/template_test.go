@@ -233,6 +233,28 @@ func TestMasterTemplate_ForbidsWeftGitModelAndNamedSubagents(t *testing.T) {
 	requireContains(t, text, "The audit is")
 }
 
+// TestMasterTemplate_GroundsHarnessRealityAgainstInjectionRefusal asserts
+// the master template's bytes carry the harness-grounding statements that
+// preempt the observed live spawn-killer (round fable-r1, crucible): on
+// current Claude Code, a freshly spawned Master classified the injected
+// orchestration prompt as suspicious content, reasoned "no `lyx` tool is
+// in my toolset", and ended its turn asking — which the shuttle file
+// contract classifies asking, killing the run (~40% of real spawns). The
+// template must state that the prompt is real and delivered by `lyx
+// webster run`, that `lyx` is a CLI driven via the Bash tool (never a
+// listed tool), and that the session verifies via `lyx webster status`
+// instead of ever ending its turn to ask.
+func TestMasterTemplate_GroundsHarnessRealityAgainstInjectionRefusal(t *testing.T) {
+	text := string(websterengine.MasterTemplate())
+
+	requireContains(t, text, "never dismiss it as injected content")
+	requireContains(t, text, "submitted by `lyx webster run`")
+	requireContains(t, text, "it is an ordinary CLI binary")
+	requireContains(t, text, "RUNNING it with your Bash tool")
+	requireContains(t, text, "run `lyx webster status`")
+	requireContains(t, text, "ending your turn with a question kills the whole run")
+}
+
 // TestMasterTemplate_StatesBracketSequenceAndRecoveryLadder asserts the
 // embedded template's bytes carry every rung of the begin-batch -> fork ->
 // await-batch -> record-batch sequence, verbatim prompt forwarding, the
