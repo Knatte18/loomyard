@@ -7,7 +7,8 @@
 
 ## What it does
 
-"Read `discussion.md`, write a [plan-format v3](plan-format-v3.md) flat card list." Nothing
+"Read `discussion.md`, write a [plan-format v3](../../docs/reference/plan-format-v3.md) flat card
+list." Nothing
 else. Like the Discussion producer (already built), this is **not a module** — just a prompt +
 profile fed to `shuttle.Run`, one `shuttle.Run` → one artifact. No human interaction: autonomous,
 no inputs beyond `discussion.md`. Review is `perch`/`burler`'s job entirely separately — the
@@ -25,5 +26,6 @@ the plan-format-v3 card list.
 
 ## Related
 
-- [plan-format-v3.md](plan-format-v3.md) — the schema this producer writes against.
+- [plan-format-v3.md](../../docs/reference/plan-format-v3.md) — the schema this producer writes
+  against.
 - [loom.md](loom.md) — the phase machine this producer is one phase of.
