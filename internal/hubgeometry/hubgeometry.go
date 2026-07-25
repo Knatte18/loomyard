@@ -218,16 +218,44 @@ func PerchRunsDir(baseDir string) string {
 	return filepath.Join(baseDir, LyxDirName, "perch")
 }
 
-// PlanDir returns the path to the base directory for builder's plan-format
-// v1 artifacts within a baseDir: the directory holding 00-overview.md and
-// every NN-<batch-slug>.md batch file (see docs/reference/plan-format.md). It
-// lives under _lyx so the plan is weft-synced via the host _lyx junction,
-// like every other durable lyx state. Per the Hub Geometry Invariant, no
-// other package may construct this path.
+// PlanDir returns the path to the base directory for the plan's artifacts
+// within a baseDir: the directory holding 00-overview.md and every
+// NN-<batch-slug>.md batch file, shared across plan-format versions (see
+// docs/reference/plan-format-v3.md). It lives under _lyx so the plan is
+// weft-synced via the host _lyx junction, like every other durable lyx
+// state. Per the Hub Geometry Invariant, no other package may construct
+// this path.
 //
 // Returns filepath.Join(baseDir, LyxDirName, "plan").
 func PlanDir(baseDir string) string {
 	return filepath.Join(baseDir, LyxDirName, "plan")
+}
+
+// PlanDir returns the path to the Plan phase's output directory for this
+// worktree: the directory holding 00-overview.md and every
+// NN-<batch-slug>.md batch file (see PlanOverview). It delegates to the
+// free PlanDir function so the `_lyx/plan` path has exactly one definition.
+// It is deliberately WorktreeRoot-anchored, NOT Cwd-anchored, matching
+// DiscussionDir's rationale: the plan is the one true per-worktree
+// artifact, so a caller invoked from a subdirectory (Cwd != WorktreeRoot)
+// must still resolve the single `_lyx/plan/` at the worktree root. Per the
+// Hub Geometry Invariant, no other package may construct this path.
+//
+// Returns PlanDir(l.WorktreeRoot).
+func (l *Layout) PlanDir() string {
+	return PlanDir(l.WorktreeRoot)
+}
+
+// PlanOverview returns the path to the plan's overview file, the Planner
+// producer's sole output artifact and the Plan phase's done-sentinel (see
+// docs/reference/plan-format-v3.md). It shares PlanDir's WorktreeRoot
+// anchoring for the same reason: the overview must resolve to the one true
+// copy at the worktree root, not a per-subdirectory copy. Per the Hub
+// Geometry Invariant, no other package may construct this path.
+//
+// Returns filepath.Join(l.PlanDir(), "00-overview.md").
+func (l *Layout) PlanOverview() string {
+	return filepath.Join(l.PlanDir(), "00-overview.md")
 }
 
 // BuilderDir returns the path to the base directory for builder's own
