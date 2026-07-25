@@ -122,6 +122,7 @@ batches:
 - `docs/sandbox-hub.md`
 - `manifest/roadmap.md`
 - `tools/deploy/main.go`
+- `tools/deploy/main_test.go`
 - `tools/internal/devbin/devbin.go`
 - `tools/internal/devbin/devbin_test.go`
 - `tools/sandbox/SANDBOX-BUILDER-SUITE.md`
