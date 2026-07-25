@@ -1,0 +1,1 @@
+- doc.go cites "the plan's X Shared Decision" for decisions that live only in discussion.md: Location: internal/gitnativepoc/doc.go:38-39,44,161
