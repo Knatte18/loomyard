@@ -1,11 +1,14 @@
 // sync.go — the background pusher that backs up the board to the remote.
 //
 // Writes only touch the filesystem; Sync is what gets those changes to GitHub.
-// It commits any pending working-tree changes and pushes all unpushed commits,
-// looping until nothing is left so a burst of writes coalesces into as few
-// pushes as possible. A single Sync runs at a time (the push lock); concurrent
-// sync processes block, then exit quickly once there is nothing to do. The write
-// path launches `lyx board sync` detached (see spawn_*.go) so it never waits.
+// Each loop iteration commits any dirty working-tree state via
+// gitrepo.StageAllAndCommit and, unless skipPush is set, pushes via
+// gitrepo.Push (which owns the rebase-retry) unconditionally — looping until a
+// commit iteration finds nothing dirty, so a burst of writes coalesces into as
+// few pushes as possible. A single top-level push lock still serializes
+// pushers across processes; concurrent sync processes block, then exit
+// quickly once there is nothing to do. The write path launches
+// `lyx board sync` detached (see spawn_*.go) so it never waits.
 package boardengine
 
 import (
@@ -14,7 +17,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/gitrepo"
 	flock "github.com/Knatte18/loomyard/internal/lock"
 )
 
@@ -46,13 +49,16 @@ func Sync(boardPath string, skipGit, skipPush bool) error {
 	}
 	defer pushLock.Release()
 
+	repo := gitrepo.New(boardPath)
 	for {
-		committed, err := commitDirty(boardPath)
+		committed, err := commitDirty(repo, boardPath)
 		if err != nil {
 			return err
 		}
-		if err := pushUnpushed(boardPath, skipPush); err != nil {
-			return err
+		if !skipPush {
+			if err := repo.Push(); err != nil {
+				return fmt.Errorf("sync push: %w", err)
+			}
 		}
 		// Nothing new arrived this round → done. If a write landed while we were
 		// pushing, the tree is dirty again and we loop to catch it.
@@ -65,74 +71,18 @@ func Sync(boardPath string, skipGit, skipPush bool) error {
 // commitDirty stages and commits the working tree if it has changes, under the
 // write lock so it snapshots a state no writer is mid-mutation on. Returns
 // whether a commit was made.
-func commitDirty(boardPath string) (bool, error) {
+func commitDirty(repo *gitrepo.Repo, boardPath string) (bool, error) {
 	lock, err := flock.AcquireWriteLock(filepath.Join(boardPath, writeLockFile))
 	if err != nil {
 		return false, fmt.Errorf("acquire write lock: %w", err)
 	}
 	defer lock.Release()
 
-	out, _, code, err := gitexec.RunGit([]string{"status", "--porcelain"}, boardPath)
+	_, committed, err := repo.StageAllAndCommit("board sync")
 	if err != nil {
-		return false, fmt.Errorf("status: %w", err)
+		return false, fmt.Errorf("sync commit: %w", err)
 	}
-	if code != 0 {
-		return false, BoardPushError("status failed")
-	}
-	if strings.TrimSpace(out) == "" {
-		return false, nil // clean working tree
-	}
-
-	if _, _, code, err := gitexec.RunGit([]string{"add", "-A"}, boardPath); err != nil {
-		return false, fmt.Errorf("add: %w", err)
-	} else if code != 0 {
-		return false, BoardPushError("add failed")
-	}
-
-	if _, _, code, err := gitexec.RunGit([]string{"commit", "-m", "board sync"}, boardPath); err != nil {
-		return false, fmt.Errorf("commit: %w", err)
-	} else if code != 0 {
-		return false, BoardPushError("commit failed")
-	}
-	return true, nil
-}
-
-// pushUnpushed pushes local commits to the remote, rebasing once on a
-// non-fast-forward. No-op if there is nothing unpushed or skipPush is set.
-func pushUnpushed(boardPath string, skipPush bool) error {
-	if skipPush {
-		return nil
-	}
-
-	unpushed, err := hasUnpushed(boardPath)
-	if err != nil {
-		return err
-	}
-	if !unpushed {
-		return nil
-	}
-
-	for attempt := 0; attempt < 2; attempt++ {
-		_, stderr, code, err := gitexec.RunGit([]string{"push"}, boardPath)
-		if err != nil {
-			return fmt.Errorf("push: %w", err)
-		}
-		if code == 0 {
-			return nil
-		}
-
-		if strings.Contains(stderr, "non-fast-forward") ||
-			strings.Contains(stderr, "rejected") ||
-			strings.Contains(stderr, "fetch first") {
-			if _, _, c, err := gitexec.RunGit([]string{"pull", "--rebase"}, boardPath); err != nil || c != 0 {
-				gitexec.RunGit([]string{"rebase", "--abort"}, boardPath)
-				return BoardPushError("rebase failed")
-			}
-			continue
-		}
-		return BoardPushError(fmt.Sprintf("push failed: %s", stderr))
-	}
-	return BoardPushError("push still failing after rebase retry")
+	return committed, nil
 }
 
 // ensureLockfilesIgnored adds the lock-file and manifest-sidecar patterns to the
@@ -168,17 +118,4 @@ func ensureLockfilesIgnored(boardPath string) error {
 		}
 	}
 	return nil
-}
-
-// hasUnpushed reports whether HEAD is ahead of its upstream. If no upstream is
-// configured it returns true, so the first push (which sets it) still happens.
-func hasUnpushed(boardPath string) (bool, error) {
-	out, _, code, err := gitexec.RunGit([]string{"rev-list", "--count", "@{u}..HEAD"}, boardPath)
-	if err != nil {
-		return false, fmt.Errorf("rev-list: %w", err)
-	}
-	if code != 0 {
-		return true, nil // no upstream yet
-	}
-	return strings.TrimSpace(out) != "0", nil
 }
