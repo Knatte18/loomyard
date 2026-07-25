@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-approved
+phase: done
 slug: dev-test-binary
 branch: dev-test-binary
 plan: _mill/plan
@@ -36,6 +36,7 @@ approved-crucible-sweep  '2026-07-25T08:44:52Z'
 approved-suite-docs-sweep  '2026-07-25T08:49:48Z'
 holistic-reviewing  '2026-07-25T08:50:05Z'
 holistic-approved  '2026-07-25T08:52:16Z'
+done  '2026-07-25T08:52:37Z'
 ```
 
 ## Batches
