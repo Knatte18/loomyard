@@ -213,6 +213,28 @@ func TestPlanSpec_PromptStatesMovedFileNotInEdits(t *testing.T) {
 	}
 }
 
+// TestPlanSpec_PromptStatesDependsOnCriterion verifies the rendered prompt
+// states WHEN a card must declare a Depends-on: edge, not just the field's
+// grammar: a live docs-only run (round fable-r3) produced a card whose
+// Context: named a file an earlier card Creates: while declaring
+// "Depends-on: none" — an under-declared DAG-of-intent edge no mechanical
+// plan-format-v3 check can catch (check 12 tolerates the cross-card path
+// reference; check 14 only validates edges that exist), so the criterion
+// must reach the agent through the template.
+func TestPlanSpec_PromptStatesDependsOnCriterion(t *testing.T) {
+	prompt := renderedPlanPrompt(t)
+
+	for _, want := range []string{
+		"what depends on what",
+		"not compile-visible",
+		"other card were dropped",
+	} {
+		if !strings.Contains(prompt, want) {
+			t.Errorf("PlanSpec(...).Prompt does not contain %q; the Depends-on declaration criterion must reach the agent", want)
+		}
+	}
+}
+
 // renderedPlanPrompt returns the prompt PlanSpec renders for a hand-built
 // Layout and the default in-memory Config, for template-content assertions.
 func renderedPlanPrompt(t *testing.T) string {

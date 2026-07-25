@@ -85,6 +85,13 @@ a path from the same card's `Edits:` there. Within one card a path may appear in
 ONE of the five fields (a `Moves:` endpoint counts); across different cards, repeating
 a path is normal sequencing.
 
+`Depends-on:` records intent — what depends on what — not just compile order: name
+every earlier card whose output this card relies on (a file it reads, edits, or
+references that the earlier card `Creates:` or `Moves:` into place), even when the
+reliance is not compile-visible — a card whose `Context:` names a file an earlier card
+creates depends on that card. `none` claims this card lands correctly even if every
+other card were dropped.
+
 Every `verify:` value — a card's optional `**verify:**` and the plan-level `## verify:`
 section — is one or more runnable shell commands, never prose; the plan-level
 `## verify:` is the single integration check run once at the end of the whole plan.
