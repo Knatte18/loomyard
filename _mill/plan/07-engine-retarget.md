@@ -52,12 +52,11 @@ existing `TestMain`.
 
 - **Context:**
   - `internal/batcher/registry.go`
-  - `internal/websterengine/config.go`
-  - `internal/websterengine/template.yaml`
 - **Edits:**
   - `internal/websterengine/config.go`
   - `internal/websterengine/config_test.go`
   - `internal/websterengine/roles.go`
+  - `internal/websterengine/template.yaml`
 - **Creates:**
   - `internal/websterengine/roles_test.go`
 - **Deletes:** none

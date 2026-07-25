@@ -23,12 +23,6 @@ would break frozen builder. Export visibility is set by cross-package need: symb
 `internal/webstercli` calls are exported; engine-internal helpers stay unexported. The report
 contract and digest/classify cluster are the second half (batch 6).
 
-## Rename mechanic
-
-_This batch performs no renames; all `Moves:` fields are `none`. Section retained only to note
-that the mechanism layer is created fresh (copy), never `git mv`-moved out of builderengine
-(which stays frozen)._
-
 ## Cards
 
 ### Card 15: git helpers re-pointed to gitrepo

@@ -1,0 +1,27 @@
+MILL_REVIEW_BEGIN
+# Review: webster: rewrite for flat card list — holistic
+
+```yaml
+verdict: REQUEST_CHANGES
+reviewer_model: opushigh
+reviewed_file: plan/
+date: 2026-07-25
+```
+
+## Findings
+
+### [BLOCKING] Card 26 edits template.yaml but omits it from Edits
+**Location:** batch 7 (07-engine-retarget.md), Card 26
+**Issue:** Requirements say "Update template.yaml … to drop the removed keys and document the new `batcher:` key," but `template.yaml` appears only in `Context:` (read-only), not `Edits:`, and is absent from `00-overview.md`'s `All Files Touched` union; the change is mandatory because `config_test.go`'s `TestConfigTemplate_ContainsEveryConfigYAMLTag` asserts every `Config` yaml tag (now including `batcher`) is present in the template, so the batch verify fails if template.yaml is not updated.
+**Fix:** Move `internal/websterengine/template.yaml` from `Context:` to `Edits:` in Card 26 and add it to the `All Files Touched` list in `00-overview.md`.
+
+### [NIT] Batch 5 carries a Rename mechanic section with no Moves
+**Location:** batch 5 (05-webster-mechanism-helpers.md), `## Rename mechanic`
+**Issue:** All cards in batch 5 have `Moves: none`, so the `## Rename mechanic` section is not required by the rename-mechanic rule; it is retained only as an explanatory note.
+**Fix:** Acceptable as-is (the section self-explains the copy-not-move rationale); no change needed, flagged only for awareness.
+
+## Verdict
+
+REQUEST_CHANGES
+One footprint defect: Card 26 must declare template.yaml in Edits and All Files Touched.
+MILL_REVIEW_END

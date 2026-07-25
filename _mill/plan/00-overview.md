@@ -211,5 +211,6 @@ card, sorted. (`Deletes:` and Move sources excluded.)_
 - `internal/websterengine/strand_test.go`
 - `internal/websterengine/summary.go`
 - `internal/websterengine/summary_test.go`
+- `internal/websterengine/template.yaml`
 - `internal/websterengine/template_test.go`
 - `manifest/roadmap.md`

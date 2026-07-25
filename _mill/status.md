@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r1
+phase: plan-fix-r2
 slug: webster-rewrite
 branch: webster-rewrite
 plan: _mill/plan
@@ -19,4 +19,6 @@ discussed  '2026-07-25T12:59:19Z'
 planning  '2026-07-25T13:38:02Z'
 plan-review-r1  '2026-07-25T13:45:46Z'
 plan-fix-r1  '2026-07-25T13:45:46Z'
+plan-review-r2  '2026-07-25T13:50:25Z'
+plan-fix-r2  '2026-07-25T13:50:25Z'
 ```
