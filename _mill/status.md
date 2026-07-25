@@ -6,6 +6,7 @@ slug: loom-planner
 branch: loom-planner
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: 'loom: Planner producer'
 task_description: |
   loom: Planner producer
@@ -28,7 +29,9 @@ implementing  '2026-07-25T07:40:54Z'
 ```yaml
 batches:
   - name: plan-path-helpers
-    state: pending
+    state: running
+    implementer_session: c1eb3167-e077-4fba-849a-b5747ceaf764
+    start_sha: e5654ca6ba139ce9320dd2a0c10e881756b820d6
   - name: planner-producer
     state: pending
 ```
