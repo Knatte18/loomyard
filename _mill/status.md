@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: plan-format-v3
 branch: plan-format-v3
 plan: _mill/plan
@@ -26,6 +26,7 @@ approved-neighbour-doc-crosslinks  '2026-07-25T06:36:07Z'
 holistic-reviewing  '2026-07-25T06:36:23Z'
 holistic-approved  '2026-07-25T06:39:37Z'
 done  '2026-07-25T06:40:05Z'
+pr-pending  '2026-07-25T06:40:39Z'
 ```
 
 ## Batches
