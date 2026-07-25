@@ -188,6 +188,22 @@ func TestSyncIgnoresLockfiles(t *testing.T) {
 	if strings.Contains(tracked, ".lock") || strings.Contains(tracked, ".swaplock") {
 		t.Fatalf("lock files were committed; tracked:\n%s", tracked)
 	}
+
+	// Repeated syncs must not re-append patterns: seeding is idempotent and,
+	// running under the push lock, serialized across concurrent sync processes.
+	dirty(t, work, `[{"id":0,"slug":"a","title":"B"}]`)
+	if err := boardengine.New(cfg).Sync(); err != nil {
+		t.Fatalf("second Sync: %v", err)
+	}
+	gitignore, err := os.ReadFile(filepath.Join(work, ".gitignore"))
+	if err != nil {
+		t.Fatalf("read .gitignore: %v", err)
+	}
+	for _, pat := range []string{"*.lock", "*.swaplock"} {
+		if got := strings.Count(string(gitignore), pat+"\n"); got != 1 {
+			t.Errorf(".gitignore contains %q %d times; want exactly 1:\n%s", pat, got, gitignore)
+		}
+	}
 }
 
 func TestSkipSeam(t *testing.T) {

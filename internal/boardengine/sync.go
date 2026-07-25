@@ -37,11 +37,6 @@ func Sync(boardPath string, skipGit, skipPush bool) error {
 		return nil
 	}
 
-	// The lock files live in the board dir; keep git from ever committing them.
-	if err := ensureLockfilesIgnored(boardPath); err != nil {
-		return err
-	}
-
 	// Only one pusher does network work at a time. A second sync process blocks
 	// here, then finds nothing to do and returns — that is the coalescing.
 	pushLock, err := flock.AcquireWriteLock(filepath.Join(boardPath, pushLockFile))
@@ -49,6 +44,15 @@ func Sync(boardPath string, skipGit, skipPush bool) error {
 		return fmt.Errorf("acquire push lock: %w", err)
 	}
 	defer pushLock.Release()
+
+	// The lock files live in the board dir; keep git from ever committing them.
+	// Runs under the push lock — Sync is the only .gitignore writer, so the lock
+	// serializes concurrent first syncs that would otherwise both read the
+	// patterns as missing and append duplicates. Still ahead of any staging, so
+	// the ignore patterns are always in place before the first `git add -A`.
+	if err := ensureLockfilesIgnored(boardPath); err != nil {
+		return err
+	}
 
 	repo := gitrepo.New(boardPath)
 	for {
