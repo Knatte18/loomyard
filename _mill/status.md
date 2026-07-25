@@ -28,7 +28,9 @@ implementing  '2026-07-25T05:43:14Z'
 ```yaml
 batches:
   - name: gitrepo-stage-all
-    state: pending
+    state: running
+    implementer_session: 4898d553-19cc-42cd-8bae-b0906b2e9bca
+    start_sha: 5f87e08d90f05c067a863ab55862cf0b3e7882e3
   - name: boardengine-migration
     state: pending
 ```
