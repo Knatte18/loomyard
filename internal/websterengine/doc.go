@@ -183,7 +183,13 @@
 // disk — is found and policy-checked exactly as a late record would have),
 // or with recover-batch's attach path for a recovery batch (found live in
 // round fable-r3, where auditing the current session instead wedged that
-// resume across all three verbs).
+// resume across all three verbs). This crash window resumes on the SAME
+// machine only: fork transcripts live under the machine-local ~/.claude
+// projects directory, while state.json and the reports are weft-synced —
+// a different machine sees the report with no transcript behind it, which
+// record-batch refuses exactly as it refuses a forged report
+// (ErrNoForkTranscripts names the operator recourse: move the orphan
+// report aside and re-drive the batch).
 //
 // # Integration-suite fork + in-process bisect + terminal escalation
 //
