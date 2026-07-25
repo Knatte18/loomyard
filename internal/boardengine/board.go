@@ -6,6 +6,10 @@
 // sync process (see sync.go) is launched to commit and push changes to the
 // remote. The write returns immediately without waiting for the sync. Read
 // methods (Get/List) bypass the lock and load directly from disk.
+//
+// The detached sync path talks to git through a single gitrepo.Repo
+// (StageAllAndCommit + Push), never hand-rolled gitexec calls, under board's
+// own write and push locks.
 
 package boardengine
 
