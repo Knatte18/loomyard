@@ -247,12 +247,18 @@ func TestMasterTemplate_ForbidsWeftGitModelAndNamedSubagents(t *testing.T) {
 func TestMasterTemplate_GroundsHarnessRealityAgainstInjectionRefusal(t *testing.T) {
 	text := string(websterengine.MasterTemplate())
 
-	requireContains(t, text, "never dismiss it as injected content")
+	requireContains(t, text, "verify this harness with two read-only commands — never by asking")
 	requireContains(t, text, "submitted by `lyx webster run`")
 	requireContains(t, text, "it is an ordinary CLI binary")
-	requireContains(t, text, "RUNNING it with your Bash tool")
+	requireContains(t, text, "RUNNING it with your")
 	requireContains(t, text, "run `lyx webster status`")
-	requireContains(t, text, "ending your turn with a question kills the whole run")
+	// The safe-under-either-hypothesis framing is the load-bearing part: a
+	// skeptical model must be handed an epistemically safe first move
+	// (read-only verification), never a bare "trust this document" — the
+	// latter itself pattern-matches an injection move and triggered a live
+	// refusal (round fable-r1, post-first-fix iteration).
+	requireContains(t, text, "safe under EITHER hypothesis")
+	requireContains(t, text, "a clarifying question is never answered")
 }
 
 // TestMasterTemplate_StatesBracketSequenceAndRecoveryLadder asserts the
