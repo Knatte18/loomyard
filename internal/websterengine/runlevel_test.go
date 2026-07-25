@@ -167,13 +167,17 @@ var _ websterengine.MasterStarter = (*runFakeStarter)(nil)
 // seedRunPlanDir writes a syntactically complete, validation-clean
 // plan-format v3 plan with numCards cards into a fresh temp plan directory:
 // each card's sole file-op field is a Creates: entry (so path-missing never
-// fires — a Creates: target need not exist on disk), Depends-on: none, and
-// the overview carries a plan-level verify:. numCards == 0 yields a
-// "## Card Index" section with no entries at all, which ParsePlan's own
-// parseCardIndex refuses loud ("no card index entries found") — the vehicle
-// for the zero-batch refusal test, which under the flat model is actually
-// the batchifier-derived-zero-batches refusal (an empty Cards list, if it
-// ever parsed, would batchify to zero batches too).
+// fires — a Creates: target need not exist on disk), and Depends-on: none.
+// The overview carries NO plan-level "## verify:" section — deliberately,
+// so ShouldRunIntegration(plan) is false and the integration stage
+// (runlevel.go's runIntegrationStage) stays a no-op for every fixture built
+// on this helper; the dedicated integration-stage tests (integration_test.go)
+// instead call appendIntegrationVerify against an already-seeded plan dir.
+// numCards == 0 yields a "## Card Index" section with no entries at all,
+// which ParsePlan's own parseCardIndex refuses loud ("no card index entries
+// found") — the vehicle for the zero-batch refusal test, which under the
+// flat model is actually the batchifier-derived-zero-batches refusal (an
+// empty Cards list, if it ever parsed, would batchify to zero batches too).
 func seedRunPlanDir(t *testing.T, numCards int) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -194,7 +198,7 @@ func seedRunPlanDir(t *testing.T, numCards int) string {
 		files[file] = body
 	}
 	files["00-overview.md"] = "---\nformat: 3\napproved: true\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n" +
-		index.String() + "\n## verify:\n\ngo build ./...\n"
+		index.String()
 
 	for name, content := range files {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {

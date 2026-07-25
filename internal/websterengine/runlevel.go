@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/modelspec"
@@ -529,7 +530,21 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 
 	switch result.Outcome {
 	case shuttleengine.OutcomeDone:
-		return mapMasterDone(deps, batches, outcomePath, summaryPath, result)
+		runResult, mapErr := mapMasterDone(deps, batches, outcomePath, summaryPath, result)
+		if mapErr != nil {
+			return RunResult{}, mapErr
+		}
+		// The integration-suite stage is a minimal call-site addition at the
+		// end of the run, not a rewrite of the batch loop above: it re-derives
+		// everything it needs from disk (the plan's own ShouldRunIntegration,
+		// every batch's own persisted terminal record) rather than trusting
+		// whatever Master's own outcome.yaml/summary.md already said, so it
+		// runs the same way regardless of whether Master itself reported done
+		// or stuck for this plan.
+		if err := runIntegrationStage(deps, plan, batches); err != nil {
+			return RunResult{}, err
+		}
+		return runResult, nil
 
 	case shuttleengine.OutcomeAsking:
 		return RunResult{}, &MasterAskingError{SessionID: result.SessionID, RunDir: result.RunDir, Message: result.LastAssistantMessage}
@@ -704,4 +719,94 @@ func runExitAuditCrossCheck(deps RunDeps, outcomePath, summaryPath string, resul
 	}
 
 	return nil
+}
+
+// runIntegrationStage drives the plan-level integration-suite stage after
+// every batch has reached a terminal-done state, wired at the very end of
+// Run per the integration-suite-fork-with-bisect decision: a no-op when the
+// plan carries no plan-level "## verify:" section (ShouldRunIntegration) or
+// when the whole-plan batch set is not (yet) all terminal-done — a run that
+// ended stuck for an ordinary batch reason never reaches the integration
+// stage at all. Otherwise it confirms the one dedicated integration fork's
+// report has landed (RunIntegration — Master itself spawned that fork and
+// waited for its report per master-template.md's own integration-fork
+// bracket instruction, so the report is normally already on disk by the
+// time Run reaches this call; the bounded await here is a defensive
+// re-confirmation, mirroring the run-exit audit's own backstop posture)
+// and, on a FAILED report, runs the in-process SHA-bisect over every
+// batch's own accumulated BatchState.CardSHAs and escalates. The persisted
+// terminal record and summary.md extension this produces are authoritative
+// regardless of what Master's own outcome.yaml/summary.md already said,
+// since webster's own localized finding is strictly more precise than
+// Master's own best-effort report.
+func runIntegrationStage(deps RunDeps, plan *planparser.Plan, batches []batcher.Batch) error {
+	if !ShouldRunIntegration(plan) {
+		return nil
+	}
+	// A run whose batches are not all terminal-done never reached the
+	// integration stage in the first place (Master's own bracket
+	// instruction only spawns the integration fork after every batch is
+	// done) — this is expected, not a failure, so the error here is
+	// swallowed rather than propagated.
+	if err := verifyEveryBatchDone(deps.WebsterDir, batches); err != nil {
+		return nil
+	}
+
+	report, err := RunIntegration(deps.ReportsDir, time.Duration(DefaultAwaitWaitS)*time.Second, realClock{})
+	if err != nil {
+		return err
+	}
+	if report.Status == ReportStatusOK {
+		// Master's own "done" outcome already reflects a passing integration
+		// suite correctly; nothing further to escalate.
+		return nil
+	}
+
+	mutateLock, err := AcquireStateMutation(deps.WebsterDir)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = mutateLock.Release() }()
+
+	// Reload state fresh: begin-batch/record-batch mutated and persisted it
+	// repeatedly across Master's whole run, so the in-memory copy captured
+	// before Master ever spawned is stale by the time this stage runs.
+	st, err := LoadState(deps.WebsterDir)
+	if err != nil {
+		return err
+	}
+	if st == nil {
+		return fmt.Errorf("webster: integration stage: no state.json to escalate against")
+	}
+
+	shas, labels := accumulatedCardSHAs(batches, st)
+
+	repo := gitrepo.New(deps.WorktreeRoot)
+	if err := BisectAndEscalate(repo, shas, labels, plan.Verify, deps.WorktreeRoot, deps.WebsterDir, st); err != nil {
+		return err
+	}
+
+	return SaveState(deps.WebsterDir, st)
+}
+
+// accumulatedCardSHAs walks batches in plan order and collects every
+// terminal batch's own CardSHAs alongside a matching "NN-slug" label — the
+// ordered per-card SHA trail and parallel label set bisect and its
+// escalation search over. A batch with no persisted record (should never
+// happen once verifyEveryBatchDone has already confirmed every batch is
+// terminal-done, but handled defensively rather than assumed) contributes
+// nothing.
+func accumulatedCardSHAs(batches []batcher.Batch, st *State) (shas, labels []string) {
+	for _, b := range batches {
+		number, slug := batchIdentity(b)
+		bs, ok := st.Batches[number]
+		if !ok || bs == nil {
+			continue
+		}
+		for _, sha := range bs.CardSHAs {
+			shas = append(shas, sha)
+			labels = append(labels, fmt.Sprintf("%02d-%s", number, slug))
+		}
+	}
+	return shas, labels
 }
