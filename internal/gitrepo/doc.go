@@ -1,9 +1,9 @@
 // Package gitrepo provides a typed Repo over a single local git checkout,
 // built on top of internal/gitexec's raw command runner. It exposes the small
 // set of semantic operations (current SHA, stage+commit, changed-files-since,
-// SHA existence, push, snapshot tracking) that every consumer of a git-backed
-// repo (fabric, raddle, codeintel, webster) would otherwise reimplement by
-// parsing raw git stdout itself.
+// SHA existence, push, pull, snapshot tracking) that every consumer of a
+// git-backed repo (fabric, raddle, codeintel, webster) would otherwise
+// reimplement by parsing raw git stdout itself.
 //
 // # Relationship to internal/gitexec
 //
@@ -35,6 +35,7 @@
 //   - CurrentSHA, StageAndCommit, StageAllAndCommit, ChangedFilesSince, and
 //     SHAExists are the core read/write primitives.
 //   - Push and PushCoalesced are the push surface (see below).
+//   - Pull is the fast-forward-only pull surface (see below).
 //   - SnapshotSHA and SetSnapshotSHA are the snapshot-tracking surface (see
 //     below).
 //
@@ -73,10 +74,11 @@
 //
 // gitrepo covers only the operations its consumers actually need
 // programmatically: stage+commit (explicit file list, never wildcard-stage),
-// diff-since-SHA, current-SHA, push, and snapshot/correspondence tracking.
-// StageAllAndCommit is a separate wildcard-stage variant provided as board's
-// opt-in exception, not a relaxation of the explicit-list default —
-// fabric, raddle, and codeintel keep using explicit-list StageAndCommit.
+// diff-since-SHA, current-SHA, push, fast-forward pull, and
+// snapshot/correspondence tracking. StageAllAndCommit is a separate
+// wildcard-stage variant provided as board's opt-in exception, not a
+// relaxation of the explicit-list default — fabric, raddle, and codeintel
+// keep using explicit-list StageAndCommit.
 // Rebase, interactive staging, cherry-pick, and conflict resolution are
 // explicitly not supported — a human can always use plain git directly in
 // the working tree, since it's an ordinary git repo underneath. fabric
@@ -110,6 +112,17 @@
 // burst of concurrent callers collapses into as few pushes as possible — a
 // caller that finds nothing unpushed once it acquires the lock returns
 // immediately instead of pushing again.
+//
+// # Pull surface
+//
+// Pull runs `git pull --ff-only` and is fast-forward-only by contract: a
+// diverged local branch — one with commits its upstream lacks — is an error,
+// never a merge commit. Recovering from divergence (rebase, reset, manual
+// merge) stays a caller policy; gitrepo does not attempt it. Unlike the rest
+// of the package's error style, a non-zero exit from Pull names the repo
+// path and git's exit code without embedding git's raw stderr, so a
+// diverged-branch or no-remote failure never leaks git's own
+// "fatal:"-prefixed message text.
 //
 // # Snapshot remote model
 //
