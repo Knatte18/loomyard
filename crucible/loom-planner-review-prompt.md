@@ -199,18 +199,76 @@ in these seams instead:
   something there.
 
 ## Round context seeded from prior-round verification
-This is round 1 of an up-to-4-round campaign, alternating Fable/Opus. There is no prior round yet —
-do a genuinely independent clean-room pass: read the code and docs yourself, then drive the real
-prompt against a real agent (see Live driving), and form your own findings before anything else.
+You are round tag `opus-r2` — round 2 of an up-to-4-round campaign, alternating Fable/Opus. Round 1
+(`fable-r1`) ran, found 7 real findings (all CONFIRMED against a real live-driven throwaway hub +
+real `claude` agent, none merely PLAUSIBLE), fixed all 7, and was independently re-verified by the
+orchestrator from a cold state. Do NOT re-open this CLOSED-AND-VERIFIED work — it holds:
 
-There is nothing on the "Deferred items" list yet.
+- **T1 (MEDIUM, confirmed live, two iterations)** — `plan-template.md` never said what a card is; a
+  live run produced a new-behavior card with no bundled test. Fixed `2eda08cb` with a "What a card
+  is" subsection (builds-on-its-own / independently-committable / bundles-its-own-test). A live
+  re-drive (Run F) showed the first wording still insufficient (card still had `Creates: none`, no
+  test) — commit `b5fd12ca` made criterion 3 imperative and ruled out `verify:` as a substitute. A
+  SECOND live re-drive (Run G, independently reproduced by the orchestrator by reading the throwaway
+  hub's actual on-disk plan output before tearing it down) confirms the fix holds: the produced card
+  now has `Creates: cmd/notes/main_test.go` and extracts a testable `run()` helper. Pinned by
+  `TestPlanSpec_PromptStatesCardCriteria`; orchestrator reproduced the revert-and-confirm-fail proof
+  (removing the section makes the test fail on all 5 assertions; restored, diff empty).
+- **T2 (MEDIUM)** — template advertised frontmatter `root:` with no resolution rules. Fixed
+  `44cb41b4`. Pinned by `TestPlanSpec_PromptStatesRootResolution`; orchestrator reproduced the
+  revert-and-confirm-fail proof (removing the paragraph fails all 3 assertions; restored, diff
+  empty).
+- **T3 (LOW)** — `Context:` semantics + per-card field-exclusivity rule undocumented. Fixed
+  `932aa9d3`, pinned by `TestPlanSpec_PromptStatesContextSemantics`.
+- **T4 (LOW)** — move-redundant rule + rename-plus-extraction shape undocumented. Fixed `db6bc0a2`,
+  pinned by `TestPlanSpec_PromptStatesMoveRedundantRule`.
+- **T5 (NIT, confirmed live)** — `verify:` values not pinned to runnable commands; a live run wrote a
+  prose `## verify:` section. Fixed `acbdb5ff`, pinned by `TestPlanSpec_PromptStatesVerifyIsRunnable`;
+  Run F confirms the fix (produced plan's `verify:` is now pure runnable fenced commands).
+- **H1 (LOW)** — `PlanDir`/`PlanOverview` doc comments used stale v1 batch vocabulary and
+  misdescribed the overview as the "sole output artifact" (it is the sole `Spec.OutputFiles` entry —
+  the agent also writes card files, which are NOT in `OutputFiles`). Fixed `3113aa47`.
+- **C1 (NIT)** — `manifest/designs/loom.md`'s producer row dangled `approved: false` onto the card
+  files rather than the overview frontmatter. Fixed `610b6cf9`.
+
+Process note (not a module defect): round 1's own session was interrupted after committing all 7
+fixes but before finishing its final live re-drive (Run G) and before tearing down its throwaway
+substrate — its fixer report even left "Run G: see result below" with the result never filled in,
+and falsely claimed teardown was done. The orchestrator independently reproduced Run G's actual
+on-disk result (genuinely fixed, see T1 above), killed the leaked `lyx-notes-HUB-*` tmux server, and
+deleted a leftover untracked `internal/loomengine/zz_throwaway_render_test.go`. This is not something
+for you to fix or re-litigate — it's recorded here only so you don't mistake the now-clean working
+tree for round 1 having been trivial.
+
+**Residual to close (found by the orchestrator's own verification pass, not by round 1):**
+`internal/hubgeometry/hubgeometry.go`, the `PlanOverview` doc comment (currently around line
+253–260). The H1 edit left an awkward orphaned line wrap: `...It shares` ends one line, then
+`PlanDir's WorktreeRoot` sits alone on the next line, then `// anchoring for the same reason: ...`
+continues — the sentence "It shares PlanDir's WorktreeRoot anchoring for the same reason: ..." reads
+fine but the line-wrapping is broken (a short, isolated line where every other line in this
+doc-comment block runs close to the column width the rest of the file uses). Reflow that paragraph to
+match the file's normal comment-wrapping width. This is purely cosmetic (NIT) — no test needed beyond
+`gofmt`/`go vet` staying green — but fix it along with whatever else your own independent pass finds;
+do not treat it as the only thing to look for this round.
+
+Do a genuinely independent clean-room pass on top of the above: read the code and docs yourself
+(including the CLOSED-AND-VERIFIED commits, to confirm no regression), then drive at least two more
+live runs of your own devising against a real throwaway hub (try scenarios round 1 did NOT: a
+multi-card plan that exercises `Moves:`/the Rename mechanic for real, a missing decision-record file,
+an empty-but-present decision-record file, a deliberately ambiguous decision record) before consulting
+round 1's `.scratch/` material. An honest "no NEW defects beyond the seeded residual" is a completely
+legitimate outcome for this round.
 
 State the merge bar so you calibrate: this is a small, low-concurrency, single-shot producer — there
 is no meaningful "N× concurrent" stress dimension the way a stateful CLI verb has (nothing here holds
 a lock or mutates shared state across invocations). The merge bar is: hermetic tests green, the
 `hubgeometry` Hub Geometry Invariant honored, and — the part that actually matters for THIS module —
 a real agent given the composed prompt reliably produces a correct, spec-conformant plan-format-v3
-output across at least a couple of independently-driven live runs (not just one lucky pass).
+output across multiple independently-driven live runs (not just one lucky pass). **Before you end
+your session, actually finish and record the result of every live run you start, and actually tear
+down your throwaway substrate (`lyx mux down`, kill the tmux server, delete the throwaway hub dir and
+any throwaway test files) — do not leave a run's outcome as "see result below" with nothing after
+it.**
 
 ## What to TEST — do not just read, EXERCISE it
 Report the exact commands you ran and what you observed.
