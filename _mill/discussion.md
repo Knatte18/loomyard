@@ -177,6 +177,9 @@ this task carries a version suffix**. The old format dies with builder, so the n
   a card's `verify:` command immediately after committing that card (in addition to
   `go build ./...` + unit tests). A card with no `verify:` runs only the implicit build+unit gate.
   This is distinct from the plan-level `## verify:` integration suite (the single final fork).
+  A **non-zero per-card `verify:` fails the card exactly like the build+unit gate** — the fork
+  returns `FAILED` with the SHA it reached, and the plan stops/escalates per *fork-return-contract*
+  and *fork failure → stop the plan*.
 - Rationale: The per-card `verify:` is the card author's explicit "check this here" signal — cheap,
   targeted, and part of the format. Parsing-but-not-running would silently ignore a present field;
   ignoring it entirely leaves the format under-consumed.
@@ -255,6 +258,10 @@ this task carries a version suffix**. The old format dies with builder, so the n
   over the captured per-card SHAs (logarithmic re-runs) to localize the offending card, then
   escalate to a human. Webster writes a summary document (from accumulated OK/deviation notices)
   that becomes loom's merge-commit message.
+- Absent plan-level `## verify:`: the plan-level `## verify:` is **optional** (`plan-format-v3.md`
+  §"verify model"). A plan whose `00-overview.md` has no `## verify:` section **skips the
+  integration fork and bisect stage entirely** and proceeds straight to the summary/finish path —
+  no error, no empty fork.
 - Rationale: Integration tests are the expensive, LLM/heavy tests — run once at the end, not
   per-card. Bisect over already-available per-card SHAs is cheap and localizes the failure without
   a linear rescan.
@@ -533,3 +540,7 @@ Discovered during discussion:
   today — v0 adds exactly one new `gitrepo` primitive (detached checkout + branch restore) for the
   bisect; bisect re-runs `## verify:` in-process (Go), no fork per candidate. The deviation list is
   fork-reported; Master may recompute it via `ChangedFilesSince` as an informational cross-check.
+- **Q:** [review-r5 gap] What happens when the plan has no plan-level `## verify:` section? **A:**
+  It's optional — a plan without it skips the integration fork/bisect entirely and goes straight to
+  summary/finish. (Also pinned: a failing per-card `verify:` returns `FAILED` like the build+unit
+  gate.)
