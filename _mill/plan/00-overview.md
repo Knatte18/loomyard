@@ -3,7 +3,7 @@
 ```yaml
 task: 'fabric: unify warp + weft into one git-coordination module'
 slug: fabric
-approved: false
+approved: true
 started: '20260725-063143'
 parent: main
 root: ""
