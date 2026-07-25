@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: dev-test-binary
 branch: dev-test-binary
 plan: _mill/plan
@@ -26,4 +26,23 @@ plan-review-r3  '2026-07-25T08:12:49Z'
 plan-fix-r3  '2026-07-25T08:12:49Z'
 plan-fix-r4  '2026-07-25T08:17:55Z'
 planned  '2026-07-25T08:18:27Z'
+implementing  '2026-07-25T08:19:34Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: devbin-and-deploy
+    state: pending
+  - name: sandbox-resolve-core
+    state: pending
+  - name: sandbox-wire-and-guard
+    state: pending
+  - name: launchers-and-lifecycle
+    state: pending
+  - name: crucible-sweep
+    state: pending
+  - name: suite-docs-sweep
+    state: pending
 ```
