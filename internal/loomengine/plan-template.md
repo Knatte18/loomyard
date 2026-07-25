@@ -117,4 +117,3 @@ exists on disk — its existence is the sole signal that the plan is complete.
 Never call the `AskUserQuestion` tool at any point in this session — this session is
 autonomous, no operator is present. Make best-judgment calls and never block on a
 dialog.
-</content>
