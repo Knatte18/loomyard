@@ -42,6 +42,12 @@ driving real substrate and hand-rolling crash/rebirth/concurrency scenarios is i
 
 ## The orchestrator — resolved: Go drives per-round respawn, no persistent thread
 
+**The engine underneath this is now designed jointly with `perch`, not hardener-specific — see
+[gorch.md](gorch.md).** That doc covers the round-runner interface, the judge-maintained handoff
+(a `perch` improvement too, not just hardener's), and the process for getting there (a dedicated
+discussion round precedes rewriting `perch` or building `hardener` — this is not folded into
+hardener's own task). What follows here is hardener's own instance of that shared design.
+
 In the hand-run version (see [crucible/README.md](../../crucible/README.md)), **one persistent
 orchestrator thread** stayed alive across the campaign: it spawned a fresh round agent per round,
 **independently verified** the round's work (re-ran the gates from cold state on the committed
@@ -81,14 +87,9 @@ today; those rounds reuse a fixed rubric, not a dynamically retargeted prompt.
 
 ### Open question: does pre-round targeting belong in `perch` itself?
 
-Not yet decided — two shapes:
-
-- **Generalize `perch`** so its `progress-judge` gains a pre-round targeting job (read state, decide
-  focus, write the next round's seed) for every caller, not just hardener — Discussion/Plan/Builder
-  would then also get per-round retargeting instead of a fixed rubric replayed unchanged each round.
-- **Keep it hardener-specific** — a wrapper around perch's existing (post-round-only)
-  `progress-judge` that bolts a new pre-round half on top, without changing perch's contract for its
-  other callers.
+Superseded by [gorch.md](gorch.md) — pre-round targeting is designed there as a general capability
+`gorch`'s judge can support, exercised by hardener's profile and simply unused by perch's. See that
+doc's "Pre-round targeting" section instead of resolving this here.
 
 ### The handoff — two-tier memory, and the one crux
 
@@ -166,8 +167,9 @@ Whether the round agent literally imports the `burler` package or only follows t
 
 - ~~Persistent thread vs. per-round respawn~~ — resolved: per-round respawn via `Gorch`'s
   three-step loop (pre-round `progress-judge` → reviewer → post-round `progress-judge`); see above.
-- Whether pre-round targeting generalizes into `perch` itself or stays hardener-specific (see
-  above) — not yet decided.
+- The shared engine design (round-runner interface, handoff/ledger format, pre-round-targeting
+  mechanics) moved to [gorch.md](gorch.md) — not decided here anymore, and gated on gorch.md's own
+  dedicated discussion round before either perch or hardener builds on it.
 - Exactly what the handoff must carry losslessly (key-ledger confirmed; what else?).
 - The Go-scaffolding / LLM-brain boundary above.
 - Whether it reuses the `burler` package or just the prompt template.
