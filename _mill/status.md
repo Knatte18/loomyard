@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-gitrepo-stage-all
 slug: board-use-gitrepo
 branch: board-use-gitrepo
 plan: _mill/plan
@@ -21,6 +21,7 @@ planning  '2026-07-25T05:34:37Z'
 plan-fix-r1  '2026-07-25T05:39:39Z'
 planned  '2026-07-25T05:40:11Z'
 implementing  '2026-07-25T05:43:14Z'
+approved-gitrepo-stage-all  '2026-07-25T05:49:51Z'
 ```
 
 ## Batches
@@ -28,9 +29,10 @@ implementing  '2026-07-25T05:43:14Z'
 ```yaml
 batches:
   - name: gitrepo-stage-all
-    state: running
+    state: approved
     implementer_session: 4898d553-19cc-42cd-8bae-b0906b2e9bca
     start_sha: 5f87e08d90f05c067a863ab55862cf0b3e7882e3
+    commit_sha: 924a722b986a00d6425cd54302727ba8a3f58a97
   - name: boardengine-migration
     state: pending
 ```
