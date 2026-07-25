@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-sandbox-resolve-core
+phase: approved-sandbox-wire-and-guard
 slug: dev-test-binary
 branch: dev-test-binary
 plan: _mill/plan
@@ -30,6 +30,7 @@ planned  '2026-07-25T08:18:27Z'
 implementing  '2026-07-25T08:19:34Z'
 approved-devbin-and-deploy  '2026-07-25T08:23:13Z'
 approved-sandbox-resolve-core  '2026-07-25T08:26:14Z'
+approved-sandbox-wire-and-guard  '2026-07-25T08:38:06Z'
 ```
 
 ## Batches
@@ -47,9 +48,10 @@ batches:
     start_sha: 1ca64e81f1b8a3f52c0e880b21b5a71ae029e45d
     commit_sha: 11a7e9e248ea70d73ae37b0f8339d8166342f48c
   - name: sandbox-wire-and-guard
-    state: running
+    state: approved
     implementer_session: 9adc0d8e-7ba1-4ece-8764-13c8c209c64b
     start_sha: c681fea82b39d1e40929711e2748d73fb04a6f20
+    commit_sha: 7da444d97f8c3d1e3aebd37df358f1dbd5cfd197
   - name: launchers-and-lifecycle
     state: pending
   - name: crucible-sweep
