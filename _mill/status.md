@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-engine-retarget
+phase: approved-integration-fork-bisect
 slug: webster-rewrite
 branch: webster-rewrite
 plan: _mill/plan
@@ -33,6 +33,7 @@ approved-batcher  '2026-07-25T14:37:57Z'
 approved-webster-mechanism-helpers  '2026-07-25T14:49:00Z'
 approved-webster-report-digest  '2026-07-25T14:54:04Z'
 approved-engine-retarget  '2026-07-25T15:31:11Z'
+approved-integration-fork-bisect  '2026-07-25T15:53:33Z'
 ```
 
 ## Batches
@@ -75,9 +76,10 @@ batches:
     start_sha: fe593c1bf438c4f3cf613ef6a328f1acc81eb9ab
     commit_sha: 46687ef384ed0a80929023c4cd9f84922e947646
   - name: integration-fork-bisect
-    state: running
+    state: approved
     implementer_session: c11157f8-ad6f-45fe-b20c-5f21c016255c
     start_sha: 486a95145e2f466a4572ece4db28f737d1f7d58b
+    commit_sha: de920a3a58a9fa16f9e8fdf2d55c071840be0e11
   - name: webstercli-rewire
     state: pending
   - name: docs-constraints
