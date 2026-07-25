@@ -21,8 +21,9 @@ Committed to, in this order, next.
    `internal/gitexec`'s shell-out plumbing for a native Go git library (e.g. `go-git`), limited to
    the read-only surface `gitrepo` uses (`rev-parse`, `diff --name-only`, ref reads). Output is a
    go/no-go decision, not a migration — prompted by real parse-git's-stderr-as-an-API bugs
-   `gitrepo`'s crucible hardening surfaced. Depends only on `gitrepo`; non-blocking for any other
-   Planned item. See [designs/git-native-library.md](designs/git-native-library.md).
+   `gitrepo`'s crucible hardening surfaced. Depends on `board-use-gitrepo` landing first (not just
+   `gitrepo`), since that item changes `gitrepo`'s public surface; non-blocking for `fabric`. See
+   [designs/git-native-library.md](designs/git-native-library.md).
 
 1. **fabric** — replaces `warp` and `weft` in full: all topology (clone, dual-worktree add/remove,
    coordinated checkout, reconcile, prune, cleanup, branch naming — including enforcing
