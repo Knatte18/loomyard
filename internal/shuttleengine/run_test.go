@@ -1,6 +1,6 @@
 // run_test.go covers Runner.Start: the happy path's exact AddSpec wiring
 // (including SessionID/Display passthrough), validation short-circuiting
-// before any mux call, run-dir cleanup on an AddStrand failure, and the
+// before any reed call, run-dir cleanup on an AddStrand failure, and the
 // opportunistic orphan sweep never blocking Start on its own failure.
 
 package shuttleengine
@@ -15,25 +15,25 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
-	"github.com/Knatte18/loomyard/internal/muxengine"
-	"github.com/Knatte18/loomyard/internal/muxengine/render"
+	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/reedengine/render"
 )
 
-// newTestRunner returns a Runner over mux/engine scoped to a fresh temp
+// newTestRunner returns a Runner over reed/engine scoped to a fresh temp
 // worktree, with tuning knobs small enough that any later Wait-driving test
 // built on top of it runs fast.
-func newTestRunner(t *testing.T, mux MuxOps, engine Engine) (*Runner, *hubgeometry.Layout) {
+func newTestRunner(t *testing.T, reed ReedOps, engine Engine) (*Runner, *hubgeometry.Layout) {
 	t.Helper()
 	root := t.TempDir()
 	layout := &hubgeometry.Layout{Cwd: root, WorktreeRoot: root}
 	cfg := Config{StartupTimeoutS: 30, RunTimeoutMin: 5, PollIntervalMS: 1, LivenessEveryNPolls: 1}
-	return NewRunner(mux, engine, layout, cfg), layout
+	return NewRunner(reed, engine, layout, cfg), layout
 }
 
 func TestRunner_Start_HappyPath_WiresAddSpecVerbatim(t *testing.T) {
-	mux := &fakeMux{AddStrandResult: muxengine.Strand{GUID: "strand-1"}}
+	reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
 	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "launch-cmd", ResumeCmd: "resume-cmd", SessionID: "session-1"}}
-	runner, _ := newTestRunner(t, mux, engine)
+	runner, _ := newTestRunner(t, reed, engine)
 
 	spec := Spec{
 		Prompt:      "do the thing",
@@ -52,11 +52,11 @@ func TestRunner_Start_HappyPath_WiresAddSpecVerbatim(t *testing.T) {
 		t.Fatal("Start() returned nil run")
 	}
 
-	if len(mux.AddStrandCalls) != 1 {
-		t.Fatalf("AddStrand calls = %d, want 1", len(mux.AddStrandCalls))
+	if len(reed.AddStrandCalls) != 1 {
+		t.Fatalf("AddStrand calls = %d, want 1", len(reed.AddStrandCalls))
 	}
-	got := mux.AddStrandCalls[0]
-	want := muxengine.AddSpec{
+	got := reed.AddStrandCalls[0]
+	want := reedengine.AddSpec{
 		Role:      "reviewer",
 		Round:     "1",
 		Parent:    "parent-guid",
@@ -77,16 +77,16 @@ func TestRunner_Start_HappyPath_WiresAddSpecVerbatim(t *testing.T) {
 	}
 }
 
-func TestRunner_Start_ValidationFailure_ShortCircuitsBeforeMuxCall(t *testing.T) {
-	mux := &fakeMux{}
+func TestRunner_Start_ValidationFailure_ShortCircuitsBeforeReedCall(t *testing.T) {
+	reed := &fakeReed{}
 	engine := &fakeEngine{}
-	runner, _ := newTestRunner(t, mux, engine)
+	runner, _ := newTestRunner(t, reed, engine)
 
 	if _, err := runner.Start(Spec{}); err == nil {
 		t.Fatal("Start() = nil error, want validation error for empty spec")
 	}
-	if len(mux.CallLog) != 0 {
-		t.Errorf("mux calls = %v, want none (validation must short-circuit)", mux.CallLog)
+	if len(reed.CallLog) != 0 {
+		t.Errorf("reed calls = %v, want none (validation must short-circuit)", reed.CallLog)
 	}
 	if len(engine.PrepareCalls) != 0 {
 		t.Errorf("engine.Prepare calls = %d, want 0", len(engine.PrepareCalls))
@@ -94,9 +94,9 @@ func TestRunner_Start_ValidationFailure_ShortCircuitsBeforeMuxCall(t *testing.T)
 }
 
 func TestRunner_Start_AddStrandFailure_CleansRunDir(t *testing.T) {
-	mux := &fakeMux{AddStrandErr: fmt.Errorf("boom")}
+	reed := &fakeReed{AddStrandErr: fmt.Errorf("boom")}
 	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd"}}
-	runner, layout := newTestRunner(t, mux, engine)
+	runner, layout := newTestRunner(t, reed, engine)
 
 	if _, err := runner.Start(Spec{Prompt: "x", OutputFiles: []string{"out.md"}}); err == nil {
 		t.Fatal("Start() = nil error, want AddStrand failure to propagate")
@@ -117,7 +117,7 @@ func TestRunner_Start_SaveRunStateFailure_RemovesStrandAndRunDir(t *testing.T) {
 	// subsequent saveRunState fails. Start must tear the strand back down and
 	// remove the run directory rather than leaking a live, untracked pane no
 	// run.json can ever bind.
-	mux := &fakeMux{AddStrandResult: muxengine.Strand{GUID: "strand-1"}}
+	reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
 	engine := &fakeEngine{
 		PrepareLaunch: Launch{Cmd: "cmd", SessionID: "sess"},
 		// Plant run.json as a DIRECTORY so the later saveRunState write can
@@ -128,20 +128,20 @@ func TestRunner_Start_SaveRunStateFailure_RemovesStrandAndRunDir(t *testing.T) {
 			}
 		},
 	}
-	runner, layout := newTestRunner(t, mux, engine)
+	runner, layout := newTestRunner(t, reed, engine)
 
 	if _, err := runner.Start(Spec{Prompt: "x", OutputFiles: []string{"out.md"}}); err == nil {
 		t.Fatal("Start() = nil error, want save-run-state failure to propagate")
 	}
 
 	foundRemove := false
-	for _, c := range mux.RemoveStrandCalls {
+	for _, c := range reed.RemoveStrandCalls {
 		if c.GUID == "strand-1" && !c.Recursive {
 			foundRemove = true
 		}
 	}
 	if !foundRemove {
-		t.Errorf("RemoveStrand(strand-1, false) not recorded after save-state failure; strand leaked. calls = %+v", mux.RemoveStrandCalls)
+		t.Errorf("RemoveStrand(strand-1, false) not recorded after save-state failure; strand leaked. calls = %+v", reed.RemoveStrandCalls)
 	}
 
 	root := runDirRoot(runner.cfg, layout)
@@ -155,24 +155,24 @@ func TestRunner_Start_SaveRunStateFailure_RemovesStrandAndRunDir(t *testing.T) {
 }
 
 func TestRunner_Start_SweepErrorDoesNotBlockStart(t *testing.T) {
-	mux := &fakeMux{AddStrandResult: muxengine.Strand{GUID: "strand-1"}}
+	reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
 	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd", SessionID: "sess"}}
 
 	worktree := t.TempDir()
 	layout := &hubgeometry.Layout{Cwd: worktree, WorktreeRoot: worktree}
 	cfg := Config{StartupTimeoutS: 30, RunTimeoutMin: 5}
 
-	// Seed a corrupt mux.json so muxengine.LoadState errors during Start's
+	// Seed a corrupt reed.json so reedengine.LoadState errors during Start's
 	// opportunistic orphan sweep — Start must log and continue rather than
 	// fail the whole run over a housekeeping error.
 	if err := os.MkdirAll(layout.DotLyxDir(), 0o755); err != nil {
 		t.Fatalf("mkdir .lyx: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(layout.DotLyxDir(), "mux.json"), []byte("not json"), 0o644); err != nil {
-		t.Fatalf("seed corrupt mux.json: %v", err)
+	if err := os.WriteFile(filepath.Join(layout.DotLyxDir(), "reed.json"), []byte("not json"), 0o644); err != nil {
+		t.Fatalf("seed corrupt reed.json: %v", err)
 	}
 
-	runner := NewRunner(mux, engine, layout, cfg)
+	runner := NewRunner(reed, engine, layout, cfg)
 	run, err := runner.Start(Spec{Prompt: "x", OutputFiles: []string{"out.md"}})
 	if err != nil {
 		t.Fatalf("Start() error: %v, want sweep failure to be non-blocking", err)
@@ -182,12 +182,12 @@ func TestRunner_Start_SweepErrorDoesNotBlockStart(t *testing.T) {
 	}
 }
 
-func TestRunner_Start_SweepSkipsEntirelyOnMuxStateReadError(t *testing.T) {
+func TestRunner_Start_SweepSkipsEntirelyOnReedStateReadError(t *testing.T) {
 	// A LoadState ERROR must not degrade to "sweep with an empty live set":
 	// that would delete every old-enough run dir, including a kept
-	// asking/died/timeout dir mux still genuinely tracks, over an unrelated
+	// asking/died/timeout dir reed still genuinely tracks, over an unrelated
 	// I/O problem. It must skip the sweep for this Start entirely instead.
-	mux := &fakeMux{AddStrandResult: muxengine.Strand{GUID: "strand-1"}}
+	reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
 	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd", SessionID: "sess"}}
 
 	worktree := t.TempDir()
@@ -197,46 +197,46 @@ func TestRunner_Start_SweepSkipsEntirelyOnMuxStateReadError(t *testing.T) {
 	if err := os.MkdirAll(layout.DotLyxDir(), 0o755); err != nil {
 		t.Fatalf("mkdir .lyx: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(layout.DotLyxDir(), "mux.json"), []byte("not json"), 0o644); err != nil {
-		t.Fatalf("seed corrupt mux.json: %v", err)
+	if err := os.WriteFile(filepath.Join(layout.DotLyxDir(), "reed.json"), []byte("not json"), 0o644); err != nil {
+		t.Fatalf("seed corrupt reed.json: %v", err)
 	}
 
 	// An old, kept run dir (as an asking/died/timeout outcome would leave
-	// behind) whose strand is not in mux.json's live set — because mux.json
+	// behind) whose strand is not in reed.json's live set — because reed.json
 	// itself is unreadable, not because the strand is genuinely gone.
 	shuttleRoot := runDirRoot(cfg, layout)
 	keptDir := seedRun(t, shuttleRoot, "kept-run", "some-other-strand")
 	setDirMTime(t, keptDir, time.Now(), 10*time.Minute)
 
-	runner := NewRunner(mux, engine, layout, cfg)
+	runner := NewRunner(reed, engine, layout, cfg)
 	if _, err := runner.Start(Spec{Prompt: "x", OutputFiles: []string{"out.md"}}); err != nil {
 		t.Fatalf("Start() error: %v", err)
 	}
 
 	if _, err := os.Stat(keptDir); err != nil {
-		t.Errorf("kept run dir was removed despite a mux-state read error, want it preserved: %v", err)
+		t.Errorf("kept run dir was removed despite a reed-state read error, want it preserved: %v", err)
 	}
 }
 
-// newInterruptTestRun returns a bare Run handle wired to mux/engine, with
+// newInterruptTestRun returns a bare Run handle wired to reed/engine, with
 // no Start/Wait machinery involved — Interrupt/Send only ever touch
-// runner.mux and runner.engine through run.state.StrandGUID.
-func newInterruptTestRun(t *testing.T, mux MuxOps, engine Engine) *Run {
+// runner.reed and runner.engine through run.state.StrandGUID.
+func newInterruptTestRun(t *testing.T, reed ReedOps, engine Engine) *Run {
 	t.Helper()
 	root := t.TempDir()
 	layout := &hubgeometry.Layout{Cwd: root, WorktreeRoot: root}
-	runner := NewRunner(mux, engine, layout, Config{})
+	runner := NewRunner(reed, engine, layout, Config{})
 	return &Run{
 		runner: runner,
 		state:  RunState{StrandGUID: "strand-1"},
 	}
 }
 
-// liveStrandStatus scripts a fakeMux Status answer reporting strand-1 with
+// liveStrandStatus scripts a fakeReed Status answer reporting strand-1 with
 // the given liveness — what the Interrupt/Send liveness guard consumes.
-func liveStrandStatus(live bool) []muxengine.StatusResult {
-	return []muxengine.StatusResult{
-		{Strands: []muxengine.StrandStatus{{GUID: "strand-1", Live: live}}},
+func liveStrandStatus(live bool) []reedengine.StatusResult {
+	return []reedengine.StatusResult{
+		{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: live}}},
 	}
 }
 
@@ -249,32 +249,32 @@ func readyAgentEngine() *fakeEngine {
 }
 
 func TestRun_Interrupt_PlaysEscape(t *testing.T) {
-	mux := &fakeMux{StatusQueue: liveStrandStatus(true)}
+	reed := &fakeReed{StatusQueue: liveStrandStatus(true)}
 	engine := readyAgentEngine()
-	run := newInterruptTestRun(t, mux, engine)
+	run := newInterruptTestRun(t, reed, engine)
 
 	if err := run.Interrupt(); err != nil {
 		t.Fatalf("Interrupt() error: %v", err)
 	}
 
-	if len(mux.SendKeyCalls) != 1 || mux.SendKeyCalls[0].Key != "Escape" {
-		t.Errorf("SendKey calls = %+v, want exactly one Escape", mux.SendKeyCalls)
+	if len(reed.SendKeyCalls) != 1 || reed.SendKeyCalls[0].Key != "Escape" {
+		t.Errorf("SendKey calls = %+v, want exactly one Escape", reed.SendKeyCalls)
 	}
-	if len(mux.SendTextCalls) != 0 {
-		t.Errorf("SendText calls = %+v, want none", mux.SendTextCalls)
+	if len(reed.SendTextCalls) != 0 {
+		t.Errorf("SendText calls = %+v, want none", reed.SendTextCalls)
 	}
 }
 
 func TestRun_Send_RejectsNewlines(t *testing.T) {
-	mux := &fakeMux{StatusQueue: liveStrandStatus(true)}
+	reed := &fakeReed{StatusQueue: liveStrandStatus(true)}
 	engine := &fakeEngine{}
-	run := newInterruptTestRun(t, mux, engine)
+	run := newInterruptTestRun(t, reed, engine)
 
 	if err := run.Send("line one\nline two"); err == nil {
 		t.Fatal("Send() = nil error, want rejection for multiline text")
 	}
-	if len(mux.CallLog) != 0 {
-		t.Errorf("mux calls = %v, want none (rejected before any mux call)", mux.CallLog)
+	if len(reed.CallLog) != 0 {
+		t.Errorf("reed calls = %v, want none (rejected before any reed call)", reed.CallLog)
 	}
 }
 
@@ -294,14 +294,14 @@ func TestRun_Send_RejectsEmptyOrWhitespace(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mux := &fakeMux{StatusQueue: liveStrandStatus(true)}
-			run := newInterruptTestRun(t, mux, &fakeEngine{})
+			reed := &fakeReed{StatusQueue: liveStrandStatus(true)}
+			run := newInterruptTestRun(t, reed, &fakeEngine{})
 
 			if err := run.Send(tt.text); err == nil {
 				t.Fatalf("Send(%q) = nil error, want rejection for empty/whitespace text", tt.text)
 			}
-			if len(mux.CallLog) != 0 {
-				t.Errorf("mux calls = %v, want none (rejected before any mux call)", mux.CallLog)
+			if len(reed.CallLog) != 0 {
+				t.Errorf("reed calls = %v, want none (rejected before any reed call)", reed.CallLog)
 			}
 		})
 	}
@@ -324,9 +324,9 @@ func TestRun_Send_PlaysEscThenTextWithSubmit(t *testing.T) {
 	// second is sendVerified's pre-send baseline (both a ready pane without
 	// the text yet); the later ones must report the sent text back for the
 	// delivery check to succeed without a replay.
-	mux := &fakeMux{StatusQueue: liveStrandStatus(true), CaptureQueue: []string{"❯ ", "❯ ", "❯ updated instructions"}}
+	reed := &fakeReed{StatusQueue: liveStrandStatus(true), CaptureQueue: []string{"❯ ", "❯ ", "❯ updated instructions"}}
 	engine := readyAgentEngine()
-	run := newInterruptTestRun(t, mux, engine)
+	run := newInterruptTestRun(t, reed, engine)
 
 	if err := run.Send("updated instructions"); err != nil {
 		t.Fatalf("Send() error: %v", err)
@@ -338,11 +338,11 @@ func TestRun_Send_PlaysEscThenTextWithSubmit(t *testing.T) {
 	// CapturePane follows the text step: that is the delivery-verification
 	// poll.
 	wantLog := []string{"Status", "CapturePane", "CapturePane", "SendKey:Escape", "SendText:updated instructions", "CapturePane"}
-	if !reflect.DeepEqual(mux.CallLog, wantLog) {
-		t.Errorf("call order = %v, want %v", mux.CallLog, wantLog)
+	if !reflect.DeepEqual(reed.CallLog, wantLog) {
+		t.Errorf("call order = %v, want %v", reed.CallLog, wantLog)
 	}
-	if len(mux.SendTextCalls) != 1 || !mux.SendTextCalls[0].Submit {
-		t.Errorf("SendText calls = %+v, want one call with Submit=true", mux.SendTextCalls)
+	if len(reed.SendTextCalls) != 1 || !reed.SendTextCalls[0].Submit {
+		t.Errorf("SendText calls = %+v, want one call with Submit=true", reed.SendTextCalls)
 	}
 }
 
@@ -352,7 +352,7 @@ func TestRun_Send_SwallowedFirstAttempt_ReplaySucceeds(t *testing.T) {
 	// after the first attempt, but does after the replay. sendVerified must
 	// replay once and succeed, rather than trusting the first attempt.
 	stubInputSleep(t)
-	mux := &fakeMux{
+	reed := &fakeReed{
 		StatusQueue: liveStrandStatus(true),
 		// The two leading captures answer the ready-TUI probe and the
 		// pre-send baseline; every poll of the first attempt then sees no
@@ -364,13 +364,13 @@ func TestRun_Send_SwallowedFirstAttempt_ReplaySucceeds(t *testing.T) {
 		),
 	}
 	engine := readyAgentEngine()
-	run := newInterruptTestRun(t, mux, engine)
+	run := newInterruptTestRun(t, reed, engine)
 
 	if err := run.Send("updated instructions"); err != nil {
 		t.Fatalf("Send() error: %v, want the replay to succeed", err)
 	}
-	if len(mux.SendTextCalls) != 2 {
-		t.Errorf("SendText calls = %d, want 2 (initial attempt + one replay)", len(mux.SendTextCalls))
+	if len(reed.SendTextCalls) != 2 {
+		t.Errorf("SendText calls = %d, want 2 (initial attempt + one replay)", len(reed.SendTextCalls))
 	}
 }
 
@@ -379,12 +379,12 @@ func TestRun_Send_NeverDelivered_ReportsHonestFailure(t *testing.T) {
 	// delivery failure rather than the "keys were emitted" false ok:true
 	// observed live.
 	stubInputSleep(t)
-	mux := &fakeMux{
+	reed := &fakeReed{
 		StatusQueue:  liveStrandStatus(true),
 		CaptureQueue: repeatCapture("❯ ", 2*sendVerifyAttempts+2),
 	}
 	engine := readyAgentEngine()
-	run := newInterruptTestRun(t, mux, engine)
+	run := newInterruptTestRun(t, reed, engine)
 
 	err := run.Send("updated instructions")
 	if err == nil {
@@ -393,8 +393,8 @@ func TestRun_Send_NeverDelivered_ReportsHonestFailure(t *testing.T) {
 	if !strings.Contains(err.Error(), "never appeared") {
 		t.Errorf("Send() error = %q, want it to name the delivery failure", err)
 	}
-	if len(mux.SendTextCalls) != 1+sendReplays {
-		t.Errorf("SendText calls = %d, want %d (initial attempt + all replays exhausted)", len(mux.SendTextCalls), 1+sendReplays)
+	if len(reed.SendTextCalls) != 1+sendReplays {
+		t.Errorf("SendText calls = %d, want %d (initial attempt + all replays exhausted)", len(reed.SendTextCalls), 1+sendReplays)
 	}
 }
 
@@ -410,11 +410,11 @@ func TestRun_Send_PreexistingText_RequiresNewOccurrence(t *testing.T) {
 		// Every capture — probe, baseline, and all verification polls —
 		// shows the text exactly once: it was already there, and the send
 		// never lands. A presence check would falsely verify this.
-		mux := &fakeMux{
+		reed := &fakeReed{
 			StatusQueue:  liveStrandStatus(true),
 			CaptureQueue: []string{"❯ do it again"},
 		}
-		run := newInterruptTestRun(t, mux, readyAgentEngine())
+		run := newInterruptTestRun(t, reed, readyAgentEngine())
 
 		if err := run.Send("do it again"); err == nil {
 			t.Fatal("Send() = nil error, want a delivery failure when the occurrence count never rises")
@@ -424,11 +424,11 @@ func TestRun_Send_PreexistingText_RequiresNewOccurrence(t *testing.T) {
 	t.Run("DeliveredSend_CountRises", func(t *testing.T) {
 		// Probe and baseline see one pre-existing occurrence; the
 		// verification polls see a second one appear — a genuine delivery.
-		mux := &fakeMux{
+		reed := &fakeReed{
 			StatusQueue:  liveStrandStatus(true),
 			CaptureQueue: []string{"❯ do it again", "❯ do it again", "do it again …\n❯ do it again"},
 		}
-		run := newInterruptTestRun(t, mux, readyAgentEngine())
+		run := newInterruptTestRun(t, reed, readyAgentEngine())
 
 		if err := run.Send("do it again"); err != nil {
 			t.Fatalf("Send() error: %v, want the risen occurrence count to verify delivery", err)
@@ -436,7 +436,7 @@ func TestRun_Send_PreexistingText_RequiresNewOccurrence(t *testing.T) {
 	})
 }
 
-// repeatCapture returns n copies of capture, the fixture shape fakeMux's
+// repeatCapture returns n copies of capture, the fixture shape fakeReed's
 // CaptureQueue consumes one-per-call.
 func repeatCapture(capture string, n int) []string {
 	out := make([]string, n)
@@ -452,15 +452,15 @@ func TestRun_InterruptAndSend_RefuseDeadOrUntrackedStrand(t *testing.T) {
 	// before touching the pane rather than report a silent-no-op success.
 	tests := []struct {
 		name   string
-		status []muxengine.StatusResult
+		status []reedengine.StatusResult
 	}{
 		{"dead_pane", liveStrandStatus(false)},
-		{"untracked_strand", []muxengine.StatusResult{{}}},
+		{"untracked_strand", []reedengine.StatusResult{{}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mux := &fakeMux{StatusQueue: tt.status}
-			run := newInterruptTestRun(t, mux, &fakeEngine{})
+			reed := &fakeReed{StatusQueue: tt.status}
+			run := newInterruptTestRun(t, reed, &fakeEngine{})
 
 			if err := run.Interrupt(); err == nil {
 				t.Error("Interrupt() = nil error, want liveness refusal")
@@ -468,8 +468,8 @@ func TestRun_InterruptAndSend_RefuseDeadOrUntrackedStrand(t *testing.T) {
 			if err := run.Send("still there?"); err == nil {
 				t.Error("Send() = nil error, want liveness refusal")
 			}
-			if len(mux.SendKeyCalls) != 0 || len(mux.SendTextCalls) != 0 {
-				t.Errorf("keys reached the pane despite refusal: SendKey=%+v SendText=%+v", mux.SendKeyCalls, mux.SendTextCalls)
+			if len(reed.SendKeyCalls) != 0 || len(reed.SendTextCalls) != 0 {
+				t.Errorf("keys reached the pane despite refusal: SendKey=%+v SendText=%+v", reed.SendKeyCalls, reed.SendTextCalls)
 			}
 		})
 	}
@@ -483,12 +483,12 @@ func TestRun_InterruptAndSend_RefuseAgentlessShellPane(t *testing.T) {
 	// classifying every probe capture as still-booting (a bare shell prompt
 	// shows no ready marker) must therefore refuse before any key is played.
 	stubInputSleep(t)
-	mux := &fakeMux{
+	reed := &fakeReed{
 		StatusQueue:  liveStrandStatus(true),
 		CaptureQueue: []string{"PS C:\\Code\\hub> "},
 	}
 	engine := &fakeEngine{StartupScript: []StartupState{StartupPending}}
-	run := newInterruptTestRun(t, mux, engine)
+	run := newInterruptTestRun(t, reed, engine)
 
 	if err := run.Interrupt(); err == nil || !strings.Contains(err.Error(), "no input-ready provider TUI") {
 		t.Errorf("Interrupt() error = %v, want the no-ready-TUI refusal", err)
@@ -503,8 +503,8 @@ func TestRun_InterruptAndSend_RefuseAgentlessShellPane(t *testing.T) {
 	if err := run.Interrupt(); err == nil || !strings.Contains(err.Error(), "still starting up") || !strings.Contains(err.Error(), "exited") {
 		t.Errorf("Interrupt() error = %v, want it to name both the still-starting and exited readings", err)
 	}
-	if len(mux.SendKeyCalls) != 0 || len(mux.SendTextCalls) != 0 {
-		t.Errorf("keys reached the agent-less shell despite refusal: SendKey=%+v SendText=%+v", mux.SendKeyCalls, mux.SendTextCalls)
+	if len(reed.SendKeyCalls) != 0 || len(reed.SendTextCalls) != 0 {
+		t.Errorf("keys reached the agent-less shell despite refusal: SendKey=%+v SendText=%+v", reed.SendKeyCalls, reed.SendTextCalls)
 	}
 }
 
@@ -514,14 +514,14 @@ func TestRun_Interrupt_ReadyProbeRetriesTransientBoot(t *testing.T) {
 	// once a later capture classifies Ready, rather than refusing on the
 	// first inconclusive frame.
 	stubInputSleep(t)
-	mux := &fakeMux{StatusQueue: liveStrandStatus(true)}
+	reed := &fakeReed{StatusQueue: liveStrandStatus(true)}
 	engine := &fakeEngine{StartupScript: []StartupState{StartupPending, StartupReady}}
-	run := newInterruptTestRun(t, mux, engine)
+	run := newInterruptTestRun(t, reed, engine)
 
 	if err := run.Interrupt(); err != nil {
 		t.Fatalf("Interrupt() error: %v, want the retried probe to pass", err)
 	}
-	if len(mux.SendKeyCalls) != 1 || mux.SendKeyCalls[0].Key != "Escape" {
-		t.Errorf("SendKey calls = %+v, want exactly one Escape after the probe passes", mux.SendKeyCalls)
+	if len(reed.SendKeyCalls) != 1 || reed.SendKeyCalls[0].Key != "Escape" {
+		t.Errorf("SendKey calls = %+v, want exactly one Escape after the probe passes", reed.SendKeyCalls)
 	}
 }

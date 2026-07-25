@@ -1,6 +1,6 @@
 // Package websterengine is the domain kernel behind webster, a fork-based
 // sibling of builderengine's batch-implementation loop: instead of spawning a
-// fresh mux/tmux strand per batch, one long-lived Master session reads the
+// fresh reed/tmux strand per batch, one long-lived Master session reads the
 // codebase and the whole plan once, then forks one implementer per batch
 // in-session (Claude Code's Agent tool, subagent_type "fork"), sequentially,
 // in the same order builder drives batches today. websterengine holds no loop
@@ -103,7 +103,7 @@
 //
 // The one place webster spawns a genuinely separate process is
 // recover-batch: a bounded, re-entrant long-poll verb that spawns a fresh
-// implementer as its own shuttle/mux strand at the recovery role (reusing
+// implementer as its own shuttle/reed strand at the recovery role (reusing
 // builderengine's SpawnBatch machinery by import) when a fork reports stuck
 // or writes no report. Every call, including the first, blocks for at most
 // poll_wait_s and returns either a terminal digest or a running snapshot; a

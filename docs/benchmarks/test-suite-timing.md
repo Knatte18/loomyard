@@ -151,7 +151,7 @@ per-package numbers as attribution, not absolute cost.
 | `internal/boardengine/boardtest` | ~30.7 s | real local git commit/push, parallelized |
 | `internal/configcli`             | ~28.4 s | `git init` tests, including `TestE2ESyncIntegration` |
 | `internal/warpcli`               | ~26.2 s | CLI wrapper over warpengine clone/teardown paths |
-| `internal/muxcli`                | ~24.6 s | real `tmux`/`tmux` contract-integration tests |
+| `internal/reedcli`                | ~24.6 s | real `tmux`/`tmux` contract-integration tests |
 | `internal/perchengine`           | ~22.7 s | the same untagged run-loop suite re-run under `-tags integration`, **plus** the now-relocated `TestExecGateCommand_LingeringChildDoesNotHangPastWaitDelay` (measured this run: 10.12 s + 12.00 s parallel subtests) |
 
 The floor is still `internal/warpengine`, now at ~96.0 s in the median run
@@ -178,7 +178,7 @@ slack under ~50-package parallelism.
 | `TestRunDispatchesToConfig` | `cmd/lyx` | 0.29 s |
 | `TestHermeticGitEnv_GitSpawningPackagesHaveTestMain` | `cmd/lyx` | 0.28 s |
 | `TestConcurrentUpsertsDoNotLoseWrites` | `internal/boardengine/boardtest` | 0.25 s |
-| `TestRunCLI_NotAGitRepo` | `internal/muxcli` | 0.25 s |
+| `TestRunCLI_NotAGitRepo` | `internal/reedcli` | 0.25 s |
 
 `TestConcurrentReadsDuringUpserts` dropping from 8.1 s (2026-07-13
 hermetic-git-env block) to 0.45 s is the boardtest `writes` shrink (lever
@@ -195,7 +195,7 @@ c); it no longer dominates the Tier 1 top-10, unlike every prior block.
 | `TestCloneHub_HappyPath` | `internal/warpengine` | 15.97 s |
 | `TestCleanup_LiveBranchNeverDeleted` | `internal/warpengine` | 15.61 s |
 | `TestSpawnBatch_RoleSelectionMatrix` | `internal/builderengine` | 15.12 s |
-| `TestRunCLI_ResolvesLayoutAndConfig` | `internal/muxcli` | 14.48 s |
+| `TestRunCLI_ResolvesLayoutAndConfig` | `internal/reedcli` | 14.48 s |
 | `TestPollCmd_TerminalCleanupMatrix` | `internal/buildercli` | 14.36 s |
 | `TestReconcile_MissingWeftWorktreeRecreated` | `internal/warpengine` | 13.93 s |
 
@@ -243,11 +243,11 @@ wall-clock grace/deadline windows and so do not shrink without AV:
 | `cmd/lyx` | ~0.74 s | includes `TestCrossCompileLinux` (0.62 s) |
 | `internal/builderengine` | ~0.72 s | |
 | `internal/warpengine` | ~0.67 s | the Windows floor (~96 s) — now negligible without AV |
-| `internal/muxengine` | ~0.59 s | `TestMultiplexerContract` real-tmux probe |
+| `internal/reedengine` | ~0.59 s | `TestMultiplexerContract` real-tmux probe |
 | `internal/boardengine/boardtest` | ~0.53 s | real local git commit/push |
 
 Tier 1 on Linux is dominated by `internal/boardengine/boardtest` (~0.33 s) and
-`internal/muxengine` (~0.16 s) — pure-CPU suites; no package does git in Tier 1.
+`internal/reedengine` (~0.16 s) — pure-CPU suites; no package does git in Tier 1.
 
 ## Windows clean-CPU baseline (Ryzen 7 9800X3D, Defender A/B)
 
@@ -390,7 +390,7 @@ attribution, not absolute cost.
 | `internal/perchcli`              | ~40 s  | `lyxtest.CopyPaired[Local]` fixture copies + weft-sync git assertions |
 | `cmd/lyx`                        | ~36 s  | cross-compile + registration/help-tree over the full binary, plus real `git init` in `main_test.go` |
 | `internal/perchengine`           | ~29 s  | same in-process run-loop suite as Tier 1 (the untagged tests run again under `-tags integration`; not additional fixture cost) |
-| `internal/muxcli`                | ~24 s  | real `tmux`/`tmux` contract-integration tests |
+| `internal/reedcli`                | ~24 s  | real `tmux`/`tmux` contract-integration tests |
 
 The floor is still `internal/warpengine`, now at ~84 s (down from ~152 s):
 its slowest single tests this run cost 11–15 s each
@@ -425,11 +425,11 @@ real cost (see the attribution-noise note above).
 | `TestConcurrentReadsDuringUpserts` | `internal/boardengine/boardtest` | 19.1 s |
 | `TestCleanup_LiveBranchNeverDeleted` | `internal/warpengine` | 14.5 s |
 | `TestRemove` | `internal/warpengine` | 13.8 s |
-| `TestMultiplexerContract` | `internal/muxengine` | 13.6 s |
+| `TestMultiplexerContract` | `internal/reedengine` | 13.6 s |
 | `TestCloneHub_HappyPath` | `internal/warpengine` | 13.4 s |
 | `TestInstallPostCheckoutHook_WeftResolution_Child` | `internal/warpengine` | 12.3 s |
 | `TestE2ESyncIntegration` | `internal/configcli` | 12.2 s |
-| `TestRunCLI_ResolvesLayoutAndConfig` | `internal/muxcli` | 12.1 s |
+| `TestRunCLI_ResolvesLayoutAndConfig` | `internal/reedcli` | 12.1 s |
 
 ### 2026-07-12 — post-fix baseline (superseded by 2026-07-13)
 
@@ -494,7 +494,7 @@ not absolute cost.
 | `internal/boardengine/boardtest` | ~47 s  | real local git commit/push, parallelized |
 | `internal/perchengine`           | ~46 s  | same in-process run-loop suite as Tier 1 (the untagged tests run again under `-tags integration`; not additional fixture cost) |
 | `internal/configcli`             | ~40 s  | re-tiered `git init` tests |
-| `internal/muxengine`             | ~38 s  | real `tmux`/`tmux` contract-integration tests |
+| `internal/reedengine`             | ~38 s  | real `tmux`/`tmux` contract-integration tests |
 | `internal/warpcli`               | ~37 s  | CLI wrapper over warpengine clone/teardown paths |
 | `internal/ideengine`             | ~35 s  | fixed — board health-check tests over real board directories |
 
@@ -539,7 +539,7 @@ As of **2026-07-12** (fresh baseline — **regression recorded, not yet fixed**)
 | **Tier 1** — offline, default | `go test ./... -count=1` | **~44 s** (spread 43–49 s) | was ~3.5 s — **~13× regression** |
 | **Tier 2** — integration, opt-in | `go test -tags integration ./... -count=1` | **~181 s** (spread 173–238 s) | was ~65 s — **~2.8× regression**, plus **2 packages FAIL** |
 
-The ~a-dozen modules landed since 2026-06-23 (mux/shuttle/burler/perch/warp/
+The ~a-dozen modules landed since 2026-06-23 (reed/shuttle/burler/perch/warp/
 stencil/selfreport/modelspec/…) each brought tests; the regression is real
 execution time, not compilation.
 
@@ -568,7 +568,7 @@ The cost is process spawns and fixture I/O from **untagged** tests:
 | `internal/boardcli`   | ~38–40 s | 31 `seedCwd` calls, each a real `git init`; every in-process `RunCLI` spawns `git rev-parse` via `hubgeometry.Resolve` |
 | `internal/perchcli`   | ~23–28 s | untagged `lyxtest.CopyPaired[Local]` git-fixture copies + `git ls-files` / `git log` assertions |
 | `cmd/lyx`             | ~22–24 s | `TestCrossCompileLinux` (whole-module `GOOS=linux go build`, ~3–8 s) + `main_test.go` 3× `git init` |
-| `internal/muxcli`     | ~16–18 s | untagged `CopyPaired` git-fixture copies |
+| `internal/reedcli`     | ~16–18 s | untagged `CopyPaired` git-fixture copies |
 | `internal/configcli`  | ~6–10 s  | 3× `git init` in untagged tests |
 
 Everything else is < 13 s per package and mostly contention-inflated (see the
@@ -609,7 +609,7 @@ the test surface.
 |------|---------|---------|
 | `TestCLIStrictPayloadShapes` | `internal/boardcli` | 11.8 s |
 | `TestCLILookupContract` | `internal/boardcli` | 11.4 s |
-| `TestRunCLI_ResolvesLayoutAndConfig` | `internal/muxcli` | 5.6 s |
+| `TestRunCLI_ResolvesLayoutAndConfig` | `internal/reedcli` | 5.6 s |
 | `TestCLIContract` | `internal/boardcli` | 5.5 s |
 | `TestExecute_ConcurrentInvocationsDoNotCrossExitCodes` | `internal/clihelp` | 5.4 s¹ |
 | `TestConcurrentReadsDuringUpserts` | `internal/boardengine/boardtest` | 5.4 s |

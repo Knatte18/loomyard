@@ -11,9 +11,9 @@ Rig and raw data: the throwaway harness (`tools/fork-poc/` — prompts, spawn/wa
 harvest helpers) and every raw session output (`tools/fork-poc/results/`) were
 committed incrementally on the task branch and removed before merge; all `tools/
 fork-poc/...` paths referenced below resolve in the task branch's history (archive
-tag `session-fork-diversity-spike`), not on main. All live sessions ran as `lyx mux`
+tag `session-fork-diversity-spike`), not on main. All live sessions ran as `lyx reed`
 strands in the sandbox hub (`~/Code/lyx-test-HUB/lyx-test`), watched live by the
-operator via `lyx mux attach`.
+operator via `lyx reed attach`.
 
 ## Step 0 — transcript persistence (attempt 1's blocker)
 
@@ -21,13 +21,13 @@ operator via `lyx mux attach`.
 discovery.** The root cause and fix were already established and documented a week
 before attempt 1 was abandoned: a claude launched from inside a Claude Code session
 inherits `CLAUDECODE`/`CLAUDE_CODE_*` and treats itself as a nested child, silently not
-persisting its transcript. Documented in `docs/research/mux-exploration.md` (which names
+persisting its transcript. Documented in `docs/research/reed-exploration.md` (which names
 `CLAUDE_CODE_CHILD_SESSION=1` as the prime culprit), mandated by
-`docs/research/mux-proposal.md` ("Env hygiene is mandatory"), implemented as
-`muxengine.CleanClaudeEnv` (landed 2026-07-05), and proven end-to-end by
-`internal/muxcli/smoke_resume_test.go:TestSmokeClaudeResumeRecallsCodeword`.
+`docs/research/reed-proposal.md` ("Env hygiene is mandatory"), implemented as
+`reedengine.CleanClaudeEnv` (landed 2026-07-05), and proven end-to-end by
+`internal/reedcli/smoke_resume_test.go:TestSmokeClaudeResumeRecallsCodeword`.
 
-Step 0's actual contribution: a plain interactive `claude` spawned as a mux strand
+Step 0's actual contribution: a plain interactive `claude` spawned as a reed strand
 persisted its `.jsonl` within ~10 s — with `"tui": "fullscreen"` still set in
 `~/.claude/settings.json` — killing the settings.json hypothesis attempt 1's writeup
 carried as "leading". **Process lesson (sharper than "commit as you go"): attempt 1
@@ -40,7 +40,7 @@ the repo's own `docs/research/` — read the existing research before diagnosing
   plus a nonce; its session id is preassigned via `claude --session-id <uuid>` so the
   transcript path is deterministic.
 - **Forks:** `claude "<prompt>" --resume <explorer-id> --fork-session --session-id <uuid>`
-  in a fresh mux strand. Prompt must be the FIRST positional arg — variadic
+  in a fresh reed strand. Prompt must be the FIRST positional arg — variadic
   `--add-dir <dirs...>` swallows a trailing prompt (cost one debugging round).
 - **Measurement:** forked transcripts copy the parent's full history, so all usage and
   tool-call accounting splits at the fork point (first user message matching the fork's
@@ -156,7 +156,7 @@ then spawned three parallel lens forks itself and relayed their reports
 - **Trade-offs:** forks always run the parent's model (the M2 model-per-fork axis
   is unavailable), cannot nest, must stay unnamed (named forks silently lose
   context in ≤2.1.206), the env var is a staged-rollout flag, and reviewers are
-  in-pane background tasks rather than separate mux strands — per-reviewer
+  in-pane background tasks rather than separate reed strands — per-reviewer
   visibility is via `<session-id>/subagents/*.jsonl` on disk, not tmux.
 
 ## Follow-up 2: 8-lens handler run (E-arm) — the burler phase shape works
@@ -218,23 +218,23 @@ unreliable for it).
 
 ## Incidental findings (outside the spike's questions)
 
-- **mux config schema drift:** the sandbox hub's `mux.yaml` still had the Windows-era
+- **reed config schema drift:** the sandbox hub's `reed.yaml` still had the Windows-era
   `psmux:`/`pwsh:` keys; the deployed binary refused with a confusing
   "psmux.exe not found in $PATH". `lyx config reconcile --apply` fixed it — but the
   error message names a binary instead of a config-schema mismatch.
-- **mux has no visible pane naming.** Strand names exist only in `lyx mux status`
-  JSON; the operator watching `lyx mux attach` cannot tell panes apart. The spike
+- **reed has no visible pane naming.** Strand names exist only in `lyx reed status`
+  JSON; the operator watching `lyx reed attach` cannot tell panes apart. The spike
   labelled panes by hand: per pane `tmux set -p @lyxname <strand-name>` plus global
   `pane-border-status top` and `pane-border-format " [#{@lyxname}] #{pane_title} "`.
-  mux setting these itself at add/render time is a cheap, high-value improvement.
-- **Mouse mode:** default is `off` by design (mux-mouse-default task); live enable on
+  reed setting these itself at add/render time is a cheap, high-value improvement.
+- **Mouse mode:** default is `off` by design (reed-mouse-default task); live enable on
   a running server works via raw `tmux set -g mouse on`, while the supported path
-  (`mouse: on` / `LYX_MUX_MOUSE=on`) needs a server reboot.
-- **Removing down to the last strand kills the whole mux session** (tmux tears the
+  (`mouse: on` / `LYX_REED_MOUSE=on`) needs a server reboot.
+- **Removing down to the last strand kills the whole reed session** (tmux tears the
   session down with its last pane) — this killed a running test mid-spike. Design
-  suggestion (operator-endorsed): mux should keep a small built-in **operator
+  suggestion (operator-endorsed): reed should keep a small built-in **operator
   console pane** — a plain shell started in the hub root, so its prompt shows which
-  folder the mux serves. It doubles as (a) a scratch terminal for operator small
+  folder the reed serves. It doubles as (a) a scratch terminal for operator small
   jobs and (b) a structural keepalive that makes the last-strand teardown
   unreachable.
 - `internal/modelspec` review findings themselves (the strongest recurring ones: the

@@ -1,7 +1,7 @@
 // cli.go builds the cobra command tree for the perch module and the
 // RunCLI seam that wires it into the standard io.Writer-based call contract.
 // The parent "perch" command carries a PersistentPreRunE that resolves
-// cwd -> layout -> shuttle config -> mux config -> perch config -> burler config -> mux
+// cwd -> layout -> shuttle config -> reed config -> perch config -> burler config -> reed
 // engine -> claude engine -> shuttleengine.Runner -> burlerengine.Engine
 // exactly once per invocation, storing the resolved ingredients on perchCLI
 // rather than a constructed *perchengine.Engine: the pause seam
@@ -19,9 +19,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
-	"github.com/Knatte18/loomyard/internal/muxengine"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/perchengine"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/spf13/cobra"
@@ -45,7 +45,7 @@ type perchCLI struct {
 // Command returns the cobra command tree for the perch module.
 //
 // The parent "perch" command carries a PersistentPreRunE that resolves
-// cwd -> layout -> shuttle config -> mux config -> perch config -> burler config -> mux
+// cwd -> layout -> shuttle config -> reed config -> perch config -> burler config -> reed
 // engine -> claude engine -> shuttleengine.Runner -> burlerengine.Engine
 // into c, skipping that resolution entirely when the group command itself
 // is invoked (bare "lyx perch" listing or an unknown-subcommand error via
@@ -111,7 +111,7 @@ Example:
 				return nil
 			}
 
-			muxCfg, err := muxengine.LoadConfig(layout.Cwd, "mux")
+			reedCfg, err := reedengine.LoadConfig(layout.Cwd, "reed")
 			if err != nil {
 				output.Err(out, err.Error())
 				clihelp.Abort(ctx, 1)
@@ -136,8 +136,8 @@ Example:
 				return nil
 			}
 
-			muxEngine := muxengine.New(muxCfg, layout)
-			runner := shuttleengine.NewRunner(muxEngine, claudeengine.New(), layout, shuttleCfg)
+			reedEngine := reedengine.New(reedCfg, layout)
+			runner := shuttleengine.NewRunner(reedEngine, claudeengine.New(), layout, shuttleCfg)
 			c.burlerEngine = burlerengine.New(runner, layout, burlerCfg)
 			c.runner = runner
 			c.perchCfg = perchCfg

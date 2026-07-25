@@ -225,7 +225,7 @@ clihelp.Execute → warpcli.RunCLI → cmd/lyx.main
 VTA's reported 30-entry set **contains every link of this 12-entry true chain — zero
 missed real callers, confirming soundness** — but pads it with 18 extra entries: the
 sibling modules' own `RunCLI` functions (`boardcli.RunCLI`, `buildercli.RunCLI`,
-`burlercli.RunCLI`, `idecli.RunCLI`, `initcli.RunInit`, `muxcli.RunCLI`,
+`burlercli.RunCLI`, `idecli.RunCLI`, `initcli.RunInit`, `reedcli.RunCLI`,
 `perchcli.RunCLI`, `selfreportcli.RunCLI`, `shuttlecli.RunCLI`, `weftcli.RunCLI` — 10
 functions) plus `configcli`'s own internal call fan-out (`configcli.Command$1`,
 `configcli.RunCLI`, `configcli.dispatch`, `configcli.editOne`, `configcli.menu`,

@@ -154,7 +154,7 @@ func TestAuditForks_MissingParentTranscriptErrors(t *testing.T) {
 
 // TestClaudeProjectDirFor_EncodesNonAlnumBytes pins the exact cwd-encoding
 // derivation: every non-alphanumeric byte becomes '-', mirroring
-// claudeProjectDir in internal/muxcli/smoke_test.go.
+// claudeProjectDir in internal/reedcli/smoke_test.go.
 func TestClaudeProjectDirFor_EncodesNonAlnumBytes(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

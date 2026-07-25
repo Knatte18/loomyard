@@ -1,13 +1,13 @@
 //go:build smoke
 
 // smoke_test.go walks the two live-composed builder behaviors round fable-r2
-// found broken against a REAL tmux server (no fake mux): poll's terminal
+// found broken against a REAL tmux server (no fake reed): poll's terminal
 // strand release (a done batch must not leak its live pane — nobody else
 // ever holds the shuttle Run handle) and spawn-batch's in-flight guard (a
 // live strand behind a non-terminal cursor refuses the spawn). The pane runs
 // a plain pwsh, never a real agent — the behaviors under test are builder's
 // own substrate bookkeeping, not implementer quality. Both tests self-skip
-// when the configured tmux binary is absent, mirroring muxengine's
+// when the configured tmux binary is absent, mirroring reedengine's
 // contract_integration_test.go discipline, and tear their scratch server
 // down via t.Cleanup.
 
@@ -27,16 +27,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/modelspec"
-	"github.com/Knatte18/loomyard/internal/muxengine"
-	"github.com/Knatte18/loomyard/internal/muxengine/render"
+	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// bootRealMux builds a scratch hub (git repo + plan fixture + mux config),
+// bootRealReed builds a scratch hub (git repo + plan fixture + reed config),
 // boots a REAL tmux server/session on the hub's own derived socket, and
 // registers teardown. Skips the calling test when the configured tmux
 // binary is not on this box.
-func bootRealMux(t *testing.T) (*muxengine.Engine, *hubgeometry.Layout, string) {
+func bootRealReed(t *testing.T) (*reedengine.Engine, *hubgeometry.Layout, string) {
 	t.Helper()
 
 	hub := newScratchRepo(t)
@@ -47,26 +47,26 @@ func bootRealMux(t *testing.T) (*muxengine.Engine, *hubgeometry.Layout, string) 
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("mkdir config dir: %v", err)
 	}
-	if err := os.WriteFile(hubgeometry.ConfigFile(hub, "mux"), []byte(muxengine.ConfigTemplate()), 0o644); err != nil {
-		t.Fatalf("write mux config: %v", err)
+	if err := os.WriteFile(hubgeometry.ConfigFile(hub, "reed"), []byte(reedengine.ConfigTemplate()), 0o644); err != nil {
+		t.Fatalf("write reed config: %v", err)
 	}
 
-	cfg, err := muxengine.LoadConfig(hub, "mux")
+	cfg, err := reedengine.LoadConfig(hub, "reed")
 	if err != nil {
-		t.Fatalf("muxengine.LoadConfig: %v", err)
+		t.Fatalf("reedengine.LoadConfig: %v", err)
 	}
 	if _, err := exec.LookPath(cfg.Tmux); err != nil {
 		t.Skipf("configured tmux binary %q not found: %v", cfg.Tmux, err)
 	}
 
 	layout := &hubgeometry.Layout{Hub: hub, WorktreeRoot: hub, Cwd: hub, RelPath: "."}
-	eng := muxengine.New(cfg, layout)
+	eng := reedengine.New(cfg, layout)
 	if _, err := eng.Up(); err != nil {
-		t.Fatalf("mux Up: %v", err)
+		t.Fatalf("reed Up: %v", err)
 	}
 	t.Cleanup(func() {
 		if _, err := eng.Down(); err != nil {
-			t.Errorf("mux Down: %v", err)
+			t.Errorf("reed Down: %v", err)
 		}
 	})
 
@@ -75,12 +75,12 @@ func bootRealMux(t *testing.T) (*muxengine.Engine, *hubgeometry.Layout, string) 
 
 // addLivePane launches one real pane strand (an empty Cmd leaves the pane's
 // own pwsh idling — a live pane, no agent) and returns its guid, waiting
-// until the live mux Status reports it live (pane realization is
+// until the live reed Status reports it live (pane realization is
 // asynchronous from AddStrand's return).
-func addLivePane(t *testing.T, eng *muxengine.Engine, role, round string) string {
+func addLivePane(t *testing.T, eng *reedengine.Engine, role, round string) string {
 	t.Helper()
 
-	strand, err := eng.AddStrand(muxengine.AddSpec{
+	strand, err := eng.AddStrand(reedengine.AddSpec{
 		Role:    role,
 		Round:   round,
 		Cmd:     "",
@@ -108,16 +108,16 @@ func addLivePane(t *testing.T, eng *muxengine.Engine, role, round string) string
 
 // TestSmoke_PollDoneReleasesStrand proves against a real tmux server that a
 // done classification releases the batch's strand: the pane is gone from the
-// live mux Status after poll returns (the F1 leak, observed live as panes
+// live reed Status after poll returns (the F1 leak, observed live as panes
 // accumulating across runs).
 func TestSmoke_PollDoneReleasesStrand(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
-	eng, layout, hub := bootRealMux(t)
+	eng, layout, hub := bootRealReed(t)
 	guid := addLivePane(t, eng, "implementer", "01-json-flag")
 
 	c := &builderCLI{
 		engine:     &pollFakeEngine{},
-		mux:        eng,
+		reed:       eng,
 		layout:     layout,
 		cfg:        builderengine.Config{BatchTimeoutMin: 60, PollWaitS: 5},
 		planDir:    hubgeometry.PlanDir(hub),
@@ -193,7 +193,7 @@ func (s smokeFailStarter) Start(spec shuttleengine.Spec) (*shuttleengine.Run, er
 // strand is genuinely live (the F4 double-spawn, observed live as two
 // implementer panes for the same batch).
 func TestSmoke_SpawnRefusedWhileStrandLive(t *testing.T) {
-	eng, layout, hub := bootRealMux(t)
+	eng, layout, hub := bootRealReed(t)
 	guid := addLivePane(t, eng, "implementer", "02-list-tests")
 
 	planDir := hubgeometry.PlanDir(hub)
@@ -224,7 +224,7 @@ func TestSmoke_SpawnRefusedWhileStrandLive(t *testing.T) {
 		BuilderDir:   hubgeometry.BuilderDir(hub),
 		ReportsDir:   hubgeometry.BuilderReportsDir(hub),
 		Layout:       layout,
-		Mux:          eng,
+		Reed:         eng,
 	}
 
 	_, err = builderengine.SpawnBatch(deps, builderengine.SpawnBatchOptions{BatchNumber: 1})
@@ -235,11 +235,11 @@ func TestSmoke_SpawnRefusedWhileStrandLive(t *testing.T) {
 
 // TestSmoke_RunEntryReclaimsOrphanedOrchestrator proves against a real tmux
 // server that Run's entry-time reclaim stops a recorded orchestrator strand
-// the mux still reports live (the fable-r4 double-orchestrator: a killed
+// the reed still reports live (the fable-r4 double-orchestrator: a killed
 // `run` process, or a timed-out orchestrator whose kept pane kept working)
 // before the fresh orchestrator spawn ever starts.
 func TestSmoke_RunEntryReclaimsOrphanedOrchestrator(t *testing.T) {
-	eng, _, hub := bootRealMux(t)
+	eng, _, hub := bootRealReed(t)
 	orphanGUID := addLivePane(t, eng, "orchestrator", "")
 
 	planDir := hubgeometry.PlanDir(hub)
@@ -265,7 +265,7 @@ func TestSmoke_RunEntryReclaimsOrphanedOrchestrator(t *testing.T) {
 	}
 	deps := builderengine.RunDeps{
 		Runner: starter,
-		Mux:    eng,
+		Reed:   eng,
 		Roles: map[builderengine.Role]modelspec.Resolved{
 			builderengine.RoleOrchestrator: {Engine: "claude", Model: "orchestrator-model"},
 		},

@@ -216,21 +216,21 @@ func TestEnsureGitExclude(t *testing.T) {
 	})
 }
 
-// stubSuiteSeams replaces devBinPath, lookPath, launchAgent, and muxDown with
+// stubSuiteSeams replaces devBinPath, lookPath, launchAgent, and reedDown with
 // test stubs and returns a restore function. fakeLyx must be a real file path
 // so binaryFingerprint can stat and hash it. fakeClaude is returned as the
 // "claude" resolution. devBinPath is stubbed to a non-existent path so
 // resolveLyx always falls through to the lookPath stub below and resolves
 // sourceProd, matching this helper's callers' pre-dev-binary intent; tests
 // that need a sourceDev resolution stub devBinPath themselves after calling
-// this helper. muxDown is stubbed to a no-op so no test ever spawns a real
+// this helper. reedDown is stubbed to a no-op so no test ever spawns a real
 // subprocess; teardown-behaviour tests re-stub it after this call.
 func stubSuiteSeams(t *testing.T, fakeLyx, fakeClaude string, launchFn func(dir, claude, instruction, binDir string) int) func() {
 	t.Helper()
 	oldDevBinPath := devBinPath
 	oldLookPath := lookPath
 	oldLaunchAgent := launchAgent
-	oldMuxDown := muxDown
+	oldReedDown := reedDown
 	devBinPath = func() (string, error) {
 		return filepath.Join(t.TempDir(), "lyx"), nil
 	}
@@ -245,23 +245,23 @@ func stubSuiteSeams(t *testing.T, fakeLyx, fakeClaude string, launchFn func(dir,
 		}
 	}
 	launchAgent = launchFn
-	muxDown = func(hostRepoDir, lyxPath string) error { return nil }
+	reedDown = func(hostRepoDir, lyxPath string) error { return nil }
 	return func() {
 		devBinPath = oldDevBinPath
 		lookPath = oldLookPath
 		launchAgent = oldLaunchAgent
-		muxDown = oldMuxDown
+		reedDown = oldReedDown
 	}
 }
 
-// stubMuxDownNoop replaces the muxDown seam with a no-op for the duration of
+// stubReedDownNoop replaces the reedDown seam with a no-op for the duration of
 // the test, for dispatch tests that stub launchAgent directly instead of
 // going through stubSuiteSeams.
-func stubMuxDownNoop(t *testing.T) {
+func stubReedDownNoop(t *testing.T) {
 	t.Helper()
-	old := muxDown
-	muxDown = func(hostRepoDir, lyxPath string) error { return nil }
-	t.Cleanup(func() { muxDown = old })
+	old := reedDown
+	reedDown = func(hostRepoDir, lyxPath string) error { return nil }
+	t.Cleanup(func() { reedDown = old })
 }
 
 // captureStderr redirects os.Stderr to a pipe for the duration of fn and
@@ -397,7 +397,7 @@ func TestRunSuite_DevBinaryPrependsBinDir(t *testing.T) {
 	}
 
 	var gotBinDir string
-	stubMuxDownNoop(t)
+	stubReedDownNoop(t)
 	oldLaunchAgent := launchAgent
 	defer func() { launchAgent = oldLaunchAgent }()
 	launchAgent = func(dir, claude, instruction, binDir string) int {
@@ -584,10 +584,10 @@ func TestRunSuite_ExcludesReport(t *testing.T) {
 	}
 }
 
-// TestRunSuite_MuxSpec_WritesMuxFile verifies that runSuite(..., muxSuite)
-// writes SANDBOX-MUX-SUITE.md (not SANDBOX-CORE-SUITE.md) into the host repo, with
-// the fingerprint header prepended to the embedded mux doc body.
-func TestRunSuite_MuxSpec_WritesMuxFile(t *testing.T) {
+// TestRunSuite_ReedSpec_WritesReedFile verifies that runSuite(..., reedSuite)
+// writes SANDBOX-REED-SUITE.md (not SANDBOX-CORE-SUITE.md) into the host repo, with
+// the fingerprint header prepended to the embedded reed doc body.
+func TestRunSuite_ReedSpec_WritesReedFile(t *testing.T) {
 	parentDir, hostRepoDir := makeHostRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
@@ -597,31 +597,31 @@ func TestRunSuite_MuxSpec_WritesMuxFile(t *testing.T) {
 	})
 	defer restore()
 
-	if err := runSuite(parentDir, "", "", muxSuite); err != nil {
+	if err := runSuite(parentDir, "", "", reedSuite); err != nil {
 		t.Fatalf("runSuite error: %v", err)
 	}
 
-	muxPath := filepath.Join(hostRepoDir, muxSuite.fileName)
-	content, err := os.ReadFile(muxPath)
+	reedPath := filepath.Join(hostRepoDir, reedSuite.fileName)
+	content, err := os.ReadFile(reedPath)
 	if err != nil {
-		t.Fatalf("read %s: %v", muxSuite.fileName, err)
+		t.Fatalf("read %s: %v", reedSuite.fileName, err)
 	}
 	if !strings.Contains(string(content), "Binary under test") {
-		t.Errorf("%s missing fingerprint header; got %q", muxSuite.fileName, string(content))
+		t.Errorf("%s missing fingerprint header; got %q", reedSuite.fileName, string(content))
 	}
-	if !strings.Contains(string(content), muxSandboxSuiteMD) {
-		t.Errorf("%s does not contain the embedded mux doc body", muxSuite.fileName)
+	if !strings.Contains(string(content), reedSandboxSuiteMD) {
+		t.Errorf("%s does not contain the embedded reed doc body", reedSuite.fileName)
 	}
 
-	// The main suite's file must not be written by a mux-spec run.
+	// The main suite's file must not be written by a reed-spec run.
 	if _, err := os.Stat(filepath.Join(hostRepoDir, mainSuite.fileName)); !os.IsNotExist(err) {
-		t.Errorf("%s should not be written by a muxSuite run; stat err = %v", mainSuite.fileName, err)
+		t.Errorf("%s should not be written by a reedSuite run; stat err = %v", mainSuite.fileName, err)
 	}
 }
 
-// TestRunSuite_MuxSpec_ExcludesFiles verifies that a muxSuite run registers
-// SANDBOX-MUX-SUITE.md and sandbox-report.json in .git/info/exclude.
-func TestRunSuite_MuxSpec_ExcludesFiles(t *testing.T) {
+// TestRunSuite_ReedSpec_ExcludesFiles verifies that a reedSuite run registers
+// SANDBOX-REED-SUITE.md and sandbox-report.json in .git/info/exclude.
+func TestRunSuite_ReedSpec_ExcludesFiles(t *testing.T) {
 	parentDir, hostRepoDir := makeHostRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
@@ -631,7 +631,7 @@ func TestRunSuite_MuxSpec_ExcludesFiles(t *testing.T) {
 	})
 	defer restore()
 
-	if err := runSuite(parentDir, "", "", muxSuite); err != nil {
+	if err := runSuite(parentDir, "", "", reedSuite); err != nil {
 		t.Fatalf("runSuite error: %v", err)
 	}
 
@@ -640,17 +640,17 @@ func TestRunSuite_MuxSpec_ExcludesFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read .git/info/exclude: %v", err)
 	}
-	for _, entry := range []string{muxSuite.fileName, reportFileName} {
+	for _, entry := range []string{reedSuite.fileName, reportFileName} {
 		if !strings.Contains(string(content), entry) {
 			t.Errorf(".git/info/exclude missing entry %q; got %q", entry, string(content))
 		}
 	}
 }
 
-// TestRunSuite_MuxSpec_DeletesStaleReport verifies that a muxSuite run deletes
+// TestRunSuite_ReedSpec_DeletesStaleReport verifies that a reedSuite run deletes
 // a pre-seeded stale sandbox-report.json before launching the agent, mirroring
 // the main suite's stale-report cleanup.
-func TestRunSuite_MuxSpec_DeletesStaleReport(t *testing.T) {
+func TestRunSuite_ReedSpec_DeletesStaleReport(t *testing.T) {
 	parentDir, hostRepoDir := makeHostRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
@@ -668,7 +668,7 @@ func TestRunSuite_MuxSpec_DeletesStaleReport(t *testing.T) {
 	})
 	defer restore()
 
-	if err := runSuite(parentDir, "", "", muxSuite); err != nil {
+	if err := runSuite(parentDir, "", "", reedSuite); err != nil {
 		t.Fatalf("runSuite should return nil; got error: %v", err)
 	}
 	if _, statErr := os.Stat(stalePath); !os.IsNotExist(statErr) {
@@ -676,9 +676,9 @@ func TestRunSuite_MuxSpec_DeletesStaleReport(t *testing.T) {
 	}
 }
 
-// TestRunSuite_MuxSpec_DefaultInstruction verifies that a muxSuite run with no
-// -prompt override passes the mux default instruction to launchAgent.
-func TestRunSuite_MuxSpec_DefaultInstruction(t *testing.T) {
+// TestRunSuite_ReedSpec_DefaultInstruction verifies that a reedSuite run with no
+// -prompt override passes the reed default instruction to launchAgent.
+func TestRunSuite_ReedSpec_DefaultInstruction(t *testing.T) {
 	parentDir, _ := makeHostRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
@@ -690,24 +690,24 @@ func TestRunSuite_MuxSpec_DefaultInstruction(t *testing.T) {
 	})
 	defer restore()
 
-	if err := runSuite(parentDir, "", "", muxSuite); err != nil {
+	if err := runSuite(parentDir, "", "", reedSuite); err != nil {
 		t.Fatalf("runSuite error: %v", err)
 	}
-	if gotInstruction != muxSuite.instruction {
-		t.Errorf("launchAgent instruction = %q; want %q", gotInstruction, muxSuite.instruction)
+	if gotInstruction != reedSuite.instruction {
+		t.Errorf("launchAgent instruction = %q; want %q", gotInstruction, reedSuite.instruction)
 	}
-	if gotInstruction != "Read ./SANDBOX-MUX-SUITE.md and follow the instructions in it exactly." {
-		t.Errorf("launchAgent instruction = %q; want the literal mux default", gotInstruction)
+	if gotInstruction != "Read ./SANDBOX-REED-SUITE.md and follow the instructions in it exactly." {
+		t.Errorf("launchAgent instruction = %q; want the literal reed default", gotInstruction)
 	}
 }
 
-// TestRunSuite_MuxSpec_PromptOverride verifies that a -prompt override passed
-// to a muxSuite run reaches launchAgent verbatim, bypassing the mux default.
-func TestRunSuite_MuxSpec_PromptOverride(t *testing.T) {
+// TestRunSuite_ReedSpec_PromptOverride verifies that a -prompt override passed
+// to a reedSuite run reaches launchAgent verbatim, bypassing the reed default.
+func TestRunSuite_ReedSpec_PromptOverride(t *testing.T) {
 	parentDir, _ := makeHostRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
-	customPrompt := "Do the mux thing entirely differently."
+	customPrompt := "Do the reed thing entirely differently."
 
 	var gotInstruction string
 	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction, binDir string) int {
@@ -716,7 +716,7 @@ func TestRunSuite_MuxSpec_PromptOverride(t *testing.T) {
 	})
 	defer restore()
 
-	if err := runSuite(parentDir, "", customPrompt, muxSuite); err != nil {
+	if err := runSuite(parentDir, "", customPrompt, reedSuite); err != nil {
 		t.Fatalf("runSuite error: %v", err)
 	}
 	if gotInstruction != customPrompt {
@@ -726,7 +726,7 @@ func TestRunSuite_MuxSpec_PromptOverride(t *testing.T) {
 
 // TestRunSuite_ShuttleSpec_WritesShuttleFile verifies that
 // runSuite(..., shuttleSuite) writes SANDBOX-SHUTTLE-SUITE.md (not
-// SANDBOX-CORE-SUITE.md or SANDBOX-MUX-SUITE.md) into the host repo, with the
+// SANDBOX-CORE-SUITE.md or SANDBOX-REED-SUITE.md) into the host repo, with the
 // fingerprint header prepended to the embedded shuttle doc body.
 func TestRunSuite_ShuttleSpec_WritesShuttleFile(t *testing.T) {
 	parentDir, hostRepoDir := makeHostRepo(t)
@@ -758,8 +758,8 @@ func TestRunSuite_ShuttleSpec_WritesShuttleFile(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(hostRepoDir, mainSuite.fileName)); !os.IsNotExist(err) {
 		t.Errorf("%s should not be written by a shuttleSuite run; stat err = %v", mainSuite.fileName, err)
 	}
-	if _, err := os.Stat(filepath.Join(hostRepoDir, muxSuite.fileName)); !os.IsNotExist(err) {
-		t.Errorf("%s should not be written by a shuttleSuite run; stat err = %v", muxSuite.fileName, err)
+	if _, err := os.Stat(filepath.Join(hostRepoDir, reedSuite.fileName)); !os.IsNotExist(err) {
+		t.Errorf("%s should not be written by a shuttleSuite run; stat err = %v", reedSuite.fileName, err)
 	}
 }
 
@@ -794,7 +794,7 @@ func TestRunSuite_ShuttleSpec_ExcludesFiles(t *testing.T) {
 
 // TestRunSuite_ShuttleSpec_DeletesStaleReport verifies that a shuttleSuite run
 // deletes a pre-seeded stale sandbox-report.json before launching the agent,
-// mirroring the main and mux suites' stale-report cleanup.
+// mirroring the main and reed suites' stale-report cleanup.
 func TestRunSuite_ShuttleSpec_DeletesStaleReport(t *testing.T) {
 	parentDir, hostRepoDir := makeHostRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
@@ -871,24 +871,24 @@ func TestRunSuite_ShuttleSpec_PromptOverride(t *testing.T) {
 	}
 }
 
-// TestSuiteSpecs_MuxTeardownFlag pins which suites get the post-session mux
-// teardown: every suite whose scenarios boot a live tmux substrate (mux,
-// shuttle, burler), and not the main suite, whose scenarios never run mux up.
-func TestSuiteSpecs_MuxTeardownFlag(t *testing.T) {
-	if mainSuite.muxTeardown {
-		t.Error("mainSuite.muxTeardown = true; the core suite boots no mux substrate")
+// TestSuiteSpecs_ReedTeardownFlag pins which suites get the post-session reed
+// teardown: every suite whose scenarios boot a live tmux substrate (reed,
+// shuttle, burler), and not the main suite, whose scenarios never run reed up.
+func TestSuiteSpecs_ReedTeardownFlag(t *testing.T) {
+	if mainSuite.reedTeardown {
+		t.Error("mainSuite.reedTeardown = true; the core suite boots no reed substrate")
 	}
-	for _, spec := range []suiteSpec{muxSuite, shuttleSuite, burlerSuite, perchSuite} {
-		if !spec.muxTeardown {
-			t.Errorf("%s: muxTeardown = false; live-mux suites must tear their substrate down", spec.fileName)
+	for _, spec := range []suiteSpec{reedSuite, shuttleSuite, burlerSuite, perchSuite} {
+		if !spec.reedTeardown {
+			t.Errorf("%s: reedTeardown = false; live-reed suites must tear their substrate down", spec.fileName)
 		}
 	}
 }
 
-// TestRunSuite_BurlerSpec_MuxTeardownAfterAgent verifies that a burlerSuite
-// run calls muxDown exactly once, with the host repo dir and the
+// TestRunSuite_BurlerSpec_ReedTeardownAfterAgent verifies that a burlerSuite
+// run calls reedDown exactly once, with the host repo dir and the
 // fingerprinted lyx path, strictly after the agent session has ended.
-func TestRunSuite_BurlerSpec_MuxTeardownAfterAgent(t *testing.T) {
+func TestRunSuite_BurlerSpec_ReedTeardownAfterAgent(t *testing.T) {
 	parentDir, hostRepoDir := makeHostRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
@@ -902,9 +902,9 @@ func TestRunSuite_BurlerSpec_MuxTeardownAfterAgent(t *testing.T) {
 
 	var gotDir, gotLyx string
 	teardownCalls := 0
-	muxDown = func(dir, lyx string) error {
+	reedDown = func(dir, lyx string) error {
 		if !agentDone {
-			t.Error("muxDown called before launchAgent returned")
+			t.Error("reedDown called before launchAgent returned")
 		}
 		teardownCalls++
 		gotDir, gotLyx = dir, lyx
@@ -915,20 +915,20 @@ func TestRunSuite_BurlerSpec_MuxTeardownAfterAgent(t *testing.T) {
 		t.Fatalf("runSuite error: %v", err)
 	}
 	if teardownCalls != 1 {
-		t.Fatalf("muxDown called %d times; want exactly 1", teardownCalls)
+		t.Fatalf("reedDown called %d times; want exactly 1", teardownCalls)
 	}
 	if gotDir != hostRepoDir {
-		t.Errorf("muxDown dir = %q; want %q", gotDir, hostRepoDir)
+		t.Errorf("reedDown dir = %q; want %q", gotDir, hostRepoDir)
 	}
 	if gotLyx != fakeLyx {
-		t.Errorf("muxDown lyx = %q; want %q", gotLyx, fakeLyx)
+		t.Errorf("reedDown lyx = %q; want %q", gotLyx, fakeLyx)
 	}
 }
 
-// TestRunSuite_MainSpec_NoMuxTeardown verifies that a mainSuite run never
-// calls muxDown: the core suite boots no mux substrate, so a teardown would
+// TestRunSuite_MainSpec_NoReedTeardown verifies that a mainSuite run never
+// calls reedDown: the core suite boots no reed substrate, so a teardown would
 // only add noise (and a config error in an uninitialized host repo).
-func TestRunSuite_MainSpec_NoMuxTeardown(t *testing.T) {
+func TestRunSuite_MainSpec_NoReedTeardown(t *testing.T) {
 	parentDir, _ := makeHostRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
@@ -938,8 +938,8 @@ func TestRunSuite_MainSpec_NoMuxTeardown(t *testing.T) {
 	})
 	defer restore()
 
-	muxDown = func(dir, lyx string) error {
-		t.Error("muxDown should not be called for mainSuite")
+	reedDown = func(dir, lyx string) error {
+		t.Error("reedDown should not be called for mainSuite")
 		return nil
 	}
 
@@ -948,10 +948,10 @@ func TestRunSuite_MainSpec_NoMuxTeardown(t *testing.T) {
 	}
 }
 
-// TestRunSuite_MuxTeardownFailureTolerated verifies the teardown is
-// best-effort: a muxDown error must not turn a completed agent session into
+// TestRunSuite_ReedTeardownFailureTolerated verifies the teardown is
+// best-effort: a reedDown error must not turn a completed agent session into
 // a launcher failure, so runSuite still returns nil.
-func TestRunSuite_MuxTeardownFailureTolerated(t *testing.T) {
+func TestRunSuite_ReedTeardownFailureTolerated(t *testing.T) {
 	parentDir, _ := makeHostRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
@@ -961,19 +961,19 @@ func TestRunSuite_MuxTeardownFailureTolerated(t *testing.T) {
 	})
 	defer restore()
 
-	muxDown = func(dir, lyx string) error {
-		return fmt.Errorf("lyx mux down: exit status 1")
+	reedDown = func(dir, lyx string) error {
+		return fmt.Errorf("lyx reed down: exit status 1")
 	}
 
 	if err := runSuite(parentDir, "", "", burlerSuite); err != nil {
-		t.Fatalf("runSuite should tolerate a muxDown failure; got error: %v", err)
+		t.Fatalf("runSuite should tolerate a reedDown failure; got error: %v", err)
 	}
 }
 
-// TestRunSuite_MuxTeardownRunsOnNonZeroAgentExit verifies the teardown is
+// TestRunSuite_ReedTeardownRunsOnNonZeroAgentExit verifies the teardown is
 // unconditional on the agent's exit path: a non-zero (manual or errored)
 // session exit still tears the substrate down.
-func TestRunSuite_MuxTeardownRunsOnNonZeroAgentExit(t *testing.T) {
+func TestRunSuite_ReedTeardownRunsOnNonZeroAgentExit(t *testing.T) {
 	parentDir, _ := makeHostRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
@@ -984,7 +984,7 @@ func TestRunSuite_MuxTeardownRunsOnNonZeroAgentExit(t *testing.T) {
 	defer restore()
 
 	teardownCalls := 0
-	muxDown = func(dir, lyx string) error {
+	reedDown = func(dir, lyx string) error {
 		teardownCalls++
 		return nil
 	}
@@ -993,7 +993,7 @@ func TestRunSuite_MuxTeardownRunsOnNonZeroAgentExit(t *testing.T) {
 		t.Fatalf("runSuite error: %v", err)
 	}
 	if teardownCalls != 1 {
-		t.Errorf("muxDown called %d times after non-zero agent exit; want exactly 1", teardownCalls)
+		t.Errorf("reedDown called %d times after non-zero agent exit; want exactly 1", teardownCalls)
 	}
 }
 
@@ -1192,10 +1192,10 @@ func TestRunSuite_PerchSpec_PromptOverride(t *testing.T) {
 	}
 }
 
-// TestRunSuite_PerchSpec_MuxTeardownAfterAgent verifies that a perchSuite
-// run calls muxDown exactly once, with the host repo dir and the
+// TestRunSuite_PerchSpec_ReedTeardownAfterAgent verifies that a perchSuite
+// run calls reedDown exactly once, with the host repo dir and the
 // fingerprinted lyx path, strictly after the agent session has ended.
-func TestRunSuite_PerchSpec_MuxTeardownAfterAgent(t *testing.T) {
+func TestRunSuite_PerchSpec_ReedTeardownAfterAgent(t *testing.T) {
 	parentDir, hostRepoDir := makeHostRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
@@ -1209,9 +1209,9 @@ func TestRunSuite_PerchSpec_MuxTeardownAfterAgent(t *testing.T) {
 
 	var gotDir, gotLyx string
 	teardownCalls := 0
-	muxDown = func(dir, lyx string) error {
+	reedDown = func(dir, lyx string) error {
 		if !agentDone {
-			t.Error("muxDown called before launchAgent returned")
+			t.Error("reedDown called before launchAgent returned")
 		}
 		teardownCalls++
 		gotDir, gotLyx = dir, lyx
@@ -1222,12 +1222,12 @@ func TestRunSuite_PerchSpec_MuxTeardownAfterAgent(t *testing.T) {
 		t.Fatalf("runSuite error: %v", err)
 	}
 	if teardownCalls != 1 {
-		t.Fatalf("muxDown called %d times; want exactly 1", teardownCalls)
+		t.Fatalf("reedDown called %d times; want exactly 1", teardownCalls)
 	}
 	if gotDir != hostRepoDir {
-		t.Errorf("muxDown dir = %q; want %q", gotDir, hostRepoDir)
+		t.Errorf("reedDown dir = %q; want %q", gotDir, hostRepoDir)
 	}
 	if gotLyx != fakeLyx {
-		t.Errorf("muxDown lyx = %q; want %q", gotLyx, fakeLyx)
+		t.Errorf("reedDown lyx = %q; want %q", gotLyx, fakeLyx)
 	}
 }

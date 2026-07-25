@@ -46,7 +46,7 @@ import (
 var ErrPaused = errors.New("builder: paused")
 
 // ErrBatchInFlight is the sentinel SpawnBatch returns when state records a
-// non-terminal in-flight batch whose implementer strand the mux still
+// non-terminal in-flight batch whose implementer strand the reed still
 // reports live. The batch loop is strictly sequential, so spawning anything
 // while a live implementer is mid-flight is always wrong — it silently
 // clobbers the in-flight batch's BatchState and races two agents on the
@@ -61,7 +61,7 @@ var ErrBatchInFlight = errors.New("builder: a batch is already in flight")
 // Starter is the seam SpawnBatch spawns an implementer through: exactly
 // (*shuttleengine.Runner).Start's signature, so production code passes a
 // real *shuttleengine.Runner directly and tests pass one built over local
-// fake shuttleengine.MuxOps/shuttleengine.Engine doubles (the shuttleengine
+// fake shuttleengine.ReedOps/shuttleengine.Engine doubles (the shuttleengine
 // fakes_test.go pattern; builderengine's own fakes are test-file-local, per
 // the discussion's test-conventions decision). Start is deliberately
 // non-blocking — spawn-batch returns as soon as the implementer's strand is
@@ -92,11 +92,11 @@ type SpawnDeps struct {
 	ReportsDir   string
 	ShuttleCfg   shuttleengine.Config
 	Layout       *hubgeometry.Layout
-	// Mux is the live mux query surface the in-flight guard (ErrBatchInFlight)
+	// Reed is the live reed query surface the in-flight guard (ErrBatchInFlight)
 	// and the dead-respawn orphan cleanup consult via StrandLive/RemoveStrand —
 	// the same handle buildercli's poll verb already holds for its own
 	// classification gathers.
-	Mux shuttleengine.MuxOps
+	Reed shuttleengine.ReedOps
 }
 
 // SpawnBatchOptions carries one `spawn-batch` invocation's caller-supplied
@@ -128,7 +128,7 @@ type SpawnResult struct {
 	// StartSHA is the host HEAD captured immediately before this spawn —
 	// the same value now recorded as this batch's BatchState.StartSHA.
 	StartSHA string
-	// StrandGUID identifies the mux strand the implementer spawned into.
+	// StrandGUID identifies the reed strand the implementer spawned into.
 	StrandGUID string
 	// RunDir is the shuttle run directory FindRun resolved for this spawn.
 	RunDir string
@@ -191,24 +191,24 @@ func archiveStaleReport(reportsDir string, number int, slug string, now func() t
 	return target, nil
 }
 
-// RemoveStrandIfLive removes guid's mux strand when the mux still reports
+// RemoveStrandIfLive removes guid's reed strand when the reed still reports
 // it live, and is a no-op otherwise. It exists for the respawn paths that
 // re-claim a dead-classified batch's deliberately-kept pane: a timed-out
 // implementer may still be WORKING, not hung, and left alive it races the
 // fresh session (late commits to the host repo, a late report landing on
 // the very path the new spawn names as its output file). A StrandLive error
-// is treated as not-live — a downed mux session hosts no live strand. A
+// is treated as not-live — a downed reed session hosts no live strand. A
 // failed removal of a genuinely live strand propagates: spawning while the
 // orphan cannot be stopped is exactly the double-drive this helper exists
 // to prevent. Exported as shared infrastructure with a second consumer
 // (webster), which applies the same kept-substrate reclaim discipline to
 // its own respawn ladders.
-func RemoveStrandIfLive(mux shuttleengine.MuxOps, guid string) error {
-	live, err := StrandLive(mux, guid)
+func RemoveStrandIfLive(reed shuttleengine.ReedOps, guid string) error {
+	live, err := StrandLive(reed, guid)
 	if err != nil || !live {
 		return nil
 	}
-	if _, err := mux.RemoveStrand(guid, false); err != nil {
+	if _, err := reed.RemoveStrand(guid, false); err != nil {
 		return fmt.Errorf("builder: remove kept strand %s before respawn: %w", guid, err)
 	}
 	return nil
@@ -292,18 +292,18 @@ func SpawnBatch(deps SpawnDeps, opts SpawnBatchOptions) (*SpawnResult, error) {
 	}
 
 	// The in-flight guard: the loop is strictly sequential, so a recorded
-	// non-terminal batch whose strand the mux still reports live means an
+	// non-terminal batch whose strand the reed still reports live means an
 	// implementer is mid-flight RIGHT NOW — spawning anything on top of it
 	// double-drives the host repo and clobbers its BatchState (an orphaned
 	// live implementer after an orchestrator crash, or a stray manual
 	// spawn-batch during a run). The intended respawn ladders never trip
 	// this: they always pass through a terminal poll first (Terminal set,
 	// CurrentBatch cleared). A Status error is deliberately non-fatal — a
-	// downed mux session cannot host a live strand, and if the substrate is
+	// downed reed session cannot host a live strand, and if the substrate is
 	// genuinely unavailable the spawn's own Start surfaces that error.
 	if cur := deps.State.CurrentBatch; cur != 0 {
 		if inFlight := deps.State.Batches[cur]; inFlight != nil && !inFlight.Terminal {
-			if live, liveErr := StrandLive(deps.Mux, inFlight.StrandGUID); liveErr == nil && live {
+			if live, liveErr := StrandLive(deps.Reed, inFlight.StrandGUID); liveErr == nil && live {
 				return nil, fmt.Errorf("%w: batch %02d-%s's implementer strand %s is still live; long-poll it with `lyx builder poll` until it classifies terminal before spawning another batch", ErrBatchInFlight, cur, inFlight.Slug, inFlight.StrandGUID)
 			}
 		}
@@ -380,7 +380,7 @@ func SpawnBatch(deps SpawnDeps, opts SpawnBatchOptions) (*SpawnResult, error) {
 		// tree. Stop every member's recorded strand before the reset.
 		for _, member := range ChainMembers(deps.Plan, chainEnd) {
 			if memberState := deps.State.Batches[member]; memberState != nil {
-				if err := RemoveStrandIfLive(deps.Mux, memberState.StrandGUID); err != nil {
+				if err := RemoveStrandIfLive(deps.Reed, memberState.StrandGUID); err != nil {
 					return nil, err
 				}
 			}
@@ -408,7 +408,7 @@ func SpawnBatch(deps SpawnDeps, opts SpawnBatchOptions) (*SpawnResult, error) {
 	priorState := deps.State.Batches[batch.Number]
 	respawnOfDead := priorState != nil && priorState.Terminal && priorState.Status == DigestStatusDead
 	if respawnOfDead {
-		if err := RemoveStrandIfLive(deps.Mux, priorState.StrandGUID); err != nil {
+		if err := RemoveStrandIfLive(deps.Reed, priorState.StrandGUID); err != nil {
 			return nil, err
 		}
 	}

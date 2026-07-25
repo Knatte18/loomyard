@@ -6,7 +6,7 @@ rationale see [sandbox-hub.md](sandbox-hub.md).
 
 All commands run from the lyx repo root (`C:\Code\loomyard\wts\loomyard`) unless
 stated otherwise. The launchers (`deploy.cmd`, `deploy-dev.cmd`, `sandbox-build.cmd`,
-`sandbox-core-suite.cmd`, `sandbox-mux-suite.cmd`, `sandbox-shuttle-suite.cmd`,
+`sandbox-core-suite.cmd`, `sandbox-reed-suite.cmd`, `sandbox-shuttle-suite.cmd`,
 `sandbox-burler-suite.cmd`, `sandbox-perch-suite.cmd`, `sandbox-builder-suite.cmd`,
 `sandbox-fetch.cmd`) hardcode the machine-specific paths for this machine: `deploy.cmd`'s
 deploy target `C:\Code\tools\bin`, Hub parent `C:\Code`. `deploy-dev.cmd` is the exception —
@@ -121,16 +121,16 @@ sandbox-core-suite.cmd -claude <path>   # override the claude binary (default: f
 sandbox-core-suite.cmd -prompt <text>   # override the instruction string
 ```
 
-### 4b. Run the mux suite (optional, needs live tmux)
+### 4b. Run the reed suite (optional, needs live tmux)
 
 ```cmd
-sandbox-mux-suite.cmd
+sandbox-reed-suite.cmd
 ```
 
-This copies a fingerprinted `SANDBOX-MUX-SUITE.md` into the Hub host repo and
-launches the interactive agent there, same as step 4 but for `lyx mux`'s
+This copies a fingerprinted `SANDBOX-REED-SUITE.md` into the Hub host repo and
+launches the interactive agent there, same as step 4 but for `lyx reed`'s
 scenarios. It needs a live tmux (`tmux.exe` on PATH) and PowerShell 7. The
-attach scenario (M7) pauses for the operator to run `lyx mux attach` in a
+attach scenario (M7) pauses for the operator to run `lyx reed attach` in a
 second terminal and confirm visually. Findings go to the same
 `sandbox-report.json`, so step 5 (`sandbox-fetch.cmd`) and step 6 (triage)
 apply unchanged — fetch between sessions, do not run both suites and fetch
@@ -139,8 +139,8 @@ once.
 Same `-claude`/`-prompt` overrides as `sandbox-core-suite.cmd`:
 
 ```cmd
-sandbox-mux-suite.cmd -claude <path>   # override the claude binary (default: from PATH)
-sandbox-mux-suite.cmd -prompt <text>   # override the instruction string
+sandbox-reed-suite.cmd -claude <path>   # override the claude binary (default: from PATH)
+sandbox-reed-suite.cmd -prompt <text>   # override the instruction string
 ```
 
 ### 4c. Run the shuttle or burler suite (optional, needs live tmux + logged-in claude)
@@ -153,7 +153,7 @@ sandbox-burler-suite.cmd
 Same operating model as 4b, for `lyx shuttle`'s and `lyx burler`'s scenarios
 respectively; both need a live tmux, PowerShell 7, a logged-in `claude`, and
 an `lyx init`-ed host repo. Same `-claude`/`-prompt` overrides. After the
-session ends, the launcher runs `lyx mux down` in the host repo (for the mux,
+session ends, the launcher runs `lyx reed down` in the host repo (for the reed,
 shuttle, burler, and perch suites) so no tmux server outlives the run — an
 orphaned server holds handles inside the Hub and blocks the next
 `sandbox-build.cmd -reset`.
@@ -216,7 +216,7 @@ nothing is written until you approve. Then groom/spawn as usual.
 | `lyx` not found / old behaviour | dev binary in `.dev-bin` is stale, or (prod fallback) `C:\Code\tools\bin` not on PATH | rerun `deploy-dev.cmd`; check the fingerprint header's `Source:` line — `dev` confirms the `.dev-bin` build ran, `prod` means the dev binary was missing and the suite fell back to PATH |
 | `warp clone` fails during build | sandbox wiki not initialized | enable Wikis + add a page on `lyx-test-weft`, then `sandbox-build.cmd -reset` |
 | Hub looks corrupt / half-cloned | interrupted earlier run | `sandbox-build.cmd -reset` |
-| `sandbox-build.cmd -reset` fails: "being used by another process" | orphaned `tmux.exe` from an earlier suite session still holds Hub handles | the launcher now runs `lyx mux down` after mux-backed suites; if hit anyway, find the Hub-scoped `tmux.exe` PIDs by `StartTime` (`Get-Process -Name tmux \| Select Id,StartTime`) and kill only those — never blanket-kill by image name |
+| `sandbox-build.cmd -reset` fails: "being used by another process" | orphaned `tmux.exe` from an earlier suite session still holds Hub handles | the launcher now runs `lyx reed down` after reed-backed suites; if hit anyway, find the Hub-scoped `tmux.exe` PIDs by `StartTime` (`Get-Process -Name tmux \| Select Id,StartTime`) and kill only those — never blanket-kill by image name |
 | agent session ends early, scenarios abandoned, no report | launcher was backgrounded/redirected (no TTY) | rerun in a real attached terminal; heed the launcher's non-console stdio warning |
 | exit code always 0/1, not claude's | launcher collapses claude's code | build and run `go build -o sandbox.exe ./tools/sandbox` for precise codes |
 
@@ -224,5 +224,5 @@ nothing is written until you approve. Then groom/spawn as usual.
 
 - [sandbox-hub.md](sandbox-hub.md) — Hub topology, repo layout, design rationale.
 - [tools/sandbox/SANDBOX-CORE-SUITE.md](../tools/sandbox/SANDBOX-CORE-SUITE.md) — the embedded test scheme the agent follows.
-- [tools/sandbox/SANDBOX-MUX-SUITE.md](../tools/sandbox/SANDBOX-MUX-SUITE.md) — the embedded mux-specific test scheme `sandbox-mux-suite.cmd` follows.
+- [tools/sandbox/SANDBOX-REED-SUITE.md](../tools/sandbox/SANDBOX-REED-SUITE.md) — the embedded reed-specific test scheme `sandbox-reed-suite.cmd` follows.
 - [tools/sandbox/SANDBOX-BUILDER-SUITE.md](../tools/sandbox/SANDBOX-BUILDER-SUITE.md) — the embedded builder-specific test scheme `sandbox-builder-suite.cmd` follows.

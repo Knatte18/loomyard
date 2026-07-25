@@ -108,7 +108,7 @@ func (c *Claude) AuditForksIncremental(sessionID, workdir string, seenTranscript
 
 // claudeProjectDirFor derives the ~/.claude/projects/<encoded-workdir> directory
 // Claude persists this session's transcripts into, mirroring claudeProjectDir in
-// internal/muxcli/smoke_test.go (verified there against a live transcript):
+// internal/reedcli/smoke_test.go (verified there against a live transcript):
 // workdir with every non-alphanumeric byte replaced by '-'. Production code must
 // not import test code, so this ~6-line encoding loop is re-implemented here
 // rather than shared with that test helper.

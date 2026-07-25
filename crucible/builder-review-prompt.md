@@ -77,12 +77,12 @@ the bottom.
 The pure/unit-tested parts (fingerprint hashing, config parsing, outcome YAML decode, role
 grammar) are usually solid; defects concentrate in the COMPOSED, LIVE, timing-sensitive behavior
 the hermetic tests never exercise — everything downstream of "no one holds the shuttle `Run`
-handle across a batch's lifetime, so `poll` re-derives state from files and a live mux query on
+handle across a batch's lifetime, so `poll` re-derives state from files and a live reed query on
 every tick." Treat each of these as an INVARIANT you must actively verify by driving the real
 substrate — a green `go test` proves nothing here:
 
 - **`poll`'s four-branch terminal race.** The decision order is report-present → Stop-event
-  (`dead_reason: asking`) → elapsed-timeout (`dead_reason: timeout`) → mux-strand-gone
+  (`dead_reason: asking`) → elapsed-timeout (`dead_reason: timeout`) → reed-strand-gone
   (`dead_reason: died`) → running. Verify each branch actually fires on the real condition it
   claims to detect, and that a report written a moment before a `poll` tick always wins over a
   simultaneously-true Stop/timeout/died condition (report-present must be checked first, for
@@ -192,7 +192,7 @@ MORE defects the code-only round completely missed, all fixed, none deferred:
 - **F4 (MEDIUM)** — round 1's deferred orphaned-live-implementer guard, now resolved: no guard
   existed against spawning while a non-terminal batch's strand was still live (confirmed live: two
   `spawn-batch 2` calls both succeeded, clobbering `BatchState`). Fixed `96a2d93` — the
-  distinguisher is `BatchState.Terminal` + a live mux query; every intended respawn ladder passes
+  distinguisher is `BatchState.Terminal` + a live reed query; every intended respawn ladder passes
   through a terminal poll first, so it never trips. Revert-proof done: `TestSpawnBatch_InFlightGuardMatrix`'s
   refuse-case fails, all four allow-cases correctly still pass.
 - **F11 (MEDIUM)** — a `dead: timeout`/`asking` implementer kept alive for diagnosis can finish its
@@ -254,10 +254,10 @@ none had killed or superseded the *orchestrator's own* run):
 - **R4-1 (MEDIUM)** — an orphaned live orchestrator (a killed `run` process, or a timed-out
   orchestrator whose kept pane kept working) was never reclaimed at `run` entry; a resumed `run`
   spawned a SECOND live orchestrator over the first, both driving the same `state.json`/plan/host
-  repo at once. Confirmed live: two live `orchestrator:` strands observed simultaneously in `lyx mux
+  repo at once. Confirmed live: two live `orchestrator:` strands observed simultaneously in `lyx reed
   status` after killing run #1's process and starting run #2. Fixed `a7d9fa2` — `Run` is now a
   two-phase start/wait (`OrchestratorStarter`/`OrchestratorHandle`) so the strand GUID persists to
-  `state.json` BEFORE the block; entry-time reclaim stops a recorded strand the mux still reports
+  `state.json` BEFORE the block; entry-time reclaim stops a recorded strand the reed still reports
   live. Revert-proof done by the orchestrator: removing the entry-time reclaim block makes
   `TestRun_ReclaimsLiveOrphanedOrchestratorAtEntry`'s live-orphan subtest fail exactly as described
   (orphan strand not in the removed list), dead-recorded-strand subtest correctly still passes.
@@ -267,7 +267,7 @@ none had killed or superseded the *orchestrator's own* run):
   with poll's own cleanup then killing the fresh run's still-working implementer. Confirmed live
   with a real two-implementer interleave (two live implementers for the same batch observed at
   once; the fresh run finished `done` with the SUPERSEDED plan's file content, not the edited
-  plan's). Fixed `8d6cb33` — the `--fresh` branch now stops every recorded batch strand the mux
+  plan's). Fixed `8d6cb33` — the `--fresh` branch now stops every recorded batch strand the reed
   still reports live BEFORE archiving. Revert-proof done: removing the stop-loop makes
   `TestRun_FreshStopsSupersededRunsLiveStrands` fail exactly as described (superseded live strand
   not in the removed list).
@@ -292,7 +292,7 @@ none had killed or superseded the *orchestrator's own* run):
   Diff spot-checked: matches description, tests cover both the one-tick grace and the still-fails-
   loud-on-persistent-malformation case.
 - **R4-6 (NIT/docs)** — neither `builder-contract.md` nor the sandbox suite's pre-conditions stated that
-  `lyx mux up` must precede `run`/`spawn-batch`. Fixed `b0c050b`.
+  `lyx reed up` must precede `run`/`spawn-batch`. Fixed `b0c050b`.
 - **R4-7 (NIT/template)** — `batches_done`'s doc text was ambiguous across a resume (whole-plan vs.
   this-session-only reading); pinned to the whole-plan reading, matching what a live resumed session
   actually chose. Fixed `e720845`.
@@ -425,7 +425,7 @@ you don't have). Even then say so explicitly in the fixer report's deferred sect
 ## Deferred items from the prior round — RE-EVALUATE these (after your own pass)
 Nothing is currently on this list. Round 1's only deferred item (the orphaned-live-implementer
 spawn guard) was re-evaluated and resolved by round 2 as F4 (`96a2d93`) — the distinguisher
-(`BatchState.Terminal` + a live mux query) preserves the intentional dead-respawn ladder by
+(`BatchState.Terminal` + a live reed query) preserves the intentional dead-respawn ladder by
 construction, proven by both a hermetic guard-matrix test and a live re-verification. If your own
 pass surfaces something you genuinely cannot resolve alone this round (a real design tradeoff, or
 a live capability you don't have), defer it here explicitly with the reason — do not silently drop

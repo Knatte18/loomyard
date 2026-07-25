@@ -3,11 +3,11 @@
 // "run this producer / handler / progress-judge, give me back its output
 // files." shuttle owns which provider (via an engine), the prompt envelope,
 // and what "done" means. It does not own panes, layout, or tmux mechanics —
-// it asks mux for a strand and drives the LLM in it.
+// it asks reed for a strand and drives the LLM in it.
 //
 // Every agent runs as an interactive tmux session, never headless
 // `claude -p` — an economic constraint (subscription coverage), not a
-// technical one. This is why the whole proc -> mux -> shuttle stack exists
+// technical one. This is why the whole proc -> reed -> shuttle stack exists
 // instead of a plain headless exec.
 //
 // shuttle runs a provider through an engine: a per-LLM adapter that knows

@@ -1,4 +1,4 @@
-// wait_test.go covers Run.Wait's poll loop against fakeMux/fakeEngine and a
+// wait_test.go covers Run.Wait's poll loop against fakeReed/fakeEngine and a
 // fake clock: all four outcome classifications, KeepPane skipping cleanup,
 // the startup probe's trust-dismiss and fast-fail-on-timeout paths,
 // multi-Stop offset tracking, events-offset resilience across a partial
@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
-	"github.com/Knatte18/loomyard/internal/muxengine"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 )
 
 // fakeClock is a virtual clock: Sleep instantly advances Now() by d instead
@@ -64,15 +64,15 @@ func (c *scriptedClock) Sleep(d time.Duration) {
 
 var _ clock = (*scriptedClock)(nil)
 
-// newWaitTestRunner returns a Runner over mux/engine scoped to a fresh temp
+// newWaitTestRunner returns a Runner over reed/engine scoped to a fresh temp
 // worktree, matching newTestRunner in run_test.go but kept local to this
 // file since wait tests construct their Run handles directly rather than
 // through Start.
-func newWaitTestRunner(t *testing.T, mux MuxOps, engine Engine, cfg Config) *Runner {
+func newWaitTestRunner(t *testing.T, reed ReedOps, engine Engine, cfg Config) *Runner {
 	t.Helper()
 	root := t.TempDir()
 	layout := &hubgeometry.Layout{Cwd: root, WorktreeRoot: root}
-	return NewRunner(mux, engine, layout, cfg)
+	return NewRunner(reed, engine, layout, cfg)
 }
 
 // TestPollInterval_FloorsNonPositive pins the busy-spin guard: a configured
@@ -109,9 +109,9 @@ func TestRun_Wait_DoneHappyPath_CleansUp(t *testing.T) {
 		t.Fatalf("seed events: %v", err)
 	}
 
-	mux := &fakeMux{StatusQueue: []muxengine.StatusResult{{Strands: []muxengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
+	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
 	engine := &fakeEngine{StartupScript: []StartupState{StartupReady}}
-	runner := newWaitTestRunner(t, mux, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+	runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
 	fc := newFakeClock(time.Now())
 	run := &Run{
 		runner:   runner,
@@ -131,13 +131,13 @@ func TestRun_Wait_DoneHappyPath_CleansUp(t *testing.T) {
 	}
 
 	foundRemove := false
-	for _, c := range mux.RemoveStrandCalls {
+	for _, c := range reed.RemoveStrandCalls {
 		if c.GUID == "strand-1" && !c.Recursive {
 			foundRemove = true
 		}
 	}
 	if !foundRemove {
-		t.Errorf("RemoveStrand(strand-1, false) not recorded, calls = %+v", mux.RemoveStrandCalls)
+		t.Errorf("RemoveStrand(strand-1, false) not recorded, calls = %+v", reed.RemoveStrandCalls)
 	}
 	if _, err := os.Stat(runDir); !os.IsNotExist(err) {
 		t.Errorf("run dir still exists after done cleanup, stat err = %v", err)
@@ -155,9 +155,9 @@ func TestRun_Wait_DoneWithKeepPane_SkipsCleanup(t *testing.T) {
 		t.Fatalf("seed events: %v", err)
 	}
 
-	mux := &fakeMux{StatusQueue: []muxengine.StatusResult{{Strands: []muxengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
+	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
 	engine := &fakeEngine{StartupScript: []StartupState{StartupReady}}
-	runner := newWaitTestRunner(t, mux, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+	runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
 	fc := newFakeClock(time.Now())
 	run := &Run{
 		runner:   runner,
@@ -175,8 +175,8 @@ func TestRun_Wait_DoneWithKeepPane_SkipsCleanup(t *testing.T) {
 	if result.Outcome != OutcomeDone {
 		t.Errorf("Outcome = %q, want %q", result.Outcome, OutcomeDone)
 	}
-	if len(mux.RemoveStrandCalls) != 0 {
-		t.Errorf("RemoveStrand calls = %+v, want none (KeepPane)", mux.RemoveStrandCalls)
+	if len(reed.RemoveStrandCalls) != 0 {
+		t.Errorf("RemoveStrand calls = %+v, want none (KeepPane)", reed.RemoveStrandCalls)
 	}
 	if _, err := os.Stat(runDir); err != nil {
 		t.Errorf("run dir removed despite KeepPane: %v", err)
@@ -192,9 +192,9 @@ func TestRun_Wait_Asking_CarriesMessageKeepsStrand(t *testing.T) {
 		t.Fatalf("seed events: %v", err)
 	}
 
-	mux := &fakeMux{StatusQueue: []muxengine.StatusResult{{Strands: []muxengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
+	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
 	engine := &fakeEngine{StartupScript: []StartupState{StartupReady}}
-	runner := newWaitTestRunner(t, mux, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+	runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
 	fc := newFakeClock(time.Now())
 	run := &Run{
 		runner:   runner,
@@ -215,8 +215,8 @@ func TestRun_Wait_Asking_CarriesMessageKeepsStrand(t *testing.T) {
 	if result.LastAssistantMessage != "need operator input" {
 		t.Errorf("LastAssistantMessage = %q, want %q", result.LastAssistantMessage, "need operator input")
 	}
-	if len(mux.RemoveStrandCalls) != 0 {
-		t.Errorf("RemoveStrand calls = %+v, want none (asking keeps the strand)", mux.RemoveStrandCalls)
+	if len(reed.RemoveStrandCalls) != 0 {
+		t.Errorf("RemoveStrand calls = %+v, want none (asking keeps the strand)", reed.RemoveStrandCalls)
 	}
 	if _, err := os.Stat(runDir); err != nil {
 		t.Errorf("run dir removed for asking outcome: %v", err)
@@ -237,9 +237,9 @@ func TestRun_Wait_LiveAsk_ClassifiesRealTimeAsking(t *testing.T) {
 		t.Fatalf("seed events: %v", err)
 	}
 
-	mux := &fakeMux{StatusQueue: []muxengine.StatusResult{{Strands: []muxengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
+	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
 	engine := &fakeEngine{StartupScript: []StartupState{StartupReady}}
-	runner := newWaitTestRunner(t, mux, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+	runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
 	fc := newFakeClock(time.Now())
 	run := &Run{
 		runner:   runner,
@@ -260,8 +260,8 @@ func TestRun_Wait_LiveAsk_ClassifiesRealTimeAsking(t *testing.T) {
 	if result.LastAssistantMessage != "which approach?" {
 		t.Errorf("LastAssistantMessage = %q, want %q", result.LastAssistantMessage, "which approach?")
 	}
-	if len(mux.RemoveStrandCalls) != 0 {
-		t.Errorf("RemoveStrand calls = %+v, want none (asking keeps the strand)", mux.RemoveStrandCalls)
+	if len(reed.RemoveStrandCalls) != 0 {
+		t.Errorf("RemoveStrand calls = %+v, want none (asking keeps the strand)", reed.RemoveStrandCalls)
 	}
 	if _, err := os.Stat(runDir); err != nil {
 		t.Errorf("run dir removed for asking outcome: %v", err)
@@ -283,9 +283,9 @@ func TestRun_Wait_LiveAsk_DoneFirstStillWins(t *testing.T) {
 		t.Fatalf("seed events: %v", err)
 	}
 
-	mux := &fakeMux{StatusQueue: []muxengine.StatusResult{{Strands: []muxengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
+	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
 	engine := &fakeEngine{StartupScript: []StartupState{StartupReady}}
-	runner := newWaitTestRunner(t, mux, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+	runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
 	fc := newFakeClock(time.Now())
 	run := &Run{
 		runner:   runner,
@@ -310,9 +310,9 @@ func TestRun_Wait_Died_ViaStatusNotLive(t *testing.T) {
 	eventsPath := filepath.Join(runDir, "events.jsonl") // never created
 	outputFile := filepath.Join(runDir, "out.md")       // never created
 
-	mux := &fakeMux{StatusQueue: []muxengine.StatusResult{{Strands: []muxengine.StrandStatus{{GUID: "strand-1", Live: false}}}}}
+	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: false}}}}}
 	engine := &fakeEngine{}
-	runner := newWaitTestRunner(t, mux, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+	runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
 	fc := newFakeClock(time.Now())
 	run := &Run{
 		runner:   runner,
@@ -330,13 +330,13 @@ func TestRun_Wait_Died_ViaStatusNotLive(t *testing.T) {
 	if result.Outcome != OutcomeDied {
 		t.Errorf("Outcome = %q, want %q", result.Outcome, OutcomeDied)
 	}
-	if len(mux.RemoveStrandCalls) != 0 {
-		t.Errorf("RemoveStrand calls = %+v, want none (died keeps the strand)", mux.RemoveStrandCalls)
+	if len(reed.RemoveStrandCalls) != 0 {
+		t.Errorf("RemoveStrand calls = %+v, want none (died keeps the strand)", reed.RemoveStrandCalls)
 	}
 }
 
 func TestRun_Wait_Died_ButOutputFilesExist_ClassifiesDone(t *testing.T) {
-	// The pane died (mux.Status reports not live) but every output file
+	// The pane died (reed.Status reports not live) but every output file
 	// already exists on disk — the agent must have written its result and
 	// then been killed (or exited) before its Stop hook ever appended a
 	// turn-end line, so pollEventsTick had nothing to classify from. The
@@ -349,9 +349,9 @@ func TestRun_Wait_Died_ButOutputFilesExist_ClassifiesDone(t *testing.T) {
 		t.Fatalf("seed output file: %v", err)
 	}
 
-	mux := &fakeMux{StatusQueue: []muxengine.StatusResult{{Strands: []muxengine.StrandStatus{{GUID: "strand-1", Live: false}}}}}
+	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: false}}}}}
 	engine := &fakeEngine{}
-	runner := newWaitTestRunner(t, mux, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+	runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
 	fc := newFakeClock(time.Now())
 	run := &Run{
 		runner:   runner,
@@ -371,13 +371,13 @@ func TestRun_Wait_Died_ButOutputFilesExist_ClassifiesDone(t *testing.T) {
 	}
 	// A "done" outcome without KeepPane still runs the normal cleanup path.
 	foundRemove := false
-	for _, c := range mux.RemoveStrandCalls {
+	for _, c := range reed.RemoveStrandCalls {
 		if c.GUID == "strand-1" && !c.Recursive {
 			foundRemove = true
 		}
 	}
 	if !foundRemove {
-		t.Errorf("RemoveStrand(strand-1, false) not recorded, calls = %+v", mux.RemoveStrandCalls)
+		t.Errorf("RemoveStrand(strand-1, false) not recorded, calls = %+v", reed.RemoveStrandCalls)
 	}
 }
 
@@ -386,12 +386,12 @@ func TestRun_Wait_Died_ViaStartupTimeout_TrustDismissRecorded(t *testing.T) {
 	eventsPath := filepath.Join(runDir, "events.jsonl") // never created
 	outputFile := filepath.Join(runDir, "out.md")       // never created
 
-	mux := &fakeMux{StatusQueue: []muxengine.StatusResult{{Strands: []muxengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
+	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
 	// First probe sees the trust prompt (dismissed with Enter); every probe
 	// after that sees a still-booting pane, so the run never becomes ready
 	// and eventually fast-fails once the startup deadline passes.
 	engine := &fakeEngine{StartupScript: []StartupState{StartupTrustPrompt, StartupPending}}
-	runner := newWaitTestRunner(t, mux, engine, Config{PollIntervalMS: 600, LivenessEveryNPolls: 1, StartupTimeoutS: 1})
+	runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 600, LivenessEveryNPolls: 1, StartupTimeoutS: 1})
 	fc := newFakeClock(time.Now())
 	run := &Run{
 		runner:   runner,
@@ -411,13 +411,13 @@ func TestRun_Wait_Died_ViaStartupTimeout_TrustDismissRecorded(t *testing.T) {
 	}
 
 	foundEnter := false
-	for _, c := range mux.SendKeyCalls {
+	for _, c := range reed.SendKeyCalls {
 		if c.GUID == "strand-1" && c.Key == "Enter" {
 			foundEnter = true
 		}
 	}
 	if !foundEnter {
-		t.Errorf("SendKey(strand-1, Enter) not recorded (trust dismiss), calls = %+v", mux.SendKeyCalls)
+		t.Errorf("SendKey(strand-1, Enter) not recorded (trust dismiss), calls = %+v", reed.SendKeyCalls)
 	}
 }
 
@@ -426,9 +426,9 @@ func TestRun_Wait_Timeout_KeepsStrand(t *testing.T) {
 	eventsPath := filepath.Join(runDir, "events.jsonl") // never created
 	outputFile := filepath.Join(runDir, "out.md")       // never created
 
-	mux := &fakeMux{StatusQueue: []muxengine.StatusResult{{Strands: []muxengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
+	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
 	engine := &fakeEngine{StartupScript: []StartupState{StartupReady}}
-	runner := newWaitTestRunner(t, mux, engine, Config{PollIntervalMS: 600, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+	runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 600, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
 	fc := newFakeClock(time.Now())
 	run := &Run{
 		runner:   runner,
@@ -446,8 +446,8 @@ func TestRun_Wait_Timeout_KeepsStrand(t *testing.T) {
 	if result.Outcome != OutcomeTimeout {
 		t.Errorf("Outcome = %q, want %q", result.Outcome, OutcomeTimeout)
 	}
-	if len(mux.RemoveStrandCalls) != 0 {
-		t.Errorf("RemoveStrand calls = %+v, want none (timeout keeps the strand)", mux.RemoveStrandCalls)
+	if len(reed.RemoveStrandCalls) != 0 {
+		t.Errorf("RemoveStrand calls = %+v, want none (timeout keeps the strand)", reed.RemoveStrandCalls)
 	}
 	if _, err := os.Stat(runDir); err != nil {
 		t.Errorf("run dir removed for timeout outcome: %v", err)
@@ -480,9 +480,9 @@ func TestRun_Wait_ForkAudit_AttachedOnlyForForkModeDone(t *testing.T) {
 			}
 
 			cannedAudit := ForkAudit{SpawnCalls: 1, NamedSpawns: 0}
-			mux := &fakeMux{StatusQueue: []muxengine.StatusResult{{Strands: []muxengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
+			reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
 			engine := &fakeEngine{StartupScript: []StartupState{StartupReady}, AuditForksResult: cannedAudit}
-			runner := newWaitTestRunner(t, mux, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+			runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
 			fc := newFakeClock(time.Now())
 			run := &Run{
 				runner:   runner,
@@ -534,9 +534,9 @@ func TestRun_Wait_MultiStopOffsetTracking(t *testing.T) {
 		t.Fatalf("seed events: %v", err)
 	}
 
-	mux := &fakeMux{}
+	reed := &fakeReed{}
 	engine := &fakeEngine{}
-	runner := newWaitTestRunner(t, mux, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 100, StartupTimeoutS: 30})
+	runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 100, StartupTimeoutS: 30})
 	fc := newFakeClock(time.Now())
 	run := &Run{
 		runner:   runner,
@@ -577,12 +577,12 @@ func TestRun_Wait_ParseEventsFailure_BytesReReadOnRetry(t *testing.T) {
 	}
 	outputFile := filepath.Join(runDir, "out.md") // never created -> asking once classified
 
-	mux := &fakeMux{}
+	reed := &fakeReed{}
 	// Fail the first two ParseEvents calls; the third (retrying the SAME
 	// unconsumed bytes) succeeds. maxEventsReadRetries is 3, so this must
 	// stay under that budget to prove a retry recovers rather than erroring.
 	engine := &fakeEngine{ParseEventsFailCount: 2}
-	runner := newWaitTestRunner(t, mux, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 100, StartupTimeoutS: 30})
+	runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 100, StartupTimeoutS: 30})
 	fc := newFakeClock(time.Now())
 	run := &Run{
 		runner:   runner,
@@ -616,9 +616,9 @@ func TestRun_Wait_EventsOffsetResilience_PartialLine(t *testing.T) {
 	}
 	outputFile := filepath.Join(runDir, "out.md") // never created -> asking once classified
 
-	mux := &fakeMux{}
+	reed := &fakeReed{}
 	engine := &fakeEngine{}
-	runner := newWaitTestRunner(t, mux, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 100, StartupTimeoutS: 30})
+	runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 100, StartupTimeoutS: 30})
 
 	fc := newFakeClock(time.Now())
 	sc := &scriptedClock{fakeClock: fc, onSleep: func() {

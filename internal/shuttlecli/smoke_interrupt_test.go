@@ -54,8 +54,8 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
-	"github.com/Knatte18/loomyard/internal/muxcli"
-	"github.com/Knatte18/loomyard/internal/muxengine"
+	"github.com/Knatte18/loomyard/internal/reedcli"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 )
@@ -108,7 +108,7 @@ const maxMidTurnAttempts = 4
 // observed turn activity (a launch that never brought the provider TUI up),
 // it tears the strand down and returns ok=false so the caller can retry with
 // a fresh run. The caller bounds total attempts via maxMidTurnAttempts.
-func startMidTurnCountingRun(t *testing.T, runner *shuttleengine.Runner, engine shuttleengine.Engine, muxEngine *muxengine.Engine, shuttleCfg shuttleengine.Config, outputPath string) (run *shuttleengine.Run, waitCh chan waitOutcome, ok bool) {
+func startMidTurnCountingRun(t *testing.T, runner *shuttleengine.Runner, engine shuttleengine.Engine, reedEngine *reedengine.Engine, shuttleCfg shuttleengine.Config, outputPath string) (run *shuttleengine.Run, waitCh chan waitOutcome, ok bool) {
 	t.Helper()
 
 	prompt := fmt.Sprintf(
@@ -146,7 +146,7 @@ func startMidTurnCountingRun(t *testing.T, runner *shuttleengine.Runner, engine 
 	// attempt; RemoveStrand's error is non-fatal cleanup noise.
 	abandonAttempt := func(reason string) (*shuttleengine.Run, chan waitOutcome, bool) {
 		t.Logf("%s; retrying with a fresh run", reason)
-		if _, rerr := muxEngine.RemoveStrand(guid, false); rerr != nil {
+		if _, rerr := reedEngine.RemoveStrand(guid, false); rerr != nil {
 			t.Logf("cleanup: remove strand %s after abandoned attempt (non-fatal): %v", guid, rerr)
 		}
 		return nil, nil, false
@@ -186,7 +186,7 @@ func startMidTurnCountingRun(t *testing.T, runner *shuttleengine.Runner, engine 
 			return abandonAttempt(fmt.Sprintf("timed out waiting for the pane to show turn activity (guid %s)", guid))
 		}
 
-		capture, err := muxEngine.CapturePane(guid)
+		capture, err := reedEngine.CapturePane(guid)
 		if err != nil {
 			t.Logf("CapturePane during mid-turn poll (retrying): %v", err)
 			time.Sleep(time.Second)
@@ -247,20 +247,20 @@ func TestSmokeInterruptSendContinues(t *testing.T) {
 	fixture := lyxtest.CopyPaired(t)
 	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
 		"shuttle": shuttleengine.ConfigTemplate(),
-		"mux":     muxengine.ConfigTemplate(),
+		"reed":    reedengine.ConfigTemplate(),
 	})
 	deferHubRelease(t, fixture.Hub)
 	t.Chdir(fixture.Hub)
 	t.Cleanup(func() {
 		var buf bytes.Buffer
-		muxcli.RunCLI(&buf, []string{"down"})
+		reedcli.RunCLI(&buf, []string{"down"})
 	})
 
 	// up: boots the substrate. A strand must exist in an up'd session
 	// before shuttle's AddStrand can bind it to a pane.
-	var muxOut bytes.Buffer
-	if code := muxcli.RunCLI(&muxOut, []string{"up"}); code != 0 {
-		t.Fatalf("mux up = %d; want 0, output: %s", code, muxOut.String())
+	var reedOut bytes.Buffer
+	if code := reedcli.RunCLI(&reedOut, []string{"up"}); code != 0 {
+		t.Fatalf("reed up = %d; want 0, output: %s", code, reedOut.String())
 	}
 
 	// Build the runner the same way shuttlecli.Command()'s PersistentPreRunE
@@ -279,20 +279,20 @@ func TestSmokeInterruptSendContinues(t *testing.T) {
 	if err != nil {
 		t.Fatalf("shuttleengine.LoadConfig: %v", err)
 	}
-	muxCfg, err := muxengine.LoadConfig(layout.Cwd, "mux")
+	reedCfg, err := reedengine.LoadConfig(layout.Cwd, "reed")
 	if err != nil {
-		t.Fatalf("muxengine.LoadConfig: %v", err)
+		t.Fatalf("reedengine.LoadConfig: %v", err)
 	}
-	muxEngine := muxengine.New(muxCfg, layout)
+	reedEngine := reedengine.New(reedCfg, layout)
 	engine := claudeengine.New()
-	runner := shuttleengine.NewRunner(muxEngine, engine, layout, shuttleCfg)
+	runner := shuttleengine.NewRunner(reedEngine, engine, layout, shuttleCfg)
 
 	outputPath := filepath.Join(fixture.Hub, "smoke-interrupt-output.txt")
 
 	var run *shuttleengine.Run
 	var waitCh chan waitOutcome
 	for attempt := 1; attempt <= maxMidTurnAttempts; attempt++ {
-		r, ch, ok := startMidTurnCountingRun(t, runner, engine, muxEngine, shuttleCfg, outputPath)
+		r, ch, ok := startMidTurnCountingRun(t, runner, engine, reedEngine, shuttleCfg, outputPath)
 		if ok {
 			run, waitCh = r, ch
 			break
@@ -320,7 +320,7 @@ func TestSmokeInterruptSendContinues(t *testing.T) {
 		t.Fatalf("output file content = %q after 3m; want %q (the interrupt+send sequence must have redirected the run)", last, "REDIRECTED")
 	}
 
-	// Drain Wait so the goroutine and mux/run-dir state settle before
+	// Drain Wait so the goroutine and reed/run-dir state settle before
 	// teardown. Log the outcome rather than asserting a specific value —
 	// both OutcomeDone and OutcomeAsking are legitimate depending on which
 	// Stop event Wait's poll loop happened to observe first (see the

@@ -4,8 +4,8 @@
 // loop and long-lived callers send into a pane to interrupt a turn, resume
 // one, or switch the session's active model. All are pure over a capture
 // string / literal text — the classification heuristics were proven live
-// against a real claude TUI (docs/research/mux-hooks-exploration.md and
-// muxcli's dismissTrust).
+// against a real claude TUI (docs/research/reed-hooks-exploration.md and
+// reedcli's dismissTrust).
 
 package claudeengine
 
@@ -45,7 +45,7 @@ var trustDialogNeedles = []string{"trustthisfolder", "filesinthisfolder"}
 // as a fallback for renderings that corrupt "❯"; note the bypass-permissions
 // footer shows no "shortcuts" text at all, so "❯" must stay a ready marker).
 // Anything else is still booting. Known limitation: a shell prompt styled
-// with "❯" (starship/oh-my-posh profiles — mux panes load the operator's
+// with "❯" (starship/oh-my-posh profiles — reed panes load the operator's
 // pwsh profile) also satisfies the ready marker, which degrades the
 // fast-fail for a claude that exits at launch into waiting out the full run
 // timeout; environment-dependent and accepted for v1.
@@ -85,7 +85,7 @@ func (c *Claude) InterruptSequence() []shuttleengine.PaneInput {
 // TrustDismissSequence returns the key choreography that dismisses claude's
 // "do you trust this folder?" gate: a single Enter key press confirming the
 // pre-selected "Yes, I trust this folder" option (the proven pattern from
-// muxcli's dismissTrust).
+// reedcli's dismissTrust).
 func (c *Claude) TrustDismissSequence() []shuttleengine.PaneInput {
 	return []shuttleengine.PaneInput{{Key: "Enter"}}
 }
@@ -101,7 +101,7 @@ const composeSendSettleMS = 300
 
 // ComposeSend returns the key choreography that submits text as claude's
 // next turn. Escape is sent first to clear any leaked auto-suggest
-// remaining in the input line (an empirical rule from the mux research),
+// remaining in the input line (an empirical rule from the reed research),
 // with a settle pause before text is typed and submitted — reuse turns are
 // single-line, so no further choreography is needed.
 func (c *Claude) ComposeSend(text string) []shuttleengine.PaneInput {

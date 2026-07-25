@@ -25,8 +25,8 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
-	"github.com/Knatte18/loomyard/internal/muxcli"
-	"github.com/Knatte18/loomyard/internal/muxengine"
+	"github.com/Knatte18/loomyard/internal/reedcli"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 )
@@ -95,7 +95,7 @@ func writeClusterSmokeFixture(t *testing.T, hub string) string {
 	return path
 }
 
-// newClusterSmokeEngine wires the real stack (mux + shuttle + claudeengine)
+// newClusterSmokeEngine wires the real stack (reed + shuttle + claudeengine)
 // for one cluster smoke test, exactly as TestSmokeBurlerRoundToyFixture does
 // in smoke_round_test.go, except the burlerengine.Config it hands to
 // burlerengine.New carries clusterSmokeLenses/clusterSmokeFans directly —
@@ -109,33 +109,33 @@ func newClusterSmokeEngine(t *testing.T) (*burlerengine.Engine, lyxtest.PairedFi
 	fixture := lyxtest.CopyPaired(t)
 	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
 		"shuttle": shuttleengine.ConfigTemplate(),
-		"mux":     muxengine.ConfigTemplate(),
+		"reed":    reedengine.ConfigTemplate(),
 	})
 	deferHubRelease(t, fixture.Hub)
 	t.Chdir(fixture.Hub)
 	t.Cleanup(func() {
 		var buf bytes.Buffer
-		muxcli.RunCLI(&buf, []string{"down"})
+		reedcli.RunCLI(&buf, []string{"down"})
 	})
 
 	// up: boots the substrate, exactly as the solo-round smoke test does —
 	// a strand must exist in an up'd session before shuttle's AddStrand can
 	// bind it to a pane.
-	var muxOut bytes.Buffer
-	if code := muxcli.RunCLI(&muxOut, []string{"up"}); code != 0 {
-		t.Fatalf("mux up = %d; want 0, output: %s", code, muxOut.String())
+	var reedOut bytes.Buffer
+	if code := reedcli.RunCLI(&reedOut, []string{"up"}); code != 0 {
+		t.Fatalf("reed up = %d; want 0, output: %s", code, reedOut.String())
 	}
 
-	muxCfg, err := muxengine.LoadConfig(fixture.Layout.Cwd, "mux")
+	reedCfg, err := reedengine.LoadConfig(fixture.Layout.Cwd, "reed")
 	if err != nil {
-		t.Fatalf("load mux config: %v", err)
+		t.Fatalf("load reed config: %v", err)
 	}
 	shuttleCfg, err := shuttleengine.LoadConfig(fixture.Layout.Cwd, "shuttle")
 	if err != nil {
 		t.Fatalf("load shuttle config: %v", err)
 	}
-	muxEngine := muxengine.New(muxCfg, fixture.Layout)
-	runner := shuttleengine.NewRunner(muxEngine, claudeengine.New(), fixture.Layout, shuttleCfg)
+	reedEngine := reedengine.New(reedCfg, fixture.Layout)
+	runner := shuttleengine.NewRunner(reedEngine, claudeengine.New(), fixture.Layout, shuttleCfg)
 	cfg := burlerengine.Config{Lenses: clusterSmokeLenses, Fans: clusterSmokeFans}
 	engine := burlerengine.New(runner, fixture.Layout, cfg)
 	return engine, fixture

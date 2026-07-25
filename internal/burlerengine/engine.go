@@ -18,8 +18,8 @@ import (
 // shuttleengine's API a round needs, satisfied as-is by
 // *shuttleengine.Runner in production and by a fake in unit tests. Keeping
 // this interface package-local (rather than importing shuttleengine's own
-// MuxOps-style seam) is what lets burlerengine stay engine-agnostic and
-// testable without wiring mux or an LLM provider.
+// ReedOps-style seam) is what lets burlerengine stay engine-agnostic and
+// testable without wiring reed or an LLM provider.
 type Shuttle interface {
 	Run(shuttleengine.Spec) (shuttleengine.Result, error)
 }

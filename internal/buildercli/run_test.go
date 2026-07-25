@@ -85,7 +85,7 @@ func newRunFixture(t *testing.T) *runFixture {
 	}
 	c := &builderCLI{
 		orchestratorStarter: runner,
-		mux:                 &pollFakeMux{},
+		reed:                &pollFakeReed{},
 		layout:              layout,
 		cfg: builderengine.Config{
 			SelfFixCap:             2,

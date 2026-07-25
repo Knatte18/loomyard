@@ -36,7 +36,7 @@ import (
 
 // smokeClaudeBin returns the claude binary path, skipping the calling test
 // when it is not on PATH — the same self-skip discipline builder's own
-// smoke_test.go and muxengine's integration tests apply.
+// smoke_test.go and reedengine's integration tests apply.
 func smokeClaudeBin(t *testing.T) string {
 	t.Helper()
 	path, err := exec.LookPath("claude")

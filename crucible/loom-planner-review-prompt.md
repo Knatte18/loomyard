@@ -299,7 +299,7 @@ a lock or mutates shared state across invocations). The merge bar is: hermetic t
 a real agent given the composed prompt reliably produces a correct, spec-conformant plan-format-v3
 output across multiple independently-driven live runs (not just one lucky pass). **Before you end your
 session, actually finish and record the result of every live run you start, and actually tear down
-your throwaway substrate (`lyx mux down`, kill the tmux server, delete the throwaway hub dir and any
+your throwaway substrate (`lyx reed down`, kill the tmux server, delete the throwaway hub dir and any
 throwaway test files) — do not leave a run's outcome unrecorded. If your session risks being cut short,
 prioritize getting your review report SAVED TO DISK and any completed fix COMMITTED over starting one
 more live run — partial, recorded progress beats an unrecorded one in flight.**
@@ -334,7 +334,7 @@ ways to get the rendered prompt text; use whichever is faster, but understand bo
    throwaway hub's real absolute paths.
 - **Materialize a throwaway test hub yourself** (there is no sandbox-build tooling for loom yet): make
   a temp dir OUTSIDE this worktree (e.g. under `/tmp` or the session scratchpad — never inside the
-  repo, never a second git worktree of loomyard), `git init` it, `lyx init` it, `lyx mux up`. Write a
+  repo, never a second git worktree of loomyard), `git init` it, `lyx init` it, `lyx reed up`. Write a
   real `_lyx/discussion/decision-record.md` fixture by hand (a short but genuine decision record: a
   task-framing paragraph plus a few concrete requirements — this is what a real Discussion producer
   run would have written; do not just write one line of Lorem Ipsum, since a too-thin fixture will
@@ -370,7 +370,7 @@ ways to get the rendered prompt text; use whichever is faster, but understand bo
   in this module is fully headless-driveable; there is no legitimate reason to substitute
   code-tracing for at least two real live runs.
 
-TEARDOWN DISCIPLINE (critical): tear down `lyx mux down` in your throwaway hub when done. At the end
+TEARDOWN DISCIPLINE (critical): tear down `lyx reed down` in your throwaway hub when done. At the end
 confirm ZERO stray substrate: `pgrep -a tmux` shows no leftover server for your test hub. Leave no
 stray state (including: delete the throwaway hub dir itself, and delete any throwaway `_test.go` you
 added for prompt-rendering per option 1 above). Be honest about what you could NOT verify and why.

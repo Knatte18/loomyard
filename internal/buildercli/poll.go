@@ -1,8 +1,8 @@
 // poll.go implements the `poll` builder verb: assembles Classify's inputs
 // for the current in-flight batch (report parse; whether the implementer's
 // turn has ended, via the run dir's events.jsonl and the claude engine
-// PersistentPreRunE already constructed; whether its mux strand is still
-// live, via the mux engine's own live Status() query; and elapsed time
+// PersistentPreRunE already constructed; whether its reed strand is still
+// live, via the reed engine's own live Status() query; and elapsed time
 // since spawn), computing diff/dirty via the gitquery helpers LAZILY --
 // only inside the report-present branch, since a running tick must never
 // run git -- and blocks on builderengine.PollUntilTerminal. A terminal
@@ -81,7 +81,7 @@ func (c *builderCLI) pollCmd() *cobra.Command {
 		Long: `poll blocks inside Go, watching the in-flight batch's implementer for a
 terminal classification -- report present (done/stuck), the implementer's
 turn ended without ever writing a report (dead: asking), elapsed since
-spawn past batch_timeout_min (dead: timeout), or its mux strand gone
+spawn past batch_timeout_min (dead: timeout), or its reed strand gone
 (dead: died) -- returning the instant one is reached. If --wait elapses
 first it returns a running snapshot {batch, status, elapsed_s} instead; the
 orchestrator's next poll call re-polls from there. A terminal poll weft-
@@ -211,7 +211,7 @@ Example:
 			// gather is Classify's per-tick input assembler: it always checks
 			// for the report FIRST, and re-checks it before ever returning a
 			// dead classification -- a report written between the first stat
-			// and the (slower) events/mux gathers must win over a
+			// and the (slower) events/reed gathers must win over a
 			// simultaneously-true Stop/timeout/died condition, or the
 			// orchestrator's next respawn is refused on the very report this
 			// tick ignored.
@@ -239,7 +239,7 @@ Example:
 					if terr != nil {
 						return builderengine.Digest{}, false, terr
 					}
-					strandLive, serr := builderengine.StrandLive(c.mux, bs.StrandGUID)
+					strandLive, serr := builderengine.StrandLive(c.reed, bs.StrandGUID)
 					if serr != nil {
 						return builderengine.Digest{}, false, serr
 					}
@@ -345,7 +345,7 @@ Example:
 			// diagnosis discipline. Cleanup failures are logged, never fatal:
 			// the classification itself already stands (shuttle's precedent).
 			if digest.Status == builderengine.DigestStatusDone || digest.Status == builderengine.DigestStatusStuck {
-				if _, err := c.mux.RemoveStrand(bs.StrandGUID, false); err != nil {
+				if _, err := c.reed.RemoveStrand(bs.StrandGUID, false); err != nil {
 					log.Printf("builder: poll cleanup: remove strand %s (non-fatal): %v", bs.StrandGUID, err)
 				}
 				if digest.Status == builderengine.DigestStatusDone {

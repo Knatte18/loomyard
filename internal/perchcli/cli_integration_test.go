@@ -15,8 +15,8 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
-	"github.com/Knatte18/loomyard/internal/muxengine"
 	"github.com/Knatte18/loomyard/internal/perchengine"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -42,7 +42,7 @@ func TestRunCLI_Pause_InvalidRunID(t *testing.T) {
 	}
 }
 
-// seedPerchFixture returns a paired git-repo fixture with real shuttle/mux/
+// seedPerchFixture returns a paired git-repo fixture with real shuttle/reed/
 // perch config seeded, chdir'd into the host hub, ready for a "lyx perch
 // pause" invocation. It never boots tmux or spawns a burler round — pause
 // only stats/writes a flag file and never touches the resolved engine
@@ -53,7 +53,7 @@ func seedPerchFixture(t *testing.T) lyxtest.PairedFixture {
 	fixture := lyxtest.CopyPaired(t)
 	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
 		"shuttle": shuttleengine.ConfigTemplate(),
-		"mux":     muxengine.ConfigTemplate(),
+		"reed":    reedengine.ConfigTemplate(),
 		"perch":   perchengine.ConfigTemplate(),
 	})
 	t.Chdir(fixture.Hub)
@@ -111,7 +111,7 @@ func TestRunCLI_Pause_NestedInitAnchorsRunDirsAtCwd(t *testing.T) {
 	}
 	lyxtest.SeedConfig(t, nested, map[string]string{
 		"shuttle": shuttleengine.ConfigTemplate(),
-		"mux":     muxengine.ConfigTemplate(),
+		"reed":    reedengine.ConfigTemplate(),
 		"perch":   perchengine.ConfigTemplate(),
 	})
 	t.Chdir(nested)

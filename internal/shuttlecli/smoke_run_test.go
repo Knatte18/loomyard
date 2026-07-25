@@ -7,10 +7,10 @@
 // the full round-trip proof that `lyx shuttle run` drives a REAL claude in a
 // REAL tmux pane to a "done" outcome, writes the file-contract output, and
 // cleans up the strand and run directory afterward. Follows the
-// internal/muxcli/smoke_*.go conventions: opt-in via -tags smoke, skipped
+// internal/reedcli/smoke_*.go conventions: opt-in via -tags smoke, skipped
 // when no claude binary resolves, deferHubRelease against the
 // orphaned-conhost hazard. The helpers here are reproduced (not imported)
-// from muxcli's smoke files, per the smoke-files-are-self-contained
+// from reedcli's smoke files, per the smoke-files-are-self-contained
 // convention.
 
 package shuttlecli
@@ -28,8 +28,8 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/lyxtest"
-	"github.com/Knatte18/loomyard/internal/muxcli"
-	"github.com/Knatte18/loomyard/internal/muxengine"
+	"github.com/Knatte18/loomyard/internal/reedcli"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -43,7 +43,7 @@ const smokePwshPath = `C:\Code\tools\powershell7\pwsh.exe`
 // never hard-fails on a machine without a configured claude.
 func claudeBinaryPath(t *testing.T) string {
 	t.Helper()
-	if path := os.Getenv("LYX_MUX_CLAUDE"); path != "" {
+	if path := os.Getenv("LYX_REED_CLAUDE"); path != "" {
 		return path
 	}
 	path, err := exec.LookPath("claude")
@@ -129,7 +129,7 @@ Get-Process | ForEach-Object {
 // releasable before the framework's TempDir RemoveAll — which runs AFTER
 // this cleanup — so RemoveAll never fails with a worktree-dir-in-use error.
 // The holder in question is the conhost.exe the OS parents to psmux to host
-// each pane's pseudo-console: mux never spawns it, it is not a #{pane_pid}
+// each pane's pseudo-console: reed never spawns it, it is not a #{pane_pid}
 // descendant, and on a quiet machine it exits on its own a beat after its
 // pane dies — but under CPU saturation it can be ORPHANED and then holds the
 // hub cwd indefinitely, so no fixed wait can ever out-last it. The cleanup
@@ -206,15 +206,15 @@ func deferHubRelease(t *testing.T, hub string) {
 	})
 }
 
-// muxStatusStrand runs `lyx mux status` in the current worktree and returns
+// reedStatusStrand runs `lyx reed status` in the current worktree and returns
 // the tracked strand record for guid, or ok=false if status does not list
 // it — the shared assertion helper this file's and smoke_guardrail_test.go's
-// tests use to confirm a run's post-outcome mux state.
-func muxStatusStrand(t *testing.T, guid string) (map[string]any, bool) {
+// tests use to confirm a run's post-outcome reed state.
+func reedStatusStrand(t *testing.T, guid string) (map[string]any, bool) {
 	t.Helper()
 	var out bytes.Buffer
-	if code := muxcli.RunCLI(&out, []string{"status"}); code != 0 {
-		t.Fatalf("mux status = %d; want 0, output: %s", code, out.String())
+	if code := reedcli.RunCLI(&out, []string{"status"}); code != 0 {
+		t.Fatalf("reed status = %d; want 0, output: %s", code, out.String())
 	}
 	var result map[string]any
 	if err := json.Unmarshal(out.Bytes(), &result); err != nil {
@@ -244,20 +244,20 @@ func TestSmokeShuttleRunWritesOutputAndCleans(t *testing.T) {
 	fixture := lyxtest.CopyPaired(t)
 	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
 		"shuttle": shuttleengine.ConfigTemplate(),
-		"mux":     muxengine.ConfigTemplate(),
+		"reed":    reedengine.ConfigTemplate(),
 	})
 	deferHubRelease(t, fixture.Hub)
 	t.Chdir(fixture.Hub)
 	t.Cleanup(func() {
 		var buf bytes.Buffer
-		muxcli.RunCLI(&buf, []string{"down"})
+		reedcli.RunCLI(&buf, []string{"down"})
 	})
 
 	// up: boots the substrate. A strand must exist in an up'd session
 	// before shuttle's AddStrand can bind it to a pane.
-	var muxOut bytes.Buffer
-	if code := muxcli.RunCLI(&muxOut, []string{"up"}); code != 0 {
-		t.Fatalf("mux up = %d; want 0, output: %s", code, muxOut.String())
+	var reedOut bytes.Buffer
+	if code := reedcli.RunCLI(&reedOut, []string{"up"}); code != 0 {
+		t.Fatalf("reed up = %d; want 0, output: %s", code, reedOut.String())
 	}
 
 	outputPath := filepath.Join(fixture.Hub, "smoke-run-output.txt")
@@ -294,8 +294,8 @@ func TestSmokeShuttleRunWritesOutputAndCleans(t *testing.T) {
 	if guid == "" {
 		t.Fatalf("run result missing guid: %v", result)
 	}
-	if strand, found := muxStatusStrand(t, guid); found {
-		t.Errorf("mux status still lists strand %s after a \"done\" outcome; want it removed; strand: %v", guid, strand)
+	if strand, found := reedStatusStrand(t, guid); found {
+		t.Errorf("reed status still lists strand %s after a \"done\" outcome; want it removed; strand: %v", guid, strand)
 	}
 
 	runDir, _ := result["runDir"].(string)

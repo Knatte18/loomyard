@@ -73,9 +73,9 @@ type State struct {
 	// is (the run has not started yet, or the last batch reached a
 	// terminal classification).
 	CurrentBatch int `json:"currentBatch"`
-	// MasterStrand identifies the mux strand the most recent `run`'s Master
+	// MasterStrand identifies the reed strand the most recent `run`'s Master
 	// session spawned into, recorded before that run ever blocks on the
-	// spawn. Run's entry-time orphan reclaim stops this strand when the mux
+	// spawn. Run's entry-time orphan reclaim stops this strand when the reed
 	// still reports it live, so a resume never double-drives the loop with
 	// two live Master sessions. Never cleared — the reclaim is
 	// liveness-gated. Empty until the first Master spawn.
@@ -148,7 +148,7 @@ type BatchState struct {
 	// (Kind == "recovery"); a fork batch carries no strand fields, since
 	// there is no separate strand to track.
 
-	// StrandGUID identifies the mux strand the recovery implementer spawned
+	// StrandGUID identifies the reed strand the recovery implementer spawned
 	// into.
 	StrandGUID string `json:"strandGuid,omitempty"`
 	// ShuttleRunDir is the shuttle run directory the recovery implementer

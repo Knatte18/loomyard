@@ -26,7 +26,7 @@ const (
 	// dotLyxDirName is the directory name for the ephemeral, machine-bound lyx state
 	// directory within a worktree. It is deliberately distinct from LyxDirName ("_lyx"):
 	// "_lyx" (underscore) is durable and weft-synced, while ".lyx" (dot) is ephemeral and
-	// local to the machine (e.g. mux's runtime state and lock files never travel with weft).
+	// local to the machine (e.g. reed's runtime state and lock files never travel with weft).
 	dotLyxDirName = ".lyx"
 
 	// configDirName is the subdirectory name within LyxDirName that holds configuration files.
@@ -390,8 +390,8 @@ func (l *Layout) LyxDir() string {
 }
 
 // DotLyxDir returns the path to the ephemeral .lyx directory in the current working
-// directory. This is where machine-bound, non-weft-synced runtime state lives (e.g. mux's
-// mux.json and mux.lock), distinct from the durable, weft-synced LyxDir() ("_lyx").
+// directory. This is where machine-bound, non-weft-synced runtime state lives (e.g. reed's
+// reed.json and reed.lock), distinct from the durable, weft-synced LyxDir() ("_lyx").
 //
 // Returns filepath.Join(Cwd, dotLyxDirName).
 func (l *Layout) DotLyxDir() string {
@@ -461,8 +461,8 @@ func (l *Layout) DiscussionSupportLog() string {
 }
 
 // HubLogsDir returns the path to the hub-level (not worktree-level) directory
-// where the shared per-hub mux server writes its runtime log. It is hub-anchored
-// because consumers like mux run exactly one shared server per hub and need one
+// where the shared per-hub reed server writes its runtime log. It is hub-anchored
+// because consumers like reed run exactly one shared server per hub and need one
 // deterministic machine-local place for its runtime logs — never one per
 // worktree. It lives under the ephemeral, machine-bound ".lyx" (dot) directory,
 // the same lifecycle rationale DotLyxDir documents: server logs are runtime

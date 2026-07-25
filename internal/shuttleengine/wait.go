@@ -43,7 +43,7 @@ const defaultPollIntervalMS = 500
 // non-positive poll_interval_ms to the template default. Unlike the two
 // timeout keys — whose 0 values fail fast and visibly, and are documented
 // footguns — a 0 (or negative) poll interval would SILENTLY busy-spin the
-// loop, re-reading the events file every iteration and hammering mux.Status
+// loop, re-reading the events file every iteration and hammering reed.Status
 // every Nth, burning a core for the whole run with nothing ever failing.
 func pollInterval(cfg Config) time.Duration {
 	if cfg.PollIntervalMS <= 0 {
@@ -59,7 +59,7 @@ func pollInterval(cfg Config) time.Duration {
 // classifiable outcome at all (the run loop cannot see turn-end signals).
 const maxEventsReadRetries = 3
 
-// maxStatusRetries bounds how many CONSECUTIVE mux.Status failures Wait
+// maxStatusRetries bounds how many CONSECUTIVE reed.Status failures Wait
 // tolerates before reporting a mechanism failure, per the Shared Decision
 // wording ("Status error twice consecutively").
 const maxStatusRetries = 2
@@ -68,12 +68,12 @@ const maxStatusRetries = 2
 // cfg.PollIntervalMS via run.clock (real time in production, instant in
 // tests). Each tick: reads and parses any new events.jsonl bytes,
 // classifying done/asking on any new Stop event; every
-// cfg.LivenessEveryNPolls-th tick, checks the strand's liveness via mux
+// cfg.LivenessEveryNPolls-th tick, checks the strand's liveness via reed
 // and, during the startup window, probes the pane for a trust prompt or a
 // still-pending fast-fail; and checks spec.Timeout's deadline. A terminal
 // classification always returns error == nil — Wait's error return is
 // reserved for mechanism failures (events.jsonl unreadable after retries,
-// mux.Status failing twice consecutively) that leave no classifiable
+// reed.Status failing twice consecutively) that leave no classifiable
 // outcome at all.
 func (run *Run) Wait() (Result, error) {
 	cfg := run.runner.cfg
@@ -108,7 +108,7 @@ func (run *Run) Wait() (Result, error) {
 			if err != nil {
 				statusFailures++
 				if statusFailures >= maxStatusRetries {
-					return Result{}, fmt.Errorf("shuttle: mux status failed %d times consecutively: %w", maxStatusRetries, err)
+					return Result{}, fmt.Errorf("shuttle: reed status failed %d times consecutively: %w", maxStatusRetries, err)
 				}
 			} else {
 				statusFailures = 0
@@ -225,7 +225,7 @@ func allOutputFilesExist(files []string) bool {
 	return true
 }
 
-// checkLivenessTick checks the strand's liveness via mux.Status and, while
+// checkLivenessTick checks the strand's liveness via reed.Status and, while
 // still in the startup window (*started is false and startupDeadline has
 // not passed), probes the pane for the engine's Startup classification: a
 // trust prompt is dismissed by playing the engine's TrustDismissSequence
@@ -243,15 +243,15 @@ func allOutputFilesExist(files []string) bool {
 // MID-RUN while its pane's shell survives stays "live" here and the run
 // degrades to OutcomeTimeout at the deadline (proven live; see OutcomeDied's
 // doc for why no capture heuristic can do better). Returns a non-nil error only for
-// mux.Status itself failing — a mechanism failure Wait's caller tracks
+// reed.Status itself failing — a mechanism failure Wait's caller tracks
 // across consecutive ticks; every other failure along this path (a
 // CapturePane error, a key error playing the trust dismissal) is logged
 // and treated as "still pending" rather than propagated, since none of
 // them is fatal to the run on its own.
 func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time) (Outcome, error) {
-	status, err := run.runner.mux.Status()
+	status, err := run.runner.reed.Status()
 	if err != nil {
-		return "", fmt.Errorf("mux status: %w", err)
+		return "", fmt.Errorf("reed status: %w", err)
 	}
 
 	live := false
@@ -276,7 +276,7 @@ func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time) (Out
 		return "", nil
 	}
 
-	capture, err := run.runner.mux.CapturePane(run.state.StrandGUID)
+	capture, err := run.runner.reed.CapturePane(run.state.StrandGUID)
 	if err != nil {
 		log.Printf("shuttle: capture pane during startup probe (non-fatal, retrying): %v", err)
 		return "", nil
@@ -289,7 +289,7 @@ func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time) (Out
 		// The dismissal keys are the engine's choreography, not the run
 		// loop's: which keys clear a provider's trust gate is provider
 		// grammar, same as InterruptSequence/ComposeSend.
-		if err := playInputs(run.runner.mux, run.state.StrandGUID, run.runner.engine.TrustDismissSequence()); err != nil {
+		if err := playInputs(run.runner.reed, run.state.StrandGUID, run.runner.engine.TrustDismissSequence()); err != nil {
 			log.Printf("shuttle: dismiss trust prompt (non-fatal): %v", err)
 		}
 	case StartupPending:
@@ -309,8 +309,8 @@ func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time) (Out
 // When run.spec.ForkSubagents is set and outcome is OutcomeDone, this also
 // audits the session's fork subagents (Engine.AuditForks) and attaches the
 // result to Result.ForkAudit. The workdir passed is run.runner.layout.Cwd —
-// NEVER layout.WorktreeRoot: mux launches every pane with `-c e.layout.Cwd`
-// (muxengine lifecycle.go new-session/split-window), so the claude process's
+// NEVER layout.WorktreeRoot: reed launches every pane with `-c e.layout.Cwd`
+// (reedengine lifecycle.go new-session/split-window), so the claude process's
 // actual cwd — which is what encodes the provider's
 // ~/.claude/projects/<encoded-cwd> transcript directory — is Cwd, and the
 // two diverge whenever the operator invoked lyx from a subdirectory
@@ -335,7 +335,7 @@ func (run *Run) finalize(outcome Outcome, message string) (Result, error) {
 	}
 
 	if outcome == OutcomeDone && !run.spec.KeepPane {
-		if _, err := run.runner.mux.RemoveStrand(run.state.StrandGUID, false); err != nil {
+		if _, err := run.runner.reed.RemoveStrand(run.state.StrandGUID, false); err != nil {
 			log.Printf("shuttle: cleanup: remove strand %s (non-fatal): %v", run.state.StrandGUID, err)
 		}
 		if err := os.RemoveAll(run.runDir); err != nil {

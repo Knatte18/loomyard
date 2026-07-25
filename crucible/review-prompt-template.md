@@ -4,7 +4,7 @@
 > `<PLACEHOLDER>`. It is the round agent's *entire* instruction set — the orchestrator spawns a
 > fresh clean-room agent told only "read this file and do exactly what it says". See
 > [README.md](README.md) for the loop this prompt runs inside, and
-> [`mux-review-prompt.md`](mux-review-prompt.md) for a fully-worked instance to crib from.
+> [`reed-review-prompt.md`](reed-review-prompt.md) for a fully-worked instance to crib from.
 
 You are a senior engineer doing a COMPLETE, adversarial, INDEPENDENT review of the `<MODULE>`
 module in the loomyard repo, followed by FIXING what you find. Work in the worktree at
@@ -88,7 +88,7 @@ real substrate — a green `go test` proves nothing here. Fill in this list for 
 - `<INVARIANT 3 — a concurrency / cross-instance / shared-resource scope boundary>`
 - `<INVARIANT 4 — a mid-operation-failure orphan / reporting-honesty / env-hygiene invariant>`
 (For a fully-worked example of this list, see the "High-yield focus" section of
-[`mux-review-prompt.md`](mux-review-prompt.md).)
+[`reed-review-prompt.md`](reed-review-prompt.md).)
 
 ## Explicitly OUT of scope for `<MODULE>` v1
 `<List anything whose ABSENCE is correct so the reviewer doesn't flag it — e.g. concerns that belong
@@ -129,7 +129,7 @@ Live driving — YOU drive it directly, no launcher (PRIMARY — where the bugs 
   yourself. Instead, run the real CLI commands yourself, directly, foreground, waiting for each to
   return: walk the "High-yield focus" list above (and `<SANDBOX-<MODULE>-SUITE.md>`'s scenarios, if
   one exists, for extra ideas) and record OK/WARN/FAIL for each. This spawns real substrate
-  underneath when the module rides mux/shuttle (real tmux panes, real `claude` sessions) — that is
+  underneath when the module rides reed/shuttle (real tmux panes, real `claude` sessions) — that is
   expected and required. None of it needs an attached TTY of its own.
 - The suite/list is a FLOOR — devise and run MANY more adversarial scenarios of your own beyond it
   (combine verbs in orders nothing has tried; chase anything the code makes you suspicious of).

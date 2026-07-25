@@ -1,0 +1,261 @@
+// spawn.go implements the shared pane-launch helper every strand-realizing
+// path composes: AddStrand launching a freshly added strand, UpdateStrand
+// surfacing a hidden->visible strand, and Resume replaying a not-live
+// strand all call launchStrandLocked to actually create (or adopt) a tmux
+// pane and run the strand's command in it (GAP A) — without this shared
+// helper, add would register a record and re-render but never create a
+// pane or run anything. This file also carries the two other small
+// cross-file bootstrap helpers strand.go and lifecycle.go both need:
+// loadOrInitStateLocked (fresh-worktree state bootstrap) and
+// reconcileApplyPersistLocked (the reconcile-then-apply-then-persist tail
+// every public op ends with).
+
+package reedengine
+
+import (
+	"fmt"
+	"strings"
+)
+
+// planPaneTarget decides how the next strand realization obtains its pane:
+// adopt an existing pane (adoptID != "") or split off a target pane
+// (splitTargetID != ""). Exactly one of the two is non-empty on success.
+// headerPaneID names the always-present header pane (empty when none is
+// tracked yet), and is excluded from BOTH decisions below except as the
+// sole-pane split-target fallback — the header is a first-class but
+// separate construct, never itself a strand's pane (Shared Decision
+// header-is-not-a-strand).
+//
+// Adoption is the fresh-session case: no strand currently holds a pane
+// binding AND an alive (present, not pane_dead), non-header pane exists —
+// the first such pane in live, i.e. the new-session initial shell pane. A
+// dead pane is never adopted: tmux's display-message happily names a
+// pane_dead=1 corpse as the active pane, and send-keys into a corpse exits
+// 0 while running nothing, so blind adoption silently swallows the
+// strand's command. The header pane is never adopted either — its pane
+// always runs the header's own print-then-block pipeline, never a strand's
+// command.
+//
+// Every other realization splits. The split target is the tallest alive
+// NON-HEADER pane (the stretch/active pane under reed's height policy, so
+// always the most splittable): tmux's split-window on a too-small pane
+// fails SILENTLY — exit 0, no new pane, and it prints an existing pane's
+// id — so the target must never be left to whatever pane happens to be
+// active. When no non-header pane is alive, the tallest PRESENT
+// non-header pane is the target — splitting a dead pane works, and the
+// caller's reconcile tail reaps the corpse once the new pane is alive.
+// Only when NO non-header pane exists at all (every strand has been
+// removed and the header is the session's sole pane) does the header
+// itself become the split target — the sole-pane fallback that lets an
+// add-after-all-strands-removed still have something to split; the header
+// survives the split, and render's clampHeaderHeight restores its fixed
+// height afterward. A session with no panes at all cannot host a strand
+// and is an error.
+func planPaneTarget(strands []Strand, live []LivePane, headerPaneID string) (adoptID, splitTargetID string, err error) {
+	if len(live) == 0 {
+		return "", "", fmt.Errorf("session has no panes to adopt or split")
+	}
+
+	anyBound := false
+	for _, s := range strands {
+		if s.PaneID != "" {
+			anyBound = true
+			break
+		}
+	}
+	if !anyBound {
+		for _, p := range live {
+			if p.ID == headerPaneID {
+				continue
+			}
+			if !p.Dead {
+				return p.ID, "", nil
+			}
+		}
+	}
+
+	splitTargetID = ""
+	tallestAlive := -1
+	for _, p := range live {
+		if p.ID == headerPaneID || p.Dead {
+			continue
+		}
+		if p.Height > tallestAlive {
+			tallestAlive = p.Height
+			splitTargetID = p.ID
+		}
+	}
+	if splitTargetID == "" {
+		// No alive non-header pane: fall back to any present non-header
+		// pane (a dead corpse), mirroring the pre-header "every pane dead"
+		// fallback.
+		for _, p := range live {
+			if p.ID != headerPaneID {
+				splitTargetID = p.ID
+				break
+			}
+		}
+	}
+	if splitTargetID == "" {
+		// No non-header pane exists at all: every strand has been removed
+		// and only the header remains. Split the header itself so this add
+		// still has a pane to split.
+		splitTargetID = live[0].ID
+	}
+	return "", splitTargetID, nil
+}
+
+// validateSplitCreatedNewPane returns a hard error unless paneID names a
+// genuinely NEW pane — non-empty and absent from preSplitLive, the live pane
+// set captured immediately before the split-window call. psmux's
+// split-window against a pane too small to split fails SILENTLY: exit 0, no
+// new pane, and an EXISTING pane's id printed on stdout (a documented
+// multiplexer-contract assumption — see doc.go's "Silent split failure"
+// bullet; native tmux instead errors loud with "no space for new pane", so
+// the silent shape never fires there). Trusting such an id would bind two
+// owners to one pane, and the next select-layout string would then carry a
+// duplicate pane number, which the multiplexer answers by destroying the
+// session's panes wholesale — so EVERY split site (launchStrandLocked's
+// strand splits and ensureHeaderPaneLocked's header rebuild) must run the
+// printed pane id through this check before recording it anywhere.
+func validateSplitCreatedNewPane(paneID string, preSplitLive []LivePane, target string) error {
+	if paneID == "" || liveIDSet(preSplitLive)[paneID] {
+		return fmt.Errorf("split-window created no new pane (got %q; target %s likely too small to split)", paneID, target)
+	}
+	return nil
+}
+
+// sendKeysLiteralArg returns the argument tmux `send-keys -l` must be
+// handed so text is typed verbatim. tmux (3.3.4) parses a '-'-leading
+// literal argument as flags and silently drops it — exit 0, nothing typed —
+// and a `--` separator does not stop that parsing, so an opaque cmd/
+// resumeCmd beginning with '-' would never run while the strand still read
+// live (its pane shell is alive). Prefixing one space inside the same
+// argument makes tmux treat it as text (verified live), and the pane's
+// shell ignores the leading blank when the line is submitted.
+func sendKeysLiteralArg(text string) string {
+	if strings.HasPrefix(text, "-") {
+		return " " + text
+	}
+	return text
+}
+
+// launchStrandLocked realizes s into a live tmux pane and runs launchCmd
+// in it: it adopts the session's initial new-session pane when no other
+// strand currently holds a pane binding and that pane is alive, or splits
+// the tallest alive pane otherwise (planPaneTarget decides which), captures
+// the resulting pane id into s.PaneID, and sends launchCmd via send-keys.
+// A split whose reported pane id is not genuinely new (tmux's silent
+// too-small-to-split failure prints an existing pane's id with exit 0) is a
+// hard error — recording it would bind two strands to one pane, and the
+// next select-layout string would then carry a duplicate pane number, which
+// tmux answers by destroying the session's panes wholesale. It assumes the
+// op lock is already held. This is the single realization path
+// add/surface/resume all share (GAP A); it always makes a real tmux round
+// trip, so no hermetic test calls it directly with a non-hidden/surfacing
+// strand.
+//
+// s.PaneID is the only field this sets — there is no persisted "live" flag
+// to set alongside it (Strand carries none): once PaneID is populated and
+// the next list-panes enumerates it, toRenderStrands derives Live true from
+// that binding downstream, the same way reconcile's binding-clear alone
+// (without a stored flag) derives Live false.
+func (e *Engine) launchStrandLocked(st *ReedState, s *Strand, launchCmd string) error {
+	session := e.SessionName()
+
+	live, err := e.tmux.listPanes(session)
+	if err != nil {
+		return fmt.Errorf("list panes: %w", err)
+	}
+	adoptID, splitTargetID, err := planPaneTarget(st.Strands, live, st.HeaderPaneID)
+	if err != nil {
+		return err
+	}
+
+	paneID := adoptID
+	if paneID == "" {
+		out, err := e.tmux.output("split-window", "-t", splitTargetID, "-P", "-F", "#{pane_id}")
+		if err != nil {
+			return fmt.Errorf("split window: %w", err)
+		}
+		paneID = strings.TrimSpace(out)
+		if err := validateSplitCreatedNewPane(paneID, live, splitTargetID); err != nil {
+			return err
+		}
+	}
+
+	s.PaneID = paneID
+	// Send the command as a literal string (-l) so tmux never reinterprets
+	// any part of the opaque launchCmd as a key name (e.g. "Enter", "C-c") or
+	// splits it on an embedded ';' — the caller (shuttle) builds arbitrary
+	// PowerShell command chains. A separate Enter then submits it.
+	if err := e.tmux.run("send-keys", "-t", paneID, "-l", sendKeysLiteralArg(launchCmd)); err != nil {
+		return fmt.Errorf("send launch command: %w", err)
+	}
+	if err := e.tmux.run("send-keys", "-t", paneID, "Enter"); err != nil {
+		return fmt.Errorf("submit launch command: %w", err)
+	}
+	return nil
+}
+
+// loadOrInitStateLocked loads the persisted ReedState, or initializes a
+// fresh one stamped with this engine's server/socket/session identity when
+// no reed.json exists yet (a brand-new worktree's first mutation). Assumes
+// the op lock is already held.
+func (e *Engine) loadOrInitStateLocked() (*ReedState, error) {
+	st, err := LoadState(e.layout.DotLyxDir())
+	if err != nil {
+		return nil, fmt.Errorf("load state: %w", err)
+	}
+	if st == nil {
+		st = &ReedState{
+			Socket:  e.Socket(),
+			Session: e.SessionName(),
+		}
+	}
+	return st, nil
+}
+
+// reconcileApplyPersistLocked runs the shared tail every public engine op
+// composes after its own mutation: fetch the current live pane set,
+// reconcile (clears dead-pane bindings, keeps records, kills
+// dead-except-sole), re-apply the layout against what remains, then
+// persist. It assumes the op lock is already held, and always makes at
+// least one live tmux round trip (list-panes, plus a second one when
+// reconcile actually killed something, plus select-layout/select-pane
+// inside applyLayoutLocked once there are 2+ panes) — so it is the one seam
+// every public op's hermetic unit test must not cross. Tests instead
+// exercise the pure planning helpers (planReconcile, planLayout) and the
+// mutation-only *Locked helpers (addStrandLocked, updateStrandLocked,
+// removeStrandLocked) directly. Returns the final live pane set so a
+// caller that needs it for reporting (Status) does not have to re-query.
+func (e *Engine) reconcileApplyPersistLocked(st *ReedState) ([]LivePane, error) {
+	session := e.SessionName()
+	live, err := e.tmux.listPanes(session)
+	if err != nil {
+		return nil, fmt.Errorf("list panes: %w", err)
+	}
+
+	killed, err := e.reconcileLocked(st, live)
+	if err != nil {
+		return nil, fmt.Errorf("reconcile: %w", err)
+	}
+	if len(killed) > 0 {
+		// Order matters: kill dead -> re-enumerate live -> compute layout
+		// -> apply. The kill-pane calls above mutate the pane set the next
+		// select-layout must enumerate, so enumeration must follow them.
+		live, err = e.tmux.listPanes(session)
+		if err != nil {
+			return nil, fmt.Errorf("list panes after reconcile: %w", err)
+		}
+	}
+
+	if err := e.applyLayoutLocked(st, live); err != nil {
+		return nil, fmt.Errorf("apply layout: %w", err)
+	}
+	if err := SaveState(e.layout.DotLyxDir(), st); err != nil {
+		return nil, fmt.Errorf("save state: %w", err)
+	}
+
+	return live, nil
+}

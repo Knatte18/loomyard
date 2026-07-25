@@ -17,11 +17,11 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/builderengine"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
-	"github.com/Knatte18/loomyard/internal/muxengine"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// seedBuilderFixture returns a host-hub git fixture with shuttle/mux/
+// seedBuilderFixture returns a host-hub git fixture with shuttle/reed/
 // builder config seeded, chdir'd into the host hub, ready for a builder CLI
 // invocation. No weft-prime sibling is created: neither validate nor status
 // ever weft-commits.
@@ -31,7 +31,7 @@ func seedBuilderFixture(t *testing.T) lyxtest.HostFixture {
 	fixture := lyxtest.CopyHostHub(t)
 	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
 		"shuttle": shuttleengine.ConfigTemplate(),
-		"mux":     muxengine.ConfigTemplate(),
+		"reed":    reedengine.ConfigTemplate(),
 		"builder": builderengine.ConfigTemplate(),
 	})
 	t.Chdir(fixture.Hub)

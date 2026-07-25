@@ -63,9 +63,9 @@ type State struct {
 	// is (the run has not started yet, or the last batch reached a
 	// terminal classification).
 	CurrentBatch int `json:"currentBatch"`
-	// OrchestratorStrand identifies the mux strand the most recent `run`'s
+	// OrchestratorStrand identifies the reed strand the most recent `run`'s
 	// orchestrator spawned into, recorded before that run ever blocks on the
-	// spawn. Run's entry-time orphan reclaim stops this strand when the mux
+	// spawn. Run's entry-time orphan reclaim stops this strand when the reed
 	// still reports it live (a killed `run` process, or a timed-out
 	// orchestrator whose kept pane is still working), so a resume never
 	// double-drives the loop with two live orchestrators. Never cleared —
@@ -92,7 +92,7 @@ type BatchState struct {
 	// Role is the shuttle role this batch's implementer spawned under
 	// (implementer, implementer_oversized, or recovery).
 	Role string `json:"role"`
-	// StrandGUID identifies the mux strand the implementer spawned into.
+	// StrandGUID identifies the reed strand the implementer spawned into.
 	StrandGUID string `json:"strandGuid"`
 	// ShuttleRunDir is the shuttle run directory this batch's implementer
 	// spawn persisted (run.json, events.jsonl, ...).

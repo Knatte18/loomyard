@@ -35,8 +35,6 @@ Committed to, in this order, next.
    Depends on fabric's branch-naming enforcement (`<slug>-weft` uniformly). See
    [designs/board-weft-storage.md](designs/board-weft-storage.md).
 
-1. **mux → reed** — rename, no behavior change. See [designs/mux-to-reed.md](designs/mux-to-reed.md).
-
 1. **loom: phase-machine skeleton + session bootstrap** — the status-file-driven engine
    (sequencing, resume, crash-recovery, pause), testable against fake phases before real
    producers are wired in, plus the `lyx loom run` entry point. See
@@ -80,7 +78,7 @@ between these items.
    mid-flight-visibility hazards. See
    [designs/webster-parallel-execution.md](designs/webster-parallel-execution.md).
 
-1. **hardener** — behavior-based hardening of a live-substrate module (the archetype: `mux` driving
+1. **hardener** — behavior-based hardening of a live-substrate module (the archetype: `reed` driving
    real tmux) in a sandbox repo, on-demand and post-loom, off the `shuttle → burler → perch → loom`
    spine. Concept still being figured out. See [designs/hardener.md](designs/hardener.md) (a DRAFT
    doc, do not implement from it yet).
@@ -153,8 +151,7 @@ between these items.
 
 1. **proc** — cross-OS process spawn.
 
-1. **mux** — tmux overlay + strand bookkeeping + render (renamed by the Planned `mux → reed` item
-   once it ships).
+1. **reed** — tmux overlay + strand bookkeeping + render (renamed from `mux`, no behavior change).
 
 1. **shuttle** — run one LLM agent as an interactive tmux strand over a swappable engine.
 

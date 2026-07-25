@@ -3,7 +3,7 @@
 ## What this is
 
 A structured test-loop for exercising `lyx shuttle` against a **live tmux server and a
-logged-in claude** in the sandbox Hub host repo. Like `SANDBOX-MUX-SUITE.md`, the value
+logged-in claude** in the sandbox Hub host repo. Like `SANDBOX-REED-SUITE.md`, the value
 here is partly **visual**: a strand's pane doing real agent work, an outcome coming back.
 Not an automated suite -- an agent drives it, an operator watches.
 
@@ -25,7 +25,7 @@ Before starting a session:
    satisfies the sandbox coverage guard (`sandbox_coverage_test.go`) regardless of
    runtime availability.
 4. **`lyx init` first.** `lyx shuttle` requires an initialized worktree
-   (`_lyx/config/shuttle.yaml` and `mux.yaml`) exactly like `lyx mux` does.
+   (`_lyx/config/shuttle.yaml` and `reed.yaml`) exactly like `lyx reed` does.
 
 ## Black-box rule
 
@@ -39,12 +39,12 @@ and `lyx shuttle <subcommand> --help` alone -- not from documentation outside th
 
 ### Controlled tmux exceptions
 
-One sanctioned deviation from the pure black-box rule, mirroring the mux suite's own
+One sanctioned deviation from the pure black-box rule, mirroring the reed suite's own
 controlled-exception note:
 
 - **Direct `tmux -L <socket> list-panes`/`ls`** is allowed only to confirm a strand's
   pane exists (or was cleaned up), where `<socket>` is read from the shuttle run's
-  strand guid cross-referenced against `lyx mux status` output.
+  strand guid cross-referenced against `lyx reed status` output.
 - **Scenario S2's operator attach** is operator-assisted -- see S2 below.
 
 ## Fingerprint header
@@ -115,10 +115,10 @@ stamps `meta` (including the binary fingerprint). Confine all free text to the
 
 **Watch:** `lyx shuttle run --prompt "write the single line OK into result.md and
 nothing else" --output-file result.md` starts a strand (visible as a pane, confirmable
-via `lyx mux status` or `tmux -L <socket> list-panes`); the command blocks until the
+via `lyx reed status` or `tmux -L <socket> list-panes`); the command blocks until the
 agent finishes; the printed JSON envelope reports `"outcome":"done"` with a `sessionId`
 and `guid`; `result.md` exists with the expected content; and afterward the strand's
-pane and run directory are cleaned up (no leftover pane, `lyx mux status` no longer
+pane and run directory are cleaned up (no leftover pane, `lyx reed status` no longer
 lists the guid).
 
 **Verdict:** `OK` / `WARN` / `FAIL`
@@ -137,9 +137,9 @@ operator answer it directly in the pane."
 which of two options you should pick — do not guess" --output-file decision.md
 --interactive` blocks, then returns with `"outcome":"asking"` and a non-empty
 `lastAssistantMessage` carrying the question; the strand and its pane are still alive
-(`lyx mux status` still lists the guid; `decision.md` does not exist yet). The agent
-then instructs the operator to attach (`lyx mux attach` in a second terminal, per the
-mux suite's M7/M14 pattern), answer the question in the pane, and confirm the agent
+(`lyx reed status` still lists the guid; `decision.md` does not exist yet). The agent
+then instructs the operator to attach (`lyx reed attach` in a second terminal, per the
+reed suite's M7/M14 pattern), answer the question in the pane, and confirm the agent
 continues and eventually writes `decision.md`.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
@@ -157,8 +157,8 @@ agent continues from the new instruction."
 **Watch:** Start a long-running run in one terminal, e.g. `lyx shuttle run --prompt
 "count slowly to a very large number out loud, one number per line, before writing
 done.md" --output-file done.md`. From a second terminal, note the `guid` (via
-`lyx mux status`) and run `lyx shuttle interrupt <guid>` -- the agent's current turn
-stops without killing its pane or session (`lyx mux status` still shows it `live:
+`lyx reed status`) and run `lyx shuttle interrupt <guid>` -- the agent's current turn
+stops without killing its pane or session (`lyx reed status` still shows it `live:
 true`). Then run `lyx shuttle send <guid> "stop counting and write done.md right
 away"` -- a single-line update only. The deterministic property to verify is that
 `done.md` eventually appears with the redirected content: the first terminal's
@@ -192,6 +192,6 @@ findings section above -- with `items: []` when every scenario was `OK`.
 
 ## Notes
 
-- Host/weft scenarios stay in `SANDBOX-CORE-SUITE.md`, mux/tmux scenarios stay in
-  `SANDBOX-MUX-SUITE.md`; this suite grows with shuttle (a second engine, cluster
+- Host/weft scenarios stay in `SANDBOX-CORE-SUITE.md`, reed/tmux scenarios stay in
+  `SANDBOX-REED-SUITE.md`; this suite grows with shuttle (a second engine, cluster
   reviews) -- add `S` scenarios here, not in either other suite.

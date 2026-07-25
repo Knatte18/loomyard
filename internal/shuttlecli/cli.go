@@ -1,7 +1,7 @@
 // cli.go builds the cobra command tree for the shuttle module and the
 // RunCLI seam that wires it into the standard io.Writer-based call contract.
 // The parent "shuttle" command carries a PersistentPreRunE that resolves
-// cwd -> layout -> shuttle config -> mux config -> mux engine -> claude
+// cwd -> layout -> shuttle config -> reed config -> reed engine -> claude
 // engine -> shuttleengine.Runner exactly once per invocation, into a
 // receiver every verb (run.go, interrupt.go, send.go) closes over, so no
 // subcommand re-resolves geometry, config, or engine construction itself.
@@ -13,8 +13,8 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
-	"github.com/Knatte18/loomyard/internal/muxengine"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/spf13/cobra"
@@ -31,7 +31,7 @@ type shuttleCLI struct {
 // Command returns the cobra command tree for the shuttle module.
 //
 // The parent "shuttle" command carries a PersistentPreRunE that resolves
-// cwd -> layout -> shuttle config -> mux config -> mux engine -> claude
+// cwd -> layout -> shuttle config -> reed config -> reed engine -> claude
 // engine -> shuttleengine.Runner into c, skipping that resolution entirely
 // when the group command itself is invoked (bare "lyx shuttle" listing or an
 // unknown-subcommand error via GroupRunE) so neither path requires a git
@@ -82,7 +82,7 @@ provider specifics.`,
 				return nil
 			}
 
-			// Both configs are anchored at layout.Cwd, matching muxcli's own
+			// Both configs are anchored at layout.Cwd, matching reedcli's own
 			// resolution: the worktree the operator is actually standing in,
 			// never WorktreeRoot or any weft sibling.
 			shuttleCfg, err := shuttleengine.LoadConfig(layout.Cwd, "shuttle")
@@ -92,15 +92,15 @@ provider specifics.`,
 				return nil
 			}
 
-			muxCfg, err := muxengine.LoadConfig(layout.Cwd, "mux")
+			reedCfg, err := reedengine.LoadConfig(layout.Cwd, "reed")
 			if err != nil {
 				output.Err(out, err.Error())
 				clihelp.Abort(ctx, 1)
 				return nil
 			}
 
-			muxEngine := muxengine.New(muxCfg, layout)
-			c.runner = shuttleengine.NewRunner(muxEngine, claudeengine.New(), layout, shuttleCfg)
+			reedEngine := reedengine.New(reedCfg, layout)
+			c.runner = shuttleengine.NewRunner(reedEngine, claudeengine.New(), layout, shuttleCfg)
 			return nil
 		},
 	}

@@ -149,7 +149,7 @@ var _ shuttleengine.Engine = (*beginFakeEngine)(nil)
 type beginFixture struct {
 	Deps      websterengine.BeginDeps
 	Injector  *beginFakeInjector
-	Mux       *chainFakeMux
+	Reed      *chainFakeReed
 	Worktree  string
 	PlanDir   string
 	PromptDir string
@@ -183,7 +183,7 @@ func newBeginFixture(t *testing.T) *beginFixture {
 
 	injector := &beginFakeInjector{}
 	promptsDir := t.TempDir()
-	mux := &chainFakeMux{}
+	reed := &chainFakeReed{}
 
 	deps := websterengine.BeginDeps{
 		Plan:         plan,
@@ -192,14 +192,14 @@ func newBeginFixture(t *testing.T) *beginFixture {
 		Config:       websterengine.Config{SelfFixCap: 2},
 		Engine:       &beginFakeEngine{},
 		Injector:     injector,
-		Mux:          mux,
+		Reed:         reed,
 		WorktreeRoot: worktree,
 		WebsterDir:   t.TempDir(),
 		ReportsDir:   t.TempDir(),
 		PromptsDir:   promptsDir,
 	}
 
-	return &beginFixture{Deps: deps, Injector: injector, Mux: mux, Worktree: worktree, PlanDir: planDir, PromptDir: promptsDir}
+	return &beginFixture{Deps: deps, Injector: injector, Reed: reed, Worktree: worktree, PlanDir: planDir, PromptDir: promptsDir}
 }
 
 // TestBeginBatch_PauseSentinel proves the pause gate fires before anything
@@ -462,7 +462,7 @@ func TestBeginBatch_PreExistingReportRefused(t *testing.T) {
 
 // TestBeginBatch_ReclaimsPriorRecoveryStrandBeforeOverwrite proves F9's
 // guard: when the batch being begun as a fork carries a prior recovery
-// record whose strand the mux still reports live (a dead recovery keeps its
+// record whose strand the reed still reports live (a dead recovery keeps its
 // substrate alive by design), BeginBatch stops that strand before the record
 // overwrite erases its StrandGUID — otherwise the unreclaimed strand would
 // race the fresh fork on the host repo.
@@ -472,14 +472,14 @@ func TestBeginBatch_ReclaimsPriorRecoveryStrandBeforeOverwrite(t *testing.T) {
 	fx.Deps.State.Batches = map[int]*websterengine.BatchState{
 		1: {Slug: "json-flag", Kind: "recovery", Terminal: true, Status: "dead", StrandGUID: "dead-but-live-recovery"},
 	}
-	fx.Mux.live = []string{"dead-but-live-recovery"}
+	fx.Reed.live = []string{"dead-but-live-recovery"}
 
 	if _, err := websterengine.BeginBatch(fx.Deps, 1, false); err != nil {
 		t.Fatalf("BeginBatch() error = %v; want nil", err)
 	}
 
-	if len(fx.Mux.removed) != 1 || fx.Mux.removed[0] != "dead-but-live-recovery" {
-		t.Errorf("mux.removed = %v; want exactly [dead-but-live-recovery] stopped before the record overwrite", fx.Mux.removed)
+	if len(fx.Reed.removed) != 1 || fx.Reed.removed[0] != "dead-but-live-recovery" {
+		t.Errorf("reed.removed = %v; want exactly [dead-but-live-recovery] stopped before the record overwrite", fx.Reed.removed)
 	}
 	// The record was overwritten to a fresh fork batch.
 	if bs := fx.Deps.State.Batches[1]; bs.Kind != "fork" || bs.Terminal || bs.StrandGUID != "" {

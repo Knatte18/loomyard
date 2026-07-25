@@ -56,7 +56,7 @@ type Launch struct {
 }
 
 // PaneInput is one step of provider-specific key choreography a run loop
-// sends into a pane via mux's send-keys primitives. Exactly one of Key or
+// sends into a pane via reed's send-keys primitives. Exactly one of Key or
 // Text is set: Key names a tmux key (e.g. "Escape", "Enter") sent as a key
 // press, Text is literal text typed into the pane. When Submit is true and
 // Text is set, an Enter key follows Text — the two-step "type then submit"

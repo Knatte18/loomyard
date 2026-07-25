@@ -2,7 +2,7 @@
 // resolving the run-dir root from Config/hubgeometry, persisting a run's
 // RunState as run.json, looking a run up by its owning strand guid, and
 // sweeping orphaned run dirs left behind when a strand no longer exists in
-// mux state. Everything here is pure I/O over a caller-supplied root and
+// reed state. Everything here is pure I/O over a caller-supplied root and
 // caller-injected guids/clock — no tmux, no claude, so it is testable
 // without either.
 
@@ -24,9 +24,9 @@ import (
 const runStateFileName = "run.json"
 
 // newRunID returns a 128-bit random identifier, hex-encoded, generated from
-// crypto/rand — the same recipe as muxengine's newGUID. This is the
+// crypto/rand — the same recipe as reedengine's newGUID. This is the
 // directory-naming identity for one shuttle run; it is distinct from the
-// strand guid mux mints for the pane that runs it.
+// strand guid reed mints for the pane that runs it.
 func newRunID() (string, error) {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
@@ -72,7 +72,7 @@ type RunState struct {
 }
 
 // createRunDir mints a fresh run id, creates <root>/<runID>, and returns
-// both. The directory is created before the strand exists (mux.AddStrand
+// both. The directory is created before the strand exists (reed.AddStrand
 // has not run yet) — this ordering is exactly what sweepOrphans' age guard
 // protects against: a dir this fresh must never be mistaken for an orphan.
 func createRunDir(root string) (runID, runDir string, err error) {
@@ -144,19 +144,19 @@ func findRunByStrand(root, guid string) (RunState, string, error) {
 // same way Start does. This is how the CLI's interrupt/send verbs (and any
 // other out-of-process caller) turn an operator-supplied guid into the run
 // they need to act on, confirming the guid actually names a shuttle run
-// before ever touching mux.
+// before ever touching reed.
 func FindRun(cfg Config, layout *hubgeometry.Layout, guid string) (RunState, string, error) {
 	return findRunByStrand(runDirRoot(cfg, layout), guid)
 }
 
 // sweepOrphans removes every run directory under root whose run.json names
-// a StrandGUID absent from strandGUIDs (the live set from mux state),
+// a StrandGUID absent from strandGUIDs (the live set from reed state),
 // guarded by minAge: a directory whose mtime is younger than minAge is
 // never removed, live guid or not. The guard exists because a concurrently
 // starting run creates its directory and run.json before AddStrand
 // persists the strand — without it, an unguarded sweep could delete a
 // run that is still starting up. strandGUIDs comes from ONE worktree's
-// mux.json, which is why the configured run_dir must stay worktree-local
+// reed.json, which is why the configured run_dir must stay worktree-local
 // (template.yaml documents this): under a root shared across worktrees,
 // every other worktree's runs would look like orphans here and their kept
 // diagnosis dirs would be swept once past the age guard. A directory whose

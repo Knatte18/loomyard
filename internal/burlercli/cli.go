@@ -1,7 +1,7 @@
 // cli.go builds the cobra command tree for the burler module and the
 // RunCLI seam that wires it into the standard io.Writer-based call contract.
 // The parent "burler" command carries a PersistentPreRunE that resolves
-// cwd -> layout -> shuttle config -> burler config -> mux config -> mux
+// cwd -> layout -> shuttle config -> burler config -> reed config -> reed
 // engine -> claude engine -> shuttleengine.Runner -> burlerengine.Engine
 // exactly once per invocation, into a receiver the run verb closes over, so
 // the debug CLI wires the real substrate exactly like shuttlecli — burlercli
@@ -16,8 +16,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
-	"github.com/Knatte18/loomyard/internal/muxengine"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/spf13/cobra"
@@ -34,7 +34,7 @@ type burlerCLI struct {
 // Command returns the cobra command tree for the burler module.
 //
 // The parent "burler" command carries a PersistentPreRunE that resolves
-// cwd -> layout -> shuttle config -> burler config -> mux config -> mux
+// cwd -> layout -> shuttle config -> burler config -> reed config -> reed
 // engine -> claude engine -> shuttleengine.Runner -> burlerengine.Engine
 // into c, skipping that resolution entirely when the group command itself
 // is invoked (bare "lyx burler" listing or an unknown-subcommand error via
@@ -110,15 +110,15 @@ Example:
 				return nil
 			}
 
-			muxCfg, err := muxengine.LoadConfig(layout.Cwd, "mux")
+			reedCfg, err := reedengine.LoadConfig(layout.Cwd, "reed")
 			if err != nil {
 				output.Err(out, err.Error())
 				clihelp.Abort(ctx, 1)
 				return nil
 			}
 
-			muxEngine := muxengine.New(muxCfg, layout)
-			runner := shuttleengine.NewRunner(muxEngine, claudeengine.New(), layout, shuttleCfg)
+			reedEngine := reedengine.New(reedCfg, layout)
+			runner := shuttleengine.NewRunner(reedEngine, claudeengine.New(), layout, shuttleCfg)
 			c.engine = burlerengine.New(runner, layout, burlerCfg)
 			return nil
 		},

@@ -53,7 +53,7 @@ type Injector interface {
 // role->model-spec map (see ResolveRoles); Config is the loaded
 // webster.yaml; Engine supplies the provider-specific ModelSwitchSequence
 // choreography; Injector is what actually types that choreography into
-// Master's pane; Mux is the live mux query surface the strand-reclaim guards
+// Master's pane; Reed is the live reed query surface the strand-reclaim guards
 // consult (--restart-chain stopping live chain members, and the
 // prior-recovery-strand reclaim before a fork batch overwrites a
 // dead-but-live recovery record); WorktreeRoot is the host repo checkout
@@ -67,7 +67,7 @@ type BeginDeps struct {
 	Config       Config
 	Engine       shuttleengine.Engine
 	Injector     Injector
-	Mux          shuttleengine.MuxOps
+	Reed         shuttleengine.ReedOps
 	WorktreeRoot string
 	WebsterDir   string
 	ReportsDir   string
@@ -153,7 +153,7 @@ func BeginBatch(deps BeginDeps, batchNumber int, restartChain bool) (*BeginResul
 	}
 
 	if restartChain {
-		lowest, err := RestartChain(deps.Mux, deps.WorktreeRoot, deps.State, deps.Plan, batchNumber, deps.ReportsDir)
+		lowest, err := RestartChain(deps.Reed, deps.WorktreeRoot, deps.State, deps.Plan, batchNumber, deps.ReportsDir)
 		if err != nil {
 			return nil, err
 		}
@@ -257,7 +257,7 @@ func BeginBatch(deps BeginDeps, batchNumber int, restartChain bool) (*BeginResul
 	// respawn path performs. A plain fork batch's record has an empty
 	// StrandGUID and RemoveStrandIfLive no-ops on it.
 	if prior, ok := deps.State.Batches[batch.Number]; ok && prior != nil && prior.StrandGUID != "" {
-		if err := builderengine.RemoveStrandIfLive(deps.Mux, prior.StrandGUID); err != nil {
+		if err := builderengine.RemoveStrandIfLive(deps.Reed, prior.StrandGUID); err != nil {
 			return nil, err
 		}
 	}

@@ -86,7 +86,7 @@ func OutcomePath(websterDir string) string {
 }
 
 // MasterHandle is the started-but-not-yet-finished Master spawn Run blocks
-// on: StrandGUID identifies the mux strand Master runs in (available
+// on: StrandGUID identifies the reed strand Master runs in (available
 // immediately after the start, so Run can persist it to state.json BEFORE
 // blocking — the record the next run's entry-time reclaim reads), and Wait
 // blocks until the spawn reaches a terminal shuttle outcome.
@@ -106,7 +106,7 @@ type MasterStarter interface {
 
 // RunDeps carries every seam Run needs, so a test can fake each one
 // independently: Starter spawns Master and hands back the handle Run blocks
-// on; Mux is the live mux query surface the entry-time reclaim consults via
+// on; Reed is the live reed query surface the entry-time reclaim consults via
 // StrandLive/RemoveStrand; Engine and ShuttleCfg/Layout are what
 // shuttleengine.FindRun (Master session-identity resolution) and the
 // weft-reference audit pattern need; PlanDir, WebsterDir, ReportsDir, and
@@ -117,7 +117,7 @@ type MasterStarter interface {
 // the pre-flight-resolved role->model-spec map (see ResolveRoles).
 type RunDeps struct {
 	Starter      MasterStarter
-	Mux          shuttleengine.MuxOps
+	Reed         shuttleengine.ReedOps
 	Engine       shuttleengine.Engine
 	ShuttleCfg   shuttleengine.Config
 	Layout       *hubgeometry.Layout
@@ -251,20 +251,20 @@ func clearRenderedPrompts(promptsDir string) error {
 // entry-time reclaim strictly simpler than builder's own, per
 // discussion.md's crash-resume-re-drive-first-unreported decision. A nil st
 // (no run has ever started) is a no-op.
-func reclaimEntryTimeStrands(mux shuttleengine.MuxOps, st *State) error {
+func reclaimEntryTimeStrands(reed shuttleengine.ReedOps, st *State) error {
 	if st == nil {
 		return nil
 	}
 
 	if st.MasterStrand != "" {
-		if err := builderengine.RemoveStrandIfLive(mux, st.MasterStrand); err != nil {
+		if err := builderengine.RemoveStrandIfLive(reed, st.MasterStrand); err != nil {
 			return err
 		}
 	}
 
 	for _, bs := range st.Batches {
 		if bs != nil && bs.Kind == "recovery" && !bs.Terminal {
-			if err := builderengine.RemoveStrandIfLive(mux, bs.StrandGUID); err != nil {
+			if err := builderengine.RemoveStrandIfLive(reed, bs.StrandGUID); err != nil {
 				return err
 			}
 		}
@@ -378,7 +378,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	// record of these strands): a prior run whose process died mid-wait
 	// leaves a live Master pane (or a live recovery strand) that keeps
 	// driving on its own.
-	if err := reclaimEntryTimeStrands(deps.Mux, st); err != nil {
+	if err := reclaimEntryTimeStrands(deps.Reed, st); err != nil {
 		return RunResult{}, err
 	}
 

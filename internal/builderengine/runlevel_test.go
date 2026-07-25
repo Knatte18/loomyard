@@ -22,7 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/builderengine"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/modelspec"
-	"github.com/Knatte18/loomyard/internal/muxengine"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -98,29 +98,29 @@ func (h *fakeOrchestratorHandle) Wait() (shuttleengine.Result, error) {
 	return h.starter.Result, nil
 }
 
-// runFakeMux is a minimal shuttleengine.MuxOps double for Run's entry-time
+// runFakeReed is a minimal shuttleengine.ReedOps double for Run's entry-time
 // orphan-orchestrator reclaim: Status returns the scripted result and
 // RemoveStrand records what was stopped.
-type runFakeMux struct {
-	status         muxengine.StatusResult
+type runFakeReed struct {
+	status         reedengine.StatusResult
 	removedStrands []string
 }
 
-func (m *runFakeMux) AddStrand(spec muxengine.AddSpec) (muxengine.Strand, error) {
-	return muxengine.Strand{}, nil
+func (m *runFakeReed) AddStrand(spec reedengine.AddSpec) (reedengine.Strand, error) {
+	return reedengine.Strand{}, nil
 }
 
-func (m *runFakeMux) RemoveStrand(guid string, recursive bool) (muxengine.Removed, error) {
+func (m *runFakeReed) RemoveStrand(guid string, recursive bool) (reedengine.Removed, error) {
 	m.removedStrands = append(m.removedStrands, guid)
-	return muxengine.Removed{}, nil
+	return reedengine.Removed{}, nil
 }
 
-func (m *runFakeMux) Status() (muxengine.StatusResult, error)       { return m.status, nil }
-func (m *runFakeMux) SendText(guid, text string, submit bool) error { return nil }
-func (m *runFakeMux) SendKey(guid, key string) error                { return nil }
-func (m *runFakeMux) CapturePane(guid string) (string, error)       { return "", nil }
+func (m *runFakeReed) Status() (reedengine.StatusResult, error)      { return m.status, nil }
+func (m *runFakeReed) SendText(guid, text string, submit bool) error { return nil }
+func (m *runFakeReed) SendKey(guid, key string) error                { return nil }
+func (m *runFakeReed) CapturePane(guid string) (string, error)       { return "", nil }
 
-var _ shuttleengine.MuxOps = (*runFakeMux)(nil)
+var _ shuttleengine.ReedOps = (*runFakeReed)(nil)
 
 // runFixture is a fully-wired, fresh-per-call set of Run dependencies: a
 // copy of the plan-valid fixture (so a test may mutate its content without
@@ -193,7 +193,7 @@ func newRunFixture(t *testing.T) *runFixture {
 	return &runFixture{
 		Deps: builderengine.RunDeps{
 			Runner:     runner,
-			Mux:        &runFakeMux{},
+			Reed:       &runFakeReed{},
 			PlanDir:    planDir,
 			BuilderDir: builderDir,
 			ReportsDir: reportsDir,
@@ -710,10 +710,10 @@ func TestRun_SpecFieldsMapped(t *testing.T) {
 
 // TestRun_ReclaimsLiveOrphanedOrchestratorAtEntry proves Run's entry-time
 // orphan reclaim: a state.json recording a prior run's orchestrator strand
-// that the mux still reports LIVE (a killed `run` process, or a timed-out
+// that the reed still reports LIVE (a killed `run` process, or a timed-out
 // orchestrator whose kept pane is still working) is stopped BEFORE the fresh
 // orchestrator ever starts — otherwise two orchestrators double-drive the
-// same run (found live in round fable-r4). A recorded strand the mux reports
+// same run (found live in round fable-r4). A recorded strand the reed reports
 // not-live (or does not track at all) is left alone.
 func TestRun_ReclaimsLiveOrphanedOrchestratorAtEntry(t *testing.T) {
 	tests := []struct {
@@ -732,10 +732,10 @@ func TestRun_ReclaimsLiveOrphanedOrchestratorAtEntry(t *testing.T) {
 			fx.Runner.WriteOutcome = doneOutcomeYAML
 
 			const orphanGUID = "orphan-orchestrator-strand"
-			mux := &runFakeMux{status: muxengine.StatusResult{
-				Strands: []muxengine.StrandStatus{{GUID: orphanGUID, Live: tt.strandLive}},
+			reed := &runFakeReed{status: reedengine.StatusResult{
+				Strands: []reedengine.StrandStatus{{GUID: orphanGUID, Live: tt.strandLive}},
 			}}
-			fx.Deps.Mux = mux
+			fx.Deps.Reed = reed
 
 			// Seed the prior run's state: the plan's own fingerprint (so the
 			// resume path, not init or --fresh, is what runs) plus the
@@ -759,7 +759,7 @@ func TestRun_ReclaimsLiveOrphanedOrchestratorAtEntry(t *testing.T) {
 			// observe the removal record at the moment StartOrchestrator's
 			// handle begins waiting.
 			var removedAtWait []string
-			fx.Runner.OnWait = func() { removedAtWait = append([]string(nil), mux.removedStrands...) }
+			fx.Runner.OnWait = func() { removedAtWait = append([]string(nil), reed.removedStrands...) }
 
 			if _, err := builderengine.Run(fx.Deps, builderengine.RunOptions{}); err != nil {
 				t.Fatalf("Run() error = %v; want nil", err)
@@ -769,8 +769,8 @@ func TestRun_ReclaimsLiveOrphanedOrchestratorAtEntry(t *testing.T) {
 				if len(removedAtWait) != 1 || removedAtWait[0] != orphanGUID {
 					t.Errorf("strands removed before the fresh orchestrator's wait = %v; want exactly [%q]", removedAtWait, orphanGUID)
 				}
-			} else if len(mux.removedStrands) != 0 {
-				t.Errorf("RemoveStrand called %v for a not-live recorded strand; want no removals", mux.removedStrands)
+			} else if len(reed.removedStrands) != 0 {
+				t.Errorf("RemoveStrand called %v for a not-live recorded strand; want no removals", reed.removedStrands)
 			}
 		})
 	}
@@ -809,11 +809,11 @@ func TestRun_PersistsOrchestratorStrandBeforeWait(t *testing.T) {
 
 // TestRun_FreshStopsSupersededRunsLiveStrands proves --fresh's reclaim half:
 // archiving a superseded run's state must first stop every recorded batch
-// strand the mux still reports live, or the orphaned implementer keeps
+// strand the reed still reports live, or the orphaned implementer keeps
 // working against the same host repo and its late report lands on the FRESH
 // run's report path (the recreated reports dir), where it is distilled as
 // the fresh batch's success — found live in round fable-r4 as a --fresh run
-// returning done on the superseded plan's work. A recorded strand the mux
+// returning done on the superseded plan's work. A recorded strand the reed
 // reports not-live is left alone (nothing to stop).
 func TestRun_FreshStopsSupersededRunsLiveStrands(t *testing.T) {
 	fx := newRunFixture(t)
@@ -822,13 +822,13 @@ func TestRun_FreshStopsSupersededRunsLiveStrands(t *testing.T) {
 
 	const liveGUID = "superseded-live-implementer"
 	const deadGUID = "superseded-dead-implementer"
-	mux := &runFakeMux{status: muxengine.StatusResult{
-		Strands: []muxengine.StrandStatus{
+	reed := &runFakeReed{status: reedengine.StatusResult{
+		Strands: []reedengine.StrandStatus{
 			{GUID: liveGUID, Live: true},
 			{GUID: deadGUID, Live: false},
 		},
 	}}
-	fx.Deps.Mux = mux
+	fx.Deps.Reed = reed
 
 	// Seed a state whose fingerprint can never match the on-disk plan, so
 	// this Run takes exactly the --fresh archive/re-init path under test.
@@ -849,7 +849,7 @@ func TestRun_FreshStopsSupersededRunsLiveStrands(t *testing.T) {
 	// The superseded strands must be gone before the fresh orchestrator
 	// starts working: observe the removal record at the handle's Wait.
 	var removedAtWait []string
-	fx.Runner.OnWait = func() { removedAtWait = append([]string(nil), mux.removedStrands...) }
+	fx.Runner.OnWait = func() { removedAtWait = append([]string(nil), reed.removedStrands...) }
 
 	if _, err := builderengine.Run(fx.Deps, builderengine.RunOptions{Fresh: true}); err != nil {
 		t.Fatalf("Run(--fresh) error = %v; want nil", err)

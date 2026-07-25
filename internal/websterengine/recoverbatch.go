@@ -57,8 +57,8 @@ type Clock interface {
 // *shuttleengine.Runner); Plan and State are the already-parsed/loaded plan
 // and run state RecoverBatch reads and mutates; Roles is the pre-flight-
 // resolved role->model-spec map (see ResolveRoles); Config is the loaded
-// webster.yaml; Engine supplies TurnEnded's event-grammar parsing; Mux is
-// the live mux query surface StrandLive/RemoveStrand consult; ShuttleCfg and
+// webster.yaml; Engine supplies TurnEnded's event-grammar parsing; Reed is
+// the live reed query surface StrandLive/RemoveStrand consult; ShuttleCfg and
 // Layout are what shuttleengine.FindRun needs to resolve the just-started
 // run's cross-process identity; WorktreeRoot, WebsterDir, and ReportsDir are
 // the hubgeometry-resolved host checkout, _lyx/webster, and
@@ -70,7 +70,7 @@ type RecoverDeps struct {
 	Roles        map[Role]modelspec.Resolved
 	Config       Config
 	Engine       shuttleengine.Engine
-	Mux          shuttleengine.MuxOps
+	Reed         shuttleengine.ReedOps
 	ShuttleCfg   shuttleengine.Config
 	Layout       *hubgeometry.Layout
 	WorktreeRoot string
@@ -203,7 +203,7 @@ func recoverSpawn(deps RecoverDeps, batch builderengine.PlanBatch, prior *BatchS
 	}
 
 	if prior != nil {
-		if err := builderengine.RemoveStrandIfLive(deps.Mux, prior.StrandGUID); err != nil {
+		if err := builderengine.RemoveStrandIfLive(deps.Reed, prior.StrandGUID); err != nil {
 			return nil, err
 		}
 	}
@@ -347,7 +347,7 @@ func PersistRecoveryTerminal(st *State, batchNumber int, digest *builderengine.D
 // awaitTerminal drives one bounded long-poll wait for bs's recovery strand:
 // a gather closure assembles builderengine.ClassifyInputs — the
 // report-presence branch of Classify (parsed only when the report file
-// exists), TurnEnded(bs.EventsPath, deps.Engine), StrandLive(deps.Mux,
+// exists), TurnEnded(bs.EventsPath, deps.Engine), StrandLive(deps.Reed,
 // bs.StrandGUID), Elapsed computed from bs.SpawnedAt (parsed once, up
 // front) so RecoveryTimeoutMin measures wall-clock time since the strand
 // was SPAWNED, not since this particular call started — the property that
@@ -398,7 +398,7 @@ func awaitTerminal(deps RecoverDeps, batch builderengine.PlanBatch, bs *BatchSta
 		if err != nil {
 			return builderengine.Digest{}, false, err
 		}
-		strandLive, err := builderengine.StrandLive(deps.Mux, bs.StrandGUID)
+		strandLive, err := builderengine.StrandLive(deps.Reed, bs.StrandGUID)
 		if err != nil {
 			return builderengine.Digest{}, false, err
 		}
@@ -449,7 +449,7 @@ func awaitTerminal(deps RecoverDeps, batch builderengine.PlanBatch, bs *BatchSta
 
 	var warnings []string
 	removeStrand := func() {
-		if err := builderengine.RemoveStrandIfLive(deps.Mux, bs.StrandGUID); err != nil {
+		if err := builderengine.RemoveStrandIfLive(deps.Reed, bs.StrandGUID); err != nil {
 			warnings = append(warnings, fmt.Sprintf("recover-batch: remove strand %s: %v", bs.StrandGUID, err))
 		}
 	}

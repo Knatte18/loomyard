@@ -1,6 +1,6 @@
 // config_test.go verifies perch.yaml's template parses, defaults resolve
 // through LoadConfig, and the not-initialized error path behaves the way
-// muxengine's and shuttleengine's config tests establish the pattern.
+// reedengine's and shuttleengine's config tests establish the pattern.
 
 package perchengine_test
 

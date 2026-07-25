@@ -2,13 +2,13 @@
 
 // smoke_guardrail_test.go is the live proof of the deny-and-steer guardrail
 // path the hooks research flagged as unprobed
-// (docs/research/mux-hooks-exploration.md: "the deny-and-steer path itself
+// (docs/research/reed-hooks-exploration.md: "the deny-and-steer path itself
 // is not yet probed"): a REAL claude, when its Agent tool call is denied by
 // the PreToolUse hook, actually resumes in-session on the steered
 // instruction rather than stalling or aborting the turn, and a REAL claude
 // asked to pose a question surfaces it as the run loop's classified
 // "asking" outcome. Follows the same conventions as smoke_run_test.go,
-// whose helpers (claudeBinaryPath, deferHubRelease, muxStatusStrand) this
+// whose helpers (claudeBinaryPath, deferHubRelease, reedStatusStrand) this
 // file reuses.
 
 package shuttlecli
@@ -23,8 +23,8 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lyxtest"
-	"github.com/Knatte18/loomyard/internal/muxcli"
-	"github.com/Knatte18/loomyard/internal/muxengine"
+	"github.com/Knatte18/loomyard/internal/reedcli"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -44,18 +44,18 @@ func TestSmokeGuardrailDeniesAgentTool(t *testing.T) {
 	fixture := lyxtest.CopyPaired(t)
 	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
 		"shuttle": shuttleengine.ConfigTemplate(),
-		"mux":     muxengine.ConfigTemplate(),
+		"reed":    reedengine.ConfigTemplate(),
 	})
 	deferHubRelease(t, fixture.Hub)
 	t.Chdir(fixture.Hub)
 	t.Cleanup(func() {
 		var buf bytes.Buffer
-		muxcli.RunCLI(&buf, []string{"down"})
+		reedcli.RunCLI(&buf, []string{"down"})
 	})
 
-	var muxOut bytes.Buffer
-	if code := muxcli.RunCLI(&muxOut, []string{"up"}); code != 0 {
-		t.Fatalf("mux up = %d; want 0, output: %s", code, muxOut.String())
+	var reedOut bytes.Buffer
+	if code := reedcli.RunCLI(&reedOut, []string{"up"}); code != 0 {
+		t.Fatalf("reed up = %d; want 0, output: %s", code, reedOut.String())
 	}
 
 	outputPath := filepath.Join(fixture.Hub, "smoke-guardrail-agent-output.txt")
@@ -107,18 +107,18 @@ func TestSmokeGuardrailAskingSurfacesQuestion(t *testing.T) {
 	fixture := lyxtest.CopyPaired(t)
 	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
 		"shuttle": shuttleengine.ConfigTemplate(),
-		"mux":     muxengine.ConfigTemplate(),
+		"reed":    reedengine.ConfigTemplate(),
 	})
 	deferHubRelease(t, fixture.Hub)
 	t.Chdir(fixture.Hub)
 	t.Cleanup(func() {
 		var buf bytes.Buffer
-		muxcli.RunCLI(&buf, []string{"down"})
+		reedcli.RunCLI(&buf, []string{"down"})
 	})
 
-	var muxOut bytes.Buffer
-	if code := muxcli.RunCLI(&muxOut, []string{"up"}); code != 0 {
-		t.Fatalf("mux up = %d; want 0, output: %s", code, muxOut.String())
+	var reedOut bytes.Buffer
+	if code := reedcli.RunCLI(&reedOut, []string{"up"}); code != 0 {
+		t.Fatalf("reed up = %d; want 0, output: %s", code, reedOut.String())
 	}
 
 	outputPath := filepath.Join(fixture.Hub, "smoke-guardrail-asking-output.txt")
@@ -158,9 +158,9 @@ func TestSmokeGuardrailAskingSurfacesQuestion(t *testing.T) {
 	if guid == "" {
 		t.Fatalf("run result missing guid: %v", result)
 	}
-	strand, found := muxStatusStrand(t, guid)
+	strand, found := reedStatusStrand(t, guid)
 	if !found {
-		t.Fatalf("mux status missing strand %s after an \"asking\" outcome; want it still tracked", guid)
+		t.Fatalf("reed status missing strand %s after an \"asking\" outcome; want it still tracked", guid)
 	}
 	if live, _ := strand["live"].(bool); !live {
 		t.Errorf("strand %s live = false after an \"asking\" outcome; want true", guid)

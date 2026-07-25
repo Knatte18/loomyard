@@ -131,7 +131,7 @@ its own.
   sequentially, in one process. Build a small harness that launches several real
   `exec.Command`-spawned `lyx board sync` (or `go run`) child processes against the same board dir
   concurrently and confirm: exactly the expected commits land on the remote, no corruption, and the
-  push lock still coalesces the way `sync.go`'s doc comment claims — same spirit as the mux
+  push lock still coalesces the way `sync.go`'s doc comment claims — same spirit as the reed
   campaign's "compile once, run N copies" concurrent gate and `gitrepo`'s own
   `TestPushCoalesced_LockBlocking_Serializes` pattern (read that test for the shape, but this is a
   NEW real-process test for `board`, not a port of it).
@@ -195,7 +195,7 @@ State the **merge bar** so you calibrate: correctness in the NORMAL single-insta
 single-or-few-concurrent-caller flow (the realistic shape: a handful of `lyx board <verb>` calls
 each spawning their own detached `sync`, occasionally overlapping) is the gate; an artificial
 many-way concurrency stress far beyond that realistic shape is a diagnostic amplifier, not a merge
-blocker, per the same principle the mux campaign used (see README.md's "Reading the result").
+blocker, per the same principle the reed campaign used (see README.md's "Reading the result").
 
 ## What to TEST — do not just read, EXERCISE it
 Report the exact commands you ran and what you observed.
