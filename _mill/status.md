@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: plan-format-v3
 branch: plan-format-v3
 plan: _mill/plan
@@ -20,4 +20,15 @@ discussed  '2026-07-25T05:55:00Z'
 planning  '2026-07-25T06:11:48Z'
 plan-fix-r1  '2026-07-25T06:19:40Z'
 planned  '2026-07-25T06:20:06Z'
+implementing  '2026-07-25T06:24:10Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: promote-v3-reference
+    state: pending
+  - name: neighbour-doc-crosslinks
+    state: pending
 ```
