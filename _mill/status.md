@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: git-native-library
 branch: git-native-library
-plan: null
+plan: _mill/plan
 parent: main
 task: 'git-native-library: feasibility spike'
 task_description: |
@@ -17,4 +17,5 @@ task_description: |
 discussing  '2026-07-25T11:57:48Z'
 discussion-fix-r2  '2026-07-25T12:50:26Z'
 discussed  '2026-07-25T12:50:52Z'
+planning  '2026-07-25T13:00:33Z'
 ```
