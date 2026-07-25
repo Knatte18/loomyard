@@ -2,7 +2,8 @@
 
 > **Status: Design — not built.** A redesign of the shipped `webster` module (fork-based sibling
 > of `builder`, one long-lived Master session forking one implementer per unit) to consume
-> [plan-format v3](plan-format-v3.md) instead of today's shipped, batch-based plan-format v2.
+> [plan-format v3](../../docs/reference/plan-format-v3.md) instead of today's shipped,
+> batch-based plan-format v2.
 > **The core orchestration loop (Master + warm-fork + digest engine) is expected to be largely
 > reusable — this is a rewrite of the plan-consumption layer, not from scratch.** Per the
 > [documentation lifecycle](../../docs/overview.md#documentation-lifecycle), durable parts fold
@@ -29,8 +30,8 @@ brittle.
 ## Scheduling: no DAG, no SCC merging in v0
 
 Cards run strictly in declared order. The whole DAG/cycle-detection/SCC-merging mechanism is
-designed in [plan-format-v3.md](plan-format-v3.md#continuous-dag-update-as-cards-land-designed-deferred-with-the-symbol-fields)
-but depends on `codeintel`/symbol fields and is out of scope until those land (see the roadmap's
+designed [below](#continuous-dag-update-as-cards-land-deferred-with-the-symbol-fields) but
+depends on `codeintel`/symbol fields and is out of scope until those land (see the roadmap's
 Someday list).
 
 **Write the "which card is next" scheduler with a conditional branch from day one**, even though
@@ -46,6 +47,86 @@ if card.HasSymbolFields() {
 
 This costs nothing now and turns the eventual codeintel rollout into "planner starts populating
 fields," not a future webster code change.
+
+### Mechanical DAG derivation (designed now, wired in later — dead code until codeintel lands)
+
+Not active in v0 (no symbol fields exist yet to derive edges from), but designed in full now so
+the eventual rollout is "planner starts populating fields," not a future webster code change.
+
+#### Mechanism 1 — plan-internal symbol matching (works even for not-yet-existing symbols)
+
+Instead of asking the planner to reason globally about cross-card dependencies, each card would
+only declare **its own** `creates-symbols`/`edits-symbols`/`reads-symbols` — a narrower, more
+checkable judgment ("what do I touch"). Pure Go, no LLM, no LSP:
+
+1. Build a symbol table: `symbol name → which card "owns" it` (from the union of all
+   `creates-symbols`/`edits-symbols` across the plan).
+2. For each card, for each name in its `reads-symbols`: look it up in the table. If found, add an
+   edge from the owning card to this card.
+
+This works identically for symbols that already exist in the codebase *and* symbols a later card
+will create — because it never queries the actual codebase, only the plan's own declared data
+against itself.
+
+#### Mechanism 2 — codeintel as a verification layer, not a graph builder
+
+Once a symbol is known-real (i.e. for `edits-symbols`, which claims to modify something that
+already exists), codeintel can verify: does it actually exist with that exact name, and are
+there references to it elsewhere in the codebase — outside the plan's own cards — that no card
+accounts for (a real safety-net the plan couldn't have known about without reading the whole
+codebase)?
+
+### Symbol fields and the planner/webster codeintel-availability mismatch (resolved)
+
+What if the planner runs on a machine with codeintel available, but the implementation later
+runs on a machine without it (or vice versa)? Resolved by splitting what the two mechanisms need:
+
+- **Mechanism 1** (plan-internal cross-matching) requires **no live codeintel on webster's side
+  at all** — only that the fields exist in the plan (i.e. that the planner had codeintel).
+- **Mechanism 2** (verification against the real, live codebase) is the only piece that actually
+  requires webster itself to have a live codeintel connection.
+
+**Resulting rule:**
+
+- Planner **has** codeintel → writes the symbol fields, verified at write time.
+- Planner **lacks** codeintel → omits the symbol fields **entirely** — never guess a symbol name
+  from text understanding alone. An unverified/hallucinated name is worse than no name: it would
+  produce a silently-lost dependency edge that nothing detects.
+- Webster's behavior is driven by **whether the fields are present in the plan**, not by whether
+  webster itself has codeintel: fields present → Mechanism 1 works regardless of webster's own
+  codeintel access; Mechanism 2 only activates if webster *also* has codeintel. Fields absent →
+  pure v0 behavior.
+
+Net effect: a plan written on a codeintel-equipped machine remains fully valid and still
+delivers the DAG benefit even if executed later on a machine without codeintel — it just runs
+without the extra verification safety net.
+
+### Continuous DAG update as cards land (deferred with the symbol fields)
+
+Because new symbols only become lookup-able *after* the card that creates them has actually run,
+the DAG would need updating incrementally, not just once at planning time:
+
+1. After each card commits, verify what it *actually* touched
+   (`fabric.Warp.ChangedFilesSince(...)`, see [fabric.md](fabric.md)) against its declared
+   `changes-files`/symbols. Mismatch = a mechanically detected deviation. **This is always
+   informational, never blocking on its own** — Millhouse's own production experience shows
+   plan-predicted impact area is frequently incomplete; treating deviation as failure would make
+   the system impractically brittle.
+2. Update graph edges involving only the symbols this card just touched/created (narrow,
+   incremental — not a full graph rebuild).
+3. Before forking the next card: check if it's still ready to run (all its dependencies now
+   satisfied). If not, pick the earliest remaining card that *is* ready instead (greedy
+   topological selection, Kahn's-algorithm-style).
+4. If **no** remaining card is ready → a genuine cycle has been discovered (only possible now,
+   because new-symbol edges weren't knowable until cards landed). Resolve by finding the full
+   strongly-connected component (Tarjan's algorithm generalizes "merge these two cards" to "merge
+   the whole cyclic group," however large) and merging all cards in it into a single commit/unit.
+   Log this as a deviation for planner feedback.
+
+**Deliberately not built even in this future design** (avoid over-engineering ahead of
+evidence): elaborate deviation-categorization (mechanical vs. semantic re-planning triggers);
+double-diff/stale-deviation-notice cleanup logic for Master's context; file-splitting-by-
+function-area collision refinement. Solve if/when actually observed, not preemptively.
 
 ## Fork failure → stop the plan, escalate to a human
 
@@ -69,7 +150,7 @@ that becomes the merge-commit message when loom merges the finished work back in
 
 - Master reads all background material once, then forks one implementer per **card** (not per
   batch — batch granularity is dropped along with the batch concept itself, see
-  [plan-format-v3.md](plan-format-v3.md); the old "N cards, one verify at the end" behavior is
+  [plan-format-v3.md](../../docs/reference/plan-format-v3.md); the old "N cards, one verify at the end" behavior is
   not reproduced by making one giant card, since that would destroy the fine-grained
   collision/rollback/localization properties the small-card model depends on).
 - After each card, Master appends a short status line to its own context before forking the next
@@ -162,7 +243,7 @@ working.
 ## Adjacent pieces (not webster's own job, but webster hands off to them)
 
 - **The planner instruction** (feeds webster its input) — converts a discussion-protocol thread
-  into a flat card list per [plan-format-v3.md](plan-format-v3.md). Own doc:
+  into a flat card list per [plan-format-v3.md](../../docs/reference/plan-format-v3.md). Own doc:
   [loom-planner.md](loom-planner.md).
 - **Loom's Finalize phase** — merge-in from parent, conflict resolution, optional PR creation.
   Own doc: [loom-finalize.md](loom-finalize.md). **Before writing it from scratch: check
@@ -187,7 +268,7 @@ case-study data.
 
 ## Related
 
-- [plan-format-v3.md](plan-format-v3.md) — the input contract this rewrite consumes.
+- [plan-format-v3.md](../../docs/reference/plan-format-v3.md) — the input contract this rewrite consumes.
 - [fabric.md](fabric.md) — `ChangedFilesSince`/`SnapshotSHA` used for contract verification.
 - [loom.md](loom.md) — the phase machine this module's output feeds into (Builder phase).
 - [codeintel-redesign.md](codeintel-redesign.md) — what the (currently omitted) symbol fields

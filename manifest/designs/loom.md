@@ -34,8 +34,9 @@ to one job over a file contract:
 
 - Plan producer: "read `discussion.md`, write the `plan/` directory." Nothing else. **The target
   format is changing:** today's pinned [plan-format.md v2](../../docs/reference/plan-format.md)
-  (batch-based) is being replaced by [plan-format v3](plan-format-v3.md) (a flat card list) —
-  see that doc for the schema the Plan producer will write against, and
+  (batch-based) is being replaced by
+  [plan-format v3](../../docs/reference/plan-format-v3.md) (a flat card list) — see that doc for
+  the schema the Plan producer will write against, and
   [webster-rewrite.md](webster-rewrite.md) for the consumer-side redesign this implies.
 - Review handler: "read the plan (against `discussion.md`), write review + fixer-report."
 

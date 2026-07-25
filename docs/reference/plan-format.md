@@ -3,10 +3,13 @@
 > **Status: Contract — pinned.** This doc pins **plan-format v2**: the artifact the
 > (future) Planner phase produces and the `builder` module consumes. **v2 supersedes v1
 > outright** (a version bump, not a dialect): `builder` refuses a `format: 1` plan via the
-> `format-unrecognized` check exactly as it refuses any other unrecognized value — there is
-> no dual-version support and no production v1 plans exist to migrate. Per the
+> `format-unrecognized` check exactly as it refuses any other unrecognized value — and no
+> production v1 plans exist to migrate. v2 currently **coexists with the emerging
+> plan-format v3** during the v2→v3 transition, and retires once the **webster: rewrite
+> for flat card list** item lands and `builder` is deleted. Per the
 > [documentation lifecycle](../overview.md#documentation-lifecycle) this is a durable
-> design doc — it stays.
+> design doc — it stays. See [plan-format-v3.md](plan-format-v3.md) for the emerging
+> flat-card format.
 
 ## Who consumes this, and how
 
