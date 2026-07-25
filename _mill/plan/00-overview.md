@@ -32,7 +32,7 @@ batches:
     name: sandbox-wire-and-guard
     file: 03-sandbox-wire-and-guard.md
     depends-on: [2]
-    verify: go test ./tools/sandbox/
+    verify: go test ./tools/sandbox/ ./cmd/lyx/
   - number: 4
     name: launchers-and-lifecycle
     file: 04-launchers-and-lifecycle.md
@@ -109,6 +109,7 @@ batches:
 
 - `.gitignore`
 - `CONSTRAINTS.md`
+- `cmd/lyx/tierpurity_test.go`
 - `crucible/README.md`
 - `crucible/board-review-prompt.md`
 - `crucible/builder-review-prompt.md`

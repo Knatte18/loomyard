@@ -5,7 +5,7 @@ task: dev/test lyx.exe separated from production deploy
 batch: sandbox-wire-and-guard
 number: 3
 cards: 7
-verify: go test ./tools/sandbox/
+verify: go test ./tools/sandbox/ ./cmd/lyx/
 depends-on: [2]
 ```
 
@@ -141,10 +141,10 @@ Batch-local decisions: `binaryFingerprint` gains a `source string` parameter (st
 ### Card 13: Guard test forbidding bare-PATH lyx lookups
 
 - **Context:**
-  - `cmd/lyx/tierpurity_test.go`
   - `tools/sandbox/resolve.go`
   - `tools/sandbox/suite.go`
-- **Edits:** none
+- **Edits:**
+  - `cmd/lyx/tierpurity_test.go`
 - **Creates:**
   - `tools/sandbox/pathresolve_guard_test.go`
 - **Deletes:** none
@@ -159,12 +159,22 @@ Batch-local decisions: `binaryFingerprint` gains a `source string` parameter (st
   than 3 non-test `.go` files are scanned, guarding against a misconfigured directory read).
   Locate the sandbox source directory relative to the test file (e.g. via `runtime.Caller` or
   the working directory), not a hardcoded absolute path. Tier-1 pure (file reads only, no
-  spawns).
+  spawns). **Also** add an `allowedSpawners` (self-exclusion allowlist) entry in
+  `cmd/lyx/tierpurity_test.go` for `tools/sandbox/pathresolve_guard_test.go`, keyed by its
+  module-relative path with a reason like "contains the banned `exec.Command`/
+  `exec.CommandContext` token strings as its own scan data (Dev/Prod Binary Separation guard)"
+  — mirror the existing `cmd/lyx/tierpurity_test.go` / `cmd/lyx/hermeticenv_test.go` entries.
+  Without this, the module-wide Test Tier Purity guard (`go test ./cmd/lyx/`) fails on the new
+  guard file's scan literals.
 - **Commit:** `test(sandbox): guard against bare-PATH lyx lookups`
 
 ## Batch Tests
 
-`verify: go test ./tools/sandbox/` compiles the rewired package and runs all sandbox tests:
-updated suite/report/main tests, the batch-2 `resolve_test.go`, and the new
-`pathresolve_guard_test.go`. The guard passes only because cards 7–9 removed every bare-PATH
-`lyx` lookup outside `resolve.go`. All tests remain Tier-1 pure (seams, temp dirs, file scans).
+`verify: go test ./tools/sandbox/ ./cmd/lyx/` compiles the rewired package and runs all sandbox
+tests (updated suite/report/main tests, the batch-2 `resolve_test.go`, and the new
+`pathresolve_guard_test.go`) AND the `cmd/lyx` module-wide guards. The `./cmd/lyx/` scope is
+required because the new guard file carries `exec.Command`/`exec.CommandContext` scan literals
+that the module-wide Test Tier Purity guard (`cmd/lyx/tierpurity_test.go`) inspects — this batch
+adds the matching `allowedSpawners` self-exclusion entry, and only `go test ./cmd/lyx/` confirms
+it. The sandbox guard passes only because cards 7–9 removed every bare-PATH `lyx` lookup outside
+`resolve.go`. All tests remain Tier-1 pure (seams, temp dirs, file scans).

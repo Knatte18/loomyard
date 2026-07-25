@@ -70,6 +70,7 @@ Batch-local decision: `devbin` exposes `RepoRoot() (string, error)`, `Dir() (str
 
 - **Context:**
   - `go.mod`
+  - `tools/internal/devbin/devbin.go`
 - **Edits:**
   - `tools/deploy/main.go`
 - **Creates:** none
@@ -91,6 +92,7 @@ Batch-local decision: `devbin` exposes `RepoRoot() (string, error)`, `Dir() (str
 
 - **Context:**
   - `tools/deploy/main.go`
+  - `tools/internal/devbin/devbin.go`
 - **Edits:** none
 - **Creates:**
   - `tools/deploy/main_test.go`
