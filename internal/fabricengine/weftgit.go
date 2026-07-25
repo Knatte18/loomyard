@@ -30,13 +30,86 @@ const (
 )
 
 // ensureWeftLockDir creates (idempotently) the .weft lock directory inside
-// the weft worktree and returns its path.
+// the weft worktree and returns its path. It also seeds the weft repo's
+// git-exclude entries for fabric's own lock artifacts (see
+// seedWeftArtifactExcludes): this is the choke point every lock-creating weft
+// verb passes through before any lock file exists, so excluding here
+// guarantees the artifacts never surface as untracked dirt.
 func (f *Fabric) ensureWeftLockDir() (string, error) {
 	dir := filepath.Join(f.weftPath, weftLockDirName)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", fmt.Errorf("fabricengine: mkdir weft lock dir: %w", err)
 	}
+	if err := seedWeftArtifactExcludes(f.weftPath); err != nil {
+		return "", err
+	}
 	return dir, nil
+}
+
+// seedWeftArtifactExcludes appends fabric's own operational artifacts — the
+// .weft/ lock directory and gitrepo's push lock file — to the weft repo's
+// .git/info/exclude, line-exact idempotent (the same discipline as
+// seedGitExclude). Without this, every weft worktree that has ever run a
+// weft-git verb reports the artifacts as untracked dirt forever: Remove's
+// no-force dirty gate then refuses with a "run lyx fabric sync" hint that a
+// pathspec-scoped sync can never satisfy. The exclude file lives in the
+// repo's common gitdir, so one seeding covers every linked weft worktree,
+// and — because excludes are evaluated at status time — it also heals
+// worktrees already carrying the lock files.
+func seedWeftArtifactExcludes(weftPath string) error {
+	stdout, stderr, exitCode, err := gitexec.RunGit(
+		[]string{"rev-parse", "--git-path", "info/exclude"},
+		weftPath,
+	)
+	if err != nil {
+		return fmt.Errorf("fabricengine: resolve weft git exclude path: %w", err)
+	}
+	if exitCode != 0 {
+		return fmt.Errorf("fabricengine: git rev-parse --git-path info/exclude in %s: %s", weftPath, stderr)
+	}
+
+	excludePath := strings.TrimSpace(stdout)
+	if !filepath.IsAbs(excludePath) {
+		excludePath = filepath.Join(weftPath, excludePath)
+	}
+	if err := os.MkdirAll(filepath.Dir(excludePath), 0o755); err != nil {
+		return fmt.Errorf("fabricengine: mkdir weft exclude dir: %w", err)
+	}
+
+	content, err := os.ReadFile(excludePath)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("fabricengine: read weft exclude file: %w", err)
+	}
+	contentStr := string(content)
+
+	// The trailing slash on the lock-dir entry scopes it to the directory,
+	// matching gitignore semantics; the push lock is a single file at the
+	// worktree root, named via gitrepo's exported constant so the literal has
+	// exactly one owner.
+	for _, entry := range []string{weftLockDirName + "/", gitrepo.PushLockFileName} {
+		present := false
+		for _, line := range strings.Split(contentStr, "\n") {
+			if strings.TrimSpace(line) == entry {
+				present = true
+				break
+			}
+		}
+		if present {
+			continue
+		}
+		if contentStr != "" && !strings.HasSuffix(contentStr, "\n") {
+			contentStr += "\n"
+		}
+		contentStr += entry + "\n"
+	}
+
+	if string(content) == contentStr {
+		return nil
+	}
+	if err := os.WriteFile(excludePath, []byte(contentStr), 0o644); err != nil {
+		return fmt.Errorf("fabricengine: write weft exclude file: %w", err)
+	}
+	return nil
 }
 
 // StatusWeft returns a content-sync status report for the weft worktree,
