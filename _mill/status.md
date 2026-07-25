@@ -57,7 +57,9 @@ batches:
     start_sha: 6d7b6a83279cc566eb5be6bf2964b5ce135097d1
     commit_sha: 794323cee498f70e5aae084845eb788ed6a84e0d
   - name: webster-mechanism-helpers
-    state: pending
+    state: running
+    implementer_session: 6b4d5dc8-4f87-45a7-81dc-89fb60dc717b
+    start_sha: f4eaa0a420fd0dbefbb48131a1d403ed0af655a3
   - name: webster-report-digest
     state: pending
   - name: engine-retarget
