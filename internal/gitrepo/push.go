@@ -14,12 +14,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 )
 
-// pushLockFile is the pinned, repo-agnostic name of the single-pusher lock
+// PushLockFileName is the pinned, repo-agnostic name of the single-pusher lock
 // file PushCoalesced acquires in the repo's worktree root (discussion.md's
 // "Lock ownership" decision). gitrepo manages no .gitignore entry for it:
 // StageAndCommit only ever stages an explicit file list, so this lock file
-// is never staged or committed regardless of whether a caller ignores it.
-const pushLockFile = ".gitrepo-push.lock"
+// is never staged or committed regardless of whether a caller ignores it. It
+// is exported so a consumer whose own verbs gate on worktree cleanliness
+// (fabric's remove dirty gate) can git-exclude the artifact instead of
+// hardcoding the literal.
+const PushLockFileName = ".gitrepo-push.lock"
 
 // rebaseRetryTriggers are the git-push stderr substrings that mean the
 // remote has commits this checkout lacks — a recoverable rejection, not a
@@ -129,7 +132,7 @@ func containsAny(s string, substrs []string) bool {
 // invalidation caveat: re-read CurrentSHA after a successful call before
 // recording any pre-call SHA (see Push).
 func (r *Repo) PushCoalesced() error {
-	l, err := lock.AcquireWriteLock(filepath.Join(r.path, pushLockFile))
+	l, err := lock.AcquireWriteLock(filepath.Join(r.path, PushLockFileName))
 	if err != nil {
 		return fmt.Errorf("gitrepo: acquire push lock: %w", err)
 	}

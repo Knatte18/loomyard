@@ -1,0 +1,2 @@
+branch_prefix: ${env:LYX_BRANCH_PREFIX:-}  # prefix prepended to the slug to form the branch name (e.g. "hanf/"); empty = branch == slug
+pathspec: _lyx  # directory path(s) relative to worktree root, whitespace-separated; _lyx is the default

@@ -1,8 +1,15 @@
 # fabric — unifying `warp` + `weft` into one git-coordination module
 
-> **Status: Design — not built.** Per the [documentation
-> lifecycle](../../docs/overview.md#documentation-lifecycle), when this lands the durable
-> design rationale folds into `internal/fabricengine`'s package doc and this file is deleted.
+> **Status: Parallel build — done.** `fabric` is built and registered alongside `warp`/`weft`
+> (`internal/fabricengine` + `internal/fabriccli`, `lyx fabric
+> clone|add|list|remove|checkout|pairs|reconcile|prune|cleanup|status|commit|push|pull|sync`),
+> validated by differential back-to-back integration tests against `warp`/`weft` on the same
+> fixture. Only the cutover task remains — rewiring consumers (`initengine`, `loomengine`,
+> `buildercli`, `webstercli`, `perchcli`, `configcli`) onto `fabric` and deleting `warp`/`weft`.
+> The durable design rationale below now also lives in
+> [`internal/fabricengine`'s package doc](../../internal/fabricengine/doc.go); per the
+> [documentation lifecycle](../../docs/overview.md#documentation-lifecycle), this file is
+> deleted at cutover, once the package doc is the sole remaining source of the rationale.
 >
 > **Scope, stated plainly up front:** `fabric` is a full, no-remainder replacement for both
 > shipped modules `warp` and `weft` — everything either module does today moves into `fabric`.
@@ -46,35 +53,49 @@ below), `warp`/`weft` will simultaneously mean (a) the two `gitrepo.Repo` instan
 instances of it and adds the cross-repo coordination `gitrepo` deliberately doesn't know about.
 
 ```go
-package fabric
+package fabricengine
 
-type Trunk struct {
+// Fabric is the per-pair cross-repo coordination handle — the shipped name for
+// what this doc originally sketched as Trunk.
+type Fabric struct {
     Warp *gitrepo.Repo
     Weft *gitrepo.Repo
 }
 
-func New(warpPath, weftPath string) (*Trunk, error)
+func New(warpPath, weftPath string) (*Fabric, error)
 
 // The only operations that genuinely need cross-repo coordination get their
 // own method. Everything else is used directly via the .Warp/.Weft fields —
 // no forwarding-method-per-operation boilerplate.
 
-func (t *Trunk) SyncWeft(msg string, files []string) error {
+func (f *Fabric) SyncWeft(msg string, pathspec []string, opts SyncOptions) (SyncResult, error) {
     // stages+commits+pushes weft with a "Warp-SHA: <sha>" trailer recording
     // which warp SHA this weft commit corresponds to
 }
 
-func (t *Trunk) RevertWithWeft(warpSHA string) error {
+func (f *Fabric) RevertWithWeft(warpSHA string) (RevertResult, error) {
     // 1. reset Warp to warpSHA
-    // 2. look up the corresponding Weft SHA (via the trailer index)
+    // 2. look up the corresponding Weft SHA (via the correspondence index)
     // 3. reset Weft to that point
 }
+
+// Topology is the shipped, hub-scoped counterpart: it holds only the Config
+// needed to create/remove/reconcile pairs (add/remove/checkout/reconcile/
+// status/prune/cleanup/list) — a pair does not exist yet when Topology.Add
+// runs, so Topology cannot hold a *Fabric. See internal/fabricengine/topology.go.
+type Topology struct {
+    // cfg Config (unexported)
+}
+
+func NewTopology(cfg Config) *Topology
 ```
 
 Usage pattern: `fabric.Warp.StageAndCommit(...)` / `fabric.Weft.ChangedFilesSince(...)` for
 anything repo-specific and uncoordinated; `fabric.SyncWeft(...)` / `fabric.RevertWithWeft(...)`
-for the two operations that genuinely cross both repos. One consistent entry point — a
-consumer never has to reason about which module to import for a given operation.
+for the two operations that genuinely cross both repos; `topology.Add(...)` /
+`topology.Checkout(...)` / etc. for the hub-scoped pair-lifecycle operations. One consistent
+entry point per concern — a consumer never has to reason about which module to import for a
+given operation.
 
 ## Weft ↔ warp SHA correspondence
 
@@ -105,6 +126,14 @@ RebuildIndex() error                                   // full trailer scan, rec
 A sorted index makes "nearest older" cheap (binary search) instead of a sequential log scan.
 The index can always be proven correct against the trailers (source of truth) via
 `RebuildIndex()` — same self-correcting principle as `SnapshotSHA`.
+
+The cache file is per-*worktree* while the trailer scan is per-*branch*, so a coordinated
+`checkout` refreshes the pair's index (discard + rebuild from the newly-current weft
+branch's trailers). Without that refresh, entries recorded on the previous branch keep
+passing the `SHAExists` staleness check — their commits still exist on the other branch's
+refs — and lookups could serve weft SHAs the current branch's trailer history would never
+produce. See `internal/fabricengine/checkout.go` (step 7) and `refreshCorrIndexAfterSwitch`
+in `internal/fabricengine/index.go`.
 
 ## History-rewrite safety
 
@@ -173,16 +202,25 @@ ordinary git repos underneath.
    modules — not incremental. Safer given how tightly the two old modules are coupled to how git
    state is currently read across the codebase.
 
-## Open questions
+## Open questions (resolved)
 
-- Push timing policy (after every commit / every N commits / end of plan only) — a
-  webster/raddle-level policy decision, deliberately not opinionated by `fabric` itself.
-- Whether `SHAExists`-based staleness detection should trigger an automatic recovery action, or
-  just surface a clear error for a human/Master to handle.
-- `RevertWithWeft`'s exact behavior when `warp` is reverted to a SHA `weft` never actually
-  generated from (no exact correspondence exists) — needs to consciously pick "nearest older" and
-  flag `weft`/raddle as stale for the resulting gap, rather than silently treating the
-  correspondence as exact.
+- **Push timing policy** — resolved: left to callers. `fabric` provides the primitives
+  (`CommitWeft`, `PushWeft`, `PullWeft`) uncombined; each CLI verb composes them as it
+  needs (`commit` alone never pushes, `push` commits-then-pushes synchronously, `sync`
+  commits-then-spawns a detached push child). `fabric` itself stays unopinionated about
+  cadence — a webster/raddle-level policy decision, not `fabric`'s to make.
+- **Automatic recovery vs. surfaced error on staleness** — resolved: surfaced typed error,
+  never automatic recovery. A stale SHA that survives an index rebuild (history rewrite)
+  returns the wrapped `ErrStaleSHA` typed error; the index is derived state that
+  self-corrects via `RebuildIndex()`, but a genuinely stale SHA is reported, not silently
+  retried into a different action. See `internal/fabricengine/index.go` and
+  `internal/fabricengine/revert.go`.
+- **`RevertWithWeft`'s nearest-older behavior** — resolved: implemented as specified.
+  `RevertWithWeft` resolves an exact correspondence when one exists; otherwise it falls
+  back to the nearest at-or-before entry and reports the gap explicitly in
+  `RevertResult.GapFrom`/`GapTo` (`Exact: false`) so a caller (raddle, a human) can flag
+  the resulting range as potentially stale in weft, rather than silently treating the
+  correspondence as exact. See `internal/fabricengine/revert.go`.
 
 ## Related
 

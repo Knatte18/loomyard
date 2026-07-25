@@ -13,9 +13,11 @@ Committed to, in this order, next.
 1. **fabric** — replaces `warp` and `weft` in full: all topology (clone, dual-worktree add/remove,
    coordinated checkout, reconcile, prune, cleanup, branch naming — including enforcing
    `<slug>-weft` uniformly, no exceptions) and all git mechanics into the paired weft repo, unified
-   into one module built on `gitrepo`. Built alongside the existing `warp`/`weft` code first as a
-   reference fixture, then one coordinated cutover deletes the old modules. See
-   [designs/fabric.md](designs/fabric.md).
+   into one module built on `gitrepo`. **Parallel build landed**: `fabric` (`internal/fabricengine`
+   + `internal/fabriccli`) is built and registered alongside the existing `warp`/`weft` code,
+   validated by differential tests against them as the reference fixture. Only the cutover
+   remains — one coordinated pass that rewires consumers onto `fabric` and deletes the old
+   modules. See [designs/fabric.md](designs/fabric.md).
 
 1. **webster: rewrite for flat card list** — fork-per-card unchanged; no DAG/SCC in v0 (a dead
    `HasSymbolFields()` scheduler branch is reserved for later); integration suite runs as one final
@@ -106,6 +108,14 @@ between these items.
    embeddings + temporal decay), to find code by concept rather than literal keyword. The
    "deferred idea" `codeintel-redesign.md` already refers to. Genuinely speculative, not yet
    designed in depth. See [designs/semantic-index.md](designs/semantic-index.md).
+
+1. **self-report: two-tier friction capture** — loom's per-phase file-contract design means no
+   single LLM session has full-run context the way Millhouse's self-report assumes. Splits into
+   Go-detected structural anomalies (crash-resumes, stuck escalations, repeated review rounds — off
+   loom's own status/history, no LLM needed) plus a narrow per-phase friction note any spawned agent
+   may write about its own scoped task, aggregated by Go and fed to one dedicated reflection agent
+   at natural end points (Finalize/stuck) — mirroring the `Raddle` pattern. See
+   [designs/self-report.md](designs/self-report.md).
 
 1. **`PATTERN.md`** — a loomyard-owned equivalent of Millhouse's `CONSTRAINTS.md`, written from
    scratch (not a port) once loomyard starts dogfooding its own development onto `loom`. Format:
