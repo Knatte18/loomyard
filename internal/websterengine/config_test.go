@@ -139,6 +139,7 @@ func TestLoadConfig_BadRoleGrammarNamesTheKey(t *testing.T) {
 	// a spec string.
 	badRole := `master: sonnet
 recovery: "opus "
+batcher: identity
 self_fix_cap: 2
 master_timeout_min: 480
 recovery_timeout_min: 60

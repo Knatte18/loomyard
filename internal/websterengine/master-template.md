@@ -234,8 +234,7 @@ it.
 
 `{{.summary_path}}` is a prose narrative built strictly from the minimal reports and
 digests you actually read — never a fork's own success narrative (forks never write
-prose narratives; their whole report is `status`/`head_sha`/`deviations`). First line
-`# <title>`, then a narrative of what was actually built, including any reported
+prose narratives; their whole report is `status`/`head_sha`/`deviations`); first line `# <title>`, then a narrative of what was actually built, including any reported
 deviations from the plan's declared file-ops — required whenever `outcome: done`.
 
 ## Tuning knobs

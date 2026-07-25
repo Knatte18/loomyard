@@ -138,9 +138,12 @@ func masterTemplateMarkerValues() map[string]string {
 
 // forkTemplateMarkerValues returns a values map with every one of
 // ForkTemplate's six required top-level markers set to a non-empty
-// placeholder, mirroring masterTemplateMarkerValues. rename_mechanic is
-// deliberately absent — it is the one branch-internal marker, only ever
-// reached inside the template's own {{if .rename_mechanic}} block.
+// placeholder, mirroring masterTemplateMarkerValues, plus rename_mechanic
+// set to the empty string: the one branch-internal marker, reached only
+// inside the template's own {{if .rename_mechanic}} block — present (so the
+// condition itself evaluates cleanly under stencil's missingkey=error) but
+// empty (so the branch is not taken), exactly RenderForkPrompt's own
+// non-Moves-batch behavior.
 func forkTemplateMarkerValues() map[string]string {
 	return map[string]string{
 		"cards":            "### Card 2 — list-tests\n\n**What:** add tests\n**Context:** none\n**Edits:**\n- `list_test.go`\n**Creates:** none\n**Deletes:** none\n**Moves:** none",
@@ -149,6 +152,7 @@ func forkTemplateMarkerValues() map[string]string {
 		"worktree_root":    "/worktree",
 		"prev_digest":      "01-json-flag: done head_sha=abc123",
 		"shared_decisions": "none",
+		"rename_mechanic":  "",
 	}
 }
 
