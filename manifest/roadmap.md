@@ -17,6 +17,13 @@ Committed to, in this order, next.
    stores data; this one only changes *how* it talks to git). See
    [designs/board-use-gitrepo.md](designs/board-use-gitrepo.md).
 
+1. **git-native-library: feasibility spike** — narrow, scoped exploration of swapping
+   `internal/gitexec`'s shell-out plumbing for a native Go git library (e.g. `go-git`), limited to
+   the read-only surface `gitrepo` uses (`rev-parse`, `diff --name-only`, ref reads). Output is a
+   go/no-go decision, not a migration — prompted by real parse-git's-stderr-as-an-API bugs
+   `gitrepo`'s crucible hardening surfaced. Depends only on `gitrepo`; non-blocking for any other
+   Planned item. See [designs/git-native-library.md](designs/git-native-library.md).
+
 1. **fabric** — replaces `warp` and `weft` in full: all topology (clone, dual-worktree add/remove,
    coordinated checkout, reconcile, prune, cleanup, branch naming — including enforcing
    `<slug>-weft` uniformly, no exceptions) and all git mechanics into the paired weft repo, unified
@@ -135,10 +142,6 @@ between these items.
    short two-line entries (constraint + pointer), full rule/rationale/enforcement detail in a
    linked per-topic doc. Millhouse's own `CONSTRAINTS.md` stays untouched for as long as Millhouse
    develops loomyard.
-
-1. **git-native-library** — evaluate a native Go git library (e.g. `go-git`) in place of shelling
-   out via `internal/gitexec`. Genuinely speculative, not yet scoped. See
-   [designs/git-native-library.md](designs/git-native-library.md).
 
 ## Done
 

@@ -1,12 +1,27 @@
-# git-native-library — evaluate a native Go git library instead of shelling out via `gitexec`
+# git-native-library — feasibility spike for a native Go git library instead of `gitexec`
 
-> **Status: Speculative, not scoped.** Prompted by `internal/gitrepo`'s crucible hardening (four
-> review rounds, 2026-07), which found real bugs in the class of "parse git's human-readable
-> stderr as a de-facto API." Not yet a plan — this file exists to hold the reasoning so it isn't
-> re-litigated from scratch later. Per the
-> [documentation lifecycle](../../docs/overview.md#documentation-lifecycle), if this is ever
-> picked up the durable parts fold into the owning package's doc when it lands; if abandoned,
-> this file is simply deleted.
+> **Status: Design — not built. Planned as a feasibility spike, not a migration commitment.**
+> Prompted by `internal/gitrepo`'s crucible hardening (four review rounds, 2026-07), which found
+> real bugs in the class of "parse git's human-readable stderr as a de-facto API." Per the
+> [documentation lifecycle](../../docs/overview.md#documentation-lifecycle), if the spike leads
+> to adoption the durable parts fold into the owning package's doc when that lands; if it doesn't,
+> this file is simply deleted and the answer (with why) lives in the spike's own write-up instead.
+
+## Scope: a feasibility spike, not a migration
+
+This task's job is to **answer whether this would actually work**, not to perform the swap. Scope
+is deliberately narrow, per the Recommendation below:
+
+- Limited to the read-only subset `gitrepo` itself uses today: `rev-parse`, `diff --name-only`,
+  ref reads. Not `gitexec`'s other ~80 call-sites, not write operations, not `gitrepo`'s public
+  API.
+- Output is a **go/no-go decision plus a short write-up** of what worked and what didn't (e.g.
+  does the chosen library's rebase support actually cover `gitrepo.Push`'s retry path; do hooks
+  used anywhere in the repo's own git flows get bypassed) — not a migration PR, not a change to
+  any consumer of `gitrepo`.
+- Explicit non-goal for this task: do not touch `internal/gitexec` or any of its ~80 existing
+  call-sites. A positive result here is a *proposal* to migrate, evaluated as its own separate,
+  later decision — not something this spike commits to by having been run.
 
 ## The problem this responds to
 
@@ -58,9 +73,7 @@ inherent to the *problem*, not to how the client talks to git:
   crucible harness itself exercised a real `pre-receive` hook in one probe), credential helpers,
   includes/gitattributes, and large-repo performance characteristics.
 
-## Recommendation if this is ever picked up
+## Related
 
-Scope it as its own evaluation — likely starting with a narrow subset of `gitexec`'s surface
-(e.g. just the read-only plumbing `gitrepo` uses: `rev-parse`, `diff --name-only`, ref reads) —
-rather than a wholesale swap. Do not fold this into any single module's hardening pass; it is a
-cross-cutting backend decision, not a bugfix.
+- [`internal/gitrepo`](../../internal/gitrepo/doc.go) — the module whose crucible hardening
+  surfaced the bug class this spike investigates a fix for.
