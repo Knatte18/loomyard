@@ -1,15 +1,16 @@
 // pause.go implements the `pause` webster verb: it writes the pause flag
 // file begin-batch's batch-boundary check refuses against once set, mirroring
 // buildercli's own pause.go byte-for-byte except for the target dir and the
-// resume verb it names. webster reuses builder's own pause-flag mechanics by
-// import (builderengine.RequestPause), per the reuse-by-import-never-copy
-// decision -- there is no websterengine.RequestPause of its own.
+// resume verb it names. webster owns its own pause-flag mechanics
+// (websterengine.RequestPause, a webster-local copy of builder's
+// pause.go -- builder's own version has an in-tree builder caller and
+// cannot be moved, per the builder-is-frozen-copy-not-move decision).
 package webstercli
 
 import (
-	"github.com/Knatte18/loomyard/internal/builderengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/websterengine"
 	"github.com/spf13/cobra"
 )
 
@@ -33,7 +34,7 @@ Example:
 				return nil
 			}
 
-			if err := builderengine.RequestPause(c.websterDir); err != nil {
+			if err := websterengine.RequestPause(c.websterDir); err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
