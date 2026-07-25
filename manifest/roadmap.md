@@ -38,6 +38,15 @@ Committed to, in this order, next.
 1. **loom: Finalize phase** — merge-back after Builder-review approval; Go-first, LLM only on
    merge conflict; optional PR creation. See [designs/loom-finalize.md](designs/loom-finalize.md).
 
+1. **native clients: migrate `gitrepo` to `go-git` (ADOPT-PARTIAL) + `selfreportengine` to
+   `go-github`** — executes the `git-native-library` spike's finding (read surface, both commit
+   methods, and `SetSnapshotSHA` migrate cleanly; `Push`'s rebase-retry stays CLI-bound
+   permanently — go-git has no rebase) into `internal/gitrepo`, and separately replaces
+   `selfreportengine`'s `gh`-CLI shell-out with `google/go-github` for the same "stop parsing CLI
+   output as an API" reason, on a much smaller, already-stable surface (no spike needed). One
+   task, since both are the same underlying cleanup. See
+   [designs/native-clients-migration.md](designs/native-clients-migration.md).
+
 ## Someday
 
 Committed to eventually — will be done — but not scheduled next. No build order is implied
