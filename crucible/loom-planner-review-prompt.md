@@ -199,12 +199,13 @@ in these seams instead:
   something there.
 
 ## Round context seeded from prior-round verification
-You are round tag `fable-r3` — round 3 of an up-to-4-round campaign (the cap is fixed at 4; this is
-the second-to-last round), alternating Fable/Opus. Rounds 1 (`fable-r1`) and 2 (`opus-r2`) both ran,
-both found real CONFIRMED-live findings, both were independently re-verified by the orchestrator from
-a cold state (hermetic gates green, revert-and-confirm-fail proofs reproduced for every MEDIUM+
-finding with a string-content test, teardown/report claims spot-checked against actual on-disk
-state). Do NOT re-open this CLOSED-AND-VERIFIED work — it holds:
+You are round tag `opus-r4` — round 4 of 4, the LAST round of this campaign (the cap is fixed at 4,
+no further rounds after this one regardless of what you find), alternating Fable/Opus. Rounds 1
+(`fable-r1`), 2 (`opus-r2`), and 3 (`fable-r3`) all ran, each found real CONFIRMED-live findings, each
+was independently re-verified by the orchestrator from a cold state (hermetic gates green,
+revert-and-confirm-fail proofs reproduced for every finding pinned by a string-content test,
+teardown/report claims spot-checked against actual on-disk/process state). Do NOT re-open this
+CLOSED-AND-VERIFIED work — it holds:
 
 - **T1 (MEDIUM, confirmed live, two iterations)** — `plan-template.md` never said what a card is; a
   live run produced a new-behavior card with no bundled test. Fixed `2eda08cb` with a "What a card
@@ -245,35 +246,51 @@ state). Do NOT re-open this CLOSED-AND-VERIFIED work — it holds:
   round 2's own two post-fix live re-drives both came back clean.
 - **R1 (NIT)** — the orphaned `PlanOverview` doc-comment line wrap (seeded for round 2) was reflowed.
   Fixed `37412dc3`.
+- **N1 (LOW, confirmed live)** — round 3 found that `plan-template.md` pinned `Depends-on:`'s grammar
+  but never said WHEN an edge is required: a live docs-only run produced a card whose `Context:` named
+  a file an earlier card `Creates:`, yet declared `Depends-on: none` — an under-declared DAG-of-intent
+  edge no mechanical plan-format-v3 check can catch. Fixed `ace2639d`: a new paragraph states
+  `Depends-on:` records intent (what depends on what, not just compile order), including
+  non-compile-visible reliance such as a `Context:` reference to an earlier card's output. Pinned by
+  `TestPlanSpec_PromptStatesDependsOnCriterion`; orchestrator reproduced the revert-and-confirm-fail
+  proof (removing the paragraph fails all 3 assertions; restored, diff empty).
 
 Process notes (not module defects, recorded so you don't need to rediscover them):
 - Round 1's session was interrupted before finishing its final live re-drive and before tearing down
-  its throwaway substrate; the orchestrator had to independently reproduce that run's result and clean
-  up a leaked tmux server + a stray untracked file. Round 2, explicitly warned about this, actually did
-  finish and tear down cleanly — the orchestrator confirmed zero stray tmux processes and a clean `git
-  status` after round 2. Keep matching round 2's discipline: finish every live run you start and tear
-  down before you write your final summary, not as an unreached last step.
+  its throwaway substrate; the orchestrator cleaned up a leaked tmux server + a stray untracked file.
+  Round 2 finished and tore down cleanly on its own. The FIRST attempt at round 3 was interrupted much
+  earlier — before writing any review report or making any commit at all — and left another stray tmux
+  server plus stray scratch dirs (including some the orchestrator had missed after round 1); the
+  orchestrator treated that attempt as void (nothing durable existed to build on) and respawned round 3
+  fresh under the same tag. The respawned `fable-r3` completed cleanly: one real finding (N1), fixed,
+  tested, live-reconfirmed, and it also swept up the leftover scratch debris from the earlier crashed
+  attempts. Takeaway for you: sessions in this campaign have twice been interrupted mid-live-drive
+  without warning — if that happens to you, whatever you've already COMMITTED is safe (that's the whole
+  point of committing per fix), but a review or fix that exists only in your head or an unsaved report
+  is not. Save the review report to disk (per the Sequencing rule) as early as truly possible, and don't
+  let a single long live run be the only thing standing between "nothing recorded" and "some progress
+  recorded" for an extended stretch.
 - Round 2 independently re-verified round 1's `PlanDir`/builder-consumer non-regression concern (H2
   from round 1's own review, never a finding) and confirmed builder/webster's pre-existing free-function
-  call sites are untouched. You do not need to re-verify this a third time unless you have a specific
-  new reason to suspect it.
+  call sites are untouched. Round 3 re-confirmed P1 (the intermittent rename/Edits overlap) stays fixed
+  on a fresh live re-drive, plus re-confirmed T1–T5, H1, C1 all still hold with no regressions. You do
+  not need to re-verify any of this a fourth time unless you have a specific new reason to suspect it.
 
-There is nothing further seeded as a residual — rounds 1 and 2 both closed everything they found, and
-the orchestrator's own independent pass after round 2 found no additional defect beyond what round 2
-itself already caught and fixed (P1, R1 above).
+There is nothing further seeded as a residual — round 3 closed the one thing it found (N1), and the
+orchestrator's own independent pass after round 3 found no additional defect.
 
-Do a genuinely independent clean-room pass: read the code and docs yourself (including all
-CLOSED-AND-VERIFIED commits above, to confirm no regression — in particular re-drive at least one
-rename-plus-extraction plan for real to confirm P1 stays fixed, since it was intermittent and a single
-clean drive is not strong evidence), then drive live runs of scenarios neither prior round tried (a
-deliberately AMBIGUOUS-but-present decision record where the agent must make a best-judgment call
-without `AskUserQuestion`; a decision record whose scope implies zero code changes, e.g. a pure
-documentation task; a plan that would naturally want MORE than one card with real `Depends-on:`
-chaining) before consulting prior rounds' `.scratch/` material. Because this is round 3 of a
-hard-capped 4, treat this explicitly as a bid for a genuine SAFETY PASS: if you find nothing beyond
-what's already fixed, say so honestly — "no new defects" is a fully legitimate, valuable outcome here,
-not a failure to try hard enough. If you do find something real, fix it as thoroughly as rounds 1–2
-did; round 4 (the final round) will re-verify whatever you close.
+This is the LAST round. Do a genuinely independent clean-room pass: read the code and docs yourself
+(including all CLOSED-AND-VERIFIED commits above, to confirm no regression), then drive several live
+runs of your own devising — both a re-drive of at least one scenario each prior round already covered
+(to build real confidence nothing has silently regressed across the whole 8-fix history) and, if you
+can think of one, a genuinely new scenario none of rounds 1–3 tried. Three consecutive real, live-driven
+rounds each turned up at least one genuine defect (7, then 2, then 1 — a shrinking but still nonzero
+trend) — that pattern is exactly why this campaign is not stopping at round 3, and it means you should
+NOT assume the well is dry. At the same time, do not manufacture a finding just because rounds 1–3 each
+had one: since this is hard-capped at 4 rounds with no round 5, your job is to find what's really
+there, whether that's one more real defect or genuinely nothing. Give your own honest, explicit
+merge-readiness opinion either way — the orchestrator will independently verify it exactly as it did
+rounds 1–3, and that verification (not your self-report) is what actually decides convergence.
 
 State the merge bar so you calibrate: this is a small, low-concurrency, single-shot producer — there
 is no meaningful "N× concurrent" stress dimension the way a stateful CLI verb has (nothing here holds
@@ -283,7 +300,9 @@ a real agent given the composed prompt reliably produces a correct, spec-conform
 output across multiple independently-driven live runs (not just one lucky pass). **Before you end your
 session, actually finish and record the result of every live run you start, and actually tear down
 your throwaway substrate (`lyx mux down`, kill the tmux server, delete the throwaway hub dir and any
-throwaway test files) — do not leave a run's outcome unrecorded.**
+throwaway test files) — do not leave a run's outcome unrecorded. If your session risks being cut short,
+prioritize getting your review report SAVED TO DISK and any completed fix COMMITTED over starting one
+more live run — partial, recorded progress beats an unrecorded one in flight.**
 
 ## What to TEST — do not just read, EXERCISE it
 Report the exact commands you ran and what you observed.
