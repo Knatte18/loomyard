@@ -205,8 +205,10 @@ Every registered lyx module must be exercised by the black-box sandbox suite or 
 explicitly excluded with a reason.
 
 - **Tagging.** A scenario in **any** suite file matching
-  `tools/sandbox/*SUITE.md` (today: `SANDBOX-CORE-SUITE.md`,
-  `SANDBOX-MUX-SUITE.md`) that drives a specific module declares it with a
+  `tools/sandbox/*SUITE.md` (today: `SANDBOX-BUILDER-SUITE.md`,
+  `SANDBOX-BURLER-SUITE.md`, `SANDBOX-CORE-SUITE.md`, `SANDBOX-FABRIC-SUITE.md`,
+  `SANDBOX-MUX-SUITE.md`, `SANDBOX-PERCH-SUITE.md`, `SANDBOX-SHUTTLE-SUITE.md`,
+  `SANDBOX-WEBSTER-SUITE.md`) that drives a specific module declares it with a
   `**Covers:** <module>[, <module>...]` line, in the same bold-label style as the
   scenario's `**Goal:**`/`**Watch:**`/`**Verdict:**` lines. The guard unions tags
   across all matched files. Coverage is checked at module granularity against the
