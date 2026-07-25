@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r1
+phase: plan-fix-r2
 slug: git-native-library
 branch: git-native-library
 plan: _mill/plan
@@ -20,4 +20,5 @@ discussed  '2026-07-25T12:50:52Z'
 planning  '2026-07-25T13:00:33Z'
 plan-review-r1  '2026-07-25T13:05:12Z'
 plan-fix-r1  '2026-07-25T13:05:12Z'
+plan-fix-r2  '2026-07-25T13:08:17Z'
 ```

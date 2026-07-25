@@ -3,7 +3,7 @@
 ```yaml
 task: 'git-native-library: feasibility spike'
 slug: git-native-library
-approved: false
+approved: true
 started: '20260725-125659'
 parent: main
 root: ""

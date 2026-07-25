@@ -52,12 +52,16 @@ carry the `//go:build integration` tag and live in `package gitnativepoc`.
   real commit returns the new HEAD SHA with `committed=true`. In `write_test.go`,
   add differential tests against `gitrepo.Repo` using `newRepoFixture`: real
   commit SHA parity, nothing-to-commit parity, empty-list no-op parity, and the
-  scoped-commit-leaves-other-staged-entries case. Note: go-git commits require an
-  explicit author signature — because `TestMain` runs under
-  `lyxtest.HermeticGitEnv()` the neutral `user.name`/`user.email` are available;
-  read them via go-git config or set an explicit signature in the poc so the
-  commit path does not diverge purely on identity. Record MIGRATE/CLI-BOUND per
-  op.
+  scoped-commit-leaves-other-staged-entries case. Identity: go-git commits
+  require an explicit author signature, and go-git v5 does **not** honor
+  `GIT_CONFIG_GLOBAL`/`GIT_CONFIG_NOSYSTEM` (it resolves global config from
+  `$HOME`/XDG), so `lyxtest.HermeticGitEnv()`'s neutral identity is invisible to
+  go-git — reading identity "via go-git config" would either find nothing or leak
+  the operator's real `~/.gitconfig` (non-hermetic). The poc MUST therefore pass
+  an explicit `object.Signature` (a fixed test identity, e.g. name `Test` / email
+  `test@test.com` mirroring the hermetic neutral config) on `Worktree.Commit`;
+  do not rely on go-git reading committer identity from config. Record
+  MIGRATE/CLI-BOUND per op.
 - **Commit:** `feat(gitnativepoc): StageAndCommit + StageAllAndCommit over go-git with parity tests`
 
 ### Card 9: Push + rebase-retry over go-git (pivotal CLI-BOUND probe)
