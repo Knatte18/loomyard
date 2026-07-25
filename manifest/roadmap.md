@@ -25,11 +25,6 @@ Committed to, in this order, next.
    reference fixture, then one coordinated cutover deletes the old modules. See
    [designs/fabric.md](designs/fabric.md).
 
-1. **webster: rewrite for flat card list** — fork-per-card unchanged; no DAG/SCC in v0 (a dead
-   `HasSymbolFields()` scheduler branch is reserved for later); integration suite runs as one final
-   fork with SHA-bisect on failure. `builder` becomes obsolete as a plan-format consumer. See
-   [designs/webster-rewrite.md](designs/webster-rewrite.md).
-
 1. **board: move storage to `weft:main`** — replaces board's own separate remote repo with a
    reserved `weft:main` branch (README.md rendering, JSON-backed Proposals/Manifest/Tasks/Done).
    Depends on fabric's branch-naming enforcement (`<slug>-weft` uniformly). See
@@ -163,16 +158,20 @@ between these items.
 1. **perch** — the gate loop: run `burler` rounds until `APPROVED`/`STUCK`.
 
 1. **builder** — batch-implementation loop over a pinned plan (sequential, one strand per batch) —
-   superseded as an active plan-format consumer once the Planned `webster: rewrite for flat card
-   list` item ships.
+   superseded as an active plan-format consumer now that `webster`'s flat-card-list rewrite has
+   shipped; stays frozen and functional in-tree, with deletion tracked as a separate later task.
 
-1. **webster** — fork-based sibling of builder (in-session forks, one Master per plan) — rewrite
-   tracked under the Planned `webster: rewrite for flat card list` item.
+1. **webster: rewrite for flat card list** — fork-per-card unchanged; no DAG/SCC in v0 (a dead
+   `HasSymbolFields()` scheduler branch is reserved for later); consumes the flat card-list plan
+   format via `internal/planparser` (sole parser) and `internal/batcher` (config-selected
+   batchifier registry); integration suite runs as one final fork with SHA-bisect on failure.
+   `builder` becomes obsolete as a plan-format consumer. See the `internal/websterengine` package
+   documentation.
 
 1. **plan-format v3: flat card list** — a card carries
    `card`/`name`/`description`/`changes-files`/`depends-on` only; symbol fields wait for
    `codeintel`. Coexists with the still-live
-   [plan-format v2](../docs/reference/plan-format.md) until `webster`'s rewrite lands and
+   [plan-format v2](../docs/reference/plan-format.md) — still used by the frozen `builder` — until
    `builder` is deleted. See [docs/reference/plan-format-v3.md](../docs/reference/plan-format-v3.md).
 
 1. **built-in CLI help** — self-documenting `lyx`/`lyx <module>`/`lyx <module> <cmd> --help`.
