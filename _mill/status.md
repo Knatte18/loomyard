@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-webstercli-rewire
+phase: approved-docs-constraints
 slug: webster-rewrite
 branch: webster-rewrite
 plan: _mill/plan
@@ -35,6 +35,7 @@ approved-webster-report-digest  '2026-07-25T14:54:04Z'
 approved-engine-retarget  '2026-07-25T15:31:11Z'
 approved-integration-fork-bisect  '2026-07-25T15:53:33Z'
 approved-webstercli-rewire  '2026-07-25T16:14:06Z'
+approved-docs-constraints  '2026-07-25T16:21:52Z'
 ```
 
 ## Batches
@@ -87,7 +88,8 @@ batches:
     start_sha: 5e37b39ccc2dbc5b81453051f5aef64ac3305c25
     commit_sha: f22c81237cae6c64e8193d374f1dba68ba1ddd6b
   - name: docs-constraints
-    state: running
+    state: approved
     implementer_session: 4ab42279-1b1a-49e3-9142-7d15927ba390
     start_sha: 5ad363bf65d43566ebf3fff54c0513376beb02fe
+    commit_sha: c81cdabf857211019abaf18888219ce8f021a1cd
 ```
