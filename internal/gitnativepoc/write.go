@@ -110,18 +110,27 @@ func (r *Repo) StageAndCommit(msg string, files []string) (sha string, committed
 	// never leave the checkout's staged state reflecting our synthetic
 	// HEAD-plus-scoped-files snapshot instead of what the caller actually
 	// staged.
-	if restoreErr := r.repo.Storer.SetIndex(realIndex); restoreErr != nil {
-		return "", false, restoreErr
-	}
+	restoreErr := r.repo.Storer.SetIndex(realIndex)
 	if commitErr != nil {
 		if errors.Is(commitErr, git.ErrEmptyCommit) {
 			// buildScopedIndex's own diff already ruled this out above, so in
 			// practice this path is a safety net rather than the common
 			// case; it stays semantically identical to the changed=false
 			// return above.
-			return "", false, nil
+			return "", false, restoreErr
 		}
 		return "", false, commitErr
+	}
+	if restoreErr != nil {
+		// The commit itself already landed — go-git wrote the commit object
+		// and advanced HEAD — before the index restore failed, so the
+		// documented (sha, committed=true) contract for a real commit still
+		// holds even though the caller's staged-but-uncommitted state may now
+		// reflect our synthetic scoped index rather than what they actually
+		// staged. Surface both: the real SHA/committed=true a caller would
+		// otherwise wrongly conclude never happened, plus the restore error
+		// so the caller knows the index needs attention.
+		return hash.String(), true, restoreErr
 	}
 
 	return hash.String(), true, nil

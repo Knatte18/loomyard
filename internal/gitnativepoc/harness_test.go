@@ -218,6 +218,13 @@ func assertParityBool(t *testing.T, poc, cli bool) {
 // differential-oracle Shared Decision calls for, since the two sides never
 // produce byte-identical error strings (one wraps git's CLI stderr, the
 // other a go-git error).
+//
+// Superseded: no batch-2/3 test calls this helper. gitnativepoc and gitrepo
+// define independent sentinel errors with no shared target to compare
+// against, so every actual error-class check in read_test.go instead uses
+// the locally-defined assertParityErrClassCrossTarget, which compares each
+// side against its own target. This helper is kept for a future shared-
+// sentinel case rather than deleted outright.
 func assertParityErrClass(t *testing.T, poc, cli error, target error) {
 	t.Helper()
 
