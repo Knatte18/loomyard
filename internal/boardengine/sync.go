@@ -9,7 +9,7 @@
 // coalesces into as few pushes as possible. A single top-level push lock
 // still serializes pushers across processes; concurrent sync processes
 // block, then exit quickly once there is nothing to do. The write path
-// launches `lyx board sync` detached (see spawn_*.go) so it never waits.
+// launches `lyx board sync` detached (see spawn.go) so it never waits.
 package boardengine
 
 import (
