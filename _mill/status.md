@@ -30,7 +30,9 @@ implementing  '2026-07-25T13:10:45Z'
 ```yaml
 batches:
   - name: poc-foundation
-    state: pending
+    state: running
+    implementer_session: 54967404-8962-4b00-8100-e78e8f401a14
+    start_sha: 349684500c602c0e929a2b351ee91a0c1b4cbd00
   - name: read-surface
     state: pending
   - name: write-surface
