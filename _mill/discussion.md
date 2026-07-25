@@ -33,10 +33,11 @@ consumers and deletes warp/weft is a later, separate task (step 2).
 - `lyx fabric` registered in `cmd/lyx` alongside `lyx warp` / `lyx weft` (flat tree,
   14 verbs — see Decisions).
 - Growing `internal/gitrepo` with the generic git mechanics it lacks: fast-forward
-  pull, lock-serialized commit, and a SHA-validated hard reset (for `RevertWithWeft`).
-  Pathspec-scoped staging already ships (`StageAndCommit` accepts an explicit pathspec
-  list, directories included); push serialization reuses the existing `PushCoalesced`
-  lock.
+  pull and a SHA-validated hard reset (for `RevertWithWeft`). Pathspec-scoped staging
+  already ships (`StageAndCommit` accepts an explicit pathspec list, directories
+  included); push serialization reuses the existing `PushCoalesced` lock; the weft
+  write lock stays at the fabric layer (an `internal/lock` flock around gitrepo calls,
+  the pattern board-use-gitrepo landed).
 - New uniform branch-naming scheme enforced by fabric: host `<slug>` ↔ weft
   `<slug>-weft`, no exceptions, primary worktree included (host `main` ↔ weft
   `main-weft`), effective from `lyx fabric clone`.
@@ -105,14 +106,20 @@ consumers and deletes warp/weft is a later, separate task (step 2).
 ### Most git mechanics grow into gitrepo
 
 - Decision: generic single-repo git operations move down into `internal/gitrepo`:
-  fast-forward pull, lock-serialized write (weftengine's `.weft/weft.write.lock`
-  equivalent, generalized), and a hard reset (`ResetHard(sha)`-style, needed by
+  fast-forward pull and a hard reset (`ResetHard(sha)`-style, needed by
   `RevertWithWeft`; the caller-supplied SHA is validated as plain hex exactly like
   `SHAExists`/`ChangedFilesSince` do). Pathspec-scoped staging is NOT a gap —
   `StageAndCommit` already stages an explicit caller-supplied pathspec list
   (directories included); fabric supplies the scoped list. Push serialization reuses
   gitrepo's existing `PushCoalesced` / `.gitrepo-push.lock` rather than porting
-  weftengine's separate push lock. fabric itself keeps only what is genuinely
+  weftengine's separate push lock. **The write lock does NOT move into gitrepo** —
+  the merged board-use-gitrepo work set the precedent: consumers serialize their own
+  writes with an `internal/lock` flock held *around* gitrepo calls (board:
+  `tasks.json.lock`/`tasks.json.push.lock` around `StageAllAndCommit`/`Push`). fabric
+  follows suit: the weft write lock (weftengine's `.weft/weft.write.lock` equivalent)
+  lives at the fabric layer around `StageAndCommit`. This supersedes the earlier
+  "lock serializes every commit path" consequence — board's wildcard path is already
+  serialized by board's own locks, and a gitrepo-level lock would double-lock it. fabric itself keeps only what is genuinely
   coordination or policy: two-repo operations (SyncWeft, RevertWithWeft, coordinated
   topology), `SkipGit`/`SkipPush` env gating (`EnvSyncOptions` equivalent), and pathspec
   configuration.
@@ -274,25 +281,24 @@ consumers and deletes warp/weft is a later, separate task (step 2).
   gap-filling implementation work.
 - Rejected: deferring loom-preflight helpers to the cutover task.
 
-### Coordination with board-use-gitrepo's concurrent gitrepo growth
+### Coordination with board-use-gitrepo — RESOLVED by merging its branch in
 
-- Decision: `board-use-gitrepo` is mid-implementation and has already committed gitrepo
-  changes on its branch (`a84b35a8` adds `StageAllAndCommit`, a wildcard-stage method,
-  plus `doc.go` rewrites). fabric's plan must therefore be written against gitrepo's
-  **real surface at plan/implementation time**: before designing the gitrepo additions
-  (pull, lock-serialized commit, reset), inspect `board-use-gitrepo`'s actual diff to
-  `internal/gitrepo` (its branch, or `main` if it has merged) and design against that
-  state. A `doc.go` merge conflict with whichever task lands second is expected — it is
-  resolved through the standard merge-in step, not by pretending the other task doesn't
-  exist. **Design consequence:** the lock-serialized write generalizes at the gitrepo
-  layer and serializes **every** commit path — `StageAndCommit` AND `StageAllAndCommit`
-  alike — never only fabric's own calls.
-- Rationale: both tasks legitimately extend the same package (they are independent
-  consumers of gitrepo by design); ignoring the concurrency guarantees a stale plan and
-  an improvised conflict resolution. Landing order stays an operator decision — neither
-  task blocks the other.
-- Rejected: sequencing the two tasks serially (operator-level call, not this task's);
-  designing fabric's additions against gitrepo's pre-board snapshot.
+- Decision: `board-use-gitrepo` completed implementation (crucible hardening still
+  running on its side), and its branch has been **merged into this task branch** at the
+  operator's direction — the concurrency concern from the ad hoc review is resolved:
+  fabric's plan is written against gitrepo's real, merged surface, and the anticipated
+  `doc.go` conflict was pre-empted. What the merge brought in: `StageAllAndCommit`
+  (wildcard `add -A` + commit — **board's opt-in exception**; gitrepo's `doc.go`
+  explicitly requires fabric, raddle, and codeintel to keep using explicit-list
+  `StageAndCommit`), rewritten push-surface docs, and boardengine rewired onto gitrepo
+  (its hand-rolled `git.go` deleted) — making boardengine gitrepo's first production
+  consumer. Any further hardening changes on that task arrive via the standard merge-in
+  of the parent branch once it lands on `main`.
+- Rationale: planning against a stale gitrepo snapshot guaranteed rework; the merge
+  makes the surface concrete. fabric must NOT use `StageAllAndCommit` — SyncWeft's
+  pathspec-scoped explicit list is exactly what `StageAndCommit` covers.
+- Rejected: planning against the pre-merge snapshot and resolving conflicts at land
+  time.
 
 ### Config: one `fabric.yaml`
 
@@ -329,9 +335,11 @@ consumers and deletes warp/weft is a later, separate task (step 2).
 
 ## Technical context
 
-- **`internal/gitrepo`** (zero production consumers today — fabric is its first):
+- **`internal/gitrepo`** (first production consumer: `boardengine`, since the merged
+  board-use-gitrepo work; fabric is its second):
   `New(path)` (no validation, no I/O), `CurrentSHA`, `StageAndCommit(msg, files) (sha,
-  committed, err)` (explicit file list, never wildcard), `ChangedFilesSince`, `SHAExists`
+  committed, err)` (explicit file list), `StageAllAndCommit(msg)` (wildcard `add -A` —
+  board's opt-in exception, off-limits to fabric per `doc.go`), `ChangedFilesSince`, `SHAExists`
   (bool-swallowing posture; validates SHA-shaped args → `ErrInvalidSHA`), `Push`
   (rebase-retry on non-fast-forward/rejected/fetch-first), `PushCoalesced`
   (cross-process coalescing via `.gitrepo-push.lock` in the worktree root),
@@ -514,3 +522,9 @@ From `CONSTRAINTS.md` (authoritative; read it before writing code):
   async-push constraint targets the gitrepo layer.
 - **Q:** (adhoc) Clone teardown seam? **A:** fabric gets its own `RemoveAll`-equivalent
   test seam; differential test tears each side down via its own module's seam.
+- **Q:** (post-handoff) board-use-gitrepo finished — how to consume its gitrepo
+  changes? **A:** Operator directed merging `origin/board-use-gitrepo` into this task
+  branch; discussion updated against the merged surface. Consequences: gitrepo growth
+  shrinks to pull + reset (no gitrepo-level write lock — fabric keeps its weft write
+  lock at the fabric layer, `internal/lock` flock around gitrepo calls, per board's
+  landed pattern); fabric never calls `StageAllAndCommit`.
