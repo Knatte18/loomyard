@@ -174,12 +174,17 @@ consumers and deletes warp/weft is a later, separate task (step 2).
 
 ### RevertWithWeft: nearest-older with explicit gap report
 
-- Decision: `RevertWithWeft(warpSHA)` resets **both** repos, per the design doc: warp is
-  reset to `warpSHA` first, then weft to the corresponding point — the method owns the
-  warp reset; it is not left to the caller. Both resets go through gitrepo's new
-  SHA-validated reset method (see "Most git mechanics grow into gitrepo"). When the target warp SHA has no exact weft
-  correspondence, it resets weft to the nearest older correspondence and returns a typed
-  result stating
+- Decision: `RevertWithWeft(warpSHA)` resets **both** repos — the method owns the warp
+  reset; it is not left to the caller. **Ordering:** correspondence resolution (exact /
+  gap-with-range / no-older → error) happens FIRST, before any reset, so the error path
+  mutates nothing. Then warp is reset to `warpSHA`, then weft to the resolved point.
+  **Partial-failure posture:** if the weft reset fails after the warp reset succeeded,
+  warp is rolled back to its pre-revert SHA (mirroring Checkout's all-or-nothing,
+  host-rollback-on-weft-failure discipline); if that rollback itself fails, the method
+  returns a typed error reporting both repos' states loudly. Both resets go through
+  gitrepo's new SHA-validated reset method (see "Most git mechanics grow into gitrepo").
+  When the target warp SHA has no exact weft correspondence, it uses the nearest older
+  correspondence and returns a typed result stating
   exact-match vs gap (including the warp-SHA range in the gap) so the caller can flag
   weft/raddle as stale. Error only when no older correspondence exists at all. All stored
   SHAs (trailer values, index entries) are checked with `SHAExists` before use.
@@ -233,9 +238,13 @@ consumers and deletes warp/weft is a later, separate task (step 2).
 
 ### Clone: full parity, board repo included
 
-- Decision: fabric's `clone` replicates warp's `CloneHub` behavior exactly — clones host,
+- Decision: fabric's `clone` replicates warp's `CloneHub` behavior — clones host,
   weft, AND the board repo into `<name>-HUB`, with the board URL optional and the same
-  `resolvedBoardURL` return and strict-abort teardown. It lives as a package-level
+  `resolvedBoardURL` return and strict-abort teardown. "Replicates" is scoped to the
+  three-repo cloning, teardown, and `resolvedBoardURL` contract: the one deliberate
+  delta is the Branch naming decision — fabric's clone checks the weft primary out on
+  `main-weft` (warp leaves it mirrored on `main`), normalized by the differential clone
+  test. It lives as a package-level
   function in fabricengine (clone runs before any `Fabric` instance exists); the
   `Fabric` struct still holds only `Warp`/`Weft` — the board is cloned, not coordinated.
 - Rationale: no-remainder parity, and the differential clone test asserts equivalent end
@@ -462,3 +471,7 @@ From `CONSTRAINTS.md` (authoritative; read it before writing code):
   GitHub wiki on `lyx-fabric-test-weft`; the scenario tests the default derivation.
 - **Q:** Standing instruction for review handling? **A:** From round 4 on, the operator
   pre-authorized auto-picking the recommended resolution for every review finding.
+- **Q:** (review r5 gap) RevertWithWeft's error path ran after the warp reset, and a
+  weft-reset failure had no stated posture. **A:** Correspondence resolves before any
+  reset (error path mutates nothing); weft-reset failure rolls warp back to the
+  pre-revert SHA, Checkout-style; rollback failure is a typed both-states error.
