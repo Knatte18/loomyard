@@ -45,7 +45,9 @@ batches:
     start_sha: 19f848fd4e7c5bc1ce4dce88bd2251e30e0614b2
     commit_sha: 05fbfff460adba0b830987938344bebf0aa7d9ff
   - name: planparser-checks
-    state: pending
+    state: running
+    implementer_session: 32c024e6-2fcb-4c07-ac81-de017933010e
+    start_sha: a4603ba9c6332f4d8a65694467d3b3d257d1839b
   - name: batcher
     state: pending
   - name: webster-mechanism-helpers
