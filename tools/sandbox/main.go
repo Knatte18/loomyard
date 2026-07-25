@@ -28,10 +28,12 @@ const (
 	hubName = "lyx-test-HUB"
 )
 
-// cloneRun is a testability seam for executing the clone command.
-// In tests, this can be replaced to avoid network calls.
-var cloneRun = func(parentDir string) error {
-	cmd := exec.Command("lyx", "warp", "clone", hostURL, weftURL)
+// cloneRun is a testability seam for executing the clone command. lyxPath is
+// the already-resolved lyx binary (see decideClone) so cloneRun itself
+// performs no PATH lookup; in tests, this seam can be replaced to avoid
+// network calls.
+var cloneRun = func(parentDir, lyxPath string) error {
+	cmd := exec.Command(lyxPath, "warp", "clone", hostURL, weftURL)
 	cmd.Dir = parentDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -40,8 +42,9 @@ var cloneRun = func(parentDir string) error {
 			// Subprocess printed its own error; just propagate the exit code
 			return err
 		}
-		// Startup error (lyx not found, etc.); add context
-		return fmt.Errorf("lyx not found on PATH: %w", err)
+		// Startup error (resolved binary vanished, permission denied, etc.); add
+		// context pointing at deploy-dev as an alternative to the resolved path.
+		return fmt.Errorf("failed to start resolved lyx binary %s (deploy it, or run deploy-dev): %w", lyxPath, err)
 	}
 	return nil
 }
@@ -72,9 +75,18 @@ func decideClone(hubPath string, reset bool) error {
 	}
 	// Hub does not exist; proceed to clone
 
+	// Resolve the binary lazily, here at the clone step, rather than in run()'s
+	// build case or as a decideClone parameter: this keeps the no-op path above
+	// (Hub exists, no -reset) succeeding even when neither a dev binary nor a
+	// PATH lyx is resolvable, matching today's behaviour for that path.
+	lyxPath, _, err := resolveLyx()
+	if err != nil {
+		return err
+	}
+
 	// Run the clone command
 	parentDir := filepath.Dir(hubPath)
-	return cloneRun(parentDir)
+	return cloneRun(parentDir, lyxPath)
 }
 
 // run is the testable entry point for the sandbox tool. It parses argv, resolves
