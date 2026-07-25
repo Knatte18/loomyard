@@ -162,10 +162,13 @@ Every git operation on the weft repo goes through the weft/warp engines in Go, d
 orchestration layer in-process — never raw git, and never an LLM agent.
 
 - **Module ownership.** Weft-internal git (`commit`/`push`/`pull`/`sync`) goes through
-  `internal/weftengine`; coordinated host↔weft topology (a checkout that moves both and re-points
-  junctions, dual-worktree add/remove/clone) goes through `internal/warpengine`. No other package
-  runs raw git against a weft worktree. The **host** repo is unrestricted — it is an ordinary project
-  repo.
+  `internal/weftengine` **or** `internal/fabricengine`; coordinated host↔weft topology (a checkout
+  that moves both and re-points junctions, dual-worktree add/remove/clone) goes through
+  `internal/warpengine` **or** `internal/fabricengine`. No other package runs raw git against a weft
+  worktree. The **host** repo is unrestricted — it is an ordinary project repo. **Parallel-build
+  note:** `fabricengine` is the in-progress unified replacement for `weftengine`/`warpengine`; this
+  dual ownership lasts only until the warp/weft cutover task, which rewires every consumer onto
+  `fabricengine` and collapses this bullet back down to a single module per concern.
 - **Orchestration, not agent.** The weft commit is Go calling the engine in-process
   (`weftengine.Sync`/`Commit`) at a round/phase boundary the loop owner (loom, or perch's CLI
   standalone) controls. An LLM agent never drives weft git — not raw git, not by shelling `lyx weft`.
@@ -202,8 +205,10 @@ Every registered lyx module must be exercised by the black-box sandbox suite or 
 explicitly excluded with a reason.
 
 - **Tagging.** A scenario in **any** suite file matching
-  `tools/sandbox/*SUITE.md` (today: `SANDBOX-CORE-SUITE.md`,
-  `SANDBOX-REED-SUITE.md`) that drives a specific module declares it with a
+  `tools/sandbox/*SUITE.md` (today: `SANDBOX-BUILDER-SUITE.md`,
+  `SANDBOX-BURLER-SUITE.md`, `SANDBOX-CORE-SUITE.md`, `SANDBOX-FABRIC-SUITE.md`,
+  `SANDBOX-PERCH-SUITE.md`, `SANDBOX-REED-SUITE.md`, `SANDBOX-SHUTTLE-SUITE.md`,
+  `SANDBOX-WEBSTER-SUITE.md`) that drives a specific module declares it with a
   `**Covers:** <module>[, <module>...]` line, in the same bold-label style as the
   scenario's `**Goal:**`/`**Watch:**`/`**Verdict:**` lines. The guard unions tags
   across all matched files. Coverage is checked at module granularity against the

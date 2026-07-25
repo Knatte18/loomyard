@@ -9,6 +9,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/builderengine"
 	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/perchengine"
@@ -41,6 +42,7 @@ func Modules() []Module {
 		{Name: "board", Template: boardengine.ConfigTemplate},
 		{Name: "builder", Template: builderengine.ConfigTemplate},
 		{Name: "burler", Template: burlerengine.ConfigTemplate, SeedOnly: true},
+		{Name: "fabric", Template: fabricengine.ConfigTemplate},
 		{Name: "loom", Template: loomengine.ConfigTemplate},
 		{Name: "models", Template: modelspec.ConfigTemplate, SeedOnly: true},
 		{Name: "reed", Template: reedengine.ConfigTemplate},
