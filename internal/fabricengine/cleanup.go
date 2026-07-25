@@ -10,16 +10,26 @@
 //
 // Adapted from warpengine's cleanup.go — same flag matrix and raddle-fold-back gate,
 // package fabricengine. The branch delta: a weft branch's host sibling is recovered
-// via hubgeometry.WeftHostSlug(branch) — inverting WeftBranchName's suffix — followed
-// by warp's strings.TrimPrefix(..., cfg.BranchPrefix) slug inverse. During the
+// via hubgeometry.WeftHostSlug(branch) — inverting WeftBranchName's suffix. During the
 // parallel-build period the weft repo also holds warp-created (non-suffixed) weft
 // branches; WeftHostSlug rejects those (ok == false), and by definition a
 // non-suffixed weft branch is not fabric-managed — it is reported but never deleted,
 // matching warp's unmanaged posture (reconcile's report-but-don't-touch rule) rather
-// than the raddle-fold-back gate. The live-pair skip this file shares with warp
-// naturally protects the primary pair's weft branch (e.g. main-weft, since "main" is
-// always a live host slug) — the "protected set... mapped through WeftBranchName" the
-// batch's requirements describe.
+// than the raddle-fold-back gate.
+//
+// Liveness is judged in BRANCH space, not against worktree directory names: a weft
+// branch <hostBranch>-weft is a live pair iff some host worktree is currently checked
+// out on <hostBranch>. This is the one point where fabric must diverge from warp's
+// original logic. warp compared the weft branch's stripped slug against host worktree
+// *directory* base names; that comparison is wrong for the primary pair, whose host
+// worktree directory is the repo name (e.g. "lyx-fabric-test") while its branch is
+// "main". Under warp the mistake is harmless because warp's primary weft branch is the
+// unsuffixed "main" (WeftHostSlug rejects it → protected as unmanaged). Under fabric's
+// uniform suffix scheme the primary weft branch is "main-weft", which WeftHostSlug
+// accepts — so a directory-name comparison would misclassify it as a deletable orphan
+// and delete the very branch board-weft-storage requires to stay permanent. Comparing
+// against live host *branches* protects "main-weft" (the primary host worktree is on
+// "main") and every task pair, with no BranchPrefix juggling.
 //
 // The board repo is excluded entirely — Cleanup only enumerates weft branches
 // and compares them against the set of known host worktree slugs.
@@ -103,13 +113,22 @@ func (t *Topology) Cleanup(l *hubgeometry.Layout, apply, force bool) (CleanupRes
 		return CleanupResult{}, fmt.Errorf("list host worktrees: %w", err)
 	}
 
-	// Build a set of slug names for all currently registered host worktrees.
-	// The slug is the base name of the worktree path (e.g. "my-task" for /hub/my-task).
-	hostSlugs := make(map[string]bool, len(entries))
+	// Build the set of live host branches: the branch each existing host worktree is
+	// currently checked out on. A weft branch is a live pair — never an orphan — exactly
+	// when its paired host branch is in this set (see the file header for why liveness is
+	// judged in branch space rather than against directory names).
+	liveHostBranches := make(map[string]bool, len(entries))
 	for _, entry := range entries {
-		hostPath := filepath.FromSlash(entry.Path)
-		hostPath = filepath.Clean(hostPath)
-		hostSlugs[filepath.Base(hostPath)] = true
+		hostPath := filepath.Clean(filepath.FromSlash(entry.Path))
+		branch, branchErr := readBranch(hostPath)
+		if branchErr != nil {
+			// A host worktree whose branch cannot be read — e.g. its directory was
+			// deleted, leaving a stale git worktree registration — is not a live pair.
+			// Its weft branch, if any, is genuinely orphaned, so skip it here rather
+			// than protecting it.
+			continue
+		}
+		liveHostBranches[branch] = true
 	}
 
 	// Enumerate all branches in the weft repo to find orphans.
@@ -134,14 +153,11 @@ func (t *Topology) Cleanup(l *hubgeometry.Layout, apply, force bool) (CleanupRes
 			continue
 		}
 
-		// The host branch name is BranchPrefix+slug (set during fabric add), so we must
-		// strip the prefix before the hostSlugs lookup; without trimming, any non-empty
-		// BranchPrefix makes every live weft branch appear as an orphan.
-		slug := strings.TrimPrefix(hostBranch, t.cfg.BranchPrefix)
-		if hostSlugs[slug] {
-			// The host worktree exists for this branch; this is a live pair, skip it.
-			// This is what naturally protects the primary pair's weft branch (e.g.
-			// main-weft, since "main" is always a live host slug).
+		if liveHostBranches[hostBranch] {
+			// A host worktree is currently on this weft branch's paired host branch;
+			// this is a live pair, skip it. This protects both task pairs and the
+			// primary pair's weft branch (e.g. main-weft, since the primary host
+			// worktree is on "main").
 			continue
 		}
 

@@ -581,11 +581,17 @@ func TestCleanup_DifferentialEquivalence(t *testing.T) {
 		}
 	})
 
-	// PrimaryBranchSurvivesForce asserts that main (warp) and main-weft (fabric) —
-	// the currently-checked-out primary weft branch on each side — survive even
-	// apply+force Cleanup, because git itself refuses to delete a checked-out
-	// branch. This is the "protected set... mapped through WeftBranchName" example
-	// the batch's requirements name explicitly.
+	// PrimaryBranchSurvivesForce asserts the primary pair's weft branch survives even
+	// apply+force Cleanup — with a DELIBERATE divergence between the two modules.
+	//
+	// warp's primary weft branch "main" is unsuffixed, so WeftHostSlug rejects it and
+	// warp reports it as an unmanaged (Protected), never-deleted branch. fabric's
+	// primary weft branch "main-weft" IS suffixed; fabric protects it by recognising
+	// that a host worktree (the primary) is on its paired host branch "main", so fabric
+	// never even reports it as a Cleanup candidate. (Before the F1 fix, fabric misclassified
+	// "main-weft" as a deletable orphan and relied only on git's refusal to delete a
+	// checked-out branch — an accident that fails the moment the primary weft is moved off
+	// main-weft; see PrimaryBranchSurvivesForceWhenNotCheckedOut below.)
 	t.Run("PrimaryBranchSurvivesForce", func(t *testing.T) {
 		t.Parallel()
 
@@ -601,20 +607,59 @@ func TestCleanup_DifferentialEquivalence(t *testing.T) {
 			t.Fatalf("fabricengine Cleanup(apply, force): %v", err)
 		}
 
+		// warp: "main" is reported (unmanaged/Protected) but never deleted.
 		warpMainEntry := findWarpCleanupEntry(t, warpRes.Entries, "main")
-		fabricMainWeftEntry := findFabricCleanupEntry(t, fabricRes.Entries, fabricengine.WeftBranchName("main"))
-
 		if warpMainEntry.Deleted {
-			t.Errorf("warp main entry Deleted = true; want false (git refuses to delete a checked-out branch)")
+			t.Errorf("warp main entry Deleted = true; want false")
 		}
-		if fabricMainWeftEntry.Deleted {
-			t.Errorf("fabric main-weft entry Deleted = true; want false (git refuses to delete a checked-out branch)")
+
+		// fabric: "main-weft" is a live pair (primary host on "main"), so it is never
+		// reported as a Cleanup candidate at all.
+		mainWeft := fabricengine.WeftBranchName("main")
+		for _, entry := range fabricRes.Entries {
+			if entry.Branch == mainWeft {
+				t.Errorf("fabric Cleanup reported primary weft branch %q; want not reported (live pair)", mainWeft)
+			}
 		}
+
 		if !branchExistsAt(t, dp.WarpFixture.Layout.WeftRepoRoot(), "main") {
 			t.Errorf("warp main branch deleted; want intact")
 		}
-		if !branchExistsAt(t, dp.FabricFixture.Layout.WeftRepoRoot(), fabricengine.WeftBranchName("main")) {
+		if !branchExistsAt(t, dp.FabricFixture.Layout.WeftRepoRoot(), mainWeft) {
 			t.Errorf("fabric main-weft branch deleted; want intact")
+		}
+	})
+
+	// PrimaryBranchSurvivesForceWhenNotCheckedOut is the F1 regression guard: it moves
+	// the fabric weft primary OFF main-weft (exactly what a coordinated checkout of the
+	// primary to another branch produces) so main-weft is no longer the checked-out
+	// branch, then runs apply+force Cleanup. main-weft must still survive — protected by
+	// fabric's live-host-branch logic, not merely by git's refusal to delete a
+	// checked-out branch. Before the fix, main-weft was deleted here.
+	t.Run("PrimaryBranchSurvivesForceWhenNotCheckedOut", func(t *testing.T) {
+		t.Parallel()
+
+		dp := buildDiffPair(t, "")
+		wireDiffPairJunctions(t, dp)
+
+		mainWeft := fabricengine.WeftBranchName("main")
+		weftPrime := dp.FabricFixture.Layout.WeftWorktree()
+
+		// Move the weft primary off main-weft so main-weft is not the checked-out branch.
+		lyxtest.MustRun(t, weftPrime, "git", "checkout", "-b", "diff-primary-parked")
+
+		fabricRes, err := dp.Fabric.Cleanup(dp.FabricFixture.Layout, true, true)
+		if err != nil {
+			t.Fatalf("fabricengine Cleanup(apply, force): %v", err)
+		}
+
+		for _, entry := range fabricRes.Entries {
+			if entry.Branch == mainWeft {
+				t.Errorf("fabric Cleanup reported/handled primary weft branch %q; want not reported (live pair)", mainWeft)
+			}
+		}
+		if !branchExistsAt(t, dp.FabricFixture.Layout.WeftRepoRoot(), mainWeft) {
+			t.Errorf("fabric main-weft branch deleted after force Cleanup with primary parked elsewhere; want intact (F1 regression)")
 		}
 	})
 
