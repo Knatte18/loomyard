@@ -21,9 +21,11 @@ Committed to, in this order, next.
 1. **fabric** — replaces `warp` and `weft` in full: all topology (clone, dual-worktree add/remove,
    coordinated checkout, reconcile, prune, cleanup, branch naming — including enforcing
    `<slug>-weft` uniformly, no exceptions) and all git mechanics into the paired weft repo, unified
-   into one module built on `gitrepo`. Built alongside the existing `warp`/`weft` code first as a
-   reference fixture, then one coordinated cutover deletes the old modules. See
-   [designs/fabric.md](designs/fabric.md).
+   into one module built on `gitrepo`. **Parallel build landed**: `fabric` (`internal/fabricengine`
+   + `internal/fabriccli`) is built and registered alongside the existing `warp`/`weft` code,
+   validated by differential tests against them as the reference fixture. Only the cutover
+   remains — one coordinated pass that rewires consumers onto `fabric` and deletes the old
+   modules. See [designs/fabric.md](designs/fabric.md).
 
 1. **webster: rewrite for flat card list** — fork-per-card unchanged; no DAG/SCC in v0 (a dead
    `HasSymbolFields()` scheduler branch is reserved for later); integration suite runs as one final

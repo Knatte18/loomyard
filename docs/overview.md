@@ -193,6 +193,8 @@ github.com/Knatte18/loomyard/
 ├── internal/warpengine/          the warp domain kernel
 ├── internal/weftcli/             the weft CLI command
 ├── internal/weftengine/          the weft domain kernel
+├── internal/fabriccli/           the fabric CLI command (parallel build, see fabric doc above)
+├── internal/fabricengine/        the fabric domain kernel (parallel build, see fabric doc above)
 ├── internal/idecli/              the ide CLI command
 ├── internal/ideengine/           the ide domain kernel
 ├── internal/muxcli/              the mux CLI command
@@ -244,6 +246,14 @@ User-facing modules each get one `lyx <module>` namespace:
 - **config** — interactive menu for viewing and editing module configs; `lyx config reconcile` reconciles all module config files against their live templates (dry-run by default, `--apply` writes atomically) except seed-only modules (today: `models`), which are materialized once when absent and never rewritten again since the file is operator-owned; `lyx config <module> --set key=value` (repeatable) writes one or more config values directly with no editor invocation, for scripts/agents that need a non-interactive path. ✅ Implemented.
 - **weft** — owns all git into the paired weft repo (`lyx weft status|commit|push|pull|sync`). ✅ Implemented.
 - **warp** — **host↔weft-coordinated git topology**: clone (hub-creator), dual-worktree add/remove, coordinated checkout (switches host+weft together + re-points junctions), reconcile, status, prune, cleanup. The single owner of the mirror invariant — consolidates the former `worktree` / `git-clone` modules and `internal/git`; its CLI surface is `lyx warp clone|add|list|remove|checkout|status|reconcile|prune|cleanup`. ✅ Implemented.
+- **fabric** — unified git-coordination module over two `internal/gitrepo.Repo` instances,
+  combining warp's host↔weft topology and weft's content-sync verbs into one command tree
+  (`internal/fabriccli` + `internal/fabricengine`); CLI surface is `lyx fabric
+  clone|add|list|remove|checkout|pairs|reconcile|prune|cleanup|status|commit|push|pull|sync`.
+  **Parallel build — warp/weft remain the owners until cutover**: fabric exists alongside
+  warp and weft, validated by differential tests against them, but no consumer is rewired
+  onto it yet. ✅ Implemented (parallel build); see the `internal/fabricengine` package
+  documentation and [manifest/designs/fabric.md](../manifest/designs/fabric.md).
 - **ide** — one-shot VS Code launcher with interactive menu. ✅ Implemented.
 - **selfreport** — file bugs and enhancements against `Knatte18/loomyard` via the `gh` CLI
   (`lyx selfreport create <title>`). Target repo is hardcoded; supports `--body` (or `-` for
