@@ -32,12 +32,6 @@ Committed to, in this order, next.
    reference fixture, then one coordinated cutover deletes the old modules. See
    [designs/fabric.md](designs/fabric.md).
 
-1. **plan-format v3: flat card list** — replaces the pinned, batch-based
-   [plan-format.md v2](../docs/reference/plan-format.md). A card carries
-   `card`/`name`/`description`/`changes-files`/`depends-on` only; symbol fields wait for
-   `codeintel`. Breaking change to an already-shipped contract. See
-   [designs/plan-format-v3.md](designs/plan-format-v3.md).
-
 1. **webster: rewrite for flat card list** — fork-per-card unchanged; no DAG/SCC in v0 (a dead
    `HasSymbolFields()` scheduler branch is reserved for later); integration suite runs as one final
    fork with SHA-bisect on failure. `builder` becomes obsolete as a plan-format consumer. See
@@ -184,6 +178,12 @@ between these items.
 
 1. **webster** — fork-based sibling of builder (in-session forks, one Master per plan) — rewrite
    tracked under the Planned `webster: rewrite for flat card list` item.
+
+1. **plan-format v3: flat card list** — a card carries
+   `card`/`name`/`description`/`changes-files`/`depends-on` only; symbol fields wait for
+   `codeintel`. Coexists with the still-live
+   [plan-format v2](../docs/reference/plan-format.md) until `webster`'s rewrite lands and
+   `builder` is deleted. See [docs/reference/plan-format-v3.md](../docs/reference/plan-format-v3.md).
 
 1. **built-in CLI help** — self-documenting `lyx`/`lyx <module>`/`lyx <module> <cmd> --help`.
 
