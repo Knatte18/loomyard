@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-planparser-checks
+phase: approved-batcher
 slug: webster-rewrite
 branch: webster-rewrite
 plan: _mill/plan
@@ -29,6 +29,7 @@ implementing  '2026-07-25T14:02:53Z'
 approved-planparser-core  '2026-07-25T14:19:05Z'
 approved-gitrepo-bisect-primitive  '2026-07-25T14:22:44Z'
 approved-planparser-checks  '2026-07-25T14:34:24Z'
+approved-batcher  '2026-07-25T14:37:57Z'
 ```
 
 ## Batches
@@ -51,9 +52,10 @@ batches:
     start_sha: a4603ba9c6332f4d8a65694467d3b3d257d1839b
     commit_sha: 038187a053cf4684439258439852e341b244d51b
   - name: batcher
-    state: running
+    state: approved
     implementer_session: b6d8b9e4-e0f8-40d1-bfe6-fdbc239b3f4a
     start_sha: 6d7b6a83279cc566eb5be6bf2964b5ce135097d1
+    commit_sha: 794323cee498f70e5aae084845eb788ed6a84e0d
   - name: webster-mechanism-helpers
     state: pending
   - name: webster-report-digest
