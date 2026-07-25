@@ -27,7 +27,7 @@ func TestState_RoundTrip(t *testing.T) {
 		CurrentBatch:    2,
 		MasterStrand:    "master-strand-1",
 		MasterSessionID: "session-1",
-		AssertedModel:   "master_oversized",
+		AssertedModel:   "opus",
 		Batches: map[int]*websterengine.BatchState{
 			1: {
 				Slug:            "first",
