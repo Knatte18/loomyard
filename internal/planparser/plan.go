@@ -84,12 +84,23 @@ type Card struct {
 	Title string
 
 	// Intent is the Card Index entry's one-line summary. It has exactly one
-	// source: the index. The card file's own "**What:**" prose is for the
-	// implementer and is never stored here (HasWhat records only its presence).
+	// source: the index. The card file's own "**What:**" prose is stored
+	// separately in What — the two never mix.
 	Intent string
 
-	// HasWhat reports whether the card carried a "**What:**" label at all. The
-	// prose itself is never stored — Intent is the machine-read summary.
+	// What is the card file's own "**What:**" prose — the concrete instruction
+	// the implementer works from, verbatim (whitespace-normalized per line,
+	// possibly spanning multiple lines up to the next field label). It is what
+	// RenderForkPrompt injects into a fork/recovery prompt; Intent is only the
+	// index's one-line summary and never a substitute for it (a cold recovery
+	// strand inherits no session context, so the rendered prompt is its whole
+	// instruction — found in crucible round fable-r3, where the prompt rendered
+	// the one-liner under the "**What:**" label and dropped the prose).
+	// Empty when the label is present with no prose (HasWhat still true).
+	What string
+
+	// HasWhat reports whether the card carried a "**What:**" label at all —
+	// distinct from What being empty prose under a present label.
 	HasWhat bool
 
 	// ContextFiles, EditsFiles, CreatesFiles, and DeletesFiles are the card's four

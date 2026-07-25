@@ -148,8 +148,8 @@ func batchHasMove(batch batcher.Batch) bool {
 	return false
 }
 
-// renderBatchCards renders every one of cards' own fields — What (from
-// Intent, the machine-read summary), and the five typed file-op fields — as
+// renderBatchCards renders every one of cards' own fields — the What prose
+// (see renderCard's fallback rule), and the five typed file-op fields — as
 // one markdown block per card, joined by a blank line, in declared order.
 // This is what lets a fork implement its batch entirely from the injected
 // prompt text, with no separate batch file on disk to read (plan-format v3
@@ -163,14 +163,22 @@ func renderBatchCards(cards []planparser.Card) string {
 }
 
 // renderCard renders one card's own fields as a markdown block: its
-// "### Card N — <title>" heading, its What (Intent), and the five typed
-// file-op fields (each "none" when empty, matching plan-format v3's own
-// none-sentinel convention), plus its optional per-card verify: line when
-// present.
+// "### Card N — <title>" heading, its What prose (the card file's concrete
+// instruction — falling back to the index Intent only when the card carries
+// no prose, since a cold recovery strand's rendered prompt is its whole
+// instruction and the one-line Intent alone silently degrades it; found in
+// crucible round fable-r3), and the five typed file-op fields (each "none"
+// when empty, matching plan-format v3's own none-sentinel convention), plus
+// its optional per-card verify: line when present.
 func renderCard(c planparser.Card) string {
+	what := strings.TrimSpace(c.What)
+	if what == "" {
+		what = c.Intent
+	}
+
 	var b strings.Builder
 	fmt.Fprintf(&b, "### Card %d — %s\n\n", c.Number, c.Title)
-	fmt.Fprintf(&b, "**What:** %s\n", c.Intent)
+	fmt.Fprintf(&b, "**What:** %s\n", what)
 	b.WriteString(renderFileOpField("Context", c.ContextFiles))
 	b.WriteString(renderFileOpField("Edits", c.EditsFiles))
 	b.WriteString(renderFileOpField("Creates", c.CreatesFiles))

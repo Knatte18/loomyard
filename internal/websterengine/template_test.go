@@ -503,6 +503,44 @@ func TestRenderForkPrompt_InjectsPrevDigestSentinelOnlyWhenEmpty(t *testing.T) {
 	})
 }
 
+// TestRenderForkPrompt_RendersWhatProseOverIntent asserts the rendered card
+// block's "**What:**" carries the card file's own What prose — the concrete
+// implementer instruction — and falls back to the index Intent only when the
+// card carries no prose. A cold recovery strand inherits no session context,
+// so the rendered prompt is its whole instruction; rendering the one-line
+// Intent under the "**What:**" label silently dropped the real specification
+// (found in crucible round fable-r3).
+func TestRenderForkPrompt_RendersWhatProseOverIntent(t *testing.T) {
+	plan := testPlan("", "")
+
+	t.Run("What prose wins over Intent", func(t *testing.T) {
+		batch := batcher.Batch{Cards: []planparser.Card{{
+			Number: 1, Slug: "alpha", Title: "alpha",
+			Intent: "create r3a.md marker",
+			What:   "Create `r3a.md` containing the single line `OK-A` and commit it.",
+		}}}
+		got, err := websterengine.RenderForkPrompt(plan, batch, "", "/reports/01-alpha.yaml", "/worktree", 2)
+		if err != nil {
+			t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
+		}
+		requireContains(t, string(got), "**What:** Create `r3a.md` containing the single line `OK-A` and commit it.")
+		if strings.Contains(string(got), "**What:** create r3a.md marker") {
+			t.Errorf("rendered prompt carries the index Intent under **What:** despite the card having prose")
+		}
+	})
+
+	t.Run("empty What falls back to Intent", func(t *testing.T) {
+		batch := batcher.Batch{Cards: []planparser.Card{{
+			Number: 1, Slug: "alpha", Title: "alpha", Intent: "create r3a.md marker",
+		}}}
+		got, err := websterengine.RenderForkPrompt(plan, batch, "", "/reports/01-alpha.yaml", "/worktree", 2)
+		if err != nil {
+			t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
+		}
+		requireContains(t, string(got), "**What:** create r3a.md marker")
+	})
+}
+
 // TestRenderForkPrompt_InjectsSharedDecisionsAlways asserts every fork
 // prompt carries the plan's own "## Shared Decisions" body verbatim,
 // regardless of the batch's own cards — a plan-level, not batch-level,

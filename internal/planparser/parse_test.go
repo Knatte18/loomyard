@@ -342,6 +342,29 @@ func TestParsePlan_Card_FiveFieldsNoneSentinel(t *testing.T) {
 		}
 	})
 
+	t.Run("What prose is captured verbatim", func(t *testing.T) {
+		t.Parallel()
+
+		// The prose is the implementer's concrete instruction; the fork prompt
+		// renders it verbatim, so the parser must store it — not just record
+		// its presence (found in crucible round fable-r3: the prompt rendered
+		// the index one-liner and the prose was silently dropped).
+		body := "# Card 1 — prose\n\n**What:** First line of the instruction,\n" +
+			"and a second line with detail.\n**Context:** none\n**Edits:** none\n" +
+			"**Creates:** none\n**Deletes:** none\n**Moves:** none\n**Depends-on:** none\n"
+		dir := writePlanFiles(t, map[string]string{"00-overview.md": minimalOverview, "01-only.md": body})
+		plan, err := planparser.ParsePlan(dir)
+		if err != nil {
+			t.Fatalf("ParsePlan() error = %v; want nil", err)
+		}
+		card := plan.Cards[0]
+
+		want := "First line of the instruction,\nand a second line with detail."
+		if card.What != want {
+			t.Errorf("card.What = %q; want %q", card.What, want)
+		}
+	})
+
 	t.Run("field absent entirely", func(t *testing.T) {
 		t.Parallel()
 
@@ -558,6 +581,11 @@ func TestParsePlan_GoldenFixture(t *testing.T) {
 	}
 	if !c1.HasWhat {
 		t.Errorf("card 1 HasWhat = false; want true")
+	}
+	wantWhat := "Add a `--json` bool flag to the list command; define `RowJSON` with the existing\n" +
+		"table's columns as fields."
+	if c1.What != wantWhat {
+		t.Errorf("card 1 What = %q; want the card file's own multi-line prose %q", c1.What, wantWhat)
 	}
 	if want := []string{"internal/boardcli/list.go", "internal/boardengine/rows.go"}; !slices.Equal(c1.EditsFiles, want) {
 		t.Errorf("card 1 EditsFiles = %v; want %v (root-joined + // escape)", c1.EditsFiles, want)
