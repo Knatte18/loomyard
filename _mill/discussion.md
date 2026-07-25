@@ -110,6 +110,13 @@ invariant and deletes the design doc in the same commit.
   paths — imported by both `tools/deploy` and `tools/sandbox`. (Both live under `tools/`, so
   `tools/internal/...` is importable by each.) Exact API is mill-plan's call; the invariant is
   that deploy and sandbox never disagree on where `.dev-bin` is.
+- **Single repo-root derivation:** the helper's own `runtime.Caller` derivation is at a
+  **different depth** than `tools/deploy`'s existing `repoRoot()` (the helper sits one level
+  deeper, at `tools/internal/devbin/*.go`, so `../../..` vs deploy's `../..`). `tools/deploy`
+  also needs the repo root for the build itself (`build.Dir = root`, `go build ./cmd/lyx`).
+  To avoid the exact drift this decision guards against, **`tools/deploy` sources its repo root
+  from the single `devbin` derivation** (e.g. `devbin.RepoRoot()`) rather than keeping a second
+  `runtime.Caller` derivation — there is one derivation in the codebase, in `devbin`.
 - **Rationale:** Two tools must resolve the identical location; a single source of truth
   prevents divergence. Duplicating the `.dev-bin` string + `runtime.Caller` depth in two
   `main` packages is a correctness hazard, not just DRY.
@@ -195,9 +202,11 @@ Relevant files and current behaviour (all under the repo root
 `/home/knatte/Code/loomyard/wts/dev-test-binary`):
 
 - **`tools/deploy/main.go`** — general deploy tool. Builds `./cmd/lyx` → `lyx`(`.exe`),
-  `-dest` else `go env GOBIN`/GOPATH-bin. Already derives the module root via
-  `repoRoot()` using `runtime.Caller(0)` — the pattern to reuse for `.dev-bin`. The `-dev`
-  flag installs to `devbin.Dir()`; `-dev` and `-dest` are mutually exclusive (error if both).
+  `-dest` else `go env GOBIN`/GOPATH-bin. Currently derives the module root via its own
+  `repoRoot()` (`runtime.Caller(0)`, `../..`); this task **moves that derivation into `devbin`**
+  so deploy calls `devbin.RepoRoot()` for both the `-dest` build root and the `-dev` target —
+  no second `runtime.Caller` (see shared-devbin-helper). The `-dev` flag installs to
+  `devbin.Dir()`; `-dev` and `-dest` are mutually exclusive (error if both).
 - **`tools/sandbox/suite.go`** — `runSuite` (line ~366) does `lookPath("lyx")`; the resolved
   path feeds `binaryFingerprint` (the stamped header) **and** `muxDown(hostRepoDir, lyxPath)`.
   `launchAgent(hostRepoDir, claudePath, instruction)` and `muxDown(hostRepoDir, lyxPath)` are
@@ -296,7 +305,10 @@ All tests **Tier 1 / untagged / no real spawns**, via the existing seams:
   `exec.Command("lyx"` / `exec.CommandContext("lyx"` — appear only inside `resolveLyx`, so no
   future site regresses to bare PATH resolution (note `main.go`'s current
   `exec.Command("lyx", "warp", "clone", …)` is exactly this form and must be gone after the
-  `cloneRun(parentDir, lyxPath)` change).
+  `cloneRun(parentDir, lyxPath)` change). The scan **excludes its own guard-test source file**
+  (a per-file self-exclusion), since that file necessarily contains the forbidden literals as
+  test data — matching the tierpurity / hermeticenv / sandbox-coverage guards, which each
+  allowlist their own file.
 - **Existing suite/report/main tests** — keep green; update any that asserted the old bare
   `lookPath("lyx")` resolution.
 - **No new integration/smoke tests required** — the change is resolution/env plumbing,
