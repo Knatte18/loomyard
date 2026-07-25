@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: git-native-library
 branch: git-native-library
 plan: _mill/plan
@@ -22,4 +22,19 @@ plan-review-r1  '2026-07-25T13:05:12Z'
 plan-fix-r1  '2026-07-25T13:05:12Z'
 plan-fix-r2  '2026-07-25T13:08:17Z'
 planned  '2026-07-25T13:08:28Z'
+implementing  '2026-07-25T13:10:45Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: poc-foundation
+    state: pending
+  - name: read-surface
+    state: pending
+  - name: write-surface
+    state: pending
+  - name: writeup-and-doc-lifecycle
+    state: pending
 ```
