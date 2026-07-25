@@ -106,8 +106,12 @@ func (f *Fabric) StatusWeft(pathspec []string) (map[string]any, error) {
 // RecordCorrespondence is called immediately with the (pre-push) new weft
 // SHA: this is the detached CLI push path's pre-push record, which
 // self-corrects at lookup time if a later rebase-recovered push rewrites the
-// SHA out from under it. Returns ("", false, nil) when opts.SkipGit is true
-// or nothing was staged, matching weftengine.Commit's no-op contract.
+// SHA out from under it. Returns ("", false, nil) when opts.SkipGit is true,
+// nothing was staged, or pathspec has already been fully removed from both
+// the working tree and the index by a prior commit — matching
+// weftengine.Commit's identical tolerance of git's "did not match any
+// files" pathspec failure, which the shared gitrepo.StageAndCommit
+// primitive does not special-case on its own.
 func (f *Fabric) CommitWeft(pathspec []string, message string, opts SyncOptions) (sha string, committed bool, err error) {
 	if opts.SkipGit {
 		return "", false, nil
@@ -130,6 +134,14 @@ func (f *Fabric) CommitWeft(pathspec []string, message string, opts SyncOptions)
 
 	sha, committed, err = f.Weft.StageAndCommit(appendWarpSHATrailer(message, warpSHA), pathspec)
 	if err != nil {
+		// gitrepo.StageAndCommit's `git add --` does not tolerate a pathspec
+		// that no longer matches anything at all, on disk or in the index —
+		// unlike weftengine.Commit's explicit tolerance of this exact
+		// message. Treat it the same way here: nothing of ours to stage, not
+		// a hard failure. Any other add/commit failure still propagates.
+		if strings.Contains(err.Error(), "did not match any files") {
+			return "", false, nil
+		}
 		return "", false, err
 	}
 	if !committed {
