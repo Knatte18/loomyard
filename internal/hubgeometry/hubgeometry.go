@@ -254,10 +254,10 @@ func (l *Layout) PlanDir() string {
 // phase's done-sentinel and the Planner producer's sole Spec.OutputFiles
 // entry — written last, after every NN-<card-slug>.md card file the
 // producer also writes (see docs/reference/plan-format-v3.md). It shares
-// PlanDir's WorktreeRoot
-// anchoring for the same reason: the overview must resolve to the one true
-// copy at the worktree root, not a per-subdirectory copy. Per the Hub
-// Geometry Invariant, no other package may construct this path.
+// PlanDir's WorktreeRoot anchoring for the same reason: the overview must
+// resolve to the one true copy at the worktree root, not a per-subdirectory
+// copy. Per the Hub Geometry Invariant, no other package may construct this
+// path.
 //
 // Returns filepath.Join(l.PlanDir(), "00-overview.md").
 func (l *Layout) PlanOverview() string {
