@@ -40,8 +40,10 @@ invariant and deletes the design doc in the same commit.
   resolves the derived dev binary first (falling back to PATH when no dev binary exists), at
   all three current call sites: `suite.go` (`runSuite`), `report.go` (`runFetch`),
   `main.go` (`cloneRun`).
-- The launched black-box **agent** (and the post-session `mux down`) exercise the dev
-  binary, by prepending the derived `.dev-bin` directory to the **child process** PATH only.
+- The launched black-box **agent** exercises the dev binary by prepending the derived
+  `.dev-bin` directory to the **agent child process** PATH only. The post-session `mux down`
+  already runs the resolved dev binary by **absolute path** (and `lyx mux` re-invokes itself
+  via `os.Executable()`, i.e. the same dev binary), so it needs no PATH change.
 - A visible **dev/prod source marker** in the sandbox fingerprint block (and thus in
   `sandbox-report.json`).
 - Full documentation/prompt sweep so every "deploy before testing" instruction targets the
@@ -125,21 +127,39 @@ invariant and deletes the design doc in the same commit.
   path behaves exactly as today (prod on PATH). Stops the "bare `lookPath` against ambient
   PATH" non-determinism the design called out, without breaking existing prod flows. The
   `source` value drives the fingerprint marker (Q8).
+- **Existence-check is sufficient (not a freshness footgun):** `resolveLyx` selects
+  `.dev-bin/lyx` on `os.Stat` existence alone. This does **not** reintroduce the clobber risk
+  for dev: `go build -o <path>` writes to a temp file and atomically renames it into place, so
+  an aborted/partial `deploy-dev` leaves the **prior** dev binary intact, never a half-written
+  one at the final path. Any *staleness* of the dev binary (an old but complete build) is
+  deliberately **accepted and surfaced by the fingerprint** — the SHA256 + the new `Source:`
+  marker (below) are exactly the mechanism a reviewer uses to notice they tested an old build.
+  A freshness guard beyond existence (e.g. rebuild-on-resolve, mtime-vs-source checks) is
+  **out of scope**.
 - **Rejected:** Hard-require a dev binary (breaks first-run / prod-only flows); env-var
-  override (no config, per above).
+  override (no config, per above); an existence-plus-freshness check (out of scope; atomicity
+  + fingerprint already cover the failure the reviewer raised).
 
 ### agent-path-prepend-child-only
 
 - **Decision:** When `source=dev`, prepend `filepath.Dir(devPath)` (i.e. `.dev-bin`) to the
-  **child process** PATH for `launchAgent` and `muxDown` (they currently inherit the parent
-  env unchanged). The dev directory is **never** placed on the operator's own PATH.
+  **agent child process** PATH for `launchAgent` **only** (it currently inherits the parent
+  env unchanged). `muxDown` is **not** env-threaded — it already execs the resolved dev binary
+  by absolute path, and internal re-invocation uses `os.Executable()` (below). The dev
+  directory is **never** placed on the operator's own PATH.
 - **Rationale:** Q7 — bare `lyx` in an operator shell must stay prod (safe default; dev is
   never run in production by accident, prod is never clobbered). The agent inside the Hub
   keeps typing bare `lyx`; prepending `.dev-bin` to its PATH makes that resolve to dev
-  deterministically, while the fingerprint proves which binary ran. `mux down` (the teardown)
-  runs the same resolved binary. When `source=prod`, no PATH change (backward compat).
+  deterministically, while the fingerprint proves which binary ran. `mux down` is different:
+  `muxDown` runs `exec.Command(lyxPath, "mux", "down")` with the **absolute** resolved dev path
+  (`suite.go` ~208), and `lyx mux` re-invokes lyx via `os.Executable()` — the running dev
+  binary — not a bare `lyx` PATH lookup (`internal/muxengine/lifecycle.go:524`,
+  `headerpane.go`). So prepending `.dev-bin` to muxDown's PATH would resolve nothing; the
+  absolute-path pass-through already guarantees the dev binary. When `source=prod`, no PATH
+  change (backward compat).
 - **Rejected:** Rewriting every SUITE.md `lyx` call to an absolute path (touches all 7 docs,
-  brittle); putting `.dev-bin` on the operator PATH (Q7 rejected — risks running dev in prod).
+  brittle); putting `.dev-bin` on the operator PATH (Q7 rejected — risks running dev in prod);
+  env-threading `muxDown` (redundant — it already runs the dev binary by absolute path).
 
 ### fingerprint-source-marker
 
@@ -178,15 +198,21 @@ Relevant files and current behaviour (all under the repo root
 - **`tools/sandbox/suite.go`** — `runSuite` (line ~366) does `lookPath("lyx")`; the resolved
   path feeds `binaryFingerprint` (the stamped header) **and** `muxDown(hostRepoDir, lyxPath)`.
   `launchAgent(hostRepoDir, claudePath, instruction)` and `muxDown(hostRepoDir, lyxPath)` are
-  package-var seams that currently do **not** set `cmd.Env` (they inherit). These seams gain
-  the dev-bin dir so they can build a PATH-prepended env. `binaryInfo`/`header()` gain the
-  `Source` field/line.
+  package-var seams that currently do **not** set `cmd.Env` (they inherit). **Only
+  `launchAgent`** gains the dev-bin dir (so it can build a PATH-prepended env for the agent);
+  `muxDown` keeps its current signature and behaviour (it already execs the resolved absolute
+  `lyxPath`). `binaryInfo`/`header()` gain the `Source` field/line.
 - **`tools/sandbox/report.go`** — `runFetch` (line ~81) does the same `lookPath("lyx")` for
   the fetch-time fingerprint; switch to `resolveLyx()` (no agent launch here, so no PATH
   prepend — fingerprint + `Source` only).
-- **`tools/sandbox/main.go`** — `cloneRun` (line ~34) does `exec.Command("lyx", "warp",
-  "clone", …)`. Resolve via `resolveLyx()` and exec the resolved path so Hub provisioning uses
-  the dev binary when present (else prod via fallback). `cloneRun` is a package-var seam.
+- **`tools/sandbox/main.go`** — `cloneRun` (line ~34) is a package-var seam currently shaped
+  `func(parentDir string) error` that hardcodes `exec.Command("lyx", "warp", "clone", …)` and
+  a `"lyx not found on PATH"` startup message (~33–45). Change: the caller resolves the binary
+  via `resolveLyx()` and passes it in — **new seam shape `cloneRun(parentDir, lyxPath string)`**
+  — and `cloneRun` execs `lyxPath` so Hub provisioning uses the dev binary when present (else
+  prod via fallback). The `"lyx not found on PATH"` startup-error string goes **stale** (the
+  path is now resolved upstream, not looked up here) and must be updated (e.g. to reference the
+  resolved path / point at `deploy-dev`).
 - **`lookPath`** in `tools/sandbox/suite.go` is a package-var seam (`var lookPath =
   exec.LookPath`) — reuse it for the prod fallback and in tests.
 - **Consumers of the *deployed* binary** are only the three `tools/sandbox` sites above plus
@@ -250,11 +276,12 @@ All tests **Tier 1 / untagged / no real spawns**, via the existing seams:
   vars are untouched, and an empty `dir` yields the env unchanged. Pure.
 - **Fingerprint `header()` / `binaryInfo`** — includes the `Source:` line for both `dev` and
   `prod` inputs.
-- **`launchAgent` / `muxDown` env threading** — replace the seams in-test to capture the env
-  they are handed; assert `.dev-bin` is prepended when `source=dev` and the env is unchanged
-  when `source=prod`.
-- **`cloneRun`** — replace the seam to assert it execs the resolved dev path when a dev binary
-  is present (else the PATH fallback).
+- **`launchAgent` env threading** — replace the seam in-test to capture the env it is handed;
+  assert `.dev-bin` is prepended when `source=dev` and the env is unchanged when `source=prod`.
+  (`muxDown` is **not** env-threaded — assert only that it still receives/execs the resolved
+  absolute `lyxPath`, unchanged from today.)
+- **`cloneRun`** — with the new `cloneRun(parentDir, lyxPath)` seam, replace it to assert the
+  caller passes the resolved dev path when a dev binary is present (else the PATH fallback).
 - **Guard test for the new invariant** — a cheap string/AST scan asserting `lookPath("lyx")`
   appears only inside `resolveLyx` across `tools/sandbox/*.go`, so no future site regresses to
   bare PATH resolution.
@@ -289,3 +316,8 @@ All tests **Tier 1 / untagged / no real spawns**, via the existing seams:
 - **Q:** De-hardcode the existing prod launchers now? **A:** No (Q10) — out of scope; separate
   task with larger blast radius. This task introduces zero new hardcoding but leaves the
   existing prod `.cmd` hardcoding alone.
+- **Q:** Does `mux down` also need the `.dev-bin` PATH prepend? (discussion-review r1 gap)
+  **A:** No — `muxDown` execs the resolved dev binary by absolute path and `lyx mux`
+  re-invokes via `os.Executable()` (`muxengine/lifecycle.go:524`), so the prepend is redundant.
+  Only `launchAgent` (agent types bare `lyx`) gets it. Resolved without user input: pure
+  technical correctness, one right answer.
