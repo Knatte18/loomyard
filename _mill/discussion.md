@@ -119,24 +119,40 @@ consumers and deletes warp/weft is a later, separate task (step 2).
 ### SyncWeft: behavior parity plus the Warp-SHA trailer
 
 - Decision: `SyncWeft` reproduces today's weft sync observable behavior — pathspec-scoped
-  staging, commit under write lock, push with rebase-retry, `SkipGit`/`SkipPush` gating,
-  and the CLI-level detached push spawn (`sync` = commit + detached push, as weftcli's
-  `spawnPush` does today) — with one deliberate delta: every weft commit carries a
-  `Warp-SHA: <sha>` trailer recording the warp SHA it corresponds to, and
-  `RecordCorrespondence` updates the index alongside. Because a gitrepo push can recover
-  via rebase and rewrite local SHAs, the weft SHA recorded in the index is re-read via
-  `CurrentSHA` after a successful push, never taken from the pre-push commit return.
+  staging, commit under write lock, push with rebase-retry, `SkipGit`/`SkipPush` gating —
+  with one deliberate delta: every weft commit carries a `Warp-SHA: <sha>` trailer
+  recording the warp SHA it corresponds to, and `RecordCorrespondence` updates the index
+  alongside. Push/recording sequencing is split by call path:
+  - **Engine method `SyncWeft` is synchronous:** commit-with-trailer → in-process push →
+    re-read `CurrentSHA` (a push that recovered via rebase rewrites local SHAs — gitrepo's
+    documented contract) → `RecordCorrespondence` with the post-push SHA. This is the
+    canonical coordinated operation.
+  - **CLI `sync` verb keeps today's parity:** commit-with-trailer + detached push spawn
+    (as weftcli's `spawnPush` does today). The index records the commit SHA immediately,
+    pre-push; in the rare case a rebase-recovery rewrites it, lookups self-correct — index
+    entries are validated with `SHAExists` and a stale entry triggers `RebuildIndex`
+    (trailers live in commit messages, survive rebase replay, and are the sole source of
+    truth).
+  - **Async push stays first-class:** `SkipPush` gating, the detached push path, and
+    gitrepo's `PushCoalesced` remain available so consumers are never forced to wait on a
+    synchronous push — explicitly required for board once board-weft-storage puts board
+    data on `weft:main` (operator constraint).
 - Rationale: cutover safety demands parity (the old modules are the reference fixture);
-  the trailer is fabric's core new capability. The re-read rule is gitrepo's documented
-  contract.
+  the trailer is fabric's core new capability. A detached fire-and-forget push can never
+  hand the final SHA back to the committer, so the detached path leans on the
+  already-decided self-correction machinery instead of pretending to know the post-push
+  SHA.
 - Rejected: simplifying away env gating or the detached spawn during the move (mixes
-  behavior redesign into the replacement).
+  behavior redesign into the replacement); making the detached push process update the
+  index itself post-push (moves coordination logic into the push verb).
 
 ### Correspondence index: gitignored local cache
 
 - Decision: the warp↔weft SHA correspondence index is a local, never-committed cache
-  file in the weft clone's git-metadata area (follow `internal/state` patterns), sorted
-  for binary-search "nearest older" lookup. API per design doc: `RecordCorrespondence`,
+  file stored **inside the weft clone's git directory** (resolved via
+  `git rev-parse --git-dir`, so it works in worktrees too) — not in the working tree, so
+  no `.gitignore` entry is needed or written. Atomic-write/lock handling follows
+  `internal/state`'s patterns. Sorted for binary-search "nearest older" lookup. API per design doc: `RecordCorrespondence`,
   `WeftSHAForWarpSHA`, `RebuildIndex` (full trailer scan via `git interpret-trailers`,
   reconstructs the cache; trailers in weft history are the sole source of truth).
 - Rationale: the index is pure derived state, per-clone rebuildable; sharing it (e.g. via
@@ -171,9 +187,14 @@ consumers and deletes warp/weft is a later, separate task (step 2).
 - Decision: fabric enforces host branch `<slug>` ↔ weft branch `<slug>-weft`
   uniformly, with no exceptions — including the primary worktree (host `main` ↔ weft
   `main-weft`), established from `lyx fabric clone` onward. `weft:main` is thereby never
-  claimed (the board-weft-storage requirement). No migration of existing hubs: today's
-  warp-created hubs use mirrored same-name branches in both repos and keep them until
-  cutover.
+  claimed (the board-weft-storage requirement). **Composition rule:** the weft branch is
+  always the full host branch name plus the `-weft` suffix —
+  `weftBranch = hostBranch + "-weft"`. For task worktrees the host branch is
+  `branch_prefix + slug` (as warp builds it today), so a non-empty prefix yields e.g.
+  host `hanf/foo` ↔ weft `hanf/foo-weft`. The primary's host branch is whatever clone
+  checks out (`main`), never prefixed, so its weft branch is `main-weft`. No migration
+  of existing hubs: today's warp-created hubs use mirrored same-name branches in both
+  repos and keep them until cutover.
 - Rationale: this is a deliberate behavior change fabric introduces — today NOTHING
   implements `-weft` branch naming (`hubgeometry.WeftSuffix` governs sibling *directory*
   names only; `warpengine/add.go` creates the identical branch name in both repos).
@@ -326,8 +347,10 @@ From `CONSTRAINTS.md` (authoritative; read it before writing code):
   pattern.
 - **Trailer/index integration:** SyncWeft writes the trailer (verify via
   `git interpret-trailers`); `RebuildIndex` reconstructs an index equal to the
-  incrementally-built one; post-push SHA re-read (index never records a pre-push SHA
-  after a rebase-recovered push — simulate a non-fast-forward push).
+  incrementally-built one; synchronous `SyncWeft` records the post-push SHA (never a
+  pre-push SHA after a rebase-recovered push — simulate a non-fast-forward push); the
+  CLI detached path's stale index entry (rewritten SHA) is caught by `SHAExists`
+  validation at lookup and healed by `RebuildIndex`.
 - **Staleness:** `SHAExists`-gated paths surface the typed stale error after a simulated
   history rewrite (amend/force-push in the fixture).
 - **Sandbox:** new `tools/sandbox/SANDBOX-FABRIC-SUITE.md` with `**Covers:** fabric`
@@ -368,3 +391,9 @@ From `CONSTRAINTS.md` (authoritative; read it before writing code):
   deliberate duplication so cutover is pure deletion.
 - **Q:** Type name from the design sketch (`Trunk`)? **A:** Obsolete vocabulary — the
   type is `fabricengine.Fabric`.
+- **Q:** (review r1 gap) SyncWeft's detached push contradicts post-push SHA re-read —
+  which wins? **A:** Engine `SyncWeft` pushes in-process (post-push re-read +
+  `RecordCorrespondence`); the CLI `sync` verb keeps the detached spawn, with stale
+  entries self-correcting via `SHAExists` + `RebuildIndex`. Constraint: async push must
+  remain first-class — board (on `weft:main` per board-weft-storage) must never be
+  forced to wait on a synchronous push.
