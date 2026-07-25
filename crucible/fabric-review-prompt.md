@@ -121,15 +121,18 @@ fabric's dedicated sandbox hub (`lyx-fabric-test-HUB`) being separate from the s
 `lyx-test`/`lyx-test-weft` hub — that separation is intentional per `SANDBOX-FABRIC-SUITE.md`.
 
 ## Round context seeded from prior-round verification
-**Safety pass — round 4.** Rounds 1-3 (tags `opus-r1`/Opus, `fable-r2`/Fable, `opus-r3`/Opus — we
-are alternating Opus/Fable for up to 5 rounds total, so this round is Fable) between them found and
-fixed one BLOCKING bug plus eighteen lower-severity ones; the orchestrator has independently verified
-every fix (see CLOSED-AND-VERIFIED below) — including reproducing the not-false-green proof for the
-behavior-changing fixes by reverting each production file to its pre-fix state, confirming the
-round's own new/updated test FAILS at the right assertion, then restoring the fix and confirming an
-empty diff. There is **no known residual**. Do a genuinely independent clean-room pass to find
-anything rounds 1-3 missed — or, if you genuinely find nothing, honestly confirm merge-readiness. Do
-NOT re-open or re-litigate the CLOSED-AND-VERIFIED work below.
+**Safety pass — round 5 (FINAL planned round).** Rounds 1-4 (tags `opus-r1`/Opus, `fable-r2`/Fable,
+`opus-r3`/Opus, `fable-r4`/Fable — we are alternating Opus/Fable for 5 rounds total, so this round is
+Opus) between them found and fixed one BLOCKING bug plus twenty-five lower-severity ones; the
+orchestrator has independently verified every fix (see CLOSED-AND-VERIFIED below) — including
+reproducing the not-false-green proof for the behavior-changing fixes by reverting each production
+file to its pre-fix state, confirming the round's own new/updated test FAILS at the right assertion,
+then restoring the fix and confirming an empty diff. There is **no known residual**. Do a genuinely
+independent clean-room pass to find anything rounds 1-4 missed — or, if you genuinely find nothing,
+honestly confirm merge-readiness. Do NOT re-open or re-litigate the CLOSED-AND-VERIFIED work below.
+This is the fifth and (per the planned campaign) final round — after this round's fixes are
+independently verified, if it finds nothing new the campaign is judged converged and ready to merge;
+if it finds real defects, the operator will decide whether to extend beyond 5 rounds.
 
 Round 2's fixer phase was interrupted mid-way by a session crash (R1-R3 fixed by the crashed
 session, recovered and committed by the orchestrator; R4-R11 finished by a continuation round agent).
@@ -255,10 +258,70 @@ Round 3 (`opus-r3`), full review at `.scratch/fabric-review-opus-r3.md`, fixer r
   wrote or touched anything, then relaunched clean as `opus-r3` to correct the model rotation — see
   above; no findings or partial work from the killed attempt exist to re-litigate.
 
+Round 4 (`fable-r4`), full review at `.scratch/fabric-review-fable-r4.md`, fixer report at
+`.scratch/fabric-review-fable-r4-fixer-report.md`:
+- **F3-r4+F6-r4 (MEDIUM, commit `b90e75e9`):** `clone` of a hub whose weft remote already had
+  `<primary>-weft` forked a new *untracked* local branch at the primary's HEAD instead of adopting
+  the existing remote branch — silently disowning all previously-synced weft history (confirmed
+  live: 185 lines of `_lyx/config` lost) with no recovery path (the first push of the untracked
+  branch can never rebase-reconcile with the disowned history). This hit every `clone --reset`
+  re-clone. Fixed: `suffixWeftPrimaryBranch` checks for `refs/remotes/origin/<suffixed>` first and
+  checks out a tracking branch of it when present, creating fresh only otherwise. (F6-r4, same
+  commit: the clone docs' false "renamed" wording corrected alongside.) Orchestrator reproduced by
+  reverting `clone.go` and confirming `TestCloneHub_AdoptsExistingRemoteWeftPrimaryBranch` fails;
+  restoring passes.
+- **F2-r4 (MEDIUM, commit `8012862c`):** fabric's own lock artifacts (`.weft/`,
+  `.gitrepo-push.lock`) were never git-excluded, so they permanently dirtied the weft worktree —
+  `remove` without `--force` refused every pair that had ever synced, with a "run lyx fabric sync"
+  hint that could never actually clear the dirt. Fixed: idempotent `info/exclude` seeding
+  (`seedWeftArtifactExcludes`) at the lock choke point, which also heals pre-existing dirt since
+  excludes are evaluated at status-time. `gitrepo`'s `pushLockFile` exported as `PushLockFileName`
+  so the literal has one owner. Orchestrator reproduced by reverting `weftgit.go` and confirming
+  `TestCommitWeft_LockArtifactsExcludedFromStatus` fails (both `.weft/` and the lock file show as
+  porcelain dirt); restoring passes.
+- **F1-r4 (MEDIUM, commit `fc2a0c05`):** the per-worktree correspondence index cache survived a
+  coordinated `checkout` branch switch; because `SHAExists` only checks that a recorded commit
+  exists *somewhere* in the weft repo (not on the current branch), stale cross-branch entries kept
+  passing validation, so lookups (and `RevertWithWeft`) could serve a weft SHA the current branch's
+  own trailer history would never produce. Fixed: Checkout discards and rebuilds the index
+  (`refreshCorrIndexAfterSwitch`) from the newly-current branch's trailers after a successful
+  switch; `manifest/designs/fabric.md`'s correspondence-index section documents the
+  per-worktree-cache-vs-per-branch-source mismatch. Orchestrator reproduced by reverting
+  `checkout.go`+`index.go` and confirming `TestCheckout_RefreshesCorrespondenceIndex` fails
+  (`WeftSHAForWarpSHA` returns a stale cross-branch answer with nil error instead of
+  `ErrNoCorrespondence`); restoring passes.
+- **F4-r4 (LOW, commit `7e3bd922`):** `Add` accepted a slug matching a reserved hub-geometry name
+  (`_lyx`, `_raddle`, `_board`, `_portals`, `_launchers`), live-confirmed to create a host worktree
+  whose directory collides with paths lyx composes at the hub level. Fixed with a new
+  `hubgeometry.IsReservedHubName` (single-owner literals per the Hub Geometry Invariant) and Add
+  step-0 rejection. Orchestrator reproduced by reverting `add.go` and confirming
+  `TestAdd_RejectsReservedHubNameSlug` fails (wrong error: git-step failure instead of the
+  validation rejection); restoring passes.
+- **F5-r4 (LOW, commit `1913a409`):** `Add`'s branch-already-exists rejection was a bare error with
+  no next step. Fixed: the message now names both remedies (checkout onto the branch, or
+  `git branch -D` a leftover) — message-only change, Remove's branch-preserving behavior unchanged.
+  Verified by inspection + the new `TestAdd_ExistingBranchErrorNamesRemedy`.
+- **F7-r4 (NIT, commit `1ef60af1`):** a rolled-back fork-checkout left the weft branch Checkout had
+  just forked stranded as an orphan (adopted pre-existing branches were correctly preserved; only
+  the fork case leaked). Fixed: `rollbackSwitch` deletes a forked branch on rollback, never an
+  adopted one. Orchestrator reproduced by reverting `checkout.go` and confirming
+  `TestCheckout_JunctionFailureDeletesForkedWeftBranch` fails ("forked weft branch survived the
+  rollback"); restoring passes.
+- Also `6adda8dc`: goimports formatting-only normalization of a pre-existing comment list in
+  `add.go`, no behavior change — verified by inspection.
+- Observations recorded but deliberately NOT fixed (reasons in the fixer report, do not re-flag):
+  reconcile-from-a-broken-worktree config error (warp-parity, workable advice as-is);
+  `links_removed` always reporting 0 (warp-parity, cosmetic); JSON `null` for empty result lists
+  (closed whole-repo convention, same as R11's rationale above).
+
 Full suite confirmed green by the orchestrator from a cold state on the committed tree after every
 round (not just trusting either round's own report): `go build ./...`, `go vet` on the
 fabricengine+fabriccli+gitrepo+cmd/lyx packages, `go test -count=5` (hermetic, all packages),
-`go test -tags integration -count=1` (all packages).
+`go test -tags integration -count=1` (all packages). Round 4 also touched the shared
+`internal/gitrepo` and `internal/hubgeometry` packages (a mechanical exported-constant rename and a
+purely-additive helper, respectively) — the orchestrator additionally ran whole-repo
+`go build ./...` / `go vet ./...` / `go test -count=5 ./...` / `go test -tags integration -count=1
+./...` and confirmed no regression anywhere, including `warpengine`/`weftengine`.
 
 State the **merge bar** so you calibrate: correctness in the NORMAL single-instance flow is the
 gate; an N×-concurrent suite (if you choose to run one — fabric is not inherently a
