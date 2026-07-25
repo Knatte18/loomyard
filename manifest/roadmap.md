@@ -125,6 +125,14 @@ between these items.
    "deferred idea" `codeintel-redesign.md` already refers to. Genuinely speculative, not yet
    designed in depth. See [designs/semantic-index.md](designs/semantic-index.md).
 
+1. **reduce prompt friction** — trivial, destructive-looking commands (`rm` and similar against
+   test/fixture directories) shouldn't stall autonomous work with a permission prompt.
+   `fabric`'s testing surfaced this; the likely fix is making `tools/sandbox`'s test-repo cleanup
+   fully self-contained inside the Go tool (so no external `rm` is ever needed), not just tidying
+   the handful of places still using manual `os.MkdirTemp`/`os.RemoveAll` instead of
+   `t.TempDir()`. Genuinely speculative, not yet scoped. See
+   [designs/reduce-prompt-friction.md](designs/reduce-prompt-friction.md).
+
 1. **`PATTERN.md`** — a loomyard-owned equivalent of Millhouse's `CONSTRAINTS.md`, written from
    scratch (not a port) once loomyard starts dogfooding its own development onto `loom`. Format:
    short two-line entries (constraint + pointer), full rule/rationale/enforcement detail in a
