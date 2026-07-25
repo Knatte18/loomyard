@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-fix-r3
+phase: discussed
 slug: dev-test-binary
 branch: dev-test-binary
 plan: null
@@ -16,4 +16,5 @@ task_description: |
 ```text
 discussing  '2026-07-25T07:04:32Z'
 discussion-fix-r3  '2026-07-25T07:39:53Z'
+discussed  '2026-07-25T07:40:25Z'
 ```
