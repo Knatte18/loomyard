@@ -3,7 +3,7 @@
 // verbs_test.go covers webstercli's five git-backed/spawn-backed verbs
 // (begin-batch, record-batch, recover-batch, run) through the RunCLI seam:
 // a real scratch git repo backs WorktreeRoot, a real *shuttleengine.Runner
-// wired over local fake shuttleengine.MuxOps/shuttleengine.Engine doubles
+// wired over local fake shuttleengine.ReedOps/shuttleengine.Engine doubles
 // is the starter/injector seam (exactly buildercli's own spawnbatch_test.go
 // pattern — a fake struct alone cannot satisfy these interfaces, since a
 // genuine *shuttleengine.Run's StrandGUID is only ever minted by a real
@@ -38,7 +38,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 	"github.com/Knatte18/loomyard/internal/modelspec"
-	"github.com/Knatte18/loomyard/internal/muxengine"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -84,26 +84,26 @@ func commitFile(t *testing.T, dir, name, content, message string) string {
 	return strings.TrimSpace(mustGit(t, dir, "rev-parse", "HEAD"))
 }
 
-// verbsFakeMux is a hermetic shuttleengine.MuxOps double: AddStrand mints a
+// verbsFakeReed is a hermetic shuttleengine.ReedOps double: AddStrand mints a
 // distinct GUID per call and registers it live, RemoveStrand records every
 // call and retires the guid, and the send/capture methods stay inert.
-type verbsFakeMux struct {
+type verbsFakeReed struct {
 	mu             sync.Mutex
 	counter        int
-	status         muxengine.StatusResult
+	status         reedengine.StatusResult
 	removedStrands []string
 }
 
-func (m *verbsFakeMux) AddStrand(spec muxengine.AddSpec) (muxengine.Strand, error) {
+func (m *verbsFakeReed) AddStrand(spec reedengine.AddSpec) (reedengine.Strand, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.counter++
 	guid := fmt.Sprintf("verbs-strand-%d", m.counter)
-	m.status.Strands = append(m.status.Strands, muxengine.StrandStatus{GUID: guid, Live: true})
-	return muxengine.Strand{GUID: guid}, nil
+	m.status.Strands = append(m.status.Strands, reedengine.StrandStatus{GUID: guid, Live: true})
+	return reedengine.Strand{GUID: guid}, nil
 }
 
-func (m *verbsFakeMux) RemoveStrand(guid string, recursive bool) (muxengine.Removed, error) {
+func (m *verbsFakeReed) RemoveStrand(guid string, recursive bool) (reedengine.Removed, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.removedStrands = append(m.removedStrands, guid)
@@ -113,20 +113,20 @@ func (m *verbsFakeMux) RemoveStrand(guid string, recursive bool) (muxengine.Remo
 			break
 		}
 	}
-	return muxengine.Removed{}, nil
+	return reedengine.Removed{}, nil
 }
 
-func (m *verbsFakeMux) Status() (muxengine.StatusResult, error) {
+func (m *verbsFakeReed) Status() (reedengine.StatusResult, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.status, nil
 }
 
-func (m *verbsFakeMux) SendText(guid, text string, submit bool) error { return nil }
-func (m *verbsFakeMux) SendKey(guid, key string) error                { return nil }
-func (m *verbsFakeMux) CapturePane(guid string) (string, error)       { return "", nil }
+func (m *verbsFakeReed) SendText(guid, text string, submit bool) error { return nil }
+func (m *verbsFakeReed) SendKey(guid, key string) error                { return nil }
+func (m *verbsFakeReed) CapturePane(guid string) (string, error)       { return "", nil }
 
-var _ shuttleengine.MuxOps = (*verbsFakeMux)(nil)
+var _ shuttleengine.ReedOps = (*verbsFakeReed)(nil)
 
 // verbsFakeEngine is a hermetic shuttleengine.Engine double: Prepare counts
 // every call and returns a canned Launch without writing any real provider
@@ -193,7 +193,7 @@ var _ websterengine.MasterStarter = (*verbsFakeMasterStarter)(nil)
 // fixture seeded under the fixture's own _lyx/plan.
 type verbsFixture struct {
 	CLI      *websterCLI
-	Mux      *verbsFakeMux
+	Reed     *verbsFakeReed
 	Engine   *verbsFakeEngine
 	Runner   *shuttleengine.Runner
 	Worktree string
@@ -208,10 +208,10 @@ func newVerbsFixture(t *testing.T) *verbsFixture {
 	layout := &hubgeometry.Layout{WorktreeRoot: worktree, Cwd: worktree, RelPath: "."}
 	seedValidPlanDir(t, hubgeometry.PlanDir(worktree))
 
-	mux := &verbsFakeMux{}
+	reed := &verbsFakeReed{}
 	engine := &verbsFakeEngine{}
 	shuttleCfg := shuttleengine.Config{RunDir: filepath.Join(t.TempDir(), "runs"), RunTimeoutMin: 60, StartupTimeoutS: 30}
-	runner := shuttleengine.NewRunner(mux, engine, layout, shuttleCfg)
+	runner := shuttleengine.NewRunner(reed, engine, layout, shuttleCfg)
 
 	roles := map[websterengine.Role]modelspec.Resolved{
 		websterengine.RoleMaster:   {Engine: "claude", Model: "master-model", Params: map[string]string{}},
@@ -231,7 +231,7 @@ func newVerbsFixture(t *testing.T) *verbsFixture {
 		starter:    runner,
 		injector:   runner,
 		engine:     engine,
-		mux:        mux,
+		reed:       reed,
 		layout:     layout,
 		shuttleCfg: shuttleCfg,
 		cfg: websterengine.Config{
@@ -248,7 +248,7 @@ func newVerbsFixture(t *testing.T) *verbsFixture {
 		promptsDir: hubgeometry.WebsterPromptsDir(worktree),
 	}
 
-	return &verbsFixture{CLI: c, Mux: mux, Engine: engine, Runner: runner, Worktree: worktree}
+	return &verbsFixture{CLI: c, Reed: reed, Engine: engine, Runner: runner, Worktree: worktree}
 }
 
 // testPlanFingerprint recomputes the plan-identity hash websterengine's own
@@ -635,7 +635,7 @@ func TestRunCmd_ErrRunBusySkipsWeftBackstop(t *testing.T) {
 }
 
 // seedPersistentPreRunFixture returns a fresh host-hub git fixture with
-// shuttle/mux/webster config seeded (webster.yaml's raw content is
+// shuttle/reed/webster config seeded (webster.yaml's raw content is
 // caller-supplied, so a test can override its batcher: key) and chdir'd
 // into the host hub -- unlike every other test in this file, this one
 // drives Command()'s real PersistentPreRunE (never bypassing it with a
@@ -646,7 +646,7 @@ func seedPersistentPreRunFixture(t *testing.T, websterConfig string) lyxtest.Hos
 	fixture := lyxtest.CopyHostHub(t)
 	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
 		"shuttle": shuttleengine.ConfigTemplate(),
-		"mux":     muxengine.ConfigTemplate(),
+		"reed":    reedengine.ConfigTemplate(),
 		"webster": websterConfig,
 	})
 	t.Chdir(fixture.Hub)

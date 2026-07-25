@@ -204,3 +204,34 @@ func TestWeftLayoutMethodParity(t *testing.T) {
 			gotWorktree, hub, filepath.Base(layout.WorktreeRoot), wantWorktree)
 	}
 }
+
+// TestIsReservedHubName verifies the reserved hub-entry name predicate slug
+// validation (fabric's Add) gates on: every geometry-owned hub-level entry
+// name is reserved, ordinary slugs and near-misses are not.
+func TestIsReservedHubName(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		input string
+		want  bool
+	}{
+		{"lyx dir", "_lyx", true},
+		{"raddle dir", "_raddle", true},
+		{"board dir", "_board", true},
+		{"portals dir", "_portals", true},
+		{"launchers dir", "_launchers", true},
+		{"ordinary slug", "my-task", false},
+		{"underscore-prefixed but unreserved", "_mytask", false},
+		{"compound near-miss", "_boardroom", false},
+		{"empty", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := hubgeometry.IsReservedHubName(tt.input); got != tt.want {
+				t.Errorf("IsReservedHubName(%q) = %v; want %v", tt.input, got, tt.want)
+			}
+		})
+	}
+}

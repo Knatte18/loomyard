@@ -432,14 +432,14 @@ func TestEngine_Run_DoneMalformedReviewFile(t *testing.T) {
 // rather than swallowed.
 func TestEngine_Run_ShuttleError(t *testing.T) {
 	root, p := newEngineTestProfile(t)
-	shuttle := &fakeShuttle{err: errors.New("mux: add strand failed")}
+	shuttle := &fakeShuttle{err: errors.New("reed: add strand failed")}
 	e := newEngineForTest(root, shuttle)
 
 	_, err := e.Run(p, RunOpts{})
 	if err == nil {
 		t.Fatalf("Run() error = nil; want a wrapped shuttle error")
 	}
-	if !strings.Contains(err.Error(), "mux: add strand failed") {
+	if !strings.Contains(err.Error(), "reed: add strand failed") {
 		t.Errorf("Run() error = %q; want it to carry the underlying shuttle error", err.Error())
 	}
 }

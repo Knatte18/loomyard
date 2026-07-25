@@ -96,7 +96,7 @@ Example:
 				Config:       c.cfg,
 				Engine:       c.engine,
 				Injector:     c.injector,
-				Mux:          c.mux,
+				Reed:         c.reed,
 				WorktreeRoot: c.layout.Cwd,
 				WebsterDir:   c.websterDir,
 				ReportsDir:   c.reportsDir,

@@ -5,7 +5,7 @@
 > pathology — currently **passes** on this Linux box (the perf test dropped from ~130s
 > to ~0.02s). This is kept as the historical record of the original investigation, not
 > as an open issue list; nothing below still needs action. The fix work landed across
-> several subsequent tasks (including `mux-psmux-to-tmux-rename` for B3's path-resolution
+> several subsequent tasks (including `reed-psmux-to-tmux-rename` for B3's path-resolution
 > sub-issue); this file was not updated commit-by-commit as each finding closed, so no
 > single commit reference is given per row — the point-in-time re-verification above is
 > what's authoritative now.
@@ -50,15 +50,15 @@ not AV overhead.
 | Tier | Package | Failing test(s) (at survey time) | Category | Status (2026-07-15) |
 |------|---------|-----------------|----------|----------|
 | 1+2 | `internal/shuttleengine/claudeengine` | 5× `TestPrepare_*` | **B1 — prod bug (critical)** | ✅ FIXED — passes |
-| 1+2 | `internal/muxengine` | `TestLoadConfig_TemplateDefaultsResolve` | A — Windows-only test assertion | ✅ FIXED — passes |
+| 1+2 | `internal/reedengine` | `TestLoadConfig_TemplateDefaultsResolve` | A — Windows-only test assertion | ✅ FIXED — passes |
 | 1+2 | `internal/shuttleengine` | `TestRunDirRoot_AbsoluteUsedVerbatim`, `TestSpec_Validate_AbsoluteOutputFilesPassThroughVerbatim` | A — Windows-only test assertion | ✅ FIXED — passes |
 | 2 | `internal/warpengine` | `TestStatus_LyxPollutionDetected` | **B2 — junction≠symlink (deep)** | ✅ FIXED — passes |
 | 2 | `internal/warpengine` | `TestPrune_DoubleRemovalFailureNoStderrLeak` | A — Windows-FS-semantics test | ✅ FIXED — passes |
-| 2 | `internal/muxcli` | `TestRunCLI_AddNotUp_FriendlyError`, `TestRunCLI_RemoveNotUp_FriendlyError` | B3 — env + robustness | ✅ FIXED — passes |
+| 2 | `internal/reedcli` | `TestRunCLI_AddNotUp_FriendlyError`, `TestRunCLI_RemoveNotUp_FriendlyError` | B3 — env + robustness | ✅ FIXED — passes |
 | 1 | `internal/boardengine/boardtest` | `TestConcurrentReadsDuringUpserts` (**passes**, but **130 s**) | **C — perf pathology** | ✅ FIXED — 0.02s |
 
 Tier 2 is a superset of Tier 1, so it re-hits the three Tier-1 packages and adds
-`warpengine` + `muxcli`. Nothing in `internal/warpengine`'s real-git worktree/junction
+`warpengine` + `reedcli`. Nothing in `internal/warpengine`'s real-git worktree/junction
 machinery failed *except* the two rows above — the symlink model otherwise carries the
 weft/host topology fine on Linux.
 
@@ -117,24 +117,24 @@ real dirs; (c) confining the affected operations. This is the one finding that t
 `CONSTRAINTS.md` invariant (Hub Geometry / fslink) and deserves its own task and
 discussion. It is **not** in scope for "record benchmark numbers."
 
-### B3 (RESOLVED) — mux multiplexer binary: raw exec error + path resolution
+### B3 (RESOLVED) — reed multiplexer binary: raw exec error + path resolution
 
-`internal/muxcli` — `TestRunCLI_AddNotUp_FriendlyError` / `RemoveNotUp`:
+`internal/reedcli` — `TestRunCLI_AddNotUp_FriendlyError` / `RemoveNotUp`:
 
 ```
 RunCLI(add) before up error = "check session: exec: \"tmux\": executable file not found in $PATH";
-  want "no mux session; run \"lyx mux up\""
+  want "no reed session; run \"lyx reed up\""
 ```
 
-Two sub-issues (now addressed by the `mux-psmux-to-tmux-rename` task):
-- **Environment:** `tmux` is not installed on this box; the POSIX mux path shells out to
-  `tmux` (Windows uses tmux via the psmux port). Any mux run needs tmux present.
+Two sub-issues (now addressed by the `reed-psmux-to-tmux-rename` task):
+- **Environment:** `tmux` is not installed on this box; the POSIX reed path shells out to
+  `tmux` (Windows uses tmux via the psmux port). Any reed run needs tmux present.
 - **Robustness (path resolution):** the friendly-error path maps "session not found"
   but not "multiplexer binary missing" — older documentation and examples hardcoded
   specific absolute paths like `C:\Code\tools\bin\psmux.exe` / `pwsh.exe`, which are
-  unverifiable across different machine setups. This has been fixed by the `mux-psmux-to-tmux-rename`
+  unverifiable across different machine setups. This has been fixed by the `reed-psmux-to-tmux-rename`
   rename task, which updated all examples to resolve tmux via PATH and use env-var overrides
-  (e.g., `LYX_MUX_TMUX`) for customization.
+  (e.g., `LYX_REED_TMUX`) for customization.
 
 **Direction (CLOSED):** the hardcoded-path problem is resolved by genericizing examples to
 use PATH-resolved binary names and documenting env-var overrides.
@@ -144,9 +144,9 @@ use PATH-resolved binary names and documenting env-var overrides.
 These are tests that bake Windows path/FS semantics into their expectations. Production
 code is fine; the *tests* are non-portable and should be made OS-aware or POSIX-tagged.
 
-- **`internal/muxengine` `TestLoadConfig_TemplateDefaultsResolve`** (`config_test.go:47-52`)
+- **`internal/reedengine` `TestLoadConfig_TemplateDefaultsResolve`** (`config_test.go:47-52`)
   hardcodes `cfg.Tmux == \`tmux\`` (bare command name, resolved via PATH) and `cfg.Pwsh == \`bash\`` on POSIX.
-  The `muxengine.ConfigTemplate()` is **OS-split** (`template_windows.go` /
+  The `reedengine.ConfigTemplate()` is **OS-split** (`template_windows.go` /
   `template_posix.go`); on Linux it resolves `Tmux=tmux`, `Pwsh=bash`. The test must
   assert the OS-appropriate default (mirror the template split).
 - **`internal/shuttleengine` `TestRunDirRoot_AbsoluteUsedVerbatim`** and
@@ -190,7 +190,7 @@ reader rate, without changing what the test demonstrates.
    - **A-tier + C:** make the Category-A tests OS-aware and fix the boardtest hot-spin →
      gets Tier 1 green and fast on Linux. Low risk, mechanical.
    - **B1:** guard `PosixPath` by GOOS → unblocks the Claude engine on Linux. Small, high value.
-   - **B3:** install tmux + map "binary missing" to the friendly error → mux packages green.
+   - **B3:** install tmux + map "binary missing" to the friendly error → reed packages green.
    - **B2:** separate design task — the `_lyx` junction/symlink git behaviour touches a
      `CONSTRAINTS.md` invariant and must not be rushed into a benchmark card.
 3. Only after Tier 1 + Tier 2 are green on Linux does "record parallel OS-marked numbers"

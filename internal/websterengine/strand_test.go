@@ -1,4 +1,4 @@
-// strand_test.go covers StrandLive against a fake shuttleengine.MuxOps
+// strand_test.go covers StrandLive against a fake shuttleengine.ReedOps
 // double (present/live, present/not-live, absent), TurnEnded against a fake
 // shuttleengine.Engine double (stop event, no stop event, missing events
 // file, a ParseEvents error), and removeStrandIfLive's three cases (live,
@@ -12,34 +12,34 @@ import (
 	"os"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/muxengine"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// fakeMux is a minimal shuttleengine.MuxOps double: Status and RemoveStrand
+// fakeMux is a minimal shuttleengine.ReedOps double: Status and RemoveStrand
 // are scripted; every other method is unreached by this file's tests.
 type fakeMux struct {
-	status       muxengine.StatusResult
+	status       reedengine.StatusResult
 	statusErr    error
 	removeErr    error
 	removeCalls  int
 	removedGUIDs []string
 }
 
-func (m *fakeMux) AddStrand(spec muxengine.AddSpec) (muxengine.Strand, error) {
-	return muxengine.Strand{}, nil
+func (m *fakeMux) AddStrand(spec reedengine.AddSpec) (reedengine.Strand, error) {
+	return reedengine.Strand{}, nil
 }
-func (m *fakeMux) RemoveStrand(guid string, recursive bool) (muxengine.Removed, error) {
+func (m *fakeMux) RemoveStrand(guid string, recursive bool) (reedengine.Removed, error) {
 	m.removeCalls++
 	m.removedGUIDs = append(m.removedGUIDs, guid)
 	if m.removeErr != nil {
-		return muxengine.Removed{}, m.removeErr
+		return reedengine.Removed{}, m.removeErr
 	}
-	return muxengine.Removed{}, nil
+	return reedengine.Removed{}, nil
 }
-func (m *fakeMux) Status() (muxengine.StatusResult, error) {
+func (m *fakeMux) Status() (reedengine.StatusResult, error) {
 	if m.statusErr != nil {
-		return muxengine.StatusResult{}, m.statusErr
+		return reedengine.StatusResult{}, m.statusErr
 	}
 	return m.status, nil
 }
@@ -47,13 +47,13 @@ func (m *fakeMux) SendText(guid, text string, submit bool) error { return nil }
 func (m *fakeMux) SendKey(guid, key string) error                { return nil }
 func (m *fakeMux) CapturePane(guid string) (string, error)       { return "", nil }
 
-var _ shuttleengine.MuxOps = (*fakeMux)(nil)
+var _ shuttleengine.ReedOps = (*fakeMux)(nil)
 
 func TestStrandLive(t *testing.T) {
 	t.Parallel()
 
 	t.Run("guid present and live", func(t *testing.T) {
-		mux := &fakeMux{status: muxengine.StatusResult{Strands: []muxengine.StrandStatus{
+		mux := &fakeMux{status: reedengine.StatusResult{Strands: []reedengine.StrandStatus{
 			{GUID: "other", Live: false},
 			{GUID: "target", Live: true},
 		}}}
@@ -67,7 +67,7 @@ func TestStrandLive(t *testing.T) {
 	})
 
 	t.Run("guid present and not live", func(t *testing.T) {
-		mux := &fakeMux{status: muxengine.StatusResult{Strands: []muxengine.StrandStatus{{GUID: "target", Live: false}}}}
+		mux := &fakeMux{status: reedengine.StatusResult{Strands: []reedengine.StrandStatus{{GUID: "target", Live: false}}}}
 		live, err := StrandLive(mux, "target")
 		if err != nil {
 			t.Fatalf("StrandLive() error = %v; want nil", err)
@@ -78,7 +78,7 @@ func TestStrandLive(t *testing.T) {
 	})
 
 	t.Run("guid absent from Status is false, nil", func(t *testing.T) {
-		mux := &fakeMux{status: muxengine.StatusResult{Strands: []muxengine.StrandStatus{{GUID: "someone-else", Live: true}}}}
+		mux := &fakeMux{status: reedengine.StatusResult{Strands: []reedengine.StrandStatus{{GUID: "someone-else", Live: true}}}}
 		live, err := StrandLive(mux, "target")
 		if err != nil {
 			t.Fatalf("StrandLive() error = %v; want nil", err)
@@ -193,7 +193,7 @@ func TestRemoveStrandIfLive(t *testing.T) {
 	t.Parallel()
 
 	t.Run("live strand is removed", func(t *testing.T) {
-		mux := &fakeMux{status: muxengine.StatusResult{Strands: []muxengine.StrandStatus{{GUID: "target", Live: true}}}}
+		mux := &fakeMux{status: reedengine.StatusResult{Strands: []reedengine.StrandStatus{{GUID: "target", Live: true}}}}
 		if err := removeStrandIfLive(mux, "target"); err != nil {
 			t.Fatalf("removeStrandIfLive() error = %v; want nil", err)
 		}
@@ -206,7 +206,7 @@ func TestRemoveStrandIfLive(t *testing.T) {
 	})
 
 	t.Run("not-live strand is a no-op", func(t *testing.T) {
-		mux := &fakeMux{status: muxengine.StatusResult{Strands: []muxengine.StrandStatus{{GUID: "target", Live: false}}}}
+		mux := &fakeMux{status: reedengine.StatusResult{Strands: []reedengine.StrandStatus{{GUID: "target", Live: false}}}}
 		if err := removeStrandIfLive(mux, "target"); err != nil {
 			t.Fatalf("removeStrandIfLive() error = %v; want nil", err)
 		}
@@ -216,7 +216,7 @@ func TestRemoveStrandIfLive(t *testing.T) {
 	})
 
 	t.Run("absent guid (StrandLive false) is a no-op", func(t *testing.T) {
-		mux := &fakeMux{status: muxengine.StatusResult{}}
+		mux := &fakeMux{status: reedengine.StatusResult{}}
 		if err := removeStrandIfLive(mux, "target"); err != nil {
 			t.Fatalf("removeStrandIfLive() error = %v; want nil", err)
 		}
@@ -238,7 +238,7 @@ func TestRemoveStrandIfLive(t *testing.T) {
 	t.Run("a failed removal of a live strand propagates", func(t *testing.T) {
 		wantErr := errors.New("remove failed")
 		mux := &fakeMux{
-			status:    muxengine.StatusResult{Strands: []muxengine.StrandStatus{{GUID: "target", Live: true}}},
+			status:    reedengine.StatusResult{Strands: []reedengine.StrandStatus{{GUID: "target", Live: true}}},
 			removeErr: wantErr,
 		}
 		err := removeStrandIfLive(mux, "target")

@@ -1,9 +1,9 @@
 // Package gitrepo provides a typed Repo over a single local git checkout,
 // built on top of internal/gitexec's raw command runner. It exposes the small
 // set of semantic operations (current SHA, stage+commit, changed-files-since,
-// SHA existence, push, snapshot tracking) that every consumer of a git-backed
-// repo (fabric, raddle, codeintel, webster) would otherwise reimplement by
-// parsing raw git stdout itself.
+// SHA existence, push, pull, hard reset, snapshot tracking) that every
+// consumer of a git-backed repo (fabric, raddle, codeintel, webster) would
+// otherwise reimplement by parsing raw git stdout itself.
 //
 // # Relationship to internal/gitexec
 //
@@ -35,16 +35,18 @@
 //   - CurrentSHA, StageAndCommit, StageAllAndCommit, ChangedFilesSince, and
 //     SHAExists are the core read/write primitives.
 //   - Push and PushCoalesced are the push surface (see below).
+//   - Pull is the fast-forward-only pull surface (see below).
+//   - ResetHard is the SHA-validated hard-reset surface (see below).
 //   - SnapshotSHA and SetSnapshotSHA are the snapshot-tracking surface (see
 //     below).
 //   - CurrentBranch, CheckoutDetached, and RestoreBranch are the in-place
 //     bisect exception (see Scope boundaries below).
 //
 // Caller-supplied SHA arguments (SHAExists, ChangedFilesSince,
-// SetSnapshotSHA) are validated as plain hex object names before ever
-// reaching git, so an option-shaped string (a value with a leading '-') can
-// never be parsed as a git flag; invalid SHAs surface as ErrInvalidSHA, or
-// as false from SHAExists per its bool-swallowing posture.
+// SetSnapshotSHA, ResetHard) are validated as plain hex object names before
+// ever reaching git, so an option-shaped string (a value with a leading '-',
+// e.g. "--hard") can never be parsed as a git flag; invalid SHAs surface as
+// ErrInvalidSHA, or as false from SHAExists per its bool-swallowing posture.
 //
 // # The self-correcting snapshot pattern
 //
@@ -75,12 +77,12 @@
 //
 // gitrepo covers only the operations its consumers actually need
 // programmatically: stage+commit (explicit file list, never wildcard-stage),
-// diff-since-SHA, current-SHA, push, snapshot/correspondence tracking, and
-// the CurrentBranch/CheckoutDetached/RestoreBranch trio below. StageAllAndCommit
-// is a separate wildcard-stage variant provided as board's opt-in exception,
-// not a relaxation of the explicit-list default — fabric, raddle, and
+// diff-since-SHA, current-SHA, push, fast-forward pull, SHA-validated hard
+// reset, snapshot/correspondence tracking, and the CurrentBranch/CheckoutDetached/RestoreBranch
+// trio below. StageAllAndCommit is a separate wildcard-stage variant provided as board's
+// opt-in exception, not a relaxation of the explicit-list default — fabric, raddle, and
 // codeintel keep using explicit-list StageAndCommit. Rebase, interactive
-// staging, cherry-pick, and general-purpose branch/checkout management are
+// staging, cherry-pick, conflict resolution, and general-purpose branch/checkout management are
 // explicitly not supported — a human can always use plain git directly in
 // the working tree, since it's an ordinary git repo underneath. fabric
 // layers a further, separate set of topology operations — clone, worktree
@@ -122,6 +124,29 @@
 // burst of concurrent callers collapses into as few pushes as possible — a
 // caller that finds nothing unpushed once it acquires the lock returns
 // immediately instead of pushing again.
+//
+// # Pull surface
+//
+// Pull runs `git pull --ff-only` and is fast-forward-only by contract: a
+// diverged local branch — one with commits its upstream lacks — is an error,
+// never a merge commit. Recovering from divergence (rebase, reset, manual
+// merge) stays a caller policy; gitrepo does not attempt it. Unlike the rest
+// of the package's error style, a non-zero exit from Pull names the repo
+// path and git's exit code without embedding git's raw stderr, so a
+// diverged-branch or no-remote failure never leaks git's own
+// "fatal:"-prefixed message text.
+//
+// # ResetHard surface
+//
+// ResetHard is the primitive fabric's RevertWithWeft history-recovery flow
+// builds on: it points HEAD, the index, and the working tree at a
+// caller-supplied SHA exactly, via `git reset --hard`, discarding any local
+// commits or uncommitted changes past that point. The SHA-shape validation
+// every caller-supplied SHA argument goes through (see above) guarantees an
+// option-shaped string can never reach `git reset` as a flag instead of a
+// target commit — ResetHard rejects it as ErrInvalidSHA before any git
+// spawn, exactly like ChangedFilesSince. Non-zero-exit errors follow Pull's
+// no-stderr-leak style: the repo path and git's exit code, never raw stderr.
 //
 // # Snapshot remote model
 //

@@ -22,16 +22,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// StrandLive reports whether guid names a strand mux currently tracks as
-// live: it calls mux.Status() and scans the returned Strands for guid's
-// Live field. guid absent from the result reports (false, nil) — mux no
+// StrandLive reports whether guid names a strand reed currently tracks as
+// live: it calls reed.Status() and scans the returned Strands for guid's
+// Live field. guid absent from the result reports (false, nil) — reed no
 // longer tracks it, which the caller treats identically to a pane that
-// died. Liveness is NEVER read from persisted mux state; only this live
+// died. Liveness is NEVER read from persisted reed state; only this live
 // Status() query can answer "is the pane actually there right now".
-func StrandLive(mux shuttleengine.MuxOps, guid string) (bool, error) {
-	status, err := mux.Status()
+func StrandLive(reed shuttleengine.ReedOps, guid string) (bool, error) {
+	status, err := reed.Status()
 	if err != nil {
-		return false, fmt.Errorf("websterengine: mux status: %w", err)
+		return false, fmt.Errorf("websterengine: reed status: %w", err)
 	}
 	for _, s := range status.Strands {
 		if s.GUID == guid {
@@ -77,14 +77,14 @@ func TurnEnded(eventsPath string, engine shuttleengine.Engine) (bool, error) {
 // Starter is the seam a batch's implementer (or a recovery strand) spawns
 // through: exactly (*shuttleengine.Runner).Start's signature, so
 // production code passes a real *shuttleengine.Runner directly and tests
-// pass one built over local fake shuttleengine.MuxOps/shuttleengine.Engine
+// pass one built over local fake shuttleengine.ReedOps/shuttleengine.Engine
 // doubles. Start is deliberately non-blocking.
 type Starter interface {
 	Start(shuttleengine.Spec) (*shuttleengine.Run, error)
 }
 
 // OrchestratorHandle is the started-but-not-yet-finished orchestrator-role
-// spawn a caller blocks on: StrandGUID identifies the mux strand the
+// spawn a caller blocks on: StrandGUID identifies the reed strand the
 // orchestrator runs in (available immediately after the start, so a caller
 // can persist it BEFORE blocking), and Wait blocks until the spawn reaches
 // a terminal shuttle outcome. *shuttleengine.Run satisfies this
@@ -104,22 +104,22 @@ type OrchestratorStarter interface {
 	StartOrchestrator(shuttleengine.Spec) (OrchestratorHandle, error)
 }
 
-// removeStrandIfLive removes guid's mux strand when the mux still reports
+// removeStrandIfLive removes guid's reed strand when reed still reports
 // it live, and is a no-op otherwise. It exists for respawn paths that
 // re-claim a dead-classified batch's deliberately-kept pane: a timed-out
 // implementer may still be WORKING, not hung, and left alive it races a
 // fresh session (late commits to the host repo, a late report landing on
 // the very path the new spawn names as its output file). A StrandLive
-// error is treated as not-live — a downed mux session hosts no live
+// error is treated as not-live — a downed reed session hosts no live
 // strand. A failed removal of a genuinely live strand propagates: spawning
 // while the orphan cannot be stopped is exactly the double-drive this
 // helper exists to prevent.
-func removeStrandIfLive(mux shuttleengine.MuxOps, guid string) error {
-	live, err := StrandLive(mux, guid)
+func removeStrandIfLive(reed shuttleengine.ReedOps, guid string) error {
+	live, err := StrandLive(reed, guid)
 	if err != nil || !live {
 		return nil
 	}
-	if _, err := mux.RemoveStrand(guid, false); err != nil {
+	if _, err := reed.RemoveStrand(guid, false); err != nil {
 		return fmt.Errorf("websterengine: remove kept strand %s before respawn: %w", guid, err)
 	}
 	return nil

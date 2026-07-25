@@ -1,8 +1,8 @@
 // cli.go builds the cobra command tree for the webster module and the
 // RunCLI seam that wires it into the standard io.Writer-based call contract.
 // The parent "webster" command carries a PersistentPreRunE that resolves
-// cwd -> layout -> shuttle config -> mux config -> webster config -> model
-// registry -> resolved roles -> mux engine -> claude engine ->
+// cwd -> layout -> shuttle config -> reed config -> webster config -> model
+// registry -> resolved roles -> reed engine -> claude engine ->
 // shuttleengine.Runner exactly once per invocation, storing the resolved
 // ingredients on websterCLI -- buildercli's own cli.go
 // (internal/buildercli/cli.go) is the proven shape this file mirrors file
@@ -29,8 +29,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/modelspec"
-	"github.com/Knatte18/loomyard/internal/muxengine"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -60,13 +60,13 @@ type websterCLI struct {
 	injector      websterengine.Injector
 	masterStarter websterengine.MasterStarter
 
-	// engine and mux are the constructed claude and mux engines Runner
+	// engine and reed are the constructed claude and reed engines Runner
 	// itself holds unexported: record-batch and recover-batch call
 	// websterengine.TurnEnded/websterengine.StrandLive directly with these,
 	// and both gatherers need to call ParseEvents/Status on them, which
 	// Runner's own surface does not expose.
 	engine shuttleengine.Engine
-	mux    shuttleengine.MuxOps
+	reed   shuttleengine.ReedOps
 
 	layout     *hubgeometry.Layout
 	shuttleCfg shuttleengine.Config
@@ -117,8 +117,8 @@ func (s runnerMasterStarter) StartMaster(spec shuttleengine.Spec) (websterengine
 // Command returns the cobra command tree for the webster module.
 //
 // The parent "webster" command carries a PersistentPreRunE that resolves
-// cwd -> layout -> shuttle config -> mux config -> webster config -> model
-// registry -> resolved roles -> mux engine -> claude engine ->
+// cwd -> layout -> shuttle config -> reed config -> webster config -> model
+// registry -> resolved roles -> reed engine -> claude engine ->
 // shuttleengine.Runner into c, skipping that resolution entirely when the
 // group command itself is invoked (bare "lyx webster" listing or an
 // unknown-subcommand error via GroupRunE) so neither path requires a git
@@ -193,7 +193,7 @@ Verbs:
 				return nil
 			}
 
-			muxCfg, err := muxengine.LoadConfig(layout.Cwd, "mux")
+			reedCfg, err := reedengine.LoadConfig(layout.Cwd, "reed")
 			if err != nil {
 				output.Err(out, err.Error())
 				clihelp.Abort(ctx, 1)
@@ -235,16 +235,16 @@ Verbs:
 				return nil
 			}
 
-			muxEngine := muxengine.New(muxCfg, layout)
+			reedEngine := reedengine.New(reedCfg, layout)
 			claudeEngine := claudeengine.New()
-			runner := shuttleengine.NewRunner(muxEngine, claudeEngine, layout, shuttleCfg)
+			runner := shuttleengine.NewRunner(reedEngine, claudeEngine, layout, shuttleCfg)
 
 			c.runner = runner
 			c.starter = runner
 			c.injector = runner
 			c.masterStarter = runnerMasterStarter{runner: runner}
 			c.engine = claudeEngine
-			c.mux = muxEngine
+			c.reed = reedEngine
 			c.layout = layout
 			c.shuttleCfg = shuttleCfg
 			c.cfg = websterCfg

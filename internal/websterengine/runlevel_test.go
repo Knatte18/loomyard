@@ -36,28 +36,28 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/modelspec"
-	"github.com/Knatte18/loomyard/internal/muxengine"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// runFakeMux is a hermetic shuttleengine.MuxOps double: RemoveStrand records
+// runFakeReed is a hermetic shuttleengine.ReedOps double: RemoveStrand records
 // every call and retires the guid from the scripted Status result; AddStrand
 // is never reached by Run's own path (Run never registers a strand itself —
 // StartMaster's real implementation would, but the fake Starter below skips
 // straight to a scripted handle) and errors loud if ever called, so a stray
 // call surfaces immediately rather than silently no-opping.
-type runFakeMux struct {
+type runFakeReed struct {
 	mu             sync.Mutex
-	status         muxengine.StatusResult
+	status         reedengine.StatusResult
 	removedStrands []string
 }
 
-func (m *runFakeMux) AddStrand(spec muxengine.AddSpec) (muxengine.Strand, error) {
-	return muxengine.Strand{}, fmt.Errorf("run fake mux: AddStrand is not used by Run's own path")
+func (m *runFakeReed) AddStrand(spec reedengine.AddSpec) (reedengine.Strand, error) {
+	return reedengine.Strand{}, fmt.Errorf("run fake reed: AddStrand is not used by Run's own path")
 }
 
-func (m *runFakeMux) RemoveStrand(guid string, recursive bool) (muxengine.Removed, error) {
+func (m *runFakeReed) RemoveStrand(guid string, recursive bool) (reedengine.Removed, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.removedStrands = append(m.removedStrands, guid)
@@ -67,20 +67,20 @@ func (m *runFakeMux) RemoveStrand(guid string, recursive bool) (muxengine.Remove
 			break
 		}
 	}
-	return muxengine.Removed{}, nil
+	return reedengine.Removed{}, nil
 }
 
-func (m *runFakeMux) Status() (muxengine.StatusResult, error) {
+func (m *runFakeReed) Status() (reedengine.StatusResult, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.status, nil
 }
 
-func (m *runFakeMux) SendText(guid, text string, submit bool) error { return nil }
-func (m *runFakeMux) SendKey(guid, key string) error                { return nil }
-func (m *runFakeMux) CapturePane(guid string) (string, error)       { return "", nil }
+func (m *runFakeReed) SendText(guid, text string, submit bool) error { return nil }
+func (m *runFakeReed) SendKey(guid, key string) error                { return nil }
+func (m *runFakeReed) CapturePane(guid string) (string, error)       { return "", nil }
 
-var _ shuttleengine.MuxOps = (*runFakeMux)(nil)
+var _ shuttleengine.ReedOps = (*runFakeReed)(nil)
 
 // runFakeEngine is a hermetic shuttleengine.Engine double: every method
 // returns a fixed, inert value. Run's own path never reaches any of these —
@@ -235,11 +235,11 @@ func seedShuttleRunState(t *testing.T, runDirRoot, strandGUID, sessionID string)
 }
 
 // runFixture is a fully-wired set of Run dependencies: a real scratch git
-// repo as WorktreeRoot, a real on-disk plan directory, a fake mux/engine,
+// repo as WorktreeRoot, a real on-disk plan directory, a fake reed/engine,
 // and a fake Starter a test scripts per case.
 type runFixture struct {
 	Deps           websterengine.RunDeps
-	Mux            *runFakeMux
+	Reed           *runFakeReed
 	Starter        *runFakeStarter
 	Worktree       string
 	PlanDir        string
@@ -253,7 +253,7 @@ func newRunFixture(t *testing.T, numCards int) *runFixture {
 	worktree := newScratchRepo(t)
 	commitFile(t, worktree, "base.txt", "base", "base commit")
 
-	mux := &runFakeMux{}
+	reed := &runFakeReed{}
 	starter := &runFakeStarter{}
 	layout := &hubgeometry.Layout{WorktreeRoot: worktree, Cwd: worktree}
 	shuttleRunRoot := t.TempDir()
@@ -266,7 +266,7 @@ func newRunFixture(t *testing.T, numCards int) *runFixture {
 
 	deps := websterengine.RunDeps{
 		Starter:    starter,
-		Mux:        mux,
+		Reed:       reed,
 		Engine:     &runFakeEngine{},
 		ShuttleCfg: shuttleCfg,
 		Layout:     layout,
@@ -283,7 +283,7 @@ func newRunFixture(t *testing.T, numCards int) *runFixture {
 		WorktreeRoot: worktree,
 	}
 
-	return &runFixture{Deps: deps, Mux: mux, Starter: starter, Worktree: worktree, PlanDir: planDir, ShuttleRunRoot: shuttleRunRoot}
+	return &runFixture{Deps: deps, Reed: reed, Starter: starter, Worktree: worktree, PlanDir: planDir, ShuttleRunRoot: shuttleRunRoot}
 }
 
 // seedMatchingState saves st into fx's webster dir after stamping its
@@ -451,7 +451,7 @@ func TestRun_FreshArchivesStateReportsAndClearsPrompts(t *testing.T) {
 // TestRun_EntryTimeReclaimStopsLiveMasterAndRecoveryStrandsButNotAbsent
 // proves the entry-time reclaim stops a recorded, still-live Master strand
 // and a recorded, non-terminal, still-live recovery-batch strand, but never
-// touches a recorded strand the mux no longer reports at all
+// touches a recorded strand the reed no longer reports at all
 // (cleanly-absent — already gone, nothing to stop).
 func TestRun_EntryTimeReclaimStopsLiveMasterAndRecoveryStrandsButNotAbsent(t *testing.T) {
 	fx := newRunFixture(t, 1)
@@ -465,7 +465,7 @@ func TestRun_EntryTimeReclaimStopsLiveMasterAndRecoveryStrandsButNotAbsent(t *te
 	}
 	seedMatchingState(t, fx, st)
 
-	fx.Mux.status = muxengine.StatusResult{Strands: []muxengine.StrandStatus{
+	fx.Reed.status = reedengine.StatusResult{Strands: []reedengine.StrandStatus{
 		{GUID: "prior-master-strand", Live: true},
 		{GUID: "prior-recovery-strand", Live: true},
 		// "absent-recovery-strand" is deliberately absent from Status at all.
@@ -479,14 +479,14 @@ func TestRun_EntryTimeReclaimStopsLiveMasterAndRecoveryStrandsButNotAbsent(t *te
 	}
 
 	wantRemoved := map[string]bool{"prior-master-strand": true, "prior-recovery-strand": true}
-	for _, guid := range fx.Mux.removedStrands {
+	for _, guid := range fx.Reed.removedStrands {
 		if guid == "absent-recovery-strand" {
 			t.Errorf("RemoveStrand called for a cleanly-absent strand %q; want it left untouched", guid)
 		}
 		delete(wantRemoved, guid)
 	}
 	if len(wantRemoved) != 0 {
-		t.Errorf("RemoveStrand calls = %v; missing %v", fx.Mux.removedStrands, wantRemoved)
+		t.Errorf("RemoveStrand calls = %v; missing %v", fx.Reed.removedStrands, wantRemoved)
 	}
 }
 

@@ -4,7 +4,7 @@
 // plan-validation gate's shared findingsEnvelope, the ErrPaused envelope,
 // and the success envelope's field shape and weft commit -- stubbing the
 // Starter seam with a real *shuttleengine.Runner wired over local fake
-// MuxOps/Engine doubles, exactly mirroring how builderengine's own
+// ReedOps/Engine doubles, exactly mirroring how builderengine's own
 // spawn_test.go fakes the same seam (a fake struct alone cannot satisfy
 // Starter, since a genuine *shuttleengine.Run's StrandGUID is only ever
 // minted by a real Runner.Start). Tests build a *builderCLI literal
@@ -28,33 +28,35 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/modelspec"
-	"github.com/Knatte18/loomyard/internal/muxengine"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// spawnFakeMux is a hermetic shuttleengine.MuxOps double: AddStrand mints a
+// spawnFakeReed is a hermetic shuttleengine.ReedOps double: AddStrand mints a
 // distinct GUID per call; every other method returns an inert zero value,
-// mirroring builderengine's own spawn_test.go spawnFakeMux.
-type spawnFakeMux struct {
+// mirroring builderengine's own spawn_test.go spawnFakeReed.
+type spawnFakeReed struct {
 	mu      sync.Mutex
 	counter int
 }
 
-func (m *spawnFakeMux) AddStrand(spec muxengine.AddSpec) (muxengine.Strand, error) {
+func (m *spawnFakeReed) AddStrand(spec reedengine.AddSpec) (reedengine.Strand, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.counter++
-	return muxengine.Strand{GUID: "buildercli-spawn-strand-" + strconv.Itoa(m.counter)}, nil
+	return reedengine.Strand{GUID: "buildercli-spawn-strand-" + strconv.Itoa(m.counter)}, nil
 }
-func (m *spawnFakeMux) RemoveStrand(guid string, recursive bool) (muxengine.Removed, error) {
-	return muxengine.Removed{}, nil
+func (m *spawnFakeReed) RemoveStrand(guid string, recursive bool) (reedengine.Removed, error) {
+	return reedengine.Removed{}, nil
 }
-func (m *spawnFakeMux) Status() (muxengine.StatusResult, error)       { return muxengine.StatusResult{}, nil }
-func (m *spawnFakeMux) SendText(guid, text string, submit bool) error { return nil }
-func (m *spawnFakeMux) SendKey(guid, key string) error                { return nil }
-func (m *spawnFakeMux) CapturePane(guid string) (string, error)       { return "", nil }
+func (m *spawnFakeReed) Status() (reedengine.StatusResult, error) {
+	return reedengine.StatusResult{}, nil
+}
+func (m *spawnFakeReed) SendText(guid, text string, submit bool) error { return nil }
+func (m *spawnFakeReed) SendKey(guid, key string) error                { return nil }
+func (m *spawnFakeReed) CapturePane(guid string) (string, error)       { return "", nil }
 
-var _ shuttleengine.MuxOps = (*spawnFakeMux)(nil)
+var _ shuttleengine.ReedOps = (*spawnFakeReed)(nil)
 
 // spawnFakeEngine is a hermetic shuttleengine.Engine double: Prepare
 // records every call and returns a canned Launch without writing any real
@@ -158,9 +160,9 @@ func newSpawnBatchFixture(t *testing.T) *spawnBatchFixture {
 
 	layout := &hubgeometry.Layout{WorktreeRoot: hub, Cwd: hub, RelPath: "."}
 	shuttleCfg := shuttleengine.Config{RunDir: filepath.Join(t.TempDir(), "runs"), RunTimeoutMin: 60, StartupTimeoutS: 30}
-	mux := &spawnFakeMux{}
+	reed := &spawnFakeReed{}
 	engine := &spawnFakeEngine{}
-	runner := shuttleengine.NewRunner(mux, engine, layout, shuttleCfg)
+	runner := shuttleengine.NewRunner(reed, engine, layout, shuttleCfg)
 
 	roles := map[builderengine.Role]modelspec.Resolved{
 		builderengine.RoleOrchestrator:         {Engine: "claude", Model: "orchestrator-model"},
@@ -173,7 +175,7 @@ func newSpawnBatchFixture(t *testing.T) *spawnBatchFixture {
 		runner:     runner,
 		starter:    runner,
 		engine:     engine,
-		mux:        mux,
+		reed:       reed,
 		layout:     layout,
 		shuttleCfg: shuttleCfg,
 		cfg: builderengine.Config{

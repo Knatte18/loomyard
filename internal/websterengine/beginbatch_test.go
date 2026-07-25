@@ -31,8 +31,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/modelspec"
-	"github.com/Knatte18/loomyard/internal/muxengine"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -131,7 +131,7 @@ func mustFingerprint(t *testing.T, planDir string) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-// beginFakeMux is a minimal shuttleengine.MuxOps double for BeginBatch's
+// beginFakeMux is a minimal shuttleengine.ReedOps double for BeginBatch's
 // strand-reclaim step: Status returns a scripted set of live strands, and
 // RemoveStrand records every guid it was asked to stop. Only Status and
 // RemoveStrand are reached by BeginBatch's own path.
@@ -140,25 +140,25 @@ type beginFakeMux struct {
 	removed []string
 }
 
-func (m *beginFakeMux) Status() (muxengine.StatusResult, error) {
-	var strands []muxengine.StrandStatus
+func (m *beginFakeMux) Status() (reedengine.StatusResult, error) {
+	var strands []reedengine.StrandStatus
 	for _, g := range m.live {
-		strands = append(strands, muxengine.StrandStatus{GUID: g, Live: true})
+		strands = append(strands, reedengine.StrandStatus{GUID: g, Live: true})
 	}
-	return muxengine.StatusResult{Strands: strands}, nil
+	return reedengine.StatusResult{Strands: strands}, nil
 }
-func (m *beginFakeMux) RemoveStrand(guid string, recursive bool) (muxengine.Removed, error) {
+func (m *beginFakeMux) RemoveStrand(guid string, recursive bool) (reedengine.Removed, error) {
 	m.removed = append(m.removed, guid)
-	return muxengine.Removed{}, nil
+	return reedengine.Removed{}, nil
 }
-func (m *beginFakeMux) AddStrand(spec muxengine.AddSpec) (muxengine.Strand, error) {
-	return muxengine.Strand{}, nil
+func (m *beginFakeMux) AddStrand(spec reedengine.AddSpec) (reedengine.Strand, error) {
+	return reedengine.Strand{}, nil
 }
 func (m *beginFakeMux) SendText(guid, text string, submit bool) error { return nil }
 func (m *beginFakeMux) SendKey(guid, key string) error                { return nil }
 func (m *beginFakeMux) CapturePane(guid string) (string, error)       { return "", nil }
 
-var _ shuttleengine.MuxOps = (*beginFakeMux)(nil)
+var _ shuttleengine.ReedOps = (*beginFakeMux)(nil)
 
 // beginCard returns a minimal single-card batcher.Batch identifying number
 // and slug — begin-batch's batchIdentity assumption (batch ≡ card under the
@@ -230,7 +230,7 @@ var _ shuttleengine.Engine = (*beginFakeEngine)(nil)
 type beginFixture struct {
 	Deps      websterengine.BeginDeps
 	Injector  *beginFakeInjector
-	Mux       *beginFakeMux
+	Reed      *beginFakeMux
 	Worktree  string
 	PlanDir   string
 	PromptDir string
@@ -258,7 +258,7 @@ func newBeginFixture(t *testing.T) *beginFixture {
 
 	injector := &beginFakeInjector{}
 	promptsDir := t.TempDir()
-	mux := &beginFakeMux{}
+	reed := &beginFakeMux{}
 
 	deps := websterengine.BeginDeps{
 		Plan:         plan,
@@ -268,14 +268,14 @@ func newBeginFixture(t *testing.T) *beginFixture {
 		Config:       websterengine.Config{SelfFixCap: 2},
 		Engine:       &beginFakeEngine{},
 		Injector:     injector,
-		Mux:          mux,
+		Reed:         reed,
 		WorktreeRoot: worktree,
 		WebsterDir:   t.TempDir(),
 		ReportsDir:   t.TempDir(),
 		PromptsDir:   promptsDir,
 	}
 
-	return &beginFixture{Deps: deps, Injector: injector, Mux: mux, Worktree: worktree, PlanDir: planDir, PromptDir: promptsDir}
+	return &beginFixture{Deps: deps, Injector: injector, Reed: reed, Worktree: worktree, PlanDir: planDir, PromptDir: promptsDir}
 }
 
 // TestBeginBatch_PauseSentinel proves the pause gate fires before anything
@@ -527,7 +527,7 @@ func TestBeginBatch_PreExistingReportRefused(t *testing.T) {
 
 // TestBeginBatch_ReclaimsPriorRecoveryStrandBeforeOverwrite proves F9's
 // guard: when the batch being begun as a fork carries a prior recovery
-// record whose strand the mux still reports live (a dead recovery keeps its
+// record whose strand the reed still reports live (a dead recovery keeps its
 // substrate alive by design), BeginBatch stops that strand before the record
 // overwrite erases its StrandGUID — otherwise the unreclaimed strand would
 // race the fresh fork on the host repo.
@@ -537,14 +537,14 @@ func TestBeginBatch_ReclaimsPriorRecoveryStrandBeforeOverwrite(t *testing.T) {
 	fx.Deps.State.Batches = map[int]*websterengine.BatchState{
 		1: {Slug: "json-flag", Kind: "recovery", Terminal: true, Status: "dead", StrandGUID: "dead-but-live-recovery"},
 	}
-	fx.Mux.live = []string{"dead-but-live-recovery"}
+	fx.Reed.live = []string{"dead-but-live-recovery"}
 
 	if _, err := websterengine.BeginBatch(fx.Deps, 1); err != nil {
 		t.Fatalf("BeginBatch() error = %v; want nil", err)
 	}
 
-	if len(fx.Mux.removed) != 1 || fx.Mux.removed[0] != "dead-but-live-recovery" {
-		t.Errorf("mux.removed = %v; want exactly [dead-but-live-recovery] stopped before the record overwrite", fx.Mux.removed)
+	if len(fx.Reed.removed) != 1 || fx.Reed.removed[0] != "dead-but-live-recovery" {
+		t.Errorf("reed.removed = %v; want exactly [dead-but-live-recovery] stopped before the record overwrite", fx.Reed.removed)
 	}
 	// The record was overwritten to a fresh fork batch.
 	if bs := fx.Deps.State.Batches[1]; bs.Kind != "fork" || bs.Terminal || bs.StrandGUID != "" {

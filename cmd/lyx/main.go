@@ -25,11 +25,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/codeintelcli"
 	"github.com/Knatte18/loomyard/internal/configcli"
+	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/idecli"
 	"github.com/Knatte18/loomyard/internal/initcli"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/muxcli"
 	"github.com/Knatte18/loomyard/internal/perchcli"
+	"github.com/Knatte18/loomyard/internal/reedcli"
 	"github.com/Knatte18/loomyard/internal/selfreportcli"
 	"github.com/Knatte18/loomyard/internal/shuttlecli"
 	"github.com/Knatte18/loomyard/internal/warpcli"
@@ -85,10 +86,10 @@ It assembles every module's cobra command tree under a single root so that
 all modules are discoverable via "lyx --help" and every subcommand carries
 its own --help and --json help output.
 
-Available modules: init, board, config, ide, mux, weft, warp, selfreport, shuttle, burler, perch, builder, codeintel, webster.`,
+Available modules: init, board, config, ide, reed, weft, warp, fabric, selfreport, shuttle, burler, perch, builder, codeintel, webster.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
-		// Several module groups (board, ide, mux, weft) install their own
+		// Several module groups (board, ide, reed, weft) install their own
 		// PersistentPreRunE for config/layout resolution. EnableTraverseRunHooks
 		// (set below) makes cobra run root's hook first, then each ancestor's
 		// down to the target command, instead of only the nearest one — so this
@@ -119,9 +120,10 @@ Available modules: init, board, config, ide, mux, weft, warp, selfreport, shuttl
 		boardcli.Command(),
 		configcli.Command(),
 		idecli.Command(),
-		muxcli.Command(),
+		reedcli.Command(),
 		weftcli.Command(),
 		warpcli.Command(),
+		fabriccli.Command(),
 		selfreportcli.Command(),
 		shuttlecli.Command(),
 		burlercli.Command(),

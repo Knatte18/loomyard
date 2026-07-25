@@ -10,27 +10,20 @@ doc under [designs/](designs/). See Maintenance below for how the numbering work
 
 Committed to, in this order, next.
 
-1. **git-native-library: feasibility spike** — narrow, scoped exploration of swapping
-   `internal/gitexec`'s shell-out plumbing for a native Go git library (e.g. `go-git`), limited to
-   the read-only surface `gitrepo` uses (`rev-parse`, `diff --name-only`, ref reads). Output is a
-   go/no-go decision, not a migration — prompted by real parse-git's-stderr-as-an-API bugs
-   `gitrepo`'s crucible hardening surfaced. Depends on `board-use-gitrepo` landing first (not just
-   `gitrepo`), since that item changes `gitrepo`'s public surface; non-blocking for `fabric`. See
-   [designs/git-native-library.md](designs/git-native-library.md).
-
-1. **fabric** — replaces `warp` and `weft` in full: all topology (clone, dual-worktree add/remove,
-   coordinated checkout, reconcile, prune, cleanup, branch naming — including enforcing
-   `<slug>-weft` uniformly, no exceptions) and all git mechanics into the paired weft repo, unified
-   into one module built on `gitrepo`. Built alongside the existing `warp`/`weft` code first as a
-   reference fixture, then one coordinated cutover deletes the old modules. See
+1. **fabric: cutover** — rewires every consumer currently calling into `warp`/`weft`
+   (`initengine`, `loomengine`, `buildercli`, `webstercli`, `perchcli`, `configcli`) onto the
+   already-built `fabric` (`internal/fabricengine` + `internal/fabriccli`, validated by
+   differential tests against `warp`/`weft` as the reference fixture), then deletes the old
+   `warp`/`weft` modules in one coordinated pass — not incremental, since the two old modules are
+   tightly coupled to how git state is read across the codebase today. Connecting `fabric` into
+   the actual system is what this item is — the parallel build itself already landed. See
    [designs/fabric.md](designs/fabric.md).
 
 1. **board: move storage to `weft:main`** — replaces board's own separate remote repo with a
    reserved `weft:main` branch (README.md rendering, JSON-backed Proposals/Manifest/Tasks/Done).
-   Depends on fabric's branch-naming enforcement (`<slug>-weft` uniformly). See
-   [designs/board-weft-storage.md](designs/board-weft-storage.md).
-
-1. **mux → reed** — rename, no behavior change. See [designs/mux-to-reed.md](designs/mux-to-reed.md).
+   Depends on the Planned `fabric: cutover` item's branch-naming enforcement (`<slug>-weft`
+   uniformly) actually taking effect, not just `fabric`'s code existing alongside the old
+   modules. See [designs/board-weft-storage.md](designs/board-weft-storage.md).
 
 1. **loom: phase-machine skeleton + session bootstrap** — the status-file-driven engine
    (sequencing, resume, crash-recovery, pause), testable against fake phases before real
@@ -39,6 +32,16 @@ Committed to, in this order, next.
 
 1. **loom: Finalize phase** — merge-back after Builder-review approval; Go-first, LLM only on
    merge conflict; optional PR creation. See [designs/loom-finalize.md](designs/loom-finalize.md).
+
+1. **native clients: migrate `gitrepo` to `go-git` (ADOPT-PARTIAL) + `selfreportengine`'s internal
+   `gh`-CLI transport to `go-github`** — executes the `git-native-library` spike's finding (read
+   surface, both commit methods, and `SetSnapshotSHA` migrate cleanly; `Push`'s rebase-retry stays
+   CLI-bound permanently — go-git has no rebase) into `internal/gitrepo`, and separately swaps only
+   what's underneath `selfreportengine`'s public `CreateIssue` entry point — its `gh`-CLI shell-out
+   — for `google/go-github`, for the same "stop parsing CLI output as an API" reason, on a much
+   smaller, already-stable surface (no spike needed). `CreateIssue`'s signature/behavior and all its
+   callers are unaffected. One task, since both are the same underlying cleanup. See
+   [designs/native-clients-migration.md](designs/native-clients-migration.md).
 
 ## Someday
 
@@ -75,7 +78,7 @@ between these items.
    mid-flight-visibility hazards. See
    [designs/webster-parallel-execution.md](designs/webster-parallel-execution.md).
 
-1. **hardener** — behavior-based hardening of a live-substrate module (the archetype: `mux` driving
+1. **hardener** — behavior-based hardening of a live-substrate module (the archetype: `reed` driving
    real tmux) in a sandbox repo, on-demand and post-loom, off the `shuttle → burler → perch → loom`
    spine. Concept still being figured out. See [designs/hardener.md](designs/hardener.md) (a DRAFT
    doc, do not implement from it yet).
@@ -112,6 +115,14 @@ between these items.
    "deferred idea" `codeintel-redesign.md` already refers to. Genuinely speculative, not yet
    designed in depth. See [designs/semantic-index.md](designs/semantic-index.md).
 
+1. **self-report: two-tier friction capture** — loom's per-phase file-contract design means no
+   single LLM session has full-run context the way Millhouse's self-report assumes. Splits into
+   Go-detected structural anomalies (crash-resumes, stuck escalations, repeated review rounds — off
+   loom's own status/history, no LLM needed) plus a narrow per-phase friction note any spawned agent
+   may write about its own scoped task, aggregated by Go and fed to one dedicated reflection agent
+   at natural end points (Finalize/stuck) — mirroring the `Raddle` pattern. See
+   [designs/self-report.md](designs/self-report.md).
+
 1. **`PATTERN.md`** — a loomyard-owned equivalent of Millhouse's `CONSTRAINTS.md`, written from
    scratch (not a port) once loomyard starts dogfooding its own development onto `loom`. Format:
    short two-line entries (constraint + pointer), full rule/rationale/enforcement detail in a
@@ -119,6 +130,14 @@ between these items.
    develops loomyard.
 
 ## Done
+
+1. **git-native-library: feasibility spike** — empirical spike evaluating a native Go git library
+   (`go-git`) as a replacement for `internal/gitexec`'s shell-out plumbing, across the full surface
+   `gitrepo` uses (reads and writes, including the `Push` rebase-retry path). Recommendation:
+   ADOPT-PARTIAL — the read surface, both commit methods, and `SetSnapshotSHA` migrate cleanly;
+   the rebase-retry recovery on a rejected push stays CLI-BOUND because go-git ships no rebase
+   implementation. The kept prototype and its findings write-up live in
+   `internal/gitnativepoc/doc.go`; no consumer was migrated.
 
 1. **board** — task tracker (storage model superseded by the Planned `board` item once it ships).
 
@@ -148,8 +167,7 @@ between these items.
 
 1. **proc** — cross-OS process spawn.
 
-1. **mux** — tmux overlay + strand bookkeeping + render (renamed by the Planned `mux → reed` item
-   once it ships).
+1. **reed** — tmux overlay + strand bookkeeping + render (renamed from `mux`, no behavior change).
 
 1. **shuttle** — run one LLM agent as an interactive tmux strand over a swappable engine.
 

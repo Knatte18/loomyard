@@ -59,7 +59,7 @@ type Injector interface {
 // pre-flight-resolved role->model-spec map (see ResolveRoles); Config is the
 // loaded webster.yaml; Engine supplies the provider-specific
 // ModelSwitchSequence choreography; Injector is what actually types that
-// choreography into Master's pane; Mux is the live mux query surface the
+// choreography into Master's pane; Reed is the live reed query surface the
 // prior-recovery-strand reclaim consults (a dead-but-live recovery record a
 // fork batch is about to overwrite); WorktreeRoot is the host repo checkout
 // BeginBatch captures HeadSHA from; WebsterDir, ReportsDir, and PromptsDir
@@ -73,7 +73,7 @@ type BeginDeps struct {
 	Config       Config
 	Engine       shuttleengine.Engine
 	Injector     Injector
-	Mux          shuttleengine.MuxOps
+	Reed         shuttleengine.ReedOps
 	WorktreeRoot string
 	WebsterDir   string
 	ReportsDir   string
@@ -230,7 +230,7 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	// respawn path performs. A plain fork batch's record has an empty
 	// StrandGUID and removeStrandIfLive no-ops on it.
 	if prior, ok := deps.State.Batches[number]; ok && prior != nil && prior.StrandGUID != "" {
-		if err := removeStrandIfLive(deps.Mux, prior.StrandGUID); err != nil {
+		if err := removeStrandIfLive(deps.Reed, prior.StrandGUID); err != nil {
 			return nil, err
 		}
 	}

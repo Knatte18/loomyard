@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/muxengine/render"
+	"github.com/Knatte18/loomyard/internal/reedengine/render"
 )
 
 func TestSpec_Validate_EmptyPrompt(t *testing.T) {

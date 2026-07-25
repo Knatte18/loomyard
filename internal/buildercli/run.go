@@ -54,7 +54,7 @@ Example:
 
 			deps := builderengine.RunDeps{
 				Runner:       c.orchestratorStarter,
-				Mux:          c.mux,
+				Reed:         c.reed,
 				PlanDir:      c.planDir,
 				BuilderDir:   c.builderDir,
 				ReportsDir:   c.reportsDir,

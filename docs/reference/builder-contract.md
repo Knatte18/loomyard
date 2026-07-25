@@ -33,7 +33,7 @@ built) needs both `perch` and `builder`.
 | Verb | Job |
 |------|-----|
 | `validate` | Lints the plan at `_lyx/plan` against the plan-format machine checks without running anything — the standalone pre-flight for a Planner or human. |
-| `run [--fresh]` | The product verb: takes the run-level lock, runs the automatic validation gate, reclaims a prior run's orphaned orchestrator (stops the recorded strand if the mux still reports it live — see [Crash/resume](#crashresume-semantics--re-drive-the-first-unreported-batch)), checks the plan fingerprint against `state.json` (`--fresh` archives stale state/reports and re-inits on a mismatch), clears any leftover pause flag (only once those refusal gates pass — a refused run leaves a pending pause intact), archives any stale `outcome.yaml`, spawns a fresh orchestrator session via shuttle — recording its strand in `state.json` *before* blocking — and blocks until the run reaches a terminal outcome (`done`/`stuck`/`paused`) or the orchestrator spawn itself ends asking/died/timed-out. Performs the loop's exit-time backstop weft commit. Requires a live mux session (`lyx mux up` first). |
+| `run [--fresh]` | The product verb: takes the run-level lock, runs the automatic validation gate, reclaims a prior run's orphaned orchestrator (stops the recorded strand if the reed still reports it live — see [Crash/resume](#crashresume-semantics--re-drive-the-first-unreported-batch)), checks the plan fingerprint against `state.json` (`--fresh` archives stale state/reports and re-inits on a mismatch), clears any leftover pause flag (only once those refusal gates pass — a refused run leaves a pending pause intact), archives any stale `outcome.yaml`, spawns a fresh orchestrator session via shuttle — recording its strand in `state.json` *before* blocking — and blocks until the run reaches a terminal outcome (`done`/`stuck`/`paused`) or the orchestrator spawn itself ends asking/died/timed-out. Performs the loop's exit-time backstop weft commit. Requires a live reed session (`lyx reed up` first). |
 | `spawn-batch <NN> [--role recovery] [--restart-chain]` | Runs the same automatic validation gate, checks the pause flag, recomputes the plan fingerprint against `state.json`'s recorded one (a mid-run plan edit refuses loud, pointing at `run --fresh` — no `--fresh` escape exists here, re-initializing is `run`'s job), resolves the batch's role (oversized-driven, or `--role recovery` for the escalation path), optionally performs the `--restart-chain` reset, records the batch's start-SHA in `state.json`, and spawns one implementer via shuttle (non-blocking — returns as soon as the strand is registered). Weft-commits `state.json` on success. |
 | `poll [--wait DURATION]` | Long-polls the in-flight batch for its terminal digest (see [poll's four-branch terminal classification](#polls-four-branch-terminal-classification)) and distills a terminal batch-report into the pinned [digest contract](#digest-contract). Weft-commits the batch report plus `state.json` on a terminal classification; a running snapshot touches neither git nor weft. |
 | `status` | An instant, side-effect-free snapshot of `state.json` plus the reports dir — human- and loom-facing navigation. Never spawns, never weft-commits, never mutates `state.json`. A run that has never started prints `{"initialized": false}`. |
@@ -65,7 +65,7 @@ table is the contract the orchestrator prompt template co-versions with (see
 
 Nobody holds the shuttle `Run` handle across a batch's lifetime — `spawn-batch` exits
 right after `Start` — so `poll` re-derives the in-flight implementer's state from
-files and a live mux query on every tick, in this pinned decision order:
+files and a live reed query on every tick, in this pinned decision order:
 
 1. **Report present** → terminal, `done` or `stuck` per the report itself (via
    `Distill`). The report's `batch:` field must equal the polled batch's own
@@ -84,7 +84,7 @@ files and a live mux query on every tick, in this pinned decision order:
    respawn/recover material, same as a crash.
 3. **No report, elapsed since spawn > `batch_timeout_min`** → terminal `dead`,
    `dead_reason: timeout`.
-4. **No report, turn still in progress, mux strand gone** → terminal `dead`,
+4. **No report, turn still in progress, reed strand gone** → terminal `dead`,
    `dead_reason: died`.
 5. **Otherwise** → non-terminal `running` snapshot; the orchestrator's next `poll`
    call re-polls from there.
@@ -97,7 +97,7 @@ an idle agent process: `done` removes the strand and the run dir (shuttle-finali
 parity); `stuck` removes the strand but keeps the run dir (the raw session output is
 the stuck trail a human may still inspect). Cleanup failures are logged, never
 fatal — the classification already stands. A later **respawn of a dead-classified
-batch re-claims that kept substrate**: `spawn-batch` stops the kept strand if the mux
+batch re-claims that kept substrate**: `spawn-batch` stops the kept strand if the reed
 still reports it live (a timed-out implementer may still be *working*, and left alive
 it races the fresh session on the host repo and the report path) and archives — never
 deletes, never refuses on — any late report the orphan managed to write after the
@@ -149,7 +149,7 @@ recovery unit. `spawn-batch <NN> --restart-chain`:
 
 1. Resolves `NN`'s chain-end batch (`ChainEndFor`) and every chain member
    (`ChainMembers`) — the recorded `verify: deferred` + `chain-end:` group — and stops
-   every member's recorded strand the mux still reports live (a kept-alive member left
+   every member's recorded strand the reed still reports live (a kept-alive member left
    running would commit on top of the rolled-back tree).
 2. Requires a **recorded** chain-start SHA in `state.json`'s `ChainStartSHAs` map —
    there is no caller-supplied SHA anywhere in this path; an unrecorded chain can
@@ -240,7 +240,7 @@ entry recomputes it and compares:
   fingerprints and pointing at `run --fresh` — stale reports from a superseded plan
   must never be misread as progress.
 - **Mismatch, `--fresh`** → first stops every batch strand the superseded state
-  records that the mux still reports live (the archived run can never be resumed, so
+  records that the reed still reports live (the archived run can never be resumed, so
   its substrate has no legitimate owner — left alive, a superseded implementer keeps
   working against the same host repo and its late report lands on the fresh run's own
   report path in the recreated reports dir, where it would be distilled as the fresh
@@ -317,7 +317,7 @@ The orphaned-live-ORCHESTRATOR edge is closed by the **entry-time reclaim**:
 immediately after the spawn starts, *before* blocking on it — so a `run` process that
 dies mid-wait (a killed process, a closed terminal) or an orchestrator that outlives its
 own `orchestrator_timeout_min` while still working leaves a durable record of the pane
-that may still be live and driving. The next `run`'s entry stops that strand if the mux
+that may still be live and driving. The next `run`'s entry stops that strand if the reed
 still reports it live (liveness-gated, never cleared — a cleanly-finished orchestrator's
 strand was already removed by shuttle and reports not-live), so "always spawns a fresh
 orchestrator" is true by construction rather than an assumption that the old one died.
@@ -327,7 +327,7 @@ to attribute the result (found live in round fable-r4).
 
 The orphaned-live-implementer edge is closed by the **in-flight guard**
 (`ErrBatchInFlight`): `spawn-batch` refuses when `state.json` records a non-terminal
-in-flight batch whose strand the mux still reports live — the strictly-sequential loop
+in-flight batch whose strand the reed still reports live — the strictly-sequential loop
 never legitimately spawns over a live implementer. The guard distinguishes the two cases
 a blanket live-strand check could not: every intended respawn-on-top-of-a-kept-pane
 (the `dead: timeout`/`dead: asking` ladder, recovery after `stuck`) passes through a
@@ -335,7 +335,7 @@ terminal `poll` first, which sets `BatchState.Terminal` and clears `CurrentBatch
 the ladder never trips it; only a genuinely orphaned live implementer (orchestrator died
 mid-batch, or a stray manual `spawn-batch` during a run) is refused, with the resolution
 spelled out — long-poll (`lyx builder poll`) until the in-flight batch classifies
-terminal. A mux-status error skips the guard (a downed mux hosts no live strand; the
+terminal. A reed-status error skips the guard (a downed reed hosts no live strand; the
 spawn's own `Start` surfaces real substrate failures), so resume on a cold machine is
 unaffected.
 
@@ -391,7 +391,7 @@ would move that judgment back into a Go branch, rejected as YAGNI.
 
 `webster` (`internal/websterengine` + `internal/webstercli`, `lyx webster`) is a second,
 parallel implementation of a batch-implementation loop: instead of a long-lived LLM
-**orchestrator** session spawning each batch's implementer as its own fresh mux/tmux
+**orchestrator** session spawning each batch's implementer as its own fresh reed/tmux
 strand, one long-lived **Master** session reads the plan once and forks one implementer
 per batch **in-session** (Claude Code's Agent tool). Webster no longer shares builder's
 plan input, batch-report schema, or digest contract — it consumes the flat card-list

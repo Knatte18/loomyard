@@ -1,5 +1,5 @@
 // fakes_test.go implements the hermetic test doubles the rest of
-// shuttleengine's tests drive the run loop against: fakeMux (a MuxOps
+// shuttleengine's tests drive the run loop against: fakeReed (a ReedOps
 // double that records every call and lets a test script Status
 // liveness/CapturePane content per call and inject a per-method error) and
 // fakeEngine (an Engine double with a canned Launch, a trivial fixture
@@ -15,10 +15,10 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/Knatte18/loomyard/internal/muxengine"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 )
 
-// fakeMux is a hermetic MuxOps double: it never touches tmux. CallLog
+// fakeReed is a hermetic ReedOps double: it never touches tmux. CallLog
 // records every call across all six methods, in invocation order, as a
 // short formatted tag — the single source tests use to assert
 // cross-method choreography (e.g. Interrupt/Send's exact key/text
@@ -28,14 +28,14 @@ import (
 // polls still returns a stable final answer. Every method's error is
 // injected independently via its own field, so a test can force exactly one
 // call to fail without touching the others.
-type fakeMux struct {
+type fakeReed struct {
 	mu sync.Mutex
 
 	// CallLog is the ordered, cross-method call log described above.
 	CallLog []string
 
-	AddStrandCalls  []muxengine.AddSpec
-	AddStrandResult muxengine.Strand
+	AddStrandCalls  []reedengine.AddSpec
+	AddStrandResult reedengine.Strand
 	AddStrandErr    error
 
 	RemoveStrandCalls []struct {
@@ -47,7 +47,7 @@ type fakeMux struct {
 	// StatusQueue is consumed FIFO by Status; see the type doc for the
 	// draining rule. StatusErr, when set, makes every Status call fail
 	// regardless of StatusQueue.
-	StatusQueue []muxengine.StatusResult
+	StatusQueue []reedengine.StatusResult
 	StatusErr   error
 
 	// CaptureQueue behaves like StatusQueue but for CapturePane.
@@ -65,18 +65,18 @@ type fakeMux struct {
 	SendKeyErr   error
 }
 
-func (m *fakeMux) AddStrand(spec muxengine.AddSpec) (muxengine.Strand, error) {
+func (m *fakeReed) AddStrand(spec reedengine.AddSpec) (reedengine.Strand, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.CallLog = append(m.CallLog, "AddStrand")
 	m.AddStrandCalls = append(m.AddStrandCalls, spec)
 	if m.AddStrandErr != nil {
-		return muxengine.Strand{}, m.AddStrandErr
+		return reedengine.Strand{}, m.AddStrandErr
 	}
 	return m.AddStrandResult, nil
 }
 
-func (m *fakeMux) RemoveStrand(guid string, recursive bool) (muxengine.Removed, error) {
+func (m *fakeReed) RemoveStrand(guid string, recursive bool) (reedengine.Removed, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.CallLog = append(m.CallLog, "RemoveStrand")
@@ -85,20 +85,20 @@ func (m *fakeMux) RemoveStrand(guid string, recursive bool) (muxengine.Removed, 
 		Recursive bool
 	}{guid, recursive})
 	if m.RemoveStrandErr != nil {
-		return muxengine.Removed{}, m.RemoveStrandErr
+		return reedengine.Removed{}, m.RemoveStrandErr
 	}
-	return muxengine.Removed{}, nil
+	return reedengine.Removed{}, nil
 }
 
-func (m *fakeMux) Status() (muxengine.StatusResult, error) {
+func (m *fakeReed) Status() (reedengine.StatusResult, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.CallLog = append(m.CallLog, "Status")
 	if m.StatusErr != nil {
-		return muxengine.StatusResult{}, m.StatusErr
+		return reedengine.StatusResult{}, m.StatusErr
 	}
 	if len(m.StatusQueue) == 0 {
-		return muxengine.StatusResult{}, nil
+		return reedengine.StatusResult{}, nil
 	}
 	result := m.StatusQueue[0]
 	if len(m.StatusQueue) > 1 {
@@ -107,7 +107,7 @@ func (m *fakeMux) Status() (muxengine.StatusResult, error) {
 	return result, nil
 }
 
-func (m *fakeMux) SendText(guid, text string, submit bool) error {
+func (m *fakeReed) SendText(guid, text string, submit bool) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.CallLog = append(m.CallLog, "SendText:"+text)
@@ -119,7 +119,7 @@ func (m *fakeMux) SendText(guid, text string, submit bool) error {
 	return m.SendTextErr
 }
 
-func (m *fakeMux) SendKey(guid, key string) error {
+func (m *fakeReed) SendKey(guid, key string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.CallLog = append(m.CallLog, "SendKey:"+key)
@@ -127,7 +127,7 @@ func (m *fakeMux) SendKey(guid, key string) error {
 	return m.SendKeyErr
 }
 
-func (m *fakeMux) CapturePane(guid string) (string, error) {
+func (m *fakeReed) CapturePane(guid string) (string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.CallLog = append(m.CallLog, "CapturePane")
@@ -144,9 +144,9 @@ func (m *fakeMux) CapturePane(guid string) (string, error) {
 	return result, nil
 }
 
-// var _ MuxOps = (*fakeMux)(nil) is the compile-time proof fakeMux satisfies
+// var _ ReedOps = (*fakeReed)(nil) is the compile-time proof fakeReed satisfies
 // the seam it doubles for.
-var _ MuxOps = (*fakeMux)(nil)
+var _ ReedOps = (*fakeReed)(nil)
 
 // fakeEngine is a hermetic Engine double. Prepare returns a canned Launch
 // without writing any real files — tests that need pollEventsTick to see
@@ -157,7 +157,7 @@ var _ MuxOps = (*fakeMux)(nil)
 // any other line (blank, or missing either prefix) is skipped — mirroring
 // the leniency a real engine's parser must have for partial appends. Startup replays
 // StartupScript in FIFO order (the last entry stays once the script drains,
-// same rule as fakeMux's queues; an empty script always reports
+// same rule as fakeReed's queues; an empty script always reports
 // StartupPending). InterruptSequence/ComposeSend return fixed, inspectable
 // choreographies rather than scripted ones — Interrupt/Send tests assert
 // against these canonical sequences directly.

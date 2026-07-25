@@ -58,7 +58,7 @@ type Clock interface {
 // already-loaded run state RecoverBatch reads and mutates; Roles is the
 // pre-flight-resolved role->model-spec map (see ResolveRoles); Config is the
 // loaded webster.yaml; Engine supplies TurnEnded's event-grammar parsing;
-// Mux is the live mux query surface StrandLive/RemoveStrand consult;
+// Reed is the live reed query surface StrandLive/RemoveStrand consult;
 // ShuttleCfg and Layout are what shuttleengine.FindRun needs to resolve the
 // just-started run's cross-process identity; WorktreeRoot, WebsterDir, and
 // ReportsDir are the hubgeometry-resolved host checkout, _lyx/webster, and
@@ -71,7 +71,7 @@ type RecoverDeps struct {
 	Roles        map[Role]modelspec.Resolved
 	Config       Config
 	Engine       shuttleengine.Engine
-	Mux          shuttleengine.MuxOps
+	Reed         shuttleengine.ReedOps
 	ShuttleCfg   shuttleengine.Config
 	Layout       *hubgeometry.Layout
 	WorktreeRoot string
@@ -204,7 +204,7 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 	}
 
 	if prior != nil {
-		if err := removeStrandIfLive(deps.Mux, prior.StrandGUID); err != nil {
+		if err := removeStrandIfLive(deps.Reed, prior.StrandGUID); err != nil {
 			return nil, err
 		}
 	}
@@ -344,7 +344,7 @@ func PersistRecoveryTerminal(st *State, batchNumber int, digest *Digest) error {
 // awaitTerminal drives one bounded long-poll wait for bs's recovery strand:
 // a gather closure assembles ClassifyInputs — the report-presence branch of
 // Classify (parsed only when the report file exists), TurnEnded(bs.EventsPath,
-// deps.Engine), StrandLive(deps.Mux, bs.StrandGUID), Elapsed computed from
+// deps.Engine), StrandLive(deps.Reed, bs.StrandGUID), Elapsed computed from
 // bs.SpawnedAt (parsed once, up front) so RecoveryTimeoutMin measures
 // wall-clock time since the strand was SPAWNED, not since this particular
 // call started — the property that makes the long-poll safely re-entrant
@@ -396,7 +396,7 @@ func awaitTerminal(deps RecoverDeps, batch batcher.Batch, bs *BatchState, wait t
 		if err != nil {
 			return Digest{}, false, err
 		}
-		strandLive, err := StrandLive(deps.Mux, bs.StrandGUID)
+		strandLive, err := StrandLive(deps.Reed, bs.StrandGUID)
 		if err != nil {
 			return Digest{}, false, err
 		}
@@ -446,7 +446,7 @@ func awaitTerminal(deps RecoverDeps, batch batcher.Batch, bs *BatchState, wait t
 
 	var warnings []string
 	removeStrand := func() {
-		if err := removeStrandIfLive(deps.Mux, bs.StrandGUID); err != nil {
+		if err := removeStrandIfLive(deps.Reed, bs.StrandGUID); err != nil {
 			warnings = append(warnings, fmt.Sprintf("recover-batch: remove strand %s: %v", bs.StrandGUID, err))
 		}
 	}

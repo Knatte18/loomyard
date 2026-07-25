@@ -3,7 +3,7 @@
 //
 // ConfigTemplate provides the default YAML template for builder
 // configuration, embedded directly from template.yaml at build time,
-// mirroring perchengine's and muxengine's embed-and-accessor pattern.
+// mirroring perchengine's and reedengine's embed-and-accessor pattern.
 // OrchestratorTemplate provides the judgment-core prompt the long-lived
 // orchestrator session receives, and ImplementerTemplate provides the
 // implementer prompt one batch's implementer session receives; both are

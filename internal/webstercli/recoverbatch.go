@@ -134,7 +134,7 @@ Example:
 				Roles:        c.roles,
 				Config:       c.cfg,
 				Engine:       c.engine,
-				Mux:          c.mux,
+				Reed:         c.reed,
 				ShuttleCfg:   c.shuttleCfg,
 				Layout:       c.layout,
 				WorktreeRoot: c.layout.Cwd,

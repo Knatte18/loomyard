@@ -11,7 +11,7 @@
 > **Hand-executed origin:** [`crucible`](../../crucible/README.md) is the method this module would
 > automate — the hand-run version of the same idea, named separately to avoid colliding with this
 > module's own name. `hardener` was developed over the last week out of a concrete need: to **run**
-> actual `mux` code hard enough to surface defects a green `go test` never proves. Six
+> actual `reed` code hard enough to surface defects a green `go test` never proves. Six
 > hand-orchestrated rounds fixed what many rounds of text-based review could not — it was
 > genuinely *hardening*.
 
@@ -20,7 +20,7 @@ documentation) reads an artifact, hardener
 **runs** a live-substrate module, reacts to what it observes, and builds bespoke adversarial
 scenarios to break it. It is a separate, on-demand, **post-loom** module — not on the
 `shuttle → burler → perch → loom` spine — meant to harden a live-substrate module (the archetype:
-`mux` driving real tmux) before merge.
+`reed` driving real tmux) before merge.
 
 ## Why it is not `perch`
 
@@ -84,7 +84,7 @@ knew implicitly and make it explicit.
 
 The operator's role in the hand-run campaign was mostly **gating** — approve, ask for another round —
 not irreplaceable judgment. That is front-loadable into the seed instructions ("run until the gates
-are green or K rounds; do not ask"). So hardener can run **autonomously, overnight**, with mux + Go
+are green or K rounds; do not ask"). So hardener can run **autonomously, overnight**, with reed + Go
 handling **auto-compaction** (which, per the insight above, *is* per-round respawn). Model rotation
 across rounds (Opus / Fable / Sonnet) stays as a cheap diversity lens — convergence across *different*
 models is stronger evidence than N passes from one.
@@ -129,7 +129,7 @@ Whether the round agent literally imports the `burler` package or only follows t
   templates (shared with `burler`/`perch`).
 - `internal/state` — handoff + round artifacts on disk (the memory that makes respawn work).
 - a **sandbox repo + live suite** — a provisioned environment and a maintained asset, not just code.
-- `mux` transitively, via shuttle; possibly directly for the overnight/autonomous session + auto-compaction.
+- `reed` transitively, via shuttle; possibly directly for the overnight/autonomous session + auto-compaction.
 
 ## Status / open questions
 

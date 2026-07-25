@@ -1,6 +1,6 @@
 // leaf_enforcement_test.go enforces the Tokenvocab Leaf Invariant: production
 // code in internal/tokenvocab imports ONLY the standard library,
-// internal/hubgeometry, and internal/stencil — never mux, loom, or any other
+// internal/hubgeometry, and internal/stencil — never reed, loom, or any other
 // feature package. Like modelspec's leaf_enforcement_test.go, this check is an
 // ALLOWLIST: any import outside the allowed set fails the test, so a future
 // stray dependency is caught with no list maintenance required.

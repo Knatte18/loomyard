@@ -26,7 +26,7 @@ const (
 	// dotLyxDirName is the directory name for the ephemeral, machine-bound lyx state
 	// directory within a worktree. It is deliberately distinct from LyxDirName ("_lyx"):
 	// "_lyx" (underscore) is durable and weft-synced, while ".lyx" (dot) is ephemeral and
-	// local to the machine (e.g. mux's runtime state and lock files never travel with weft).
+	// local to the machine (e.g. reed's runtime state and lock files never travel with weft).
 	dotLyxDirName = ".lyx"
 
 	// configDirName is the subdirectory name within LyxDirName that holds configuration files.
@@ -382,6 +382,22 @@ func WeftHostSlug(name string) (slug string, ok bool) {
 	return s, true
 }
 
+// IsReservedHubName reports whether name is one of the hub-level entry names
+// lyx geometry itself owns: the per-worktree lyx dir (_lyx), the raddle dir
+// (_raddle), the board passenger (_board), and the portal/launcher mirrors
+// (_portals, _launchers). A worktree slug must never claim one of these — a
+// host worktree directory named after a geometry token collides with the very
+// paths lyx composes at the hub level (e.g. a worktree named "_portals" would
+// have portal junctions created inside it). Slug validation (fabric's Add)
+// calls this so the rejection lives with the single owner of the literals.
+func IsReservedHubName(name string) bool {
+	switch name {
+	case LyxDirName, "_raddle", BoardDirName, "_portals", "_launchers":
+		return true
+	}
+	return false
+}
+
 // LyxDir returns the path to the _lyx directory in the current working directory.
 //
 // Returns filepath.Join(Cwd, LyxDirName).
@@ -390,8 +406,8 @@ func (l *Layout) LyxDir() string {
 }
 
 // DotLyxDir returns the path to the ephemeral .lyx directory in the current working
-// directory. This is where machine-bound, non-weft-synced runtime state lives (e.g. mux's
-// mux.json and mux.lock), distinct from the durable, weft-synced LyxDir() ("_lyx").
+// directory. This is where machine-bound, non-weft-synced runtime state lives (e.g. reed's
+// reed.json and reed.lock), distinct from the durable, weft-synced LyxDir() ("_lyx").
 //
 // Returns filepath.Join(Cwd, dotLyxDirName).
 func (l *Layout) DotLyxDir() string {
@@ -461,8 +477,8 @@ func (l *Layout) DiscussionSupportLog() string {
 }
 
 // HubLogsDir returns the path to the hub-level (not worktree-level) directory
-// where the shared per-hub mux server writes its runtime log. It is hub-anchored
-// because consumers like mux run exactly one shared server per hub and need one
+// where the shared per-hub reed server writes its runtime log. It is hub-anchored
+// because consumers like reed run exactly one shared server per hub and need one
 // deterministic machine-local place for its runtime logs — never one per
 // worktree. It lives under the ephemeral, machine-bound ".lyx" (dot) directory,
 // the same lifecycle rationale DotLyxDir documents: server logs are runtime
