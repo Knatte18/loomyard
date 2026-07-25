@@ -229,7 +229,7 @@ ordinary git repos underneath.
 - [board-weft-storage.md](board-weft-storage.md) — depends on `fabric`/`warp`'s branch-naming
   enforcement (`<slug>-weft` uniformly, no exceptions) to keep `weft:main` permanently unclaimed.
 - [raddle.md](raddle.md) — the other loomyard-specific consumer of `fabric`'s snapshot tracking.
-- [webster-rewrite.md](webster-rewrite.md) — uses `fabric.Warp.ChangedFilesSince` for card
-  contract verification.
+- webster (`internal/websterengine`) — a future consumer of `fabric.Warp.ChangedFilesSince`
+  for card contract verification.
 - [host-visibility.md](host-visibility.md) — reuses `fabric`'s junction re-pointing mechanism for
   a `CONSTRAINTS.md`-equivalent directory; a separate concern, not part of `fabric` itself.

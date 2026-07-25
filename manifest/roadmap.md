@@ -186,9 +186,9 @@ between these items.
    `builder` becomes obsolete as a plan-format consumer. See the `internal/websterengine` package
    documentation.
 
-1. **plan-format v3: flat card list** — a card carries
-   `card`/`name`/`description`/`changes-files`/`depends-on` only; symbol fields wait for
-   `codeintel`. Coexists with the still-live
+1. **plan-format v3: flat card list** — a card carries `What:`, the five typed file-op
+   fields (`Context:`/`Edits:`/`Creates:`/`Deletes:`/`Moves:`), and `Depends-on:` only;
+   symbol fields wait for `codeintel`. Coexists with the still-live
    [plan-format v2](../docs/reference/plan-format.md) — still used by the frozen `builder` — until
    `builder` is deleted. See [docs/reference/plan-format-v3.md](../docs/reference/plan-format-v3.md).
 
