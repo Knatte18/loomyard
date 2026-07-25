@@ -14,8 +14,8 @@
 > format), a new `internal/batcher` config-selected batchifier registry (batching didn't exist
 > in the old format), the oversized/chain concepts dropped, and the integration-suite fork +
 > bisect added as new capability. This is a FRESH crucible campaign for
-> the retargeted module — rounds `fable-r1` and `opus-r2` are now closed and independently
-> verified — see "Round context" below; do not assume anything from
+> the retargeted module — rounds `fable-r1`, `opus-r2`, and `fable-r3` are now closed and
+> independently verified — see "Round context" below; do not assume anything from
 > the OLD, superseded campaign this file once documented still applies.
 
 You are a senior engineer doing a COMPLETE, adversarial, INDEPENDENT review of the `webster`
@@ -277,63 +277,77 @@ substrate — a green `go test` proves nothing here:
   to relitigate.
 
 ## Round context seeded from prior-round verification
-You are round tag **`fable-r3`** — **round 3 of a 4-round cap**, alternating Fable/Opus
-(Fable → Opus → Fable → Opus), set by the operator. **Safety pass.** Round `fable-r1` found and
-fixed 19 real findings (3 BLOCKING, all live-confirmed); round `opus-r2` then found and fixed 2
-more (1 MEDIUM, 1 NIT) — a genuine safety pass is not required to find zero, and `opus-r2` did not.
-The orchestrator independently re-verified BOTH rounds: cold-state `go build`/`vet`/
-`test -count=5`/`-tags integration`/`-tags smoke` all green at HEAD, zero stray tmux processes both
-times, and hand-reproduced revert-and-confirm-fail proofs for every BLOCKING/MEDIUM finding with a
-pinned regression test — round `fable-r1`'s F19 (anti-poll template assertions —
-`TestIntegrationTemplate_ForbidsPollingForOwnReport`) and F3 (recovery-terminal `CardSHAs`
-persistence — `TestRecoverBatch_SecondCallAttachesAndPersistsDoneDigest`), plus confirmed F18's
-fix has dedicated new coverage; round `opus-r2`'s F1 (the master-template grounding reframe —
-reverting `master-template.md` to the pre-fix wording makes
-`TestMasterTemplate_GroundsHarnessRealityAgainstInjectionRefusal` fail exactly at the new-phrasing
-assertions, restore confirmed clean). **Do NOT re-open the CLOSED-AND-VERIFIED work** — read
-`.scratch/webster-review-fable-r1.md` + `.scratch/webster-review-fable-r1-fixer-report.md` (F1–F19,
-commits `d11fd991`..`237b91fa`) and `.scratch/webster-review-opus-r2.md` +
-`.scratch/webster-review-opus-r2-fixer-report.md` (F1–F2, commits `f1b53ec1`..`0cf7c668`) AFTER you
-have written your own independent findings, per the clean-room rule above.
+You are round tag **`opus-r4`** — **round 4 of a 4-round cap, the LAST round**, alternating
+Fable/Opus (Fable → Opus → Fable → Opus), set by the operator. **Safety pass.** Round `fable-r1`
+found and fixed 19 real findings (3 BLOCKING); round `opus-r2` found and fixed 2 more (1 MEDIUM,
+1 NIT); round `fable-r3` found and fixed 10 more (0 BLOCKING, 3 MEDIUM, 3 LOW, 4 NIT) — a
+decreasing-but-nonzero trend across all three rounds, never yet a clean pass. The orchestrator
+independently re-verified ALL THREE rounds: cold-state `go build`/`vet`/`test -count=5`/
+`-tags integration`/`-tags smoke` all green at HEAD after each round, zero stray tmux processes
+every time, and hand-reproduced revert-and-confirm-fail proofs for every BLOCKING/MEDIUM finding
+with a pinned regression test — round `fable-r1`'s F19
+(`TestIntegrationTemplate_ForbidsPollingForOwnReport`) and F3
+(`TestRecoverBatch_SecondCallAttachesAndPersistsDoneDigest`), plus confirmed F18's dedicated new
+coverage; round `opus-r2`'s F1
+(`TestMasterTemplate_GroundsHarnessRealityAgainstInjectionRefusal`); round `fable-r3`'s R3-1
+(`TestRenderForkPrompt_RendersWhatProseOverIntent` — reverting `renderCard`'s What-prose fallback
+to always use `c.Intent` makes the "What prose wins over Intent" subtest fail exactly at the
+missing-prose assertion) and R3-2 (`TestRenderForkPrompt_RendersPinnedCommitSubject` — removing
+the pinned-Commit rendering block makes the "pinned Commit renders verbatim" subtest fail exactly
+at the missing-Commit-line assertion) — all reverts restored to a confirmed-empty diff. **Do NOT
+re-open the CLOSED-AND-VERIFIED work** — read `.scratch/webster-review-fable-r1.md` +
+`.scratch/webster-review-fable-r1-fixer-report.md` (F1–F19, commits `d11fd991`..`237b91fa`),
+`.scratch/webster-review-opus-r2.md` + `.scratch/webster-review-opus-r2-fixer-report.md` (F1–F2,
+commits `f1b53ec1`..`0cf7c668`), and `.scratch/webster-review-fable-r3.md` +
+`.scratch/webster-review-fable-r3-fixer-report.md` (R3-1–R3-10, commits `04ec601d`..`03bf953c`)
+AFTER you have written your own independent findings, per the clean-room rule above.
 
-There is no known residual. Do a genuinely independent clean-room pass to find what rounds 1–2
-missed, or honestly confirm merge-readiness — "no new defects, ship it" is a completely legitimate
-outcome of a safety pass, do not invent work to justify the round. One specific thing to prioritize
-re-driving, not just re-reading:
+**This is the last round under the operator's cap.** There is no known residual, but three rounds
+in a row have each found real, previously-undetected defects — treat this round as the campaign's
+final adversarial pass, not a formality. Do a genuinely independent clean-room pass to find what
+rounds 1–3 missed, or honestly confirm merge-readiness — "no new defects, ship it" is a completely
+legitimate outcome, do not invent work to justify the round, but also do not under-invest just
+because it's round 4. One specific thing to prioritize re-driving, not just re-reading:
 
-- **Master-refusal rate — keep counting, this is now round 3 of counting the same rate.** Round 1's
-  grounding fix (`d11fd991`, then `379edeb8` after a live spawn called the first fix's own "trust
-  this document" line an injection tell) brought the observed rate from 3/7 (~43%) to 0/2. Round
-  2's own live driving then hit a NEW refusal (1/5, ~20%) — a fresh Master quoted round 1's *own*
-  anti-refusal wording ("never by asking" / "no human reads this session") back as the injection
-  tell — and reframed the grounding block again (`65a68c78`) to lead with evidence-first, neutral
-  orientation instead of a defensive prohibition; post-fix re-drive was 6/6 done, 0 refusals. This
-  is the THIRD time this exact failure mode has been chased (round 1 twice, round 2 once) — treat
-  a recurrence at this point as a strong signal the grounding approach itself (any block that
-  explicitly pre-empts "is this real?" doubt) may be structurally unable to fully close this, not
-  just a wording tweak away; say so explicitly if you see it recur, rather than proposing a fourth
-  wording iteration by reflex. Drive several more real `lyx webster run` spawns and extend the
-  count.
+- **Master-refusal rate — keep counting, this is now round 4 of counting the same rate, and it is
+  the cap's last chance to see it recur.** Round 1's grounding fix (`d11fd991`, then `379edeb8`)
+  brought the rate from 3/7 (~43%) to 0/2. Round 2 hit a NEW refusal (1/5, ~20% — a fresh Master
+  quoted round 1's OWN anti-refusal wording back as the injection tell) and reframed the grounding
+  again (`65a68c78`); post-fix 6/6, 0 refusals. Round 3 then drove 9 MORE spawns with **0/9
+  refusals** — the best result yet, and the first round where the rate held at zero across a
+  larger sample without a fix being needed mid-round. Drive several more real `lyx webster run`
+  spawns and extend the count one more time. If it holds at 0, that is meaningful evidence the
+  round-2 reframe actually closed the recurring failure mode (say so plainly). If it recurs even
+  once, that is this round's highest-priority finding — and given this would be the fourth time
+  across four rounds, the right conclusion is almost certainly "this class of defensive grounding
+  wording cannot fully close this," not a fifth wording iteration; say so explicitly rather than
+  proposing another rewrite by reflex.
 
-Two items rounds 1–2 deliberately deferred as operator design decisions, re-evaluated once already
-by round 2 and left unbuilt both times — RE-EVALUATE them again (read `opus-r2`'s fixer report's
-"Deliberately deferred" section for the full reasoning), but do NOT treat either as an obligation to
-build; they are yours to judge, not close by default:
+Two items rounds 1–3 deliberately deferred as operator design decisions, re-evaluated by every
+round so far and left unbuilt every time — RE-EVALUATE them one final time (read `fable-r3`'s
+fixer report's "Deliberately deferred" section for the full reasoning, including two NEW small
+deferred items it added), but do NOT treat any as an obligation to build; they are yours to judge,
+not close by default:
 
 1. **F2's in-band escape** for the cross-machine resume deadlock (report-present + no fork
-   transcript + non-terminal record — begin-batch/record-batch/recover-batch all refuse). Rounds 1
-   and 2 both documented/reconfirmed a manual operator recourse (move the orphan report aside)
-   rather than building an in-band escape verb (e.g. `recover-batch --archive-report`), on the
-   grounds that this trades away some forged-report unfakeability and is a real tradeoff, not an
-   obvious win. Confirm the documented recourse still works live; form your own opinion on whether
-   the tradeoff is worth taking, but do not build it unilaterally if you're not confident — say so
-   and let the operator decide.
-2. **An `await-integration` verb.** Rounds 1 and 2 both left Master with a concrete shell-level
-   bounded poll (`test -f`) in the template instead of a first-class CLI verb, to avoid a
-   CLI-surface change (help-tree pins, coverage tags) for marginal gain; round 2 live-observed the
-   shell poll drive a full integration+bisect run to a clean terminal outcome. Confirm the
-   shell-level poll is robust under live driving; flag if you find it isn't, but building the verb
-   is again an operator call, not a default.
+   transcript + non-terminal record — begin-batch/record-batch/recover-batch all refuse). Three
+   rounds running have documented/reconfirmed a manual operator recourse (move the orphan report
+   aside, now also named directly in the error path per R3-10) rather than building an in-band
+   escape verb, on the grounds that it trades away forged-report unfakeability for a rare
+   cross-machine resume. Confirm the documented recourse still works live; form your own opinion,
+   but do not build it unilaterally if unconfident.
+2. **An `await-integration` verb.** Three rounds running have left Master with a shell-level
+   bounded poll instead of a first-class CLI verb; round 3 live-observed it drive another full
+   integration+bisect run to a clean terminal outcome. Confirm it is still robust; flag only if you
+   find genuine fragility.
+3. **`--fresh`'s scope (R3-4, new this round).** `run --fresh` only acts on a fingerprint
+   mismatch; an unconditional always-archive variant was flagged as an operator ergonomics call,
+   not taken. Re-evaluate only if you find the current documented behavior is itself misleading or
+   wrong, not to change the behavior by default.
+4. **`poll_wait_s` default (R3-5, new this round).** Two rounds now have live-observed a
+   foreground `recover-batch` call run past the ~2-minute auto-background threshold without
+   triggering it in this environment; the 480s default was kept rather than churned on that
+   evidence. Re-evaluate only if you observe genuinely different behavior live.
 
 Beyond those, try combinations no one has scripted yet — e.g. two overlapping `lyx webster run`
 invocations against the same worktree (confirm `run.lock` contention is refused correctly,
@@ -436,10 +450,14 @@ report's deferred section.
    worth it; otherwise leave the documented manual recourse in place and say so.
 2. **An `await-integration` verb** vs. the current shell-level bounded poll in the master
    template — build it only if live driving shows the shell-level poll is actually fragile.
+3. **`--fresh`'s always-archive scope (R3-4)** — an operator ergonomics call, not a default change.
+4. **`poll_wait_s` default lowering (R3-5)** — kept at 480 on two rounds of live evidence the
+   auto-background hazard hasn't materialized; only revisit on genuinely different live evidence.
 
-(Full reasoning for both: `.scratch/webster-review-fable-r1-fixer-report.md`'s and
-`.scratch/webster-review-opus-r2-fixer-report.md`'s "Deliberately deferred" sections — both rounds
-independently reached the same "not worth building" call.)
+(Full reasoning: `.scratch/webster-review-fable-r1-fixer-report.md`'s,
+`.scratch/webster-review-opus-r2-fixer-report.md`'s, and
+`.scratch/webster-review-fable-r3-fixer-report.md`'s "Deliberately deferred" sections — three
+rounds have independently reached the same "not worth building/changing" call on items 1–2.)
 
 ## Fixing — after the review
 - Fix EVERY finding from your review, all severities including NIT.
@@ -477,10 +495,10 @@ independently reached the same "not worth building" call.)
    assessment plan-vs-shipped; Code findings severity-ranked with file:line + scenario + fix +
    CONFIRMED/PLAUSIBLE; Docs & operability findings; What-was-tested with exact commands + observed
    results, including what you could NOT verify and why). Write it to
-   `.scratch/webster-review-fable-r3.md`.
+   `.scratch/webster-review-opus-r4.md`.
 2. A fixer report: what you implemented, what you deliberately deferred (with reasons), the exact
    test commands run + results, and the changed files. Write it to
-   `.scratch/webster-review-fable-r3-fixer-report.md`.
+   `.scratch/webster-review-opus-r4-fixer-report.md`.
 3. In your final chat message: a concise summary (executive summary + counts by severity + the two
    report paths + an explicit merge-readiness verdict). Do not paste the whole reports.
 
