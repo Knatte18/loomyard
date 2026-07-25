@@ -19,8 +19,12 @@
 //
 // Liveness is judged in BRANCH space, not against worktree directory names: a weft
 // branch <hostBranch>-weft is a live pair iff some host worktree is currently checked
-// out on <hostBranch>. This is the one point where fabric must diverge from warp's
-// original logic. warp compared the weft branch's stripped slug against host worktree
+// out on <hostBranch>. A weft branch that is itself checked out at some worktree is
+// additionally always protected, whatever the liveness verdict says: git branch -D
+// can never delete a checked-out branch, and a checked-out weft branch means the pair
+// is still materialized on disk — e.g. a live pair whose host worktree sits on a
+// detached HEAD, which branch-space liveness cannot see. Liveness-in-branch-space is
+// the one point where fabric must diverge from warp's original logic. warp compared the weft branch's stripped slug against host worktree
 // *directory* base names; that comparison is wrong for the primary pair, whose host
 // worktree directory is the repo name (e.g. "lyx-fabric-test") while its branch is
 // "main". Under warp the mistake is harmless because warp's primary weft branch is the
@@ -53,10 +57,11 @@ type CleanupBranchEntry struct {
 	// It is false on a dry run, when the entry was skipped due to gate protection or
 	// unmanaged (non-suffixed) status, and when deletion itself failed.
 	Deleted bool `json:"deleted"`
-	// Protected reports whether the branch was skipped rather than deleted — either
-	// because raddleFoldedBack returned false and force was not set, or because the
+	// Protected reports whether the branch was skipped rather than deleted —
+	// because raddleFoldedBack returned false and force was not set, because the
 	// branch is not fabric-managed (no "-weft" suffix; a warp-created weft branch
-	// during the parallel-build period).
+	// during the parallel-build period), or because the branch is currently
+	// checked out at a worktree (git branch -D could never delete it).
 	Protected bool `json:"protected,omitempty"`
 	// Error is non-empty when apply is true and branch deletion failed.
 	Error string `json:"error,omitempty"`
@@ -102,6 +107,12 @@ func raddleFoldedBack(_ string) bool {
 //     with force).
 //   - force && !apply            → report only; force does not imply apply.
 //
+// Independently of the matrix, a weft branch currently checked out at any worktree
+// is always reported as protected and never deleted, in every mode: git branch -D
+// can never delete a checked-out branch, and a checked-out weft branch means its
+// pair is still materialized on disk (e.g. a live pair whose host worktree is on a
+// detached HEAD, which the live-host-branch liveness check cannot see).
+//
 // Returns CleanupResult on success or an error on fatal system failures. Per-branch
 // deletion errors are recorded inline in CleanupBranchEntry.Error.
 func (t *Topology) Cleanup(l *hubgeometry.Layout, apply, force bool) (CleanupResult, error) {
@@ -139,7 +150,9 @@ func (t *Topology) Cleanup(l *hubgeometry.Layout, apply, force bool) (CleanupRes
 
 	var result CleanupResult
 
-	for _, branch := range weftBranches {
+	for _, weftBranch := range weftBranches {
+		branch := weftBranch.Branch
+
 		// Recover the host branch by inverting WeftBranchName's suffix. A branch with
 		// no "-weft" suffix cannot be fabric-managed (it is by definition a warp-created
 		// weft branch during the parallel-build period, since the two modules share the
@@ -163,6 +176,18 @@ func (t *Topology) Cleanup(l *hubgeometry.Layout, apply, force bool) (CleanupRes
 
 		entry := CleanupBranchEntry{
 			Branch: branch,
+		}
+
+		if weftBranch.WorktreePath != "" {
+			// The branch is checked out at a worktree, so git branch -D could
+			// never delete it — and its being checked out means the pair is
+			// still materialized on disk (e.g. a live pair whose host worktree
+			// is on a detached HEAD, invisible to the liveness check above).
+			// Report it protected in every mode so dry-run, apply, and
+			// apply+force all agree instead of attempting a doomed deletion.
+			entry.Protected = true
+			result.Entries = append(result.Entries, entry)
+			continue
 		}
 
 		if !apply {
@@ -190,14 +215,25 @@ func (t *Topology) Cleanup(l *hubgeometry.Layout, apply, force bool) (CleanupRes
 	return result, nil
 }
 
-// listWeftBranches returns all branch names in the weft repo.
-//
-// It runs git branch --format=%(refname:short) in the weft repo root to get a
-// clean, newline-delimited list of branch names with no decoration. Returns an
-// error if the git command fails to spawn or exits non-zero.
-func listWeftBranches(l *hubgeometry.Layout) ([]string, error) {
+// weftBranchCheckout pairs one weft repo branch name with the worktree path
+// the branch is currently checked out at; WorktreePath is empty when the
+// branch is not checked out anywhere.
+type weftBranchCheckout struct {
+	Branch       string
+	WorktreePath string
+}
+
+// listWeftBranches returns every branch in the weft repo together with the
+// worktree it is checked out at, if any. The checkout location feeds
+// Cleanup's checked-out protection: a checked-out branch can never be deleted
+// by git branch -D, so Cleanup reports it protected rather than attempting a
+// doomed deletion. Returns an error if the git command fails to spawn or
+// exits non-zero.
+func listWeftBranches(l *hubgeometry.Layout) ([]weftBranchCheckout, error) {
+	// \x1f (unit separator) can never appear in a ref name and never in a
+	// path git reports, so the field split is unambiguous.
 	out, _, exitCode, err := gitexec.RunGit(
-		[]string{"branch", "--format=%(refname:short)"},
+		[]string{"branch", "--format=%(refname:short)\x1f%(worktreepath)"},
 		l.WeftRepoRoot(),
 	)
 	if err != nil {
@@ -212,7 +248,18 @@ func listWeftBranches(l *hubgeometry.Layout) ([]string, error) {
 		return nil, nil
 	}
 
-	return strings.Split(raw, "\n"), nil
+	var branches []weftBranchCheckout
+	for _, line := range strings.Split(raw, "\n") {
+		name, worktreePath, _ := strings.Cut(strings.TrimSpace(line), "\x1f")
+		if name == "" {
+			continue
+		}
+		branches = append(branches, weftBranchCheckout{
+			Branch:       name,
+			WorktreePath: strings.TrimSpace(worktreePath),
+		})
+	}
+	return branches, nil
 }
 
 // deleteWeftBranch deletes a single weft branch via git branch -D and records

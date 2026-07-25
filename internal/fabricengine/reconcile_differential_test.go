@@ -833,6 +833,59 @@ func TestCleanup_DifferentialEquivalence(t *testing.T) {
 			t.Errorf("non-suffixed branch %q deleted; want intact", warpManagedBranch)
 		}
 	})
+
+	// DetachedHostHeadProtectsCheckedOutWeftBranch is fabric-only (the R5 fix):
+	// a live pair whose host worktree sits on a detached HEAD is invisible to
+	// the live-host-branch liveness check (readBranch reports the literal
+	// "HEAD"), so before the fix Cleanup listed the pair's weft branch as a
+	// deletable orphan and apply+force attempted a git branch -D that only
+	// git's own checked-out refusal stopped. The checked-out protection must
+	// report the branch Protected in every mode instead.
+	t.Run("DetachedHostHeadProtectsCheckedOutWeftBranch", func(t *testing.T) {
+		t.Parallel()
+
+		const detachedSlug = "diff-cleanup-detached"
+		dp := buildDiffPair(t, "")
+		wireDiffPairJunctions(t, dp)
+
+		if _, err := dp.Fabric.Add(dp.FabricFixture.Layout, detachedSlug, fabricengine.AddOptions{SkipGit: true}); err != nil {
+			t.Fatalf("setup fabricengine Add: %v", err)
+		}
+
+		// Detach the host worktree's HEAD so branch-space liveness cannot see
+		// the pair is live; only the checked-out protection stands between
+		// Cleanup and the pair's weft branch.
+		hostPath := dp.FabricFixture.Layout.WorktreePath(detachedSlug)
+		lyxtest.MustRun(t, hostPath, "git", "checkout", "--detach")
+
+		weftBranch := fabricengine.WeftBranchName(detachedSlug)
+
+		// Dry-run must already report the branch protected, so dry-run and
+		// apply agree about its fate.
+		dry, err := dp.Fabric.Cleanup(dp.FabricFixture.Layout, false, false)
+		if err != nil {
+			t.Fatalf("fabricengine Cleanup(dry-run): %v", err)
+		}
+		dryEntry := findFabricCleanupEntry(t, dry.Entries, weftBranch)
+		if !dryEntry.Protected {
+			t.Errorf("dry-run Protected = false for checked-out weft branch %q; want true", weftBranch)
+		}
+
+		forced, err := dp.Fabric.Cleanup(dp.FabricFixture.Layout, true, true)
+		if err != nil {
+			t.Fatalf("fabricengine Cleanup(apply, force): %v", err)
+		}
+		forcedEntry := findFabricCleanupEntry(t, forced.Entries, weftBranch)
+		if !forcedEntry.Protected || forcedEntry.Deleted {
+			t.Errorf("apply+force entry: Protected=%v Deleted=%v; want Protected=true Deleted=false", forcedEntry.Protected, forcedEntry.Deleted)
+		}
+		if forcedEntry.Error != "" {
+			t.Errorf("apply+force entry Error = %q; want empty (no doomed delete attempt)", forcedEntry.Error)
+		}
+		if !branchExistsAt(t, dp.FabricFixture.Layout.WeftRepoRoot(), weftBranch) {
+			t.Errorf("checked-out weft branch %q deleted; want intact", weftBranch)
+		}
+	})
 }
 
 // findWarpCleanupEntry returns the warpengine.CleanupBranchEntry for branch,

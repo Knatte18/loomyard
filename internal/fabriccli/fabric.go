@@ -207,6 +207,10 @@ Flag matrix:
   --apply --force     also delete gate-protected task branches.
   --force (alone)     report only; --force does not imply --apply.
 
+A weft branch currently checked out at a worktree is always reported as
+protected and never deleted, in every mode — git cannot delete a checked-out
+branch, and its being checked out means the pair is still on disk.
+
 During the parallel-build period the weft repo also holds warp-created weft
 branches (mirrored names, no fabric suffix); those are reported but never
 deleted here, since they are not fabric-managed.`,
