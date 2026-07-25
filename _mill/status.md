@@ -28,7 +28,9 @@ implementing  '2026-07-25T06:24:10Z'
 ```yaml
 batches:
   - name: promote-v3-reference
-    state: pending
+    state: running
+    implementer_session: cda6bc45-34ea-41e1-9674-445a1644d9d9
+    start_sha: ddb836eb08707e59430a57a3dee5cc00f3331781
   - name: neighbour-doc-crosslinks
     state: pending
 ```
