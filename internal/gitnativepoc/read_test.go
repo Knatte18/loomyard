@@ -13,10 +13,12 @@ package gitnativepoc
 
 import (
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gitrepo"
+	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
 // assertParityErrClassCrossTarget fails the test unless poc and cli agree on
@@ -251,4 +253,121 @@ func containsString(haystack []string, needle string) bool {
 		}
 	}
 	return false
+}
+
+// TestSnapshotSHA_SetRef is MIGRATE: go-git's Reference lookup under
+// refs/loomyard/snapshot/<key> returns the same SHA as gitrepo's
+// `git rev-parse --verify --quiet` once the ref has been set.
+func TestSnapshotSHA_SetRef(t *testing.T) {
+	dir, key := newSnapshotRefFixture(t)
+
+	cliSHA, cliErr := gitrepo.New(dir).SnapshotSHA(key)
+	if cliErr != nil {
+		t.Fatalf("gitrepo SnapshotSHA(%q) error = %v", key, cliErr)
+	}
+
+	poc, err := OpenRepo(dir)
+	if err != nil {
+		t.Fatalf("OpenRepo(%q) error = %v", dir, err)
+	}
+	pocSHA, pocErr := poc.SnapshotSHA(key)
+	if pocErr != nil {
+		t.Fatalf("gitnativepoc SnapshotSHA(%q) error = %v", key, pocErr)
+	}
+
+	assertParitySHA(t, pocSHA, cliSHA)
+}
+
+// TestSnapshotSHA_AbsentRef is MIGRATE: a key with no ref ever set reads as
+// ("", nil) on both sides — an absent snapshot is a normal state, not a
+// failure to surface.
+func TestSnapshotSHA_AbsentRef(t *testing.T) {
+	dir := newRepoFixture(t)
+	const key = "never-set"
+
+	cliSHA, cliErr := gitrepo.New(dir).SnapshotSHA(key)
+	if cliErr != nil {
+		t.Fatalf("gitrepo SnapshotSHA(%q) error = %v", key, cliErr)
+	}
+	if cliSHA != "" {
+		t.Fatalf("gitrepo SnapshotSHA(%q) = %q, want \"\"", key, cliSHA)
+	}
+
+	poc, err := OpenRepo(dir)
+	if err != nil {
+		t.Fatalf("OpenRepo(%q) error = %v", dir, err)
+	}
+	pocSHA, pocErr := poc.SnapshotSHA(key)
+	if pocErr != nil {
+		t.Fatalf("gitnativepoc SnapshotSHA(%q) error = %v", key, pocErr)
+	}
+
+	assertParitySHA(t, pocSHA, cliSHA)
+}
+
+// TestRemoteName_OriginFallback is MIGRATE, asserted directly against a git
+// fixture rather than gitrepo.Repo since remoteName is unexported on both
+// sides and has no public gitrepo oracle: with no branch.<b>.remote
+// configured, both go-git and the CLI fall back to "origin"; once
+// branch.<b>.remote is set, both report the configured remote's name.
+func TestRemoteName_OriginFallback(t *testing.T) {
+	t.Run("NoRemoteConfigured", func(t *testing.T) {
+		dir := newRepoFixture(t)
+
+		poc, err := OpenRepo(dir)
+		if err != nil {
+			t.Fatalf("OpenRepo(%q) error = %v", dir, err)
+		}
+		if got := poc.remoteName(); got != "origin" {
+			t.Errorf("remoteName() = %q, want %q", got, "origin")
+		}
+	})
+
+	t.Run("RemoteConfigured", func(t *testing.T) {
+		// Track a remote deliberately not named "origin" so this subtest
+		// actually exercises the branch.<b>.remote config lookup rather than
+		// coincidentally matching the same fallback value the other subtest
+		// checks.
+		container := t.TempDir()
+		bare := filepath.Join(container, "upstream.git")
+		lyxtest.MustRun(t, container, "git", "init", "--bare", "-b", "main", bare)
+		dir := newRepoFixture(t)
+		lyxtest.MustRun(t, dir, "git", "remote", "add", "upstream", bare)
+		lyxtest.MustRun(t, dir, "git", "push", "-u", "upstream", "main")
+
+		poc, err := OpenRepo(dir)
+		if err != nil {
+			t.Fatalf("OpenRepo(%q) error = %v", dir, err)
+		}
+		if got := poc.remoteName(); got != "upstream" {
+			t.Errorf("remoteName() = %q, want %q (configured tracked remote)", got, "upstream")
+		}
+	})
+}
+
+// TestSnapshotSHA_InvalidKey is MIGRATE: a key rejected by validSnapshotKey
+// returns each package's own ErrInvalidSnapshotKey without ever touching a
+// ref.
+func TestSnapshotSHA_InvalidKey(t *testing.T) {
+	dir := newRepoFixture(t)
+	// "key..bad" passes the character-class check (only alphanumerics, '.',
+	// '_', '-' are involved) but is rejected by the separate ".." shape
+	// check, exercising that specific rule rather than the character class.
+	const key = "key..bad"
+
+	poc, err := OpenRepo(dir)
+	if err != nil {
+		t.Fatalf("OpenRepo(%q) error = %v", dir, err)
+	}
+	_, pocErr := poc.SnapshotSHA(key)
+
+	_, cliErr := gitrepo.New(dir).SnapshotSHA(key)
+
+	assertParityErrClassCrossTarget(t, pocErr, ErrInvalidSnapshotKey, cliErr, gitrepo.ErrInvalidSnapshotKey)
+	if !errors.Is(pocErr, ErrInvalidSnapshotKey) {
+		t.Errorf("gitnativepoc SnapshotSHA(%q) error = %v, want ErrInvalidSnapshotKey", key, pocErr)
+	}
+	if !errors.Is(cliErr, gitrepo.ErrInvalidSnapshotKey) {
+		t.Errorf("gitrepo SnapshotSHA(%q) error = %v, want gitrepo.ErrInvalidSnapshotKey", key, cliErr)
+	}
 }

@@ -14,7 +14,10 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strings"
 
+	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/utils/merkletrie"
@@ -30,6 +33,11 @@ var ErrNoCommits = errors.New("gitnativepoc: repository has no commits")
 // surfaced before the string ever reaches go-git's revision resolver.
 var ErrInvalidSHA = errors.New("gitnativepoc: invalid SHA")
 
+// ErrInvalidSnapshotKey mirrors gitrepo.ErrInvalidSnapshotKey: SnapshotSHA
+// returns it when key does not satisfy validSnapshotKey, surfaced before the
+// key ever becomes part of a ref name.
+var ErrInvalidSnapshotKey = errors.New("gitnativepoc: invalid snapshot key")
+
 // shaPattern mirrors gitrepo's shaPattern: a plain abbreviated-or-full hex
 // object name (4 to 64 hex digits), deliberately excluding symbolic
 // revisions such as HEAD or refs. It is re-declared here rather than
@@ -42,6 +50,27 @@ var shaPattern = regexp.MustCompile(`^[0-9a-fA-F]{4,64}$`)
 func validSHA(sha string) bool {
 	return shaPattern.MatchString(sha)
 }
+
+// snapshotKeyPattern mirrors gitrepo's snapshotKeyPattern: a snapshot key
+// must start with an alphanumeric character and contain only alphanumerics,
+// '.', '_', or '-' thereafter.
+var snapshotKeyPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+
+// validSnapshotKey reports whether key is safe to embed in a git ref name,
+// mirroring gitrepo.validSnapshotKey's character-class-plus-shape checks: it
+// separately rejects ".." (path-traversal-like), a trailing ".", and a
+// ".lock" suffix (reserved for git's own ref lock files) — shapes the
+// character class alone would still allow through.
+func validSnapshotKey(key string) bool {
+	return snapshotKeyPattern.MatchString(key) &&
+		!strings.Contains(key, "..") &&
+		!strings.HasSuffix(key, ".") &&
+		!strings.HasSuffix(key, ".lock")
+}
+
+// snapshotRefPrefix is the ref namespace snapshot keys live under, mirroring
+// gitrepo's snapshotRef.
+const snapshotRefPrefix = "refs/loomyard/snapshot/"
 
 // CurrentSHA returns the SHA of the checkout's current HEAD commit,
 // mirroring gitrepo.CurrentSHA's contract via go-git's Repository.Head
@@ -148,4 +177,66 @@ func (r *Repo) commitTree(rev string) (*object.Tree, error) {
 		return nil, err
 	}
 	return commit.Tree()
+}
+
+// remoteName resolves the remote the current branch is configured to track
+// via go-git's HEAD symbolic reference and branch config, falling back to
+// "origin" when no such configuration exists, mirroring gitrepo.remoteName
+// exactly (including its fallback rationale — see gitrepo's snapshot.go)
+// via go-git's Reference and Config lookups instead of
+// `git symbolic-ref --short HEAD` plus `git config --get branch.<b>.remote`.
+func (r *Repo) remoteName() string {
+	head, err := r.repo.Reference(plumbing.HEAD, false)
+	if err != nil || head.Type() != plumbing.SymbolicReference {
+		return "origin"
+	}
+	branch := head.Target().Short()
+
+	cfg, err := r.repo.Config()
+	if err != nil {
+		return "origin"
+	}
+	b, ok := cfg.Branches[branch]
+	if !ok || b.Remote == "" {
+		return "origin"
+	}
+	return b.Remote
+}
+
+// SnapshotSHA returns the SHA currently recorded for key under
+// refs/loomyard/snapshot/<key>, or ("", nil) if no such ref has ever been
+// set, mirroring gitrepo.SnapshotSHA's contract. MIGRATE: go-git's
+// Repository.Fetch accepts the same custom
+// +refs/loomyard/snapshot/*:refs/loomyard/snapshot/* refspec gitrepo shells
+// out for (verified against a real bare remote during this spike); the fetch
+// is best-effort — its error is ignored, exactly like gitrepo swallowing an
+// unreachable-remote `git fetch` failure — so the read degrades to the local
+// ref rather than failing outright. Only a verified-absent ref reads as
+// ("", nil); a corrupt/non-repo store surfaces as an error.
+func (r *Repo) SnapshotSHA(key string) (string, error) {
+	if !validSnapshotKey(key) {
+		return "", ErrInvalidSnapshotKey
+	}
+
+	remote := r.remoteName()
+	// Best-effort: ignore the fetch error entirely (unreachable remote,
+	// nothing new to fetch, no such remote configured at all) — an
+	// unreachable remote must not block a read that can fall back to the
+	// local ref.
+	r.repo.Fetch(&git.FetchOptions{
+		RemoteName: remote,
+		RefSpecs:   []config.RefSpec{config.RefSpec("+" + snapshotRefPrefix + "*:" + snapshotRefPrefix + "*")},
+	})
+
+	ref, err := r.repo.Reference(plumbing.ReferenceName(snapshotRefPrefix+key), true)
+	if err != nil {
+		if errors.Is(err, plumbing.ErrReferenceNotFound) {
+			// `--verify --quiet` reports a missing ref as exit 1 with no
+			// output on the CLI side; the ref simply does not exist yet —
+			// absent is a normal state, not a failure.
+			return "", nil
+		}
+		return "", fmt.Errorf("gitnativepoc: resolve %s: %w", snapshotRefPrefix+key, err)
+	}
+	return ref.Hash().String(), nil
 }
