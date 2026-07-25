@@ -33,7 +33,11 @@ func (c *websterCLI) runCmd() *cobra.Command {
 gate (including the zero-batch pre-flight refusal), checks the on-disk
 plan's fingerprint against state.json's recorded one (refusing with a
 message naming "run --fresh" on a mismatch -- --fresh archives the stale
-state and reports and starts over), clears any leftover pause flag once
+state and reports and starts over ONLY on that mismatch; with an
+unchanged plan --fresh is a no-op and the run RESUMES from state.json, so
+a fully-completed plan re-reports done without re-driving anything --
+force a from-scratch re-run of an unchanged plan by editing the plan or
+archiving _lyx/webster/state.json aside by hand), clears any leftover pause flag once
 those refusal gates pass, archives any stale outcome.yaml/summary.md,
 spawns a fresh Master session via shuttle (fork-authorized, never resumed),
 and blocks until Master writes its own outcome.yaml and summary.md
