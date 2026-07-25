@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: git-native-library
 branch: git-native-library
 plan: _mill/plan
@@ -34,6 +34,7 @@ holistic-fixing  '2026-07-25T14:04:28Z'
 nits-fixed-holistic  '2026-07-25T14:06:33Z'
 holistic-approved  '2026-07-25T14:06:41Z'
 done  '2026-07-25T14:07:03Z'
+pr-pending  '2026-07-25T14:08:30Z'
 ```
 
 ## Batches
