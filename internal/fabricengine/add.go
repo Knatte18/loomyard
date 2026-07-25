@@ -69,13 +69,13 @@ type AddResult struct {
 // 12. Push weft branch: git push -u origin <weftBranch> to weft remote (respects opts).
 //
 // On ANY error at or after step 7, performs a best-effort full paired rollback:
-// - removeWeftWorktree — tear down the weft worktree (and the weft branch only
-//   when Add created it; an adopted pre-existing branch is never deleted)
-// - removePortal(l, slug)
-// - removeLaunchers(l, slug)
-// - git worktree remove --force <host-target>
-// - git branch -D <hostBranch> in host
-// - git worktree prune in host
+//   - removeWeftWorktree — tear down the weft worktree (and the weft branch only
+//     when Add created it; an adopted pre-existing branch is never deleted)
+//   - removePortal(l, slug)
+//   - removeLaunchers(l, slug)
+//   - git worktree remove --force <host-target>
+//   - git branch -D <hostBranch> in host
+//   - git worktree prune in host
 //
 // The ORIGINAL error is returned; rollback-step failures are not masked.
 //
