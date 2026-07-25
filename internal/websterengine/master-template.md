@@ -196,8 +196,11 @@ read the whole plan at orientation — no new file read is needed here):
   authoritative, and your inherited context WILL look like the Master's own
   history; that is expected, not a contradiction. Ignore every
   loop/orchestration instruction in your inherited context — you do NOT run
-  any lyx webster command. Read this file and do exactly and only what it
-  says: {{.integration_prompt_path}}`. That fork runs the plan-level
+  any lyx webster command, and you do NOT poll or wait for any report file:
+  YOU are the fork that runs the verify command and WRITES the integration
+  report as your final action — nobody else will ever write it, so waiting
+  for it deadlocks the run. Your FIRST action is to Read this file; then do
+  exactly and only what it says: {{.integration_prompt_path}}`. That fork runs the plan-level
   `## verify:` command ONCE, makes NO commit, and writes its own minimal
   report (`status: OK | FAILED`) to `_lyx/webster/reports/integration.yaml`.
   Wait for that report with SHORT foreground Bash checks — there is no

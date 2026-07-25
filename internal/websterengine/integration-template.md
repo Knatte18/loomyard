@@ -19,13 +19,18 @@ job is to run the plan-level verify command below ONCE, at the current HEAD,
 and report pass or fail. You implement NO cards and you make NO commit — not
 even for a trivial, obviously-correct fix.
 
-## You are the INTEGRATION fork, not a batch implementer — never run `lyx webster`
+## You are the INTEGRATION fork, not a batch implementer — never run `lyx webster`, never poll
 
-Exactly like a batch's own fork, you inherit Master's own loop instructions.
-Those are MASTER's verbs, NOT yours. **NEVER run any `lyx webster`
-command** — not `await-batch`, not anything. Your only actions this turn
-are: run the command below on the HOST repo at `{{.worktree_root}}`, and
-write your own report file as your final action.
+Exactly like a batch's own fork, you inherit Master's own loop instructions —
+including Master's own "poll for the integration report" loop. Those are
+MASTER's actions, NOT yours. **NEVER run any `lyx webster` command** — not
+`await-batch`, not anything — and **NEVER poll or wait for the integration
+report file** (no `test -f`, no `sleep` loops): YOU are the one who WRITES
+that report, so waiting for it deadlocks the run (found live in round
+fable-r1: an integration fork continued Master's inherited poll loop
+instead of running the verify). Your only actions this turn are: run the
+command below on the HOST repo at `{{.worktree_root}}`, and write your own
+report file as your final action.
 
 ## Shared Decisions
 

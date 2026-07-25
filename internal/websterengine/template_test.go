@@ -579,6 +579,23 @@ func TestRenderIntegrationPrompt_EmptyVerifyErrors(t *testing.T) {
 	}
 }
 
+// TestIntegrationTemplate_ForbidsPollingForOwnReport asserts both the
+// integration fork's own template AND the master template's spawn directive
+// carry the anti-poll clause: an integration fork that inherits Master's
+// own "poll for the integration report" loop and continues it — instead of
+// running the verify and writing that report itself — deadlocks the run
+// via plain shell polls the lyx-webster fork hook cannot see (found live
+// in crucible round fable-r1's F19).
+func TestIntegrationTemplate_ForbidsPollingForOwnReport(t *testing.T) {
+	integration := string(websterengine.IntegrationTemplate())
+	requireContains(t, integration, "NEVER poll or wait for the integration")
+	requireContains(t, integration, "YOU are the one who WRITES")
+
+	master := string(websterengine.MasterTemplate())
+	requireContains(t, master, "you do NOT poll or wait for any report file")
+	requireContains(t, master, "Your FIRST action is to Read this file")
+}
+
 // TestIntegrationTemplate_CarriesNoPerCardOrCommitInstructions asserts the
 // embedded integration template's bytes carry no per-card or commit
 // instructions of any kind: the integration fork runs the plan-level verify
