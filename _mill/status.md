@@ -34,5 +34,7 @@ batches:
     start_sha: ddb836eb08707e59430a57a3dee5cc00f3331781
     commit_sha: 5e7f13d3a922acf3117e093bfabed0a53206dd97
   - name: neighbour-doc-crosslinks
-    state: pending
+    state: running
+    implementer_session: da4a8b47-8a7e-4754-a538-b27423261ca4
+    start_sha: 8320123b5c6128992d198e800a6725f84ef111b0
 ```
