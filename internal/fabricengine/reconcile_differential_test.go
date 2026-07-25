@@ -1072,6 +1072,52 @@ func TestPairInSyncAndHostClean_DifferentialEquivalence(t *testing.T) {
 		}
 	})
 
+	// PairInSync_RealDirNotAJunction is fabric-only (the R10 fix): a real
+	// (non-link) directory sitting where the _lyx junction belongs must be
+	// reported as "host _lyx is not a junction" — the wording
+	// checkJunctionHealth already uses for the same drift shape — not as
+	// "junction missing". The loom preflight will consume this reason string
+	// after cutover.
+	t.Run("PairInSync_RealDirNotAJunction", func(t *testing.T) {
+		t.Parallel()
+
+		const slug = "diff-pairinsync-realdir"
+		dp := buildDiffPair(t, "")
+
+		if _, err := dp.Fabric.Add(dp.FabricFixture.Layout, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
+			t.Fatalf("setup fabricengine Add: %v", err)
+		}
+		if err := fabricengine.WireJunctions(dp.FabricFixture.Layout, slug); err != nil {
+			t.Fatalf("fabricengine.WireJunctions: %v", err)
+		}
+
+		fabricHostLayout, err := hubgeometry.Resolve(dp.FabricFixture.Layout.WorktreePath(slug))
+		if err != nil {
+			t.Fatalf("hubgeometry.Resolve(fabric host): %v", err)
+		}
+
+		// Replace the junction with a real directory — the drift shape a
+		// pre-weft repo migration or a hand-created _lyx leaves behind.
+		hostLink := fabricHostLayout.HostLyxLinkHere()
+		if err := os.Remove(hostLink); err != nil {
+			t.Fatalf("remove host junction: %v", err)
+		}
+		if err := os.Mkdir(hostLink, 0o755); err != nil {
+			t.Fatalf("mkdir real dir in junction's place: %v", err)
+		}
+
+		ok, reason, err := fabricengine.PairInSync(fabricHostLayout)
+		if err != nil {
+			t.Fatalf("fabricengine.PairInSync: %v", err)
+		}
+		if ok {
+			t.Errorf("PairInSync = true with a real _lyx directory; want false")
+		}
+		if reason != "host _lyx is not a junction" {
+			t.Errorf("PairInSync reason = %q; want %q", reason, "host _lyx is not a junction")
+		}
+	})
+
 	t.Run("HostClean_CleanAndDirty", func(t *testing.T) {
 		t.Parallel()
 

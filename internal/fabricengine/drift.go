@@ -77,16 +77,24 @@ func PairInSync(l *hubgeometry.Layout) (ok bool, reason string, err error) {
 	hostLink := l.HostLyxLinkHere()
 	weftTarget := l.WeftLyxDir()
 
-	// Check if the junction exists and is a link.
+	// Distinguish a missing _lyx entry from an existing one that is not a
+	// link: fslink.IsLink reports (false, nil) for both shapes, and the loom
+	// preflight consumes these reason strings — a real directory sitting
+	// where the junction belongs must not masquerade as merely missing.
+	if _, lstatErr := os.Lstat(hostLink); lstatErr != nil {
+		if os.IsNotExist(lstatErr) {
+			return false, "junction missing", nil
+		}
+		return false, "", fmt.Errorf("check host junction: %w", lstatErr)
+	}
 	isLink, err := fslink.IsLink(hostLink)
-	if err != nil && !os.IsNotExist(err) {
+	if err != nil {
 		return false, "", fmt.Errorf("check host junction: %w", err)
 	}
 	if !isLink {
-		if os.IsNotExist(err) {
-			return false, "junction missing", nil
-		}
-		return false, "junction missing", nil
+		// Same wording as checkJunctionHealth for this drift shape, so
+		// status/reconcile and PairInSync describe it identically.
+		return false, "host _lyx is not a junction", nil
 	}
 
 	// Resolve the junction and verify it points to the correct target.
