@@ -18,6 +18,15 @@ Committed to, in this order, next.
    `gitrepo`), since that item changes `gitrepo`'s public surface; non-blocking for `fabric`. See
    [designs/git-native-library.md](designs/git-native-library.md).
 
+1. **reduce prompt friction** — trivial, destructive-looking commands (`rm` and similar against
+   test/fixture directories) shouldn't stall autonomous work with a permission prompt.
+   `fabric`'s testing surfaced this; the likely fix is making `tools/sandbox`'s test-repo cleanup
+   fully self-contained inside the Go tool (so no external `rm` is ever needed), not just tidying
+   the handful of places still using manual `os.MkdirTemp`/`os.RemoveAll` instead of
+   `t.TempDir()`. Touches the same `tools/sandbox/main.go` surface as the Planned **dev/test
+   `lyx.exe`** item below — depends on that landing first. See
+   [designs/reduce-prompt-friction.md](designs/reduce-prompt-friction.md).
+
 1. **fabric** — replaces `warp` and `weft` in full: all topology (clone, dual-worktree add/remove,
    coordinated checkout, reconcile, prune, cleanup, branch naming — including enforcing
    `<slug>-weft` uniformly, no exceptions) and all git mechanics into the paired weft repo, unified
@@ -124,14 +133,6 @@ between these items.
    embeddings + temporal decay), to find code by concept rather than literal keyword. The
    "deferred idea" `codeintel-redesign.md` already refers to. Genuinely speculative, not yet
    designed in depth. See [designs/semantic-index.md](designs/semantic-index.md).
-
-1. **reduce prompt friction** — trivial, destructive-looking commands (`rm` and similar against
-   test/fixture directories) shouldn't stall autonomous work with a permission prompt.
-   `fabric`'s testing surfaced this; the likely fix is making `tools/sandbox`'s test-repo cleanup
-   fully self-contained inside the Go tool (so no external `rm` is ever needed), not just tidying
-   the handful of places still using manual `os.MkdirTemp`/`os.RemoveAll` instead of
-   `t.TempDir()`. Genuinely speculative, not yet scoped. See
-   [designs/reduce-prompt-friction.md](designs/reduce-prompt-friction.md).
 
 1. **`PATTERN.md`** — a loomyard-owned equivalent of Millhouse's `CONSTRAINTS.md`, written from
    scratch (not a port) once loomyard starts dogfooding its own development onto `loom`. Format:

@@ -1,11 +1,10 @@
 # reduce prompt friction — trivial destructive-looking commands shouldn't stall autonomy
 
-> **Status: Speculative, not scoped.** Prompted by `fabric`'s testing hitting frequent
-> permission prompts for `rm`-and-similar commands against test/fixture directories. Not yet a
-> plan — this file holds the investigation done so far so it isn't re-derived from scratch. Per
-> the [documentation lifecycle](../../docs/overview.md#documentation-lifecycle), if this is ever
-> picked up the durable parts fold into the owning package's doc when it lands; if abandoned,
-> this file is simply deleted.
+> **Status: Design — not built.** Prompted by `fabric`'s testing hitting frequent permission
+> prompts for `rm`-and-similar commands against test/fixture directories. Depends on the Planned
+> **dev/test `lyx.exe`** item landing first (same `tools/sandbox/main.go` surface). Per the
+> [documentation lifecycle](../../docs/overview.md#documentation-lifecycle), when this lands the
+> durable parts fold into the owning package's doc and this file is deleted.
 
 ## The problem
 
