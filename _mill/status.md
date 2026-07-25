@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-approved
 slug: board-use-gitrepo
 branch: board-use-gitrepo
 plan: _mill/plan
@@ -26,6 +26,7 @@ approved-boardengine-migration  '2026-07-25T05:53:39Z'
 holistic-reviewing  '2026-07-25T05:54:04Z'
 holistic-fixing  '2026-07-25T05:56:32Z'
 holistic-reviewing  '2026-07-25T05:58:26Z'
+holistic-approved  '2026-07-25T06:00:34Z'
 ```
 
 ## Batches
