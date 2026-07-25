@@ -58,15 +58,13 @@ func TestConfigTemplate_RoundTripsThroughLoadConfig(t *testing.T) {
 	}
 
 	want := websterengine.Config{
-		Master:                "sonnet",
-		MasterOversized:       "opus",
-		Recovery:              "opus[effort=high]",
-		SelfFixCap:            2,
-		MasterTimeoutMin:      480,
-		RecoveryTimeoutMin:    60,
-		PollWaitS:             480,
-		BatchContextCapTokens: 100000,
-		BatchCardCap:          10,
+		Master:             "sonnet",
+		Recovery:           "opus[effort=high]",
+		Batcher:            "",
+		SelfFixCap:         2,
+		MasterTimeoutMin:   480,
+		RecoveryTimeoutMin: 60,
+		PollWaitS:          480,
 	}
 	if cfg != want {
 		t.Errorf("LoadConfig(template) = %+v; want %+v", cfg, want)
@@ -107,14 +105,12 @@ func containsKey(text, key string) bool {
 func TestLoadConfig_OverridesRoundTrip(t *testing.T) {
 	baseDir := t.TempDir()
 	override := `master: opus[effort=high]
-master_oversized: opus[effort=max]
 recovery: opus[effort=max]
+batcher: identity
 self_fix_cap: 5
 master_timeout_min: 120
 recovery_timeout_min: 30
 poll_wait_s: 60
-batch_context_cap_tokens: 50000
-batch_card_cap: 6
 `
 	seedConfig(t, baseDir, "webster", override)
 
@@ -126,30 +122,27 @@ batch_card_cap: 6
 	if cfg.Master != "opus[effort=high]" {
 		t.Errorf("Master = %q, want %q", cfg.Master, "opus[effort=high]")
 	}
-	if cfg.MasterOversized != "opus[effort=max]" {
-		t.Errorf("MasterOversized = %q, want %q", cfg.MasterOversized, "opus[effort=max]")
+	if cfg.Recovery != "opus[effort=max]" {
+		t.Errorf("Recovery = %q, want %q", cfg.Recovery, "opus[effort=max]")
+	}
+	if cfg.Batcher != "identity" {
+		t.Errorf("Batcher = %q, want %q", cfg.Batcher, "identity")
 	}
 	if cfg.SelfFixCap != 5 {
 		t.Errorf("SelfFixCap = %d, want %d", cfg.SelfFixCap, 5)
-	}
-	if cfg.BatchCardCap != 6 {
-		t.Errorf("BatchCardCap = %d, want %d", cfg.BatchCardCap, 6)
 	}
 }
 
 func TestLoadConfig_BadRoleGrammarNamesTheKey(t *testing.T) {
 	baseDir := t.TempDir()
-	// "sonnet " has a trailing space — Parse rejects whitespace anywhere in
+	// "opus " has a trailing space — Parse rejects whitespace anywhere in
 	// a spec string.
 	badRole := `master: sonnet
-master_oversized: "opus "
-recovery: opus[effort=high]
+recovery: "opus "
 self_fix_cap: 2
 master_timeout_min: 480
 recovery_timeout_min: 60
 poll_wait_s: 480
-batch_context_cap_tokens: 100000
-batch_card_cap: 10
 `
 	seedConfig(t, baseDir, "webster", badRole)
 
@@ -157,8 +150,8 @@ batch_card_cap: 10
 	if err == nil {
 		t.Fatal("LoadConfig() = nil error; want error naming the offending key")
 	}
-	if !strings.Contains(err.Error(), "master_oversized") {
-		t.Errorf("LoadConfig() error = %q; want it to name the offending key %q", err.Error(), "master_oversized")
+	if !strings.Contains(err.Error(), "recovery") {
+		t.Errorf("LoadConfig() error = %q; want it to name the offending key %q", err.Error(), "recovery")
 	}
 }
 
