@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-read-surface
+phase: approved-write-surface
 slug: git-native-library
 branch: git-native-library
 plan: _mill/plan
@@ -25,6 +25,7 @@ planned  '2026-07-25T13:08:28Z'
 implementing  '2026-07-25T13:10:45Z'
 approved-poc-foundation  '2026-07-25T13:16:06Z'
 approved-read-surface  '2026-07-25T13:30:17Z'
+approved-write-surface  '2026-07-25T13:44:42Z'
 ```
 
 ## Batches
@@ -42,9 +43,10 @@ batches:
     start_sha: 5433a70e125d956e31b65e2f2bed95bc27fd2bb7
     commit_sha: d1ee85e67d126dbb0cfa75065733750a2acbfd28
   - name: write-surface
-    state: running
+    state: approved
     implementer_session: 1acd39c0-d181-4e83-9347-2caa0046303c
     start_sha: eb7adba2b91e2c37c11ded537df9698410e5ecc7
+    commit_sha: 501a2a5540caf10e29c688bd16cdd258527d5b52
   - name: writeup-and-doc-lifecycle
     state: pending
 ```
