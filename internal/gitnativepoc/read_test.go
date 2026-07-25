@@ -13,6 +13,7 @@ package gitnativepoc
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gitrepo"
@@ -132,4 +133,122 @@ func TestSHAExists_MissingAndNonHexSHA(t *testing.T) {
 			assertParityBool(t, poc.SHAExists(tt.sha), cliRepo.SHAExists(tt.sha))
 		})
 	}
+}
+
+// TestChangedFilesSince_NonASCIIPath is MIGRATE: go-git's tree entries are
+// raw UTF-8, so a non-ASCII filename comes back verbatim on both sides
+// instead of git CLI's core.quotePath-escaped form.
+func TestChangedFilesSince_NonASCIIPath(t *testing.T) {
+	dir, filename := newNonASCIIFixture(t)
+
+	cliRepo := gitrepo.New(dir)
+	files, cliErr := cliRepo.ChangedFilesSince(firstCommitSHA(t, dir))
+	if cliErr != nil {
+		t.Fatalf("gitrepo ChangedFilesSince() error = %v", cliErr)
+	}
+	if !containsString(files, filename) {
+		t.Fatalf("gitrepo ChangedFilesSince() = %v, want it to contain verbatim %q", files, filename)
+	}
+
+	poc, err := OpenRepo(dir)
+	if err != nil {
+		t.Fatalf("OpenRepo(%q) error = %v", dir, err)
+	}
+	pocFiles, pocErr := poc.ChangedFilesSince(firstCommitSHA(t, dir))
+	if pocErr != nil {
+		t.Fatalf("gitnativepoc ChangedFilesSince() error = %v", pocErr)
+	}
+	if !containsString(pocFiles, filename) {
+		t.Fatalf("gitnativepoc ChangedFilesSince() = %v, want it to contain verbatim %q", pocFiles, filename)
+	}
+
+	assertParityFileList(t, pocFiles, files)
+}
+
+// TestChangedFilesSince_Rename is MIGRATE: object.DiffTree (unlike
+// Tree.Diff's default rename detection) reports a pure rename as a plain
+// delete-plus-add pair, matching gitrepo's --no-renames CLI invocation —
+// both sides must report the old path as deleted and the new path as added,
+// never folded into one entry.
+func TestChangedFilesSince_Rename(t *testing.T) {
+	dir, oldName, newName := newRenameFixture(t)
+	sinceSHA := firstCommitSHA(t, dir)
+
+	cliRepo := gitrepo.New(dir)
+	cliFiles, cliErr := cliRepo.ChangedFilesSince(sinceSHA)
+	if cliErr != nil {
+		t.Fatalf("gitrepo ChangedFilesSince() error = %v", cliErr)
+	}
+
+	poc, err := OpenRepo(dir)
+	if err != nil {
+		t.Fatalf("OpenRepo(%q) error = %v", dir, err)
+	}
+	pocFiles, pocErr := poc.ChangedFilesSince(sinceSHA)
+	if pocErr != nil {
+		t.Fatalf("gitnativepoc ChangedFilesSince() error = %v", pocErr)
+	}
+
+	for _, files := range [][]string{cliFiles, pocFiles} {
+		if !containsString(files, oldName) {
+			t.Errorf("ChangedFilesSince() = %v, want it to contain the deleted old path %q", files, oldName)
+		}
+		if !containsString(files, newName) {
+			t.Errorf("ChangedFilesSince() = %v, want it to contain the added new path %q", files, newName)
+		}
+	}
+	assertParityFileList(t, pocFiles, cliFiles)
+}
+
+// TestChangedFilesSince_NonHexSHA is MIGRATE: a non-hex sha returns each
+// package's own ErrInvalidSHA before either side ever resolves or diffs
+// anything.
+func TestChangedFilesSince_NonHexSHA(t *testing.T) {
+	dir := newRepoFixture(t)
+
+	poc, err := OpenRepo(dir)
+	if err != nil {
+		t.Fatalf("OpenRepo(%q) error = %v", dir, err)
+	}
+	_, pocErr := poc.ChangedFilesSince("not-a-sha!!")
+
+	_, cliErr := gitrepo.New(dir).ChangedFilesSince("not-a-sha!!")
+
+	assertParityErrClassCrossTarget(t, pocErr, ErrInvalidSHA, cliErr, gitrepo.ErrInvalidSHA)
+	if !errors.Is(pocErr, ErrInvalidSHA) {
+		t.Errorf("gitnativepoc ChangedFilesSince(non-hex) error = %v, want ErrInvalidSHA", pocErr)
+	}
+	if !errors.Is(cliErr, gitrepo.ErrInvalidSHA) {
+		t.Errorf("gitrepo ChangedFilesSince(non-hex) error = %v, want gitrepo.ErrInvalidSHA", cliErr)
+	}
+}
+
+// firstCommitSHA returns the SHA of dir's very first commit — the "since"
+// point every ChangedFilesSince fixture in this file diffs HEAD against —
+// found by walking the log to its root via `git rev-list --max-parents=0`,
+// since none of the harness fixtures expose their initial commit's SHA
+// directly.
+func firstCommitSHA(t *testing.T, dir string) string {
+	t.Helper()
+
+	stdout, stderr, code, err := runGit(t, dir, "rev-list", "--max-parents=0", "HEAD")
+	if err != nil {
+		t.Fatalf("git rev-list --max-parents=0 HEAD error = %v", err)
+	}
+	if code != 0 {
+		t.Fatalf("git rev-list --max-parents=0 HEAD exited %d: %s", code, stderr)
+	}
+	return strings.TrimSpace(stdout)
+}
+
+// containsString reports whether haystack contains needle, used to assert a
+// specific path is present in a ChangedFilesSince result without depending
+// on the list's order.
+func containsString(haystack []string, needle string) bool {
+	for _, s := range haystack {
+		if s == needle {
+			return true
+		}
+	}
+	return false
 }
