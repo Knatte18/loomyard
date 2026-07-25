@@ -104,6 +104,10 @@ func ParsePlan(planDir string) (*Plan, error) {
 		if err != nil {
 			return nil, err
 		}
+		// Resolve every card path's root:/// shorthand exactly once, here, so
+		// every downstream consumer (Validate included) only ever sees plain,
+		// normalized, worktree-relative paths.
+		normalizeCard(&card, root)
 		cards = append(cards, card)
 	}
 
