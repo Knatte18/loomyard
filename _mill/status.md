@@ -63,7 +63,9 @@ batches:
     start_sha: f4eaa0a420fd0dbefbb48131a1d403ed0af655a3
     commit_sha: 374512170811818df1e89a2f71841860af57833e
   - name: webster-report-digest
-    state: pending
+    state: running
+    implementer_session: c2fe5970-53b1-439b-acd9-646f2b395ef5
+    start_sha: 88c0ec25ced5bde341675fd6fe4c7a26e1289495
   - name: engine-retarget
     state: pending
   - name: integration-fork-bisect
