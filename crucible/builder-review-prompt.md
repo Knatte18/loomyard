@@ -350,9 +350,11 @@ Hermetic (must stay green throughout):
 - `go test -count=5 ./internal/builderengine/... ./internal/buildercli/... ./cmd/lyx/...`
 
 Live driving via the SANDBOX SUITE (PRIMARY — where the bugs surface):
-- Deploy the current source as the binary under test: `deploy.cmd`. **FOOTGUN:** the suite runs
-  the DEPLOYED snapshot, not your working tree — re-run `deploy.cmd` after EVERY source change or
-  you validate a stale binary. Deploy first, always.
+- Deploy the current source as the dev binary under test: `deploy-dev.cmd` (`deploy-dev` on
+  POSIX). The sandbox suite fingerprints and runs the `.dev-bin` binary automatically — you only
+  run `deploy-dev` first; the fingerprint header's `Source: dev` confirms the dev build ran.
+  **FOOTGUN:** the suite runs the DEPLOYED snapshot, not your working tree — re-run `deploy-dev.cmd`
+  after EVERY source change or you validate a stale binary. Deploy first, always.
 - **Do NOT invoke `sandbox-builder-suite.cmd`.** That launcher's job is to spawn a SEPARATE,
   context-free interactive `claude` session (a naive black-box tester with no knowledge of the
   source) attached to a real console — meaningless for you to invoke, since you (the round agent)
@@ -447,8 +449,8 @@ a finding.
   cover (match the existing scenario shape; keep `sandbox_coverage_test.go` green in the SAME
   change — it only requires a `**Covers:** builder` tag somewhere, but keep the scenario roster
   honest).
-- Keep `go build`/`vet`/`test` green after every change. Then RE-DEPLOY (`deploy.cmd`) and re-run
-  the suite scenarios — re-deploying FIRST is mandatory.
+- Keep `go build`/`vet`/`test` green after every change. Then RE-DEPLOY (`deploy-dev.cmd`) and
+  re-run the suite scenarios — re-deploying FIRST is mandatory.
 - Update `docs/reference/builder-contract.md` (and `docs/overview.md` / `CONSTRAINTS.md` if invariants or the
   module table move) IN THE SAME change. Do NOT add bugfix/hardening notes to `manifest/roadmap.md`.
 - Tear down all substrate state; confirm zero stray processes. COMMIT each fix as you finish it —
