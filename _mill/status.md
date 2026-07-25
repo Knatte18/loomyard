@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussion-fix-r6
+phase: planning
 slug: fabric
 branch: fabric
-plan: null
+plan: _mill/plan
 parent: main
 task: 'fabric: unify warp + weft into one git-coordination module'
 task_description: |
@@ -17,4 +17,5 @@ task_description: |
 discussing  '2026-07-25T04:56:47Z'
 discussed  '2026-07-25T05:43:26Z'
 discussion-fix-r6  '2026-07-25T06:15:39Z'
+planning  '2026-07-25T06:38:48Z'
 ```
