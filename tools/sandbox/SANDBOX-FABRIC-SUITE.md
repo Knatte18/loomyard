@@ -26,6 +26,15 @@ Before starting a session:
    The very first run on a machine performs the real clone; every run after that starts
    from whatever state the previous session left the hub in.
 3. **`lyx` on PATH.** Confirm `lyx --help` works from any directory.
+4. **Weft `_lyx/` must be seeded before `lyx init`.** `lyx init` is still the
+   warp/weft-based initializer (fabric is not wired into `init` until the cutover task):
+   it wires the host `_lyx` junction to the weft worktree's `_lyx/` directory. On a truly
+   empty weft repo that directory does not exist yet, so `init` creates a dangling
+   junction and then fails (`mkdir _lyx: file exists`). The dedicated `lyx-fabric-test-weft`
+   repo must therefore have an `_lyx/` directory committed on its primary branch (the
+   operator seeds it once, alongside initializing the weft wiki). Until then, treat an
+   `init` failure on a freshly-cloned fabric hub as this known precondition gap, not a
+   fabric defect — fabric's own verbs read their config from that same `_lyx/config/`.
 
 ### PowerShell JSON-quoting
 
