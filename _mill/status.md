@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-writeup-and-doc-lifecycle
+phase: holistic-reviewing
 slug: git-native-library
 branch: git-native-library
 plan: _mill/plan
@@ -27,6 +27,7 @@ approved-poc-foundation  '2026-07-25T13:16:06Z'
 approved-read-surface  '2026-07-25T13:30:17Z'
 approved-write-surface  '2026-07-25T13:44:42Z'
 approved-writeup-and-doc-lifecycle  '2026-07-25T13:49:27Z'
+holistic-reviewing  '2026-07-25T13:49:44Z'
 ```
 
 ## Batches
