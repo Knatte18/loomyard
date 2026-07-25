@@ -131,19 +131,29 @@ func (t *Topology) Checkout(l *hubgeometry.Layout, branch string) (CheckoutResul
 	// The slug is derived from the current worktree's base name; it identifies which
 	// pair of junctions to re-point and which weft worktree path to switch.
 	slug := filepath.Base(l.WorktreeRoot)
-	if err := t.switchOrForkWeft(l, branch); err != nil {
+	weftForked, err := t.switchOrForkWeft(l, branch)
+	if err != nil {
 		// switchOrForkWeft's git switch is atomic, so on failure the weft is
-		// still on its original branch; rolling both back restores the pair
-		// (the weft side is a no-op here) without special-casing this path.
-		t.rollbackSwitch(l, originalBranch, originalWeftBranch)
+		// still on its original branch and no fork was created; rolling both
+		// back restores the pair (the weft side is a no-op here) without
+		// special-casing this path.
+		t.rollbackSwitch(l, originalBranch, originalWeftBranch, "")
 		return CheckoutResult{}, err
+	}
+
+	// A later rollback must also delete the weft branch this Checkout itself
+	// forked — Add's rollback discipline: tear down only what the failed
+	// operation created, so no orphan branch survives a rolled-back switch.
+	forkedWeftBranch := ""
+	if weftForked {
+		forkedWeftBranch = WeftBranchName(branch)
 	}
 
 	// (5) Re-point the junction for the current worktree's slug. On failure, roll
 	// back BOTH sides: the weft was already switched in step 4, so a host-only
 	// rollback would strand it on the new branch and leave a half-switched pair.
 	if err := WireJunctions(l, slug); err != nil {
-		t.rollbackSwitch(l, originalBranch, originalWeftBranch)
+		t.rollbackSwitch(l, originalBranch, originalWeftBranch, forkedWeftBranch)
 		return CheckoutResult{}, fmt.Errorf("re-point junctions: %w", err)
 	}
 
@@ -164,6 +174,8 @@ func (t *Topology) Checkout(l *hubgeometry.Layout, branch string) (CheckoutResul
 // switchOrForkWeft switches the weft worktree to WeftBranchName(branch), or
 // forks it from the weft branch the worktree was actually on before the
 // switch when WeftBranchName(branch) does not yet exist in the weft repo.
+// It reports whether it forked a new weft branch (forked), so a later
+// rollback can delete exactly the branch this call created and nothing else.
 //
 // If the weft branch exists in the weft repo, runs git switch <weftBranch> in the weft
 // worktree. If it does not exist, captures the current weft HEAD branch (the weft
@@ -172,7 +184,7 @@ func (t *Topology) Checkout(l *hubgeometry.Layout, branch string) (CheckoutResul
 // creates the new branch in-place via git switch -c. This preserves the shared
 // merge-base needed for future squash-merge-back operations, matching Add's
 // adopt-or-create fork-point logic one suffix over.
-func (t *Topology) switchOrForkWeft(l *hubgeometry.Layout, branch string) error {
+func (t *Topology) switchOrForkWeft(l *hubgeometry.Layout, branch string) (forked bool, err error) {
 	weftWorktree := l.WeftWorktree()
 	weftBranch := WeftBranchName(branch)
 
@@ -183,12 +195,12 @@ func (t *Topology) switchOrForkWeft(l *hubgeometry.Layout, branch string) error 
 			weftWorktree,
 		)
 		if err != nil {
-			return fmt.Errorf("weft switch: %w", err)
+			return false, fmt.Errorf("weft switch: %w", err)
 		}
 		if exitCode != 0 {
-			return fmt.Errorf("weft switch to branch %q failed (git exit %d)", weftBranch, exitCode)
+			return false, fmt.Errorf("weft switch to branch %q failed (git exit %d)", weftBranch, exitCode)
 		}
-		return nil
+		return false, nil
 	}
 
 	// Branch does not exist in the weft repo: fork it from the current weft HEAD,
@@ -201,10 +213,10 @@ func (t *Topology) switchOrForkWeft(l *hubgeometry.Layout, branch string) error 
 		weftWorktree,
 	)
 	if err != nil {
-		return fmt.Errorf("capture parent weft branch: %w", err)
+		return false, fmt.Errorf("capture parent weft branch: %w", err)
 	}
 	if exitCode != 0 {
-		return fmt.Errorf("capture parent weft branch failed with exit code %d", exitCode)
+		return false, fmt.Errorf("capture parent weft branch failed with exit code %d", exitCode)
 	}
 	parentWeftBranch := strings.TrimSpace(parentWeftBranchOut)
 
@@ -215,13 +227,13 @@ func (t *Topology) switchOrForkWeft(l *hubgeometry.Layout, branch string) error 
 		weftWorktree,
 	)
 	if err != nil {
-		return fmt.Errorf("fork weft branch: %w", err)
+		return false, fmt.Errorf("fork weft branch: %w", err)
 	}
 	if exitCode != 0 {
-		return fmt.Errorf("fork weft branch %q from %q failed (git exit %d)", weftBranch, parentWeftBranch, exitCode)
+		return false, fmt.Errorf("fork weft branch %q from %q failed (git exit %d)", weftBranch, parentWeftBranch, exitCode)
 	}
 
-	return nil
+	return true, nil
 }
 
 // rollbackSwitch attempts to switch the host worktree back to originalBranch and
@@ -238,6 +250,13 @@ func (t *Topology) switchOrForkWeft(l *hubgeometry.Layout, branch string) error 
 // detached/unborn at capture time; in that abnormal case the weft side is
 // skipped (there is no branch name to switch back to).
 //
+// forkedWeftBranch, when non-empty, names the weft branch this very Checkout
+// forked in switchOrForkWeft; after the weft is switched back it is deleted so
+// a rolled-back switch leaves no orphan branch behind — Add's rollback
+// discipline (tear down only what the failed operation itself created). It is
+// empty when the target weft branch already existed (an adopted branch is
+// never deleted).
+//
 // Errors from the rollback are silently discarded: the caller already holds the
 // original error that triggered this rollback, and a best-effort restore is all
 // that can be promised. WireJunctions is NOT called here — either it was never
@@ -245,9 +264,12 @@ func (t *Topology) switchOrForkWeft(l *hubgeometry.Layout, branch string) error 
 // cases the junction still points at the pair's own weft worktree directory
 // (whose path does not change across a branch switch), so it stays consistent
 // with the rolled-back branches without rewiring.
-func (t *Topology) rollbackSwitch(l *hubgeometry.Layout, originalBranch, originalWeftBranch string) {
+func (t *Topology) rollbackSwitch(l *hubgeometry.Layout, originalBranch, originalWeftBranch, forkedWeftBranch string) {
 	_, _, _, _ = gitexec.RunGit([]string{"switch", originalBranch}, l.WorktreeRoot)
 	if originalWeftBranch != "" {
 		_, _, _, _ = gitexec.RunGit([]string{"switch", originalWeftBranch}, l.WeftWorktree())
+	}
+	if forkedWeftBranch != "" {
+		_, _, _, _ = gitexec.RunGit([]string{"branch", "-D", forkedWeftBranch}, l.WeftWorktree())
 	}
 }
