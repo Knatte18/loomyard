@@ -37,10 +37,6 @@ Committed to, in this order, next.
 
 1. **mux → reed** — rename, no behavior change. See [designs/mux-to-reed.md](designs/mux-to-reed.md).
 
-1. **loom: Planner producer** — converts `discussion.md` into a plan-format-v3 card list; no
-   inputs beyond `discussion.md`, no review logic of its own. See
-   [designs/loom-planner.md](designs/loom-planner.md).
-
 1. **loom: phase-machine skeleton + session bootstrap** — the status-file-driven engine
    (sequencing, resume, crash-recovery, pause), testable against fake phases before real
    producers are wired in, plus the `lyx loom run` entry point. See
@@ -189,6 +185,11 @@ between these items.
 
 1. **loom: contracts, Preflight, Discussion producer** — the three loom pieces shipped so far (loom
    as a whole is not done — see the Planned `loom` item).
+
+1. **loom: Planner producer** — reads the discussion decision-record and writes a
+   plan-format-v3 flat-card plan; a prompt/profile fed to `shuttle.Run` (not a module), the
+   `PlanSpec(...)` factory + `plan-template.md` in `internal/loomengine`. No review logic of
+   its own.
 
 ## Maintenance
 
