@@ -13,8 +13,9 @@
 > [plan-format-v3.md](../docs/reference/plan-format-v3.md), replacing the old chain-based
 > format), a new `internal/batcher` config-selected batchifier registry (batching didn't exist
 > in the old format), the oversized/chain concepts dropped, and the integration-suite fork +
-> bisect added as new capability. This is a FRESH round 1 for the retargeted module — do not
-> assume anything from the old campaign still applies; re-derive everything from the current code.
+> bisect added as new capability. This was a FRESH round 1 for the retargeted module (`fable-r1`,
+> now closed and independently verified — see "Round context" below); do not assume anything from
+> the OLD, superseded campaign this file once documented still applies.
 
 You are a senior engineer doing a COMPLETE, adversarial, INDEPENDENT review of the `webster`
 module (`internal/websterengine` + `internal/webstercli`, `lyx webster`) in the loomyard repo,
@@ -275,32 +276,57 @@ substrate — a green `go test` proves nothing here:
   to relitigate.
 
 ## Round context seeded from prior-round verification
-You are round tag **`fable-r1`** — **round 1 of a 4-round cap**, alternating Fable/Opus
-(Fable → Opus → Fable → Opus), set by the operator. This is the module's FIRST standalone
-crucible round (see the clean-room section's caveat above about pre-existing round-tagged
-comments in the code — those predate this campaign and are not prior rounds of it). There is no
-independently-verified residual yet because no round has run. Two SPECIFIC, pre-identified issues
-are seeded for you to independently confirm and fix (do not take them on faith — verify each
-yourself first; both are described in full in "High-yield focus" above, referenced here only by
-short name so they're not re-litigated at length twice):
+You are round tag **`opus-r2`** — **round 2 of a 4-round cap**, alternating Fable/Opus
+(Fable → Opus → Fable → Opus), set by the operator. **Safety pass.** Round `fable-r1` found and
+fixed 19 real findings (3 BLOCKING, all live-confirmed), and the orchestrator independently
+re-verified: cold-state `go build`/`vet`/`test -count=5`/`-tags integration`/`-tags smoke` all
+green at HEAD, zero stray tmux processes, and hand-reproduced revert-and-confirm-fail proofs for
+two of the three BLOCKING fixes (F19's anti-poll template assertions — reverting the guard text
+makes `TestIntegrationTemplate_ForbidsPollingForOwnReport` fail exactly as described; F3's
+recovery-terminal `CardSHAs` persistence — reverting it makes
+`TestRecoverBatch_SecondCallAttachesAndPersistsDoneDigest` fail exactly as described) plus
+confirmed F18's fix has dedicated new coverage (`TestIntegrationStage_MissingReport_*`). **Do NOT
+re-open the CLOSED-AND-VERIFIED work** — read `.scratch/webster-review-fable-r1.md` and
+`.scratch/webster-review-fable-r1-fixer-report.md` for the full findings list (F1–F19) and their
+commits (`d11fd991`..`237b91fa`) AFTER you have written your own independent findings, per the
+clean-room rule above.
 
-1. **Sandbox suite W2 staleness** — `tools/sandbox/SANDBOX-WEBSTER-SUITE.md`'s W2 scenario tests a
-   retired oversized-batch `/model` escalation mechanism; rewrite it to test the real idempotent
-   per-batch Master-model-assertion mechanism instead.
-2. **Merge-conflict residue sweep** — PR #97's merge against `main`'s concurrent `mux`→`reed`
-   rename required manual conflict resolution; independently re-grep the whole `webster` surface
-   (`internal/websterengine`, `internal/webstercli`, their docs, `tools/sandbox/SANDBOX-WEBSTER-SUITE.md`)
-   for any leftover `mux`/`Mux`/`MuxOps` reference, and re-confirm `docs/overview.md`'s webster
-   section carries no "A/B tested with builder" framing anywhere (not just the one sentence already
-   removed).
+There is no known residual. Do a genuinely independent clean-room pass to find what round 1
+missed, or honestly confirm merge-readiness — "no new defects, ship it" is a completely legitimate
+outcome of a safety pass, do not invent work to justify the round. One specific thing to prioritize
+re-driving, not just re-reading:
 
-Beyond those two seeded items, do a genuinely independent clean-room pass: read the code yourself,
-drive the real substrate against every "High-yield focus" invariant above, and try combinations no
-one has scripted yet — e.g. two overlapping `lyx webster run` invocations against the same
-worktree (confirm `run.lock` contention is refused correctly, mirroring builder's own discipline —
-check whether webster even has an equivalent lock; if it doesn't, that itself may be a finding),
-pausing mid-fork, a plan whose integration `## verify:` is flaky (passes sometimes, fails other
-times) racing the bisect, or killing a `recover-batch`'s spawned recovery strand mid-poll.
+- **Master-refusal rate — keep counting.** Round 1's grounding fix (`d11fd991` iteration 1, then
+  `379edeb8` iteration 2 after a live spawn called out the first fix's own "trust this document"
+  line as an injection tell) brought the observed refusal rate from 3/7 (~43%) down to 0/2 across a
+  small post-fix sample. Drive several more real `lyx webster run` spawns and extend this count —
+  if refusals recur even occasionally, that is this round's highest-priority finding, not a
+  footnote.
+
+Two items round 1 deliberately deferred as operator design decisions — RE-EVALUATE them (read the
+fixer report's "Deliberately deferred" section for the full reasoning), but do NOT treat either as
+an obligation to build; they are yours to judge, not close by default:
+
+1. **F2's in-band escape** for the cross-machine resume deadlock (report-present + no fork
+   transcript + non-terminal record — begin-batch/record-batch/recover-batch all refuse). Round 1
+   documented a manual operator recourse (move the orphan report aside) rather than building an
+   in-band escape verb (e.g. `recover-batch --archive-report`), on the grounds that this trades
+   away some forged-report unfakeability and is a real tradeoff, not an obvious win. Confirm the
+   documented recourse still works live; form your own opinion on whether the tradeoff is worth
+   taking, but do not build it unilaterally if you're not confident — say so and let the operator
+   decide.
+2. **An `await-integration` verb.** Round 1 gave Master a concrete shell-level bounded poll
+   (`test -f`) in the template instead of a first-class CLI verb, to avoid a CLI-surface change
+   (help-tree pins, coverage tags) for marginal gain. Confirm the shell-level poll is robust under
+   live driving (does it survive an auto-backgrounding risk on a slow poll?); flag if you find it
+   isn't, but building the verb is again an operator call, not a default.
+
+Beyond those, try combinations no one has scripted yet — e.g. two overlapping `lyx webster run`
+invocations against the same worktree (confirm `run.lock` contention is refused correctly,
+mirroring builder's own discipline — check whether webster even has an equivalent lock; if it
+doesn't, that itself may be a finding), pausing mid-fork, a plan whose integration `## verify:` is
+flaky (passes sometimes, fails other times) racing the bisect, or killing a `recover-batch`'s
+spawned recovery strand mid-poll.
 
 State the **merge bar** so you calibrate: correctness in the NORMAL single-instance flow (one `lyx
 webster run` at a time, no artificial concurrency stress) is the gate. If you run N× concurrent
@@ -391,7 +417,14 @@ you don't have. Even then you must say so explicitly, with the specific reason, 
 report's deferred section.
 
 ## Deferred items from the prior round — RE-EVALUATE these (after your own pass)
-None — this is round 1.
+1. **F2's in-band escape** for the cross-machine resume deadlock — build it only if you're
+   confident the tradeoff (some forged-report unfakeability, for cross-machine resumability) is
+   worth it; otherwise leave the documented manual recourse in place and say so.
+2. **An `await-integration` verb** vs. the current shell-level bounded poll in the master
+   template — build it only if live driving shows the shell-level poll is actually fragile.
+
+(Full reasoning for both: `.scratch/webster-review-fable-r1-fixer-report.md`'s "Deliberately
+deferred" section.)
 
 ## Fixing — after the review
 - Fix EVERY finding from your review, all severities including NIT.
@@ -427,12 +460,12 @@ None — this is round 1.
 ## Deliverables
 1. A structured review report (Executive summary with top risks + merge-readiness opinion; Scope
    assessment plan-vs-shipped; Code findings severity-ranked with file:line + scenario + fix +
-   CONFIRMED/PLAUSIBLE; Docs & operability findings — including the W2 and merge-residue sweep
-   outcomes; What-was-tested with exact commands + observed results, including what you could NOT
-   verify and why). Write it to `.scratch/webster-review-fable-r1.md`.
+   CONFIRMED/PLAUSIBLE; Docs & operability findings; What-was-tested with exact commands + observed
+   results, including what you could NOT verify and why). Write it to
+   `.scratch/webster-review-opus-r2.md`.
 2. A fixer report: what you implemented, what you deliberately deferred (with reasons), the exact
    test commands run + results, and the changed files. Write it to
-   `.scratch/webster-review-fable-r1-fixer-report.md`.
+   `.scratch/webster-review-opus-r2-fixer-report.md`.
 3. In your final chat message: a concise summary (executive summary + counts by severity + the two
    report paths + an explicit merge-readiness verdict). Do not paste the whole reports.
 
