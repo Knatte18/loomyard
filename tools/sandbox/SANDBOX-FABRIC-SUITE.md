@@ -26,6 +26,14 @@ Before starting a session:
    The very first run on a machine performs the real clone; every run after that starts
    from whatever state the previous session left the hub in.
 
+   **Re-clone adoption.** When a clone runs against a weft remote that already carries
+   the suffixed primary branch (a fresh machine, or `clone --reset`), the weft prime
+   adopts `origin/main-weft` as a tracking branch — inheriting the previously synced
+   weft state — rather than forking a new, untracked `main-weft` at `main`'s HEAD.
+   After any re-clone, confirm the weft prime's `main-weft` has an upstream
+   (`git -C <weft-prime> branch -vv`) and contains the previously synced `_lyx/`
+   content.
+
    **Board-URL fallback.** `lyx fabric clone`'s default board URL is the derived
    `<weft-url>.wiki.git`, which only resolves once the weft repo's GitHub wiki has been
    initialized (its first page created -- a one-time manual operator action; GitHub

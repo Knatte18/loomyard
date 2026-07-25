@@ -75,9 +75,13 @@ Example:
 The board URL defaults to <weft-url>.wiki.git when omitted.
 Use --reset to tear down an existing hub before cloning (idempotent re-clone).
 
-Unlike "lyx warp clone", the weft prime's checked-out branch is immediately
-renamed onto its suffixed pairing (e.g. "main" -> "main` + hubgeometry.WeftSuffix + `") —
-fabric's uniform branch scheme applies from the very first pair.
+Unlike "lyx warp clone", the weft prime is immediately checked out onto its
+suffixed pairing (e.g. "main` + hubgeometry.WeftSuffix + `" for default branch "main") — fabric's
+uniform branch scheme applies from the very first pair. When the weft remote
+already carries that suffixed branch (a re-clone of a hub with synced weft
+history), it is adopted as a tracking branch, inheriting the existing weft
+state; otherwise the branch is created fresh at the cloned HEAD. The cloned
+default branch itself remains, unclaimed.
 
 After cloning, run "lyx init" inside the host worktree to activate junctions and config.
 

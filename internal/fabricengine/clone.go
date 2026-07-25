@@ -1,10 +1,13 @@
 // clone.go implements the clone orchestration logic with strict-abort teardown.
 //
 // Adapted from warpengine's clone.go. The one behavioral delta: after the weft
-// clone succeeds, the weft primary's freshly-cloned branch is renamed onto its
-// WeftBranchName-suffixed pairing (e.g. "main" -> "main-weft") so weft:main is
-// never claimed directly — every fabric-managed weft branch, including the
-// primary's, carries the uniform "-weft" suffix.
+// clone succeeds, the weft primary is checked out onto its WeftBranchName-suffixed
+// pairing (e.g. "main-weft" for a default branch "main") so weft:main is never
+// claimed directly — every fabric-managed weft branch, including the primary's,
+// carries the uniform "-weft" suffix. The suffixed branch is adopted from an
+// existing origin/<branch>-weft when the remote already carries one (a re-clone
+// of a hub with weft history) and created fresh only otherwise; the freshly-cloned
+// default branch itself remains, unclaimed.
 
 package fabricengine
 
@@ -118,9 +121,15 @@ func CloneHub(cwd, hostURL, weftURL, boardURL string) (hubPath, resolvedBoardURL
 
 // suffixWeftPrimaryBranch reads the branch checked out at weftPath (the weft
 // primary, immediately after clone) and checks out its WeftBranchName-suffixed
-// pairing at the same HEAD (e.g. "main" -> "main-weft"). Returns an error if
-// the weft primary is on a detached HEAD (no branch to read) or if either git
-// call fails.
+// pairing, adopt-or-create style. When origin already carries the suffixed
+// branch — a re-clone (fresh machine, `clone --reset`) of a hub that has synced
+// weft history — that remote branch is adopted as a tracking local branch, so
+// the fresh hub inherits the accumulated weft state (its _lyx content) and its
+// first push can rebase-recover through the configured upstream instead of
+// diverging permanently from an untracked fork. Only when the remote has no
+// suffixed branch yet (a genuinely new hub) is the branch created fresh at the
+// current HEAD. Returns an error if the weft primary is on a detached HEAD (no
+// branch to read) or if any git call fails.
 func suffixWeftPrimaryBranch(weftPath string) error {
 	stdout, _, exitCode, err := gitexec.RunGit([]string{"branch", "--show-current"}, weftPath)
 	if err != nil {
@@ -135,7 +144,23 @@ func suffixWeftPrimaryBranch(weftPath string) error {
 	}
 
 	suffixedBranch := WeftBranchName(hostBranch)
-	_, _, exitCode, err = gitexec.RunGit([]string{"checkout", "-b", suffixedBranch}, weftPath)
+
+	// Adopt path: the remote already carries the suffixed branch (this is a
+	// re-clone of a hub with existing weft history). Starting the local branch
+	// from origin/<suffixed> both checks out that history and configures the
+	// upstream (git's default branch.autoSetupMerge for a remote-tracking start
+	// point), which the create path below deliberately leaves to the first push.
+	remoteRef := "refs/remotes/origin/" + suffixedBranch
+	_, _, exitCode, err = gitexec.RunGit([]string{"rev-parse", "--verify", "--quiet", remoteRef}, weftPath)
+	if err != nil {
+		return fmt.Errorf("check for remote weft primary branch: %w", err)
+	}
+	checkoutArgs := []string{"checkout", "-b", suffixedBranch}
+	if exitCode == 0 {
+		checkoutArgs = append(checkoutArgs, "origin/"+suffixedBranch)
+	}
+
+	_, _, exitCode, err = gitexec.RunGit(checkoutArgs, weftPath)
 	if err != nil {
 		return fmt.Errorf("create weft primary branch %q: %w", suffixedBranch, err)
 	}
