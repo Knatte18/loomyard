@@ -63,9 +63,10 @@ func AcquireStateMutation(websterDir string) (*lock.FileLock, error) {
 type State struct {
 	// RunGUID identifies this webster run, minted once at first init.
 	RunGUID string `json:"runGuid"`
-	// PlanFingerprint is the plan-identity hash (see builderengine.Fingerprint)
-	// recorded at first init; run entry recomputes and compares it to detect
-	// a stale on-disk plan across a crash/resume boundary.
+	// PlanFingerprint is the plan-identity hash (see fingerprint.go's
+	// webster-local fingerprint) recorded at first init; run entry recomputes
+	// and compares it to detect a stale on-disk plan across a crash/resume
+	// boundary.
 	PlanFingerprint string `json:"planFingerprint"`
 	// CurrentBatch is the batch number currently in flight, or 0 when none
 	// is (the run has not started yet, or the last batch reached a

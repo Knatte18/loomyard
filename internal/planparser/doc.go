@@ -10,8 +10,9 @@
 // A parsed plan is a Plan: the overview's frontmatter (Format, Approved, Root), its
 // task-framing paragraph (Framing), the flat ordered list of Cards, and the three
 // optional plan-level body sections (SharedDecisions, RenameMechanic, Verify). Each
-// Card carries its Card Index fields (Number, Slug, Intent), its own file's Title and
-// HasWhat presence bit, its five typed file-op fields (Context/Edits/Creates/Deletes/
+// Card carries its Card Index fields (Number, Slug, Intent), its own file's Title,
+// What prose (the implementer's concrete instruction, verbatim) and HasWhat presence
+// bit, its five typed file-op fields (Context/Edits/Creates/Deletes/
 // Moves, each with a HasX presence bit), its Depends-on list, and the optional Commit
 // and Verify fields. Every field-op path — all five fields, both sides of every
 // MovePair — is stored fully normalized (see below); nothing downstream ever sees a

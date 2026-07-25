@@ -62,6 +62,12 @@ var ErrRunBusy = errors.New("webster: run is already in progress")
 // warning about. A probe error (never an OS lock outcome, only an
 // underlying filesystem failure) is returned so the caller can decide; it
 // is not itself a reason to refuse the verb.
+//
+// Known benign race: the probe momentarily HOLDS run.lock, so a real `lyx
+// webster run` starting in exactly that instant loses its own TryAcquire and
+// refuses ErrRunBusy once even though no run is in progress — a retry
+// succeeds. Advisory file locks admit no portable non-acquiring probe, so
+// this window is accepted rather than engineered around.
 func RunActive(websterDir string) (bool, error) {
 	fl, acquired, err := lock.TryAcquireWriteLock(filepath.Join(websterDir, runLockName))
 	if err != nil {
