@@ -17,7 +17,7 @@ config-selected active batcher. Ship the **identity** batcher (one card → one 
 first registered entry — one library member, NOT a "v0 version". The interface/registry/config
 seam exists from day one so grouping batchifiers drop in later without a webster code change;
 grouping batchifiers themselves are OUT of scope. `internal/batcher` imports stdlib +
-`internal/planparser` only (leaf; no webster/cli imports). The interface batches 8 and 9
+`internal/planparser` only (leaf; no webster/cli imports). The interface batches 7 and 9
 consume is `Batcher`, `Batch`, `Select(name string) (Batcher, error)`, and `DefaultName`.
 
 ## Cards
@@ -64,7 +64,7 @@ consume is `Batcher`, `Batch`, `Select(name string) (Batcher, error)`, and `Defa
   - `internal/batcher/batcher_test.go`
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Add `Select(name string) (Batcher, error)` to `registry.go`: an empty `name` resolves to `DefaultName` (`identity`); a registered name returns its batcher; an unregistered name returns a wrapped `batcher:`-prefixed error naming the unknown key (this is the load-time error webstercli surfaces when `webster.yaml`'s `batcher:` key names a nonexistent batcher — batch 8 adds the config key, batch 12 wires `Select` at config-load). In `batcher_test.go` (Tier-1) assert: empty name → identity; `"identity"` → identity; unknown name → error. Follow `golang:golang-testing`.
+- **Requirements:** Add `Select(name string) (Batcher, error)` to `registry.go`: an empty `name` resolves to `DefaultName` (`identity`); a registered name returns its batcher; an unregistered name returns a wrapped `batcher:`-prefixed error naming the unknown key (this is the load-time error webstercli surfaces when `webster.yaml`'s `batcher:` key names a nonexistent batcher — batch 7 (card 26) adds the config key, batch 9 (card 39) wires `Select` at config-load). In `batcher_test.go` (Tier-1) assert: empty name → identity; `"identity"` → identity; unknown name → error. Follow `golang:golang-testing`.
 - **Commit:** `feat(batcher): config-selected active batcher via Select`
 
 ## Batch Tests

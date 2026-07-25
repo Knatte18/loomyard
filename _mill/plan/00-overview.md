@@ -115,6 +115,12 @@ _Cross-cutting decisions every batch inherits._
 - **Decision:** All `verify:` commands are native `go test` / `go build` (this is a Go repo — the `PYTHONPATH= ` prefix rule does not apply). Per-batch verify is scoped to the touched package. Batches that add git-spawning (integration-tagged) tests use `go test -tags integration ./internal/<pkg>/...` so the new tests actually run; the module-wide overview `verify: go build ./...` is the cheap cross-package compile gate run at each batch boundary.
 - **Applies to:** all batches.
 
+### Decision: fork-prompt-plan-level-context
+
+- **Decision:** `RenderForkPrompt` injects the plan-level `## Shared Decisions` (`planparser.Plan.SharedDecisions`) into EVERY fork prompt, and injects the canonical `## Rename mechanic` (`planparser.Plan.RenameMechanic`) ONLY when the fork's batch contains a card with a non-empty `Moves` field. Both are read once from `planparser.Plan` by Master and flow to forks via prompt-cache; no fork reads `_lyx/plan/` itself. The integration-suite fork prompt likewise injects the plan-level `## verify:` from `planparser.Plan.Verify`.
+- **Rationale:** A `Moves:` fork must follow the exact `git mv`-first mechanic; `## Shared Decisions` carry plan-wide choices every fork honors. Per-batch-relevant injection gives each fork exactly the context it needs without irrelevant tokens, preserving the read-once/cache economics and the planparser sole-parser invariant.
+- **Applies to:** batches 7, 8.
+
 ### Decision: engine-retarget-is-atomic
 
 - **Decision:** The `internal/websterengine` builder-decouple + flat-format rewrite lands as ONE batch (batch 7), not a file-by-file staging, because the borrowed types interlock: `BatchState.Digest`'s type, the fork-return report contract, the plan model (`planparser.Plan`/`batcher.Batch` replacing `builderengine.Plan`/`PlanBatch`), and the fork/master prompt templates all change together — any partial split leaves a non-compiling package. Batches 5 and 6 pre-stage the webster-local replacement types so batch 7 is a pure retarget of call sites (swap `builderengine.X` → `planparser`/`batcher`/webster-local), keeping batch 7 within the oversized limits.

@@ -17,7 +17,7 @@ worktreeRoot string) []ValidationError`, mirroring the frozen v2 validator's str
 order, a single `ValidationError{Check, Card, Detail}` finding type — NOT the v2 batch-keyed
 one) while dropping every v2-only check and adding the v3-only `depends-on-order`. This batch
 delivers the checks and their hermetic fixtures; it does not touch parsing (batch 1). The
-external interface batches 9 and 12 consume is `Validate` + `ValidationError`.
+external interface batches 7 and 9 consume is `Validate` + `ValidationError`.
 
 ## Cards
 
