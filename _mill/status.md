@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-devbin-and-deploy
+phase: approved-sandbox-resolve-core
 slug: dev-test-binary
 branch: dev-test-binary
 plan: _mill/plan
@@ -29,6 +29,7 @@ plan-fix-r4  '2026-07-25T08:17:55Z'
 planned  '2026-07-25T08:18:27Z'
 implementing  '2026-07-25T08:19:34Z'
 approved-devbin-and-deploy  '2026-07-25T08:23:13Z'
+approved-sandbox-resolve-core  '2026-07-25T08:26:14Z'
 ```
 
 ## Batches
@@ -41,9 +42,10 @@ batches:
     start_sha: dcc1c9a47952d7b10fd715c457144485e0c5aaea
     commit_sha: 78db2cfd181013f79602ac7a7bf7168bc73b0a2a
   - name: sandbox-resolve-core
-    state: running
+    state: approved
     implementer_session: 2bd59fa8-cb88-4fbc-9551-fc6cbd8b2fa3
     start_sha: 1ca64e81f1b8a3f52c0e880b21b5a71ae029e45d
+    commit_sha: 11a7e9e248ea70d73ae37b0f8339d8166342f48c
   - name: sandbox-wire-and-guard
     state: pending
   - name: launchers-and-lifecycle
