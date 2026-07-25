@@ -1,0 +1,370 @@
+# Discussion: fabric: unify warp + weft into one git-coordination module
+
+```yaml
+task: 'fabric: unify warp + weft into one git-coordination module'
+slug: fabric
+status: discussing
+parent: main
+```
+
+## Problem
+
+The shipped `warp` (host↔weft git topology: clone, dual-worktree add/remove, coordinated
+checkout, reconcile, pairs, prune, cleanup) and `weft` (git into the paired weft repo:
+status/commit/push/pull/sync) modules split one concern — coordinating two paired git
+repos — across two coupled packages, each parsing raw git output itself. `internal/gitrepo`
+(the generic single-repo primitive layer) has now landed standalone with zero production
+consumers, exactly so a unified module can be built on it. `fabric` is that module: a
+full, no-remainder replacement for both `warp` and `weft`, built on two `gitrepo.Repo`
+instances plus the cross-repo coordination neither layer has today (`SyncWeft` with a
+`Warp-SHA` commit trailer, `RevertWithWeft`, a rebuildable correspondence index).
+
+**This task builds fabric alongside warp/weft — it does NOT replace them.** Full design:
+`manifest/designs/fabric.md` (Build order step 1). The coordinated cutover that rewires
+consumers and deletes warp/weft is a later, separate task (step 2).
+
+## Scope
+
+**In:**
+
+- New `internal/fabricengine` + `internal/fabriccli` implementing everything warp and
+  weft do today, plus the new coordination surface (`SyncWeft`, `RevertWithWeft`,
+  `Warp-SHA` trailer, correspondence index).
+- `lyx fabric` registered in `cmd/lyx` alongside `lyx warp` / `lyx weft` (flat tree,
+  14 verbs — see Decisions).
+- Growing `internal/gitrepo` with the generic git mechanics weft has and gitrepo lacks
+  (fast-forward pull, pathspec-scoped staging, lock-serialized commit; push serialization
+  reuses the existing `PushCoalesced` lock).
+- New uniform branch-naming scheme enforced by fabric: host `<slug>` ↔ weft
+  `<slug>-weft`, no exceptions, primary worktree included (host `main` ↔ weft
+  `main-weft`), effective from `lyx fabric clone`.
+- Differential back-to-back integration tests proving fabric reproduces warp/weft
+  behavior on the same fixtures.
+- New sandbox suite file with `**Covers:** fabric` scenarios, run against the dedicated
+  empty test repos (see Testing).
+- One `fabric.yaml` config registered in configreg.
+- CONSTRAINTS.md Weft Git Invariant updated for the parallel-build period; docs updated
+  per Documentation Lifecycle (same commits as the code).
+
+**Out — explicitly NOT in this task:**
+
+- **No cutover.** No consumer (`initengine`, `loomengine`, `buildercli`, `webstercli`,
+  `perchcli`, `configcli`, `cmd/lyx` wiring of warp/weft) is rewired to fabric. warp and
+  weft stay registered, shipped, and untouched. This must stay crystal clear in every
+  downstream instruction: fabric EXISTS SIMULTANEOUSLY with warp/weft and is validated
+  back-to-back against them.
+- No deletion of `warpengine`/`warpcli`/`weftengine`/`weftcli` or their configs/tests.
+- No migration of existing hubs to the new branch-naming scheme. Existing hubs keep
+  mirrored same-name branches until cutover.
+- No changes to warp/weft behavior; the existing sandbox repo and warp/weft sandbox
+  suites stay untouched.
+- Push-timing policy (after every commit / every N / end of plan) — a webster/raddle
+  policy decision, deliberately not opinionated by fabric (per design doc).
+
+## Decisions
+
+### Parallel build, no cutover
+
+- Decision: fabric is built complete and registered, coexisting with warp/weft. The old
+  modules serve as the reference fixture; validation is back-to-back equivalence testing.
+  Cutover (rewire consumers, delete old modules, migrate hubs) is a separate future task.
+- Rationale: warp/weft are tightly coupled to how git state is read across the codebase;
+  the design doc mandates parallel-build-then-cutover. Operator answered explicitly:
+  "fabric skal eksistere SAMTIDIG med warp og weft-modulene, og testet back to back."
+- Rejected: doing both phases in this task (originally recommended, overruled by
+  operator).
+
+### Module structure and naming
+
+- Decision: `internal/fabricengine` (engine, returns `(T, error)`, no cobra/io.Writer) +
+  `internal/fabriccli` (cobra tree, JSON envelope). Central type is `fabricengine.Fabric`
+  holding `Warp *gitrepo.Repo` and `Weft *gitrepo.Repo` fields exposed directly — no
+  forwarding-method-per-operation. `Trunk` (the design-doc sketch's type name) is an
+  obsolete name for this module and must not be used.
+- Rationale: CLI/Cobra Invariant's `<module>cli`/`<module>engine` split; design doc's
+  rejected-alternatives list already rules out forwarding methods and nested internal
+  packages (flat structure).
+- Rejected: `fabricengine.Trunk` (fossil vocabulary); nested `fabric/internal/warp`
+  packages.
+
+### CLI: flat `lyx fabric` tree
+
+- Decision: one flat command tree:
+  `lyx fabric clone|add|list|remove|checkout|pairs|reconcile|prune|cleanup|status|commit|push|pull|sync`.
+  Topology verbs map to today's `lyx warp` verbs one-to-one; weft verbs map to today's
+  `lyx weft` verbs one-to-one. `status` is unambiguously the weft status (pair status is
+  `pairs`, same as today's warp).
+- Rationale: no name collision exists between the two verb sets; flat matches today's
+  verbs one-to-one. Operator rejected a nested `fabric weft ...` subgroup as solving a
+  non-problem.
+- Rejected: `lyx fabric weft <verb>` subgroup; keeping `lyx warp`/`lyx weft` command
+  names over the fabric engine.
+
+### Most git mechanics grow into gitrepo
+
+- Decision: generic single-repo git operations weft implements today move down into
+  `internal/gitrepo`: fast-forward pull, pathspec-scoped stage+commit, and lock-serialized
+  write (weftengine's `.weft/weft.write.lock` equivalent, generalized). Push serialization
+  reuses gitrepo's existing `PushCoalesced` / `.gitrepo-push.lock` rather than porting
+  weftengine's separate push lock. fabric itself keeps only what is genuinely
+  coordination or policy: two-repo operations (SyncWeft, RevertWithWeft, coordinated
+  topology), `SkipGit`/`SkipPush` env gating (`EnvSyncOptions` equivalent), and pathspec
+  configuration.
+- Rationale: operator: "Mesteparten av gitoperasjoner skal i gitrepo. Derfor eksisterer
+  den modulen." gitrepo is the designated home for repo-agnostic git mechanics.
+- Rejected: keeping Pull/pathspec staging inside fabric (strands generic ops in a
+  coordination module); pushing policy (env gating, pathspec config) into gitrepo (bloats
+  the primitive layer).
+
+### SyncWeft: behavior parity plus the Warp-SHA trailer
+
+- Decision: `SyncWeft` reproduces today's weft sync observable behavior — pathspec-scoped
+  staging, commit under write lock, push with rebase-retry, `SkipGit`/`SkipPush` gating,
+  and the CLI-level detached push spawn (`sync` = commit + detached push, as weftcli's
+  `spawnPush` does today) — with one deliberate delta: every weft commit carries a
+  `Warp-SHA: <sha>` trailer recording the warp SHA it corresponds to, and
+  `RecordCorrespondence` updates the index alongside. Because a gitrepo push can recover
+  via rebase and rewrite local SHAs, the weft SHA recorded in the index is re-read via
+  `CurrentSHA` after a successful push, never taken from the pre-push commit return.
+- Rationale: cutover safety demands parity (the old modules are the reference fixture);
+  the trailer is fabric's core new capability. The re-read rule is gitrepo's documented
+  contract.
+- Rejected: simplifying away env gating or the detached spawn during the move (mixes
+  behavior redesign into the replacement).
+
+### Correspondence index: gitignored local cache
+
+- Decision: the warp↔weft SHA correspondence index is a local, never-committed cache
+  file in the weft clone's git-metadata area (follow `internal/state` patterns), sorted
+  for binary-search "nearest older" lookup. API per design doc: `RecordCorrespondence`,
+  `WeftSHAForWarpSHA`, `RebuildIndex` (full trailer scan via `git interpret-trailers`,
+  reconstructs the cache; trailers in weft history are the sole source of truth).
+- Rationale: the index is pure derived state, per-clone rebuildable; sharing it (e.g. via
+  a snapshot ref) adds sync complexity for no gain.
+- Rejected: snapshot-ref storage à la `refs/loomyard/...`; a committed mapping file
+  (already rejected in the design doc — can drift).
+
+### RevertWithWeft: nearest-older with explicit gap report
+
+- Decision: when the target warp SHA has no exact weft correspondence, `RevertWithWeft`
+  resets weft to the nearest older correspondence and returns a typed result stating
+  exact-match vs gap (including the warp-SHA range in the gap) so the caller can flag
+  weft/raddle as stale. Error only when no older correspondence exists at all. All stored
+  SHAs (trailer values, index entries) are checked with `SHAExists` before use.
+- Rationale: weft does not sync per warp commit, so most warp SHAs have no exact match;
+  a hard error would make revert unusable. Resolves the design doc's open question as it
+  leaned.
+- Rejected: hard error on missing exact match; silently treating nearest-older as exact.
+
+### Stale SHA handling: typed error, no auto-recovery
+
+- Decision: when `SHAExists` reveals a stored SHA reference (trailer value, index entry,
+  snapshot value) no longer exists (rebase/amend/force-push), fabric surfaces a typed
+  error with context. It never auto-triggers recovery; the human/orchestrator chooses
+  (which may be running `RebuildIndex` or a re-sync).
+- Rationale: explicit-over-implicit is the project line; the right recovery is
+  situation-dependent. Resolves the design doc's second open question.
+- Rejected: automatic rebuild/re-sync on staleness detection.
+
+### Branch naming: uniform `<slug>` / `<slug>-weft`, primary included, no migration
+
+- Decision: fabric enforces host branch `<slug>` ↔ weft branch `<slug>-weft`
+  uniformly, with no exceptions — including the primary worktree (host `main` ↔ weft
+  `main-weft`), established from `lyx fabric clone` onward. `weft:main` is thereby never
+  claimed (the board-weft-storage requirement). No migration of existing hubs: today's
+  warp-created hubs use mirrored same-name branches in both repos and keep them until
+  cutover.
+- Rationale: this is a deliberate behavior change fabric introduces — today NOTHING
+  implements `-weft` branch naming (`hubgeometry.WeftSuffix` governs sibling *directory*
+  names only; `warpengine/add.go` creates the identical branch name in both repos).
+  board-weft-storage.md explicitly delegates this enforcement to fabric.
+- Rejected: migration in this task (operator: "DU trenger ingen migrering"); keeping
+  mirrored names in fabric (blocks board-weft-storage).
+
+### Self-contained junction/portal/launcher mechanics
+
+- Decision: fabricengine gets its own implementations of the junction/portal/launcher/
+  post-checkout-hook filesystem mechanics, adapted from warpengine's unexported code.
+  Deliberate duplication for the parallel period, so cutover is a pure deletion of the
+  old modules.
+- Rationale: warpengine's mechanics are unexported and the design doc rejected extra
+  package nesting; a shared helper package would be permanent structure for a temporary
+  overlap. All links go through `internal/fslink` (directory junctions on Windows),
+  all geometry through `internal/hubgeometry`.
+- Rejected: extracting a shared package both modules import; exporting warpengine
+  internals for fabric to import.
+
+### Config: one `fabric.yaml`
+
+- Decision: one `fabric.yaml` (via `hubgeometry.ConfigFile`) carrying both settings —
+  branch prefix (warp.yaml's `BranchPrefix` equivalent) and pathspec (weft.yaml's
+  `Pathspec` equivalent) — registered in `internal/configreg` alongside the existing
+  warp.yaml/weft.yaml registrations. Cutover later removes the two old registrations.
+- Rationale: one module, one config file; reading the old modules' config files would
+  couple fabric to what it replaces.
+- Rejected: fabric reading warp.yaml + weft.yaml.
+
+### CONSTRAINTS.md: Weft Git Invariant amended now
+
+- Decision: in the same commit that lands fabric's weft-touching code, the Weft Git
+  Invariant is amended: weft-internal git goes through `weftengine` **or**
+  `fabricengine`; coordinated topology through `warpengine` **or** `fabricengine`; with
+  an explicit parallel-build note to be removed at cutover. The agent-never-drives-weft-
+  git half is unchanged and applies to fabric identically.
+- Rationale: otherwise fabric's own tests and sandbox runs formally violate a written
+  invariant for the whole parallel period.
+- Rejected: leaving the invariant untouched until cutover.
+
+### Documentation
+
+- Decision: `docs/overview.md` module table gains a fabric row (marked as parallel-build,
+  not yet the owner — warp/weft rows stay). `manifest/designs/fabric.md` is NOT deleted
+  (Documentation Lifecycle deletes it when the module fully lands, i.e. at cutover);
+  its status note is updated to record that the parallel build is done and only cutover
+  remains, and durable rationale starts folding into `fabricengine`'s package doc. The
+  roadmap's fabric item stays in Planned, amended to record the parallel build landed
+  and cutover remains.
+- Rationale: CLAUDE.md's Task completion rules (docs in same commit); the design doc's
+  own lifecycle note; roadmap items move to Done only when complete.
+
+## Technical context
+
+- **`internal/gitrepo`** (zero production consumers today — fabric is its first):
+  `New(path)` (no validation, no I/O), `CurrentSHA`, `StageAndCommit(msg, files) (sha,
+  committed, err)` (explicit file list, never wildcard), `ChangedFilesSince`, `SHAExists`
+  (bool-swallowing posture; validates SHA-shaped args → `ErrInvalidSHA`), `Push`
+  (rebase-retry on non-fast-forward/rejected/fetch-first), `PushCoalesced`
+  (cross-process coalescing via `.gitrepo-push.lock` in the worktree root),
+  `SnapshotSHA`/`SetSnapshotSHA` (`refs/loomyard/snapshot/<key>`, fetch-before-read,
+  fast-forward-only with adopt-on-conflict). Repo topology (clone, worktree add) is
+  explicitly NOT gitrepo's job — fabric builds those directly on `internal/gitexec`.
+  Contract gotcha: after a push that recovered via rebase, pre-push SHAs may be
+  off-history — re-read `CurrentSHA` before recording anything.
+- **`internal/warpengine`** — the topology reference. `Worktree` handle (`New(cfg)`),
+  methods `Add` (transactional paired create: clean-check → branch → host worktree →
+  weft worktree create-or-adopt → portal junction → launchers → push both; best-effort
+  `rollbackAdd`), `Remove`, `Checkout` (all-or-nothing host+weft switch, host rollback
+  on weft failure, forks missing weft branch from the parent's weft branch, re-points
+  junctions), `Reconcile` (repair-and-adopt sweep), `Status` (pairs + drift +
+  pollution), `Prune`, `Cleanup` (weft branches without host sibling; dry-run/apply/force
+  matrix with raddle-fold-back gate), `List`; package-level `CloneHub(cwd, hostURL,
+  weftURL, boardURL)` (clones into `<name>-HUB`, strict-abort teardown; `DeriveHostName`;
+  `RemoveAll` test seam), `PairInSync`, `HostClean` (used by loom preflight);
+  `WireJunctions`/`UnwireJunctions` (used by initengine), `InstallPostCheckoutHook` +
+  `post-checkout.sh`. Unexported: portals, launchers, weftwiring helpers, hostlayout.
+- **`internal/weftengine`** — the weft-git reference. `Status(weftWorktree, pathspec)`,
+  `Commit(weftPath, pathspec, message, opts)` (pathspec-scoped staging under
+  `.weft/weft.write.lock`), `Push` (rebase-retry + push lock), `Pull` (fast-forward),
+  `SyncOptions{SkipGit, SkipPush}` + `EnvSyncOptions()` (env `WEFT_SKIP_GIT`/
+  `WEFT_SKIP_PUSH`), `ScopedPathspec`, `DefaultCommitMessage = "weft sync"`.
+  `weftcli sync` = commit + detached push spawn (`spawn.go` launches
+  `lyx weft --weft-path <abs> push` detached).
+- **Branch naming today:** exactly one construction site — `warpengine/add.go:89`
+  `branch := w.cfg.BranchPrefix + slug`; host and weft branches are mirrored identical
+  names everywhere (add, checkout, reconcile). `hubgeometry.WeftSuffix = "-weft"` is
+  directory naming only. The `<slug>-weft` branch scheme is NEW with fabric.
+- **Cutover blast radius (context for the FUTURE task — untouched now):** `cmd/lyx`
+  (registration + pinned help-tree/registration/longlist test sets), `configreg` (both
+  templates), `initengine` (`WireJunctions`, `UnwireJunctions`, weft sync quartet),
+  `loomengine/preflight.go` (`HostClean`, `PairInSync`), `buildercli`/`webstercli`/
+  `perchcli` (weft quartet: `EnvSyncOptions`/`ScopedPathspec`/`Commit`/`Push`),
+  `configcli.go:395` (`weftcli.RunCLI(w, []string{"sync"})`), `tools/sandbox/main.go`
+  (shells `lyx warp clone`), lyxtest leaf-enforcement test (names warp/weft as banned
+  imports — fabricengine must be added to the banned list for lyxtest in this task).
+- **Registering `lyx fabric`** requires, in the same commit: `newRoot()` import +
+  `AddCommand`, root `Long` module-list entry, and updates to the pinned sets in
+  `cmd/lyx/drift_test.go` / `helptree_test.go` / `registration_test.go` /
+  `longlist_test.go`, plus sandbox coverage (below).
+- **Geometry:** all cwd/worktree resolution via `hubgeometry.Getwd()`/`Resolve()`;
+  geometry tokens (`-weft`, `-HUB`, `_lyx`, `_portals`, `_launchers`, `_raddle`,
+  `_board`) may not appear in path construction outside hubgeometry — fabric composes
+  paths only through hubgeometry helpers. Enforced by
+  `TestEnforcement_GeometryLiterals` on every `go test`.
+- Known-stale doc (independent of fabric, fix opportunistically at cutover, not now):
+  `docs/overview.md` still lists warp's `status` verb; it was renamed `pairs`.
+
+## Constraints
+
+From `CONSTRAINTS.md` (authoritative; read it before writing code):
+
+- **Hub Geometry Invariant** — hubgeometry owns all cwd/geometry/config paths; token ban
+  machine-enforced.
+- **lyxtest Leaf Invariant** — lyxtest never imports feature packages; add
+  `fabricengine`/`fabriccli` to the banned-import expectations.
+- **CLI / Cobra Invariant** — `Command()`/`RunCLI` seam, `Short` on every command,
+  JSON envelope (`output.Ok`/`output.Err`), `GroupRunE` on the parent, pinned help-tree
+  test sets updated in the same commit, `<module>cli`/`<module>engine` split (engine
+  returns `(T, error)`, never imports cobra/cli).
+- **Weft Git Invariant** — amended this task (see Decisions): weft git via weftengine OR
+  fabricengine; agents never drive weft git — fabric's CLI is driven by Go orchestration
+  or the operator, never by agent prompts.
+- **Sandbox Suite Coverage** — registered module ⇒ `**Covers:** fabric` scenario in a
+  `tools/sandbox/*SUITE.md` file (or allowlist entry; we add real scenarios instead).
+- **Test Tier Purity Invariant** — anything spawning git (`gitexec.RunGit`,
+  `exec.Command`, `lyxtest.Copy*`) lives in `//go:build integration`-tagged files.
+- **Hermetic Git Test Environment Invariant** — every git-spawning test package has a
+  `TestMain` calling `lyxtest.HermeticGitEnv()`.
+- **Documentation Lifecycle** — see Decisions/Documentation.
+
+## Testing
+
+- **Differential back-to-back integration tests (the task's central validation):** the
+  same lyxtest fixture is copied twice; the warp/weft operation runs on one copy and the
+  fabric equivalent on the other; assert equivalent end state — worktree list, branch
+  topology, junction/portal/launcher state, weft content and commit effects — modulo the
+  one deliberate delta (fabric's `<slug>-weft`/`main-weft` branch names, which the
+  comparison normalizes). Cover: add, remove, checkout (existing + missing weft branch),
+  reconcile, pairs/status, prune, cleanup, weft commit/push/pull/sync, and clone
+  (fabric clone vs warp clone, integration-tagged like warp's).
+- **TDD candidates (pure logic, untagged Tier-1 tests):** branch-name derivation
+  (`<slug>` ↔ `<slug>-weft`, primary `main` ↔ `main-weft`); correspondence-index
+  operations (`RecordCorrespondence`, `WeftSHAForWarpSHA` exact + nearest-older binary
+  search, empty index); `RevertWithWeft` gap classification (exact / gap-with-range / no
+  older correspondence → error); trailer formatting/parsing round-trip.
+- **gitrepo additions** (pull, pathspec staging, write-lock serialization) get their own
+  tests in `internal/gitrepo` following its existing integration-tagged + hermetic
+  pattern.
+- **Trailer/index integration:** SyncWeft writes the trailer (verify via
+  `git interpret-trailers`); `RebuildIndex` reconstructs an index equal to the
+  incrementally-built one; post-push SHA re-read (index never records a pre-push SHA
+  after a rebase-recovered push — simulate a non-fast-forward push).
+- **Staleness:** `SHAExists`-gated paths surface the typed stale error after a simulated
+  history rewrite (amend/force-push in the fixture).
+- **Sandbox:** new `tools/sandbox/SANDBOX-FABRIC-SUITE.md` with `**Covers:** fabric`
+  scenarios mirroring the warp/weft ones, run against the dedicated empty test repos
+  `https://github.com/Knatte18/lyx-fabric-test` (host) and
+  `https://github.com/Knatte18/lyx-fabric-test-weft` (weft) — NOT the existing sandbox
+  repo, which stays reserved for warp/weft testing.
+- All new test packages: `TestMain` with `lyxtest.HermeticGitEnv()`; spawning tests
+  integration-tagged; fabriccli help-tree covered by the existing pinned-set tests.
+
+## Q&A log
+
+- **Q:** Is the cutover (rewire consumers, delete warp/weft) part of this task?
+  **A:** No — emphatically. fabric is built and validated ALONGSIDE warp/weft;
+  both old modules stay untouched and registered. Cutover is a separate future task.
+- **Q:** CLI surface? **A:** Single `lyx fabric` module registered next to
+  `lyx warp`/`lyx weft`.
+- **Q:** Flat tree or `fabric weft` subgroup? **A:** Flat — no collision exists
+  (`pairs` vs `status` disambiguates already); nested subgroup solves a non-problem.
+- **Q:** Migration of existing hubs to `<slug>-weft` naming? **A:** None needed. Testing
+  happens against a dedicated sandbox; operator provided fresh empty test repos
+  (`Knatte18/lyx-fabric-test`, `Knatte18/lyx-fabric-test-weft`) so fabric testing never
+  touches the warp/weft sandbox repo.
+- **Q:** SyncWeft semantics? **A:** Behavior parity with today's weft sync (pathspec,
+  locks, SkipGit/SkipPush, detached push in CLI) + the Warp-SHA trailer as the one
+  deliberate addition.
+- **Q:** Where do weftengine's generic git extras land? **A:** Most git operations go
+  into gitrepo — that is why the module exists. fabric keeps only coordination and
+  policy.
+- **Q:** RevertWithWeft without exact correspondence? **A:** Nearest-older + typed gap
+  report; error only when nothing older exists.
+- **Q:** Stale-SHA handling? **A:** Typed error, no auto-recovery.
+- **Q:** Config? **A:** One `fabric.yaml` (branch prefix + pathspec) in configreg.
+- **Q:** Weft Git Invariant during the parallel period? **A:** Amend CONSTRAINTS.md in
+  the same commit as the code (weftengine OR fabricengine), parallel-build note removed
+  at cutover.
+- **Q:** Junction/portal/launcher code? **A:** Self-contained copies in fabricengine;
+  deliberate duplication so cutover is pure deletion.
+- **Q:** Type name from the design sketch (`Trunk`)? **A:** Obsolete vocabulary — the
+  type is `fabricengine.Fabric`.
