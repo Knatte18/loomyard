@@ -3,7 +3,7 @@
 ```yaml
 task: 'board: use gitrepo as its git operator'
 slug: board-use-gitrepo
-approved: false
+approved: true
 started: 20260725-053134
 parent: main
 root: ""
@@ -94,4 +94,5 @@ excluded — they disappear, like `Deletes:` tokens)._
 - `internal/gitrepo/doc.go`
 - `internal/gitrepo/gitrepo.go`
 - `internal/gitrepo/gitrepo_test.go`
+- `internal/gitrepo/push.go`
 - `manifest/roadmap.md`

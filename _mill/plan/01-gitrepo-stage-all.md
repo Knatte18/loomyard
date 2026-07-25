@@ -50,7 +50,9 @@ surface changes. Batch-local: none beyond `## Shared Decisions`.
   **all** working-tree changes via `git add -A` (unlike `StageAndCommit`, which
   never wildcard-stages), that it exists as board's `Sync`/`commitDirty` opt-in
   exception, and that other consumers should keep using the explicit-list
-  `StageAndCommit`.
+  `StageAndCommit`. Also add `StageAllAndCommit` to the file-header comment
+  enumeration at the top of `gitrepo.go` ("…CurrentSHA, StageAndCommit,
+  ChangedFilesSince, and SHAExists") so that list does not go stale.
 - **Commit:** `feat(gitrepo): add StageAllAndCommit wildcard-stage method`
 
 ### Card 2: Reconcile doc.go's two "never wildcard" assertions
@@ -59,6 +61,7 @@ surface changes. Batch-local: none beyond `## Shared Decisions`.
   - `internal/gitrepo/gitrepo.go`
 - **Edits:**
   - `internal/gitrepo/doc.go`
+  - `internal/gitrepo/push.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -74,8 +77,17 @@ surface changes. Batch-local: none beyond `## Shared Decisions`.
   the caller's separate step (push never stages). Also add `StageAllAndCommit`
   alongside `StageAndCommit` in the "# The Repo API" method list. State
   explicitly that `fabric`/`raddle`/`codeintel` keep using the explicit-list
-  `StageAndCommit`.
-- **Commit:** `docs(gitrepo): document StageAllAndCommit exception in package doc`
+  `StageAndCommit`. **Additionally**, drop the now-dangling cross-references to
+  board symbols that batch 2 deletes (`pushUnpushed` / `hasUnpushed`): in
+  `doc.go`'s Push-surface section, reword "the full trigger set board's
+  sync.go:pushUnpushed matches" and "matching hasUnpushed's
+  no-upstream-means-unpushed contract" to state the trigger set / no-upstream
+  behavior on its own merit; and in `internal/gitrepo/push.go`, reword the
+  `rebaseRetryTriggers` comment ("the full trigger set board's
+  sync.go:pushUnpushed matches") and the `PushCoalesced` comment ("This is the
+  board sync.go push-loop replacement") so neither cites the deleted board
+  functions. Do not change any code or the trigger-set values — comments only.
+- **Commit:** `docs(gitrepo): document StageAllAndCommit; drop stale board cross-refs`
 
 ### Card 3: Integration test for StageAllAndCommit
 
