@@ -47,6 +47,7 @@ type AddResult struct {
 // from environment variables at the CLI edge (a later batch).
 //
 // Steps:
+//  0. Slug validation: slug must be a single path component (no '/' or '\').
 //  1. Clean check: l.WorktreeRoot must have no uncommitted changes.
 //  2. Branch name: hostBranch := t.cfg.BranchPrefix + slug; weftBranch := WeftBranchName(hostBranch)
 //  3. Branch-exists check: hostBranch must not already exist in host.
@@ -77,6 +78,16 @@ type AddResult struct {
 //
 // Returns AddResult on success or an error if any step fails.
 func (t *Topology) Add(l *hubgeometry.Layout, slug string, opts AddOptions) (AddResult, error) {
+	// (0) Slug validation. A slug is by contract a single path component:
+	// every consumer re-derives it from the host worktree path via
+	// filepath.Base (status, reconcile, prune) and the hub scan only looks at
+	// the hub's top level, so a separator-containing slug would create a pair
+	// the rest of the module cannot re-identify. Reject both separators on
+	// every platform — a slash-free contract must not depend on GOOS.
+	if strings.ContainsAny(slug, `/\`) {
+		return AddResult{}, fmt.Errorf("invalid slug %q: a slug must be a single path component (no '/' or '\\')", slug)
+	}
+
 	// (1) Clean check
 	stdout, _, exitCode, err := gitexec.RunGit([]string{"status", "--porcelain", "--untracked-files=no"}, l.WorktreeRoot)
 	if err != nil {
