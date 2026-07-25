@@ -265,9 +265,10 @@ func (r *Repo) SnapshotSHA(key string) (string, error) {
 // full ancestor set first fixes that: this holds for a diverged/rebased
 // history too, not just a fast-forward one, because reachability (not linear
 // position) is what both sides actually compute.
-//nolint:unused // only exercised by the //go:build integration-tagged parity
 // harness in read_test.go; golangci-lint's default (untagged) build sees no
 // caller, per the package-shape-and-invariants Shared Decision.
+//
+//nolint:unused // only exercised by the //go:build integration-tagged parity
 func (r *Repo) hasUnpushed() (bool, error) {
 	symbolicHead, err := r.repo.Reference(plumbing.HEAD, false)
 	if err != nil || symbolicHead.Type() != plumbing.SymbolicReference {
