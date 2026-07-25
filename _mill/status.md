@@ -48,5 +48,7 @@ batches:
     start_sha: eb7adba2b91e2c37c11ded537df9698410e5ecc7
     commit_sha: 501a2a5540caf10e29c688bd16cdd258527d5b52
   - name: writeup-and-doc-lifecycle
-    state: pending
+    state: running
+    implementer_session: 2bd24b17-2a91-4227-ae70-cdc8c2648d4b
+    start_sha: e3092c44003f190821c23bbafdddbbb79f732222
 ```
